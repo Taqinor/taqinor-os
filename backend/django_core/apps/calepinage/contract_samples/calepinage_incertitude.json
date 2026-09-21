@@ -1,0 +1,68 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CALX144 — DE QUOI σ EST FAIT, `resultat['incertitude']`. Ce document ne décrit QUE ce bloc — d'où `forme_serveur: partielle`. La clé est publiée par `GET resultat/` (`services/electrique.py::BLOCS_SIMULATION`, CALX70) et la forme d'ensemble du document reste celle de `contract_samples/calepinage_simulation.json` (CALX4).\n\nCE QU'IL REFUSE. Aujourd'hui `services/p50p90.py:83-144` publie `annual_variability`, `sigma_source` et `sigma_annees` : UN seul σ, sans dire de quelles composantes il est fait — et, dès que la fenêtre ne porte pas deux années, il retombe sur `apps/ventes/solar_design.py:1903` `DEFAULT_ANNUAL_VARIABILITY = 0.06`, un littéral qui n'a AUCUNE citation dans le dépôt. Un P90 calculé sur ce 0,06 est un chiffre d'apparence bancable tiré d'une constante sans origine : c'est exactement ce que ce contrat interdit (D-CALX 7, et CALX184 qui supprime le repli). Une banque qui demande « d'où vient votre σ ? » doit trouver la réponse DANS le résultat, pas dans un commentaire de code.\n\nD'OÙ VIENT CHAQUE CLÉ — AUCUNE CLÉ INVENTÉE :\n* `composantes[]` — une LIGNE par source d'incertitude retenue, assemblée par `services/incertitude.py` (CALX185). Trois origines seulement, jamais une quatrième : σ MESURÉ sur au moins deux années de la fenêtre (`services/p50p90.py::variabilite_interannuelle`, `:60-80`, qui rend déjà `(sigma, origine, annees)`), σ SAISI et sourcé par la société (réglages de simulation `sigma_modele_pct`, `sigma_biais_meteo_pct`, `sigma_meteo_saisi_pct`, CALX145, chacun en `{valeur, source, reference}`), ou RIEN.\n* `composantes[].nom` — le nom de la composante, celui que l'écran affiche et que le refus NOMME (`variabilite_interannuelle`, `modele_simulation`, `biais_long_terme`).\n* `composantes[].sigma_relatif` — l'écart-type RELATIF (sans unité, 0,048 = 4,8 %) de cette composante seule.\n* `composantes[].source` — OBLIGATOIRE. `pvgis` pour un σ mesuré sur la série, `societe` pour un σ saisi, `texte` pour une publication citée. Une composante SANS source est REFUSÉE en la nommant (voir `exemple_refus_composante_sans_source`) : elle n'entre pas dans σ, et surtout elle n'est pas silencieusement ignorée.\n* `composantes[].reference` — ce qui permet de remonter à l'origine : la fenêtre `seriescalc` employée, le réglage société, ou la publication citée.\n* `composantes[].annees` — le nombre d'années sur lesquelles la composante a été MESURÉE (`sigma_annees` de `variabilite_interannuelle`). `null` pour une composante saisie : elle n'a pas été mesurée sur des années, et écrire `0` se lirait « mesurée sur zéro année ».\n* `sigma_total` — `services/incertitude.py` (CALX185) : `sqrt(Σ σᵢ²)` sur les composantes SOURCÉES uniquement. C'est la composition « en quadrature » de PVsyst (variabilité année à année + incertitude de simulation + biais long terme de la source météo). Une seule composante ⇒ `sigma_total` vaut exactement cette composante.\n* `methode` — `'quadrature'` quand σ a été composé ; `null` quand il ne l'a pas été. La méthode est publiée pour qu'un lecteur n'ait pas à deviner si les composantes s'additionnent ou se composent.\n* `quantiles.p50_kwh` / `p75_kwh` / `p90_kwh` / `p95_kwh` — `services/incertitude.py` (CALX186), qui calcule les quantiles depuis `sigma_total` par la fonction quantile de la loi normale et publie P95 en plus des trois existants. P99 n'est PAS publié (question fondateur ouverte).\n* `portee` — `'annuelle'`. PVsyst le dit et le contrat le répète : ces quantiles valent pour UNE année d'exploitation, pas pour la durée de vie de l'installation. Sans cette clé, un P90 annuel finirait cité comme une garantie sur vingt ans.\n* `motif_refus` — vide quand σ a été composé, NON VIDE et en français quand il ne l'a pas été. C'est la clé qui remplace le repli : un refus qui se lit vaut mieux qu'un chiffre qui ment.\n\nLES DEUX RÈGLES DURES.\n1. AUCUN σ SANS SOURCE. `sigma_total` reste `null` tant qu'AUCUNE composante n'est sourcée, et les quatre quantiles suivent — sauf `p50_kwh`, qui n'est pas un quantile déduit de σ mais la production simulée elle-même (`production.total.p50_kwh`) : quand σ est refusé, P50 reste servi et P75/P90/P95 valent `null`. JAMAIS un P50 recopié en P90 : deux nombres égaux dans ces cases se liraient « la production est certaine ».\n2. UNE COMPOSANTE SANS SOURCE EST REFUSÉE EN LA NOMMANT. Elle n'est ni ignorée en silence, ni comptée : le refus porte le nom de la composante et le champ fautif (règle fondateur du 08/09/2026 — l'erreur pointe le champ, jamais un « non enregistré » générique).\n\nLES ÉTATS COMMITTÉS. `exemple` — deux composantes sourcées, composées en quadrature ; ses quantiles sont arithmétiquement COHÉRENTS avec `sigma_total` (le test le vérifie par la fonction quantile de la loi normale), pour qu'un écran ne puisse pas se caler sur un exemple faux. `exemple_sigma_refuse` — la simulation A TOURNÉ, mais aucune composante n'est sourcée : P50 est servi, P75/P90/P95 sont nuls, `motif_refus` dit quoi renseigner. `exemple_vide` — le calepinage POSÉ mais JAMAIS SIMULÉ : toutes les clés présentes, toutes nulles. `exemple_refus_composante_sans_source` — la forme du refus 400, `{champ: message}`, comme partout ailleurs dans le module.\n\nZÉRO CHIFFRE CLIENT (D-CALX 7). Les énergies et les σ ci-dessous sont des PLACEHOLDERS ASSUMÉS : aucun ne décrit une installation réelle, et aucun n'est un coefficient par défaut. Ce sont les clés, leurs natures et les deux règles dures qui font le contrat.",
+  "exemple": {
+    "incertitude": {
+      "composantes": [
+        {
+          "nom": "variabilite_interannuelle",
+          "sigma_relatif": 0.048,
+          "source": "pvgis",
+          "reference": "seriescalc 2020-2021",
+          "annees": 2
+        },
+        {
+          "nom": "modele_simulation",
+          "sigma_relatif": 0.03,
+          "source": "societe",
+          "reference": "Réglage de simulation « sigma_modele_pct », saisi et sourcé par la société (essai)",
+          "annees": null
+        }
+      ],
+      "sigma_total": 0.0566,
+      "methode": "quadrature",
+      "quantiles": {
+        "p50_kwh": 13000.0,
+        "p75_kwh": 12503.7,
+        "p90_kwh": 12057.0,
+        "p95_kwh": 11789.7
+      },
+      "portee": "annuelle",
+      "motif_refus": ""
+    }
+  },
+  "exemple_sigma_refuse": {
+    "incertitude": {
+      "composantes": [],
+      "sigma_total": null,
+      "methode": null,
+      "quantiles": {
+        "p50_kwh": 13000.0,
+        "p75_kwh": null,
+        "p90_kwh": null,
+        "p95_kwh": null
+      },
+      "portee": "annuelle",
+      "motif_refus": "La fenêtre météo ne porte qu'une seule année et aucune incertitude n'a été saisie pour cette société : aucun écart-type ne peut être mesuré. P75, P90 et P95 restent non calculés — aucune valeur de référence n'est appliquée à leur place. Renseignez l'écart-type météo dans les réglages de simulation, avec sa source."
+    }
+  },
+  "exemple_vide": {
+    "incertitude": {
+      "composantes": [],
+      "sigma_total": null,
+      "methode": null,
+      "quantiles": {
+        "p50_kwh": null,
+        "p75_kwh": null,
+        "p90_kwh": null,
+        "p95_kwh": null
+      },
+      "portee": null,
+      "motif_refus": "Aucune composante d'incertitude sourcée : les quatre quantiles restent nuls — jamais un P50 recopié en P90."
+    }
+  },
+  "exemple_refus_composante_sans_source": {
+    "composantes[1].source": "La composante d'incertitude « biais_long_terme » n'a aucune source : elle est refusée et n'entre pas dans le calcul de σ. Renseignez sa source (réglage de la société, publication citée, ou mesure sur la série), ou retirez-la — aucun écart-type n'est composé à partir d'un chiffre sans origine."
+  }
+}

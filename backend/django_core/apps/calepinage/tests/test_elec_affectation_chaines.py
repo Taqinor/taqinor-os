@@ -153,13 +153,22 @@ class ReproductibiliteTest(SimpleTestCase):
 class FormeDuResultatTest(SimpleTestCase):
     """Le ``resultat`` publié a EXACTEMENT les blocs du contrat CAL244."""
 
+    #: CALX16 — la CINQUIÈME clé du bloc, posée non pas par
+    #: ``bloc_electrique`` mais par ``resultat_calepinage`` (elle a besoin du
+    #: DOCUMENT, que la conception ne porte plus), et CONDITIONNELLE : sans
+    #: accès solaire par module, elle est absente et son motif part dans
+    #: ``avertissements``.
+    POSEE_PAR_LE_RESULTAT = ('chaine_la_plus_faible',)
+
     def test_le_bloc_electrique_a_les_quatre_cles(self):
         bloc, _ = bloc_electrique(_conception(),
                                   verdicts=verdicts_electriques(
                                       _conception()))
 
-        self.assertEqual(sorted(bloc),
-                         sorted(CONTRAT['exemple']['electrique']))
+        self.assertEqual(
+            sorted(bloc),
+            sorted(set(CONTRAT['exemple']['electrique'])
+                   - set(self.POSEE_PAR_LE_RESULTAT)))
         self.assertEqual(sorted(bloc['onduleurs'][0]),
                          sorted(CONTRAT['exemple']['electrique']
                                 ['onduleurs'][0]))
@@ -168,6 +177,17 @@ class FormeDuResultatTest(SimpleTestCase):
         self.assertEqual(sorted(bloc['verdicts'][0]),
                          sorted(CONTRAT['exemple']['electrique']
                                 ['verdicts'][0]))
+
+    def test_la_cinquieme_cle_est_celle_du_resultat_et_reste_conditionnelle(
+            self):
+        # Le document d'essai ne porte AUCUN accès solaire : la clé doit être
+        # absente, et le motif dit pourquoi (jamais un 100 % supposé).
+        from apps.calepinage.services.ombrage_chaines import MOTIF_SANS_ACCES
+
+        servi = resultat_calepinage(_Calepinage(LAYOUT), materiel=MATERIEL)
+
+        self.assertNotIn('chaine_la_plus_faible', servi['electrique'])
+        self.assertIn(MOTIF_SANS_ACCES, servi['avertissements'])
 
     def test_les_cinq_codes_de_verdict_du_contrat_sont_servis(self):
         codes = [v['code'] for v in verdicts_electriques(_conception())]

@@ -1791,6 +1791,23 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             # BATHOMO (2026-08-26) — plafond fondateur du nombre de modules
             # identiques par banque (vide = illimité).
             'bat_max_modules_par_banc',
+            # CALX60 (2026-09-21) — tout ce que la chaîne de pertes et
+            # l'électrique lisent : la courbe de faible éclairement et la
+            # tolérance du module, la courbe η(P) / la veille de l'onduleur,
+            # la SORTIE de l'optimiseur / du micro-onduleur, le C-rate et la
+            # plage de température du pack. Tous optionnels : une fiche
+            # ancienne les rend tous vides, et l'étape qui les lit s'omet en
+            # nommant le champ plutôt que de forfaitiser.
+            'rendement_par_irradiance', 'tolerance_pmax_min_pct',
+            'tolerance_pmax_max_pct',
+            'ond_courbe_rendement', 'ond_rendement_max_pct',
+            'ond_rendement_cec_pct', 'ond_conso_nuit_w',
+            'bat_c_rate_charge', 'bat_c_rate_decharge', 'bat_chimie',
+            'bat_temp_min_c', 'bat_temp_max_c',
+            'opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',
+            'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v',
+            'opt_v_out_min', 'opt_v_out_max', 'opt_i_out_max_a',
+            'opt_pmax_out_w', 'opt_modules_max_par_chaine',
             'pdf', 'pdf_url', 'pdf_filename', 'pdf_size', 'pdf_mime',
             'date_creation', 'date_mise_a_jour',
         ]

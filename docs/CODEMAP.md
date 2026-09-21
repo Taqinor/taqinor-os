@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: fa8cb4a778d91f004099865b17f777d3d421c4df3e07a12e13448584e4a052eb
-Plan fingerprint: f6914456c632839b4bff47b8f2489d8a76e31fa7bf1cca96dc6494cc4327272c
+Structure fingerprint: 0aa79a5607e17d6b6d565110f52853416cf907a195c64a031491f24e947d0788
+Plan fingerprint: 54c56f1d403785bf295ab34555a3a623b5bb7059cc95a8cc957a35f402d6ae2c
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -314,11 +314,12 @@ Model counts are the real class count across `models*.py`/`models/`.
   `core` reads its models. `core` remains a base layer (import-linter).
 - **authentication** (SOLMVP30b) — `CustomUser.poste_ref` (rh) removed.
 
-### calepinage — Groupe CALX (lot 1 « rendre visible et opérant », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
+### calepinage — Groupe CALX (lots 1 « rendre visible et opérant » et 3 « simulation sourcée », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
 - **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.
 - **Rattachement des `@action` — `views/rattachements.py` (CALX2)** : les dix sous-modules de `views/` qui posent une `@action` sur le `CalepinageViewSet` par affectation d'attribut de classe (`equipements`, `horizon`, `export_csv`, `bibliotheque`, `verrou`, `archivage`, `io_layout`, `pompage`, `simulation`, `reglementaire` — 13 actions) sont importés DEPUIS CE SEUL FICHIER ; `urls.py` l'importe une fois, AVANT `router.register` (DRF découvre les actions via `get_extra_actions()` au moment de l'enregistrement — un import posé après ne route rien). **Une action neuve s'AJOUTE en fin de `views/rattachements.py` avec son commentaire `# CALX<id>`, jamais au milieu, jamais réordonnée ; `urls.py` n'est plus rouvert par aucune tâche.**
 - **Les QUATRE surfaces APPEND-ONLY du module (décision D-CALX 13)** — `frontend/src/api/calepinageApi.js`, `frontend/src/features/calepinage/atelier/onglets.js` (le rail d'onglets déclaratif), `backend/django_core/apps/calepinage/views/rattachements.py`, `backend/django_core/apps/calepinage/services/parametres_cles.py`. Elles sont déclarées dans `_APPEND_ONLY_SUFFIXES` de `scripts/plan_lanes.py` : deux tâches qui les citent ne fondent PAS leurs lanes, parce qu'une méthode, un onglet, une action ou un réglage neuf s'y **AJOUTE en fin avec un commentaire `// CALX<id>` (JS) ou `# CALX<id>` (Python)** — jamais une réécriture, jamais un tri. Mesuré sur `docs/PLAN2.md` avant CALX2 : 13 des 16 fusions de lanes du groupe CALX venaient de ces seuls fichiers (9 sur `rattachements.py`, 4 sur `calepinageApi.js`). Les règles sont purement TEXTUELLES (suffixe du chemin déclaré) : elles valent pour `onglets.js` et `parametres_cles.py` avant même leur création. `scripts/check_taches_cablage.py` admet en conséquence `features/<app>/atelier/onglets.js` comme fichier de MONTAGE d'un écran de la même feature, au même titre qu'un `module.config.jsx`.
 - Corollaires de la même décision : les sorties du lot 6 vivent dans `views/documents.py` (jamais `views/sorties.py`) et le rapport d'étude dans `services/rapport/<section>.py` (jamais un `rapport_etude.py` unique). Aucun import `apps.ao` / `apps.ged` n'entre dans le module (D-CALX 2).
+- **Lot 3 « Simulation de production sourcée » (CALX141-198 + 5/6/14/16/48/59/60/62/64/65/69/255/264, 21/09/2026)** : la simulation d'un calepinage est une CHAÎNE DE PERTES déclarative — `services/chaine_pertes.py` (`appliquer_chaine`, `ORDRE_ETAPES` = 24 postes dans l'ordre PVsyst, `decision_meteo`/`MeteoIndecise`, ré-indexation de la série sur l'heure LÉGALE du fuseau saisi du site, `PLAFOND_FENETRE_ANNEES = 10`) charge chaque poste PAR NOM depuis `services/etapes/<poste>.py` (`appliquer(serie, contexte) -> (serie, etape)`, fonction pure ; le contrat des six clés et les trois refus de l'ordonnanceur sont dans la docstring de `services/etapes/__init__.py` ; module absent = étape omise « non livrée », JAMAIS un défaut — D-CALX 7 : coefficient/seuil = réglage société sourcé, fiche produit, valeur PVGIS, ou omission nommant le champ). Entrées : série horaire PVGIS `services/pvgis_serie.py::ClientPvgis.serie_irradiance` (composantes + `userhorizon`, fenêtre pluriannuelle ou TMY) ou fichier météo importé (`services/meteo_fichier.py`, action `meteo-fichier/`) ; position solaire `core/calepinage/soleil.py::position_solaire` (UTC) ; ombre inter-rangées `core/calepinage/ombre_rangees.py` ; fiches produit `stock` (migration `0159_calx60_fiche_chaine_pertes`) ; réglages société À REGISTRE `services/parametres_cles.py` (sections `simulation` et `electrique_societe`, chaque valeur `{valeur, source, reference}`, migration `calepinage/0010`) — après TOUT ajout au registre, régénérer le bloc `registre` de `contract_samples/parametres_calepinage.json` (test_calx69 épingle l'égalité). Orchestration : `services/simulation.py::simuler_calepinage(calepinage, *, forcer=False)` + `construire_contexte`, action `calepinages/<pk>/simuler/` (tâche `tasks.simuler_calepinage`, nature `simulation`, `GET resultat/` la sert avec sa fraîcheur) ; résultat module par module `services/simulation_modules.py` ; incertitude P50/P90 `services/incertitude.py::bloc_incertitude` ; PR et rendement `services/performance.py::bloc_performance` ; validation croisée `services/validation.py::ecart_vs_pvcalc` ; courbe de charge `services/courbe_charge.py::construire_courbe_charge`. Dépendance `pvlib==0.15.2` (décision `docs/decisions/calx198-pvlib.md` : contre-calcul, jamais source de vérité). Golden `tests/golden_simulation/cascade_pluriannuelle_casablanca.json`. Frontend : `reglages/ReglagesSimulation.jsx`, `atelier/PanneauSeries.jsx`, `production/TapisHoraire.jsx` + `PanneauProduction.jsx`, `plan/AffectationChaines.jsx`. Règle de test (leçon du lot) : un test d'étape ISOLE son étape (`appliquer` direct ou l'entrée de cascade de son poste), jamais le total de la chaîne.
 
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
@@ -530,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (78)**
+**Done (145)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -567,8 +568,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
 - `CALX3` — Faire exposer par le constructeur 3D l'entrée moteur, l'application d'un plan et les…
 - `CALX4` — Figer le contrat de la simulation avant ses deux moitiés
+- `CALX5` — Construire le service d'orchestration de la simulation et sa porte HTTP, sur la chaîne…
+- `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
 - `CALX7` — Lever le masquage qui empêche l'export tableur CSV d'être enregistré
 - `CALX8` — Remettre au panneau de l'atelier l'API du constructeur, et non la référence qui la…
+- `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
+- `CALX16` — Brancher la chaîne électrique la plus faible en ombrage sur le verdict
 - `CALX17` — Brancher la masse installée et la feuille de lestage sur un panneau
 - `CALX18` — Ouvrir l'éditeur des postes de pertes
 - `CALX19` — Ouvrir l'inventaire des sorties et y brancher la planche cotée
@@ -598,6 +603,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX45` — Figer le contrat du calepinage publié avec un devis
 - `CALX46` — Publier le calepinage d'un devis et rendre le bloc de retour vivant
 - `CALX47` — Ouvrir le module calepinage depuis la fiche d'un lead
+- `CALX48` — Rendre le refus « production non calculée » actionnable
 - `CALX49` — Brancher la priorité de remplissage déjà écrite
 - `CALX50` — Dessiner le champ au sol au lieu de n'en donner que le compte
 - `CALX51` — Dessiner l'ombrière à sa hauteur libre saisie
@@ -607,11 +613,73 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX55` — Poser le retour vers l'atelier depuis chaque lien profond
 - `CALX56` — Fermer le trou de la garde d'atteignabilité sur les chemins paramétrés
 - `CALX57` — Poser la garde « service sans appelant » et l'e2e du parcours complet
+- `CALX58` — Publier TOF et TSRF par pan, à côté de l'accès solaire
+- `CALX59` — Aligner la série météo (UTC) sur l'heure locale du site avant tout croisement avec une…
+- `CALX60` — Ajouter à la fiche technique, en UNE migration, tout ce que la chaîne de pertes et…
 - `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
+- `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
+- `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
+- `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
+- `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
+- `CALX142` — Déclarer le contrat de la série horaire persistée
+- `CALX143` — Déclarer le contrat de l'énoncé de source météo
+- `CALX144` — Déclarer le contrat d'incertitude et de quantiles
+- `CALX145` — Ouvrir deux sections société — « simulation » et « electrique_societe » — au registre…
+- `CALX146` — Donner au noyau une position solaire HORAIRE (le dépôt n'en a qu'une, au solstice)
+- `CALX147` — Écrire l'ordonnanceur de la chaîne de pertes
+- `CALX148` — Déclarer l'ordre de la chaîne une fois, avec ses règles d'exclusivité et ses étapes…
+- `CALX149` — Faire primer le poste CALCULÉ sur le poste saisi, et refuser le double comptage
+- `CALX150` — Demander à PVGIS l'irradiance NUE et non sa propre production
+- `CALX151` — Passer NOTRE horizon à PVGIS, et dire lequel fait foi
+- `CALX152` — Séparer direct, diffus et réfléchi — sans quoi ni IAM ni ombrage ne se calculent
+- `CALX153` — Laisser choisir entre année météo type et fenêtre pluriannuelle, et en tirer les…
+- `CALX154` — Publier le bloc `meteo` dans le résultat
+- `CALX155` — Une requête météo par PLAN, jamais par module
+- `CALX156` — Étape « horizon » : masquer le direct heure par heure sous la ligne d'horizon
+- `CALX157` — Étape « ombrage proche » : appliquer la matrice 12×24 HEURE PAR HEURE
+- `CALX158` — Étape « accès module » : lire `solarAccess` par module au lieu d'un facteur de toit
+- `CALX159` — Étape « inter-rangées » : l'auto-ombrage horaire depuis la géométrie 3D
+- `CALX160` — Étape « IAM » : Fresnel par défaut (physique, sourcé), ASHRAE ou Martin-Ruiz sur choix…
+- `CALX161` — Étape « salissure » : douze valeurs mensuelles, pas une moyenne
+- `CALX162` — Étape « niveau d'irradiance » : le faible éclairement, depuis la courbe de la fiche
+- `CALX163` — Étape « thermique » : Faiman avec des coefficients PAR TYPE DE POSE, NOCT en repli…
+- `CALX164` — Donner enfin le vent au modèle thermique
+- `CALX165` — Étape « qualité module » : la tolérance de la fiche, ou rien
+- `CALX166` — Étape « LID » : selon la technologie de cellule, et seulement si la société la chiffre
+- `CALX167` — Étape « mismatch fabricant » : la dispersion des modules, saisie et sourcée
+- `CALX168` — Étape « mismatch d'ombrage » : l'effondrement I-V d'une chaîne dont un module est…
+- `CALX169` — Étape « ohmique DC » : la chute réelle des câbles, plus jamais saisie en double
+- `CALX170` — Étape « onduleur » : la courbe η(P), sinon le rendement européen, sinon rien
+- `CALX171` — Étape « fenêtre MPPT » : les heures où la tension sort de la plage
+- `CALX173` — Étape « ohmique AC » : la liaison onduleur-comptage, sur sa longueur saisie
+- `CALX174` — Étape « transformateur » : seulement si la société en déclare un
+- `CALX175` — Étape « auxiliaires » : une énergie soutirée, jour et nuit, pas un pourcentage
+- `CALX176` — Étape « indisponibilité » : des fenêtres d'arrêt datées, pas un forfait annuel
+- `CALX177` — Faire entrer le bifacial dans la chaîne, avec un albédo MENSUEL
+- `CALX178` — Étape « vieillissement » : une production ANNÉE PAR ANNÉE, pas un pourcentage unique
+- `CALX179` — Publier le ratio de performance au sens de la norme IEC 61724-1
+- `CALX181` — Rendre les tableaux mensuels et par pan cohérents avec la cascade
+- `CALX182` — Simuler MODULE PAR MODULE, et agréger
+- `CALX184` — Mesurer σ, ou refuser — supprimer le repli 6 % non sourcé
+- `CALX185` — Composer l'incertitude en quadrature, comme une étude bancable
+- `CALX186` — Ajouter P95 aux quantiles publiés
+- `CALX188` — Faire tourner le dispatch batterie sur la série AC réelle
+- `CALX189` — Construire la courbe de charge horaire, VE et PAC compris
+- `CALX190` — Publier l'autoconsommation et le plafond d'injection sur la vraie série
+- `CALX191` — Chiffrer le défaut d'alimentation hors réseau sur la série réelle
+- `CALX192` — Dire la vérité sur la résolution : PVGIS est horaire
+- `CALX193` — Persister la série horaire que l'export attend depuis toujours
+- `CALX195` — Bâtir le harnais de validation contre PVGIS lui-même
+- `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
+- `CALX197` — Un seul calcul d'ombrage pour un même toit
+- `CALX198` — Adopter `pvlib` (tranché par Reda le 21/09/2026) pour le modèle à une diode, la…
+- `CALX255` — Lire la consommation du document côté serveur
+- `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (528)**
+**Open — to build (461)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -800,20 +868,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `SOLMVP54` — CI sous 2 minutes (demande fondateur 21/09, APRÈS le merge SOLMVP)
-- `CALX5` — Construire le service d'orchestration de la simulation et sa porte HTTP, sur la chaîne…
-- `CALX6` — Persister la série horaire et rendre l'export horaire réellement téléchargeable
-- `CALX14` — Rendre visibles la batterie et le hors-réseau que la chaîne calcule
-- `CALX16` — Brancher la chaîne électrique la plus faible en ombrage sur le verdict
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX48` — Rendre le refus « production non calculée » actionnable
-- `CALX58` — Publier TOF et TSRF par pan, à côté de l'accès solaire
-- `CALX59` — Aligner la série météo (UTC) sur l'heure locale du site avant tout croisement avec une…
-- `CALX60` — Ajouter à la fiche technique, en UNE migration, tout ce que la chaîne de pertes et…
-- `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
-- `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
-- `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
-- `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
 - `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
@@ -866,61 +922,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
-- `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
-- `CALX142` — Déclarer le contrat de la série horaire persistée
-- `CALX143` — Déclarer le contrat de l'énoncé de source météo
-- `CALX144` — Déclarer le contrat d'incertitude et de quantiles
-- `CALX145` — Ouvrir deux sections société — « simulation » et « electrique_societe » — au registre…
-- `CALX146` — Donner au noyau une position solaire HORAIRE (le dépôt n'en a qu'une, au solstice)
-- `CALX147` — Écrire l'ordonnanceur de la chaîne de pertes
-- `CALX148` — Déclarer l'ordre de la chaîne une fois, avec ses règles d'exclusivité et ses étapes…
-- `CALX149` — Faire primer le poste CALCULÉ sur le poste saisi, et refuser le double comptage
-- `CALX150` — Demander à PVGIS l'irradiance NUE et non sa propre production
-- `CALX151` — Passer NOTRE horizon à PVGIS, et dire lequel fait foi
-- `CALX152` — Séparer direct, diffus et réfléchi — sans quoi ni IAM ni ombrage ne se calculent
-- `CALX153` — Laisser choisir entre année météo type et fenêtre pluriannuelle, et en tirer les…
-- `CALX154` — Publier le bloc `meteo` dans le résultat
-- `CALX155` — Une requête météo par PLAN, jamais par module
-- `CALX156` — Étape « horizon » : masquer le direct heure par heure sous la ligne d'horizon
-- `CALX157` — Étape « ombrage proche » : appliquer la matrice 12×24 HEURE PAR HEURE
-- `CALX158` — Étape « accès module » : lire `solarAccess` par module au lieu d'un facteur de toit
-- `CALX159` — Étape « inter-rangées » : l'auto-ombrage horaire depuis la géométrie 3D
-- `CALX160` — Étape « IAM » : Fresnel par défaut (physique, sourcé), ASHRAE ou Martin-Ruiz sur choix…
-- `CALX161` — Étape « salissure » : douze valeurs mensuelles, pas une moyenne
-- `CALX162` — Étape « niveau d'irradiance » : le faible éclairement, depuis la courbe de la fiche
-- `CALX163` — Étape « thermique » : Faiman avec des coefficients PAR TYPE DE POSE, NOCT en repli…
-- `CALX164` — Donner enfin le vent au modèle thermique
-- `CALX165` — Étape « qualité module » : la tolérance de la fiche, ou rien
-- `CALX166` — Étape « LID » : selon la technologie de cellule, et seulement si la société la chiffre
-- `CALX167` — Étape « mismatch fabricant » : la dispersion des modules, saisie et sourcée
-- `CALX168` — Étape « mismatch d'ombrage » : l'effondrement I-V d'une chaîne dont un module est…
-- `CALX169` — Étape « ohmique DC » : la chute réelle des câbles, plus jamais saisie en double
-- `CALX170` — Étape « onduleur » : la courbe η(P), sinon le rendement européen, sinon rien
-- `CALX171` — Étape « fenêtre MPPT » : les heures où la tension sort de la plage
 - `CALX172` — Étape « écrêtage » : brancher le calcul horaire qui existe déjà et n'a jamais de série
-- `CALX173` — Étape « ohmique AC » : la liaison onduleur-comptage, sur sa longueur saisie
-- `CALX174` — Étape « transformateur » : seulement si la société en déclare un
-- `CALX175` — Étape « auxiliaires » : une énergie soutirée, jour et nuit, pas un pourcentage
-- `CALX176` — Étape « indisponibilité » : des fenêtres d'arrêt datées, pas un forfait annuel
-- `CALX177` — Faire entrer le bifacial dans la chaîne, avec un albédo MENSUEL
-- `CALX178` — Étape « vieillissement » : une production ANNÉE PAR ANNÉE, pas un pourcentage unique
-- `CALX179` — Publier le ratio de performance au sens de la norme IEC 61724-1
-- `CALX181` — Rendre les tableaux mensuels et par pan cohérents avec la cascade
-- `CALX182` — Simuler MODULE PAR MODULE, et agréger
 - `CALX183` — Agréger la production par chaîne, MPPT et onduleur
-- `CALX184` — Mesurer σ, ou refuser — supprimer le repli 6 % non sourcé
-- `CALX185` — Composer l'incertitude en quadrature, comme une étude bancable
-- `CALX186` — Ajouter P95 aux quantiles publiés
-- `CALX188` — Faire tourner le dispatch batterie sur la série AC réelle
-- `CALX189` — Construire la courbe de charge horaire, VE et PAC compris
-- `CALX190` — Publier l'autoconsommation et le plafond d'injection sur la vraie série
-- `CALX191` — Chiffrer le défaut d'alimentation hors réseau sur la série réelle
-- `CALX192` — Dire la vérité sur la résolution : PVGIS est horaire
-- `CALX193` — Persister la série horaire que l'export attend depuis toujours
-- `CALX195` — Bâtir le harnais de validation contre PVGIS lui-même
-- `CALX196` — Figer un golden pluriannuel de la cascade et des quantiles
-- `CALX197` — Un seul calcul d'ombrage pour un même toit
-- `CALX198` — Adopter `pvlib` (tranché par Reda le 21/09/2026) pour le modèle à une diode, la…
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
 - `CALX201` — Déclarer le contrat `electrical.equipements[]` du document v2
@@ -973,7 +976,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
 - `CALX253` — Sérialiser la consommation de l'atelier dans le document
 - `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
-- `CALX255` — Lire la consommation du document côté serveur
 - `CALX256` — Persister la méthode « somme d'appareils » avec la provenance de chaque appareil
 - `CALX257` — Convertir les montants MAD en kWh par le barème de la société
 - `CALX258` — Ouvrir les profils société au segment pompage et au type de jour
@@ -982,7 +984,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX261` — Offrir les deux modes de recharge du véhicule électrique
 - `CALX262` — Borner la recharge par la puissance de la borne et dire le débordement
 - `CALX263` — Modéliser la climatisation en BTU avec un EER saisi
-- `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 - `CALX265` — Rattacher une clé tarifaire à chaque charge déclarée
 - `CALX267` — Simuler plusieurs groupes de batteries, chacun avec son couplage
 - `CALX268` — Ajouter la commande horaire à SOC cible par groupe

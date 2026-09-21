@@ -73,6 +73,24 @@ def _obligatoire(valeur, *, champ, libelle, positif=True):
     return nombre
 
 
+def _nombre_signe(valeur, *, champ, libelle):
+    """Un nombre SAISI, positif OU négatif — une température extérieure,
+    par exemple (``_obligatoire`` refuse toujours le négatif, y compris avec
+    ``positif=False``, qui ne relâche que la stricte positivité)."""
+    if valeur is None or valeur == '':
+        raise ChargeInvalide(
+            f'{libelle} est obligatoire : ce module ne suppose aucune valeur '
+            'par défaut pour une charge additionnelle.', champ=champ)
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        raise ChargeInvalide(f'{libelle} est illisible (reçu : {valeur!r}).',
+                             champ=champ)
+    if nombre != nombre:
+        raise ChargeInvalide(f'{libelle} est illisible.', champ=champ)
+    return nombre
+
+
 def _fenetre(heures, *, champ, libelle):
     if not heures:
         raise ChargeInvalide(
@@ -161,22 +179,89 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
     }
 
 
-def courbe_pac(*, puissance_kw=None, cop=None, heures_fonctionnement=None,
+def _points_cop(cop_points):
+    """Valide les points ``{t_ext_c, cop}`` SAISIS — au moins deux, chacun lu.
+
+    Aucune extrapolation n'est permise (CALX264) : ``_interpoler_cop`` a
+    besoin d'un jeu de points TRIÉ et NOMBRÉ pour employer le point extrême
+    hors plage plutôt que de deviner au-delà.
+    """
+    points = list(cop_points or [])
+    if len(points) < 2:
+        raise ChargeInvalide(
+            'Le COP par température (« pac.cop_points ») demande au moins '
+            f'deux points SAISIS (reçu : {len(points)}) — un seul point ne '
+            "permet aucune interpolation, et PV*SOL cite typiquement quatre "
+            'points (A2/W35, A-7/W35, A7/W35, A10/W35).',
+            champ='pac.cop_points')
+    lus = []
+    for rang, point in enumerate(points):
+        t_ext = _nombre_signe(
+            (point or {}).get('t_ext_c'), champ=f'pac.cop_points[{rang}].t_ext_c',
+            libelle=f'La température du point {rang} de « cop_points »')
+        cop_point = _obligatoire(
+            (point or {}).get('cop'), champ=f'pac.cop_points[{rang}].cop',
+            libelle=f'Le COP du point {rang} de « cop_points »')
+        lus.append({'t_ext_c': t_ext, 'cop': cop_point})
+    return sorted(lus, key=lambda point: point['t_ext_c'])
+
+
+def _interpoler_cop(temperature, points_tries):
+    """Le COP à ``temperature`` — interpolation LINÉAIRE, extrapolation INTERDITE.
+
+    Hors plage des points saisis, le point EXTRÊME le plus proche est
+    employé et l'appelant est informé (``hors_plage=True``) pour porter la
+    mention dans le bilan — jamais un COP prolongé au-delà de ce qui a été
+    mesuré/saisi.
+    """
+    plus_bas, plus_haut = points_tries[0], points_tries[-1]
+    if temperature <= plus_bas['t_ext_c']:
+        return plus_bas['cop'], temperature < plus_bas['t_ext_c']
+    if temperature >= plus_haut['t_ext_c']:
+        return plus_haut['cop'], temperature > plus_haut['t_ext_c']
+    for gauche, droite in zip(points_tries, points_tries[1:]):
+        if gauche['t_ext_c'] <= temperature <= droite['t_ext_c']:
+            ecart = droite['t_ext_c'] - gauche['t_ext_c']
+            fraction = ((temperature - gauche['t_ext_c']) / ecart
+                        if ecart else 0.0)
+            cop = gauche['cop'] + (droite['cop'] - gauche['cop']) * fraction
+            return cop, False
+    return plus_haut['cop'], False  # pragma: no cover — bornes couvrent tout
+
+
+def courbe_pac(*, puissance_kw=None, cop=None, cop_points=None,
+               temperature_horaire=None, heures_fonctionnement=None,
                facteur_saison=None, longueur=24, heure_de_depart=0):
     """La charge horaire d'une POMPE À CHALEUR — tout est saisi.
 
     Args:
         puissance_kw: la puissance THERMIQUE appelée, SAISIE.
-        cop: le coefficient de performance SAISI (aucun COP par défaut : il
-            dépend de la machine ET de la température extérieure).
+        cop: le coefficient de performance SAISI, CONSTANT sur la journée —
+            entrée admise TELLE QUELLE (comportement d'aujourd'hui) quand
+            ``cop_points`` est absent.
+        cop_points: ``[{t_ext_c, cop}]`` SAISIS (au moins deux) — le COP
+            dépend alors de la température de chaque heure active
+            (``temperature_horaire``), interpolé LINÉAIREMENT entre les
+            points ; hors plage, le point extrême est employé et la mention
+            le dit (parité PV*SOL — les points A2/W35, A-7/W35, A7/W35,
+            A10/W35 sont un EXEMPLE de saisie cité par la tâche, jamais un
+            défaut : https://help.valentin-software.com/pvsol/en/calculation/thermal-system/).
+        temperature_horaire: la température extérieure de CHAQUE heure de la
+            courbe rendue (même longueur que ``longueur``), REQUISE avec
+            ``cop_points`` — sans elle, aucune température par heure n'est
+            connue pour interpoler.
         heures_fonctionnement: les heures de marche, SAISIES.
         facteur_saison: coefficient de saisonnalité SAISI (1 = saison de
             référence). Absent ⇒ 1, et le bilan le dit.
+
+    Raises:
+        ChargeInvalide: paramètre manquant ou illisible, en le NOMMANT —
+            dont un ``cop_points`` à moins de deux points, ou
+            ``temperature_horaire`` absent/mal dimensionné alors que
+            ``cop_points`` est saisi.
     """
     puissance = _obligatoire(puissance_kw, champ='pac.puissance_kw',
                              libelle='La puissance de la pompe à chaleur')
-    coefficient = _obligatoire(cop, champ='pac.cop',
-                               libelle='Le COP de la pompe à chaleur')
     heures = _fenetre(heures_fonctionnement,
                       champ='pac.heures_fonctionnement',
                       libelle='Les heures de fonctionnement')
@@ -190,6 +275,62 @@ def courbe_pac(*, puissance_kw=None, cop=None, heures_fonctionnement=None,
     else:
         saison = _obligatoire(facteur_saison, champ='pac.facteur_saison',
                               libelle='Le facteur de saison', positif=False)
+
+    if cop_points is not None:
+        points = _points_cop(cop_points)
+        if not temperature_horaire:
+            raise ChargeInvalide(
+                'Le COP par température (« pac.cop_points ») a besoin de '
+                '« pac.temperature_horaire » (une température par heure de '
+                'la courbe) : sans elle, aucune interpolation ne sait à '
+                'quelle température se placer.',
+                champ='pac.temperature_horaire')
+        temperatures = list(temperature_horaire)
+        if len(temperatures) != longueur:
+            raise ChargeInvalide(
+                f'« pac.temperature_horaire » compte {len(temperatures)} '
+                f'valeur(s) au lieu de {longueur} (la longueur de la '
+                'courbe) : une température par heure est requise, aucune '
+                'ne peut être devinée.', champ='pac.temperature_horaire')
+
+        courbe = [0.0] * longueur
+        hors_plage = False
+        cops_actifs = []
+        for rang in range(longueur):
+            heure_du_jour = (int(heure_de_depart) + rang) % 24
+            if heure_du_jour not in heures:
+                continue
+            cop_heure, cette_borne = _interpoler_cop(
+                float(temperatures[rang]), points)
+            hors_plage = hors_plage or cette_borne
+            courbe[rang] = puissance * saison / cop_heure
+            cops_actifs.append(cop_heure)
+        if hors_plage:
+            hypotheses.append(
+                "Au moins une heure active porte une température hors de "
+                "la plage des points « cop_points » saisis : le point "
+                'extrême le plus proche a été employé, AUCUNE '
+                'extrapolation.')
+        energie = sum(courbe)
+        return {
+            'type': 'pac',
+            'libelle': 'Pompe à chaleur',
+            'energie_journaliere_kwh': round(energie, 4),
+            'courbe': [round(valeur, 6) for valeur in courbe],
+            'parametres': {
+                'puissance_kw': puissance, 'cop': cop,
+                'cop_points': points,
+                'temperature_horaire': temperatures,
+                'heures_fonctionnement': heures,
+                'facteur_saison': facteur_saison,
+                'cop_moyen_actif': (round(sum(cops_actifs) / len(cops_actifs), 4)
+                                    if cops_actifs else None),
+            },
+            'hypotheses': hypotheses,
+        }
+
+    coefficient = _obligatoire(cop, champ='pac.cop',
+                               libelle='Le COP de la pompe à chaleur')
 
     # Énergie ÉLECTRIQUE = énergie thermique ÷ COP.
     energie = puissance * len(heures) * saison / coefficient

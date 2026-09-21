@@ -1,0 +1,612 @@
+{
+ "_provenance": {
+  "tache": "CALX196",
+  "produit_par": "python -m apps.calepinage.tests.test_calx196_golden --write",
+  "produit_le": "2026-09-21",
+  "arbre_sha": "338bc64b734947bfdc56c27ef797216da39c77e4",
+  "fixture": "seriescalc_casablanca_sud_deux_annees.json",
+  "fixture_url": "https://re.jrc.ec.europa.eu/api/v5_3/seriescalc?lat=33.5&lon=-7.6&startyear=2019&endyear=2020&pvcalculation=0&angle=15&aspect=0&raddatabase=PVGIS-SARAH3&outputformat=json&localtime=1",
+  "fenetre_annees": "2019-2020",
+  "base_rayonnement": "PVGIS-SARAH3",
+  "base_meteo": "ERA5",
+  "cles_non_comparees": [
+   "motif_omission"
+  ],
+  "pourquoi_non_comparees": "Le texte d'omission d'une étape change le jour où sa lane livre le module, sans qu'un seul kWh bouge. L'ÉTAT (« omise ») et toutes les énergies, eux, sont comparés.",
+  "comment_regenerer": "Relancer la commande ci-dessus À LA MAIN, lire le diff, et dire dans le message de commit POURQUOI la cascade a bougé. Aucun test ne réécrit ce fichier."
+ },
+ "cas": {
+  "fixture": "seriescalc_casablanca_sud_deux_annees.json",
+  "kwc": 6.0,
+  "site": {
+   "lat": 33.5,
+   "lon": -7.6,
+   "altitude_m": 139.0,
+   "fuseau": "Africa/Casablanca"
+  },
+  "plans": [
+   {
+    "cle": "A",
+    "pan": "PAN-A",
+    "modules": 12,
+    "kwc": 6.0,
+    "inclinaison_deg": 15.0,
+    "azimut_pvgis_deg": 0.0
+   }
+  ],
+  "reglages_simulation": {
+   "mode_meteo": {
+    "valeur": "pluriannuel",
+    "source": "societe"
+   },
+   "fenetre_annees": {
+    "valeur": "2019-2020",
+    "source": "societe"
+   },
+   "sigma_modele_pct": {
+    "valeur": 3.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   "sigma_biais_meteo_pct": {
+    "valeur": 1.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   }
+  },
+  "postes_saisis": [
+   {
+    "poste": "salissure",
+    "pct": 2.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "qualite_module",
+    "pct": 0.8,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "lid",
+    "pct": 1.5,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "mismatch",
+    "pct": 2.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "ohmique_dc",
+    "pct": 1.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "onduleur",
+    "pct": 3.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "ohmique_ac",
+    "pct": 0.5,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   },
+   {
+    "poste": "indisponibilite",
+    "pct": 3.0,
+    "source": "societe",
+    "reference": "Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit"
+   }
+  ],
+  "hash_entree": "calx196-cas-fige",
+  "entree_de_chaine": "p_dc_w = kWc × G(i) — définition du kilowatt-crête aux conditions STC"
+ },
+ "attendu": {
+  "cascade": {
+   "total_pct": 13.0,
+   "ordre": [
+    "horizon",
+    "ombrage_proche",
+    "acces_module",
+    "inter_rangees",
+    "bifacial",
+    "iam",
+    "spectral",
+    "salissure",
+    "neige",
+    "niveau_irradiance",
+    "thermique",
+    "qualite_module",
+    "lid",
+    "mismatch_fabricant",
+    "mismatch_ombrage",
+    "diodes",
+    "ohmique_dc",
+    "mppt",
+    "onduleur",
+    "ecretage",
+    "ohmique_ac",
+    "transformateur",
+    "auxiliaires",
+    "indisponibilite"
+   ],
+   "postes_non_sources": [],
+   "hash_entree": "calx196-cas-fige",
+   "etapes": [
+    {
+     "omise": true,
+     "rang": 1,
+     "etape": "horizon",
+     "libelle": "Masque lointain (ligne d'horizon)",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Aucun profil d'horizon n'accompagne ce document : le masque lointain n'est pas calculé. Un horizon plat de repli se lirait « site parfaitement dégagé, vérifié ». Champ manquant : « horizon.points »."
+    },
+    {
+     "omise": true,
+     "rang": 2,
+     "etape": "ombrage_proche",
+     "libelle": "Ombrage proche (matrice 12×24)",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Le document ne porte aucune matrice d'ombrage 12×24 : l'ombrage proche n'est pas calculé. Un facteur 1 supposé se lirait « aucune ombre, vérifié ». Champ manquant : « ombrage.shading12x24 »."
+    },
+    {
+     "omise": true,
+     "rang": 3,
+     "etape": "acces_module",
+     "libelle": "Accès solaire, module par module",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Le document de toiture ne porte aucun accès solaire par module (« zones[].geometry.solarAccess ») : aucun écart d'ombrage n'est signalé. Le silence est explicite — un module sans accès calculé n’est pas un module non ombré. Champ manquant : « ombrage.solarAccess »."
+    },
+    {
+     "omise": true,
+     "rang": 4,
+     "etape": "inter_rangees",
+     "libelle": "Auto-ombrage entre rangées",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "L'auto-ombrage entre rangées se calcule sur la GÉOMÉTRIE des rangées posées (pas, inclinaison, côté de table dans la pente) : elle est incomplète dans le document, et aucune ombre n'est supposée à sa place. Champ manquant : « zones[].geometry.panelSlopeLenM (côté de table dans la pente) »."
+    },
+    {
+     "omise": true,
+     "rang": 5,
+     "etape": "bifacial",
+     "libelle": "Gain bifacial en face arrière",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Le gain bifacial n’est PAS calculé : il manque la bifacialité du module (fiche produit), l'albédo du sol (saisi), la hauteur de pose (m), le taux d'occupation du sol (GCR), le pas entre rangées (m). Aucun gain n’est supposé — une face arrière dont on ne connaît ni le sol ni la hauteur de pose ne produit pas un chiffre, elle produit un silence. Aucun albédo saisi (« simulation.albedo_mensuel »). Champ manquant : « simulation.albedo_mensuel »."
+    },
+    {
+     "omise": true,
+     "rang": 6,
+     "etape": "iam",
+     "libelle": "Incidence (IAM)",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "les composantes directe/diffuse de l'irradiance ne sont pas disponibles pour cette réponse PVGIS : aucune part diffuse n'est supposée"
+    },
+    {
+     "omise": true,
+     "rang": 7,
+     "etape": "spectral",
+     "libelle": "Correction spectrale",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 151.368,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Étape non modélisée en v1 : PVsyst applique un modèle spectral, nous n'en avons aucun — aucun forfait n'est appliqué à sa place."
+    },
+    {
+     "omise": false,
+     "rang": 8,
+     "etape": "salissure",
+     "libelle": "Salissure",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:salissure",
+     "kwh_avant": 151.368,
+     "kwh_apres": 148.341,
+     "perte_kwh": 3.027,
+     "perte_pct": 2.0,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": true,
+     "rang": 9,
+     "etape": "neige",
+     "libelle": "Couverture de neige",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 148.341,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Aucune valeur mensuelle de neige saisie pour cette société : l'étape figure dans la cascade pour être VUE, et reste omise tant que les mois ne sont pas renseignés (0 % par défaut ferait croire à un calcul)."
+    },
+    {
+     "omise": true,
+     "rang": 10,
+     "etape": "niveau_irradiance",
+     "libelle": "Niveau d'irradiance",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 148.341,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Aucune courbe de rendement à éclairement partiel n'est publiée sur la fiche de le module retenu : le rendement de la fiche est celui du STC seul, et rien ne permet de dire ce que le module rend sous faible éclairement. L'étape est OMISE — aucun forfait n'est appliqué à sa place. Champ manquant : « FicheTechnique.rendement_par_irradiance »."
+    },
+    {
+     "omise": true,
+     "rang": 11,
+     "etape": "thermique",
+     "libelle": "Échauffement des modules",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 148.341,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "La fiche du panneau ne porte pas son coefficient de puissance (« temp_coeff_pmax_pct_c ») : la perte thermique ne peut pas être calculée. Le poste forfaitaire est conservé et annoncé comme hypothèse. Champ manquant : « fiche_module.temp_coeff_pmax_pct_c »."
+    },
+    {
+     "omise": false,
+     "rang": 12,
+     "etape": "qualite_module",
+     "libelle": "Qualité module",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:qualite_module",
+     "kwh_avant": 148.341,
+     "kwh_apres": 147.154,
+     "perte_kwh": 1.187,
+     "perte_pct": 0.8,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": false,
+     "rang": 13,
+     "etape": "lid",
+     "libelle": "LID (première exposition)",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:lid",
+     "kwh_avant": 147.154,
+     "kwh_apres": 144.947,
+     "perte_kwh": 2.207,
+     "perte_pct": 1.5,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": false,
+     "rang": 14,
+     "etape": "mismatch_fabricant",
+     "libelle": "Dispersion de fabrication (mismatch)",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:mismatch",
+     "kwh_avant": 144.947,
+     "kwh_apres": 142.048,
+     "perte_kwh": 2.899,
+     "perte_pct": 2.0,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": true,
+     "rang": 15,
+     "etape": "mismatch_ombrage",
+     "libelle": "Dispersion d'ombrage (I-V par chaîne)",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 142.048,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Le contexte ne porte pas la table d'affectation des modules aux chaînes (« affectation », services/chaines.py) : sans elle, on ne sait pas QUELS modules sont en série, donc aucune contrainte de chaîne ne peut être mesurée. Rien n'est supposé. Champ manquant : « affectation »."
+    },
+    {
+     "omise": true,
+     "rang": 16,
+     "etape": "diodes",
+     "libelle": "Diodes de chaîne",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 142.048,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Étape non modélisée en v1 : PV*SOL assume 0,5 % de pertes de diodes, chiffre de leur logiciel et non du nôtre — aucun forfait n'est appliqué à sa place."
+    },
+    {
+     "omise": false,
+     "rang": 17,
+     "etape": "ohmique_dc",
+     "libelle": "Pertes ohmiques DC",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:ohmique_dc",
+     "kwh_avant": 142.048,
+     "kwh_apres": 140.627,
+     "perte_kwh": 1.421,
+     "perte_pct": 1.0,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": true,
+     "rang": 18,
+     "etape": "mppt",
+     "libelle": "Fenêtre MPPT",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 140.627,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "La fiche du module ne publie pas son coefficient de température de puissance : la dérive du Vmp n'est pas calculable. L'étape est OMISE — le défaut du noyau n'est pas employé ici, il ferait passer un littéral de code pour une donnée constructeur. Champ manquant : « fiche_module.temp_coeff_pmax_pct_c »."
+    },
+    {
+     "omise": false,
+     "rang": 19,
+     "etape": "onduleur",
+     "libelle": "Rendement onduleur",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:onduleur",
+     "kwh_avant": 140.627,
+     "kwh_apres": 136.408,
+     "perte_kwh": 4.219,
+     "perte_pct": 3.0,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": true,
+     "rang": 20,
+     "etape": "ecretage",
+     "libelle": "Écrêtage",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 136.408,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Étape non livrée : le module « apps.calepinage.services.etapes.ecretage » n'existe pas encore dans le dépôt. La série ressort inchangée — aucun forfait n'est appliqué."
+    },
+    {
+     "omise": false,
+     "rang": 21,
+     "etape": "ohmique_ac",
+     "libelle": "Pertes ohmiques AC",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:ohmique_ac",
+     "kwh_avant": 136.408,
+     "kwh_apres": 135.726,
+     "perte_kwh": 0.682,
+     "perte_pct": 0.5,
+     "motif_omission_non_compare": ""
+    },
+    {
+     "omise": true,
+     "rang": 22,
+     "etape": "transformateur",
+     "libelle": "Transformateur",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 135.726,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "Aucun transformateur dans cette installation : le poste ne la concerne pas et rien ne reste à renseigner."
+    },
+    {
+     "omise": true,
+     "rang": 23,
+     "etape": "auxiliaires",
+     "libelle": "Auxiliaires",
+     "gain": false,
+     "source": null,
+     "entree": null,
+     "kwh_avant": 135.726,
+     "kwh_apres": null,
+     "perte_kwh": null,
+     "perte_pct": null,
+     "motif_omission_non_compare": "La série ne déclare pas de puissance alternative : les auxiliaires se retranchent APRÈS la conversion de l'onduleur (CALX170), jamais sur la puissance continue. Étape OMISE. Champ manquant : « serie.colonne_energie »."
+    },
+    {
+     "omise": false,
+     "rang": 24,
+     "etape": "indisponibilite",
+     "libelle": "Indisponibilité",
+     "gain": false,
+     "source": "societe",
+     "entree": "poste_saisi:indisponibilite",
+     "kwh_avant": 135.726,
+     "kwh_apres": 131.655,
+     "perte_kwh": 4.071,
+     "perte_pct": 2.999,
+     "motif_omission_non_compare": ""
+    }
+   ]
+  },
+  "production": {
+   "total": {
+    "kwc": 6.0,
+    "p50_kwh": 131.7,
+    "p75_kwh": 125.7,
+    "p90_kwh": 120.3,
+    "performance_ratio": 0.87,
+    "specific_yield_kwh_kwc": 21.9,
+    "annual_variability": 0.067,
+    "annual_variability_source": "mesuree",
+    "annual_variability_annees": 2,
+    "total_loss_pct": 13.0
+   },
+   "mensuel": [
+    {
+     "mois": 1,
+     "p50_kwh": 49.3
+    },
+    {
+     "mois": 2,
+     "p50_kwh": null
+    },
+    {
+     "mois": 3,
+     "p50_kwh": null
+    },
+    {
+     "mois": 4,
+     "p50_kwh": null
+    },
+    {
+     "mois": 5,
+     "p50_kwh": null
+    },
+    {
+     "mois": 6,
+     "p50_kwh": null
+    },
+    {
+     "mois": 7,
+     "p50_kwh": 82.4
+    },
+    {
+     "mois": 8,
+     "p50_kwh": null
+    },
+    {
+     "mois": 9,
+     "p50_kwh": null
+    },
+    {
+     "mois": 10,
+     "p50_kwh": null
+    },
+    {
+     "mois": 11,
+     "p50_kwh": null
+    },
+    {
+     "mois": 12,
+     "p50_kwh": null
+    }
+   ],
+   "annees": [
+    {
+     "annee": 2019,
+     "kwh": 63.1,
+     "source": "chaine_pertes"
+    },
+    {
+     "annee": 2020,
+     "kwh": 68.6,
+     "source": "chaine_pertes"
+    }
+   ],
+   "par_pan": [
+    {
+     "pan": "PAN-A",
+     "modules": 12,
+     "kwc": 6.0,
+     "azimut_deg": null,
+     "inclinaison_deg": 15.0,
+     "p50_kwh": 131.7,
+     "p75_kwh": 126.4,
+     "p90_kwh": 121.7,
+     "performance_ratio": 0.87,
+     "specific_yield_kwh_kwc": 21.9,
+     "shading_annual_loss_pct": null,
+     "tof": null,
+     "tsrf": null,
+     "inclinaison_optimale_deg": null,
+     "azimut_optimal_deg": null,
+     "source": null
+    }
+   ]
+  },
+  "incertitude": {
+   "composantes": [
+    {
+     "nom": "variabilite_interannuelle",
+     "sigma_relatif": 0.05906,
+     "source": "pvgis",
+     "reference": "seriescalc, 2 années observées",
+     "annees": 2
+    },
+    {
+     "nom": "modele_simulation",
+     "sigma_relatif": 0.03,
+     "source": "societe",
+     "reference": "Réglage de simulation « sigma_modele_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
+     "annees": null
+    },
+    {
+     "nom": "biais_long_terme",
+     "sigma_relatif": 0.01,
+     "source": "societe",
+     "reference": "Réglage de simulation « sigma_biais_meteo_pct », provenance societe — Cas figé CALX196 — réglages de TEST, aucune valeur par défaut du produit",
+     "annees": null
+    }
+   ],
+   "sigma_total": 0.066993,
+   "methode": "quadrature",
+   "quantiles": {
+    "p50_kwh": 131.7,
+    "p75_kwh": 125.7,
+    "p90_kwh": 120.4,
+    "p95_kwh": 117.2
+   },
+   "portee": "annuelle",
+   "motif_refus": ""
+  }
+ }
+}

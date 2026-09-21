@@ -317,6 +317,36 @@ const calepinageApi = {
     // vient À CÔTÉ de lui, elle ne le remplace pas.
     depuisLead: (leadId) =>
       api.post('/calepinage/calepinages/depuis-lead/', { lead: leadId }),
+
+    // CALX6 — le TÉLÉCHARGEMENT d'une série de la simulation. La porte
+    // existe depuis CAL144 (`views/export_csv.py`, `url_path='export-csv'`)
+    // et n'avait AUCUN consommateur : `quoi` vaut `horaire`, `mensuel` ou
+    // `ombrage` (`services/export_csv.py::EXPORTS`). La réponse est un
+    // FICHIER (blob) ; quand la donnée manque, le serveur refuse en 400 et
+    // NOMME le champ absent (`points`, `mensuel`, `shading12x24`) — l'écran
+    // affiche ce motif-là sous le bouton, il n'en invente aucun.
+    exportCsv: (id, quoi) =>
+      api.get(`${pivot(id)}export-csv/`, { responseType: 'blob', params: { quoi } }),
+
+    // CALX62 — le DÉPÔT d'une série météo horaire de la société, à la place
+    // de PVGIS (`views/meteo_fichier.py`, contrat
+    // `contract_samples/calepinage_meteo_fichier.json`). `corps` est un
+    // FormData (`fichier` CSV + `fournisseur` SAISI) : on laisse axios poser
+    // sa frontière multipart. La réponse 201 rend la PROVENANCE (`meteo`) et
+    // le RÉSUMÉ de la série — jamais ses 8 760 points. Un refus 400 NOMME la
+    // colonne fautive du fichier et, quand elle est connue, sa `ligne`.
+    deposerMeteoFichier: (id, corps) =>
+      api.post(`${pivot(id)}meteo-fichier/`, corps),
+
+    // CALX5 — LANCER la simulation (`views/simulation.py`, contrat
+    // `contract_samples/calepinage_simulation.json`). Deux réponses, jamais
+    // une troisième : 202 `{job_id, kind, nature}` — le travail est parti en
+    // tâche de fond, à suivre par `moteur.resultat(jobId)` (UN seul kind,
+    // D-CALX 12) — ou 200 `{deja_calcule: true, calcule_le}` quand les
+    // entrées n'ont pas bougé. `{ forcer: true }` relance quand même. Un
+    // refus 400 NOMME le réglage ou le champ à corriger.
+    simuler: (id, { forcer = false } = {}) =>
+      api.post(`${pivot(id)}simuler/`, { forcer }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

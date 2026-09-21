@@ -21,6 +21,14 @@ from apps.ventes.tests.test_quote_engine import (
 _CONTRACT_PATH = os.path.join(
     os.path.dirname(__file__), '..', 'contract_samples', 'simulation.json')
 
+# CALX197 — `origine_ombrage` est une clé NEUVE du bloc d'étude : elle nomme
+# QUI a mesuré l'ombrage publié (la cascade du calepinage simulé, ou l'étude
+# elle-même). Le contrat PACT10 `contract_samples/simulation.json` est complété
+# centralement par l'orchestrateur du lot ; d'ici là l'ajout est NOMMÉ ici au
+# lieu d'être tu, et la comparaison reste une ÉGALITÉ stricte — jamais un
+# `issubset`, qui laisserait passer n'importe quelle clé non contractuelle.
+_CLES_AJOUTEES_CALX197 = {'origine_ombrage'}
+
 
 def _load_contract():
     with open(_CONTRACT_PATH, encoding='utf-8') as fh:
@@ -89,9 +97,13 @@ class TestPV69RunBankableStudy(TestCase):
         # encore la v1 à six clés et ignorait les blocs ajoutés depuis
         # (autoconsommation, injection, puissance souscrite, dégradation,
         # projection 25 ans), c'est-à-dire une deuxième source de vérité.
-        self.assertEqual(set(result.keys()), set(contract.keys()))
+        self.assertEqual(set(result.keys()),
+                         set(contract.keys()) | _CLES_AJOUTEES_CALX197)
         self.assertEqual(result['version'], 1)
         self.assertEqual(result['source'], 'pvgis')
+        # CALX197 — ce devis ne porte AUCUN calepinage : l'ombrage publié est
+        # celui de l'étude, et elle le dit.
+        self.assertEqual(result['origine_ombrage'], 'etude')
         self.assertEqual(set(result['pr'].keys()), set(contract['pr'].keys()))
         self.assertEqual(
             set(result['pr']['loss_breakdown'].keys()),

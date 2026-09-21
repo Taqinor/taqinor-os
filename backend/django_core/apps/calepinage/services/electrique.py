@@ -52,6 +52,8 @@ __all__ = [
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
     'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE',
+    'CLE_CHAINE_FAIBLE', 'METHODE_CHAINE_FAIBLE', 'REFERENCE_CHAINE_FAIBLE',
+    'MOTIF_CHAINE_FAIBLE_ABSENTE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'conception_du_calepinage', 'resultat_calepinage',
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
@@ -356,6 +358,80 @@ BLOCS_SIMULATION = (
     'validation',
 )
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE, BRANCHÉE SUR LE VERDICT
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``services/ombrage_chaines.py`` sait depuis CAL98 désigner la chaîne qui
+# porte le module le plus mal exposé du toit — et personne ne l'appelait depuis
+# le résultat publié. Le courant d'une série est celui de son module le plus
+# faible : une chaîne qui contient CE module n'est pas une chaîne comme les
+# autres, et l'installateur doit le voir AVANT de câbler.
+#
+# C'EST UN SIGNAL DE CÂBLAGE, PAS UNE PERTE. Aucun kWh n'est dérivé d'ici :
+# l'énergie de l'ombrage vit dans la cascade (CALX156-158, CALX168). La clé
+# publiée dit QUELLE chaîne regarder, et par quelle MÉTHODE elle a été
+# désignée.
+#
+# ACCÈS SOLAIRE ABSENT ⇒ CLÉ OMISE, jamais un module supposé à 100 % : le
+# motif part dans ``avertissements`` et la clé n'apparaît pas.
+
+#: La clé publiée dans ``resultat['electrique']`` — conditionnelle.
+CLE_CHAINE_FAIBLE = 'chaine_la_plus_faible'
+
+#: Comment la chaîne est désignée. Une COMPARAISON, pas un seuil : le plus mal
+#: exposé des modules mesurés du toit, rien de plus.
+METHODE_CHAINE_FAIBLE = (
+    'Chaîne qui porte le module le plus mal exposé du toit, désignée par '
+    "COMPARAISON des accès solaires du document (aucun seuil) — c'est un "
+    "signal de CÂBLAGE : aucun kWh n'en est dérivé.")
+
+#: La référence citée, et elle reste une citation — jamais un chiffre repris.
+REFERENCE_CHAINE_FAIBLE = (
+    'PV*SOL — ombrage module par module publié comme un signal de '
+    'configuration '
+    '(https://help.valentin-software.com/pvsol/en/pages/pv-modules/shading/)')
+
+MOTIF_CHAINE_FAIBLE_ABSENTE = (
+    "Aucune chaîne n'a d'accès solaire mesuré : la chaîne la plus faible en "
+    'ombrage n\'est pas désignée. Un module sans accès calculé n\'est pas un '
+    'module non ombré.')
+
+
+def _chaine_la_plus_faible(layout, table_affectation):
+    """``(bloc, motif)`` — la chaîne à regarder, ou l'absence MOTIVÉE.
+
+    Args:
+        layout: le document ``roof_layout`` v2, qui porte (ou non)
+            ``zones[].geometry.solarAccess.values``.
+        table_affectation: la table CAL125 réellement dimensionnée.
+
+    Returns:
+        ``(bloc, '')`` quand une chaîne est désignée, ``(None, motif)``
+        sinon. Le bloc porte la chaîne, son pan, le module fautif, son accès
+        solaire (fraction de 0 à 1, telle que le document la publie), l'écart
+        contre le module le mieux exposé, la méthode et la référence citée.
+    """
+    from .ombrage_chaines import ombrage_des_chaines
+
+    lecture = ombrage_des_chaines(layout, table_affectation)
+    if not lecture['mesure']:
+        return None, lecture['motif']
+    if not lecture['signalements']:
+        return None, MOTIF_CHAINE_FAIBLE_ABSENTE
+    pire = lecture['signalements'][0]
+    return {
+        'chaine': pire['chaine'],
+        'pan': pire['pan'],
+        'module': pire['module'],
+        'acces_solaire': pire['acces'],
+        'ecart': pire['ecart'],
+        'methode': METHODE_CHAINE_FAIBLE,
+        'reference': REFERENCE_CHAINE_FAIBLE,
+        'raison': pire['raison'],
+    }, ''
+
+
 #: Les blocs dont la forme est une LISTE PLATE (D-CALX 11). Quatre lecteurs
 #: itèrent ``pertes`` telle quelle (``services/note_calcul.py``,
 #: ``services/comparaison.py``, ``services/export_csv.py``,
@@ -624,6 +700,13 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     electrique, avertissements = bloc_electrique(conception,
                                                  verdicts=verdicts,
                                                  imposee=imposee)
+    # CALX16 — la chaîne la plus faible en ombrage, LUE sur le document et
+    # posée à côté de l'affectation qu'elle désigne. Clé OMISE (et motif
+    # publié) quand le document ne porte aucun accès solaire.
+    faible, motif_faible = _chaine_la_plus_faible(
+        document, electrique['affectation'])
+    if faible is not None:
+        electrique[CLE_CHAINE_FAIBLE] = faible
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
@@ -661,6 +744,8 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         pose.get('puissance_module_wc')))
 
     messages = list(avertissements) + list(messages_ratio)
+    if motif_faible:
+        messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
     messages.extend(cables['omissions'])
     messages.extend(protections['omissions'])

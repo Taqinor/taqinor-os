@@ -30,9 +30,30 @@ CE QUE CE CLIENT GARANTIT
    PVGIS la nomme dans sa réponse, jamais telle qu'on l'a demandée.
 6. **Le cache est borné** par plan arrondi (même discipline que le Worker) :
    deux pans identiques au mètre près ne paient pas deux appels.
+
+CALX150 — LA MÉTÉO EST UNE ENTRÉE, PAS UNE PRODUCTION
+-----------------------------------------------------
+``serie_horaire`` (ci-dessus) demande à PVGIS de faire tourner SON modèle PV
+(``pvcalculation=1``) et lui passe EN PLUS la somme de nos postes en ``loss``
+— c'est l'estimation rapide du constructeur de toiture, elle reste telle
+quelle. ``serie_irradiance`` est l'autre porte : elle demande l'irradiance
+NUE (``pvcalculation=0``, donc AUCUN ``loss``, AUCUN ``peakpower``, ni
+``mountingplace`` ni ``pvtechchoice`` — ces deux derniers sont sans effet
+quand PVGIS ne calcule pas de PV, et les laisser ferait mentir le contrat sur
+les entrées). La chaîne de pertes du module possède ENSUITE chaque poste,
+température de cellule comprise : plus rien n'est compté deux fois.
+
+Paramètres du service ``seriescalc`` employés ici, tels que l'API
+non-interactive de PVGIS 5.3 les publie (``lat``, ``lon``, ``raddatabase``,
+``startyear``, ``endyear``, ``pvcalculation``, ``angle``, ``aspect``,
+``components``, ``usehorizon``, ``userhorizon``, ``localtime``,
+``outputformat``) :
+https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en
 """
 from __future__ import annotations
 
+import collections
+import datetime
 import json
 import threading
 import time
@@ -41,7 +62,11 @@ import urllib.parse
 import urllib.request
 
 __all__ = [
-    'BASES_RAYONNEMENT', 'BASE_PAR_DEFAUT', 'ClientPvgis', 'EntreeInvalide',
+    'BASES_HEURE', 'BASES_RAYONNEMENT', 'BASE_HEURE_LOCALE_LEGALE',
+    'BASE_HEURE_LOCALE_STANDARD', 'BASE_HEURE_UTC', 'BASE_PAR_DEFAUT',
+    'COLONNES_COMPOSANTES',
+    'COLONNES_IRRADIANCE', 'CONVENTION_AZIMUT', 'ClientPvgis',
+    'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'MOTIF_TMY_HORIZONTAL',
     'PvgisIndisponible', 'RACINE_API', 'azimut_pvgis', 'cle_de_cache',
     'vider_le_cache',
 ]
@@ -73,6 +98,65 @@ ATTENTE_529_S = 1.0
 #: rendu à l'autre (même TTL que le Worker du site public).
 CACHE_TTL_S = 6 * 60 * 60
 CACHE_MAX = 200
+
+#: CALX59 — LES TROIS BASES HORAIRES qu'une série peut déclarer, et il n'y
+#: en a pas d'autre. ``meteo.heure.base`` dit LAQUELLE, pour que la chaîne
+#: sache de quoi partir : la ré-indexer deux fois la décalerait deux fois.
+#:
+#: * ``utc`` — l'heure universelle, ce que ``seriescalc`` sert par défaut ;
+#: * ``locale_standard`` — l'heure locale SANS heure d'été, ce que PVGIS
+#:   annonce servir sous ``localtime=1`` (« Output the time in the local time
+#:   zone (not daylight saving time), instead of UTC »,
+#:   https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en) ;
+#: * ``locale_legale`` — l'heure LÉGALE du site, saison comprise. C'est celle
+#:   dans laquelle une courbe de charge est saisie, donc la SEULE dans
+#:   laquelle un croisement production/consommation a un sens. Aucune réponse
+#:   PVGIS ne la sert : c'est ``services/chaine_pertes.py`` qui y ré-indexe.
+BASE_HEURE_UTC = 'utc'
+BASE_HEURE_LOCALE_STANDARD = 'locale_standard'
+BASE_HEURE_LOCALE_LEGALE = 'locale_legale'
+BASES_HEURE = (BASE_HEURE_UTC, BASE_HEURE_LOCALE_STANDARD,
+               BASE_HEURE_LOCALE_LEGALE)
+
+#: La convention d'azimut DÉCLARÉE avec la météo (CALX143) : PVGIS compte
+#: ``aspect`` depuis le Sud, positif vers l'Ouest, quand le constructeur de
+#: toiture travaille en azimut de face boussole. ``azimut_pvgis()`` convertit ;
+#: la convention est écrite pour qu'aucun écran n'en réinvente une autre.
+CONVENTION_AZIMUT = 'pvgis_sud_0_est_-90'
+
+#: Les colonnes que ``serie_irradiance`` sait remplir, dans l'ordre du contrat
+#: CALX142 (``contract_samples/calepinage_serie_horaire.json``). Les autres
+#: colonnes de ce contrat (``p_w``, ``t_cell_c``, ``p_dc_kw``…) appartiennent à
+#: la chaîne de pertes : ce client ne publie QUE de la météo.
+COLONNES_IRRADIANCE = ('annee', 'mois', 'jour', 'heure', 'gi_w_m2', 't2m_c',
+                       'ws10m', 'h_sun_deg')
+
+#: Les trois composantes de l'irradiance de plan (CALX152), dans l'ordre du
+#: contrat CALX142 et à l'endroit exact où ce contrat les place.
+COLONNES_COMPOSANTES = ('gb_i_w_m2', 'gd_i_w_m2', 'gr_i_w_m2')
+
+#: Le motif UNIQUE que publient les étapes qui ne savent pas travailler sans
+#: le découpage direct/diffus (``iam``, ``ombrage_proche``, ``acces_module``,
+#: ``inter_rangees``, CALX152). Il vit ICI parce que c'est la réponse PVGIS
+#: qui décide : l'IAM ne s'applique qu'au faisceau direct sous son angle
+#: d'incidence, et une cellule ombrée reçoit encore le diffus — sans les
+#: composantes, aucune répartition n'est SUPPOSÉE, l'étape est OMISE.
+MOTIF_COMPOSANTES_ABSENTES = (
+    "les composantes directe/diffuse de l'irradiance ne sont pas disponibles "
+    'pour cette réponse PVGIS : aucune part diffuse n\'est supposée')
+
+#: CALX153 — le motif UNIQUE du refus d'une série qui ne porte que
+#: l'irradiance GLOBALE HORIZONTALE. Il vit ICI parce que c'est le SERVICE
+#: PVGIS qui décide de la colonne servie : ``tmy`` rend ``G(h)`` (horizontal)
+#: là où ``seriescalc`` rend ``G(i)`` (sur le plan des modules). Transposer
+#: l'un vers l'autre demanderait un modèle de transposition que ce module
+#: n'a pas, et le supposer fabriquerait une irradiance de plan qui n'a été
+#: ni mesurée ni calculée (D-CALX 7).
+MOTIF_TMY_HORIZONTAL = (
+    "La série météo ne porte que l'irradiance HORIZONTALE (« gh_w_m2 ») : "
+    "sans irradiance sur le PLAN des modules (« gi_w_m2 »), la chaîne de "
+    'pertes ne peut pas démarrer. Aucune transposition horizontal → plan '
+    "n'est supposée — elle demanderait un modèle que ce module n'a pas.")
 
 
 class PvgisIndisponible(RuntimeError):
@@ -356,6 +440,11 @@ class ClientPvgis:
                 'p_w': _flottant(ligne.get('P')),
                 'gi_w_m2': _flottant(ligne.get('G(i)')),
                 't2m_c': _flottant(ligne.get('T2m')),
+                # CALX164 — la réponse PVGIS porte la vitesse du vent et le
+                # modèle thermique de Faiman en a besoin (terme Uv × vent) :
+                # ce chemin la laissait tomber, si bien que la cellule
+                # chauffait toujours comme par temps calme.
+                'ws10m': _flottant(ligne.get('WS10m')),
             })
         if not points:
             raise PvgisIndisponible(
@@ -371,6 +460,164 @@ class ClientPvgis:
         }
         resultat.update(_provenance(charge, base, politique))
         return resultat
+
+    # ── l'irradiance NUE, celle que la chaîne de pertes consomme ────────
+    def serie_irradiance(self, *, lat, lon, inclinaison_deg, aspect_deg,
+                         annee_debut, annee_fin, base=BASE_PAR_DEFAUT,
+                         horizon=None, masque_dans_la_geometrie=False,
+                         composantes=False, annee_retenue=None,
+                         obtenue_le=None):
+        """CALX150 — l'irradiance sur le plan, SANS le modèle PV de PVGIS.
+
+        PVGIS ne calcule ici AUCUNE production : ``pvcalculation=0``, donc
+        aucun ``loss`` (les pertes appartiennent à la chaîne du module),
+        aucun ``peakpower``, et ni ``mountingplace`` ni ``pvtechchoice``.
+        ``localtime=1`` est demandé pour CALX59 ; la ré-indexation sur le
+        fuseau SAISI du site appartient à la chaîne, pas à ce client.
+
+        Args:
+            aspect_deg: azimut PVGIS (0 = Sud, −90 = Est, +90 = Ouest) —
+                ``azimut_pvgis()`` convertit un azimut de FACE.
+            annee_debut / annee_fin: la fenêtre pluriannuelle du réglage
+                société ``simulation.fenetre_annees`` (CALX145). Ce client ne
+                choisit AUCUNE fenêtre par défaut : il demande celle qu'on lui
+                donne.
+            horizon: un profil de ``services/horizon.py`` (CALX151). Fourni,
+                il part en ``userhorizon`` et c'est LUI qui fait foi. Absent,
+                PVGIS applique son modèle de terrain (``usehorizon=1``).
+            masque_dans_la_geometrie: la société déclare que le masque est
+                déjà porté par la géométrie 3D ⇒ ``usehorizon=0``. Les trois
+                cas sont EXCLUSIFS : deux masques appliqués ensemble se
+                compteraient deux fois.
+            composantes: CALX152 — ``components=1``, seul drapeau sous lequel
+                PVGIS sépare direct, diffus et réfléchi. Sans lui, l'IAM et
+                l'ombrage ne peuvent pas être honnêtes : les étapes
+                concernées sont OMISES avec ``MOTIF_COMPOSANTES_ABSENTES``.
+            annee_retenue: l'année que la série PERSISTÉE garde (CALX142 : au
+                plus une année au pas déclaré). À défaut, la PLUS RÉCENTE des
+                années reçues — la plus proche du climat d'aujourd'hui. Le
+                choix est republié (``serie_horaire.annee_retenue``), jamais
+                silencieux.
+            obtenue_le: horodatage de la réponse (les tests le figent). À
+                défaut, l'instant de l'appel, en UTC.
+
+        Returns:
+            dict — ``points`` (TOUTE la fenêtre), ``serie_horaire`` (le bloc
+            CALX142 borné à une année, points PARTAGÉS avec ``points``),
+            ``meteo`` (le bloc CALX143, clés que ce client peut sourcer),
+            ``annees``, ``composantes_disponibles``, ``motif_composantes``,
+            ``url``, ``depuis_cache``.
+
+        Raises:
+            EntreeInvalide: coordonnées, angles, années ou base refusés.
+            PvgisIndisponible: réseau, surcharge, réponse sans irradiance
+                exploitable — jamais une série de zéros.
+        """
+        params_horizon, bloc_horizon = _horizon_demande(
+            horizon, masque_dans_la_geometrie)
+        params = self._params_irradiance(
+            lat=lat, lon=lon, base=base, inclinaison_deg=inclinaison_deg,
+            aspect_deg=aspect_deg, annee_debut=annee_debut,
+            annee_fin=annee_fin)
+        params.update(params_horizon)
+        if composantes:
+            params['components'] = 1
+
+        charge, depuis_cache = self._appeler('seriescalc', params)
+        # Le cache du client ne conserve AUCUNE date : l'horodatage est posé
+        # sur la charge MISE EN CACHE, donc une réponse servie par le cache
+        # reconduit la date de la RÉPONSE, jamais celle de la lecture
+        # (CALX143).
+        horodatage_reponse = _horodatage_reponse(charge, obtenue_le)
+
+        lignes = (((charge or {}).get('outputs') or {}).get('hourly'))
+        if not isinstance(lignes, list) or not lignes:
+            raise PvgisIndisponible(
+                'La réponse de PVGIS ne porte aucune série horaire : aucune '
+                "irradiance n'est publiée.", champ='meteo')
+
+        points = []
+        for ligne in lignes:
+            moment = _horodatage(ligne.get('time'))
+            if moment is None:
+                continue
+            annee, mois, jour, heure = moment
+            directe = _flottant(ligne.get('Gb(i)'))
+            diffuse = _flottant(ligne.get('Gd(i)'))
+            reflechie = _flottant(ligne.get('Gr(i)'))
+            points.append({
+                'annee': annee, 'mois': mois, 'jour': jour, 'heure': heure,
+                'gi_w_m2': _globale(ligne, directe, diffuse, reflechie),
+                't2m_c': _flottant(ligne.get('T2m')),
+                'gb_i_w_m2': directe,
+                'gd_i_w_m2': diffuse,
+                'gr_i_w_m2': reflechie,
+                'ws10m': _flottant(ligne.get('WS10m')),
+                'h_sun_deg': _flottant(ligne.get('H_sun')),
+            })
+        if not points:
+            raise PvgisIndisponible(
+                'La série horaire de PVGIS est inexploitable (aucun '
+                "horodatage lisible) : aucune irradiance n'est publiée.",
+                champ='meteo')
+        if all(point['gi_w_m2'] is None for point in points):
+            raise PvgisIndisponible(
+                "La réponse de PVGIS ne porte aucune irradiance de plan "
+                "exploitable (ni « G(i) », ni les trois composantes "
+                '« Gb(i) » / « Gd(i) » / « Gr(i) ») : aucune série n\'est '
+                'publiée — une série de zéros se lirait « site sans soleil, '
+                'mesuré ».', champ='meteo')
+
+        annees = sorted({point['annee'] for point in points})
+        disponibles = all(point['gb_i_w_m2'] is not None
+                          and point['gd_i_w_m2'] is not None
+                          and point['gr_i_w_m2'] is not None
+                          for point in points)
+        return {
+            'service': 'seriescalc',
+            'points': points,
+            'composantes_disponibles': disponibles,
+            # Le motif que les étapes direct/diffus reprennent TEL QUEL — une
+            # seule formulation dans tout le module (CALX152).
+            'motif_composantes': (None if disponibles
+                                  else MOTIF_COMPOSANTES_ABSENTES),
+            'serie_horaire': _bloc_serie(points, annees, annee_retenue,
+                                         composantes=disponibles),
+            'meteo': _bloc_meteo(
+                charge, base, params,
+                url=self.construire_url('seriescalc', params),
+                depuis_cache=depuis_cache, annees=annees,
+                obtenue_le=horodatage_reponse, horizon=bloc_horizon),
+            'annees': annees,
+            'url': self.construire_url('seriescalc', params),
+            'depuis_cache': depuis_cache,
+        }
+
+    def _params_irradiance(self, *, lat, lon, base, inclinaison_deg,
+                           aspect_deg, annee_debut, annee_fin):
+        """Les paramètres EXACTS de l'appel d'irradiance nue (CALX150)."""
+        params = {
+            'lat': _coordonnee(lat, champ='lat', maxi=90.0),
+            'lon': _coordonnee(lon, champ='lon', maxi=180.0),
+            'raddatabase': _base_admise(base),
+            'startyear': _entier(annee_debut, champ='annee_debut'),
+            'endyear': _entier(annee_fin, champ='annee_fin'),
+            # AUCUN modèle PV côté PVGIS : ni loss, ni peakpower, ni
+            # mountingplace, ni pvtechchoice (D-CALX 4).
+            'pvcalculation': 0,
+            'angle': _angle(inclinaison_deg, champ='inclinaison_deg',
+                            mini=0.0, maxi=90.0),
+            'aspect': _angle(aspect_deg, champ='aspect_deg',
+                             mini=-180.0, maxi=180.0),
+            'localtime': 1,
+            'outputformat': 'json',
+        }
+        if params['endyear'] < params['startyear']:
+            raise EntreeInvalide(
+                "La fenêtre d'années est à l'envers : « annee_fin » "
+                f"({params['endyear']}) précède « annee_debut » "
+                f"({params['startyear']}).", champ='annee_fin')
+        return params
 
     # ── l'année météo type (TMY) ────────────────────────────────────────
     def tmy(self, *, lat, lon, base=BASE_PAR_DEFAUT, utiliser_horizon=True):
@@ -436,6 +683,15 @@ class ClientPvgis:
         return {
             'service': 'tmy',
             'points': points,
+            # CALX153 — le mode est DÉCLARÉ par le service appelé, et une
+            # année météo type n'est l'observation d'AUCUNE année réelle :
+            # ``annees`` reste vide, si bien qu'aucune variabilité
+            # interannuelle ne peut se dire « mesurée » sur cette série.
+            'mode': 'tmy',
+            'annees': [],
+            # La colonne d'irradiance servie ici est HORIZONTALE : la chaîne
+            # de pertes refuse d'y démarrer, avec ce motif exact.
+            'motif_irradiance_de_plan': MOTIF_TMY_HORIZONTAL,
             'mois_retenus': list(
                 ((charge or {}).get('outputs') or {}).get('months_selected')
                 or []),
@@ -455,12 +711,7 @@ class ClientPvgis:
 
     # ── briques communes ────────────────────────────────────────────────
     def _params_communs(self, *, lat, lon, base, politique):
-        if base not in BASES_RAYONNEMENT:
-            raise EntreeInvalide(
-                f'Base de rayonnement inconnue : « {base} ». Bases admises : '
-                f'{", ".join(BASES_RAYONNEMENT)} — le choix est explicite, il '
-                'n\'y a pas de base « par défaut de PVGIS » dans ce module.',
-                champ='base')
+        _base_admise(base)
         if politique is None or not getattr(politique, 'valeur_loss', ''):
             raise EntreeInvalide(
                 'Aucune politique de pertes n\'a été fournie : le module '
@@ -474,6 +725,244 @@ class ClientPvgis:
             # près : c'est la MÊME chaîne des deux côtés.
             'loss': politique.valeur_loss,
         }
+
+
+def _base_admise(base):
+    """La base de rayonnement DEMANDÉE, refusée si elle n'est pas admise."""
+    if base not in BASES_RAYONNEMENT:
+        raise EntreeInvalide(
+            f'Base de rayonnement inconnue : « {base} ». Bases admises : '
+            f'{", ".join(BASES_RAYONNEMENT)} — le choix est explicite, il '
+            'n\'y a pas de base « par défaut de PVGIS » dans ce module.',
+            champ='base')
+    return base
+
+
+def _maintenant_iso():
+    """L'instant présent en UTC, à la seconde, forme ``…Z`` du contrat."""
+    return (datetime.datetime.now(datetime.timezone.utc)
+            .replace(microsecond=0).isoformat().replace('+00:00', 'Z'))
+
+
+def _horodatage_reponse(charge, obtenue_le):
+    """La date de la RÉPONSE, posée une seule fois sur la charge.
+
+    La charge est l'objet MIS EN CACHE : ``setdefault`` la marque au premier
+    appel et la relit telle quelle ensuite. Un résultat servi par le cache
+    porte donc la date de la réponse, pas celle de la lecture (CALX143).
+    """
+    if not isinstance(charge, dict):
+        return obtenue_le or _maintenant_iso()
+    return charge.setdefault('_obtenue_le', obtenue_le or _maintenant_iso())
+
+
+def _pas_minutes(points):
+    """Le pas RÉELLEMENT servi par PVGIS, mesuré sur les horodatages.
+
+    Mesuré, jamais supposé : une série dont le pas est déclaré à 60 min sans
+    l'avoir lu ment dès que la source change. ``None`` quand la série ne
+    porte pas deux points consécutifs comparables.
+    """
+    ecarts = collections.Counter()
+    precedent = None
+    for point in points:
+        try:
+            # Le fuseau est DÉCLARÉ (UTC) alors que seul l'ÉCART entre deux
+            # points est lu : sans lui, la garde ``check_naive_datetime``
+            # signale à juste titre un horodatage sans fuseau, et deux points
+            # de part et d'autre d'un changement d'heure donneraient un écart
+            # faux. L'heure à laquelle la série est INDEXÉE, elle, est celle
+            # que ``meteo.heure.base`` déclare (CALX59).
+            courant = datetime.datetime(point['annee'], point['mois'],
+                                        point['jour'], point['heure'],
+                                        tzinfo=datetime.timezone.utc)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if precedent is not None:
+            minutes = round((courant - precedent).total_seconds() / 60.0)
+            if minutes > 0:
+                ecarts[minutes] += 1
+        precedent = courant
+    if not ecarts:
+        return None
+    return ecarts.most_common(1)[0][0]
+
+
+def _globale(ligne, directe, diffuse, reflechie):
+    """L'irradiance GLOBALE de plan — servie, ou la somme de ses composantes.
+
+    Sous ``components=1``, PVGIS ne rend PLUS ``G(i)`` : il rend ``Gb(i)``,
+    ``Gd(i)`` et ``Gr(i)``. La somme des trois n'est donc pas une estimation,
+    c'est la décomposition de PVGIS lui-même — vérifié le 21/09/2026 au point
+    33,5 / −7,6 : 678,04 + 105,23 + 1,99 = 785,26 W/m², exactement le ``G(i)``
+    servi par la MÊME requête sans ``components``. Une composante manquante
+    ⇒ ``None`` : aucune somme partielle ne se fait passer pour la globale.
+    """
+    globale = _flottant(ligne.get('G(i)'))
+    if globale is not None:
+        return globale
+    if directe is None or diffuse is None or reflechie is None:
+        return None
+    return directe + diffuse + reflechie
+
+
+def _bloc_serie(points, annees, annee_retenue, *, composantes=False):
+    """Le bloc ``serie_horaire`` de CALX142, borné à UNE année.
+
+    ``Calepinage.resultat`` est un champ JSON : une fenêtre pluriannuelle au
+    pas horaire y pèserait plusieurs mégaoctets. La série persistée ne garde
+    donc que l'année retenue, et ``tronquee`` le DIT — le reste se recalcule,
+    il ne se devine pas.
+    """
+    if annee_retenue is None:
+        retenue = annees[-1] if annees else None
+    else:
+        retenue = _entier(annee_retenue, champ='annee_retenue')
+        if annees and retenue not in annees:
+            raise EntreeInvalide(
+                f"L'année retenue ({retenue}) n'est pas couverte par la "
+                f'série reçue (années : {", ".join(str(a) for a in annees)}).',
+                champ='annee_retenue')
+    gardes = [point for point in points if point['annee'] == retenue]
+    colonnes = list(COLONNES_IRRADIANCE)
+    if composantes:
+        # À la place EXACTE que leur donne le contrat CALX142 : juste après
+        # ``t2m_c``, avant ``ws10m``.
+        rang = colonnes.index('t2m_c') + 1
+        colonnes[rang:rang] = list(COLONNES_COMPOSANTES)
+    return {
+        'pas_minutes': _pas_minutes(gardes),
+        'tronquee': len(gardes) < len(points),
+        'annee_retenue': retenue,
+        'colonnes': colonnes,
+        'points': gardes,
+    }
+
+
+def _horizon_demande(horizon, masque_dans_la_geometrie):
+    """CALX151 — QUEL masque part vers PVGIS, et lequel fait foi.
+
+    Trois cas EXCLUSIFS, tous les trois publiés (``meteo.horizon.origine``) :
+
+    * profil fourni ⇒ ``userhorizon`` porte NOTRE profil, rééchantillonné au
+      format documenté par PVGIS, et l'origine est ``profil_mesure`` ou
+      ``saisie`` ;
+    * rien de fourni ⇒ ``usehorizon=1`` : PVGIS applique SON modèle de
+      terrain, l'origine est ``dem_pvgis`` (relue dans la réponse) ;
+    * masque déjà porté par la géométrie 3D ⇒ ``usehorizon=0``, origine
+      ``aucun``.
+
+    PVGIS NE DIT PAS lequel il a employé : vérifié en direct le 21/09/2026,
+    une réponse ``seriescalc`` à laquelle on envoie ``userhorizon`` continue
+    d'annoncer ``horizon_data: "DEM-calculated"`` dans ses ``inputs`` alors
+    que le masque envoyé est bel et bien appliqué (G(i) de midi le 15 janvier
+    au point 33,5 / −7,6 : 793,86 W/m² sans profil, 105,23 W/m² avec un mur
+    de 40° tout autour). C'est donc CE QUE NOUS AVONS ENVOYÉ qui fait foi
+    dans le bloc publié, jamais le champ de la réponse.
+
+    Returns:
+        ``(params, bloc)`` — les paramètres à ajouter à la requête, et le
+        bloc ``meteo.horizon`` à publier (``None`` = à relire dans la
+        réponse).
+    """
+    if masque_dans_la_geometrie:
+        if horizon is not None:
+            raise EntreeInvalide(
+                "Les trois cas d'horizon sont EXCLUSIFS : un profil est "
+                'fourni ET le masque est déclaré déjà porté par la géométrie '
+                '3D. Il faut choisir — sans quoi le même masque serait '
+                'compté deux fois.', champ='horizon')
+        return ({'usehorizon': 0},
+                {'origine': 'aucun', 'hauteur_max_deg': None,
+                 'base_horizon': None})
+    if horizon is None:
+        # PVGIS applique son modèle de terrain : l'origine sort de la RÉPONSE.
+        return {'usehorizon': 1}, None
+
+    # Import LOCAL : ``services/horizon`` hérite de ce module, l'importer en
+    # tête ferait un cycle.
+    from .horizon import ORIGINES_PUBLIEES, reechantillonner_pour_pvgis
+
+    origine = ORIGINES_PUBLIEES.get((horizon or {}).get('source')
+                                    if isinstance(horizon, dict) else None)
+    if origine is None:
+        raise EntreeInvalide(
+            "Le profil d'horizon ne déclare pas d'où il vient (« source » "
+            f'attendue parmi : {", ".join(sorted(ORIGINES_PUBLIEES))}) : un '
+            "masque sans provenance n'est pas envoyé à PVGIS.",
+            champ='horizon')
+    hauteurs = reechantillonner_pour_pvgis(horizon)
+    return ({'usehorizon': 1,
+             'userhorizon': ','.join(f'{hauteur:g}' for hauteur in hauteurs)},
+            {'origine': origine,
+             'hauteur_max_deg': horizon.get('hauteur_max_deg'),
+             'base_horizon': horizon.get('base_horizon')})
+
+
+def _bloc_meteo(charge, base_demandee, params, *, url, depuis_cache, annees,
+                obtenue_le, horizon=None):
+    """Le bloc ``meteo`` de CALX143 — les clés que ce CLIENT peut sourcer.
+
+    Les noms sont ceux du contrat (``base_rayonnement``, pas ``base``) :
+    ``_provenance`` garde les siens pour ``serie_horaire``, dont les lecteurs
+    d'aujourd'hui vivent. Restent à la chaîne de pertes : ``mode`` (réglage
+    société), ``heure.fuseau_site`` / ``heure.decalage_minutes`` (CALX59),
+    ``albedo_face_avant`` (CALX148) et la clé CONDITIONNELLE ``station``, que
+    ``seriescalc`` ne porte pas et qui reste ABSENTE.
+    """
+    entrees = ((charge or {}).get('inputs') or {})
+    meteo = entrees.get('meteo_data') or {}
+    localisation = entrees.get('location') or {}
+    an_min, an_max = meteo.get('year_min'), meteo.get('year_max')
+    return {
+        'service': 'seriescalc',
+        'base_rayonnement': meteo.get('radiation_db') or base_demandee,
+        'base_demandee': base_demandee,
+        'base_meteo': meteo.get('meteo_db'),
+        'mode': None,
+        'fenetre_annees': (f'{an_min}-{an_max}'
+                           if an_min is not None and an_max is not None
+                           else None),
+        'annees': list(annees),
+        'point': {
+            'lat': params.get('lat'),
+            'lon': params.get('lon'),
+            'altitude_m': localisation.get('elevation'),
+        },
+        # Le masque que NOUS avons envoyé fait foi ; à défaut seulement, ce
+        # que la réponse déclare (CALX151).
+        'horizon': horizon if horizon is not None else _bloc_horizon(meteo),
+        'url': url,
+        'obtenue_le': obtenue_le,
+        'depuis_cache': depuis_cache,
+        'convention_azimut': CONVENTION_AZIMUT,
+        'heure': {
+            # ``localtime=1`` est DEMANDÉ (CALX150) : PVGIS sert alors
+            # l'heure locale SANS heure d'été. Le fuseau du site et les
+            # décalages réellement appliqués sont posés par CALX59, qui
+            # ré-indexe ensuite sur l'heure LÉGALE du site.
+            'base': BASE_HEURE_LOCALE_STANDARD,
+            'fuseau_site': None,
+            'decalage_minutes': [],
+        },
+    }
+
+
+def _bloc_horizon(meteo):
+    """L'origine du masque d'horizon, telle que la RÉPONSE la déclare.
+
+    ``seriescalc`` ne rend PAS le profil : il dit seulement s'il en a employé
+    un, et sous quel nom (``horizon_data``). ``hauteur_max_deg`` reste donc à
+    ``None`` — « non publié », jamais « horizon plat ».
+    """
+    if not meteo.get('use_horizon'):
+        return {'origine': 'aucun', 'hauteur_max_deg': None,
+                'base_horizon': None}
+    return {
+        'origine': 'dem_pvgis',
+        'hauteur_max_deg': None,
+        'base_horizon': meteo.get('horizon_db') or meteo.get('horizon_data'),
+    }
 
 
 def _provenance(charge, base_demandee, politique):

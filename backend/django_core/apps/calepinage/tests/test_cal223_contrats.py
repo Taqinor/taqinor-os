@@ -84,10 +84,14 @@ SANS_PRODUCTEUR_PUR = {
         'comparatif qui lit les variantes en base (CAL21)',
     'zones.json':
         'entrée du moteur (pas une réponse serveur) — couvert par CAL22',
-    # CALX4 — contrat posé AVANT ses deux moitiés (PACT10)
+    # CALX4 / CALX5 — le document écrit par la simulation dans
+    # ``Calepinage.resultat``. Son producteur EXISTE désormais
+    # (``services/simulation.py``), mais il lit le devis, le stock et les
+    # réglages en base : la forme est affirmée sans base par
+    # apps/calepinage/tests/test_calx5_simulation.py.
     'calepinage_simulation.json':
-        'document écrit par la simulation dans Calepinage.resultat — '
-        'producteur services/simulation.py livré par CALX5',
+        'document écrit par services/simulation.py (CALX5) : son producteur '
+        'lit le document, les fiches produit et les réglages société en base',
     # CALX45
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
@@ -110,14 +114,56 @@ SANS_PRODUCTEUR_PUR = {
         'la réponse décrit la COPIE enregistrée (identifiant, référence '
         'dérivée, variantes comptées) : son producteur exige la base — '
         'couvert par apps/calepinage/tests/test_calx35_dupliquer.py',
+
+    # CALX141
+    'calepinage_pertes_cascade.json':
+        "détail du bloc `resultat['cascade']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/chaine_pertes.py '
+        '(CALX147), pas encore écrit — la forme est affirmée sans base par '
+        'apps/calepinage/tests/test_calx141_contrat_cascade.py',
+
+    # CALX143
+    'calepinage_meteo.json':
+        "détail du bloc `resultat['meteo']` servi par GET resultat/ "
+        '(CALX70) : la provenance est aujourd’hui éparse (pvgis_serie, '
+        'horizon, production) et son assembleur arrive avec CALX150 — la '
+        'forme est affirmée sans base, depuis une réponse PVGIS rejouée, par '
+        'apps/calepinage/tests/test_calx143_contrat_meteo.py',
+
+    # CALX144
+    'calepinage_incertitude.json':
+        "détail du bloc `resultat['incertitude']` servi par GET resultat/ "
+        '(CALX70) : son producteur est services/incertitude.py (CALX185, '
+        'CALX186), pas encore écrit — la forme et les deux règles dures '
+        '(aucun σ sans source, aucun P50 recopié en P90) sont affirmées sans '
+        'base par '
+        'apps/calepinage/tests/test_calx144_contrat_incertitude.py',
+
+    # CALX142
+    'calepinage_serie_horaire.json':
+        "détail du bloc `resultat['serie_horaire']` PERSISTÉ : il n'est pas "
+        'recopié par GET resultat/ (D-CALX 14, volume) et son seul lecteur '
+        "est l'export CSV, qui rend un FICHIER — aucune forme JSON servie à "
+        'comparer ; la série est écrite par CALX150 et la forme est affirmée '
+        "sans base, par l'exporteur lui-même, dans "
+        'apps/calepinage/tests/test_calx142_contrat_serie.py',
+
+    # CALX62
+    'calepinage_meteo_fichier.json':
+        'réponse de la porte MULTIPART qui dépose une série météo de la '
+        'société : son producteur crée une ligne records.Attachment et écrit '
+        "dans le magasin d'objets, donc il exige la base — le bloc `meteo` et "
+        'le résumé de série sont affirmés sans base, depuis un petit fichier '
+        'synthétique, par '
+        'apps/calepinage/tests/test_calx62_meteo_fichier.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
 #: `main`) — le contrôle 2 les ignore tant que la tâche nommée n'a pas livré
 #: la porte ; retirer l'entrée dans la même tâche que la route.
-POSES_AVANT_LEUR_ROUTE = {
-    'calepinage_simulation.json': 'POST simuler/ livrée par CALX5 (lot M2)',
-}
+#: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
+#: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
+POSES_AVANT_LEUR_ROUTE = {}
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.

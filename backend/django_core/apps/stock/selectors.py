@@ -1830,20 +1830,33 @@ def specs_for_produit(produit):
         largeur_mm, epaisseur_mm, poids_kg, rendement_pct, techno_cellule,
         bifacial, noct_c, uc_w_m2k, uv_w_m3sk, bifacialite_pct,
         degradation_annuelle_pct, degradation_annee1_pct,
-        garantie_pct_a_10_ans, garantie_pct_a_25_ans}`` (CAL114 : poids,
-        épaisseur, rendement, technologie de cellule et bifacial étaient
-        déjà sur la fiche mais omis de ce bloc — cf. CAL111-113) ;
+        garantie_pct_a_10_ans, garantie_pct_a_25_ans,
+        rendement_par_irradiance, tolerance_pmax_min_pct,
+        tolerance_pmax_max_pct}`` (CAL114 : poids, épaisseur, rendement,
+        technologie de cellule et bifacial étaient déjà sur la fiche mais
+        omis de ce bloc — cf. CAL111-113 ; les trois dernières, CALX60) ;
       * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
         i_max_mppt_a, ac_kw, phases, rendement_euro_pct, v_demarrage_v,
         isc_max_mppt_a, bat_max_charge_kw, bat_max_decharge_kw,
-        entrees_par_mppt, chaines_max_par_mppt, s_max_kva, dc_max_kwc}``
-        (les quatre dernières, CAL115) ;
+        entrees_par_mppt, chaines_max_par_mppt, s_max_kva, dc_max_kwc,
+        rendement_par_charge, rendement_max_pct, rendement_cec_pct,
+        conso_nuit_w}`` (CAL115 pour les quatre du milieu ; les quatre
+        dernières, CALX60 — ``rendement_par_charge`` porte le champ
+        ``ond_courbe_rendement``) ;
       * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
         max_charge_kw, max_decharge_kw, max_modules_par_banc,
         rendement_ar_pct, cycles_publies, retention_fin_de_vie_pct,
-        garantie_annees}`` (les trois dernières, CAL118) ;
+        garantie_annees, c_rate_charge, c_rate_decharge, chimie,
+        temp_min_c, temp_max_c, eol_pct}`` (CAL118 au milieu ; les six
+        dernières, CALX60 — ``eol_pct`` est le MÊME champ que
+        ``retention_fin_de_vie_pct``, publié sous le nom que lit
+        l'électrique) ;
       * ``optimiseur`` (CAL116) → ``{pmax_in_w, v_in_min, v_in_max,
-        i_in_max_a, rendement_pct, modules_par_optimiseur}``.
+        i_in_max_a, rendement_pct, modules_par_optimiseur, ac_kw,
+        ac_tension_v, ac_i_max_a, ac_unites_max_par_branche,
+        v_out_nominal_v, v_out_min, v_out_max, i_out_max_a, pmax_out_w,
+        modules_max_par_chaine}`` (les dix dernières, CALX60 — la SORTIE
+        du composant, que CAL116 n'avait pas).
 
     ⚠ LE DICT RENDU EST PLAT — c'est le BLOC du ``type_fiche``, pas un dict de
     blocs : lire ``specs_for_produit(p)['batterie']`` rend toujours ``None``.
@@ -1897,6 +1910,18 @@ def specs_for_produit(produit):
              getattr(fiche, 'garantie_pct_a_10_ans', None)),
             ('garantie_pct_a_25_ans',
              getattr(fiche, 'garantie_pct_a_25_ans', None)),
+            # CALX60 — ce que les étapes de la chaîne de pertes lisent, SOUS
+            # LE NOM QU'ELLES LISENT : « niveau d'irradiance » (CALX162)
+            # demande ``rendement_par_irradiance``, « qualité module »
+            # (CALX165) les deux bornes de tolérance. getattr : les doubles
+            # de test (_FausseFiche) ne portent pas forcément les champs
+            # récents — absent ≡ NULL (étape omise en nommant le champ).
+            ('rendement_par_irradiance',
+             getattr(fiche, 'rendement_par_irradiance', None)),
+            ('tolerance_pmax_min_pct',
+             getattr(fiche, 'tolerance_pmax_min_pct', None)),
+            ('tolerance_pmax_max_pct',
+             getattr(fiche, 'tolerance_pmax_max_pct', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'onduleur':
@@ -1929,6 +1954,20 @@ def specs_for_produit(produit):
              getattr(fiche, 'ond_chaines_max_par_mppt', None)),
             ('s_max_kva', getattr(fiche, 'ond_s_max_kva', None)),
             ('dc_max_kwc', getattr(fiche, 'ond_dc_max_kwc', None)),
+            # CALX60 — l'étape « onduleur » (CALX170) lit la courbe sous le
+            # nom ``rendement_par_charge`` (ce qu'elle EST : un rendement en
+            # fonction de la charge) et non sous le nom du champ ; l'étape
+            # « auxiliaires » (CALX175) lit ``conso_nuit_w``. getattr : les
+            # doubles de test (_FausseFiche) ne portent pas forcément les
+            # champs récents — absent ≡ NULL (étape omise, jamais un
+            # forfait).
+            ('rendement_par_charge',
+             getattr(fiche, 'ond_courbe_rendement', None)),
+            ('rendement_max_pct',
+             getattr(fiche, 'ond_rendement_max_pct', None)),
+            ('rendement_cec_pct',
+             getattr(fiche, 'ond_rendement_cec_pct', None)),
+            ('conso_nuit_w', getattr(fiche, 'ond_conso_nuit_w', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'batterie':
@@ -1964,6 +2003,21 @@ def specs_for_produit(produit):
             ('retention_fin_de_vie_pct',
              getattr(fiche, 'bat_retention_fin_de_vie_pct', None)),
             ('garantie_annees', getattr(fiche, 'bat_garantie_annees', None)),
+            # CALX60 — C-rate, chimie et plage de température du pack.
+            # ``eol_pct`` est publié depuis ``bat_retention_fin_de_vie_pct``
+            # (CAL118) : la rétention de capacité en fin de vie garantie EST
+            # cette grandeur, et une seconde colonne aurait donné deux
+            # vérités pour une seule donnée. getattr : les doubles de test
+            # (_FausseFiche) ne portent pas forcément les champs récents —
+            # absent ≡ NULL (non publié).
+            ('c_rate_charge', getattr(fiche, 'bat_c_rate_charge', None)),
+            ('c_rate_decharge',
+             getattr(fiche, 'bat_c_rate_decharge', None)),
+            ('chimie', getattr(fiche, 'bat_chimie', None) or None),
+            ('temp_min_c', getattr(fiche, 'bat_temp_min_c', None)),
+            ('temp_max_c', getattr(fiche, 'bat_temp_max_c', None)),
+            ('eol_pct',
+             getattr(fiche, 'bat_retention_fin_de_vie_pct', None)),
         ):
             _put(out, key, value)
     elif fiche.type_fiche == 'optimiseur':
@@ -1977,6 +2031,25 @@ def specs_for_produit(produit):
             ('rendement_pct', getattr(fiche, 'opt_rendement_pct', None)),
             ('modules_par_optimiseur',
              getattr(fiche, 'opt_modules_par_optimiseur', None)),
+            # CALX60 — LA SORTIE du composant, que CAL116 n'avait pas : les
+            # ``ac_*`` décrivent le micro-onduleur (sortie alternative), les
+            # ``v_out_*``/``i_out_*``/``pmax_out_w`` l'optimiseur (sortie
+            # continue). getattr : les doubles de test (_FausseFiche) ne
+            # portent pas forcément les champs récents — absent ≡ NULL (non
+            # publié).
+            ('ac_kw', getattr(fiche, 'opt_ac_kw', None)),
+            ('ac_tension_v', getattr(fiche, 'opt_ac_tension_v', None)),
+            ('ac_i_max_a', getattr(fiche, 'opt_ac_i_max_a', None)),
+            ('ac_unites_max_par_branche',
+             getattr(fiche, 'opt_ac_unites_max_par_branche', None)),
+            ('v_out_nominal_v',
+             getattr(fiche, 'opt_v_out_nominal_v', None)),
+            ('v_out_min', getattr(fiche, 'opt_v_out_min', None)),
+            ('v_out_max', getattr(fiche, 'opt_v_out_max', None)),
+            ('i_out_max_a', getattr(fiche, 'opt_i_out_max_a', None)),
+            ('pmax_out_w', getattr(fiche, 'opt_pmax_out_w', None)),
+            ('modules_max_par_chaine',
+             getattr(fiche, 'opt_modules_max_par_chaine', None)),
         ):
             _put(out, key, value)
     return out

@@ -342,3 +342,57 @@ describe('AffectationChaines (CALX53) — coefficients non sourcés', () => {
     expect(screen.getByTestId('cal234-module-PAN-A#1')).toBeInTheDocument()
   })
 })
+
+/* ── CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE ──────────────────────────
+   Ce qui est prouvé : la chaîne DÉSIGNÉE par le serveur est teintée, sa
+   méthode est recopiée, la légende dit que c'est un signal de CÂBLAGE et
+   non une perte d'énergie, et — la garantie qui compte autant — un résultat
+   SANS la clé (document sans accès solaire par module) ne teinte rien et
+   n'affiche rien : l'écran n'invente aucun 100 %. */
+
+const sansChaineFaible = () => {
+  const reponse = contratResultat()
+  const donnees = JSON.parse(JSON.stringify(reponse.data))
+  delete donnees.electrique.chaine_la_plus_faible
+  return { data: donnees }
+}
+
+describe('AffectationChaines (CALX16) — la chaîne la plus faible', () => {
+  it('teinte la chaîne désignée et recopie la méthode du serveur', async () => {
+    const designee = contratResultat().data.electrique.chaine_la_plus_faible
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.getByTestId('calx16-chaine'))
+      .toHaveTextContent(`chaîne ${designee.chaine}`)
+    expect(screen.getByTestId('calx16-chaine')).toHaveTextContent(designee.pan)
+    expect(screen.getByTestId('calx16-module')).toHaveTextContent(designee.module)
+    expect(screen.getByTestId('calx16-methode')).toHaveTextContent(designee.methode)
+    // Le module de la chaîne désignée porte le repère ; un module d'un autre
+    // pan ne le porte pas.
+    expect(screen.getByTestId(`cal234-module-${designee.module}`))
+      .toHaveAttribute('data-chaine-faible', 'oui')
+    expect(screen.getByTestId('cal234-module-PAN-A#1'))
+      .toHaveAttribute('data-chaine-faible', 'non')
+  })
+
+  it('la légende dit que c’est un signal de câblage, pas une perte', async () => {
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    const legende = screen.getByTestId('calx16-legende')
+    expect(legende).toHaveTextContent('Signal de câblage')
+    expect(legende).toHaveTextContent('pas une perte')
+    expect(legende).toHaveTextContent('aucun kWh')
+  })
+
+  it('sans la clé servie, rien n’est teinté et rien n’est affiché', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue(sansChaineFaible())
+    rendre()
+    await screen.findByTestId('cal234-ecran')
+
+    expect(screen.queryByTestId('calx16-chaine-faible')).toBeNull()
+    expect(screen.getByTestId('cal234-module-PAN-B#1'))
+      .toHaveAttribute('data-chaine-faible', 'non')
+  })
+})

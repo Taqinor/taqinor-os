@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<int:pk>/simulation/",
-  "pourquoi": "L'étude bancable v1 (`Devis.etude_params['simulation']`) en UN SEUL appel agrégé : production PVGIS par zone, ratio de performance et sa décomposition de pertes, P50/P75/P90, autoconsommation, net-metering, puissance souscrite recommandée, dégradation garantie et projection financière 25 ans (VAN/TRI/payback). ADDITIF : les clés historiques d'`etude_params` (`production_annuelle`, `economies_annuelles`, `payback`…) restent INCHANGÉES à côté de ce bloc — ce contrat ne documente qu'un AJOUT, jamais un remplacement. PACT10 : ce contrat part SEUL avant les deux lanes front/back. Source de vérité prévue : apps/ventes/selectors.py::devis_simulation (à construire).",
+  "pourquoi": "L'étude bancable v1 (`Devis.etude_params['simulation']`) en UN SEUL appel agrégé : production PVGIS par zone, ratio de performance et sa décomposition de pertes, P50/P75/P90, autoconsommation, net-metering, puissance souscrite recommandée, dégradation garantie et projection financière 25 ans (VAN/TRI/payback). ADDITIF : les clés historiques d'`etude_params` (`production_annuelle`, `economies_annuelles`, `payback`…) restent INCHANGÉES à côté de ce bloc — ce contrat ne documente qu'un AJOUT, jamais un remplacement. PACT10 : ce contrat part SEUL avant les deux lanes front/back. Source de vérité prévue : apps/ventes/selectors.py::devis_simulation (à construire). CALX197 — `origine_ombrage` ∈ ('calepinage','etude') dit d'où vient l'ombrage : de la cascade du calepinage retenu (une seule lecture par toit) ou de l'estimation propre de l'étude.",
   "exemple": {
     "simulation": {
       "version": 1,
@@ -65,7 +65,8 @@
         "payback_year": 6,
         "discounted_payback_year": 7
       },
-      "warnings": []
+      "warnings": [],
+      "origine_ombrage": "etude"
     }
   }
 }

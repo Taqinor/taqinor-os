@@ -53,6 +53,10 @@ import { exporterImageHd, FACTEURS_HD } from '../../features/calepinage/exportIm
 // CAL104 — vue 2D PLAN orthographique (cotée, nord en haut) + plein écran, montée en
 // ONGLET à côté de la 3D : le plan PROJETTE ce que la 3D a posé, il ne re-pave rien.
 import Vue2DPlan from '../../features/calepinage/Vue2DPlan'
+// CALX65 — le bandeau qui NOMME laquelle des deux productions parle (estimation
+// rapide du constructeur vs simulation) ; ne modifie AUCUN chiffre de la carte
+// « Recommandation » (`rp9-results` ci-dessous), il se contente de la commenter.
+import BandeauProvenanceProduction from '../../features/calepinage/production/BandeauProvenanceProduction'
 // CALX68 — brouillon LOCAL de l'atelier (mode calepinage) : minuterie/repli +
 // bandeau de reprise. Logique pure, voir l'en-tête de ce module.
 import { hacherLayout, brouillonPertinent, creerGestionnaireBrouillon } from '../../features/calepinage/brouillon'
@@ -1976,6 +1980,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
           <p id="rp9-reco-band" className="mt-2 min-h-[2.5rem] text-xs text-lune-faint" aria-live="polite"></p>
           <p id="rp9-maxline" className="mt-3 text-xs text-lune-faint"></p>
         </div>
+
+        {/* CALX65 — sous la carte du constructeur, en mode calepinage
+            UNIQUEMENT : dit laquelle des deux productions on regarde, sans
+            jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}
+        {estCalepinage && calepinageId && (
+          <BandeauProvenanceProduction calepinageId={calepinageId} />
+        )}
 
         {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien.
             PV20 — mode lead UNIQUEMENT : un devis existant n'est jamais recréé
