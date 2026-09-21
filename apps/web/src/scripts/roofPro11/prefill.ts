@@ -30,6 +30,14 @@ import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
 import { numeroterDocument } from './numerotation'; // CALX111
 
 import { emettreBatiments, type Batiment } from './batiment'; // CALX100
+// CALX110 — le catalogue de modules et le module de chaque pan (CALX82). `prefill.ts`
+// reste PUR : il ne décide rien ici, il délègue à la seule fonction qui sait écrire ce
+// bloc (`moduleSelect.ts`), comme il délègue déjà `electrical` à sa propre couche.
+import {
+  ecrireModulesDansDocument,
+  type AffectationModules,
+  type ModuleDocument,
+} from './moduleSelect';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -220,6 +228,15 @@ export interface SerializedZoneGeometry {
    * (`roof_layout_v2.schema.json`, `$defs/solarAccess`).
    */
   solarAccess?: SerializedSolarAccess;
+  /**
+   * CALX82/CALX110 — le module physique posé sur CE pan, désigné par son `id` dans le
+   * catalogue `modules[]` de la racine. OPTIONNEL et additif : absent = le module par
+   * défaut de l'atelier, comportement d'aujourd'hui byte pour byte. Quand il est présent,
+   * `kwc` ci-dessus vaut `count × pmaxWc / 1000` de CE module — jamais la constante
+   * globale, qui rendrait deux modèles identiques. Un `moduleId` absent de `modules[]`
+   * est REFUSÉ par la porte d'import en nommant le champ (`services/io_layout.py`).
+   */
+  moduleId?: string;
 }
 
 /**
@@ -384,6 +401,14 @@ export interface SerializeMeta {
    * historique, aucune clé `electrical` dans le document sérialisé.
    */
   coucheElectrique?: Pick<CoucheElectrique, 'ecrireDansDocument'> | null;
+  /**
+   * CALX110 — le CATALOGUE de modules de la société + le module choisi pour chaque pan,
+   * tels que l'atelier les tient (`moduleSelect.ts`). Fournis par l'appelant, comme
+   * `setbacksM`/`horizonProfile` ci-dessus : `prefill.ts` ne lit aucun catalogue et n'en
+   * choisit aucun. Absents ⇒ comportement historique, aucune clé `modules` ni `moduleId`
+   * dans le document sérialisé, `panelWatt` et `result.kwc` inchangés.
+   */
+  modules?: AffectationModules | null;
 }
 
 // ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
@@ -571,6 +596,15 @@ export interface SerializedLayout {
    * Forme figée par `roof_layout_v2.schema.json` (`$defs/building`).
    */
   buildings?: Batiment[];
+   /**
+   * CALX82/CALX110 — le CATALOGUE des modules physiques utilisés par ce document : une
+   * entrée par modèle RÉELLEMENT posé, désignée par `zones[].geometry.moduleId`. Clé
+   * RACINE optionnelle et additive : absente, tous les pans posent le module par défaut
+   * de l'atelier et `panelWatt` ci-dessus suffit — comportement d'aujourd'hui, byte pour
+   * byte. Écrite par `moduleSelect.ts::ecrireModulesDansDocument` (voir `meta.modules`),
+   * jamais ici. Forme figée par `roof_layout_v2.schema.json` (`$defs/moduleDocument`).
+   */
+  modules?: ModuleDocument[];
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -776,6 +810,11 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
   // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
   // document inchangé, octet pour octet). L'attribution elle-même est PURE (`numerotation.ts`).
   numeroterDocument(layout);
+  // CALX110 — le catalogue `modules[]` + le `moduleId` de chaque pan (contrat CALX82) :
+  // le kWc de chaque pan est recalculé depuis SON module, le total du site en devient la
+  // somme, et `panelWatt` racine reste servi (watt du module MAJORITAIRE). Sans catalogue
+  // ni pan affecté, le document repart INCHANGÉ, byte pour byte.
+  ecrireModulesDansDocument(layout, meta?.modules);
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni

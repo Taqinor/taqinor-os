@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 1a33a8a94963459a640f8c9380ae6b4084d32fd100e919e93e00d82298cf8988
-Plan fingerprint: a72453fc1a2376f8332598e58b2b562f3c77e693b3aac5809c123d1a51bd0da8
+Plan fingerprint: f3ea85d9feb96e5a2299a1752c24e03d6d5540298fe33679fbd9570787c9d3d3
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (223)**
+**Done (225)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -645,6 +645,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
 - `CALX105` — Poser un arbre ou un bâtiment voisin au clic et le déplacer au glissé
 - `CALX106` — Remonter la hauteur et le nombre de niveaux OSM du bâtiment, avec leur provenance…
+- `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
+- `CALX110` — Poser plusieurs modèles de module dans un même système
 - `CALX111` — Numéroter les modules de façon stable et l'afficher en 3D comme en plan
 - `CALX112` — Dupliquer une sélection de panneaux et la coller au pas saisi
 - `CALX113` — Rendre la symétrie d'une sélection de panneaux par rapport à un axe
@@ -757,7 +759,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (383)**
+**Open — to build (381)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -955,8 +957,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
 - `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
 - `CALX108` — Caler le fond de plan à l'échelle par deux points et une distance réelle saisie
-- `CALX109` — Choisir le module depuis le stock et calepiner avec ses vraies cotes
-- `CALX110` — Poser plusieurs modèles de module dans un même système
 - `CALX114` — Choisir la cible de l'optimisation au lieu de la figer sur l'énergie
 - `CALX115` — Écarter d'emblée les emplacements sous un seuil d'accès solaire saisi
 - `CALX123` — Tracer et éditer un champ au sol sur la carte de l'atelier

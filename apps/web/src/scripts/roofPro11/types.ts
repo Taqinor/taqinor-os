@@ -75,6 +75,17 @@ export interface InitOptions {
   // HÔTE sur `GET /api/django/calepinage/parametres/` et transmise telle quelle.
   // Absente/vide ⇒ imagerie et géocodage strictement inchangés (Maroc, MapTiler/Mapbox).
   imagery?: ImagerySettings | null;
+  // CALX109 — le CATALOGUE DE MODULES de la société, tel que le serveur le sert
+  // (`GET /api/django/calepinage/calepinages/<pk>/modules-disponibles/`, contrat
+  // `calepinage_modules_disponibles.json`), lu par la page HÔTE et transmis tel quel :
+  // l'outil n'appelle JAMAIS Django lui-même (même discipline que `imagery` et
+  // `bankable` ci-dessus). La réponse se lit avec `roofPro11/moduleSelect.ts`
+  // (`lireModulesDisponibles`), qui en tire les modèles choisissables et ceux qui
+  // restent GRISÉS avec leur motif. Absente/vide ⇒ l'atelier pose le module par
+  // défaut, NOMMÉ (`MODULE_PAR_DEFAUT_ATELIER`) — comportement d'aujourd'hui, au
+  // panneau près. Le type reste volontairement OPAQUE ici : la forme fait foi dans
+  // le contrat, et `moduleSelect.ts` est le seul à la lire.
+  modulesDisponibles?: unknown;
 }
 
 /** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),

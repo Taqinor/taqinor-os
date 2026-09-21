@@ -699,6 +699,17 @@ export default function ToitureDesign({ mode = 'lead' }) {
     // bancable ni panneau de livraison client — rien de tout cela n'existe sur
     // un calepinage, et l'inventer produirait des boutons morts.
     async function bootCalepinage() {
+      // CALX109 — le CATALOGUE DE MODULES de la société, lu EN PARALLÈLE du
+      // design-context : best-effort exactement comme l'étude bancable de
+      // `bootDevis` — il ne bloque jamais le boot et n'invente rien. Sans lui
+      // (droits, réseau, société sans fiche « module »), l'atelier pose le
+      // module par défaut, NOMMÉ. Le contexte agrégé ne le porte pas (contrat
+      // `calepinage_design_context.json`, PACT10) : c'est sa propre porte.
+      const modulesPromise = Promise.resolve()
+        .then(() => calepinageApi.calepinages.modulesDisponibles(calepinageId))
+        .then((res) => res.data)
+        .catch(() => null)
+
       let ctx = null
       try {
         const res = await calepinageApi.calepinages.designContext(calepinageId)
@@ -731,6 +742,10 @@ export default function ToitureDesign({ mode = 'lead' }) {
       // « Ignorer » (voir plus bas) — jamais avant.
       async function poursuivreBootCalepinage(layoutSubstitue) {
         const mod = await import('@roofbuilder')
+        // CALX109 — le catalogue est attendu ICI, après le design-context :
+        // la promesse a couru pendant, et un échec vaut « aucun catalogue »
+        // (le module par défaut de l'atelier reste posé), jamais un boot raté.
+        const modulesDisponibles = await modulesPromise
         if (cancelled) return
         window.__taqinorRoofBooted = true
         const payload = contexteCalepinageVersPayload(ctx)
@@ -751,6 +766,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
           // la légende/bascule : voir les commentaires jumeaux ci-dessus.
           referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
             ? ctx.geometrie.contour_client : null,
+          // CALX109 — le catalogue de modules de la société, transmis TEL QUEL
+          // (l'outil ne parle jamais à Django) ; `null` = aucun catalogue.
+          modulesDisponibles,
           onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
         })
         // La barre de recherche d'adresse part PRÉ-REMPLIE, exactement comme en
