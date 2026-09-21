@@ -114,6 +114,22 @@ FR : Bonjour M. [prénom], [Conseiller] de Taqinor Solutions. Je ne veux pas ins
 ### reveil_b — la saison des factures (B du Guide)
 FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?
 
+**Quand ce message part (CAD74, 21/09/2026).** Fenêtre juin-septembre, UNE fois par an et par dormant, et seulement
+pour un dormant dont le réveil J30/J60 est tombé HORS de cette fenêtre. Preuve de saisonnalité : nouveau record
+national de consommation à 8,4 GW le 06/07/2026 pendant une vague de chaleur — à citer « ONEE, via presse
+économique, juillet 2026 » (Le360 du 28/07/2026, Consonews, FNH), jamais « communiqué ONEE » ni « MAP » : aucune
+source primaire n'a pu être ouverte, et la page officielle du ministère affiche encore 7 310 MW au 11/08/2023.
+
+**Garde-fou (CAD76, 21/09/2026) — la rentrée scolaire n'est PAS une fenêtre de réveil.** Aucun code ne cible la
+rentrée aujourd'hui, et aucun futur run ne doit poser une vague de réveil en septembre : l'intuition « nouvelle
+année, nouveau projet » est fausse au Maroc, parce que la rentrée est une SORTIE d'argent, pas une respiration.
+Données officielles marocaines : la rentrée représente 20,4 % du budget mensuel d'un ménage (jusqu'à 33,8 % du
+budget annuel en ville) et elle s'ajoute directement après l'Aïd al-Adha dans le calendrier. Sources datées :
+le360.ma reprenant l'enquête HCP 2019-2020 publiée en 2022 ; fnh.ma, « Aïd Al Adha et rentrée scolaire : grosse
+pression sur les finances des ménages ». Le montant par enfant parfois cité (1 556 DH, 1 926 DH en ville) reste
+contesté entre relecteurs : il n'est PAS un chiffre de référence et ne part dans aucun message client. La fenêtre
+porteuse reste juillet-août, à l'intérieur de la saison ci-dessus.
+
 ## Après la signature (Guide v2.1, chapitre 13)
 
 ### avis_google — à tous les clients, de la même façon, sans contrepartie
