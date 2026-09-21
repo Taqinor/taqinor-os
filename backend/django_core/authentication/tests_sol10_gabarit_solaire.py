@@ -14,7 +14,6 @@ from apps.parametres.models import CompanyProfile
 from apps.reporting.models import ALL_DASHBOARD_CARDS, DashboardConfig
 from apps.stock.models import Categorie, Produit
 from authentication.models import Company
-from authentication.module_seeds import MODULES_OFF_PAR_DEFAUT
 from authentication.tenant_templates import (
     CARTES_SOLAIRES, appliquer_gabarit_solaire,
 )
@@ -27,10 +26,8 @@ class GabaritSolaireTests(TestCase):
         self.company = Company.objects.create(
             nom='Installateur MA', slug='sol10-ma')
 
-    def test_compose_les_cinq_briques(self):
+    def test_compose_les_quatre_briques(self):
         rapport = appliquer_gabarit_solaire(self.company)
-        self.assertEqual(sorted(rapport['modules_eteints']),
-                         sorted(MODULES_OFF_PAR_DEFAUT))
         self.assertEqual(rapport['plan'], CODE_SOLAIRE)
         self.assertTrue(rapport['roles'])
         self.assertTrue(rapport['catalogue']['categories'])
@@ -48,16 +45,6 @@ class GabaritSolaireTests(TestCase):
         hors = feature_flags.modules_desactives(self.company)
         for cle in ('crm', 'ventes', 'stock', 'installations', 'sav'):
             self.assertNotIn(cle, hors, cle)
-        # Les verticaux parqués, eux, sortent bien du plan.
-        for cle in ('mrp', 'sante', 'education'):
-            self.assertIn(cle, hors, cle)
-
-    def test_modules_rares_eteints(self):
-        appliquer_gabarit_solaire(self.company)
-        eteints = set(
-            ModuleToggle.objects.filter(company=self.company, actif=False)
-            .values_list('module', flat=True))
-        self.assertTrue(set(MODULES_OFF_PAR_DEFAUT).issubset(eteints))
 
     def test_dashboard_solaire_pose_par_palier(self):
         appliquer_gabarit_solaire(self.company)
@@ -93,7 +80,6 @@ class GabaritSolaireTests(TestCase):
             ModuleToggle.objects.filter(company=self.company).count(),
         )
         self.assertEqual(avant, apres)
-        self.assertEqual(rapport['modules_eteints'], [])
         self.assertEqual(rapport['catalogue']['categories'], [])
 
     def test_isolation_multi_tenant(self):
@@ -128,14 +114,6 @@ class CheckedFactsHorsMarocTests(TestCase):
         self.assertFalse(rapport['catalogue']['produits'])
         self.assertTrue(
             Categorie.objects.filter(company=self.france).exists())
-
-    def test_pack_pays_eteint_hors_maroc(self):
-        appliquer_gabarit_solaire(self.france)
-        eteints = set(
-            ModuleToggle.objects.filter(company=self.france, actif=False)
-            .values_list('module', flat=True))
-        for cle in ('einvoice', 'fiscal', 'paie'):
-            self.assertIn(cle, eteints, cle)
 
     def test_au_maroc_le_catalogue_reste_opt_in(self):
         maroc = Company.objects.create(nom='MA', slug='sol10-optin')

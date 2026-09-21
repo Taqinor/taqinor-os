@@ -47,11 +47,10 @@ class Company(models.Model):
         'Consentement benchmarking anonymisé', default=False)
     # SOL8 — PAYS du tenant (ISO 3166-1 alpha-2). Additif, défaut ``MA`` : TOUTES
     # les sociétés existantes restent marocaines, donc AUCUN comportement ne
-    # change (le « pack pays » ci-dessous ne se déclenche que hors Maroc).
-    # Sert au semis des modules off par défaut à la CRÉATION d'un tenant
-    # (`authentication.module_seeds`) : facturation électronique DGI, calendrier
-    # fiscal marocain et paie CNSS/AMO/IR n'ont aucun sens hors du Maroc — ils
-    # restent LIVRÉS et réactivables en un clic, simplement éteints au départ.
+    # change. SOLMVP3 : le semis « modules off par défaut » a disparu avec le
+    # mécanisme d'édition ; ce champ reste la seule source du pays du tenant
+    # (formats, fuseau, textes légaux) et un `ModuleToggle` s'éteint désormais
+    # à la main depuis Paramètres.
     pays = models.CharField(
         'Pays (ISO 3166-1 alpha-2)', max_length=2, default='MA',
         help_text="Code pays ISO du tenant (MA = Maroc). Détermine le « pack "
