@@ -62,6 +62,15 @@ class LesHuitChampsDeLaVague1(SimpleTestCase):
         for nom in CHAMPS_VAGUE_1:
             self.assertIsNotNone(_champ(nom), nom)
 
+    def test_ils_sont_HUIT_ni_plus_ni_moins(self):
+        """CAD160 — la vague 1 est confirmée telle quelle : ni un neuvième
+        champ, ni une promotion pro glissée dans la même migration."""
+        self.assertEqual(len(CHAMPS_VAGUE_1), 8)
+        self.assertEqual(len(set(CHAMPS_VAGUE_1)), 8)
+        for ecarte in ('puissance_kva', 'tension_raccordement',
+                       'activity_profile', 'weekend'):
+            self.assertNotIn(ecarte, CHAMPS_VAGUE_1)
+
     def test_chacun_est_nullable_donc_vide_veut_dire_pas_encore_posee(self):
         """Vide ≠ « non » : une question jamais posée ne doit pas se lire
         comme une réponse négative (même règle que le bloc L4)."""
