@@ -109,8 +109,12 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, {conseiller} de TAQINOR. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
     'offre_reda':
         "Bonjour M. {prenom}, {conseiller} de TAQINOR. Suite à votre échange avec le fondateur : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° {reference}, soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.",
+    # CAD73 (21/09/2026) — « il y a quelques mois » était un fait daté FAUX :
+    # ce réveil part ~6 semaines après le devis (`cloturer_cadence` démarre
+    # la cadence réveil à sa clôture, ~J14, donc reveil_a1 tombe vers J+44),
+    # jamais des mois. Reformulé SANS durée plutôt qu'une durée inventée.
     'reveil_a1':
-        "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)",
+        "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)",
     'reveil_a3':
         "Bonjour M. {prenom}, {conseiller} de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?",
     'reveil_b':
@@ -214,7 +218,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'j14_pause':
         "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه.",
     'reveil_a1':
-        "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا من شي شهور. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)",
+        "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)",
     'reveil_a3':
         "السلام عليكم السي {prenom}، {conseiller} من Taqinor Solutions. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟",
     'reveil_b':

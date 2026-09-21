@@ -136,8 +136,11 @@ FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Suite à votre échange avec
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. بعد الهضرة ديالكم مع المؤسس: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم [المرجع]، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.
 
 ### reveil_a1 — dormants avec devis (A1 du Guide)
-FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)
-DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا من شي شهور. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)
+CAD73 (21/09/2026) — « il y a quelques mois » était un fait daté FAUX : ce réveil part ~6 semaines après le devis
+(`cloturer_cadence` démarre la cadence réveil à sa clôture, ~J14, donc `reveil_a1` tombe vers J+44), jamais des
+mois. Reformulé SANS durée plutôt qu'une durée inventée.
+FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)
 
 ### reveil_a3 — dernière chance, la rupture honnête (A3 du Guide)
 FR : Bonjour M. [prénom], [Conseiller] de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?
