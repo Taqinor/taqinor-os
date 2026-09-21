@@ -13,6 +13,8 @@ import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
 import crmApi from '../../../api/crmApi'
+// CALX47 — la porte du module Calepinage, ouverte depuis la fiche du lead.
+import calepinageApi from '../../../api/calepinageApi'
 import AssigneePicker from '../../../components/AssigneePicker'
 import ScoreBadge from '../ScoreBadge'
 import StageControl from './StageControl'
@@ -144,6 +146,34 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       setDupOpen(false)
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'La fusion a échoué — réessayez.')
+    }
+  }
+
+  /* CALX47 — « Ouvrir dans le module Calepinage ».
+     La porte serveur est IDEMPOTENTE : un lead qui a déjà un calepinage
+     ouvert reçoit CELUI-LÀ, jamais un second. L'atelier s'ouvre dans un
+     NOUVEL onglet — comme la fiche client (LW14) : ce geste ne touche pas le
+     brouillon du lead, il n'a donc rien à faire passer par la garde de
+     sortie. Le refus du serveur est affiché tel quel, précédé du nom du geste
+     — jamais un « non enregistré » générique. */
+  const ouvrirModuleCalepinage = async () => {
+    try {
+      const res = await calepinageApi.calepinages.depuisLead(leadId)
+      const id = res?.data?.calepinage
+      if (!id) {
+        toast.error('Module Calepinage : le serveur n’a rendu aucun '
+          + 'calepinage — rien n’a été ouvert.')
+        return
+      }
+      window.open(`/calepinage/${id}`, '_blank', 'noopener')
+    } catch (err) {
+      const corps = err?.response?.data
+      const motif = typeof corps === 'string'
+        ? corps
+        : (corps?.lead ?? corps?.company ?? corps?.detail)
+      toast.error(`Module Calepinage : ${
+        Array.isArray(motif) ? motif.join(' ') : (motif
+          || 'le calepinage n’a pas pu être ouvert.')}`)
     }
   }
 
@@ -545,6 +575,14 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
               title="Ouvrir l'outil de conception 3D avec ce lead déjà chargé"
             >
               Concevoir la toiture (3D){hasGps ? ' 📍' : ''}
+            </DropdownMenuItem>
+            {/* CALX47 — la porte du module Calepinage, À CÔTÉ du geste
+                existant, qui garde exactement sa sémantique (D2). */}
+            <DropdownMenuItem
+              onSelect={ouvrirModuleCalepinage}
+              title="Ouvrir ce lead dans le module Calepinage (le même calepinage à chaque fois)"
+            >
+              Ouvrir dans le module Calepinage
             </DropdownMenuItem>
             {/* LANE Q-C (fondateur 25/08/2026) — le commercial choisit quelles
                 informations demander au lead (défaut = ce qui manque),

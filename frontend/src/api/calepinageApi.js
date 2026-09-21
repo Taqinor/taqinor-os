@@ -190,6 +190,14 @@ const calepinageApi = {
     // `contract_samples/calepinage_dupliquer.json`. `{avec_variantes}` est
     // EXPLICITE : absent, le serveur garde le comportement d'aujourd'hui.
     dupliquer: (id, corps) => api.post(`${pivot(id)}dupliquer/`, corps),
+
+    // CALX47 — LA PORTE CRM du module : le calepinage OUVERT de ce lead, le
+    // MÊME à chaque appel (le serveur est idempotent — un lead qui en a déjà
+    // un reçoit celui-là, jamais un second). Le geste existant « Concevoir la
+    // toiture (3D) » du rail CRM garde exactement sa sémantique : cette porte
+    // vient À CÔTÉ de lui, elle ne le remplace pas.
+    depuisLead: (leadId) =>
+      api.post('/calepinage/calepinages/depuis-lead/', { lead: leadId }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
