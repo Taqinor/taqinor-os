@@ -48,6 +48,7 @@ import {
 import { type ZoneRenderPlan } from './types';
 import { makeCanadianPanelTexture } from './panelTexture';
 import { type Ctx } from './context';
+import { poserEtiquettesNumeros } from './numerotation'; // CALX111
 
 /** Dépendances injectées (carte + capacités de l'appareil, figées au boot). */
 export interface Scene3dDeps {
@@ -1792,6 +1793,9 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       makeIM(socleGeo, socleMat, socleMats, true, true),
     ];
     for (const me of meshes) if (me) sceneRoot!.add(me);
+    // CALX111 — étiquettes de NUMÉRO sur les modules rendus, lues depuis le document (jamais
+    // depuis l'index du tableau). Bascule « Numéroter » éteinte par défaut ⇒ aucun objet ajouté.
+    poserEtiquettesNumeros({ three: THREE, racine: sceneRoot, panId: ctx.activeAreaId, modules: panels, matrices: panelMatsArr, zoom: deps.map?.getZoom?.() ?? null, autreZone: isOtherZone, hote: ctx.dom.areasWindowEl, repeint: () => deps.map?.triggerRepaint?.() });
 
     // W88 — pick/highlight des panneaux : SEULEMENT pour la zone ACTIVE (non dim). On dote
     // l'InstancedMesh des panneaux d'un buffer instanceColor (tous blancs = teinte d'origine ;

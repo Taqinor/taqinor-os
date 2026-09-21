@@ -27,6 +27,7 @@ import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone 
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import { sortedHorizonPoints, horizonMaxHeightDeg, type HorizonProfile, type HorizonSource } from '../../lib/horizonEngine';
 import { type CoucheElectrique, type DocumentElectrique } from './electrique3d';
+import { numeroterDocument } from './numerotation'; // CALX111
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
  *  un POST). Toutes optionnelles : un champ absent/vide n'écrase rien. */
@@ -748,6 +749,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
       ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
       : {}),
   };
+  // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
+  // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
+  // document inchangé, octet pour octet). L'attribution elle-même est PURE (`numerotation.ts`).
+  numeroterDocument(layout);
   // CALX22x câblage — la couche électrique s'écrit EN DERNIER, par son PROPRE crochet
   // d'export (`ecrireDansDocument`) : jamais une deuxième copie de sa logique ici — elle
   // gère seule la copie profonde et l'absence de la clé quand le document ne porte ni
