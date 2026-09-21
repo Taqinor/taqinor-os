@@ -115,8 +115,12 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, {conseiller} de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?",
     'reveil_b':
         "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?",
+    # CAD71 (21/09/2026) — {lien} n'était alimenté que par le devis
+    # (`url_proposition`) : ce texte envoyait donc le lien du DEVIS du client
+    # à la place d'un lien vers la fiche Google. Placeholder dédié
+    # {lien_google}, alimenté par `CompanyProfile.lien_avis_google`.
     'avis_google':
-        "Bonjour M. {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien}. Merci beaucoup !",
+        "Bonjour M. {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien_google}. Merci beaucoup !",
     'parrainage':
         "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.",
     # VISITE-CADENCE (textes validés par le fondateur, 15/09/2026) — LA VISITE
@@ -216,7 +220,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'reveil_b':
         "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟",
     'avis_google':
-        "السلام عليكم السي {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien}. شكرا بزاف!",
+        "السلام عليكم السي {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien_google}. شكرا بزاف!",
     'parrainage':
         "إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.",
 }
@@ -238,7 +242,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # rendez-vous que le client a lui-même accepté. Sans date sur la fiche, la
 # valeur reste VIDE et `_omettre_phrases_incompletes` retire la phrase entière
 # (MRY13) — jamais un crochet, jamais une date approximative.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}"]
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_google}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [

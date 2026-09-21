@@ -4,13 +4,19 @@ Source de vérité des gabarits `parametres.MessageTemplate` que MRY12 seed dans
 (`corps_fr` = colonne FR ; `corps_darija` = colonne darija, écriture arabe, revue native le 04/09/2026).
 Règles : aucun chiffre qui ne vienne du devis ou du lead ; placeholders autorisés `{civilite} {nom} {prenom} {ville}
 {reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}
-{date_visite}` ; le crochet
+{date_visite} {lien_google}` ; le crochet
 `[…]` des textes ci-dessous devient le placeholder correspondant au seed (`M. [Prénom]` → `{prenom}`, `[date]` →
 `{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`,
-`[lien …]` → `{lien}` (dont `[lien de votre proposition]`, J6 — relevé fondateur 08/09/2026 : la touche « garanties » partait sans aucun lien), `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
+`[lien de la fiche TAQINOR]` → `{lien_google}` (CAD71, 21/09/2026 — AVANT la règle générale : ce n'est PAS le lien du
+devis), `[lien …]` → `{lien}` (dont `[lien de votre proposition]`, J6 — relevé fondateur 08/09/2026 : la touche « garanties » partait sans aucun lien), `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
 `[المستشار]` → `{conseiller}`) ; ce qui n'a pas de placeholder (montant, raison réelle, jour/heure de rappel) reste à
 saisir par Meryem au moment de l'envoi — jamais un défaut. Une phrase dont le placeholder est vide est OMISE au rendu
 (MRY13).
+
+CAD71 (21/09/2026) — `avis_google` envoyait le lien du DEVIS du client (seule source alimentant `{lien}` dans
+`apps/crm/services.message_pour_etape`) à la place d'un lien vers la fiche Google : `{lien_google}` est désormais
+alimenté par `CompanyProfile.lien_avis_google` (réglage société), et le gabarit est refusé à l'assignation tant que
+ce réglage est vide.
 
 Ordre fondateur du 08/09/2026 (catalogue « Réalisations ») : les placeholders `{mois_preuve}`, `{ville_preuve}`,
 `{lien_preuve}` et `{puissance_preuve}` de la touche `j4_preuve` ne se saisissent plus à la main. Le serveur les

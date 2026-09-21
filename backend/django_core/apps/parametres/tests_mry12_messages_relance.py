@@ -53,7 +53,10 @@ _CROCHETS = [
     # du lien de la réalisation — deux liens différents dans le même message.
     (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[puissance preuve\]', '{puissance_preuve}'),
-    (r'\[lien de la fiche TAQINOR\]', '{lien}'),
+    # CAD71 (21/09/2026) — AVANT `\[lien …\]` (règle générale) : le lien de
+    # la fiche Google n'est PAS le lien du devis, `{lien_google}` est un
+    # placeholder dédié alimenté par `CompanyProfile.lien_avis_google`.
+    (r'\[lien de la fiche TAQINOR\]', '{lien_google}'),
     (r'\[lien de votre proposition\]', '{lien}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),

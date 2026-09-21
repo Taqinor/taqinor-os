@@ -57,7 +57,9 @@ _CROCHETS = [
     (r'\[المرجع\]', '{reference}'),
     (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[puissance preuve\]', '{puissance_preuve}'),
-    (r'\[lien de la fiche TAQINOR\]', '{lien}'),
+    # CAD71 (21/09/2026) — le lien de la fiche Google n'est PAS le lien du
+    # devis : placeholder dédié {lien_google} (`CompanyProfile.lien_avis_google`).
+    (r'\[lien de la fiche TAQINOR\]', '{lien_google}'),
     (r'\[lien de votre proposition\]', '{lien}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),

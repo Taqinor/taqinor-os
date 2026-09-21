@@ -1957,7 +1957,10 @@ _PLACEHOLDERS_RENDUS = (
     'date_visite',
     # 08/09/2026 — la PREUVE de la touche `j4_preuve` (mois, ville et lien de
     # la page publique d'une `parametres.Realisation` réelle).
-    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve')
+    'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve',
+    # CAD71 (21/09/2026) — `avis_google` : lien de la fiche Google, réglage
+    # société (`CompanyProfile.lien_avis_google`) — PAS le lien du devis.
+    'lien_google')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -2220,7 +2223,18 @@ def message_pour_etape(etape, *, request=None, user=None):
         # avec la date était TOUJOURS omise et le message ne confirmait rien.
         'date_visite': _date_visite_francais(
             getattr(lead, 'visite_prevue_le', None)),
+        'lien_google': '',
     }
+    # CAD71 (21/09/2026) — {lien_google} : lien de la fiche Google de la
+    # société, réglage dédié (`CompanyProfile.lien_avis_google`) — AVANT
+    # ce champ, `avis_google` recevait le lien du DEVIS via `{lien}`, jamais
+    # celui de la fiche Google. Résolu seulement si le texte le demande
+    # (même discipline que `{lien_rdv}`/la preuve J4).
+    if '{lien_google}' in (corps or ''):
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=lead.company).first()
+        contexte['lien_google'] = (
+            (profile.lien_avis_google if profile else '') or '').strip()
     if etape.devis_id:
         try:
             from apps.ventes.selectors import get_devis_by_pk
@@ -2277,6 +2291,45 @@ def message_pour_etape(etape, *, request=None, user=None):
         'phone': phone,
         'placeholders_manquants': manquants,
     }
+
+
+# ── CAD-F ── CAD71 (21/09/2026) ──────────────────────────────────────────
+class GabaritNonAssignable(Exception):
+    """Un gabarit de message exige un réglage société qui manque encore."""
+
+
+#: Gabarits dont l'assignation exige un réglage société non vide, avec le
+#: libellé humain du réglage manquant (repris dans le refus). `avis_google`
+#: envoyait le lien du DEVIS du client à la place d'un lien vers la fiche
+#: Google tant que ce garde-fou n'existait pas (`{lien}` n'était alimenté que
+#: par `url_proposition`, jamais un lien Google) : on refuse maintenant
+#: l'ASSIGNATION plutôt que de laisser la phrase partir vide ou fausse.
+_GABARITS_REGLAGE_REQUIS = {
+    'avis_google': ('lien_avis_google', 'lien de la fiche Google'),
+}
+
+
+def verifier_gabarit_assignable(company, template_cle):
+    """CAD71 — lève ``GabaritNonAssignable`` si ``template_cle`` exige un
+    réglage société (``CompanyProfile``) qui est vide ; ne fait rien pour un
+    gabarit sans exigence (comportement historique inchangé). À appeler
+    AVANT d'enregistrer l'assignation d'un gabarit à une touche (gabarit
+    `parametres.CadenceRelanceEtape` ou touche `crm.RelanceEtape`) — crochet
+    attendu côté écran : `apps/parametres/views_referentiels.py`
+    (`CadenceRelanceEtapeViewSet`/son serializer) doit l'appeler avant
+    `save()` pour que le refus atteigne réellement l'éditeur."""
+    exige = _GABARITS_REGLAGE_REQUIS.get(template_cle)
+    if exige is None:
+        return
+    champ, libelle = exige
+    from apps.parametres.models import CompanyProfile
+    profile = CompanyProfile.objects.filter(company=company).first()
+    valeur = ((getattr(profile, champ, '') if profile else '') or '').strip()
+    if not valeur:
+        raise GabaritNonAssignable(
+            f'« {libelle} » n\'est pas renseigné dans les réglages de la '
+            f'société : assignez d\'abord ce réglage avant de choisir ce '
+            f'gabarit (Paramètres → Société).')
 
 
 #: MRY6 — codes de garde dont le refus est TRACÉ en chatter. Les autres
