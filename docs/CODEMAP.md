@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: a364531b52d5c7aa7a8779f15cca51e377a8b10b2773e8b56f739c2fc92ce0d6
-Plan fingerprint: a8b03cd6a954b38b5392c08fcea067c0542aab366e66705cd9316c241ae75bf8
+Structure fingerprint: c1aa1805dd782e4e0a6354a75ab40d2eed5059072dd1a9662c6bf3c2d8e3e6e6
+Plan fingerprint: 67520865b00b2eaf3dd5bb7c03d414f7f7378920b05635def2072083adc51807
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -532,7 +532,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (193)**
+**Done (194)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -724,11 +724,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
 - `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
 - `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
+- `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (413)**
+**Open — to build (412)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -973,7 +974,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
-- `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
 - `CALX253` — Sérialiser la consommation de l'atelier dans le document
 - `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
