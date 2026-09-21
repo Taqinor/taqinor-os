@@ -24,6 +24,12 @@ import {
 } from './poseSurfaces';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
 import { azimutNormaleArete } from './snap';
+// CALX126 — la table du site vit dans `panStats.ts` ; elle est testée ici avec les
+// surfaces de pose qui l'alimentent.
+import { computePanStats, computeSiteStats, htmlTableSite } from './panStats';
+import { type ModuleDocument } from './moduleSelect';
+import { type AreaRecord } from './types';
+import { type AreaResult } from '../../lib/roofAreas';
 
 /** Un rectangle d'environ `largeurM` × `hauteurM` autour de Casablanca (anneau OUVERT,
  *  même convention que `ctx.vertices`). */
@@ -625,5 +631,182 @@ describe('CALX125 — les modules sont rendus PLAQUÉS sur le mur, avec leur omb
     expect(maillages.some((m) => m.name.startsWith('rp11-sol-'))).toBe(true);
     expect(maillages.some((m) => m.name.startsWith('rp11-ombriere-'))).toBe(true);
     expect(maillages.some((m) => m.name.startsWith('rp11-facade-'))).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CALX126 — totaliser le site par bâtiment ET par surface de pose.
+// (Le code de la table vit dans `panStats.ts` ; il est testé ici, avec les
+//  surfaces de pose qui l'alimentent, plutôt que dans le test partagé de CAL84.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CONTOUR_PAN: LngLat[] = rectangle(30, 20, 33.59, -7.6);
+
+/** Un pan de toit rattaché à un bâtiment (CAL59). */
+function pan(id: string, buildingId: string | null): AreaRecord {
+  return {
+    id,
+    label: `Pan ${id}`,
+    vertices: CONTOUR_PAN.map(([lng, lat]) => [lng, lat] as LngLat),
+    obstacles: [],
+    roofType: 'pitched',
+    pitchDeg: 22,
+    facingAzimuthDeg: 180,
+    facingManual: false,
+    neededPanels: 12,
+    neededAuto: true,
+    result: null,
+    renderPlan: null,
+    ...(buildingId ? { buildingId } : {}),
+  } as AreaRecord;
+}
+
+const RESULTAT_PAN: AreaResult = {
+  panels: 10,
+  kwc: 5.5,
+  annualKwh: 9000,
+  savingsLow: 800,
+  savingsHigh: 1200,
+};
+
+/** Un module de catalogue avec sa puissance SAISIE. */
+const MODULE_550: ModuleDocument = {
+  id: 'produit-1',
+  produitId: 1,
+  libelle: 'Module 550 Wc',
+  longueurMm: 2278,
+  largeurMm: 1134,
+  epaisseurMm: 35,
+  poidsKg: 28,
+  pmaxWc: 550,
+  source: 'fiche produit',
+};
+
+describe('CALX126 — deux bâtiments et une ombrière rendent trois lignes et deux totaux', () => {
+  const pans = computePanStats([pan('a', 'bat-A'), pan('b', 'bat-B')], () => RESULTAT_PAN);
+  const ombriereBatA = {
+    kind: 'ombriere',
+    id: 'omb-1',
+    label: 'Ombrière parking',
+    buildingId: 'bat-A',
+    areaM2: 200,
+    engine: { modules: 60 },
+  };
+
+  it('trois lignes (deux pans + une ombrière) et deux totaux de bâtiment', () => {
+    const stats = computeSiteStats(pans, [ombriereBatA]);
+    expect(stats.lignes).toHaveLength(3);
+    expect(stats.lignes.map((l) => l.genre)).toEqual(['pan', 'pan', 'ombriere']);
+    expect(stats.parBatiment).toHaveLength(2);
+    expect(stats.parBatiment.map((t) => t.buildingId)).toEqual(['bat-A', 'bat-B']);
+  });
+
+  it('le total d’un bâtiment est la somme de SES lignes, pas une de plus', () => {
+    const stats = computeSiteStats(pans, [ombriereBatA], () => MODULE_550);
+    const batA = stats.parBatiment.find((t) => t.buildingId === 'bat-A')!;
+    const batB = stats.parBatiment.find((t) => t.buildingId === 'bat-B')!;
+    expect(batA.modules).toBe(10 + 60);
+    expect(batB.modules).toBe(10);
+    expect(stats.site.modules).toBe(80);
+    expect(batA.motif).toBe('');
+  });
+
+  it('la table rendue porte trois lignes et deux totaux', () => {
+    const html = htmlTableSite(computeSiteStats(pans, [ombriereBatA], () => MODULE_550));
+    expect(html.match(/data-site-ligne="/g)).toHaveLength(3);
+    expect(html.match(/data-site-total="/g)).toHaveLength(2);
+    expect(html).toContain('Ombrière parking');
+  });
+});
+
+describe('CALX126 — une surface sans plan moteur affiche des cellules vides et le DIT', () => {
+  const pans = computePanStats([pan('a', 'bat-A')], () => RESULTAT_PAN);
+  const solSansPlan = { kind: 'sol', id: 'sol-1', label: 'Parcelle', buildingId: 'bat-A', areaM2: 4000 };
+
+  it('modules et kWc restent `null` — jamais 0 — et le motif nomme ce qui manque', () => {
+    const ligne = computeSiteStats(pans, [solSansPlan]).lignes.find((l) => l.id === 'sol-1')!;
+    expect(ligne.modules).toBeNull();
+    expect(ligne.kwc).toBeNull();
+    expect(ligne.areaM2).toBe(4000);
+    expect(ligne.motif).toContain('plan du moteur non reçu');
+  });
+
+  it('la cellule rendue est VIDE, pas un zéro, et le total se dit PARTIEL', () => {
+    const stats = computeSiteStats(pans, [solSansPlan]);
+    const html = htmlTableSite(stats);
+    expect(html).toContain('data-cellule-vide');
+    expect(stats.parBatiment[0].motif).toContain('sans plan du moteur');
+    // Le total garde ce qui est connu (le pan) sans compter la surface inconnue pour 0.
+    expect(stats.parBatiment[0].modules).toBe(10);
+  });
+
+  it('un plan moteur SANS puissance de module ⇒ modules affichés, kWc vide et nommé', () => {
+    const sansWatt: ModuleDocument = { ...MODULE_550, pmaxWc: null };
+    const ligne = computeSiteStats(
+      pans,
+      [{ ...solSansPlan, engine: { modules: 120 } }],
+      () => sansWatt,
+    ).lignes.find((l) => l.id === 'sol-1')!;
+    expect(ligne.modules).toBe(120);
+    expect(ligne.kwc).toBeNull();
+    expect(ligne.motif).toContain('puissance du module non renseignée');
+  });
+
+  it('une surface sans contour mesuré laisse l’aire VIDE et le dit', () => {
+    const ligne = computeSiteStats(pans, [
+      { kind: 'facade', id: 'fac-1', buildingId: 'bat-A', engine: { modules: 8 } },
+    ]).lignes.find((l) => l.id === 'fac-1')!;
+    expect(ligne.areaM2).toBeNull();
+    expect(ligne.motif).toContain('contour non mesuré');
+  });
+});
+
+describe('CALX126 — aucune valeur n’est recalculée dans la table', () => {
+  const pans = computePanStats([pan('a', 'bat-A')], () => RESULTAT_PAN);
+
+  it('le kWc d’un pan est celui que CAL84 a déjà calculé, repris tel quel', () => {
+    const stats = computeSiteStats(pans, []);
+    expect(stats.lignes[0].kwc).toBe(pans.pans[0].kwc);
+    expect(stats.lignes[0].modules).toBe(pans.pans[0].panels);
+  });
+
+  it('doubler l’aire d’une surface SANS nouveau plan moteur ne change aucun compte', () => {
+    const base = { kind: 'sol', id: 'sol-1', buildingId: 'bat-A', areaM2: 1000, engine: { modules: 40 } };
+    const a = computeSiteStats(pans, [base], () => MODULE_550);
+    const b = computeSiteStats(pans, [{ ...base, areaM2: 2000 }], () => MODULE_550);
+    const ligneA = a.lignes.find((l) => l.id === 'sol-1')!;
+    const ligneB = b.lignes.find((l) => l.id === 'sol-1')!;
+    expect(ligneB.modules).toBe(ligneA.modules);
+    expect(ligneB.kwc).toBe(ligneA.kwc);
+    expect(ligneB.areaM2).toBe(2000);
+  });
+
+  it('le kWc d’une surface est `modules × puissance SAISIE`, jamais une puissance supposée', () => {
+    const ligne = computeSiteStats(
+      pans,
+      [{ kind: 'sol', id: 'sol-1', areaM2: 900, engine: { modules: 100 } }],
+      () => MODULE_550,
+    ).lignes.find((l) => l.id === 'sol-1')!;
+    expect(ligne.kwc).toBeCloseTo(55, 9);
+    // Sans résolveur de module, AUCUN kWc n'est fabriqué.
+    const sansModule = computeSiteStats(pans, [
+      { kind: 'sol', id: 'sol-1', areaM2: 900, engine: { modules: 100 } },
+    ]).lignes.find((l) => l.id === 'sol-1')!;
+    expect(sansModule.kwc).toBeNull();
+  });
+
+  it('les surfaces de pose du document alimentent la table telles qu’elles sont écrites', () => {
+    const v = creerOmbriere({
+      id: 'omb-1',
+      vertices: rectangle(20, 10),
+      hauteurLibreM: 3,
+      inclinaisonDeg: 10,
+    });
+    if (!v.ok) throw new Error(v.motif);
+    const relu = lireSurfacesPose(emettreSurfacesPose([v.surface]));
+    const ligne = computeSiteStats(pans, relu).lignes.find((l) => l.id === 'omb-1')!;
+    expect(ligne.genre).toBe('ombriere');
+    expect(ligne.areaM2).toBeCloseTo(v.surface.areaM2 as number, 6);
+    expect(ligne.modules).toBeNull();
   });
 });
