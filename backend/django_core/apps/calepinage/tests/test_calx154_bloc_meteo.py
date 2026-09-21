@@ -114,10 +114,13 @@ class BlocPublieTest(unittest.TestCase):
             'PVGIS `seriescalc` ne nomme aucune station : la clé est '
             'ABSENTE, jamais remplie de la ville la plus proche.')
 
-    def test_aucune_cle_hors_contrat_n_est_glissee(self):
-        # `appels_pvgis` est le SEUL ajout de l'ordonnanceur (CALX155).
+    def test_les_seuls_ajouts_sont_ceux_de_l_ordonnanceur(self):
+        # Le compteur d'appels (CALX155) et les cinq clés de résolution
+        # (CALX192) : rien d'autre ne s'ajoute au contrat CALX143.
         surplus = set(self.bloc) - set(CLES_METEO_PUBLIEES)
-        self.assertEqual(surplus, {'appels_pvgis'})
+        self.assertEqual(surplus, {
+            'appels_pvgis', 'pas_minutes', 'resolution_minutes',
+            'pas_charge_minutes', 'interpolation', 'note_resolution'})
 
 
 class SixValeursVerifiablesTest(unittest.TestCase):

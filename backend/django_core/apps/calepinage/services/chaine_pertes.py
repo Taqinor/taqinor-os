@@ -358,6 +358,8 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'MOTIF_FUSEAU_ABSENT', 'MOTIF_BASE_HORAIRE_INCONNUE',
            'BLOCS_HORAIRES_OMIS', 'CLE_CROISEMENT_HORAIRE',
            'CLE_SORTIES_PAR_PAN', 'DECIMALES_KWH', 'MOTIF_PAN_SANS_SERIE',
+           'CLE_CHARGE', 'CLE_METEO_AU_PAS', 'PAS_METEO_ATTENDU_MINUTES',
+           'MOTIF_RESOLUTION_DIVERGENTE',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -491,6 +493,7 @@ def _publier(resultat, serie, contexte, cascade):
     """Écrit dans ``resultat`` les blocs que la chaîne est seule à sourcer."""
     decision = decision_meteo(contexte)
     resultat['meteo'] = _bloc_meteo_publie(contexte, decision)
+    _publier_la_resolution(resultat, serie, contexte)
     resultat['production'] = _bloc_production(
         resultat, serie, contexte, cascade, decision)
 
@@ -546,6 +549,150 @@ def _albedo_face_avant(contexte):
         return dict(ALBEDO_FACE_AVANT)
     return {'valeur': saisi.get('valeur'),
             'motif': f'saisi par la société (source : {saisi.get("source")})'}
+
+
+# ── CALX192 — la vérité sur la résolution : PVGIS est HORAIRE ───────────
+
+#: La clé sous laquelle l'appelant (CALX5) POSE la courbe de charge du site,
+#: à SON pas : ``{pas_minutes, points}``. La chaîne ne la transforme jamais —
+#: elle publie seulement les deux pas, côte à côte.
+CLE_CHARGE = 'charge'
+
+#: La clé sous laquelle l'ordonnanceur INSTALLE l'accès à la météo au pas
+#: demandé. ``contexte['meteo_au_pas'](15)`` rend la série météo maintenue en
+#: ESCALIER : le MÊME point répété pour les quatre quarts d'heure. C'est ce
+#: que ``services/batterie.py`` consommera pour un dispatch au quart d'heure
+#: sans qu'aucune irradiance ne soit lissée entre deux heures.
+CLE_METEO_AU_PAS = 'meteo_au_pas'
+
+#: Le pas de la météo PVGIS, mesuré sur les horodatages, jamais supposé.
+#: ``services/pvgis_serie.py`` lit une ligne par heure et ``production.py``
+#: compte « 1 point = 1 heure ⇒ W = Wh ».
+PAS_METEO_ATTENDU_MINUTES = 60
+
+MOTIF_RESOLUTION_DIVERGENTE = (
+    'Le réglage « parametres.simulation.resolution_minutes » annonce {reglage} '
+    'min, mais la série météo servie est au pas de {mesure} min : c\'est le '
+    'pas MESURÉ qui fait foi, et aucune interpolation n\'est faite pour '
+    'atteindre le pas réglé.')
+
+
+def _publier_la_resolution(resultat, serie, contexte):
+    """Publie les DEUX pas — météo et charge — et dit qu'ils ne se mélangent pas.
+
+    HelioScope assume une simulation horaire sur 8 760 pas, ce qui lui
+    interdit de modéliser un dépassement de puissance onduleur de moins d'une
+    heure
+    (https://help-center.helioscope.com/hc/en-us/articles/8536640508307-Inverter-Focus-Nominal-and-Apparent-Power) ;
+    PVsyst n'autorise un pas infra-horaire que si les données météo le
+    permettent
+    (https://www.pvsyst.com/help/project-design/simulation/index.html).
+    Les nôtres ne le permettent pas : PVGIS sert une ligne par heure. Une
+    courbe de charge au quart d'heure garde donc SON pas, et la météo y est
+    maintenue en ESCALIER — la même valeur pour les quatre quarts d'une même
+    heure — plutôt que lissée entre deux heures, ce qui fabriquerait une
+    irradiance que personne n'a mesurée.
+    """
+    meteo = resultat['meteo']
+    mesure = _pas_mesure(serie)
+    meteo['pas_minutes'] = mesure
+    meteo['resolution_minutes'] = _resolution_reglee(contexte)
+    meteo['pas_charge_minutes'] = _pas_de_la_charge(contexte)
+    meteo['interpolation'] = False
+    meteo['note_resolution'] = _note_de_resolution(
+        mesure, meteo['pas_charge_minutes'])
+    _ajouter_avertissement(resultat, meteo['note_resolution'])
+    if (meteo['resolution_minutes'] is not None and mesure is not None
+            and meteo['resolution_minutes'] != mesure):
+        _ajouter_avertissement(resultat, MOTIF_RESOLUTION_DIVERGENTE.format(
+            reglage=meteo['resolution_minutes'], mesure=mesure))
+    _installer_meteo_au_pas(contexte, serie, mesure)
+
+
+def _pas_mesure(serie):
+    """Le pas RÉELLEMENT servi, mesuré sur les horodatages de la série.
+
+    Mesuré, jamais supposé : une série dont le pas est déclaré sans l'avoir
+    lu ment dès que la source change. À défaut d'horodatages comparables, le
+    pas DÉCLARÉ par la série ; à défaut encore, ``None``.
+    """
+    precedent = None
+    ecarts = {}
+    for point in (serie or {}).get('points') or []:
+        courant = _moment_du_point(point)
+        if courant is None:
+            continue
+        if precedent is not None:
+            minutes = round((courant - precedent).total_seconds() / 60.0)
+            if minutes > 0:
+                ecarts[minutes] = ecarts.get(minutes, 0) + 1
+        precedent = courant
+    if ecarts:
+        return max(ecarts.items(), key=lambda paire: paire[1])[0]
+    declare = (serie or {}).get('pas_minutes')
+    return int(declare) if declare else None
+
+
+def _resolution_reglee(contexte):
+    """Le pas de simulation RÉGLÉ par la société, ou ``None``."""
+    saisi = _etapes.reglage(contexte, 'resolution_minutes')
+    if saisi is None:
+        return None
+    valeur = _flottant(saisi.get('valeur'))
+    return None if valeur is None else int(valeur)
+
+
+def _pas_de_la_charge(contexte):
+    """Le pas PROPRE de la courbe de charge, publié à côté — jamais fondu."""
+    charge = contexte.get(CLE_CHARGE)
+    if not isinstance(charge, dict):
+        return None
+    valeur = _flottant(charge.get('pas_minutes'))
+    return None if valeur is None else int(valeur)
+
+
+def _note_de_resolution(mesure, pas_charge):
+    """La phrase française qui DIT ce qui se passe entre les deux pas."""
+    if mesure is None:
+        return ('Le pas de la série météo n\'a pas pu être mesuré : aucune '
+                'résolution n\'est annoncée, et aucune interpolation n\'est '
+                'faite.')
+    note = (f'La météo est au pas de {mesure} min (PVGIS sert une ligne par '
+            'heure) et aucune interpolation infra-horaire n\'est faite : '
+            'entre deux heures, l\'irradiance n\'est jamais lissée.')
+    if pas_charge is None or pas_charge >= mesure:
+        return note
+    return note + (
+        f' La courbe de charge, elle, garde SON pas de {pas_charge} min : '
+        'elle n\'est pas ramenée à l\'heure, et la météo y est maintenue en '
+        f'ESCALIER — la même valeur pour les {mesure // pas_charge} pas '
+        'd\'une même heure.')
+
+
+def _installer_meteo_au_pas(contexte, serie, mesure):
+    """Pose ``contexte['meteo_au_pas'](pas)`` — l'escalier, jamais un lissage."""
+    points = (serie or {}).get('points') or []
+
+    def meteo_au_pas(pas_minutes):
+        cible = _flottant(pas_minutes)
+        cible = int(cible) if cible else None
+        if (cible is None or mesure is None or cible >= mesure
+                or mesure % cible):
+            return {'pas_minutes': mesure, 'points': list(points),
+                    'escalier': False,
+                    'motif': ('Le pas demandé ne divise pas le pas météo : '
+                              'la série est servie à SON pas, sans escalier '
+                              'ni interpolation.')}
+        facteur = mesure // cible
+        tenus = []
+        for point in points:
+            # Le MÊME point est répété : rien n'est recalculé, donc rien ne
+            # peut être interpolé par accident.
+            tenus.extend([point] * facteur)
+        return {'pas_minutes': cible, 'points': tenus, 'escalier': True,
+                'motif': ''}
+
+    contexte[CLE_METEO_AU_PAS] = meteo_au_pas
 
 
 # ── CALX181 — les agrégats, tirés de la SORTIE DE CHAÎNE ────────────────
