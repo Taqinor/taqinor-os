@@ -6,15 +6,17 @@ Ce qui est prouvé ici :
 * un preset SANS ``id``/``nom`` est refusé en nommant le champ ;
 * les presets d'une société n'apparaissent JAMAIS dans une autre (multi-
   société) ;
-* ``selectors.presets_de_societe`` joint les jeux MAISON et les presets AO de
-  portée société SANS en copier un dans l'autre.
+* ``selectors.presets_de_societe`` publie les jeux MAISON (SOLMVP15 : la
+  seconde source, les presets de portée société du module d'appels d'offres,
+  sort du produit avec sa table — aucun jeu maison n'a bougé) ;
+* écrire un jeu maison NE TOUCHE PAS le catalogue de kits de pose, qui vit
+  dans la même section ``presets`` (SOLMVP15).
 
 Run :
     python manage.py test apps.calepinage.tests.test_cal197_presets -v2
 """
 from django.test import TestCase
 
-from apps.ao.models import PresetCalepinage
 from apps.calepinage import selectors
 from apps.calepinage.services.presets import (
     PresetInvalide, enregistrer_jeu, jeux_de_societe, retirer_jeu,
@@ -81,28 +83,37 @@ class PresetsDeSocieteSelectorTest(TestCase):
         self.company = Company.objects.create(nom='Presets Sel Co',
                                               slug='presets-sel-co-197')
 
-    def test_joint_module_et_societe_ao_sans_copie(self):
+    def test_publie_les_jeux_maison(self):
         enregistrer_jeu(self.company, {'id': 'std', 'nom': 'Standard'})
-        preset_ao = PresetCalepinage.objects.create(
-            company=self.company, nom='FRDISI 2026-07',
-            portee=PresetCalepinage.Portee.SOCIETE,
-            parametres={'retrait_rive_m': 0.4})
 
         resultat = selectors.presets_de_societe(self.company)
 
         self.assertEqual(len(resultat['module']), 1)
         self.assertEqual(resultat['module'][0]['id'], 'std')
-        self.assertEqual(len(resultat['societe_ao']), 1)
-        self.assertEqual(resultat['societe_ao'][0]['id'], preset_ao.pk)
-        self.assertEqual(resultat['societe_ao'][0]['nom'], 'FRDISI 2026-07')
-        # Un preset de portée AO (pas SOCIETE) n'apparaît pas ici.
-        PresetCalepinage.objects.create(
-            company=self.company, nom='Affaire seule',
-            portee=PresetCalepinage.Portee.AO, parametres={})
-        resultat_2 = selectors.presets_de_societe(self.company)
-        self.assertEqual(len(resultat_2['societe_ao']), 1)
+        self.assertEqual(resultat['module'][0]['nom'], 'Standard')
 
-    def test_societe_none_rend_listes_vides(self):
+    def test_societe_none_rend_une_liste_vide(self):
         resultat = selectors.presets_de_societe(None)
         self.assertEqual(resultat['module'], [])
-        self.assertEqual(resultat['societe_ao'], [])
+
+    def test_ecrire_un_jeu_ne_touche_pas_le_catalogue_de_kits(self):
+        """SOLMVP15 — les deux vivent dans la section ``presets`` : un
+        écrivain de l'une ne doit JAMAIS effacer l'autre (la section est
+        remplacée en bloc par ``enregistrer_parametres``)."""
+        from apps.calepinage.services.kits_catalogue import kits_de_societe
+        from apps.calepinage.services.parametres import (
+            enregistrer_parametres,
+        )
+
+        enregistrer_parametres(self.company, {'presets': {'kits': [
+            {'id': 7, 'code': 'K7', 'libelle': 'Kit 7', 'actif': True},
+        ]}})
+        enregistrer_jeu(self.company, {'id': 'std', 'nom': 'Standard'})
+
+        self.assertEqual([k['code'] for k in
+                          kits_de_societe(self.company)], ['K7'])
+        self.assertEqual(len(jeux_de_societe(self.company)), 1)
+
+        retirer_jeu(self.company, 'std')
+        self.assertEqual([k['code'] for k in
+                          kits_de_societe(self.company)], ['K7'])

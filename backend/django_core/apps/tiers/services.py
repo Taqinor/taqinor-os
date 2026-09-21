@@ -1,18 +1,18 @@
-"""Écritures/orchestration du répertoire ``Tiers`` (ARC17/18/19/56).
+"""Écritures/orchestration du répertoire ``Tiers`` (ARC17/18/56).
 
-Point d'entrée WRITE que les autres apps consomment (crm/stock/compta/rh) sans
+Point d'entrée WRITE que les autres apps consomment (crm/stock) sans
 importer ``tiers.models`` : ``tiers`` reste une couche fondation (contrat
 import-linter ``tiers-is-a-base-layer``). ``company`` est TOUJOURS un argument
 explicite posé par l'appelant côté serveur — jamais lue d'un corps de requête
 ici.
 
-Ponts additifs (ARC18/19/56) : chaque modèle historique (crm.Client,
-stock.Fournisseur, compta.Partenaire, rh.DossierEmploye, crm.Lead) reçoit un
-FK nullable ``tiers`` (string-FK ``'tiers.Tiers'``). L'identité reste MAÎTRE
-côté modèle historique pour l'instant — ``tiers`` n'en est qu'un MIROIR
-one-way (pont réversible ; la bascule write-path est la DÉCISION ARC21,
-flag-gatée OFF par défaut). Les helpers ci-dessous dédupent par email/ICE
-company-scopés et posent les drapeaux de rôle.
+Ponts additifs (ARC18/56) : chaque modèle historique (crm.Client,
+stock.Fournisseur, crm.Lead) reçoit un FK nullable ``tiers`` (string-FK
+``'tiers.Tiers'``). L'identité reste MAÎTRE côté modèle historique pour
+l'instant — ``tiers`` n'en est qu'un MIROIR one-way (pont réversible ; la
+bascule write-path est la DÉCISION ARC21, flag-gatée OFF par défaut). Les
+helpers ci-dessous dédupent par email/ICE company-scopés et posent les
+drapeaux de rôle.
 """
 from django.db import transaction
 

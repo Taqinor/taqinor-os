@@ -21,7 +21,7 @@ from .models import (
     EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
-    PlanActivite, PlanCompte, Playbook, PlaybookEtape,
+    Partenaire, PlanActivite, PlanCompte, Playbook, PlaybookEtape,
     PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
     SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
@@ -32,6 +32,7 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
+    PartenaireSerializer,
     PlanActiviteSerializer, PointContactSerializer, RelanceEtapeSerializer,
     SiteProfileSerializer,
     EquipeCommercialeSerializer, WebsiteLeadPayloadSerializer,
@@ -55,20 +56,6 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
     HasPermissionOrLegacy,
-)
-
-# ODX13 — ré-export TRANSITOIRE des ViewSets partenaires/territoires (FG234–
-# 237) qui vivent encore dans ``apps.compta.views`` (adossés à
-# ``_ComptaBaseViewSet`` = ``TenantMixin`` + ``ModelViewSet``, scoping
-# ``request.user.company`` + assignation forcée de ``company``). Ce module
-# donne aux nouvelles routes ``/api/django/crm/…`` un point d'entrée
-# ``apps.crm.views`` stable ; les anciennes routes ``/api/django/compta/…``
-# continuent de servir les MÊMES classes. ODX22 re-logera le corps ici.
-from apps.compta.views import (  # noqa: F401
-    CommissionPartenaireViewSet,
-    PartenaireViewSet,
-    SoumissionLeadPartenaireViewSet,
-    TerritoireCommercialViewSet,
 )
 
 logger = logging.getLogger(__name__)
@@ -4133,6 +4120,67 @@ class SalleVenteViewSet(CompanyScopedModelViewSet):
         from .selectors import salle_vente_analytics
         salle = self.get_object()
         return Response(salle_vente_analytics(salle))
+
+
+class PartenaireViewSet(CompanyScopedModelViewSet):
+    """Partenaires commerciaux (apporteurs/sous-revendeurs/installateurs,
+    FG234/FG237) + couche certification NTMIG26.
+
+    SOLMVP10/SOLMVP30b — cette route vivait sous ``/api/django/compta/
+    partenaires/`` (shim ODX13) ; ``compta`` est désormais une coquille
+    parquée SANS AUCUNE url (``core.parked``). ``crm.Partenaire`` n'a jamais
+    quitté cette app (le modèle et ses données restent intacts) : il reprend
+    ici nativement sa propre surface API, seule maison qu'il ait jamais eue.
+    Le token d'accès est posé côté serveur, jamais lu du corps de requête.
+    """
+    serializer_class = PartenaireSerializer
+    queryset = Partenaire.objects.all()
+    permission_classes = [IsResponsableOrAdmin]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        import secrets
+        serializer.save(
+            company=self.request.user.company,
+            token_acces=secrets.token_urlsafe(32))
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='provisionner-acces',
+        permission_classes=[IsAdminRole],
+    )
+    def provisionner_acces(self, request, pk=None):
+        """NTPRT4 — Ouvre au partenaire un vrai compte utilisateur portail.
+
+        RÉSERVÉ À L'ADMINISTRATEUR INTERNE (``IsAdminRole``), même garde que
+        l'action jumelle NTPRT2 (``ComptePortailClientViewSet.
+        provisionner_acces``) : ouvrir un accès externe à des données
+        partenaire (soumissions, commissions) est une action
+        d'administration. Le mot de passe temporaire n'est JAMAIS renvoyé
+        ici : il part par email au partenaire (cf. ``apps.portail.services.
+        provisionner_compte_partenaire``).
+        """
+        from apps.portail import services as portail_services
+
+        partenaire = self.get_object()
+        user, cree = portail_services.provisionner_compte_partenaire(
+            request.user.company, partenaire.id)
+        if user is None:
+            return Response(
+                {'detail': 'Partenaire inconnu pour cette société.'},
+                status=400)
+        return Response({
+            'utilisateur_id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'actif': user.is_active,
+            'cree': cree,
+            'detail': (
+                'Accès portail créé — mot de passe temporaire envoyé par '
+                'email.' if cree else 'Accès portail déjà existant.'),
+        })
 
 
 class ApporteurViewSet(CompanyScopedModelViewSet):

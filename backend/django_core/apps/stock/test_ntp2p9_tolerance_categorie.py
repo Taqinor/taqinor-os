@@ -23,12 +23,12 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.roles.models import Role
 from apps.stock.models import (
-    AchatsParametres, BonCommandeFournisseur, Categorie, FactureFournisseur,
+    AchatsParametres, BonCommandeFournisseur, Categorie,
     Fournisseur, LigneBonCommandeFournisseur, Produit,
     ReceptionFournisseur, LigneReceptionFournisseur,
     ToleranceRapprochementCategorie,
 )
-from apps.stock.services import evaluate_facture_exception, evaluer_tolerance_ecart
+from apps.stock.services import evaluer_tolerance_ecart
 
 User = get_user_model()
 
@@ -95,9 +95,9 @@ class TestDefautSocieteSansOverride(Ntp2p9Base):
 
 
 class TestOverrideCategorieElargit(Ntp2p9Base):
-    def test_categorie_elargie_evite_exception_que_defaut_societe_aurait_signalee(self):
-        # Défaut société STRICT (0 %) — sans override, tout écart positif
-        # basculerait la facture en exception (comme XPUR10 le documente).
+    def test_categorie_elargie_prime_sur_le_defaut_societe(self):
+        # Défaut société STRICT (0 %) — l'override catégorie (5 %) doit
+        # primer dessus (comme XPUR10 le documente).
         AchatsParametres.objects.create(
             company=self.company, tolerance_prix_pct=Decimal('0'))
         ToleranceRapprochementCategorie.objects.create(
@@ -107,25 +107,6 @@ class TestOverrideCategorieElargit(Ntp2p9Base):
 
         self.assertEqual(
             evaluer_tolerance_ecart(self.company, bcf.id), Decimal('5'))
-
-        from apps.compta.models import Rapprochement
-        Rapprochement.objects.create(
-            company=self.company, bon_commande=bcf,
-            montant_commande=Decimal('10000'), montant_recu=Decimal('10000'),
-            montant_facture=Decimal('10300'), ecart=Decimal('300'))
-        facture = FactureFournisseur.objects.create(
-            company=self.company, reference='FF-NTP2P9-0001',
-            fournisseur=self.fournisseur, bon_commande=bcf,
-            montant_ht=Decimal('10300'), montant_ttc=Decimal('12360'))
-        en_exception, ecart_pct = evaluate_facture_exception(
-            self.company, facture)
-        # +3 % : hors du défaut société (0 %) mais DANS l'override catégorie
-        # (5 %) — la facture ne doit PAS être mise en exception.
-        self.assertAlmostEqual(float(ecart_pct), 3.0, places=1)
-        self.assertFalse(en_exception)
-        facture.refresh_from_db()
-        self.assertEqual(
-            facture.statut_controle, FactureFournisseur.StatutControle.NORMALE)
 
 
 class TestBcfMultiCategorieRetombeSurDefaut(Ntp2p9Base):

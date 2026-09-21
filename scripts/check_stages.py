@@ -25,7 +25,11 @@ ROOT = Path(__file__).resolve().parent.parent
 STAGES_FILE = ROOT / "STAGES.py"
 
 SCANNED_SUFFIXES = {".py", ".js", ".jsx"}
-SKIPPED_PARTS = {".git", "node_modules", "migrations", "scripts", "dist", "build"}
+# SOLMVP37 — "parked" added: backend/parked/ mirrors the pre-parking source of
+# the 47 apps sorted out of the solar MVP (backend/django_core/core/parked.py)
+# straight from ROOT.rglob("*") below — dead code that must stay out of every
+# CI guard, this one included, even though nothing there diverges today.
+SKIPPED_PARTS = {".git", "node_modules", "migrations", "scripts", "dist", "build", "parked"}
 
 DECLARATION_RE = re.compile(
     r"(?:const\s+|let\s+|var\s+)?([A-Za-z_][A-Za-z0-9_]*(?:STAGE|PIPELINE)[A-Za-z0-9_]*)\s*=\s*[\[\(]([^\]\)]*)[\]\)]",

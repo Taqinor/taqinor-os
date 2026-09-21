@@ -27,7 +27,7 @@ import TodayNavIcon from './TodayNavIcon'
    ----------------------------------------------------------------------------
    Déposée dans `src/features/adsengine/` ; le registre `router/moduleRoutes.jsx`
    la collecte via `import.meta.glob` — SANS toucher au routeur, à la Sidebar ni
-   à routes.meta (template = `features/marketing/module.config.jsx`, pattern UX1).
+   à routes.meta (patron UX1, comme tout module.config.jsx auto-enregistré).
    Gatée « responsable / admin ». Écrans chargés en lazy (code-splitting).
    Doctrine (docs/engine/research/scope-features.md) : la boîte d'approbation
    est l'écran-vaisseau-amiral ; le dashboard est « un chiffre » (coût par

@@ -366,16 +366,21 @@ class DepotReelTests(unittest.TestCase):
         self.assertGreaterEqual(len(converties) + len(refusees), 60)
 
     def test_attribut_de_classe_reel(self):
+        # Exemple realigné SOLMVP42 (2026-09-21) : `flotte.Vehicule` est parti
+        # avec le module `flotte` (Groupe SOLMVP) — `calepinage.
+        # ProfilTypeConsommation.SAISONS` est le meme genre de cible (un
+        # ATTRIBUT DE CLASSE, pas un champ Django) sur une app gardée.
         valeurs, _ = ccd.valeurs_serveur(
-            "flotte.Vehicule.CHECKLIST_MISE_EN_SERVICE")
-        self.assertIn("immatriculation_faite", valeurs or set())
+            "calepinage.ProfilTypeConsommation.SAISONS")
+        self.assertIn("annuel", valeurs or set())
 
     def test_constante_de_module_par_noms(self):
-        # `GRAVITES = (INFO, AVERTISSEMENT, BLOCAGE)` : des NOMS, pas des
-        # litteraux — l'exemple meme cite par la docstring de la garde.
-        valeurs, _ = ccd.valeurs_serveur(
-            "ao.fabrique.approvisionnement.GRAVITES")
-        self.assertEqual(valeurs, {"info", "avertissement", "blocage"})
+        # `PIECE_TYPES = (PIECE_CIN, PIECE_FACTURE, PIECE_BL)` : des NOMS, pas
+        # des litteraux — le meme genre de constante que citait la docstring
+        # de la garde (`ao.fabrique.GRAVITES`, parti avec `ao` — Groupe
+        # SOLMVP, SOLMVP42, 2026-09-21) ; `ged` reste dans le MVP solaire.
+        valeurs, _ = ccd.valeurs_serveur("ged.services.PIECE_TYPES")
+        self.assertEqual(valeurs, {"cin", "facture", "bl"})
 
     def test_le_depot_est_vert_et_porte_au_moins_un_marqueur(self):
         constats, verifiees = ccd.analyser()

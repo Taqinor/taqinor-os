@@ -655,30 +655,12 @@ class DepotReelTests(unittest.TestCase):
                          if c[0] == "inatteignable" and c[2] in sains)
         self.assertEqual(fautifs, [])
 
-    def test_le_passif_ao_ne_peut_que_diminuer(self):
-        """Le passif AO du 03/08/2026 : 67 ecrans, 60 inatteignables.
-
-        CE TEST A ETE REECRIT LE MEME JOUR, et le pourquoi compte : sa
-        premiere version FIGEAIT ces deux nombres (``assertEqual(67)`` /
-        ``assertEqual(60)``). Elle epinglait donc la MALADIE, pas la garde :
-        des que la reparation a branche des ecrans, le test est devenu ROUGE
-        pour cause de PROGRES. Un test qui punit la guerison est un test faux.
-
-        L'invariant reel est un SENS DE VARIATION : le nombre d'ecrans AO
-        inatteignables ne doit jamais REMONTER au-dessus du passif mesure.
-        Ajouter un ecran non branche le fait croitre -> rouge legitime ; en
-        brancher un le fait decroitre -> vert.
-        """
-        constats, _ = analyse_reelle()
-        ao = [c for c in constats if c[0] == "inatteignable" and c[2] == "ao"]
-        total = [p for p in cea.ecrans_de_features()
-                 if p.relative_to(cea.FEATURES).parts[0] == "ao"]
-        self.assertGreater(len(total), 0, "aucun ecran AO trouve : scan casse")
-        self.assertLessEqual(
-            len(ao), 60,
-            "le nombre d'ecrans AO inatteignables a AUGMENTE depuis le passif "
-            "mesure le 03/08/2026 (60) : un ecran a ete livre sans etre branche",
-        )
+    # `test_le_passif_ao_ne_peut_que_diminuer` retire (SOLMVP42, 2026-09-21) :
+    # le module `ao` lui-meme est sorti du MVP solaire (Groupe SOLMVP,
+    # coquillage backend + retrait frontend SOLMVP15/32/40) — il n'y a plus
+    # d'ecran `features/ao/*` a scanner, donc plus de "passif AO" a faire
+    # decroitre. La recette de retour d'un module (docs/parked-modules.md)
+    # republierait ce test avec l'ecran si `ao` revenait un jour.
 
     def test_aucun_onglet_bouche_ne_subsiste_dans_la_fiche_affaire(self):
         """Meme correction que ci-dessus : ce test AFFIRMAIT que les cinq
@@ -700,15 +682,9 @@ class DepotReelTests(unittest.TestCase):
             "que le vrai panneau existe",
         )
 
-    def test_les_routes_squelettes_du_menu_ao(self):
-        """Dossiers cache encore un vrai ecran ; Rentabilite non — et la garde
-        doit rester MUETTE sur Rentabilite. PV59 (2026-08-14) a SOLDE
-        /ao/calepinages : l'EmptyState est devenu la vraie VariantesListPage,
-        la route quitte donc les bouchons."""
-        constats, _ = analyse_reelle()
-        routes = sorted(c[1].split("::")[1] for c in constats
-                        if c[0] == "bouchon-route")
-        self.assertEqual(routes, ["/ao/dossiers"])
+    # `test_les_routes_squelettes_du_menu_ao` retire (SOLMVP42, 2026-09-21) :
+    # `/ao/dossiers` et tout le menu `ao` sont partis avec le module (Groupe
+    # SOLMVP) — plus aucun bouchon-route a nommer.
 
     def test_aucune_config_opaque_sur_le_depot(self):
         """Si une config devient illisible, la garde s'aveugle en silence."""
@@ -726,7 +702,11 @@ class DepotReelTests(unittest.TestCase):
         # module.config (/juridique/*).
         # 54 -> 55 : lot CAL — le module « calepinage » gagne le sien
         # (features/calepinage/module.config.jsx, segment /calepinage/*).
-        self.assertEqual(stats["configs"], 55)
+        # 55 -> 19 : Groupe SOLMVP (20-21/09/2026) — 37 modules frontend sortent
+        # du MVP solaire (49 apps hors-MVP), leurs module.config.jsx partent
+        # avec (SOLMVP40) ; 19 est le compte REEL mesure sur ce depot a cette
+        # date, jamais un plancher arbitraire.
+        self.assertEqual(stats["configs"], 19)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182
@@ -800,20 +780,6 @@ class PlancherInventaireTests(unittest.TestCase):
         texte = sortie.getvalue()
         self.assertIn("frontend/src", texte)          # le chemin en cause
         self.assertIn("check_ecrans_atteignables.ecrans", texte)
-
-    def test_edition_reduite_dit_a_voix_haute_qu_elle_ne_mesure_pas(self):
-        # Un vertical parque fait legitimement chuter l'inventaire : le
-        # plancher ne s'applique pas — mais il le DIT, il ne se tait pas.
-        with tempfile.TemporaryDirectory() as tmp:
-            inventaire = self._inventaire(Path(tmp))
-            sortie = io.StringIO()
-            with mock.patch.object(contract, "INVENTORY_PATH", inventaire):
-                with mock.patch.object(cea, "analyse",
-                                       return_value=([], self.STATS_VIDES)):
-                    with contextlib.redirect_stdout(sortie):
-                        code = cea.main(["--edition", "solar"])
-        self.assertEqual(code, 0)
-        self.assertIn("Plancher d'inventaire NON applique", sortie.getvalue())
 
     def test_l_inventaire_committe_porte_un_plancher_positif(self):
         entree = contract.load_inventory()["check_ecrans_atteignables"]

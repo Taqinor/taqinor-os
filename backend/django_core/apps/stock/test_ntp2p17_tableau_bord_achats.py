@@ -1,9 +1,8 @@
 """NTP2P17 — Dashboard spend management.
 
-Couvre : consommation budgétaire par département (NTP2P4) visible en un
+Couvre : consommation du budget d'achats de la société (NTP2P4) visible en un
 coup d'œil (% du mois en cours), top fournisseurs par volume, exceptions
-3 voies (en cours vs résolues), notes de frais en attente, et l'endpoint
-``stock/tableau-bord-achats/``.
+3 voies (en cours vs résolues), et l'endpoint ``stock/tableau-bord-achats/``.
 
 Run:
     python manage.py test apps.stock.test_ntp2p17_tableau_bord_achats -v 2
@@ -46,18 +45,12 @@ def _api(user):
     return api
 
 
-def _departement(company):
-    from apps.rh.models import Departement
-    return Departement.objects.create(company=company, nom='Achats')
-
-
 class TestBudgetsDepartement(TestCase):
     def test_budget_avec_engagement_actif_affiche_taux_consommation(self):
         company = _company()
-        dept = _departement(company)
         annee = timezone.localdate().year
         budget = BudgetDepartement.objects.create(
-            company=company, departement=dept,
+            company=company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=annee, montant_alloue=Decimal('10000'))
         EngagementBudget.objects.create(
@@ -66,7 +59,7 @@ class TestBudgetsDepartement(TestCase):
         resultat = stock_selectors.tableau_bord_achats(company)
         lignes = resultat['budgets_departement']
         self.assertEqual(len(lignes), 1)
-        self.assertEqual(lignes[0]['departement_id'], dept.id)
+        self.assertEqual(lignes[0]['budget_id'], budget.id)
         self.assertEqual(lignes[0]['taux_consommation_pct'], 40.0)
 
     def test_sans_budget_configure_liste_vide(self):
@@ -125,27 +118,6 @@ class TestExceptions3Voies(TestCase):
         })
 
 
-class TestNotesFraisEnAttente(TestCase):
-    def test_compte_seulement_les_notes_soumises(self):
-        from apps.frais.models import NoteFrais
-
-        company = _company()
-        employe = _user(company)
-        NoteFrais.objects.create(
-            company=company, employe=employe, date_frais=timezone.localdate(),
-            montant=Decimal('300'), motif='Repas',
-            statut=NoteFrais.Statut.SOUMISE)
-        NoteFrais.objects.create(
-            company=company, employe=employe, date_frais=timezone.localdate(),
-            montant=Decimal('500'), motif='Transport',
-            statut=NoteFrais.Statut.BROUILLON)
-
-        resultat = stock_selectors.tableau_bord_achats(company)
-        self.assertEqual(resultat['notes_frais_en_attente'], {
-            'count': 1, 'montant_total': Decimal('300'),
-        })
-
-
 class TestEndpoint(TestCase):
     def test_endpoint_renvoie_les_cles_attendues(self):
         company = _company()
@@ -155,7 +127,7 @@ class TestEndpoint(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         for cle in ('budgets_departement', 'top_fournisseurs',
                     'delai_demande_bcf_jours', 'delai_bcf_reception_jours',
-                    'exceptions_3voies', 'notes_frais_en_attente'):
+                    'exceptions_3voies'):
             self.assertIn(cle, resp.data)
 
     def test_endpoint_refuse_role_non_responsable(self):

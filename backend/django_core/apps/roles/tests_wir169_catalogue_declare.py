@@ -92,7 +92,11 @@ class CatalogueCouvreLesCodesDeclaresTests(SimpleTestCase):
             "Aucun read_permission/write_permission trouvé : le parcours "
             "d'URLs est cassé, la garde ne vérifierait plus rien.")
         # Témoin : un code que l'on sait déclaré par un viewset routé.
-        self.assertIn('btp_voir', trouves)
+        # ``btp_voir`` (btp_chantier) servait de témoin jusqu'au coquillage
+        # MVP solaire (core.parked) : l'app est sortie, plus aucune url ne le
+        # déclare. ``crm_voir`` (LeadViewSet) le remplace — porté par le
+        # module central du MVP solaire, jamais parqué.
+        self.assertIn('crm_voir', trouves)
 
     def test_tout_code_declare_existe_au_catalogue(self):
         catalogue = set(ALL_PERMISSIONS)

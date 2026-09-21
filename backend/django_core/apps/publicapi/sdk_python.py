@@ -24,7 +24,7 @@ import re
 NOM_MODULE = 'taqinor_client.py'
 
 # `/api/public/v1/leads/` → `leads` ; ignore tout chemin paramétré (`{id}`) et
-# les sous-chemins (`scm/politiques-stock`), qui ne sont pas des collections
+# les sous-chemins (`achats/demandes-achat`), qui ne sont pas des collections
 # listables au sens « pagination simple ».
 _COLLECTION_RE = re.compile(r'^/api/public/v1/([a-z0-9\-]+)/$')
 

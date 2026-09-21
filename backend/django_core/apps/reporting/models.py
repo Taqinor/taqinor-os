@@ -413,69 +413,19 @@ class KpiAlerte(models.Model):
 
     Distinct des alertes par OBJET (`STOCK_BELOW_THRESHOLD`/`FACTURE_OVERDUE`
     dans `automation`) : ici le seuil porte sur un agrégat calculé (ex.
-    « DSO > 60 j »), évalué par un job Beat quotidien
+    « Encours échu > 100 000 MAD »), évalué par un job Beat quotidien
     (``apps.reporting.kpi_alertes.evaluate_all_kpi_alertes``).
 
     ``kpi`` est un catalogue FERMÉ (``Kpi.choices``), chaque valeur branchée
-    sur un selector reporting/compta/stock EXISTANT — jamais d'expression
+    sur un selector reporting/stock EXISTANT — jamais d'expression
     libre. Dédup : ``deja_notifie`` empêche de re-notifier tant que le seuil
     reste franchi ; il repasse à False dès que l'agrégat repasse sous (ou
     au-dessus, selon l'opérateur) le seuil, permettant une RE-notification au
     prochain re-franchissement."""
 
     class Kpi(models.TextChoices):
-        DSO = 'dso', 'DSO (délai moyen de recouvrement, jours)'
         ENCOURS_ECHU_TOTAL = 'encours_echu_total', 'Encours client échu total (MAD)'
         VALEUR_STOCK_TOTALE = 'valeur_stock_totale', 'Valeur de stock totale (MAD)'
-        # NTLOG51 (volet douane) — Σ jours entre l'entrée en DUM_DEPOSEE et
-        # l'entrée en LEVE des ``douane.DossierExport`` CLÔTURÉS du mois
-        # (``apps.douane.selectors.delai_moyen_dedouanement``, lu depuis la
-        # trace d'audit générique — aucune nouvelle table). Volet transport
-        # (« Coût transport / kg », « Taux de litiges transport ») NON
-        # ajouté ici — hors périmètre de la lane douane (lane concurrente
-        # sur ce même fichier, voir docs/plans/PLAN_SUPPLY.md NTLOG51).
-        DELAI_MOYEN_DEDOUANEMENT = (
-            'delai_moyen_dedouanement', 'Délai moyen de dédouanement (jours)')
-        # NTSCM46 — taux de service supply chain (NTSCM28 : % de SKU sous
-        # politique de stock qui ne sont PAS en rupture/à commander, voir
-        # ``apps.scm.selectors.tableau_bord_executif``). Volet des 3 AUTRES
-        # métriques NTSCM28 (OTIF pondéré, MAPE global, valeur de stock par
-        # classe ABC) HORS PÉRIMÈTRE de cette entrée : un seuil KpiAlerte
-        # (nombre unique + opérateur) ne modélise qu'UNE métrique scalaire à
-        # la fois — les 3 autres restent consultables via le tableau de bord
-        # SCM exécutif natif (``/scm/dashboard``), pas dupliquées ici.
-        TAUX_SERVICE_SCM = (
-            'taux_service_scm', 'Supply chain — taux de service (%)')
-        # NTJUR48 — KPI juridiques (``apps.juridique.selectors.
-        # kpis_juridiques``, lu SANS importer aucun modèle juridique). Ils
-        # EXCLUENT toujours les dossiers confidentiels des agrégats visibles à
-        # un rôle non autorisé (cohérent avec NTJUR24) : le filtrage vit dans
-        # le sélecteur, pas dans l'appelant.
-        JURIDIQUE_DOSSIERS_OUVERTS = (
-            'juridique_dossiers_ouverts', 'Juridique — dossiers ouverts')
-        JURIDIQUE_MONTANT_EN_JEU_TOTAL = (
-            'juridique_montant_en_jeu_total',
-            'Juridique — montant total en jeu (MAD)')
-        JURIDIQUE_TAUX_GAIN = (
-            'juridique_taux_gain', 'Juridique — taux de gain (%)')
-        JURIDIQUE_DELAI_MOYEN_RESOLUTION = (
-            'juridique_delai_moyen_resolution',
-            'Juridique — délai moyen de résolution (jours)')
-        # NTCON34 — KPI du vertical BTP/EPC (``apps.btp_chantier.selectors.
-        # kpis_btp``, lu SANS importer aucun modèle de cette app). Chaque
-        # valeur réutilise un sélecteur EXISTANT (NTCON1/2 réserves, NTCON3/4
-        # RFI en retard, NTCON5 visas, NTCON15 pénalités par lot) — aucune
-        # seconde formule. Une société sans objet BTP renvoie ``None`` (KPI
-        # ignoré) plutôt qu'un 0 qui affirmerait « rien en retard ».
-        BTP_RESERVES_OUVERTES = (
-            'btp_reserves_ouvertes', 'BTP — réserves ouvertes')
-        BTP_RFI_EN_RETARD = (
-            'btp_rfi_en_retard', 'BTP — RFI en retard de réponse')
-        BTP_VISAS_EN_ATTENTE = (
-            'btp_visas_en_attente', 'BTP — visas en attente de revue')
-        BTP_PENALITES_CUMULEES_PERIODE = (
-            'btp_penalites_cumulees_periode',
-            'BTP — exposition cumulée aux pénalités de retard (MAD)')
         # NTI18N52 — KPI i18n (``apps.reporting.i18n_kpi``, sélecteur dédié
         # qui n'importe aucun modèle métier). `couverture_i18n_pct` lit le
         # dernier ``core.I18nCoverageSnapshot`` (job Beat hebdo NTI18N39) —

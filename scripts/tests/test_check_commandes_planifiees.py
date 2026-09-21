@@ -116,17 +116,19 @@ class BeatTests(unittest.TestCase):
 class DepotReelTests(unittest.TestCase):
     """Le garde tourne sur le VRAI dépôt : il doit être vert (toute commande
     « cron/beat » non planifiée est soit planifiée, soit dans la base de
-    référence) — et les huit balayages d'AUD231 doivent être planifiés."""
+    référence) — et les balayages d'AUD231 qui survivent au Groupe SOLMVP
+    doivent être planifiés."""
 
-    HUIT_AUD231 = (
+    # AUD231 en nommait HUIT ; cinq ont disparu avec leur app (SOLMVP42,
+    # 2026-09-21) : `pos.liberer_reservations_expirees` (pos parqué) et les
+    # trois `gestion_projet.*`/`btp_chantier.alertes_rfi_retard`
+    # (gestion_projet/btp_chantier parqués) — la commande elle-même n'existe
+    # plus, ce n'est plus « non planifiée », c'est « inexistante ». Les trois
+    # restants appartiennent à des apps gardées.
+    TROIS_AUD231_RESTANTS = (
         'stock.generer_comptages_tournants',
         'stock.liberer_vagues_planifiees',
-        'pos.liberer_reservations_expirees',
         'installations.generer_interventions_recurrentes',
-        'gestion_projet.generer_taches_recurrentes',
-        'gestion_projet.alertes_retards_projets',
-        'gestion_projet.rappels_timesheets',
-        'btp_chantier.alertes_rfi_retard',
     )
 
     def test_le_garde_est_vert_sur_le_depot(self):
@@ -134,12 +136,12 @@ class DepotReelTests(unittest.TestCase):
 
     def test_les_huit_balayages_aud231_sont_planifies(self):
         planifiees = gard.taches_planifiees()
-        for nom in self.HUIT_AUD231:
+        for nom in self.TROIS_AUD231_RESTANTS:
             self.assertIn(nom, planifiees, f'{nom} absent du beat_schedule')
 
     def test_aucun_des_huit_ne_reste_en_base_de_reference(self):
         baseline = gard._lire_baseline()
-        for nom in self.HUIT_AUD231:
+        for nom in self.TROIS_AUD231_RESTANTS:
             self.assertNotIn(nom, baseline)
 
     def test_la_base_de_reference_ne_contient_que_du_reel(self):

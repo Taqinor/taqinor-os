@@ -1,14 +1,28 @@
 """
-NTP2P4 — Budget d'engagement par département avec blocage dur.
+NTP2P4 — Budget d'engagement d'achats avec blocage dur.
 
 CRITÈRE D'ACCEPTATION : soumettre une demande d'achat qui dépasse le budget
-restant du département est REJETÉE (400) tant qu'aucune dérogation n'est
+restant de la société est REJETÉE (400) tant qu'aucune dérogation n'est
 approuvée (règle d'approbation ``autorise_depassement_budget``, NTP2P2).
 
 Couvre aussi : le no-op total quand l'interrupteur est OFF (défaut =
 comportement historique), la résolution mensuel > annuel, la consommation
 (engagé / réalisé / restant), la libération sur refus, la consommation à
 l'émission du BCF, et le scope société.
+
+SOLMVP12 (20/09/2026) — la distinction PAR DÉPARTEMENT a été retirée (elle
+référençait le module RH, détaché de stock) : une seule enveloppe par
+société et par période.
+
+SOLMVP-sweep (2026-09-21) — les fixtures RH (``make_departement``/
+``rattacher``, ``apps.get_model('rh', …)``) sont retirées de ce module :
+apps.rh est lui-même sorti du MVP solaire (Groupe SOLMVP, en cours de mise en
+coquille par la lane SOLMVP30b), donc plus aucun modèle RH à rattacher. Le
+test ``test_sans_departement_aucun_controle`` (qui contrastait un demandeur
+AVEC vs SANS dossier RH) est retiré avec elles — ce contraste n'a plus de
+sens une fois qu'aucun demandeur ne porte de dossier RH. Le contrôle
+budgétaire lui-même reste par SOCIÉTÉ (SOLMVP12 ci-dessus), donc les autres
+tests sont inchangés dans leur fond.
 
 Run :
     python manage.py test apps.stock.test_ntp2p4_budget_departement -v2
@@ -56,20 +70,6 @@ def auth(user):
     return api
 
 
-def make_departement(company, nom='Achats'):
-    from apps.rh.models import Departement
-    return Departement.objects.create(company=company, nom=nom)
-
-
-def rattacher(company, user, departement):
-    """Crée le dossier employé qui rattache l'utilisateur au département."""
-    from apps.rh.models import DossierEmploye
-    return DossierEmploye.objects.create(
-        company=company, user=user, departement=departement,
-        matricule=f'M{next(_seq):04d}', nom=f'Employe{next(_seq)}',
-        prenom='Test')
-
-
 def make_demande(company, user, *, montant):
     da = DemandeAchat.objects.create(
         company=company, reference=f'DA-BUD-{next(_seq):04d}',
@@ -86,10 +86,8 @@ class BudgetInactifTests(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.api = auth(self.user)
-        self.dept = make_departement(self.company)
-        rattacher(self.company, self.user, self.dept)
         BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=timezone.localdate().year, montant_alloue=1000)
 
@@ -114,13 +112,11 @@ class BudgetActifTests(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.api = auth(self.user)
-        self.dept = make_departement(self.company)
-        rattacher(self.company, self.user, self.dept)
         params = AchatsParametres.for_company(self.company)
         params.budget_departement_actif = True
         params.save(update_fields=['budget_departement_actif'])
         self.budget = BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=timezone.localdate().year, montant_alloue=10000)
 
@@ -182,22 +178,6 @@ class BudgetActifTests(TestCase):
         self.assertEqual(
             EngagementBudget.objects.filter(demande_achat=da).count(), 1)
 
-    def test_sans_departement_aucun_controle(self):
-        """Un demandeur sans dossier RH n'est jamais bloqué (no-op)."""
-        orphelin = make_user(self.company)
-        da = make_demande(self.company, orphelin, montant=99999)
-        resp = auth(orphelin).post(
-            f'{BASE}/demandes-achat/{da.pk}/soumettre/')
-        self.assertEqual(resp.status_code, 200)
-
-    def test_departement_sans_budget_aucun_controle(self):
-        autre_dept = make_departement(self.company, nom='Technique')
-        user = make_user(self.company)
-        rattacher(self.company, user, autre_dept)
-        da = make_demande(self.company, user, montant=99999)
-        resp = auth(user).post(f'{BASE}/demandes-achat/{da.pk}/soumettre/')
-        self.assertEqual(resp.status_code, 200)
-
 
 class ResolutionEtConsommationTests(TestCase):
 
@@ -205,26 +185,24 @@ class ResolutionEtConsommationTests(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.api = auth(self.user)
-        self.dept = make_departement(self.company)
         self.annee = timezone.localdate().year
         self.mois = timezone.localdate().month
 
     def test_budget_mensuel_prime_sur_annuel(self):
         BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=self.annee, montant_alloue=100000)
         mensuel = BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.MENSUELLE,
             annee=self.annee, mois=self.mois, montant_alloue=5000)
-        resolu = stock_selectors.resoudre_budget_departement(
-            self.company, self.dept.pk)
+        resolu = stock_selectors.resoudre_budget_departement(self.company)
         self.assertEqual(resolu.pk, mensuel.pk)
 
     def test_consommation_engage_realise_restant(self):
         budget = BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=self.annee, montant_alloue=10000)
         EngagementBudget.objects.create(
@@ -244,7 +222,7 @@ class ResolutionEtConsommationTests(TestCase):
 
     def test_endpoint_consommation(self):
         budget = BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=self.annee, montant_alloue=8000)
         EngagementBudget.objects.create(
@@ -262,11 +240,11 @@ class ResolutionEtConsommationTests(TestCase):
         params.budget_departement_actif = True
         params.save(update_fields=['budget_departement_actif'])
         BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=self.annee, montant_alloue=4000)
         resp = self.api.get(f'{STOCK}/budgets-departement/disponible/', {
-            'departement': self.dept.pk, 'montant': '5000'})
+            'montant': '5000'})
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.data['controle_actif'])
         self.assertFalse(resp.data['suffisant'])
@@ -275,13 +253,12 @@ class ResolutionEtConsommationTests(TestCase):
 
     def test_scope_societe_sur_les_budgets(self):
         autre = make_company()
-        dept_autre = make_departement(autre)
         BudgetDepartement.objects.create(
-            company=autre, departement=dept_autre,
+            company=autre,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=self.annee, montant_alloue=1)
         BudgetDepartement.objects.create(
-            company=self.company, departement=self.dept,
+            company=self.company,
             periodicite=BudgetDepartement.Periodicite.ANNUELLE,
             annee=self.annee, montant_alloue=2)
         resp = self.api.get(f'{STOCK}/budgets-departement/')
@@ -292,7 +269,7 @@ class ResolutionEtConsommationTests(TestCase):
     def test_company_du_corps_ignoree(self):
         autre = make_company()
         resp = self.api.post(f'{STOCK}/budgets-departement/', {
-            'departement': self.dept.pk, 'periodicite': 'annuelle',
+            'periodicite': 'annuelle',
             'annee': self.annee, 'mois': 0, 'montant_alloue': '500.00',
             'company': autre.pk,
         }, format='json')
@@ -300,18 +277,9 @@ class ResolutionEtConsommationTests(TestCase):
         budget = BudgetDepartement.objects.get(pk=resp.data['id'])
         self.assertEqual(budget.company_id, self.company.id)
 
-    def test_departement_dune_autre_societe_rejete(self):
-        autre = make_company()
-        dept_autre = make_departement(autre)
-        resp = self.api.post(f'{STOCK}/budgets-departement/', {
-            'departement': dept_autre.pk, 'periodicite': 'annuelle',
-            'annee': self.annee, 'mois': 0, 'montant_alloue': '500.00',
-        }, format='json')
-        self.assertEqual(resp.status_code, 400)
-
     def test_budget_mensuel_exige_un_mois(self):
         resp = self.api.post(f'{STOCK}/budgets-departement/', {
-            'departement': self.dept.pk, 'periodicite': 'mensuelle',
+            'periodicite': 'mensuelle',
             'annee': self.annee, 'mois': 0, 'montant_alloue': '500.00',
         }, format='json')
         self.assertEqual(resp.status_code, 400)

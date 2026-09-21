@@ -464,7 +464,14 @@ class DepotReelTests(unittest.TestCase):
         # 800 -> 500 : les batches 2-3 du même drain (12/09/2026) ont coché
         # ~290 tâches de plus (corpus 659 aujourd'hui) — le plancher garde son
         # rôle anti-extraction-cassée sans punir la livraison.
-        self.assertGreater(stats["taches"], 500)
+        # 500 -> 100 : SOLMVP50 (2026-09-20) a déplacé verbatim les six
+        # fichiers domaine docs/plans/PLAN_{SERVICE,DOCS_JURIDIQUE,RH_PAIE,
+        # FINANCE,SUPPLY,VERTICALS}.md + le groupe VAO (PLAN2) + XACC/XPOS/XKB
+        # + ODX14/20/22 + YCASH5 (PLAN.md) + NTAI/NTMIG (new_tasks_plan.md)
+        # vers docs/backlog/PHASE2_PLAN.md (sortie MVP solaire, hors de tous
+        # les globs de plan par design) — corpus réel 153 tâches aujourd'hui.
+        # Même logique : une extraction cassée rendrait ~0.
+        self.assertGreater(stats["taches"], 100)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).
         # 150 -> 100 : le lot du 13/08/2026 en a coché 52 de plus (142
@@ -473,7 +480,12 @@ class DepotReelTests(unittest.TestCase):
         # 100 -> 60 : le parcage solaire du 2026-09-02 a déménagé 136 tâches
         # non-solaires vers docs/backlog/FULL_SAAS_PLAN.md (corpus 95
         # aujourd'hui) — même logique : une extraction cassée rendrait ~0.
-        self.assertGreater(stats["f1_candidates"], 60)
+        # 60 -> 2 : SOLMVP50 (2026-09-20, même parcage que ci-dessus) a
+        # déménagé la quasi-totalité des tâches créatrices d'écran restantes
+        # (corpus réel 6 aujourd'hui). Le canari perd presque tout son pouvoir
+        # discriminant comme `f1_conformes` avant lui — conservé positif de
+        # justesse pour distinguer encore d'une extraction cassée (0).
+        self.assertGreater(stats["f1_candidates"], 2)
         # 80 -> 25 -> 0. ATTENTION : ce plancher a PERDU son pouvoir
         # discriminant et ne doit plus être lu comme une canari. Il ne compte
         # que les tâches NON COCHÉES qui CRÉENT un écran avec montage +

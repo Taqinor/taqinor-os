@@ -83,16 +83,6 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
         return [IsResponsableOrAdmin()]
 
     @staticmethod
-    def _guard_periode_verrouillee(document):
-        """YLEDG3 — même garde que FactureViewSet : refuse (400) une mutation
-        d'un avoir daté dans une période comptable CLÔTURÉE. AUD122 — la
-        copie locale a laissé place à la fonction PARTAGÉE
-        ``utils.periode.guard_periode_verrouillee`` (comportement identique,
-        no-op silencieux si compta est absente)."""
-        from ..utils.periode import guard_periode_verrouillee
-        guard_periode_verrouillee(document)
-
-    @staticmethod
     def _trace_contre_passation(avoir):
         """AUD127 — retrouve la trace ZFAC5 qui a annulé la facture d'origine
         POUR CET AVOIR.
@@ -137,7 +127,6 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
             # Idempotence : rien à annuler, aucun événement ré-émis (une
             # seconde extourne doublerait le grand livre).
             return Response(AvoirSerializer(avoir).data)
-        self._guard_periode_verrouillee(avoir)
 
         from core.events import avoir_annule
 

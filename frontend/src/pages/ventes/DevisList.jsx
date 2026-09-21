@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
   Copy, Send, X, Eye, Search, AlertTriangle, Box, ExternalLink,
-  Link2, FolderKanban, MoreHorizontal, Printer, Bell, Share2,
+  Link2, MoreHorizontal, Printer, Bell, Share2,
   LayoutList, LayoutGrid,
 } from 'lucide-react'
 import {
@@ -14,7 +14,6 @@ import {
 } from '../../features/ventes/store/ventesSlice'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
-import gestionProjetApi from '../../api/gestionProjetApi'
 import crmApi from '../../api/crmApi'
 import importApi from '../../api/importApi'
 import DevisForm from './DevisForm'
@@ -75,7 +74,7 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import DealSignedCelebration from '../../ui/DealSignedCelebration'
 import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
-// WIR96 — panneau « Suivi du partage » (ouvertures du lien + relances).
+// ANALYT1 — panneau « Lecture par le client » (visites par section + friction).
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 // PV43 — panneau « Conception électrique » (chaînes/conformité/schéma/surcharges).
 import ConceptionElectrique from '../../features/ventes/ConceptionElectrique'
@@ -87,14 +86,6 @@ import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
 // APX14 — aperçu PDF INLINE (panneau latéral) : plus d'onglet à quitter.
 import PdfPreviewSheet from '../../features/ventes/PdfPreviewSheet'
-// WIR188/NTCRD11 — bannière d'alerte crédit, alimentée par le
-// `credit_warning` que l'acceptation renvoie (WIR187). Elle ne rend RIEN
-// en mode « aucun » : aucun bruit quand il n'y a rien à dire.
-import CreditWarningBanner from '../../features/credit/CreditWarningBanner'
-// WIR189/NTCRD23 — pastille d'état crédit à côté du nom client (batch,
-// UN appel par page de liste). Le client API vit dans creditApi.
-import CreditBadge from '../../features/credit/CreditBadge'
-import creditApi from '../../api/creditApi'
 // APX15 — le VRAI board Ventes : les devis par statut DOCUMENT (règle #4).
 import DevisKanbanBoard from './DevisKanbanBoard'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
@@ -437,20 +428,20 @@ function DevisRow({ d, ctx }) {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     // WIR274 - composeur de note manuelle sur le panneau Historique.
     peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
-    suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    suiviOpenId, toggleSuiviPartage,
     lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleCreerProjet, handleGenererFacture,
+    handleChantier, handleGenererFacture,
   } = ctx
   // NTI18N12 — calendrier hégirien EN PLUS de la date grégorienne (jamais en
   // remplacement, jamais stocké) : uniquement quand locale=ar ET la
@@ -683,10 +674,6 @@ function DevisRow({ d, ctx }) {
         {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
             plein + poids medium), il ressort du chrome désaturé environnant. */}
         <span className="inline-flex items-center gap-1.5">
-          {/* WIR189/NTCRD23 — pastille d'état crédit. La couleur vient du batch
-              chargé UNE fois pour la page (ctx.creditBadges) ; absente (403,
-              module crédit non autorisé, ou réponse vide) → rien du tout. */}
-          <CreditBadge couleur={ctx.creditBadges?.[d.client]} />
           <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
         </span>
         {d.lead && (
@@ -1057,16 +1044,6 @@ function DevisRow({ d, ctx }) {
                   {d.chantier ? `Voir le chantier ${d.chantier.reference}` : 'Créer le chantier'}
                 </DropdownMenuItem>
               )}
-              {/* XPRJ21 — Créer un projet (gestion de projet) depuis ce devis accepté. */}
-              {d.statut === 'accepte' && (
-                <DropdownMenuItem
-                  disabled={projetBusy === d.id}
-                  onSelect={() => handleCreerProjet(d)}
-                >
-                  <FolderKanban className="size-3.5" aria-hidden="true" />
-                  Créer projet
-                </DropdownMenuItem>
-              )}
               {/* VX97 — journal des changements (qui/quand/ancien→nouveau),
                   section repliable ; distinct de la chaîne de versions. */}
               <DropdownMenuItem onSelect={() => toggleHistorique(d.id)}>
@@ -1084,10 +1061,10 @@ function DevisRow({ d, ctx }) {
                   Bon de commande (PDF)
                 </DropdownMenuItem>
               )}
-              {/* WIR96 — suivi du partage : « vu le … » (OuverturePartage)
-                  + relances consignées (RelanceDevisAbandonne). */}
+              {/* ANALYT1 — lecture par le client (visites par section de la
+                  proposition web + alerte de friction). */}
               <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
-                {suiviOpenId === d.id ? 'Masquer le suivi du partage' : 'Suivi du partage'}
+                {suiviOpenId === d.id ? 'Masquer la lecture par le client' : 'Lecture par le client'}
               </DropdownMenuItem>
               {/* PV43 — étude électrique agrégée (chaînes/conformité/schéma
                   unifilaire/surcharges DC-AC-phases), calculée depuis les
@@ -1300,18 +1277,16 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
-    {/* WIR96 — Panneau « Suivi du partage » : ouverture du lien de
-        proposition + relances consignées côté marketing. */}
+    {/* ANALYT1 — Panneau « Lecture par le client » (visites par section de
+        la proposition web + alerte de friction). */}
     {suiviOpenId === d.id && (
       <tr>
         <td colSpan={8} className="bg-muted/30">
           <div className="px-3 py-2">
             <p className="mb-1 text-xs font-medium text-muted-foreground">
-              Suivi du partage — {d.reference}
+              Lecture par le client — {d.reference}
             </p>
             <DevisSuiviPartagePanel
-              data={suiviCache[d.id]}
-              loading={suiviLoadingId === d.id}
               lectureClient={canSeeLectureClient ? lectureClientCache[d.id] : undefined}
             />
           </div>
@@ -1605,30 +1580,16 @@ export default function DevisList() {
     }
   }
 
-  // WIR96 — Panneau « Suivi du partage » : ouverture du lien de proposition
-  // (marketing.OuverturePartage, « vu le … ») + relances consignées
-  // (marketing.RelanceDevisAbandonne). Même patron repliable que l'historique.
+  // ANALYT1 — panneau « Lecture par le client » : id → {sections, friction}
+  // (voir DevisSuiviPartagePanel). N'est chargé QUE pour un rôle responsable/
+  // admin (canSeeLectureClient) — un rôle sans ce droit n'émet même pas
+  // l'appel (qui recevrait de toute façon 403 côté serveur). Même patron
+  // repliable que l'historique.
   const [suiviOpenId, setSuiviOpenId] = useState(null)
-  const [suiviCache, setSuiviCache] = useState({})   // id → {ouverture, relances}
-  const [suiviLoadingId, setSuiviLoadingId] = useState(null)
-  // ANALYT1 (audit item 64) — même panneau, même patron de cache-au-premier-
-  // clic que suiviCache ci-dessus ; id → {sections, friction} (voir
-  // DevisSuiviPartagePanel). N'est chargé QUE pour un rôle responsable/admin
-  // (canSeeLectureClient) — un rôle sans ce droit n'émet même pas l'appel
-  // (qui recevrait de toute façon 403 côté serveur).
   const [lectureClientCache, setLectureClientCache] = useState({})
   const toggleSuiviPartage = (id) => {
     if (suiviOpenId === id) { setSuiviOpenId(null); return }
     setSuiviOpenId(id)
-    if (suiviCache[id] === undefined) {
-      setSuiviLoadingId(id)
-      ventesApi.getSuiviPartageDevis(id)
-        .then(res => setSuiviCache(c => ({ ...c, [id]: res.data || null })))
-        .catch(() => setSuiviCache(c => ({ ...c, [id]: null })))
-        .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
-    }
-    // ANALYT1 — appel SÉPARÉ, uniquement pour un rôle responsable/admin
-    // (jamais tenté sinon — la garde serveur le refuserait de toute façon).
     if (canSeeLectureClient && lectureClientCache[id] === undefined) {
       ventesApi.getLectureClientDevis(id)
         .then(res => setLectureClientCache(c => ({ ...c, [id]: res.data || null })))
@@ -1720,10 +1681,6 @@ export default function DevisList() {
   const [acceptDate, setAcceptDate] = useState('')
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
-  // WIR188 — avertissement crédit renvoyé par l'acceptation (WIR187). Tant
-  // qu'il est posé, la modale RESTE OUVERTE : le vendeur doit l'avoir vu (et
-  // pouvoir demander une dérogation) avant que l'écran passe à la suite.
-  const [acceptCreditWarning, setAcceptCreditWarning] = useState(null)
   // VX155 — carte de victoire (montant réel ; pas de kWc ici, la vue liste ne
   // porte pas les lignes du devis — jamais un chiffre inventé).
   const [dealCelebration, setDealCelebration] = useState(null)
@@ -1829,7 +1786,6 @@ export default function DevisList() {
     setAcceptDate(new Date().toISOString().slice(0, 10))
     setAcceptOption('sans_batterie')
     setAcceptBusy(false)
-    setAcceptCreditWarning(null)
   }
 
   // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
@@ -1928,31 +1884,6 @@ export default function DevisList() {
     const thunk = dispatch(fetchDevis())
     return () => thunk?.abort?.()
   }, [dispatch])
-
-  // ── WIR189/NTCRD23 — pastilles d'état crédit ────────────────────────────
-  // UN SEUL appel batch pour toute la page (`getBadges(ids)`), jamais un appel
-  // par ligne : la clé est la liste TRIÉE et DÉDUPLIQUÉE des ids clients, donc
-  // un simple re-rendu (filtre, recherche, tri) ne relance rien.
-  // Dégradation SILENCIEUSE : 403 (le vendeur n'a pas le module crédit) ou
-  // réponse vide → aucune pastille, aucun toast, aucune trace d'erreur.
-  const [creditBadges, setCreditBadges] = useState({})
-  const clientIdsKey = useMemo(() => (
-    [...new Set(devis.map(d => d.client).filter(v => v != null))]
-      .sort((a, b) => Number(a) - Number(b))
-      .join(',')
-  ), [devis])
-  useEffect(() => {
-    if (!clientIdsKey) return undefined
-    let annule = false
-    creditApi.getBadges(clientIdsKey.split(','))
-      .then((res) => {
-        if (annule) return
-        const data = res?.data
-        setCreditBadges(data && typeof data === 'object' && !Array.isArray(data) ? data : {})
-      })
-      .catch(() => { if (!annule) setCreditBadges({}) })
-    return () => { annule = true }
-  }, [clientIdsKey])
 
   // QX12 — une fois les devis chargés, fait défiler jusqu'à la ligne ciblée par
   // ?devis=<pk> et efface le paramètre après un court délai (la surbrillance
@@ -2265,22 +2196,12 @@ export default function DevisList() {
     if (!d) return
     setAcceptBusy(true)
     try {
-      const res = await ventesApi.accepterDevis(d.id, {
+      await ventesApi.accepterDevis(d.id, {
         nom: acceptNom,
         date: acceptDate,
         option: d.nb_options === 2 ? acceptOption : '',
       })
       dispatch(fetchDevis())
-      // WIR188 — la réponse porte l'état crédit du client (WIR187). Hors mode
-      // « aucun », la modale RESTE OUVERTE sur la bannière : le vendeur doit
-      // l'avoir vue, et peut demander une dérogation sans quitter l'écran.
-      // Le devis est DÉJÀ accepté (le refus dur, lui, aurait renvoyé un 403
-      // avant d'arriver ici) — la bannière informe, elle ne bloque pas.
-      const avertissement = res?.data?.credit_warning
-      if (avertissement && avertissement.mode && avertissement.mode !== 'aucun') {
-        setAcceptCreditWarning(avertissement)
-        return
-      }
       setAcceptTarget(null)
       // VX40/VX155 — le SEUL moment célébré de l'app : devis envoyé→accepté
       // (rare, lié au revenu). La carte de victoire remplace le toast plat
@@ -2348,24 +2269,6 @@ export default function DevisList() {
       toast.error(frenchError(err, 'Création du chantier impossible.'))
     } finally {
       setChantierBusy(null)
-    }
-  }
-
-  // XPRJ21 — « Créer un projet » depuis un devis accepté : action utilisateur
-  // explicite (jamais automatique sur devis_accepted — le chantier auto
-  // existe déjà côté installations). Crée le Projet + son lien + un budget v1
-  // pré-ventilé depuis les lignes du devis, puis navigue vers le module Projets.
-  const [projetBusy, setProjetBusy] = useState(null)
-  const handleCreerProjet = async (d) => {
-    setProjetBusy(d.id)
-    try {
-      const res = await gestionProjetApi.creerProjetDepuisDevis(d.id)
-      toast.success(`Projet ${res.data.code} créé.`)
-      navigate(`/projets/${res.data.id}`)
-    } catch (err) {
-      toast.error(frenchError(err, 'Création du projet impossible.'))
-    } finally {
-      setProjetBusy(null)
     }
   }
 
@@ -2704,23 +2607,21 @@ export default function DevisList() {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     // WIR274 - composeur de note manuelle sur le panneau Historique.
     peutNoter, noteBrouillon, ecrireNote, publierNote, noteBusyId,
-    suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    suiviOpenId, toggleSuiviPartage,
     lectureClientCache, canSeeLectureClient,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
     effStatutOf,
-    // WIR189 — { client_id: 'vert'|'orange'|'rouge' } chargé en UN batch.
-    creditBadges,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
-    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, projetBusy, factureGenId,
+    pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, factureGenId,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
     handleProformaPdf, handleBonCommandePdf,
-    handleChantier, handleCreerProjet, handleGenererFacture,
+    handleChantier, handleGenererFacture,
   }
 
   // ── ARC49 — Rangée d'en-tête du tableau (8 colonnes), partagée par le cas
@@ -2993,24 +2894,7 @@ export default function DevisList() {
         open={!!acceptTarget}
         onOpenChange={(o) => { if (!o) setAcceptTarget(null) }}
         title={`Accepter le devis — ${acceptTarget?.reference ?? ''}`}
-        footer={acceptCreditWarning ? (
-          // WIR188 — après l'acceptation, la modale ne montre plus que la
-          // bannière : un seul bouton, qui clôt et enchaîne sur la célébration.
-          <Button onClick={() => {
-            const d = acceptTarget
-            setAcceptCreditWarning(null)
-            setAcceptTarget(null)
-            if (d) {
-              setDealCelebration({
-                reference: d.reference,
-                montantTtc: parseFloat(d.total_affiche ?? d.total_ttc) || 0,
-                kwc: null,
-              })
-            }
-          }}>
-            J'ai compris
-          </Button>
-        ) : (
+        footer={(
           <>
             <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
             <Button onClick={submitAccept} loading={acceptBusy}>
@@ -3019,14 +2903,6 @@ export default function DevisList() {
           </>
         )}
       >
-          {acceptCreditWarning ? (
-            <CreditWarningBanner
-              warning={acceptCreditWarning}
-              clientId={acceptTarget?.client}
-              montant={acceptTarget?.total_affiche ?? acceptTarget?.total_ttc}
-              devisId={acceptTarget?.id}
-            />
-          ) : (
           <div className="flex flex-col gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
@@ -3055,7 +2931,6 @@ export default function DevisList() {
               </div>
             )}
           </div>
-          )}
       </ResponsiveDialog>
 
       {/* APX14 — l'aperçu du PDF de proposition, INLINE. Même source

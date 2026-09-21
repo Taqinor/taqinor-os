@@ -46,10 +46,6 @@ class TestODX12Relocation(TestCase):
             ComptePortailClient, AcceptationDevisPortail,
             PaiementFacturePortail, DocumentClientPortail,
             JalonChantierPortail, DemandeTicketPortail)
-        from apps.compta.models import (
-            ComptePortailClient as ComptaShimCompte)
-        # Le shim compta ré-exporte EXACTEMENT la même classe (ODX22 le retirera).
-        self.assertIs(ComptePortailClient, ComptaShimCompte)
         expected = {
             ComptePortailClient: 'compta_compteportailclient',
             AcceptationDevisPortail: 'compta_acceptationdevisportail',

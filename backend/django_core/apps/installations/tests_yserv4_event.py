@@ -2,8 +2,8 @@
 chantier atteint le statut canonique RECEPTIONNE : ``PATCH .../chantiers/<id>/``
 (``perform_update``) et l'action ``mise-en-service`` (qui se rabat sur
 RECEPTIONNE). Émis exactement une fois par franchissement (jamais au
-re-passage) — ``apps.compta`` s'y abonne pour créer l'enquête NPS (test dédié
-côté compta) ; ici on vérifie uniquement le CONTRAT d'émission côté
+re-passage) — un abonné externe peut s'y abonner (ex. pour créer une enquête
+de satisfaction) ; ici on vérifie uniquement le CONTRAT d'émission côté
 ``installations`` avec un récepteur de test jetable.
 
 Run :

@@ -2605,15 +2605,11 @@ def _next_balanced_round_robin_commercial(company, plafond):
 def default_responsable_for(company, lead_attrs=None):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
-    NTCRM1 — quand ``lead_attrs`` (dict brut : ville/type_installation/
-    montant_estime/canal — le lead n'existe pas encore à ce stade) est fourni,
-    le moteur de territoires (``apps.territoires``) est consulté EN PREMIER :
-    si au moins un territoire actif matche, son membre résolu par rotation
-    l'emporte. Sinon (aucun territoire ne matche, ``lead_attrs`` absent, ou
-    l'app territoires échoue) — repli sur le comportement round-robin XSAL11
-    ci-dessous, STRICTEMENT inchangé. ``lead_attrs=None`` (défaut) est donc
-    byte-identique au comportement pré-NTCRM1 pour tout appelant existant qui
-    ne le passe pas.
+    NTCRM1 — le moteur de territoires (module ``territoires``) qui consultait
+    ``lead_attrs`` (dict brut : ville/type_installation/montant_estime/canal)
+    EN PREMIER a été retiré (SOLMVP10, app sortie) : le comportement round-
+    robin XSAL11 ci-dessous — déjà le repli historique — est désormais le
+    SEUL chemin, ``lead_attrs`` n'étant plus consulté.
 
     XSAL11 — quand ``CompanyProfile.round_robin_leads_actif`` est ON, la
     rotation ÉQUILIBRÉE (en sautant les commerciaux saturés — plafond
@@ -2627,16 +2623,6 @@ def default_responsable_for(company, lead_attrs=None):
     """
     if company is None:
         return None
-    if lead_attrs is not None:
-        try:
-            from apps.territoires.services import resoudre_owner_pour_attrs
-            territoire_owner = resoudre_owner_pour_attrs(company, lead_attrs)
-            if territoire_owner is not None:
-                return territoire_owner
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            logger.warning(
-                'NTCRM1: résolution territoire échouée, repli round-robin',
-                exc_info=True)
     from apps.parametres.models import CompanyProfile
     profile = CompanyProfile.objects.filter(company=company).first()
     explicit = profile.responsable_defaut_leads if profile else None
@@ -3196,22 +3182,10 @@ def maybe_assign_mql(lead) -> bool:
         if not seuil:
             return False
         if (lead.score or 0) < seuil:
-            # NTMKT18 — additif : le seuil peut AUSSI se déclencher sur le
-            # score de maturité marketing (jamais sur le score de qualité
-            # QJ6 lui-même, jamais lu si le paramètre société marketing est
-            # resté désactivé — comportement actuel inchangé par défaut).
-            # Best-effort : une erreur côté marketing ne bloque jamais XMKT21.
-            maturite_ok = False
-            try:
-                from apps.marketing import selectors as marketing_selectors
-                if marketing_selectors.maturite_active_pour_mql(lead.company):
-                    maturite_ok = (
-                        marketing_selectors.score_maturite_valeur(
-                            lead.company, lead.pk) >= seuil)
-            except Exception:
-                maturite_ok = False
-            if not maturite_ok:
-                return False
+            # NTMKT18 — le module marketing (score de maturité additif) est
+            # SORTI (SOLMVP10) : seul le score de qualité QJ6 déclenche
+            # désormais le seuil, comportement pré-NTMKT18.
+            return False
 
         assignee = None
         if not lead.owner_id:
@@ -4541,9 +4515,9 @@ def noter_touche_marketing(lead, message, *, ordre=0, cout=None):
     """XMKT16 — Consigne un événement marketing significatif (envoi/ouverture/
     clic de campagne, étape de séquence exécutée, réponse WhatsApp entrante)
     dans le chatter du lead (``LeadActivity``) + le journal d'attribution
-    multi-touch FG204 (``PointContact``). Appelé par ``apps.compta`` — jamais
-    d'import du modèle CRM depuis compta, ce point d'entrée reste dans
-    ``apps.crm.services`` comme toutes les écritures cross-app.
+    multi-touch FG204 (``PointContact``). Appelé par le module marketing de
+    compta — jamais d'import du modèle CRM depuis compta, ce point d'entrée
+    reste dans ``apps.crm.services`` comme toutes les écritures cross-app.
 
     Le canal réutilise ``Lead.Canal.AUTRE`` (aucun nouveau vocabulaire de
     canal n'est inventé) ; ``message`` porte le libellé lisible de
@@ -6167,10 +6141,10 @@ def enregistrer_consentements_intake_web(lead):
 
 
 # ── XMKT19 — Actions CRM exécutables depuis une étape de séquence ──────────
-# Point d'entrée UNIQUE pour qu'une ``EtapeSequence`` (apps.compta) exécute
-# une action CRM au lieu d'un message — jamais d'import direct du modèle
-# crm depuis compta ; chaque fonction journalise le chatter (``LeadActivity``)
-# via ``activity``, jamais silencieuse.
+# Point d'entrée UNIQUE pour qu'une ``EtapeSequence`` (module marketing de
+# compta) exécute une action CRM au lieu d'un message — jamais d'import
+# direct du modèle crm depuis compta ; chaque fonction journalise le chatter
+# (``LeadActivity``) via ``activity``, jamais silencieuse.
 
 def avancer_stage_lead_vers(lead, user, stage_cible):
     """XMKT19 — avance ``lead`` vers ``stage_cible`` (clé canonique
@@ -6260,9 +6234,10 @@ def creer_relance_lead(lead, user, *, relance_date, note=''):
 def create_lead_from_evenement_marketing(
         *, company, nom, telephone='', email='', evenement_nom='') -> Lead:
     """XMKT28 — Crée (ou dédupe sur) un lead dès qu'un inscrit à un
-    ``EvenementMarketing`` (apps.compta) est capturé. Même pattern que
-    ``create_lead_from_livechat`` (XMKT37) : dédup par téléphone/email dans
-    la société avant de créer, canal ``AUTRE``, stage NEW (défaut du champ).
+    ``EvenementMarketing`` (module marketing de compta) est capturé. Même
+    pattern que ``create_lead_from_livechat`` (XMKT37) : dédup par
+    téléphone/email dans la société avant de créer, canal ``AUTRE``, stage
+    NEW (défaut du champ).
     """
     nom = (nom or '').strip()[:255] or 'Prospect événement'
     telephone = (telephone or '').strip()[:20]
@@ -6509,7 +6484,7 @@ def get_or_create_parrainage_template(company, langue='fr'):
     """YSERV11 — renvoie (crée au premier usage) le ``MessageTemplate``
     « parrainage » de la société pour ``langue`` ('fr'|'darija').
 
-    Point d'entrée cross-app THIN (appelé par ``apps.compta`` au moment de
+    Point d'entrée cross-app THIN (appelé par compta au moment de
     l'enchantement NPS) : la clé template est posée additivement, idempotente
     par (company, nom), le corps reste éditable par l'admin — jamais écrasé.
     Langue inconnue → repli FR."""
@@ -8389,8 +8364,8 @@ def _journaliser_fusion_client(survivor, absorbed, user):
 def clients_par_ids(company, ids):
     """NTDATA18 — point d'entrée cross-app : les clients d'une société par id.
 
-    Utilisé par ``apps.dataquality`` pour charger un groupe de doublons AVANT
-    de demander la fusion — jamais un import de ``crm.models`` là-bas. Le
+    Utilisé par le module dataquality pour charger un groupe de doublons
+    AVANT de demander la fusion — jamais un import de ``crm.models`` là-bas. Le
     filtre société est POSÉ ICI : une autre app ne peut pas charger le client
     d'un autre tenant en passant un id deviné.
     """

@@ -382,15 +382,14 @@ class CertificatCarbone(TenantModel):
 
 
 # ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
-# ODX16 — relogé depuis ``apps.compta`` (défaut fondateur : monitoring, car le
+# ODX16 — relogé depuis ``compta`` (défaut fondateur : monitoring, car le
 # modèle référence les configs de supervision ; facturation future via services
 # ventes). La table physique existante est PRÉSERVÉE À L'IDENTIQUE
 # (``db_table = 'compta_abonnementmonitoring'``) via des migrations
 # ``SeparateDatabaseAndState`` (state-only, aucun SQL, aucune donnée déplacée) :
 # compta 0105 le retire de l'état AVANT que monitoring 0004 ne le recrée sur la
-# MÊME table. Un shim de ré-export subsiste dans ``apps/compta/models.py`` pour
-# le code/migrations/services historiques. Client/installation restent
-# référencés par id (cross-app — jamais d'import crm/installations).
+# MÊME table. Client/installation restent référencés par id (cross-app —
+# jamais d'import crm/installations).
 
 class AbonnementMonitoring(models.Model):
     """Abonnement de supervision (monitoring) mensuel/annuel (FG244).

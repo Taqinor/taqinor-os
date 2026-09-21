@@ -105,6 +105,45 @@ ALLOWED_UNCONSUMED = {
     # sortant) ; ``douane`` n'importe jamais cette app. Aucun abonné requis
     # aujourd'hui — réservé ici plutôt qu'orphelin, comme les seams ci-dessus.
     "dossier_export_cloture",
+    # SOLMVP23 — SEAMS DES MODULES SORTIS DU MVP SOLAIRE (Phase 2,
+    # docs/parked-modules.md). Ces sept signaux restent DECLARES sur le bus (ils
+    # sont au catalogue d'integration NTPLT12 et la migration de semis les
+    # alimente) mais leur UNIQUE abonne vivait dans un module sorti : une fois
+    # son app reduite a sa coquille, son ``receivers.py`` ne s'enregistre plus
+    # et le signal devient orphelin. On les reserve ici plutot que de les
+    # supprimer : le jour ou le module revient, son abonnement redevient vrai
+    # sans toucher ``core``. Abonne historique entre parentheses.
+    # (SOLMVP16b — ``document_produit`` a quitte cette liste : la GED RESTE
+    # dans le MVP solaire, son ``receivers.py`` reste donc un abonne vivant.)
+    "employe_sorti",                    # paie (desactivation du profil de paie)
+    "conge_approuve",                   # gestion de projet (charge/planning)
+    "contrat_actif",                    # contrats (chatter ARC8)
+    "incident_declared",                # QHSE (declaration d'incident)
+    "cycle_sterilisation_non_conforme",  # QHSE (non-conformite de cycle)
+    "budget_cycle_clos",                # FP&A (cloture de cycle budgetaire)
+    "dossier_juridique_clos",           # juridique (banniere de reprise)
+    # SOLMVP (suite) — MEME raison, constatee en CI apres le coquillage reel des
+    # 47 apps : l'abonne vivait dans un module sorti, ou dans un fichier de
+    # recepteurs d'une app CONSERVEE qui ne servait QUE des modules sortis et
+    # qui est parti avec eux (apps/publicapi/btp_event_receivers.py et
+    # scm_event_receivers.py, le recepteur `contrat_resilie` d'apps/sav). Meme
+    # traitement : on RESERVE, on ne supprime pas — au retour du module,
+    # l'abonnement redevient vrai sans toucher `core`.
+    "facture_emise",                    # compta (ecriture de vente)
+    "facture_annulee",                  # compta (extourne)
+    "avoir_cree",                       # compta (ecriture d'avoir)
+    "avoir_annule",                     # compta (extourne d'avoir)
+    "paiement_enregistre",              # compta (ecriture d'encaissement)
+    "paiement_rejete",                  # compta (delettrage)
+    "paiement_fournisseur_enregistre",  # compta (ecriture de decaissement)
+    "mouvement_stock_enregistre",       # compta (valorisation des mouvements)
+    "contrat_resilie",                  # sav (deprovision du contrat resilie)
+    "btp_reserve_levee",                # publicapi (webhook sortant BTP)
+    "btp_rfi_repondu",                  # publicapi (webhook sortant BTP)
+    "btp_visa_approuve",                # publicapi (webhook sortant BTP)
+    "btp_dgd_finalise",                 # publicapi (webhook sortant BTP)
+    "scm_rupture_imminente_detectee",   # publicapi (webhook sortant SCM)
+    "scm_cycle_sop_cloture",            # publicapi (webhook sortant SCM)
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
@@ -116,6 +155,13 @@ ALLOWED_UNPRODUCED: set[str] = {
     # de notification ; son producteur (balayage cron des activités SAV échues)
     # est planifié séparément et n'est pas câblé dans ce repo.
     "SAV_ACTIVITE_DUE",
+    # SOLMVP — deux EventType dont l'UNIQUE producteur vivait dans un module
+    # sorti du MVP solaire (``core.parked`` / ``docs/parked-modules.md``). Le
+    # membre reste déclaré dans ``apps/notifications/models.py`` (app CONSERVÉE,
+    # et une ``Notification`` déjà écrite en base garde son type) : on RÉSERVE
+    # plutôt que de supprimer, le producteur redevient vrai au retour du module.
+    "CONSENTEMENT_RETIRE_TRAITE",  # grc (alerte DPO NTGRC9)
+    "PAIE_ECHEANCE_RAPPEL",        # paie (rappel d'échéance déclarative)
 }
 
 
@@ -375,6 +421,36 @@ NO_STATIC_EMITTER = {
     # ``ancienne_langue``, ``nouvelle_langue``, ``user`` : exactement les
     # kwargs du ``send`` unique, et la docstring du signal dit la même chose.
     "langue_changed",
+    # SOLMVP — ÉMETTEUR PARTI AVEC SON MODULE (``core.parked`` /
+    # ``docs/parked-modules.md``). Ces signaux restent DÉCLARÉS sur le bus et
+    # CATALOGUÉS (contrat d'intégration NTPLT12, semé en base par migration),
+    # mais l'unique ``send`` vivait dans une app sortie du MVP solaire : le
+    # scanner de parité ne voit plus aucune clé et signalerait une divergence
+    # « catalogué vs [] » qui ne dit rien de vrai. On RÉSERVE ici — l'entrée de
+    # catalogue reste documentaire, et la parité redevient vérifiable TELLE
+    # QUELLE au retour du module (le cliquet ne se relâche que le temps du
+    # parcage). Émetteur historique entre parenthèses.
+    "effet_rejete",                      # compta/services.py
+    "abonnement_monitoring_resilie",     # compta/services.py
+    "contrat_signe",                     # contrats/services.py
+    "contrat_actif",                     # contrats/services.py
+    "contrat_resilie",                   # contrats/services.py
+    "dossier_export_cloture",            # douane/services.py
+    "budget_cycle_clos",                 # fpa/services.py
+    "projet_status_change",              # gestion_projet/services.py
+    "dossier_juridique_clos",            # juridique/services.py
+    "lead_maturite_changee",             # marketing/services.py
+    "incident_declared",                 # qhse/views.py
+    "conge_approuve",                    # rh/services.py
+    "employe_sorti",                     # rh/services.py
+    "cycle_sterilisation_non_conforme",  # sante/services.py
+    "scm_cycle_sop_cloture",             # scm/services.py
+    "scm_rupture_imminente_detectee",    # scm/services.py
+    # Cas VOISIN, même effet : ``rfq_attribuee`` était émis par
+    # ``apps/installations/services.marquer_rfq_attribuee`` — une app CONSERVÉE,
+    # mais la surface RFQ / sous-traitance qui l'appelait est sortie avec les
+    # modules achats avancés. Le signal et son entrée de catalogue restent.
+    "rfq_attribuee",
 }
 
 

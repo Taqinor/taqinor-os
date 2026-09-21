@@ -10,7 +10,6 @@ from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
-from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response  # noqa: F401
 from core.entite_scoping import EntiteScopeMixin
 from core.viewsets import CompanyScopedModelViewSet
@@ -93,25 +92,6 @@ def _texte_champ(valeur):
     rester distinguable d'une chaîne vide côté abonné.
     """
     return '' if valeur is None else str(valeur)
-
-
-class _MarketplaceFormatContentNegotiation(DefaultContentNegotiation):
-    """NTRET20 — sur ``export-marketplace`` le paramètre ``?format=`` désigne
-    le format DU FLUX (avito/google_shopping), PAS le renderer DRF.
-
-    Sans cette surcharge, DRF traite ``?format=avito`` comme un override de
-    renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne porte ce
-    format, donc ``filter_renderers`` lève un ``Http404`` AVANT même
-    d'exécuter la vue — motif ``apps.douane.views._ExportFormatContent
-    Negotiation`` (NTLOG47). La vue renvoie une ``HttpResponse`` manuelle,
-    jamais via ce renderer.
-    """
-
-    def select_renderer(self, request, renderers, format_suffix=None):
-        for renderer in renderers:
-            if renderer.format == 'json':
-                return renderer, renderer.media_type
-        return renderers[0], renderers[0].media_type
 
 
 def _sans_accents(expression):
@@ -229,7 +209,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
-                'etiquettes_showroom', 'casiers', 'plan_picking',
+                'casiers', 'plan_picking',
                 'classe_abc', 'tracabilite',
                 # PVCOMPAT — `compatibilites` est LECTURE SEULE et ne rend
                 # AUCUN prix (que des grandeurs électriques et des verdicts) :
@@ -258,15 +238,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # ZSTK3 — `previsionnel` est LECTURE SEULE, même garde.
             # XSTK7 — `tracer` (rapport de traçabilité) est LECTURE SEULE,
             # même garde.
-            # XPOS17 — `etiquettes-showroom` (impression) est LECTURE SEULE,
-            # même garde que l'action `etiquettes` N20.
             return [IsAnyRole()]
-        elif self.action == 'export_marketplace':
-            # NTRET20 — publier un flux PUBLIC de catalogue est une décision
-            # commerciale : responsable/admin, jamais tout rôle
-            # (`get_permissions` prime sur le `permission_classes` de
-            # l'@action, d'où ce cas explicite).
-            return [IsResponsableOrAdmin()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
             # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
@@ -778,42 +750,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'inline; filename="etiquettes-produits.pdf"')
         return response
 
-    @extend_schema(responses={(200, 'text/csv'): bytes})
-    @action(detail=False, methods=['get'], url_path='export-marketplace',
-            permission_classes=[IsResponsableOrAdmin],
-            content_negotiation_class=_MarketplaceFormatContentNegotiation)
-    def export_marketplace(self, request):
-        """NTRET20 — flux produits pour place de marché
-        (``?format=avito|google_shopping``).
-
-        Génère le FICHIER prêt à importer / à pointer en flux URL — aucune
-        intégration API poussée (les comptes marchands Avito/Google sont une
-        étape manuelle du fondateur). Seuls les produits marqués vendables en
-        ligne (``ecommerce_connect.ProduitSync``) sortent ; ``prix_achat``
-        n'entre JAMAIS dans un flux PUBLIC.
-        """
-        from apps.parametres.models import CompanyProfile
-
-        from ..marketplace_feeds import generer_flux
-
-        company = request.user.company
-        cible = (request.query_params.get('format') or '').strip()
-        try:
-            profil = CompanyProfile.get(company=company)
-            titre = getattr(profil, 'nom', '') or 'Catalogue'
-        except Exception:  # noqa: BLE001 — profil absent : titre neutre
-            titre = 'Catalogue'
-        try:
-            contenu, content_type, nom_fichier = generer_flux(
-                company, cible, titre_flux=titre)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
-        reponse = HttpResponse(contenu, content_type=content_type)
-        reponse['Content-Disposition'] = (
-            f'attachment; filename="{nom_fichier}"')
-        return reponse
-
     @extend_schema(responses={(200, 'application/pdf'): bytes})
     @action(detail=False, methods=['get'], url_path='etiquettes-prix',
             permission_classes=[IsAnyRole])
@@ -887,74 +823,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                 content_type='application/pdf')
         response['Content-Disposition'] = (
             'inline; filename="etiquettes-prix.pdf"')
-        return response
-
-    @action(detail=False, methods=['get'], url_path='etiquettes-showroom')
-    def etiquettes_showroom(self, request):
-        """XPOS17 — Étiquettes « showroom » : le QR encode l'URL de la fiche
-        produit PUBLIQUE de l'e-catalogue tokenisé (FG214) — le client scanne
-        en magasin et atterrit sur la fiche (prix TTC, garantie, dispo
-        indicative, CTA devis/rappel). JAMAIS de prix d'achat/marge.
-
-        Paramètres :
-          - ``ids`` : produits (répétés ou séparés par virgules) ;
-          - ``catalogue_token`` : jeton de l'e-catalogue de la société
-            (validé actif/non expiré ET appartenant à la société — un jeton
-            d'une autre société est refusé) ; seuls les produits EXPOSÉS par
-            ce catalogue sont imprimés ;
-          - ``sortie`` : ``html`` (aperçu) | ``pdf`` (défaut).
-        """
-        from django.conf import settings
-        from .. import labels
-        from apps.ventes.utils.pdf import _html_to_pdf
-        from apps.compta.selectors import ecatalogue_public_par_token
-
-        token = (request.query_params.get('catalogue_token') or '').strip()
-        if not token:
-            return Response(
-                {'detail': "Le jeton de l'e-catalogue est requis "
-                           '(catalogue_token).'},
-                status=status.HTTP_400_BAD_REQUEST)
-        cat = ecatalogue_public_par_token(token)
-        if cat is None or cat.company_id != request.user.company_id:
-            return Response(
-                {'detail': 'E-catalogue introuvable pour cette société.'},
-                status=status.HTTP_404_NOT_FOUND)
-
-        ids = request.query_params.getlist('ids')
-        if len(ids) == 1 and ',' in ids[0]:
-            ids = ids[0].split(',')
-        ids = [int(i) for i in (str(x).strip() for x in ids) if i.isdigit()]
-        if not ids:
-            return Response({'detail': 'Sélectionnez au moins un produit.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        exposes = set(cat.produit_ids or [])
-        ids = [i for i in ids if i in exposes]
-
-        produits = (Produit.objects
-                    .filter(company=request.user.company, id__in=ids)
-                    .order_by('nom'))
-        base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-        if not base:
-            base = request.build_absolute_uri('/')
-        items = [{
-            'token': labels.showroom_url(base, cat.token, p.id),
-            'titre': p.nom,
-            'sous_titre': 'Scannez pour la fiche & le prix',
-        } for p in produits]
-        if not items:
-            return Response(
-                {'detail': 'Aucun produit correspondant exposé par cet '
-                           'e-catalogue.'},
-                status=status.HTTP_404_NOT_FOUND)
-
-        html = labels.render_labels_html(items, symbology='qr')
-        if request.query_params.get('sortie') == 'html':
-            return HttpResponse(html, content_type='text/html; charset=utf-8')
-        pdf_bytes = _html_to_pdf(html)
-        response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        response['Content-Disposition'] = (
-            'inline; filename="etiquettes-showroom.pdf"')
         return response
 
     @action(detail=False, methods=['get'], url_path='a-reapprovisionner',

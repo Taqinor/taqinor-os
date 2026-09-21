@@ -841,8 +841,8 @@ def delegants_actifs_pour(suppleant, company, at=None):
 # Un auditeur externe demande « montrez-moi toutes les décisions d'approbation
 # du mois de mars, qui a décidé, en combien de temps, et au nom de qui ». Cette
 # piste doit couvrir TOUTES les sources d'approbation de la maison, or ``core``
-# est une couche de FONDATION : il ne peut pas importer ``apps.automation``,
-# ``apps.contrats`` ni ``apps.ged`` pour aller lire leurs décisions.
+# est une couche de FONDATION : il ne peut pas importer ``apps.automation``
+# ni aucune autre app métier pour aller lire leurs décisions.
 #
 # Même patron que ``register_delegation_resolver`` / le registre de calendrier
 # ouvré : chaque app BRANCHE sa source dans son ``apps.py ready()``, ``core``

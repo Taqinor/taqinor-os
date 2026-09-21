@@ -153,16 +153,13 @@ describe('CAL101 — le panneau de l’atelier le monte', () => {
       default: {
         calepinages: {
           get: vi.fn().mockResolvedValue({ data: null }),
-          genererDevis: vi.fn(), syncDevis: vi.fn(), importerContourAo: vi.fn(),
+          genererDevis: vi.fn(), syncDevis: vi.fn(),
         },
         // CAL70 — PanneauAllees (monté par AtelierPanneaux) lit les réglages
         // société au montage.
         parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
         moteur: { calculer: vi.fn() },
       },
-    }))
-    vi.doMock('../../../api/aoApi', () => ({
-      default: { toitures: { reprendreContour3d: vi.fn() } },
     }))
     vi.doMock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
     const { MemoryRouter } = await import('react-router-dom')

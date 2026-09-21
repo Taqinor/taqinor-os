@@ -2,7 +2,6 @@
 
 Couvre :
   * champ `instructions` éditable et affiché ;
-  * pré-remplissage KB optionnel (suggestion, PAS une écriture automatique) ;
   * distinct de `description` et des notes chatter ;
   * migration additive (défaut '').
 
@@ -17,8 +16,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.kb.models import KbArticle
-from apps.sav.models import CauseDefaillance, Ticket
+from apps.sav.models import Ticket
 
 User = get_user_model()
 
@@ -80,25 +78,3 @@ class ZMFG5InstructionsTest(TestCase):
         t.refresh_from_db()
         self.assertEqual(t.description, 'Onduleur en panne')
         self.assertEqual(t.instructions, 'Vérifier le fusible AC.')
-
-    def test_suggestions_kb_optionnel_fonctionne(self):
-        cause = CauseDefaillance.objects.create(
-            company=self.company, nom='Fusible grillé')
-        KbArticle.objects.create(
-            company=self.company, titre='Procédure fusible grillé',
-            corps='Remplacer le fusible grillé après coupure du circuit.',
-            statut=KbArticle.Statut.PUBLIE)
-        t = self._ticket(cause=cause)
-
-        r = self.api.get(
-            f'/api/django/sav/tickets/{t.id}/instructions-suggestions/')
-        self.assertEqual(r.status_code, 200, r.data)
-        titres = [row['titre'] for row in r.data['results']]
-        self.assertIn('Procédure fusible grillé', titres)
-
-    def test_suggestions_vide_sans_correspondance(self):
-        t = self._ticket()
-        r = self.api.get(
-            f'/api/django/sav/tickets/{t.id}/instructions-suggestions/')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(r.data['results'], [])

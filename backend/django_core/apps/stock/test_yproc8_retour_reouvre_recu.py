@@ -5,12 +5,15 @@ Couvre :
     de N sur la ligne BCF correspondante ;
   * le statut du BCF redescend de RECU à ENVOYE si le retour rend le BCF plus
     entièrement reçu ;
-  * le rapprochement 3 voies OUVERT de ce BCF voit son montant reçu rafraîchi
-    à la baisse après le retour ;
   * le décrément est plafonné à la quantité effectivement reçue ;
   * un retour SANS BCF lié se comporte comme avant (aucune régression) ;
   * multi-tenant : un retour d'une société ne touche jamais le BCF d'une
     autre société.
+
+SOLMVP12 (20/09/2026) — le rafraîchissement du rapprochement 3 voies
+(lecture/écriture du module compta, détaché de stock) a été retiré de
+``apply_retour_fournisseur`` : la couverture correspondante est retirée
+d'ici.
 
 Run:
     python manage.py test apps.stock.test_yproc8_retour_reouvre_recu -v 2
@@ -24,8 +27,6 @@ from apps.stock.models import (
     BonCommandeFournisseur, Fournisseur, Produit, RetourFournisseur,
 )
 from apps.stock.services import apply_retour_fournisseur
-from apps.compta.services import creer_rapprochement_3voies
-from apps.compta.models import Rapprochement
 
 
 def _company(slug):
@@ -98,36 +99,6 @@ class TestReouvertureQuantiteRecue(Yproc8Base):
         self.assertEqual(ligne.quantite_recue, 0)
         bc.refresh_from_db()
         self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ENVOYE)
-
-
-class TestRafraichissementRapprochement3Voies(Yproc8Base):
-    def test_retour_rafraichit_rapprochement_ouvert(self):
-        bc, ligne = self._bcf_recu(quantite=20, prix=Decimal('100'))
-        rapp = creer_rapprochement_3voies(
-            self.company, bon_commande_id=bc.id, tolerance=Decimal('0'))
-        self.assertEqual(rapp.montant_recu, Decimal('2000'))
-
-        retour = self._retour(bc, 5)
-        apply_retour_fournisseur(retour, user=None)
-
-        rapp.refresh_from_db()
-        self.assertEqual(rapp.montant_recu, Decimal('1500'))
-
-    def test_retour_ne_touche_pas_rapprochement_deja_valide(self):
-        bc, ligne = self._bcf_recu(quantite=20, prix=Decimal('100'))
-        rapp = creer_rapprochement_3voies(
-            self.company, bon_commande_id=bc.id, tolerance=Decimal('10000'))
-        rapp.statut = Rapprochement.Statut.VALIDE
-        rapp.save(update_fields=['statut'])
-
-        retour = self._retour(bc, 5)
-        apply_retour_fournisseur(retour, user=None)
-
-        rapp.refresh_from_db()
-        # Snapshot figé — un bon-à-payer validé n'est jamais réécrit en
-        # silence par un événement stock ultérieur.
-        self.assertEqual(rapp.montant_recu, Decimal('2000'))
-        self.assertEqual(rapp.statut, Rapprochement.Statut.VALIDE)
 
 
 class TestSansBcfLieInchange(Yproc8Base):

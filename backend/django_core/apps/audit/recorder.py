@@ -27,12 +27,10 @@ de champ. Carte de décision :
 * ``record_field_change`` (ci-dessous) — l'ENTONNOIR : pour un changement de
   champ, écrit l'``AuditLog`` ET (si demandé) la ligne de chatter
   ``modification`` en UN SEUL appel, au lieu de deux appels séparés qui divergent.
-* ``apps.parametres.models_audit.SettingsAuditLog`` et
-  ``apps.compta.models.PisteAuditComptable`` restent des SATELLITES de
-  conformité intentionnels (journal des réglages ; piste d'audit comptable
-  légale) : ils NE sont PAS fusionnés ici — une éventuelle fusion serait une
-  DECISION future hors périmètre. FG18 nomme le satellite « réglages » pour la
-  complétude.
+* ``apps.parametres.models_audit.SettingsAuditLog`` reste un SATELLITE de
+  conformité intentionnel (journal des réglages) : il N'est PAS fusionné ici —
+  une éventuelle fusion serait une DECISION future hors périmètre. FG18 nomme
+  le satellite « réglages » pour la complétude.
 """
 import logging
 import threading

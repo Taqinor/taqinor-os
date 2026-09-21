@@ -14,41 +14,16 @@ const ApprobationsAttentionCard = lazy(() => import('../components/ApprobationsA
 // WIR59). `PremiersPasWidget` est la source de vérité serveur (company+user
 // scopée, les 6 items du catalogue réel).
 const PremiersPasWidget = lazy(() => import('../components/PremiersPasWidget'))
-// NTTRE17 — carte compacte « Cash aujourd'hui » (solde consolidé, delta vs
-// hier, 3 prochaines échéances). Autonome : UNE requête vers
-// `etats/position-tresorerie/` (FG122), rend `null` sans droits ni données.
-const CashAujourdhuiCard = lazy(() => import('../features/compta/CashAujourdhuiCard'))
 // NTUX11 — historique de navigation récente unifié (autonome : ne rend rien
 // si aucune entité récente).
 const RecentEntitiesWidget = lazy(() => import('../features/uxviews/RecentEntitiesWidget'))
 // NTUX12 — favoris épinglés par utilisateur (autonome : ne rend rien sans
 // favori), même patron que RecentEntitiesWidget ci-dessus.
 const FavorisWidget = lazy(() => import('../features/uxviews/FavorisWidget'))
-// WIR144 — tuiles KPI crédit fédérées (kpi_providers) sur le cockpit direction.
-const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
-// NTIDE50 — tuiles KPI innovation fédérées (kpi_providers) : « Idées cette
-// semaine » + top idée votée, même patron que CreditKpiCards (WIR144).
-const InnovationKpiCard = lazy(() => import('../features/innovation/InnovationKpiCard'))
-// NTJUR24 — carte « Risques juridiques » (apps/juridique) : agrégat serveur
-// déjà filtré par confidentialité, aucune fuite par somme côté écran.
-const RisquesJuridiquesCard = lazy(() => import('../features/juridique/RisquesJuridiquesCard'))
 // NTOBS16 — badge « SLA respecté » auto-calculé (dernier core.SlaSnapshot,
 // NTOBS3), lien vers le rapport complet /parametres/sla. Dégrade en silence
 // tant qu'aucun snapshot n'existe encore.
 const SlaBadgeCard = lazy(() => import('../features/reporting/SlaBadgeCard'))
-// NTMFG22 — carte Production (Atelier MRP) : OF en retard, charge moyenne
-// 7j, TRS moyen 7j, alerte entretien de poste. Même patron d'intégration
-// (lazy + ErrorBoundary + gate `profile === 'directeur'`), appel direct
-// `mrp/tableau-bord/` (PAS la fédération kpi_providers — NTMFG40 s'en
-// chargera séparément).
-// SOL6 — SEULE surface d'un vertical parqué importée hors de son module.
-// `__EDITION_A_MRP__` est un LITTÉRAL injecté à la compilation (`define` de
-// vite.config.js) : en édition solaire le ternaire vaut `null` et Rollup
-// supprime l'import dynamique — `features/mrp` sort entièrement du dist.
-const ProductionKpiCard = __EDITION_A_MRP__
-  // eslint-disable-next-line no-restricted-syntax -- SOL6 : import d'un vertical parqué autorisé ICI, et ICI SEULEMENT, parce qu'il est sous condition LITTÉRALE build-time (`__EDITION_A_MRP__` vaut `false` en édition solaire, Rollup supprime alors l'import et le chunk).
-  ? lazy(() => import('../features/mrp/ProductionKpiCard'))
-  : null
 import { useDispatch, useSelector } from 'react-redux'
 import { Navigate, useNavigate } from 'react-router-dom'
 // NTMOB6 — sélecteur de démarrage par rôle : Dashboard est le SEUL point
@@ -56,8 +31,6 @@ import { Navigate, useNavigate } from 'react-router-dom'
 // d'un redémarrage automatique vers un accueil mobile par rôle.
 import api from '../api/axios'
 import { useIsMobile } from '../ui/ResponsiveDialog'
-// SOL5 — gating par module actif des surfaces incrustées venues d'une AUTRE app.
-import { useModuleActif } from '../hooks/useModuleActif'
 import { defaultMobileHomeRoute } from '../features/offlinesync/mobile/mobileHome'
 import {
   Package, Users, FileCheck, FileText, AlertTriangle,
@@ -508,11 +481,6 @@ export function Component() {
   const roleNom = useSelector((s) => s.auth.role_nom)
   const roleTier = useSelector((s) => s.auth.role)
   const profile = cockpitProfile({ roleNom, roleTier })
-  // SOL5 — le Dashboard est l'atterrissage GÉNÉRIQUE : une carte appartenant à
-  // un autre module ne doit s'afficher que si ce module est actif pour la
-  // société (sinon elle appelle une route coupée en 404, ou inexistante quand
-  // le module est parqué par l'édition).
-  const mrpActif = useModuleActif('mrp')
 
   // NTMOB6 — sélecteur de démarrage par rôle. `mobile_home_route` (NULL tant
   // que rien n'est décidé, '' = opt-out explicite via Mes préférences, sinon
@@ -917,15 +885,6 @@ export function Component() {
         </Suspense>
       </div>
 
-      {/* NTTRE17 — « Cash aujourd'hui » : carte compacte, autonome, qui se
-          masque d'elle-même sans données ni droits (états de trésorerie
-          réservés Admin/Responsable). */}
-      <div className="mb-4 sm:mb-5">
-        <Suspense fallback={null}>
-          <CashAujourdhuiCard />
-        </Suspense>
-      </div>
-
       {showError ? (
         // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
         // (relance les 5 fetch du montage), là où l'ancienne carte d'erreur
@@ -1127,38 +1086,6 @@ export function Component() {
             </ErrorBoundary>
           )}
 
-          {/* WIR144 — KPI crédit fédérés (kpi_providers) sur le cockpit direction. */}
-          {profile === 'directeur' && (
-            <ErrorBoundary>
-              <Suspense fallback={null}>
-                <CreditKpiCards />
-              </Suspense>
-            </ErrorBoundary>
-          )}
-
-          {/* NTIDE50 — KPI innovation fédérés (kpi_providers) : « Idées cette
-              semaine » + top idée votée, drill-down /innovation/idees. */}
-          {profile === 'directeur' && (
-            <ErrorBoundary>
-              <Suspense fallback={null}>
-                <InnovationKpiCard />
-              </Suspense>
-            </ErrorBoundary>
-          )}
-
-          {/* NTJUR24 — « Risques juridiques » : dossiers ouverts par nature,
-              montant en jeu, provisions proposées vs comptabilisées et
-              prescriptions sous 30 jours. L'agrégat vient du serveur, qui
-              EXCLUT déjà les dossiers confidentiels du périmètre d'un rôle non
-              autorisé (aucune fuite par somme). Dégrade en silence. */}
-          {profile === 'directeur' && (
-            <ErrorBoundary>
-              <Suspense fallback={null}>
-                <RisquesJuridiquesCard />
-              </Suspense>
-            </ErrorBoundary>
-          )}
-
           {/* NTOBS16 — badge de disponibilité (SLA) du mois courant, lien
               vers le rapport complet. Dégrade en silence sans snapshot. */}
           <ErrorBoundary>
@@ -1166,19 +1093,6 @@ export function Component() {
               <SlaBadgeCard />
             </Suspense>
           </ErrorBoundary>
-
-          {/* NTMFG22 — carte Production (Atelier MRP), drill-down
-              /mrp/ordres-fabrication. Dégrade en silence (403/flux vide).
-              SOL5 — masquée quand le module mrp est désactivé pour la société.
-              SOL6 — `ProductionKpiCard` vaut `null` (littéral build-time) dans
-              l'édition solaire : la carte n'existe alors même plus. */}
-          {profile === 'directeur' && mrpActif && ProductionKpiCard && (
-            <ErrorBoundary>
-              <Suspense fallback={null}>
-                <ProductionKpiCard />
-              </Suspense>
-            </ErrorBoundary>
-          )}
 
           {/* Cartes KPI */}
           <ErrorBoundary>

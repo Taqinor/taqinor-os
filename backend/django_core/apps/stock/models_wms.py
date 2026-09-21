@@ -845,10 +845,8 @@ class BlocageQualite(TenantModel):
     reception = models.ForeignKey(
         'achats.ReceptionFournisseur', on_delete=models.SET_NULL, null=True,
         blank=True, related_name='blocages_qualite')
-    # Non-conformité QHSE d'origine (string-FK : jamais un import de `qhse`).
-    non_conformite = models.ForeignKey(
-        'qhse.NonConformite', on_delete=models.SET_NULL, null=True,
-        blank=True, related_name='blocages_qualite_stock')
+    # SOLMVP12 (20/09/2026) — le lien vers la non-conformité QHSE d'origine
+    # (module qhse, détaché de stock) a été retiré (RemoveField).
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EN_QUARANTAINE)
     motif = models.TextField(blank=True, default='')
@@ -998,11 +996,9 @@ class PlanChargement(TenantModel):
 
     Regroupe des unités logistiques (NTWMS6) pour UNE course, et compare leur
     poids/volume à la capacité du véhicule. La capacité est portée par le plan
-    (``capacite_kg``/``capacite_m3``) : le référentiel ``flotte.Vehicule`` ne
-    déclare aujourd'hui AUCUNE capacité de charge — le service la lit quand
-    même par ``getattr`` sur le véhicule (via le selector de ``flotte``), donc
-    le jour où ``flotte`` ajoutera le champ, le plan s'en servira sans
-    modification ici.
+    (``capacite_kg``/``capacite_m3``) — SOLMVP12 (20/09/2026) : le lien vers
+    le module flotte a été retiré (RemoveField), le plan porte désormais ses
+    propres capacités uniquement.
     """
 
     class Statut(models.TextChoices):
@@ -1018,9 +1014,6 @@ class PlanChargement(TenantModel):
     expedition = models.ForeignKey(
         ExpeditionTransporteur, on_delete=models.SET_NULL, null=True,
         blank=True, related_name='plans_chargement')
-    vehicule = models.ForeignKey(
-        'flotte.Vehicule', on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='plans_chargement_stock')
     unites_logistiques = models.ManyToManyField(
         UniteLogistique, blank=True, related_name='plans_chargement')
     capacite_kg = models.DecimalField(

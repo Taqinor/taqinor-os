@@ -1,15 +1,23 @@
 """SOL9 — semis du plan de licence « Solaire ».
 
 Le périmètre du plan est DÉRIVÉ, jamais recopié : tous les modules
-INSTALLABLES du dépôt, moins les verticaux parqués par l'édition solaire
-(registre `erp_agentique/settings/editions.py`). Une app ajoutée demain entre
-donc dans le plan sans qu'on ait à maintenir une liste à la main — et un
-vertical parqué n'y entre jamais.
+INSTALLABLES du dépôt. Une app ajoutée demain entre donc dans le plan sans
+qu'on ait à maintenir une liste à la main.
+
+SOLMVP3 — la soustraction « moins les verticaux parqués par l'édition » a
+disparu avec le mécanisme d'édition : il n'y a plus qu'un produit.
+
+SOLMVP52 — une coquille de migrations (`core/parked.py`) GARDE son
+`module_manifest` (le contrat de coquille l'exige, voir `core/parked.py`) et la
+plupart ne posent PAS explicitement `installable: False` dessus : la
+dérivation seule ne les exclurait donc PAS. `modules_du_plan_solaire` retire
+donc explicitement tout label de `core.parked.APPS_PARQUEES`, quel que soit ce
+que porte son manifeste — la SEULE garantie qu'une app sortie du MVP ne
+revienne jamais dans un plan de licence vendu.
 
 Volontairement PAS une migration de données : `modules_inclus` doit refléter
-les manifestes RÉELLEMENT chargés, or une migration jouée en édition solaire
-n'en verrait que 81 sur 88. Un semis explicite (commande ou appel de service),
-idempotent, garde la liste juste.
+les manifestes RÉELLEMENT chargés. Un semis explicite (commande ou appel de
+service), idempotent, garde la liste juste.
 
 Assignation : `CompanyProfile.plan` reste posé par le founder (admin Django) ou
 par le gabarit de tenant Solaire (SOL10). Ce module ne touche AUCUNE société.
@@ -21,15 +29,20 @@ NOM_SOLAIRE = 'Solaire'
 
 
 def modules_du_plan_solaire():
-    """Clés de module installables du périmètre solaire (triées, stables)."""
+    """Clés de module installables du périmètre solaire (triées, stables).
+
+    SOLMVP52 — exclut explicitement toute app parquée (`core.parked`) : son
+    manifeste RESTE (contrat de coquille) et la plupart ne portent PAS
+    `installable: False`, donc la dérivation seule les laisserait passer.
+    """
     from core import modules as modules_infra
-    from erp_agentique.settings import editions
+    from core.parked import est_parquee
 
     manifests = modules_infra.collect_manifests()
-    parques = editions.modules_parques(editions.EDITION_SOLAR)
     return sorted(
         key for key, manifest in manifests.items()
-        if manifest.get('installable') and key not in parques
+        if manifest.get('installable')
+        and not est_parquee(manifest.get('app_label'))
     )
 
 

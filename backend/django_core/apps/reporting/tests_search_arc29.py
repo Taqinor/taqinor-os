@@ -1,11 +1,11 @@
 """ARC29 — recherche globale pilotée par le registre plateforme (core.platform).
 
 Couvre : (1) non-régression stricte des 10 groupes historiques (mêmes
-requêtes/résultats qu'avant ARC29, cf. tests_search.py déjà vert) ; (2) les
-deux trous comblés — ``stock.Produit`` et ``contrats.Contrat`` deviennent
-trouvables ; (3) un modèle déclaré au registre (manifeste fictif) apparaît en
-recherche SANS toucher apps/reporting/search.py (preuve que le balayage suit
-bien platform.searchable_models(), pas une liste hard-codée) ; (4) le gatage
+requêtes/résultats qu'avant ARC29, cf. tests_search.py déjà vert) ; (2) le
+trou comblé — ``stock.Produit`` devient trouvable ; (3) un modèle déclaré au
+registre (manifeste fictif) apparaît en recherche SANS toucher
+apps/reporting/search.py (preuve que le balayage suit bien
+platform.searchable_models(), pas une liste hard-codée) ; (4) le gatage
 ModuleToggle retire bien un module cherchable de la recherche.
 """
 from unittest import mock
@@ -15,7 +15,6 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.crm.models import Client
 from authentication.models import Company
 from core.models import ModuleToggle
 
@@ -82,56 +81,6 @@ class TestSearchFindsProduit(TestCase):
         self.assertIsNone(group)
 
 
-class TestSearchFindsContrat(TestCase):
-    """Trou comblé 2/2 — contrats.Contrat avait le chatter générique (ARC8)
-    mais restait invisible en recherche (seul sav.ContratMaintenance
-    l'était)."""
-
-    def setUp(self):
-        self.company = make_company('arc29-contrat', 'ARC29 Contrat Co')
-        self.user = User.objects.create_user(
-            username='arc29_contrat_user', password='x',
-            role_legacy='responsable', company=self.company)
-        self.api = auth_client(self.user)
-
-    def test_search_finds_contrat_by_reference(self):
-        from apps.contrats.models import Contrat
-        Contrat.objects.create(
-            company=self.company, reference='CTR-2026-ARC29',
-            objet='Contrat de maintenance annuelle')
-        resp = self.api.get('/api/django/reporting/search/?q=CTR-2026-ARC29')
-        self.assertEqual(resp.status_code, 200)
-        group = next(
-            (g for g in resp.data['groups'] if g['type'] == 'contrat_clm'), None)
-        self.assertIsNotNone(group, resp.data['groups'])
-        self.assertEqual(group['results'][0]['label'], 'CTR-2026-ARC29')
-
-    def test_search_finds_contrat_by_objet(self):
-        from apps.contrats.models import Contrat
-        Contrat.objects.create(
-            company=self.company, objet='Fourniture panneaux ArcSearchTest')
-        resp = self.api.get('/api/django/reporting/search/?q=ArcSearchTest')
-        group = next(
-            (g for g in resp.data['groups'] if g['type'] == 'contrat_clm'), None)
-        self.assertIsNotNone(group)
-
-    def test_contrat_search_coexists_with_contrat_maintenance_group(self):
-        """Les deux groupes 'contrat' (maintenance SAV) et 'contrat_clm' (CLM)
-        restent DISTINCTS — aucune collision de clé de type."""
-        from apps.contrats.models import Contrat
-        from apps.sav.models import ContratMaintenance
-        from datetime import date
-        client = Client.objects.create(company=self.company, nom='CoexistTest')
-        Contrat.objects.create(
-            company=self.company, objet='CoexistTest contrat CLM')
-        ContratMaintenance.objects.create(
-            company=self.company, client=client, periodicite='annuel',
-            date_debut=date.today(), actif=True)
-        resp = self.api.get('/api/django/reporting/search/?q=CoexistTest')
-        types = {g['type'] for g in resp.data['groups']}
-        self.assertIn('contrat_clm', types)
-
-
 class TestSearchNonRegressionEnvelope(TestCase):
     """L'enveloppe de résultat (clés/forme) reste identique à avant ARC29
     pour les groupes historiques (le hook front VX13 la consomme sans
@@ -184,17 +133,6 @@ class TestSearchRegistryDrivenWithoutTouchingSearchPy(TestCase):
         self.assertEqual(resp.status_code, 200)
         group = next((g for g in resp.data['groups'] if g['type'] == 'produit'), None)
         self.assertIsNone(group, "stock désactivé mais Produit encore trouvé")
-
-    def test_contrats_module_off_removes_contrat_from_search(self):
-        from apps.contrats.models import Contrat
-        Contrat.objects.create(
-            company=self.company, objet='ToggleOffContratTest')
-        ModuleToggle.objects.create(
-            company=self.company, module='contrats', actif=False)
-        resp = self.api.get('/api/django/reporting/search/?q=ToggleOffContratTest')
-        group = next(
-            (g for g in resp.data['groups'] if g['type'] == 'contrat_clm'), None)
-        self.assertIsNone(group)
 
     def test_undeclared_model_disappears_from_search(self):
         """L'inverse utile : un registre simulé qui NE contient PLUS

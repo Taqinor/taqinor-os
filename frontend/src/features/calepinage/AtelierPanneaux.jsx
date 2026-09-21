@@ -7,24 +7,6 @@ import FicheCalepinage from './FicheCalepinage'
 // CAL38 — la SORTIE vers le devis (générer / resynchroniser). Elle se pose ici,
 // dans l'emplacement enregistré par CAL37 : l'atelier n'est pas rouvert.
 import BoutonDevis from './BoutonDevis'
-/* CAL242 — le sens AO → calepinage de l'import de contour (CAL240). Son jumeau
-   (« Reprendre le tracé 3D », CAL241) est DÉJÀ monté sur l'écran de toiture
-   d'une affaire ; celui-ci restait écrit, testé, et monté NULLE PART — c'est-à-
-   dire exactement l'oubli du 03/08/2026 que sa propre docstring dit combattre.
-   Sa place est ici : son en-tête déclare « Posé dans l'atelier en mode
-   calepinage ».
-
-   CE QU'IL NE PEUT PAS ENCORE FAIRE, et qu'il faut dire : l'endpoint
-   `importer-contour-ao` (CAL240) n'est pas encore servi par
-   `apps/calepinage/urls.py`. Tant qu'il ne l'est pas, le bouton remonte le
-   refus du serveur SOUS lui (c'est son comportement déclaré) au lieu d'importer
-   quoi que ce soit ; il devient vivant le jour où CAL240 atterrit, sans qu'une
-   ligne d'écran ne change. Ni `affaireId` ni `toitureId` ne lui sont passés :
-   l'atelier ne connaît AUCUNE des deux (le contexte de conception ne publie pas
-   l'affaire du calepinage) et les INVENTER ferait importer le contour d'un
-   autre chantier. Le serveur résout donc la source depuis le calepinage
-   lui-même — c'est lui qui tranche. */
-import { BoutonReprendreContourAffaire } from './BoutonsContourAO'
 /* CAL101 — les raccourcis clavier de l'atelier et leur aide-mémoire (« ? »).
    Ils se posent ICI, dans l'emplacement enregistré par CAL37 : un composant de
    raccourcis monté nulle part serait exactement l'oubli du 03/08/2026 — et un
@@ -58,8 +40,8 @@ import BadgePerime from './BadgePerime'
    Groupe CAL y ajoutait son bouton, elles se marcheraient toutes dessus — et
    deux lanes file-disjointes qui rouvrent le même fichier, c'est un conflit de
    fold garanti. Les tâches suivantes (CAL38 « Générer le devis », CAL180
-   l'export image, CAL242 la reprise du contour d'affaire) posent donc leur
-   panneau ICI, et n'ont jamais à rouvrir l'atelier.
+   l'export image) posent donc leur panneau ICI, et n'ont jamais à rouvrir
+   l'atelier.
 
    CE COMPOSANT N'ENREGISTRE RIEN et ne calcule RIEN : il AFFICHE ce que le
    serveur a déjà servi (contrat `calepinage_design_context.json`) et délègue
@@ -195,14 +177,12 @@ export default function AtelierPanneaux({
           onRecharger={onRecharger}
           onRelire={relire}
         />
-        {/* Une conception FIGÉE ne reçoit aucun contour : l'import est une
-            écriture, il disparaît en lecture seule comme toutes les autres. */}
-        {!lectureSeule && (
-          <BoutonReprendreContourAffaire
-            calepinageId={calepinageId}
-            onImporte={onRecharger}
-          />
-        )}
+        {/* SOLMVP15 — le bouton « Reprendre le contour de l'affaire » (CAL242)
+            était posé ici. Son endpoint est parti avec l'app d'appels d'offres,
+            qui sort du produit : il n'y a plus d'affaire dont reprendre le
+            contour. Le contour de l'atelier n'a pas changé d'un champ
+            (`roof_layout.outline`, v2) et le tracé sur carte reste la voie de
+            le poser. */}
         {typeof children === 'function'
           ? children({ calepinageId, contexte, builderApi, lectureSeule, onRecharger })
           : children}

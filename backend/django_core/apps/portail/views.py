@@ -1,53 +1,93 @@
 """Vues du module Portail client (``apps.portail``).
 
-ODX12 — ré-export TRANSITOIRE des ViewSets portail qui vivent encore dans
-``apps.compta.views`` (adossés à ``_ComptaBaseViewSet`` = ``TenantMixin`` +
-``ModelViewSet``, avec le scoping ``request.user.company`` et l'assignation
-forcée de ``company`` en ``perform_create``). Ce module donne aux nouvelles
-routes ``/api/django/portail/…`` un point d'entrée ``apps.portail.views``
-stable ; les anciennes routes ``/api/django/compta/…`` continuent de servir les
-MÊMES classes. Les mécanismes d'authentification portail (tokens/comptes
-clients) sont conservés À L'IDENTIQUE — aucun élargissement d'accès. ODX22
-re-logera le corps ici.
+SOLMVP16 — le corps de ces ViewSets vivait encore, par ré-export transitoire
+ODX12, dans le module compta (adossés à ``_ComptaBaseViewSet`` = ``TenantMixin``
++ ``ModelViewSet``, avec le scoping ``request.user.company`` et l'assignation
+forcée de ``company`` en ``perform_create``) ; il est désormais relogé ICI,
+sur une base locale équivalente (``_PortailBaseViewSet``). Les mécanismes
+d'authentification portail (tokens/comptes clients) sont conservés À
+L'IDENTIQUE — aucun élargissement d'accès.
 
-NTPRT2 — ``ComptePortailClientViewSet`` est désormais une SOUS-CLASSE locale
-qui ajoute l'action d'administration ``provisionner-acces`` (création du vrai
-compte utilisateur portail). La classe de base compta reste servie À
-L'IDENTIQUE sous ``/api/django/compta/…`` : la nouvelle action n'existe que sur
-le préfixe ``/api/django/portail/…``, aucun endpoint historique n'est modifié.
+NTPRT2 — ``ComptePortailClientViewSet`` ajoute l'action d'administration
+``provisionner-acces`` (création du vrai compte utilisateur portail) par
+rapport au CRUD de base.
 """
 
 import logging
 
+from rest_framework import filters, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
 
-from apps.compta.views import (  # noqa: F401
-    AcceptationDevisPortailViewSet,
-    DemandeTicketPortailViewSet,
-    DocumentClientPortailViewSet,
-    JalonChantierPortailViewSet,
-    PaiementFacturePortailViewSet,
-)
-from apps.compta.views import (
-    ComptePortailClientViewSet as _ComptePortailClientViewSetBase,
-)
-from authentication.permissions import IsAdminRole
+from authentication.mixins import TenantMixin
+from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 
 from . import services
+from .models import (
+    AcceptationDevisPortail,
+    ComptePortailClient,
+    DemandeTicketPortail,
+    DocumentClientPortail,
+    JalonChantierPortail,
+    PaiementFacturePortail,
+)
+from .serializers import (
+    AcceptationDevisPortailSerializer,
+    ComptePortailClientSerializer,
+    DemandeTicketPortailSerializer,
+    DocumentClientPortailSerializer,
+    JalonChantierPortailSerializer,
+    PaiementFacturePortailSerializer,
+)
 
 #: AUD141 — journal des RÉVÉLATIONS et rotations de jeton portail (qui, quand,
 #: sur quel compte). Le jeton lui-même n'est JAMAIS journalisé.
 logger = logging.getLogger('portail.acces')
 
 
-class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
-    """Comptes d'accès au portail client + provisionnement d'un VRAI compte.
+class _PortailBaseViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Base : société scopée + accès Administrateur/Responsable uniquement."""
+    permission_classes = [IsResponsableOrAdmin]
 
-    Hérite intégralement du ViewSet compta (scoping société ``TenantMixin``,
-    ``perform_create`` qui génère le token, garde de classe
-    ``IsResponsableOrAdmin``) et n'ajoute QUE l'action NTPRT2.
-    """
+
+class ComptePortailClientViewSet(_PortailBaseViewSet):
+    """Comptes d'accès au portail self-service client (FG228) + provisionnement
+    d'un VRAI compte utilisateur (NTPRT2). Le token est généré côté serveur ;
+    le compte se lie au client par id (résolu via le service crm) et ne
+    duplique aucune donnée métier (DC32)."""
+    queryset = ComptePortailClient.objects.all()
+    serializer_class = ComptePortailClientSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        # DC32 — le client est lié PAR FK ; on vérifie qu'il est bien dans la
+        # société de l'utilisateur (jamais un client d'un autre tenant).
+        client = serializer.validated_data.get('client')
+        company = self.request.user.company
+        if client is not None and getattr(
+                client, 'company_id', None) != getattr(company, 'id', None):
+            raise ValidationError(
+                {'client': 'Client inconnu pour cette société.'})
+        if client is None:
+            raise ValidationError(
+                {'client': 'Le client est requis pour ouvrir un accès portail.'})
+        # AUDV03 / FG228 (DRAFT165-29) — le provisionnement passe par le
+        # SERVICE, pas par un `serializer.save()` nu.
+        #
+        # Avant : chaque POST créait un compte de plus (ou heurtait la
+        # contrainte d'unicité). `services.provisionner_compte_portail` est
+        # idempotent par (société, client) : il renvoie le compte existant. Le
+        # token reste généré côté serveur, à l'intérieur du service.
+        #
+        # AUD148(c) — re-provisionner NE RÉACTIVE JAMAIS un compte révoqué
+        # (`actif=False`) : le service le renvoie TEL QUEL. Rouvrir un accès
+        # révoqué reste une action admin explicite
+        # (`apps.portail.services.reactiver_acces_client`), jamais un effet de
+        # bord d'un POST de provisionnement.
+        serializer.instance = services.provisionner_compte_portail(
+            company, client_id=client.id)
 
     def perform_update(self, serializer):
         """AUD138 — La bascule « Actif » RÉVOQUE (ou rouvre) vraiment l'accès.
@@ -59,10 +99,6 @@ class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
         routé vers l'action serveur UNIQUE
         ``services.revoquer_acces_client`` / ``reactiver_acces_client``, qui
         ferme (ou rouvre) les DEUX portes dans la même transaction.
-
-        Posé sur cette sous-classe — la seule montée sous
-        ``/api/django/portail/comptes-portail/`` (PACT26) — pour ne pas créer
-        une arête ``compta.views -> portail.services`` de plus.
         """
         avant = bool(getattr(serializer.instance, 'actif', True))
         # ``super()`` = ``TenantMixin.perform_update`` : la société reste forcée
@@ -180,3 +216,140 @@ class ComptePortailClientViewSet(_ComptePortailClientViewSetBase):
                 'token_apercu'),
             'detail': ("Jeton régénéré — l'ancien lien ne fonctionne plus."),
         })
+
+
+class AcceptationDevisPortailViewSet(_PortailBaseViewSet):
+    """Acceptations / e-signatures de devis depuis le portail (FG229).
+
+    AUD140 — LECTURE SEULE côté ERP. Cette ligne EST la preuve d'acceptation
+    électronique (signataire, IP, horodatage — loi 53-05) : son propre modèle
+    justifie le ``PROTECT`` sur ``devis`` par cet argument. La création reste
+    le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesDevisPortailViewSet.accepter``, qui signe
+    au nom du CLIENT connecté).
+    """
+    queryset = AcceptationDevisPortail.objects.all()
+    serializer_class = AcceptationDevisPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'signe_le']
+    #: AUD140 — POST/PUT/PATCH/DELETE répondent 405 (aucune action d'écriture
+    #: ne subsiste sur cette ressource : on peut fermer le verbe entier).
+    http_method_names = ['get', 'head', 'options']
+
+
+class PaiementFacturePortailViewSet(_PortailBaseViewSet):
+    """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
+
+    AUD140 — LECTURE SEULE côté ERP, à l'exception de ``rapprocher`` (le SEUL
+    workflow serveur : il confirme la réception d'un virement). La création
+    reste le chemin PORTAIL authentifié
+    (``apps.portail.views_client.MesFacturesPortailViewSet.payer``), qui appelle
+    ``services.initier_paiement_facture``.
+    """
+    queryset = PaiementFacturePortail.objects.all()
+    serializer_class = PaiementFacturePortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'paye_le']
+
+    def get_queryset(self):
+        """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
+
+        Une valeur inconnue est REFUSÉE (400) plutôt qu'ignorée : rendre la
+        liste entière sur un filtre incompris est exactement le défaut.
+        """
+        qs = super().get_queryset()
+        statut = (self.request.query_params.get('statut') or '').strip()
+        if not statut:
+            return qs
+        if statut not in PaiementFacturePortail.Statut.values:
+            raise ValidationError({'statut': 'Statut de paiement inconnu.'})
+        return qs.filter(statut=statut)
+
+    def _refus_lecture_seule(self, request):
+        raise MethodNotAllowed(
+            request.method,
+            detail=("Une intention de paiement portail ne se crée, ne se "
+                    "modifie et ne se supprime pas depuis l'ERP : elle est "
+                    "posée par le client depuis son portail. Seule l'action "
+                    "« rapprocher » est disponible."))
+
+    def create(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def partial_update(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    def destroy(self, request, *args, **kwargs):
+        self._refus_lecture_seule(request)
+
+    @action(detail=True, methods=['post'])
+    def rapprocher(self, request, pk=None):
+        paiement = self.get_object()
+        reference = request.data.get('reference') or None
+        services.rapprocher_paiement_facture(
+            paiement, reference=reference, user=request.user)
+        return Response(self.get_serializer(paiement).data)
+
+
+class DocumentClientPortailViewSet(_PortailBaseViewSet):
+    """Documents (factures ONEE…) téléversés par le client depuis le portail
+    (FG231). La société est posée côté serveur ; ``marquer_traite`` signale
+    qu'un document a été intégré à l'étude."""
+    queryset = DocumentClientPortail.objects.all()
+    serializer_class = DocumentClientPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_depot']
+
+    @action(detail=True, methods=['post'])
+    def marquer_traite(self, request, pk=None):
+        doc = self.get_object()
+        if not doc.traite:
+            doc.traite = True
+            doc.save(update_fields=['traite'])
+        return Response(self.get_serializer(doc).data)
+
+
+class JalonChantierPortailViewSet(_PortailBaseViewSet):
+    """Jalons d'avancement de chantier exposés au client (FG232). La société est
+    posée côté serveur ; ``marquer_atteint`` avance un jalon (côté interne). Le
+    client lit la timeline en lecture-seule côté portail."""
+    queryset = JalonChantierPortail.objects.all()
+    serializer_class = JalonChantierPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
+
+    @action(detail=True, methods=['post'])
+    def marquer_atteint(self, request, pk=None):
+        jalon = self.get_object()
+        if not jalon.atteint:
+            from django.utils import timezone
+            jalon.atteint = True
+            if not jalon.date_jalon:
+                jalon.date_jalon = timezone.localdate()
+            jalon.save(update_fields=['atteint', 'date_jalon'])
+        return Response(self.get_serializer(jalon).data)
+
+
+class DemandeTicketPortailViewSet(_PortailBaseViewSet):
+    """Demandes de ticket SAV ouvertes par le client depuis le portail (FG233).
+    La société est posée côté serveur ; ``prendre_en_charge`` avance la demande
+    et référence le ticket SAV créé (par id — le vrai ticket vit dans l'app sav,
+    créé via son service, jamais importée ici)."""
+    queryset = DemandeTicketPortail.objects.all()
+    serializer_class = DemandeTicketPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def prendre_en_charge(self, request, pk=None):
+        demande = self.get_object()
+        ticket_id = request.data.get('ticket_id')
+        if demande.statut == DemandeTicketPortail.Statut.SOUMISE:
+            demande.statut = DemandeTicketPortail.Statut.PRISE_EN_CHARGE
+            if ticket_id:
+                demande.ticket_id = ticket_id
+            demande.save(update_fields=['statut', 'ticket_id'])
+        return Response(self.get_serializer(demande).data)

@@ -67,7 +67,7 @@ class WIR138SocleParqueTests(TestCase):
         """``core.esign`` ne doit jamais importer une app domaine."""
         import inspect
         src = inspect.getsource(esign)
-        for interdit in ('apps.ventes', 'apps.ged', 'apps.crm', 'apps.contrats'):
+        for interdit in ('apps.ventes', 'apps.crm', 'apps.sav', 'apps.stock'):
             self.assertNotIn(f'import {interdit}', src)
             self.assertNotIn(f'from {interdit}', src)
 

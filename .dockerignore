@@ -13,3 +13,18 @@
 docs
 backend
 .env
+# SOLMVP40 — modules sortis du MVP solaire (frontend/parked/README.md).
+# frontend/Dockerfile.prod fait `COPY frontend/ ./` avec le contexte racine :
+# c'est CE fichier (pas frontend/.dockerignore) qui gouverne réellement ce
+# qui entre dans l'image de prod. Le code reste dans le dépôt, jamais dans
+# l'image ni le build (aucun import ne l'atteint de toute façon).
+frontend/parked
+# SOLMVP37 — miroir source des 47 apps parquées (backend/parked/README.md).
+# Déjà couvert par la ligne `backend` ci-dessus (le contexte racine, utilisé
+# par frontend/Dockerfile.prod, exclut TOUT backend/) ; ligne explicite pour
+# que l'exclusion survive même si `backend` venait à être retiré/affiné un
+# jour. Les images django_core/fastapi_ia ont un contexte de build scopé à
+# leur propre sous-dossier (`backend/django_core`, `backend/fastapi_ia`) :
+# backend/parked/ leur est structurellement invisible, aucun .dockerignore
+# n'y est nécessaire.
+backend/parked

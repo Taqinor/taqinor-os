@@ -1,8 +1,8 @@
 """CAL23 — le calcul LOURD en tâche de fond, suivi par ``BackgroundJob``.
 
 AUCUNE file maison : le dispatch passe par ``core.jobs.submit(kind, task,
-company=…, user=…)`` — la primitive plateforme (NTPLT29) que ``apps.ao``
-utilise déjà pour son propre kind. Elle crée le ``BackgroundJob`` (société et
+company=…, user=…)`` — la primitive plateforme (NTPLT29), partagée par tous
+les kinds du dépôt. Elle crée le ``BackgroundJob`` (société et
 utilisateur FORCÉS côté serveur) et transmet ``job_id`` à la tâche ; la tâche
 est responsable de la progression et de l'issue.
 
@@ -92,7 +92,7 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
         job.marquer_echec("Aucun document de calepinage à calculer.")
         return {'statut': 'failed', 'motif': 'aucun document'}
 
-    from apps.ao.selectors import calepinage_json, erreurs_moteur_calepinage
+    from .moteur_service import calepinage_json, erreurs_moteur_calepinage
 
     entree_invalide, incoherent = erreurs_moteur_calepinage()
     company = job.company

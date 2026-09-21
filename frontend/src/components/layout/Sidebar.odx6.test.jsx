@@ -74,9 +74,14 @@ describe('ODX6 — coquille d’app filtrée par modules actifs', () => {
     expect(navHrefs(params).filter((h) => h === '/admin/users')).toHaveLength(1)
   })
 
-  it('ODY4 — un seul lien /messages (la section « tête » en dur ne le duplique plus)', () => {
+  it('ODY4 — messaging parqué (SOLMVP40) : /messages ne rend plus aucun lien « Messages »', () => {
+    // Le module `messaging` (features/messaging, pages/messaging) est sorti
+    // du périmètre MVP solaire (frontend/parked/README.md) : plus aucune
+    // route/nav n'y pointe, la coquille redevient NEUTRE (miroir de la garde
+    // de route `moduleLoader`, même comportement qu'un module désactivé).
     const { container } = renderSidebar({ path: '/messages' })
-    expect(screen.getAllByRole('link', { name: /^Messages$/ })).toHaveLength(1)
-    expect(navHrefs(container).filter((h) => h === '/messages')).toHaveLength(1)
+    expect(screen.queryAllByRole('link', { name: /^Messages$/ })).toHaveLength(0)
+    expect(navHrefs(container).filter((h) => h === '/messages')).toHaveLength(0)
+    expect(appName(container)).toBeNull()
   })
 })

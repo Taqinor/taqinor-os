@@ -184,67 +184,6 @@ def public_api_reference():
                 'updated_since': 'updated_at',
             },
             {
-                'chemin': '/api/public/v1/scm/previsions-demande/',
-                'scope': 'read:scm',
-                'description': "Prévisions de demande (planification supply chain, NTSCM1/2/3).",
-                'filtres': ['produit', 'segment', 'periode', 'methode'],
-                'tri': ['periode', 'id'],
-                'updated_since': 'genere_le',
-            },
-            {
-                'chemin': '/api/public/v1/scm/politiques-stock/',
-                'scope': 'read:scm',
-                'description': (
-                    "Politiques de stock (ROP/stock de sécurité au niveau de "
-                    "service, NTSCM6). Jamais de prix d'achat."
-                ),
-                'filtres': ['produit', 'classe_abc'],
-                'tri': ['id', 'revise_le'],
-                'updated_since': 'revise_le',
-            },
-            {
-                # NTCON31 — vertical BTP/EPC : quatre ressources déjà montées
-                # (`public_urls.py`) mais jamais documentées jusqu'ici (garde
-                # NTAPI42/NTAPI20 muette faute d'un test qui les recensait
-                # explicitement) — comblé en même temps que NTUX33 puisque
-                # les deux ajouts partagent le même routeur et les mêmes
-                # tests de cohérence.
-                'chemin': '/api/public/v1/btp/reserves/',
-                'scope': 'read:btp',
-                'description': "Réserves de chantier (punch-list), NTCON1/2.",
-                'filtres': ['chantier', 'statut', 'gravite', 'lot', 'archivee'],
-                'tri': ['created_at', 'updated_at', 'id'],
-                'updated_since': 'updated_at',
-            },
-            {
-                'chemin': '/api/public/v1/btp/rfi/',
-                'scope': 'read:btp',
-                'description': "RFI (Request For Information) de chantier, NTCON3.",
-                'filtres': ['chantier', 'statut', 'numero'],
-                'tri': ['created_at', 'numero', 'id'],
-                'updated_since': 'created_at',
-            },
-            {
-                'chemin': '/api/public/v1/btp/visas/',
-                'scope': 'read:btp',
-                'description': "Visas de documents techniques de chantier, NTCON5.",
-                'filtres': ['chantier', 'statut', 'type_visa', 'reference'],
-                'tri': ['created_at', 'date_soumission', 'id'],
-                'updated_since': 'created_at',
-            },
-            {
-                'chemin': '/api/public/v1/btp/decomptes-generaux/',
-                'scope': 'read:btp',
-                'description': (
-                    "Décomptes généraux de chantier (montants CONTRACTUELS "
-                    "uniquement — marché, avenants, situations, solde ; "
-                    "jamais un coût interne), NTCON9/10."
-                ),
-                'filtres': ['chantier', 'statut', 'reference'],
-                'tri': ['created_at', 'updated_at', 'id'],
-                'updated_since': 'updated_at',
-            },
-            {
                 'chemin': '/api/public/v1/saved-views/',
                 'scope': 'read:vues',
                 'description': (
@@ -491,15 +430,6 @@ def public_api_reference():
                         "Statut de licence de la société (plan_code, "
                         "modules_inclus, sieges_max, sieges_utilises). "
                         "Aucun champ interne (prix, historique)."
-                    ),
-                },
-                {
-                    'chemin': '/api/public/v1/scm/tableau-bord-reappro/',
-                    'scope': 'read:scm',
-                    'description': (
-                        "Tableau de bord réappro consolidé (NTSCM7) — "
-                        "``{'lignes': [...]}``. Le coût d'achat interne "
-                        "est toujours retiré avant sérialisation."
                     ),
                 },
                 # NTOBS27 — gouvernance fournisseur : les trois ressources

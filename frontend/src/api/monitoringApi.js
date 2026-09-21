@@ -78,22 +78,6 @@ const monitoringApi = {
   // Envoi du rapport O&M par e-mail (PDF joint). body { period, recipient? }.
   emailOmReport: (configId, data) =>
     api.post(`/monitoring/configs/${configId}/email-om-report/`, data),
-
-  // ── WIR123 — Abonnements de supervision (revenu récurrent, FG244) ──
-  getAbonnements: (params) => api.get('/monitoring/abonnements-monitoring/', { params }),
-  createAbonnement: (data) => api.post('/monitoring/abonnements-monitoring/', data),
-  // WIR237 — `facturer` ENCHAÎNE désormais le renouvellement côté serveur
-  // (variante beat) : la réponse porte `prochaine_echeance` déjà avancée. Le
-  // wrapper `renouvelerAbonnement`, orphelin (aucun appelant) et devenu
-  // trompeur — il donnait un 2e chemin qui avance l'échéance SANS facturer —
-  // a été retiré ; l'endpoint `renouveler/` reste, réservé au service/beat.
-  facturerAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/facturer/`, {}),
-  suspendreAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/suspendre/`, {}),
-  // WIR237 — reprise d'un abonnement SUSPENDU (SUSPENDU → ACTIF, idempotent ;
-  // 400 sur un abonnement résilié — la résiliation reste définitive).
-  reactiverAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/reactiver/`, {}),
-  resilierAbonnement: (id, motif) =>
-    api.post(`/monitoring/abonnements-monitoring/${id}/resilier/`, { motif }),
 }
 
 export default monitoringApi

@@ -47,11 +47,10 @@ class Company(models.Model):
         'Consentement benchmarking anonymisé', default=False)
     # SOL8 — PAYS du tenant (ISO 3166-1 alpha-2). Additif, défaut ``MA`` : TOUTES
     # les sociétés existantes restent marocaines, donc AUCUN comportement ne
-    # change (le « pack pays » ci-dessous ne se déclenche que hors Maroc).
-    # Sert au semis des modules off par défaut à la CRÉATION d'un tenant
-    # (`authentication.module_seeds`) : facturation électronique DGI, calendrier
-    # fiscal marocain et paie CNSS/AMO/IR n'ont aucun sens hors du Maroc — ils
-    # restent LIVRÉS et réactivables en un clic, simplement éteints au départ.
+    # change. SOLMVP3 : le semis « modules off par défaut » a disparu avec le
+    # mécanisme d'édition ; ce champ reste la seule source du pays du tenant
+    # (formats, fuseau, textes légaux) et un `ModuleToggle` s'éteint désormais
+    # à la main depuis Paramètres.
     pays = models.CharField(
         'Pays (ISO 3166-1 alpha-2)', max_length=2, default='MA',
         help_text="Code pays ISO du tenant (MA = Maroc). Détermine le « pack "
@@ -197,27 +196,13 @@ class CustomUser(AbstractUser):
     address = models.TextField(blank=True, null=True)
     # Poste / intitulé du métier (ex. « Commerciale », « Technicien »).
     # Purement informatif, affiché dans l'admin et à côté de l'avatar.
-    # Champ texte LIBRE HÉRITÉ : conservé intact (jamais supprimé) pour rester
-    # totalement réversible et garder l'historique des intitulés saisis. Le
-    # référentiel canonique est désormais ``poste_ref`` (FK ``rh.Poste``, FG160).
+    # Champ texte LIBRE : c'est le SEUL porteur de l'intitulé de poste côté
+    # compte applicatif. Le FK ``poste_ref`` vers le référentiel ``rh.Poste``
+    # (DC17/FG160) a été retiré par SOLMVP30b — ``rh`` sort du MVP solaire
+    # (``core.parked``) et une app gardée ne peut pas pointer une app parquée.
+    # Rien n'est perdu : la table ``rh_poste`` reste intacte et cette colonne
+    # garde l'intitulé lisible (retour du module : docs/parked-modules.md §5).
     poste = models.CharField(max_length=120, blank=True, default='')
-    # DC17 — Référentiel des postes (FG160) : FK vers le ``rh.Poste`` normalisé
-    # de la société, qui remplace progressivement le ``poste`` texte libre. Le
-    # poste CANONIQUE d'un collaborateur vit sur ``rh.DossierEmploye`` ; ce FK
-    # sur ``CustomUser`` est l'écho côté compte applicatif. Référence par
-    # STRING-FK (``'rh.Poste'``) — aucune importation des modèles rh côté
-    # authentication. Nullable + SET_NULL : additif, jamais de verrouillage ni de
-    # cascade ; supprimer un Poste détache simplement le compte. ``related_name``
-    # préfixé par le label (``auth_users``) pour éviter toute collision avec
-    # ``Poste.employes`` (DossierEmploye). Migré/dédupliqué par société depuis
-    # ``poste`` via une migration de données réversible.
-    poste_ref = models.ForeignKey(
-        'rh.Poste',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='auth_users',
-    )
     # Clé MinIO (bucket erp-uploads) de la photo de profil. Vide = avatar
     # à initiales. Même mécanisme de stockage que logo/signature entreprise
     # (boto3, jamais de FileField/ImageField) — aucune dépendance nouvelle.

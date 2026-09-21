@@ -41,11 +41,6 @@ from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
-# AUD122 — garde de période comptable PARTAGÉE (voir utils/periode.py).
-from ..utils.periode import (  # noqa: F401
-    DatedDocument, guard_periode_date, guard_periode_verrouillee,
-)
-
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -127,14 +122,6 @@ def _company_qs(qs, user):
     if user.is_superuser:
         return qs
     return qs.none()
-
-
-# AUD122 — la garde de période et son adaptateur vivent désormais dans
-# ``apps/ventes/utils/periode.py`` (module partagé) : ils étaient dupliqués
-# ici et dans ``views/avoir.py``, et donc absents des 4 autres chemins qui
-# créent un Paiement à une date fournie par l'appelant. L'alias local garde
-# les appels existants de ce module inchangés au caractère près.
-_DatedDocument = DatedDocument
 
 
 class IsSuperuserOnly(BasePermission):
@@ -243,15 +230,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # creer_avoir tombe ici → IsAdminRole (création d'avoir = admin).
         return [IsAdminRole()]
 
-    @staticmethod
-    def _guard_periode_verrouillee(document):
-        """YLEDG3 — refuse (400) une mutation d'un document ventes daté dans
-        une période comptable CLÔTURÉE (FG115). AUD122 — le corps est
-        désormais la fonction PARTAGÉE ``utils.periode`` : même garde, même
-        no-op silencieux quand compta est absente ou qu'aucune période n'est
-        verrouillée."""
-        guard_periode_verrouillee(document)
-
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         company = self.request.user.company
@@ -350,7 +328,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 'effacerait des encaissements réels. Annulez-la ou rejetez '
                 'd\'abord ses paiements.'
             )})
-        self._guard_periode_verrouillee(instance)
         try:
             instance.delete()
         except ProtectedError:
@@ -361,11 +338,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             )})
 
     def perform_update(self, serializer):
-        # YLEDG3 — un document daté dans une période comptable CLÔTURÉE ne
-        # doit plus pouvoir être modifié. Import function-local de
-        # apps.compta.services (cross-app services autorisé) ; société sans
-        # compta/périodes = garde silencieuse (comportement actuel inchangé).
-        self._guard_periode_verrouillee(self.get_object())
         # XFAC24 — immutabilité de la facture émise (opt-in). Flag OFF
         # (défaut) → comportement actuel byte-identique. Flag ON et facture
         # non-brouillon : tout champ FINANCIER dans le corps est refusé (la
@@ -475,8 +447,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # YLEDG3 — refuse si la période comptable de la facture est verrouillée.
-        self._guard_periode_verrouillee(facture)
         ancien = facture.statut
         facture.statut = Facture.Statut.BROUILLON
         facture.save(update_fields=['statut'])
@@ -591,7 +561,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         """
         from decimal import Decimal
         facture = self.get_object()
-        self._guard_periode_verrouillee(facture)
         if facture.statut == Facture.Statut.PAYEE:
             return Response(
                 {'detail': 'Une facture payée ne peut pas être annulée.'},
@@ -840,13 +809,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Le montant du paiement doit être positif.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        # YLEDG3 — un paiement DATÉ dans une période comptable clôturée est
-        # refusé (la date du paiement, pas celle de la facture, est ce qui
-        # tombe dans la période comptable concernée).
-        paiement_date = serializer.validated_data.get('date_paiement')
-        if paiement_date is not None:
-            self._guard_periode_verrouillee(
-                _DatedDocument(facture.company, paiement_date))
         # ERR72 — la garde sur-paiement et l'écriture du paiement doivent être
         # sérialisées : on verrouille la ligne facture (select_for_update) puis
         # on lit le reste à payer, on contrôle, et on enregistre — le tout dans
@@ -1270,7 +1232,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         passe ``annulee`` avec un ``FactureActivity`` liant les deux pièces.
         Refusé (400) si la facture a déjà des paiements (dû négatif évité)."""
         facture = self.get_object()
-        self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un avoir ne peut être créé que depuis une '
@@ -1464,7 +1425,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         pendant de l'avoir. Total (copie des lignes de la facture) ou
         personnalisé (`lignes` fourni) ; augmente ``Facture.montant_du``."""
         facture = self.get_object()
-        self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Une note de débit ne peut être créée que depuis '
@@ -1592,7 +1552,6 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         quantité retournée supérieure à ce qui a été vendu (moins les retours
         déjà actés) est refusée."""
         facture = self.get_object()
-        self._guard_periode_verrouillee(facture)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             return Response(
                 {'detail': 'Un retour ne peut être créé que depuis une '

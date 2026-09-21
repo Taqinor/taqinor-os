@@ -3,13 +3,12 @@ NTP2P38 — Événements domaine Procure-to-Pay sur le bus ``core/events.py``.
 
 CRITÈRE D'ACCEPTATION : approuver une demande d'achat déclenche l'événement,
 visible sur le bus et consommable par un abonné de test (le rôle qu'aurait une
-``AutomationRule``). Idem pour l'attribution d'une RFQ.
+``AutomationRule``).
 
 Ce qui est prouvé ici :
   * ``demande_achat_approuvee`` part sur les DEUX chemins d'approbation (le
     guichet unique XKB1 et la dernière étape d'un plan NTP2P2), et JAMAIS sur
     un refus ni sur une étape intermédiaire ;
-  * ``rfq_attribuee`` part à l'adjudication, avec le BCF gagnant ;
   * un abonné qui lève n'empêche PAS l'approbation d'aboutir (best-effort) —
     aucun appel HTTP automatique n'est fait par le bus lui-même.
 
@@ -24,12 +23,11 @@ from django.test import TestCase
 
 from apps.installations import services
 from apps.installations.models import (
-    RFQ, DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
-    RFQOffre, RegleApprobationAchat,
+    DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
+    RegleApprobationAchat,
 )
-from apps.stock.models import Fournisseur
 
-from core.events import demande_achat_approuvee, rfq_attribuee
+from core.events import demande_achat_approuvee
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -182,45 +180,3 @@ class ApprobationParEtapesTests(BusMixin, TestCase):
         restantes = self.da.etapes_approbation.filter(
             statut=EtapeApprobationAchat.Statut.EN_ATTENTE).count()
         self.assertEqual(restantes, 0)
-
-
-class RfqAttribueeTests(BusMixin, TestCase):
-
-    def setUp(self):
-        self.company = make_company()
-        self.acheteur = make_user(self.company)
-        self.fournisseur = Fournisseur.objects.create(
-            company=self.company, nom='Fournisseur NTP2P38')
-        self.rfq = RFQ.objects.create(
-            company=self.company, reference=f'RFQ-NTP2P38-{next(_seq):04d}',
-            objet='Consultation NTP2P38', created_by=self.acheteur)
-        self.offre = RFQOffre.objects.create(
-            company=self.company, rfq=self.rfq,
-            fournisseur=self.fournisseur, montant_ht=Decimal('8000'),
-            retenue=True)
-        self.recus = self.abonner(rfq_attribuee, 'ntp2p38-test-rfq')
-
-    def test_attribution_emet_la_rfq_loffre_et_le_bcf(self):
-        services.marquer_rfq_attribuee(
-            self.rfq, self.offre, user=self.acheteur, bon_commande_id=4242)
-
-        self.assertEqual(len(self.recus), 1)
-        charge = self.recus[0]
-        self.assertEqual(charge['rfq'].pk, self.rfq.pk)
-        self.assertEqual(charge['offre'].pk, self.offre.pk)
-        self.assertEqual(charge['company'].pk, self.company.pk)
-        self.assertEqual(charge['user'].pk, self.acheteur.pk)
-        self.assertEqual(charge['bon_commande_id'], 4242)
-
-    def test_un_abonne_qui_leve_ne_remonte_jamais(self):
-        def casse(sender, **kwargs):
-            raise RuntimeError('webhook injoignable')
-
-        rfq_attribuee.connect(casse, dispatch_uid='ntp2p38-rfq-casse')
-        self.addCleanup(
-            rfq_attribuee.disconnect, casse,
-            dispatch_uid='ntp2p38-rfq-casse')
-
-        with self.assertLogs('apps.installations.services', level='WARNING'):
-            services.marquer_rfq_attribuee(
-                self.rfq, self.offre, user=self.acheteur)

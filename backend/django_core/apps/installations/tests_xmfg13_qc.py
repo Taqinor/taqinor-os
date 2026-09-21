@@ -5,7 +5,6 @@ Couvre :
   * kit SANS modèle QC → `terminer` inchangé (comportement actuel) ;
   * kit AVEC modèle QC actif → `terminer` bloqué tant que la checklist n'est
     pas entièrement passée ;
-  * un item en échec ouvre une `qhse.NonConformite` liée à l'ordre ;
   * `forcer=true` + motif (responsable/admin) débloque la clôture.
 
 Run :
@@ -103,23 +102,6 @@ class TestControleQualite(TestCase):
         resp = self.api.post(
             f'{BASE}/ordres-assemblage/{ordre.id}/terminer/', {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
-
-    def test_item_en_echec_ouvre_ncr(self):
-        modele = ControleQualiteModele.objects.create(
-            company=self.company, kit=self.kit, active=True)
-        item = ControleQualiteItemModele.objects.create(
-            modele=modele, libelle='Test isolement', ordre=1)
-        ordre = OrdreAssemblage.objects.create(
-            company=self.company, reference='ASM-QC4', kit=self.kit, quantite=1)
-        self.api.get(f'{BASE}/ordres-assemblage/{ordre.id}/controle-qualite/')
-        self.api.post(
-            f'{BASE}/ordres-assemblage/{ordre.id}/controle-qualite/{item.id}/',
-            {'resultat': 'fail'}, format='json')
-        from apps.qhse.models import NonConformite
-        ncr = NonConformite.objects.filter(
-            company=self.company, ordre_assemblage=ordre).first()
-        self.assertIsNotNone(ncr)
-        self.assertEqual(ncr.statut, NonConformite.Statut.OUVERTE)
 
     def test_forcer_avec_motif_debloque_cloture(self):
         modele = ControleQualiteModele.objects.create(

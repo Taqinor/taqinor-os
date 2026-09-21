@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { History, Plus, Trash2 } from 'lucide-react'
@@ -19,7 +19,6 @@ import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
 // champ serveur (`devis.layout_stale`/`layout_nb_panneaux`, CAL189) que la
 // page client — jamais recalculé ici.
 import BadgePerime from '../../features/calepinage/BadgePerime'
-import cpqApi from '../../api/cpqApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -57,194 +56,6 @@ const emptyLine = () => ({
   // TVA par ligne (parité avec le générateur) ; vide = taux par défaut du devis.
   taux_tva: '',
 })
-
-// NTCPQ8 — onglet « Approbation » : liste les étapes d'approbation de remise
-// (matrice NTCPQ7) et permet d'approuver / rejeter l'étape courante. Réutilise
-// le pattern déjà en prod pour les contrats. Silencieux si aucune étape.
-function ApprobationPanel({ devisId }) {
-  const [etapes, setEtapes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [motif, setMotif] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const reload = useCallback(() => {
-    setLoading(true)
-    ventesApi.approbationDevis(devisId)
-      .then((r) => setEtapes(r.data || []))
-      .catch(() => setEtapes([]))
-      .finally(() => setLoading(false))
-  }, [devisId])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
-  useEffect(() => { reload() }, [reload])
-
-  const approuver = async () => {
-    setBusy(true)
-    try { await ventesApi.approuverEtapeDevis(devisId); reload() }
-    finally { setBusy(false) }
-  }
-  const rejeter = async () => {
-    setBusy(true)
-    try { await ventesApi.rejeterEtapeDevis(devisId, motif); setMotif(''); reload() }
-    finally { setBusy(false) }
-  }
-
-  if (loading) return null
-  if (!etapes.length) return null
-  const enAttente = etapes.some((e) => e.statut === 'en_attente')
-
-  return (
-    <div className="border-t border-border pt-4" data-testid="cpq-approbation">
-      <p className="mb-2 text-sm font-semibold text-foreground">
-        Approbation de remise
-      </p>
-      <ul className="mb-3 space-y-1 text-sm">
-        {etapes.map((e) => (
-          <li key={e.id} className="flex items-center justify-between gap-2">
-            <span>
-              Étape {e.niveau} · {e.niveau_approbation}
-              {e.approbateur ? ` · ${e.approbateur}` : ''}
-            </span>
-            <span className="font-medium">{e.statut}</span>
-          </li>
-        ))}
-      </ul>
-      {enAttente && (
-        <div className="space-y-2">
-          <Input
-            placeholder="Motif de rejet (optionnel)"
-            value={motif}
-            onChange={(ev) => setMotif(ev.target.value)}
-          />
-          <div className="flex gap-2">
-            <Button type="button" onClick={approuver} loading={busy}>
-              Approuver
-            </Button>
-            <Button type="button" variant="ghost" onClick={rejeter} loading={busy}>
-              Rejeter
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// NTCPQ28 — Wizard « Escalade d'approbation » CÔTÉ DEMANDEUR (distinct de
-// ApprobationPanel ci-dessus, qui est l'écran de l'APPROBATEUR). Quand
-// envoyer/generer-pdf est bloqué par une étape NTCPQ7 en attente, ce
-// panneau guide l'auteur du devis : étape en attente, approbateur assigné,
-// bouton « Relancer » (notification, throttlée serveur à 1/24h). Silencieux
-// tant qu'aucune étape n'est en attente.
-function EscaladeApprobationPanel({ devisId }) {
-  const [etapes, setEtapes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState(false)
-  const [dernierResultat, setDernierResultat] = useState(null)
-
-  const reload = useCallback(() => {
-    setLoading(true)
-    ventesApi.approbationDevis(devisId)
-      .then((r) => setEtapes(r.data || []))
-      .catch(() => setEtapes([]))
-      .finally(() => setLoading(false))
-  }, [devisId])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
-  useEffect(() => { reload() }, [reload])
-
-  const enAttente = etapes.find((e) => e.statut === 'en_attente')
-
-  const relancer = async () => {
-    setBusy(true)
-    setDernierResultat(null)
-    try {
-      const { data } = await cpqApi.relancerApprobation(devisId)
-      setDernierResultat(data)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (loading || !enAttente) return null
-
-  return (
-    <div
-      className="border-t border-border pt-4"
-      data-testid="cpq-escalade-approbation"
-    >
-      <p className="mb-2 text-sm font-semibold text-foreground">
-        Envoi bloqué — approbation de remise en attente
-      </p>
-      <p className="mb-3 text-sm text-muted-foreground">
-        Étape {enAttente.niveau} · {enAttente.niveau_approbation}
-        {enAttente.approbateur
-          ? ` · assignée à ${enAttente.approbateur}`
-          : ' · aucun approbateur assigné pour le moment'}
-      </p>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={relancer}
-          loading={busy}
-          disabled={!enAttente.approbateur}
-        >
-          Relancer l'approbateur
-        </Button>
-        {dernierResultat && (
-          <span className="text-sm text-muted-foreground">
-            {dernierResultat.detail}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// NTCPQ21 — badge « configuration validée » : état CALCULÉ côté serveur
-// (règles produit NTCPQ2 + contraintes de compatibilité NTCPQ1), exposé sur le
-// DÉTAIL du devis (`configuration`). Purement informatif : il n'empêche jamais
-// l'enregistrement en brouillon — seule une violation marquée bloquante est
-// signalée comme telle. Silencieux tant que l'état n'est pas connu.
-function ConfigurationBadge({ devisId }) {
-  const [etat, setEtat] = useState(null)
-
-  useEffect(() => {
-    let vivant = true
-    ventesApi.getDevisById(devisId)
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture serveur au changement de devis
-      .then((r) => { if (vivant) setEtat(r.data?.configuration ?? null) })
-      .catch(() => {})
-    return () => { vivant = false }
-  }, [devisId])
-
-  if (!etat) return null
-  const valide = !!etat.configuration_valide
-  const violations = etat.violations || []
-
-  return (
-    <div className="border-t border-border pt-4" data-testid="cpq-configuration">
-      <p
-        className={`text-sm font-semibold ${
-          valide ? 'text-emerald-600' : 'text-destructive'
-        }`}
-      >
-        {valide
-          ? 'Configuration validée'
-          : `Configuration à vérifier (${violations.length})`}
-      </p>
-      {!valide && (
-        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-          {violations.map((v, i) => (
-            <li key={`${v.source}-${v.regle_id ?? i}`}>
-              {v.bloquante ? '⛔ ' : '⚠️ '}
-              {v.message}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
 
 export default function DevisForm({ devis = null, onClose, onSaved }) {
   const dispatch = useDispatch()
@@ -304,12 +115,6 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
-  // NTCPQ29 — wizard de résolution de conflit de compatibilité : { key,
-  // violation, alternatives } quand la dernière sélection produit déclenche
-  // une violation BLOQUANTE (NTCPQ1), null sinon. Purement côté écran —
-  // aucune écriture serveur tant que l'utilisateur ne choisit pas une
-  // alternative (ou ferme le modal sans agir).
-  const [conflitCompat, setConflitCompat] = useState(null)
   // VX90 — focus la nouvelle ligne (ProduitPicker) après « Ajouter ligne ».
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
@@ -384,42 +189,16 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     setDirty(true)
     clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
-    let nextIds = []
-    setLines(ls => {
-      const updated = ls.map(l =>
-        l._key === key
-          ? {
-              ...l, produit: produitId, designation: p?.nom ?? '',
-              prix_unitaire: p ? String(p.prix_vente) : '0',
-              // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
-              taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
-            }
-          : l
-      )
-      nextIds = updated.map(l => l.produit).filter(Boolean)
-      return updated
-    })
-    // NTCPQ29 — vérification LIVE de compatibilité après la sélection :
-    // une violation bloquante ouvre le wizard de résolution au lieu d'un
-    // simple message d'erreur bloquant sans issue. Best-effort, jamais
-    // bloquant pour la saisie (silencieux sur erreur réseau).
-    if (nextIds.length > 1) {
-      cpqApi.validerCompatibilite(nextIds)
-        .then(({ data }) => {
-          const premiere = data?.bloquantes?.[0]
-          if (premiere) {
-            setConflitCompat({ key, violation: premiere })
-          } else {
-            setConflitCompat(c => (c?.key === key ? null : c))
+    setLines(ls => ls.map(l =>
+      l._key === key
+        ? {
+            ...l, produit: produitId, designation: p?.nom ?? '',
+            prix_unitaire: p ? String(p.prix_vente) : '0',
+            // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
+            taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
           }
-        })
-        .catch(() => {})
-    }
-  }
-
-  const resoudreConflitCompat = (produitAlternatifId) => {
-    if (conflitCompat) onProduitChange(conflitCompat.key, produitAlternatifId)
-    setConflitCompat(null)
+        : l
+    ))
   }
 
   const addLine = () => {
@@ -879,9 +658,6 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           {/* CAL40 — le calepinage qui PILOTE ce devis (lien inverse CAL28).
               Silencieux quand le devis n'en a aucun : jamais un bloc vide. */}
           {isEdit && devis?.id && <BlocCalepinageDevis devisId={devis.id} />}
-          {isEdit && devis?.id && <ConfigurationBadge devisId={devis.id} />}
-          {isEdit && devis?.id && <EscaladeApprobationPanel devisId={devis.id} />}
-          {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}
 
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
@@ -901,58 +677,6 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             setClientQuickCreateOpen(false)
           }}
         />
-
-        {/* NTCPQ29 — wizard de résolution de conflit de compatibilité :
-            propose des alternatives compatibles en un clic au lieu d'un
-            simple message d'erreur bloquant sans issue, sans quitter
-            l'écran de configuration. */}
-        <Dialog
-          open={!!conflitCompat}
-          onOpenChange={(o) => { if (!o) setConflitCompat(null) }}
-        >
-          <DialogContent data-testid="cpq-conflit-compatibilite">
-            <DialogHeader>
-              <DialogTitle>Configuration incompatible</DialogTitle>
-            </DialogHeader>
-            <p className="mb-3 text-sm text-muted-foreground">
-              {conflitCompat?.violation?.message ||
-                'Ces produits ne sont pas compatibles.'}
-            </p>
-            {conflitCompat?.violation?.alternatives?.length ? (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-foreground">
-                  Alternatives compatibles :
-                </p>
-                {conflitCompat.violation.alternatives.map((alt) => (
-                  <Button
-                    key={alt.produit_id}
-                    type="button"
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => resoudreConflitCompat(alt.produit_id)}
-                  >
-                    {alt.source === 'a_ajouter' ? 'Ajouter : ' : 'Remplacer par : '}
-                    {alt.nom}
-                  </Button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Aucune alternative connue pour le moment — ajustez la
-                sélection manuellement.
-              </p>
-            )}
-            <FormActions sticky={false}>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setConflitCompat(null)}
-              >
-                Fermer
-              </Button>
-            </FormActions>
-          </DialogContent>
-        </Dialog>
       </DialogContent>
     </Dialog>
   )

@@ -162,10 +162,10 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         séquentielles) si une ``RegleApprobationAchat`` active couvre le
         montant estimé. Sans règle : aucune étape, comportement historique.
 
-        NTP2P4 — contrôle budgétaire départemental AVANT tout changement
-        d'état : si le budget restant du département du demandeur ne couvre
-        pas la demande, la soumission est refusée (400) — sauf dérogation
-        autorisée par la règle d'approbation. Inactif par défaut."""
+        NTP2P4 — contrôle budgétaire (société) AVANT tout changement d'état :
+        si le budget restant de la société ne couvre pas la demande, la
+        soumission est refusée (400) — sauf dérogation autorisée par la règle
+        d'approbation. Inactif par défaut."""
         from .. import services
 
         da = self.get_object()

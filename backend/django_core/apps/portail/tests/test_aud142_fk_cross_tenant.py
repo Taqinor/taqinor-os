@@ -28,7 +28,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.compta.serializers import (
+from apps.portail.serializers import (
     AcceptationDevisPortailSerializer,
     DemandeTicketPortailSerializer,
     DocumentClientPortailSerializer,

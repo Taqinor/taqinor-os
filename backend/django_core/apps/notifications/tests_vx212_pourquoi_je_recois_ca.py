@@ -88,9 +88,9 @@ class LeadAssignedReasonTests(TestCase):
 
 
 class ManagerApprovalReasonTests(TestCase):
-    """Les 3 boucles `_managers(company)` (automation/compta/installations)
-    posent reason='manager' — installations en plus embarque montant+objet
-    dans le corps (VX212(b))."""
+    """Les boucles `_managers(company)` (automation/installations) posent
+    reason='manager' — installations en plus embarque montant+objet dans le
+    corps (VX212(b))."""
 
     def setUp(self):
         self.company = _make_company('VX212 DA Co')

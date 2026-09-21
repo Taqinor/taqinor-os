@@ -45,12 +45,22 @@ class PlatformCoverageTests(SimpleTestCase):
             "(surface enfin câblée) — retirez-les : "
             f"{sorted(stale)}")
 
-    def test_known_contrat_drift_is_detected(self):
-        """ARC29 — le trou historique est comblé : Contrat est désormais
-        chatter-isé ET cherchable, donc plus AUCUNE dérive ne le concerne.
-        Preuve que le croisement marche encore : on simule un manifeste
-        chatter-sans-recherche pour vérifier que la règle est toujours active."""
+    def test_known_pilot_has_no_drift(self):
+        """ARC29 — un modèle à la fois chatter-isé ET cherchable ne dérive pas.
+
+        Le pilote historique était ``contrats.contrat`` ; l'app ``contrats`` est
+        PARQUÉE depuis SOLMVP33 (coquille de migrations : plus de ``platform.py``,
+        donc plus aucune surface déclarée). Le pilote est désormais
+        ``installations.installation`` — un modèle du cœur MVP solaire déclaré
+        dans les DEUX surfaces. Preuve que le croisement marche encore : on
+        simule un manifeste chatter-sans-recherche pour vérifier que la règle est
+        toujours active."""
         drift = platform_coverage.all_drift(self.manifests)
+        self.assertNotIn(
+            ('installations.installation', 'chatter_sans_recherche'), drift)
+        self.assertNotIn(
+            ('installations.installation', 'recherche_sans_chatter'), drift)
+        # Une app parquée ne déclare plus rien : elle ne peut plus dériver.
         self.assertNotIn(('contrats.contrat', 'chatter_sans_recherche'), drift)
         faux = dict(self.manifests)
         faux['bidon_chatter'] = {
@@ -66,26 +76,27 @@ class PlatformCoverageTests(SimpleTestCase):
             platform_coverage.all_drift(faux))
 
     def test_matrix_lists_pilot_models(self):
-        """La matrice remonte bien des modèles réels (crm + contrats)."""
+        """La matrice remonte bien des modèles réels (crm + installations)."""
         rows = {r['model']: r for r in
                 platform_coverage.platform_matrix(self.manifests)}
         self.assertIn('crm.lead', rows)
-        self.assertIn('contrats.contrat', rows)
+        self.assertIn('installations.installation', rows)
         # crm.lead : cherchable ET chatter-isé ET automatisable (aucune dérive).
         self.assertTrue(rows['crm.lead']['searchable'])
         self.assertTrue(rows['crm.lead']['record_target'])
         self.assertTrue(rows['crm.lead']['automation'])
         self.assertEqual(rows['crm.lead']['drift'], [])
-        # ARC29 — contrats.contrat : chatter-isé ET cherchable → plus de dérive.
-        self.assertTrue(rows['contrats.contrat']['record_target'])
-        self.assertTrue(rows['contrats.contrat']['searchable'])
-        self.assertEqual(rows['contrats.contrat']['drift'], [])
+        # ARC29 — le chantier : chatter-isé ET cherchable → plus de dérive.
+        # (Le pilote était contrats.contrat, app PARQUÉE depuis SOLMVP33.)
+        self.assertTrue(rows['installations.installation']['record_target'])
+        self.assertTrue(rows['installations.installation']['searchable'])
+        self.assertEqual(rows['installations.installation']['drift'], [])
 
     def test_matrix_renders_without_error(self):
         """La sortie texte de la matrice est produite (elle apparaît en régression)."""
         rendu = platform_coverage.format_matrix(self.manifests)
         self.assertIn('crm.lead', rendu)
-        self.assertIn('contrats.contrat', rendu)
+        self.assertIn('installations.installation', rendu)
 
     def test_regression_would_be_red(self):
         """Simule une NOUVELLE dérive (manifeste fictif) → détectée hors baseline."""

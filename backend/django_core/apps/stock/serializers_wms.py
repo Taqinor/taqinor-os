@@ -282,7 +282,7 @@ class BlocageQualiteSerializer(serializers.ModelSerializer):
         model = BlocageQualite
         fields = [
             'id', 'produit', 'produit_nom', 'quantite', 'bin', 'bin_code',
-            'lot', 'reception', 'non_conformite', 'statut', 'motif',
+            'lot', 'reception', 'statut', 'motif',
             'bloque_par', 'leve_par', 'date_levee', 'created_at',
         ]
         read_only_fields = [
@@ -300,7 +300,7 @@ class PlanChargementSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanChargement
         fields = [
-            'id', 'reference', 'livraison', 'expedition', 'vehicule',
+            'id', 'reference', 'livraison', 'expedition',
             'unites_logistiques', 'nb_unites', 'capacite_kg', 'capacite_m3',
             'statut', 'note', 'cree_par', 'created_at',
         ]

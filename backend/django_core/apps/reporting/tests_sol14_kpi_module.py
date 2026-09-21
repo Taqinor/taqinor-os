@@ -3,7 +3,14 @@
 Ce qu'il ne doit surtout pas faire : appeler le sélecteur d'une app coupée, ou
 rendre un 0 qui se lirait comme une vraie mesure. `valeur=None` ⇒ aucun
 franchissement, aucune notification, tuile absente de l'écran.
-"""
+
+SOLMVP18 — `KPI_MODULE` est désormais VIDE (les KPI qu'il gatait — douane,
+scm, juridique, btp_chantier — sont sortis avec ces apps). Le mécanisme
+générique reste en place pour un futur KPI gaté par module ; les tests ci-
+dessous l'exercent via `mock.patch.dict` sur un module GARDÉ (`stock`), sans
+dépendre d'aucune app sortie."""
+from unittest import mock
+
 from django.test import TestCase
 
 from apps.reporting.kpi_alertes import (
@@ -23,7 +30,7 @@ class TableKpiModuleTests(TestCase):
         self.assertEqual(inconnus, [], f'modules inconnus : {inconnus}')
 
     def test_les_kpi_transverses_ne_sont_pas_mappes(self):
-        for kpi in (KpiAlerte.Kpi.DSO, KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL,
+        for kpi in (KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL,
                     KpiAlerte.Kpi.VALEUR_STOCK_TOTALE):
             self.assertNotIn(kpi, KPI_MODULE, kpi)
 
@@ -39,23 +46,29 @@ class DisponibiliteTests(TestCase):
             sorted(v for v, _ in KpiAlerte.Kpi.choices))
 
     def test_module_eteint_retire_son_kpi(self):
-        ModuleToggle.objects.create(
-            company=self.company, module='douane', actif=False)
-        self.assertFalse(
-            kpi_disponible(self.company, KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT))
-        self.assertNotIn(
-            KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT,
-            kpis_disponibles(self.company))
-        # Les KPI transverses restent proposés.
-        self.assertIn(KpiAlerte.Kpi.DSO, kpis_disponibles(self.company))
+        with mock.patch.dict(
+                KPI_MODULE, {KpiAlerte.Kpi.VALEUR_STOCK_TOTALE: 'stock'}):
+            ModuleToggle.objects.create(
+                company=self.company, module='stock', actif=False)
+            self.assertFalse(
+                kpi_disponible(self.company, KpiAlerte.Kpi.VALEUR_STOCK_TOTALE))
+            self.assertNotIn(
+                KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+                kpis_disponibles(self.company))
+            # Les KPI transverses restent proposés.
+            self.assertIn(
+                KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL,
+                kpis_disponibles(self.company))
 
     def test_evaluation_degrade_sans_notifier(self):
-        ModuleToggle.objects.create(
-            company=self.company, module='scm', actif=False)
-        alerte = KpiAlerte.objects.create(
-            company=self.company, kpi=KpiAlerte.Kpi.TAUX_SERVICE_SCM,
-            operateur=KpiAlerte.Operateur.INF, seuil=95)
-        valeur, franchi, notifie = evaluate_kpi_alerte(alerte)
+        with mock.patch.dict(
+                KPI_MODULE, {KpiAlerte.Kpi.VALEUR_STOCK_TOTALE: 'stock'}):
+            ModuleToggle.objects.create(
+                company=self.company, module='stock', actif=False)
+            alerte = KpiAlerte.objects.create(
+                company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
+                operateur=KpiAlerte.Operateur.INF, seuil=95)
+            valeur, franchi, notifie = evaluate_kpi_alerte(alerte)
         self.assertIsNone(valeur)
         self.assertFalse(franchi)
         self.assertFalse(notifie)

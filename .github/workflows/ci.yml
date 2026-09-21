@@ -415,7 +415,7 @@ jobs:
         run: python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia
       - run: pip install flake8 import-linter==2.11
       - name: Lint backend (flake8)
-        run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations
+        run: flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations,parked
       - name: Lint imports (import-linter contracts — M3)
         working-directory: backend/django_core
         run: lint-imports
@@ -1311,93 +1311,6 @@ jobs:
       - name: All frontend lanes passed (or were skipped)
         run: echo "frontend-static=${{ needs.frontend-static.result }} frontend-vitest-shard=${{ needs.frontend-vitest-shard.result }} — gate OK."
 
-  # ═══════════════════════════════════════════════════════════════════════════
-  # SOL15 — ÉDITION SOLAIRE : job de fumée RAPIDE.
-  # ───────────────────────────────────────────────────────────────────────────
-  # LA GATE PR NE CHANGE PAS : toute la suite (backend-tests, e2e, openapi,
-  # baselines) continue de tourner en édition COMPLÈTE, donc zéro churn de
-  # schéma et zéro baseline à recalibrer. Ce job AJOUTE la seule chose que
-  # l'édition complète ne peut pas prouver : que l'édition SOLAIRE démarre et
-  # que les verticaux parqués en sortent réellement.
-  #
-  # Ce qu'il vérifie, sans base de données (donc en quelques minutes) :
-  #   • `manage.py check` en édition solaire — le boot complet ;
-  #   • `manage.py verifier_edition` — apps parquées absentes d'INSTALLED_APPS,
-  #     ABSENTES DE L'ARBRE D'URLS (c'est le « 404 des urls parquées » : une
-  #     route non montée ne peut pas répondre autre chose), absentes du beat et
-  #     des overrides d'énumération ;
-  #   • le build frontend solaire + `check_dist_edition` : aucun écran d'un
-  #     vertical parqué dans le dist (le tree-shake échoue en SILENCE, cette
-  #     garde le rend bruyant) ;
-  #   • `check_editions_decouplage` : aucune arête gardé → parqué.
-  #
-  # CE QUI N'EST PAS ICI, ET POURQUOI : le `migrate` sur base VIERGE. Il rejoue
-  # ~850 migrations — mesuré 97 % du temps d'un shard backend, ~37 min. Le
-  # mettre sur chaque PR coûterait plus cher que toute la gate actuelle pour
-  # une information que `check_editions_decouplage` donne déjà à chaque PR en
-  # deux secondes (il refuse toute dépendance de migration vers une app
-  # parquée). Le `migrate` réel tourne donc dans le job HEBDOMADAIRE
-  # `.github/workflows/editions.yml`.
-  solar-boot:
-    needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      TAQINOR_EDITION: solar
-      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
-      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
-      DJANGO_DEBUG: 'True'
-      # SEUL job de ce workflow qui BOOTE Django sur l'hote (les lanes backend,
-      # elles, tournent dans l'image CI qui porte deja cette variable). Vide =
-      # zoneinfo ignore /usr/share/zoneinfo du runner et ne lit QUE le paquet
-      # pip `tzdata` epingle dans requirements.txt — la MEME base de fuseaux
-      # qu'en production. Le boot execute les controles systeme, dont le
-      # controle « heure legale marocaine » (core/checks_tz.py, decret
-      # 2.26.530 : UTC+0 depuis le 20/09/2026) : sans cette ligne, le verdict
-      # dependrait de la tzdata du runner, pas de celle qu'on deploie.
-      PYTHONTZPATH: ''
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (django_core/fastapi Dockerfiles: python:3.11.x).
-          cache: 'pip'
-          cache-dependency-path: backend/django_core/requirements.txt
-      - name: Install backend requirements
-        run: pip install -r backend/django_core/requirements.txt
-      # SOL4 — la garde de clôture : aucune app gardée n'importe, ne référence
-      # ni ne fait dépendre une migration d'une app parquée. Pur AST, ~2 s.
-      - name: Anti-recouplage des éditions (SOL4)
-        run: python scripts/check_editions_decouplage.py --edition solar
-      - name: Boot + cohérence de l'édition solaire (SOL3)
-        working-directory: backend/django_core
-        run: python manage.py verifier_edition
-      # Non-régression : l'édition COMPLÈTE doit rester cohérente elle aussi.
-      - name: Boot + cohérence de l'édition complète
-        working-directory: backend/django_core
-        env:
-          TAQINOR_EDITION: full
-        run: python manage.py verifier_edition
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
-      - name: Build frontend — édition solaire
-        working-directory: frontend
-        env:
-          VITE_EDITION: solar
-        run: npx vite build --outDir dist-solar
-      # SOL6 — la garde qui rend le tree-shake VÉRIFIABLE : aucune route ni
-      # aucun chunk d'un vertical parqué dans le dist, et un contrôle POSITIF
-      # (les routes gardées y sont) pour qu'un dist vide ne passe pas.
-      - name: Aucun vertical parqué dans le dist solaire (SOL6)
-        working-directory: frontend
-        run: node scripts/check_dist_edition.mjs --edition solar --dist dist-solar
 
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
@@ -1415,6 +1328,19 @@ jobs:
         run: python scripts/check_stages.py
       - name: Check module registry <-> frontend consistency (ODX21)
         run: python scripts/check_modules.py
+      # SOLMVP53 — les 47 apps sorties du MVP solaire (décision fondateur du
+      # 20/09/2026) sont des COQUILLES de migrations : plus de code, plus
+      # d'urls, plus de tâche beat, plus d'écran. Le moindre import / FK par
+      # chaîne / include d'urls / entrée beat qui les vise casse le boot ou,
+      # pire, passe en silence en livrant un écran mort. Cette garde est le
+      # cliquet permanent. ICI et pas dans `backend-lint` : `stage-names` est
+      # le seul job NON GATÉ, donc une PR purement frontend (règle d :
+      # `frontend/src` qui importe `frontend/parked`) le déclenche aussi.
+      # Stdlib pure, ni base ni Django ni dépendance (~10 s).
+      - name: Check apps parquées (SOLMVP53 — aucun import/FK/url/beat vers une app sortie)
+        run: python scripts/check_parked_apps.py
+      - name: Tests de la garde apps parquées (SOLMVP53)
+        run: python -m unittest scripts.tests.test_check_parked_apps -v
       # CONTRAT FRONT<->BACK (incident du 03/08/2026 : l'écran AO Bibliothèque
       # appelait /ao/bibliotheque/, une route jamais enregistrée -> 404 en
       # production ; 8 autres ressources du même module étaient dans le même
@@ -1830,12 +1756,7 @@ jobs:
           # The simulator catalogue (defaults to the seeded `taqinor-demo`
           # company) is what the auto-devis sizing matches against.
           python manage.py seed_catalogue
-          # AOF186/AOF190 — the AO demo affaire (marker `FRDISI`, built FROM
-          # the AOF183 goldens) is the fixture every `ao-*.spec.js` opens via
-          # `openAoDemoAffaire`. `seed_demo` does NOT create it: without this
-          # line the AO specs time out looking for an affaire nobody seeded —
-          # a red that says nothing about the code under test.
-          python manage.py seed_ao_demo --company taqinor-demo --confirmer
+          # SOLMVP (21/09/2026) — plus de `seed_ao_demo` : l'app AO est une coquille.
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci --prefer-offline --no-audit --no-fund
@@ -2127,10 +2048,6 @@ jobs:
       - web-build-test
       - e2e-shard
       - e2e
-      # SOL15 — l'édition solaire doit démarrer et rester propre. Ajouté aux
-      # `needs` de l'AGRÉGAT seulement : la protection de branche (ses quatre
-      # checks requis) n'est pas touchée.
-      - solar-boot
     runs-on: ubuntu-latest
     steps:
       - name: Report job results
@@ -2149,7 +2066,6 @@ jobs:
           echo "stage-names=${{ needs.stage-names.result }}"
           echo "web-build-test=${{ needs.web-build-test.result }}"
           echo "e2e=${{ needs.e2e.result }}"
-          echo "solar-boot=${{ needs.solar-boot.result }}"
       - name: Fail if any required job failed or was cancelled
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: |

@@ -1,10 +1,24 @@
+"""Configuration de l'app « cpq » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class CpqConfig(AppConfig):
+    """CPQ — app PARQUÉE du MVP solaire (20/09/2026).
+
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
+    """
+
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.cpq'
+    label = 'cpq'
     verbose_name = 'CPQ'
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'cpq',
         'sku': 'solar_core',
@@ -13,14 +27,5 @@ class CpqConfig(AppConfig):
         'depends': [],
         'description': 'Configuration, prix et devis (CPQ enterprise).',
         'categorie': 'Ventes',
+        'parked': True,
     }
-
-    def ready(self):
-        # NTCPQ11 — fige les clauses/CGV applicables au moment de l'envoi du
-        # devis (événement métier découplé core.events.devis_sent). cpq
-        # s'abonne ici sans coupler ventes à cpq (miroir du récepteur CRM).
-        from . import receivers  # noqa: F401
-        # PACT118 — déclare les cibles RÉELLES d'édition en masse dans le
-        # registre du socle (`core.bulk_edit`), jusqu'ici vide en production.
-        from . import bulk_targets
-        bulk_targets.register_bulk_targets()

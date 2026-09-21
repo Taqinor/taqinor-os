@@ -1,10 +1,12 @@
 """Tests NTPRT4 — Provisionnement d'un VRAI compte utilisateur portail
 partenaire.
 
-Même mécanique que NTPRT2 (portail client), pour ``compta.Partenaire``
-(apporteurs/sous-revendeurs/installateurs — modèle physiquement dans
-``apps.crm`` depuis ODX13, accédé ici via le ré-export
-``apps.compta.models.Partenaire``, jamais ``apps.crm.models`` directement).
+Même mécanique que NTPRT2 (portail client), pour ``crm.Partenaire``
+(apporteurs/sous-revendeurs/installateurs — modèle vivant dans ``apps.crm``
+depuis ODX13). SOLMVP16 — le service portail le lit désormais via le
+sélecteur ``apps.crm.selectors.partenaire_pour_certification`` (jamais un
+import de ``apps.crm.models`` — frontière cross-app CLAUDE.md) ; ce test
+crée directement l'objet ``crm.Partenaire`` pour les besoins de la fixture.
 
 Couvre :
 
@@ -16,9 +18,11 @@ Couvre :
 * isolation multi-tenant : un ``partenaire_id`` d'une AUTRE société ne
   provisionne rien (jamais un compte croisé) ;
 * le ``token_acces`` historique du partenaire est CONSERVÉ intact ;
-* l'endpoint ``POST /api/django/compta/partenaires/{id}/provisionner-acces/``
-  est réservé à l'ADMINISTRATEUR : un Responsable et un compte portail externe
-  reçoivent 403, et la réponse ne contient JAMAIS le mot de passe temporaire.
+* l'endpoint ``POST /api/django/crm/partenaires/{id}/provisionner-acces/``
+  (natif crm depuis SOLMVP30b — compta, sa maison d'origine ODX13, est
+  désormais une coquille parquée sans aucune url) est réservé à
+  l'ADMINISTRATEUR : un Responsable et un compte portail externe reçoivent
+  403, et la réponse ne contient JAMAIS le mot de passe temporaire.
 
 Run :
     python manage.py test apps.portail.tests.test_ntprt4_provisionnement_partenaire -v2
@@ -28,7 +32,7 @@ import itertools
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.compta.models import Partenaire
+from apps.crm.models import Partenaire
 from apps.portail.services import provisionner_compte_partenaire
 from apps.roles.models import ROLE_PORTAIL_PARTENAIRE, Role
 from authentication.models import Company, CustomUser
@@ -176,7 +180,7 @@ class EndpointProvisionnementPartenaireTests(TestCase):
     def setUp(self):
         self.company = make_company('ntprt4-api-a', 'NTPRT4 API A')
         self.partenaire = make_partenaire(self.company)
-        self.url = ('/api/django/compta/partenaires/'
+        self.url = ('/api/django/crm/partenaires/'
                     f'{self.partenaire.id}/provisionner-acces/')
         self.api = APIClient()
 

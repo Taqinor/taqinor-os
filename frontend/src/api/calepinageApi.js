@@ -8,10 +8,10 @@ import { makeResourceFactory } from './resource'
    direct dans `features/calepinage/`.
 
    **LA VÉRITÉ EST LE SERVEUR, PAS CE FICHIER.**
-   `frontend/src/api/aoApi.js` a longtemps prétendu « publier le contrat que le
-   backend enregistre ensuite » : construites en parallèle, les deux lanes ont
-   divergé et neuf chemins appelés n'existaient sous AUCUNE route (404 constatée
-   en production le 03/08/2026 sur la Bibliothèque AO). Ce fichier-ci ne rejoue
+   Un autre client d'API du dépôt a longtemps prétendu « publier le contrat que
+   le backend enregistre ensuite » : construites en parallèle, les deux lanes
+   ont divergé et neuf chemins appelés n'existaient sous AUCUNE route (404
+   constatée en production le 03/08/2026). Ce fichier-ci ne rejoue
    pas cette faute : chaque chemin ci-dessous est RECOPIÉ d'une source écrite
    AVANT lui, et son test jumeau (`calepinageApi.test.mjs`) le relit à cette
    source — jamais à une supposition.
@@ -27,7 +27,7 @@ import { makeResourceFactory } from './resource'
         qui l'expose (CAL18 `layout`, CAL19 `roof-image`, CAL20 `versions` +
         `restaurer`, CAL21 `variantes` + `retenir`, CAL23 `moteur/resultat`,
         CAL24 `generer-devis`, CAL25 `sync-devis`, CAL231 `design-context`,
-        CAL240 `importer-contour-ao`, CAL45 `parametres`).
+        CAL45 `parametres`).
 
    UNE SEULE FORME D'URL (décision de structure n°3 du Groupe CAL, et règle n°1
    du README des échantillons) : `/api/django/calepinage/calepinages/<pk>/…`,
@@ -156,10 +156,10 @@ const calepinageApi = {
     // manque. Aucune coordonnée devinée côté écran.
     designContext: (id) => api.get(`${pivot(id)}design-context/`),
 
-    // CAL240 — reprendre le contour d'une affaire AO. N'écrit QUE le contour du
-    // document ; aucune géométrie opposable AO n'est touchée.
-    importerContourAo: (id, corps) =>
-      api.post(`${pivot(id)}importer-contour-ao/`, corps),
+    // SOLMVP15 — `importer-contour-ao` (CAL240) vivait ici. L'endpoint est
+    // parti avec l'app d'appels d'offres, qui sort du produit : il n'y a plus
+    // d'affaire dont reprendre le contour. Le contour de l'atelier reste
+    // `roof_layout.outline` (v2), posé par le tracé sur carte.
 
     // CAL24/CAL25 — le devis. Le chemin canonique de création vit dans
     // `apps/ventes/services` et n'est pas doublé : ces deux actions l'appellent.

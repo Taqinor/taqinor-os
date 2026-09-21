@@ -19,9 +19,9 @@ les placeholders publiés (``change_me``, ``change_me_in_production``,
 probabilité qu'elle commence par ces neuf caractères exacts est nulle en
 pratique, et une clé réelle n'est de toute façon jamais choisie à la main.
 
-Module VOLONTAIREMENT SANS DJANGO (comme ``editions.py``, son voisin) : il est
-importé depuis ``base.py`` au moment où les réglages se construisent, donc
-avant que ``django.conf.settings`` n'existe. ``core/checks.py`` l'importe lui
+Module VOLONTAIREMENT SANS DJANGO : il est importé depuis ``base.py`` au moment
+où les réglages se construisent, donc avant que ``django.conf.settings``
+n'existe. ``core/checks.py`` l'importe lui
 aussi, pour que le contrôle système QJR423 et le garde de démarrage partagent
 UNE SEULE définition de « placeholder » — jamais deux listes à resynchroniser.
 """

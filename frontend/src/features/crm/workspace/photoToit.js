@@ -17,7 +17,7 @@
 import {
   ORDRE_LATLNG, creerRepere, lngLatVersMetres,
 // Extension EXPLICITE : ces modules sont chargés tels quels par `node --test`.
-} from '../../ao/toiture/repere.js'
+} from '../../calepinage/repere.js'
 import { COTE_DESSIN } from './traceToit.js'
 
 const borne = (v, min, max) => Number.isFinite(v) && v >= min && v <= max

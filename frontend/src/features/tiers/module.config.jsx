@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + composants lazy), collecté par
-   `router/moduleRoutes.jsx` via glob — même dérogation que
-   `features/agriculture/module.config.jsx`. */
+   `router/moduleRoutes.jsx` via glob — même dérogation que les autres
+   module.config.jsx auto-enregistrés (patron UX1). */
 import { lazy } from 'react'
 import { Users, Contact } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -14,9 +14,9 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ni à routes.meta (patron UX1). Écran répertoire en `src/pages/tiers/*`
    chargé en lazy (code-splitting préservé). « Doublons tiers » (ARC20,
    admin-only côté backend) vit sous Paramètres — voir
-   `features/parametres/module.config.jsx` (même patron que Territoires/
-   Playbooks/Achats : les sous-routes `/parametres/*` restent toutes
-   déclarées dans CE fichier unique, jamais dupliquées ailleurs).
+   `features/parametres/module.config.jsx` (même patron que Playbooks/Achats :
+   les sous-routes `/parametres/*` restent toutes déclarées dans CE fichier
+   unique, jamais dupliquées ailleurs).
    ========================================================================== */
 
 const TiersPage = lazy(() => import('../../pages/tiers/TiersPage'))

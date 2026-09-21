@@ -218,7 +218,15 @@ class BaseEtDepotTests(unittest.TestCase):
     def test_le_depot_reel_contient_bien_des_taches_mixtes(self):
         # Garde-fou de la LECTURE : si le parseur cassait, la garde deviendrait
         # verte en ne lisant RIEN — le defaut meme qu'elle combat.
-        self.assertGreater(len(mixtes.taches_mixtes()), 20)
+        # 20 -> 2 : SOLMVP50 (2026-09-20) a deplace verbatim les six fichiers
+        # domaine docs/plans/PLAN_{SERVICE,DOCS_JURIDIQUE,RH_PAIE,FINANCE,
+        # SUPPLY,VERTICALS}.md (qui portaient la grande majorite des taches
+        # mixtes backend+frontend) vers docs/backlog/PHASE2_PLAN.md (hors de
+        # tous les globs de plan, par design) — corpus reel a 4 taches mixtes
+        # aujourd'hui (new_tasks_plan.md + PLAN_CRM_VENTES.md). Le plancher
+        # garde son role anti-extraction-cassee (une extraction cassee
+        # rendrait 0) sans punir un parcage legitime.
+        self.assertGreater(len(mixtes.taches_mixtes()), 2)
 
     def test_un_clone_superficiel_ne_produit_JAMAIS_de_faux_rouge(self):
         # Le job CI `stage-names` est un clone superficiel : la comparaison de

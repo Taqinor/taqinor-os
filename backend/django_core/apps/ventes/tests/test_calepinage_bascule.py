@@ -259,25 +259,15 @@ class DrapeauOnLeMoteurDonneLeCompte(_Base):
                 layout=layout_avec_geometrie(panels=12, kwc=6.6),
                 user=self.user, company=self.company, lead=self._lead())
         finally:
-            services.compte_moteur_du_layout = original
+            # SOLMVP (21/09/2026) : on restaure LE MODULE PATCHE (geometrie), pas la
+            # facade — sinon le faux moteur fuit dans les tests suivants du shard.
+            geometrie.compte_moteur_du_layout = original
         self.assertEqual(self._panneaux(devis), 12)
 
     def test_un_pan_a_la_geometrie_invalide_est_ignore(self):
         casse = layout_avec_geometrie()
         casse['zones'][0]['vertices'] = [[0, 0], [1, 1]]
         self.assertIsNone(services.compte_moteur_du_layout(casse))
-
-    def test_aucune_ligne_ao_n_est_creee_par_un_devis_villa(self):
-        from apps.ao.models import AppelOffre, ToitureAO, VarianteCalepinage
-
-        avant = (AppelOffre.objects.count(), ToitureAO.objects.count(),
-                 VarianteCalepinage.objects.count())
-        build_devis_from_layout(
-            layout=layout_avec_geometrie(), user=self.user,
-            company=self.company, lead=self._lead())
-        apres = (AppelOffre.objects.count(), ToitureAO.objects.count(),
-                 VarianteCalepinage.objects.count())
-        self.assertEqual(avant, apres)
 
 
 @override_settings(USE_MOTEUR_CALEPINAGE=True)

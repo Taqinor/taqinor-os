@@ -12,10 +12,20 @@ Convention documentée : ``docs/rbac-conventions.md`` + ``docs/CODEMAP.md``.
 from django.test import SimpleTestCase
 
 from core import action_permission_scan
+from core.parked import est_parquee
 
 # Baseline de la dette de gardes par @action (état au moment de YRBAC4).
 # Une valeur ne doit JAMAIS être dépassée ; YRBAC3 la fait décroître app par
 # app. Une app absente d'ici doit avoir 0 @action sans garde.
+#
+# SOLMVP — les entrées des apps PARQUÉES (``core.parked`` /
+# ``docs/parked-modules.md``) sont NEUTRALISÉES, pas supprimées : une coquille
+# n'a plus de ``views.py``, donc son compte réel est 0 par construction et le
+# cliquet n'y garde plus rien (aucune ``@action`` ne peut y être ajoutée). On
+# CONSERVE le chiffre et sa justification pour que la dette figée soit
+# exactement celle qui redevient vraie au retour du module, au lieu de devoir
+# la re-mesurer. Le filtre est dans ``test_baseline_has_no_stale_or_slack_
+# entries`` ci-dessous.
 UNGUARDED_ACTION_BASELINE = {
     # VTA (12/09/2026) — les @action du VisiteTerrainViewSet deplace de crm :
     # toutes gardees par la paire read_permission/write_permission du viewset
@@ -229,7 +239,13 @@ UNGUARDED_ACTION_BASELINE = {
     # `permission_classes = [IsAdminOrResponsableTier]` au niveau CLASSE.
     # Vérifié classe par classe : dette coarse apparente, pas un trou réel.
     "grc": 16,
-    "installations": 4,
+    # SOLMVP — 4 -> 2 : la surface sous-traitance / RFQ d'``installations`` est
+    # sortie avec les modules achats avancés, emportant deux des quatre @action
+    # non fine-gardées. Le cliquet est resserré sur le RÉEL (règle du fichier :
+    # une app moins endettée que son baseline fait baisser le baseline). Restent
+    # ``ApprobationBCFViewSet.approuver`` et
+    # ``ReceptionNonFactureeViewSet.lettrer``.
+    "installations": 2,
     # NTSRV19 — 34 -> 35 : `KbArticleViewSet.creer_depuis_ticket` (POST,
     # pré-remplit un article KB depuis un ticket SAV résolu) rejoint les 30
     # autres @action de la même classe déjà comptées dans ce baseline —
@@ -239,7 +255,7 @@ UNGUARDED_ACTION_BASELINE = {
     "kb": 35,
     "litiges": 7,
     # NTMKT44/45 — 0->2 : ``apps/marketing/views.py`` déclare deux sous-classes
-    # qui étendent un ViewSet de ``apps.compta.views`` SANS le modifier
+    # qui étendent un ViewSet d'une app métier SANS le modifier
     # (``CampagneViewSetAudite(CampagneViewSet)``, ``EnqueteNPSViewSetNotifiant
     # (EnqueteNPSViewSet)``) et REDÉCLARENT l'``@action`` du parent — le
     # décorateur est obligatoire, sans lui ``get_extra_actions()`` de DRF perd
@@ -290,6 +306,19 @@ UNGUARDED_ACTION_BASELINE = {
     # scopés (`TenantMixin`). Vérifié classe par classe : dette coarse
     # apparente, pas un trou réel.
     "paie": 89,
+    # SOLMVP — 0 -> 4, une dette DÉPLACÉE, pas une dette neuve : les quatre
+    # viewsets portail (`PaiementFacturePortailViewSet.rapprocher`,
+    # `DocumentClientPortailViewSet.marquer_traite`,
+    # `JalonChantierPortailViewSet.marquer_atteint`,
+    # `DemandeTicketPortailViewSet.prendre_en_charge`) vivaient dans
+    # `apps/compta/views.py` (où ils étaient déjà comptés en dette coarse) et
+    # ont rejoint `apps/portail/views.py` quand `compta` est sortie du MVP. Ils
+    # héritent de `_PortailBaseViewSet`, qui porte
+    # `permission_classes = [IsResponsableOrAdmin]` au niveau CLASSE + le
+    # scoping société : le scanner ne crédite que les gardes PAR action, d'où la
+    # dette APPARENTE. Leur coller un `permission_classes=` par action ferait
+    # taire le scanner sans rien resserrer (règle du dépôt).
+    "portail": 4,
     "pos": 5,
     # NTSEC — ServiceAccountViewSet ajoute 2 @action (rotate/… ) gardées au
     # niveau CLASSE par _IsAdminRole (5 → 7) ; coarse-guardé, company-scopé.
@@ -407,6 +436,11 @@ class ActionPermissionRatchetTests(SimpleTestCase):
         """
         stale = []
         for app, baseline in UNGUARDED_ACTION_BASELINE.items():
+            if est_parquee(app):
+                # Coquille de migrations : plus de ``views.py``, donc 0 par
+                # construction. Le chiffre figé reste la dette à retrouver au
+                # retour du module (cf. le commentaire du baseline).
+                continue
             actual = self.counts.get(app, 0)
             if actual < baseline:
                 stale.append(

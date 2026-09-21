@@ -14,7 +14,7 @@ import installationsApi from '../../api/installationsApi'
 import { Button, Input, toast } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
-import SignaturePad from '../logistique/SignaturePad'
+import SignaturePad from './SignaturePad'
 
 const QUEUED_MSG = 'Hors ligne — signature enregistrée, synchro au retour du réseau.'
 

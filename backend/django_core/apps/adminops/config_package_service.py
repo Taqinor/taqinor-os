@@ -2,12 +2,15 @@
 application (jamais silencieux — `ConfigPackageApplication`).
 
 Catégories exportées : `Role` custom (`est_systeme=False`), `CustomFieldDef`,
-`MessageTemplate`, `playbooks` (NTMIG24 — articles `kb` de type playbook,
-hors données métier). JAMAIS de donnée métier/client (leads/devis/clients),
+`MessageTemplate`. JAMAIS de donnée métier/client (leads/devis/clients),
 jamais de secret (RIB/ICE/logo exclus explicitement). `roles`/`customfields`/
-`parametres` sont des apps de FONDATION — import direct autorisé ; `kb` est
-une app métier — lu/écrit exclusivement via `kb.selectors`/`kb.services`
-(NTMIG24), jamais `kb.models`."""
+`parametres` sont des apps de FONDATION — import direct autorisé.
+
+SOLMVP-sweep (2026-09-21) — la catégorie `playbooks` (NTMIG24 — articles `kb`
+de type playbook) est retirée : `apps.kb` est sorti du MVP solaire (Groupe
+SOLMVP, en cours de mise en coquille par la lane SOLMVP30b), donc
+`kb.selectors.playbooks_config_snapshot`/`kb.services.appliquer_playbook_config`
+n'existent plus. Aucun test ne couvrait cette catégorie par sa clé (vérifié)."""
 from __future__ import annotations
 
 from .models import ConfigPackage, ConfigPackageApplication
@@ -37,13 +40,6 @@ def _message_templates(company):
     ]
 
 
-def _playbooks(company):
-    """NTMIG24 — playbooks d'implémentation (articles `kb` de type
-    playbook), lus via `kb.selectors` — jamais `kb.models` depuis ici."""
-    from apps.kb import selectors as kb_selectors
-    return kb_selectors.playbooks_config_snapshot(company)
-
-
 def construire_contenu(company):
     """Snapshot horodaté des catégories de configuration — jamais de donnée
     métier/client."""
@@ -51,7 +47,6 @@ def construire_contenu(company):
         'roles_custom': _roles_custom(company),
         'custom_fields': _custom_fields(company),
         'message_templates': _message_templates(company),
-        'playbooks': _playbooks(company),
     }
 
 
@@ -93,8 +88,6 @@ def previsualiser_import(company, contenu_importe):
         'message_templates': _diff_liste(
             actuel['message_templates'],
             contenu_importe.get('message_templates', []), 'cle'),
-        'playbooks': _diff_liste(
-            actuel['playbooks'], contenu_importe.get('playbooks', []), 'cle'),
     }
 
 
@@ -141,12 +134,6 @@ def appliquer_import(company, contenu_importe, *, user=None):
                 'corps_fr': tpl.get('corps_fr', ''),
                 'corps_darija': tpl.get('corps_darija', ''),
             })
-
-    # NTMIG24 — playbooks d'implémentation, écrits via `kb.services` (jamais
-    # `kb.models` depuis cette app).
-    from apps.kb import services as kb_services
-    for playbook in contenu_importe.get('playbooks', []):
-        kb_services.appliquer_playbook_config(company, playbook)
 
     ConfigPackageApplication.objects.create(
         company=company,

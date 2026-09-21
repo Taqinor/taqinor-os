@@ -274,9 +274,9 @@ def exporter_mes_donnees(request):
     lot (interdit : cross-app hors ``selectors.py``). Cette vue fait
     l'EXPORT MINIMAL DIRECT que la tâche prévoit en repli : elle relit les
     QUATRE mêmes sélecteurs déjà scopés (société, client) que les écrans
-    portail équivalents (``mes-devis``/``mes-factures``/``mes-demandes-sav``/
-    ``mes-documents``) — aucune requête supplémentaire, aucune donnée que le
-    client ne voit pas déjà par ailleurs.
+    portail équivalents (``mes-devis``/``mes-factures``/
+    ``mes-demandes-sav``/``mes-documents``) — aucune requête supplémentaire,
+    aucune donnée que le client ne voit pas déjà par ailleurs.
 
     Chaque ligne du zip appartient STRICTEMENT au client connecté : aucun
     sélecteur ici n'accepte de paramètre autre que (société, client_id)."""
@@ -1024,33 +1024,9 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         return Response(self._ligne(demande),
                         status=status.HTTP_201_CREATED)
 
-    # ── XSAV22 — Déflection KB, désormais servie au VRAI client ────────────
-    # Lit/écrit UNIQUEMENT via ``apps.kb.selectors``/``apps.kb.services``
-    # (jamais ``apps.kb.models``). ``detail=False`` : appelables PENDANT la
-    # saisie, avant toute création de demande.
-
-    @action(detail=False, methods=['get'], url_path='suggestions-kb',
-            permission_classes=[IsPortalClientUser])
-    def suggestions_kb(self, request):
-        """Articles KB (publiés + ``visible_portail``) suggérés pendant la
-        saisie du sujet — la déflection avant soumission."""
-        from apps.kb.selectors import suggestions_portail
-        company, _ = _scope(request)
-        return Response({'suggestions': suggestions_portail(
-            company, request.query_params.get('q', ''))})
-
-    @action(detail=False, methods=['post'], url_path='consulter-article-kb',
-            permission_classes=[IsPortalClientUser])
-    def consulter_article_kb(self, request):
-        """Journalise la consultation d'un article suggéré (déflection)."""
-        from apps.kb.services import enregistrer_consultation_portail
-        company, _ = _scope(request)
-        article_id = request.data.get('article_id')
-        if not article_id:
-            return Response({'detail': 'article_id requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return Response({'enregistre': enregistrer_consultation_portail(
-            company, article_id)})
+    # SOLMVP16 — la déflection KB (XSAV22, « suggestions-kb »/
+    # « consulter-article-kb ») a été retirée : kb est un module sorti du
+    # produit.
 
     # ── NTPRT12 — Fil de commentaires CLIENT-VISIBLE du ticket SAV lié ─────
 
@@ -1083,100 +1059,8 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             company, client_id, demande.ticket_id)})
 
 
-# ── NTPRT35 — Widget « Satisfaction » post-interaction ──────────────────────
-
-class SatisfactionPortailSerializer(serializers.Serializer):
-    """L'enquête en attente, ou ``enquete: null`` quand il n'y a rien à
-    demander."""
-    enquete = serializers.DictField(allow_null=True)
-
-
-class SatisfactionPortailViewSet(viewsets.ViewSet):
-    """NTPRT35 — prompt de satisfaction du portail client.
-
-    C'est le DÉCLENCHEUR D'INTERFACE qui manquait à FG238/FG239 : l'enquête
-    (``marketing.EnqueteNPS``) était bien CRÉÉE à la réception d'un chantier
-    (YSERV4) mais le client n'avait aucun écran pour y répondre. Aucune
-    logique de scoring n'est ajoutée ici : la lecture passe par
-    ``marketing.selectors``, l'écriture par ``marketing.services`` — jamais
-    un import de ses ``models``.
-
-    « Une fois par événement » (critère d'acceptation) ne repose sur AUCUN
-    compteur de session : une enquête par événement (contrainte d'unicité
-    AUD618 sur le chantier), et y répondre la passe à ``REPONDUE``, donc hors
-    du sélecteur — définitivement. Fermer le prompt sans répondre n'écrit
-    rien : la question revient, ce qui est le comportement voulu (on n'a pas
-    encore l'avis), mais elle ne se REJOUE jamais une fois répondue.
-
-    FG239 (avis Google) reste un ROUTAGE, pas une API payante : après une
-    réponse de promoteur, on renvoie le lien SI la société en a configuré un
-    (``GOOGLE_REVIEW_URL``) — vide sinon, sans erreur.
-    """
-
-    permission_classes = [IsPortalClientUser]
-    serializer_class = SatisfactionPortailSerializer
-
-    @extend_schema(responses=SatisfactionPortailSerializer)
-    def list(self, request):
-        from apps.marketing.selectors import enquete_satisfaction_en_attente
-        company, client_id = _scope(request)
-        return Response({
-            'enquete': enquete_satisfaction_en_attente(company, client_id)})
-
-    @extend_schema(
-        request=inline_serializer(
-            name='SatisfactionPortailReponse',
-            fields={
-                'enquete_id': serializers.IntegerField(),
-                'score': serializers.IntegerField(),
-                'commentaire': serializers.CharField(
-                    required=False, allow_blank=True),
-            }),
-        responses=inline_serializer(
-            name='SatisfactionPortailMerci',
-            fields={
-                'detail': serializers.CharField(),
-                'lien_avis_google': serializers.CharField(allow_blank=True),
-            }))
-    @action(detail=False, methods=['post'], url_path='repondre',
-            permission_classes=[IsPortalClientUser])
-    def repondre(self, request):
-        """Enregistre la note. Les erreurs NOMMENT le champ fautif."""
-        from apps.marketing.services import (
-            repondre_enquete_satisfaction_client,
-        )
-
-        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS répondre
-        # à une enquête de satisfaction (consultation uniquement).
-        if not services.peut_ecrire_portail_client(request.user):
-            return Response(
-                {'detail': "Votre accès est en lecture seule : vous ne "
-                           "pouvez pas répondre à cette enquête."},
-                status=status.HTTP_403_FORBIDDEN)
-
-        company, client_id = _scope(request)
-        enquete, erreur = repondre_enquete_satisfaction_client(
-            company, client_id, request.data.get('enquete_id'),
-            score=request.data.get('score'),
-            commentaire=request.data.get('commentaire') or '')
-        if erreur == 'score':
-            return Response(
-                {'score': 'Donnez une note entre 0 et 10.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if erreur is not None:
-            return Response({'detail': 'Introuvable.'},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        # FG239 — routage (jamais une API payante) : le lien n'est proposé
-        # qu'au promoteur, et seulement si la société en a configuré un.
-        lien = ''
-        if enquete.categorie == 'promoteur':
-            from apps.marketing.services import google_review_url_configuree
-            lien = google_review_url_configuree()
-        return Response({
-            'detail': 'Merci pour votre retour !',
-            'lien_avis_google': lien,
-        })
+# SOLMVP16 — le widget « Satisfaction » (NTPRT35, marketing.EnqueteNPS) a été
+# retiré : marketing est un module sorti du produit.
 
 
 # ── NTPRT14 — « Mes chantiers » (timeline + photos avant/pendant/après) ────
@@ -1482,7 +1366,7 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
     ailleurs partagé (l'héritage dossier reste un canal INTERNE, hors
     périmètre de cette surface client).
 
-    ÉCRITURE — le dépôt réutilise ``apps.compta.serializers.
+    ÉCRITURE — le dépôt réutilise ``portail.serializers.
     DocumentClientPortailSerializer``/``DocumentClientPortail`` (FG231)
     À L'IDENTIQUE (même mixin MinIO AUD835, même dépôt GED miroir WIR94 via
     les récepteurs ``apps/portail/receivers.py``) : AUCUN nouveau modèle
@@ -1588,7 +1472,7 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
         ``DocumentClientPortailSerializer``/``DocumentClientPortail``
         EXISTANTS (FG231) tels quels. ``client_id``/``company`` forcés côté
         serveur, jamais lus du corps."""
-        from apps.compta.serializers import DocumentClientPortailSerializer
+        from .serializers import DocumentClientPortailSerializer
 
         # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS déposer
         # de document (consultation uniquement).

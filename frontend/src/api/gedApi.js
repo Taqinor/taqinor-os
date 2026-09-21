@@ -87,9 +87,9 @@ const gedApi = {
   searchDocuments: (params) => api.get('/ged/documents/recherche/', { params }),
   // Recherche sémantique (GED12, dégrade en plein-texte sans clé) : { q }.
   semanticSearch: (params) => api.get('/ged/documents/semantique/', { params }),
-  // FG352/XKB20/WIR249 — DocQA : fragments GED + KB les plus proches d'une
-  // question (RAG, KEY-GATED — `enabled:false` + `results:[]` sans clé
-  // d'embedding, jamais une erreur). `params` : { q, k? }.
+  // FG352/WIR249 — DocQA : fragments GED les plus proches d'une question
+  // (RAG, KEY-GATED — `enabled:false` + `results:[]` sans clé d'embedding,
+  // jamais une erreur). `params` : { q, k? }.
   docqa: (params) => api.get('/ged/documents/docqa/', { params }),
   // Taxonomie de tags (GED9) pour le filtre par tag.
   getTags: (params) => api.get('/ged/tags/', { params }),

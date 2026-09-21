@@ -1,7 +1,16 @@
-// WIR171 — Gating d'écran : litiges / contrats / qhse / projets / kb étaient
-// INVISIBLES pour un Commercial, un Technicien ou un Viewer alors que le
-// serveur leur répond 200 (garde `HasPermissionOrLegacy` sur `<app>_voir`,
-// YRBAC3). La coquille applique désormais la sémantique serveur.
+// WIR171 — Gating d'écran : un module dont la garde serveur suit
+// `HasPermissionOrLegacy` (repli légacy palier responsable/admin, YRBAC3) ne
+// doit jamais rester invisible à un rôle FIN qui porte la permission fine
+// mais relève d'un palier de menu plus bas. SOLMVP40 (21/09/2026) a sorti du
+// produit les cinq modules qui servaient jusque-là d'exemples à ce test
+// (litiges/contrats/qhse/gestion_projet/kb, cf. frontend/parked/README.md) ;
+// `visites` (VT2/VTA4) est aujourd'hui le SEUL module du MVP solaire dont le
+// `module.config.jsx` déclare `permRepliPalier: true`
+// (`features/visites/module.config.jsx` — vérifié : aucun autre module gardé
+// ne porte `perm`/`permRepliPalier` à part `reporting`/`parametres`, qui sont
+// justement l'exemple ET-STRICT sans repli couvert plus bas). C'est donc le
+// seul cas réel restant pour prouver la sémantique serveur de bout en bout
+// via la Sidebar et le lanceur d'apps.
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -33,74 +42,51 @@ function renderSidebar({ path, ...opts }) {
 const navHrefs = (container) =>
   Array.from(container.querySelectorAll('.sidebar-nav a')).map((a) => a.getAttribute('href'))
 
-// Extrait RÉEL du preset « Commercial » (apps/roles/models.py) : palier de menu
-// 'normal' (authentication/role_tiers.py — le nom n'est pas un rôle système
-// responsable) et pourtant porteur des cinq permissions de lecture.
-const COMMERCIAL = [
-  'crm_voir', 'crm_creer', 'ventes_voir', 'stock_voir',
-  'qhse_voir', 'qhse_gerer',
-  'projet_voir', 'projet_gerer',
-  'contrat_voir', 'contrat_gerer',
-  'litige_voir', 'litige_gerer',
-  'kb_voir', 'kb_gerer',
-]
+// Extrait RÉEL de `COMMERCIAL_PERMISSIONS`
+// (backend/django_core/apps/roles/models.py) : palier de menu 'normal'
+// (authentication/role_tiers.py — le nom n'est pas un rôle système
+// responsable) et pourtant porteur de `visites_voir` (VT2 : le commercial
+// terrain remplit la visite, sans jamais se donner `visites_valider`).
+const COMMERCIAL = ['crm_voir', 'crm_creer', 'ventes_voir', 'stock_voir', 'visites_voir']
 
-// Preset « Viewer » : lecture seule, aucun `_gerer`.
-const VIEWER = [
-  'stock_voir', 'crm_voir', 'ventes_voir',
-  'qhse_voir', 'projet_voir', 'contrat_voir', 'litige_voir', 'kb_voir',
-]
-
-const CAS = [
-  { cle: 'litiges', path: '/litiges', lien: '/litiges' },
-  { cle: 'contrats', path: '/contrats', lien: '/contrats' },
-  { cle: 'qhse', path: '/qhse', lien: '/qhse' },
-  { cle: 'gestion_projet', path: '/projets', lien: '/projets' },
-  { cle: 'kb', path: '/kb', lien: '/kb' },
-]
-
-describe('WIR171 — les 5 modules suivent la sémantique serveur', () => {
-  CAS.forEach(({ cle, path, lien }) => {
-    it(`un Commercial (palier normal + <app>_voir) voit la coquille « ${cle} »`, () => {
-      const { container } = renderSidebar({ path, role: 'normal', permissions: COMMERCIAL })
-      expect(navHrefs(container)).toContain(lien)
-    })
-
-    it(`un Viewer (lecture seule) voit aussi « ${cle} »`, () => {
-      const { container } = renderSidebar({ path, role: 'normal', permissions: VIEWER })
-      expect(navHrefs(container)).toContain(lien)
-    })
-
-    it(`un rôle FIN de palier normal SANS la permission reste dehors sur « ${cle} »`, () => {
-      const { container } = renderSidebar({
-        path, role: 'normal', permissions: ['crm_voir', 'ventes_voir'],
-      })
-      expect(navHrefs(container)).not.toContain(lien)
-    })
-
-    it(`compte LÉGACY responsable (aucune permission servie) : « ${cle} » inchangé`, () => {
-      const { container } = renderSidebar({ path, role: 'responsable', permissions: [] })
-      expect(navHrefs(container)).toContain(lien)
-    })
-
-    it(`compte LÉGACY de palier normal : « ${cle} » reste refusé (miroir is_responsable)`, () => {
-      const { container } = renderSidebar({ path, role: 'normal', permissions: [] })
-      expect(navHrefs(container)).not.toContain(lien)
-    })
+describe('WIR171 — le seul module MVP solaire à repli légacy suit la sémantique serveur', () => {
+  it('un Commercial (palier normal + visites_voir) voit la coquille « visites »', () => {
+    const { container } = renderSidebar({ path: '/visites', role: 'normal', permissions: COMMERCIAL })
+    expect(navHrefs(container)).toContain('/visites')
   })
 
-  it('les 5 apps apparaissent au lanceur d’apps d’un Commercial', () => {
+  it('un rôle fin de palier normal portant SEULEMENT visites_voir voit aussi « visites »', () => {
+    const { container } = renderSidebar({ path: '/visites', role: 'normal', permissions: ['visites_voir'] })
+    expect(navHrefs(container)).toContain('/visites')
+  })
+
+  it('un rôle FIN de palier normal SANS la permission reste dehors sur « visites »', () => {
+    const { container } = renderSidebar({
+      path: '/visites', role: 'normal', permissions: ['crm_voir', 'ventes_voir'],
+    })
+    expect(navHrefs(container)).not.toContain('/visites')
+  })
+
+  it('compte LÉGACY responsable (aucune permission servie) : « visites » inchangé', () => {
+    const { container } = renderSidebar({ path: '/visites', role: 'responsable', permissions: [] })
+    expect(navHrefs(container)).toContain('/visites')
+  })
+
+  it('compte LÉGACY de palier normal : « visites » reste refusé (miroir is_responsable)', () => {
+    const { container } = renderSidebar({ path: '/visites', role: 'normal', permissions: [] })
+    expect(navHrefs(container)).not.toContain('/visites')
+  })
+
+  it('l’app « visites » apparaît au lanceur d’apps d’un Commercial', () => {
     const apps = buildInstalledApps(moduleConfigs, { role: 'normal', permissions: COMMERCIAL })
-    const cles = apps.map((a) => a.key)
-    CAS.forEach(({ cle }) => expect(cles).toContain(cle))
+    expect(apps.map((a) => a.key)).toContain('visites')
   })
 
-  it('…et pas au lanceur d’un rôle fin dépourvu de ces permissions', () => {
+  it('…et pas au lanceur d’un rôle fin dépourvu de visites_voir', () => {
     const apps = buildInstalledApps(moduleConfigs, {
       role: 'normal', permissions: ['crm_voir', 'ventes_voir'],
     })
-    const cles = apps.map((a) => a.key)
-    CAS.forEach(({ cle }) => expect(cles).not.toContain(cle))
+    expect(apps.map((a) => a.key)).not.toContain('visites')
   })
 
   it('le Journal d’activité garde son ET STRICT (aucun repli légacy)', () => {

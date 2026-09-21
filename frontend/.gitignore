@@ -10,9 +10,6 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
-# SOL6 — builds par édition (`vite build --outDir dist-<edition>`), produits par
-# la garde `scripts/check_dist_edition.mjs` en local comme en CI.
-dist-solar
 dist-full
 *.local
 

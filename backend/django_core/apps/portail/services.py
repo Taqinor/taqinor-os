@@ -1,26 +1,171 @@
 """Services du module Portail client (``apps.portail``).
 
-ODX12 — ré-export TRANSITOIRE des fonctions de service portail qui vivent encore
-physiquement dans ``apps.compta.services`` (elles y étaient interleavées avec la
-logique comptable et l'acceptation de devis qui appelle le service ventes
-existant). Ce module donne au reste du code (urls, appelants cross-app) un point
-d'accès ``apps.portail.services`` stable ; ODX22 re-logera le corps des fonctions
-ici et retirera ce shim.
+SOLMVP16 — le corps de ces fonctions vivait encore, par ré-export transitoire
+ODX12, dans le module compta (interleavé avec la logique comptable) ; il est
+désormais relogé ICI, seul point d'accès stable pour le reste du code (urls,
+appelants cross-app).
 
 ``portail`` ne lit ventes/crm/sav QUE via leurs selectors/services ou par
-référence opaque — jamais leurs ``models`` (les fonctions ré-exportées
+référence opaque — jamais leurs ``models`` (les fonctions ci-dessous
 référencent devis_id/facture_id opaques et passent par le service ventes pour
 l'acceptation). ``/proposal`` reste l'unique voie PDF devis (règle #4).
 """
 
 from datetime import timedelta
 
-from apps.compta.services import (  # noqa: F401
-    cmi_actif,
-    initier_paiement_facture,
-    rapprocher_paiement_facture,
-    signer_acceptation_devis,
-)
+from django.conf import settings
+from django.utils import timezone
+
+
+# ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
+
+def signer_acceptation_devis(acceptation, *, nom=None, ip=None):
+    """Matérialise la signature d'une acceptation de devis (FG229), idempotent.
+
+    Pose le nom du signataire (si fourni), l'IP, le drapeau ``accepte`` et
+    l'horodatage de signature. Une acceptation déjà signée n'est PAS resignée
+    (idempotent). Renvoie l'acceptation. L'effet sur le statut du devis côté
+    ``ventes`` (passage à ``accepte``) reste à la charge de l'app ventes via son
+    service ; on ne touche jamais ses modèles ici (cross-app).
+    """
+    if acceptation.accepte:
+        return acceptation
+    if nom:
+        acceptation.nom_signataire = nom
+    if ip:
+        acceptation.signature_ip = ip
+    acceptation.accepte = True
+    acceptation.signe_le = timezone.now()
+    acceptation.save(update_fields=[
+        'nom_signataire', 'signature_ip', 'accepte', 'signe_le'])
+    return acceptation
+
+
+# ── FG230 — Paiement en ligne des factures (portail, GATED CMI) ────────────
+
+def cmi_actif():
+    """Toggle de la passerelle de paiement carte CMI. OFF par défaut → NO-OP.
+
+    Le founder l'active en posant ``CMI_ENABLED = True`` et une clé marchande
+    ``CMI_MERCHANT_KEY`` (settings/env). Tant que c'est faux/sans clé, initier un
+    paiement carte ne fait AUCUN appel réseau (intention reste « initie ») — le
+    rapprochement reste manuel, comme le virement (blocage G/COST FG230).
+    """
+    return bool(getattr(settings, 'CMI_ENABLED', False)
+                and getattr(settings, 'CMI_MERCHANT_KEY', ''))
+
+
+def initier_paiement_facture(paiement):
+    """Initie un paiement de facture portail (FG230), idempotent.
+
+    Pose une référence locale si absente. Si la méthode est carte et que CMI est
+    actif, l'intégration réelle (future) générerait l'URL de paiement ; tant que
+    CMI est OFF, c'est un NO-OP propre (aucun appel réseau). Renvoie le paiement.
+    """
+    from .models import PaiementFacturePortail
+
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if not paiement.reference:
+        import secrets
+        paiement.reference = f'PF-{secrets.token_hex(8)}'
+        paiement.save(update_fields=['reference'])
+    # NO-OP gated : l'appel CMI réel n'a lieu que si cmi_actif() est vrai.
+    return paiement
+
+
+def rapprocher_paiement_facture(paiement, *, reference=None, user=None):
+    """Marque un paiement de facture portail comme payé (FG230), idempotent.
+
+    Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
+    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché.
+
+    AUD102 / B14 (03/09/2026) — CE REPORT N'ARRIVAIT JAMAIS. La docstring
+    disait qu'il « reste à la charge de la chaîne ventes » : le grep n'a
+    trouvé AUCUN appelant qui le fasse. L'argent réellement encaissé au
+    portail (``portail.views_client``) n'entrait donc dans le
+    ``montant_paye`` d'AUCUNE facture, et l'ERP relançait un client déjà
+    réglé. Le report était fait par le service ventes dédié
+    ``enregistrer_paiement_portail`` — SOLMVP11 (« ventes détaché de compta,
+    litiges, marketing, grc, ecommerce_connect ») l'a supprimé de
+    ``apps.ventes.domain.encaissements`` en même temps que le nettoyage
+    compta, alors qu'il n'avait AUCUN lien avec compta (pont ventes<->portail
+    pur) : chaque appel plantait en 500 (``ImportError`` sur un nom qui
+    n'existe plus). Correctif CI SOLMVP, côté portail (``apps/ventes`` est
+    hors périmètre de ce lot) : on recompose le même comportement avec les
+    services ventes toujours en place — ``enregistrer_paiement`` (création)
+    puis ``marquer_facture_soldee`` (bascule AUD102, seule porte qui pose
+    ``Facture.Statut.PAYEE``) — toujours cross-app par
+    ``apps.ventes.services``, jamais un import de ses modèles. Le montant est
+    borné au reste dû ; la facture ne bascule que si son résiduel retombe à
+    zéro (garde interne à ``marquer_facture_soldee``).
+    """
+    from decimal import Decimal
+
+    from .models import PaiementFacturePortail
+
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if reference:
+        paiement.reference = reference
+    paiement.statut = PaiementFacturePortail.Statut.PAYE
+    paiement.paye_le = timezone.now()
+    paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+
+    if paiement.facture_id:
+        from apps.ventes.services import (
+            enregistrer_paiement, get_facture_or_none, marquer_facture_soldee,
+        )
+        facture = get_facture_or_none(
+            company=paiement.company, facture_id=paiement.facture_id)
+        if facture is not None:
+            montant = min(Decimal(str(paiement.montant)), facture.montant_du)
+            if montant > Decimal('0'):
+                mode = ('carte'
+                        if paiement.methode == PaiementFacturePortail.Methode.CARTE
+                        else 'virement')
+                enregistrer_paiement(
+                    facture=facture, montant=montant, mode=mode,
+                    date_paiement=timezone.localdate(), user=user,
+                    reference=paiement.reference or '',
+                    note='Paiement encaissé au portail client.')
+                marquer_facture_soldee(
+                    facture, montant=montant, user=user,
+                    source='portail_client')
+    return paiement
+
+
+# ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
+
+def provisionner_compte_portail(company, *, client_id):
+    """Crée un compte portail client tokenisé (FG228).
+
+    Token long/imprévisible (secrets). Idempotent par (company, client) :
+    renvoie le compte existant plutôt que d'en dupliquer un. Le compte se lie
+    au client PAR FK (``crm.Client``) et réutilise son email (DC32 — pas de
+    2ᵉ copie d'identité) ; il NE duplique aucune donnée métier (devis/
+    factures/chantiers lus à la volée via les selectors des apps cibles).
+
+    AUD148(c) — cet appel NE RÉACTIVE JAMAIS un compte existant révoqué
+    (``actif=False``) : c'était l'exact opposé de la politique portail posée
+    par AUD138 (« re-provisionner ne réinitialise pas le mot de passe et NE
+    RÉACTIVE JAMAIS un compte désactivé (révoqué) »). Un compte révoqué est
+    renvoyé TEL QUEL ; la réactivation reste une action admin explicite
+    (``reactiver_acces_client`` ci-dessous).
+    """
+    import secrets
+
+    from .models import ComptePortailClient
+
+    compte = ComptePortailClient.objects.filter(
+        company=company, client_id=client_id).first()
+    if compte is not None:
+        return compte
+    return ComptePortailClient.objects.create(
+        company=company,
+        client_id=client_id,
+        token_acces=secrets.token_urlsafe(32),
+    )
 
 
 # ── NTPRT2 — Provisionnement d'un VRAI compte utilisateur portail client ─────
@@ -201,15 +346,14 @@ def provisionner_compte_portail_client(company, client_id):
 
 # ── NTPRT4 — Provisionnement d'un VRAI compte utilisateur portail partenaire ─
 #
-# Même mécanique que NTPRT2 ci-dessus, pour ``compta.Partenaire`` (apporteurs/
-# sous-revendeurs/installateurs — le modèle vit physiquement dans
-# ``apps.crm`` depuis ODX13, mais reste accessible via le ré-export
-# ``apps.compta.models.Partenaire`` : lecture directe scopée société, jamais
-# ``apps.crm.models`` importé ici). Le ``CustomUser``
-# ``portee=portail_partenaire`` rattaché par ``portail_partenaire_id`` devient
-# le mécanisme d'accès PRIMAIRE, via le login JWT standard — jamais un second
-# système d'auth. ``Partenaire.token_acces`` (lien ponctuel/legacy) reste
-# intact et inchangé.
+# Même mécanique que NTPRT2 ci-dessus, pour ``crm.Partenaire`` (apporteurs/
+# sous-revendeurs/installateurs — le modèle vit dans ``apps.crm`` depuis
+# ODX13 ; lu ici via son sélecteur ``partenaire_pour_certification``, jamais
+# un import de ``apps.crm.models`` — frontière cross-app CLAUDE.md). Le
+# ``CustomUser`` ``portee=portail_partenaire`` rattaché par
+# ``portail_partenaire_id`` devient le mécanisme d'accès PRIMAIRE, via le
+# login JWT standard — jamais un second système d'auth.
+# ``Partenaire.token_acces`` (lien ponctuel/legacy) reste intact et inchangé.
 
 def provisionner_compte_partenaire(company, partenaire_id):
     """NTPRT4 — Crée (ou relie) le compte utilisateur portail d'un partenaire.
@@ -224,7 +368,7 @@ def provisionner_compte_partenaire(company, partenaire_id):
     from django.db import transaction
     from django.utils.crypto import get_random_string
 
-    from apps.compta.models import Partenaire
+    from apps.crm.selectors import partenaire_pour_certification
     from apps.roles.models import (
         PORTAIL_PARTENAIRE_PERMISSIONS,
         ROLE_PORTAIL_PARTENAIRE,
@@ -234,8 +378,7 @@ def provisionner_compte_partenaire(company, partenaire_id):
 
     if company is None or not partenaire_id:
         return None, False
-    partenaire = Partenaire.objects.filter(
-        company=company, pk=partenaire_id).first()
+    partenaire = partenaire_pour_certification(company, partenaire_id)
     if partenaire is None:
         return None, False
 
@@ -390,8 +533,8 @@ def reactiver_acces_client(company, client_id):
 #
 # Avant CHT10, AUCUNE fonction d'écriture propre n'existait pour publier un
 # jalon de chantier : seul le ModelViewSet CRUD legacy
-# (``apps.compta.views.JalonChantierPortailViewSet`` + son action
-# ``marquer_atteint``) écrivait ``JalonChantierPortail``. ``upsert_jalon_
+# (``JalonChantierPortailViewSet`` + son action ``marquer_atteint``, alors
+# dans compta.views) écrivait ``JalonChantierPortail``. ``upsert_jalon_
 # chantier`` est le SEUL point d'entrée cross-app — ``installations`` n'importe
 # jamais ``apps.portail.models`` (contrat d'import CI).
 

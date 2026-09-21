@@ -11,9 +11,9 @@ DEUX CONTRAINTES D'ARCHITECTURE, et comment elles sont tenues :
 1. ``core`` est une couche de base : elle n'importe AUCUNE app métier. Le
    modèle de persistance (``ai_governance.LlmUsageRecord``) vit donc dans son
    app, et ``core`` ne connaît qu'un **puits** (« sink ») enregistré au
-   démarrage par ``apps.ai_governance`` — exactement le patron déjà utilisé par
-   ``ai_governance.drift.register_distribution_provider``. Sans puits
-   enregistré, :func:`record_usage` est un no-op complet.
+   démarrage par l'app de gouvernance IA — même patron que son registre de
+   fournisseurs de distribution. Sans puits enregistré (le cas du MVP
+   solaire), :func:`record_usage` est un no-op complet.
 
 2. Un fournisseur IA ne connaît pas la société de l'appelant (il reçoit un
    prompt, pas une requête). La société est donc portée par un **contexte**
@@ -104,7 +104,7 @@ def usage_context(*, company_id=None, feature_key: str = ''):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Puits d'écriture (enregistré par apps.ai_governance)
+# Puits d'écriture (enregistré par l'app de gouvernance IA)
 # ─────────────────────────────────────────────────────────────────────────────
 
 _SINKS: list = []
@@ -240,7 +240,7 @@ def record_usage(*, capability: str, provider: str, prompt_tokens: int = 0,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# NTAI2 — statut de budget (fourni par apps.ai_governance)
+# NTAI2 — statut de budget (fourni par l'app de gouvernance IA)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)

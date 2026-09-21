@@ -590,7 +590,7 @@ def _sweep_annonce_reminders(company):
 
 def _sweep_approval_reminders(company):
     """Relance/escalade les approbations en attente au-delà des seuils
-    (YEVNT9), pour les deux moteurs (automation + compta)."""
+    (YEVNT9), pour le moteur automation (SOLMVP19 : compta est sorti)."""
     try:
         from .services import sweep_approval_reminders
         return sweep_approval_reminders(company)

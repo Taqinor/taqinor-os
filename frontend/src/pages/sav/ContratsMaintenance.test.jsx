@@ -11,16 +11,15 @@ import { ContratStatutPill } from './ContratsMaintenance.jsx'
    StatusPill. `ContratStatutPill` encode le mapping (inactif > visite due >
    à jour) ; la couleur n'est jamais le seul signal — le libellé FR reste. */
 
-// WIR230/WIR231/WIR233 — Tournée préventive, Rentabilité (gardée
-// prix_achat_voir) et « Facturer maintenant ». savApi/crmApi/installationsApi/
-// axios mockés (patron EquipementFiabilitePanel.test.jsx pour le store redux).
+// WIR230/WIR231 — Tournée préventive, Rentabilité (gardée prix_achat_voir).
+// savApi/crmApi/installationsApi/axios mockés (patron
+// EquipementFiabilitePanel.test.jsx pour le store redux).
 const { getContrats, getTourneePreventive, planifierTournee,
-  getRentabiliteContrats, facturerContrat } = vi.hoisted(() => ({
+  getRentabiliteContrats } = vi.hoisted(() => ({
   getContrats: vi.fn(() => Promise.resolve({ data: [] })),
   getTourneePreventive: vi.fn(),
   planifierTournee: vi.fn(),
   getRentabiliteContrats: vi.fn(),
-  facturerContrat: vi.fn(),
 }))
 vi.mock('../../api/savApi', () => ({
   default: {
@@ -28,7 +27,6 @@ vi.mock('../../api/savApi', () => ({
     getTourneePreventive: (...a) => getTourneePreventive(...a),
     planifierTournee: (...a) => planifierTournee(...a),
     getRentabiliteContrats: (...a) => getRentabiliteContrats(...a),
-    facturerContrat: (...a) => facturerContrat(...a),
     getTickets: vi.fn(() => Promise.resolve({ data: [] })),
     getEquipements: vi.fn(() => Promise.resolve({ data: [] })),
   },
@@ -147,42 +145,6 @@ describe('ContratsMaintenance — Rentabilité (WIR231, gardée prix_achat_voir)
     await waitFor(() => expect(getRentabiliteContrats).toHaveBeenCalled())
     expect(await screen.findByText('Contrat #1')).toBeInTheDocument()
     expect(screen.getByText('Contrat #2')).toBeInTheDocument()
-  })
-})
-
-describe('ContratsMaintenance — Facturer maintenant (WIR233)', () => {
-  it('facture immédiatement un contrat facturation_active et affiche la référence', async () => {
-    getContrats.mockResolvedValue({
-      data: [{
-        id: 5, client_nom: 'Client Facturable', periodicite: 'annuel',
-        prix: '1000.00', date_debut: '2026-01-01', actif: true,
-        facturation_active: true,
-      }],
-    })
-    facturerContrat.mockResolvedValue({ data: { ok: true, facture_reference: 'FAC-0099' } })
-    const user = userEvent.setup()
-    renderPage()
-
-    // DataTable rend DEUX fois chaque ligne (table desktop `data-dt-table` +
-    // cartes mobiles `data-dt-cards`) : on porte sur le rendu desktop.
-    const boutons = await screen.findAllByRole('button', { name: 'Facturer maintenant' })
-    await user.click(boutons[0])
-
-    await waitFor(() => expect(facturerContrat).toHaveBeenCalledWith(5))
-  })
-
-  it('n’affiche PAS le bouton pour un contrat sans facturation_active', async () => {
-    getContrats.mockResolvedValue({
-      data: [{
-        id: 6, client_nom: 'Client Sans Facturation', periodicite: 'annuel',
-        prix: '1000.00', date_debut: '2026-01-01', actif: true,
-        facturation_active: false,
-      }],
-    })
-    renderPage()
-    await screen.findAllByText('Client Sans Facturation')
-    // Aucun bouton NULLE PART (ni table desktop ni cartes mobiles).
-    expect(screen.queryAllByRole('button', { name: 'Facturer maintenant' })).toHaveLength(0)
   })
 })
 

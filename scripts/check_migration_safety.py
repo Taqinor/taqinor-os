@@ -50,10 +50,43 @@ MIGRATION_ROOTS = [
 _HASH_SEGMENT_RE = re.compile(r"_[0-9a-f]{6,}(_idx|_uniq)?$")
 
 
+def _labels_parques():
+    """SOLMVP2 — les labels de ``core.parked.APPS_PARQUEES``, ou ``set()``.
+
+    Une app PARQUÉE n'a plus de ``models.py`` (coquille de migrations : ses
+    modèles sont sortis de l'état Django, ses TABLES restent intactes). La
+    garde (b) ci-dessus — « ce nom d'index n'est déclaré dans aucun
+    ``models.py`` » — signalerait donc une « dérive modèle↔migration » sur
+    CHACUNE de ses migrations historiques, alors que rien n'a dérivé : il n'y a
+    plus de modèle à mirroiter, et ces fichiers sont gelés verbatim (jamais de
+    squash, jamais de nouvelle migration hors la coquille elle-même, qui ne
+    contient que des ``DeleteModel`` d'état). On les exempte donc, en lisant le
+    registre UNIQUE — jamais une seconde copie de la liste.
+
+    Registre absent (dépôt partiel) → ``set()`` : comportement identique à
+    l'historique.
+    """
+    chemin = DJANGO_CORE / "core" / "parked.py"
+    if not chemin.is_file():
+        return set()
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_parked_registry", chemin)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+        return set(getattr(module, "APPS_PARQUEES_SET", ()) or ())
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais sur le registre
+        return set()
+
+
 def _iter_migration_files():
     roots = list(MIGRATION_ROOTS)
+    parques = _labels_parques()
     if APPS_DIR.is_dir():
         for app_dir in sorted(APPS_DIR.iterdir()):
+            if app_dir.name in parques:
+                continue
             mig = app_dir / "migrations"
             if mig.is_dir():
                 roots.append(mig)

@@ -36,15 +36,41 @@ test('ListShell sait effacer son en-tête quand la page porte déjà son titre',
   assert.match(shell, /title=\{hideHeader \? undefined : title\}/)
 })
 
-test('les 5 pages compta n’empilent plus DEUX titres', () => {
-  const base = 'features/compta/pages/'
-  for (const f of ['TresoreriePage.jsx', 'RapprochementsPage.jsx',
-    'ImmobilisationsPage.jsx', 'FiscalitePage.jsx', 'EngagementsPage.jsx']) {
-    const src = read(base + f)
-    const shells = (src.match(/<ListShell\r?\n/g) || []).length
-    const hidden = (src.match(/^\s*hideHeader$/gm) || []).length
-    assert.ok(shells > 0, `${f} : aucune ListShell`)
-    assert.equal(hidden, shells, `${f} : ${shells - hidden} coquille(s) encore titrée(s)`)
+test('5 pages réelles n’empilent pas DEUX titres (PageHeader + ListShell)', () => {
+  // SOLMVP40 (21/09/2026) a sorti `features/compta/pages/` vers
+  // frontend/parked/ : les 5 pages d'origine de ce test n'existent plus.
+  // `hideHeader` lui-même n'a plus aucun consommateur KEPT (grep vérifié :
+  // seul `ui/module/ListShell.jsx`, qui déclare le prop, le mentionne encore)
+  // — le réutiliser serait une tautologie. Le même bug de fond (deux titres
+  // empilés) reste vérifiable sur des pages KEPT réelles via l'invariant
+  // qu'elles respectent déjà : quand un <PageHeader> porte le titre de page,
+  // aucune <ListShell> de contenu ne doit en porter un second ; à l'inverse,
+  // quand la <ListShell> EST le titre de page, aucun <PageHeader> concurrent.
+  const avecPageHeader = [
+    'pages/installations/SuiviGpsPage.jsx',
+    'features/installations/ParametrageKits.jsx',
+    'features/installations/SuiviImport.jsx',
+  ]
+  for (const f of avecPageHeader) {
+    const src = read(f)
+    assert.match(src, /<PageHeader/, `${f} : PageHeader attendu`)
+    const shells = src.match(/<ListShell\b[^>]*>/g) || []
+    assert.ok(shells.length > 0, `${f} : aucune ListShell`)
+    shells.forEach((tag, i) => {
+      assert.doesNotMatch(tag, /\btitle=/, `${f} : ListShell #${i + 1} empile un second titre`)
+    })
+  }
+
+  const titreSurListShell = [
+    'pages/tiers/TiersPage.jsx',
+    'features/ged/advanced/CoffresPage.jsx',
+  ]
+  for (const f of titreSurListShell) {
+    const src = read(f)
+    assert.doesNotMatch(src, /<PageHeader/, `${f} : PageHeader concurrent de la ListShell`)
+    const shells = src.match(/<ListShell\b[^>]*>/g) || []
+    assert.ok(shells.length > 0, `${f} : aucune ListShell`)
+    assert.match(shells[0], /\btitle=/, `${f} : la ListShell devrait porter le titre de page`)
   }
 })
 

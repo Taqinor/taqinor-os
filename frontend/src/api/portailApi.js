@@ -60,26 +60,13 @@ const portailApi = {
   // AUD525 — « Mes demandes SAV » (FG233) : la surface CLIENT, jusqu'ici
   // inexistante (le seul ViewSet était gardé `IsResponsableOrAdmin`, refusé à
   // tout rôle portail — code mort). La société et le client viennent du
-  // compte connecté, jamais du corps. `suggestionsKb`/`consulterArticleKb`
-  // sont la déflection KB (XSAV22) pendant la saisie, désormais servie au
-  // vrai client et à lui seul.
+  // compte connecté, jamais du corps. SOLMVP16 — la déflection KB
+  // (`suggestionsKb`/`consulterArticleKb`, XSAV22) a été retirée : kb est un
+  // module sorti du produit.
   demandesSav: {
     liste: () => api.get('/portail/mes-demandes-sav/'),
     detail: (id) => api.get(`/portail/mes-demandes-sav/${id}/`),
     creer: (payload) => api.post('/portail/mes-demandes-sav/', payload),
-    suggestionsKb: (q) =>
-      api.get('/portail/mes-demandes-sav/suggestions-kb/', { params: { q } }),
-    consulterArticleKb: (articleId) =>
-      api.post('/portail/mes-demandes-sav/consulter-article-kb/',
-        { article_id: articleId }),
-  },
-  // NTPRT35 — widget « Satisfaction » : le serveur ne renvoie une enquête que
-  // tant qu'elle est SANS réponse. Une fois répondue, `enquete` est null —
-  // c'est ce qui garantit « une fois par événement », sans état local.
-  satisfaction: {
-    enAttente: () => api.get('/portail/satisfaction/'),
-    repondre: (payload) =>
-      api.post('/portail/satisfaction/repondre/', payload),
   },
   // NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11,
   // lecture seule) + galerie photos avant/pendant/après, jamais de donnée
@@ -131,7 +118,7 @@ const portailApi = {
   // documents client, jalons de chantier, demandes de ticket SAV). Distinct
   // de la surface self-service CLIENT ci-dessus : ces ViewSets restent gardés
   // `IsResponsableOrAdmin` côté serveur (`IsAdminRole` en plus pour
-  // `provisionner-acces`) — voir apps/portail/views.py + apps/compta/views.py.
+  // `provisionner-acces`) — voir apps/portail/views.py.
   admin: {
     comptes: {
       liste: (params) => api.get('/portail/comptes-portail/', { params }),

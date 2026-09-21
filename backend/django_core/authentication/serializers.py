@@ -281,14 +281,6 @@ class UserSerializer(serializers.ModelSerializer):
     supervisor_nom = serializers.CharField(
         source='supervisor.username', read_only=True
     )
-    # DC17 — référentiel des postes (FG160) : intitulé normalisé du Poste lié,
-    # exposé en LECTURE SEULE pour l'affichage. Le champ écrivable reste le texte
-    # libre ``poste`` (comportement inchangé) ; ``poste_ref`` est rattaché par la
-    # migration de dédup et le restera via les écrans RH. ``source`` accède au FK
-    # sans importer ``rh.models`` côté authentication.
-    poste_ref_intitule = serializers.CharField(
-        source='poste_ref.intitule', read_only=True, default=None
-    )
     # XPLT19 — accès multi-sociétés : liste des sociétés opérables (home + M2M)
     # + société ACTIVE courante. Lecture seule ; sert au sélecteur d'entête. Un
     # compte mono-société renvoie une liste à un élément (pas de sélecteur).
@@ -301,7 +293,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             'modules_desactives',
-            'poste', 'poste_ref', 'poste_ref_intitule',
+            'poste',
             'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
             # NTMOB6 — lecture seule ici : l'écriture passe UNIQUEMENT par
@@ -353,12 +345,6 @@ class UserSerializer(serializers.ModelSerializer):
             # privilège / un franchissement de tenant en une ligne de PATCH).
             'portee', 'portail_client_id', 'portail_fournisseur_id',
             'portail_partenaire_id',
-            # DC17 — le référentiel poste ne se pose PAS par un PATCH direct du
-            # corps utilisateur (multi-tenant : jamais de Poste cross-société lu
-            # de la requête). Il est rattaché par la migration de dédup puis géré
-            # via les écrans RH ; ici lecture seule. Le texte libre ``poste``
-            # reste, lui, écrivable (comportement inchangé).
-            'poste_ref', 'poste_ref_intitule',
             # avatar_key se pilote par l'endpoint d'upload dédié, jamais par
             # un PATCH direct du corps ; avatar_url est calculé (présigné).
             'avatar_key', 'avatar_url',

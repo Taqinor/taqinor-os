@@ -1,16 +1,14 @@
 import { describe, it, expect } from 'vitest'
 
-/* WIR13/WIR14 — Territoires (`Territoires.jsx`, NTCRM3) et Playbooks
-   (`Playbooks.jsx`, NTCRM13) étaient construits/testés mais montés nulle part
-   (ni route, ni menu). On vérifie ici — comme `adsengine.test.jsx`/
-   `compta.test.jsx` le font pour leur propre module — que la route ET
-   l'entrée de menu existent pour chacun, pointent vers le même rôle et sont
-   bien collectées par le registre générique (`nav`, cf.
+/* WIR14 — Playbooks (`Playbooks.jsx`, NTCRM13) était construit/testé mais
+   monté nulle part (ni route, ni menu). On vérifie ici — comme
+   `adsengine.test.jsx`/`compta.test.jsx` le font pour leur propre module —
+   que la route ET l'entrée de menu existent, pointent vers le même rôle et
+   sont bien collectées par le registre générique (`nav`, cf.
    router/moduleRoutes.jsx). Le reste des routes `parametres` reste
    routes-only (documenté en tête de module.config.jsx) : ce test ne vérifie
-   donc pas de parité totale route↔nav, seulement ces deux ajouts. */
+   donc pas de parité totale route↔nav, seulement cet ajout. */
 describe.each([
-  ['WIR13', '/parametres/territoires', 'Territoires'],
   ['WIR14', '/parametres/playbooks', 'Playbooks'],
   // WIR21 — /parametres/vues (NTUX23) existait en route sans lien de menu ;
   // le rapport de gouvernance des vues sauvegardées n'a de données qu'une
@@ -35,7 +33,7 @@ describe.each([
 })
 
 /* WIR153 — Paramètres → IA : panneau de diagnostic (`IaDiagnostic.jsx`),
-   admin-only (contrairement à Territoires/Playbooks ci-dessus, réservés
+   admin-only (contrairement à Playbooks ci-dessus, réservé
    responsable/admin). Même vérification route + nav collectées ensemble. */
 describe('parametres — module.config (WIR153 /parametres/ia)', () => {
   it('déclare /parametres/ia en route ET en entrée de menu, gatées admin uniquement', async () => {
@@ -60,7 +58,6 @@ describe('parametres — module.config (WIR153 /parametres/ia)', () => {
 describe.each([
   ['ODY23(a)', '/parametres', 'Aperçu', ['responsable', 'admin']],
   ['ODY23(c)', '/parametres/alertes-kpi', 'Alertes KPI', ['responsable', 'admin']],
-  ['ODY23(c)', '/parametres/hospitality/taxe-sejour', 'Taxe de séjour', ['responsable', 'admin']],
 ])('parametres — module.config (%s %s)', (_task, path, label) => {
   it(`déclare ${path} en route ET en entrée de menu, gatées identiquement`, async () => {
     const { default: config } = await import('./module.config.jsx')

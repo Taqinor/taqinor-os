@@ -21,11 +21,9 @@ from apps.ventes.services import (  # noqa: F401
     creer_facture_classique,
     creer_facture_contrat,
     creer_facture_regie,
-    dossier_contentieux_data,
     enregistrer_paiement,
     facture_montant_du,
     get_facture_or_none,
-    ouvrir_dossier_contentieux,
     reset_relance_escalation,
     ventiler_avance,
 )

@@ -41,9 +41,6 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Société « {company.nom} » ({company.slug}), pays "
             f"{rapport.get('pays') or '?'}")
-        self.stdout.write(
-            f"  Modules éteints à la création : "
-            f"{', '.join(rapport.get('modules_eteints') or []) or 'aucun (déjà posés)'}")
         self.stdout.write(f"  Plan de licence assigné : {rapport.get('plan')}")
         roles = rapport.get('roles') or []
         self.stdout.write(f"  Rôles types : {len(roles)} ({', '.join(roles)})")

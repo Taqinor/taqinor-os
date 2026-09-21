@@ -13,7 +13,7 @@ import {
   Button, Input, toast,
 } from '../../ui'
 import installationsApi from '../../api/installationsApi'
-import SignaturePad from '../../features/logistique/SignaturePad'
+import SignaturePad from '../../features/installations/SignaturePad'
 
 export default function SignatureLivraisonDialog({
   open, onOpenChange, installation, onSigned,

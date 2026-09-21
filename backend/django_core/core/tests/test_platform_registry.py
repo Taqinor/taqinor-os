@@ -2,7 +2,7 @@
 
 Couvre :
   * la découverte GÉNÉRIQUE des manifestes ``apps/<x>/platform.py`` (les deux
-    pilotes crm + contrats sont bien collectés) ;
+    pilotes crm + sav sont bien collectés) ;
   * l'agrégation par surface (searchable_models, record_targets, etc.) ;
   * le gatage ``ModuleToggle`` : un module désactivé pour la société DISPARAÎT
     du registre ET de toutes les surfaces (étend ODX23) ;
@@ -25,9 +25,9 @@ class PlatformCollectorTests(SimpleTestCase):
         cls.manifests = platform.collect_platform_manifests()
 
     def test_pilot_manifests_are_discovered(self):
-        """Les deux pilotes crm + contrats sont collectés génériquement."""
+        """Les deux pilotes crm + sav sont collectés génériquement."""
         self.assertIn('crm', self.manifests)
-        self.assertIn('contrats', self.manifests)
+        self.assertIn('sav', self.manifests)
 
     def test_crm_manifest_shape(self):
         """Le manifeste CRM porte ses surfaces réelles, normalisées."""
@@ -43,42 +43,41 @@ class PlatformCollectorTests(SimpleTestCase):
             {'model': 'crm.lead', 'field': 'relance_date'},
             crm['automation_state_fields'])
 
-    def test_contrats_manifest_is_asymmetric(self):
-        """Contrats a le chatter (ARC8), la recherche (ARC29), les champs
-        perso (ARC31), les actions agent LECTURE (ARC33), l'import (ARC32)
-        et l'automation de statut (ARC34) câblés — seule la surface KPI
-        reste VIDE : le collecteur tolère un manifeste partiel/asymétrique."""
-        contrats = self.manifests['contrats']
-        self.assertEqual(contrats['record_targets'], ['contrats.contrat'])
-        # ARC29 — trou comblé : Contrat est désormais cherchable.
-        self.assertEqual(contrats['searchable_models'], ['contrats.contrat'])
-        # ARC31 — cible customfieldable déclarée au manifeste (source du
-        # registre customfields, plus un register() dans ready()).
-        self.assertEqual(contrats['customfield_models'], ['contrat'])
-        # ARC33 — actions agent LECTURE seule désormais déclarées.
+    def test_sav_manifest_is_asymmetric(self):
+        """SAV a la recherche (ARC29), le chatter (ARC30), l'import (ARC32) et
+        l'automation de statut (ARC34) câblés, mais NI champs perso, NI actions
+        agent, NI KPI : le collecteur tolère un manifeste partiel/asymétrique
+        (c'est tout l'intérêt d'un second pilote à côté du CRM complet)."""
+        sav = self.manifests['sav']
+        # ARC30 — cible chatter/records historique.
+        self.assertEqual(sav['record_targets'], ['sav.ticket'])
+        # ARC29 — les 3 modèles SAV historiquement cherchables.
         self.assertEqual(
-            contrats['agent_actions_module'], 'apps.contrats.agent_actions')
-        # ARC32 — trou comblé : Contrat est désormais une cible d'import.
-        self.assertEqual(contrats['import_specs'], ['contrats'])
-        # ARC34 — trou comblé : statut Contrat automatisable (RECORD_STATE_CHANGE).
+            sav['searchable_models'],
+            ['sav.equipement', 'sav.ticket', 'sav.contratmaintenance'])
+        # ARC32 — cible d'import du parc SAV.
+        self.assertEqual(sav['import_specs'], ['equipements'])
+        # ARC34 — statut Ticket automatisable (RECORD_STATE_CHANGE).
         self.assertEqual(
-            contrats['automation_state_fields'],
-            [{'model': 'contrats.contrat', 'field': 'statut'}])
-        # Surface DÉLIBÉRÉMENT vide (asymétrie préservée) : le collecteur
+            sav['automation_state_fields'],
+            [{'model': 'sav.ticket', 'field': 'statut'}])
+        # Surfaces DÉLIBÉRÉMENT vides (asymétrie préservée) : le collecteur
         # tolère un manifeste où seules certaines surfaces sont câblées.
-        self.assertEqual(contrats['kpi_providers'], [])
+        self.assertEqual(sav['customfield_models'], [])
+        self.assertEqual(sav['agent_actions_module'], '')
+        self.assertEqual(sav['kpi_providers'], [])
 
     def test_aggregators_flatten_across_manifests(self):
         """Les agrégateurs aplatissent bien les surfaces (via manifests fournis)."""
         searchable = platform.searchable_models(manifests=self.manifests)
         self.assertIn('crm.lead', searchable)
         self.assertIn('crm.client', searchable)
-        # ARC29 — trou comblé : Contrat est désormais cherchable.
-        self.assertIn('contrats.contrat', searchable)
+        # ARC29 — le second pilote (SAV) est aplati dans la même surface.
+        self.assertIn('sav.ticket', searchable)
 
         targets = platform.record_targets(manifests=self.manifests)
         self.assertIn('crm.lead', targets)
-        self.assertIn('contrats.contrat', targets)
+        self.assertIn('sav.ticket', targets)
 
         modules = platform.agent_actions_modules(manifests=self.manifests)
         self.assertIn('apps.crm.agent_actions', modules)
@@ -113,7 +112,7 @@ class PlatformToggleGatingTests(TestCase):
         """Sans ligne ModuleToggle, tous les manifestes sont visibles (FG391)."""
         visibles = platform.platform_manifests_for_company(self.company)
         self.assertIn('crm', visibles)
-        self.assertIn('contrats', visibles)
+        self.assertIn('sav', visibles)
 
     def test_none_company_returns_all(self):
         visibles = platform.platform_manifests_for_company(None)
@@ -125,8 +124,8 @@ class PlatformToggleGatingTests(TestCase):
             company=self.company, module='crm', actif=False)
         visibles = platform.platform_manifests_for_company(self.company)
         self.assertNotIn('crm', visibles)
-        # contrats reste visible (pas désactivé).
-        self.assertIn('contrats', visibles)
+        # sav reste visible (pas désactivé).
+        self.assertIn('sav', visibles)
 
     def test_disabled_module_disappears_from_every_surface(self):
         """crm OFF → ses modèles quittent recherche, chatter, agent, etc."""
@@ -135,10 +134,10 @@ class PlatformToggleGatingTests(TestCase):
         # Recherche : plus de crm.lead.
         self.assertNotIn(
             'crm.lead', platform.searchable_models(self.company))
-        # Chatter/records : plus de crm.lead ; contrats.contrat reste.
+        # Chatter/records : plus de crm.lead ; sav.ticket reste.
         targets = platform.record_targets(self.company)
         self.assertNotIn('crm.lead', targets)
-        self.assertIn('contrats.contrat', targets)
+        self.assertIn('sav.ticket', targets)
         # Actions agent : plus le module CRM.
         self.assertNotIn(
             'apps.crm.agent_actions',

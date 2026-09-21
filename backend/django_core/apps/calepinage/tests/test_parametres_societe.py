@@ -44,7 +44,7 @@ def _sections_ecrivables(exemple):
     """Le contrat PRIVÉ de ses clés en LECTURE SEULE.
 
     CAL246 a ajouté ``kits`` à la charge utile de l'endpoint : c'est un
-    catalogue LU chez ``apps.ao`` (``SECTIONS_LECTURE_SEULE``), pas une
+    catalogue RÉSOLU à la lecture (``SECTIONS_LECTURE_SEULE``), pas une
     section de réglages — ``parametres_de_societe`` ne le rend donc pas, et
     un PUT le refuse comme toute clé inconnue.
     """

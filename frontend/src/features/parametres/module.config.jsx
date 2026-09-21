@@ -3,11 +3,11 @@
    composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import {
-  MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
-  Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
+  ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
+  Key, ShieldCheck, DownloadCloud, AlertTriangle, ShoppingCart, Boxes,
   Paperclip, BadgePercent,
-  Ship, Route, Layers, Repeat, Trash2,
-  Leaf, DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun, History,
+  Layers, Trash2,
+  DatabaseBackup, HardDriveDownload, Gauge, Cable, Sun, History,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -25,18 +25,14 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    Sidebar.jsx et dans le même bloc legacy de index.jsx) — aucune des 6 apps
    citées par ARC54 ne le possède plus naturellement.
 
-   WIR13 — Territoires (`Territoires.jsx`, NTCRM3) était construit/testé mais
-   monté nulle part (ni route, ni menu). `parametres` n'étant PAS l'une des 6
-   clés legacy (cf. `LEGACY_NAV_KEYS` dans Sidebar.jsx), une section `nav`
-   posée ici est auto-collectée par le registre générique (`moduleNavSections`,
-   router/moduleRoutes.jsx) et insérée juste avant ADMINISTRATION — même
-   mécanisme que `/parametres/marketing` (nav déclarée dans
-   `features/marketing/module.config.jsx`).
-
-   WIR14 — même mécanisme pour Playbooks (`Playbooks.jsx`, NTCRM13, CRUD des
-   playbooks/étapes/tâches par stage STAGES.py) : construit/testé, monté nulle
-   part. Deux liens dans la section `nav` ci-dessous ; les autres routes
-   ci-dessus restent routes-only, comme documenté ci-dessus.
+   WIR14 — Playbooks (`Playbooks.jsx`, NTCRM13, CRUD des playbooks/étapes/
+   tâches par stage STAGES.py) était construit/testé mais monté nulle part
+   (ni route, ni menu). `parametres` n'étant PAS l'une des 6 clés legacy
+   (cf. `LEGACY_NAV_KEYS` dans Sidebar.jsx), une section `nav` posée ici est
+   auto-collectée par le registre générique (`moduleNavSections`,
+   router/moduleRoutes.jsx) et insérée juste avant ADMINISTRATION. Un lien
+   dans la section `nav` ci-dessous ; les autres routes ci-dessus restent
+   routes-only, comme documenté ci-dessus.
 
    ODY23 — « admin/roles/users/paramètres → app Paramètres » (une seule app,
    pas deux) : la section `nav` gagne ici (a) un item « Aperçu » vers le
@@ -47,14 +43,13 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    (inchangée — un item de nav peut pointer vers une route d'un AUTRE
    module.config, même mécanisme que Journal dans `reporting`), et (c) les 3
    écrans `/parametres/*` qui avaient une route mais aucune entrée de menu
-   (Export/Sauvegarde, Alertes KPI, Taxe de séjour). Gardes de rôle copiées à
+   (Export/Sauvegarde, Alertes KPI). Gardes de rôle copiées à
    l'IDENTIQUE du littéral ADMINISTRATION historique de `Sidebar.jsx:187-209`
    (extrait par la lane ODY4, qui a besoin de cette `nav` complète pour
    atterrir). DÉLIBÉRÉMENT absent : `/admin/tenants` (console fondateur
    SCA22, superuser serveur — jamais eu d'entrée de menu, on ne l'invente pas
    ici) ; `/parametres/notifications` (atteint depuis `NotificationBell.jsx`,
-   pas le menu app) ; `/parametres/marketing` (nav déjà dans
-   `features/marketing/module.config.jsx`).
+   pas le menu app).
 
    PACT150 (07/08/2026) — route != menu : la garde d'atteignabilité vérifie
    désormais aussi l'entrée de nav (`nav.items[].to`/lien entrant réel/
@@ -87,24 +82,13 @@ const NotificationsPreferences = lazy(() => import('../../pages/parametres/Notif
 // reflète `IsResponsableOrAdmin` côté backend).
 const KpiAlertesPage = lazy(() => import('../../pages/parametres/KpiAlertesPage'))
 const Journal = lazy(() => import('../../pages/Journal'))
-// NTMKT10 — Paramètres → Marketing : domaine d'envoi SPF/DKIM/DMARC (XMKT33).
-// Composant déposé sous `features/parametres/` (pas `pages/parametres/`) —
-// Files list de NTMKT10 dans docs/plans/PLAN_CRM_VENTES.md.
-const DomaineEnvoi = lazy(() => import('./DomaineEnvoi'))
 // NTUX23 — rapport « configuration des vues actives » (réservé responsable/
 // admin, reflète `IsResponsableOrAdmin` côté backend — `toutes-company/`/
 // `export-xlsx/` de SavedViewViewSet).
 const VuesConfigurationPage = lazy(() => import('../../pages/parametres/VuesConfigurationPage'))
-// WIR13/NTCRM3 — Territoires (règles d'affectation auto des leads entrants
-// par zone/segment/secteur) — réservé responsable/admin, comme documenté en
-// tête de `Territoires.jsx` (le backend applique déjà le RBAC réel).
-const Territoires = lazy(() => import('./Territoires'))
 // WIR14/NTCRM13 — Playbooks (CRUD des playbooks/étapes/tâches par stage) —
 // même gating responsable/admin que les autres écrans de configuration CRM.
 const Playbooks = lazy(() => import('./Playbooks'))
-// WIR8 — Paramètres → Hôtellerie : taxe de séjour (singleton société, réservé
-// responsable/admin — reflète `IsResponsableOrAdmin` côté backend).
-const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // NTOBS5 — Paramètres → Fiabilité → Sauvegardes : lecture seule du statut
 // des sauvegardes/drills déjà produits (YOPSB1/2). Nav ET route ensemble
 // (motif PACT150 : ne jamais répéter l'oubli de menu d'AchatsParametresPage).
@@ -138,9 +122,6 @@ const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsPar
 // objets-personnalises pour ses écrans « Enregistrements » : pas d'entrée
 // de menu séparée, la route suffit à le rendre atteignable).
 const ClotureAchatsWizardPage = lazy(() => import('../../pages/parametres/ClotureAchatsWizardPage'))
-// NTESG20 — réglages ESG de la société (seuil de dérive, pilote,
-// fréquence, pondération du badge de maturité). Nav ET route ensemble.
-const ParametresEsgPage = lazy(() => import('../../pages/parametres/ParametresEsgPage'))
 // PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
 // (`ventes.ParametresGammes`, singleton par société) : bascule une/deux
 // gammes, libellés renommables, marque préférée par gamme ET par rôle de
@@ -150,21 +131,6 @@ const ParametresEsgPage = lazy(() => import('../../pages/parametres/ParametresEs
 // — nav ET route déclarées ensemble (motif PACT150, même précédent que
 // NTLOG35/36 ci-dessous).
 const GammesMarquesPage = lazy(() => import('../../pages/parametres/GammesMarquesPage'))
-// NTLOG36 — Paramètres → Douane (`douane.ParametresDouane`, singleton par
-// société) : régime par défaut, rappels d'échéance (NTLOG22/23), mention
-// estimation droits/taxes (NTLOG13/30). Écriture réservée douane_responsable
-// (le backend applique déjà ScopedPermission ; lecture ouverte à tout rôle) —
-// nav ET route déclarées ensemble ici (motif PACT150 : ne jamais répéter
-// l'oubli de menu d'AchatsParametresPage).
-const DouaneParametresPage = lazy(() => import('../../pages/parametres/DouaneParametresPage'))
-// NTLOG35 — Paramètres → Transport (`transport.ParametresTransport`,
-// singleton par société) : seuil d'alerte retard (NTLOG25), preuve de
-// livraison obligatoire (NTLOG9), seuil anomalies d'affrètement (NTLOG28).
-// Écriture réservée à un porteur de rôle (repli légataire `is_responsable` —
-// le backend applique déjà `write_permission='transport_responsable'`) ;
-// lecture ouverte à tout rôle interne — nav ET route déclarées ensemble
-// (motif PACT150, même précédent que NTLOG36 ci-dessus).
-const TransportParametresPage = lazy(() => import('../../pages/parametres/TransportParametresPage'))
 // NTMFG29 — Paramètres > Atelier MRP : SOL5 — nav + route DÉPLACÉES sous le
 // module propriétaire (`features/mrp/module.config.jsx`). Déclarées ici, elles
 // vivaient dans une section `parametres` SANS clé de module : ni le gating
@@ -178,11 +144,6 @@ const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublon
 // + tables autorisées de l'agent SQL, GET /sql-agent/schema — jusqu'ici sans
 // appelant côté frontend). Admin-only (écran de configuration sensible).
 const IaDiagnostic = lazy(() => import('./IaDiagnostic'))
-// NTAI6 — Paramètres → IA : capacités actives (fournisseur réel par capacité,
-// motif d'inactivité, latence médiane et dernière erreur mesurées, budget IA
-// du mois). Aucune clé d'API n'est exposée. Admin-only (le backend applique le
-// palier Administrateur/Directeur).
-const IaCapacites = lazy(() => import('./IaCapacites'))
 // PACT140 — Objets métier personnalisés (XPLT16) : définition sans code d'un
 // objet + de ses champs (mécanisme CustomFieldDef EXISTANT pointé sur
 // `module: custom:<code>`), puis écran GÉNÉRIQUE de ses enregistrements rendu
@@ -195,10 +156,7 @@ const PiecesJointesPage = lazy(() => import('../../pages/parametres/PiecesJointe
 // WIR282/XSAL6 — plans de commission (moitié front de WIR281). Contrat
 // partagé : apps/ventes/contract_samples/plan_commission.json.
 const PlansCommissionPage = lazy(() => import('../../pages/parametres/PlansCommissionPage'))
-// NTSUB24 — réglages « Facturation récurrente » par société (seuils du
-// groupe NTSUB : fin d'essai, expiration de carte, seuil d'usage).
-const AbonnementsParametresPage = lazy(() => import('../../pages/parametres/AbonnementsParametresPage'))
-const CustomObjectRecordsPage = lazy(() => import('../customobjects/CustomObjectRecordsPage'))
+const CustomObjectRecordsPage = lazy(() => import('./CustomObjectRecordsPage'))
 // NTUX7 — Corbeille transverse 30 jours (`apps/trash`, backend déjà complet) :
 // moitié frontend manquante, écran de gouvernance Directeur/Admin (reflète
 // `IsAdminOrResponsableTier` côté serveur, `corbeille/` + `{id}/restaurer/`).
@@ -231,7 +189,6 @@ const config = {
       { to: '/admin/roles', label: 'Rôles', icon: <Shield size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/admin/securite-identite', label: 'Sécurité & Identité', icon: <Key size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/admin/gouvernance-acces', label: 'Gouvernance des accès', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
-      { to: '/parametres/territoires', label: 'Territoires', icon: <MapPin size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/playbooks', label: 'Playbooks', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       {
         to: '/parametres/vues',
@@ -241,22 +198,14 @@ const config = {
       },
       { to: '/parametres/tiers-doublons', label: 'Doublons tiers', icon: <Copy size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
-      { to: '/parametres/ia-capacites', label: 'IA (capacités)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // ODY23(c) — écrans /parametres/* qui avaient une route sans entrée de menu.
       { to: '/parametres/export', label: 'Export / Sauvegarde', icon: <DownloadCloud size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       { to: '/parametres/alertes-kpi', label: 'Alertes KPI', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      { to: '/parametres/hospitality/taxe-sejour', label: 'Taxe de séjour', icon: <Percent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
       // entrée de menu, écran réel de 182 lignes invisible pour toujours.
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTESG20 — nav ET route ensemble (voir commentaire du lazy import).
-      { to: '/parametres/esg', label: 'ESG / RSE', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // PVMRQ — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/gammes', label: 'Gammes & marques', icon: <Layers size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTLOG36 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
-      { to: '/parametres/douane', label: 'Douane', icon: <Ship size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTLOG35 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
-      { to: '/parametres/transport', label: 'Transport', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // PACT140 — Objets métier personnalisés (l'écran des enregistrements
       // `/objets/:code` s'atteint depuis cette page, un lien par objet).
       { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
@@ -264,8 +213,6 @@ const config = {
       { to: '/parametres/pieces-jointes', label: 'Pièces jointes', icon: <Paperclip size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // WIR282 — plans de commission (XSAL6), gatés responsable/admin.
       { to: '/parametres/plans-commission', label: 'Plans de commission', icon: <BadgePercent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
-      // NTSUB24 — nav ET route ensemble (un écran non atteignable est un écran mort).
-      { to: '/parametres/abonnements', label: 'Facturation récurrente', icon: <Repeat size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX7 — corbeille transverse (nav ET route ensemble, motif PACT150).
       { to: '/parametres/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTUX27 — réglages UX par tenant (nav ET route ensemble, motif PACT150).
@@ -296,24 +243,16 @@ const config = {
     { path: '/parametres/export', component: ExportSauvegarde },
     { path: '/parametres/notifications', component: NotificationsPreferences },
     { path: '/parametres/alertes-kpi', component: KpiAlertesPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/marketing', component: DomaineEnvoi, roles: ['responsable', 'admin'] },
     { path: '/parametres/vues', component: VuesConfigurationPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/territoires', component: Territoires, roles: ['responsable', 'admin'] },
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
-    { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats/cloture', component: ClotureAchatsWizardPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/esg', component: ParametresEsgPage, roles: ['admin'] },
     { path: '/parametres/gammes', component: GammesMarquesPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
-    { path: '/parametres/ia-capacites', component: IaCapacites, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
     { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/plans-commission', component: PlansCommissionPage, roles: ['responsable', 'admin'] },
-    { path: '/parametres/abonnements', component: AbonnementsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/corbeille', component: CorbeillePage, roles: ['responsable', 'admin'] },
     { path: '/parametres/ux', component: UxParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/sauvegardes', component: SauvegardesPage, roles: ['responsable', 'admin'] },

@@ -113,7 +113,6 @@ const SANS_ECHANTILLON = {
   '/calepinage/calepinages/<>/versions/<>/restaurer/': 'CAL20 — rejoue une version en en créant une NOUVELLE',
   '/calepinage/calepinages/<>/variantes/': 'CAL21 — CRUD de variante',
   '/calepinage/calepinages/<>/variantes/<>/retenir/': 'CAL21 — action, jamais un PATCH',
-  '/calepinage/calepinages/<>/importer-contour-ao/': 'CAL240 — import du contour AO',
   '/calepinage/calepinages/<>/generer-devis/': 'CAL24 — appelle build_devis_from_layout, aucun PDF',
   '/calepinage/calepinages/<>/sync-devis/': 'CAL25 — appelle sync_devis_from_layout, 409 propagé tel quel',
   '/calepinage/moteur/resultat/<>/': 'CAL23 — suivi du job de fond (kind calepinage)',

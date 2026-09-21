@@ -21,15 +21,13 @@ from authentication.permissions import IsResponsableOrAdmin
     'delai_demande_bcf_jours': drf_serializers.FloatField(allow_null=True),
     'delai_bcf_reception_jours': drf_serializers.FloatField(allow_null=True),
     'exceptions_3_voies': drf_serializers.JSONField(),
-    'notes_frais_en_attente': drf_serializers.JSONField(),
 }))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def tableau_bord_achats_view(request):
-    """NTP2P17 — spend management : budgets départementaux (NTP2P4), top
+    """NTP2P17 — spend management : budget d'achats société, top
     fournisseurs par volume, délais demande→BCF→réception, taux
-    d'exceptions 3 voies, notes de frais en attente. Paramètres facultatifs
-    ``?debut=&fin=`` (ISO)."""
+    d'exceptions 3 voies. Paramètres facultatifs ``?debut=&fin=`` (ISO)."""
     from ..selectors import tableau_bord_achats
 
     return Response(tableau_bord_achats(

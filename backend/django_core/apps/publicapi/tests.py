@@ -278,13 +278,11 @@ class ManagementEndpointTests(TestCase):
         self.assertIn('endpoints', data)
         # XSTK23 a ajouté /produits/ (5ᵉ endpoint : leads/devis/factures/
         # chantiers/produits).
-        # NTSCM38 (14/08/2026) ajoute les 2 surfaces SCM en lecture seule
-        # (prévisions de demande, politiques de stock) — 7 au total.
-        # NTCON31 a ajouté 4 ressources BTP/EPC (montées de longue date mais
-        # jamais documentées ici jusqu'à NTUX33 — comblé au passage) ; NTUX33
-        # ajoute 2 ressources UX (vues sauvegardées, favoris) ; NTP2P39 ajoute
-        # 2 ressources Procure-to-Pay (demandes d'achat, RFQ) ; CAL214 ajoute /calepinages/ — 16 au total.
-        self.assertEqual(len(data['endpoints']), 16)
+        # NTUX33 ajoute 2 ressources UX (vues sauvegardées, favoris) ; NTP2P39
+        # ajoute 2 ressources Procure-to-Pay (demandes d'achat, RFQ) ; CAL214
+        # ajoute /calepinages/ — 10 au total (SOLMVP22 a retiré les 2 surfaces
+        # SCM et les 4 ressources BTP/EPC, modules sortis du produit).
+        self.assertEqual(len(data['endpoints']), 10)
         self.assertIn('authentification', data)
         self.assertIn('Api-Key', data['authentification']['entete'])
         self.assertIn('scopes', data)

@@ -64,7 +64,8 @@ EVENT_MODULE = {
     EventType.BCF_LATE: 'stock',
     EventType.BCF_CANCELLED: 'stock',
     EventType.BCF_RELANCE_PROPOSEE: 'stock',
-    # gestion_projet
+    # gestion_projet — l'app référence encore ces deux types directement
+    # (SOLMVP19 ne retire que les imports notifications→gestion_projet).
     EventType.PROJET_RETARD: 'gestion_projet',
     EventType.PROJET_STATUT_CHANGE: 'gestion_projet',
     # flotte

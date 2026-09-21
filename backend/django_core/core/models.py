@@ -1104,7 +1104,7 @@ class DossierModeleChecklistItem(TenantModel):
 # INCHANGÉS et continuent de fonctionner exactement comme avant — cette
 # matrice est un référentiel ADDITIF que les appelants consultent EN PREMIER
 # (voir ``core.selectors.resoudre_matrice`` et les entrées « unifiées » de
-# ``parametres.ApprovalPolicy``/``apps.contrats.selectors``) ; à défaut de
+# ``parametres.ApprovalPolicy`` et les sélecteurs appelants) ; à défaut de
 # ligne correspondante, le comportement legacy s'applique intégralement en
 # repli (« écriture toujours possible en fallback si aucune ligne ne
 # matche »).

@@ -19,9 +19,6 @@ import {
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
   Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
-// PACT128 — onglet « Options » (groupes d'options NTCPQ1) sur la fiche
-// produit, en AJOUT au système d'onglets existant.
-import ProduitOptionsTab from './ProduitOptionsTab.jsx'
 // PV8 — badge de complétude datasheet, même règle que CatalogueTable (grille
 // catalogue) : un seul calcul, réutilisé sur les deux écrans.
 import { BadgeCompletudeFiche } from './CatalogueTable.jsx'
@@ -879,8 +876,6 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
             <TabsTrigger value="fiche">Fiche technique</TabsTrigger>
             {/* PVCOMPAT — 4ᵉ onglet : compatibilités + installabilité. */}
             <TabsTrigger value="compat">Compatibilités</TabsTrigger>
-            {/* PACT128 — 5ᵉ onglet : groupes d'options de configuration. */}
-            <TabsTrigger value="options">Options</TabsTrigger>
             {/* STKCAT25 — 6ᵉ onglet : où ce produit est-il utilisé ? */}
             <TabsTrigger value="utilise-dans">Utilisé dans</TabsTrigger>
           </TabsList>
@@ -895,9 +890,6 @@ export function ProduitDetail({ produit, onClose, onEdit, onRebut }) {
           </TabsContent>
           <TabsContent value="compat">
             <OngletCompatibilites produit={produit} />
-          </TabsContent>
-          <TabsContent value="options">
-            <ProduitOptionsTab produitId={produit.id} />
           </TabsContent>
           {/* STKCAT25 — monté seulement à l'ouverture (Radix démonte l'onglet
               inactif) : aucun appel réseau tant que l'onglet n'est pas lu. */}

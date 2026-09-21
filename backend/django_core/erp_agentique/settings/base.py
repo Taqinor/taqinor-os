@@ -9,21 +9,10 @@ import warnings
 from pathlib import Path
 from datetime import timedelta
 
-from . import editions  # noqa: E402  (registre statique, sans Django)
 from . import placeholders  # noqa: E402  (prédicat pur, sans Django)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SOL1/SOL3 — Édition produit
-# ─────────────────────────────────────────────────────────────────────────────
-# `full` (défaut : dev, tests, CI — zéro churn openapi/baselines) ou `solar`
-# (édition spécialisée installateur solaire : les verticaux non adaptables
-# sortent d'INSTALLED_APPS, des urls et du bundle frontend). Aucune table n'est
-# jamais supprimée : re-flipper la variable réactive une app parquée.
-# Une valeur inconnue LÈVE au boot (jamais de repli silencieux sur `full`).
-TAQINOR_EDITION = editions.edition_active()
 
 # SECURITY WARNING: keep the secret key used in production secret!
 _DEBUG_FLAG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('true', '1', 'yes')
@@ -393,16 +382,6 @@ INSTALLED_APPS = [
     # store léger). N'importe aucune app métier.
     'apps.mlops',
 ]
-
-# SOL3 — profil d'édition. En édition `solar`, les verticaux non adaptables
-# (registre `settings/editions.py`) sortent d'INSTALLED_APPS : leurs modèles ne
-# sont plus chargés, leurs migrations ne sont plus appliquées sur une base
-# vierge, leurs tâches beat et leurs urls disparaissent (SOL2c / urls.py).
-# AUCUNE table n'est supprimée : repasser `TAQINOR_EDITION` à `full` réactive
-# tout à l'identique. En édition complète (défaut dev/tests/CI) la liste est
-# renvoyée BYTE-IDENTIQUE.
-INSTALLED_APPS = editions.filtrer_installed_apps(
-    INSTALLED_APPS, TAQINOR_EDITION)
 
 MIDDLEWARE = [
     # YAPIC4 — EN PREMIER : pose request.request_id (échoé/lu depuis
@@ -823,17 +802,13 @@ SPECTACULAR_SETTINGS = {
         # de table). Un seul nom d'énumération pour les deux.
         'OrientationPanneauEnum':
             'apps.ventes.models.RoofLayout.Orientation',
-        # neuf / bon / usage_normal / degrade
-        'EtatGeneralPieceEnum':
-            'apps.immobilier.models.PieceEtatLieux.EtatGeneral',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
-        # virement / cheque / especes (libellés de compta.PaymentRun ;
-        # paie.ProfilPaie porte les mêmes valeurs avec d'AUTRES libellés,
-        # donc un jeu distinct que le générateur nomme déjà sans ambiguïté).
-        'ModePaiementReglementEnum':
-            'apps.compta.models.PaymentRun.ModePaiement',
+        # SOLMVP-sweep (2026-09-21) — `EtatGeneralPieceEnum`
+        # (immobilier.PieceEtatLieux.EtatGeneral) est retiré : apps.immobilier
+        # est sorti du MVP solaire (Groupe SOLMVP, coquille).
+        #
         # mensuelle / trimestrielle / semestrielle / annuelle — même jeu sous
         # `regle` (installations.RecurrenceIntervention) et sous `periodicite`
         # (assurances.EcheancePrime).
@@ -848,13 +823,16 @@ SPECTACULAR_SETTINGS = {
         'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
-        # mensuel / trimestriel / semestriel / annuel — même jeu sous `unite`
-        # (contrats.PlanRecurrent) et sous `periodicite` (sav.ContratMaintenance).
-        'PeriodiciteMensuelAnnuelEnum':
-            'apps.contrats.models.PlanRecurrent.Unite',
-        # mensuelle / trimestrielle
-        'PeriodiciteMensuelleTrimestrielleEnum':
-            'apps.compta.models.AllocationRecurrente.Periodicite',
+        # SOLMVP (21/09/2026) — `langue` (crm.MessageTemplate.Langue) et `langue`
+        # (portail.PreferencePortail.Langue) portent deux jeux differents sous le meme nom
+        # de champ : sans surcharge, drf-spectacular suffixe l'un des deux d'un
+        # hash et avertit « multiple names for the same choice set ».
+        'LangueEnum': 'apps.crm.models.MessageTemplate.Langue',
+        'LanguePortailEnum': 'apps.portail.models.PreferencePortail.Langue',
+        # SOLMVP (21/09/2026) — les surcharges PeriodiciteMensuelAnnuelEnum /
+        # PeriodiciteMensuelleTrimestrielleEnum visaient contrats.PlanRecurrent et
+        # compta.AllocationRecurrente : les deux apps sont des coquilles, le conflit
+        # de nommage a disparu avec elles.
         # en_cours / conforme / non_conforme / reserves — jeu identique dans
         # installations.CommissioningRecord et ventes.CommissioningTest.
         'ResultatCommissioningEnum':
@@ -870,25 +848,25 @@ SPECTACULAR_SETTINGS = {
         # un nom explicite et stable (jamais un hachage auto-généré) au
         # nouveau.
         #
-        # prix_fixe / remise_pct / formule_sur_prix_vente — ventes.RegleListePrix
-        # (préexistant, garde le nom historique) ; promotions.ReglexPromotion
-        # porte un jeu DIFFÉRENT sous le même champ `type_regle`.
+        # prix_fixe / remise_pct / formule_sur_prix_vente —
+        # ventes.RegleListePrix (préexistant, garde le nom historique).
+        # SOLMVP-sweep (2026-09-21) : le second jeu du couple,
+        # `promotions.ReglexPromotion.TypeRegle` (`TypeReglePromotionEnum`),
+        # est retiré — apps.promotions est sorti du MVP solaire (Groupe
+        # SOLMVP, en cours de mise en coquille par la lane SOLMVP30b).
         'TypeRegleEnum': 'apps.ventes.models.RegleListePrix.TypeRegle',
-        'TypeReglePromotionEnum':
-            'apps.promotions.models.ReglexPromotion.TypeRegle',
         # casse / defaut / erreur / obsolete / perime / vol / autre —
-        # stock.MouvementStock (préexistant) ; mrp.OperationOF porte un jeu
-        # DISTINCT (motif de rebut d'une opération de fabrication) sous le
-        # même champ `motif_rebut`.
+        # stock.MouvementStock (préexistant, garde le nom historique).
+        # SOLMVP-sweep (2026-09-21) : le second jeu du couple,
+        # `mrp.OperationOF.MotifRebut` (`MotifRebutOFEnum`), est retiré —
+        # apps.mrp est sorti du MVP solaire (Groupe SOLMVP, coquille).
         'MotifRebutEnum': 'apps.stock.models.MouvementStock.MotifRebut',
-        'MotifRebutOFEnum': 'apps.mrp.models.OperationOF.MotifRebut',
-        # salon / porte_ouverte / webinaire — marketing.EvenementMarketing
-        # (préexistant, champ `type_evenement`) ; scm.EvenementDemande porte
-        # un jeu DISTINCT (promotion/chantier majeur/rupture fournisseur…)
-        # sous le même nom de champ.
-        'TypeEvenementEnum': 'apps.marketing.models.EvenementMarketing.Type',
-        'TypeEvenementDemandeEnum':
-            'apps.scm.models.EvenementDemande.TypeEvenement',
+        # SOLMVP-sweep (2026-09-21) — `TypeEvenementEnum`
+        # (marketing.EvenementMarketing.Type) et `TypeEvenementDemandeEnum`
+        # (scm.EvenementDemande.TypeEvenement) sont retirés : les deux apps du
+        # couple sortent du MVP solaire (Groupe SOLMVP — marketing en cours de
+        # mise en coquille par la lane SOLMVP30b, scm déjà en coquille).
+        #
         # A/B/C/toutes — installations.SessionComptage (préexistant, comptage
         # tournant FG324) ; stock.models_wms.PlanComptageTournant (NTWMS13)
         # porte un jeu DISTINCT (mêmes lettres, libellés différents) sous le
@@ -897,12 +875,10 @@ SPECTACULAR_SETTINGS = {
             'apps.installations.models_comptage.SessionComptage.ClasseABC',
         'ClasseAbcPlanComptageTournantEnum':
             'apps.stock.models_wms.PlanComptageTournant.ClasseAbc',
-        # route / mer / air — NTLOG20. drf-spectacular signalait « multiple
-        # names for the same choice set » : le MÊME triplet de valeurs est
-        # porté par un autre champ du dépôt sous un nom différent. On fige
-        # donc le nom sur le jeu de `transport`, comme les entrées voisines.
-        'ModeAcheminementPhysiqueEnum':
-            'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
+        # SOLMVP-sweep (2026-09-21) — `ModeAcheminementPhysiqueEnum`
+        # (transport.OrdreTransport.ModeAcheminementPhysique) est retiré :
+        # apps.transport est sorti du MVP solaire (Groupe SOLMVP, coquille).
+        #
         # operational/degraded/partial_outage/major_outage —
         # statuspage.ComponentStatus.statut est le jeu D'ORIGINE ;
         # ComponentStatusLog (journal d'historique) reprend LA MÊME liste de
@@ -911,26 +887,14 @@ SPECTACULAR_SETTINGS = {
         # seul jeu de valeurs (« multiple names for the same choice set »).
         'StatutComposantPublicEnum':
             'apps.statuspage.models.ComponentStatus.Statut',
-        # entree/sortie — compta.MouvementCaisse.Sens (FG124, jeu D'ORIGINE) ;
-        # immobilier.EtatLieuxImmo (champ `moment`) ET
-        # installations.GeofenceAlert (champ `type_franchissement`, NTMOB9)
-        # portent LE MÊME jeu sous un nom de champ différent. Fige aussi, en
-        # retirant immobilier de la résolution automatique du nom de champ
-        # « moment », sa collision avec flotte.EtatDesLieuxVehicule (jeu de
-        # valeurs DISTINCT sous le même nom de champ).
-        'MouvementEntreeSortieEnum':
-            'apps.compta.models.MouvementCaisse.Sens',
+        # SOLMVP-sweep (2026-09-21) — `MouvementEntreeSortieEnum`
+        # (compta.MouvementCaisse.Sens) est retiré : apps.compta est sorti du
+        # MVP solaire (Groupe SOLMVP, en cours de mise en coquille par la lane
+        # SOLMVP30b). Le schéma régénéré (ci-après) confirme qu'aucune
+        # collision « multiple names for the same choice set » ne réapparaît
+        # sur les jeux entree/sortie restants (installations.GeofenceAlert…).
     },
 }
-
-# SOL2(d) — un override d'énumération qui pointe vers une app PARQUÉE par
-# l'édition courante (`apps.immobilier.…`, `apps.mrp.…`) désigne un modèle qui
-# n'est plus chargé : drf-spectacular échouerait à le résoudre au moment de
-# générer le schéma. On les retire ici, une fois, depuis le registre statique
-# d'éditions. En édition complète (défaut) le dictionnaire est renvoyé À
-# L'IDENTIQUE — aucun nom d'énumération ne bouge, donc aucun churn de schéma.
-SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES'] = editions.filtrer_chemins(
-    SPECTACULAR_SETTINGS['ENUM_NAME_OVERRIDES'], TAQINOR_EDITION)
 
 # Simple JWT Configuration
 SIMPLE_JWT = {
@@ -1090,26 +1054,14 @@ CELERY_TASK_ROUTES = {
     # SCA41 — export xlsx volumineux déclenché par une action utilisateur → même
     # queue `interactive` que les rendus PDF (pilote de NTPLT29/30).
     'ventes.build_async_export': {'queue': 'interactive'},
-    'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     # NTUX29/NTUX30 — purge de corbeille (03h00) et digest des favoris
     # obsolètes (lundi 07h00), tous deux enregistrés au beat.
     'trash.purger_corbeille_transverse': {'queue': 'scheduled'},
     'uxviews.digest_favoris_obsoletes_hebdo': {'queue': 'scheduled'},
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
-    # Vague SUPPLY (14/08/2026) — toute tache du beat_schedule DOIT etre
-    # routee explicitement vers `scheduled` (garde core/tests/
-    # test_celery_task_routes.py) : sans entree, elle tombe sur `default`
-    # et partage la file des taches interactives.
-    'scm.generer_previsions_mensuelles': {'queue': 'scheduled'},
-    'scm.ouvrir_cycle_sop_mensuel': {'queue': 'scheduled'},
     # NTSCM35/36 — voir le commentaire ci-dessus (chaque tache du
     # beat_schedule DOIT etre routee explicitement vers `scheduled`).
-    'scm.recalculer_politiques_stock_hebdo': {'queue': 'scheduled'},
-    'scm.purger_donnees_scm_anciennes': {'queue': 'scheduled'},
-    'scm.notifier_ecarts_prevision_importants': {'queue': 'scheduled'},
-    'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
-    'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
     'ventes.relance_reminders': {'queue': 'scheduled'},
     'ventes.devis_followup_nudges': {'queue': 'scheduled'},
@@ -1119,7 +1071,6 @@ CELERY_TASK_ROUTES = {
     # CRX22 — recalcul des scores de lead devenus obsoletes (beat) : voir le
     # commentaire ci-dessus, toute tache du beat_schedule DOIT etre routee.
     'crm.recalculer_scores_obsoletes': {'queue': 'scheduled'},
-    'flotte.generer_couts_contrat_mensuel': {'queue': 'scheduled'},
     # NTCRM6 — snapshot forecast hebdomadaire (beat, tâche planifiée).
     'crm.snapshot_forecast_hebdo': {'queue': 'scheduled'},
     # MRY0 (lot C) — miroir Odoo -> ERP planifie (beat 30 min).
@@ -1142,12 +1093,6 @@ CELERY_TASK_ROUTES = {
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
-    # NTDATA15 — évaluation quotidienne des règles de qualité de données.
-    'dataquality.evaluer_qualite_donnees': {'queue': 'scheduled'},
-    # NTDATA24 — consolidation hebdomadaire des golden records.
-    'dataquality.consolider_golden_records': {'queue': 'scheduled'},
-    # NTAI30 — matérialisation quotidienne du feature store léger (mlops).
-    'mlops.recompute_features': {'queue': 'scheduled'},
     # NTDATA42 — détection hebdomadaire d'anomalies sur les métriques nommées.
     'semantic.detecter_anomalies_metriques': {'queue': 'scheduled'},
     # NTPLT6 — snapshot d'usage tenant (beat 01:45) → queue planifiée.
@@ -1163,21 +1108,12 @@ CELERY_TASK_ROUTES = {
     'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
     'ged.relancer_demandes_document_dues': {'queue': 'scheduled'},
     'ged.notifier_planifications_echues': {'queue': 'scheduled'},
-    'contrats.generer_factures_recurrentes_dues': {'queue': 'scheduled'},
-    'contrats.reconductions_et_alertes_daily': {'queue': 'scheduled'},
-    'contrats.convertir_essais_expires_daily': {'queue': 'scheduled'},
-    'contrats.executer_dunning_daily': {'queue': 'scheduled'},
-    'chat.send_scheduled_messages': {'queue': 'scheduled'},
-    'chat.send_due_reminders': {'queue': 'scheduled'},
-    'chat.retention_sweep': {'queue': 'scheduled'},
     'installations.rappel_rdv_j1': {'queue': 'scheduled'},
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
     # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
     'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
     # NTP2P35 — archivage mensuel des brouillons de demande d'achat abandonnés.
     'installations.purger_demandes_achat_brouillon': {'queue': 'scheduled'},
-    'rh.alertes_expiration': {'queue': 'scheduled'},
-    'rh.alertes_cdd': {'queue': 'scheduled'},
     'sav.generer_visites_dues_quotidien': {'queue': 'scheduled'},
     # WIR30 — pré-alerte SLA (J-x) + escalade à la violation.
     'sav.scan_sla_pre_alerts_and_escalations_quotidien': {'queue': 'scheduled'},
@@ -1231,31 +1167,6 @@ CELERY_TASK_ROUTES = {
     'ventes.engagement_followup_engine': {'queue': 'scheduled'},
     'ventes.poll_inbound_mailboxes': {'queue': 'scheduled'},
     'ged.poll_mail_intake': {'queue': 'scheduled'},
-    # Marketing/compta — séquences, campagnes, communications, dormants, A/B.
-    'compta.executer_sequences_relance': {'queue': 'scheduled'},
-    'compta.envoyer_campagnes_planifiees': {'queue': 'scheduled'},
-    'compta.envoyer_communications_evenement': {'queue': 'scheduled'},
-    'compta.recalculer_dormants_marketing': {'queue': 'scheduled'},
-    'compta.traiter_posts_sociaux': {'queue': 'scheduled'},
-    'compta.decider_gagnants_ab': {'queue': 'scheduled'},
-    # NTMKT12/33/35/34 — app marketing : tick des journeys en graphe, purge des
-    # jetons publics expirés, rappel d'approbation d'envoi, recalcul des scores
-    # de maturité sur inactivité. Quatre jobs beat.
-    'marketing.executer_journeys': {'queue': 'scheduled'},
-    'marketing.purger_tokens_expires': {'queue': 'scheduled'},
-    'marketing.rappeler_approbations_envoi': {'queue': 'scheduled'},
-    'marketing.recalculer_scores_maturite_inactivite': {'queue': 'scheduled'},
-    # KB — balayages lectures obligatoires / articles périmés.
-    'kb.sweep_lectures_obligatoires': {'queue': 'scheduled'},
-    'kb.sweep_articles_perimes': {'queue': 'scheduled'},
-    # QHSE — escalade des check-ins en retard.
-    'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
-    # PACT184 — rappel légal de réunion CSH trimestrielle (Code du travail).
-    'qhse.relancer_csh_du_jour': {'queue': 'scheduled'},
-    # VAO22 — collecte quotidienne de la veille AO. Livrée DÉSARMÉE
-    # (`VEILLE_AO_COLLECTE_ACTIVE=0`) : l'entrée beat existe et est routée,
-    # la tâche sort immédiatement avec un motif tant que le drapeau est à 0.
-    'veille_ao.collecte_quotidienne': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
     # ENG6 — synchro quotidienne des insights publicitaires.
@@ -1285,119 +1196,30 @@ CELERY_TASK_ROUTES = {
     'adsengine.check_attribution_quality': {'queue': 'scheduled'},
     # PUB94 — snapshot hebdo d'observabilité de L'Arbre (branches mortes).
     'adsengine.flag_dead_branches_weekly': {'queue': 'scheduled'},
-    # NTCRD21/32/33/34 — jobs crédit planifiés (exposition, encours, dérogations,
-    # polices assurance-crédit expirantes).
-    'credit.alerter_exposition_globale': {'queue': 'scheduled'},
-    'credit.expirer_derogations': {'queue': 'scheduled'},
-    'credit.alerter_polices_expirantes': {'queue': 'scheduled'},
-    'credit.recalculer_encours_quotidien': {'queue': 'scheduled'},
-    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé.
-    'sante.alertes_prise_en_charge_expirant': {'queue': 'scheduled'},
     # NTADM10/11/16/35/36/38 — jobs adminops planifiés (sandbox clone/purge/
     # rappel, health score, purge packages/usage).
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
     'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
-    # NTMIG35 — purge planifiée des fichiers source de migration.
-    'migration.purger_fichiers_migration': {'queue': 'scheduled'},
     # NTMIG30 — alerte planifiée d'expiration de certification partenaire.
-    'migration.alerter_certifications_expirantes': {'queue': 'scheduled'},
     'adminops.rappeler_sandbox_a_expirer': {'queue': 'scheduled'},
     'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
     'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
     'adminops.purger_evenements_usage': {'queue': 'scheduled'},
     # NTADM37 — péremption des demandes d'impersonation non consenties.
     'adminops.perimer_demandes_impersonation': {'queue': 'scheduled'},
-    # NTEDU22 — matérialisation hebdomadaire des séances (emploi du temps).
-    'education.generer_seances_semaine': {'queue': 'scheduled'},
-    # NTIDE40 — digest feedback produit non-lu, gated par société.
-    'innovation.feedback_digest_run': {'queue': 'scheduled'},
-    # NTEDU40 — relance réinscription (notifie l'administration, quotidien).
-    'education.relancer_reinscriptions': {'queue': 'scheduled'},
-    # WIR5/FLOTTE16 — génération quotidienne des échéances d'entretien flotte.
-    'flotte.generer_echeances_entretien_quotidien': {'queue': 'scheduled'},
-    # NTLOG38 — rappel quotidien des étapes de transport en retard.
-    'transport.check_etapes_transport_retard': {'queue': 'scheduled'},
-    # NTLOG39 — archivage mensuel des ordres de transport livrés anciens.
-    'transport.archiver_ordres_transport_anciens': {'queue': 'scheduled'},
-    # WIR25 — écritures récurrentes (XACC8) + rappels d'échéance fiscale
-    # (NTMAR15), planifiés au beat, heures creuses.
-    'compta.generer_ecritures_recurrentes': {'queue': 'scheduled'},
-    'fiscal.rappels_fiscaux': {'queue': 'scheduled'},
     # WIR73 (GED7) — import récurrent des pièces jointes vers la GED
     # (hebdomadaire, lundi heure creuse) : job beat, donc queue `scheduled`.
     'ged.migrer_pieces_jointes': {'queue': 'scheduled'},
-    # WIR148 (NTPRO6) — génération quotidienne des échéances de loyer des baux
-    # actifs : job beat, donc queue `scheduled`.
-    'immobilier.generer_echeances_loyer': {'queue': 'scheduled'},
     # NTOBS/NTREP — envoi horaire des abonnements de rapports planifiés : job
     # beat, donc queue `scheduled`.
     'reporting.envoyer_rapports_planifies': {'queue': 'scheduled'},
-    # NTIAG — surveillance mensuelle du drift des modèles IA : job beat, donc
-    # queue `scheduled`.
-    'ai_governance.surveiller_drift_mensuel': {'queue': 'scheduled'},
-    # AOF15 — rappels quotidiens des échéances d'appel d'offres (remise des
-    # plis, ouverture, fin de validité), planifiés au beat à 6 h 30 : job beat,
-    # donc queue `scheduled`. Les autres tâches AO sont, elles, déclenchées à
-    # la demande (cf. ON_DEMAND_ALLOWLIST du garde QX11).
-    'ao.rappeler_echeances': {'queue': 'scheduled'},
-    # NTCPQ32 — rappel quotidien des PrixContractuel expirés (beat, job planifié).
-    'cpq.expire_prix_contractuels': {'queue': 'scheduled'},
-    # NTCPQ33 — relance des étapes d'approbation en attente (beat, job planifié).
-    'cpq.relancer_approbations_en_attente': {'queue': 'scheduled'},
-    # NTCPQ34 — purge des sessions configurateur abandonnées (beat, job planifié).
-    'cpq.purger_sessions_configurateur_abandonnees': {'queue': 'scheduled'},
-    # NTMFG30 — recalcul MRP nocturne + notification des ruptures prévisionnelles.
-    'mrp.recalculer_besoins_nocturne': {'queue': 'scheduled'},
-    # NTMFG31 — purge/archivage des OF prototype anciens.
-    'mrp.archiver_of_prototype_anciens': {'queue': 'scheduled'},
-    # NTMFG32 — rappel d'entretien de poste de charge à échéance proche (J-7).
-    'mrp.rappeler_entretiens_poste_j7': {'queue': 'scheduled'},
     # AUD231 — les huit balayages qui existaient en commande de gestion « pour
     # Celery beat » sans aucune entrée de beat : désormais planifiés, donc
     # routés vers `scheduled` comme tous les jobs beat.
     'stock.generer_comptages_tournants': {'queue': 'scheduled'},   # NTWMS13
     'stock.liberer_vagues_planifiees': {'queue': 'scheduled'},     # NTWMS12
-    'pos.liberer_reservations_expirees': {'queue': 'scheduled'},   # NTRET23
     'installations.generer_interventions_recurrentes': {
         'queue': 'scheduled'},                                     # ZFSM3
-    'gestion_projet.generer_taches_recurrentes': {
-        'queue': 'scheduled'},                                     # XPRJ13
-    'gestion_projet.alertes_retards_projets': {
-        'queue': 'scheduled'},                                     # XPRJ22
-    'gestion_projet.rappels_timesheets': {'queue': 'scheduled'},   # XPRJ7
-    'btp_chantier.alertes_rfi_retard': {'queue': 'scheduled'},     # NTCON4
-    # NTCON18/NTCON27 — les deux autres balayages BTP planifiés (le premier
-    # manquait : sans entrée il retombait sur `default`, qu'aucun worker
-    # `-Q scheduled` ne consomme).
-    'btp_chantier.rapport_photo_hebdo': {'queue': 'scheduled'},    # NTCON18
-    'btp_chantier.archiver_reserves_levees': {'queue': 'scheduled'},  # NTCON27
-    'btp_chantier.recalculer_penalites_lots': {'queue': 'scheduled'},  # NTCON28
-    'btp_chantier.alertes_visas_en_attente': {'queue': 'scheduled'},  # NTCON37
-    # Batch AUDV/AOF/WIR (2026-09-06) — 10 tâches ajoutées au beat_schedule
-    # sans route explicite (garde core/tests/test_celery_task_routes.py) :
-    # chacune un balayage/relance planifié, aucune n'est déclenchée par un
-    # événement synchrone utilisateur.
-    'ao.generer_echeanciers': {'queue': 'scheduled'},
-    'ao.relancer_pieces_administratives': {'queue': 'scheduled'},
-    'veille_ao.expirer_avis_depasses': {'queue': 'scheduled'},
-    'contrats.cloturer_contrats_impayes_daily': {'queue': 'scheduled'},
-    'rh.accruer_conges': {'queue': 'scheduled'},
-    'rh.clore_pointages_ouverts': {'queue': 'scheduled'},
-    'rh.purger_candidatures': {'queue': 'scheduled'},
-    'rh.planifier_appreciations': {'queue': 'scheduled'},
-    'qhse.relancer_derogations': {'queue': 'scheduled'},
-    'qhse.relancer_audits_planifies_en_retard': {'queue': 'scheduled'},
-    # Vague 1 drain NT (2026-09-12) — 3 tâches ajoutées au beat_schedule sans
-    # route explicite (garde core/tests/test_celery_task_routes.py) :
-    # NTSUB27 précalcul nocturne des métriques SaaS ; NTSUB26 purge mensuelle
-    # des compteurs d'usage facturés ; NTDOC32 purge des dépôts contrepartie
-    # archivés. Toutes des balayages/recalculs planifiés, aucun déclenché par
-    # un événement synchrone utilisateur.
-    # (Le rapport photo hebdomadaire BTP était listé ici une SECONDE fois —
-    # doublon de clé retiré, il garde sa route NTCON18 déclarée plus haut.)
-    'contrats.recalculer_metriques_saas_cache_daily': {'queue': 'scheduled'},
-    'contrats.purger_compteurs_usage_factures_monthly': {'queue': 'scheduled'},
-    'contrats.purger_contreparties_archivees': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
@@ -1411,13 +1233,13 @@ CELERY_TASK_ROUTES = {
     '*.backfill_*': {'queue': 'bulk'},
     '*.seed_*': {'queue': 'bulk'},
     '*.export_bulk_*': {'queue': 'bulk'},
-    # NTPAY25 — rappel des échéances déclaratives de paie (beat quotidien
-    # 06h45). Toute tâche du beat_schedule DOIT être routée explicitement vers
-    # `scheduled` (garde core/tests/test_celery_task_routes.py).
-    'paie.rappeler_echeances_declaratives': {'queue': 'scheduled'},
-    # NTPAY26 — recalcul des cumuls annuels en dérive (beat mensuel).
-    'paie.recalculer_cumuls_annuels': {'queue': 'scheduled'},
     # NTOBS1 — rafraîchissement 5 min des composants publics de statut.
+    # `statuspage` est une app CONSERVÉE : sa route avait été retirée par
+    # ricochet avec celles de ses voisines parquées (paie/grc/rh), alors que son
+    # entrée beat reste déclarée dans erp_agentique/celery.py — la tâche
+    # retombait donc sur la queue `default` (elle partageait la file
+    # interactive). Toute tâche du beat_schedule DOIT être routée explicitement
+    # vers `scheduled` (garde core/tests/test_celery_task_routes.py).
     'statuspage.rafraichir_composants': {'queue': 'scheduled'},
     # NTOBS3 — snapshot SLA mensuel de toutes les sociétés.
     'core.generer_sla_mensuel': {'queue': 'scheduled'},
@@ -1434,14 +1256,6 @@ CELERY_TASK_ROUTES = {
     'core.verifier_fraicheur_trust_center': {'queue': 'scheduled'},
     # NTOBS31 — garantit quotidiennement les 2 KpiAlerte fiabilité par défaut.
     'core.assurer_alertes_fiabilite_kpi': {'queue': 'scheduled'},
-    # NTGRC21 — relance des attestations de conformité non signées (beat).
-    'grc.rappels_grc': {'queue': 'scheduled'},
-    # NTRH — rappels de parcours de formation + tâches d'intégration/sortie
-    # (beat quotidien). Toute tâche du beat_schedule DOIT être routée
-    # explicitement vers `scheduled` (garde core/tests/test_celery_task_routes)
-    # sinon elle retombe sur `default` et partage la file interactive.
-    'rh.rappels_parcours_formation': {'queue': 'scheduled'},
-    'rh.notifier_taches_integration_sortie': {'queue': 'scheduled'},
     # NTI18N39 — recalcul hebdomadaire de la couverture i18n (beat du lundi).
     'core.recalculer_couverture_i18n': {'queue': 'scheduled'},
     # NTI18N38 — purge mensuelle des traductions de contenu orphelines.
@@ -1717,6 +1531,13 @@ SECURE_BROWSER_XSS_FILTER = True
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY', '')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
 VAPID_ADMIN_EMAIL = os.environ.get('VAPID_ADMIN_EMAIL', '')
+
+# SOLMVP — runner du projet : `DiscoverRunner` + purge de fin de
+# `TransactionTestCase` en `TRUNCATE … CASCADE`. Les apps parquées gardent leurs
+# TABLES (coquilles de migrations) sans garder leurs MODÈLES : leurs clés
+# étrangères vers les tables conservées font refuser un TRUNCATE non cascadé.
+# Le POURQUOI complet est dans `core/test_runner.py`.
+TEST_RUNNER = 'core.test_runner.TaqinorTestRunner'
 
 TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
 # WOW2 — sous le test runner UNIQUEMENT, hacher les mots de passe en MD5 (rapide)

@@ -1,8 +1,8 @@
 """NTOBS6 — liens de téléchargement tokenisés expirant (helper GÉNÉRIQUE).
 
-Même PRINCIPE que ``ged.PartageGed`` (jeton long imprévisible + expiration +
-kill-switch), sans en dépendre (``core`` reste fondation, aucun import
-d'``apps.ged``) : un helper dédié, réutilisable par n'importe quelle future
+Même PRINCIPE que le partage de document de la GED (jeton long imprévisible +
+expiration + kill-switch), sans en dépendre (``core`` reste fondation, aucun
+import d'app métier) : un helper dédié, réutilisable par n'importe quelle future
 fonctionnalité ``core`` qui doit livrer un fichier MinIO via un lien
 temporaire sans authentification (ex. NTOBS6 — export de réversibilité).
 

@@ -10,8 +10,8 @@ Le RIB marocain compte 24 chiffres — code banque (5) + code guichet (5) +
 numéro de compte (12) + clé (2) — la clé étant calculée par la formule mod 97
 standard (poids 89/15/3 appliqués aux trois premiers blocs, complément à 97,
 identique au principe du RIB français adapté au découpage marocain). Les
-apps métier (``apps.stock`` Fournisseur, ``apps.compta`` CompteTresorerie,
-``apps.rh`` DossierEmploye) appellent
+apps métier (``apps.stock`` Fournisseur, et toute app portant un RIB de
+tiers ou d'employé) appellent
 :func:`valider_rib`/:func:`cle_rib_valide` pour SIGNALER un RIB invalide en
 WARNING — JAMAIS de blocage de saisie historique, cf. ``services``/
 ``selectors`` de chaque app consommatrice.

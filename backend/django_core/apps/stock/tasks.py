@@ -6,7 +6,7 @@ faisait tourner — Odoo lance une action nocturne « reordering rules run ».
 Aujourd'hui personne n'est notifié tant qu'un humain n'ouvre pas l'écran.
 
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
-``apps.rh.tasks``/``apps.installations.tasks``. Boucle PAR société ACTIVE, au
+les tâches planifiées des autres apps. Boucle PAR société ACTIVE, au
 sens de ``authentication.selectors.active_companies()`` (SCA19/AUD415) : un
 tenant suspendu ou en fermeture n'est jamais balayé — la docstring l'affirmait
 avant AUD415 alors que le code itérait ``Company.objects.all()``.

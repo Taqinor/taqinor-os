@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import userEvent from '@testing-library/user-event'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
-   CAL37/CAL242 — l'emplacement des panneaux de l'atelier en mode calepinage.
+   CAL37 — l'emplacement des panneaux de l'atelier en mode calepinage.
 
    Ce que ce fichier prouve :
    1. le panneau affiche la CIBLE servie par le serveur, et « non renseignée »
       quand elle vaut `null` — jamais une puissance inventée ;
-   2. le bouton « Reprendre le contour de l'affaire » (CAL242, sens CAL240) est
-      RÉELLEMENT MONTÉ ici : écrit et testé, il n'était accroché à aucun écran,
-      c'est-à-dire l'oubli du 03/08/2026 (61 écrans livrés, inatteignables) ;
-   3. une conception en LECTURE SEULE ne propose aucune écriture.
+   2. une conception en LECTURE SEULE ne propose aucune écriture.
+
+   SOLMVP15 — les deux essais du bouton « Reprendre le contour de l'affaire »
+   (CAL242, sens CAL240) sont partis avec lui : son endpoint n'existe plus,
+   l'app d'appels d'offres sortant du produit.
    ========================================================================== */
 
 vi.mock('../../api/calepinageApi', () => ({
@@ -22,7 +22,6 @@ vi.mock('../../api/calepinageApi', () => ({
       get: vi.fn(),
       genererDevis: vi.fn(),
       syncDevis: vi.fn(),
-      importerContourAo: vi.fn(),
     },
     // CAL70 — PanneauAllees (monté ici, emplacement CAL37) lit les réglages
     // société et interroge le moteur ; sans double par défaut, la promesse
@@ -30,9 +29,6 @@ vi.mock('../../api/calepinageApi', () => ({
     parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
     moteur: { calculer: vi.fn() },
   },
-}))
-vi.mock('../../api/aoApi', () => ({
-  default: { toitures: { reprendreContour3d: vi.fn() } },
 }))
 vi.mock('../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
@@ -53,7 +49,6 @@ const rendre = (props = {}) => render(
 beforeEach(() => {
   vi.clearAllMocks()
   calepinageApi.calepinages.get.mockResolvedValue({ data: DETAIL })
-  calepinageApi.calepinages.importerContourAo.mockResolvedValue({ data: {} })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -76,43 +71,11 @@ describe('AtelierPanneaux (CAL37)', () => {
       .toHaveTextContent('Aucune cible de puissance connue')
   })
 
-  it('CAL242 — « Reprendre le contour de l’affaire » est MONTÉ et appelle CAL240', async () => {
-    const recharger = vi.fn()
-    rendre({ onRecharger: recharger })
-
-    const bouton = await screen.findByRole('button',
-      { name: /Reprendre le contour de l’affaire/ })
-    await userEvent.click(bouton)
-
-    // Aucune source AO n'est INVENTÉE : l'atelier ne connaît ni l'affaire ni la
-    // toiture, donc le corps est vide et le serveur résout depuis le calepinage.
-    await waitFor(() => expect(calepinageApi.calepinages.importerContourAo)
-      .toHaveBeenCalledWith(CTX.calepinage.id, {}))
-    await waitFor(() => expect(recharger).toHaveBeenCalled())
-  })
-
-  it('le refus SERVEUR de l’import s’affiche sous le bouton, mot pour mot', async () => {
-    calepinageApi.calepinages.importerContourAo.mockRejectedValue({
-      response: {
-        status: 409,
-        data: { detail: 'Cette affaire est déposée : son contour ne bouge plus.' },
-      },
-    })
-
-    rendre()
-    await userEvent.click(await screen.findByRole('button',
-      { name: /Reprendre le contour de l’affaire/ }))
-
-    expect(await screen.findByTestId('cal-bouton-contour-affaire-refus'))
-      .toHaveTextContent('Cette affaire est déposée : son contour ne bouge plus.')
-  })
-
-  it('lecture seule : aucune écriture proposée (ni devis, ni import de contour)', async () => {
+  it('lecture seule : aucune écriture proposée', async () => {
     rendre({ lectureSeule: true })
 
     await waitFor(() => expect(screen.getByTestId('cal-atelier-panneaux')).toBeTruthy())
     expect(screen.queryByTestId('cal-bouton-devis')).toBeNull()
-    expect(screen.queryByTestId('cal-bouton-contour-affaire')).toBeNull()
     // Le panneau LUI-MÊME reste : consulter une conception figée est le but.
     expect(screen.getByTestId('cal-lien-variantes')).toBeTruthy()
   })

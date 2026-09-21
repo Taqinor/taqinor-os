@@ -5,7 +5,8 @@ from .views import (
     ConcurrentPerteViewSet, LeadViewSet,
     assignable_users, equipes_statistiques, rapport_attribution,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    MessageTemplateViewSet, ObjectifCommercialViewSet, PlanActiviteViewSet,
+    MessageTemplateViewSet, ObjectifCommercialViewSet, PartenaireViewSet,
+    PlanActiviteViewSet,
     PointContactViewSet, RelanceEtapeViewSet, SavedViewViewSet,
     SiteProfileViewSet, VisiteExterneViewSet,
     EquipeCommercialeViewSet, WebsiteLeadPayloadViewSet,
@@ -29,13 +30,6 @@ from .views_visite import lead_photo_toit
 # d'appeler les ANCIENNES routes jusqu'au geste de mise à jour de
 # l'utilisateur. À RETIRER au prochain groupe.
 from apps.visites.views import VisiteTerrainViewSet
-# ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
-# préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
-# routeur compta, qui reverse ``partenaire-list`` etc.).
-from .views import (
-    CommissionPartenaireViewSet, PartenaireViewSet,
-    SoumissionLeadPartenaireViewSet,
-)
 # NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks.
 from .views import (
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
@@ -63,21 +57,18 @@ router.register(r'relance-etapes', RelanceEtapeViewSet, basename='relance-etape'
 router.register(r'equipes', EquipeCommercialeViewSet)  # ZSAL3 (admin CRUD)
 router.register(r'website-lead-payloads', WebsiteLeadPayloadViewSet)  # QX16
 router.register(r'vues-enregistrees', SavedViewViewSet)  # LB48
-# ODX13 — nouvelles routes /api/django/crm/… (anciennes /api/django/compta/…
-# conservées à l'identique, voir apps/compta/urls.py).
-router.register(r'partenaires', PartenaireViewSet, basename='crm-partenaire')
-router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet,
-                basename='crm-soumission-lead-partenaire')
-router.register(r'commissions-partenaire', CommissionPartenaireViewSet,
-                basename='crm-commission-partenaire')
-# WIR81 — ``crm.TerritoireCommercial`` (FG236, legacy) N'EST plus monté ici :
-# le double montage ODX13 (/crm/ + /compta/) est consolidé sur l'UNIQUE préfixe
-# historique ``/api/django/compta/territoires-commerciaux/`` (le ViewSet vit
-# dans ``apps.compta.views``, ODX22 relogera son corps vers crm plus tard).
-# NB : ce modèle n'est PAS le moteur d'assignation des leads — celui-ci est
-# ``apps.territoires.Territoire`` (NTCRM1/2), consulté par
-# ``crm.services.default_responsable_for`` ; TerritoireCommercial reste
-# conservé pour la FK à venir NTDST11.
+# SOLMVP10 avait retiré /api/django/crm/partenaires/ (shim ODX13 adossé à
+# compta) au profit de l'ancien préfixe /api/django/compta/partenaires/ —
+# mais SOLMVP30b a depuis coquillé compta (AUCUNE url, contrat de coquille
+# core.parked) : cette route native reprend donc sa place ici, seule maison
+# qu'elle ait jamais eue. ``crm.Partenaire`` n'a jamais quitté cette app ;
+# aucune donnée perdue.
+router.register(r'partenaires', PartenaireViewSet)
+# ``SoumissionLeadPartenaire``/``CommissionPartenaire`` restent en base mais
+# n'ont PAS de route ici — hors périmètre du correctif CI courant (compta
+# était leur seule maison ; aucun test actif ne les requiert).
+# WIR81 — ``crm.TerritoireCommercial`` (FG236, legacy) N'EST pas monté ici
+# non plus, pour la même raison ; reste conservé pour la FK à venir NTDST11.
 # NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis).
 router.register(r'forecast-entries', ForecastEntryViewSet)
 # NTCRM10 — Plan de compte (Account Planning).

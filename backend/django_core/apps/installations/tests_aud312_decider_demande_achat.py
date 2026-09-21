@@ -2,27 +2,21 @@
 
 Défaut d'origine : le chemin normal (`DemandeAchatViewSet.approuver` /
 `.refuser`) bloque en 400 si `workflow_approbation_achat_actif(da)` et, au
-refus, annule les étapes `en_attente` puis appelle
-`liberer_budget_demande_achat`. `decider_demande_achat` — seul point d'entrée
-de la boîte d'approbations centralisée (`apps/reporting/approbations.py`) — ne
-vérifiait que `statut == SOUMISE` puis basculait directement APPROUVEE/REFUSEE,
-sans AUCUNE des deux gardes ; et `demandes_achat_en_attente` n'excluait pas non
-plus les demandes sous workflow actif.
+refus, annule les étapes `en_attente`. `decider_demande_achat` — seul point
+d'entrée de la boîte d'approbations centralisée
+(`apps/reporting/approbations.py`) — ne vérifiait que `statut == SOUMISE` puis
+basculait directement APPROUVEE/REFUSEE, sans cette garde ; et
+`demandes_achat_en_attente` n'excluait pas non plus les demandes sous workflow
+actif.
 
 REQUALIFICATION (audit R3) : ce n'est PAS une élévation de privilège — le rôle
 exigé est identique des deux côtés. Ce qui était perdu : le nombre
-d'approbations (N→1), la séparation des tâches, et la cohérence
-étapes/budget.
-
-Le volet budget est prouvé par un espion sur `liberer_budget_demande_achat`
-(la construction d'un budget départemental réel relève d'`apps/stock`, hors
-périmètre de cette lane) : l'audit reproche exactement l'ABSENCE de cet appel.
+d'approbations (N→1) et la séparation des tâches.
 
 Run :
     python manage.py test apps.installations.tests_aud312_decider_demande_achat -v2
 """
 import itertools
-from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -123,23 +117,11 @@ class DeciderDemandeAchatSansWorkflowTests(TestCase):
             self.company).values_list('id', flat=True))
         self.assertIn(da.id, ids)
 
-    def test_le_refus_libere_le_budget_engage(self):
-        """ROUGE avant AUD312 : l'enveloppe engagée n'était jamais rendue."""
+    def test_le_refus_direct_refuse_la_demande(self):
         da = make_demande(self.company, self.user, montant=500)
-        with mock.patch.object(
-                services, 'liberer_budget_demande_achat') as liberer:
-            services.decider_demande_achat(
-                da, approuver=False, user=self.decideur,
-                motif_refus='Hors budget')
-        liberer.assert_called_once_with(da)
+        services.decider_demande_achat(
+            da, approuver=False, user=self.decideur,
+            motif_refus='Hors budget')
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.REFUSEE)
         self.assertEqual(da.motif_refus, 'Hors budget')
-
-    def test_lapprobation_ne_libere_aucun_budget(self):
-        da = make_demande(self.company, self.user, montant=500)
-        with mock.patch.object(
-                services, 'liberer_budget_demande_achat') as liberer:
-            services.decider_demande_achat(
-                da, approuver=True, user=self.decideur)
-        liberer.assert_not_called()

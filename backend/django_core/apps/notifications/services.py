@@ -855,31 +855,15 @@ def send_whatsapp_campaign_message(company, *, recipient, body, campagne_id=None
 # XKB5 — Annonces internes ciblées et programmées.
 # =============================================================================
 
-def _users_in_departement(company, departement_nom):
-    """Utilisateurs de `company` rattachés (via `rh.DossierEmploye`) à un
-    département dont le nom correspond (lecture seule, import function-local —
-    jamais un FK cross-app dur, cf. CLAUDE.md). Best-effort : liste vide si
-    l'app rh est indisponible ou si aucun match."""
-    if not departement_nom:
-        return []
-    try:
-        from apps.rh.models import DossierEmploye
-        dossiers = DossierEmploye.objects.filter(
-            company=company, departement__nom=departement_nom,
-            user__isnull=False, user__is_active=True,
-        ).select_related('user')
-        return [d.user for d in dossiers if d.user_id]
-    except Exception as exc:  # pragma: no cover - défensif
-        logger.warning('_users_in_departement échoué : %s', exc)
-        return []
-
-
 def annonce_recipients(annonce):
     """Résout les destinataires d'une annonce selon son ciblage (XKB5).
 
     - TOUS : tous les utilisateurs actifs de la société.
     - ROLE : utilisateurs actifs avec ce `role_legacy`.
-    - DEPARTEMENT : utilisateurs actifs rattachés (rh) à ce département.
+    - DEPARTEMENT : SOLMVP19 — l'app rh (source des départements) est sortie
+      du produit ; ce ciblage ne résout plus personne (aucune donnée de
+      département n'existe encore ailleurs). Le choix reste au schéma
+      (`Annonce.Cible.DEPARTEMENT`), sans migration dans cette lane.
 
     Best-effort : renvoie toujours un QuerySet/liste (jamais d'exception)."""
     from .models import Annonce
@@ -892,8 +876,7 @@ def annonce_recipients(annonce):
                 return base.none()
             return base.filter(role_legacy=annonce.cible_role)
         if annonce.cible_type == Annonce.Cible.DEPARTEMENT:
-            return _users_in_departement(
-                annonce.company, annonce.cible_departement_nom)
+            return base.none()
         return base
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('annonce_recipients échoué (annonce %s) : %s',
@@ -1051,8 +1034,9 @@ def sweep_annonce_reminders(company, *, delay_days=None, today=None):
 
 
 # =============================================================================
-# YEVNT9 — Relance/escalade des approbations en attente (les DEUX moteurs :
-# automation.AutomationApproval + compta.DemandeApprobationConfig).
+# YEVNT9 — Relance/escalade des approbations en attente (moteur
+# automation.AutomationApproval ; le second moteur historique, compta, est
+# sorti du produit avec l'app compta, SOLMVP19).
 # =============================================================================
 
 def approval_reminder_thresholds(company):
@@ -1138,8 +1122,9 @@ def _sweep_one_pending_approval(company, instance, *, approver, requester,
 
 def sweep_approval_reminders(company, *, today=None):
     """Relance/escalade les approbations en attente au-delà des seuils
-    (YEVNT9), pour les DEUX moteurs. Idempotent (un palier n'est jamais
-    re-signalé) ; best-effort par approbation."""
+    (YEVNT9), pour le moteur automation (le second moteur historique, compta,
+    est sorti du produit avec l'app compta, SOLMVP19). Idempotent (un palier
+    n'est jamais re-signalé) ; best-effort par approbation."""
     today = today or timezone.now().date()
     relance_days, escalade_days = approval_reminder_thresholds(company)
     count = 0
@@ -1168,32 +1153,6 @@ def sweep_approval_reminders(company, *, today=None):
                     approval.pk, exc_info=True)
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('sweep_approval_reminders: automation échoué : %s', exc)
-
-    try:
-        from apps.compta.models import DemandeApprobationConfig
-        pending = DemandeApprobationConfig.objects.filter(
-            company=company,
-            statut=DemandeApprobationConfig.Statut.EN_ATTENTE,
-        ).select_related('demandeur')
-        for demande in pending:
-            try:
-                from .sweeps import _managers
-                approvers = _managers(company)
-                approver = approvers[0] if approvers else None
-                label = demande.devis_reference or demande.devis_id or ''
-                count += _sweep_one_pending_approval(
-                    company, demande, approver=approver,
-                    requester=demande.demandeur,
-                    link='/comptabilite/approbations-config',
-                    description=f'La demande {label}',
-                    relance_days=relance_days, escalade_days=escalade_days,
-                    today=today)
-            except Exception:  # pragma: no cover - défensif
-                logger.warning(
-                    'sweep_approval_reminders: demande approbation %s échouée',
-                    demande.pk, exc_info=True)
-    except Exception as exc:  # pragma: no cover - défensif
-        logger.warning('sweep_approval_reminders: compta échoué : %s', exc)
 
     return count
 

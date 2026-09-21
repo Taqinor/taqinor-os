@@ -17,8 +17,8 @@ class ErreurCalepinage(Exception):
 class EntreeInvalide(ErreurCalepinage, ValueError):
     """L'entrée est refusée AVANT tout calcul, avec un motif FRANÇAIS.
 
-    Elle hérite aussi de ``ValueError`` : les appelants historiques (le service
-    ``apps.ao`` rattrape ``ValueError`` pour le retraduire en refus nommé)
+    Elle hérite aussi de ``ValueError`` : les appelants historiques (un service
+    appelant rattrape ``ValueError`` pour le retraduire en refus nommé)
     continuent donc de fonctionner sans connaître cette classe. Le moteur ne
     se replie JAMAIS en silence sur un calcul par défaut quand l'entrée ne dit
     pas ce qu'il faut poser — il refuse et nomme ce qui manque.

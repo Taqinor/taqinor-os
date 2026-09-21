@@ -45,28 +45,6 @@ class EmissionRefusee(Exception):
         self.motif = motif
 
 
-def _guard_periode_emission(facture):
-    """AUD101 — refuse l'émission d'une facture datée dans une période
-    comptable CLÔTURÉE (YLEDG3/FG115).
-
-    Réplique EXACTEMENT la garde des vues (``FactureViewSet.
-    _guard_periode_verrouillee``) mais côté SERVICE, pour que les chemins qui
-    n'ont pas de vue (POS, contrats, échéancier, Celery) en héritent aussi.
-    Import function-local de ``apps.compta.services`` — cross-app services
-    autorisé, jamais un import de ``apps.compta.models``. Société sans app
-    compta / sans période verrouillée = garde silencieuse."""
-    from django.core.exceptions import ValidationError as DjangoValidationError
-    try:
-        from apps.compta.services import verifier_facture_modifiable
-    except Exception:  # noqa: BLE001 — compta absent = no-op
-        return
-    try:
-        verifier_facture_modifiable(facture)
-    except DjangoValidationError as exc:
-        raise EmissionRefusee(
-            exc.messages[0] if exc.messages else str(exc))
-
-
 def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
                     verifier_credit=True):
     """AUD101 — LE SERVICE UNIQUE D'ÉMISSION d'une ``ventes.Facture``.
@@ -76,27 +54,24 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
     Avant ce service, CINQ chemins basculaient une facture en ÉMISE en silence
     — le bulk ``action=emettre``, la facturation de pénalités, la tranche
     d'échéancier (le chemin acompte→matériel→solde du parcours solaire), la
-    facture « classique » consommée par POS/e-commerce/immobilier et la
-    consolidation multi-devis. Aucun ne passait par le verrou de période,
-    aucun n'appelait le blocage crédit, aucun n'émettait ``facture_emise`` :
-    ces factures n'atteignaient donc JAMAIS le grand livre (``compta`` ne
-    comptabilise que sur événement, ``apps/compta/receivers.py``).
+    facture « classique » consommée par POS/immobilier et la consolidation
+    multi-devis. Aucun n'appelait le blocage crédit, aucun n'émettait
+    ``facture_emise``.
 
     Ce que le service fait, dans cet ordre (les REFUS d'abord, pour qu'un
     appelant qui l'enveloppe dans ``transaction.atomic()`` n'écrive rien) :
 
       1. refuse une facture ANNULÉE ou déjà PAYÉE ;
       2. ``exiger_lignes`` (chemin écran) : refuse une facture vide ;
-      3. verrou de période comptable (YLEDG3) ;
-      4. blocage crédit dur XFAC28 (``verifier_credit_hold``) — EXEMPTION
+      3. blocage crédit dur XFAC28 (``verifier_credit_hold``) — EXEMPTION
          explicite via ``verifier_credit=False`` pour la vente comptoir
          intégralement réglée à l'acte : le hold protège l'encours, il n'a
          aucune raison de refuser du cash immédiat ;
-      5. workflow de revue XFAC18 (valideur ≠ créateur, anomalies) ;
-      6. dérivation de l'échéance depuis les conditions client (XFAC23), sans
+      4. workflow de revue XFAC18 (valideur ≠ créateur, anomalies) ;
+      5. dérivation de l'échéance depuis les conditions client (XFAC23), sans
          jamais écraser une échéance saisie ;
-      7. pose ``EMISE`` + ``save()`` ;
-      8. émet ``facture_emise`` EXACTEMENT une fois.
+      6. pose ``EMISE`` + ``save()`` ;
+      7. émet ``facture_emise`` EXACTEMENT une fois.
 
     RÈGLE #4 : ce service ne touche QUE le statut de la Facture (et le
     ``revue_statut``/``date_echeance`` qui l'accompagnent) ; il ne rend aucun
@@ -115,8 +90,6 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
     if exiger_lignes and not facture.lignes.exists() and not facture.libelle:
         raise EmissionRefusee(
             'La facture doit contenir au moins une ligne.')
-
-    _guard_periode_emission(facture)
 
     if verifier_credit and facture.client_id:
         from apps.ventes.domain.recouvrement import verifier_credit_hold
@@ -440,58 +413,6 @@ def creer_facture_regie(*, company, client, user, libelle, montant_ht,
     return facture
 
 
-# ── AUD184 — Ligne de service porteuse d'une échéance de contrat ─────────────
-# `apps.contrats` ne peut PAS importer `apps.ventes.models` ni `apps.stock.
-# models` pour poser sa ligne : cette fonction FINE est son unique porte
-# d'entrée, sur le patron déjà éprouvé de `_main_oeuvre_produit` (XFSM1).
-
-def _echeance_contrat_produit(company):
-    """Produit catalogue (service, non stocké) porteur des lignes d'échéance
-    de contrat — get-or-create idempotent, un seul par société. Jamais
-    décrémenté (aucun mouvement de stock ne le référence)."""
-    from apps.stock.models import Produit
-    produit, _created = Produit.objects.get_or_create(
-        company=company, sku='CTR-ECH', defaults={
-            'nom': 'Échéance de contrat',
-            'prix_vente': Decimal('0'),
-            'quantite_stock': 0,
-        })
-    return produit
-
-
-def ajouter_ligne_echeance_contrat(facture, *, designation, montant_ht,
-                                   taux_tva):
-    """AUD184 — pose LA ligne unique d'une facture d'échéance de contrat.
-
-    Les factures d'échéance ne portaient QUE des montants d'en-tête : aucune
-    ``LigneFacture`` n'était créée, si bien qu'elles étaient invisibles de tout
-    consommateur qui itère ``facture.lignes`` — au premier rang
-    ``ventes.exports.export_journal_ventes``, qui OMET les factures
-    header-only et SOUS-DÉCLARE donc le CA (douze échéances mensuelles
-    n'apparaissaient dans aucun export comptable ligne-à-ligne de l'année).
-
-    Le mode header-only lui-même reste LÉGITIME (documenté, rendu au PDF,
-    toléré par le contrôle art. 145, consommé en compta par les totaux
-    d'en-tête) : seules les factures d'échéance changent.
-
-    La ligne porte ``quantite=1`` et ``prix_unitaire=montant_ht``, donc son
-    ``total_ht`` égale EXACTEMENT le ``montant_ht`` d'en-tête : les totaux TTC
-    de la facture sont inchangés au centime et il n'y a AUCUNE
-    double-comptabilisation entre l'en-tête et la ligne. Renvoie la ligne.
-    """
-    from apps.ventes.models import LigneFacture
-
-    return LigneFacture.objects.create(
-        facture=facture,
-        produit=_echeance_contrat_produit(facture.company),
-        designation=(designation or 'Échéance de contrat')[:255],
-        quantite=Decimal('1'),
-        prix_unitaire=Decimal(montant_ht),
-        remise=Decimal('0'),
-        taux_tva=taux_tva,
-    )
-
-
 # ── XPRJ4 — Facture d'acompte pour une situation de travaux (décompte BTP) ───
 
 def creer_facture_acompte_situation(*, company, client, user, libelle,
@@ -619,12 +540,12 @@ def creer_facture_classique(*, company, client, user, taux_tva, montant_ht,
 
 
 # ── XACC28 — Refacturation des frais au client (billable expenses) ────────
-# Thin service exposé pour apps.compta (frontière cross-app, CLAUDE.md) :
-# compta connaît le montant/la marge déjà calculés côté frais, jamais les
-# détails de facturation — il pousse juste des lignes sur une facture
-# EXISTANTE du client. Un produit générique « Frais refacturés » (service,
-# sans stock) est créé une fois par société (idempotent) pour porter ces
-# lignes, à l'image du produit catalogue utilisé pour les lignes classiques.
+# Thin service exposé aux autres apps (frontière cross-app, CLAUDE.md) :
+# l'appelant (SAV, hôtellerie) connaît le montant/la marge déjà calculés de son
+# côté, jamais les détails de facturation — il pousse juste des lignes sur une
+# facture EXISTANTE du client. Un produit générique « Frais refacturés »
+# (service, sans stock) est créé une fois par société (idempotent) pour porter
+# ces lignes, à l'image du produit catalogue des lignes classiques.
 
 _PRODUIT_FRAIS_REFACTURES_NOM = 'Frais refacturés'
 
@@ -679,8 +600,8 @@ def ajouter_lignes_frais_refactures(*, facture, lignes, user=None):
     """Ajoute des lignes de frais refacturés sur une ``Facture`` EXISTANTE.
 
     ``lignes`` est une liste de dicts ``{'designation', 'montant_ht',
-    'taux_tva'?}`` (montant déjà majoré de la marge, calculé côté appelant —
-    ``apps.compta``). Chaque ligne devient une ``LigneFacture`` (quantité=1,
+    'taux_tva'?}`` (montant déjà majoré de la marge, calculé côté appelant).
+    Chaque ligne devient une ``LigneFacture`` (quantité=1,
     prix_unitaire=montant_ht) rattachée au produit générique « Frais
     refacturés » de la société de la facture ; les totaux de la facture sont
     recalculés. Renvoie la liste des ``LigneFacture`` créées. Ne vérifie PAS

@@ -104,34 +104,19 @@ def erase_ventes(company, subject_identifier):
     Aucune ligne n'est supprimée : les agrégats comptables (montants,
     références, statuts) restent strictement inchangés.
     """
-    from apps.grc.services import empreinte_avant, journaliser_destruction
-
     devis, emails = _documents(company, subject_identifier)
     count = 0
 
     for d in devis.exclude(accepte_par_nom=''):
-        empreinte = empreinte_avant({'accepte_par_nom': d.accepte_par_nom})
         d.accepte_par_nom = ANONYME
         d.save(update_fields=['accepte_par_nom'])
-        journaliser_destruction(
-            company, type_objet='ventes_devis', objet_ref=d.pk,
-            action='anonymise', demande_droit_ref=subject_identifier,
-            motif='Effacement DSR (loi 09-08) — nom de l\'accepteur',
-            empreinte=empreinte)
         count += 1
 
     for e in emails:
-        empreinte = empreinte_avant({
-            'to_email': e.to_email, 'from_email': e.from_email})
         e.to_email = ''
         e.from_email = ''
         e.corps = ''
         e.save(update_fields=['to_email', 'from_email', 'corps'])
-        journaliser_destruction(
-            company, type_objet='ventes_emaillog', objet_ref=e.pk,
-            action='anonymise', demande_droit_ref=subject_identifier,
-            motif='Effacement DSR (loi 09-08) — correspondance client',
-            empreinte=empreinte)
         count += 1
 
     return {

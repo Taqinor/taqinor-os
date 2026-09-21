@@ -83,15 +83,6 @@ _boq_candidats = _bordereau._boq_candidats
 _boq_apparier = _bordereau._boq_apparier
 _boq_prix = _bordereau._boq_prix
 ajouter_lignes_boq_electrique = _bordereau.ajouter_lignes_boq_electrique
-_QUANTUM_QUANTITE = _bordereau._QUANTUM_QUANTITE
-_PU_DEVIS_MAX = _bordereau._PU_DEVIS_MAX
-_QUANTITE_DEVIS_MAX = _bordereau._QUANTITE_DEVIS_MAX
-_designation_ligne_bordereau = _bordereau._designation_ligne_bordereau
-_signature_lignes_devis = _bordereau._signature_lignes_devis
-_signature_specs_bordereau = _bordereau._signature_specs_bordereau
-_reouvrir_devis_depuis_bordereau = _bordereau._reouvrir_devis_depuis_bordereau
-creer_devis_depuis_bordereau = _bordereau.creer_devis_depuis_bordereau
-resume_devis_depuis_bordereau = _bordereau.resume_devis_depuis_bordereau
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -109,16 +100,11 @@ CreditHoldError = _recouvrement.CreditHoldError
 verifier_credit_hold = _recouvrement.verifier_credit_hold
 SaleWarningError = _recouvrement.SaleWarningError
 verifier_sale_warnings = _recouvrement.verifier_sale_warnings
-_s2 = _recouvrement._s2
-dossier_contentieux_data = _recouvrement.dossier_contentieux_data
-ouvrir_dossier_contentieux = _recouvrement.ouvrir_dossier_contentieux
-enregistrer_contestation_portail = _recouvrement.enregistrer_contestation_portail
 _NUDGE_MSG_FR = _recouvrement._NUDGE_MSG_FR
 _NUDGE_MSG_AR = _recouvrement._NUDGE_MSG_AR
 _build_wa_draft_url = _recouvrement._build_wa_draft_url
 _get_nudge_days = _recouvrement._get_nudge_days
 _nudge_suppressed = _recouvrement._nudge_suppressed
-_journaliser_relance_marketing = _recouvrement._journaliser_relance_marketing
 send_devis_followup_nudges = _recouvrement.send_devis_followup_nudges
 _send_nudge_email = _recouvrement._send_nudge_email
 expire_stale_devis = _recouvrement.expire_stale_devis
@@ -131,7 +117,6 @@ _advance_lead_on_expiry = _recouvrement._advance_lead_on_expiry
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import encaissements as _encaissements  # noqa: E402
 marquer_facture_soldee = _encaissements.marquer_facture_soldee
-enregistrer_paiement_portail = _encaissements.enregistrer_paiement_portail
 enregistrer_paiement = _encaissements.enregistrer_paiement
 facture_montant_du = _encaissements.facture_montant_du
 affecter_encaissement_groupe = _encaissements.affecter_encaissement_groupe
@@ -176,7 +161,6 @@ facturables_pour_devis = _facturation_ops.facturables_pour_devis
 _main_oeuvre_produit = _facturation_ops._main_oeuvre_produit
 # AUD184 — porte d'entrée de `contrats` pour poser la ligne d'une facture
 # d'échéance (les factures header-only étaient invisibles des exports).
-ajouter_ligne_echeance_contrat = _facturation_ops.ajouter_ligne_echeance_contrat
 generer_facture_ticket_sav = _facturation_ops.generer_facture_ticket_sav
 generer_facture_intervention = _facturation_ops.generer_facture_intervention
 
@@ -224,7 +208,6 @@ INSTALLATION_SHARE_UTM_CAMPAIGN = _cycle_vie.INSTALLATION_SHARE_UTM_CAMPAIGN
 installation_share_link = _cycle_vie.installation_share_link
 bcf_share_url = _cycle_vie.bcf_share_url
 contexte_clauses_devis = _cycle_vie.contexte_clauses_devis
-figer_clauses_devis = _cycle_vie.figer_clauses_devis
 configuration_devis_contenu = _cycle_vie.configuration_devis_contenu
 capturer_configuration_devis = _cycle_vie.capturer_configuration_devis
 diff_configurations_devis = _cycle_vie.diff_configurations_devis
@@ -448,7 +431,6 @@ from apps.ventes.domain import tarification as _tarification  # noqa: E402
 _round2 = _tarification._round2
 _regle_applicable = _tarification._regle_applicable
 _appliquer_regle = _tarification._appliquer_regle
-_prix_contractuel = _tarification._prix_contractuel
 _resolve_liste_prix = _tarification._resolve_liste_prix
 prix_applicable = _tarification.prix_applicable
 
@@ -472,7 +454,6 @@ entrees_dimensionnement_du_devis = _etudes.entrees_dimensionnement_du_devis
 # RÉ-EXPORTS — QJR76 : garde d'envoi et courriel fournisseur → ``domain/cycle_vie.py``
 # ═════════════════════════════════════════════════════════════════════════
 log_supplier_email = _cycle_vie.log_supplier_email
-verifier_devis_envoyable = _cycle_vie.verifier_devis_envoyable
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -611,7 +592,6 @@ __all__ = [
     'activate_optional_line',
     'affecter_encaissement_groupe',
     'aire_contour_m2',
-    'ajouter_ligne_echeance_contrat',
     'ajouter_lignes_boq_electrique',
     'ajouter_lignes_devis_import',
     'ajouter_lignes_facture_import',
@@ -652,7 +632,6 @@ __all__ = [
     'create_draft_devis_from_ocr',
     'create_payment_link',
     'creer_devis_automatique_depuis_lead',
-    'creer_devis_depuis_bordereau',
     'creer_devis_import',
     'creer_facture_acompte_situation',
     'creer_facture_classique',
@@ -662,10 +641,8 @@ __all__ = [
     'creer_variante_gamme',
     'debiter_mandat_pour_facture',
     'diff_configurations_devis',
-    'dossier_contentieux_data',
     'dupliquer_devis',
     'enregistrer_avance',
-    'enregistrer_contestation_portail',
     'enregistrer_paiement',
     'enregistrer_paiement_avec_retenue',
     'entrees_dimensionnement_du_devis',
@@ -674,7 +651,6 @@ __all__ = [
     'extract_roof_config',
     'facturables_pour_devis',
     'facture_montant_du',
-    'figer_clauses_devis',
     'fusionner_kits',
     'gamme_envoi',
     'gamme_info',
@@ -702,7 +678,6 @@ __all__ = [
     'ordonner_par_role',
     'ordre_lignes_societe',
     'otp_lecture_verified',
-    'ouvrir_dossier_contentieux',
     'phase_client_pour_dimensionnement',
     'plafond_panneaux',
     'plafond_physique_du_contour',
@@ -729,7 +704,6 @@ __all__ = [
     'request_otp_lecture',
     'reserver_stock_devis_facture',
     'reset_relance_escalation',
-    'resume_devis_depuis_bordereau',
     'resynchroniser_devis_pour_produit',
     'revoquer_lien_paiement',
     'save_devis_as_preset',
@@ -746,7 +720,6 @@ __all__ = [
     'ventiler_avance',
     'verifier_credit_hold',
     'poser_validite_devis',
-    'verifier_devis_envoyable',
     'verifier_empreinte_signature',
     'verifier_sale_warnings',
     'zone_toit_depuis_contour',

@@ -383,8 +383,8 @@ class TicketSerializer(serializers.ModelSerializer):
             # (+ `annuler`/`reactiver` existants qui restent un DRAPEAU
             # séparé, jamais une valeur de `statut`).
             'statut',
-            # AUD529 — le lien vers la réclamation est posé par l'action
-            # `escalader-reclamation` (frontière litiges), jamais du corps.
+            # AUD529 — champ historique (action d'escalade retirée), jamais
+            # écrit depuis le corps d'une requête.
             'reclamation_id_ext',
             # NTSRV1/2/3/5 — le CANAL D'OUVERTURE est posé par le producteur
             # côté serveur (handler e-mail, portail public, webhook WhatsApp,
@@ -474,8 +474,6 @@ class SavSlaSettingsSerializer(serializers.ModelSerializer):
             # NTSRV11 — fenêtre horaire ouvrée (OFF par défaut).
             'horaires_ouvres', 'sla_heures_ouvrees_actif',
             'sla_warning_days', 'escalade_activee', 'affectation_auto_sav',
-            # NTSRV7 — affectation auto restreinte aux techniciens qualifiés.
-            'affectation_par_competence',
             'auto_cloture_jours', 'recidive_fenetre_jours',
             # YSERV5 — génération automatique planifiée des visites.
             'generation_auto_visites', 'visites_avance_jours',
@@ -601,33 +599,8 @@ class RemedeDefaillanceSerializer(serializers.ModelSerializer):
 class CategorieTicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = CategorieTicket
-        fields = [
-            'id', 'libelle', 'ordre', 'actif',
-            # NTSRV6 — exigences de compétence (vide = comportement actuel).
-            'competences_requises', 'niveau_competence_min',
-        ]
+        fields = ['id', 'libelle', 'ordre', 'actif']
         read_only_fields = ['id']
-
-    def validate_competences_requises(self, value):
-        """NTSRV6 — une compétence d'une AUTRE société est refusée (garde
-        multi-tenant : la société vient toujours de l'utilisateur, jamais du
-        corps)."""
-        request = self.context.get('request')
-        company = getattr(getattr(request, 'user', None), 'company', None)
-        if company is None:
-            return value
-        etrangeres = [c for c in value
-                      if getattr(c, 'company_id', None) != company.id]
-        if etrangeres:
-            raise serializers.ValidationError(
-                'Compétence inconnue (elle appartient à une autre société).')
-        return value
-
-    def validate_niveau_competence_min(self, value):
-        if value > 4:
-            raise serializers.ValidationError(
-                'Niveau invalide : 0 (non acquis) à 4 (expert).')
-        return value
 
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────

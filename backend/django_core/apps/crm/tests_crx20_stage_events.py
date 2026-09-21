@@ -8,17 +8,17 @@ l'émetteur ``core.events.lead_stage_changed`` :
   * l'ouverture publique du devis (``avancer_stage_sur_ouverture_devis``) ;
   * l'expiration des devis (``ventes.domain.recouvrement._advance_lead_on_expiry``).
 
-Conséquence RÉELLE : les deux abonnés du signal — génération des tâches de
-playbook (NTCRM12, ``crm.receivers``) et inscription aux séquences de relance
-(XMKT1/PACT161, ``compta.receivers``) — partaient pour un PATCH unitaire mais
-JAMAIS pour un bulk, une ouverture de devis ou une expiration. Ce module
-vérifie les récepteurs de bout en bout (jamais un simple assert sur le signal
-pour le bulk : c'est l'effet métier qui manquait).
+Conséquence RÉELLE : l'abonné du signal — génération des tâches de playbook
+(NTCRM12, ``crm.receivers``) — partait pour un PATCH unitaire mais JAMAIS
+pour un bulk, une ouverture de devis ou une expiration (le second abonné
+historique, l'inscription aux séquences de relance XMKT1/PACT161 du module
+marketing de compta, est sorti — SOLMVP10). Ce module vérifie le récepteur
+de bout en bout (jamais un simple assert sur le signal pour le bulk : c'est
+l'effet métier qui manquait).
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from apps.compta.models import InscriptionSequence, SequenceRelance
 from apps.crm import stages
 from apps.crm.models import (
     Lead, LeadPlaybookProgress, Playbook, PlaybookEtape, PlaybookTache,
@@ -47,7 +47,7 @@ def brancher_capture(test_case):
 
 
 class BulkSetStageEmetLesEffetsTests(TestCase):
-    """Le bulk ``set_stage`` déclenche playbook ET séquence de relance."""
+    """Le bulk ``set_stage`` déclenche le playbook."""
 
     def setUp(self):
         self.company = Company.objects.create(
@@ -58,7 +58,7 @@ class BulkSetStageEmetLesEffetsTests(TestCase):
         self.user = User.objects.create_user(
             username='resp_crx20_bulk', password='x', company=self.company,
             role=self.role)
-        # Abonné n°1 : playbook NTCRM12 sur QUOTE_SENT.
+        # Abonné : playbook NTCRM12 sur QUOTE_SENT.
         self.playbook = Playbook.objects.create(
             company=self.company, nom='Playbook CRX20', actif=True)
         self.etape = PlaybookEtape.objects.create(
@@ -66,10 +66,6 @@ class BulkSetStageEmetLesEffetsTests(TestCase):
         self.tache = PlaybookTache.objects.create(
             etape=self.etape, libelle='Appeler le client', obligatoire=True,
             ordre=1)
-        # Abonné n°2 : séquence de relance XMKT1 sur QUOTE_SENT.
-        self.sequence = SequenceRelance.objects.create(
-            company=self.company, nom='Relance CRX20',
-            stage_declencheur=stages.QUOTE_SENT, actif=True)
         self.lead = Lead.objects.create(
             company=self.company, nom='Lead CRX20 bulk', stage=stages.NEW)
 
@@ -90,14 +86,6 @@ class BulkSetStageEmetLesEffetsTests(TestCase):
             LeadPlaybookProgress.objects.filter(
                 lead=self.lead, tache=self.tache).count(),
             1)
-
-    def test_bulk_set_stage_inscrit_a_la_sequence_de_relance(self):
-        self._bulk_vers_quote_sent()
-        inscription = InscriptionSequence.objects.filter(
-            company=self.company, sequence=self.sequence,
-            lead_id=self.lead.pk).first()
-        self.assertIsNotNone(inscription)
-        self.assertEqual(inscription.statut, InscriptionSequence.Statut.ACTIF)
 
     def test_bulk_set_stage_emet_le_signal_avec_l_utilisateur(self):
         emissions = brancher_capture(self)

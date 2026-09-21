@@ -9,10 +9,7 @@ rejoignent ``apps.ventes.domain.facturation_ops.emettre_facture``.
 Ce que ces tests épinglent :
 
   * chacun des 5 chemins émet ``facture_emise`` EXACTEMENT une fois (rouge
-    avant AUD101 : zéro sur les cinq, donc AUCUNE écriture au grand livre —
-    ``compta`` ne comptabilise que sur cet événement) ;
-  * l'abonné compta de ``facture_emise`` est bien branché, donc l'événement
-    atteint réellement ``ecriture_pour_facture`` ;
+    avant AUD101 : zéro sur les cinq) ;
   * PARITÉ : aucun site de ``apps/ventes`` ne pose ``Facture.Statut.EMISE``
     hors du service (scan AST du code réel, pas un grep) ;
   * un client en blocage crédit dur (XFAC28) n'est plus facturable par le
@@ -213,20 +210,6 @@ class TestCinqCheminsMuetsEmettentLEvenement(_BaseEmission):
         facture.refresh_from_db()
         self.assertEqual(facture.statut, Facture.Statut.EMISE)
         self.assertEqual(len(compteur.pour(facture)), 1)
-
-
-class TestAbonneComptaBranche(TestCase):
-    """``facture_emise`` atteint réellement l'écriture comptable."""
-
-    def test_le_receveur_compta_est_abonne(self):
-        import apps.compta.receivers  # noqa: F401 — enregistre les abonnés
-        # Django indexe chaque abonné par ``(dispatch_uid|id, id(sender))``.
-        # L'ARITÉ des entrées de ``Signal.receivers`` est un détail interne qui
-        # BOUGE (Django ≤ 4.2 : ``(clé, récepteur)`` ; Django 5.0+ : une
-        # troisième valeur ``is_async`` s'ajoute pour les récepteurs async) —
-        # on n'indexe donc que le premier élément, jamais par dépaquetage.
-        uids = {entree[0][0] for entree in facture_emise.receivers}
-        self.assertIn('compta_ecriture_pour_facture_emise', uids)
 
 
 class TestPariteAucunEmetteurHorsService(TestCase):

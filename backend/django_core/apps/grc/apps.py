@@ -1,21 +1,24 @@
+"""Configuration de l'app « grc » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class GrcConfig(AppConfig):
-    """Groupe NTGRC — GRC & Privacy (gouvernance, risques, conformité).
+    """GRC & Conformité — app PARQUÉE du MVP solaire (20/09/2026).
 
-    App satellite multi-société. Elle ÉTEND le socle RGPD/loi 09-08 déjà posé
-    en fondation (``core.RegistreTraitement`` / ``core.ConsentRecord`` /
-    ``core.DataSubjectRequest`` + les registres ``core.dsr`` et
-    ``core.retention``) — elle ne le duplique JAMAIS. Elle lit les autres apps
-    uniquement via leurs ``selectors.py``/``services.py`` ou par FK déclarée en
-    CHAÎNE ; aucun import de leurs ``models``.
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
     """
 
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.grc'
     label = 'grc'
     verbose_name = 'GRC & Conformité'
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'grc',
         'sku': 'generic',
@@ -23,20 +26,7 @@ class GrcConfig(AppConfig):
         'icone': 'shield-check',
         'depends': [],
         'installable': True,
-        'description': ('Gouvernance, risques et conformité : registre des '
-                        'risques, contrôles internes, RGPD/loi 09-08 outillé, '
-                        'rétention et journal de destruction.'),
+        'description': 'Gouvernance, risques et conformité : registre des risques, contrôles internes, RGPD/loi 09-08 outillé, rétention et journal de destruction.',
         'categorie': 'Technique',
+        'parked': True,
     }
-
-    def ready(self):
-        # NTGRC8 — garde d'effacement : un dossier sous séquestre (legal hold)
-        # ne s'anonymise pas, même sur demande légale, tant que le séquestre
-        # est actif. `core.dsr` la consulte AVANT tout effacement ; `core` ne
-        # connaît que le nom et le callable (il reste fondation).
-        from .services import register_erasure_guard
-        register_erasure_guard()
-        # NTGRC9 — abonnements au bus `core.events` (M6) : alerte DPO quand une
-        # personne ayant RETIRÉ son consentement est de nouveau traitée
-        # (nouveau lead, devis accepté). `grc` n'importe ni crm ni ventes.
-        from . import receivers  # noqa: F401

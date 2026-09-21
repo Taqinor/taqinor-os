@@ -56,7 +56,7 @@ pas touché et continue de construire son ``AntiOmbrage()`` sans latitude.
 
 LIMITE CONNUE, ÉCRITE PLUTÔT QUE TUE : le document d'échange du moteur
 (``serialisation.py``) n'a AUCUN champ pour une politique de pas, et
-``apps.ao.calepinage_service.calepiner`` appelle le moteur sans politique
+``moteur_service.calepiner`` appelle le moteur sans politique
 (donc ``AlleeFixe(allee_m)``). La politique rendue ici n'est donc consommée
 que par un appelant qui la passe lui-même au moteur ; tant que la chaîne HTTP
 ne la transporte pas, le compte publié reste celui d'aujourd'hui.
@@ -77,7 +77,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 #: CAL72 — les deux vocabulaires de provenance du dépôt sont acceptés :
-#: ``apps.ao.models.ObstacleAO`` dit MESURE / MESURE_DOUTEUX là où
+#: les relévés de toiture disent MESURE / MESURE_DOUTEUX là où
 #: ``core.calepinage.types.Provenance`` dit RELEVE / RELEVE_DOUTEUX. Ce sont
 #: les MÊMES états ; refuser l'une des deux graphies ferait rougir un
 #: producteur réel (c'est écrit noir sur blanc dans le contrat v2).

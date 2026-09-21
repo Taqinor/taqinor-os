@@ -53,7 +53,9 @@ export function ressourcesRoutees() {
 }
 
 /**
- * Le PREMIER SEGMENT de tout ce que le module AO sert sous `/api/django/ao/` :
+ * Le PREMIER SEGMENT de tout ce que le module AO servait sous `/api/django/ao/`
+ * (module sorti du MVP solaire — SOLMVP32, source conservée sous
+ * `backend/parked/ao/`) :
  * ressources du routeur DRF **et** `path()` écrits à la main (`contrat/`,
  * `tableau-marches/`, la famille `calepinage/…`). C'est la référence contre
  * laquelle un chemin appelé par `aoApi.js` est déclaré réel ou inventé.

@@ -6,11 +6,9 @@ Contexte fondateur : `stock.Produit` et `crm.Lead` sont les deux seuls jeux de
 données réels de l'ERP (prix d'achat fournisseur saisis à la main, courbes de
 pompe, pipeline commercial). Un CASCADE sur ces liens = perte métier réelle.
 
-Ce module verrouille les 10 liens passés en ``on_delete=PROTECT`` :
+Ce module verrouille les 8 liens passés en ``on_delete=PROTECT`` :
 
   achats.PrixFournisseur          prix d'achat fournisseur négocié
-  cpq.LigneOffreGroupee           prix imposé / remise d'un bundle
-  cpq.PrixContractuel             prix contractuel client×produit
   ventes.LignePrixListe           prix unitaire d'une liste de prix
   ventes.RegleListePrix           règle de prix (palier / remise)
   ventes.FicheTechnique           fiche constructeur + PDF datasheet
@@ -22,6 +20,11 @@ Ce module verrouille les 10 liens passés en ``on_delete=PROTECT`` :
 PROTECT est appliqué par le COLLECTEUR Django (``django.db.models.deletion``),
 pas par une contrainte SQL : il fonctionne donc même sur un FK déclaré
 ``db_constraint=False`` (patron string-FK cross-app de ce dépôt).
+
+SOLMVP-sweep (2026-09-21) — les 2 liens ``cpq.LigneOffreGroupee``/
+``cpq.PrixContractuel`` sont retirés de ce module (et de sa liste) : apps.cpq
+est sorti du MVP solaire (Groupe SOLMVP, coquille) et ces modèles n'existent
+plus.
 
 Run :
     python manage.py test apps.stock.test_protect_produit_donnees_reelles -v 2
@@ -36,8 +39,6 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.achats.models import PrixFournisseur
-from apps.cpq.models import LigneOffreGroupee, OffreGroupee, PrixContractuel
-from apps.crm.models import Client
 from apps.installations.models_serie_entrepot import SerieEntrepot
 from apps.stock.models import (
     EmplacementStock,
@@ -94,20 +95,6 @@ class TestPrixProtegees(ProtectProduitBase):
         self.assertEqual(
             PrixFournisseur.objects.get(pk=prix.pk).prix_achat,
             Decimal('870.00'))
-
-    def test_prix_contractuel_bloque_la_suppression(self):
-        client = Client.objects.create(company=self.company, nom='Client Réel')
-        prix = PrixContractuel.objects.create(
-            company=self.company, client=client, produit=self.produit,
-            prix_ht=Decimal('1150.00'))
-        self.assert_delete_refuse(PrixContractuel, prix.pk)
-
-    def test_ligne_offre_groupee_bloque_la_suppression(self):
-        offre = OffreGroupee.objects.create(
-            company=self.company, nom='Pack Résidentiel')
-        ligne = LigneOffreGroupee.objects.create(
-            offre=offre, produit=self.produit, valeur=Decimal('10.00'))
-        self.assert_delete_refuse(LigneOffreGroupee, ligne.pk)
 
     def test_ligne_liste_prix_bloque_la_suppression(self):
         liste = ListePrix.objects.create(
@@ -179,8 +166,6 @@ class TestPolitiqueOnDelete(TestCase):
 
     LIENS_PROTEGES = [
         (PrixFournisseur, 'produit'),
-        (LigneOffreGroupee, 'produit'),
-        (PrixContractuel, 'produit'),
         (LignePrixListe, 'produit'),
         (RegleListePrix, 'produit'),
         (FicheTechnique, 'produit'),

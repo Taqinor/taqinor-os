@@ -426,10 +426,15 @@ class EchantillonDeContratTests(unittest.TestCase):
         self.assertIn("contract_samples/README.md", constats[0][5])
 
     def test_l_echantillon_pilote_du_depot_est_conforme(self):
-        # Le module pilote de PACT10 : `apps/ao/contract_samples/`.
+        # Pilote realigne SOLMVP42 (2026-09-21) : le pilote d'origine de PACT10
+        # (`apps/ao/contract_samples/tableau_marches.json`) est parti avec `ao`
+        # (Groupe SOLMVP) ; `apps/calepinage/contract_samples/
+        # parametres_calepinage.json` (CAL45) porte le meme role sur une app
+        # gardee — un contract_samples/ reellement importe par un test reel.
         fichiers = shapes.fichiers_echantillons()
-        self.assertTrue(any(f.name == "tableau_marches.json" for f in fichiers),
-                        "l'echantillon pilote AO a disparu")
+        self.assertTrue(
+            any(f.name == "parametres_calepinage.json" for f in fichiers),
+            "l'echantillon pilote calepinage a disparu")
         self.assertEqual(shapes.echantillons_de_contrat(contrat_reel()), [])
 
 
@@ -748,11 +753,15 @@ tableauMarches.mockResolvedValue({ data: PAYLOAD })
         self.assertEqual(constats, [], f"tests à migrer (PACT13) : {constats}")
 
     def test_le_pilote_AO_importe_bien_la_fixture(self):
-        pilote = (self._root / "frontend" / "src" / "features" / "ao"
-                  / "DashboardPage.test.jsx")
+        # Pilote realigne SOLMVP42 (2026-09-21) : `features/ao/DashboardPage.
+        # test.jsx` est parti avec `ao` (Groupe SOLMVP) ; `features/calepinage/
+        # Bibliotheque.test.jsx` importe reellement le contrat
+        # `parametres_calepinage` (voir le test soeur ci-dessus), meme role.
+        pilote = (self._root / "frontend" / "src" / "features" / "calepinage"
+                  / "Bibliotheque.test.jsx")
         source = pilote.read_text(encoding="utf-8")
         self.assertIn(shapes.FIXTURE_CONTRAT, source)
-        self.assertIn("exempleContrat('ao', 'tableau_marches')", source)
+        self.assertIn("exempleContrat('calepinage', 'parametres_calepinage')", source)
         # La charge utile ne doit plus être retapée dans le fichier.
         self.assertNotIn("const PAYLOAD = {", source)
 
@@ -1158,7 +1167,8 @@ class DepotReelTests(unittest.TestCase):
     def test_contrat_versionne_present(self):
         contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")
         self.assertIn("GENERE", contenu)
-        self.assertIn("tableauMarches", contenu)
+        # SOLMVP (21/09/2026) : `tableauMarches` (AO) est parque ; ancre sur une ressource gardee.
+        self.assertIn("kpiFederes", contenu)
 
     def test_l_entete_explique_pourquoi_pas_l_openapi(self):
         entete = Path(shapes.__file__).read_text(encoding="utf-8")[:5000]

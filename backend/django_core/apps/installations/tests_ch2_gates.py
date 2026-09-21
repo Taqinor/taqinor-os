@@ -8,9 +8,6 @@ Couvre :
   * une étape NON BLOQUANTE laisse avancer librement (consultative) ;
   * une société SANS étapes configurées garde EXACTEMENT le comportement
     historique (aucun blocage — interrupteur) ;
-  * les points d'arrêt QHSE sont lus via ``apps.qhse.selectors`` (référence
-    lâche par chantier_id) et bloquent une étape bloquante tant qu'ils ne sont
-    pas levés ;
   * les effets de bord existants (consommation du stock à « Installé », remise
     de garantie/parc à « Réceptionné ») tirent toujours sur les gates mappés ;
   * l'action ``avancer-etape`` applique les mêmes gates.
@@ -135,52 +132,6 @@ class GateBlockingServiceTests(TestCase):
         inst.save(update_fields=['regime_8221', 'dossier_statut'])
         raisons = verifier_transition_statut(
             inst, Installation.Statut.RECEPTIONNE)
-        self.assertEqual(raisons, [])
-
-
-class GateQhseHoldPointTests(TestCase):
-    def setUp(self):
-        self.company = make_company()
-        seed_stages(self.company)
-
-    def _plan_avec_hold_point(self, chantier_id, conforme=None):
-        from apps.qhse.models import (
-            PlanInspectionModele, PointControleModele,
-            PlanInspectionChantier, ReleveControle,
-        )
-        modele = PlanInspectionModele.objects.create(
-            company=self.company, nom='ITP CH2')
-        plan = PlanInspectionChantier.objects.create(
-            company=self.company, modele=modele, chantier_id=chantier_id)
-        point = PointControleModele.objects.create(
-            company=self.company, plan=modele, intitule='Serrage câblage DC',
-            hold_point=True)
-        if conforme is not None:
-            ReleveControle.objects.create(
-                company=self.company, plan_chantier=plan, point=point,
-                conforme=conforme)
-        return plan, point
-
-    def test_hold_point_non_leve_bloque_gate_bloquant(self):
-        inst = make_installation(
-            self.company, statut=Installation.Statut.EN_COURS)
-        inst.mes_production_test = Decimal('4.0')  # essais OK
-        inst.save(update_fields=['mes_production_test'])
-        self._plan_avec_hold_point(inst.id, conforme=None)
-        # « Mise en service » est bloquante → la porte QHSE est interrogée.
-        raisons = verifier_transition_statut(
-            inst, Installation.Statut.INSTALLE)
-        self.assertTrue(any("arrêt qhse" in r.lower()
-                            for r in raisons), raisons)
-
-    def test_hold_point_leve_debloque(self):
-        inst = make_installation(
-            self.company, statut=Installation.Statut.EN_COURS)
-        inst.mes_production_test = Decimal('4.0')
-        inst.save(update_fields=['mes_production_test'])
-        self._plan_avec_hold_point(inst.id, conforme=True)
-        raisons = verifier_transition_statut(
-            inst, Installation.Statut.INSTALLE)
         self.assertEqual(raisons, [])
 
 

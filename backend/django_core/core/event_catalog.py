@@ -245,12 +245,12 @@ CATALOG = {
         "(core.bulk_edit) — écriture par queryset.update(), donc invisible "
         "des signaux CRUD.",
         ['target', 'label', 'fields', 'count', 'company', 'user']),
-    # AOF13 — les DEUX seuls événements du domaine « appel d'offres »
-    # (``apps.ao``). Émis EXCLUSIVEMENT par ``apps.ao.services.changer_statut_ao``
+    # AOF13 — les DEUX seuls événements du domaine « appel d'offres ». Émis
+    # EXCLUSIVEMENT par le service de changement de statut de ce module
     # (jamais d'un modèle ni d'une vue), sur FRANCHISSEMENT de statut. Abonné
     # réel : ``crm`` (``apps/crm/receivers.py``), qui avance l'étape du lead
     # lié — d'où l'intérêt de les cataloguer : une intégration cliente branche
-    # son propre suivi d'offres dessus sans importer ``apps.ao``.
+    # son propre suivi d'offres dessus sans importer le module.
     'ao_depose': _e(
         "Un dossier d'appel d'offres est DÉPOSÉ (transition "
         "« prêt à déposer » → « déposé ») : l'offre est remise.",
@@ -281,20 +281,20 @@ CATALOG = {
         'Le score de maturité marketing (NTMKT18) d\'un lead change lors du '
         'recalcul quotidien (pénalité d\'inactivité 30j, NTMKT34).',
         ['lead_id', 'company', 'ancienne_valeur', 'nouvelle_valeur']),
-    # NTLOG44 (volet douane) — émis par
-    # ``apps.douane.services.cloturer_dossier_export`` à la clôture d'un
+    # NTLOG44 (volet douane) — émis par le service de clôture du module
+    # douane à la clôture d'un
     # DossierExport. Volet transport (ordre_transport_livre/
     # litige_transport_ouvert) hors périmètre de cette entrée.
     'dossier_export_cloture': _e(
         "Un dossier d'export douane (DossierExport) est clôturé.",
         ['dossier', 'company', 'user', 'ancien_statut']),
-    # NTSCM39 — émis par ``apps.scm.services.
-    # detecter_ruptures_imminentes_et_notifier`` (tâche beat NTSCM35).
+    # NTSCM39 — émis par la détection hebdomadaire des ruptures imminentes
+    # du module SCM (tâche beat NTSCM35).
     'scm_rupture_imminente_detectee': _e(
         'Un produit passe en rupture de stock imminente (tableau de bord '
         'réappro NTSCM7).',
         ['company', 'produit_id', 'produit_nom', 'rupture_date', 'quantite_suggeree']),
-    # NTSCM39 — émis par ``apps.scm.services.avancer_statut_cycle`` à la
+    # NTSCM39 — émis par l'avancement de statut de cycle du module SCM à la
     # clôture d'un cycle S&OP.
     'scm_cycle_sop_cloture': _e(
         'Un cycle de planification S&OP (CyclePlanificationSOP) est clôturé.',
@@ -306,8 +306,8 @@ CATALOG = {
         'Une étape de workflow BPM devient la nouvelle étape ACTIVE '
         "(manuelle / par rôle, en attente d'une décision).",
         ['step', 'company']),
-    # NTJUR26 — émis par ``apps.juridique.services.clore_dossier`` à la
-    # clôture d'un DossierJuridique (l'un des quatre statuts ``clos_*``).
+    # NTJUR26 — émis par la clôture de dossier du module juridique (l'un des
+    # quatre statuts ``clos_*``).
     # GARANTIE : cet événement ne poste JAMAIS d'écriture comptable — la
     # reprise de provision reste gardée par une confirmation explicite.
     'dossier_juridique_clos': _e(
@@ -315,8 +315,8 @@ CATALOG = {
         ['dossier', 'company', 'resultat', 'montant_final', 'user']),
     # NTCON31 — les quatre gestes du vertical BTP/EPC attendus par la MOE et le
     # client externe (abonné : webhook sortant ``apps.publicapi``). Émis par
-    # ``apps.btp_chantier.services`` via son aide ``_emettre(<nom>, **kwargs)``
-    # — clés reprises À L'IDENTIQUE des appels réels.
+    # les services du module chantier BTP via leur aide ``_emettre(<nom>,
+    # **kwargs)`` — clés reprises À L'IDENTIQUE des appels réels.
     'btp_reserve_levee': _e(
         'Une réserve de chantier passe à « levée » (signature capturée).',
         ['reserve', 'company', 'user']),
@@ -372,8 +372,8 @@ CATALOG = {
         "société, change (jamais sur un ré-enregistrement sans changement).",
         ['company', 'portee', 'client_id', 'ancienne_langue',
          'nouvelle_langue', 'user']),
-    # NTOBS26 — émis par ``apps.statuspage.receivers`` (le seul point
-    # d'écriture du statut d'un ``IncidentPublic``) ; ``company=None`` pour un
+    # NTOBS26 — émis par le ``receivers.py`` de la page d'état (le seul point
+    # d'écriture du statut d'un incident public) ; ``company=None`` pour un
     # incident SYSTÈME visible de tous les tenants. Consommateur :
     # ``apps.publicapi.ops_event_receivers`` (webhook sortant).
     'incident_opened': _e(

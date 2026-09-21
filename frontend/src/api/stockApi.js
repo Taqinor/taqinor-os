@@ -106,14 +106,6 @@ const stockApi = {
     api.post('/stock/emplacements/van-stock/creer-transfert/', {
       produit_id: produitId, emplacement_id: emplacementId,
     }),
-  // NTFSM20 — écran mobile van-stock du technicien connecté (sa camionnette
-  // uniquement, résolue côté serveur).
-  getMonStockCamionnette: () =>
-    api.get('/stock/emplacements/van-stock/mon-stock/'),
-  signalerManquantVanStock: (produitId) =>
-    api.post('/stock/emplacements/van-stock/signaler-manquant/', {
-      produit_id: produitId,
-    }),
 
   // N17 — listes de prix multi-fournisseurs par SKU (INTERNE, jamais client).
   getProduitPrixFournisseurs: (id) =>
@@ -638,14 +630,6 @@ const stockApi = {
   etiquettesKanbanEmplacement: (emplacementId, produitIds, { symbology = 'qr', sortie = 'pdf' } = {}) =>
     api.get(`/stock/emplacements/${emplacementId}/etiquettes-kanban/`, {
       params: { ids: produitIds, symbology, sortie },
-      paramsSerializer: { indexes: null },
-      responseType: 'blob',
-    }),
-  // XPOS17 — étiquettes showroom : le QR pointe vers la fiche produit PUBLIQUE
-  // de l'e-catalogue tokenisé de la société (jamais de prix d'achat/marge).
-  etiquettesShowroom: (produitIds, catalogueToken, { sortie = 'pdf' } = {}) =>
-    api.get('/stock/produits/etiquettes-showroom/', {
-      params: { ids: produitIds, catalogue_token: catalogueToken, sortie },
       paramsSerializer: { indexes: null },
       responseType: 'blob',
     }),

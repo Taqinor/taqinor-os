@@ -3,8 +3,8 @@ DC40 — Modèle d'ÉQUIPE terrain CANONIQUE (décision fondateur).
 
 Avant DC40, la notion d'« équipe terrain » était définie de TROIS façons
 ad-hoc, une par feature :
-  * FG169 (roster, ``apps.rh.AffectationRoster.equipe``) : un simple libellé
-    texte (``CharField``) — « Équipe Nord », « Pose A »… ;
+  * FG169 (roster RH, champ ``equipe``) : un simple libellé texte
+    (``CharField``) — « Équipe Nord », « Pose A »… ;
   * FG299 (plan de charge, sélecteur ``plan_de_charge_equipes``) : l'équipe
     dérivée AD-HOC du M2M ``Intervention.equipe`` (→ User) + ``technicien`` ;
   * FG303 (planning camionnettes) : dérivée des interventions portant une

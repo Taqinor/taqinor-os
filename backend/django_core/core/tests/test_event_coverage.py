@@ -112,6 +112,11 @@ class EventCatalogCoverageTests(SimpleTestCase):
     def test_parity_scanner_sees_real_kwargs(self):
         """Le scanner remonte bien des kwargs réels, pas une liste vide."""
         emitted = event_coverage.emitter_payload_keys()
-        # conge_approuve est émis avec demande/user/annule (rh/services.py).
+        # SOLMVP — témoin RE-ANCRÉ sur un émetteur d'app CONSERVÉE : il était
+        # posé sur ``conge_approuve`` (rh/services.py), dont l'émetteur est
+        # parti avec le module RH. ``devis_accepted`` est émis par ventes avec
+        # devis/user/ancien_statut — même rôle de témoin « le scanner voit de
+        # vrais kwargs », sur une app qui reste dans le MVP solaire.
         self.assertEqual(
-            emitted.get("conge_approuve"), {"demande", "user", "annule"})
+            emitted.get("devis_accepted"),
+            {"devis", "user", "ancien_statut"})

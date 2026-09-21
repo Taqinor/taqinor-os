@@ -3,8 +3,9 @@
 Critères d'acceptation testés :
   * NTDST30 — changer ``seuil_alerte_rfa_pct`` à 90 déplace le seuil de
     première alerte RFA SANS redéploiement (la valeur lue est la nouvelle) ;
-  * NTDST31 — ``van_sales_active=False`` renvoie **403** sur les endpoints
-    ``stock-vehicule``, MÊME POUR UN ADMIN (pas seulement un menu caché).
+  * NTDST31 — ``consignation_activee=False`` renvoie **403** sur les
+    endpoints ``consignations``, MÊME POUR UN ADMIN (pas seulement un menu
+    caché).
 
 Run :
     python manage.py test apps.stock.test_ntdst30_parametres_negoce -v 2
@@ -19,7 +20,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.stock.models import ParametresNegoce, Produit
 from apps.stock.services_consignation import consignation_activee
-from apps.stock.services_van_sales import van_sales_active
 
 User = get_user_model()
 
@@ -110,7 +110,6 @@ class Ntdst31ActivationModulaireTests(Ntdst30Base):
     def setUp(self):
         super().setUp()
         from apps.crm.models import Client
-        from apps.flotte.models import ActifFlotte, Vehicule
 
         self.client_crm = Client.objects.create(
             company=self.company, nom='Client NTDST31')
@@ -118,31 +117,9 @@ class Ntdst31ActivationModulaireTests(Ntdst30Base):
             company=self.company, nom='Produit NTDST31', sku='P-NTDST31',
             prix_achat=Decimal('100'), prix_vente=Decimal('150'),
             quantite_stock=50)
-        vehicule = Vehicule.objects.create(
-            company=self.company, immatriculation='9999-Z-99')
-        self.actif = ActifFlotte.objects.create(
-            company=self.company, vehicule=vehicule)
 
-    def _url_vehicule(self):
-        return (f'/api/django/stock/vehicules/{self.actif.id}/'
-                'stock-embarque/')
-
-    def test_sans_parametrage_les_deux_modules_sont_actifs(self):
+    def test_sans_parametrage_le_module_est_actif(self):
         self.assertTrue(consignation_activee(self.company))
-        self.assertTrue(van_sales_active(self.company))
-
-    def test_van_sales_desactive_renvoie_403_meme_a_un_admin(self):
-        ParametresNegoce.objects.create(
-            company=self.company, van_sales_active=False)
-
-        lecture = auth(self.admin).get(self._url_vehicule())
-        self.assertEqual(lecture.status_code, 403)
-
-        ecriture = auth(self.admin).post(self._url_vehicule(), {
-            'operation': 'charger',
-            'lignes': [{'produit': self.produit.id, 'quantite': 1}],
-        }, format='json')
-        self.assertEqual(ecriture.status_code, 403)
 
     def test_consignation_desactivee_renvoie_403_meme_a_un_admin(self):
         ParametresNegoce.objects.create(
@@ -157,19 +134,8 @@ class Ntdst31ActivationModulaireTests(Ntdst30Base):
         }, format='json')
         self.assertEqual(creation.status_code, 403)
 
-    def test_reactiver_le_module_le_rend_de_nouveau_accessible(self):
-        params = ParametresNegoce.objects.create(
-            company=self.company, van_sales_active=False)
-        self.assertEqual(
-            auth(self.admin).get(self._url_vehicule()).status_code, 403)
-
-        params.van_sales_active = True
-        params.save(update_fields=['van_sales_active'])
-        self.assertEqual(
-            auth(self.admin).get(self._url_vehicule()).status_code, 200)
-
     def test_desactiver_chez_une_societe_nempeche_pas_lautre(self):
         ParametresNegoce.objects.create(
-            company=self.autre, van_sales_active=False)
-        self.assertTrue(van_sales_active(self.company))
-        self.assertFalse(van_sales_active(self.autre))
+            company=self.autre, consignation_activee=False)
+        self.assertTrue(consignation_activee(self.company))
+        self.assertFalse(consignation_activee(self.autre))

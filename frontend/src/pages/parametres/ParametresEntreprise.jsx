@@ -36,7 +36,6 @@ import DevisSection from './DevisSection'
 import DocumentsSection from './DocumentsSection'
 import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
-import PointDeVenteSection from './PointDeVenteSection'
 import DonneesSection from './DonneesSection'
 import StatutsSection from './StatutsSection'
 import MonitoringSection from './MonitoringSection'
@@ -57,13 +56,10 @@ import TraductionsSection from './TraductionsSection'
 import I18nCoverageSection from './I18nCoverageSection'
 import ConfidentialiteSection from './ConfidentialiteSection'
 import ApplicationsSection from './ApplicationsSection'
-import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
 import RealisationsSection from './RealisationsSection'
-import ChatRetentionSection from './ChatRetentionSection'
 import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
-import AssistantConfigWidget from './AssistantConfigWidget'
 import ApprobationsPolitiquesSection from './ApprobationsPolitiquesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
@@ -83,9 +79,6 @@ const CONFIDENTIALITE_TAB = { key: 'confidentialite', label: 'Confidentialité',
 // ODX5 — onglet « Applications » (catalogue de modules ODX3, admin-gated).
 // Ajouté localement, même logique que N96/N94/XPLT23.
 const APPLICATIONS_TAB = { key: 'applications', label: 'Applications', group: 'avance' }
-// WIR159 — onglet « Marketplace » (catalogue d'extensions NTEXT13, lecture seule).
-// Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
-const MARKETPLACE_TAB = { key: 'marketplace', label: 'Marketplace', group: 'avance' }
 // WIR66 — onglet « Référentiels » (taux de TVA / conditions de paiement /
 // unités de mesure). Ajouté localement, même logique que N96/N94/XPLT23/ODX5.
 const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 'avance' }
@@ -94,10 +87,9 @@ const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 
 // Rangé dans « Ventes & Devis » : c'est un argument commercial, pas un réglage
 // technique. Ajouté localement, même logique que N96/N94/XPLT23/ODX5/WIR66.
 const REALISATIONS_TAB = { key: 'realisations', label: 'Réalisations', group: 'ventes' }
-// WIR157 — onglet « Rétention (Discuter) » (politique de rétention chat +
-// historique des purges, loi 09-08/CNDP). Ajouté localement, même logique
-// que N96/N94/XPLT23/ODX5/WIR159/WIR66.
-const CHAT_RETENTION_TAB = { key: 'chat_retention', label: 'Rétention (Discuter)', group: 'equipe' }
+// WIR157 — l'onglet « Rétention (Discuter) » (politique de rétention chat +
+// historique des purges) est retiré (SOLMVP42, 2026-09-21) : `chat` est sorti
+// du MVP solaire (Groupe SOLMVP), `chat.RetentionPolicy` n'existe plus.
 // PACT117 — onglet « Modèles brandés » (core.BrandedTemplate FG393 : modèles
 // PDF/email/WhatsApp + aperçu serveur). Ajouté localement, même logique que
 // N96/N94/XPLT23/ODX5/WIR159/WIR66.
@@ -137,7 +129,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -932,13 +924,6 @@ export default function ParametresEntreprise() {
           </p>
         </div>
 
-        {/* ── PACT145 — assistant de paramétrage « Où régler… ? » : répond en
-              français et donne le lien direct vers le bon écran. GUIDAGE SEUL,
-              il ne modifie jamais un réglage ; sans clé LLM il dégrade sur une
-              FAQ statique et renvoie quand même le lien. Hors du <form> de la
-              page : aucune interaction avec l'enregistrement du profil. ── */}
-        <AssistantConfigWidget />
-
         {/* ── VX35 — sidebar verticale groupée + colonne de contenu ── */}
         <div className="flex flex-col gap-6 md:flex-row md:items-start">
 
@@ -997,8 +982,6 @@ export default function ParametresEntreprise() {
           {/* N64/N65 — section autonome (barème ONEE + ROI/productible). */}
           {tab === 'tarification' && <TarificationSection />}
           {tab === 'stock'    && <StockSection {...ctx} />}
-          {/* NTRET8 — taux horaire comptoir + boutiques actives (section autonome). */}
-          {tab === 'point_de_vente' && <PointDeVenteSection />}
           {/* WR5 — opérations stock avancées + export/sauvegarde (admin). */}
           {tab === 'donnees'  && <DonneesSection />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
@@ -1036,14 +1019,10 @@ export default function ParametresEntreprise() {
           {tab === 'confidentialite' && <ConfidentialiteSection />}
           {/* ODX5 — catalogue de modules (admin-gated, autonome). */}
           {tab === 'applications' && <ApplicationsSection />}
-          {/* WIR159 — catalogue d'extensions (marketplace, lecture seule). */}
-          {tab === 'marketplace' && <MarketplaceSection />}
           {/* WIR66 — référentiels société : TVA / conditions / unités. */}
           {tab === 'referentiels' && <ReferentielsSection />}
           {/* Catalogue des installations réelles (preuve de la touche J4). */}
           {tab === 'realisations' && <RealisationsSection />}
-          {/* WIR157 — rétention chat (Discuter) + historique des purges (autonome). */}
-          {tab === 'chat_retention' && <ChatRetentionSection />}
           {/* PACT117 — modèles brandés PDF/email/WhatsApp + aperçu serveur. */}
           {tab === 'modeles_brandes' && <ModelesBrandesSection />}
           {/* PACT123 — exports planifiés vers SFTP/S3 (statut explicite). */}
