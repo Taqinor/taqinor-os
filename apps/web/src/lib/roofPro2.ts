@@ -15,6 +15,8 @@
  * Voir apps/web/SOLAR_3D_PRO2_NOTES.md. JAMAIS un devis : une fourchette.
  */
 import { geodesicAreaM2, pointInPolygon, type LngLat } from './roof';
+// CALX95 — retrait propre à une arête physique du contour (géométrie pure, en mètres).
+import { rognerParArete } from './roofSetbackEdge';
 
 // — Vrai panneau Canadian Solar TOPBiHiKu7 CS7N-690-720TB-AG —
 export const PANEL2_LONG_M = 2.384; // grand côté (horizontal en paysage, le long de la rangée)
@@ -314,6 +316,16 @@ export interface ProLayout2Options {
   tiltDeg?: number;
   /** Pose affleurante (toit en pente) : rangées jointives, pas d'espacement solaire. */
   flush?: boolean;
+  /**
+   * CALX95 — retrait PROPRE à certaines arêtes du contour, en SUPPLÉMENT du retrait de
+   * catégorie appliqué au pourtour entier. Table `rang du segment → mètres`, dans la forme
+   * que produit `roofSetbackEdge.supplementsParArete` depuis `zones[].edges[].retraitM`
+   * (CALX81) : le segment `i` va de `ring[i]` à `ring[i + 1]`. OPTIONNEL et additif —
+   * absent ou vide, le calepinage est IDENTIQUE à celui d'aujourd'hui (aucune arête n'est
+   * rognée, aucune valeur n'est supposée). Un segment absent de la table n'ajoute rien :
+   * seul le réglage de catégorie s'applique.
+   */
+  retraitsParAreteM?: Readonly<Record<number, number>>;
 }
 
 /**
@@ -321,6 +333,11 @@ export interface ProLayout2Options {
  * calculé par la géométrie solaire (anti-ombrage) à la latitude du toit. Un panneau
  * n'est retenu que si ses 4 coins (empreinte) sont DANS le tracé ET à au moins
  * `PERIMETER_SETBACK_M` de la rive.
+ *
+ * CALX95 — `opts.retraitsParAreteM` rogne EN PLUS le contour le long des seules arêtes qui
+ * portent un retrait SAISI (`zones[].edges[].retraitM`, CALX81) : les panneaux sont alors
+ * jugés contre cet anneau posable. Option absente ou vide ⇒ anneau posable = tracé, et le
+ * pavage est celui d'aujourd'hui, à l'identique.
  */
 export function layoutProRows2(
   ring: LngLat[],
@@ -405,8 +422,15 @@ export function layoutProRows2(
     uu * u[0] + vv * s[0],
     uu * u[1] + vv * s[1],
   ];
+  // CALX95 — anneau POSABLE : le contour rogné des retraits propres à certaines arêtes,
+  // EN PLUS du retrait de catégorie que `ok()` mesure ci-dessous. Sans aucune arête saisie,
+  // `rognerParArete` renvoie le contour tel quel et le pavage est inchangé.
+  const ringPosable = rognerParArete(ringENU, opts.retraitsParAreteM ?? {});
+  // Les retraits d'arête ont mangé tout le pan : aucune surface posable — on le dit avec un
+  // pavage vide plutôt qu'en repliant sur le contour entier (ce serait poser hors retrait).
+  if (ringPosable.length < 3) return { ...empty, origin: [olng, olat], ringENU };
   const ok = (corners: [number, number][]): boolean =>
-    corners.every((c) => pointInPolygon(c, ringENU) && distToBoundary(c, ringENU) >= PERIMETER_SETBACK_M);
+    corners.every((c) => pointInPolygon(c, ringPosable) && distToBoundary(c, ringPosable) >= PERIMETER_SETBACK_M);
 
   const panels: ProPanel[] = [];
   for (let r = 0; r < rows; r++) {
