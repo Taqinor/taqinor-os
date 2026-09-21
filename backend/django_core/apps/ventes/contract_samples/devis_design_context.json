@@ -1,6 +1,7 @@
 {
   "endpoint": "GET /api/django/ventes/devis/<int:pk>/design-context/",
   "pourquoi": "Le contexte agrégé que l'écran de conception 3D (calepinage de toiture) lit EN UN SEUL appel pour démarrer SUR un devis existant : identité + statut du devis, géométrie déjà enregistrée (roof_layout, pin GPS), cible de dimensionnement issue du devis (panneaux/kWc/scénario), et disponibilité de la carte (clé MapTiler/token Mapbox). PACT10 : ce fichier part SEUL, avant les deux lanes front et back — sans lui chacune invente sa propre forme, exactement l'incident du 03/08/2026 (Tableau de bord AO, zéro clé sur six concordante). `modifiable` + `raison_lecture_seule` protègent un devis déjà accepté ou un mode agricole (pompage, sans toiture à calepiner) : l'écran bascule en lecture seule SANS deviner pourquoi — le motif vient TOUJOURS du serveur, jamais rédigé côté écran. Source de vérité prévue : apps/ventes/selectors.py::devis_design_context (à construire).",
+  "pourquoi_reglages_atelier": "CALX104/CALX403 câblage (21/09/2026) — DEUX SECTIONS DE RÉGLAGES SOCIÉTÉ, `zones_types` et `degagements`, SERVIES ICI. L'atelier 3D lit les gabarits d'obstacle de la société dans `zones_types` et la largeur d'allée dans `degagements` (option de boot `reglagesAtelier`). Les modes LEAD et CALEPINAGE les lisent sur `GET /api/django/calepinage/parametres/` ; le mode DEVIS, lui, tient une garantie TESTÉE — « un seul appel : rien n'est complété par une requête annexe » (`ToitureDesign.test.jsx`) — donc une seconde porte y était interdite. Les deux sections voyagent maintenant DANS ce contexte, servies TELLES QUELLES par `apps.calepinage.selectors.parametres_de_societe` (lecture cross-app par le selector de l'app propriétaire, jamais ses modèles). ÉQUIVALENCE : une société qui n'a rien réglé reçoit `{}` pour chacune — donc aucun gabarit proposé et aucune largeur préremplie, l'atelier d'aujourd'hui exactement. Aucune cote de repli n'est inventée ici : ce que la société n'a pas saisi reste absent.",
   "pourquoi_cible_avec": "CTX3D (25/08/2026) — `cible` décrit TOUJOURS l'option 1 (« sans batterie »), celle que l'écran dessine : son compte de panneaux ET son scénario viennent du MÊME sous-ensemble de lignes (avant, le scénario était lu sur tout le devis et un devis « Les deux » annonçait `scenario: \"avec_batterie\"` au-dessus du compte de panneaux de l'option SANS — une cible que rien ne décrit). Une clé SŒUR OPTIONNELLE `cible_avec` porte l'option 2 sous la même forme (les six clés PV16 ; pas de `bill_kwh`, la consommation du client est unique et vit dans `cible`). Elle n'est PRÉSENTE que si les lignes peuvent réellement livrer l'option « Avec batterie » — onduleur hybride ET batterie, le même critère `avec_ok` que le moteur PDF, `variantes_servables` et `dimensionnement_options` — et ABSENTE sinon (voir `exemple` ci-dessous, un devis réseau : pas de clé du tout). Purement additive : un écran qui l'ignore est strictement inchangé.",
   "exemple": {
     "devis": {
@@ -37,7 +38,25 @@
     },
     "modifiable": true,
     "raison_lecture_seule": "",
-    "avertissements": []
+    "avertissements": [],
+    "zones_types": {
+      "souche_type": {
+        "libelle": "Souche de cheminée type",
+        "nature": "INTERDITE",
+        "retrait_m": 0.8,
+        "hauteur_m": 1.1,
+        "source": "Consigne de pose interne v3, fiche souche",
+        "type": "cheminee",
+        "forme": "rectangle",
+        "longueur_m": 0.9,
+        "largeur_m": 0.6
+      }
+    },
+    "degagements": {
+      "retrait_rive_m": 0.5,
+      "allee_technique_m": 0.9,
+      "source": "valeur atelier actuelle, non sourcée"
+    }
   },
   "exemple_deux_options": {
     "devis": {
@@ -83,7 +102,9 @@
     },
     "modifiable": true,
     "raison_lecture_seule": "",
-    "avertissements": []
+    "avertissements": [],
+    "zones_types": {},
+    "degagements": {}
   },
   "exemple_lecture_seule": {
     "devis": {
@@ -120,6 +141,8 @@
     },
     "modifiable": false,
     "raison_lecture_seule": "Devis agricole (pompage) — le calepinage de toiture ne s'applique pas.",
-    "avertissements": ["Aucune ligne panneau sur ce devis."]
+    "avertissements": ["Aucune ligne panneau sur ce devis."],
+    "zones_types": {},
+    "degagements": {}
   }
 }

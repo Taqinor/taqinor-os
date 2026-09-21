@@ -245,6 +245,20 @@ function bankableFromDevis(devis) {
   }
 }
 
+// CALX104/CALX403 câblage — les réglages d'atelier PORTÉS PAR LE CONTEXTE agrégé
+// (mode DEVIS). Le mode DEVIS tient une garantie testée — « un seul appel : rien
+// n'est complété par une requête annexe » — donc `zones_types` et `degagements`
+// voyagent DANS `devis_design_context` au lieu d'une seconde porte. `null` quand
+// le contexte ne porte AUCUNE des deux (serveur plus ancien) : l'atelier ne
+// propose alors aucun gabarit et ne préremplit aucune cote, exactement comme
+// avant — rien n'est inventé côté écran.
+function reglagesAtelierDuContexte(contexte) {
+  const zonesTypes = contexte?.zones_types
+  const degagements = contexte?.degagements
+  if (zonesTypes == null && degagements == null) return null
+  return { zones_types: zonesTypes ?? null, degagements: degagements ?? null }
+}
+
 // CALX107 câblage — la taille du plan de fond, telle que `GET …/plan-importe/`
 // la PUBLIE (pixels naturels lus dans l'en-tête du fichier), ou `null`. Aucune
 // étendue n'est supposée : sans dimensions, l'atelier refuse de poser le plan
@@ -776,11 +790,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         referenceContour: contourExploitable(ctx?.geometrie?.contour_client)
           ? ctx.geometrie.contour_client : null,
         bankable,
-        // CALX104/CALX403 — PAS de lecture des réglages société ici : le mode DEVIS
-        // tient une garantie TESTÉE (« un seul appel : rien n'est complété par une
-        // requête annexe », `ToitureDesign.test.jsx`). Les gabarits d'obstacle et la
-        // largeur d'allée sont branchés dans les modes lead et calepinage ; les câbler
-        // ici demande d'abord que `devis_design_context` porte ces deux sections.
+        // CALX104/CALX403 câblage — les gabarits d'obstacle (`zones_types`) et la
+        // largeur d'allée (`degagements`) de la société, lus DANS le contexte agrégé
+        // (`devis_design_context`, PACT10) : AUCUNE requête annexe n'est ajoutée ici,
+        // la garantie testée du mode DEVIS (« un seul appel ») reste vraie. Transmis
+        // TELS QUELS ; `null` = le contexte ne les porte pas, donc aucun gabarit
+        // proposé et aucune cote de repli.
+        reglagesAtelier: reglagesAtelierDuContexte(ctx),
         onApiReady: (a) => { builderApi.current = a; setBuilderReady(true); setBuilderApiActuel(a) },
       })
       // PV23bis — pré-remplit la barre de recherche d'adresse depuis

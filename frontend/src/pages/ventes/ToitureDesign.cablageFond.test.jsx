@@ -75,10 +75,12 @@ const motifFondRefuse = vi.fn(() => null)
 const initRoofToolPro8 = vi.fn()
 vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
+import ventesApi from '../../api/ventesApi'
 import calepinageApi from '../../api/calepinageApi'
 import ToitureDesign from './ToitureDesign'
 
 const CTX = exempleContrat('calepinage', 'calepinage_design_context')
+const CTX_DEVIS = exempleContrat('ventes', 'devis_design_context')
 const PLAN = exempleContrat('calepinage', 'calepinage_plan_importe')
 const PLAN_SANS_TAILLE = exempleContrat('calepinage', 'calepinage_plan_importe',
   'exemple_taille_inconnue')
@@ -93,6 +95,17 @@ function rendreCalepinage(id) {
     <MemoryRouter initialEntries={[`/calepinage/${id}`]}>
       <Routes>
         <Route path="/calepinage/:id" element={<ToitureDesign mode="calepinage" />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function rendreDevis(id) {
+  return render(
+    <MemoryRouter initialEntries={[`/ventes/devis/${id}/design`]}>
+      <Routes>
+        <Route path="/ventes/devis/:id/design"
+          element={<ToitureDesign mode="devis" />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -182,5 +195,37 @@ describe('CALX107 câblage — le PLAN importé atteint enfin le calque de fond'
     await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
     expect(calepinageApi.calepinages.planImporte).not.toHaveBeenCalled()
     expect(poserFond).not.toHaveBeenCalled()
+  })
+})
+
+describe('CALX104/CALX403 câblage — `reglagesAtelier` en mode DEVIS, SANS requête annexe', () => {
+  it('les deux sections du contexte agrégé partent TELLES QUELLES au builder', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+
+    rendreDevis(CTX_DEVIS.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    // LA garantie du mode DEVIS : un seul appel, aucune porte de complément.
+    expect(ventesApi.getDevisDesignContext).toHaveBeenCalledTimes(1)
+    expect(calepinageApi.parametres.get).not.toHaveBeenCalled()
+
+    expect(initRoofToolPro8.mock.calls[0][0].reglagesAtelier).toEqual({
+      zones_types: CTX_DEVIS.zones_types,
+      degagements: CTX_DEVIS.degagements,
+    })
+  })
+
+  it('un contexte SANS les deux sections ⇒ `null` : aucune cote de repli', async () => {
+    const sansReglages = { ...CTX_DEVIS }
+    delete sansReglages.zones_types
+    delete sansReglages.degagements
+    ventesApi.getDevisDesignContext.mockResolvedValue({ data: sansReglages })
+
+    rendreDevis(CTX_DEVIS.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(initRoofToolPro8.mock.calls[0][0].reglagesAtelier).toBeNull()
+    expect(calepinageApi.parametres.get).not.toHaveBeenCalled()
   })
 })
