@@ -443,13 +443,23 @@ class Cable:
 
 @dataclass(frozen=True)
 class LigneNomenclature:
-    """Une ligne de bordereau : QUANTITÉ et SPÉCIFICATION, JAMAIS un prix."""
+    """Une ligne de bordereau : QUANTITÉ et SPÉCIFICATION, JAMAIS un prix.
+
+    CALX246 — ``produit_id`` / ``reference`` rattachent la ligne à un ARTICLE
+    du catalogue. Ils sont renseignés par la table de correspondance SOCIÉTÉ
+    (réglage ``correspondances_nomenclature``) et valent ``None`` sans
+    correspondance : un magasinier préfère une ligne sans code article à une
+    ligne rattachée au mauvais. Ils ne portent ni prix, ni fournisseur, ni
+    stock — seulement l'identifiant et la référence lisible.
+    """
 
     categorie: str
     designation: str
     quantite: float
     unite: str
     spec: str = ""
+    produit_id: Optional[int] = None
+    reference: Optional[str] = None
 
 
 @dataclass(frozen=True)

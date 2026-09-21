@@ -27,6 +27,40 @@ __all__ = [
     "ResultatNomenclature", "nomenclature", "nomenclature_dict",
 ]
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX246 — RATTACHER CHAQUE LIGNE À UNE RÉFÉRENCE DU CATALOGUE
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Le bordereau sortait des désignations EN CLAIR (« Coffret de chaînes DC
+# (string box) », « Rail de fixation aluminium ») sans aucun identifiant
+# produit : personne ne pouvait commander depuis cette liste, et
+# ``apps.stock.selectors.specs_for_produit`` — déjà employé par le module
+# électrique — ne servait jamais à rattacher une ligne à un article.
+#
+# LE NOYAU NE CONNAÎT AUCUN CATALOGUE. Il reçoit une table ``references``
+# DÉJÀ RÉSOLUE par l'applicatif (qui seul peut lire le stock, borné société)
+# et se contente de poser l'identifiant sur la bonne ligne. La CLEF de
+# rattachement est le REPÈRE de l'organe ou du câble (« QAC1 », « W1 ») quand
+# il en a un, et sa CATÉGORIE sinon (« Structure », « Coffret ») : le repère
+# est plus précis, il passe donc en premier.
+#
+# SANS CORRESPONDANCE, LES DEUX CHAMPS VALENT ``None`` et la ligne est publiée
+# exactement comme avant — jamais un article deviné (D-CALX 7).
+
+
+def _reference_de_ligne(references, repere, categorie):
+    """``(produit_id, reference)`` — le REPÈRE prime sur la CATÉGORIE."""
+    if not references:
+        return (None, None)
+    for clef in (repere, categorie):
+        if not clef:
+            continue
+        entree = references.get(clef)
+        if isinstance(entree, dict):
+            return (entree.get("produit_id"), entree.get("reference"))
+    return (None, None)
+
+
 #: CALX247 — le motif publié quand AUCUNE règle de bordereau de structure
 #: n'a été saisie par la société (décision fondateur 21/09/2026, registre
 #: ``services/parametres_cles.py::CLES_ELECTRIQUE_SOCIETE`` — clé
@@ -67,7 +101,7 @@ def _categorie(repere):
     return categorie
 
 
-def _lignes_structure(nb_modules, regle_bom_structure):
+def _lignes_structure(nb_modules, regle_bom_structure, references=None):
     """CALX247 — 0 ou 3 lignes de fixation, SOURCÉES, jamais devinées.
 
     ``regle_bom_structure`` est le réglage société ``{rails_par_module,
@@ -101,39 +135,55 @@ def _lignes_structure(nb_modules, regle_bom_structure):
     pinces = nb_modules * valeurs["pinces_par_module"] + valeurs["pinces_supplement"]
     crochets = max(valeurs["crochets_minimum"],
                    math.ceil(nb_modules * valeurs["crochets_par_module"]))
+    # CALX246 — les trois lignes de fixation n'ont pas de repère d'organe :
+    # elles se rattachent par leur CATÉGORIE (« Structure »).
+    produit_id, reference = _reference_de_ligne(references, "", "Structure")
     return (
         LigneNomenclature(
             categorie="Structure", designation="Rail de fixation aluminium",
             quantite=rails, unite="u",
             spec="rail anodisé, longueur ajustée au module ; règle de "
-                 "bordereau société : %s" % source),
+                 "bordereau société : %s" % source,
+            produit_id=produit_id, reference=reference),
         LigneNomenclature(
             categorie="Structure",
             designation="Pince de fixation (milieu + extrémité)",
             quantite=pinces, unite="u",
             spec="inox A2, milieu et extrémité ; règle de bordereau "
-                 "société : %s" % source),
+                 "société : %s" % source,
+            produit_id=produit_id, reference=reference),
         LigneNomenclature(
             categorie="Structure",
             designation="Crochet / patte de fixation toiture",
             quantite=crochets, unite="u",
             spec="selon couverture (tuile / bac acier) ; règle de "
-                 "bordereau société : %s" % source),
+                 "bordereau société : %s" % source,
+            produit_id=produit_id, reference=reference),
     ), ""
 
 
 def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                  resultat_cables=None, resultat_coffrets_dc=None,
-                 resultat_coffret_ac=None, regle_bom_structure=None):
-    """PV37 — les lignes de bordereau déduites des calculs amont."""
+                 resultat_coffret_ac=None, regle_bom_structure=None,
+                 references=None):
+    """PV37 — les lignes de bordereau déduites des calculs amont.
+
+    ``references`` (CALX246) — table ``{repère ou catégorie: {produit_id,
+    reference}}`` DÉJÀ RÉSOLUE par l'applicatif contre le catalogue de la
+    société. Absente, chaque ligne sort avec ``produit_id``/``reference`` à
+    ``None``, exactement comme avant.
+    """
     lignes = []
     alertes = []
     nb_modules = entree.nb_modules
 
-    def ajouter(categorie, designation, quantite, unite, spec=""):
+    def ajouter(categorie, designation, quantite, unite, spec="", repere=""):
+        produit_id, reference = _reference_de_ligne(references, repere,
+                                                    categorie)
         lignes.append(LigneNomenclature(
             categorie=categorie, designation=designation,
-            quantite=quantite, unite=unite, spec=spec))
+            quantite=quantite, unite=unite, spec=spec,
+            produit_id=produit_id, reference=reference))
 
     if nb_modules <= 0:
         return ResultatNomenclature(
@@ -149,7 +199,8 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                 "chute de tension %s %% (cible %s %%), Iz %s A, critère "
                 "dimensionnant : %s"
                 % (fr(cable.chute_tension_pct, 2), fr(cable.chute_cible_pct, 1),
-                   fr(cable.iz_a, 0), cable.critere_dimensionnant))
+                   fr(cable.iz_a, 0), cable.critere_dimensionnant),
+                repere=cable.repere)
 
     # ── Protections, une ligne par organe RETENU par une règle ───────────────
     protections = (resultat_protections.protections
@@ -158,7 +209,8 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
         ajouter(_categorie(protection.repere),
                 "%s — %s" % (protection.repere, protection.designation),
                 protection.quantite, "u",
-                "%s ; %s" % (protection.calibre, protection.regle_source))
+                "%s ; %s" % (protection.calibre, protection.regle_source),
+                repere=protection.repere)
 
     # ── Coffrets DC — CALX230 : leur nombre suit les coffrets RÉELLEMENT
     # posés dans le plan (``electrical.equipements[]``), jamais un comptage
@@ -189,7 +241,8 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                     1, "u",
                     "IP65, presse-étoupes, embase parafoudre, %d chaîne(s) "
                     "raccordée(s) sur %s%s"
-                    % (len(coffret.chaines), capacite_texte, regroupement))
+                    % (len(coffret.chaines), capacite_texte, regroupement),
+                    repere=coffret.id)
         alertes.extend(resultat_coffrets_dc.refus)
         alertes.extend(resultat_coffrets_dc.omissions)
     elif resultat_coffrets_dc is not None:
@@ -214,12 +267,13 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
                     % (resultat_coffret_ac.departs, tete_texte), 1, "u",
                     "IP65, prêt à raccorder au tableau, %d organe(s) AC ; %s"
                     % (resultat_coffret_ac.organes,
-                       resultat_coffret_ac.regle_source))
+                       resultat_coffret_ac.regle_source),
+                    repere="ARM1")
         alertes.extend(resultat_coffret_ac.omissions)
     elif resultat_protections is not None and resultat_protections.calibre_ac_a:
         ajouter("Coffret", "Coffret de protection AC", 1, "u",
                 "IP65, prêt à raccorder au tableau, disjoncteur %s A"
-                % fr(resultat_protections.calibre_ac_a, 0))
+                % fr(resultat_protections.calibre_ac_a, 0), repere="ARM1")
 
     # ── Mise à la terre — le conducteur, en plus des organes ci-dessus ───────
     longueur_terre = round(float(entree.dc_m or 0.0) * 0.6
@@ -234,7 +288,7 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
     # 21/09/2026, la structure sort du bordereau électrique quand personne
     # ne l'a sourcée).
     lignes_structure, motif_structure = _lignes_structure(
-        nb_modules, regle_bom_structure)
+        nb_modules, regle_bom_structure, references)
     lignes.extend(lignes_structure)
     if motif_structure:
         alertes.append(motif_structure)
@@ -258,7 +312,7 @@ def nomenclature(entree, resultat_chaines=None, resultat_protections=None,
 def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
                       resultat_cables=None, resultat_nomenclature=None,
                       resultat_coffrets_dc=None, resultat_coffret_ac=None,
-                      regle_bom_structure=None):
+                      regle_bom_structure=None, references=None):
     """Même contenu, dans la FORME du bordereau historique (``generate_boq``).
 
     ``{items: [...], summary: {...}, warnings: [...]}`` — les clés de résumé
@@ -268,7 +322,8 @@ def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
     """
     resultat = resultat_nomenclature or nomenclature(
         entree, resultat_chaines, resultat_protections, resultat_cables,
-        resultat_coffrets_dc, resultat_coffret_ac, regle_bom_structure)
+        resultat_coffrets_dc, resultat_coffret_ac, regle_bom_structure,
+        references)
     section_ac = None
     for cable in (resultat_cables.cables if resultat_cables else ()):
         if cable.repere == "W2":
@@ -280,6 +335,11 @@ def nomenclature_dict(entree, resultat_chaines=None, resultat_protections=None,
             "quantite": ligne.quantite,
             "unite": ligne.unite,
             "spec": ligne.spec,
+            # CALX246 — les deux champs de RÉFÉRENCE restent HORS de cette
+            # forme : elle existe pour être la forme de ``generate_boq``, mot
+            # pour mot (PV83, garde épinglée par
+            # ``core/tests/test_electrique_nomenclature.py``). Un consommateur
+            # qui veut les références lit ``ResultatNomenclature.lignes``.
         } for ligne in resultat.lignes],
         "summary": {
             "kwc": round(entree.puissance_kwc, 3),

@@ -249,9 +249,16 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
             champ.
 
     Returns:
-        ``{cables, longueurs, omissions}`` — ``omissions`` dit, en français,
-        POURQUOI un câble n'a pas de section. Aucune valeur par défaut n'est
-        jamais substituée à une longueur manquante.
+        ``{cables, longueurs, omissions, noyau}`` — ``omissions`` dit, en
+        français, POURQUOI un câble n'a pas de section. Aucune valeur par
+        défaut n'est jamais substituée à une longueur manquante.
+
+        ``noyau`` porte les TROIS objets purs qui ont produit les lignes
+        ci-dessus (``{entree, protections, cables}`` de ``core.electrique``),
+        ou ``None`` quand rien n'a pu être dimensionné. Il n'est jamais
+        sérialisé : il existe pour que le BORDEREAU (``core.electrique.
+        nomenclature``) soit bâti sur EXACTEMENT le même calcul que les
+        câbles publiés, au lieu d'un second dimensionnement qui en divergerait.
     """
     import dataclasses
 
@@ -265,12 +272,14 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
         return {'cables': [], 'longueurs': {'dc': None, 'ac': None},
                 'omissions': [norme.get('motif') or
                               "aucune norme électrique sélectionnée : "
-                              "sections et chutes de tension OMISES"]}
+                              "sections et chutes de tension OMISES"],
+                'noyau': None}
     if conception.fiche_incomplete or conception.resultat is None \
             or not conception.chaines:
         return {'cables': [], 'longueurs': {'dc': None, 'ac': None},
                 'omissions': ["aucune chaîne calculée : il n'y a pas de "
-                              "liaison à dimensionner"]}
+                              "liaison à dimensionner"],
+                'noyau': None}
 
     document = layout if layout is not None else _document(conception)
     dc, manques_dc = longueur_dc(document, cheminement)
@@ -328,6 +337,8 @@ def cables_du_calepinage(conception, *, cheminement=None, norme=None,
                       'ac': (None if branches
                              else (ac.en_dict() if ac is not None else None))},
         'omissions': omissions,
+        'noyau': {'entree': entree, 'protections': protections,
+                  'cables': resultat},
     }
 
 

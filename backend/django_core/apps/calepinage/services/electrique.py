@@ -67,6 +67,8 @@ __all__ = [
     'journaliser_ecart_longueur', 'parametres_societe',
     'CLE_DEROGATIONS', 'CLE_FIL_ECARTS',
     'CLE_FIL_DEROGATIONS',  # CALX215
+    'CLE_BORDEREAU', 'CLE_CORRESPONDANCES',
+    'CLE_REGLE_STRUCTURE',  # CALX246
     'CLE_POLYSTRING',  # CALX206
     'CLE_MICRO_ONDULEURS',  # CALX209
     'CHAMP_OPT_V_OUT', 'CHAMP_OPT_MODULES_MAX', 'CLE_OPT_V_OUT',
@@ -936,6 +938,16 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     protections = checklist_protections(
         conception, decisions=donnees.get('protections'), norme=norme)
 
+    # CALX246/230/232/247 — LE BORDEREAU. Il descend des mêmes objets purs que
+    # les câbles ci-dessus (``cables['noyau']``), des coffrets RÉELLEMENT
+    # posés dans le plan et de la règle de structure SOURCÉE ; chaque ligne
+    # porte sa référence d'article quand la société en a posé une.
+    bordereau = _bordereau_du_calepinage(
+        calepinage, conception, cables.get('noyau'),
+        equipements=_equipements_electriques(document),
+        branches=((micro['bloc'] or {}).get('branches') or ()
+                  if micro['bloc'] is not None else ()))
+
     # CAL134 — la check-list de terre et sa justification exigée.
     from .terre import checklist_terre
 
@@ -959,6 +971,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         messages.append(motif_faible)
     messages.extend(regle['bornes_non_verifiables'])
     messages.extend(cables['omissions'])
+    messages.extend(bordereau['alertes'])
     messages.extend(protections['omissions'])
     messages.extend(terre['omissions'])
     if reconciliation['origine'] == ORIGINE_LONGUEUR_DOSSIER:
@@ -1044,6 +1057,10 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         # CAL131 — les câbles, avec la LONGUEUR et SON ORIGINE.
         'cables': cables['cables'],
         'longueurs': cables['longueurs'],
+        # CALX246 — le BORDEREAU électrique : une ligne par organe retenu, par
+        # câble dimensionné, par coffret posé, avec sa référence d'article
+        # quand la société en a posé une. AUCUN prix (D-CALX 5).
+        CLE_BORDEREAU: bordereau['lignes'],
         # CAL132 — la check-list d'organes (retenus / ajoutés / écartés).
         # CALX209/CALX210 — les ``QAC.N`` des branches de micro-onduleurs s'y
         # AJOUTENT : un départ par branche, calibré par la même règle.
@@ -1764,6 +1781,241 @@ def _reglages_electrique_societe(calepinage):
 
     return parametres_societe(calepinage).get(
         SECTION_ELECTRIQUE_SOCIETE) or {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX246 (+ CALX230/232/247) — LE BORDEREAU ÉLECTRIQUE ENFIN SERVI
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``core/electrique/nomenclature.py`` existe depuis PV37 et le module
+# Calepinage ne l'appelait JAMAIS : le bordereau électrique d'un calepinage
+# n'existait nulle part, et les trois services que la phase 1 du lot 4 vient
+# d'écrire (``coffrets.coffrets_dc``, ``coffrets.coffret_ac``, la règle de
+# structure sourcée de CALX247) n'avaient aucun appelant. Ce bloc les branche.
+#
+# CE QUI ENTRE DANS LE BORDEREAU, ET D'OÙ ÇA VIENT :
+#   * les CÂBLES et les PROTECTIONS — des objets purs qui ont produit
+#     ``resultat['cables']`` (``cables_du_calepinage()['noyau']``), jamais un
+#     second dimensionnement ;
+#   * les COFFRETS DC — des organes RÉELLEMENT posés dans le plan
+#     (``electrical.equipements[]``, CALX201), leur capacité lue sur la fiche
+#     du ``produitId`` désigné ou saisie sur l'organe ;
+#   * le COFFRET AC — de ses départs réels (une branche de micro-onduleurs =
+#     un départ, CALX232) ;
+#   * la STRUCTURE — de la règle société SOURCÉE (CALX247), sinon RIEN ;
+#   * les RÉFÉRENCES d'article — de la table de correspondance société
+#     (CALX246), résolue contre le catalogue BORNÉ société.
+#
+# AUCUN PRIX N'ENTRE PAR CE CHEMIN : ni ``prix_achat``, ni ``prix_vente``, ni
+# marge — le sélecteur du stock n'est interrogé que pour l'identifiant et la
+# référence de l'article (D-CALX 5).
+
+#: La clé du bordereau dans le résultat publié.
+CLE_BORDEREAU = 'nomenclature'
+
+#: Les deux clés de réglage société que le bordereau lit (registre CALX145,
+#: ``CLES_ELECTRIQUE_SOCIETE``).
+CLE_CORRESPONDANCES = 'correspondances_nomenclature'
+CLE_REGLE_STRUCTURE = 'regle_bom_structure'
+
+#: Les clés de fiche (CALX60) sous lesquelles une capacité d'entrées de
+#: coffret DC serait publiée. Liste FERMÉE : aucune fiche « coffret » n'existe
+#: aujourd'hui au catalogue, donc ce chemin rend ``None`` et
+#: ``coffrets_dc`` retombe sur la capacité SAISIE — ou refuse en nommant le
+#: coffret. Rien n'est supposé à la place (D-CALX 7).
+CLES_CAPACITE_COFFRET = ('capacite_entrees', 'entrees')
+
+
+def _valeur_reglee(reglages, cle):
+    """``(valeur, source)`` d'un réglage société — ``(None, '')`` sans saisie.
+
+    Même discipline que ``services/etapes/__init__.py::reglage`` : une valeur
+    sans source n'est PAS une valeur (D-CALX 7). La clé DOIT figurer au
+    registre — une clé hors registre est une faute de frappe, pas une absence
+    de saisie.
+    """
+    from .parametres_cles import SECTION_ELECTRIQUE_SOCIETE, registre
+
+    connues = registre(SECTION_ELECTRIQUE_SOCIETE)
+    if cle not in connues:
+        raise KeyError(
+            "La clé de réglage « %s » ne figure pas au registre de la section "
+            "« %s » (CALX145)." % (cle, SECTION_ELECTRIQUE_SOCIETE))
+    saisie = (reglages or {}).get(cle)
+    if not isinstance(saisie, dict):
+        return (None, '')
+    source = str(saisie.get('source') or '').strip()
+    if saisie.get('valeur') is None or not source:
+        return (None, '')
+    return (saisie['valeur'], source)
+
+
+def _equipements_electriques(document):
+    """``electrical.equipements[]`` du document (CALX201), ou une liste vide."""
+    electrique = (document or {}).get('electrical')
+    if not isinstance(electrique, dict):
+        return []
+    equipements = electrique.get('equipements')
+    if not isinstance(equipements, (list, tuple)):
+        return []
+    return [eq for eq in equipements if isinstance(eq, dict)]
+
+
+def _produit_borne(company, identifiant):
+    """Le produit du catalogue de CETTE société, ou ``None`` — lecture seule.
+
+    Passe par le SÉLECTEUR du stock (``get_produit_scoped``) : un produit
+    d'une AUTRE société est introuvable, jamais « interdit ». Ni prix d'achat
+    ni prix de vente ne sont lus.
+    """
+    if company is None or identifiant in (None, ''):
+        return None
+    from apps.stock.selectors import get_produit_scoped
+
+    return get_produit_scoped(company, identifiant)
+
+
+def _capacites_des_coffrets(company, equipements):
+    """``({id coffret: capacité}, alertes)`` — capacités lues sur LA FICHE.
+
+    Un ``produitId`` qui ne désigne aucun produit du catalogue de la société
+    est NOMMÉ (règle fondateur « erreur → champ fautif ») et la capacité reste
+    absente : ``coffrets_dc`` retombera alors sur la capacité saisie, ou
+    refusera le coffret en le nommant.
+    """
+    from apps.stock.selectors import specs_for_produit
+
+    from .coffrets import TYPE_COFFRET_DC
+
+    capacites, alertes = {}, []
+    for equipement in equipements:
+        if equipement.get('type') != TYPE_COFFRET_DC:
+            continue
+        identifiant = equipement.get('produitId')
+        if identifiant in (None, ''):
+            continue
+        produit = _produit_borne(company, identifiant)
+        if produit is None:
+            alertes.append(
+                "coffret DC « %s » : le produit « %s » désigné par "
+                "« equipements[].produitId » est introuvable dans le "
+                "catalogue de la société — capacité d'entrées NON lue sur "
+                "une fiche."
+                % (equipement.get('label') or equipement.get('id') or '?',
+                   identifiant))
+            continue
+        specs = specs_for_produit(produit) or {}
+        for cle in CLES_CAPACITE_COFFRET:
+            valeur = _nombre(specs.get(cle))
+            if valeur is not None:
+                capacites[equipement.get('id')] = int(valeur)
+                break
+    return (capacites, alertes)
+
+
+def _references_nomenclature(company, correspondances, source):
+    """``({clef: {produit_id, reference}}, alertes)`` — CALX246.
+
+    ``correspondances`` est le réglage société ``{repère ou catégorie:
+    identifiant produit}``. Un identifiant qui ne désigne aucun produit de
+    CETTE société est refusé EN LE NOMMANT et la ligne reste sans référence —
+    jamais l'article d'une autre société, jamais un article deviné.
+    """
+    if not isinstance(correspondances, dict) or not correspondances:
+        return ({}, [])
+    references, alertes = {}, []
+    for clef, identifiant in correspondances.items():
+        produit = _produit_borne(company, identifiant)
+        if produit is None:
+            alertes.append(
+                "correspondance de nomenclature « %s » : le produit « %s » "
+                "est introuvable dans le catalogue de la société — la ligne "
+                "reste publiée SANS référence (« %s », %s)."
+                % (clef, identifiant, CLE_CORRESPONDANCES, source))
+            continue
+        references[str(clef)] = {
+            'produit_id': getattr(produit, 'pk', None),
+            'reference': (str(getattr(produit, 'reference', '') or '').strip()
+                          or _designation(produit)),
+        }
+    return (references, alertes)
+
+
+def _regle_structure(valeur, source):
+    """La règle de bordereau de structure, SOURCE COMPRISE (CALX247).
+
+    Le noyau exige la ``source`` DANS l'objet : le registre la range à côté de
+    la valeur, on la recolle ici sans jamais en fabriquer une.
+    """
+    if not isinstance(valeur, dict):
+        return None
+    return {**valeur, 'source': str(valeur.get('source') or source).strip()}
+
+
+def _ligne_bordereau(ligne):
+    """Une ligne publiée — sept clés, TOUJOURS présentes, AUCUN prix."""
+    return {
+        'categorie': ligne.categorie,
+        'designation': ligne.designation,
+        'quantite': ligne.quantite,
+        'unite': ligne.unite,
+        'spec': ligne.spec,
+        'produit_id': ligne.produit_id,
+        'reference': ligne.reference,
+    }
+
+
+def _bordereau_du_calepinage(calepinage, conception, noyau, *,
+                             equipements=(), branches=()):
+    """CALX246/230/232/247 — ``{lignes, alertes}``, ou l'omission motivée.
+
+    ``noyau`` est le ``{entree, protections, cables}`` que
+    ``cables_du_calepinage`` vient de produire : le bordereau descend du MÊME
+    calcul que les câbles publiés. ``None`` (norme absente, aucune chaîne) ⇒
+    aucun bordereau, et le motif est déjà publié par les omissions de câbles.
+    """
+    import types as _types
+
+    from core.electrique.nomenclature import nomenclature
+
+    from .coffrets import coffret_ac, coffrets_dc
+
+    if not noyau:
+        return {'lignes': [], 'alertes': []}
+
+    company = getattr(calepinage, 'company', None)
+    reglages = _reglages_electrique_societe(calepinage)
+    alertes = []
+
+    capacites, alertes_capacite = _capacites_des_coffrets(company,
+                                                          equipements)
+    alertes.extend(alertes_capacite)
+    resultat_coffrets = coffrets_dc(conception.chaines, equipements,
+                                    capacites=capacites)
+
+    # ``coffret_ac`` lit ``conception.resultat.protections`` (forme du
+    # ``ResultatElectrique`` du noyau) ; la conception du calepinage porte,
+    # elle, un ``ResultatChaines``. On lui présente donc les organes que
+    # ``concevoir_protections`` vient de retenir — les MÊMES objets, pas une
+    # seconde liste.
+    porteur = _types.SimpleNamespace(resultat=_types.SimpleNamespace(
+        protections=noyau['protections'].protections))
+    resultat_coffret_ac = coffret_ac(porteur, branches)
+
+    valeur_structure, source_structure = _valeur_reglee(reglages,
+                                                        CLE_REGLE_STRUCTURE)
+    correspondances, source_correspondances = _valeur_reglee(
+        reglages, CLE_CORRESPONDANCES)
+    references, alertes_references = _references_nomenclature(
+        company, correspondances, source_correspondances)
+    alertes.extend(alertes_references)
+
+    resultat = nomenclature(
+        noyau['entree'], conception.resultat, noyau['protections'],
+        noyau['cables'], resultat_coffrets, resultat_coffret_ac,
+        _regle_structure(valeur_structure, source_structure), references)
+    return {'lignes': [_ligne_bordereau(ligne) for ligne in resultat.lignes],
+            'alertes': alertes + list(resultat.alertes)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
