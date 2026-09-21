@@ -1073,6 +1073,12 @@ OUTCOME_VISITE_ACCEPTEE = 'visite_acceptee'
 #: générique suivante. Les trois premières parce que la cadence s'arrête
 #: (récepteur MRY9) ; « visite acceptée » parce que la suite n'est pas un
 #: barreau du protocole mais un rendez-vous à caler.
+#: CAD1 — cette table ne DÉCIDE plus : elle était trop grossière, puisqu'elle
+#: rangeait « intéressé » parmi les arrêts sans regarder la cadence de la
+#: touche, et faisait donc rejouer tout le suivi de proposition. La décision
+#: vit désormais dans ``issue_fait_naitre_la_suite`` (bas de fichier), qui lit
+#: l'issue ET la cadence. Le jeu reste exposé pour les écrans et les tests qui
+#: nomment « les issues qui ne font naître aucun barreau générique ».
 _OUTCOMES_SANS_MATERIALISATION = (
     _OUTCOMES_ARRET_CADENCE | {OUTCOME_VISITE_ACCEPTEE})
 
@@ -1309,9 +1315,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     #     RENDEZ-VOUS, la seule suite utile est de le CALER. Le filet juste
     #     en dessous pose cette étape-là, jamais le barreau suivant du
     #     protocole (qui relancerait un client déjà conquis).
+    # CAD1 — la condition se lit désormais AVEC la cadence de la touche :
+    # « intéressé » n'arrête PAS le suivi de proposition, il en fait naître le
+    # barreau suivant, exactement comme « pas de réponse ».
     suivante = None
     if (statut == RelanceEtape.Statut.SAUTEE
-            or (outcome or '') not in _OUTCOMES_SANS_MATERIALISATION):
+            or issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
             suivante = materialiser_touche_suivante(etape, user)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
@@ -1886,12 +1895,28 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                  lead, brouillon_compris=brouillon_compris)
              if avec_plan_devis else None)
     if devis is not None:
-        etapes = initialiser_plan_relance(
-            lead, user, cadence='apres_devis', devis=devis)
-        ouvertes = [e for e in etapes
-                    if e.statut == RelanceEtape.Statut.A_FAIRE]
-        if ouvertes:
-            return ouvertes[0]
+        # CAD1 — le filet ne REJOUE jamais un plan dont des barreaux sont
+        # déjà CONSOMMÉS pour le MÊME devis. Il le POURSUIT : la suite d'une
+        # touche 5 clôturée « intéressé » est la touche 6, jamais la touche 1.
+        # Sans ce garde-fou, l'idempotence de `initialiser_plan_relance` — qui
+        # ne porte que sur les touches OUVERTES (TREADMILL-1538) — laissait
+        # repartir les dix barreaux depuis « maintenant », et le client qui
+        # venait de se dire intéressé recevait « Le PDF s'ouvre bien ? ».
+        # « Consommé » = traité par un humain (FAIT/SAUTÉE) : un plan ANNULÉ
+        # par le moteur reste redémarrable, c'est tout l'objet de
+        # TREADMILL-1538.
+        consomme = dernier_barreau_consomme(lead, 'apres_devis', devis)
+        if consomme is not None:
+            suite = materialiser_touche_suivante(consomme, user)
+            if suite is not None:
+                return suite
+        else:
+            etapes = initialiser_plan_relance(
+                lead, user, cadence='apres_devis', devis=devis)
+            ouvertes = [e for e in etapes
+                        if e.statut == RelanceEtape.Statut.A_FAIRE]
+            if ouvertes:
+                return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
     elif brouillon_compris:
         # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP compte
@@ -8370,3 +8395,70 @@ def clients_par_ids(company, ids):
     d'un autre tenant en passant un id deviné.
     """
     return list(Client.objects.filter(company=company, pk__in=list(ids or [])))
+
+
+# ── CAD-A ── CAD1 — « intéressé » poursuit le plan, il ne le rejoue pas ──────
+#
+#: Quelles cadences une ISSUE arrête — LA source unique, lue par le récepteur
+#: MRY9 (``receivers._arreter_cadence_on_outcome``) comme par la
+#: matérialisation réactive ci-dessous. Deux listes séparées auraient dérivé :
+#: c'est précisément ce que CAD1 répare, puisque la matérialisation traitait
+#: « intéressé » comme un arrêt TOTAL alors que le récepteur, lui, laissait
+#: vivre le suivi de proposition.
+#:
+#: * ``joint`` / ``interesse`` → la PRISE DE CONTACT a atteint son but, et les
+#:   réveils d'un dormant n'ont plus lieu d'être. Le suivi de PROPOSITION, lui,
+#:   continue : un client joint reste à relancer sur son devis.
+#: * ``refuse`` → tout s'arrête, y compris la proposition refusée. Le lead
+#:   n'est PAS marqué perdu pour autant (MRY22 : décision humaine, avec motif).
+CADENCES_ARRETEES_PAR_ISSUE = {
+    'joint': ('contact', 'reveil'),
+    'interesse': ('contact', 'reveil'),
+    'refuse': ('contact', 'apres_devis', 'reveil'),
+}
+
+
+def issue_fait_naitre_la_suite(outcome, cadence):
+    """CAD1 — cette ISSUE, sur une touche de CETTE cadence, doit-elle faire
+    naître le barreau suivant du protocole ?
+
+    Trois cas, et rien d'autre :
+
+    * « visite acceptée » → JAMAIS : le client a dit oui à un rendez-vous, la
+      seule suite utile est de le caler (VISITE-CADENCE) ;
+    * une issue qui ARRÊTE la cadence de la touche → non plus : le récepteur
+      MRY9 vient d'annuler ce qui restait, et le filet pose la vraie suite ;
+    * tout le reste (« pas de réponse », « à rappeler », aucune issue sur un
+      message, et « intéressé »/« joint » sur le suivi de PROPOSITION que ces
+      issues n'arrêtent pas) → oui, le geste suivant est programmé.
+    """
+    issue = (outcome or '').strip()
+    if issue == OUTCOME_VISITE_ACCEPTEE:
+        return False
+    return cadence not in CADENCES_ARRETEES_PAR_ISSUE.get(issue, ())
+
+
+def dernier_barreau_consomme(lead, cadence, devis=None):
+    """CAD1 — le barreau de PROTOCOLE le plus avancé que cette cadence a déjà
+    consommé pour ce devis, ou ``None``.
+
+    « Consommé » = traité par un humain, donc ``fait`` ou ``sautee``. Une
+    touche ``annulee`` par le MOTEUR (arrêt de cadence) ne compte pas : un
+    plan entièrement annulé doit rester redémarrable, c'est tout l'objet de
+    TREADMILL-1538 — et c'est la différence qui permet à ce garde-fou d'être
+    strict sans casser la reprise d'un dossier.
+
+    Les étapes de FILET et les trois gestes de VISITE sont exclues : elles
+    portent une cadence de protocole sans en être des barreaux (leur suite est
+    décidée ailleurs), et les prendre pour le dernier barreau ferait naître un
+    rang qui n'a rien à voir avec elles.
+    """
+    qs = lead.relance_etapes.filter(
+        cadence=cadence,
+        statut__in=(RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE),
+    ).exclude(libelle__in=tuple(_LIBELLES_FILET | _LIBELLES_VISITE))
+    if devis is not None:
+        qs = qs.filter(devis=devis)
+    else:
+        qs = qs.filter(devis__isnull=True)
+    return qs.order_by('-ordre', '-pk').first()
