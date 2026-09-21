@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 4a1666946ba6be4299ee67b100aa9ce2526f909bc77d6bf61909c08c53cd867e
-Plan fingerprint: 7c49af4dd0cf6de5c7aafdc5bd64ad4347e3763cab4b05b1d7fc1cec25910e4e
+Plan fingerprint: 087536678b21fcdb28ae912d7dc4b6a808a0154eb46a3b5c70fe003d5f16ae8d
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (136)**
+**Done (144)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -655,22 +655,30 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
 - `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
 - `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
+- `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
+- `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
+- `CALX221` — Ajouter le calque « Électrique » au panneau de calques
 - `CALX222` — Donner à l'atelier son onglet « Équipements électriques »
+- `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
 - `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
 - `CALX225` — Dimensionner la section et la chute PAR tronçon
 - `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
 - `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
+- `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
+- `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
+- `CALX232` — Dimensionner le coffret AC par ses départs
 - `CALX236` — Exporter le schéma unifilaire en PNG depuis le navigateur
 - `CALX238` — Replier les circuits d'onduleurs identiques en un seul « typique de N »
 - `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
 - `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
 - `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
 - `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
+- `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (469)**
+**Open — to build (461)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -954,22 +962,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
 - `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
 - `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
-- `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
-- `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
-- `CALX221` — Ajouter le calque « Électrique » au panneau de calques
-- `CALX223` — Tracer un cheminement de câble par points de passage dans l'atelier
 - `CALX227` — Produire le métré de câble par tronçon et par section
 - `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
-- `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
-- `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
-- `CALX232` — Dimensionner le coffret AC par ses départs
 - `CALX233` — Persister les libellés et les repères édités du schéma unifilaire
 - `CALX234` — Persister les positions de blocs et les passer jusqu'au dessin
 - `CALX235` — Exporter le schéma unifilaire en DXF
 - `CALX237` — Choisir un gabarit de schéma par pays, sans supposer une norme au Maroc
 - `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
 - `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
-- `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
 - `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
 - `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2

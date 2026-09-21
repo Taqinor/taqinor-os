@@ -9,10 +9,13 @@ Aucune base de données : ``unittest`` pur.
 """
 
 import unittest
+from types import SimpleNamespace
 
 from core.electrique.cables import dimensionner_cables
 from core.electrique.chaines import concevoir_chaines
-from core.electrique.nomenclature import nomenclature, nomenclature_dict
+from core.electrique.nomenclature import (
+    MOTIF_STRUCTURE_NON_SOURCEE, nomenclature, nomenclature_dict,
+)
 from core.electrique.onduleurs import dimensionner_onduleurs
 from core.electrique.protections import concevoir_protections
 from core.electrique.types import (
@@ -116,18 +119,57 @@ class LeBordereauSuitLesCables(unittest.TestCase):
 
 class StructureCoffretsEtStockage(unittest.TestCase):
     def test_la_structure_suit_le_nombre_de_modules(self):
-        petit = _bordereau(_entree(nb_modules=18, longueur=6))
-        grand = _bordereau(_entree(nb_modules=36, longueur=6))
-        rails_petit = _lignes(petit, "Structure")[0].quantite
-        rails_grand = _lignes(grand, "Structure")[0].quantite
-        self.assertEqual(rails_petit, 36)
-        self.assertEqual(rails_grand, 72)
+        # CALX247 — les quantités de fixation ne sont plus devinées : sans
+        # règle de bordereau SOURCÉE, aucune ligne « Structure » et le motif
+        # est publié ; avec la règle saisie, les rails suivent les modules.
+        sans_regle = _bordereau(_entree(nb_modules=18, longueur=6))
+        self.assertEqual(_lignes(sans_regle, "Structure"), [])
+        self.assertIn(MOTIF_STRUCTURE_NON_SOURCEE, sans_regle.alertes)
 
-    def test_un_second_coffret_dc_au_dela_de_deux_chaines(self):
+        regle = {"rails_par_module": 2, "pinces_par_module": 2,
+                 "pinces_supplement": 2, "crochets_par_module": 1,
+                 "crochets_minimum": 4,
+                 "source": "fiche de pose du fabricant de structure (test)"}
+
+        def _rails(nb_modules):
+            entree = _entree(nb_modules=nb_modules, longueur=6)
+            chaines, protections, cables = _tout(entree)
+            resultat = nomenclature(entree, chaines, protections, cables,
+                                    regle_bom_structure=regle)
+            rails = [ligne for ligne in _lignes(resultat, "Structure")
+                     if "rail" in ligne.designation.lower()]
+            self.assertEqual(len(rails), 1, resultat.lignes)
+            return rails[0].quantite
+
+        self.assertEqual(_rails(18), 36)
+        self.assertEqual(_rails(36), 72)
+
+    def test_les_coffrets_dc_suivent_les_coffrets_reellement_poses(self):
+        # CALX230 — plus de second coffret DEVINÉ au-delà de deux chaînes :
+        # sans résultat de ``coffrets_dc`` (intégration non câblée), UN
+        # coffret quel que soit le nombre de chaînes ; avec deux coffrets
+        # réellement posés, deux lignes, une par organe.
         deux = _bordereau(_entree(nb_modules=24, longueur=12, n_mppt=2))
         trois = _bordereau(_entree(nb_modules=18, longueur=6))
         self.assertEqual(_lignes(deux, "Coffret")[0].quantite, 1)
-        self.assertEqual(_lignes(trois, "Coffret")[0].quantite, 2)
+        self.assertEqual(_lignes(trois, "Coffret")[0].quantite, 1)
+
+        def _coffret(ident, chaines):
+            return SimpleNamespace(
+                id=ident, label=ident, capacite_entrees=2, chaines=chaines,
+                isc_cumule_a=20.0, isc_propre_a=20.0, parent_id=None)
+
+        poses = SimpleNamespace(
+            coffrets=[_coffret("CDC1", ["S1", "S2"]),
+                      _coffret("CDC2", ["S3"])],
+            refus=(), omissions=())
+        entree = _entree(nb_modules=18, longueur=6)
+        chaines, protections, cables = _tout(entree)
+        resultat = nomenclature(entree, chaines, protections, cables,
+                                resultat_coffrets_dc=poses)
+        lignes_dc = [ligne for ligne in _lignes(resultat, "Coffret")
+                     if "string box" in ligne.designation]
+        self.assertEqual(len(lignes_dc), 2, resultat.lignes)
 
     def test_le_stockage_ajoute_son_cablage(self):
         sans = _bordereau(_entree())
