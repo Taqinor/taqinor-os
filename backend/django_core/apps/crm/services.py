@@ -2251,11 +2251,11 @@ def _nom_affiche_conseiller(lead, user):
 def _nom_affiche_marque(lead):
     """CAD96 (21/09/2026) — le nom de marque AFFICHÉ dans un texte client.
 
-    Trois graphies codées en dur coexistaient (« TAQINOR », « TAQINOR
+    Trois graphies codées en dur coexistaient (« la marque », « la marque
     Solutions », « Taqinor Solutions ») dans le même guide de messages,
     incohérence déjà présente dans le document source validé. Plutôt que de
     figer UNE de ces graphies dans le code (une future société white-label
-    hériterait du nom de TAQINOR), la marque vient désormais de
+    hériterait du nom de la marque), la marque vient désormais de
     ``parametres.CompanyProfile.nom`` — même source que les PDFs (SCA27) —
     avec repli sur ``Company.nom`` si la société n'a pas encore de profil."""
     company = getattr(lead, 'company', None)
