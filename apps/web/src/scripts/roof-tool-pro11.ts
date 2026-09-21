@@ -140,6 +140,7 @@ import {
 } from './roofPro11/zones';
 import { etiquette, registreAtelier } from './roofPro11/numerotation'; // CALX403 câblage — le repère d'un module vient du DOCUMENT
 import { poserSourceCellulesSurAllees } from './roofPro11/teinteAllees'; // CALX403 câblage
+import { creerInfoBulleOmbrage } from './roofPro11/infoBulleOmbrage'; // CALX122 câblage
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
@@ -1473,6 +1474,36 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       if (roofType === 'pitched' && closed) pitchedRecompute(); // CALX99 câblage
     },
   });
+
+  // ═══════════ CALX122 câblage — L'OMBRAGE D'UN MODULE, AU SURVOL ═══════════
+  // `shadingUi.moduleShadeTooltip(cellIndex)` rendait un texte prêt à afficher depuis
+  // CALX122, et son en-tête disait lui-même que le câblage au survol restait un crochet :
+  // il n'existait AUCUNE info-bulle dans l'atelier. Le module `infoBulleOmbrage.ts` crée
+  // son `div` (patron `obstaclesUi`) ; ici on lui donne la cellule survolée — le MÊME
+  // hit-test que le surlignage W88 (`layoutEditor.layoutPanelAt`), pour qu'elle parle
+  // exactement du module doré sous le curseur.
+  //
+  // Sans mesure d'ombrage, `moduleShadeTooltip` DIT que rien n'est renseigné : l'info-bulle
+  // affiche cette phrase, jamais un chiffre à la place d'une mesure absente.
+  const infoBulleOmbrage = creerInfoBulleOmbrage({ hote: map.getContainer?.() ?? null });
+  map.on('mousemove', (e) => {
+    if (!ctx.layoutMode || ctx.obstacleMode || !ctx.layoutState) {
+      infoBulleOmbrage.cacher();
+      return;
+    }
+    const cellule = layoutEditor.layoutPanelAt(e.point);
+    if (cellule == null) {
+      infoBulleOmbrage.cacher();
+      return;
+    }
+    const point = (e.originalEvent ?? null) as MouseEvent | null;
+    infoBulleOmbrage.montrer(
+      shadingUi.moduleShadeTooltip(cellule), // CALX122 câblage
+      point?.clientX ?? 0,
+      point?.clientY ?? 0,
+    );
+  });
+  map.on('mouseout', () => infoBulleOmbrage.cacher());
 
   const updateCompass = () => {
     if (compassArrow) compassArrow.style.transform = `rotate(${-map.getBearing()}deg)`;
@@ -3974,5 +4005,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // (`ToitureDesign.jsx` lisait `fp.data.polygon` et JETAIT `fp.data.batiment`). Le
     // panneau « Bâtiment » l'affiche en PROPOSITION : rien n'est écrit sans un clic.
     setBatimentOsmPropose: (batiment) => shadingUi.setBatimentOsmPropose(batiment), // CALX132 câblage
+    // CALX111 câblage — le pan ACTIF : sans lui, `Vue2DPlan` ne pouvait pas lire les
+    // numéros du document (`registreAtelier.modules(panId)`) et rendait un plan MUET.
+    panActifId: () => ctx.activeAreaId ?? '', // CALX111 câblage
   });
 }

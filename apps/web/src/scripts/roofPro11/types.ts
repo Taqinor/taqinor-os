@@ -195,6 +195,10 @@ export interface RoofToolApi {
    *  l'affiche en PROPOSITION, et rien n'est écrit tant que personne n'a cliqué
    *  « Reprendre ». `null`/absent efface la proposition. */
   setBatimentOsmPropose: (batiment: BatimentOsmServeur | null | undefined) => void;
+  /** CALX111 câblage — l'identifiant du pan ACTIF, pour que la vue 2D de la page hôte
+   *  puisse lire les numéros de module de CE pan (`registreAtelier`) au lieu d'afficher
+   *  un plan sans étiquettes. Chaîne vide tant qu'aucun pan n'est actif. */
+  panActifId: () => string;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

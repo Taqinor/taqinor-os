@@ -16,6 +16,7 @@ import {
 } from './optimisationDocument';
 import { choixOptimisationCourant, poserChoixOptimisation, poserCibleOptimisation } from './optimizer';
 import { LIBELLE_MODE, motifGesteIndisponible, resoudreRaccourci } from './clavier';
+import { ID_INFO_BULLE_OMBRAGE, creerInfoBulleOmbrage } from './infoBulleOmbrage';
 import { type Ctx } from './context';
 
 /** Les SOURCES câblés ici (pages à effets de bord, non importables en test). Chemins
@@ -224,5 +225,64 @@ describe('CALX128 câblage — le plan clavier suit l’outil réellement actif'
 describe('CALX99 câblage — un azimut pris sur une arête RE-POSE le pavage', () => {
   it('`redraw` appelle la même re-résolution qu’un bouton cardinal', () => {
     expect(SOURCE_ENTREE).toContain("if (roofType === 'pitched' && closed) pitchedRecompute(); // CALX99 câblage");
+  });
+});
+
+describe('CALX122 câblage — l’ombrage d’un module s’affiche au survol', () => {
+  afterEach(() => {
+    document.getElementById(ID_INFO_BULLE_OMBRAGE)?.remove();
+  });
+
+  it('crée son propre `div` (la page hôte n’en fournit aucun)', () => {
+    const bulle = creerInfoBulleOmbrage();
+    const el = bulle.element();
+    expect(el).not.toBeNull();
+    expect(el?.id).toBe(ID_INFO_BULLE_OMBRAGE);
+    expect(el?.getAttribute('role')).toBe('status');
+    // Rien n'est survolé au départ : elle est cachée, pas vide-et-visible.
+    expect(el?.hidden).toBe(true);
+    expect(bulle.texte()).toBe('');
+  });
+
+  it('un seul `div` pour tout l’atelier (deux créations le réutilisent)', () => {
+    const a = creerInfoBulleOmbrage();
+    const b = creerInfoBulleOmbrage();
+    expect(b.element()).toBe(a.element());
+    expect(document.querySelectorAll(`#${ID_INFO_BULLE_OMBRAGE}`)).toHaveLength(1);
+  });
+
+  it('affiche EXACTEMENT le texte donné — y compris « non renseigné »', () => {
+    const bulle = creerInfoBulleOmbrage();
+    // C'est `moduleShadeTooltip` qui produit cette phrase quand aucune obstruction n'est
+    // saisie : l'info-bulle la DIT au lieu d'afficher un chiffre.
+    const absente = 'Ombrage : non renseigné — aucune obstruction n’a été saisie.';
+    expect(bulle.montrer(absente, 100, 200)).toBe(true);
+    expect(bulle.texte()).toBe(absente);
+    expect(bulle.element()?.hidden).toBe(false);
+  });
+
+  it('un module hors plan (texte null) la CACHE, il n’affiche pas « 0 »', () => {
+    const bulle = creerInfoBulleOmbrage();
+    bulle.montrer('Ombrage : aucune heure masquée pour ce module.', 10, 10);
+    expect(bulle.montrer(null, 10, 10)).toBe(false);
+    expect(bulle.texte()).toBe('');
+    expect(bulle.element()?.hidden).toBe(true);
+    // Une chaîne blanche vaut une absence, pas une bulle vide.
+    expect(bulle.montrer('   ', 10, 10)).toBe(false);
+  });
+
+  it('l’entrée l’alimente avec la cellule SURVOLÉE et le texte de `shadingUi`', () => {
+    expect(SOURCE_ENTREE).toContain('const cellule = layoutEditor.layoutPanelAt(e.point);');
+    expect(SOURCE_ENTREE).toContain('shadingUi.moduleShadeTooltip(cellule), // CALX122 câblage');
+    expect(SOURCE_ENTREE).toContain("map.on('mouseout', () => infoBulleOmbrage.cacher());");
+    // Le hit-test est exposé par l'éditeur (interface, append-only).
+    const editeur = source('src/scripts/roofPro11/layoutEditor.ts');
+    expect(editeur).toContain('layoutPanelAt, // CALX122 câblage');
+  });
+});
+
+describe('CALX111 câblage — la vue 2D lit les numéros du pan actif', () => {
+  it('l’entrée publie le pan ACTIF sur son API', () => {
+    expect(SOURCE_ENTREE).toContain("panActifId: () => ctx.activeAreaId ?? '', // CALX111 câblage");
   });
 });

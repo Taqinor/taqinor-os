@@ -441,8 +441,14 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // reconstruit ici — sinon la 2D et la 3D divergeraient silencieusement.
   const [vue2d, setVue2d] = useState(false)
   const [plan2d, setPlan2d] = useState(null)
+  // CALX111 câblage — le pan dont on dessine le plan. `Vue2DPlan` accepte `panId` depuis
+  // CALX111 pour lire les numéros de module du DOCUMENT ; personne ne le lui passait, donc
+  // le plan 2D sortait MUET (`if (!plan || !panId) return []`). Capturé au MÊME instant
+  // que le plan : les deux décrivent le même pan.
+  const [panId2d, setPanId2d] = useState(null)
   const ouvrirVue2d = () => {
     setPlan2d(builderApi.current?.planView?.(900, 560) ?? null)
+    setPanId2d(builderApi.current?.panActifId?.() || null) // CALX111 câblage
     setVue2d(true)
   }
   const [hdBusy, setHdBusy] = useState(false)
@@ -2248,7 +2254,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
             </div>
             {vue2d && (
               <div className="mt-2">
-                <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} />
+                <Vue2DPlan plan={plan2d} compte3d={plan2d?.panelCount ?? null} panId={panId2d} />
               </div>
             )}
           </div>
