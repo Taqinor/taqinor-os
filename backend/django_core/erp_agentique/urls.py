@@ -50,26 +50,12 @@ _APP_URLS = [
     # N89 — gestion des clés API & webhooks (session admin, Paramètres) ;
     # distinct de l'API publique par clé (api/public/, hors de cette liste).
     path('publicapi/', include('apps.publicapi.urls')),
-    # FG107-FG121 — Comptabilité générale (interne, admin/responsable).
-    path('compta/', include('apps.compta.urls')),
-    # ODX10 — Marketing (Email/SMS, séquences, enquêtes/NPS, événements,
-    # fidélité). Nouveau préfixe ; les anciennes routes /compta/… restent
-    # servies à l'identique (mêmes ViewSets) pour ne casser aucun client.
-    path('marketing/', include('apps.marketing.urls')),
-    # ODX11 — Appels d'offres (marchés publics/privés). Nouveau préfixe ; les
-    # anciennes routes /compta/… restent servies à l'identique (mêmes ViewSets).
-    path('ao/', include('apps.ao.urls')),
     # CAL4 — Module Calepinage autonome. Forme d'URL unique (CAL233) :
     # /api/django/calepinage/calepinages/<pk>/… + /calepinage/parametres/.
     path('calepinage/', include('apps.calepinage.urls')),
     # ODX12 — Portail self-service client. Nouveau préfixe ; les anciennes
     # routes /compta/… restent servies à l'identique (mêmes ViewSets/vues).
     path('portail/', include('apps.portail.urls')),
-    # ODX15 — Notes de frais & indemnités (Expenses). Nouveau préfixe ; les
-    # anciennes routes /compta/notes-frais|rapports-notes-frais|plafonds-notes-
-    # frais|baremes-indemnite|indemnites-chantier/… restent servies à
-    # l'identique (mêmes ViewSets).
-    path('frais/', include('apps.frais.urls')),
     # ODX18 — Facturation (Invoicing, séparé de Sales). Nouveau préfixe ; les
     # anciennes routes /ventes/factures|paiements|avoirs|relances|balance-agee|
     # niveaux-relance/… restent servies à l'identique (mêmes ViewSets/vues).
@@ -81,21 +67,8 @@ _APP_URLS = [
     path('achats/', include('apps.achats.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
-    # Modules ERP greenfield (fondations) — internes, admin/responsable.
-    path('rh/', include('apps.rh.urls')),
-    path('gestion-projet/', include('apps.gestion_projet.urls')),
-    path('contrats/', include('apps.contrats.urls')),
-    path('qhse/', include('apps.qhse.urls')),
-    path('kb/', include('apps.kb.urls')),
-    # Groupe NTDOC (P2) — Salles de données sécurisées (data rooms).
-    path('datarooms/', include('apps.datarooms.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('tiers/', include('apps.tiers.urls')),
-    # XPOS1 — Vente comptoir (point of sale).
-    path('pos/', include('apps.pos.urls')),
-    # NTRET12 — Moteur de promotions panier (règles configurables, coupons
-    # NTRET13, cartes cadeaux NTRET15).
-    path('promotions/', include('apps.promotions.urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('identity/', include('apps.identity.urls')),
     # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD). WIR136 :
@@ -105,10 +78,6 @@ _APP_URLS = [
     path('accessreview/', include('apps.accessreview.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
-    # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
-    path('contacts/', include('apps.contacts.urls')),
-    # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
-    path('btp-chantier/', include('apps.btp_chantier.urls')),
     # Groupe NTADM — Administration enterprise.
     path('entites/', include('apps.entites.urls')),
     path('adminops/', include('apps.adminops.urls')),
@@ -132,9 +101,6 @@ _APP_URLS = [
     # des modules désactivés dérive du 2ᵉ segment, sans entrée
     # `core/permissions.PREFIX_TO_MODULE`.
     path('visites/', include('apps.visites.urls')),
-    # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
-    # BLOCKED, voir apps/douane/apps.py).
-    path('douane/', include('apps.douane.urls')),
     # Groupe NTDATA — couche sémantique : historique figé des définitions de
     # métriques (NTDATA9) et lignage « d'où vient ce chiffre » (NTDATA43). Le
     # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404
@@ -199,10 +165,6 @@ urlpatterns = [
     # écriture pour ne pas perdre le corps). DOIT rester en DERNIER de la
     # famille `api/public/` — c'est un attrape-tout.
     path('api/public/', include('apps.publicapi.legacy_urls')),
-    # XPOS3 — Lien public tokenisé vers le PDF du ticket de caisse.
-    path('api/django/public/pos/', include('apps.pos.public_urls')),
-    # XCTR14 — Portail client : « Mes contrats & abonnements » — sans login.
-    path('api/django/public/contrats/', include('apps.contrats.public_urls')),
     # XPUR21 — Réponse fournisseur en ligne à une RFQ — sans login.
     path('api/django/public/installations/',
          include('apps.installations.public_urls')),

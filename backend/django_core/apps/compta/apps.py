@@ -1,10 +1,24 @@
+"""Configuration de l'app « compta » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class ComptaConfig(AppConfig):
+    """Comptabilité générale — app PARQUÉE du MVP solaire (20/09/2026).
+
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
+    """
+
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.compta'
+    label = 'compta'
     verbose_name = 'Comptabilité générale'
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'compta',
         'sku': 'generic',
@@ -13,18 +27,5 @@ class ComptaConfig(AppConfig):
         'depends': [],
         'description': 'Comptabilité générale CGNC et fiscalité.',
         'categorie': 'Finance',
+        'parked': True,
     }
-
-    def ready(self):
-        # PACT161/XMKT1 — abonne l'inscription automatique aux séquences de
-        # relance à l'événement lead_stage_changed (core.events, M6).
-        from . import receivers  # noqa: F401
-        # ARC19 — miroir one-way compta.Partenaire → répertoire unifié
-        # tiers.Tiers (l'import câble le récepteur post_save ; pont réversible,
-        # ODX13-compatible).
-        from . import tiers_bridge  # noqa: F401
-        # NTDATA11 — enregistre les adaptateurs de métrique (DSO, marge brute)
-        # dans la couche sémantique. Le CALCUL reste ici (grand livre) ;
-        # `semantic` ne connaît qu'une clé et une fonction.
-        from .selectors import register_metric_adapters
-        register_metric_adapters()
