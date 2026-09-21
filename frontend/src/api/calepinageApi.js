@@ -167,6 +167,13 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    // CALX26 — l'archivage RÉVERSIBLE (CAL208, `views/archivage.py`) : la
+    // corbeille plateforme `apps.trash`, jamais une suppression dure ni un
+    // second modèle d'archive. `restaurer-corbeille` (et non `restaurer`,
+    // pris par la restauration de VERSION, CAL20) sort de la corbeille.
+    archiver: (id) => api.post(`${pivot(id)}archiver/`),
+    restaurerCorbeille: (id) => api.post(`${pivot(id)}restaurer-corbeille/`),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
