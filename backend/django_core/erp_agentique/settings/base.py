@@ -1108,6 +1108,12 @@ CELERY_TASK_ROUTES = {
     'core.scan_live_isolation': {'queue': 'scheduled'},
     # NTWFL17 — balayage quotidien des échéances de dossier dépassées.
     'core.notifier_dossiers_echeance_depassee': {'queue': 'scheduled'},
+    'ged.purge_corbeille_echue': {'queue': 'scheduled'},
+    'ged.signature_relances_expiration': {'queue': 'scheduled'},
+    'ged.verifier_integrite_archives': {'queue': 'scheduled'},
+    'ged.notifier_emetteurs_expiration_signature': {'queue': 'scheduled'},
+    'ged.relancer_demandes_document_dues': {'queue': 'scheduled'},
+    'ged.notifier_planifications_echues': {'queue': 'scheduled'},
     'installations.rappel_rdv_j1': {'queue': 'scheduled'},
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
     # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
@@ -1166,6 +1172,7 @@ CELERY_TASK_ROUTES = {
     # QX — moteur de relance d'engagement + relève des boîtes entrantes.
     'ventes.engagement_followup_engine': {'queue': 'scheduled'},
     'ventes.poll_inbound_mailboxes': {'queue': 'scheduled'},
+    'ged.poll_mail_intake': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
     # ENG6 — synchro quotidienne des insights publicitaires.
@@ -1206,6 +1213,9 @@ CELERY_TASK_ROUTES = {
     'adminops.purger_evenements_usage': {'queue': 'scheduled'},
     # NTADM37 — péremption des demandes d'impersonation non consenties.
     'adminops.perimer_demandes_impersonation': {'queue': 'scheduled'},
+    # WIR73 (GED7) — import récurrent des pièces jointes vers la GED
+    # (hebdomadaire, lundi heure creuse) : job beat, donc queue `scheduled`.
+    'ged.migrer_pieces_jointes': {'queue': 'scheduled'},
     # NTOBS/NTREP — envoi horaire des abonnements de rapports planifiés : job
     # beat, donc queue `scheduled`.
     'reporting.envoyer_rapports_planifies': {'queue': 'scheduled'},

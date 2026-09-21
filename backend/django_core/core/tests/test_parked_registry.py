@@ -1,12 +1,12 @@
 """SOLMVP1 — garde du registre des apps parquées (``core.parked``).
 
-Deux niveaux : (1) la cohérence du registre lui-même (48 labels uniques,
+Deux niveaux : (1) la cohérence du registre lui-même (47 labels uniques,
 PHASE 2 ⊆ registre, groupes = partition exacte du registre) — active tout de
 suite ; (2) la garde de « coquille » : chaque label parqué ne doit garder sur le
 disque que ``__init__.py``, ``apps.py``, ``models.py`` (vide) et ``migrations/``.
 
 Ce second niveau est SKIPPÉ tant que SOLMVP30-36 n'ont pas coquillé les
-dossiers : aujourd'hui les 48 apps sont encore complètes, le test doit être vert
+dossiers : aujourd'hui les 47 apps sont encore complètes, le test doit être vert
 sans mentir. Dès le dernier coquillage, le skip s'éteint de lui-même et le test
 devient le garde-fou permanent contre un fichier remis dans une app parquée.
 """
@@ -24,9 +24,9 @@ CONTENU_COQUILLE = {'__init__.py', 'apps.py', 'models.py', 'migrations', '__pyca
 
 
 class ParkedRegistryTests(SimpleTestCase):
-    def test_48_labels_uniques(self):
-        self.assertEqual(len(APPS_PARQUEES), 48)
-        self.assertEqual(len(APPS_PARQUEES_SET), 48, 'doublon dans APPS_PARQUEES')
+    def test_47_labels_uniques(self):
+        self.assertEqual(len(APPS_PARQUEES), 47)
+        self.assertEqual(len(APPS_PARQUEES_SET), 47, 'doublon dans APPS_PARQUEES')
         self.assertEqual(ARCHIVE_REF, 'archive/full-erp-2026-09-20')
         self.assertTrue(est_parquee('voip') and est_parquee('apps.voip'))
         self.assertFalse(est_parquee('crm') or est_parquee(''))

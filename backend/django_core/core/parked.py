@@ -66,7 +66,6 @@ APPS_PARQUEES = (
     'flotte',
     'fpa',
     'frais',
-    'ged',
     'gestion_projet',
     'grc',
     'hospitality',
@@ -110,7 +109,7 @@ GROUPES = {
         'territoires', 'voip', 'conversation_ai',
     ),
     'Opérations & services': (
-        'datarooms', 'ged', 'esg', 'qhse', 'gestion_projet', 'contrats',
+        'datarooms', 'esg', 'qhse', 'gestion_projet', 'contrats',
         'innovation', 'kb', 'chat',
     ),
     'Supply & retail': ('promotions', 'pos', 'transport', 'douane', 'scm'),
@@ -125,11 +124,13 @@ GROUPES = {
 }
 
 # Ordre de RETOUR décidé le 20/09/2026 (à retenir, jamais à re-décider) :
-# Messages, GED, puis l'édition « Solaire C&I / EPC » (ao + veille_ao +
+# Messages, puis l'édition « Solaire C&I / EPC » (ao + veille_ao +
 # btp_chantier), puis le pack Maroc (paie, einvoice, fiscal), puis compta.
+# GED était le n°2 de cette liste : décision fondateur du 21/09/2026, elle
+# RESTE dans le MVP solaire (module « Documents ») — donc plus rien à faire
+# revenir pour elle.
 PHASE2 = (
     'chat',
-    'ged',
     'ao',
     'veille_ao',
     'btp_chantier',
