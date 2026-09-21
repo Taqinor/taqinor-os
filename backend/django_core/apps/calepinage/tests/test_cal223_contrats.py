@@ -84,10 +84,14 @@ SANS_PRODUCTEUR_PUR = {
         'comparatif qui lit les variantes en base (CAL21)',
     'zones.json':
         'entrée du moteur (pas une réponse serveur) — couvert par CAL22',
-    # CALX4 — contrat posé AVANT ses deux moitiés (PACT10)
+    # CALX4 / CALX5 — le document écrit par la simulation dans
+    # ``Calepinage.resultat``. Son producteur EXISTE désormais
+    # (``services/simulation.py``), mais il lit le devis, le stock et les
+    # réglages en base : la forme est affirmée sans base par
+    # apps/calepinage/tests/test_calx5_simulation.py.
     'calepinage_simulation.json':
-        'document écrit par la simulation dans Calepinage.resultat — '
-        'producteur services/simulation.py livré par CALX5',
+        'document écrit par services/simulation.py (CALX5) : son producteur '
+        'lit le document, les fiches produit et les réglages société en base',
     # CALX45
     'calepinage_du_devis.json':
         "endpoint d'une AUTRE app (apps.ventes, DevisSerializer) — couvert "
@@ -157,9 +161,9 @@ SANS_PRODUCTEUR_PUR = {
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
 #: `main`) — le contrôle 2 les ignore tant que la tâche nommée n'a pas livré
 #: la porte ; retirer l'entrée dans la même tâche que la route.
-POSES_AVANT_LEUR_ROUTE = {
-    'calepinage_simulation.json': 'POST simuler/ livrée par CALX5 (lot M2)',
-}
+#: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
+#: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
+POSES_AVANT_LEUR_ROUTE = {}
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
 #: chercher) : ils appartiennent à une autre app.
