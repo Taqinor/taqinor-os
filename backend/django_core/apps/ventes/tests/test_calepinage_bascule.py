@@ -149,14 +149,10 @@ class LeDrapeauEstBaisseParDefaut(SimpleTestCase):
             appels.append(1)
             return {'modules': 999, 'pans': ()}
 
-        original = services.compte_moteur_du_layout
-        services.compte_moteur_du_layout = _mouchard
-        try:
+        with patch.object(geometrie, 'compte_moteur_du_layout', _mouchard):
             self.assertIsNone(
                 services.arbitrer_compte_calepinage(
                     layout_avec_geometrie(), 12))
-        finally:
-            geometrie.compte_moteur_du_layout = original
         self.assertEqual(appels, [])
 
 
@@ -249,17 +245,17 @@ class DrapeauOnLeMoteurDonneLeCompte(_Base):
         # que `services` porte n'est qu'un ré-export, un cliché pris à
         # l'import. Remplacer la façade laissait donc le vrai moteur tourner,
         # et la panne simulée n'arrivait jamais.
-        original = geometrie.compte_moteur_du_layout
-        geometrie.compte_moteur_du_layout = _explose
-        try:
+        # 21/09/2026 — la restauration visait `services` alors que la panne
+        # était posée sur `geometrie` : le moteur restait « en panne » pour
+        # TOUS les tests suivants du même processus (PV42 rouge dès que
+        # l'ordre du shard changeait). `patch.object` restaure le BON module.
+        with patch.object(geometrie, 'compte_moteur_du_layout', _explose):
             self.assertIsNone(
                 services.arbitrer_compte_calepinage(
                     layout_avec_geometrie(), 12))
             devis = build_devis_from_layout(
                 layout=layout_avec_geometrie(panels=12, kwc=6.6),
                 user=self.user, company=self.company, lead=self._lead())
-        finally:
-            services.compte_moteur_du_layout = original
         self.assertEqual(self._panneaux(devis), 12)
 
     def test_un_pan_a_la_geometrie_invalide_est_ignore(self):
