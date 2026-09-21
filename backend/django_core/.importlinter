@@ -449,8 +449,8 @@ forbidden_modules =
     apps.visites
     apps.voip
 # ARC18/19/21 + AUDV23 — les modules de TEST des ponts Tiers importent volontairement les
-# vrais modèles historiques (crm.Client/Lead, stock.Fournisseur, compta.Partenaire,
-# rh.DossierEmploye) et le service crm pour PROUVER que le miroir one-way et la
+# vrais modèles historiques (crm.Client/Lead, stock.Fournisseur) et le service
+# crm pour PROUVER que le miroir one-way et la
 # bascule flag-gatée fonctionnent de bout en bout. Ce sont des tests d'intégration
 # cross-couche, PAS un couplage de production : le code de PRODUCTION de `tiers`
 # reste strictement base-layer (aucun import statique de domaine — vérifié). On
@@ -514,10 +514,11 @@ ignore_imports =
 # AUD231 — le test des huit balayages beat a DÉMÉNAGÉ dans apps/pos/tests
 # (contrat core = couche de base, fix-ci #620) : plus aucune arête core.tests
 # vers les domaines, les exceptions mortes sont retirées (06/09/2026).
-# SOL13/SOL14 + YHARD — trois autres tests noyau cross-couche révélés par
-# l'inversion : le registre des traitements CNDP s'appuie sur un dossier RH
-# réel, et le filtre « sociétés ayant tel module » sur une société d'adminops.
-    core.tests.test_registre_traitements -> apps.rh.models
+# SOL13/SOL14 + YHARD — tests noyau cross-couche révélés par l'inversion : le
+# filtre « sociétés ayant tel module » s'appuie sur une société d'adminops.
+# (SOLMVP23 — l'exception « registre des traitements CNDP → dossier RH réel »
+# est retirée avec la sortie du module RH du MVP solaire : le test ne couvre
+# plus que les fournisseurs DSR des apps gardées.)
     core.tests.test_sol14_societes_avec_module -> apps.adminops.models
 # YRBAC6/YRBAC9 — two core SECURITY-RATCHET *test* modules deliberately import
 # real domain serializers/models to prove the core masking mixins actually strip

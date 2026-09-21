@@ -110,30 +110,6 @@ def _install_default_masks():
     register_mask('authentication.CustomUser', {
         'totp_secret': scrub_null,
     })
-    register_mask('paie.ProfilPaie', {
-        'salaire_base': scrub_null,
-        'numero_cnss': scrub_null,
-        'numero_amo': scrub_null,
-        'numero_cimr': scrub_null,
-        'rib': scrub_null,
-        'banque': scrub_null,
-    })
-    register_mask('rh.DossierEmploye', {
-        'cin': scrub_null,
-        'cnss': scrub_null,
-        'amo': scrub_null,
-        'rib': scrub_null,
-        'groupe_sanguin': scrub_null,
-        'nom': scrub_name,
-        'prenom': scrub_name,
-        'email': scrub_email,
-        'email_perso': scrub_email,
-        'telephone': scrub_phone,
-        'telephone_perso': scrub_phone,
-    })
-    register_mask('rh.Remuneration', {
-        'montant': scrub_null,
-    })
     register_mask('notifications.VapidKeyPair', {
         'private_key': scrub_null,
     })

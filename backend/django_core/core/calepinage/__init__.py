@@ -2,7 +2,7 @@
 """``core.calepinage`` — le moteur de calepinage PHOTOVOLTAÏQUE, paquet PUR.
 
 Deux consommateurs qui ne peuvent pas s'importer l'un l'autre en dépendent :
-``apps.ao`` (réponse à appel d'offres) et ``apps.ventes`` (villa). Le paquet est
+``apps.calepinage`` (étude de toiture) et ``apps.ventes`` (villa). Le paquet est
 donc logé dans la couche fondation ``core`` et sa PURETÉ est un contrat :
 
 * stdlib + ``numpy`` UNIQUEMENT — zéro ``django``, zéro ``rest_framework``,

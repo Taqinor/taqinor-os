@@ -12,10 +12,11 @@ AUD422 — ``--only`` permet un déploiement ÉTAGÉ (le tout-ou-rien d'origine
 était la raison pour laquelle RLS n'a jamais été activé sur AUCUNE table) :
 
     python manage.py rls --dry-run --only argent
-    python manage.py rls --apply --only compta.EcritureComptable,facturation.Facture
+    python manage.py rls --apply --only ventes.Devis,facturation.Facture
 
-Les 5 tables argent sont d'ailleurs posées par MIGRATION (compta, ventes,
-facturation) : la commande reste l'outil d'inspection et d'élargissement.
+Les tables argent sont d'ailleurs posées par MIGRATION (ventes, facturation, et
+le grand livre du module comptabilité sorti en Phase 2 — policies conservées en
+base) : la commande reste l'outil d'inspection et d'élargissement.
 
 JAMAIS lancée automatiquement : c'est une bascule d'infrastructure délibérée
 (elle suppose le GUC posé — NTPLT1 — et le rôle applicatif non-BYPASSRLS —
@@ -49,10 +50,10 @@ class Command(BaseCommand):
         parser.add_argument(
             '--only', default='',
             help="Restreint à une liste de modèles « app_label.Model » séparés "
-                 "par des virgules (ex. compta.EcritureComptable,"
+                 "par des virgules (ex. ventes.Devis,"
                  "facturation.Facture). Un libellé inconnu FAIT ÉCHOUER la "
                  "commande — jamais un silence. Raccourci : « argent » vise "
-                 "les 5 tables argent (core.rls.TABLES_ARGENT).")
+                 "les tables argent (core.rls.TABLES_ARGENT).")
 
     def _labels(self, brut):
         """Résout ``--only`` : '' → None (tout), 'argent' → TABLES_ARGENT."""

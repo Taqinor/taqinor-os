@@ -239,7 +239,7 @@ UNGUARDED_ACTION_BASELINE = {
     "kb": 35,
     "litiges": 7,
     # NTMKT44/45 — 0->2 : ``apps/marketing/views.py`` déclare deux sous-classes
-    # qui étendent un ViewSet de ``apps.compta.views`` SANS le modifier
+    # qui étendent un ViewSet d'une app métier SANS le modifier
     # (``CampagneViewSetAudite(CampagneViewSet)``, ``EnqueteNPSViewSetNotifiant
     # (EnqueteNPSViewSet)``) et REDÉCLARENT l'``@action`` du parent — le
     # décorateur est obligatoire, sans lui ``get_extra_actions()`` de DRF perd

@@ -99,10 +99,11 @@ importe ``apps.audit``.
     * ``user`` — le compte utilisateur lié (peut être ``None``) ;
     * ``motif`` — le motif de sortie (``DossierEmploye.MotifSortie``).
 
-    Abonné dans ce repo : ``paie`` (``apps/paie/receivers.py``) — passe
-    ``ProfilPaie.actif=False`` pour le dossier lié, SANS que ``rh`` importe
-    jamais ``apps.paie`` directement (même pattern que ``devis_accepted`` →
-    ``crm``).
+    Abonné historique : le module PAIE (son ``receivers.py``) — passe le
+    profil de paie lié à ``actif=False``, SANS que le module RH importe
+    jamais la paie directement (même pattern que ``devis_accepted`` →
+    ``crm``). Les deux modules sont en Phase 2 (docs/parked-modules.md) : le
+    signal reste le point d'accroche du jour où ils reviennent.
 
 ``conge_approuve``
     Émis quand une ``rh.DemandeConge`` passe à VALIDÉE (FG163,
@@ -296,8 +297,8 @@ importe ``apps.audit``.
 ``document_produit``
     Émis par une app métier/satellite quand elle produit un fichier destiné à
     être centralisé dans la GED (ZGED6 — pattern Odoo « File centralization »).
-    L'émetteur n'importe jamais ``apps.ged`` ; ``ged`` s'abonne dans
-    ``apps/ged/apps.py`` ``ready()`` (``apps/ged/receivers.py``) et route le
+    L'émetteur n'importe jamais la GED ; la GED s'abonne dans son
+    ``apps.py`` ``ready()`` (son ``receivers.py``) et route le
     fichier via ``ged.services.router_document_module`` si un
     ``RoutageDocumentaire`` existe pour la ``source`` — sinon no-op silencieux
     (comportement actuel inchangé). WIR165 — premier ÉMETTEUR RÉEL :
@@ -332,7 +333,7 @@ importe ``apps.audit``.
     crée idempotemment une ``EnqueteNPS`` pour le client du chantier (une
     enquête par chantier, jamais de doublon même en cas de ré-émission) et
     appelle ``envoyer_enquete_nps`` (no-op sans clé Brevo, comportement FG238
-    inchangé). ``installations`` n'importe jamais ``apps.compta`` — même
+    inchangé). ``installations`` n'importe jamais la comptabilité — même
     patron que ``devis_accepted`` → ``crm``. Arguments du signal :
 
     * ``installation`` — l'instance ``installations.Installation`` désormais
@@ -426,7 +427,7 @@ importe ``apps.audit``.
     un abonné réel plutôt qu'un simple seam — journalise une entrée d'audit
     dédiée (``apps.audit.recorder``) distincte de celle déjà posée par le
     récepteur du signal local (YEVNT12), preuve qu'un abonné EXTERNE
-    hypothétique recevrait bien l'événement sans importer ``apps.qhse``.
+    hypothétique recevrait bien l'événement sans importer le module QHSE.
 
     ``publicapi`` — DÉCISION (ARC38) : ``apps/publicapi/signals.py`` reste
     volontairement LOCAL et NE SOUSCRIT PAS à ``incident_declared``. Ce module
@@ -715,7 +716,7 @@ paiement_fournisseur_enregistre = django.dispatch.Signal()
 #   d'inventaire permanent — doublement gardée par le toggle
 #   ``COMPTA_AUTO_ECRITURES``/WIR24 ET par ``PlanComptable.inventaire_permanent``,
 #   les deux OFF par défaut : sans opt-in explicite, RIEN n'est écrit).
-# ``stock`` n'importe jamais ``apps.compta`` — l'instance transite par le
+# ``stock`` n'importe jamais la comptabilité — l'instance transite par le
 # signal, exactement comme ``facture_fournisseur_creee``.
 mouvement_stock_enregistre = django.dispatch.Signal()
 
@@ -767,7 +768,7 @@ effet_rejete = django.dispatch.Signal()
 # (compta.AbonnementMonitoring), motif (str), company. Abonné dans ce repo
 # (ARC36) : ``monitoring`` (``apps/monitoring/receivers.py``) — coupe la
 # supervision automatique liée (``MonitoringConfig.enabled=False`` pour
-# ``installation_id``), sans jamais importer ``apps.compta`` (abonnement par
+# ``installation_id``), sans jamais importer l'app émettrice (abonnement par
 # NOM de signal : l'émetteur bougera avec ODX16/17-20 sans casser l'abonné).
 abonnement_monitoring_resilie = django.dispatch.Signal()
 
@@ -885,11 +886,13 @@ cycle_sterilisation_non_conforme = django.dispatch.Signal()
 # ``libelle`` (snapshot d'affichage — à défaut ``str(instance)``), ``donnees``
 # (dict best-effort, AFFICHAGE SEUL, jamais réinjecté à la restauration).
 record_soft_deleted = django.dispatch.Signal()
-# AOF13 — DEUX événements du domaine « appel d'offres » (``apps.ao``), et deux
+# AOF13 — DEUX événements du domaine « appel d'offres », et deux
 # seulement : on ne déclare pas ``ao_perdu``/``ao_dossier_pret`` « pour plus
 # tard » (un signal sans abonné réel fait rougir ``core.event_coverage``).
-# Émis EXCLUSIVEMENT par ``apps.ao.services.changer_statut_ao`` — jamais depuis
-# un modèle, jamais depuis une vue.
+# Émis EXCLUSIVEMENT par le service de changement de statut du module appel
+# d'offres — jamais depuis un modèle, jamais depuis une vue. Ce module est en
+# Phase 2 (docs/parked-modules.md) ; l'abonné ``crm`` (avance d'étape du lead
+# lié) est GARDÉ, donc les deux signaux restent déclarés ici.
 #
 # ``ao_depose``
 #     Le dossier est DÉPOSÉ (transition ``pret_a_deposer`` → ``depose``).
@@ -1058,7 +1061,7 @@ salle_vente_signal_interet = django.dispatch.Signal()
 #     Le score de MATURITÉ marketing (``marketing.ScoreMaturite``, NTMKT18)
 #     d'un lead change lors du recalcul quotidien de la pénalité d'inactivité
 #     30j (NTMKT34, tâche beat ``marketing.recalculer_scores_maturite_inactivite``).
-#     Émis par ``apps.marketing.services.recalculer_scores_maturite_inactivite``
+#     Émis par le recalcul quotidien du module marketing (Phase 2)
 #     UNIQUEMENT quand la valeur change réellement (jamais à chaque tick
 #     no-op). Distinct du score de QUALITÉ ``crm.Lead.score`` (QJ6, jamais
 #     modifié par ce signal). AUCUN abonné dans ce repo aujourd'hui — seam
@@ -1070,12 +1073,12 @@ salle_vente_signal_interet = django.dispatch.Signal()
 lead_maturite_changee = django.dispatch.Signal()
 
 
-# NTLOG44 — Émis EXACTEMENT une fois quand un ``douane.DossierExport`` bascule
-# vers CLÔTURÉ (``apps.douane.services.cloturer_dossier_export``, garde
+# NTLOG44 — Émis EXACTEMENT une fois quand un dossier d'export douane bascule
+# vers CLÔTURÉ (service de clôture du module douane, garde
 # idempotente — reclôturer un dossier déjà clôturé ne réémet rien). Des 3
 # événements originellement prévus pour ce lot, seul celui-ci est émissible
-# depuis ``apps.douane`` aujourd'hui : ``ordre_transport_livre``/
-# ``litige_transport_ouvert`` appartiennent au domaine ``apps.transport``
+# depuis la douane : ``ordre_transport_livre``/
+# ``litige_transport_ouvert`` appartiennent au domaine du transport
 # (lane concurrente) ; ``dossier_import_cloture`` dépendrait de
 # ``douane.DossierImport``, qui reste BLOCKED (NTLOG10 — GARDE WIR80, voir
 # ``apps/douane/apps.py``). ``dossier_export_cloture`` couvre le volet EXPORT
@@ -1090,14 +1093,14 @@ lead_maturite_changee = django.dispatch.Signal()
 dossier_export_cloture = django.dispatch.Signal()
 
 
-# NTSCM39 — Émis pour CHAQUE produit que ``apps.scm.selectors.
-# tableau_bord_reappro`` (NTSCM7) classe ``rupture_imminente`` (rupture
+# NTSCM39 — Émis pour CHAQUE produit que le tableau de bord réappro du module
+# SCM (NTSCM7) classe ``rupture_imminente`` (rupture
 # projetée AVANT qu'une commande lancée aujourd'hui ne puisse livrer),
-# déclenché par ``apps.scm.services.detecter_ruptures_imminentes_et_notifier``
-# (appelé par la tâche beat hebdomadaire NTSCM35 — pas à chaque lecture du
+# déclenché par sa détection hebdomadaire des ruptures imminentes
+# (tâche beat NTSCM35 — pas à chaque lecture du
 # tableau de bord, qui serait rejouée à chaque page vue). Abonné par
 # ``apps.publicapi`` (webhook sortant ``scm.rupture_imminente_detectee``,
-# ``apps/publicapi/scm_event_receivers.py``) sans que ``apps.scm`` importe
+# ``apps/publicapi/scm_event_receivers.py``) sans que le module SCM importe
 # cette app (même patron que ``dossier_export_cloture`` ci-dessus).
 # Arguments : ``company``, ``produit_id``, ``produit_nom``, ``rupture_date``
 # (``str`` ISO-8601 ou ``None`` — déjà sérialisée par ``selectors.
@@ -1105,7 +1108,7 @@ dossier_export_cloture = django.dispatch.Signal()
 scm_rupture_imminente_detectee = django.dispatch.Signal()
 
 # NTSCM39 — Émis EXACTEMENT à la clôture d'un ``scm.CyclePlanificationSOP``
-# (``apps.scm.services.avancer_statut_cycle``, transition vers ``clos`` —
+# (service d'avancement de cycle du module SCM, transition vers ``clos`` —
 # même point d'ancrage que le hook NTSCM27 de génération du compte-rendu
 # .xlsx, juste après). Abonné par ``apps.publicapi`` (webhook sortant
 # ``scm.cycle_sop_cloture``). Arguments : ``cycle`` (instance
@@ -1134,12 +1137,13 @@ workflow_etape_activee = django.dispatch.Signal()
 # scorant les fournisseurs pourra l'ajouter ici sans rien casser.
 
 # NTJUR26 — Émis EXACTEMENT à la clôture d'un ``juridique.DossierJuridique``
-# (``apps.juridique.services.clore_dossier``, transition vers l'un des quatre
-# statuts ``clos_*``). L'abonné DANS ce dépôt est ``apps/juridique/
-# receivers.py`` : il lève la bannière « reprendre la provision » (NTJUR15) —
-# une PROPOSITION, jamais une écriture. ``apps.compta`` peut s'y abonner de la
-# même façon pour proposer la reprise depuis son propre écran, sans que
-# ``juridique`` l'importe.
+# (service de clôture du module juridique, transition vers l'un des quatre
+# statuts ``clos_*``). L'abonné historique est le ``receivers.py`` de ce même
+# module : il lève la bannière « reprendre la provision » (NTJUR15) —
+# une PROPOSITION, jamais une écriture. La comptabilité peut s'y abonner de la
+# même façon pour proposer la reprise depuis son propre écran, sans que le
+# juridique l'importe. Les deux modules sont en Phase 2
+# (docs/parked-modules.md).
 # GARANTIE : cet événement ne poste JAMAIS d'écriture comptable — la reprise
 # reste gardée par une confirmation explicite (patron « propose → confirme »).
 # Arguments : ``dossier`` (l'instance close), ``company``, ``resultat`` (le
@@ -1147,10 +1151,10 @@ workflow_etape_activee = django.dispatch.Signal()
 # arrêté), ``user`` (peut être ``None``).
 dossier_juridique_clos = django.dispatch.Signal()
 
-# ── NTCON31 — Événements du vertical BTP/EPC (apps.btp_chantier) ────────────
+# ── NTCON31 — Événements du vertical BTP/EPC ────────────────────────────────
 # Les quatre gestes que la MOE/le client externe attend d'être notifiés. Émis
-# par ``apps.btp_chantier.services`` (le SEUL point d'écriture d'état du
-# module), abonnés par ``apps.publicapi`` (webhook sortant, voir
+# par les services du module chantier BTP (le SEUL point d'écriture d'état du
+# module, en Phase 2), abonnés par ``apps.publicapi`` (webhook sortant, voir
 # ``apps/publicapi/btp_event_receivers.py``) — jamais un import direct
 # ``btp_chantier`` → ``publicapi`` : l'app émet sur le bus, sans savoir qui
 # écoute (même patron que ``scm_rupture_imminente_detectee`` ci-dessus).
@@ -1242,7 +1246,7 @@ rfq_attribuee = django.dispatch.Signal()
 
 # NTP2P38 — ADAPTATION DE PÉRIMÈTRE, pour le 3ᵉ événement prévu au plan
 # (``facture_fournisseur_exception_3voies``) : le rapprochement 3 voies est
-# FG131 et vit intégralement dans ``apps.compta.services``
+# FG131 et vit intégralement dans les services de la comptabilité
 # (``evaluer_rapprochement`` est le seul endroit où un écart reçu↔facturé est
 # calculé et où le statut « en écart » est posé), app qui n'appartient pas à
 # la lane de ce commit. Aucun signal n'est déclaré ici tant que son émetteur
@@ -1306,12 +1310,12 @@ def emettre_langue_changed(company, *, ancienne_langue, nouvelle_langue,
     return True
 
 
-# ── NTOBS26 — Incidents publics (apps.statuspage) sur le bus ────────────────
+# ── NTOBS26 — Incidents publics (page d'état) sur le bus ────────────────────
 # Une intégration tierce (webhook sortant, page de statut miroir) doit savoir
 # qu'un incident vient de s'ouvrir/se résoudre — système (``company=None``,
 # visible de tous les tenants) ou spécifique à une société. Émis par
-# ``apps.statuspage.receivers`` (le SEUL point d'écriture du statut d'un
-# ``IncidentPublic``), consommé par ``apps.publicapi`` (webhook sortant),
+# le ``receivers.py`` de la page d'état (le SEUL point d'écriture du statut
+# d'un incident public), consommé par ``apps.publicapi`` (webhook sortant),
 # jamais un import direct ``statuspage`` -> ``publicapi``. Arguments :
 # ``incident`` (l'instance ``IncidentPublic``), ``company`` (peut être
 # ``None`` : incident système).
@@ -1335,7 +1339,7 @@ maintenance_window_announced = django.dispatch.Signal()
 # contrat import-linter ``core-foundation-is-a-base-layer``) émettent ici ;
 # ``apps.audit.receivers`` s'y abonne (M4, même patron que
 # ``document_pdf_generated``/``bulk_edit_applied`` plus haut). La publication
-# de post-mortem (5ᵉ action) vit dans ``apps.statuspage`` — pas ``core`` —
+# de post-mortem (5ᵉ action) vit dans la page d'état — pas ``core`` —
 # et appelle déjà ``apps.audit.recorder`` directement (satellite → satellite,
 # aucune contrainte import-linter).
 #

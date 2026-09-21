@@ -47,6 +47,13 @@ POLICY_PREFIX = "rls_company_"
 # ~900 tables company-scopées — que personne n'ose lancer. Décision fondateur :
 # démarrer par les tables ARGENT seules, par migration, table par table.
 #
+#
+# Les deux libellés comptables du lot d'origine (grand livre) ont quitté cette
+# liste avec la sortie du module comptabilité du MVP solaire (Phase 2, voir
+# `docs/parked-modules.md`) : leurs TABLES et leurs policies posées par les
+# migrations AUD422 restent en base intactes, mais le libellé n'est plus
+# résoluble par le registre Django, et `tables_for_labels` est fail-closed.
+#
 # Ces libellés sont des CHAÎNES (jamais un import d'app métier : `core` reste
 # fondation). Deux d'entre eux surprennent et c'est VOULU : `Facture` et
 # `Paiement` vivent dans l'app `facturation` (ODX17 — `apps.ventes.models` n'en
@@ -54,8 +61,6 @@ POLICY_PREFIX = "rls_company_"
 # `ventes_facture` / `ventes_paiement`. Viser `ventes.Facture` échouerait
 # bruyamment (`tables_for_labels` lève sur un libellé inconnu — fail-closed).
 TABLES_ARGENT = (
-    'compta.EcritureComptable',
-    'compta.LigneEcriture',
     'ventes.Devis',
     'facturation.Facture',
     'facturation.Paiement',
@@ -131,7 +136,7 @@ def tables_for_labels(labels, apps_registry=None) -> list[RlsTable]:
     qui « n'a rien trouvé » et n'a donc rien protégé serait le pire des
     résultats : elle se déclarerait appliquée.
 
-    Comparaison insensible à la casse (``compta.ecriturecomptable`` marche),
+    Comparaison insensible à la casse (``ventes.devis`` marche),
     ordre de sortie stable (par nom de table, comme la découverte complète).
     """
     voulus = {str(label).strip().lower() for label in labels if str(label).strip()}

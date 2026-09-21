@@ -106,7 +106,7 @@ router.register(r'workflow-step-definitions', WorkflowStepDefinitionViewSet,
                 basename='workflow-step-definition')
 # NTWFL1 — matrice d'approbation d'entreprise unifiée (objet × montant ×
 # département → chaîne de paliers), référentiel additif consulté par FG25 /
-# apps.contrats avant leur logique historique.
+# les apps appelantes avant leur logique historique.
 router.register(r'matrices-approbation', MatriceApprobationViewSet,
                 basename='matrice-approbation')
 # NTWFL12/13 — formulaires dynamiques rattachables aux étapes de workflow +

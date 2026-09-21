@@ -3,7 +3,6 @@
 Couvre :
   * une demande d'accès exporte les données CRM réelles ;
   * un effacement anonymise le lead (activités conservées) ;
-  * l'effacement employé est refusé avec motif légal ;
   * le registre CNDP s'exporte en CSV ;
   * le seed est rejouable sans doublon ;
   * isolation multi-tenant.
@@ -71,40 +70,6 @@ class DsrCrmProviderTests(TestCase):
         dsr.traiter_demande(req)
         # ACME n'a pas ce lead → aucune fuite depuis « Autre ».
         self.assertEqual(req.resultat.get('crm', {}).get('leads'), [])
-
-
-class DsrRhProviderTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.company = Company.objects.create(nom='ACME')
-
-    def _dossier(self):
-        from apps.rh.models import DossierEmploye
-        return DossierEmploye.objects.create(
-            company=self.company, matricule='E001', nom='Alami',
-            prenom='Sara', email='sara@example.com')
-
-    def test_rh_export(self):
-        self._dossier()
-        req = DataSubjectRequest.objects.create(
-            company=self.company, subject_identifier='sara@example.com',
-            kind=DataSubjectRequest.KIND_ACCESS)
-        dsr.traiter_demande(req)
-        rh_data = req.resultat.get('rh', {})
-        self.assertTrue(rh_data.get('dossiers_employes'))
-
-    def test_rh_erasure_refused_with_motif(self):
-        self._dossier()
-        req = DataSubjectRequest.objects.create(
-            company=self.company, subject_identifier='sara@example.com',
-            kind=DataSubjectRequest.KIND_ERASURE)
-        dsr.traiter_demande(req)
-        rh_result = req.resultat.get('rh', {})
-        self.assertTrue(rh_result.get('refuse'))
-        self.assertIn('refus', rh_result.get('motif', '').lower())
-        # Le dossier n'est PAS effacé.
-        from apps.rh.models import DossierEmploye
-        self.assertEqual(DossierEmploye.objects.count(), 1)
 
 
 class RectificationTests(TestCase):

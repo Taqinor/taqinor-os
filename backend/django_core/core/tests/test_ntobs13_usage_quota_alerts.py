@@ -18,8 +18,8 @@ def _fake_summary(pct):
     """Résumé usage_summary() minimal avec UNE ressource au pourcentage donné."""
     return {
         'ressources': [
-            {'nom': 'Stockage documentaire', 'utilise': pct, 'limite': 100,
-             'unite': 'octets'},
+            {'nom': 'Requêtes API', 'utilise': pct, 'limite': 100,
+             'unite': 'requêtes'},
         ],
         'genere_le': '2026-01-01T00:00:00',
     }

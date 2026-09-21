@@ -141,7 +141,7 @@ class FondationPureTests(SimpleTestCase):
 
     def test_aucun_import_django_ni_app(self):
         # Lecture par AST (et non par sous-chaîne) : le docstring MENTIONNE
-        # `apps.ventes`/`apps.ao` à dessein, ce n'est pas un import.
+        # `apps.ventes` à dessein, ce n'est pas un import.
         arbre = ast.parse(inspect.getsource(fondation))
         modules = []
         for noeud in ast.walk(arbre):
