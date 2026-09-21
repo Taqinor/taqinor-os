@@ -101,6 +101,26 @@ const calepinageApi = {
     retenirVariante: (id, varianteId) =>
       api.post(`${pivot(id)}variantes/${varianteId}/retenir/`),
 
+    // CALX37 — créer une variante (`services.creer_variante`, déjà servi par
+    // `POST variantes/`) : `corps` porte `nom`/`roof_layout`/`resultat`, un nom
+    // vide est refusé CÔTÉ ÉCRAN avant tout appel (la garde serveur existe
+    // aussi, elle n'est jamais la seule).
+    creerVariante: (id, corps) => api.post(`${pivot(id)}variantes/`, corps),
+
+    // CALX37 — dupliquer : AUCUNE action serveur dédiée n'existe, c'est un
+    // geste d'écran qui relit le détail complet de la source (`roof_layout`/
+    // `resultat`, que le comparatif ne publie pas) puis crée une variante
+    // neuve avec ce contenu. `nom` (saisi par l'utilisateur) prime ; sans lui,
+    // un nom dérivé de la source évite un POST refusé pour nom vide.
+    dupliquerVariante: (id, varianteId, nom) =>
+      api.get(`${pivot(id)}variantes/${varianteId}/`).then((res) => {
+        const source = res?.data ?? {}
+        const nomFinal = nom || (source.nom ? `${source.nom} (copie)` : 'Copie de variante')
+        return api.post(`${pivot(id)}variantes/`, {
+          nom: nomFinal, roof_layout: source.roof_layout, resultat: source.resultat,
+        })
+      }),
+
     // CAL21 — comparatif des variantes, conforme à
     // `contract_samples/variantes_comparer.json`. Les ÉCARTS viennent du
     // serveur : un écran ne les recalcule jamais.
