@@ -545,6 +545,13 @@ export interface SerializedLayout {
    *  aucun horizon lointain modélisé — comportement historique, byte pour byte. Forme
    *  figée par `roof_layout_v2.schema.json` (`$defs/horizonProfile`). */
   horizonProfile?: HorizonProfile;
+  /** CALX119 — l'instant du soleil de SCÈNE (jour + heure) RÉELLEMENT affiché au moment de
+   *  l'export (contrat CALX88, `roof_layout_v2.schema.json` `$defs/scene`). Aucun calcul
+   *  n'en dépend (un point de vue, pas une donnée d'ingénierie). Omis seulement si
+   *  `ctx.sunDay`/`ctx.sunHour` ne sont pas finis (ne devrait pas arriver) — sinon TOUJOURS
+   *  écrit, pour que rouvrir le document restaure l'instant réellement vu (sinon chaque
+   *  rechargement retombe au solstice d'hiver/midi, l'incident que CALX119 corrige). */
+  scene?: ScenePoint;
   /**
    * CALX22x câblage — la couche électrique (organes + cheminements), écrite par
    * `couche.ecrireDansDocument` (voir `meta.coucheElectrique` ci-dessous) quand
@@ -748,6 +755,10 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...(meta?.horizonProfile && meta.horizonProfile.points.length >= 2
       ? { horizonProfile: serializeHorizonProfile(meta.horizonProfile) }
       : {}),
+    // CALX119 — l'instant du soleil de scène RÉELLEMENT affiché voyage avec le document,
+    // comme l'horizon et les retraits ci-dessus (sinon rouvrir le dossier ramène toujours
+    // midi au solstice d'hiver, l'incident que cette tâche corrige).
+    ...serializeScene(ctx.sunDay, ctx.sunHour),
   };
   // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
   // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
@@ -804,6 +815,39 @@ export function deserializeHorizonProfileFromLayout(json: unknown): HorizonProfi
   if (points.length < 2) return null;
   const source: HorizonSource = raw.source === 'pvgis' ? 'pvgis' : 'saisie';
   return { source, points, hauteurMaxDeg: horizonMaxHeightDeg(points) };
+}
+
+/**
+ * CALX119 — l'instant du soleil de SCÈNE (jour + heure AFFICHÉS), round-trip verbatim
+ * (contrat CALX88, `scene{sunDay,sunHour}` de `roof_layout_v2.schema.json`). AUCUN calcul
+ * n'en dépend (le contrat le dit) : ce n'est qu'un point de vue sauvegardé, jamais une
+ * donnée d'ingénierie — donc jamais recalculé ici, seulement recopié.
+ */
+export interface ScenePoint {
+  sunDay: number;
+  sunHour: number;
+}
+
+/** Sérialise l'instant de scène courant. `sunDay`/`sunHour` non finis (ne devrait jamais
+ *  arriver — `ctx` les garde toujours valides) ⇒ rien n'est émis, jamais une valeur
+ *  inventée. */
+export function serializeScene(sunDay: number, sunHour: number): { scene?: ScenePoint } {
+  if (!Number.isFinite(sunDay) || !Number.isFinite(sunHour)) return {};
+  return { scene: { sunDay, sunHour } };
+}
+
+/**
+ * Relit l'instant de scène d'un layout sérialisé. Absent (document antérieur à
+ * CALX88/CALX119) ou non exploitable ⇒ `null` : l'appelant garde alors le défaut
+ * historique (solstice d'hiver, midi) — comportement d'aujourd'hui, jamais un jour deviné.
+ */
+export function deserializeSceneFromLayout(json: unknown): ScenePoint | null {
+  const raw = (json as { scene?: { sunDay?: unknown; sunHour?: unknown } } | null | undefined)?.scene;
+  const sunDay = raw?.sunDay;
+  const sunHour = raw?.sunHour;
+  if (typeof sunDay !== 'number' || !Number.isFinite(sunDay)) return null;
+  if (typeof sunHour !== 'number' || !Number.isFinite(sunHour)) return null;
+  return { sunDay, sunHour };
 }
 
 /**
