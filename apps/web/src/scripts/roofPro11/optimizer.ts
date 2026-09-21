@@ -54,6 +54,10 @@ import {
   pvgisCoarsePairs,
   pvgisMatrixCandidatePairs,
   pvgisRefinePairs,
+  resoudreCibleOptimisation,
+  type CibleOptimisation,
+  type CibleResolue,
+  type ChoixOptimisation,
   type MatrixEvalV6,
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
@@ -178,6 +182,50 @@ export function pickVariantCards(result: MatrixV6Result | null | undefined): Var
     });
   }
   return cards;
+}
+
+/* ═════════ CALX114 — L'OBJECTIF SAISI DU DOCUMENT, LU PAR LES DEUX BALAYAGES ═════════
+   `optimisation` (CALX88) voyage par le DOCUMENT. L'atelier le dépose ICI, et les deux
+   appelants du balayage V6 — le tableau matrice (`matrix.ts`) et l'affinage PVGIS
+   (`buildMatrix` plus bas) — le lisent au même endroit : sans ce point unique, la ligne
+   « Recommandé » et la carte reco classeraient sur deux objectifs différents, ce qui
+   était précisément le désaccord que W73 avait coûté à corriger sur la source PVGIS.
+   Rien n'est décidé ici : aucun objectif par défaut n'est écrit, l'absence de choix est
+   rendue telle quelle et NOMMÉE par `resoudreCibleOptimisation`.
+   DEUX CROCHETS ATTENDUS, côté `prefill.ts` (ce module ne lit ni n'écrit le document) :
+   à l'OUVERTURE, `prefill.ts` lit `optimisation` et appelle `poserChoixOptimisation` ;
+   à la SÉRIALISATION, `serializeLayout` écrit `choixOptimisationCourant()` dans le
+   document — sans ce second crochet, l'objectif choisi à l'écran serait perdu au
+   rechargement, exactement comme la hauteur de bâtiment de CAL60. */
+let choixOptimisation: ChoixOptimisation | null = null;
+
+/** CALX114 — dépose le fragment `optimisation` SAISI (document, puce). Rend la cible
+ *  telle qu'elle sera appliquée si aucune mesure n'existe — le balayage, lui, mesure
+ *  d'abord puis re-résout, donc c'est lui qui a le dernier mot. */
+export function poserChoixOptimisation(choix: ChoixOptimisation | null | undefined): CibleResolue {
+  choixOptimisation = choix ?? null;
+  return resoudreCibleOptimisation(choixOptimisation);
+}
+
+/** CALX114 — n'écrit QUE la cible, sans toucher aux autres clés saisies (priorité de
+ *  remplissage, seuil d'accès solaire). `null` retire le choix : on revient à « aucun
+ *  objectif saisi », qui reste un état nommé, pas un silence. */
+export function poserCibleOptimisation(cible: CibleOptimisation | null): CibleResolue {
+  const suivant: ChoixOptimisation = { ...(choixOptimisation ?? {}) };
+  if (cible) suivant.cible = cible;
+  else delete suivant.cible;
+  return poserChoixOptimisation(suivant);
+}
+
+/** CALX114 — le fragment `optimisation` courant (null = rien n'a été saisi). */
+export function choixOptimisationCourant(): ChoixOptimisation | null {
+  return choixOptimisation;
+}
+
+/** CALX114 — la cible SAISIE et reconnue par le contrat, ou null (une valeur hors
+ *  contrat n'en presse aucune : elle est refusée, pas traduite). */
+export function cibleOptimisationSaisie(): CibleOptimisation | null {
+  return resoudreCibleOptimisation(choixOptimisation).saisie;
 }
 
 /** Dépendances injectées (rendu 3D + matrice + fenêtres + entrée). Les fonctions
@@ -1300,6 +1348,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
+      optimisation: choixOptimisation, // CALX114 — l'objectif SAISI, null = celui d'hier
     });
     paintComparison();
     renderMatrixOptimumCard();

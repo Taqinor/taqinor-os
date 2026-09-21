@@ -109,7 +109,10 @@ describe('pro-11 — W35 : optimiseur contraint VIVANT en pente (cerveau V8)', (
     // recomputeMatrix passe un yieldFn adossé à ctx.v4YieldCache (cache PVGIS partagé) —
     // plus de balayage table « nu » qui désaccorderait la ligne badgée de la carte reco.
     expect(matrix).toContain('ctx.v4YieldCache.get(v4Key(');
-    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), { yieldFn: matrixYieldFn })');
+    // CALX114 — l'appel porte désormais aussi l'objectif saisi (`optimisation`), donc on
+    // épingle l'appel ET le yieldFn plutôt qu'une ligne d'arguments figée.
+    expect(matrix).toContain('fineGridMatrixV6(ring, ctx.centroidLat, monthlyBill(), obstructionRings(), {');
+    expect(matrix).toContain('yieldFn: matrixYieldFn,');
   });
 
   it('W74 — l\'optimiseur affiche un message honnête « non viable » / « pan nord »', () => {
