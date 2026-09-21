@@ -38,6 +38,17 @@ CE QUE L'ÉDITION NE PEUT PAS FAIRE
   la même liste que la garde du contrat (``tests/test_calx204_contrat_sld
   .py::HORS_SUJET``).
 
+CALX234 — LES POSITIONS, ET LA PORTE D'ÉCRITURE
+------------------------------------------------
+``rendre_schema(entree, resultat, cartouche, positions, standard)`` accepte
+DEPUIS TOUJOURS une surcharge de position par organe, et ``_positions`` sait
+la consommer : la capacité existait sans être atteignable. Le chemin
+CALEPINAGE appelle donc le moteur DIRECTEMENT, avec ses positions — il cesse
+de passer par la porte cross-app ``apps/ventes/selectors.py::
+schema_unifilaire_svg``, qui reste INTACTE (octet pour octet) pour le chemin
+``devis=``. Une position hors planche est refusée en nommant la clef et la
+borne du format.
+
 LE DESSIN RESTE UNIQUE
 ----------------------
 Le SVG n'est pas reconstruit ici : il est rendu par ``rendre_schema`` (le
@@ -54,7 +65,8 @@ import re
 
 __all__ = [
     'CLE_EDITION', 'RUBRIQUES', 'LONGUEUR_TEXTE_MAX', 'MOTS_D_ARGENT',
-    'SldRefuse', 'edition_sld', 'enregistrer_edition_sld', 'rendu_du_schema',
+    'SldRefuse', 'cartouche_du_calepinage', 'edition_sld',
+    'enregistrer_edition_sld', 'rendu_du_schema', 'schema_du_calepinage',
 ]
 
 #: La clé du bloc d'édition dans ``Calepinage.resultat`` (JSONField existant).
@@ -231,13 +243,41 @@ def _valider_edition(corps, dessin):
 
 
 def _position_valide(brut, dessin, *, champ):
-    """CALX234 y ajoutera les bornes de la planche ; ici, la FORME seulement."""
+    """CALX234 — la FORME, puis les BORNES de la planche réellement dessinée.
+
+    Les bornes sont celles du format retenu par le moteur pour CETTE
+    conception (A4 ou A3 paysage, ``core/electrique/schema.py``), moins
+    l'encombrement d'une boîte : une position qui laisse le bloc à cheval sur
+    le bord donnerait une planche tronquée à l'impression. Le refus NOMME la
+    clef et la borne dépassée.
+    """
+    from core.electrique.schema import _BLOC_H, _BLOC_L
+
+    clef = champ.rsplit('.', 1)[-1]
     point = _point_lisible(brut)
     if point is None:
         raise SldRefuse(
             "La position de « %s » doit être un objet { x, y } en points de "
-            "planche." % champ.rsplit('.', 1)[-1], champ=champ)
+            "planche." % clef, champ=champ)
+    largeur = dessin.get('largeur')
+    hauteur = dessin.get('hauteur')
+    if not largeur or not hauteur:
+        return point
+    bornes = (('x', largeur - _BLOC_L), ('y', hauteur - _BLOC_H))
+    for axe, maximum in bornes:
+        if point[axe] < 0.0 or point[axe] > maximum:
+            raise SldRefuse(
+                "La position de « %s » sort de la planche : %s doit rester "
+                "entre 0 et %s points (planche %s × %s, boîte d'organe "
+                "comprise)." % (clef, axe, _nombre(maximum),
+                                _nombre(largeur), _nombre(hauteur)),
+                champ=champ)
     return point
+
+
+def _nombre(valeur):
+    """Un nombre de planche, au dixième, sans zéro inutile."""
+    return ('%.1f' % float(valeur)).rstrip('0').rstrip('.')
 
 
 # ────────────────────────────────────────────────────────── écriture
@@ -436,10 +476,90 @@ def rendu_du_schema(entree, resultat, *, edition=None, cartouche=None):
             edition[rubrique] = dict(valeurs)
     origine = blocs_du_schema(entree, resultat)
     blocs = _blocs_edites(origine, edition)
-    places, largeur, hauteur = _places(blocs, None)
-    svg = rendre_schema(entree, resultat, cartouche=cartouche or {})
+    positions = edition['positions'] or None
+    places, largeur, hauteur = _places(blocs, positions)
+    # CALX234 — le chemin CALEPINAGE appelle le moteur DIRECTEMENT, avec ses
+    # positions forcées : la porte cross-app ``apps.ventes.selectors.
+    # schema_unifilaire_svg`` n'en porte pas le paramètre et reste intacte,
+    # octet pour octet, pour le chemin ``devis=``.
+    svg = rendre_schema(entree, resultat, cartouche=cartouche or {},
+                        positions=positions)
     svg = _svg_avec_blocs_edites(svg, places,
                                  {bloc.clef: bloc for bloc in origine})
     return {'svg': svg, 'blocs': _blocs_publies(places, edition),
             'liaisons': _liaisons(places), 'largeur': largeur,
             'hauteur': hauteur}
+
+
+# ────────────────────────────────── CALX234 — la réponse servie par la vue
+def cartouche_du_calepinage(calepinage):
+    """Le cartouche technique de CE calepinage : client, référence, date.
+
+    ``rendre_schema`` n'accepte aucun autre champ, et aucun montant n'y a sa
+    place — c'est une pièce qui part au bureau de contrôle, pas une offre
+    (D-CALX 5). La date est celle de CRÉATION telle qu'elle est stockée,
+    jamais une date de rendu : deux impressions du même dossier portent le
+    même cartouche.
+    """
+    cree_le = getattr(calepinage, 'created_at', None)
+    return {
+        'client': getattr(getattr(calepinage, 'client', None), 'nom', '')
+        or '',
+        'reference': getattr(calepinage, 'titre', '') or '',
+        'date': cree_le.strftime('%d/%m/%Y') if cree_le else '',
+    }
+
+
+def _edition_publiee(edition, dessin):
+    """L'édition RÉDUITE aux blocs réellement dessinés.
+
+    ``edition`` n'est jamais une seconde source de vérité du dessin (contrat
+    CALX204) : une clef persistée que la conception ne retient plus — un
+    parafoudre retiré depuis — ne peut pas être publiée comme une édition
+    active, puisque aucun bloc ne la porterait. Elle reste STOCKÉE (le jour
+    où l'organe revient, son libellé revient avec lui) et le ``POST``, lui,
+    la refuse en la nommant.
+    """
+    clefs = {bloc['clef'] for bloc in dessin.get('blocs') or ()}
+    publiee = _edition_vide()
+    for rubrique in RUBRIQUES:
+        publiee[rubrique] = {clef: valeur
+                             for clef, valeur in edition[rubrique].items()
+                             if clef in clefs}
+    return publiee
+
+
+def schema_du_calepinage(calepinage):
+    """CALX204 — les SIX clés du contrat, dans tous les états.
+
+    ``svg`` vaut ``None`` quand la conception ne permet pas de dessiner
+    (fiche muette ou bloquant) : mêmes portails que l'annexe technique du
+    devis, et la réponse DIT pourquoi par ``bloquants``/``manquantes``, les
+    libellés français du service électrique tels quels. Aucune clé ne
+    disparaît jamais (leçon PACT10 du 03/08/2026).
+    """
+    from .electrique import bloquants_nommes, conception_du_calepinage
+
+    conception, _materiel, _donnees, _document = conception_du_calepinage(
+        calepinage)
+    manquantes = list(getattr(conception, 'manquantes', ()) or ())
+    bloquants = list(bloquants_nommes(conception) or ())
+    reponse = {
+        'calepinage': getattr(calepinage, 'pk', None),
+        'svg': None,
+        'blocs': [],
+        'edition': _edition_vide(),
+        'bloquants': bloquants,
+        'manquantes': manquantes,
+    }
+    if manquantes or bloquants:
+        return reponse
+    edition = edition_sld(calepinage)
+    dessin = rendu_du_schema(getattr(conception, 'entree', None),
+                             getattr(conception, 'resultat', None),
+                             edition=edition,
+                             cartouche=cartouche_du_calepinage(calepinage))
+    reponse['svg'] = dessin['svg']
+    reponse['blocs'] = [dict(bloc) for bloc in dessin['blocs']]
+    reponse['edition'] = _edition_publiee(edition, dessin)
+    return reponse
