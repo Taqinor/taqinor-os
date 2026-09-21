@@ -7,6 +7,7 @@
    supposée. Même dérogation que `module.config.jsx` du même module. */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
 import {
   nombre, pasMesure, tauxOccupation, contourTerrain, demandeMoteur, planVue2D,
@@ -379,305 +380,308 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
   const totaux = totauxParBatiment(layoutAffiche)
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-ombriere">
-      <p className="tech-label rule-brass text-brass-300">Ombrière / carport</p>
-      <p className="mt-2 text-xs text-lune-faint">
-        Une surface de pose comme une autre : elle pave comme un toit incliné et
-        se totalise avec le site. Aucune charge, aucune structure n’est calculée
-        ici.
-      </p>
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-ombriere">
+        <p className="tech-label rule-brass text-brass-300">Ombrière / carport</p>
+        <p className="mt-2 text-xs text-lune-faint">
+          Une surface de pose comme une autre : elle pave comme un toit incliné et
+          se totalise avec le site. Aucune charge, aucune structure n’est calculée
+          ici.
+        </p>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block text-sm text-lune-soft">
-          <span className="tech-label text-lune-faint">Bâtiment (pour les totaux)</span>
-          <input
-            type="text"
-            value={saisie.buildingId}
-            data-testid="cal-ombriere-buildingId"
-            onChange={(e) => majChamp('buildingId', e.target.value)}
-            className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
-          />
-        </label>
-        {CHAMPS.map(([cle, label]) => (
-          <label key={cle} className="block text-sm text-lune-soft">
-            <span className="tech-label text-lune-faint">{label}</span>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm text-lune-soft">
+            <span className="tech-label text-lune-faint">Bâtiment (pour les totaux)</span>
             <input
-              type="number"
-              step="any"
-              value={saisie[cle]}
-              data-testid={`cal-ombriere-${cle}`}
-              onChange={(e) => majChamp(cle, e.target.value)}
+              type="text"
+              value={saisie.buildingId}
+              data-testid="cal-ombriere-buildingId"
+              onChange={(e) => majChamp('buildingId', e.target.value)}
               className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
             />
           </label>
-        ))}
-      </div>
+          {CHAMPS.map(([cle, label]) => (
+            <label key={cle} className="block text-sm text-lune-soft">
+              <span className="tech-label text-lune-faint">{label}</span>
+              <input
+                type="number"
+                step="any"
+                value={saisie[cle]}
+                data-testid={`cal-ombriere-${cle}`}
+                onChange={(e) => majChamp(cle, e.target.value)}
+                className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
+              />
+            </label>
+          ))}
+        </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={calculer}
-          disabled={enCours}
-          data-testid="cal-ombriere-calculer"
-          className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
-        >
-          {enCours ? 'Calcul en cours…' : 'Calculer l’ombrière'}
-        </button>
-        {persister && (
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={enregistrer}
-            data-testid="cal-ombriere-enregistrer"
-            className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
+            onClick={calculer}
+            disabled={enCours}
+            data-testid="cal-ombriere-calculer"
+            className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
           >
-            Enregistrer l’ombrière
+            {enCours ? 'Calcul en cours…' : 'Calculer l’ombrière'}
           </button>
-        )}
-      </div>
-
-      {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
-          data-testid="cal-ombriere-message">{message}</p>
-      )}
-
-      {/* LA HAUTEUR LIBRE N'EST JAMAIS SUPPOSÉE. */}
-      <p className="mt-3 text-xs text-lune-faint" data-testid="cal-ombriere-hauteur">
-        {hauteur === null || hauteur <= 0
-          ? 'Hauteur libre non renseignée : la couverture n’est pas levée en 3D '
-            + '(aucune hauteur par défaut n’est supposée).'
-          : `Couverture posée à ${auDixieme(hauteur)} m — la hauteur saisie.`}
-      </p>
-
-      {plan && (
-        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-3">
-          <div data-testid="cal-ombriere-modules">
-            <dd className="fig text-lg text-white">{plan.modules ?? '—'}</dd>
-            <dt className="tech-label text-lune-faint">Modules posés (moteur)</dt>
-          </div>
-          <div data-testid="cal-ombriere-travees">
-            <dd className="fig text-lg text-white">{(plan.tables ?? []).length}</dd>
-            <dt className="tech-label text-lune-faint">Travées posées</dt>
-          </div>
-          <div data-testid="cal-ombriere-pas">
-            <dd className="fig text-lg text-white">
-              {pas === null ? '—' : `${auDixieme(pas)} m`}
-            </dd>
-            <dt className="tech-label text-lune-faint">
-              {pas === null
-                ? 'Pas non mesurable (moins de 2 rangées)'
-                : 'Pas inter-rangées (mesuré sur le plan)'}
-            </dt>
-          </div>
-        </dl>
-      )}
-
-      {/* CALX51 — L'OMBRIÈRE DESSINÉE : le plan, puis la coupe où la couverture
-          est levée à la hauteur libre SAISIE (ou pas levée du tout). */}
-      {(plan || placeurAbsent) && (
-        <section
-          className="mt-5 border-t border-white/10 pt-4"
-          data-testid="cal-ombriere-vue"
-          aria-label="Ombrière dessinée"
-        >
-          <p className="tech-label text-lune-faint">
-            Ombrière dessinée — travées posées et couverture levée
-          </p>
-
-          {placeurAbsent && (
-            <p className="mt-2 text-sm text-alert-300" data-testid="cal-ombriere-vue-indisponible">
-              Le tracé de l’ombrière n’a pas pu être chargé : les chiffres du
-              moteur restent affichés ci-dessus, et rien n’est dessiné à leur
-              place.
-            </p>
+          {persister && (
+            <button
+              type="button"
+              onClick={enregistrer}
+              data-testid="cal-ombriere-enregistrer"
+              className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Enregistrer l’ombrière
+            </button>
           )}
+        </div>
 
-          {vue && (
-            <>
+        {message && (
+          <p className="mt-3 text-sm text-lune-soft" role="status"
+            data-testid="cal-ombriere-message">{message}</p>
+        )}
+
+        {/* LA HAUTEUR LIBRE N'EST JAMAIS SUPPOSÉE. */}
+        <p className="mt-3 text-xs text-lune-faint" data-testid="cal-ombriere-hauteur">
+          {hauteur === null || hauteur <= 0
+            ? 'Hauteur libre non renseignée : la couverture n’est pas levée en 3D '
+              + '(aucune hauteur par défaut n’est supposée).'
+            : `Couverture posée à ${auDixieme(hauteur)} m — la hauteur saisie.`}
+        </p>
+
+        {plan && (
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-3">
+            <div data-testid="cal-ombriere-modules">
+              <dd className="fig text-lg text-white">{plan.modules ?? '—'}</dd>
+              <dt className="tech-label text-lune-faint">Modules posés (moteur)</dt>
+            </div>
+            <div data-testid="cal-ombriere-travees">
+              <dd className="fig text-lg text-white">{(plan.tables ?? []).length}</dd>
+              <dt className="tech-label text-lune-faint">Travées posées</dt>
+            </div>
+            <div data-testid="cal-ombriere-pas">
+              <dd className="fig text-lg text-white">
+                {pas === null ? '—' : `${auDixieme(pas)} m`}
+              </dd>
+              <dt className="tech-label text-lune-faint">
+                {pas === null
+                  ? 'Pas non mesurable (moins de 2 rangées)'
+                  : 'Pas inter-rangées (mesuré sur le plan)'}
+              </dt>
+            </div>
+          </dl>
+        )}
+
+        {/* CALX51 — L'OMBRIÈRE DESSINÉE : le plan, puis la coupe où la couverture
+            est levée à la hauteur libre SAISIE (ou pas levée du tout). */}
+        {(plan || placeurAbsent) && (
+          <section
+            className="mt-5 border-t border-white/10 pt-4"
+            data-testid="cal-ombriere-vue"
+            aria-label="Ombrière dessinée"
+          >
+            <p className="tech-label text-lune-faint">
+              Ombrière dessinée — travées posées et couverture levée
+            </p>
+
+            {placeurAbsent && (
+              <p className="mt-2 text-sm text-alert-300" data-testid="cal-ombriere-vue-indisponible">
+                Le tracé de l’ombrière n’a pas pu être chargé : les chiffres du
+                moteur restent affichés ci-dessus, et rien n’est dessiné à leur
+                place.
+              </p>
+            )}
+
+            {vue && (
+              <>
+                <svg
+                  data-testid="cal-ombriere-svg"
+                  viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
+                  width="100%"
+                  role="img"
+                  aria-label={`Ombrière en plan — ${vue.tables.length} travée(s) posée(s) par le moteur`}
+                  className="mt-2 text-brass-200"
+                >
+                  <polygon
+                    data-testid="cal-ombriere-emprise-tracee"
+                    points={vue.contour.map((p) => p.join(',')).join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  {vue.rangees.map((r) => (
+                    <line
+                      key={r.y0}
+                      data-testid="cal-ombriere-rangee"
+                      x1={r.from[0]}
+                      y1={r.from[1]}
+                      x2={r.to[0]}
+                      y2={r.to[1]}
+                      stroke="currentColor"
+                      strokeWidth="0.75"
+                      strokeDasharray="6 5"
+                      strokeOpacity="0.55"
+                    />
+                  ))}
+                  {vue.tables.map((q, i) => (
+                    <polygon
+                      key={i}
+                      data-testid="cal-ombriere-travee"
+                      points={q.map((p) => p.join(',')).join(' ')}
+                      fill="currentColor"
+                      fillOpacity="0.25"
+                      stroke="currentColor"
+                      strokeWidth="0.75"
+                    />
+                  ))}
+                  {vue.cotes.map((c, i) => {
+                    const [mx, my] = milieu(c.from, c.to)
+                    return (
+                      <text
+                        key={i}
+                        data-testid="cal-ombriere-cote"
+                        x={mx}
+                        y={my}
+                        fontSize="12"
+                        textAnchor="middle"
+                        fill="currentColor"
+                      >
+                        {formatCote(c.lengthM)}
+                      </text>
+                    )
+                  })}
+                </svg>
+
+                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-ombriere-emprise">
+                  {vue.tables.length} travée(s) dessinée(s) — emprise{' '}
+                  {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
+                  {champ.modules ?? '—'} module(s) posé(s) par le moteur.
+                </p>
+              </>
+            )}
+
+            {coupe && (
               <svg
-                data-testid="cal-ombriere-svg"
-                viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
+                data-testid="cal-ombriere-coupe"
+                viewBox={`0 0 ${coupe.largeurPx} ${coupe.hauteurPx}`}
                 width="100%"
                 role="img"
-                aria-label={`Ombrière en plan — ${vue.tables.length} travée(s) posée(s) par le moteur`}
-                className="mt-2 text-brass-200"
+                aria-label="Coupe sur la largeur — couverture et hauteur libre"
+                className="mt-3 text-brass-200"
               >
-                <polygon
-                  data-testid="cal-ombriere-emprise-tracee"
-                  points={vue.contour.map((p) => p.join(',')).join(' ')}
-                  fill="none"
+                <line
+                  data-testid="cal-ombriere-sol"
+                  x1={coupe.sol.from[0]}
+                  y1={coupe.sol.from[1]}
+                  x2={coupe.sol.to[0]}
+                  y2={coupe.sol.to[1]}
                   stroke="currentColor"
-                  strokeWidth="2"
+                  strokeWidth="1"
+                  strokeOpacity="0.55"
                 />
-                {vue.rangees.map((r) => (
+                {coupe.tables.map((t, i) => (
                   <line
-                    key={r.y0}
-                    data-testid="cal-ombriere-rangee"
-                    x1={r.from[0]}
-                    y1={r.from[1]}
-                    x2={r.to[0]}
-                    y2={r.to[1]}
-                    stroke="currentColor"
-                    strokeWidth="0.75"
-                    strokeDasharray="6 5"
-                    strokeOpacity="0.55"
-                  />
-                ))}
-                {vue.tables.map((q, i) => (
-                  <polygon
                     key={i}
-                    data-testid="cal-ombriere-travee"
-                    points={q.map((p) => p.join(',')).join(' ')}
-                    fill="currentColor"
-                    fillOpacity="0.25"
+                    data-testid="cal-ombriere-couverture"
+                    x1={t.from[0]}
+                    y1={t.from[1]}
+                    x2={t.to[0]}
+                    y2={t.to[1]}
                     stroke="currentColor"
-                    strokeWidth="0.75"
+                    strokeWidth="4"
                   />
                 ))}
-                {vue.cotes.map((c, i) => {
-                  const [mx, my] = milieu(c.from, c.to)
-                  return (
+                {coupe.coteHauteur && (
+                  <>
+                    <line
+                      data-testid="cal-ombriere-trait-hauteur"
+                      x1={coupe.coteHauteur.from[0]}
+                      y1={coupe.coteHauteur.from[1]}
+                      x2={coupe.coteHauteur.to[0]}
+                      y2={coupe.coteHauteur.to[1]}
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                    />
                     <text
-                      key={i}
-                      data-testid="cal-ombriere-cote"
-                      x={mx}
-                      y={my}
+                      data-testid="cal-ombriere-cote-hauteur"
+                      x={milieu(coupe.coteHauteur.from, coupe.coteHauteur.to)[0] + 6}
+                      y={milieu(coupe.coteHauteur.from, coupe.coteHauteur.to)[1]}
                       fontSize="12"
-                      textAnchor="middle"
+                      textAnchor="start"
                       fill="currentColor"
                     >
-                      {formatCote(c.lengthM)}
+                      {formatCote(coupe.coteHauteur.lengthM)}
                     </text>
-                  )
-                })}
+                  </>
+                )}
               </svg>
+            )}
 
-              <p className="mt-2 text-xs text-lune-faint" data-testid="cal-ombriere-emprise">
-                {vue.tables.length} travée(s) dessinée(s) — emprise{' '}
-                {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
-                {champ.modules ?? '—'} module(s) posé(s) par le moteur.
+            {altitudeCouverture !== null && (
+              <p
+                className="mt-2 text-xs text-lune-faint"
+                data-testid="cal-ombriere-altitude"
+                data-altitude-m={String(altitudeCouverture)}
+              >
+                {altitudeCouverture > 0
+                  ? `Couverture levée à ${formatCote(altitudeCouverture)} — l’altitude `
+                    + 'posée sur les travées, celle de la hauteur libre saisie.'
+                  : 'Couverture non levée : les travées restent à l’altitude du sol, '
+                    + 'faute de hauteur libre saisie.'}
               </p>
-            </>
-          )}
+            )}
 
-          {coupe && (
-            <svg
-              data-testid="cal-ombriere-coupe"
-              viewBox={`0 0 ${coupe.largeurPx} ${coupe.hauteurPx}`}
-              width="100%"
-              role="img"
-              aria-label="Coupe sur la largeur — couverture et hauteur libre"
-              className="mt-3 text-brass-200"
-            >
-              <line
-                data-testid="cal-ombriere-sol"
-                x1={coupe.sol.from[0]}
-                y1={coupe.sol.from[1]}
-                x2={coupe.sol.to[0]}
-                y2={coupe.sol.to[1]}
-                stroke="currentColor"
-                strokeWidth="1"
-                strokeOpacity="0.55"
-              />
-              {coupe.tables.map((t, i) => (
-                <line
-                  key={i}
-                  data-testid="cal-ombriere-couverture"
-                  x1={t.from[0]}
-                  y1={t.from[1]}
-                  x2={t.to[0]}
-                  y2={t.to[1]}
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-              ))}
-              {coupe.coteHauteur && (
-                <>
-                  <line
-                    data-testid="cal-ombriere-trait-hauteur"
-                    x1={coupe.coteHauteur.from[0]}
-                    y1={coupe.coteHauteur.from[1]}
-                    x2={coupe.coteHauteur.to[0]}
-                    y2={coupe.coteHauteur.to[1]}
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    data-testid="cal-ombriere-cote-hauteur"
-                    x={milieu(coupe.coteHauteur.from, coupe.coteHauteur.to)[0] + 6}
-                    y={milieu(coupe.coteHauteur.from, coupe.coteHauteur.to)[1]}
-                    fontSize="12"
-                    textAnchor="start"
-                    fill="currentColor"
-                  >
-                    {formatCote(coupe.coteHauteur.lengthM)}
-                  </text>
-                </>
-              )}
-            </svg>
-          )}
+            {champ && (
+              <p className="mt-1 text-xs text-lune-faint" data-testid="cal-ombriere-ecoulement">
+                {ecoulement === null
+                  ? 'Sens d’écoulement non renseigné : les rangées sont empilées '
+                    + 'selon l’axe du plan, sans orientation affirmée.'
+                  : `Sens d’écoulement saisi : ${ecoulement}° — c’est l’axe `
+                    + 'd’empilement des rangées, du haut vers le bas du plan.'}
+              </p>
+            )}
 
-          {altitudeCouverture !== null && (
-            <p
-              className="mt-2 text-xs text-lune-faint"
-              data-testid="cal-ombriere-altitude"
-              data-altitude-m={String(altitudeCouverture)}
-            >
-              {altitudeCouverture > 0
-                ? `Couverture levée à ${formatCote(altitudeCouverture)} — l’altitude `
-                  + 'posée sur les travées, celle de la hauteur libre saisie.'
-                : 'Couverture non levée : les travées restent à l’altitude du sol, '
-                  + 'faute de hauteur libre saisie.'}
-            </p>
-          )}
+            {champ && champ.nonMesure.length > 0 && (
+              <ul
+                className="mt-2 list-disc pl-5 text-xs text-lune-faint"
+                data-testid="cal-ombriere-nonmesure"
+              >
+                {champ.nonMesure.map((m) => (
+                  <li key={m}>{m}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
-          {champ && (
-            <p className="mt-1 text-xs text-lune-faint" data-testid="cal-ombriere-ecoulement">
-              {ecoulement === null
-                ? 'Sens d’écoulement non renseigné : les rangées sont empilées '
-                  + 'selon l’axe du plan, sans orientation affirmée.'
-                : `Sens d’écoulement saisi : ${ecoulement}° — c’est l’axe `
-                  + 'd’empilement des rangées, du haut vers le bas du plan.'}
-            </p>
-          )}
-
-          {champ && champ.nonMesure.length > 0 && (
-            <ul
-              className="mt-2 list-disc pl-5 text-xs text-lune-faint"
-              data-testid="cal-ombriere-nonmesure"
-            >
-              {champ.nonMesure.map((m) => (
-                <li key={m}>{m}</li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* LES TOTAUX PAR BÂTIMENT — l'ombrière y figure à côté des pans. */}
-      {totaux.length > 0 && (
-        <table className="mt-5 w-full text-sm" data-testid="cal-ombriere-totaux">
-          <thead>
-            <tr className="tech-label text-lune-faint">
-              <th className="py-1 text-left">Bâtiment</th>
-              <th className="py-1 text-right">Pans</th>
-              <th className="py-1 text-right">Ombrières</th>
-              <th className="py-1 text-right">Champs au sol</th>
-              <th className="py-1 text-right">Modules</th>
-            </tr>
-          </thead>
-          <tbody>
-            {totaux.map((t) => (
-              <tr key={t.batiment} data-testid={`cal-ombriere-total-${t.batiment}`}>
-                <td className="py-1 text-white">{t.batiment}</td>
-                <td className="py-1 text-right text-lune-soft">{t.pans}</td>
-                <td className="py-1 text-right text-lune-soft">{t.ombrieres}</td>
-                <td className="py-1 text-right text-lune-soft">{t.sols}</td>
-                <td className="fig py-1 text-right text-white">{t.modules ?? '—'}</td>
+        {/* LES TOTAUX PAR BÂTIMENT — l'ombrière y figure à côté des pans. */}
+        {totaux.length > 0 && (
+          <table className="mt-5 w-full text-sm" data-testid="cal-ombriere-totaux">
+            <thead>
+              <tr className="tech-label text-lune-faint">
+                <th className="py-1 text-left">Bâtiment</th>
+                <th className="py-1 text-right">Pans</th>
+                <th className="py-1 text-right">Ombrières</th>
+                <th className="py-1 text-right">Champs au sol</th>
+                <th className="py-1 text-right">Modules</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
+            </thead>
+            <tbody>
+              {totaux.map((t) => (
+                <tr key={t.batiment} data-testid={`cal-ombriere-total-${t.batiment}`}>
+                  <td className="py-1 text-white">{t.batiment}</td>
+                  <td className="py-1 text-right text-lune-soft">{t.pans}</td>
+                  <td className="py-1 text-right text-lune-soft">{t.ombrieres}</td>
+                  <td className="py-1 text-right text-lune-soft">{t.sols}</td>
+                  <td className="fig py-1 text-right text-white">{t.modules ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </>
   )
 }

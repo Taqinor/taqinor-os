@@ -7,6 +7,7 @@
    Même dérogation que `module.config.jsx` du même module. */
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
 import { formatCote, milieu } from './plan2d'
 import { formatNumber } from '../../lib/format'
@@ -496,208 +497,211 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
     : null
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-terrain">
-      <p className="tech-label rule-brass text-brass-300">Mode terrain — centrale au sol</p>
-      <p className="mt-2 text-xs text-lune-faint">
-        Les dimensions sont saisies ; les tables, le compte et le pas
-        inter-rangées viennent du moteur. Le mode toiture n’est pas touché.
-      </p>
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-terrain">
+        <p className="tech-label rule-brass text-brass-300">Mode terrain — centrale au sol</p>
+        <p className="mt-2 text-xs text-lune-faint">
+          Les dimensions sont saisies ; les tables, le compte et le pas
+          inter-rangées viennent du moteur. Le mode toiture n’est pas touché.
+        </p>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {CHAMPS.map(([cle, label]) => (
-          <label key={cle} className="block text-sm text-lune-soft">
-            <span className="tech-label text-lune-faint">{label}</span>
-            <input
-              type="number"
-              step="any"
-              value={saisie[cle]}
-              data-testid={`cal-terrain-${cle}`}
-              onChange={(e) => majChamp(cle, e.target.value)}
-              className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
-            />
-          </label>
-        ))}
-      </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {CHAMPS.map(([cle, label]) => (
+            <label key={cle} className="block text-sm text-lune-soft">
+              <span className="tech-label text-lune-faint">{label}</span>
+              <input
+                type="number"
+                step="any"
+                value={saisie[cle]}
+                data-testid={`cal-terrain-${cle}`}
+                onChange={(e) => majChamp(cle, e.target.value)}
+                className="mt-1 w-full rounded border border-white/15 bg-transparent px-2 py-1 text-white"
+              />
+            </label>
+          ))}
+        </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={calculer}
-          disabled={enCours}
-          data-testid="cal-terrain-calculer"
-          className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
-        >
-          {enCours ? 'Calcul en cours…' : 'Calculer le champ au sol'}
-        </button>
-        {persister && (
+        <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={enregistrer}
-            data-testid="cal-terrain-enregistrer"
-            className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
+            onClick={calculer}
+            disabled={enCours}
+            data-testid="cal-terrain-calculer"
+            className="rounded bg-brass-500/20 px-4 py-2 text-sm font-semibold text-brass-200"
           >
-            Enregistrer le champ
+            {enCours ? 'Calcul en cours…' : 'Calculer le champ au sol'}
           </button>
+          {persister && (
+            <button
+              type="button"
+              onClick={enregistrer}
+              data-testid="cal-terrain-enregistrer"
+              className="rounded border border-white/15 px-4 py-2 text-sm font-semibold text-white"
+            >
+              Enregistrer le champ
+            </button>
+          )}
+        </div>
+
+        {message && (
+          <p className="mt-3 text-sm text-lune-soft" role="status"
+            data-testid="cal-terrain-message">{message}</p>
+        )}
+
+        {plan && (
+          <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-4">
+            <div data-testid="cal-terrain-modules">
+              <dd className="fig text-lg text-white">{plan.modules ?? '—'}</dd>
+              <dt className="tech-label text-lune-faint">Modules posés (moteur)</dt>
+            </div>
+            <div data-testid="cal-terrain-tables">
+              <dd className="fig text-lg text-white">{(plan.tables ?? []).length}</dd>
+              <dt className="tech-label text-lune-faint">Tables posées</dt>
+            </div>
+            <div data-testid="cal-terrain-pas">
+              <dd className="fig text-lg text-white">
+                {pas === null ? '—' : `${auDixieme(pas)} m`}
+              </dd>
+              <dt className="tech-label text-lune-faint">
+                {pas === null ? 'Pas non mesurable (moins de 2 rangées)' : 'Pas inter-rangées (mesuré sur le plan)'}
+              </dt>
+            </div>
+            <div data-testid="cal-terrain-taux">
+              <dd className="fig text-lg text-white">
+                {taux === null ? '—' : `${Math.round(taux * 1000) / 10} %`}
+              </dd>
+              <dt className="tech-label text-lune-faint">
+                {taux === null
+                  ? 'Taux d’occupation non calculable'
+                  : 'Taux d’occupation du sol (sortie)'}
+              </dt>
+            </div>
+          </dl>
+        )}
+
+        {/* CALX50 — LE CHAMP DESSINÉ : le plan du moteur, mis en page. */}
+        {(plan || placeurAbsent) && (
+          <section
+            className="mt-5 border-t border-white/10 pt-4"
+            data-testid="cal-terrain-vue"
+            aria-label="Champ au sol dessiné"
+          >
+            <p className="tech-label text-lune-faint">
+              Champ au sol dessiné — rangées, tables et pas rendus par le moteur
+            </p>
+
+            {placeurAbsent && (
+              <p className="mt-2 text-sm text-alert-300" data-testid="cal-terrain-vue-indisponible">
+                Le tracé du champ n’a pas pu être chargé : les chiffres du moteur
+                restent affichés ci-dessus, et rien n’est dessiné à leur place.
+              </p>
+            )}
+
+            {vue && (
+              <>
+                <svg
+                  data-testid="cal-terrain-svg"
+                  viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
+                  width="100%"
+                  role="img"
+                  aria-label={`Champ au sol — ${vue.tables.length} table(s) posée(s) par le moteur`}
+                  className="mt-2 text-brass-200"
+                >
+                  <polygon
+                    data-testid="cal-terrain-contour"
+                    points={vue.contour.map((p) => p.join(',')).join(' ')}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  />
+                  {vue.rangees.map((r) => (
+                    <line
+                      key={r.y0}
+                      data-testid="cal-terrain-rangee"
+                      x1={r.from[0]}
+                      y1={r.from[1]}
+                      x2={r.to[0]}
+                      y2={r.to[1]}
+                      stroke="currentColor"
+                      strokeWidth="0.75"
+                      strokeDasharray="6 5"
+                      strokeOpacity="0.55"
+                    />
+                  ))}
+                  {vue.tables.map((q, i) => (
+                    <polygon
+                      key={i}
+                      data-testid="cal-terrain-table"
+                      points={q.map((p) => p.join(',')).join(' ')}
+                      fill="currentColor"
+                      fillOpacity="0.25"
+                      stroke="currentColor"
+                      strokeWidth="0.75"
+                    />
+                  ))}
+                  {vue.cotes.map((c, i) => {
+                    const [mx, my] = milieu(c.from, c.to)
+                    return (
+                      <text
+                        key={i}
+                        data-testid="cal-terrain-cote"
+                        x={mx}
+                        y={my}
+                        fontSize="12"
+                        textAnchor="middle"
+                        fill="currentColor"
+                      >
+                        {formatCote(c.lengthM)}
+                      </text>
+                    )
+                  })}
+                  {vue.cotePas && (
+                    <>
+                      <line
+                        data-testid="cal-terrain-trait-pas"
+                        x1={vue.cotePas.from[0]}
+                        y1={vue.cotePas.from[1]}
+                        x2={vue.cotePas.to[0]}
+                        y2={vue.cotePas.to[1]}
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      />
+                      <text
+                        data-testid="cal-terrain-cote-pas"
+                        x={milieu(vue.cotePas.from, vue.cotePas.to)[0]}
+                        y={milieu(vue.cotePas.from, vue.cotePas.to)[1]}
+                        fontSize="12"
+                        textAnchor="middle"
+                        fill="currentColor"
+                      >
+                        {formatCote(vue.cotePas.lengthM)}
+                      </text>
+                    </>
+                  )}
+                </svg>
+
+                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-terrain-emprise">
+                  {vue.tables.length} table(s) dessinée(s) — emprise{' '}
+                  {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
+                  {champ.modules ?? '—'} module(s) posé(s) par le moteur.
+                </p>
+              </>
+            )}
+
+            {champ && champ.nonMesure.length > 0 && (
+              <ul
+                className="mt-2 list-disc pl-5 text-xs text-lune-faint"
+                data-testid="cal-terrain-nonmesure"
+              >
+                {champ.nonMesure.map((m) => (
+                  <li key={m}>{m}</li>
+                ))}
+              </ul>
+            )}
+          </section>
         )}
       </div>
-
-      {message && (
-        <p className="mt-3 text-sm text-lune-soft" role="status"
-          data-testid="cal-terrain-message">{message}</p>
-      )}
-
-      {plan && (
-        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-4">
-          <div data-testid="cal-terrain-modules">
-            <dd className="fig text-lg text-white">{plan.modules ?? '—'}</dd>
-            <dt className="tech-label text-lune-faint">Modules posés (moteur)</dt>
-          </div>
-          <div data-testid="cal-terrain-tables">
-            <dd className="fig text-lg text-white">{(plan.tables ?? []).length}</dd>
-            <dt className="tech-label text-lune-faint">Tables posées</dt>
-          </div>
-          <div data-testid="cal-terrain-pas">
-            <dd className="fig text-lg text-white">
-              {pas === null ? '—' : `${auDixieme(pas)} m`}
-            </dd>
-            <dt className="tech-label text-lune-faint">
-              {pas === null ? 'Pas non mesurable (moins de 2 rangées)' : 'Pas inter-rangées (mesuré sur le plan)'}
-            </dt>
-          </div>
-          <div data-testid="cal-terrain-taux">
-            <dd className="fig text-lg text-white">
-              {taux === null ? '—' : `${Math.round(taux * 1000) / 10} %`}
-            </dd>
-            <dt className="tech-label text-lune-faint">
-              {taux === null
-                ? 'Taux d’occupation non calculable'
-                : 'Taux d’occupation du sol (sortie)'}
-            </dt>
-          </div>
-        </dl>
-      )}
-
-      {/* CALX50 — LE CHAMP DESSINÉ : le plan du moteur, mis en page. */}
-      {(plan || placeurAbsent) && (
-        <section
-          className="mt-5 border-t border-white/10 pt-4"
-          data-testid="cal-terrain-vue"
-          aria-label="Champ au sol dessiné"
-        >
-          <p className="tech-label text-lune-faint">
-            Champ au sol dessiné — rangées, tables et pas rendus par le moteur
-          </p>
-
-          {placeurAbsent && (
-            <p className="mt-2 text-sm text-alert-300" data-testid="cal-terrain-vue-indisponible">
-              Le tracé du champ n’a pas pu être chargé : les chiffres du moteur
-              restent affichés ci-dessus, et rien n’est dessiné à leur place.
-            </p>
-          )}
-
-          {vue && (
-            <>
-              <svg
-                data-testid="cal-terrain-svg"
-                viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
-                width="100%"
-                role="img"
-                aria-label={`Champ au sol — ${vue.tables.length} table(s) posée(s) par le moteur`}
-                className="mt-2 text-brass-200"
-              >
-                <polygon
-                  data-testid="cal-terrain-contour"
-                  points={vue.contour.map((p) => p.join(',')).join(' ')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                {vue.rangees.map((r) => (
-                  <line
-                    key={r.y0}
-                    data-testid="cal-terrain-rangee"
-                    x1={r.from[0]}
-                    y1={r.from[1]}
-                    x2={r.to[0]}
-                    y2={r.to[1]}
-                    stroke="currentColor"
-                    strokeWidth="0.75"
-                    strokeDasharray="6 5"
-                    strokeOpacity="0.55"
-                  />
-                ))}
-                {vue.tables.map((q, i) => (
-                  <polygon
-                    key={i}
-                    data-testid="cal-terrain-table"
-                    points={q.map((p) => p.join(',')).join(' ')}
-                    fill="currentColor"
-                    fillOpacity="0.25"
-                    stroke="currentColor"
-                    strokeWidth="0.75"
-                  />
-                ))}
-                {vue.cotes.map((c, i) => {
-                  const [mx, my] = milieu(c.from, c.to)
-                  return (
-                    <text
-                      key={i}
-                      data-testid="cal-terrain-cote"
-                      x={mx}
-                      y={my}
-                      fontSize="12"
-                      textAnchor="middle"
-                      fill="currentColor"
-                    >
-                      {formatCote(c.lengthM)}
-                    </text>
-                  )
-                })}
-                {vue.cotePas && (
-                  <>
-                    <line
-                      data-testid="cal-terrain-trait-pas"
-                      x1={vue.cotePas.from[0]}
-                      y1={vue.cotePas.from[1]}
-                      x2={vue.cotePas.to[0]}
-                      y2={vue.cotePas.to[1]}
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      data-testid="cal-terrain-cote-pas"
-                      x={milieu(vue.cotePas.from, vue.cotePas.to)[0]}
-                      y={milieu(vue.cotePas.from, vue.cotePas.to)[1]}
-                      fontSize="12"
-                      textAnchor="middle"
-                      fill="currentColor"
-                    >
-                      {formatCote(vue.cotePas.lengthM)}
-                    </text>
-                  </>
-                )}
-              </svg>
-
-              <p className="mt-2 text-xs text-lune-faint" data-testid="cal-terrain-emprise">
-                {vue.tables.length} table(s) dessinée(s) — emprise{' '}
-                {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
-                {champ.modules ?? '—'} module(s) posé(s) par le moteur.
-              </p>
-            </>
-          )}
-
-          {champ && champ.nonMesure.length > 0 && (
-            <ul
-              className="mt-2 list-disc pl-5 text-xs text-lune-faint"
-              data-testid="cal-terrain-nonmesure"
-            >
-              {champ.nonMesure.map((m) => (
-                <li key={m}>{m}</li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-    </div>
+    </>
   )
 }
