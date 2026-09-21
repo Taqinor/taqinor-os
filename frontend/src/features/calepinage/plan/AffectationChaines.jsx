@@ -215,6 +215,21 @@ export default function AffectationChaines({ calepinageId }) {
     () => couleurParModule(lignes, mode), [lignes, mode],
   )
 
+  /* CALX16 — LA CHAÎNE LA PLUS FAIBLE EN OMBRAGE, telle que le serveur la
+     DÉSIGNE (`electrique.chaine_la_plus_faible`, contrat
+     `calepinage_resultat.json`). Rien n'est calculé ici : ni l'accès solaire,
+     ni l'écart, ni la chaîne retenue. La clé est CONDITIONNELLE — absente
+     quand le document ne porte aucun accès solaire par module, auquel cas le
+     motif est déjà dans `avertissements` et rien n'est teinté (un module sans
+     accès calculé n'est pas un module non ombré). */
+  const chaineFaible = resultat?.electrique?.chaine_la_plus_faible || null
+  const estFaible = useCallback(
+    (ligne) => Boolean(chaineFaible)
+      && ligne.chaine === chaineFaible.chaine
+      && ligne.pan === chaineFaible.pan,
+    [chaineFaible],
+  )
+
   const appliquerResultat = useCallback((donnees) => {
     setSurcharge(donnees)
     setEditions(new Map())
@@ -437,12 +452,15 @@ export default function AffectationChaines({ calepinageId }) {
                 data-testid={`cal234-module-${ligne.module}`}
                 data-selectionne={selection.has(ligne.module) ? 'oui' : 'non'}
                 data-source={ligne.source}
+                data-chaine-faible={estFaible(ligne) ? 'oui' : 'non'}
                 aria-pressed={selection.has(ligne.module)}
-                title={`${ligne.module} — ${libelleGroupe(ligne, mode)} (${ligne.source})`}
+                title={`${ligne.module} — ${libelleGroupe(ligne, mode)} (${ligne.source})${
+                  estFaible(ligne) ? ' — chaîne la plus faible en ombrage' : ''
+                }`}
                 style={{ backgroundColor: couleurs.get(ligne.module) || AFFECTATION_UNASSIGNED }}
                 className={`h-7 w-12 rounded text-[10px] text-white ${
                   selection.has(ligne.module) ? 'ring-2 ring-foreground' : ''
-                }`}
+                } ${estFaible(ligne) ? 'outline outline-2 outline-dashed outline-amber-500' : ''}`}
                 onPointerDown={(e) => {
                   glisse.current = true
                   basculer(ligne.module, e.shiftKey || e.ctrlKey || e.metaKey)
@@ -596,6 +614,44 @@ export default function AffectationChaines({ calepinageId }) {
           </li>
         ))}
       </ul>
+
+      {/* CALX16 — LA CHAÎNE À REGARDER, ET CE QUE CE SIGNAL N'EST PAS.
+          La légende le dit en toutes lettres : c'est un signal de CÂBLAGE
+          (le courant d'une série est celui de son module le plus faible),
+          pas une perte d'énergie — l'énergie de l'ombrage est publiée dans
+          le diagramme de pertes, jamais ici. La méthode est RECOPIÉE du
+          serveur : l'écran n'en reformule rien. */}
+      {chaineFaible
+        ? (
+          <section
+            className="flex flex-col gap-1 rounded border border-amber-500/60 p-3 text-xs"
+            data-testid="calx16-chaine-faible"
+          >
+            <p className="font-medium">
+              Chaîne la plus faible en ombrage :
+              {' '}
+              <span data-testid="calx16-chaine">
+                {`chaîne ${chaineFaible.chaine} (${chaineFaible.pan})`}
+              </span>
+            </p>
+            <p className="text-muted-foreground" data-testid="calx16-module">
+              {`Module le plus mal exposé : ${chaineFaible.module}`}
+              {chaineFaible.acces_solaire === null
+                || chaineFaible.acces_solaire === undefined
+                ? ''
+                : ` — accès solaire ${Math.round(chaineFaible.acces_solaire * 1000) / 10} %`}
+            </p>
+            <p className="text-muted-foreground" data-testid="calx16-methode">
+              {chaineFaible.methode}
+            </p>
+            <p className="text-muted-foreground" data-testid="calx16-legende">
+              Signal de câblage, pas une perte d’énergie : aucun kWh n’est
+              retiré de la production à cause de ce repère. L’énergie de
+              l’ombrage est publiée par le diagramme de pertes.
+            </p>
+          </section>
+        )
+        : null}
     </Card>
     </>
   )
