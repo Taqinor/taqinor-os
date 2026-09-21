@@ -347,6 +347,16 @@ const calepinageApi = {
     // refus 400 NOMME le réglage ou le champ à corriger.
     simuler: (id, { forcer = false } = {}) =>
       api.post(`${pivot(id)}simuler/`, { forcer }),
+
+    // CALX229 — le métré et la chute, TRONÇON PAR TRONÇON (contrat
+    // `contract_samples/calepinage_troncons.json`, CALX203). ÉTAT DU SERVEUR
+    // À L'ÉCRITURE DE CETTE LIGNE : la route n'existe pas encore — son
+    // producteur est `services/troncons.py` (CALX224-226) et sa vue arrive
+    // avec la suite de la vague ÉLECTRIQUE PRO ; l'échantillon est déclaré
+    // `POSES_AVANT_LEUR_ROUTE` dans `tests/test_cal223_contrats.py`
+    // (mécanisme PACT10 déjà posé). `CheminementCables.jsx` traite un 404 de
+    // CETTE porte comme un état « pas encore calculable », jamais une panne.
+    troncons: (id) => api.get(`${pivot(id)}troncons/`),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

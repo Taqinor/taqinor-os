@@ -72,6 +72,7 @@ export const ONGLETS = [
   { cle: 'batterie', libelle: 'Batterie', groupe: 'Résultats', ordre: 210, composant: lazy(() => import('./PanneauBatterie')) }, // CALX14
 
   { cle: 'equipements-electriques', libelle: 'Équipements électriques', groupe: 'Système', ordre: 220, composant: lazy(() => import('../electrique/EquipementsElectriques')) }, // CALX222
+  { cle: 'cheminement-cables', libelle: 'Cheminement & câbles', groupe: 'Système', ordre: 230, composant: lazy(() => import('../electrique/CheminementCables')) }, // CALX229
 ]
 
 /**
