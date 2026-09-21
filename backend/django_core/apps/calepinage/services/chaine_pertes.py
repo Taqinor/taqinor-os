@@ -359,7 +359,9 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'BLOCS_HORAIRES_OMIS', 'CLE_CROISEMENT_HORAIRE',
            'CLE_SORTIES_PAR_PAN', 'DECIMALES_KWH', 'MOTIF_PAN_SANS_SERIE',
            'CLE_CHARGE', 'CLE_METEO_AU_PAS', 'PAS_METEO_ATTENDU_MINUTES',
-           'MOTIF_RESOLUTION_DIVERGENTE',
+           'MOTIF_RESOLUTION_DIVERGENTE', 'COLONNES_SERIE_PERSISTEE',
+           'JOURS_MAX_SERIE_PERSISTEE', 'PAS_JOURNALIER_MINUTES',
+           'MOTIF_SERIE_AGREGEE',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -400,9 +402,10 @@ def appliquer_chaine(serie, contexte=None, resultat=None):
             OMISES, motivées, et la série ressort telle quelle.
         resultat: le ``Calepinage.resultat`` en cours d'écriture. Fourni, la
             chaîne y PUBLIE les blocs qu'elle est seule à pouvoir sourcer —
-            ``meteo`` (CALX154) et ``production`` (CALX181) — et c'est le SEUL
-            chemin d'écriture de ces clés. ``None`` ⇒ la chaîne se contente de
-            rendre la cascade, exactement comme avant.
+            ``meteo`` (CALX154), ``production`` (CALX181) et ``serie_horaire``
+            (CALX193) — et c'est le SEUL chemin d'écriture de ces clés.
+            ``None`` ⇒ la chaîne se contente de rendre la cascade, exactement
+            comme avant.
 
     Returns:
         ``(serie, cascade)`` — la série en sortie de la dernière étape
@@ -496,6 +499,7 @@ def _publier(resultat, serie, contexte, cascade):
     _publier_la_resolution(resultat, serie, contexte)
     resultat['production'] = _bloc_production(
         resultat, serie, contexte, cascade, decision)
+    resultat['serie_horaire'] = _bloc_serie_horaire(serie)
 
 
 def _bloc_meteo_publie(contexte, decision):
@@ -549,6 +553,163 @@ def _albedo_face_avant(contexte):
         return dict(ALBEDO_FACE_AVANT)
     return {'valeur': saisi.get('valeur'),
             'motif': f'saisi par la société (source : {saisi.get("source")})'}
+
+
+# ── CALX193 — la série horaire que l'export attend depuis toujours ──────
+
+#: Les colonnes du contrat CALX142
+#: (``contract_samples/calepinage_serie_horaire.json``), dans SON ordre. Les
+#: sept premières sont celles que ``services/export_csv.py`` lit depuis
+#: CAL144 : elles ne bougent ni de nom, ni d'unité, ni de nature. Les treize
+#: suivantes s'AJOUTENT à côté.
+COLONNES_SERIE_PERSISTEE = (
+    'annee', 'mois', 'jour', 'heure', 'p_w', 'gi_w_m2', 't2m_c',
+    'gb_i_w_m2', 'gd_i_w_m2', 'gr_i_w_m2', 'ws10m', 'h_sun_deg', 't_cell_c',
+    'p_dc_kw', 'p_ac_kw', 'ecretage_kw', 'charge_kwh', 'batterie_soc_pct',
+    'reseau_import_kwh', 'reseau_export_kwh',
+)
+
+#: Les colonnes d'INDEX : elles n'ont pas de moyenne, elles situent le point.
+_COLONNES_INDEX = ('annee', 'mois', 'jour', 'heure')
+
+#: Les colonnes qui portent un FLUX (une puissance, une irradiance) : leur
+#: agrégat journalier est la MOYENNE sur les pas d'une journée ENTIÈRE, si
+#: bien que « valeur × durée du pas » rend exactement l'énergie du jour —
+#: c'est la lecture de ``etapes.energie_kwh``. Une journée incomplète rend
+#: donc une moyenne plus basse : elle a réellement produit moins.
+_COLONNES_FLUX = ('p_w', 'gi_w_m2', 'gb_i_w_m2', 'gd_i_w_m2', 'gr_i_w_m2',
+                  'p_dc_kw', 'p_ac_kw', 'ecretage_kw')
+
+#: Les colonnes qui portent une ÉNERGIE déjà intégrée sur le pas : leur
+#: agrégat journalier est la SOMME du jour.
+_COLONNES_ENERGIE_DU_PAS = ('charge_kwh', 'reseau_import_kwh',
+                            'reseau_export_kwh')
+
+#: La BORNE de volume, en JOURS : ``Calepinage.resultat`` est un champ JSON en
+#: base, et une fenêtre pluriannuelle au pas horaire y pèserait plusieurs
+#: mégaoctets par calepinage. La borne est celle du CALENDRIER, pas un chiffre
+#: choisi : au plus une année au pas déclaré — 366 jours, donc 8 784 points au
+#: pas horaire et 35 136 au pas du quart d'heure (contrat CALX142).
+JOURS_MAX_SERIE_PERSISTEE = 366
+
+#: Le pas d'une série ramenée au JOUR quand la borne est dépassée.
+PAS_JOURNALIER_MINUTES = 24 * 60
+
+MOTIF_SERIE_AGREGEE = (
+    'La série calculée porte {points} points au pas de {pas} min, au-delà de '
+    'la borne de {plafond} points ({jours} jours) que le résultat persiste. '
+    'Elle est publiée AGRÉGÉE AU JOUR (moyenne de chaque colonne sur les '
+    'points du jour, donc la même énergie) plutôt que coupée au milieu de '
+    "l'année : le détail horaire se recalcule, il ne se devine pas.")
+
+
+def _bloc_serie_horaire(serie):
+    """``resultat['serie_horaire']`` au format CALX142 — un seul écrivain.
+
+    ``views/export_csv.py:59-62`` lit cette clé depuis CAL144 et le service
+    derrière refuse proprement quand elle est vide — mais AUCUN code du dépôt
+    ne l'écrivait, si bien que l'export « horaire » était structurellement
+    vide. PVsyst exporte la série au pas de simulation, ce qui permet à un
+    tiers de refaire le calcul
+    (https://www.pvsyst.com/help/project-design/simulation/create-a-csv-file-of-hourly-daily-values.html).
+
+    Toutes les colonnes du contrat sont présentes sur CHAQUE point ; celles
+    que la chaîne n'a pas produites valent ``null`` — un ``0`` se lirait
+    « mesuré à zéro ». ``colonnes`` énumère celles qui portent vraiment
+    quelque chose, pour qu'un écran n'affiche pas vingt colonnes dont seize
+    sont nulles.
+    """
+    points = list((serie or {}).get('points') or [])
+    pas = _pas_mesure(serie) or _etapes.PAS_MINUTES_PVGIS
+    plafond = _plafond_points(pas)
+    tronquee = len(points) > plafond
+    motif = ''
+    if tronquee:
+        motif = MOTIF_SERIE_AGREGEE.format(
+            points=len(points), pas=pas, plafond=plafond,
+            jours=JOURS_MAX_SERIE_PERSISTEE)
+        points = _agreger_au_jour(points, pas)
+        pas = PAS_JOURNALIER_MINUTES
+    publies = [_point_publie(point) for point in points]
+    return {
+        'pas_minutes': pas,
+        'tronquee': tronquee,
+        'colonnes': _colonnes_servies(publies),
+        'points': publies,
+        'plafond_points': plafond,
+        'motif_troncature': motif,
+    }
+
+
+def _plafond_points(pas_minutes):
+    """La borne, DÉRIVÉE du calendrier : 366 jours au pas déclaré."""
+    return int(JOURS_MAX_SERIE_PERSISTEE * PAS_JOURNALIER_MINUTES
+               / float(pas_minutes))
+
+
+def _agreger_au_jour(points, pas_minutes):
+    """Un point par JOUR, en gardant l'énergie EXACTE de la journée.
+
+    Trois familles de colonnes, et il en faut trois : un flux (puissance,
+    irradiance) se moyenne sur les pas d'une journée entière — « valeur ×
+    durée du pas » rend alors l'énergie du jour, la lecture de
+    ``etapes.energie_kwh`` ; une énergie déjà intégrée sur le pas se SOMME ;
+    une grandeur d'état (température, vent, hauteur du soleil) se moyenne sur
+    les points RÉELLEMENT présents, sinon une journée incomplète rendrait une
+    température divisée par vingt-quatre.
+    """
+    pas_par_jour = max(1.0, PAS_JOURNALIER_MINUTES / float(pas_minutes))
+    jours = {}
+    ordre = []
+    for point in points:
+        if not isinstance(point, dict):
+            continue
+        cle = (point.get('annee'), point.get('mois'), point.get('jour'))
+        if cle not in jours:
+            jours[cle] = []
+            ordre.append(cle)
+        jours[cle].append(point)
+    agreges = []
+    for cle in ordre:
+        du_jour = jours[cle]
+        agrege = {'annee': cle[0], 'mois': cle[1], 'jour': cle[2],
+                  'heure': None}
+        for colonne in COLONNES_SERIE_PERSISTEE:
+            if colonne in _COLONNES_INDEX:
+                continue
+            valeurs = [_flottant(point.get(colonne)) for point in du_jour]
+            valeurs = [valeur for valeur in valeurs if valeur is not None]
+            if not valeurs:
+                agrege[colonne] = None
+            elif colonne in _COLONNES_FLUX:
+                agrege[colonne] = sum(valeurs) / pas_par_jour
+            elif colonne in _COLONNES_ENERGIE_DU_PAS:
+                agrege[colonne] = sum(valeurs)
+            else:
+                agrege[colonne] = sum(valeurs) / len(valeurs)
+        agreges.append(agrege)
+    return agreges
+
+
+def _point_publie(point):
+    """Les vingt colonnes du contrat, toujours présentes, ``null`` sinon."""
+    source = point if isinstance(point, dict) else {}
+    publie = {colonne: source.get(colonne)
+              for colonne in COLONNES_SERIE_PERSISTEE}
+    # Le contrat FIGE le rapport entre les deux colonnes de puissance AC :
+    # ``p_w`` est la colonne HISTORIQUE en watts, ``p_ac_kw`` la même en kW.
+    ac = _flottant(publie.get('p_ac_kw'))
+    if ac is not None:
+        publie['p_w'] = ac * 1000.0
+    return publie
+
+
+def _colonnes_servies(points):
+    """Les colonnes qui portent vraiment une valeur, dans l'ordre du contrat."""
+    if not points:
+        return []
+    return [colonne for colonne in COLONNES_SERIE_PERSISTEE
+            if any(point.get(colonne) is not None for point in points)]
 
 
 # ── CALX192 — la vérité sur la résolution : PVGIS est HORAIRE ───────────
