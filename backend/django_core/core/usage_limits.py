@@ -1,28 +1,26 @@
 """NTOBS8 — page « Limites & usage » unifiée (lecture seule).
 
 Aujourd'hui les quotas existent en SILOS non visibles au tenant :
-``publicapi.ApiKey``/FG398 (limites par clé, pas de vue consolidée), la taille
-max d'import, les sièges du plan. Ce module agrège, en LECTURE SEULE, AUCUN
-NOUVEAU MODÈLE DE QUOTA — réutilise les champs/compteurs existants.
+``publicapi.ApiKey``/FG398 (limites par clé, pas de vue consolidée),
+``ged.QuotaStockage``/GED36 (GED seulement, pas d'écran dédié). Ce module
+agrège, en LECTURE SEULE, AUCUN NOUVEAU MODÈLE DE QUOTA — réutilise les
+champs/compteurs existants.
 
 ``core`` reste une couche de FONDATION (contrat import-linter
-``core-foundation-is-a-base-layer``) : ``apps.publicapi`` n'est
-PAS une app de fondation exemptée (contrairement à ``apps.parametres``) —
-ses MODÈLES sont donc résolus par ``django.apps.apps.get_model`` (jamais un
-import statique), et leurs petits calculs d'agrégation sont
+``core-foundation-is-a-base-layer``) : ``apps.ged``/``apps.publicapi`` ne sont
+PAS des apps de fondation exemptées (contrairement à ``apps.parametres``) —
+leurs MODÈLES sont donc résolus par ``django.apps.apps.get_model`` (jamais un
+import statique), et leurs petits calculs d'agrégation (usage de stockage) sont
 RECALCULÉS ici sur le modèle brut plutôt que d'importer leur fonction de
 service (qui, elle, resterait un import interdit même en local — grimp voit
 tout import statique, quel que soit son emplacement dans le fichier).
 ``apps.parametres`` EST une app de fondation exemptée (CLAUDE.md) : son
 modèle ``CompanyProfile`` est lu directement pour la limite de sièges.
-
-SOLMVP23 — la ressource « Stockage documentaire » (quota GED) a quitté cette
-page avec la sortie du module documentaire du MVP solaire (Phase 2) : la page
-n'affiche jamais une ressource dont la source n'existe pas.
 """
 from __future__ import annotations
 
 from django.apps import apps as django_apps
+from django.conf import settings
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
@@ -45,6 +43,33 @@ _UsageRessourceSerializer = inline_serializer('UsageRessource', {
 # constante change côté dataimport, la mettre à jour ICI AUSSI (un test
 # dédié peut comparer les deux valeurs pour détecter une dérive).
 IMPORT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+
+
+def _usage_ged(company):
+    """Octets utilisés / quota GED de la société (GED36, lecture seule)."""
+    try:
+        version_model = django_apps.get_model('ged', 'DocumentVersion')
+        quota_model = django_apps.get_model('ged', 'QuotaStockage')
+    except LookupError:
+        return None
+
+    from django.db.models import Sum
+    agg = version_model.objects.filter(company=company).aggregate(
+        total=Sum('size'))
+    utilise = int(agg['total'] or 0)
+
+    quota_row = quota_model.objects.filter(company=company).first()
+    if quota_row is not None:
+        quota = quota_row.quota_octets
+    else:
+        quota = int(getattr(settings, 'GED_QUOTA_DEFAUT_OCTETS', 0) or 0)
+
+    return {
+        'nom': 'Stockage documentaire',
+        'utilise': utilise,
+        'limite': quota or None,  # 0/None = illimité
+        'unite': 'octets',
+    }
 
 
 def _usage_api(company):
@@ -128,6 +153,7 @@ def usage_summary(company):
     indisponible est simplement OMISE (jamais une valeur inventée)."""
     ressources = []
     for calc in (
+        lambda: _usage_ged(company),
         lambda: _usage_api(company),
         _usage_import_csv,
         lambda: _usage_utilisateurs(company),
