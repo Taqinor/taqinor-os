@@ -1416,6 +1416,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const renderScene = scene3d.renderScene;
   const setPanelHighlight = scene3d.setPanelHighlight; // W88 — surlignage/pick des panneaux 3D
   const setPanelSelection = scene3d.setPanelSelection; // PV29 — surlignage d'une SÉLECTION 3D
+  // CALX219 câblage — la couche électrique (CALX219/220/223) existait mais n'était JAMAIS
+  // rendue : son `groupe` three.js n'était attaché à aucune scène. On la construit ici (au
+  // lieu de l'intérieur du littéral `onApiReady`) pour pouvoir la DONNER à la scène, qui la
+  // ré-attache après chaque `renderScene`. `electrique3d.ts` n'est pas modifié.
+  const coucheElectrique = creerCoucheElectrique(ctx);
+  scene3d.setCoucheElectrique(coucheElectrique.groupe);
 
   // — Moteur d'optimisation vivante (W34/V7 plat + W35/V8 pente + matrice V6 PVGIS) :
   // voir roofPro11/optimizer.ts. `syncChips`/`renderMatrixOptimumCard` sont déclarés plus
@@ -3611,6 +3617,6 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     raccourcis: raccourcisAtelier,
     // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
     calquesDisponibles: () => calquesDisponibles(map),
-    electrique: creerCoucheElectrique(ctx), // CALX220 — pose/déplacement/retrait d'organes électriques
+    electrique: coucheElectrique, // CALX220 — pose/déplacement/retrait d'organes électriques
   });
 }

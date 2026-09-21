@@ -111,6 +111,15 @@ export interface Scene3d {
   ) => void;
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
   resetTextures: () => void;
+  /**
+   * CALX219 câblage — ATTACHE la couche électrique (le `groupe` three.js que
+   * `creerCoucheElectrique` construit, lot 4) à la racine de la scène, et la RÉ-ATTACHE
+   * après chaque `renderScene` — sans quoi le groupe existe mais n'est jamais rendu.
+   * La scène ne fait que l'attacher : elle ne construit RIEN dedans et ne le libère
+   * JAMAIS (`disposeScene` le détache d'abord), son créateur en reste propriétaire.
+   * `null` le détache. Appelable avant `onAdd` : l'attache se fait alors au premier rendu.
+   */
+  setCoucheElectrique: (groupe: THREE.Object3D | null) => void;
   /** W88 — surligne le panneau de la zone active correspondant à `cellIndex` (or = sélection),
    *  ou efface tout surlignage (cellIndex null). Pose les couleurs d'instance + repeint. */
   setPanelHighlight: (cellIndex: number | null) => void;
@@ -1059,11 +1068,18 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
   // W107 — lift de faîtière commune par zone (id → mètres), recalculé à chaque renderScene
   // dans la frame ENU de la zone active. Vide / 0 → rendu inchangé (pans isolés, toit plat).
   let ridgeLifts = new Map<string, number>();
+  // CALX219 câblage — la couche électrique du lot 4. Elle est CONSTRUITE ailleurs
+  // (`electrique3d.ts`) : ici on ne garde que sa référence pour la rattacher après chaque
+  // reconstruction de scène. Jamais disposée ici (voir `disposeScene`).
+  let groupeElectrique: THREE.Object3D | null = null;
   // CALX101 — retraits de rive RÉGLÉS (CAL76), lus à la demande. Absent → aucun acrotère.
   const parapetReglM = (): number => {
     const s = deps.setbacksOf?.();
     return typeof s?.parapetM === 'number' && Number.isFinite(s.parapetM) ? s.parapetM : 0;
   };
+  function attacherCoucheElectrique() {
+    if (groupeElectrique && sceneRoot && groupeElectrique.parent !== sceneRoot) sceneRoot.add(groupeElectrique);
+  }
 
   const AXIS_X = new THREE.Vector3(1, 0, 0);
   const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -1261,6 +1277,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       scene = new THREE.Scene();
       sceneRoot = new THREE.Group();
       scene.add(sceneRoot);
+      attacherCoucheElectrique(); // CALX219 — couche donnée AVANT le premier rendu
       scene.add(new THREE.AmbientLight(0xb9c8ee, 0.5));
       scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x20242e, 0.5));
       sun = new THREE.DirectionalLight(0xfff2d6, 2.5);
@@ -1331,6 +1348,11 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
 
   function disposeScene() {
     if (!sceneRoot) return;
+    // CALX219 câblage — la couche électrique n'appartient PAS à la scène : on la DÉTACHE
+    // avant la purge pour que ses géométries/matériaux survivent au re-rendu (elle est
+    // rattachée en fin de `renderScene`). Sans ce détachement, chaque reconstruction de
+    // scène libérerait des ressources GPU dont `electrique3d.ts` se croit propriétaire.
+    if (groupeElectrique && groupeElectrique.parent === sceneRoot) sceneRoot.remove(groupeElectrique);
     for (const child of [...sceneRoot.children]) {
       child.traverse(disposeObject); // inclut les arêtes/étiquettes enfants
       sceneRoot.remove(child);
@@ -2287,6 +2309,7 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     sc.far = dist * 2;
     sc.updateProjectionMatrix();
 
+    attacherCoucheElectrique(); // CALX219 câblage — la couche électrique revient sur la scène
     map.triggerRepaint();
   }
 
@@ -2476,7 +2499,17 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     }
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
+  // CALX219 câblage — l'atelier donne sa couche électrique à la scène ; la scène l'attache
+  // tout de suite si elle existe déjà, et la ré-attache après chaque `renderScene`.
+  function setCoucheElectrique(groupe: THREE.Object3D | null) {
+    if (groupeElectrique && groupeElectrique !== groupe && groupeElectrique.parent === sceneRoot) {
+      sceneRoot?.remove(groupeElectrique); // détaché, jamais disposé : il ne nous appartient pas
+    }
+    groupeElectrique = groupe;
+    attacherCoucheElectrique();
+  }
+
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setCoucheElectrique, setPanelHighlight, setPanelSelection, setSolarAccessHeatmap, setStringColoring, snapshot, renderOffscreen };
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
