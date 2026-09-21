@@ -1,4 +1,4 @@
-"""CALX224-225 — le MÉTRÉ et la CHUTE, tronçon par tronçon.
+"""CALX224-226 — le MÉTRÉ et la CHUTE, tronçon par tronçon.
 
 LE DÉFAUT CORRIGÉ
 -----------------
@@ -28,6 +28,12 @@ racine optionnelle posée par CALX202) et, pour chaque entrée :
   courant qui traverse CE tronçon, le barème de son côté et la cible de la
   NORME applicable. Le critère dimensionnant et la référence de la règle
   sortent tels quels.
+* **CALX226 — le cumul, et UN seul verdict par côté.** ``chute_cumulee_pct``
+  remonte la chaîne d'amont en aval (``de`` → ``vers``) ; les deux cumuls
+  bout en bout (DC, AC) sont verdictés UNE FOIS chacun contre la cible et le
+  maximum DÉJÀ cités par le noyau. Avec plusieurs tronçons en série, chacun
+  peut tenir sa cible pendant que leur SOMME dépasse le maximum : sans ce
+  verdict, personne ne le voit.
 
 D'OÙ VIENNENT LES CHIFFRES (aucun n'est posé ici)
 --------------------------------------------------
@@ -55,8 +61,13 @@ FORME PUBLIÉE
 -------------
 ``contract_samples/calepinage_troncons.json`` (CALX203) : ``troncons[]`` (14
 champs), ``totaux{dc_chute_pct, ac_chute_pct, metre_par_section[]}``,
-``omissions[{troncon, champ, motif}]``. Les deux chutes cumulées de
-``totaux`` sont remplies par CALX226.
+``omissions[{troncon, champ, motif}]`` — épinglés clé pour clé par les tests.
+
+CALX226 AJOUTE une quatrième clé racine, ``verdicts[]``, que l'échantillon
+committé ne porte pas encore : un verdict par côté calculable
+(``{code, libelle, cote, conforme, bloquant, valeur_pct, cible_pct,
+maximum_pct, troncons[], source, detail}``). Elle est signalée à la lane qui
+possède ``contract_samples/`` pour y être décrite — jamais ajoutée ici.
 """
 from __future__ import annotations
 
@@ -469,6 +480,154 @@ def _dimensionner_troncon(troncon, contexte):
     return (champs, None)
 
 
+# ─────────────── CALX226 : la chute cumulée bout en bout, verdictée UNE fois
+#: Le code de chaque verdict, par côté — un test lit un verdict par son CODE,
+#: jamais par sa position dans une liste.
+CODE_VERDICT = {COTE_DC: 'chute_cumulee_dc', COTE_AC: 'chute_cumulee_ac'}
+LIBELLE_COTE = {COTE_DC: 'Chute de tension cumulée DC (champ → onduleur)',
+                COTE_AC: 'Chute de tension cumulée AC (onduleur → tableau)'}
+
+
+def _cumul_du_troncon(troncon, arrivants, memo, en_cours):
+    """La chute cumulée DEPUIS LA SOURCE au bout de CE tronçon, ou ``None``.
+
+    On remonte la chaîne d'amont en aval : le cumul d'un tronçon est sa
+    propre chute PLUS le pire cumul des tronçons qui arrivent à son extrémité
+    amont — quand deux branches se rejoignent, c'est le chemin le plus
+    défavorable qui décide, jamais une moyenne.
+
+    Une chute manquante en amont, ou une boucle dans le tracé, rend ``None``
+    (jamais un cumul partiel : il se lirait comme un budget de chute encore
+    disponible).
+    """
+    nom = troncon['id']
+    if nom in memo:
+        return memo[nom]
+    chute = troncon.get('chute_pct')
+    if chute is None:
+        memo[nom] = None
+        return None
+    if nom in en_cours:
+        return None
+    en_cours.add(nom)
+    amont = 0.0
+    cle = (troncon.get('cote'), troncon.get('de'))
+    for precedent in arrivants.get(cle) or ():
+        if precedent['id'] == nom:
+            continue
+        valeur = _cumul_du_troncon(precedent, arrivants, memo, en_cours)
+        if valeur is None:
+            en_cours.discard(nom)
+            memo[nom] = None
+            return None
+        amont = max(amont, valeur)
+    en_cours.discard(nom)
+    memo[nom] = amont + chute
+    return memo[nom]
+
+
+def _cumuler_les_chutes(troncons):
+    """Pose ``chute_cumulee_pct`` sur chaque tronçon ; rend le pire par côté.
+
+    Le « pire » est la chute cumulée BOUT EN BOUT : celle du tronçon le plus
+    aval de la chaîne la plus défavorable. C'est elle, et elle seule, que le
+    verdict de CALX226 compare aux bornes de la norme.
+    """
+    arrivants = {}
+    for troncon in troncons:
+        cote = troncon.get('cote')
+        if cote in (COTE_DC, COTE_AC):
+            arrivants.setdefault((cote, troncon.get('vers')),
+                                 []).append(troncon)
+    memo = {}
+    pires = {}
+    for troncon in troncons:
+        cote = troncon.get('cote')
+        if cote not in (COTE_DC, COTE_AC):
+            continue
+        cumul = _cumul_du_troncon(troncon, arrivants, memo, set())
+        troncon['chute_cumulee_pct'] = (None if cumul is None
+                                        else round(cumul, 3))
+        if cumul is not None and cumul > pires.get(cote, -1.0):
+            pires[cote] = cumul
+    return pires
+
+
+def _verdict_de_chute(cote, cumul, contributeurs, norme):
+    """UN verdict pour CE côté — jamais un verdict par tronçon.
+
+    Les bornes sont celles que le noyau porte déjà, LUES par la norme
+    applicable avec leur référence (UTE C 15-712-1 pour les cibles ; la
+    référence du maximum AC rappelle que NF C 15-100 §525 plafonne
+    l'installation entière). Aucune borne neuve n'est créée ici.
+    """
+    from core.electrique.types import fr
+
+    cible, reference_cible = _coefficient(norme, CLE_CIBLE[cote])
+    maximum, reference_max = _coefficient(norme, CLE_MAXIMUM[cote])
+    verdict = {
+        'code': CODE_VERDICT[cote], 'libelle': LIBELLE_COTE[cote],
+        'cote': cote, 'conforme': None, 'bloquant': False,
+        'valeur_pct': round(cumul, 3), 'cible_pct': cible,
+        'maximum_pct': maximum, 'troncons': list(contributeurs),
+        'source': None, 'detail': '',
+    }
+    noms = ', '.join('« %s »' % nom for nom in contributeurs)
+    if cible is None or maximum is None:
+        verdict['detail'] = (
+            "chute cumulée de %s %% mesurée sur %s, mais la cible ou le "
+            "maximum ne sont pas publiés par la norme applicable : le "
+            "contrôle n'est PAS vérifiable, et aucune borne n'est supposée à "
+            "leur place." % (fr(cumul, 2), noms))
+        return verdict
+
+    verdict['source'] = 'norme'
+    if cumul > maximum + 1e-9:
+        verdict['conforme'] = False
+        verdict['bloquant'] = True
+        verdict['detail'] = (
+            "chute cumulée de %s %% bout en bout, au-dessus du maximum "
+            "admissible de %s %% (%s). Pris isolément, un tronçon peut tenir "
+            "sa cible ; c'est leur SOMME qui déborde. Tronçons "
+            "contributeurs : %s — raccourcir la liaison, rapprocher "
+            "l'organe, ou monter en section."
+            % (fr(cumul, 2), fr(maximum, 1), reference_max, noms))
+    elif cumul > cible + 1e-9:
+        verdict['conforme'] = False
+        verdict['detail'] = (
+            "chute cumulée de %s %% bout en bout, au-dessus de la cible de "
+            "%s %% (%s) mais sous le maximum de %s %%. Tronçons "
+            "contributeurs : %s."
+            % (fr(cumul, 2), fr(cible, 1), reference_cible, fr(maximum, 1),
+               noms))
+    else:
+        verdict['conforme'] = True
+        verdict['detail'] = (
+            "chute cumulée de %s %% bout en bout, sous la cible de %s %% "
+            "(%s). Tronçons contributeurs : %s."
+            % (fr(cumul, 2), fr(cible, 1), reference_cible, noms))
+    return verdict
+
+
+def _verdicts_des_cumuls(troncons, pires, norme):
+    """Un verdict par côté CALCULABLE — aucun verdict sur un cumul absent.
+
+    Un côté dont la chute n'est pas calculable n'a pas de verdict : un vert
+    prononcé sur une absence serait le pire des faux verts. Les omissions
+    par tronçon en disent déjà la cause.
+    """
+    verdicts = []
+    for cote in (COTE_DC, COTE_AC):
+        if cote not in pires:
+            continue
+        contributeurs = [t['id'] for t in troncons
+                         if t.get('cote') == cote
+                         and t.get('chute_pct') is not None]
+        verdicts.append(_verdict_de_chute(cote, pires[cote], contributeurs,
+                                          norme))
+    return verdicts
+
+
 def _metre_par_section(troncons):
     """Le métré à commander : une ligne par section, la section OMISE comprise.
 
@@ -501,7 +660,8 @@ def _troncons_du_document(document, contexte=None):
         return {'troncons': [],
                 'totaux': {'dc_chute_pct': None, 'ac_chute_pct': None,
                            'metre_par_section': []},
-                'omissions': [_omission_aucun_cheminement()]}
+                'omissions': [_omission_aucun_cheminement()],
+                'verdicts': []}
 
     troncons = []
     omissions = []
@@ -516,11 +676,19 @@ def _troncons_du_document(document, contexte=None):
             omissions.append(omission)
         troncons.append(publie)
 
+    pires = _cumuler_les_chutes(troncons)
     return {
         'troncons': troncons,
-        'totaux': {'dc_chute_pct': None, 'ac_chute_pct': None,
-                   'metre_par_section': _metre_par_section(troncons)},
+        'totaux': {
+            'dc_chute_pct': (None if COTE_DC not in pires
+                             else round(pires[COTE_DC], 3)),
+            'ac_chute_pct': (None if COTE_AC not in pires
+                             else round(pires[COTE_AC], 3)),
+            'metre_par_section': _metre_par_section(troncons),
+        },
         'omissions': omissions,
+        'verdicts': _verdicts_des_cumuls(troncons, pires,
+                                         (contexte or {}).get('norme')),
     }
 
 
@@ -574,7 +742,7 @@ def _contexte_electrique(conception, norme):
 
 
 def troncons_du_calepinage(calepinage):
-    """CALX224-225 — le métré et la chute, tronçon par tronçon, de CE
+    """CALX224-226 — le métré et la chute, tronçon par tronçon, de CE
     calepinage.
 
     Enveloppe MINCE : elle lit le document enregistré
