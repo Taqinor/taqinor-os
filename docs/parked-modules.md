@@ -235,44 +235,109 @@ modèles et tables conservés, et sont listées ici en PHASE 2 *(à compléter p
 
 ## 5. Recette de retour d'un module
 
-Générique, valable pour les 49 ; `<x>` = le label. Aucune donnée n'est recréée : les tables
+Générique, valable pour les 47 ; `<x>` = le label. Aucune donnée n'est recréée : les tables
 n'ont jamais été supprimées, on ne fait que **rendre les modèles à Django**.
-*La recette est prouvée de bout en bout sur une app réelle par **SOLMVP51**, qui finalise
-cette section et `docs/module-playbook.md` ; l'ordre exact des étapes 2-3 y est verrouillé.*
 
-1. **Restaurer le code backend depuis l'archive** — tout sauf `migrations/`, qui est déjà
-   verbatim dans la coquille :
+> **PROUVÉE de bout en bout le 21/09/2026 (SOLMVP51) sur `voip`** — restauration, gates verts,
+> puis re-coquillage, arbre revenu byte-identique. La transcription exacte et les corrections
+> qu'elle a imposées sont intégrées ci-dessous : les étapes suivies **littéralement**
+> fonctionnent, sans rien deviner. Les encadrés « ⚠ » sont les pièges réellement rencontrés.
+
+0. **Savoir où en est la migration-coquille AVANT de toucher quoi que ce soit** — c'est ce qui
+   décide de l'étape 2 :
    ```
+   python manage.py showmigrations <x>
+   ```
+   `[X] NNNN_solmvp_coquille` = appliquée sur CETTE base → étape 2 obligatoire.
+   `[ ]` = jamais appliquée (le cas sur une branche, une base neuve ou un test) → l'étape 2
+   est **sans objet**, on passe directement à l'étape 3.
+
+1. **Restaurer le code backend** — tout sauf `migrations/`, qui est déjà verbatim dans la
+   coquille. Deux sources équivalentes :
+   ```
+   # (a) l'archive — l'AUTORITÉ
+   git fetch origin refs/tags/archive/full-erp-2026-09-20:refs/tags/archive/full-erp-2026-09-20
    git checkout archive/full-erp-2026-09-20 -- backend/django_core/apps/<x>
    git checkout HEAD -- backend/django_core/apps/<x>/migrations
    ```
-   Le `models.py` de l'archive **remplace** celui de la coquille, talon compris : un talon
-   (§2) n'est qu'un extrait verbatim de ce même fichier, il n'y a donc rien à fusionner et
-   rien à recopier. Le vrai `models.py` redéfinit tous les symboles que les migrations gelées
+   ```
+   # (b) le miroir du dépôt (SOLMVP37) — même contenu, sans fetch
+   cp -r backend/parked/<x>/. backend/django_core/apps/<x>/
+   ```
+   ⚠ **Le tag n'est pas forcément dans un clone frais** : `git checkout archive/…` échoue tant
+   que le `fetch` explicite ci-dessus n'a pas été fait. Le miroir `backend/parked/<x>/` évite
+   ce détour : il a été **vérifié byte-identique** au contenu de l'archive hors `migrations/`
+   (`diff -r --exclude=migrations` = aucune différence sur `voip`).
+   Le `models.py` restauré **remplace** celui de la coquille, talon compris : un talon (§2)
+   n'est qu'un extrait verbatim de ce même fichier, il n'y a donc rien à fusionner et rien à
+   recopier. Le vrai `models.py` redéfinit tous les symboles que les migrations gelées
    réclament, plus les modèles.
-2. **Renverser la migration d'état** (`<n-1>` = la migration qui précède la coquille) :
+
+2. **Renverser la migration d'état** — *seulement si l'étape 0 l'a montrée `[X]`*
+   (`<n-1>` = la migration qui précède la coquille) :
    ```
    python manage.py migrate <x> <n-1>
    ```
    Elle est `database_operations=[]` : ce `migrate` ne touche **aucune** table, il rend
-   seulement les modèles à l'état Django.
-3. **Supprimer le fichier de la migration-coquille** une fois renversée, sinon le prochain
-   `migrate` la réapplique. `makemigrations --check` doit alors être vert sans nouvelle
-   migration.
-4. **Rendre les liens FK** que le parcage avait retirés côté app gardée (tableau du §2) :
+   seulement les modèles à l'état Django. À faire sur **chaque** base où elle est appliquée
+   (prod, préprod, bases de dev) — jamais après l'étape 3.
+
+3. **Supprimer le fichier de la migration-coquille** (`NNNN_solmvp_coquille.py`), sinon le
+   prochain `migrate` la réapplique et resupprime les modèles de l'état.
+   ⚠ **Ordre non négociable : renverser (2) PUIS supprimer (3).** Supprimer d'abord sur une
+   base où elle est appliquée laisse une ligne orpheline dans `django_migrations`, sans fichier
+   derrière. Quand l'étape 0 a répondu `[ ]`, supprimer le fichier **suffit** : il n'y a rien à
+   renverser.
+
+4. **Vérifier l'état Django — et avec le BON gate** :
+   ```
+   python manage.py check                        # nécessaire, PAS suffisant
+   python manage.py makemigrations --check --dry-run   # LE gate : « No changes detected »
+   ```
+   ⚠ `manage.py check` passe **vert** avec le `models.py` restauré ET la migration-coquille
+   encore sur le disque (constaté) : seul `makemigrations --check` voit que l'état supprime
+   encore les modèles. Ne jamais conclure sur `check` seul.
+
+5. **Rendre les liens FK** que le parcage avait retirés côté app gardée (tableau du §2) :
    **une NOUVELLE migration** `AddField` dans l'app gardée — jamais une réécriture de la
-   migration `RemoveField` déjà partie en prod.
-5. **Restaurer le frontend** depuis la même archive :
-   `frontend/src/features/<x>/`, `frontend/src/pages/<x>/`, `frontend/src/api/<x>Api.js`,
-   puis réinscrire la route dans `router/moduleRoutes.jsx`.
-   ⚠️ Le dossier frontend ne porte pas toujours le label de l'app (`chat` → `messaging`,
-   `scm` → `logistique`, `pos` → `magasin`…) : l'inventaire exact est celui de SOLMVP40.
-6. **Ré-inclure les urls** dans `erp_agentique/urls.py` (et, si le module en avait, ses
-   entrées Celery beat, ses `contract_samples/` et ses specs e2e, restaurés de l'archive).
-7. **Retirer le label de `APPS_PARQUEES`** dans `core/parked.py` (et de `GROUPES`, et de
-   `PHASE2` s'il y figurait).
-8. **Re-passer les gardes** : `scripts/check_parked_apps.py`, `scripts/check_platform.py`,
+   migration `RemoveField` déjà partie en prod. (Rien à faire pour une app absente de ce
+   tableau : c'est le cas de `voip`, et de 42 des 47 apps.)
+
+6. **Restaurer le frontend** depuis `frontend/parked/` (miroir SOLMVP40) ou l'archive :
+   `features/<dossier>/`, `pages/<dossier>/`, `api/<x>Api.js`, `components/<dossier>/` —
+   la route se réinscrit d'elle-même par le glob de `router/moduleRoutes.jsx` dès que
+   `features/<dossier>/module.config.jsx` est de retour.
+   ⚠ Le dossier frontend ne porte pas toujours le label de l'app (`chat` → `messaging`,
+   `scm` → `logistique`, `pos` → `magasin`…) : la liste réelle est
+   `ls frontend/parked/features/`.
+
+7. **Ré-inclure les urls** dans `_APP_URLS` (`erp_agentique/urls.py`), plus, si le module en
+   avait, ses entrées Celery beat, ses `contract_samples/` et ses specs e2e.
+   ⚠ `parquer_app` retire la ligne `path('<x>/', include('apps.<x>.urls'))` **sans laisser de
+   commentaire** : il n'y a aucun marqueur à décommenter, il faut réécrire la ligne. Le segment
+   est la clé `key` du `module_manifest` (c'est de ce 2ᵉ segment que dérive le gatage 404 des
+   modules désactivés) — donc `path('voip/', include('apps.voip.urls'))` pour `voip`.
+
+8. **Retirer le label de `APPS_PARQUEES`** dans `core/parked.py` (et de `GROUPES`, et de
+   `PHASE2` s'il y figurait). **En dernier**, une fois l'étape 4 verte.
+   ⚠ `manage.py parquer_app <x>` **refuse** un label absent d'`APPS_PARQUEES`. Conséquence
+   pratique : pour RE-parquer une app (annuler un retour), on remet d'abord le label dans
+   `core/parked.py`, **puis** on lance `python manage.py parquer_app <x>` — la commande refait
+   tout (migration d'état, `models.py`, `apps.py`, suppression des fichiers, retrait de
+   l'include d'urls). Elle est idempotente : sur `voip`, l'aller-retour complet a rendu une
+   migration-coquille et un `urls.py` **byte-identiques**, seul le docstring de `models.py`
+   a bougé de 3 lignes (le gabarit du talon a évolué en SOLMVP30b, après le coquillage de
+   `voip` par SOLMVP32).
+
+9. **Re-passer les gardes** : `python scripts/parquer_app.py --verifier-tout` (le compte de
+   coquilles doit avoir baissé de 1), `scripts/check_parked_apps.py`,
+   `scripts/check_platform.py`, `scripts/check_api_contract.py`,
    `python manage.py makemigrations --check`, `flake8`, puis la CI complète.
+   Penser aussi aux **baselines réduites au périmètre MVP** : si l'app revenue avait des
+   entrées dans `apps/records/platform_baselines/*` ou dans
+   `core.platform_coverage.BASELINE_DRIFT`, SOLMVP51 les a retirées — elles doivent être
+   remises **en même temps** que le module, sinon les gardes SCA4/SCA29/ARC41 rougissent sur
+   du code qui n'a pourtant pas changé.
 
 Ce que la recette ne fait **jamais** : recréer une table, toucher `django_migrations` à la
 main, squasher des migrations, ou réécrire une migration déjà appliquée en production.
