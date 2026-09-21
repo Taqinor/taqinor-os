@@ -67,7 +67,9 @@ la LISTE PLATE des postes saisis (D-CALX 11).
 from __future__ import annotations
 
 from apps.calepinage.services import etapes as _etapes
-from apps.calepinage.services.pvgis_serie import cle_de_cache
+from apps.calepinage.services.pvgis_serie import (
+    MOTIF_TMY_HORIZONTAL, cle_de_cache,
+)
 
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
 #: ``services/pertes.py::CATALOGUE`` est un TUPLE de noms sans rang, et
@@ -289,6 +291,26 @@ CLES_ETAPE_PUBLIEE = (
     'perte_pct', 'gain', 'source', 'entree', 'reference', 'motif_omission',
 )
 
+#: CALX153 — LES DEUX MODES MÉTÉO, et il n'y en a pas de troisième.
+#: ``tmy`` = l'année météo TYPE (``ClientPvgis.tmy``) ; ``pluriannuel`` = la
+#: fenêtre d'années réelles (``ClientPvgis.serie_irradiance``).
+MODES_METEO = ('tmy', 'pluriannuel')
+
+#: Les DEUX réglages société (CALX145) dont dépend le choix, nommés ICI sous
+#: la forme que l'écran de réglages affiche : un refus qui dit
+#: « mode_meteo » sans dire OÙ le saisir ne sert à rien.
+CLE_REGLAGE_MODE_METEO = 'parametres.simulation.mode_meteo'
+CLE_REGLAGE_FENETRE_ANNEES = 'parametres.simulation.fenetre_annees'
+
+#: LE PLAFOND DE LA FENÊTRE PLURIANNUELLE — décision fondateur du 21/09/2026
+#: consignée au plan : « fenêtre météo = toute la base disponible, plafond
+#: 10 ans, écrit comme réglage avec sa source ». Ce n'est donc pas un chiffre
+#: de confort : c'est la borne ARRÊTÉE, et la fenêtre elle-même reste SAISIE
+#: par la société avec sa provenance (D-CALX 7). Au-delà, les années les plus
+#: RÉCENTES sont gardées — les plus proches du climat d'aujourd'hui — et la
+#: troncature est DITE.
+PLAFOND_FENETRE_ANNEES = 10
+
 #: Tolérance de COMPARAISON de flottants — un epsilon d'arithmétique, pas un
 #: seuil métier : aucun chiffre publié n'en dépend.
 _EPSILON = 1e-9
@@ -297,6 +319,9 @@ __all__ = ['ORDRE_ETAPES', 'LIBELLES', 'CLES_ETAPE_PUBLIEE',
            'POSTE_PAR_ETAPE', 'ETAPES_HORS_CATALOGUE', 'POSTES_HORS_CHAINE',
            'EXCLUSIVITES', 'TOUJOURS_OMISES', 'ALBEDO_FACE_AVANT',
            'CLE_METEO_PARTAGEE', 'CLE_FOURNISSEUR_METEO',
+           'MODES_METEO', 'CLE_REGLAGE_MODE_METEO',
+           'CLE_REGLAGE_FENETRE_ANNEES', 'PLAFOND_FENETRE_ANNEES',
+           'MOTIF_TMY_HORIZONTAL', 'MeteoIndecise', 'decision_meteo',
            'ChaineInvalide', 'appliquer_chaine']
 
 
@@ -310,6 +335,20 @@ class ChaineInvalide(ValueError):
     def __init__(self, message, *, etape=''):
         super().__init__(message)
         self.etape = etape
+
+
+class MeteoIndecise(ValueError):
+    """CALX153 — la simulation est REFUSÉE parce que la météo n'est pas choisie.
+
+    ``champ`` porte le réglage à saisir, sous le nom que l'écran affiche, et
+    ``motif`` la phrase française à montrer telle quelle SOUS ce champ (règle
+    fondateur : jamais un « simulation impossible » générique).
+    """
+
+    def __init__(self, message, *, champ=''):
+        super().__init__(message)
+        self.champ = champ
+        self.motif = message
 
 
 def appliquer_chaine(serie, contexte=None):
@@ -332,6 +371,7 @@ def appliquer_chaine(serie, contexte=None):
             sans nommer sa source, ou n'a pas rendu ``(serie, etape)``.
     """
     contexte = contexte if isinstance(contexte, dict) else {}
+    _refuser_irradiance_horizontale(serie)
     _installer_meteo_partagee(contexte)
     courante = serie
     premiere = _arrondi(_etapes.energie_kwh(courante))
@@ -426,6 +466,156 @@ def _executer(nom, serie, contexte):
         return _appliquer_saisie(nom, serie, saisi)
     return serie, _etapes.etape_omise(
         _libelle(nom), _avec_saisie_non_sourcee(nom, motif, saisi))
+
+
+# ── CALX153 — année météo TYPE ou fenêtre PLURIANNUELLE ─────────────────
+
+def decision_meteo(contexte):
+    """Le MODE météo et la fenêtre qui en découle — ou un refus qui NOMME.
+
+    C'est la règle que ``services/simulation.py`` (CALX5) applique AVANT
+    d'appeler PVGIS : c'est le mode qui décide du service appelé (``tmy`` ou
+    ``seriescalc``), jamais l'inverse. Elle vit ici parce que l'ordonnanceur
+    l'applique aussi au moment de publier ``resultat['meteo']``.
+
+    Les deux modes ne disent pas la même chose, et c'est TOUT l'enjeu :
+    HelioScope rappelle qu'une année météo type est l'assemblage du mois le
+    plus représentatif de jusqu'à trente années — donc UNE année par
+    construction, sur laquelle aucune variabilité interannuelle ne se MESURE
+    (https://help-center.helioscope.com/hc/en-us/articles/8316899662099-TMY-Weather-File-Primer).
+    En mode ``tmy``, la chaîne ne publie donc AUCUN total annuel observé, et
+    σ météo ne peut pas être « mesuré » : il reste saisi, ou absent.
+
+    Args:
+        contexte: le contexte de la chaîne ; seule la section
+            ``reglages_simulation`` (CALX145) est lue.
+
+    Returns:
+        dict — ``mode``, ``source``, ``reference`` (la provenance du réglage),
+        ``fenetre_annees`` (``(debut, fin)`` ou ``None`` en mode ``tmy``),
+        ``fenetre_source``, ``fenetre_reference``, ``plafond_annees`` et
+        ``motif_fenetre`` (vide quand rien n'a été borné).
+
+    Raises:
+        MeteoIndecise: le mode n'est pas saisi, n'est pas l'un des deux, ou
+            la fenêtre manque alors que le mode ``pluriannuel`` l'exige.
+    """
+    saisi = _etapes.reglage(contexte, 'mode_meteo')
+    if saisi is None:
+        raise MeteoIndecise(
+            'Le mode météo n\'est pas choisi : la simulation est refusée. '
+            f'Renseignez « {CLE_REGLAGE_MODE_METEO} » avec sa source — '
+            f'{" ou ".join(MODES_METEO)}. Aucun mode par défaut n\'est '
+            'appliqué : une année météo type et une fenêtre pluriannuelle '
+            'ne rendent pas le même chiffre, et choisir à la place de la '
+            'société reviendrait à inventer le sien.',
+            champ=CLE_REGLAGE_MODE_METEO)
+
+    mode = str(saisi.get('valeur') or '').strip().lower()
+    if mode not in MODES_METEO:
+        raise MeteoIndecise(
+            f'Le mode météo saisi (« {saisi.get("valeur")!r} ») n\'est pas '
+            f'reconnu. Modes admis : {", ".join(MODES_METEO)}. Corrigez '
+            f'« {CLE_REGLAGE_MODE_METEO} ».',
+            champ=CLE_REGLAGE_MODE_METEO)
+
+    decision = {
+        'mode': mode,
+        'source': saisi.get('source'),
+        'reference': saisi.get('reference') or '',
+        'fenetre_annees': None,
+        'fenetre_source': None,
+        'fenetre_reference': '',
+        'plafond_annees': PLAFOND_FENETRE_ANNEES,
+        'motif_fenetre': '',
+    }
+    if mode == 'tmy':
+        # Le service ``tmy`` de PVGIS ne prend NI startyear NI endyear : une
+        # fenêtre y serait un paramètre mort, pas une précision.
+        decision['motif_fenetre'] = (
+            "Mode « année météo type » : la fenêtre d'années ne s'applique "
+            'pas — PVGIS assemble lui-même les douze mois retenus, et les '
+            'publie dans sa réponse.')
+        return decision
+
+    decision.update(_fenetre_pluriannuelle(contexte))
+    return decision
+
+
+def _fenetre_pluriannuelle(contexte):
+    """``fenetre_annees`` bornée au plafond arrêté, ou un refus qui la NOMME."""
+    saisie = _etapes.reglage(contexte, 'fenetre_annees')
+    if saisie is None:
+        raise MeteoIndecise(
+            "La fenêtre d'années météo n'est pas renseignée alors que le "
+            'mode « pluriannuel » est choisi : la simulation est refusée. '
+            f'Renseignez « {CLE_REGLAGE_FENETRE_ANNEES} » avec sa source — '
+            'toute la base disponible, dans la limite de '
+            f'{PLAFOND_FENETRE_ANNEES} ans. Aucune fenêtre par défaut '
+            "n'est appliquée.",
+            champ=CLE_REGLAGE_FENETRE_ANNEES)
+
+    bornes = _bornes_de_fenetre(saisie.get('valeur'))
+    if bornes is None:
+        raise MeteoIndecise(
+            "La fenêtre d'années météo est illisible (reçu : "
+            f'{saisie.get("valeur")!r}). Attendu : deux années, « 2015-2024 » '
+            f'ou [2015, 2024]. Corrigez « {CLE_REGLAGE_FENETRE_ANNEES} ».',
+            champ=CLE_REGLAGE_FENETRE_ANNEES)
+
+    debut, fin = bornes
+    motif = ''
+    if fin - debut + 1 > PLAFOND_FENETRE_ANNEES:
+        ancien = debut
+        debut = fin - PLAFOND_FENETRE_ANNEES + 1
+        motif = (
+            f'Fenêtre ramenée à {PLAFOND_FENETRE_ANNEES} ans '
+            f'({debut}-{fin}) : la saisie en demandait {fin - ancien + 1} '
+            f'({ancien}-{fin}). Le plafond est la borne arrêtée par la '
+            'société le 21/09/2026 (« toute la base disponible, plafond '
+            f'{PLAFOND_FENETRE_ANNEES} ans ») ; ce sont les années les plus '
+            'RÉCENTES qui sont gardées.')
+    return {
+        'fenetre_annees': (debut, fin),
+        'fenetre_source': saisie.get('source'),
+        'fenetre_reference': saisie.get('reference') or '',
+        'motif_fenetre': motif,
+    }
+
+
+def _bornes_de_fenetre(valeur):
+    """``(debut, fin)`` depuis « 2015-2024 » ou ``[2015, 2024]``, sinon ``None``."""
+    morceaux = None
+    if isinstance(valeur, (list, tuple)) and len(valeur) == 2:
+        morceaux = list(valeur)
+    elif isinstance(valeur, str) and '-' in valeur:
+        morceaux = valeur.split('-', 1)
+    if morceaux is None:
+        return None
+    try:
+        debut, fin = int(str(morceaux[0]).strip()), int(str(morceaux[1]).strip())
+    except (TypeError, ValueError):
+        return None
+    if debut > fin:
+        return None
+    return debut, fin
+
+
+def _refuser_irradiance_horizontale(serie):
+    """Une série qui n'a que ``gh_w_m2`` n'entre PAS dans la chaîne (CALX153).
+
+    ``ClientPvgis.tmy`` publie ``gh_w_m2`` — l'irradiance GLOBALE
+    HORIZONTALE. La chaîne, elle, travaille sur le PLAN des modules : sans
+    ``gi_w_m2``, il faudrait transposer, et ce module n'a aucun modèle de
+    transposition. Le refus NOMME la colonne manquante plutôt que de laisser
+    la cascade tourner sur une irradiance qui n'est pas la bonne.
+    """
+    points = (serie or {}).get('points') if isinstance(serie, dict) else None
+    if not points or not isinstance(points[0], dict):
+        return
+    premier = points[0]
+    if 'gh_w_m2' in premier and 'gi_w_m2' not in premier:
+        raise MeteoIndecise(MOTIF_TMY_HORIZONTAL, champ='meteo.gi_w_m2')
 
 
 # ── une requête météo par PLAN, jamais par module (CALX155) ─────────────
