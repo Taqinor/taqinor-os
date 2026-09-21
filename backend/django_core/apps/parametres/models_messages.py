@@ -59,22 +59,45 @@ MESSAGE_TEMPLATE_DEFAULTS = {
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'identite':
         "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    # CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique
+    # doit indiquer explicitement l'identité ET le caractère commercial de
+    # l'intervention (sanctionné par l'art. 180) ; loi 09-08 art. 5 §3 +
+    # décret 2-09-165 art. 34 : pour des données non collectées auprès de la
+    # personne (Meta, Odoo), l'information sur leur origine peut être donnée
+    # oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51
+    # est déjà assurée par le devis envoyé — une phrase courte suffit ici,
+    # pas un pavé dans le WhatsApp.
     'appel_ouverture':
-        "Bonjour M. {prenom}, {conseiller} de {marque}. Vous venez de remplir notre formulaire pour le solaire. Je vous dérange deux minutes ?",
+        "Bonjour M. {prenom}, {conseiller} de {marque} — c'est un appel commercial. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?",
     'repondeur':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
     'valeur_j1':
         "Bonjour M. {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
     'vocal_j3':
         "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
+    # CAD109 — même mention que `appel_ouverture` (loi 31-08 art. 51 +
+    # loi 09-08 art. 5 §3), sur le second script d'appel EN DIRECT
+    # (`repondeur`/`vocal_j3` restent des scripts de répondeur/vocal, pas des
+    # ouvertures de conversation).
     'appel_dimanche':
-        "Bonjour M. {prenom}, {conseiller} de {marque}. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
+        "Bonjour M. {prenom}, {conseiller} de {marque} — c'est un appel commercial. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
+    # CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ;
+    # le moteur clôture réellement à J14 (`cloture_j14`), donc « dans une
+    # semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
+    # CAD110 (21/09/2026) — loi 09-08 art. 10 al. 5 : l'exception de
+    # prospection exige une opposition possible « chaque fois qu'un
+    # courrier […] est adressé » et des coordonnées valables pour faire
+    # cesser — l'envoi manuel ne protège de rien (l'article vise le MOYEN
+    # et le consentement, pas la main humaine). Porte de sortie ajoutée aux
+    # touches qui portent le plus loin (J7, J14, fin d'après-devis, tous
+    # les réveils) — pas aux trois premiers messages (garde-fou : ne pas
+    # alourdir le début, c'est le suivi long qui expose).
     'je_classe_j7':
-        "Bonjour M. {prenom}, {conseiller} de {marque}. Sans nouvelle de votre part, je mets votre demande de côté dans trois jours. Un simple « plus tard » me suffit pour la garder ouverte.",
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.",
     'cloture_j14':
-        "Bonjour M. {prenom}, {conseiller} de {marque}. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.",
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je n'insiste plus.",
     'reveil_a2':
-        "Bonjour M. {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.",
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
     'rappel_plus_tard':
         "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
     'stop_contact':
@@ -96,24 +119,38 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties",
     'j9_validite':
         "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
+    # CAD110 — porte de sortie (voir la note au-dessus de `je_classe_j7`) :
+    # les deux DERNIÈRES touches après-devis, celles qui portent le plus
+    # loin dans le suivi.
     'j13_dernier':
-        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille.",
+        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.",
     'j14_pause':
-        "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver.",
+        "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.",
     'dimanche_famille':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
     'annonce_appel_reda':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
     'offre_reda':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Suite à votre échange avec le fondateur : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° {reference}, soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.",
+    # CAD73 (21/09/2026) — « il y a quelques mois » était un fait daté FAUX :
+    # ce réveil part ~6 semaines après le devis (`cloturer_cadence` démarre
+    # la cadence réveil à sa clôture, ~J14, donc reveil_a1 tombe vers J+44),
+    # jamais des mois. Reformulé SANS durée plutôt qu'une durée inventée.
+    # CAD110 — porte de sortie sur les QUATRE touches de réveil : ce sont
+    # les plus lointaines de toute la cadence (J30/J60), donc les plus
+    # exposées au regard de l'art. 10 al. 5.
     'reveil_a1':
-        "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)",
+        "Bonjour M. {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.",
     'reveil_a3':
-        "Bonjour M. {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?",
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
     'reveil_b':
-        "Bonjour M. {prenom}, c'est {conseiller} de {marque}. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?",
+        "Bonjour M. {prenom}, c'est {conseiller} de {marque}. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ? Répondez STOP et je n'insiste plus.",
+    # CAD71 (21/09/2026) — {lien} n'était alimenté que par le devis
+    # (`url_proposition`) : ce texte envoyait donc le lien du DEVIS du client
+    # à la place d'un lien vers la fiche Google. Placeholder dédié
+    # {lien_google}, alimenté par `CompanyProfile.lien_avis_google`.
     'avis_google':
-        "Bonjour M. {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien}. Merci beaucoup !",
+        "Bonjour M. {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien_google}. Merci beaucoup !",
     'parrainage':
         "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.",
     # VISITE-CADENCE (textes validés par le fondateur, 15/09/2026) — LA VISITE
@@ -131,6 +168,17 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # vos questions »), qui est aussi la vraie valeur du passage.
     'visite_confirmation':
         "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+    # CAD67 (21/09/2026) — deux appels de la cadence contact n'avaient aucune
+    # phrase d'ouverture (`apps/parametres/models_relance.py` ordre 4 et 10).
+    # `appel_relance` (Appel 3, J1 10:30) : troisième tentative, ton court
+    # comme `appel_ouverture`/`vocal_j3`/`appel_dimanche`. `appel_dernier`
+    # (Appel 6, dernier avant clôture J14) : celui qui décide du classement.
+    # CAD96 (21/09/2026, fold post-merge) — {marque} plutôt que « TAQINOR »
+    # codé en dur (même règle que le reste du catalogue, garde SCA29).
+    'appel_relance':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
+    'appel_dernier':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -140,7 +188,7 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'identite':
         "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'appel_ouverture':
-        "السلام عليكم السي {prenom}، {conseiller} من {marque}. عمرتو دابا الفورم ديالنا على الطاقة الشمسية. نقدر ناخد منكم جوج دقايق؟",
+        "السلام عليكم السي {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
     'repondeur':
         "السلام عليكم السي {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
     'valeur_j1':
@@ -148,13 +196,16 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'vocal_j3':
         "السلام عليكم السي {prenom}، {conseiller} من {marque}. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
     'appel_dimanche':
-        "السلام عليكم السي {prenom}، {conseiller} من {marque}. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
+        "السلام عليكم السي {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
+    # CAD110 (21/09/2026) — même porte de sortie que côté FR (voir la note
+    # au-dessus de `je_classe_j7` FR) : « جاوبو STOP وما نلحوش عليكم » =
+    # « répondez STOP et je n'insiste plus ».
     'je_classe_j7':
-        "السلام عليكم السي {prenom}، {conseiller} من {marque}. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لتلت أيام. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.",
     'cloture_j14':
-        "السلام عليكم السي {prenom}، {conseiller} من {marque}. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.",
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.",
     'reveil_a2':
-        "السلام عليكم السي {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.",
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد. جاوبو STOP وما نلحوش عليكم.",
     'rappel_plus_tard':
         "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانت الفاتورة عندكم، تصويرة ديالها غادي تعاونني نوجد التقدير.",
     'stop_contact':
@@ -173,6 +224,45 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
     'visite_confirmation':
         "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+    # CAD-F — CAD67 (21/09/2026) — darija des deux nouveaux scripts d'appel.
+    # CAD96 (fold post-merge) — {marque} plutôt que « TAQINOR » codé en dur.
+    'appel_relance':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟",
+    'appel_dernier':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟",
+    # CAD-F — CAD62 (21/09/2026) — les 11 clés qui manquaient au repli darija de
+    # la marche après-devis, du réveil et de l'après-signature. Même patron que
+    # `visite_proposition`/`visite_confirmation` ci-dessus : traduction phrase
+    # par phrase du FR validé (aucune promesse ajoutée, aucun chiffre, jamais
+    # une traduction automatique), source dans
+    # `docs/crm/messages_meryem.md` — mais PAS ENCORE relues par un locuteur
+    # natif (CADM1, à faire avant tout envoi réel, comme les deux clés visite).
+    'j1_pdf':
+        "السلام عليكم السي {prenom}، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.",
+    'j4_preuve':
+        "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
+    'j6_garanties':
+        "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties",
+    'j9_validite':
+        "العرض ديالكم صالح حتى {date_validite}. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.",
+    # CAD110 — porte de sortie sur les deux dernières touches après-devis.
+    'j13_dernier':
+        "ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.",
+    'j14_pause':
+        "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.",
+    # CAD110 — porte de sortie sur les QUATRE touches de réveil.
+    # CAD96 (fold post-merge) — {marque} plutôt que « Taqinor Solutions »
+    # codé en dur (même règle que le reste du catalogue, garde SCA29).
+    'reveil_a1':
+        "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.",
+    'reveil_a3':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+    'reveil_b':
+        "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟ جاوبو STOP وما نلحوش عليكم.",
+    'avis_google':
+        "السلام عليكم السي {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien_google}. شكرا بزاف!",
+    'parrainage':
+        "إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
@@ -201,13 +291,18 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # graphies incohérentes qui coexistaient (majuscules seules, suivies de
 # « Solutions », casse mixte suivie de « Solutions ») par UNE seule source,
 # la société elle-même.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}"]
+# CAD71 (21/09/2026) — `{lien_google}` : lien de la fiche Google (réglage
+# société `CompanyProfile.lien_avis_google`), PAS le lien du devis.
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [
     'identite',
     'appel_ouverture',
     'repondeur',
+    # CAD67 — Appel 3 (relance J1) et Appel 6 (dernier, avant clôture).
+    'appel_relance',
+    'appel_dernier',
     'valeur_j1',
     'vocal_j3',
     'appel_dimanche',
@@ -267,6 +362,9 @@ class MessageTemplate(models.Model):
         IDENTITE = 'identite', "Relance — identité (J0)"
         APPEL_OUVERTURE = 'appel_ouverture', "Relance — script d'appel d'ouverture (J0)"
         REPONDEUR = 'repondeur', "Relance — message sur répondeur"
+        # CAD67 — Appel 3 (relance, J1) et Appel 6 (dernier, avant clôture).
+        APPEL_RELANCE = 'appel_relance', "Relance — script d'appel 3 (J1)"
+        APPEL_DERNIER = 'appel_dernier', "Relance — script du dernier appel (J10)"
         VALEUR_J1 = 'valeur_j1', "Relance — message de valeur (J1)"
         VOCAL_J3 = 'vocal_j3', "Relance — script du vocal (J3)"
         APPEL_DIMANCHE = 'appel_dimanche', "Relance — script d'appel du dimanche"
