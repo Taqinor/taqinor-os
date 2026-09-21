@@ -53,6 +53,7 @@ SOUS_MODULES = (
     'protections',    # CAL132 — check-list d'organes paramétrable
     'terre',          # CAL134 — check-list de mise à la terre
     'planche',        # CAL171/CAL173 — planche A3 cotée (SVG + PDF, empreinte)
+    'chaine_pertes',  # CALX147 — ordonnanceur de la chaîne de pertes
 )
 
 __all__ = ['SOUS_MODULES']
