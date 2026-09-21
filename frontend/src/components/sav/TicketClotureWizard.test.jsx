@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
-/* NTSRV30 — Assistant de clôture (3 étapes).
+/* NTSRV30 — Assistant de clôture (2 étapes).
 
    Critère d'acceptation : un agent novice ne peut pas refermer un ticket en
    oubliant cause/remède, et un agent expert garde l'ancien raccourci
-   « Clôture rapide » en un clic. */
+   « Clôture rapide » en un clic.
+   SOLMVP41 — l'étape « Créer un article KB » est partie avec l'app kb
+   (Groupe SOLMVP) ; ses tests dédiés partent avec elle. */
 
 const CAUSES = [
   { id: 1, nom: 'Défaut composant' },
@@ -28,15 +30,6 @@ vi.mock('../../api/savApi', () => ({
   },
 }))
 
-vi.mock('../../api/kbApi', () => ({
-  default: {
-    creerArticleDepuisTicket: vi.fn(() => Promise.resolve({
-      data: { id: 44, titre: 'Défaut composant', statut: 'brouillon' },
-    })),
-  },
-}))
-
-import kbApi from '../../api/kbApi'
 import savApi from '../../api/savApi'
 import TicketClotureWizard from './TicketClotureWizard'
 
@@ -56,13 +49,12 @@ async function rendreEtChargerReferentiels(props = {}) {
       .toBeInTheDocument())
 }
 
-async function allerEtape3() {
+async function allerEtapeFinale() {
   await rendreEtChargerReferentiels()
   fireEvent.change(screen.getByLabelText(/Cause de la panne/),
     { target: { value: '1' } })
   fireEvent.change(screen.getByLabelText(/Remède appliqué/),
     { target: { value: '7' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
   fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
 }
 
@@ -84,23 +76,18 @@ describe('TicketClotureWizard (NTSRV30)', () => {
       expect(screen.getByText('Choisissez le remède appliqué.'))
         .toBeInTheDocument()
       // Toujours à l'étape 1 : rien n'a été clôturé.
-      expect(screen.getByText(/étape 1 sur 3/)).toBeInTheDocument()
+      expect(screen.getByText(/étape 1 sur 2/)).toBeInTheDocument()
       expect(savApi.cloturerTicket).not.toHaveBeenCalled()
     })
 
-  it('avance à l\'étape 2 une fois cause et remède choisis', async () => {
-    await rendreEtChargerReferentiels()
-    fireEvent.change(screen.getByLabelText(/Cause de la panne/),
-      { target: { value: '1' } })
-    fireEvent.change(screen.getByLabelText(/Remède appliqué/),
-      { target: { value: '7' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
-    expect(screen.getByText(/étape 2 sur 3/)).toBeInTheDocument()
-    expect(screen.getByLabelText(/Créer un article KB/)).not.toBeChecked()
+  it('avance à l\'étape 2 (canal + enquête) une fois cause et remède choisis', async () => {
+    await allerEtapeFinale()
+    expect(screen.getByText(/étape 2 sur 2/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Canal de résolution/)).toBeInTheDocument()
   })
 
   it('clôture en posant cause, remède et canal de résolution', async () => {
-    await allerEtape3()
+    await allerEtapeFinale()
     fireEvent.change(screen.getByLabelText(/Canal de résolution/),
       { target: { value: 'a_distance' } })
     fireEvent.click(screen.getByRole('button', { name: 'Clôturer le ticket' }))
@@ -110,36 +97,8 @@ describe('TicketClotureWizard (NTSRV30)', () => {
     })
   })
 
-  it('ne crée un article KB que si la case est cochée', async () => {
-    await allerEtape3()
-    fireEvent.click(screen.getByRole('button', { name: 'Clôturer le ticket' }))
-    await waitFor(() => expect(savApi.cloturerTicket).toHaveBeenCalled())
-    expect(kbApi.creerArticleDepuisTicket).not.toHaveBeenCalled()
-  })
-
-  it('pré-remplit l\'article KB avec la cause et le remède saisis',
-    async () => {
-      await rendreEtChargerReferentiels()
-      fireEvent.change(screen.getByLabelText(/Cause de la panne/),
-        { target: { value: '1' } })
-      fireEvent.change(screen.getByLabelText(/Remède appliqué/),
-        { target: { value: '7' } })
-      fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
-      fireEvent.click(screen.getByLabelText(/Créer un article KB/))
-      fireEvent.click(screen.getByRole('button', { name: 'Suivant' }))
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Clôturer le ticket' }))
-      await waitFor(() =>
-        expect(kbApi.creerArticleDepuisTicket).toHaveBeenCalledWith(
-          expect.objectContaining({
-            ticket_id: 9,
-            cause: 'Défaut composant',
-            remede: 'Remplacement pièce',
-          })))
-    })
-
   it('déclenche l\'enquête et affiche le lien client', async () => {
-    await allerEtape3()
+    await allerEtapeFinale()
     fireEvent.click(screen.getByRole('button', { name: 'Clôturer le ticket' }))
     await waitFor(() =>
       expect(savApi.lienClientTicket).toHaveBeenCalledWith(9))
@@ -148,7 +107,7 @@ describe('TicketClotureWizard (NTSRV30)', () => {
   })
 
   it('n\'appelle pas l\'enquête quand la case est décochée', async () => {
-    await allerEtape3()
+    await allerEtapeFinale()
     fireEvent.click(screen.getByLabelText(/Envoyer l'enquête de satisfaction/))
     fireEvent.click(screen.getByRole('button', { name: 'Clôturer le ticket' }))
     await waitFor(() => expect(savApi.cloturerTicket).toHaveBeenCalled())
