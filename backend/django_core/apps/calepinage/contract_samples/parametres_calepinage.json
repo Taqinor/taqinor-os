@@ -252,6 +252,18 @@
           "libelle": "Mismatch de face arrière",
           "unite": "%",
           "reference": "PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)"
+        },
+        {
+          "cle": "seuil_derivation_acces",
+          "libelle": "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne",
+          "unite": "",
+          "reference": "PV*SOL — Shading due to nearby objects (la caractéristique du module s'effondre selon le nombre de brins ombrés ; aucun seuil n'est proposé par défaut)"
+        },
+        {
+          "cle": "plafond_modules_simules",
+          "libelle": "Plafond de modules simulés un par un (au-delà, seul l'agrégat est publié)",
+          "unite": "modules",
+          "reference": "Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389"
         }
       ],
       "electrique_societe": [
@@ -494,6 +506,18 @@
           "libelle": "Mismatch de face arrière",
           "unite": "%",
           "reference": "PVsyst — Bifacial systems (les 10 % du logiciel sont CITÉS en aide à la saisie, jamais préremplis)"
+        },
+        {
+          "cle": "seuil_derivation_acces",
+          "libelle": "Seuil d'accès solaire sous lequel un module est dérivé de sa chaîne",
+          "unite": "",
+          "reference": "PV*SOL — Shading due to nearby objects (la caractéristique du module s'effondre selon le nombre de brins ombrés ; aucun seuil n'est proposé par défaut)"
+        },
+        {
+          "cle": "plafond_modules_simules",
+          "libelle": "Plafond de modules simulés un par un (au-delà, seul l'agrégat est publié)",
+          "unite": "modules",
+          "reference": "Décision fondateur 21/09/2026 — plafond de simulation module par module à 5 000 modules, mesuré par CALX389"
         }
       ],
       "electrique_societe": [
