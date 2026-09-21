@@ -1742,13 +1742,28 @@ def _mediane_decimale(valeurs):
 
 
 def _a_lheure(etape):
-    """Une touche FAITE le jour où elle était due (heure locale Casablanca)."""
-    from . import horaires
+    """Une touche FAITE le jour où elle était due, ou AVANT (heure locale
+    Casablanca).
+
+    CAD22 — deux situations ne sont PAS des manquements d'adhérence et ne
+    doivent pas en être comptées comme tels :
+
+      * TRAITÉE EN AVANCE — une touche due jeudi et faite mercredi a bien été
+        faite ; l'égalité stricte la comptait en manquement, ce qui punissait
+        exactement le geste qu'on attend (prendre de l'avance) ;
+      * NÉE EN RETARD — une touche matérialisée APRÈS son échéance
+        (`cadence_temps.nee_en_retard`) n'a jamais donné la chance de la faire
+        à l'heure. CAD22 empêche désormais une telle naissance, mais les
+        lignes déjà en base restent, et les accuser serait faux.
+    """
+    from . import cadence_temps, horaires
 
     if etape.statut != 'fait' or etape.traite_le is None:
         return False
-    return (etape.traite_le.astimezone(horaires.CASABLANCA).date()
-            == etape.due_date)
+    if (etape.traite_le.astimezone(horaires.CASABLANCA).date()
+            <= etape.due_date):
+        return True
+    return cadence_temps.nee_en_retard(etape)
 
 
 def kpi_adherence(company, user, jours=30):
@@ -1784,7 +1799,11 @@ def kpi_adherence(company, user, jours=30):
         RelanceEtape.objects
         .filter(company=company, traite_le__gte=depuis,
                 lead_id__in=leads_visibles.values('id'))
-        .only('statut', 'due_date', 'traite_le', 'ordre', 'canal', 'libelle'))
+        # CAD22 — `due_at`, `created_at` et `cadence_depart` entrent dans le
+        # `.only()` : `_a_lheure` les lit pour la garde « née en retard », et
+        # un champ différé les relirait ligne par ligne.
+        .only('statut', 'due_date', 'traite_le', 'ordre', 'canal', 'libelle',
+              'due_at', 'created_at', 'cadence_depart'))
 
     faites = [e for e in touches if e.statut == 'fait']
     sautees = [e for e in touches if e.statut == 'sautee']
@@ -2004,7 +2023,9 @@ def mes_stats_relance(company, user):
     recentes = list(mes_touches.filter(
         traite_le__gte=depuis_7j,
         statut__in=_STATUTS_CLOS_HUMAIN,
-    ).only('statut', 'due_date', 'traite_le'))
+        # CAD22 — voir `kpi_adherence` : `_a_lheure` lit aussi la naissance.
+    ).only('statut', 'due_date', 'traite_le',
+           'due_at', 'created_at', 'cadence_depart'))
     a_lheure_7j = _pct(sum(1 for e in recentes if _a_lheure(e)),
                        len(recentes))
 

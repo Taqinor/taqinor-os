@@ -1114,7 +1114,7 @@ def materialiser_touche_suivante(etape_close, user=None):
     relance plus, société sans gabarit, ancre introuvable)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
-    from . import horaires
+    from . import cadence_temps, horaires
 
     lead = etape_close.lead
     if (getattr(lead, 'ne_plus_contacter', False)
@@ -1195,6 +1195,15 @@ def materialiser_touche_suivante(etape_close, user=None):
                 base + datetime.timedelta(minutes=max(0, ecart)),
                 lead.company,
                 canal=getattr(gabarit, 'canal', None) or 'appel')
+        # CAD22 — une touche ne NAÎT JAMAIS déjà échue : après l'appel du
+        # dimanche (posé entre J+5 et J+11), la J+7 du protocole naissait avec
+        # une date passée et ne pouvait plus jamais être « à l'heure ». Elle
+        # est ramenée au prochain créneau joignable — le J+N du protocole
+        # n'est pas touché, seule cette échéance-ci l'est.
+        echeance = cadence_temps.echeance_jamais_echue(
+            echeance, company=lead.company,
+            dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
+            canal=getattr(gabarit, 'canal', None) or 'appel')
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
@@ -2430,9 +2439,23 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     cible.save(update_fields=['due_at', 'due_date'])
 
     if delta:
+        # CAD22 — le jeu des touches à décaler est CHRONOLOGIQUE, pas
+        # seulement `ordre__gt`. L'ordre du PROTOCOLE et l'ordre des DATES
+        # divergent : l'appel du dimanche (ordre 8, J+5) est placé sur le
+        # premier dimanche atteignant J+5, donc parfois APRÈS la touche J+7
+        # (ordre 9). Ne glisser que les `ordre__gt` laissait cette touche-là
+        # sur place et réordonnait le plan en silence. On décale donc toute
+        # touche ouverte qui vient après la reportée — par l'ordre OU par la
+        # date —, du MÊME delta : aucune n'est réordonnée, aucune n'est
+        # laissée derrière.
+        from django.db.models import Q
+
         suivantes = lead.relance_etapes.filter(
             cadence=cible.cadence, statut=RelanceEtape.Statut.A_FAIRE,
-            ordre__gt=cible.ordre, due_at__isnull=False)
+            due_at__isnull=False,
+        ).filter(
+            Q(ordre__gt=cible.ordre) | Q(due_at__gte=ancien)
+        ).exclude(pk=cible.pk)
         for suivante in suivantes:
             decalee = suivante.due_at + delta
             suivante.due_at = decalee
