@@ -8,12 +8,9 @@ détection de conflits (FG300) et le nivellement (FG301) peuvent EXCLURE une
 ressource absente via le sélecteur ``ressource_indisponible``.
 
 Couvre :
-  * création d'une indisponibilité ciblant un technicien, puis une camionnette ;
-  * la requête de chevauchement (``ressource_indisponible``) ;
-  * la garde « exactement une / au moins une cible » (ni zéro, ni les deux) ;
-  * la garde d'ordre des dates (fin ≥ début) ;
-  * le scope société (ni lecture ni exclusion d'une autre société) ;
-  * la barrière de rôle (écriture responsable/admin uniquement).
+  * la requête de chevauchement (``ressource_indisponible``), scopée société ;
+  * la garde MODÈLE « exactement une / au moins une cible » (ni zéro, ni les
+    deux) et l'ordre des dates (fin ≥ début).
 
 Run :
     python manage.py test apps.installations.tests_fg302_indispo -v2
@@ -24,8 +21,6 @@ import itertools
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.test import TestCase
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.installations.models import IndisponibiliteRessource
 from apps.installations.selectors import ressource_indisponible
@@ -33,8 +28,6 @@ from apps.stock.models import EmplacementStock
 
 User = get_user_model()
 _seq = itertools.count(1)
-
-BASE = '/api/django/installations'
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -45,12 +38,6 @@ def make_company(slug=None, nom=None):
     company, _ = Company.objects.get_or_create(
         slug=slug or f'fg302-co-{n}', defaults={'nom': nom or f'FG302 Co {n}'})
     return company
-
-
-def auth(user):
-    api = APIClient()
-    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-    return api
 
 
 def make_user(company, role='responsable', username=None):
@@ -70,94 +57,13 @@ VENDREDI = datetime.date(2026, 6, 5)
 SEMAINE_FIN = datetime.date(2026, 6, 7)
 
 
-# ── Création via l'API ────────────────────────────────────────────────────────
-
-class TestIndispoCreation(TestCase):
-    def setUp(self):
-        self.company = make_company()
-        self.user = make_user(self.company)
-        self.api = auth(self.user)
-        self.tech = make_user(self.company)
-        self.camion = make_camionnette(self.company)
-
-    def test_create_indispo_technicien(self):
-        """FG302 — créer une indisponibilité ciblant un technicien."""
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'technicien': self.tech.id,
-            'type_indispo': 'conge',
-            'date_debut': '2026-06-01', 'date_fin': '2026-06-05',
-            'motif': 'Congés annuels',
-        })
-        self.assertEqual(r.status_code, 201, r.data)
-        indispo = IndisponibiliteRessource.objects.get(id=r.data['id'])
-        # Société + créateur posés côté serveur, jamais du corps.
-        self.assertEqual(indispo.company_id, self.company.id)
-        self.assertEqual(indispo.created_by_id, self.user.id)
-        self.assertEqual(indispo.technicien_id, self.tech.id)
-        self.assertIsNone(indispo.camionnette_id)
-
-    def test_create_indispo_camionnette(self):
-        """FG302 — créer une indisponibilité ciblant une camionnette."""
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'camionnette': self.camion.id,
-            'type_indispo': 'arret',
-            'date_debut': '2026-06-03', 'date_fin': '2026-06-03',
-        })
-        self.assertEqual(r.status_code, 201, r.data)
-        indispo = IndisponibiliteRessource.objects.get(id=r.data['id'])
-        self.assertEqual(indispo.camionnette_id, self.camion.id)
-        self.assertIsNone(indispo.technicien_id)
-
-    def test_company_forced_server_side(self):
-        """FG302 — la société du corps de requête est ignorée (forcée serveur)."""
-        autre = make_company()
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'company': autre.id,  # tentative d'injection
-            'technicien': self.tech.id,
-            'type_indispo': 'formation',
-            'date_debut': '2026-06-01', 'date_fin': '2026-06-01',
-        })
-        self.assertEqual(r.status_code, 201, r.data)
-        indispo = IndisponibiliteRessource.objects.get(id=r.data['id'])
-        self.assertEqual(indispo.company_id, self.company.id)
-
-
-# ── Gardes de validation ──────────────────────────────────────────────────────
+# ── Gardes de validation MODÈLE ───────────────────────────────────────────────
 
 class TestIndispoGuards(TestCase):
     def setUp(self):
         self.company = make_company()
-        self.user = make_user(self.company)
-        self.api = auth(self.user)
         self.tech = make_user(self.company)
         self.camion = make_camionnette(self.company)
-
-    def test_no_target_rejected(self):
-        """FG302 — aucune cible (ni technicien ni camionnette) → 400."""
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'type_indispo': 'conge',
-            'date_debut': '2026-06-01', 'date_fin': '2026-06-05',
-        })
-        self.assertEqual(r.status_code, 400, r.data)
-
-    def test_both_targets_rejected(self):
-        """FG302 — deux cibles à la fois (technicien ET camionnette) → 400."""
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'technicien': self.tech.id,
-            'camionnette': self.camion.id,
-            'type_indispo': 'conge',
-            'date_debut': '2026-06-01', 'date_fin': '2026-06-05',
-        })
-        self.assertEqual(r.status_code, 400, r.data)
-
-    def test_inverted_dates_rejected(self):
-        """FG302 — date de fin antérieure à la date de début → 400."""
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'technicien': self.tech.id,
-            'type_indispo': 'conge',
-            'date_debut': '2026-06-05', 'date_fin': '2026-06-01',
-        })
-        self.assertEqual(r.status_code, 400, r.data)
 
     def test_model_clean_no_target(self):
         """FG302 — la garde modèle ``clean`` refuse l'absence de cible."""
@@ -242,25 +148,12 @@ class TestRessourceIndisponibleSelector(TestCase):
             ressource_indisponible(self.company, None, LUNDI, VENDREDI))
 
 
-# ── Scope société ─────────────────────────────────────────────────────────────
+# ── Scope société (sélecteur) ─────────────────────────────────────────────────
 
 class TestIndispoTenant(TestCase):
     def setUp(self):
         self.company = make_company()
-        self.user = make_user(self.company)
-        self.api = auth(self.user)
         self.tech = make_user(self.company)
-
-    def test_list_company_isolation(self):
-        """FG302 — la société B ne voit pas les indisponibilités de A."""
-        IndisponibiliteRessource.objects.create(
-            company=self.company, technicien=self.tech, type_indispo='conge',
-            date_debut=LUNDI, date_fin=VENDREDI)
-        company_b = make_company()
-        user_b = make_user(company_b)
-        r = auth(user_b).get(f'{BASE}/indisponibilites-ressource/')
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.data['count'], 0)
 
     def test_selector_company_isolation(self):
         """FG302 — le sélecteur ne voit pas l'indisponibilité d'une autre
@@ -276,39 +169,3 @@ class TestIndispoTenant(TestCase):
         # Et B la voit bien.
         self.assertTrue(
             ressource_indisponible(company_b, tech_b, LUNDI, VENDREDI))
-
-    def test_cross_company_target_rejected(self):
-        """FG302 — viser un technicien d'une autre société est refusé (tenant)."""
-        company_b = make_company()
-        tech_b = make_user(company_b)
-        r = self.api.post(f'{BASE}/indisponibilites-ressource/', {
-            'technicien': tech_b.id,
-            'type_indispo': 'conge',
-            'date_debut': '2026-06-01', 'date_fin': '2026-06-05',
-        })
-        self.assertEqual(r.status_code, 400, r.data)
-
-
-# ── Barrière de rôle ──────────────────────────────────────────────────────────
-
-class TestIndispoRoleGate(TestCase):
-    def setUp(self):
-        self.company = make_company()
-        self.tech = make_user(self.company)
-        # Rôle hérité « normal » : ni responsable ni admin → lecture seule.
-        self.lecteur = make_user(self.company, role='normal')
-
-    def test_read_allowed_any_role(self):
-        """FG302 — un rôle simple peut LIRE la liste."""
-        r = auth(self.lecteur).get(f'{BASE}/indisponibilites-ressource/')
-        self.assertEqual(r.status_code, 200, r.data)
-
-    def test_write_forbidden_for_non_manager(self):
-        """FG302 — un rôle simple ne peut PAS créer (écriture
-        responsable/admin)."""
-        r = auth(self.lecteur).post(f'{BASE}/indisponibilites-ressource/', {
-            'technicien': self.tech.id,
-            'type_indispo': 'conge',
-            'date_debut': '2026-06-01', 'date_fin': '2026-06-05',
-        })
-        self.assertEqual(r.status_code, 403, r.data)

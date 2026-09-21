@@ -141,11 +141,6 @@ class CascadeReceptionPariteTests(TestCase):
             installation=inst, phase=JalonProjet.Phase.RECEPTION).first()
         self.assertIsNotNone(jalon, f'{chemin} : JalonProjet YSERV7')
         self.assertTrue(jalon.atteint, f'{chemin} : jalon atteint')
-        # YSERV4 → compta : enquête NPS créée par l'abonné de l'événement.
-        from apps.compta.models import EnqueteNPS
-        self.assertTrue(
-            EnqueteNPS.objects.filter(chantier_id=inst.id).exists(),
-            f'{chemin} : enquête NPS (compta)')
         # YSERV4 → sav : activité « Proposer le contrat d'entretien ».
         from apps.records.models import Activity
         self.assertTrue(

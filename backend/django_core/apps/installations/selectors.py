@@ -2399,19 +2399,8 @@ def taux_ponctualite(company, *, debut=None, fin=None, technicien_id=None):
 
 # ── XFSM2 — Assistant de planification : créneau + technicien suggérés ──────
 # Combine les ingrédients déjà existants (plan de charge FG299, conflits
-# FG300, indisponibilités FG302, jours ouvrés, habilitations FG173/176,
-# GPS chantier + haversine) SANS RIEN muter : pure lecture, propositions
-# classées. Traduit `Intervention.Type` (choix fermé) vers les clés de
-# `rh.INTERVENTION_HABILITATIONS` (cadre différent, best-effort — un type
-# sans correspondance connue n'exige aucune habilitation).
-_TYPE_VERS_HABILITATION = {
-    'pose': 'pose_pv_bt',
-    'raccordement': 'pose_pv_bt',
-    'mise_en_service': 'operations_pv',
-    'controle': 'operations_pv',
-    'depannage': 'maintenance_bt',
-}
-
+# FG300, indisponibilités FG302, jours ouvrés, GPS chantier + haversine) SANS
+# RIEN muter : pure lecture, propositions classées.
 
 def _techniciens_eligibles(company):
     """Techniciens éligibles : utilisateurs de la société déjà affectés à au
@@ -2432,12 +2421,10 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
                      date_cible=None, n=3):
     """XFSM2 — les N (défaut 3) meilleures propositions de créneau + technicien
     pour un chantier/type/durée donnés, classées par :
-      1. habilitation requise OK (FG173/176 — un technicien manquant/expiré
-         n'est jamais proposé) ;
-      2. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
+      1. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
          ce jour) ni d'indisponibilité (FG302) ;
-      3. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
-      4. distance au site la plus courte depuis les interventions DÉJÀ
+      2. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
+      3. distance au site la plus courte depuis les interventions DÉJÀ
          planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
     Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
     aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
@@ -2456,30 +2443,7 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
     if not techniciens:
         return {'chantier_id': chantier_id, 'propositions': []}
 
-    # Vérification habilitation (best-effort, cadre différent — cf. mapping).
-    habilitation_requise = _TYPE_VERS_HABILITATION.get(type_intervention)
-    eligibles = []
-    if habilitation_requise:
-        from apps.rh.selectors import (
-            dossier_employe_for_user, verifier_habilitation_requise)
-        for tech in techniciens:
-            dossier = dossier_employe_for_user(company, tech.id)
-            if dossier is None:
-                # Pas de fiche RH reliée : on ne peut pas vérifier → on ne
-                # bloque PAS (garde RAPPORTE, l'appelant décide — ici on
-                # considère éligible faute de donnée, cohérent avec le
-                # blocage doux FG176).
-                eligibles.append(tech)
-                continue
-            rapport = verifier_habilitation_requise(
-                company, dossier, habilitation_requise)
-            if rapport['autorise']:
-                eligibles.append(tech)
-    else:
-        eligibles = techniciens
-
-    if not eligibles:
-        return {'chantier_id': chantier_id, 'propositions': []}
+    eligibles = techniciens
 
     site_lat = getattr(chantier, 'gps_lat', None)
     site_lng = getattr(chantier, 'gps_lng', None)

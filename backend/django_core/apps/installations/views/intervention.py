@@ -333,36 +333,6 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         if camionnette is not None and camionnette.company_id != cid:
             raise ValidationError({'camionnette': 'Emplacement inconnu.'})
 
-    def create(self, request, *args, **kwargs):
-        response = super().create(request, *args, **kwargs)
-        if response.status_code == status.HTTP_201_CREATED:
-            avertissements = getattr(self, '_yhire9_avertissements', None)
-            if avertissements:
-                response.data['avertissements'] = avertissements
-        return response
-
-    def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        if response.status_code == status.HTTP_200_OK:
-            avertissements = getattr(self, '_yhire9_avertissements', None)
-            if avertissements:
-                response.data['avertissements'] = avertissements
-        return response
-
-    def _verifier_habilitation_ou_lever(self, company, technicien,
-                                        type_intervention):
-        """YHIRE9 — garde d'habilitation à l'affectation : mémorise les
-        avertissements pour la réponse (`create`/`update`) et lève en mode
-        'block'."""
-        from rest_framework.exceptions import ValidationError
-        from ..services import verifier_habilitation_affectation
-        bloquant, avertissements = verifier_habilitation_affectation(
-            company, technicien, type_intervention)
-        if avertissements:
-            self._yhire9_avertissements = avertissements
-        if bloquant:
-            raise ValidationError({'technicien': avertissements})
-
     def perform_create(self, serializer):
         self._check_tenant(serializer)
         company = self.request.user.company
@@ -395,13 +365,7 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                     installation, self.request.user,
                     'Intervention de pose planifiée sans acompte — motif : '
                     f'{motif_override}')
-        # YHIRE9 — garde d'habilitation à l'AFFECTATION (création) : un
-        # technicien sans l'habilitation requise déclenche un avertissement
-        # (mode 'warn', défaut) ou un refus (mode 'block').
         technicien = serializer.validated_data.get('technicien')
-        if technicien is not None:
-            self._verifier_habilitation_ou_lever(
-                company, technicien, type_intervention)
         # AUD317 — `statut` était directement ÉCRIVABLE au corps
         # (`fields='__all__'`) SANS aucune garde ni effet : créer une
         # intervention directement en « terminee » contournait la garde F8
@@ -476,25 +440,19 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         old = Intervention.objects.get(pk=serializer.instance.pk)
         nouveau_statut = serializer.validated_data.pop('statut', None)
-        # YHIRE9 — garde d'habilitation à l'AFFECTATION : seulement quand le
-        # technicien CHANGE (pas de bruit sur une simple modification d'une
-        # intervention déjà correctement affectée).
+        # Notification CHT9 : seulement quand le technicien CHANGE (pas de
+        # bruit sur une simple modification d'une intervention déjà
+        # correctement affectée).
         new_technicien = serializer.validated_data.get(
             'technicien', old.technicien)
         technicien_change = (
             new_technicien is not None
             and new_technicien.id != old.technicien_id)
-        if technicien_change:
-            self._verifier_habilitation_ou_lever(
-                self.request.user.company, new_technicien,
-                serializer.validated_data.get(
-                    'type_intervention', old.type_intervention))
         from django.db import transaction
         with transaction.atomic():
             interv = serializer.save()
             # CHT9 — le technicien RÉAFFECTÉ est notifié (sa propre clé
-            # INTERVENTION_ASSIGNEE) — même garde que YHIRE9 ci-dessus (pas de
-            # bruit sur une simple modification sans changement de technicien).
+            # INTERVENTION_ASSIGNEE).
             if technicien_change:
                 from ..services import _notifier_intervention_assignee
                 _notifier_intervention_assignee(interv, self.request.user)

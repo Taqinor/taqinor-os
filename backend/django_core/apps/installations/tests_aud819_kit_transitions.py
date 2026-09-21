@@ -1,17 +1,15 @@
 """AUD819 — la table ``TRANSITIONS`` du kit ``DocumentMetier`` est CONSULTÉE.
 
-Constat réparé. ``DemandeAchat`` (SCA36) et ``OrdreSousTraitance`` (SCA34)
-déclaraient chacune une table ``TRANSITIONS`` présentée comme la source de
-vérité de leur graphe d'états, mais DOUZE sites écrivaient ``statut = …`` à la
-main (5 dans ``views/demande_achat.py``, 3 dans ``views/ordre_soustraitance.py``,
-4 dans ``services.py``) sans jamais la consulter :
+Constat réparé. ``DemandeAchat`` (SCA36) déclarait une table ``TRANSITIONS``
+présentée comme la source de vérité de son graphe d'états, mais CINQ sites de
+``views/demande_achat.py`` écrivaient ``statut = …`` à la main sans jamais la
+consulter :
 
-  * deux propriétaires divergents du même graphe — ouvrir/fermer une transition
-    dans la table ne changeait STRICTEMENT rien au comportement réel ;
-  * ``core.events.document_statut_change`` n'était JAMAIS émis pour ces deux
-    documents, rendant tout futur abonné (audit / notification / KPI)
-    silencieusement aveugle aux demandes d'achat et aux ordres de
-    sous-traitance.
+  * ouvrir/fermer une transition dans la table ne changeait STRICTEMENT rien
+    au comportement réel ;
+  * ``core.events.document_statut_change`` n'était JAMAIS émis pour ce
+    document, rendant tout futur abonné (audit / notification / KPI)
+    silencieusement aveugle aux demandes d'achat.
 
 Ce que prouvent les tests ci-dessous (ROUGES avant le correctif) :
 
@@ -19,18 +17,16 @@ Ce que prouvent les tests ci-dessous (ROUGES avant le correctif) :
      table (``patch.object``), l'action de vue correspondante est REFUSÉE en 400
      et AUCUNE écriture n'a lieu. Avant le correctif elle répondait 200 et
      écrivait le statut : la table était ignorée.
-  2. **Un événement, exactement un, par transition légitime.** Chacun des douze
+  2. **Un événement, exactement un, par transition légitime.** Chacun des cinq
      sites (vues + services cross-app) émet un et un seul
      ``document_statut_change`` portant l'ancien statut, le nouveau,
-     l'utilisateur et la société. Avant le correctif : ZÉRO sur les douze.
+     l'utilisateur et la société. Avant le correctif : ZÉRO sur les cinq.
   3. **La ré-application idempotente est préservée** (re-soumettre une demande
-     déjà soumise, re-clôturer un ordre déjà clos) : 200, aucun événement — les
-     tables ne déclarent pas la transition d'un statut vers lui-même.
+     déjà soumise) : 200, aucun événement — la table ne déclare pas la
+     transition d'un statut vers lui-même.
   4. **Un refus ne laisse aucune trace** : les champs annexes de l'action
      (``approuvee_par`` / ``date_decision`` / ``motif_refus``) sont annulés avec
      la transition (écriture atomique).
-  5. **``EN_COURS`` réconcilié** : plus déclaré comme cible de ``EMIS`` (aucune
-     action ne l'écrit), ligne source conservée pour la donnée héritée.
 
 Run :
     python manage.py test apps.installations.tests_aud819_kit_transitions -v2
@@ -46,11 +42,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.installations import services
 from apps.installations.models import (
     DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
-    OrdreSousTraitance, RegleApprobationAchat,
+    RegleApprobationAchat,
 )
-from apps.stock.services import create_sous_traitant
 from core import events
-from core.documents import TransitionRefusee
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -106,15 +100,6 @@ class BaseAud819(TestCase):
         self.user = make_user(self.company)
         self.api = auth(self.user)
 
-    def make_ordre(self, statut=OrdreSousTraitance.Statut.BROUILLON):
-        st = create_sous_traitant(
-            company=self.company, nom=f'Terrasol {next(_seq)}',
-            metier='terrassement')
-        return OrdreSousTraitance.objects.create(
-            company=self.company, reference=f'OST-A819-{next(_seq)}',
-            sous_traitant=st, prestation='Pose structures', montant=1000,
-            statut=statut)
-
     def make_demande(self, statut=DemandeAchat.Statut.BROUILLON):
         return DemandeAchat.objects.create(
             company=self.company, reference=f'DA-A819-{next(_seq)}',
@@ -126,18 +111,6 @@ class BaseAud819(TestCase):
 class TestTableEstConsultee(BaseAud819):
     """ROUGE avant AUD819 : fermer une transition dans la table ne changeait
     rien — les vues écrivaient ``statut`` à la main sans jamais la lire."""
-
-    def test_ordre_transition_fermee_refusee_en_400(self):
-        ordre = self.make_ordre()
-        table_fermee = dict(OrdreSousTraitance.TRANSITIONS)
-        table_fermee[OrdreSousTraitance.Statut.BROUILLON] = set()
-        with patch.object(OrdreSousTraitance, 'TRANSITIONS', table_fermee):
-            r = self.api.post(
-                f'{BASE}/ordres-sous-traitance/{ordre.id}/emettre/')
-        self.assertEqual(r.status_code, 400, r.data)
-        ordre.refresh_from_db()
-        self.assertEqual(ordre.statut, OrdreSousTraitance.Statut.BROUILLON)
-        self.assertIsNone(ordre.date_emission)
 
     def test_demande_transition_fermee_refusee_en_400(self):
         da = self.make_demande()
@@ -163,57 +136,8 @@ class TestTableEstConsultee(BaseAud819):
         self.assertIsNone(da.approuvee_par_id)
         self.assertIsNone(da.date_decision)
 
-    def test_service_leve_transition_refusee(self):
-        """Le service adaptateur lui-même refuse — pas seulement la vue."""
-        ordre = self.make_ordre(statut=OrdreSousTraitance.Statut.CLOS)
-        with self.assertRaises(TransitionRefusee):
-            services.appliquer_statut_document(
-                ordre, OrdreSousTraitance.Statut.EMIS, user=self.user)
-        ordre.refresh_from_db()
-        self.assertEqual(ordre.statut, OrdreSousTraitance.Statut.CLOS)
-
 
 # ── 2. Exactement UN événement par transition légitime ───────────────────────
-
-class TestEvenementOrdre(BaseAud819):
-    def test_emettre_emet_un_evenement(self):
-        ordre = self.make_ordre()
-        with CaptureEvents() as cap:
-            r = self.api.post(
-                f'{BASE}/ordres-sous-traitance/{ordre.id}/emettre/')
-        self.assertEqual(r.status_code, 200, r.data)
-        recus = cap.pour(ordre)
-        self.assertEqual(len(recus), 1, recus)
-        self.assertEqual(recus[0]['ancien_statut'], 'brouillon')
-        self.assertEqual(recus[0]['nouveau_statut'], 'emis')
-        self.assertEqual(recus[0]['user'], self.user)
-        self.assertEqual(recus[0]['company'], self.company)
-        ordre.refresh_from_db()
-        self.assertEqual(ordre.statut, OrdreSousTraitance.Statut.EMIS)
-        self.assertIsNotNone(ordre.date_emission)
-
-    def test_receptionner_emet_un_evenement_et_persiste_le_realise(self):
-        ordre = self.make_ordre(statut=OrdreSousTraitance.Statut.EMIS)
-        with CaptureEvents() as cap:
-            r = self.api.post(
-                f'{BASE}/ordres-sous-traitance/{ordre.id}/receptionner/',
-                {'montant_realise': '950'})
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(len(cap.pour(ordre)), 1, cap.recus)
-        ordre.refresh_from_db()
-        self.assertEqual(ordre.statut, OrdreSousTraitance.Statut.RECEPTIONNE)
-        self.assertEqual(str(ordre.montant_realise), '950.00')
-
-    def test_cloturer_emet_un_evenement(self):
-        ordre = self.make_ordre(statut=OrdreSousTraitance.Statut.RECEPTIONNE)
-        with CaptureEvents() as cap:
-            r = self.api.post(
-                f'{BASE}/ordres-sous-traitance/{ordre.id}/cloturer/')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(len(cap.pour(ordre)), 1, cap.recus)
-        ordre.refresh_from_db()
-        self.assertEqual(ordre.statut, OrdreSousTraitance.Statut.CLOS)
-
 
 class TestEvenementDemandeAchat(BaseAud819):
     def test_soumettre_emet_un_evenement(self):
@@ -343,58 +267,16 @@ class TestReapplicationIdempotente(BaseAud819):
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
 
-    def test_remettre_un_ordre_deja_emis(self):
-        ordre = self.make_ordre(statut=OrdreSousTraitance.Statut.EMIS)
-        with CaptureEvents() as cap:
-            r = self.api.post(
-                f'{BASE}/ordres-sous-traitance/{ordre.id}/emettre/')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(cap.pour(ordre), [])
 
-    def test_recloturer_un_ordre_deja_clos(self):
-        ordre = self.make_ordre(statut=OrdreSousTraitance.Statut.CLOS)
-        with CaptureEvents() as cap:
-            r = self.api.post(
-                f'{BASE}/ordres-sous-traitance/{ordre.id}/cloturer/')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(cap.pour(ordre), [])
-
-
-# ── 4. Réconciliation d'``EN_COURS`` ─────────────────────────────────────────
-
-class TestEnCoursReconcilie(TestCase):
-    def test_emis_n_ouvre_plus_en_cours(self):
-        """Aucune action n'écrit ``en_cours`` : la table ne le promet plus."""
-        self.assertNotIn(
-            OrdreSousTraitance.Statut.EN_COURS,
-            OrdreSousTraitance.TRANSITIONS[OrdreSousTraitance.Statut.EMIS])
-
-    def test_en_cours_reste_receptionnable(self):
-        """Ligne source CONSERVÉE : une donnée héritée déjà ``en_cours`` reste
-        réceptionnable (la garde de ``receptionner`` l'accepte toujours)."""
-        self.assertIn(
-            OrdreSousTraitance.Statut.RECEPTIONNE,
-            OrdreSousTraitance.TRANSITIONS[
-                OrdreSousTraitance.Statut.EN_COURS])
-
-    def test_valeur_conservee_dans_l_enumeration(self):
-        """Aucune migration : les 5 choices historiques sont intactes."""
-        field = OrdreSousTraitance._meta.get_field('statut')
-        self.assertEqual(
-            {c[0] for c in field.choices},
-            {'brouillon', 'emis', 'en_cours', 'receptionne', 'clos'})
-
-
-# ── 5. Plus AUCUNE écriture directe de ``statut`` sur les deux documents ─────
+# ── 4. Plus AUCUNE écriture directe de ``statut`` sur le document ────────────
 
 class TestPlusDEcritureDirecte(TestCase):
     """Garde de non-régression : les fichiers de la lane ne contiennent plus
-    d'affectation ``<obj>.statut = <Document>.Statut.…`` sur ces deux
-    documents — le seul point d'écriture est ``appliquer_statut_document``."""
+    d'affectation ``<obj>.statut = DemandeAchat.Statut.…`` — le seul point
+    d'écriture est ``appliquer_statut_document``."""
 
     FICHIERS = (
         'views/demande_achat.py',
-        'views/ordre_soustraitance.py',
         'services.py',
     )
 
@@ -405,7 +287,7 @@ class TestPlusDEcritureDirecte(TestCase):
         racine = os.path.dirname(
             os.path.abspath(services.__file__))
         motif = re.compile(
-            r'\.statut\s*=\s*(DemandeAchat|OrdreSousTraitance)\.Statut\.')
+            r'\.statut\s*=\s*DemandeAchat\.Statut\.')
         fautifs = []
         for rel in self.FICHIERS:
             chemin = os.path.join(racine, *rel.split('/'))
