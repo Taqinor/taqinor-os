@@ -8,7 +8,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adminops/config_package_service.py:111` | update_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/adminops/config_package_service.py:121` | update_or_create | CustomFieldDef.objects | code, company, module |
 | `backend/django_core/apps/adminops/config_package_service.py:131` | update_or_create | MessageTemplate.objects | cle, company |
-| `backend/django_core/apps/adminops/plan_seeds.py:47` | get_or_create | PlanLicence.objects | code |
+| `backend/django_core/apps/adminops/plan_seeds.py:59` | get_or_create | PlanLicence.objects | code |
 | `backend/django_core/apps/adminops/views_annonces.py:149` | get_or_create | LectureAnnonce.objects | annonce, utilisateur |
 | `backend/django_core/apps/adsengine/brief.py:469` | update_or_create | WeeklyBrief.objects | company, period_start |
 | `backend/django_core/apps/adsengine/calendar.py:69` | get_or_create | CreativeCalendarEvent.objects | company, date_debut, tag |

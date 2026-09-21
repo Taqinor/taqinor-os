@@ -1167,7 +1167,8 @@ class DepotReelTests(unittest.TestCase):
     def test_contrat_versionne_present(self):
         contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")
         self.assertIn("GENERE", contenu)
-        self.assertIn("tableauMarches", contenu)
+        # SOLMVP (21/09/2026) : `tableauMarches` (AO) est parque ; ancre sur une ressource gardee.
+        self.assertIn("kpiFederes", contenu)
 
     def test_l_entete_explique_pourquoi_pas_l_openapi(self):
         entete = Path(shapes.__file__).read_text(encoding="utf-8")[:5000]
