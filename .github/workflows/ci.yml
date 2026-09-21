@@ -1465,6 +1465,21 @@ jobs:
         run: python scripts/check_services_appeles.py
       - name: Test the orphan-service checker itself (CALX57)
         run: python -m unittest scripts.tests.test_check_services_appeles -v
+      # AUCUN SEUIL ÉLECTRIQUE SANS SOURCE (CALX250) — même discipline, un cran
+      # plus spécifique : `core/electrique/types.py:130,132` posait deux
+      # coefficients de température en défauts de dataclass sans AUCUNE
+      # citation, invisibles jusqu'à ce que CALX53 les NOMME explicitement
+      # dans le verdict aval. Cette garde ferme la porte : un littéral
+      # numérique NEUF (constante de module ou défaut de dataclass) de
+      # `core/electrique/*.py` ou des services électriques de calepinage sans
+      # commentaire de provenance (norme, fiche, décision fondateur datée…)
+      # fait échouer la CI en nommant `fichier:ligne`. Même stdlib pure (ast),
+      # même passif gelé dans scripts/seuils_electriques_exceptions.txt : il
+      # ne peut que RÉTRÉCIR.
+      - name: Check seuils électriques (aucun seuil sans source, CALX250)
+        run: python scripts/check_seuils_electriques.py
+      - name: Test the electrical-threshold-source checker itself (CALX250)
+        run: python -m unittest scripts.tests.test_check_seuils_electriques -v
       # TÂCHES DE PLAN QUI COMMANDENT DU TRAVAIL MORT (même incident du
       # 03/08/2026, pris UN CRAN PLUS HAUT). check_ecrans_atteignables /
       # check_api_contract attrapent l'écran orphelin et la route inexistante
