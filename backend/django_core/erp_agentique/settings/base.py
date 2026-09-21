@@ -823,6 +823,12 @@ SPECTACULAR_SETTINGS = {
         'CreneauEquipementEnum': 'apps.crm.models.Lead.CreneauClim',
         # particulier / entreprise
         'TypeTiersParticulierEntrepriseEnum': 'apps.tiers.models.Tiers.TypeTiers',
+        # SOLMVP (21/09/2026) — `langue` (crm.MessageTemplate.Langue) et `langue`
+        # (portail.PreferencePortail.Langue) portent deux jeux differents sous le meme nom
+        # de champ : sans surcharge, drf-spectacular suffixe l'un des deux d'un
+        # hash et avertit « multiple names for the same choice set ».
+        'LangueEnum': 'apps.crm.models.MessageTemplate.Langue',
+        'LanguePortailEnum': 'apps.portail.models.PreferencePortail.Langue',
         # SOLMVP (21/09/2026) — les surcharges PeriodiciteMensuelAnnuelEnum /
         # PeriodiciteMensuelleTrimestrielleEnum visaient contrats.PlanRecurrent et
         # compta.AllocationRecurrente : les deux apps sont des coquilles, le conflit
