@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+/* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
+   serveur de l'action (`PeutGererCalepinage`, `views/verrou.py`) : l'écran ne
+   propose pas un geste que l'API refusera. */
+import { useHasPermission } from '../../hooks/useHasPermission'
 /* CAL17 (moitié écran) — la FICHE de l'agrégat de détail. Le serveur publiait
    vingt et une clés que personne ne lisait. */
 import FicheCalepinage from './FicheCalepinage'
@@ -65,12 +69,148 @@ function valeur(brut, suffixe = '') {
   return `${brut}${suffixe}`
 }
 
+/**
+ * CALX27 — le refus SERVEUR, mot pour mot. Rien n'est reformulé : le seul
+ * texte écrit ici est celui du cas où le serveur n'a RIEN dit (panne réseau),
+ * et il le dit au lieu d'inventer un motif.
+ */
+function messageRefus(erreur) {
+  const data = erreur?.response?.data
+  if (typeof data === 'string' && data.trim()) return data.trim()
+  if (data && typeof data === 'object') {
+    if (typeof data.detail === 'string' && data.detail.trim()) return data.detail.trim()
+    const premier = Object.values(data).find((v) => v)
+    if (premier) return Array.isArray(premier) ? premier.join(' ') : String(premier)
+  }
+  return 'Le serveur n’a pas répondu. Réessayez dans un instant.'
+}
+
+/* ============================================================================
+   CALX27 — LE BANDEAU DE LECTURE SEULE, ET SA SORTIE.
+   ----------------------------------------------------------------------------
+   CONSTAT : `POST deverrouiller/` (CAL207, `views/verrou.py` + le service qui
+   déduit le verrou du chatter) était construit et testé, mais n'avait AUCUN
+   consommateur — l'atelier disait « lecture seule » sans offrir la moindre
+   sortie, et la seule façon de reprendre la main était d'aller écrire dans la
+   base. Une capacité sans affordance n'existe pas pour l'utilisateur.
+
+   DEUX GARDES, LES MÊMES QUE LE SERVEUR :
+     * le bouton n'apparaît QUE dans l'état lecture seule — déverrouiller une
+       conception déjà ouverte n'a aucun sens ;
+     * et QUE avec `calepinage_gerer`, le code EXACT de `PeutGererCalepinage` :
+       proposer un geste que l'API refusera par 403 est un piège.
+
+   LA CONFIRMATION NOMME LA CONSÉQUENCE. Le verrou vient du devis envoyé :
+   rouvrir l'écriture rend ce devis À REJOUER (il faudra le resynchroniser pour
+   qu'il redise la même conception). Le statut du devis n'est JAMAIS touché ici
+   (règle #4) — c'est bien pour cela qu'il faut l'annoncer.
+   ========================================================================== */
+function BandeauVerrou({ calepinageId, onDeverrouille }) {
+  /* Le droit est lu ICI, dans le composant qui n'existe QU'EN LECTURE SEULE :
+     l'atelier ouvert ne consulte donc aucun droit pour un geste qu'il ne
+     propose pas — et le rail (CALX1) continue de se rendre sans store. */
+  const peutGerer = useHasPermission('calepinage_gerer')
+  const [confirme, setConfirme] = useState(false)
+  const [enCours, setEnCours] = useState(false)
+  const [refus, setRefus] = useState(null)
+
+  const deverrouiller = async () => {
+    if (enCours) return
+    setRefus(null)
+    setEnCours(true)
+    let res = null
+    try {
+      res = await calepinageApi.calepinages.deverrouiller(calepinageId)
+    } catch (erreur) {
+      setEnCours(false)
+      setRefus(messageRefus(erreur))
+      return
+    }
+    setEnCours(false)
+    /* On CROIT le serveur, pas le clic : s'il maintient le verrou, l'écran ne
+       fait pas semblant d'avoir rouvert l'écriture. */
+    if (res?.data?.verrouille === true) {
+      setRefus('Le verrou est toujours posé sur cette conception.')
+      return
+    }
+    setConfirme(false)
+    await onDeverrouille?.()
+  }
+
+  return (
+    <div className="mt-4 border border-brass-400/40 p-3" data-testid="cal-bandeau-lecture-seule">
+      <p className="tech-label text-brass-300">Conception figée</p>
+      <p className="mt-1 text-sm text-lune-soft">
+        Cet atelier est en lecture seule : le devis lié est parti chez le client.
+        Les gestes d’écriture sont suspendus tant que le verrou est posé.
+      </p>
+
+      {peutGerer && !confirme && (
+        <button
+          type="button"
+          onClick={() => setConfirme(true)}
+          data-testid="cal-deverrouiller"
+          className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+        >
+          Déverrouiller
+        </button>
+      )}
+
+      {peutGerer && confirme && (
+        <div className="mt-3" data-testid="cal-deverrouiller-confirmation">
+          <p className="text-sm text-alert-300" role="alert">
+            Déverrouiller rouvre l’écriture sur cette conception : le devis lié
+            devient à rejouer — il faudra le resynchroniser pour qu’il redise la
+            même conception. Le geste est tracé au journal du calepinage.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={deverrouiller}
+              disabled={enCours}
+              data-testid="cal-deverrouiller-confirmer"
+              className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {enCours ? 'Déverrouillage…' : 'Confirmer le déverrouillage'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setConfirme(false); setRefus(null) }}
+              disabled={enCours}
+              data-testid="cal-deverrouiller-annuler"
+              className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold text-lune-faint disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Le refus NOMME le geste qui a échoué, et rend le message du serveur
+          tel quel — jamais un « non enregistré » anonyme. */}
+      {refus && (
+        <div className="mt-3 border border-alert-300/40 p-3" data-testid="cal-deverrouiller-refus">
+          <p className="tech-label text-alert-300">Déverrouillage</p>
+          <p className="mt-1 text-sm text-alert-300" role="alert">{refus}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AtelierPanneaux({
   calepinageId, contexte, builderApi, lectureSeule = false,
   onRecharger, children,
 }) {
   const cible = contexte?.cible ?? null
   const calepinage = contexte?.calepinage ?? null
+
+  /* CALX27 — le déverrouillage REND la main tout de suite : les panneaux d'écriture
+     réapparaissent sans rechargement complet de l'atelier. L'état du serveur
+     est quand même relu derrière (`relire`, `onRecharger`) — ce drapeau n'est
+     qu'un raccourci d'affichage, jamais une seconde vérité. */
+  const [deverrouille, setDeverrouille] = useState(false)
+  const enLectureSeule = lectureSeule && !deverrouille
 
   /* UNE SEULE LECTURE DE L'AGRÉGAT (CAL17), partagée. La fiche et le bouton
      devis parlent de la MÊME vérité : deux lectures, ce serait deux états le
@@ -122,6 +262,21 @@ export default function AtelierPanneaux({
         </Link>
       </div>
 
+      {/* CALX27 — LE BANDEAU DE LECTURE SEULE ET SA SORTIE. Il ne s'affiche
+          que dans cet état ; le bouton qu'il porte n'existe qu'avec le droit
+          de gérer. Après déverrouillage, le bandeau disparaît et les panneaux
+          d'écriture reviennent — sans rechargement complet. */}
+      {enLectureSeule && (
+        <BandeauVerrou
+          calepinageId={calepinageId}
+          onDeverrouille={async () => {
+            setDeverrouille(true)
+            relire()
+            await onRecharger?.()
+          }}
+        />
+      )}
+
       {/* LA CIBLE, TELLE QUE LE SERVEUR LA SERT. `source` dit d'où elle vient
           (devis lié, factures du lead) : sans elle, personne ne peut savoir si
           le chiffre affiché engage un devis ou n'est qu'une estimation. */}
@@ -170,11 +325,11 @@ export default function AtelierPanneaux({
       <RemplissageProuve
         entree={builderApi?.entreeMoteur ?? null}
         onAppliquer={builderApi?.appliquerPlan ?? null}
-        lectureSeule={lectureSeule}
+        lectureSeule={enLectureSeule}
       />
 
       {/* CAL70 — les allées de maintenance et le plateau gratuit du moteur. */}
-      <PanneauAllees entree={builderApi?.entreeMoteur ?? null} lectureSeule={lectureSeule} />
+      <PanneauAllees entree={builderApi?.entreeMoteur ?? null} lectureSeule={enLectureSeule} />
 
       {/* CAL101 — l'aide-mémoire des raccourcis, à portée de « ? ». */}
       <div className="mt-4">
@@ -185,7 +340,7 @@ export default function AtelierPanneaux({
         <BoutonDevis
           calepinageId={calepinageId}
           detail={detail}
-          lectureSeule={lectureSeule}
+          lectureSeule={enLectureSeule}
           onRecharger={onRecharger}
           onRelire={relire}
         />
@@ -196,7 +351,7 @@ export default function AtelierPanneaux({
             (`roof_layout.outline`, v2) et le tracé sur carte reste la voie de
             le poser. */}
         {typeof children === 'function'
-          ? children({ calepinageId, contexte, builderApi, lectureSeule, onRecharger })
+          ? children({ calepinageId, contexte, builderApi, lectureSeule: enLectureSeule, onRecharger })
           : children}
       </div>
     </div>

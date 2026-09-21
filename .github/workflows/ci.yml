@@ -1431,6 +1431,27 @@ jobs:
         run: python scripts/check_ecrans_atteignables.py
       - name: Test the reachable-screens checker itself
         run: python -m unittest scripts.tests.test_check_ecrans_atteignables -v
+      - name: Test the parameterized-path reachability rule (CALX56)
+        run: python -m unittest scripts.tests.test_check_ecrans_parametres -v
+      # SERVICES SANS APPELANT (CALX57) — le MÊME incident, côté backend. La
+      # garde ci-dessus attrape l'écran livré-et-introuvable ; celle-ci attrape
+      # la fonction de service écrite, testée, fusionnée et JAMAIS appelée :
+      # ~2 900 lignes de apps/calepinage/services/ ont vécu ainsi pendant tout
+      # un groupe de tâches, parce qu'aucun script ne mesurait cela. Un service
+      # orphelin passe flake8, passe ses propres tests, et n'est vu par aucune
+      # autre étape.
+      #
+      # ICI et pas dans `backend-lint` À DESSEIN, pour la même raison que les
+      # deux gardes voisines : `backend-lint` est gaté sur `backend == true`,
+      # alors qu'un consommateur peut disparaître depuis n'importe où.
+      # `stage-names` est le seul job non gaté — et ce contrôle est en stdlib
+      # pure (ast + texte), sans base de données ni node.
+      # Passif gelé dans scripts/services_appeles_allow.txt : il ne peut que
+      # RÉTRÉCIR.
+      - name: Check services appelés (aucun service livré sans appelant)
+        run: python scripts/check_services_appeles.py
+      - name: Test the orphan-service checker itself (CALX57)
+        run: python -m unittest scripts.tests.test_check_services_appeles -v
       # TÂCHES DE PLAN QUI COMMANDENT DU TRAVAIL MORT (même incident du
       # 03/08/2026, pris UN CRAN PLUS HAUT). check_ecrans_atteignables /
       # check_api_contract attrapent l'écran orphelin et la route inexistante
