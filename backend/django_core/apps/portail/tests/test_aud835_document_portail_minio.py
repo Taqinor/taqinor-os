@@ -2,15 +2,13 @@
 
 Le ``FileField`` historique écrivait sur le disque du conteneur, sans
 ``MEDIA_ROOT`` exploitable, sans route ``/media/``, sans ``location /media/``
-nginx (ROUGE structurel vérifié ici).
-
-SOLMVP16 — le second volet historique de ce test (le dépôt GED canonique
-WIR94 relisant les octets par la clé) a été retiré : ged est un module sorti
-du produit, et son miroir de dépôt (``apps/portail/receivers.py``) a disparu
-avec le champ ``document_ged``.
+nginx (ROUGE structurel vérifié ici). Le dépôt GED canonique (WIR94) lisait,
+lui, les octets ENCORE EN MÉMOIRE au ``pre_save`` : router l'upload vers MinIO
+sans toucher au récepteur aurait fait disparaître ce dépôt EN SILENCE — d'où
+le second volet de ce test.
 
 VERT : clé MinIO préfixée par la société, ``fichier_present`` vrai depuis la
-clé.
+clé, et le dépôt GED relit les octets par la clé.
 
 Run :
     docker compose exec django_core python manage.py test \
@@ -23,6 +21,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import Resolver404, resolve
 
+from apps.ged.models import Cabinet, Document, Folder
 from apps.portail.models import DocumentClientPortail
 from apps.portail.serializers import DocumentClientPortailSerializer
 from authentication.models import Company
@@ -64,7 +63,8 @@ class DocumentPortailVersMinioTests(TestCase):
     def test_le_document_porte_une_cle_minio_scopee_societe(self):
         with mock.patch('apps.records.storage.store_attachment',
                         return_value=self._meta()) as stocke:
-            # On neutralise la relecture MinIO pour ne mesurer que le stockage.
+            # Le dépôt GED (WIR94) est testé séparément ci-dessous : ici on
+            # neutralise la relecture MinIO pour ne mesurer que le stockage.
             with mock.patch('apps.records.storage.fetch_attachment',
                             return_value=(None, 'Fichier introuvable.')):
                 doc = self._creer()
@@ -88,3 +88,44 @@ class DocumentPortailVersMinioTests(TestCase):
         data = DocumentClientPortailSerializer(doc).data
         self.assertTrue(data['fichier_present'])
         self.assertNotIn('fichier', data)
+
+    def test_le_depot_ged_relit_les_octets_par_la_cle(self):
+        """WIR94 conservé : sans ce raccord, le dépôt GED disparaissait."""
+        cle = f'attachments/{self.co.id}/portail835.pdf'
+        # `document_ged` est une VRAIE FK (`on_delete=SET_NULL`, contrainte DB)
+        # vers `ged.Document` : le récepteur écrit `document_ged_id` par un
+        # `.update()` brut (`apps.portail.receivers.deposer_upload_dans_ged`),
+        # donc un simple `mock.Mock(pk=4242)` sans ligne réelle en base viole
+        # la contrainte FK. `ged.services.deposit_document` (mocké ici, comme
+        # le reste de la frontière cross-app) doit donc renvoyer un document
+        # GED réellement existant — cabinet/dossier minimaux, pattern déjà
+        # utilisé par apps/ged/tests/test_classification.py.
+        cabinet = Cabinet.objects.create(company=self.co, nom='Portail')
+        dossier = Folder.objects.create(
+            company=self.co, cabinet=cabinet, nom='Documents clients')
+        document_ged = Document.objects.create(
+            company=self.co, folder=dossier, nom='Facture ONEE')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(PDF, None)) as relit:
+            with mock.patch('apps.ged.services.deposit_document') as depose:
+                depose.return_value = (document_ged, True)
+                doc = DocumentClientPortail.objects.create(
+                    company=self.co, libelle='Facture ONEE',
+                    fichier_key=cle, fichier_filename='facture.pdf',
+                    fichier_mime='application/pdf', fichier_size=len(PDF))
+
+        relit.assert_called_once_with(cle)
+        kwargs = depose.call_args.kwargs
+        self.assertEqual(kwargs['company'], self.co)
+        self.assertEqual(kwargs['source_type'],
+                         'portail.documentclientportail')
+        self.assertEqual(kwargs['contenu_bytes'], PDF)
+        self.assertEqual(kwargs['mime'], 'application/pdf')
+        doc.refresh_from_db()
+        self.assertEqual(doc.document_ged_id, document_ged.pk)
+
+    def test_sans_cle_ni_fichier_aucun_depot_ged(self):
+        with mock.patch('apps.ged.services.deposit_document') as depose:
+            DocumentClientPortail.objects.create(
+                company=self.co, libelle='Sans fichier')
+        self.assertFalse(depose.called)
