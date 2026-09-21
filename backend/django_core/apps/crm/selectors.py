@@ -4877,3 +4877,36 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if lead.date_creation else ''),
         })
     return lignes
+
+
+# ── CAD-M ── CAD166 — LES kWh DÉCLARÉS, JUSQU'AU MOTEUR
+#
+# Le moteur horaire sait lire une consommation en kWh depuis toujours ; il ne
+# la RECEVAIT simplement pas du lead, et repartait donc des montants en
+# dirhams inversés au barème même quand le client avait donné ses kWh.
+# Décision fondateur du 21/09/2026 : les kWh saisis passent en PRIORITÉ 1.
+#
+# Point d'entrée cross-app LECTURE SEULE, DISTINCT de
+# ``lead_bills_for_devis`` : celui-ci n'existe que si une facture d'hiver
+# existe, alors que le cas visé est justement le dossier qui n'a QUE des kWh.
+def conso_mensuelle_kwh_pour_devis(devis):
+    """Consommation mensuelle déclarée (kWh) du lead d'un devis, ou ``None``.
+
+    ``crm.Lead.conso_mensuelle_kwh`` est LE champ éditable (saisi par la
+    commerciale, écrit par l'OCR de facture) ; ``bill_kwh`` reste l'archive du
+    tunnel web, en lecture seule — les deux ne fusionnent pas, et c'est le
+    champ éditable qui parle au moteur. Même résolution de lead que le reste
+    du module (le lead du devis, sinon le plus récent du client), même bornage
+    société. Aucune donnée fabriquée : absente ⇒ ``None``."""
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        lead = get_latest_lead_for_client(
+            getattr(devis, 'company', None), getattr(devis, 'client_id', None))
+    valeur = getattr(lead, 'conso_mensuelle_kwh', None) if lead else None
+    if valeur in (None, ''):
+        return None
+    try:
+        valeur = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return valeur if valeur > 0 else None

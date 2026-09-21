@@ -2485,13 +2485,20 @@ def balayer_stockage_horaire(*, kwc, conso_kwh_mensuelles, capacites_kwh,
 
 def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
                            ete_differente=False, factures_mensuelles_mad=None,
-                           conso_kwh_mensuelles=None, tranches=None,
+                           conso_kwh_mensuelles=None,
+                           conso_kwh_mensuelle_unique=None, tranches=None,
                            charges_fixes_mad=None, tppan=True):
     """Résout la série 12 mois en kWh depuis ce que le client a réellement donné.
 
     Ordre de PRIORITÉ (le plus réel d'abord) :
 
     1. ``conso_kwh_mensuelles`` — 12 kWh déjà mesurés (le cas idéal) ;
+    1 bis. ``conso_kwh_mensuelle_unique`` — UNE consommation mensuelle en kWh
+       déclarée sur la fiche (CAD166, décision fondateur du 21/09/2026 : « les
+       kWh saisis passent en PRIORITÉ 1 ; les montants en dirhams inversés au
+       barème ne servent que s'ils sont absents »). Elle est répétée sur les
+       douze mois — exactement l'honnêteté de la facture d'hiver répétée plus
+       bas, mais SANS l'inversion au barème, donc sans son incertitude ;
     2. ``factures_mensuelles_mad`` — 12 factures RÉELLES saisies
        (``etude_params['factures_mensuelles_reelles']``), back-calculées une à
        une : c'est la seule source qui porte une VRAIE variation mensuelle ;
@@ -2504,6 +2511,11 @@ def profil_depuis_factures(*, facture_hiver_mad=None, facture_ete_mad=None,
         valeurs = [max(0.0, _num(v)) for v in conso_kwh_mensuelles]
         if any(v > 0 for v in valeurs):
             return valeurs, 'kwh_mensuels_saisis', {'methode': 'saisie_directe'}
+
+    unique = _num(conso_kwh_mensuelle_unique)
+    if unique > 0:
+        return ([unique] * 12, 'kwh_mensuel_saisi',
+                {'methode': 'saisie_directe_mois_unique'})
 
     if factures_mensuelles_mad and len(factures_mensuelles_mad) == 12:
         valeurs = [_num(v) for v in factures_mensuelles_mad]
@@ -3002,12 +3014,19 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     factures_mensuelles = etude_params.get('factures_mensuelles_reelles')
 
     bills = lead_bills_for_devis(devis) or {}
+    # CAD166 — les kWh DÉCLARÉS sur la fiche arrivent enfin jusqu'ici, et
+    # priment sur les dirhams inversés au barème (décision fondateur du
+    # 21/09/2026). Lecture cross-app par un sélecteur DISTINCT de
+    # ``lead_bills_for_devis`` : ce dernier n'existe que s'il y a une facture
+    # d'hiver, alors que le dossier pro visé n'a souvent QUE des kWh.
+    from apps.crm.selectors import conso_mensuelle_kwh_pour_devis
     conso, source_conso, detail_conso = profil_depuis_factures(
         facture_hiver_mad=bills.get('facture_hiver'),
         facture_ete_mad=bills.get('facture_ete'),
         ete_differente=bills.get('ete_differente'),
         factures_mensuelles_mad=factures_mensuelles,
         conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'),
+        conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes)
     if not conso:
         return None
