@@ -1,5 +1,5 @@
 /**
- * CALX109 — LE MODULE POSÉ SUR CHAQUE PAN, AVEC SES VRAIES COTES.
+ * CALX109 / CALX110 — LE MODULE POSÉ SUR CHAQUE PAN.
  *
  * LE CONSTAT. L'atelier ne connaissait qu'UN module, écrit en dur avec ses cotes
  * (`../../lib/roofPro2.ts`) et propagé partout ; le kWc se calculait `nombre × PANEL2_WATT`,
@@ -9,10 +9,12 @@
  * contrat CALX82).
  *
  * CE MODULE EST PUR. Aucune dépendance à Three, à MapLibre, au DOM ni au `ctx` : il ne
- * fait que deux choses, chacune testable seule —
+ * fait que trois choses, chacune testable seule —
  *   1. LIRE la réponse serveur et en tirer le catalogue sélectionnable (CALX109) ;
  *   2. RÉSOUDRE le module d'un pan (le sien, ou le module par défaut de l'atelier, NOMMÉ)
  *      et en tirer les cotes de pavage, ou un REFUS qui nomme le champ manquant ;
+ *   3. ÉCRIRE dans le document le catalogue réellement utilisé, le `moduleId` de chaque pan,
+ *      le kWc de chaque pan calculé depuis SON module, et le `panelWatt` racine (CALX110).
  *
  * ZÉRO CHIFFRE INVENTÉ (D-CALX 7). Une cote absente de la fiche n'est jamais remplacée par
  * une dimension standard ni par celle du module d'hier : le module est REFUSÉ en nommant le
@@ -258,4 +260,163 @@ export function cotesPourPan(
 ): Panel2Module | RefusModule {
   const module = resoudreModuleDuPan(catalogue, moduleId);
   return estRefus(module) ? module : cotesDeModule(module);
+}
+
+/**
+ * CALX110 — le kWc d'UN pan : son nombre de modules × la puissance de SON module.
+ * `null` quand la puissance n'est pas renseignée — jamais 0, qui se lirait « rien posé ».
+ */
+export function kwcDuPan(nombreDeModules: number, module: ModuleDocument): number | null {
+  if (!Number.isFinite(nombreDeModules) || nombreDeModules < 0) return null;
+  if (!positif(module.pmaxWc)) return null;
+  return (nombreDeModules * (module.pmaxWc as number)) / 1000;
+}
+
+/** Un pan, réduit à ce dont la synthèse a besoin. */
+export interface PanPourSynthese {
+  id: string;
+  /** Nombre de modules POSÉS sur ce pan. */
+  panels: number;
+}
+
+/** CALX110 — ce que l'écran affiche au-dessus des totaux. */
+export interface SyntheseModules {
+  /** Puissance unitaire du module MAJORITAIRE (Wc), ou `null` si rien n'est posé. */
+  watt: number | null;
+  /** `true` dès que deux pans posent deux modèles DIFFÉRENTS. */
+  plusieursModeles: boolean;
+  /** Les libellés des modèles posés, dans l'ordre du catalogue — jamais un identifiant. */
+  libelles: string[];
+  /** La mention FRANÇAISE affichée : « plusieurs modèles » et lesquels, ou le modèle unique. */
+  mention: string;
+}
+
+/**
+ * CALX110 — la synthèse des modèles posés sur le site.
+ *
+ * « Majoritaire » se compte en MODULES POSÉS, pas en pans : un pan de 4 modules ne pèse pas
+ * autant qu'un pan de 60, et c'est la puissance unitaire la plus représentée que les
+ * lecteurs historiques de `panelWatt` doivent lire. À égalité, l'ordre du catalogue tranche
+ * — jamais l'ordre de parcours des pans, qui dépend de l'édition.
+ */
+export function syntheseModules(
+  affectation: AffectationModules | null | undefined,
+  pans: readonly PanPourSynthese[],
+): SyntheseModules {
+  const catalogue = affectation?.catalogue ?? [];
+  const parPan = affectation?.parPan ?? {};
+  const poses = new Map<string, { module: ModuleDocument; modules: number }>();
+  for (const pan of pans) {
+    const module = resoudreModuleDuPan(catalogue, parPan[pan.id]);
+    if (estRefus(module)) continue; // un pan qui désigne l'introuvable ne pèse sur rien
+    const compte = Number.isFinite(pan.panels) && pan.panels > 0 ? pan.panels : 0;
+    const ligne = poses.get(module.id);
+    if (ligne) ligne.modules += compte;
+    else poses.set(module.id, { module, modules: compte });
+  }
+  const lignes = [...poses.values()];
+  if (!lignes.length) {
+    return { watt: null, plusieursModeles: false, libelles: [], mention: 'Aucun module posé.' };
+  }
+  const ordre = (id: string) => {
+    const i = catalogue.findIndex((m) => m.id === id);
+    return i < 0 ? catalogue.length : i;
+  };
+  const majoritaire = lignes.reduce((meilleur, ligne) => {
+    if (ligne.modules > meilleur.modules) return ligne;
+    if (ligne.modules === meilleur.modules
+      && ordre(ligne.module.id) < ordre(meilleur.module.id)) return ligne;
+    return meilleur;
+  }, lignes[0]);
+  const triees = [...lignes].sort((x, y) => ordre(x.module.id) - ordre(y.module.id));
+  const libelles = triees.map((ligne) => ligne.module.libelle);
+  const plusieursModeles = lignes.length > 1;
+  return {
+    watt: positif(majoritaire.module.pmaxWc) ? (majoritaire.module.pmaxWc as number) : null,
+    plusieursModeles,
+    libelles,
+    mention: plusieursModeles
+      ? `Plusieurs modèles posés : ${libelles.join(' ; ')}.`
+      : `Module posé : ${libelles[0]}.`,
+  };
+}
+
+// ───────────────────────── ÉCRITURE DANS LE DOCUMENT (CALX110) ─────────────────────────
+// Forme STRUCTURELLE, volontairement minimale : ce module ne connaît pas `prefill.ts` (ce
+// serait un cycle d'import), il ne décrit que les champs qu'il touche.
+
+/** La géométrie d'un pan, vue d'ici : ce qu'on lit et ce qu'on écrit. */
+export interface GeometriePanDocument {
+  count: number;
+  kwc: number;
+  moduleId?: string;
+}
+
+/** Le document, vu d'ici. */
+export interface DocumentAvecModules {
+  zones: Array<{ id: string; geometry?: GeometriePanDocument }>;
+  result?: { panels: number; kwc: number; annualKwh: number; savings: number | null };
+  panelWatt?: number;
+  modules?: ModuleDocument[];
+}
+
+/**
+ * CALX110 — écrit le catalogue et les modules de pan DANS le document, puis le rend.
+ *
+ * RIEN N'EST ÉCRIT tant qu'aucun pan ne désigne un module exploitable : le document ressort
+ * alors IDENTIQUE, octet pour octet (aucune clé `modules`, aucun `moduleId`, `panelWatt` et
+ * `result.kwc` inchangés) — c'est le comportement d'aujourd'hui, et c'est la garantie que
+ * cette fonction peut être appelée inconditionnellement depuis `serializeLayout`.
+ *
+ * Ce qui est écrit quand un pan a un module :
+ *   • `modules[]` — SEULEMENT les modèles réellement posés, dans l'ordre du catalogue ;
+ *   • `zones[].geometry.moduleId` — le modèle de CE pan ;
+ *   • `zones[].geometry.kwc` — recalculé `count × pmaxWc / 1000` (CALX110 : deux modèles
+ *     sur deux pans donnaient un kWc faux) ;
+ *   • `result.kwc` — la SOMME des kWc de pan, donc cohérente avec ce que le document dit ;
+ *   • `panelWatt` — la puissance du module MAJORITAIRE, laissée à la racine pour les
+ *     lecteurs existants ; le document ne dit plus qu'elle vaut pour tous les pans, c'est
+ *     `modules[]` + `moduleId` qui font foi.
+ *
+ * Un pan dont le module est introuvable au catalogue, ou dont la fiche n'a pas de cotes,
+ * est LAISSÉ TEL QUEL (aucun `moduleId` écrit, aucun kWc retouché) : on n'inscrit jamais
+ * dans le document un choix que le pavage ne pourrait pas honorer.
+ */
+export function ecrireModulesDansDocument<T extends DocumentAvecModules>(
+  layout: T,
+  affectation: AffectationModules | null | undefined,
+): T {
+  const catalogue = affectation?.catalogue ?? [];
+  const parPan = affectation?.parPan ?? {};
+  if (!layout || !Array.isArray(layout.zones) || !catalogue.length) return layout;
+
+  const utilises = new Map<string, ModuleDocument>();
+  // TOUS les pans porteurs de géométrie entrent dans la synthèse — y compris ceux restés
+  // sur le module par défaut : « majoritaire » doit se lire sur le site entier, sinon un
+  // seul pan équipé d'un modèle du catalogue imposerait son watt à tout le document.
+  const pans: PanPourSynthese[] = [];
+  for (const zone of layout.zones) {
+    const geometry = zone?.geometry;
+    if (!geometry) continue;
+    pans.push({ id: zone.id, panels: geometry.count });
+    const module = resoudreModuleDuPan(catalogue, parPan[zone.id]);
+    if (estRefus(module) || module.id === ID_MODULE_PAR_DEFAUT) continue;
+    if (estRefus(cotesDeModule(module))) continue;
+    geometry.moduleId = module.id;
+    const kwc = kwcDuPan(geometry.count, module);
+    if (kwc !== null) geometry.kwc = kwc;
+    utilises.set(module.id, module);
+  }
+  if (!utilises.size) return layout;
+
+  layout.modules = catalogue
+    .filter((module) => utilises.has(module.id))
+    .map((module) => ({ ...module }));
+  if (layout.result) {
+    layout.result.kwc = layout.zones.reduce(
+      (total, zone) => total + (zone?.geometry?.kwc ?? 0), 0);
+  }
+  const synthese = syntheseModules({ catalogue, parPan }, pans);
+  if (synthese.watt !== null) layout.panelWatt = synthese.watt;
+  return layout;
 }
