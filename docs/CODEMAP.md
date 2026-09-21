@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a09519d8ffec5e537659cedd60a878e56e2e2899b11d2370a5320a001d29cf09
-Plan fingerprint: a0642fa1c77c0a3891313293adb84e1f2844aaa139b0d5684c8690c116211901
+Plan fingerprint: d4befee82f5e8154540058594960170dacbf51257d3e9e08d55a562fcd4e8ee1
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (192)**
+**Done (201)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -623,6 +623,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
+- `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
+- `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
+- `CALX84` — Porter au contrat les bâtiments : hauteur et nombre d'étages SAISIS, avec provenance
+- `CALX85` — Porter au contrat les obstacles non rectangulaires (polygone, cercle)
+- `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
+- `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
+- `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
 - `CALX93` — Déduire noue et arêtier en comparant les pans voisins
 - `CALX121` — Dessiner la coupe transversale d'une rangée sur l'autre
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
@@ -724,9 +732,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
+- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (414)**
+**Open — to build (405)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -918,14 +927,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
-- `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
-- `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
-- `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
-- `CALX84` — Porter au contrat les bâtiments : hauteur et nombre d'étages SAISIS, avec provenance
-- `CALX85` — Porter au contrat les obstacles non rectangulaires (polygone, cercle)
-- `CALX86` — Porter au contrat le calque de fond calé (plan importé ou photo) et son échelle à deux…
-- `CALX87` — Porter au contrat la surface de pose « façade » et les poteaux d'ombrière
-- `CALX88` — Porter au contrat les choix d'optimisation et le soleil de scène
 - `CALX89` — Magnétiser le tracé à 90° et 45° et offrir un mode orthogonal
 - `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
 - `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
@@ -1109,7 +1110,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX398` — Re-mesurer le budget de poids du module après le lot
 - `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
 - `CALX400` — Geler les repères DOM `cal-*` en contrat
-- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
