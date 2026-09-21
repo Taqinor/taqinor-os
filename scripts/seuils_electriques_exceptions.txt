@@ -1,0 +1,44 @@
+# Base de reference de check_seuils_electriques.py (CALX250) — DETTE
+# HISTORIQUE, RIEN D'AUTRE.
+#
+# Chaque ligne est un littéral numérique (constante de module ou défaut de
+# champ de dataclass) de core/electrique/*.py ou des services electrique du
+# lot CALX pour lequel le script n'a PAS détecté de commentaire de source
+# reconnaissable (norme, fiche, URL, décision fondateur datée...) au moment
+# où cette base a été écrite. Elle GÈLE le passif : la garde empêche la
+# RÉCIDIVE (un littéral NEUF sans source fait échouer la CI), elle ne répare
+# pas le passif — chaque ligne drainée est un littéral enfin sourcé (un
+# commentaire de provenance ajouté), remplacé par une fiche/un réglage
+# société, ou supprimé.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - sourcer (ou supprimer) un littéral puis `python
+#     scripts/check_seuils_electriques.py --write-baseline` retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# Format : `<fichier>:<ligne>  # <motif>` — le motif dit POURQUOI ce littéral
+# reste sans source détectée (revue humaine encore à faire, ou dette connue).
+backend/django_core/apps/calepinage/services/electrique.py:1180  # JOURNAL_ECARTS_MAX : taille du tampon d'historique interne (nombre d'entrées conservées), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250), aucune citation à apporter, un `# forme` suffirait à la sourcer.
+backend/django_core/core/electrique/schema.py:48  # RANGEES_MAX_A4 : constante de mise en page du schéma unifilaire SVG (nombre de rangées avant bascule A3), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:50  # _MARGE : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:51  # _BLOC_L : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:52  # _BLOC_H : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:56  # _CARACTERES_TITRE : heuristique de longueur de texte SVG (caractères), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:57  # _CARACTERES_SOUS_TITRE : heuristique de longueur de texte SVG (caractères), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:59  # _ECART : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:61  # _RANGEE_H : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:68  # _POINTE_H : géométrie de la pointe de flèche SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:69  # _POINTE_L : géométrie de la pointe de flèche SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:71  # _BRANCHE_DX : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:73  # _BRANCHE_EQUERRE_DY : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:81  # _ECART_SOUS_BRANCHE : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:87  # _GOUTTIERE_DY : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:88  # _TABLEAU_L : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:93  # _ETIQUETTE_H : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:94  # _ETIQUETTE_DY : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/schema.py:99  # _LARGEUR_ENTETE : géométrie de mise en page SVG (px), pas un seuil électrique — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/types.py:130  # SpecModule.temp_coeff_voc_pct_c : défaut non sourcé, à remplacer par une fiche — dette historique gelée le 21/09/2026 (CALX250), à sourcer par CALX215/CALX246 ; le marquage aval (avertissement « non sourcé ») est posé par CALX53, CALX250 ne rouvre pas types.py.
+backend/django_core/core/electrique/types.py:132  # SpecModule.temp_coeff_pmax_pct_c : défaut non sourcé, à remplacer par une fiche — dette historique gelée le 21/09/2026 (CALX250), à sourcer par CALX215/CALX246 ; le marquage aval (avertissement « non sourcé ») est posé par CALX53, CALX250 ne rouvre pas types.py.
+backend/django_core/core/electrique/types.py:47  # TEMP_FROID_DEFAUT_C : hypothèse d'ingénierie (climat Maroc, « hiver altitude »), aucune citation normative détectée — dette historique gelée le 21/09/2026 (CALX250).
+backend/django_core/core/electrique/types.py:51  # TEMP_CHAUD_DEFAUT_C : hypothèse d'ingénierie (climat Maroc, « module en été »), aucune citation normative détectée — dette historique gelée le 21/09/2026 (CALX250).
