@@ -8,8 +8,6 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.automation.models import AutomationApproval
-from apps.contrats.models import Contrat, EtapeApprobation
-from apps.ged.models import Cabinet, Document, Folder
 from apps.installations.models import Installation
 from apps.installations.models_demande_achat import DemandeAchat, DemandeAchatLigne
 from apps.reporting.models import ApprobationSlaConfig
@@ -54,32 +52,6 @@ class TestApprobationsAggregation(ApprobationsBase):
         self.assertEqual(resp.status_code, 200)
         sources = {it['source'] for it in resp.data['items']}
         self.assertIn('automation', sources)
-
-    def test_contrats_source_listed(self):
-        contrat = Contrat.objects.create(
-            company=self.company, objet='Contrat test', reference='C-1')
-        EtapeApprobation.objects.create(
-            company=self.company, contrat=contrat, niveau=1,
-            statut=EtapeApprobation.Statut.EN_ATTENTE)
-        resp = self.api.get(self._url())
-        self.assertEqual(resp.status_code, 200)
-        sources = {it['source'] for it in resp.data['items']}
-        self.assertIn('contrats', sources)
-
-    def test_ged_source_listed(self):
-        cab = Cabinet.objects.create(company=self.company, nom='Docs')
-        folder = Folder.objects.create(
-            company=self.company, cabinet=cab, nom='Entrants')
-        doc = Document.objects.create(
-            company=self.company, folder=folder, nom='Contrat.pdf')
-        from apps.ged.models import APPROBATION_EN_ATTENTE
-        from apps.ged.models import DemandeApprobation
-        DemandeApprobation.objects.create(
-            company=self.company, document=doc, statut=APPROBATION_EN_ATTENTE)
-        resp = self.api.get(self._url())
-        self.assertEqual(resp.status_code, 200)
-        sources = {it['source'] for it in resp.data['items']}
-        self.assertIn('ged', sources)
 
     def test_installations_source_listed(self):
         DemandeAchat.objects.create(
@@ -211,10 +183,10 @@ class TestApprobationsDecision(ApprobationsBase):
 
 class TestVx101RoleGate(ApprobationsBase):
     """VX101 — [BUG AUTH] seul le tier Responsable/Admin peut DÉCIDER une
-    source `installations`/`contrats` depuis l'agrégateur cross-app ; avant ce
-    fix `decider_demande_achat`/l'étape de contrat n'étaient gardés par AUCUN
-    rôle ici (un commercial ou technicien pouvait approuver). La LECTURE reste
-    ouverte à tout rôle (non-régression)."""
+    source `installations` depuis l'agrégateur cross-app ; avant ce fix
+    `decider_demande_achat` n'était gardé par AUCUN rôle ici (un commercial
+    ou technicien pouvait approuver). La LECTURE reste ouverte à tout rôle
+    (non-régression)."""
 
     def _decide_url(self):
         return self._url() + 'decider/'
@@ -230,36 +202,14 @@ class TestVx101RoleGate(ApprobationsBase):
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
 
-    def test_normal_role_forbidden_to_decide_contrats(self):
-        contrat = Contrat.objects.create(
-            company=self.company, objet='Contrat VX101', reference='C-VX101')
-        etape = EtapeApprobation.objects.create(
-            company=self.company, contrat=contrat, niveau=1,
-            statut=EtapeApprobation.Statut.EN_ATTENTE)
-        resp = self.api.post(self._decide_url(), {
-            'source': 'contrats', 'id': etape.id, 'decision': 'approuver',
-        }, format='json')
-        self.assertEqual(resp.status_code, 403)
-        etape.refresh_from_db()
-        self.assertEqual(etape.statut, EtapeApprobation.Statut.EN_ATTENTE)
-
-    def test_responsable_can_decide_installations_and_contrats(self):
+    def test_responsable_can_decide_installations(self):
         da = DemandeAchat.objects.create(
             company=self.company, reference='DA-VX101-2', objet='Test',
             statut=DemandeAchat.Statut.SOUMISE)
-        contrat = Contrat.objects.create(
-            company=self.company, objet='Contrat VX101-2', reference='C-VX101-2')
-        etape = EtapeApprobation.objects.create(
-            company=self.company, contrat=contrat, niveau=1,
-            statut=EtapeApprobation.Statut.EN_ATTENTE)
         r1 = self.resp_api.post(self._decide_url(), {
             'source': 'installations', 'id': da.id, 'decision': 'approuver',
         }, format='json')
         self.assertEqual(r1.status_code, 200, r1.data)
-        r2 = self.resp_api.post(self._decide_url(), {
-            'source': 'contrats', 'id': etape.id, 'decision': 'approuver',
-        }, format='json')
-        self.assertEqual(r2.status_code, 200, r2.data)
 
     def test_reading_stays_open_to_normal_role(self):
         # La LECTURE de la boîte d'approbations n'est jamais gardée par ce
@@ -272,8 +222,8 @@ class TestVx101RoleGate(ApprobationsBase):
         sources = {it['source'] for it in resp.data['items']}
         self.assertIn('installations', sources)
 
-    def test_normal_role_can_still_decide_automation_ged_workflow(self):
-        # Non-régression — le gate ne touche QUE installations/contrats.
+    def test_normal_role_can_still_decide_automation_workflow(self):
+        # Non-régression — le gate ne touche QUE installations.
         approval = AutomationApproval.objects.create(
             company=self.company, status=AutomationApproval.Status.PENDING)
         resp = self.api.post(self._decide_url(), {
@@ -455,17 +405,6 @@ class TestVx100MontantEtLien(ApprobationsBase):
         self.assertIn('lien', item)
         self.assertIsNone(item['montant'])
         self.assertIsNone(item['lien'])
-
-    def test_contrats_item_lien_points_to_contrat_detail(self):
-        contrat = Contrat.objects.create(
-            company=self.company, objet='Contrat VX100', reference='C-VX100')
-        EtapeApprobation.objects.create(
-            company=self.company, contrat=contrat, niveau=1,
-            statut=EtapeApprobation.Statut.EN_ATTENTE)
-        resp = self.api.get(self._url() + '?source=contrats')
-        self.assertEqual(resp.status_code, 200)
-        item = resp.data['items'][0]
-        self.assertEqual(item['lien'], f'/contrats/{contrat.id}')
 
     def test_trier_montant_orders_amounts_descending(self):
         small = DemandeAchat.objects.create(

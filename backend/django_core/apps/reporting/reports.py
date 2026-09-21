@@ -407,7 +407,7 @@ def kpi_federes(request):
     registre plateforme (``core.platform.kpi_providers(company)`` — gatée
     ``ModuleToggle`` : un module OFF disparaît avec ses tuiles) : chaque
     provider est un CALLABLE DOTTED (ex.
-    ``apps.rh.selectors.kpi_effectifs_absences``) résolu à l'exécution,
+    ``apps.crm.kpis.kpi_crm``) résolu à l'exécution,
     appelé ``provider(company)``, qui renvoie des tuiles normalisées
     ``{id, label, valeur, unite?}``. Le reporting n'importe AUCUN modèle des
     apps fournisseuses — la frontière inter-app passe par leurs selectors.
@@ -475,7 +475,8 @@ def kpi_federes(request):
 # ── ODY10 — dérivation des badges d'app (aucune requête, aucun modèle) ───────
 
 def _cle_app_depuis_provider(dotted):
-    """``apps.rh.selectors.kpi_x`` → ``'rh'`` (la clé de module du manifest).
+    """``apps.stock.selectors.kpi_x`` → ``'stock'`` (la clé de module du
+    manifest).
 
     Par convention le label d'app Django et la clé ``module`` déclarée dans
     ``apps/<x>/platform.py`` coïncident — c'est déjà l'invariant que

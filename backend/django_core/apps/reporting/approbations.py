@@ -7,12 +7,6 @@ attente » existantes :
   * ``automation.AutomationApproval`` (status pending) — via
     ``apps.automation.selectors.approvals_en_attente`` +
     ``apps.automation.services.decider_approval`` ;
-  * ``contrats.EtapeApprobation`` (statut en_attente) — via
-    ``apps.contrats.selectors.etapes_approbation_en_attente`` +
-    ``apps.contrats.services.approuver_etape``/``rejeter_etape`` ;
-  * ``ged.DemandeApprobation`` (statut en_attente) — via
-    ``apps.ged.selectors.demandes_approbation_en_attente`` +
-    ``apps.ged.services.approve_demande``/``reject_demande`` ;
   * ``installations.DemandeAchat`` (statut soumise, FG310 — vit dans
     installations, PAS stock) — via
     ``apps.installations.selectors.demandes_achat_en_attente`` +
@@ -75,57 +69,6 @@ def _automation_items(company):
     return out
 
 
-def _contrats_items(company):
-    from apps.contrats import selectors as contrats_selectors
-    out = []
-    for etape in contrats_selectors.etapes_approbation_en_attente(company):
-        out.append({
-            'source': 'contrats',
-            'id': etape.id,
-            'libelle': f'Contrat {etape.contrat.reference} — étape {etape.niveau}'
-            if getattr(etape.contrat, 'reference', None)
-            else f'Contrat #{etape.contrat_id} — étape {etape.niveau}',
-            # ZCTR9 — expose la vraie date de création (le champ existe déjà
-            # sur EtapeApprobation, il n'était simplement pas remonté avant).
-            'cree_le': etape.date_creation,
-            'demandeur': None,
-            'priorite': None,
-            # VX100 — le contrat porte une route détail (`/contrats/:id`) ;
-            # lien réel vers la pièce. Aucun montant homogène exposé ici
-            # aujourd'hui (jamais fabriqué).
-            'montant': None,
-            'lien': f'/contrats/{etape.contrat_id}' if etape.contrat_id else None,
-            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
-            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
-            'niveau_escalade': None,
-            'derniere_relance_le': None,
-        })
-    return out
-
-
-def _ged_items(company):
-    from apps.ged import selectors as ged_selectors
-    out = []
-    for demande in ged_selectors.demandes_approbation_en_attente(company):
-        out.append({
-            'source': 'ged',
-            'id': demande.id,
-            'libelle': f'Document {getattr(demande.document, "nom", demande.document_id)}',
-            'cree_le': demande.created_at,
-            'demandeur': getattr(demande.demandeur, 'username', None),
-            'priorite': None,
-            # VX100 — pas de route détail document ni de montant homogène
-            # côté GED aujourd'hui : jamais fabriqués.
-            'montant': None,
-            'lien': None,
-            # VX218 — seule `automation` est balayée par YEVNT9 aujourd'hui ;
-            # champs présents pour un contrat d'API uniforme, jamais fabriqués.
-            'niveau_escalade': None,
-            'derniere_relance_le': None,
-        })
-    return out
-
-
 def _installations_items(company):
     from apps.installations import selectors as installations_selectors
     out = []
@@ -181,8 +124,6 @@ def _core_workflow_items(company):
 
 _SOURCE_LOADERS = {
     'automation': _automation_items,
-    'contrats': _contrats_items,
-    'ged': _ged_items,
     'installations': _installations_items,
     'workflow': _core_workflow_items,
 }
@@ -328,8 +269,8 @@ def approbations_en_attente(request):
 
     Renvoie les demandes multi-modules EN ATTENTE, scopées à la société de
     l'utilisateur (jamais une autre société). Filtres :
-      - ``?source=`` — une seule source (``automation``/``contrats``/``ged``/
-        ``installations``/``workflow``).
+      - ``?source=`` — une seule source (``automation``/``installations``/
+        ``workflow``).
       - ``?categorie=`` — ZCTR9, alias de ``source`` (la seule facette de
         catégorie homogène à travers les sources aujourd'hui).
       - ``?priorite=`` — ZCTR9, ne retient que les items portant cette
@@ -389,14 +330,14 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
         return 400, {'detail': 'Source inconnue.'}
     if decision not in ('approuver', 'refuser'):
         return 400, {'detail': 'Décision invalide.'}
-    # VX101 — [BUG AUTH] `decider_demande_achat` (installations) et l'étape de
-    # contrat ne vérifiaient AUCUN rôle au-delà de `IsAnyRole` : un commercial
-    # ou un technicien pouvait approuver une réquisition d'achat ou une étape
-    # de contrat. Point d'ancrage unique des 5 sources (`_decider_approbation_
-    # core`) : exige le tier Responsable/Admin pour DÉCIDER (approuver/refuser)
-    # une source `installations`/`contrats` — la LECTURE (`approbations_en_
-    # attente`) reste ouverte à tout rôle, inchangée.
-    if source in ('installations', 'contrats') and not user.is_responsable:
+    # VX101 — [BUG AUTH] `decider_demande_achat` (installations) ne vérifiait
+    # AUCUN rôle au-delà de `IsAnyRole` : un commercial ou un technicien
+    # pouvait approuver une réquisition d'achat. Point d'ancrage unique des
+    # sources (`_decider_approbation_core`) : exige le tier Responsable/Admin
+    # pour DÉCIDER (approuver/refuser) la source `installations` — la
+    # LECTURE (`approbations_en_attente`) reste ouverte à tout rôle,
+    # inchangée.
+    if source == 'installations' and not user.is_responsable:
         return 403, {'detail': 'Réservé au Responsable ou à l\'Admin.'}
     approve = decision == 'approuver'
     if not approve and not motif:
@@ -412,34 +353,6 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
                 return 404, {'detail': 'Introuvable.'}
             automation_services.decider_approval(
                 approval, approve=approve, user=user)
-
-        elif source == 'contrats':
-            from apps.contrats import selectors as contrats_selectors
-            from apps.contrats import services as contrats_services
-            etape = (contrats_selectors.etapes_approbation_en_attente(company)
-                     .filter(id=obj_id).first())
-            if etape is None:
-                return 404, {'detail': 'Introuvable.'}
-            if approve:
-                contrats_services.approuver_etape(
-                    etape, approbateur=user, commentaire=motif)
-            else:
-                contrats_services.rejeter_etape(
-                    etape, approbateur=user, commentaire=motif)
-
-        elif source == 'ged':
-            from apps.ged import selectors as ged_selectors
-            from apps.ged import services as ged_services
-            demande = (ged_selectors.demandes_approbation_en_attente(company)
-                       .filter(id=obj_id).first())
-            if demande is None:
-                return 404, {'detail': 'Introuvable.'}
-            if approve:
-                ged_services.approve_demande(
-                    demande, user=user, commentaire=motif)
-            else:
-                ged_services.reject_demande(
-                    demande, user=user, commentaire=motif)
 
         elif source == 'installations':
             from apps.installations import selectors as installations_selectors
@@ -605,55 +518,16 @@ def decider_en_masse(request):
 
 
 # ── NTMOB7 — approbation en un geste depuis une notification push ──────────
-# Un item peut avoir une source de ``_SOURCE_LOADERS`` (mêmes 5 sources que
-# l'agrégateur ci-dessus) OU ``'notes_frais'`` — la note de frais (FG135,
-# ``apps.frais``/``apps.compta``) n'est PAS une source de l'agrégateur de
-# LECTURE (elle a son propre écran de validation comptable) mais est bien un
-# des quatre types de notification-approbation demandés par NTMOB7, donc
-# décidable ici. La remise devis excessive (garde synchrone
-# ``_guard_discount_approval``) reste HORS PÉRIMÈTRE : elle ne produit aucun
-# objet « en attente », donc rien à décider après coup depuis une notification
-# (cf. docstring de tête du fichier).
-def _decider_note_frais(company, user, obj_id, decision, motif):
-    """Décision (valider/rejeter) d'une ``frais.NoteFrais`` — même garde de
-    permission que ``NoteFraisViewSet.valider``/``rejeter``
-    (``compta_valider``), reconstruite ici SANS objet ``request`` DRF (jeton
-    de notification push, jamais une session de navigateur)."""
-    if company is None:
-        return 403, {'detail': 'Accès refusé.'}
-    if decision not in ('approuver', 'refuser'):
-        return 400, {'detail': 'Décision invalide.'}
-    autorise = user.is_superuser or (
-        user.has_erp_permission('compta_valider') if user.role_id
-        else user.is_responsable)
-    if not autorise:
-        return 403, {'detail': 'Réservé à la validation comptable.'}
-
-    from apps.frais import selectors as frais_selectors
-    from apps.frais import services as frais_services
-    note = frais_selectors.note_frais_par_id(company, obj_id)
-    if note is None:
-        return 404, {'detail': 'Introuvable.'}
-    try:
-        if decision == 'approuver':
-            frais_services.valider_note_frais(note, user=user)
-        else:
-            frais_services.rejeter_note_frais(
-                note, motif_rejet=motif, user=user)
-    except Exception as exc:  # garde générique : jamais de 500 opaque
-        return 400, {'detail': str(exc)}
-    return 200, {'detail': 'Décision enregistrée.'}
-
-
+# Un item porte une source de ``_SOURCE_LOADERS`` — la remise devis excessive
+# (garde synchrone ``_guard_discount_approval``) reste HORS PÉRIMÈTRE : elle
+# ne produit aucun objet « en attente », donc rien à décider après coup depuis
+# une notification (cf. docstring de tête du fichier).
 def _decide_for_push(company, user, source, obj_id, decision):
     """Variante de ``_decider_approbation_core`` pour la décision via jeton de
-    notification push : (a) couvre ``'notes_frais'`` en plus des 5 sources de
-    l'agrégateur, (b) fournit un motif AUTOMATIQUE pour un refus — la
+    notification push : fournit un motif AUTOMATIQUE pour un refus — la
     notification EST l'action (NTMOB7), il n'existe aucune UI pour taper un
     motif à ce moment, contrairement à l'écran d'approbations qui l'exige."""
     motif = '' if decision == 'approuver' else 'Refusé depuis une notification push.'
-    if source == 'notes_frais':
-        return _decider_note_frais(company, user, obj_id, decision, motif)
     return _decider_approbation_core(company, user, source, obj_id, decision, motif)
 
 
@@ -661,8 +535,8 @@ class DecisionPushThrottle(SimpleRateThrottle):
     """Quota anonyme de la décision par jeton push, par IP.
 
     DURCISSEMENT (YRBAC9). L'endpoint est `AllowAny` ET MUTANT : il approuve
-    des objets qui ENGAGENT DE L'ARGENT (demandes d'achat, notes de frais,
-    étapes de contrat). Sans quota, un anonyme pouvait marteler l'endpoint
+    des objets qui ENGAGENT DE L'ARGENT (demandes d'achat). Sans quota, un
+    anonyme pouvait marteler l'endpoint
     indéfiniment — bourrage de jetons et charge gratuite sur la base à chaque
     tentative. La signature HMAC rend la devinette d'un jeton irréaliste ; le
     quota borne l'ABUS (volume) que la signature, elle, ne borne pas.

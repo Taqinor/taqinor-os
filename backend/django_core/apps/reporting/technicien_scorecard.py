@@ -5,9 +5,6 @@ regroupées ensemble :
   * interventions terminées + durée réelle vs estimée (F15, XFSM22)
   * récidives (XFSM15, `sav.Ticket.est_recidive`)
   * ponctualité (XFSM5, `installations.selectors.taux_ponctualite`)
-  * NPS des chantiers livrés (FG238, `compta.services.score_nps`) — agrégé
-    sur les chantiers où le technicien est intervenu (`EnqueteNPS.chantier_id`
-    résolu via les interventions du technicien).
   * utilisation (FG299, `installations.selectors.plan_de_charge_equipes`)
 
 Lecture seule, multi-tenant. Réservé responsable/admin — JAMAIS visible par
@@ -59,31 +56,6 @@ def _avg(values):
     return round(sum(vals) / len(vals), 1)
 
 
-def _technicien_nps(company, chantier_ids):
-    """NPS (FG238) agrégé sur un sous-ensemble de chantiers (`chantier_id`).
-
-    Import local de `apps.compta.models.EnqueteNPS` (même patron que les
-    autres lectures cross-app de `reporting` — jamais au chargement du
-    module). `None` si aucune enquête répondue sur ces chantiers."""
-    from apps.compta.models import EnqueteNPS
-    if not chantier_ids:
-        return {'nps': None, 'total': 0, 'promoteurs': 0, 'passifs': 0,
-                'detracteurs': 0}
-    reponses = EnqueteNPS.objects.filter(
-        company=company, chantier_id__in=chantier_ids,
-        statut=EnqueteNPS.Statut.REPONDUE, score__isnull=False)
-    total = reponses.count()
-    if total == 0:
-        return {'nps': None, 'total': 0, 'promoteurs': 0, 'passifs': 0,
-                'detracteurs': 0}
-    promoteurs = reponses.filter(score__gte=9).count()
-    detracteurs = reponses.filter(score__lte=6).count()
-    passifs = total - promoteurs - detracteurs
-    nps = round((promoteurs - detracteurs) * 100 / total)
-    return {'nps': nps, 'total': total, 'promoteurs': promoteurs,
-            'passifs': passifs, 'detracteurs': detracteurs}
-
-
 def _technicien_stats(company, technicien, *, start=None, end=None):
     """Statistiques brutes d'UN technicien sur la fenêtre [start, end]."""
     from apps.installations import selectors as installations_selectors
@@ -109,9 +81,6 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
         if jours is not None:
             durees_reelles.append(float(jours))
 
-    chantier_ids = {
-        i.installation_id for i in interventions if i.installation_id}
-
     ticket_qs = Ticket.objects.filter(
         company=company, technicien_responsable=technicien)
     if start:
@@ -123,8 +92,6 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
 
     ponctualite = installations_selectors.taux_ponctualite(
         company, debut=start, fin=end, technicien_id=technicien.id)
-
-    nps = _technicien_nps(company, chantier_ids)
 
     utilisation_pct = None
     if start and end:
@@ -145,8 +112,6 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
         'nb_recidives': recidives,
         'taux_recidive_pct': _pct(recidives, len(tickets)),
         'ponctualite_pct': ponctualite['taux_pct'],
-        'nps': nps['nps'],
-        'nps_total_reponses': nps['total'],
         'utilisation_pct': utilisation_pct,
     }
 
@@ -214,7 +179,6 @@ def technicien_scorecard(request):
         'duree_reelle_moyenne_jours': _moyenne_equipe('duree_reelle_moyenne_jours'),
         'taux_recidive_pct': _moyenne_equipe('taux_recidive_pct'),
         'ponctualite_pct': _moyenne_equipe('ponctualite_pct'),
-        'nps': _moyenne_equipe('nps'),
         'utilisation_pct': _moyenne_equipe('utilisation_pct'),
     }
 
@@ -228,17 +192,17 @@ def technicien_scorecard(request):
             ['Technicien', scorecard['interventions_terminees'],
              scorecard['duree_reelle_moyenne_jours'],
              scorecard['taux_recidive_pct'], scorecard['ponctualite_pct'],
-             scorecard['nps'], scorecard['utilisation_pct']],
+             scorecard['utilisation_pct']],
             ['Moyenne équipe', moyenne_equipe['interventions_terminees'],
              moyenne_equipe['duree_reelle_moyenne_jours'],
              moyenne_equipe['taux_recidive_pct'],
-             moyenne_equipe['ponctualite_pct'], moyenne_equipe['nps'],
+             moyenne_equipe['ponctualite_pct'],
              moyenne_equipe['utilisation_pct']],
         ]
         return build_xlsx_response(
             'scorecard-technicien.xlsx',
             ['', 'Interventions terminées', 'Durée réelle moy. (j)',
-             '% récidive', '% ponctualité', 'NPS', '% utilisation'],
+             '% récidive', '% ponctualité', '% utilisation'],
             rows, sheet_title='Scorecard')
 
     return Response(result)
