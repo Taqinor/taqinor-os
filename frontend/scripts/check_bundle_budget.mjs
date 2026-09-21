@@ -226,7 +226,9 @@ const VENDOR_CHUNK_BUDGETS_KB = {
   // isolé ; le lot 2 (site/toit/atelier 3D, ~15 modules roofPro11) va
   // encore le grossir — un chargement paresseux des modules d'atelier
   // reste à poser (lot 8 perf), ce palier n'est PAS un blanc-seing.
-  'roof-tool': 560,
+  // 21/09/2026 (lot 2 CALX « site, toit & atelier 3D » : fond de plan, obstacles à forme, allées, cible
+  // d'optimisation, clavier, arêtes, numéros) : mesuré 579,5 Ko gzip après le fold des lanes → 600.
+  'roof-tool': 600,
   // AOF192 — Atelier de calepinage AO (`features/ao/studio/`, canvas/
   // géométrie/relevé), isolé par `manualChunks` dans vite.config.js sous le
   // même patron que `roof-tool` (voir son commentaire, ligne au-dessus).
