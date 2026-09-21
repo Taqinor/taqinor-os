@@ -45,6 +45,61 @@ powershell -File scripts\deploy-prod.ps1
 
 (pull de `main` sur le serveur → rebuild → migrations → redémarrage.)
 
+## Heure légale — 20/09/2026
+
+**Ce qui a changé.** Le Maroc est repassé **définitivement à l'heure GMT
+(UTC+0)** dans la nuit du samedi 19 au dimanche 20 septembre 2026 (02:00 →
+01:00) : décret n° 2.26.530 relatif à l'heure légale, adopté en Conseil de
+gouvernement le 25/06/2026 et publié au **Bulletin officiel n° 7521 du
+29/06/2026**. Il abroge le décret 2.18.855 de 2018 (UTC+1 permanent, avec
+retour à UTC+0 pendant le Ramadan). **Il n'y a plus aucune bascule** — ni
+saisonnière, ni pendant le Ramadan.
+
+L'ERP ne code aucun décalage : il **nomme** son fuseau
+(`TIME_ZONE = 'Africa/Casablanca'`, `CELERY_TIMEZONE` idem, et
+`Intl.DateTimeFormat(..., timeZone: 'Africa/Casablanca')` côté écran). C'est
+correct **si la base de fuseaux est à jour**, et faux d'une heure pleine sinon
+— partout et en silence : relances envoyées trop tôt, regroupements par jour
+décalés autour de minuit, courbes de production décalées d'un cran.
+
+**Ce que fait l'image.** Deux verrous, déjà dans le dépôt :
+
+1. `tzdata==2026.4` est **épinglé** dans `backend/django_core/requirements.txt`
+   et `backend/fastapi_ia/requirements.txt` (IANA encode le décret depuis
+   tzdata 2026c) ;
+2. les Dockerfiles posent **`PYTHONTZPATH=""`** : Python ignore alors
+   `/usr/share/zoneinfo` et ne lit **que** ce paquet-là. C'est indispensable —
+   la tzdata de Debian peut être en retard sur IANA (bookworm servait encore
+   **2026b** le 21/09/2026, donc *sans* le décret).
+
+Un simple `deploy-prod.ps1` suffit : il reconstruit l'image, donc réinstalle le
+paquet épinglé.
+
+**Vérifier (30 secondes).** Un contrôle système bloque le démarrage si la base
+de fuseaux de Python est périmée :
+
+```bash
+docker compose exec django_core python manage.py check --database default
+```
+
+Doit être **vert**. S'il sort `core.E_TZ_MAROC_PYTHON_PERIMEE`, l'image n'a pas
+été reconstruite depuis le pin : `docker compose up -d --build`.
+
+**Postgres a SA propre base de fuseaux.** Elle vient de son image
+(`pgvector/pgvector:pg16`, Debian) et sert tous les regroupements par jour
+(`Trunc*`/`Extract*` : le découpage est délégué à Postgres, pas à Python). Si
+la commande ci-dessus affiche l'**avertissement** (non bloquant)
+`core.W_TZ_MAROC_POSTGRES_PERIMEE`, mettez la base à jour :
+
+```bash
+docker compose pull db && docker compose up -d db
+```
+
+**Les navigateurs, eux, se mettent à jour seuls** : Chrome, Firefox, Edge et
+Safari embarquent leur propre base de fuseaux, rafraîchie avec le navigateur.
+Rien à faire côté poste client — sauf un navigateur volontairement figé depuis
+des mois, qui afficherait alors les heures avec une heure de décalage.
+
 ## Édition du produit — `TAQINOR_EDITION` (groupe SOL, 02/09/2026)
 
 TAQINOR OS se vend comme ERP **spécialisé solaire**. Une variable d'environnement

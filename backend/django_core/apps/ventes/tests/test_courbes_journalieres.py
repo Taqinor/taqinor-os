@@ -91,17 +91,24 @@ class ProductionTests(_CourbesBase):
                     self.assertTrue(cle.endswith('_kw'), cle)
                     self.assertFalse(cle.endswith('_kwh'), cle)
 
-    def test_forme_servie_en_heure_locale_utc_plus_un(self):
+    def test_forme_servie_en_heure_civile_marocaine(self):
+        """L'ATTENDU EST DÉRIVÉ, JAMAIS FIGÉ. Ce test affirmait « le pic est à
+        13 h » — c'était « 12 h UTC + 1 », et le « + 1 » a cessé d'être vrai le
+        20/09/2026 (décret n° 2.26.530 : le Maroc est à UTC+0 toute l'année).
+        On calcule donc l'heure attendue depuis la base de fuseaux, comme le
+        code servi : aujourd'hui le pic de janvier reste à 12 h."""
         bloc = self._bloc(conso=CASA_CONSO)
         forme = bloc['production']['hiver']['forme']
         self.assertEqual(len(forme), 24)
         self.assertAlmostEqual(sum(forme), 1.0, places=4)
-        # PVGIS place le pic de janvier à 12 h UTC → 13 h en heure marocaine.
-        self.assertEqual(forme.index(max(forme)), 13)
-        self.assertEqual(
-            forme, pp.vers_heure_locale(
-                pp.profil_production_journalier(
-                    saison='hiver', ville='Casablanca')[0]))
+        forme_utc = pp.profil_production_journalier(
+            saison='hiver', ville='Casablanca')[0]
+        # PVGIS place le pic de janvier à 12 h UTC ; l'heure civile suit le
+        # décalage LÉGAL du jour, lu dans la base de fuseaux.
+        self.assertEqual(forme_utc.index(max(forme_utc)), 12)
+        self.assertEqual(forme.index(max(forme)),
+                         (12 + pp.decalage_maroc_h()) % 24)
+        self.assertEqual(forme, pp.vers_heure_locale(forme_utc))
 
     def test_source_tracable(self):
         bloc = self._bloc(conso=CASA_CONSO)
@@ -129,8 +136,11 @@ class ProductionTests(_CourbesBase):
         self.assertEqual(hiver['source_productible'], 'pvgis_live')
         # 150 kWh/mois sur 31/31/28 jours × 10 kWc ≈ 50,1 kWh/jour.
         self.assertAlmostEqual(hiver['kwh_jour'], 50.1, delta=0.2)
-        # Pic à 11 h UTC → 12 h locale.
-        self.assertEqual(hiver['forme'].index(max(hiver['forme'])), 12)
+        # Pic à 11 h UTC → 11 h + le décalage LÉGAL du jour, DÉRIVÉ de la base
+        # de fuseaux (0 depuis le 20/09/2026, décret n° 2.26.530) — jamais un
+        # « + 1 » figé : ce test affirmait « 12 h » et serait devenu faux seul.
+        self.assertEqual(hiver['forme'].index(max(hiver['forme'])),
+                         (11 + pp.decalage_maroc_h()) % 24)
 
     def test_ville_inconnue_omet_la_production(self):
         # Jamais de courbe INVENTÉE pour une ville hors table ET hors
@@ -467,10 +477,22 @@ class OmissionTests(_CourbesBase):
         # Ville inconnue ET aucune facture → la page garde son affichage actuel.
         self.assertIsNone(self._bloc(_data(client_city='Tombouctou'), conso=[]))
 
-    def test_note_horaire_dit_le_cas_ramadan(self):
+    def test_note_horaire_dit_le_repere_reel_sans_le_figer(self):
+        """La note est CLIENT-FACING (imprimée telle quelle au devis) : elle
+        annonçait « UTC+1 » et « pendant le Ramadan, le Maroc repasse à UTC+0 ».
+        Les deux sont faux depuis le 20/09/2026 — décret n° 2.26.530, qui abroge
+        le décret 2.18.855 de 2018 : plus aucune bascule, ni saisonnière ni de
+        Ramadan. La note est donc DÉRIVÉE du même décalage que les courbes."""
         bloc = self._bloc(conso=CASA_CONSO)
-        self.assertIn('UTC+1', bloc['note_horaire'])
-        self.assertIn('Ramadan', bloc['note_horaire'])
+        self.assertEqual(bloc['note_horaire'], cj.note_horaire())
+        self.assertNotIn('Ramadan', bloc['note_horaire'])
+        if pp.decalage_maroc_h() == 0:
+            self.assertIn('UTC+0', bloc['note_horaire'])
+            self.assertIn("sans changement d'heure saisonnier",
+                          bloc['note_horaire'])
+        else:
+            self.assertIn('UTC%+d' % pp.decalage_maroc_h(),
+                          bloc['note_horaire'])
 
     def test_donnee_illisible_ne_casse_jamais_la_page(self):
         self.assertIsNone(cj.construire_courbes_journalieres(
