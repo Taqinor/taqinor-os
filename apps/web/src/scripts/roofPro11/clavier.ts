@@ -200,6 +200,47 @@ export function aideClavier(mode?: ModeClavier): LigneAide[] {
   }));
 }
 
+/**
+ * CALX108 — LES GESTES SOURIS À MODIFICATEUR, dans la MÊME aide.
+ *
+ * Un geste réservé (Alt + glissé, Alt + molette) est invisible tant qu'on ne
+ * l'a pas lu quelque part : il n'a ni bouton ni curseur propre. Il vit donc
+ * dans la table, à côté des touches, pour que l'aide de l'atelier le nomme.
+ *
+ * Il reste HORS de `PLAN_CLAVIER` : ce plan-là est lu par `resoudreRaccourci`,
+ * qui capterait alors la touche Alt seule et avalerait des frappes qui ne lui
+ * appartiennent pas. Deux tables, un seul affichage (`aideGestesSouris`).
+ */
+export interface GesteSouris {
+  /** Comment le geste s'écrit dans l'aide (« Alt + glissé sur le fond »). */
+  ecriture: string;
+  /** Ce qu'il fait, en français — le texte EXACT affiché. */
+  libelle: string;
+  /** Modes où le geste agit. Omis ⇒ TOUS les modes. */
+  modes?: readonly ModeClavier[];
+}
+
+/** Les gestes souris à modificateur de l'atelier. */
+export const GESTES_SOURIS: readonly GesteSouris[] = [
+  {
+    ecriture: 'Alt + glissé sur le fond',
+    libelle: 'Déplacer le calque de fond (plan calé) sans toucher à son échelle',
+  },
+  {
+    ecriture: 'Alt + molette sur le fond',
+    libelle: 'Faire pivoter le calque de fond, d’un degré par cran',
+  },
+];
+
+/** CALX108 — l'aide des gestes souris, DÉRIVÉE de la table (jamais recopiée). */
+export function aideGestesSouris(mode?: ModeClavier): LigneAide[] {
+  return GESTES_SOURIS.filter((g) => !mode || !g.modes || g.modes.includes(mode)).map((g) => ({
+    touches: g.ecriture,
+    libelle: g.libelle,
+    modes: g.modes ? g.modes.map((m) => LIBELLE_MODE[m]).join(', ') : 'Tous les modes',
+  }));
+}
+
 /** L'événement clavier, réduit à ce que le routage lit. */
 export interface EvenementClavier {
   key: string;

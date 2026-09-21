@@ -33,7 +33,8 @@
  * AUCUNE ÉCHELLE N'EST DEVINÉE : ce module ne fait que produire les deux
  * points ; l'échelle vient de la distance réelle SAISIE (`underlay.ts`).
  */
-import { type LngLat } from '../../lib/roof';
+import { pointInPolygon, type LngLat } from '../../lib/roof';
+import { DEG2M, DEG2RAD } from './constants';
 import { type TailleImage } from './underlay';
 import { creerAnnonceur, type Annonceur, type VerdictGeste } from './clavier';
 
@@ -149,6 +150,100 @@ export const REFUS_SANS_POINT_IMAGE =
 
 export const REFUS_SANS_FOND =
   'Aucun plan de fond n’est chargé : le calage à deux points ne concerne que les plans importés.';
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX108 — AJUSTER LE FOND : UN GESTE RÉSERVÉ, ET RIEN D'AUTRE
+//
+// Le calage pose le fond ; il reste ensuite à le caler « à l'œil » d'un ou deux
+// mètres. Le glissé nu et la molette nue appartiennent DÉJÀ à la carte (pan,
+// dessin d'obstacle, disposition, zoom) : leur prendre le geste casserait
+// l'atelier. Le fond prend donc un MODIFICATEUR à lui, et n'agit que sous lui.
+//
+// CONVENTION DE DESSIN — Alt (Option sur macOS) est le modificateur du FOND :
+//   Alt + glissé  sur le fond ⇒ le fond se translate (`ajusterFond({estM, nordM})`)
+//   Alt + molette sur le fond ⇒ le fond pivote      (`ajusterFond({rotationDeg})`)
+// Sans Alt, AUCUN de ces deux gestes n'existe : les gestes d'aujourd'hui sont
+// intacts, à l'octet près. Ce n'est pas une donnée d'ingénierie : ni la
+// translation ni la rotation ne touchent `distanceReelleM`, donc l'échelle
+// SAISIE reste celle qu'elle était (`deplacerCalage` / `tournerCalage`).
+// ————————————————————————————————————————————————————————————————————————
+
+/** Le modificateur RÉSERVÉ au fond, tel que l'aide l'écrit. */
+export const MODIFICATEUR_FOND = 'Alt';
+
+/** Geste du fond déclenché par un appui ou une molette. */
+export type GesteFond = 'deplacer' | 'tourner' | 'aucun';
+
+/**
+ * CALX108 — quel geste de fond un appui déclenche. Sans Alt, ou hors du fond,
+ * ou dans un mode qui possède déjà le glissé (obstacle, disposition, calage en
+ * cours), la réponse est `aucun` : le geste d'aujourd'hui garde la main.
+ */
+export function gesteFond(etat: {
+  altEnfoncee: boolean;
+  surFond: boolean;
+  modeObstacle: boolean;
+  modeDisposition: boolean;
+  modeCalage: boolean;
+}): GesteFond {
+  if (!etat.altEnfoncee || !etat.surFond) return 'aucun';
+  if (etat.modeObstacle || etat.modeDisposition || etat.modeCalage) return 'aucun';
+  return 'deplacer';
+}
+
+/**
+ * Pas de rotation du fond par cran de molette, en degrés. CONVENTION DE DESSIN
+ * (aucune orientation du site) : un cran fait UN degré, la finesse à laquelle
+ * l'œil aligne un plan sur une imagerie ; la molette se répète pour aller plus
+ * loin.
+ */
+export const PAS_ROTATION_FOND_DEG = 1;
+
+/**
+ * CALX108 — la rotation demandée par un cran de molette (°, sens horaire), ou
+ * `0` quand le geste ne concerne pas le fond. `0` veut dire « ne rien faire » :
+ * l'appelant laisse alors la molette au zoom de la carte, inchangé.
+ */
+export function rotationMolette(deltaY: number, etat: {
+  altEnfoncee: boolean;
+  surFond: boolean;
+  modeObstacle: boolean;
+  modeDisposition: boolean;
+  modeCalage: boolean;
+}): number {
+  if (gesteFond(etat) === 'aucun') return 0;
+  if (!Number.isFinite(deltaY) || deltaY === 0) return 0;
+  return deltaY > 0 ? PAS_ROTATION_FOND_DEG : -PAS_ROTATION_FOND_DEG;
+}
+
+/**
+ * CALX108 — le déplacement d'un glissé, en MÈTRES est/nord, dans le plan
+ * tangent local — la MÊME projection que `underlay.ts::deplacerCalage` et que
+ * la grille métrique : aucun rayon ni facteur neuf n'entre ici.
+ */
+export function deltaMetresFond(depart: LngLat, arrivee: LngLat): { estM: number; nordM: number } {
+  if (!Array.isArray(depart) || !Array.isArray(arrivee)) return { estM: 0, nordM: 0 };
+  const cosLat = Math.max(1e-6, Math.cos(((depart[1] + arrivee[1]) / 2) * DEG2RAD));
+  return {
+    estM: (arrivee[0] - depart[0]) * DEG2M * cosLat,
+    nordM: (arrivee[1] - depart[1]) * DEG2M,
+  };
+}
+
+/**
+ * CALX108 — le point est-il SUR le fond ? Le fond est une image raster :
+ * MapLibre ne rend aucune « feature » pour elle, donc le survol se décide sur
+ * ses QUATRE coins, ceux-là mêmes que la source porte. Sans coins connus, la
+ * réponse est `false` — un geste réservé au fond ne s'applique pas à un fond
+ * dont on ignore l'étendue.
+ */
+export function surLeFond(point: LngLat, coins: readonly LngLat[] | null | undefined): boolean {
+  if (!Array.isArray(coins) || coins.length < 3 || !Array.isArray(point)) return false;
+  return pointInPolygon(
+    [point[0], point[1]],
+    coins.map((c) => [c[0], c[1]] as [number, number]),
+  );
+}
 
 // ————————————————————————————————————————————————————————————————————————
 // Le module

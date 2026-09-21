@@ -171,8 +171,14 @@ import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
-import { type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
-import { createCalageFondUi } from './roofPro11/calageFondUi'; // CALX108 câblage
+import { coinsDuPlanCale, type RessourceFond } from './roofPro11/underlay'; // CALX108 câblage
+import {
+  createCalageFondUi,
+  deltaMetresFond,
+  gesteFond,
+  rotationMolette,
+  surLeFond,
+} from './roofPro11/calageFondUi'; // CALX108 câblage
 import { createScene3d, projectPlanView, panelQuadsLngLat } from './roofPro11/scene3d';
 import {
   createOptimizer,
@@ -2513,9 +2519,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   // — Mode obstacle / glissé-dessin / glissé-déplacement : voir roofPro11/obstaclesUi.ts —
 
+  // ═══════ CALX108 câblage — AJUSTER LE FOND : Alt + glissé, Alt + molette ═══════
+  // `mapDraw.ajusterFond` existait sans AUCUN appelant : une fois le plan calé, plus
+  // rien ne permettait de le décaler d'un mètre ni de le pincer d'un degré. Le geste est
+  // RÉSERVÉ (Alt, convention de dessin nommée dans l'aide de l'atelier, CALX128) : sans
+  // Alt, le pan, le dessin d'obstacle, la disposition et le zoom gardent la main, à
+  // l'identique. Le fond étant une image raster, MapLibre n'en rend aucune « feature » :
+  // le survol se décide sur ses QUATRE coins, ceux que le calage produit.
+  let glisseFond: LngLat | null = null;
+  function coinsFondCourant(): LngLat[] | null {
+    const fond = mapDraw.fond();
+    if (!fond || fond.kind !== 'plan' || !fond.calage) return null;
+    const derive = coinsDuPlanCale(fond.calage, ressourceFondCourante.tailleImage ?? null);
+    return derive.ok ? [...derive.coins] : null;
+  }
+  function etatGesteFond(lngLat: LngLat, altEnfoncee: boolean) {
+    return {
+      altEnfoncee,
+      surFond: surLeFond(lngLat, coinsFondCourant()),
+      modeObstacle: obstacleMode,
+      modeDisposition: ctx.layoutMode,
+      modeCalage: mapDraw.modeCalageFond(),
+    };
+  }
+
   // — Interactions carte —
   map.on('mousedown', (e) => {
     suppressClick = false;
+    const lngLatAppui: LngLat = [e.lngLat.lng, e.lngLat.lat];
+    // CALX108 câblage — AVANT tout le reste : le geste réservé du fond ne doit jamais
+    // partir en dessin d'obstacle ni en glissé de sommet.
+    if (gesteFond(etatGesteFond(lngLatAppui, Boolean(e.originalEvent?.altKey))) === 'deplacer') {
+      glisseFond = lngLatAppui;
+      map.dragPan?.disable?.();
+      return;
+    }
     if (obstacleMode) {
       beginDraw([e.lngLat.lng, e.lngLat.lat], e.point);
       return;
@@ -2525,14 +2563,41 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     tryBeginMove([e.lngLat.lng, e.lngLat.lat], e.point);
   });
   map.on('mousemove', (e) => {
+    if (glisseFond) {
+      // CALX108 câblage — translation INCRÉMENTALE : l'échelle et la rotation retenues
+      // ne bougent pas (`deplacerCalage` ne touche qu'aux deux ancres).
+      const arrivee: LngLat = [e.lngLat.lng, e.lngLat.lat];
+      const delta = deltaMetresFond(glisseFond, arrivee);
+      glisseFond = arrivee;
+      suppressClick = true; // un glissé n'est pas un clic de tracé
+      mapDraw.ajusterFond({ estM: delta.estM, nordM: delta.nordM }); // CALX108 câblage
+      return;
+    }
     if (drawing) moveDraw([e.lngLat.lng, e.lngLat.lat]);
     else if (moveVertex) doVertexMove([e.lngLat.lng, e.lngLat.lat]);
     else if (moveObs) doMove([e.lngLat.lng, e.lngLat.lat]);
   });
   map.on('mouseup', (e) => {
+    if (glisseFond) {
+      glisseFond = null;
+      map.dragPan?.enable?.();
+      return;
+    }
     if (drawing) endDraw([e.lngLat.lng, e.lngLat.lat], e.point);
     else if (moveVertex) endVertexMove();
     else if (moveObs) endMove();
+  });
+  map.on('wheel', (e) => {
+    // CALX108 câblage — sans Alt (ou hors du fond), `rotationMolette` rend 0 et la
+    // molette reste EXACTEMENT le zoom de la carte.
+    const original = (e.originalEvent ?? null) as WheelEvent | null;
+    const rotationDeg = rotationMolette(
+      original?.deltaY ?? 0,
+      etatGesteFond([e.lngLat.lng, e.lngLat.lat], Boolean(original?.altKey)),
+    );
+    if (!rotationDeg) return;
+    e.preventDefault();
+    mapDraw.ajusterFond({ rotationDeg }); // CALX108 câblage
   });
   map.on('touchstart', (e) => {
     suppressClick = false;

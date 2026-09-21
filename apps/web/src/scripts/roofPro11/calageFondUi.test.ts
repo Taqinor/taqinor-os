@@ -23,6 +23,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   LARGEUR_VIGNETTE_PX,
   LIBELLE_ETAPE,
+  MODIFICATEUR_FOND,
   REFUS_HORS_IMAGE,
   REFUS_MODE_FERME,
   REFUS_POINT_EN_ATTENTE,
@@ -30,17 +31,29 @@ import {
   REFUS_TAILLE_INCONNUE,
   VIGNETTE_ID,
   createCalageFondUi,
+  deltaMetresFond,
   etapeCalage,
   facteurReduction,
+  gesteFond,
   largeurVignette,
   pointNaturel,
+  rotationMolette,
+  surLeFond,
 } from './calageFondUi';
-import { ZONE_ANNONCE_ID } from './clavier';
+import {
+  GESTES_SOURIS,
+  PLAN_CLAVIER,
+  ZONE_ANNONCE_ID,
+  aideGestesSouris,
+  resoudreRaccourci,
+} from './clavier';
 
 const TAILLE = { largeur: 2480, hauteur: 1754 };
 const URL_PLAN = 'https://minio.example/plan.png?signature';
 const SOURCE_ENTREE = readFileSync(
   resolve(process.cwd(), 'src/scripts/roof-tool-pro11.ts'), 'utf8');
+const SOURCE_MAPDRAW = readFileSync(
+  resolve(process.cwd(), 'src/scripts/roofPro11/mapDraw.ts'), 'utf8');
 
 describe('CALX108 câblage — l’entrée route le clic carte vers le calage', () => {
   it('le dispatcher sort AVANT le tracé et la sélection', () => {
@@ -51,6 +64,99 @@ describe('CALX108 câblage — l’entrée route le clic carte vers le calage', 
   it('la ressource du fond est mémorisée pour la vignette', () => {
     expect(SOURCE_ENTREE).toContain(
       'ressourceFondCourante = ressource ?? {}; // CALX108 câblage');
+  });
+
+  it('le glissé et la molette appellent `ajusterFond`', () => {
+    expect(SOURCE_ENTREE).toContain(
+      'mapDraw.ajusterFond({ estM: delta.estM, nordM: delta.nordM }); // CALX108 câblage');
+    expect(SOURCE_ENTREE).toContain(
+      'mapDraw.ajusterFond({ rotationDeg }); // CALX108 câblage');
+  });
+});
+
+describe('CALX108 — ajuster le fond : un geste RÉSERVÉ (Alt)', () => {
+  /** Un carré d'un dixième de degré autour de Casablanca — repère d'ESSAI. */
+  const COINS: Array<[number, number]> = [
+    [-7.65, 33.60], [-7.55, 33.60], [-7.55, 33.55], [-7.65, 33.55],
+  ];
+  const DEDANS: [number, number] = [-7.60, 33.58];
+  const DEHORS: [number, number] = [-7.40, 33.58];
+  const REPOS = {
+    altEnfoncee: true,
+    surFond: true,
+    modeObstacle: false,
+    modeDisposition: false,
+    modeCalage: false,
+  };
+
+  it('Alt + appui SUR le fond déplace le fond', () => {
+    expect(gesteFond(REPOS)).toBe('deplacer');
+  });
+
+  it('SANS Alt, aucun geste de fond n’existe : le pan garde la main', () => {
+    expect(gesteFond({ ...REPOS, altEnfoncee: false })).toBe('aucun');
+    expect(rotationMolette(120, { ...REPOS, altEnfoncee: false })).toBe(0);
+  });
+
+  it('hors du fond, ou dans un mode qui possède déjà le glissé, aucun geste', () => {
+    expect(gesteFond({ ...REPOS, surFond: false })).toBe('aucun');
+    expect(gesteFond({ ...REPOS, modeObstacle: true })).toBe('aucun');
+    expect(gesteFond({ ...REPOS, modeDisposition: true })).toBe('aucun');
+    // Un calage en cours appartient à la séquence à deux points, pas à l'ajustement.
+    expect(gesteFond({ ...REPOS, modeCalage: true })).toBe('aucun');
+  });
+
+  it('la molette fait tourner d’UN degré par cran, dans le sens du geste', () => {
+    expect(rotationMolette(120, REPOS)).toBe(1);
+    expect(rotationMolette(-120, REPOS)).toBe(-1);
+    expect(rotationMolette(0, REPOS)).toBe(0);
+    expect(rotationMolette(Number.NaN, REPOS)).toBe(0);
+  });
+
+  it('le glissé se mesure en mètres est/nord, dans le plan tangent', () => {
+    const delta = deltaMetresFond([-7.6, 33.58], [-7.6, 33.581]);
+    expect(delta.estM).toBeCloseTo(0, 6);
+    expect(delta.nordM).toBeGreaterThan(100); // ~111 m par millième de degré
+    const versEst = deltaMetresFond([-7.6, 33.58], [-7.599, 33.58]);
+    expect(versEst.nordM).toBeCloseTo(0, 6);
+    expect(versEst.estM).toBeGreaterThan(0);
+  });
+
+  it('« sur le fond » se décide sur les QUATRE coins du calage', () => {
+    expect(surLeFond(DEDANS, COINS)).toBe(true);
+    expect(surLeFond(DEHORS, COINS)).toBe(false);
+    // Sans coins connus, le geste réservé ne s'applique pas.
+    expect(surLeFond(DEDANS, null)).toBe(false);
+    expect(surLeFond(DEDANS, [])).toBe(false);
+  });
+});
+
+describe('CALX128 — la convention de dessin est NOMMÉE dans l’aide', () => {
+  it('les deux gestes du fond sont dans la table, avec leur écriture', () => {
+    const ecritures = GESTES_SOURIS.map((g) => g.ecriture);
+    expect(ecritures).toContain(`${MODIFICATEUR_FOND} + glissé sur le fond`);
+    expect(ecritures).toContain(`${MODIFICATEUR_FOND} + molette sur le fond`);
+  });
+
+  it('l’aide affichable est DÉRIVÉE de la table, jamais recopiée', () => {
+    const aide = aideGestesSouris();
+    expect(aide).toHaveLength(GESTES_SOURIS.length);
+    aide.forEach((ligne, i) => {
+      expect(ligne.touches).toBe(GESTES_SOURIS[i].ecriture);
+      expect(ligne.libelle).toBe(GESTES_SOURIS[i].libelle);
+    });
+  });
+
+  it('ces gestes restent HORS du plan clavier : Alt seule ne vole aucune frappe', () => {
+    for (const raccourci of PLAN_CLAVIER) {
+      expect(raccourci.touches).not.toContain('Alt');
+    }
+    expect(resoudreRaccourci({ key: 'Alt', altKey: true }, 'trace')).toBeNull();
+  });
+
+  it('le bandeau d’aide de l’atelier sert les deux tables', () => {
+    expect(SOURCE_MAPDRAW).toContain(
+      'return aideClavier(modeClavierCourant).concat(aideGestesSouris(modeClavierCourant));');
   });
 });
 
