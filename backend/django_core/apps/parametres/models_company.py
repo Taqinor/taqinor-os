@@ -59,6 +59,19 @@ class CompanyProfile(models.Model):
         max_length=255, blank=True, default='',
         help_text='Site web de la société (ex. helios.ma), affiché sur le PDF '
                   'du devis. Vide = défaut historique.')
+    # ── CAD71 (21/09/2026) — lien de la fiche Google, pour le message
+    # `avis_google` du moteur de relances. AVANT ce champ, `message_pour_etape`
+    # (apps/crm/services.py) n'alimentait `{lien}` que depuis le devis :
+    # assigner `avis_google` à une touche envoyait donc au client le lien de
+    # SON DEVIS à la place d'un lien vers la fiche Google. Additif, vide par
+    # défaut ; `avis_google` utilise désormais le placeholder DÉDIÉ
+    # `{lien_google}`, refusé à l'assignation tant que ce réglage est vide
+    # (apps/crm/services.py : `verifier_gabarit_assignable`).
+    lien_avis_google = models.URLField(
+        max_length=500, blank=True, default='',
+        help_text='Lien de la fiche Google de la société (pour le message '
+                  '« avis Google » du suivi client). Vide = ce gabarit ne '
+                  'peut pas être assigné à une touche.')
     # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
     # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
     # sont pas renseignés, le PDF facture est strictement identique (les blocs ne

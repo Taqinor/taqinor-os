@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 4db621b256989d0291f17a02995458ee3cace61487f6a5d74c103193a3494e97
-Plan fingerprint: 80d84654b19279a3fafb9c666795e7180a05939bb7cd0f22e5a3f46773326593
+Plan fingerprint: d273cc97981190b530c5b6d75517c576582df14467db3d6a4fb8648063ac0e00
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -532,10 +532,19 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (202)**
+**Done (211)**
 
+- `CAD62` — Zéro darija sur toute la marche après-devis : le repli en français est silencieux
+- `CAD66` — Le message J7 promet un classement « dans trois jours » que le moteur tient à J14
+- `CAD67` — Le script « répondeur » part deux fois en 20 heures, et deux appels n'ont aucun script
+- `CAD68` — L'écran de réglage des réveils montre des gabarits que le moteur n'enverra pas
+- `CAD71` — `avis_google` enverrait au client le lien de SON DEVIS à la place du lien d'avis
+- `CAD72` — `parrainage` promet un lien qui n'existe pas — et ce n'est même pas ce texte qui part
+- `CAD73` — Le premier réveil dit au client « il y a quelques mois » alors qu'il part six semaines…
 - `CAD95` — Joindre une courte vidéo à la preuve chantier J4
 - `CAD96` — Trois graphies de la marque dans la même conversation WhatsApp
+- `CAD109` — Le script d'appel ne dit ni que l'appel est commercial, ni d'où viennent les données
+- `CAD110` — Aucun message ne dit au client comment faire cesser les relances
 - `CAD139` — Du code mort laisse croire que l'ouverture d'un devis fait avancer le funnel
 - `CAD141` — Le rafraîchissement nocturne des scores balaie les dossiers clos
 - `CAD143` — L'éditeur n'a pas d'onglet pour la cadence « Générique », pourtant encore active sur de…
@@ -737,7 +746,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (404)**
+**Open — to build (395)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -801,18 +810,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD59` — Le message J9 et le PDF ne calculent pas la validité de la même façon
 - `CAD60` — Les deux messages de l'appel du fondateur n'ont aucun bouton — et personne ne sait…
 - `CAD61` — [TRANCHÉ 21/09/2026 — document reçu = geste « pièce reçue » ; facture envoyée = trace…
-- `CAD62` — Zéro darija sur toute la marche après-devis : le repli en français est silencieux
 - `CAD63` — Changer la langue au moment utile coûte trois écrans
 - `CAD64` — Le repli de langue est invisible : darija, anglais et arabe classique partent en…
 - `CAD65` — « Bonjour M
-- `CAD66` — Le message J7 promet un classement « dans trois jours » que le moteur tient à J14
-- `CAD67` — Le script « répondeur » part deux fois en 20 heures, et deux appels n'ont aucun script
-- `CAD68` — L'écran de réglage des réveils montre des gabarits que le moteur n'enverra pas
 - `CAD69` — Les crochets `[ ]` partent tels quels dans WhatsApp, sans aucun avertissement
 - `CAD70` — Sans catalogue Réalisations, le message J4 se réduit à une phrase orpheline
-- `CAD71` — `avis_google` enverrait au client le lien de SON DEVIS à la place du lien d'avis
-- `CAD72` — `parrainage` promet un lien qui n'existe pas — et ce n'est même pas ce texte qui part
-- `CAD73` — Le premier réveil dit au client « il y a quelques mois » alors qu'il part six semaines…
 - `CAD74` — `reveil_b` (« la saison des factures d'été ») est écrit, validé, et n'est envoyé par…
 - `CAD75` — Le réveil n'est pas déclenché par le temps mais par un CLIC : un dossier abandonné n'en…
 - `CAD76` — Écrire noir sur blanc que la rentrée scolaire n'est PAS une fenêtre de réveil
@@ -846,8 +848,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD106` — La fusion de deux fiches ne déplace PAS les relances : le doublon fusionné sort du…
 - `CAD107` — Un lead perdu qui revient : trois chemins, trois résultats, et le plus courant ne…
 - `CAD108` — [TRANCHÉ 21/09/2026 — l'étage 3 exclut le miroir Odoo, comme l'étage 2.]
-- `CAD109` — Le script d'appel ne dit ni que l'appel est commercial, ni d'où viennent les données
-- `CAD110` — Aucun message ne dit au client comment faire cesser les relances
 - `CAD111` — Le message qui propose la visite part sans laisser aucune trace, et son lien wa.me…
 - `CAD112` — Deux onglets portent le même nom et montrent deux choses différentes
 - `CAD113` — Dans l'éditeur de cadence, une erreur serveur s'affiche en toast générique
