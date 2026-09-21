@@ -1556,19 +1556,23 @@ jobs:
             # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
             # régressions qui n'apparaissent que sur Safari (VX48 window.open
             # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.
-            # SOLMVP54 (round 2) — UNE invocation pour les deux projets : sur le
-            # run 35607493246 la lane payait devis+health (51 s, 2 workers) PUIS
-            # mobile-safari (66 s, 1 worker) l'un après l'autre = 126 s. Avec les
-            # deux projets dans la même commande, Playwright répartit les
-            # FICHIERS sur 2 workers (mobile.spec.js reste sériel à l'intérieur ;
-            # devis crée son propre lead à nom unique, comme MB6) : ~75 s
-            # attendus. Le filtre `mobile.spec.js` couvre aussi
-            # adsengine-mobile.spec.js ; le projet chromium ignore ces deux
-            # fichiers par `testIgnore`, le projet mobile-safari n'exécute
-            # qu'eux par `testMatch` — chaque test tourne donc exactement une
-            # fois, comme avant.
+            # SOLMVP54 — `devis.spec` tourne SEUL d'abord : son parcours génère
+            # un PDF (WeasyPrint côté serveur) et attend le téléchargement sous
+            # l'actionTimeout de 15 s ; lancé en même temps que les tests WebKit
+            # (run 35609730995, tout dans une invocation à 2 workers) il a pris
+            # 56 s et le téléchargement a dépassé 15 s — un délai produit qu'on
+            # ne desserre pas pour la CI. Puis health (chromium, lecture seule)
+            # et mobile-safari partagent 2 workers dans UNE invocation :
+            # Playwright répartit les FICHIERS (mobile.spec.js reste sériel à
+            # l'intérieur). Le filtre `mobile.spec.js` couvre aussi
+            # adsengine-mobile.spec.js ; chromium ignore ces deux fichiers par
+            # `testIgnore`, mobile-safari n'exécute qu'eux par `testMatch` —
+            # chaque test tourne exactement une fois, comme avant. Mesuré avant
+            # (run 35607493246) : 51 s + 66 s en série ; attendu ~47 s + ~66 s
+            # avec health absorbé par le worker libre.
+            npx playwright test --project=chromium devis.spec.js
             npx playwright test --project=chromium --project=mobile-safari --workers 2 \
-              devis.spec.js health.spec.js mobile.spec.js
+              health.spec.js mobile.spec.js
           fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

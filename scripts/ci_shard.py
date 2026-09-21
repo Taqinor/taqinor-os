@@ -103,6 +103,12 @@ MIN_UNIT_SECONDS = 0.4
 # et passe en argument (`ci_shard.py <shard> <total>`) — 6 depuis le volet G.
 DEFAULT_PARALLEL = 4
 
+# SOLMVP54 (21/09/2026) — temps de mur RESERVE sur une lane pour un travail
+# qui n'est pas dans le decoupage : la lane 0 enchaine la suite RLS
+# (`core.tests.test_rls*`, `--parallel 1`, etape dediee de ci.yml) apres sa
+# tranche, 42-45 s mesurees. Le LPT la traite comme deja chargee d'autant.
+LANE_RESERVE_SECONDS = {0: 45.0}
+
 # Seuil au-dessus duquel une CLASSE est retenue dans `ci_shard_class_timings.json`.
 # En dessous, elle ne peut pas etre le facteur limitant d'une lane (la charge
 # moyenne d'une lane est de l'ordre de 175 s a 6 lanes) : son cout reste compte
@@ -441,6 +447,13 @@ def assign(units, total: int, weights, parallel: int = DEFAULT_PARALLEL,
     sommes = [0.0] * total          # contributions cumulees au temps de mur
     plus_gros = [0.0] * total       # plus grosse CLASSE deja posee sur la lane
     purges = [0] * total            # classes a purge large deja posees
+    # SOLMVP54 — la lane 0 porte EN PLUS la suite RLS (`--parallel 1`, 42-45 s
+    # mesurees sur les runs 35607493246/35608961728) apres sa tranche normale :
+    # on la pre-charge de ce temps pour que le LPT lui confie d'autant moins de
+    # modules, sinon elle finit systematiquement ~45 s apres les autres.
+    for lane_index, reserve in LANE_RESERVE_SECONDS.items():
+        if lane_index < total:
+            sommes[lane_index] = reserve
 
     for unit in sorted(units, key=lambda u: (-weights[u], u)):
         blocs = class_weights(unit, weights[unit], repo_root)
@@ -725,7 +738,10 @@ def main(argv):
         total_w = sum(weights.values())
         print(f"{len(units)} modules, travail total estime {total_w / 60:.1f} min, "
               f"--parallel {p} par lane")
-        murs = [lane_makespan(lane, weights, p) for lane in lanes]
+        # Le temps de mur AFFICHE inclut la reserve de la lane (suite RLS sur
+        # la lane 0) — c'est ce que le run mesure, pas la seule tranche.
+        murs = [lane_makespan(lane, weights, p) + LANE_RESERVE_SECONDS.get(i, 0.0)
+                for i, lane in enumerate(lanes)]
         print(f"  {'lane':>4}  {'modules':>7}  {'travail':>8}  {'temps de mur':>12}")
         for i, lane in enumerate(lanes):
             load = sum(weights[u] for u in lane)
