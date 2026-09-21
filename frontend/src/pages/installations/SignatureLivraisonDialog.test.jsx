@@ -13,7 +13,7 @@ const { installationsApiMock } = vi.hoisted(() => ({
 }))
 vi.mock('../../api/installationsApi', () => ({ default: installationsApiMock }))
 
-vi.mock('../../features/logistique/SignaturePad', () => ({
+vi.mock('../../features/installations/SignaturePad', () => ({
   default: ({ onChange }) => (
     <button type="button" onClick={() => onChange('data:image/png;base64,AAAA')}>
       Simuler un tracé

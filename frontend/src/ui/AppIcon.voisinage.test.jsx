@@ -71,11 +71,20 @@ describe('ODY34 — voisinage des tuiles', () => {
     expect(manquantes, `jetons absents : ${manquantes.join(', ')}`).toEqual([])
   })
 
-  it('les apps sans accent déclaré ne sont plus toutes de la même couleur', () => {
+  it('les apps sans accent déclaré ne partagent jamais la même couleur rendue', () => {
     // Immobilier et Tiers rendaient exactement `--app-tile-defaut`, comme
     // Comptabilité et Paramètres : quatre tuiles identiques dans la grille.
+    // SOLMVP40 (21/09/2026, frontend/parked/README.md) a sorti Immobilier et
+    // Comptabilité du MVP solaire, et Paramètres a depuis reçu son propre
+    // accent ('nuit') : `tiers` est aujourd'hui le SEUL module gardé sans
+    // `accent` déclaré (recompté sur le registre RÉEL, jamais un nombre figé).
+    // L'invariant reste : deux apps sans accent ne rendent JAMAIS la même
+    // couleur — une assertion pairwise stricte reste valable même à 1 seul
+    // élément, et rougirait de nouveau dès qu'un 2e module sans accent
+    // collisionnerait.
     const sansAccent = apps.filter((a) => !a.accent)
-    expect(sansAccent.length).toBeGreaterThanOrEqual(2)
-    expect(new Set(sansAccent.map(couleurDe)).size).toBeGreaterThan(1)
+    expect(sansAccent.length).toBeGreaterThanOrEqual(1)
+    const couleurs = sansAccent.map(couleurDe)
+    expect(new Set(couleurs).size).toBe(couleurs.length)
   })
 })
