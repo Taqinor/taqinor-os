@@ -167,6 +167,14 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    // CALX31 — le chatter GÉNÉRIQUE de la plateforme (`records`), hérité par
+    // `CalepinageViewSet` via `ChatterViewSetMixin` (views/calepinages.py) :
+    // AUCUNE seconde API de chatter, AUCUNE classe `…Activity` maison. GET
+    // rend l'historique (créations + notes), POST ajoute une note manuelle
+    // (auteur + société posés côté serveur).
+    chatterHistorique: (id) => api.get(`${pivot(id)}chatter/historique/`),
+    chatterNoter: (id, body) => api.post(`${pivot(id)}chatter/noter/`, { body }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

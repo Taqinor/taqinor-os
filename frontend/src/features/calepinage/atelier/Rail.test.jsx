@@ -104,9 +104,22 @@ describe('CALX1 — le registre `atelier/onglets.js`', () => {
     expect(resoudreOnglet(premier.cle)).toBe(premier)
   })
 
-  it('la clé d’un onglet est EXACTEMENT le dernier segment de sa route profonde', () => {
+  // CALX1 posait treize onglets NÉS d'une route profonde déjà servie
+  // (`module.config.jsx`) : CE SONT ELLES que ce test protège — un onglet
+  // NEUF (CALX31 « Activité », CALX36 « Versions »…) n'a pas de route
+  // profonde historique à porter et reste ouvrable par le SEUL rail
+  // (`?onglet=`) ; lui en exiger une rouvrirait `module.config.jsx` pour rien
+  // (interdit aux lanes qui ajoutent un onglet, D-CALX 13).
+  const CLES_AVEC_ROUTE_PROFONDE_HISTORIQUE = new Set([
+    'plan', 'pente', 'terrain', 'ombriere', 'horizon', 'course-soleil',
+    'fiches', 'affectation', 'schema', 'pompage', 'production', 'pertes',
+    'dossiers',
+  ])
+
+  it('la clé d’un onglet NÉ d’une route profonde historique la porte EXACTEMENT', () => {
     const chemins = new Set(config.routes.map((r) => r.path))
     for (const onglet of ONGLETS) {
+      if (!CLES_AVEC_ROUTE_PROFONDE_HISTORIQUE.has(onglet.cle)) continue
       expect(
         chemins.has(`/calepinage/:id/${onglet.cle}`),
         `l’onglet « ${onglet.cle} » n’a pas de route profonde /calepinage/:id/${onglet.cle}`,
