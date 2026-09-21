@@ -1,0 +1,196 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/schema-unifilaire/",
+  "pourquoi": "CALX204 — LE SCHÉMA UNIFILAIRE, ÉDITABLE. `GET` / `POST calepinages/<pk>/schema-unifilaire/`.\n\nCONSTAT. Le moteur de dessin accepte DÉJÀ des positions forcées et un niveau de partage : `core/electrique/schema.py::rendre_schema(entree, resultat, cartouche, positions, standard)` et `_positions(blocs, largeur, positions_forcees)`. Mais la porte cross-app `apps/ventes/selectors.py::schema_unifilaire_svg` n'a pas de paramètre `positions`, et `apps/calepinage/views/schema.py` n'en passe aucune ni ne persiste le moindre libellé : la capacité existe, elle n'est atteignable par personne. Le dessinateur qui veut recaler UN organe ou renommer UN repère n'a aujourd'hui aucune porte.\n\nCE QUE LA RÉPONSE PORTE — ET POURQUOI AUCUNE CLÉ NE DISPARAÎT JAMAIS. `views/schema.py` déclare déjà `CLES_SCHEMA = (calepinage, svg, bloquants, manquantes)` avec sa raison écrite : « TOUJOURS toutes présentes : l'écran n'a jamais à deviner si une clé existe (leçon PACT10 du 03/08/2026) ». Ce contrat la reprend telle quelle et AJOUTE deux clés, `blocs` et `edition` — les six sont présentes dans CHAQUE état, y compris quand le dessin ne sort pas.\n* `svg` — le dessin rendu, `null` quand la conception est incomplète ou bloquée (mêmes portails que l'annexe technique du devis) ; jamais une chaîne vide, qui se lirait « dessin sans organe ».\n* `blocs` — les organes RÉELLEMENT retenus, un par bloc dessiné : `clef` (stable, `core/electrique/schema.py::Bloc.clef`), `repere` (l'organe du bordereau — vide pour un nœud de topologie), `titre`, `sous_titre`, `x`, `y` (la position retenue, en points de planche) et `verrouille` (la position vient de l'édition et le serpentin ne la recalcule plus).\n* `edition` — CE QUE L'UTILISATEUR A CHANGÉ, et rien d'autre : les libellés renommés, les repères renommés, les positions forcées. C'est le corps du `POST` et c'est ce que le `POST` renvoie.\n* `bloquants`, `manquantes` — les libellés FRANÇAIS du service électrique, tels quels, jamais reformulés ici.\n\n`edition` N'EST PAS UNE SECONDE SOURCE DE VÉRITÉ DU DESSIN. C'est la règle dure de cette tâche. `blocs` reste LE dessin : ce que porte `edition` est TOUJOURS déjà appliqué dans `blocs` (un libellé édité est le `titre` du bloc, un repère édité est son `repere`, une position forcée est son `x`/`y` et son `verrouille` vaut `true`). Une divergence entre les deux serait exactement l'incident du 03/08/2026, en miniature : deux surfaces vertes qui se contredisent. Le test de contrat compare les deux, clé par clé.\n\nCE QUE L'ÉDITION NE PEUT PAS FAIRE. Elle ne crée ni ne supprime un organe : un bloc ne se dessine que parce que la conception l'a retenu (`blocs_du_schema` réduit la chaîne canonique aux organes présents). Une `edition` qui nomme une `clef` absente de `blocs` est donc un refus, et il NOMME la clef. Elle ne change non plus aucun calibre ni aucune section : ce sont des grandeurs calculées, pas du texte.\n\nAUCUN MONTANT. Le cartouche est `{client, reference, date, indice}` — « aucun montant n'y a sa place, c'est un document technique » (`rendre_schema`), et le calepinage ne calcule pas d'argent (D-CALX 5).",
+  "exemple": {
+    "calepinage": 1,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 842 595\" width=\"842\" height=\"595\"><g data-clef=\"champ\" data-repere=\"\" transform=\"translate(60,80)\"><rect width=\"120\" height=\"64\" fill=\"#ffffff\" stroke=\"#111111\"/><text x=\"60\" y=\"26\" text-anchor=\"middle\">Champ PV</text><text x=\"60\" y=\"46\" text-anchor=\"middle\">24 modules</text></g><g data-clef=\"onduleur\" data-repere=\"\" transform=\"translate(360,80)\"><rect width=\"120\" height=\"64\" fill=\"#ffffff\" stroke=\"#111111\"/><text x=\"60\" y=\"26\" text-anchor=\"middle\">Onduleur</text></g><g data-clef=\"ddr\" data-repere=\"DDR-PV\" transform=\"translate(240,240)\"><rect width=\"120\" height=\"64\" fill=\"#ffffff\" stroke=\"#111111\"/><text x=\"60\" y=\"26\" text-anchor=\"middle\">Différentiel type A</text></g></svg>",
+    "blocs": [
+      {
+        "clef": "champ",
+        "repere": "",
+        "titre": "Champ PV",
+        "sous_titre": "24 modules · 550 Wc · 2 × 12 modules",
+        "x": 60,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "coffret_dc",
+        "repere": "",
+        "titre": "Coffret DC",
+        "sous_titre": "2 chaîne(s) raccordée(s)",
+        "x": 210,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "onduleur",
+        "repere": "",
+        "titre": "Onduleur",
+        "sous_titre": "8,0 kW · triphasé · 2 entrée(s) MPPT",
+        "x": 360,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "disjoncteur_ac",
+        "repere": "QAC1",
+        "titre": "Disjoncteur AC",
+        "sous_titre": "",
+        "x": 510,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "ddr",
+        "repere": "DDR-PV",
+        "titre": "Différentiel type A",
+        "sous_titre": "",
+        "x": 240,
+        "y": 240,
+        "verrouille": true
+      },
+      {
+        "clef": "compteur_production",
+        "repere": "",
+        "titre": "Comptage de production",
+        "sous_titre": "énergie produite",
+        "x": 390,
+        "y": 240,
+        "verrouille": false
+      },
+      {
+        "clef": "tgbt",
+        "repere": "",
+        "titre": "TGBT",
+        "sous_titre": "3P + N + PE",
+        "x": 540,
+        "y": 240,
+        "verrouille": false
+      }
+    ],
+    "edition": {
+      "libelles": {
+        "compteur_production": "Comptage de production"
+      },
+      "reperes": {
+        "ddr": "DDR-PV"
+      },
+      "positions": {
+        "ddr": {
+          "x": 240,
+          "y": 240
+        }
+      }
+    },
+    "bloquants": [],
+    "manquantes": []
+  },
+  "exemple_apres_edition": {
+    "calepinage": 1,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 842 595\" width=\"842\" height=\"595\"><g data-clef=\"champ\" data-repere=\"\" transform=\"translate(60,80)\"><rect width=\"120\" height=\"64\" fill=\"#ffffff\" stroke=\"#111111\"/><text x=\"60\" y=\"26\" text-anchor=\"middle\">Champ PV</text><text x=\"60\" y=\"46\" text-anchor=\"middle\">24 modules</text></g><g data-clef=\"onduleur\" data-repere=\"\" transform=\"translate(360,80)\"><rect width=\"120\" height=\"64\" fill=\"#ffffff\" stroke=\"#111111\"/><text x=\"60\" y=\"26\" text-anchor=\"middle\">Onduleur</text></g><g data-clef=\"ddr\" data-repere=\"DDR-PV\" transform=\"translate(240,240)\"><rect width=\"120\" height=\"64\" fill=\"#ffffff\" stroke=\"#111111\"/><text x=\"60\" y=\"26\" text-anchor=\"middle\">Différentiel type A</text></g></svg>",
+    "blocs": [
+      {
+        "clef": "champ",
+        "repere": "",
+        "titre": "Champ PV",
+        "sous_titre": "24 modules · 550 Wc · 2 × 12 modules",
+        "x": 60,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "coffret_dc",
+        "repere": "",
+        "titre": "Coffret DC",
+        "sous_titre": "2 chaîne(s) raccordée(s)",
+        "x": 210,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "onduleur",
+        "repere": "",
+        "titre": "Onduleur",
+        "sous_titre": "8,0 kW · triphasé · 2 entrée(s) MPPT",
+        "x": 360,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "disjoncteur_ac",
+        "repere": "QAC1",
+        "titre": "Disjoncteur AC",
+        "sous_titre": "",
+        "x": 510,
+        "y": 80,
+        "verrouille": false
+      },
+      {
+        "clef": "ddr",
+        "repere": "DDR-PV",
+        "titre": "Différentiel type A",
+        "sous_titre": "",
+        "x": 240,
+        "y": 240,
+        "verrouille": true
+      },
+      {
+        "clef": "compteur_production",
+        "repere": "",
+        "titre": "Comptage de production",
+        "sous_titre": "énergie produite",
+        "x": 390,
+        "y": 240,
+        "verrouille": false
+      },
+      {
+        "clef": "tgbt",
+        "repere": "",
+        "titre": "TGBT",
+        "sous_titre": "3P + N + PE",
+        "x": 600,
+        "y": 300,
+        "verrouille": true
+      }
+    ],
+    "edition": {
+      "libelles": {
+        "compteur_production": "Comptage de production"
+      },
+      "reperes": {
+        "ddr": "DDR-PV"
+      },
+      "positions": {
+        "ddr": {
+          "x": 240,
+          "y": 240
+        },
+        "tgbt": {
+          "x": 600,
+          "y": 300
+        }
+      }
+    },
+    "bloquants": [],
+    "manquantes": []
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "svg": null,
+    "blocs": [],
+    "edition": {
+      "libelles": {},
+      "reperes": {},
+      "positions": {}
+    },
+    "bloquants": [],
+    "manquantes": [
+      "onduleur : aucune fiche onduleur n'est désignée sur ce calepinage — la chaîne ne peut pas être conçue, et le schéma n'est pas dessiné.",
+      "module : la fiche du module ne porte pas de coefficient de température de tension (bêta) — les bornes de la fenêtre de tension sont OMISES plutôt que remplies."
+    ]
+  },
+  "refus_clef_inconnue": {
+    "edition.positions.coffret_ac": "Le bloc « coffret_ac » n'est pas dessiné sur ce schéma : l'édition ne peut déplacer qu'un organe retenu par la conception. Retirez-le de l'édition, ou désignez l'organe correspondant sur le calepinage."
+  }
+}

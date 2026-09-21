@@ -176,6 +176,16 @@ SANS_PRODUCTEUR_PUR = {
         'sans base par '
         'apps/calepinage/tests/test_calx203_contrat_troncons.py',
 
+    # CALX204
+    'calepinage_sld.json':
+        "schéma unifilaire ÉDITABLE : GET est servi (views/schema.py) mais "
+        'son producteur traverse la conception électrique et la porte '
+        'cross-app apps.ventes.selectors.schema_unifilaire_svg, donc la '
+        'base ; les deux clés neuves (`blocs`, `edition`) et la règle dure '
+        "« `edition` n'est pas une seconde source de vérité du dessin » "
+        'sont affirmées sans base par '
+        'apps/calepinage/tests/test_calx204_contrat_sld.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
