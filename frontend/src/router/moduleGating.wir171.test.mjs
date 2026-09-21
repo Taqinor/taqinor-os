@@ -11,14 +11,6 @@ import { estAutoriseEntree, PALIERS_LEGACY } from './moduleGating.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const lire = (...p) => readFileSync(path.join(__dirname, ...p), 'utf8')
 
-const MODULES = [
-  ['litiges', 'litige_voir'],
-  ['contrats', 'contrat_voir'],
-  ['qhse', 'qhse_voir'],
-  ['gestion_projet', 'projet_voir'],
-  ['kb', 'kb_voir'],
-]
-
 // ── 1. La règle elle-même ────────────────────────────────────────────────────
 
 test('sans `perm` : seul le palier décide (comportement historique)', () => {
@@ -108,23 +100,47 @@ test('Sidebar, BottomTabBar, appNavItems et buildInstalledApps appellent la MÊM
   })
 })
 
-// ── 3. Les 5 modules déclarent la permission de lecture + le palier élargi ──
+// ── 3. Un module KEPT déclare perm + permRepliPalier + palier élargi ───────
+// (SOLMVP40, 21/09/2026 : litiges/contrats/qhse/gestion_projet/kb — les 5
+// modules d'origine de ce bloc — sont sortis du MVP solaire vers
+// frontend/parked/. `visites` (VTA6) est le seul module KEPT qui porte
+// `permRepliPalier`, avec la même sémantique : un rôle fin est jugé sur la
+// SEULE permission, un compte légacy retombe sur le palier.)
 
-MODULES.forEach(([module, perm]) => {
-  test(`module « ${module} » : perm ${perm} + permRepliPalier + palier élargi`, () => {
-    const src = lire('..', 'features', module, 'module.config.jsx')
-    assert.match(src, new RegExp(`perm: '${perm}'`))
-    assert.match(src, /permRepliPalier: true/)
-    assert.match(src, /\['normal', 'responsable', 'admin'\]/)
-    // Plus aucune entrée gatée UNIQUEMENT sur ['responsable','admin'].
-    assert.doesNotMatch(src, /roles: \['responsable', 'admin'\]/)
-  })
+test('module « visites » : perm visites_voir + permRepliPalier + palier élargi', () => {
+  const src = lire('..', 'features', 'visites', 'module.config.jsx')
+  assert.match(src, /perm: 'visites_voir'/)
+  assert.match(src, /permRepliPalier: true/)
+  assert.match(src, /\['normal', 'responsable', 'admin'\]/)
+  // Plus aucune entrée « Ma journée »/wizard/calage gatée UNIQUEMENT sur
+  // ['responsable','admin'] (ce serait perdre le repli légacy VTA6).
+  assert.doesNotMatch(src, /roles: \['responsable', 'admin'\], perm: 'visites_voir'/)
 })
 
-test('litiges : le commentaire périmé « IsResponsableOrAdmin » est corrigé', () => {
-  const src = lire('..', 'features', 'litiges', 'module.config.jsx')
-  assert.match(src, /HasPermissionOrLegacy/)
-  // Le mot peut rester dans l'explication du correctif, mais plus comme la
-  // description ACTUELLE de la garde serveur.
-  assert.doesNotMatch(src, /est déjà gaté ``IsResponsableOrAdmin`` côté serveur/)
+// ── 4. Les cas ET STRICT (perm SANS permRepliPalier) sur des modules KEPT ──
+// journal_activite_voir : déclaré à la fois dans `parametres` (la route) et
+// `reporting` (l'entrée de nav dupliquée, ODY23) — miroir du test unitaire
+// ligne 33-43 : AUCUN des deux ne porte permRepliPalier, donc un rôle fin
+// sans la permission reste refusé même au palier responsable/admin, comme le
+// serveur (`roleLoader(['normal','responsable','admin'], 'journal_activite_voir')`).
+
+test('parametres : journal_activite_voir est un ET strict (pas de permRepliPalier)', () => {
+  const src = lire('..', 'features', 'parametres', 'module.config.jsx')
+  assert.match(src, /roles: \['normal', 'responsable', 'admin'\],\s*\n\s*perm: 'journal_activite_voir'/)
+  assert.doesNotMatch(src, /permRepliPalier/)
 })
+
+test('reporting : journal_activite_voir est un ET strict (pas de permRepliPalier)', () => {
+  const src = lire('..', 'features', 'reporting', 'module.config.jsx')
+  assert.match(src, /roles: \['normal','responsable','admin'\], perm: 'journal_activite_voir'/)
+  assert.doesNotMatch(src, /permRepliPalier/)
+})
+
+// La 6ᵉ sous-tâche d'origine (« litiges : le commentaire périmé
+// IsResponsableOrAdmin est corrigé ») verrouillait une correction de
+// documentation propre au fichier `litiges/module.config.jsx` (SOLMVP40 : ce
+// module est désormais dans frontend/parked/). Aucun module KEPT ne porte le
+// même commentaire périmé (grep vérifié : `HasPermissionOrLegacy` et « est
+// déjà gaté IsResponsableOrAdmin côté serveur » n'apparaissent dans aucun
+// `features/*/module.config.jsx` restant) — un ré-ancrage forcerait donc une
+// tautologie ; le cas est retiré plutôt que dénaturé.
