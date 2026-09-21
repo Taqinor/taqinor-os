@@ -147,6 +147,10 @@
       "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`) et, depuis CALX202, les cheminements de câble qui les relient (`cheminements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
       "$ref": "#/$defs/electrical"
     },
+    "underlay": {
+      "description": "CALX86 — le CALQUE DE FOND calé sous le tracé : un plan importé, ou une photo du site. Clé RACINE OPTIONNELLE et additive : absente = AUCUN fond, exactement l'atelier d'aujourd'hui (les calques `photo` et `plan` du panneau pilotent une liste VIDE de couches MapLibre, `roofPro11/mapDraw.ts`). AUCUNE échelle n'est déduite d'un fichier muet : l'analyseur de plan rend un contour dans l'unité DU FICHIER et ne convertit jamais en mètres (`services/import_plan.py`) — c'est le calage à deux points qui donne l'échelle, et il porte sa `distanceReelleM` SAISIE ou il est refusé. Un seul fond à la fois : superposer deux images calées différemment ferait lire deux toits.",
+      "$ref": "#/$defs/underlay"
+    },
     "buildings": {
       "description": "CALX84 — les BÂTIMENTS du site, ceux que `zones[].buildingId` (CAL59) et `poseSurfaces[].buildingId` (CAL91) désignent déjà sans qu'aucun objet ne les décrive. Clé RACINE OPTIONNELLE et additive : absente, la 3D continue d'extruder l'hypothèse affichée d'aujourd'hui (`FLOORS × FLOOR_HEIGHT_M`, `apps/web/src/scripts/roofPro11/constants.ts`) et l'atelier le DIT — l'hypothèse reste une hypothèse. Présente, elle fait voyager la hauteur SAISIE dans CAL60, qui vivait jusqu'ici dans une `Map` locale de `shadingUi.ts` et n'était jamais sérialisée : rouvrir le document la perdait. AUCUNE hauteur n'est devinée : `hauteurM` est SAISIE et porte obligatoirement sa `source`, ou vaut `null` — et une hauteur `null` n'est pas 0 m, c'est une mesure qui manque. Un `buildingId` qui ne figure pas ici reste TOLÉRÉ (les documents d'aujourd'hui en portent déjà sans qu'aucun bâtiment n'existe) : il signifie simplement « bâtiment non décrit ».",
       "type": "array",
@@ -613,6 +617,149 @@
             "ligne",
             "serpentin"
           ]
+        }
+      }
+    },
+    "underlay": {
+      "description": "CALX86 — le calque de fond du document. Deux GENRES, et ils ne se calent PAS de la même façon : un `plan` importé arrive sans échelle (son contour est dans l'unité du fichier) et se cale à DEUX points plus une distance réelle SAISIE ; une `photo` de site est DÉJÀ calée à QUATRE coins par CAL53 (`PhotoSite.calage`, `services/photos.py::calage_photo_site`), et ce calage-là fait foi. Aucun second calage n'est donc créé pour une photo : un document qui en porte un est refusé en nommant `calage`, parce que deux calages d'une même image se contrediraient sans que rien ne dise lequel a raison.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Genre de fond, énumération FERMÉE. `plan` = fichier importé (DXF / PDF vectoriel) analysé par `services/import_plan.py` ; `photo` = photo de site rangée par `services/photos.py`.",
+          "type": "string",
+          "enum": [
+            "plan",
+            "photo"
+          ]
+        },
+        "attachmentId": {
+          "description": "La pièce (`records.Attachment`) qui porte le FICHIER du fond. OBLIGATOIRE et non nulle pour un `plan` : un plan sans fichier n'affiche rien. `null` ou absente pour une `photo`, dont le fichier est celui de la `PhotoSite` désignée.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "photoSiteId": {
+          "description": "La `PhotoSite` utilisée comme fond, et DONC son calage à quatre coins (CAL53). OBLIGATOIRE pour une `photo` : sans elle, le fond ne désigne aucune image et aucun calage. `null` ou absente pour un `plan`.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "opacite": {
+          "description": "Opacité du fond, SAISIE, entre 0 (invisible) et 1 (opaque). Absente = l'atelier applique l'opacité de son propre réglage d'affichage ; le document n'en propose aucune, parce qu'une opacité est un confort de dessin, pas une donnée du site.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "calage": {
+          "description": "Calage à DEUX points du `plan` : deux points cliqués sur l'image, les deux points correspondants sur la carte, et la distance RÉELLE entre eux. Réservé à `kind = 'plan'` — une `photo` lit son calage à quatre coins existant et n'en porte jamais un second.",
+          "$ref": "#/$defs/calageDeuxPoints"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "plan"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "attachmentId"
+            ],
+            "properties": {
+              "attachmentId": {
+                "description": "CALX86 — un plan de fond désigne toujours son fichier.",
+                "type": "integer"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "photo"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "photoSiteId"
+            ],
+            "properties": {
+              "photoSiteId": {
+                "description": "CALX86 — une photo de fond désigne toujours sa PhotoSite.",
+                "type": "integer"
+              },
+              "calage": {
+                "description": "CALX86 — une photo est DÉJÀ calée à quatre coins par CAL53 : elle ne porte pas de calage à deux points. Seule la valeur `null` est admise ici, et elle se lit « aucun calage propre ».",
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "calageDeuxPoints": {
+      "description": "CALX86 — le calage à deux points d'un PLAN importé : l'échelle que le fichier ne porte pas. Aucune des trois valeurs n'est déduite des deux autres, et la distance réelle est SAISIE — un plan muet ne se met pas à l'échelle tout seul (`services/import_plan.py` rend un contour dans l'unité du fichier et s'arrête là).",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "ancre",
+        "pointsImage",
+        "distanceReelleM",
+        "source"
+      ],
+      "properties": {
+        "ancre": {
+          "description": "Les DEUX points correspondants SUR LA CARTE, en [[lng, lat], [lng, lat]] — même ordre que `zones[].vertices`.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "pointsImage": {
+          "description": "Les DEUX points cliqués SUR L'IMAGE, en [[x, y], [x, y]], dans le repère PROPRE du fichier (pixels pour une image, unité du fichier pour un plan vectoriel). Ce repère n'est pas converti : c'est précisément parce qu'on ignore son unité qu'une distance réelle est exigée.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/couple"
+          },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "distanceReelleM": {
+          "description": "Distance RÉELLE entre les deux points, en mètres, SAISIE par l'utilisateur (relevée sur site, ou lue comme cote sur le plan). C'est ELLE qui donne l'échelle ; sans elle le calage ne dit rien et le document est refusé en la nommant. Aucune valeur n'est proposée.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rotationDeg": {
+          "description": "Rotation appliquée au fond (degrés, 0 = aucune). OPTIONNELLE : absente = fond non tourné. Elle se déduit des deux points quand ils suffisent ; écrite ici, c'est la valeur RETENUE à l'écran.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "source": {
+          "description": "D'OÙ vient `distanceReelleM`, en clair et en français (« mesurée au télémètre », « cote lue sur le plan »…). Sans elle, deux plans calés par deux chemins différents ne sont pas comparables et rien n'est engageable (D-CALX 7).",
+          "type": "string",
+          "minLength": 1
         }
       }
     },
