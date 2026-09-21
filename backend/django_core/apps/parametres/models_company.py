@@ -364,6 +364,24 @@ class CompanyProfile(models.Model):
         verbose_name='Objectif premier contact (minutes ouvrées)',
         help_text='Minutes ouvrées maximum entre l\'arrivée d\'un lead et la '
                   'première prise de contact.')
+    # CAD31 (21/09/2026) — l'OBJECTIF ci-dessus est une promesse commerciale
+    # (« rappelé en moins de cinq minutes »). Le SEUIL D'ALERTE, lui, est un
+    # réglage de bruit : les deux étaient confondus, donc chaque lead de nuit
+    # réveillait le responsable ET son supérieur cinq minutes après
+    # l'ouverture. Les deux paliers sont NULLABLES : vides, le comportement
+    # est exactement celui d'avant.
+    premier_contact_alerte_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Alerter le responsable après (minutes ouvrées)',
+        help_text='À partir de combien de minutes ouvrées faut-il alerter le '
+                  'responsable du lead ? Laisser vide pour utiliser '
+                  'l’objectif de premier contact lui-même.')
+    premier_contact_escalade_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Prévenir le supérieur après (minutes ouvrées)',
+        help_text='À partir de combien de minutes ouvrées faut-il prévenir '
+                  'le supérieur ? Laisser vide pour qu’il soit prévenu en '
+                  'même temps que le responsable.')
     # AUTO-PIPELINE (ordre fondateur 26/08/2026) — « une fois que le lead
     # arrive dans notre ERP ça crée automatiquement le devis automatique ».
     # ACTIF par défaut : c'est le flux demandé. Le réglage existe pour qu'une
