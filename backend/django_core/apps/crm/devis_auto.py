@@ -33,7 +33,15 @@ def champs_manquants(lead) -> list[str]:
         if not lead.pompe_debit_m3h:
             manquants.append('débit souhaité')
     elif mode in _MODES_ETUDE:
-        if not lead.conso_mensuelle_kwh:
+        # ── CAD-M ── CAD166 — LE DOSSIER PRO ÉTAIT BLOQUÉ ALORS QUE LA DONNÉE
+        # ÉTAIT LÀ. Le tunnel professionnel du site n'écrit que ``bill_kwh``
+        # (archive web, lecture seule) ; ce gating, lui, n'interrogeait que
+        # ``conso_mensuelle_kwh`` (le champ ÉDITABLE, saisi par la commerciale
+        # ou écrit par l'OCR). Un client qui avait donné ses kWh sur le site
+        # voyait donc « Manque : consommation mensuelle (kWh) ». Les deux ne
+        # fusionnent PAS — chacun garde son rôle — mais l'un vaut l'autre pour
+        # décider si le devis automatique peut partir.
+        if not lead.conso_mensuelle_kwh and not getattr(lead, 'bill_kwh', None):
             manquants.append('consommation mensuelle (kWh)')
     else:
         # Résidentiel — comportement simulateur : la facture été n'est

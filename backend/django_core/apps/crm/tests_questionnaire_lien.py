@@ -116,8 +116,17 @@ class ManquantesTests(TestCase):
         lead = lead_complet(self.company, gps_lng=None)
         self.assertTrue(quest.manquantes(lead)['gps'])
 
-    def test_energie_manque_quand_la_tranche_est_vide(self):
+    def test_la_tranche_vide_ne_rend_plus_la_section_energie_manquante(self):
+        """CAD148 — `tranche_onee` est SORTIE de la condition « énergie » :
+        c'est un texte libre qu'aucun calcul ne lit, et qui se DÉRIVE de la
+        facture et de la consommation. Tant qu'elle comptait comme une
+        information manquante, elle rouvrait l'écran Énergie pour une question
+        qu'on ne doit pas poser (avant CAD148, ce lead-là était `True`)."""
         lead = lead_complet(self.company, tranche_onee='')
+        self.assertFalse(quest.manquantes(lead)['energie'])
+
+    def test_energie_manque_encore_quand_le_raccordement_est_vide(self):
+        lead = lead_complet(self.company, raccordement='')
         self.assertTrue(quest.manquantes(lead)['energie'])
 
     def test_energie_manque_quand_la_regle_du_devis_auto_manque(self):
