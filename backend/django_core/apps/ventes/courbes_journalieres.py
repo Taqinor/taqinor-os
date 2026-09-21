@@ -44,6 +44,7 @@ import math
 
 from apps.parametres.pvgis_profils import (
     SAISONS,
+    decalage_maroc_h,
     moyenne_journaliere_saison,
     productible_mensuel,
     profil_production_journalier,
@@ -52,14 +53,25 @@ from apps.parametres.pvgis_profils import (
 
 logger = logging.getLogger(__name__)
 
-# Note d'affichage servie telle quelle à la page : les formes sont livrées en
-# heure civile marocaine (UTC+1), sauf pendant le Ramadan où le pays repasse à
-# UTC+0 — la courbe réelle est alors décalée d'une heure vers la gauche. Le cas
-# Ramadan n'est PAS modélisé (une seule série servie) : il est DIT.
-NOTE_HORAIRE = (
-    "Heures en heure civile marocaine (UTC+1). Pendant le Ramadan, le Maroc "
-    "repasse à UTC+0 : la courbe se décale alors d'une heure plus tôt."
-)
+
+def note_horaire(quand=None):
+    """Note d'affichage servie TELLE QUELLE à la page (et imprimée au devis).
+
+    DÉRIVÉE de la base de fuseaux, jamais figée : c'était une constante qui
+    annonçait « UTC+1, sauf pendant le Ramadan où le pays repasse à UTC+0 », et
+    cette phrase est devenue fausse du jour au lendemain le 20/09/2026 — décret
+    n° 2.26.530 relatif à l'heure légale (Bulletin officiel n° 7521 du
+    29/06/2026), qui abroge le décret 2.18.855 de 2018 : le Maroc est désormais
+    à l'heure GMT toute l'année, sans AUCUNE bascule, saisonnière ou de
+    Ramadan. Un chiffre servi au client ne peut pas dépendre d'une phrase
+    recopiée : il sort du même ``decalage_maroc_h`` que les courbes elles-mêmes.
+    """
+    decalage = decalage_maroc_h(quand)
+    if decalage == 0:
+        return ("Heures en heure civile marocaine — l'heure GMT (UTC+0), sans "
+                "changement d'heure saisonnier.")
+    return 'Heures en heure civile marocaine (UTC%+d).' % decalage
+
 
 # Occupation du logement en journée — vocabulaire servi à la page.
 OCCUPATION_PRESENCE = 'presence_jour'
@@ -230,7 +242,8 @@ def _occupation(devis, data):
 def _production(kwc, mensuel, ville, lat, lon):
     """Bloc production par saison, ou ``{}`` si rien n'est servable.
 
-    Chaque saison porte ``forme`` (24 parts, HEURE LOCALE UTC+1, somme 1,0),
+    Chaque saison porte ``forme`` (24 parts, HEURE CIVILE MAROCAINE — le
+    décalage vient de ``pvgis_profils.decalage_maroc_h``, somme 1,0),
     ``kwh_jour`` (énergie réelle du jour moyen de la saison) et ``pic_kw``
     (PUISSANCE moyenne de l'heure de pointe = ``kwh_jour × max(forme)``, jamais
     des kWh) + ``source``.
@@ -723,8 +736,8 @@ DECALAGE_POINTE_PAR_SAISON = {
 #
 # Aucune magnitude nouvelle n'est introduite ici : ce sont les trois mêmes
 # facteurs que la page applique déjà sous les yeux du client. Les heures
-# viennent de :mod:`apps.ventes.ramadan` (table des plages + NOAA), ramenées au
-# repère civil UTC+1 du moteur — voir l'en-tête de ce module-là.
+# viennent de :mod:`apps.ventes.ramadan` (table des plages + NOAA), calculées
+# directement dans le repère civil du moteur — voir l'en-tête de ce module-là.
 #
 # L'ÉNERGIE NE BOUGE PAS. La forme modulée est RE-NORMALISÉE à 1 avant d'être
 # mise à l'échelle de la facture du mois : le Ramadan déplace la consommation
@@ -758,8 +771,8 @@ def _appliquer_ramadan(forme, fenetre):
     """Module ``forme`` (somme = 1) par la journée de Ramadan, et renormalise.
 
     Port fidèle de ``proposalCurve.applyRamadan``, aux heures RÉELLES fournies
-    par :func:`apps.ventes.ramadan.fenetre_ramadan` (déjà ramenées au repère
-    civil du moteur). ``None`` si la fenêtre est inexploitable — l'appelant
+    par :func:`apps.ventes.ramadan.fenetre_ramadan` (déjà exprimées dans le
+    repère civil du moteur). ``None`` si la fenêtre est inexploitable — l'appelant
     garde alors sa forme ordinaire plutôt que d'afficher un Ramadan inventé.
     """
     try:
@@ -1114,7 +1127,7 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         occupation, occupation_source = _occupation(devis, data)
 
         bloc = {
-            'note_horaire': NOTE_HORAIRE,
+            'note_horaire': note_horaire(),
             # Unités explicites : la page ne doit plus jamais étiqueter une
             # puissance en kWh (défaut historique du graphe).
             'unites': {
