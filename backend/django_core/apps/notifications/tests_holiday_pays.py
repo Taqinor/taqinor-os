@@ -55,9 +55,9 @@ class FeriesEntreFiltragePaysTests(TestCase):
             nom='Fête Nationale FR', recurrent_annuel=True, pays='FR')
 
     def test_sans_pays_renvoie_tout_comportement_historique(self):
-        # ZÉRO RÉGRESSION : l'appelant existant (apps.rh.services) ne passe
-        # jamais `pays` — il doit continuer à voir TOUS les fériés de la
-        # société, quel que soit leur pays.
+        # ZÉRO RÉGRESSION : un appelant qui ne passe jamais `pays` doit
+        # continuer à voir TOUS les fériés de la société, quel que soit leur
+        # pays.
         dates = feries_entre(
             self.co, datetime.date(2024, 1, 1), datetime.date(2024, 12, 31))
         self.assertEqual(len(dates), 2)

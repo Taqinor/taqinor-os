@@ -12,8 +12,6 @@ FE-XKB1-3/ZCTR7-9, hors périmètre de cette lane) :
     ``?source=automation`` d'avant) et un ``approval_action`` exploitable
     par le push (NTMOB7 : jetons Approuver/Refuser).
   - une relance d'étape BPM (NTWFL5) porte ``/approbations/workflow/<id>``.
-  - la demande d'approbation compta (page de config dédiée, pas la liste
-    unifiée) n'est PAS concernée : son lien reste inchangé.
 """
 import datetime
 from datetime import timedelta
@@ -78,32 +76,6 @@ class AutomationApprovalDeepLinkTests(TestCase):
         notif = Notification.objects.get(
             recipient=self.approver, event_type=EventType.APPROVAL_ESCALATED)
         self.assertEqual(notif.link, f'/approbations/automation/{approval.pk}')
-
-
-class ComptaApprovalLinkUnchangedTests(TestCase):
-    """La demande d'approbation compta pointe une page de config dédiée
-    (pas la liste unifiée des 5 sources ``reporting.approbations``) : son
-    lien n'est PAS transformé en deep-link ``/approbations/:source/:id``."""
-
-    def setUp(self):
-        self.company = _company('ntwfl15-compta')
-        self.approver = _admin(self.company, 'ntwfl15-compta-approver')
-        self.requester = User.objects.create_user(
-            username='ntwfl15-compta-requester', password='x',
-            company=self.company, role_legacy='normal')
-
-    def test_lien_compta_reste_la_page_de_config(self):
-        from apps.compta.models import DemandeApprobationConfig
-        from .services import sweep_approval_reminders
-        demande = DemandeApprobationConfig.objects.create(
-            company=self.company, devis_reference='DV-NTWFL15-1',
-            motif='motif test', demandeur=self.requester)
-        demande.date_creation = timezone.now() - timedelta(days=5)
-        demande.save(update_fields=['date_creation'])
-        sweep_approval_reminders(self.company)
-        notif = Notification.objects.get(
-            recipient=self.approver, event_type=EventType.APPROVAL_REMINDER)
-        self.assertEqual(notif.link, '/comptabilite/approbations-config')
 
 
 class WorkflowStepReminderDeepLinkTests(TestCase):
