@@ -4,7 +4,7 @@ Source de vérité des gabarits `parametres.MessageTemplate` que MRY12 seed dans
 (`corps_fr` = colonne FR ; `corps_darija` = colonne darija, écriture arabe, revue native le 04/09/2026).
 Règles : aucun chiffre qui ne vienne du devis ou du lead ; placeholders autorisés `{civilite} {nom} {prenom} {ville}
 {reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}
-{date_visite} {lien_video_preuve} {marque} {lien_google}` ; le crochet
+{date_visite} {lien_video_preuve} {marque} {lien_google} {prescripteur} {mois_dossier}` ; le crochet
 `[…]` des textes ci-dessous devient le placeholder correspondant au seed (`M. [Prénom]` → `{prenom}`, `[date]` →
 `{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`, `[lien vidéo]` →
 `{lien_video_preuve}` (CAD95, 21/09/2026 — vidéo courte proposée EN PLUS du lien, jamais à la place),
@@ -43,6 +43,27 @@ dans un texte client utilise le rôle « le fondateur », jamais son prénom.
 ### identite — J0, WhatsApp, dans les cinq minutes (M1)
 FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
 DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
+
+**CAD127 (21/09/2026) — le premier message dit la VÉRITÉ sur l'origine.** « Vous venez de remplir notre formulaire »
+est faux pour la moitié des origines : la même cadence part pour un lead arrivé par téléphone, en boutique, par
+recommandation, depuis un salon, repositionné par l'écran de placement, ou né d'une conversation entrante (CTWA,
+livechat). Une première phrase fausse est exactement ce qui fait perdre la confiance au premier contact, et
+`unique_together (company, cle)` interdit toute variante sur `identite` — d'où quatre clés ADDITIVES, choisies
+automatiquement d'après le canal déjà enregistré. `site_web` et `meta_ads` gardent `identite` : ce sont de VRAIS
+formulaires. Le ticket SAV n'est PAS une origine (`create_lead_depuis_ticket` ne démarre aucune cadence).
+`{prescripteur}` et `{mois_dossier}` sont des placeholders : vides, leur phrase est OMISE (MRY13).
+
+### identite_reference — lead venu par recommandation (canal « Référence »)
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. M. [prescripteur] nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+
+### identite_telephone — lead venu par téléphone ou en boutique (canaux « Téléphone », « Visite/Walk-in »)
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Suite à notre échange au sujet du solaire, je vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+
+### identite_whatsapp_entrant — lead né d'un message entrant (canal « WhatsApp/CTWA »)
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Merci pour votre message au sujet du solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+
+### identite_ancien_dossier — fiche ouverte un mois antérieur, reprise aujourd'hui
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Vous nous aviez consultés en [mois du dossier] au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
 
 ### appel_ouverture — J0, script d'ouverture de l'appel n° 1 (A1)
 CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique doit indiquer explicitement l'identité ET le

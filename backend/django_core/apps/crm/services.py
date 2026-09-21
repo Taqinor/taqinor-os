@@ -1974,7 +1974,11 @@ _PLACEHOLDERS_RENDUS = (
     # CAD71 (21/09/2026) — `avis_google` : lien de la fiche Google, réglage
     # société (`CompanyProfile.lien_avis_google`) — PAS le lien du devis.
     'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve',
-    'lien_video_preuve', 'lien_google')
+    'lien_video_preuve', 'lien_google',
+    # CAD127 (21/09/2026) — l'origine RÉELLE du lead : le nom de la personne
+    # qui l'a recommandé, et le mois où il nous avait consultés. Vides quand
+    # la donnée n'existe pas ⇒ leur phrase est OMISE, jamais un crochet.
+    'prescripteur', 'mois_dossier')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -2248,13 +2252,19 @@ def message_pour_etape(etape, *, request=None, user=None):
 
     lead = etape.lead
     langue = lead.langue_preferee or 'fr'
+    # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
+    # de remplir notre formulaire » est faux pour un lead venu par téléphone,
+    # en boutique, par recommandation ou d'un message entrant. La clé est
+    # choisie d'après le canal déjà enregistré, AVANT de lire le gabarit.
+    cle_rendue = cle_identite_pour_lead(lead, etape.template_cle,
+                                        reference=etape.due_date)
     corps = MessageTemplate.get_corps(
-        lead.company, etape.template_cle, langue) if etape.template_cle else ''
+        lead.company, cle_rendue, langue) if cle_rendue else ''
     # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
     # pas à un pompage au bord d'un forage, « en famille » pas à une
     # entreprise. Par exception SEULEMENT, et jamais sur un texte que la
     # société a personnalisé.
-    corps = _corps_pour_segment(corps, etape.template_cle, lead, langue)
+    corps = _corps_pour_segment(corps, cle_rendue, lead, langue)
 
     civilite, prenom = _civilite_et_prenom(lead, langue)
     contexte = {
@@ -2274,6 +2284,12 @@ def message_pour_etape(etape, *, request=None, user=None):
         'date_visite': _date_visite_francais(
             getattr(lead, 'visite_prevue_le', None)),
         'lien_google': '',
+        # CAD127 — l'origine réelle. Résolus seulement si le texte les
+        # demande (aucune requête sinon) ; vides ⇒ phrase OMISE (MRY13).
+        'prescripteur': (_nom_prescripteur(lead)
+                         if '{prescripteur}' in (corps or '') else ''),
+        'mois_dossier': (_mois_dossier_francais(lead)
+                         if '{mois_dossier}' in (corps or '') else ''),
     }
     # CAD71 (21/09/2026) — {lien_google} : lien de la fiche Google de la
     # société, réglage dédié (`CompanyProfile.lien_avis_google`) — AVANT
@@ -8926,3 +8942,93 @@ def _corps_pour_segment(corps, cle, lead, langue):
             'CAD126 : variante de segment illisible (clé %s)', cle,
             exc_info=True)
         return corps
+
+
+# ── CAD-J ── CAD127 — le premier message dit la VÉRITÉ sur l'origine ──────
+#
+# « Vous venez de remplir notre formulaire » est FAUX pour la moitié des
+# origines : la même cadence part pour un lead arrivé par téléphone, en
+# boutique, par recommandation, depuis un salon, repositionné par l'écran de
+# placement, ou né d'une conversation entrante (CTWA, livechat). Une première
+# phrase fausse est exactement ce qui fait perdre la confiance au premier
+# contact.
+#
+# `unique_together (company, cle)` interdit toute VARIANTE sur `identite` :
+# les quatre textes sont donc des clés ADDITIVES, choisies ici d'après le
+# canal DÉJÀ enregistré. Aucun barreau ajouté, aucune migration.
+#
+# Correction du round 2 : le ticket SAV n'est PAS une origine —
+# `create_lead_depuis_ticket` ne démarre aucune cadence (vérifié sur les 8
+# appelants de `demarrer_cadence_contact`).
+
+
+def _nom_prescripteur(lead):
+    """Le nom de la personne qui a recommandé ce lead, ou ``''``.
+
+    Lu sur le parrainage enregistré (``crm.Parrainage.parrain``) — jamais un
+    prénom codé en dur (règle fondateur du 08/09). Absent ⇒ chaîne vide ⇒ la
+    phrase qui le porte est OMISE (MRY13), jamais un crochet envoyé.
+    """
+    try:
+        from .models import Parrainage
+        lien = (Parrainage.objects
+                .filter(company=lead.company, filleul_lead=lead)
+                .select_related('parrain')
+                .order_by('-date_creation', '-id').first())
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+        logger.warning('CAD127 : prescripteur illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return ''
+    if lien is None or lien.parrain is None:
+        return ''
+    return (getattr(lien.parrain, 'nom', '') or '').strip()
+
+
+def _mois_dossier_francais(lead):
+    """« mars 2026 » — le mois où ce prospect nous avait consultés.
+
+    Dérivé de la date de création de SA fiche : une date réelle et traçable,
+    jamais une estimation. Fiche sans date ⇒ chaîne vide ⇒ phrase omise.
+    """
+    from . import horaires
+
+    quand = getattr(lead, 'date_creation', None)
+    if not quand:
+        return ''
+    locale = quand.astimezone(horaires.CASABLANCA)
+    return f'{_MOIS_FR[locale.month - 1]} {locale.year}'
+
+
+def cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
+    """La clé de message à RENDRE pour cette touche — souvent ``cle_gabarit``.
+
+    Ne change QUE la touche d'identité (`identite`) : toutes les autres clés
+    passent inchangées, y compris une clé personnalisée par la société.
+
+    Ordre de décision :
+
+      1. une fiche OUVERTE UN MOIS ANTÉRIEUR à la touche n'est pas une
+         demande fraîche — c'est un dossier repris (repositionnement,
+         réactivation) : `identite_ancien_dossier`. Aucun seuil inventé, on
+         compare des MOIS calendaires, ce que le texte dit littéralement ;
+      2. sinon, le canal d'origine enregistré décide
+         (`CLE_IDENTITE_PAR_CANAL`) ;
+      3. sinon `identite` reste : `site_web` et `meta_ads` sont de VRAIS
+         formulaires, la phrase d'origine y est exacte.
+    """
+    if cle_gabarit != 'identite':
+        return cle_gabarit
+    try:
+        from apps.parametres.models_messages import CLE_IDENTITE_PAR_CANAL
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        return cle_gabarit
+
+    ouverture = getattr(lead, 'date_creation', None)
+    if ouverture is not None and reference is not None:
+        from . import horaires
+        locale = ouverture.astimezone(horaires.CASABLANCA).date()
+        if (locale.year, locale.month) < (reference.year, reference.month):
+            return 'identite_ancien_dossier'
+
+    canal = (getattr(lead, 'canal', None) or '').strip()
+    return CLE_IDENTITE_PAR_CANAL.get(canal, cle_gabarit)

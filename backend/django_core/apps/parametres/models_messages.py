@@ -317,7 +317,13 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # la société elle-même.
 # CAD71 (21/09/2026) — `{lien_google}` : lien de la fiche Google (réglage
 # société `CompanyProfile.lien_avis_google`), PAS le lien du devis.
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}"]
+# CAD127 (21/09/2026) — `{prescripteur}` : le nom de la personne qui a
+# recommandé le prospect (résolu côté serveur depuis le parrainage
+# enregistré ; aucun prénom codé en dur). `{mois_dossier}` : le mois où le
+# prospect nous avait consultés, dérivé de la date de création de SA fiche.
+# Les deux sont VIDES quand la donnée n'existe pas — leur phrase est alors
+# OMISE (MRY13), jamais un crochet envoyé au client.
+PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}"]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [
@@ -357,6 +363,13 @@ CLES_RELANCE = [
     # (industriel/commercial et agricole), jamais par un barreau de cadence.
     'dossier_8221',
     'dossier_fda',
+    # CAD127 — premier message par ORIGINE : « vous venez de remplir notre
+    # formulaire » est faux pour la moitié des canaux. Clés ADDITIVES
+    # (`unique_together (company, cle)` interdit une variante sur `identite`).
+    'identite_reference',
+    'identite_telephone',
+    'identite_whatsapp_entrant',
+    'identite_ancien_dossier',
 ]
 
 #: CAD60 (21/09/2026) — les textes à ENVOI MANUEL, hors cadence.
@@ -447,6 +460,19 @@ class MessageTemplate(models.Model):
         DOSSIER_FDA = (
             'dossier_fda',
             "Segment — dossier de subvention agricole (FDA)")
+        # CAD127 — premier message selon l'ORIGINE réelle du lead.
+        IDENTITE_REFERENCE = (
+            'identite_reference',
+            "Identité — lead venu par recommandation")
+        IDENTITE_TELEPHONE = (
+            'identite_telephone',
+            "Identité — lead venu par téléphone ou en boutique")
+        IDENTITE_WHATSAPP_ENTRANT = (
+            'identite_whatsapp_entrant',
+            "Identité — lead né d'un message entrant")
+        IDENTITE_ANCIEN_DOSSIER = (
+            'identite_ancien_dossier',
+            "Identité — dossier ancien repris")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -596,3 +622,50 @@ def variante_segment(cle, type_installation):
     if not segment:
         return None
     return MESSAGE_TEMPLATE_VARIANTES_SEGMENT.get(segment, {}).get(cle)
+
+
+# ── CAD127 (21/09/2026) — LE PREMIER MESSAGE DIT LA VÉRITÉ SUR L'ORIGINE ──
+#
+# « Vous venez de remplir notre formulaire » est FAUX pour la moitié des
+# origines : la même cadence part pour un lead arrivé par téléphone, en
+# boutique, par recommandation, depuis un salon, repositionné par l'écran de
+# placement, ou né d'une conversation entrante (CTWA, livechat). Une première
+# phrase fausse est exactement ce qui fait perdre la confiance au premier
+# contact — et `unique_together (company, cle)` interdit toute VARIANTE sur
+# une clé existante : ces quatre clés sont donc ADDITIVES.
+#
+# Correction du round 2 : le ticket SAV n'est PAS une origine —
+# `create_lead_depuis_ticket` ne démarre aucune cadence (vérifié sur les 8
+# appelants de `demarrer_cadence_contact`). Aucune clé pour lui.
+#
+# Aucun prénom codé en dur (règle fondateur 08/09) : le prescripteur est un
+# PLACEHOLDER de gabarit, résolu côté serveur depuis le parrainage enregistré.
+# Vide ⇒ sa phrase est OMISE (MRY13), jamais un crochet envoyé au client.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'identite_reference':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. M. {prescripteur} nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    'identite_telephone':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Suite à notre échange au sujet du solaire, je vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    'identite_whatsapp_entrant':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Merci pour votre message au sujet du solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+    'identite_ancien_dossier':
+        "Bonjour M. {prenom}, je suis {conseiller} de {marque}. Vous nous aviez consultés en {mois_dossier} au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+})
+
+#: CAD127 — les quatre clés d'identité par ORIGINE, plus celle du formulaire.
+#: L'écran et le moteur lisent CETTE liste, jamais une énumération recopiée.
+CLES_IDENTITE_PAR_ORIGINE = (
+    'identite', 'identite_reference', 'identite_telephone',
+    'identite_whatsapp_entrant', 'identite_ancien_dossier',
+)
+
+#: Canal d'origine (valeurs de ``crm.Lead.Canal``) → clé d'identité. Les
+#: canaux ABSENTS gardent `identite` : `site_web` et `meta_ads` sont de VRAIS
+#: formulaires remplis par le prospect, la phrase d'origine y est exacte.
+CLE_IDENTITE_PAR_CANAL = {
+    'reference': 'identite_reference',
+    'telephone': 'identite_telephone',
+    # Une visite en boutique est un ÉCHANGE, pas un formulaire : même texte.
+    'walk_in': 'identite_telephone',
+    'whatsapp_ctwa': 'identite_whatsapp_entrant',
+}
