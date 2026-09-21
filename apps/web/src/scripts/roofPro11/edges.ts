@@ -15,6 +15,11 @@
  *    seul côté) reste `inconnue`, avec un motif NOMMÉ — jamais un type choisi au
  *    hasard entre noue et arêtier. Le motif est lisible via `deduceEdgeDetails`.
  *
+ * CALX94 — un type CORRIGÉ À LA MAIN dans l'atelier (`edgesUi.ts`) porte `manuel: true` et
+ * n'est plus jamais re-déduit : `fusionnerAretesSaisies` superpose les saisies (type
+ * corrigé, retrait `retraitM` par arête) à la déduction, et c'est ce résultat que
+ * `serializeLayout` écrit dans le document.
+ *
  * Indépendant de scene3d.ts (pas d'import croisé) : scene3d colore les segments en 3D
  * en import ANT ce module, donc ce module ne doit rien importer de scene3d — la
  * tolérance de recouvrement d'arête (`edgeOverlapM`) est une COPIE volontaire de
@@ -32,9 +37,76 @@ export interface SerializedEdge {
    *  dernier reboucle sur vertices[0]). */
   index: number;
   type: EdgeType;
-  /** true quand un humain a corrigé le type déduit (réservé — aucune UI d'édition
-   *  manuelle dans cette tâche ; le champ existe pour que le schéma v2 le porte). */
+  /** CALX94 — `true` quand le type a été ÉCRIT PAR L'UTILISATEUR dans l'atelier
+   *  (`edgesUi.ts`), en remplacement du type déduit. Marque de provenance : la
+   *  re-déduction ne réécrit JAMAIS une arête marquée `manuel` (voir
+   *  `fusionnerAretesSaisies`). Absent ou `false` = type déduit. */
   manuel?: boolean;
+  /** CALX81/CALX95 — retrait SAISI pour CE segment seul (m, ≥ 0). OPTIONNEL : absent =
+   *  seuls les retraits de CATÉGORIE s'appliquent (comportement d'aujourd'hui). Jamais
+   *  déduit ni complété — une valeur non saisie reste ABSENTE (jamais un zéro, qui se
+   *  lirait « mesuré à ras »). Consommé par `lib/roofSetbackEdge.ts`. */
+  retraitM?: number;
+}
+
+/** CALX94 — libellé FRANÇAIS de chaque type d'arête, pour le sélecteur de l'atelier et
+ *  tout affichage. Les six valeurs de `EdgeType`, jamais un sous-ensemble : « inconnue »
+ *  est un choix valable (« je ne sais pas » reste une réponse honnête). */
+export const EDGE_TYPE_LABELS: Record<EdgeType, string> = {
+  faitage: 'Faîtage',
+  noue: 'Noue',
+  arretier: 'Arêtier',
+  egout: 'Égout',
+  rive: 'Rive',
+  inconnue: 'Inconnue',
+};
+
+/** CALX94 — les six types, dans l'ordre d'affichage du sélecteur. */
+export const EDGE_TYPES: readonly EdgeType[] = ['faitage', 'noue', 'arretier', 'egout', 'rive', 'inconnue'];
+
+/** CALX94 — une valeur est-elle l'un des six types d'arête ? (lecture d'un document ou
+ *  d'un `<select>` : rien d'autre n'est accepté, et rien n'est « corrigé » en douce). */
+export function isEdgeType(v: unknown): v is EdgeType {
+  return typeof v === 'string' && (EDGE_TYPES as readonly string[]).includes(v);
+}
+
+/**
+ * CALX94 — fusionne ce que l'UTILISATEUR a saisi sur les arêtes (`existantes`) avec ce que
+ * la déduction vient de produire (`deduites`), segment par segment :
+ *  - une arête marquée `manuel: true` GARDE son type saisi (la déduction ne l'écrase
+ *    jamais — sans cela, toute correction serait perdue à la sérialisation suivante) ;
+ *  - un `retraitM` SAISI (CALX81) est reporté tel quel, qu'il y ait eu correction de type
+ *    ou non : c'est une mesure, pas une déduction ;
+ *  - une arête sans saisie prend le type DÉDUIT, inchangé ;
+ *  - une saisie dont l'`index` n'existe plus dans le contour (sommet supprimé) est
+ *    ABANDONNÉE — jamais rattachée à un autre segment, jamais réinventée.
+ * Fonction PURE : ne mute ni `existantes` ni `deduites`. Renvoie `undefined` quand il n'y
+ * a rien à écrire (aucune arête déduite), pour que l'appelant n'émette pas de clé vide.
+ */
+export function fusionnerAretesSaisies(
+  existantes: readonly SerializedEdge[] | undefined,
+  deduites: readonly SerializedEdge[] | undefined,
+): SerializedEdge[] | undefined {
+  if (!deduites || !deduites.length) return undefined;
+  const saisieParIndex = new Map<number, SerializedEdge>();
+  for (const e of existantes ?? []) {
+    if (e && Number.isInteger(e.index)) saisieParIndex.set(e.index, e);
+  }
+  return deduites.map((d) => {
+    const saisie = saisieParIndex.get(d.index);
+    if (!saisie) return { index: d.index, type: d.type };
+    const manuel = saisie.manuel === true && isEdgeType(saisie.type);
+    const retrait =
+      typeof saisie.retraitM === 'number' && Number.isFinite(saisie.retraitM) && saisie.retraitM >= 0
+        ? saisie.retraitM
+        : undefined;
+    return {
+      index: d.index,
+      type: manuel ? saisie.type : d.type,
+      ...(manuel ? { manuel: true as const } : {}),
+      ...(retrait !== undefined ? { retraitM: retrait } : {}),
+    };
+  });
 }
 
 /** Couleur d'affichage 3D par type d'arête (hex Three.js), pour distinguer faîtage/
@@ -56,9 +128,9 @@ export interface EdgeDeductionZone {
   /** CALX93 — pente SAISIE du pan (deg). OPTIONNELLE, et volontairement sans valeur de
    *  repli : absente = non saisie, et la distinction noue/arêtier s'en abstient (arête
    *  « inconnue », motif nommé) au lieu de supposer une pente.
-   *  Crochet attendu : l'appelant qui construit les `EdgeDeductionZone` doit y reporter
-   *  la pente déjà saisie du pan (`serializeLayout`, `prefill.ts`) ; tant qu'il ne la
-   *  passe pas, toute arête montante reste « inconnue » dans le document. */
+   *  CALX94 — `serializeLayout` (`prefill.ts`) y reporte désormais la pente déjà saisie du
+   *  pan, donc une noue ou un arêtier peut enfin apparaître dans le vrai document ; un
+   *  appelant qui ne la passe pas laisse simplement toute arête montante « inconnue ». */
   pitchDeg?: number;
 }
 

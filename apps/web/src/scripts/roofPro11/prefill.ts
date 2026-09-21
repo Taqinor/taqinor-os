@@ -21,7 +21,7 @@ import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
-import { deduceEdgeTypes, type SerializedEdge, type EdgeDeductionZone } from './edges';
+import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
 import { serializeExclusionZones, deserializeExclusionZones, type ExclusionZone } from './zones';
 import { resolveSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
@@ -674,11 +674,23 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     vertices: z.vertices,
     roofType: z.roofType ?? 'flat',
     facingAzimuthDeg: z.facingAzimuthDeg ?? 180,
+    // CALX94 — crochet laissé par CALX93 : la pente SAISIE du pan voyage jusqu'à la
+    // déduction (sans elle, aucune noue ni arêtier n'apparaît dans le vrai document).
+    // Absente/non finie ⇒ omise, et l'arête reste « inconnue » plutôt que supposée.
+    ...(typeof z.pitchDeg === 'number' && Number.isFinite(z.pitchDeg) ? { pitchDeg: z.pitchDeg } : {}),
   }));
   zones.forEach((z, i) => {
     const others = edgeZones.filter((_, j) => j !== i);
     const edges = deduceEdgeTypes(edgeZones[i], others);
     if (edges.length) z.edges = edges;
+  });
+  // CALX94 — les SAISIES d'arête (type corrigé à la main `manuel: true`, retrait propre
+  // `retraitM`) sont superposées à la déduction ci-dessus : une correction n'est jamais
+  // ré-écrasée, et une arête non corrigée reste re-déduite. Une seule ligne d'appel vers
+  // la fonction pure `fusionnerAretesSaisies` (edges.ts) — aucune logique dupliquée ici.
+  zones.forEach((z, i) => {
+    const fusion = fusionnerAretesSaisies(ctx.areas[i]?.edges, z.edges);
+    if (fusion) z.edges = fusion;
   });
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
