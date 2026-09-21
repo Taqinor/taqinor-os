@@ -409,6 +409,7 @@ class ClientPvgis:
     # ── l'irradiance NUE, celle que la chaîne de pertes consomme ────────
     def serie_irradiance(self, *, lat, lon, inclinaison_deg, aspect_deg,
                          annee_debut, annee_fin, base=BASE_PAR_DEFAUT,
+                         horizon=None, masque_dans_la_geometrie=False,
                          annee_retenue=None, obtenue_le=None):
         """CALX150 — l'irradiance sur le plan, SANS le modèle PV de PVGIS.
 
@@ -425,6 +426,13 @@ class ClientPvgis:
                 société ``simulation.fenetre_annees`` (CALX145). Ce client ne
                 choisit AUCUNE fenêtre par défaut : il demande celle qu'on lui
                 donne.
+            horizon: un profil de ``services/horizon.py`` (CALX151). Fourni,
+                il part en ``userhorizon`` et c'est LUI qui fait foi. Absent,
+                PVGIS applique son modèle de terrain (``usehorizon=1``).
+            masque_dans_la_geometrie: la société déclare que le masque est
+                déjà porté par la géométrie 3D ⇒ ``usehorizon=0``. Les trois
+                cas sont EXCLUSIFS : deux masques appliqués ensemble se
+                compteraient deux fois.
             annee_retenue: l'année que la série PERSISTÉE garde (CALX142 : au
                 plus une année au pas déclaré). À défaut, la PLUS RÉCENTE des
                 années reçues — la plus proche du climat d'aujourd'hui. Le
@@ -444,10 +452,13 @@ class ClientPvgis:
             PvgisIndisponible: réseau, surcharge, réponse sans irradiance
                 exploitable — jamais une série de zéros.
         """
+        params_horizon, bloc_horizon = _horizon_demande(
+            horizon, masque_dans_la_geometrie)
         params = self._params_irradiance(
             lat=lat, lon=lon, base=base, inclinaison_deg=inclinaison_deg,
             aspect_deg=aspect_deg, annee_debut=annee_debut,
             annee_fin=annee_fin)
+        params.update(params_horizon)
 
         charge, depuis_cache = self._appeler('seriescalc', params)
         # Le cache du client ne conserve AUCUNE date : l'horodatage est posé
@@ -496,7 +507,7 @@ class ClientPvgis:
                 charge, base, params,
                 url=self.construire_url('seriescalc', params),
                 depuis_cache=depuis_cache, annees=annees,
-                obtenue_le=horodatage_reponse),
+                obtenue_le=horodatage_reponse, horizon=bloc_horizon),
             'annees': annees,
             'url': self.construire_url('seriescalc', params),
             'depuis_cache': depuis_cache,
@@ -708,8 +719,68 @@ def _bloc_serie(points, annees, annee_retenue):
     }
 
 
+def _horizon_demande(horizon, masque_dans_la_geometrie):
+    """CALX151 — QUEL masque part vers PVGIS, et lequel fait foi.
+
+    Trois cas EXCLUSIFS, tous les trois publiés (``meteo.horizon.origine``) :
+
+    * profil fourni ⇒ ``userhorizon`` porte NOTRE profil, rééchantillonné au
+      format documenté par PVGIS, et l'origine est ``profil_mesure`` ou
+      ``saisie`` ;
+    * rien de fourni ⇒ ``usehorizon=1`` : PVGIS applique SON modèle de
+      terrain, l'origine est ``dem_pvgis`` (relue dans la réponse) ;
+    * masque déjà porté par la géométrie 3D ⇒ ``usehorizon=0``, origine
+      ``aucun``.
+
+    PVGIS NE DIT PAS lequel il a employé : vérifié en direct le 21/09/2026,
+    une réponse ``seriescalc`` à laquelle on envoie ``userhorizon`` continue
+    d'annoncer ``horizon_data: "DEM-calculated"`` dans ses ``inputs`` alors
+    que le masque envoyé est bel et bien appliqué (G(i) de midi le 15 janvier
+    au point 33,5 / −7,6 : 793,86 W/m² sans profil, 105,23 W/m² avec un mur
+    de 40° tout autour). C'est donc CE QUE NOUS AVONS ENVOYÉ qui fait foi
+    dans le bloc publié, jamais le champ de la réponse.
+
+    Returns:
+        ``(params, bloc)`` — les paramètres à ajouter à la requête, et le
+        bloc ``meteo.horizon`` à publier (``None`` = à relire dans la
+        réponse).
+    """
+    if masque_dans_la_geometrie:
+        if horizon is not None:
+            raise EntreeInvalide(
+                "Les trois cas d'horizon sont EXCLUSIFS : un profil est "
+                'fourni ET le masque est déclaré déjà porté par la géométrie '
+                '3D. Il faut choisir — sans quoi le même masque serait '
+                'compté deux fois.', champ='horizon')
+        return ({'usehorizon': 0},
+                {'origine': 'aucun', 'hauteur_max_deg': None,
+                 'base_horizon': None})
+    if horizon is None:
+        # PVGIS applique son modèle de terrain : l'origine sort de la RÉPONSE.
+        return {'usehorizon': 1}, None
+
+    # Import LOCAL : ``services/horizon`` hérite de ce module, l'importer en
+    # tête ferait un cycle.
+    from .horizon import ORIGINES_PUBLIEES, reechantillonner_pour_pvgis
+
+    origine = ORIGINES_PUBLIEES.get((horizon or {}).get('source')
+                                    if isinstance(horizon, dict) else None)
+    if origine is None:
+        raise EntreeInvalide(
+            "Le profil d'horizon ne déclare pas d'où il vient (« source » "
+            f'attendue parmi : {", ".join(sorted(ORIGINES_PUBLIEES))}) : un '
+            "masque sans provenance n'est pas envoyé à PVGIS.",
+            champ='horizon')
+    hauteurs = reechantillonner_pour_pvgis(horizon)
+    return ({'usehorizon': 1,
+             'userhorizon': ','.join(f'{hauteur:g}' for hauteur in hauteurs)},
+            {'origine': origine,
+             'hauteur_max_deg': horizon.get('hauteur_max_deg'),
+             'base_horizon': horizon.get('base_horizon')})
+
+
 def _bloc_meteo(charge, base_demandee, params, *, url, depuis_cache, annees,
-                obtenue_le):
+                obtenue_le, horizon=None):
     """Le bloc ``meteo`` de CALX143 — les clés que ce CLIENT peut sourcer.
 
     Les noms sont ceux du contrat (``base_rayonnement``, pas ``base``) :
@@ -738,7 +809,9 @@ def _bloc_meteo(charge, base_demandee, params, *, url, depuis_cache, annees,
             'lon': params.get('lon'),
             'altitude_m': localisation.get('elevation'),
         },
-        'horizon': _bloc_horizon(meteo),
+        # Le masque que NOUS avons envoyé fait foi ; à défaut seulement, ce
+        # que la réponse déclare (CALX151).
+        'horizon': horizon if horizon is not None else _bloc_horizon(meteo),
         'url': url,
         'obtenue_le': obtenue_le,
         'depuis_cache': depuis_cache,
