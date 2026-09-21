@@ -83,13 +83,6 @@ _boq_candidats = _bordereau._boq_candidats
 _boq_apparier = _bordereau._boq_apparier
 _boq_prix = _bordereau._boq_prix
 ajouter_lignes_boq_electrique = _bordereau.ajouter_lignes_boq_electrique
-_QUANTUM_QUANTITE = _bordereau._QUANTUM_QUANTITE
-_PU_DEVIS_MAX = _bordereau._PU_DEVIS_MAX
-_QUANTITE_DEVIS_MAX = _bordereau._QUANTITE_DEVIS_MAX
-_designation_ligne_bordereau = _bordereau._designation_ligne_bordereau
-_signature_lignes_devis = _bordereau._signature_lignes_devis
-_signature_specs_bordereau = _bordereau._signature_specs_bordereau
-_reouvrir_devis_depuis_bordereau = _bordereau._reouvrir_devis_depuis_bordereau
 
 
 # ═══════════════════════════════════════════════════════════════════════════
