@@ -1188,6 +1188,55 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
     return constats
 
 
+# ---------------------------------------------------------------------------
+# CALX4 — LES CONTRATS POSES AVANT LEUR VUE, NOMMES DANS LE VERDICT
+# ---------------------------------------------------------------------------
+#
+# LE TROU. `echantillons_de_contrat` s'abstient tant que la route d'un exemple
+# n'a aucune forme connue — « un doute ne rougit JAMAIS », et c'est la bonne
+# regle. Mais elle rend INVISIBLES, precisement, les exemples qui atterrissent
+# SEULS sur `main` AVANT la vue qui les servira : c'est le mode d'emploi de
+# PACT10 (« le contrat part EN PREMIER »), et ces documents-la ne se signalent
+# alors nulle part — ni vert, ni rouge, ni nommes. Un contrat pose puis oublie
+# est exactement ce que ce fichier existe pour empecher.
+#
+# LE REMEDE, MINUSCULE ET SANS EFFET DE BORD. Chaque contrat pose en avance est
+# DECLARE ici avec la tache qui le servira. La garde le NOMME dans son verdict
+# — il existe donc pour qui lit la CI — et ECHOUE si le fichier declare a
+# disparu ou a ete renomme. Aucune abstention n'est touchee : le jour ou la vue
+# naitra, la comparaison de `echantillons_de_contrat` reprendra ses droits
+# toute seule, et cette entree n'aura plus qu'a etre retiree.
+#
+# Cle : `<app>/<fichier>.json`. Valeur : la route attendue et la tache qui la
+# livre — jamais « plus tard », toujours un identifiant de tache.
+ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
+    "calepinage/calepinage_simulation.json":
+        "POST calepinages/<pk>/simuler/, et les blocs ecrits par fusion dans "
+        "Calepinage.resultat (simulation, production, pertes, cascade, meteo, "
+        "incertitude, performance, ombrage, consommation, autoconsommation, "
+        "batterie, hors_reseau, validation, serie_horaire) — vue et service "
+        "livres par CALX5",
+}
+
+
+def annonce_des_echantillons_poses(racine: Path = None):
+    """([lignes a imprimer], [lignes d'echec]) — contrats poses en avance."""
+    racine = APPS_ROOT if racine is None else racine
+    lignes, manquants = [], []
+    for declare, motif in sorted(ECHANTILLONS_POSES_AVANT_LEUR_VUE.items()):
+        app, _, nom = declare.partition("/")
+        chemin = f"apps/{app}/{DOSSIER_ECHANTILLONS}/{nom}"
+        if (racine / app / DOSSIER_ECHANTILLONS / nom).is_file():
+            lignes.append(f"  - {chemin} : {motif}.")
+        else:
+            manquants.append(
+                f"  - {chemin} : DECLARE dans "
+                f"ECHANTILLONS_POSES_AVANT_LEUR_VUE et INTROUVABLE. Un "
+                f"contrat pose en avance ne peut pas disparaitre en silence : "
+                f"remettez le fichier, ou retirez la declaration ({motif}).")
+    return lignes, manquants
+
+
 # ===========================================================================
 # 3 quater. PACT13 — INTERDIRE LES MOCKS DE FORME ECRITS A LA MAIN
 # ===========================================================================
@@ -1945,6 +1994,15 @@ def main(argv=None) -> int:
     if contract.rapport_plancher("check_api_shapes", mesures):
         return 1
 
+    # CALX4 — les contrats poses AVANT leur vue : nommes, et jamais muets.
+    annonces, manquants = annonce_des_echantillons_poses()
+    if manquants:
+        print("\nECHEC : contrat(s) pose(s) en avance, declare(s) ici et "
+              "introuvable(s) :")
+        for ligne in manquants:
+            print(ligne)
+        return 1
+
     drift = CONTRACT_PATH.is_file() and CONTRACT_PATH.read_text(encoding="utf-8") != rendered
     new = [f for f in findings if signature(f) not in baseline]
 
@@ -1967,6 +2025,12 @@ def main(argv=None) -> int:
         print("Regenerer (et relire le diff, c'est le but) : "
               "python scripts/check_api_shapes.py --write")
         return 1
+
+    if annonces:
+        print(f"Contrat(s) pose(s) AVANT leur vue (PACT10), nomme(s) ici pour "
+              f"qu'aucun ne dorme : {len(annonces)}.")
+        for ligne in annonces:
+            print(ligne)
 
     print(f"OK : {len(shapes)} endpoint(s) agrege(s) + {len(serialiseurs)} "
           f"ressource(s) a serialiseur sous contrat, aucun mock de test ne "
