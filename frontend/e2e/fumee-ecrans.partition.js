@@ -149,10 +149,16 @@ export function declarerGardeUnion(test) {
   // exactement le défaut que PACT8 combat.
   test('PACT8: les routes sont bien lues depuis les module.config.jsx', () => {
     const total = [...PAR_MODULE.values()].reduce((n, r) => n + r.length, 0)
+    // Seuils réalignés SOLMVP42 (2026-09-21) : 37 features frontend sont
+    // sorties avec le Groupe SOLMVP (49 apps hors MVP solaire), le compte réel
+    // est passé de ~49/~470 à 19 modules / 192 routes (mesuré sur ce dépôt à
+    // cette date). La garde reste une sanité MINIMALE contre une extraction
+    // cassée (glob vide, `module.config.jsx` renommé…) — jamais un compte
+    // épinglé exact — donc un plancher nettement sous le compte réel courant.
     expect(PAR_MODULE.size,
-      'modules avec au moins une route déclarée').toBeGreaterThan(30)
+      'modules avec au moins une route déclarée').toBeGreaterThan(15)
     expect(total, 'routes visitables extraites des module.config.jsx')
-      .toBeGreaterThan(200)
+      .toBeGreaterThan(150)
   })
 
   // LA garde du découpage : l'union des groupes doit être EXACTEMENT l'ensemble

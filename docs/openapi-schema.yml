@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4628, operations: 7394, components: 2099}
+counts: {paths: 4626, operations: 7392, components: 2099}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3175,7 +3175,6 @@ operations:
 - get /api/django/stock/produits/etiquettes-prix/ -> django_stock_produits_etiquettes_prix_retrieve
 - get /api/django/stock/produits/etiquettes/ -> django_stock_produits_etiquettes_retrieve
 - get /api/django/stock/produits/expirant-bientot/ -> django_stock_produits_expirant_bientot_retrieve
-- get /api/django/stock/produits/export-marketplace/ -> django_stock_produits_export_marketplace_retrieve
 - post /api/django/stock/produits/export-xlsx/ -> django_stock_produits_export_xlsx_create
 - post /api/django/stock/produits/generer-bcf-reappro/ -> django_stock_produits_generer_bcf_reappro_create
 - post /api/django/stock/produits/inventaire/ -> django_stock_produits_inventaire_create
@@ -6879,7 +6878,6 @@ operations:
 - get /api/v1/stock/produits/etiquettes-prix/ -> v1_stock_produits_etiquettes_prix_retrieve
 - get /api/v1/stock/produits/etiquettes/ -> v1_stock_produits_etiquettes_retrieve
 - get /api/v1/stock/produits/expirant-bientot/ -> v1_stock_produits_expirant_bientot_retrieve
-- get /api/v1/stock/produits/export-marketplace/ -> v1_stock_produits_export_marketplace_retrieve
 - post /api/v1/stock/produits/export-xlsx/ -> v1_stock_produits_export_xlsx_create
 - post /api/v1/stock/produits/generer-bcf-reappro/ -> v1_stock_produits_generer_bcf_reappro_create
 - post /api/v1/stock/produits/inventaire/ -> v1_stock_produits_inventaire_create

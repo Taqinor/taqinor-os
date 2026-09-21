@@ -346,6 +346,18 @@ def scan() -> tuple[list[str], int, int]:
 
 
 def main() -> int:
+    # SOLMVP42 (2026-09-21) — le module `ao` (Appels d'offres) est sorti du
+    # MVP solaire (Groupe SOLMVP) : son client frontend et son urls.py sont
+    # partis avec (coquillage backend + retrait frontend). Sans eux il n'y a
+    # plus de contrat a comparer — NO-OP explicite plutot qu'un echec, pour
+    # ne jamais bloquer la CI sur une garde qui n'a plus rien a garder. Si le
+    # module revient un jour (recette de retour, docs/parked-modules.md),
+    # cette garde redevient active d'elle-meme des que les deux fichiers
+    # reapparaissent.
+    if not FRONTEND_CLIENT.exists() and not URLCONF.exists():
+        print("[check_ao_api_contract] NO-OP - module `ao` sorti du MVP "
+              "(SOLMVP) : ni client frontend ni urls.py, rien a comparer.")
+        return 0
     if not FRONTEND_CLIENT.exists() or not URLCONF.exists():
         print("[check_ao_api_contract] ECHEC - client d'API ou urls.py "
               "introuvable (chemins codes en tete du script).")

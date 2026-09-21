@@ -75,16 +75,18 @@ for (const { name, path, ready } of SCREENS) {
   })
 }
 
-// ── APX36 — TROIS goldens qui prouvent « le plus beau » (pas trente) ─────────
+// ── APX36 — goldens qui prouvent « le plus beau » (pas trente) ──────────────
 // La taxe de baselines est une décision livrée : on étend la régression
-// visuelle de TROIS écrans, pas d'un de plus — exactement les trois signatures
+// visuelle de quelques écrans seulement, jamais d'un de plus — les signatures
 // d'app que le groupe APX a construites, chacune clair + sombre :
 //   • le board leads COMPACT (APX2/3/4/7) — le seul écran dont la beauté EST
 //     la densité ; le `leads-kanban` déjà capturé plus haut est en densité
 //     confortable et vue par défaut, celui-ci force la densité compacte et la
 //     vue kanban par l'URL, donc les deux goldens ne font pas doublon ;
-//   • le catalogue Stock (APX18/19) — jauges de niveau + vignettes produit ;
-//   • le cockpit finance (APX35) — le chiffre héros et les buckets d'aging.
+//   • le catalogue Stock (APX18/19) — jauges de niveau + vignettes produit.
+// (Le cockpit finance/APX35 — `/comptabilite` — a quitté cette liste avec le
+// module `compta`, sorti du MVP solaire par le Groupe SOLMVP — SOLMVP42,
+// 2026-09-21 ; il n'existe plus d'écran à cette route.)
 //
 // LA DENSITÉ, ELLE, N'EST PAS PROUVÉE ICI : elle l'est par les assertions
 // MESURÉES de `leads-density.spec.js` (APX8), qui sont robustes. Un golden ne
@@ -111,15 +113,6 @@ const APX_SCREENS = [
     path: '/stock',
     ready: async (page) => {
       await expect(page.locator('.header-title')).toBeVisible()
-      await page.waitForLoadState('networkidle').catch(() => {})
-    },
-    mask: () => [],
-  },
-  {
-    name: 'apx-compta-cockpit',
-    path: '/comptabilite',
-    ready: async (page) => {
-      await expect(page.getByRole('heading', { name: 'Cockpit financier' })).toBeVisible()
       await page.waitForLoadState('networkidle').catch(() => {})
     },
     mask: () => [],

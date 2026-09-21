@@ -41,10 +41,13 @@ CE QUE LA GARDE LIT
 4. `core/odoo_accounting` N'A AUCUN APPELANT HORS TESTS. Ses deux `create`
    ne sont tolerees que parce que le module est DORMANT ; le jour ou on le
    branche, ce rouge force la decision au lieu de la laisser passer.
-5. LE HOOK `CONNECTEUR_ODOO_MODULE` RESTE DECLARE. `apps/migration/services.py`
-   nomme un module connecteur (`apps.publicapi.connectors.odoo`) qui n'existe
-   pas encore ; s'il apparait un jour, son fichier devra etre declare en
-   transport — la garde le dit au lieu de le decouvrir en production.
+
+NOTE (SOLMVP42, 2026-09-21) : le point 5 historique (« le hook
+`CONNECTEUR_ODOO_MODULE` reste declare ») portait sur `apps/migration/services.py`,
+retire par le coquillage du Groupe SOLMVP (l'app `migration` est desormais une
+coquille de migrations vide) — la declaration correspondante (`HOOKS_DECLARES`,
+`_verifier_hook_connecteur`) est retiree avec lui, une declaration qui ne
+verifie plus rien etant un faux vert (regle du point 1 ci-dessous).
 
 Chaque regle pointe dans LES DEUX SENS : un fichier declare qui disparait, ou
 une exception qui ne correspond plus a rien, est aussi un rouge. Une liste
@@ -88,16 +91,9 @@ TRANSPORTS_DECLARES = {
 }
 
 # ── Hooks qui NOMMENT un connecteur Odoo sans en etre un ───────────────────
-HOOKS_DECLARES = {
-    'apps/migration/services.py':
-        "CONNECTEUR_ODOO_MODULE — chemin pointille vers un connecteur "
-        "d'EXPORT (`client_pour_societe` -> `exporter_entite`) qui n'existe "
-        "pas encore ; import paresseux, ImportError avalee, endpoint en 400.",
-}
-
-# Constante du hook + module qu'elle nomme (verifies au point 5).
-HOOK_CONSTANTE = 'CONNECTEUR_ODOO_MODULE'
-HOOK_FICHIER = 'apps/migration/services.py'
+# Vide depuis SOLMVP42 (coquillage de `apps/migration`, voir la note en tete
+# de fichier) — un futur hook du meme genre s'y declare a nouveau.
+HOOKS_DECLARES: dict[str, str] = {}
 
 # ── Exceptions d'ECRITURE, chacune avec sa raison ──────────────────────────
 # (fichier QUI LANCE L'APPEL, modele, methode) -> raison. La cle porte le
@@ -342,33 +338,6 @@ def _verifier_module_dormant(textes, echecs):
             "brancher une ecriture comptable dans Odoo.")
 
 
-def _verifier_hook_connecteur(textes, echecs):
-    """Point 5 — le hook CONNECTEUR_ODOO_MODULE reste declare et dormant."""
-    texte = textes.get(HOOK_FICHIER)
-    if texte is None:
-        return  # deja signale par le point 1
-    motif = re.search(
-        HOOK_CONSTANTE + r"\s*=\s*['\"]([^'\"]+)['\"]", texte)
-    if not motif:
-        echecs.append(
-            f"{HOOK_FICHIER} : `{HOOK_CONSTANTE}` a disparu. Si le hook "
-            f"connecteur Odoo n'existe plus, retirez-le de HOOKS_DECLARES "
-            f"dans le meme commit.")
-        return
-    module = motif.group(1)
-    chemin = BACKEND / (module.replace('.', '/') + '.py')
-    paquet = BACKEND / module.replace('.', '/') / '__init__.py'
-    if chemin.exists() or paquet.exists():
-        rel = (chemin if chemin.exists() else paquet).relative_to(
-            BACKEND).as_posix()
-        if rel not in TRANSPORTS_DECLARES:
-            echecs.append(
-                f"{rel} : le connecteur nomme par `{HOOK_CONSTANTE}` "
-                f"({module}) EXISTE desormais. Declarez-le dans "
-                f"TRANSPORTS_DECLARES et faites verifier ses appels — le "
-                f"hook n'est plus dormant.")
-
-
 def main() -> int:
     if not BACKEND.is_dir():
         print(f"check_odoo_writes: {BACKEND} introuvable.")
@@ -385,7 +354,6 @@ def main() -> int:
     _verifier_appels(textes, echecs)
     _verifier_allowlist_execution(textes, echecs)
     _verifier_module_dormant(textes, echecs)
-    _verifier_hook_connecteur(textes, echecs)
 
     if echecs:
         print("check_odoo_writes : ecriture Odoo non declaree ou garde "

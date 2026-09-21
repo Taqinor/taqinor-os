@@ -51,8 +51,6 @@ const Co2Page = lazy(() => import('../../pages/monitoring/Co2Page'))
 const CleaningsPage = lazy(() => import('../../pages/monitoring/CleaningsPage'))
 const OmReportPage = lazy(() => import('../../pages/monitoring/OmReportPage'))
 const ClientPortalPage = lazy(() => import('../../pages/monitoring/ClientPortalPage'))
-// WIR123 — Abonnements de supervision (revenu récurrent, FG244).
-const AbonnementsPage = lazy(() => import('../../pages/monitoring/AbonnementsPage'))
 const OutillagePage = lazy(() => import('../../pages/outillage/OutillagePage'))
 
 const config = {
@@ -100,7 +98,6 @@ const config = {
       { to: '/atelier',              label: 'Atelier',          k: 'nav.atelier',    icon: navIcon(Wrench),    roles: ['normal','responsable','admin'] },
       { to: '/atelier/kits',         label: 'Paramétrage des kits', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/production',           label: 'Production',       k: 'nav.production', icon: navIcon(BarChart3),   roles: ['normal','responsable','admin'] },
-      { to: '/production/abonnements', label: 'Abonnements',    icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       { to: '/outillage',            label: 'Outillage',        k: 'nav.outillage',  icon: navIcon(Wrench),  roles: ['normal','responsable','admin'] },
     ],
   },
@@ -124,7 +121,6 @@ const config = {
     { path: '/production/nettoyages', component: CleaningsPage },
     { path: '/production/rapports', component: OmReportPage },
     { path: '/production/portail-client', component: ClientPortalPage },
-    { path: '/production/abonnements', component: AbonnementsPage, roles: ['responsable', 'admin'] },
     { path: '/outillage', component: OutillagePage },
   ],
 }

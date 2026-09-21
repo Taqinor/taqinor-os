@@ -106,14 +106,6 @@ const stockApi = {
     api.post('/stock/emplacements/van-stock/creer-transfert/', {
       produit_id: produitId, emplacement_id: emplacementId,
     }),
-  // NTFSM20 — écran mobile van-stock du technicien connecté (sa camionnette
-  // uniquement, résolue côté serveur).
-  getMonStockCamionnette: () =>
-    api.get('/stock/emplacements/van-stock/mon-stock/'),
-  signalerManquantVanStock: (produitId) =>
-    api.post('/stock/emplacements/van-stock/signaler-manquant/', {
-      produit_id: produitId,
-    }),
 
   // N17 — listes de prix multi-fournisseurs par SKU (INTERNE, jamais client).
   getProduitPrixFournisseurs: (id) =>

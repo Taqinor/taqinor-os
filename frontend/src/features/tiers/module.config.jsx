@@ -14,9 +14,9 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ni à routes.meta (patron UX1). Écran répertoire en `src/pages/tiers/*`
    chargé en lazy (code-splitting préservé). « Doublons tiers » (ARC20,
    admin-only côté backend) vit sous Paramètres — voir
-   `features/parametres/module.config.jsx` (même patron que Territoires/
-   Playbooks/Achats : les sous-routes `/parametres/*` restent toutes
-   déclarées dans CE fichier unique, jamais dupliquées ailleurs).
+   `features/parametres/module.config.jsx` (même patron que Playbooks/Achats :
+   les sous-routes `/parametres/*` restent toutes déclarées dans CE fichier
+   unique, jamais dupliquées ailleurs).
    ========================================================================== */
 
 const TiersPage = lazy(() => import('../../pages/tiers/TiersPage'))

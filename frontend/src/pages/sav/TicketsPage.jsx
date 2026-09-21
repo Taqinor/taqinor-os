@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
@@ -13,13 +13,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 // APX31 — MÊME garde champ-de-saisie que la file J/K des leads (LW) : une
 // seule définition dans tout l'ERP, jamais une copie locale.
 import { isTypingTarget } from '../../providers/shortcuts'
-// EZ15 — dictée INLINE navigateur, surface BUREAU uniquement (le terrain —
-// intervention, checklist — appartient à NTMOB30 et à sa transcription
-// serveur : jamais deux boutons micro sur un même champ).
+// EZ15 — dictée INLINE navigateur, surface BUREAU.
 import {
-  DictationButton, DICTATION_PRIVACY_FR, isDictationSupported,
+  DictationButton, DICTATION_PRIVACY_FR,
 } from '../../ui/DictationButton'
-import VoiceNoteRecorder from '../../features/offlinesync/VoiceNoteRecorder'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
@@ -51,7 +48,6 @@ import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import TicketWorksheetPanel from './TicketWorksheetPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
-import { crEnTexte } from './crInterventionUtils'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 // NTUX37 — toast « Annuler » (NTUX6) après une édition en masse réussie.
 import { notifyBulkUpdateWithUndo } from '../../ui/datatable/notifyBulkUpdateWithUndo'
@@ -338,102 +334,6 @@ export function TicketPremiereReponseChip({ ticket }) {
   )
 }
 
-/* ── PACT142 — Compte rendu d'intervention depuis un MÉMO VOCAL (NTAI12) ──
-   ----------------------------------------------------------------------------
-   `POST /api/django/ai/cr-intervention/` (multipart) transcrit le mémo puis le
-   structure en {diagnostic, travaux, pieces, recommandations}. Le résultat
-   PRÉ-REMPLIT le champ « Compte rendu » du formulaire d'intervention : il reste
-   ÉDITABLE et n'est enregistré que par « Ajouter une intervention ».
-
-   CONTRAT REPRIS TEL QUEL DU SERVEUR, et redit à l'écran plutôt que supposé :
-     • le statut du ticket n'est JAMAIS changé (`applique: false`) ;
-     • l'audio n'est JAMAIS conservé (il est lu en mémoire puis jeté) ;
-     • sans clé de transcription, le serveur répond 503 avec un message FR
-       explicite : ce message REMPLACE le sélecteur de fichier (même règle que
-       PACT141 sur la fiche lead) — jamais un bouton mort, et jamais un
-       téléversement qui échoue en silence : tout autre échec est affiché en
-       clair dans un `role="alert"`. */
-
-export function CrVocalMemo({ ticketId, onPrefill }) {
-  const [busy, setBusy] = useState(false)
-  const [indisponible, setIndisponible] = useState('')
-  const [erreur, setErreur] = useState(null)
-  const [resultat, setResultat] = useState(null)
-  const inputRef = useRef(null)
-
-  const envoyer = async (fichier) => {
-    if (!fichier) return
-    setBusy(true)
-    setErreur(null)
-    try {
-      const form = new FormData()
-      form.append('file', fichier)
-      if (ticketId !== undefined && ticketId !== null && ticketId !== '') {
-        form.append('ticket_id', String(ticketId))
-      }
-      const r = await api.post('/ai/cr-intervention/', form)
-      const data = r?.data ?? {}
-      const texte = crEnTexte(data.cr) || String(data.transcript ?? '').trim()
-      setResultat(data)
-      onPrefill?.(texte, data)
-    } catch (err) {
-      if (err?.response?.status === 503) {
-        setIndisponible(err.response.data?.detail
-          || "Aucun fournisseur de transcription n'est configuré (clé absente) "
-             + '— saisie manuelle requise.')
-      } else {
-        setErreur(frError(err, "Le mémo vocal n'a pas pu être transcrit."))
-      }
-    } finally {
-      setBusy(false)
-      // Remise à zéro du sélecteur : sans elle, redéposer le MÊME fichier
-      // n'émettrait aucun `change` et la 2ᵉ tentative serait muette.
-      if (inputRef.current) inputRef.current.value = ''
-    }
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {indisponible ? (
-        <p className="text-sm text-muted-foreground">{indisponible}</p>
-      ) : (
-        <label className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="font-medium">Mémo vocal (pré-remplit le compte rendu)</span>
-          <input
-            ref={inputRef}
-            type="file"
-            accept="audio/*"
-            disabled={busy}
-            aria-label="Mémo vocal de l'intervention"
-            onChange={(e) => envoyer(e.target.files?.[0])}
-          />
-          {busy && <Spinner />}
-        </label>
-      )}
-      {!indisponible && (
-        <p className="text-xs text-muted-foreground">
-          L’audio n’est pas conservé et le statut du ticket n’est jamais modifié :
-          le compte rendu proposé reste éditable avant enregistrement.
-        </p>
-      )}
-      {erreur && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
-          <span>{erreur}</span>
-        </div>
-      )}
-      {resultat && (
-        <p className="text-xs text-muted-foreground">
-          {resultat.structure === false
-            ? 'Mémo transcrit mais NON structuré (aucun moteur de structuration '
-              + 'configuré) — à répartir manuellement dans le compte rendu.'
-            : 'Compte rendu pré-rempli depuis le mémo vocal — à relire et corriger.'}
-        </p>
-      )}
-    </div>
-  )
-}
-
 export function TicketDetail({ ticket, onClose, onSaved }) {
   const dispatch = useDispatch()
   const allTickets = useSelector((s) => s.tickets.items)
@@ -467,9 +367,8 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     technicien_responsable: current.technicien_responsable ?? '',
     date_resolution: current.date_resolution ?? '',
     cout: current.cout ?? '',
-    // WIR233/ZMFG5 — distinct de `description` (motif signalé) et du chatter
-    // (notes) : instructions D'INTERVENTION, éditables, avec suggestions KB
-    // en pré-remplissage (jamais une écriture auto — voir insererSuggestionKb).
+    // WIR233 — distinct de `description` (motif signalé) et du chatter
+    // (notes) : instructions D'INTERVENTION, éditables.
     instructions: current.instructions ?? '',
   }), [current])
 
@@ -524,24 +423,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   })
   const [retirerBusy, setRetirerBusy] = useState(false)
   const [retirerError, setRetirerError] = useState(null)
-
-  // WIR233/ZMFG5 — suggestions KB pour pré-remplir « Instructions » : simple
-  // INSERTION dans le champ local (`fields.instructions`), jamais une
-  // écriture serveur tant que le ticket n'est pas explicitement enregistré.
-  const [kbSuggestions, setKbSuggestions] = useState(null) // null = jamais chargées
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
-  const chargerSuggestionsKb = () => {
-    setSuggestionsLoading(true)
-    savApi.getInstructionsSuggestions(id)
-      .then((r) => setKbSuggestions(r.data?.results ?? r.data ?? []))
-      .catch(() => setKbSuggestions([]))
-      .finally(() => setSuggestionsLoading(false))
-  }
-  const insererSuggestionKb = (article) => {
-    set('instructions', fields.instructions
-      ? `${fields.instructions}\n\n${article.corps}`
-      : article.corps)
-  }
 
   const loadPieces = () => {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
@@ -899,24 +780,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     } catch (err) {
       setActionError(frError(err, 'Impossible de générer la facture.'))
     } finally { setFactureBusy(false) }
-  }
-  // AUD529 — escalade en réclamation formelle (apps.litiges). Idempotent
-  // côté serveur : un ticket déjà escaladé renvoie son dossier existant.
-  const [reclamationBusy, setReclamationBusy] = useState(false)
-  const escaladerEnReclamation = async () => {
-    setActionError(null)
-    setReclamationBusy(true)
-    try {
-      const r = await savApi.escaladerTicketEnReclamation(id)
-      toast.success(r.data?.cree
-        ? `Réclamation #${r.data?.reclamation_id} ouverte`
-        : `Réclamation #${r.data?.reclamation_id} déjà ouverte`)
-      setCurrent((c) => ({ ...c, reclamation_id_ext: r.data?.reclamation_id }))
-      loadHistorique()
-      onSaved?.()
-    } catch (err) {
-      setActionError(frError(err, "Impossible d'escalader ce ticket."))
-    } finally { setReclamationBusy(false) }
   }
   const facturer = async () => {
     setActionError(null)
@@ -1313,15 +1176,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Textarea rows={4} value={interv.compte_rendu}
                         onChange={(e) => setInterv((s) => ({ ...s, compte_rendu: e.target.value }))} />
             </FormField>
-            {/* PACT142 — le mémo vocal PRÉ-REMPLIT le champ ci-dessus ; rien
-                n'est enregistré tant que « Ajouter une intervention » n'est
-                pas cliqué, et le statut du ticket reste intact. */}
-            <div className="sm:col-span-2">
-              <CrVocalMemo
-                ticketId={id}
-                onPrefill={(texte) => setInterv((s) => ({ ...s, compte_rendu: texte }))}
-              />
-            </div>
           </div>
           <div>
             <Button type="button" variant="outline" size="sm"
@@ -1491,29 +1345,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <Textarea id="ticket-instructions" rows={4} value={fields.instructions}
                       onChange={(e) => set('instructions', e.target.value)} />
           </FormField>
-          <div>
-            <Button type="button" variant="outline" size="sm"
-                    loading={suggestionsLoading} onClick={chargerSuggestionsKb}>
-              <Sparkles /> Suggestions KB
-            </Button>
-          </div>
-          {kbSuggestions != null && (
-            kbSuggestions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune suggestion pour ce ticket.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-                {kbSuggestions.map((a) => (
-                  <li key={a.id ?? a.titre} className="flex items-center gap-2 p-2.5 text-sm">
-                    <span className="flex-1">{a.titre}</span>
-                    <Button type="button" variant="ghost" size="sm"
-                            onClick={() => insererSuggestionKb(a)}>
-                      Insérer
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )
-          )}
         </CollapsibleSection>
 
         {/* ── Historique (chatter) — L313 repliable ── */}
@@ -1531,16 +1362,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <Input placeholder="Écrire une note…" value={noteBody}
                    onChange={(e) => setNoteBody(e.target.value)}
                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
-            {/* NTMOB30 — dictée TERRAIN de la note (enregistrement +
-                transcription serveur). Affichée UNIQUEMENT là où la dictée
-                inline EZ15 n'existe pas (iOS Safari) : jamais deux boutons
-                micro sur le même champ. */}
-            {!isDictationSupported() && (
-              <VoiceNoteRecorder
-                onTranscrit={(txt) => setNoteBody(
-                  noteBody ? `${noteBody} ${txt}` : txt)}
-              />
-            )}
             <Button type="button" variant="outline" onClick={postNote}>Noter</Button>
           </div>
           <div className="flex flex-col gap-2">
@@ -1616,21 +1437,6 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           <Button type="button" variant="outline" onClick={telechargerRapport}>
             <FileText /> Rapport d'intervention (PDF)
           </Button>
-          {/* AUD529 — escalade SAV → réclamation formelle (litiges). Le
-              chemin documenté n'existait pas : un ticket grave imposait une
-              re-saisie manuelle. Jamais proposé sur un ticket annulé. */}
-          {!current.annule && (
-            current.reclamation_id_ext ? (
-              <Badge tone="warning">
-                Réclamation #{current.reclamation_id_ext}
-              </Badge>
-            ) : (
-              <Button type="button" variant="outline" loading={reclamationBusy}
-                      onClick={escaladerEnReclamation}>
-                <AlertTriangle /> Escalader en réclamation
-              </Button>
-            )
-          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
           <Button type="button" loading={saving} onClick={save}><Save /> Mettre à jour</Button>
         </FormActions>
