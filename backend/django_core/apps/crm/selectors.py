@@ -1510,7 +1510,12 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
              .filter(company=company, is_archived=False,
                      source=Lead.Source.OS_NATIVE,
                      date_creation__gte=depuis)
-             .only('id', 'date_creation', 'first_contacted_at'))
+             # CAD119 — `date_creation_origine` est chargée pour que
+             # `Lead.date_origine` réponde sans une requête par lead : un KPI
+             # de délai se compte depuis la naissance du dossier, jamais
+             # depuis l'heure d'une synchronisation.
+             .only('id', 'date_creation', 'date_creation_origine',
+                   'first_contacted_at'))
 
     minutes = []
     # CAD88 — la MÊME attente, comptée en calendrier : ce que le client a
@@ -1523,17 +1528,20 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
     nb_nuit_rappeles = 0
     for lead in leads:
         nb_leads += 1
-        de_nuit = not horaires.est_dans_fenetre(lead.date_creation, company)
+        # CAD119 — `date_origine` = la date du système d'origine si on la
+        # connaît, sinon celle de l'insertion ici.
+        naissance = lead.date_origine
+        de_nuit = not horaires.est_dans_fenetre(naissance, company)
         if de_nuit:
             nb_nuit += 1
         if lead.first_contacted_at is None:
             continue
         minutes.append(horaires.minutes_ouvrees_entre(
-            lead.date_creation, lead.first_contacted_at, company))
+            naissance, lead.first_contacted_at, company))
         minutes_calendaires.append(horaires.minutes_calendaires_entre(
-            lead.date_creation, lead.first_contacted_at))
+            naissance, lead.first_contacted_at))
         if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
-                lead.date_creation, company):
+                naissance, company):
             nb_nuit_rappeles += 1
 
     if not nb_leads:
@@ -1639,13 +1647,16 @@ def kpi_cadences(company, *, jours=30):
         .values('lead_id').annotate(premiere=Min('created_at'))
         .values_list('lead_id', 'premiere'))
     joints = 0
-    for lead in leads.only('id', 'date_creation'):
+    # CAD119 — `date_creation_origine` chargée avec le reste : le délai se
+    # compte depuis la naissance du dossier (`Lead.date_origine`), jamais
+    # depuis l'heure d'une synchronisation.
+    for lead in leads.only('id', 'date_creation', 'date_creation_origine'):
         premiere = premieres_issues.get(lead.id)
         if premiere is None:
             continue
-        minutes = horaires.minutes_ouvrees_entre(
-            lead.date_creation, premiere, company)
-        if minutes <= _minutes_ouvrees_de_5_jours(lead.date_creation, company):
+        naissance = lead.date_origine
+        minutes = horaires.minutes_ouvrees_entre(naissance, premiere, company)
+        if minutes <= _minutes_ouvrees_de_5_jours(naissance, company):
             joints += 1
 
     touches = RelanceEtape.objects.filter(company=company,
