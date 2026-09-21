@@ -849,6 +849,18 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
     origine = horaires.prochain_creneau_appel(
         depart, lead.company, canal='whatsapp')
 
+    # CAD43 × CAD19 — l'origine d'une touche qui a LE DROIT AU SAMEDI.
+    # `origine` ci-dessus ignore le drapeau `samedi_ok` : pour un lead arrivé
+    # le samedi, elle vaut déjà le lundi, et la touche marquée `samedi_ok`
+    # repartait donc du lundi — le drapeau par touche de CAD43 ne servait
+    # plus à rien dès que le lead lui-même arrivait un samedi (exactement le
+    # cas qu'il est fait pour servir : le lead du vendredi soir / du samedi).
+    # Deux origines, pas une : celle du protocole ordinaire, et celle des
+    # touches à qui la société a explicitement ouvert le samedi. Rien n'est
+    # ouvert pour les autres — `samedi_ok` est FAUX partout par défaut.
+    origine_samedi = horaires.prochain_creneau_appel(
+        depart, lead.company, canal='whatsapp', samedi=True)
+
     # CAD19 — L'ANCRE EST UNIQUE : c'est `origine`, pour TOUTES les touches.
     # Les touches du jour même partaient déjà d'elle, mais les autres
     # partaient de `depart`, l'instant BRUT d'arrivée. Un lead arrivé samedi
@@ -895,6 +907,13 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         gabarit = cadence_temps.adapter_canal_au_numero(gabarit, lead)
         delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
+        # CAD43 × CAD19 — cette touche-là compte ses jours depuis l'origine
+        # qui lui ouvre le samedi. La cadence `reveil` garde son ancre
+        # rétrodatée (MRY30) : son créneau d'étalement ne se déplace pas.
+        samedi_ok = bool(getattr(gabarit, 'samedi_ok', False))
+        depuis = (origine_samedi if (samedi_ok and cadence != 'reveil')
+                  else ancre)
+        depuis_jour_meme = origine_samedi if samedi_ok else origine
         if getattr(gabarit, 'dimanche_ok', False):
             # MRY4/MRY8 — une touche dominicale se PLACE sur un dimanche, elle
             # ne s'y recale pas. `prochain_creneau_appel` ne sait que borner un
@@ -926,9 +945,9 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             # pas depuis l'heure brute d'arrivée du lead : les écarts du
             # protocole (3 min, 2 h 30) sont ainsi PRÉSERVÉS quelle que soit
             # l'heure d'arrivée.
-            echeance = origine + timedelta(minutes=delai_minutes)
+            echeance = depuis_jour_meme + timedelta(minutes=delai_minutes)
         else:
-            echeance = ancre + timedelta(
+            echeance = depuis + timedelta(
                 days=gabarit.delai_jours, minutes=delai_minutes)
             if heure_cible is not None:
                 locale = echeance.astimezone(horaires.CASABLANCA)
@@ -939,7 +958,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
             # CAD43 — drapeau PAR TOUCHE, faux partout par défaut.
-            samedi=bool(getattr(gabarit, 'samedi_ok', False)),
+            samedi=samedi_ok,
             canal=_canal(gabarit),
             # CAD21 — l'heure imposée du gabarit SURVIT au passage au jour
             # ouvré suivant : l'« Appel 4 » de 18 h ne ressort plus à 09 h le
