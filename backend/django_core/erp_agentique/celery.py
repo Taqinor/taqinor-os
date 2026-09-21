@@ -979,12 +979,6 @@ app.conf.beat_schedule = {
         'task': 'credit.recalculer_encours_quotidien',
         'schedule': crontab(hour=2, minute=10),
     },
-    # NTSAN31 — alerte J-7 avant expiration d'une PriseEnCharge santé (évite
-    # les actes réalisés hors couverture), quotidien, heure creuse matinale.
-    'sante-alertes-prise-en-charge-expirant': {
-        'task': 'sante.alertes_prise_en_charge_expirant',
-        'schedule': crontab(hour=7, minute=40),
-    },
     # NTMIG35 — purge quotidienne des fichiers source de migration (PII)
     # des projets clôturés depuis plus de 30 jours, 02:50.
     'migration-purger-fichiers': {
@@ -1032,24 +1026,12 @@ app.conf.beat_schedule = {
         'task': 'adminops.perimer_demandes_impersonation',
         'schedule': crontab(hour=3, minute=55),
     },
-    # NTEDU22 — matérialise les séances de la semaine à venir depuis l'emploi
-    # du temps actif. Dimanche soir (heure creuse), avant la semaine ciblée.
-    'education-generer-seances-semaine': {
-        'task': 'education.generer_seances_semaine',
-        'schedule': crontab(hour=20, minute=0, day_of_week=0),
-    },
     # NTIDE40 — digest feedback produit non-lu par thème, gated PAR SOCIÉTÉ
     # (InnovationSettings.feedback_digest_actif), quotidien (heure creuse
     # matinale, la fréquence hebdo interne ne notifie que le lundi).
     'innovation-feedback-digest': {
         'task': 'innovation.feedback_digest_run',
         'schedule': crontab(hour=8, minute=40),
-    },
-    # NTEDU40 — relance réinscription (élèves sans Inscription pour l'année
-    # suivante après la date limite paramétrable) : quotidien, heure creuse.
-    'education-relancer-reinscriptions': {
-        'task': 'education.relancer_reinscriptions',
-        'schedule': crontab(hour=7, minute=50),
     },
     # WIR5/FLOTTE16 — génère réellement les échéances d'entretien flotte
     # (avant cette entrée : ni beat ni bouton, seule la commande manage
@@ -1143,15 +1125,6 @@ app.conf.beat_schedule = {
         'task': 'ged.migrer_pieces_jointes',
         'schedule': crontab(hour=3, minute=25, day_of_week=1),
     },
-    # WIR148 (NTPRO6) — génère réellement les `EcheanceLoyer` des baux actifs :
-    # avant cette entrée, seule la commande manage `generer_echeances_loyer`
-    # fonctionnait (jamais exécutée automatiquement) — l'échéancier restait
-    # silencieusement vide sans relance manuelle. Quotidien, heure creuse ;
-    # idempotent (unique_together bail + periode_debut).
-    'immobilier-generer-echeances-loyer-quotidien': {
-        'task': 'immobilier.generer_echeances_loyer',
-        'schedule': crontab(hour=2, minute=38),
-    },
     # NTAI29 — surveillance MENSUELLE de la dérive (PSI) des features d'entrée
     # des scorers, par société. Pur/offline (stats stdlib, aucun appel LLM) et
     # no-op propre tant qu'aucun fournisseur de distribution n'est déclaré.
@@ -1209,25 +1182,6 @@ app.conf.beat_schedule = {
     'scm-ouvrir-cycle-sop-mensuel': {
         'task': 'scm.ouvrir_cycle_sop_mensuel',
         'schedule': crontab(hour=5, minute=30, day_of_month=20),
-    },
-    # NTMFG30 — recalcul MRP nocturne (NTMFG5) + notification des ruptures
-    # prévisionnelles sur l'horizon `ParametresMRP.horizon_mrp_jours`
-    # (NTMFG29) — apps/mrp/tasks.py. Best-effort par société.
-    'mrp-recalculer-besoins-nocturne': {
-        'task': 'mrp.recalculer_besoins_nocturne',
-        'schedule': crontab(hour=1, minute=30),
-    },
-    # NTMFG31 — archive (soft-delete) les OF prototype clôturés dépassant
-    # `ParametresMRP.retention_prototype_jours` (NTMFG29) — apps/mrp/tasks.py.
-    'mrp-archiver-of-prototype-anciens': {
-        'task': 'mrp.archiver_of_prototype_anciens',
-        'schedule': crontab(hour=2, minute=15),
-    },
-    # NTMFG32 — rappel proactif J-7 avant échéance d'entretien de poste
-    # (NTMFG14) — apps/mrp/tasks.py.
-    'mrp-rappeler-entretiens-poste-j7': {
-        'task': 'mrp.rappeler_entretiens_poste_j7',
-        'schedule': crontab(hour=6, minute=45),
     },
     # NTSCM35 — recalcule PolitiqueStock (NTSCM6) de chaque société avec
     # ParametresSCM configuré, tous les lundis — apps/scm/tasks.py.

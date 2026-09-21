@@ -47,8 +47,6 @@ _APP_URLS = [
     path('documents/', include('apps.documents.urls')),
     path('audit/', include('apps.audit.urls')),
     path('monitoring/', include('apps.monitoring.urls')),
-    # NTMFG1 — Production / MRP II.
-    path('mrp/', include('apps.mrp.urls')),
     path('notifications/', include('apps.notifications.urls')),
     path('automation/', include('apps.automation.urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres) ;
@@ -85,9 +83,6 @@ _APP_URLS = [
     path('achats/', include('apps.achats.urls')),
     # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
     path('flotte/', include('apps.flotte.urls')),
-    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes,
-    # intrants, main d'œuvre saisonnière).
-    path('agriculture/', include('apps.agriculture.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
     # Group S — Messagerie interne d'équipe (« Discuss »).
@@ -134,14 +129,8 @@ _APP_URLS = [
     # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
     # groupées, prix contractuels, approbations de remise, configurateur).
     path('cpq/', include('apps.cpq.urls')),
-    # Groupe NTPRO — Vertical immobilier & facilities.
-    path('immobilier/', include('apps.immobilier.urls')),
-    # Groupe NTHOT — Vertical hôtellerie & restauration.
-    path('hospitality/', include('apps.hospitality.urls')),
     # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
     path('btp-chantier/', include('apps.btp_chantier.urls')),
-    # NTSAN1 — Santé (cabinet/clinique).
-    path('sante/', include('apps.sante.urls')),
     # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
     path('innovation/', include('apps.innovation.urls')),
     # Groupe NTCRD — Gestion du crédit client.
@@ -164,8 +153,6 @@ _APP_URLS = [
     # FONDATION qui ne doit pas importer une app satellite.
     path('auth/signup-demande/',
          SignupDemandeView.as_view(), name='auth_signup_demande'),
-    # NTEDU1 — Éducation (établissement scolaire).
-    path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
     path('transport/', include('apps.transport.urls')),
@@ -202,8 +189,6 @@ _APP_URLS = [
     # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
     # BLOCKED, voir apps/douane/apps.py).
     path('douane/', include('apps.douane.urls')),
-    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API]).
-    path('ecommerce-connect/', include('apps.ecommerce_connect.urls')),
     # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
     # de l'exécution `apps.stock` existante.
     path('scm/', include('apps.scm.urls')),
@@ -288,8 +273,6 @@ urlpatterns = [
          include('apps.installations.public_urls')),
     # XPUR22 — Portail fournisseur en lecture seule (sans login).
     path('api/django/public/stock/', include('apps.stock.public_urls')),
-    # NTEDU31/32/34 — Portail parents (établissement scolaire), sans login.
-    path('api/django/public/education/', include('apps.education.public_urls')),
     # NTPRT19 — Branding white-label de la page de login portail (sans login).
     path('api/django/public/portail/',
          include('apps.portail.public_urls')),
