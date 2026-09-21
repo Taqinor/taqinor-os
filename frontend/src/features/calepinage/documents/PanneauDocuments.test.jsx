@@ -182,3 +182,58 @@ describe('PanneauDocuments — les trois plans (CALX20)', () => {
     expect(downloadBlob.mock.calls[0][1]).toBe('plan-pose-calepinage-41.pdf')
   })
 })
+
+describe('PanneauDocuments — la note de calcul (CALX21)', () => {
+  it('sans simulation (exemple_vide) : le bouton est inactif, le motif est lisible', async () => {
+    servirInventaire('exemple_vide')
+
+    rendre()
+
+    const bouton = await screen.findByTestId('cal-doc-bouton-note_calcul_pdf')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('cal-doc-motif-note_calcul_pdf'))
+      .toHaveTextContent(sortie('exemple_vide', 'note_calcul_pdf').motif_indisponible)
+  })
+
+  it('résultat partiel refusé : la liste NOMMÉE des valeurs manquantes s’affiche sous le bouton, aucun montant', async () => {
+    servirInventaire('exemple') // note_calcul_pdf disponible ici (résultat présent)
+    calepinageApi.calepinages.telechargerSortie.mockRejectedValue({
+      response: {
+        status: 400,
+        data: new Blob([JSON.stringify({
+          'production.total.p50_kwh':
+            'Note de calcul : la grandeur « production annuelle P50 (kWh) » '
+            + '(production.total.p50_kwh) est absente du résultat du moteur.',
+        })], { type: 'application/json' }),
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-note_calcul_pdf'))
+
+    const carte = await screen.findByTestId('cal-doc-sortie-note_calcul_pdf')
+    await waitFor(() => {
+      const erreurs = carte.querySelector('[data-testid="cal-doc-erreurs"]')
+      expect(erreurs).toHaveTextContent('production.total.p50_kwh')
+      expect(erreurs).toHaveTextContent('production annuelle P50')
+      // Pièce technique : aucun montant ne doit apparaître dans ce texte.
+      expect(erreurs.textContent).not.toMatch(/\bMAD\b|€|\bDH\b/)
+    })
+  })
+
+  it('après simulation (résultat complet) : le téléchargement part', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.telechargerSortie.mockResolvedValue({
+      data: new Blob(['%PDF-1.4']),
+      headers: { 'content-disposition': 'attachment; filename="note-calcul-41.pdf"' },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre()
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-note_calcul_pdf'))
+
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(downloadBlob.mock.calls[0][1]).toBe('note-calcul-41.pdf')
+  })
+})

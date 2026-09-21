@@ -52,6 +52,13 @@ const CODES_GERES = [
   'plan_pose_pdf', // CALX20
   'plan_toiture_pdf', // CALX20
   'plan_masse_pdf', // CALX20 — inactif sans parcelle, motif du serveur nommant le champ.
+  // CALX21 — note de calcul. Aucune logique propre : le RÉGIME D'ERREUR
+  // générique (`ErreursSortie`, posé par CALX19) affiche déjà la grandeur
+  // manquante que `NoteRefusee` NOMME quand un résultat partiel refuse le
+  // rendu — c'est exactement « la liste NOMMÉE des valeurs indispensables
+  // absentes » que la tâche demande, sans code supplémentaire ici. Aucun
+  // montant n'entre dans ce panneau (la note est une pièce technique).
+  'note_calcul_pdf',
 ]
 
 /** Une erreur serveur -> `[{champ, message}]`, triée pour un affichage
