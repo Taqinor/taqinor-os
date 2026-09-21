@@ -580,6 +580,55 @@ def _traces_de_derogation(conception, saisies, *, user=None):
     return traces
 
 
+def _panneaux_du_pan(document, libelle):
+    """Les centres de modules du pan NOMMÉ, ou ``()`` — lecture du document."""
+    zones = (document or {}).get('zones')
+    for rang, zone in enumerate(zones if isinstance(zones, (list, tuple))
+                                else (), start=1):
+        if not isinstance(zone, dict):
+            continue
+        nom = str(zone.get('label') or zone.get('id') or 'PAN-%d' % rang)
+        if nom != libelle:
+            continue
+        geometrie = zone.get('geometry')
+        if isinstance(geometrie, dict):
+            return geometrie.get('panels') or ()
+    return ()
+
+
+def _valider_cheminement(calepinage, cheminement, layout=None):
+    """CALX218 — un motif de parcours fautif est refusé À LA SAISIE.
+
+    Sans ce contrôle, un motif mal saisi ne se découvrait qu'au calcul, sous
+    la forme d'une omission de longueur : l'utilisateur voyait « pas de
+    section » sans savoir que SA saisie était en cause. Le refus NOMME le pan
+    et le champ (règle fondateur 08/09/2026).
+
+    La course est RÉELLEMENT calculée sur le plan enregistré : c'est le même
+    appel que fera ``longueur_dc``, donc la saisie acceptée est une saisie qui
+    produira une longueur.
+    """
+    from .cables import MotifDeParcoursInvalide, course_de_chaine
+
+    pans = (cheminement or {}).get('pans')
+    if not isinstance(pans, dict):
+        return
+    document = layout if layout is not None else getattr(
+        calepinage, 'roof_layout', None)
+    for libelle, saisie in pans.items():
+        if not isinstance(saisie, dict) or not saisie.get('motif_parcours'):
+            continue
+        try:
+            course_de_chaine(
+                None, _panneaux_du_pan(document, str(libelle)),
+                saisie.get('motif_parcours'),
+                point_collecte=saisie.get('point_collecte'))
+        except MotifDeParcoursInvalide as refus:
+            raise EntreeInvalide(
+                "Pan « %s » : %s" % (libelle, refus),
+                champ='cheminement.pans.%s.motif_parcours' % libelle)
+
+
 def enregistrer_entree(calepinage, donnees, *, user=None):
     """Pose l'entrée électrique sur le calepinage (mise à jour PARTIELLE).
 
@@ -607,6 +656,9 @@ def enregistrer_entree(calepinage, donnees, *, user=None):
             "Champ d'entrée électrique inconnu : "
             f"« {', '.join(inconnus)} ». Champs admis : "
             f"{', '.join(CHAMPS_ENTREE)}.", champ=inconnus[0])
+
+    if 'cheminement' in donnees:
+        _valider_cheminement(calepinage, donnees.get('cheminement'))
 
     saisies = donnees.get(CLE_DEROGATIONS)
     reglages = {cle: valeur for cle, valeur in donnees.items()
