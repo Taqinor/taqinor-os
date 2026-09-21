@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
@@ -241,6 +241,66 @@ function ResultatPack({ resultat }) {
   )
 }
 
+/** CALX28 — l'export/import du document de conception. INDÉPENDANT de
+    l'inventaire des sorties (`export-layout/`/`import-layout/` n'y figurent
+    pas) : deux boutons toujours visibles, jamais gouvernés par `disponible`.
+    Un déclencheur `<input type="file">` masqué + `ref.click()` — le patron
+    déjà en usage ailleurs dans le dépôt (`EntitesPage.jsx`), jamais un second
+    widget d'upload inventé ici. */
+function SectionConception({
+  enCours, erreurs, confirmation, onExporter, onImporter,
+}) {
+  const entreeFichier = useRef(null)
+  return (
+    <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-conception">
+      <p className="text-sm font-medium text-foreground">Document de conception</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant="outline"
+          loading={enCours === 'export'}
+          onClick={onExporter}
+          data-testid="cal-doc-bouton-export-layout"
+        >
+          Exporter la conception (JSON)
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          loading={enCours === 'import'}
+          onClick={() => entreeFichier.current?.click()}
+          data-testid="cal-doc-bouton-import-layout"
+        >
+          Importer une conception
+        </Button>
+        <input
+          ref={entreeFichier}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          aria-label="Importer un document de conception (JSON)"
+          data-testid="cal-doc-fichier-import-layout"
+          onChange={(evenement) => {
+            const fichier = evenement.target.files?.[0]
+            evenement.target.value = '' // même fichier ré-importable deux fois de suite
+            if (fichier) onImporter(fichier)
+          }}
+        />
+      </div>
+      {confirmation && (
+        <p
+          role="status"
+          className="mt-2 text-xs text-foreground"
+          data-testid="cal-doc-conception-confirmation"
+        >
+          {confirmation}
+        </p>
+      )}
+      <ErreursSortie erreurs={erreurs} />
+    </div>
+  )
+}
+
 export default function PanneauDocuments({ calepinageId }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
@@ -257,6 +317,12 @@ export default function PanneauDocuments({ calepinageId }) {
   const [feuilleCsv, setFeuilleCsv] = useState(FEUILLES_CSV[0])
   // CALX24 — le dernier résultat de composition du pack technique (ou `null`).
   const [resultatPack, setResultatPack] = useState(null)
+  // CALX28 — export/import du document de conception : 'export' | 'import' |
+  // null, sa liste d'erreurs (`{champ,message}`, `champ` = chemin JSON du
+  // premier défaut) et une confirmation de succès.
+  const [enCoursConception, setEnCoursConception] = useState(null)
+  const [erreurConception, setErreurConception] = useState(null)
+  const [confirmationConception, setConfirmationConception] = useState(null)
 
   const parCode = useMemo(() => {
     const carte = new Map()
@@ -297,6 +363,59 @@ export default function PanneauDocuments({ calepinageId }) {
       setErreurs((precedent) => ({ ...precedent, pack_technique: details }))
     } finally {
       setEnCours(null)
+    }
+  }
+
+  // CALX28 — exporte `roof_layout` TEL QUEL, en fichier JSON téléchargé (le
+  // MÊME helper `downloadBlob` que tous les autres boutons de ce panneau :
+  // jamais un second `URL.createObjectURL`).
+  async function exporterConception() {
+    setErreurConception(null)
+    setConfirmationConception(null)
+    setEnCoursConception('export')
+    try {
+      const reponse = await calepinageApi.calepinages.exporterConception(id)
+      const contenu = JSON.stringify(reponse.data, null, 2)
+      downloadBlob(
+        new Blob([contenu], { type: 'application/json' }),
+        `conception-calepinage-${id}.json`,
+      )
+    } catch (erreur) {
+      setErreurConception(await erreurDeTelechargement(erreur))
+    } finally {
+      setEnCoursConception(null)
+    }
+  }
+
+  // CALX28 — importe un document choisi par l'utilisateur. VALIDATION
+  // STRICTE côté SERVEUR (jamais rejouée ici) : un document hors schéma
+  // refuse en NOMMANT le CHEMIN JSON du premier défaut (`champ` —
+  // `services/io_layout.py::valider_document`, `erreur.absolute_path`),
+  // affiché ligne par ligne par `ErreursSortie`. Un JSON illisible (avant
+  // même d'atteindre le serveur) l'est tout autant, sous le même régime.
+  // AUCUN ÉTAT DE CE PANNEAU N'EST ÉCRASÉ tant que le serveur n'a pas
+  // confirmé : sur refus, ni `confirmationConception` ni la sélection de
+  // sortie précédente ne bougent.
+  async function importerConception(fichier) {
+    setErreurConception(null)
+    setConfirmationConception(null)
+    setEnCoursConception('import')
+    try {
+      let document
+      try {
+        document = JSON.parse(await fichier.text())
+      } catch {
+        setErreurConception([{ champ: '<racine>', message: 'Le fichier n’est pas un JSON valide.' }])
+        return
+      }
+      const reponse = await calepinageApi.calepinages.importerConception(id, document)
+      setConfirmationConception(reponse.data.inchange
+        ? 'Conception importée — identique à celle déjà enregistrée (empreinte inchangée).'
+        : 'Conception importée et enregistrée.')
+    } catch (erreur) {
+      setErreurConception(await erreurDeTelechargement(erreur))
+    } finally {
+      setEnCoursConception(null)
     }
   }
 
@@ -357,6 +476,15 @@ export default function PanneauDocuments({ calepinageId }) {
           />
         )
       })}
+      {/* CALX28 — HORS inventaire (aucune sortie ne le déclare) : toujours
+          visible, jamais gouverné par `disponible`. */}
+      <SectionConception
+        enCours={enCoursConception}
+        erreurs={erreurConception}
+        confirmation={confirmationConception}
+        onExporter={exporterConception}
+        onImporter={importerConception}
+      />
     </Card>
   )
 }

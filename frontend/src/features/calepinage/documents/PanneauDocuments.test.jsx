@@ -22,6 +22,8 @@ vi.mock('../../../api/calepinageApi', () => ({
       sorties: vi.fn(),
       telechargerSortie: vi.fn(),
       composerPackTechnique: vi.fn(),
+      exporterConception: vi.fn(),
+      importerConception: vi.fn(),
     },
   },
 }))
@@ -410,5 +412,89 @@ describe('PanneauDocuments — composer le pack technique (CALX24)', () => {
         .toHaveTextContent('amputé en silence')
     })
     expect(screen.queryByTestId('cal-doc-pack-resultat')).toBeNull()
+  })
+})
+
+describe('PanneauDocuments — export/import du document de conception (CALX28)', () => {
+  it('les deux boutons sont toujours visibles, HORS de l’inventaire (`disponible` ne les gouverne pas)', async () => {
+    servirInventaire('exemple_vide') // tout le reste est indisponible ici
+
+    rendre()
+
+    expect(await screen.findByTestId('cal-doc-bouton-export-layout')).toBeEnabled()
+    expect(screen.getByTestId('cal-doc-bouton-import-layout')).toBeEnabled()
+  })
+
+  it('exporter télécharge le document TEL QUEL en JSON', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.exporterConception.mockResolvedValue({
+      data: { roof_layout: { version: 2, zones: [] }, layout_hash: 'abc123', schema_version: 2 },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre(41)
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-export-layout'))
+
+    await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
+    expect(calepinageApi.calepinages.exporterConception).toHaveBeenCalledWith(41)
+    expect(downloadBlob.mock.calls[0][1]).toBe('conception-calepinage-41.json')
+    const contenu = JSON.parse(await downloadBlob.mock.calls[0][0].text())
+    expect(contenu.layout_hash).toBe('abc123')
+  })
+
+  it('importer un document valide confirme l’enregistrement', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.importerConception.mockResolvedValue({
+      data: { calepinage: 41, layout_hash: 'nouveau-hash', inchange: false },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre(41)
+    const document = { version: 2, zones: [] }
+    const fichier = new File([JSON.stringify(document)], 'conception.json', { type: 'application/json' })
+    await utilisateur.upload(await screen.findByTestId('cal-doc-fichier-import-layout'), fichier)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-conception-confirmation'))
+        .toHaveTextContent('Conception importée et enregistrée.')
+    })
+    expect(calepinageApi.calepinages.importerConception).toHaveBeenCalledWith(41, document)
+  })
+
+  it('un document invalide affiche le CHEMIN JSON du premier défaut et n’écrase rien', async () => {
+    servirInventaire('exemple')
+    calepinageApi.calepinages.importerConception.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { 'zones.0.vertices': 'Document refusé au champ « zones.0.vertices » : trop peu de sommets.' },
+      },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendre(41)
+    const fichier = new File([JSON.stringify({ version: 2, zones: [{}] })], 'conception.json',
+      { type: 'application/json' })
+    await utilisateur.upload(await screen.findByTestId('cal-doc-fichier-import-layout'), fichier)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-conception')).toHaveTextContent('zones.0.vertices')
+    })
+    // Rien n'est écrasé : aucune confirmation, aucun téléchargement déclenché.
+    expect(screen.queryByTestId('cal-doc-conception-confirmation')).toBeNull()
+    expect(downloadBlob).not.toHaveBeenCalled()
+  })
+
+  it('un JSON illisible est refusé AVANT tout appel serveur, même régime d’erreur', async () => {
+    servirInventaire('exemple')
+    const utilisateur = userEvent.setup()
+
+    rendre(41)
+    const fichier = new File(['{ceci n\'est pas du JSON'], 'conception.json', { type: 'application/json' })
+    await utilisateur.upload(await screen.findByTestId('cal-doc-fichier-import-layout'), fichier)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-conception')).toHaveTextContent('JSON valide')
+    })
+    expect(calepinageApi.calepinages.importerConception).not.toHaveBeenCalled()
   })
 })

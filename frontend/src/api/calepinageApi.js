@@ -188,6 +188,16 @@ const calepinageApi = {
     // `{document, nom, pieces, pages_attendues, signalements}`. Aucun import
     // `apps.ged` ici — l'écran ne parle qu'à CETTE action.
     composerPackTechnique: (id) => api.post(`${pivot(id)}pack-technique/`),
+
+    // CALX28 — export/import du DOCUMENT de conception (`roof_layout`,
+    // schéma v2 — `views/io_layout.py`, CAL216). `exporterConception` rend
+    // `{roof_layout, layout_hash, schema_version}` TEL QUEL ; `importerConception`
+    // VALIDE STRICTEMENT côté serveur avant écriture, et refuse en NOMMANT le
+    // CHEMIN JSON du premier champ fautif (`champ`) — jamais une validation
+    // recalculée ici. Distinct de `layout()`/`enregistrerLayoutCalepinage`
+    // (CAL18, l'ATELIER) : ce sont les portes ÉCHANGE / round-trip fichier.
+    exporterConception: (id) => api.get(`${pivot(id)}export-layout/`),
+    importerConception: (id, document) => api.post(`${pivot(id)}import-layout/`, document),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
