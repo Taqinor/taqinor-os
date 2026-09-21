@@ -616,6 +616,42 @@ def _est_un_nombre(valeur):
     return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
 
 
+#: CALX172 — la colonne de la série persistée qui porte la puissance DC
+#: horaire (``contract_samples/calepinage_serie_horaire.json``, CALX142).
+COLONNE_SERIE_DC = 'p_dc_kw'
+
+
+def _serie_dc_persistee(calepinage, empreinte):
+    """La série horaire de puissance DC déjà calculée, ou ``None``.
+
+    CALX172 — ``ecretage_depuis_serie`` existe depuis CAL127 et n'a JAMAIS
+    reçu de série : son unique appelant était invoqué sans ``serie_dc_kw``,
+    si bien que ``ecretage_pct`` valait toujours ``null``. La série existe
+    pourtant : la chaîne de pertes la dépose dans
+    ``Calepinage.resultat['serie_horaire']`` (CALX193).
+
+    Elle n'est servie que si elle décrit ENCORE ce toit — même contrôle de
+    fraîcheur que les blocs de simulation (CALX70) : une puissance calculée
+    sur un autre document ne doit pas chiffrer l'écrêtage de celui-ci.
+    ``None`` quand rien n'a été simulé, quand l'empreinte a bougé, ou quand
+    la colonne DC n'a pas été produite — jamais une série approchée.
+    """
+    stocke = getattr(calepinage, 'resultat', None)
+    stocke = stocke if isinstance(stocke, dict) else {}
+    simulation = stocke.get(CLE_SIMULATION)
+    simulation = simulation if isinstance(simulation, dict) else {}
+    if (simulation.get('hash_entree') or '') != empreinte:
+        return None
+    serie = stocke.get('serie_horaire')
+    if not isinstance(serie, dict):
+        return None
+    valeurs = [point.get(COLONNE_SERIE_DC)
+               for point in serie.get('points') or []
+               if isinstance(point, dict)]
+    valeurs = [valeur for valeur in valeurs if _est_un_nombre(valeur)]
+    return valeurs or None
+
+
 def _simulation_servie(calepinage, empreinte, *, defauts=None):
     """CALX70 — les blocs de simulation à publier, et leur état de fraîcheur.
 
@@ -731,11 +767,22 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
                                              nom_optimiseur)
     if optimiseurs is not None:
         electrique[CLE_OPTIMISEURS] = optimiseurs
+    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
+    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
+    empreinte = empreinte_entree(
+        document, module_specs=materiel['module'],
+        onduleur_specs=materiel['onduleur'],
+        temperatures=conception.temperatures,
+        options=_options_entree(donnees))
     pose = bloc_pose(conception)
     ratio, messages_ratio = bloc_ratio_dc_ac(
         conception,
         exigence_marche=donnees.get('exigence_marche'),
-        parametres_societe=_parametres_electriques(calepinage))
+        parametres_societe=_parametres_electriques(calepinage),
+        # CALX172 — la série DC de la simulation PERSISTÉE, quand elle décrit
+        # encore CE toit : c'est le seul chemin par lequel
+        # ``ecretage_depuis_serie`` reçoit enfin une série.
+        serie_dc_kw=_serie_dc_persistee(calepinage, empreinte))
 
     # CAL130/CAL131 — la norme applicable commande ce qui peut être publié :
     # sans elle, sections et chutes de tension sont OMISES (règle D5).
@@ -797,13 +844,6 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
     if conception.temperatures is not None and conception.temperatures.mention:
         messages.append(conception.temperatures.mention)
 
-    # CALX70 — l'empreinte du document AUJOURD'HUI : c'est elle qui dit si la
-    # simulation déposée dans ``Calepinage.resultat`` décrit encore CE toit.
-    empreinte = empreinte_entree(
-        document, module_specs=materiel['module'],
-        onduleur_specs=materiel['onduleur'],
-        temperatures=conception.temperatures,
-        options=_options_entree(donnees))
     blocs, perimee, motif, calcule_le = _simulation_servie(
         calepinage, empreinte, defauts={
             # Le squelette servi tant qu'aucune simulation n'a tourné : la
@@ -1869,6 +1909,23 @@ SOURCE_BORNE_MARCHE = 'exigence de marché'
 SOURCE_BORNE_SOCIETE = 'paramètre société'
 SOURCE_BORNE_NOYAU = 'borne usuelle du noyau électrique'
 
+# ── CALX172 — LES DEUX PHRASES DE L'ÉCRÊTAGE, ET ELLES SONT UNIQUES ──────
+#
+# ``ecretage_methode`` ne prend que deux valeurs, et le dépôt n'en connaît
+# pas d'autres : « calculée heure par heure » quand la série a été fournie,
+# le motif de refus sinon. Elles étaient écrites EN LITTÉRAL dans
+# ``bloc_ratio_dc_ac`` ; CALX172 leur donne un nom pour que l'étape de la
+# chaîne de pertes (``services/etapes/ecretage.py``) publie le MÊME refus
+# tel quel au lieu d'en écrire un second pour la même absence de calcul.
+# Les textes sont inchangés, octet pour octet.
+
+METHODE_ECRETAGE_SERIE = (
+    'calculée heure par heure sur la série de puissance DC')
+
+MOTIF_ECRETAGE_SANS_SERIE = (
+    "non calculée : la perte d'écrêtage exige la série horaire (CAL135) — "
+    "aucun forfait n'est appliqué à sa place")
+
 
 def bornes_ratio(*, exigence_marche=None, parametres_societe=None):
     """``(borne_dc_ac, seuil_alerte, source, detail)`` — jamais une borne écrite ici.
@@ -1973,11 +2030,8 @@ def bloc_ratio_dc_ac(conception, *, exigence_marche=None,
             round(max(0.0, dc_kwc - puissance_ac), 3)
             if dc_kwc and puissance_ac else None),
         'ecretage_pct': ecretage,
-        'ecretage_methode': (
-            "calculée heure par heure sur la série de puissance DC"
-            if ecretage is not None else
-            "non calculée : la perte d'écrêtage exige la série horaire "
-            "(CAL135) — aucun forfait n'est appliqué à sa place"),
+        'ecretage_methode': (METHODE_ECRETAGE_SERIE if ecretage is not None
+                             else MOTIF_ECRETAGE_SANS_SERIE),
     }, tuple(avertissements))
 
 
