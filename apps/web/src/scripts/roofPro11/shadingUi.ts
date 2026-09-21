@@ -279,6 +279,162 @@ export function moduleShadeReadingsForPanels(
   return panels.map((p) => moduleShadeReading(latitudeDeg, obstructions, p.cx, p.cy));
 }
 
+// ═══════ CALX115 — SEUIL D'ACCÈS SOLAIRE : ÉCARTER DES EMPLACEMENTS, PAS DÉRATER ═══════
+// Jusqu'ici l'ombrage n'agissait QU'APRÈS la pose : la proposition de retrait
+// (`proposeShadedRemoval`, plus bas) attend que les modules soient posés puis attend un
+// clic. Le seuil d'Aurora (`irradiance_constraints.min_sap` / `min_tsrf`) fait l'inverse :
+// un emplacement dont l'accès solaire calculé est sous le seuil n'est PAS un emplacement,
+// il sort du posable AVANT que le pavage ne le retienne. Le seuil est SAISI
+// (`optimisation.seuilAccesSolaire`, contrat CALX88) : rien n'est proposé par défaut.
+//
+// DEUX RÈGLES TIENNENT CE BLOC :
+//  1. Aucun seuil saisi (ou seuil à 0) ⇒ AUCUN emplacement écarté : la pose est celle
+//     d'aujourd'hui, à l'emplacement près, et la phrase le dit.
+//  2. Un seuil ne s'applique JAMAIS sans mesure. Sans obstruction retenue, la carte
+//     d'accès solaire vaut 1 partout (`heatmapAccessValues`) — c'est l'ABSENCE de mesure,
+//     pas du plein soleil : le seuil est alors REFUSÉ en nommant `optimisation.seuilAccesSolaire`
+//     et la raison, jamais appliqué à des valeurs qui n'ont rien mesuré (D-CALX 7).
+
+/** Le champ du contrat v2 que les refus de seuil NOMMENT (CALX88). */
+const CHAMP_SEUIL = 'optimisation.seuilAccesSolaire';
+
+/** CALX115 — ce que le seuil a RÉELLEMENT fait au posable, et pourquoi. */
+export interface FiltrageAccesSolaire {
+  /** Rangs (dans `panels`) des emplacements RETENUS pour le pavage. */
+  retenus: number[];
+  /** Rangs ÉCARTÉS : leur accès solaire CALCULÉ est sous le seuil. */
+  ecartes: number[];
+  /** Le seuil réellement appliqué (0–1), ou `null` quand aucun ne l'a été. */
+  seuilApplique: number | null;
+  /** Vrai quand un seuil SAISI a dû être écarté (hors contrat, ou sans mesure). */
+  refuse: boolean;
+  /** Le champ du contrat nommé par le refus, ou `null`. */
+  champ: string | null;
+  /** Phrase FR à publier : elle dit COMBIEN d'emplacements sont écartés, ou pourquoi
+   *  aucun ne l'est — jamais un silence. */
+  motif: string;
+}
+
+/** Part d'accès solaire en français (« 70 % »), sans chiffre inventé : c'est la valeur
+ *  saisie ou calculée, seulement mise en forme. */
+function pctAcces(v: number): string {
+  return `${(v * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+}
+
+/** Tous les emplacements retenus, aucun écarté — la pose d'aujourd'hui. */
+function toutRetenu(nombre: number, motif: string, refuse = false, champ: string | null = null): FiltrageAccesSolaire {
+  return {
+    retenus: Array.from({ length: Math.max(0, nombre) }, (_, i) => i),
+    ecartes: [],
+    seuilApplique: null,
+    refuse,
+    champ,
+    motif,
+  };
+}
+
+/**
+ * CALX115 — quels emplacements restent POSABLES sous le seuil d'accès solaire SAISI ? PURE.
+ *
+ * `seuilSaisi` arrive du document (`optimisation.seuilAccesSolaire`, CALX88) : c'est un
+ * `unknown`, jamais un nombre du code. `mesureDisponible` dit si une source d'ombrage a
+ * seulement été saisie (l'équivalent de `hasShadeSources()`), et `obstructions` ce qu'il
+ * en RESTE une fois ramené au plan du champ : les deux doivent tenir, sinon rien n'est
+ * mesuré et le seuil est refusé en le disant.
+ *
+ * L'accès solaire est lu en ANNUEL (`heatmapAccessValues`, mois `null`) — la même intégrale
+ * horaire dératée que la carte d'accès solaire WJ21/CAL95, aucun modèle nouveau.
+ */
+export function filtrerEmplacementsSousSeuil(
+  seuilSaisi: unknown,
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  panels: readonly HeatmapPoint[],
+  mesureDisponible: boolean,
+): FiltrageAccesSolaire {
+  const total = panels.length;
+  if (seuilSaisi == null || seuilSaisi === '') {
+    return toutRetenu(
+      total,
+      `Aucun seuil d’accès solaire saisi (« ${CHAMP_SEUIL} » absente) : aucun emplacement n’est écarté, la pose est celle d’aujourd’hui.`,
+    );
+  }
+  if (typeof seuilSaisi !== 'number' || !Number.isFinite(seuilSaisi) || seuilSaisi < 0 || seuilSaisi > 1) {
+    return toutRetenu(
+      total,
+      `« ${CHAMP_SEUIL} » : « ${String(seuilSaisi)} » n’est pas une part d’accès solaire entre 0 et 1 — ` +
+        `le seuil est écarté et aucun emplacement n’est retiré du posable.`,
+      true,
+      CHAMP_SEUIL,
+    );
+  }
+  if (seuilSaisi === 0) {
+    // Seuil à 0 : aucun accès solaire ne peut lui être inférieur. On le dit plutôt que de
+    // lancer un calcul dont le résultat est connu — et la pose reste celle d'aujourd'hui.
+    return {
+      ...toutRetenu(total, `Seuil d’accès solaire à ${pctAcces(0)} : aucun emplacement n’est sous le seuil, la pose est celle d’aujourd’hui.`),
+      seuilApplique: 0,
+    };
+  }
+  if (!mesureDisponible) {
+    return toutRetenu(
+      total,
+      `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} écarté : aucune obstruction, aucun obstacle et aucun objet ` +
+        `d’environnement à hauteur saisie sur ce toit — aucun accès solaire n’y est calculé, et une mesure absente ` +
+        `ne vaut pas du plein soleil. Aucun emplacement n’est écarté.`,
+      true,
+      CHAMP_SEUIL,
+    );
+  }
+  if (!obstructions.length) {
+    return toutRetenu(
+      total,
+      `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} écarté : aucune des sources d’ombrage saisies ne dépasse le ` +
+        `plan du champ, donc aucun accès solaire n’est calculé ici — une mesure absente ne vaut pas du plein soleil. ` +
+        `Aucun emplacement n’est écarté.`,
+      true,
+      CHAMP_SEUIL,
+    );
+  }
+  if (!total) {
+    return {
+      ...toutRetenu(0, `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} : aucun emplacement à évaluer sur ce pan.`),
+      seuilApplique: seuilSaisi,
+    };
+  }
+  const acces = heatmapAccessValues(latitudeDeg, obstructions, prod, panels, null);
+  const retenus: number[] = [];
+  const ecartes: number[] = [];
+  acces.forEach((a, i) => (a < seuilSaisi ? ecartes : retenus).push(i));
+  return {
+    retenus,
+    ecartes,
+    seuilApplique: seuilSaisi,
+    refuse: false,
+    champ: null,
+    motif: ecartes.length
+      ? `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} : ${ecartes.length} emplacement(s) sur ${total} écarté(s) ` +
+        `du posable avant le pavage (accès solaire calculé sous le seuil).`
+      : `Seuil d’accès solaire de ${pctAcces(seuilSaisi)} : aucun des ${total} emplacements n’est sous le seuil — ` +
+        `la pose est celle d’aujourd’hui.`,
+  };
+}
+
+/**
+ * CALX115 — hauteur de bâtiment EFFECTIVE (m) du pan, pour l'ombrage. Exportée pour que
+ * l'optimiseur lise EXACTEMENT la même hauteur que l'atelier (`roofHeightM` ci-dessous
+ * l'appelle) : une seule règle de hauteur, jamais deux qui dérivent. Hauteur SAISIE du
+ * bâtiment du document (CALX100) si elle existe, sinon l'hypothèse affichée (CAL60).
+ */
+export function hauteurToitPourOmbrageM(
+  batiments: readonly Batiment[] | null | undefined,
+  buildingId: string | null | undefined,
+): number {
+  const lu = hauteurExtrusion(batimentPourId(batiments, idBatimentDuPan(buildingId)));
+  return effectiveBuildingHeightM(lu.origine === 'saisie' ? lu.hauteurM : null);
+}
+
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
@@ -298,12 +454,9 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const heightNoteEl = $('rp9-shade-height-note');
   const buildingKey = (): string => idBatimentDuPan(ctx.activeArea()?.buildingId);
   const batimentActif = (): Batiment | null => batimentPourId(ctx.batiments, buildingKey());
-  const activeHeightOverride = (): number | null => {
-    const lu = hauteurExtrusion(batimentActif());
-    return lu.origine === 'saisie' ? lu.hauteurM : null;
-  };
-  /** Hauteur EFFECTIVE (m) de la zone active — saisie si présente, sinon l'hypothèse. */
-  const roofHeightM = (): number => effectiveBuildingHeightM(activeHeightOverride());
+  /** Hauteur EFFECTIVE (m) de la zone active — saisie si présente, sinon l'hypothèse.
+   *  CALX115 — une SEULE règle de hauteur, partagée avec l'optimiseur. */
+  const roofHeightM = (): number => hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
   function syncHeightUi() {
     const bat = batimentActif();
     const lu = hauteurExtrusion(bat);

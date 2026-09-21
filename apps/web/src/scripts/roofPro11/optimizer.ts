@@ -42,6 +42,7 @@ import {
   type ConfigFamily,
 } from '../../lib/estimatorBrainV2';
 import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M, uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
+import { supplementsParArete } from '../../lib/roofSetbackEdge'; // CALX95 câblage
 import {
   recommendPitched,
   type FlushPack,
@@ -62,6 +63,7 @@ import {
   type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
 import {
+  anneauPosableParArete, // CALX95 câblage
   solveLive,
   type AxisLocks,
   type LayoutAxis,
@@ -76,6 +78,13 @@ import {
 } from '../../lib/estimatorBrainV8';
 import { defaultEastWestGeometry, type EastWestGeometry } from '../../lib/estimatorBrainV2';
 import { pointInPolygon, type LngLat } from '../../lib/roof';
+import { fallbackPerKwc } from '../../lib/productionEngine';
+import {
+  filtrerEmplacementsSousSeuil,
+  hauteurToitPourOmbrageM,
+  unifiedShadeEntries,
+  type FiltrageAccesSolaire,
+} from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts } from './types';
 import { type Ctx } from './context';
@@ -312,6 +321,88 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   const setbacksForMargin = (margin: 'keep' | 'remove'): PerimeterSetbacks | undefined =>
     margin === 'keep' ? keepSetbacks() : uniformSetbacks(0);
 
+  /** CALX95 câblage — supplément de retrait PROPRE à chaque arête du pan actif, tel que le
+   *  DOCUMENT le porte (`zones[].edges[].retraitM`, CALX81). Le retrait de CATÉGORIE passé
+   *  ici est celui déjà appliqué au pourtour (retrait latéral saisi, sinon le retrait unique
+   *  historique) : `supplementsParArete` ne retient que ce qu'une arête AJOUTE. Aucune arête
+   *  saisie ⇒ table VIDE ⇒ anneau posable = contour tracé, pavage d'aujourd'hui. */
+  const retraitsParArete = (): Record<number, number> =>
+    supplementsParArete(ctx.activeArea()?.edges, keepSetbacks()?.lateralM ?? PERIMETER_SETBACK_M);
+
+  /* ═════════ CALX115 — LE SEUIL D'ACCÈS SOLAIRE RETIRE DES EMPLACEMENTS DU POSABLE ═════════
+     `optimisation.seuilAccesSolaire` (contrat CALX88) voyage par le DOCUMENT et arrive ici
+     par le MÊME dépôt que la cible CALX114 (`poserChoixOptimisation`). Le pavage rend des
+     CELLULES candidates ; celles dont l'accès solaire calculé est sous le seuil n'en sont
+     pas : elles sortent du posable AVANT que la pose ne les retienne, et le nombre écarté
+     est PUBLIÉ (jamais un compte qui baisse en silence).
+     Sans seuil saisi — le défaut — rien n'est calculé du tout : `poseSousSeuil` rend le
+     plafond de `placedFor` et aucun jeu de cellules, donc la pose et la 3D sont celles
+     d'aujourd'hui, à l'emplacement près. */
+
+  /** CALX115 — les emplacements d'un pavage jugés contre le seuil SAISI, ou `null` quand
+   *  le document n'en porte aucun (cas par défaut : aucun calcul n'est lancé). */
+  function filtrageSeuil(panels: readonly PackedPanel[]): FiltrageAccesSolaire | null {
+    const seuil = choixOptimisationCourant()?.seuilAccesSolaire;
+    if (seuil == null || seuil === '') return null;
+    const hauteurM = hauteurToitPourOmbrageM(ctx.batiments, ctx.activeArea()?.buildingId);
+    const obstructions = unifiedShadeEntries(
+      ctx.shadeObstructions,
+      ctx.obstacles,
+      ctx.environment,
+      ctx.centroid,
+      hauteurM,
+    );
+    // Même définition de « une source a été saisie » que l'atelier (`hasShadeSources`) :
+    // sans source, l'accès solaire n'est pas mesuré et le seuil sera REFUSÉ, nommé.
+    const source =
+      ctx.shadeObstructions.length > 0 ||
+      ctx.obstacles.some((o) => typeof o.heightM === 'number' && o.heightM > 0) ||
+      (ctx.environment ?? []).some((o) => typeof o.heightM === 'number' && o.heightM > 0);
+    return filtrerEmplacementsSousSeuil(
+      seuil,
+      ctx.centroidLat,
+      obstructions,
+      ctx.prodPerKwc ?? fallbackPerKwc(),
+      panels,
+      source,
+    );
+  }
+
+  /** Dernière phrase de seuil annoncée — pour publier CHAQUE état une fois et ne pas
+   *  répéter la même à chaque re-rendu. */
+  let dernierMotifSeuil: string | null = null;
+
+  /**
+   * CALX115 — pose EFFECTIVE d'un pavage sous le seuil d'accès solaire SAISI :
+   *  - `placed` = le plafond habituel (`placedFor`) diminué des emplacements écartés ;
+   *  - `occupied` = les cellules à dessiner (absent = les `placed` premières, comme avant).
+   * Aucun seuil saisi, seuil refusé, ou aucun emplacement sous le seuil ⇒ valeurs
+   * STRICTEMENT identiques à aujourd'hui (`placedFor`, aucun jeu de cellules).
+   */
+  function poseSousSeuil(grid: PanelGrid): { placed: number; occupied?: Set<number> } {
+    const plafond = placedFor(grid);
+    const f = filtrageSeuil(grid.panels);
+    if (!f) return { placed: plafond };
+    if (f.refuse || f.ecartes.length) {
+      if (f.motif !== dernierMotifSeuil) {
+        dernierMotifSeuil = f.motif;
+        setStatus(f.motif);
+      }
+    }
+    if (!f.ecartes.length) return { placed: plafond };
+    // La CAPACITÉ du pan baisse d'autant : le seuil retire des emplacements, il n'en
+    // fabrique aucun ailleurs. Le plafond « besoin » s'applique ensuite à cette capacité
+    // réduite, par la MÊME règle que partout (`placedFor`, qui ne lit que `count`).
+    const capacite = Math.max(0, grid.panels.length - f.ecartes.length);
+    const placed = placedFor({ ...grid, count: capacite });
+    const ecartes = new Set(f.ecartes);
+    const occupied = new Set<number>();
+    for (let i = 0; i < grid.panels.length && occupied.size < placed; i++) {
+      if (!ecartes.has(i)) occupied.add(i);
+    }
+    return { placed: occupied.size, occupied };
+  }
+
   // — DOM propre à l'optimiseur (mêmes nœuds que l'entrée ; getElementById idempotent) —
   const needInputEl = $<HTMLInputElement>('rp9-need-input');
   const needMinusEl = $<HTMLButtonElement>('rp9-need-minus');
@@ -426,7 +517,9 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
    *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
   function renderConfig(o: RenderConfigOpts) {
-    const placed = placedFor(o.grid);
+    // CALX115 — la pose suit le seuil d'accès solaire SAISI ; sans seuil, `placed` vaut
+    // exactement `placedFor(o.grid)` et `occupied` est absent (rendu d'aujourd'hui).
+    const { placed, occupied } = poseSousSeuil(o.grid);
     const kwc = o.grid.count > 0 ? (o.grid.kwc * placed) / o.grid.count : 0;
     // W1 : production à l'aspect réel (le rendement/panneau baisse honnêtement
     // quand l'array suit un toit tourné).
@@ -438,7 +531,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor() * horizonFactor();
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
-    renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);
+    renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed, false, occupied); // CALX115
     paintCard(
       {
         title: o.title,
@@ -547,7 +640,10 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   /** Rend le gagnant vivant (3D + carte + contrôles) avec SES chiffres (PVGIS/estimé). */
   function renderLiveWinner(res: LiveSolveResult, isReco: boolean) {
     const w = res.winner;
-    const ring: LngLat[] = [...ctx.vertices];
+    // CALX95 câblage — on re-pave le MÊME anneau posable que le solveur a évalué (retraits
+    // d'arête rognés) ; sinon le compte affiché parlerait d'un contour que le solveur n'a
+    // pas vu. Aucune arête saisie ⇒ c'est le contour tracé lui-même, rendu inchangé.
+    const ring: LngLat[] = anneauPosableParArete([...ctx.vertices], retraitsParArete());
     const setbackM = w.margin === 'keep' ? PERIMETER_SETBACK_M : 0;
     const pack = packConfig(ring, ctx.centroidLat, {
       family: w.family,
@@ -568,9 +664,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     // RE-PAVÉ (placedFor, même plafond besoin que partout ailleurs), kWc/kWh mis à l'échelle
     // du VRAI compte rendu (jamais un chiffre en désaccord avec la 3D affichée). Écart
     // absent/par défaut → grid.count === w.placedCount → scale = 1 → chiffres INCHANGÉS.
-    const placedCount = placedFor(grid);
+    // CALX115 — le seuil d'accès solaire SAISI retire ses emplacements du posable AVANT
+    // que la pose ne les retienne ; sans seuil, `placedCount` vaut exactement
+    // `placedFor(grid)` et `occupied` est absent — chiffres et 3D INCHANGÉS.
+    const { placed: placedCount, occupied } = poseSousSeuil(grid);
     const gapScale = w.placedCount > 0 ? placedCount / w.placedCount : placedCount > 0 ? 1 : 0;
-    renderScene(pack, grid, w.tiltDeg, w.family, placedCount);
+    renderScene(pack, grid, w.tiltDeg, w.family, placedCount, false, occupied);
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
     // « tente » E-O sur-densifiée est ramenée sous la valeur non écrêtée. On recalcule
@@ -714,6 +813,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
+      retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
       eastWestGeometry: eastWestGeometryInput(), // CAL87 — faîtage + écart inter-chevrons saisis
     });
     ctx.liveResult = res;
@@ -1068,6 +1168,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
       setbacksM: keepSetbacks(), // PV63
+      retraitsParAreteM: retraitsParArete(), // CALX95 — retrait propre à chaque arête saisie
     });
     ctx.pitchedLiveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
