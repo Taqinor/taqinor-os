@@ -47,8 +47,9 @@ vi.mock('../../../api/calepinageApi', () => ({
 }))
 
 const {
-  default: Ombriere, documentOmbriere, totauxParBatiment,
+  default: Ombriere, documentOmbriere, totauxParBatiment, coupeOmbriere,
 } = await import('../Ombriere')
+const { formatCote } = await import('../plan2d')
 
 /** La VRAIE réponse du moteur — l'exemple committé du contrat `pose.json`
  *  (PACT10/13 : un mock écrit à la main est une deuxième source de vérité,
@@ -98,8 +99,8 @@ const monter = (props = {}) => render(
   <MemoryRouter><Ombriere calepinageId={9} {...props} /></MemoryRouter>,
 )
 
-const remplir = () => {
-  for (const [cle, valeur] of Object.entries(SAISIE)) {
+const remplir = (valeurs = SAISIE) => {
+  for (const [cle, valeur] of Object.entries(valeurs)) {
     const champ = screen.queryByTestId(`cal-ombriere-${cle}`)
     if (champ) fireEvent.change(champ, { target: { value: valeur } })
   }
@@ -296,6 +297,99 @@ describe('CAL91 — l’écran pose l’ombrière et la montre dans les totaux',
       expect(screen.getByTestId('cal-ombriere-message').textContent).toMatch(/incomplets/i)
     })
     expect(pose).not.toHaveBeenCalled()
+  })
+})
+
+/* ── 5bis. CALX51 — L'OMBRIÈRE EST DESSINÉE À SA HAUTEUR LIBRE SAISIE ──── */
+
+describe('CALX51 — la coupe lit l’altitude posée, elle n’en décide aucune', () => {
+  it('pose le sol, une couverture par travée, et cote la hauteur quand il y en a une', () => {
+    const c = coupeOmbriere({
+      tables: [
+        { cx: 1.5, cy: 1.2, largeurM: 3, profondeurM: 2, z: 2.2, inclinaisonRad: 0, kit: null },
+        { cx: 5, cy: 1.2, largeurM: 3, profondeurM: 2, z: 2.2, inclinaisonRad: 0, kit: null },
+      ],
+    })
+    expect(c.tables).toHaveLength(2)
+    expect(c.altitudeM).toBe(2.2)
+    expect(c.coteHauteur.lengthM).toBe(2.2)
+    // La couverture est AU-DESSUS du sol dans le dessin (y écran plus petit).
+    expect(c.tables[0].from[1]).toBeLessThan(c.sol.from[1])
+  })
+
+  it('altitude nulle ⇒ aucune cote de hauteur, la couverture reste sur le sol', () => {
+    const c = coupeOmbriere({
+      tables: [{ cx: 1.5, cy: 1.2, largeurM: 3, profondeurM: 2, z: 0, inclinaisonRad: 0, kit: null }],
+    })
+    expect(c.altitudeM).toBe(0)
+    expect(c.coteHauteur).toBeNull()
+    expect(c.tables[0].from[1]).toBeCloseTo(c.sol.from[1], 9)
+  })
+
+  it('aucune table ⇒ rien n’est dessiné (jamais une ombrière supposée)', () => {
+    expect(coupeOmbriere({ tables: [] })).toBeNull()
+    expect(coupeOmbriere()).toBeNull()
+  })
+})
+
+describe('CALX51 — l’écran lève la couverture à la hauteur SAISIE, ou pas du tout', () => {
+  it('hauteur libre saisie ⇒ l’altitude des travées est celle-là, et elle est cotée', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getAllByTestId('cal-ombriere-travee'))
+        .toHaveLength(REPONSE.plans[0].tables.length)
+    })
+    const altitude = Number(screen.getByTestId('cal-ombriere-altitude').dataset.altitudeM)
+    expect(altitude).toBeGreaterThan(0)
+    // C'est EXACTEMENT la hauteur libre saisie, pas une hauteur de confort.
+    expect(altitude).toBe(Number(SAISIE.clearHeightM))
+    expect(screen.getAllByTestId('cal-ombriere-couverture'))
+      .toHaveLength(REPONSE.plans[0].tables.length)
+    expect(screen.getByTestId('cal-ombriere-cote-hauteur').textContent)
+      .toBe(formatCote(Number(SAISIE.clearHeightM)))
+  })
+
+  it('hauteur absente ⇒ altitude nulle, aucune cote, et la mention du service est visible', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, clearHeightM: '' })
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-ombriere-altitude')).toBeTruthy()
+    })
+    expect(Number(screen.getByTestId('cal-ombriere-altitude').dataset.altitudeM)).toBe(0)
+    expect(screen.queryByTestId('cal-ombriere-cote-hauteur')).toBeNull()
+    const manques = screen.getByTestId('cal-ombriere-nonmesure').textContent
+    expect(manques).toMatch(/hauteur libre non renseignée/i)
+    expect(manques).toMatch(/aucune hauteur supposée/i)
+  })
+
+  it('le sens d’écoulement saisi est rendu avec le dessin', async () => {
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir()
+    fireEvent.click(screen.getByTestId('cal-ombriere-calculer'))
+    await waitFor(() => expect(pose).toHaveBeenCalled())
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-ombriere-ecoulement').textContent)
+        .toContain(`${SAISIE.flowAzimuthDeg}°`)
+    })
+  })
+
+  it('AUCUNE hauteur de confort n’est écrite dans la source de l’écran', () => {
+    const brut = fs.readFileSync(
+      path.join(RACINE_FRONTEND, 'src/features/calepinage/Ombriere.jsx'), 'utf8',
+    )
+    // On juge le CODE, pas la prose : les commentaires (qui DISENT justement
+    // qu'aucune hauteur n'est supposée) sont retirés avant la recherche.
+    const source = brut.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(source).not.toMatch(/2[.,]5/)
+    expect(source).not.toMatch(/hauteurParDefaut/i)
   })
 })
 
