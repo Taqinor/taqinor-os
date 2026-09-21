@@ -96,13 +96,20 @@ class LaDecouverteEstSemantique(unittest.TestCase):
     def test_le_depot_declare_bien_des_modeles_gouvernes(self):
         gouvernes = garde.inventaire()
         self.assertTrue(gouvernes)
-        # Les deux modules `machine_etats.py` du depot, au minimum.
-        self.assertIn('contrats.Contrat', gouvernes)
+        # `contrats.Contrat` (l'autre module `machine_etats.py` du depot)
+        # retire SOLMVP42 (2026-09-21) : `contrats` est sorti du MVP solaire
+        # (Groupe SOLMVP) -- `sav/machine_etats.py` reste le module de
+        # reference.
         self.assertIn('sav.Ticket', gouvernes)
 
     def test_une_fonction_changer_statut_gouverne_son_premier_parametre(self):
-        """`changer_statut_vehicule(vehicule, ...)` -> `Vehicule`."""
-        self.assertIn('flotte.Vehicule', garde.inventaire())
+        """`changer_statut_intervention(intervention, ...)` -> `Intervention`.
+
+        Exemple realigne SOLMVP42 (2026-09-21) : `changer_statut_vehicule` est
+        parti avec `flotte` (Groupe SOLMVP) -- `installations.services`
+        garde le meme genre de fonction sur une app gardee.
+        """
+        self.assertIn('installations.Intervention', garde.inventaire())
 
 
 class LeDetecteurVoit(unittest.TestCase):
