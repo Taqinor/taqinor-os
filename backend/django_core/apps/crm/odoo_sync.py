@@ -77,6 +77,46 @@ SOCIETES_FICTIVES = {'facebook lead'}
 MARQUEURS_LEAD_TEST = ('test lead', 'dummy data')
 
 
+# ── CAD-B ── CAD105 [TRANCHÉ 21/09/2026] ────────────────────────────────────
+#
+# « La synchronisation démarre la cadence des leads NEUFS. » Écarter TOUTE
+# fiche de source Odoo était juste pour le rattrapage historique (930 fiches
+# rapatriées en une fois), et faux pour un lead créé dans Odoo APRÈS la mise
+# en service : Odoo reste le cockpit où la commerciale travaille, et un
+# dossier né là-bas mérite le même protocole qu'un dossier né sur le site.
+#
+# LA DATE DE BASCULE n'est pas choisie : c'est le jour où la synchronisation
+# Odoo→ERP est passée en production (ordre fondateur du 01/09/2026, session
+# « erp-crm-odoo-sync » — l'en-tête de ce module le date déjà, et le libellé
+# du modèle dit que « Import Odoo » n'est plus un test depuis cette date).
+# Tout ce qui existait AVANT est du rattrapage historique ; tout ce qui naît
+# APRÈS est une demande.
+#
+# GARDE-FOU : « neuf » se juge sur la date de création DANS ODOO
+# (`Lead.date_creation_origine`, CAD119), JAMAIS sur `date_creation` — qui
+# est l'instant de la synchronisation et vaudrait « neuf » pour les 930
+# fiches du miroir. Une fiche sans date d'origine connue n'est PAS neuve : on
+# ne devine pas, on laisse le rattrapage manuel décider.
+import datetime as _datetime  # noqa: E402  (près de son seul usage)
+
+BASCULE_MIROIR = _datetime.date(2026, 9, 1)
+
+
+def lead_odoo_neuf(lead):
+    """CAD105 — ce lead de source Odoo est-il NÉ après la bascule ?
+
+    Faux pour une fiche sans date d'origine (rattrapage historique), faux
+    pour une fiche antérieure, faux pour tout ce qui n'est pas du miroir."""
+    from django.utils import timezone
+
+    if getattr(lead, 'source', None) != Lead.Source.ODOO_IMPORT_TEST:
+        return False
+    origine = getattr(lead, 'date_creation_origine', None)
+    if origine is None:
+        return False
+    return timezone.localdate(origine) >= BASCULE_MIROIR
+
+
 def est_lead_de_test(lead):
     """Le lead Odoo est-il un lead de TEST Meta (jamais un vrai prospect) ?"""
     for champ in ('name', 'contact_name'):

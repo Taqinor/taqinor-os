@@ -2644,13 +2644,25 @@ def _garde_cadence_contact(lead):
     if lead is None:
         return ('absent', 'lead absent')
     if lead.source == Lead.Source.ODOO_IMPORT_TEST:
-        # CAD104 — le motif DIT la suite : ce refus est désormais tracé, et le
-        # libellé du modèle reconnaît lui-même qu'« Import Odoo » n'est plus
-        # un test. Le placement à la main, lui, ne filtre aucune source.
-        return ('miroir',
-                'lead du miroir Odoo — la cadence automatique ne part pas '
-                'sur le rattrapage historique ; lancez-la depuis '
-                '« Placer les anciens leads » si ce dossier doit être suivi')
+        # CAD105 [TRANCHÉ 21/09/2026] — la synchronisation démarre la cadence
+        # des leads NEUFS, avec EXACTEMENT les mêmes gardes que le site : un
+        # lead né dans Odoo après la bascule tombe donc à travers cette garde
+        # et affronte les suivantes (numéro, doublon, étape, inactivité).
+        # « Neuf » se juge sur la date de création DANS ODOO (CAD119), jamais
+        # sur l'instant de synchronisation — sans quoi les 930 fiches du
+        # rattrapage historique seraient toutes « neuves ».
+        from . import odoo_sync
+        if not odoo_sync.lead_odoo_neuf(lead):
+            # CAD104 — le motif DIT la suite : ce refus est désormais tracé,
+            # et le libellé du modèle reconnaît lui-même qu'« Import Odoo »
+            # n'est plus un test. Le placement à la main, lui, ne filtre
+            # aucune source.
+            return ('miroir',
+                    'lead du miroir Odoo antérieur à la mise en service de '
+                    'la synchronisation — la cadence automatique ne part pas '
+                    'sur le rattrapage historique ; lancez-la depuis '
+                    '« Placer les anciens leads » si ce dossier doit être '
+                    'suivi')
     if lead.stage != stages.NEW or lead.first_contacted_at is not None:
         # CAD103 — le motif DIT la suite : ce refus est désormais tracé, et
         # une ligne qui constate sans proposer ne sert à rien.
