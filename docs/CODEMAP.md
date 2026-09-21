@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 4a1666946ba6be4299ee67b100aa9ce2526f909bc77d6bf61909c08c53cd867e
-Plan fingerprint: 1e1396000a74c39a12aaddcf6aa6eb179e8ef88a2e53cec7178090b175c7d556
+Structure fingerprint: c5b3ff4b716c048ae7841c8b3562e4fec6f3c1136210eb299faf20897168ef25
+Plan fingerprint: 4c6d2e85571fa9e00ff11f12f951675cb08343a4f37d2175107d92cd34cd9ecc
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (155)**
+**Done (156)**
 
 - `CALX1` — Poser le rail d'onglets de l'atelier et y faire entrer les 13 panneaux invisibles
 - `CALX2` — Rendre append-only les surfaces partagées du module et sortir `urls.py` du chemin de…
@@ -683,13 +683,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX241` — Calculer l'élévation de tension au point de raccordement contre une limite SAISIE
 - `CALX242` — Vérifier la puissance de raccordement et le régime mono/tri
 - `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
+- `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
 - `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
 - `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (450)**
+**Open — to build (449)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -968,7 +969,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
 - `CALX227` — Produire le métré de câble par tronçon et par section
 - `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
-- `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
 - `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
 - `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
 - `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
