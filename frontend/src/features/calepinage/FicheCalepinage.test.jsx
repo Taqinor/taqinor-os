@@ -15,6 +15,11 @@ vi.mock('../../api/calepinageApi', () => ({
       // CALX33 — la fabrique CRUD partagée (`api/resource.js`) : PATCH sur
       // `/calepinage/calepinages/<id>/`.
       update: vi.fn(),
+      // CALX42 — le drapeau « modèle » : sa LECTURE (CAL246) et ses deux
+      // portes d'écriture (`views/bibliotheque.py`).
+      modeles: vi.fn(),
+      marquerModele: vi.fn(),
+      demarquerModele: vi.fn(),
     },
   },
 }))
@@ -54,7 +59,12 @@ const rendre = (detail) => render(
   <MemoryRouter><FicheCalepinage detail={detail} /></MemoryRouter>,
 )
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  // CALX42 — par défaut, la fiche lit la liste des modèles au montage : ce
+  // calepinage-ci n'en est pas un.
+  calepinageApi.calepinages.modeles.mockResolvedValue({ data: [] })
+})
 afterEach(() => { cleanup() })
 
 describe('FicheCalepinage — l’agrégat CAL17 est lu EN ENTIER', () => {
@@ -324,6 +334,88 @@ describe('CALX33 — le nom de la fiche est éditable sur place', () => {
   })
 })
 
+/* ============================================================================
+   CALX42 — LE DRAPEAU « MODÈLE », BASCULÉ DEPUIS LA FICHE.
+   ----------------------------------------------------------------------------
+   `services/modeles.py` portait `marquer_modele`/`demarquer_modele` depuis
+   CAL199 sans aucune route. Ce qui est prouvé ici : la bascule LIT l'état à
+   la seule source qui existe (`GET calepinages/modeles/`), n'en suppose
+   jamais un, et disparaît sans le droit de gérer.
+   ========================================================================== */
+describe('CALX42 — marquer / démarquer un calepinage comme modèle', () => {
+  it('lit le drapeau à la liste des modèles, puis propose la bascule', async () => {
+    calepinageApi.calepinages.modeles.mockResolvedValue({
+      data: [{ id: DETAIL.id, titre: DETAIL.nom }],
+    })
+    rendre(DETAIL)
+
+    expect(await screen.findByTestId('cal-fiche-modele'))
+      .toHaveTextContent('Retirer des modèles')
+  })
+
+  it('marque le calepinage et bascule le libellé', async () => {
+    calepinageApi.calepinages.marquerModele.mockResolvedValue({
+      data: { calepinage: DETAIL.id, modele: true },
+    })
+    rendre(DETAIL)
+
+    const bouton = await screen.findByTestId('cal-fiche-modele')
+    expect(bouton).toHaveTextContent('Marquer comme modèle')
+    await userEvent.click(bouton)
+
+    await waitFor(() => expect(calepinageApi.calepinages.marquerModele)
+      .toHaveBeenCalledWith(DETAIL.id))
+    expect(await screen.findByTestId('cal-fiche-modele'))
+      .toHaveTextContent('Retirer des modèles')
+  })
+
+  it('démarque par l’AUTRE porte, jamais par la même', async () => {
+    calepinageApi.calepinages.modeles.mockResolvedValue({
+      data: [{ id: DETAIL.id }],
+    })
+    calepinageApi.calepinages.demarquerModele.mockResolvedValue({
+      data: { calepinage: DETAIL.id, modele: false },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(await screen.findByTestId('cal-fiche-modele'))
+
+    await waitFor(() => expect(calepinageApi.calepinages.demarquerModele)
+      .toHaveBeenCalledWith(DETAIL.id))
+    expect(calepinageApi.calepinages.marquerModele).not.toHaveBeenCalled()
+  })
+
+  it('drapeau NON LU : aucune bascule n’est proposée sur un état supposé', async () => {
+    calepinageApi.calepinages.modeles.mockRejectedValue(new Error('réseau'))
+    rendre(DETAIL)
+
+    await waitFor(() => expect(calepinageApi.calepinages.modeles)
+      .toHaveBeenCalled())
+    expect(screen.queryByTestId('cal-fiche-modele')).toBeNull()
+  })
+
+  it('refus serveur : le motif s’affiche, sous le geste NOMMÉ', async () => {
+    const MOTIF = 'Impossible de marquer un calepinage non enregistré comme modèle.'
+    calepinageApi.calepinages.marquerModele.mockRejectedValue({
+      response: { status: 400, data: { calepinage: MOTIF } },
+    })
+    rendre(DETAIL)
+
+    await userEvent.click(await screen.findByTestId('cal-fiche-modele'))
+
+    const bloc = await screen.findByTestId('cal-fiche-modele-erreur')
+    expect(bloc).toHaveTextContent(MOTIF)
+    expect(bloc).toHaveTextContent('Modèle')
+  })
+
+  it('sans le droit de gérer : aucune bascule', async () => {
+    rendre(SANS_DROIT)
+    await waitFor(() => expect(calepinageApi.calepinages.modeles)
+      .toHaveBeenCalled())
+    expect(screen.queryByTestId('cal-fiche-modele')).toBeNull()
+  })
+})
+
 /* L'écran RÉEL la monte : sans montage, la fiche serait un composant de plus
    écrit pour personne (l'oubli du 03/08/2026). */
 describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat', () => {
@@ -334,9 +426,12 @@ describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat',
       default: {
         calepinages: {
           get, genererDevis: vi.fn(), syncDevis: vi.fn(),
-          // CALX26 — la fiche les appelle au CLIC ; déclarées ici pour que le
-          // module monté par ce test ait la même surface que le vrai client.
+          // CALX26/CALX42 — la fiche les appelle au CLIC (et lit `modeles`
+          // au montage) ; déclarées ici pour que le module monté par ce test
+          // ait la même surface que le vrai client.
           archiver: vi.fn(), restaurerCorbeille: vi.fn(),
+          modeles: vi.fn().mockResolvedValue({ data: [] }),
+          marquerModele: vi.fn(), demarquerModele: vi.fn(),
         },
         // CAL70 — PanneauAllees (monté par AtelierPanneaux) lit les réglages
         // société au montage.

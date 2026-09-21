@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { formatDateTime } from '../../lib/format'
@@ -121,7 +121,7 @@ function refusChamp(erreur, champ) {
     const message = Array.isArray(brut) ? brut.join(' ') : brut
     if (message) return String(message)
   }
-  return "Le serveur n’a rendu aucun motif : le nom n’a pas été changé."
+  return "Le serveur n’a rendu aucun motif : rien n’a été enregistré."
 }
 
 export default function FicheCalepinage({ detail }) {
@@ -137,6 +137,31 @@ export default function FicheCalepinage({ detail }) {
   const [saisie, setSaisie] = useState('')
   const [nomLocal, setNomLocal] = useState(null)
   const [refusNom, setRefusNom] = useState(null)
+  /* CALX42 — le drapeau « modèle ». `null` = INCONNU, et tant qu'il l'est
+     aucune bascule n'est proposée : l'agrégat CAL17 ne publie pas ce drapeau
+     (il vit sur un `records.Tag`, CAL199), donc l'écran le LIT à la seule
+     source qui existe — `GET calepinages/modeles/` — au lieu d'en supposer
+     un état. */
+  const [estModele, setEstModele] = useState(null)
+  const [refusModele, setRefusModele] = useState(null)
+  const identifiant = detail?.id ?? null
+
+  useEffect(() => {
+    if (!identifiant) return undefined
+    const lire = calepinageApi?.calepinages?.modeles
+    if (typeof lire !== 'function') return undefined
+    let annule = false
+    Promise.resolve(lire())
+      .then((res) => {
+        if (annule) return
+        const brut = res?.data
+        const liste = Array.isArray(brut) ? brut : (brut?.results ?? [])
+        setEstModele(liste.some((ligne) => ligne?.id === identifiant))
+      })
+      // Drapeau NON LU : il reste inconnu, et aucune bascule n'est offerte.
+      .catch(() => { if (!annule) setEstModele(null) })
+    return () => { annule = true }
+  }, [identifiant])
 
   if (!detail) return null
 
@@ -221,6 +246,22 @@ export default function FicheCalepinage({ detail }) {
     }
   }
 
+  const basculerModele = async () => {
+    setEnCours(true)
+    setRefusModele(null)
+    const porte = estModele
+      ? calepinageApi.calepinages.demarquerModele
+      : calepinageApi.calepinages.marquerModele
+    try {
+      await porte(detail.id)
+      setEstModele(!estModele)
+    } catch (erreur) {
+      setRefusModele(refusChamp(erreur, 'modele'))
+    } finally {
+      setEnCours(false)
+    }
+  }
+
   const styleBouton = 'inline-flex items-center gap-2 border border-brass-400 '
     + 'px-5 py-3 text-base font-bold text-brass-300 '
     + 'disabled:cursor-not-allowed disabled:opacity-60'
@@ -275,6 +316,28 @@ export default function FicheCalepinage({ detail }) {
                 </button>
               )}
             </>
+          )}
+
+          {/* CALX42 — LA BASCULE « MODÈLE ». Offerte seulement quand le
+              drapeau a été LU (jamais sur un état supposé) et quand le
+              calepinage n'est pas archivé. */}
+          {!archive && estModele !== null && (
+            <button type="button" className={styleBouton} disabled={enCours}
+              data-testid="cal-fiche-modele" onClick={basculerModele}>
+              {estModele
+                ? 'Retirer des modèles'
+                : 'Marquer comme modèle'}
+            </button>
+          )}
+
+          {refusModele && (
+            <div className="basis-full border border-alert-300/40 p-3"
+              data-testid="cal-fiche-modele-erreur">
+              <p className="tech-label text-alert-300">Modèle</p>
+              <p className="mt-1 text-sm text-alert-300" role="alert">
+                {refusModele}
+              </p>
+            </div>
           )}
 
           {confirmation && !archive && (

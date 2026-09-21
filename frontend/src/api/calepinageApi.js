@@ -174,6 +174,16 @@ const calepinageApi = {
     // pris par la restauration de VERSION, CAL20) sort de la corbeille.
     archiver: (id) => api.post(`${pivot(id)}archiver/`),
     restaurerCorbeille: (id) => api.post(`${pivot(id)}restaurer-corbeille/`),
+
+    // CALX42 — le drapeau « modèle réutilisable » (`records.Tag`, CAL199 —
+    // jamais un champ propre) et la création d'un calepinage NEUF depuis un
+    // modèle. `creerDepuisModele` est une action de LISTE : elle ne vise
+    // aucun calepinage existant, elle en fabrique un — `{modele, lead,
+    // client, titre}`, le rattachement du modèle n'étant JAMAIS recopié.
+    marquerModele: (id) => api.post(`${pivot(id)}marquer-modele/`),
+    demarquerModele: (id) => api.post(`${pivot(id)}demarquer-modele/`),
+    creerDepuisModele: (corps) =>
+      api.post('/calepinage/calepinages/creer-depuis-modele/', corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

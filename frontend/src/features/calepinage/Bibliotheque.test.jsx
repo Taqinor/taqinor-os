@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   putProfilsTypes: vi.fn(),
   // CALX43 — `PUT parametres/` : la SEULE porte d'écriture des deux sections.
   putParametres: vi.fn(),
+  // CALX42 — « Partir de ce modèle » (action de LISTE).
+  creerDepuisModele: vi.fn(),
 }))
 
 vi.mock('../../api/calepinageApi', () => ({
@@ -40,7 +42,10 @@ vi.mock('../../api/calepinageApi', () => ({
       profilsTypes: (...a) => mocks.getProfilsTypes(...a),
       enregistrerProfilsTypes: (...a) => mocks.putProfilsTypes(...a),
     },
-    calepinages: { modeles: (...a) => mocks.getModeles(...a) },
+    calepinages: {
+      modeles: (...a) => mocks.getModeles(...a),
+      creerDepuisModele: (...a) => mocks.creerDepuisModele(...a),
+    },
   },
 }))
 
@@ -435,6 +440,57 @@ describe('CALX43 — édition des préréglages et des favoris', () => {
     expect(corps.favoris_materiel[role])
       .toEqual(REGLAGES.favoris_materiel[role].map(Number))
     expect(corps.presets).toBeUndefined()
+  })
+})
+
+/* ============================================================================
+   CALX42 — « PARTIR DE CE MODÈLE », DEPUIS LA BIBLIOTHÈQUE.
+   ========================================================================== */
+describe('CALX42 — créer un calepinage depuis un modèle', () => {
+  const rendreModeles = async (droit = true) => {
+    mocks.hasPermission.mockReturnValue(droit)
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({ data: MODELES })
+    render(<Bibliotheque />)
+    await waitFor(() => expect(screen.getByTestId('cal-biblio-modele-5'))
+      .toBeInTheDocument())
+  }
+
+  it('sans `calepinage_gerer` : le bouton n’apparaît pas', async () => {
+    await rendreModeles(false)
+    expect(screen.queryByTestId('cal-biblio-modele-partir-5')).toBeNull()
+  })
+
+  it('le rattachement est SAISI — celui du modèle n’est jamais recopié', async () => {
+    mocks.creerDepuisModele.mockResolvedValue({ data: { id: 88 } })
+    await rendreModeles()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-partir-5'))
+    await userEvent.type(screen.getByTestId('cal-biblio-modele-client'), '12')
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-creer'))
+
+    await waitFor(() => expect(mocks.creerDepuisModele)
+      .toHaveBeenCalledWith({ modele: 5, client: '12' }))
+    // Le champ laissé vide n'est PAS envoyé : rien n'est deviné.
+    expect(mocks.creerDepuisModele.mock.calls[0][0].lead).toBeUndefined()
+    // Le calepinage créé s'ouvre depuis ici.
+    expect(await screen.findByTestId('cal-biblio-modele-ouvrir'))
+      .toHaveAttribute('href', '/calepinage/88')
+  })
+
+  it('refus serveur : le motif s’affiche tel quel, sous la saisie', async () => {
+    const MOTIF = 'Créer un projet depuis un modèle exige un nouveau lead ou client.'
+    mocks.creerDepuisModele.mockRejectedValue({
+      response: { status: 400, data: { client: MOTIF } },
+    })
+    await rendreModeles()
+
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-partir-5'))
+    await userEvent.click(screen.getByTestId('cal-biblio-modele-creer'))
+
+    expect(await screen.findByTestId('cal-biblio-modele-erreur'))
+      .toHaveTextContent(MOTIF)
+    expect(screen.queryByTestId('cal-biblio-modele-ouvrir')).toBeNull()
   })
 })
 

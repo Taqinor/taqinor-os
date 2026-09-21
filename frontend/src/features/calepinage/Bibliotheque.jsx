@@ -316,6 +316,13 @@ export default function Bibliotheque() {
   const [favorisEdit, setFavorisEdit] = useState([])
   const [refusFavoris, setRefusFavoris] = useState(null)
   const [ecritureFavoris, setEcritureFavoris] = useState(false)
+  // CALX42 — « Partir de ce modèle » : le modèle ouvert, la saisie du NOUVEAU
+  // rattachement, le refus du serveur, et le calepinage créé.
+  const [modeleOuvert, setModeleOuvert] = useState(null)
+  const [depart, setDepart] = useState({ lead: '', client: '' })
+  const [refusDepart, setRefusDepart] = useState(null)
+  const [creation, setCreation] = useState(false)
+  const [calepinageCree, setCalepinageCree] = useState(null)
 
   useEffect(() => {
     let annule = false
@@ -463,6 +470,35 @@ export default function Bibliotheque() {
       setRefusFavoris({ rang: null, message: refusSection(e) })
     } finally {
       setEcritureFavoris(false)
+    }
+  }
+
+  // ── CALX42 — partir d'un modèle ──────────────────────────────────────────
+  const ouvrirDepart = (modeleId) => {
+    setRefusDepart(null)
+    setCalepinageCree(null)
+    setDepart({ lead: '', client: '' })
+    setModeleOuvert(modeleId)
+  }
+
+  const partirDuModele = async () => {
+    setCreation(true)
+    setRefusDepart(null)
+    try {
+      // Le rattachement n'est PAS deviné : ce qui est laissé vide n'est pas
+      // envoyé, et le serveur refuse quand les deux manquent, en nommant le
+      // champ (`services/modeles.py::creer_depuis_modele`).
+      const corps = { modele: modeleOuvert }
+      if (depart.lead.trim()) corps.lead = depart.lead.trim()
+      if (depart.client.trim()) corps.client = depart.client.trim()
+      const res = await calepinageApi.calepinages.creerDepuisModele(corps)
+      const cree = res?.data?.id ?? null
+      setCalepinageCree(cree)
+      if (cree) setModeleOuvert(null)
+    } catch (e) {
+      setRefusDepart(refusSection(e))
+    } finally {
+      setCreation(false)
     }
   }
 
@@ -633,10 +669,78 @@ export default function Bibliotheque() {
                     {modele.statut_libelle && (
                       <span className="text-muted-foreground"> — {modele.statut_libelle}</span>
                     )}
+
+                    {/* CALX42 — « Partir de ce modèle » : le rattachement est
+                        SAISI, jamais repris du modèle. */}
+                    {peutGerer && modeleOuvert !== modele.id && (
+                      <button type="button" disabled={creation}
+                        className="ml-2 text-xs font-semibold underline"
+                        data-testid={`cal-biblio-modele-partir-${modele.id}`}
+                        onClick={() => ouvrirDepart(modele.id)}>
+                        Partir de ce modèle
+                      </button>
+                    )}
+
+                    {peutGerer && modeleOuvert === modele.id && (
+                      <div className="mt-2 border border-border p-2"
+                        data-testid={`cal-biblio-modele-depart-${modele.id}`}>
+                        <p className="text-xs text-muted-foreground">
+                          Le lead ou le client du modèle n’est jamais recopié :
+                          désignez le NOUVEAU rattachement.
+                        </p>
+                        <label className="mt-2 block text-xs text-muted-foreground">
+                          Lead (identifiant)
+                          <input type="text" value={depart.lead} disabled={creation}
+                            data-testid="cal-biblio-modele-lead"
+                            onChange={(e) => setDepart((d) => ({ ...d, lead: e.target.value }))}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+                        </label>
+                        <label className="mt-2 block text-xs text-muted-foreground">
+                          Client (identifiant)
+                          <input type="text" value={depart.client} disabled={creation}
+                            data-testid="cal-biblio-modele-client"
+                            onChange={(e) => setDepart((d) => ({ ...d, client: e.target.value }))}
+                            className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+                        </label>
+                        <div className="mt-2 flex flex-wrap items-center gap-3">
+                          <button type="button" disabled={creation}
+                            className="text-xs font-semibold underline"
+                            data-testid="cal-biblio-modele-creer"
+                            onClick={partirDuModele}>
+                            Créer le calepinage
+                          </button>
+                          <button type="button" disabled={creation}
+                            className="text-xs underline"
+                            data-testid="cal-biblio-modele-annuler"
+                            onClick={() => { setModeleOuvert(null); setRefusDepart(null) }}>
+                            Annuler
+                          </button>
+                        </div>
+                        {refusDepart && (
+                          <p className="mt-2 text-xs text-destructive" role="alert"
+                            data-testid="cal-biblio-modele-erreur">
+                            {refusDepart}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
+
+          {/* CALX42 — le calepinage CRÉÉ, ouvert depuis ici. Lien simple :
+              cet écran ne dépend d'aucun routeur, et ouvrir l'atelier d'un
+              calepinage neuf est un geste ponctuel. */}
+          {calepinageCree && (
+            <p className="mt-3 text-sm" role="status">
+              <a className="font-semibold underline"
+                data-testid="cal-biblio-modele-ouvrir"
+                href={`/calepinage/${calepinageCree}`}>
+                Ouvrir le calepinage créé (#{calepinageCree})
+              </a>
+            </p>
+          )}
         </Section>
 
         <Section titre="Favoris matériel"
