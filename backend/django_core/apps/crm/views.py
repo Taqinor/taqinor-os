@@ -3050,7 +3050,34 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
-        from .services import marquer_etape_relance, reporter_prochaine_touche
+        from .services import (est_etape_de_filet, marquer_etape_relance,
+                               reporter_prochaine_touche)
+        # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
+        # la consomme pas. L'écran promet « L'étape est déplacée à la date
+        # choisie » ; la clore rendait la main au filet, qui posait une AUTRE
+        # étape, renommée « Décider la suite — perdu (motif) ou relance
+        # ultérieure » par la ceinture anti-tapis-roulant, avant que la date
+        # choisie ne lui soit appliquée. Un client qui dit « rappelez-moi la
+        # semaine prochaine » n'a rien arbitré. Même chemin que le bouton
+        # « Reporter » (action `reporter` plus bas) : la touche garde son
+        # identité, sa cadence et son libellé.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None and est_etape_de_filet(etape)):
+            reportee = reporter_prochaine_touche(
+                etape.lead, request.user, quand, etape=etape)
+            if reportee is not None:
+                etape = reportee
+                if note:
+                    etape.note = note
+                    etape.save(update_fields=['note'])
+                data = self.get_serializer(etape).data
+                data['prochaine_touche'] = {
+                    'due_at': (etape.due_at.isoformat()
+                               if etape.due_at else None),
+                    'due_date': etape.due_date.isoformat(),
+                    'canal': etape.canal,
+                }
+                return Response(data)
         etape = marquer_etape_relance(
             etape, request.user, statut, note=note, outcome=outcome,
             body=body)

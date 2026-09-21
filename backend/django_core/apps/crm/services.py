@@ -1378,7 +1378,10 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         # (Détection hissée en tête de fonction — `touche_envoi_devis`.)
         assurer_prochaine_etape_apres_succes(
             lead, user, brouillon_compris=touche_envoi_devis,
-            libelle_touche_close=(etape.libelle or ''))
+            libelle_touche_close=(etape.libelle or ''),
+            # CAD3 — l'issue voyage avec le libellé : la ceinture doit pouvoir
+            # distinguer « le client a demandé un rappel » d'un arbitrage.
+            issue_touche_close=(outcome or '').strip())
     return etape
 
 
@@ -1772,6 +1775,13 @@ _KINDS_MESSAGE = frozenset({LeadActivity.Kind.WHATSAPP, LeadActivity.Kind.EMAIL}
 #: doit pas disparaître des files en attendant qu'elle soit prise.
 FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieure'
 
+#: CAD3 — le filet posé après un RAPPEL CONVENU. « Rappelle-moi la semaine
+#: prochaine » est la réponse la plus fréquente avant décision : la ceinture
+#: anti-tapis-roulant renommait pourtant l'étape « Décider la suite — perdu
+#: (motif) ou relance ultérieure », c'est-à-dire un arbitrage, là où le client
+#: a seulement demandé du temps. Le nom de l'étape doit dire la vérité.
+FILET_RAPPEL_LIBELLE = 'Rappeler le client — rappel convenu'
+
 #: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
 #: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
 #: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
@@ -1779,6 +1789,7 @@ FILET_REFUS_LIBELLE = 'Décider la suite — perdu (motif) ou relance ultérieur
 _LIBELLES_FILET = frozenset({
     FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN,
     FILET_APPEL_LIBELLE, FILET_REFUS_LIBELLE,
+    FILET_RAPPEL_LIBELLE,  # CAD3
 })
 
 # ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
@@ -1844,7 +1855,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                                          avec_plan_devis=True,
                                          brouillon_compris=False,
                                          canal_touche=None,
-                                         libelle_touche_close=''):
+                                         libelle_touche_close='',
+                                         issue_touche_close=''):
     """QJ-INVARIANT (fondateur 07/09/2026) — un lead ACTIF ne reste JAMAIS
     sans prochaine étape : sa liste de relances ne se termine que par le
     parking Froid ou la signature.
@@ -1943,7 +1955,11 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # CEINTURE anti-tapis-roulant (TREADMILL-1538) : ne JAMAIS re-poser à
         # l'identique la touche qu'on vient de clore — « Fait » doit toujours
         # faire avancer. L'étape de DÉCISION prend le relais.
-        libelle = FILET_REFUS_LIBELLE
+        # CAD3 — sauf si l'issue saisie est « à rappeler » : le client n'a rien
+        # arbitré, il a demandé du temps. L'étape porte alors un libellé de
+        # RAPPEL, jamais « perdu (motif) ou relance ultérieure ».
+        libelle = (FILET_RAPPEL_LIBELLE if issue_touche_close == 'rappel'
+                   else FILET_REFUS_LIBELLE)
     quand = horaires.prochain_creneau_appel(vise, lead.company, canal='appel')
     etape = RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
@@ -8462,3 +8478,23 @@ def dernier_barreau_consomme(lead, cadence, devis=None):
     else:
         qs = qs.filter(devis__isnull=True)
     return qs.order_by('-ordre', '-pk').first()
+
+
+# ── CAD-A ── CAD3 — « à rappeler » sur une étape de filet la REPORTE ─────────
+
+def est_etape_de_filet(etape):
+    """CAD3 — cette touche est-elle une étape posée par le FILET
+    (``assurer_prochaine_etape_apres_succes``) plutôt qu'un barreau du
+    protocole ?
+
+    Les étapes de filet portent la cadence ``generique`` sans être des
+    barreaux du gabarit : ce sont « préparer et envoyer le devis (ou fixer un
+    rappel) », « appeler le client — il a répondu au message », « décider la
+    suite » et le rappel convenu de CAD3. C'est sur elles que « rappelle-moi
+    la semaine prochaine » tombe le plus souvent — l'étape que la commerciale
+    voit le plus — et les CLORE pour en recréer une autre faisait perdre à la
+    fois leur date et leur nom.
+    """
+    if etape is None:
+        return False
+    return (etape.libelle or '').strip() in _LIBELLES_FILET
