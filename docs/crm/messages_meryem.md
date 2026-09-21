@@ -55,6 +55,7 @@ d'office) — plutôt qu'une date approximative, le mois est OMIS. Il reviendra 
 
 ### deuxieme_affaire — client déjà signé qui revient (cadence courte)
 FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم — شكرا على الثقة ديالكم من جديد. قولوا ليا شنو بغيتو تجهزو هاد المرة ونوجد ليكم الدراسة؛ غادي نعيط ليكم من دابا شي دقايق.
 
 **CAD127 (21/09/2026) — le premier message dit la VÉRITÉ sur l'origine.** « Vous venez de remplir notre formulaire »
 est faux pour la moitié des origines : la même cadence part pour un lead arrivé par téléphone, en boutique, par
@@ -67,15 +68,19 @@ formulaires. Le ticket SAV n'est PAS une origine (`create_lead_depuis_ticket` ne
 
 ### identite_reference — lead venu par recommandation (canal « Référence »)
 FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. M. [prescripteur] nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. السي [prescripteur] هضر لينا عليكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
 ### identite_telephone — lead venu par téléphone ou en boutique (canaux « Téléphone », « Visite/Walk-in »)
 FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Suite à notre échange au sujet du solaire, je vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. بعد الهضرة ديالنا على الطاقة الشمسية، غادي نعاود نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
 ### identite_whatsapp_entrant — lead né d'un message entrant (canal « WhatsApp/CTWA »)
 FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Merci pour votre message au sujet du solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. شكرا على الرسالة ديالكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
 ### identite_ancien_dossier — fiche ouverte un mois antérieur, reprise aujourd'hui
 FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Vous nous aviez consultés en [mois du dossier] au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. كنتو سولتونا ف [mois du dossier] على الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير محين. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
 ### appel_ouverture — J0, script d'ouverture de l'appel n° 1 (A1)
 CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique doit indiquer explicitement l'identité ET le
@@ -252,9 +257,11 @@ chiffres viennent du client et de son dossier, jamais du gabarit.
 
 ### dossier_8221 — industriel/commercial : où en est le dossier d'autoproduction
 FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.
 
 ### dossier_fda — agricole : le dossier de subvention
 FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.
 
 ## Après la signature (Guide v2.1, chapitre 13)
 
