@@ -68,6 +68,8 @@ export const ONGLETS = [
   { cle: 'masse-lestage', libelle: 'Masse & lestage', groupe: 'Système', ordre: 190, composant: lazy(() => import('./PanneauMasseLestage')) }, // CALX17
 
   { cle: 'series', libelle: 'Séries', groupe: 'Résultats', ordre: 200, composant: lazy(() => import('./PanneauSeries')) }, // CALX6
+
+  { cle: 'batterie', libelle: 'Batterie', groupe: 'Résultats', ordre: 210, composant: lazy(() => import('./PanneauBatterie')) }, // CALX14
 ]
 
 /**
