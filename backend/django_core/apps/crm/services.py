@@ -8449,3 +8449,133 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     """CAD74 — passe la fenêtre juin-septembre sur les dormants d'une société."""
     from .cadence_reveil_saison import poser_reveils_saisonniers as _tous
     return _tous(company, user, maintenant=maintenant, limite=limite)
+
+
+# ── CAD-E ── CAD56 — devis corrigé et RENVOYÉ : proposer de redater ─────────
+#
+# Constat (audit L3 du 21/09/2026) : le renvoi du MÊME devis ne redate rien.
+# `initialiser_plan_relance` sort par `ouvertes_deja` sans toucher à l'ancre,
+# le compteur continue depuis le PREMIER envoi, et le client reçoit
+# « je classe ? » deux jours après sa nouvelle proposition.
+#
+# Garde-fous : MRY7 intact — AUCUNE seconde cadence après-devis n'est créée,
+# aucune touche supprimée ni recréée ; le choix par DÉFAUT reste « ne rien
+# changer » (le redatage n'a lieu que sur un « oui » explicite) ; le décalage
+# est journalisé.
+
+#: Ce que la commerciale lit au chatter quand un devis déjà suivi repart.
+PROPOSITION_REDATAGE_LIBELLE = (
+    'Nouvelle proposition envoyée — repartir du jour 1 du suivi ?')
+
+
+def _ancre_cadence_apres_devis(lead, devis=None):
+    """L'ANCRE actuelle du suivi de proposition, ou ``None``.
+
+    Lue sur les touches encore OUVERTES : `cadence_depart` quand elle existe
+    (CKP2), sinon le repli documenté — la plus ancienne échéance du plan.
+    """
+    ouvertes = lead.relance_etapes.filter(
+        cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+    if devis is not None:
+        ouvertes = ouvertes.filter(devis=devis)
+    premiere = ouvertes.order_by('ordre', 'due_date').first()
+    if premiere is None:
+        return None
+    if premiere.cadence_depart is not None:
+        return premiere.cadence_depart
+    plus_ancienne = (lead.relance_etapes
+                     .filter(cadence='apres_devis', due_at__isnull=False)
+                     .order_by('due_at').first())
+    return plus_ancienne.due_at if plus_ancienne is not None else None
+
+
+def proposer_redatage_apres_devis(lead, user, devis):
+    """CAD56 — écrit la PROPOSITION au chatter, sans rien décider.
+
+    Appelée quand le MÊME devis repart alors que son suivi est déjà en cours.
+    Ne modifie aucune date : elle rend le choix VISIBLE, c'est tout. Renvoie
+    l'activité créée, ou ``None`` s'il n'y a pas de suivi ouvert pour ce
+    devis (rien à redater).
+    """
+    if devis is None:
+        return None
+    ancre = _ancre_cadence_apres_devis(lead, devis)
+    if ancre is None:
+        return None
+    from . import horaires
+
+    depuis = ancre.astimezone(horaires.CASABLANCA).strftime('%d/%m/%Y')
+    reference = getattr(devis, 'reference', '') or '?'
+    return LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'{PROPOSITION_REDATAGE_LIBELLE} La proposition {reference} '
+              f'vient de repartir, mais le suivi court depuis le {depuis} : '
+              'répondez « oui » pour décaler les touches restantes sur cette '
+              'nouvelle date, « non » pour ne rien changer. Aucune seconde '
+              'série de messages n\'est lancée.'))
+
+
+def redater_cadence_apres_devis(lead, user, *, devis=None, depart=None,
+                                accepte=True):
+    """CAD56 — applique (ou refuse) le redatage proposé ci-dessus.
+
+    ``accepte=False`` (« non ») : RIEN ne bouge — une ligne de chatter dit que
+    le choix a été fait, pour qu'on ne se demande pas plus tard pourquoi les
+    dates n'ont pas suivi. C'est aussi le comportement par défaut de
+    l'application : sans geste humain, cette fonction n'est jamais appelée.
+
+    ``accepte=True`` (« oui ») : l'ancre ET toutes les touches encore
+    OUVERTES du suivi glissent du MÊME delta — le lead garde sa position
+    exacte dans le protocole, mais le jour 1 est la nouvelle date d'envoi.
+    Aucune touche n'est supprimée, recréée ni réordonnée, et les touches déjà
+    traitées gardent leur histoire.
+
+    Renvoie le nombre de touches décalées (0 si rien n'a bougé).
+    """
+    from django.db.models import F
+
+    from . import horaires
+
+    if not accepte:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=('Nouvelle proposition envoyée — le suivi GARDE ses dates '
+                  'd\'origine (choix « non »).'))
+        return 0
+
+    ancre = _ancre_cadence_apres_devis(lead, devis)
+    if ancre is None:
+        return 0
+    nouvelle = _normaliser_depart(depart)
+    delta = nouvelle - ancre
+    if not delta:
+        return 0
+
+    ouvertes = lead.relance_etapes.filter(
+        cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+    if devis is not None:
+        ouvertes = ouvertes.filter(devis=devis)
+
+    decalees = 0
+    for etape in list(ouvertes.filter(due_at__isnull=False)):
+        quand = etape.due_at + delta
+        etape.due_at = quand
+        etape.due_date = quand.astimezone(horaires.CASABLANCA).date()
+        etape.save(update_fields=['due_at', 'due_date'])
+        decalees += 1
+    # CKP2 — l'ancre des touches encore ouvertes glisse du même delta, sinon
+    # le prochain barreau naîtrait à sa date d'origine (incrément pur, une
+    # requête, rien à verrouiller).
+    ouvertes.filter(cadence_depart__isnull=False).update(
+        cadence_depart=F('cadence_depart') + delta)
+
+    jour = nouvelle.astimezone(horaires.CASABLANCA).strftime('%d/%m/%Y')
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Suivi de proposition redaté au {jour} (choix « oui ») : '
+              f'{decalees} touche(s) restante(s) décalée(s) du même écart. '
+              'Aucune touche supprimée ni recréée.'))
+    return decalees

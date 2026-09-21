@@ -165,6 +165,17 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                 body=('Cadence après devis déjà en cours pour '
                       f'{reference} — aucune seconde série lancée.'))
             return
+        # CAD56 — le MÊME devis repart alors que son suivi est déjà en cours
+        # (devis corrigé et renvoyé) : le compteur continuerait depuis le
+        # PREMIER envoi et le client recevrait « je classe ? » deux jours
+        # après sa nouvelle proposition. On PROPOSE de repartir du jour 1 —
+        # on ne redate rien tout seul (choix par défaut : ne rien changer).
+        if lead.relance_etapes.filter(
+                cadence='apres_devis', statut='a_faire',
+                devis_id=devis.pk).exists():
+            from .services import proposer_redatage_apres_devis
+            proposer_redatage_apres_devis(lead, user, devis)
+            return
         etapes = initialiser_plan_relance(
             lead, user, cadence='apres_devis',
             depart=getattr(devis, 'date_envoi', None), devis=devis)
