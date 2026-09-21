@@ -55,6 +55,9 @@ import {
   type ConfigFamily,
 } from '../lib/estimatorBrainV2';
 import {
+  PANEL2_LONG_M,
+  PANEL2_SHORT_M,
+  PANEL2_WATT,
   PERIMETER_SETBACK_M,
   WINTER_SOLSTICE_DAY,
   uniformSetbacks,
@@ -130,7 +133,18 @@ import { createZones, exclusionObstructionRings, exclusionColor, exclusionZoneRi
 import { createConsumption } from './roofPro11/consumption';
 import { createProdWindow } from './roofPro11/prodWindow';
 import { createMatrix } from './roofPro11/matrix';
-import { createLayoutEditor } from './roofPro11/layoutEditor';
+import { createLayoutEditor, resnapEnMasse } from './roofPro11/layoutEditor';
+// CALX3 — l'entrée du moteur de calepinage, composée depuis la scène vivante.
+import {
+  composerEntreeMoteur,
+  centresDepuisPlan,
+  versRepereDuPack,
+  construireRaccourcis,
+  calquesDisponibles,
+  type SceneMoteur,
+  type KitScene,
+  type DocumentMoteur,
+} from './roofPro11/entreeMoteur';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
 import { createShadingUi } from './roofPro11/shadingUi';
@@ -3108,6 +3122,201 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     };
   }
 
+  // ═══════════ CALX3 — L'ENTRÉE MOTEUR, LE PLAN APPLIQUÉ, LES RACCOURCIS ═══════════
+  //
+  // L'atelier de calepinage poste une `entree` au moteur, lui applique le plan rendu,
+  // et branche ses huit raccourcis clavier sur les gestes du constructeur. Les trois
+  // passaient jusqu'ici par des clés qui n'existaient pas. La COMPOSITION du document
+  // vit dans `roofPro11/entreeMoteur.ts` (pure, testée) ; ici on ne fait que lire la
+  // scène vivante et rebrancher les gestes déjà en place.
+
+  /** CALX3 — le kit du pavage COURANT : géométrie et puissance de module lues sur le
+   *  plan gagnant, jamais un catalogue deviné. Sans plan (rien de pavé encore), on
+   *  retombe sur le module du cerveau d'estimation, celui qui pavera. */
+  function kitDeLaScene(): KitScene {
+    const grid = ctx.layoutPlan?.grid ?? null;
+    const longM = grid ? Math.max(grid.slopeLenM, grid.rowWidthM) : PANEL2_LONG_M;
+    const courtM = grid ? Math.min(grid.slopeLenM, grid.rowWidthM) : PANEL2_SHORT_M;
+    const wattPlan = grid && grid.panels.length ? (grid.kwc * 1000) / grid.panels.length : null;
+    const watt = devisOrigin?.panelWatt ?? (wattPlan && wattPlan > 0 ? wattPlan : PANEL2_WATT);
+    // Le grand côté dans le sens de la pente = pose PORTRAIT ; sinon PAYSAGE.
+    const orientation = !grid || grid.slopeLenM >= grid.rowWidthM ? 'PORTRAIT' : 'PAYSAGE';
+    // Une pose Est-Ouest est un chevron DOS-À-DOS : deux modules par table.
+    const famille = ctx.layoutPlan?.family ?? ctx.sel.family;
+    return {
+      code: `ATELIER-${Math.round(watt)}`,
+      libelle: `Module posé par l’atelier — ${Math.round(watt)} Wc`,
+      moduleLongM: longM,
+      moduleCourtM: courtM,
+      puissanceModuleWc: watt,
+      inclinaisonDeg: ctx.layoutPlan?.tiltDeg ?? ctx.pitchDeg,
+      orientation,
+      modulesParTable: famille === 'eastwest' ? 2 : 1,
+    };
+  }
+
+  /** CALX3 — la scène d'atelier réduite à ce que le moteur sait lire. Les pans figés
+   *  viennent de `ctx.areas` ; le pan ACTIF est surchargé par son état d'édition vivant
+   *  (tracé et obstacles en cours), exactement comme à la sérialisation du layout. */
+  function sceneMoteur(): SceneMoteur {
+    const pans = ctx.areas.map((a) => {
+      const actif = a.id === ctx.activeAreaId;
+      return {
+        id: a.id,
+        label: a.label,
+        vertices: actif ? ctx.vertices : a.vertices,
+        obstacles: actif ? ctx.obstacles : a.obstacles,
+        pitchDeg: actif ? ctx.pitchDeg : a.pitchDeg,
+        facingAzimuthDeg: actif ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
+        neededPanels: actif ? ctx.neededPanels : a.neededPanels,
+        neededAuto: actif ? ctx.neededAuto : a.neededAuto,
+      };
+    });
+    // Aucune zone enregistrée encore (premier tracé) : le pan actif vivant seul.
+    if (!pans.length && ctx.vertices.length >= 3) {
+      pans.push({
+        id: ctx.activeAreaId || 'PAN-A',
+        label: 'Pan',
+        vertices: ctx.vertices,
+        obstacles: ctx.obstacles,
+        pitchDeg: ctx.pitchDeg,
+        facingAzimuthDeg: ctx.facingAzimuthDeg,
+        neededPanels: ctx.neededPanels,
+        neededAuto: ctx.neededAuto,
+      });
+    }
+    return {
+      repere: devisOrigin?.devisId != null
+        ? `DEVIS-${devisOrigin.devisId}`
+        : (ctx.activeArea()?.label ?? 'RELEVE'),
+      pans,
+      zonesExclusion: ctx.exclusionZones ?? [],
+      retraits: { ...setbacks },
+      kit: kitDeLaScene(),
+    };
+  }
+
+  /** CALX3 — le document d'entrée du moteur, ou `null` tant qu'aucun pan n'est tracé. */
+  function entreeMoteur(): DocumentMoteur | null {
+    return composerEntreeMoteur(sceneMoteur());
+  }
+
+  /**
+   * CALX3 — repose les modules à partir du plan que le moteur a rendu.
+   *
+   * Le plan revient en rangées (position transversale + tronçons + compte) : on en
+   * déduit les centres de modules, on les ramène dans le repère du pavage courant,
+   * et on les re-snappe sur la lattice — le MÊME chemin que le rechargement d'un
+   * dossier. L'atelier est PHOTOGRAPHIÉ juste avant (CAL100), donc Ctrl+Z revient à
+   * la disposition d'avant. Rend `false` sans rien changer quand il n'y a pas de
+   * pavage, pas de plan, ou aucune cellule atteignable — jamais un pan à moitié posé.
+   */
+  function appliquerPlan(resultat: unknown): boolean {
+    if (!ctx.layoutPlan) return false;
+    const scene = sceneMoteur();
+    const sortie = centresDepuisPlan(resultat, scene);
+    if (!sortie) return false;
+    const centres = versRepereDuPack(sortie.centres, sortie.ancrage, ctx.layoutPlan.pack.origin);
+    if (!centres.length) return false;
+    // Placement LIBRE : les positions continues du plan sont reposées telles quelles.
+    if (layoutEditor.isFreeMode()) {
+      ctx.pushWorkshopHistory?.();
+      const pose = layoutEditor.hydrateLayout(centres, undefined, 'free');
+      if (pose) setStatus(`Plan du moteur appliqué — ${fmt(centres.length)} modules reposés.`);
+      return pose;
+    }
+    layoutEditor.ensureLayoutState();
+    const st = ctx.layoutState;
+    if (!st || !st.cells.length) return false;
+    const reposes = resnapEnMasse(st.cells, centres);
+    if (!reposes.length) return false;
+    ctx.pushWorkshopHistory?.();
+    st.occupied.clear();
+    for (const idx of reposes) st.occupied.add(idx);
+    ctx.layoutSel = null;
+    layoutEditor.renderCustomLayout();
+    layoutEditor.renderLayoutPanel();
+    setStatus(
+      `Plan du moteur appliqué — ${fmt(reposes.length)} modules reposés. `
+        + 'Ctrl+Z revient à la disposition précédente.',
+    );
+    return true;
+  }
+
+  // CALX3 — l'aimantation des positions libres (CAL81) : allumée par défaut, donc le
+  // comportement d'aujourd'hui. La couper laisse les positions exactement où elles
+  // sont posées ; la rallumer ré-aimante tout de suite ce qui est posé, sinon la
+  // bascule ne se verrait nulle part.
+  let aimantationActive = true;
+  function basculerAimantation() {
+    aimantationActive = !aimantationActive;
+    if (aimantationActive && layoutEditor.isFreeMode()) {
+      const poses = layoutEditor.freePanels();
+      if (poses.length) {
+        const aimantes = poses.map((p, i) => {
+          const cible = layoutEditor.freeSnapCandidate(i, p.cx, p.cy);
+          return { cx: cible.cx, cy: cible.cy };
+        });
+        ctx.pushWorkshopHistory?.();
+        layoutEditor.hydrateLayout(aimantes, undefined, 'free');
+      }
+    }
+    setStatus(
+      aimantationActive
+        ? 'Aimantation activée : les positions libres se collent aux rives et aux panneaux voisins.'
+        : 'Aimantation coupée : les positions libres restent exactement où vous les posez.',
+    );
+  }
+
+  function basculerPleinEcran() {
+    const doc = document as Document & { fullscreenElement?: Element | null };
+    const cible = mapEl;
+    if (!cible) return;
+    try {
+      if (doc.fullscreenElement) {
+        void document.exitFullscreen?.();
+        return;
+      }
+      const demande = cible.requestFullscreen?.();
+      if (demande && typeof demande.catch === 'function') {
+        demande.catch(() => setStatus('Le plein écran a été refusé par le navigateur.'));
+      }
+    } catch {
+      setStatus('Le plein écran n’est pas disponible dans ce navigateur.');
+    }
+  }
+
+  /** CALX3 — les huit raccourcis de l'atelier, branchés sur les gestes existants. */
+  const raccourcisAtelier = construireRaccourcis({
+    outilTrace: () => {
+      setObstacleMode(false);
+      ctx.pendingZoneNature = null;
+      mesureUi.cancel();
+      setStatus('Outil tracé : touchez la carte pour poser les coins du toit.');
+    },
+    outilObstacle: () => setObstacleMode(!ctx.obstacleMode),
+    outilZone: () => obstaclesUi.beginZone(ctx.pendingZoneNature ?? 'INTERDITE'),
+    outilMesure: () => {
+      if (mesureUi.isActive()) mesureUi.cancel();
+      else mesureUi.begin('distance');
+      renderMeasurements();
+    },
+    aimantation: basculerAimantation,
+    supprimer: () => {
+      if (ctx.selectedObsId) {
+        obstaclesUi.deleteSelected();
+        return;
+      }
+      const choisis = layoutEditor.selection();
+      if (choisis.length) layoutEditor.removeCells(choisis);
+    },
+    dupliquer: () => {
+      if (!ctx.selectedObsId) return;
+      $<HTMLButtonElement>('rp9-obs-duplicate')?.click();
+    },
+    pleinEcran: basculerPleinEcran,
+  });
+
   // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
@@ -3179,5 +3388,14 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // CAL93 — horizon lointain : fixer le profil (HorizonPanel) et lire son état.
     setHorizonProfile: (profile) => shadingUi.setHorizonProfile(profile),
     horizonStatus: () => shadingUi.horizonStatus(),
+    // CALX3 — le document d'entrée du moteur de calepinage, composé de la scène
+    // VIVANTE à chaque appel (`null` tant qu'aucun pan n'est tracé).
+    entreeMoteur: () => entreeMoteur(),
+    // CALX3 — repose les modules depuis le plan rendu par le moteur (annulable).
+    appliquerPlan: (resultat: unknown) => appliquerPlan(resultat),
+    // CALX3 — les huit raccourcis clavier de l'atelier, une fonction par action.
+    raccourcis: raccourcisAtelier,
+    // CALX3 — les calques réellement installés sur la carte, dans l'ordre de rendu.
+    calquesDisponibles: () => calquesDisponibles(map),
   });
 }
