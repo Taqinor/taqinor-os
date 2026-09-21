@@ -466,8 +466,8 @@ describe('le formulaire — structure 3 étapes & champs requis', () => {
     expect(form).toMatch(/name="consent"[^>]*required/);
   });
 
-  it('case WhatsApp opt-in présente (cochée par défaut)', () => {
-    expect(form).toMatch(/name="whatsappOptIn"[^>]*checked/);
+  it('case WhatsApp opt-in présente (jamais pré-cochée, CAD121)', () => {
+    expect(form).not.toMatch(/name="whatsappOptIn"[^>]*checked/) // CAD121 (21/09/2026) : consentement WhatsApp jamais pré-coché (loi 09-08 art. 5);
   });
 
   it('le menu déroulant tranche de facture finit aux paliers 800/1 000/1 500/3 000/5 000/10 000+', () => {
