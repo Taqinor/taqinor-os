@@ -819,6 +819,11 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         # lead `whatsapp_only`. La fenêtre 16 h-19 h et l'unicité de la touche
         # ne changent pas — c'est le canal, et lui seul, qui suit le client.
         gabarit = cadence_temps.adapter_canal_au_lead(gabarit, lead)
+        # CAD34 — le symétrique : sans WhatsApp joignable (aucun numéro
+        # exploitable, ou une ligne FIXE), un barreau de message naît en
+        # APPEL. La touche 1 du protocole est un WhatsApp : un lead arrivé
+        # par téléphone n'avait sinon aucune cadence du tout.
+        gabarit = cadence_temps.adapter_canal_au_numero(gabarit, lead)
         delai_minutes = getattr(gabarit, 'delai_minutes', 0) or 0
         heure_cible = getattr(gabarit, 'heure_cible', None)
         if getattr(gabarit, 'dimanche_ok', False):
@@ -2577,10 +2582,16 @@ def _garde_cadence_contact(lead):
         return ('deja_contacte', 'lead déjà contacté ou hors étape NEW')
     if lead.perdu or lead.is_archived or lead.ne_plus_contacter:
         return ('inactif', 'lead perdu, archivé ou « ne plus contacter »')
-    from apps.ventes.utils.whatsapp import build_wa_url
-    if build_wa_url(lead.whatsapp or lead.telephone or '', '') is None:
+    # CAD34 — on cherche le premier numéro EXPLOITABLE de la fiche :
+    # `lead.whatsapp or lead.telephone` ne se repliait sur le téléphone que si
+    # le champ WhatsApp était VIDE, jamais s'il était INUTILISABLE. Une ligne
+    # FIXE ne bloque plus rien : la cadence démarre par un APPEL (CAD34).
+    # L'erreur NOMME les champs à remplir (règle fondateur du 08/09/2026).
+    from . import cadence_temps
+    if not cadence_temps.numero_joignable(lead):
         return ('sans_numero',
-                'aucun numéro exploitable — cadence à lancer à la main')
+                'aucun numéro exploitable — renseignez « Téléphone » ou '
+                '« WhatsApp » sur la fiche')
     doublons = [
         autre for autre in find_duplicates_by_contact(
             lead.company, phone=lead.telephone, email=lead.email,

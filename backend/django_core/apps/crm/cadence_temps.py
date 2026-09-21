@@ -239,3 +239,89 @@ def adapter_canal_au_lead(gabarit, lead, *, dimanche_compris=True):
     if not dimanche_compris and getattr(gabarit, 'dimanche_ok', False):
         return gabarit
     return GabaritAdapte(gabarit, CANAL_WHATSAPP)
+
+
+# ── CAD-B ── CAD34 ──────────────────────────────────────────────────────────
+
+#: Valeur de `crm.RelanceEtape.Canal.APPEL`.
+CANAL_APPEL = 'appel'
+
+#: Préfixe international d'une ligne FIXE marocaine. `_MA_LOCAL_RE`
+#: (`apps/ventes/utils/phone.py`) accepte le 5 comme le 6 et le 7 —
+#: « fixe (5) ou mobile (6, 7) » — donc un fixe passe toutes les gardes et la
+#: cadence démarrait par un WhatsApp qui n'arrivera jamais.
+PREFIXE_FIXE_MA = '2125'
+
+#: Ce que l'écran doit dire d'un fixe : on ne BLOQUE pas wa.me (WhatsApp
+#: Business accepte un fixe), on prévient et on démarre par un appel.
+MOTIF_FIXE = 'fixe — WhatsApp improbable, vérifier'
+MOTIF_SANS_NUMERO = 'aucun numéro exploitable'
+
+
+def numero_joignable(lead):
+    """CAD34 — le premier numéro EXPLOITABLE de la fiche, ou ``''``.
+
+    `lead.whatsapp or lead.telephone` ne se repliait sur le téléphone que si
+    le champ WhatsApp était VIDE — jamais s'il était INUTILISABLE. Une fiche
+    dont le champ WhatsApp porte une saisie bancale et dont le téléphone,
+    lui, est bon perdait donc sa cadence pour rien."""
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    for brut in (getattr(lead, 'whatsapp', '') or '',
+                 getattr(lead, 'telephone', '') or ''):
+        if brut and build_wa_url(brut, '') is not None:
+            return brut
+    return ''
+
+
+def whatsapp_improbable(lead):
+    """CAD34 — ``(improbable, motif)`` pour le numéro de CETTE fiche.
+
+    Deux cas, deux phrases : aucun numéro exploitable du tout, ou un FIXE
+    marocain (WhatsApp Business l'accepte, un particulier presque jamais).
+    Dans les deux cas on ne bloque RIEN : on démarre par un appel et l'écran
+    dit pourquoi."""
+    from apps.ventes.utils.phone import normalize_ma_phone
+
+    brut = numero_joignable(lead)
+    if not brut:
+        return True, MOTIF_SANS_NUMERO
+    normalise = normalize_ma_phone(brut)
+    if normalise and normalise.startswith(PREFIXE_FIXE_MA):
+        return True, MOTIF_FIXE
+    return False, ''
+
+
+def adapter_canal_au_numero(gabarit, lead):
+    """CAD34 — symétrique EXACT de CAD32 : sans WhatsApp joignable, un
+    barreau de message naît en APPEL.
+
+    La touche 1 du protocole est un WhatsApp : sur un lead arrivé par
+    téléphone, la garde disait « cadence à lancer à la main » et rien ne
+    proposait une composition « appel d'abord ». Le nombre de touches, les
+    libellés et les jours restent ceux du protocole — seul le canal change,
+    et la clé de gabarit part avec lui (un appel n'a pas de texte à envoyer,
+    comme les barreaux d'appel qui n'en ont déjà aucun).
+
+    L'E-MAIL n'est jamais converti : il ne dépend d'aucun numéro.
+
+    La PRÉFÉRENCE du client gagne toujours : sur un lead
+    « WhatsApp uniquement », on ne rebascule rien en appel — un numéro
+    WhatsApp manquant est alors un problème de FICHE, que l'écran doit
+    nommer, pas quelque chose que le moteur contourne en silence.
+    """
+    if _prefere_whatsapp(lead):
+        return gabarit
+    canal = getattr(gabarit, 'canal', None)
+    if canal != CANAL_WHATSAPP:
+        return gabarit
+    if not numero_joignable(lead):
+        # AUCUN numéro : rien n'est joignable, ni message ni appel. La garde
+        # `_garde_cadence_contact` refuse déjà la cadence en nommant les
+        # champs à remplir ; convertir des touches en appels ne rendrait pas
+        # la fiche plus joignable et déplacerait des heures pour rien.
+        return gabarit
+    improbable, _motif = whatsapp_improbable(lead)
+    if not improbable:
+        return gabarit
+    return GabaritAdapte(gabarit, CANAL_APPEL)
