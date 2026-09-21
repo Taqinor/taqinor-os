@@ -1,7 +1,7 @@
 {
   "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/simuler/",
   "forme_serveur": "partielle",
-  "pourquoi": "Le DOCUMENT qu'une simulation écrit dans `Calepinage.resultat`, et les deux réponses de la porte qui la déclenche. PACT10 — POURQUOI CE CONTRAT PART SEUL : la simulation a autant de moitiés que d'écrans (panneau Production, diagramme de pertes, courbe d'autoconsommation, bilan batterie, export tableur) et autant de producteurs (une dizaine de services), tous construits par des lanes FILE-DISJOINTES ; publier le contrat dans la tâche productrice (CALX5) ne préviendrait rien, puisque les lanes consommatrices auraient déjà inventé leurs clés. Il atterrit donc SEUL, sans une ligne de code.\n\nCE QUE `exemple` DÉCRIT. `exemple` est le document ÉCRIT PAR FUSION DE CLÉS dans `Calepinage.resultat` (D-CALX 4 ; patron de fusion : `services/electrique.py:372`) — pas le corps HTTP de la porte. La porte, elle, a DEUX états, décrits par `exemple_accepte` (202 : le travail de fond est parti) et `exemple_deja_calcule` (200 : `forcer=False` et `hash_entree` inchangé, aucun recalcul). C'est pour cela que ce document déclare `forme_serveur: partielle` : il ne porte PAS la carte complète de la réponse de sa route.\n\nUN SEUL KIND DE TRAVAIL DE FOND (D-CALX 12). La simulation emprunte le kind existant `calepinage` (`apps/calepinage/tasks.py:9-12`) et se discrimine par `nature='simulation'` dans la charge utile de `core.jobs.submit` ; un second kind rendrait `GET moteur/resultat/<job_id>/` 404 (`views/moteur.py:405-411`). `exemple_accepte` reprend donc, clé pour clé, l'accusé que `views/moteur.py::accuse_de_travail_long` rend déjà.\n\nD'OÙ VIENT CHAQUE CLÉ — AUCUNE CLÉ INVENTÉE, CHACUNE A SA FONCTION :\n* `simulation` — `services/simulation.py::simuler_calepinage` (CALX5) : l'empreinte des entrées, la version du moteur, la date et la durée du calcul.\n* `production` — `services/production.py::production_du_layout` (`:138`, sans appelant aujourd'hui) pour `base`, `total`, `mensuel`, `par_pan` (les clés que `services/electrique.py:605-621` publie aujourd'hui à `null` par littéral) ; `annees[]` vient de `services/p50p90.py::variabilite_interannuelle` ; `par_module[]` de `services/ombrage_chaines.py::acces_par_module` ; `par_chaine[]` de `services/ombrage_chaines.py::ombrage_des_chaines`.\n* `pertes` — INCHANGÉ (D-CALX 11) : la LISTE PLATE des postes saisis, rendue par `services/pertes.py::postes_du_calepinage` et publiée par `services/pertes_politique.py::Politique.publication` (`:99-107`). Quatre lecteurs l'itèrent DÉJÀ comme une liste (`services/note_calcul.py:298`, `services/comparaison.py:96`, `services/export_csv.py:73`, `DiagrammePertes.jsx:89-94`) : sa forme ne peut pas changer, et aucune tâche CALX ne la change.\n* `cascade` — clé NEUVE (CALX141) : la cascade SÉQUENTIELLE, rendue par `services/chaine_pertes.py::appliquer_chaine` (CALX147) ; sa forme détaillée est figée par `contract_samples/calepinage_pertes_cascade.json`. Elle ne remplace pas `pertes`, elle s'ajoute à côté.\n* `meteo` — `services/pvgis_serie.py::_provenance` (`:479-502`) pour la source et la fenêtre, `services/horizon.py::lire_profil` pour l'horizon, `services/pvgis_serie.py::azimut_pvgis` pour la convention d'azimut DÉCLARÉE ; forme détaillée dans `contract_samples/calepinage_meteo.json` (CALX143).\n* `incertitude` — `services/p50p90.py::bankable` et `services/p50p90.py::variabilite_interannuelle` ; forme détaillée dans `contract_samples/calepinage_incertitude.json` (CALX144).\n* `performance` — `services/performance.py` (CALX179) : le PR au sens IEC 61724-1, avec sa méthode, sa référence citée et sa période — jamais un rapport nu.\n* `ombrage` — `services/orientation.py::tof_du_pan` (CALX58) pour TOF et TSRF, `services/ombrage_chaines.py::acces_par_module` pour l'accès solaire qui les pondère.\n* `consommation` — `services/consommation.py::profil_mensuel` et `services/consommation.py::apercu_courbe_csv` pour la courbe et son origine, `services/charges.py::ajouter_charges` pour les charges ajoutées (véhicule, PAC).\n* `autoconsommation` — `services/autoconsommation.py::bilan_autoconsommation` et `services/autoconsommation.py::plafond_injection`.\n* `batterie` — `services/batterie.py::simuler_batterie` et `services/batterie.py::specs_batterie`.\n* `hors_reseau` — `services/hors_reseau.py::simuler_hors_reseau` et `services/hors_reseau.py::dimensionner_hors_reseau`.\n* `validation` — `services/validation.py::ecart_vs_pvcalc` (CALX195) : un ÉCART INFORMATIF contre `PVcalc`, jamais une « validation », et jamais un ajustement silencieux.\n* `serie_horaire` — la série produite par `services/pvgis_serie.py::serie_irradiance` puis ré-indexée par `services/chaine_pertes.py::appliquer_chaine`, LUE aujourd'hui par `services/export_csv.py::export_csv` (`:102-124`) et écrite par PERSONNE ; forme détaillée dans `contract_samples/calepinage_serie_horaire.json` (CALX142). Elle N'EST PAS recopiée par `GET resultat/` (D-CALX 14 : volume).\n\nLE CALEPINAGE NE CALCULE JAMAIS D'ARGENT (D-CALX 5). Aucune clé de ce document ne porte un tarif, une économie, une VAN, un TRI, un LCOE ni un temps de retour : ces grandeurs vivent dans `apps/ventes` (`apps/ventes/economie.py`) et sont LUES par le module via `apps.ventes.selectors`. Aucun prix d'achat, aucune marge.\n\nHEURE LOCALE OU RIEN (D-CALX 15). Tout croisement horaire (`consommation`, `autoconsommation`, `batterie`, `hors_reseau`, `serie_horaire`) suppose une série ramenée à l'heure LOCALE du site (`meteo.heure`). Fuseau du site non saisi ⇒ ces blocs sont OMIS avec leur motif (`motif_absence`), jamais décalés d'une heure en silence.\n\nDISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais JAMAIS SIMULÉ : toutes les clés sont PRÉSENTES et valent `null`, les listes sont vides, et JAMAIS un `0`. Un `0 kWh` se lirait « ce toit ne produit rien », un `taux_autoconsommation = 0` « ce client n'autoconsomme rien » — là où personne n'a lancé de simulation. Un écran qui reçoit parfois une clé et parfois pas finit par tester l'ABSENCE DE CLÉ au lieu de l'absence de donnée : c'est là qu'il casse.\n\nZÉRO CHIFFRE CLIENT (D-CALX 7). Toutes les valeurs ci-dessous sont des PLACEHOLDERS ASSUMÉS : identifiants à un chiffre, empreintes visiblement factices (`abab…`), repères « d'essai ». Ce sont les CLÉS et LEURS NATURES qui font le contrat, jamais les nombres.",
+  "pourquoi": "Le DOCUMENT qu'une simulation écrit dans `Calepinage.resultat`, et les deux réponses de la porte qui la déclenche. PACT10 — POURQUOI CE CONTRAT PART SEUL : la simulation a autant de moitiés que d'écrans (panneau Production, diagramme de pertes, courbe d'autoconsommation, bilan batterie, export tableur) et autant de producteurs (une dizaine de services), tous construits par des lanes FILE-DISJOINTES ; publier le contrat dans la tâche productrice (CALX5) ne préviendrait rien, puisque les lanes consommatrices auraient déjà inventé leurs clés. Il atterrit donc SEUL, sans une ligne de code.\n\nCE QUE `exemple` DÉCRIT. `exemple` est le document ÉCRIT PAR FUSION DE CLÉS dans `Calepinage.resultat` (D-CALX 4 ; patron de fusion : `services/electrique.py:372`) — pas le corps HTTP de la porte. La porte, elle, a DEUX états, décrits par `exemple_accepte` (202 : le travail de fond est parti) et `exemple_deja_calcule` (200 : `forcer=False` et `hash_entree` inchangé, aucun recalcul). C'est pour cela que ce document déclare `forme_serveur: partielle` : il ne porte PAS la carte complète de la réponse de sa route.\n\nUN SEUL KIND DE TRAVAIL DE FOND (D-CALX 12). La simulation emprunte le kind existant `calepinage` (`apps/calepinage/tasks.py:9-12`) et se discrimine par `nature='simulation'` dans la charge utile de `core.jobs.submit` ; un second kind rendrait `GET moteur/resultat/<job_id>/` 404 (`views/moteur.py:405-411`). `exemple_accepte` reprend donc, clé pour clé, l'accusé que `views/moteur.py::accuse_de_travail_long` rend déjà.\n\nD'OÙ VIENT CHAQUE CLÉ — AUCUNE CLÉ INVENTÉE, CHACUNE A SA FONCTION :\n* `simulation` — `services/simulation.py::simuler_calepinage` (CALX5) : l'empreinte des entrées, la version du moteur, la date et la durée du calcul.\n* `production` — `services/production.py::production_du_layout` (`:138`, sans appelant aujourd'hui) pour `base`, `total`, `mensuel`, `par_pan` (les clés que `services/electrique.py:605-621` publie aujourd'hui à `null` par littéral) ; `annees[]` vient de `services/p50p90.py::variabilite_interannuelle` ; `par_module[]` de `services/ombrage_chaines.py::acces_par_module` ; `par_chaine[]` de `services/ombrage_chaines.py::ombrage_des_chaines`.\n* `pertes` — INCHANGÉ (D-CALX 11) : la LISTE PLATE des postes saisis, rendue par `services/pertes.py::postes_du_calepinage` et publiée par `services/pertes_politique.py::Politique.publication` (`:99-107`). Quatre lecteurs l'itèrent DÉJÀ comme une liste (`services/note_calcul.py:298`, `services/comparaison.py:96`, `services/export_csv.py:73`, `DiagrammePertes.jsx:89-94`) : sa forme ne peut pas changer, et aucune tâche CALX ne la change.\n* `cascade` — clé NEUVE (CALX141) : la cascade SÉQUENTIELLE, rendue par `services/chaine_pertes.py::appliquer_chaine` (CALX147) ; sa forme détaillée est figée par `contract_samples/calepinage_pertes_cascade.json`. Elle ne remplace pas `pertes`, elle s'ajoute à côté.\n* `meteo` — `services/pvgis_serie.py::_provenance` (`:479-502`) pour la source et la fenêtre, `services/horizon.py::lire_profil` pour l'horizon, `services/pvgis_serie.py::azimut_pvgis` pour la convention d'azimut DÉCLARÉE ; forme détaillée dans `contract_samples/calepinage_meteo.json` (CALX143).\n* `incertitude` — `services/p50p90.py::bankable` et `services/p50p90.py::variabilite_interannuelle` ; forme détaillée dans `contract_samples/calepinage_incertitude.json` (CALX144).\n* `performance` — `services/performance.py` (CALX179) : le PR au sens IEC 61724-1, avec sa méthode, sa référence citée et sa période — jamais un rapport nu.\n* `ombrage` — `services/orientation.py::tof_du_pan` (CALX58) pour TOF et TSRF, `services/ombrage_chaines.py::acces_par_module` pour l'accès solaire qui les pondère.\n* `consommation` — `services/consommation.py::profil_mensuel` et `services/consommation.py::apercu_courbe_csv` pour la courbe et son origine, `services/charges.py::ajouter_charges` pour les charges ajoutées (véhicule, PAC).\n* `autoconsommation` — `services/autoconsommation.py::bilan_autoconsommation` et `services/autoconsommation.py::plafond_injection`.\n* `batterie` — `services/batterie.py::simuler_batterie` et `services/batterie.py::specs_batterie`.\n* `hors_reseau` — `services/hors_reseau.py::simuler_hors_reseau` et `services/hors_reseau.py::dimensionner_hors_reseau`.\n* `validation` — `services/validation.py::ecart_vs_pvcalc` (CALX195) : un ÉCART INFORMATIF contre `PVcalc`, jamais une « validation », et jamais un ajustement silencieux.\n* `serie_horaire` — la série produite par `services/pvgis_serie.py::serie_irradiance` puis ré-indexée par `services/chaine_pertes.py::appliquer_chaine`, LUE aujourd'hui par `services/export_csv.py::export_csv` (`:102-124`) et écrite par PERSONNE ; forme détaillée dans `contract_samples/calepinage_serie_horaire.json` (CALX142). Elle N'EST PAS recopiée par `GET resultat/` (D-CALX 14 : volume).\n\nLE CALEPINAGE NE CALCULE JAMAIS D'ARGENT (D-CALX 5). Aucune clé de ce document ne porte un tarif, une économie, une VAN, un TRI, un LCOE ni un temps de retour : ces grandeurs vivent dans `apps/ventes` (`apps/ventes/economie.py`) et sont LUES par le module via `apps.ventes.selectors`. Aucun prix d'achat, aucune marge.\n\nHEURE LOCALE OU RIEN (D-CALX 15). Tout croisement horaire (`consommation`, `autoconsommation`, `batterie`, `hors_reseau`, `serie_horaire`) suppose une série ramenée à l'heure LOCALE du site (`meteo.heure`). Fuseau du site non saisi ⇒ ces blocs sont OMIS avec leur motif (`motif_absence`), jamais décalés d'une heure en silence.\n\nDISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais JAMAIS SIMULÉ : toutes les clés sont PRÉSENTES et valent `null`, les listes sont vides, et JAMAIS un `0`. Un `0 kWh` se lirait « ce toit ne produit rien », un `taux_autoconsommation = 0` « ce client n'autoconsomme rien » — là où personne n'a lancé de simulation. Un écran qui reçoit parfois une clé et parfois pas finit par tester l'ABSENCE DE CLÉ au lieu de l'absence de donnée : c'est là qu'il casse.\n\nZÉRO CHIFFRE CLIENT (D-CALX 7). Toutes les valeurs ci-dessous sont des PLACEHOLDERS ASSUMÉS : identifiants à un chiffre, empreintes visiblement factices (`abab…`), repères « d'essai ». Ce sont les CLÉS et LEURS NATURES qui font le contrat, jamais les nombres.\n\nCLÔTURE DU LOT 3 (CALX5). Les valeurs de `exemple` sont des PLACEHOLDERS assumés : le test de contrat affirme la FORME (les clés et leur type), jamais ces nombres — aucun d'eux n'est une mesure. Deux arbitrages y sont figés : (1) `production.annees[]` garde son sens « années météo OBSERVÉES » (`{annee, kwh, source}`) et la projection de vieillissement (CALX178) vit sous la clé NEUVE `production.projection[]` (`{annee, facteur, p50_kwh, source}`) — deux sens sous une même clé auraient fait lire une projection comme une observation ; (2) un bloc qu'aucune entrée ne permet de calculer est OMIS avec son motif plutôt que rempli de zéros — d'où `consommation: null` et `batterie.total: null` dans `exemple_vide`, le motif partant dans `avertissements`.",
   "exemple": {
     "simulation": {
       "hash_entree": "abababababababababababababababababababababababababababababababab",
@@ -24,7 +24,9 @@
         "performance_ratio": 0.799,
         "specific_yield_kwh_kwc": 1504.6,
         "annual_variability": 0.06,
-        "total_loss_pct": 20.1
+        "total_loss_pct": 20.1,
+        "annual_variability_source": "pvgis",
+        "annual_variability_annees": 2
       },
       "mensuel": [
         {
@@ -51,7 +53,9 @@
           "tsrf": 0.94,
           "inclinaison_optimale_deg": 30.0,
           "azimut_optimal_deg": 180.0,
-          "source": "pvgis"
+          "source": "pvgis",
+          "azimut_deg": 180.0,
+          "inclinaison_deg": 30.0
         }
       ],
       "annees": [
@@ -88,6 +92,20 @@
           "ecart_intra_chaine_pct": 3.5,
           "source": "mesure"
         }
+      ],
+      "projection": [
+        {
+          "annee": 1,
+          "facteur": null,
+          "p50_kwh": 13000.0,
+          "source": "chaine_pertes"
+        },
+        {
+          "annee": 2,
+          "facteur": 0.9945,
+          "p50_kwh": 12928.5,
+          "source": "lineaire — fiche produit"
+        }
       ]
     },
     "pertes": [
@@ -122,7 +140,10 @@
           "perte_pct": 0.0,
           "gain": false,
           "source": "pvgis",
-          "entree": "seriescalc",
+          "entree": {
+            "service": "seriescalc",
+            "base_rayonnement": "PVGIS-SARAH3"
+          },
           "reference": "PVGIS-SARAH3",
           "motif_omission": ""
         },
@@ -181,12 +202,19 @@
         "decalage_minutes": [
           60,
           60
-        ]
+        ],
+        "motif": ""
       },
       "albedo_face_avant": {
         "valeur": null,
         "motif": "Aucun albédo saisi par la société : la clé reste nulle."
-      }
+      },
+      "appels_pvgis": 2,
+      "pas_minutes": 60,
+      "resolution_minutes": 60,
+      "pas_charge_minutes": 60,
+      "interpolation": false,
+      "note_resolution": "La météo est au pas de 60 min (PVGIS sert une ligne par heure) et aucune interpolation infra-horaire n'est faite : entre deux heures, l'irradiance n'est jamais lissée."
     },
     "incertitude": {
       "composantes": [
@@ -216,7 +244,10 @@
       "irradiation_plan_kwh_m2": 1883.0,
       "periode": "annuelle",
       "pr_corrige_temperature": 0.812,
-      "t_cell_moyenne_ponderee_c": 41.2
+      "t_cell_moyenne_ponderee_c": 41.2,
+      "colonne_energie": "p_ac_kw",
+      "motif": "",
+      "motif_pr_corrige_temperature": ""
     },
     "ombrage": {
       "par_pan": [
@@ -239,7 +270,12 @@
           "code": "vehicule",
           "libelle": "Véhicule électrique (essai)",
           "kwh_an": 1800.0,
-          "source": "saisie"
+          "source": "saisie",
+          "methode": "km_par_jour",
+          "planifie": false,
+          "plafonnee": false,
+          "kwh_hors_production_an": 640.0,
+          "hypotheses": []
         }
       ],
       "profil_mensuel": [
@@ -251,7 +287,10 @@
           "mois": 2,
           "kwh": 760.0
         }
-      ]
+      ],
+      "total_base_kwh": 7800.0,
+      "total_charges_kwh": 1800.0,
+      "avertissements": []
     },
     "autoconsommation": {
       "taux_autoconsommation": 0.62,
@@ -263,15 +302,33 @@
         "production_kwh": 13000.0,
         "autoconsomme_kwh": 8060.0,
         "surplus_kwh": 4940.0,
-        "import_reseau_kwh": 1540.0
+        "import_reseau_kwh": 1540.0,
+        "production_brute_kwh": 13210.0,
+        "export_reseau_kwh": 4730.0,
+        "apres_batterie": true
       },
       "plafond": {
         "applique": true,
         "plafond_kw": 6.0,
         "justification": "Plafond d'injection SAISI par la société, avec sa source — jamais une constante.",
-        "energie_ecretee_kwh": 210.0
+        "energie_ecretee_kwh": 210.0,
+        "heures_ecretees": 96,
+        "motif": ""
       },
-      "motif_absence": ""
+      "motif_absence": "",
+      "etape_plafond": {
+        "libelle": "Plafond d'injection",
+        "gain": false,
+        "source": "Plafond d'injection SAISI par la société, avec sa source.",
+        "entree": {
+          "plafond_kw": 6.0,
+          "heures_ecretees": 96,
+          "energie_ecretee_kwh": 210.0
+        },
+        "reference": "PV*SOL — écrêtage de la puissance injectée",
+        "motif_omission": ""
+      },
+      "definition": "Taux d'autoconsommation = énergie autoconsommée ÷ production vue au point de livraison. Couverture = énergie autoconsommée ÷ CONSOMMATION (règle COUV-AUTO) — jamais production ÷ consommation. Autonomie = 1 − énergie importée ÷ consommation."
     },
     "batterie": {
       "groupes": [
@@ -289,10 +346,24 @@
       "total": {
         "capacite_utile_kwh": 10.0,
         "energie_restituee_kwh": 2400.0,
+        "energie_stockee_kwh": 2650.0,
         "taux_autonomie": 0.58,
-        "heures_sans_import": 3120
+        "heures_sans_import": 3120,
+        "strategie": "autoconsommation",
+        "objectif_dimensionnant": "autoconsommation",
+        "energie": {
+          "production_kwh": 13000.0,
+          "consommation_kwh": 9600.0,
+          "autoconsomme_kwh": 8060.0,
+          "export_kwh": 4940.0,
+          "import_reseau_kwh": 1540.0,
+          "pertes_batterie_kwh": 250.0,
+          "variation_stock_kwh": 0.0
+        },
+        "definition": "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. Heures sans import = les pas où le réseau n’a rien fourni. Les deux se comptent APRÈS le dispatch de la batterie."
       },
-      "avertissements": []
+      "avertissements": [],
+      "motif_absence": ""
     },
     "hors_reseau": {
       "heures": 8760,
@@ -312,7 +383,17 @@
         }
       ],
       "mentions": [],
-      "motif_absence": ""
+      "motif_absence": "",
+      "soc_minimal_pct": 18.4,
+      "banque": {
+        "capacite_utile_kwh": 10.0,
+        "capacite_nominale_kwh": 11.1,
+        "jours_autonomie": 2.0,
+        "dod_pct": 90.0,
+        "source_dod": "fiche"
+      },
+      "quantiles_publiables": false,
+      "motif_quantiles": "Une installation hors réseau se juge sur sa DÉFAILLANCE, pas sur un quantile de production : P75/P90 ne sont pas publiés ici."
     },
     "validation": {
       "faite_le": "2026-09-21T10:15:00Z",
@@ -322,7 +403,87 @@
       "tolerance_pct": 5.0,
       "verdict": "dans_la_tolerance",
       "avertissement": "",
-      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement."
+      "motif": "ÉCART INFORMATIF contre PVcalc à perte totale égale — jamais une « validation », jamais un ajustement.",
+      "tolerance_source": "note interne du bureau d’études",
+      "pertes_totales": {
+        "chaine_pct": 20.1,
+        "pvgis_pct": 20.1,
+        "egales": true
+      },
+      "mensuel": [
+        {
+          "mois": 1,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 2,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 3,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 4,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 5,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 6,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 7,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 8,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 9,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 10,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 11,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        },
+        {
+          "mois": 12,
+          "chaine_kwh": 880.0,
+          "pvcalc_kwh": 900.0,
+          "ecart_pct": -2.22
+        }
+      ]
     },
     "serie_horaire": {
       "pas_minutes": 60,
@@ -355,7 +516,9 @@
           "gi_w_m2": 880.0,
           "t2m_c": 19.8
         }
-      ]
+      ],
+      "plafond_points": 8784,
+      "motif_troncature": ""
     }
   },
   "exemple_accepte": {
@@ -396,13 +559,16 @@
         "performance_ratio": null,
         "specific_yield_kwh_kwc": null,
         "annual_variability": null,
-        "total_loss_pct": null
+        "total_loss_pct": null,
+        "annual_variability_source": null,
+        "annual_variability_annees": null
       },
       "mensuel": [],
       "par_pan": [],
       "annees": [],
       "par_module": [],
-      "par_chaine": []
+      "par_chaine": [],
+      "projection": []
     },
     "pertes": [],
     "cascade": {
@@ -436,12 +602,19 @@
       "heure": {
         "base": null,
         "fuseau_site": null,
-        "decalage_minutes": []
+        "decalage_minutes": [],
+        "motif": ""
       },
       "albedo_face_avant": {
         "valeur": null,
         "motif": "Aucune simulation lancée : aucune météo n'a été demandée."
-      }
+      },
+      "appels_pvgis": 0,
+      "pas_minutes": null,
+      "resolution_minutes": null,
+      "pas_charge_minutes": null,
+      "interpolation": false,
+      "note_resolution": ""
     },
     "incertitude": {
       "composantes": [],
@@ -462,49 +635,31 @@
       "pr_reference": null,
       "irradiation_plan_kwh_m2": null,
       "periode": null,
-      "pr_corrige_temperature": null,
-      "t_cell_moyenne_ponderee_c": null
+      "colonne_energie": null,
+      "motif": "Aucune simulation lancée : aucune série de sortie de chaîne à mesurer.",
+      "motif_pr_corrige_temperature": "Aucune simulation lancée : aucune série de sortie de chaîne à mesurer."
     },
     "ombrage": {
       "par_pan": [],
       "methode": null
     },
-    "consommation": {
-      "courbe_origine": null,
-      "pas_minutes": null,
-      "total_kwh": null,
-      "charges": [],
-      "profil_mensuel": []
-    },
+    "consommation": null,
     "autoconsommation": {
       "taux_autoconsommation": null,
       "taux_couverture": null,
       "taux_autonomie": null,
       "heures_sans_import": null,
-      "energie": {
-        "consommation_kwh": null,
-        "production_kwh": null,
-        "autoconsomme_kwh": null,
-        "surplus_kwh": null,
-        "import_reseau_kwh": null
-      },
-      "plafond": {
-        "applique": null,
-        "plafond_kw": null,
-        "justification": null,
-        "energie_ecretee_kwh": null
-      },
+      "energie": null,
+      "plafond": null,
+      "etape_plafond": null,
+      "definition": "",
       "motif_absence": "Aucune simulation lancée : aucun croisement horaire n'a eu lieu."
     },
     "batterie": {
       "groupes": [],
-      "total": {
-        "capacite_utile_kwh": null,
-        "energie_restituee_kwh": null,
-        "taux_autonomie": null,
-        "heures_sans_import": null
-      },
-      "avertissements": []
+      "total": null,
+      "avertissements": [],
+      "motif_absence": "Aucune batterie n'est déclarée sur ce calepinage : le bloc « batterie » est OMIS."
     },
     "hors_reseau": {
       "heures": null,
@@ -518,7 +673,11 @@
       "mois_le_plus_defavorable": null,
       "par_mois": [],
       "mentions": [],
-      "motif_absence": "Aucune simulation lancée : aucun croisement horaire n'a eu lieu."
+      "motif_absence": "Aucune simulation lancée : aucun croisement horaire n'a eu lieu.",
+      "soc_minimal_pct": null,
+      "banque": null,
+      "quantiles_publiables": null,
+      "motif_quantiles": ""
     },
     "validation": {
       "faite_le": null,
@@ -528,13 +687,18 @@
       "tolerance_pct": null,
       "verdict": null,
       "avertissement": null,
-      "motif": "Aucune simulation lancée : aucun écart n'a été mesuré contre PVcalc."
+      "motif": "Aucune simulation lancée : aucun écart n'a été mesuré contre PVcalc.",
+      "tolerance_source": null,
+      "pertes_totales": null,
+      "mensuel": []
     },
     "serie_horaire": {
       "pas_minutes": null,
       "tronquee": null,
       "colonnes": [],
-      "points": []
+      "points": [],
+      "plafond_points": 8784,
+      "motif_troncature": ""
     }
   }
 }

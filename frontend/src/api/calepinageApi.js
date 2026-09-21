@@ -337,6 +337,16 @@ const calepinageApi = {
     // colonne fautive du fichier et, quand elle est connue, sa `ligne`.
     deposerMeteoFichier: (id, corps) =>
       api.post(`${pivot(id)}meteo-fichier/`, corps),
+
+    // CALX5 — LANCER la simulation (`views/simulation.py`, contrat
+    // `contract_samples/calepinage_simulation.json`). Deux réponses, jamais
+    // une troisième : 202 `{job_id, kind, nature}` — le travail est parti en
+    // tâche de fond, à suivre par `moteur.resultat(jobId)` (UN seul kind,
+    // D-CALX 12) — ou 200 `{deja_calcule: true, calcule_le}` quand les
+    // entrées n'ont pas bougé. `{ forcer: true }` relance quand même. Un
+    // refus 400 NOMME le réglage ou le champ à corriger.
+    simuler: (id, { forcer = false } = {}) =>
+      api.post(`${pivot(id)}simuler/`, { forcer }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

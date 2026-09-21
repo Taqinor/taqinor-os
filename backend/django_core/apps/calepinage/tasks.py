@@ -27,8 +27,9 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['KIND_CALEPINAGE', 'calculer_calepinage', 'cle_resultat',
-           'cle_job', 'resultat_du_job']
+__all__ = ['KIND_CALEPINAGE', 'NATURE_SIMULATION', 'calculer_calepinage',
+           'cle_resultat', 'cle_job', 'resultat_du_job',
+           'simuler_calepinage']
 
 #: Type logique du job de fond (``BackgroundJob.kind``) — UN SEUL pour tout le
 #: module, y compris les soumissions multiples.
@@ -36,6 +37,12 @@ KIND_CALEPINAGE = 'calepinage'
 
 #: Durée de conservation d'un résultat en cache (secondes).
 DUREE_CACHE_S = 24 * 3600
+
+#: CALX5 / D-CALX 12 — LA SIMULATION EMPRUNTE LE KIND EXISTANT et se
+#: discrimine par cette ``nature`` dans la charge utile de ``core.jobs.submit``.
+#: Un second kind rendrait ``GET moteur/resultat/<job_id>/`` 404, puisque cette
+#: vue filtre sur ``kind=KIND_CALEPINAGE`` (``views/moteur.py``).
+NATURE_SIMULATION = 'simulation'
 
 
 def cle_resultat(hash_entree, version_moteur):
@@ -142,3 +149,66 @@ def calculer_calepinage(job_id=None, company_id=None, entree=None,
     job.marquer_termine(cle_job(job.pk))
     return {'statut': 'done', 'reussites': reussites,
             'elements': len(elements)}
+
+
+@shared_task(name='calepinage.simuler')
+def simuler_calepinage(job_id=None, company_id=None, calepinage_id=None,
+                       nature=NATURE_SIMULATION, forcer=False):
+    """CALX5 — la SIMULATION hors requête, sur le kind existant (D-CALX 12).
+
+    Deux issues, jamais une troisième silencieuse : ``done`` avec le résumé du
+    calcul en cache, ou ``failed`` avec un motif FRANÇAIS qui NOMME le champ
+    fautif (mode météo non saisi, aucun pan équipé, site sans épingle). Le
+    calepinage est relu ICI, borné à la société du job : une instance de
+    modèle ne voyage jamais dans une charge utile Celery.
+    """
+    from core import cache as cache_tenant
+    from core.models import BackgroundJob
+
+    from .models import Calepinage
+    from .services import simulation as service_simulation
+    from .services.simulation import SimulationRefusee
+
+    job = BackgroundJob.objects.filter(pk=job_id).first()
+    if job is None:
+        logger.info('calepinage.simuler : job #%s introuvable', job_id)
+        return {'statut': 'inconnu'}
+
+    calepinage = (Calepinage.objects
+                  .filter(pk=calepinage_id, company=job.company)
+                  .first())
+    if calepinage is None:
+        job.marquer_echec('Calepinage introuvable : la simulation est '
+                          'abandonnée.')
+        return {'statut': 'failed', 'motif': 'calepinage introuvable'}
+
+    job.marquer_progression(5)
+    try:
+        rendu = service_simulation.simuler_calepinage(calepinage,
+                                                      forcer=bool(forcer))
+    except SimulationRefusee as refus:
+        job.marquer_echec('%s : %s' % (refus.champ or 'simulation',
+                                       refus.motif))
+        return {'statut': 'failed', 'champ': refus.champ}
+    except Exception as erreur:  # noqa: BLE001 — l'issue est publiée, pas avalée
+        logger.exception('calepinage.simuler : calepinage #%s en échec',
+                         calepinage_id)
+        job.marquer_echec(str(erreur))
+        return {'statut': 'failed', 'motif': str(erreur)}
+
+    resume = {
+        'calepinage': calepinage.pk,
+        'nature': nature,
+        'deja_calcule': rendu['deja_calcule'],
+        'hash_entree': rendu.get('hash_entree'),
+        'calcule_le': rendu.get('calcule_le'),
+        'duree_s': rendu.get('duree_s'),
+    }
+    charge = {'elements': [{'index': 0, 'repere': str(calepinage.pk),
+                            'statut': 'done', 'motif': '',
+                            'resultat': resume}],
+              'resultat': resume}
+    cache_tenant.set(job.company_id, cle_job(job.pk), charge,
+                     timeout=DUREE_CACHE_S)
+    job.marquer_termine(cle_job(job.pk))
+    return {'statut': 'done', 'calepinage': calepinage.pk}
