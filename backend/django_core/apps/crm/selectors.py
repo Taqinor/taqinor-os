@@ -5033,6 +5033,114 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
     return lignes
 
 
+# ── CAD-G ── CAD75 — cadences échues à CLORE (liste, jamais une clôture) ────
+
+#: CAD75 — cadences qui peuvent finir « échues » et qu'un humain doit clore.
+#: ``reveil`` en est EXCLUE : ``cloturer_cadence`` refuse déjà de clore un
+#: plan de réveil (sinon un dormant sans réponse tournerait en boucle), donc
+#: une touche de réveil en retard n'a pas de clôture à proposer.
+CADENCES_CLOTURABLES = ('contact', 'apres_devis', 'generique')
+
+
+def cadences_echues_a_clore(company, user, *, jours, today=None, limit=200):
+    """CAD75 — les dossiers dont la cadence est ÉCHUE et que PERSONNE n'a clos.
+
+    Le constat (audit L3 du 21/09/2026) : ``cloturer_cadence`` n'a qu'un seul
+    appelant, ``marquer_etape_relance`` — tant que l'issue de la DERNIÈRE
+    touche n'est pas saisie, le lead n'entre jamais au Froid, ne reçoit ni
+    étiquette ni réveil J30/J60, et reste au milieu du pipeline avec une
+    touche en retard. Aucune tâche planifiée ne clôt une cadence échue. Le
+    dossier réellement abandonné est donc plus mal loti que celui qu'on clôt
+    proprement.
+
+    Ce sélecteur ne corrige PAS le moteur : il rend ces dossiers VISIBLES.
+    **Il ne clôt rien, n'écrit rien, ne pose aucune étiquette** — la clôture
+    reste une décision humaine (garde-fou de la tâche). C'est une LECTURE
+    pure, destinée au digest du matin / au cockpit.
+
+    ``jours`` est le seuil de retard, en jours, et il est OBLIGATOIRE : ni le
+    texte de la tâche ni aucun réglage société ne porte ce nombre, et la règle
+    « zéro chiffre inventé » interdit d'en écrire un ici. L'appelant (digest,
+    cockpit) fournit la valeur qu'il affiche à l'écran.
+
+    Renvoie une liste de dicts triés du plus ancien retard au plus récent :
+    ``{'etape_id', 'lead_id', 'lead', 'ville', 'stage', 'owner', 'cadence',
+    'ordre', 'canal', 'libelle', 'due_date', 'jours_de_retard'}``.
+    """
+    import datetime as _dt
+
+    from core.dates import aujourd_hui_local
+    from authentication.scoping import scope_queryset
+    from .models import Lead, RelanceEtape
+    from .stages import COLD
+
+    try:
+        seuil = int(jours)
+    except (TypeError, ValueError):
+        raise ValueError(
+            'CAD75 — « jours » (seuil de retard) doit être un nombre de '
+            'jours.')
+    if seuil < 0:
+        raise ValueError(
+            'CAD75 — « jours » (seuil de retard) ne peut pas être négatif.')
+
+    today = today or aujourd_hui_local()
+    limite = max(int(limit or 0), 0)
+    if not limite:
+        return []
+
+    # Une cadence est ÉCHUE quand une touche encore OUVERTE traîne depuis plus
+    # de `jours`. Les archivés et les perdus n'ont rien à clore ; les leads
+    # déjà au Froid non plus (ils SONT le résultat de la clôture).
+    qs = (RelanceEtape.objects
+          .filter(company=company,
+                  statut=RelanceEtape.Statut.A_FAIRE,
+                  cadence__in=CADENCES_CLOTURABLES,
+                  due_date__lt=today - _dt.timedelta(days=seuil),
+                  lead__is_archived=False,
+                  lead__perdu=False)
+          .exclude(lead__stage=COLD)
+          .select_related('lead', 'lead__owner'))
+
+    leads_visibles = scope_queryset(
+        Lead.objects.filter(company=company), user, ['owner'])
+    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+
+    lignes = []
+    vus = set()
+    for etape in qs.order_by('due_date', 'lead_id', 'ordre')[:limite * 4]:
+        # Un lead peut porter plusieurs touches ouvertes (deux plans) : on ne
+        # le propose qu'UNE fois, sur son retard le plus ancien.
+        if etape.lead_id in vus:
+            continue
+        vus.add(etape.lead_id)
+        lead = etape.lead
+        nom = f"{lead.nom or ''} {lead.prenom or ''}".strip()
+        if lead.owner_id:
+            responsable = (lead.owner.get_full_name()
+                           or lead.owner.username or '')
+        else:
+            responsable = ''
+        lignes.append({
+            'etape_id': etape.id,
+            'lead_id': lead.id,
+            'lead': nom,
+            'ville': lead.ville or '',
+            'stage': lead.stage or '',
+            'owner': responsable,
+            'cadence': etape.cadence,
+            'ordre': etape.ordre,
+            'canal': etape.canal,
+            'libelle': etape.libelle or '',
+            'due_date': etape.due_date.isoformat() if etape.due_date else '',
+            'jours_de_retard': ((today - etape.due_date).days
+                                if etape.due_date else 0),
+        })
+        if len(lignes) >= limite:
+            break
+    return lignes
+
+
 # ── CAD-I ── CAD87 ──────────────────────────────────────────────────────────
 # Les trois mesures qui manquaient à côté de CKP3 (« à quelle heure et quel
 # jour joint-on ? », « combien de touches avant une signature ? », « quelle

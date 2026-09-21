@@ -49,6 +49,11 @@ const CANAUX = [
   { value: 'email', label: 'E-mail' },
 ]
 
+// CAD43 — canaux SILENCIEUX, les seuls pour lesquels ouvrir le samedi n'a pas
+// de coût pour le prospect (un message ne réveille personne). Un appel le
+// samedi n'est pas dans le protocole : on le signale sans l'interdire.
+const CANAUX_SILENCIEUX = ['whatsapp', 'email']
+
 // CAD114 — un barreau EXISTANT qui porte déjà `visite` (le J+35 générique)
 // doit continuer d'afficher sa valeur : elle est montrée en lecture, désactivée
 // et étiquetée pour ce qu'elle est. Rien n'est réécrit en base — le canal se
@@ -56,6 +61,11 @@ const CANAUX = [
 const CANAL_VISITE_HERITE = {
   value: 'visite', label: 'Visite (héritée — ne déclenche rien)',
 }
+
+// CAD43 × CAD114 — le libellé lisible d'un canal, y compris le `visite`
+// hérité (retiré des canaux PROPOSÉS mais encore porté par des barreaux).
+const CANAL_LABEL = Object.fromEntries(
+  [...CANAUX, CANAL_VISITE_HERITE].map(c => [c.value, c.label]))
 
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
@@ -333,6 +343,16 @@ function CadenceTable({ cadence, gabarits }) {
                     aria-label={`Autorisée le dimanche (16 h-19 h) — étape ${row.ordre}`} />
             Dimanche
           </label>
+          {/* CAD43 — drapeau PAR TOUCHE, symétrique de `dimanche_ok` : ouvrir
+              le samedi à CETTE touche seule (le message d'identité du lead
+              arrivé le vendredi soir) sans ouvrir les six appels d'un coup.
+              Décoché partout par défaut. */}
+          <label className="flex items-center gap-1.5 pb-2 text-sm text-foreground">
+            <Switch checked={!!row.samedi_ok}
+                    onCheckedChange={v => patch(row, { samedi_ok: v })}
+                    aria-label={`Autorisée le samedi — étape ${row.ordre}`} />
+            Samedi
+          </label>
           <label className="flex items-center gap-1.5 pb-2 text-sm text-foreground">
             <Switch checked={row.actif} onCheckedChange={v => patch(row, { actif: v })}
                     aria-label={`Active — étape ${row.ordre}`} />
@@ -343,6 +363,15 @@ function CadenceTable({ cadence, gabarits }) {
                       onClick={() => setASupprimer(row)}>
             <Trash2 className="size-4" />
           </IconButton>
+          {row.samedi_ok && !CANAUX_SILENCIEUX.includes(row.canal) && (
+            <p data-testid={`cre-samedi-appel-${row.id}`}
+               className="w-full text-[12.5px] text-amber-700 dark:text-amber-300">
+              Cette touche est un {CANAL_LABEL[row.canal] || row.canal} :
+              ouvrir le samedi fera sonner le téléphone du prospect un jour de
+              week-end. Le samedi est prévu pour les canaux silencieux
+              (WhatsApp, e-mail).
+            </p>
+          )}
         </div>
       ))}
       {/* CAD24 — la case « Dimanche » ci-dessus (ouverte à l'édition par

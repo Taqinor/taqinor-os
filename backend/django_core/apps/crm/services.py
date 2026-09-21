@@ -756,7 +756,7 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 
     def _canal(gabarit):
         """Le canal de CETTE touche — `appel` par défaut, jamais deviné."""
-        return getattr(gabarit, 'canal', None) or 'appel'
+        return _canal_effectif(gabarit)
 
     if gabarits is None:
         gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
@@ -869,6 +869,8 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
         echeance = horaires.prochain_creneau_appel(
             echeance, lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
+            # CAD43 — drapeau PAR TOUCHE, faux partout par défaut.
+            samedi=bool(getattr(gabarit, 'samedi_ok', False)),
             canal=_canal(gabarit),
             # CAD21 — l'heure imposée du gabarit SURVIT au passage au jour
             # ouvré suivant : l'« Appel 4 » de 18 h ne ressort plus à 09 h le
@@ -898,6 +900,11 @@ def calculer_echeances_cadence(lead, cadence, depart, *, gabarits=None):
 # (recette du 08/09), et un job système (le placement « contact » du 11/09
 # par-dessus un après-devis actif — lead #348) est neutralisé net.
 _PRIORITE_CADENCE = {'reveil': 0, 'generique': 1, 'contact': 2,
+                     # CAD128 — « deuxième affaire » a la MÊME priorité que
+                     # la prise de contact : c'est le même moment du cycle
+                     # (l'ouverture), pour un client acquis. Elle ne prend
+                     # donc jamais la place d'un suivi après-devis en cours.
+                     'deuxieme_affaire': 2,
                      'apres_devis': 3}
 
 
@@ -1049,7 +1056,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
-            canal=gabarit.canal, libelle=gabarit.libelle,
+            canal=_canal_effectif(gabarit), libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis=devis, cadence_depart=ancre,
         )
@@ -1105,6 +1112,12 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
             # cadence réactive, celle-ci est la PREMIÈRE touche, et la
             # proposition aurait expiré le jour même de son envoi.
             derniere = echeances[-1][1].astimezone(horaires.CASABLANCA).date()
+            # CAD57 — un dossier FINANCÉ À CRÉDIT ne peut pas, légalement,
+            # boucler dans cette fenêtre : la loi 31-08 impose 10 jours de
+            # réflexion PUIS 7 jours de rétractation une fois l'offre de
+            # crédit émise. Décision fondateur du 21/09/2026 : validité
+            # distincte et plus longue (le réglage société), J+14 sinon.
+            derniere = _validite_selon_financement(lead, devis, derniere)
             if poser_validite_devis(devis, derniere):
                 LeadActivity.objects.create(
                     company=lead.company, lead=lead, user=None,
@@ -1264,7 +1277,7 @@ def materialiser_touche_suivante(etape_close, user=None):
             echeance = horaires.prochain_creneau_appel(
                 base + datetime.timedelta(minutes=max(0, ecart)),
                 lead.company,
-                canal=getattr(gabarit, 'canal', None) or 'appel')
+                canal=_canal_effectif(gabarit))
         # CAD22 — une touche ne NAÎT JAMAIS déjà échue : après l'appel du
         # dimanche (posé entre J+5 et J+11), la J+7 du protocole naissait avec
         # une date passée et ne pouvait plus jamais être « à l'heure ». Elle
@@ -1273,12 +1286,12 @@ def materialiser_touche_suivante(etape_close, user=None):
         echeance = cadence_temps.echeance_jamais_echue(
             echeance, company=lead.company,
             dimanche=bool(getattr(gabarit, 'dimanche_ok', False)),
-            canal=getattr(gabarit, 'canal', None) or 'appel')
+            canal=_canal_effectif(gabarit))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
             ordre=gabarit.ordre, due_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
-            canal=gabarit.canal, libelle=gabarit.libelle,
+            canal=_canal_effectif(gabarit), libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
             devis_id=etape_close.devis_id, cadence_depart=ancre)
         if cadence == 'reveil':
@@ -2156,7 +2169,11 @@ _PLACEHOLDERS_RENDUS = (
     # CAD71 (21/09/2026) — `avis_google` : lien de la fiche Google, réglage
     # société (`CompanyProfile.lien_avis_google`) — PAS le lien du devis.
     'mois_preuve', 'ville_preuve', 'lien_preuve', 'puissance_preuve',
-    'lien_video_preuve', 'lien_google')
+    'lien_video_preuve', 'lien_google',
+    # CAD127 (21/09/2026) — l'origine RÉELLE du lead : le nom de la personne
+    # qui l'a recommandé, et le mois où il nous avait consultés. Vides quand
+    # la donnée n'existe pas ⇒ leur phrase est OMISE, jamais un crochet.
+    'prescripteur', 'mois_dossier')
 
 #: Les trois placeholders de la preuve. Regroupés pour n'aller chercher une
 #: réalisation QUE si le texte en porte au moins un (même discipline que
@@ -2307,11 +2324,11 @@ def _nom_affiche_conseiller(lead, user):
 def _nom_affiche_marque(lead):
     """CAD96 (21/09/2026) — le nom de marque AFFICHÉ dans un texte client.
 
-    Trois graphies codées en dur coexistaient (« TAQINOR », « TAQINOR
+    Trois graphies codées en dur coexistaient (« la marque », « la marque
     Solutions », « Taqinor Solutions ») dans le même guide de messages,
     incohérence déjà présente dans le document source validé. Plutôt que de
     figer UNE de ces graphies dans le code (une future société white-label
-    hériterait du nom de TAQINOR), la marque vient désormais de
+    hériterait du nom de la marque), la marque vient désormais de
     ``parametres.CompanyProfile.nom`` — même source que les PDFs (SCA27) —
     avec repli sur ``Company.nom`` si la société n'a pas encore de profil."""
     company = getattr(lead, 'company', None)
@@ -2400,6 +2417,8 @@ def message_visite_pour_lead(lead, cle, *, user=None):
             'date_visite': date_visite,
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
+        # CAD126 — variante de SEGMENT par exception (pompage / B2B).
+        corps = _corps_pour_segment(corps, cle, lead, langue)
         manquants = [c for c in _PLACEHOLDERS_RENDUS
                      if '{' + c + '}' in corps
                      and not str(contexte.get(c, '')).strip()]
@@ -2428,8 +2447,19 @@ def message_pour_etape(etape, *, request=None, user=None):
 
     lead = etape.lead
     langue = lead.langue_preferee or 'fr'
+    # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
+    # de remplir notre formulaire » est faux pour un lead venu par téléphone,
+    # en boutique, par recommandation ou d'un message entrant. La clé est
+    # choisie d'après le canal déjà enregistré, AVANT de lire le gabarit.
+    cle_rendue = cle_identite_pour_lead(lead, etape.template_cle,
+                                        reference=etape.due_date)
     corps = MessageTemplate.get_corps(
-        lead.company, etape.template_cle, langue) if etape.template_cle else ''
+        lead.company, cle_rendue, langue) if cle_rendue else ''
+    # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
+    # pas à un pompage au bord d'un forage, « en famille » pas à une
+    # entreprise. Par exception SEULEMENT, et jamais sur un texte que la
+    # société a personnalisé.
+    corps = _corps_pour_segment(corps, cle_rendue, lead, langue)
 
     civilite, prenom = _civilite_et_prenom(lead, langue)
     contexte = {
@@ -2449,6 +2479,12 @@ def message_pour_etape(etape, *, request=None, user=None):
         'date_visite': _date_visite_francais(
             getattr(lead, 'visite_prevue_le', None)),
         'lien_google': '',
+        # CAD127 — l'origine réelle. Résolus seulement si le texte les
+        # demande (aucune requête sinon) ; vides ⇒ phrase OMISE (MRY13).
+        'prescripteur': (_nom_prescripteur(lead)
+                         if '{prescripteur}' in (corps or '') else ''),
+        'mois_dossier': (_mois_dossier_francais(lead)
+                         if '{mois_dossier}' in (corps or '') else ''),
     }
     # CAD71 (21/09/2026) — {lien_google} : lien de la fiche Google de la
     # société, réglage dédié (`CompanyProfile.lien_avis_google`) — AVANT
@@ -2467,7 +2503,14 @@ def message_pour_etape(etape, *, request=None, user=None):
             devis = get_devis_by_pk(etape.devis_id)
             if devis is not None:
                 contexte['reference'] = getattr(devis, 'reference', '') or ''
-                validite = getattr(devis, 'date_validite', None)
+                # CAD59 — le message applique le MÊME repli que le PDF :
+                # `date_validite` si posée, sinon date de création + le
+                # réglage société `quote_validity_days`. Lire le seul champ
+                # laissait MRY13 supprimer la phrase entière quand il était
+                # vide, et le WhatsApp contredisait alors un PDF qui, lui,
+                # affichait « valable jusqu'au X ». Règle #4 respectée : on ne
+                # touche pas au moteur de rendu, on lit la MÊME règle.
+                validite = _date_validite_comme_le_pdf(devis)
                 if validite:
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
                 contexte['lien'] = url_proposition(devis) or ''
@@ -2618,6 +2661,15 @@ def _garde_cadence_contact(lead):
             lead.company, phone=lead.telephone, email=lead.email,
             exclude_pk=lead.pk)
         if not autre.is_archived and not autre.perdu]
+    # CAD128 — un homonyme SIGNÉ n'est pas un doublon vivant : c'est un CLIENT
+    # qui revient, le meilleur lead du portefeuille. Il sort de la garde
+    # UNIQUEMENT couplé à la cadence courte « deuxième affaire »
+    # (``demarrer_cadence_contact`` la lance à sa place) — jamais le protocole
+    # contact, six appels sur quatorze jours sur quelqu'un qui a déjà acheté.
+    if doublons and all(d.stage == stages.SIGNED for d in doublons):
+        return ('deuxieme_affaire',
+                'client déjà signé qui revient — cadence courte « deuxième '
+                'affaire », jamais le protocole contact')
     if doublons:
         refs = ', '.join(f'#{d.pk}' for d in doublons[:3])
         return ('doublon',
@@ -2664,6 +2716,10 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         garde = _garde_cadence_contact(lead)
         if garde is not None:
             code, motif = garde
+            if code == 'deuxieme_affaire':
+                # CAD128 — le client acquis prend la cadence COURTE. Les deux
+                # fiches sont LIÉES par une note, jamais fusionnées d'office.
+                return _demarrer_deuxieme_affaire(lead, user)
             if code in _GARDES_CADENCE_TRACEES:
                 # MRY6/MRY10 — les deux refus « rattrapables à la main » sont
                 # ÉCRITS : sans numéro exploitable ou sur un doublon vivant,
@@ -9022,6 +9078,613 @@ def clients_par_ids(company, ids):
     d'un autre tenant en passant un id deviné.
     """
     return list(Client.objects.filter(company=company, pk__in=list(ids or [])))
+
+
+# ── CAD-G ── CAD74 — réveil saisonnier (`reveil_b`) ────────────────────────
+# Le câblage vit dans `apps/crm/cadence_reveil_saison.py` (module autonome —
+# ce fichier est partagé par des dizaines de tâches). Ces deux passe-plats
+# sont le point d'entrée attendu par les appelants de `services` ; ils ne
+# dupliquent aucune logique. Crochet planifié : AUCUN aujourd'hui — la pose
+# se déclenche par un appel explicite, jamais à l'insu de la commerciale.
+
+def poser_reveil_saisonnier(lead, user=None, *, maintenant=None):
+    """CAD74 — pose LA touche `reveil_b` sur un dormant (ou ``None``)."""
+    from .cadence_reveil_saison import poser_reveil_saisonnier as _poser
+    return _poser(lead, user, maintenant=maintenant)
+
+
+def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
+                              limite=200):
+    """CAD74 — passe la fenêtre juin-septembre sur les dormants d'une société."""
+    from .cadence_reveil_saison import poser_reveils_saisonniers as _tous
+    return _tous(company, user, maintenant=maintenant, limite=limite)
+
+
+# ── CAD-E ── CAD56 — devis corrigé et RENVOYÉ : proposer de redater ─────────
+#
+# Constat (audit L3 du 21/09/2026) : le renvoi du MÊME devis ne redate rien.
+# `initialiser_plan_relance` sort par `ouvertes_deja` sans toucher à l'ancre,
+# le compteur continue depuis le PREMIER envoi, et le client reçoit
+# « je classe ? » deux jours après sa nouvelle proposition.
+#
+# Garde-fous : MRY7 intact — AUCUNE seconde cadence après-devis n'est créée,
+# aucune touche supprimée ni recréée ; le choix par DÉFAUT reste « ne rien
+# changer » (le redatage n'a lieu que sur un « oui » explicite) ; le décalage
+# est journalisé.
+
+#: Ce que la commerciale lit au chatter quand un devis déjà suivi repart.
+PROPOSITION_REDATAGE_LIBELLE = (
+    'Nouvelle proposition envoyée — repartir du jour 1 du suivi ?')
+
+
+def _ancre_cadence_apres_devis(lead, devis=None):
+    """L'ANCRE actuelle du suivi de proposition, ou ``None``.
+
+    Lue sur les touches encore OUVERTES : `cadence_depart` quand elle existe
+    (CKP2), sinon le repli documenté — la plus ancienne échéance du plan.
+    """
+    ouvertes = lead.relance_etapes.filter(
+        cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+    if devis is not None:
+        ouvertes = ouvertes.filter(devis=devis)
+    premiere = ouvertes.order_by('ordre', 'due_date').first()
+    if premiere is None:
+        return None
+    if premiere.cadence_depart is not None:
+        return premiere.cadence_depart
+    plus_ancienne = (lead.relance_etapes
+                     .filter(cadence='apres_devis', due_at__isnull=False)
+                     .order_by('due_at').first())
+    return plus_ancienne.due_at if plus_ancienne is not None else None
+
+
+def proposer_redatage_apres_devis(lead, user, devis):
+    """CAD56 — écrit la PROPOSITION au chatter, sans rien décider.
+
+    Appelée quand le MÊME devis repart alors que son suivi est déjà en cours.
+    Ne modifie aucune date : elle rend le choix VISIBLE, c'est tout. Renvoie
+    l'activité créée, ou ``None`` s'il n'y a pas de suivi ouvert pour ce
+    devis (rien à redater).
+    """
+    if devis is None:
+        return None
+    ancre = _ancre_cadence_apres_devis(lead, devis)
+    if ancre is None:
+        return None
+    from . import horaires
+
+    depuis = ancre.astimezone(horaires.CASABLANCA).strftime('%d/%m/%Y')
+    reference = getattr(devis, 'reference', '') or '?'
+    return LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'{PROPOSITION_REDATAGE_LIBELLE} La proposition {reference} '
+              f'vient de repartir, mais le suivi court depuis le {depuis} : '
+              'répondez « oui » pour décaler les touches restantes sur cette '
+              'nouvelle date, « non » pour ne rien changer. Aucune seconde '
+              'série de messages n\'est lancée.'))
+
+
+def redater_cadence_apres_devis(lead, user, *, devis=None, depart=None,
+                                accepte=True):
+    """CAD56 — applique (ou refuse) le redatage proposé ci-dessus.
+
+    ``accepte=False`` (« non ») : RIEN ne bouge — une ligne de chatter dit que
+    le choix a été fait, pour qu'on ne se demande pas plus tard pourquoi les
+    dates n'ont pas suivi. C'est aussi le comportement par défaut de
+    l'application : sans geste humain, cette fonction n'est jamais appelée.
+
+    ``accepte=True`` (« oui ») : l'ancre ET toutes les touches encore
+    OUVERTES du suivi glissent du MÊME delta — le lead garde sa position
+    exacte dans le protocole, mais le jour 1 est la nouvelle date d'envoi.
+    Aucune touche n'est supprimée, recréée ni réordonnée, et les touches déjà
+    traitées gardent leur histoire.
+
+    Renvoie le nombre de touches décalées (0 si rien n'a bougé).
+    """
+    from django.db.models import F
+
+    from . import horaires
+
+    if not accepte:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=('Nouvelle proposition envoyée — le suivi GARDE ses dates '
+                  'd\'origine (choix « non »).'))
+        return 0
+
+    ancre = _ancre_cadence_apres_devis(lead, devis)
+    if ancre is None:
+        return 0
+    nouvelle = _normaliser_depart(depart)
+    delta = nouvelle - ancre
+    if not delta:
+        return 0
+
+    ouvertes = lead.relance_etapes.filter(
+        cadence='apres_devis', statut=RelanceEtape.Statut.A_FAIRE)
+    if devis is not None:
+        ouvertes = ouvertes.filter(devis=devis)
+
+    decalees = 0
+    for etape in list(ouvertes.filter(due_at__isnull=False)):
+        quand = etape.due_at + delta
+        etape.due_at = quand
+        etape.due_date = quand.astimezone(horaires.CASABLANCA).date()
+        etape.save(update_fields=['due_at', 'due_date'])
+        decalees += 1
+    # CKP2 — l'ancre des touches encore ouvertes glisse du même delta, sinon
+    # le prochain barreau naîtrait à sa date d'origine (incrément pur, une
+    # requête, rien à verrouiller).
+    ouvertes.filter(cadence_depart__isnull=False).update(
+        cadence_depart=F('cadence_depart') + delta)
+
+    jour = nouvelle.astimezone(horaires.CASABLANCA).strftime('%d/%m/%Y')
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Suivi de proposition redaté au {jour} (choix « oui ») : '
+              f'{decalees} touche(s) restante(s) décalée(s) du même écart. '
+              'Aucune touche supprimée ni recréée.'))
+    return decalees
+
+
+# ── CAD-E ── CAD57 — validité J+30 pour un dossier financé, J+14 sinon ─────
+#
+# [TRANCHÉ 21/09/2026] La validité était posée sur la DERNIÈRE touche de la
+# cadence, c'est-à-dire J+14 : le devis expirait le jour exact où le suivi
+# s'arrête. Or la loi 31-08 impose, une fois l'offre de crédit émise, 10 jours
+# de réflexion + 7 jours de rétractation avant déblocage : un client qui
+# finance ne peut pas, légalement, boucler dans la fenêtre qu'on lui annonce.
+#
+# Garde-fou : la DURÉE vient d'un réglage société
+# (``CompanyProfile.quote_validity_days``, lu par la façade de ventes), jamais
+# d'un nombre écrit dans le code du message. Le message J9 et le PDF affichent
+# la MÊME date (CAD59).
+
+#: L'intention de financement qui déclenche la validité longue. Valeur de
+#: ``crm.Lead.FinancingIntent.CREDIT`` — lue en littéral ici pour ne pas
+#: importer les modèles depuis une fonction appelée à chaud.
+FINANCEMENT_CREDIT = 'credit'
+
+
+def lead_finance_a_credit(lead):
+    """Le lead a-t-il DÉCLARÉ financer à crédit ?
+
+    « Pas encore décidé » et « comptant » ne déclenchent rien : on n'allonge
+    pas une validité sur une supposition.
+    """
+    return (getattr(lead, 'financing_intent', None) or '') == \
+        FINANCEMENT_CREDIT
+
+
+def _validite_selon_financement(lead, devis, date_fin_de_suivi):
+    """La date de validité à POSER sur ce devis.
+
+    Comptant / indécis : la fin du plan de suivi (comportement VALID1
+    inchangé — une date dérivée des cadences du fondateur, jamais inventée).
+    Crédit : la date du réglage société, si elle est PLUS LOINTAINE — on ne
+    raccourcit jamais une validité déjà plus longue, et une société qui règle
+    sa validité à 10 jours ne se retrouve pas avec un devis financé qui expire
+    AVANT la fin de son propre suivi.
+    """
+    if not lead_finance_a_credit(lead):
+        return date_fin_de_suivi
+    try:
+        from apps.ventes.services import date_validite_credit
+        candidate = date_validite_credit(devis)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD57 : validité crédit illisible (devis #%s)',
+            getattr(devis, 'pk', '?'), exc_info=True)
+        return date_fin_de_suivi
+    if candidate is None:
+        return date_fin_de_suivi
+    if date_fin_de_suivi is None:
+        return candidate
+    return max(candidate, date_fin_de_suivi)
+
+
+# ── CAD-E ── CAD59 — le message J9 et le PDF disent la MÊME date ───────────
+#
+# Le moteur de devis a un repli documenté (``date_validite``, sinon date de
+# création + le réglage société ``quote_validity_days``) alors que
+# ``message_pour_etape`` ne lisait QUE ``devis.date_validite`` : vide, MRY13
+# supprimait la phrase entière et le WhatsApp enchaînait sur « Après, je dois
+# revalider les prix… » pendant que le PDF affichait « valable jusqu'au X ».
+# Deux voix contradictoires sur le même dossier.
+#
+# Règle #4 respectée : on ne touche PAS au moteur de rendu — on lit la MÊME
+# règle, par la surface de lecture de ventes.
+
+def _date_validite_comme_le_pdf(devis):
+    """La date de validité que le PDF affiche, ou ``None``.
+
+    ``None`` fait OMETTRE la phrase (MRY13) — c'est le comportement voulu
+    quand la date est indéterminable : jamais un blanc, jamais une date
+    inventée. Le chemin ``devis=None`` (TREADMILL-1538) reste couvert par
+    CAD55.
+    """
+    if devis is None:
+        return None
+    try:
+        from apps.ventes.selectors import date_validite_effective
+        return date_validite_effective(devis)
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+        logger.warning(
+            'CAD59 : validité illisible (devis #%s)',
+            getattr(devis, 'pk', '?'), exc_info=True)
+        return getattr(devis, 'date_validite', None)
+
+
+# ── CAD-E ── CAD58 — plus aucune touche de cadence n'est une VISITE ────────
+#
+# [TRANCHÉ 21/09/2026] Le barreau 5 de la cadence générique portait le canal
+# `visite` à J+35 sans poser AUCUNE condition de devis, alors que la décision
+# fondateur du 15/09 est « visite technique JAMAIS avant le devis, proposée
+# après ». Le gabarit par défaut a changé (J+35 = appel), mais une société
+# seedée AVANT cette date garde sa ligne en base : `seed_cadence` ne retouche
+# jamais un barreau existant (et c'est une bonne règle — le fondateur peut
+# personnaliser). On normalise donc à la MATÉRIALISATION, là où la touche
+# devient réelle : un gabarit legacy `visite` pose un APPEL.
+#
+# Ni le nombre, ni l'ordre, ni le J+N des barreaux ne changent : seul le canal
+# du dernier. La visite technique garde son chemin propre (proposition après
+# devis, VISITE-CADENCE du 15/09) — ce n'est pas un barreau de protocole.
+
+#: Le canal retiré des cadences. Valeur de ``parametres.CanalRelance.VISITE``,
+#: reprise en littéral (ce module ne dépend d'aucun modèle de référentiel).
+CANAL_VISITE = 'visite'
+
+#: Ce qu'une touche legacy `visite` devient : un appel. C'est le canal le plus
+#: prudent (fenêtre d'appel, pause du vendredi respectée) et c'est la décision.
+CANAL_VISITE_REMPLACEMENT = 'appel'
+
+
+def _canal_effectif(gabarit):
+    """Le canal RÉEL d'une touche de cadence — jamais `visite` (CAD58).
+
+    `appel` par défaut, jamais deviné. Un gabarit encore en `visite` (société
+    seedée avant le 21/09/2026) est normalisé ici plutôt que refusé : la
+    touche existe, elle doit juste cesser d'annoncer une visite.
+    """
+    canal = getattr(gabarit, 'canal', None) or CANAL_VISITE_REMPLACEMENT
+    if canal == CANAL_VISITE:
+        return CANAL_VISITE_REMPLACEMENT
+    return canal
+
+
+# ── CAD-J ── CAD124 — pas d'axe segment dans le gabarit de cadence ────────
+#
+# [TRANCHÉ 21/09/2026] `calculer_echeances_cadence` ne lit AUCUN segment, et
+# ce n'est pas un oubli : le gabarit de cadence reste aveugle au
+# `type_installation`. Le CRM s'en sert ailleurs — pour scorer
+# (`apps/crm/scoring.py`) et pour exiger les bons champs au devis
+# (`apps/ventes/devis_auto.py`) — mais l'ordonnancement des touches, lui, est
+# le MÊME protocole pour tout le monde.
+#
+# Ce que les segments changent vraiment, c'est le TEXTE : variantes par
+# exception sur les clés qui mentent (CAD126) et playbook conditionné sur
+# `{type_installation}` (CAD125). Les deux passent par des mécanismes qui
+# existent déjà — zéro migration, zéro sélecteur de plus, zéro barreau ajouté.
+#
+# La décision se rouvrira sur le VOLUME par segment (comptage CADM7), pas
+# avant. Voir aussi le commentaire jumeau dans
+# `apps/parametres/models_relance.py` (clé `unique_together` du gabarit).
+
+#: CAD124 — la trace lisible de la décision, pour un futur audit qui se
+#: demanderait pourquoi le gabarit ignore le segment.
+CAD124_PAS_D_AXE_SEGMENT = (
+    'pas d’axe segment dans le gabarit de cadence — décision du 21/09/2026'
+)
+
+
+# ── CAD-J ── CAD125 — le dossier 82-21 et le dossier FDA ont une parole ────
+#
+# `Lead.regularisation_8221` est capté, LU par le scoring (+5 points) — et par
+# aucune logique de message ni de touche ; aucune des clés de relance ne
+# parlait d'une subvention ou d'un dossier institutionnel, alors que le
+# résidentiel a son équivalent avec `j6_garanties`.
+#
+# Le remède n'ajoute NI barreau NI migration de cadence : c'est une TÂCHE de
+# `Playbook`, conditionnée sur `{type_installation}` — le mécanisme existe et
+# est déjà évalué contre ce contexte (`_playbook_correspond_au_lead`).
+#
+# Contexte daté (pour la docstring, jamais pour le client) : le décret
+# d'application de la loi 82-21 est en vigueur depuis le 09/06/2026 (BO 7489).
+# GARDE-FOU « zéro chiffre inventé » : les TEXTES ne citent AUCUN montant,
+# AUCUN plafond, AUCUNE fenêtre de dépôt (le plafond FDA et la fenêtre du
+# round 2 sont introuvables sur leur source), AUCUN nombre de régimes.
+
+#: Les deux playbooks de segment, avec leur condition et leur tâche unique.
+#: `stage` vient de STAGES.py (règle #2), jamais d'un littéral.
+PLAYBOOKS_SEGMENT_CAD125 = (
+    {
+        'nom': 'Segment — dossier d’autoproduction 82-21',
+        'segments': ('industriel', 'commercial'),
+        'cle_message': 'dossier_8221',
+        'tache': ('Demander où en est le dossier d’autoproduction 82-21 '
+                  '(texte « dossier_8221 » au catalogue des messages)'),
+    },
+    {
+        'nom': 'Segment — dossier de subvention agricole (FDA)',
+        'segments': ('agricole',),
+        'cle_message': 'dossier_fda',
+        'tache': ('Demander où en est le dossier de subvention agricole FDA '
+                  '(texte « dossier_fda » au catalogue des messages)'),
+    },
+)
+
+
+def _condition_segment(segments):
+    """L'arbre `core.rules` qui matche ces `type_installation` — et eux seuls.
+
+    Un lead sans segment renseigné ne matche AUCUN des deux : on ne pose pas
+    la question du dossier 82-21 à quelqu'un dont on ignore le marché.
+    """
+    return {
+        'op': 'or',
+        'conditions': [
+            {'field': 'type_installation', 'operator': 'eq', 'value': segment}
+            for segment in segments
+        ],
+    }
+
+
+def seed_playbooks_segment(company, *, stage=None):
+    """CAD125 — pose (idempotemment) les deux playbooks de segment.
+
+    ``stage`` est l'étape du funnel qui porte la tâche ; par défaut celle de
+    la prise de contact (``stages.CONTACTED``), importée de STAGES.py. Renvoie
+    la liste des ``Playbook`` concernés (créés ou déjà présents).
+
+    Additif et rejouable : ``get_or_create`` sur (société, nom), puis sur
+    l'étape et la tâche. Un playbook que le fondateur aurait désactivé ou
+    personnalisé n'est JAMAIS réécrit.
+    """
+    from . import stages as _stages
+    from .models import Playbook, PlaybookEtape, PlaybookTache
+
+    cible = stage or _stages.CONTACTED
+    resultats = []
+    for entree in PLAYBOOKS_SEGMENT_CAD125:
+        playbook, cree = Playbook.objects.get_or_create(
+            company=company, nom=entree['nom'],
+            defaults={'actif': True,
+                      'condition': _condition_segment(entree['segments'])})
+        resultats.append(playbook)
+        if not cree:
+            continue
+        etape, _ = PlaybookEtape.objects.get_or_create(
+            playbook=playbook, stage=cible, defaults={'ordre': 0})
+        PlaybookTache.objects.get_or_create(
+            etape=etape, libelle=entree['tache'],
+            defaults={'obligatoire': False, 'ordre': 0})
+    return resultats
+
+
+def cle_message_segment(lead):
+    """La clé de message institutionnelle de CE lead, ou ``None``.
+
+    Lecture pure : sert à l'écran qui propose le texte à copier, et au test.
+    Un lead résidentiel — ou sans segment — n'en a AUCUNE : il a déjà
+    `j6_garanties`, et on n'invente pas un dossier institutionnel pour lui.
+    """
+    segment = (getattr(lead, 'type_installation', None) or '').strip()
+    if not segment:
+        return None
+    for entree in PLAYBOOKS_SEGMENT_CAD125:
+        if segment in entree['segments']:
+            return entree['cle_message']
+    return None
+
+
+# ── CAD-J ── CAD126 — variantes de SEGMENT, par exception ─────────────────
+#
+# Les textes sont 100 % résidentiels : « vos panneaux posés sur votre toit »
+# part à un pompage au bord d'un forage, où il n'y a littéralement pas de
+# toit, et `valeur_j1` demande « votre facture », sans objet pour une
+# exploitation au butane. Côté industriel, `dimanche_famille` EST filtré par
+# l'étiquette « décision à plusieurs » — c'est donc un industriel TAGUÉ qui
+# reçoit « en famille ».
+#
+# Le dictionnaire de variantes vit dans `apps/parametres/models_messages.py`
+# (à côté des textes), sur le modèle du dictionnaire darija : dict SÉPARÉ,
+# repli sur le FR quand la clé est absente. Rien ici n'est une matrice
+# complète : uniquement les clés qui MENTENT.
+
+
+def _corps_pour_segment(corps, cle, lead, langue):
+    """Le corps adapté au segment du lead — ou le corps reçu, inchangé.
+
+    Trois garde-fous, dans cet ordre :
+
+      * seul le FRANÇAIS a des variantes (aucune darija n'est validée : une
+        traduction automatique partirait à de vrais clients) ;
+      * un texte que la société a PERSONNALISÉ n'est jamais remplacé — la
+        variante ne s'applique qu'au texte encore au catalogue d'origine,
+        même règle que `_REVEIL_CLES_SEEDEES` ;
+      * un segment absent, inconnu ou résidentiel ne change RIEN.
+
+    Best-effort : en cas de lecture impossible, le corps d'origine part.
+    """
+    if not corps or not cle or (langue or 'fr') != 'fr':
+        return corps
+    try:
+        from apps.parametres.models_messages import (
+            MESSAGE_TEMPLATE_DEFAULTS, variante_segment,
+        )
+        variante = variante_segment(
+            cle, getattr(lead, 'type_installation', None))
+        if not variante:
+            return corps
+        if corps.strip() != (MESSAGE_TEMPLATE_DEFAULTS.get(cle, '') or ''
+                             ).strip():
+            return corps
+        return variante
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning(
+            'CAD126 : variante de segment illisible (clé %s)', cle,
+            exc_info=True)
+        return corps
+
+
+# ── CAD-J ── CAD127 — le premier message dit la VÉRITÉ sur l'origine ──────
+#
+# « Vous venez de remplir notre formulaire » est FAUX pour la moitié des
+# origines : la même cadence part pour un lead arrivé par téléphone, en
+# boutique, par recommandation, depuis un salon, repositionné par l'écran de
+# placement, ou né d'une conversation entrante (CTWA, livechat). Une première
+# phrase fausse est exactement ce qui fait perdre la confiance au premier
+# contact.
+#
+# `unique_together (company, cle)` interdit toute VARIANTE sur `identite` :
+# les quatre textes sont donc des clés ADDITIVES, choisies ici d'après le
+# canal DÉJÀ enregistré. Aucun barreau ajouté, aucune migration.
+#
+# Correction du round 2 : le ticket SAV n'est PAS une origine —
+# `create_lead_depuis_ticket` ne démarre aucune cadence (vérifié sur les 8
+# appelants de `demarrer_cadence_contact`).
+
+
+def _nom_prescripteur(lead):
+    """Le nom de la personne qui a recommandé ce lead, ou ``''``.
+
+    Lu sur le parrainage enregistré (``crm.Parrainage.parrain``) — jamais un
+    prénom codé en dur (règle fondateur du 08/09). Absent ⇒ chaîne vide ⇒ la
+    phrase qui le porte est OMISE (MRY13), jamais un crochet envoyé.
+    """
+    try:
+        from .models import Parrainage
+        lien = (Parrainage.objects
+                .filter(company=lead.company, filleul_lead=lead)
+                .select_related('parrain')
+                .order_by('-date_creation', '-id').first())
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+        logger.warning('CAD127 : prescripteur illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return ''
+    if lien is None or lien.parrain is None:
+        return ''
+    return (getattr(lien.parrain, 'nom', '') or '').strip()
+
+
+def _mois_dossier_francais(lead):
+    """« mars 2026 » — le mois où ce prospect nous avait consultés.
+
+    Dérivé de la date de création de SA fiche : une date réelle et traçable,
+    jamais une estimation. Fiche sans date ⇒ chaîne vide ⇒ phrase omise.
+    """
+    from . import horaires
+
+    quand = getattr(lead, 'date_creation', None)
+    if not quand:
+        return ''
+    locale = quand.astimezone(horaires.CASABLANCA)
+    return f'{_MOIS_FR[locale.month - 1]} {locale.year}'
+
+
+def cle_identite_pour_lead(lead, cle_gabarit, *, reference=None):
+    """La clé de message à RENDRE pour cette touche — souvent ``cle_gabarit``.
+
+    Ne change QUE la touche d'identité (`identite`) : toutes les autres clés
+    passent inchangées, y compris une clé personnalisée par la société.
+
+    Ordre de décision :
+
+      1. une fiche OUVERTE UN MOIS ANTÉRIEUR à la touche n'est pas une
+         demande fraîche — c'est un dossier repris (repositionnement,
+         réactivation) : `identite_ancien_dossier`. Aucun seuil inventé, on
+         compare des MOIS calendaires, ce que le texte dit littéralement ;
+      2. sinon, le canal d'origine enregistré décide
+         (`CLE_IDENTITE_PAR_CANAL`) ;
+      3. sinon `identite` reste : `site_web` et `meta_ads` sont de VRAIS
+         formulaires, la phrase d'origine y est exacte.
+    """
+    if cle_gabarit != 'identite':
+        return cle_gabarit
+    try:
+        from apps.parametres.models_messages import CLE_IDENTITE_PAR_CANAL
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        return cle_gabarit
+
+    ouverture = getattr(lead, 'date_creation', None)
+    if ouverture is not None and reference is not None:
+        from . import horaires
+        locale = ouverture.astimezone(horaires.CASABLANCA).date()
+        if (locale.year, locale.month) < (reference.year, reference.month):
+            return 'identite_ancien_dossier'
+
+    canal = (getattr(lead, 'canal', None) or '').strip()
+    return CLE_IDENTITE_PAR_CANAL.get(canal, cle_gabarit)
+
+
+# ── CAD-J ── CAD128 — le client DÉJÀ SIGNÉ qui redemande un devis ─────────
+#
+# La garde doublon retenait tout lead partageant le téléphone ou l'e-mail et
+# n'écartait que les archivés et les perdus : une fiche SIGNÉE était donc un
+# doublon vivant, et le meilleur lead du portefeuille — il a déjà acheté —
+# repartait sans protocole, avec une simple ligne « doublon possible de #… ».
+#
+# Version RÉDUITE du round 2 : SIGNED sort de la garde **uniquement couplé**
+# à une cadence courte « deuxième affaire », avec son propre texte — jamais
+# le protocole contact, six appels sur quatorze jours sur un client acquis.
+#
+# Garde-fou : les deux fiches sont LIÉES par une note d'historique, JAMAIS
+# fusionnées d'office. Le volume (signés partageant un téléphone avec un lead
+# actif) est l'un des comptages de CADM7 : la liaison en base, s'il en faut
+# une, se décidera là — pas ici.
+
+#: Le nom de la cadence courte. Valeur de
+#: ``parametres.Cadence.DEUXIEME_AFFAIRE``, reprise en littéral comme les
+#: autres noms de cadence de ce module.
+CADENCE_DEUXIEME_AFFAIRE = 'deuxieme_affaire'
+
+
+def homonymes_signes(lead):
+    """Les fiches SIGNÉES qui partagent le téléphone ou l'e-mail de ``lead``.
+
+    Lecture pure (aucune écriture) : sert à la garde, au geste manuel et au
+    test. Les archivés et les perdus n'en font jamais partie.
+    """
+    if lead is None:
+        return []
+    return [
+        autre for autre in find_duplicates_by_contact(
+            lead.company, phone=lead.telephone, email=lead.email,
+            exclude_pk=lead.pk)
+        if not autre.is_archived and not autre.perdu
+        and autre.stage == stages.SIGNED
+    ]
+
+
+def _demarrer_deuxieme_affaire(lead, user):
+    """CAD128 — lance la cadence COURTE et LIE les deux fiches.
+
+    Renvoie les touches créées (liste vide si la cadence ne peut pas partir —
+    même tolérance que le reste du moteur : jamais d'exception vers
+    l'appelant).
+    """
+    anciens = homonymes_signes(lead)
+    refs = ', '.join(f'#{autre.pk}' for autre in anciens[:3])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Client déjà signé qui revient (fiche {refs or "?"}) — '
+              'cadence courte « deuxième affaire » lancée, PAS le protocole '
+              'de prise de contact. Les deux fiches restent distinctes : '
+              'aucune fusion automatique.'))
+    for ancien in anciens[:3]:
+        # La liaison est SYMÉTRIQUE : depuis la fiche signée, on doit voir
+        # qu'une deuxième affaire est partie — sinon personne ne le sait.
+        LeadActivity.objects.create(
+            company=lead.company, lead=ancien, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Nouvelle demande de ce client : fiche #{lead.pk} — '
+                  'cadence courte « deuxième affaire ».'))
+    return initialiser_plan_relance(
+        lead, user, cadence=CADENCE_DEUXIEME_AFFAIRE, depart=timezone.now())
 
 
 # ── CAD-I ── CAD93 — « même foyer » : l'adresse et le point GPS ─────────────

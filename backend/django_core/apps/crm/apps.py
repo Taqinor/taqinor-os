@@ -60,6 +60,11 @@ class CrmConfig(AppConfig):
         # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
         from . import dsr_provider
         dsr_provider.register()
+        # CAD125 — les playbooks de SEGMENT (dossier 82-21, dossier FDA)
+        # arrivent à la création de la société : un playbook que rien ne pose
+        # est exactement le défaut relevé par l'audit sur `reveil_b`.
+        from .signup_hooks import register_crm_signup_hooks
+        register_crm_signup_hooks()
         # QX42 — enregistre les politiques de rétention CRM dans le registre
         # partagé YOPSB10 (core.retention) : le framework existait, son
         # registre était VIDE (aucune app n'y enregistrait de politique).

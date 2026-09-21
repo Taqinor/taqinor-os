@@ -170,6 +170,9 @@ generer_facture_intervention = _facturation_ops.generer_facture_intervention
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import cycle_vie as _cycle_vie  # noqa: E402
 poser_validite_devis = _cycle_vie.poser_validite_devis
+# CAD57 — validité d'un dossier financé à crédit (réglage société).
+jours_validite_societe = _cycle_vie.jours_validite_societe
+date_validite_credit = _cycle_vie.date_validite_credit
 AcceptError = _cycle_vie.AcceptError
 activate_optional_line = _cycle_vie.activate_optional_line
 OTP_CACHE_TTL = _cycle_vie.OTP_CACHE_TTL
@@ -723,6 +726,8 @@ __all__ = [
     'ventiler_avance',
     'verifier_credit_hold',
     'poser_validite_devis',
+    'jours_validite_societe',
+    'date_validite_credit',
     'verifier_empreinte_signature',
     'verifier_sale_warnings',
     'zone_toit_depuis_contour',

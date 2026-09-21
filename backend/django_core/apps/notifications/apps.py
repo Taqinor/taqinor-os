@@ -60,3 +60,8 @@ class NotificationsConfig(AppConfig):
         from core.notify_registry import register_notify
         from .services import notify as _notify_impl
         register_notify(_notify_impl)
+        # CAD40 — les jours fériés arrivent à la CRÉATION de la société,
+        # comme la TVA et les unités : sans ligne `Holiday`, `is_jour_ouvre`
+        # ne bloque rien et une touche de cadence tombe le jour de l'Aïd.
+        from .signup_hooks import register_notifications_signup_hooks
+        register_notifications_signup_hooks()

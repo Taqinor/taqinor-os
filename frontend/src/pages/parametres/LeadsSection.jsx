@@ -6,6 +6,7 @@ import {
   Card, CardContent, Input, Switch, Label, Badge, IconButton, Button, Spinner,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { proposerRamadan, datesRamadanASaisir } from '../../lib/hijriDate'
 import { SectionTitle, Field } from './peComponents'
 import EquipesCommercialesSection from './EquipesCommercialesSection'
 import MessageTemplatesCrmSection from './MessageTemplatesCrmSection'
@@ -36,6 +37,24 @@ export default function LeadsSection({
   // Met à jour un champ FK du formulaire ('' = aucun) depuis le Select.
   const setFk = (name) => (val) =>
     setForm(f => ({ ...f, [name]: val === NONE ? '' : val }))
+
+  // ── CAD37 ── Ramadan : rappel visible + PROPOSITION hégirienne ───────────
+  // Le calendrier hégirien glisse : les deux dates doivent être retapées
+  // chaque année, et tant qu'elles sont vides la branche Ramadan est morte —
+  // les appels sonnent de 09 h à 20 h en plein jeûne. On RAPPELLE, on
+  // PROPOSE, et on ne pose jamais une date tout seul : le bouton remplit les
+  // deux champs, c'est l'enregistrement de la page qui les valide.
+  const ramadanASaisir = datesRamadanASaisir(
+    form.ramadan_debut, form.ramadan_fin)
+  const ramadanPropose = ramadanASaisir ? proposerRamadan() : null
+  const appliquerRamadanPropose = () => {
+    if (!ramadanPropose) return
+    setForm(f => ({
+      ...f,
+      ramadan_debut: ramadanPropose.debut,
+      ramadan_fin: ramadanPropose.fin,
+    }))
+  }
 
   return (
     <>
@@ -121,6 +140,40 @@ export default function LeadsSection({
             laissées vides = hors Ramadan), une fenêtre plus courte
             s'applique aux deux.
           </p>
+          {/* CAD37 — rappel + proposition hégirienne. Le bandeau ne s'affiche
+              que tant qu'aucune date ne couvre l'année en cours ; il
+              disparaît dès que les deux champs sont remplis. */}
+          {ramadanASaisir && (
+            <div role="status" data-testid="cad37-rappel-ramadan"
+                 className="mb-2 mt-3.5 rounded-md border border-amber-300 bg-amber-50 p-2.5
+                            text-[12.5px] text-amber-900 dark:border-amber-700/60
+                            dark:bg-amber-950/40 dark:text-amber-100">
+              <p>
+                Les dates du Ramadan ne sont pas renseignées pour cette année :
+                la fenêtre de contact du Ramadan ne s'appliquera pas, et les
+                appels partiront aux heures normales.
+              </p>
+              {ramadanPropose ? (
+                <p className="mt-1.5">
+                  Proposition à vérifier (calendrier hégirien{' '}
+                  {ramadanPropose.anneeHegirienne}) :{' '}
+                  <strong>{ramadanPropose.debut}</strong> →{' '}
+                  <strong>{ramadanPropose.fin}</strong>. Les dates officielles
+                  sont annoncées chaque année : corrigez-les si besoin, puis
+                  enregistrez.
+                  <Button type="button" size="sm" variant="outline"
+                          className="ml-2 align-middle"
+                          onClick={appliquerRamadanPropose}>
+                    Utiliser cette proposition
+                  </Button>
+                </p>
+              ) : (
+                <p className="mt-1.5">
+                  Saisissez les deux dates ci-dessous.
+                </p>
+              )}
+            </div>
+          )}
           <div className="mb-1 grid grid-cols-2 gap-x-3 gap-y-1 sm:grid-cols-4">
             <Field label="Début des messages" htmlFor="pe-message-heure-debut">
               <Input id="pe-message-heure-debut" type="time"

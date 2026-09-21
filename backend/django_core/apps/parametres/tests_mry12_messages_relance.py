@@ -60,6 +60,11 @@ _CROCHETS = [
     # placeholder dédié alimenté par `CompanyProfile.lien_avis_google`.
     (r'\[lien de la fiche TAQINOR\]', '{lien_google}'),
     (r'\[lien de votre proposition\]', '{lien}'),
+    # CAD127 (21/09/2026) — l'ORIGINE réelle du lead. `[mois du dossier]`
+    # passe AVANT `[mois]` (le mois de la PREUVE) : ce sont deux mois
+    # différents, et la conversion est une suite de `re.sub`.
+    (r'\[mois du dossier\]', '{mois_dossier}'),
+    (r'\[prescripteur\]', '{prescripteur}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),

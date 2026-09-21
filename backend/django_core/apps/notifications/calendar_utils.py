@@ -52,40 +52,72 @@ def _load_working_days(company) -> int:
     return _DEFAULT_WORKING_DAYS
 
 
-def _load_holidays_for_year(company, year: int) -> set[tuple[int, int]]:
-    """Retourne l'ensemble des (mois, jour) fériés pour la société et l'année.
+class _Feries:
+    """CAD42 — les fériés d'une société, avec DEUX clés distinctes.
 
-    Pour les jours récurrents annuels, on compare (mois, jour).
-    Pour les jours non récurrents, on compare (mois, jour) uniquement si
-    l'année stockée correspond à `year`.
+    Un férié RÉCURRENT (1ᵉʳ Mai, Fête du Trône…) se compare sur (mois, jour) :
+    c'est la même date chaque année. Un férié NON récurrent (un Aïd, saisi
+    pour une année précise) se compare sur la DATE COMPLÈTE.
+
+    Avant CAD42, les deux partageaient la clé (mois, jour) alors que
+    ``prochain_jour_ouvre`` et ``ajouter_jours_ouvres`` chargent PLUSIEURS
+    années d'un coup : trois Aïd saisis = trois dates bloquées CHAQUE année.
+    ``feries_entre`` faisait déjà la distinction correctement — les deux
+    lectures parlent enfin du même calendrier.
+    """
+
+    __slots__ = ('recurrents', 'dates')
+
+    def __init__(self, recurrents=None, dates=None):
+        self.recurrents: set[tuple[int, int]] = set(recurrents or ())
+        self.dates: set[datetime.date] = set(dates or ())
+
+    def __ior__(self, autre: '_Feries') -> '_Feries':
+        self.recurrents |= autre.recurrents
+        self.dates |= autre.dates
+        return self
+
+    def contient(self, d: datetime.date) -> bool:
+        return (d.month, d.day) in self.recurrents or d in self.dates
+
+    def __bool__(self) -> bool:
+        return bool(self.recurrents or self.dates)
+
+
+def _load_holidays_for_year(company, year: int) -> _Feries:
+    """Les fériés de la société applicables à `year`.
+
+    Les jours récurrents annuels sont retenus par (mois, jour) ; les jours
+    NON récurrents par leur date complète, et seulement s'ils tombent dans
+    `year` — une fête lunaire saisie pour 2027 ne bloque rien en 2026.
     """
     try:
         from .models import Holiday
         qs = Holiday.objects.filter(company=company)
-        result: set[tuple[int, int]] = set()
+        feries = _Feries()
         for h in qs:
             if h.recurrent_annuel:
-                result.add((h.date.month, h.date.day))
+                feries.recurrents.add((h.date.month, h.date.day))
             elif h.date.year == year:
-                result.add((h.date.month, h.date.day))
-        return result
+                feries.dates.add(h.date)
+        return feries
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('calendar_utils: chargement Holiday échoué : %s', exc)
-        return set()
+        return _Feries()
 
 
 # ---------------------------------------------------------------------------
 # Helpers internes
 # ---------------------------------------------------------------------------
 
-def _is_holiday(d: datetime.date, holidays: set[tuple[int, int]]) -> bool:
-    return (d.month, d.day) in holidays
+def _is_holiday(d: datetime.date, holidays: '_Feries') -> bool:
+    return holidays.contient(d)
 
 
 def _is_working_day_raw(
         d: datetime.date,
         working_days: int,
-        holidays: set[tuple[int, int]]) -> bool:
+        holidays: '_Feries') -> bool:
     """Vrai si `d` est ouvré selon le bitmask ET non férié."""
     weekday = d.weekday()  # 0=Lun … 6=Dim
     if not (working_days & (1 << weekday)):
@@ -118,7 +150,7 @@ def prochain_jour_ouvre(d: datetime.date, company) -> datetime.date:
     working_days = _load_working_days(company)
     # Charge les fériés pour l'année de départ + l'année suivante (si on
     # franchit le 31/12).
-    holidays: set[tuple[int, int]] = set()
+    holidays = _Feries()
     holidays |= _load_holidays_for_year(company, d.year)
     holidays |= _load_holidays_for_year(company, d.year + 1)
 
@@ -150,7 +182,7 @@ def ajouter_jours_ouvres(d: datetime.date, n: int, company) -> datetime.date:
 
     working_days = _load_working_days(company)
     # Pré-charge les fériés pour une plage raisonnable (année de `d` + 2 ans).
-    holidays: set[tuple[int, int]] = set()
+    holidays = _Feries()
     for yr in range(d.year, d.year + 3):
         holidays |= _load_holidays_for_year(company, yr)
 
@@ -260,3 +292,45 @@ def feries_entre(
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('calendar_utils: feries_entre échoué : %s', exc)
         return []
+
+
+# ── CAD40 ── rappel « les fêtes mobiles de l'année ne sont pas saisies » ────
+
+def rappel_fetes_mobiles(company, annee=None):
+    """``None`` si tout va bien, sinon une PHRASE française à afficher.
+
+    Les fêtes mobiles (Aïd al-Fitr, Aïd al-Adha, Nouvel An hégirien, Aïd
+    al-Mawlid) suivent le calendrier lunaire : leur date n'est JAMAIS
+    calculée ici, elle est saisie (Paramètres → Localisation → Fêtes
+    mobiles) ou posée à la création de la société quand ``core.calendar`` la
+    connaît déjà. Tant qu'aucune n'existe pour l'année demandée,
+    ``is_jour_ouvre`` laisse passer le jour de l'Aïd — et une touche de
+    cadence peut y tomber. Ce rappel est ce qui rend ce trou VISIBLE.
+
+    Ne compte que les lignes NON récurrentes : cocher « Récurrent chaque
+    année » sur un Aïd est justement l'erreur que CAD42 traite, et une telle
+    ligne ne prouve pas que l'année en cours est saisie.
+    """
+    if annee is None:
+        from core.dates import aujourd_hui_local
+        annee = aujourd_hui_local().year
+    try:
+        annee = int(annee)
+    except (TypeError, ValueError):
+        return None
+    try:
+        from .models import Holiday
+        existe = Holiday.objects.filter(
+            company=company, recurrent_annuel=False,
+            date__year=annee).exists()
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('calendar_utils: rappel_fetes_mobiles échoué : %s', exc)
+        return None
+    if existe:
+        return None
+    return (
+        f'Les fêtes mobiles de {annee} (Aïd al-Fitr, Aïd al-Adha, Nouvel An '
+        f'hégirien, Aïd al-Mawlid) ne sont pas saisies : une relance peut '
+        f'tomber le jour de la fête. Saisissez-les dans Paramètres → '
+        f'Localisation → Fêtes mobiles.'
+    )
