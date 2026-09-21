@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 /* ============================================================================
-   CAL103 — LE PANNEAU DE CALQUES.
+   CAL103 / CALX54 — LE PANNEAU DE CALQUES.
    ----------------------------------------------------------------------------
    Ce que ce fichier prouve :
      * chaque calque s'allume/s'éteint INDÉPENDAMMENT, et l'hôte reçoit l'ordre ;
@@ -11,7 +11,12 @@ import { render, screen, fireEvent } from '@testing-library/react'
      * l'état est PERSISTÉ PAR UTILISATEUR (deux utilisateurs ne se marchent pas
        dessus) et restauré à l'ouverture — l'hôte en est informé ;
      * un stockage qui refuse (navigation privée) ne casse rien : état par défaut ;
-     * un calque que l'hôte ne sait pas piloter n'est PAS listé (rien d'inventé).
+     * CALX54 — la SEULE source des calques proposés est `builderApi.calquesDisponibles()`
+       (CALX3) : sans `builderApi`, ou tant qu'il n'est pas prêt, ou si la scène ne
+       porte encore aucun calque, le panneau affiche un état vide explicite plutôt
+       que la liste statique des dix calques ; un identifiant que `calques.js` ne
+       connaît pas n'est jamais inventé ; la liste est relue quand `builderApi`
+       change d'identité (le builder devient prêt).
    ========================================================================== */
 
 import PanneauCalques from '../PanneauCalques'
@@ -34,6 +39,13 @@ function memStore() {
     _dump: () => Object.fromEntries(m),
   }
 }
+
+/** Double de `builderApi` (CALX3/CALX8) : `calquesDisponibles()` rend `ids`. */
+function builderApiAvec(ids) {
+  return { calquesDisponibles: () => ids }
+}
+
+const TOUS = builderApiAvec([...CALQUE_IDS])
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -63,7 +75,7 @@ describe('CAL103 — ordre de superposition déterminé', () => {
   })
 
   it('le panneau rend les calques DANS cet ordre', () => {
-    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} onChange={vi.fn()} />)
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={TOUS} onChange={vi.fn()} />)
     const rangs = CALQUE_IDS.map((id) => Number(screen.getByTestId(`pc-calque-${id}`).dataset.rang))
     expect(rangs).toEqual([...rangs].sort((a, b) => a - b))
   })
@@ -72,7 +84,7 @@ describe('CAL103 — ordre de superposition déterminé', () => {
 describe('CAL103 — chaque calque s’allume et s’éteint indépendamment', () => {
   it('éteindre un calque prévient l’hôte, et LUI SEUL change', () => {
     const onChange = vi.fn()
-    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} onChange={onChange} />)
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={TOUS} onChange={onChange} />)
     onChange.mockClear()
     fireEvent.click(screen.getByTestId('pc-visible-zones'))
     expect(onChange).toHaveBeenCalledTimes(1)
@@ -82,26 +94,17 @@ describe('CAL103 — chaque calque s’allume et s’éteint indépendamment', (
 
   it('l’opacité est pilotable et transmise telle quelle', () => {
     const onChange = vi.fn()
-    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} onChange={onChange} />)
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={TOUS} onChange={onChange} />)
     onChange.mockClear()
     fireEvent.change(screen.getByTestId('pc-opacite-imagerie'), { target: { value: '0.5' } })
     expect(onChange).toHaveBeenCalledWith('imagerie', { visible: true, opacite: 0.5 })
-  })
-
-  it('un calque que l’hôte ne sait pas piloter n’est pas listé', () => {
-    render(
-      <PanneauCalques utilisateurId="u1" stockage={memStore()} disponibles={['imagerie', 'zones']} onChange={vi.fn()} />,
-    )
-    expect(screen.getByTestId('pc-calque-imagerie')).toBeTruthy()
-    expect(screen.getByTestId('pc-calque-zones')).toBeTruthy()
-    expect(screen.queryByTestId('pc-calque-cadastre')).toBeNull()
   })
 })
 
 describe('CAL103 — persistance PAR UTILISATEUR', () => {
   it('l’état est rangé sous une clé qui porte l’utilisateur', () => {
     const store = memStore()
-    render(<PanneauCalques utilisateurId={42} stockage={store} onChange={vi.fn()} />)
+    render(<PanneauCalques utilisateurId={42} stockage={store} builderApi={TOUS} onChange={vi.fn()} />)
     fireEvent.click(screen.getByTestId('pc-visible-ombres'))
     expect(Object.keys(store._dump())).toEqual([cleStockage(42)])
     expect(lireEtatCalques(42, store).ombres.visible).toBe(false)
@@ -113,7 +116,7 @@ describe('CAL103 — persistance PAR UTILISATEUR', () => {
     const store = memStore()
     ecrireEtatCalques('u1', { ...etatCalquesParDefaut(), mesures: { visible: false, opacite: 0.4 } }, store)
     const onChange = vi.fn()
-    render(<PanneauCalques utilisateurId="u1" stockage={store} onChange={onChange} />)
+    render(<PanneauCalques utilisateurId="u1" stockage={store} builderApi={TOUS} onChange={onChange} />)
     expect(screen.getByTestId('pc-visible-mesures').checked).toBe(false)
     expect(onChange).toHaveBeenCalledWith('mesures', { visible: false, opacite: 0.4 })
     // Les autres calques sont annoncés aussi : la carte part de l'état affiché.
@@ -136,5 +139,97 @@ describe('CAL103 — persistance PAR UTILISATEUR', () => {
     expect(lireEtatCalques('u1', corrompu)).toEqual(etatCalquesParDefaut())
     corrompu.setItem(cleStockage('u1'), JSON.stringify({ zones: { visible: 'oui', opacite: 42 } }))
     expect(lireEtatCalques('u1', corrompu)).toEqual(etatCalquesParDefaut())
+  })
+})
+
+describe('CALX54 — n’offrir que les calques réellement présents dans la scène', () => {
+  it('sans `builderApi` (constructeur pas encore prêt) ⇒ état vide, en français, rien d’inventé', () => {
+    render(<PanneauCalques utilisateurId="u1" stockage={memStore()} onChange={vi.fn()} />)
+    expect(screen.getByTestId('pc-panneau')).toBeTruthy()
+    expect(screen.getByTestId('pc-vide').textContent).toMatch(/aucun calque disponible/i)
+    for (const id of CALQUE_IDS) expect(screen.queryByTestId(`pc-calque-${id}`)).toBeNull()
+  })
+
+  it('`calquesDisponibles()` rendant deux identifiants ⇒ exactement ces deux, avec les libellés de calques.js', () => {
+    const onChange = vi.fn()
+    render(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiAvec(['zones', 'imagerie'])}
+        onChange={onChange}
+      />,
+    )
+    expect(screen.queryByTestId('pc-vide')).toBeNull()
+    // Rendus dans l'ORDRE de calques.js (imagerie au fond, zones au-dessus),
+    // pas dans l'ordre renvoyé par `calquesDisponibles()`.
+    const rendus = screen.getAllByRole('listitem').map((li) => li.dataset.testid)
+    expect(rendus).toEqual(['pc-calque-imagerie', 'pc-calque-zones'])
+    expect(screen.getByTestId('pc-calque-imagerie').textContent).toContain(
+      ORDRE_CALQUES.find((c) => c.id === 'imagerie').label,
+    )
+    expect(screen.getByTestId('pc-calque-zones').textContent).toContain(
+      ORDRE_CALQUES.find((c) => c.id === 'zones').label,
+    )
+    // Aucun des huit autres calques statiques n'est proposé.
+    for (const id of CALQUE_IDS) {
+      if (id === 'zones' || id === 'imagerie') continue
+      expect(screen.queryByTestId(`pc-calque-${id}`)).toBeNull()
+    }
+  })
+
+  it('un identifiant inconnu de calques.js est ignoré, jamais inventé', () => {
+    render(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiAvec(['zones', 'un-calque-qui-nexiste-pas'])}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getAllByRole('listitem')).toHaveLength(1)
+    expect(screen.getByTestId('pc-calque-zones')).toBeTruthy()
+    expect(screen.queryByTestId('pc-calque-un-calque-qui-nexiste-pas')).toBeNull()
+  })
+
+  it('`calquesDisponibles()` absente ou qui lève ⇒ état vide, jamais une exception', () => {
+    expect(() =>
+      render(<PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={{}} onChange={vi.fn()} />),
+    ).not.toThrow()
+    expect(screen.getByTestId('pc-vide')).toBeTruthy()
+
+    const quiLeve = {
+      calquesDisponibles: () => {
+        throw new Error('style pas encore chargé')
+      },
+    }
+    expect(() =>
+      render(<PanneauCalques utilisateurId="u2" stockage={memStore()} builderApi={quiLeve} onChange={vi.fn()} />),
+    ).not.toThrow()
+  })
+
+  it('la scène sans photo ni plan propose 8 bascules, pas 10 ; le dépôt d’un plan fait apparaître « Plan importé »', () => {
+    const HUIT = CALQUE_IDS.filter((id) => id !== 'photo' && id !== 'plan')
+    const { rerender } = render(
+      <PanneauCalques utilisateurId="u1" stockage={memStore()} builderApi={builderApiAvec(HUIT)} onChange={vi.fn()} />,
+    )
+    expect(screen.getAllByRole('listitem')).toHaveLength(8)
+    expect(screen.queryByTestId('pc-calque-plan')).toBeNull()
+
+    // Le builder redevient une NOUVELLE référence (il vient d'installer le
+    // calque « Plan importé » sur la scène après le dépôt du plan) : la liste
+    // est relue, sans sondage.
+    rerender(
+      <PanneauCalques
+        utilisateurId="u1"
+        stockage={memStore()}
+        builderApi={builderApiAvec([...HUIT, 'plan'])}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('pc-calque-plan')).toBeTruthy()
+    expect(screen.getByTestId('pc-calque-plan').textContent).toContain(
+      ORDRE_CALQUES.find((c) => c.id === 'plan').label,
+    )
   })
 })
