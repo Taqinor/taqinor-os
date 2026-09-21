@@ -31,7 +31,7 @@ l'élévation réelle tout en ayant l'air d'un résultat.
 
 CE MODULE NE LIT NI BASE NI RÉSEAU. Les tronçons lui sont DONNÉS (la lane
 ``services/troncons.py``, CALX224-226, les construit) : ici, ce sont des
-dicts, et la forme lue est décrite sur :func:`elevation_de_tension`.
+dicts, et la forme lue est décrite sur :func:`_elevation_de_tension`.
 
 Contrat de sortie : ``contract_samples/calepinage_raccordement.json``
 (CALX205) — trois blocs ``saisie`` / ``calcul`` / ``verdicts``, cinq verdicts
@@ -49,7 +49,7 @@ from core.electrique.types import (
 
 __all__ = [
     'RaccordementInvalide', 'CODE_ELEVATION', 'LIBELLES',
-    'elevation_de_tension', 'verdicts_raccordement',
+    'verdicts_raccordement',
     'repartition_des_phases',
     'bloc_raccordement',  # CALX244
 ]
@@ -194,7 +194,7 @@ def _parcouru(troncon):
     return True if marque is None else bool(marque)
 
 
-def elevation_de_tension(troncons, injection):
+def _elevation_de_tension(troncons, injection):
     """CALX241 — l'élévation au point de raccordement, tronçon par tronçon.
 
     Args:
@@ -220,6 +220,12 @@ def elevation_de_tension(troncons, injection):
         RaccordementInvalide: limite saisie sans ``source_limite``.
 
     Fonction PURE : aucune base, aucun réseau, aucune horloge.
+
+    AIDE INTRA-MODULE, et c'est pour cela qu'elle est privée : son unique
+    appelant est :func:`bloc_raccordement`, dans ce fichier. La publier
+    promettrait une porte d'entrée que personne n'emprunte — le bloc
+    raccordement est la seule façon dont l'élévation se lit du dehors, parce
+    que c'est lui qui pose l'injection et les tronçons parcourus.
     """
     injection = injection if isinstance(injection, dict) else {}
     limite, source_limite = _limite_saisie(injection)
@@ -921,7 +927,7 @@ def _verdict_desequilibre(desequilibre, seuil, source_seuil, motif):
 # n'est JAMAIS fabriqué : il est lu sur le tronçon publié par
 # ``services/troncons.py`` (``ib_a``, le courant d'emploi que la conception
 # électrique justifie). Absent, c'est l'omission NOMMÉE de
-# :func:`elevation_de_tension` qui est publiée — pas une élévation partielle.
+# :func:`_elevation_de_tension` qui est publiée — pas une élévation partielle.
 #
 # CE QUI EST PARCOURU. Seul le côté ALTERNATIF remonte la tension au point de
 # livraison : c'est le courant INJECTÉ par l'onduleur qui traverse la liaison
@@ -1023,7 +1029,7 @@ def _saisie_publiee(brute):
 
 
 def _injection(saisie):
-    """Ce que :func:`elevation_de_tension` lit de la saisie.
+    """Ce que :func:`_elevation_de_tension` lit de la saisie.
 
     Aucun ``courant_a`` global n'est posé : le courant vient du TRONÇON, et
     son absence est une omission nommée, jamais une valeur de confort.
@@ -1133,8 +1139,8 @@ def bloc_raccordement(conception, saisie, troncons, reglages=None):
     Fonction PURE : aucune base, aucun réseau, aucune horloge.
     """
     saisie = _saisie_publiee(saisie)
-    elevation = elevation_de_tension(_troncons_pour_elevation(troncons),
-                                     _injection(saisie))
+    elevation = _elevation_de_tension(_troncons_pour_elevation(troncons),
+                                      _injection(saisie))
     branchement = verdicts_raccordement(conception, saisie)
     equilibrage = repartition_des_phases(_parc_onduleurs(conception),
                                          saisie['phases'],
