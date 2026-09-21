@@ -104,13 +104,31 @@ describe('CALX1 — le registre `atelier/onglets.js`', () => {
     expect(resoudreOnglet(premier.cle)).toBe(premier)
   })
 
-  it('la clé d’un onglet est EXACTEMENT le dernier segment de sa route profonde', () => {
+  it('la clé d’un onglet est un segment d’URL propre, et jamais une route faussée', () => {
+    /* CALX17 — cette assertion exigeait une route profonde POUR CHAQUE onglet.
+       C'est l'inverse de ce que CALX1 garde (son en-tête le dit : « le test
+       ITÈRE sur `config.routes` ») : le chemin canonique d'un panneau est
+       `?onglet=<cle>` depuis le rail, et `module.config.jsx` n'a pas à
+       déclarer une route profonde par panneau — sinon aucun panneau neuf ne
+       peut entrer au registre sans rouvrir ce fichier, que les lanes du
+       groupe ne touchent pas. Ce qui reste gardé ici : la clé doit être un
+       segment d'URL propre (le lien partageable `?onglet=` serait faux
+       sinon), et une clé qui DÉSIGNE une route profonde doit la désigner
+       exactement. Le sens « aucune route déclarée ne reste orpheline » est,
+       lui, gardé plus bas — et c'est lui qui itère sur `config.routes`. */
     const chemins = new Set(config.routes.map((r) => r.path))
     for (const onglet of ONGLETS) {
       expect(
-        chemins.has(`/calepinage/:id/${onglet.cle}`),
-        `l’onglet « ${onglet.cle} » n’a pas de route profonde /calepinage/:id/${onglet.cle}`,
-      ).toBe(true)
+        onglet.cle,
+        `clé inutilisable dans ?onglet= : ${onglet.cle}`,
+      ).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+      const profonde = `/calepinage/:id/${onglet.cle}`
+      if (chemins.has(profonde)) {
+        expect(
+          config.routes.find((r) => r.path === profonde).component,
+          `route profonde ${profonde} sans composant`,
+        ).toBeTruthy()
+      }
     }
   })
 })

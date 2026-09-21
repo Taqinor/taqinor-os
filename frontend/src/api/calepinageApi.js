@@ -167,6 +167,16 @@ const calepinageApi = {
     // produit, aucun statut n'est écrit par l'écran.
     genererDevis: (id, corps) => api.post(`${pivot(id)}generer-devis/`, corps),
     syncDevis: (id, corps) => api.post(`${pivot(id)}sync-devis/`, corps),
+
+    /* APPEND-ONLY (D-CALX 13) : une méthode neuve s'ajoute ICI, EN FIN,
+       avec son commentaire `// CALX<id>` — jamais au milieu, jamais triée. */
+
+    // CALX17 — la masse posée et la feuille de lestage, telles que
+    // `services/lestage.py` les compose (contrat
+    // `contract_samples/calepinage_masse_lestage.json`). Lecture PURE ;
+    // `module` désigne le produit dont le poids de fiche est lu, à défaut
+    // le panneau du devis lié.
+    masseLestage: (id, params) => api.get(`${pivot(id)}masse-lestage/`, { params }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

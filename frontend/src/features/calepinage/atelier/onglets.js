@@ -57,6 +57,7 @@ export const ONGLETS = [
   { cle: 'production', libelle: 'Production', groupe: 'Résultats', ordre: 110, composant: lazy(() => import('../production/PanneauProduction')) }, // CALX1
   { cle: 'pertes', libelle: 'Pertes', groupe: 'Résultats', ordre: 120, composant: lazy(() => import('../production/DiagrammePertes')) }, // CALX1
   { cle: 'dossiers', libelle: 'Dossiers réglementaires', groupe: 'Dossiers', ordre: 130, composant: lazy(() => import('../DossiersReglementaires')) }, // CALX1
+  { cle: 'masse-lestage', libelle: 'Masse & lestage', groupe: 'Système', ordre: 190, composant: lazy(() => import('./PanneauMasseLestage')) }, // CALX17
 ]
 
 /**
