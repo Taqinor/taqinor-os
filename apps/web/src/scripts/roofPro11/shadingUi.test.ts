@@ -5,6 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   effectiveBuildingHeightM,
+  filtrerEmplacementsSousSeuil,
+  hauteurToitPourOmbrageM,
   heatmapAccessValues,
   HEATMAP_MONTH_LABELS,
   libelleBoutonOsm,
@@ -12,7 +14,7 @@ import {
   moduleShadeReadingsForPanels,
   type ModuleShadeReading,
 } from './shadingUi';
-import { propositionOsm, type BatimentOsmServeur } from './batiment';
+import { propositionOsm, type Batiment, type BatimentOsmServeur } from './batiment';
 import { FLOORS, FLOOR_HEIGHT_M } from './constants';
 import { fallbackPerKwc } from '../../lib/productionEngine';
 import { hourlyShadeFactors, type ShadeObstructionENU } from '../../lib/shadingEngine';
@@ -169,6 +171,131 @@ describe('CALX122 — lecture géométrique d’ombrage par module (heures + pre
     expect(readings[0].firstMonthIndex).not.toBeNull();
     expect(readings[1].maskedHours).toBeLessThanOrEqual(readings[0].maskedHours);
     expect(readings[1].firstMonthIndex == null || typeof readings[1].firstMonthIndex === 'number').toBe(true);
+  });
+});
+
+// CALX115 — un seuil d'accès solaire SAISI (`optimisation.seuilAccesSolaire`, contrat
+// CALX88) écarte du posable les emplacements dont l'accès solaire CALCULÉ est sous le
+// seuil, AVANT le pavage. Aucun seuil par défaut : la pose est celle d'aujourd'hui, et
+// sans mesure d'ombrage le seuil est REFUSÉ en nommant sa raison — jamais « plein soleil ».
+describe('CALX115 — filtrerEmplacementsSousSeuil : écarter des emplacements, jamais supposer du plein soleil', () => {
+  const LAT = 33.5;
+  const prod = fallbackPerKwc();
+  /** Même cheminée que CAL95/CALX122 (3 × 3 m, 5 m de haut, 3 m au sud du module 0). */
+  const cheminee: ShadeObstructionENU = {
+    x: 0,
+    y: -3,
+    effHeightM: 5,
+    halfWidthM: Math.hypot(3, 3) / 2,
+    footprint: [
+      [-1.5, -4.5],
+      [1.5, -4.5],
+      [1.5, -1.5],
+      [-1.5, -1.5],
+    ],
+  };
+  const panels = [
+    { cx: 0, cy: 0 }, // juste au nord de la cheminée : dans son ombre
+    { cx: 40, cy: 0 }, // 40 m à l'est : hors de son ombre
+  ];
+  /** Le seuil qui coupe ENTRE les deux modules, dérivé des valeurs calculées — jamais
+   *  un nombre choisi à la main (D-CALX 7). */
+  function seuilEntreLesDeux(): number {
+    const acces = heatmapAccessValues(LAT, [cheminee], prod, panels, null);
+    return (acces[0] + acces[1]) / 2;
+  }
+
+  it('aucun seuil saisi (absent/null) : pose IDENTIQUE, et la phrase nomme le champ absent', () => {
+    for (const saisi of [undefined, null, '']) {
+      const r = filtrerEmplacementsSousSeuil(saisi, LAT, [cheminee], prod, panels, true);
+      expect(r.retenus).toEqual([0, 1]);
+      expect(r.ecartes).toEqual([]);
+      expect(r.seuilApplique).toBeNull();
+      expect(r.refuse).toBe(false);
+      expect(r.motif).toContain('optimisation.seuilAccesSolaire');
+      expect(r.motif).toContain('celle d’aujourd’hui');
+    }
+  });
+
+  it('seuil à 0 : pose IDENTIQUE (aucun accès solaire ne peut lui être inférieur)', () => {
+    const r = filtrerEmplacementsSousSeuil(0, LAT, [cheminee], prod, panels, true);
+    expect(r.retenus).toEqual([0, 1]);
+    expect(r.ecartes).toEqual([]);
+    expect(r.seuilApplique).toBe(0);
+    expect(r.refuse).toBe(false);
+  });
+
+  it('seuil relevé : le compte baisse EXACTEMENT du nombre annoncé, et le motif le publie', () => {
+    const seuil = seuilEntreLesDeux();
+    const r = filtrerEmplacementsSousSeuil(seuil, LAT, [cheminee], prod, panels, true);
+    expect(r.refuse).toBe(false);
+    expect(r.seuilApplique).toBe(seuil);
+    expect(r.ecartes).toEqual([0]); // le module dans l'ombre de la cheminée
+    expect(r.retenus).toEqual([1]);
+    expect(r.retenus.length).toBe(panels.length - r.ecartes.length);
+    expect(r.motif).toContain(`${r.ecartes.length} emplacement(s) sur ${panels.length}`);
+  });
+
+  it('seuil à 1 : tout ce qui est ombragé sort du posable, rien n’est inventé', () => {
+    const r = filtrerEmplacementsSousSeuil(1, LAT, [cheminee], prod, panels, true);
+    const acces = heatmapAccessValues(LAT, [cheminee], prod, panels, null);
+    expect(r.ecartes).toEqual(acces.map((a, i) => (a < 1 ? i : -1)).filter((i) => i >= 0));
+    expect(r.retenus.length + r.ecartes.length).toBe(panels.length);
+  });
+
+  it('AUCUN accès solaire calculé (aucune source saisie) : le seuil est REFUSÉ en nommant la raison, jamais du plein soleil', () => {
+    const r = filtrerEmplacementsSousSeuil(0.7, LAT, [], prod, panels, false);
+    expect(r.refuse).toBe(true);
+    expect(r.champ).toBe('optimisation.seuilAccesSolaire');
+    expect(r.seuilApplique).toBeNull();
+    expect(r.retenus).toEqual([0, 1]);
+    expect(r.ecartes).toEqual([]);
+    expect(r.motif).toContain('ne vaut pas du plein soleil');
+  });
+
+  it('source saisie mais AUCUNE obstruction au-dessus du champ : refus distinct, avec sa propre raison', () => {
+    const r = filtrerEmplacementsSousSeuil(0.7, LAT, [], prod, panels, true);
+    expect(r.refuse).toBe(true);
+    expect(r.champ).toBe('optimisation.seuilAccesSolaire');
+    expect(r.ecartes).toEqual([]);
+    expect(r.motif).toContain('ne dépasse le plan du champ');
+  });
+
+  it('un seuil hors contrat (texte, NaN, hors [0,1]) est REFUSÉ en le citant — jamais corrigé en douce', () => {
+    for (const mauvais of ['beaucoup', Number.NaN, 1.4, -0.2]) {
+      const r = filtrerEmplacementsSousSeuil(mauvais, LAT, [cheminee], prod, panels, true);
+      expect(r.refuse).toBe(true);
+      expect(r.champ).toBe('optimisation.seuilAccesSolaire');
+      expect(r.seuilApplique).toBeNull();
+      expect(r.retenus).toEqual([0, 1]);
+      expect(r.motif).toContain(String(mauvais));
+    }
+  });
+
+  it('aucun emplacement à évaluer : la réponse le dit, sans écarter ni inventer', () => {
+    const r = filtrerEmplacementsSousSeuil(0.7, LAT, [cheminee], prod, [], true);
+    expect(r.retenus).toEqual([]);
+    expect(r.ecartes).toEqual([]);
+    expect(r.refuse).toBe(false);
+    expect(r.motif).toContain('aucun emplacement à évaluer');
+  });
+});
+
+describe('CALX115 — hauteurToitPourOmbrageM : une seule règle de hauteur, partagée', () => {
+  const MESURE: Batiment = { id: 'bat-1', hauteurM: 9, source: 'relevé chantier' };
+
+  it('hauteur SAISIE du bâtiment du pan : elle prime', () => {
+    expect(hauteurToitPourOmbrageM([MESURE], 'bat-1')).toBe(9);
+  });
+
+  it('aucun bâtiment décrit (ou pan sans bâtiment) : l’hypothèse affichée, jamais un zéro', () => {
+    expect(hauteurToitPourOmbrageM([], 'bat-1')).toBe(FLOORS * FLOOR_HEIGHT_M);
+    expect(hauteurToitPourOmbrageM(undefined, null)).toBe(FLOORS * FLOOR_HEIGHT_M);
+    expect(hauteurToitPourOmbrageM([MESURE], 'bat-2')).toBe(FLOORS * FLOOR_HEIGHT_M);
+  });
+
+  it('hauteur sans provenance : ce n’est pas une saisie exploitable → l’hypothèse', () => {
+    expect(hauteurToitPourOmbrageM([{ id: 'bat-1', hauteurM: 9 }], 'bat-1')).toBe(FLOORS * FLOOR_HEIGHT_M);
   });
 });
 
