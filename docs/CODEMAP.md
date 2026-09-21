@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a364531b52d5c7aa7a8779f15cca51e377a8b10b2773e8b56f739c2fc92ce0d6
-Plan fingerprint: 254d64b0d0515bae2b78cf49066bd920b511c5ce163a86be0e38fcd9f9e16dce
+Plan fingerprint: 1b2f1ce7a44ae1aa3ba22686509dd9a8a9db188a8b31b403818e33801868814d
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (189)**
+**Done (190)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -623,6 +623,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX93` — Déduire noue et arêtier en comparant les pans voisins
 - `CALX122` — Lire la fréquence d'ombrage de chaque module sur l'année
 - `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
 - `CALX142` — Déclarer le contrat de la série horaire persistée
@@ -723,7 +724,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (417)**
+**Open — to build (416)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -927,7 +928,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX90` — Saisir au clavier la longueur et l'angle du segment en cours de tracé
 - `CALX91` — Insérer et supprimer un sommet sur une arête d'un contour fermé
 - `CALX92` — Aimanter le tracé aux sommets et aux arêtes des pans déjà tracés
-- `CALX93` — Déduire noue et arêtier en comparant les pans voisins
 - `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
 - `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
