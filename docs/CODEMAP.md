@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a364531b52d5c7aa7a8779f15cca51e377a8b10b2773e8b56f739c2fc92ce0d6
-Plan fingerprint: 9e02f00ffa496c6ff6d05d410110a1fdec56cac85dbabf29197f2e1fa5c79d92
+Plan fingerprint: 254d64b0d0515bae2b78cf49066bd920b511c5ce163a86be0e38fcd9f9e16dce
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (188)**
+**Done (189)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -721,8 +721,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
+- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (418)**
+**Open — to build (417)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -1112,7 +1113,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
-- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
