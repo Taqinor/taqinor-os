@@ -16,7 +16,6 @@
 #
 # La signature est le CHEMIN (jamais `fichier:ligne`) : deplacer du code ne doit
 # pas invalider la base.
-inatteignable|frontend/src/features/calepinage/atelier/RetourAtelier.jsx
 sans-nav|frontend/src/features/admin/module.config.jsx::/admin/impersonation
 sans-nav|frontend/src/features/admin/module.config.jsx::/admin/tenants
 sans-nav|frontend/src/features/calepinage/module.config.jsx::/calepinage/:id/fiches

@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL63 — CALER UN PLAN IMPORTÉ : translation, rotation, ÉCHELLE SAISIE.
@@ -402,23 +403,28 @@ export default function PlanImporteCalage({
 
   if (!sommets.length) {
     return (
-      <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
-        <p className="tech-label rule-brass text-brass-300">Plan importé</p>
-        <p className="mt-2 text-sm text-lune-soft" data-testid="cal-calage-sans-plan">
-          Aucun plan importé n’est rattaché à ce calepinage : il n’y a donc rien
-          à caler. Déposez un plan (DXF ou PDF vectoriel) ci-dessous : le serveur
-          l’analyse et propose le contour du calque choisi, sans rien enregistrer.
-        </p>
-        {blocDepot}
-      </div>
+      <>
+        <RetourAtelier calepinageId={calepinageId} />
+        <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
+          <p className="tech-label rule-brass text-brass-300">Plan importé</p>
+          <p className="mt-2 text-sm text-lune-soft" data-testid="cal-calage-sans-plan">
+            Aucun plan importé n’est rattaché à ce calepinage : il n’y a donc rien
+            à caler. Déposez un plan (DXF ou PDF vectoriel) ci-dessous : le serveur
+            l’analyse et propose le contour du calque choisi, sans rien enregistrer.
+          </p>
+          {blocDepot}
+        </div>
+      </>
     )
   }
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
-      <p className="tech-label rule-brass text-brass-300">
-        Caler le plan importé
-      </p>
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-calage-plan">
+        <p className="tech-label rule-brass text-brass-300">
+          Caler le plan importé
+        </p>
 
       {blocDepot}
 
@@ -504,5 +510,6 @@ export default function PlanImporteCalage({
           data-testid="cal-calage-message">{message}</p>
       )}
     </div>
+    </>
   )
 }

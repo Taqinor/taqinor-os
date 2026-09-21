@@ -11,6 +11,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { Button, Card, Spinner } from '../../../ui'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL234 — AFFECTER LES CHAÎNES À LA MAIN, AVEC LE VERDICT EN DIRECT.
@@ -343,9 +344,21 @@ export default function AffectationChaines({ calepinageId }) {
       })
   }
 
-  if (chargement) return <Spinner />
+  if (chargement) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (erreur) {
-    return <p className="text-sm text-destructive" data-testid="cal234-erreur">{erreur}</p>
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal234-erreur">{erreur}</p>
+      </>
+    )
   }
 
   const parPan = new Map()
@@ -363,7 +376,9 @@ export default function AffectationChaines({ calepinageId }) {
   const avertissements = resultat?.avertissements || []
 
   return (
-    <Card className="flex flex-col gap-4 p-4" data-testid="cal234-ecran">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <Card className="flex flex-col gap-4 p-4" data-testid="cal234-ecran">
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Affectation des chaînes</h2>
         <p className="text-sm text-muted-foreground">
@@ -582,5 +597,6 @@ export default function AffectationChaines({ calepinageId }) {
         ))}
       </ul>
     </Card>
+    </>
   )
 }

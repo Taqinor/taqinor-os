@@ -11,6 +11,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import {
   CHAMPS_REQUIS_PAR_TYPE,
 } from '../../../pages/stock/ficheCompletude'
+import RetourAtelier from '../atelier/RetourAtelier'
 
 /* ============================================================================
    CAL121 — LE PANNEAU « FICHES INCOMPLÈTES » DU CALEPINAGE.
@@ -253,12 +254,15 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
 
   if (erreur) {
     return (
-      <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
-        <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
-        <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-erreur">
-          {erreur}
-        </p>
-      </div>
+      <>
+        <RetourAtelier calepinageId={calepinageId} />
+        <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
+          <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
+          <p className="mt-2 text-sm text-red-300" role="alert" data-testid="cal-fiches-erreur">
+            {erreur}
+          </p>
+        </div>
+      </>
     )
   }
 
@@ -267,7 +271,9 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
   if (!agregat) return null
 
   return (
-    <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
+    <>
+      <RetourAtelier calepinageId={calepinageId} />
+      <div className="cine-card mt-6 p-6" data-testid="cal-fiches-incompletes">
       <p className="tech-label rule-brass text-brass-300">Fiches incomplètes</p>
 
       {agregat.devis == null ? (
@@ -292,5 +298,6 @@ export default function FichesIncompletes({ calepinageId: idPropose }) {
         />
       ))}
     </div>
+    </>
   )
 }

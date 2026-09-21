@@ -4,6 +4,7 @@ import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { formatDateTime } from '../../lib/format'
 import { Button, Card, Spinner } from '../../ui'
+import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
    CAL196 — L'ÉCRAN « DOSSIERS RÉGLEMENTAIRES » DU CALEPINAGE.
@@ -391,15 +392,29 @@ export default function DossiersReglementaires({ calepinageId }) {
 
   const regenere = () => { setSurcharge(null); refetch() }
 
-  if (loading) return <Spinner />
+  if (loading) {
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <Spinner />
+      </>
+    )
+  }
   if (error) {
-    return <p className="text-sm text-destructive" data-testid="cal196-erreur">{error}</p>
+    return (
+      <>
+        <RetourAtelier calepinageId={id} />
+        <p className="text-sm text-destructive" data-testid="cal196-erreur">{error}</p>
+      </>
+    )
   }
 
   const dossiers = donnees?.dossiers || []
 
   return (
-    <div className="flex flex-col gap-4" data-testid="cal196-ecran">
+    <>
+      <RetourAtelier calepinageId={id} />
+      <div className="flex flex-col gap-4" data-testid="cal196-ecran">
       <header className="flex flex-col gap-1">
         <h2 className="text-base font-semibold">Dossiers réglementaires</h2>
         <p className="text-sm text-muted-foreground" data-testid="cal196-entete">
@@ -427,5 +442,6 @@ export default function DossiersReglementaires({ calepinageId }) {
         />
       ))}
     </div>
+    </>
   )
 }
