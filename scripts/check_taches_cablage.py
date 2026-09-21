@@ -274,6 +274,18 @@ FICHIERS_MONTAGE = re.compile(
     r"|Sidebar\.jsx"
     r"|routes\.meta\.js)$")
 
+# CALX2 — le RAIL D'ONGLETS declaratif du module calepinage (decision
+# D-CALX 3) : `features/calepinage/atelier/onglets.js` est un REGISTRE, et un
+# panneau neuf s'y monte par UNE ligne ajoutee en fin. C'est donc bien un
+# fichier de montage, exactement comme un `module.config.jsx` — mais en `.js`,
+# que `_CHEMIN_FRONT` (jsx/tsx seuls) ne ramasse pas. On le cherche donc
+# directement dans la clause `Files:`, et il ne vaut QUE pour un ecran de la
+# MEME feature (`features/calepinage/**` monte dans le rail du calepinage,
+# jamais dans celui d'un autre module). Sans cette regle : 2 faux
+# « ecran-sans-cablage » mesures sur le bloc CALX.
+_REGISTRE_ONGLETS = re.compile(
+    r"frontend/src/features/(?P<app>[\w-]+)/atelier/onglets\.js")
+
 TEST_MARKERS = (".test.", ".spec.")
 TEST_DIRS = ("__tests__", "__mocks__")
 
@@ -501,15 +513,23 @@ class Tache:
     def fichier_de_montage(self) -> str | None:
         """Le fichier de `Files:` qui pourra relier l'ecran au menu, ou None.
 
-        Deux formes acceptees :
+        Trois formes acceptees :
           1. un `module.config.jsx` / `router/index.jsx` / `App.jsx` ;
-          2. un ecran DEJA EXISTANT — c'est le « ecran parent qui le monte » de
+          2. le REGISTRE d'onglets `features/<app>/atelier/onglets.js` quand
+             l'ecran cree vit dans la MEME feature (CALX2 / D-CALX 3) ;
+          3. un ecran DEJA EXISTANT — c'est le « ecran parent qui le monte » de
              la regle : un onglet neuf se branche dans une fiche qui existe
              deja, et cette fiche est bien dans `Files:`.
         """
         for chemin, _, _ in self.chemins:
             if FICHIERS_MONTAGE.search(chemin):
                 return chemin
+        registre = _REGISTRE_ONGLETS.search(self.clause_files)
+        if registre and any(
+                chemin.startswith(
+                    f"frontend/src/features/{registre.group('app')}/")
+                for chemin, _, _ in self.chemins):
+            return registre.group(0)
         for chemin, nouveau, _ in self.chemins:
             if not nouveau and est_ecran(chemin) and existe_deja(chemin):
                 return chemin

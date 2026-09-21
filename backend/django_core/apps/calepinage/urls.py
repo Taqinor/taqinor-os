@@ -26,32 +26,14 @@ from .views.parametres import (
     ParametresCalepinageView,
     SuggestionPenteIGNView,
 )
-# CAL243 — rattache l'action ``equipements`` au ``CalepinageViewSet`` par
-# import (affectation d'attribut de classe, voir la docstring du module) ;
-# doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
-from .views import equipements as _equipements_action  # noqa: F401
-# CAL92/93 — même patron : rattache l'action ``horizon`` (profil d'horizon
-# PVGIS ``printhorizon``, contrat CAL92).
-from .views import horizon as _horizon_action  # noqa: F401
-# CAL144 — même forme pour l'export CSV (``calepinages/<pk>/export-csv/``) :
-# code dans un fichier neuf, enregistrement en une ligne additive.
-from .views import export_csv as _export_csv_action  # noqa: F401
-# CAL246 — même patron : rattache l'action ``modeles`` (bibliothèque).
-from .views import bibliotheque as _bibliotheque_action  # noqa: F401
-# CAL207 — même patron : rattache l'action ``deverrouiller``.
-from .views import verrou as _verrou_action  # noqa: F401
-# CAL208 — même patron : rattache ``archiver``/``restaurer-corbeille``.
-from .views import archivage as _archivage_action  # noqa: F401
-# CAL216 — même patron : rattache ``export-layout``/``import-layout``.
-from .views import io_layout as _io_layout_action  # noqa: F401
-# CAL159 — même discipline pour l'action ``pompage`` (dimensionnement du
-# pompage solaire, services CAL155-CAL158) : code dans son propre fichier,
-# rattachement par cet import, AVANT ``router.register``.
-from .views import pompage as _pompage_action  # noqa: F401
-# CAL139 — même patron : rattache ``pertes``/``enregistrer-pertes``.
-from .views import simulation as _simulation_actions  # noqa: F401
-# CAL191 — même patron : rattache ``dossiers-reglementaires`` (contrat CAL247).
-from .views import reglementaire as _reglementaire_action  # noqa: F401
+# CALX2 — LE point de rattachement des ``@action`` du ``CalepinageViewSet``.
+# Un SEUL import ici, et il doit s'exécuter AVANT ``router.register`` (DRF
+# inspecte les attributs de la classe au moment de l'enregistrement, via
+# ``get_extra_actions()``). Chaque action est rattachée par UNE ligne écrite
+# EN FIN de ``views/rattachements.py``, jamais ici : ce fichier n'est plus
+# rouvert par aucune tâche, ce qui évite que ``scripts/plan_lanes.py`` fonde
+# tout le groupe en une seule lane (décision D-CALX 13).
+from .views import rattachements as _rattachements  # noqa: F401
 
 # ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
 # : ``DefaultRouter`` ajoute une vue « api-root » que personne n'appelle ET un
