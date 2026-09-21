@@ -5137,6 +5137,86 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
             getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
+# ── CAD-K ── CAD135 — les signaux de lecture remontent au LEAD ──────────────
+#
+# Audit L3 du 21/09/2026. Quand un client revient plusieurs fois sur la même
+# section (le prix, l'étude), le système écrit lui-même « signal de friction,
+# un appel peut débloquer la décision » — dans l'historique du DEVIS, sans
+# aucune notification. Même sort pour « a commencé à lire en détail ».
+# Personne ne les lit, sauf à ouvrir cet onglet par hasard.
+#
+# Ces deux signaux empruntent désormais le MÊME chemin que « devis ouvert » :
+# une ligne dans le chatter du LEAD et une notification au responsable, avec
+# le lien pour appeler. La note côté DEVIS reste écrite — elle appartient à
+# l'historique du document, ce point d'entrée ne la remplace pas.
+#
+# NUANCE ASSUMÉE (round 2) : « le signal le plus prédictif » reste une
+# HYPOTHÈSE tant que CAD87 ne l'a pas mesuré. Rien ici ne classe, ne priorise
+# ni ne réordonne quoi que ce soit : on rend un fait visible, c'est tout.
+
+def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
+                            resume='') -> None:
+    """CAD135 — « il relit le prix » / « il lit en détail » arrivent au lead.
+
+    ``friction_section`` non vide ⇒ signal de FRICTION (relecture répétée
+    d'une section, le libellé FR est fourni par l'appelant) ; sinon ⇒ lecture
+    APPROFONDIE. ``resume`` est le détail déjà composé côté document, repris
+    tel quel — ce module n'invente aucun chiffre de temps passé.
+
+    Écrit une note SYSTÈME (``user=None`` : ne fait jamais avancer le funnel,
+    règle du 07/09/2026) puis notifie par le chemin commun. Best-effort
+    intégral : un signal de lecture ne fait jamais retomber une requête
+    publique.
+    """
+    try:
+        if lead is None or getattr(lead, 'company_id', None) is None:
+            return
+        if friction_section:
+            corps = (f'Le client relit la section « {friction_section} » de '
+                     f'la proposition {devis_reference} — un appel peut '
+                     'débloquer la décision.')
+            titre = f'Devis {devis_reference} — le client relit une section'
+        else:
+            corps = ('Le client a commencé à lire la proposition '
+                     f'{devis_reference} en détail.')
+            titre = f'Devis {devis_reference} — lecture en détail'
+        if resume:
+            corps += f' ({resume})'
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=corps)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD135 : note de signal de lecture non écrite (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
+        return
+    try:
+        company = getattr(lead, 'company', None)
+        recipients = avec_direction(
+            lead_notification_recipients(lead), company)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        corps_notif = [corps]
+        wa_url = _build_lead_wa_reply_url(lead)
+        if wa_url:
+            corps_notif.append(f'Appeler / répondre maintenant : {wa_url}')
+        notify_many(
+            recipients,
+            # Aucun type d'événement neuf : le signal emprunte le MÊME chemin
+            # que « devis ouvert », dont il est la suite directe.
+            'devis_opened',
+            titre,
+            body='\n'.join(corps_notif),
+            link=f'/crm/visiteurs?lead={lead.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD135 : notification de signal de lecture échouée (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
+
+
 #: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
 #: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
 #: plus large que ce que ce module connaissait (whatsapp/rappel seuls).

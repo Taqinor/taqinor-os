@@ -4160,6 +4160,28 @@ ENGAGEMENT_SECTION_LABELS = {
 }
 
 
+# ── CAD-K ── CAD135 — les signaux de lecture remontent au LEAD ─────────────
+def _remonter_signal_lecture_au_lead(link, *, friction_section='', resume=''):
+    """CAD135 — passe le signal au CRM par son point d'entrée de services.
+
+    Frontière inter-apps : ``ventes`` appelle ``crm.services``, jamais
+    ``crm.models``. Best-effort intégral — un beacon d'engagement est un
+    signal, pas une transaction : rien ici ne peut faire échouer la requête
+    publique du client.
+    """
+    try:
+        devis = getattr(link, 'devis', None)
+        lead = getattr(devis, 'lead', None) if devis is not None else None
+        if lead is None:
+            return
+        from apps.crm.services import notifier_signal_lecture
+        notifier_signal_lecture(
+            getattr(devis, 'reference', '') or '', lead,
+            friction_section=friction_section, resume=resume)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -4275,20 +4297,24 @@ def proposal_engagement(request, token):
     link = locked
 
     if newly_deep and link.devis_id:
+        resume = ', '.join(
+            f'{sec} ({v["seconds"]}s)' for sec, v in engagement.items())
         try:
             from . import activity
-            resume = ', '.join(
-                f'{sec} ({v["seconds"]}s)' for sec, v in engagement.items())
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client a commencé à lire la proposition en détail ({resume}).')
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
+        # CAD135 (audit L3 du 21/09/2026) — le signal remonte AUSSI au LEAD,
+        # par le même chemin que « devis ouvert » : écrit dans l'historique du
+        # seul DEVIS, personne ne le lisait. La note côté devis reste.
+        _remonter_signal_lecture_au_lead(link, resume=resume)
 
     if newly_friction and link.devis_id:
+        label = ENGAGEMENT_SECTION_LABELS.get(section, section)
         try:
             from . import activity
-            label = ENGAGEMENT_SECTION_LABELS.get(section, section)
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client relit la section « {label} » de la proposition '
@@ -4296,6 +4322,9 @@ def proposal_engagement(request, token):
                 f'friction, un appel peut débloquer la décision.')
         except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
             pass
+        # CAD135 — « un appel peut débloquer la décision » ne sert à rien dans
+        # un onglet que personne n'ouvre : le responsable est prévenu.
+        _remonter_signal_lecture_au_lead(link, friction_section=label)
 
     # T-TRACE (25/08/2026) — le beacon d'engagement porte la clé ADDITIVE
     # `appareil_id` : chaque battement prolonge LA MÊME visite (le service
