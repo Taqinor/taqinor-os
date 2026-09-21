@@ -78,7 +78,8 @@ from .zones import projeteur_local
 
 __all__ = [
     'ORIGINE_MIXTE', 'COTE_DC', 'COTE_AC', 'COTE_TERRE',
-    'troncons_du_calepinage',
+    'troncons_du_calepinage', 'troncons_de_la_conception',
+    'metre_de_cable',
 ]
 
 #: Le vocabulaire d'origine PUBLIÉ est celui du DOCUMENT (CALX202,
@@ -648,6 +649,83 @@ def _metre_par_section(troncons):
     return lignes
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX227 — LE MÉTRÉ À COUPER, PAR CÔTÉ ET PAR SECTION
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``core/electrique/nomenclature.py`` produisait UNE ligne de câblage par
+# repère (``W1``, ``W2``) avec ``longueur_m × nb_conducteurs`` : un dossier à
+# dix tronçons de trois sections sortait donc DEUX lignes, et le magasinier
+# ne savait pas quoi couper. PV*SOL exporte sa liste de pièces avec des
+# numéros d'article (https://help.valentin-software.com/pvsol/en/pages/
+# plans-and-parts-list/) et OpenSolar décrit un BOM automatique couvrant les
+# câbles (https://www.opensolar.com/shop/) : c'est cette granularité-là.
+#
+# UNE LIGNE PAR COUPLE (CÔTÉ, SECTION), et rien d'autre. Un tronçon dont la
+# section n'est pas calculable n'entre dans AUCUNE ligne : son omission est
+# déjà NOMMÉE, tronçon par tronçon, par ``_dimensionner_troncon`` (norme
+# absente D1, longueur manquante, courant non publié…). L'agréger sous une
+# section « 0 » ou le fondre dans une autre ligne ferait commander du câble
+# qu'aucun calcul ne justifie.
+
+#: L'ordre de publication des côtés — celui du courant dans l'installation
+#: (continu, alternatif, terre), pas l'ordre alphabétique.
+ORDRE_DES_COTES = (COTE_DC, COTE_AC, COTE_TERRE)
+
+
+def metre_de_cable(troncons):
+    """CALX227 — ``[{section_mm2, cote, longueur_m, nb_conducteurs,
+    repere_des_troncons}]``.
+
+    Une ligne par couple (côté, section), ``longueur_m`` = somme des longueurs
+    des tronçons de ce couple (la longueur de CHEMIN : le nombre de
+    conducteurs voyage à côté, il ne se multiplie pas ici — c'est le
+    consommateur qui décide s'il commande du câble unipolaire ou un câble
+    multiconducteur).
+
+    ``nb_conducteurs`` vaut ``None`` quand les tronçons d'un même couple n'en
+    déclarent pas le même nombre (du monophasé et du triphasé sur la même
+    section) : un nombre unique serait faux pour l'un des deux, et aucune
+    moyenne n'a de sens sur un conducteur.
+
+    Fonction PURE : elle ne lit que la liste de tronçons qu'on lui passe.
+    """
+    lignes = {}
+    for troncon in troncons or ():
+        if not isinstance(troncon, dict):
+            continue
+        section = _nombre(troncon.get('section_mm2'))
+        longueur = _nombre(troncon.get('longueur_m'))
+        if section is None or longueur is None:
+            continue
+        cote = troncon.get('cote')
+        clef = (cote, section)
+        ligne = lignes.get(clef)
+        if ligne is None:
+            ligne = lignes[clef] = {
+                'section_mm2': section, 'cote': cote, 'longueur_m': 0.0,
+                'nb_conducteurs': troncon.get('nb_conducteurs'),
+                'repere_des_troncons': [],
+            }
+        elif ligne['nb_conducteurs'] != troncon.get('nb_conducteurs'):
+            ligne['nb_conducteurs'] = None
+        ligne['longueur_m'] += longueur
+        ligne['repere_des_troncons'].append(troncon.get('id'))
+
+    def _rang(clef):
+        cote, section = clef
+        ordre = (ORDRE_DES_COTES.index(cote) if cote in ORDRE_DES_COTES
+                 else len(ORDRE_DES_COTES))
+        return (ordre, section)
+
+    publiees = []
+    for clef in sorted(lignes, key=_rang):
+        ligne = lignes[clef]
+        ligne['longueur_m'] = round(ligne['longueur_m'], 2)
+        publiees.append(ligne)
+    return publiees
+
+
 def _troncons_du_document(document, contexte=None):
     """Le NOYAU de calcul : ``{troncons, totaux, omissions}``.
 
@@ -692,7 +770,117 @@ def _troncons_du_document(document, contexte=None):
     }
 
 
-def _contexte_electrique(conception, norme):
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX228 — LE RATTACHEMENT DES CHAÎNES ET DES BRANCHES AUX TRONÇONS
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Sans ce rattachement, TOUS les tronçons d'un côté prennent le courant DU
+# CÔTÉ : un tronçon amont qui porte l'Isc cumulé de trois chaînes est
+# dimensionné comme le tronçon terminal qui n'en porte qu'une. C'est
+# exactement ce que CALX225 annonçait en écrivant
+# ``contexte['courants'][<id>]`` sans que personne ne le remplisse.
+#
+# DEUX FAÇONS DE RATTACHER, dans cet ordre, et AUCUNE devinette :
+#   1. le cheminement le DÉCLARE — ``chaines: ["CH1", "CH2"]`` (côté DC) ou
+#      ``branche: "BR2"`` (côté AC, régime micro-onduleurs). Le schéma
+#      ``cheminementElectrique`` est ``additionalProperties: true`` : ces deux
+#      clés lui sont admises sans qu'il change ;
+#   2. l'extrémité AMONT (``de``) est un PAN de la conception — le tronçon
+#      porte alors les chaînes de ce pan.
+#
+# Aucune des deux ⇒ AUCUNE entrée, et le tronçon retombe sur le courant du
+# côté exactement comme aujourd'hui. Un repère déclaré qui ne désigne aucune
+# chaîne calculée ne crée pas d'entrée non plus : on ne fabrique pas un
+# courant pour une chaîne qui n'existe pas.
+
+
+def _chaines_par_pan(conception):
+    """``{label de pan: [chaînes]}`` — l'ordre de la conception, conservé."""
+    groupes = {}
+    for chaine in conception.chaines:
+        groupes.setdefault(str(chaine.pan), []).append(chaine)
+    return groupes
+
+
+def _chaines_du_cheminement(cheminement, conception, par_pan):
+    """Les chaînes que CE tronçon transporte — ``()`` si rien ne les rattache."""
+    declarees = cheminement.get('chaines')
+    if isinstance(declarees, (list, tuple)) and declarees:
+        voulus = {str(repere) for repere in declarees}
+        return tuple(chaine for chaine in conception.chaines
+                     if str(chaine.repere) in voulus)
+    return tuple(par_pan.get(str(cheminement.get('de') or ''), ()))
+
+
+def _courant_dc_des_chaines(chaines, coefficient_isc, calibre_fusible_a):
+    """Le courant DC d'un tronçon qui porte CES chaînes.
+
+    ``calibre_in_a`` n'est publié que pour un tronçon à UNE chaîne : le
+    fusible de chaîne protège une chaîne, et l'opposer à un tronçon qui en
+    cumule trois serait une vérification ``Ib ≤ In ≤ Iz`` fausse.
+    """
+    return {
+        'ib_a': sum(chaine.isc_a for chaine in chaines) * coefficient_isc,
+        'i_service_a': sum((chaine.imp_a or chaine.isc_a)
+                           for chaine in chaines),
+        'tension_v': min(chaine.vmp_stc_v for chaine in chaines),
+        'calibre_in_a': (calibre_fusible_a if len(chaines) == 1 else None),
+    }
+
+
+def _courant_ac_de_la_branche(branche, entree):
+    """Le courant AC d'un tronçon rattaché à UNE branche de micro-onduleurs.
+
+    ``i_branche_a`` non publié (la fiche se tait sur le courant unitaire) ⇒
+    aucune entrée : le tronçon retombe sur le courant du côté, et l'omission
+    de la branche est déjà nommée par CALX209.
+    """
+    courant = _nombre(branche.get('i_branche_a'))
+    if courant is None or courant <= 0:
+        return None
+    return {
+        'ib_a': courant,
+        'tension_v': entree.tension_reseau_v,
+        'phases': int(entree.phases or 1),
+        'calibre_in_a': _nombre(branche.get('calibre_a')),
+    }
+
+
+def _courants_par_troncon(conception, cheminements, coefficient_isc,
+                          calibre_fusible_a, branches_ac):
+    """``{id de tronçon: spec}`` — le rattachement de CALX228."""
+    courants = {}
+    if not cheminements:
+        return courants
+    par_pan = _chaines_par_pan(conception)
+    par_branche = {str(branche.get('repere')): branche
+                   for branche in branches_ac or ()
+                   if isinstance(branche, dict) and branche.get('repere')}
+    for rang, cheminement in enumerate(cheminements, start=1):
+        nom = _repere(cheminement, rang)
+        cote = cheminement.get('cote')
+        if cote == COTE_AC:
+            declaree = str(cheminement.get('branche') or '') or None
+            for clef in (declaree, str(cheminement.get('de') or ''),
+                         str(cheminement.get('vers') or '')):
+                branche = par_branche.get(clef) if clef else None
+                if branche is not None:
+                    spec = _courant_ac_de_la_branche(branche,
+                                                     conception.entree)
+                    if spec is not None:
+                        courants[nom] = spec
+                    break
+            continue
+        if cote != COTE_DC or coefficient_isc is None:
+            continue
+        chaines = _chaines_du_cheminement(cheminement, conception, par_pan)
+        if chaines:
+            courants[nom] = _courant_dc_des_chaines(chaines, coefficient_isc,
+                                                    calibre_fusible_a)
+    return courants
+
+
+def _contexte_electrique(conception, norme, cheminements=(), branches_ac=()):
     """Le contexte de dimensionnement LU sur la conception, jamais inventé.
 
     Côté DC le courant d'échauffement est celui du noyau (le coefficient
@@ -700,6 +888,9 @@ def _contexte_electrique(conception, norme):
     réellement transporté ; côté AC ce sont le courant d'emploi et le calibre
     que ``concevoir_protections`` a retenus. Conception muette ⇒ aucun
     courant, et ``manque`` dit POURQUOI.
+
+    CALX228 — ``courants`` porte le rattachement PAR TRONÇON (cf. le bandeau
+    ci-dessus) ; les deux entrées de CÔTÉ restent le repli.
     """
     from core.electrique.protections import concevoir_protections
 
@@ -738,7 +929,48 @@ def _contexte_electrique(conception, norme):
             'phases': int(entree.phases or 1),
             'calibre_in_a': protections.calibre_ac_a,
         }
+    contexte['courants'] = _courants_par_troncon(
+        conception, cheminements, coefficient_isc,
+        protections.calibre_fusible_a, branches_ac)
     return contexte
+
+
+def _branches_micro_du_champ(conception, materiel):
+    """Les branches AC de micro-onduleurs de CETTE conception, ou ``()``.
+
+    Lecture SEULE, et par le service qui les publie déjà (CALX209) : deux
+    façons de découper un champ en branches, ce serait deux courants
+    possibles pour le même tronçon.
+    """
+    from .micro_onduleurs import branches_du_champ, est_micro_onduleur
+
+    specs = (materiel or {}).get('optimiseur')
+    if conception is None or conception.fiche_incomplete \
+            or conception.resultat is None or not est_micro_onduleur(specs):
+        return ()
+    bloc = branches_du_champ(
+        conception, specs,
+        designation=(materiel.get('designations') or {}).get('optimiseur', ''))
+    return tuple(bloc['branches']) if bloc['applique'] else ()
+
+
+def troncons_de_la_conception(conception, document, norme, branches_ac=()):
+    """CALX224-226 — le métré et la chute d'une conception DÉJÀ calculée.
+
+    C'est la porte que le RÉSULTAT emprunte (``resultat['troncons']``,
+    CALX228) : le calepinage a déjà concevu son champ et résolu sa norme, les
+    recalculer ici en produirait une seconde — et rien ne garantirait qu'elle
+    décrive le même toit (une évaluation à chaud passe son propre document).
+
+    ``branches_ac`` (CALX209) — les branches de micro-onduleurs, pour que le
+    rattachement de CALX228 sache quel départ traverse quel tronçon.
+
+    Aucune écriture, aucun effet de bord.
+    """
+    return _troncons_du_document(
+        document,
+        _contexte_electrique(conception, norme, _cheminements(document),
+                             branches_ac))
 
 
 def troncons_du_calepinage(calepinage):
@@ -747,14 +979,15 @@ def troncons_du_calepinage(calepinage):
 
     Enveloppe MINCE : elle lit le document enregistré
     (``Calepinage.roof_layout``), la norme applicable et la conception
-    électrique (toutes trois en LECTURE SEULE), puis passe la main au noyau
-    de calcul. Aucune écriture, aucun effet de bord.
+    électrique (toutes trois en LECTURE SEULE), puis passe la main à
+    ``troncons_de_la_conception``. Aucune écriture, aucun effet de bord.
     """
     from .electrique import conception_du_calepinage, parametres_societe
     from .norme import norme_applicable
 
     norme = norme_applicable(parametres_societe(calepinage))
-    conception, _materiel, _donnees, document = conception_du_calepinage(
+    conception, materiel, _donnees, document = conception_du_calepinage(
         calepinage)
-    return _troncons_du_document(document,
-                                 _contexte_electrique(conception, norme))
+    return troncons_de_la_conception(
+        conception, document, norme,
+        _branches_micro_du_champ(conception, materiel))

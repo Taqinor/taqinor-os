@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
-  "pourquoi": "Le `resultat` d'un calepinage : ce que la pose donne une fois l'électricité chaînée et la production simulée. PACT10 — POURQUOI CE CONTRAT PART SEUL : ce `resultat` est consommé par au moins QUATRE moitiés d'écran (carte des chaînes CAL126, panneau Production CAL236, diagramme de pertes CAL143, comparatif de variantes CAL145) et produit par autant de services ; publier le contrat DANS la tâche productrice ne prévient rien, puisque les lanes consommatrices sont file-disjointes d'elle et auraient déjà inventé leurs clés. Il atterrit donc SEUL sur `main` d'abord, sans une ligne de code. AUCUNE CLÉ INVENTÉE — d'où vient chaque bloc : `electrique.chainage` reprend `core/calepinage/electrique.Chainage` (`modules`, `modules_par_chaine`, `chaines`, `reste`, `puissance_module_wc`) et `electrique.onduleurs` reprend `Onduleurs` (`taille_kw`, `nombre`, `puissance_dc_kwc`, `conforme`, `motif`) ; les `verdicts` reprennent les contrôles réellement évalués par `apps/ventes/compatibilites.py` (`voc_cold_under_vmax`, `vmp_cold_under_mppt_max`, `vmp_hot_over_mppt_min`, courant par entrée MPPT via `i_max_mppt_a`/`n_mppt`, ratio DC/AC) ; `production` reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `total_loss_pct`, `loss_breakdown`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `annual_variability`, `specific_yield_kwh_kwc`) ; les postes de `pertes` sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, mesuré par le tracé d'ombres. L'AFFECTATION EST NOMINATIVE : `electrique.affectation` donne, module par module, sa chaîne ET son entrée MPPT — c'est la table que CAL126 teinte, et sans elle l'écran recalculerait une partition (donc une AUTRE partition que celle qui a été dimensionnée). CHAQUE POSTE DE PERTE PORTE SA SOURCE (`fiche`, `saisie`, `pvgis`, `mesure`, `hypothese`) : décision CAL238 — `loss` est une ENTRÉE d'appel PVGIS, le module passe TOUJOURS la somme explicite de ses postes et affiche la valeur passée ; jamais un 14 % ni un 20 % caché. Un poste non sourcé est rendu tel quel (`source: null`) pour que l'écran le hachure et le nomme, jamais pour qu'il disparaisse. DISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais NON SIMULÉ : la pose est un fait (modules et kWc sont connus et restent chiffrés), l'électrique n'a pas été chaîné et la production n'a pas été lancée — toutes leurs clés sont PRÉSENTES et valent `null`, jamais `0`. Un `0 kWh` se lirait « cette toiture ne produit rien » là où personne n'a lancé de simulation ; un `PR = 0` se lirait « installation catastrophique ». Les listes non produites sont vides (`[]`), ce qui se distingue sans ambiguïté d'une liste de zéros. Valeurs : des PLACEHOLDERS assumés (repères « d'essai », empreinte visiblement factice), aucun chiffre client, aucun prix, aucun prix d'achat. CAL234 — chaque ligne d'affectation porte désormais sa `source` : « automatique » (le dimensionnement) ou « affectation manuelle » (l'installateur a imposé la chaîne/l'entrée MPPT de ce module, et son choix écrase l'automatique).\n\nCALX70 — `GET resultat/` SERT LA SIMULATION PERSISTÉE, AVEC SON CONTRÔLE DE FRAÎCHEUR. Les blocs de simulation (`production`, `pertes`, `cascade`, `meteo`, `incertitude`, `performance`, `autoconsommation`, `batterie`, `hors_reseau`, `consommation`, `ombrage`, `validation`) ne sont plus publiés par littéral : `services/electrique.py::resultat_calepinage` les LIT dans `Calepinage.resultat`, où la simulation (CALX5) les dépose par fusion de clés, et les sert TELS QUELS. Leur forme détaillée est donc celle de `contract_samples/calepinage_simulation.json` (CALX4), qui reste la référence : `production` sert ce que la simulation a écrit, y compris les clés que l'exemple ci-dessous n'énumère pas (`annees`, `par_module`, `par_chaine`, `tof`/`tsrf` par pan). `serie_horaire` n'est PAS recopiée ici (D-CALX 14 : volume — elle reste servie par `export-csv` et le panneau Séries).\n\nLA FRAÎCHEUR EST UN VERDICT. Les blocs ne sont servis que si `resultat['simulation']['hash_entree']` — l'empreinte des entrées AU MOMENT DU CALCUL — égale encore `hash_entree`, l'empreinte du document AUJOURD'HUI. Sinon (`exemple_perime`) chaque bloc vaut `null`, `simulation_perimee` vaut `true` et `motif` NOMME la péremption en français avec la date du calcul : une production calculée sur un autre toit ne doit jamais s'afficher comme si elle décrivait celui-ci. EXCEPTION DE TYPE — `pertes` reste une LISTE PLATE (D-CALX 11) : périmée, elle vaut `[]`, jamais `null`, parce que quatre lecteurs l'itèrent déjà comme une liste (`services/note_calcul.py`, `services/comparaison.py`, `services/export_csv.py`, `DiagrammePertes.jsx`) — son TYPE ne change pas avec sa fraîcheur, seul son contenu disparaît. `simulation_perimee` et `motif` sont TOUJOURS présents : `false` et `''` quand il n'y a rien à signaler.\n\n`simule` NE VEUT PAS DIRE « chaîné » (CALX70) : il vaut `true` seulement si `production.total.p50_kwh` est un NOMBRE. Un calepinage chaîné mais jamais simulé — et un calepinage dont la simulation est périmée — publient `simule: false` et portent leur motif dans `avertissements`, en tête. `calcule_le` est la date enregistrée PAR la simulation servie (donc `null` tant qu'aucune n'est servie), jamais l'heure de la requête.\n\nCALX16 — `electrique.chaine_la_plus_faible` est CONDITIONNELLE : elle n'apparaît que lorsque le document porte un accès solaire par module (`zones[].geometry.solarAccess.values`). Sans lui, la clé est ABSENTE et son motif part dans `avertissements` — un module sans accès calculé n'est pas un module non ombré, et le supposer à 100 % désignerait la mauvaise chaîne. C'est un signal de CÂBLAGE : aucun kWh n'en est dérivé, l'énergie de l'ombrage vit dans `cascade`. C'est pourquoi `exemple_vide` garde les quatre clés du bloc que `services/chaines.py::bloc_electrique` construit : la cinquième est posée ensuite par `resultat_calepinage`, quand elle est mesurable.",
+  "pourquoi": "Le `resultat` d'un calepinage : ce que la pose donne une fois l'électricité chaînée et la production simulée. PACT10 — POURQUOI CE CONTRAT PART SEUL : ce `resultat` est consommé par au moins QUATRE moitiés d'écran (carte des chaînes CAL126, panneau Production CAL236, diagramme de pertes CAL143, comparatif de variantes CAL145) et produit par autant de services ; publier le contrat DANS la tâche productrice ne prévient rien, puisque les lanes consommatrices sont file-disjointes d'elle et auraient déjà inventé leurs clés. Il atterrit donc SEUL sur `main` d'abord, sans une ligne de code. AUCUNE CLÉ INVENTÉE — d'où vient chaque bloc : `electrique.chainage` reprend `core/calepinage/electrique.Chainage` (`modules`, `modules_par_chaine`, `chaines`, `reste`, `puissance_module_wc`) et `electrique.onduleurs` reprend `Onduleurs` (`taille_kw`, `nombre`, `puissance_dc_kwc`, `conforme`, `motif`) ; les `verdicts` reprennent les contrôles réellement évalués par `apps/ventes/compatibilites.py` (`voc_cold_under_vmax`, `vmp_cold_under_mppt_max`, `vmp_hot_over_mppt_min`, courant par entrée MPPT via `i_max_mppt_a`/`n_mppt`, ratio DC/AC) ; `production` reprend `apps/ventes/etude._pr_block` (`performance_ratio`, `total_loss_pct`, `loss_breakdown`, `p50_kwh`, `p75_kwh`, `p90_kwh`, `annual_variability`, `specific_yield_kwh_kwc`) ; les postes de `pertes` sont ceux de `DEFAULT_LOSS_FACTORS` (`temperature`, `soiling`, `wiring`, `inverter`, `mismatch`, `availability`) plus `shading`, mesuré par le tracé d'ombres. L'AFFECTATION EST NOMINATIVE : `electrique.affectation` donne, module par module, sa chaîne ET son entrée MPPT — c'est la table que CAL126 teinte, et sans elle l'écran recalculerait une partition (donc une AUTRE partition que celle qui a été dimensionnée). CHAQUE POSTE DE PERTE PORTE SA SOURCE (`fiche`, `saisie`, `pvgis`, `mesure`, `hypothese`) : décision CAL238 — `loss` est une ENTRÉE d'appel PVGIS, le module passe TOUJOURS la somme explicite de ses postes et affiche la valeur passée ; jamais un 14 % ni un 20 % caché. Un poste non sourcé est rendu tel quel (`source: null`) pour que l'écran le hachure et le nomme, jamais pour qu'il disparaisse. DISCIPLINE DU NULL — `exemple_vide` = calepinage POSÉ mais NON SIMULÉ : la pose est un fait (modules et kWc sont connus et restent chiffrés), l'électrique n'a pas été chaîné et la production n'a pas été lancée — toutes leurs clés sont PRÉSENTES et valent `null`, jamais `0`. Un `0 kWh` se lirait « cette toiture ne produit rien » là où personne n'a lancé de simulation ; un `PR = 0` se lirait « installation catastrophique ». Les listes non produites sont vides (`[]`), ce qui se distingue sans ambiguïté d'une liste de zéros. Valeurs : des PLACEHOLDERS assumés (repères « d'essai », empreinte visiblement factice), aucun chiffre client, aucun prix, aucun prix d'achat. CAL234 — chaque ligne d'affectation porte désormais sa `source` : « automatique » (le dimensionnement) ou « affectation manuelle » (l'installateur a imposé la chaîne/l'entrée MPPT de ce module, et son choix écrase l'automatique).\n\nCALX70 — `GET resultat/` SERT LA SIMULATION PERSISTÉE, AVEC SON CONTRÔLE DE FRAÎCHEUR. Les blocs de simulation (`production`, `pertes`, `cascade`, `meteo`, `incertitude`, `performance`, `autoconsommation`, `batterie`, `hors_reseau`, `consommation`, `ombrage`, `validation`) ne sont plus publiés par littéral : `services/electrique.py::resultat_calepinage` les LIT dans `Calepinage.resultat`, où la simulation (CALX5) les dépose par fusion de clés, et les sert TELS QUELS. Leur forme détaillée est donc celle de `contract_samples/calepinage_simulation.json` (CALX4), qui reste la référence : `production` sert ce que la simulation a écrit, y compris les clés que l'exemple ci-dessous n'énumère pas (`annees`, `par_module`, `par_chaine`, `tof`/`tsrf` par pan). `serie_horaire` n'est PAS recopiée ici (D-CALX 14 : volume — elle reste servie par `export-csv` et le panneau Séries).\n\nLA FRAÎCHEUR EST UN VERDICT. Les blocs ne sont servis que si `resultat['simulation']['hash_entree']` — l'empreinte des entrées AU MOMENT DU CALCUL — égale encore `hash_entree`, l'empreinte du document AUJOURD'HUI. Sinon (`exemple_perime`) chaque bloc vaut `null`, `simulation_perimee` vaut `true` et `motif` NOMME la péremption en français avec la date du calcul : une production calculée sur un autre toit ne doit jamais s'afficher comme si elle décrivait celui-ci. EXCEPTION DE TYPE — `pertes` reste une LISTE PLATE (D-CALX 11) : périmée, elle vaut `[]`, jamais `null`, parce que quatre lecteurs l'itèrent déjà comme une liste (`services/note_calcul.py`, `services/comparaison.py`, `services/export_csv.py`, `DiagrammePertes.jsx`) — son TYPE ne change pas avec sa fraîcheur, seul son contenu disparaît. `simulation_perimee` et `motif` sont TOUJOURS présents : `false` et `''` quand il n'y a rien à signaler.\n\n`simule` NE VEUT PAS DIRE « chaîné » (CALX70) : il vaut `true` seulement si `production.total.p50_kwh` est un NOMBRE. Un calepinage chaîné mais jamais simulé — et un calepinage dont la simulation est périmée — publient `simule: false` et portent leur motif dans `avertissements`, en tête. `calcule_le` est la date enregistrée PAR la simulation servie (donc `null` tant qu'aucune n'est servie), jamais l'heure de la requête.\n\nCALX16 — `electrique.chaine_la_plus_faible` est CONDITIONNELLE : elle n'apparaît que lorsque le document porte un accès solaire par module (`zones[].geometry.solarAccess.values`). Sans lui, la clé est ABSENTE et son motif part dans `avertissements` — un module sans accès calculé n'est pas un module non ombré, et le supposer à 100 % désignerait la mauvaise chaîne. C'est un signal de CÂBLAGE : aucun kWh n'en est dérivé, l'énergie de l'ombrage vit dans `cascade`. C'est pourquoi `exemple_vide` garde les quatre clés du bloc que `services/chaines.py::bloc_electrique` construit : la cinquième est posée ensuite par `resultat_calepinage`, quand elle est mesurable.\n\nCALX214 — CHAQUE VERDICT DIT À QUELLE TEMPÉRATURE IL A ÉTÉ ÉVALUÉ. Les trois clés `temperature_c`, `temperature_source` et `temperature_mention` sont TOUJOURS présentes sur chaque entrée de `electrique.verdicts[]`. Un contrôle de tension porte la température qui a servi (froid pour les bornes hautes, chaud pour les bornes basses) et sa provenance, prise sur le `TemperaturesSite` du calepinage (CAL123) ; un contrôle qui ne dépend d'aucune température (courant, ratio, bornes d'entrée d'optimiseur) laisse `temperature_c` à `null`. Quand aucune source n'est établie, `temperature_mention` porte la phrase « températures de référence, non sourcées » SUR CHAQUE VERDICT, et pas seulement en tête du résultat : c'est le seul endroit où le lecteur d'un verdict la voit.\n\nCALX246 — LE BORDEREAU ÉLECTRIQUE, RATTACHÉ AU CATALOGUE. La clé racine `nomenclature` porte une ligne par organe retenu, câble dimensionné, coffret réellement posé dans le plan et ligne de structure SOURCÉE (CALX247) — sept champs : `categorie`, `designation`, `quantite`, `unite`, `spec`, `produit_id`, `reference`. Les deux derniers viennent de la table de correspondance société (`correspondances_nomenclature`, registre CALX145) résolue contre le catalogue BORNÉ société : sans correspondance ils valent `null` et la ligne reste publiée telle quelle — jamais un article deviné. Un identifiant qui ne désigne aucun produit de la société est refusé EN LE NOMMANT dans `avertissements`. AUCUN prix n'entre par ce chemin. Sans norme applicable (D1) ou sans chaîne calculée, la liste est VIDE et le motif est déjà celui des câbles.\n\nCALX228 — LE CHEMINEMENT MESURÉ, JOINT AU RÉSULTAT. La clé racine `troncons` porte EXACTEMENT la charge utile de `GET calepinages/<pk>/troncons/` (contrat `calepinage_troncons.json`, CALX203) : `troncons[]`, `totaux`, `omissions[]`, `verdicts[]`. Deux formes du même métré, ce serait deux métrés. Elle vaut `null` tant qu'aucun cheminement n'est tracé sur le plan — jamais une liste vide, qui se lirait « mesuré, et il n'y a rien ».",
   "exemple": {
     "calepinage": 1,
     "variante": 11,
@@ -99,7 +99,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": -5.0,
+          "temperature_source": "saisie",
+          "temperature_mention": ""
         },
         {
           "code": "vmp_cold_under_mppt_max",
@@ -107,7 +110,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": -5.0,
+          "temperature_source": "saisie",
+          "temperature_mention": ""
         },
         {
           "code": "vmp_hot_over_mppt_min",
@@ -115,7 +121,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": 70.0,
+          "temperature_source": "saisie",
+          "temperature_mention": ""
         },
         {
           "code": "courant_par_entree_mppt",
@@ -123,7 +132,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": null,
+          "temperature_source": null,
+          "temperature_mention": ""
         },
         {
           "code": "ratio_dc_ac",
@@ -131,7 +143,10 @@
           "conforme": true,
           "bloquant": false,
           "source": "saisie",
-          "detail": ""
+          "detail": "",
+          "temperature_c": null,
+          "temperature_source": null,
+          "temperature_mention": ""
         }
       ],
       "chaine_la_plus_faible": {
@@ -497,7 +512,170 @@
     },
     "simulation_perimee": false,
     "motif": "",
-    "avertissements": []
+    "avertissements": [],
+    "nomenclature": [
+      {
+        "categorie": "Câblage DC",
+        "designation": "Câble solaire Nexans H1Z2Z2-K 1000 V DC (2 conducteurs par paire descendante MPPT, + et −) 6,0 mm²",
+        "quantite": 120.0,
+        "unite": "m",
+        "spec": "chute de tension 0,42 % (cible 1,0 %), Iz 70 A, critère dimensionnant : plancher DC 6 mm² (décision fondateur 19/08/2026)",
+        "produit_id": null,
+        "reference": null
+      },
+      {
+        "categorie": "Protection AC",
+        "designation": "QAC1 — Disjoncteur AC",
+        "quantite": 1,
+        "unite": "u",
+        "spec": "32 A / 400 V ; NF C 15-100 §433.1",
+        "produit_id": 77,
+        "reference": "DISJ-C32"
+      }
+    ],
+    "troncons": {
+      "troncons": [
+        {
+          "id": "ch1",
+          "cote": "dc",
+          "de": "z1",
+          "vers": "eq2",
+          "longueur_m": 18.4,
+          "longueur_origine": "plan",
+          "nb_conducteurs": 2,
+          "section_mm2": 6.0,
+          "ib_a": 13.6,
+          "iz_a": 70.0,
+          "chute_pct": 0.42,
+          "chute_cumulee_pct": 0.42,
+          "critere_dimensionnant": "plancher DC 6 mm² (décision fondateur 19/08/2026)",
+          "regle_source": "UTE C 15-712-1 — chute DC (core/electrique/cables.py)"
+        },
+        {
+          "id": "ch2",
+          "cote": "dc",
+          "de": "eq2",
+          "vers": "eq1",
+          "longueur_m": 12.0,
+          "longueur_origine": "plan",
+          "nb_conducteurs": 2,
+          "section_mm2": 6.0,
+          "ib_a": 13.6,
+          "iz_a": 70.0,
+          "chute_pct": 0.28,
+          "chute_cumulee_pct": 0.7,
+          "critere_dimensionnant": "plancher DC 6 mm² (décision fondateur 19/08/2026)",
+          "regle_source": "UTE C 15-712-1 — chute DC (core/electrique/cables.py)"
+        },
+        {
+          "id": "ch3",
+          "cote": "ac",
+          "de": "eq1",
+          "vers": "eq4",
+          "longueur_m": 34.7,
+          "longueur_origine": "mixte",
+          "nb_conducteurs": 3,
+          "section_mm2": 10.0,
+          "ib_a": 21.7,
+          "iz_a": 66.0,
+          "chute_pct": 0.88,
+          "chute_cumulee_pct": 0.88,
+          "critere_dimensionnant": "chute de tension",
+          "regle_source": "IEC 60364-5-52 tableau B.52.4 — ampacité U-1000 R2V, méthode C"
+        },
+        {
+          "id": "ch4",
+          "cote": "ac",
+          "de": "eq4",
+          "vers": "eq7",
+          "longueur_m": 12.0,
+          "longueur_origine": "saisie",
+          "nb_conducteurs": 3,
+          "section_mm2": 10.0,
+          "ib_a": 21.7,
+          "iz_a": 66.0,
+          "chute_pct": 0.3,
+          "chute_cumulee_pct": 1.18,
+          "critere_dimensionnant": "chute de tension",
+          "regle_source": "IEC 60364-5-52 tableau B.52.4 — ampacité U-1000 R2V, méthode C"
+        },
+        {
+          "id": "ch5",
+          "cote": "terre",
+          "de": "eq2",
+          "vers": "eq7",
+          "longueur_m": 41.2,
+          "longueur_origine": "plan",
+          "nb_conducteurs": 1,
+          "section_mm2": null,
+          "ib_a": null,
+          "iz_a": null,
+          "chute_pct": null,
+          "chute_cumulee_pct": null,
+          "critere_dimensionnant": null,
+          "regle_source": null
+        }
+      ],
+      "totaux": {
+        "dc_chute_pct": 0.7,
+        "ac_chute_pct": 1.18,
+        "metre_par_section": [
+          {
+            "section_mm2": 6.0,
+            "longueur_m": 30.4
+          },
+          {
+            "section_mm2": 10.0,
+            "longueur_m": 46.7
+          },
+          {
+            "section_mm2": null,
+            "longueur_m": 41.2
+          }
+        ]
+      },
+      "omissions": [
+        {
+          "troncon": "ch5",
+          "champ": "section_mm2",
+          "motif": "aucune norme électrique sélectionnée pour le pays « ma » : la section du conducteur de protection en dépend, elle est donc OMISE. Sélectionnez la norme applicable dans les réglages du module (services/norme.py::norme_applicable)."
+        }
+      ],
+      "verdicts": [
+        {
+          "code": "chute_cumulee_dc",
+          "libelle": "Chute de tension cumulée DC (champ → onduleur)",
+          "cote": "dc",
+          "conforme": true,
+          "bloquant": false,
+          "valeur_pct": 0.7,
+          "cible_pct": 1.5,
+          "maximum_pct": 3.0,
+          "troncons": [
+            "ch1",
+            "ch2"
+          ],
+          "source": "norme",
+          "detail": "chute cumulée de 0,70 % bout en bout, sous la cible de 1,5 % (UTE C 15-712-1 — chute de tension DC, cible). Tronçons contributeurs : « ch1 », « ch2 »."
+        },
+        {
+          "code": "chute_cumulee_ac",
+          "libelle": "Chute de tension cumulée AC (onduleur → tableau)",
+          "cote": "ac",
+          "conforme": false,
+          "bloquant": false,
+          "valeur_pct": 1.18,
+          "cible_pct": 1.0,
+          "maximum_pct": 2.0,
+          "troncons": [
+            "ch3",
+            "ch4"
+          ],
+          "source": "norme",
+          "detail": "chute cumulée de 1,18 % bout en bout, au-dessus de la cible de 1,0 % (UTE C 15-712-1 — chute de tension AC, cible) mais sous le maximum de 2,0 %. Tronçons contributeurs : « ch3 », « ch4 »."
+        }
+      ]
+    }
   },
   "exemple_perime": {
     "calepinage": 1,
@@ -597,7 +775,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": -5.0,
+          "temperature_source": "saisie",
+          "temperature_mention": ""
         },
         {
           "code": "vmp_cold_under_mppt_max",
@@ -605,7 +786,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": -5.0,
+          "temperature_source": "saisie",
+          "temperature_mention": ""
         },
         {
           "code": "vmp_hot_over_mppt_min",
@@ -613,7 +797,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": 70.0,
+          "temperature_source": "saisie",
+          "temperature_mention": ""
         },
         {
           "code": "courant_par_entree_mppt",
@@ -621,7 +808,10 @@
           "conforme": true,
           "bloquant": true,
           "source": "fiche",
-          "detail": ""
+          "detail": "",
+          "temperature_c": null,
+          "temperature_source": null,
+          "temperature_mention": ""
         },
         {
           "code": "ratio_dc_ac",
@@ -629,7 +819,10 @@
           "conforme": true,
           "bloquant": false,
           "source": "saisie",
-          "detail": ""
+          "detail": "",
+          "temperature_c": null,
+          "temperature_source": null,
+          "temperature_mention": ""
         }
       ]
     },
@@ -650,7 +843,9 @@
     "avertissements": [
       "simulation périmée : le document a changé depuis le calcul du 19/09/2026",
       "Production non simulée dans ce résultat : la pose et l'électricité sont connues, la production ne l'est pas."
-    ]
+    ],
+    "nomenclature": [],
+    "troncons": null
   },
   "exemple_vide": {
     "calepinage": 2,
@@ -727,6 +922,8 @@
     "motif": "",
     "avertissements": [
       "Calepinage non simulé : la pose est connue, la production ne l'est pas."
-    ]
+    ],
+    "nomenclature": [],
+    "troncons": null
   }
 }

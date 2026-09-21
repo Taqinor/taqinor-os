@@ -331,6 +331,14 @@ class EntreeElectrique:
     batterie_v_nominal: float = 0.0
     temp_froid_c: float = TEMP_FROID_DEFAUT_C
     temp_chaud_c: float = TEMP_CHAUD_DEFAUT_C
+    #: CALX214 — la PROVENANCE des deux températures ci-dessus, telle que
+    #: l'adaptateur applicatif l'établit (relevé de site, série météo type),
+    #: et la mention qui accompagne une température non sourcée. Le moteur ne
+    #: les interprète pas : il les RECOPIE sur chaque verdict de tension, pour
+    #: qu'un contrôle publié dise à quelle température il a été évalué et d'où
+    #: elle vient. Absentes, les verdicts d'aujourd'hui sont inchangés.
+    temp_source: Optional[str] = None
+    temp_mention: str = ""
     # ── contraintes optionnelles ──────────────────────────────────────────────
     #: Plafond de puissance CRÊTE raccordable sur UN onduleur (règle de dossier).
     plafond_kwc_par_onduleur: Optional[float] = None
@@ -435,13 +443,23 @@ class Cable:
 
 @dataclass(frozen=True)
 class LigneNomenclature:
-    """Une ligne de bordereau : QUANTITÉ et SPÉCIFICATION, JAMAIS un prix."""
+    """Une ligne de bordereau : QUANTITÉ et SPÉCIFICATION, JAMAIS un prix.
+
+    CALX246 — ``produit_id`` / ``reference`` rattachent la ligne à un ARTICLE
+    du catalogue. Ils sont renseignés par la table de correspondance SOCIÉTÉ
+    (réglage ``correspondances_nomenclature``) et valent ``None`` sans
+    correspondance : un magasinier préfère une ligne sans code article à une
+    ligne rattachée au mauvais. Ils ne portent ni prix, ni fournisseur, ni
+    stock — seulement l'identifiant et la référence lisible.
+    """
 
     categorie: str
     designation: str
     quantite: float
     unite: str
     spec: str = ""
+    produit_id: Optional[int] = None
+    reference: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -543,6 +561,28 @@ class VerdictElectrique:
     borne: Optional[float] = None
     valeur: Optional[float] = None
     source: str = ""
+    # ── CALX214 : LA TEMPÉRATURE QUI A SERVI, CONTRÔLE PAR CONTRÔLE ─────────
+    #
+    # Une borne de tension n'a de sens qu'À UNE TEMPÉRATURE : « Voc 620 V »
+    # ne veut rien dire sans « à −5 °C ». Les quatre contrôles de tension
+    # citaient bien leur température DANS LEUR PHRASE, mais aucun champ ne
+    # disait laquelle avait servi ni d'où elle venait — impossible de filtrer,
+    # de traduire ou de contester. PV*SOL publie explicitement ses trois
+    # températures de contrôle (https://help.valentin-software.com/pvsol/en/
+    # pages/inverters/configuration-check/) ; la pratique est citée, ses
+    # valeurs ne deviennent aucun défaut ici.
+    #
+    #: La température (°C) À LAQUELLE ce contrôle a été évalué. ``None`` quand
+    #: le contrôle ne dépend d'aucune température (courant, répartition).
+    temperature_c: Optional[float] = None
+    #: D'où vient cette température : relevé de site, série météo type, ou
+    #: ``None`` — aucune source établie. Jamais un libellé inventé.
+    temperature_source: Optional[str] = None
+    #: La mention qui accompagne OBLIGATOIREMENT une température non sourcée,
+    #: telle que l'applicatif la rédige (``services/electrique.py``
+    #: ``MENTION_NON_SOURCEE``). Vide quand la source est établie — ce module
+    #: ne fabrique aucun texte de repli, il transporte celui qu'on lui donne.
+    temperature_mention: str = ""
 
     @property
     def est_bloquant(self):

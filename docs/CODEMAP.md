@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a364531b52d5c7aa7a8779f15cca51e377a8b10b2773e8b56f739c2fc92ce0d6
-Plan fingerprint: 3bb0872c9e48e678d67fb9ef3c58942754071203c421a29beb53d1386adb54b3
+Plan fingerprint: a8b03cd6a954b38b5392c08fcea067c0542aab366e66705cd9316c241ae75bf8
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (187)**
+**Done (193)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -690,9 +690,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX211` — Fermer la longueur de chaîne à optimiseurs quand la fiche publie enfin la sortie…
 - `CALX212` — Compter et placer les optimiseurs module par module
 - `CALX213` — Contrôler enfin les deux bornes d'onduleur publiées mais jamais lues
+- `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
 - `CALX215` — Nommer les deux natures de dépassement : plage INTERDITE et plage BLOQUANTE
 - `CALX216` — Dire POURQUOI cette longueur de chaîne a été retenue
 - `CALX217` — Rejouer l'incident DEV-202608-0016 sur les trois régimes de chaînage
+- `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
 - `CALX219` — Créer `electrique3d.ts` et y poser les marqueurs d'équipement
 - `CALX220` — Poser, déplacer et retirer un équipement au clic, et le persister
 - `CALX221` — Ajouter le calque « Électrique » au panneau de calques
@@ -701,6 +703,8 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX224` — Mesurer la longueur RÉELLE de chaque tronçon
 - `CALX225` — Dimensionner la section et la chute PAR tronçon
 - `CALX226` — Cumuler la chute de tension bout en bout et la verdicter une seule fois
+- `CALX227` — Produire le métré de câble par tronçon et par section
+- `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
 - `CALX229` — Donner à l'atelier son onglet « Cheminement & câbles »
 - `CALX230` — Dimensionner un coffret de jonction DC par son nombre d'entrées
 - `CALX231` — Dimensionner le coffret de regroupement quand plusieurs coffrets remontent
@@ -716,12 +720,14 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX243` — Équilibrer les phases quand plusieurs onduleurs monophasés se branchent sur un réseau…
 - `CALX244` — Servir le raccordement en HTTP et lui donner son onglet
 - `CALX245` — Étendre la check-list de terre à la continuité mesurée de l'existant
+- `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
 - `CALX247` — Retirer les quantités de structure non sourcées de la nomenclature électrique
+- `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
 - `CALX255` — Lire la consommation du document côté serveur
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
 
-**Open — to build (419)**
+**Open — to build (413)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -966,12 +972,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
-- `CALX214` — Publier, contrôle par contrôle, LA température qui a servi
-- `CALX218` — Choisir le motif de parcours d'une chaîne et en tirer sa longueur de câble
-- `CALX227` — Produire le métré de câble par tronçon et par section
-- `CALX228` — Servir les tronçons en HTTP et les joindre au résultat électrique
-- `CALX246` — Rattacher chaque ligne de nomenclature électrique à une référence du catalogue
-- `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
 - `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
 - `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
 - `CALX253` — Sérialiser la consommation de l'atelier dans le document

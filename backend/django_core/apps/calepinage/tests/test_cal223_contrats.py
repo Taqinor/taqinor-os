@@ -208,11 +208,11 @@ SANS_PRODUCTEUR_PUR = {
 #: CALX5 a livré ``POST simuler/`` : ``calepinage_simulation.json`` en est
 #: SORTI, et le contrôle 2 vérifie désormais sa route comme celle des autres.
 POSES_AVANT_LEUR_ROUTE = {
-    # CALX203 — `GET calepinages/<pk>/troncons/` : la vue arrive avec la
-    # vague ÉLECTRIQUE PRO, le producteur est services/troncons.py (CALX224).
-    'calepinage_troncons.json': 'CALX203 — route posée par la vague '
-                                'ÉLECTRIQUE PRO (services/troncons.py, '
-                                'CALX224-226)',
+    # CALX228 a livré ``GET calepinages/<pk>/troncons/`` (``views/troncons.py``)
+    # et CALX244 ``GET``/``POST calepinages/<pk>/raccordement/``
+    # (``views/raccordement.py``) : ``calepinage_troncons.json`` et
+    # ``calepinage_raccordement.json`` en sont SORTIS, et le contrôle 2
+    # vérifie désormais leurs routes comme celles des autres.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
