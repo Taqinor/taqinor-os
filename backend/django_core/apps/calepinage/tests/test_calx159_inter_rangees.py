@@ -1,11 +1,24 @@
 # -*- coding: utf-8 -*-
 """CALX159 — l'étape « inter-rangées » dans la chaîne de pertes.
 
-Tout passe par ``chaine_pertes.appliquer_chaine`` : c'est le seul chemin que
-la production emprunte, et c'est lui qui impose les trois refus (une étape
-omise laisse la série intacte, une étape qui gagne de l'énergie le déclare,
-une étape appliquée nomme sa source). Un essai qui appellerait ``appliquer``
-directement prouverait moins.
+CE QUI EST LU, ET POURQUOI JAMAIS LE TOTAL DE LA CHAÎNE
+---------------------------------------------------------
+Les essais passent par ``chaine_pertes.appliquer_chaine`` — le seul chemin que
+la production emprunte, et celui qui impose les trois refus (une étape omise
+laisse la série intacte, une étape qui gagne de l'énergie le déclare, une
+étape appliquée nomme sa source) — mais ils lisent TOUJOURS l'entrée
+``inter_rangees`` de la cascade, jamais l'énergie totale en sortie de chaîne.
+La chaîne porte vingt-quatre étapes : dès qu'une lane voisine en livre une
+(thermique, IAM, horizon…), elle réduit LÉGITIMEMENT la série, et un total
+inchangé cesserait de prouver quoi que ce soit de CETTE étape-ci. Les douze
+champs publiés par l'ordonnanceur (``kwh_avant``/``kwh_apres``, ``perte_pct``,
+``source``, ``motif_omission``) sont mesurés AUTOUR de l'étape : eux seuls
+sont stables.
+
+L'intégrité de la série sur une omission (« une étape omise ne touche à
+rien ») se vérifie donc par un appel DIRECT à
+``etapes.inter_rangees.appliquer`` : c'est le seul endroit où l'on peut
+attribuer la série rendue à cette étape et à elle seule.
 
 AUCUNE BASE, AUCUN RÉSEAU — ``unittest`` pur. La série est une journée
 d'hiver à Casablanca, en chiffres d'essai ASSUMÉS (ils ne sortent d'aucune
@@ -18,7 +31,9 @@ from __future__ import annotations
 
 import unittest
 
+from apps.calepinage.services import etapes
 from apps.calepinage.services.chaine_pertes import appliquer_chaine
+from apps.calepinage.services.etapes import inter_rangees
 from apps.calepinage.services.etapes.inter_rangees import (
     CHAMP_KWC, CHAMP_PAS, SOURCE)
 from apps.calepinage.services.pvgis_serie import MOTIF_COMPOSANTES_ABSENTES
@@ -171,11 +186,18 @@ class PanARangeeUnique(unittest.TestCase):
     def test_rend_zero_pour_cent_sans_reclamer_le_pas(self):
         unique = plan(nombre_rangees=1, pas_rangee_m=None)
         self.assertNotIn('pas_rangee_m', unique)
-        rendue, cascade = appliquer_chaine(serie(), contexte([unique]))
-        etape = etape_de(cascade)
+        contexte_ = contexte([unique])
+
+        # Ce que la CASCADE publie pour cette étape : appliquée, 0,0 %.
+        etape = etape_de(appliquer_chaine(serie(), contexte_)[1])
         self.assertEqual(etape['motif_omission'], '')
         self.assertEqual(etape['perte_pct'], 0.0)
         self.assertEqual(etape['perte_kwh'], 0.0)
+
+        # Ce que l'ÉTAPE rend, elle seule : chaque heure intacte. Le total de
+        # la chaîne, lui, porte les autres étapes et ne dirait rien d'elle.
+        rendue, seule = inter_rangees.appliquer(serie(), contexte_)
+        self.assertEqual(seule['motif_omission'], '')
         self.assertEqual([point['p_w'] for point in rendue['points']],
                          [point['p_w'] for point in serie()['points']])
 
@@ -216,17 +238,26 @@ class ChassisEstOuest(unittest.TestCase):
 class EtapeOmise(unittest.TestCase):
     """Chaque entrée absente OMET l'étape en nommant le champ à saisir."""
 
-    def _omission(self, serie_, contexte_):
-        avant = sum(point['p_w'] for point in serie_['points'])
-        rendue, cascade = appliquer_chaine(serie_, contexte_)
-        etape = etape_de(cascade)
+    def _omission(self, serie_, contexte_, *, par_le_module=True):
+        """La cascade publie l'étape OMISE, et rend son motif.
+
+        ``par_le_module`` dit qui omet. Quand c'est le MODULE (une entrée
+        manque), on vérifie EN PLUS, par un appel direct, qu'il rend la série
+        intacte : la chaîne complète porte d'autres étapes qui la réduisent
+        légitimement, son total ne prouverait rien de celle-ci. Quand c'est
+        l'ORDONNANCEUR (exclusivité D-CALX 16), le module n'est même pas
+        appelé — il n'y a rien à lui demander.
+        """
+        if par_le_module:
+            rendue, seule = inter_rangees.appliquer(serie_, contexte_)
+            self.assertNotEqual(seule['motif_omission'], '')
+            self.assertEqual(etapes.energie_kwh(rendue),
+                             etapes.energie_kwh(serie_))
+        etape = etape_de(appliquer_chaine(serie_, contexte_)[1])
         self.assertNotEqual(etape['motif_omission'], '')
         self.assertIsNone(etape['kwh_apres'])
         self.assertIsNone(etape['perte_pct'])
         self.assertIsNone(etape['source'])
-        # Une étape omise laisse la série INTACTE.
-        self.assertEqual(sum(point['p_w'] for point in rendue['points']),
-                         avant)
         return etape['motif_omission']
 
     def test_inclinaison_absente(self):
@@ -284,8 +315,9 @@ class EtapeOmise(unittest.TestCase):
         """D-CALX 16 : l'ordonnanceur écarte l'étape, pas le module."""
         motif = self._omission(
             serie(),
-            contexte(ombrage={'solar_access': {'method': {'rangees': True}}}))
-        self.assertIn('rangées', motif)
+            contexte(ombrage={'solar_access': {'method': {'rangees': True}}}),
+            par_le_module=False)
+        self.assertIn('rangées entre elles', motif)
 
 
 class HeureLocale(unittest.TestCase):
