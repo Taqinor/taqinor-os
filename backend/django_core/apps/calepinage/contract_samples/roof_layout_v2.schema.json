@@ -1135,11 +1135,12 @@
       "additionalProperties": true,
       "properties": {
         "kind": {
-          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89) ; `ombriere` = ombrière / carport (CAL91), qui pave comme un toit incliné et se totalise avec le reste du site.",
+          "description": "Genre de surface de pose. `sol` = centrale au sol (CAL89) ; `ombriere` = ombrière / carport (CAL91), qui pave comme un toit incliné et se totalise avec le reste du site ; `facade` = mur vertical (CALX87), la troisième surface que le site sait porter — elle pave comme les deux autres et se totalise avec elles, mais elle est bornée en HAUTEUR au lieu de l'être au sol.",
           "type": "string",
           "enum": [
             "sol",
-            "ombriere"
+            "ombriere",
+            "facade"
           ]
         },
         "id": {
@@ -1213,8 +1214,84 @@
           "description": "CAL91 — bâtiment auquel cette surface de pose est rattachée, MÊME clé que `zones[].buildingId` (CAL59) : c'est elle qui fait apparaître l'ombrière dans les totaux PAR BÂTIMENT à côté des pans de toiture. Absente = bâtiment unique.",
           "type": "string"
         },
+        "hauteurBasseM": {
+          "description": "CALX87 — hauteur du BAS de la surface posable sur le mur (m au-dessus du terrain), SAISIE. Elle borne le mur par le bas : en dessous, on ne pose pas. OPTIONNELLE et additive dans l'absolu, mais une surface `kind: 'facade'` la porte OBLIGATOIREMENT avec `hauteurHauteM` — sans les deux, la façade n'a aucune étendue verticale, donc aucune surface posable, et le document est refusé en nommant les clés. `null` n'est pas admis sur une façade : « non mesuré » ne se pave pas.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "hauteurHauteM": {
+          "description": "CALX87 — hauteur du HAUT de la surface posable sur le mur (m au-dessus du terrain), SAISIE. Avec `hauteurBasseM`, elle délimite la bande réellement posable — un mur n'est presque jamais posable sur toute sa hauteur (ouvertures, acrotère, bandeau). Aucune des deux n'est déduite de l'autre ni d'une hauteur de bâtiment (CALX84) : ce sont deux mesures.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "appuis": {
+          "description": "CALX87 — les POTEAUX d'une ombrière : ce sur quoi la couverture repose, que `clearHeightM` (CAL91) ne décrivait pas — elle donnait la hauteur libre sans jamais dire ce qui tient au-dessus. OPTIONNEL et additif : absent = aucun appui décrit, et la scène n'en dessine aucun plutôt que d'en poser au jugé. AUCUNE charge, aucune structure, aucun dimensionnement n'est calculé ici (CAL89/CAL91) : le document dit OÙ sont les appuis et ce qu'ils mesurent, jamais ce qu'ils supportent.",
+          "$ref": "#/$defs/appuisOmbriere"
+        },
         "engine": {
           "$ref": "#/$defs/posePlanMoteur"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "facade"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "hauteurBasseM",
+              "hauteurHauteM"
+            ],
+            "properties": {
+              "hauteurBasseM": {
+                "description": "CALX87 — une façade porte les DEUX hauteurs qui bornent sa bande posable.",
+                "type": "number",
+                "minimum": 0
+              },
+              "hauteurHauteM": {
+                "description": "CALX87 — une façade porte les DEUX hauteurs qui bornent sa bande posable.",
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "appuisOmbriere": {
+      "description": "CALX87 — les appuis (poteaux) d'une ombrière, tels qu'ils ont été SAISIS. Deux mesures, et rien d'autre : ni matériau, ni charge admissible, ni prix. Une valeur absente est ABSENTE — la scène ne dessine alors pas d'appui, elle n'en invente pas un.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "pasM": {
+          "description": "Entraxe entre deux appuis le long de l'ombrière (m), SAISI. Aucun pas n'est proposé par le schéma ni déduit de la portée : un entraxe vient d'une étude ou d'un relevé.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
+        },
+        "sectionM": {
+          "description": "Dimension SAISIE de la section d'un appui (m), telle qu'elle a été relevée ou choisie. Le schéma ne suppose ni la forme ni le matériau du poteau, et n'en propose aucune valeur.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "exclusiveMinimum": 0
         }
       }
     },
