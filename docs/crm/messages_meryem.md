@@ -74,8 +74,11 @@ DARIJA : السلام عليكم السي [الاسم]، [المستشار] من
 ### je_classe_j7 — J7, WhatsApp « je classe ? » (M4)
 CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ; le moteur clôture réellement à J14
 (`cloture_j14`), donc « dans une semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.
+CAD110 (21/09/2026) — porte de sortie (loi 09-08 art. 10 al. 5 : opposition possible + coordonnées valables pour
+faire cesser — l'envoi manuel ne protège de rien, l'article vise le MOYEN et le consentement) sur les touches qui
+portent le plus loin (J7, J14, fin d'après-devis, tous les réveils) ; pas les trois premiers messages.
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.
 
 ### appel_dernier — Appel 6 (dernier), J10, avant clôture (CAD67, 21/09/2026)
 Le dernier appel avant `cloture_j14` — celui qui décide du classement du lead — n'avait aucune phrase d'ouverture.
@@ -83,8 +86,9 @@ FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Dernier essai avant de class
 DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟
 
 ### cloture_j14 — J14, WhatsApp de clôture, passage en Froid (M5)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.
+CAD110 — porte de sortie (voir note ci-dessus, section `je_classe_j7`).
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.
 
 ### reveil_a2 — J30 seulement, réveil des leads jamais chiffrés (M6)
 CAD68 (21/09/2026) — routage RÉEL (`apps/crm/services._adapter_gabarits_reveil`, appelée par
@@ -92,8 +96,10 @@ CAD68 (21/09/2026) — routage RÉEL (`apps/crm/services._adapter_gabarits_revei
 devis, `reveil_a2` sinon ; à J60, TOUS les leads reçoivent `reveil_a3` (dernière chance), jamais `reveil_a2` — le
 barreau J60 seedé sous `reveil_a2` (`CADENCE_REVEIL_DEFAUT`) est TOUJOURS remplacé. `reveil_a2` ne part donc
 qu'à J30, jamais à J60 malgré son ancien intitulé.
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.
+CAD110 — porte de sortie (voir note ci-dessus, section `je_classe_j7`) : les QUATRE touches de réveil, les plus
+lointaines de la cadence (J30/J60), sont les plus exposées.
+FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد. جاوبو STOP وما نلحوش عليكم.
 
 ### rappel_plus_tard — réponse à « rappelez-moi plus tard » (M9)
 FR : Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.
@@ -122,12 +128,14 @@ FR : Votre proposition est valable jusqu'au [date]. Après, je dois revalider le
 DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.
 
 ### j13_dernier — J13, WhatsApp
-FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille.
-DARIJA : ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم.
+CAD110 — porte de sortie (voir note, section `je_classe_j7`) : les deux DERNIÈRES touches après-devis.
+FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.
+DARIJA : ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.
 
 ### j14_pause — J14, WhatsApp, passage en Froid
-FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver.
-DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه.
+CAD110 — porte de sortie (voir note, section `je_classe_j7`).
+FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.
+DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.
 
 ### dimanche_famille — premier dimanche 16 h après J3, leads « Décision à plusieurs » (M7)
 FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
@@ -145,16 +153,19 @@ DARIJA : السلام عليكم السي [الاسم]، [المستشار] من
 CAD73 (21/09/2026) — « il y a quelques mois » était un fait daté FAUX : ce réveil part ~6 semaines après le devis
 (`cloturer_cadence` démarre la cadence réveil à sa clôture, ~J14, donc `reveil_a1` tombe vers J+44), jamais des
 mois. Reformulé SANS durée plutôt qu'une durée inventée.
-FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)
-DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)
+CAD110 — porte de sortie sur les QUATRE touches de réveil (voir note, section `je_classe_j7`).
+FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.
 
 ### reveil_a3 — dernière chance, la rupture honnête (A3 du Guide)
-FR : Bonjour M. [prénom], [Conseiller] de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من Taqinor Solutions. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟
+CAD110 — porte de sortie (voir note, section `je_classe_j7`).
+FR : Bonjour M. [prénom], [Conseiller] de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من Taqinor Solutions. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.
 
 ### reveil_b — la saison des factures (B du Guide)
-FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?
-DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟
+CAD110 — porte de sortie (voir note, section `je_classe_j7`).
+FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ? Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من Taqinor Solutions. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟ جاوبو STOP وما نلحوش عليكم.
 
 ## Après la signature (Guide v2.1, chapitre 13)
 

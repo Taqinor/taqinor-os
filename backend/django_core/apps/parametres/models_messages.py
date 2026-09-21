@@ -84,12 +84,20 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ;
     # le moteur clôture réellement à J14 (`cloture_j14`), donc « dans une
     # semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
+    # CAD110 (21/09/2026) — loi 09-08 art. 10 al. 5 : l'exception de
+    # prospection exige une opposition possible « chaque fois qu'un
+    # courrier […] est adressé » et des coordonnées valables pour faire
+    # cesser — l'envoi manuel ne protège de rien (l'article vise le MOYEN
+    # et le consentement, pas la main humaine). Porte de sortie ajoutée aux
+    # touches qui portent le plus loin (J7, J14, fin d'après-devis, tous
+    # les réveils) — pas aux trois premiers messages (garde-fou : ne pas
+    # alourdir le début, c'est le suivi long qui expose).
     'je_classe_j7':
-        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte.",
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.",
     'cloture_j14':
-        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.",
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je n'insiste plus.",
     'reveil_a2':
-        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.",
+        "Bonjour M. {prenom}, {conseiller} de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
     'rappel_plus_tard':
         "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
     'stop_contact':
@@ -111,10 +119,13 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties",
     'j9_validite':
         "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
+    # CAD110 — porte de sortie (voir la note au-dessus de `je_classe_j7`) :
+    # les deux DERNIÈRES touches après-devis, celles qui portent le plus
+    # loin dans le suivi.
     'j13_dernier':
-        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille.",
+        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.",
     'j14_pause':
-        "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver.",
+        "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.",
     'dimanche_famille':
         "Bonjour M. {prenom}, {conseiller} de TAQINOR. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
     'annonce_appel_reda':
@@ -125,12 +136,15 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # ce réveil part ~6 semaines après le devis (`cloturer_cadence` démarre
     # la cadence réveil à sa clôture, ~J14, donc reveil_a1 tombe vers J+44),
     # jamais des mois. Reformulé SANS durée plutôt qu'une durée inventée.
+    # CAD110 — porte de sortie sur les QUATRE touches de réveil : ce sont
+    # les plus lointaines de toute la cadence (J30/J60), donc les plus
+    # exposées au regard de l'art. 10 al. 5.
     'reveil_a1':
-        "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)",
+        "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.",
     'reveil_a3':
-        "Bonjour M. {prenom}, {conseiller} de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?",
+        "Bonjour M. {prenom}, {conseiller} de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
     'reveil_b':
-        "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?",
+        "Bonjour M. {prenom}, c'est {conseiller} de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ? Répondez STOP et je n'insiste plus.",
     # CAD71 (21/09/2026) — {lien} n'était alimenté que par le devis
     # (`url_proposition`) : ce texte envoyait donc le lien du DEVIS du client
     # à la place d'un lien vers la fiche Google. Placeholder dédié
@@ -181,12 +195,15 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
     'appel_dimanche':
         "السلام عليكم السي {prenom}، {conseiller} من TAQINOR — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
+    # CAD110 (21/09/2026) — même porte de sortie que côté FR (voir la note
+    # au-dessus de `je_classe_j7` FR) : « جاوبو STOP وما نلحوش عليكم » =
+    # « répondez STOP et je n'insiste plus ».
     'je_classe_j7':
-        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.",
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.",
     'cloture_j14':
-        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.",
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.",
     'reveil_a2':
-        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.",
+        "السلام عليكم السي {prenom}، {conseiller} من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد. جاوبو STOP وما نلحوش عليكم.",
     'rappel_plus_tard':
         "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانت الفاتورة عندكم، تصويرة ديالها غادي تعاونني نوجد التقدير.",
     'stop_contact':
@@ -225,16 +242,18 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties",
     'j9_validite':
         "العرض ديالكم صالح حتى {date_validite}. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.",
+    # CAD110 — porte de sortie sur les deux dernières touches après-devis.
     'j13_dernier':
-        "ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم.",
+        "ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.",
     'j14_pause':
-        "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه.",
+        "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.",
+    # CAD110 — porte de sortie sur les QUATRE touches de réveil.
     'reveil_a1':
-        "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.)",
+        "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.",
     'reveil_a3':
-        "السلام عليكم السي {prenom}، {conseiller} من Taqinor Solutions. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟",
+        "السلام عليكم السي {prenom}، {conseiller} من Taqinor Solutions. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
     'reveil_b':
-        "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟",
+        "السلام عليكم السي {prenom}، أنا {conseiller} من Taqinor Solutions. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟ جاوبو STOP وما نلحوش عليكم.",
     'avis_google':
         "السلام عليكم السي {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien_google}. شكرا بزاف!",
     'parrainage':
