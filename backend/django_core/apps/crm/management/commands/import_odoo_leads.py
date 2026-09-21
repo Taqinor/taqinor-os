@@ -71,6 +71,11 @@ ODOO_FIELD_MAP = {
     'city': 'ville', 'ville': 'ville',
     # pipeline / commercial
     'description': 'note', 'note': 'note', 'notes': 'note',
+    # CAD119 — la VRAIE date de création du système d'origine. Deux
+    # en-têtes : le champ natif Odoo (`create_date`, chemin FICHIER) et la
+    # clé posée par `odoo_sync.build_rows` (chemin API).
+    'create_date': 'date_creation_odoo',
+    'date_creation_odoo': 'date_creation_odoo',
 }
 
 # Identifiant Odoo de la ligne — sert de clé technique de rapprochement.
@@ -319,6 +324,33 @@ def _borne(champ, valeur):
     return valeur[:maxi] if maxi else valeur
 
 
+# ── CAD-K ── CAD119 ─────────────────────────────────────────────────────────
+def _date_odoo(valeur):
+    """La date de création Odoo (« 2024-03-08 09:12:44 ») en instant aware.
+
+    Odoo publie ses horodatages en UTC : c'est donc en UTC qu'ils sont posés,
+    et jamais dans un fuseau supposé. Une valeur vide ou illisible renvoie
+    ``None`` — un import ne tombe JAMAIS sur une date mal formée, il laisse
+    la colonne vide et la lecture retombe sur ``date_creation``.
+    """
+    import datetime
+
+    from django.utils.dateparse import parse_datetime
+
+    texte = (str(valeur) if valeur is not None else '').strip()
+    if not texte:
+        return None
+    try:
+        instant = parse_datetime(texte)
+    except ValueError:
+        return None
+    if instant is None:
+        return None
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=datetime.timezone.utc)
+    return instant
+
+
 def _fill_empty(lead, fields):
     """Complète les champs VIDES du lead existant. Renvoie True si modifié.
 
@@ -347,6 +379,16 @@ def _fill_empty(lead, fields):
             continue
         setattr(lead, field, _borne(field, fields[field]))
         changed.append(field)
+    # CAD119 — la date d'origine est un INSTANT, pas une chaîne bornée : elle
+    # passe par son propre convertisseur, et seulement si la colonne est
+    # encore vide (jamais d'écrasement d'une valeur déjà posée). C'est ce qui
+    # permet à la cohorte déjà synchronisée de récupérer sa vraie date à la
+    # prochaine passe, au lieu de rester datée de la synchronisation.
+    if lead.date_creation_origine is None and fields.get('date_creation_odoo'):
+        instant = _date_odoo(fields['date_creation_odoo'])
+        if instant is not None:
+            lead.date_creation_origine = instant
+            changed.append('date_creation_origine')
     derivees = [_COLONNES_DERIVEES[f]
                 for f in changed if f in _COLONNES_DERIVEES]
     if changed:
@@ -499,7 +541,7 @@ class Command(BaseCommand):
                     # (`_borne`, lue sur le modèle) : une seule ligne trop
                     # longue faisait tomber l'INSERT et, la transaction étant
                     # unique, tout l'import avec elle.
-                    Lead.objects.create(
+                    lead_cree = Lead.objects.create(
                         company=company,
                         nom=_borne('nom',
                                    fields.get('nom') or fields.get('societe')
@@ -522,7 +564,25 @@ class Command(BaseCommand):
                         source=Lead.Source.ODOO_IMPORT_TEST,
                         external_system=EXTERNAL_SYSTEM if external_id else None,
                         external_id=_borne('external_id', external_id),
+                        # CAD119 — la date de création Odoo va dans SA
+                        # colonne. ``date_creation`` reste ``auto_now_add``
+                        # (date de l'insertion ici) : les deux sont vraies et
+                        # disent deux choses différentes. Une date illisible
+                        # laisse la colonne vide, jamais un import en échec.
+                        date_creation_origine=_date_odoo(
+                            fields.get('date_creation_odoo')),
                     )
+                    # CAD105 [TRANCHÉ 21/09/2026] — la SYNCHRONISATION démarre
+                    # la cadence des leads NEUFS. On appelle la même fonction
+                    # que le site, avec les mêmes gardes : un lead né dans
+                    # Odoo après la bascule reçoit son protocole, un lead
+                    # antérieur est refusé par la garde « miroir » et son
+                    # refus est TRACÉ au chatter (CAD104) — la commerciale
+                    # voit enfin qu'un dossier n'est pas suivi. La fonction
+                    # avale ses propres exceptions : un import n'échoue
+                    # jamais sur une cadence.
+                    services.demarrer_cadence_contact(
+                        lead_cree, origine='import_odoo_leads')
                 created += 1
 
             if dry_run:

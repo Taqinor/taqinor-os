@@ -60,6 +60,11 @@ class CrmConfig(AppConfig):
         # XPLT23 — fournisseur DSR CRM (export/anonymisation loi 09-08).
         from . import dsr_provider
         dsr_provider.register()
+        # CAD125 — les playbooks de SEGMENT (dossier 82-21, dossier FDA)
+        # arrivent à la création de la société : un playbook que rien ne pose
+        # est exactement le défaut relevé par l'audit sur `reveil_b`.
+        from .signup_hooks import register_crm_signup_hooks
+        register_crm_signup_hooks()
         # QX42 — enregistre les politiques de rétention CRM dans le registre
         # partagé YOPSB10 (core.retention) : le framework existait, son
         # registre était VIDE (aucune app n'y enregistrait de politique).
@@ -89,6 +94,18 @@ class CrmConfig(AppConfig):
                              DEFAULT_LEADACTIVITY_ARCHIVE_DAYS),
                 apply_,
             ),
+        )
+        # CAD92 — le traitement seedé `leads_clients` déclare au registre
+        # CNDP « 3 ans après le dernier contact (prospects) » et rien ne
+        # l'appliquait : aucune anonymisation du Lead lui-même n'était
+        # enregistrée ici. La politique existe désormais, avec EXACTEMENT la
+        # durée déclarée (`tests_cad92_retention.py` échoue si les deux
+        # divergent). Elle compte sans rien écrire tant que le fondateur n'a
+        # pas armé `CRM_LEAD_RETENTION_ACTIF` — un réglage neuf garde le
+        # comportement d'aujourd'hui.
+        register_retention_policy(
+            dsr_provider.RETENTION_POLICY_PROSPECTS,
+            dsr_provider.sweep_retention_prospects,
         )
         # ARC18 — miroir one-way crm.Client → répertoire unifié tiers.Tiers
         # (l'import câble le récepteur post_save ; pont réversible).

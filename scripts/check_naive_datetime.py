@@ -66,7 +66,13 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     # avant/après (vérifiée contre 024a132c). Bug-class #34.
     "backend/django_core/apps/facturation/models.py:920",
     "backend/django_core/apps/facturation/models.py:1111",
-    "backend/django_core/apps/ventes/models.py:1251",  # NoteDebit.date_emission (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
+    # Remappé 1251->1346 (lane CAD IK-MESURE 21/09 : +95 lignes insérées AVANT
+    # NoteDebit dans ventes/models.py — le marqueur « signé au domicile » de
+    # CAD122 sur BonCommande, sa constante de délai, son exception et ses deux
+    # lectures). MÊME champ, déclaration identique avant/après (vérifié contre
+    # origin/dev-cad : `date_emission = models.DateField(auto_now_add=True)`).
+    # Bug-class #34.
+    "backend/django_core/apps/ventes/models.py:1346",  # NoteDebit.date_emission (1260->1251 : SOLMVP11 retire 9 lignes avant) (1221->1260 : STKCAT2 vocabulaire + STKCAT23 LigneDevis.role_devis insérés avant, champ relu byte-identique) (recale +27, bloc tiers 26/08) (PV41 décale +15) — remapped +192 (CPQ NTCPQ11-24) puis +97 (QJR M2) puis +1 (QJR2 ronde 31/08) puis 1157->1180 (AUD188 : contraintes Devis/LigneDevis insérées avant), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -123,7 +129,34 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # Lead.structure_produit et son commentaire). MEME champ, declaration
     # identique avant/apres (verifie contre main : `paye_le = models.DateField(
     # null=True, blank=True, verbose_name='Payee le')`). Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2558",  # CommissionPartenaire.paye_le
+    # Remappé 2558->2685 (lane CAD149 21/09 : +127 lignes insérées AVANT
+    # CommissionPartenaire dans crm/models.py — les six vocabulaires et les
+    # huit champs de la vague 1 du script d'appel guidé). MÊME champ,
+    # déclaration identique avant/après (vérifié contre origin/dev-cad :
+    # `paye_le = models.DateField(null=True, blank=True,
+    # verbose_name='Payée le')`). Bug-class #34.
+    # Remappé 2685->2757 (lane CAD154, même run : +72 lignes — les deux
+    # vocabulaires et les six champs de la vague 2). MÊME champ, déclaration
+    # identique (`paye_le = models.DateField(null=True, blank=True,
+    # verbose_name='Payée le')`). Bug-class #34.
+    # Remappé 2757->2807 (lane CAD167, même run : +50 lignes — les douze SRM
+    # régionales, les libellés historiques et le help_text du distributeur).
+    # MÊME champ, déclaration identique. Bug-class #34.
+    # Remappé 2558->2605 (lane CAD IK-MESURE 21/09 : +47 lignes insérées
+    # AVANT CommissionPartenaire dans crm/models.py — la colonne
+    # RelanceEtape.outcome de CAD118, le champ Lead.date_creation_origine et
+    # la propriété Lead.date_origine de CAD119). MÊME champ, déclaration
+    # identique avant/après (vérifié contre origin/dev-cad : `paye_le =
+    # models.DateField(null=True, blank=True, verbose_name='Payée le')`).
+    # Bug-class #34.
+    # Remappé 2605->2624 (fold des autres lanes CAD du 21/09 : +19 lignes
+    # insérées AVANT CommissionPartenaire dans crm/models.py). MÊME champ,
+    # déclaration identique avant/après. Bug-class #34.
+    # Remappé après le FOLD des deux lanes (CAD IK-MESURE + CAD149/154/167)
+    # dans crm/models.py : les deux séries d'insertions se cumulent, la
+    # ligne réelle du fichier fusionné est 2854. MÊME champ, déclaration
+    # identique. Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2854",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.

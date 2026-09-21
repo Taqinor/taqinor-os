@@ -38,10 +38,20 @@ SECTIONS = QuestionnaireLien.SECTIONS_CLES
 CHAMPS_PAR_SECTION = {
     'contact': ('email', 'adresse', 'ville'),
     'gps': ('gps_lat', 'gps_lng'),
+    # CAD149 — `objectif_projet` rejoint la section énergie : « pourquoi le
+    # solaire » se répond aussi bien par écrit qu'au téléphone.
     'energie': ('facture_hiver', 'facture_ete', 'ete_differente',
-                'conso_mensuelle_kwh', 'tranche_onee', 'raccordement'),
-    'toiture': ('type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'),
-    'occupation': ('occupation_jour',),
+                'conso_mensuelle_kwh', 'tranche_onee', 'raccordement',
+                'objectif_projet'),
+    # CAD149 — `type_bien` rejoint la section du bâtiment (celle qui porte
+    # déjà l'âge du toit et le statut d'occupation).
+    'toiture': ('type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership',
+                'type_bien'),
+    # CAD154 — le nombre de personnes au foyer est LA donnée qui manquait au
+    # chauffe-eau, et le chauffage d'hiver se répond par oui/non : les deux
+    # se posent aussi bien par écrit.
+    'occupation': ('occupation_jour', 'nb_personnes_foyer',
+                   'chauffage_electrique_hiver'),
     'equipements': (
         'equip_piscine', 'equip_piscine_pompe_kw',
         'equip_piscine_heures_jour', 'equip_piscine_creneau',
@@ -51,7 +61,18 @@ CHAMPS_PAR_SECTION = {
         'equip_clim_creneau',
         'equip_chauffe_eau_electrique', 'equip_chauffe_eau_kw',
         'equip_chauffe_eau_creneau',
+        # CAD149 — « déjà là ou seulement prévu » se répond aussi bien par
+        # écrit : c'est la précision qui décide de l'étiquette du devis.
+        'equip_ve_statut',
     ),
+    # CAD149 — les cinq autres champs de la vague 1 restent HORS de cette
+    # table, et c'est délibéré :
+    #   · `decideur` et `devis_concurrents` ne se posent qu'à l'ORAL
+    #     (décision fondateur du 21/09/2026) ;
+    #   · `pompage_heures_jour`, `pompe_alim_actuelle` et
+    #     `carburant_litres_mois` sont des réponses de pompage agricole, et
+    #     aucune section agricole n'existe dans ce questionnaire — en ouvrir
+    #     une est un geste d'écran, pas un geste de colonne.
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),
@@ -188,9 +209,15 @@ def manquantes(lead) -> dict:
     # générateur n'exige pas mais que le commercial veut toujours.
     # NB : `ete_differente` n'est PAS un signal de « jamais posée » — sa
     # colonne est NOT NULL default False, donc elle vaut toujours Oui/Non.
+    # CAD148 — `tranche_onee` est SORTIE de cette condition : c'est un champ
+    # texte libre qu'AUCUN calcul ne lit (la grille tarifaire canonique vit
+    # dans `apps/ventes/pricing/`), et elle se DÉRIVE de la facture et de la
+    # consommation. Tant qu'elle comptait comme « information manquante »,
+    # elle rouvrait l'écran Énergie pour une question qu'on ne devrait pas
+    # poser. Le champ reste : il n'est simplement plus un signal de manque.
     energie = bool(champs_manquants(lead))
     if not energie:
-        energie = _vide(lead.tranche_onee) or _vide(lead.raccordement)
+        energie = _vide(lead.raccordement)
 
     return {
         # `adresse` passe par `_encore_a_obtenir` : quand le GPS est déjà là,
@@ -429,15 +456,6 @@ def appliquer_section(lien, section, reponses=None, photo=None):
             lead.save(update_fields=_colonnes_a_ecrire(champs))
             enregistrees = list(champs)
             activity.log_changes(avant, lead, None)
-            # CRX33 — le questionnaire écrit exactement les champs qui
-            # NOURRISSENT le score (facture, surface, orientation, toiture,
-            # raccordement, maturité d'achat…). Sans recalcul APRÈS écriture,
-            # un prospect qui vient de tout remplir restait « froid » dans la
-            # file du commercial jusqu'à une édition manuelle — l'inverse de
-            # ce que le questionnaire sert à provoquer. ``recompute_lead_score``
-            # est best-effort par construction : il n'échoue jamais l'appelant.
-            from .services import recompute_lead_score
-            recompute_lead_score(lead)
 
     if not enregistrees:
         return []
@@ -456,6 +474,28 @@ def appliquer_section(lien, section, reponses=None, photo=None):
     lien.sections_repondues = repondues
     lien.derniere_reponse_at = timezone.now()
     lien.save(update_fields=['sections_repondues', 'derniere_reponse_at'])
+    # CRX33 — le questionnaire écrit exactement les champs qui NOURRISSENT le
+    # score (facture, surface, orientation, toiture, raccordement, maturité
+    # d'achat…). Sans recalcul APRÈS écriture, un prospect qui vient de tout
+    # remplir restait « froid » dans la file du commercial jusqu'à une édition
+    # manuelle — l'inverse de ce que le questionnaire sert à provoquer.
+    # ``recompute_lead_score`` est best-effort : il n'échoue jamais l'appelant.
+    # Le recalcul est posé ICI, APRÈS l'horodatage du lien : depuis CAD133 le
+    # score compte « questionnaire répondu » d'après `derniere_reponse_at`, et
+    # recalculer AVANT de l'écrire persistait un score périmé de 4 points —
+    # deux valeurs différentes pour le même lead (la colonne triée d'un côté,
+    # le calcul de l'autre), ce que CRX22 interdit.
+    from .services import recompute_lead_score
+    recompute_lead_score(lead)
+    # CAD136 (audit L3 du 21/09/2026) — le responsable est PRÉVENU. Jusqu'ici
+    # répondre au questionnaire enrichissait le lead, recalculait le score et
+    # écrivait une note — sans aucune notification, et `derniere_reponse_at`
+    # n'était relu par personne dans tout le dépôt. Le client vient pourtant
+    # de passer cinq minutes sur NOTRE formulaire.
+    from .services import SIGNAL_QUESTIONNAIRE, notifier_signal_client
+    notifier_signal_client(
+        lead, SIGNAL_QUESTIONNAIRE,
+        detail=f'Section « {LIBELLE_SECTION[section]} » renseignée.')
     return enregistrees
 
 
@@ -561,3 +601,21 @@ def resoudre(token):
     if getattr(lien.lead, 'is_deleted', False):
         raise LienIndisponible('Introuvable.')
     return lien, interne
+
+
+# ── CAD-L ── CAD148 — le grain « encore à OBTENIR » (panneau d'appel guidé)
+#
+# :func:`champs_a_poser` sert le questionnaire ENVOYÉ AU CLIENT : une donnée
+# déjà portée y revient PRÉ-REMPLIE, à confirmer. Le panneau d'appel, lui, a
+# besoin de l'autre moitié de la règle « on ne redemande jamais » : la liste
+# des colonnes dont la réponse est encore à obtenir, pour ne JAMAIS faire
+# poser à l'oral une question dont la fiche porte déjà la réponse. Les deux
+# lisent la MÊME table (``CHAMPS_PAR_SECTION``) et le MÊME prédicat
+# (:func:`_encore_a_obtenir`) — il n'y a pas deux règles.
+def champs_encore_a_obtenir(lead, sections) -> dict:
+    """``{section: [colonnes dont la réponse est encore à obtenir]}``."""
+    return {
+        section: [cle for cle in CHAMPS_PAR_SECTION.get(section, ())
+                  if _encore_a_obtenir(lead, cle)]
+        for section in sections
+    }

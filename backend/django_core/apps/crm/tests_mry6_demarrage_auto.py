@@ -108,14 +108,17 @@ class GardesTests(_Base):
         self.assertIsNone(lead.first_contacted_at)
 
     def test_les_gardes_MUETTES_le_restent(self):
-        """Garde négative : journaliser chaque lead déjà contacté, déjà
-        avancé ou « ne plus contacter » inonderait l'historique — seuls les
-        deux refus rattrapables à la main (numéro, doublon) sont écrits."""
-        from django.utils import timezone
+        """Garde négative : journaliser chaque lead qu'on ne relance plus
+        inonderait l'historique — seuls les refus RATTRAPABLES à la main sont
+        écrits.
+
+        CAD103 (21/09/2026) a sorti « déjà contacté » de cette liste : c'est
+        le refus le PLUS COURANT (la commerciale crée la fiche après un
+        appel et la passe en « Contacté »), il est rattrapable — le
+        placement à la touche 3 existe — et le laisser muet faisait croire
+        que le dossier était suivi. Il est désormais tracé et vérifié par
+        `tests_cad103_deja_contacte.py`."""
         muets = [
-            self._lead(nom='Déjà contacté',
-                       first_contacted_at=timezone.now()),
-            self._lead(nom='Plus avancé', stage=stages.CONTACTED),
             self._lead(nom='Stop', ne_plus_contacter=True),
         ]
         for lead in muets:
@@ -165,13 +168,17 @@ class GardesTests(_Base):
         self.assertEqual(demarrer_cadence_contact(lead), [])
         self.assertEqual(self._touches(lead), 0)
 
-    def test_un_lead_hors_OS_NATIVE_est_ignore_en_silence(self):
-        """Le miroir Odoo n'est PAS une demande : ni cadence, ni note de
-        refus (930 notes inutiles dans l'historique)."""
+    def test_un_lead_hors_OS_NATIVE_nentre_dans_aucune_cadence(self):
+        """Le miroir Odoo n'est PAS une demande : aucune cadence.
+
+        CAD104 (21/09/2026) a en revanche levé le SILENCE : Odoo est le
+        cockpit où la commerciale travaille encore, et trois chemins
+        donnaient trois résultats sur la même population. Le refus est
+        désormais tracé — `tests_cad104_refus_miroir_trace.py` le verrouille
+        — mais la décision, elle, ne bouge pas."""
         lead = self._lead(source=Lead.Source.ODOO_IMPORT_TEST)
         self.assertEqual(demarrer_cadence_contact(lead), [])
-        self.assertFalse(
-            LeadActivity.objects.filter(lead=lead).exists())
+        self.assertEqual(self._touches(lead), 0)
 
     def test_une_exception_ne_casse_jamais_la_creation(self):
         lead = self._lead()

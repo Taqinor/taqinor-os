@@ -3320,6 +3320,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "payment_mode": opts['payment_mode'],
         "custom_acompte": opts['custom_acompte'],
         "include_etude": include_etude,
+        # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
+        # (jamais une option du corps client : c'est un fait juridique, pas
+        # une préférence de rendu). Absent ou faux ⇒ document inchangé.
+        "signe_au_domicile": bool(
+            getattr(getattr(devis, 'bon_commande', None),
+                    'signe_au_domicile', False)),
         "taux_tva": tva_pct,
         "tva_note": tva_note,
         "payment_terms": payment_terms,

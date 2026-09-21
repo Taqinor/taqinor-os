@@ -196,7 +196,7 @@ describe('FROZEN — le comportement du formulaire est inchangé (classes seules
 
   it('consentement requis + opt-in WhatsApp + champs cachés fbclid/UTM intacts', () => {
     expect(form).toMatch(/name="consent"[^>]*required/);
-    expect(form).toMatch(/name="whatsappOptIn"[^>]*checked/);
+    expect(form).not.toMatch(/name="whatsappOptIn"[^>]*checked/) // CAD121 (21/09/2026) : consentement WhatsApp jamais pré-coché (loi 09-08 art. 5);
     for (const k of ['fbclid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']) {
       expect(form).toContain(`name="${k}"`);
     }

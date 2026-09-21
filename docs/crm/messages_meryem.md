@@ -4,13 +4,21 @@ Source de vérité des gabarits `parametres.MessageTemplate` que MRY12 seed dans
 (`corps_fr` = colonne FR ; `corps_darija` = colonne darija, écriture arabe, revue native le 04/09/2026).
 Règles : aucun chiffre qui ne vienne du devis ou du lead ; placeholders autorisés `{civilite} {nom} {prenom} {ville}
 {reference} {lien} {lien_rdv} {date_validite} {conseiller} {mois_preuve} {ville_preuve} {lien_preuve} {puissance_preuve}
-{date_visite}` ; le crochet
+{date_visite} {lien_video_preuve} {marque} {lien_google} {prescripteur} {mois_dossier}` ; le crochet
 `[…]` des textes ci-dessous devient le placeholder correspondant au seed (`M. [Prénom]` → `{prenom}`, `[date]` →
-`{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`,
-`[lien …]` → `{lien}` (dont `[lien de votre proposition]`, J6 — relevé fondateur 08/09/2026 : la touche « garanties » partait sans aucun lien), `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
-`[المستشار]` → `{conseiller}`) ; ce qui n'a pas de placeholder (montant, raison réelle, jour/heure de rappel) reste à
+`{date_validite}`, `[date de la visite]`/`[تاريخ الزيارة]` → `{date_visite}`, `[référence]` → `{reference}`, `[lien preuve]` → `{lien_preuve}` (AVANT la règle générale), `[puissance preuve]` → `{puissance_preuve}`, `[lien vidéo]` →
+`{lien_video_preuve}` (CAD95, 21/09/2026 — vidéo courte proposée EN PLUS du lien, jamais à la place),
+`[lien de la fiche TAQINOR]` → `{lien_google}` (CAD71, 21/09/2026 — AVANT la règle générale : ce n'est PAS le lien du
+devis), `[lien …]` → `{lien}` (dont `[lien de votre proposition]`, J6 — relevé fondateur 08/09/2026 : la touche « garanties » partait sans aucun lien), `[mois]` → `{mois_preuve}`, `[ville]` → `{ville_preuve}`, `[Conseiller]` → `{conseiller}`,
+`[المستشار]` → `{conseiller}`, `[Marque]` → `{marque}` (CAD96, 21/09/2026 — le nom affiché de la société,
+résolu côté serveur ; remplace les trois graphies incohérentes du guide d'origine) ; ce qui n'a pas de placeholder (montant, raison réelle, jour/heure de rappel) reste à
 saisir par Meryem au moment de l'envoi — jamais un défaut. Une phrase dont le placeholder est vide est OMISE au rendu
 (MRY13).
+
+CAD71 (21/09/2026) — `avis_google` envoyait le lien du DEVIS du client (seule source alimentant `{lien}` dans
+`apps/crm/services.message_pour_etape`) à la place d'un lien vers la fiche Google : `{lien_google}` est désormais
+alimenté par `CompanyProfile.lien_avis_google` (réglage société), et le gabarit est refusé à l'assignation tant que
+ce réglage est vide.
 
 Ordre fondateur du 08/09/2026 (catalogue « Réalisations ») : les placeholders `{mois_preuve}`, `{ville_preuve}`,
 `{lien_preuve}` et `{puissance_preuve}` de la touche `j4_preuve` ne se saisissent plus à la main. Le serveur les
@@ -27,43 +35,118 @@ côté serveur avec le prénom (à défaut le nom d'utilisateur) du RESPONSABLE 
 défaut des leads de la société ; en dernier repli, l'utilisateur qui déclenche l'envoi. Toute mention du fondateur
 dans un texte client utilise le rôle « le fondateur », jamais son prénom.
 
+
+**Variantes de segment (CAD126, 21/09/2026).** Les textes ci-dessous sont 100 % résidentiels : « sur votre toit » part à un pompage au bord d'un forage, « en famille » à une entreprise, et `valeur_j1` demande « votre facture » — sans objet pour une exploitation au butane. Les clés qui MENTENT portent donc une variante `POMPAGE` (agricole) et/ou `B2B` (industriel et commercial), sur le modèle du dictionnaire darija : dict séparé, repli sur le FR quand la variante est absente. **Par exception seulement** — on ne fabrique pas une matrice 27 × langues × segments —, en français seulement, et jamais sur un texte qu'une société a personnalisé.
+
 ## Cadence « contact » (Protocole v3, chapitre 5)
 
 ### identite — J0, WhatsApp, dans les cinq minutes (M1)
-FR : Bonjour M. [Prénom], je suis [Conseiller] de TAQINOR Solutions. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
-DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من TAQINOR Solutions. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
+
+**CAD128 (21/09/2026) — le client DÉJÀ SIGNÉ qui redemande un devis.** La garde doublon retenait tout lead partageant
+le téléphone ou l'e-mail et n'écartait que les archivés et les perdus : une fiche SIGNÉE était donc un « doublon
+vivant », et le meilleur lead du portefeuille repartait sans protocole. Il reçoit désormais une cadence COURTE
+(« deuxième affaire ») : les DEUX PREMIÈRES touches du protocole validé — message puis appel d'ouverture trois minutes
+après — et rien d'autre. Jamais six appels sur quatorze jours sur quelqu'un qui a déjà acheté. **Zéro chiffre
+inventé :** le texte ne cite AUCUN mois. La tâche l'illustrait par « nous avons déjà installé chez vous en [mois] »,
+mais rien ne relie encore les deux fiches en base (la liaison se fait par une note d'historique, jamais une fusion
+d'office) — plutôt qu'une date approximative, le mois est OMIS. Il reviendra si CADM7 tranche la liaison.
+
+### deuxieme_affaire — client déjà signé qui revient (cadence courte)
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم — شكرا على الثقة ديالكم من جديد. قولوا ليا شنو بغيتو تجهزو هاد المرة ونوجد ليكم الدراسة؛ غادي نعيط ليكم من دابا شي دقايق.
+
+**CAD127 (21/09/2026) — le premier message dit la VÉRITÉ sur l'origine.** « Vous venez de remplir notre formulaire »
+est faux pour la moitié des origines : la même cadence part pour un lead arrivé par téléphone, en boutique, par
+recommandation, depuis un salon, repositionné par l'écran de placement, ou né d'une conversation entrante (CTWA,
+livechat). Une première phrase fausse est exactement ce qui fait perdre la confiance au premier contact, et
+`unique_together (company, cle)` interdit toute variante sur `identite` — d'où quatre clés ADDITIVES, choisies
+automatiquement d'après le canal déjà enregistré. `site_web` et `meta_ads` gardent `identite` : ce sont de VRAIS
+formulaires. Le ticket SAV n'est PAS une origine (`create_lead_depuis_ticket` ne démarre aucune cadence).
+`{prescripteur}` et `{mois_dossier}` sont des placeholders : vides, leur phrase est OMISE (MRY13).
+
+### identite_reference — lead venu par recommandation (canal « Référence »)
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. M. [prescripteur] nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. السي [prescripteur] هضر لينا عليكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
+
+### identite_telephone — lead venu par téléphone ou en boutique (canaux « Téléphone », « Visite/Walk-in »)
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Suite à notre échange au sujet du solaire, je vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. بعد الهضرة ديالنا على الطاقة الشمسية، غادي نعاود نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
+
+### identite_whatsapp_entrant — lead né d'un message entrant (canal « WhatsApp/CTWA »)
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Merci pour votre message au sujet du solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. شكرا على الرسالة ديالكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
+
+### identite_ancien_dossier — fiche ouverte un mois antérieur, reprise aujourd'hui
+FR : Bonjour M. [Prénom], je suis [Conseiller] de [Marque]. Vous nous aviez consultés en [mois du dossier] au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. كنتو سولتونا ف [mois du dossier] على الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير محين. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.
 
 ### appel_ouverture — J0, script d'ouverture de l'appel n° 1 (A1)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR Solutions. Vous venez de remplir notre formulaire pour le solaire. Je vous dérange deux minutes ?
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR Solutions. عمرتو دابا الفورم ديالنا على الطاقة الشمسية. نقدر ناخد منكم جوج دقايق؟
+CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique doit indiquer explicitement l'identité ET le
+caractère commercial de l'intervention (sanctionné par l'art. 180) ; loi 09-08 art. 5 §3 + décret 2-09-165 art. 34 :
+pour des données non collectées auprès de la personne (Meta, Odoo), l'information sur leur origine peut être donnée
+oralement. La « confirmation écrite de l'offre » qu'exige l'art. 51 est déjà assurée par le devis envoyé.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟
 
 ### repondeur — appels 2 et 4, message sur répondeur (R1)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.
+
+### appel_relance — Appel 3, J1 10 h 30, troisième tentative (CAD67, 21/09/2026)
+Avant CAD67, `repondeur` partait aussi ici (ordre 4), à ~20 h du premier envoi (ordre 3) — contraire au document
+ci-dessus qui le réserve aux appels 2 et 4. Script court dédié, comme `appel_ouverture`/`vocal_j3`/`appel_dimanche`.
+CAD96 (fold post-merge) — [Marque] plutôt que « TAQINOR » codé en dur.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟
 
 ### valeur_j1 — J1, WhatsApp de valeur (M2)
 FR : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 DARIJA : السلام عليكم السي [الاسم]، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟
+POMPAGE : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de connaître votre pompe (puissance, profondeur du forage, débit souhaité) et l'emplacement du point d'eau : je vous montre l'installation adaptée, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
+B2B : Bonjour M. [Prénom], je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de vos relevés de consommation (une photo suffit) et de l'adresse du site : je vous montre l'installation sur vos bâtiments, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?
 
 ### vocal_j3 — J3, vocal WhatsApp de trente secondes (M3, script à dire)
-FR : Bonjour M. [Prénom], c'est [Conseiller] de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.
+FR : Bonjour M. [Prénom], c'est [Conseiller] de [Marque]. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.
 
 ### appel_dimanche — 5e appel, le dimanche 16 h–19 h, pour les injoignables (A3)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟
+CAD109 — même mention que `appel_ouverture` (loi 31-08 art. 51 + loi 09-08 art. 5 §3), sur le second script d'appel
+EN DIRECT (`repondeur`/`vocal_j3` restent des scripts de répondeur/vocal, pas des ouvertures de conversation).
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque] — c'est un appel commercial. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque] — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟
 
 ### je_classe_j7 — J7, WhatsApp « je classe ? » (M4)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Sans nouvelle de votre part, je mets votre demande de côté dans trois jours. Un simple « plus tard » me suffit pour la garder ouverte.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لتلت أيام. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول.
+CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ; le moteur clôture réellement à J14
+(`cloture_j14`), donc « dans une semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
+CAD110 (21/09/2026) — porte de sortie (loi 09-08 art. 10 al. 5 : opposition possible + coordonnées valables pour
+faire cesser — l'envoi manuel ne protège de rien, l'article vise le MOYEN et le consentement) sur les touches qui
+portent le plus loin (J7, J14, fin d'après-devis, tous les réveils) ; pas les trois premiers messages.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.
+
+### appel_dernier — Appel 6 (dernier), J10, avant clôture (CAD67, 21/09/2026)
+Le dernier appel avant `cloture_j14` — celui qui décide du classement du lead — n'avait aucune phrase d'ouverture.
+CAD96 (fold post-merge) — [Marque] plutôt que « TAQINOR » codé en dur.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟
 
 ### cloture_j14 — J14, WhatsApp de clôture, passage en Froid (M5)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة.
+CAD110 — porte de sortie (voir note ci-dessus, section `je_classe_j7`).
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.
 
-### reveil_a2 — J30 puis J60, réveil des leads jamais chiffrés (M6)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد.
+### reveil_a2 — J30 seulement, réveil des leads jamais chiffrés (M6)
+CAD68 (21/09/2026) — routage RÉEL (`apps/crm/services._adapter_gabarits_reveil`, appelée par
+`initialiser_plan_relance`) : à J30, le gabarit part selon le dossier — `reveil_a1` si le lead a déjà reçu un
+devis, `reveil_a2` sinon ; à J60, TOUS les leads reçoivent `reveil_a3` (dernière chance), jamais `reveil_a2` — le
+barreau J60 seedé sous `reveil_a2` (`CADENCE_REVEIL_DEFAUT`) est TOUJOURS remplacé. `reveil_a2` ne part donc
+qu'à J30, jamais à J60 malgré son ancien intitulé.
+CAD110 — porte de sortie (voir note ci-dessus, section `je_classe_j7`) : les QUATRE touches de réveil, les plus
+lointaines de la cadence (J30/J60), sont les plus exposées.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد. جاوبو STOP وما نلحوش عليكم.
 
 ### rappel_plus_tard — réponse à « rappelez-moi plus tard » (M9)
 FR : Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.
@@ -77,50 +160,131 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 
 ### j1_pdf — J1, WhatsApp
 FR : Bonjour M. [Prénom], j'espère que vous allez bien. Je vous ai envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien de votre côté ? Prenez le temps de la regarder tranquillement, et dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre question.
+DARIJA : السلام عليكم السي [الاسم]، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.
 
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
-FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer.
+FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : [lien vidéo].
+DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.
 
 ### j6_garanties — J6, WhatsApp (avec les certificats de garantie des fabricants)
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
+DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties
 
 ### j9_validite — J9, WhatsApp
 FR : Votre proposition est valable jusqu'au [date]. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.
+DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.
 
 ### j13_dernier — J13, WhatsApp
-FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille.
+CAD110 — porte de sortie (voir note, section `je_classe_j7`) : les deux DERNIÈRES touches après-devis.
+FR : Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.
+DARIJA : ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.
 
 ### j14_pause — J14, WhatsApp, passage en Froid
-FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver.
+CAD110 — porte de sortie (voir note, section `je_classe_j7`).
+FR : Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.
+DARIJA : غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.
 
 ### dimanche_famille — premier dimanche 16 h après J3, leads « Décision à plusieurs » (M7)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.
+POMPAGE : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.
+B2B : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.
+
+**CAD60 (21/09/2026) — les deux textes ci-dessous partent À LA MAIN, hors cadence, après la décision du fondateur.**
+Aucun des 10 barreaux après-devis ne les porte, et aucun ne les portera : `offre_reda` contient trois blancs que rien
+ne peut calculer ([la raison réelle], [montant en dirhams], [nouveau total TTC]), et l'appel du fondateur se décide au
+cas par cas — jamais à l'avance. **Ne cherchez pas le bouton : il n'existe pas, et c'est voulu.** On copie le texte
+depuis le catalogue des messages au moment choisi, on remplit les blancs, on envoie. Un bouton conditionnel
+enverrait un jour une offre que le fondateur n'a pas décidée.
 
 ### annonce_appel_reda — le vendredi, annoncer l'appel de Reda du dimanche (M11)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. المؤسس ديال الشركة اللي كيراجع كل دراسة بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. المؤسس ديال الشركة اللي كيراجع كل دراسة بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟
 
 ### offre_reda — après la décision de Reda seulement, jamais avant (M8)
-FR : Bonjour M. [Prénom], [Conseiller] de TAQINOR. Suite à votre échange avec le fondateur : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° [référence], soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.
-DARIJA : السلام عليكم السي [الاسم]، [المستشار] من TAQINOR. بعد الهضرة ديالكم مع المؤسس: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم [المرجع]، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Suite à votre échange avec le fondateur : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° [référence], soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. بعد الهضرة ديالكم مع المؤسس: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم [المرجع]، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.
 
 ### reveil_a1 — dormants avec devis (A1 du Guide)
-FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. Vous aviez reçu un devis solaire chez nous il y a quelques mois. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.)
+CAD73 (21/09/2026) — « il y a quelques mois » était un fait daté FAUX : ce réveil part ~6 semaines après le devis
+(`cloturer_cadence` démarre la cadence réveil à sa clôture, ~J14, donc `reveil_a1` tombe vers J+44), jamais des
+mois. Reformulé SANS durée plutôt qu'une durée inventée.
+CAD110 — porte de sortie sur les QUATRE touches de réveil (voir note, section `je_classe_j7`).
+FR : Bonjour M. [prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.
+POMPAGE : Bonjour M. [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu un devis de pompage solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer votre installation en 3D, sur VOTRE parcelle, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'emplacement.) Répondez STOP et je n'insiste plus.
+B2B : Bonjour M. [Prénom], c'est [Conseiller] de [Marque]. Vous aviez reçu une étude solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer l'installation posée sur VOS bâtiments, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.
 
 ### reveil_a3 — dernière chance, la rupture honnête (A3 du Guide)
-FR : Bonjour M. [prénom], [Conseiller] de Taqinor Solutions. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ?
+CAD110 — porte de sortie (voir note, section `je_classe_j7`).
+FR : Bonjour M. [prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.
+POMPAGE : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de votre installation de pompage, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
+B2B : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de l'installation sur vos bâtiments, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.
 
 ### reveil_b — la saison des factures (B du Guide)
-FR : Bonjour M. [prénom], c'est [Conseiller] de Taqinor Solutions. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ?
+CAD110 — porte de sortie (voir note, section `je_classe_j7`).
+FR : Bonjour M. [prénom], c'est [Conseiller] de [Marque]. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ? Répondez STOP et je n'insiste plus.
+DARIJA : السلام عليكم السي [الاسم]، أنا [المستشار] من [Marque]. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟ جاوبو STOP وما نلحوش عليكم.
+
+**Quand ce message part (CAD74, 21/09/2026).** Fenêtre juin-septembre, UNE fois par an et par dormant, et seulement
+pour un dormant dont le réveil J30/J60 est tombé HORS de cette fenêtre. Preuve de saisonnalité : nouveau record
+national de consommation à 8,4 GW le 06/07/2026 pendant une vague de chaleur — à citer « ONEE, via presse
+économique, juillet 2026 » (Le360 du 28/07/2026, Consonews, FNH), jamais « communiqué ONEE » ni « MAP » : aucune
+source primaire n'a pu être ouverte, et la page officielle du ministère affiche encore 7 310 MW au 11/08/2023.
+
+**Garde-fou (CAD76, 21/09/2026) — la rentrée scolaire n'est PAS une fenêtre de réveil.** Aucun code ne cible la
+rentrée aujourd'hui, et aucun futur run ne doit poser une vague de réveil en septembre : l'intuition « nouvelle
+année, nouveau projet » est fausse au Maroc, parce que la rentrée est une SORTIE d'argent, pas une respiration.
+Données officielles marocaines : la rentrée représente 20,4 % du budget mensuel d'un ménage (jusqu'à 33,8 % du
+budget annuel en ville) et elle s'ajoute directement après l'Aïd al-Adha dans le calendrier. Sources datées :
+le360.ma reprenant l'enquête HCP 2019-2020 publiée en 2022 ; fnh.ma, « Aïd Al Adha et rentrée scolaire : grosse
+pression sur les finances des ménages ». Le montant par enfant parfois cité (1 556 DH, 1 926 DH en ville) reste
+contesté entre relecteurs : il n'est PAS un chiffre de référence et ne part dans aucun message client. La fenêtre
+porteuse reste juillet-août, à l'intérieur de la saison ci-dessus.
+
+## Dossiers institutionnels, par segment (CAD125, 21/09/2026)
+
+Ces deux textes ne sont PAS des barreaux de cadence : ils sont posés comme TÂCHE d'un playbook conditionné sur
+`type_installation` (industriel/commercial d'un côté, agricole de l'autre). `Lead.regularisation_8221` était capté et
+lu par le scoring, mais aucune des clés de relance ne parlait d'un dossier institutionnel — alors que le résidentiel a
+son équivalent avec `j6_garanties`.
+
+**Garde-fou « zéro chiffre inventé », absolu ici :** aucun montant, aucun plafond, aucune fenêtre de dépôt, aucun
+nombre de régimes. Le plafond FDA et la fenêtre de dépôt cités au round 2 de l'audit sont INTROUVABLES sur leur source
+et ne doivent jamais réapparaître ; « trois régimes » 82-21 n'est pas sourcé non plus. On pose LA question ; les
+chiffres viennent du client et de son dossier, jamais du gabarit.
+
+### dossier_8221 — industriel/commercial : où en est le dossier d'autoproduction
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Une question sur votre projet : où en est votre dossier d'autoproduction (loi 82-21) ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si le dossier n'est pas encore lancé, je vous explique les étapes en cinq minutes.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديالكم: فين وصل الملف ديالكم ديال الإنتاج الذاتي (قانون 82-21)؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا الملف مازال ما تلانسا، كنشرح ليكم المراحل ف خمس دقايق.
+
+### dossier_fda — agricole : le dossier de subvention
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.
 
 ## Après la signature (Guide v2.1, chapitre 13)
 
 ### avis_google — à tous les clients, de la même façon, sans contrepartie
 FR : Bonjour M. [Prénom], j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : [lien de la fiche TAQINOR]. Merci beaucoup !
+DARIJA : السلام عليكم السي [الاسم]، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: [lien de la fiche TAQINOR]. شكرا بزاف!
 
 ### parrainage
 FR : Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.
+DARIJA : إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.
+
+## Les documents : ce qui ouvre une touche, et ce qui n'en ouvre pas (CAD61, 21/09/2026)
+
+**Le client envoie quelque chose** (photo de facture, pièce d'identité, relevé) → geste **« pièce reçue »** :
+il attache le document, clôt la touche ouverte et pose « préparer le devis ». C'est LE seul geste pour ce cas, il
+n'est jamais dupliqué ailleurs. Garde-fou : **aucune cadence ne s'arrête sur un message entrant** — un simple
+« merci » ne doit pas tuer une cadence ; c'est le geste humain qui décide.
+
+**TAQINOR envoie une facture hors cadence** → **aucune relance**. La facture part APRÈS la signature, donc hors du
+protocole de suivi : elle se contente d'une ligne dans l'historique du lead (« Facture … émise — hors protocole de
+suivi »). Aucune touche n'est ouverte, close ni déplacée, et l'étape du lead ne bouge pas (la trace est SYSTÈME, pas
+un contact manuel). Si un jour il faut relancer un impayé, c'est le recouvrement qui s'en charge, pas la cadence
+commerciale.
 
 ## La visite technique, étape du suivi (ordre fondateur 15/09/2026)
 
@@ -132,10 +296,14 @@ responsable sous 24-48 h.
 ### visite_proposition — après l'envoi du devis, WhatsApp
 FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 DARIJA : باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — [المستشار]
+POMPAGE : Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
+B2B : Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 
 ### visite_confirmation — la veille de la visite, WhatsApp
 FR : Bonjour, on confirme la visite technique prévue [date de la visite] chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 DARIJA : السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة [تاريخ الزيارة] عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — [المستشار]
+POMPAGE : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique — prévoyez l'accès au point d'eau. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
+B2B : Bonjour, on confirme la visite technique prévue [date de la visite] sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — [Conseiller]
 
 Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI client présent — jamais le gardien ni la bonne. La
 phrase « Votre présence est importante » le demande sans être blessante, en donnant la RAISON (répondre à ses questions
@@ -144,7 +312,83 @@ sur place), qui est aussi la vraie valeur du passage.
 Les deux variantes darija ci-dessus sont À FAIRE RELIRE par un locuteur natif : elles suivent le FR validé phrase par
 phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue native du 04/09/2026.
 
+Décision fondateur du 21/09/2026 (CAD170) — VÉHICULE ÉLECTRIQUE, RECHARGE DE NUIT : **aucun texte ne conseille au
+client de recharger sa voiture en journée.** C'est le cas majoritaire (fenêtre 21h-6h) et l'effet mesuré sur
+l'autoconsommation est nul, même avec une batterie de 10 kWh. La réponse commerciale est le DIMENSIONNEMENT : les
+kWh/jour de recharge nocturne s'ajoutent au besoin de stockage, servis par une taille d'offre réellement vendue
+(`apps/ventes/etude_horaire.besoin_stockage_avec_recharge_ve`) — jamais une batterie sur mesure, jamais au-delà du
+catalogue. Le conseil « décalez la recharge en journée » est ÉCARTÉ : le gain qui le soutenait venait d'une
+autoconsommation non bornée, corrigée depuis (CAD165). Toute rédaction future de texte client sur ce sujet parle de la
+batterie qui couvre la nuit, jamais d'un changement d'habitude du client.
+
+Décisions fondateur du 21/09/2026 (CAD173) — TROIS RÈGLES DE CONTENU, à tenir dans tout texte futur :
+- **Coupures (Q15)** : « tenir pendant les coupures » est un ARGUMENT commercial, rien d'autre. Aucun texte ne promet
+  une autonomie, une durée de secours ou un nombre d'heures : aucun dimensionnement de secours n'est calculé, donc
+  aucun chiffre de secours n'existe. La réponse du client vit dans l'objectif de projet de sa fiche.
+- **Carburant agricole (Q17)** : l'économie de carburant se calcule UNIQUEMENT sur ce que le client déclare (litres ou
+  dirhams par mois). **Aucun prix de gasoil de référence n'est écrit nulle part** — ni dans le code, ni dans un texte.
+  Sans déclaration du client, la phrase est omise ; jamais un prix de marché supposé.
+- **Subventions (Q22)** : on ne promet RIEN. Aucun texte n'annonce un montant, un taux, une éligibilité ni un délai de
+  subvention : on renvoie le client aux conditions officielles du programme concerné.
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
 Les versions darija absentes ci-dessus (après devis, réveils A1/A3/B, après signature) retombent sur le FR (`get_corps`).
+
+CAD62 (21/09/2026) — les 11 darija manquantes (les 6 touches après-devis, `reveil_a1/a3/b`, `avis_google`,
+`parrainage`) sont traduites ci-dessus : `CLES_RELANCE` a désormais 27/27 clés avec un équivalent darija. Comme
+`visite_proposition`/`visite_confirmation`, ces 11 traductions n'ont PAS encore reçu la relecture native du
+04/09/2026 (CADM1 — à faire avant tout envoi réel) ; elles suivent le FR validé phrase par phrase (aucune promesse
+ajoutée, aucun chiffre, aucune traduction automatique).
+
+## Sur quoi la DENSITÉ du protocole se discute — et sur quoi elle ne se discute pas (CAD89, 21/09/2026)
+
+Cette note existe pour qu'aucun futur audit ne recalibre le nombre de touches sur un chiffre qui n'en est pas un.
+Le protocole (6 appels + 5 WhatsApp sur 14 jours, 10 touches après devis, 2 réveils) n'est PAS dérivé des repères
+ci-dessous, et il ne doit pas l'être.
+
+**Le chiffre à ne plus jamais citer : « 80 % des ventes se font après 5 relances ».** Omniprésent dans le secteur,
+il remonte à un sondage de **1942** portant sur **moins de 40 personnes**, jamais publié ni relu par des pairs ;
+l'organisation censée l'avoir produit **n'a pas pu le retracer** quand on le lui a demandé (enquête conciergr.com,
+2024-2025 ; reprise VentureBeat). Il ne mesure rien d'aujourd'hui, rien du Maroc, rien du solaire.
+
+**Le repère le plus sérieux, et sa limite : Velocify, 2013.** Sur ~3,5 millions de leads, 93 % des prospects
+convertis avaient été joints au 6ᵉ appel. Son **rapport primaire n'est plus hébergé nulle part** : il ne peut donc
+être cité que comme **source SECONDAIRE**, jamais comme une mesure vérifiable (correction du round 2 de l'audit).
+
+**Et le repère qu'on lui confond, qui répond à une AUTRE question : MIT / Oldroyd, 2007.** 15 000 leads, 100 000
+appels — l'étude mesure la **VITESSE de rappel** (un contact ~100 fois plus probable entre 5 et 30 minutes), pas le
+**NOMBRE de tentatives**. Deux études américaines, deux questions différentes, **aucune preuve marocaine** ni dans
+l'une ni dans l'autre.
+
+**Le trou qui compte le plus ici : aucune de ces sources ne porte sur WhatsApp**, alors que WhatsApp porte 5 des
+11 touches de la prise de contact. Un rythme calibré sur des séquences d'appels et d'e-mails américains ne dit rien
+de ce canal.
+
+**Conséquence pratique.** La densité (« faut-il plus / moins de touches ? »), le samedi et la soirée de Ramadan se
+tranchent sur les chiffres MAISON — l'agrégat taux de joint par touche × heure × jour × canal et les signatures par
+nombre de touches consommées (CAD87) —, jamais sur les trois repères ci-dessus. Tant que ces mesures n'ont pas assez
+de cases peuplées, **on ne change rien** : ni le nombre, ni l'ordre, ni le J+N des touches.
+
+## Signer le bon de commande CHEZ LE CLIENT — ce que la loi 31-08 impose (CAD122, 21/09/2026)
+
+La visite technique se passe au domicile, après le devis, et le bon de commande s'y signe **parfois**. Dans ce cas
+précis — et seulement dans ce cas — la vente est un **démarchage à domicile** : la loi 31-08 le définit à
+l'**art. 45** comme la proposition d'achat au domicile « même à sa demande », et l'**art. 46** liste trois
+exclusions dont **aucune ne couvre le solaire** (texte ONSSA, extrait mot pour mot).
+
+**Ce que la commerciale fait quand elle fait signer chez le client** (rien d'autre ne change) :
+
+1. **Elle coche « signé au domicile » sur le bon de commande.** C'est ce marqueur — et lui seul — qui déclenche tout
+   ce qui suit. Un bon signé au bureau ou à distance reste régi par l'art. 32 (vente à distance) : **rien ne change**.
+2. **Le document imprimé porte une page de plus** : les mentions de l'**art. 48** et un **formulaire détachable de
+   rétractation**, que le client garde. C'est le moteur habituel qui la rend — il n'existe pas de second PDF.
+3. **Le client date et signe de SA MAIN** (art. 47 al. 2) : la date qu'il écrit est celle qui compte, et c'est elle
+   qu'on saisit dans « date écrite par le client ».
+4. **Aucun acompte n'est encaissé pendant 7 jours** à compter de la commande (**art. 49 et 50**). Le chèque peut être
+   remis, il ne part pas à la banque avant. L'ERP refuse l'encaissement et affiche la date à partir de laquelle il
+   redevient possible ; ce n'est pas un réglage, c'est la loi.
+
+Ce qui n'a PAS changé : le devis, ses conditions de paiement affichées, la signature à distance, et le parcours du
+client qui signe en ligne.

@@ -120,6 +120,26 @@ def _jour_ouvre(d, company):
     return ouvre
 
 
+def _est_ferie(d, company):
+    """CAD41 — `d` est-il un jour FÉRIÉ pour la société ?
+
+    Distinct de ``_jour_ouvre``, qui répond « non » aussi bien pour un férié
+    que pour un samedi : la touche dominicale du Protocole v3 est justement
+    posée un jour NON ouvré, et elle doit pourtant s'effacer devant l'Aïd.
+    Lecture par la surface cross-app documentée (``feries_entre``), jamais un
+    import de ``notifications.models``. Mémorisé comme ``_jour_ouvre``.
+    """
+    cache = _CACHE.get()
+    cle = ('ferie', getattr(company, 'pk', None), d)
+    if cache is not None and cle in cache:
+        return cache[cle]
+    from apps.notifications.calendar_utils import feries_entre
+    ferie = bool(feries_entre(company, d, d))
+    if cache is not None:
+        cache[cle] = ferie
+    return ferie
+
+
 def _heure(profil, champ, defaut):
     valeur = getattr(profil, champ, None) if profil is not None else None
     return valeur if isinstance(valeur, datetime.time) else defaut
@@ -153,12 +173,17 @@ def est_en_ramadan(d, company, profil=None):
     return debut <= d <= fin
 
 
-def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
+def fenetre_du_jour(d, company, *, dimanche=False, samedi=False,
+                    canal='appel'):
     """`(debut, fin, pause)` du jour `d`, ou ``None`` si non appelable.
 
     `pause` est ``(debut, fin)`` le vendredi (prière), sinon ``None``.
     `dimanche=True` renvoie la fenêtre dominicale 16 h-19 h du Protocole v3 —
     réservée à la touche marquée `dimanche_ok`, jamais au reste.
+    `samedi=True` (CAD43) ouvre le SAMEDI à la seule touche marquée
+    `samedi_ok`, dans la fenêtre ORDINAIRE de son canal : rien n'est ouvert
+    pour les autres touches, et si la société a déjà coché le samedi comme
+    jour ouvré, ce drapeau ne change rien.
 
     `canal` (07/09/2026) décide de la seule chose qui SÉPARE les deux
     fenêtres : l'ouverture (`message_heure_debut` pour WhatsApp/e-mail,
@@ -167,16 +192,52 @@ def fenetre_du_jour(d, company, *, dimanche=False, canal='appel'):
     """
     profil = _profil(company)
     if dimanche and d.weekday() == 6:
+        # CAD41 — la branche dominicale ne court-circuite plus NI les fériés
+        # NI le Ramadan. Avant, `return` partait ici sans rien vérifier : un
+        # Aïd tombant un dimanche recevait quand même l'appel de 16:30, et
+        # pendant le Ramadan la touche restait posée à 16:30 en plein jeûne,
+        # dans le creux pré-ftour (jusqu'à 4 dimanches par an).
+        if _est_ferie(d, company):
+            # `None` = ce dimanche est inutilisable ; `prochain_creneau_appel`
+            # passe alors au dimanche SUIVANT (jamais au lundi : la touche
+            # dominicale ne se transforme pas en touche de semaine).
+            return None
+        if est_en_ramadan(d, company, profil=profil):
+            return (_heure(profil, 'ramadan_appel_debut', datetime.time(9, 0)),
+                    _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
+                    None)
         return (DIMANCHE_DEBUT, DIMANCHE_FIN, None)
+    if samedi and d.weekday() == 5 and not _jour_ouvre(d, company):
+        # CAD43 — symétrique de la branche dominicale, pour la seule touche
+        # marquée `samedi_ok` : le samedi reste fermé à TOUTES les autres.
+        # Aucune fenêtre inventée — c'est la fenêtre ordinaire du canal (un
+        # message dès l'ouverture des messages, un appel jamais avant celle
+        # des appels). Comme le dimanche (CAD41), le férié et le Ramadan
+        # priment.
+        if _est_ferie(d, company):
+            return None
+        if est_en_ramadan(d, company, profil=profil):
+            return (_heure(profil, 'ramadan_appel_debut', datetime.time(9, 0)),
+                    _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
+                    None)
+        return (_ouverture(profil, canal),
+                _heure(profil, 'appel_heure_fin', datetime.time(20, 0)),
+                None)
     if not _jour_ouvre(d, company):
         return None
     if est_en_ramadan(d, company, profil=profil):
-        # Pendant le Ramadan, la fenêtre entière se resserre — et la pause du
-        # vendredi n'a plus lieu d'être (elle tombe hors de 10 h-14 h). Elle
-        # est COMMUNE aux deux canaux : c'est la journée entière qui se
-        # déplace, pas seulement l'heure des appels.
-        return (_heure(profil, 'ramadan_appel_debut', datetime.time(10, 0)),
-                _heure(profil, 'ramadan_appel_fin', datetime.time(14, 0)),
+        # CAD39 — DÉCISION FONDATEUR du 21/09/2026, pas un effet de bord du
+        # `return` anticipé : pendant le Ramadan la fenêtre est COMMUNE aux
+        # appels et aux messages (c'est la journée entière qui se déplace,
+        # pas seulement l'heure des appels), et AUCUNE fenêtre du soir n'est
+        # ouverte après le ftour — les WhatsApp se tapent à la main, on ne
+        # demande à personne de travailler le soir. La pause du vendredi n'a
+        # plus lieu d'être : elle tombe au bord de la fenêtre du mois.
+        # Le repli 09:00-15:00 est la référence nationale (CAD38, annonce du
+        # Ministère de la Transition numérique du 10/02/2026) ; il ne sert
+        # qu'aux profils sans valeur enregistrée.
+        return (_heure(profil, 'ramadan_appel_debut', datetime.time(9, 0)),
+                _heure(profil, 'ramadan_appel_fin', datetime.time(15, 0)),
                 None)
     debut = _ouverture(profil, canal)
     fin = _heure(profil, 'appel_heure_fin', datetime.time(20, 0))
@@ -199,11 +260,12 @@ def _combiner(d, t):
     return datetime.datetime.combine(d, t, tzinfo=CASABLANCA)
 
 
-def est_dans_fenetre(dt, company, *, dimanche=False, canal='appel'):
+def est_dans_fenetre(dt, company, *, dimanche=False, samedi=False,
+                     canal='appel'):
     """L'instant `dt` est-il dans la fenêtre de son jour, pour ce `canal` ?"""
     local = _local(dt)
     fenetre = fenetre_du_jour(local.date(), company, dimanche=dimanche,
-                              canal=canal)
+                              samedi=samedi, canal=canal)
     if fenetre is None:
         return False
     debut, fin, pause = fenetre
@@ -215,30 +277,77 @@ def est_dans_fenetre(dt, company, *, dimanche=False, canal='appel'):
     return True
 
 
-def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
+def _heure_visee(heure_cible, debut, fin, pause):
+    """CAD21 — l'heure à laquelle un jour ULTÉRIEUR démarre.
+
+    L'heure imposée par le gabarit quand elle tient dans la fenêtre de ce
+    jour-là et hors de sa pause ; l'ouverture sinon (comportement d'avant :
+    une touche ne sort JAMAIS de sa fenêtre pour honorer une heure cible)."""
+    if heure_cible is None:
+        return debut
+    if not (debut <= heure_cible < fin):
+        return debut
+    if pause is not None and pause[0] <= heure_cible < pause[1]:
+        return debut
+    return heure_cible
+
+
+def prochain_creneau_appel(dt, company, *, dimanche=False, samedi=False,
+                           canal='appel', heure_cible=None):
     """Le prochain instant JOIGNABLE à partir de `dt` (inclus), pour `canal`.
 
     Renvoie `dt` inchangé s'il est déjà dans la fenêtre. Sinon, dans l'ordre :
     la pause du vendredi pousse à sa fin ; avant l'ouverture on attend
     l'ouverture ; après la fermeture (ou un jour non ouvré) on passe au
-    prochain jour ouvré à son heure d'ouverture. Sortie AWARE, dans le même
-    fuseau que l'entrée.
+    prochain jour ouvré — à `heure_cible` si le gabarit en impose une et
+    qu'elle tient dans la fenêtre de ce jour-là, sinon à son heure
+    d'ouverture. Sortie AWARE, dans le même fuseau que l'entrée.
 
     `canal` porte la décision du 07/09/2026 : une touche WhatsApp/e-mail se
     pose dès 08:30, un appel jamais avant 09:00. Le NOM de la fonction reste
     historique — elle recale désormais toutes les touches, pas seulement les
-    appels."""
+    appels.
+
+    CAD21 — `heure_cible` (heure LOCALE du gabarit) : l'heure imposée d'une
+    touche était effacée dès qu'elle changeait de jour. L'« Appel 4 » prévu à
+    18 h — quand un particulier est rentré chez lui — ressortait à 09 h le
+    lundi matin, et le réglage « Heure cible » de l'écran Paramètres ne tenait
+    pas sa promesse une fois sur trois. On recombine donc la date du prochain
+    jour ouvré avec cette heure AVANT le contrôle de fenêtre. GARDE-FOU : si
+    l'heure visée tombe hors de la fenêtre de ce jour (fermeture, pause de la
+    prière du vendredi, fenêtre resserrée du Ramadan, fenêtre dominicale), on
+    retombe sur l'ouverture — jamais une touche posée hors fenêtre."""
     tz_entree = dt.tzinfo or datetime.timezone.utc
     local = _local(dt)
     jour = local.date()
+    # CAD21 — le jour de DÉPART, figé : c'est le seul où l'heure de `dt`
+    # compte. Les suivants se recomposent (heure cible, sinon ouverture).
+    jour_initial = jour
     for _ in range(_MAX_JOURS):
         fenetre = fenetre_du_jour(jour, company, dimanche=dimanche,
-                                  canal=canal)
+                                  samedi=samedi, canal=canal)
         if fenetre is not None:
             debut, fin, pause = fenetre
-            candidat = local if jour == local.date() else _combiner(jour, debut)
+            candidat = (local if jour == jour_initial
+                        else _combiner(jour, _heure_visee(
+                            heure_cible, debut, fin, pause)))
             heure = candidat.time()
-            if jour == local.date() and heure < debut:
+            if (dimanche and jour.weekday() == 6 and heure >= fin
+                    and est_en_ramadan(jour, company)):
+                # CAD41 — pendant le Ramadan, la fenêtre dominicale ferme à
+                # 15 h : l'heure canonique 16 h 30 du Protocole v3 n'existe
+                # tout simplement pas ce jour-là. La touche est REPLACÉE dans
+                # la fenêtre du mois, CE dimanche — jamais repoussée d'une
+                # semaine, jamais transformée en appel de semaine. C'est la
+                # même nature de geste que `prochain_dimanche`, qui PLACE la
+                # touche : on ne recale pas un instant vécu, on choisit
+                # l'heure d'un rendez-vous.
+                candidat = _combiner(jour, debut)
+                heure = debut
+            # CAD21 — le jour de DÉPART est le seul où l'heure de `dt`
+            # compte : les jours suivants sont déjà recomposés par
+            # `_heure_visee`, qui ne rend jamais une heure avant l'ouverture.
+            if jour == jour_initial and heure < debut:
                 candidat = _combiner(jour, debut)
                 heure = debut
             if heure < fin:
@@ -248,9 +357,17 @@ def prochain_creneau_appel(dt, company, *, dimanche=False, canal='appel'):
                         return candidat.astimezone(tz_entree)
                 else:
                     return candidat.astimezone(tz_entree)
-        jour += datetime.timedelta(days=1)
-        # Les jours suivants démarrent à leur ouverture, plus à l'heure de dt.
-        local = _combiner(jour, datetime.time(0, 0))
+        # CAD41 — une touche DOMINICALE inutilisable (Aïd tombant un
+        # dimanche) saute au dimanche SUIVANT, jamais au lundi : sinon le
+        # seul rendez-vous dominical du protocole se transformerait en appel
+        # de semaine, exactement ce que `prochain_dimanche` évite.
+        if dimanche and jour.weekday() == 6:
+            jour += datetime.timedelta(days=7)
+        else:
+            jour += datetime.timedelta(days=1)
+        # CAD21 — plus de réinitialisation de `local` ici : les jours
+        # suivants sont recomposés par `_heure_visee` (heure cible du
+        # gabarit si elle tient dans la fenêtre, ouverture sinon).
     logger.warning(
         'crm.horaires: aucun créneau trouvé en %s jours (société %s)',
         _MAX_JOURS, getattr(company, 'pk', '?'))
@@ -285,6 +402,58 @@ def prochain_dimanche(dt, heure=DIMANCHE_HEURE_DEFAUT):
     delta = (6 - local.weekday()) % 7 or 7
     cible = local.date() + datetime.timedelta(days=delta)
     return _combiner(cible, heure).astimezone(tz_entree)
+
+
+def dimanche_le_plus_proche(cible, heure=DIMANCHE_HEURE_DEFAUT, *,
+                            plancher=None):
+    """CAD23 — le dimanche le PLUS PROCHE de `cible`, AVANT ou après.
+
+    Décision fondateur du 21/09/2026. `prochain_dimanche` prend le premier
+    dimanche ≥ `cible` : pour un J+5, le rendez-vous dominical dérivait de
+    J+5 (lead du mardi) à J+11 (lead du mercredi), et la touche J+7 du
+    protocole naissait ensuite déjà en retard. En prenant le dimanche le plus
+    proche — la veille du J+N compte autant que le lendemain — l'écart entre
+    le J+N visé et la date posée ne dépasse jamais 3 jours, sans toucher au
+    principe « une seule touche le dimanche, 16 h-19 h, pour les prospects
+    qu'on ne trouve jamais en semaine ».
+
+    `plancher` (l'ancre de la cadence) borne le résultat par le bas : le
+    dimanche le plus proche d'un J+1 tomberait sinon AVANT l'arrivée du lead.
+    On passe alors au dimanche suivant, de semaine en semaine.
+
+    Ce choix ne change NI le nombre, NI l'ordre des touches : il ne déplace
+    que la date de l'unique touche `dimanche_ok` de la cadence.
+    `prochain_dimanche` reste inchangée — c'est toujours elle qui répond à
+    « le prochain dimanche à partir de tel instant ».
+
+    Entrée et sortie AWARE, dans le fuseau de l'entrée."""
+    tz_entree = cible.tzinfo or datetime.timezone.utc
+    local = _local(cible)
+    jour_cible = local.date()
+    vers_apres = (6 - jour_cible.weekday()) % 7
+    apres = jour_cible + datetime.timedelta(days=vers_apres)
+    avant = (apres if vers_apres == 0
+             else apres - datetime.timedelta(days=7))
+    # Distances entières : l'égalité est impossible (k vs 7-k), donc pas de
+    # départage arbitraire à écrire.
+    jour = avant if (jour_cible - avant) < (apres - jour_cible) else apres
+    candidat = _combiner(jour, heure)
+    if jour == jour_cible:
+        if local.time() >= DIMANCHE_FIN:
+            # Ce dimanche est fini : le rendez-vous part au suivant.
+            jour = jour_cible + datetime.timedelta(days=7)
+            candidat = _combiner(jour, heure)
+        elif local > candidat:
+            # On ne remonte jamais dans le passé de la cible.
+            candidat = local
+    plancher_local = _local(plancher) if plancher is not None else None
+    for _ in range(_MAX_JOURS):
+        if plancher_local is None or candidat >= plancher_local:
+            return candidat.astimezone(tz_entree)
+        jour += datetime.timedelta(days=7)
+        candidat = _combiner(jour, heure)
+    logger.warning('crm.horaires: aucun dimanche au-dessus du plancher')
+    return candidat.astimezone(tz_entree)
 
 
 def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
@@ -328,3 +497,53 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
                         (borne_haut - borne_bas).total_seconds() // 60)
         jour += datetime.timedelta(days=1)
     return total
+
+
+# ── CAD-I ── CAD88 ──────────────────────────────────────────────────────────
+# Le KPI de premier contact NEUTRALISE le week-end : « une nuit ou un week-end
+# complet vaut 0 minute » (docstring ci-dessus). C'est la bonne mesure de
+# l'OBJECTIF — on ne reproche à personne de dormir — mais c'est une très
+# mauvaise mesure de CE QU'A VÉCU LE CLIENT : un lead arrivé vendredi 20:00 et
+# traité lundi 08:30 s'affiche conforme alors qu'il a attendu soixante heures.
+# Tant que la mesure neutralise ce retard, le samedi (CAD43) ne peut pas
+# s'arbitrer sur des faits.
+#
+# La réponse n'est PAS de changer le calcul ouvré — il reste l'objectif, au
+# bit près — c'est d'AJOUTER une colonne à côté de lui. Les deux se lisent
+# ensemble ou ne veulent rien dire.
+def minutes_calendaires_entre(a, b):
+    """Minutes de CALENDRIER écoulées entre ``a`` et ``b`` (0 si ``b <= a``).
+
+    Le temps tel que le CLIENT l'a vécu : la nuit, le week-end et les jours
+    fériés comptent. Aucune notion de société, d'horaires ni de canal — c'est
+    précisément ce qui la distingue de ``minutes_ouvrees_entre``, qu'elle ne
+    remplace jamais.
+    """
+    if a is None or b is None:
+        return 0
+    if b <= a:
+        return 0
+    return int((b - a).total_seconds() // 60)
+
+
+# ── CAD146 (audit L3 cadence, 21/09/2026) — diaspora et fuseau horaire ───────
+#
+# CONSTAT : toutes les fenêtres et tous les recalages de ce module raisonnent
+# en Africa/Casablanca (voir `CASABLANCA` ci-dessus), sans aucune notion du
+# fuseau du LEAD. Un Marocain résidant en Europe reçoit donc son appel de
+# 09:00 à 08:00 chez lui ; un lead du Golfe le reçoit à 11:00.
+#
+# DÉCISION (21/09/2026) : NE RIEN CONSTRUIRE tant que CADM7 (comptage SQL en
+# lecture seule des numéros à indicatif étranger, action du fondateur — la
+# lecture en production a été REFUSÉE par le classificateur de sécurité de la
+# session d'audit, ce n'est donc pas une tâche de build) n'a pas donné de
+# chiffre. C'est peut-être un cas marginal ; sans le comptage, ajouter un
+# fuseau par lead serait de la complexité pour un volume inconnu — contraire
+# à la doctrine du groupe CAD (zéro chiffre inventé, y compris un volume).
+#
+# QUAND le comptage existe : si le volume le justifie, stocker le fuseau du
+# lead (nouveau champ sur `crm.Lead`, PROCHAIN à `ville`/`whatsapp`) et
+# recaler ICI les touches dessus, en gardant les fenêtres de la SOCIÉTÉ
+# (`fenetre_du_jour`) comme bornes — jamais une fenêtre individuelle sans
+# limite. Ce commentaire est la trace de la décision ; ne pas la re-soulever
+# sans le chiffre de CADM7.

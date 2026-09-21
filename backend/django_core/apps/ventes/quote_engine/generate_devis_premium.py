@@ -380,6 +380,12 @@ SLD_SVG = ""
 INCLUDE_CALEPINAGE = False
 CALEPINAGE_SVG = ""
 CALEPINAGE_EMPREINTE = ""
+# CAD122 — signature AU DOMICILE (loi 31-08, art. 45) : même défaut INERTE.
+# Faux ⇒ aucune annexe de rétractation, document byte-identique à celui
+# d'avant. Le délai est celui des articles 49 et 50 — c'est la loi, pas un
+# réglage société, et il ne se recopie nulle part ailleurs dans ce module.
+SIGNE_AU_DOMICILE = False
+DELAI_RETRACTATION_DOMICILE_JOURS = 7
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
@@ -3349,6 +3355,103 @@ def page_annexe_technique():
 """
 
 
+def page_annexe_domicile():
+    """CAD122 — annexe de rétractation, signature AU DOMICILE (loi 31-08).
+
+    Décision fondateur du 21/09/2026. La visite technique se passe chez le
+    client, après le devis, et le bon de commande s'y signe PARFOIS : l'art. 45
+    (texte ONSSA) définit alors le démarchage comme la proposition d'achat au
+    domicile « même à sa demande », et l'art. 46 n'exclut rien qui couvre le
+    solaire. Le document doit donc porter les mentions de l'art. 48 et un
+    FORMULAIRE DÉTACHABLE de rétractation.
+
+    Trois règles de construction :
+
+      * cette page n'existe QUE si le document porte le marqueur « signé au
+        domicile » (``SIGNE_AU_DOMICILE``). Sans lui, le devis est rendu
+        exactement comme avant, au caractère près — une signature à distance
+        ou au bureau reste régie par l'art. 32 ;
+      * AUCUN chiffre n'est inventé : le délai vient de la loi (art. 49 et 50)
+        et est repris tel quel ; les dates restent à remplir à la main, parce
+        que c'est la main du client qui les écrit (art. 47 al. 2) ;
+      * ce n'est PAS une seconde voie de PDF (règle #4) : c'est une page de
+        plus, rendue par le moteur vendu, dans le même document.
+    """
+    _cadre = (f'border:1px dashed {CG4};border-radius:8px;'
+              f'padding:12px 14px;background:white;')
+    _mentions = [
+        "Nom et adresse du vendeur, et nom du représentant qui vous a "
+        "rendu visite.",
+        "Désignation précise de la nature et des caractéristiques des "
+        "biens ou services proposés.",
+        "Conditions d&#8217;exécution du contrat, notamment les modalités "
+        "et le délai de livraison.",
+        "Prix global à payer et modalités de paiement.",
+        "Faculté de renonciation, ainsi que ses conditions d&#8217;exercice, "
+        "et de façon apparente le texte intégral des articles 49 et 50.",
+    ]
+    _mentions_html = "".join(
+        f'<li style="margin-bottom:3px;">{m}</li>' for m in _mentions)
+    return f"""
+<div class="page">
+  <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div>
+      <div style="color:white;font-size:10pt;font-weight:700;">Annexe — Droit de rétractation</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N° {REF} — {CLIENT_NAME} — {DATE_STR}</div>
+    </div>
+    {logo_html("42px")}
+  </div>
+  <div style="height:3px;background:{CA};flex-shrink:0;"></div>
+
+  <div style="padding:14px 24px;flex:1;min-height:0;">
+    <div style="font-size:8pt;color:{CG7};line-height:1.5;margin-bottom:10px;">
+      Cette commande a été signée à votre domicile. La loi
+      n° 31-08 édictant des mesures de protection du consommateur vous
+      ouvre un délai de rétractation de
+      <strong>{DELAI_RETRACTATION_DOMICILE_JOURS} jours</strong> à
+      compter de la commande. Pendant ce délai, <strong>aucun acompte ni
+      aucun paiement ne peut être exigé ni encaissé</strong>
+      (articles 49 et 50).
+    </div>
+
+    <div style="background:{CG1};border:1px solid {CG2};border-radius:7px;padding:9px 12px;margin-bottom:12px;">
+      <div style="font-size:7.5pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">Mentions de l&#8217;article 48</div>
+      <ul style="margin:0;padding-left:16px;font-size:7.5pt;color:{CG7};line-height:1.45;">{_mentions_html}</ul>
+    </div>
+
+    <div style="font-size:7.5pt;color:{CG4};font-style:italic;margin-bottom:8px;">
+      Détachez, complétez et renvoyez le formulaire ci-dessous si vous
+      souhaitez renoncer à cette commande.
+    </div>
+
+    <div style="{_cadre}">
+      <div style="font-size:9pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Formulaire détachable de rétractation</div>
+      <div style="font-size:8pt;color:{CG7};line-height:1.9;">
+        À l&#8217;attention de : <strong>{ENT_NOM_MARQUE}</strong><br>
+        Je soussigné(e) : _______________________________________________<br>
+        Adresse : ____________________________________________________<br>
+        déclare renoncer à la commande n° <strong>{REF}</strong>,
+        signée le : ___/___/______<br>
+        Fait à : _______________________ le : ___/___/______
+      </div>
+      <div style="display:flex;gap:18px;margin-top:10px;">
+        <div style="flex:1;">
+          <div style="border-bottom:1px solid {CG2};min-height:26px;"></div>
+          <div style="font-size:7pt;color:{CG4};margin-top:3px;">Signature du client (de sa main)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
+    <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
+    <div style="font-size:7pt;color:#888;">Rétractation — Réf. {REF}</div>
+  </div>
+</div>
+"""
+
+
 def page_calepinage():
     """CAL182 — page « Calepinage » : la PLANCHE COTÉE, telle que le serveur la rend.
 
@@ -3427,6 +3530,11 @@ def build_html():
     # l'ordre du document va du commercial au technique, puis à l'engagement.
     calepinage_html = (page_calepinage()
                        if (INCLUDE_CALEPINAGE and CALEPINAGE_SVG) else "")
+    # CAD122 — l'annexe de rétractation vient APRÈS la page de signature :
+    # c'est la pièce que le client DÉTACHE, elle ne s'intercale pas au milieu
+    # du document. Rendue SEULEMENT si le bon se signe au domicile ; sinon le
+    # document est byte-identique à celui d'avant (art. 32 inchangé).
+    domicile_html = page_annexe_domicile() if SIGNE_AU_DOMICILE else ""
     return f"""<!DOCTYPE html>
 <html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis TAQINOR N\u00b0 {REF}</title>
@@ -3438,6 +3546,7 @@ def build_html():
 {annexe_html}
 {calepinage_html}
 {page3()}
+{domicile_html}
 </body></html>"""
 
 # ── ONE-PAGE MODE ─────────────────────────────────────────────────────────────
@@ -4186,6 +4295,7 @@ def apply_quote_data(data: dict) -> None:
     # CAL182 — page « Calepinage » (planche cotée). Même patron, mêmes défauts
     # inertes : sans les clés du builder, la page n'existe pas.
     global INCLUDE_CALEPINAGE, CALEPINAGE_SVG, CALEPINAGE_EMPREINTE
+    global SIGNE_AU_DOMICILE  # CAD122 — signature au domicile (loi 31-08)
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
@@ -4262,6 +4372,10 @@ def apply_quote_data(data: dict) -> None:
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
     SLD_SVG        = data.get("sld_svg") or ""
     INCLUDE_CALEPINAGE = bool(data.get("include_calepinage", False))
+    # CAD122 — marqueur « signé au domicile », posé CÔTÉ SERVEUR depuis le bon
+    # de commande (jamais une option du corps client : c'est un fait juridique,
+    # pas une préférence de rendu). Faux = document inchangé (art. 32).
+    SIGNE_AU_DOMICILE = bool(data.get("signe_au_domicile", False))
     # Le SVG de la planche est un fragment composé PAR LE SERVEUR (CAL171),
     # jamais un texte saisi : il est inséré tel quel, comme ``SLD_SVG``.
     # L'empreinte, elle, est un TEXTE — donc échappée à l'usage.

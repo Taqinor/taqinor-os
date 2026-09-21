@@ -85,7 +85,7 @@
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques
     equipes:inconnu
 - frontend/src/api/crmApi.js :: getKpiAdherence -> /api/django/crm/relance-etapes/kpi-adherence
-    a_lheure_pct:inconnu, annulees_moteur:nombre, conversion_par_stage:inconnu, leads_sans_touche:inconnu, par_etape:inconnu, periode_jours:inconnu, sautees_humaines:nombre, tendance_a_lheure:inconnu, touches_en_retard_ouvertes:nombre, touches_faites:nombre, vitesse_premier_contact:inconnu
+    a_lheure_pct:inconnu, absences_declarees:inconnu, annulees_moteur:nombre, conversion_par_stage:inconnu, leads_sans_touche:inconnu, par_etape:inconnu, periode_jours:inconnu, sautees_humaines:nombre, tendance_a_lheure:inconnu, touches_en_retard_ouvertes:nombre, touches_faites:nombre, vitesse_premier_contact:inconnu
 - frontend/src/api/crmApi.js :: getLeadJalonsDevis -> /api/django/crm/leads/<>/jalons-devis
     results:inconnu
 - frontend/src/api/crmApi.js :: getLeadPhotoToit -> /api/django/crm/leads/<>/photo-toit
@@ -1312,42 +1312,50 @@
 - frontend/src/api/outillageApi.js :: updateOutil -> /api/django/outillage/outils/<>  [OutillageSerializer]
     champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
     statut ∈ {disponible, en_intervention, en_reparation, perdu}
+- frontend/src/api/parametresApi.js :: createCadenceRelanceEtape -> /api/django/parametres/cadence-relance  [CadenceRelanceEtapeSerializer]
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
+    canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: createConditionPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: createRealisation -> /api/django/parametres/realisations  [RealisationSerializer]
-    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
+    champs: actif, date_creation, id, lien_suivi, lien_video, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: createTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: createUniteMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: deleteCadenceRelanceEtape -> /api/django/parametres/cadence-relance/<>  [CadenceRelanceEtapeSerializer]
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
+    canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: deleteConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: deleteRealisation -> /api/django/parametres/realisations/<>  [RealisationSerializer]
-    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
+    champs: actif, date_creation, id, lien_suivi, lien_video, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: deleteTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: deleteUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
     champs: actif, code, id, libelle
 - frontend/src/api/parametresApi.js :: getCadenceRelance -> /api/django/parametres/cadence-relance  [CadenceRelanceEtapeSerializer]
-    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, template_cle
-    cadence ∈ {apres_devis, contact, generique, reveil}
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: getConditionsPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: getRealisations -> /api/django/parametres/realisations  [RealisationSerializer]
-    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
+    champs: actif, date_creation, id, lien_suivi, lien_video, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: getTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: getUnitesMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
 - frontend/src/api/parametresApi.js :: updateCadenceRelanceEtape -> /api/django/parametres/cadence-relance/<>  [CadenceRelanceEtapeSerializer]
-    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, template_cle
-    cadence ∈ {apres_devis, contact, generique, reveil}
+    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: updateConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
 - frontend/src/api/parametresApi.js :: updateRealisation -> /api/django/parametres/realisations/<>  [RealisationSerializer]
-    champs: actif, date_creation, id, lien_suivi, mise_en_service, puissance_kwc, titre, url_page, ville
+    champs: actif, date_creation, id, lien_suivi, lien_video, mise_en_service, puissance_kwc, titre, url_page, ville
 - frontend/src/api/parametresApi.js :: updateTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
     champs: actif, code, defaut, id, libelle, taux
 - frontend/src/api/parametresApi.js :: updateUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]

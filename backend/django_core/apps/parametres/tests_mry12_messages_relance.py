@@ -15,7 +15,7 @@ import pathlib
 import re
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -29,6 +29,18 @@ from apps.parametres.models_messages import (
 User = get_user_model()
 
 MESSAGES_URL = '/api/django/parametres/messages/'
+
+#: L'ancre des trois tests « repli Darija » : une clé de `MessageTemplate`
+#: qui a un défaut FR et AUCUN défaut Darija validé.
+#:
+#: C'était `j1_pdf` jusqu'à CAD62 (21/09/2026). Depuis, la doctrine est
+#: « darija COMPLÈTE » — toute clé de `CLES_RELANCE` porte un défaut darija
+#: non vide, y compris les 7 nées après CAD62 (CAD125/CAD127/CAD128) — donc
+#: `j1_pdf` ne prouvait plus le repli : il prouvait son contraire.
+#: `rappel_rdv` (XFSM6, rappel de RDV J-1) est HORS cadence de relance : son
+#: texte n'a jamais eu de version Darija validée, et `test_lancre_…`
+#: ci-dessous casse le jour où ce ne serait plus vrai.
+CLE_SANS_DARIJA_VALIDEE = 'rappel_rdv'
 
 #: Conversion crochet → placeholder, dictée par l'en-tête du fichier source.
 #: Tout AUTRE crochet reste un crochet : montant, raison réelle, jour et heure
@@ -53,12 +65,25 @@ _CROCHETS = [
     # du lien de la réalisation — deux liens différents dans le même message.
     (r'\[lien preuve\]', '{lien_preuve}'),
     (r'\[puissance preuve\]', '{puissance_preuve}'),
-    (r'\[lien de la fiche TAQINOR\]', '{lien}'),
+    # CAD95 (21/09/2026) — vidéo courte du chantier, EN PLUS du lien preuve.
+    (r'\[lien vidéo\]', '{lien_video_preuve}'),
+    # CAD71 (21/09/2026) — AVANT `\[lien …\]` (règle générale) : le lien de
+    # la fiche Google n'est PAS le lien du devis, `{lien_google}` est un
+    # placeholder dédié alimenté par `CompanyProfile.lien_avis_google`.
+    (r'\[lien de la fiche TAQINOR\]', '{lien_google}'),
     (r'\[lien de votre proposition\]', '{lien}'),
+    # CAD127 (21/09/2026) — l'ORIGINE réelle du lead. `[mois du dossier]`
+    # passe AVANT `[mois]` (le mois de la PREUVE) : ce sont deux mois
+    # différents, et la conversion est une suite de `re.sub`.
+    (r'\[mois du dossier\]', '{mois_dossier}'),
+    (r'\[prescripteur\]', '{prescripteur}'),
     (r'\[mois\]', '{mois_preuve}'),
     (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),
     (r'\[المستشار\]', '{conseiller}'),
+    # CAD96 (21/09/2026) — le nom de marque, résolu côté serveur (jamais une
+    # graphie codée en dur). AVANT n'importe quelle règle plus générale.
+    (r'\[Marque\]', '{marque}'),
 ]
 
 _TOKEN_RE = re.compile(r'\{[^{}]*\}')
@@ -125,11 +150,47 @@ class TextesFidelesALaSourceTests(TestCase):
 
     def test_les_cles_sans_darija_ne_sont_pas_inventees(self):
         """Une traduction automatique partirait à de vrais clients : une clé
-        sans darija validée retombe sur le FR, elle n'est jamais fabriquée."""
+        sans darija validée retombe sur le FR, elle n'est jamais fabriquée.
+
+        CAD62 (21/09/2026) a comblé les 11 clés qui manquaient, et son
+        complément du même jour les 7 clés nées après lui
+        (CAD125/CAD127/CAD128) : `sans_darija` est désormais VIDE, la
+        couverture est entière. La garde reste utile pour toute clé FUTURE
+        qui n'aurait pas encore reçu sa traduction."""
         sans_darija = [c for c, v in self.source.items() if not v['darija']]
-        self.assertTrue(sans_darija)
         for cle in sans_darija:
             self.assertNotIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+
+
+class LAncreDuRepliDarijaTests(SimpleTestCase):
+    """`CLE_SANS_DARIJA_VALIDEE` doit RESTER une clé sans darija validée.
+
+    Sans cette garde, le jour où cette clé recevrait sa traduction, les trois
+    tests de repli passeraient au vert en ne prouvant plus rien — exactement
+    ce qui est arrivé à `j1_pdf` quand CAD62 a comblé le catalogue."""
+
+    def test_lancre_na_pas_de_defaut_darija(self):
+        self.assertNotIn(
+            CLE_SANS_DARIJA_VALIDEE, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+
+    def test_lancre_a_bien_un_defaut_fr(self):
+        self.assertTrue(
+            (MESSAGE_TEMPLATE_DEFAULTS.get(CLE_SANS_DARIJA_VALIDEE) or ''
+             ).strip())
+
+    def test_lancre_est_hors_cadence_de_relance(self):
+        """Une clé de `CLES_RELANCE` ne peut PAS servir d'ancre : la doctrine
+        CAD62 garantit qu'elles ont TOUTES leur darija."""
+        self.assertNotIn(CLE_SANS_DARIJA_VALIDEE, CLES_RELANCE)
+        for cle in CLES_RELANCE:
+            with self.subTest(cle=cle):
+                self.assertIn(cle, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+
+    def test_lancre_est_un_choix_du_modele(self):
+        """L'écran Paramètres → Messages la liste : sans cela, le test d'API
+        chercherait une ligne absente de la réponse."""
+        self.assertIn(CLE_SANS_DARIJA_VALIDEE,
+                      {c for c, _ in MessageTemplate.Cle.choices})
 
 
 class ClesEtDefautsTests(TestCase):
@@ -217,11 +278,21 @@ class GetCorpsTests(TestCase):
             MESSAGE_TEMPLATE_DEFAULTS['identite'])
 
     def test_darija_vide_retombe_sur_le_fr(self):
+        """Ancre : `rappel_rdv` (XFSM6), une clé HORS cadence de relance.
+
+        Elle était `j1_pdf` jusqu'à CAD62 ; depuis, la doctrine est « darija
+        COMPLÈTE » — toute clé de `CLES_RELANCE` porte un défaut darija
+        validé, qui prime légitimement sur le FR maison quand la société n'a
+        pas écrit SA darija. Le repli « darija vide → FR » ne s'observe donc
+        plus que sur une clé sans darija validée, et `rappel_rdv` en est
+        une (cf. `CLE_SANS_DARIJA_VALIDEE`, dérivée plus haut).
+        """
         MessageTemplate.objects.create(
-            company=self.company, cle='j1_pdf',
+            company=self.company, cle=CLE_SANS_DARIJA_VALIDEE,
             corps_fr='Texte maison', corps_darija='')
         self.assertEqual(
-            MessageTemplate.get_corps(self.company, 'j1_pdf', 'darija'),
+            MessageTemplate.get_corps(
+                self.company, CLE_SANS_DARIJA_VALIDEE, 'darija'),
             'Texte maison')
 
     def test_darija_renseignee_prime(self):
@@ -248,12 +319,14 @@ class GetCorpsTests(TestCase):
             MESSAGE_TEMPLATE_DEFAULTS_DARIJA['identite'])
 
     def test_darija_sans_defaut_valide_et_sans_ligne_retombe_sur_le_fr(self):
-        """`j1_pdf` n'a pas de défaut Darija validé (chaîne "Après devis") :
-        sans ligne, le repli est le défaut FR — jamais une clé inventée."""
-        self.assertNotIn('j1_pdf', MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
+        """`rappel_rdv` n'a pas de défaut Darija validé : sans ligne, le
+        repli est le défaut FR — jamais une traduction inventée."""
+        self.assertNotIn(
+            CLE_SANS_DARIJA_VALIDEE, MESSAGE_TEMPLATE_DEFAULTS_DARIJA)
         self.assertEqual(
-            MessageTemplate.get_corps(self.company, 'j1_pdf', 'darija'),
-            MESSAGE_TEMPLATE_DEFAULTS['j1_pdf'])
+            MessageTemplate.get_corps(
+                self.company, CLE_SANS_DARIJA_VALIDEE, 'darija'),
+            MESSAGE_TEMPLATE_DEFAULTS[CLE_SANS_DARIJA_VALIDEE])
 
 
 class MessagesApiTests(TestCase):
@@ -284,8 +357,11 @@ class MessagesApiTests(TestCase):
         lignes = {r['cle']: r for r in resp.data}
         self.assertEqual(lignes['identite']['default_darija'],
                          MESSAGE_TEMPLATE_DEFAULTS_DARIJA['identite'])
-        # Une clé sans défaut Darija validé (`j1_pdf`) n'en invente pas un.
-        self.assertEqual(lignes['j1_pdf']['default_darija'], '')
+        # Une clé sans défaut Darija validé n'en invente pas un. Depuis
+        # CAD62 (darija COMPLÈTE), plus aucune clé de `CLES_RELANCE` n'est
+        # dans ce cas : l'ancre est `rappel_rdv` (XFSM6), hors cadence.
+        self.assertEqual(
+            lignes[CLE_SANS_DARIJA_VALIDEE]['default_darija'], '')
 
     def test_une_cle_de_relance_est_enregistrable_avec_ses_placeholders(self):
         """Sans entrée dans `_MESSAGE_PLACEHOLDERS`, la sauvegarde aurait été

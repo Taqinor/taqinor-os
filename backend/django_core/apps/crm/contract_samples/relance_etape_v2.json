@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/relance-etapes/?scope=all",
-  "pourquoi": "MRY25 (PACT10) — la file « Relances du jour » de Meryem a deux moitiés qui ne partagent AUCUN fichier : `RelanceEtapeViewSet`/`RelanceEtapeSerializer` côté serveur, `RelancesDuJourWidget.jsx` + la frise de la fiche lead côté écran. Les 12 premiers champs existent déjà (`serializers.py` `RelanceEtapeSerializer`) ; MRY5 en AJOUTE six (`cadence`, `due_at`, `template_cle`, `devis`, `devis_reference`, et l'ordre de tri qui s'appuie sur `due_at`) parce que la cadence passe à la granularité MINUTE (touche 2 = J0 + 3 min) et qu'une touche peut désormais porter un devis. `due_date` reste la date locale Casablanca de `due_at` et continue de porter les filtres `scope=today|overdue|all` (grain JOUR) : `due_at` ne sert qu'au TRI et à l'affichage « à HH:MM ». `lead_telephone`/`lead_whatsapp` sont MASQUÉS (chaîne vide) quand l'utilisateur n'a pas `client_pii_voir` — même règle que `LeadSerializer.PII_FIELDS`. `?lead=<id>` renvoie TOUTES les étapes du lead (tous statuts, tri cadence puis ordre) en ignorant `scope` : c'est la frise de la fiche lead.",
+  "pourquoi": "MRY25 (PACT10) — la file « Relances du jour » de Meryem a deux moitiés qui ne partagent AUCUN fichier : `RelanceEtapeViewSet`/`RelanceEtapeSerializer` côté serveur, `RelancesDuJourWidget.jsx` + la frise de la fiche lead côté écran. Les 12 premiers champs existent déjà (`serializers.py` `RelanceEtapeSerializer`) ; MRY5 en AJOUTE six (`cadence`, `due_at`, `template_cle`, `devis`, `devis_reference`, et l'ordre de tri qui s'appuie sur `due_at`) parce que la cadence passe à la granularité MINUTE (touche 2 = J0 + 3 min) et qu'une touche peut désormais porter un devis. `due_date` reste la date locale Casablanca de `due_at` et continue de porter les filtres `scope=today|overdue|all` (grain JOUR) : `due_at` ne sert qu'au TRI et à l'affichage « à HH:MM ». `lead_telephone`/`lead_whatsapp` sont MASQUÉS (chaîne vide) quand l'utilisateur n'a pas `client_pii_voir` — même règle que `LeadSerializer.PII_FIELDS`. `?lead=<id>` renvoie TOUTES les étapes du lead (tous statuts, tri cadence puis ordre) en ignorant `scope` : c'est la frise de la fiche lead. CAD32 (21/09/2026) : `canal_adapte` — phrase FR, vide par défaut. Sur un lead « WhatsApp uniquement » (`Lead.contact_preference`), les barreaux d'APPEL du protocole naissent en canal WhatsApp : même nombre de touches, mêmes libellés, mêmes délais, mêmes jours, seul le canal change. Sans cette phrase, l'écran afficherait « Appel 3 » sur une touche WhatsApp sans dire pourquoi — un comportement caché.",
   "exemple": {
     "count": 2,
     "results": [
@@ -25,8 +25,12 @@
         "note": "",
         "overdue": false,
         "devis": null,
-        "devis_reference": "", "statut_libelle": "À faire",
-        "message_ouvert_le": null
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": ""
       },
       {
         "id": 418,
@@ -50,8 +54,11 @@
         "overdue": true,
         "devis": 903,
         "devis_reference": "DEV-2609-0042",
+        "traite_le": null,
+        "traite_par_nom": "",
         "statut_libelle": "À faire",
-        "message_ouvert_le": "2026-09-05T13:04:00Z"
+        "message_ouvert_le": "2026-09-05T13:04:00Z",
+        "canal_adapte": ""
       }
     ]
   },
@@ -65,6 +72,9 @@
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT de cadence, jamais `crm.Canal` (qui décrit la SOURCE du lead).",
     "statut": "a_faire | fait | sautee (statuts existants de `RelanceEtape`).",
     "pii": "lead_telephone / lead_whatsapp = chaîne vide (jamais null) quand la permission `client_pii_voir` manque.",
-    "message_ouvert_le": "RLC3 — horodatage de l'activité « WhatsApp ouvert » de CETTE touche (le clic humain, jamais un envoi), sinon null. Servi UNIQUEMENT pour une touche de canal whatsapp/e-mail encore `a_faire` (le seul cas où le panneau « Fait » s'ouvre) : null partout ailleurs, sans requête. Le panneau « Fait » d'une touche message le rappelle et, à défaut, demande une confirmation explicite — jamais un blocage (Meryem peut avoir écrit depuis son téléphone)."
+    "message_ouvert_le": "RLC3 — horodatage de l'activité « WhatsApp ouvert » de CETTE touche (le clic humain, jamais un envoi), sinon null. Servi UNIQUEMENT pour une touche de canal whatsapp/e-mail encore `a_faire` (le seul cas où le panneau « Fait » s'ouvre) : null partout ailleurs, sans requête. Le panneau « Fait » d'une touche message le rappelle et, à défaut, demande une confirmation explicite — jamais un blocage (Meryem peut avoir écrit depuis son téléphone).",
+    "canal_adapte": "Chaîne FR expliquant pourquoi le canal de la touche n'est pas celui que son libellé annonce ; '' — jamais null — quand rien n'est adapté. Aujourd'hui une seule cause : la préférence « WhatsApp uniquement » du client (CAD32/CAD33).",
+    "traite_le": "MRY30 — QUAND la touche a été traitée (`RelanceEtape.traite_le`), `null` tant qu'elle est `a_faire`. ADDITIF sur la file du jour : le même sérialiseur sert la file et l'écran « Suivi des relances » (contrat `relance_etapes_suivi`) plutôt que deux sérialiseurs qui divergeraient — les deux exemples ci-dessus sont `a_faire`, donc `null`/''.",
+    "traite_par_nom": "MRY30 — QUI l'a traitée (nom d'utilisateur), '' — jamais null — pour une touche à faire ou marquée par le système."
   }
 }

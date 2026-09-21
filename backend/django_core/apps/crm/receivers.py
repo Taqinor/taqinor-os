@@ -16,7 +16,7 @@ from django.dispatch import receiver
 
 from core.events import (
     ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
-    devis_accepted, devis_refused, devis_sent, layout_finalise,
+    devis_accepted, devis_refused, devis_sent, facture_emise, layout_finalise,
     lead_created, lead_stage_changed, ticket_resolu, visite_planifiee,
     visite_terminee, visite_validee,
 )
@@ -31,12 +31,14 @@ from .services import (
     journaliser_visite,
     arreter_cadence,
     arreter_cadence_du_lead_id,
+    CADENCES_ARRETEES_PAR_ISSUE,
     FILET_REFUS_LIBELLE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
+    est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
@@ -164,6 +166,17 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                 kind=LeadActivity.Kind.NOTE,
                 body=('Cadence après devis déjà en cours pour '
                       f'{reference} — aucune seconde série lancée.'))
+            return
+        # CAD56 — le MÊME devis repart alors que son suivi est déjà en cours
+        # (devis corrigé et renvoyé) : le compteur continuerait depuis le
+        # PREMIER envoi et le client recevrait « je classe ? » deux jours
+        # après sa nouvelle proposition. On PROPOSE de repartir du jour 1 —
+        # on ne redate rien tout seul (choix par défaut : ne rien changer).
+        if lead.relance_etapes.filter(
+                cadence='apres_devis', statut='a_faire',
+                devis_id=devis.pk).exists():
+            from .services import proposer_redatage_apres_devis
+            proposer_redatage_apres_devis(lead, user, devis)
             return
         etapes = initialiser_plan_relance(
             lead, user, cadence='apres_devis',
@@ -509,6 +522,14 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     # appel sans réponse ou un WhatsApp ENVOYÉ ne déplacent plus l'étape
     # (l'ancien « auto — premier contact » sur toute activité est mort) ;
     # le KPI de premier contact, lui, reste horodaté (MRY19).
+    # CAD131 (audit L3 du 21/09/2026) — SAUTER une touche n'est PAS une
+    # tentative : rien n'est sorti vers le client, et la note que le saut
+    # écrit posait pourtant `first_contacted_at`. Sauter la toute première
+    # touche satisfaisait donc la promesse « rappelé en moins de N minutes »
+    # ET éteignait l'escalade, qui n'agit que sur les leads SANS horodatage.
+    # La reconnaissance vit dans `services` — là où la note est ÉCRITE.
+    if est_note_de_touche_sautee(instance):
+        return
     marquer_premier_contact(lead)
     if (instance.outcome or '').strip() in ('joint', 'interesse'):
         avancer_stage_new_vers_contacted(lead, instance.user)
@@ -545,13 +566,14 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     # M1 (revue Fable 07/09/2026) — la cadence ``reveil`` est arrêtée comme
     # les autres : un client JOINT au réveil J30 ne doit pas recevoir le J60,
     # et un refus au réveil termine les réveils (le dossier reste au Froid).
-    if issue in ('joint', 'interesse'):
-        motif, cadences = 'joint', ['contact', 'reveil']
-    elif issue == 'refuse':
-        motif, cadences = ('refus au téléphone',
-                           ['contact', 'apres_devis', 'reveil'])
-    else:
+    # CAD1 — la liste des cadences arrêtées est lue dans `services`
+    # (``CADENCES_ARRETEES_PAR_ISSUE``), d'où la matérialisation réactive la
+    # lit aussi : une seule table, donc plus de divergence possible entre
+    # « ce que l'arrêt fait » et « ce que la suite croit qu'il a fait ».
+    cadences = list(CADENCES_ARRETEES_PAR_ISSUE.get(issue, ()))
+    if not cadences:
         return
+    motif = 'joint' if issue in ('joint', 'interesse') else 'refus au téléphone'
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)
@@ -907,3 +929,52 @@ def _notifier_responsable_retour_visite(lead, acteur):
             'VISITE-CADENCE : notification de retour de visite non envoyée '
             '(lead #%s)', getattr(lead, 'pk', '?'), exc_info=True)
         return None
+
+
+# ── CAD-E ── CAD61 — une facture ÉMISE ne déclenche AUCUNE relance ─────────
+
+#: Le texte de la trace, tel que la commerciale le lit au chatter.
+FACTURE_EMISE_TRACE = (
+    'Facture {reference} émise — hors protocole de suivi : aucune touche de '
+    'relance n’est ouverte (la facture part après la signature).')
+
+
+@receiver(facture_emise, dispatch_uid="crm_cad61_trace_facture_emise")
+def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
+    """CAD61 — la facture envoyée se contente d'UNE LIGNE au chatter.
+
+    [TRANCHÉ 21/09/2026] Une facture partie hors cadence ne produisait ni
+    événement, ni réponse, ni touche : le dossier restait muet. Mais elle ne
+    doit rien DÉCLENCHER non plus — elle part APRÈS la signature, donc hors du
+    protocole de suivi. La décision fondateur est exactement celle-ci : une
+    trace, rien de plus.
+
+    L'autre moitié de la décision — « le client envoie quelque chose » — se
+    traite par le geste « pièce reçue » de CAD101 (il attache le document,
+    clôt la touche ouverte et pose « préparer le devis »). Il n'est PAS
+    dupliqué ici : ce récepteur n'ouvre, ne clôt et ne modifie aucune touche.
+
+    Garde-fou : la note est SYSTÈME (``user=None``) — une note portée par un
+    utilisateur compterait comme un contact manuel (QJ7) et ferait bouger le
+    funnel sur un simple envoi de facture. Best-effort : ne fait jamais
+    retomber une émission déjà actée.
+    """
+    client_id = getattr(instance, 'client_id', None)
+    if not client_id or company is None:
+        return
+    try:
+        lead = (Lead.objects
+                .filter(company=company, client_id=client_id,
+                        is_archived=False)
+                .order_by('-date_creation', '-id').first())
+        if lead is None:
+            return
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=FACTURE_EMISE_TRACE.format(
+                reference=getattr(instance, 'reference', '') or '?'))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD61: trace de facture non écrite (facture #%s)',
+            getattr(instance, 'pk', '?'), exc_info=True)

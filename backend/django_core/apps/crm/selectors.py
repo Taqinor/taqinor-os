@@ -533,6 +533,15 @@ def get_latest_lead_for_client(company, client_id):
             .first())
 
 
+def _srm_deduite(ville):
+    """CAD167 — la SRM régionale de cette ville, ou ``None``. Ne lève jamais."""
+    try:
+        from .srm_regions import srm_depuis_ville
+        return srm_depuis_ville(ville)
+    except Exception:  # noqa: BLE001 — une déduction ratée n'arrête rien
+        return None
+
+
 def lead_bills_for_devis(devis):
     """Factures électriques RÉELLES (MAD/mois) du lead d'un devis, ou None.
 
@@ -561,9 +570,16 @@ def lead_bills_for_devis(devis):
         'facture_ete': (float(lead.facture_ete)
                         if lead.facture_ete not in (None, '') else None),
         'ete_differente': bool(lead.ete_differente),
-        # QX7d — distributeur (onee/lydec/redal) pour convertir MAD→kWh par le
-        # barème réel progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un prix plat.
-        'distributeur': (lead.distributeur or None),
+        # QX7d — distributeur pour convertir MAD→kWh par le barème réel
+        # progressif-puis-sélectif (mêmes tranches que le chemin ROI), pas un
+        # prix plat.
+        # CAD167 — quand la fiche ne porte AUCUN distributeur, la SRM se
+        # DÉDUIT de la ville (décision fondateur du 21/09/2026 : on ne la
+        # demande plus). Ville inconnue de la table ⇒ toujours None : on
+        # n'invente pas un rattachement régional. La valeur ne change aucun
+        # prix — le barème est national.
+        'distributeur': (lead.distributeur
+                         or _srm_deduite(getattr(lead, 'ville', None))),
     }
 
 
@@ -1178,6 +1194,24 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
     + [(champ, _RAISON_STRUCTURE) for champ in (
         'structure_pref', 'structure_produit',
     )]
+    # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé : deux des huit
+    # champs portent un marqueur de provenance (`equip_`, `pompe_`) et
+    # doivent donc être déclarés ICI, avec leur raison.
+    + [
+        ('equip_ve_statut',
+         "précision du profil d'équipements posée à l'appel (CAD149) : elle "
+         "dit si le véhicule électrique est DÉJÀ là ou seulement prévu, et "
+         "le devis ne la RECOPIE pas dans `etude_params` — elle est relue "
+         "sur le lead au moment où l'étude compose la couche véhicule et "
+         "où le rendu décide de l'étiquette « avec votre future voiture ». "
+         "Une valeur sans copie ne peut pas diverger de sa copie."),
+        ('pompe_alim_actuelle',
+         "questionnaire de pompage agricole (CAD149) : l'alimentation de la "
+         "pompe ACTUELLE sert l'argumentaire et l'économie de carburant, "
+         "pas le bloc énergie/toiture RÉSIDENTIEL que le devis recopie dans "
+         "`etude_params`. À déclarer le jour où l'écran agricole re-saisit "
+         "cette valeur depuis le lead."),
+    ]
     + [
         ('occupation_jour', _RAISON_LU_EN_DIRECT),
         ('roof_point', _RAISON_LU_EN_DIRECT),
@@ -1482,8 +1516,10 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
 
     * les minutes sont OUVRÉES (``horaires.minutes_ouvrees_entre``) — un lead
       arrivé vendredi 21 h et rappelé lundi 08:32 vaut 2 minutes, pas 60
-      heures. Un KPI en minutes calendaires serait faux à charge et
-      ininterprétable ;
+      heures. Un KPI d'objectif bâti sur les seules minutes calendaires
+      serait faux à charge et ininterprétable — CAD88 les AJOUTE à côté
+      (``mediane_minutes_calendaires``) sans toucher à celle-ci : l'ouvrée
+      dit si la promesse est tenue, la calendaire ce que le client a vécu ;
     * seuls les leads ``OS_NATIVE`` comptent : les 930 leads du miroir Odoo ne
       sont pas des demandes que Meryem doit rappeler ;
     * ``null`` PARTOUT dès que ``nb_leads == 0`` — jamais un 0 %, jamais une
@@ -1508,23 +1544,38 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
              .filter(company=company, is_archived=False,
                      source=Lead.Source.OS_NATIVE,
                      date_creation__gte=depuis)
-             .only('id', 'date_creation', 'first_contacted_at'))
+             # CAD119 — `date_creation_origine` est chargée pour que
+             # `Lead.date_origine` réponde sans une requête par lead : un KPI
+             # de délai se compte depuis la naissance du dossier, jamais
+             # depuis l'heure d'une synchronisation.
+             .only('id', 'date_creation', 'date_creation_origine',
+                   'first_contacted_at'))
 
     minutes = []
+    # CAD88 — la MÊME attente, comptée en calendrier : ce que le client a
+    # vécu. L'objectif reste l'ouvré (colonne inchangée) ; cette seconde
+    # colonne existe pour qu'un lead du vendredi soir traité lundi ne
+    # s'affiche plus « conforme » et rien d'autre.
+    minutes_calendaires = []
     nb_leads = 0
     nb_nuit = 0
     nb_nuit_rappeles = 0
     for lead in leads:
         nb_leads += 1
-        de_nuit = not horaires.est_dans_fenetre(lead.date_creation, company)
+        # CAD119 — `date_origine` = la date du système d'origine si on la
+        # connaît, sinon celle de l'insertion ici.
+        naissance = lead.date_origine
+        de_nuit = not horaires.est_dans_fenetre(naissance, company)
         if de_nuit:
             nb_nuit += 1
         if lead.first_contacted_at is None:
             continue
         minutes.append(horaires.minutes_ouvrees_entre(
-            lead.date_creation, lead.first_contacted_at, company))
+            naissance, lead.first_contacted_at, company))
+        minutes_calendaires.append(horaires.minutes_calendaires_entre(
+            naissance, lead.first_contacted_at))
         if de_nuit and lead.first_contacted_at <= _limite_rappel_du_matin(
-                lead.date_creation, company):
+                naissance, company):
             nb_nuit_rappeles += 1
 
     if not nb_leads:
@@ -1534,6 +1585,8 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
             'nb_sous_objectif': None,
             'pct_sous_objectif': None,
             'mediane_minutes_ouvrees': None,
+            # CAD88 — la colonne « vécue par le client », à côté de l'ouvrée.
+            'mediane_minutes_calendaires': None,
             'nb_nuit_rappeles_avant_930': None,
             'nb_nuit': 0,
         }
@@ -1544,6 +1597,7 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
         'nb_sous_objectif': sous,
         'pct_sous_objectif': round(100.0 * sous / nb_leads, 1),
         'mediane_minutes_ouvrees': _mediane(minutes),
+        'mediane_minutes_calendaires': _mediane(minutes_calendaires),
         'nb_nuit_rappeles_avant_930': nb_nuit_rappeles,
         'nb_nuit': nb_nuit,
     }
@@ -1553,25 +1607,36 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
 JOURS_OUVRES_JOINDRE = 5
 
 
-def _minutes_ouvrees_de_5_jours(creation, company):
+def _minutes_ouvrees_de_5_jours(creation, company, *, fins=None):
     """Le seuil « 5 jours ouvrés », EXPRIMÉ en minutes ouvrées.
 
     Comparer des minutes ouvrées à ``5 * 24 * 60`` mélangeait deux unités :
     7 200 minutes de calendrier valent ~10 jours ouvrés de 11 h 30, soit le
     DOUBLE de la promesse — le KPI se donnait deux fois plus de temps qu'il
     n'en annonçait. On mesure donc la même chose des deux côtés : les minutes
-    ouvrées séparant la création de la FERMETURE du 5ᵉ jour ouvré suivant."""
+    ouvrées séparant la création de la FERMETURE du 5ᵉ jour ouvré suivant.
+
+    ``fins`` (facultatif) est un dictionnaire ``{date locale: fermeture du
+    5ᵉ jour ouvré}`` que l'appelant réutilise d'un lead à l'autre :
+    ``ajouter_jours_ouvres`` recharge les jours ouvrés et trois années de
+    fériés À CHAQUE APPEL (4 requêtes), et ce calcul ne dépend QUE de la date
+    de création — mémoriser par date rend le coût indépendant du nombre de
+    leads. Sans ``fins``, comportement identique à avant."""
     from apps.notifications.calendar_utils import ajouter_jours_ouvres
 
     from . import horaires
 
     local = creation.astimezone(horaires.CASABLANCA)
-    jour_fin = ajouter_jours_ouvres(
-        local.date(), JOURS_OUVRES_JOINDRE, company)
-    fenetre = horaires.fenetre_du_jour(jour_fin, company)
-    fermeture = fenetre[1] if fenetre else datetime.time(20, 0)
-    fin = datetime.datetime.combine(
-        jour_fin, fermeture, tzinfo=horaires.CASABLANCA)
+    fin = fins.get(local.date()) if fins is not None else None
+    if fin is None:
+        jour_fin = ajouter_jours_ouvres(
+            local.date(), JOURS_OUVRES_JOINDRE, company)
+        fenetre = horaires.fenetre_du_jour(jour_fin, company)
+        fermeture = fenetre[1] if fenetre else datetime.time(20, 0)
+        fin = datetime.datetime.combine(
+            jour_fin, fermeture, tzinfo=horaires.CASABLANCA)
+        if fins is not None:
+            fins[local.date()] = fin
     return horaires.minutes_ouvrees_entre(creation, fin, company)
 
 
@@ -1588,14 +1653,25 @@ def kpi_cadences(company, *, jours=30):
     * les tentatives comptées sont HUMAINES (MRY20) — une moyenne gonflée par
       les lignes système ne dirait rien de l'effort réel.
     """
-    from django.db.models import Count, Q
+    from django.db.models import Count, Min, Q
     from django.utils import timezone
 
     from . import horaires, stages
     from .models import Lead, LeadActivity, RelanceEtape
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))
-    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    # CAD87 — le miroir Odoo et les archivés sont ÉCARTÉS, comme les deux KPI
+    # voisins le font déjà (`kpi_premier_contact`, `kpi_adherence`). Sans ce
+    # filtre, un import de rattrapage faisait plonger « joints sous 5 jours »
+    # trente jours durant sans qu'aucun comportement n'ait changé : ces leads
+    # ne sont pas une file que la commerciale doit rappeler (`services.py`
+    # les exclut d'ailleurs de toute cadence automatique). L'exclusion porte
+    # sur la SOURCE Odoo seule, et non sur « source = créé dans TAQINOR » :
+    # les leads du site et de Meta, eux, SONT dans la file du jour.
+    leads = (Lead.objects
+             .filter(company=company, is_archived=False,
+                     date_creation__gte=depuis)
+             .exclude(source=Lead.Source.ODOO_IMPORT_TEST))
     nb_leads = leads.count()
 
     # « Joint » = une issue d'appel joint/intéressé dans les 5 jours OUVRÉS
@@ -1605,18 +1681,43 @@ def kpi_cadences(company, *, jours=30):
     # minutes de calendrier) revenait à accorder ~10 jours ouvrés de 11 h 30 —
     # deux fois la promesse. Le seuil est donc lui-même compté en minutes
     # ouvrées, jusqu'à la fermeture du 5ᵉ jour ouvré.
+    # CAD87 — une seule requête GROUPÉE pour les premières issues, là où le
+    # code interrogeait la base UNE FOIS PAR LEAD : sur 900 leads le panneau
+    # du Cockpit tirait 900 requêtes. La fenêtre ouvrée, elle, reste calculée
+    # en Python (elle dépend des horaires de la société).
+    premieres_issues = dict(
+        LeadActivity.objects
+        .filter(company=company, lead_id__in=leads.values('id'),
+                outcome__in=('joint', 'interesse'), user__isnull=False)
+        .values('lead_id').annotate(premiere=Min('created_at'))
+        .values_list('lead_id', 'premiere'))
     joints = 0
-    for lead in leads.only('id', 'date_creation'):
-        premiere = (LeadActivity.objects
-                    .filter(lead=lead, outcome__in=('joint', 'interesse'),
-                            user__isnull=False)
-                    .order_by('created_at').first())
-        if premiere is None:
-            continue
-        minutes = horaires.minutes_ouvrees_entre(
-            lead.date_creation, premiere.created_at, company)
-        if minutes <= _minutes_ouvrees_de_5_jours(lead.date_creation, company):
-            joints += 1
+    # CAD87 (correctif de budget) — la fenêtre ouvrée se calcule en Python,
+    # mais chacun de ses appels RELISAIT la base : profil société, jours
+    # ouvrés et fériés étaient rechargés pour chaque lead et chaque jour
+    # parcouru (~34 requêtes par lead joint — le compte du panneau grandissait
+    # encore avec le nombre de leads, ce que la requête groupée ci-dessus
+    # était censée arrêter). `cache_local()` est exactement l'outil prévu par
+    # `horaires` pour une opération longue (profil/jours ouvrés/fériés
+    # mémorisés le temps du bloc, oubliés ensuite) ; `fins` mémorise le 5ᵉ
+    # jour ouvré par DATE de création, seul paramètre dont il dépend.
+    fins_5e_jour = {}
+    with horaires.cache_local():
+        # CAD119 — `date_creation_origine` chargée avec le reste : le délai se
+        # compte depuis la naissance du dossier (`Lead.date_origine`), jamais
+        # depuis l'heure d'une synchronisation.
+        for lead in leads.only('id', 'date_creation',
+                               'date_creation_origine'):
+            premiere = premieres_issues.get(lead.id)
+            if premiere is None:
+                continue
+            naissance = lead.date_origine
+            minutes = horaires.minutes_ouvrees_entre(
+                naissance, premiere, company)
+            seuil = _minutes_ouvrees_de_5_jours(
+                naissance, company, fins=fins_5e_jour)
+            if minutes <= seuil:
+                joints += 1
 
     touches = RelanceEtape.objects.filter(company=company,
                                           traite_le__gte=depuis)
@@ -1742,13 +1843,46 @@ def _mediane_decimale(valeurs):
 
 
 def _a_lheure(etape):
-    """Une touche FAITE le jour où elle était due (heure locale Casablanca)."""
-    from . import horaires
+    """Une touche FAITE le jour où elle était due, ou AVANT (heure locale
+    Casablanca).
+
+    CAD22 — deux situations ne sont PAS des manquements d'adhérence et ne
+    doivent pas en être comptées comme tels :
+
+      * TRAITÉE EN AVANCE — une touche due jeudi et faite mercredi a bien été
+        faite ; l'égalité stricte la comptait en manquement, ce qui punissait
+        exactement le geste qu'on attend (prendre de l'avance) ;
+      * NÉE EN RETARD — une touche matérialisée APRÈS son échéance
+        (`cadence_temps.nee_en_retard`) n'a jamais donné la chance de la faire
+        à l'heure. CAD22 empêche désormais une telle naissance, mais les
+        lignes déjà en base restent, et les accuser serait faux.
+    """
+    from . import cadence_temps, horaires
 
     if etape.statut != 'fait' or etape.traite_le is None:
         return False
-    return (etape.traite_le.astimezone(horaires.CASABLANCA).date()
-            == etape.due_date)
+    if (etape.traite_le.astimezone(horaires.CASABLANCA).date()
+            <= etape.due_date):
+        return True
+    return cadence_temps.nee_en_retard(etape)
+
+
+def _a_lheure_ou_excusee(etape, absences, proprietaire):
+    """CAD22 + CAD35 — à l'heure, ou excusée sans rien inventer.
+
+    Excusée = née en retard (CAD22), ou échue un jour couvert par une
+    ABSENCE déclarée de la personne responsable du lead (CAD35) : personne
+    n'était là, l'accuser reviendrait à lui reprocher son congé.
+
+    Fonction de MODULE, jamais une fermeture définie dans ``kpi_adherence`` :
+    ``scripts/check_api_shapes.py`` lit TOUS les ``return`` d'une vue par
+    ``ast.walk`` — un ``return`` non-dictionnaire imbriqué fait sortir
+    l'endpoint entier du contrat versionné.
+    """
+    if _a_lheure(etape):
+        return True
+    return absences.couvre(
+        proprietaire.get(etape.lead_id), etape.due_date)
 
 
 def kpi_adherence(company, user, jours=30):
@@ -1784,13 +1918,38 @@ def kpi_adherence(company, user, jours=30):
         RelanceEtape.objects
         .filter(company=company, traite_le__gte=depuis,
                 lead_id__in=leads_visibles.values('id'))
-        .only('statut', 'due_date', 'traite_le', 'ordre', 'canal', 'libelle'))
+        # CAD22 — `due_at`, `created_at` et `cadence_depart` entrent dans le
+        # `.only()` : `_a_lheure` les lit pour la garde « née en retard », et
+        # un champ différé les relirait ligne par ligne.
+        .only('statut', 'due_date', 'traite_le', 'ordre', 'canal', 'libelle',
+              'lead', 'due_at', 'created_at', 'cadence_depart'))
+
+    # ── CAD35 — les ABSENCES déclarées. Une touche échue pendant un congé
+    # n'impute AUCUN retard d'adhérence : personne n'était là pour la faire,
+    # et l'accuser reviendrait à reprocher ses vacances à quelqu'un. Aucune
+    # touche n'est supprimée, avancée ni décalée — c'est la MESURE qui se
+    # tait. Chargées UNE fois, sur la fenêtre que les chiffres couvrent
+    # réellement (jamais une durée inventée).
+    from . import cadence_absence
+
+    ouvertes_en_retard = list(
+        RelanceEtape.objects.filter(
+            company=company, statut='a_faire', due_date__lt=today,
+            lead__is_archived=False,
+            lead_id__in=leads_visibles.values('id'),
+        ).values_list('lead_id', 'due_date'))
+    borne_absences = min(
+        [depuis.astimezone(horaires.CASABLANCA).date()]
+        + [jour for _lead_id, jour in ouvertes_en_retard])
+    absences = cadence_absence.couverture(company, borne_absences, today)
+    proprietaire = dict(leads_visibles.values_list('id', 'owner_id'))
 
     faites = [e for e in touches if e.statut == 'fait']
     sautees = [e for e in touches if e.statut == 'sautee']
     annulees = [e for e in touches if e.statut == 'annulee']
     closes_humain = faites + sautees
-    a_lheure = [e for e in faites if _a_lheure(e)]
+    a_lheure = [e for e in faites
+                if _a_lheure_ou_excusee(e, absences, proprietaire)]
 
     # ── Drop-off par touche : LE signal de coaching. On groupe sur (ordre,
     # canal, libellé) — le libellé porte le sens pour un humain, l'ordre porte
@@ -1806,7 +1965,7 @@ def kpi_adherence(company, user, jours=30):
         if etape.statut == 'fait':
             ligne['faites'] += 1
             ligne['_closes'] += 1
-            if _a_lheure(etape):
+            if _a_lheure_ou_excusee(etape, absences, proprietaire):
                 ligne['_a_lheure'] += 1
         elif etape.statut == 'sautee':
             ligne['sautees_humaines'] += 1
@@ -1831,7 +1990,7 @@ def kpi_adherence(company, user, jours=30):
         cle = _lundi(etape.traite_le.astimezone(horaires.CASABLANCA).date())
         bloc = semaines.setdefault(cle, [0, 0])
         bloc[1] += 1
-        if _a_lheure(etape):
+        if _a_lheure_ou_excusee(etape, absences, proprietaire):
             bloc[0] += 1
     tendance_a_lheure = [
         {'semaine': cle.isoformat(), 'a_lheure_pct': _pct(bloc[0], bloc[1])}
@@ -1906,16 +2065,21 @@ def kpi_adherence(company, user, jours=30):
         'periode_jours': jours,
         'a_lheure_pct': _pct(len(a_lheure), len(closes_humain)),
         'touches_faites': len(faites),
-        'touches_en_retard_ouvertes': RelanceEtape.objects.filter(
-            company=company, statut='a_faire', due_date__lt=today,
-            lead__is_archived=False,
-            lead_id__in=leads_visibles.values('id')).count(),
+        # CAD35 — les touches échues PENDANT une absence déclarée sortent du
+        # compte : elles restent à faire, elles ne sont pas un manquement.
+        'touches_en_retard_ouvertes': sum(
+            1 for lead_id, jour in ouvertes_en_retard
+            if not absences.couvre(proprietaire.get(lead_id), jour)),
         'sautees_humaines': len(sautees),
         'annulees_moteur': len(annulees),
         'vitesse_premier_contact': vitesse,
         'tendance_a_lheure': tendance_a_lheure,
         'par_etape': lignes_etape,
         'leads_sans_touche': sans_touche,
+        # CAD35 — ce que le cockpit MONTRE de l'absence : la période, son
+        # motif, et qui reprend les dossiers. Aucun prénom en dur : des
+        # identifiants que l'écran résout en noms.
+        'absences_declarees': absences.resume(),
         'conversion_par_stage': _conversion_par_stage(
             company, leads_visibles, depuis),
     }
@@ -1994,9 +2158,9 @@ def mes_stats_relance(company, user):
     mes_touches = RelanceEtape.objects.filter(
         company=company, lead_id__in=mes_leads.values('id'))
 
+    from . import cadence_absence, horaires
+
     a_faire = mes_touches.filter(statut='a_faire', due_date__lte=today).count()
-    en_retard = mes_touches.filter(
-        statut='a_faire', due_date__lt=today).count()
 
     # Mon à-l'heure sur 7 jours — même définition que l'adhérence globale
     # (grain JOUR, annulations moteur exclues du dénominateur).
@@ -2004,9 +2168,30 @@ def mes_stats_relance(company, user):
     recentes = list(mes_touches.filter(
         traite_le__gte=depuis_7j,
         statut__in=_STATUTS_CLOS_HUMAIN,
-    ).only('statut', 'due_date', 'traite_le'))
-    a_lheure_7j = _pct(sum(1 for e in recentes if _a_lheure(e)),
-                       len(recentes))
+        # CAD22 — voir `kpi_adherence` : `_a_lheure` lit aussi la naissance.
+    ).only('statut', 'due_date', 'traite_le',
+           'due_at', 'created_at', 'cadence_depart'))
+
+    # CAD35 — MES absences (plus les fermetures de société) : un jour couvert
+    # ne m'impute aucun retard. La fenêtre chargée est celle des dates
+    # réellement en jeu — jamais une durée inventée.
+    moi = getattr(user, 'pk', None)
+    jours_en_retard = list(mes_touches.filter(
+        statut='a_faire', due_date__lt=today,
+    ).values_list('due_date', flat=True))
+    borne = min(
+        [depuis_7j.astimezone(horaires.CASABLANCA).date(),
+         today - datetime.timedelta(days=SERIE_JOURS_MAX)]
+        + jours_en_retard)
+    absences = cadence_absence.couverture(
+        company, borne, today, utilisateurs=[moi] if moi else [])
+
+    en_retard = sum(1 for jour in jours_en_retard
+                    if not absences.couvre(moi, jour))
+    a_lheure_7j = _pct(
+        sum(1 for e in recentes
+            if _a_lheure(e) or absences.couvre(moi, e.due_date)),
+        len(recentes))
 
     # Cadences menées à leur terme sur 14 jours : des touches TRAITÉES sur la
     # période et plus AUCUNE ouverte sur la même cadence — deux requêtes
@@ -2025,7 +2210,8 @@ def mes_stats_relance(company, user):
         'a_lheure_7j_pct': a_lheure_7j,
         'cadences_completees_14j': cadences_completees,
         'serie_jours_sans_retard': _serie_jours_sans_retard(
-            company, mes_touches, today),
+            company, mes_touches, today,
+            absences=absences, utilisateur=moi),
     }
 
 
@@ -2034,13 +2220,17 @@ def mes_stats_relance(company, user):
 SERIE_JOURS_MAX = 60
 
 
-def _serie_jours_sans_retard(company, mes_touches, today):
+def _serie_jours_sans_retard(company, mes_touches, today, absences=None,
+                             utilisateur=None):
     """Jours OUVRÉS consécutifs TERMINÉS sans laisser une touche en retard.
 
     Un jour est « propre » si chaque touche qui y était due a été close ce
     jour-là au plus tard. On repart du dernier jour ouvré TERMINÉ (jamais
     d'aujourd'hui : la journée n'est pas finie, compter ses touches encore
     ouvertes comme des retards serait faux) et on remonte.
+
+    CAD35 — un jour couvert par une absence déclarée (``absences``) est
+    propre par construction : une série ne se casse pas sur un congé.
     """
     from . import horaires
 
@@ -2053,6 +2243,8 @@ def _serie_jours_sans_retard(company, mes_touches, today):
                   and etape.traite_le is not None
                   and etape.traite_le.astimezone(horaires.CASABLANCA).date()
                   <= etape.due_date)
+        if not propre and absences is not None:
+            propre = absences.couvre(utilisateur, etape.due_date)
         dues.setdefault(etape.due_date, []).append(propre)
 
     serie = 0
@@ -2201,6 +2393,11 @@ def equipements_pour_lead(lead):
         # couche déjà active, jamais une paire requise). Mêmes None-par-défaut.
         'clim_creneau': lead.equip_clim_creneau,
         'piscine_creneau': lead.equip_piscine_creneau,
+        # CAD169 — « déjà là » ou « seulement prévu » : une voiture PRÉVUE est
+        # comptée des deux côtés, mais le devis et la proposition portent
+        # alors l'étiquette « avec votre future voiture ». Sans ce champ ici,
+        # le moteur ne pourrait pas la poser — et le chiffre mentirait.
+        've_statut': getattr(lead, 'equip_ve_statut', None),
     }
 
 
@@ -2575,8 +2772,9 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     # MRY5 — tri à la MINUTE : `due_at` d'abord, les lignes d'avant MRY5 (sans
     # heure) EN DERNIER. Sans `nulls_last`, Postgres les remonterait en tête
     # de la file de Meryem alors qu'elles n'ont pas d'heure connue.
-    from django.db.models import F
-    return qs.order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+    # CAD83 — le départage à heure ÉGALE passe par `trier_file_du_jour`
+    # (priorité puis score), sans jamais précéder l'heure cible.
+    return trier_file_du_jour(qs)
 
 
 #: MRY30 — le statut VIRTUEL du suivi : « en retard » n'existe pas en base
@@ -4859,3 +5057,253 @@ def leads_utilisant_produit(company, produit_id, limit=20, *, user=None):
                      if lead.date_creation else ''),
         })
     return lignes
+
+
+# ── CAD-G ── CAD75 — cadences échues à CLORE (liste, jamais une clôture) ────
+
+#: CAD75 — cadences qui peuvent finir « échues » et qu'un humain doit clore.
+#: ``reveil`` en est EXCLUE : ``cloturer_cadence`` refuse déjà de clore un
+#: plan de réveil (sinon un dormant sans réponse tournerait en boucle), donc
+#: une touche de réveil en retard n'a pas de clôture à proposer.
+CADENCES_CLOTURABLES = ('contact', 'apres_devis', 'generique')
+
+
+def cadences_echues_a_clore(company, user, *, jours, today=None, limit=200):
+    """CAD75 — les dossiers dont la cadence est ÉCHUE et que PERSONNE n'a clos.
+
+    Le constat (audit L3 du 21/09/2026) : ``cloturer_cadence`` n'a qu'un seul
+    appelant, ``marquer_etape_relance`` — tant que l'issue de la DERNIÈRE
+    touche n'est pas saisie, le lead n'entre jamais au Froid, ne reçoit ni
+    étiquette ni réveil J30/J60, et reste au milieu du pipeline avec une
+    touche en retard. Aucune tâche planifiée ne clôt une cadence échue. Le
+    dossier réellement abandonné est donc plus mal loti que celui qu'on clôt
+    proprement.
+
+    Ce sélecteur ne corrige PAS le moteur : il rend ces dossiers VISIBLES.
+    **Il ne clôt rien, n'écrit rien, ne pose aucune étiquette** — la clôture
+    reste une décision humaine (garde-fou de la tâche). C'est une LECTURE
+    pure, destinée au digest du matin / au cockpit.
+
+    ``jours`` est le seuil de retard, en jours, et il est OBLIGATOIRE : ni le
+    texte de la tâche ni aucun réglage société ne porte ce nombre, et la règle
+    « zéro chiffre inventé » interdit d'en écrire un ici. L'appelant (digest,
+    cockpit) fournit la valeur qu'il affiche à l'écran.
+
+    Renvoie une liste de dicts triés du plus ancien retard au plus récent :
+    ``{'etape_id', 'lead_id', 'lead', 'ville', 'stage', 'owner', 'cadence',
+    'ordre', 'canal', 'libelle', 'due_date', 'jours_de_retard'}``.
+    """
+    import datetime as _dt
+
+    from core.dates import aujourd_hui_local
+    from authentication.scoping import scope_queryset
+    from .models import Lead, RelanceEtape
+    from .stages import COLD
+
+    try:
+        seuil = int(jours)
+    except (TypeError, ValueError):
+        raise ValueError(
+            'CAD75 — « jours » (seuil de retard) doit être un nombre de '
+            'jours.')
+    if seuil < 0:
+        raise ValueError(
+            'CAD75 — « jours » (seuil de retard) ne peut pas être négatif.')
+
+    today = today or aujourd_hui_local()
+    limite = max(int(limit or 0), 0)
+    if not limite:
+        return []
+
+    # Une cadence est ÉCHUE quand une touche encore OUVERTE traîne depuis plus
+    # de `jours`. Les archivés et les perdus n'ont rien à clore ; les leads
+    # déjà au Froid non plus (ils SONT le résultat de la clôture).
+    qs = (RelanceEtape.objects
+          .filter(company=company,
+                  statut=RelanceEtape.Statut.A_FAIRE,
+                  cadence__in=CADENCES_CLOTURABLES,
+                  due_date__lt=today - _dt.timedelta(days=seuil),
+                  lead__is_archived=False,
+                  lead__perdu=False)
+          .exclude(lead__stage=COLD)
+          .select_related('lead', 'lead__owner'))
+
+    leads_visibles = scope_queryset(
+        Lead.objects.filter(company=company), user, ['owner'])
+    qs = qs.filter(lead_id__in=leads_visibles.values('id'))
+
+    lignes = []
+    vus = set()
+    for etape in qs.order_by('due_date', 'lead_id', 'ordre')[:limite * 4]:
+        # Un lead peut porter plusieurs touches ouvertes (deux plans) : on ne
+        # le propose qu'UNE fois, sur son retard le plus ancien.
+        if etape.lead_id in vus:
+            continue
+        vus.add(etape.lead_id)
+        lead = etape.lead
+        nom = f"{lead.nom or ''} {lead.prenom or ''}".strip()
+        if lead.owner_id:
+            responsable = (lead.owner.get_full_name()
+                           or lead.owner.username or '')
+        else:
+            responsable = ''
+        lignes.append({
+            'etape_id': etape.id,
+            'lead_id': lead.id,
+            'lead': nom,
+            'ville': lead.ville or '',
+            'stage': lead.stage or '',
+            'owner': responsable,
+            'cadence': etape.cadence,
+            'ordre': etape.ordre,
+            'canal': etape.canal,
+            'libelle': etape.libelle or '',
+            'due_date': etape.due_date.isoformat() if etape.due_date else '',
+            'jours_de_retard': ((today - etape.due_date).days
+                                if etape.due_date else 0),
+        })
+        if len(lignes) >= limite:
+            break
+    return lignes
+
+
+# ── CAD-I ── CAD87 ──────────────────────────────────────────────────────────
+# Les trois mesures qui manquaient à côté de CKP3 (« à quelle heure et quel
+# jour joint-on ? », « combien de touches avant une signature ? », « quelle
+# part de WhatsApp-seulement et de darija ? ») vivent dans un module à part,
+# `apps/crm/mesure_cadence.py` : ce fichier passe déjà 4 800 lignes, et un
+# agrégat croisé n'a rien à faire au milieu des lectures de la fiche lead.
+# Ce renvoi existe pour que qui cherche un KPI de cadence le trouve ICI.
+def mesure_cadence(company, *, jours=None):
+    """CAD87 — voir ``apps.crm.mesure_cadence``. Lecture seule."""
+    from .mesure_cadence import JOURS_MESURE_DEFAUT
+    from .mesure_cadence import mesure_cadence as _mesure
+    return _mesure(company,
+                   jours=JOURS_MESURE_DEFAUT if jours is None else jours)
+
+
+# ── CAD-I ── CAD93 ──────────────────────────────────────────────────────────
+def doublons_foyer_probables(company, *, include_archived=False):
+    """Les clusters rapprochés par l'ADRESSE ou le POINT GPS, et rien d'autre.
+
+    Deux fiches qui partagent un téléphone sont probablement la MÊME
+    personne ; deux fiches qui ne partagent que l'adresse sont probablement
+    deux personnes du MÊME FOYER — et c'est une décision différente pour le
+    commercial : on ne fusionne pas un père et son fils, on choisit qui
+    reçoit la cadence. Cette lecture isole donc le second cas.
+
+    Lecture seule, bornée à ``company``. Chaque entrée porte l'indice qui
+    l'explique ; rien n'est fusionné, jamais, sans le geste humain de
+    l'atelier doublons.
+    """
+    from .services import cluster_match_keys, find_duplicate_clusters
+
+    #: Les seules clés qui parlent de LIEU. Un cluster qui partage aussi un
+    #: téléphone, un e-mail ou un nom n'est pas un « même foyer » : c'est un
+    #: doublon ordinaire, déjà rendu par l'atelier.
+    cles_de_lieu = {'adresse', 'gps'}
+
+    sorties = []
+    clusters, _ = find_duplicate_clusters(
+        company, include_archived=include_archived)
+    for groupe in clusters:
+        cles = set(cluster_match_keys(groupe))
+        if not cles or not cles.issubset(cles_de_lieu):
+            continue
+        sorties.append({
+            'indices': sorted(cles),
+            'membres': [
+                {'id': lead.id, 'nom': lead.nom or '',
+                 'prenom': lead.prenom or '', 'ville': lead.ville or '',
+                 'telephone': lead.telephone or ''}
+                for lead in groupe
+            ],
+        })
+    return sorties
+
+
+# ── CAD-H ── CAD83 — départage de la file du jour ────────────────────────────
+#: Rang de tri de ``Lead.priorite``. La colonne est un ``CharField`` : trié tel
+#: quel, Postgres rendrait « basse » AVANT « haute ». Le rang explicite met la
+#: priorité haute en tête et laisse la basse en fin de tranche.
+PRIORITE_RANG_FILE = {'haute': 0, 'normale': 1, 'basse': 2}
+
+#: Rang appliqué à une priorité vide ou inconnue : celui de « normale », pour
+#: qu'un lead sans priorité ne soit ni promu ni relégué.
+PRIORITE_RANG_DEFAUT = 1
+
+
+def trier_file_du_jour(qs):
+    """CAD83 — ordonne la file du jour (``RelanceEtape``) en utilisant enfin
+    les deux signaux DÉJÀ affichés sur la ligne : le badge de priorité et le
+    ``ScoreBadge``.
+
+    L'ordre est un ordre d'AFFICHAGE, en DÉPARTAGE seulement :
+
+    1. ``due_at`` croissant, les touches sans heure en dernier — inchangé
+       depuis MRY5. Comme ``due_at`` porte la date, les touches en retard
+       passent d'elles-mêmes devant celles du jour.
+    2. ``due_date`` croissant — départage les touches sans heure connue.
+    3. **priorité** (haute → normale → basse), puis **score** décroissant
+       (les touches sans score en dernier) : ils n'interviennent qu'à heure
+       STRICTEMENT égale, donc jamais avant une ``heure_cible``. Un rendez-vous
+       pris avec le client à 10 h reste à 10 h, quelle que soit la priorité du
+       dossier de 11 h.
+    4. ``ordre`` — le barreau du plan, dernier mot (deux touches du même lead
+       ont la même priorité et le même score).
+
+    MRY32 reste intact : aucune touche n'est ajoutée, retirée ni déplacée dans
+    le temps ; seul l'ordre de lecture intra-tranche change.
+    """
+    from django.db.models import Case, F, IntegerField, Value, When
+
+    rangs = [
+        When(lead__priorite=valeur, then=Value(rang))
+        for valeur, rang in PRIORITE_RANG_FILE.items()
+    ]
+    return qs.annotate(
+        cad83_priorite_rang=Case(
+            *rangs,
+            default=Value(PRIORITE_RANG_DEFAUT),
+            output_field=IntegerField(),
+        ),
+    ).order_by(
+        F('due_at').asc(nulls_last=True),
+        'due_date',
+        'cad83_priorite_rang',
+        F('lead__score').desc(nulls_last=True),
+        'ordre',
+    )
+
+
+# ── CAD-M ── CAD166 — LES kWh DÉCLARÉS, JUSQU'AU MOTEUR
+#
+# Le moteur horaire sait lire une consommation en kWh depuis toujours ; il ne
+# la RECEVAIT simplement pas du lead, et repartait donc des montants en
+# dirhams inversés au barème même quand le client avait donné ses kWh.
+# Décision fondateur du 21/09/2026 : les kWh saisis passent en PRIORITÉ 1.
+#
+# Point d'entrée cross-app LECTURE SEULE, DISTINCT de
+# ``lead_bills_for_devis`` : celui-ci n'existe que si une facture d'hiver
+# existe, alors que le cas visé est justement le dossier qui n'a QUE des kWh.
+def conso_mensuelle_kwh_pour_devis(devis):
+    """Consommation mensuelle déclarée (kWh) du lead d'un devis, ou ``None``.
+
+    ``crm.Lead.conso_mensuelle_kwh`` est LE champ éditable (saisi par la
+    commerciale, écrit par l'OCR de facture) ; ``bill_kwh`` reste l'archive du
+    tunnel web, en lecture seule — les deux ne fusionnent pas, et c'est le
+    champ éditable qui parle au moteur. Même résolution de lead que le reste
+    du module (le lead du devis, sinon le plus récent du client), même bornage
+    société. Aucune donnée fabriquée : absente ⇒ ``None``."""
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        lead = get_latest_lead_for_client(
+            getattr(devis, 'company', None), getattr(devis, 'client_id', None))
+    valeur = getattr(lead, 'conso_mensuelle_kwh', None) if lead else None
+    if valeur in (None, ''):
+        return None
+    try:
+        valeur = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return valeur if valeur > 0 else None

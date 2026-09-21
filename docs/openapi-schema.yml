@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4647, operations: 7425, components: 2111}
+counts: {paths: 4651, operations: 7429, components: 2120}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -911,6 +911,7 @@ operations:
 - post /api/django/crm/leads/export-xlsx/ -> django_crm_leads_export_xlsx_create
 - get /api/django/crm/leads/kpi-cadences/ -> django_crm_leads_kpi_cadences_retrieve
 - get /api/django/crm/leads/kpi-premier-contact/ -> django_crm_leads_kpi_premier_contact_retrieve
+- get /api/django/crm/leads/mesure-cadence/ -> django_crm_leads_mesure_cadence_retrieve
 - post /api/django/crm/leads/placement-cadences/ -> django_crm_leads_placement_cadences_create
 - get /api/django/crm/leads/relances/ -> django_crm_leads_relances_retrieve
 - post /api/django/crm/leads/resoudre-gps/ -> django_crm_leads_resoudre_gps_create
@@ -936,6 +937,7 @@ operations:
 - post /api/django/crm/leads/{id}/merge/ -> django_crm_leads_merge_create
 - get /api/django/crm/leads/{id}/message-visite/ -> django_crm_leads_message_visite_retrieve
 - post /api/django/crm/leads/{id}/noter/ -> django_crm_leads_noter_create
+- get /api/django/crm/leads/{id}/panneau-appel/ -> django_crm_leads_panneau_appel_retrieve
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/questionnaire-lien/ -> django_crm_leads_questionnaire_lien_create
 - post /api/django/crm/leads/{id}/relance/arreter/ -> django_crm_leads_relance_arreter_create
@@ -4661,6 +4663,7 @@ operations:
 - post /api/v1/crm/leads/export-xlsx/ -> v1_crm_leads_export_xlsx_create
 - get /api/v1/crm/leads/kpi-cadences/ -> v1_crm_leads_kpi_cadences_retrieve
 - get /api/v1/crm/leads/kpi-premier-contact/ -> v1_crm_leads_kpi_premier_contact_retrieve
+- get /api/v1/crm/leads/mesure-cadence/ -> v1_crm_leads_mesure_cadence_retrieve
 - post /api/v1/crm/leads/placement-cadences/ -> v1_crm_leads_placement_cadences_create
 - get /api/v1/crm/leads/relances/ -> v1_crm_leads_relances_retrieve
 - post /api/v1/crm/leads/resoudre-gps/ -> v1_crm_leads_resoudre_gps_create
@@ -4686,6 +4689,7 @@ operations:
 - post /api/v1/crm/leads/{id}/merge/ -> v1_crm_leads_merge_create
 - get /api/v1/crm/leads/{id}/message-visite/ -> v1_crm_leads_message_visite_retrieve
 - post /api/v1/crm/leads/{id}/noter/ -> v1_crm_leads_noter_create
+- get /api/v1/crm/leads/{id}/panneau-appel/ -> v1_crm_leads_panneau_appel_retrieve
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/questionnaire-lien/ -> v1_crm_leads_questionnaire_lien_create
 - post /api/v1/crm/leads/{id}/relance/arreter/ -> v1_crm_leads_relance_arreter_create
@@ -7761,6 +7765,7 @@ components:
 - CrmLeadVisitePlanifiee
 - CrmLeadVisites
 - CrmMesStatsRelance
+- CrmMesureCadence
 - CustomFieldDef
 - CustomFieldDefRequest
 - CustomFieldDefTypeEnum
@@ -7786,11 +7791,13 @@ components:
 - DealEnregistre
 - DealEnregistreRequest
 - DealEnregistreStatutEnum
+- DecideurEnum
 - DecisionEnum
 - DecisionLog
 - DeclarationConsommation
 - DeclarationConsommationRequest
 - DeclarationConsommationStatutEnum
+- DeclencheurEnum
 - Defi
 - DefiRequest
 - DegradedModeEntree
@@ -7833,6 +7840,7 @@ components:
 - DevisActionLigne
 - DevisActionPanier
 - DevisActionRequise
+- DevisConcurrentsEnum
 - DevisPreset
 - DevisRequest
 - DevisWrite
@@ -7903,6 +7911,7 @@ components:
 - EnvoiRapportStatutEnum
 - EquipChauffeEauCreneauEnum
 - EquipVeCreneauEnum
+- EquipVeStatutEnum
 - Equipe
 - EquipeCommerciale
 - EquipeCommercialeRequest
@@ -8005,6 +8014,7 @@ components:
 - FraisImport
 - FraisImportCategorieEnum
 - FraisImportRequest
+- FreinPrincipalEnum
 - FtEnum
 - GabaritDocumentCustom
 - GeofenceAlert
@@ -8245,6 +8255,7 @@ components:
 - ObjectifAttainment
 - ObjectifCommercial
 - ObjectifCommercialRequest
+- ObjectifProjetEnum
 - OccupationEnum
 - OccupationJourEnum
 - OfflineOperation
@@ -9028,6 +9039,7 @@ components:
 - PolitiqueFacturationAchatEnum
 - PolitiqueRetention
 - PolitiqueRetentionRequest
+- PompeAlimActuelleEnum
 - PortailClientConsommationPoint
 - PortailClientMaConsommation
 - PortailClientProchainJalon
@@ -9464,6 +9476,7 @@ components:
 - TypeAnnotationEnum
 - TypeApporteurEnum
 - TypeApprobationEnum
+- TypeBienEnum
 - TypeChampSignature
 - TypeChampSignatureRequest
 - TypeContenuEnum

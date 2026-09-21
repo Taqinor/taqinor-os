@@ -83,9 +83,11 @@ class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
     class Meta:
         model = CadenceRelanceEtape
         # MRY4 — forme `cadence_relance_v2` (contrat MRY25).
+        # CAD43 — `samedi_ok` s'AJOUTE en fin de forme (contrat
+        # `cadence_relance_v2`) : aucun champ retiré ni déplacé.
         fields = ['id', 'cadence', 'ordre', 'delai_jours', 'delai_minutes',
                   'heure_cible', 'canal', 'libelle', 'template_cle',
-                  'dimanche_ok', 'actif']
+                  'dimanche_ok', 'actif', 'samedi_ok']
 
     def validate_libelle(self, value):
         value = (value or '').strip()
@@ -101,4 +103,13 @@ class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le délai en minutes doit rester sous 1440 (24 h) — '
                 'au-delà, utiliser le délai en jours.')
+        # CAD29 — la borne BASSE, elle, ne tenait que par le type de la
+        # colonne (`PositiveIntegerField`) : selon le moteur de base, un -1
+        # ressortait en erreur d'intégrité (500) au lieu d'un refus nommé.
+        # L'aide du champ annonce « 0 à 1439 » : le serveur le dit désormais
+        # aussi, en français, sur LE champ fautif (règle fondateur 08/09).
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le délai en minutes ne peut pas être négatif — il va de 0 '
+                'à 1439.')
         return value

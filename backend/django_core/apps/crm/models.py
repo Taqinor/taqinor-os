@@ -424,11 +424,33 @@ class Lead(SoftDeleteModel):
 
     # ── QK1 — Qualification captée par le site (tous additifs, optionnels) ──
     # Distributeur d'électricité du prospect (détermine la tranche tarifaire).
+    # ── CAD-M ── CAD167 — LES SRM RÉGIONALES (décision fondateur du
+    # 21/09/2026, Q16 : « il n'y a plus désormais que SRM au Maroc »).
+    # Une valeur par région du découpage de 2015, et elle se DÉDUIT de la ville
+    # du lead (``apps/crm/srm_regions.py``) plutôt que d'être demandée.
+    # ONEE, Lydec, Redal et Amendis restent des libellés HISTORIQUES : une
+    # valeur déjà enregistrée ne disparaît JAMAIS d'une fiche existante.
+    # La VALEUR ne change AUCUN prix — le barème est national et unique
+    # (décision Q7 du 20/08/2026) ; ce champ est un libellé.
     class Distributeur(models.TextChoices):
-        ONEE = 'onee', 'ONEE'
-        LYDEC = 'lydec', 'Lydec'
-        REDAL = 'redal', 'Redal'
-        AUTRE = 'autre', 'Autre'
+        SRM_TANGER = 'srm_tanger', 'SRM Tanger-Tétouan-Al Hoceïma'
+        SRM_ORIENTAL = 'srm_oriental', 'SRM de l’Oriental'
+        SRM_FES = 'srm_fes', 'SRM Fès-Meknès'
+        SRM_RABAT = 'srm_rabat', 'SRM Rabat-Salé-Kénitra'
+        SRM_BENI_MELLAL = 'srm_beni_mellal', 'SRM Béni Mellal-Khénifra'
+        SRM_CASABLANCA = 'srm_casablanca', 'SRM Casablanca-Settat'
+        SRM_MARRAKECH = 'srm_marrakech', 'SRM Marrakech-Safi'
+        SRM_DRAA = 'srm_draa', 'SRM Drâa-Tafilalet'
+        SRM_SOUSS = 'srm_souss', 'SRM Souss-Massa'
+        SRM_GUELMIM = 'srm_guelmim', 'SRM Guelmim-Oued Noun'
+        SRM_LAAYOUNE = 'srm_laayoune', 'SRM Laâyoune-Sakia El Hamra'
+        SRM_DAKHLA = 'srm_dakhla', 'SRM Dakhla-Oued Ed-Dahab'
+        # ── Libellés HISTORIQUES, lecture seule (fiches déjà saisies) ──
+        ONEE = 'onee', 'ONEE (historique)'
+        LYDEC = 'lydec', 'Lydec (historique)'
+        REDAL = 'redal', 'Redal (historique)'
+        AMENDIS = 'amendis', 'Amendis (historique)'
+        AUTRE = 'autre', 'Autre (historique)'
 
     # Statut d'occupation du bâtiment (un locataire ne décide pas des travaux).
     class Ownership(models.TextChoices):
@@ -494,6 +516,76 @@ class Lead(SoftDeleteModel):
         SOIR = 'soir', 'Soir'
         JOURNEE = 'journee', 'Toute la journée'
 
+    # ── CAD-L ── CAD149 — vocabulaires de la VAGUE 1 du script d'appel guidé
+    # (audit L3 du 21/09/2026). Chaque vocabulaire sert UN champ dont le
+    # ``help_text`` porte la question orale : rien n'est réinventé ailleurs.
+    class TypeBien(models.TextChoices):
+        VILLA = 'villa', 'Villa'
+        APPARTEMENT = 'appartement', 'Appartement'
+        IMMEUBLE = 'immeuble', 'Immeuble'
+        RIAD = 'riad', 'Riad'
+        FERME = 'ferme', 'Ferme'
+        AUTRE = 'autre', 'Autre'
+
+    # ``secours_coupures`` ABSORBE le besoin « je veux tenir pendant les
+    # coupures » : c'est un objectif déclaré, pas un booléen séparé — et il
+    # reste un ARGUMENT commercial, sans aucun dimensionnement de secours.
+    class ObjectifProjet(models.TextChoices):
+        FACTURE = 'facture', 'Baisser la facture'
+        SECOURS_COUPURES = 'secours_coupures', 'Tenir pendant les coupures'
+        AUTONOMIE = 'autonomie', 'Gagner en autonomie'
+        INJECTION_8221 = 'injection_8221', 'Injecter le surplus (loi 82-21)'
+        AUTRE = 'autre', 'Autre'
+
+    # Vocabulaire REPRIS de la qualification de visite
+    # (``apps/visites/qualification.py``) pour ne pas ouvrir un second
+    # vocabulaire du même sujet, + le cas « le propriétaire est un tiers »
+    # que la visite ne connaissait pas (locataire, indivision, syndic).
+    class Decideur(models.TextChoices):
+        SEUL = 'seul', 'Décide seul'
+        CONJOINT_FAMILLE = 'conjoint_famille', 'Avec le conjoint / la famille'
+        ASSOCIE_DIRECTION = 'associe_direction', 'Avec un associé / la direction'
+        PROPRIETAIRE_TIERS = 'proprietaire_tiers', 'Le propriétaire (un tiers) décide'
+
+    # État de la comparaison EN COURS. ``ConcurrentPerte`` reste le
+    # post-mortem d'une affaire PERDUE : les deux ne se remplacent pas.
+    class DevisConcurrents(models.TextChoices):
+        NON = 'non', 'Non, aucun autre devis'
+        EN_ATTENTE = 'en_attente', 'En attente d’un autre devis'
+        RECU = 'recu', 'A déjà reçu un autre devis'
+
+    class EquipVeStatut(models.TextChoices):
+        POSSEDE = 'possede', 'Véhicule déjà là'
+        PREVU = 'prevu', 'Véhicule seulement prévu'
+
+    # Vocabulaire IDENTIQUE à celui du site (``pompeActuelle``,
+    # apps/crm/webhooks.py) — le butane est GARDÉ : c'est un cas réel du parc
+    # marocain qu'un vocabulaire « diesel/réseau/aucune » perdrait.
+    class PompeAlimActuelle(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune pompe'
+        DIESEL = 'diesel', 'Diesel'
+        BUTANE = 'butane', 'Butane'
+        ELECTRIQUE = 'electrique', 'Électrique (réseau)'
+
+    # ── CAD-L ── CAD154 — vocabulaires de la VAGUE 2. Les deux REPRENNENT
+    # mot pour mot ceux de la qualification de visite
+    # (``apps/visites/qualification.py``) : le terrain et le téléphone
+    # décrivent le même client, ouvrir un second vocabulaire rendrait les
+    # deux illisibles ensemble.
+    class FreinPrincipal(models.TextChoices):
+        AUCUN = 'aucun', 'Aucun frein'
+        PRIX = 'prix', 'Prix'
+        COMPARE = 'compare', 'Compare d’autres devis'
+        TIMING = 'timing', 'Timing'
+        TECHNIQUE = 'technique', 'Technique'
+        CONFIANCE = 'confiance', 'Confiance'
+
+    class Declencheur(models.TextChoices):
+        ECONOMIES = 'economies', 'Les économies'
+        COUPURES = 'coupures', 'Les coupures / l’autonomie'
+        ECOLOGIE = 'ecologie', 'L’écologie'
+        TECHNOLOGIE = 'technologie', 'La technologie'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -506,6 +598,10 @@ class Lead(SoftDeleteModel):
     prenom = models.CharField(max_length=255, blank=True, null=True)
     societe = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
+    # CAD146 (21/09/2026) — pas de fuseau horaire par lead : un numéro
+    # étranger (diaspora) reçoit ses touches à l'heure de Casablanca. Décision
+    # écrite, rien construit tant que CADM7 (comptage) n'a pas de chiffre —
+    # voir `apps/crm/horaires.py`, bas de fichier.
     telephone = models.CharField(max_length=50, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     ville = models.CharField(max_length=120, blank=True, null=True)
@@ -598,6 +694,12 @@ class Lead(SoftDeleteModel):
     # l'un NI l'autre : il interdit seulement toute future cadence.
     ne_plus_contacter = models.BooleanField(
         default=False, verbose_name='Ne plus contacter')
+    # CAD145 (21/09/2026) — SOURCE UNIQUE lue par le scoring (`scoring.py`),
+    # les playbooks (`Playbook.condition`, évalué contre {type_installation,
+    # canal} DU LEAD) et les textes de segment (CAD126) : ces trois surfaces
+    # ne lisent JAMAIS `SiteProfile.type_installation` (champ CLIENT distinct,
+    # voir sa docstring). Les deux existent parce que leurs cycles de vie
+    # diffèrent — le lead précède souvent le client — pas par erreur.
     type_installation = models.CharField(
         max_length=20, choices=TypeInstallation.choices, blank=True, null=True)
 
@@ -895,9 +997,18 @@ class Lead(SoftDeleteModel):
     # ── QK1 — Qualification captée par le site (additifs, nullable) ──
     # Le site collecte ces signaux au moment de la capture ; ils ne doivent
     # jamais être re-demandés au prospect par le commercial.
+    # CAD167 — la colonne passe de 12 à 20 caractères pour porter les codes
+    # SRM (`srm_beni_mellal` = 15) ; élargissement pur, aucune valeur
+    # existante n'est touchée.
     distributeur = models.CharField(
-        max_length=12, choices=Distributeur.choices, blank=True, null=True,
-        verbose_name="Distributeur d'électricité")
+        max_length=20, choices=Distributeur.choices, blank=True, null=True,
+        verbose_name="Distributeur d'électricité",
+        help_text="Question à l'appel : AUCUNE — la SRM se DÉDUIT de la "
+                  'ville du lead (règle CAD167). Le champ reste saisissable '
+                  'pour corriger une déduction, et les libellés historiques '
+                  '(ONEE, Lydec, Redal, Amendis) restent lisibles sur les '
+                  'fiches déjà remplies. La valeur ne change AUCUN prix : le '
+                  'barème est national et unique.')
     # Âge de la toiture en années (numérique simple ; NULL = inconnu).
     roof_age = models.PositiveSmallIntegerField(
         null=True, blank=True,
@@ -1025,6 +1136,24 @@ class Lead(SoftDeleteModel):
 
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
+    # CAD119 (audit L3 du 21/09/2026) — LA VRAIE DATE DE CRÉATION DU SYSTÈME
+    # D'ORIGINE. ``date_creation`` est en ``auto_now_add`` : tous les leads
+    # importés portaient la date de la SYNCHRONISATION, et la vraie date
+    # finissait dans une note en texte libre (« Créé dans Odoo: … ») que
+    # personne ne peut requêter. Le modèle à copier existait à côté : la
+    # création Meta repose déjà ``date_creation`` sur la vraie heure d'arrivée.
+    # Sans ce champ, tout futur import de rattrapage fausserait de nouveau les
+    # KPI de délai (CAD87).
+    #
+    # NULL = aucune date d'origine connue (lead natif, ou ligne d'avant
+    # CAD119) — c'est la vérité ; la lecture retombe alors sur
+    # ``date_creation`` via la propriété ``date_origine``.
+    date_creation_origine = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Date de création dans le système d'origine",
+        help_text="Quand ce dossier est-il né chez le système qui nous l'a "
+                  "transmis (Odoo, import) ? Vide si créé ici.",
+    )
 
     # QJ6 — Score de qualité calculé (0–100) et persisté pour un tri
     # pagination-safe. Recalculé à chaque création/mise à jour du lead
@@ -1103,6 +1232,135 @@ class Lead(SoftDeleteModel):
         verbose_name='Entité',
     )
 
+    # ── CAD-L ── CAD149 — VAGUE 1 du script d'appel guidé (audit L3 du
+    # 21/09/2026, liste arrêtée par le fondateur — CAD160 : huit champs, ni
+    # plus ni moins). Tous ``null=True`` : vide = « la question n'a pas encore
+    # été posée », JAMAIS une réponse. Le ``help_text`` de chaque champ EST la
+    # question orale (règle du bloc L4 ci-dessus) — l'UI CRM la lit d'ici, on
+    # ne la recopie nulle part. Les trois derniers PROMEUVENT en colonne des
+    # réponses qui vivaient dans le sac ``web_questionnaire``, en gardant le
+    # vocabulaire déjà émis par le site.
+    type_bien = models.CharField(
+        max_length=12, choices=TypeBien.choices, null=True, blank=True,
+        verbose_name='Type de bien',
+        help_text="Question à l'appel : « De quel type de bien s'agit-il "
+                  '— villa, appartement, immeuble, riad, ferme ? » '
+                  "(vide = pas encore posée). Remplace l'idée de faire "
+                  'saisir le type de toit au téléphone : ce chemin-là est '
+                  'fermé depuis la décision du 18/08/2026.')
+    objectif_projet = models.CharField(
+        max_length=16, choices=ObjectifProjet.choices, null=True, blank=True,
+        verbose_name='Objectif du projet',
+        help_text="Question à l'appel : « Qu'est-ce qui compte le plus pour "
+                  'vous — baisser la facture, tenir pendant les coupures, '
+                  "gagner en autonomie, injecter le surplus ? » (vide = pas "
+                  'encore posée). « Tenir pendant les coupures » est un '
+                  'ARGUMENT : aucun dimensionnement de secours n’en découle.')
+    decideur = models.CharField(
+        max_length=20, choices=Decideur.choices, null=True, blank=True,
+        verbose_name='Qui décide',
+        help_text="Question à l'appel : « Qui décide avec vous de ce "
+                  'projet ? » (vide = pas encore posée). Renseigné à '
+                  '« avec le conjoint / la famille » ou « avec un associé / '
+                  'la direction », il pose l’étiquette « Décision à '
+                  'plusieurs » qui pilote la touche du dimanche en famille. '
+                  'Question ORALE uniquement : jamais dans le questionnaire '
+                  'envoyé au client.')
+    devis_concurrents = models.CharField(
+        max_length=10, choices=DevisConcurrents.choices, null=True,
+        blank=True, verbose_name='Autres devis en cours',
+        help_text="Question à l'appel : « Avez-vous déjà reçu ou demandé "
+                  'un autre devis ? » (vide = pas encore posée). État de la '
+                  'comparaison EN COURS — le post-mortem d’une affaire '
+                  'perdue reste, lui, dans la fiche « concurrent ». '
+                  'Question ORALE uniquement.')
+    equip_ve_statut = models.CharField(
+        max_length=10, choices=EquipVeStatut.choices, null=True, blank=True,
+        verbose_name='Véhicule électrique — déjà là ou prévu ?',
+        help_text="Question à l'appel : « Ce véhicule électrique, vous "
+                  "l'avez déjà, ou c'est un projet ? » (vide = pas encore "
+                  'posée). Précise le « avez-vous OU prévoyez-vous » du '
+                  'champ véhicule électrique : une voiture seulement PRÉVUE '
+                  'reste comptée, et le devis comme la proposition portent '
+                  'alors l’étiquette « avec votre future voiture » — sans '
+                  'elle, le chiffre mentirait.')
+    pompage_heures_jour = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        verbose_name='Pompage — heures par jour',
+        help_text="Question à l'appel : « Combien d'heures par jour la "
+                  'pompe tourne-t-elle ? » (h/jour, vide = pas encore '
+                  'posée). Colonne dédiée de la réponse que le site envoie '
+                  'déjà sous « heures de pompage ».')
+    pompe_alim_actuelle = models.CharField(
+        max_length=12, choices=PompeAlimActuelle.choices, null=True,
+        blank=True, verbose_name='Pompe actuelle — alimentation',
+        help_text="Question à l'appel : « Votre pompe actuelle marche à "
+                  'quoi — diesel, butane, électricité, ou vous n’en avez '
+                  'pas ? » (vide = pas encore posée). Colonne dédiée de la '
+                  'réponse déjà émise par le site, butane compris.')
+    carburant_litres_mois = models.DecimalField(
+        max_digits=9, decimal_places=2, null=True, blank=True,
+        verbose_name='Carburant consommé (litres/mois)',
+        help_text="Question à l'appel : « Combien de litres de carburant "
+                  'la pompe consomme-t-elle par mois ? » (litres/mois, vide '
+                  '= pas encore posée). C’est l’unité qui manquait à côté '
+                  'de la dépense en dirhams : l’économie de carburant se '
+                  'calcule sur ce que le client DÉCLARE, aucun prix de '
+                  'gasoil de référence n’est écrit nulle part.')
+
+    # ── CAD-L ── CAD154 — VAGUE 2 du script d'appel guidé : cinq besoins
+    # réels qui ne bloquaient pas l'appel 1 (liste arrêtée par le fondateur —
+    # CAD160). Mêmes règles que la vague 1 : ``null=True`` (vide = question
+    # pas encore posée), et le ``help_text`` EST la question orale. AUCUN de
+    # ces champs ne porte un marqueur de provenance énergie/toiture — il n'y
+    # a donc aucune exclusion à motiver dans `selectors.py`.
+    nb_personnes_foyer = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Nombre de personnes au foyer',
+        help_text="Question à l'appel : « Combien de personnes vivent dans "
+                  'ce logement ? » (vide = pas encore posée). Le moteur dit '
+                  "lui-même que son absence l'empêche de chiffrer le "
+                  "chauffe-eau par ordre de grandeur : sans ce nombre, la "
+                  'couche est OMISE plutôt qu’inventée.')
+    budget_client_mad = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Budget annoncé par le client (MAD)',
+        help_text="Question à l'appel, APRÈS l'envoi du devis seulement "
+                  '(décision fondateur du 21/09/2026) : « Quel budget '
+                  'aviez-vous en tête ? » (vide = pas encore posée). '
+                  "DISTINCT du montant estimé, qui est l'estimation du "
+                  'COMMERCIAL et nourrit le forecast pondéré. Question '
+                  'ORALE : jamais dans le questionnaire envoyé au client.')
+    frein_principal = models.CharField(
+        max_length=12, choices=FreinPrincipal.choices, null=True, blank=True,
+        verbose_name='Frein principal',
+        help_text="Question à l'appel : « Qu'est-ce qui vous retient "
+                  'aujourd’hui ? » (vide = pas encore posée). Même '
+                  'vocabulaire que la qualification de visite, pour que le '
+                  'terrain et le téléphone se relisent. Question ORALE.')
+    declencheur = models.CharField(
+        max_length=12, choices=Declencheur.choices, null=True, blank=True,
+        verbose_name='Ce qui a accroché',
+        help_text="Question à l'appel : « Qu'est-ce qui vous a donné envie "
+                  'de vous renseigner ? » (vide = pas encore posée). Même '
+                  'vocabulaire que la qualification de visite. Question '
+                  'ORALE.')
+    compteur_puissance_kva = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name='Puissance souscrite du compteur (kVA)',
+        help_text="Question à l'appel, EN DERNIER RECOURS seulement : "
+                  '« Quelle puissance est inscrite sur votre compteur '
+                  '(kVA) ? » (vide = pas encore posée). La voie NORMALE est '
+                  'la photo du compteur, que le questionnaire demande déjà — '
+                  'on ne fait lire une plaque au téléphone que si la photo '
+                  'est impossible.')
+    chauffage_electrique_hiver = models.BooleanField(
+        null=True, blank=True, verbose_name='Chauffage électrique en hiver',
+        help_text="Question à l'appel : « Vous chauffez-vous à l'électricité "
+                  "en hiver ? » (Oui/Non — vide = pas encore posée). Champ "
+                  'INFORMATIF : décision fondateur du 21/09/2026 — aucune '
+                  "couche de chauffage d'hiver n'est composée, donc il "
+                  'n’ajuste AUCUNE courbe.')
+
     def save(self, *args, **kwargs):
         # QW10 — maintient les colonnes de dédup normalisées à chaque save,
         # quelle que soit la voie d'écriture (webhook, admin, API, import) —
@@ -1148,6 +1406,17 @@ class Lead(SoftDeleteModel):
 
     def __str__(self):
         return f"{self.nom} {self.prenom or ''} [{self.stage}]".strip()
+
+    # ── CAD-K ── CAD119 ─────────────────────────────────────────────────
+    @property
+    def date_origine(self):
+        """La date qui DATE ce dossier : celle du système d'origine si on la
+        connaît, sinon celle de son insertion ici.
+
+        Tout KPI de délai doit passer par ici : mesurer « joint sous 5 jours »
+        depuis la date d'une SYNCHRONISATION répond à une question que
+        personne ne pose."""
+        return self.date_creation_origine or self.date_creation
 
 
 class WebsiteLeadPayload(models.Model):
@@ -1378,6 +1647,24 @@ class RelanceEtape(TenantModel):
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     note = models.TextField(blank=True, default='')
+    # CAD118 (audit L3 du 21/09/2026) — L'ISSUE DE LA TOUCHE, SUR LA TOUCHE.
+    # On mesurait si les touches étaient cochées, jamais si elles joignaient
+    # quelqu'un : l'issue ne vivait que sur la ligne de chatter, et le seul
+    # rapprochement possible était une fenêtre de DEUX MINUTES entre les deux
+    # horodatages — un bricolage qui casse en silence dès qu'un traitement
+    # ralentit. Écrite au MÊME instant que la ligne d'historique par
+    # ``services.marquer_etape_relance``.
+    #
+    # Additive et sans nouvelle valeur d'énumération : les choix sont ceux de
+    # ``LeadActivity.OUTCOMES``, qui reste la source de vérité du chatter.
+    # Vide = touche close sans issue saisie (ou ligne d'avant CAD118) — c'est
+    # la vérité, jamais un « non joint » supposé.
+    outcome = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=LeadActivity.OUTCOMES,
+        verbose_name="Issue de la touche",
+        help_text="Ce que la touche a donné : le client a-t-il été joint ?",
+    )
     # Traçabilité de la clôture (fait/sautée) — jamais silencieuse.
     traite_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -2019,6 +2306,15 @@ class SiteProfile(models.Model):
         max_length=12, choices=Lead.Raccordement.choices,
         blank=True, null=True)
     regularisation_8221 = models.BooleanField(default=False)
+    # CAD145 (21/09/2026) — dupliqué AVEC INTENTION, pas une divergence : ce
+    # champ vit au niveau CLIENT (réutilisable sur un futur devis SANS lead,
+    # raison d'être de ce modèle — voir la docstring de la classe), tandis que
+    # `Lead.type_installation` est le champ PRÉ-SALE que lisent seuls le
+    # scoring, les playbooks et les textes de segment pendant la cadence.
+    # Aucun code ne lit CE champ-ci pour ces trois usages (`grep -rn
+    # SiteProfile backend/django_core/apps/crm/scoring.py
+    # backend/django_core/apps/crm/services.py` = vide) ; il ne sert QUE le
+    # pré-remplissage du générateur de devis (`selectors.site_profile_for_client`).
     type_installation = models.CharField(
         max_length=20, choices=Lead.TypeInstallation.choices,
         blank=True, null=True)
@@ -3655,3 +3951,87 @@ class AppareilEquipe(TenantModel):
 # `apps.crm.models -> apps.visites.models` que le contrat `independence`
 # d'import-linter interdit, c'est-à-dire exactement le couplage que ce move
 # supprime. Le reste du CRM lit la visite par `apps.visites.selectors`.
+
+
+# ── CAD-B ── CAD35 — PÉRIODE D'ABSENCE DÉCLARÉE ──────────────────────────────
+#
+# Rien ne suspendait les cadences quand la personne qui les tient est absente.
+# En régime RÉACTIF les touches naissent quand même, elles échoient pendant le
+# congé, et `selectors._a_lheure` comptait un manquement pour chacune : le
+# cockpit accusait quelqu'un d'être en retard pendant ses vacances.
+#
+# VERSION MINIMALE, SANS NOUVEAU MOTEUR (21/09/2026) : déclarer la période
+# suffit à (a) ne plus imputer de retard d'adhérence sur ses jours et (b) la
+# rendre visible dans le cockpit. AUCUNE touche n'est supprimée, aucune n'est
+# avancée, aucune n'est décalée : le décalage reste un geste humain, au cas par
+# cas (« Mettre en veille »). Le digest du matin continue de partir — une
+# absence neutralise une MESURE, elle n'éteint pas le suivi.
+class PeriodeAbsence(TenantModel):
+    """Une période d'absence déclarée (congé, arrêt, formation) — d'une
+    personne, ou de la société entière quand ``utilisateur`` est vide."""
+
+    class Motif(models.TextChoices):
+        CONGE = 'conge', 'Congé'
+        ARRET = 'arret', 'Arrêt maladie'
+        FORMATION = 'formation', 'Formation'
+        AUTRE = 'autre', 'Autre'
+
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: absence sans objet sans la personne
+        null=True, blank=True, related_name='crm_absences',
+        verbose_name='Personne absente',
+        help_text='Qui est absent ? Laisser vide pour une fermeture qui '
+                  'concerne toute la société.')
+    date_debut = models.DateField(
+        verbose_name='Premier jour',
+        help_text='À partir de quel jour, ce jour-là compris ?')
+    date_fin = models.DateField(
+        verbose_name='Dernier jour',
+        help_text='Jusqu’à quel jour, ce jour-là compris ?')
+    motif = models.CharField(
+        max_length=10, choices=Motif.choices, default=Motif.CONGE,
+        verbose_name='Motif',
+        help_text='Congé, arrêt maladie, formation, ou autre ?')
+    # Remède (1) du round 2 : la COUVERTURE par défaut — quelqu'un reprend les
+    # dossiers. Le champ NOMME cette personne ; la reprise elle-même reste un
+    # geste humain (aucune réassignation automatique n'est posée ici).
+    remplacant = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: la période survit au départ du remplaçant
+        null=True, blank=True, related_name='crm_absences_couvertes',
+        verbose_name='Reprise des dossiers',
+        help_text='Qui reprend les dossiers pendant cette absence ?')
+    note = models.TextField(
+        blank=True, default='', verbose_name='Note',
+        help_text='Quelque chose à savoir pour la reprise ?')
+
+    class Meta:
+        verbose_name = 'Période d’absence'
+        verbose_name_plural = 'Périodes d’absence'
+        ordering = ['-date_debut', 'utilisateur_id']
+        indexes = [
+            models.Index(fields=['company', 'date_debut', 'date_fin'],
+                         name='crm_absence_periode_idx'),
+        ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (self.date_debut and self.date_fin
+                and self.date_fin < self.date_debut):
+            # Règle fondateur du 08/09 : l'erreur désigne LE champ fautif et
+            # dit quoi corriger, jamais un refus générique.
+            raise ValidationError({
+                'date_fin': 'Le dernier jour d’absence ne peut pas précéder '
+                            'le premier jour. Corrigez « Dernier jour ».'})
+
+    def couvre(self, jour):
+        """``jour`` (date locale) tombe-t-il dans cette absence, bornes
+        comprises ?"""
+        if jour is None or self.date_debut is None or self.date_fin is None:
+            return False
+        return self.date_debut <= jour <= self.date_fin
+
+    def __str__(self):
+        qui = self.utilisateur_id or 'société'
+        return f'{qui} — {self.date_debut} → {self.date_fin}'

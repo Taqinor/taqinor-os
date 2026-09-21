@@ -122,9 +122,19 @@ def _completeness_score(lead) -> int:
 
 # ── Recency ──────────────────────────────────────────────────────────────────
 def _recency_score(lead) -> int:
-    """Âge du lead en points : plus récent = plus de points."""
+    """Fraîcheur du DOSSIER en points : plus récent = plus de points.
+
+    CAD133 (21/09/2026) — ce n'est plus l'âge du LEAD. Compter la date de
+    CRÉATION donnait 1 point sur 12 à un prospect qui répond aujourd'hui après
+    quatre mois de silence, exactement comme à un dossier mort. On part donc de
+    la DERNIÈRE INTERACTION (``signaux.derniere_interaction`` : chatter,
+    consultation de la proposition, réponse au questionnaire, rappel demandé)
+    et on retombe sur la date de création quand il n'y en a aucune — ce qui est
+    la vérité pour un lead que personne n'a encore touché.
+    """
     now = timezone.now()
-    dc = lead.date_creation
+    from .signaux import derniere_interaction
+    dc = derniere_interaction(lead) or lead.date_creation
     # Rendre tz-aware si naïf (ne devrait pas arriver en prod mais défensif).
     if dc and hasattr(dc, 'tzinfo') and dc.tzinfo is None:
         from django.utils.timezone import make_aware
@@ -250,6 +260,20 @@ def score_ajustement(lead) -> int:
         return 0
 
 
+# ── CAD-K ── CAD94 — décision du 21/09/2026 ─────────────────────────────────
+# AUCUN EFFET DES TENTATIVES DE CADENCE SUR LE SCORE — décision du
+# 21/09/2026, à rouvrir sur les mesures de CAD87.
+#
+# L'audit L3 du 21/09/2026 constatait qu'un lead injoignable depuis cinq
+# touches garde le même score qu'un lead frais. La tentation est d'en
+# déduire une règle (« -N points par touche sans réponse ») : le fondateur a
+# tranché l'inverse. On ne câble RIEN avant de mesurer. CAD87 dira si le
+# nombre de touches consommées prédit quoi que ce soit — taux de joint par
+# touche × heure × jour × canal, et signatures par nombre de touches
+# consommées — et la règle s'écrira sur ces chiffres, ou ne s'écrira pas.
+#
+# Cette note est datée pour qu'un futur audit ne re-soulève pas la question
+# sans les mesures : la rouvrir sans elles, c'est réinventer le même débat.
 def compute_score(lead) -> int:
     """Calcule et retourne le score de qualité du lead (entier 0–100).
 
@@ -259,6 +283,9 @@ def compute_score(lead) -> int:
     CRX22 — l'ajustement persistant (``Lead.score_ajustement``) est appliqué
     ICI, avant le bornage : c'est le SEUL endroit qui décide de la valeur d'un
     score, badge, tri et « Ma file » compris.
+
+    CAD94 (21/09/2026) — aucune composante ne lit les tentatives de cadence :
+    voir la note datée juste au-dessus.
     """
     score = 0
     score += _completeness_score(lead)
@@ -268,6 +295,10 @@ def compute_score(lead) -> int:
     score += _recency_score(lead)
     score += _solar_signals_score(lead)
     score += _readiness_score(lead)
+    # CAD133 — ce que le client FAIT, à côté de ce qu'il a DIT. Poids
+    # PROVISOIRES, à valider contre les scores réels de production (CADM7)
+    # avant d'être figés : voir la note en tête de `_behaviour_score`.
+    score += _behaviour_score(lead)
     score += score_ajustement(lead)
     # Un ajustement négatif ne doit jamais produire un score négatif.
     return max(0, min(score, 100))
@@ -324,6 +355,46 @@ def score_reasons(lead) -> list[dict]:
     ]
     reasons.sort(key=lambda r: r['points'], reverse=True)
     return reasons
+
+
+# ── CAD-K ── CAD133 — la composante COMPORTEMENT ────────────────────────────
+#
+# Audit L3 du 21/09/2026. Le score n'additionnait que des DÉCLARATIONS de
+# capture ; ce que le client FAIT — ouvrir sa proposition, y revenir, la lire
+# en détail, répondre au questionnaire, demander un rappel, décrocher — ne
+# pesait rien. Tous ces signaux étaient DÉJÀ en base : rien n'est capté en
+# plus (``apps/crm/signaux.py`` les rassemble, `ventes` est lu par son
+# selector).
+#
+# LES POIDS SONT PROVISOIRES, ET C'EST ÉCRIT. Le round 2 de l'audit l'exige :
+# « VALIDER les poids contre les scores réels de production (CADM7) avant de
+# les figer — les poids actuels sont annoncés "calibrés Maroc" sans source ».
+# Ils suivent donc l'ORDRE de force des signaux (revenir sur sa proposition
+# dit plus que l'avoir ouverte une fois), pas une calibration qui n'existe
+# pas ; le total est volontairement modeste pour ne pas écraser les
+# composantes déclaratives avant cette validation.
+_W_COMPORTEMENT = {
+    'proposition_ouverte': 3,    # il a regardé
+    'proposition_rouverte': 5,   # il y est REVENU — le signal le plus fort
+    'lue_en_detail': 4,          # il a lu au-delà du premier écran
+    'questionnaire_repondu': 4,  # il a passé du temps sur NOTRE formulaire
+    'rappel_demande': 5,         # il a demandé qu'on l'appelle
+    'client_joint': 3,           # on l'a eu au bout du fil
+}
+
+
+def _behaviour_score(lead) -> int:
+    """CAD133 — points de COMPORTEMENT, jamais de déclaration.
+
+    Lecture seule et tolérante : un signal illisible vaut « absent » (voir
+    ``signaux``), et le total reste borné par le ``min(…, 100)`` de
+    ``compute_score`` comme les bonus QK2.
+    """
+    from .signaux import signaux_comportement
+
+    signaux = signaux_comportement(lead)
+    return sum(points for cle, points in _W_COMPORTEMENT.items()
+               if signaux.get(cle))
 
 
 def score_label(score: int) -> str:

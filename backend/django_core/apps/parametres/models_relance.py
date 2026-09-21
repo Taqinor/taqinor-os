@@ -39,9 +39,53 @@ CADENCE_RELANCE_DEFAUT = [
      'libelle': 'Relance e-mail'},
     {'ordre': 4, 'delai_jours': 20, 'canal': CanalRelance.APPEL,
      'libelle': "Point d'étape"},
-    {'ordre': 5, 'delai_jours': 35, 'canal': CanalRelance.VISITE,
+    # CAD58 (décision fondateur du 21/09/2026) — le canal VISITE est RETIRÉ de
+    # la cadence générique : ce barreau ne posait aucune condition de devis,
+    # alors que la doctrine du 15/09 est « visite technique JAMAIS avant le
+    # devis, proposée après ». Le J+35 devient un APPEL. Les 5 barreaux ne
+    # sont ni supprimés ni réordonnés — seul le canal du dernier change.
+    {'ordre': 5, 'delai_jours': 35, 'canal': CanalRelance.APPEL,
      'libelle': 'Dernière relance'},
 ]
+
+
+# ── CAD25 (TRANCHÉ 21/09/2026) — CRÉNEAUX PAR TYPE DE TOUCHE ────────────────
+#
+# 7 des 11 touches de la prise de contact et 9 des 10 barreaux après devis
+# n'avaient AUCUNE heure cible : leur heure était celle de l'arrivée du lead
+# ou de l'envoi du devis. Un devis fini à 19 h 50 faisait tomber « le PDF
+# s'ouvre bien ? » à 19 h 50 le lendemain, et tous les leads de nuit ou de
+# week-end se regroupaient à l'ouverture.
+#
+# Décision fondateur : un créneau par TYPE de touche — les MESSAGES à 09 h 30,
+# les APPELS entre 17 h 30 et 18 h 30 (on pose le milieu de la fourchette,
+# 18 h 00, qui est aussi l'heure déjà retenue pour l'« Appel 4 »). Ces heures
+# sont des DÉFAUTS DE SEED : l'éditeur Paramètres → CRM reste la source de
+# vérité par société, et une société qui observe le Ramadan y ajuste ses
+# créneaux comme le reste.
+#
+# DEUX FAMILLES GARDENT VOLONTAIREMENT `heure_cible: None` :
+#   * les trois gestes J0 de la prise de contact (J0, J0+3 min, J0+2 h 30) —
+#     ce n'est pas un créneau mais une SÉQUENCE dans la journée, celle qui
+#     tient la promesse « rappelé dans les cinq minutes ». Leur imposer une
+#     heure les écraserait sur la même minute, le défaut que MRY5 a corrigé ;
+#   * les deux réveils J30/J60 — ils sont POSÉS sur un créneau d'étalement
+#     calculé par le placement (MRY30, huit réveils par jour ouvré, 20 min
+#     d'écart). Une heure imposée ferait retomber les huit sur la même minute.
+# La cadence `generique` (historique, plus jamais démarrée — CAD143) n'est pas
+# touchée : ses cinq barreaux restent exactement ce qu'ils ont toujours été.
+#
+# Garde-fou : ces heures restent BORNÉES par les fenêtres de la société
+# (message dès 08:30, appel dès 09:00, fermeture 20:00) et par la fenêtre du
+# Ramadan — `apps.crm.horaires.prochain_creneau_appel` recale toute heure qui
+# n'y tiendrait pas.
+CRENEAU_MESSAGE = datetime.time(9, 30)
+#: Bornes de la fourchette d'appel décidée le 21/09/2026.
+CRENEAU_APPEL_DEBUT = datetime.time(17, 30)
+CRENEAU_APPEL_FIN = datetime.time(18, 30)
+#: L'heure POSÉE par défaut sur un appel sans heure : le milieu de la
+#: fourchette, jamais un de ses bords.
+CRENEAU_APPEL = datetime.time(18, 0)
 
 
 class Cadence(models.TextChoices):
@@ -49,7 +93,9 @@ class Cadence(models.TextChoices):
     cadence historique.
 
     Une seule échelle anonyme ne pouvait pas porter trois rythmes différents :
-    la prise de contact (8 touches sur 14 j, la première à J0 + 3 minutes),
+    la prise de contact (11 touches sur 14 j — 6 appels et 5 WhatsApp —, dont
+    la PREMIÈRE est le message d'identité à J0 + 0 minute, la deuxième l'appel
+    d'ouverture à J0 + 3 minutes et la troisième l'appel 2 à J0 + 2 h 30),
     le suivi après devis (J1…J14) et le réveil des dormants (J30/J60). La
     quatrième valeur, ``generique``, N'EST PAS une nouveauté : c'est le nom
     donné aux 5 barreaux neutres qui existaient déjà (J+2/5/10/20/35). Ils ne
@@ -59,12 +105,28 @@ class Cadence(models.TextChoices):
     APRES_DEVIS = 'apres_devis', 'Après devis'
     REVEIL = 'reveil', 'Réveil'
     GENERIQUE = 'generique', 'Générique (historique)'
+    # CAD128 (21/09/2026) — la cadence COURTE d'un client DÉJÀ ACQUIS qui
+    # redemande un devis. Elle n'est PAS une variante du protocole contact :
+    # six appels sur quatorze jours à quelqu'un qui a déjà acheté serait
+    # insultant. Deux touches seulement, et elles ne sont pas inventées —
+    # ce sont les DEUX PREMIÈRES du protocole validé (message d'identité,
+    # puis appel d'ouverture trois minutes après), arrêtées là.
+    DEUXIEME_AFFAIRE = 'deuxieme_affaire', 'Deuxième affaire (client acquis)'
 
 
 # ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
 # 6 APPELS MAXIMUM + 5 WhatsApp sur 14 jours, jamais plus d'un appel ET d'un
-# message par jour. Ces délais viennent du protocole validé par le fondateur —
-# ils ne sont pas une estimation et ne se retouchent pas ici.
+# message par jour — **HORS J0** : les trois gestes du jour même (message
+# d'identité, appel d'ouverture, appel 2 à +2 h 30) sont VOULUS ensemble, c'est
+# la promesse « rappelé dans les cinq minutes ». Ces délais viennent du
+# protocole validé par le fondateur — ils ne sont pas une estimation et ne se
+# retouchent pas ici.
+# CAD20 (21/09/2026) — cette phrase n'est plus une intention : elle est
+# EXÉCUTÉE par le moteur (`apps.crm.cadence_temps.un_geste_par_jour`, appelé
+# par `calculer_echeances_cadence`). Une touche en trop sur une journée est
+# décalée d'un jour ouvré ; les trois touches J0 et le rendez-vous dominical
+# en sont exemptés. Un délai retouché depuis Paramètres ne peut donc plus
+# empiler trois appels le même jour.
 #
 # ``dimanche_ok`` : la touche 8 (5ᵉ appel) est le SEUL rendez-vous autorisé le
 # dimanche, entre 16 h et 19 h, pour les prospects qu'on ne trouve jamais en
@@ -79,32 +141,43 @@ CADENCE_CONTACT_DEFAUT = [
     {'ordre': 3, 'delai_jours': 0, 'delai_minutes': 150, 'heure_cible': None,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 2 (répondeur)',
      'template_cle': 'repondeur', 'dimanche_ok': False},
+    # CAD67 (21/09/2026) — `repondeur` partait DEUX fois en ~20 h (ici ET à
+    # l'ordre 6) : le document source (`docs/crm/messages_meryem.md`) le
+    # place sur les appels 2 et 4, pas 2 et 3. `repondeur` est donc retiré
+    # d'ici (script dédié `appel_relance`) et posé sur l'ordre 6 à sa place,
+    # ce qui espace les deux messages répondeur de ~2 jours au lieu de ~20 h.
     {'ordre': 4, 'delai_jours': 1, 'delai_minutes': 0,
      'heure_cible': datetime.time(10, 30),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 3 (répondeur)',
-     'template_cle': 'repondeur', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0, 'heure_cible': None,
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel 3',
+     'template_cle': 'appel_relance', 'dimanche_ok': False},
+    {'ordre': 5, 'delai_jours': 1, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'WhatsApp de valeur',
      'template_cle': 'valeur_j1', 'dimanche_ok': False},
     {'ordre': 6, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': datetime.time(18, 0),
-     'canal': CanalRelance.APPEL, 'libelle': 'Appel 4',
-     'template_cle': '', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0, 'heure_cible': None,
+     'canal': CanalRelance.APPEL, 'libelle': 'Appel 4 (répondeur)',
+     'template_cle': 'repondeur', 'dimanche_ok': False},
+    {'ordre': 7, 'delai_jours': 3, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Vocal',
      'template_cle': 'vocal_j3', 'dimanche_ok': False},
     {'ordre': 8, 'delai_jours': 5, 'delai_minutes': 0,
      'heure_cible': datetime.time(10, 30),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 5 (dimanche)',
      'template_cle': 'appel_dimanche', 'dimanche_ok': True},
-    {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 9, 'delai_jours': 7, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': '« Je classe ? »',
      'template_cle': 'je_classe_j7', 'dimanche_ok': False},
+    # CAD67 — le DERNIER appel avant clôture (celui qui décide du classement
+    # du lead) n'avait aucune phrase d'ouverture : script court dédié.
     {'ordre': 10, 'delai_jours': 10, 'delai_minutes': 0,
      'heure_cible': datetime.time(15, 0),
      'canal': CanalRelance.APPEL, 'libelle': 'Appel 6 (dernier)',
-     'template_cle': '', 'dimanche_ok': False},
-    {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0, 'heure_cible': None,
+     'template_cle': 'appel_dernier', 'dimanche_ok': False},
+    {'ordre': 11, 'delai_jours': 14, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Clôture',
      'template_cle': 'cloture_j14', 'dimanche_ok': False},
 ]
@@ -112,48 +185,91 @@ CADENCE_CONTACT_DEFAUT = [
 # Suivi APRÈS ENVOI DU DEVIS (Guide v2.1 chapitre 7). La touche « dimanche
 # famille » est posée sur le premier dimanche 16 h après J3, pour les seuls
 # leads portant l'étiquette « Décision à plusieurs ».
+#
+# CAD52 — PAS DE VARIANTE PAR SEGMENT — décision du 21/09/2026, à rouvrir sur
+# les mesures de CAD87.
+# `unique_together = ('company', 'cadence', 'ordre')` n'autorise qu'UNE
+# cadence après-devis par société, et l'action de démarrage ne lit que le nom
+# de la cadence : un rythme différent pour l'agricole ou le B2B demanderait
+# donc d'ouvrir la clé, l'API, l'éditeur et le démarrage. Décision fondateur
+# du 21/09/2026 : on ne le construit PAS — l'effort est gros, aucune source
+# primaire sur le cycle de décision agricole n'a pu être ouverte, et rendre
+# les phrases de l'écran lisibles (CAD46-CAD48) couvre le besoin ressenti.
+# La question se rouvrira sur les CHIFFRES de CAD87, jamais sur une intuition.
+# Cette note existe pour qu'un futur audit ne la re-soulève pas.
 CADENCE_APRES_DEVIS_DEFAUT = [
-    {'ordre': 1, 'delai_jours': 1, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 1, 'delai_jours': 1, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Le PDF s\'ouvre bien ?',
      'template_cle': 'j1_pdf', 'dimanche_ok': False},
-    {'ordre': 2, 'delai_jours': 2, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 2, 'delai_jours': 2, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': '', 'dimanche_ok': False},
     {'ordre': 3, 'delai_jours': 3, 'delai_minutes': 0,
      'heure_cible': datetime.time(16, 0),
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dimanche famille',
      'template_cle': 'dimanche_famille', 'dimanche_ok': True},
-    {'ordre': 4, 'delai_jours': 4, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 4, 'delai_jours': 4, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Preuve — chantier comparable',
      'template_cle': 'j4_preuve', 'dimanche_ok': False},
-    {'ordre': 5, 'delai_jours': 6, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 5, 'delai_jours': 6, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Garanties fabricants',
      'template_cle': 'j6_garanties', 'dimanche_ok': False},
-    {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': '', 'dimanche_ok': False},
-    {'ordre': 7, 'delai_jours': 9, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 7, 'delai_jours': 9, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Validité de la proposition',
      'template_cle': 'j9_validite', 'dimanche_ok': False},
-    {'ordre': 8, 'delai_jours': 11, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 8, 'delai_jours': 11, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
      'template_cle': '', 'dimanche_ok': False},
-    {'ordre': 9, 'delai_jours': 13, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 9, 'delai_jours': 13, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dernier message',
      'template_cle': 'j13_dernier', 'dimanche_ok': False},
-    {'ordre': 10, 'delai_jours': 14, 'delai_minutes': 0, 'heure_cible': None,
+    {'ordre': 10, 'delai_jours': 14, 'delai_minutes': 0,
+     'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Mise en pause',
      'template_cle': 'j14_pause', 'dimanche_ok': False},
 ]
 
 # Réveil des dormants — deux touches seulement, très espacées.
+# CAD74 (décision fondateur du 21/09/2026, Q20) : le réveil J30 est un APPEL
+# (son script vit avec la touche, CAD151) ; le J60 reste un WhatsApp et porte
+# « reveil_a3 » — ce que `_adapter_gabarits_reveil` lui assigne déjà par rang,
+# donc la clé seedée ici n'est pas retouchée. Le nombre (2), l'ordre et les
+# J+N ne changent pas. La touche saisonnière `reveil_b` n'est PAS un barreau
+# de cette échelle : c'est une touche calendaire, hors gabarit
+# (`apps/crm/cadence_reveil_saison.py`).
 CADENCE_REVEIL_DEFAUT = [
     {'ordre': 1, 'delai_jours': 30, 'delai_minutes': 0, 'heure_cible': None,
-     'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J30',
+     'canal': CanalRelance.APPEL, 'libelle': 'Réveil J30',
      'template_cle': 'reveil_a1', 'dimanche_ok': False},
     {'ordre': 2, 'delai_jours': 60, 'delai_minutes': 0, 'heure_cible': None,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Réveil J60',
      'template_cle': 'reveil_a2', 'dimanche_ok': False},
+]
+
+# CAD128 (21/09/2026) — DEUXIÈME AFFAIRE : un client SIGNÉ qui redemande un
+# devis est le meilleur lead du portefeuille (il a déjà acheté), et la garde
+# doublon le renvoyait sans protocole. Il reçoit ici une cadence COURTE, avec
+# son propre texte — jamais les six appels sur quatorze jours du protocole
+# contact.
+#
+# Les deux barreaux ne sont PAS inventés : ce sont les DEUX PREMIERS du
+# protocole validé (`CADENCE_CONTACT_DEFAUT`, message d'identité puis appel
+# d'ouverture trois minutes après), arrêtés là. Seule la clé de message du
+# premier change — un client acquis ne se présente pas, on le retrouve.
+CADENCE_DEUXIEME_AFFAIRE_DEFAUT = [
+    dict(CADENCE_CONTACT_DEFAUT[0], template_cle='deuxieme_affaire'),
+    dict(CADENCE_CONTACT_DEFAUT[1], template_cle='appel_ouverture'),
 ]
 
 #: Cadence -> gabarit par défaut. ``generique`` garde EXACTEMENT les 5
@@ -163,6 +279,7 @@ CADENCES_DEFAUT = {
     Cadence.APRES_DEVIS: CADENCE_APRES_DEVIS_DEFAUT,
     Cadence.REVEIL: CADENCE_REVEIL_DEFAUT,
     Cadence.GENERIQUE: CADENCE_RELANCE_DEFAUT,
+    Cadence.DEUXIEME_AFFAIRE: CADENCE_DEUXIEME_AFFAIRE_DEFAUT,
 }
 
 
@@ -205,6 +322,18 @@ class CadenceRelanceEtape(TenantModel):
     # semaine. Toutes les autres sont recalées sur un jour ouvré.
     dimanche_ok = models.BooleanField(
         default=False, verbose_name='Autorisée le dimanche')
+    # CAD43 — symétrique exact de `dimanche_ok`, pour le SAMEDI. Les jours
+    # ouvrés par défaut sont lundi-vendredi : toute touche calculée un samedi
+    # est repoussée au lundi, y compris le message d'identité J0. Cocher
+    # « Samedi » dans Paramètres → Notifications ouvrirait le samedi aux SIX
+    # appels d'un coup ; ce drapeau PAR TOUCHE permet d'ouvrir le seul
+    # message (canal silencieux) pour le lead arrivé le vendredi soir.
+    # Par défaut FAUX partout : rien ne change tant que personne ne coche.
+    samedi_ok = models.BooleanField(
+        default=False, verbose_name='Autorisée le samedi',
+        help_text='Cette touche peut-elle tomber un samedi ? À réserver aux '
+                  'canaux silencieux (WhatsApp, e-mail) — un appel le samedi '
+                  "n'est pas dans le protocole.")
     canal = models.CharField(max_length=20, choices=CanalRelance.choices)
     libelle = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
@@ -216,6 +345,18 @@ class CadenceRelanceEtape(TenantModel):
         # Un seul barreau par société + cadence + ordre (idempotence
         # seed/backfill). L'ordre 1 existe désormais dans CHAQUE cadence :
         # l'ancienne clé (company, ordre) les aurait fait se percuter.
+        #
+        # CAD124 — PAS D'AXE SEGMENT : décision du 21/09/2026. La clé reste
+        # (société, cadence, ordre) et n'accueillera PAS `type_installation`.
+        # Le CRM lit déjà le segment pour scorer (`apps/crm/scoring.py`) et
+        # pour exiger les bons champs au devis (`apps/ventes/devis_auto.py`),
+        # mais le GABARIT de cadence reste aveugle : le levier langue/texte
+        # (CAD126) et le playbook conditionné sur `{type_installation}`
+        # (CAD125) couvrent l'essentiel sans migration ni sélecteur de plus.
+        # Une quatrième dimension ici multiplierait les barreaux à maintenir
+        # par le nombre de segments, pour un protocole dont le fondateur a
+        # tranché qu'il ne change pas. La décision se rouvrira sur le VOLUME
+        # par segment (comptage CADM7), pas avant.
         unique_together = [('company', 'cadence', 'ordre')]
         indexes = [
             models.Index(fields=['company', 'cadence', 'actif'],
@@ -253,6 +394,9 @@ class CadenceRelanceEtape(TenantModel):
                     'heure_cible': entry.get('heure_cible'),
                     'template_cle': entry.get('template_cle', ''),
                     'dimanche_ok': entry.get('dimanche_ok', False),
+                    # CAD43 — absent de tous les gabarits par défaut : le
+                    # samedi ne s'ouvre que par un geste humain.
+                    'samedi_ok': entry.get('samedi_ok', False),
                     'canal': entry['canal'],
                     'libelle': entry['libelle'],
                     'actif': True,

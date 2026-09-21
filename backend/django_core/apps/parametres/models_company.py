@@ -59,6 +59,19 @@ class CompanyProfile(models.Model):
         max_length=255, blank=True, default='',
         help_text='Site web de la société (ex. helios.ma), affiché sur le PDF '
                   'du devis. Vide = défaut historique.')
+    # ── CAD71 (21/09/2026) — lien de la fiche Google, pour le message
+    # `avis_google` du moteur de relances. AVANT ce champ, `message_pour_etape`
+    # (apps/crm/services.py) n'alimentait `{lien}` que depuis le devis :
+    # assigner `avis_google` à une touche envoyait donc au client le lien de
+    # SON DEVIS à la place d'un lien vers la fiche Google. Additif, vide par
+    # défaut ; `avis_google` utilise désormais le placeholder DÉDIÉ
+    # `{lien_google}`, refusé à l'assignation tant que ce réglage est vide
+    # (apps/crm/services.py : `verifier_gabarit_assignable`).
+    lien_avis_google = models.URLField(
+        max_length=500, blank=True, default='',
+        help_text='Lien de la fiche Google de la société (pour le message '
+                  '« avis Google » du suivi client). Vide = ce gabarit ne '
+                  'peut pas être assigné à une touche.')
     # ── Bloc paiement & conditions sur la FACTURE (Feature B, 2026-06) ──
     # Trois réglages texte libre, additifs et VIDES par défaut : tant qu'ils ne
     # sont pas renseignés, le PDF facture est strictement identique (les blocs ne
@@ -339,11 +352,20 @@ class CompanyProfile(models.Model):
         null=True, blank=True, verbose_name='Ramadan — début')
     ramadan_fin = models.DateField(
         null=True, blank=True, verbose_name='Ramadan — fin')
+    # CAD38 — défaut 09:00-15:00, l'horaire continu appliqué au Maroc pendant
+    # le Ramadan dans les administrations, établissements publics et
+    # collectivités (Ministère de la Transition numérique et de la Réforme de
+    # l'administration, annonce du 10/02/2026 ; relais maroc-hebdo puis
+    # medias24 du 10/02/2026). L'ancien défaut 10:00-14:00 était deux heures
+    # plus étroit que cette référence, sans source. Le champ reste éditable
+    # par société. Décision fondateur du 21/09/2026 (CAD39) : cette fenêtre
+    # est COMMUNE aux appels et aux messages — pas de découpage par canal, et
+    # AUCUNE fenêtre du soir après le ftour.
     ramadan_appel_debut = models.TimeField(
-        default=datetime.time(10, 0),
+        default=datetime.time(9, 0),
         verbose_name='Ramadan — début des appels')
     ramadan_appel_fin = models.TimeField(
-        default=datetime.time(14, 0),
+        default=datetime.time(15, 0),
         verbose_name='Ramadan — fin des appels')
     # Objectif de première prise de contact, en minutes OUVRÉES (KPI MRY19).
     premier_contact_objectif_min = models.PositiveIntegerField(
@@ -351,6 +373,24 @@ class CompanyProfile(models.Model):
         verbose_name='Objectif premier contact (minutes ouvrées)',
         help_text='Minutes ouvrées maximum entre l\'arrivée d\'un lead et la '
                   'première prise de contact.')
+    # CAD31 (21/09/2026) — l'OBJECTIF ci-dessus est une promesse commerciale
+    # (« rappelé en moins de cinq minutes »). Le SEUIL D'ALERTE, lui, est un
+    # réglage de bruit : les deux étaient confondus, donc chaque lead de nuit
+    # réveillait le responsable ET son supérieur cinq minutes après
+    # l'ouverture. Les deux paliers sont NULLABLES : vides, le comportement
+    # est exactement celui d'avant.
+    premier_contact_alerte_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Alerter le responsable après (minutes ouvrées)',
+        help_text='À partir de combien de minutes ouvrées faut-il alerter le '
+                  'responsable du lead ? Laisser vide pour utiliser '
+                  'l’objectif de premier contact lui-même.')
+    premier_contact_escalade_min = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Prévenir le supérieur après (minutes ouvrées)',
+        help_text='À partir de combien de minutes ouvrées faut-il prévenir '
+                  'le supérieur ? Laisser vide pour qu’il soit prévenu en '
+                  'même temps que le responsable.')
     # AUTO-PIPELINE (ordre fondateur 26/08/2026) — « une fois que le lead
     # arrive dans notre ERP ça crée automatiquement le devis automatique ».
     # ACTIF par défaut : c'est le flux demandé. Le réglage existe pour qu'une

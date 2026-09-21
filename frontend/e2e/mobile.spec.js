@@ -7,10 +7,31 @@ import {
   assertNoSeriousA11yViolations,
 } from './helpers'
 
-const PAGES = ['/dashboard', '/crm/leads', '/ventes/factures', '/parametres']
+// CAD85 — les écrans QUOTIDIENS de la cadence rejoignent la liste : le cockpit
+// CRM et le suivi des relances, que la commerciale ouvre chaque matin, et la
+// FICHE d'un lead (plus bas — son URL porte un id, elle ne peut pas être
+// statique). Ce n'est pas une nouvelle famille de tests : ce sont trois routes
+// de plus dans le tableau existant.
+const PAGES = [
+  '/dashboard', '/crm/leads', '/crm/cockpit', '/crm/relances',
+  '/ventes/factures', '/parametres',
+]
+
+/** CAD85 — l'URL de la FICHE d'un lead (`/crm/leads/:id`), ou `null`.
+ *  L'id se résout par l'API, comme dans `calepinage_tactile.spec.js` : aucun
+ *  lien d'écran n'est supposé. Base sans lead ⇒ rien à mesurer, jamais un
+ *  échec. */
+async function urlFicheLead(page) {
+  const res = await page.request.get('/api/django/crm/leads/?page_size=1')
+  if (!res.ok()) return null
+  const body = await res.json()
+  const rows = Array.isArray(body) ? body : body.results
+  return rows?.length ? `/crm/leads/${rows[0].id}` : null
+}
 
 test('E16: no horizontal overflow on key pages', async ({ page }) => {
-  for (const path of PAGES) {
+  const fiche = await urlFicheLead(page)
+  for (const path of [...PAGES, ...(fiche ? [fiche] : [])]) {
     await page.goto(path)
     await expect(page.locator('.header-title')).toBeVisible()
     await page.waitForLoadState('networkidle').catch(() => {})

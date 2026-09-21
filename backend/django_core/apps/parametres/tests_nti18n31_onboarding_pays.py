@@ -25,6 +25,27 @@ User = get_user_model()
 BASE = '/api/django/parametres/onboarding-localisation/'
 
 
+def _feries_marocains_attendus():
+    """Nombre de lignes `Holiday` que le seeder MA pose sur une société neuve.
+
+    CAD40 (21/09/2026) : `seed_ma_holidays` ne pose plus seulement les 9
+    fériés FIXES — il ajoute les fêtes MOBILES que `core.calendar` CONNAÎT
+    pour l'année en cours (aucune n'est calculée : une année inconnue n'en
+    reçoit aucune, et la commande réclame une saisie à la main). Le compte
+    dépend donc de l'année ET du contenu de `MOROCCAN_MOVABLE_HOLIDAYS` : on
+    le DÉRIVE des deux sources plutôt que de figer un nombre qui périme au
+    premier ajout d'année.
+    """
+    from core.calendar import movable_holidays
+    from core.dates import aujourd_hui_local
+    from apps.notifications.management.commands.seed_ma_holidays import (
+        MA_FIXED_HOLIDAYS,
+    )
+
+    return len(MA_FIXED_HOLIDAYS) + len(
+        movable_holidays(aujourd_hui_local().year))
+
+
 def _company(slug='nti18n31-co', nom='NTI18N31 Co'):
     return Company.objects.create(nom=nom, slug=slug)
 
@@ -69,15 +90,19 @@ class ProvisionnerLocalisationTests(TestCase):
         resultat = provisionner_localisation(company, pays='MA')
         self.assertTrue(resultat['feries_seedes'])
         self.assertEqual(resultat['seeder_utilise'], 'seed_ma_holidays')
+        attendus = _feries_marocains_attendus()
+        # Anti-faux-vert : les 9 fixes sont un plancher, jamais zéro.
+        self.assertGreaterEqual(attendus, 9)
         self.assertEqual(
-            Holiday.objects.filter(company=company).count(), 9)
+            Holiday.objects.filter(company=company).count(), attendus)
 
     def test_seeding_is_idempotent(self):
         company = _company('nti18n31-co-4', 'NTI18N31 Co 4')
         provisionner_localisation(company, pays='MA')
         provisionner_localisation(company, pays='MA')
         self.assertEqual(
-            Holiday.objects.filter(company=company).count(), 9)
+            Holiday.objects.filter(company=company).count(),
+            _feries_marocains_attendus())
 
     def test_unavailable_seeder_for_pays_never_raises_no_holidays_created(self):
         # 'DE' n'a AUCUN seeder mappé dans SEEDERS_FERIES_PAR_PAYS (FR/SN/CI

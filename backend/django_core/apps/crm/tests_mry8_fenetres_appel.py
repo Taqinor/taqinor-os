@@ -168,9 +168,13 @@ class FenetreDuJourTests(TestCase):
             horaires.fenetre_du_jour(datetime.date(2026, 9, 6), self.company,
                                      dimanche=True, canal='appel'))
 
-    def test_la_fenetre_de_ramadan_est_commune_aux_deux_canaux(self):
-        """Pendant le Ramadan c'est la JOURNÉE entière qui se déplace
-        (10 h-14 h), pas seulement l'heure des appels."""
+    def test_la_fenetre_de_ramadan_commune_aux_deux_canaux_est_un_CHOIX(self):
+        """Pendant le Ramadan c'est la JOURNÉE entière qui se déplace, pas
+        seulement l'heure des appels — et c'est une DÉCISION FONDATEUR du
+        21/09/2026 (CAD39), pas un effet de bord du `return` anticipé : la
+        fenêtre reste commune aux appels et aux messages, et aucune fenêtre du
+        soir n'est ouverte après le ftour. Ses bornes valent 09 h-15 h, la
+        référence nationale (CAD38)."""
         profil = CompanyProfile.objects.get(company=self.company)
         profil.ramadan_debut = datetime.date(2027, 2, 8)
         profil.ramadan_fin = datetime.date(2027, 3, 9)
@@ -178,7 +182,7 @@ class FenetreDuJourTests(TestCase):
         jour = datetime.date(2027, 2, 9)  # mardi
         self.assertEqual(
             horaires.fenetre_du_jour(jour, self.company, canal='whatsapp'),
-            (datetime.time(10, 0), datetime.time(14, 0), None))
+            (datetime.time(9, 0), datetime.time(15, 0), None))
         self.assertEqual(
             horaires.fenetre_du_jour(jour, self.company, canal='whatsapp'),
             horaires.fenetre_du_jour(jour, self.company, canal='appel'))
@@ -275,10 +279,17 @@ class ProchainCreneauTests(TestCase):
         profil.ramadan_debut = datetime.date(2027, 2, 8)
         profil.ramadan_fin = datetime.date(2027, 3, 9)
         profil.save(update_fields=['ramadan_debut', 'ramadan_fin'])
-        # Mardi 9 février 2027, 09:00 → attend l'ouverture de 10:00.
+        # CAD38 — la fenêtre du mois vaut 09 h-15 h : mardi 9 février 2027 à
+        # 08:00 attend l'ouverture de 09:00 (et non 20:00, la fermeture des
+        # jours ordinaires).
         resultat = horaires.prochain_creneau_appel(
-            _dt(2027, 2, 9, 9, 0), self.company)
-        self.assertEqual(resultat, _dt(2027, 2, 9, 10, 0))
+            _dt(2027, 2, 9, 8, 0), self.company)
+        self.assertEqual(resultat, _dt(2027, 2, 9, 9, 0))
+        # Après 15:00 le mois est fermé : on bascule au lendemain 09:00.
+        self.assertEqual(
+            horaires.prochain_creneau_appel(
+                _dt(2027, 2, 9, 16, 0), self.company),
+            _dt(2027, 2, 10, 9, 0))
 
     def test_la_sortie_reste_dans_le_fuseau_dentree(self):
         entree = _dt(2026, 9, 5, 10, 0).astimezone(datetime.timezone.utc)

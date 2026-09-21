@@ -776,6 +776,14 @@ def _map_payload_to_fields(data: dict) -> dict:
         'roof_type': (str(data.get('roofType')).strip()[:30] if data.get('roofType') else None),
         'bill_range_bucket': data.get('billRange') if data.get('billRange') in Lead.BillRangeBucket.values else None,
         'roi_band': roi_band,
+        # CAD121 (21/09/2026) — TROIS états, jamais deux. `True` = le client a
+        # coché la case (décochée par défaut depuis CAD121 : la loi 09-08
+        # art. 10 exige un consentement « libre, spécifique et informé »,
+        # qu'une case pré-cochée n'est pas) ; `False` = la question a été posée
+        # et il ne l'a PAS cochée ; `None` = la question n'a pas été posée du
+        # tout — un silence n'est ni un accord ni un refus, et le registre de
+        # consentement n'écrit alors rien (voir `enregistrer_consentements_
+        # intake_web`). Ne jamais replier `None` sur `False`.
         'whatsapp_opt_in': bool(data['whatsappOptIn']) if 'whatsappOptIn' in data else None,
         'consent_timestamp': consent_ts,
         'fbclid': (str(data.get('fbclid')).strip()[:500] if data.get('fbclid') else None),
@@ -1136,6 +1144,18 @@ def _map_payload_to_fields(data: dict) -> dict:
             val = questionnaire.pop(equip_key, None)
             if val is not None:
                 fields[equip_key] = val
+        # ── CAD-L ── CAD149 — PROMOTION des deux réponses de pompage qui
+        # n'avaient pas de colonne : elles rejoignent le sort de HMT, débit
+        # et CV juste au-dessus (colonne Lead dédiée, plus de sac). Le
+        # vocabulaire du site est gardé TEL QUEL, butane compris. La note de
+        # chatter, elle, est construite depuis le payload COMPLET : elle
+        # continue de citer ces deux réponses.
+        heures_pompage = questionnaire.pop('heures_pompage', None)
+        if heures_pompage is not None:
+            fields['pompage_heures_jour'] = heures_pompage
+        pompe_alim = questionnaire.pop('pompe_actuelle', None)
+        if pompe_alim is not None:
+            fields['pompe_alim_actuelle'] = pompe_alim
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(
@@ -1193,12 +1213,92 @@ def _quest_type_toiture(raw):
     return _clean_choice(raw, Lead.TypeToiture.values)
 
 
+# ── CAD-L ── CAD149 — vague 1 du script d'appel guidé. Ces huit colonnes sont
+# hors de portée du mapping du site (il ne collecte pas ces réponses, ou il les
+# nomme autrement) : sans nettoyeur déclaré ici, une réponse portant le nom de
+# la colonne serait SILENCIEUSEMENT jetée. Mêmes primitives que le reste du
+# bloc (`_clean_decimal`/`_clean_choice`), aucun nouveau style de validation.
+def _quest_type_bien(raw):
+    return _clean_choice(raw, Lead.TypeBien.values)
+
+
+def _quest_objectif_projet(raw):
+    return _clean_choice(raw, Lead.ObjectifProjet.values)
+
+
+def _quest_decideur(raw):
+    return _clean_choice(raw, Lead.Decideur.values)
+
+
+def _quest_devis_concurrents(raw):
+    return _clean_choice(raw, Lead.DevisConcurrents.values)
+
+
+def _quest_equip_ve_statut(raw):
+    return _clean_choice(raw, Lead.EquipVeStatut.values)
+
+
+def _quest_pompage_heures_jour(raw):
+    return _clean_decimal(raw, lo=0, hi=24)
+
+
+def _quest_pompe_alim_actuelle(raw):
+    return _clean_choice(raw, Lead.PompeAlimActuelle.values)
+
+
+def _quest_carburant_litres_mois(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000)
+
+
+# CAD154 — vague 2 : mêmes primitives, même raison (une colonne sans nettoyeur
+# verrait la réponse portant son nom silencieusement jetée).
+def _quest_nb_personnes_foyer(raw):
+    valeur = _clean_decimal(raw, lo=0, hi=200)
+    return None if valeur is None else int(valeur)
+
+
+def _quest_budget_client_mad(raw):
+    return _clean_decimal(raw, lo=0, hi=1_000_000_000)
+
+
+def _quest_frein_principal(raw):
+    return _clean_choice(raw, Lead.FreinPrincipal.values)
+
+
+def _quest_declencheur(raw):
+    return _clean_choice(raw, Lead.Declencheur.values)
+
+
+def _quest_compteur_puissance_kva(raw):
+    return _clean_decimal(raw, lo=0, hi=100_000)
+
+
+def _quest_chauffage_electrique_hiver(raw):
+    return raw if isinstance(raw, bool) else None
+
+
 #: (b) colonnes Lead hors de portée du mapping site → nettoyeur dédié.
 _QUEST_NETTOYEURS_HORS_SITE = {
     'conso_mensuelle_kwh': _quest_conso,
     'surface_toiture_m2': _quest_surface,
     'tranche_onee': _quest_tranche,
     'type_toiture': _quest_type_toiture,
+    # CAD149 — vague 1 du script d'appel guidé.
+    'type_bien': _quest_type_bien,
+    'objectif_projet': _quest_objectif_projet,
+    'decideur': _quest_decideur,
+    'devis_concurrents': _quest_devis_concurrents,
+    'equip_ve_statut': _quest_equip_ve_statut,
+    'pompage_heures_jour': _quest_pompage_heures_jour,
+    'pompe_alim_actuelle': _quest_pompe_alim_actuelle,
+    'carburant_litres_mois': _quest_carburant_litres_mois,
+    # CAD154 — vague 2 du script d'appel guidé.
+    'nb_personnes_foyer': _quest_nb_personnes_foyer,
+    'budget_client_mad': _quest_budget_client_mad,
+    'frein_principal': _quest_frein_principal,
+    'declencheur': _quest_declencheur,
+    'compteur_puissance_kva': _quest_compteur_puissance_kva,
+    'chauffage_electrique_hiver': _quest_chauffage_electrique_hiver,
 }
 
 
