@@ -58,6 +58,37 @@ export const MODULE_ATELIER_PAR_DEFAUT: Panel2Module = {
   watt: PANEL2_WATT,
 };
 
+/**
+ * CALX109 câblage — LES COTES QUE LE PAVAGE APPLIQUE RÉELLEMENT.
+ *
+ * Les deux moteurs de pavage (`estimatorBrainV2.packConfig` toit plat,
+ * `estimatorBrainV3.packFlushPlane` toit en pente) lisent leurs dimensions ICI, et nulle
+ * part ailleurs : une seule règle, donc jamais deux interprétations du même module.
+ *
+ * OPTION ABSENTE ⇒ `MODULE_ATELIER_PAR_DEFAUT` lui-même, donc pavage IDENTIQUE octet pour
+ * octet à celui d'aujourd'hui. Une cote non finie ou ≤ 0 n'est jamais « corrigée » en
+ * silence par une dimension standard : elle fait retomber sur le module par défaut, NOMMÉ
+ * (le refus détaillé, lui, est prononcé en amont par `moduleSelect.cotesDeModule`, qui
+ * nomme le champ manquant avant même qu'un module sans cote atteigne le pavage).
+ *
+ * Le grand côté est TOUJOURS `longM` : un pavage se raisonne « le long de la rangée » /
+ * « dans le sens de la pente », pas en longueur/largeur de fiche produit.
+ */
+export function cotesDePavage(module?: Panel2Module | null): Panel2Module {
+  if (!module) return MODULE_ATELIER_PAR_DEFAUT;
+  const exploitable = (v: unknown): v is number =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0;
+  if (!exploitable(module.longM) || !exploitable(module.courtM) || !exploitable(module.watt)) {
+    return MODULE_ATELIER_PAR_DEFAUT;
+  }
+  return {
+    longM: Math.max(module.longM, module.courtM),
+    courtM: Math.min(module.longM, module.courtM),
+    epaisM: exploitable(module.epaisM) ? module.epaisM : null,
+    watt: module.watt,
+  };
+}
+
 // — Décisions géométriques (ajustables ici) —
 export const PANEL2_TILT_DEG = 13; // inclinaison toit plat (plage densité 12–15°)
 export const PERIMETER_SETBACK_M = 0.5; // retrait de rive (valeur par défaut des trois)

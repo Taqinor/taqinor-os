@@ -22,6 +22,20 @@ import {
   redimensionnerRectangle,
 } from './snap';
 import { computePanStats, computeSiteStats, hasMultipleBuildings, htmlTableSite, type PanStat } from './panStats'; // CALX126
+// CALX109/CALX110 câblage — le catalogue de modules de la société et le module posé sur
+// CHAQUE pan. `moduleSelect.ts` est PUR (aucun DOM) : c'est ici, dans le panneau du pan, que
+// le choix devient visible, et c'est de là qu'il repart vers le pavage et le document.
+import {
+  MODULE_PAR_DEFAUT_ATELIER,
+  cotesDeModule,
+  estRefus,
+  lireModulesDisponibles,
+  resoudreModuleDuPan,
+  type CatalogueModules,
+  type ModuleDisponible,
+  type ModuleDocument,
+  type SyntheseModules,
+} from './moduleSelect';
 
 /**
  * CAL56 — traduit les pans générés par `generateRoofShapePans` (scene3d.ts, géométrie pure)
@@ -218,6 +232,10 @@ export interface Zones {
   /** CALX98 — duplique le pan ACTIF (contour, obstacles et réglages) dans une zone neuve
    *  décalée du pas SAISI. Renvoie false et ne crée RIEN sans pas saisi. */
   dupliquerPanActif: (pasM: number) => boolean;
+  /** CALX109/CALX110 câblage — pose le modèle de module `moduleId` sur le pan ACTIF (chaîne
+   *  vide = retour au module par défaut de l'atelier). Renvoie false et n'écrit RIEN quand le
+   *  modèle est grisé, inconnu, ou sans cotes — le refus NOMME le pan et le motif. */
+  choisirModuleDuPanActif: (moduleId: string | null | undefined) => boolean;
 }
 
 /**
@@ -337,7 +355,11 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     if (areasTotalSavingsEl) areasTotalSavingsEl.textContent = total.savingsHigh > 0 ? `${fmtMad(total.savingsLow)} – ${fmtMad(total.savingsHigh)}/an` : '—';
 
     // CAL59 — statistiques par pan + totaux par bâtiment (colonnes toutes CALCULÉES).
-    const stats = computePanStats(areas, (a) => (a.id === activeAreaId ? liveActive : a.result));
+    // CALX110 câblage — 3ᵉ argument : le MODULE de chaque pan. Sans lui, deux modèles posés
+    // sur deux pans rendaient le même kWc (`nombre × 720 W` partout) ; avec lui, le kWc d'un
+    // pan vaut `nombre × la puissance de SON module` et l'occupation se mesure sur SON
+    // empreinte. Un pan sans choix rend `null` ⇒ colonnes identiques à aujourd'hui.
+    const stats = computePanStats(areas, (a) => (a.id === activeAreaId ? liveActive : a.result), moduleDuPan);
     const multiBuilding = hasMultipleBuildings(stats);
 
     if (areasListEl) {
@@ -397,6 +419,10 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
 
     // CALX97 — les cotes affichées suivent le pan actif (lues, jamais devinées).
     syncGeometryPanel();
+    // CALX109/CALX110 câblage — le sélecteur suit le pan actif, et la mention NOMME ce qui
+    // est réellement posé (le module par défaut tant que rien n'est choisi, « plusieurs
+    // modèles » dès que les pans divergent).
+    syncModulePicker(stats.modules);
     if (statsEl) statsEl.insertAdjacentHTML('beforeend', htmlTableSite(computeSiteStats(stats, ctx.surfacesPose))); // CALX126 — totaux du site : pans de toit ET surfaces de pose, une ligne par surface, un total par bâtiment
   }
 
@@ -629,6 +655,176 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
   });
   syncDuplicateButton(); // état initial : champ vide ⇒ bouton inactif + motif affiché
 
+  // ————————————————————————————————————————————————————————————————————
+  // CALX109/CALX110 câblage — LE SÉLECTEUR DE MODULE DU PAN ACTIF
+  //
+  // LE CONSTAT. `moduleSelect.ts` savait déjà lire le catalogue de la société, résoudre le
+  // module d'un pan et écrire le tout dans le document — mais RIEN ne permettait de choisir :
+  // aucun sélecteur n'existait, donc aucun pan ne portait jamais de `moduleId` et l'atelier
+  // ne pavait que son module par défaut. Ce bloc crée le contrôle LUI-MÊME quand la page
+  // hôte ne le fournit pas (même patron qu'`ensureStatsTable` / `ensureGeometryPanel`,
+  // d'origine `obstaclesUi.ts ensureTypePicker`) : aucune page n'a à être modifiée.
+  //
+  // CE QU'IL MONTRE, ET CE QU'IL REFUSE. La liste s'ouvre TOUJOURS sur le module par défaut
+  // de l'atelier, NOMMÉ — c'est ce qui est posé tant que personne n'a choisi. Viennent
+  // ensuite les modèles CHOISISSABLES, puis les modèles GRISÉS (`disabled`) avec le motif du
+  // SERVEUR : une fiche produit incomplète reste VISIBLE, sinon on la cherche en vain. Un
+  // refus nomme le pan et le modèle, s'affiche À CÔTÉ du sélecteur et dans le bandeau de
+  // statut — jamais un « non enregistré » générique. Catalogue vide ⇒ le motif du serveur
+  // est dit tel quel ; aucune cote n'est inventée, jamais.
+  // ————————————————————————————————————————————————————————————————————
+
+  /** CALX109 — le catalogue de la société, lu UNE fois : `ctx.opts` est figé au boot. */
+  const catalogueAtelier: CatalogueModules = lireModulesDisponibles(ctx.opts?.modulesDisponibles);
+
+  /** Le motif d'un modèle GRISÉ : celui du serveur d'abord, sinon celui que les cotes
+   *  manquantes dictent (`cotesDeModule` NOMME déjà le champ). Jamais un motif inventé. */
+  function motifGrise(g: ModuleDisponible): string {
+    if (g.motif && g.motif.trim()) return g.motif.trim();
+    const refus = cotesDeModule(g.module);
+    return estRefus(refus) ? refus.message : 'fiche produit incomplète';
+  }
+
+  function ensureModulePicker(): HTMLElement | null {
+    const existing = document.getElementById('rp9-pan-module');
+    if (existing) return existing;
+    const { areasWindowEl } = ctx.dom;
+    if (!areasWindowEl || typeof document.createElement !== 'function') return null;
+    const el = document.createElement('div');
+    el.id = 'rp9-pan-module';
+    el.className = 'rp9-pan-module mt-2 flex flex-wrap items-center gap-2 text-xs';
+    const options = [
+      `<option value="">${esc(MODULE_PAR_DEFAUT_ATELIER.libelle)}</option>`,
+      ...catalogueAtelier.choisissables.map(
+        (m) => `<option value="${esc(m.id)}">${esc(m.libelle)}</option>`,
+      ),
+      ...catalogueAtelier.grises.map(
+        (g) => `<option value="${esc(g.module.id)}" disabled data-module-grise="1">${esc(g.module.libelle)} — ${esc(motifGrise(g))}</option>`,
+      ),
+    ].join('');
+    el.innerHTML =
+      `<label class="inline-flex items-center gap-1" for="rp9-pan-module-select">Module du pan` +
+      `<select id="rp9-pan-module-select" class="rp9-input">${options}</select></label>` +
+      `<span id="rp9-pan-module-mention" class="text-lune-faint"></span>` +
+      `<span id="rp9-pan-module-erreur" class="text-alert-300" role="alert" hidden></span>`;
+    areasWindowEl.appendChild(el);
+    return el;
+  }
+  const modulePickerEl = ensureModulePicker();
+  const moduleSelectEl = document.getElementById('rp9-pan-module-select') as HTMLSelectElement | null;
+  const moduleMentionEl = document.getElementById('rp9-pan-module-mention');
+  const moduleErreurEl = document.getElementById('rp9-pan-module-erreur');
+
+  /** Affiche (ou efface) un refus NOMMÉ, à côté du sélecteur ET dans le bandeau de statut. */
+  function direRefusModule(motif: string | null) {
+    if (moduleErreurEl) {
+      moduleErreurEl.textContent = motif ?? '';
+      moduleErreurEl.hidden = !motif;
+    }
+    if (motif) deps.setStatus?.(motif);
+  }
+
+  /**
+   * CALX109/CALX110 — le module RÉSOLU d'un pan, pour `computePanStats`.
+   *
+   * Un pan SANS choix rend `null` — et pas le module par défaut : c'est ce qui garantit que
+   * tant que personne n'a choisi, le tableau par pan affiche exactement les chiffres
+   * d'aujourd'hui (kWc du résultat de zone, empreinte de l'étude), octet pour octet. Un
+   * `moduleId` devenu introuvable rend `null` aussi : on n'invente pas une cote à sa place
+   * (le refus, lui, est dit par `syncModulePicker`).
+   */
+  function moduleDuPan(a: AreaRecord): ModuleDocument | null {
+    if (!a.moduleId) return null;
+    const module = resoudreModuleDuPan(catalogueAtelier.choisissables, a.moduleId);
+    if (estRefus(module)) return null;
+    return estRefus(cotesDeModule(module)) ? null : module;
+  }
+
+  /** CALX109 — le sélecteur suit le pan ACTIF ; la mention NOMME ce qui est posé. */
+  function syncModulePicker(synthese?: SyntheseModules) {
+    if (!modulePickerEl) return;
+    const a = ctx.activeArea();
+    modulePickerEl.hidden = !a;
+    if (!a) return;
+    if (moduleSelectEl && document.activeElement !== moduleSelectEl) {
+      moduleSelectEl.value = a.moduleId ?? '';
+      // Un `moduleId` que le catalogue ne porte plus ne peut pas être sélectionné : le
+      // <select> retombe sur le défaut tout seul. On le DIT, plutôt que de laisser croire
+      // que ce pan est revenu au module par défaut de son plein gré.
+      if (a.moduleId && moduleSelectEl.value !== a.moduleId) {
+        direRefusModule(
+          `${nomDuPanActif()} : le module « ${a.moduleId} » ne figure plus dans le catalogue de la société —`
+            + ' rechargez le catalogue, ou choisissez un module de la liste.',
+        );
+      }
+    }
+    if (moduleMentionEl) {
+      const aucunChoix = !ctx.areas.some((z) => z.moduleId);
+      moduleMentionEl.textContent = aucunChoix
+        ? `${MODULE_PAR_DEFAUT_ATELIER.libelle} — ${
+          catalogueAtelier.choisissables.length
+            ? 'aucun module du catalogue n’est posé sur ce site.'
+            : catalogueAtelier.motifListeVide
+              ?? 'aucun module de la société n’est choisissable aujourd’hui.'
+        }`
+        : synthese?.mention ?? '';
+    }
+  }
+
+  /**
+   * CALX109/CALX110 — pose un modèle sur le pan ACTIF (chaîne vide = retour au module par
+   * défaut de l'atelier, NOMMÉ). Un modèle grisé, inconnu, ou dont la fiche n'a pas de cotes
+   * est REFUSÉ en nommant le champ fautif : RIEN n'est écrit sur le pan, et le pavage ne
+   * bouge pas. Un choix accepté re-pave immédiatement (`deps.recalc`) — c'est tout l'intérêt
+   * de choisir un module : ses VRAIES cotes changent le nombre de rangées.
+   */
+  function choisirModuleDuPanActif(moduleId: string | null | undefined): boolean {
+    const a = ctx.activeArea();
+    if (!a) return false;
+    const id = typeof moduleId === 'string' ? moduleId.trim() : '';
+    if (!id) {
+      ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+      delete a.moduleId;
+      direRefusModule(null);
+      deps.recalc?.();
+      renderAreasPanel();
+      deps.setStatus?.(`${nomDuPanActif()} : ${MODULE_PAR_DEFAUT_ATELIER.libelle}.`);
+      return true;
+    }
+    const grise = catalogueAtelier.grises.find((g) => g.module.id === id);
+    if (grise) {
+      direRefusModule(`${nomDuPanActif()} : « ${grise.module.libelle} » — ${motifGrise(grise)}`);
+      syncModulePicker();
+      return false;
+    }
+    const module = resoudreModuleDuPan(catalogueAtelier.choisissables, id);
+    if (estRefus(module)) {
+      direRefusModule(`${nomDuPanActif()} : ${module.message}`);
+      syncModulePicker();
+      return false;
+    }
+    const cotes = cotesDeModule(module);
+    if (estRefus(cotes)) {
+      direRefusModule(`${nomDuPanActif()} : ${cotes.message}`);
+      syncModulePicker();
+      return false;
+    }
+    ctx.pushWorkshopHistory?.(); // CAL100 — annulable comme le reste de l'atelier
+    a.moduleId = module.id;
+    direRefusModule(null);
+    deps.recalc?.(); // le pavage repart avec les VRAIES cotes de ce module
+    renderAreasPanel();
+    deps.setStatus?.(
+      `${nomDuPanActif()} : module « ${module.libelle} » — le calepinage est repavé à ses cotes.`,
+    );
+    return true;
+  }
+
+  moduleSelectEl?.addEventListener('change', () => {
+    choisirModuleDuPanActif(moduleSelectEl.value);
+  });
+  syncModulePicker(); // état initial : le module par défaut est NOMMÉ, jamais muet
+
   /** CAL59 — assigne le bâtiment d'une zone (chaîne vide = retour au bâtiment unique). */
   function setAreaBuilding(id: string, buildingId: string) {
     const a = ctx.areas.find((x) => x.id === id);
@@ -648,6 +844,7 @@ export function createZones(ctx: Ctx, deps: ZonesDeps = {}): Zones {
     pivoterPanActif,
     redimensionnerPanActif,
     dupliquerPanActif,
+    choisirModuleDuPanActif, // CALX109/CALX110 câblage
   };
 }
 
