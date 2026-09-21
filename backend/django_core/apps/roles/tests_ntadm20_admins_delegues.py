@@ -109,11 +109,28 @@ class Ntadm20AdminRhApiTests(TestCase):
         self.api = APIClient()
         self.api.force_authenticate(self.user)
 
+    def _skip_si_rh_parquee(self):
+        """Correctif CI SOLMVP — ``rh`` (dossiers employés) est une des 47
+        apps sorties du MVP solaire (``core.parked``, coquille SANS AUCUNE
+        url) : ``/api/django/rh/employes/`` n'existe plus, et la restaurer
+        est hors périmètre d'un correctif CI (ce serait dé-parquer toute
+        l'app RH). Dormant tant que ``rh`` reste parquée ; se réarme tout
+        seul dès qu'elle revient (elle n'est pas encore au calendrier
+        ``core.parked.PHASE2``, mais reste dans les 47)."""
+        from core.parked import est_parquee
+        if est_parquee('rh'):
+            self.skipTest(
+                "`rh` est une app parquée du MVP solaire (core.parked) : "
+                "`/api/django/rh/employes/` n'existe plus tant qu'elle "
+                "reste hors périmètre.")
+
     def test_peut_lister_les_dossiers_employes(self):
+        self._skip_si_rh_parquee()
         resp = self.api.get('/api/django/rh/employes/')
         self.assertEqual(resp.status_code, 200)
 
     def test_peut_creer_puis_desactiver_un_dossier_employe(self):
+        self._skip_si_rh_parquee()
         creation = self.api.post(
             '/api/django/rh/employes/',
             {'matricule': 'NTADM20-1', 'nom': 'Alaoui', 'prenom': 'Salma'},
