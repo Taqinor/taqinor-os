@@ -17,6 +17,19 @@
 #   3. the business-core `ventes` app never imports the `audit` satellite (the
 #      M4 win — that last upward back-edge was replaced by the core event bus:
 #      ventes emits `document_pdf_generated` and audit subscribes).
+#
+# SOLMVP51 (2026-09-21) — PARKED APPS AND THIS FILE. 47 apps left the MVP
+# solaire perimeter as migration shells (`core/parked.py`; the removal of the
+# dead `ignore_imports` lines landed earlier in the SOLMVP sweep). Every module
+# named anywhere below was re-verified to EXIST on disk as a `.py` or a package
+# — import-linter errors out on an unresolvable module, so a stale name is a
+# broken build, not a silent no-op. The contracts that still NAME a parked app
+# (`marketing`/`ao`/`frais` as a source, `apps.compta.models` in a few
+# `forbidden_modules` lists) are DELIBERATELY KEPT: a shell's `models.py` has no
+# models and imports nothing, so those contracts are simply vacuous today, and
+# keeping them means a module restored by the `docs/parked-modules.md` §5 recipe
+# is protected again from its first commit instead of needing someone to
+# remember to re-add its contract.
 
 [importlinter]
 root_packages =

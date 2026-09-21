@@ -182,20 +182,6 @@ class TestModuleDormant(unittest.TestCase):
                 for e in echecs), echecs)
 
 
-class TestHookConnecteur(unittest.TestCase):
-    def test_hook_present_ne_rougit_pas(self):
-        self.assertEqual(_echecs(cow._verifier_hook_connecteur, {
-            cow.HOOK_FICHIER:
-                "CONNECTEUR_ODOO_MODULE = 'apps.publicapi.connectors.odoo'",
-        }), [])
-
-    def test_hook_disparu_rougit(self):
-        echecs = _echecs(cow._verifier_hook_connecteur, {
-            cow.HOOK_FICHIER: 'rien = 1',
-        })
-        self.assertTrue(any('a disparu' in e for e in echecs), echecs)
-
-
 class TestDepotReel(unittest.TestCase):
     def test_le_depot_est_vert(self):
         self.assertEqual(cow.main(), 0)

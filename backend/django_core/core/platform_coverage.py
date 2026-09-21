@@ -57,12 +57,25 @@ DRIFT_RULES = {
 # une entrée baseline qui n'est PLUS une incohérence réelle devient rouge).
 #
 # ARC29 — l'entrée ARC28 pilote (``'contrats.contrat', 'chatter_sans_recherche'``)
-# a été RETIRÉE : Contrat est désormais cherchable (apps/contrats/platform.py
-# déclare 'contrats.contrat' dans searchable_models, apps/reporting/search.py
-# le résout via _spec_contrat) — la dérive n'existe plus, la garder aurait menti.
+# a été RETIRÉE en son temps parce que Contrat était devenu cherchable ; depuis
+# SOLMVP33 l'app ``contrats`` est PARQUÉE (coquille de migrations) : elle ne
+# déclare plus aucune surface et ne peut donc plus dériver du tout.
 # En sens inverse, déclarer les surfaces RÉELLES de ventes/installations/sav/
 # stock (ARC29) rend VISIBLES des dérives HÉRITÉES jusque-là silencieuses —
 # elles préexistaient au registre, on les gèle ici au lieu de les masquer.
+#
+# SOLMVP51 (2026-09-21) — 28 entrées RETIRÉES d'un coup. 26 nommaient une app
+# PARQUÉE (ao, assurances ×3, btp_chantier ×7, credit ×2, douane, esg, flotte,
+# gestion_projet, innovation, kb, mrp, qhse ×2, rh, transport ×3) : leur
+# ``platform.py`` n'existe plus, la dérive n'existe donc plus et
+# ``stale_baseline()`` les rendait ROUGES. Les 2 autres
+# (``installations.ordresoustraitance``, ``installations.rfq``) nommaient des
+# sous-fonctions de Chantiers dont SOLMVP13 a retiré écrans ET endpoints
+# (modèles et tables conservés, PHASE 2), donc leurs déclarations de surface
+# sont parties avec. Elles reviendront AVEC leur module, par la recette de
+# ``docs/parked-modules.md`` §5 — jamais réintroduites « au cas où » : une
+# entrée qui ne correspond plus à une dérive réelle MENT, et le test
+# ``test_baseline_stays_minimal`` la refuse.
 BASELINE_DRIFT: set[tuple[str, str]] = {
     # Cherchables SANS chatter générique (hérité — l'utilisateur les trouve
     # mais ne peut ni les commenter ni y joindre une pièce) : à retirer le
@@ -82,38 +95,13 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # Le rendre cherchable globalement est une décision produit séparée ; à
     # retirer le jour où le dossier entrera dans reporting/search.py.
     ('ventes.regulatorydossier', 'chatter_sans_recherche'),
-    # ARC30 — la migration des 19 cibles records vers les manifestes rend
-    # VISIBLES les cibles chatter-isées historiques jamais branchées sur la
-    # recherche globale (dérives héritées, préexistantes au registre — la
-    # recherche de ces modèles est un trou à combler modèle par modèle, chaque
-    # câblage retirant son entrée ici).
+    # ARC30 — la migration des cibles records vers les manifestes rend VISIBLES
+    # les cibles chatter-isées historiques jamais branchées sur la recherche
+    # globale (dérives héritées, préexistantes au registre — la recherche de ces
+    # modèles est un trou à combler modèle par modèle, chaque câblage retirant
+    # son entrée ici).
     ('outillage.outillage', 'chatter_sans_recherche'),
-    ('rh.dossieremploye', 'chatter_sans_recherche'),
-    ('qhse.relevecontrole', 'chatter_sans_recherche'),
-    ('qhse.nonconformite', 'chatter_sans_recherche'),
-    ('kb.kbarticle', 'chatter_sans_recherche'),
     ('ged.document', 'chatter_sans_recherche'),
-    ('flotte.vehicule', 'chatter_sans_recherche'),
-    ('gestion_projet.projet', 'chatter_sans_recherche'),
-    ('ao.appeloffre', 'chatter_sans_recherche'),
-    # NTCON (2026-07-17) — le vertical BTP/chantier attache des pièces via
-    # records.Attachment (réserves/journaux/réponses RFI chatter-isés) mais
-    # n'est pas encore branché sur la recherche globale — trou assumé à combler
-    # modèle par modèle, comme les cibles héritées ci-dessus.
-    ('btp_chantier.reservechantier', 'chatter_sans_recherche'),
-    ('btp_chantier.journalchantier', 'chatter_sans_recherche'),
-    ('btp_chantier.rfireponse', 'chatter_sans_recherche'),
-    # NTCON (2026-09-12) — le lot CHT/NTCON ajoute quatre cibles chatter au
-    # MÊME module (RFI, visa de document, avenant, décompte général) : elles
-    # attachent des pièces via records.Attachment, sans câblage recherche
-    # globale — EXACTEMENT la même dérive assumée que les trois ci-dessus, et
-    # le même remède (câbler apps/reporting/search.py modèle par modèle, chaque
-    # câblage retirant sa ligne d'ici). Listées une par une, jamais par
-    # préfixe : une cinquième cible non câblée doit encore faire rougir.
-    ('btp_chantier.rfi', 'chatter_sans_recherche'),
-    ('btp_chantier.visadocument', 'chatter_sans_recherche'),
-    ('btp_chantier.avenantchantier', 'chatter_sans_recherche'),
-    ('btp_chantier.decomptegeneral', 'chatter_sans_recherche'),
     # ODX17 (2026-07-13) — la Facture a migré ventes -> facturation (split
     # state-only). Sa cible chatter porte désormais le label `facturation.facture`
     # (ContentType du modèle déplacé) tandis que la recherche globale garde la
@@ -126,79 +114,16 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # alors que le chatter porte désormais `facturation.facture` — les deux
     # surfaces référencent le MÊME modèle déplacé, l'écart de label est assumé.
     ('ventes.facture', 'recherche_sans_chatter'),
-    # SCA34 (2026-07-10) — pilote 1 du kit core.documents : l'ordre de
-    # sous-traitance gagne le chatter générique (périmètre du pilote =
-    # socle+chatter+PDF) ; son câblage en recherche globale
-    # (apps/reporting/search.py) est un trou assumé à combler plus tard,
-    # comme les 9 cibles héritées ci-dessus — retirer cette entrée le jour
-    # où il deviendra cherchable.
-    ('installations.ordresoustraitance', 'chatter_sans_recherche'),
-    # SCA36 (2026-07-10) — pilote 3 du kit (dégradation gracieuse sans
-    # totaux) : même dérive assumée que SCA34, même remède futur.
+    # SCA36 (2026-07-10) — pilote 3 du kit core.documents (dégradation
+    # gracieuse sans totaux) : la demande d'achat gagne le chatter générique,
+    # son câblage en recherche globale (apps/reporting/search.py) reste un trou
+    # assumé, à retirer le jour où elle deviendra cherchable.
     ('installations.demandeachat', 'chatter_sans_recherche'),
-    # NTIDE1 (2026-07-16) — l'idée gagne le chatter/tag générique records
-    # (ARC8/FG9) ; son câblage en recherche globale est un trou assumé (même
-    # dérive héritée que les cibles ci-dessus) — retirer le jour où l'idée
-    # deviendra cherchable via apps/reporting/search.py.
-    ('innovation.idee', 'chatter_sans_recherche'),
-    # NTASS14/ARC26 — sinistre, police et attestation d'assurance sont
-    # chatter-isés via records.Attachment (constat, rapport d'expertise,
-    # contrat/attestation scannés) mais pas encore cherchables : dérive
-    # assumée identique aux cibles ci-dessus — retirer le jour où assurances
-    # entrera dans apps/reporting/search.py.
-    ('assurances.declarationsinistre', 'chatter_sans_recherche'),
-    ('assurances.policeassurance', 'chatter_sans_recherche'),
-    ('assurances.attestationassurance', 'chatter_sans_recherche'),
-    # NTCRD43 — LimiteCredit et DerogationCredit sont chatter-isés via records
-    # (changement de limite NTCRD22, décision de dérogation) mais pas encore
-    # cherchables : même dérive assumée — retirer le jour où crédit entrera
-    # dans apps/reporting/search.py.
-    ('credit.limitecredit', 'chatter_sans_recherche'),
-    ('credit.derogationcredit', 'chatter_sans_recherche'),
     # NTADM47 — Entite est chatter-isée via records (renommage/re-parentage,
     # cf. apps/entites/platform.py) mais pas encore cherchable : même dérive
     # assumée que les cibles ci-dessus — retirer le jour où entites entrera
     # dans apps/reporting/search.py.
     ('entites.entite', 'chatter_sans_recherche'),
-    # NTESG13 — DocumentPolitiqueESG est chatter-isé via records.Attachment
-    # (dépôt des documents de politique RSE) mais pas encore cherchable :
-    # même dérive assumée que les cibles ci-dessus — retirer le jour où esg
-    # entrera dans apps/reporting/search.py.
-    ('esg.documentpolitiqueesg', 'chatter_sans_recherche'),
-    # NTLOG8/9/18 — les trois cibles records du module Transport
-    # (apps/transport/platform.py) : OrdreTransport porte le chatter générique
-    # (ChatterViewSetMixin), EtapeTransport les photos/signatures de preuve de
-    # livraison, ReserveReception ses photos de réserve. Aucune n'est encore
-    # cherchable : le câblage de la recherche globale se fait dans
-    # ``apps/reporting/search.py``, une app HORS du périmètre de la lane
-    # SUPPLY propriétaire de transport (règle des frontières inter-apps) — donc
-    # dérive ASSUMÉE, exactement comme btp_chantier/assurances/credit/entites/
-    # esg ci-dessus, et non un contournement de la garde. À RETIRER (les trois
-    # entrées) le jour où transport entrera dans apps/reporting/search.py et
-    # déclarera ses ``searchable_models``.
-    ('transport.ordretransport', 'chatter_sans_recherche'),
-    ('transport.etapetransport', 'chatter_sans_recherche'),
-    ('transport.reservereception', 'chatter_sans_recherche'),
-    # NTLOG49 (volet douane) — ``DossierExport`` reçoit le chatter générique
-    # (Follower/Comment/Tag/Activity, voir ``apps/douane/platform.py``) mais
-    # n'est pas encore cherchable (``apps/reporting/search.py`` HORS
-    # périmètre de la lane SUPPLY propriétaire de douane) — même dérive
-    # ASSUMÉE que les trois entrées ``transport.*`` ci-dessus, à retirer le
-    # jour où douane entrera dans ``apps/reporting/search.py``.
-    ('douane.dossierexport', 'chatter_sans_recherche'),
-    # NTMFG — ``OrdreFabrication`` reçoit le chatter générique
-    # (``apps/mrp/platform.py`` : suivi d'atelier, pièces jointes de contrôle)
-    # mais n'est pas encore cherchable — ``apps/reporting/search.py`` est HORS
-    # du périmètre de la lane SUPPLY propriétaire de mrp, exactement comme les
-    # entrées ``transport.*``/``douane.*`` ci-dessus. Dérive ASSUMÉE, à retirer
-    # le jour où mrp entrera dans ``apps/reporting/search.py``.
-    ('mrp.ordrefabrication', 'chatter_sans_recherche'),
-    # NTP2P44 — la RFQ gagne le chatter générique (``ChatterViewSetMixin`` sur
-    # ``RFQViewSet``) mais n'entre pas dans ``apps/reporting/search.py`` dans
-    # ce lot (hors périmètre de la tâche) — même dérive assumée que
-    # ``installations.demandeachat``/``installations.ordresoustraitance``
-    # ci-dessus, à retirer le jour où la RFQ deviendra cherchable.
-    ('installations.rfq', 'chatter_sans_recherche'),
 }
 
 

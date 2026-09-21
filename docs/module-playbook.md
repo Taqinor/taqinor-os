@@ -125,58 +125,74 @@ un identifiant déclaré mais absent du code de la surface).
 
 ---
 
-## Éditions — parquer / réactiver un module (groupe SOL, 02/09/2026)
+## Parquer / restaurer un module (SOLMVP, 20-21/09/2026)
 
-TAQINOR OS se vend comme **ERP spécialisé solaire**. Deux niveaux, et ils ne se
-mélangent jamais :
+**Il n'y a plus de mécanisme d'édition.** `TAQINOR_EDITION` / `VITE_EDITION`,
+`settings/editions.py`, `frontend/src/lib/editions.js`, `verifier_edition`,
+`preflight_edition`, `check_editions_decouplage.py`, `check_dist_edition.mjs` et
+le plugin Vite `taqinor-edition-parking` **ont été supprimés** par SOLMVP3 : un
+seul produit est vendu, le **MVP solaire**, et un module hors périmètre SORT
+physiquement du code (« fully out », décision fondateur du 20/09/2026) au lieu
+d'être éteint par une variable de build.
+
+Il reste donc **deux** niveaux, et ils ne se mélangent jamais :
 
 | | Décidé par | Grain | Effet |
 |---|---|---|---|
-| **ÉDITION** (build) | `TAQINOR_EDITION` / `VITE_EDITION` | tout le déploiement | l'app n'est PAS chargée : ni `INSTALLED_APPS`, ni urls, ni beat, ni bundle |
-| **MODULE OFF** (runtime) | `ModuleToggle` + `PlanLicence` | par société | l'app est chargée mais 404 pour CETTE société, et masquée de son UI |
+| **PARQUÉ** (dépôt) | `core.parked.APPS_PARQUEES` | tout le produit | l'app est une **coquille de migrations** : plus de modèles, d'urls, de tâches, d'écrans ni de tests — ses tables et ses données restent INTACTES |
+| **MODULE OFF** (runtime) | `ModuleToggle` + `PlanLicence` | par société | l'app est chargée et complète, mais 404 pour CETTE société et masquée de son UI |
 
-**Rien n'est jamais supprimé.** Une app parquée garde ses tables, ses données et
-sa chaîne de migrations. Réactiver = re-flipper la variable, c'est tout.
+**Rien n'est jamais supprimé en base.** Une app parquée garde ses tables, leurs
+lignes et sa chaîne de migrations *verbatim* ; la migration de sortie est
+`SeparateDatabaseAndState(database_operations=[])`, jamais un `DROP TABLE`.
 
-### Le registre, source unique
+### Les trois documents à lire, dans cet ordre
 
-`backend/django_core/erp_agentique/settings/editions.py` (Python pur, aucun
-Django) liste les apps parquées par édition **avec un libellé FR figé** — figé
-parce qu'une app parquée n'a plus d'`AppConfig` : plus personne ne peut lire son
-manifeste pour la nommer. Miroir frontend : `frontend/src/lib/editions.js`
-(`VERTICAUX_PARQUES`), lu par `vite.config.js`, `vitest.config.js`,
-`eslint.config.js` et la garde de dist.
+1. **[`docs/parked-modules.md`](parked-modules.md)** — LE document du parcage :
+   pourquoi (§1), le **contrat de coquille** et les talons `models.py` (§2), les
+   47 apps par famille (§3), l'ordre de retour PHASE 2 (§4) et la **recette de
+   retour pas-à-pas, prouvée sur `voip` le 21/09/2026** (§5).
+2. **[`backend/parked/README.md`](../backend/parked/README.md)** — le miroir du
+   code backend d'AVANT coquillage des 47 apps (hors `migrations/`, qui restent
+   dans la coquille), rafraîchissable depuis le tag d'archive par
+   `python scripts/parquer_miroir.py`. Vérifié byte-identique à l'archive : c'est
+   la source la plus courte pour une restauration.
+3. **[`frontend/parked/README.md`](../frontend/parked/README.md)** — les 37
+   modules frontend rangés par `git mv` sous `frontend/parked/{features,pages,api,components}`,
+   hors build/lint/tests, avec le mapping label → dossier (`chat` → `messaging`,
+   `scm` → `logistique`, `pos` → `magasin`…).
+
+Registre machine, **source unique des labels** :
+`backend/django_core/core/parked.py` (`APPS_PARQUEES`, `GROUPES`, `PHASE2`,
+`ARCHIVE_REF`). Ne jamais en recopier une seconde liste ailleurs.
 
 ### Parquer un module
 
-1. **Tagger le manifeste** — `module_manifest['sku'] = 'vertical_<x>'`
-   (vocabulaire : `solar_core` / `generic` / `optional` / `vertical_<x>`).
-2. **Inscrire l'app** dans `PARKED_APPS[EDITION_SOLAR]` (backend) et dans
-   `VERTICAUX_PARQUES` (frontend) avec son libellé FR.
-3. **Découpler les arêtes** — aucune app gardée ne doit importer l'app, la
-   référencer en chaîne (`'sante.Modele'`), ni faire dépendre une migration de
-   la sienne. Le patron éprouvé : remplacer une FK cross-app par une
-   **référence non contrainte sur la MÊME colonne** (`<champ>_id` en
-   `IntegerField`) — données conservées, appelants inchangés, aucun drop.
-4. **Rendre les urls conditionnelles** — `*_si_active('<route>/',
-   '<app.urls>')` dans `erp_agentique/urls.py`. Le helper décide AVANT
-   d'appeler `include()`, qui importerait l'app.
-5. **Frontend** — motif négatif dans le glob de `router/moduleRoutes.jsx` ; les
-   trois arbres `features/<x>`, `pages/<x>`, `components/<x>` sortent ENSEMBLE.
-6. **Vérifier** — `python scripts/check_editions_decouplage.py` (aucune arête),
-   `manage.py verifier_edition` sous les deux éditions, et le build solaire +
-   `frontend/scripts/check_dist_edition.mjs`.
+Un seul outil, jamais à la main : `python manage.py parquer_app <label>`
+(`--dry-run` imprime le plan, `--check` échoue si un label parqué n'est pas
+encore une coquille). Il écrit la migration d'état, réduit `models.py` à un
+docstring ou à un **talon** (fonctions/énumérations que les migrations gelées
+réclament, recopiées verbatim — jamais un modèle), réécrit `apps.py`, supprime
+tout le reste du dossier, retire l'include d'urls, les entrées `beat_schedule`
+et les specs e2e du module. Il **vérifie dans un processus neuf** que le graphe
+de migrations charge encore avant de supprimer quoi que ce soit.
 
-### Ce qui ne suffit PAS (mesuré, pas supposé)
+Pré-requis avant de le lancer : le label doit être dans `APPS_PARQUEES`, et les
+apps gardées doivent être **détachées** (aucun import, aucune FK, aucune
+référence en chaîne `'<label>.Modele'`). Les liens FK gardé → parqué partent en
+`RemoveField` (destructif-revertable, inventaire au §2 de `parked-modules.md`) ;
+les appels function-local disparaissent **avec la fonctionnalité** — jamais
+remplacés par une garde `is_installed`, puisque le code de l'app n'existe plus.
 
-Une condition littérale `__EDITION_SOLAIRE__ ? … : …` autour d'un
-`import.meta.glob(..., { eager: true })` **ne tree-shake pas** : Vite hisse les
-`import * as` hors du ternaire et Rollup les conserve (effets de bord de
-module). Le dist solaire contenait encore `OrdresFabricationPage`, `BauxPage`,
-`PatrimoineTree`… D'où le plugin `taqinor-edition-parking` (`vite.config.js`)
-qui ferme la porte **à la résolution** : tout module d'un arbre parqué devient
-un module vide. La condition littérale exprime l'intention ; le plugin la rend
-vraie ; `check_dist_edition.mjs` le prouve.
+### Restaurer un module
+
+Suivre **littéralement** `docs/parked-modules.md` §5 (10 étapes). Les trois
+pièges qui ont justifié sa réécriture : le tag d'archive n'est pas dans un clone
+frais (`git fetch` explicite, ou passer par `backend/parked/<x>/`) ;
+`manage.py check` passe vert même quand l'état supprime encore les modèles (le
+vrai gate est `makemigrations --check --dry-run`) ; et l'ordre
+« renverser la migration d'état PUIS supprimer son fichier » n'est pas
+négociable dès qu'elle a été appliquée quelque part.
 
 ### La règle toggle ↔ beat ↔ KPI (SOL14)
 
@@ -190,9 +206,12 @@ corromprait des calculs que personne n'a demandé de changer.
 
 ### Bascule en production
 
-`manage.py preflight_edition` (LECTURE SEULE) imprime d'abord ce que la bascule
-rendra inaccessible : données par société, tâches beat retirées, jobs en file,
-`ModuleToggle`/permissions/notifications concernés. Voir `docs/production.md`.
+`manage.py preflight_edition` a été supprimé avec le mécanisme d'édition
+(SOLMVP3). Pour le **parcage**, l'équivalent est `parquer_app <label> --dry-run`
+(n'écrit rien, imprime le plan) ; côté base il n'y a rien à préparer, puisque la
+migration de sortie est état-seul et ne touche aucune table. Pour éteindre un
+module gardé **par société**, c'est le `ModuleToggle` ci-dessus, pas une bascule
+de déploiement. Voir `docs/production.md`.
 
 ---
 

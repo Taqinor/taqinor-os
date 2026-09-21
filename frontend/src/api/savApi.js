@@ -91,10 +91,6 @@ const savApi = {
   // XCTR4 — facture le ticket selon le routage de couverture calculé
   // (garantie / contrat O&M / facturable).
   facturerTicket: (id) => api.post(`/sav/tickets/${id}/facturer/`),
-  // AUD529 — escalade le ticket en réclamation formelle (apps.litiges).
-  // Idempotent côté serveur : un ticket déjà escaladé renvoie son dossier.
-  escaladerTicketEnReclamation: (id, body) =>
-    api.post(`/sav/tickets/${id}/escalader-reclamation/`, body ?? {}),
   // N46 — pièces consommées sur un ticket (le stock peut être décrémenté).
   getTicketPieces: (id) => api.get(`/sav/tickets/${id}/pieces/`),
   addTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces/`, body),
@@ -139,8 +135,6 @@ const savApi = {
   addTicketActivite: (id, body) => api.post(`/sav/tickets/${id}/activites/`, body),
   cocherTicketActivite: (id, activiteId) =>
     api.post(`/sav/tickets/${id}/activites/${activiteId}/cocher/`),
-  // ZMFG5 — suggestions d'articles KB pour pré-remplir l'onglet Instructions.
-  getInstructionsSuggestions: (id) => api.get(`/sav/tickets/${id}/instructions-suggestions/`),
   // ZMFG6 — feuille de maintenance (worksheet) remplie sur le ticket.
   getTicketWorksheet: (id) => api.get(`/sav/tickets/${id}/worksheet/`),
   creerTicketWorksheet: (id, modeleId) =>
@@ -183,9 +177,6 @@ const savApi = {
   // classée par marge croissante ; 403 explicite sans `prix_achat_voir`
   // (jamais un champ silencieusement absent).
   getRentabiliteContrats: () => api.get('/sav/contrats-maintenance/rentabilite/'),
-  // FG40/WIR233 — facture immédiatement CE contrat (hors cycle automatique),
-  // sort la ligne de la file d'exceptions XCTR5.
-  facturerContrat: (id) => api.post(`/sav/contrats-maintenance/${id}/facturer/`),
 
   // FG83 — réclamations garantie fournisseur (flux RMA).
   getWarrantyClaims: (params) => api.get('/sav/warranty-claims/', { params }),

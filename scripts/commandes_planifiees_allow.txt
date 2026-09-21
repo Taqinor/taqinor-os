@@ -12,21 +12,21 @@
 # Format : <app>.<nom_de_commande>    # raison / renvoi
 
 # ── Couvertes en réalité, sous un nom de tâche DIFFÉRENT (vérifié en lisant
-# les deux implémentations : même service, même travail). Elle reste ici tant
-# que la convention de nom n'est pas alignée.
-rh.alertes_expiration_rh    # planifiée sous rh.alertes_expiration (YHIRE8) — mêmes échéances RH via selectors.echeances_rh
-
-# SOLMVP-sweep (2026-09-21) — 6 entrées retirées : leurs commandes ont disparu
-# avec la sortie du MVP solaire (Groupe SOLMVP, coquille) de leurs apps —
-# flotte.generer_echeances_entretien, flotte.generer_couts_contrats
-# (apps.flotte), fpa.verifier_derive_fpa (apps.fpa), mrp.declencher_kanban_
-# production/mrp.generer_echeances_entretien/mrp.sweep_ecos_effectivite
-# (apps.mrp) — leurs fichiers management/commands n'existent plus, une base
-# de référence ne peut que rétrécir.
+# les deux implémentations : même service, même travail). Elles restent ici
+# tant que la convention de nom n'est pas alignée.
+# (flotte.generer_echeances_entretien et rh.alertes_expiration_rh retirées
+# SOLMVP42, 2026-09-21 : flotte et l'app qui portait la commande RH équivalente
+# sont sorties du MVP solaire — Groupe SOLMVP, coquillées SOLMVP12/31 — la
+# commande elle-même a disparu avec l'app, la ligne ne vérifie plus rien.)
 
 # ── Réellement NON planifiées : dette PRÉEXISTANTE, hors périmètre d'AUD231
 # (qui nomme huit balayages précis, tous traités et donc absents d'ici).
-contrats.cloturer_contrats_impayes    # ZCTR2 — constat déjà porté par le groupe AUD1 (crossref AUD231), à planifier avec sa décision métier
+# (contrats.cloturer_contrats_impayes, fpa.verifier_derive_fpa,
+# flotte.generer_couts_contrats, mrp.declencher_kanban_production,
+# mrp.generer_echeances_entretien, mrp.sweep_ecos_effectivite retirées
+# SOLMVP42, 2026-09-21 : contrats/fpa/flotte/mrp sont sortis du MVP solaire —
+# Groupe SOLMVP, coquillés SOLMVP30/31 — ces commandes ont disparu avec leurs
+# apps.)
 crm.detecter_comptes_dormants    # non planifié
 parametres.purge_audit_retention    # non planifié
 publicapi.retry_webhook_deliveries    # non planifié

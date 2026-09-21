@@ -189,23 +189,6 @@ export function Component() {
     }
   }
 
-  // WIR233 — « Facturer maintenant » (FG40) : sort de la file d'exceptions
-  // XCTR5 en émettant la facture immédiatement plutôt que d'attendre le
-  // cycle automatique.
-  const [facturerBusy, setFacturerBusy] = useState(null) // id du contrat en cours
-  const facturerMaintenant = async (row) => {
-    setFacturerBusy(row.id)
-    try {
-      const { data } = await savApi.facturerContrat(row.id)
-      toast.success(`Facture ${data.facture_reference} créée.`)
-      load()
-    } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Facturation impossible.')
-    } finally {
-      setFacturerBusy(null)
-    }
-  }
-
   const load = () => {
     setLoading(true)
     setLoadError(false)
@@ -469,15 +452,6 @@ export function Component() {
         </span>
       ) : (
         <span className="flex items-center gap-1.5">
-          {/* WIR233 — sort la ligne de la file d'exceptions XCTR5 en
-              facturant tout de suite, sans attendre le cycle automatique. */}
-          {row.facturation_active && (
-            <Button variant="outline" size="sm"
-                    loading={facturerBusy === row.id}
-                    onClick={() => facturerMaintenant(row)}>
-              Facturer maintenant
-            </Button>
-          )}
           <Button variant="outline" size="sm" onClick={() => openRapport(row)}>
             <Download /> Rapport PDF
           </Button>
