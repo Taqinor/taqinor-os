@@ -321,6 +321,7 @@
       }
     },
     "edge": {
+      "description": "Une arête du contour d'un pan, avec son type (CAL57) et, depuis CALX81, le retrait qui lui est PROPRE.",
       "type": "object",
       "additionalProperties": true,
       "properties": {
@@ -342,8 +343,13 @@
           ]
         },
         "manuel": {
-          "description": "`true` quand un humain a corrigé le type déduit — la correction ne doit pas être écrasée à la relecture.",
+          "description": "CALX81 — `true` quand le type de cette arête a été ÉCRIT PAR L'UTILISATEUR dans l'atelier, en remplacement du type déduit. C'est une marque de provenance (D-CALX 7) : la relecture ne réécrase jamais un type marqué `manuel`, et un écran qui affiche l'origine du type lit ce drapeau. Absent ou `false` = type déduit, jamais corrigé à la main.",
           "type": "boolean"
+        },
+        "retraitM": {
+          "description": "CALX81 — retrait SAISI pour CETTE arête seule, en mètres. OPTIONNEL et additif : absent = seul le retrait de CATÉGORIE s'applique (`setbacksM`, CAL76 : latérale / extrémité / acrotère / joint), soit exactement le comportement d'aujourd'hui, byte pour byte. Présent, il vaut POUR CE SEGMENT PHYSIQUE, que les quatre catégories ne savent pas désigner — un rampant qui longe une limite de propriété n'a pas le même retrait que les autres rampants du même pan. Aucune valeur n'est proposée par le schéma : un retrait non saisi est ABSENT, jamais un zéro (qui se lirait « mesuré à ras »).",
+          "type": "number",
+          "minimum": 0
         }
       }
     },
