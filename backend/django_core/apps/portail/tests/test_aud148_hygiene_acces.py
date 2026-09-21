@@ -29,7 +29,6 @@ Run :
 """
 import itertools
 from datetime import timedelta
-from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -143,15 +142,12 @@ class LienDocumentPortailTests(TestCase):
                 f'Bearer {AccessToken.for_user(self.responsable)}'))
 
     def _document_avec_fichier(self, libelle, nom_fichier):
-        """Le dépôt GED (WIR94) est simulé — même patron que
-        ``test_wir94_ged_routing`` : ces tests portent sur le PAYLOAD, pas sur
-        le stockage objet."""
-        with mock.patch('apps.ged.services.deposit_document',
-                        side_effect=RuntimeError('GED hors périmètre')):
-            return DocumentClientPortail.objects.create(
-                company=self.co, client_id=self.client_crm.id,
-                libelle=libelle,
-                fichier=SimpleUploadedFile(nom_fichier, b'contenu'))
+        """SOLMVP16 — le dépôt GED (WIR94) a été retiré ; ces tests portent
+        sur le PAYLOAD, pas sur le stockage objet."""
+        return DocumentClientPortail.objects.create(
+            company=self.co, client_id=self.client_crm.id,
+            libelle=libelle,
+            fichier=SimpleUploadedFile(nom_fichier, b'contenu'))
 
     def test_le_payload_ne_publie_plus_lurl_brute_du_filefield(self):
         """ROUGE avant AUD148 : `fichier` sortait en `/media/…`, lien mort."""
@@ -171,12 +167,3 @@ class LienDocumentPortailTests(TestCase):
         ligne = (res.data.get('results') or res.data)[0]
         self.assertTrue(ligne['fichier_present'])
         self.assertNotIn('fichier', ligne)
-
-    def test_sans_document_ged_aucun_lien_nest_propose(self):
-        DocumentClientPortail.objects.create(
-            company=self.co, client_id=self.client_crm.id, libelle='Sans GED')
-
-        res = self.api.get('/api/django/portail/documents-client-portail/')
-        ligne = (res.data.get('results') or res.data)[0]
-        self.assertIsNone(ligne['lien_ged'])
-        self.assertFalse(ligne['fichier_present'])

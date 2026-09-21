@@ -262,21 +262,24 @@ def ma_consommation_client(request):
 @permission_classes([IsPortalClientUser])
 def exporter_mes_donnees(request):
     """NTPRT36 — bouton « Télécharger mes données » : un zip devis/factures/
-    tickets/documents du client connecté.
+    tickets du client connecté.
 
     DÉCISION (infrastructure DSR existante — ``core.dsr.exporter``, FG394) :
     elle agrège par IDENTITÉ (email/téléphone) TOUS les fournisseurs DSR
     enregistrés (crm/rh/ao/stock…), potentiellement bien au-delà de « mes
-    devis/factures/tickets/documents » et sans jamais filtrer par
-    ``client_id`` — le critère d'acceptation NTPRT36 (« strictement les
-    enregistrements où ``client_id`` == celui du compte demandeur ») serait
-    donc violé, et l'export toucherait des domaines hors du périmètre de ce
-    lot (interdit : cross-app hors ``selectors.py``). Cette vue fait
-    l'EXPORT MINIMAL DIRECT que la tâche prévoit en repli : elle relit les
-    QUATRE mêmes sélecteurs déjà scopés (société, client) que les écrans
-    portail équivalents (``mes-devis``/``mes-factures``/``mes-demandes-sav``/
-    ``mes-documents``) — aucune requête supplémentaire, aucune donnée que le
-    client ne voit pas déjà par ailleurs.
+    devis/factures/tickets » et sans jamais filtrer par ``client_id`` — le
+    critère d'acceptation NTPRT36 (« strictement les enregistrements où
+    ``client_id`` == celui du compte demandeur ») serait donc violé, et
+    l'export toucherait des domaines hors du périmètre de ce lot (interdit :
+    cross-app hors ``selectors.py``). Cette vue fait l'EXPORT MINIMAL DIRECT
+    que la tâche prévoit en repli : elle relit les MÊMES sélecteurs déjà
+    scopés (société, client) que les écrans portail équivalents
+    (``mes-devis``/``mes-factures``/``mes-demandes-sav``) — aucune requête
+    supplémentaire, aucune donnée que le client ne voit pas déjà par
+    ailleurs.
+
+    SOLMVP16 — le volet « documents » (GED partagée, module sorti du
+    produit) a été retiré : le zip ne porte plus que devis/factures/tickets.
 
     Chaque ligne du zip appartient STRICTEMENT au client connecté : aucun
     sélecteur ici n'accepte de paramètre autre que (société, client_id)."""
@@ -288,8 +291,6 @@ def exporter_mes_donnees(request):
     from django.http import HttpResponse
     from django.utils import timezone
 
-    from apps.ged.selectors import documents_partages_client_portail, latest_version
-    from apps.records.storage import fetch_attachment
     from apps.ventes.selectors import (
         devis_du_client_portail, factures_du_client_portail,
     )
@@ -322,7 +323,6 @@ def exporter_mes_donnees(request):
                           if d.date_creation else None),
     } for d in DemandeTicketPortail.objects.filter(
         company=company, client_id=client_id)]
-    documents = list(documents_partages_client_portail(company, client_id))
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -333,28 +333,12 @@ def exporter_mes_donnees(request):
             json.dumps(factures, ensure_ascii=False, indent=2))
         archive.writestr(
             'tickets.json', json.dumps(tickets, ensure_ascii=False, indent=2))
-        noms_utilises = set()
-        for document in documents:
-            version = latest_version(document)
-            if version is None:
-                continue
-            data, erreur = fetch_attachment(version.file_key)
-            if erreur:
-                continue
-            nom = (version.filename or document.nom
-                   or f'document-{document.id}').replace('/', '_')
-            # Deux documents ne partagent JAMAIS le même chemin dans le zip.
-            if nom in noms_utilises:
-                nom = f'{document.id}-{nom}'
-            noms_utilises.add(nom)
-            archive.writestr(f'documents/{nom}', data)
         manifeste = {
             'client_id': client_id,
             'exporte_le': timezone.now().isoformat(),
             'devis': len(devis),
             'factures': len(factures),
             'tickets': len(tickets),
-            'documents': len(documents),
         }
         archive.writestr(
             'manifest.json', json.dumps(manifeste, ensure_ascii=False,
@@ -412,20 +396,22 @@ def recherche_portail_client(request):
     ``portail_*``), et ses fonctions de requête (``_spec_devis``…) importent
     directement les modèles métier — deux raisons pour lesquelles elle ne
     peut PAS être appelée telle quelle depuis ici. Cette vue est donc une
-    recherche DISTINCTE, mais délibérément restreinte aux QUATRE mêmes
-    sélecteurs déjà scopés (société, client) que les écrans portail
-    (``mes-devis``/``mes-factures``/``mes-demandes-sav``/``mes-documents``) :
-    AUCUN nouvel index, un simple filtre par mot-clé sur les lignes que ces
-    sélecteurs renvoient déjà. L'enveloppe ``{query, groups}`` reprend
-    volontairement celle de la recherche interne (même vocabulaire) sans
-    partager une ligne de son code.
+    recherche DISTINCTE, mais délibérément restreinte aux MÊMES sélecteurs
+    déjà scopés (société, client) que les écrans portail
+    (``mes-devis``/``mes-factures``/``mes-demandes-sav``) : AUCUN nouvel
+    index, un simple filtre par mot-clé sur les lignes que ces sélecteurs
+    renvoient déjà. L'enveloppe ``{query, groups}`` reprend volontairement
+    celle de la recherche interne (même vocabulaire) sans partager une ligne
+    de son code.
+
+    SOLMVP16 — le groupe « documents » (GED partagée, module sorti du
+    produit) a été retiré : seuls devis/factures/tickets sont cherchés.
 
     Un mot-clé vide renvoie des groupes vides — jamais toutes les données du
     client déversées sans filtre. Chaque sélecteur étant borné (société,
     client_id), un résultat ne peut JAMAIS provenir d'un autre compte."""
     from django.db.models import Q
 
-    from apps.ged.selectors import documents_partages_client_portail
     from apps.ventes.selectors import (
         devis_du_client_portail, factures_du_client_portail,
     )
@@ -462,21 +448,11 @@ def recherche_portail_client(request):
             'results': [{'id': d.id, 'label': d.sujet,
                         'sublabel': d.get_statut_display()}
                        for d in tickets]})
-
-        documents = documents_partages_client_portail(
-            company, client_id).filter(
-                Q(nom__icontains=q) | Q(reference__icontains=q))
-        groupes.append({
-            'type': 'document', 'label': 'Documents',
-            'results': [{'id': d.id, 'label': d.nom,
-                        'sublabel': d.reference or ''}
-                       for d in documents]})
     else:
         groupes = [
             {'type': 'devis', 'label': 'Devis', 'results': []},
             {'type': 'facture', 'label': 'Factures', 'results': []},
             {'type': 'ticket', 'label': 'Tickets', 'results': []},
-            {'type': 'document', 'label': 'Documents', 'results': []},
         ]
     return Response({'query': q, 'groups': groupes})
 
@@ -1024,33 +1000,9 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
         return Response(self._ligne(demande),
                         status=status.HTTP_201_CREATED)
 
-    # ── XSAV22 — Déflection KB, désormais servie au VRAI client ────────────
-    # Lit/écrit UNIQUEMENT via ``apps.kb.selectors``/``apps.kb.services``
-    # (jamais ``apps.kb.models``). ``detail=False`` : appelables PENDANT la
-    # saisie, avant toute création de demande.
-
-    @action(detail=False, methods=['get'], url_path='suggestions-kb',
-            permission_classes=[IsPortalClientUser])
-    def suggestions_kb(self, request):
-        """Articles KB (publiés + ``visible_portail``) suggérés pendant la
-        saisie du sujet — la déflection avant soumission."""
-        from apps.kb.selectors import suggestions_portail
-        company, _ = _scope(request)
-        return Response({'suggestions': suggestions_portail(
-            company, request.query_params.get('q', ''))})
-
-    @action(detail=False, methods=['post'], url_path='consulter-article-kb',
-            permission_classes=[IsPortalClientUser])
-    def consulter_article_kb(self, request):
-        """Journalise la consultation d'un article suggéré (déflection)."""
-        from apps.kb.services import enregistrer_consultation_portail
-        company, _ = _scope(request)
-        article_id = request.data.get('article_id')
-        if not article_id:
-            return Response({'detail': 'article_id requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        return Response({'enregistre': enregistrer_consultation_portail(
-            company, article_id)})
+    # SOLMVP16 — la déflection KB (XSAV22, « suggestions-kb »/
+    # « consulter-article-kb ») a été retirée : kb est un module sorti du
+    # produit.
 
     # ── NTPRT12 — Fil de commentaires CLIENT-VISIBLE du ticket SAV lié ─────
 
@@ -1083,100 +1035,8 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
             company, client_id, demande.ticket_id)})
 
 
-# ── NTPRT35 — Widget « Satisfaction » post-interaction ──────────────────────
-
-class SatisfactionPortailSerializer(serializers.Serializer):
-    """L'enquête en attente, ou ``enquete: null`` quand il n'y a rien à
-    demander."""
-    enquete = serializers.DictField(allow_null=True)
-
-
-class SatisfactionPortailViewSet(viewsets.ViewSet):
-    """NTPRT35 — prompt de satisfaction du portail client.
-
-    C'est le DÉCLENCHEUR D'INTERFACE qui manquait à FG238/FG239 : l'enquête
-    (``marketing.EnqueteNPS``) était bien CRÉÉE à la réception d'un chantier
-    (YSERV4) mais le client n'avait aucun écran pour y répondre. Aucune
-    logique de scoring n'est ajoutée ici : la lecture passe par
-    ``marketing.selectors``, l'écriture par ``marketing.services`` — jamais
-    un import de ses ``models``.
-
-    « Une fois par événement » (critère d'acceptation) ne repose sur AUCUN
-    compteur de session : une enquête par événement (contrainte d'unicité
-    AUD618 sur le chantier), et y répondre la passe à ``REPONDUE``, donc hors
-    du sélecteur — définitivement. Fermer le prompt sans répondre n'écrit
-    rien : la question revient, ce qui est le comportement voulu (on n'a pas
-    encore l'avis), mais elle ne se REJOUE jamais une fois répondue.
-
-    FG239 (avis Google) reste un ROUTAGE, pas une API payante : après une
-    réponse de promoteur, on renvoie le lien SI la société en a configuré un
-    (``GOOGLE_REVIEW_URL``) — vide sinon, sans erreur.
-    """
-
-    permission_classes = [IsPortalClientUser]
-    serializer_class = SatisfactionPortailSerializer
-
-    @extend_schema(responses=SatisfactionPortailSerializer)
-    def list(self, request):
-        from apps.marketing.selectors import enquete_satisfaction_en_attente
-        company, client_id = _scope(request)
-        return Response({
-            'enquete': enquete_satisfaction_en_attente(company, client_id)})
-
-    @extend_schema(
-        request=inline_serializer(
-            name='SatisfactionPortailReponse',
-            fields={
-                'enquete_id': serializers.IntegerField(),
-                'score': serializers.IntegerField(),
-                'commentaire': serializers.CharField(
-                    required=False, allow_blank=True),
-            }),
-        responses=inline_serializer(
-            name='SatisfactionPortailMerci',
-            fields={
-                'detail': serializers.CharField(),
-                'lien_avis_google': serializers.CharField(allow_blank=True),
-            }))
-    @action(detail=False, methods=['post'], url_path='repondre',
-            permission_classes=[IsPortalClientUser])
-    def repondre(self, request):
-        """Enregistre la note. Les erreurs NOMMENT le champ fautif."""
-        from apps.marketing.services import (
-            repondre_enquete_satisfaction_client,
-        )
-
-        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS répondre
-        # à une enquête de satisfaction (consultation uniquement).
-        if not services.peut_ecrire_portail_client(request.user):
-            return Response(
-                {'detail': "Votre accès est en lecture seule : vous ne "
-                           "pouvez pas répondre à cette enquête."},
-                status=status.HTTP_403_FORBIDDEN)
-
-        company, client_id = _scope(request)
-        enquete, erreur = repondre_enquete_satisfaction_client(
-            company, client_id, request.data.get('enquete_id'),
-            score=request.data.get('score'),
-            commentaire=request.data.get('commentaire') or '')
-        if erreur == 'score':
-            return Response(
-                {'score': 'Donnez une note entre 0 et 10.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if erreur is not None:
-            return Response({'detail': 'Introuvable.'},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        # FG239 — routage (jamais une API payante) : le lien n'est proposé
-        # qu'au promoteur, et seulement si la société en a configuré un.
-        lien = ''
-        if enquete.categorie == 'promoteur':
-            from apps.marketing.services import google_review_url_configuree
-            lien = google_review_url_configuree()
-        return Response({
-            'detail': 'Merci pour votre retour !',
-            'lien_avis_google': lien,
-        })
+# SOLMVP16 — le widget « Satisfaction » (NTPRT35, marketing.EnqueteNPS) a été
+# retiré : marketing est un module sorti du produit.
 
 
 # ── NTPRT14 — « Mes chantiers » (timeline + photos avant/pendant/après) ────
@@ -1451,176 +1311,18 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
         return Response(self._ligne(invitation))
 
 
-class MesDocumentsPortailLigneSerializer(serializers.Serializer):
-    """Un document GED tel que le portail le montre au client — payload
-    volontairement pauvre : jamais de métadonnée interne (custom_data, ACL,
-    verrous…)."""
-    id = serializers.IntegerField()
-    nom = serializers.CharField()
-    reference = serializers.CharField(allow_blank=True)
-    taille = serializers.IntegerField(allow_null=True)
-    mime = serializers.CharField(allow_null=True)
-    date_creation = serializers.DateTimeField(allow_null=True)
-
-
-#: YAPIC6 — même remarque que ``_ID_LIVRAISON`` plus haut.
-_ID_DOCUMENT_PORTAIL = OpenApiParameter(
-    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
-    description='Identifiant du document GED partagé avec ce client.',
-)
-
-
-class MesDocumentsPortailViewSet(viewsets.ViewSet):
-    """NTPRT13 — « Mes documents » : documents GED partagés EXPLICITEMENT
-    avec ce client (lecture) + dépôt de justificatifs (factures ONEE…).
-
-    LECTURE — réutilise ``ged.AclGed``/``ged.selectors`` (jamais un nouveau
-    modèle de partage) : ``ged.selectors.documents_partages_client_portail``
-    ne renvoie QUE les documents portant une ``AclGed`` EXPLICITE
-    ``client=<ce client>`` — un document sans cette ACL n'apparaît JAMAIS ici
-    (critère d'acceptation NTPRT13), même s'il vit dans un dossier par
-    ailleurs partagé (l'héritage dossier reste un canal INTERNE, hors
-    périmètre de cette surface client).
-
-    ÉCRITURE — le dépôt réutilise ``apps.compta.serializers.
-    DocumentClientPortailSerializer``/``DocumentClientPortail`` (FG231)
-    À L'IDENTIQUE (même mixin MinIO AUD835, même dépôt GED miroir WIR94 via
-    les récepteurs ``apps/portail/receivers.py``) : AUCUN nouveau modèle
-    d'upload. Seule la SURFACE change (ce ViewSet, atteignable par un compte
-    portail réel — l'ancien ``DocumentClientPortailViewSet`` reste
-    ``IsResponsableOrAdmin``, donc fermé à un compte externe, même patron que
-    le correctif AUD525 sur les tickets SAV). ``client_id``/``company`` sont
-    TOUJOURS forcés depuis le compte connecté, jamais lus du corps.
-    """
-
-    permission_classes = [IsPortalClientUser]
-    serializer_class = MesDocumentsPortailLigneSerializer
-
-    @staticmethod
-    def _ligne(document):
-        from apps.ged.selectors import latest_version
-        version = latest_version(document)
-        return {
-            'id': document.id,
-            'nom': document.nom,
-            'reference': document.reference or '',
-            'taille': version.size if version else None,
-            'mime': version.mime if version else None,
-            'date_creation': (document.created_at.isoformat()
-                              if document.created_at else None),
-        }
-
-    @extend_schema(responses=inline_serializer(
-        name='MesDocumentsPortail',
-        fields={'results': serializers.ListField(
-            child=MesDocumentsPortailLigneSerializer())}))
-    def list(self, request):
-        from apps.ged.selectors import documents_partages_client_portail
-        company, client_id = _scope(request)
-        docs = documents_partages_client_portail(company, client_id)
-        return Response({'results': [self._ligne(d) for d in docs]})
-
-    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL])
-    def retrieve(self, request, pk=None):
-        from apps.ged.selectors import document_partage_client_portail
-        company, client_id = _scope(request)
-        doc = document_partage_client_portail(company, client_id, pk)
-        if doc is None:
-            return Response({'detail': 'Introuvable.'},
-                            status=status.HTTP_404_NOT_FOUND)
-        return Response(self._ligne(doc))
-
-    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL])
-    @action(detail=True, methods=['get'], url_path='telecharger')
-    def telecharger(self, request, pk=None):
-        """Sert le contenu de la VERSION COURANTE du document partagé.
-
-        Même patron que ``MesLivraisonsPortailViewSet.preuve_photo`` :
-        ``apps.records`` est une app de FONDATION (import direct autorisé) ;
-        le scope/l'ACL, eux, viennent du sélecteur GED."""
-        from django.http import HttpResponse
-
-        from apps.ged.selectors import (
-            document_partage_client_portail, latest_version,
-        )
-        from apps.records.storage import fetch_attachment
-
-        company, client_id = _scope(request)
-        doc = document_partage_client_portail(company, client_id, pk)
-        if doc is None:
-            return Response({'detail': 'Introuvable.'},
-                            status=status.HTTP_404_NOT_FOUND)
-        version = latest_version(doc)
-        if version is None:
-            return Response({'detail': 'Aucun fichier disponible.'},
-                            status=status.HTTP_404_NOT_FOUND)
-        data, err = fetch_attachment(version.file_key)
-        if err:
-            return Response({'detail': err},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        # GED21 — un document diffusé sous contrôle (filigrane) le reste sur
-        # CE canal aussi ; jamais un flux non filigrané qui contournerait la
-        # règle appliquée partout ailleurs (aperçu interne, partage public).
-        mime = version.mime or 'application/octet-stream'
-        if getattr(doc, 'watermark_diffusion', False):
-            try:
-                from apps.ged import services as ged_services
-                label = ged_services.watermark_label(company=company)
-                data, _marque = ged_services.apply_watermark(data, mime, label)
-            except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
-                pass
-
-        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
-        from apps.audit.models import AuditLog
-        _auditer_portail(
-            AuditLog.Action.EXPORT, request, instance=doc,
-            detail='Document GED téléchargé depuis le portail client')
-
-        nom = (version.filename or doc.nom or 'document').replace('"', '')
-        resp = HttpResponse(data, content_type=mime)
-        resp['Content-Disposition'] = f'attachment; filename="{nom}"'
-        resp['X-Content-Type-Options'] = 'nosniff'
-        return resp
-
-    def create(self, request):
-        """Dépose un justificatif (facture ONEE…) — réutilise
-        ``DocumentClientPortailSerializer``/``DocumentClientPortail``
-        EXISTANTS (FG231) tels quels. ``client_id``/``company`` forcés côté
-        serveur, jamais lus du corps."""
-        from apps.compta.serializers import DocumentClientPortailSerializer
-
-        # NTPRT6 — un membre d'équipe « lecture seule » ne peut PAS déposer
-        # de document (consultation uniquement).
-        if not services.peut_ecrire_portail_client(request.user):
-            return Response(
-                {'detail': "Votre accès est en lecture seule : vous ne "
-                           "pouvez pas déposer de document."},
-                status=status.HTTP_403_FORBIDDEN)
-
-        company, client_id = _scope(request)
-        donnees = request.data.copy()
-        donnees['client_id'] = client_id
-        donnees.pop('lead_id', None)
-        serializer = DocumentClientPortailSerializer(
-            data=donnees, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        document = serializer.save(company=company, client_id=client_id)
-
-        # NTPRT7 — journal d'activité EXISTANT, flag via_portail=True.
-        from apps.audit.models import AuditLog
-        _auditer_portail(
-            AuditLog.Action.CREATE, request, instance=document,
-            detail='Justificatif déposé depuis le portail client')
-        return Response(
-            DocumentClientPortailSerializer(document).data,
-            status=status.HTTP_201_CREATED)
+# SOLMVP16 — « Mes documents » (NTPRT13, documents GED partagés avec le
+# client) a été retiré : ged est un module sorti du produit et sa sélection
+# par ACL (``ged.AclGed``) n'a pas d'équivalent dans les pièces jointes
+# génériques de ``records`` — jamais un second GED. Le dépôt de justificatifs
+# (factures ONEE…) reste disponible côté ERP via ``DocumentClientPortailViewSet``
+# (``/api/django/portail/documents-client-portail/``).
 
 
 # ── NTPRT16 — « Mes contrats » (maintenance) ────────────────────────────────
 #
-# ``viewsets.ViewSet`` nu (aucun queryset), même remarque YAPIC6 que
-# ``MesDocumentsPortailViewSet`` ci-dessus.
+# ``viewsets.ViewSet`` nu (aucun queryset), même remarque YAPIC6 que les
+# autres surfaces self-service de ce module.
 _ID_CONTRAT_MAINTENANCE = OpenApiParameter(
     name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
     description='Identifiant du contrat de maintenance du client connecté.',

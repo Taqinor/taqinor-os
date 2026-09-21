@@ -2,7 +2,7 @@
 
 Avant CHT10, AUCUNE fonction d'écriture propre n'existait pour publier un
 jalon de chantier au portail client : seul le ``ModelViewSet`` CRUD legacy
-(``apps.compta.views.JalonChantierPortailViewSet``) écrivait
+(``JalonChantierPortailViewSet``, alors dans compta.views) écrivait
 ``JalonChantierPortail``, sans aucune clé stable pour discriminer une phase
 (``libelle``/``ordre``/``atteint``/``date_jalon`` seulement).
 
