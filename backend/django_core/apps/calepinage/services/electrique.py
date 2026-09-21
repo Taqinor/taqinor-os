@@ -51,7 +51,7 @@ __all__ = [
     'enregistrer_fournisseur_temperatures', 'fournisseur_temperatures',
     'temperatures_site', 'temperatures_pour_calepinage',
     'CLE_ENTREE', 'CHAMPS_ENTREE', 'EntreeInvalide',
-    'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE', 'simulation_servie',
+    'CLE_SIMULATION', 'BLOCS_SIMULATION', 'BLOCS_LISTE',
     'entree_stockee', 'enregistrer_entree', 'resoudre_materiel',
     'conception_du_calepinage', 'resultat_calepinage',
     'verdicts_electriques', 'bornes_ratio', 'bloc_ratio_dc_ac',
@@ -533,7 +533,7 @@ def _est_un_nombre(valeur):
     return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
 
 
-def simulation_servie(calepinage, empreinte, *, defauts=None):
+def _simulation_servie(calepinage, empreinte, *, defauts=None):
     """CALX70 — les blocs de simulation à publier, et leur état de fraîcheur.
 
     Args:
@@ -690,7 +690,7 @@ def resultat_calepinage(calepinage, *, entree=None, layout=None,
         onduleur_specs=materiel['onduleur'],
         temperatures=conception.temperatures,
         options=_options_entree(donnees))
-    blocs, perimee, motif, calcule_le = simulation_servie(
+    blocs, perimee, motif, calcule_le = _simulation_servie(
         calepinage, empreinte, defauts={
             # Le squelette servi tant qu'aucune simulation n'a tourné : la
             # POSE est un fait (modules et kWc restent chiffrés), la

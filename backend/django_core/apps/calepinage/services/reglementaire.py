@@ -70,7 +70,7 @@ __all__ = [
     'DossierRefuse', 'construire_pack_dossier', 'GENRES_FRANCE',
     'avancement_du_dossier', 'packs_france',
     # CALX41 — enregistrer les champs à compléter d'un dossier.
-    'ChampsDossierInvalides', 'valider_champs_saisis', 'enregistrer_champs',
+    'ChampsDossierInvalides', 'enregistrer_champs',
 ]
 
 
@@ -413,7 +413,7 @@ def _valeur_de_champ(champ, code, valeur):
     return propre if isinstance(propre, bool) else str(propre)
 
 
-def valider_champs_saisis(champs_gabarit, saisie):
+def _valider_champs_saisis(champs_gabarit, saisie):
     """``{code: valeur}`` VALIDÉ contre les champs DU GABARIT — PUR.
 
     Refuse EN NOMMANT le champ fautif : un code absent du gabarit, une valeur
@@ -461,7 +461,7 @@ def enregistrer_champs(dossier, saisie):
         ChampsDossierInvalides: code hors gabarit, valeur non simple, nombre
             attendu — le champ fautif est NOMMÉ.
     """
-    valide = valider_champs_saisis(
+    valide = _valider_champs_saisis(
         getattr(dossier.gabarit, 'champs', None), saisie)
     courant = dict(dossier.champs_saisis or {})
     for code, valeur in valide.items():

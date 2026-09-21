@@ -15,6 +15,7 @@
 # La signature est `<module>::<fonction>`, jamais `fichier:ligne` : deplacer du
 # code dans son fichier ne doit pas invalider la base.
 backend/django_core/apps/calepinage/services/archivage.py::est_archive
+backend/django_core/apps/calepinage/services/asbuilt.py::comparer
 backend/django_core/apps/calepinage/services/asbuilt.py::ecarts_du_calepinage
 backend/django_core/apps/calepinage/services/asbuilt.py::pans_prevus
 backend/django_core/apps/calepinage/services/autoconsommation.py::bilan_autoconsommation
@@ -78,21 +79,18 @@ backend/django_core/apps/calepinage/services/horizon.py::profil_saisi
 backend/django_core/apps/calepinage/services/hors_reseau.py::banque_pour_autonomie
 backend/django_core/apps/calepinage/services/hors_reseau.py::dimensionner_hors_reseau
 backend/django_core/apps/calepinage/services/hors_reseau.py::simuler_hors_reseau
-backend/django_core/apps/calepinage/services/import_plan.py::analyser_plan
-backend/django_core/apps/calepinage/services/import_plan.py::contour_du_calque
-backend/django_core/apps/calepinage/services/import_plan.py::cotes_hors_tout
 backend/django_core/apps/calepinage/services/io_layout.py::valider_document
 backend/django_core/apps/calepinage/services/journal.py::journaliser_lien_appel_offre
 backend/django_core/apps/calepinage/services/kits.py::construire_kit_de_pose
 backend/django_core/apps/calepinage/services/lestage.py::feuille_de_lestage
 backend/django_core/apps/calepinage/services/lestage.py::masse_du_layout
-backend/django_core/apps/calepinage/services/lestage.py::masse_et_lestage
 backend/django_core/apps/calepinage/services/lidar_ign.py::accepter_suggestion
 backend/django_core/apps/calepinage/services/lidar_ign.py::altimetre_ign
+backend/django_core/apps/calepinage/services/lidar_ign.py::libelle_source
 backend/django_core/apps/calepinage/services/lidar_ign.py::refuser_suggestion
-backend/django_core/apps/calepinage/services/modeles.py::demarquer_modele
-backend/django_core/apps/calepinage/services/modeles.py::marquer_modele
+backend/django_core/apps/calepinage/services/modeles.py::est_modele
 backend/django_core/apps/calepinage/services/norme.py::coefficients_publies
+backend/django_core/apps/calepinage/services/note_calcul.py::construire_note_calcul
 backend/django_core/apps/calepinage/services/note_calcul.py::html_de_note_calcul
 backend/django_core/apps/calepinage/services/note_calcul.py::verdict_de_preuve
 backend/django_core/apps/calepinage/services/ombrage_chaines.py::acces_par_module
@@ -129,11 +127,11 @@ backend/django_core/apps/calepinage/services/pvgis_serie.py::vider_le_cache
 backend/django_core/apps/calepinage/services/reglementaire.py::avancement_du_dossier
 backend/django_core/apps/calepinage/services/reglementaire.py::composer_dossier
 backend/django_core/apps/calepinage/services/reglementaire.py::composer_dossiers
-backend/django_core/apps/calepinage/services/reglementaire.py::construire_pack_dossier
 backend/django_core/apps/calepinage/services/reglementaire.py::infos_du_calepinage
 backend/django_core/apps/calepinage/services/reglementaire.py::packs_france
 backend/django_core/apps/calepinage/services/releve.py::resoudre_chaines
 backend/django_core/apps/calepinage/services/reprise_public.py::document_public_du_lead
+backend/django_core/apps/calepinage/services/reprise_public.py::latlng_vers_lnglat
 backend/django_core/apps/calepinage/services/site.py::altitude_du_site
 backend/django_core/apps/calepinage/services/site.py::altitude_pvgis
 backend/django_core/apps/calepinage/services/site.py::decalage_utc_minutes

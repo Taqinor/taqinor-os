@@ -16,7 +16,7 @@ from django.test import SimpleTestCase
 from apps.calepinage.permissions import PeutGererCalepinage
 from apps.calepinage.services.reglementaire import (
     ChampsDossierInvalides, avancement_du_dossier, composer_dossier,
-    enregistrer_champs, valider_champs_saisis,
+    enregistrer_champs, _valider_champs_saisis,
 )
 from apps.calepinage.views.calepinages import CalepinageViewSet
 from apps.calepinage.views.reglementaire import (
@@ -88,7 +88,7 @@ class ValidationTest(SimpleTestCase):
 
     def test_un_champ_inconnu_du_gabarit_est_refuse_en_le_nommant(self):
         with self.assertRaises(ChampsDossierInvalides) as refus:
-            valider_champs_saisis(CHAMPS_GABARIT, {'numero_cerfa': '14 000'})
+            _valider_champs_saisis(CHAMPS_GABARIT, {'numero_cerfa': '14 000'})
 
         self.assertEqual(refus.exception.champ, 'numero_cerfa')
         self.assertIn('numero_cerfa', str(refus.exception))
@@ -97,34 +97,34 @@ class ValidationTest(SimpleTestCase):
 
     def test_un_nombre_qui_n_en_est_pas_un_est_refuse_sous_son_champ(self):
         with self.assertRaises(ChampsDossierInvalides) as refus:
-            valider_champs_saisis(CHAMPS_GABARIT,
-                                  {'puissance_declaree': 'beaucoup'})
+            _valider_champs_saisis(CHAMPS_GABARIT,
+                                   {'puissance_declaree': 'beaucoup'})
 
         self.assertEqual(refus.exception.champ, 'puissance_declaree')
         self.assertIn('Puissance déclarée', str(refus.exception))
 
     def test_un_nombre_ecrit_a_la_francaise_est_normalise_pas_refuse(self):
-        valide = valider_champs_saisis(CHAMPS_GABARIT,
-                                       {'puissance_declaree': '12,5'})
+        valide = _valider_champs_saisis(CHAMPS_GABARIT,
+                                        {'puissance_declaree': '12,5'})
 
         self.assertEqual(valide, {'puissance_declaree': 12.5})
 
     def test_une_valeur_composee_est_refusee_sous_son_champ(self):
         with self.assertRaises(ChampsDossierInvalides) as refus:
-            valider_champs_saisis(CHAMPS_GABARIT,
-                                  {'reference_dossier': {'x': 1}})
+            _valider_champs_saisis(CHAMPS_GABARIT,
+                                   {'reference_dossier': {'x': 1}})
 
         self.assertEqual(refus.exception.champ, 'reference_dossier')
 
     def test_une_saisie_qui_n_est_pas_un_objet_est_refusee(self):
         with self.assertRaises(ChampsDossierInvalides) as refus:
-            valider_champs_saisis(CHAMPS_GABARIT, ['reference_dossier'])
+            _valider_champs_saisis(CHAMPS_GABARIT, ['reference_dossier'])
 
         self.assertEqual(refus.exception.champ, 'champs')
 
     def test_une_valeur_vide_efface_au_lieu_d_inventer_un_defaut(self):
-        self.assertEqual(valider_champs_saisis(CHAMPS_GABARIT,
-                                               {'nom_deposant': '   '}),
+        self.assertEqual(_valider_champs_saisis(CHAMPS_GABARIT,
+                                                {'nom_deposant': '   '}),
                          {'nom_deposant': None})
 
 

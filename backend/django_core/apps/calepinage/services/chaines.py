@@ -56,7 +56,7 @@ __all__ = [
     'SOURCE_AUTO', 'SOURCE_MANUELLE', 'AffectationInvalide',
     'normaliser_affectation_imposee', 'verdict_affectation',
     # CALX53 — coefficients de température non sourcés, NOMMÉS jusqu'au verdict.
-    'LIBELLES_COEFFICIENTS', 'avertissement_coefficients_non_sources',
+    'LIBELLES_COEFFICIENTS',
 ]
 
 #: La règle de physique, citée telle quelle dans les verdicts publiés.
@@ -386,7 +386,7 @@ def _verdict_mppt(pans, onduleur, specs_onduleur_brut):
          % (nom, n_mppt, len(pans), ', '.join(en_trop)),))
 
 
-def avertissement_coefficients_non_sources(module):
+def _avertissement_coefficients_non_sources(module):
     """CALX53 — le message qui NOMME les coefficients tombés sur le défaut.
 
     ``''`` quand la fiche publie les deux. Rien n'est remplacé ni omis : les
@@ -450,7 +450,7 @@ def concevoir_par_pan(layout, *, module_specs, onduleur_specs, temperatures,
     # CALX53 — l'origine des coefficients de température voyage AVEC le
     # verdict : une alerte de plus, jamais un bloquant (la conception tient,
     # c'est sa SOURCE qui manque).
-    coeffs = avertissement_coefficients_non_sources(module)
+    coeffs = _avertissement_coefficients_non_sources(module)
     return Conception(
         pans=pans, resultat=resultat, entree=entree,
         bloquants=tuple(resultat.bloquants),
@@ -681,7 +681,7 @@ def bloc_electrique(conception, *, verdicts=(), imposee=None):
     # CALX53 — le même avertissement remonte dans le résultat publié
     # (``resultat['avertissements']``) : l'atelier le lit à côté des bornes
     # de chaîne, sans avoir à relancer une évaluation pour l'apprendre.
-    coeffs = avertissement_coefficients_non_sources(
+    coeffs = _avertissement_coefficients_non_sources(
         getattr(conception.entree, 'module', None))
     if coeffs:
         avertissements.append(coeffs)

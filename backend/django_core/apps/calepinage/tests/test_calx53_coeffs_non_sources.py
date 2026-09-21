@@ -22,7 +22,7 @@ CE QUI EST PROUVÉ ICI (``SimpleTestCase``, aucun accès base) :
 from django.test import SimpleTestCase
 
 from apps.calepinage.services.chaines import (
-    avertissement_coefficients_non_sources, bloc_electrique,
+    _avertissement_coefficients_non_sources, bloc_electrique,
     concevoir_par_pan, specs_module,
 )
 from apps.calepinage.services.electrique import temperatures_site
@@ -103,12 +103,12 @@ class AvertissementTest(SimpleTestCase):
     def test_fiche_complete_aucun_avertissement(self):
         module, _ = specs_module(MODULE_COMPLET, 'Module d essai')
 
-        self.assertEqual(avertissement_coefficients_non_sources(module), '')
+        self.assertEqual(_avertissement_coefficients_non_sources(module), '')
 
     def test_le_message_nomme_les_deux_coefficients_et_le_module(self):
         module, _ = specs_module(MODULE_SANS_COEFFS, 'Module d essai 710 Wc')
 
-        message = avertissement_coefficients_non_sources(module)
+        message = _avertissement_coefficients_non_sources(module)
 
         self.assertIn('temp_coeff_voc_pct_c', message)
         self.assertIn('temp_coeff_pmax_pct_c', message)
@@ -119,7 +119,7 @@ class AvertissementTest(SimpleTestCase):
         self.assertIn('-0,350', message)
 
     def test_aucun_module_aucun_avertissement(self):
-        self.assertEqual(avertissement_coefficients_non_sources(None), '')
+        self.assertEqual(_avertissement_coefficients_non_sources(None), '')
 
 
 class VerdictTest(SimpleTestCase):
