@@ -437,6 +437,33 @@ def _entier_positif(valeur):
     return val if val > 0 else None
 
 
+# ── CAD165 (2) ── LE CRÉNEAU « JOUR » SE CALE SUR LE MILIEU DE LA JOURNÉE.
+#
+# Quand le chargeur est connu, la recharge n'occupe qu'une PARTIE du créneau
+# déclaré. Elle était placée sur les PREMIÈRES heures de ce créneau : pour le
+# créneau « jour » (9h-18h), cela mettait la recharge à 9h du matin, c'est-à-
+# dire AVANT le gros de la production d'un champ plein sud — exactement à côté
+# de ce que le client cherchait en répondant « je recharge le jour ».
+#
+# Le recentrage est GÉOMÉTRIQUE, et c'est délibéré : ce module ne voit pas la
+# série de production (elle est calculée ailleurs), il ne peut donc pas lire
+# une heure de pic. Il place la recharge au MILIEU du créneau déclaré — même
+# nature de convention que les fenêtres de ``VE_CRENEAUX`` elles-mêmes, qui
+# sont documentées comme des découpages conventionnels et non des mesures.
+# Aucune heure n'est inventée : la fenêtre reste à l'intérieur du créneau que
+# le client a déclaré. Les créneaux « nuit » et « soir » gardent leurs
+# premières heures — il n'y a pas de soleil à viser.
+VE_CRENEAUX_RECENTRES = ('jour',)
+
+
+def _fenetre_recharge(fenetre, n, creneau):
+    """Les ``n`` heures de recharge retenues dans le créneau déclaré."""
+    if creneau in VE_CRENEAUX_RECENTRES:
+        debut = max(0, (len(fenetre) - n) // 2)
+        return fenetre[debut:debut + n]
+    return fenetre[:n]
+
+
 def _equipements(lead_equip):
     """Couches d'équipement composables, ou ``{}`` si aucune n'est utilisable.
 
@@ -525,10 +552,22 @@ def _equipements(lead_equip):
             chargeur_kw = _nombre_positif(lead_equip.get('ve_chargeur_kw'))
             creneau = lead_equip.get('ve_creneau')
             fenetre = VE_CRENEAUX.get(creneau)
-            if chargeur_kw is not None and fenetre:
+            if fenetre and chargeur_kw is None:
+                # ── CAD165 (1) / CAD171 ── LE CRÉNEAU DÉCLARÉ NE PEUT PLUS
+                # ÊTRE IGNORÉ. Avant, la fenêtre n'était resserrée que
+                # ``if chargeur_kw is not None`` : un client qui répondait
+                # « je recharge le jour » gardait la fenêtre 21h-6h et son
+                # chiffre ne bougeait PAS d'un kWh — sa réponse ne servait à
+                # rien. Sans la puissance du chargeur, on ne sait pas combien
+                # d'heures la recharge dure : on l'ÉTALE donc sur TOUT le
+                # créneau déclaré (décision fondateur du 21/09/2026), ce qui
+                # n'invente aucune durée et respecte enfin la réponse.
+                heures = list(fenetre)
+                source += '+lead:equip_ve_creneau'
+            elif chargeur_kw is not None and fenetre:
                 duree_h = kwh_jour / chargeur_kw
                 n = max(1, min(len(fenetre), math.ceil(duree_h - 1e-9)))
-                heures = list(fenetre[:n])
+                heures = list(_fenetre_recharge(fenetre, n, creneau))
                 source += '+lead:equip_ve_chargeur_kw+creneau'
             out['ve'] = {
                 'kwh_jour': round(kwh_jour, 2),
@@ -543,10 +582,20 @@ def _equipements(lead_equip):
     # (``chauffe_eau_kw``/``chauffe_eau_creneau``) qui, elle, EN produit une
     # quand les DEUX sont renseignées : puissance réelle sur son créneau,
     # jamais un chiffre inventé pour l'une sans l'autre.
+    #
+    # ── CAD165 (3) ── UN « NON » DOIT EMPÊCHER LA COUCHE. La paire se
+    # composait SANS jamais regarder le booléen, contrairement aux trois
+    # couches ci-dessus : un client qui avait répondu « non, mon chauffe-eau
+    # n'est pas électrique » voyait quand même sa couche chauffe-eau entrer
+    # dans le chiffre. Le gate est donc ``is not False`` et pas ``is True`` :
+    # ``None`` veut dire « la question n'a jamais été posée » (règle de tout
+    # le bloc L4 : vide ≠ Non), et un lead jamais interrogé garde exactement
+    # le chiffre qu'il avait — seul le « non » explicite change quelque chose.
     chauffe_eau_kw = _nombre_positif(lead_equip.get('chauffe_eau_kw'))
     chauffe_eau_creneau = lead_equip.get('chauffe_eau_creneau')
     fenetre_ce = CHAUFFE_EAU_CRENEAUX.get(chauffe_eau_creneau)
-    if chauffe_eau_kw is not None and fenetre_ce:
+    chauffe_eau_refuse = lead_equip.get('chauffe_eau_electrique') is False
+    if chauffe_eau_kw is not None and fenetre_ce and not chauffe_eau_refuse:
         out['chauffe_eau'] = {
             'kw': round(chauffe_eau_kw, 2),
             'heures': list(fenetre_ce),

@@ -2009,6 +2009,17 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
             auto_jour_sans = auto_jour_horaire
             batterie = batterie_horaire
 
+        # ── CAD165 (4) ── LA MÊME GARDE DES DEUX CÔTÉS. Seule l'option AVEC
+        # batterie était bornée : l'option SANS pouvait donc annoncer une
+        # autoconsommation SUPÉRIEURE à la consommation de référence du
+        # client (9 197 kWh contre 7 838 mesurés par l'audit du 21/09/2026,
+        # reproduit deux fois, avec une couche véhicule électrique et un
+        # chargeur de 3,7 à 4,0 kW). Un chiffre qui dépasse la consommation
+        # qu'il est censé couvrir est faux quelle que soit sa cause : la
+        # borne est posée AVANT que l'option AVEC ne s'y ajoute, exactement
+        # la même, avec les mêmes deux plafonds.
+        auto_jour_sans = min(auto_jour_sans, conso_jour_kwh, prod_jour_kwh)
+
         auto_jour_avec = auto_jour_sans + batterie['restitue_kwh']
         # Garde d'honnêteté : on n'autoconsomme jamais plus que ce que le
         # client consomme, ni plus que ce que le champ produit.
