@@ -800,6 +800,19 @@ _APPEND_ONLY_SUFFIXES = (
     "index.css", "tokens.css", "print.css", "records-panels.css",
     "ui/index.js", "router/index.jsx", "main.jsx", "App.jsx",
     "docs/PLAN.md", "docs/PLAN2.md", "docs/CODEMAP.md",
+    # CALX2 — les quatre surfaces PARTAGÉES du module « calepinage »
+    # (décision D-CALX 13). Elles sont APPEND-ONLY par construction : une
+    # capacité neuve s'y ajoute par UNE ligne écrite EN FIN, avec son
+    # commentaire ``// CALX<id>`` / ``# CALX<id>``, jamais par une
+    # réécriture ni un réordonnancement — donc deux tâches qui les citent
+    # ne se marchent PAS dessus au fold. Sans cette exemption, mesuré sur le
+    # groupe CALX : `calepinageApi.js` (≈ 40 tâches), `atelier/onglets.js`
+    # (≈ 22) et le rattachement des actions fondaient la quasi-totalité du
+    # groupe en UNE lane de 337 tâches.
+    "api/calepinageApi.js",
+    "calepinage/atelier/onglets.js",
+    "calepinage/views/rattachements.py",
+    "calepinage/services/parametres_cles.py",
 )
 
 
