@@ -11,6 +11,7 @@ import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
 import { type SerializedEdge } from './edges';
+import { type CoucheElectrique } from './electrique3d';
 
 export interface InitOptions {
   maptilerKey: string;
@@ -147,6 +148,10 @@ export interface RoofToolApi {
   /** CALX3 — les identifiants de calque réellement installés sur la carte, dans
    *  l'ordre de rendu (`ORDRE_RENDU_CALQUES`). Liste vide hors carte (capture, aperçu). */
   calquesDisponibles: () => string[];
+  /** CALX220/221 câblage — la couche électrique de l'atelier (organes/cheminements posés
+   *  en 3D, calque « Électrique »). TOUJOURS présente (`creerCoucheElectrique` la construit
+   *  inconditionnellement) — `calqueDisponible()` dit si le document porte une couche. */
+  electrique: CoucheElectrique;
 }
 
 /** W113 — payload lead minimal consommé par l'hydratation (forme du GET

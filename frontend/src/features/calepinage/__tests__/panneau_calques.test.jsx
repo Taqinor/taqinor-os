@@ -26,6 +26,7 @@ import PanneauCalques from '../PanneauCalques'
 import {
   ORDRE_CALQUES,
   CALQUE_IDS,
+  CALQUE_ELECTRIQUE_ID,
   rangCalque,
   etatCalquesParDefaut,
   lireEtatCalques,
@@ -384,5 +385,56 @@ describe('CALX221 — le calque « Électrique » du panneau', () => {
       ),
     ).not.toThrow()
     expect(screen.getByTestId('pc-vide')).toBeTruthy()
+  })
+})
+
+/* ============================================================================
+   CALX22x câblage — `CALQUE_ELECTRIQUE_ID` (calques.js) : la SEULE copie
+   frontend de l'identifiant, MÉMORISÉE PAR UTILISATEUR comme les dix calques
+   de carte (crochet 4/4 de la lane câblage). `PanneauCalques.jsx` l'IMPORTE
+   désormais au lieu de recopier sa propre chaîne — cette section prouve que
+   les deux garanties (identité + mémoire) tiennent.
+   ========================================================================== */
+describe('CALX22x câblage — CALQUE_ELECTRIQUE_ID mémorisé par utilisateur', () => {
+  it('est EXACTEMENT l’identifiant déclaré par le constructeur 3D — même test jumeau que CALX221', () => {
+    expect(CALQUE_ELECTRIQUE_ID).toBe(idCalqueDuConstructeur())
+    // Il ne fait PAS partie de l'ordre de rendu de la carte (ce n'est pas une
+    // couche de carte : PanneauCalques.jsx la rend à part, au-dessus).
+    expect(CALQUE_IDS).not.toContain(CALQUE_ELECTRIQUE_ID)
+    expect(rangCalque(CALQUE_ELECTRIQUE_ID)).toBe(-1)
+  })
+
+  it('etatCalquesParDefaut() porte aussi une entrée par défaut pour le calque électrique', () => {
+    expect(etatCalquesParDefaut()[CALQUE_ELECTRIQUE_ID]).toEqual({ visible: true, opacite: 1 })
+  })
+
+  it('la bascule électrique survit à un DÉMONTAGE/REMONTAGE du panneau (le même utilisateur, le même stockage)', () => {
+    const store = memStore()
+    const { unmount } = render(
+      <PanneauCalques
+        utilisateurId="u9"
+        stockage={store}
+        builderApi={builderApiElectrique(true, ['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId('pc-visible-electrique'))
+    expect(screen.getByTestId('pc-visible-electrique').checked).toBe(false)
+    unmount()
+
+    // Avant le crochet 4/4 : `lireEtatCalques` ignorait toute clé hors de
+    // `CALQUE_IDS` (les dix calques de carte) — l'électrique rouvrait donc
+    // TOUJOURS visible, malgré la bascule ci-dessus. `IDS_MEMORISES` corrige
+    // cela sans changer `CALQUE_IDS` (dont `panneau_calques.test.jsx` fixe la
+    // liste EXACTE des dix calques de carte, plus haut dans ce fichier).
+    render(
+      <PanneauCalques
+        utilisateurId="u9"
+        stockage={store}
+        builderApi={builderApiElectrique(true, ['zones'])}
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId('pc-visible-electrique').checked).toBe(false)
   })
 })

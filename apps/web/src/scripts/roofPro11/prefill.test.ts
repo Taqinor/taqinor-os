@@ -21,6 +21,7 @@ import { type Measurement } from './mesureUi';
 import { type EnvironmentObject } from './environment';
 import { type Ctx } from './context';
 import { type AreaRecord } from './types';
+import { creerCoucheElectrique } from './electrique3d';
 
 const VERTS: [number, number][] = [
   [-7.6, 33.59],
@@ -475,5 +476,57 @@ describe('hydrateFromDevis — cible vendue vs cible absente (CAL37)', () => {
     expect(h.cibleVendue).toBe(true);
     expect(h.neededPanels).toBe(12);
     expect(h.neededAuto).toBe(false);
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+   CALX22x câblage — `serializeLayout` porte la couche électrique (crochet 1/4).
+   La logique d'écriture n'est JAMAIS recopiée ici : elle reste entièrement
+   déléguée à `couche.ecrireDansDocument` (electrique3d.ts, CALX219-221/223).
+   Un document sans organe ni cheminement ne porte pas la clé `electrical`.
+   ──────────────────────────────────────────────────────────────────────────── */
+describe('CALX22x câblage — serializeLayout porte `electrical` via couche.ecrireDansDocument', () => {
+  it('absente du layout quand aucune `meta.coucheElectrique` n’est fournie (comportement historique)', () => {
+    const areas = [zone('z1')];
+    const layout = serializeLayout(makeCtx(areas));
+    expect('electrical' in layout).toBe(false);
+  });
+
+  it('absente quand la couche fournie ne porte encore aucun organe ni cheminement', () => {
+    const areas = [zone('z1')];
+    const couche = creerCoucheElectrique({});
+    const layout = serializeLayout(makeCtx(areas), null, { coucheElectrique: couche });
+    expect('electrical' in layout).toBe(false);
+  });
+
+  it('présente, avec la forme EXACTE écrite par la couche, dès qu’un organe est posé', () => {
+    const areas = [zone('z1')];
+    const couche = creerCoucheElectrique({});
+    couche.armerPose('onduleur');
+    couche.poser([-7.6002, 33.5001], { label: 'Onduleur toiture' });
+    const layout = serializeLayout(makeCtx(areas), null, { coucheElectrique: couche });
+    expect(layout.electrical).toEqual(couche.documentElectrique());
+    // Le crochet d'export ne partage AUCUNE référence avec l'état vivant de la couche.
+    expect(layout.electrical).not.toBe(couche.documentElectrique());
+  });
+
+  it('un cheminement seul (sans équipement) suffit aussi à porter la clé', () => {
+    const areas = [zone('z1')];
+    const couche = creerCoucheElectrique({ areas: [{ id: 'z1' }] });
+    const fait = couche.saisirCheminement({ cote: 'dc', de: 'z1', vers: 'z1', longueurM: 5 });
+    expect(fait.ok).toBe(true);
+    const layout = serializeLayout(makeCtx(areas), null, { coucheElectrique: couche });
+    expect(layout.electrical?.cheminements).toHaveLength(1);
+  });
+
+  it('NON-RÉGRESSION : porter `electrical` ne change aucun autre chiffre du document', () => {
+    const areas = [zone('z1')];
+    const sans = serializeLayout(makeCtx(areas));
+    const couche = creerCoucheElectrique({});
+    couche.armerPose('tgbt');
+    couche.poser([-7.6, 33.5]);
+    const avec = serializeLayout(makeCtx(areas), null, { coucheElectrique: couche });
+    expect(avec.result).toEqual(sans.result);
+    expect(avec.zones).toEqual(sans.zones);
   });
 });

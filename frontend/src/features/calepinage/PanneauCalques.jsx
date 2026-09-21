@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ORDRE_CALQUES, lireEtatCalques, ecrireEtatCalques } from './calques'
+import { ORDRE_CALQUES, CALQUE_ELECTRIQUE_ID, lireEtatCalques, ecrireEtatCalques } from './calques'
 
 /* ============================================================================
    CAL103 — LE PANNEAU DE CALQUES de l'atelier.
@@ -49,12 +49,13 @@ import { ORDRE_CALQUES, lireEtatCalques, ecrireEtatCalques } from './calques'
    l'affirmer, faute de module partagé entre le portail Vite et le site Astro.
    ========================================================================== */
 
-/** CALX221 — l'entrée « Électrique » du panneau. L'identifiant est celui que le
- *  constructeur 3D déclare ; le libellé est celui affiché à l'utilisateur. Il
- *  n'est PAS exporté (un fichier de composant n'exporte que des composants) : le
- *  test jumeau le vérifie par le rendu, avec l'identifiant lu dans le source
- *  TypeScript du constructeur. */
-const CALQUE_ELECTRIQUE = { id: 'electrique', label: 'Électrique' }
+/** CALX221 — l'entrée « Électrique » du panneau. L'identifiant est `CALQUE_ELECTRIQUE_ID`
+ *  (calques.js — CALX22x câblage : la SEULE copie frontend de la chaîne, mémorisée par
+ *  utilisateur comme les dix autres) ; le libellé est celui affiché à l'utilisateur. Cet
+ *  objet n'est PAS exporté (un fichier de composant n'exporte que des composants) : le
+ *  test jumeau le vérifie par le rendu, avec l'identifiant lu dans le source TypeScript
+ *  du constructeur. */
+const CALQUE_ELECTRIQUE = { id: CALQUE_ELECTRIQUE_ID, label: 'Électrique' }
 
 /** Les calques que ce panneau sait proposer : les dix de `calques.js` (couches de
  *  la carte), puis le calque électrique de la scène 3D, au-dessus d'eux. */
