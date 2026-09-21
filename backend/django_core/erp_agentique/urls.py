@@ -79,30 +79,18 @@ _APP_URLS = [
     # factures-fournisseur|retours-fournisseur|prix-fournisseurs/… restent
     # servies à l'identique (mêmes ViewSets). Mouvements stock via stock.services.
     path('achats/', include('apps.achats.urls')),
-    # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
-    path('flotte/', include('apps.flotte.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
-    # Group S — Messagerie interne d'équipe (« Discuss »).
-    path('chat/', include('apps.chat.urls')),
     # Modules ERP greenfield (fondations) — internes, admin/responsable.
     path('rh/', include('apps.rh.urls')),
-    path('paie/', include('apps.paie.urls')),
     path('gestion-projet/', include('apps.gestion_projet.urls')),
     path('contrats/', include('apps.contrats.urls')),
     path('qhse/', include('apps.qhse.urls')),
     path('kb/', include('apps.kb.urls')),
-    path('litiges/', include('apps.litiges.urls')),
-    # Groupe NTJUR — Affaires juridiques (contentieux d'entreprise).
-    path('juridique/', include('apps.juridique.urls')),
     # Groupe NTDOC (P2) — Salles de données sécurisées (data rooms).
     path('datarooms/', include('apps.datarooms.urls')),
-    # Groupe NTESG — Reporting ESG/durabilité consolidé.
-    path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('tiers/', include('apps.tiers.urls')),
-    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
-    path('voip/', include('apps.voip.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('pos/', include('apps.pos.urls')),
     # NTRET12 — Moteur de promotions panier (règles configurables, coupons
@@ -117,23 +105,10 @@ _APP_URLS = [
     path('accessreview/', include('apps.accessreview.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
-    # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
-    path('territoires/', include('apps.territoires.urls')),
     # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
     path('contacts/', include('apps.contacts.urls')),
-    # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
-    # groupées, prix contractuels, approbations de remise, configurateur).
-    path('cpq/', include('apps.cpq.urls')),
     # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
     path('btp-chantier/', include('apps.btp_chantier.urls')),
-    # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
-    path('innovation/', include('apps.innovation.urls')),
-    # Groupe NTCRD — Gestion du crédit client.
-    path('credit/', include('apps.credit.urls')),
-    # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
-    path('fpa/', include('apps.fpa.urls')),
-    # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
-    path('assurances/', include('apps.assurances.urls')),
     # Groupe NTADM — Administration enterprise.
     path('entites/', include('apps.entites.urls')),
     path('adminops/', include('apps.adminops.urls')),
@@ -148,25 +123,10 @@ _APP_URLS = [
          SignupDemandeView.as_view(), name='auth_signup_demande'),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
-    path('transport/', include('apps.transport.urls')),
     # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
     path('trash/', include('apps.trash.urls')),
     # NTMOB1 — Synchro hors-ligne multi-module (rejeu idempotent d'un lot).
     path('offlinesync/', include('apps.offlinesync.urls')),
-    # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
-    path('einvoice/', include('apps.einvoice.urls')),
-    # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
-    path('fiscal/', include('apps.fiscal.urls')),
-    # Groupe NTAI — conversations commerciales enregistrées (upload d'un appel
-    # + transcription asynchrone key-gated). Le segment est IDENTIQUE à la clé
-    # de manifeste (`conversation_ai`, avec underscore) : le gatage 404 des
-    # modules désactivés vise le bon module sans entrée PREFIX_TO_MODULE.
-    path('conversation_ai/', include('apps.conversation_ai.urls')),
-    # Groupe VAO — Veille appels d'offres (sas des avis de marché). Le segment
-    # d'URL est IDENTIQUE à la clé de manifeste (`veille_ao`, avec underscore)
-    # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
-    # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
-    path('veille_ao/', include('apps.veille_ao.urls')),
     # Groupe VTA — Visites techniques terrain (app autonome sortie du CRM). Le
     # segment est IDENTIQUE à la clé de manifeste (`visites`) : le gatage 404
     # des modules désactivés dérive du 2ᵉ segment, sans entrée
@@ -175,9 +135,6 @@ _APP_URLS = [
     # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
     # BLOCKED, voir apps/douane/apps.py).
     path('douane/', include('apps.douane.urls')),
-    # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
-    # de l'exécution `apps.stock` existante.
-    path('scm/', include('apps.scm.urls')),
     # Groupe NTDATA — couche sémantique : historique figé des définitions de
     # métriques (NTDATA9) et lignage « d'où vient ce chiffre » (NTDATA43). Le
     # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404
