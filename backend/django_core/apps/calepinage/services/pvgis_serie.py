@@ -62,8 +62,9 @@ import urllib.parse
 import urllib.request
 
 __all__ = [
-    'BASES_RAYONNEMENT', 'BASE_PAR_DEFAUT', 'COLONNES_IRRADIANCE',
-    'CONVENTION_AZIMUT', 'ClientPvgis', 'EntreeInvalide', 'PvgisIndisponible',
+    'BASES_RAYONNEMENT', 'BASE_PAR_DEFAUT', 'COLONNES_COMPOSANTES',
+    'COLONNES_IRRADIANCE', 'CONVENTION_AZIMUT', 'ClientPvgis',
+    'EntreeInvalide', 'MOTIF_COMPOSANTES_ABSENTES', 'PvgisIndisponible',
     'RACINE_API', 'azimut_pvgis', 'cle_de_cache', 'vider_le_cache',
 ]
 
@@ -107,6 +108,20 @@ CONVENTION_AZIMUT = 'pvgis_sud_0_est_-90'
 #: la chaîne de pertes : ce client ne publie QUE de la météo.
 COLONNES_IRRADIANCE = ('annee', 'mois', 'jour', 'heure', 'gi_w_m2', 't2m_c',
                        'ws10m', 'h_sun_deg')
+
+#: Les trois composantes de l'irradiance de plan (CALX152), dans l'ordre du
+#: contrat CALX142 et à l'endroit exact où ce contrat les place.
+COLONNES_COMPOSANTES = ('gb_i_w_m2', 'gd_i_w_m2', 'gr_i_w_m2')
+
+#: Le motif UNIQUE que publient les étapes qui ne savent pas travailler sans
+#: le découpage direct/diffus (``iam``, ``ombrage_proche``, ``acces_module``,
+#: ``inter_rangees``, CALX152). Il vit ICI parce que c'est la réponse PVGIS
+#: qui décide : l'IAM ne s'applique qu'au faisceau direct sous son angle
+#: d'incidence, et une cellule ombrée reçoit encore le diffus — sans les
+#: composantes, aucune répartition n'est SUPPOSÉE, l'étape est OMISE.
+MOTIF_COMPOSANTES_ABSENTES = (
+    "les composantes directe/diffuse de l'irradiance ne sont pas disponibles "
+    'pour cette réponse PVGIS : aucune part diffuse n\'est supposée')
 
 
 class PvgisIndisponible(RuntimeError):
@@ -410,7 +425,8 @@ class ClientPvgis:
     def serie_irradiance(self, *, lat, lon, inclinaison_deg, aspect_deg,
                          annee_debut, annee_fin, base=BASE_PAR_DEFAUT,
                          horizon=None, masque_dans_la_geometrie=False,
-                         annee_retenue=None, obtenue_le=None):
+                         composantes=False, annee_retenue=None,
+                         obtenue_le=None):
         """CALX150 — l'irradiance sur le plan, SANS le modèle PV de PVGIS.
 
         PVGIS ne calcule ici AUCUNE production : ``pvcalculation=0``, donc
@@ -433,6 +449,10 @@ class ClientPvgis:
                 déjà porté par la géométrie 3D ⇒ ``usehorizon=0``. Les trois
                 cas sont EXCLUSIFS : deux masques appliqués ensemble se
                 compteraient deux fois.
+            composantes: CALX152 — ``components=1``, seul drapeau sous lequel
+                PVGIS sépare direct, diffus et réfléchi. Sans lui, l'IAM et
+                l'ombrage ne peuvent pas être honnêtes : les étapes
+                concernées sont OMISES avec ``MOTIF_COMPOSANTES_ABSENTES``.
             annee_retenue: l'année que la série PERSISTÉE garde (CALX142 : au
                 plus une année au pas déclaré). À défaut, la PLUS RÉCENTE des
                 années reçues — la plus proche du climat d'aujourd'hui. Le
@@ -445,7 +465,8 @@ class ClientPvgis:
             dict — ``points`` (TOUTE la fenêtre), ``serie_horaire`` (le bloc
             CALX142 borné à une année, points PARTAGÉS avec ``points``),
             ``meteo`` (le bloc CALX143, clés que ce client peut sourcer),
-            ``annees``, ``url``, ``depuis_cache``.
+            ``annees``, ``composantes_disponibles``, ``motif_composantes``,
+            ``url``, ``depuis_cache``.
 
         Raises:
             EntreeInvalide: coordonnées, angles, années ou base refusés.
@@ -459,6 +480,8 @@ class ClientPvgis:
             aspect_deg=aspect_deg, annee_debut=annee_debut,
             annee_fin=annee_fin)
         params.update(params_horizon)
+        if composantes:
+            params['components'] = 1
 
         charge, depuis_cache = self._appeler('seriescalc', params)
         # Le cache du client ne conserve AUCUNE date : l'horodatage est posé
@@ -479,10 +502,16 @@ class ClientPvgis:
             if moment is None:
                 continue
             annee, mois, jour, heure = moment
+            directe = _flottant(ligne.get('Gb(i)'))
+            diffuse = _flottant(ligne.get('Gd(i)'))
+            reflechie = _flottant(ligne.get('Gr(i)'))
             points.append({
                 'annee': annee, 'mois': mois, 'jour': jour, 'heure': heure,
-                'gi_w_m2': _flottant(ligne.get('G(i)')),
+                'gi_w_m2': _globale(ligne, directe, diffuse, reflechie),
                 't2m_c': _flottant(ligne.get('T2m')),
+                'gb_i_w_m2': directe,
+                'gd_i_w_m2': diffuse,
+                'gr_i_w_m2': reflechie,
                 'ws10m': _flottant(ligne.get('WS10m')),
                 'h_sun_deg': _flottant(ligne.get('H_sun')),
             })
@@ -494,15 +523,26 @@ class ClientPvgis:
         if all(point['gi_w_m2'] is None for point in points):
             raise PvgisIndisponible(
                 "La réponse de PVGIS ne porte aucune irradiance de plan "
-                "exploitable (colonne « G(i) » absente ou illisible) : "
-                "aucune série n'est publiée — une série de zéros se lirait "
-                '« site sans soleil, mesuré ».', champ='meteo')
+                "exploitable (ni « G(i) », ni les trois composantes "
+                '« Gb(i) » / « Gd(i) » / « Gr(i) ») : aucune série n\'est '
+                'publiée — une série de zéros se lirait « site sans soleil, '
+                'mesuré ».', champ='meteo')
 
         annees = sorted({point['annee'] for point in points})
+        disponibles = all(point['gb_i_w_m2'] is not None
+                          and point['gd_i_w_m2'] is not None
+                          and point['gr_i_w_m2'] is not None
+                          for point in points)
         return {
             'service': 'seriescalc',
             'points': points,
-            'serie_horaire': _bloc_serie(points, annees, annee_retenue),
+            'composantes_disponibles': disponibles,
+            # Le motif que les étapes direct/diffus reprennent TEL QUEL — une
+            # seule formulation dans tout le module (CALX152).
+            'motif_composantes': (None if disponibles
+                                  else MOTIF_COMPOSANTES_ABSENTES),
+            'serie_horaire': _bloc_serie(points, annees, annee_retenue,
+                                         composantes=disponibles),
             'meteo': _bloc_meteo(
                 charge, base, params,
                 url=self.construire_url('seriescalc', params),
@@ -692,7 +732,25 @@ def _pas_minutes(points):
     return ecarts.most_common(1)[0][0]
 
 
-def _bloc_serie(points, annees, annee_retenue):
+def _globale(ligne, directe, diffuse, reflechie):
+    """L'irradiance GLOBALE de plan — servie, ou la somme de ses composantes.
+
+    Sous ``components=1``, PVGIS ne rend PLUS ``G(i)`` : il rend ``Gb(i)``,
+    ``Gd(i)`` et ``Gr(i)``. La somme des trois n'est donc pas une estimation,
+    c'est la décomposition de PVGIS lui-même — vérifié le 21/09/2026 au point
+    33,5 / −7,6 : 678,04 + 105,23 + 1,99 = 785,26 W/m², exactement le ``G(i)``
+    servi par la MÊME requête sans ``components``. Une composante manquante
+    ⇒ ``None`` : aucune somme partielle ne se fait passer pour la globale.
+    """
+    globale = _flottant(ligne.get('G(i)'))
+    if globale is not None:
+        return globale
+    if directe is None or diffuse is None or reflechie is None:
+        return None
+    return directe + diffuse + reflechie
+
+
+def _bloc_serie(points, annees, annee_retenue, *, composantes=False):
     """Le bloc ``serie_horaire`` de CALX142, borné à UNE année.
 
     ``Calepinage.resultat`` est un champ JSON : une fenêtre pluriannuelle au
@@ -710,11 +768,17 @@ def _bloc_serie(points, annees, annee_retenue):
                 f'série reçue (années : {", ".join(str(a) for a in annees)}).',
                 champ='annee_retenue')
     gardes = [point for point in points if point['annee'] == retenue]
+    colonnes = list(COLONNES_IRRADIANCE)
+    if composantes:
+        # À la place EXACTE que leur donne le contrat CALX142 : juste après
+        # ``t2m_c``, avant ``ws10m``.
+        rang = colonnes.index('t2m_c') + 1
+        colonnes[rang:rang] = list(COLONNES_COMPOSANTES)
     return {
         'pas_minutes': _pas_minutes(gardes),
         'tronquee': len(gardes) < len(points),
         'annee_retenue': retenue,
-        'colonnes': list(COLONNES_IRRADIANCE),
+        'colonnes': colonnes,
         'points': gardes,
     }
 
