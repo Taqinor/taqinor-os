@@ -9,7 +9,15 @@ figure dans :data:`core.parked.APPS_PARQUEES` :
    ``SeparateDatabaseAndState(state_operations=[DeleteModel…],
    database_operations=[])`` — **aucune table supprimée, aucune ligne de
    ``django_migrations`` touchée** ;
-2. vide ``models.py`` (docstring français seul) ;
+2. réduit ``models.py`` à un docstring — ou à un TALON quand une migration
+   GELÉE de l'app référence un symbole de ce fichier
+   (``default=apps.pos.models._default_share_token``,
+   ``from apps.kb.models import …``) : les fonctions, énumérations, constantes
+   et imports nécessaires sont recopiés VERBATIM, jamais un modèle. Un
+   ``models.py`` vidé à tort rend ces migrations INIMPORTABLES et casse le
+   graphe entier ; la commande VÉRIFIE donc dans un processus NEUF que le
+   graphe charge encore AVANT de supprimer le moindre fichier (et restaure
+   ``models.py``/``apps.py`` si ce n'est pas le cas) ;
 3. réécrit ``apps.py`` au minimum (``name``/``label``/``default_auto_field``,
    ``parked = True``, manifeste ``'parked': True``, plus aucun ``ready()``
    important un module supprimé) ;
@@ -31,7 +39,7 @@ Usage ::
 
     python manage.py parquer_app statuspage --dry-run
     python manage.py parquer_app statuspage
-    python manage.py parquer_app --check           # les 49 labels
+    python manage.py parquer_app --check           # les 47 labels
     python manage.py parquer_app statuspage --check
 
 ``core`` reste fondation : ce module n'importe AUCUNE app métier (il ne
@@ -41,6 +49,8 @@ from __future__ import annotations
 
 import ast
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from django.apps import apps as registre_apps
@@ -175,6 +185,181 @@ def rejouer_le_graphe(label):
         migration.mutate_state(etat, preserve=False)
     feuilles = sorted(graphe.leaf_nodes(label))
     return etat, retraits, feuilles
+
+
+# --------------------------------------------------------------------------
+# Talon de models.py : ce que les migrations GELÉES réclament encore
+# --------------------------------------------------------------------------
+def _chaine_pointee(noeud):
+    """``a.b.c`` → ``'a.b.c'``. ``None`` si la chaîne n'est pas purement nominale."""
+    morceaux = []
+    while isinstance(noeud, ast.Attribute):
+        morceaux.append(noeud.attr)
+        noeud = noeud.value
+    if not isinstance(noeud, ast.Name):
+        return None
+    morceaux.append(noeud.id)
+    return '.'.join(reversed(morceaux))
+
+
+def symboles_reclames(dossier, module_app):
+    """``{symbole: {fichiers}}`` — ce que les migrations de l'app lisent dans son
+    propre ``models.py``.
+
+    ``module_app`` est le chemin d'import de l'app (``AppConfig.name``, donc
+    ``'apps.pos'`` ici) : jamais reconstruit à partir du label, pour qu'une app
+    hors du paquet ``apps`` marche aussi.
+
+    Trois formes couvertes, les trois que Django sérialise ou qu'un humain
+    écrit : ``import apps.pos.models`` puis ``apps.pos.models.<nom>`` (la forme
+    d'un ``default=`` callable), un alias (``import … as m`` /
+    ``from apps.pos import models``) puis ``m.<nom>``, et
+    ``from apps.pos.models import <nom>``. Une chaîne ``…models.Modele.Enum``
+    réclame ``Modele`` (le namespace), pas ``Enum``.
+    """
+    cible = '%s.models' % module_app
+    reclames = {}
+    dossier_migrations = dossier / 'migrations'
+    if not dossier_migrations.is_dir():
+        return reclames
+    for chemin in sorted(dossier_migrations.glob('*.py')):
+        try:
+            arbre = ast.parse(chemin.read_text(encoding='utf-8'))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        alias = {cible}
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.Import):
+                for element in noeud.names:
+                    if element.name == cible and element.asname:
+                        alias.add(element.asname)
+            elif isinstance(noeud, ast.ImportFrom):
+                if noeud.module == cible:
+                    for element in noeud.names:
+                        reclames.setdefault(element.name, set()).add(chemin.name)
+                elif noeud.module == module_app:
+                    for element in noeud.names:
+                        if element.name == 'models':
+                            alias.add(element.asname or 'models')
+        for noeud in ast.walk(arbre):
+            if not isinstance(noeud, ast.Attribute):
+                continue
+            chaine = _chaine_pointee(noeud)
+            if chaine is None:
+                continue
+            for prefixe in alias:
+                if chaine.startswith(prefixe + '.'):
+                    symbole = chaine[len(prefixe) + 1:].split('.')[0]
+                    reclames.setdefault(symbole, set()).add(chemin.name)
+                    break
+    return reclames
+
+
+def _noms_lies(noeud):
+    """Noms que l'instruction module-level ``noeud`` lie au niveau du module."""
+    if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {noeud.name}
+    if isinstance(noeud, (ast.Import, ast.ImportFrom)):
+        return {(element.asname or element.name).split('.')[0]
+                for element in noeud.names}
+    if isinstance(noeud, ast.Assign):
+        return {cible.id for cible in noeud.targets
+                if isinstance(cible, ast.Name)}
+    if isinstance(noeud, ast.AnnAssign) and isinstance(noeud.target, ast.Name):
+        return {noeud.target.id}
+    return set()
+
+
+def _noms_lus(noeud):
+    """Noms LUS dans ``noeud`` (approximation large, volontairement)."""
+    return {n.id for n in ast.walk(noeud)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+
+
+def _segment_verbatim(lignes, noeud):
+    """Le texte SOURCE de ``noeud``, décorateurs inclus (recopie verbatim)."""
+    debut = noeud.lineno
+    for decorateur in getattr(noeud, 'decorator_list', None) or []:
+        debut = min(debut, decorateur.lineno)
+    return '\n'.join(lignes[debut - 1:noeud.end_lineno])
+
+
+def extraire_talon(source, noms):
+    """Talon Python définissant ``noms``, recopié VERBATIM de ``source``.
+
+    Ferme les dépendances : un symbole retenu tire avec lui les imports et
+    constantes module-level qu'il lit (``secrets``, ``LOTS_TYPES_DEFAUT``,
+    ``timezone``…). Renvoie ``(code, manquants, bloquants)`` :
+
+    * ``manquants`` — symboles réclamés qui ne sont pas définis au niveau du
+      module (impossible à extraire mécaniquement) ;
+    * ``bloquants`` — symboles dont la définition est un MODÈLE Django : la
+      coquille ne peut pas les garder tels quels, un humain doit écrire la
+      classe-namespace à la main (contrat de ``core.parked``).
+
+    Les deux listes non vides ⇒ la commande REFUSE, elle ne devine pas.
+    """
+    arbre = ast.parse(source)
+    lignes = source.splitlines()
+    par_nom = {}
+    for index, noeud in enumerate(arbre.body):
+        for nom in _noms_lies(noeud):
+            par_nom.setdefault(nom, index)
+    indices, resolus, manquants = set(), set(), []
+    file_attente = [(nom, True) for nom in sorted(noms)]
+    while file_attente:
+        nom, exige = file_attente.pop()
+        if nom in resolus:
+            continue
+        index = par_nom.get(nom)
+        if index is None:
+            if exige and nom not in manquants:
+                manquants.append(nom)
+            continue
+        resolus.add(nom)
+        indices.add(index)
+        for lu in sorted(_noms_lus(arbre.body[index])):
+            if lu in par_nom:
+                file_attente.append((lu, False))
+    segments, bloquants = [], []
+    for index in sorted(indices):
+        noeud = arbre.body[index]
+        segment = _segment_verbatim(lignes, noeud)
+        modeles = parked.modeles_declares(segment)
+        if modeles:
+            bloquants.extend(modeles)
+            continue
+        segments.append(segment)
+    return '\n\n'.join(segments), sorted(manquants), sorted(set(bloquants))
+
+
+# --------------------------------------------------------------------------
+# Vérification à FROID du graphe de migrations
+# --------------------------------------------------------------------------
+SCRIPT_VERIF_GRAPHE = (
+    'import django; django.setup(); '
+    'from django.db.migrations.loader import MigrationLoader; '
+    'MigrationLoader(None, ignore_no_migrations=True); '
+    'print("graphe OK")'
+)
+
+
+def verifier_graphe_en_sous_processus(racine_backend):
+    """Charge TOUT le graphe de migrations dans un processus NEUF ; '' si OK.
+
+    Le processus COURANT a déjà importé ``apps.<label>.models`` avec ses
+    modèles : une migration gelée qui référence un symbole disparu continue donc
+    de s'y importer sans erreur. Seul un import à FROID révèle
+    l'``AttributeError`` — et c'est exactement ce que fera le ``manage.py check``
+    suivant. On paie donc un sous-processus par app, avant toute suppression.
+    """
+    resultat = subprocess.run(
+        [sys.executable, '-c', SCRIPT_VERIF_GRAPHE],
+        cwd=str(racine_backend), capture_output=True, text=True)
+    if resultat.returncode == 0:
+        return ''
+    sortie = (resultat.stderr or resultat.stdout or '').strip()
+    return sortie or 'sous-processus sorti en %d' % resultat.returncode
 
 
 # --------------------------------------------------------------------------
@@ -428,17 +613,29 @@ def rendre_apps_py(infos):
     return '\n'.join(lignes) + '\n'
 
 
-def rendre_models_py(label):
-    return (
+def rendre_models_py(label, talon='', reclames=()):
+    """``models.py`` de la coquille : docstring seul, ou docstring + TALON."""
+    entete = (
         '"""Modèles de l\'app « %s » — PARQUÉE (MVP solaire, 20/09/2026).\n'
         '\n'
-        'Fichier VIDE À DESSEIN : les modèles sont sortis de l\'état Django par\n'
-        'la migration ``%s`` (état seul, ``database_operations=[]``). Les TABLES\n'
-        'et toutes leurs lignes sont INTACTES en base — rien n\'est perdu.\n'
+        'Les modèles sont sortis de l\'état Django par la migration ``%s``\n'
+        '(état seul, ``database_operations=[]``). Les TABLES et toutes leurs\n'
+        'lignes sont INTACTES en base — rien n\'est perdu.\n'
         '\n'
         'Ne rien remettre ici : le retour du module se fait par la recette de\n'
         '``docs/parked-modules.md`` §5 (restauration depuis ``%s``).\n'
-        '"""\n' % (label, NOM_MIGRATION, parked.ARCHIVE_REF))
+        % (label, NOM_MIGRATION, parked.ARCHIVE_REF))
+    if not talon:
+        return entete + '"""\n'
+    return entete + (
+        '\n'
+        'TALON — ce qui SUIT n\'est pas du code métier : ce sont les %d symbole(s)\n'
+        'que les migrations GELÉES de l\'app référencent encore (%s),\n'
+        'recopiés VERBATIM de l\'original. Sans eux, ces migrations ne\n'
+        's\'importent plus et le graphe ENTIER casse. Aucun modèle Django ici :\n'
+        'c\'est la règle vérifiée par ``core.parked.modeles_declares``.\n'
+        '"""\n'
+        '%s\n' % (len(reclames), ', '.join(sorted(reclames)), talon))
 
 
 def rendre_migration(label, feuille, dependances, suppressions, retraits_cycle):
@@ -539,11 +736,9 @@ def est_coquille(dossier):
     modeles = dossier / 'models.py'
     if not modeles.is_file():
         return False
-    corps = ast.parse(modeles.read_text(encoding='utf-8')).body
-    return not corps or (
-        len(corps) == 1 and isinstance(corps[0], ast.Expr)
-        and isinstance(corps[0].value, ast.Constant)
-        and isinstance(corps[0].value.value, str))
+    # Règle UNIQUE du contrat : aucun modèle Django. Un talon (fonctions,
+    # énumérations, imports) reste une coquille valide — cf. core.parked.
+    return not parked.modeles_declares(modeles.read_text(encoding='utf-8'))
 
 
 class Command(BaseCommand):
@@ -559,7 +754,7 @@ class Command(BaseCommand):
         analyseur.add_argument(
             '--check', action='store_true',
             help='sort en erreur si l\'app parquée n\'est pas une coquille '
-                 '(sans label : les 49 labels du registre)')
+                 '(sans label : les 47 labels du registre)')
 
     # -- points d'entrée ---------------------------------------------------
     def handle(self, *args, **options):
@@ -618,6 +813,10 @@ class Command(BaseCommand):
                 'parquée RESTE installée. %s' % (label, exc))
         return Path(config.path)
 
+    def _module_app(self, label):
+        """Chemin d'IMPORT de l'app (``apps.pos``) — jamais déduit du label."""
+        return registre_apps.get_app_config(label).name
+
     @property
     def _racine_backend(self):
         return Path(settings.BASE_DIR)
@@ -646,6 +845,23 @@ class Command(BaseCommand):
 
     # -- plan --------------------------------------------------------------
     def _plan(self, label, dossier):
+        # Le TALON d'abord : analyse purement TEXTUELLE des migrations, donc
+        # elle refuse AVANT tout import de migration (un symbole disparu ferait
+        # sinon exploser le chargement du graphe avec une erreur illisible).
+        reclames = symboles_reclames(dossier, self._module_app(label))
+        talon, manquants, bloquants = extraire_talon(
+            (dossier / 'models.py').read_text(encoding='utf-8'), reclames)
+        if manquants or bloquants:
+            raise CommandError(
+                '%s : les migrations gelées référencent des symboles que la '
+                'commande ne sait pas extraire de models.py — écrire le talon à '
+                'la MAIN avant de relancer.\n'
+                '  introuvables au niveau du module : %s\n'
+                '  ce sont des modèles Django (remplacer par une classe-'
+                'namespace) : %s\n'
+                'Contrat du talon : core/parked.py, docs/parked-modules.md §2.'
+                % (label, ', '.join(manquants) or '(aucun)',
+                   ', '.join(bloquants) or '(aucun)'))
         etat, retraits, feuilles = rejouer_le_graphe(label)
         if len(feuilles) > 1:
             raise CommandError(
@@ -699,7 +915,7 @@ class Command(BaseCommand):
             'dependances': dependances, 'fichier_migration': fichier,
             'a_supprimer': a_supprimer, 'urls': plages_par_fichier,
             'beat': beat_par_fichier, 'e2e': e2e, 'e2e_gardees': e2e_gardees,
-            'migration_deja_la': deja,
+            'migration_deja_la': deja, 'talon': talon, 'reclames': reclames,
         }
 
     def _bloquants(self, etat, label):
@@ -764,7 +980,15 @@ class Command(BaseCommand):
             ecrire('  RemoveField (cycle) : %s.%s' % (modele, champ))
         ecrire('  DeleteModel (%d, dépendants d\'abord) : %s'
                % (len(plan['modeles']), ', '.join(plan['modeles']) or '(aucun)'))
-        ecrire('models.py vidé, apps.py réécrit (parked = True)')
+        if plan['reclames']:
+            ecrire('models.py → TALON (%d symbole(s) réclamé(s) par les '
+                   'migrations gelées) :' % len(plan['reclames']))
+            for symbole in sorted(plan['reclames']):
+                ecrire('  %s ← %s' % (symbole,
+                                      ', '.join(sorted(plan['reclames'][symbole]))))
+        else:
+            ecrire('models.py vidé (docstring seul)')
+        ecrire('apps.py réécrit (parked = True)')
         ecrire('supprimés (%d) : %s' % (
             len(plan['a_supprimer']),
             ', '.join(p.name for p in plan['a_supprimer']) or '(rien)'))
@@ -807,18 +1031,47 @@ class Command(BaseCommand):
                 '%s : aucun modèle dans l\'état — pas de migration à écrire.'
                 % label)
         infos = lire_apps_py(dossier / 'apps.py', label)
+        # Sauvegarde MÉMOIRE avant écriture : si le graphe ne charge plus à
+        # froid, on remet le dossier exactement comme il était (rien n'a encore
+        # été supprimé à ce stade — c'est tout l'intérêt de l'ordre).
+        sauvegarde = {chemin: chemin.read_text(encoding='utf-8')
+                      for chemin in (dossier / 'models.py', dossier / 'apps.py')
+                      if chemin.is_file()}
         (dossier / 'models.py').write_text(
-            rendre_models_py(label), encoding='utf-8')
+            rendre_models_py(label, plan['talon'], plan['reclames']),
+            encoding='utf-8')
         (dossier / 'apps.py').write_text(rendre_apps_py(infos), encoding='utf-8')
+        # Bytecode périmé : un .pyc d'un module supprimé reste importable.
+        for cache in sorted(dossier.rglob('__pycache__')):
+            shutil.rmtree(cache, ignore_errors=True)
+        erreur = self.verifier_graphe(plan)
+        if erreur:
+            for chemin, contenu in sauvegarde.items():
+                chemin.write_text(contenu, encoding='utf-8')
+            if not plan['migration_deja_la'] \
+                    and plan['fichier_migration'].is_file():
+                plan['fichier_migration'].unlink()
+            raise CommandError(
+                '%s : le graphe de migrations ne charge PLUS dans un processus '
+                'neuf — models.py, apps.py et la migration-coquille ont été '
+                'REMIS en l\'état, rien n\'a été supprimé.\n%s\n'
+                'Cause habituelle : une migration gelée référence un symbole de '
+                'models.py que le talon ne couvre pas (core/parked.py §talon).'
+                % (label, erreur))
         for chemin in plan['a_supprimer']:
+            if not chemin.exists():
+                continue  # __pycache__ déjà purgé avant la vérif à froid
             if chemin.is_dir():
                 shutil.rmtree(chemin)
             else:
                 chemin.unlink()
-        # Bytecode périmé : un .pyc d'un module supprimé reste importable.
         for cache in sorted(dossier.rglob('__pycache__')):
             shutil.rmtree(cache, ignore_errors=True)
         self._ecrire_cablage(plan)
+
+    def verifier_graphe(self, plan):
+        """Vérification à froid ; '' si OK. Point d'extension pour les tests."""
+        return verifier_graphe_en_sous_processus(self._racine_backend)
 
     def _ecrire_cablage(self, plan):
         for chemin, plages, _ in plan['urls']:
