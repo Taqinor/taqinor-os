@@ -188,6 +188,17 @@ const calepinageApi = {
   parametres: {
     get: () => api.get('/calepinage/parametres/'),
     update: (corps) => api.put('/calepinage/parametres/', corps),
+
+    // CALX29 — suggestion de pente par LiDAR IGN (France seule,
+    // `services/lidar_ign.py`). GET est une LECTURE LOCALE : elle dit si le
+    // service est offert à la société de l'appelant SANS émettre de requête
+    // sortante, même quand il l'est — c'est elle qui commande l'affichage du
+    // bouton. POST envoie le document de conception et reçoit une suggestion
+    // par pan, jamais persistée côté serveur : c'est l'écran qui accepte ou
+    // jette, puis enregistre via `enregistrerLayoutCalepinage` (CAL18).
+    suggestionPenteDisponible: () => api.get('/calepinage/parametres/suggestion-pente/'),
+    suggererPentesIGN: (roofLayout) =>
+      api.post('/calepinage/parametres/suggestion-pente/', { roof_layout: roofLayout }),
   },
 }
 
