@@ -17,7 +17,7 @@ Un manifest a la forme ::
         'installable': True,          # activable/désactivable (défaut True)
         'description': '…',           # (optionnel)
         'categorie': 'Services',      # Ventes/Finance/RH/Stock/Services/…
-        'sku': 'solar_core',          # SOL1 — appartenance à l'édition
+        'sku': 'solar_core',          # SOL1 — titre d'appartenance au produit
     }
 
 Les apps techniques/fondation (roles, records, customfields, parametres,
@@ -33,16 +33,13 @@ SOL1 — le champ ``sku``
 * ``solar_core``    — cœur du métier installateur solaire (devis, chantiers,
   stock, SAV…). Jamais parqué, jamais off par défaut.
 * ``generic``       — ERP transverse utile à toute PME (compta, RH, GED…).
-  Gardé actif dans l'édition solaire.
-* ``optional``      — livré mais ``ModuleToggle`` OFF à la création d'un
-  tenant (SOL8) : rare chez un installateur (POS, douane, transport, SCM…)
-  ou dépendant du pack pays (facturation électronique, fiscal, paie).
-* ``vertical_<x>``  — vertical métier non adaptable : SORTI du build de
-  l'édition solaire (registre ``erp_agentique/settings/editions.py``).
-
-La cohérence tags ↔ registre d'éditions est gardée par
-``core/tests/test_editions_registre.py`` : tout module ``vertical_*`` est
-parqué dans l'édition solaire, et réciproquement.
+* ``optional``      — livré, mais rare chez un installateur (POS, douane,
+  transport, SCM…) ou dépendant du pack pays (facturation électronique,
+  fiscal, paie).
+* ``vertical_<x>``  — vertical métier non adaptable à un installateur solaire.
+  Les verticaux hors périmètre MVP sortent PHYSIQUEMENT du dépôt par la
+  coquille de migrations (registre ``core/parked.py``), jamais par un profil
+  de build.
 """
 from __future__ import annotations
 

@@ -6,6 +6,8 @@ queue par défaut reste `default` (comportement mono-worker inchangé)."""
 from django.conf import settings
 from django.test import SimpleTestCase
 
+from core.parked import est_parquee
+
 
 class CeleryTaskRoutesTests(SimpleTestCase):
     def test_devis_pdf_routes_to_interactive(self):
@@ -16,22 +18,23 @@ class CeleryTaskRoutesTests(SimpleTestCase):
         route = settings.CELERY_TASK_ROUTES['ventes.generate_facture_pdf']
         self.assertEqual(route['queue'], 'interactive')
 
-    def test_chat_transcription_routes_to_interactive(self):
-        route = settings.CELERY_TASK_ROUTES[
-            'chat.transcribe_voice_attachment']
-        self.assertEqual(route['queue'], 'interactive')
-
     def test_expire_stale_devis_routes_to_scheduled(self):
         route = settings.CELERY_TASK_ROUTES['ventes.expire_stale_devis']
         self.assertEqual(route['queue'], 'scheduled')
 
     def test_all_beat_schedule_tasks_are_routed_to_scheduled_or_interactive(self):
         """Chaque tâche présente dans le beat_schedule (erp_agentique/celery.py)
-        doit être routée — jamais laissée sur `default` par oubli."""
+        doit être routée — jamais laissée sur `default` par oubli.
+
+        SOLMVP3 — les tâches d'une app PARQUÉE (`core.parked`) sont exclues :
+        leur route a été retirée de `CELERY_TASK_ROUTES` avec le reste de leur
+        surface, et leur entrée beat part à la coquille de l'app. La garde
+        continue de valoir pleinement pour toutes les apps GARDÉES."""
         from erp_agentique.celery import app
 
         beat_task_names = {
             entry['task'] for entry in app.conf.beat_schedule.values()
+            if not est_parquee(entry['task'].split('.', 1)[0])
         }
         missing = [
             name for name in beat_task_names
