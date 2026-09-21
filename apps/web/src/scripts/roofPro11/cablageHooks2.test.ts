@@ -322,6 +322,8 @@ describe('CALX107 câblage — un dossier rouvert retrouve son calque de fond', 
     expect(SOURCE_PREFILL_FOND).toContain('semerFondDepuisDocument(json); // CALX107 câblage');
     expect(SOURCE_ENTREE).toContain('fondDuDocument: () => fondDuDocument(), // CALX107 câblage');
     expect(SOURCE_ENTREE).toContain('motifFondRefuse: () => motifFondRefuse(), // CALX107 câblage');
-    expect(SOURCE_ENTREE).toContain('poserFond: (fond, ressource) => mapDraw.setFond(fond, ressource), // CALX107 câblage');
+    // CALX108 câblage — `poserFond` mémorise en plus la RESSOURCE (URL servie + taille
+    // naturelle) pour la vignette de calage : la pose reste le MÊME appel à `setFond`.
+    expect(SOURCE_ENTREE).toContain('return mapDraw.setFond(fond, ressource); // CALX107 câblage');
   });
 });
