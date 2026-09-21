@@ -1209,7 +1209,9 @@ TOLERANCE_LONGUEUR_MODULES = 2
 TOLERANCE_LONGUEUR_PCT = 5.0
 
 #: Nombre d'entrées conservées dans l'historique d'écarts (borné : un journal
-#: qui grossit sans fin finit par ne plus être lu).
+#: qui grossit sans fin finit par ne plus être lu). Ce n'est PAS un seuil
+#: électrique : c'est une taille de tampon, une convention d'atelier — aucune
+#: norme ni fiche ne la fixe, et aucun calcul n'en dépend.
 JOURNAL_ECARTS_MAX = 20
 
 
