@@ -148,6 +148,16 @@ SANS_PRODUCTEUR_PUR = {
         "sans base, par l'exporteur lui-même, dans "
         'apps/calepinage/tests/test_calx142_contrat_serie.py',
 
+    # CALX201
+    'electrique_equipements.json':
+        "FRAGMENT du document `roof_layout` v2 (clé racine OPTIONNELLE "
+        '`electrical.equipements[]`), pas une réponse serveur : la route '
+        'GET layout/ rend `{roof_layout, layout_hash, schema_version}` et '
+        "l'écrivain du fragment est l'atelier 3D (CALX219/CALX220) — la "
+        'forme est affirmée sans base, contre le schéma et contre la porte '
+        "d'import réelle, par "
+        'apps/calepinage/tests/test_calx201_contrat_equipements.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '

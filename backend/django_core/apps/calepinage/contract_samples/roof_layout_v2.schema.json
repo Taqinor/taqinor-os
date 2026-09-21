@@ -142,6 +142,10 @@
     "horizonProfile": {
       "description": "CAL93 — le profil d'horizon lointain (CAL92, obtenu de PVGIS printhorizon, ou saisi à la main) RÉELLEMENT en vigueur au moment de l'export. Champ RACINE (une seule valeur pour tout le document, pas par zone). OPTIONNEL et additif : absent = aucun horizon lointain modélisé — comportement d'aujourd'hui, byte pour byte. Moins de deux points exploitables n'est jamais écrit.",
       "$ref": "#/$defs/horizonProfile"
+    },
+    "electrical": {
+      "description": "CALX201 — la couche ÉLECTRIQUE du document : les organes posés dans l'atelier (`equipements[]`). Clé RACINE OPTIONNELLE et additive : absente, le comportement est EXACTEMENT celui d'aujourd'hui (aucun organe, aucun marqueur dans la scène, aucun bloc supplémentaire au schéma unifilaire), et un document v2 déjà enregistré reste valide sans qu'une seule de ses clés change. Aucune valeur par défaut n'est inventée : l'absence d'équipement n'est pas « un onduleur au centre du toit », c'est une information qui manque — les calculs qui en dépendent s'OMETTENT en la nommant.",
+      "$ref": "#/$defs/electrical"
     }
   },
   "$defs": {
@@ -867,6 +871,98 @@
           "type": [
             "number",
             "null"
+          ]
+        }
+      }
+    },
+    "electrical": {
+      "description": "CALX201 — la couche électrique du document v2. Elle ne porte que de la TOPOLOGIE et de la POSITION : aucune puissance, aucune section, aucun calibre, aucun seuil, aucun prix. Toute caractéristique électrique se lit sur la fiche produit désignée par `produitId` (CALX60) ou sur la norme retenue (`services/norme.py`) ; le document dit OÙ sont les organes, jamais ce qu'ils valent.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "equipements": {
+          "description": "CALX201 — les organes électriques posés dans l'atelier. Clé absente ou tableau vide = aucun organe posé, comportement d'aujourd'hui.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/equipementElectrique"
+          }
+        }
+      }
+    },
+    "equipementElectrique": {
+      "description": "CALX201 — un organe électrique POSÉ : un point du plan, un type, un libellé et, quand elle existe, la fiche produit qui porte ses caractéristiques. L'entrée ne contient AUCUNE grandeur électrique : une puissance, un calibre ou une tension écrits ici seraient une deuxième source de vérité en face de la fiche.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "type",
+        "label",
+        "lng",
+        "lat",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "description": "Identifiant STABLE de l'organe dans le document : c'est lui que `cheminements[].de` et `.vers` désignent (CALX202). Le renommer casse les cheminements qui le citent.",
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "description": "Énumération FERMÉE des huit organes que l'atelier sait poser. Un type hors de cette liste est REFUSÉ en nommant le champ : un organe inconnu n'a ni géométrie dans la scène (CALX219) ni bloc dans le schéma unifilaire (CALX204), il n'aurait donc qu'une existence de papier.",
+          "type": "string",
+          "enum": [
+            "onduleur",
+            "coffret_dc",
+            "coffret_ac",
+            "compteur_production",
+            "compteur_reseau",
+            "tgbt",
+            "batterie",
+            "parafoudre"
+          ]
+        },
+        "label": {
+          "description": "Libellé FRANÇAIS affiché (étiquette de la scène, repère du schéma). Saisi par l'utilisateur ; jamais dérivé d'un prix ni d'une marge.",
+          "type": "string"
+        },
+        "lng": {
+          "description": "Longitude du point posé, en degrés décimaux (WGS 84) — l'ordre `[lng, lat]` est celui de `zones[].vertices`.",
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "lat": {
+          "description": "Latitude du point posé, en degrés décimaux (WGS 84). Avec `lng`, c'est la seule position de l'organe : une entrée qui n'en porte pas est refusée, car un cheminement qui y aboutirait n'aurait aucune longueur mesurable (CALX224).",
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "altitudeM": {
+          "description": "Altitude de l'organe au-dessus du niveau de référence du site, en mètres, SAISIE. Absente ou `null` = non renseignée : la longueur d'un cheminement qui passe par l'organe reste alors plane, et la descente verticale se déclare explicitement par `cheminements[].longueurSaisieM` (CALX202) — jamais une hauteur devinée.",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rotationDeg": {
+          "description": "Orientation du marqueur dans la scène, en degrés (0 = nord). Purement visuelle : aucune grandeur électrique n'en dépend. Absente = marqueur non tourné.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 360
+        },
+        "produitId": {
+          "description": "Renvoi vers la fiche `stock.Produit` (champs CALX60) qui porte les caractéristiques de l'organe. `null` ou absent = organe posé sans fiche : tout calcul qui a besoin d'une caractéristique s'OMET en nommant la fiche manquante, jamais un barème supposé.",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "D'où vient la position, énumération FERMÉE. `saisie` = posée à la main dans l'atelier ; `import` = lue d'un plan importé. Une provenance inconnue rendrait intraçable toute longueur mesurée depuis cet organe (discipline `Longueur`, `services/cables.py`).",
+          "type": "string",
+          "enum": [
+            "saisie",
+            "import"
           ]
         }
       }
