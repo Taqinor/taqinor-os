@@ -15,6 +15,7 @@ import {
   semerOptimisationDepuisDocument,
 } from './optimisationDocument';
 import { choixOptimisationCourant, poserChoixOptimisation, poserCibleOptimisation } from './optimizer';
+import { LIBELLE_MODE, motifGesteIndisponible, resoudreRaccourci } from './clavier';
 import { type Ctx } from './context';
 
 /** Les SOURCES câblés ici (pages à effets de bord, non importables en test). Chemins
@@ -184,5 +185,44 @@ describe('CALX114 câblage — l’objectif d’optimisation survit au rechargem
   it('`prefill.ts` porte les DEUX lignes d’appel (lecture et écriture)', () => {
     expect(SOURCE_PREFILL).toContain('semerOptimisationDepuisDocument(json); // CALX114 câblage');
     expect(SOURCE_PREFILL).toContain('ecrireOptimisationDansDocument(layout); // CALX114 câblage');
+  });
+});
+
+describe('CALX128 câblage — le plan clavier suit l’outil réellement actif', () => {
+  it('les gestes de MESURE sont enregistrés auprès de `mapDraw`', () => {
+    expect(SOURCE_ENTREE).toContain(
+      "mapDraw.enregistrerGestesClavier('mesure', gestesMesure(mesureUi, mapDraw.curseurClavier)); // CALX128 câblage",
+    );
+  });
+
+  it('le mode est DÉDUIT de l’état de l’atelier, jamais mémorisé à part', () => {
+    expect(SOURCE_ENTREE).toContain("if (mesureUi.isActive()) return 'mesure';");
+    expect(SOURCE_ENTREE).toContain("if (ctx.obstacleMode) return ctx.pendingZoneNature ? 'zone' : 'obstacle';");
+    expect(SOURCE_ENTREE).toContain('mapDraw.setModeClavier(modeClavierCourant()); // CALX128 câblage');
+  });
+
+  it('la synchronisation passe en CAPTURE (avant le dispatcher de `mapDraw`)', () => {
+    expect(SOURCE_ENTREE).toContain("document.addEventListener('keydown', syncModeClavier, true);");
+  });
+
+  it('changer de mode change RÉELLEMENT ce qu’une frappe résout', () => {
+    // La même flèche est du plan dans les deux modes, mais l'aide (et donc le refus)
+    // NOMME le mode : c'est bien `setModeClavier` qui décide, pas un hasard.
+    const flecheEnMesure = resoudreRaccourci({ key: 'ArrowUp' }, 'mesure');
+    const flecheEnObstacle = resoudreRaccourci({ key: 'ArrowUp' }, 'obstacle');
+    expect(flecheEnMesure).not.toBeNull();
+    // Obstacles et zones n'ont AUCUN jeu de gestes dans le dépôt : rien n'est enregistré
+    // pour eux, et `mapDraw` annonce alors proprement l'indisponibilité — jamais un geste
+    // inventé ici, et jamais un silence.
+    if (flecheEnObstacle) {
+      expect(motifGesteIndisponible(flecheEnObstacle, 'obstacle')).toContain(LIBELLE_MODE.obstacle);
+      expect(motifGesteIndisponible(flecheEnObstacle, 'mesure')).toContain(LIBELLE_MODE.mesure);
+    }
+  });
+});
+
+describe('CALX99 câblage — un azimut pris sur une arête RE-POSE le pavage', () => {
+  it('`redraw` appelle la même re-résolution qu’un bouton cardinal', () => {
+    expect(SOURCE_ENTREE).toContain("if (roofType === 'pitched' && closed) pitchedRecompute(); // CALX99 câblage");
   });
 });

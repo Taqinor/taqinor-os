@@ -157,7 +157,15 @@ import {
   type DocumentMoteur,
 } from './roofPro11/entreeMoteur';
 import { createObstaclesUi } from './roofPro11/obstaclesUi';
-import { createMesureUi, formatMeasure, isMeasureValid, type Measurement, type MeasureKind } from './roofPro11/mesureUi';
+import {
+  createMesureUi,
+  formatMeasure,
+  gestesMesure, // CALX128 câblage
+  isMeasureValid,
+  type Measurement,
+  type MeasureKind,
+} from './roofPro11/mesureUi';
+import { type ModeClavier } from './roofPro11/clavier'; // CALX128 câblage
 import { createShadingUi } from './roofPro11/shadingUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createEdgesUi } from './roofPro11/edgesUi'; // CALX94 câblage
@@ -1417,17 +1425,52 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   const addVertex = mapDraw.addVertex;
   const geocode = mapDraw.geocode;
 
+  // ═══════════ CALX128 câblage — L'ATELIER AU CLAVIER SUIT L'OUTIL COURANT ═══════════
+  // `mapDraw` sert les gestes du mode `trace` et attend que l'hôte (a) lui DISE quel outil
+  // est actif et (b) lui DONNE les gestes des autres modes. Sans ces deux lignes, le plan
+  // clavier restait bloqué sur « trace » : les raccourcis de mesure existaient et testés,
+  // mais aucune frappe ne les atteignait jamais.
+  //
+  // Les gestes de MESURE sont fournis par `mesureUi.gestesMesure` ; obstacles et zones
+  // n'ont PAS de jeu de gestes dans le dépôt — non enregistrés, `mapDraw` annonce alors
+  // proprement que le geste n'y est pas disponible (jamais un geste inventé ici).
+  mapDraw.enregistrerGestesClavier('mesure', gestesMesure(mesureUi, mapDraw.curseurClavier)); // CALX128 câblage
+
+  /** Le mode clavier DÉDUIT de l'état de l'atelier — jamais un mode mémorisé à part, qui
+   *  divergerait au premier bouton câblé ailleurs (l'obstacle et la zone sont armés par
+   *  `obstaclesUi`, pas par cette entrée). */
+  function modeClavierCourant(): ModeClavier {
+    if (mesureUi.isActive()) return 'mesure';
+    if (ctx.obstacleMode) return ctx.pendingZoneNature ? 'zone' : 'obstacle';
+    return 'trace';
+  }
+  function syncModeClavier() {
+    mapDraw.setModeClavier(modeClavierCourant()); // CALX128 câblage
+  }
+  // Synchronisé en phase de CAPTURE : ce listener passe avant celui de `mapDraw` (posé en
+  // bulle sur le même document), quel que soit l'ordre de création des modules. Le mode
+  // est donc juste avant que le raccourci ne soit résolu, sans rien écouter d'autre.
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('keydown', syncModeClavier, true);
+  }
+  syncModeClavier();
+
   // CALX94 câblage — correction MANUELLE du type d'une arête. Le module crée lui-même ses
   // contrôles ; on ne lui passe PAS la carte, parce que c'est le dispatcher de clic de
   // cette entrée qui route le geste (`isEdgeMode()` / `handleMapClick`) — lui donner la
   // carte le ferait s'abonner en plus, et le clic serait traité deux fois. `redraw` est un
   // wrapper paresseux (`renderActive` est déclaré plus bas) : une correction de type
   // repeint le contour 2D et la scène, où la couleur d'arête est désormais lue.
+  // CALX99 câblage — le module DIT que `redraw` doit pointer vers la MÊME re-résolution
+  // qu'un clic sur un bouton cardinal : un azimut PRIS sur une arête doit recalculer la
+  // POSE (pavage en pente), pas seulement repeindre son affichage. Même garde que les
+  // boutons `[data-facing]` (pan en pente ET contour fermé) — sinon rien à re-poser.
   const edgesUi = createEdgesUi(ctx, {
     setStatus,
     redraw: () => {
       redrawTrace();
       renderActive();
+      if (roofType === 'pitched' && closed) pitchedRecompute(); // CALX99 câblage
     },
   });
 
