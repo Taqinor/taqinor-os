@@ -21,10 +21,16 @@ import { Pencil, Paperclip, Megaphone, Pin, PinOff } from 'lucide-react'
 // (déplacé hors de LeadForm.jsx) : ChatterTimeline est désormais la seule
 // source de rendu du chatter.
 // source-choix: crm.LeadActivity.outcome
+// CAD14 — `visite_acceptee` s'AJOUTE (aucune clé retirée, aucun libellé
+// réécrit) : l'issue existe côté serveur depuis VISITE-CADENCE, mais cette
+// table s'arrêtait à cinq entrées. Deux écrans en souffraient d'un seul
+// manque — le badge de l'arbre d'historique retombait à rien, et le journal
+// d'appel, qui DÉRIVE ses choix d'ici, ne permettait même pas de la SAISIR.
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (dev HMR only)
 export const OUTCOME_LABELS = {
   '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
   refuse: 'Refus', interesse: 'Intéressé',
+  visite_acceptee: 'Visite acceptée',
 }
 
 // Logs automatiques de champ ('creation'/'modification') vs notes manuelles
