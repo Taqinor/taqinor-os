@@ -159,6 +159,10 @@ SURFACE_PUBLIQUE = (
     "creer_facture_import",
     "creer_facture_regie",
     "creer_variante_gamme",
+    # CAD57 (21/09/2026) — validité J+30 pour un dossier financé, J+14 sinon :
+    # la règle est SERVIE par `services`, pour que le PDF et le message J9
+    # citent la même date (CAD59).
+    "date_validite_credit",
     "debiter_mandat_pour_facture",
     "diff_configurations_devis",
     "dupliquer_devis",
@@ -182,6 +186,9 @@ SURFACE_PUBLIQUE = (
     "get_facture_or_none",
     "get_parametres_gammes",
     "installation_share_link",
+    # CAD57 — le nombre de jours de validité RÉGLÉ par la société (aucun
+    # chiffre en dur : le repli est nommé à la source).
+    "jours_validite_societe",
     "layout_hash",
     "lead_from_source_devis",
     "lignes_de_variante",

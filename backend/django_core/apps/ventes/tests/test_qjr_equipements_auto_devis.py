@@ -213,7 +213,15 @@ class SelecteurCrmPartageTests(_QJR9Base):
 
         self.assertEqual(equipements_pour_lead(None), {})
 
-    def test_les_quinze_champs_sont_lus(self):
+    def test_les_seize_champs_sont_lus(self):
+        """QJR9 + CAD169 — les quinze champs d'origine, plus `ve_statut`.
+
+        CAD169 (21/09/2026) a ajouté `ve_statut` au sélecteur partagé : une
+        voiture seulement PRÉVUE est comptée comme les autres, mais le devis
+        et la proposition portent alors l'étiquette « avec votre future
+        voiture ». Le champ traverse donc le MÊME chemin que les quinze
+        autres — c'est tout l'objet de ce pin.
+        """
         from apps.crm.selectors import equipements_pour_lead
 
         lead = self._lead_l_back()
@@ -222,5 +230,5 @@ class SelecteurCrmPartageTests(_QJR9Base):
             've_km_semaine', 'clim', 'clim_pieces', 'chauffe_eau_electrique',
             'chauffe_eau_kw', 'chauffe_eau_creneau', 've_chargeur_kw',
             've_creneau', 'clim_kw', 'piscine_heures_jour', 'clim_creneau',
-            'piscine_creneau',
+            'piscine_creneau', 've_statut',
         })

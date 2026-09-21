@@ -68,12 +68,20 @@ class AvecRealisationTests(_Base):
             url_page='https://taqinor.ma/realisations/villa-casablanca/')
 
     def test_le_mois_la_ville_et_le_lien_sont_remplis(self):
+        """CAD95 — `lien_video_preuve` est le SEUL manquant sans vidéo.
+
+        La réalisation de ce décor n'a pas de `lien_video` (le champ est
+        facultatif) : MRY13 signale donc ce placeholder et omet la seule
+        phrase vidéo. Épingler une liste VIDE reviendrait à exiger une vidéo
+        sur chaque réalisation — l'inverse de la décision CAD95.
+        """
         rendu = self._rendu()
         self.assertIn('juillet 2026', rendu['message'])
         self.assertIn('Casablanca', rendu['message'])
         self.assertIn('https://taqinor.ma/realisations/villa-casablanca/',
                       rendu['message'])
-        self.assertEqual(rendu['placeholders_manquants'], [])
+        self.assertEqual(rendu['placeholders_manquants'],
+                         ['lien_video_preuve'])
 
     def test_aucun_placeholder_ne_reste_visible(self):
         message = self._rendu()['message']
