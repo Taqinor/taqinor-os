@@ -61,6 +61,9 @@ _CROCHETS = [
     (r'\[ville\]', '{ville_preuve}'),
     (r'\[Conseiller\]', '{conseiller}'),
     (r'\[المستشار\]', '{conseiller}'),
+    # CAD96 (21/09/2026) — le nom de marque, résolu côté serveur (jamais une
+    # graphie codée en dur). AVANT n'importe quelle règle plus générale.
+    (r'\[Marque\]', '{marque}'),
 ]
 
 _TOKEN_RE = re.compile(r'\{[^{}]*\}')

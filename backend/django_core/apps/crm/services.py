@@ -1949,6 +1949,9 @@ _TEMPLATES_VOCAUX = frozenset({'vocal_j3'})
 _PLACEHOLDERS_RENDUS = (
     'civilite', 'nom', 'prenom', 'ville', 'reference', 'lien',
     'lien_rdv', 'date_validite', 'conseiller',
+    # CAD96 (21/09/2026) — le nom de marque affiché (résolu côté serveur,
+    # jamais codé en dur ; voir ``_nom_affiche_marque``).
+    'marque',
     # VISITE-CADENCE (15/09/2026) — la date du RENDEZ-VOUS de visite technique
     # posée sur la fiche (``Lead.visite_prevue_le``), rendue « mardi 16
     # septembre ». Fiche sans date ⇒ valeur vide ⇒ la phrase entière est OMISE
@@ -2109,6 +2112,30 @@ def _nom_affiche_conseiller(lead, user):
             or getattr(conseiller, 'username', '') or '')
 
 
+def _nom_affiche_marque(lead):
+    """CAD96 (21/09/2026) — le nom de marque AFFICHÉ dans un texte client.
+
+    Trois graphies codées en dur coexistaient (« TAQINOR », « TAQINOR
+    Solutions », « Taqinor Solutions ») dans le même guide de messages,
+    incohérence déjà présente dans le document source validé. Plutôt que de
+    figer UNE de ces graphies dans le code (une future société white-label
+    hériterait du nom de TAQINOR), la marque vient désormais de
+    ``parametres.CompanyProfile.nom`` — même source que les PDFs (SCA27) —
+    avec repli sur ``Company.nom`` si la société n'a pas encore de profil."""
+    company = getattr(lead, 'company', None)
+    if company is None:
+        return ''
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais l'envoi
+        profile = None
+    nom = (getattr(profile, 'nom', '') or '').strip()
+    if nom:
+        return nom
+    return (getattr(company, 'nom', '') or '').strip()
+
+
 def _civilite_et_prenom(lead, langue):
     """``(civilite, prenom)`` de la salutation d'un message client.
 
@@ -2177,6 +2204,7 @@ def message_visite_pour_lead(lead, cle, *, user=None):
             'prenom': prenom,
             'ville': (lead.ville or '').strip(),
             'conseiller': _nom_affiche_conseiller(lead, user),
+            'marque': _nom_affiche_marque(lead),
             'date_visite': date_visite,
         }
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
@@ -2218,6 +2246,7 @@ def message_pour_etape(etape, *, request=None, user=None):
         'prenom': prenom,
         'ville': (lead.ville or '').strip(),
         'conseiller': _nom_affiche_conseiller(lead, user),
+        'marque': _nom_affiche_marque(lead),
         'reference': '',
         'lien': '',
         'date_validite': '',
