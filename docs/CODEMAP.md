@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 1a33a8a94963459a640f8c9380ae6b4084d32fd100e919e93e00d82298cf8988
-Plan fingerprint: f3ea85d9feb96e5a2299a1752c24e03d6d5540298fe33679fbd9570787c9d3d3
+Plan fingerprint: 2beae57c6a4167f9dd6e61a31e6ef653136d657cc23e4d7b721075944c90d968
 
 > This file is **regenerated from the actual source** (models, urls, settings, app
 > manifests, docker-compose, requirements, package.json, the CI workflow, the frontend
@@ -531,7 +531,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (225)**
+**Done (226)**
 
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
@@ -640,6 +640,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
 - `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
 - `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
+- `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
 - `CALX100` — Saisir la hauteur et le nombre d'étages du bâtiment, et extruder la 3D à cette hauteur
 - `CALX101` — Rendre les murs et les acrotères comme des volumes 3D distincts
 - `CALX102` — Modéliser une lucarne comme un volume qui perce le pan, pas comme une boîte posée
@@ -759,7 +760,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (381)**
+**Open — to build (380)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
@@ -952,7 +953,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
-- `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
 - `CALX103` — Tracer un obstacle polygonal au clic
 - `CALX104` — Tracer un obstacle circulaire et réutiliser des gabarits d'obstacle de la société
 - `CALX107` — Afficher un plan importé ou une photo calée comme calque de fond de l'atelier
