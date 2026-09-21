@@ -111,13 +111,23 @@ class MessageParrainageRenduTests(TestCase):
         return acteur, etape
 
     def test_le_rendu_est_le_texte_valide_du_catalogue_parametres(self):
+        """Le texte servi vient du catalogue `parametres`, et de lui seul.
+
+        L'attendu passe par le MÊME moteur de rendu que le message réel
+        (`ventes.utils.whatsapp.render_message_template`) : il substitue les
+        placeholders puis nettoie la ponctuation — il retire notamment
+        l'espace français avant « ; », que le catalogue écrit. Comparer au
+        texte BRUT épinglerait cette typographie, pas la source ; le contrat
+        de CAD72 est qu'il n'existe plus qu'UN catalogue.
+        """
         acteur, etape = self._lead_et_touche('cad72-rendu')
         rendu = message_pour_etape(etape, user=acteur)
-        # Le corps validé ne porte que {prenom} : une fois substitué, le
-        # texte sans le prénom doit rester un sous-ensemble du rendu.
-        attendu_sans_placeholder = MESSAGE_TEMPLATE_DEFAULTS[
-            'parrainage'].replace('{prenom}', 'Aziz')
-        self.assertEqual(rendu['message'], attendu_sans_placeholder)
+        from apps.ventes.utils.whatsapp import render_message_template
+        attendu = render_message_template(
+            MESSAGE_TEMPLATE_DEFAULTS['parrainage'], {'prenom': 'Aziz'})
+        self.assertEqual(rendu['message'], attendu)
+        # Et le texte reste bien CELUI du catalogue, pas un autre.
+        self.assertIn('lien de parrainage', rendu['message'])
 
     def test_le_rendu_ne_contient_aucun_marqueur_arabizi(self):
         acteur, etape = self._lead_et_touche('cad72-rendu-fr')

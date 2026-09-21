@@ -822,7 +822,19 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 qs = qs.filter(is_archived=True)
             elif archived != 'all':
                 qs = qs.filter(is_archived=False)
-        return self._annoter_prochaine_touche(qs)
+        qs = self._annoter_prochaine_touche(qs)
+        # CAD133 (correctif de budget) — le score d'une ligne lit désormais
+        # des signaux de COMPORTEMENT (proposition ouverte/rouverte/lue,
+        # questionnaire répondu, client joint) et la fraîcheur de la DERNIÈRE
+        # interaction. Lus lead par lead, ils coûtaient 16 requêtes PAR LIGNE
+        # (415 pour 25 leads). Posés ici en sous-requêtes, ils arrivent avec
+        # la ligne : le budget de la liste ET de la fiche redevient fixe.
+        # Seules les deux lectures les portent — aucune autre action n'en a
+        # besoin, et un queryset annoté ne doit pas servir à un `update()`.
+        if getattr(self, 'action', None) in ('list', 'retrieve'):
+            from .signaux import annotations_signaux
+            qs = qs.annotate(**annotations_signaux())
+        return qs
 
     @staticmethod
     def _annoter_prochaine_touche(qs):

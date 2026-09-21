@@ -65,12 +65,21 @@ class SaisieManuelleTests(_Base):
     slug = 'cad90-manuel'
 
     def test_un_lead_saisi_a_la_main_ecrit_au_registre(self):
+        """L'identifiant inscrit au registre est le numéro CANONIQUE.
+
+        `LeadSerializer.validate_telephone` canonicalise tout numéro marocain
+        en `212…` à l'écriture (comportement antérieur à CAD90) : le lead
+        n'a JAMAIS `06…` en base, et `enregistrer_consentement_lead` inscrit
+        `lead.telephone`. On relit donc l'identifiant sur le lead créé plutôt
+        que la graphie postée.
+        """
         resp = self._api().post(LEADS_URL, {
             'nom': 'Benali', 'prenom': 'Aziz', 'telephone': '0600000011',
         }, format='json')
         self.assertIn(resp.status_code, (200, 201), resp.data)
 
-        entrees = self._entrees('0600000011')
+        lead = Lead.objects.get(company=self.company, nom='Benali')
+        entrees = self._entrees(lead.telephone)
         self.assertEqual(len(entrees), 1, entrees)
         entree = entrees[0]
         self.assertEqual(entree.purpose,
@@ -81,16 +90,23 @@ class SaisieManuelleTests(_Base):
         self.assertFalse(entree.granted)
 
     def test_le_lead_est_cree_meme_si_le_registre_echoue(self):
-        """Un registre en panne ne fait jamais perdre une demande client."""
+        """Un registre en panne ne fait jamais perdre une demande client.
+
+        Le numéro est relu sous sa forme CANONIQUE (`212…`, posée par
+        `LeadSerializer.validate_telephone` avant CAD90) : c'est elle qui est
+        en base, jamais la graphie `06…` postée.
+        """
         with patch.object(services, 'enregistrer_consentement_lead',
                           side_effect=RuntimeError('registre indisponible')):
             resp = self._api().post(LEADS_URL, {
                 'nom': 'Chraibi', 'telephone': '0600000012',
             }, format='json')
         self.assertIn(resp.status_code, (200, 201), resp.data)
-        self.assertTrue(Lead.objects.filter(
-            company=self.company, telephone='0600000012').exists())
-        self.assertEqual(self._entrees('0600000012'), [])
+        lead = Lead.objects.filter(
+            company=self.company, nom='Chraibi').first()
+        self.assertIsNotNone(lead)
+        self.assertEqual(lead.telephone, '212600000012')
+        self.assertEqual(self._entrees(lead.telephone), [])
 
     def test_lead_sans_email_ni_telephone_n_ecrit_rien(self):
         """Sans identifiant de personne, il n'y a rien à inscrire."""

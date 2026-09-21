@@ -76,14 +76,22 @@ class CompteurDeVisitesTests(TestCase):
         self.assertEqual(lien.view_count, 3)
 
     def test_la_fenetre_est_celle_qui_protege_deja_la_notification(self):
-        """Une seule source, un seul délai (QJ1bis)."""
+        """Une seule source, un seul délai (QJ1bis).
+
+        La fenêtre court depuis la DERNIÈRE vue, pas depuis la première —
+        exactement comme la notification, qui compare ``now`` au
+        ``last_viewed_at`` précédent. C'est ce qui fait qu'une lecture
+        continue (page, PDF, rechargement, retour) reste UNE visite quelle
+        que soit sa durée : le troisième chargement ci-dessous repart donc de
+        ``juste_avant``, pas de ``MAINTENANT``.
+        """
         lien = self._lien()
         self._vue(lien, MAINTENANT)
         juste_avant = MAINTENANT + public_views.REOUVERTURE_FENETRE \
             - datetime.timedelta(seconds=1)
         self._vue(lien, juste_avant)
         self.assertEqual(lien.view_count, 1)
-        self._vue(lien, MAINTENANT + public_views.REOUVERTURE_FENETRE)
+        self._vue(lien, juste_avant + public_views.REOUVERTURE_FENETRE)
         self.assertEqual(lien.view_count, 2)
 
     def test_la_derniere_vue_est_ecrite_a_chaque_get(self):

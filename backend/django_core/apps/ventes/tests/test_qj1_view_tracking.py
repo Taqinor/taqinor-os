@@ -103,14 +103,28 @@ class TestShareLinkStamping(TestCase):
     @_PATCH_DL
     def test_second_get_increments_count_and_updates_last_viewed(
             self, m_dl, m_gen):
-        APIClient().get(
-            f'/api/django/public/document/{self.link.token}/')
+        """CAD137 — le compteur compte des VISITES, plus des requêtes.
+
+        Depuis CAD137 (21/09/2026) deux GET rapprochés sont UNE visite : la
+        fenêtre de sessionisation de 15 minutes qui protégeait déjà la
+        notification protège aussi le compteur (lire la page, télécharger le
+        PDF puis recharger ne vaut plus 3). Le second GET franchit donc la
+        fenêtre — c'est ce que « une deuxième visite » veut dire.
+        """
+        from apps.ventes.public_views import REOUVERTURE_FENETRE
+        from testkit.time import frozen
+
+        debut = timezone.now()
+        with frozen(debut):
+            APIClient().get(
+                f'/api/django/public/document/{self.link.token}/')
         self.link.refresh_from_db()
         first_viewed = self.link.first_viewed_at
         self.assertEqual(self.link.view_count, 1)
 
-        APIClient().get(
-            f'/api/django/public/document/{self.link.token}/')
+        with frozen(debut + REOUVERTURE_FENETRE + timedelta(minutes=1)):
+            APIClient().get(
+                f'/api/django/public/document/{self.link.token}/')
         self.link.refresh_from_db()
 
         self.assertEqual(self.link.view_count, 2)

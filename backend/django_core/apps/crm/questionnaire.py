@@ -456,15 +456,6 @@ def appliquer_section(lien, section, reponses=None, photo=None):
             lead.save(update_fields=_colonnes_a_ecrire(champs))
             enregistrees = list(champs)
             activity.log_changes(avant, lead, None)
-            # CRX33 — le questionnaire écrit exactement les champs qui
-            # NOURRISSENT le score (facture, surface, orientation, toiture,
-            # raccordement, maturité d'achat…). Sans recalcul APRÈS écriture,
-            # un prospect qui vient de tout remplir restait « froid » dans la
-            # file du commercial jusqu'à une édition manuelle — l'inverse de
-            # ce que le questionnaire sert à provoquer. ``recompute_lead_score``
-            # est best-effort par construction : il n'échoue jamais l'appelant.
-            from .services import recompute_lead_score
-            recompute_lead_score(lead)
 
     if not enregistrees:
         return []
@@ -483,6 +474,19 @@ def appliquer_section(lien, section, reponses=None, photo=None):
     lien.sections_repondues = repondues
     lien.derniere_reponse_at = timezone.now()
     lien.save(update_fields=['sections_repondues', 'derniere_reponse_at'])
+    # CRX33 — le questionnaire écrit exactement les champs qui NOURRISSENT le
+    # score (facture, surface, orientation, toiture, raccordement, maturité
+    # d'achat…). Sans recalcul APRÈS écriture, un prospect qui vient de tout
+    # remplir restait « froid » dans la file du commercial jusqu'à une édition
+    # manuelle — l'inverse de ce que le questionnaire sert à provoquer.
+    # ``recompute_lead_score`` est best-effort : il n'échoue jamais l'appelant.
+    # Le recalcul est posé ICI, APRÈS l'horodatage du lien : depuis CAD133 le
+    # score compte « questionnaire répondu » d'après `derniere_reponse_at`, et
+    # recalculer AVANT de l'écrire persistait un score périmé de 4 points —
+    # deux valeurs différentes pour le même lead (la colonne triée d'un côté,
+    # le calcul de l'autre), ce que CRX22 interdit.
+    from .services import recompute_lead_score
+    recompute_lead_score(lead)
     # CAD136 (audit L3 du 21/09/2026) — le responsable est PRÉVENU. Jusqu'ici
     # répondre au questionnaire enrichissait le lead, recalculait le score et
     # écrivait une note — sans aucune notification, et `derniere_reponse_at`

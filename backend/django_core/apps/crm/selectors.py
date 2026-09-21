@@ -1607,25 +1607,36 @@ def kpi_premier_contact(company, *, jours=30, objectif_min=None):
 JOURS_OUVRES_JOINDRE = 5
 
 
-def _minutes_ouvrees_de_5_jours(creation, company):
+def _minutes_ouvrees_de_5_jours(creation, company, *, fins=None):
     """Le seuil « 5 jours ouvrés », EXPRIMÉ en minutes ouvrées.
 
     Comparer des minutes ouvrées à ``5 * 24 * 60`` mélangeait deux unités :
     7 200 minutes de calendrier valent ~10 jours ouvrés de 11 h 30, soit le
     DOUBLE de la promesse — le KPI se donnait deux fois plus de temps qu'il
     n'en annonçait. On mesure donc la même chose des deux côtés : les minutes
-    ouvrées séparant la création de la FERMETURE du 5ᵉ jour ouvré suivant."""
+    ouvrées séparant la création de la FERMETURE du 5ᵉ jour ouvré suivant.
+
+    ``fins`` (facultatif) est un dictionnaire ``{date locale: fermeture du
+    5ᵉ jour ouvré}`` que l'appelant réutilise d'un lead à l'autre :
+    ``ajouter_jours_ouvres`` recharge les jours ouvrés et trois années de
+    fériés À CHAQUE APPEL (4 requêtes), et ce calcul ne dépend QUE de la date
+    de création — mémoriser par date rend le coût indépendant du nombre de
+    leads. Sans ``fins``, comportement identique à avant."""
     from apps.notifications.calendar_utils import ajouter_jours_ouvres
 
     from . import horaires
 
     local = creation.astimezone(horaires.CASABLANCA)
-    jour_fin = ajouter_jours_ouvres(
-        local.date(), JOURS_OUVRES_JOINDRE, company)
-    fenetre = horaires.fenetre_du_jour(jour_fin, company)
-    fermeture = fenetre[1] if fenetre else datetime.time(20, 0)
-    fin = datetime.datetime.combine(
-        jour_fin, fermeture, tzinfo=horaires.CASABLANCA)
+    fin = fins.get(local.date()) if fins is not None else None
+    if fin is None:
+        jour_fin = ajouter_jours_ouvres(
+            local.date(), JOURS_OUVRES_JOINDRE, company)
+        fenetre = horaires.fenetre_du_jour(jour_fin, company)
+        fermeture = fenetre[1] if fenetre else datetime.time(20, 0)
+        fin = datetime.datetime.combine(
+            jour_fin, fermeture, tzinfo=horaires.CASABLANCA)
+        if fins is not None:
+            fins[local.date()] = fin
     return horaires.minutes_ouvrees_entre(creation, fin, company)
 
 
@@ -1681,17 +1692,32 @@ def kpi_cadences(company, *, jours=30):
         .values('lead_id').annotate(premiere=Min('created_at'))
         .values_list('lead_id', 'premiere'))
     joints = 0
-    # CAD119 — `date_creation_origine` chargée avec le reste : le délai se
-    # compte depuis la naissance du dossier (`Lead.date_origine`), jamais
-    # depuis l'heure d'une synchronisation.
-    for lead in leads.only('id', 'date_creation', 'date_creation_origine'):
-        premiere = premieres_issues.get(lead.id)
-        if premiere is None:
-            continue
-        naissance = lead.date_origine
-        minutes = horaires.minutes_ouvrees_entre(naissance, premiere, company)
-        if minutes <= _minutes_ouvrees_de_5_jours(naissance, company):
-            joints += 1
+    # CAD87 (correctif de budget) — la fenêtre ouvrée se calcule en Python,
+    # mais chacun de ses appels RELISAIT la base : profil société, jours
+    # ouvrés et fériés étaient rechargés pour chaque lead et chaque jour
+    # parcouru (~34 requêtes par lead joint — le compte du panneau grandissait
+    # encore avec le nombre de leads, ce que la requête groupée ci-dessus
+    # était censée arrêter). `cache_local()` est exactement l'outil prévu par
+    # `horaires` pour une opération longue (profil/jours ouvrés/fériés
+    # mémorisés le temps du bloc, oubliés ensuite) ; `fins` mémorise le 5ᵉ
+    # jour ouvré par DATE de création, seul paramètre dont il dépend.
+    fins_5e_jour = {}
+    with horaires.cache_local():
+        # CAD119 — `date_creation_origine` chargée avec le reste : le délai se
+        # compte depuis la naissance du dossier (`Lead.date_origine`), jamais
+        # depuis l'heure d'une synchronisation.
+        for lead in leads.only('id', 'date_creation',
+                               'date_creation_origine'):
+            premiere = premieres_issues.get(lead.id)
+            if premiere is None:
+                continue
+            naissance = lead.date_origine
+            minutes = horaires.minutes_ouvrees_entre(
+                naissance, premiere, company)
+            seuil = _minutes_ouvrees_de_5_jours(
+                naissance, company, fins=fins_5e_jour)
+            if minutes <= seuil:
+                joints += 1
 
     touches = RelanceEtape.objects.filter(company=company,
                                           traite_le__gte=depuis)

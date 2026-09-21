@@ -261,6 +261,11 @@ class EquipementsPourDevisSelectorTests(TestCase):
             'piscine_heures_jour': None,
             'clim_creneau': None,
             'piscine_creneau': None,
+            # CAD169 — « déjà là » ou « seulement prévu » : le sélecteur sert
+            # aussi `equip_ve_statut`, sans quoi le moteur ne saurait pas
+            # poser l'étiquette « avec votre future voiture ». Non posé ici
+            # ⇒ None, comme les autres questions jamais encore posées.
+            've_statut': None,
         })
 
 

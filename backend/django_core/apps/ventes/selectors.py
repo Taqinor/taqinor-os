@@ -3578,3 +3578,44 @@ def engagement_proposition_du_lead(lead_id, company):
         'lue_en_detail': profond is not None,
         'derniere_vue': max(instants) if instants else None,
     }
+
+
+def annotations_engagement_proposition():
+    """CAD133 — les MÊMES faits, posés en ANNOTATIONS sur un queryset de leads.
+
+    ``engagement_proposition_du_lead`` coûte une agrégation ``ShareLink`` PAR
+    LEAD : sur la liste du CRM (qui calcule le score de chaque ligne) cela
+    faisait repartir la base une fois par ligne — un N+1 franc. Les mêmes
+    trois faits sont ici des sous-requêtes corrélées : la liste les obtient
+    dans la requête qui charge déjà les leads, sans une requête de plus.
+
+    À greffer par ``qs.annotate(**annotations_engagement_proposition())`` sur
+    un queryset de ``crm.Lead``. Les trois attributs posés
+    (``sig_vues_proposition``, ``sig_premiere_vue_proposition``,
+    ``sig_lecture_profonde_at``) sont relus par ``apps.crm.signaux`` — la
+    frontière M3 tient : ``apps.crm`` n'importe toujours pas
+    ``apps.ventes.models``, il appelle ce sélecteur.
+    """
+    from django.db.models import (
+        DateTimeField, IntegerField, Max, OuterRef, Subquery, Sum,
+    )
+
+    from .models import ShareLink
+
+    base = (ShareLink.objects
+            .filter(devis__lead=OuterRef('pk'),
+                    devis__company=OuterRef('company'))
+            .order_by()
+            .values('devis__lead'))
+    return {
+        'sig_vues_proposition': Subquery(
+            base.annotate(valeur=Sum('view_count')).values('valeur')[:1],
+            output_field=IntegerField()),
+        'sig_premiere_vue_proposition': Subquery(
+            base.annotate(valeur=Max('first_viewed_at')).values('valeur')[:1],
+            output_field=DateTimeField()),
+        'sig_lecture_profonde_at': Subquery(
+            base.annotate(
+                valeur=Max('deep_engagement_logged_at')).values('valeur')[:1],
+            output_field=DateTimeField()),
+    }
