@@ -1479,6 +1479,37 @@ def _reglages_electrique_societe(calepinage):
 REGLE_CHAINE_MODULE = 'voc_module'
 REGLE_CHAINE_OPTIMISEUR = 'sortie_regulee_optimiseur'
 
+# ── CALX211 — la longueur se FERME quand la fiche publie enfin sa sortie ──
+#
+# Le paragraphe ci-dessus décrit l'état d'avant CALX60 : la fiche optimiseur
+# ne publiait QUE ses bornes d'entrée, donc la longueur de chaîne du système
+# restait « non vérifiable » et le repli prudent (fenêtre module/onduleur)
+# tenait lieu de réponse. CALX60 a ajouté les deux champs de SORTIE qui
+# manquaient — ``opt_v_out_nominal_v`` (tension de sortie régulée) et
+# ``opt_modules_max_par_chaine`` (nombre maximal de modules équipés sur une
+# même chaîne). Quand les DEUX sont publiés, la borne existe : la longueur
+# est FERMÉE par la fiche et la règle DIT laquelle. Quand l'un manque, le
+# texte « non vérifiable » d'aujourd'hui est conservé MOT POUR MOT — la
+# moitié d'une borne n'est pas une borne (D-CALX 7).
+#
+# SolarEdge Designer fait de ce retour le cœur de son outil : « real-time
+# feedback on the correct string design » (https://marketing.solaredge.com/
+# solaredge-designer-0-20). Nous ne le rendons que lorsque la fiche le
+# permet ; nous ne le fabriquons jamais.
+
+#: Les deux champs de SORTIE que CALX211 lit, nommés comme l'écran de fiche
+#: les affiche — ce sont eux que le message d'omission doit prononcer.
+CHAMP_OPT_V_OUT = 'FicheTechnique.opt_v_out_nominal_v'
+CHAMP_OPT_MODULES_MAX = 'FicheTechnique.opt_modules_max_par_chaine'
+
+#: Les clés correspondantes du sélecteur ``specs_for_produit``.
+CLE_OPT_V_OUT = 'v_out_nominal_v'
+CLE_OPT_MODULES_MAX = 'modules_max_par_chaine'
+
+REFERENCE_SOLAREDGE_DESIGNER = (
+    'SolarEdge Designer — « real-time feedback on the correct string design »'
+    ' (https://marketing.solaredge.com/solaredge-designer-0-20)')
+
 
 def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                     designation=''):
@@ -1499,6 +1530,11 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
             'source': 'fiches module et onduleur',
             'verdicts_entree': [],
             'bornes_non_verifiables': [],
+            # CALX211 — clés TOUJOURS présentes : l'écran ne doit jamais
+            # avoir à deviner si la borne manque ou si la clé manque.
+            'longueur_max_modules': None,
+            'longueur_source': '',
+            'longueur_reference': '',
         }
 
     nom = designation or 'optimiseur déclaré'
@@ -1539,6 +1575,14 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                 nom),
         })
 
+    # CALX211 — la longueur se ferme quand les DEUX champs de sortie sont
+    # publiés ; sinon le texte non vérifiable d'aujourd'hui est repris mot
+    # pour mot (une demi-borne n'est pas une borne).
+    v_out = _nombre(_champ_de_fiche(optimiseur_specs, CLE_OPT_V_OUT))
+    modules_max = _nombre(_champ_de_fiche(optimiseur_specs,
+                                          CLE_OPT_MODULES_MAX))
+    fermee = (v_out is not None and v_out > 0
+              and modules_max is not None and modules_max >= 1)
     return {
         'regle': REGLE_CHAINE_OPTIMISEUR,
         'libelle': "tension de chaîne RÉGULÉE par l'optimiseur : la borne Voc "
@@ -1547,13 +1591,34 @@ def regle_de_chaine(module_specs, onduleur_specs, optimiseur_specs=None, *,
                    "par module",
         'source': "fiche « %s » (type optimiseur)" % nom,
         'verdicts_entree': verdicts,
-        'bornes_non_verifiables': [
+        'bornes_non_verifiables': [] if fermee else [
             "longueur de chaîne admissible du système à optimiseurs : la "
             "fiche ne publie ni tension de sortie régulée ni nombre maximal "
             "de modules par chaîne — la longueur retenue reste celle du repli "
             "PRUDENT (fenêtre module/onduleur), aucune borne n'est supposée à "
             "sa place"],
+        'longueur_max_modules': int(modules_max) if fermee else None,
+        'longueur_source': (
+            "fiche « %s » : %s modules maximum par chaîne (« %s »), sortie "
+            "régulée à %s V (« %s »)"
+            % (nom, int(modules_max), CHAMP_OPT_MODULES_MAX,
+               fr_v(v_out), CHAMP_OPT_V_OUT)) if fermee else '',
+        'longueur_reference': (REFERENCE_SOLAREDGE_DESIGNER if fermee
+                               else ''),
     }
+
+
+def _champ_de_fiche(specs, cle):
+    """La valeur d'un champ de fiche, que ``specs`` soit un dict ou un objet.
+
+    Le sélecteur du stock rend un dict PLAT ; les doubles de test et les
+    fiches partiellement peuplées, eux, n'ont pas forcément la clé — un
+    ``getattr`` de repli évite qu'une fiche sans le champ récent lève, et
+    ABSENT y vaut toujours « non publié », jamais zéro.
+    """
+    if isinstance(specs, dict):
+        return specs.get(cle)
+    return getattr(specs, cle, None)
 
 
 def verdicts_electriques(conception, optimiseur_specs=None,
