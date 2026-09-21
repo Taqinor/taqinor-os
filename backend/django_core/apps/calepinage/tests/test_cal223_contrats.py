@@ -186,6 +186,15 @@ SANS_PRODUCTEUR_PUR = {
         'sont affirmées sans base par '
         'apps/calepinage/tests/test_calx204_contrat_sld.py',
 
+    # CALX205
+    'calepinage_raccordement.json':
+        'point de RACCORDEMENT réseau : la route arrive avec CALX244 et son '
+        'producteur est services/raccordement.py (CALX241-243), pas encore '
+        'écrit — la forme, la règle « une limite est une saisie qui porte '
+        'sa source » et le verdict `omis` sans limite sont affirmés sans '
+        'base par '
+        'apps/calepinage/tests/test_calx205_contrat_raccordement.py',
+
     # CALX62
     'calepinage_meteo_fichier.json':
         'réponse de la porte MULTIPART qui dépose une série météo de la '
@@ -207,6 +216,11 @@ POSES_AVANT_LEUR_ROUTE = {
     'calepinage_troncons.json': 'CALX203 — route posée par la vague '
                                 'ÉLECTRIQUE PRO (services/troncons.py, '
                                 'CALX224-226)',
+    # CALX205 — `GET`/`POST calepinages/<pk>/raccordement/` : la vue arrive
+    # avec CALX244, le producteur est services/raccordement.py (CALX241-243).
+    'calepinage_raccordement.json': 'CALX205 — route posée par CALX244 '
+                                    '(services/raccordement.py, '
+                                    'CALX241-243)',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
