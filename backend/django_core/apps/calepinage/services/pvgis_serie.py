@@ -440,6 +440,11 @@ class ClientPvgis:
                 'p_w': _flottant(ligne.get('P')),
                 'gi_w_m2': _flottant(ligne.get('G(i)')),
                 't2m_c': _flottant(ligne.get('T2m')),
+                # CALX164 — la réponse PVGIS porte la vitesse du vent et le
+                # modèle thermique de Faiman en a besoin (terme Uv × vent) :
+                # ce chemin la laissait tomber, si bien que la cellule
+                # chauffait toujours comme par temps calme.
+                'ws10m': _flottant(ligne.get('WS10m')),
             })
         if not points:
             raise PvgisIndisponible(
