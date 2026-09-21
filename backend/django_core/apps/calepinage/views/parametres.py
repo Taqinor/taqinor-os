@@ -7,10 +7,11 @@ dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé
 absente que l'écran devrait deviner.
 
 CAL246 — la même réponse porte AUSSI ``kits`` : le catalogue de kits de pose
-AO (``apps.ao.selectors.kits_de_pose``, CAL198), LU, jamais STOCKÉ — ce n'est
-donc pas une huitième section de ``ParametresCalepinage`` (aucune migration),
-et ``PUT`` la refuse comme toute clé inconnue (catalogue en LECTURE SEULE
-depuis cet endpoint).
+(``selectors.kits_de_pose_disponibles``, CAL198), RÉSOLU à la lecture — ce
+n'est donc pas une section de plus de ``ParametresCalepinage`` (aucune
+migration), et ``PUT`` le refuse à cette place comme toute clé inconnue. Le
+catalogue lui-même se règle DANS la section ``presets`` (clé ``kits``,
+SOLMVP15) : un seul chemin d'écriture, celui du domaine.
 
 ``PUT`` pose les sections fournies (mise à jour PARTIELLE) par le SEUL chemin
 d'écriture du domaine, ``services.parametres.enregistrer_parametres`` : une

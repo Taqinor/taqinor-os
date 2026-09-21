@@ -1,10 +1,12 @@
 """Tests NTPRT4 — Provisionnement d'un VRAI compte utilisateur portail
 partenaire.
 
-Même mécanique que NTPRT2 (portail client), pour ``compta.Partenaire``
-(apporteurs/sous-revendeurs/installateurs — modèle physiquement dans
-``apps.crm`` depuis ODX13, accédé ici via le ré-export
-``apps.compta.models.Partenaire``, jamais ``apps.crm.models`` directement).
+Même mécanique que NTPRT2 (portail client), pour ``crm.Partenaire``
+(apporteurs/sous-revendeurs/installateurs — modèle vivant dans ``apps.crm``
+depuis ODX13). SOLMVP16 — le service portail le lit désormais via le
+sélecteur ``apps.crm.selectors.partenaire_pour_certification`` (jamais un
+import de ``apps.crm.models`` — frontière cross-app CLAUDE.md) ; ce test
+crée directement l'objet ``crm.Partenaire`` pour les besoins de la fixture.
 
 Couvre :
 
@@ -28,7 +30,7 @@ import itertools
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.compta.models import Partenaire
+from apps.crm.models import Partenaire
 from apps.portail.services import provisionner_compte_partenaire
 from apps.roles.models import ROLE_PORTAIL_PARTENAIRE, Role
 from authentication.models import Company, CustomUser

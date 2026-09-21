@@ -99,7 +99,7 @@ def get_emplacements_scoped(company, ids):
     Variante BATCH de ``get_emplacement_scoped`` — un appelant qui doit
     résoudre plusieurs emplacements (ex. une liste paginée d'objets liés)
     fait UN SEUL aller-retour DB au lieu d'un par id (évite le N+1 réel :
-    voir AUD729, `apps.flotte.selectors.emplacements_stock_labels`).
+    voir AUD729).
     Lecture seule ; ``ids`` vide → ``{}`` sans requête.
     """
     from .models import EmplacementStock
@@ -279,7 +279,7 @@ def facture_fournisseur_scoped(company, facture_id):
 def ligne_facture_fournisseur_scoped(company, facture_id, ligne_id):
     """XACC33 — Ligne d'une facture fournisseur, scopée société, ou None.
 
-    Point d'entrée cross-app pour ``apps.compta`` (capitalisation d'une ligne
+    Point d'entrée cross-app pour la comptabilité (capitalisation d'une ligne
     en immobilisation, XACC33) : jamais un import de ``apps.stock.models`` en
     dehors de ce module. Vérifie que la ligne appartient bien à la facture
     ``facture_id`` ET que cette facture appartient à ``company`` — renvoie
@@ -373,7 +373,7 @@ def get_fournisseur_tiers_identity(company, fournisseur_id):
 
 
 # ── FG131 — Achats / AP : données pour le rapprochement 3 voies ──────────────
-# Point d'entrée cross-app LECTURE SEULE pour la Comptabilité (apps.compta) : le
+# Point d'entrée cross-app LECTURE SEULE pour la Comptabilité : le
 # rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) lit les trois
 # montants à travers ces sélecteurs plutôt qu'en important apps.stock.models.
 # AUCUNE de ces fonctions n'écrit ; les montants d'achat restent INTERNES.
@@ -842,7 +842,7 @@ def produits_louables_qs(company):
 
 # ── XPUR17 — TVA par ligne sur la facture fournisseur ────────────────────────
 # Ventilation HT/TVA PAR TAUX (20/14/10/7 %/exonéré). Point d'entrée cross-app
-# LECTURE SEULE pour la comptabilité (apps.compta) : le relevé de déductions
+# LECTURE SEULE pour la comptabilité : le relevé de déductions
 # TVA lit la ventilation à travers ce sélecteur plutôt qu'en important
 # apps.stock.models directement.
 
@@ -897,7 +897,7 @@ def releve_deductions_tva_par_taux(company, *, date_debut=None, date_fin=None):
 def encours_fournisseurs_par_tiers(company):
     """YLEDG13 — encours documentaire (reste dû) par fournisseur, factures
     fournisseur non soldées d'une société. Point d'entrée cross-app
-    sanctionné pour ``apps.compta`` (rapprochement auxiliaire/GL, jamais un
+    sanctionné pour la comptabilité (rapprochement auxiliaire/GL, jamais un
     import direct de ``stock.models``). Renvoie une liste de dicts
     ``{'tiers_id', 'nom', 'encours', 'references'}`` (encours > 0
     seulement). Lecture seule."""
@@ -1317,56 +1317,6 @@ def van_stock_a_reapprovisionner(company):
     """
     from .services import suggestions_reappro_emplacement
     return suggestions_reappro_emplacement(company)
-
-
-def emplacement_camionnette_technicien(company, user):
-    """NTFSM20 — emplacement de stock (camionnette) AFFECTÉ au technicien
-    connecté, ou ``None`` si la chaîne d'affectation casse à n'importe quelle
-    étape (pas de fiche conducteur, pas d'affectation véhicule active,
-    véhicule sans emplacement de stock lié).
-
-    Chaîne : utilisateur → ``flotte.Conducteur`` → affectation VÉHICULE
-    active (``AffectationConducteur``) → ``Vehicule.emplacement_stock_id``
-    (FLOTTE3). Lecture cross-app UNIQUEMENT via ``apps.flotte.selectors``
-    (jamais son ``models``) — dégrade proprement (``None``) si l'app flotte
-    est absente ou la chaîne incomplète. Sécurité : c'est CETTE fonction qui
-    garantit qu'un technicien ne voit jamais le stock d'un collègue — jamais
-    un id d'emplacement accepté tel quel depuis le client.
-    """
-    import datetime
-
-    from django.db.models import Q
-
-    from .models import EmplacementStock
-
-    if company is None or user is None or not getattr(user, 'id', None):
-        return None
-    try:
-        from apps.flotte import selectors as flotte_selectors
-    except Exception:  # pragma: no cover - défensif (app absente)
-        return None
-
-    conducteur = (flotte_selectors.conducteurs_de_la_societe(
-        company, actif_only=True).filter(user=user).first())
-    if conducteur is None:
-        return None
-
-    today = datetime.date.today()
-    affectation = (
-        flotte_selectors.affectations_du_conducteur(company, conducteur.id)
-        .filter(actif=True, date_debut__lte=today)
-        .filter(Q(date_fin__isnull=True) | Q(date_fin__gte=today))
-        .select_related('vehicule')
-        .order_by('-date_debut')
-        .first())
-    if affectation is None or affectation.vehicule_id is None:
-        return None
-
-    emplacement_id = getattr(affectation.vehicule, 'emplacement_stock_id', None)
-    if not emplacement_id:
-        return None
-    return EmplacementStock.objects.filter(
-        company=company, pk=emplacement_id, archived=False).first()
 
 
 # ── ZMFG9 — Disponibilité multi-niveaux d'un kit (stock partagé + goulots) ──
@@ -2451,21 +2401,22 @@ def budget_departement_actif(company):
     return bool(params and params.budget_departement_actif)
 
 
-def resoudre_budget_departement(company, departement_id, periode=None):
-    """Budget applicable à ce département pour cette période, ou None.
+def resoudre_budget_departement(company, periode=None):
+    """Budget applicable à la société pour cette période, ou None.
 
+    SOLMVP12 (20/09/2026) — l'enveloppe n'est plus distinguée par département
+    (le module RH a été détaché) : UNE enveloppe par société et par période.
     Le budget MENSUEL de la période visée l'emporte sur le budget ANNUEL de
     l'année (le mensuel est plus spécifique). ``periode`` est une ``date``
     (défaut : aujourd'hui, en heure locale)."""
-    if company is None or not departement_id:
+    if company is None:
         return None
     from django.utils import timezone
     from .models import BudgetDepartement
 
     jour = periode or timezone.localdate()
     base = BudgetDepartement.objects.filter(
-        company=company, departement_id=departement_id, actif=True,
-        annee=jour.year)
+        company=company, actif=True, annee=jour.year)
     mensuel = base.filter(
         periodicite=BudgetDepartement.Periodicite.MENSUELLE,
         mois=jour.month).first()
@@ -2497,7 +2448,6 @@ def consommation_budget(budget):
     alloue = Decimal(budget.montant_alloue or 0)
     return {
         'budget_id': budget.pk,
-        'departement_id': budget.departement_id,
         'periodicite': budget.periodicite,
         'annee': budget.annee,
         'mois': budget.mois,
@@ -2512,8 +2462,8 @@ def consommation_budget(budget):
     }
 
 
-def verifier_budget_disponible(company, departement_id, periode, montant):
-    """NTP2P4 — le département a-t-il encore ``montant`` de disponible ?
+def verifier_budget_disponible(company, periode, montant):
+    """NTP2P4 — la société a-t-elle encore ``montant`` de disponible ?
 
     Renvoie un dict ``{'controle_actif', 'budget', 'restant', 'depassement',
     'suffisant', 'montant_manquant'}``. ``controle_actif=False`` (réglage OFF
@@ -2529,7 +2479,7 @@ def verifier_budget_disponible(company, departement_id, periode, montant):
     }
     if not budget_departement_actif(company):
         return vide
-    budget = resoudre_budget_departement(company, departement_id, periode)
+    budget = resoudre_budget_departement(company, periode)
     if budget is None:
         return vide
     detail = consommation_budget(budget)
@@ -2581,7 +2531,7 @@ def plafond_notes_frais_actif(company):
     OFF par défaut : le calcul d'escalade lui-même (posé sur la note +
     journalisé au chatter) reste comportement historique inchangé — ce
     réglage pilote UNIQUEMENT la notification immédiate, jamais le calcul.
-    Lu cross-app par ``apps.compta.services`` via ce sélecteur, jamais un
+    Lu cross-app par la comptabilité via ce sélecteur, jamais un
     import direct de ``stock.models``."""
     if company is None:
         return False
@@ -2705,7 +2655,6 @@ def fournisseur_peut_recevoir_bcf(company, fournisseur_id):
 PLAFOND_OTD = 45
 PLAFOND_DOCUMENTS = 30
 PLAFOND_RETOURS = 15
-PLAFOND_LITIGES = 15
 PLAFOND_BLOCAGE = 25
 
 SEUIL_RISQUE_ELEVE = 50
@@ -2787,15 +2736,6 @@ def _retours_fournisseur(company, fournisseur_id):
     }
 
 
-def _litiges_fournisseur(company, fournisseur_id):
-    """Réclamations ouvertes — lecture via ``litiges.selectors`` uniquement."""
-    from apps.litiges.selectors import compte_reclamations_fournisseur
-
-    compte = compte_reclamations_fournisseur(company, fournisseur_id)
-    penalite = min(PLAFOND_LITIGES, 5 * compte['ouvertes'])
-    return penalite, compte
-
-
 def _blocage_fournisseur(fournisseur):
     from .models import Fournisseur
 
@@ -2825,7 +2765,6 @@ def score_risque_fournisseur(company, fournisseur_id):
     p_otd, d_otd = _ponctualite_fournisseur(company, fournisseur.pk)
     p_doc, d_doc = _documents_fournisseur(company, fournisseur.pk)
     p_ret, d_ret = _retours_fournisseur(company, fournisseur.pk)
-    p_lit, d_lit = _litiges_fournisseur(company, fournisseur.pk)
     p_blo, d_blo = _blocage_fournisseur(fournisseur)
 
     facteurs = [
@@ -2835,8 +2774,6 @@ def score_risque_fournisseur(company, fournisseur_id):
                  p_doc, PLAFOND_DOCUMENTS, d_doc),
         _facteur('retours', 'Retours fournisseur',
                  p_ret, PLAFOND_RETOURS, d_ret),
-        _facteur('litiges', 'Litiges ouverts',
-                 p_lit, PLAFOND_LITIGES, d_lit),
         _facteur('blocage', 'Statut de blocage',
                  p_blo, PLAFOND_BLOCAGE, d_blo),
     ]
@@ -2965,26 +2902,14 @@ def _coerce_date_stock(value):
 
 
 def _budgets_departement_du_mois(company, aujourdhui):
-    """Consommation budgétaire par département résolue pour le MOIS courant
-    (``resoudre_budget_departement``/``consommation_budget``, NTP2P4) —
-    uniquement les départements PORTEURS d'un budget (annuel ou mensuel).
-    Renvoie une liste triée par taux de consommation décroissant."""
-    from .models import BudgetDepartement
-
-    departement_ids = (
-        BudgetDepartement.objects
-        .filter(company=company, actif=True, annee=aujourdhui.year)
-        .values_list('departement_id', flat=True).distinct())
-    lignes = []
-    for departement_id in departement_ids:
-        budget = resoudre_budget_departement(
-            company, departement_id, aujourdhui)
-        detail = consommation_budget(budget)
-        if detail is None:
-            continue
-        lignes.append(detail)
-    lignes.sort(key=lambda d: d['taux_consommation_pct'], reverse=True)
-    return lignes
+    """Consommation budgétaire de la société pour le MOIS courant
+    (``resoudre_budget_departement``/``consommation_budget``, NTP2P4).
+    SOLMVP12 — UNE seule enveloppe par société (le module RH a été détaché) :
+    renvoie une liste d'au plus un élément, jamais vide sans budget configuré.
+    """
+    budget = resoudre_budget_departement(company, aujourdhui)
+    detail = consommation_budget(budget)
+    return [detail] if detail is not None else []
 
 
 def _top_fournisseurs_par_volume(company, *, debut=None, fin=None, limite=5):
@@ -3072,19 +2997,17 @@ def tableau_bord_achats(company, debut=None, fin=None):
     """NTP2P17 — dashboard spend management (lecture seule).
 
     Réunit en UN appel :
-      * ``budgets_departement`` — consommation par département (NTP2P4),
-        triée par taux décroissant (le % de consommation du mois en cours
-        se lit directement sur chaque ligne, ``taux_consommation_pct``) ;
+      * ``budgets_departement`` — consommation de l'enveloppe société
+        (NTP2P4), le % de consommation du mois en cours se lisant sur
+        ``taux_consommation_pct`` ;
       * ``top_fournisseurs`` — 5 premiers fournisseurs par volume d'achat ;
       * ``delai_demande_bcf_jours`` / ``delai_bcf_reception_jours`` — délais
         moyens demande→BCF et BCF→réception ;
-      * ``exceptions_3voies`` — ``{en_cours, resolues, total}`` (XPUR10) ;
-      * ``notes_frais_en_attente`` — ``{count, montant_total}`` (lu via
-        ``apps.frais.selectors`` — jamais un import de ``apps.frais.models``).
+      * ``exceptions_3voies`` — ``{en_cours, resolues, total}`` (XPUR10).
 
-    ``debut``/``fin`` (date ou ISO) bornent les métriques temporelles ; les
-    budgets départementaux restent au MOIS COURANT (poste de pilotage
-    "aujourd'hui", indépendant de la période choisie pour le reste).
+    ``debut``/``fin`` (date ou ISO) bornent les métriques temporelles ; le
+    budget reste au MOIS COURANT (poste de pilotage "aujourd'hui",
+    indépendant de la période choisie pour le reste).
     """
     from django.utils import timezone
     from .models import FactureFournisseur
@@ -3103,12 +3026,6 @@ def tableau_bord_achats(company, debut=None, fin=None):
     resolues = exceptions_qs.filter(
         statut_controle=FactureFournisseur.StatutControle.RESOLUE).count()
 
-    try:
-        from apps.frais.selectors import notes_frais_en_attente
-        notes_attente = notes_frais_en_attente(company)
-    except Exception:  # pragma: no cover - défensif (frais indisponible)
-        notes_attente = {'count': 0, 'montant_total': 0}
-
     delai_demande_bcf, delai_bcf_reception = _delais_demande_bcf_reception(
         company, debut=d_debut, fin=d_fin)
 
@@ -3125,7 +3042,6 @@ def tableau_bord_achats(company, debut=None, fin=None):
             'en_cours': en_cours, 'resolues': resolues,
             'total': en_cours + resolues,
         },
-        'notes_frais_en_attente': notes_attente,
     }
 
 

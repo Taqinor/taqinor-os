@@ -7,28 +7,15 @@ from .views import (
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
     FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
-    RecurrenceInterventionViewSet,
-    JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
-    DocumentProjetViewSet, RevisionDocumentViewSet, FieldSyncView,
+    FieldSyncView,
     ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
-    IndisponibiliteRessourceViewSet,
-    AstreinteViewSet,
     EquipeViewSet,
     SousTraitantViewSet,
-    OrdreSousTraitanceViewSet,
-    FactureSousTraitantViewSet,
-    PaiementSousTraitantViewSet,
-    AttestationSousTraitantViewSet,
-    EvaluationSousTraitantViewSet,
-    RetenueGarantieSousTraitantViewSet,
     DemandeAchatViewSet,
     DemandeAchatLigneViewSet,
     RegleApprobationAchatViewSet,
-    RFQViewSet,
-    RFQOffreViewSet,
-    RFQConsultationViewSet,
     SeuilApprobationBCFViewSet,
     ApprobationBCFViewSet,
     ControleBudgetaireCommandeView,
@@ -90,13 +77,7 @@ router.register(r'checklist-etapes', ChecklistEtapeModeleViewSet)
 router.register(r'shotlist-slots', ShotListSlotViewSet)
 router.register(r'fiche-intervention-templates', FicheInterventionTemplateViewSet)
 router.register(r'fiche-intervention-champs', FicheInterventionChampViewSet)
-router.register(r'recurrences-intervention', RecurrenceInterventionViewSet)
 router.register(r'consignes-securite', SafetyChecklistSlotViewSet)
-router.register(r'jalons-projet', JalonProjetViewSet)
-router.register(r'modeles-projet', ModeleProjetViewSet)
-router.register(r'reunions-chantier', ReunionChantierViewSet)
-router.register(r'documents-projet', DocumentProjetViewSet)
-router.register(r'revisions-document', RevisionDocumentViewSet)
 router.register(r'programmes', ProjetViewSet)
 router.register(r'programme-taches', ProjetTacheViewSet)
 router.register(r'programme-chantiers', ProjetChantierViewSet)
@@ -104,29 +85,16 @@ router.register(r'programme-devis', ProjetDevisViewSet)
 router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
-router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
-router.register(r'astreintes', AstreinteViewSet)
 router.register(r'equipes', EquipeViewSet)
-# DC34 — sous-traitants / AP sous-traitant sont des ViewSet façade au-dessus de
-# stock (Fournisseur type=service + chaîne FactureFournisseur/PaiementFournisseur)
-# sans queryset propre → basename explicite requis par le routeur.
+# DC34 — annuaire des sous-traitants (référentiel UNIFIÉ, consommé aussi par
+# btp_chantier et gestion_projet) : ViewSet façade au-dessus de stock
+# (Fournisseur type=service) sans queryset propre → basename explicite requis.
 router.register(r'sous-traitants', SousTraitantViewSet,
                 basename='soustraitant')
-router.register(r'ordres-sous-traitance', OrdreSousTraitanceViewSet)
-router.register(r'factures-sous-traitant', FactureSousTraitantViewSet,
-                basename='facturesoustraitant')
-router.register(r'paiements-sous-traitant', PaiementSousTraitantViewSet,
-                basename='paiementsoustraitant')
-router.register(r'attestations-sous-traitant', AttestationSousTraitantViewSet)
-router.register(r'evaluations-sous-traitant', EvaluationSousTraitantViewSet)
-router.register(r'retenues-garantie-sous-traitant', RetenueGarantieSousTraitantViewSet)
 router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
 # NTP2P2 — règles d'approbation des demandes d'achat (seuil + périmètre).
 router.register(r'regles-approbation-achat', RegleApprobationAchatViewSet)
-router.register(r'rfq', RFQViewSet)
-router.register(r'rfq-offres', RFQOffreViewSet)
-router.register(r'rfq-consultations', RFQConsultationViewSet)
 router.register(r'seuils-approbation-bcf', SeuilApprobationBCFViewSet)
 router.register(r'approbations-bcf', ApprobationBCFViewSet)
 router.register(r'commandes-cadre', CommandeCadreViewSet)

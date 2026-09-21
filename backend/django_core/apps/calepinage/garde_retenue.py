@@ -4,7 +4,8 @@ POURQUOI UN MODULE À PART
 -------------------------
 ``CalepinageVariante.save`` doit interroger ce verrou, et le service de
 variantes doit l'ouvrir. Si le modèle importait le service, la chaîne
-``models -> services.variantes -> apps.ventes.services -> … -> apps.ao.models``
+``models -> services.variantes -> apps.ventes.services -> … -> les modèles
+d'une autre app``
 ferait ROUGIR le contrat import-linter ``calepinage-models-decoupled`` (CAL5)
 — mesuré, pas supposé. Le verrou vit donc dans ce module minuscule qui
 n'importe QUE la bibliothèque standard : le modèle en dépend sans rien

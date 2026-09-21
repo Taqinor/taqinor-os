@@ -9,7 +9,6 @@ base ni le réseau, et ces tests non plus.
 from django.test import SimpleTestCase
 
 from core import score_factors
-from core.attrition_risk import attrition_risk
 from core.churn_risk import churn_risk
 from core.payment_delay import payment_delay_risk
 from core.win_probability import win_probability
@@ -192,33 +191,3 @@ class PaymentDelayFacteursTests(SimpleTestCase):
         self.assertEqual(len(resultat.facteurs), 1)
         self.assertAlmostEqual(
             resultat.facteurs[0].impact, resultat.score, places=4)
-
-
-class AttritionFacteursTests(SimpleTestCase):
-
-    def test_facteurs_a_lechelle_du_score(self):
-        resultat = attrition_risk({
-            'seniority_months': 4, 'recent_attendance_incidents': 3,
-            'unplanned_absences': 2, 'last_evaluation_score': 2,
-            'months_since_last_raise': 30, 'sanctions_count': 1,
-        })
-        self.assertEqual(len(resultat.facteurs), 3)
-        # Le score est sur [0, 100] : les contributions doivent l'être aussi,
-        # sinon l'explication ne serait pas comparable au score affiché.
-        for f in resultat.facteurs:
-            self.assertGreater(f.impact, 1.0)
-            self.assertLessEqual(f.impact, 100.0)
-        libelles = [f.libelle for f in resultat.facteurs]
-        self.assertIn('Ancienneté de 4 mois', libelles)
-        self.assertIn('Dernière évaluation : 2/5', libelles)
-
-    def test_repli_sans_feature_nexplique_rien(self):
-        resultat = attrition_risk({})
-        self.assertTrue(resultat.used_fallback)
-        self.assertEqual(resultat.facteurs, [])
-
-    def test_une_seule_composante_explique_tout_le_score(self):
-        resultat = attrition_risk({'sanctions_count': 3})
-        self.assertEqual(len(resultat.facteurs), 1)
-        self.assertAlmostEqual(
-            resultat.facteurs[0].impact, resultat.score, places=2)

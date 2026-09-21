@@ -219,7 +219,7 @@ class SchemaRoofLayoutV2Test(SimpleTestCase):
         self.assertNotEqual(self._erreurs(document), [])
 
     def test_les_deux_graphies_de_provenance_sont_acceptees(self):
-        """`core.calepinage` dit RELEVE, `apps.ao` dit MESURE — mêmes états."""
+        """`core.calepinage` dit RELEVE, l'amont dit MESURE — mêmes états."""
         for graphie in ('RELEVE', 'MESURE', 'PLAN', 'DEVINE', 'ECARTE'):
             with self.subTest(provenance=graphie):
                 document = copy.deepcopy(self.schema['exemple'])

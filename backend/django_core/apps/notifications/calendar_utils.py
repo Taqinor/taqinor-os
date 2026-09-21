@@ -5,11 +5,10 @@ Quatre helpers publics :
   - prochain_jour_ouvre(date, company)   → date (premier jour ouvré ≥ date)
   - ajouter_jours_ouvres(date, n, company) → date après n jours ouvrés
   - feries_entre(company, debut, fin)    → liste de `date` fériées (ZRH1) —
-    surface de LECTURE réutilisée par ``rh.services`` (cross-app-safe, jamais
-    d'import de ``notifications.models`` en dehors de ce module) pour
-    alimenter le décompte de congés avec les fêtes MOBILES (Aïd, Mawlid…)
-    saisies dans `Holiday`, en plus des 9 fêtes fixes déjà gérées par
-    ``rh.holidays.JOURS_FERIES_FIXES_MA``.
+    surface de LECTURE cross-app-safe (jamais d'import de
+    ``notifications.models`` en dehors de ce module) pour alimenter un
+    décompte de jours avec les fêtes MOBILES (Aïd, Mawlid…) saisies dans
+    `Holiday`.
 
 Un « jour ouvré » = un jour de la semaine marqué comme ouvré dans la
 `WorkingHoursConfig` de la société ET non présent dans sa table `Holiday`
@@ -235,8 +234,8 @@ def feries_entre(
     ex. ``'FR'``) filtre sur ``Holiday.pays`` QUAND il est fourni — l'appel
     historique (``pays=None``, défaut) ignore ce champ et renvoie TOUS les
     jours fériés de la société quel que soit leur pays, exactement comme
-    avant l'ajout du champ (zéro régression pour l'appelant existant,
-    ``apps.rh.services``, qui ne passe pas ce paramètre).
+    avant l'ajout du champ (zéro régression pour les appelants existants qui
+    ne passent pas ce paramètre).
     """
     if date_debut is None or date_fin is None or date_debut > date_fin:
         return []

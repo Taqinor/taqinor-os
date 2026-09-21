@@ -1446,7 +1446,7 @@ def quantite_en_quarantaine(company, produit=None):
 
 def mettre_en_quarantaine(*, company, produit, quantite, user=None,
                           bin_quarantaine=None, lot=None, reception=None,
-                          non_conformite=None, motif=''):
+                          motif=''):
     """Bloque une quantité reçue non conforme dans un casier de quarantaine.
 
     Aucun mouvement de stock n'est posé : la marchandise EST là, elle n'est
@@ -1467,8 +1467,7 @@ def mettre_en_quarantaine(*, company, produit, quantite, user=None,
     return BlocageQualite.objects.create(
         company=company, produit=produit, quantite=quantite,
         bin=bin_quarantaine, lot=lot, reception=reception,
-        non_conformite=non_conformite, motif=(motif or '').strip(),
-        bloque_par=user)
+        motif=(motif or '').strip(), bloque_par=user)
 
 
 def lever_quarantaine(*, blocage, user=None):
@@ -1665,29 +1664,6 @@ def _volume_m3(dimensions):
         Decimal('0.001'))
 
 
-def _capacite_vehicule(company, vehicule_id):
-    """Charge utile déclarée par ``flotte`` pour ce véhicule, ou ``None``.
-
-    Lecture cross-app par le selector de ``flotte`` (jamais un import de ses
-    modèles) + ``getattr`` défensif : ``flotte.Vehicule`` ne porte AUCUN champ
-    de capacité aujourd'hui, donc cette fonction renvoie ``None`` — et
-    commencera à renvoyer une valeur le jour où le champ existera, sans
-    modification ici.
-    """
-    if not vehicule_id:
-        return None
-    try:
-        from apps.flotte.selectors import vehicules_de_la_societe
-
-        vehicule = vehicules_de_la_societe(company).filter(
-            id=vehicule_id).first()
-    except Exception:  # pragma: no cover - défensif (app absente/désactivée)
-        return None
-    if vehicule is None:
-        return None
-    return getattr(vehicule, 'capacite_charge_kg', None)
-
-
 def verifier_capacite_plan(plan, unite_supplementaire=None):
     """Poids/volume embarqués vs capacité — et l'avertissement qui va avec.
 
@@ -1711,8 +1687,6 @@ def verifier_capacite_plan(plan, unite_supplementaire=None):
         volume += _volume_m3(unite.dimensions)
 
     capacite_kg = plan.capacite_kg
-    if capacite_kg in (None, 0):
-        capacite_kg = _capacite_vehicule(plan.company, plan.vehicule_id)
     capacite_kg = (Decimal(str(capacite_kg))
                    if capacite_kg not in (None, '') else None)
     capacite_m3 = (Decimal(str(plan.capacite_m3))
@@ -1747,7 +1721,7 @@ def verifier_capacite_plan(plan, unite_supplementaire=None):
 
 
 def creer_plan_chargement(*, company, user=None, livraison=None,
-                          expedition=None, vehicule=None, capacite_kg=None,
+                          expedition=None, capacite_kg=None,
                           capacite_m3=None, note=''):
     """Crée un plan de chargement numéroté (``CHG-YYYYMM-NNNN``)."""
     from django.db import transaction
@@ -1759,7 +1733,7 @@ def creer_plan_chargement(*, company, user=None, livraison=None,
         def _save(reference):
             return PlanChargement.objects.create(
                 company=company, reference=reference, livraison=livraison,
-                expedition=expedition, vehicule=vehicule,
+                expedition=expedition,
                 capacite_kg=capacite_kg, capacite_m3=capacite_m3,
                 note=(note or '').strip(), cree_par=user)
 

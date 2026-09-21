@@ -1,6 +1,6 @@
 """PV82 — KPI « conçu vs vendu » (kWc conçus / kWc signés / taux de conversion).
 
-Miroir du test AO du même patron (``apps.ao.tests.test_kpis_ao``, AOF166) :
+Même patron que les autres providers KPI fédérés (AOF166) :
 un provider KPI dotted (``apps.ventes.reports.kpi_ventes``) déclaré dans
 ``apps/ventes/platform.py`` et résolu par le hub fédéré ARC40
 (``apps/reporting/reports.py::kpi_federes``).

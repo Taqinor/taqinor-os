@@ -6,17 +6,11 @@ P5 ventilation d'avance, P6 retenue à la source, P7 abandon de solde,
 P8 import de relevé, P9 transaction carte capturée) convergent sur
 ``apps.ventes.domain.encaissements.marquer_facture_soldee``.
 
-Avant AUD102, ``facture_payee`` — LE signal désigné par ``core/events.py``,
-auquel ``apps/compta/receivers.py`` branche le lettrage — n'était émis que sur
-TROIS d'entre eux : six soldes n'étaient jamais lettrés. Et les DEUX défauts
-découverts en construisant la carte encaissaient de l'argent sans jamais
-solder quoi que ce soit :
-
-  * B9 ``debiter_mandat_pour_facture`` créait un Paiement du TTC et laissait la
-    facture ÉMISE → EN_RETARD → relance, alors qu'elle était encaissée ;
-  * B14 ``compta.rapprocher_paiement_facture`` marquait l'intention portail
-    ``paye`` et déléguait le report « à la chaîne ventes » — que personne ne
-    faisait : l'argent du portail n'entrait dans AUCUN ``montant_paye``.
+Avant AUD102, ``facture_payee`` — LE signal désigné par ``core/events.py`` —
+n'était émis que sur TROIS d'entre eux. Et le défaut découvert en construisant
+la carte encaissait de l'argent sans jamais solder quoi que ce soit : B9
+``debiter_mandat_pour_facture`` créait un Paiement du TTC et laissait la
+facture ÉMISE → EN_RETARD → relance, alors qu'elle était encaissée.
 """
 import ast
 from decimal import Decimal
@@ -126,37 +120,6 @@ class TestDeuxDefautsDecouverts(_BaseSolde):
         self.assertEqual(facture.montant_du, Decimal('0.00'))
         self.assertEqual(facture.statut, Facture.Statut.PAYEE)
         self.assertEqual(len(compteur.pour(facture)), 1)
-
-    def test_rapprochement_portail_reporte_sur_la_chaine_ventes(self):
-        from apps.compta.models import PaiementFacturePortail
-        from apps.compta.services import rapprocher_paiement_facture
-
-        facture = self._facture(Decimal('1200'))
-        intention = PaiementFacturePortail.objects.create(
-            company=self.company, facture=facture,
-            montant=Decimal('1200'),
-            methode=PaiementFacturePortail.Methode.VIREMENT)
-        with _CompteurPayee() as compteur:
-            rapprocher_paiement_facture(intention, reference='VIR-AUD102')
-        facture.refresh_from_db()
-        self.assertEqual(facture.montant_du, Decimal('0.00'))
-        self.assertEqual(facture.statut, Facture.Statut.PAYEE)
-        self.assertEqual(len(compteur.pour(facture)), 1)
-
-    def test_rapprochement_portail_est_idempotent(self):
-        from apps.ventes.domain.encaissements import (
-            enregistrer_paiement_portail,
-        )
-
-        facture = self._facture(Decimal('1200'))
-        premier = enregistrer_paiement_portail(
-            facture=facture, montant=Decimal('1200'), reference='VIR-IDEM')
-        second = enregistrer_paiement_portail(
-            facture=facture, montant=Decimal('1200'), reference='VIR-IDEM')
-        self.assertIsNotNone(premier)
-        self.assertIsNone(second)
-        self.assertEqual(
-            Paiement.objects.filter(facture=facture).count(), 1)
 
 
 class TestNeufCheminsEmettentFacturePayee(_BaseSolde):
@@ -336,15 +299,3 @@ class TestPariteAucunBasculeurHorsService(TestCase):
             + ', '.join(coupables)
             + ". Appelez le service unique (AUD102) — ou ajoutez le fichier à "
               "ALLOWLIST avec sa raison.")
-
-
-class TestLettrageComptaBranche(TestCase):
-    """``facture_payee`` atteint réellement le lettrage comptable."""
-
-    def test_le_receveur_compta_est_abonne(self):
-        import apps.compta.receivers  # noqa: F401 — enregistre les abonnés
-        # Même précaution qu'AUD101 : l'arité des entrées de
-        # ``Signal.receivers`` est interne à Django et a changé en 5.0
-        # (ajout de ``is_async``) — on lit la clé, on ne dépaquette pas.
-        uids = {entree[0][0] for entree in facture_payee.receivers}
-        self.assertIn('compta_lettrage_facture_payee', uids)

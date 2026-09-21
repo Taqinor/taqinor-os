@@ -10,9 +10,8 @@ import {
 import VoiceNoteRecorder from '../../offlinesync/VoiceNoteRecorder'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
-import marketingApi from '../../../api/marketingApi'
 import CallLogPopover from '../CallLogPopover'
-import ChatterTimeline, { parseMarketingTouch } from '../../../components/ChatterTimeline'
+import ChatterTimeline from '../../../components/ChatterTimeline'
 import { formatDate } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
 
@@ -175,38 +174,6 @@ export default function TimelineTab({
         err, "Le point de contact n'a pas pu être enregistré — réessayez.")))
       .finally(() => setPcSaving(false))
   }, [leadId, pcForm])
-
-  // NTMKT11 — lien cliquable vers la campagne/séquence source d'une touche
-  // marketing reconnue dans une note (voir `ChatterTimeline.parseMarketingTouch`).
-  // Résolu PARESSEUSEMENT une seule fois, seulement si le chatter contient au
-  // moins une touche marketing (aucun appel réseau sinon).
-  const [marketingLookup, setMarketingLookup] = useState(null)
-  useEffect(() => {
-    if (marketingLookup) return
-    const aUneToucheMarketing = entries.some((a) => a.kind === 'note' && parseMarketingTouch(a.body))
-    if (!aUneToucheMarketing) return
-    Promise.all([marketingApi.campagnes.list(), marketingApi.sequences.list()])
-      .then(([campagnesRes, sequencesRes]) => {
-        const campagnes = marketingApi.unwrapList(campagnesRes)
-        const sequences = marketingApi.unwrapList(sequencesRes)
-        const parNom = (liste) => {
-          const map = {}
-          for (const item of liste) {
-            map[item.nom] = map[item.nom] === undefined ? item.id : null
-          }
-          return map
-        }
-        setMarketingLookup({ campagnes: parNom(campagnes), sequences: parNom(sequences) })
-      })
-      .catch(() => setMarketingLookup({ campagnes: {}, sequences: {} }))
-  }, [entries, marketingLookup])
-
-  const resolveMarketingLink = useCallback((type, nom) => {
-    if (!marketingLookup) return null
-    const id = type === 'campagne' ? marketingLookup.campagnes[nom] : marketingLookup.sequences[nom]
-    if (!id) return null
-    return type === 'campagne' ? `/marketing/campagnes/${id}` : `/marketing/sequences/${id}`
-  }, [marketingLookup])
 
   // ── Épingler / désépingler (backend LW28) ────────────────────────────────
   const togglePin = useCallback((item) => {
@@ -424,7 +391,6 @@ export default function TimelineTab({
 
       <ChatterTimeline
         entries={filtered}
-        resolveMarketingLink={resolveMarketingLink}
         pinned
         onTogglePin={togglePin}
       />

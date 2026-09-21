@@ -1,8 +1,8 @@
 """NTOBS10 — page « Confiance » (trust center) : certifications, sous-
 traitants, localisation des données.
 
-Contenu 100% SYSTÈME (pas de ``company`` — un seul jeu partagé, comme
-``apps.statuspage.ComponentStatus`` côté système). RÈGLE ABSOLUE (checked-
+Contenu 100% SYSTÈME (pas de ``company`` — un seul jeu partagé, comme le
+statut de composant de la page d'état). RÈGLE ABSOLUE (checked-
 facts-only, déjà appliquée au site vitrine) : aucune certification ni
 conformité NON réellement obtenue n'est affichée — chaque entrée doit être
 vérifiable, sinon le champ reste vide plutôt que rempli. Le seed

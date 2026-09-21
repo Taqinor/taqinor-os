@@ -726,7 +726,7 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         return qs
 
     def create(self, request, *args, **kwargs):
-        """``{produit, quantite, bin?, lot?, reception?, non_conformite?,
+        """``{produit, quantite, bin?, lot?, reception?,
         motif?}`` — met une quantité en quarantaine (aucun mouvement de stock :
         la marchandise est là, elle n'est plus disponible)."""
         from ..models import Produit
@@ -748,8 +748,6 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
                 bin_quarantaine=_lie('bin', request.data.get('bin')),
                 lot=_lie('lot', request.data.get('lot')),
                 reception=_lie('reception', request.data.get('reception')),
-                non_conformite=_lie(
-                    'non_conformite', request.data.get('non_conformite')),
                 motif=request.data.get('motif') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
@@ -799,7 +797,7 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
     moment (lecture seule).
     """
     queryset = PlanChargement.objects.select_related(
-        'livraison', 'expedition', 'vehicule', 'cree_par'
+        'livraison', 'expedition', 'cree_par'
     ).prefetch_related('unites_logistiques').all()
     serializer_class = PlanChargementSerializer
     ordering = ['-created_at']
@@ -832,7 +830,6 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
             company=company, user=request.user,
             livraison=_lie('livraison', request.data.get('livraison')),
             expedition=_lie('expedition', request.data.get('expedition')),
-            vehicule=_lie('vehicule', request.data.get('vehicule')),
             capacite_kg=request.data.get('capacite_kg') or None,
             capacite_m3=request.data.get('capacite_m3') or None,
             note=request.data.get('note') or '')

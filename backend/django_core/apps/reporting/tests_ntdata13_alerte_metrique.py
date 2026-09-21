@@ -68,7 +68,7 @@ class AlerteSurMetriqueTests(TestCase):
 
     def test_source_par_defaut_est_le_catalogue(self):
         alerte = KpiAlerte.objects.create(
-            company=self.company, kpi=KpiAlerte.Kpi.DSO,
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
             operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'))
         self.assertEqual(alerte.source, KpiAlerte.Source.CATALOGUE)
         # Chemin historique : évaluable, sans toucher à la couche sémantique.

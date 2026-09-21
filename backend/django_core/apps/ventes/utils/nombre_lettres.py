@@ -2,10 +2,8 @@
 
 La conversion française « chiffres → lettres » (XFAC9, née pour la quittance de
 paiement PDF marocaine) vit désormais dans `core.nombre_lettres`, la couche
-fondation — car trois domaines la consomment déjà ou vont la consommer
-(`ventes` : quittance ; `compta` : reçu de note de frais ; `ao` : arrêté du
-bordereau des prix et prix unitaires en lettres), et `apps.ao` ne peut pas
-importer un module d'app domaine (contrat import-linter `ao-models-decoupled`).
+fondation — car plusieurs domaines la consomment, et une app domaine ne peut
+pas importer un module d'une autre app domaine (contrats import-linter).
 
 Ce module reste un ré-export BIT-IDENTIQUE : les importeurs existants
 (`from apps.ventes.utils.nombre_lettres import montant_en_lettres`) continuent

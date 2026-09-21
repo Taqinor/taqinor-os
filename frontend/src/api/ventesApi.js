@@ -272,9 +272,6 @@ const ventesApi = {
   // pas un AbortSignal toute seule.
   postEtudeHorairePreview: (body, config = {}) =>
     api.post('/ventes/etude-horaire/preview/', body, config),
-  // WIR96 — suivi marketing d'un devis : ouverture du lien de partage
-  // (« vu le … ») + relances de devis abandonné consignées.
-  getSuiviPartageDevis: (id) => api.get(`/ventes/devis/${id}/suivi-partage/`),
   // ANALYT1 (audit item 64) — « Lecture par le client » : visites distinctes
   // par section de la proposition web + alerte de friction (relecture
   // répétée). Réservé responsable/admin côté serveur (IsResponsableOrAdmin) —
@@ -298,12 +295,6 @@ const ventesApi = {
   // taille — Éco et Max restent des explorations montrées au client.
   appliquerOffreTailleAuDevis: (id, cle) =>
     api.post(`/ventes/devis/${id}/offres-tailles/appliquer/`, { cle }),
-  // NTCPQ8 — approbation de remise par paliers (matrice NTCPQ7).
-  approbationDevis: (id) => api.get(`/ventes/devis/${id}/approbation/`),
-  approuverEtapeDevis: (id, commentaire = '') =>
-    api.post(`/ventes/devis/${id}/approuver-etape/`, { commentaire }),
-  rejeterEtapeDevis: (id, motif = '') =>
-    api.post(`/ventes/devis/${id}/rejeter-etape/`, { motif }),
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
   journalVentes: (params) =>
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),

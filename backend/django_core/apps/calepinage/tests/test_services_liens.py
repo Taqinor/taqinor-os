@@ -1,4 +1,9 @@
-"""CAL12 — rattacher après coup un calepinage à un devis / une affaire.
+"""CAL12 — rattacher après coup un calepinage à un devis.
+
+SOLMVP15 — ce module couvrait AUSSI le rattachement à une affaire d'appel
+d'offres. C'était un PONT vers une app qui sort du produit : il est retiré,
+et ses tests avec lui. Le rattachement au DEVIS — la voie du produit — est
+couvert ici exactement comme avant.
 
 Ce qui est prouvé ici :
 
@@ -6,8 +11,8 @@ Ce qui est prouvé ici :
   hérite alors du client/lead du devis s'il n'en avait pas ;
 * le DOUBLE rattachement est refusé avec un message qui NOMME le calepinage
   déjà lié — sans son nom, l'utilisateur ne peut rien faire du refus ;
-* un devis / une affaire d'une AUTRE société est INTROUVABLE (on ne confirme
-  jamais l'existence de la donnée d'autrui) ;
+* un devis d'une AUTRE société est INTROUVABLE (on ne confirme jamais
+  l'existence de la donnée d'autrui) ;
 * rattacher au MÊME devis est NEUTRE (ré-envoyer la demande n'est pas une
   erreur) ;
 * `Devis.statut` est strictement inchangé avant/après (règle #4).
@@ -17,13 +22,8 @@ Run :
 """
 from django.test import TestCase
 
-from apps.ao.models import AppelOffre
 from apps.calepinage.models import Calepinage
-from apps.calepinage.services.liens import (
-    LiaisonRefusee,
-    lier_appel_offre,
-    lier_devis,
-)
+from apps.calepinage.services.liens import LiaisonRefusee, lier_devis
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 from authentication.models import Company
@@ -103,46 +103,6 @@ class LierDevisTest(BaseLiens):
         with self.assertRaises(LiaisonRefusee) as capture:
             lier_devis(self.autonome, None)
         self.assertEqual(capture.exception.champ, 'devis')
-
-
-class LierAppelOffreTest(BaseLiens):
-    def setUp(self):
-        super().setUp()
-        self.affaire = AppelOffre.objects.create(
-            company=self.company, reference='AO-202609-0001',
-            objet='Centrale photovoltaïque en toiture')
-        self.affaire_etrangere = AppelOffre.objects.create(
-            company=self.autre, reference='AO-202609-0002',
-            objet='Centrale photovoltaïque en toiture')
-
-    def test_rattachement(self):
-        lier_appel_offre(self.autonome, self.affaire.pk)
-        self.autonome.refresh_from_db()
-        self.assertEqual(self.autonome.appel_offre_id, self.affaire.pk)
-
-    def test_meme_affaire_est_neutre(self):
-        lier_appel_offre(self.autonome, self.affaire.pk)
-        lier_appel_offre(self.autonome, self.affaire.pk)
-        self.autonome.refresh_from_db()
-        self.assertEqual(self.autonome.appel_offre_id, self.affaire.pk)
-
-    def test_affaire_d_une_autre_societe_introuvable(self):
-        with self.assertRaises(LiaisonRefusee) as capture:
-            lier_appel_offre(self.autonome, self.affaire_etrangere.pk)
-        self.assertEqual(capture.exception.champ, 'appel_offre')
-
-    def test_double_rattachement_refuse_en_nommant_le_calepinage(self):
-        Calepinage.objects.create(
-            company=self.company, client=self.client_a,
-            titre='Conception AO', appel_offre_id=self.affaire.pk)
-        with self.assertRaises(LiaisonRefusee) as capture:
-            lier_appel_offre(self.autonome, self.affaire.pk)
-        self.assertIn('Conception AO', str(capture.exception))
-
-    def test_affaire_absente_refuse(self):
-        with self.assertRaises(LiaisonRefusee) as capture:
-            lier_appel_offre(self.autonome, None)
-        self.assertEqual(capture.exception.champ, 'appel_offre')
 
 
 class CalepinageNonEnregistreTest(BaseLiens):

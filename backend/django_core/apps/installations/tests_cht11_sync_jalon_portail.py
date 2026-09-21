@@ -3,9 +3,8 @@
 Avant CHT11, ``JalonChantierPortail`` (portail) et ``JalonProjet`` (interne)
 vivaient en DOUBLE SAISIE : rien ne propageait l'atteinte d'un jalon interne
 vers la timeline visible du client. Ce module couvre le nouveau
-``services.synchroniser_jalon_portail`` sur ses DEUX chemins : le PATCH
-manuel (``JalonProjetViewSet.perform_update``, via l'API) et l'auto-atteinte
-via ``changer_statut_chantier`` (``notifier_reception_solde_a_facturer`` à
+``services.synchroniser_jalon_portail``, câblé sur l'auto-atteinte via
+``changer_statut_chantier`` (``notifier_reception_solde_a_facturer`` à
 RECEPTIONNE).
 
 Run :
@@ -16,8 +15,6 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.installations.models import Installation, JalonProjet
@@ -30,7 +27,6 @@ from authentication.models import Company
 
 User = get_user_model()
 _seq = itertools.count(1)
-BASE = '/api/django/installations'
 
 
 def make_company(slug=None, nom=None):
@@ -38,12 +34,6 @@ def make_company(slug=None, nom=None):
     company, _ = Company.objects.get_or_create(
         slug=slug or f'cht11-co-{n}', defaults={'nom': nom or f'CHT11 Co {n}'})
     return company
-
-
-def auth(user):
-    api = APIClient()
-    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-    return api
 
 
 def make_user(company, role='responsable'):
@@ -135,27 +125,6 @@ class TestSynchroniserJalonPortailDirect(TestCase):
         self.assertTrue(
             JalonChantierPortail.objects.filter(
                 chantier=self.inst, cle_phase='mes').exists())
-
-
-class TestPatchManuelSynchronisePortail(TestCase):
-    def setUp(self):
-        self.company = make_company()
-        self.admin = make_user(self.company, role='admin')
-        self.api = auth(self.admin)
-        self.client_obj = make_client(self.company)
-        self.inst = make_installation(self.company, self.client_obj)
-        self.jalon = JalonProjet.objects.create(
-            company=self.company, installation=self.inst,
-            phase=JalonProjet.Phase.ETUDE, libelle='Étude', atteint=False)
-
-    def test_patch_atteint_publie_le_jalon_au_portail(self):
-        r = self.api.patch(
-            f'{BASE}/jalons-projet/{self.jalon.id}/', {'atteint': True},
-            format='json')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertTrue(
-            JalonChantierPortail.objects.filter(
-                chantier=self.inst, cle_phase='etude', atteint=True).exists())
 
 
 class TestReceptionAutoSynchronisePortail(TestCase):

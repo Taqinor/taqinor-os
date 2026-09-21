@@ -160,12 +160,7 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
 
         NTP2P2 — instancie en outre le plan d'approbation (N étapes
         séquentielles) si une ``RegleApprobationAchat`` active couvre le
-        montant estimé. Sans règle : aucune étape, comportement historique.
-
-        NTP2P4 — contrôle budgétaire départemental AVANT tout changement
-        d'état : si le budget restant du département du demandeur ne couvre
-        pas la demande, la soumission est refusée (400) — sauf dérogation
-        autorisée par la règle d'approbation. Inactif par défaut."""
+        montant estimé. Sans règle : aucune étape, comportement historique."""
         from .. import services
 
         da = self.get_object()
@@ -175,11 +170,6 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 {'detail': "Seule une demande brouillon peut être soumise."},
                 status=status.HTTP_400_BAD_REQUEST)
         regle = services.resoudre_regle_approbation_achat(da)
-        try:
-            services.controler_budget_demande_achat(da, regle=regle)
-        except services.BudgetAchatError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
         # AUD819 — la transition passe par la table TRANSITIONS du kit
         # (``core.documents.changer_statut``) : garde + événement bus.
         try:
@@ -310,8 +300,6 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             statut=EtapeApprobationAchat.Statut.EN_ATTENTE
         ).update(statut=EtapeApprobationAchat.Statut.REJETE,
                  decision_le=timezone.now())
-        # NTP2P4 — l'enveloppe budgétaire engagée est rendue.
-        services.liberer_budget_demande_achat(da)
         _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
@@ -396,8 +384,6 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
-        # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
-        services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'], url_path='importer-lignes-csv')

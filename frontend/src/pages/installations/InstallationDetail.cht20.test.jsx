@@ -10,10 +10,10 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    CHT20 — Fiche chantier : la passerelle vers ses satellites.
    ----------------------------------------------------------------------------
    La section « Autour de ce chantier » (onglet Aperçu) rassemble des liens
-   pré-remplis `?chantier=<id>` vers les 7 écrans satellites (Suivi projet,
-   Sous-traitance, Réserves, RFI, Journal, Avenants, DGD) — chacun un
-   deep-link RÉEL déjà lu par l'écran cible (CHT19), jamais une URL ad hoc
-   (règle WIR176) — + un lien « Projet de facturation » quand un Projet
+   pré-remplis `?chantier=<id>` vers les écrans satellites btp_chantier
+   (Réserves, RFI, Journal, Avenants, DGD) — chacun un deep-link RÉEL déjà lu
+   par l'écran cible (CHT19), jamais une URL ad hoc (règle WIR176) — + un
+   lien « Projet de facturation » quand un Projet
    gestion_projet est rattaché (CHT18) et un lien vers le RegulatoryDossier du
    devis quand il existe (couche SÉPARÉE de la section 82-21 inline). Fin du
    parcours « re-sélectionner le même chantier dans 4 menus ».
@@ -117,13 +117,11 @@ beforeEach(() => {
 })
 
 describe('InstallationDetail — « Autour de ce chantier » (CHT20)', () => {
-  it('les 7 liens satellites naviguent vers leur route avec ?chantier=<id>', async () => {
+  it('les 5 liens satellites naviguent vers leur route avec ?chantier=<id>', async () => {
     const user = userEvent.setup()
     renderDetail(CHANTIER)
 
     const attendus = [
-      ['Suivi projet', '/chantiers/suivi-projet?chantier=601'],
-      ['Sous-traitance', '/chantiers/sous-traitance?chantier=601'],
       ['Réserves', '/btp-chantier/reserves?chantier=601'],
       ['RFI', '/btp-chantier/rfi?chantier=601'],
       ['Journal', '/btp-chantier/journal?chantier=601'],

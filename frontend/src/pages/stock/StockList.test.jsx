@@ -30,7 +30,6 @@ vi.mock('../../api/stockApi', () => ({
     exportProduitsXlsx: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
     etiquettesProduits: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
     etiquettesKanbanEmplacement: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
-    etiquettesShowroom: vi.fn(() => Promise.resolve({ data: new Blob(['x']) })),
     resolveCode: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))

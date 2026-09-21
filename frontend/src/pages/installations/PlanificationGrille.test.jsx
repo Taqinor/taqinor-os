@@ -18,7 +18,6 @@ import { configureStore } from '@reduxjs/toolkit'
    puis UN SEUL PATCH sur l'endpoint EXISTANT (zéro écriture serveur nouvelle). */
 
 const api = vi.hoisted(() => ({
-  getGanttChantiers: vi.fn(),
   getCalendrierInterventions: vi.fn(),
   getMaTournee: vi.fn(),
   getPlanDeCharge: vi.fn(),
@@ -42,7 +41,6 @@ function renderPage() {
 }
 
 beforeEach(() => {
-  api.getGanttChantiers.mockResolvedValue({ data: [] })
   api.getMaTournee.mockResolvedValue({ data: { stops: [] } })
   api.getPlanDeCharge.mockResolvedValue({ data: { techniciens: [] } })
   api.getConflitsAffectation.mockResolvedValue({ data: { conflits: [] } })

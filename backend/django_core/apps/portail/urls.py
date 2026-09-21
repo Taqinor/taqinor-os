@@ -1,17 +1,22 @@
 """Routes du module Portail client (``apps.portail``) — ODX12.
 
 Préfixe ``/api/django/portail/…``. PACT26 — le double montage historique qui
-re-servait ces mêmes ViewSets sous ``apps.compta.urls``
+re-servait ces mêmes ViewSets sous les routes compta historiques
 (``/api/django/compta/…``) a été retiré : aucun appelant frontend ne
 l'utilisait (vérifié). Les vues publiques tokenisées ``portail/<token>/…``
-(relevé, contestation facture) restent servies par ``apps.compta.urls`` —
+(relevé, contestation facture) restent servies par le module compta —
 elles n'ont JAMAIS été dupliquées ici, donc hors périmètre de ce retrait. Les
 ViewSets gardent le scoping ``request.user.company`` + l'assignation forcée de
-``company`` (hérité de ``_ComptaBaseViewSet`` = ``TenantMixin``).
+``company`` (``_PortailBaseViewSet`` = ``TenantMixin``).
 
 Basenames explicitement préfixés ``portail-…`` (héritage de l'époque où le
 routeur compta enregistrait les mêmes ViewSets) : conservé pour ne pas
 risquer de collision ailleurs.
+
+SOLMVP16 — ``satisfaction`` (NTPRT35) a été retiré : marketing est un module
+sorti du produit et cette surface n'avait pas d'équivalent sans lui.
+``mes-documents`` (NTPRT13) et ``ressources`` (NTPRT31) RESTENT : la GED est
+dans le MVP solaire (décision fondateur du 21/09/2026, SOLMVP16b).
 """
 
 from django.urls import include, path
@@ -34,7 +39,6 @@ from .views_client import (
     MesFacturesPortailViewSet,
     MesLivraisonsPortailViewSet,
     MonEquipePortailViewSet,
-    SatisfactionPortailViewSet,
     exporter_mes_donnees,
     ma_consommation_client,
     recherche_portail_client,
@@ -81,19 +85,13 @@ router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
                 basename='portail-mes-livraisons')
 # AUD525 — « Mes demandes SAV » : la surface CLIENT de FG233, jamais
 # atteignable jusqu'ici (son seul ViewSet est gardé IsResponsableOrAdmin,
-# refusé à tout rôle portail). Porte aussi la déflection KB (XSAV22), qui
-# n'était donc jamais exercée par un vrai client.
+# refusé à tout rôle portail).
 router.register(r'mes-demandes-sav', MesDemandesSavPortailViewSet,
                 basename='portail-mes-demandes-sav')
 # NTPRT14 — « Mes chantiers » : timeline (jalons portail CHT10/CHT11) +
 # galerie photos avant/pendant/après, jamais de donnée financière.
 router.register(r'mes-chantiers', MesChantiersPortailViewSet,
                 basename='portail-mes-chantiers')
-# NTPRT35 — widget « Satisfaction » : le déclencheur d'INTERFACE qui manquait
-# à FG238/FG239 (l'enquête était créée à la réception d'un chantier, sans
-# aucun écran client pour y répondre).
-router.register(r'satisfaction', SatisfactionPortailViewSet,
-                basename='portail-satisfaction')
 # NTPRT6 — « Mon équipe » : invitation/gestion des utilisateurs du portail
 # client par l'admin client lui-même (lecture ouverte à toute l'équipe,
 # invitation/révocation réservées à l'admin — services.est_admin_portail_client).

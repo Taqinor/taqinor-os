@@ -5,15 +5,14 @@ import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
 /* WR10 — PlanificationPage : câble les surfaces de scheduling/logistique
-   (Gantt chantiers FG74, calendrier techniciens FG68, ma tournée FG73, plan de
-   charge / conflits / nivellement FG299-301, camionnettes FG303, outils
-   chantier N43/FG79/FG71). On vérifie : (1) le Gantt appelle bien
-   getGanttChantiers et rend une barre par chantier daté ; (2) les onglets
-   existent (hooks e2e data-testid) ; (3) la synthèse coût/marge (admin-only)
-   n'apparaît PAS pour un rôle non-admin. Toute la logique réseau est mockée. */
+   (calendrier techniciens FG68, ma tournée FG73, plan de charge / conflits /
+   nivellement FG299-301, camionnettes FG303, outils chantier N43/FG79/FG71).
+   SOLMVP41 — le Gantt multi-chantier (FG74) est parti avec `gestion_projet`
+   (Groupe SOLMVP). On vérifie : (1) les onglets restants existent (hooks e2e
+   data-testid) ; (2) la synthèse coût/marge (admin-only) n'apparaît PAS pour
+   un rôle non-admin. Toute la logique réseau est mockée. */
 
 const api = vi.hoisted(() => ({
-  getGanttChantiers: vi.fn(),
   getCalendrierInterventions: vi.fn(),
   getMaTournee: vi.fn(),
   getPlanDeCharge: vi.fn(),
@@ -55,14 +54,6 @@ function renderOutils(role = 'responsable') {
 }
 
 beforeEach(() => {
-  api.getGanttChantiers.mockResolvedValue({
-    data: [
-      {
-        id: 1, reference: 'CH-001', client_nom: 'Client A', statut: 'planifie',
-        jalons: { signature: '2026-01-01', cloture: '2026-02-01' },
-      },
-    ],
-  })
   api.getCalendrierInterventions.mockResolvedValue({ data: [] })
   api.getMaTournee.mockResolvedValue({ data: { stops: [] } })
   api.getPlanDeCharge.mockResolvedValue({ data: { techniciens: [], jours_ouvres: 5, capacite_heures: 40 } })
@@ -75,17 +66,8 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('PlanificationPage (WR10)', () => {
-  it('charge et affiche le Gantt multi-chantier', async () => {
-    renderPage()
-    await waitFor(() => expect(api.getGanttChantiers).toHaveBeenCalled())
-    await waitFor(() =>
-      expect(document.querySelector('[data-testid="gantt-chantiers"]')).toBeInTheDocument())
-    expect(screen.getByText('CH-001')).toBeInTheDocument()
-  })
-
   it('rend tous les onglets de planification', () => {
     renderPage()
-    expect(screen.getByText('Gantt chantiers')).toBeInTheDocument()
     expect(screen.getByText('Calendrier techniciens')).toBeInTheDocument()
     expect(screen.getByText('Ma tournée')).toBeInTheDocument()
     expect(screen.getByText('Plan de charge')).toBeInTheDocument()

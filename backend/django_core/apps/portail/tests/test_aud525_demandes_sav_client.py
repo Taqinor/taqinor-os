@@ -3,13 +3,14 @@
 Constat d'audit (le ROUGE figé ici) : le SEUL ViewSet de
 ``DemandeTicketPortail`` est gardé par ``IsResponsableOrAdmin`` — une garde
 INTERNE refusée à tout rôle ``portail_*``. Aucun compte portail réel ne pouvait
-donc ouvrir une demande (403 sur POST), et la déflection KB
-(``suggestions-kb``/``consulter-article-kb``) héritait de la même garde : elle
-n'était jamais exercée par un vrai client.
+donc ouvrir une demande (403 sur POST).
 
 Le correctif ajoute la surface authentifiée manquante
 (``/portail/mes-demandes-sav/…``, garde ``IsPortalClientUser``), société et
 client résolus du COMPTE connecté.
+
+SOLMVP16 — la déflection KB (``suggestions-kb``/``consulter-article-kb``,
+XSAV22) couverte ici a été retirée : kb est un module sorti du produit.
 
 Run :
     python manage.py test apps.portail.tests.test_aud525_demandes_sav_client -v2
@@ -21,7 +22,6 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client
 from apps.installations.models import Installation
-from apps.kb.models import KbArticle
 from apps.portail.models import DemandeTicketPortail
 from apps.roles.models import (
     PORTAIL_CLIENT_PERMISSIONS,
@@ -158,39 +158,3 @@ class AUD525DemandesSavClientTests(TestCase):
         api.force_authenticate(user=fournisseur)
         resp = api.post(BASE, {'sujet': 'Panne'}, format='json')
         self.assertEqual(resp.status_code, 403, resp.content)
-
-    # ── Déflection KB, enfin exercée par un vrai client ─────────────────────
-
-    def test_suggestions_kb_servies_au_client(self):
-        article = KbArticle.objects.create(
-            company=self.company, titre='Onduleur en défaut — que faire ?',
-            corps='Vérifiez le code erreur.',
-            statut=KbArticle.Statut.PUBLIE, visible_portail=True)
-        KbArticle.objects.create(
-            company=self.company, titre='Onduleur — note interne',
-            statut=KbArticle.Statut.PUBLIE, visible_portail=False)
-        resp = self.api.get(f'{BASE}suggestions-kb/?q=onduleur')
-        self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(
-            {s['id'] for s in resp.data['suggestions']}, {article.id})
-
-    def test_consultation_kb_comptee(self):
-        article = KbArticle.objects.create(
-            company=self.company, titre='Onduleur en défaut',
-            corps='Vérifiez le code erreur.',
-            statut=KbArticle.Statut.PUBLIE, visible_portail=True)
-        resp = self.api.post(
-            f'{BASE}consulter-article-kb/', {'article_id': article.id},
-            format='json')
-        self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertTrue(resp.data['enregistre'])
-        article.refresh_from_db()
-        self.assertEqual(article.consultations_portail_ticket, 1)
-
-    def test_kb_isolee_par_societe(self):
-        autre = make_company('aud525-co-b', 'AUD525 B')
-        KbArticle.objects.create(
-            company=autre, titre='Onduleur autre société',
-            statut=KbArticle.Statut.PUBLIE, visible_portail=True)
-        resp = self.api.get(f'{BASE}suggestions-kb/?q=onduleur')
-        self.assertEqual(resp.data['suggestions'], [])

@@ -13,3 +13,9 @@
 docs
 backend
 .env
+# SOLMVP40 — modules sortis du MVP solaire (frontend/parked/README.md).
+# frontend/Dockerfile.prod fait `COPY frontend/ ./` avec le contexte racine :
+# c'est CE fichier (pas frontend/.dockerignore) qui gouverne réellement ce
+# qui entre dans l'image de prod. Le code reste dans le dépôt, jamais dans
+# l'image ni le build (aucun import ne l'atteint de toute façon).
+frontend/parked

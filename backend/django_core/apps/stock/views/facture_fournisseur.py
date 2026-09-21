@@ -95,20 +95,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        from rest_framework.exceptions import ValidationError
-        from ..services import check_periode_comptable_ouverte
-
         company = self.request.user.company
-        # AUD232 — garde de période comptable EN AMONT : sans elle, une
-        # facture antidatée dans un mois clos passait (toggle écritures OFF)
-        # ou levait une ValidationError non traduite APRÈS création (toggle
-        # ON), laissant une facture orpheline.
-        try:
-            check_periode_comptable_ouverte(
-                company, serializer.validated_data.get('date_facture'),
-                document='Cette facture fournisseur')
-        except ValueError as exc:
-            raise ValidationError({'detail': str(exc)})
 
         def _save(ref):
             return serializer.save(
@@ -131,25 +118,14 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 company=company, user=self.request.user)
 
     def perform_update(self, serializer):
-        """NTP2P10 — quand l'utilisateur CONFIRME (PATCH `bon_commande`, un
-        lien JAMAIS posé silencieusement — la suggestion NTP2P10 ci-dessous
-        propose, l'utilisateur choisit), déclenche IMMÉDIATEMENT l'évaluation
-        du rapprochement 3 voies (``services.evaluate_facture_exception``)
-        au lieu d'attendre le prochain paiement (``check_facture_exception_
-        gate``, le seul appelant jusqu'ici). Best-effort : une évaluation en
-        échec ne casse jamais la mise à jour de la facture."""
-        ancien_bon_commande_id = serializer.instance.bon_commande_id
-        facture = serializer.save()
-        nouveau_bon_commande_id = facture.bon_commande_id
-        if (nouveau_bon_commande_id
-                and nouveau_bon_commande_id != ancien_bon_commande_id):
-            try:
-                from ..services import evaluate_facture_exception
-                evaluate_facture_exception(self.request.user.company, facture)
-            except Exception:  # noqa: BLE001 — jamais bloquant
-                logger.warning(
-                    'NTP2P10: évaluation 3 voies échouée après confirmation '
-                    'BCF (facture %s)', facture.pk, exc_info=True)
+        """NTP2P10 — confirmation du lien `bon_commande` (jamais posé
+        silencieusement, l'utilisateur choisit).
+
+        SOLMVP12 (20/09/2026) — l'évaluation immédiate du rapprochement 3
+        voies (``services.evaluate_facture_exception``, lecture du module
+        compta détaché de stock) a été retirée : seul
+        ``check_facture_exception_gate`` (au paiement) reste."""
+        serializer.save()
 
     def perform_destroy(self, instance):
         """AUD207 — `PaiementFournisseur.facture` est désormais PROTECT (une
@@ -383,16 +359,6 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             data={**request.data, 'facture': facture.id},
             context={'request': request})
         serializer.is_valid(raise_exception=True)
-        # AUD232 — un règlement ne s'enregistre pas dans une période close.
-        from ..services import check_periode_comptable_ouverte
-        try:
-            check_periode_comptable_ouverte(
-                request.user.company,
-                serializer.validated_data.get('date_paiement'),
-                document='Ce règlement fournisseur')
-        except ValueError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             from ..services import (
                 recompute_facture_fournisseur_statut, compute_ras_tva,

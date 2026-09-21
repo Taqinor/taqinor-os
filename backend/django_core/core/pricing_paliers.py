@@ -1,9 +1,9 @@
 """FG364 — Calcul de prix par paliers (tiered/volume pricing), fondation pure — NTSUB3.
 
-Comme :mod:`core.stock_reorder`, :mod:`core.churn_risk` et :mod:`core.clv`, ce
+Comme :mod:`core.stock_reorder` et :mod:`core.churn_risk`, ce
 module reste une couche de BASE — contrat import-linter
 ``core-foundation-is-a-base-layer`` : il n'importe AUCUNE app métier. L'app
-appelante (``apps.sav`` pour XCTR16, ``apps.contrats`` pour NTSUB2/4) agrège ses
+appelante (le SAV pour XCTR16) agrège ses
 propres paliers (``PalierUsage`` en base) et son usage via SA couche
 ``selectors``/``models``, puis passe ces ENTRÉES à
 :func:`calculer_prix_paliers` ; ce module fournit uniquement le moteur de calcul
@@ -67,8 +67,8 @@ def _normaliser_paliers(paliers: Iterable) -> list:
 
     Accepte des dicts ``{seuil_min, seuil_max, prix_unitaire}``, des tuples
     ``(seuil_min, seuil_max, prix_unitaire)``, ou tout objet portant ces trois
-    attributs (ex. une instance ``apps.contrats.models.PalierUsage``) — jamais
-    d'import du modèle ici (le module reste pur).
+    attributs (ex. une instance de modèle ``PalierUsage`` côté app métier) —
+    jamais d'import du modèle ici (le module reste pur).
     """
     normalises = []
     for p in paliers or []:

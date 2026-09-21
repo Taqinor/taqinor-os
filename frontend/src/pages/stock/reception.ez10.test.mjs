@@ -1,9 +1,9 @@
-// EZ10 — Réception sans surprise : défauts + recherche + « Ranger maintenant ».
+// EZ10 — Réception sans surprise : défauts + recherche.
 // État d'avant : la date valait '' ; le sélecteur de bon de commande était le
 // Select sans recherche ; la quantité reçue n'était pas pré-remplie (le
-// magasinier retapait la commande ligne par ligne) ; et la bannière de succès
-// n'offrait AUCUNE suite — réception (Stock) et rangement (Magasin) étaient
-// deux navigations sans lien.
+// magasinier retapait la commande ligne par ligne).
+// SOLMVP41 — la SUITE « Ranger maintenant » (vers /magasin/rangement, EZ10)
+// est partie avec l'app magasin (Groupe SOLMVP) ; ses deux tests avec elle.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -35,18 +35,6 @@ test('le bon de commande se CHERCHE (Combobox du kit, zéro composant nouveau)',
   // Le Select sans recherche a disparu de l'écran.
   assert.doesNotMatch(src, /<SelectTrigger id="rec-bon"/)
   assert.doesNotMatch(src, /\n\s+Select, SelectTrigger/)
-})
-
-test('la bannière de succès offre la SUITE : « Ranger maintenant »', () => {
-  assert.match(src, /data-testid="reception-succes"/)
-  assert.match(src, /data-testid="reception-ranger"/)
-  assert.match(src, /<Link to="\/magasin\/rangement">Ranger maintenant/)
-})
-
-test('le deep-link reste HONNÊTE : aucun pré-filtre promis', () => {
-  // Ni l'écran de rangement ni `PutAwayViewSet` ne supportent un pré-filtre :
-  // on ne met donc AUCUN paramètre dans le lien.
-  assert.doesNotMatch(src, /\/magasin\/rangement\?/)
 })
 
 test('budget : une réception conforme ne demande AUCUNE saisie de quantité', () => {

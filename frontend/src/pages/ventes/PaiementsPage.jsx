@@ -15,9 +15,6 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
-// WIR256 — lien « Voir l'écriture comptable » (WIR24), auto-masqué tant
-// qu'aucune écriture n'existe (réglage auto-écritures inactif).
-import EcritureSourceLink from '../../features/compta/components/EcritureSourceLink.jsx'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -476,10 +473,6 @@ export default function PaiementsPage() {
                   )),
                 },
                 { key: 'par_qui', header: 'Par qui', cell: (p) => p.created_by_username || '—' },
-                {
-                  key: 'ecriture', header: 'Écriture',
-                  cell: (p) => <EcritureSourceLink sourceType="paiement" sourceId={p.id} />,
-                },
                 {
                   key: 'actions',
                   header: '',

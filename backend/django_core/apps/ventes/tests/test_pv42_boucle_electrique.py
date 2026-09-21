@@ -266,7 +266,7 @@ class LeKitProduitEstTransmisAuCalepinage(_Base):
 
     def test_le_panneau_du_catalogue_est_transmis_a_la_creation(self):
         mouchard = _MoteurMouchard()
-        with patch('apps.ao.selectors.calepinage_villa', mouchard):
+        with patch('apps.calepinage.selectors.calepinage_villa', mouchard):
             self._devis(layout_deux_pans())
         self.assertEqual(len(mouchard.appels), 2)
         for kwargs in mouchard.appels:
@@ -284,7 +284,7 @@ class LeKitProduitEstTransmisAuCalepinage(_Base):
             produit=autre, designation=autre.nom)
 
         mouchard = _MoteurMouchard()
-        with patch('apps.ao.selectors.calepinage_villa', mouchard):
+        with patch('apps.calepinage.selectors.calepinage_villa', mouchard):
             mesure = services.compte_moteur_du_layout(
                 layout_deux_pans(), company=self.company, devis=devis)
         self.assertIsNotNone(mesure)
@@ -301,7 +301,7 @@ class LeKitProduitEstTransmisAuCalepinage(_Base):
             prix_vente=Decimal('900'), prix_achat=Decimal('700'),
             quantite_stock=10)
         mouchard = _MoteurMouchard()
-        with patch('apps.ao.selectors.calepinage_villa', mouchard):
+        with patch('apps.calepinage.selectors.calepinage_villa', mouchard):
             services.compte_moteur_du_layout(layout_deux_pans(),
                                              company=self.company)
         self.assertTrue(mouchard.appels)
@@ -311,7 +311,7 @@ class LeKitProduitEstTransmisAuCalepinage(_Base):
 
     def test_sans_societe_ni_devis_l_appel_reste_celui_d_hier(self):
         mouchard = _MoteurMouchard()
-        with patch('apps.ao.selectors.calepinage_villa', mouchard):
+        with patch('apps.calepinage.selectors.calepinage_villa', mouchard):
             services.compte_moteur_du_layout(layout_deux_pans())
         self.assertTrue(mouchard.appels)
         for kwargs in mouchard.appels:
@@ -370,7 +370,7 @@ class UnLayoutSansGeometrieNeBougePas(_Base):
     @override_settings(USE_MOTEUR_CALEPINAGE=True)
     def test_le_moteur_reste_muet_sans_geometrie(self):
         mouchard = _MoteurMouchard()
-        with patch('apps.ao.selectors.calepinage_villa', mouchard):
+        with patch('apps.calepinage.selectors.calepinage_villa', mouchard):
             self.assertIsNone(services.compte_moteur_du_layout(
                 layout_sans_geometrie(), company=self.company))
         self.assertEqual(mouchard.appels, [])

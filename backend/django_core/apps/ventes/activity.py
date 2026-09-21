@@ -331,34 +331,3 @@ def log_facture_abandon(facture, user, montant, motif_label, auto=False):
         body=(f"Solde résiduel de {montant} MAD abandonné {origine} "
               f"— motif : {motif_label}."),
     )
-
-
-def log_facture_activity_contentieux(facture, user, qui, date_str):
-    """XFAC21 — chatter de la facture : passage au contentieux (recouvrement
-    externe). Gèle les relances ordinaires (``exclu_relances``)."""
-    from .models import FactureActivity
-    return FactureActivity.objects.create(
-        company=facture.company, facture=facture, user=user,
-        kind=FactureActivity.Kind.MODIFICATION,
-        field='contentieux', field_label='Passage au contentieux',
-        new_value=date_str,
-        body=f'Passé au contentieux (recouvrement externe) le {date_str} '
-             f'par {qui}.',
-    )
-
-
-def log_facture_contestation_portail(facture, motif_label, commentaire=''):
-    """XFAC27 — chatter de la facture : contestation ouverte par le CLIENT
-    depuis le portail self-service (aucun ``user`` interne — l'action vient
-    du client, jamais un membre de l'équipe)."""
-    from .models import FactureActivity
-    corps = f'Facture contestée par le client depuis le portail — {motif_label}.'
-    if commentaire:
-        corps += f' Commentaire : {commentaire}'
-    return FactureActivity.objects.create(
-        company=facture.company, facture=facture, user=None,
-        kind=FactureActivity.Kind.MODIFICATION,
-        field='contestation_portail', field_label='Contestation portail',
-        new_value=motif_label,
-        body=corps,
-    )

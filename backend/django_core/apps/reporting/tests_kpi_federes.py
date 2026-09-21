@@ -1,14 +1,10 @@
 """ARC40 — endpoint KPI fédéré piloté par le registre plateforme.
 
-Couvre : (1) les 3 providers pilotes (rh, compta, gestion_projet) renvoient
-des tuiles normalisées agrégées par ``reports/kpi-federes/`` ; (2) le scope
-société (les données d'une autre société ne comptent jamais) ; (3) le gatage
-``ModuleToggle`` (module OFF ⇒ ses tuiles disparaissent) ; (4) un provider
-déclaré par manifeste apparaît SANS toucher apps/reporting ; (5) une clé
-héritée non-dotted (``crm_sales_report``) est ignorée sans erreur.
+Couvre : (1) un provider déclaré par manifeste apparaît SANS toucher
+apps/reporting ; (2) un superuser sans société reçoit une liste vide. Le
+scope société et le gatage ``ModuleToggle`` sur un VRAI provider déclaré
+(calepinage) sont couverts dans ``tests_cal218_kpis.py`` — pas dupliqués ici.
 """
-from datetime import date, timedelta
-from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -17,7 +13,6 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from core.models import ModuleToggle
 
 User = get_user_model()
 
@@ -46,117 +41,8 @@ class KpiFederesTestCase(TestCase):
             company=self.company)
         self.api = auth(self.user)
 
-    # ── Fixtures métier minimales ─────────────────────────────────────────
-
-    def _seed_rh(self):
-        from apps.rh.models import DemandeConge, DossierEmploye, TypeAbsence
-        emp = DossierEmploye.objects.create(
-            company=self.company, matricule='ARC40-1', nom='Alaoui',
-            prenom='Sara')  # statut par défaut : actif
-        DossierEmploye.objects.create(
-            company=self.company, matricule='ARC40-2', nom='Sorti',
-            prenom='Omar', statut=DossierEmploye.Statut.SORTI)
-        # Employé d'une AUTRE société — ne doit jamais compter.
-        DossierEmploye.objects.create(
-            company=self.other, matricule='ARC40-X', nom='Externe',
-            prenom='N')
-        type_conge = TypeAbsence.objects.create(
-            company=self.company, code='CP', libelle='Congé payé',
-            decompte_jours_ouvres=True, deduit_solde=True, remunere=True)
-        DemandeConge.objects.create(
-            company=self.company, employe=emp, type_absence=type_conge,
-            date_debut=date.today() - timedelta(days=1),
-            date_fin=date.today() + timedelta(days=2),
-            statut=DemandeConge.Statut.VALIDEE)
-
-    def _seed_compta(self):
-        from apps.compta.models import Effet
-        today = date.today()
-        # À échoir dans 15 jours (ouvert) → compte dans « 30 j ».
-        Effet.objects.create(
-            company=self.company, sens=Effet.Sens.RECEVOIR,
-            montant=Decimal('1000'), date_emission=today,
-            date_echeance=today + timedelta(days=15))
-        # Échu depuis 5 jours (ouvert) → compte dans « dépassées ».
-        Effet.objects.create(
-            company=self.company, sens=Effet.Sens.PAYER,
-            montant=Decimal('500'), date_emission=today - timedelta(days=40),
-            date_echeance=today - timedelta(days=5))
-        # Encaissé (soldé) → ne compte nulle part.
-        Effet.objects.create(
-            company=self.company, sens=Effet.Sens.RECEVOIR,
-            montant=Decimal('700'), date_emission=today - timedelta(days=40),
-            date_echeance=today - timedelta(days=10),
-            statut=Effet.Statut.ENCAISSE)
-
-    def _seed_projets(self):
-        from apps.gestion_projet.models import Projet
-        Projet.objects.create(
-            company=self.company, code='PRJ-A', nom='Centrale A',
-            statut=Projet.Statut.EN_COURS)
-        Projet.objects.create(
-            company=self.company, code='PRJ-B', nom='Centrale B',
-            statut=Projet.Statut.EN_COURS)
-        Projet.objects.create(
-            company=self.company, code='PRJ-C', nom='Centrale C',
-            statut=Projet.Statut.TERMINE)
-
     def _tiles_by_id(self, resp):
         return {t['id']: t for t in resp.data['tuiles']}
-
-
-class TestThreeProviders(KpiFederesTestCase):
-    def test_three_pilot_providers_return_normalized_tiles(self):
-        self._seed_rh()
-        self._seed_compta()
-        self._seed_projets()
-        resp = self.api.get(URL)
-        self.assertEqual(resp.status_code, 200, resp.data)
-        tuiles = self._tiles_by_id(resp)
-
-        # rh — effectif actif (1 actif, le sorti et l'externe exclus).
-        self.assertEqual(tuiles['rh_effectif_actif']['valeur'], 1)
-        # rh — absence validée couvrant aujourd'hui.
-        self.assertEqual(tuiles['rh_absences_en_cours']['valeur'], 1)
-        # compta — échéances.
-        self.assertEqual(tuiles['compta_echeances_30j']['valeur'], 1)
-        self.assertEqual(tuiles['compta_echeances_depassees']['valeur'], 1)
-        # gestion_projet — répartition par statut.
-        self.assertEqual(tuiles['projets_en_cours']['valeur'], 2)
-        self.assertEqual(tuiles['projets_termine']['valeur'], 1)
-
-        # Forme normalisée : id/label/valeur (+ provider posé par l'endpoint).
-        for t in resp.data['tuiles']:
-            for cle in ('id', 'label', 'valeur', 'provider'):
-                self.assertIn(cle, t)
-            # Un provider est toujours un dotted résoluble — la clé héritée
-            # non-dotted 'crm_sales_report' (manifeste crm) est ignorée.
-            self.assertIn('.', t['provider'])
-
-    def test_company_scoping_is_absolute(self):
-        """Les données d'une autre société n'alimentent JAMAIS les tuiles."""
-        from apps.gestion_projet.models import Projet
-        Projet.objects.create(
-            company=self.other, code='PRJ-EXT', nom='Externe',
-            statut=Projet.Statut.EN_COURS)
-        resp = self.api.get(URL)
-        tuiles = self._tiles_by_id(resp)
-        # Aucun projet dans NOTRE société → aucune tuile projets.
-        self.assertNotIn('projets_en_cours', tuiles)
-
-
-class TestToggleGating(KpiFederesTestCase):
-    def test_module_off_drops_its_tiles(self):
-        self._seed_rh()
-        self._seed_compta()
-        ModuleToggle.objects.create(
-            company=self.company, module='rh', actif=False)
-        resp = self.api.get(URL)
-        tuiles = self._tiles_by_id(resp)
-        self.assertNotIn('rh_effectif_actif', tuiles)
-        self.assertNotIn('rh_absences_en_cours', tuiles)
-        # compta reste visible.
-        self.assertIn('compta_echeances_30j', tuiles)
 
 
 class TestRegistryDriven(KpiFederesTestCase):

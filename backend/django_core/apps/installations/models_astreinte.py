@@ -1,9 +1,9 @@
 """
 XFSM10 — Astreinte / rotation après-heures.
 
-Le roster FG169 (``apps.rh.AffectationRoster``) couvre les shifts NORMAUX ;
-rien ne gère l'astreinte nuits/week-ends ni le routage des urgences hors heures
-ouvrées. ``Astreinte`` enregistre, sur une fenêtre [date_debut, date_fin]
+Le roster RH FG169 couvre les shifts NORMAUX ; rien ne gère l'astreinte
+nuits/week-ends ni le routage des urgences hors heures ouvrées. ``Astreinte``
+enregistre, sur une fenêtre [date_debut, date_fin]
 INCLUSIVE, le technicien D'ASTREINTE d'une société (unique par période/société
 — pas de chevauchement, gardé par ``clean()``).
 

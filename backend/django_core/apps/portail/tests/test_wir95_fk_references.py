@@ -18,7 +18,7 @@ avec DEUX politiques de suppression distinctes :
 
 Un id déjà orphelin (donnée historique/test) reste accepté
 (db_constraint=False) — pas de régression sur le contrat existant (cf.
-``apps.compta.tests.test_portail_partenaires``).
+``compta.tests.test_portail_partenaires``).
 
 Run :
     python manage.py test apps.portail.tests.test_wir95_fk_references -v2

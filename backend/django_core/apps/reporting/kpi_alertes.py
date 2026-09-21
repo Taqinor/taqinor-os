@@ -2,34 +2,16 @@
 
 CRUD company-scopé (`KpiAlerteViewSet`) + évaluation (job Beat quotidien,
 `evaluate_all_kpi_alertes`) qui calcule chaque KPI du catalogue FERMÉ à
-travers les selectors reporting/compta EXISTANTS, compare au seuil configuré
+travers les selectors reporting EXISTANTS, compare au seuil configuré
 et notifie une seule fois par franchissement (dédup via `deja_notifie`).
 
 Catalogue fermé (``KpiAlerte.Kpi``) :
-  * ``dso``                  — délai moyen de recouvrement, jours
-                                (``apps.compta.selectors.pilotage_financier``).
   * ``encours_echu_total``   — Σ des tranches d'âge >30 j de la balance âgée
                                 (``apps.reporting.balance_export.balance_agee_rows``,
                                 même app).
   * ``valeur_stock_totale``  — valorisation vente du stock
                                 (même agrégat que ``apps.reporting.reports.
                                 stock_report``).
-  * ``delai_moyen_dedouanement`` (NTLOG51, volet douane) — Σ jours entre
-                                DUM déposée et Levé des DossierExport
-                                clôturés du mois
-                                (``apps.douane.selectors.
-                                delai_moyen_dedouanement``).
-  * ``taux_service_scm`` (NTSCM46) — % de SKU sous politique de stock qui ne
-                                sont pas en rupture/à commander
-                                (``apps.scm.selectors.tableau_bord_executif``).
-  * ``juridique_dossiers_ouverts`` / ``juridique_montant_en_jeu_total`` /
-    ``juridique_taux_gain`` / ``juridique_delai_moyen_resolution`` (NTJUR48)
-                              — les quatre KPI du contentieux
-                                (``apps.juridique.selectors.kpis_juridiques``).
-                                Ils EXCLUENT toujours les dossiers
-                                confidentiels des agrégats visibles à un rôle
-                                non autorisé — le filtrage vit dans le
-                                sélecteur, jamais chez l'appelant.
   * ``uptime_moyen_12_mois`` / ``jours_depuis_dernier_drill_reussi`` /
     ``quota_le_plus_charge_pct`` (NTOBS31) — les trois KPI « Fiabilité »
                                 cross-module, dérivés de ``core.sla.
@@ -130,13 +112,6 @@ class KpiAlerteViewSet(TenantMixin, viewsets.ModelViewSet):
 
 # ── Évaluation des KPI (lecture via selectors EXISTANTS uniquement) ─────────
 
-def _compute_dso(company):
-    from apps.compta import selectors as compta_selectors
-    data = compta_selectors.pilotage_financier(company)
-    dso = data.get('dso')
-    return Decimal(str(dso)) if dso is not None else None
-
-
 def _compute_encours_echu_total(company, user):
     """Σ des tranches >30 j de la balance âgée (même app — pas de selector
     cross-app requis)."""
@@ -165,42 +140,6 @@ def _compute_valeur_stock_totale(company):
         Sum(F('prix_vente') * F('quantite_stock'), output_field=dec),
         Decimal('0'))
     return qs.aggregate(t=sum_vente)['t'] or Decimal('0')
-
-
-def _compute_delai_moyen_dedouanement(company):
-    """NTLOG51 (volet douane) — ``apps.douane.selectors.
-    delai_moyen_dedouanement`` (import paresseux — ``reporting`` reste un
-    satellite, aucun import d'app métier au niveau module)."""
-    from apps.douane.selectors import delai_moyen_dedouanement
-    return delai_moyen_dedouanement(company)
-
-
-def _compute_taux_service_scm(company):
-    """NTSCM46 — ``apps.scm.selectors.tableau_bord_executif`` (NTSCM28,
-    réutilisé tel quel — jamais un système parallèle) : % de SKU sous
-    politique de stock qui ne sont PAS en rupture/à commander. ``None`` (KPI
-    ignoré, jamais 0 trompeur) si la société n'a encore aucune politique de
-    stock (NTSCM6)."""
-    from apps.scm.selectors import tableau_bord_executif
-    taux = tableau_bord_executif(company)['taux_service_pct']
-    return Decimal(str(taux)) if taux is not None else None
-
-
-def _kpis_btp(company):
-    """NTCON34 — les quatre KPI BTP en UN seul appel au sélecteur de
-    ``apps.btp_chantier`` (import paresseux — ``reporting`` reste un
-    satellite, aucun import de modèle métier)."""
-    from apps.btp_chantier.selectors import kpis_btp
-    return kpis_btp(company)
-
-
-def _compute_btp(company, cle):
-    """Extrait UNE des quatre valeurs. ``None`` (KPI ignoré, jamais un 0
-    trompeur) quand la société n'a aucun objet BTP de ce type."""
-    valeur = _kpis_btp(company).get(cle)
-    if valeur is None:
-        return None
-    return Decimal(str(valeur))
 
 
 def _compute_i18n(company, cle):
@@ -297,47 +236,13 @@ def _compute_quota_le_plus_charge_pct(company):
     return max(ratios) if ratios else None
 
 
-def _kpis_juridiques(company, user):
-    """NTJUR48 — les quatre KPI juridiques en UN seul appel au sélecteur de
-    ``apps.juridique`` (import paresseux — ``reporting`` reste un satellite,
-    aucun import de modèle métier). Le filtrage de CONFIDENTIALITÉ est porté
-    par le sélecteur : ``user`` décide, l'appelant n'a rien à deviner."""
-    from apps.juridique.selectors import kpis_juridiques
-    return kpis_juridiques(company, user=user)
-
-
-def _compute_juridique(company, user, cle):
-    """Extrait UNE des quatre valeurs. ``None`` (KPI ignoré, jamais un 0
-    trompeur) quand la métrique n'est pas définie — aucun dossier clos, par
-    exemple."""
-    valeur = _kpis_juridiques(company, user).get(cle)
-    if valeur is None:
-        return None
-    return Decimal(str(valeur))
-
-
 # SOL14 — module PROPRIÉTAIRE d'un KPI, quand il en a un. Un KPI dont le
 # module est éteint pour la société DÉGRADE PROPREMENT : valeur `None`, donc
 # aucun franchissement, aucune notification, et la tuile disparaît de l'écran
 # (l'UI n'affiche pas un KPI sans valeur) — au lieu d'appeler un sélecteur
-# d'app coupée et de rendre un 0 trompeur. Les KPI transverses (DSO, encours,
+# d'app coupée et de rendre un 0 trompeur. Les KPI transverses (encours,
 # valeur de stock) n'ont pas d'entrée : ils ne sont jamais masqués.
-KPI_MODULE = {
-    KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: 'douane',
-    KpiAlerte.Kpi.TAUX_SERVICE_SCM: 'scm',
-    # NTJUR48 — module `juridique` éteint pour la société ⇒ dégradation propre
-    # (valeur None, aucune notification, tuile masquée).
-    KpiAlerte.Kpi.JURIDIQUE_DOSSIERS_OUVERTS: 'juridique',
-    KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: 'juridique',
-    KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: 'juridique',
-    KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: 'juridique',
-    # NTCON34 — module `btp_chantier` éteint pour la société ⇒ dégradation
-    # propre (valeur None, aucune notification, tuile masquée).
-    KpiAlerte.Kpi.BTP_RESERVES_OUVERTES: 'btp_chantier',
-    KpiAlerte.Kpi.BTP_RFI_EN_RETARD: 'btp_chantier',
-    KpiAlerte.Kpi.BTP_VISAS_EN_ATTENTE: 'btp_chantier',
-    KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: 'btp_chantier',
-}
+KPI_MODULE = {}
 
 
 def kpi_disponible(company, kpi):
@@ -361,37 +266,10 @@ def kpis_disponibles(company):
 
 
 _KPI_COMPUTERS = {
-    KpiAlerte.Kpi.DSO: lambda company, user: _compute_dso(company),
     KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL: lambda company, user:
         _compute_encours_echu_total(company, user),
     KpiAlerte.Kpi.VALEUR_STOCK_TOTALE: lambda company, user:
         _compute_valeur_stock_totale(company),
-    KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: lambda company, user:
-        _compute_delai_moyen_dedouanement(company),
-    KpiAlerte.Kpi.TAUX_SERVICE_SCM: lambda company, user:
-        _compute_taux_service_scm(company),
-    # NTJUR48 — les quatre KPI juridiques passent le ``user`` au sélecteur :
-    # c'est LUI qui exclut les dossiers confidentiels de l'agrégat.
-    KpiAlerte.Kpi.JURIDIQUE_DOSSIERS_OUVERTS: lambda company, user:
-        _compute_juridique(company, user, 'juridique_dossiers_ouverts'),
-    KpiAlerte.Kpi.JURIDIQUE_MONTANT_EN_JEU_TOTAL: lambda company, user:
-        _compute_juridique(company, user, 'juridique_montant_en_jeu_total'),
-    KpiAlerte.Kpi.JURIDIQUE_TAUX_GAIN: lambda company, user:
-        _compute_juridique(company, user, 'juridique_taux_gain'),
-    KpiAlerte.Kpi.JURIDIQUE_DELAI_MOYEN_RESOLUTION: lambda company, user:
-        _compute_juridique(company, user,
-                           'juridique_delai_moyen_resolution'),
-    # NTCON34 — les quatre KPI BTP (aucun ne dépend du `user` : ce sont des
-    # agrégats d'exécution de chantier, pas des données à confidentialité
-    # variable comme le juridique).
-    KpiAlerte.Kpi.BTP_RESERVES_OUVERTES: lambda company, user:
-        _compute_btp(company, 'btp_reserves_ouvertes'),
-    KpiAlerte.Kpi.BTP_RFI_EN_RETARD: lambda company, user:
-        _compute_btp(company, 'btp_rfi_en_retard'),
-    KpiAlerte.Kpi.BTP_VISAS_EN_ATTENTE: lambda company, user:
-        _compute_btp(company, 'btp_visas_en_attente'),
-    KpiAlerte.Kpi.BTP_PENALITES_CUMULEES_PERIODE: lambda company, user:
-        _compute_btp(company, 'btp_penalites_cumulees_periode'),
     # NTI18N52 — KPI i18n : mesures du PRODUIT (couverture de l'interface) et
     # des documents produits, indépendantes du `user` et d'un module métier
     # (aucune entrée dans KPI_MODULE : ils ne sont jamais masqués par une

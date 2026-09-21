@@ -8,7 +8,6 @@ Couvre le critère d'acceptation :
   * une fiche d'une AUTRE société n'est jamais absorbée ;
   * la fusion est journalisée dans le chatter générique (records.Activity).
 """
-from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -125,46 +124,3 @@ class MergeClientsTests(TestCase):
                                                     self.company)]
         self.assertTrue(any(str(self.survivant.pk) in c
                             for c in corps_doublon), corps_doublon)
-
-
-class FusionParDataqualityTests(TestCase):
-    """La fusion est DÉCLENCHÉE par dataquality, mais EXÉCUTÉE par crm."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.company = Company.objects.create(nom='NTDATA18 DQ',
-                                             slug='ntdata18-dq')
-        cls.autre = Company.objects.create(nom='NTDATA18 DQ2',
-                                           slug='ntdata18-dq2')
-        cls.user = User.objects.create_user(
-            username='ntdata18_dq', password='x', company=cls.company,
-            role_legacy='admin')
-
-    def test_fusion_via_dataquality(self):
-        from apps.dataquality.services import fusionner_clients
-
-        survivant = Client.objects.create(company=self.company, nom='A')
-        doublon = Client.objects.create(company=self.company, nom='B',
-                                        email='b@exemple.ma')
-        Devis.objects.create(company=self.company, reference='D-NTDATA18-2',
-                             client=doublon, date_validite=date(2026, 12, 31))
-        rapport = fusionner_clients(self.company, self.user, survivant.pk,
-                                    [doublon.pk])
-        self.assertEqual(rapport['absorbes'], [doublon.pk])
-
-    def test_survivant_d_une_autre_societe_refuse(self):
-        from apps.dataquality.services import fusionner_clients
-
-        etranger = Client.objects.create(company=self.autre, nom='Ailleurs')
-        doublon = Client.objects.create(company=self.company, nom='B')
-        with self.assertRaises(ValueError) as ctx:
-            fusionner_clients(self.company, self.user, etranger.pk,
-                              [doublon.pk])
-        self.assertIn('introuvable', str(ctx.exception))
-
-    def test_sans_doublon_refuse(self):
-        from apps.dataquality.services import fusionner_clients
-
-        survivant = Client.objects.create(company=self.company, nom='A')
-        with self.assertRaises(ValueError):
-            fusionner_clients(self.company, self.user, survivant.pk, [])

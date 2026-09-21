@@ -33,7 +33,7 @@ from .views import (
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
     casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
     IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
-    AccordRFAFournisseurViewSet, catalogue_b2b_view, stock_embarque_view,
+    AccordRFAFournisseurViewSet, catalogue_b2b_view,
     parametres_negoce_view, ProfilSaisonnierViewSet,
     tableau_bord_achats_view,
 )
@@ -155,9 +155,6 @@ urlpatterns = [
     # NTDST30 - parametres negoce de la societe (singleton, GET/PATCH).
     path('parametres-negoce/', parametres_negoce_view,
          name='stock-parametres-negoce'),
-    # NTDST14 - stock embarque d'un vehicule (GET) + charger/decharger (POST).
-    path('vehicules/<int:actif_flotte_id>/stock-embarque/',
-         stock_embarque_view, name='stock-vehicule-stock-embarque'),
     # NTWMS40 - casiers picking sous leur seuil (GET) + generation (POST).
     path('casiers-a-reapprovisionner/', casiers_a_reapprovisionner_view,
          name='stock-casiers-a-reapprovisionner'),

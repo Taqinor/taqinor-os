@@ -158,7 +158,8 @@ class VariationAnomalieTests(TestCase):
         alerte = self._alerte(mode_detection=KpiAlerte.ModeDetection.SEUIL)
         self.assertEqual(
             KpiAlerte.objects.get(pk=alerte.pk).mode_detection, 'seuil')
-        neuve = KpiAlerte(company=self.company, kpi=KpiAlerte.Kpi.DSO,
+        neuve = KpiAlerte(company=self.company,
+                          kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
                           seuil=Decimal('60'))
         self.assertEqual(neuve.mode_detection, KpiAlerte.ModeDetection.SEUIL)
         neuve.clean()  # ne lève pas
@@ -166,7 +167,7 @@ class VariationAnomalieTests(TestCase):
     def test_variation_sur_catalogue_refusee_au_champ_fautif(self):
         alerte = KpiAlerte(
             company=self.company, source=KpiAlerte.Source.CATALOGUE,
-            kpi=KpiAlerte.Kpi.DSO, seuil=Decimal('-20'),
+            kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE, seuil=Decimal('-20'),
             mode_detection=KpiAlerte.ModeDetection.VARIATION)
         with self.assertRaises(ValidationError) as leve:
             alerte.clean()

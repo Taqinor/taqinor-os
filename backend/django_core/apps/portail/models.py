@@ -1,11 +1,9 @@
 """Modèles du module Portail self-service client (``apps.portail``).
 
-Équivalent Odoo Portal. Ces modèles ont d'abord vécu dans ``apps.compta``
+Équivalent Odoo Portal. Ces modèles ont d'abord vécu dans le module compta
 (FG228–233) ; ODX12 les a SORTIS de compta en préservant à l'IDENTIQUE les
 tables physiques existantes (``db_table = 'compta_<model>'``) via des migrations
 ``SeparateDatabaseAndState`` (state-only, aucun SQL, aucune donnée déplacée).
-Un shim de ré-export subsiste dans ``apps/compta/models.py`` pour le
-code/migrations historiques.
 
 Frontière cross-app (CLAUDE.md) : ``portail`` ne lit ventes/crm/sav QUE via
 leurs ``selectors.py``/``services.py`` ou par référence opaque (id/texte) —

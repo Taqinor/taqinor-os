@@ -1,46 +1,32 @@
+"""Configuration de l'app « mlops » — PARQUÉE (voir ``core.parked``)."""
 from django.apps import AppConfig
 
 
 class MlopsConfig(AppConfig):
-    """App de FONDATION technique « MLOps par tenant » (Groupe NTAI, P3).
+    """MLOps (scorers par tenant) — app PARQUÉE du MVP solaire (20/09/2026).
 
-    Versionne, PAR SOCIÉTÉ, les hyperparamètres/seuils des scorers purs
-    existants (``core/*.py`` — churn/win_proba/retard_paiement/reappro/
-    anomalie, aujourd'hui codés en dur) et matérialise les signaux qu'ils
-    consomment (feature store léger). N'importe AUCUNE app métier : les
-    scorers lisent ces paramètres via ``apps.mlops.selectors`` avec repli sur
-    les défauts code — jamais l'inverse.
+    Coquille de migrations : plus aucun modèle, aucune url, aucune
+    tâche, aucun écran. Le code complet est dans l'archive
+    ``archive/full-erp-2026-09-20`` ; recette de retour : docs/parked-modules.md §5.
+
+    L'app RESTE dans INSTALLED_APPS : c'est ce qui garde valide le
+    graphe de migrations des apps gardées (jamais de squash).
     """
 
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'apps.mlops'
     label = 'mlops'
     verbose_name = 'MLOps (scorers par tenant)'
+    # SOLMVP — marqueur lu par les gardes (core.parked.est_parquee).
+    parked = True
     module_manifest = {
         'key': 'mlops',
         'sku': 'generic',
         'label': 'MLOps (scorers par tenant)',
         'icone': 'cpu',
         'depends': [],
-        # Réservé aux administrateurs : réglage technique des scorers, pas un
-        # module métier qu'une société active/désactive au fil de l'eau.
         'installable': False,
-        'description': (
-            'Versionne par société les paramètres des scorers prédictifs '
-            "(churn, probabilité de gain, retard de paiement…) et matérialise "
-            'les signaux (features) qu\'ils consomment.'
-        ),
+        'description': "Versionne par société les paramètres des scorers prédictifs (churn, probabilité de gain, retard de paiement…) et matérialise les signaux (features) qu'ils consomment.",
         'categorie': 'Technique',
+        'parked': True,
     }
-
-    def ready(self):
-        # NTAI27 — branche ce registre comme résolveur d'hyperparamètres de
-        # `core.score_params` (même patron additif que `core.workflow.
-        # register_business_day_advance`/`core.notify_registry.
-        # register_notify`) : `core` expose le seam, `mlops` s'y branche
-        # depuis son propre `ready()`, sans que `core` n'importe jamais
-        # `apps.mlops` (contrat import-linter core-foundation-is-a-base-layer).
-        from core.score_params import register_params_resolver
-
-        from . import selectors
-        register_params_resolver(selectors.params_actifs)

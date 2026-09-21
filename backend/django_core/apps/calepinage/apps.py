@@ -23,7 +23,7 @@ class CalepinageConfig(AppConfig):
         # est AUSSI le 2ᵉ segment d'URL (``/api/django/calepinage/…``), donc
         # aucune entrée ``PREFIX_TO_MODULE`` n'est nécessaire.
         'key': 'calepinage',
-        # SOL1 — cœur métier solaire, comme ``apps.ao`` (`'sku': 'solar_core'`).
+        # SOL1 — cœur métier solaire (`'sku': 'solar_core'`).
         'sku': 'solar_core',
         'label': 'Calepinage',
         'icone': 'grid_on',

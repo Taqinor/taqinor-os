@@ -58,15 +58,6 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             # (`get_permissions` prime sur le `permission_classes` de
             # l'@action, d'où ce cas explicite — sinon repli IsAdminRole).
             return [IsAnyRole()]
-        if self.action in ('van_stock_mon_stock', 'van_stock_signaler_manquant'):
-            # NTFSM20 — écran mobile du TECHNICIEN : il lit le stock de SA
-            # camionnette et y signale un manquant. Même piège que
-            # `etiquettes_kanban` ci-dessus : `get_permissions` prime sur le
-            # `permission_classes=[IsAnyRole]` posé sur l'@action, donc sans
-            # ce cas explicite un technicien (rôle « normal ») recevait 403.
-            # L'emplacement reste résolu CÔTÉ SERVEUR (jamais un id client),
-            # donc ouvrir la garde n'ouvre pas la camionnette d'un collègue.
-            return [IsAnyRole()]
         return [IsAdminRole()]
 
     def get_queryset(self):
@@ -174,104 +165,6 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
                 source_id=ecart['source_id'], destination_id=emplacement_id,
                 quantite=ecart['qte_suggere_transfert'],
                 note='Réappro van-stock automatique (NTFSM19)')
-        except ValueError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(
-            TransfertStockSerializer(transfert).data,
-            status=status.HTTP_201_CREATED)
-
-    @action(detail=False, methods=['get'], url_path='van-stock/mon-stock',
-            permission_classes=[IsAnyRole])
-    def van_stock_mon_stock(self, request):
-        """NTFSM20 — stock de la CAMIONNETTE affectée au technicien connecté
-        (jamais celui d'un collègue — l'emplacement est résolu côté serveur,
-        jamais accepté depuis le client). Aucune camionnette affectée :
-        réponse propre (emplacement null, produits vides)."""
-        from ..models import StockEmplacement
-        from ..selectors import emplacement_camionnette_technicien
-
-        company = request.user.company
-        emplacement = emplacement_camionnette_technicien(company, request.user)
-        if emplacement is None:
-            return Response({'emplacement': None, 'produits': []})
-
-        lignes = (StockEmplacement.objects
-                  .filter(company=company, emplacement=emplacement)
-                  .select_related('produit')
-                  .order_by('produit__nom'))
-        produits = [{
-            'produit_id': ligne.produit_id,
-            'nom': ligne.produit.nom,
-            'sku': ligne.produit.sku,
-            'quantite': ligne.quantite,
-            'seuil_min': ligne.seuil_min,
-            'seuil_max': ligne.seuil_max,
-        } for ligne in lignes]
-        return Response({
-            'emplacement': {'id': emplacement.id, 'nom': emplacement.nom},
-            'produits': produits,
-        })
-
-    @action(detail=False, methods=['post'], url_path='van-stock/signaler-manquant',
-            permission_classes=[IsAnyRole])
-    def van_stock_signaler_manquant(self, request):
-        """NTFSM20 — le technicien signale un produit manquant sur SA
-        camionnette : crée une demande de transfert (NTFSM19) sans attendre
-        le job de réappro automatique. Body {produit_id}. Jamais sur la
-        camionnette d'un collègue (emplacement résolu côté serveur)."""
-        from ..services_transfert_deux_temps import creer_demande_transfert
-        from ..selectors import emplacement_camionnette_technicien
-
-        company = request.user.company
-        emplacement = emplacement_camionnette_technicien(company, request.user)
-        if emplacement is None:
-            return Response(
-                {'detail': 'Aucune camionnette ne vous est affectée.'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        produit_id = request.data.get('produit_id')
-        if not produit_id:
-            return Response(
-                {'detail': 'produit_id requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        principal = EmplacementStock.objects.filter(
-            company=company, is_principal=True).first()
-        if principal is None:
-            return Response(
-                {'detail': 'Aucun dépôt principal configuré.'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        en_attente = [TransfertStock.Statut.DEMANDE, TransfertStock.Statut.EXPEDIE]
-        existante = (TransfertStock.objects
-                     .filter(company=company, produit_id=produit_id,
-                             destination=emplacement,
-                             statut__in=en_attente)
-                     .order_by('-date')
-                     .first())
-        if existante is not None:
-            return Response(TransfertStockSerializer(existante).data)
-
-        from ..models import StockEmplacement
-        ligne = StockEmplacement.objects.filter(
-            company=company, produit_id=produit_id,
-            emplacement=emplacement).first()
-        quantite = 1
-        if ligne is not None and ligne.seuil_max:
-            manque = ligne.seuil_max - ligne.quantite
-            if manque > 0:
-                quantite = manque
-        elif ligne is not None and ligne.seuil_min:
-            manque = ligne.seuil_min - ligne.quantite
-            if manque > 0:
-                quantite = manque
-
-        try:
-            transfert = creer_demande_transfert(
-                company=company, user=request.user, produit_id=produit_id,
-                source_id=principal.id, destination_id=emplacement.id,
-                quantite=quantite,
-                note='Signalé manquant par le technicien (NTFSM20)')
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(

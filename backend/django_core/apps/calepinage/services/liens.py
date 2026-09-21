@@ -1,29 +1,32 @@
-"""CAL12 — rattacher APRÈS COUP un calepinage à un devis ou à une affaire.
+"""CAL12 — rattacher APRÈS COUP un calepinage à un devis.
 
 Un calepinage né sans devis (porte autonome) doit pouvoir être rattaché plus
-tard, et une affaire d'appel d'offres doit pouvoir pointer SON calepinage.
+tard.
 
 LES DEUX REFUS QUI COMPTENT
 ---------------------------
-* **Le double rattachement.** Si le devis (ou l'affaire) est DÉJÀ lié à un
-  AUTRE calepinage, on refuse — et le message NOMME le calepinage déjà lié :
-  sans son nom, l'utilisateur ne peut rien faire du refus.
-* **L'autre société.** Un devis ou une affaire d'une autre société est
-  INTROUVABLE : on ne confirme jamais l'existence de la donnée d'autrui.
+* **Le double rattachement.** Si le devis est DÉJÀ lié à un AUTRE calepinage,
+  on refuse — et le message NOMME le calepinage déjà lié : sans son nom,
+  l'utilisateur ne peut rien faire du refus.
+* **L'autre société.** Un devis d'une autre société est INTROUVABLE : on ne
+  confirme jamais l'existence de la donnée d'autrui.
+
+SOLMVP15 — ``lier_appel_offre`` vivait ici. C'était un PONT, et seulement un
+pont : rattacher un calepinage à une affaire d'appel d'offres, en validant
+l'existence de cette affaire chez l'autre app. Cette app sort du produit : il
+n'y a plus d'affaire à rattacher, donc plus de pont. Le rattachement au DEVIS
+— la voie du produit — est intact, au champ près.
 
 CE QUE CE MODULE NE FAIT JAMAIS
 -------------------------------
 Il n'écrit AUCUN statut de devis (règle #4 : le moteur de devis ne fait que
-RENDRE), et il n'importe aucun modèle de ``ventes`` ni de ``ao`` — le devis
-passe par ``apps.ventes.selectors``, l'affaire par ``apps.ao.selectors``.
-Rattacher au MÊME devis est une opération NEUTRE (idempotente) : ré-envoyer
-la demande ne doit pas produire une erreur.
+RENDRE), et il n'importe aucun modèle de ``ventes`` — le devis passe par
+``apps.ventes.selectors``. Rattacher au MÊME devis est une opération NEUTRE
+(idempotente) : ré-envoyer la demande ne doit pas produire une erreur.
 """
 from __future__ import annotations
 
-from .journal import (
-    journaliser_lien_appel_offre, journaliser_lien_devis,
-)
+from .journal import journaliser_lien_devis
 
 
 class LiaisonRefusee(ValueError):
@@ -91,57 +94,6 @@ def lier_devis(calepinage, devis_id, *, user=None):
     # CAL26 — ancien → nouveau, par la primitive `records`.
     journaliser_lien_devis(calepinage, ancien=ancien_devis,
                            nouveau=devis.pk, user=user)
-    return calepinage
-
-
-def lier_appel_offre(calepinage, appel_offre_id, *, user=None):
-    """Rattache ``calepinage`` à l'affaire d'appel d'offres ``appel_offre_id``.
-
-    Raises:
-        LiaisonRefusee: affaire introuvable/d'une autre société, ou déjà liée
-            à un AUTRE calepinage (le message le nomme).
-    """
-    from django.db import transaction
-
-    from apps.ao.selectors import issues_par_ids
-
-    from ..selectors import calepinage_de_l_affaire
-
-    company = _exiger_calepinage(calepinage)
-    if not appel_offre_id:
-        raise LiaisonRefusee(
-            "Aucune affaire n'a été indiquée : choisissez l'appel d'offres "
-            "auquel rattacher ce calepinage.", champ='appel_offre')
-
-    try:
-        cle = int(appel_offre_id)
-    except (TypeError, ValueError):
-        raise LiaisonRefusee(
-            f"Appel d'offres introuvable (#{appel_offre_id}).",
-            champ='appel_offre')
-
-    ancienne_affaire = calepinage.appel_offre_id
-    if ancienne_affaire and int(ancienne_affaire) == cle:
-        return calepinage  # neutre : le lien demandé existe déjà.
-
-    # Lecture cross-app par le SEUL sélecteur AO : une affaire d'une autre
-    # société est simplement ABSENTE du résultat (on n'apprend rien d'elle).
-    if cle not in issues_par_ids(company, [cle]):
-        raise LiaisonRefusee(
-            f"Appel d'offres introuvable (#{cle}).", champ='appel_offre')
-
-    with transaction.atomic():
-        deja = calepinage_de_l_affaire(cle, company)
-        if deja is not None and deja.pk != calepinage.pk:
-            raise LiaisonRefusee(
-                f"L'appel d'offres #{cle} est déjà rattaché au calepinage "
-                f"{_etiquette(deja)} : détachez-le d'abord, ou rattachez "
-                "cette affaire à un autre calepinage.",
-                champ='appel_offre')
-        calepinage.appel_offre_id = cle
-        calepinage.save(update_fields=['appel_offre_id', 'updated_at'])
-    journaliser_lien_appel_offre(calepinage, ancien=ancienne_affaire,
-                                 nouveau=cle, user=user)  # CAL26
     return calepinage
 
 

@@ -352,11 +352,11 @@ def cible_depuis_lignes(devis, variante='sans'):
 
 # ── QJR84 / R4-B1 — RECENSEMENT DES CHEMINS DE CRÉATION SECONDAIRES ─────────
 #
-# L'audit L3 a demandé qu'aucun des six chemins de création « secondaires » ne
-# reste sans verdict écrit : soit il devient un SIXIÈME ADAPTATEUR du pipeline
-# (il compose, donc il doit composer comme les cinq autres), soit il est
-# déclaré HORS PIPELINE avec sa raison. Les six sont, aujourd'hui, TOUS passés
-# par ``creer_ligne`` — le goulot ci-dessous — mais aucun n'est un adaptateur.
+# L'audit L3 a demandé qu'aucun chemin de création « secondaire » ne reste sans
+# verdict écrit : soit il devient un ADAPTATEUR de plus du pipeline (il compose,
+# donc il doit composer comme les autres), soit il est déclaré HORS PIPELINE
+# avec sa raison. Tous passent, aujourd'hui, par ``creer_ligne`` — le goulot
+# ci-dessous — mais aucun n'est un adaptateur.
 #
 # 1. ``domain/creation.create_draft_devis_from_ocr`` — HORS PIPELINE.
 #    Il ne crée AUCUNE ligne : un document OCR brut ne fournit pas de
@@ -393,11 +393,6 @@ def cible_depuis_lignes(devis, variante='sans'):
 #    a été accepté. QJR84 lui fait recopier le jeu complet ET honorer D12 : une
 #    ligne ``prix_manuel`` n'est pas re-tarifée (sans cette garde, le marqueur
 #    recopié aurait protégé une valeur qui venait d'être réécrite).
-#
-# 6. ``domain/bordereau.creer_devis_depuis_bordereau`` — HORS PIPELINE.
-#    Les lignes viennent d'un BORDEREAU (BOQ) chiffré par l'appel d'offres :
-#    une autre famille de documents, que le moteur solaire ne dimensionne
-#    jamais. Le pipeline résidentiel n'a rien à y dire.
 #
 # ── QJR243 (g) — LE RECENSEMENT N'ÉTAIT PAS EXHAUSTIF : QUATRE CHEMINS DE PLUS,
 #    ET DEUX CONTOURNEMENTS DE LA GARDE. Chacun reçoit ici son verdict ÉCRIT ;

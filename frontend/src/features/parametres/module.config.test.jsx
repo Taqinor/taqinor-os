@@ -60,7 +60,6 @@ describe('parametres — module.config (WIR153 /parametres/ia)', () => {
 describe.each([
   ['ODY23(a)', '/parametres', 'Aperçu', ['responsable', 'admin']],
   ['ODY23(c)', '/parametres/alertes-kpi', 'Alertes KPI', ['responsable', 'admin']],
-  ['ODY23(c)', '/parametres/hospitality/taxe-sejour', 'Taxe de séjour', ['responsable', 'admin']],
 ])('parametres — module.config (%s %s)', (_task, path, label) => {
   it(`déclare ${path} en route ET en entrée de menu, gatées identiquement`, async () => {
     const { default: config } = await import('./module.config.jsx')

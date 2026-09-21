@@ -15,7 +15,7 @@ from core import metrics as metrics_infra
 from core.sla import SlaSnapshot, generer_snapshot_societe, uptime_pct_periode
 
 User = get_user_model()
-# Résolu par nom (jamais un import statique d'apps.statuspage) : core reste
+# Résolu par nom (jamais un import statique de l'app page d'état) : core reste
 # une couche de base (contrat import-linter core-foundation-is-a-base-layer),
 # même en test — même patron que core.tests.test_rls_cross_tenant_denial
 # (AUD422, ".importlinter").

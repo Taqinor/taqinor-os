@@ -1,7 +1,7 @@
 """Tests ARC11 — service de rendu PDF PARTAGÉ ``core.pdf`` (hors devis).
 
 Couvre la plomberie centralisée (WeasyPrint mocké via ``sys.modules``, même
-patron que ``apps.qhse.tests.test_xqhs27`` — rapide, sans la lib native) :
+patron que les tests PDF des apps métier — rapide, sans la lib native) :
 
 * ``render_pdf(html=...)`` rend des octets PDF à partir d'un HTML final ;
 * ``render_pdf(template=..., context=...)`` rend depuis un gabarit Django ;

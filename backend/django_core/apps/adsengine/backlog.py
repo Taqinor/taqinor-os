@@ -21,7 +21,6 @@ import datetime
 from .models import CreativeBacklogItem
 
 # PUB63 — Pipeline témoignage → brief créatif.
-TESTIMONIAL_SATISFACTION_MIN = 4.0  # satisfaction qhse ≥ 4/5 requise
 TESTIMONIAL_SCOPES = ('photo', 'temoignage')  # portées de consentement requises
 
 # Un ajout de challenger par semaine (ration ADSENG25) — rythme par défaut.
@@ -156,14 +155,14 @@ def backlog_alert(company, *, weekly_rate=DEFAULT_WEEKLY_RATE, today=None,
 
 # ── PUB63 — Pipeline témoignage → brief créatif (client réel) ────────────────
 #
-# Un deal SIGNÉ + une satisfaction qhse ≥ 4/5 + des photos de chantier forment
-# la matière première d'un témoignage — aujourd'hui AUCUNE source créative ne
-# part du client réel. Ce pipeline construit un brief STRUCTURÉ à partir des
-# faits VÉRIFIÉS du projet (kWc / économie / ville / avant-après) et le met en
-# file ``CreativeBacklogItem`` pour approbation. Le consentement PUB75 est
+# Un deal SIGNÉ + des photos de chantier forment la matière première d'un
+# témoignage — aujourd'hui AUCUNE source créative ne part du client réel. Ce
+# pipeline construit un brief STRUCTURÉ à partir des faits VÉRIFIÉS du projet
+# (kWc / économie / ville / avant-après) et le met en file
+# ``CreativeBacklogItem`` pour approbation. Le consentement PUB75 est
 # BLOQUANT : sans consentement actif couvrant image + témoignage, rien n'est mis
 # en file (jamais d'usage d'image/nom sans accord signé). Les lectures cross-app
-# passent par les sélecteurs (ventes / qhse / installations), jamais un import
+# passent par les sélecteurs (ventes / installations), jamais un import
 # de leurs modèles.
 
 
@@ -185,29 +184,21 @@ def _active_consent_for_client(company, client_id, scopes, *, now=None):
 def evaluate_testimonial_eligibility(company, *, devis_id, chantier_id, now=None):
     """PUB63 — Évalue l'éligibilité d'un projet à un brief témoignage.
 
-    Renvoie ``{eligible, blocked_reason, facts, satisfaction, has_photos}``.
+    Renvoie ``{eligible, blocked_reason, facts, has_photos}``.
     ``blocked_reason`` (FR, ou ``None``) indique le premier critère non rempli :
-    deal non signé, satisfaction insuffisante, ou aucune photo de chantier. Le
-    consentement (PUB75) est vérifié séparément au moment de la mise en file.
-    Toutes les lectures cross-app passent par des sélecteurs (lecture seule)."""
+    deal non signé, ou aucune photo de chantier. Le consentement (PUB75) est
+    vérifié séparément au moment de la mise en file. Toutes les lectures
+    cross-app passent par des sélecteurs (lecture seule)."""
     from apps.installations import selectors as inst_selectors
-    from apps.qhse import selectors as qhse_selectors
     from apps.ventes import selectors as ventes_selectors
 
     facts = ventes_selectors.faits_temoignage_devis(company, devis_id)
     result = {
         'eligible': False, 'blocked_reason': None,
-        'facts': facts, 'satisfaction': None, 'has_photos': False,
+        'facts': facts, 'has_photos': False,
     }
     if facts is None or not facts.get('signed'):
         result['blocked_reason'] = 'deal_non_signe'
-        return result
-
-    satisfaction = qhse_selectors.satisfaction_moyenne(
-        company, chantier_id=chantier_id)
-    result['satisfaction'] = satisfaction
-    if satisfaction is None or satisfaction < TESTIMONIAL_SATISFACTION_MIN:
-        result['blocked_reason'] = 'satisfaction_insuffisante'
         return result
 
     has_photos = inst_selectors.chantier_a_photos(company, chantier_id)
@@ -274,7 +265,7 @@ def queue_testimonial_brief(company, *, devis_id, chantier_id, client_id=None,
     """PUB63 — Met en file un brief témoignage pour approbation, si éligible ET
     consenti.
 
-    Vérifie l'éligibilité (deal signé + satisfaction ≥ 4/5 + photos) puis le
+    Vérifie l'éligibilité (deal signé + photos) puis le
     consentement PUB75 (actif, couvrant image + témoignage). Si tout est réuni :
     crée un ``CreativeAsset`` PENDING (``source_lane='temoignage'``,
     ``depicts_real_client=True``, lié au consentement) et un

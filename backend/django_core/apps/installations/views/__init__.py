@@ -14,35 +14,20 @@ from .checklist_etape import ChecklistEtapeModeleViewSet
 from .fiche_intervention import (
     FicheInterventionTemplateViewSet, FicheInterventionChampViewSet,
 )
-from .recurrence_intervention import RecurrenceInterventionViewSet
 from .intervention import InterventionViewSet
 from .shotlist import ShotListSlotViewSet
 from .safety import SafetyChecklistSlotViewSet
-from .projet import (
-    JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
-)
-from .document import DocumentProjetViewSet, RevisionDocumentViewSet
 from .program import (
     ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
 )
-from .indispo import IndisponibiliteRessourceViewSet
-from .astreinte import AstreinteViewSet
 from .equipe import EquipeViewSet
 from .soustraitant import SousTraitantViewSet
-from .ordre_soustraitance import OrdreSousTraitanceViewSet
-from .facture_soustraitant import (
-    FactureSousTraitantViewSet, PaiementSousTraitantViewSet,
-)
-from .attestation_soustraitant import AttestationSousTraitantViewSet
-from .evaluation_soustraitant import EvaluationSousTraitantViewSet
-from .retenue_garantie import RetenueGarantieSousTraitantViewSet
 from .demande_achat import (
     DemandeAchatViewSet, DemandeAchatLigneViewSet,
     RegleApprobationAchatViewSet,
 )
-from .rfq import RFQViewSet, RFQOffreViewSet, RFQConsultationViewSet
 from .approbation_bcf import (
     SeuilApprobationBCFViewSet, ApprobationBCFViewSet,
 )
@@ -98,15 +83,9 @@ __all__ = [
     'ChecklistEtapeModeleViewSet',
     'FicheInterventionTemplateViewSet',
     'FicheInterventionChampViewSet',
-    'RecurrenceInterventionViewSet',
     'InterventionViewSet',
     'ShotListSlotViewSet',
     'SafetyChecklistSlotViewSet',
-    'JalonProjetViewSet',
-    'ModeleProjetViewSet',
-    'ReunionChantierViewSet',
-    'DocumentProjetViewSet',
-    'RevisionDocumentViewSet',
     'ProjetViewSet',
     'ProjetTacheViewSet',
     'ProjetChantierViewSet',
@@ -114,22 +93,11 @@ __all__ = [
     'ProjetTicketViewSet',
     'BudgetProjetViewSet',
     'BudgetEngagementViewSet',
-    'IndisponibiliteRessourceViewSet',
-    'AstreinteViewSet',
     'EquipeViewSet',
     'SousTraitantViewSet',
-    'OrdreSousTraitanceViewSet',
-    'FactureSousTraitantViewSet',
-    'PaiementSousTraitantViewSet',
-    'AttestationSousTraitantViewSet',
-    'EvaluationSousTraitantViewSet',
-    'RetenueGarantieSousTraitantViewSet',
     'DemandeAchatViewSet',
     'DemandeAchatLigneViewSet',
     'RegleApprobationAchatViewSet',
-    'RFQViewSet',
-    'RFQOffreViewSet',
-    'RFQConsultationViewSet',
     'SeuilApprobationBCFViewSet',
     'ApprobationBCFViewSet',
     'ControleBudgetaireCommandeView',

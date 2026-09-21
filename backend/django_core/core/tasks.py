@@ -524,9 +524,9 @@ def notifier_seuils_usage_task():
 # ``core.degraded_mode.DEGRADED_MODE_MATRIX`` (NTOBS11) : les changer exige un
 # déploiement de code, jamais un réglage à chaud, cohérent avec des seuils qui
 # déclenchent une SUPPRESSION de données. Aucune de ces trois entités n'est un
-# document ``apps.ged`` couvert par une ``PolitiqueRetention`` (celle-ci
-# reste réservée aux documents GED : cabinet/dossier/type_document) — donc
-# TOUJOURS une suppression dure ici, jamais un archivage GED.
+# document documentaire couvert par une politique de rétention GED (celle-ci
+# reste réservée aux documents de la GED : cabinet/dossier/type_document) —
+# donc TOUJOURS une suppression dure ici, jamais un archivage GED.
 RETENTION_INCIDENT_PUBLIC_JOURS = 365 * 2  # 2 ans après résolution
 RETENTION_EXPORT_REVERSIBILITE_JOURS = 30  # après expiration du lien signé
 RETENTION_UPTIME_DAY_BUCKET_JOURS = 400  # ~13 mois (garde la comparaison N-1)
@@ -630,7 +630,7 @@ def purger_donnees_fiabilite_task():
 # import-linter ``core-foundation-is-a-base-layer`` : aucun import STATIQUE
 # de ``apps.reporting``) : le modèle ``KpiAlerte`` est résolu par
 # ``django.apps.apps.get_model``, même patron que ``_purger_uptime_buckets_
-# perimes`` ci-dessus pour ``apps.statuspage``.
+# perimes`` ci-dessus pour les compteurs de la page d'état.
 #
 # Ce job GARANTIT seulement que le garde-fou « drill de restauration périmé »
 # et « quota saturé » existe pour CHAQUE société active, sans dépendre d'un

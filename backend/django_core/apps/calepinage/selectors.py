@@ -600,46 +600,36 @@ def releves_terrain(calepinage):
 def presets_de_societe(company):
     """CAL197 — les presets de conception disponibles pour l'atelier.
 
-    Joint DEUX sources, sans jamais copier l'une dans l'autre :
+    ``module`` porte les jeux PROPRES au module, section ``presets.jeux`` de
+    ``ParametresCalepinage`` (``services.presets.jeux_de_societe``).
 
-    * ``module`` — les jeux PROPRES au module, section ``presets.jeux`` de
-      ``ParametresCalepinage`` (``services.presets.jeux_de_societe``) ;
-    * ``societe_ao`` — les presets AO de portée société
-      (``apps.ao.selectors.presets_calepinage``), lus tels quels.
+    SOLMVP15 — il y avait une SECONDE source : les presets de portée société du
+    module d'appels d'offres, lus tels quels à côté des jeux maison (jamais
+    copiés dedans). Ce module-là sort du produit, sa table part avec lui : il
+    n'en reste donc qu'une source, celle du module. Les jeux maison, eux, sont
+    intacts — aucun preset de l'atelier n'a été perdu ni déplacé.
 
-    Lecture PURE, bornée société — ``None`` rend les deux listes vides.
+    Lecture PURE, bornée société — ``None`` rend une liste vide.
     """
-    from apps.ao.selectors import presets_calepinage
-
     from .services.presets import jeux_de_societe
 
-    module = jeux_de_societe(company)
-    ao = presets_calepinage(company, portee='societe') if company else []
-    return {
-        'module': module,
-        'societe_ao': [
-            {
-                'id': preset.pk,
-                'nom': preset.nom,
-                'parametres': preset.parametres,
-                'par_defaut': preset.par_defaut,
-                'description': preset.description,
-            }
-            for preset in ao
-        ],
-    }
+    return {'module': jeux_de_societe(company)}
 
 
 def kits_de_pose_disponibles(company):
-    """CAL198 — les kits de pose du catalogue AO, tels que le module les voit.
+    """CAL198 — les kits de pose du catalogue, tels que le module les voit.
 
-    Lecture PURE : point d'entrée unique pour l'atelier (``apps.ao.selectors.
-    kits_de_pose``) — aucune donnée n'est recopiée en base côté module."""
-    from apps.ao.selectors import kits_de_pose
+    Lecture PURE : point d'entrée unique pour l'atelier
+    (``services.kits_catalogue.kits_de_societe``). SOLMVP15 — le catalogue
+    vivait dans une table du module d'appels d'offres ; il vit désormais dans
+    la section ``presets.kits`` des réglages société du module, à forme
+    publiée IDENTIQUE (contrat ``contract_samples/
+    parametres_calepinage.json``). Aucune donnée n'est recopiée nulle part."""
+    from .services.kits_catalogue import kits_de_societe
 
     if company is None:
         return []
-    return kits_de_pose(company)
+    return kits_de_societe(company)
 
 
 def favoris_materiel_de_societe(company):
@@ -680,3 +670,34 @@ def favoris_materiel_de_societe(company):
             })
         resultat[categorie] = lignes
     return resultat
+
+
+# ── SOLMVP15b — lecture cross-app du moteur VILLA, sans projet AO ──────────
+#
+# ``apps.ventes`` (villa / devis résidentiel) lisait ce moteur par le sélecteur
+# du module AO ; AO sortant du produit, la porte est ICI. Le calcul reste sans
+# effet de bord : aucune ligne n'est créée, aucune n'est lue (hors résolution
+# du produit panneau, qui passe par ``apps.stock.selectors``).
+
+def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
+                     company=None, retrait_m=None, pas_recherche_m=0.01,
+                     famille=None):
+    """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
+
+    ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
+    pouvoir hériter d'un défaut deviné sur l'ordre lat/lng.
+
+    ``produit_panneau`` (PV12) — identifiant OU instance de ``stock.Produit``,
+    résolu DANS ``company`` : le calepinage est alors posé sur le panneau
+    réellement vendu. Une fiche technique incomplète retombe sur le kit villa
+    par défaut, jamais sur une géométrie devinée.
+
+    ``famille`` (PV66) — ``SUD`` ou ``EST_OUEST`` : la forme de table, pas le
+    panneau. Absente, le calcul est celui d'avant PV66, à l'identique.
+    """
+    from .villa_service import calepiner_villa
+
+    return calepiner_villa(area, ordre=ordre, kit=kit,
+                           produit_panneau=produit_panneau, company=company,
+                           retrait_m=retrait_m,
+                           pas_recherche_m=pas_recherche_m, famille=famille)

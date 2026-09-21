@@ -1,7 +1,5 @@
-from django import forms
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
-from django.core.exceptions import ValidationError as DjangoValidationError
 
 from core.admin_scoping import CompanyScopedAdminMixin
 
@@ -36,12 +34,11 @@ class BonCommandeAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
 
 
 # ── AUD185 (F3) — l'administration Django n'est plus une porte dérobée ──────
-# Le verrou de période comptable (YLEDG3) et le gel des champs financiers
-# (XFAC24) vivaient EXCLUSIVEMENT dans `FactureViewSet`
-# (apps/ventes/views/facture.py) ; `Facture.save()` (apps/facturation/models.py)
-# n'en porte aucun. Un superutilisateur ouvrant /admin/ pouvait donc réécrire
-# `remise_globale`, `taux_tva`, `escompte_*` ou `type_facture` d'une facture
-# ÉMISE — y compris dans un exercice clôturé — sans qu'aucun garde ne parle.
+# Le gel des champs financiers (XFAC24) vivait EXCLUSIVEMENT dans
+# `FactureViewSet` (apps/ventes/views/facture.py) ; `Facture.save()`
+# (apps/facturation/models.py) n'en porte aucun. Un superutilisateur ouvrant
+# /admin/ pouvait donc réécrire `remise_globale`, `taux_tva`, `escompte_*` ou
+# `type_facture` d'une facture ÉMISE sans qu'aucun garde ne parle.
 SUPPRESSION_FACTURE_POSTEE_INTERDITE = (
     "Suppression refusée : cette facture n'est plus au brouillon. Un document "
     "d'argent émis, payé ou annulé fait partie de la piste d'audit (et porte "
@@ -50,39 +47,8 @@ SUPPRESSION_FACTURE_POSTEE_INTERDITE = (
 )
 
 
-class FactureAdminForm(forms.ModelForm):
-    """Rejoue le garde de période comptable (YLEDG3/FG115) sur le formulaire
-    d'administration, qui n'appelait aucun service.
-
-    `self.instance` porte encore la société et la date d'émission lues en base
-    à ce stade (`clean()` s'exécute avant `_post_clean`), et `date_emission`
-    est de toute façon `auto_now_add` (non éditable) : le garde évalue donc
-    bien la période RÉELLE du document.
-    """
-
-    class Meta:
-        model = Facture
-        fields = '__all__'
-
-    def clean(self):
-        cleaned = super().clean()
-        if not self.instance.pk:
-            return cleaned
-        try:
-            from apps.compta.services import verifier_facture_modifiable
-        except Exception:  # noqa: BLE001 — app compta absente = garde muette
-            return cleaned
-        try:
-            verifier_facture_modifiable(self.instance)
-        except DjangoValidationError as exc:
-            raise forms.ValidationError(
-                list(exc.messages) if exc.messages else [str(exc)])
-        return cleaned
-
-
 @admin.register(Facture)
 class FactureAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
-    form = FactureAdminForm
     list_display = ('reference', 'client', 'statut', 'date_emission', 'date_echeance')
     list_filter = ('statut',)
     search_fields = ('reference', 'client__nom')

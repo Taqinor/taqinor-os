@@ -377,26 +377,3 @@ class BasculeNetTests(_ArgentBase):
         devis = Devis.objects.get(pk=devis.pk)
         self.assertEqual(devis.total_ttc,
                          option_totaux(devis, SANS_BATTERIE)['ttc'])
-
-    def test_le_taux_de_remise_cpq_n_applique_plus_deux_fois_la_remise(self):
-        """QJR51 — retrait d'une COMPENSATION : ``cpq.taux_remise_global``
-        ré-appliquait ``remise_globale`` parce que ``total_ht`` l'ignorait."""
-        from apps.cpq.services import taux_remise_global
-
-        devis = self._devis('qjr51-cpq', remise=Decimal('10'))
-        self._ligne(devis, 'Panneau 550 W', 10, 1000)
-        devis = Devis.objects.get(pk=devis.pk)
-        # brut = 10 000 (aucune remise de ligne), net = 9 000 → 10 %, pas 19 %.
-        self.assertEqual(taux_remise_global(devis), Decimal('10.00'))
-
-    def test_le_taux_de_remise_cpq_compare_la_meme_option(self):
-        devis = self._devis('qjr51-cpq2')
-        self._ligne(devis, 'Panneau 550 W', 12, 1200, variante='sans')
-        self._ligne(devis, 'Onduleur réseau 5 kW', 1, 9000, variante='sans')
-        self._ligne(devis, 'Onduleur hybride 5 kW', 1, 14000, variante='avec')
-        self._ligne(devis, 'Batterie 10 kWh', 1, 25000, variante='avec')
-        devis = Devis.objects.get(pk=devis.pk)
-        from apps.cpq.services import taux_remise_global
-        # Aucune remise nulle part : le taux DOIT être 0, jamais l'écart entre
-        # la somme des deux options et une seule.
-        self.assertEqual(taux_remise_global(devis), Decimal('0.00'))

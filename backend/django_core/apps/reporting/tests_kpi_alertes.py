@@ -33,7 +33,7 @@ class KpiAlerteBase(TestCase):
 class TestKpiAlerteCrud(KpiAlerteBase):
     def test_create_and_list_scoped(self):
         resp = self.api.post('/api/django/reporting/kpi-alertes/', {
-            'nom': 'DSO trop élevé', 'kpi': KpiAlerte.Kpi.DSO,
+            'nom': 'Stock trop élevé', 'kpi': KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
             'operateur': KpiAlerte.Operateur.SUP, 'seuil': '60',
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
@@ -42,7 +42,7 @@ class TestKpiAlerteCrud(KpiAlerteBase):
 
     def test_other_company_alertes_not_visible(self):
         KpiAlerte.objects.create(
-            company=self.other_company, kpi=KpiAlerte.Kpi.DSO,
+            company=self.other_company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
             operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'))
         resp = self.api.get('/api/django/reporting/kpi-alertes/')
         self.assertEqual(resp.status_code, 200)
@@ -62,12 +62,12 @@ class TestKpiAlerteCrud(KpiAlerteBase):
 class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
     def test_threshold_crossed_notifies_once_then_rearms(self):
         alerte = KpiAlerte.objects.create(
-            company=self.company, kpi=KpiAlerte.Kpi.DSO,
+            company=self.company, kpi=KpiAlerte.Kpi.VALEUR_STOCK_TOTALE,
             operateur=KpiAlerte.Operateur.SUP, seuil=Decimal('60'))
         alerte.destinataires_utilisateurs.add(self.user)
 
         with mock.patch(
-                'apps.reporting.kpi_alertes._compute_dso',
+                'apps.reporting.kpi_alertes._compute_valeur_stock_totale',
                 return_value=Decimal('75')), \
             mock.patch(
                 'apps.notifications.services.notify') as mock_notify:
@@ -81,7 +81,7 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
 
         # Toujours au-dessus du seuil → PAS de re-notification (dédup).
         with mock.patch(
-                'apps.reporting.kpi_alertes._compute_dso',
+                'apps.reporting.kpi_alertes._compute_valeur_stock_totale',
                 return_value=Decimal('80')), \
             mock.patch(
                 'apps.notifications.services.notify') as mock_notify2:
@@ -92,7 +92,7 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
 
         # Repasse sous le seuil → ré-armement (deja_notifie retombe à False).
         with mock.patch(
-                'apps.reporting.kpi_alertes._compute_dso',
+                'apps.reporting.kpi_alertes._compute_valeur_stock_totale',
                 return_value=Decimal('30')):
             valeur, franchi, notifie = evaluate_kpi_alerte(alerte)
         self.assertFalse(franchi)
@@ -102,7 +102,7 @@ class TestKpiAlerteEvaluationDedup(KpiAlerteBase):
 
         # Re-franchit le seuil → RE-notifie.
         with mock.patch(
-                'apps.reporting.kpi_alertes._compute_dso',
+                'apps.reporting.kpi_alertes._compute_valeur_stock_totale',
                 return_value=Decimal('90')), \
             mock.patch(
                 'apps.notifications.services.notify') as mock_notify3:

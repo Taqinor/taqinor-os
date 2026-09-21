@@ -1046,14 +1046,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             <Section icon={Share2} title="Autour de ce chantier">
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/chantiers/suivi-projet?chantier=${current.id}`)}>
-                  Suivi projet
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/chantiers/sous-traitance?chantier=${current.id}`)}>
-                  Sous-traitance
-                </Button>
-                <Button size="sm" variant="outline"
                         onClick={() => navigate(`/btp-chantier/reserves?chantier=${current.id}`)}>
                   Réserves
                 </Button>

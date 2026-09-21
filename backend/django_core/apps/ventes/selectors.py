@@ -55,8 +55,8 @@ def releve_client_portail(client):
     filtre de portée — le portail montre TOUT le compte du client, jamais un
     sous-ensemble par créateur) et ajoute une mini balance âgée
     (0-30/31-60/61-90/90+) + le solde courant, cohérents avec
-    ``balance_agee``. Point d'entrée cross-app pour ``apps.compta``
-    (jamais un import de ``apps.ventes.models``). Lecture seule."""
+    ``balance_agee``. Point d'entrée cross-app (jamais un import de
+    ``apps.ventes.models``). Lecture seule."""
     from decimal import Decimal
 
     from .models import Facture
@@ -93,7 +93,7 @@ def releve_client_portail(client):
 def releve_client_pdf_bytes(client):
     """XFAC26 — PDF du relevé de compte (portail client), même rendu que
     l'écran interne (``client_releve_pdf``). Lecture seule, jamais un import
-    hors de ce module côté ``apps.compta``."""
+    de ``apps.ventes.models`` hors de ce module."""
     from .recouvrement import _releve_data
     from .utils.pdf import generate_releve_pdf
 
@@ -369,9 +369,8 @@ def _est_main_oeuvre(designation):
 def paiements_des_factures(facture_ids, *, debut=None, fin=None):
     """NTSUB20 — Paiements ENCAISSÉS sur un ensemble de factures, période bornée.
 
-    Thin selector cross-app (``apps.contrats`` l'appelle pour le relevé
-    d'abonnement) : jamais un import de ``ventes``/``facturation.models``
-    depuis l'extérieur. Les paiements REJETÉS (YLEDG5) sont exclus — ils ne
+    Thin selector cross-app (relevé d'abonnement) : jamais un import de
+    ``ventes``/``facturation.models`` depuis l'extérieur. Les paiements REJETÉS (YLEDG5) sont exclus — ils ne
     représentent aucun encaissement réel.
 
     Renvoie une liste de dicts ``{'id', 'facture_id', 'date_paiement',
@@ -995,9 +994,8 @@ def references_avoirs(company):
 
 def encours_clients_par_tiers(company):
     """YLEDG13 — encours documentaire (reste dû) par client, factures NON
-    annulées d'une société. Point d'entrée cross-app sanctionné pour
-    ``apps.compta`` (rapprochement auxiliaire/GL, jamais un import direct de
-    ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id', 'nom',
+    annulées d'une société. Point d'entrée cross-app sanctionné
+    (rapprochement auxiliaire, jamais un import direct de ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id', 'nom',
     'encours', 'references'}`` (encours > 0 seulement, ``references`` = les
     factures ouvertes de ce client). Lecture seule."""
     from decimal import Decimal
@@ -1038,8 +1036,8 @@ def encours_ouvert_par_tiers(company):
     only, qui inclut une ``PAYEE`` sans règlement enregistré) : ici l'exclusion
     est portée par le STATUT du document, ce que le module crédit exige (une
     facture marquée soldée ne compte plus dans l'exposition, quel que soit son
-    reste dû résiduel). Point d'entrée cross-app sanctionné pour ``apps.credit``
-    (jamais un import direct de ``ventes.models``). Renvoie une liste de dicts
+    reste dû résiduel). Point d'entrée cross-app sanctionné (jamais un import
+    direct de ``ventes.models``). Renvoie une liste de dicts
     ``{'tiers_id', 'nom', 'encours', 'references'}`` (encours > 0). Lecture
     seule."""
     from decimal import Decimal
@@ -1076,12 +1074,10 @@ def encours_ouvert_par_tiers(company):
 def reste_du_factures_brouillon(company, client_id):
     """WIR93 — reste dû des factures ``BROUILLON`` d'un client, borné société.
 
-    C'est le SEUL écart d'assiette autorisé entre les deux moteurs de crédit :
-    ``encours_ouvert_par_tiers`` (moteur ``apps.credit``, NTCRD4) inclut les
-    brouillons, tandis que ``crm.selectors.client_credit_warning`` (moteur
-    FG41/XFAC28) ne compte que ``emise``/``en_retard``. Point d'entrée
-    cross-app sanctionné pour ``apps.credit.services.ecart_encours_moteurs``
-    (jamais un import direct de ``ventes.models``). Lecture seule."""
+    ``encours_ouvert_par_tiers`` inclut les brouillons, tandis que
+    ``crm.selectors.client_credit_warning`` (moteur FG41/XFAC28) ne compte que
+    ``emise``/``en_retard``. Point d'entrée cross-app sanctionné (jamais un
+    import direct de ``ventes.models``). Lecture seule."""
     from decimal import Decimal
     from .models import Facture
 
@@ -1309,9 +1305,8 @@ def tranche_facturee(devis, type_facture):
 def jours_impaye_facture(facture_id, company):
     """ZCTR2 — Nombre de jours DEPUIS lesquels une facture est impayée.
 
-    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
-    (clôture automatique des contrats impayés) — jamais un import direct de
-    ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable (id
+    Point d'entrée cross-app en LECTURE SEULE (clôture automatique des
+    contrats impayés) — jamais un import direct de ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable (id
     NULL/inconnu, autre société), déjà payée, annulée, ou sans
     ``date_echeance`` (rien à mesurer) : dans tous ces cas rien n'est dû,
     cohérent avec ``Facture.jours_retard``. Sinon renvoie le nombre de jours
@@ -1388,9 +1383,9 @@ def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
 def lignes_louables_devis(devis, produit_ids_louables):
     """ZCTR6 — Lignes d'un devis dont le produit est LOUABLE.
 
-    Point d'entrée cross-app en LECTURE SEULE pour ``apps.contrats``
-    (rattachement d'ordres de location à un devis accepté) — jamais un
-    import direct de ``apps.ventes.models`` depuis ``contrats``. L'appelant
+    Point d'entrée cross-app en LECTURE SEULE (rattachement d'ordres de
+    location à un devis accepté) — jamais un import direct de
+    ``apps.ventes.models`` depuis l'extérieur. L'appelant
     fournit ``produit_ids_louables`` (résolu via
     ``stock.selectors.produits_louables_qs`` — jamais réimporté ici, aucune
     dépendance directe à ``stock``). Renvoie une liste de dicts
@@ -2374,8 +2369,8 @@ def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
                           commercial_id=None):
     """NTCPQ24 — Devis ENVOYÉS (ou au-delà) d'une société sur une période.
 
-    Point d'entrée cross-app en LECTURE (``apps.cpq`` bâtit son rapport de
-    conformité dessus sans importer ``apps.ventes.models``). La période porte
+    Point d'entrée cross-app en LECTURE (sans importer
+    ``apps.ventes.models``). La période porte
     sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
     les lignes/produits (le calcul de conformité les parcourt)."""
     from .models import Devis
@@ -2500,8 +2495,8 @@ def dernier_devis_envoye_par_lead(company, lead_ids):
 def devis_en_cours(company):
     """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
 
-    Point d'entrée cross-app en LECTURE (``apps.cpq`` s'en sert pour son
-    tableau de bord de marge interne, sans importer ``apps.ventes.models``).
+    Point d'entrée cross-app en LECTURE (tableau de bord de marge interne,
+    sans importer ``apps.ventes.models``).
     Précharge les lignes et leurs produits (le calcul de marge les parcourt)."""
     from .models import Devis
     return Devis.objects.filter(
@@ -2514,7 +2509,7 @@ def devis_en_cours(company):
 def frequence_co_achat(company, produit_id, *, limite=10):
     """NTCPQ19 — Fréquence de CO-ACHAT d'un produit dans les devis ACCEPTÉS.
 
-    Point d'entrée cross-app en LECTURE (``apps.cpq`` l'appelle sans importer
+    Point d'entrée cross-app en LECTURE (sans importer
     ``apps.ventes.models``) : renvoie ``[(produit_id, nb_devis), ...]`` trié par
     fréquence décroissante — les produits apparaissant dans les mêmes devis
     acceptés de la SOCIÉTÉ que ``produit_id``, hors lui-même. Lecture pure,

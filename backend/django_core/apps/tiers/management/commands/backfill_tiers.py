@@ -1,12 +1,10 @@
-"""ARC18/19 — Backfill idempotent du répertoire unifié ``Tiers``.
+"""ARC18 — Backfill idempotent du répertoire unifié ``Tiers``.
 
 Pour chaque enregistrement historique porteur d'une identité (crm.Client,
-stock.Fournisseur — ARC18 ; crm.Partenaire [ODX13 : ex-compta.Partenaire],
-rh.DossierEmploye — ARC19),
-crée OU rattache son ``Tiers`` miroir, pose les drapeaux de rôle et écrit le
-lien retour ``<modèle>.tiers``. La déduplication (email/ICE) est STRICTEMENT
-company-scopée : deux sociétés partageant un même email/ICE gardent des Tiers
-séparés.
+stock.Fournisseur — ARC18), crée OU rattache son ``Tiers`` miroir, pose les
+drapeaux de rôle et écrit le lien retour ``<modèle>.tiers``. La déduplication
+(email/ICE) est STRICTEMENT company-scopée : deux sociétés partageant un même
+email/ICE gardent des Tiers séparés.
 
 ``tiers`` reste une couche fondation : ce module n'IMPORTE aucun modèle de
 domaine (contrat ``tiers-is-a-base-layer``) — il les résout paresseusement via
@@ -77,47 +75,18 @@ def _fields_fournisseur(fournisseur):
     }
 
 
-def _fields_partenaire(partenaire):
-    """ARC19 — Champs d'identité miroités depuis un ``crm.Partenaire`` (ODX13
-    — rapatrié de compta, même modèle historique)."""
-    return {
-        'nom': partenaire.nom or '',
-        'roles': ('is_partenaire',),
-        'email': partenaire.email or '',
-        'type_tiers': 'entreprise',
-        'raison_sociale': partenaire.nom or '',
-        'telephone': partenaire.telephone or '',
-    }
-
-
-def _fields_dossier(dossier):
-    """ARC19 — Champs d'identité miroités depuis un ``rh.DossierEmploye``
-    (partie INTERNE : aucun rôle commercial, JAMAIS de RIB — voir ARC25)."""
-    return {
-        'nom': dossier.nom or '',
-        'roles': (),
-        'email': dossier.email or '',
-        'type_tiers': 'particulier',
-        'prenom': dossier.prenom or '',
-        'telephone': dossier.telephone or '',
-        'cin': dossier.cin or '',
-    }
-
-
 # Registre (modèle → extracteur de champs). Le moteur ci-dessous est agnostique
 # du modèle : ajouter une source = ajouter une ligne ici + un extracteur.
 _SOURCES = [
     ('crm', 'Client', _fields_client),          # ARC18
     ('stock', 'Fournisseur', _fields_fournisseur),  # ARC18
-    ('crm', 'Partenaire', _fields_partenaire),      # ARC19 (ODX13: ex-compta)
-    ('rh', 'DossierEmploye', _fields_dossier),      # ARC19
 ]
 
 
 class Command(BaseCommand):
-    help = ('ARC18/19 — Backfill idempotent du répertoire unifié Tiers depuis '
-            'les modèles historiques (Client, Fournisseur, Partenaire, '
-            'DossierEmploye). Company-scopé, additif, sans écrasement.')
+    help = ('ARC18 — Backfill idempotent du répertoire unifié Tiers depuis '
+            'les modèles historiques (Client, Fournisseur). Company-scopé, '
+            'additif, sans écrasement.')
 
     def add_arguments(self, parser):
         parser.add_argument(

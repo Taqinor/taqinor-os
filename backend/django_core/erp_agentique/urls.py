@@ -9,26 +9,8 @@ from drf_spectacular.views import (
 )
 from apps.publicapi.openapi import PublicOpenApiSchemaView
 from apps.adminops.views_signup import SignupDemandeView
-from erp_agentique.settings import editions as _editions
 
 _ADMIN_URL = os.environ.get('DJANGO_ADMIN_URL', 'api/django/admin/')
-
-
-def _si_active(route, module, **kwargs):
-    """SOL3 — ``[path(route, include(module))]``, ou ``[]`` si l'app est parquée.
-
-    Utilisé (avec dépaquetage ``*``) pour les SEULES apps susceptibles d'être
-    parquées par l'édition. ``include()`` IMPORTE le module d'urls — donc les
-    vues et les modèles de l'app : l'appeler pour une app absente
-    d'``INSTALLED_APPS`` casserait le démarrage. La décision est donc prise
-    AVANT l'import, à partir du registre statique ``settings/editions.py``.
-
-    En édition complète (défaut) la fonction renvoie toujours la route : le
-    plan d'urls est BYTE-IDENTIQUE à l'historique.
-    """
-    if _editions.est_module_parque(module, settings.TAQINOR_EDITION):
-        return []
-    return [path(route, include(module), **kwargs)]
 
 # YAPIC7 — routes internes de l'ERP (authentifiées), une entrée par app.
 # Cette liste est montée DEUX FOIS ci-dessous : sous le préfixe historique
@@ -60,13 +42,9 @@ _APP_URLS = [
     path('records/', include('apps.records.urls')),
     path('imports/', include('apps.dataimport.urls')),
     path('custom-fields/', include('apps.customfields.urls')),
-    # NTEXT13 — catalogue des packages d'extension (marketplace interne).
-    path('extensions/', include('apps.extensions.urls')),
     path('documents/', include('apps.documents.urls')),
     path('audit/', include('apps.audit.urls')),
     path('monitoring/', include('apps.monitoring.urls')),
-    # NTMFG1 — Production / MRP II. Vertical PARQUÉ en édition solaire (SOL3).
-    *_si_active('mrp/', 'apps.mrp.urls'),
     path('notifications/', include('apps.notifications.urls')),
     path('automation/', include('apps.automation.urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres) ;
@@ -101,33 +79,18 @@ _APP_URLS = [
     # factures-fournisseur|retours-fournisseur|prix-fournisseurs/… restent
     # servies à l'identique (mêmes ViewSets). Mouvements stock via stock.services.
     path('achats/', include('apps.achats.urls')),
-    # FLOTTE1 — Gestion de flotte (véhicules + engins roulants, interne).
-    path('flotte/', include('apps.flotte.urls')),
-    # NTAGR1 — Vertical Agriculture (exploitations, parcelles, campagnes,
-    # intrants, main d'œuvre saisonnière). PARQUÉ en édition solaire (SOL3).
-    *_si_active('agriculture/', 'apps.agriculture.urls'),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('agent/', include('apps.agent.urls')),
-    # Group S — Messagerie interne d'équipe (« Discuss »).
-    path('chat/', include('apps.chat.urls')),
     # Modules ERP greenfield (fondations) — internes, admin/responsable.
     path('rh/', include('apps.rh.urls')),
-    path('paie/', include('apps.paie.urls')),
     path('gestion-projet/', include('apps.gestion_projet.urls')),
     path('contrats/', include('apps.contrats.urls')),
     path('qhse/', include('apps.qhse.urls')),
     path('kb/', include('apps.kb.urls')),
-    path('litiges/', include('apps.litiges.urls')),
-    # Groupe NTJUR — Affaires juridiques (contentieux d'entreprise).
-    path('juridique/', include('apps.juridique.urls')),
     # Groupe NTDOC (P2) — Salles de données sécurisées (data rooms).
     path('datarooms/', include('apps.datarooms.urls')),
-    # Groupe NTESG — Reporting ESG/durabilité consolidé.
-    path('esg/', include('apps.esg.urls')),
     # ARC17 — Répertoire des tiers (res.partner), couche fondation.
     path('tiers/', include('apps.tiers.urls')),
-    # XPLT21 — Softphone VoIP intégré (SIP/WebRTC, gated).
-    path('voip/', include('apps.voip.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('pos/', include('apps.pos.urls')),
     # NTRET12 — Moteur de promotions panier (règles configurables, coupons
@@ -140,36 +103,12 @@ _APP_URLS = [
     # hériter des DEUX préfixes comme toutes les autres apps (`api/django/` et
     # `api/v1/`) ; les chemins existants restent identiques.
     path('accessreview/', include('apps.accessreview.urls')),
-    # Groupe NTGRC — GRC & Conformité (risques, contrôles internes, RGPD/
-    # loi 09-08 outillé). Le préfixe correspond à module_manifest['key'].
-    path('grc/', include('apps.grc.urls')),
     # Groupe ENG — Moteur publicitaire Meta Ads dans l'ERP.
     path('adsengine/', include('apps.adsengine.urls')),
-    # NTCRM1 — Moteur de territoires (règles d'affectation round-robin).
-    path('territoires/', include('apps.territoires.urls')),
     # NTCRM8 — Contacts multi-rôles par client (organigramme d'achat).
     path('contacts/', include('apps.contacts.urls')),
-    # Groupe NTCPQ — CPQ enterprise (options/contraintes, règles, offres
-    # groupées, prix contractuels, approbations de remise, configurateur).
-    path('cpq/', include('apps.cpq.urls')),
-    # Groupe NTPRO — Vertical immobilier & facilities. PARQUÉ en solaire (SOL3).
-    *_si_active('immobilier/', 'apps.immobilier.urls'),
-    # Groupe NTHOT — Vertical hôtellerie & restauration. PARQUÉ en solaire.
-    *_si_active('hospitality/', 'apps.hospitality.urls'),
     # Groupe NTCON — Vertical BTP/EPC (réserves, RFI, visas, journal, DGD…).
     path('btp-chantier/', include('apps.btp_chantier.urls')),
-    # NTSAN1 — Santé (cabinet/clinique). PARQUÉ en édition solaire (SOL3).
-    *_si_active('sante/', 'apps.sante.urls'),
-    # Groupe NTIDE — Boîte à idées interne, campagnes d'innovation, feedback.
-    path('innovation/', include('apps.innovation.urls')),
-    # Groupe NTCRD — Gestion du crédit client.
-    path('credit/', include('apps.credit.urls')),
-    # Groupe NTFPA — FP&A (budgets, prévisions glissantes, scénarios).
-    path('fpa/', include('apps.fpa.urls')),
-    # Groupe NTMIG — Migration ERP sortante (Odoo/Sage/Excel) + réconciliation.
-    path('migration/', include('apps.migration.urls')),
-    # Groupe NTASS — Registre des assurances & sinistres d'entreprise.
-    path('assurances/', include('apps.assurances.urls')),
     # Groupe NTADM — Administration enterprise.
     path('entites/', include('apps.entites.urls')),
     path('adminops/', include('apps.adminops.urls')),
@@ -182,36 +121,12 @@ _APP_URLS = [
     # FONDATION qui ne doit pas importer une app satellite.
     path('auth/signup-demande/',
          SignupDemandeView.as_view(), name='auth_signup_demande'),
-    # NTEDU1 — Éducation (établissement scolaire). PARQUÉ en solaire (SOL3).
-    *_si_active('education/', 'apps.education.urls'),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
-    path('transport/', include('apps.transport.urls')),
     # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
     path('trash/', include('apps.trash.urls')),
     # NTMOB1 — Synchro hors-ligne multi-module (rejeu idempotent d'un lot).
     path('offlinesync/', include('apps.offlinesync.urls')),
-    # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
-    path('einvoice/', include('apps.einvoice.urls')),
-    # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
-    path('fiscal/', include('apps.fiscal.urls')),
-    # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
-    # implicite ; 503 douce sans clé LLM/STT configurée).
-    path('ai/', include('apps.ai_governance.urls')),
-    # Groupe NTAI — gouvernance IA (journal d'usage & coûts, budgets, état des
-    # capacités). Surfaces d'ADMINISTRATION, réservées au palier
-    # Administrateur/Directeur — distinctes des copilotes ci-dessus.
-    path('ai-governance/', include('apps.ai_governance.urls_gouvernance')),
-    # Groupe NTAI — conversations commerciales enregistrées (upload d'un appel
-    # + transcription asynchrone key-gated). Le segment est IDENTIQUE à la clé
-    # de manifeste (`conversation_ai`, avec underscore) : le gatage 404 des
-    # modules désactivés vise le bon module sans entrée PREFIX_TO_MODULE.
-    path('conversation_ai/', include('apps.conversation_ai.urls')),
-    # Groupe VAO — Veille appels d'offres (sas des avis de marché). Le segment
-    # d'URL est IDENTIQUE à la clé de manifeste (`veille_ao`, avec underscore)
-    # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
-    # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
-    path('veille_ao/', include('apps.veille_ao.urls')),
     # Groupe VTA — Visites techniques terrain (app autonome sortie du CRM). Le
     # segment est IDENTIQUE à la clé de manifeste (`visites`) : le gatage 404
     # des modules désactivés dérive du 2ᵉ segment, sans entrée
@@ -220,20 +135,6 @@ _APP_URLS = [
     # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
     # BLOCKED, voir apps/douane/apps.py).
     path('douane/', include('apps.douane.urls')),
-    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API]).
-    # PARQUÉ en édition solaire (SOL3).
-    *_si_active('ecommerce-connect/', 'apps.ecommerce_connect.urls'),
-    # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
-    # de l'exécution `apps.stock` existante.
-    path('scm/', include('apps.scm.urls')),
-    # Groupe NTDATA — qualité de données : règles de validation, rapport de
-    # conformité, complétude par module et dédoublonnage cross-module.
-    path('dataquality/', include('apps.dataquality.urls')),
-    # Groupe NTAI (P3) — MLOps par tenant (versions de paramètres de scorer +
-    # backtests). Le segment est IDENTIQUE à la clé de manifeste (`mlops`) :
-    # le gatage 404 des modules désactivés vise le bon module sans entrée
-    # PREFIX_TO_MODULE.
-    path('mlops/', include('apps.mlops.urls')),
     # Groupe NTDATA — couche sémantique : historique figé des définitions de
     # métriques (NTDATA9) et lignage « d'où vient ce chiffre » (NTDATA43). Le
     # segment est IDENTIQUE à la clé de manifeste (`semantic`) : le gatage 404
@@ -307,10 +208,6 @@ urlpatterns = [
          include('apps.installations.public_urls')),
     # XPUR22 — Portail fournisseur en lecture seule (sans login).
     path('api/django/public/stock/', include('apps.stock.public_urls')),
-    # NTEDU31/32/34 — Portail parents (établissement scolaire), sans login.
-    # PARQUÉ en édition solaire (SOL3) — comme les routes internes.
-    *_si_active('api/django/public/education/',
-                'apps.education.public_urls'),
     # NTPRT19 — Branding white-label de la page de login portail (sans login).
     path('api/django/public/portail/',
          include('apps.portail.public_urls')),

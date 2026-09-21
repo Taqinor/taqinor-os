@@ -120,16 +120,12 @@ describe('AtelierPanneaux monte la fiche sur UNE seule lecture de l’agrégat',
       default: {
         calepinages: {
           get, genererDevis: vi.fn(), syncDevis: vi.fn(),
-          importerContourAo: vi.fn(),
         },
         // CAL70 — PanneauAllees (monté par AtelierPanneaux) lit les réglages
         // société au montage.
         parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
         moteur: { calculer: vi.fn() },
       },
-    }))
-    vi.doMock('../../api/aoApi', () => ({
-      default: { toitures: { reprendreContour3d: vi.fn() } },
     }))
     vi.doMock('../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
     const { default: AtelierPanneaux } = await import('./AtelierPanneaux')

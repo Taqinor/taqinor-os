@@ -3,7 +3,7 @@
 DEUX FAMILLES, UNE SEULE RACINE : « une entrée hostile fait planter un endpoint
 public au lieu de se faire refuser ».
 
-(a) ``hmac.compare_digest`` sur des CHAÎNES — 10 sites d'invocation répartis
+(a) ``hmac.compare_digest`` sur des CHAÎNES — 9 sites d'invocation répartis
     sur 7 apps. Un seul octet non-ASCII arrivant d'un en-tête ou d'une chaîne
     de requête y levait un ``TypeError`` NON INTERCEPTÉ, donc un **HTTP 500 non
     authentifié** ; pire, la trame d'erreur portait la valeur ATTENDUE en clair
@@ -16,7 +16,7 @@ public au lieu de se faire refuser ».
     levait un ``AttributeError`` sur un champ valant un nombre, un objet ou une
     liste, donc un 500 sur des POST publics.
 
-CE QUE CE FICHIER PROUVE, ET COMMENT. Les dix sites du (a) sont exercés
+CE QUE CE FICHIER PROUVE, ET COMMENT. Les neuf sites du (a) sont exercés
 DIRECTEMENT (fonction de vérification ou vue de poignée de main), avec une
 valeur hostile réelle : aucun n'a le droit de lever, tous doivent REFUSER, et
 aucune réponse ne doit contenir la valeur attendue. Les six sites du (b) sont
@@ -59,18 +59,9 @@ def _requete_signee(hostile):
 
 
 class CompareDigestBytesTests(SimpleTestCase):
-    """(a) — les 10 sites `str` refusent au lieu de lever (HTTP 500)."""
+    """(a) — les 9 sites `str` refusent au lieu de lever (HTTP 500)."""
 
-    # ── 1. apps/ecommerce_connect/common.py ────────────────────────────────
-
-    def test_ecommerce_connect_verify_hmac_base64(self):
-        from apps.ecommerce_connect.common import verify_hmac_base64
-        for hostile in _HOSTILES:
-            with self.subTest(hostile=hostile):
-                self.assertFalse(
-                    verify_hmac_base64(_SECRET, b'{}', hostile))
-
-    # ── 2. apps/crm/webhooks.py — ``_secret_ok`` ───────────────────────────
+    # ── 1. apps/crm/webhooks.py — ``_secret_ok`` ───────────────────────────
 
     @override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=_SECRET)
     def test_crm_secret_ok(self):
@@ -83,7 +74,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                     HTTP_X_WEBHOOK_SECRET=hostile)
                 self.assertFalse(webhooks._secret_ok(requete))
 
-    # ── 3. apps/crm/webhooks.py — signature Meta Lead Ads ──────────────────
+    # ── 2. apps/crm/webhooks.py — signature Meta Lead Ads ──────────────────
 
     def test_crm_check_meta_lead_ads_signature(self):
         from apps.crm import webhooks
@@ -92,7 +83,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertFalse(webhooks._check_meta_lead_ads_signature(
                     _requete_signee(hostile), _SECRET))
 
-    # ── 4. apps/crm/webhooks.py — poignée de main GET ──────────────────────
+    # ── 3. apps/crm/webhooks.py — poignée de main GET ──────────────────────
 
     @override_settings(META_LEAD_ADS_VERIFY_TOKEN=_SECRET)
     def test_crm_meta_lead_ads_handshake(self):
@@ -107,7 +98,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertEqual(reponse.status_code, 403)
                 self.assertNotIn(_SECRET.encode(), reponse.content)
 
-    # ── 5. apps/automation/public_views.py ─────────────────────────────────
+    # ── 4. apps/automation/public_views.py ─────────────────────────────────
 
     def test_automation_verify_signature(self):
         from apps.automation import public_views as automation_views
@@ -117,7 +108,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertFalse(automation_views._verify_signature(
                     trigger, b'{}', hostile))
 
-    # ── 6. apps/notifications/views_whatsapp_bsp.py — signature ────────────
+    # ── 5. apps/notifications/views_whatsapp_bsp.py — signature ────────────
 
     def test_notifications_bsp_check_signature(self):
         from apps.notifications import views_whatsapp_bsp as bsp
@@ -126,7 +117,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertFalse(
                     bsp._check_signature(_requete_signee(hostile), _SECRET))
 
-    # ── 7. apps/notifications/views_whatsapp_bsp.py — poignée de main ──────
+    # ── 6. apps/notifications/views_whatsapp_bsp.py — poignée de main ──────
 
     def test_notifications_bsp_handshake(self):
         from apps.notifications import views_whatsapp_bsp as bsp
@@ -143,7 +134,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertEqual(reponse.status_code, 403)
                 self.assertNotIn(_SECRET.encode(), reponse.content)
 
-    # ── 8. apps/publicapi/delivery.py ──────────────────────────────────────
+    # ── 7. apps/publicapi/delivery.py ──────────────────────────────────────
 
     def test_publicapi_verify_signature_v2(self):
         from apps.publicapi.delivery import verify_signature_v2
@@ -153,7 +144,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertFalse(verify_signature_v2(
                     _SECRET, b'{}', entete, now=1_800_000_000))
 
-    # ── 9. apps/adsengine/whatsapp_webhook.py — signature ──────────────────
+    # ── 8. apps/adsengine/whatsapp_webhook.py — signature ──────────────────
 
     def test_adsengine_check_signature(self):
         from apps.adsengine import whatsapp_webhook as wa
@@ -162,7 +153,7 @@ class CompareDigestBytesTests(SimpleTestCase):
                 self.assertFalse(
                     wa._check_signature(_requete_signee(hostile), _SECRET))
 
-    # ── 10. apps/adsengine/whatsapp_webhook.py — poignée de main ───────────
+    # ── 9. apps/adsengine/whatsapp_webhook.py — poignée de main ───────────
 
     @override_settings(WHATSAPP_CLOUD_VERIFY_TOKEN=_SECRET,
                        WHATSAPP_CLOUD_APP_SECRET=_SECRET)
@@ -205,7 +196,6 @@ class GardeStructurelleCompareDigestTests(SimpleTestCase):
         'apps/adsengine/whatsapp_webhook.py',
         'apps/automation/public_views.py',
         'apps/crm/webhooks.py',
-        'apps/ecommerce_connect/common.py',
         'apps/notifications/views_whatsapp_bsp.py',
         'apps/publicapi/delivery.py',
         'apps/ventes/domain/cycle_vie.py',
@@ -241,8 +231,8 @@ class GardeStructurelleCompareDigestTests(SimpleTestCase):
                         ".encode(", rendu,
                         "%s:%d — opérande encore en `str` : %s"
                         % (chemin, site.lineno, rendu))
-        # 10 sites recalés par QJR413 + les 2 de ``cycle_vie`` déjà en bytes.
-        self.assertEqual(total, 12, '%d sites trouvés' % total)
+        # 9 sites recalés par QJR413 + les 2 de ``cycle_vie`` déjà en bytes.
+        self.assertEqual(total, 11, '%d sites trouvés' % total)
 
     def test_les_deux_sites_de_cycle_vie_sont_inchanges(self):
         """Troisième test du `Done` : ils appartiennent à une autre lane."""

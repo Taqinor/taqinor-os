@@ -16,16 +16,21 @@ class AdsengineConfig(AppConfig):
     verbose_name = 'Moteur publicitaire (Meta Ads)'
 
     # ODX21 — registre de modules (doit correspondre à la clé du
-    # frontend features/adsengine/module.config.jsx). Satellite OFF par défaut.
+    # frontend features/adsengine/module.config.jsx). SOLMVP17 (décision
+    # fondateur 5, 20/09/2026) — Publicité est VENDUE aux clients : le module
+    # est ``installable`` (une société peut le désactiver via son
+    # ``ModuleToggle``) et ``DisabledModuleMiddleware`` gate enfin son API
+    # (trou constaté le 20/09 : le toggle masquait l'UI mais ne coupait rien
+    # côté serveur).
     module_manifest = {
         'key': 'adsengine',
         'sku': 'generic',
         'label': 'Publicité',
         'icone': 'megaphone',
         'depends': [],
-        'installable': False,
+        'installable': True,
         'description': "Moteur publicitaire Meta Ads autonome (propose→approuve→"
-                       "applique, campagnes toujours PAUSED, off par défaut).",
+                       "applique, campagnes toujours PAUSED).",
         'categorie': 'Commercial',
     }
 

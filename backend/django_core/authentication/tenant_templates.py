@@ -7,13 +7,12 @@ terrain sur lequel se juge une démo face à Vesta / OpusFlow.
 CE MODULE NE CRÉE AUCUN MODÈLE ET AUCUNE DONNÉE INVENTÉE : il COMPOSE
 l'existant, dans l'ordre, chaque brique étant déjà livrée et testée ailleurs :
 
-  1. `authentication.module_seeds` (SOL8)   — modules rares éteints ;
-  2. `apps.adminops.plan_seeds`   (SOL9)    — plan de licence « Solaire »,
+  1. `apps.adminops.plan_seeds`   (SOL9)    — plan de licence « Solaire »,
      assigné au `CompanyProfile` de CE tenant ;
-  3. `authentication.views._create_system_roles` — rôles types (Directeur,
+  2. `authentication.views._create_system_roles` — rôles types (Directeur,
      Responsable, Commercial, Technicien… le vocabulaire d'un installateur) ;
-  4. la STRUCTURE de catalogue solaire (taxonomie de `seed_catalogue`) ;
-  5. `apps.reporting.DashboardConfig` — cartes solaires par défaut.
+  3. la STRUCTURE de catalogue solaire (taxonomie de `seed_catalogue`) ;
+  4. `apps.reporting.DashboardConfig` — cartes solaires par défaut.
 
 RÈGLE CHECKED-FACTS, ABSOLUE (mémoire fondateur) — LE POINT LE PLUS IMPORTANT
 DE CETTE TÂCHE. Le catalogue seedé du dépôt porte des prix RÉELS **en MAD**.
@@ -145,13 +144,11 @@ def appliquer_gabarit_solaire(company, *, user=None, avec_catalogue_produits=Fal
     par les tests). Chaque étape est isolée : une brique indisponible ne casse
     jamais les autres ni la création du tenant.
     """
-    from .module_seeds import semer_modules_off_par_defaut
     from .views import _create_system_roles
 
     rapport = {'company': company.slug, 'pays': getattr(company, 'pays', '')}
 
     etapes = (
-        ('modules_eteints', lambda: semer_modules_off_par_defaut(company)),
         ('plan', lambda: _assigner_plan_solaire(company).code),
         ('roles', lambda: sorted(_create_system_roles(company))),
         ('catalogue', lambda: _seed_structure_catalogue(

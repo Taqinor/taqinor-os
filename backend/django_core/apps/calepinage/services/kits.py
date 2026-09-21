@@ -1,27 +1,29 @@
-"""CAL198 — kit de pose du module : structures/fixations du catalogue AO ET
+"""CAL198 — kit de pose du module : structures/fixations du catalogue ET
 cotes RÉELLES du module posé.
 
 LE DÉFAUT QUE CE SERVICE CORRIGE
 ---------------------------------
-``KitCalepinage`` (AOF26) existe côté AO, string-FK sur ``stock.Produit``
-(le produit qui porte le PRIX), et le module autonome n'y avait aucun accès.
-Pire : les kits du noyau (``core/calepinage/types.py``) sont des CONSTANTES
-(un module 2 384 × 1 303 mm figé en dur), et l'unique passerelle
-produit→kit (``apps.ao.services.kit_panneau_du_produit``) ne servait que
-l'AO. Un module d'une autre dimension se retrouvait donc calepiné avec les
-cotes d'un AUTRE module (CAL169, fondue ici).
+Les kits du noyau (``core/calepinage/types.py``) sont des CONSTANTES (un module
+2 384 × 1 303 mm figé en dur) : un module d'une autre dimension se retrouvait
+calepiné avec les cotes d'un AUTRE module (CAL169, fondue ici). Le catalogue de
+structures/fixations, lui, vivait dans une table du module d'appels d'offres,
+que l'atelier n'atteignait qu'en le lisant à travers une autre app.
+
+SOLMVP15 — ce module-là sort du produit. Le catalogue est désormais celui du
+module (``services/kits_catalogue.kits_de_societe``, section ``presets.kits``
+des réglages société) : même forme de ligne, même comportement, aucune
+migration, et plus aucune app tierce sur le chemin.
 
 CE QUE FAIT CE SERVICE
 ------------------------
 Il COMBINE, sans jamais recoder ni copier :
 
-* les structures/fixations du kit AO (``apps.ao.selectors.kits_de_pose``) —
-  code, libellé, mode de pose, emprise, produit qui porte le prix ;
+* les structures/fixations du kit du catalogue — code, libellé, mode de pose,
+  emprise, produit qui porte le prix ;
 * les cotes RÉELLES du module POSÉ — celles du produit demandé
   (``apps.stock.selectors.dimensions_de_pose``, CAL119) quand un module est
-  précisé, sinon celles DÉJÀ portées par le kit AO (comportement
-  HISTORIQUE inchangé — un kit qui ne change pas de produit ne change pas
-  de cotes).
+  précisé, sinon celles DÉJÀ portées par le kit (comportement HISTORIQUE
+  inchangé — un kit qui ne change pas de produit ne change pas de cotes).
 
 Une dimension manquante sur le module demandé REFUSE le kit, en NOMMANT le
 champ (jamais un repli sur les cotes d'un autre module). Un produit — kit OU
@@ -53,14 +55,14 @@ def construire_kit_de_pose(company, *, kit_id, produit_module_id=None):
 
     Args:
         company: la société — jamais lue d'un corps de requête.
-        kit_id: l'identifiant du ``KitCalepinage`` (AO) à utiliser.
+        kit_id: l'identifiant du kit du catalogue à utiliser.
         produit_module_id: le produit MODULE réellement posé, s'il diffère
             du module par défaut du kit. ``None`` ⇒ cotes du kit inchangées
             (comportement historique).
 
     Returns:
         ``{'kit', 'module', 'produit_module_id', 'produit_module_archive'}``
-        — ``kit`` est la ligne du catalogue AO (avec son propre
+        — ``kit`` est la ligne du catalogue (avec son propre
         ``produit_archive``), ``module`` porte les cotes RETENUES et leur
         ``source`` (``'kit'`` ou ``'produit'``).
 
@@ -68,8 +70,9 @@ def construire_kit_de_pose(company, *, kit_id, produit_module_id=None):
         KitDePoseRefuse: société/kit absent, kit introuvable, produit module
             introuvable, ou dimension de pose manquante sur ce produit.
     """
-    from apps.ao.selectors import kits_de_pose
     from apps.stock.selectors import dimensions_de_pose, get_produit_scoped
+
+    from .kits_catalogue import kits_de_societe
 
     if company is None or not kit_id:
         raise KitDePoseRefuse(
@@ -77,7 +80,7 @@ def construire_kit_de_pose(company, *, kit_id, produit_module_id=None):
             champ='kit')
 
     kit_ao = next(
-        (ligne for ligne in kits_de_pose(company, actifs_seulement=False)
+        (ligne for ligne in kits_de_societe(company, actifs_seulement=False)
          if ligne['id'] == kit_id), None)
     if kit_ao is None:
         raise KitDePoseRefuse(f'Kit de pose introuvable : « {kit_id} ».',

@@ -23,7 +23,6 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.compta.models import PeriodeComptable
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Avoir, Facture, LigneFacture, Paiement
@@ -112,19 +111,6 @@ class TestSuppressionFacture(TestCase):
         Paiement.objects.create(
             company=self.company, facture=facture, montant=Decimal('10'),
             date_paiement=date(2026, 3, 1), mode='especes')
-        resp = self.api_su.delete(self._url(facture))
-        self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
-
-    # ── Verrou de période ─────────────────────────────────────────────────
-
-    def test_facture_dans_periode_cloturee_refusee(self):
-        facture = self._facture()
-        Facture.objects.filter(pk=facture.pk).update(
-            date_emission=date(2026, 2, 10))
-        PeriodeComptable.objects.create(
-            company=self.company, date_debut=date(2026, 2, 1),
-            date_fin=date(2026, 2, 28), verrouillee=True)
         resp = self.api_su.delete(self._url(facture))
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())

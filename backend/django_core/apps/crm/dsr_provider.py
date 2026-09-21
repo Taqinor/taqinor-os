@@ -149,11 +149,6 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     d'une personne) partagent exactement le même scrub : deux chemins qui
     divergeraient, c'est un des deux qui oublierait un champ.
     """
-    from apps.grc.services import empreinte_avant, journaliser_destruction
-
-    empreinte = empreinte_avant({
-        'nom': le.nom, 'prenom': le.prenom, 'email': le.email,
-        'telephone': le.telephone, 'whatsapp': le.whatsapp})
     le.nom = 'Anonymisé'
     le.prenom = None
     le.email = None
@@ -183,10 +178,6 @@ def anonymiser_lead(company, le, *, motif, demande_droit_ref=''):
     # navigateur, appareil, suffixe de jeton) — la ligne reste, la personne
     # n'est plus reconnaissable.
     _anonymiser_traces_visiteur(company, le)
-    journaliser_destruction(
-        company, type_objet='crm_lead', objet_ref=le.pk,
-        action='anonymise', demande_droit_ref=demande_droit_ref,
-        motif=motif, empreinte=empreinte)
     return 1
 
 
@@ -197,12 +188,7 @@ def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):
     identité, contacts, identifiants fiscaux/administratifs et champs
     personnalisés. Les documents comptables restent intacts.
     """
-    from apps.grc.services import empreinte_avant, journaliser_destruction
-
     now = now or timezone.now()
-    empreinte = empreinte_avant({
-        'nom': cl.nom, 'prenom': cl.prenom, 'email': cl.email,
-        'telephone': cl.telephone})
     cl.nom = 'Anonymisé'
     cl.prenom = None
     cl.email = None
@@ -225,10 +211,6 @@ def anonymiser_client(company, cl, *, motif, demande_droit_ref='', now=None):
         'nom', 'prenom', 'email', 'telephone', 'adresse',
         'cin', 'ice', 'if_fiscal', 'rc', 'custom_data',
         'is_anonymized', 'anonymized_at'])
-    journaliser_destruction(
-        company, type_objet='crm_client', objet_ref=cl.pk,
-        action='anonymise', demande_droit_ref=demande_droit_ref,
-        motif=motif, empreinte=empreinte)
     return 1
 
 

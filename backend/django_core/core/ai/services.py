@@ -629,7 +629,7 @@ def draft_reply(messages: list[dict], *, channel: str = 'email',
 # Même patron NO-OP-safe que FG354 (``draft_reply``) : une SUGGESTION éditable
 # de sujet + corps, JAMAIS auto-envoyée — l'utilisateur relit/édite/envoie
 # lui-même. Sans clé LLM configurée, ``configured=False`` et l'appelant
-# (apps.compta.views) masque le bouton « Générer avec l'IA » (no-op complet,
+# (la vue appelante) masque le bouton « Générer avec l'IA » (no-op complet,
 # aucun appel réseau). GARDE STRICTE : le prompt construit ne doit JAMAIS
 # contenir de donnée interne (prix_achat, marge) — testé par
 # ``build_campaign_prompt`` + une liste de mots-clés interdits.

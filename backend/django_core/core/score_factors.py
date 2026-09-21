@@ -1,7 +1,7 @@
 """NTAI31 — explicabilité des scores : les facteurs contributifs.
 
 Les scorers de ``core`` (``churn_risk``, ``win_probability``,
-``payment_delay_risk``, ``attrition_risk``) rendaient déjà un dict ``factors``
+``payment_delay_risk``) rendaient déjà un dict ``factors``
 avec la valeur NORMALISÉE de chaque composante — utile pour les tests, illisible
 pour un commercial : « inactivity: 0.8219 » ne dit pas pourquoi le client est à
 risque. Ce module fournit la couche d'explication : chaque signal devient une
@@ -19,9 +19,9 @@ Deux garanties tenues par construction :
   composante au score rendu (sa part dans la moyenne pondérée, ou le delta
   qu'elle a appliqué pour un scorer multiplicatif), pas une importance devinée.
 
-PÉRIMÈTRE — les quatre modules cités sont les scorers de ``core`` qui rendent
+PÉRIMÈTRE — les trois modules cités sont les scorers de ``core`` qui rendent
 UN score borné à partir de signaux pondérés, donc les seuls où « classer les
-signaux » veut dire quelque chose. Trois autres modules prédictifs de ``core``
+signaux » veut dire quelque chose. Deux autres modules prédictifs de ``core``
 restent volontairement hors de cette couche, non par oubli :
 
 * ``core.anomaly`` s'explique DÉJÀ par construction — un ``OutlierCandidate``
@@ -29,9 +29,7 @@ restent volontairement hors de cette couche, non par oubli :
   (``haut``/``bas``) : ajouter une liste de facteurs y serait redondant ;
 * ``core.stock_reorder`` ne rend pas un score mais une DÉCISION chiffrée
   (point de commande, quantité suggérée, date de rupture) — ce sont des
-  grandeurs métier directement lisibles, pas des contributions à classer ;
-* ``core.demand_forecast`` rend une SÉRIE de prévisions plus ses coefficients
-  saisonniers, déjà exposés mois par mois.
+  grandeurs métier directement lisibles, pas des contributions à classer.
 """
 from __future__ import annotations
 

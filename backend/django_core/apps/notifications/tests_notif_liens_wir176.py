@@ -4,7 +4,7 @@ Chaque site producteur de ``link=`` dans ``signals.py``/``sweeps.py``/
 ``apps.adminops.impersonation_service`` pointait vers une route INEXISTANTE
 côté front (ex. ``/sav/tickets/<pk>``, ``/leads/<pk>``, ``/factures/<pk>``,
 ``/gestion-projet/projets/<pk>``, ``/automation/approvals/<pk>``,
-``/compta/approbations/<pk>``, ``/installations/…``, ``/ged/documents/<pk>``,
+``/installations/…``, ``/ged/documents/<pk>``,
 ``/admin/impersonation/<pk>``). Ce module vérifie, par catégorie (calqué sur
 ``tests_qx12_devis_links.py``), que le ``link`` posé correspond désormais à
 une route RÉELLE :
@@ -20,8 +20,6 @@ une route RÉELLE :
     CHANGE) ;
   - ``/approbations?source=…``  — boîte unique XKB1, filtrée par la source
     réelle de l'agrégateur (automation/installations/ged) ;
-  - ``/comptabilite/approbations-config`` — écran DÉDIÉ de
-    ``compta.DemandeApprobationConfig`` (PAS une source de l'agrégateur XKB1) ;
   - ``/equipements`` / ``/sav/contrats`` / ``/chantiers/demandes-achat`` —
     écrans de liste réels (WARRANTY_EXPIRING/MAINTENANCE_DUE/DA_SOUMISE_STALE,
     pas de deep-link vérifié côté page : jamais un paramètre fabriqué) ;
@@ -229,19 +227,21 @@ class FacturePayeeBonCommandeLinkTests(TestCase):
 
 class ProjetStatutChangeLinkTests(TestCase):
     def test_link_lands_on_projets_detail_route(self):
-        from apps.gestion_projet.models import Projet
+        # SOLMVP19 — le récepteur (`signals.projet_status_change_receiver`)
+        # ne lit que `projet.responsable`/`.nom`/`.pk` (attributs génériques) :
+        # un objet DUCK-TYPÉ suffit à l'exercer, jamais un import d'apps.
+        # gestion_projet (app sortie du produit) depuis ce test notifications.
+        from types import SimpleNamespace
+
         from core.events import projet_status_change
 
         company = _make_company('Wir176ProjetCo')
         resp = _make_user(company, 'wir176-proj-resp', role_legacy='responsable')
-        projet = Projet.objects.create(
-            company=company, code='PRJ-WIR176-1', nom='Projet WIR176',
-            responsable=resp)
+        projet = SimpleNamespace(pk=4242, nom='Projet WIR176', responsable=resp)
 
         projet_status_change.send(
             sender=None, projet=projet, company=company, user=resp,
-            ancien_statut=Projet.Statut.PLANIFIE,
-            nouveau_statut=Projet.Statut.EN_COURS)
+            ancien_statut='planifie', nouveau_statut='en_cours')
 
         notif = Notification.objects.get(
             recipient=resp, event_type=EventType.PROJET_STATUT_CHANGE)
@@ -309,26 +309,6 @@ class ApprobationsSourceLinkTests(TestCase):
             recipient=approver, event_type=EventType.APPROVAL_REQUESTED)
         self.assertEqual(notif.link, '/approbations?source=ged')
         self.assertNotIn('/ged/documents/', notif.link)
-
-
-# ── compta.DemandeApprobationConfig — écran DÉDIÉ (PAS l'agrégateur XKB1) ──
-
-class ComptaApprobationConfigLinkTests(TestCase):
-    def test_link_lands_on_dedicated_compta_screen(self):
-        from apps.compta.models import DemandeApprobationConfig
-
-        company = _make_company('Wir176ComptaCo')
-        approver = _make_user(company, 'wir176-compta-approver', role_legacy='admin')
-        requester = _make_user(company, 'wir176-compta-requester')
-
-        DemandeApprobationConfig.objects.create(
-            company=company, devis_reference='DV-WIR176-1',
-            motif='kWc/onduleur incohérents', demandeur=requester)
-
-        notif = Notification.objects.get(
-            recipient=approver, event_type=EventType.APPROVAL_REQUESTED)
-        self.assertEqual(notif.link, '/comptabilite/approbations-config')
-        self.assertNotIn('/compta/approbations/', notif.link)
 
 
 # ── CHT7 — CHANTIER_ASSIGNE / chantier_card / DA_DECIDEE (installations) ──

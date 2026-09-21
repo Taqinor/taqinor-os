@@ -1,5 +1,7 @@
 """YEVNT9 — relance/escalade des approbations en attente au-delà d'un seuil,
-pour les DEUX moteurs (automation.AutomationApproval + compta.DemandeApprobationConfig).
+pour le moteur ``automation.AutomationApproval`` (le second moteur
+historique, ``compta.DemandeApprobationConfig``, est sorti du produit avec
+l'app compta, SOLMVP19).
 
 Couverture :
   - avant le seuil de relance -> rien.
@@ -9,7 +11,6 @@ Couverture :
     jamais deux fois, et ne re-déclenche pas la relance palier 1.
   - seuils configurables (ApprovalReminderConfig).
   - idempotent sur ré-exécution le même jour.
-  - les deux moteurs sont couverts indépendamment.
 """
 from datetime import timedelta
 
@@ -121,55 +122,3 @@ class AutomationApprovalReminderTests(TestCase):
         label2, when2 = escalade_state_pour(approval2)
         self.assertEqual(label2, 'relance')
         self.assertIsNotNone(when2)
-
-
-class ComptaDemandeReminderTests(TestCase):
-
-    def setUp(self):
-        self.company = _make_company('ComptaReminderCo')
-        self.approver = _make_user(self.company, 'compta_r_approver', role_legacy='admin')
-        self.requester = _make_user(self.company, 'compta_r_requester')
-
-    def _make_pending_demande(self, days_old):
-        from apps.compta.models import DemandeApprobationConfig
-        demande = DemandeApprobationConfig.objects.create(
-            company=self.company, devis_reference='DV-Y9-1',
-            motif='motif test', demandeur=self.requester)
-        demande.date_creation = timezone_ago(days_old)
-        demande.save(update_fields=['date_creation'])
-        return demande
-
-    def test_no_reminder_before_threshold(self):
-        from .services import sweep_approval_reminders
-        self._make_pending_demande(days_old=0)
-        count = sweep_approval_reminders(self.company)
-        self.assertEqual(count, 0)
-
-    def test_reminder_then_escalation_over_time(self):
-        from .services import sweep_approval_reminders
-        demande = self._make_pending_demande(days_old=5)
-        count = sweep_approval_reminders(self.company)
-        self.assertEqual(count, 1)
-        self.assertTrue(Notification.objects.filter(
-            recipient=self.approver,
-            event_type=EventType.APPROVAL_REMINDER).exists())
-
-        # Le temps passe : la demande dépasse maintenant le seuil d'escalade.
-        demande.date_creation = timezone_ago(10)
-        demande.save(update_fields=['date_creation'])
-        count2 = sweep_approval_reminders(self.company)
-        self.assertEqual(count2, 1)
-        self.assertTrue(Notification.objects.filter(
-            recipient=self.approver,
-            event_type=EventType.APPROVAL_ESCALATED).exists())
-
-    def test_decided_demande_not_relanced(self):
-        """Une demande déjà décidée n'apparaît plus dans les en-attente ->
-        aucune relance."""
-        from apps.compta import services as compta_services
-        from .services import sweep_approval_reminders
-        demande = self._make_pending_demande(days_old=5)
-        compta_services.decider_approbation_config(
-            demande, approuver=True, user=self.approver)
-        count = sweep_approval_reminders(self.company)
-        self.assertEqual(count, 0)

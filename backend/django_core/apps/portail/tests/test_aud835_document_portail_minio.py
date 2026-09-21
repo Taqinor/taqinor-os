@@ -21,9 +21,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import Resolver404, resolve
 
-from apps.compta.serializers import DocumentClientPortailSerializer
 from apps.ged.models import Cabinet, Document, Folder
 from apps.portail.models import DocumentClientPortail
+from apps.portail.serializers import DocumentClientPortailSerializer
 from authentication.models import Company
 
 PDF = b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n'

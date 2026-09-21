@@ -30,12 +30,12 @@ vi.mock('../../api/reportingApi', () => ({
       data: {
         scorecard: {
           interventions_terminees: 12, duree_reelle_moyenne_jours: 1.5,
-          taux_recidive_pct: 5, ponctualite_pct: 90, nps: 60, utilisation_pct: 75,
+          taux_recidive_pct: 5, ponctualite_pct: 90, utilisation_pct: 75,
         },
         moyenne_equipe: {
           nb_techniciens: 4, interventions_terminees: 10,
           duree_reelle_moyenne_jours: 2, taux_recidive_pct: 8,
-          ponctualite_pct: 85, nps: 50, utilisation_pct: 70,
+          ponctualite_pct: 85, utilisation_pct: 70,
         },
       },
     })),

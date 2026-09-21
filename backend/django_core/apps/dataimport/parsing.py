@@ -11,9 +11,8 @@ UNIQUE et réutilisable (CSV + XLSX, détection d'encodage utf-8/latin-1,
 séparateur ``,``/``;``, en-têtes normalisés) à la fois pour les 6 cibles
 ``FIELD_MAPS`` existantes (``services.parse_rows`` délègue désormais ici, zéro
 changement de comportement) et pour tout call-site hors ``dataimport`` qui
-veut lire un fichier tabulaire sans dupliquer la lecture bas niveau
-(ex. ``apps.rh.views``/``apps.contrats.views``, motif de migration
-progressive — 3 pilotes migrés dans ce lot, les autres suivront).
+veut lire un fichier tabulaire sans dupliquer la lecture bas niveau (motif de
+migration progressive — 3 pilotes migrés dans ce lot, les autres suivront).
 
 ``records/xlsx.py`` (export) n'est PAS concerné : ce module ne touche que la
 LECTURE (import), jamais l'export.

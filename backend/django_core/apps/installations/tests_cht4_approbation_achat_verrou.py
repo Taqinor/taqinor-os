@@ -4,8 +4,8 @@
 sans transaction ni verrou de ligne : deux décisions concurrentes sur la même
 étape pouvaient toutes les deux franchir la garde EN_ATTENTE. Et
 ``rejeter_etape_achat``/``approuver_etape_achat`` enchaînaient plusieurs
-écritures hors transaction — un échec en cours de route (ex. la libération du
-budget) laissait l'étape décidée mais la demande dans un état incohérent.
+écritures hors transaction — un échec en cours de route laissait l'étape
+décidée mais la demande dans un état incohérent.
 
 NOTE D'HONNÊTETÉ (patron ``tests_aud320_comptage_verrou.py``) : deux requêtes
 réellement concurrentes ne sont pas reproductibles dans une ``TestCase`` (une
@@ -13,8 +13,7 @@ seule connexion, une transaction de test). On vérifie donc les deux choses
 observables et suffisantes : (1) la relecture de l'étape porte bien un verrou
 de ligne (``FOR UPDATE``) — sans lui la course reste ouverte ; (2) une
 seconde décision sur une étape déjà tranchée est refusée (ROUGE avant le
-correctif si l'appelant réutilise un objet Python périmé) ; (3) un échec en
-aval (libération du budget) annule TOUT — l'étape reste EN_ATTENTE.
+correctif si l'appelant réutilise un objet Python périmé).
 
 Run :
     python manage.py test apps.installations.tests_cht4_approbation_achat_verrou -v2
@@ -92,11 +91,11 @@ class TestVerrouDecisionEtape(BaseCht4):
 
 
 class TestAtomiciteDecisionEtape(BaseCht4):
-    def test_echec_liberation_budget_laisse_l_etape_en_attente(self):
-        """Le rejet enchaîne décision d'étape + transition de la demande +
-        libération du budget : si cette dernière échoue, TOUT est annulé."""
-        with patch.object(services, 'liberer_budget_demande_achat',
-                          side_effect=RuntimeError('budget indisponible')):
+    def test_echec_transition_laisse_l_etape_en_attente(self):
+        """Le rejet enchaîne décision d'étape + transition de la demande :
+        si cette dernière échoue, TOUT est annulé."""
+        with patch.object(services, 'appliquer_statut_document',
+                          side_effect=RuntimeError('transition indisponible')):
             with self.assertRaises(RuntimeError):
                 services.rejeter_etape_achat(
                     self.etape, approbateur=self.approbateur,
@@ -108,7 +107,7 @@ class TestAtomiciteDecisionEtape(BaseCht4):
         self.assertEqual(self.demande.statut, DemandeAchat.Statut.SOUMISE)
         self.assertIsNone(self.demande.date_decision)
 
-    def test_rejet_nominal_libere_le_budget_et_tranche_l_etape(self):
+    def test_rejet_nominal_tranche_l_etape_et_refuse_la_demande(self):
         services.rejeter_etape_achat(
             self.etape, approbateur=self.approbateur,
             commentaire='Hors budget')

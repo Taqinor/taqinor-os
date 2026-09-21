@@ -1,6 +1,6 @@
 """ARC33 — auto-découverte des actions agent depuis les manifestes plateforme.
 
-Couvre : (1) les 3 apps pilotes (rh, contrats, compta) sont découvertes au
+Couvre : (1) les 2 apps pilotes (rh, compta) sont découvertes au
 démarrage via leur ``agent_actions_module`` (AUCUN câblage dans leur propre
 ``AppConfig.ready()``) et leurs actions sont LECTURE seule ; (2) le gatage
 ``ModuleToggle`` (ODX23) — module OFF pour la société ⇒ ses actions
@@ -24,13 +24,11 @@ User = get_user_model()
 PILOT_KEYS = {
     'rh.employes.list',
     'rh.demandes_conge.list',
-    'contrats.contrat.list',
     'compta.effets.list',
 }
 
 PILOT_MODULES = {
     'apps.rh.agent_actions',
-    'apps.contrats.agent_actions',
     'apps.compta.agent_actions',
 }
 
@@ -59,8 +57,6 @@ class TestAutodiscovery(SimpleTestCase):
             self.assertIn(dotted, registry._DISCOVERED, dotted)
         self.assertIn('rh.employes.list',
                       registry._DISCOVERED['apps.rh.agent_actions'])
-        self.assertIn('contrats.contrat.list',
-                      registry._DISCOVERED['apps.contrats.agent_actions'])
         self.assertIn('compta.effets.list',
                       registry._DISCOVERED['apps.compta.agent_actions'])
 
@@ -115,8 +111,7 @@ class TestModuleToggleGating(TestCase):
         keys = {a.key for a in registry.for_user(self.su)}
         self.assertNotIn('rh.employes.list', keys)
         self.assertNotIn('rh.demandes_conge.list', keys)
-        # Les autres pilotes restent visibles.
-        self.assertIn('contrats.contrat.list', keys)
+        # L'autre pilote reste visible.
         self.assertIn('compta.effets.list', keys)
 
     def test_module_off_does_not_hide_legacy_actions(self):

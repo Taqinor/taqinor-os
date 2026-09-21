@@ -47,9 +47,13 @@ def auth(user):
 
 class Ntret20Base(TestCase):
     def setUp(self):
-        from apps.ecommerce_connect.models import (
-            ConnexionEcommerce, ProduitSync,
-        )
+        # Résolution paresseuse par ``apps.get_model`` — jamais un import
+        # statique des modèles du module ecommerce_connect (frontière
+        # inter-apps, même patron que ``apps.stock.marketplace_feeds``).
+        from django.apps import apps as django_apps
+        ConnexionEcommerce = django_apps.get_model(
+            'ecommerce_connect', 'ConnexionEcommerce')
+        ProduitSync = django_apps.get_model('ecommerce_connect', 'ProduitSync')
 
         self.company = make_company('ntret20-co', 'NTRET20 Co')
         self.autre = make_company('ntret20-autre', 'NTRET20 Autre')
@@ -91,7 +95,8 @@ class Ntret20SelectionTests(Ntret20Base):
 
     def test_sans_aucune_synchro_le_flux_est_vide_jamais_tout_le_catalogue(
             self):
-        from apps.ecommerce_connect.models import ProduitSync
+        from django.apps import apps as django_apps
+        ProduitSync = django_apps.get_model('ecommerce_connect', 'ProduitSync')
 
         ProduitSync.objects.all().delete()
         self.assertEqual(

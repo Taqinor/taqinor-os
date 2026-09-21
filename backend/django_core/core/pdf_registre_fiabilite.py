@@ -13,8 +13,9 @@ Consolide, pour une société et une plage de mois choisie :
     l'infrastructure de sauvegarde étant partagée par tous les tenants ;
   * les crédits SLA (NTOBS4) le cas échéant.
 
-``core`` reste une couche de FONDATION : ``apps.statuspage.IncidentPublic``
-est résolu via ``django.apps.apps.get_model`` (jamais un import statique).
+``core`` reste une couche de FONDATION : le modèle d'incident public de la
+page d'état est résolu via ``django.apps.apps.get_model`` (jamais un import
+statique) — absent, le registre se rend sans section incidents.
 """
 from __future__ import annotations
 

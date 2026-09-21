@@ -22,17 +22,6 @@ class PublicApiConfig(AppConfig):
         # métier (nouveau lead, devis accepté, chantier clôturé, facture payée).
         from . import signals
         signals.connect()
-        # NTSCM39 — abonnés aux évènements SCM du bus `core.events`
-        # (`scm_rupture_imminente_detectee`/`scm_cycle_sop_cloture`), jamais
-        # un import direct `apps.scm` -> `apps.publicapi`.
-        from . import scm_event_receivers
-        scm_event_receivers.connect()
-        # NTCON31 — abonnés aux évènements BTP/EPC du bus `core.events`
-        # (`btp_reserve_levee`/`btp_rfi_repondu`/`btp_visa_approuve`/
-        # `btp_dgd_finalise`), jamais un import direct `apps.btp_chantier`
-        # -> `apps.publicapi`.
-        from . import btp_event_receivers
-        btp_event_receivers.connect()
         # NTUX32 — abonnés aux évènements des objets UX du bus `core.events`
         # (`saved_view_shared`/`record_restored`), jamais un import direct
         # `apps.uxviews`/`apps.trash` -> `apps.publicapi`.

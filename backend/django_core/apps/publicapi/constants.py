@@ -17,11 +17,6 @@ SCOPE_READ_STOCK = 'read:stock'
 # (plan_code/modules_inclus/sieges_max/sieges_utilises UNIQUEMENT — jamais de
 # prix ni d'historique).
 SCOPE_READ_LICENCE = 'read:licence'
-# NTSCM38 — planification supply chain (apps.scm) : prévisions de demande,
-# politiques de stock (ROP/stock de sécurité, JAMAIS `prix_achat`) et le
-# tableau de bord réappro consolidé, en LECTURE SEULE. Intégration externe
-# (TMS, connecteur planification tiers).
-SCOPE_READ_SCM = 'read:scm'
 # NTJUR41 — affaires juridiques (apps.juridique) en LECTURE SEULE : registre
 # des dossiers et budget d'un dossier, pour un usage externe RESTREINT
 # (courtier d'assurance RC, cabinet partenaire). Le filtrage de
@@ -36,15 +31,6 @@ SCOPE_READ_JURIDIQUE = 'juridique:read'
 # `events_feed.SCOPE_PAR_EVENEMENT`). Une clé qui ne porterait que ce scope lit
 # un flux VIDE — le flux n'est jamais un contournement des scopes de lecture.
 SCOPE_READ_EVENTS = 'read:events'
-
-# NTCON31 — vertical BTP/EPC (apps.btp_chantier) en LECTURE SEULE : réserves
-# de chantier, RFI, visas de documents et décomptes généraux, pour une MOE ou
-# un maître d'ouvrage externe qui suit l'exécution depuis son propre outil.
-# AUCUNE donnée de coût INTERNE n'est exposée par ce scope : ni déboursé
-# (NTCON11), ni exposition aux pénalités (NTCON15), ni prix d'achat. Le DGD
-# expose ses montants CONTRACTUELS (marché, avenants, situations, solde) —
-# ce sont les chiffres que le client signe, pas la marge de l'entreprise.
-SCOPE_READ_BTP = 'read:btp'
 
 # NTUX33 — favoris épinglés (apps.uxviews.FavoriUtilisateur, NTUX12) et vues
 # sauvegardées (apps.uxviews.SavedView, NTUX1) en LECTURE SEULE, pour une
@@ -107,13 +93,10 @@ SCOPE_CHOICES = [
     (SCOPE_READ_CHANTIERS, 'Lire les chantiers'),
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
     (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
-    (SCOPE_READ_SCM, 'Lire la planification supply chain (prévisions, politiques de stock, réappro)'),
     (SCOPE_READ_JURIDIQUE,
      'Lire les dossiers juridiques non confidentiels et leur budget'),
     (SCOPE_READ_EVENTS,
      "Lire le flux d'évènements (limité aux familles déjà autorisées)"),
-    (SCOPE_READ_BTP,
-     'Lire le suivi de chantier BTP (réserves, RFI, visas, décomptes)'),
     (SCOPE_READ_FAVORIS,
      "Lire les favoris épinglés d'un utilisateur consentant (?owner=)"),
     (SCOPE_READ_VUES,
@@ -169,17 +152,6 @@ EVENT_LIVRAISON_LIVREE = 'livraison.livree'
 # apps.parametres.services_licence / apps.adminops.receivers).
 EVENT_PLAN_CHANGED = 'plan.changed'
 EVENT_SIEGES_QUOTA_ATTEINT = 'sieges.quota_atteint'
-# NTSCM39 — évènements de planification supply chain (apps.scm), consommés
-# depuis `core.events` par `apps/publicapi/scm_event_receivers.py`.
-EVENT_SCM_RUPTURE_IMMINENTE = 'scm.rupture_imminente_detectee'
-EVENT_SCM_CYCLE_SOP_CLOTURE = 'scm.cycle_sop_cloture'
-# NTCON31 — évènements du vertical BTP/EPC (apps.btp_chantier), consommés
-# depuis `core.events` par `apps/publicapi/btp_event_receivers.py` (jamais un
-# import direct `btp_chantier` -> `publicapi`).
-EVENT_BTP_RESERVE_LEVEE = 'reserve.levee'
-EVENT_BTP_RFI_REPONDU = 'rfi.repondu'
-EVENT_BTP_VISA_APPROUVE = 'visa.approuve'
-EVENT_BTP_DGD_FINALISE = 'dgd.finalise'
 # NTUX32 — évènements des objets UX (apps.uxviews / apps.trash), consommés
 # depuis `core.events` par `apps/publicapi/uxviews_event_receivers.py` (jamais
 # un import direct `uxviews`/`trash` -> `publicapi`). Clés SOULIGNÉES (pas
@@ -224,12 +196,6 @@ EVENT_CHOICES = [
     (EVENT_LIVRAISON_LIVREE, 'Livraison — livrée'),
     (EVENT_PLAN_CHANGED, 'Plan de licence — changé'),
     (EVENT_SIEGES_QUOTA_ATTEINT, 'Sièges — quota atteint'),
-    (EVENT_SCM_RUPTURE_IMMINENTE, 'Supply chain — rupture imminente détectée'),
-    (EVENT_SCM_CYCLE_SOP_CLOTURE, 'Supply chain — cycle S&OP clôturé'),
-    (EVENT_BTP_RESERVE_LEVEE, 'BTP — réserve levée'),
-    (EVENT_BTP_RFI_REPONDU, 'BTP — RFI répondu'),
-    (EVENT_BTP_VISA_APPROUVE, 'BTP — visa approuvé'),
-    (EVENT_BTP_DGD_FINALISE, 'BTP — décompte général finalisé'),
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
     (EVENT_CALEPINAGE_VALIDE, 'Calepinage — variante retenue'),

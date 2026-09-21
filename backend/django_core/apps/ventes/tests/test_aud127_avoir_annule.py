@@ -112,20 +112,6 @@ class TestAUD127AvoirAnnule(TestCase):
         self.assertEqual(self.facture.avoirs_total, Decimal('0'))
         self.assertEqual(self.facture.montant_du, Decimal('24000.00'))
 
-    def test_extourne_comptable_branchee_sur_l_evenement(self):
-        """Le receiver compta est abonné à `avoir_annule` : l'écriture
-        d'avoir est EXTOURNÉE, jamais supprimée (COMPTA11)."""
-        from apps.compta import receivers as compta_receivers
-        from core.events import avoir_annule
-
-        self.assertTrue(
-            hasattr(compta_receivers, '_extourne_avoir_annule'),
-            "compta n'abonne rien à avoir_annule")
-        # `Signal.receivers` : chaque entrée commence par sa lookup_key, dont
-        # le premier élément est le `dispatch_uid` quand il est fourni.
-        uids = [entree[0][0] for entree in avoir_annule.receivers]
-        self.assertIn('compta_extourne_avoir_annule', uids)
-
     def test_annulation_d_une_contre_passation_restaure_la_facture(self):
         avoir = self._creer_avoir(
             {'mode': 'contre_passation', 'motif': 'Erreur de facturation'})

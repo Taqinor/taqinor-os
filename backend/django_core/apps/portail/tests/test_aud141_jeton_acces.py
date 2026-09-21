@@ -26,7 +26,6 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.compta.selectors import compte_portail_par_token
 from apps.crm.models import Client
 from apps.portail.models import ComptePortailClient
 from authentication.models import Company, CustomUser
@@ -35,6 +34,18 @@ _seq = itertools.count(1)
 
 RACINE = '/api/django/portail/comptes-portail/'
 RACINE_TOKENISEE = '/api/django/compta/portail/'
+
+
+def compte_portail_par_token(token):
+    """Réplique locale de test de ``ComptePortailClient`` ACTIF par jeton
+    (même requête que le sélecteur historique compta — compta n'est plus
+    importé depuis ce module SOLMVP16)."""
+    if not token:
+        return None
+    return (ComptePortailClient.objects
+            .filter(token_acces=token, actif=True)
+            .select_related('client')
+            .first())
 
 
 def make_company(slug, nom):

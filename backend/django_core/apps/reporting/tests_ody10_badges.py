@@ -6,9 +6,6 @@ ré-agrégation à la main, aucun nouveau modèle ni migration), ``?vue=badges``
 pour une charge utile légère, et un cloisonnement société ABSOLU : la société A
 ne voit jamais les compteurs de B.
 """
-from datetime import date, timedelta
-from decimal import Decimal
-
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -37,10 +34,10 @@ class BadgeDerivationTests(TestCase):
 
     def test_cle_app_depuis_provider(self):
         self.assertEqual(
-            _cle_app_depuis_provider('apps.rh.selectors.kpi_x'), 'rh')
+            _cle_app_depuis_provider('apps.stock.selectors.kpi_x'), 'stock')
         self.assertEqual(
-            _cle_app_depuis_provider('apps.gestion_projet.selectors.kpi_y'),
-            'gestion_projet')
+            _cle_app_depuis_provider('apps.installations.selectors.kpi_y'),
+            'installations')
         # Formes hors convention : pas de badge, jamais une clé inventée.
         self.assertIsNone(_cle_app_depuis_provider('crm_sales_report'))
         self.assertIsNone(_cle_app_depuis_provider('core.platform.x'))
@@ -60,21 +57,21 @@ class BadgeDerivationTests(TestCase):
 
     def test_un_seul_badge_par_app_le_premier_compteur_positif(self):
         tuiles = [
-            {'id': 'rh_a', 'label': 'A', 'valeur': 0,
-             'provider': 'apps.rh.selectors.k'},
-            {'id': 'rh_b', 'label': 'B', 'valeur': 4, 'unite': 'employés',
-             'provider': 'apps.rh.selectors.k'},
-            {'id': 'rh_c', 'label': 'C', 'valeur': 9,
-             'provider': 'apps.rh.selectors.k'},
-            {'id': 'compta_a', 'label': 'D', 'valeur': 2,
-             'provider': 'apps.compta.selectors.k'},
+            {'id': 'stock_a', 'label': 'A', 'valeur': 0,
+             'provider': 'apps.stock.selectors.k'},
+            {'id': 'stock_b', 'label': 'B', 'valeur': 4, 'unite': 'produits',
+             'provider': 'apps.stock.selectors.k'},
+            {'id': 'stock_c', 'label': 'C', 'valeur': 9,
+             'provider': 'apps.stock.selectors.k'},
+            {'id': 'sav_a', 'label': 'D', 'valeur': 2,
+             'provider': 'apps.sav.selectors.k'},
         ]
         badges = _badges_depuis_tuiles(tuiles)
-        self.assertEqual([b['app'] for b in badges], ['rh', 'compta'])
+        self.assertEqual([b['app'] for b in badges], ['stock', 'sav'])
         # La tuile à 0 est sautée, la SUIVANTE positive devient le badge.
         self.assertEqual(badges[0]['valeur'], 4)
-        self.assertEqual(badges[0]['tuile'], 'rh_b')
-        self.assertEqual(badges[0]['unite'], 'employés')
+        self.assertEqual(badges[0]['tuile'], 'stock_b')
+        self.assertEqual(badges[0]['unite'], 'produits')
 
     def test_app_sans_compteur_positif_na_pas_de_badge(self):
         tuiles = [
@@ -99,66 +96,63 @@ class BadgeEndpointTests(TestCase):
             company=self.other)
         self.api = auth(self.user)
 
-    def _seed_projets(self, company, en_cours):
-        from apps.gestion_projet.models import Projet
-        for i in range(en_cours):
-            Projet.objects.create(
-                company=company, code=f'ODY10-{company.slug}-{i}',
-                nom=f'Projet {i}', statut=Projet.Statut.EN_COURS)
+    def _seed_leads(self, company, actifs):
+        from apps.crm.models import Lead
+        for i in range(actifs):
+            Lead.objects.create(
+                company=company, nom=f'ODY10-{company.slug}-{i}')
 
-    def _seed_compta(self, company):
-        from apps.compta.models import Effet
-        today = date.today()
-        Effet.objects.create(
-            company=company, sens=Effet.Sens.RECEVOIR,
-            montant=Decimal('1000'), date_emission=today,
-            date_echeance=today + timedelta(days=15))
+    def _seed_calepinage(self, company):
+        from django.apps import apps as django_apps
+        django_apps.get_model('calepinage', 'Calepinage').objects.create(
+            company=company, lead_id=1, titre='ODY10 calepinage')
 
     def _badges(self, resp):
         return {b['app']: b for b in resp.data['badges']}
 
     def test_la_reponse_complete_porte_tuiles_ET_badges(self):
-        self._seed_projets(self.company, 2)
+        self._seed_leads(self.company, 2)
         resp = self.api.get(URL)
         self.assertEqual(resp.status_code, 200, resp.data)
         # Forme historique préservée (aucune régression ARC40).
         self.assertIn('tuiles', resp.data)
         self.assertEqual(resp.data['count'], len(resp.data['tuiles']))
         badges = self._badges(resp)
-        self.assertIn('gestion_projet', badges)
-        self.assertEqual(badges['gestion_projet']['valeur'], 2)
+        self.assertIn('crm', badges)
+        self.assertEqual(badges['crm']['valeur'], 2)
 
     def test_vue_badges_renvoie_les_badges_SEULS(self):
-        self._seed_projets(self.company, 3)
+        self._seed_leads(self.company, 3)
         resp = self.api.get(URL, {'vue': 'badges'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertNotIn('tuiles', resp.data)
         self.assertEqual(resp.data['count'], len(resp.data['badges']))
-        self.assertEqual(self._badges(resp)['gestion_projet']['valeur'], 3)
+        self.assertEqual(self._badges(resp)['crm']['valeur'], 3)
 
     def test_cloisonnement_societe_les_compteurs_de_A_sont_invisibles_de_B(self):
         """Multi-tenant strict : le badge de A ne fuit jamais chez B."""
-        self._seed_projets(self.company, 5)
-        # B n'a AUCUN projet : elle ne doit voir aucun badge projets.
+        self._seed_leads(self.company, 5)
+        # B n'a AUCUN lead : elle ne doit voir aucun badge crm.
         resp_b = auth(self.autre_user).get(URL, {'vue': 'badges'})
-        self.assertNotIn('gestion_projet', self._badges(resp_b))
+        self.assertNotIn('crm', self._badges(resp_b))
         # Et A voit bien les siens, à leur valeur exacte.
         resp_a = self.api.get(URL, {'vue': 'badges'})
-        self.assertEqual(self._badges(resp_a)['gestion_projet']['valeur'], 5)
+        self.assertEqual(self._badges(resp_a)['crm']['valeur'], 5)
         # Une donnée de B n'augmente pas le badge de A.
-        self._seed_projets(self.other, 4)
+        self._seed_leads(self.other, 4)
         resp_a2 = self.api.get(URL, {'vue': 'badges'})
-        self.assertEqual(self._badges(resp_a2)['gestion_projet']['valeur'], 5)
+        self.assertEqual(self._badges(resp_a2)['crm']['valeur'], 5)
 
     def test_module_desactive_na_pas_de_badge(self):
-        self._seed_projets(self.company, 2)
-        self._seed_compta(self.company)
+        self._seed_leads(self.company, 2)
+        self._seed_calepinage(self.company)
         ModuleToggle.objects.create(
-            company=self.company, module='gestion_projet', actif=False)
+            company=self.company, module='crm', actif=False)
         badges = self._badges(self.api.get(URL, {'vue': 'badges'}))
-        self.assertNotIn('gestion_projet', badges)
-        # compta, restée active, garde le sien.
-        self.assertIn('compta', badges)
+        self.assertNotIn('crm', badges)
+        # calepinage, resté actif, garde son badge (déclaré côté reporting,
+        # cf. apps/reporting/calepinage_kpis.py).
+        self.assertIn('reporting', badges)
 
     def test_superuser_sans_societe_recoit_une_liste_vide(self):
         su = User.objects.create_superuser(

@@ -82,21 +82,6 @@ class XFAC13AbandonCreanceTests(TestCase):
         self.assertFalse(self.facture.abandon_auto)
         self.assertIsNotNone(self.facture.abandon_date)
 
-    def test_manual_abandon_posts_balanced_entry(self):
-        self.api.post(
-            f'/api/django/ventes/factures/{self.facture.id}/'
-            'abandonner-solde/', {'motif': 'liquidation'}, format='json')
-        from apps.compta.models import EcritureComptable, LigneEcriture
-        ecriture = EcritureComptable.objects.filter(
-            company=self.company).latest('id')
-        lignes = LigneEcriture.objects.filter(ecriture=ecriture)
-        total_debit = sum((ln.debit for ln in lignes), Decimal('0'))
-        total_credit = sum((ln.credit for ln in lignes), Decimal('0'))
-        self.assertEqual(total_debit, total_credit)
-        self.assertEqual(total_debit, Decimal('10000'))
-        numeros = sorted(ln.compte.numero for ln in lignes)
-        self.assertEqual(numeros, ['3421', '6585'])
-
     def test_abandon_on_cancelled_facture_refused(self):
         self.facture.statut = Facture.Statut.ANNULEE
         self.facture.save(update_fields=['statut'])

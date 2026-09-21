@@ -300,10 +300,10 @@ def contrat_maintenance_existe(pk, company):
     """``True`` si un ``ContratMaintenance`` existe pour ``pk`` DANS ``company`` — XCTR13.
 
     Point d'entrée cross-app en LECTURE SEULE pour la validation à l'écriture
-    de ``Contrat.sav_contrat_maintenance_id`` (``apps.contrats``) — jamais un
-    import de ``sav.models`` depuis ``contrats`` : l'app appelante passe
-    l'``id`` et la société, ce module répond par un simple booléen scopé
-    société (aucun objet ``ContratMaintenance`` n'est exposé hors de l'app).
+    d'un lien vers un ``ContratMaintenance`` SAV depuis une autre app —
+    jamais un import de ``sav.models`` par l'appelante : elle passe l'``id``
+    et la société, ce module répond par un simple booléen scopé société
+    (aucun objet ``ContratMaintenance`` n'est exposé hors de l'app).
     """
     from .models import ContratMaintenance
 
@@ -316,9 +316,8 @@ def contrats_maintenance_facturables(company):
     """``ContratMaintenance`` actifs à ``facturation_active=True`` — XCTR13.
 
     Lecture seule, scopée société. Alimente le MRR combiné du tableau de bord
-    contrats (``apps.contrats.selectors.tableau_de_bord_contrats``) SANS
-    exposer le modèle lui-même — l'appelant ne reçoit que les champs
-    nécessaires au calcul MRR (id, prix, periodicite).
+    contrats d'une autre app SANS exposer le modèle lui-même — l'appelant ne
+    reçoit que les champs nécessaires au calcul MRR (id, prix, periodicite).
     """
     from .models import ContratMaintenance
 
@@ -468,34 +467,6 @@ def csat_par_technicien(company, *, date_debut=None, date_fin=None):
             if row['note_moyenne'] is not None else None,
         })
     return out
-
-
-def ratio_deflection_kb(company):
-    """XSAV22 — Ratio de déflection KB sur le portail client : consultations
-    d'articles KB depuis le formulaire d'ouverture de ticket vs demandes de
-    ticket réellement créées. Point d'entrée pour le rapport service
-    (apps.reporting), même motif que ``csat_par_technicien`` ci-dessus.
-
-    Lit UNIQUEMENT via les selectors des apps cibles (jamais leurs modèles,
-    règle de modularité CLAUDE.md) : ``apps.kb.selectors`` (consultations) et
-    ``apps.portail.selectors`` (tickets créés).
-
-    Renvoie ``{'consultations_kb': int, 'tickets_crees': int, 'ratio': float}``
-    — ``ratio`` = consultations / (consultations + tickets), dans ``[0, 1]``,
-    ``0.0`` quand il n'y a ni consultation ni ticket (pas de division par
-    zéro)."""
-    from apps.kb.selectors import consultations_portail_total
-    from apps.portail.selectors import demandes_ticket_count
-
-    consultations = consultations_portail_total(company)
-    tickets = demandes_ticket_count(company)
-    total = consultations + tickets
-    ratio = round(consultations / total, 4) if total else 0.0
-    return {
-        'consultations_kb': consultations,
-        'tickets_crees': tickets,
-        'ratio': ratio,
-    }
 
 
 def taux_reouverture(company, *, group_by='technicien', date_debut=None,

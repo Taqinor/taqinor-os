@@ -234,32 +234,23 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     def get_permissions(self):
         # AUD403 — la garde DÉCLARÉE par l'@action PRIME. Sans cette première
         # ligne, ce branchement sur ``self.action`` jetait EN SILENCE le
-        # ``permission_classes=`` du décorateur : ``approuver-etape`` et
-        # ``rejeter-etape`` (NTCPQ8) déclaraient
-        # ``HasPermissionOrLegacy('cpq_approbation_approuver')`` mais étaient
-        # groupées dans WRITE_ACTIONS, dont la branche rend inconditionnellement
-        # ``IsResponsableOrAdmin()`` — un Commercial ordinaire (permissions
-        # d'écriture, mais PAS ``cpq_approbation_approuver``) satisfaisait déjà
-        # ``is_responsable`` et auto-validait sa propre remise. Le second regard
-        # exigé par NTCPQ7/8 était auto-franchissable. Patron d'or du dépôt
-        # (``ventes/paiement.py``, ``core/permissions.declared_action_permissions``).
-        #
-        # Écart mesuré avant la bascule (55 @action portant un
-        # ``permission_classes=`` comparées une à une à leur branche) : SEULES
-        # trois divergeaient — les deux ci-dessus, plus ``composition`` (dry-run
-        # de ``auto``) qui déclarait ``IsResponsableOrAdmin`` mais tombait sur le
-        # repli ``IsAdminRole`` faute d'être listée : honorer sa déclaration la
-        # réaligne sur son jumeau ``auto``, qui CRÉE là où elle ne crée rien.
-        # Les 52 autres déclarent la MÊME classe que leur branche : no-op.
+        # ``permission_classes=`` du décorateur : une action déclarant une
+        # permission FINE mais groupée dans WRITE_ACTIONS retombait sur la
+        # branche inconditionnelle ``IsResponsableOrAdmin()``. Ainsi
+        # ``composition`` (dry-run de ``auto``) déclarait ``IsResponsableOrAdmin``
+        # mais tombait sur le repli ``IsAdminRole`` faute d'être listée :
+        # honorer sa déclaration la réaligne sur son jumeau ``auto``, qui CRÉE
+        # là où elle ne crée rien. Patron d'or du dépôt (``ventes/paiement.py``,
+        # ``core/permissions.declared_action_permissions``).
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
         if self.action in READ_ACTIONS + [
             'historique', 'variante_config', 'superior_contact_status',
-            # WIR96/WIR99 — deux LECTURES pures ouvertes à tout rôle (le
+            # WIR99 — LECTURE pure ouverte à tout rôle (le
             # `permission_classes` de l'@action ne suffit PAS : get_permissions
             # PRIME et son repli est IsAdminRole).
-            'suivi_partage', 'prefill_site',
+            'prefill_site',
             # WIR217 — état du rendu PDF : une LECTURE pure, ouverte au même
             # périmètre que la lecture du devis (la garde doit être ICI, cette
             # surcharge PRIMANT sur le `permission_classes` de l'@action, qui
@@ -314,14 +305,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'atomic', 'replace_lines',
             # QX22be — WhatsApp preview (read-only, no status change).
             'whatsapp_preview',
-            # NTCPQ8 — approbation de remise (lecture + décisions).
-            'approbation', 'approuver_etape', 'rejeter_etape',
             # NTCPQ13 — renouvellement d'un devis accepté/expiré. Déclare la
             # MÊME classe que le permission_classes de l'@action (cette
             # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
             'renouveler',
-            # NTCPQ14 — avenants d'un devis accepté (lecture + application).
-            'avenants',
             # NTCPQ18 — lots multi-sites (lecture + création).
             'lots',
             # NTCPQ20 — historique fin de configuration (lecture seule).
@@ -1365,9 +1352,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
-        # QJ-FUNNEL — AVANT le mint : si l'envoi est bloqué (approbation de
-        # remise en attente, NTCPQ7 via verifier_devis_envoyable), l'erreur
-        # nommée part au commercial et aucun lien ne sort de ce POST.
+        # QJ-FUNNEL — AVANT le mint : si l'envoi est refusé, l'erreur nommée
+        # part au commercial et aucun lien ne sort de ce POST.
         if request.data.get('envoi'):
             from ..services import mark_devis_sent
             mark_devis_sent(devis=devis, user=request.user)
@@ -2028,31 +2014,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             status=(status.HTTP_201_CREATED if request.method == 'POST'
                     else status.HTTP_200_OK))
 
-    @action(detail=True, methods=['get', 'post'], url_path='avenants',
-            permission_classes=[IsResponsableOrAdmin])
-    def avenants(self, request, pk=None):
-        """NTCPQ14 — Avenants d'un devis ACCEPTÉ.
-
-        GET : liste des avenants (les plus récents d'abord).
-        POST : applique un avenant — corps ``{lignes_ajoutees: [...],
-        lignes_retirees: [id, ...], motif}``. Les totaux sont recalculés et
-        l'approbation NTCPQ7 n'est redéclenchée que si le NOUVEAU taux de
-        remise global dépasse le seuil configuré."""
-        from ..serializers import AvenantDevisSerializer
-        devis = self.get_object()
-        if request.method == 'GET':
-            return Response(AvenantDevisSerializer(
-                devis.avenants.all(), many=True).data)
-        from apps.cpq.services import appliquer_avenant_devis
-        avenant = appliquer_avenant_devis(
-            devis,
-            lignes_ajoutees=request.data.get('lignes_ajoutees') or [],
-            lignes_retirees=request.data.get('lignes_retirees') or [],
-            motif=(request.data.get('motif') or '').strip(),
-            user=request.user)
-        return Response(AvenantDevisSerializer(avenant).data,
-                        status=status.HTTP_201_CREATED)
-
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])
     def renouveler(self, request, pk=None):
@@ -2144,47 +2105,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': exc.message},
                 status=(status.HTTP_409_CONFLICT if exc.conflict
                         else status.HTTP_400_BAD_REQUEST))
-        donnees = DevisSerializer(devis, context={'request': request}).data
-        donnees['credit_warning'] = self._credit_warning(devis)
-        return Response(donnees)
-
-    @staticmethod
-    def _credit_warning(devis):
-        """WIR187 (reprend NTCRD7/8) — état crédit du client APRÈS acceptation.
-
-        Le module crédit calculait déjà tout (limite, encours, mode de hold,
-        tolérance) mais l'écran de vente n'en voyait RIEN : un commercial
-        pouvait faire signer un client au-delà de sa limite sans que rien ne le
-        dise. La réponse d'acceptation porte donc désormais l'avertissement.
-
-        C'est un AVERTISSEMENT, jamais un verdict : le refus reste la garde
-        ``verifier_credit_hold`` plus haut (XFAC28), déjà appliquée avant
-        d'arriver ici. Lecture cross-app par le ``selectors.py`` de
-        ``apps.credit`` (jamais un import de ses models), en import
-        FONCTION-LOCAL — ``credit.selectors`` lit lui-même
-        ``ventes.selectors``, un import de module créerait un cycle.
-
-        Best-effort : le crédit ne doit JAMAIS casser une acceptation déjà
-        enregistrée. À défaut, on rend le contrat dans son état neutre
-        (``mode='aucun'``) plutôt qu'une clé absente que l'écran devrait
-        deviner. Contrat : ``apps/credit/contract_samples/credit_warning.json``.
-        """
-        neutre = {'mode': 'aucun', 'depassement': '0.00', 'disponible': None}
-        if devis.client_id is None:
-            return neutre
-        try:
-            from apps.credit.selectors import avertissement_credit
-            etat = avertissement_credit(devis.client, devis.total_ttc)
-        except Exception:  # noqa: BLE001 — jamais bloquant pour la vente
-            return neutre
-        disponible = etat.get('disponible')
-        return {
-            'mode': etat.get('mode') or 'aucun',
-            # Montants en TEXTE décimal (jamais un flottant) — même régime que
-            # les totaux du devis.
-            'depassement': str(etat.get('depassement') or 0),
-            'disponible': None if disponible is None else str(disponible),
-        }
+        return Response(
+            DevisSerializer(devis, context={'request': request}).data)
 
     @staticmethod
     def _resolve_accepted_option(devis, data):
@@ -2272,39 +2194,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 
-    @action(detail=True, methods=['get'], url_path='approbation',
-            permission_classes=[IsResponsableOrAdmin])
-    def approbation(self, request, pk=None):
-        """NTCPQ8 — Liste les étapes d'approbation de remise du devis."""
-        devis = self.get_object()
-        from apps.cpq.selectors import etapes_approbation_devis
-        return Response(etapes_approbation_devis(devis))
-
-    @action(detail=True, methods=['post'], url_path='approuver-etape',
-            permission_classes=[HasPermissionOrLegacy('cpq_approbation_approuver')])
-    def approuver_etape(self, request, pk=None):
-        """NTCPQ8 — Approuve l'étape courante d'approbation de remise."""
-        devis = self.get_object()
-        from apps.cpq.services import approuver_etape_devis
-        commentaire = (request.data.get('commentaire') or '').strip()
-        etape, toutes_approuvees = approuver_etape_devis(
-            devis, user=request.user, commentaire=commentaire)
-        return Response({
-            'detail': 'Étape approuvée.',
-            'etape_id': etape.id,
-            'toutes_approuvees': toutes_approuvees,
-        })
-
-    @action(detail=True, methods=['post'], url_path='rejeter-etape',
-            permission_classes=[HasPermissionOrLegacy('cpq_approbation_approuver')])
-    def rejeter_etape(self, request, pk=None):
-        """NTCPQ8 — Rejette l'étape courante : renvoie le devis en brouillon."""
-        devis = self.get_object()
-        from apps.cpq.services import rejeter_etape_devis
-        motif = (request.data.get('motif') or '').strip()
-        etape = rejeter_etape_devis(devis, user=request.user, motif=motif)
-        return Response({'detail': 'Étape rejetée.', 'etape_id': etape.id})
-
     @action(detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
@@ -2371,32 +2260,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         profil = site_profile_for_client(client_id, request.user.company)
         return Response({'client': client_id, 'profil': profil})
-
-    @action(detail=True, methods=['get'], url_path='suivi-partage',
-            permission_classes=[IsAnyRole])
-    def suivi_partage(self, request, pk=None):
-        """WIR96 — suivi marketing du devis : ouverture du lien de partage
-        (« vu le … ») + relances de devis abandonné consignées.
-
-        Lecture PURE via ``apps.marketing.selectors`` (jamais un import des
-        modèles marketing). Bornée à la société du devis, elle-même déjà
-        scopée par ``get_object()``. Renvoie ``{'ouverture': {...}|null,
-        'relances': [...]}``."""
-        from apps.marketing.selectors import (
-            ouverture_partage_pour_token, relances_devis_abandonne)
-        from ..models import ShareLink
-
-        devis = self.get_object()
-        ouverture = None
-        link = (ShareLink.objects
-                .filter(devis=devis, company=devis.company)
-                .order_by('-id').first())
-        if link is not None:
-            ouverture = ouverture_partage_pour_token(devis.company, link.token)
-        return Response({
-            'ouverture': ouverture,
-            'relances': relances_devis_abandonne(devis.company, devis.pk),
-        })
 
     @action(detail=True, methods=['get'], url_path='lecture-client',
             permission_classes=[IsResponsableOrAdmin])
@@ -2977,7 +2840,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # et 40 % de remise de ligne partait sinon au client sans approbation.
         # `remise` reste la valeur ENTRANTE (celle du PATCH), et la profondeur
         # calculée n'est jamais INFÉRIEURE à elle.
-        from apps.cpq.services import profondeur_remise_effective
+        from ..domain.tarification import profondeur_remise_effective
         remise = profondeur_remise_effective(devis, remise_globale=remise)
         if (remise or 0) <= seuil or devis.remise_approuvee:
             return
@@ -2989,25 +2852,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         raise ValidationError({'statut': (
             f'Remise de {remise} % supérieure au seuil de {seuil} % : '
             "l'approbation d'un administrateur est requise avant l'envoi.")})
-
-    def _guard_matrix_approval(self, devis):
-        """NTCPQ7/8 — instancie les étapes d'approbation par palier de remise
-        pour ce devis puis bloque l'envoi tant qu'une étape est en attente. Un
-        devis sans remise qualifiante ne crée aucune étape (envoi libre)."""
-        from apps.cpq.services import (
-            lancer_approbation_devis, verifier_compatibilite_envoyable,
-        )
-        from ..services import verifier_devis_envoyable
-        lancer_approbation_devis(devis)
-        verifier_devis_envoyable(devis)
-        # NTCPQ31 — mode compatibilité « BLOQUANT » de la société : empêche
-        # l'envoi tant qu'une violation bloquante (NTCPQ1) subsiste. No-op en
-        # AVERTISSEMENT (défaut, comportement historique inchangé).
-        verifier_compatibilite_envoyable(devis)
-        # NTCPQ11 — l'envoi est autorisé : fige les clauses/CGV dynamiques
-        # (write-once, jamais recalculé après envoi).
-        from ..services import figer_clauses_devis
-        figer_clauses_devis(devis)
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -3049,11 +2893,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'remise_globale', serializer.instance.remise_globale)
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
-        # NTCPQ7/8 — matrice d'approbation par paliers de remise : à la
-        # tentative d'envoi, instancie les étapes requises et bloque tant
-        # qu'une étape est en attente (en plus du seuil unique T17 ci-dessus).
-        if nouveau_statut == Devis.Statut.ENVOYE and ancien_statut != Devis.Statut.ENVOYE:  # noqa: E501
-            self._guard_matrix_approval(serializer.instance)
         super().perform_update(serializer)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
@@ -3103,10 +2942,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     )
     def generer_pdf(self, request, pk=None):
         devis = self.get_object()
-        # NTCPQ7/8 — bloque la génération PDF tant qu'une étape d'approbation de
-        # remise reste en attente (aucune étape → comportement inchangé).
-        from ..services import verifier_devis_envoyable
-        verifier_devis_envoyable(devis)
         from ..quote_engine import clean_pdf_options
         from ..tasks import task_generate_devis_pdf
         # Format options (simulator parity) — whitelisted server-side.

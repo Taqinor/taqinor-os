@@ -309,12 +309,12 @@ class Devis(models.Model):
         help_text='0 = devis d\'origine ; 1, 2… = renouvellements successifs.',
     )
 
-    # ── NTCPQ11 — Clauses/CGV dynamiques FIGÉES à l'envoi ──
-    # Snapshot JSON de la liste des clauses (``apps.cpq.ClauseCGV``) applicables
-    # au devis, calculé UNE SEULE FOIS au passage brouillon → envoyé et JAMAIS
-    # recalculé ensuite (éditer une clause n'altère pas un devis déjà envoyé).
-    # NULL / [] = comportement historique strictement inchangé. Lu en LECTURE
-    # SEULE par le quote_engine (aucun nouveau renderer — règle #4).
+    # ── Clauses/CGV FIGÉES à l'envoi (snapshot historique) ──
+    # Snapshot JSON des clauses applicables au devis, jamais recalculé. Le
+    # moteur de clauses dynamiques qui l'alimentait n'existe plus : le champ est
+    # conservé pour les devis qui en portent un. NULL / [] = comportement
+    # historique strictement inchangé. Lu en LECTURE SEULE par le quote_engine
+    # (aucun nouveau renderer — règle #4).
     clauses_appliquees = models.JSONField(
         null=True, blank=True,
         verbose_name='Clauses/CGV appliquées (figées à l\'envoi)',
@@ -532,14 +532,6 @@ class Devis(models.Model):
     def total_ttc(self):
         return self._totaux_argent().ttc
 
-    @property
-    def approbation_remise_en_attente(self):
-        """NTCPQ8 — True si une étape d'approbation de remise (cpq) est encore
-        en attente pour ce devis. Lecture cross-app cpq via sélecteur (import
-        local, aucun couplage au niveau module)."""
-        from apps.cpq.selectors import premiere_etape_en_attente
-        return premiere_etape_en_attente(self) is not None
-
 
 class LigneDevis(models.Model):
     # ── XSAL14 — Type de ligne : produit (défaut) / section / note ────────────
@@ -687,8 +679,7 @@ class LigneDevis(models.Model):
     # EN PREMIER et gardent leurs tables de mots-clés en REPLI PERMANENT.
     #
     # NULL = ligne historique (aucun backfill) ET lignes créées hors de
-    # ``apps.ventes`` (``apps.cpq.services`` écrit ses lignes en direct, par
-    # conception) : les deux retombent sur les mots-clés, comportement
+    # ``apps.ventes`` : les deux retombent sur les mots-clés, comportement
     # strictement inchangé — exactement le contrat de ``variante`` ci-dessus.
     #
     # UNE CONTRADICTION ENTRE LE RÔLE ET LA DÉSIGNATION EST UN AVERTISSEMENT,
