@@ -4578,6 +4578,18 @@ def avancer_stage_sur_ouverture_devis(lead) -> bool:
     perdus et ceux déjà ≥ FOLLOW_UP (donc un lead déjà SIGNED/COLD-au-delà
     ne bouge pas). Idempotent : une seconde ouverture ne réécrit rien de
     plus (le rang est déjà atteint). Renvoie True si l'avance a eu lieu.
+
+    CAD139 (21/09/2026) — CONSERVÉE SANS APPELANT DE PRODUCTION. La RÈGLE
+    FONDATEUR du 07/09/2026 a débranché cette avance automatique
+    (``noter_devis_ouvert`` ne l'appelle plus : « le funnel ne bouge que sur
+    une réponse confirmée de Meryem ») ; seuls ``tests_crx20_stage_events.py``
+    et ``tests_ylead10_fastlane_open.py`` l'invoquent aujourd'hui. Gardée
+    plutôt que supprimée (version préférée de l'audit L3, round 2) : c'est
+    l'implémentation TESTÉE et idempotente du fast-lane comportemental que la
+    décision du 07/09 a désactivé sans l'invalider — si le fondateur revient
+    sur ce choix, le comportement et ses tests existent déjà, au lieu d'être
+    re-dérivés de zéro. Ni code mort silencieux, ni suppression d'un choix
+    documenté.
     """
     if lead is None or lead.perdu:
         return False
