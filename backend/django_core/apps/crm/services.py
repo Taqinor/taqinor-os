@@ -5217,6 +5217,87 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
             getattr(lead, 'pk', None), exc_info=True)
 
 
+# ── CAD-K ── CAD136 — le client vient d'agir, et personne n'était prévenu ───
+#
+# Audit L3 du 21/09/2026. Répondre à une section du questionnaire enrichissait
+# le lead, recalculait le score et écrivait une note — sans AUCUNE
+# notification ; la photo de facture envoyée depuis le site était attachée
+# (avec OCR si la clé est active) sans prévenir personne. Le client vient
+# pourtant de passer cinq minutes sur NOTRE formulaire : c'est la meilleure
+# fenêtre de la semaine.
+#
+# CE QUE CE POINT D'ENTRÉE FAIT, ET NE FAIT PAS. Il NOTIFIE. Il ne pose AUCUNE
+# touche : la « touche questionnaire complété, appeler » demandée par CAD136
+# passe par la mécanique de CAD130, qui n'est pas encore construite — et la
+# règle de composition interdit d'en bricoler un substitut local. La photo de
+# facture, elle, appelle une tâche de PRODUCTION (« préparer le devis »), pas
+# une relance : la nuance du round 2 est portée par le LIBELLÉ de la
+# notification, en attendant que CAD130 pose la tâche.
+
+#: Les deux natures de signal, et le geste qu'elles appellent. Le libellé dit
+#: au responsable ce qu'il a à faire — jamais un « il s'est passé quelque
+#: chose » qu'il faut aller décoder.
+SIGNAL_QUESTIONNAIRE = 'questionnaire'
+SIGNAL_PHOTO_FACTURE = 'photo_facture'
+
+_SIGNAUX_CLIENT = {
+    SIGNAL_QUESTIONNAIRE: (
+        'a répondu au questionnaire',
+        'Le client vient de remplir NOTRE formulaire : c\'est la meilleure '
+        'fenêtre de la semaine pour l\'appeler.'),
+    SIGNAL_PHOTO_FACTURE: (
+        'a envoyé une photo de sa facture',
+        'Tout est là pour PRÉPARER LE DEVIS — ce n\'est pas une relance, '
+        'c\'est de la production.'),
+}
+
+
+def notifier_signal_client(lead, signal, *, detail='') -> None:
+    """CAD136 — prévient le responsable qu'un client vient d'AGIR.
+
+    ``signal`` ∈ ``SIGNAL_QUESTIONNAIRE`` / ``SIGNAL_PHOTO_FACTURE``. Un
+    signal inconnu ne notifie RIEN plutôt qu'un message vide. ``detail``
+    précise (la section répondue, par exemple) sans jamais rien inventer.
+
+    Best-effort intégral : ni une réponse de questionnaire ni une photo ne
+    peuvent retomber parce que la cloche est en panne.
+    """
+    libelle = _SIGNAUX_CLIENT.get(signal)
+    if libelle is None or lead is None or getattr(
+            lead, 'company_id', None) is None:
+        return
+    quoi, conseil = libelle
+    try:
+        company = getattr(lead, 'company', None)
+        recipients = avec_direction(
+            lead_notification_recipients(lead), company)
+        if not recipients:
+            return
+        from apps.notifications.services import notify_many
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Le client'
+        corps = [f'{nom} {quoi}.']
+        if detail:
+            corps.append(detail)
+        corps.append(conseil)
+        wa_url = _build_lead_wa_reply_url(lead)
+        if wa_url:
+            corps.append(f'Appeler / répondre maintenant : {wa_url}')
+        notify_many(
+            recipients,
+            # Aucun type d'événement neuf : c'est le même canal que les
+            # autres signaux venus du client.
+            'devis_opened',
+            f'{nom} {quoi}',
+            body='\n'.join(corps),
+            link=f'/crm/leads/{lead.pk}',
+            company=company,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD136 : notification de signal client échouée (lead #%s, %s)',
+            getattr(lead, 'pk', None), signal, exc_info=True)
+
+
 #: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
 #: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
 #: plus large que ce que ce module connaissait (whatsapp/rappel seuls).
