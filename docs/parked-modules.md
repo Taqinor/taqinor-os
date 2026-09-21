@@ -40,13 +40,58 @@ C'est le **seul** mécanisme de sortie autorisé. Une app parquée :
 - ne garde sur le disque que `__init__.py`, `apps.py` (label + manifeste `parked: True`),
   `migrations/` (verbatim **+ une** migration finale
   `SeparateDatabaseAndState(state_operations=[DeleteModel…], database_operations=[])`)
-  et un `models.py` **vide** ;
+  et un `models.py` **sans aucun modèle** (règle exacte ci-dessous) ;
 - **reste dans `INSTALLED_APPS`** — c'est ce qui garde valide le graphe de migrations des
   apps conservées. Donc **jamais de squash** ;
 - n'expose **aucune** url, **aucune** tâche Celery / entrée beat, **aucun** test, **aucun**
   écran, **aucun** `contract_samples/`, **aucune** spec e2e ;
 - ne perd **aucune table** et **aucune ligne de `django_migrations`** : la migration finale
   ne touche que l'ÉTAT Django (`database_operations=[]`). **Jamais de `DROP TABLE`.**
+
+### Le `models.py` d'une coquille : un TALON, pas forcément un fichier vide
+
+La règle **exacte** — celle que vérifient `core/tests/test_parked_registry.py` et
+`python scripts/parquer_app.py --verifier` (source unique : `core.parked.modeles_declares`) —
+est : **aucune classe héritant de `models.Model`**. Le cas normal reste le fichier vide
+(docstring seul) : 36 des 47 coquilles sont dans ce cas.
+
+Mais les migrations sont **gelées et conservées verbatim**, et certaines référencent un
+symbole du `models.py` de leur propre app — typiquement le `default=` callable d'un champ
+(`default=apps.pos.models._default_share_token`) que Django a sérialisé par son chemin
+d'import. Vider le fichier rend ces migrations **inimportables** : le graphe **entier** casse
+sur un `AttributeError`, et — piège — **cela ne se voit que dans un processus neuf** (dans le
+processus qui vient de coquiller, le module est déjà importé avec ses modèles).
+
+La coquille garde donc un **talon** : le strict nécessaire, recopié **verbatim** de l'original
+— fonctions module-level, énumérations `TextChoices`/`IntegerChoices`, une classe-namespace
+simple portant une énumération imbriquée quand une migration écrit `Modele.Enum`, plus les
+imports et constantes dont ces symboles dépendent. Rien d'autre : **jamais** un modèle, jamais
+un bout de logique métier.
+
+`manage.py parquer_app` fait tout cela mécaniquement : il scanne les migrations de l'app
+(`apps.<x>.models.<nom>`, `from apps.<x>.models import …`, alias), extrait ces définitions par
+`ast` avec la fermeture de leurs dépendances, écrit le talon — et **vérifie dans un
+sous-processus neuf que le graphe de migrations charge encore avant de supprimer le moindre
+fichier**. Si la vérification échoue, `models.py`, `apps.py` et la migration-coquille sont
+**remis en l'état** et la commande refuse. Elle refuse aussi, sans rien écrire, quand un
+symbole réclamé est introuvable au niveau du module ou quand c'est un modèle Django : dans ce
+cas le talon s'écrit **à la main** (la commande ne devine pas).
+
+Les 11 talons posés le 21/09/2026 (par SOLMVP30b) :
+
+| App | Symboles gardés dans le talon |
+| --- | --- |
+| `btp_chantier` | `_default_btp_token`, `lots_types_defaut` (+ `LOTS_TYPES_DEFAUT`) |
+| `compta` | `_comptes_frais_defaut` |
+| `contrats` | `_default_depot_contrepartie_token` |
+| `datarooms` | `_default_acces_token` |
+| `douane` | `_defaut_alerte_jours` |
+| `gestion_projet` | `_generer_token_portail` |
+| `kb` | `_default_partage_token` |
+| `pos` | `_default_share_expiry`, `_default_share_token`, `default_code_retrait` |
+| `promotions` | `default_carte_cadeau_code`, `default_coupon_code` |
+| `qhse` | `_default_qr_token` |
+| `rh` | `_default_promesse_expiry`, `_default_promesse_token` |
 
 Deux conséquences à connaître :
 
@@ -197,6 +242,10 @@ cette section et `docs/module-playbook.md` ; l'ordre exact des étapes 2-3 y est
    git checkout archive/full-erp-2026-09-20 -- backend/django_core/apps/<x>
    git checkout HEAD -- backend/django_core/apps/<x>/migrations
    ```
+   Le `models.py` de l'archive **remplace** celui de la coquille, talon compris : un talon
+   (§2) n'est qu'un extrait verbatim de ce même fichier, il n'y a donc rien à fusionner et
+   rien à recopier. Le vrai `models.py` redéfinit tous les symboles que les migrations gelées
+   réclament, plus les modèles.
 2. **Renverser la migration d'état** (`<n-1>` = la migration qui précède la coquille) :
    ```
    python manage.py migrate <x> <n-1>

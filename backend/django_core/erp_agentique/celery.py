@@ -103,15 +103,6 @@ app.conf.beat_schedule = {
         'task': 'ventes.check_overdue_factures',
         'schedule': crontab(hour=0, minute=30),
     },
-    # NTTRE29/31 — trésorerie : alerte rupture (quotidien) + relances du jour.
-    'compta-recalculer-alerte-rupture': {
-        'task': 'compta.recalculer_alerte_rupture',
-        'schedule': crontab(hour=6, minute=45),
-    },
-    'compta-relances-tresorerie-du-jour': {
-        'task': 'compta.relances_tresorerie_du_jour',
-        'schedule': crontab(hour=7, minute=5),
-    },
     'ventes-expire-stale-devis': {
         'task': 'ventes.expire_stale_devis',
         'schedule': crontab(hour=1, minute=0),
@@ -137,32 +128,6 @@ app.conf.beat_schedule = {
     'ventes-devis-followup-nudges': {
         'task': 'ventes.devis_followup_nudges',
         'schedule': crontab(hour=8, minute=15),
-    },
-    # AOF15 — rappels d'échéances d'appel d'offres (remise des plis, ouverture,
-    # fin de validité). Un dossier d'AO se perd sur une date, jamais sur la
-    # technique : passage quotidien tôt, avant la journée de travail.
-    # AUD614 — la GÉNÉRATION de l'échéancier passe AVANT son rappel. Elle
-    # n'était dispatchée nulle part : `ao.rappeler_echeances` rappelait donc un
-    # échéancier qui n'existait pas — un no-op silencieux, la pire forme de
-    # panne (l'écran « Tâches planifiées » affichait vert). Générer APRÈS le
-    # rappel aurait fait attendre un jour à chaque nouvelle échéance.
-    'ao-generer-echeanciers': {
-        'task': 'ao.generer_echeanciers',
-        'schedule': crontab(hour=6, minute=15),
-    },
-    'ao-rappeler-echeances': {
-        'task': 'ao.rappeler_echeances',
-        'schedule': crontab(hour=6, minute=30),
-    },
-    # AUD614 — relance PROACTIVE des pièces administratives qui vont expirer.
-    # Elle n'existait qu'en action GET : il fallait ALLER VOIR pour apprendre
-    # qu'une attestation expire, alors qu'une attestation périmée le jour de
-    # l'ouverture fait ÉCARTER le pli. Après les échéances (l'ordre du matin
-    # va du plus daté au plus administratif) ; cadencée à une relance par
-    # pièce tous les 7 jours (voir `ao/scheduled.py`).
-    'ao-relancer-pieces-administratives': {
-        'task': 'ao.relancer_pieces_administratives',
-        'schedule': crontab(hour=6, minute=45),
     },
     'notifications-daily-digest': {
         'task': 'notifications.daily_digest',
@@ -340,61 +305,6 @@ app.conf.beat_schedule = {
         'task': 'reporting.controle_integrite',
         'schedule': crontab(hour=3, minute=0, day_of_week=1),
     },
-    # YSUBS1 — facturation récurrente auto (échéanciers contrats +
-    # maintenance SAV dus), quotidien (heure creuse).
-    'contrats-generer-factures-recurrentes-dues': {
-        'task': 'contrats.generer_factures_recurrentes_dues',
-        'schedule': crontab(hour=2, minute=0),
-    },
-    # YSUBS2 — reconductions tacites + diffusion des alertes contrat
-    # (préavis/échéance), quotidien.
-    'contrats-reconductions-et-alertes-daily': {
-        'task': 'contrats.reconductions_et_alertes_daily',
-        'schedule': crontab(hour=7, minute=15),
-    },
-    # NTSUB5 — conversion des essais d'abonnement échus + alerte J-3,
-    # quotidien (heure creuse).
-    'contrats-convertir-essais-expires-daily': {
-        'task': 'contrats.convertir_essais_expires_daily',
-        'schedule': crontab(hour=2, minute=30),
-    },
-    # NTSUB8 — séquences de dunning (relances impayés multi-étapes),
-    # quotidien.
-    'contrats-executer-dunning-daily': {
-        'task': 'contrats.executer_dunning_daily',
-        'schedule': crontab(hour=8, minute=0),
-    },
-    # AUD524 (ZCTR2) — suspension des contrats impayes. Le service existait,
-    # la management command aussi, et `contrats/scheduled.py` renvoyait deja au
-    # « beat cloturer_contrats_impayes separe » — qui n'existait pas. Un
-    # contrat sans sequence de dunning n'etait donc JAMAIS suspendu
-    # automatiquement. Heure creuse, juste apres le dunning.
-    'contrats-cloturer-impayes-daily': {
-        'task': 'contrats.cloturer_contrats_impayes_daily',
-        'schedule': crontab(hour=8, minute=20),
-    },
-    # NTDOC32 — purge des dépôts « contrepartie » ARCHIVÉS dont la durée de
-    # rétention configurée (politique GED de la société) est dépassée.
-    # Quotidien, heure creuse. Sans politique applicable, la tâche ne purge
-    # RIEN (jamais de durée codée en dur).
-    'contrats-purger-contreparties-archivees': {
-        'task': 'contrats.purger_contreparties_archivees',
-        'schedule': crontab(hour=2, minute=45),
-    },
-    # NTSUB27 — précalcul NOCTURNE des métriques SaaS du cockpit (ARR bridge /
-    # Quick Ratio / Rule of 40). Le cockpit retombe seul sur le calcul à la
-    # volée si ce job n'a pas tourné : aucune dépendance dure.
-    'contrats-recalculer-metriques-saas-cache-daily': {
-        'task': 'contrats.recalculer_metriques_saas_cache_daily',
-        'schedule': crontab(hour=1, minute=50),
-    },
-    # NTSUB26 — purge MENSUELLE des relevés d'usage bruts d'une période DÉJÀ
-    # FACTURÉE et vieille de plus de 24 mois (agrégés d'abord en une ligne de
-    # synthèse). Le 1er du mois, heure creuse.
-    'contrats-purger-compteurs-usage-factures-monthly': {
-        'task': 'contrats.purger_compteurs_usage_factures_monthly',
-        'schedule': crontab(hour=3, minute=40, day_of_month=1),
-    },
     # XFAC25 — relevé de compte mensuel automatique (opt-in par client),
     # 1er du mois 08:00 Africa/Casablanca.
     'ventes-releve-mensuel-reminders': {
@@ -405,61 +315,6 @@ app.conf.beat_schedule = {
     'installations-rappel-rdv-j1': {
         'task': 'installations.rappel_rdv_j1',
         'schedule': crontab(hour=7, minute=45),
-    },
-    # YHIRE8 — alertes d'expiration RH (habilitations/certifs/docs/visites/
-    # EPI), quotidien, heure creuse matinale.
-    'rh-alertes-expiration': {
-        'task': 'rh.alertes_expiration',
-        'schedule': crontab(hour=7, minute=50),
-    },
-    # YHIRE8 — alerte fin de CDD (J-30 par défaut), quotidien.
-    'rh-alertes-cdd': {
-        'task': 'rh.alertes_cdd',
-        'schedule': crontab(hour=7, minute=55),
-    },
-    # AUD730 — acquisition mensuelle des congés payés (ZRH2, « Accrual Time
-    # Off » Odoo) : le 1er de chaque mois, heure creuse. Idempotent (garde
-    # ``mois_acquis``) — une double exécution ne crédite jamais deux fois.
-    'rh-accruer-conges-mensuel': {
-        'task': 'rh.accruer_conges',
-        'schedule': crontab(hour=1, minute=30, day_of_month=1),
-    },
-    # AUD730 — clôture automatique des pointages restés ouverts (ZRH5,
-    # « Automatic check-out » Odoo), quotidien en fin de nuit. No-op tant
-    # qu'aucune société n'a configuré son seuil.
-    'rh-clore-pointages-ouverts': {
-        'task': 'rh.clore_pointages_ouverts',
-        'schedule': crontab(hour=3, minute=20),
-    },
-    # AUD730 — rétention CNDP des candidatures rejetées (XRH24), quotidien.
-    # DRY-RUN tant que RH_PURGE_CANDIDATURES_AUTO_APPLY n'est pas posé
-    # (anonymisation irréversible) — la tâche SIGNALE alors le volume éligible.
-    'rh-purger-candidatures': {
-        'task': 'rh.purger_candidatures',
-        'schedule': crontab(hour=3, minute=40),
-    },
-    # AUD730 — planification des appréciations dues (ZRH8), hebdomadaire (lundi).
-    # DRY-RUN tant que RH_APPRECIATIONS_AUTO_APPLY n'est pas posé : la cadence
-    # d'un cycle d'appréciation est une décision métier du fondateur.
-    'rh-planifier-appreciations': {
-        'task': 'rh.planifier_appreciations',
-        'schedule': crontab(hour=4, minute=10, day_of_week=1),
-    },
-    # NTHCM19 — relance des parcours de formation OBLIGATOIRES non terminés
-    # au-delà du délai société (ReglageRH.rappel_parcours_apres_jours, défaut
-    # 14 j), quotidien. Dédoublonné par jour et par parcours : deux passages
-    # le même jour ne relancent jamais deux fois la même personne.
-    'rh-rappels-parcours-formation': {
-        'task': 'rh.rappels_parcours_formation',
-        'schedule': crontab(hour=8, minute=10),
-    },
-    # NTHCM25 — rappel quotidien des tâches d'intégration/sortie ASSIGNÉES et
-    # echues (la revocation d'acces IT en tete des risques). Dedoublonne par
-    # jour et par tache : deux passages le meme jour ne relancent jamais deux
-    # fois le meme acteur.
-    'rh-notifier-taches-integration-sortie': {
-        'task': 'rh.notifier_taches_integration_sortie',
-        'schedule': crontab(hour=8, minute=20),
     },
     # YSERV5 — génération automatique des visites préventives dues (opt-in
     # par société via SavSlaSettings.generation_auto_visites), quotidien.
@@ -621,95 +476,6 @@ app.conf.beat_schedule = {
     'ventes-devis-a-facturer-reminder': {
         'task': 'ventes.devis_a_facturer_reminder',
         'schedule': crontab(hour=7, minute=25),
-    },
-    # XMKT1 — exécute les étapes de séquences de relance marketing dues.
-    'compta-executer-sequences-relance': {
-        'task': 'compta.executer_sequences_relance',
-        'schedule': crontab(hour=8, minute=10),
-    },
-    # XMKT7 — envoie les campagnes marketing planifiées dues.
-    'compta-envoyer-campagnes-planifiees': {
-        'task': 'compta.envoyer_campagnes_planifiees',
-        'schedule': crontab(minute='*/15'),
-    },
-    # XMKT — communications d'événement dues (anniversaires/jalons).
-    'compta-envoyer-communications-evenement': {
-        'task': 'compta.envoyer_communications_evenement',
-        'schedule': crontab(hour=8, minute=20),
-    },
-    # XMKT — recalcule les contacts marketing dormants, quotidien.
-    'compta-recalculer-dormants-marketing': {
-        'task': 'compta.recalculer_dormants_marketing',
-        'schedule': crontab(hour=3, minute=40),
-    },
-    # XMKT — publie les posts sociaux programmés dus.
-    'compta-traiter-posts-sociaux': {
-        'task': 'compta.traiter_posts_sociaux',
-        'schedule': crontab(minute='*/15'),
-    },
-    # XMKT — décide les gagnants des tests A/B arrivés à terme.
-    'compta-decider-gagnants-ab': {
-        'task': 'compta.decider_gagnants_ab',
-        'schedule': crontab(hour=8, minute=25),
-    },
-    # NTMKT12 — tick des séquences EN GRAPHE (journeys) : complément strict du
-    # tick linéaire XMKT1 ci-dessus, décalé de 5 min pour ne pas les superposer.
-    'marketing-executer-journeys': {
-        'task': 'marketing.executer_journeys',
-        'schedule': crontab(hour=8, minute=15),
-    },
-    # NTMKT33 — purge quotidienne des jetons publics marketing expirés (+90j).
-    'marketing-purger-tokens-expires': {
-        'task': 'marketing.purger_tokens_expires',
-        'schedule': crontab(hour=3, minute=0),
-    },
-    # NTMKT35 — rappel d'approbation d'envoi de campagne en attente (+24h).
-    'marketing-rappeler-approbations-envoi': {
-        'task': 'marketing.rappeler_approbations_envoi',
-        'schedule': crontab(minute=0, hour='*/4'),
-    },
-    # NTMKT34 — recalcul quotidien du score de maturité (pénalité inactivité
-    # 30j) — no-op pour une société qui n'a jamais activé NTMKT18.
-    'marketing-recalculer-scores-maturite-inactivite': {
-        'task': 'marketing.recalculer_scores_maturite_inactivite',
-        'schedule': crontab(hour=4, minute=0),
-    },
-    # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
-    'kb-sweep-lectures-obligatoires': {
-        'task': 'kb.sweep_lectures_obligatoires',
-        'schedule': crontab(hour=8, minute=30),
-    },
-    # XKB14 — relance de re-revue des articles KB périmés, quotidien.
-    'kb-sweep-articles-perimes': {
-        'task': 'kb.sweep_articles_perimes',
-        'schedule': crontab(hour=8, minute=35),
-    },
-    # XFSM24 — escalade des check-ins QHSE en retard.
-    'qhse-escalader-checkins-en-retard': {
-        'task': 'qhse.escalader_checkins_en_retard',
-        'schedule': crontab(minute='*/30'),
-    },
-    # PACT184 (XQHS12) — rappel légal de réunion CSH trimestrielle (Code du
-    # travail, ≥50 salariés). ``csh_relance_due`` était testé mais sans
-    # aucun appelant : la relance restait invisible même cadence dépassée.
-    # Quotidien, heure creuse (dédup au jour via Notification).
-    'qhse-relancer-csh-du-jour': {
-        'task': 'qhse.relancer_csh_du_jour',
-        'schedule': crontab(hour=7, minute=48),
-    },
-    # AUD524 (XQHS2) — relance des derogations a echeance. Le service etait
-    # teste et correct, mais n'avait AUCUN appelant hors tests : une derogation
-    # arrivant a echeance n'etait jamais relancee. Quotidien, heure creuse.
-    'qhse-relancer-derogations': {
-        'task': 'qhse.relancer_derogations',
-        'schedule': crontab(hour=7, minute=52),
-    },
-    # AUD524 (XQHS10) — audits planifies dont la date cible est depassee. Meme
-    # constat : service teste, zero appelant, aucun passage automatique en
-    # « en_retard ». Quotidien, heure creuse.
-    'qhse-relancer-audits-planifies-en-retard': {
-        'task': 'qhse.relancer_audits_planifies_en_retard',
-        'schedule': crontab(hour=7, minute=56),
     },
     # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
     # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
@@ -954,13 +720,6 @@ app.conf.beat_schedule = {
         'task': 'core.executer_exports_planifies',
         'schedule': crontab(minute=35),
     },
-    # WIR25 (XACC8) — génère les écritures dues des abonnements récurrents
-    # (loyers/abonnements) en brouillon, quotidien, heure creuse. Idempotent
-    # par période (rejouer le même jour ne crée rien) ; no-op sans abonnement.
-    'compta-generer-ecritures-recurrentes': {
-        'task': 'compta.generer_ecritures_recurrentes',
-        'schedule': crontab(hour=2, minute=15),
-    },
     # WIR73 (GED7) — planifie `migrate_attachments_to_ged` en récurrent :
     # sans cette entrée, une pièce jointe créée après le dernier import MANUEL
     # n'apparaissait jamais en GED (la commande existait, testée, mais rien ne
@@ -1010,68 +769,11 @@ app.conf.beat_schedule = {
         'task': 'stock.liberer_vagues_planifiees',
         'schedule': crontab(minute='*/15'),
     },
-    # NTRET23 — libération des réservations Click & Collect expirées (annule +
-    # ré-incrémente le stock si déjà sorti à la préparation). Horaire : le
-    # délai d'expiration est configuré en heures côté Paramètres POS.
-    'pos-liberer-reservations-expirees': {
-        'task': 'pos.liberer_reservations_expirees',
-        'schedule': crontab(minute=20),
-    },
     # ZFSM3 — prochaine intervention de chaque récurrence active à échéance
     # (prestation périodique SANS contrat de maintenance). Idempotent.
     'installations-generer-interventions-recurrentes': {
         'task': 'installations.generer_interventions_recurrentes',
         'schedule': crontab(hour=5, minute=35),
-    },
-    # XPRJ13 — prochaine tâche de chaque récurrence de projet à échéance.
-    'gestion-projet-generer-taches-recurrentes': {
-        'task': 'gestion_projet.generer_taches_recurrentes',
-        'schedule': crontab(hour=5, minute=40),
-    },
-    # XPRJ22 — alerte du responsable sur les projets actifs en retard/à risque
-    # (jamais deux alertes pour le même (projet, élément) le même jour).
-    'gestion-projet-alertes-retards-projets': {
-        'task': 'gestion_projet.alertes_retards_projets',
-        'schedule': crontab(hour=7, minute=18),
-    },
-    # XPRJ7 — rappel des ressources en retard de saisie de temps (fenêtre des
-    # 7 derniers jours, même défaut que la commande).
-    'gestion-projet-rappels-timesheets': {
-        'task': 'gestion_projet.rappels_timesheets',
-        'schedule': crontab(hour=7, minute=22),
-    },
-    # NTCON4 — alerte quotidienne des RFI ouverts dont la date limite de
-    # réponse est dépassée (une seule alerte par jour et par RFI).
-    'btp-chantier-alertes-rfi-retard': {
-        'task': 'btp_chantier.alertes_rfi_retard',
-        'schedule': crontab(hour=7, minute=28),
-    },
-    # NTCON18 — photo-rapport hebdomadaire d'avancement (lundi matin), envoyé
-    # aux seuls chantiers ABONNÉS (opt-in strict) ; no-op propre sans clé email.
-    'btp-chantier-rapport-photo-hebdo': {
-        'task': 'btp_chantier.rapport_photo_hebdo',
-        'schedule': crontab(day_of_week=1, hour=7, minute=35),
-    },
-    # NTCON27 — archivage MENSUEL (1er du mois) des réserves levées depuis
-    # plus de N mois (réglage par société, défaut 24). Drapeau, jamais une
-    # suppression : la signature de levée reste une preuve opposable.
-    'btp-chantier-archiver-reserves-levees': {
-        'task': 'btp_chantier.archiver_reserves_levees',
-        'schedule': crontab(day_of_month=1, hour=3, minute=40),
-    },
-    # NTCON28 — recalcul QUOTIDIEN du cache d'exposition aux pénalités par lot
-    # (le cockpit NTCON21 lit ce cache au lieu de relancer le calcul NTCON15 à
-    # chaque GET). Tôt le matin, avant les alertes RFI.
-    'btp-chantier-recalculer-penalites-lots': {
-        'task': 'btp_chantier.recalculer_penalites_lots',
-        'schedule': crontab(hour=4, minute=10),
-    },
-    # NTCON37 — relance QUOTIDIENNE des visas en attente de revue dont
-    # l'échéance est dépassée (revuseur + son manager). Juste après les
-    # alertes RFI, même schéma qu'NTCON4.
-    'btp-chantier-alertes-visas-en-attente': {
-        'task': 'btp_chantier.alertes_visas_en_attente',
-        'schedule': crontab(hour=7, minute=31),
     },
     # NTOBS1 — rafraîchit les composants publics de la page de statut depuis
     # `core.health.check_services()` (best-effort, jamais bloquant). Toutes

@@ -11,9 +11,15 @@ docker de prod. Ce script ne fait donc que deux choses, sans aucune dépendance
 * ``--verifier <label…>`` / ``--verifier-tout`` — vérifie SUR L'HÔTE qu'un
   dossier d'app est bien une COQUILLE au sens de
   ``core/tests/test_parked_registry.py`` (seuls ``__init__.py``, ``apps.py``,
-  ``models.py`` vide et ``migrations/``), + ``parked = True`` dans ``apps.py``.
-  Sort 1 si une app parquée n'est pas conforme : c'est la preuve qu'une lane
-  peut montrer sans ouvrir docker.
+  ``models.py`` SANS MODÈLE et ``migrations/``), + ``parked = True`` dans
+  ``apps.py``. Sort 1 si une app parquée n'est pas conforme : c'est la preuve
+  qu'une lane peut montrer sans ouvrir docker.
+
+La règle du ``models.py`` est celle de ``core.parked.modeles_declares`` (source
+UNIQUE) : **aucune classe héritant de ``models.Model``**. Le cas normal est le
+fichier vide (docstring seul) ; un TALON — fonctions ``default=`` et
+énumérations recopiées verbatim — est autorisé, et nécessaire dès qu'une
+migration gelée référence un symbole du ``models.py`` de son app.
 
 Usage ::
 
@@ -27,7 +33,6 @@ parked.py`` (lu par chemin : il est en Python pur, sans import Django).
 from __future__ import annotations
 
 import argparse
-import ast
 import importlib.util
 import sys
 from pathlib import Path
@@ -63,16 +68,15 @@ def registre():
     return module
 
 
-def models_py_vide(chemin: Path) -> bool:
-    corps = ast.parse(chemin.read_text(encoding='utf-8')).body
-    return not corps or (
-        len(corps) == 1 and isinstance(corps[0], ast.Expr)
-        and isinstance(corps[0].value, ast.Constant)
-        and isinstance(corps[0].value.value, str))
+def modeles_dans_models_py(chemin: Path, parked) -> list:
+    """Modèles Django encore déclarés dans ``chemin`` (vide = conforme)."""
+    return parked.modeles_declares(chemin.read_text(encoding='utf-8'))
 
 
-def verifier(label: str):
+def verifier(label: str, parked=None):
     """Renvoie la liste des écarts au contrat de coquille (vide = conforme)."""
+    if parked is None:
+        parked = registre()
     dossier = APPS_DIR / label
     if not dossier.is_dir():
         return ['dossier absent de backend/django_core/apps/']
@@ -87,8 +91,11 @@ def verifier(label: str):
     if not (dossier / 'migrations').is_dir():
         ecarts.append('migrations/ doit être conservé verbatim')
     modeles = dossier / 'models.py'
-    if modeles.is_file() and not models_py_vide(modeles):
-        ecarts.append('models.py non vide (docstring seul toléré)')
+    if modeles.is_file():
+        declares = modeles_dans_models_py(modeles, parked)
+        if declares:
+            ecarts.append('models.py déclare encore %d modèle(s) Django : %s'
+                          % (len(declares), ', '.join(declares)))
     apps_py = dossier / 'apps.py'
     if apps_py.is_file():
         source = apps_py.read_text(encoding='utf-8')
@@ -111,7 +118,7 @@ def main(argv=None) -> int:
     analyseur.add_argument('--verifier', nargs='+', metavar='LABEL',
                            help='vérifie que ces apps sont des coquilles')
     analyseur.add_argument('--verifier-tout', action='store_true',
-                           help='vérifie les 49 labels de APPS_PARQUEES')
+                           help='vérifie les 47 labels de APPS_PARQUEES')
     args = analyseur.parse_args(argv)
     parked = registre()
 
@@ -137,7 +144,7 @@ def main(argv=None) -> int:
 
     fautifs = {}
     for label in labels:
-        ecarts = verifier(label)
+        ecarts = verifier(label, parked)
         if ecarts:
             fautifs[label] = ecarts
     if fautifs:
@@ -145,8 +152,9 @@ def main(argv=None) -> int:
               'de coquille :' % len(fautifs))
         for label, ecarts in sorted(fautifs.items()):
             print('  - %s : %s' % (label, ' ; '.join(ecarts)))
-        print('\nContrat : __init__.py + apps.py (parked=True) + models.py vide '
-              '+ migrations/ — docs/parked-modules.md §2.')
+        print('\nContrat : __init__.py + apps.py (parked=True) + models.py sans '
+              'aucun modèle Django (talon de fonctions/énumérations toléré) + '
+              'migrations/ — docs/parked-modules.md §2.')
         return 1
     print('parquer_app --verifier : OK — %d app(s) conforme(s) au contrat de '
           'coquille.' % len(labels))

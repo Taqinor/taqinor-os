@@ -13,6 +13,16 @@ Couvert : ordre des ``DeleteModel`` (dépendants d'abord), ``models.py`` vidé,
 multi-module CONSERVÉE, relance sans effet (idempotence), ``--dry-run`` qui
 n'écrit rien, sémantique de ``--check``, refus d'un label non parqué et cassage
 d'un cycle de FK mutuelles.
+
+Couvert aussi (contrat du TALON) : une app jouet dont la migration référence
+``apps.jouet.models._jeton_defaut`` garde ce symbole — et les imports/constantes
+dont il dépend — dans son ``models.py`` de coquille ; un symbole introuvable ou
+qui est un MODÈLE fait REFUSER la commande ; et la vérification à froid du
+graphe, quand elle échoue, REMET TOUT en l'état — models.py, apps.py, la
+migration-coquille ET les fichiers de l'app, seulement ÉCARTÉS en quarantaine
+tant que la vérification n'est pas passée. La vérification à froid elle-même est
+neutralisée dans ces tests (elle lancerait un sous-processus Django sur le dépôt
+RÉEL, pas sur l'app jouet).
 """
 import ast
 import importlib
@@ -170,6 +180,13 @@ class ParquerAppTests(SimpleTestCase):
                                     APPS_PARQUEES_SET=frozenset({'jouet'}))
         patch.start()
         self.addCleanup(patch.stop)
+        # La vérification à froid lancerait un sous-processus Django sur le
+        # DÉPÔT réel (cwd=BASE_DIR temporaire, settings introuvables) : hors
+        # sujet ici. Sa sémantique est testée par TalonModelsPyTests.
+        froid = mock.patch.object(cmd, 'verifier_graphe_en_sous_processus',
+                                  return_value='')
+        froid.start()
+        self.addCleanup(froid.stop)
 
     def _purger_jouet(self):
         """Sans ce nettoyage, le 2e test reimporterait le paquet du 1er."""
@@ -186,10 +203,12 @@ class ParquerAppTests(SimpleTestCase):
         """``call_command`` sur une INSTANCE : la découverte des commandes passe
         par INSTALLED_APPS, que ce test réduit volontairement à l'app jouet
         (registre minimal = graphe de migrations minimal, et surtout AUCUN
-        ``ready()`` d'app réelle rejoué)."""
+        ``ready()`` d'app réelle rejoué).
+
+        Pas de ``skip_checks=`` : la commande porte ``requires_system_checks =
+        []``, donc Django n'expose même pas l'option (elle serait refusée)."""
         self.sortie = io.StringIO()
-        call_command(cmd.Command(), *args, verbosity=0, skip_checks=True,
-                     stdout=self.sortie)
+        call_command(cmd.Command(), *args, verbosity=0, stdout=self.sortie)
         return self.sortie.getvalue()
 
     def _coquiller(self, *args):
@@ -286,6 +305,207 @@ class ParquerAppTests(SimpleTestCase):
         with self.assertRaises(CommandError) as ctx:
             self._appeler('crm')
         self.assertIn('APPS_PARQUEES', str(ctx.exception))
+
+
+TALON_MODELS_PY = """import secrets
+
+from django.db import models
+
+JETON_OCTETS = 24
+
+
+def _jeton_defaut():
+    \"\"\"Jeton public imprevisible (reference par la migration 0001).\"\"\"
+    return secrets.token_urlsafe(JETON_OCTETS)
+
+
+def jamais_reference():
+    return 'ce symbole ne doit PAS finir dans le talon'
+
+
+class Chose(models.Model):
+    jeton = models.CharField(max_length=64, default=_jeton_defaut)
+"""
+
+TALON_MIG_0001 = """import talon.models
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    initial = True
+    dependencies = []
+    operations = [
+        migrations.CreateModel(
+            name='Chose',
+            fields=[
+                ('id', models.BigAutoField(primary_key=True, serialize=False)),
+                ('jeton', models.CharField(
+                    default=talon.models._jeton_defaut, max_length=64)),
+            ],
+        ),
+    ]
+"""
+
+
+class TalonModelsPyTests(SimpleTestCase):
+    """Contrat du TALON : une migration GELÉE qui référence un symbole de
+    ``models.py`` fait garder ce symbole (et ses dépendances) dans la coquille.
+
+    Sans cela, ``models.py`` vidé rend la migration inimportable et le graphe
+    ENTIER casse — panne qui n'apparaît QUE dans un processus neuf, d'où la
+    vérification à froid vérifiée ici aussi (appel + restauration en cas
+    d'échec).
+    """
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='solmvp2_talon_'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.base = self.tmp / 'backend' / 'django_core'
+        self.base.mkdir(parents=True)
+        self.paquets = self.tmp / 'paquets'
+        self.app_dir = self.paquets / 'talon'
+        (self.app_dir / 'migrations').mkdir(parents=True)
+        for nom, contenu in {
+            '__init__.py': '', 'apps.py': APPS_PY.replace('jouet', 'talon'),
+            'models.py': TALON_MODELS_PY, 'views.py': '# vues\n',
+            'receivers.py': '# receivers\n',
+            'migrations/__init__.py': '',
+            'migrations/0001_initial.py': TALON_MIG_0001,
+        }.items():
+            (self.app_dir / nom).write_text(contenu, 'utf-8')
+        sys.path.insert(0, str(self.paquets))
+        self.addCleanup(self._purger)
+        importlib.invalidate_caches()
+        self.overrides = self.settings(BASE_DIR=self.base,
+                                       INSTALLED_APPS=['talon'])
+        self.overrides.enable()
+        self.addCleanup(self.overrides.disable)
+        patch = mock.patch.multiple(cmd.parked,
+                                    APPS_PARQUEES=('talon',),
+                                    APPS_PARQUEES_SET=frozenset({'talon'}))
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def _purger(self):
+        if str(self.paquets) in sys.path:
+            sys.path.remove(str(self.paquets))
+        for nom in [m for m in list(sys.modules)
+                    if m == 'talon' or m.startswith('talon.')]:
+            del sys.modules[nom]
+        registre_apps.all_models.pop('talon', None)
+        importlib.invalidate_caches()
+
+    def _coquiller(self, *args, **kwargs):
+        sortie = io.StringIO()
+        call_command(cmd.Command(), 'talon', *args, verbosity=0,
+                     stdout=sortie, **kwargs)
+        return sortie.getvalue()
+
+    def _models_py(self):
+        return (self.app_dir / 'models.py').read_text('utf-8')
+
+    # -- tests -------------------------------------------------------------
+    def test_symboles_reclames_lus_dans_les_migrations(self):
+        self.assertEqual(
+            sorted(cmd.symboles_reclames([self.app_dir], 'talon')),
+            ['_jeton_defaut'])
+
+    def test_talon_garde_le_symbole_et_ses_dependances(self):
+        with mock.patch.object(cmd, 'verifier_graphe_en_sous_processus',
+                               return_value='') as froid:
+            self._coquiller()
+        self.assertEqual(froid.call_count, 1,
+                         'le graphe doit être vérifié à FROID avant suppression')
+        source = self._models_py()
+        compile(source, 'models.py', 'exec')
+        self.assertIn('def _jeton_defaut():', source)
+        self.assertIn('import secrets', source)
+        self.assertIn('JETON_OCTETS = 24', source)
+        self.assertNotIn('jamais_reference', source)
+        self.assertNotIn('class Chose', source)
+        # Contrat de coquille : aucun modèle Django, et l'app est une coquille.
+        self.assertEqual(cmd.parked.modeles_declares(source), [])
+        self.assertTrue(cmd.est_coquille(self.app_dir))
+        self.assertEqual(
+            sorted(p.name for p in self.app_dir.iterdir()
+                   if p.name != '__pycache__'),
+            ['__init__.py', 'apps.py', 'migrations', 'models.py'])
+
+    def test_echec_a_froid_remet_tout_en_etat(self):
+        avant = (self._models_py(),
+                 (self.app_dir / 'apps.py').read_text('utf-8'))
+        with mock.patch.object(cmd, 'verifier_graphe_en_sous_processus',
+                               return_value='AttributeError: _jeton_defaut'):
+            with self.assertRaises(CommandError) as ctx:
+                self._coquiller()
+        self.assertIn('ne charge PLUS', str(ctx.exception))
+        self.assertEqual((self._models_py(),
+                          (self.app_dir / 'apps.py').read_text('utf-8')), avant)
+        self.assertFalse(
+            (self.app_dir / 'migrations' / '0002_solmvp_coquille.py').exists(),
+            'la migration-coquille doit être retirée quand le graphe casse')
+        self.assertTrue((self.app_dir / 'views.py').is_file(),
+                        'aucun fichier ne doit partir avant la vérif à froid')
+
+    def test_symbole_introuvable_ou_modele_refuse(self):
+        mig = self.app_dir / 'migrations' / '0001_initial.py'
+        mig.write_text(TALON_MIG_0001.replace('_jeton_defaut', 'Chose'), 'utf-8')
+        with self.assertRaises(CommandError) as ctx:
+            self._coquiller('--dry-run')
+        self.assertIn('Chose', str(ctx.exception))
+        self.assertIn('classe-namespace', str(ctx.exception))
+        mig.write_text(TALON_MIG_0001.replace('_jeton_defaut', '_disparu'),
+                       'utf-8')
+        with self.assertRaises(CommandError) as ctx:
+            self._coquiller('--dry-run')
+        self.assertIn('_disparu', str(ctx.exception))
+        self.assertIn('introuvables', str(ctx.exception))
+
+
+class ContratCommandeTests(SimpleTestCase):
+    def test_aucun_system_check_avant_de_tourner(self):
+        """La commande NETTOIE urls.py : le check ``urls`` (qui importe
+        ROOT_URLCONF, donc l'include de l'app en cours de sortie) ne doit pas
+        tourner avant elle — sinon il bloque toute la file."""
+        self.assertEqual(cmd.Command().requires_system_checks, [])
+
+
+class ExtraireTalonTests(SimpleTestCase):
+    SOURCE = (
+        'import secrets\n'
+        'from django.db import models\n'
+        'TAILLE = 32\n'
+        'AUTRE = 1\n'
+        '\n'
+        'def jeton():\n'
+        '    return secrets.token_urlsafe(TAILLE)\n'
+        '\n'
+        'class Sens(models.TextChoices):\n'
+        "    DEBIT = 'debit', 'Débit'\n"
+        '\n'
+        'class Ecriture(models.Model):\n'
+        '    pass\n'
+    )
+
+    def test_fermeture_des_dependances(self):
+        code, manquants, bloquants = cmd.extraire_talon(self.SOURCE, ['jeton'])
+        self.assertEqual((manquants, bloquants), ([], []))
+        self.assertIn('import secrets', code)
+        self.assertIn('TAILLE = 32', code)
+        self.assertNotIn('AUTRE', code)
+        self.assertNotIn('Sens', code)
+
+    def test_enumeration_extraite_avec_son_import(self):
+        code, manquants, bloquants = cmd.extraire_talon(self.SOURCE, ['Sens'])
+        self.assertEqual((manquants, bloquants), ([], []))
+        self.assertIn('from django.db import models', code)
+        self.assertIn('class Sens(models.TextChoices):', code)
+
+    def test_modele_et_absent_signales(self):
+        _, manquants, bloquants = cmd.extraire_talon(
+            self.SOURCE, ['Ecriture', 'fantome'])
+        self.assertEqual(manquants, ['fantome'])
+        self.assertEqual(bloquants, ['Ecriture'])
 
 
 class OrdreSuppressionsTests(SimpleTestCase):
