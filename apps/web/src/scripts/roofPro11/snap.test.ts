@@ -17,6 +17,11 @@ import {
   metresParPixel,
   aimanterAuxZones,
   accrocheAuxZones,
+  pivoterAnneau,
+  pivoterPoint,
+  centroideAnneau,
+  dimensionsRectangleM,
+  redimensionnerRectangle,
   PAS_ANGLE_DEG,
   TOLERANCE_ANGLE_DEG,
 } from './snap';
@@ -394,5 +399,128 @@ describe('CALX92 — aimanterAuxZones', () => {
     expect(accroche).not.toBeNull();
     expect(accroche!.anneau).toBe(1); // le pan d'origine, le plus proche
     expect(accroche!.distanceM).toBeLessThan(0.1);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX97 — COTES EXACTES D'UN PAN ET ROTATION D'UN BLOC.
+// ————————————————————————————————————————————————————————————————————————
+const PAN_RECT: LngLat[] = [
+  [-7.6, 33.5],
+  [-7.599, 33.5],
+  [-7.599, 33.5005],
+  [-7.6, 33.5005],
+];
+
+describe('CALX97 — pivoterAnneau', () => {
+  it('une rotation de 360° rend un anneau identique à 10⁻⁹ près', () => {
+    const tourne = pivoterAnneau(PAN_RECT, 360);
+    expect(tourne).toHaveLength(PAN_RECT.length);
+    tourne.forEach((v, i) => {
+      expect(Math.abs(v[0] - PAN_RECT[i][0])).toBeLessThan(1e-9);
+      expect(Math.abs(v[1] - PAN_RECT[i][1])).toBeLessThan(1e-9);
+    });
+  });
+
+  it('quatre quarts de tour reviennent au point de départ', () => {
+    let a: LngLat[] = PAN_RECT.map((v) => [v[0], v[1]] as LngLat);
+    for (let i = 0; i < 4; i++) a = pivoterAnneau(a, 90);
+    a.forEach((v, i) => {
+      expect(Math.abs(v[0] - PAN_RECT[i][0])).toBeLessThan(1e-9);
+      expect(Math.abs(v[1] - PAN_RECT[i][1])).toBeLessThan(1e-9);
+    });
+  });
+
+  it('conserve le centroïde et les longueurs des côtés', () => {
+    const c = centroideAnneau(PAN_RECT)!;
+    const tourne = pivoterAnneau(PAN_RECT, 37);
+    const c2 = centroideAnneau(tourne)!;
+    expect(distanceEntreM(c, c2)).toBeLessThan(0.001);
+    // La rotation a lieu dans le plan tangent au centroïde : sur un côté de ~93 m ramené
+    // d'est-ouest vers nord-sud, l'écart à la longueur géodésique vraie reste SOUS LE
+    // MILLIMÈTRE — sans commune mesure avec la précision d'un tracé de toiture.
+    expect(Math.abs(distanceEntreM(tourne[0], tourne[1]) - distanceEntreM(PAN_RECT[0], PAN_RECT[1]))).toBeLessThan(0.001);
+    expect(Math.abs(distanceEntreM(tourne[1], tourne[2]) - distanceEntreM(PAN_RECT[1], PAN_RECT[2]))).toBeLessThan(0.001);
+  });
+
+  it('une rotation POSITIVE tourne dans le sens HORAIRE (nord → est)', () => {
+    const centre: LngLat = [-7.6, 33.5];
+    const auNord: LngLat = [-7.6, 33.5005];
+    const tourne = pivoterPoint(auNord, 90, centre);
+    expect(tourne[0]).toBeGreaterThan(centre[0]); // parti vers l'est
+    expect(Math.abs(tourne[1] - centre[1])).toBeLessThan(1e-9);
+  });
+
+  it('un angle non fini ou un centre illisible ne déplace rien', () => {
+    expect(pivoterPoint(PAN_RECT[0], Number.NaN, [-7.6, 33.5])).toBe(PAN_RECT[0]);
+    expect(pivoterAnneau([], 45)).toEqual([]);
+  });
+});
+
+describe('CALX97 — redimensionnerRectangle', () => {
+  it('applique les cotes saisies EN CONSERVANT le centroïde', () => {
+    const avant = centroideAnneau(PAN_RECT)!;
+    const v = redimensionnerRectangle(PAN_RECT, 30, 120);
+    expect(v.ok).toBe(true);
+    if (!v.ok) throw new Error('redimensionnement attendu');
+    const apres = centroideAnneau(v.anneau)!;
+    expect(distanceEntreM(avant, apres)).toBeLessThan(0.001);
+  });
+
+  it('les côtés obtenus mesurent EXACTEMENT ce qui a été saisi', () => {
+    const v = redimensionnerRectangle(PAN_RECT, 30, 120);
+    if (!v.ok) throw new Error('redimensionnement attendu');
+    const dims = dimensionsRectangleM(v.anneau);
+    expect(dims).not.toBeNull();
+    expect(dims!.longueurM).toBeCloseTo(120, 2);
+    expect(dims!.largeurM).toBeCloseTo(30, 2);
+  });
+
+  it('ne modifie PAS l’anneau d’origine', () => {
+    const copie = PAN_RECT.map((v) => [v[0], v[1]] as LngLat);
+    redimensionnerRectangle(PAN_RECT, 30, 120);
+    expect(PAN_RECT).toEqual(copie);
+  });
+
+  it('conserve l’ORDRE des sommets (le pan ne se retourne pas)', () => {
+    const v = redimensionnerRectangle(PAN_RECT, 30, 120);
+    if (!v.ok) throw new Error('redimensionnement attendu');
+    // Le côté 0→1 reste orienté comme avant (vers l'est ici).
+    expect(capEntreDeg(v.anneau[0], v.anneau[1])).toBeCloseTo(capEntreDeg(PAN_RECT[0], PAN_RECT[1]), 3);
+  });
+
+  it('REFUSE en nommant la raison un contour qui n’est pas un quadrilatère', () => {
+    const triangle = PAN_RECT.slice(0, 3);
+    const v = redimensionnerRectangle(triangle, 30, 120);
+    expect(v.ok).toBe(false);
+    if (v.ok) throw new Error('refus attendu');
+    expect(v.motif).toContain('4 côtés');
+    expect(v.motif).toContain('3'); // le nombre réel de sommets est dit
+  });
+
+  it('REFUSE en nommant le champ une cote absente ou ≤ 0', () => {
+    const sansLongueur = redimensionnerRectangle(PAN_RECT, 30, 0);
+    expect(sansLongueur.ok).toBe(false);
+    if (!sansLongueur.ok) expect(sansLongueur.motif).toContain('longueur');
+    const sansLargeur = redimensionnerRectangle(PAN_RECT, Number.NaN, 120);
+    expect(sansLargeur.ok).toBe(false);
+    if (!sansLargeur.ok) expect(sansLargeur.motif).toContain('largeur');
+  });
+});
+
+describe('CALX97 — dimensionsRectangleM', () => {
+  it('lit les cotes réelles d’un pan à 4 côtés', () => {
+    const dims = dimensionsRectangleM(PAN_RECT);
+    expect(dims).not.toBeNull();
+    // `dimensionsRectangleM` MOYENNE les deux côtés opposés : sur la sphère, les côtés nord
+    // et sud d'un « rectangle » lng/lat n'ont pas exactement la même longueur géodésique
+    // (ici ~0,3 mm d'écart sur 93 m). La cote lue reste donc au millimètre de chaque côté.
+    expect(Math.abs(dims!.longueurM - distanceEntreM(PAN_RECT[0], PAN_RECT[1]))).toBeLessThan(0.001);
+    expect(Math.abs(dims!.largeurM - distanceEntreM(PAN_RECT[1], PAN_RECT[2]))).toBeLessThan(0.001);
+  });
+
+  it('ne DEVINE aucune cote pour une forme quelconque', () => {
+    expect(dimensionsRectangleM(PAN_RECT.slice(0, 3))).toBeNull();
+    expect(dimensionsRectangleM([...PAN_RECT, [-7.5995, 33.5008]])).toBeNull();
   });
 });

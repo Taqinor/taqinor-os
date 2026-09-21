@@ -16,7 +16,7 @@
  * Les primitives géodésiques (cap, distance) sont celles de la sphère WGS84 déjà utilisée
  * partout ailleurs dans le builder (`constants.ts`) : aucun rayon ni facteur neuf.
  */
-import { DEG2RAD, WGS84_RADIUS } from './constants';
+import { DEG2M, DEG2RAD, WGS84_RADIUS } from './constants';
 import { isSimplePolygon, type LngLat } from '../../lib/roof';
 
 const RAD2DEG = 180 / Math.PI;
@@ -332,3 +332,131 @@ export function aimanterAuxZones(
 ): LngLat {
   return accrocheAuxZones(candidat, anneaux, tolM)?.point ?? candidat;
 }
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX97 — SAISIR LES COTES EXACTES D'UN PAN ET LE FAIRE PIVOTER D'UN BLOC
+//
+// Un pan ne se modifiait qu'au glissé de ses sommets : aucune saisie de largeur/longueur,
+// aucune rotation d'ensemble (la rotation absolue n'existait que sur une sélection de
+// panneaux en placement libre). Parité HelioScope (cotes exactes à deux décimales + menu
+// « Rotate Field Segments/Keepouts »). Géométrie PURE ; les gestes sont dans `zones.ts`.
+//
+// CONVENTION D'ANGLE : une rotation POSITIVE tourne dans le SENS HORAIRE, comme un cap
+// (0° = nord, 90° = est) — le même repère que `capEntreDeg`/`pointDepuisCap`, pour qu'un
+// seul sens d'angle circule dans tout le module.
+// ————————————————————————————————————————————————————————————————————————
+
+/** Centroïde d'un anneau : moyenne de ses sommets — la MÊME définition que le reste du
+ *  builder (`roof-tool-pro11.ts` `close()`), pour qu'un pan pivote autour du point déjà
+ *  affiché comme son centre. `null` si l'anneau est vide. */
+export function centroideAnneau(anneau: readonly LngLat[]): LngLat | null {
+  if (!Array.isArray(anneau) || anneau.length === 0) return null;
+  let lng = 0;
+  let lat = 0;
+  let n = 0;
+  for (const v of anneau) {
+    if (!estPoint(v)) continue;
+    lng += v[0];
+    lat += v[1];
+    n++;
+  }
+  return n > 0 ? [lng / n, lat / n] : null;
+}
+
+/** CALX97 — fait tourner UN point de `angleDeg` (sens horaire) autour de `centre`. */
+export function pivoterPoint(p: LngLat, angleDeg: number, centre: LngLat): LngLat {
+  if (!estPoint(p) || !estPoint(centre) || !Number.isFinite(angleDeg)) return p;
+  const cosLat = Math.max(1e-6, Math.cos(centre[1] * DEG2RAD));
+  const dx = (p[0] - centre[0]) * cosLat;
+  const dy = p[1] - centre[1];
+  const a = angleDeg * DEG2RAD;
+  const cos = Math.cos(a);
+  const sin = Math.sin(a);
+  const rx = dx * cos + dy * sin; // sens HORAIRE (nord → est pour +90°)
+  const ry = -dx * sin + dy * cos;
+  return [centre[0] + rx / cosLat, centre[1] + ry];
+}
+
+/**
+ * CALX97 — fait tourner un anneau de `angleDeg` (sens horaire) autour de son centroïde,
+ * ou d'un `centre` imposé (pour faire suivre les obstacles d'un pan AUTOUR DU MÊME point).
+ * Le centroïde est conservé par construction.
+ */
+export function pivoterAnneau(anneau: readonly LngLat[], angleDeg: number, centre?: LngLat): LngLat[] {
+  const c = centre ?? centroideAnneau(anneau);
+  if (!c) return (anneau ?? []).map((v) => [v[0], v[1]] as LngLat);
+  return anneau.map((v) => {
+    const r = pivoterPoint(v, angleDeg, c);
+    return [r[0], r[1]] as LngLat;
+  });
+}
+
+/** Verdict d'un redimensionnement — un refus NOMME toujours sa raison. */
+export type VerdictRectangle = { ok: true; anneau: LngLat[] } | { ok: false; motif: string };
+
+/**
+ * CALX97 — cotes RÉELLES (m) d'un pan à 4 côtés : `longueurM` le long du PREMIER côté
+ * (sommet 0 → sommet 1), `largeurM` perpendiculairement. `null` si l'anneau n'est pas un
+ * quadrilatère — on ne devine jamais les cotes d'une forme quelconque.
+ */
+export function dimensionsRectangleM(anneau: readonly LngLat[]): { longueurM: number; largeurM: number } | null {
+  if (!Array.isArray(anneau) || anneau.length !== 4) return null;
+  if (!anneau.every(estPoint)) return null;
+  const longueurM = (distanceEntreM(anneau[0], anneau[1]) + distanceEntreM(anneau[3], anneau[2])) / 2;
+  const largeurM = (distanceEntreM(anneau[1], anneau[2]) + distanceEntreM(anneau[0], anneau[3])) / 2;
+  return { longueurM, largeurM };
+}
+
+/**
+ * CALX97 — repose les 4 sommets d'un pan rectangulaire aux cotes SAISIES, AUTOUR DE SON
+ * CENTROÏDE (qui est donc conservé exactement) et sur ses propres axes : `longueurM` le long
+ * du premier côté, `largeurM` perpendiculairement. L'ordre des sommets est préservé.
+ *
+ * REFUS NOMMÉS : un contour qui n'est pas un quadrilatère (la saisie largeur/longueur n'a
+ * alors aucun sens), une cote absente ou ≤ 0, un premier côté dégénéré (aucun axe lisible).
+ * L'appelant préfixe le motif du NOM du pan.
+ */
+export function redimensionnerRectangle(
+  anneau: readonly LngLat[],
+  largeurM: number,
+  longueurM: number,
+): VerdictRectangle {
+  if (!Array.isArray(anneau) || anneau.length !== 4 || !anneau.every(estPoint)) {
+    const n = Array.isArray(anneau) ? anneau.length : 0;
+    return {
+      ok: false,
+      motif: `cotes refusées — la saisie largeur/longueur ne s’applique qu’à un pan à 4 côtés (celui-ci en a ${n}). Ajustez-le au glissé de ses sommets, ou utilisez la rotation.`,
+    };
+  }
+  if (!Number.isFinite(longueurM) || longueurM <= 0) {
+    return { ok: false, motif: 'longueur refusée — saisissez une longueur en mètres supérieure à 0.' };
+  }
+  if (!Number.isFinite(largeurM) || largeurM <= 0) {
+    return { ok: false, motif: 'largeur refusée — saisissez une largeur en mètres supérieure à 0.' };
+  }
+  const centre = centroideAnneau(anneau) as LngLat;
+  const cosLat = Math.max(1e-6, Math.cos(centre[1] * DEG2RAD));
+  const enu = (v: LngLat): [number, number] => [(v[0] - centre[0]) * cosLat * DEG2M, (v[1] - centre[1]) * DEG2M];
+  const [x0, y0] = enu(anneau[0]);
+  const [x1, y1] = enu(anneau[1]);
+  const [x3, y3] = enu(anneau[3]);
+  const ux = x1 - x0;
+  const uy = y1 - y0;
+  const norme = Math.hypot(ux, uy);
+  if (!(norme > 0)) {
+    return { ok: false, motif: 'cotes refusées — le premier côté du pan est dégénéré : aucun axe de longueur lisible.' };
+  }
+  const u: [number, number] = [ux / norme, uy / norme];
+  // Perpendiculaire à u, ORIENTÉE vers le 4ᵉ sommet : l'ordre des sommets est préservé.
+  let w: [number, number] = [-u[1], u[0]];
+  if ((x3 - x0) * w[0] + (y3 - y0) * w[1] < 0) w = [-w[0], -w[1]];
+  const demiL = longueurM / 2;
+  const demil = largeurM / 2;
+  const coin = (su: number, sw: number): LngLat => {
+    const ex = su * demiL * u[0] + sw * demil * w[0];
+    const ey = su * demiL * u[1] + sw * demil * w[1];
+    return [centre[0] + ex / (DEG2M * cosLat), centre[1] + ey / DEG2M];
+  };
+  return { ok: true, anneau: [coin(-1, -1), coin(1, -1), coin(1, 1), coin(-1, 1)] };
+}
+

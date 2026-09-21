@@ -18,9 +18,12 @@ import {
   withZoneSetback,
   withZoneHeight,
   withZoneLabel,
+  pivoterPan,
+  redimensionnerPan,
   type ExclusionZone,
 } from './zones';
 import { type LngLat } from '../../lib/roof';
+import { type Obstacle } from '../../lib/obstacles';
 
 const A: LngLat = [-7.6, 33.5];
 const B: LngLat = [-7.5995, 33.5004];
@@ -142,5 +145,117 @@ describe('CAL69 — le document écrit EXACTEMENT le contrat CAL68 et se recharg
   it('ENVELOPPE n’est pas une zone traçable ici (c’est le contour)', () => {
     expect(EXCLUSION_NATURES.map((n) => n.id)).toEqual(['INTERDITE', 'RESERVEE', 'PREFEREE']);
     expect(serializeExclusionZones([{ id: 'e', nature: 'ENVELOPPE', vertices: [A, B, A], setbackM: 0 } as unknown as ExclusionZone])).toEqual([]);
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————
+// CALX97 — COTES EXACTES D'UN PAN ET ROTATION D'UN BLOC. La géométrie pure (rotation de
+// 360°, centroïde conservé) est prouvée dans `snap.test.ts` ; ici on prouve ce qui est
+// PROPRE AU PAN : les obstacles suivent la rotation, et un refus NOMME le pan.
+// ————————————————————————————————————————————————————————————————————————
+const PAN: LngLat[] = [
+  [-7.6, 33.5],
+  [-7.599, 33.5],
+  [-7.599, 33.5005],
+  [-7.6, 33.5005],
+];
+
+const obstacle = (id: string, lng: number, lat: number): Obstacle => ({
+  id,
+  centerLng: lng,
+  centerLat: lat,
+  lengthM: 2,
+  widthM: 1.5,
+});
+
+describe('CALX97 — pivoterPan : les obstacles suivent la rotation', () => {
+  it('le centre de chaque obstacle tourne avec le contour', () => {
+    const pan = { vertices: PAN, obstacles: [obstacle('o1', -7.5992, 33.5001)] };
+    const v = pivoterPan(pan, 90, 'Pan 1');
+    expect(v.ok).toBe(true);
+    if (!v.ok) throw new Error('rotation attendue');
+    expect(v.geometrie.obstacles).toHaveLength(1);
+    const avant = pan.obstacles[0];
+    const apres = v.geometrie.obstacles[0];
+    expect(apres.id).toBe('o1');
+    expect(apres.centerLng === avant.centerLng && apres.centerLat === avant.centerLat).toBe(false);
+    // Les dimensions SAISIES de l'obstacle ne changent jamais (aucune orientation inventée).
+    expect(apres.lengthM).toBe(2);
+    expect(apres.widthM).toBe(1.5);
+  });
+
+  it('un tour complet ramène contour ET obstacles à leur place', () => {
+    const o = obstacle('o1', -7.5992, 33.5001);
+    let g = { vertices: PAN.map((v) => [v[0], v[1]] as LngLat), obstacles: [o] };
+    for (let i = 0; i < 4; i++) {
+      const v = pivoterPan(g, 90, 'Pan 1');
+      if (!v.ok) throw new Error('rotation attendue');
+      g = v.geometrie;
+    }
+    g.vertices.forEach((v, i) => {
+      expect(Math.abs(v[0] - PAN[i][0])).toBeLessThan(1e-9);
+      expect(Math.abs(v[1] - PAN[i][1])).toBeLessThan(1e-9);
+    });
+    expect(Math.abs(g.obstacles[0].centerLng - o.centerLng)).toBeLessThan(1e-9);
+    expect(Math.abs(g.obstacles[0].centerLat - o.centerLat)).toBeLessThan(1e-9);
+  });
+
+  it('un pan sans obstacle tourne sans rien fabriquer', () => {
+    const v = pivoterPan({ vertices: PAN, obstacles: [] }, 45, 'Pan 1');
+    expect(v.ok).toBe(true);
+    if (!v.ok) throw new Error('rotation attendue');
+    expect(v.geometrie.obstacles).toEqual([]);
+  });
+
+  it('ne modifie PAS le pan d’origine (transformation pure)', () => {
+    const o = obstacle('o1', -7.5992, 33.5001);
+    const pan = { vertices: PAN.map((v) => [v[0], v[1]] as LngLat), obstacles: [o] };
+    const copieSommets = pan.vertices.map((v) => [v[0], v[1]] as LngLat);
+    pivoterPan(pan, 33, 'Pan 1');
+    expect(pan.vertices).toEqual(copieSommets);
+    expect(pan.obstacles[0].centerLng).toBe(-7.5992);
+  });
+
+  it('REFUSE en nommant le pan quand il n’a pas de contour ou que l’angle est illisible', () => {
+    const sansContour = pivoterPan({ vertices: [], obstacles: [] }, 45, 'Pan 3');
+    expect(sansContour.ok).toBe(false);
+    if (!sansContour.ok) {
+      expect(sansContour.motif).toContain('Pan 3');
+      expect(sansContour.motif).toContain('contour fermé');
+    }
+    const sansAngle = pivoterPan({ vertices: PAN, obstacles: [] }, Number.NaN, 'Pan 3');
+    expect(sansAngle.ok).toBe(false);
+    if (!sansAngle.ok) {
+      expect(sansAngle.motif).toContain('Pan 3');
+      expect(sansAngle.motif).toContain('angle');
+    }
+  });
+});
+
+describe('CALX97 — redimensionnerPan', () => {
+  it('applique les cotes et laisse les obstacles là où ils ont été relevés', () => {
+    const o = obstacle('o1', -7.5992, 33.5001);
+    const v = redimensionnerPan({ vertices: PAN, obstacles: [o] }, 30, 120, 'Pan 1');
+    expect(v.ok).toBe(true);
+    if (!v.ok) throw new Error('redimensionnement attendu');
+    expect(v.geometrie.vertices).toHaveLength(4);
+    expect(v.geometrie.obstacles[0].centerLng).toBe(o.centerLng);
+    expect(v.geometrie.obstacles[0].centerLat).toBe(o.centerLat);
+  });
+
+  it('REFUSE en NOMMANT le pan quand le contour n’est pas un quadrilatère', () => {
+    const v = redimensionnerPan({ vertices: PAN.slice(0, 3), obstacles: [] }, 30, 120, 'Pan 2');
+    expect(v.ok).toBe(false);
+    if (v.ok) throw new Error('refus attendu');
+    expect(v.motif).toContain('Pan 2');
+    expect(v.motif).toContain('4 côtés');
+  });
+
+  it('REFUSE en NOMMANT le pan quand une cote manque', () => {
+    const v = redimensionnerPan({ vertices: PAN, obstacles: [] }, 30, Number.NaN, 'Pan 2');
+    expect(v.ok).toBe(false);
+    if (v.ok) throw new Error('refus attendu');
+    expect(v.motif).toContain('Pan 2');
+    expect(v.motif).toContain('longueur');
   });
 });
