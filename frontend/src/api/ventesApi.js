@@ -506,6 +506,14 @@ const ventesApi = {
   savePreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/save-preset/`, data),
   applyPreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/apply-preset/`, data),
   deletePreset: (id) => api.delete(`/ventes/presets/${id}/`),
+
+  // CALX289 — le bloc ÉCONOMIE en LECTURE SEULE d'un devis (`apps/ventes/economie.py`,
+  // CALX281-290), consommé par l'atelier de calepinage (`PanneauEconomie.jsx`,
+  // D5 : le calepinage ne calcule jamais d'argent) : flux annuel, VAN, TRI,
+  // LCOE, retours simple/actualisé, hypothèses sourcées et omissions motivées.
+  // Contrat partagé : `apps/ventes/contract_samples/ventes_economie.json`
+  // (CALX280, servi par l'action CALX288).
+  getEconomieDevis: (id) => api.get(`/ventes/devis/${id}/economie/`),
 }
 
 export default ventesApi
