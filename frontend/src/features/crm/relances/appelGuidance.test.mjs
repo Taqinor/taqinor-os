@@ -1,10 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  documentContrat, exempleContrat, fichierContrat,
+} from '../../../test/fixtures/contractSamples.js'
+import * as guidance from './appelGuidance.js'
 import {
   SEGMENT_RESIDENTIEL, segmentLivre, guidanceAppel, messageSegmentNonLivre,
   MESSAGE_SEGMENT_A_CONFIRMER, ORDRE_APPEL_1, BUDGET_APPEL_1,
   CLES_TOUCHES_APPEL_1, estToucheDeRappel, questionsDeLAppel, texteQuestion,
+  OBJECTION_LOI_8221, OBJECTIONS,
 } from './appelGuidance.js'
 
 // Les charges utiles viennent du contrat COMMITTÉ (PACT10/PACT13) — jamais
@@ -188,4 +194,94 @@ test('CAD162 — estToucheDeRappel / texteQuestion', () => {
   assert.equal(estToucheDeRappel(toucheCle('appel_suivi_j2')), true)
   assert.equal(texteQuestion({ question: 'Q ?', libelle: 'L' }), 'Q ?')
   assert.equal(texteQuestion({ question: '', libelle: 'L' }), 'L')
+})
+
+// ── CAD163 — la loi 82-21 : rien de spontané ────────────────────────────────
+
+// `docs/crm/messages_meryem.md`, localisé depuis la racine du dépôt que la
+// fixture de contrat sait déjà trouver (…/backend/django_core/apps/crm/…).
+const RACINE = join(fichierContrat('crm', 'panneau_appel'), '..', '..', '..', '..', '..', '..')
+const MESSAGES = readFileSync(join(RACINE, 'docs', 'crm', 'messages_meryem.md'), 'utf8')
+  .replace(/\r\n/g, '\n').split('\n')
+
+/** Les lignes étiquetées d'une section `#### <cle>` du fichier source. */
+function sectionObjection(cle) {
+  const debut = MESSAGES.findIndex((l) => l.startsWith(`#### ${cle} — `))
+  assert.ok(debut >= 0, `section « #### ${cle} » absente de messages_meryem.md`)
+  const out = { titre: MESSAGES[debut].slice(`#### ${cle} — `.length).trim() }
+  for (const ligne of MESSAGES.slice(debut + 1)) {
+    if (ligne.startsWith('#')) break
+    const m = /^(QUAND|RÉPONSE|JAMAIS|ENSUITE) : (.*)$/.exec(ligne)
+    if (m) out[m[1]] = m[2].trim()
+  }
+  return out
+}
+
+/** `{cle: texte FR}` des gabarits (`### cle` + `FR : `), même lecture que
+ *  les tests Python du catalogue (MRY12). */
+function gabaritsFr() {
+  const out = {}
+  let cle = null
+  for (const ligne of MESSAGES) {
+    if (ligne.startsWith('### ')) cle = ligne.slice(4).split(' ')[0].trim()
+    else if (cle && ligne.startsWith('FR : ')) out[cle] = ligne.slice(5).trim()
+  }
+  return out
+}
+
+const PHRASE_FONDATEUR = 'la loi permet de revendre une part du surplus ; je vous confirme les conditions par écrit'
+
+test('CAD163 — la phrase est celle de la décision fondateur, mot pour mot', () => {
+  const sansPonctuationFinale = OBJECTION_LOI_8221.reponse.replace(/[.\s]+$/, '')
+  assert.equal(sansPonctuationFinale.toLowerCase(), PHRASE_FONDATEUR)
+})
+
+test('CAD163 — le module suit le fichier source messages_meryem.md (re-dérivé, jamais retapé)', () => {
+  const source = sectionObjection(OBJECTION_LOI_8221.cle)
+  assert.equal(OBJECTION_LOI_8221.titre, source.titre)
+  assert.equal(OBJECTION_LOI_8221.quand, source.QUAND)
+  assert.equal(OBJECTION_LOI_8221.reponse, source['RÉPONSE'])
+  assert.equal(OBJECTION_LOI_8221.jamais, source.JAMAIS)
+  assert.equal(OBJECTION_LOI_8221.ensuite, source.ENSUITE)
+})
+
+test('CAD163 — aucun chiffre dans la phrase : ni tarif, ni pourcentage, ni délai', () => {
+  const { reponse } = OBJECTION_LOI_8221
+  assert.doesNotMatch(reponse, /[0-9٠-٩۰-۹]/)
+  assert.doesNotMatch(reponse, /%/)
+  assert.doesNotMatch(reponse, /[[\]]/)
+  assert.doesNotMatch(reponse, /centime|dirham|\bMAD\b|\bDH\b|kWh/i)
+})
+
+test('CAD163 — réponse d\'OBJECTION uniquement : nulle part ailleurs dans le module', () => {
+  const trouvees = []
+  const parcourir = (valeur, chemin) => {
+    if (typeof valeur === 'string') {
+      if (/revendre une part du surplus/i.test(valeur)) trouvees.push(chemin)
+    } else if (valeur && typeof valeur === 'object') {
+      for (const [k, v] of Object.entries(valeur)) parcourir(v, `${chemin}.${k}`)
+    }
+  }
+  for (const [nom, valeur] of Object.entries(guidance)) {
+    if (nom !== 'OBJECTIONS') parcourir(valeur, nom)
+  }
+  assert.deepEqual(trouvees, ['OBJECTION_LOI_8221.reponse'])
+  assert.ok(OBJECTIONS.includes(OBJECTION_LOI_8221))
+  // Le panneau la sert parmi les objections, jamais parmi les questions.
+  const g = guidanceAppel(leadVierge(toucheCle('appel_ouverture')))
+  assert.ok(g.objections.includes(OBJECTION_LOI_8221))
+  assert.ok(!g.questions.some((q) => /surplus/i.test(texteQuestion(q))))
+})
+
+test('CAD163 — jamais dans un script d\'ouverture : aucun gabarit d\'appel ne parle de la loi', () => {
+  const gabarits = gabaritsFr()
+  const clesAppel = [...CLES_TOUCHES_APPEL_1, 'appel_suivi_j2', 'appel_suivi_j7', 'appel_suivi_j11']
+  for (const cle of clesAppel) {
+    assert.ok(cle in gabarits, `gabarit ${cle} introuvable dans messages_meryem.md`)
+    assert.doesNotMatch(gabarits[cle], /82-21|surplus/i, cle)
+  }
+  // Et la phrase n'est le texte d'AUCUN gabarit de message.
+  for (const [cle, texte] of Object.entries(gabarits)) {
+    assert.doesNotMatch(texte, /revendre une part du surplus/i, cle)
+  }
 })

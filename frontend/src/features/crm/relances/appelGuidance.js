@@ -145,11 +145,38 @@ export function texteQuestion(entree) {
   return entree?.question || entree?.libelle || ''
 }
 
+// ── CAD163 — la loi 82-21 : rien de spontané ────────────────────────────────
+// Décision fondateur du 21/09/2026 (Q9) : on n'aborde JAMAIS la loi 82-21
+// spontanément. Si — et seulement si — le client en parle, la réponse est UNE
+// phrase factuelle, dictée mot pour mot par la décision, SANS aucun tarif,
+// aucun pourcentage, aucun délai : le tarif de cession qui circule n'est
+// confirmé par aucune source lue, le prononcer serait un chiffre inventé.
+// C'est une réponse d'OBJECTION, jamais une ligne de script d'ouverture.
+// Source : `docs/crm/messages_meryem.md`, section « Script d'appel guidé »
+// (`#### objection_loi_8221`) — le test re-dérive ces quatre lignes de ce
+// fichier : une modification se fait LÀ-BAS et ici, dans le même commit.
+export const OBJECTION_LOI_8221 = Object.freeze({
+  cle: 'objection_loi_8221',
+  titre: 'Le client parle lui-même de la loi 82-21 (revente du surplus)',
+  quand: 'Seulement si le client aborde lui-même la loi 82-21 ou la revente du '
+    + "surplus — jamais à l'initiative de la commerciale, jamais dans un script "
+    + "d'ouverture.",
+  reponse: 'La loi permet de revendre une part du surplus ; je vous confirme '
+    + 'les conditions par écrit.',
+  jamais: 'Aucun tarif, aucun pourcentage, aucun délai.',
+  ensuite: 'Envoyer la confirmation écrite par un canal traçable ; aucune '
+    + "promesse de rachat tant qu'une décision ANRE datée n'a pas été lue.",
+})
+
+/** Les réponses d'objection du panneau — affichées à la demande, jamais lues
+ *  d'office. CAD151 complète cette liste (générateur, subventions…). */
+export const OBJECTIONS = Object.freeze([OBJECTION_LOI_8221])
+
 /** Ce que le panneau affiche pour CE lead.
  *  - segment non livré : `{ livre: false, segment, message }` ;
  *  - résidentiel (ou segment vide) : `{ livre: true, segment,
- *    segmentAConfirmer, avertissement, phase, questions }`, `phase` valant
- *    `'appel_1'` ou `'rappel'`. */
+ *    segmentAConfirmer, avertissement, phase, questions, objections }`,
+ *    `phase` valant `'appel_1'` ou `'rappel'`. */
 export function guidanceAppel(panneau) {
   const segment = panneau?.segment || null
   if (!segmentLivre(segment)) {
@@ -163,5 +190,6 @@ export function guidanceAppel(panneau) {
     avertissement: segmentAConfirmer ? MESSAGE_SEGMENT_A_CONFIRMER : null,
     phase: estToucheDeRappel(panneau?.touche) ? 'rappel' : 'appel_1',
     questions: questionsDeLAppel(panneau),
+    objections: OBJECTIONS,
   }
 }

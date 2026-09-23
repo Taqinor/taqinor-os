@@ -349,6 +349,25 @@ Décisions fondateur du 21/09/2026 (CAD173) — TROIS RÈGLES DE CONTENU, à ten
 - **Subventions (Q22)** : on ne promet RIEN. Aucun texte n'annonce un montant, un taux, une éligibilité ni un délai de
   subvention : on renvoie le client aux conditions officielles du programme concerné.
 
+## Script d'appel guidé — ce qui ne se dit qu'en RÉPONSE (`appelGuidance.js`, CAD163, 23/09/2026)
+
+Ces textes ne sont PAS des gabarits de message : aucun ne part au client par écrit, aucun ne figure dans un script
+d'ouverture. Ils vivent dans `frontend/src/features/crm/relances/appelGuidance.js` (liste `OBJECTIONS`) et s'affichent
+à la commerciale PENDANT l'appel, à la demande. Le test `appelGuidance.test.mjs` re-dérive les lignes ci-dessous de ce
+fichier : une modification se fait ICI et dans le module, dans le même commit.
+
+#### objection_loi_8221 — Le client parle lui-même de la loi 82-21 (revente du surplus)
+Décision fondateur du 21/09/2026 (Q9) : **on n'aborde JAMAIS la loi 82-21 spontanément.** Si, et seulement si, le
+client en parle, la réponse tient en une phrase factuelle, dictée mot pour mot par la décision (texte du fondateur :
+rien à valider) — **sans aucun tarif, aucun pourcentage, aucun délai.** Le tarif de cession qui circule n'est confirmé
+par aucune source lue : le prononcer serait un chiffre inventé. Les trois consignes d'écran qui l'entourent (QUAND,
+JAMAIS, ENSUITE) reformulent la décision : ✎ à valider par le fondateur. Darija : aucune version validée (relecture
+native CADM1) — aucune traduction n'est fabriquée.
+QUAND : Seulement si le client aborde lui-même la loi 82-21 ou la revente du surplus — jamais à l'initiative de la commerciale, jamais dans un script d'ouverture.
+RÉPONSE : La loi permet de revendre une part du surplus ; je vous confirme les conditions par écrit.
+JAMAIS : Aucun tarif, aucun pourcentage, aucun délai.
+ENSUITE : Envoyer la confirmation écrite par un canal traçable ; aucune promesse de rachat tant qu'une décision ANRE datée n'a pas été lue.
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
