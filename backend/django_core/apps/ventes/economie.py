@@ -1,4 +1,4 @@
-"""CALX281-282 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE.
+"""CALX281-283 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE, prêts.
 
 LE CONSTAT (CALX281)
 --------------------
@@ -63,7 +63,8 @@ from .solar_design import _irr, _npv
 
 __all__ = [
     'EconomieInvalide', 'MODES_REMPLACEMENT', 'RETOUR_MAX_ANS',
-    'SOURCE_SAISIE_NUE', 'flux_de_tresorerie', 'lcoe',
+    'SOURCE_SAISIE_NUE', 'TYPES_PRET', 'flux_de_tresorerie', 'lcoe',
+    'tableau_pret',
 ]
 
 
@@ -82,6 +83,10 @@ RETOUR_MAX_ANS = 30
 
 #: Les trois fins de vie SAISISSABLES d'un équipement (OpenSolar, cité en tête).
 MODES_REMPLACEMENT = ('retirer', 'remplacer', 'prolonger')
+
+#: CALX283 — les trois types de prêt (PV*SOL : annuité, échéances constantes ;
+#: PVsyst : remboursement in fine). Aucun n'est retenu par défaut.
+TYPES_PRET = ('annuite', 'echeances_constantes', 'in_fine')
 
 #: La source publiée pour une saisie NUE (un nombre sans provenance) : la
 #: valeur a été transmise par l'appelant, rien de plus n'est affirmé.
@@ -280,13 +285,179 @@ def _tri(flux, omissions):
     return None
 
 
+# ── CALX283 — les prêts ─────────────────────────────────────────────────────
+#
+# PV*SOL distingue le prêt à ÉCHÉANCES CONSTANTES de capital (intérêts
+# recalculés après chaque versement) et le prêt à ANNUITÉ, avec période de
+# grâce (https://help.valentin-software.com/pvsol/en/pages/financial-analysis/economic-parameters/) ;
+# PVsyst documente aussi le remboursement IN FINE
+# (https://www.pvsyst.com/help/project-design/economic-evaluation/financial-parameters.html).
+#
+# UNE SEULE FORMULE D'ANNUITÉ : la mensualité RELIT ``_monthly_loan_payment``
+# (``quote_engine/builder.py``), la seule du dépôt — elle n'est ni dupliquée
+# ni modifiée ici. Sa table ``_FINANCING_PROGRAMS`` (taux « APPROXIMATIF … à
+# confirmer avec les banques partenaires »), elle, n'est JAMAIS relue : tous
+# les paramètres d'un prêt sont SAISIS, aucun taux de repli.
+
+def _exiger(champ, brute, **bornes):
+    """Une grandeur OBLIGATOIRE : absente ⇒ refus qui nomme ``champ``."""
+    valeur = _saisie(champ, brute, **bornes)[0]
+    if valeur is None:
+        raise EconomieInvalide(
+            f"{champ} : à saisir — aucune valeur de repli n'est employée.",
+            champ=champ)
+    return valeur
+
+
+def tableau_pret(*, principal_mad=None, taux_annuel_pct=None, duree_mois=None,
+                 type_pret=None, differe_mois=None):
+    """CALX283 — tableau d'amortissement mensuel d'un prêt SAISI.
+
+    Args:
+        principal_mad: capital emprunté (> 0).
+        taux_annuel_pct: taux nominal annuel (%, >= 0) — ramené au mois par
+            ÷ 12, comme ``_monthly_loan_payment``.
+        duree_mois: durée TOTALE, différé compris (entier >= 1).
+        type_pret: ``annuite`` (mensualité constante), ``echeances_constantes``
+            (capital constant, intérêts dégressifs) ou ``in_fine`` (intérêts
+            seuls, capital à la dernière échéance).
+        differe_mois: mois de différé en tête (intérêts seuls, capital
+            inchangé) ; absent ⇒ aucun différé. Doit laisser au moins un mois
+            d'amortissement.
+
+    Returns:
+        ``{type_pret, principal_mad, taux_annuel_pct, duree_mois,
+        differe_mois, mensualite_mad, echeances: [{mois, interets_mad,
+        capital_mad, echeance_mad, capital_restant_du_mad}],
+        total_interets_mad, total_rembourse_mad}`` — ``mensualite_mad`` n'a
+        de sens que pour l'annuité (``None`` sinon).
+    """
+    principal = _exiger('principal_mad', principal_mad, minimum=0,
+                        strictement=True)
+    taux = _exiger('taux_annuel_pct', taux_annuel_pct, minimum=0)
+    duree = _exiger('duree_mois', duree_mois, minimum=1, entier=True)
+    if type_pret not in TYPES_PRET:
+        raise EconomieInvalide(
+            f"type_pret : choisir parmi {', '.join(TYPES_PRET)} — aucun type "
+            f"n'est retenu par défaut.", champ='type_pret')
+    differe = 0
+    if differe_mois is not None:
+        differe = _saisie('differe_mois', differe_mois, minimum=0,
+                          entier=True)[0]
+    if differe >= duree:
+        raise EconomieInvalide(
+            f"differe_mois : {differe} mois de différé sur une durée de "
+            f"{duree} mois ne laissent aucun mois d'amortissement.",
+            champ='differe_mois')
+
+    # Tenue AU CENTIME, comme un tableau bancaire : les intérêts du mois sont
+    # arrondis au centime, le capital restant dû aussi, et la DERNIÈRE
+    # échéance solde exactement le reliquat — la somme des capitaux remboursés
+    # égale le principal, sans dérive d'arrondi.
+    r = taux / 100.0 / 12.0
+    amortissement = duree - differe
+    echeances, total_interets = [], 0.0
+    restant = round(principal, 2)
+
+    def verser(mois, capital):
+        nonlocal restant, total_interets
+        interets = round(restant * r, 2)
+        capital = round(capital, 2)
+        restant = round(restant - capital, 2)
+        total_interets += interets
+        echeances.append({
+            'mois': mois,
+            'interets_mad': interets,
+            'capital_mad': capital,
+            'echeance_mad': round(interets + capital, 2),
+            'capital_restant_du_mad': restant,
+        })
+
+    for mois in range(1, differe + 1):
+        verser(mois, 0.0)
+
+    mensualite = None
+    if type_pret == 'annuite':
+        from .quote_engine.builder import _monthly_loan_payment
+        mensualite = _monthly_loan_payment(principal, taux / 100.0,
+                                           amortissement)
+    part_constante = round(principal / amortissement, 2)
+    for rang in range(1, amortissement + 1):
+        if rang == amortissement:
+            capital = restant
+        elif type_pret == 'annuite':
+            capital = min(max(mensualite - round(restant * r, 2), 0.0),
+                          restant)
+        elif type_pret == 'echeances_constantes':
+            capital = min(part_constante, restant)
+        else:
+            capital = 0.0
+        verser(differe + rang, capital)
+
+    return {
+        'type_pret': type_pret,
+        'principal_mad': principal,
+        'taux_annuel_pct': taux,
+        'duree_mois': duree,
+        'differe_mois': differe,
+        'mensualite_mad': mensualite,
+        'echeances': echeances,
+        'total_interets_mad': round(total_interets, 2),
+        'total_rembourse_mad': round(principal + total_interets, 2),
+    }
+
+
+def _lire_pret(pret, investissement, horizon):
+    """``(principal, service par année, hypothèses)`` d'un prêt saisi.
+
+    Refus nommés ``pret.<champ>`` : un capital emprunté supérieur à
+    l'investissement, ou un prêt qui court au-delà de l'horizon (ses dernières
+    échéances disparaîtraient du flux sans bruit).
+    """
+    if pret is None:
+        return 0.0, {}, []
+    if not isinstance(pret, dict):
+        raise EconomieInvalide(
+            "pret : un dict {principal_mad, taux_annuel_pct, duree_mois, "
+            "type_pret, differe_mois} est attendu.", champ='pret')
+    params = {cle: pret.get(cle) for cle in (
+        'principal_mad', 'taux_annuel_pct', 'duree_mois', 'type_pret',
+        'differe_mois')}
+    try:
+        tableau = tableau_pret(**params)
+    except EconomieInvalide as refus:
+        raise EconomieInvalide(
+            f"pret.{refus}", champ=f'pret.{refus.champ}') from refus
+    if investissement is not None and tableau['principal_mad'] > investissement:
+        raise EconomieInvalide(
+            f"pret.principal_mad : {tableau['principal_mad']:g} MAD empruntés "
+            f"pour {investissement:g} MAD investis.",
+            champ='pret.principal_mad')
+    if horizon is not None and tableau['duree_mois'] > horizon * 12:
+        raise EconomieInvalide(
+            f"pret.duree_mois : {tableau['duree_mois']} mois au-delà de "
+            f"l'horizon saisi ({horizon} ans) — les dernières échéances "
+            f"sortiraient du flux.", champ='pret.duree_mois')
+    service = {}
+    for echeance in tableau['echeances']:
+        annee = (echeance['mois'] - 1) // 12 + 1
+        service[annee] = service.get(annee, 0.0) + echeance['echeance_mad']
+    source = str(pret.get('source') or '').strip() or SOURCE_SAISIE_NUE
+    saisie_le = pret.get('saisie_le')
+    hypotheses = [
+        _hypothese(f'pret.{cle}', tableau[cle], source, saisie_le)
+        for cle in ('principal_mad', 'taux_annuel_pct', 'duree_mois',
+                    'type_pret', 'differe_mois')]
+    return tableau['principal_mad'], service, hypotheses
+
+
 # ── Le flux ─────────────────────────────────────────────────────────────────
 
 def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
                        production_annee1_kwh=None, horizon_ans=None,
                        taux_actualisation_pct=None, indexation_pct=None,
                        degradation_pct=None, charges_annuelles_mad=None,
-                       remplacements=None):
+                       remplacements=None, pret=None):
     """Le bloc économie (forme ``contract_samples/ventes_economie.json``).
 
     Toutes les grandeurs sont facultatives À L'APPEL et aucune n'a de défaut :
@@ -306,6 +477,10 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         degradation_pct: dégradation annuelle de la production (%/an, [0, 100[).
         charges_annuelles_mad: charges d'exploitation par an (>= 0).
         remplacements: ``[{equipement, annee, mode, montant_mad, source}]``.
+        pret: CALX283 — ``{principal_mad, taux_annuel_pct, duree_mois,
+            type_pret, differe_mois, source, saisie_le}`` : la part financée
+            quitte l'année 0 et les échéances de :func:`tableau_pret` sont
+            retranchées année par année. Absent ⇒ achat comptant.
     """
     hypotheses, omissions = [], []
 
@@ -351,6 +526,9 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         remplacements, horizon)
     hypotheses.extend(hyp_remplacements)
     omissions.extend(omis_remplacements)
+    principal, service_pret, hyp_pret = _lire_pret(
+        pret, investissement, horizon)
+    hypotheses.extend(hyp_pret)
 
     bloc = {
         'horizon_ans': horizon,
@@ -380,13 +558,14 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
     deg = 0.0 if degradation is None else degradation / 100.0
     charges = 0.0 if charges is None else charges
 
-    flux = [-investissement]
+    flux = [-(investissement - principal)]
     economies = [0.0]
     for annee in range(1, horizon + 1):
         economie = economie1 * (1.0 + idx) ** (annee - 1) \
             * (1.0 - deg) ** (annee - 1)
         economies.append(economie)
-        flux.append(economie - charges - sorties.get(annee, 0.0))
+        flux.append(economie - charges - sorties.get(annee, 0.0)
+                    - service_pret.get(annee, 0.0))
 
     cumuls, cumul = [], 0.0
     for valeur in flux:
