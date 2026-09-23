@@ -196,6 +196,23 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
   })
 })
 
+// CAD84 — « message ouvert ? » ne présume plus le canal suggéré : le
+// libellé est neutre (appeler à la place est normal).
+describe('CAD84 RelanceEtapeRow — une question qui ne présume pas le canal', () => {
+  it('message non ouvert : le libellé neutre est rendu', () => {
+    ouvrirFait({ ...ETAPE_APRES_DEVIS, message_ouvert_le: null })
+    const question = screen.getByTestId('confirmer-sans-ouverture')
+    expect(question).toHaveTextContent(
+      'Vous n’avez pas ouvert de message WhatsApp pour cette touche — c’est normal si vous avez appelé à la place.')
+    expect(question).not.toHaveTextContent(/marquer faite sans avoir ouvert/)
+  })
+
+  it('message ouvert : aucune question', () => {
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.queryByTestId('confirmer-sans-ouverture')).not.toBeInTheDocument()
+  })
+})
+
 // CAD97 — cadence générique : « Fait — passer à la suite » n'annonce plus
 // « demain » à tort. État committé `exemple_generique` (même forme) : un
 // barreau du gabarit, puis une étape posée par le filet.

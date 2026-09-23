@@ -704,9 +704,15 @@ export default function RelanceEtapeRow({
                 type="checkbox" className="mt-0.5" checked={sansOuverture}
                 onChange={(e) => setSansOuverture(e.target.checked)}
               />
+              {/* CAD84 — le canal de la touche est SUGGÉRÉ, jamais imposé
+                  (les deux boutons Appeler / WhatsApp sont toujours là) :
+                  la question ne présume plus qu'un message devait partir.
+                  Même mécanisme (case à cocher, jamais un blocage), formulation
+                  neutre. */}
               <span>
-                Ce message n’a pas été ouvert depuis l’ERP — marquer faite sans
-                avoir ouvert le message ?
+                Vous n’avez pas ouvert de message {CANAL_LABELS[etape.canal] ?? etape.canal} pour
+                cette touche — c’est normal si vous avez appelé à la place. Cochez
+                pour confirmer.
               </span>
             </label>
           )}
