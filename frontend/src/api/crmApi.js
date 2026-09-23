@@ -124,7 +124,11 @@ const crmApi = {
     api.post(`/crm/relance-etapes/${id}/annuler/`),
   // MRY13 — message rendu côté serveur (forme `relance_etape_message`) : lu
   // AVANT ouverture de WhatsApp (aperçu), jamais un envoi.
-  getRelanceEtapeMessage: (id) => api.get(`/crm/relance-etapes/${id}/message/`),
+  // CAD-A — `cle` (facultative) : le texte de RÉPONSE convenu (`stop_contact`,
+  // `rappel_plus_tard`) rendu pour le client de cette touche, même forme.
+  getRelanceEtapeMessage: (id, cle) => (cle
+    ? api.get(`/crm/relance-etapes/${id}/message/`, { params: { cle } })
+    : api.get(`/crm/relance-etapes/${id}/message/`)),
   // MRY13 — LE CLIC qui ouvre WhatsApp : marque la touche faite côté serveur
   // (jamais d'envoi réseau — décision D5).
   whatsappRelanceEtape: (id) => api.post(`/crm/relance-etapes/${id}/whatsapp/`),
@@ -134,8 +138,11 @@ const crmApi = {
   // `marquerRelanceEtapeFait` ci-dessus) : jamais un `due_at` calculé côté
   // écran depuis le fuseau du NAVIGATEUR (incident — l'heure demandée par
   // l'agent dérivait de son fuseau local, pas de Casablanca).
-  reporterRelanceEtape: (id, { rappel_le, rappel_heure }) =>
-    api.post(`/crm/relance-etapes/${id}/reporter/`, { rappel_le, rappel_heure }),
+  // CAD26 — `mode: 'veille'` (facultatif) : « Mettre en veille jusqu'au… »
+  // au lieu du décalage historique ; absent, le corps est inchangé.
+  reporterRelanceEtape: (id, { rappel_le, rappel_heure, mode }) =>
+    api.post(`/crm/relance-etapes/${id}/reporter/`,
+      mode ? { rappel_le, rappel_heure, mode } : { rappel_le, rappel_heure }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),

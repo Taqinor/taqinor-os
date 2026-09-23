@@ -155,6 +155,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # demandé le contraire. Chaîne VIDE — jamais null — quand rien n'est
     # adapté, comme les autres champs de confort de ce sérialiseur.
     canal_adapte = serializers.SerializerMethodField()
+    # CAD11 — le lead de cette touche est-il JUNK (perdu avec un motif marqué
+    # `MotifPerte.est_junk` : numéro invalide, spam, hors zone…) ? Le drapeau
+    # vivait au niveau du lead, à trois écrans de la touche : l'exposer ici
+    # rend mesurable la qualité des numéros qui arrivent des publicités.
+    lead_est_junk = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -170,6 +175,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
             'statut_libelle', 'message_ouvert_le', 'canal_adapte',
+            'lead_est_junk',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -206,6 +212,31 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             return ('Canal adapté à la préférence du client : '
                     'WhatsApp uniquement.')
         return ''
+
+    def get_lead_est_junk(self, obj) -> bool:
+        """CAD11 — ``True`` si le lead est PERDU avec un motif « junk » de sa
+        société (même rapprochement insensible à la casse que le signal
+        qualité PUB28 : ``Lead.motif_perte`` reste un texte libre).
+
+        COÛT BORNÉ : aucune requête pour un lead non perdu (le cas de toute
+        touche encore dans la file), et une seule lecture des motifs junk par
+        société et par réponse (cache dans le contexte partagé du
+        sérialiseur, liste comprise)."""
+        lead = obj.lead
+        if not getattr(lead, 'perdu', False):
+            return False
+        motif = (getattr(lead, 'motif_perte', '') or '').strip().lower()
+        if not motif:
+            return False
+        cache = self.context.setdefault('_cad11_motifs_junk', {})
+        if lead.company_id not in cache:
+            from .models import MotifPerte
+            cache[lead.company_id] = {
+                (nom or '').strip().lower()
+                for nom in MotifPerte.objects.filter(
+                    company_id=lead.company_id, est_junk=True,
+                ).values_list('nom', flat=True)}
+        return motif in cache[lead.company_id]
 
     @extend_schema_field(serializers.IntegerField())
     def get_lead_score(self, obj):

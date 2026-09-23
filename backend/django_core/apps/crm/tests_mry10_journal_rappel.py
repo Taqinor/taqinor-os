@@ -23,6 +23,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
+from testkit.time import frozen
 
 from apps.crm import horaires
 from apps.crm.models import Lead, LeadActivity, RelanceEtape
@@ -197,6 +198,16 @@ class ToucheTypeeTests(_Base):
 
 class ReporterTests(_Base):
     slug = 'mry10-report'
+
+    def setUp(self):
+        # CAD27 — un report dans le PASSÉ est désormais refusé (400 nommant
+        # le champ). Ces tests reportent à des dates fixes de septembre 2026 :
+        # on se place le jour du départ du plan pour qu'elles tombent dans le
+        # FUTUR, comme lorsqu'une commerciale reporte une touche en vrai.
+        gel = frozen(LUNDI)
+        gel.start()
+        self.addCleanup(gel.stop)
+        super().setUp()
 
     def test_reporter_decale_la_touche_ET_les_suivantes(self):
         etapes = self._rafraichir()

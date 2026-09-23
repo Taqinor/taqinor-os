@@ -34,7 +34,13 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
       return () => { active = false }
     }
     queueMicrotask(() => { if (active) { setLoading(true); setErreur(false) } })
-    crmApi.getRelanceEtapeMessage(etape.id)
+    // CAD-A — `message_cle` : le texte de RÉPONSE convenu (accusé « ne plus
+    // contacter », « je vous rappelle plus tard ») rendu pour CE client —
+    // même forme de contrat que le message de la touche.
+    const requete = etape.message_cle
+      ? crmApi.getRelanceEtapeMessage(etape.id, etape.message_cle)
+      : crmApi.getRelanceEtapeMessage(etape.id)
+    requete
       .then((r) => { if (active) setRendu(r.data) })
       .catch(() => { if (active) setErreur(true) })
       .finally(() => { if (active) setLoading(false) })
@@ -46,6 +52,14 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
     // Le clic humain d'abord (le message est déjà écrit) — le marquage
     // serveur qui suit ne doit jamais bloquer l'ouverture déjà faite.
     window.open(rendu.wa_url, '_blank', 'noopener')
+    if (etape.message_cle) {
+      // CAD-A — un accusé de RÉPONSE suit une touche DÉJÀ close : il n'y a
+      // pas de touche à journaliser comme « message ouvert » (RLC3 ne vaut
+      // que pour une touche encore à faire).
+      toast.success('WhatsApp ouvert avec le message de réponse.')
+      onOpenChange(false)
+      return
+    }
     setSending(true)
     try {
       const r = await crmApi.whatsappRelanceEtape(etape.id)

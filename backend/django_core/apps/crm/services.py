@@ -1433,7 +1433,7 @@ def est_note_de_touche_sautee(activite):
 
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
-                          body=''):
+                          body='', suite=True):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
     silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
@@ -1444,7 +1444,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     CKP2 — c'est aussi ICI que naît la touche SUIVANTE du protocole
     (``materialiser_touche_suivante``) quand la clôture n'est pas un succès :
     la cadence est RÉACTIVE, une touche à la fois, et c'est l'issue saisie qui
-    programme le geste d'après."""
+    programme le geste d'après.
+
+    CAD-A (réponses de touche) — ``suite=False`` : l'APPELANT décide seul de
+    ce qui vient après (« Ne plus me contacter » n'a pas de suite, « Question
+    de prix » ou « Devis modifié » posent LEUR étape). Ni barreau suivant, ni
+    clôture au froid, ni filet d'invariant : ces trois automatismes
+    choisiraient une suite contraire à ce que le client vient de dire. La
+    trace (touche close, ligne de chatter, issue) reste identique."""
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
@@ -1531,8 +1538,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # « intéressé » n'arrête PAS le suivi de proposition, il en fait naître le
     # barreau suivant, exactement comme « pas de réponse ».
     suivante = None
-    if (statut == RelanceEtape.Statut.SAUTEE
-            or issue_fait_naitre_la_suite(outcome, etape.cadence)):
+    if suite and (statut == RelanceEtape.Statut.SAUTEE
+                  or issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
             suivante = materialiser_touche_suivante(etape, user)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
@@ -1556,6 +1563,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
+    if not suite:
+        # CAD-A — l'appelant pose (ou refuse) lui-même la suite.
+        return etape
     # MRY11 — la cadence vient-elle de s'ÉPUISER ? Uniquement ici : une
     # cadence ARRÊTÉE (MRY9) n'est pas une cadence terminée, et clôturer un
     # lead qu'on vient de joindre serait exactement l'inverse du bon geste.
@@ -1778,12 +1788,21 @@ def annuler_touche_relance(etape, user):
 
     lead = etape.lead
     if lead.pk:
-        lead.refresh_from_db(fields=['stage', 'perdu'])
+        lead.refresh_from_db(fields=['stage', 'perdu', 'ne_plus_contacter'])
     if lead.perdu:
         raise AnnulationToucheRefusee(
             'lead',
             'Ce lead est marqué perdu : rouvrez-le avant d\'annuler une '
             'touche de son plan.')
+    if lead.ne_plus_contacter:
+        # CAD5 — rouvrir des touches sur un client qui a demandé qu'on ne le
+        # contacte plus violerait la garde dure (loi 09-08 art. 9 al. 2).
+        # L'opposition se lève sur la FICHE, par un humain, jamais par un
+        # retour arrière de touche.
+        raise AnnulationToucheRefusee(
+            'lead',
+            'Ce lead est marqué « Ne plus contacter » : décochez la case sur '
+            'la fiche avant d\'annuler une touche de son plan.')
     if lead.stage == stages.SIGNED:
         raise AnnulationToucheRefusee(
             'lead',
@@ -2009,6 +2028,15 @@ FILET_DERNIER_APPEL_LIBELLE = 'Rappeler — dernier essai avant de chiffrer'
 #: ses sœurs pour que `_LIBELLES_FILET` la connaisse sans second littéral.
 PASSATION_LIBELLE = 'Passation — prévenir le client du changement de conseiller'
 
+#: CAD7 — le client NÉGOCIE le prix : le suivi de proposition se met en PAUSE
+#: le temps de préparer l'appel du fondateur. Étape de FILET (posée par le
+#: moteur, hors protocole) : la traiter rouvre le suivi au barreau suivant
+#: (CAD1). Aucun texte d'offre n'y est attaché — l'offre ne part JAMAIS avant
+#: la décision du fondateur (CAD60).
+QUESTION_PRIX_LIBELLE = (
+    'Question de prix — préparer l’appel du fondateur (aucune offre avant '
+    'sa décision)')
+
 #: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
 #: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
 #: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
@@ -2019,6 +2047,7 @@ _LIBELLES_FILET = frozenset({
     FILET_RAPPEL_LIBELLE,  # CAD3
     FILET_MESSAGE_CRENEAU_LIBELLE, FILET_DERNIER_APPEL_LIBELLE,  # CAD102
     PASSATION_LIBELLE,  # CAD54
+    QUESTION_PRIX_LIBELLE,  # CAD7
 })
 
 # ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
@@ -2515,11 +2544,17 @@ def message_visite_pour_lead(lead, cle, *, user=None):
     return rendu
 
 
-def message_pour_etape(etape, *, request=None, user=None):
+def message_pour_etape(etape, *, request=None, user=None, cle=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
 
     Forme `relance_etape_message` (contrat MRY25) :
     ``{message, wa_url, langue, phone, placeholders_manquants}``.
+
+    CAD-A — ``cle`` (une des ``CLES_MESSAGE_REPONSE``) rend, pour le lead de
+    cette touche, le texte de RÉPONSE convenu (« stop_contact » après « Ne
+    plus me contacter », « rappel_plus_tard » après « Plus tard ») au lieu du
+    gabarit de la touche. Même machinerie, même forme : l'écran propose
+    l'envoi, le clic humain ouvre WhatsApp (décision D5).
 
     Le serveur RÉEND, il n'ENVOIE pas (décision D5) : l'écran montre une
     modale d'aperçu, et c'est le clic humain qui ouvre WhatsApp. Aucun BSP,
@@ -2535,11 +2570,13 @@ def message_pour_etape(etape, *, request=None, user=None):
 
     lead = etape.lead
     langue = lead.langue_preferee or 'fr'
+    # CAD-A — le texte de réponse demandé remplace le gabarit de la touche.
+    template_cle = cle or etape.template_cle
     # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
     # de remplir notre formulaire » est faux pour un lead venu par téléphone,
     # en boutique, par recommandation ou d'un message entrant. La clé est
     # choisie d'après le canal déjà enregistré, AVANT de lire le gabarit.
-    cle_rendue = cle_identite_pour_lead(lead, etape.template_cle,
+    cle_rendue = cle_identite_pour_lead(lead, template_cle,
                                         reference=etape.due_date)
     corps = MessageTemplate.get_corps(
         lead.company, cle_rendue, langue) if cle_rendue else ''
@@ -2632,7 +2669,7 @@ def message_pour_etape(etape, *, request=None, user=None):
     message = render_message_template(corps, contexte)
 
     phone = lead.whatsapp or lead.telephone or ''
-    if etape.template_cle in _TEMPLATES_VOCAUX:
+    if template_cle in _TEMPLATES_VOCAUX:
         # Le texte est le SCRIPT du vocal : on ouvre la conversation, on ne
         # pré-remplit rien — coller un script à dire serait absurde.
         wa_url = build_wa_url(phone, '')
@@ -2962,7 +2999,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     return cible
 
 
-def arreter_cadence(lead, *, user, motif, cadences=None):
+def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
     """MRY9 — LA fonction d'arrêt d'une (ou de toutes les) cadence(s).
 
     UNE seule implémentation pour SIX déclencheurs (devis accepté, passage
@@ -2985,10 +3022,16 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
     IDEMPOTENTE : zéro touche ouverte ⇒ rien, pas même une note (sinon chaque
     passage d'étape empilerait des lignes vides dans l'historique).
 
+    CAD5 — ``exclure`` (une touche) la laisse ouverte : la réponse « Ne plus
+    me contacter » arrête TOUT le reste sous son vrai motif, puis clôt
+    elle-même la touche sur laquelle le client l'a dit (qui porte l'issue).
+
     Renvoie le nombre de touches arrêtées."""
     ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
     if cadences:
         ouvertes = ouvertes.filter(cadence__in=list(cadences))
+    if exclure is not None:
+        ouvertes = ouvertes.exclude(pk=exclure.pk)
     pks = list(ouvertes.values_list('pk', flat=True))
     if not pks:
         return 0
@@ -10496,3 +10539,622 @@ def leads_avec_cadence_active(company, lead_ids):
         company=company, lead_id__in=ids,
         statut=RelanceEtape.Statut.A_FAIRE,
     ).values_list('lead_id', flat=True))
+
+
+# ── CAD-A ── RÉPONSES DE TOUCHE : ce que le client DIT décide de la suite ─────
+#
+# Audit L3 du 21/09/2026. Les réponses offertes sur une touche se limitaient
+# aux issues de ``LeadActivity.OUTCOMES`` (joint / non joint / à rappeler /
+# refus / intéressé / visite acceptée) : « arrêtez de m'appeler », « plus
+# tard », « c'est une question de prix », « refaites-moi le devis », « on
+# décide en famille » n'avaient AUCUN bouton, et la commerciale choisissait
+# l'issue la moins fausse — dont la suite automatique était, elle, fausse.
+#
+# LA RÈGLE. Une RÉPONSE est une clé connue du SERVEUR, jamais une nouvelle
+# valeur d'énumération : elle se traduit en une issue EXISTANTE (aucune
+# migration), une note typée (la phrase du client, telle qu'elle est comptée
+# dans le chatter) et UN effet — celui que le client a demandé. L'écran
+# n'envoie que la clé ; l'issue est dérivée ICI, et nulle part ailleurs.
+
+#: CAD5 — « Ne plus me contacter ». Motif écrit sur chaque touche arrêtée :
+#: le même que celui de la case de la fiche (``LeadViewSet.perform_update``),
+#: pour que le KPI de cadence ne voie qu'UN motif d'opposition.
+REPONSE_NE_PLUS_CONTACTER = 'ne_plus_contacter'
+MOTIF_NE_PLUS_CONTACTER = 'ne plus contacter'
+#: CAD6 — « Plus tard — pas maintenant » (la plus fréquente du résidentiel).
+REPONSE_PLUS_TARD = 'plus_tard'
+#: CAD7 — « Question de prix — veut négocier ».
+REPONSE_QUESTION_PRIX = 'question_prix'
+#: CAD8 — « Demande un devis modifié ».
+REPONSE_DEVIS_MODIFIE = 'devis_modifie'
+#: CAD9 — « Décision à plusieurs », en deux nuances que la note distingue.
+REPONSE_DECISION_FAMILLE = 'decision_famille'
+REPONSE_DECISION_PROPRIETAIRE = 'decision_proprietaire'
+#: L'étiquette posée — la forme AFFICHÉE de l'étiquette standard (seedée par
+#: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
+#: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
+TAG_DECISION_A_PLUSIEURS = 'Décision à plusieurs'
+
+#: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
+_TOUTES_CADENCES = None
+#: Les trois cadences NOMMÉES du protocole (MRY4) — pas les étapes de filet
+#: (``generique``), dont « À rappeler le… » REPORTE déjà l'étape (CAD3).
+_CADENCES_PROTOCOLE = ('contact', 'apres_devis', 'reveil')
+
+#: Table UNIQUE des réponses de touche. ``outcome`` est toujours une valeur
+#: de ``LeadActivity.OUTCOMES`` ; ``cadences`` borne où la réponse a un sens ;
+#: ``message`` nomme le texte d'accusé proposé à l'envoi (jamais envoyé seul).
+REPONSES_TOUCHE = {
+    REPONSE_NE_PLUS_CONTACTER: {
+        'libelle': 'Ne plus me contacter',
+        'outcome': 'refuse',
+        'note': 'Ne plus me contacter — opposition du client',
+        'cadences': _TOUTES_CADENCES,
+        'message': 'stop_contact',
+    },
+    REPONSE_PLUS_TARD: {
+        'libelle': 'Plus tard — pas maintenant',
+        'outcome': 'rappel',
+        'note': 'Plus tard — pas maintenant',
+        'cadences': _CADENCES_PROTOCOLE,
+        'message': 'rappel_plus_tard',
+        # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
+        'date_requise': True,
+    },
+    REPONSE_QUESTION_PRIX: {
+        'libelle': 'Question de prix — veut négocier',
+        # Version minimale, SANS nouvelle énumération : l'issue « à
+        # rappeler » + la note typée (le client n'a dit ni oui ni non).
+        'outcome': 'rappel',
+        'note': 'Question de prix — veut négocier',
+        'cadences': ('apres_devis',),
+        # Aucun texte proposé : ni `annonce_appel_reda` ni `offre_reda` ne
+        # partent avant la décision du fondateur (CAD60).
+        'message': None,
+    },
+    REPONSE_DEVIS_MODIFIE: {
+        'libelle': 'Demande un devis modifié',
+        # « à rappeler » : l'étape posée dit « … — rappeler le client ».
+        # Surtout PAS « joint » : son récepteur (MRY9) ferait naître le
+        # barreau suivant du devis ÉCARTÉ avant que l'étape soit posée.
+        'outcome': 'rappel',
+        'note': 'Demande un devis modifié',
+        'cadences': ('apres_devis',),
+        'message': None,
+    },
+    # CAD9 — « à rappeler » : le client n'a pas tranché, il décide avec
+    # d'autres. L'issue fait naître le barreau suivant du protocole — et
+    # comme l'étiquette est posée AVANT, la partition recalculée réinjecte
+    # le « dimanche famille » s'il n'est pas encore dépassé.
+    REPONSE_DECISION_FAMILLE: {
+        'libelle': 'Décision à plusieurs — en famille',
+        'outcome': 'rappel',
+        'note': ('Décision à plusieurs — en famille (un délai : la décision '
+                 'se prend ensemble)'),
+        'cadences': ('apres_devis',),
+        'message': None,
+    },
+    REPONSE_DECISION_PROPRIETAIRE: {
+        'libelle': 'Décision à plusieurs — le propriétaire',
+        'outcome': 'rappel',
+        'note': ('Décision à plusieurs — le propriétaire décide (un '
+                 'interlocuteur à changer)'),
+        'cadences': ('apres_devis',),
+        'message': None,
+    },
+}
+
+#: Les textes de RÉPONSE qu'une touche peut proposer à l'envoi — le seul
+#: vocabulaire accepté par ``?cle=`` sur ``relance-etapes/<id>/message/``.
+CLES_MESSAGE_REPONSE = ('stop_contact', 'rappel_plus_tard')
+
+
+def reponse_touche(cle):
+    """La définition de la réponse ``cle``, ou ``None`` si elle est inconnue."""
+    return REPONSES_TOUCHE.get((cle or '').strip())
+
+
+def refus_reponse_touche(etape, cle):
+    """Pourquoi la réponse ``cle`` ne vaut PAS sur cette touche — ou ``None``.
+
+    Le message NOMME la réponse et dit où elle vaut (règle fondateur du
+    08/09/2026 : jamais un refus générique). L'appelant (la vue) le range sous
+    le champ ``reponse``."""
+    spec = reponse_touche(cle)
+    if spec is None:
+        return f'Réponse inconnue : « {cle} ».'
+    if etape.statut != RelanceEtape.Statut.A_FAIRE:
+        return ('Cette touche est déjà traitée : la réponse du client se '
+                'saisit sur une touche encore à faire.')
+    cadences = spec.get('cadences')
+    if cadences is not None and etape.cadence not in cadences:
+        libelle = spec['libelle']
+        if tuple(cadences) == ('apres_devis',):
+            return (f'« {libelle} » ne vaut que sur une touche du suivi de '
+                    'proposition (après envoi du devis).')
+        return (f'« {libelle} » ne vaut pas sur une touche de la cadence '
+                f'« {etape.cadence} ».')
+    return None
+
+
+def _note_reponse(spec, note=''):
+    """La note typée de la réponse, suivie de la note libre éventuelle."""
+    note = (note or '').strip()
+    return f'{spec["note"]} — {note}' if note else spec['note']
+
+
+# ── CAD-I ── CAD91 — l'OPPOSITION est tracée au registre ─────────────────────
+#
+# Cocher « ne plus contacter » arrêtait bien les cadences et bloquait tout
+# redémarrage — mais RIEN n'écrivait de ``ConsentRecord(granted=False)`` : le
+# registre que CAD90 remplit était incapable de prouver qu'une opposition
+# avait été honorée, ce qu'un contrôle vérifie en premier après une plainte.
+# C'est ce registre qui prouve l'opposition devant l'art. 59 de la loi 09-08
+# (3 mois à 1 an, 20 000 à 200 000 DH) ; l'art. 9 al. 2 n'exige AUCUN motif
+# du client — rien ne conditionne donc l'écriture à une justification.
+
+#: La base de l'opposition, sur texte primaire (round 2 de l'audit).
+BASE_LEGALE_OPPOSITION = 'opposition : loi 09-08 art. 9 al. 2 (sans frais, ' \
+                         'sans motif)'
+#: Les deux gestes qui la recueillent — la case de la fiche, la réponse de
+#: touche (CAD5). Le registre dit PAR OÙ elle est arrivée.
+CONSENT_SOURCE_OPPOSITION_FICHE = 'case « Ne plus contacter » de la fiche'
+CONSENT_SOURCE_OPPOSITION_TOUCHE = 'réponse « Ne plus me contacter »'
+
+
+def tracer_opposition_registre(lead, *, source, occurred_at=None):
+    """CAD91 — inscrit l'opposition au registre ``core.ConsentRecord``.
+
+    UNE entrée ``granted=False`` pour la prospection
+    (``CONSENT_PURPOSE_PROSPECTION``), datée de l'instant où elle est
+    recueillie, dont la ``source`` porte le geste ET la base légale. Même
+    porte d'entrée que CAD90 (``enregistrer_consentement_lead``) : le
+    registre reste un historique append-only, et l'état courant s'y lit sur
+    la ligne la plus récente.
+
+    Best-effort intégral : l'opposition elle-même (case cochée, cadences
+    arrêtées) ne tombe jamais parce que le registre n'a pas pu être écrit.
+    Renvoie l'entrée créée, ou ``None`` (lead sans e-mail ni téléphone, ou
+    écriture impossible)."""
+    try:
+        return enregistrer_consentement_lead(
+            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
+            source=f'{source} — {BASE_LEGALE_OPPOSITION}'[:120],
+            occurred_at=occurred_at)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD91 : opposition non écrite au registre pour le lead #%s',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
+
+
+def marquer_lead_ne_plus_contacter(lead, user):
+    """CAD5 — coche ``Lead.ne_plus_contacter`` et le JOURNALISE comme la
+    fiche le ferait (ligne « modification » du chatter, ancien → nouveau).
+
+    Idempotente : un lead déjà coché ne produit ni écriture ni ligne.
+    Renvoie ``True`` si la case vient d'être cochée."""
+    import copy
+
+    if lead.ne_plus_contacter:
+        return False
+    avant = copy.copy(lead)
+    lead.ne_plus_contacter = True
+    lead.save(update_fields=['ne_plus_contacter'])
+    activity.log_changes(avant, lead, user)
+    return True
+
+
+def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
+    """CAD5 — le client dit « ne me contactez plus » sur une touche.
+
+    Base légale (round 2 de l'audit, texte primaire) : loi 09-08 art. 9 al.
+    2 — l'opposition à la prospection s'exerce sans frais et SANS avoir à être
+    motivée ; art. 59 — poursuivre malgré elle est puni de 3 mois à 1 an et de
+    20 000 à 200 000 DH. C'est le seul risque pénal nommé de la cadence : la
+    réponse agit donc TOUT DE SUITE, dans cet ordre —
+
+      1. la case ``ne_plus_contacter`` est cochée (garde dure : plus aucune
+         touche ne peut naître, et le redémarrage manuel est refusé) ;
+      2. TOUTES les autres touches ouvertes, toutes cadences, sont arrêtées
+         sous le motif « ne plus contacter » ;
+      3. la touche est close avec l'issue « refus » et la note typée — SANS
+         aucune étape de décision : il n'y a rien à décider, le client a
+         tranché (``suite=False`` ; le filet du récepteur MRY9 est, lui,
+         tenu par la case cochée en 1).
+
+    L'accusé ``stop_contact`` est PROPOSÉ par l'écran (jamais envoyé seul).
+    CAD91 — l'opposition est inscrite au REGISTRE au moment où elle est dite
+    (``tracer_opposition_registre``), sans aucun motif exigé du client.
+    Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_NE_PLUS_CONTACTER]
+    marquer_lead_ne_plus_contacter(lead, user)
+    tracer_opposition_registre(lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
+    arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER,
+                    exclure=etape)
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    # Ceinture : rien ne doit rester ouvert (idempotent — zéro touche, zéro
+    # ligne de chatter).
+    arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER)
+    return etape
+
+
+# ── CAD-B ── CAD26 — « rappelez-moi dans trois semaines » : une VEILLE ──────
+#
+# ``reporter_prochaine_touche`` décale la touche, toute la suite de sa cadence
+# et l'ancre, du même écart, sans plafond ni bifurcation : « rappelez-moi dans
+# trois semaines » envoyait la clôture J+14 à J+35, et un client qui avait
+# fixé LA date où il voulait qu'on revienne ne la retrouvait nulle part.
+#
+# DEUX GESTES DISTINCTS désormais, au choix de la commerciale :
+#
+#   * « Décaler ce rappel » — le comportement historique, pour quelques
+#     jours (``reporter_prochaine_touche`` inchangé) ;
+#   * « Mettre en veille jusqu'au… » — la cadence SE TAIT jusqu'à la date du
+#     client et reprend au MÊME barreau : rien n'est consommé, rien n'est
+#     recréé (« décaler, jamais redémarrer ») ; au-delà d'un mois d'attente,
+#     elle BASCULE en réveil daté — et le dit, parce que cette bascule
+#     arrête la cadence en cours (CADX : une seule cadence à la fois).
+#
+# L'écran propose le second geste de lui-même au-delà de 7 jours.
+
+#: Au-delà de cette attente (en jours calendaires, « un mois »), une veille
+#: ne suspend plus la cadence : elle la remplace par un réveil daté.
+VEILLE_BASCULE_REVEIL_JOURS = 30
+
+
+def _instant_de_veille(quand):
+    """``quand`` (date, datetime naïf ou aware) → datetime AWARE."""
+    from . import horaires
+
+    if not isinstance(quand, datetime.datetime):
+        return datetime.datetime.combine(
+            quand, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
+    if timezone.is_naive(quand):
+        return timezone.make_aware(quand, datetime.timezone.utc)
+    return quand
+
+
+def mettre_en_veille(lead, user, quand, *, etape=None, journaliser=True):
+    """CAD26 — met le dossier en VEILLE jusqu'à ``quand`` (date du client).
+
+    * attente ≤ ``VEILLE_BASCULE_REVEIL_JOURS`` : la touche ``etape`` (sinon
+      la prochaine à faire) N'EST PAS consommée — elle est déplacée à la date
+      du client par la mécanique EXISTANTE (``reporter_prochaine_touche``),
+      avec la suite de sa cadence et son ancre. Aucune touche intermédiaire
+      ne part d'ici là, et la reprise se fait AU MÊME BARREAU ;
+    * au-delà : bascule en RÉVEIL DATÉ (``_basculer_veille_en_reveil``).
+
+    ``journaliser=False`` supprime la note de veille : l'appelant en écrit
+    une qui dit la vraie raison (la réponse « Plus tard » de CAD6), jamais
+    deux lignes pour un seul geste. Renvoie la touche qui portera la reprise
+    (la même, déplacée — ou la première touche du réveil), ou ``None``."""
+    from . import horaires
+
+    cible = etape or _prochaine_touche_a_faire(lead)
+    if cible is None:
+        return None
+    quand = _instant_de_veille(quand)
+    jour = quand.astimezone(horaires.CASABLANCA).date()
+    if (jour - aujourd_hui_local()).days > VEILLE_BASCULE_REVEIL_JOURS:
+        return _basculer_veille_en_reveil(
+            lead, user, cible, quand, journaliser=journaliser)
+    deplacee = reporter_prochaine_touche(
+        lead, user, quand, etape=cible, journaliser=False)
+    if deplacee is not None and journaliser:
+        libelle = (deplacee.libelle or '').strip() \
+            or deplacee.get_canal_display()
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Mise en veille jusqu’au {deplacee.due_date:%d/%m/%Y} à '
+                  'la demande du client — la cadence reprendra à la touche '
+                  f'« {libelle} », aucune touche ne part d’ici là.'))
+    return deplacee
+
+
+def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
+    """CAD26 — plus d'un mois d'attente : la cadence en cours s'ARRÊTE (motif
+    tracé sur chaque touche + note) et un RÉVEIL est daté du jour demandé.
+
+    La première touche du gabarit « réveil » tombe SUR la date du client :
+    l'ancre est rétrodatée de son délai (même méthode que le placement MRY30,
+    ``calculer_echeances_cadence`` garde l'ancre d'un réveil telle quelle).
+    Rend la première touche du réveil, ou ``None`` (société sans gabarit
+    réveil, lead qu'on ne relance plus)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    jour = quand.astimezone(horaires.CASABLANCA).date()
+    arreter_cadence(
+        lead, user=user,
+        motif=(f'mise en veille jusqu’au {jour:%d/%m/%Y} — plus d’un mois '
+               'd’attente : bascule en réveil daté'))
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, 'reveil')
+    if not gabarits:
+        return None
+    premier = min(gabarits, key=lambda g: g.ordre)
+    depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
+    try:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=depart)
+    except CadenceActiveConflit:
+        etapes = []
+    ouvertes = [e for e in etapes if e.statut == RelanceEtape.Statut.A_FAIRE]
+    reveil = ouvertes[0] if ouvertes else None
+    if journaliser:
+        suite = (f'un réveil est daté du {reveil.due_date:%d/%m/%Y}'
+                 if reveil is not None else 'aucun réveil n’a pu être daté')
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Mise en veille demandée jusqu’au {jour:%d/%m/%Y} : plus '
+                  f'd’un mois d’attente, la cadence « {cible.cadence} » est '
+                  f'arrêtée et {suite}.'))
+    return reveil
+
+
+# ── CAD-A ── CAD6 — « Plus tard — pas maintenant » ──────────────────────────
+
+def repondre_plus_tard(etape, user, quand, *, note='', body=''):
+    """CAD6 — « rappelez-moi après l'Aïd / après la rentrée / quand les
+    travaux seront finis » : la réponse la plus fréquente du résidentiel.
+
+    Avant, seule « À rappeler le… » existait : elle CONSOMMAIT un barreau et
+    programmait le barreau scripté SUIVANT à la date donnée — reporter de six
+    semaines faisait donc partir « Je classe ? » ou « Dernier message » à un
+    client qui demandait simplement du temps.
+
+    Ici, AUCUN barreau n'est consommé : le dossier est mis en VEILLE DATÉE
+    (``mettre_en_veille``, la mécanique de CAD26) et reprend AU MÊME BARREAU
+    à la date convenue — ou bascule en réveil daté au-delà d'un mois. La
+    réponse du client est tracée par UNE ligne typée selon le canal (issue
+    « à rappeler » — un vrai échange a eu lieu, il compte comme tel), qui dit
+    aussi ce que la veille a fait. Le texte ``rappel_plus_tard`` est PROPOSÉ
+    par l'écran ; ses crochets [jour] / [heure] se complètent à la main.
+
+    Renvoie la touche qui portera la reprise."""
+    from . import horaires
+
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_PLUS_TARD]
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    quand = _instant_de_veille(quand)
+    reprise = mettre_en_veille(lead, user, quand, etape=etape,
+                               journaliser=False)
+    if reprise is not None and reprise.pk == etape.pk:
+        suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
+                 'reprise à cette même touche — aucun barreau consommé')
+    elif reprise is not None:
+        suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
+                 f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
+    else:
+        jour = quand.astimezone(horaires.CASABLANCA).date()
+        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+                 'reprendre')
+    corps = (f'Réponse du client sur la touche « {libelle} » : « '
+             f'{spec["note"]} » — {suite}.')
+    if body:
+        corps += f' {body}'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
+        body=corps, outcome=spec['outcome'])
+    if reprise is None:
+        etape.refresh_from_db()
+        return etape
+    return reprise
+
+
+# ── CAD-A ── CAD7 — « Question de prix — veut négocier » ────────────────────
+
+def _poser_etape_de_filet(lead, *, libelle, canal, vise, note):
+    """Pose UNE étape de FILET (cadence ``generique``, hors protocole) au
+    prochain créneau de son canal — ou DÉPLACE celle du même libellé encore
+    ouverte : jamais deux fois la même étape dans la file."""
+    from . import horaires
+
+    quand = horaires.prochain_creneau_appel(vise, lead.company, canal=canal)
+    ouverte = (lead.relance_etapes
+               .filter(libelle=libelle, statut=RelanceEtape.Statut.A_FAIRE)
+               .order_by('due_date', 'pk').first())
+    if ouverte is not None:
+        ouverte.due_at = quand
+        ouverte.due_date = quand.astimezone(horaires.CASABLANCA).date()
+        ouverte.save(update_fields=['due_at', 'due_date'])
+        return ouverte
+    return RelanceEtape.objects.create(
+        company=lead.company, lead=lead, cadence='generique', ordre=1,
+        canal=canal, libelle=libelle,
+        template_cle=FILET_TEMPLATE_CLES.get(libelle, ''),
+        due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
+        note=note)
+
+
+def repondre_question_prix(etape, user, *, note='', body=''):
+    """CAD7 — le client NÉGOCIE le prix, sur une touche du suivi de
+    proposition.
+
+    Avant, la réponse la plus fréquente sur une proposition n'avait pas de
+    bouton : « Intéressé » était faux (il n'a pas dit oui), « Refuse la
+    proposition » aussi (il négocie), et la négociation ne laissait aucune
+    trace. Version minimale, SANS nouvelle énumération :
+
+      1. la touche est close avec l'issue « à rappeler » et la note typée
+         « Question de prix » — sans barreau suivant (``suite=False``) ;
+      2. le TAMBOUR DE MESSAGES SE MET EN PAUSE : une étape de filet
+         « Question de prix — préparer l'appel du fondateur » est posée pour
+         le prochain jour ouvré, et AUCUNE touche du suivi de proposition ne
+         reste ouverte tant qu'elle n'est pas traitée. La traiter rouvre le
+         suivi au barreau SUIVANT (CAD1, jamais un redémarrage) ; annuler la
+         touche (RLC1) la rouvre elle-même.
+
+    Garde-fou : RIEN n'est envoyé — ni ``annonce_appel_reda`` ni
+    ``offre_reda`` : l'offre du fondateur ne part jamais avant sa décision
+    (CAD60). Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_QUESTION_PRIX]
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    pause = _poser_etape_de_filet(
+        lead, libelle=QUESTION_PRIX_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        vise=timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS),
+        note='Posée automatiquement : question de prix — le suivi de '
+             'proposition est en pause.')
+    _recaler_file(lead, user)
+    # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Suivi de proposition en pause (question de prix) : étape « '
+              f'{QUESTION_PRIX_LIBELLE} » posée pour le '
+              f'{pause.due_date:%d/%m/%Y}. Aucun message de relance ne part '
+              'tant qu’elle n’est pas traitée.'))
+    return etape
+
+
+# ── CAD-A ── CAD8 — « Demande un devis modifié », atteignable au téléphone ──
+
+def repondre_devis_modifie(etape, user, *, note='', body=''):
+    """CAD8 — le client demande une VARIANTE du devis, sur une touche du suivi
+    de proposition.
+
+    Le libellé existait déjà (``VISITE_DEVIS_LIBELLE``, « Préparer le devis
+    modifié — rappeler le client ») mais n'était posé que depuis la
+    qualification rapportée par une visite : au téléphone, « Intéressé »
+    relançait le protocole sur un devis déjà écarté. Zéro nouveau concept :
+
+      1. la touche est close (issue « à rappeler » + note typée), SANS
+         barreau suivant — le protocole du devis écarté se tait ;
+      2. l'étape « Préparer le devis modifié » est posée pour demain par la
+         mécanique EXISTANTE des gestes de visite (``_poser_etape_visite``,
+         idempotente par libellé) ; un débrief déjà ouvert est RENOMMÉ plutôt
+         que doublé — c'est la même étape, dont la nature vient de changer
+         (même règle qu'``appliquer_retour_visite``).
+
+    L'ENVOI du nouveau devis démarre son propre suivi de proposition, par la
+    mécanique existante — rien n'est câblé ici pour ça. Renvoie la touche
+    close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_DEVIS_MODIFIE]
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    existante = _debrief_ouvert(lead)
+    if existante is not None and existante.libelle != VISITE_DEVIS_LIBELLE:
+        existante.libelle = VISITE_DEVIS_LIBELLE
+        existante.save(update_fields=['libelle'])
+    _poser_etape_visite(
+        lead, libelle=VISITE_DEVIS_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        ordre=VISITE_ORDRE_DEBRIEF,
+        quand=aujourd_hui_local() + datetime.timedelta(
+            days=FILET_JOINT_DELAI_JOURS),
+        devis_id=etape.devis_id)
+    _recaler_file(lead, user)
+    return etape
+
+
+# ── CAD-A ── CAD9 — « Décision à plusieurs (famille / propriétaire) » ───────
+
+def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
+    """CAD9 — le client dit qu'il ne décide pas SEUL, sur une touche du
+    suivi de proposition.
+
+    Le barreau « dimanche famille » n'était posé que si le lead portait DÉJÀ
+    l'étiquette « Décision à plusieurs » au démarrage du plan, et aucune
+    réponse ne la posait : le lead moyen recevait 9 touches après-devis, pas
+    10. Ici l'étiquette est posée AU MOMENT où le client le dit, PUIS la
+    touche est close — dans cet ordre, parce que ``materialiser_touche_
+    suivante`` recalcule la partition à chaque touche (filtre d'étiquette de
+    ``calculer_echeances_cadence``) : le dimanche famille est RÉINJECTÉ s'il
+    n'est pas encore dépassé, jamais inventé s'il l'est.
+
+    La note distingue « en famille » (un DÉLAI) de « le propriétaire décide »
+    (un INTERLOCUTEUR à changer). Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[cle]
+    if not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS):
+        poser_tag_lead(lead, user, TAG_DECISION_A_PLUSIEURS)
+    return marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body)
+
+
+# ── CAD-A ── CAD10 — le motif de refus, FACULTATIF, au moment où il est dit ─
+#
+# « Refus » posait l'étape « Décider la suite » sans demander pourquoi ; le
+# motif n'était exigé que bien plus tard, à la mise en « perdu », quand
+# personne ne se souvient de ce que le client a dit. Ici le motif est PROPOSÉ
+# dans le panneau de réponse, parmi la liste déjà paramétrée (Paramètres →
+# CRM, ``MotifPerte``) — FACULTATIF (MRY22 : « perdu » reste une décision
+# humaine) et journalisé sur la ligne de chatter de la touche, JAMAIS sur
+# ``Lead.motif_perte``.
+
+def motif_refus_valide(company, nom):
+    """Le libellé EXACT du motif de perte ``nom`` de ``company`` (actif,
+    comparaison sans casse), ou ``None`` s'il n'existe pas. Filtre société
+    posé ICI."""
+    from .models import MotifPerte
+
+    nom = (nom or '').strip()
+    if not nom or company is None:
+        return None
+    return (MotifPerte.objects
+            .filter(company=company, archived=False, nom__iexact=nom)
+            .values_list('nom', flat=True).first())
+
+
+def mention_motif_refus(nom):
+    """La phrase ajoutée à la ligne de chatter de la touche refusée."""
+    return f'Motif de refus : {nom}.'
+
+
+# ── CAD-A ── CAD11 — « Numéro invalide / a bloqué » : junk en un clic ───────
+#
+# Un numéro mort épuisait les six tentatives du protocole : Répondeur et
+# Occupé retombaient sur « non joint » avec une note, et le drapeau
+# ``MotifPerte.est_junk`` vivait au niveau du lead, à trois écrans de la
+# touche. Le raccourci suit le patron Répondeur/Occupé (issue ``non_joint`` +
+# note typée, AUCUNE nouvelle valeur d'énumération, aucune migration) et
+# PROPOSE « perdu, motif junk » en un clic — une proposition : c'est le clic
+# humain qui décide (MRY22), jamais le moteur.
+
+def motif_junk_valide(company, nom):
+    """Le libellé EXACT du motif JUNK (``est_junk``, actif) ``nom`` de
+    ``company`` (comparaison sans casse), ou ``None``."""
+    from .models import MotifPerte
+
+    nom = (nom or '').strip()
+    if not nom or company is None:
+        return None
+    return (MotifPerte.objects
+            .filter(company=company, archived=False, est_junk=True,
+                    nom__iexact=nom)
+            .values_list('nom', flat=True).first())
+
+
+def marquer_lead_perdu_junk(lead, user, motif):
+    """CAD11 — le lead passe PERDU avec le motif junk ``motif`` (déjà
+    validé), journalisé comme la fiche le ferait (lignes « modification »
+    ancien → nouveau), et TOUTES ses touches ouvertes sont arrêtées sous ce
+    motif — la même conséquence que la bascule « perdu » de la fiche
+    (``LeadViewSet.perform_update``, MRY9). Idempotente : un lead déjà perdu
+    n'est pas réécrit. Renvoie ``True`` si le lead vient de passer perdu."""
+    import copy
+
+    if lead.perdu:
+        return False
+    avant = copy.copy(lead)
+    lead.perdu = True
+    lead.motif_perte = motif
+    lead.save(update_fields=['perdu', 'motif_perte'])
+    activity.log_changes(avant, lead, user)
+    arreter_cadence(lead, user=user, motif=motif)
+    return True

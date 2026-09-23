@@ -83,6 +83,34 @@ def _parse_rappel(date_str, heure_str=''):
     return _dt.datetime.combine(jour, heure, tzinfo=_horaires.CASABLANCA)
 
 
+def _refus_date_passee(quand, libelle_champ):
+    """CAD27 — le message d'erreur si ``quand`` tombe AVANT la journée en
+    cours (heure de Casablanca), sinon ``None``.
+
+    Une faute de frappe sur l'année reportait la touche dans le passé et
+    tirait tout le plan en arrière (le delta s'appliquait sans contrôle de
+    signe) : plusieurs touches apparaissaient d'un coup « en retard ». Le
+    contrôle vit ICI, à la frontière de la saisie humaine : AUJOURD'HUI reste
+    accepté (avancer une touche à aujourd'hui est un geste utile), et les
+    recalages INTERNES du moteur (visite, reprise) ne passent pas par là.
+    Le message NOMME le champ, tel que l'écran l'affiche (règle fondateur du
+    08/09/2026)."""
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from apps.crm import horaires as _horaires
+    from core.dates import aujourd_hui_local
+
+    if _tz.is_naive(quand):
+        quand = _tz.make_aware(quand, _dt.timezone.utc)
+    jour = quand.astimezone(_horaires.CASABLANCA).date()
+    if jour >= aujourd_hui_local():
+        return None
+    return (f'« {libelle_champ} » : le {jour:%d/%m/%Y} est déjà passé — '
+            'choisissez aujourd’hui ou une date à venir.')
+
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -1034,6 +1062,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',
                 new_lead.pk, exc_info=True)
+        # CAD91 — l'opposition cochée sur la fiche est inscrite au REGISTRE
+        # (``ConsentRecord`` granted=False, daté), indépendamment de l'arrêt
+        # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
+        # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
+        if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
+            from .services import (
+                CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
+            tracer_opposition_registre(
+                new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
         # est le meilleur signal d'achat qui existe. Les trois chemins de
@@ -3125,6 +3162,48 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'outcome': 'Issue inconnue.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CAD10 — le motif de refus, FACULTATIF : seulement avec l'issue
+        # « refus », seulement un motif de la liste paramétrée, et journalisé
+        # sur la ligne de chatter de la touche (jamais sur `motif_perte` :
+        # « perdu » reste une décision humaine, MRY22).
+        motif_refus = (request.data.get('motif_refus') or '').strip()
+        if motif_refus:
+            from .services import mention_motif_refus, motif_refus_valide
+            if outcome != 'refuse':
+                return Response(
+                    {'erreurs': {'motif_refus': (
+                        '« Motif du refus » ne vaut qu’avec la réponse '
+                        '« Refus ».')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            nom = motif_refus_valide(etape.company, motif_refus)
+            if nom is None:
+                return Response(
+                    {'erreurs': {'motif_refus': (
+                        f'« Motif du refus » : « {motif_refus} » n’est pas '
+                        'un motif de la liste (Paramètres → CRM).')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            body = f'{body} {mention_motif_refus(nom)}'.strip()
+        # CAD11 — « Numéro invalide / a bloqué » : la PROPOSITION « perdu,
+        # motif junk » acceptée en un clic. Seulement sur une touche close
+        # « non joint » (le patron Répondeur/Occupé), seulement avec un motif
+        # JUNK de la liste de la société — le clic humain décide (MRY22).
+        perdu_junk = (request.data.get('perdu_junk') or '').strip()
+        motif_junk = None
+        if perdu_junk:
+            from .services import motif_junk_valide
+            if statut != RelanceEtape.Statut.FAIT or outcome != 'non_joint':
+                return Response(
+                    {'erreurs': {'perdu_junk': (
+                        '« Marquer perdu (junk) » ne vaut qu’avec une touche '
+                        'faite « Numéro invalide » ou « A bloqué ».')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            motif_junk = motif_junk_valide(etape.company, perdu_junk)
+            if motif_junk is None:
+                return Response(
+                    {'erreurs': {'perdu_junk': (
+                        f'« Marquer perdu (junk) » : « {perdu_junk} » n’est '
+                        'pas un motif junk de la liste (Paramètres → CRM).')}},
+                    status=status.HTTP_400_BAD_REQUEST)
         # VISITE-CADENCE (revue Fable 15/09) — « Visite acceptée » n'a de sens
         # que sur le suivi de PROPOSITION : la visite se place APRÈS l'envoi
         # du devis (doctrine fondateur), jamais en prise de contact/réveil.
@@ -3181,6 +3260,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
+            # CAD27 — jamais un rappel dans le passé (le champ est nommé).
+            refus = _refus_date_passee(quand, 'Rappeler le')
+            if refus:
+                return Response({'erreurs': {'rappel_le': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         from .services import (est_etape_de_filet, marquer_etape_relance,
                                reporter_prochaine_touche)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
@@ -3209,15 +3293,26 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     'canal': etape.canal,
                 }
                 return Response(data)
+        # CAD11 — un lead qu'on marque perdu n'a pas de suite : ni barreau
+        # suivant, ni clôture au froid avec réveils (``suite=False``).
         etape = marquer_etape_relance(
             etape, request.user, statut, note=note, outcome=outcome,
-            body=body)
+            body=body, suite=motif_junk is None)
+        if motif_junk is not None:
+            from .services import marquer_lead_perdu_junk
+            marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
             reporter_prochaine_touche(etape.lead, request.user, quand)
-        # CKP2/CKP4 — la réponse porte la PROCHAINE touche programmée de cette
-        # cadence : c'est elle (et jamais un calcul d'écran) qui alimente le
-        # message « prochain appel programmé le … ». Absente quand la cadence
-        # vient de s'arrêter ou qu'aucune touche n'a été matérialisée.
+        return self._reponse_fait(etape)
+
+    def _reponse_fait(self, etape):
+        """La réponse d'un « Fait » : la touche (forme `relance_etape_v2`) et
+        la PROCHAINE touche programmée de sa cadence.
+
+        CKP2/CKP4 — c'est elle (et jamais un calcul d'écran) qui alimente le
+        message « prochain appel programmé le … ». ``prochaine_touche`` vaut
+        ``None`` quand la cadence vient de s'arrêter ou qu'aucune touche n'a
+        été matérialisée."""
         data = self.get_serializer(etape).data
         suivante = (
             RelanceEtape.objects
@@ -3233,6 +3328,71 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             if suivante is not None else None)
         return Response(data)
 
+    def _repondre(self, request, reponse):
+        """CAD-A — une RÉPONSE du client saisie sur la touche (``reponse``).
+
+        La clé est validée par le SERVEUR (``services.REPONSES_TOUCHE``) :
+        l'issue enregistrée en est dérivée ici, jamais envoyée par l'écran.
+        Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
+        réponse et dit où elle vaut."""
+        from .services import (
+            REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
+            REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER,
+            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_reponse_touche,
+            repondre_decision_a_plusieurs, repondre_devis_modifie,
+            repondre_ne_plus_contacter, repondre_plus_tard,
+            repondre_question_prix, reponse_touche)
+
+        etape = self.get_object()
+        refus = refus_reponse_touche(etape, reponse)
+        if refus:
+            return Response({'erreurs': {'reponse': refus}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        spec = reponse_touche(reponse)
+        note = (request.data.get('note') or '').strip()
+        body = (request.data.get('body') or '').strip()
+        # La date convenue avec le client (« Rappeler le »), quand la réponse
+        # en exige une — même lecture, mêmes refus nommés que « À rappeler
+        # le… » (format, puis CAD27 : jamais dans le passé).
+        quand = None
+        rappel_le = (request.data.get('rappel_le') or '').strip()
+        if spec.get('date_requise') and not rappel_le:
+            return Response(
+                {'erreurs': {'rappel_le': (
+                    '« Rappeler le » : la date convenue avec le client est '
+                    f'obligatoire pour « {spec["libelle"]} ».')}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if rappel_le:
+            quand = _parse_rappel(
+                rappel_le, (request.data.get('rappel_heure') or '').strip())
+            if quand is None:
+                return Response(
+                    {'erreurs': {'rappel_le': (
+                        '« Rappeler le » : date invalide (AAAA-MM-JJ '
+                        'attendu, heure HH:MM optionnelle).')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            refus = _refus_date_passee(quand, 'Rappeler le')
+            if refus:
+                return Response({'erreurs': {'rappel_le': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if reponse == REPONSE_NE_PLUS_CONTACTER:
+            etape = repondre_ne_plus_contacter(
+                etape, request.user, note=note, body=body)
+        elif reponse == REPONSE_PLUS_TARD:
+            etape = repondre_plus_tard(
+                etape, request.user, quand, note=note, body=body)
+        elif reponse == REPONSE_QUESTION_PRIX:
+            etape = repondre_question_prix(
+                etape, request.user, note=note, body=body)
+        elif reponse == REPONSE_DEVIS_MODIFIE:
+            etape = repondre_devis_modifie(
+                etape, request.user, note=note, body=body)
+        elif reponse in (REPONSE_DECISION_FAMILLE,
+                         REPONSE_DECISION_PROPRIETAIRE):
+            etape = repondre_decision_a_plusieurs(
+                etape, request.user, reponse, note=note, body=body)
+        return self._reponse_fait(etape)
+
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
         """Marque cette étape FAITE.
@@ -3245,7 +3405,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         (400 ``{"erreurs": {"outcome": …}}``) : c'est l'issue qui programme le
         geste suivant du protocole. Facultatif sur WhatsApp / e-mail / visite.
         Toute issue autre que « joint »/« intéressé »/« refus » fait naître la
-        touche suivante de la cadence — de même qu'un saut humain."""
+        touche suivante de la cadence — de même qu'un saut humain.
+
+        CAD-A — ``reponse`` (clé de ``services.REPONSES_TOUCHE``, par exemple
+        ``ne_plus_contacter``) remplace ``outcome`` : c'est la phrase du
+        client, et le serveur en dérive l'issue ET la suite."""
+        reponse = (request.data.get('reponse') or '').strip()
+        if reponse:
+            return self._repondre(request, reponse)
         return self._marquer(request, RelanceEtape.Statut.FAIT)
 
     @action(detail=True, methods=['post'])
@@ -3288,11 +3455,24 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         Forme `relance_etape_message` (contrat MRY25). LECTURE PURE : rien
         n'est envoyé, rien n'est marqué — l'écran affiche une modale d'aperçu
-        et c'est le clic humain qui ouvre WhatsApp (décision D5)."""
+        et c'est le clic humain qui ouvre WhatsApp (décision D5).
+
+        CAD-A — ``?cle=`` (une de ``services.CLES_MESSAGE_REPONSE``) rend le
+        texte de RÉPONSE convenu pour le client de cette touche (l'accusé
+        « ne plus contacter », « je vous rappelle plus tard ») : même forme.
+        Une autre clé est refusée en 400 nommant le champ ``cle``."""
         etape = self.get_object()
-        from .services import message_pour_etape
+        from .services import CLES_MESSAGE_REPONSE, message_pour_etape
+        cle = (request.query_params.get('cle') or '').strip()
+        if cle and cle not in CLES_MESSAGE_REPONSE:
+            # Levée, jamais un second `return` : la forme du contrat
+            # `relance_etape_message` (lue sur les `return` de cette vue par
+            # `check_api_shapes.py`) reste celle du rendu, sans `erreurs`.
+            raise DRFValidationError({'erreurs': {'cle': (
+                f'Texte de réponse inconnu : « {cle} ». Textes disponibles : '
+                + ', '.join(CLES_MESSAGE_REPONSE) + '.')}})
         return Response(message_pour_etape(
-            etape, request=request, user=request.user))
+            etape, request=request, user=request.user, cle=cle or None))
 
     @action(detail=True, methods=['post'])
     def whatsapp(self, request, pk=None):
@@ -3335,7 +3515,21 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         delta). Corps : ``{due_at}`` (ISO) ou ``{rappel_le, rappel_heure?}``.
 
         Décaler la seule touche du jour serait faux : les suivantes se
-        téléscoperaient avec elle."""
+        téléscoperaient avec elle.
+
+        CAD26 — ``mode`` : ``decaler`` (défaut, le geste historique) ou
+        ``veille`` (« Mettre en veille jusqu'au… ») — la cadence se tait
+        jusqu'à la date et reprend au MÊME barreau ; au-delà d'un mois, elle
+        bascule en réveil daté (``services.mettre_en_veille``). La réponse est
+        la touche qui portera la reprise (forme `relance_etape_v2`)."""
+        mode = (request.data.get('mode') or '').strip()
+        if mode not in ('', 'decaler', 'veille'):
+            return Response(
+                {'erreurs': {'mode': (
+                    f'Geste inconnu : « {mode} ». Choisir « decaler » '
+                    '(décaler ce rappel) ou « veille » (mettre en veille '
+                    'jusqu’au…).')}},
+                status=status.HTTP_400_BAD_REQUEST)
         etape = self.get_object()
         brut = (request.data.get('due_at') or '').strip()
         quand = None
@@ -3353,6 +3547,23 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'due_at': 'Échéance invalide (datetime ISO attendu).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CAD27 — une date de report dans le passé tirait tout le plan en
+        # arrière : refusée, le champ fautif NOMMÉ (celui du corps reçu).
+        refus = _refus_date_passee(quand, 'Reporter au')
+        if refus:
+            champ = 'due_at' if brut else 'rappel_le'
+            return Response({'erreurs': {champ: refus}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if mode == 'veille':
+            from .services import mettre_en_veille
+            reprise = mettre_en_veille(
+                etape.lead, request.user, quand, etape=etape)
+            if reprise is None:
+                # Bascule sans réveil possible : la touche (arrêtée) est
+                # rendue telle quelle, jamais une réponse vide.
+                etape.refresh_from_db()
+                reprise = etape
+            return Response(self.get_serializer(reprise).data)
         from .services import reporter_prochaine_touche
         etape = reporter_prochaine_touche(
             etape.lead, request.user, quand, etape=etape)
