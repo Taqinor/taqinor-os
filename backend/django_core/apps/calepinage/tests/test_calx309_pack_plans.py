@@ -86,17 +86,31 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
         patch_note = mock.patch(
             'apps.calepinage.services.note_calcul.rendre_note_calcul',
             return_value=pdf_de(2))
+        # CALX326 — ``_rendus`` branche désormais TROIS pièces de plus
+        # (rapport d'étude, plan de câblage, rapport d'ombrage) : ce test ne
+        # les exerce pas (leur propre câblage est verrouillé par
+        # ``test_calx326_pack_etendu.py``), donc elles sont mockées comme
+        # ``planche``/``note_calcul`` ci-dessus, plutôt que de laisser leur
+        # VRAI refus (aucun résultat/chaîne/ombrage sur ``FauxCalepinage``)
+        # ajouter trois signalements imprévus ici.
+        patch_rapport = mock.patch(
+            'apps.calepinage.services.rapport.rendre_rapport',
+            return_value=pdf_de(1))
+        patch_cablage = mock.patch(
+            'apps.calepinage.services.documents.plan_cablage'
+            '.rendre_plan_cablage_pdf', return_value=pdf_de(1))
+        patch_ombrage = mock.patch(
+            'apps.calepinage.services.rapport_ombrage.rendre_rapport_ombrage',
+            return_value=pdf_de(1))
         # Seul WeasyPrint est mocké — le plan de toiture/masse garde son VRAI
         # chemin (SVG + parcelle) jusqu'ici, même patron que
         # test_cal174_endpoints_planche.py.
         patch_render_pdf = mock.patch('core.pdf.render_pdf',
                                       return_value=pdf_de(1))
-        patch_planche.start()
-        patch_note.start()
-        patch_render_pdf.start()
-        self.addCleanup(patch_planche.stop)
-        self.addCleanup(patch_note.stop)
-        self.addCleanup(patch_render_pdf.stop)
+        for patch in (patch_planche, patch_note, patch_rapport,
+                      patch_cablage, patch_ombrage, patch_render_pdf):
+            patch.start()
+            self.addCleanup(patch.stop)
 
     def test_avec_parcelle_le_dossier_compte_quatre_pieces(self):
         calepinage = FauxCalepinage(roof_layout=layout_avec_parcelle())
@@ -104,13 +118,14 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
                                              company='societe-essai')
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
-            ['planche', 'note_calcul', 'plan_toiture', 'plan_masse'])
+            ['planche', 'note_calcul', 'plan_toiture', 'plan_masse',
+             'rapport_etude', 'plan_cablage', 'rapport_ombrage'])
         # `pages` (posé par `rendre_pieces` via `compter_pages`, ARC11) doit
         # correspondre au VRAI comptage des octets rendus — ici de VRAIS PDF
         # PyMuPDF (fabriqués par les mocks), pas une valeur inventée.
         for _code, _libelle, octets, pages in pieces:
             self.assertEqual(pack_technique.compter_pages(octets), pages)
-        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 5)
+        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 8)
         self.assertEqual(signalements, [])
 
     def test_sans_parcelle_le_dossier_compte_trois_pieces_et_signale(self):
@@ -119,7 +134,8 @@ class DossierTechniqueAvecEtSansParcelleTest(SimpleTestCase):
                                              company='societe-essai')
         self.assertEqual(
             [code for code, _l, _o, _p in pieces],
-            ['planche', 'note_calcul', 'plan_toiture'])
-        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 4)
+            ['planche', 'note_calcul', 'plan_toiture', 'rapport_etude',
+             'plan_cablage', 'rapport_ombrage'])
+        self.assertEqual(sum(pages for _c, _l, _o, pages in pieces), 7)
         self.assertEqual(len(signalements), 1)
         self.assertIn('parcelle', signalements[0].lower())

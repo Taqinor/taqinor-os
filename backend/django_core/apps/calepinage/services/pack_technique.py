@@ -47,11 +47,19 @@ DOSSIER = 'Dossiers techniques'
 
 #: Les pièces du pack, DANS L'ORDRE D'IMPRESSION.
 #: ``(code, libellé, obligatoire)``.
+#: CALX326 — ``rapport_etude``/``plan_cablage``/``rapport_ombrage`` REJOIGNENT
+#: le dossier technique : trois pièces FACULTATIVES (un calepinage non simulé,
+#: ou sans chaîne/ombrage publiés, continue de produire le dossier d'avant la
+#: tâche, ces trois-là sortant en signalement). L'ORDRE déclaré ICI est celui
+#: d'impression — jamais réordonné par l'appelant.
 SPEC_PIECES = (
     ('planche', 'Planche de calepinage', True),
     ('note_calcul', 'Note de calcul', True),
     ('plan_toiture', 'Plan de toiture', False),
     ('plan_masse', 'Plan de masse', False),
+    ('rapport_etude', "Rapport d'étude", False),
+    ('plan_cablage', 'Plan de câblage', False),
+    ('rapport_ombrage', "Rapport d'ombrage", False),
 )
 
 
@@ -105,6 +113,17 @@ def _rendus(calepinage, company):
     # exception remonte telle quelle jusqu'à ``rendre_pieces``, qui la
     # SIGNALE (pièce FACULTATIVE) plutôt que de faire échouer le pack — le
     # motif nomme la parcelle, il n'est pas reformulé ici.
+    # CALX326 — le rapport d'étude, le plan de câblage et le rapport
+    # d'ombrage REJOIGNENT le dossier technique. Chacun REND — jamais ne
+    # recalcule — via SA propre mise en page (CALX297/CALX310/CALX317) ; un
+    # calepinage non simulé, sans chaîne publiée ou sans matrice d'ombrage
+    # lève son refus MOT POUR MOT (``RapportRefuse``/``PlanCablageRefuse``/
+    # ``RapportOmbrageRefuse``), avalé par ``rendre_pieces`` en signalement
+    # puisque les trois sont FACULTATIVES ci-dessus.
+    from .documents.plan_cablage import rendre_plan_cablage_pdf
+    from .rapport import rendre_rapport
+    from .rapport_ombrage import rendre_rapport_ombrage
+
     return {
         'planche': lambda: rendre_planche_pdf(calepinage, company=company),
         'note_calcul': lambda: rendre_note_calcul(calepinage,
@@ -113,20 +132,31 @@ def _rendus(calepinage, company):
             calepinage, contenu=CONTENU_TOITURE, company=company),
         'plan_masse': lambda: rendre_plan_pdf(
             calepinage, contenu=CONTENU_MASSE, company=company),
+        'rapport_etude': lambda: rendre_rapport(calepinage, company=company),
+        'plan_cablage': lambda: rendre_plan_cablage_pdf(
+            calepinage, company=company),
+        'rapport_ombrage': lambda: rendre_rapport_ombrage(
+            calepinage, company=company),
     }
 
 
-def rendre_pieces(calepinage, *, company=None, rendus=None):
+def rendre_pieces(calepinage, *, company=None, rendus=None, spec=SPEC_PIECES):
     """``([(code, libelle, octets, pages)], [signalements])``.
 
     Une pièce OBLIGATOIRE qui ne se rend pas lève ``PackRefuse`` en la nommant.
     Une pièce FACULTATIVE qui ne se rend pas est SIGNALÉE, jamais sautée en
     silence.
+
+    ``spec``/``rendus`` par défaut couvrent le dossier technique
+    (``SPEC_PIECES``/``_rendus``) — CALX319 réutilise cette MÊME mécanique
+    pour le dossier de fin de chantier en passant les siens
+    (``DOSSIER_FIN_CHANTIER``/``_rendus_dossier_fin_chantier``).
     """
     company = company or getattr(calepinage, 'company', None)
-    rendus = rendus if rendus is not None else _rendus(calepinage, company)
+    if rendus is None:
+        rendus = _rendus(calepinage, company) if spec is SPEC_PIECES else {}
     pieces, signalements = [], []
-    for code, libelle, obligatoire in SPEC_PIECES:
+    for code, libelle, obligatoire in spec:
         rendu = rendus.get(code)
         if rendu is None:
             if obligatoire:
