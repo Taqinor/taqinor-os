@@ -1104,8 +1104,17 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
         _annual_savings_year1(settings, self_consumption['self_consumed_kwh'], classe)
         + (net_metering['annual_savings_mad'] or 0.0))
     upfront_cost = _num(getattr(devis, 'total_ht', None), 0.0)
+    # CALX279 — l'indexation est celle SAISIE par la société (avec sa
+    # source) ; sans elle la projection est à tarif constant (0 %, décision
+    # fondateur QRES54) et le dit — plus jamais les 6 %/an implicites.
+    indexation = tariff_service.indexation_depuis_reglages(settings)
     proj_result = tariff_escalation_projection(
-        annual_savings_year1=annual_savings_year1, upfront_cost=upfront_cost)
+        annual_savings_year1=annual_savings_year1, upfront_cost=upfront_cost,
+        escalation_rate=indexation['taux'] if indexation else None)
+    if proj_result['summary'].get('indexation_mention'):
+        warnings.append(
+            "projection 25 ans à tarif constant : "
+            f"{proj_result['summary']['indexation_mention']}")
     projection_25y = {
         'npv': proj_result['summary']['npv'],
         'irr': proj_result['summary']['irr'],

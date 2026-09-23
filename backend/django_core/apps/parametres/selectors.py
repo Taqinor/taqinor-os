@@ -266,6 +266,18 @@ def tou_pour(company) -> dict | None:
     return tou_depuis_reglages(_reglages_tarif_existants(company))
 
 
+def indexation_pour(company) -> dict | None:
+    """CALX279 — indexation annuelle du tarif SAISIE et sourcée, ou ``None``.
+
+    ``None`` tant qu'aucun taux n'est saisi AVEC sa source : l'appelant
+    projette alors à tarif CONSTANT (0 %) et publie la mention
+    ``apps.parametres.tariff.MENTION_INDEXATION_NON_SAISIE`` — jamais 6 %/an.
+    Sinon ``{'taux_pct', 'taux' (fraction), 'source'}``.
+    """
+    from apps.parametres.tariff import indexation_depuis_reglages
+    return indexation_depuis_reglages(_reglages_tarif_existants(company))
+
+
 # ── Catalogue « Réalisations » — la preuve de la touche J4 ─────────────────
 # Ordre fondateur du 08/09/2026 : le message d'après-devis « Voici une
 # installation comparable à la vôtre » ne se remplit plus à la main. Ces

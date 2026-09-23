@@ -890,6 +890,62 @@ def erreurs_taxes(prix_incluent_taxes, taxes, charge_minimale_mad_jour,
     return erreurs
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# CALX279 — INDEXATION ANNUELLE DU TARIF, SAISIE (fin de la contradiction)
+# ═════════════════════════════════════════════════════════════════════════════
+# Deux valeurs opposées coexistaient : ``DEFAULT_TARIFF_ESCALATION = 0.06``
+# (``apps/ventes/solar_design.py``, étude bancable) et ``TARIFF_ESCALATION =
+# 0.0`` (``apps/ventes/quote_engine/pricing.py``, décision fondateur QRES54 du
+# 18/07/2026 : « AUCUNE hausse tarifaire supposée »). TRANCHÉ : l'indexation
+# est un RÉGLAGE SOCIÉTÉ sourcé ; sans lui, toute projection est à tarif
+# CONSTANT (0 %, la décision fondateur) avec la mention
+# :data:`MENTION_INDEXATION_NON_SAISIE` — jamais 6 %.
+
+#: Mention publiée quand aucune indexation n'est saisie (projection à 0 %).
+MENTION_INDEXATION_NON_SAISIE = 'aucune indexation saisie'
+
+
+def erreurs_indexation(indexation_tarif_pct_an, indexation_source):
+    """Refus de l'indexation, ``{champ: message}`` (vide = valide).
+
+    Un taux saisi SANS source est refusé en nommant ``indexation_source`` ;
+    un taux illisible ou ≤ −100 % est refusé en nommant le taux.
+    """
+    erreurs = {}
+    if _vide(indexation_tarif_pct_an):
+        return erreurs
+    try:
+        taux = Decimal(str(indexation_tarif_pct_an).strip().replace(',', '.'))
+    except (InvalidOperation, TypeError, ValueError):
+        taux = None
+    if taux is None or not taux.is_finite() or taux <= Decimal('-100'):
+        erreurs['indexation_tarif_pct_an'] = (
+            "indexation_tarif_pct_an : un taux annuel en % (> −100) est "
+            "attendu.")
+    if _vide(indexation_source):
+        erreurs['indexation_source'] = (
+            "indexation_source : la source de l'indexation annuelle est "
+            "obligatoire (historique des tarifs publiés, contrat, étude).")
+    return erreurs
+
+
+def indexation_depuis_reglages(reglages):
+    """Indexation annuelle SAISIE et sourcée, ou ``None`` (projection à 0 %).
+
+    ``{'taux_pct': float, 'taux': float (fraction), 'source': str}``.
+    """
+    if reglages is None:
+        return None
+    taux = getattr(reglages, 'indexation_tarif_pct_an', None)
+    source = getattr(reglages, 'indexation_source', None)
+    if _vide(taux) or _vide(source) or erreurs_indexation(taux, source):
+        return None
+    taux_pct = Decimal(str(taux).strip().replace(',', '.'))
+    return {'taux_pct': float(taux_pct),
+            'taux': float(taux_pct / Decimal('100')),
+            'source': str(source).strip()}
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -917,4 +973,7 @@ def erreurs_reglages_tarif(reglages):
         getattr(reglages, 'charge_minimale_mad_jour', None),
         getattr(reglages, 'structure_tarif', None),
         getattr(reglages, 'residential_tiers', None)))
+    erreurs.update(erreurs_indexation(
+        getattr(reglages, 'indexation_tarif_pct_an', None),
+        getattr(reglages, 'indexation_source', None)))
     return erreurs

@@ -318,6 +318,19 @@ class TariffSettings(models.Model):
         help_text="Montant minimal facturé par jour, dans la même base que "
                   "les prix (TTC ou HT).")
 
+    # ── CALX279 — indexation annuelle du tarif, SAISIE et sourcée ──
+    # Vide par défaut : toute projection est à tarif CONSTANT (0 %, décision
+    # fondateur QRES54) avec la mention « aucune indexation saisie » —
+    # jamais les 6 %/an d'avant. Un taux sans source est refusé.
+    indexation_tarif_pct_an = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Indexation annuelle du tarif (%/an)')
+    indexation_source = models.TextField(
+        blank=True, default='',
+        verbose_name="Source de l'indexation",
+        help_text="Obligatoire dès qu'un taux est saisi (historique des "
+                  "tarifs publiés, contrat, étude).")
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

@@ -57,6 +57,9 @@ from apps.parametres.tariff import (  # CALX276 — une rédaction, une liste
     MOTIF_MECANISME_NON_SAISI,
     MOTIF_TARIF_RACHAT_ABSENT,
 )
+from apps.parametres.tariff import (  # CALX279
+    MENTION_INDEXATION_NON_SAISIE as _MENTION_INDEXATION_NON_SAISIE,
+)
 
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
@@ -3071,9 +3074,10 @@ def compensation_surplus(*, mecanisme=None, injection_kwh_mois=None,
 # Projette, année par année, la facture d'électricité ÉVITÉE (économie) sur un
 # horizon long (20–25 ans) en tenant compte de DEUX dérives bien réelles :
 #
-#   * l'ESCALADE TARIFAIRE annuelle (le kWh ONEE renchérit chaque année — taux
-#     éditable, ~6 %/an par défaut côté marché marocain) qui POUSSE l'économie
-#     vers le HAUT (chaque kWh autoconsommé évite un kWh de plus en plus cher) ;
+#   * l'ESCALADE TARIFAIRE annuelle (l'INDEXATION saisie par la société —
+#     CALX279 ; sans saisie, 0 % avec la mention « aucune indexation saisie »,
+#     la décision fondateur QRES54 de ``quote_engine/pricing.py``) qui POUSSE
+#     l'économie vers le HAUT (chaque kWh évité coûte de plus en plus cher) ;
 #   * la DÉGRADATION des modules (~0,5 %/an) qui ÉRODE la production donc
 #     l'énergie évitée, TIRANT l'économie vers le bas.
 #
@@ -3091,8 +3095,14 @@ def compensation_surplus(*, mecanisme=None, injection_kwh_mois=None,
 # numériques ne sont JAMAIS rejetées (liberté de saisie du founder) — seules les
 # valeurs absurdes sont bornées pour éviter une division par zéro.
 
-# Taux d'escalade tarifaire ONEE annuel par défaut (éditable par l'appelant).
-DEFAULT_TARIFF_ESCALATION = 0.06        # 6 %/an
+# CALX279 — ANCIEN taux d'escalade « marché » (6 %/an, sans source). Il
+# CONTREDISAIT ``TARIFF_ESCALATION = 0.0`` (``quote_engine/pricing.py``,
+# décision fondateur) : ``tariff_escalation_projection`` ne le lit PLUS
+# (indexation saisie, sinon 0 % + mention). Conservé pour les seuls appelants
+# qui le passent encore explicitement (CALX286 les recense).
+DEFAULT_TARIFF_ESCALATION = 0.06        # 6 %/an — NON sourcé, jamais implicite
+#: Mention publiée par une projection faite sans indexation saisie.
+MENTION_INDEXATION_NON_SAISIE = _MENTION_INDEXATION_NON_SAISIE
 # Dégradation annuelle des modules par défaut (lithium/silicium courant).
 DEFAULT_MODULE_DEGRADATION = 0.005      # 0,5 %/an
 # Taux d'actualisation par défaut pour la VAN.
@@ -3173,7 +3183,7 @@ def _irr(cashflows, *, low=-0.9999, high=10.0, tol=1e-7, max_iter=200):
 
 def tariff_escalation_projection(*, annual_savings_year1,
                                  upfront_cost=0.0,
-                                 escalation_rate=DEFAULT_TARIFF_ESCALATION,
+                                 escalation_rate=None,
                                  degradation_rate=DEFAULT_MODULE_DEGRADATION,
                                  horizon_years=DEFAULT_HORIZON_YEARS,
                                  discount_rate=DEFAULT_DISCOUNT_RATE,
@@ -3190,7 +3200,12 @@ def tariff_escalation_projection(*, annual_savings_year1,
     ----------
     annual_savings_year1 : économie (facture évitée) de la 1re année (MAD/an).
     upfront_cost : investissement initial TTC (MAD), placé en flux d'année 0.
-    escalation_rate : taux d'escalade tarifaire annuel (éditable, défaut ~6 %).
+    escalation_rate : indexation tarifaire annuelle (fraction) PASSÉE par
+        l'appelant — celle SAISIE par la société
+        (``apps.parametres.selectors.indexation_pour``). CALX279 : absente ou
+        illisible ⇒ projection à indexation NULLE (0 %, décision fondateur
+        QRES54) avec la mention :data:`MENTION_INDEXATION_NON_SAISIE` dans
+        ``summary.indexation_mention`` et ``hypotheses`` — jamais 6 %.
     degradation_rate : dégradation annuelle de la production (défaut ~0,5 %).
     horizon_years : durée de projection (20–25 visés ; borné 1..40).
     discount_rate : taux d'actualisation pour la VAN (défaut 5 %).
@@ -3220,9 +3235,24 @@ def tariff_escalation_projection(*, annual_savings_year1,
         except (TypeError, ValueError):
             return float(default)
 
+    hypotheses = []
     savings1 = _num(annual_savings_year1)
     cost0 = _num(upfront_cost)
-    esc = _num(escalation_rate, DEFAULT_TARIFF_ESCALATION)
+    # CALX279 — l'indexation est celle PASSÉE (saisie société) ; sans elle,
+    # 0 % DÉCLARÉ, jamais un taux « marché » implicite.
+    try:
+        esc = float(escalation_rate)
+        if esc != esc:  # NaN
+            raise ValueError
+        indexation_mention = None
+    except (TypeError, ValueError):
+        esc = 0.0
+        indexation_mention = MENTION_INDEXATION_NON_SAISIE
+        hypotheses.append({
+            "cle": "escalation_rate", "valeur": 0.0,
+            "source": (f"{MENTION_INDEXATION_NON_SAISIE} — projection à tarif "
+                       "constant (décision fondateur QRES54, "
+                       "quote_engine/pricing.py TARIFF_ESCALATION)")})
     deg = _num(degradation_rate, DEFAULT_MODULE_DEGRADATION)
     disc = _num(discount_rate, DEFAULT_DISCOUNT_RATE)
 
@@ -3330,11 +3360,15 @@ def tariff_escalation_projection(*, annual_savings_year1,
         "irr": irr,
         "payback_year": payback_year,
         "discounted_payback_year": discounted_payback_year,
+        # CALX279 — « aucune indexation saisie » quand l'appelant n'a passé
+        # aucun taux (projection à 0 %), sinon None.
+        "indexation_mention": indexation_mention,
     }
 
     return {
         "schedule": schedule,
         "summary": summary,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
