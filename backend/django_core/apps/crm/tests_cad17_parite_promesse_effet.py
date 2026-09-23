@@ -554,26 +554,56 @@ class VocabulaireTests(SimpleTestCase):
 
 # ── 2. Le contrat committé est ce que le moteur annonce ─────────────────────
 
+#: Les touches committées dans le contrat : l'exemple principal ET l'état
+#: « dernier réveil » (CAD16), que l'écran importe tous deux.
+TOUCHES_DU_CONTRAT = (CONTRAT['exemple']['results']
+                      + CONTRAT['exemple_dernier_reveil']['results'])
+
+
+def _stage_du_contrat(resultat):
+    """L'étape du dossier de chaque touche committée : un réveil vit au Froid,
+    un suivi de proposition après un envoi, le reste en prise de contact."""
+    if resultat['cadence'] == 'reveil':
+        return stages.COLD
+    if resultat['devis'] is not None:
+        return stages.QUOTE_SENT
+    return stages.CONTACTED
+
+
 class ContratTests(SimpleTestCase):
 
     def test_l_exemple_committe_est_ce_que_le_moteur_annonce(self):
-        for resultat in CONTRAT['exemple']['results']:
+        for resultat in TOUCHES_DU_CONTRAT:
             with self.subTest(touche=resultat['id']):
                 etape = RelanceEtape(
                     cadence=resultat['cadence'], ordre=resultat['ordre'],
                     canal=resultat['canal'], libelle=resultat['libelle'],
                     statut=resultat['statut'], devis_id=resultat['devis'])
                 etape.lead = Lead(nom=resultat['lead_nom'],
-                                  stage=stages.CONTACTED)
+                                  stage=_stage_du_contrat(resultat))
                 self.assertEqual(
                     st.promesses_touche(
                         etape, ordres=_ordres_defaut(resultat['cadence'])),
                     resultat['suites'])
 
     def test_chaque_code_de_l_exemple_a_sa_phrase(self):
-        for resultat in CONTRAT['exemple']['results']:
+        for resultat in TOUCHES_DU_CONTRAT:
             for codes in resultat['suites'].values():
                 self.assertTrue(set(codes) <= set(PHRASES))
+
+    def test_l_etat_dernier_reveil_a_la_forme_de_l_exemple(self):
+        # Un AUTRE état du serveur, jamais une autre forme (PACT10).
+        forme = set(CONTRAT['exemple']['results'][0])
+        for resultat in CONTRAT['exemple_dernier_reveil']['results']:
+            self.assertEqual(set(resultat), forme)
+
+    def test_cad16_le_dernier_reveil_annonce_la_fin(self):
+        # CAD16 — sur la touche de rang 2 du réveil, « Pas de réponse »
+        # n'annonce plus de réveil suivant : la fin, et le Froid.
+        [dernier] = CONTRAT['exemple_dernier_reveil']['results']
+        self.assertEqual(dernier['ordre'], max(_ordres_defaut('reveil')))
+        self.assertEqual(dernier['suites']['non_joint'], [st.DERNIER_REVEIL])
+        self.assertNotIn(st.TOUCHE_SUIVANTE, dernier['suites']['non_joint'])
 
 
 # ── 3. LA GARDE : chaque promesse est rejouée et son effet constaté ────────
@@ -873,14 +903,13 @@ class ContratServiTests(PariteBase):
     slug = 'cad17-contrat'
 
     def test_la_file_sert_les_suites_de_l_exemple(self):
-        for resultat in CONTRAT['exemple']['results']:
+        for resultat in TOUCHES_DU_CONTRAT:
             with self.subTest(touche=resultat['id']):
                 scenario = Scenario(
                     'contrat', resultat['cadence'], resultat['ordre'],
                     resultat['canal'], resultat['libelle'],
                     devis=resultat['devis'] is not None,
-                    stage=stages.QUOTE_SENT if resultat['devis']
-                    else stages.CONTACTED)
+                    stage=_stage_du_contrat(resultat))
                 self.assertEqual(self._promesses_servies(scenario),
                                  resultat['suites'])
 

@@ -89,6 +89,48 @@
     "count": 0,
     "results": []
   },
+  "exemple_dernier_reveil": {
+    "count": 1,
+    "results": [
+      {
+        "id": 431,
+        "lead": 1502,
+        "lead_nom": "Karim Tazi",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000431",
+        "lead_whatsapp": "+212661000431",
+        "lead_langue": "fr",
+        "lead_score": 22,
+        "lead_priorite": "normale",
+        "cadence": "reveil",
+        "ordre": 2,
+        "due_date": "2026-11-05",
+        "due_at": "2026-11-05T08:30:00Z",
+        "canal": "whatsapp",
+        "libelle": "Réveil J60",
+        "template_cle": "reveil_a3",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "suites": {
+          "joint": ["sort_du_froid", "reveils_arretes", "etape_appeler_sauf_suivi"],
+          "non_joint": ["dernier_reveil"],
+          "rappel": ["dernier_reveil_date_perdue"],
+          "refuse": ["relances_arretees", "reste_au_froid"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "plus_tard": ["veille_meme_touche"]
+        }
+      }
+    ]
+  },
   "notes": {
     "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
     "statut_libelle": "CKP1 — libellé français du statut, servi par le serveur (« À faire », « Fait », « Sautée », « Annulée (moteur) ») : le badge n'a plus à réinventer la table des libellés, et une annulation MOTEUR ne peut plus s'afficher comme un saut humain.",
@@ -100,6 +142,7 @@
     "lead_est_junk": "CAD11 — booléen, jamais null : le lead est PERDU avec un motif marqué « junk » (`MotifPerte.est_junk` : numéro invalide, spam/bot, hors zone, jamais répondu). Le drapeau vivait au niveau du lead, à trois écrans de la touche ; exposé ici, la qualité des numéros venus des publicités devient mesurable. `false` pour toute touche d'un lead non perdu (aucune requête).",
     "traite_le": "MRY30 — QUAND la touche a été traitée (`RelanceEtape.traite_le`), `null` tant qu'elle est `a_faire`. ADDITIF sur la file du jour : le même sérialiseur sert la file et l'écran « Suivi des relances » (contrat `relance_etapes_suivi`) plutôt que deux sérialiseurs qui divergeraient — les deux exemples ci-dessus sont `a_faire`, donc `null`/''.",
     "traite_par_nom": "MRY30 — QUI l'a traitée (nom d'utilisateur), '' — jamais null — pour une touche à faire ou marquée par le système.",
+    "exemple_dernier_reveil": "CAD16 — un AUTRE ÉTAT du serveur, même forme : la DERNIÈRE touche de la cadence réveil (rang 2, J60), dossier au Froid. « Pas de réponse » y annonce la fin (`dernier_reveil`) — plus jamais un réveil suivant qui n'existe pas : la cadence réveil ne se clôture pas elle-même et le filet ne pose rien sur un dossier au Froid.",
     "suites": "CAD17 — la SUITE de chaque réponse du panneau « Fait », DÉRIVÉE du moteur (`apps/crm/suite_touche.py`) : `{cle_de_reponse: [codes d'effet]}`. Clés : les issues (`joint`, `visite_acceptee` sur le suivi de proposition, `non_joint`, `rappel`, `refuse` ; `sans_issue` = « Fait — passer à la suite » sur la cadence générique) puis les réponses du client de `REPONSES_TOUCHE` valables sur la cadence. Les codes dépendent du LIBELLÉ de la touche (barreau, étape de filet, geste de visite), de son RANG (la dernière ne fait naître aucune suivante) et de l'état du devis — jamais de la seule cadence. L'écran traduit chaque code en UNE phrase (`frontend/src/features/crm/relances/suite_phrases.json`) ; la garde `apps/crm/tests_cad17_parite_promesse_effet.py` rejoue chaque réponse et vérifie l'effet de chaque code. `{}` — jamais null — pour une touche déjà traitée."
   }
 }

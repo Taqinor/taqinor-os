@@ -169,6 +169,33 @@ describe('CKP1/CKP4 RelanceEtapeRow — badges honnêtes (sautée ≠ annulée)'
 // un appel de prise de contact, la seconde un WhatsApp du suivi de proposition.
 const ETAPE_APRES_DEVIS = exempleContrat('crm', 'relance_etape_v2').results[1]
 
+// CAD16 — sur le DERNIER réveil (rang 2, J60), « Pas de réponse » ne promet
+// plus un réveil suivant qui n'existe pas. L'état « dernier réveil » est une
+// variante COMMITTÉE du contrat (même forme), affirmée par le test back.
+describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
+  const [DERNIER_REVEIL] = exempleContrat(
+    'crm', 'relance_etape_v2', 'exemple_dernier_reveil').results
+
+  it('rang 2 de la cadence réveil : « Pas de réponse » affiche la phrase de fin', () => {
+    expect(DERNIER_REVEIL.cadence).toBe('reveil')
+    expect(DERNIER_REVEIL.ordre).toBe(2)
+    ouvrirFait(DERNIER_REVEIL)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(
+      'C’était le dernier réveil : plus aucune relance n’est programmée, le dossier reste au Froid.')
+    expect(suite).not.toHaveTextContent(/réveil suivant/)
+    expect(suite).not.toHaveTextContent(/touche suivante est programmée/)
+  })
+
+  it('« À rappeler le… » sur le dernier réveil dit que la date ne sera reportée nulle part', () => {
+    ouvrirFait(DERNIER_REVEIL)
+    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    expect(screen.getByTestId('suite-reponse'))
+      .toHaveTextContent(/n’est reportée sur aucune relance/)
+  })
+})
+
 // CAD12 — « Le client accepte » sans quitter la touche : un LIEN vers la fiche
 // du devis rattaché (jamais une action de statut depuis le CRM, règle #4).
 describe('CAD12 RelanceEtapeRow — le client accepte', () => {

@@ -123,6 +123,11 @@ const QUESTIONS = {
     ],
   },
 }
+// CAD16 — un texte UNIQUE pour les deux réveils promettait, sur le dernier
+// (J60), un « réveil suivant » qui n'existe pas. La suite est désormais celle
+// que le serveur annonce POUR CETTE touche (`etape.suites`, rang compris) :
+// sur le dernier réveil, la fin — le dossier reste au Froid, sans autre
+// relance.
 QUESTIONS.reveil = {
   question: 'Résultat du réveil ?',
   reponses: [
