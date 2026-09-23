@@ -40,6 +40,7 @@ import copy
 import json
 import pathlib
 import unittest
+from unittest import mock
 
 from apps.calepinage.services.documents import inventaire_des_documents
 from apps.calepinage.views.sorties import inventaire_des_sorties
@@ -165,9 +166,20 @@ class InventaireEtatIntermediaireTest(unittest.TestCase):
 class ChampReellementLeveTest(unittest.TestCase):
     """Chaque ``champ`` publié correspond au champ RÉELLEMENT levé par le
     service — jamais un texte inventé (essai PUR, ``verifier_etancheite``
-    lève avant tout accès base)."""
+    lève avant tout accès base).
+
+    Trois des neuf codes sortent ``disponible`` sur ce fixture : leur
+    ``versions[]`` (CALX322) lit alors ``records.Attachment`` en BASE — hors
+    du périmètre de CET essai (qui porte sur ``manque``, pas sur les
+    versions). ``_versions_pour`` est donc doublé par ``[]``, sans quoi cet
+    essai PUR échouerait au premier accès base."""
 
     def setUp(self):
+        patcheur = mock.patch(
+            'apps.calepinage.services.documents._versions_pour',
+            return_value=[])
+        patcheur.start()
+        self.addCleanup(patcheur.stop)
         self.servi = inventaire_des_documents(FauxResultatCoute())
         self.par_code = {d['code']: d for d in self.servi['documents']}
 

@@ -274,10 +274,12 @@ def _etat_du_document(code, calepinage, resultat):
 
 
 def _versions_pour(calepinage, code):
-    """Les versions déjà produites de ``code`` — ``[]`` tant que CALX322
-    n'a pas encore posé ``services/documents/versions_document.py`` (cette
-    ligne, et SEULEMENT elle, change à cette étape)."""
-    return []
+    """Les versions déjà produites de ``code`` (CALX322,
+    ``services/documents/versions_document.py``) — SEULE cette ligne a
+    changé depuis la section CALX321 ci-dessus."""
+    from .versions_document import versions_du_document
+
+    return versions_du_document(calepinage, code)
 
 
 def _entree_document(code, libelle, format_, endpoint, produit_par,

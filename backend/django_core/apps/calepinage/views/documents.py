@@ -61,6 +61,23 @@ def rapport_etude_pdf(self, request, pk=None):
     except RapportRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)
+    # CALX322 — chaque téléchargement RÉUSSI devient une version retrouvable
+    # (``services/documents/versions_document.py``) ; BEST-EFFORT, comme le
+    # journal (``services/journal.py``) : un incident de versionnement ne
+    # doit jamais faire échouer la remise du document lui-même.
+    from ..services.documents.versions_document import (
+        enregistrer_version_document,
+    )
+    try:
+        enregistrer_version_document(
+            calepinage, code='rapport_etude', octets=octets, langue=langue,
+            user=getattr(request, 'user', None))
+    except Exception:  # noqa: BLE001 — un versionnement perdu ne casse rien
+        import logging
+
+        logging.getLogger(__name__).exception(
+            'CALX322 : version de rapport_etude perdue (calepinage %s)',
+            calepinage.pk)
     return reponse_de_fichier(
         octets, mime=MIME_PDF,
         nom_fichier=nom_de_fichier(calepinage, 'rapport-etude.pdf'))
