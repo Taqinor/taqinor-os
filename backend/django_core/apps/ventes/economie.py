@@ -1,5 +1,5 @@
-"""CALX281-285 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE, prêts,
-scénarios P50/P90.
+"""CALX281-290 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE, prêts,
+scénarios P50/P90, comparaison de scénarios sur le même flux.
 
 LE CONSTAT (CALX281)
 --------------------
@@ -63,10 +63,12 @@ import math
 from .solar_design import _irr, _npv
 
 __all__ = [
-    'EconomieInvalide', 'MODES_REMPLACEMENT', 'ORIGINES_VARIABILITE',
-    'RETOUR_MAX_ANS', 'SCENARIOS_PRODUCTION', 'SOURCE_SAISIE_NUE',
-    'TYPES_PRET', 'economie_par_scenario', 'flux_de_tresorerie', 'lcoe',
-    'tableau_pret',
+    'EconomieInvalide', 'HYPOTHESES_FINANCIERES', 'INDICATEURS',
+    'MODES_REMPLACEMENT', 'ORIGINES_VARIABILITE', 'RETOUR_MAX_ANS',
+    'SCENARIOS_MAX',
+    'SCENARIOS_PRODUCTION', 'SOURCE_SAISIE_NUE', 'TYPES_PRET',
+    'comparer_scenarios', 'economie_par_scenario', 'flux_de_tresorerie',
+    'lcoe', 'tableau_pret',
 ]
 
 
@@ -863,3 +865,132 @@ def economie_par_scenario(*, production_par_scenario, economie_annee1_mad=None,
     omissions.extend(omis_var)
     return {'scenarios': scenarios, 'hypotheses': hypotheses,
             'omissions': omissions}
+
+
+# ── CALX290 — comparer deux scénarios sur le MÊME flux ──────────────────────
+#
+# ``services/comparaison.py`` (calepinage) compare des GÉOMÉTRIES et
+# ``economies_periodes.py`` décline des économies DÉJÀ calculées : rien ne
+# mettait deux hypothèses de consommation ou de stockage côte à côte sur un
+# flux unique. OpenSolar affiche les options « side-by-side »
+# (https://www.opensolar.com/lightreach/) ; Aurora place la comparaison de
+# scénarios de stockage au cœur de la proposition
+# (https://aurorasolar.com/sales-mode/).
+#
+# LE MÊME FLUX : deux scénarios ne se comparent que sous les MÊMES
+# hypothèses financières. Une divergence d'horizon, de taux d'actualisation
+# ou d'indexation est REFUSÉE en nommant la première — sinon l'écart publié
+# mesurerait la finance, pas le projet.
+
+#: Au plus quatre scénarios comparés côte à côte.
+SCENARIOS_MAX = 4
+
+#: Les hypothèses financières qui doivent être IDENTIQUES d'un scénario à
+#: l'autre, dans l'ordre où la première divergence est nommée.
+HYPOTHESES_FINANCIERES = ('horizon_ans', 'taux_actualisation_pct',
+                          'indexation_pct')
+
+#: Ce qu'un scénario peut porter : son nom + les entrées du flux.
+_CLES_SCENARIO = (
+    'nom', 'production_annuelle_kwh', 'economie_annee1_mad',
+    'investissement_mad', 'horizon_ans', 'taux_actualisation_pct',
+    'indexation_pct', 'degradation_pct', 'charges_annuelles_mad',
+    'remplacements', 'pret',
+)
+
+#: Précision des écarts publiés, par indicateur.
+_DECIMALES_ECART = {'van_mad': 2, 'tri_pct': 4, 'lcoe_mad_kwh': 6,
+                    'retour_ans': 0, 'retour_actualise_ans': 0}
+
+
+def _valeur_financiere(rang, cle, brute):
+    """La valeur comparable d'une hypothèse financière (dict ou nombre)."""
+    return _saisie(f'scenarios[{rang}].{cle}', brute)[0]
+
+
+def _ecart(valeur, reference, decimales):
+    if valeur is None or reference is None:
+        return None
+    ecart = round(valeur - reference, decimales)
+    return int(ecart) if decimales == 0 else ecart
+
+
+def comparer_scenarios(scenarios):
+    """CALX290 — les mêmes indicateurs pour 2 à 4 scénarios NOMMÉS + écarts.
+
+    Chaque scénario est un dict ``{nom, production_annuelle_kwh,
+    economie_annee1_mad, investissement_mad, horizon_ans,
+    taux_actualisation_pct, indexation_pct, …}`` (les entrées de
+    :func:`flux_de_tresorerie`). Le PREMIER est la référence : les écarts
+    publiés valent ``indicateur(scénario) − indicateur(référence)``, ``None``
+    quand l'un des deux n'est pas publié.
+
+    Refus nommés : ``scenarios`` (moins de deux ou plus de quatre),
+    ``scenarios[i].nom`` (absent ou en double), ``scenarios[i].<clé>`` (clé
+    inconnue — aucune clé ``prix``/``cout``/``marge`` n'entre), et la
+    PREMIÈRE divergence d'hypothèse financière ``scenarios[i].<clé>``.
+
+    Returns:
+        ``{reference, scenarios: [{nom, van_mad, tri_pct, lcoe_mad_kwh,
+        retour_ans, retour_actualise_ans, ecarts: {…}}], hypotheses,
+        omissions}`` — hypothèses et omissions préfixées ``scenarios[i].``.
+    """
+    if not isinstance(scenarios, (list, tuple)) \
+            or not 2 <= len(scenarios) <= SCENARIOS_MAX:
+        raise EconomieInvalide(
+            f"scenarios : de 2 à {SCENARIOS_MAX} scénarios nommés sont "
+            f"attendus.", champ='scenarios')
+    noms = []
+    for rang, scenario in enumerate(scenarios):
+        if not isinstance(scenario, dict):
+            raise EconomieInvalide(
+                f"scenarios[{rang}] : un dict est attendu.",
+                champ=f'scenarios[{rang}]')
+        for cle in scenario:
+            if cle not in _CLES_SCENARIO:
+                raise EconomieInvalide(
+                    f"scenarios[{rang}].{cle} : clé inconnue d'un scénario.",
+                    champ=f'scenarios[{rang}].{cle}')
+        nom = str(scenario.get('nom') or '').strip()
+        if not nom or nom in noms:
+            raise EconomieInvalide(
+                f"scenarios[{rang}].nom : chaque scénario porte un nom "
+                f"unique.", champ=f'scenarios[{rang}].nom')
+        noms.append(nom)
+    reference = scenarios[0]
+    for rang, scenario in enumerate(scenarios[1:], start=1):
+        for cle in HYPOTHESES_FINANCIERES:
+            if _valeur_financiere(rang, cle, scenario.get(cle)) \
+                    != _valeur_financiere(0, cle, reference.get(cle)):
+                raise EconomieInvalide(
+                    f"scenarios[{rang}].{cle} : les hypothèses financières "
+                    f"diffèrent de la référence « {noms[0]} » — deux "
+                    f"scénarios ne se comparent que sur le même flux.",
+                    champ=f'scenarios[{rang}].{cle}')
+
+    resultats, hypotheses, omissions = [], [], []
+    for rang, scenario in enumerate(scenarios):
+        parametres = {cle: valeur for cle, valeur in scenario.items()
+                      if cle not in ('nom', 'production_annuelle_kwh')}
+        try:
+            bloc = flux_de_tresorerie(
+                production_annee1_kwh=scenario.get('production_annuelle_kwh'),
+                **parametres)
+        except EconomieInvalide as refus:
+            raise EconomieInvalide(
+                f"scenarios[{rang}].{refus}",
+                champ=f'scenarios[{rang}].{refus.champ}') from refus
+        resultats.append({'nom': noms[rang],
+                          **{cle: bloc[cle] for cle in INDICATEURS}})
+        prefixe = f'scenarios[{rang}].'
+        hypotheses.extend(dict(h, cle=prefixe + h['cle'])
+                          for h in bloc['hypotheses'])
+        omissions.extend(dict(o, cle=prefixe + o['cle'])
+                         for o in bloc['omissions'])
+    for resultat in resultats:
+        resultat['ecarts'] = {
+            cle: _ecart(resultat[cle], resultats[0][cle],
+                        _DECIMALES_ECART[cle])
+            for cle in INDICATEURS}
+    return {'reference': noms[0], 'scenarios': resultats,
+            'hypotheses': hypotheses, 'omissions': omissions}
