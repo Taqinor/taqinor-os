@@ -246,6 +246,109 @@ def _heures(valeurs, *, champ):
     return heures
 
 
+#: CALX268 — au plus trois fenêtres de chaque sorte (PV*SOL « Timed
+#: control », fenêtres C1–C3 et D1–D3).
+FENETRES_MAX = 3
+
+
+def _fenetres_saisies(liste, *, sorte):
+    """Les fenêtres d'une sorte (``charge`` | ``decharge``), vérifiées.
+
+    Chaque fenêtre est ``{heures: [0..23], soc_cible_pct}`` ; une fenêtre
+    qui recouvre une fenêtre PRÉCÉDENTE de la même sorte est refusée en
+    nommant la seconde.
+    """
+    champ = f'fenetres.{sorte}'
+    if not isinstance(liste, (list, tuple)) or not liste:
+        raise StrategieInvalide(
+            f'Les fenêtres de {sorte} sont obligatoires pour la stratégie de '
+            'décalage : aucune heure n’est devinée (aucun tarif n’est connu '
+            'de ce module).', champ=champ)
+    if len(liste) > FENETRES_MAX:
+        raise StrategieInvalide(
+            f'Au plus {FENETRES_MAX} fenêtres de {sorte} sont admises '
+            f'(reçu : {len(liste)}).', champ=f'{champ}[{FENETRES_MAX}]')
+    lues = []
+    deja = set()
+    for rang, fenetre in enumerate(liste):
+        nom = f'{champ}[{rang}]'
+        if not isinstance(fenetre, dict):
+            raise StrategieInvalide(
+                f'La fenêtre « {nom} » n’est pas lisible (reçu : '
+                f'{fenetre!r}).', champ=nom)
+        heures = _heures(fenetre.get('heures'), champ=f'{nom}.heures')
+        brute = fenetre.get('soc_cible_pct')
+        soc = _nombre(brute)
+        if brute not in (None, '') and (soc is None or not 0 <= soc <= 100):
+            raise StrategieInvalide(
+                f'L’état de charge visé de « {nom} » se compte en pourcentage '
+                f'de la capacité utile, entre 0 et 100 (reçu : {brute!r}).',
+                champ=f'{nom}.soc_cible_pct')
+        communes = heures & deja
+        if communes:
+            raise StrategieInvalide(
+                f'La fenêtre « {nom} » recouvre une fenêtre de {sorte} '
+                f'précédente (heures {sorted(communes)}) : une heure ne suit '
+                'qu’une seule consigne.', champ=nom)
+        deja |= heures
+        lues.append({'heures': heures, 'soc_cible_pct': soc})
+    return lues
+
+
+def _fenetres(fenetres, heures_charge, heures_decharge):
+    """CALX268 — ``(charge, decharge)`` : les fenêtres de la commande horaire.
+
+    Les listes d'heures d'aujourd'hui (``heures_charge`` /
+    ``heures_decharge``) restent acceptées et valent UNE fenêtre sans état de
+    charge visé — leurs refus sont inchangés.
+    """
+    if fenetres is None:
+        charge = _heures(heures_charge, champ='heures_charge')
+        decharge = _heures(heures_decharge, champ='heures_decharge')
+        communes = charge & decharge
+        if communes:
+            raise StrategieInvalide(
+                'Les mêmes heures sont déclarées en charge ET en décharge '
+                f'({sorted(communes)}) : la batterie ne peut pas faire les '
+                'deux à la fois.', champ='heures_decharge')
+        return ([{'heures': charge, 'soc_cible_pct': None}],
+                [{'heures': decharge, 'soc_cible_pct': None}])
+    if heures_charge or heures_decharge:
+        raise StrategieInvalide(
+            'Des fenêtres ET des listes d’heures sont déclarées : la commande '
+            'horaire se saisit d’une seule façon, jamais les deux.',
+            champ='fenetres')
+    if not isinstance(fenetres, dict):
+        raise StrategieInvalide(
+            'Les fenêtres se déclarent {charge: [...], decharge: [...]} '
+            f'(reçu : {fenetres!r}).', champ='fenetres')
+    charge = _fenetres_saisies(fenetres.get('charge'), sorte='charge')
+    decharge = _fenetres_saisies(fenetres.get('decharge'), sorte='decharge')
+    heures_de_charge = set().union(*(f['heures'] for f in charge))
+    for rang, fenetre in enumerate(decharge):
+        communes = fenetre['heures'] & heures_de_charge
+        if communes:
+            raise StrategieInvalide(
+                f'La fenêtre « fenetres.decharge[{rang}] » recouvre une '
+                f'fenêtre de charge (heures {sorted(communes)}) : la batterie '
+                'ne peut pas faire les deux à la fois.',
+                champ=f'fenetres.decharge[{rang}]')
+    return charge, decharge
+
+
+def _fenetre_de(fenetres, heure):
+    for fenetre in fenetres:
+        if heure in fenetre['heures']:
+            return fenetre
+    return None
+
+
+def _publier_fenetres(fenetres):
+    return [{'heures': sorted(fenetre['heures']),
+             'soc_cible_pct': fenetre['soc_cible_pct']}
+            for fenetre in fenetres]
+
+
 #: Tolérance d'arithmétique flottante — jamais un seuil métier.
 _EPSILON = 1e-9
 
@@ -296,7 +399,8 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      capacite_utile_kwh, puissance_charge_kw,
                      puissance_decharge_kw, rendement_ar_pct=None,
                      seuil_effacement_kw=None, heures_charge=None,
-                     heures_decharge=None, reserve_backup_kwh=None,
+                     heures_decharge=None, fenetres=None,
+                     reserve_backup_kwh=None,
                      etat_initial_kwh=0.0, pas_heures=1.0,
                      heure_de_depart=0, _trace=None):
     """Fait TOURNER la batterie heure par heure selon la stratégie retenue.
@@ -307,7 +411,17 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         seuil_effacement_kw: SAISI — obligatoire pour ``peak_shaving`` (on
             n'efface pas au-dessus d'un seuil que personne n'a choisi).
         heures_charge / heures_decharge: SAISIES — obligatoires pour
-            ``decalage``.
+            ``decalage`` (à moins que ``fenetres`` ne les remplace) ; elles
+            valent une fenêtre unique SANS état de charge visé.
+        fenetres: CALX268 — la commande horaire à SOC cible (PV*SOL « Timed
+            control », https://help.valentin-software.com/pvsol/en/pages/battery-system/timed-control/),
+            ``{charge: [{heures, soc_cible_pct}], decharge: [{heures,
+            soc_cible_pct}]}``, au plus :data:`FENETRES_MAX` de chaque, toutes
+            SAISIES, pour la stratégie ``decalage``. La charge d'une fenêtre
+            s'arrête à son état de charge visé ; la décharge ne descend pas
+            sous le sien. La charge reste celle du SURPLUS solaire (aucune
+            charge sur le réseau n'est introduite ici). Deux fenêtres qui se
+            recouvrent ⇒ refus nommant la seconde (``fenetres.charge[1]``).
         reserve_backup_kwh: la réserve à ne jamais entamer, SAISIE —
             obligatoire pour ``backup``.
         _trace: usage INTERNE (CALX267, :func:`simuler_groupes`) — un dict
@@ -380,15 +494,19 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             "L'effacement de pointe exige un seuil SAISI (kW) : aucun seuil "
             'n’est deviné, et ce module ne connaît aucun tarif.',
             champ='seuil_effacement_kw')
+    fenetres_charge = []
+    fenetres_decharge = []
     if strategie == 'decalage':
-        heures_charge = _heures(heures_charge, champ='heures_charge')
-        heures_decharge = _heures(heures_decharge, champ='heures_decharge')
-        communes = heures_charge & heures_decharge
-        if communes:
-            raise StrategieInvalide(
-                'Les mêmes heures sont déclarées en charge ET en décharge '
-                f'({sorted(communes)}) : la batterie ne peut pas faire les '
-                'deux à la fois.', champ='heures_decharge')
+        fenetres_charge, fenetres_decharge = _fenetres(
+            fenetres, heures_charge, heures_decharge)
+        heures_charge = set().union(*(f['heures'] for f in fenetres_charge))
+        heures_decharge = set().union(
+            *(f['heures'] for f in fenetres_decharge))
+    elif fenetres is not None:
+        raise StrategieInvalide(
+            'Les fenêtres de charge et de décharge pilotent la stratégie de '
+            f'décalage, pas « {strategie} » : elles ne s’appliquent donc '
+            'pas.', champ='fenetres')
     reserve = _nombre(reserve_backup_kwh)
     if strategie == 'backup' and (reserve is None or reserve < 0):
         raise StrategieInvalide(
@@ -417,11 +535,19 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
 
         # ── charge ───────────────────────────────────────────────────────
         autorise_charge = True
+        cible = None
         if strategie == 'decalage':
-            autorise_charge = heure in heures_charge
+            fenetre = _fenetre_de(fenetres_charge, heure)
+            autorise_charge = fenetre is not None
+            if fenetre is not None and fenetre['soc_cible_pct'] is not None:
+                cible = capacite * fenetre['soc_cible_pct'] / 100.0
         entree = 0.0
         if autorise_charge and surplus > 0:
-            place = (capacite - etat) / eta if eta > 0 else 0.0
+            if cible is None:
+                place = (capacite - etat) / eta if eta > 0 else 0.0
+            else:
+                # CALX268 — la charge s'arrête à l'état de charge VISÉ.
+                place = max(0.0, cible - etat) / eta if eta > 0 else 0.0
             entree = min(surplus, p_charge * pas, place)
             etat += entree * eta
             total_charge += entree
@@ -429,15 +555,21 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
 
         # ── décharge ─────────────────────────────────────────────────────
         besoin = deficit
+        plancher_du_pas = plancher
         if strategie == 'peak_shaving':
             # On n'efface QUE la part du soutirage au-dessus du seuil saisi.
             besoin = max(0.0, deficit - seuil * pas)
         elif strategie == 'decalage':
-            besoin = deficit if heure in heures_decharge else 0.0
+            fenetre = _fenetre_de(fenetres_decharge, heure)
+            besoin = deficit if fenetre is not None else 0.0
+            if fenetre is not None and fenetre['soc_cible_pct'] is not None:
+                # CALX268 — la décharge ne descend pas sous l'état VISÉ.
+                plancher_du_pas = max(
+                    plancher, capacite * fenetre['soc_cible_pct'] / 100.0)
 
         sortie = 0.0
         if besoin > 0:
-            disponible = max(0.0, etat - plancher) * eta
+            disponible = max(0.0, etat - plancher_du_pas) * eta
             sortie = min(besoin, p_decharge * pas, disponible)
             etat -= (sortie / eta) if eta > 0 else 0.0
             total_decharge += sortie
@@ -502,6 +634,9 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             else None,
             'heures_decharge': (sorted(heures_decharge)
                                 if strategie == 'decalage' else None),
+            'fenetres': ({'charge': _publier_fenetres(fenetres_charge),
+                          'decharge': _publier_fenetres(fenetres_decharge)}
+                         if strategie == 'decalage' else None),
             'reserve_backup_kwh': reserve if strategie == 'backup' else None,
         },
     }

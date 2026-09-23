@@ -81,6 +81,7 @@
             "seuil_effacement_kw": null,
             "heures_charge": null,
             "heures_decharge": null,
+            "fenetres": null,
             "reserve_backup_kwh": null
           }
         }
@@ -120,6 +121,7 @@
             "seuil_effacement_kw": null,
             "heures_charge": null,
             "heures_decharge": null,
+            "fenetres": null,
             "reserve_backup_kwh": null
           }
         }
@@ -155,6 +157,7 @@
         "seuil_effacement_kw": null,
         "heures_charge": null,
         "heures_decharge": null,
+        "fenetres": null,
         "reserve_backup_kwh": null
       }
     },
