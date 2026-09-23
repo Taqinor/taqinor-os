@@ -172,9 +172,15 @@ MANQUE_IMAGES_DIAGRAMME = {
                  "diagramme.",
 }
 MOTIF_SANS_DIAGRAMME = (
-    "Aucune image déposée : le diagramme de pertes est capturé par le "
-    "navigateur puis déposé par POST image-document, et rien n'a encore "
-    "été joint.")
+    "Aucune cascade de pertes calculée : le diagramme est rendu par le "
+    "serveur depuis le résultat de simulation, et il n'existe pas encore.")
+
+#: CALX308 — le vrai manque du diagramme : la cascade du résultat.
+MANQUE_CASCADE_DIAGRAMME = {
+    'champ': 'cascade',
+    'libelle': 'Cascade de pertes du résultat de simulation',
+    'ou_saisir': "Lancer la simulation depuis l'onglet Production.",
+}
 
 #: ``code -> (libellé, format, chemin sous le calepinage, produit_par)`` —
 #: l'ORDRE et les LIBELLÉS sont ceux du contrat committé.
@@ -270,7 +276,13 @@ def _etat_du_document(code, calepinage, resultat):
     if code == 'dossier_fin_chantier':
         return False, MOTIF_SANS_DOSSIER, [MANQUE_IMAGES_DOSSIER]
     if code == 'diagramme_pertes':
-        return False, MOTIF_SANS_DIAGRAMME, [MANQUE_IMAGES_DIAGRAMME]
+        # CALX308 (clôture M4) — le diagramme est rendu CÔTÉ SERVEUR depuis
+        # ``resultat['cascade']`` (route GET diagramme-pertes.svg/) : sa
+        # disponibilité suit la cascade, plus une image déposée. L'image
+        # navigateur (genre ``sankey``) reste une pièce jointe facultative.
+        if valeur_au_chemin(resultat, 'cascade')[0]:
+            return True, None, []
+        return False, MOTIF_SANS_DIAGRAMME, [MANQUE_CASCADE_DIAGRAMME]
 
     # export_projet_json / manuel_proprietaire / presentation_compacte : la
     # BASE (conception+résultat) suffit — aucun service dédié n'existe

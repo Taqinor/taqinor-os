@@ -55,9 +55,17 @@ def rapport_etude_pdf(self, request, pk=None):
 
     calepinage = self.get_object()  # borné société par get_queryset
     langue = request.query_params.get('langue')
+    # CALX307 (clôture M4) — la sélection de sections de la SOCIÉTÉ
+    # s'applique au rendu : ``None`` = toutes les sections, le rapport
+    # d'aujourd'hui octet pour octet ; un réglage invalide est REFUSÉ en
+    # nommant ``sections`` (RapportRefuse, attrapé ci-dessous).
+    from ..selectors import parametres_de_societe
+    from ..services.rapport.sections_societe import sections_retenues
     try:
-        octets = rendre_rapport(calepinage, company=calepinage.company,
-                                langue=langue)
+        octets = rendre_rapport(
+            calepinage, company=calepinage.company, langue=langue,
+            sections=sections_retenues(
+                parametres_de_societe(calepinage.company)))
     except RapportRefuse as refus:
         return Response({refus.champ or 'resultat': str(refus)},
                         status=status.HTTP_400_BAD_REQUEST)

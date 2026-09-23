@@ -128,7 +128,21 @@ class FauxCablageTrace:
         return self.titre
 
 
-class InventaireVideTest(unittest.TestCase):
+class SansBaseMixin:
+    """Clôture M4 — ``_versions_pour`` (CALX322) ET ``_images_pour``
+    (CALX302) lisent ``records.Attachment`` en BASE : les essais PURS de ce
+    fichier les doublent par ``[]`` (le contenu de ``versions[]``/``images[]``
+    appartient aux essais EnBase, pas à ceux-ci)."""
+
+    def setUp(self):
+        for cible in ('apps.calepinage.services.documents._versions_pour',
+                      'apps.calepinage.services.documents._images_pour'):
+            patcheur = mock.patch(cible, return_value=[])
+            patcheur.start()
+            self.addCleanup(patcheur.stop)
+
+
+class InventaireVideTest(SansBaseMixin, unittest.TestCase):
     """Un calepinage nu sert EXACTEMENT ``exemple_vide`` (essai PUR)."""
 
     def test_neuf_codes_dans_l_ordre_du_contrat(self):
@@ -165,7 +179,7 @@ class InventaireVideTest(unittest.TestCase):
             self.assertEqual(document['manque'][0]['champ'], 'roof_layout')
 
 
-class InventaireEtatIntermediaireTest(unittest.TestCase):
+class InventaireEtatIntermediaireTest(SansBaseMixin, unittest.TestCase):
     """Conception seule, sans résultat : le champ nommé devient ``resultat``
     (essai PUR — ``company=None`` évite tout accès DB de résolution de
     langue)."""
@@ -198,11 +212,7 @@ class ChampReellementLeveTest(unittest.TestCase):
     essai PUR échouerait au premier accès base."""
 
     def setUp(self):
-        patcheur = mock.patch(
-            'apps.calepinage.services.documents._versions_pour',
-            return_value=[])
-        patcheur.start()
-        self.addCleanup(patcheur.stop)
+        SansBaseMixin.setUp(self)
         self.servi = inventaire_des_documents(FauxResultatCoute())
         self.par_code = {d['code']: d for d in self.servi['documents']}
 
@@ -231,6 +241,8 @@ class ChampReellementLeveTest(unittest.TestCase):
         présence ne doit PAS exiger ``[]``."""
         with mock.patch(
                 'apps.calepinage.services.documents._versions_pour',
+                return_value=[]),                 mock.patch(
+                'apps.calepinage.services.documents._images_pour',
                 return_value=[]):
             servi = inventaire_des_documents(FauxCablageTrace())
         document = next(d for d in servi['documents']
@@ -248,13 +260,20 @@ class ChampReellementLeveTest(unittest.TestCase):
             self.assertEqual(self.par_code[code]['manque'], [])
 
     def test_les_pieces_a_preuve_terrain_restent_indisponibles(self):
-        """Aucune preuve terrain ne peut exister : la porte de dépôt
-        d'image (CALX302) n'est pas encore posée dans ce dépôt."""
-        for code in ('document_asbuilt', 'dossier_fin_chantier',
-                     'diagramme_pertes'):
+        """Aucune preuve terrain déposée sur ce fixture : as-built et
+        dossier de fin de chantier attendent leurs images (CALX302)."""
+        for code in ('document_asbuilt', 'dossier_fin_chantier'):
             self.assertFalse(self.par_code[code]['disponible'], code)
             self.assertEqual(self.par_code[code]['manque'][0]['champ'],
                              'images')
+
+    def test_diagramme_de_pertes_suit_la_cascade_du_resultat(self):
+        """Clôture M4 — le diagramme est rendu CÔTÉ SERVEUR depuis
+        ``resultat['cascade']`` (CALX308) : sans cascade il est
+        indisponible en NOMMANT ``cascade``, jamais une image."""
+        document = self.par_code['diagramme_pertes']
+        self.assertFalse(document['disponible'])
+        self.assertEqual(document['manque'][0]['champ'], 'cascade')
 
 
 class SortiesInchangeTest(unittest.TestCase):

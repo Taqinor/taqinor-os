@@ -34,6 +34,10 @@ SECTIONS_PARAMETRES = (
     # CALX145 — seuils électriques de la société (polystring, déséquilibre,
     # DC/AC, nomenclature, cos φ). Section vide = aucun verdict rendu.
     'electrique_societe',
+    # CALX307 — configuration DOCUMENTAIRE par code de document (sections du
+    # rapport retenues par la société). Section vide = tous les rapports
+    # complets, le comportement d'aujourd'hui octet pour octet.
+    'documents',
 )
 
 #: CAL246 — clés DÉRIVÉES publiées par ``GET /parametres/`` mais JAMAIS écrites :
