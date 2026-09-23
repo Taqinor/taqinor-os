@@ -243,6 +243,36 @@ class TariffSettings(models.Model):
         null=True, blank=True,
         verbose_name='Date de la source des tarifs horaires')
 
+    # ── CALX276 — mécanisme de compensation du surplus, TYPÉ et SAISI ──
+    # Vide par défaut : le surplus n'est pas valorisé (``tariff.
+    # MOTIF_MECANISME_NON_SAISI``). Le tarif de rachat reste
+    # ``surplus_prix_kwh_ttc`` — 0 (son défaut) = non saisi, jamais supposé.
+    # Les clés sont celles de ``apps.parametres.tariff.MECANISMES_COMPENSATION``
+    # (un test verrouille l'égalité).
+    MECANISMES_COMPENSATION_CHOICES = [
+        ('injection_totale', 'Injection totale (toute la production vendue)'),
+        ('surplus', 'Surplus (autoconsommation + vente du surplus)'),
+        ('net_metering_report', 'Net-metering avec report de crédit'),
+    ]
+    mecanisme_compensation = models.CharField(
+        max_length=24, blank=True, default='',
+        choices=MECANISMES_COMPENSATION_CHOICES,
+        verbose_name='Mécanisme de compensation du surplus',
+        help_text="Vide = le surplus injecté n'est pas valorisé. À choisir "
+                  "selon votre contrat de raccordement.")
+    report_periode = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Période de report du crédit (mois)',
+        help_text="Net-metering avec report : pendant combien de mois un "
+                  "crédit d'énergie reste reportable.")
+    plafond_annuel_kwh = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond annuel d’énergie compensée (kWh)')
+    ratio_compensation = models.DecimalField(
+        max_digits=5, decimal_places=4, null=True, blank=True,
+        verbose_name='Ratio de compensation (0 à 1)',
+        help_text="1 = un kWh injecté compense un kWh soutiré.")
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

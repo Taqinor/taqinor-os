@@ -52,6 +52,11 @@ from core.product_roles import (
 # seulement, ni Django ni modèle — l'import de tête reste sûr, comme ci-dessus).
 from apps.parametres.tariff import MOTIF_TOU_NON_SAISI as _MOTIF_TOU_NON_SAISI
 from apps.parametres.tariff import saison_du_mois as _saison_du_mois
+from apps.parametres.tariff import (  # CALX276 — une rédaction, une liste
+    MECANISMES_COMPENSATION,
+    MOTIF_MECANISME_NON_SAISI,
+    MOTIF_TARIF_RACHAT_ABSENT,
+)
 
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
@@ -2851,6 +2856,215 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         "hypotheses": hypotheses,
         "warnings": warnings,
     }
+
+
+# ── CALX276 — Mécanisme de compensation du surplus, TYPÉ ──────────────────────
+# Trois mécanismes SAISIS par la société (``apps.parametres.tariff.
+# MECANISMES_COMPENSATION``), au pas MENSUEL :
+#
+#   * ``injection_totale`` — toute la production est vendue au tarif de
+#     rachat ; AUCUNE autoconsommation n'est valorisée (« Buy All, Sell All »).
+#   * ``surplus`` — l'autoconsommation efface la facture (valorisée par le
+#     modèle « deux factures », hors d'ici) et seul le SURPLUS injecté est
+#     vendu au tarif de rachat (« Net Billing »).
+#   * ``net_metering_report`` — le kWh injecté efface un kWh soutiré ; le
+#     crédit d'un mois excédentaire est REPORTÉ sur les mois suivants, dans une
+#     fenêtre de ``report_periode`` mois, au terme de laquelle le SOLDE est
+#     publié (et valorisé au tarif de rachat s'il est saisi, sinon omis).
+#
+# Aucun tarif par défaut : sans tarif de rachat saisi, la vente est OMISE avec
+# ``MOTIF_TARIF_RACHAT_ABSENT`` (la loi 82-21 n'en publie aucun) ; sans tarif
+# de soutirage fourni, l'économie du net-metering est omise elle aussi.
+
+
+def _serie_mensuelle(valeurs):
+    """Série mensuelle (kWh) : illisible/négatif → 0, jamais d'exception."""
+    return _coerce_series(valeurs)
+
+
+def compensation_surplus(*, mecanisme=None, injection_kwh_mois=None,
+                         import_kwh_mois=None, production_kwh_mois=None,
+                         tarif_rachat_mad_kwh=None, tarif_import_mad_kwh=None,
+                         report_periode=None, plafond_annuel_kwh=None,
+                         ratio_compensation=None):
+    """CALX276 — valorise le surplus selon le mécanisme SAISI par la société.
+
+    Paramètres (tous au pas mensuel, kWh) : ``injection_kwh_mois`` (surplus
+    injecté), ``import_kwh_mois`` (soutirage), ``production_kwh_mois``
+    (production totale — requise par ``injection_totale``). Les réglages
+    viennent de ``apps.parametres.tariff.mecanisme_depuis_reglages``.
+
+    Rend ``{mecanisme, mois: [...], vendu_kwh, compense_kwh,
+    autoconsommation_valorisee, autoconsommation_valorisee_kwh,
+    soldes_fin_periode: [{periode, fin_mois, solde_kwh, valeur_mad}],
+    solde_fin_periode_kwh, vente_mad, economie_surplus_mad, motif,
+    omissions, hypotheses}``. ``economie_surplus_mad`` est ``None`` — avec son
+    ``motif`` — dès qu'un réglage manque ; jamais 0 par défaut. Ne lève jamais.
+    """
+    omissions = []
+    hypotheses = []
+    resultat = {
+        "mecanisme": None, "mois": [], "vendu_kwh": 0.0, "compense_kwh": 0.0,
+        "autoconsommation_valorisee": None,
+        "autoconsommation_valorisee_kwh": None,
+        "soldes_fin_periode": [], "solde_fin_periode_kwh": None,
+        "vente_mad": None, "economie_surplus_mad": None, "motif": None,
+        "omissions": omissions, "hypotheses": hypotheses,
+    }
+    meca = mecanisme.strip() if isinstance(mecanisme, str) else ""
+    if meca not in MECANISMES_COMPENSATION:
+        resultat["motif"] = (
+            MOTIF_MECANISME_NON_SAISI if not meca else
+            f"omis : mécanisme de compensation « {meca} » inconnu "
+            "(mecanisme_compensation)")
+        omissions.append({"cle": "mecanisme_compensation",
+                          "motif": resultat["motif"]})
+        return resultat
+    resultat["mecanisme"] = meca
+
+    def _positif_ou_none(valeur):
+        try:
+            v = float(valeur)
+        except (TypeError, ValueError):
+            return None
+        return v if v == v and v >= 0 else None
+
+    ratio = _positif_ou_none(ratio_compensation)
+    if ratio is None:
+        ratio = 1.0
+        hypotheses.append({
+            "cle": "ratio_compensation", "valeur": 1.0,
+            "source": ("non saisi — compensation kWh pour kWh, la définition "
+                       "même du mécanisme (aucun abattement supposé)")})
+    ratio = min(ratio, 1.0)
+    plafond = _positif_ou_none(plafond_annuel_kwh)
+    tarif_rachat = _positif_ou_none(tarif_rachat_mad_kwh)
+    if tarif_rachat is not None and tarif_rachat <= 0:
+        tarif_rachat = None
+    tarif_import = _positif_ou_none(tarif_import_mad_kwh)
+
+    injection = _serie_mensuelle(injection_kwh_mois)
+    soutirage = _serie_mensuelle(import_kwh_mois)
+    production = _serie_mensuelle(production_kwh_mois)
+
+    def _borne_annuelle(kwh):
+        if plafond is None:
+            return kwh
+        return min(kwh, plafond)
+
+    def _vente(kwh):
+        if tarif_rachat is None:
+            if MOTIF_TARIF_RACHAT_ABSENT not in [o["motif"] for o in omissions]:
+                omissions.append({"cle": "tarif_rachat_mad_kwh",
+                                  "motif": MOTIF_TARIF_RACHAT_ABSENT})
+            return None
+        return round(kwh * tarif_rachat, 2)
+
+    if meca in ("injection_totale", "surplus"):
+        if meca == "injection_totale":
+            base = production
+            resultat["autoconsommation_valorisee"] = False
+            resultat["autoconsommation_valorisee_kwh"] = 0.0
+            if not production_kwh_mois:
+                omissions.append({
+                    "cle": "production_kwh_mois",
+                    "motif": ("omis : l'injection totale vend TOUTE la "
+                              "production — production mensuelle non "
+                              "fournie (production_kwh_mois)")})
+                resultat["motif"] = omissions[-1]["motif"]
+                return resultat
+        else:
+            base = injection
+            resultat["autoconsommation_valorisee"] = True
+        vendu = _borne_annuelle(sum(base) * ratio)
+        resultat["mois"] = [{"mois": i + 1, "vendu_kwh": round(v * ratio, 3)}
+                            for i, v in enumerate(base)]
+        resultat["vendu_kwh"] = round(vendu, 3)
+        resultat["vente_mad"] = _vente(vendu)
+        resultat["economie_surplus_mad"] = resultat["vente_mad"]
+        if resultat["vente_mad"] is None:
+            resultat["motif"] = MOTIF_TARIF_RACHAT_ABSENT
+        return resultat
+
+    # ── net_metering_report : compensation mensuelle + report du crédit ──
+    resultat["autoconsommation_valorisee"] = True
+    try:
+        periode = int(report_periode)
+    except (TypeError, ValueError):
+        periode = 0
+    if periode < 1:
+        motif = ("omis : le net-metering avec report exige la période de "
+                 "report saisie (report_periode, en mois)")
+        omissions.append({"cle": "report_periode", "motif": motif})
+        resultat["motif"] = motif
+        return resultat
+
+    n_mois = max(len(injection), len(soutirage))
+    credit = 0.0
+    compense_total = 0.0
+    reste_plafond = plafond
+    lignes = []
+    soldes = []
+
+    def _clore(numero_periode, fin_mois, solde):
+        soldes.append({
+            "periode": numero_periode, "fin_mois": fin_mois,
+            "solde_kwh": round(solde, 3),
+            "valeur_mad": (None if tarif_rachat is None
+                           else round(solde * tarif_rachat, 2)),
+        })
+
+    for i in range(n_mois):
+        if i and i % periode == 0:
+            _clore(i // periode, i, credit)   # fin de fenêtre : solde publié
+            credit = 0.0
+        if i and i % 12 == 0 and plafond is not None:
+            reste_plafond = plafond             # plafond ANNUEL : nouvel an
+        inj = injection[i] if i < len(injection) else 0.0
+        imp = soutirage[i] if i < len(soutirage) else 0.0
+        genere = inj * ratio
+        credit_entrant = credit
+        direct = min(imp, genere)
+        depuis_credit = min(imp - direct, credit_entrant)
+        compense = direct + depuis_credit
+        if reste_plafond is not None:
+            compense_borne = min(compense, max(0.0, reste_plafond))
+            reste_plafond -= compense_borne
+            # Ce que le plafond refuse ne consomme pas de crédit reporté.
+            depuis_credit = max(0.0, depuis_credit - (compense - compense_borne))
+            direct = compense_borne - depuis_credit
+            compense = compense_borne
+        credit = credit_entrant - depuis_credit + (genere - direct)
+        compense_total += compense
+        lignes.append({
+            "mois": i + 1, "injection_kwh": round(inj, 3),
+            "import_kwh": round(imp, 3),
+            "credit_genere_kwh": round(genere, 3),
+            "credit_entrant_kwh": round(credit_entrant, 3),
+            "credit_consomme_kwh": round(depuis_credit, 3),
+            "compense_kwh": round(compense, 3),
+            "credit_reporte_kwh": round(credit, 3),
+        })
+    if n_mois:
+        _clore((n_mois - 1) // periode + 1, n_mois, credit)
+
+    resultat["mois"] = lignes
+    resultat["compense_kwh"] = round(compense_total, 3)
+    resultat["soldes_fin_periode"] = soldes
+    resultat["solde_fin_periode_kwh"] = soldes[-1]["solde_kwh"] if soldes \
+        else 0.0
+    if tarif_rachat is None and soldes and soldes[-1]["solde_kwh"] > 0:
+        omissions.append({"cle": "tarif_rachat_mad_kwh",
+                          "motif": MOTIF_TARIF_RACHAT_ABSENT})
+    if tarif_import is None:
+        motif = ("omis : le kWh compensé efface un kWh soutiré — tarif de "
+                 "soutirage non fourni (tarif_import_mad_kwh)")
+        omissions.append({"cle": "tarif_import_mad_kwh", "motif": motif})
+        resultat["motif"] = motif
+    else:
+        resultat["economie_surplus_mad"] = round(
+            compense_total * tarif_import, 2)
+    return resultat
 
 
 # ── FG260 — Escalade tarifaire ONEE sur 20–25 ans + VAN/TRI ──────────────────

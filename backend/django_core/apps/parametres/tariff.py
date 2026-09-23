@@ -552,6 +552,112 @@ def tou_depuis_reglages(reglages):
     }
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# CALX276 — MÉCANISME DE COMPENSATION DU SURPLUS, TYPÉ ET SAISI
+# ═════════════════════════════════════════════════════════════════════════════
+# Avant : un booléen ``surplus_injecte_compense`` + un ``surplus_prix_kwh_ttc`` ;
+# le report de crédit, le plafond et le ratio n'existaient qu'en ARGUMENTS de
+# ``solar_design.net_metering_savings`` — jamais persistés, jamais traçables.
+# Désormais le mécanisme est un réglage société TYPÉ (vide par défaut), avec
+# ses paramètres. Le TARIF DE RACHAT est ``surplus_prix_kwh_ttc`` : tant qu'il
+# vaut 0 (son défaut) il est « non saisi » — la loi 82-21 n'a publié AUCUN
+# tarif d'injection, et le service publie alors :data:`MOTIF_TARIF_RACHAT_ABSENT`
+# au lieu d'une valeur. Le défaut de 0,04 $/kWh documenté par OpenSolar n'est
+# PAS repris (aucune source marocaine).
+
+#: Les trois mécanismes admis (OpenSolar « Buy All, Sell All » / « Net
+#: Billing » / « Net Energy Metering with credit carryover » ; PV*SOL :
+#: injection totale / surplus / net metering avec report).
+MECANISMES_COMPENSATION = ('injection_totale', 'surplus', 'net_metering_report')
+
+#: Mécanisme non saisi : le surplus n'est PAS valorisé (ni 0, ni supposé).
+MOTIF_MECANISME_NON_SAISI = (
+    "omis : aucun mécanisme de compensation du surplus saisi par la société "
+    "(mecanisme_compensation, Paramètres → Tarification & ROI) — le surplus "
+    "n'est pas valorisé")
+
+#: Tarif de rachat non saisi (loi 82-21 : aucun tarif d'injection publié).
+MOTIF_TARIF_RACHAT_ABSENT = (
+    "omis : aucun tarif d'injection publié, aucun tarif saisi par la société "
+    "(surplus_prix_kwh_ttc)")
+
+
+def _entier_positif(valeur):
+    """Entier ≥ 1 lu dans ``valeur``, ou ``None``."""
+    if isinstance(valeur, bool):
+        return None
+    try:
+        n = int(Decimal(str(valeur).strip()))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return n if n >= 1 else None
+
+
+def erreurs_compensation(mecanisme, report_periode, plafond_annuel_kwh,
+                         ratio_compensation):
+    """Refus du mécanisme de compensation, ``{champ: message}`` (vide = valide).
+
+    Mécanisme vide ⇒ aucune erreur (rien n'est valorisé). ``net_metering_report``
+    exige ``report_periode`` (mois ≥ 1) ; plafond ≥ 0 ; ratio dans [0, 1].
+    """
+    erreurs = {}
+    meca = (mecanisme or '').strip() if isinstance(mecanisme, str) else ''
+    if meca and meca not in MECANISMES_COMPENSATION:
+        erreurs['mecanisme_compensation'] = (
+            f"mecanisme_compensation : « {meca} » inconnu — mécanismes admis : "
+            f"{', '.join(MECANISMES_COMPENSATION)}.")
+    if meca == 'net_metering_report' and _entier_positif(report_periode) is None:
+        erreurs['report_periode'] = (
+            "report_periode : obligatoire pour le net-metering avec report — "
+            "durée (en mois, ≥ 1) pendant laquelle un crédit reste reportable.")
+    elif not _vide(report_periode) and _entier_positif(report_periode) is None:
+        erreurs['report_periode'] = (
+            "report_periode : un nombre entier de mois ≥ 1 est attendu.")
+    if not _vide(plafond_annuel_kwh) and _nombre_positif(
+            plafond_annuel_kwh) is None:
+        erreurs['plafond_annuel_kwh'] = (
+            "plafond_annuel_kwh : un nombre de kWh ≥ 0 est attendu.")
+    if not _vide(ratio_compensation):
+        ratio = _nombre_positif(ratio_compensation)
+        if ratio is None or ratio > 1:
+            erreurs['ratio_compensation'] = (
+                "ratio_compensation : une fraction entre 0 et 1 est attendue "
+                "(1 = un kWh injecté compense un kWh soutiré).")
+    return erreurs
+
+
+def mecanisme_depuis_reglages(reglages):
+    """Mécanisme de compensation SAISI par la société, ou ``None``.
+
+    ``None`` tant que ``mecanisme_compensation`` est vide ou invalide : le
+    surplus est alors OMIS avec :data:`MOTIF_MECANISME_NON_SAISI`. Sinon ::
+
+        {'mecanisme': str, 'report_periode': int | None,
+         'plafond_annuel_kwh': float | None, 'ratio_compensation': float | None,
+         'tarif_rachat_mad_kwh': float | None}   # None = non saisi (0)
+    """
+    if reglages is None:
+        return None
+    meca = getattr(reglages, 'mecanisme_compensation', '') or ''
+    champs = (meca, getattr(reglages, 'report_periode', None),
+              getattr(reglages, 'plafond_annuel_kwh', None),
+              getattr(reglages, 'ratio_compensation', None))
+    if not meca or erreurs_compensation(*champs):
+        return None
+    plafond = _nombre_positif(champs[2]) if not _vide(champs[2]) else None
+    ratio = _nombre_positif(champs[3]) if not _vide(champs[3]) else None
+    rachat = _nombre_positif(getattr(reglages, 'surplus_prix_kwh_ttc', None))
+    return {
+        'mecanisme': meca,
+        'report_periode': (_entier_positif(champs[1])
+                           if not _vide(champs[1]) else None),
+        'plafond_annuel_kwh': float(plafond) if plafond is not None else None,
+        'ratio_compensation': float(ratio) if ratio is not None else None,
+        'tarif_rachat_mad_kwh': (float(rachat) if rachat is not None
+                                 and rachat > 0 else None),
+    }
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -562,4 +668,9 @@ def erreurs_reglages_tarif(reglages):
     erreurs = {}
     erreurs.update(erreurs_tou(
         *(getattr(reglages, champ, None) for champ in CHAMPS_TOU)))
+    erreurs.update(erreurs_compensation(
+        getattr(reglages, 'mecanisme_compensation', ''),
+        getattr(reglages, 'report_periode', None),
+        getattr(reglages, 'plafond_annuel_kwh', None),
+        getattr(reglages, 'ratio_compensation', None)))
     return erreurs
