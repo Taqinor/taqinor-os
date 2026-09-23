@@ -189,3 +189,164 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
   await page.goto(`/calepinage/${calepinageId}/pente`)
   await expect(page.getByTestId('cal-pente')).toBeVisible()
 })
+
+// CALX130 — LE PARCOURS ENRICHI DU LOT 2, DE BOUT EN BOUT.
+//
+// POURQUOI CETTE SPEC EXISTE. Les gestes ajoutés par le lot 2 (angles droits CALX89,
+// insertion de sommet CALX91, obstacle polygonal CALX103, cible d'optimisation CALX114,
+// course du soleil CALX118) avaient chacun leur vitest, mais aucune traversée COMPLÈTE ne
+// prouvait qu'un utilisateur réel les enchaîne sur le MÊME calepinage, les enregistre, et
+// les retrouve intacts à la réouverture — exactement le piège que PACT10 nomme (l'écran AO
+// du 03/08/2026, 0 clé sur 6 concordante, faute d'un contrat/parcours vérifié de bout en bout).
+//
+// DEUX GESTES DU LOT NE SONT PAS JOUÉS ICI, ET C'EST DIT PLUTÔT QUE CACHÉ. « Corriger le
+// type d'une arête » (CALX94) et « choisir un module du stock » (CALX109) ouvrent chacun un
+// panneau ancré sur `ctx.dom.areasWindowEl` (`apps/web/src/scripts/roofPro11/edgesUi.ts:249`,
+// `.../zones.ts:691-692`), lui-même lu depuis `#rp9-areas-window`
+// (`apps/web/src/scripts/roof-tool-pro11.ts:354-357`, commentaire du module : « facultatifs,
+// le harness jsdom ne les fournit pas »). Cet id n'existe QUE dans la page de démonstration
+// `apps/web/src/pages/preview/toiture-3d-pro-11.astro:739` — recherche exhaustive vérifiée
+// sur `frontend/` (aucune occurrence de `rp9-areas-window` NI de son repli `rp9-edges-host`) :
+// la page RÉELLE `pages/ventes/ToitureDesign.jsx`, servie par `/calepinage/:id` comme par
+// `/devis-design/:id`, ne rend NULLE PART ce conteneur. Un clic sur ces deux panneaux
+// timeout-erait donc sur un élément introuvable dans l'atelier tel qu'il est livré
+// aujourd'hui, pas sur un vrai refus produit — ce n'est PAS ce que cette spec doit prouver.
+// C'est un écart d'intégration ANTÉRIEUR à cette tâche (CALX109 listait pourtant
+// `ToitureDesign.jsx` parmi ses fichiers) et hors du fichier unique de cette lane :
+// `[BLOCKED: ToitureDesign.jsx ne rend aucun conteneur #rp9-areas-window ni #rp9-edges-host
+// — il faut lui ajouter ce conteneur pour que edgesUi.ts/zones.ts s'y accrochent, hors
+// périmètre de frontend/e2e/calepinage-parcours.spec.js]` — crochet pour une tâche de phase 2.
+test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’optimisation, course du soleil — relus à l’identique', async ({ page }) => {
+  // ── 0. Un lead FRAIS, un calepinage FRAIS créé depuis lui (même patron que CAL221) ──
+  await gotoLeads(page)
+  const nomLead = await createLead(page, {
+    nom: uniq('CALX130 Lead'), facture: 900, ville: 'Casablanca',
+  })
+
+  await page.goto('/calepinage/nouveau')
+  await expect(page.getByRole('heading', { name: 'Nouveau calepinage' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Lead' }).click()
+  await page.locator('#cal-nouveau-lead').getByRole('combobox').click()
+  await page.getByRole('searchbox').fill(nomLead)
+  await page.getByRole('option', { name: new RegExp(nomLead) }).first().click()
+  await page.locator('#cal-nouveau-nom').fill(uniq('CALX130 Toiture'))
+  await page.getByRole('button', { name: 'Créer le calepinage' }).click()
+
+  await expect(page).toHaveURL(/\/calepinage\/\d+/)
+  const calepinageId = idDansUrl(page.url())
+  expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
+
+  // ── 1. LA CARTE ──────────────────────────────────────────────────────────
+  const map = page.locator('#rp9-map')
+  await expect(map).toBeVisible({ timeout: 20_000 })
+  const box = await map.boundingBox()
+  expect(box, 'le canvas de la carte doit avoir une taille').toBeTruthy()
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+
+  // ── 2. CALX89 — ANGLES DROITS, armés AVANT le tracé (puce créée par le
+  // constructeur lui-même, `mapDraw.ts ensureAngleChip`, éteinte par défaut). ──
+  const angleChip = page.locator('#rp9-snap-angle')
+  await expect(angleChip).toBeVisible()
+  await angleChip.click()
+  await expect(angleChip).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('#rp9-status')).toContainText('Angles droits', { timeout: 5_000 })
+
+  // ── 3. TRACER un rectangle À LA SOURIS. Même chemin que le tap tactile
+  // (CAL107 : « le `click` de MapLibre est synthétisé après un tap sans glissé —
+  // même chemin que l'ajout d'un sommet de tracé ») : on rejoue exactement le
+  // patron de `calepinage_tactile.spec.js`, souris au lieu du doigt. ──────────
+  const corners = [
+    { x: cx - 110, y: cy - 75 },
+    { x: cx + 110, y: cy - 75 },
+    { x: cx + 110, y: cy + 75 },
+    { x: cx - 110, y: cy + 75 },
+  ]
+  const undoPoint = page.locator('#rp9-undo-point')
+  for (const pt of corners) {
+    await page.mouse.click(pt.x, pt.y)
+    await expect(undoPoint).toBeEnabled({ timeout: 10_000 })
+    // Fenêtre anti-double-clic (W77, 240 ms) laissée s'écouler avant le coin
+    // suivant, sinon deux clics rapprochés seraient lus comme UN double-clic.
+    await page.waitForFunction(
+      (since) => Date.now() - since >= 260, Date.now(), { polling: 50 },
+    )
+  }
+  const finishBtn = page.locator('#rp9-finish')
+  await expect(finishBtn).toBeEnabled({ timeout: 10_000 })
+  await finishBtn.click()
+  await expect(page.locator('#rp9-config')).toBeVisible({ timeout: 10_000 })
+
+  // ── 4. CALX91 — INSÉRER UN SOMMET au milieu du premier côté : double-clic
+  // sur l'arête (projeté orthogonal, `obstaclesUi.ts insererSommetAu`), actif
+  // uniquement une fois le contour fermé. ──────────────────────────────────
+  const milieuArete = { x: (corners[0].x + corners[1].x) / 2, y: (corners[0].y + corners[1].y) / 2 }
+  await page.mouse.dblclick(milieuArete.x, milieuArete.y)
+  await expect(page.locator('#rp9-status')).toContainText('Sommet inséré', { timeout: 5_000 })
+
+  // ── 5. CALX103 — POSER UN OBSTACLE POLYGONAL : clics successifs, double-clic
+  // pour fermer (même geste que le tracé du toit, même garde `isSimplePolygon`). ──
+  const polyBtn = page.locator('#rp9-obs-polygone')
+  await expect(polyBtn).toBeVisible()
+  await polyBtn.click()
+  await expect(polyBtn).toHaveAttribute('aria-pressed', 'true')
+  const obsPts = [
+    { x: cx - 25, y: cy - 18 },
+    { x: cx + 25, y: cy - 18 },
+    { x: cx, y: cy + 18 },
+  ]
+  for (const pt of obsPts) {
+    await page.mouse.click(pt.x, pt.y)
+  }
+  await page.mouse.dblclick(obsPts[2].x, obsPts[2].y)
+  await expect(page.locator('#rp9-obs-edit')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('#rp9-obs-dims')).toContainText('polygone', { timeout: 5_000 })
+
+  // ── 6. CALX114 — RÉGLER LA CIBLE D'OPTIMISATION : puce créée par le module
+  // (`matrix.ts renderCibleChips`), apparue dans `#rp9-results` dès la fermeture
+  // du tracé (toit plat par défaut → la matrice se peint tout de suite). ─────
+  const cibleChip = page.locator('[data-cible="compte"]')
+  await expect(cibleChip).toBeVisible({ timeout: 10_000 })
+  await expect(cibleChip).toHaveAttribute('aria-pressed', 'false')
+  await cibleChip.click()
+  await expect(cibleChip).toHaveAttribute('aria-pressed', 'true')
+
+  // ── 7. CALX118 — OUVRIR L'ONGLET COURSE DU SOLEIL (même patron que CALX1 :
+  // hook DOM `data-testid`, jamais un texte traduit). ─────────────────────
+  await page.getByTestId('cal-onglet-course-soleil').click()
+  await expect(page.getByTestId('cal-onglet-course-soleil')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+  await expect(page.getByTestId('cal-onglet-erreur')).toHaveCount(0)
+
+  // ── 8. ENREGISTRER le calepinage (CAL37, bouton unique posé par
+  // `AtelierPanneaux`, JAMAIS un statut ni un devis touché — règle #4). ─────
+  const enregistrer = page.getByRole('button', { name: 'Enregistrer le calepinage' })
+  await expect(enregistrer).toBeVisible()
+  await enregistrer.click()
+  await expect(page.getByTestId('cal-erreur-enregistrement')).toHaveCount(0, { timeout: 15_000 })
+  await expect(enregistrer).toBeEnabled({ timeout: 15_000 })
+
+  // ── 9. RELU À L'IDENTIQUE, PAR LE DOCUMENT SERVEUR — la preuve la plus
+  // stable : le document `roof_layout` enregistré porte la forme réelle de
+  // l'obstacle (CALX85/CALX103) et la cible saisie (CALX88/CALX114), sans
+  // dépendre du recentrage 3D de la caméra à la réouverture de l'écran. ─────
+  const detail = await page.request.get(`${API}/calepinages/${calepinageId}/`)
+  expect(detail.ok(), `GET calepinage (${detail.status()})`).toBeTruthy()
+  const layout = (await detail.json())?.roof_layout ?? {}
+  const zones = Array.isArray(layout.zones) ? layout.zones : []
+  const aUnObstaclePolygonal = zones.some(
+    (z) => Array.isArray(z.obstacles)
+      && z.obstacles.some((o) => o.forme === 'polygone' && Array.isArray(o.contour)),
+  )
+  expect(aUnObstaclePolygonal, 'l’obstacle polygonal doit survivre à l’enregistrement').toBeTruthy()
+  expect(layout.optimisation?.cible, 'la cible d’optimisation doit survivre à l’enregistrement').toBe('compte')
+
+  // ── 10. ROUVRIR LE CALEPINAGE — la cible reste affichée par l'ÉCRAN, cette
+  // fois par une VRAIE réhydratation (`prefill.ts semerOptimisationDepuisDocument`),
+  // pas seulement lue sur le document serveur. ─────────────────────────────
+  await page.goto(`/calepinage/${calepinageId}`)
+  await expect(page.locator('#rp9-config')).toBeVisible({ timeout: 20_000 })
+  const cibleChipRouverte = page.locator('[data-cible="compte"]')
+  await expect(cibleChipRouverte).toBeVisible({ timeout: 10_000 })
+  await expect(cibleChipRouverte).toHaveAttribute('aria-pressed', 'true')
+})
