@@ -24,7 +24,15 @@
     "phone": "",
     "placeholders_manquants": []
   },
+  "exemple_darija": {
+    "message": "السلام عليكم السي Aziz، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+    "wa_url": "https://wa.me/212651971400?text=%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%20%D8%B9%D9%84%D9%8A%D9%83%D9%85%20%D8%A7%D9%84%D8%B3%D9%8A%20Aziz%D8%8C%20%D8%AD%D8%A7%D9%88%D9%84%D8%AA%20%D9%86%D8%B9%D9%8A%D8%B7%20%D9%84%D9%8A%D9%83%D9%85%20%D9%88%D9%84%D9%83%D9%86%20%D9%85%D8%A7%20%D9%84%D9%82%D9%8A%D8%AA%D9%83%D9%85%D8%B4.",
+    "langue": "darija",
+    "phone": "+212651971400",
+    "placeholders_manquants": []
+  },
   "notes": {
+    "langue_choisie": "CAD63 — `?langue=fr|darija` (GET `message/`) et `langue` (corps du POST `whatsapp/`) rendent CE message dans la langue CHOISIE à l'aperçu, sans toucher la fiche : c'est le basculeur FR / Darija de la modale (`exemple` puis `exemple_darija` : la MÊME touche, les deux langues). Une autre valeur est refusée en 400 `{\"erreurs\": {\"langue\": …}}` qui NOMME le champ. La fiche ne change que par `POST .../langue/` (`{langue}`, réponse = la touche `relance_etape_v2`) ou par le champ `langue` du « Fait » (réponse « ne parle que darija »).",
     "post_whatsapp": "POST .../whatsapp/ → même corps + `etape` (objet `relance_etape_v2` remis à jour : statut « fait »).",
     "permissions": "`message` = lecture (rôle normal suffisant) ; `whatsapp` = `IsResponsableOrAdmin` (il ÉCRIT : touche faite, activité WHATSAPP, premier contact, AuditLog).",
     "placeholders": "{civilite} {nom} {prenom} {ville} {reference} {lien} {lien_rdv} {date_validite} {conseiller} — aucun chiffre (prix, kWc, économies) n'est un placeholder."

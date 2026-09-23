@@ -8,7 +8,7 @@
 // `relance_etape_v2.json` (le premier : canal appel, message_ouvert_le null ;
 // le second : canal whatsapp, message ouvert) — jamais un objet retapé.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
@@ -54,7 +54,9 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     monter({ ...ETAPE_MESSAGE, message_ouvert_le: null }, onFait)
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
-    fireEvent.click(screen.getByRole('checkbox'))
+    // CAD63 — le panneau porte aussi la case « ne parle que darija » : on
+    // coche CELLE de la confirmation RLC3, désignée par son conteneur.
+    fireEvent.click(within(screen.getByTestId('confirmer-sans-ouverture')).getByRole('checkbox'))
     const confirmer = screen.getByRole('button', { name: 'Confirmer' })
     expect(confirmer).not.toBeDisabled()
     fireEvent.click(confirmer)

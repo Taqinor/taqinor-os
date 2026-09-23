@@ -3409,11 +3409,31 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         CAD-A — ``reponse`` (clé de ``services.REPONSES_TOUCHE``, par exemple
         ``ne_plus_contacter``) remplace ``outcome`` : c'est la phrase du
-        client, et le serveur en dérive l'issue ET la suite."""
+        client, et le serveur en dérive l'issue ET la suite.
+
+        CAD63 — ``langue`` (facultatif, ``fr``/``darija``) : la réponse « ne
+        parle que darija » saisie SUR la touche pose ``Lead.langue_preferee``
+        une fois pour toutes — seulement si la touche a bien été enregistrée
+        (un refus 400 ne change rien). Une langue inconnue est refusée AVANT
+        tout, en 400 ``{"erreurs": {"langue": …}}``."""
+        from .services import definir_langue_preferee, refus_langue_relance
+        langue = (request.data.get('langue') or '').strip()
+        if langue:
+            refus = refus_langue_relance(langue)
+            if refus:
+                return Response({'erreurs': {'langue': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         reponse = (request.data.get('reponse') or '').strip()
         if reponse:
-            return self._repondre(request, reponse)
-        return self._marquer(request, RelanceEtape.Statut.FAIT)
+            resultat = self._repondre(request, reponse)
+        else:
+            resultat = self._marquer(request, RelanceEtape.Statut.FAIT)
+        if langue and resultat.status_code < 400:
+            # Relu par la MÊME portée que l'action (société + visibilité).
+            definir_langue_preferee(self.get_object().lead, request.user,
+                                    langue)
+            resultat.data['lead_langue'] = langue
+        return resultat
 
     @action(detail=True, methods=['post'])
     def sauter(self, request, pk=None):
@@ -3460,9 +3480,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CAD-A — ``?cle=`` (une de ``services.CLES_MESSAGE_REPONSE``) rend le
         texte de RÉPONSE convenu pour le client de cette touche (l'accusé
         « ne plus contacter », « je vous rappelle plus tard ») : même forme.
-        Une autre clé est refusée en 400 nommant le champ ``cle``."""
+        Une autre clé est refusée en 400 nommant le champ ``cle``.
+
+        CAD63 — ``?langue=fr|darija`` rend CE message dans la langue choisie
+        à l'aperçu, sans toucher la fiche (le basculeur FR / Darija). Une
+        autre valeur est refusée en 400 nommant le champ ``langue``."""
         etape = self.get_object()
-        from .services import CLES_MESSAGE_REPONSE, message_pour_etape
+        from .services import (
+            CLES_MESSAGE_REPONSE, message_pour_etape, refus_langue_relance)
         cle = (request.query_params.get('cle') or '').strip()
         if cle and cle not in CLES_MESSAGE_REPONSE:
             # Levée, jamais un second `return` : la forme du contrat
@@ -3471,8 +3496,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             raise DRFValidationError({'erreurs': {'cle': (
                 f'Texte de réponse inconnu : « {cle} ». Textes disponibles : '
                 + ', '.join(CLES_MESSAGE_REPONSE) + '.')}})
+        langue = (request.query_params.get('langue') or '').strip()
+        if langue and refus_langue_relance(langue):
+            raise DRFValidationError(
+                {'erreurs': {'langue': refus_langue_relance(langue)}})
         return Response(message_pour_etape(
-            etape, request=request, user=request.user, cle=cle or None))
+            etape, request=request, user=request.user, cle=cle or None,
+            langue=langue or None))
 
     @action(detail=True, methods=['post'])
     def whatsapp(self, request, pk=None):
@@ -3484,13 +3514,23 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         (MRY19) et la touche reste À FAIRE jusqu'à la réponse aux questions
         « Fait ». Refusé (400) si le numéro est inexploitable — prétendre
         avoir contacté quelqu'un qu'on ne peut pas joindre fausserait aussi
-        bien la file que le KPI."""
+        bien la file que le KPI.
+
+        CAD63 — ``langue`` (corps, facultatif) : la langue CHOISIE à l'aperçu,
+        pour que le rendu vérifié ici soit celui qui vient d'être ouvert."""
         etape = self.get_object()
         from .services import (
             journaliser_whatsapp_ouvert, marquer_premier_contact,
-            message_pour_etape,
+            message_pour_etape, refus_langue_relance,
         )
-        rendu = message_pour_etape(etape, request=request, user=request.user)
+        langue = (request.data.get('langue') or '').strip()
+        if langue and refus_langue_relance(langue):
+            # Levée (même motif que `message`) : la forme versionnée du
+            # contrat reste celle du rendu, sans `erreurs`.
+            raise DRFValidationError(
+                {'erreurs': {'langue': refus_langue_relance(langue)}})
+        rendu = message_pour_etape(etape, request=request, user=request.user,
+                                   langue=langue or None)
         if not rendu.get('wa_url'):
             return Response(
                 {'detail': 'Numéro de téléphone invalide.'},
@@ -3508,6 +3548,31 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 exc_info=True)
         rendu['etape'] = self.get_serializer(etape).data
         return Response(rendu)
+
+    @action(detail=True, methods=['post'])
+    def langue(self, request, pk=None):
+        """CAD63 — enregistre la langue du CLIENT de cette touche, en un geste.
+
+        Corps : ``{langue}`` (``fr`` | ``darija`` — le vocabulaire du champ
+        ``Lead.langue_preferee``). C'est la confirmation de l'aperçu : la
+        commerciale a basculé le message en darija au téléphone et coche
+        « c'est sa langue » — plus besoin de quitter la touche pour ouvrir la
+        fiche. Le changement est journalisé comme une édition de la fiche.
+
+        Réponse : la touche, forme `relance_etape_v2` (``lead_langue`` à
+        jour). Refus 400 ``{"erreurs": {"langue": …}}`` nommant le champ.
+        Écriture → garde ``IsResponsableOrAdmin`` par défaut de
+        ``get_permissions``."""
+        etape = self.get_object()
+        from .services import definir_langue_preferee, refus_langue_relance
+        langue = (request.data.get('langue') or '').strip()
+        refus = (refus_langue_relance(langue) if langue else
+                 '« Langue du client » : choisissez la langue à enregistrer.')
+        if refus:
+            return Response({'erreurs': {'langue': refus}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        definir_langue_preferee(etape.lead, request.user, langue)
+        return Response(self.get_serializer(etape).data)
 
     @action(detail=True, methods=['post'])
     def reporter(self, request, pk=None):

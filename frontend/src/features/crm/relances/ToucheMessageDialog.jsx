@@ -21,31 +21,82 @@ import {
   Button, Spinner,
 } from '../../../ui'
 
-export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent }) {
+// CAD63 — les deux langues qu'on peut CHOISIR au moment utile : celles du
+// champ `Lead.langue_preferee` (même paire que `DevisTab.jsx`). Jamais
+// l'anglais ni l'arabe classique : aucun texte de relance validé (CAD64).
+const LANGUES_MESSAGE = [['fr', 'FR'], ['darija', 'Darija']]
+const LIBELLE_LANGUE = { fr: 'le français', darija: 'la darija' }
+
+export default function ToucheMessageDialog({
+  etape, open, onOpenChange, onSent,
+  // CAD63 — appelé après l'enregistrement de la langue du client (le parent
+  // relit sa file : `lead_langue` a changé).
+  onLangueEnregistree,
+}) {
   const [loading, setLoading] = useState(false)
   const [erreur, setErreur] = useState(false)
   const [rendu, setRendu] = useState(null)
   const [sending, setSending] = useState(false)
+  // CAD63 — la langue BASCULÉE à l'aperçu (null = celle de la fiche) : le
+  // texte est rechargé dans cette langue, la fiche ne change que sur la
+  // confirmation explicite « c'est sa langue ».
+  const [langueChoisie, setLangueChoisie] = useState(null)
+  const [enregistrementLangue, setEnregistrementLangue] = useState(false)
+  const [langueEnregistree, setLangueEnregistree] = useState(null)
 
   useEffect(() => {
     let active = true
     if (!open || !etape) {
-      queueMicrotask(() => { if (active) setRendu(null) })
+      queueMicrotask(() => {
+        if (!active) return
+        setRendu(null); setLangueChoisie(null); setLangueEnregistree(null)
+      })
       return () => { active = false }
     }
     queueMicrotask(() => { if (active) { setLoading(true); setErreur(false) } })
     // CAD-A — `message_cle` : le texte de RÉPONSE convenu (accusé « ne plus
     // contacter », « je vous rappelle plus tard ») rendu pour CE client —
     // même forme de contrat que le message de la touche.
-    const requete = etape.message_cle
-      ? crmApi.getRelanceEtapeMessage(etape.id, etape.message_cle)
-      : crmApi.getRelanceEtapeMessage(etape.id)
+    // CAD63 — une langue basculée recharge le MÊME texte dans cette langue.
+    let requete
+    if (langueChoisie) {
+      requete = crmApi.getRelanceEtapeMessageLangue(
+        etape.id, { cle: etape.message_cle, langue: langueChoisie })
+    } else {
+      requete = etape.message_cle
+        ? crmApi.getRelanceEtapeMessage(etape.id, etape.message_cle)
+        : crmApi.getRelanceEtapeMessage(etape.id)
+    }
     requete
       .then((r) => { if (active) setRendu(r.data) })
       .catch(() => { if (active) setErreur(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [open, etape])
+  }, [open, etape, langueChoisie])
+
+  // CAD63 — la langue AFFICHÉE (bouton actif du basculeur) et celle de la
+  // fiche : l'écart entre les deux propose l'enregistrement.
+  const langueAffichee = langueChoisie ?? rendu?.langue ?? null
+  const langueFiche = langueEnregistree ?? etape?.lead_langue ?? 'fr'
+  const proposerEnregistrement = Boolean(langueChoisie) && langueChoisie !== langueFiche
+
+  const enregistrerLangue = async () => {
+    if (!langueChoisie) return
+    setEnregistrementLangue(true)
+    try {
+      await crmApi.definirLangueRelanceEtape(etape.id, langueChoisie)
+      setLangueEnregistree(langueChoisie)
+      toast.success(`Langue du client enregistrée : ${LIBELLE_LANGUE[langueChoisie] ?? langueChoisie}.`)
+      onLangueEnregistree?.(etape.id, langueChoisie)
+    } catch (err) {
+      // Règle « le champ fautif, le message exact » : le refus du serveur
+      // nomme le champ `langue`.
+      toast.error(err?.response?.data?.erreurs?.langue
+        ?? 'La langue du client n’a pas pu être enregistrée.')
+    } finally {
+      setEnregistrementLangue(false)
+    }
+  }
 
   const ouvrirWhatsApp = async () => {
     if (!rendu?.wa_url) return
@@ -62,7 +113,11 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
     }
     setSending(true)
     try {
-      const r = await crmApi.whatsappRelanceEtape(etape.id)
+      // CAD63 — langue basculée : le serveur vérifie le rendu RÉELLEMENT
+      // ouvert (sinon il re-rendrait dans la langue de la fiche).
+      const r = langueChoisie
+        ? await crmApi.whatsappRelanceEtapeLangue(etape.id, langueChoisie)
+        : await crmApi.whatsappRelanceEtape(etape.id)
       // RELANCE-WA (fondateur 08/09/2026) — ouvrir WhatsApp n'avance plus la
       // touche : le clic est journalisé, la touche reste à faire jusqu'à la
       // réponse du client (questions « Fait »).
@@ -89,6 +144,31 @@ export default function ToucheMessageDialog({ etape, open, onOpenChange, onSent 
           <p className="text-sm text-muted-foreground">Message indisponible pour le moment.</p>
         ) : (
           <div className="flex flex-col gap-3">
+            {/* CAD63 — changer la langue AU MOMENT UTILE : deux boutons qui
+                rechargent le texte, sans quitter la touche. Le texte reste
+                NON éditable (traçabilité de ce qui part réellement). */}
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Langue du message">
+              {LANGUES_MESSAGE.map(([code, libelle]) => (
+                <Button
+                  key={code} type="button" size="sm"
+                  variant={langueAffichee === code ? 'default' : 'outline'}
+                  aria-pressed={langueAffichee === code}
+                  onClick={() => setLangueChoisie(code)}
+                >
+                  {libelle}
+                </Button>
+              ))}
+              {proposerEnregistrement && (
+                <Button
+                  type="button" size="sm" variant="outline"
+                  disabled={enregistrementLangue} loading={enregistrementLangue}
+                  onClick={enregistrerLangue}
+                  data-testid="enregistrer-langue-client"
+                >
+                  C’est sa langue : enregistrer {LIBELLE_LANGUE[langueChoisie] ?? langueChoisie} sur la fiche
+                </Button>
+              )}
+            </div>
             {/* Darija = écriture arabe, de droite à gauche : sans `dir`, le
                 navigateur range les segments (prénom en lettres latines, nom
                 de la société) dans un ordre illisible — incident du 07/09.

@@ -214,6 +214,7 @@
     ]
   },
   "notes": {
+    "post_langue": "CAD63 — `POST /api/django/crm/relance-etapes/<id>/langue/` `{langue: 'fr'|'darija'}` enregistre la langue du CLIENT de la touche (`Lead.langue_preferee`, journalisé comme une édition de la fiche) et renvoie CETTE forme, `lead_langue` à jour. Le « Fait » accepte le même champ `langue` (réponse « ne parle que darija ») : posé seulement si la touche est enregistrée. Refus 400 `{erreurs: {langue}}` nommant le champ.",
     "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
     "statut_libelle": "CKP1 — libellé français du statut, servi par le serveur (« À faire », « Fait », « Sautée », « Annulée (moteur) ») : le badge n'a plus à réinventer la table des libellés, et une annulation MOTEUR ne peut plus s'afficher comme un saut humain.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT de cadence, jamais `crm.Canal` (qui décrit la SOURCE du lead).",

@@ -347,6 +347,9 @@ export default function RelancesDuJourWidget() {
         open={!!messageEtape}
         onOpenChange={(o) => { if (!o) setMessageEtape(null) }}
         onSent={() => { charger() }}
+        // CAD63 — la langue du client vient d'être enregistrée depuis
+        // l'aperçu : la file est relue (`lead_langue` a changé).
+        onLangueEnregistree={() => { charger() }}
       />
     </Card>
   )

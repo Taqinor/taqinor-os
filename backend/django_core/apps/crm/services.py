@@ -2567,11 +2567,67 @@ def message_visite_pour_lead(lead, cle, *, user=None):
     return rendu
 
 
-def message_pour_etape(etape, *, request=None, user=None, cle=None):
+# ── CAD-F ── CAD63 — changer la langue AU MOMENT UTILE ───────────────────────
+#
+# Le texte d'une touche était rendu dans la langue de la fiche, point : si la
+# commerciale découvrait au téléphone que le client ne lit pas le français,
+# elle devait quitter la touche, ouvrir la fiche, changer le champ, revenir.
+# La langue peut désormais être CHOISIE pour le message affiché (``langue=``
+# sur le rendu) et ENREGISTRÉE sur le lead en un geste — la réponse « ne parle
+# que darija » de la touche, ou la confirmation de l'aperçu. Le vocabulaire
+# est celui du champ ``Lead.langue_preferee`` lui-même : aucune langue n'est
+# ouverte ici sans texte validé derrière elle (CAD64 — ni l'anglais ni l'arabe
+# classique tant que la relance n'en a pas).
+
+def langues_relance():
+    """CAD63 — les langues qu'on peut CHOISIR pour le message d'une touche :
+    les valeurs du champ ``Lead.langue_preferee`` (lues sur le modèle, jamais
+    recopiées)."""
+    return tuple(Lead.LanguePreferee.values)
+
+
+def refus_langue_relance(langue):
+    """CAD63 — pourquoi ``langue`` n'est pas une langue de relance, ou
+    ``None``. Le message NOMME la valeur reçue et les langues proposées
+    (règle fondateur du 08/09/2026 : jamais un refus muet)."""
+    langue = (langue or '').strip()
+    if langue in langues_relance():
+        return None
+    proposees = ', '.join(
+        f'« {valeur} » ({libelle})'
+        for valeur, libelle in Lead.LanguePreferee.choices)
+    return (f'« Langue du message » : « {langue} » n’est pas une langue de '
+            f'relance. Langues proposées : {proposees}.')
+
+
+def definir_langue_preferee(lead, user, langue):
+    """CAD63 — pose ``Lead.langue_preferee`` et le JOURNALISE comme la fiche
+    le ferait (ligne « modification » du chatter, ancien → nouveau).
+
+    L'appelant a validé ``langue`` (``refus_langue_relance``). Idempotente :
+    une langue déjà posée ne produit ni écriture ni ligne. Renvoie ``True``
+    si la langue vient de changer."""
+    import copy
+
+    if (lead.langue_preferee or '') == langue:
+        return False
+    avant = copy.copy(lead)
+    lead.langue_preferee = langue
+    lead.save(update_fields=['langue_preferee'])
+    activity.log_changes(avant, lead, user)
+    return True
+
+
+def message_pour_etape(etape, *, request=None, user=None, cle=None,
+                       langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
 
     Forme `relance_etape_message` (contrat MRY25) :
     ``{message, wa_url, langue, phone, placeholders_manquants}``.
+
+    CAD63 — ``langue`` (une de ``langues_relance()``, validée par
+    l'appelant) force la langue du rendu pour CE message, sans toucher la
+    fiche : c'est l'aperçu qu'on bascule FR ↔ darija au téléphone.
 
     CAD-A — ``cle`` (une des ``CLES_MESSAGE_REPONSE``) rend, pour le lead de
     cette touche, le texte de RÉPONSE convenu (« stop_contact » après « Ne
@@ -2592,7 +2648,7 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None):
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
 
     lead = etape.lead
-    langue = lead.langue_preferee or 'fr'
+    langue = langue or lead.langue_preferee or 'fr'
     # CAD-A — le texte de réponse demandé remplace le gabarit de la touche.
     template_cle = cle or etape.template_cle
     # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez

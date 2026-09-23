@@ -397,6 +397,11 @@ export default function RelanceEtapeRow({
   // peut avoir écrit depuis son téléphone) — elle rend seulement le geste
   // conscient, et le dit dans le chatter.
   const [sansOuverture, setSansOuverture] = useState(false)
+  // CAD63 — la réponse « ne parle que darija », saisie AU MOMENT où le client
+  // le dit : elle pose la langue sur la fiche une fois pour toutes (champ
+  // `langue` du « Fait », seulement si la touche est bien enregistrée).
+  const [queDarija, setQueDarija] = useState(false)
+  const [erreurLangue, setErreurLangue] = useState('')
   const busy = busyId === etape.id
 
   const fermer = () => {
@@ -406,6 +411,7 @@ export default function RelanceEtapeRow({
     setSansOuverture(false); setReportMode(''); setErreurRappel('')
     setMotifRefus(''); setErreurMotif('')
     setPerduJunk(false); setMotifJunk('')
+    setQueDarija(false); setErreurLangue('')
   }
 
   // CAD10 — lecture paresseuse des motifs, au geste (jamais dans un effet) :
@@ -496,7 +502,10 @@ export default function RelanceEtapeRow({
     if (toucheMessage && !messageOuvertLe) {
       payload.body = 'Marquée faite sans ouverture du message depuis l’ERP.'
     }
-    setErreurOutcome('')
+    // CAD63 — « ne parle que darija » : la langue part AVEC la réponse ; le
+    // serveur ne la pose sur la fiche que si la touche est enregistrée.
+    if (queDarija) payload.langue = 'darija'
+    setErreurOutcome(''); setErreurLangue('')
     // VISCAD6 — l'outcome choisi est lu AVANT l'appel (le state se ferme/se
     // réinitialise dès le succès dans les parents qui retirent la ligne) :
     // ouvrir la modale de planification dépend de CETTE réponse, jamais
@@ -532,6 +541,8 @@ export default function RelanceEtapeRow({
       // CAD10 — de même pour le motif de refus (et CAD11, le motif junk).
       if (erreurs?.motif_refus) setErreurMotif(erreurs.motif_refus)
       if (erreurs?.perdu_junk) setErreurMotif(erreurs.perdu_junk)
+      // CAD63 — la langue refusée s'affiche SOUS sa case.
+      if (erreurs?.langue) setErreurLangue(erreurs.langue)
     })
   }
 
@@ -861,6 +872,24 @@ export default function RelanceEtapeRow({
               {erreurMotif && (
                 <p className="text-xs text-danger" role="alert" data-testid="erreur-perdu-junk">
                   {erreurMotif}
+                </p>
+              )}
+            </div>
+          )}
+          {/* CAD63 — la langue se découvre au téléphone : la poser ICI, sans
+              quitter la touche ni rouvrir la fiche. Jamais cochée d'office. */}
+          {etape.lead_langue !== 'darija' && (
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-1.5 text-xs" data-testid="ne-parle-que-darija">
+                <input
+                  type="checkbox" checked={queDarija}
+                  onChange={(e) => { setQueDarija(e.target.checked); setErreurLangue('') }}
+                />
+                <span>Le client ne parle que darija — enregistrer sa langue sur la fiche</span>
+              </label>
+              {erreurLangue && (
+                <p className="text-xs text-danger" role="alert" data-testid="erreur-langue">
+                  {erreurLangue}
                 </p>
               )}
             </div>

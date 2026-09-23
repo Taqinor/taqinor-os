@@ -418,6 +418,25 @@ const crmApi = {
   // `cle`: 'visite_proposition' | 'visite_confirmation'.
   getMessageVisite: (leadId, cle) =>
     api.get(`/crm/leads/${leadId}/message-visite/`, { params: { cle } }),
+  // CAD63 — le message d'une touche dans la langue CHOISIE à l'aperçu
+  // (`langue`: 'fr' | 'darija'), sans toucher la fiche ; `cle` facultative
+  // (texte de réponse, comme `getRelanceEtapeMessage`). Même forme
+  // `relance_etape_message`.
+  getRelanceEtapeMessageLangue: (id, { cle, langue } = {}) => {
+    const params = {}
+    if (cle) params.cle = cle
+    if (langue) params.langue = langue
+    return api.get(`/crm/relance-etapes/${id}/message/`, { params })
+  },
+  // CAD63 — le clic « Ouvrir WhatsApp » quand la langue a été basculée à
+  // l'aperçu : le serveur vérifie le MÊME rendu que celui qui vient d'être
+  // ouvert (jamais d'envoi — décision D5).
+  whatsappRelanceEtapeLangue: (id, langue) =>
+    api.post(`/crm/relance-etapes/${id}/whatsapp/`, langue ? { langue } : {}),
+  // CAD63 — enregistre la langue du CLIENT de cette touche (`Lead.
+  // langue_preferee`) en un geste. Réponse : la touche (`relance_etape_v2`).
+  definirLangueRelanceEtape: (id, langue) =>
+    api.post(`/crm/relance-etapes/${id}/langue/`, { langue }),
 }
 
 export default crmApi
