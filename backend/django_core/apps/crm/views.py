@@ -985,6 +985,27 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return sorted({n for n in noms if n in concrets} | horodatages)
 
     def perform_update(self, serializer):
+        # CAD156 — « Je vous rappelle jeudi à 18 h » : l'HEURE promise au
+        # téléphone n'avait aucun champ (`relance_date` est une date). Elle
+        # passe par le MÊME chemin que le report d'une touche (date + heure →
+        # `reporter_prochaine_touche`), sans second champ ni second système de
+        # rappel (MRY10). `relance_heure` (HH:MM) n'est pas une colonne : lue
+        # dans le corps, validée AVANT toute écriture, refus qui NOMME le champ.
+        quand_rappel = None
+        brut_heure = self.request.data.get('relance_heure') \
+            if hasattr(self.request.data, 'get') else None
+        brut_heure = (str(brut_heure or '')).strip()
+        if brut_heure:
+            date_rappel = serializer.validated_data.get('relance_date')
+            if not date_rappel:
+                raise DRFValidationError({'relance_heure': [(
+                    '« Heure du rappel » : choisissez d’abord la date de '
+                    'relance.')]})
+            quand_rappel = _parse_rappel(date_rappel.isoformat(), brut_heure)
+            if quand_rappel is None:
+                raise DRFValidationError({'relance_heure': [(
+                    f'« Heure du rappel » : « {brut_heure} » n’est pas une '
+                    'heure (HH:MM attendu).')]})
         # Snapshot avant écriture pour journaliser ancien → nouveau.
         old = Lead.objects.get(pk=serializer.instance.pk)
         instance = serializer.instance
@@ -1037,12 +1058,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # divergeraient dès le premier appel — exactement ce que
         # l'invariant de `sync_relance_activity` interdit.
         from .services import reporter_prochaine_touche
-        if ('relance_date' in serializer.validated_data
+        # CAD156 — une HEURE saisie reporte la touche même si la date ne
+        # change pas (« toujours jeudi, mais à 18 h »).
+        if quand_rappel is not None or (
+                'relance_date' in serializer.validated_data
                 and new_lead.relance_date
                 and new_lead.relance_date != old.relance_date):
             try:
                 reporter_prochaine_touche(
-                    new_lead, self.request.user, new_lead.relance_date)
+                    new_lead, self.request.user,
+                    quand_rappel or new_lead.relance_date)
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
                 logger.warning(
                     'MRY10: report de touche échoué sur le lead #%s',
