@@ -187,6 +187,19 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "Bonjour M. {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
     'appel_dernier':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?",
+    # CAD98 (23/09/2026) — les trois « Appel de suivi » de la cadence après
+    # devis (`apps/parametres/models_relance.py` ordres 2, 6 et 8 : J2, J7,
+    # J11) n'avaient aucun script. Trois scripts courts, sur le patron de
+    # CAD67 : le client connaît déjà le dossier, on ouvre sur SA proposition
+    # et on pose une question. Zéro chiffre, aucune promesse de date (la
+    # validité est dite par `j9_validite`, la clôture par `j13_dernier`), ni
+    # « dernier appel » — le réveil J30 est encore un appel (CAD74).
+    'appel_suivi_j2':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de la proposition solaire que je vous ai envoyée : avez-vous pu la regarder ? Dites-moi ce qui vous paraît clair et ce qui mérite une explication.",
+    'appel_suivi_j7':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je reviens vers vous au sujet de votre proposition solaire : qu'est-ce qui reste à éclaircir avant de décider ? Si un point vous freine, le budget, la pose ou le calendrier, on le regarde ensemble.",
+    'appel_suivi_j11':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je fais le point avec vous sur votre proposition solaire : où en est votre réflexion ? S'il vous faut plus de temps ou d'autres informations, dites-le-moi simplement.",
     # CAD125 (21/09/2026) — LE DOSSIER INSTITUTIONNEL, ENFIN UNE PAROLE.
     # `Lead.regularisation_8221` est capté et LU par le scoring, mais par
     # aucune logique de message : aucune des clés de relance ne parlait d'une
@@ -254,6 +267,16 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم السي {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟",
     'appel_dernier':
         "السلام عليكم السي {prenom}، {conseiller} من {marque}. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟",
+    # CAD98 (23/09/2026) — darija des trois scripts d'appel de suivi après
+    # devis. Traduction phrase par phrase du FR (aucune promesse ajoutée,
+    # aucun chiffre, jamais une traduction automatique), PAS ENCORE relue par
+    # un locuteur natif (CADM1, à faire avant tout usage réel).
+    'appel_suivi_j2':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص العرض ديال الطاقة الشمسية اللي صيفطت ليكم: واش قدرتو تشوفوه؟ قولوا ليا شنو اللي واضح ليكم وشنو اللي خاصو شرح.",
+    'appel_suivi_j7':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص العرض ديال الطاقة الشمسية ديالكم: شنو باقي خاصو يتوضح قبل ما تقررو؟ إلا كانت شي نقطة مخلياكم مترددين، الميزانية، التركيب ولا الوقت، نشوفوها مع بعضياتنا.",
+    'appel_suivi_j11':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. بغيت نديرو النقطة معاكم على العرض ديال الطاقة الشمسية ديالكم: فين وصلتو ف التفكير؟ إلا خاصكم شي وقت زايد ولا شي معلومات أخرى، غير قولوها ليا بلا حرج.",
     # CAD-F — CAD62 (21/09/2026) — les 11 clés qui manquaient au repli darija de
     # la marche après-devis, du réveil et de l'après-signature. Même patron que
     # `visite_proposition`/`visite_confirmation` ci-dessus : traduction phrase
@@ -367,9 +390,14 @@ CLES_RELANCE = [
     'rappel_plus_tard',
     'stop_contact',
     'j1_pdf',
+    # CAD98 — les trois scripts des « Appel de suivi » après devis, chacun
+    # rangé à sa place dans la chronologie de la cadence (J2, J7, J11).
+    'appel_suivi_j2',
     'j4_preuve',
     'j6_garanties',
+    'appel_suivi_j7',
     'j9_validite',
+    'appel_suivi_j11',
     'j13_dernier',
     'j14_pause',
     'dimanche_famille',
@@ -458,9 +486,16 @@ class MessageTemplate(models.Model):
         RAPPEL_PLUS_TARD = 'rappel_plus_tard', "Réponse — rappelez-moi plus tard"
         STOP_CONTACT = 'stop_contact', "Réponse — ne me rappelez plus"
         J1_PDF = 'j1_pdf', "Après devis — le PDF s'ouvre bien ? (J1)"
+        # CAD98 — scripts des trois « Appel de suivi » après devis.
+        APPEL_SUIVI_J2 = (
+            'appel_suivi_j2', "Après devis — script d'appel de suivi (J2)")
         J4_PREUVE = 'j4_preuve', "Après devis — chantier comparable (J4)"
         J6_GARANTIES = 'j6_garanties', "Après devis — garanties fabricants (J6)"
+        APPEL_SUIVI_J7 = (
+            'appel_suivi_j7', "Après devis — script d'appel de suivi (J7)")
         J9_VALIDITE = 'j9_validite', "Après devis — validité de la proposition (J9)"
+        APPEL_SUIVI_J11 = (
+            'appel_suivi_j11', "Après devis — script d'appel de suivi (J11)")
         J13_DERNIER = 'j13_dernier', "Après devis — dernier message (J13)"
         J14_PAUSE = 'j14_pause', "Après devis — mise en pause (J14)"
         DIMANCHE_FAMILLE = 'dimanche_famille', "Après devis — dimanche famille"

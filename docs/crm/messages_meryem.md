@@ -162,6 +162,13 @@ DARIJA : واخا، فهمتكم، ما غاديش نعاود نعيط ليكم.
 FR : Bonjour M. [Prénom], j'espère que vous allez bien. Je vous ai envoyé votre proposition solaire — est-ce que le PDF s'ouvre bien de votre côté ? Prenez le temps de la regarder tranquillement, et dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre question.
 DARIJA : السلام عليكم السي [الاسم]، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.
 
+### appel_suivi_j2 — J2, script de l'« Appel de suivi » (CAD98, 23/09/2026)
+Les trois « Appel de suivi » après devis (J2, J7, J11) n'avaient aucun script, alors que chaque appel de la cadence
+contact a le sien (CAD67). Scripts courts : le client connaît déjà le dossier, on ouvre sur SA proposition et on pose
+une question. ✎ Textes à valider par le fondateur ; darija pas encore relue par un locuteur natif (CADM1).
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je vous appelle au sujet de la proposition solaire que je vous ai envoyée : avez-vous pu la regarder ? Dites-moi ce qui vous paraît clair et ce qui mérite une explication.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. كنعيط ليكم بخصوص العرض ديال الطاقة الشمسية اللي صيفطت ليكم: واش قدرتو تشوفوه؟ قولوا ليا شنو اللي واضح ليكم وشنو اللي خاصو شرح.
+
 ### j4_preuve — J4, WhatsApp (la vue de SON toit avec les panneaux, ou la photo d'un chantier comparable)
 FR : Voici une installation comparable à la vôtre, posée en [mois] à [ville] : [lien preuve]. Puissance installée : [puissance preuve] kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : [lien vidéo].
 DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois] ف [ville] : [lien preuve]. القوة المركبة: [puissance preuve] kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.
@@ -170,9 +177,20 @@ DARIJA : هادي تجهيزة شبيهة بديالكم، تركبات ف [mois
 FR : Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : [lien de votre proposition]. Ce qui est couvert et pour combien d'années : https://taqinor.ma/garanties
 DARIJA : هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: [lien de votre proposition]. شنو المغطى وشحال ديال السنين: https://taqinor.ma/garanties
 
+### appel_suivi_j7 — J7, script de l'« Appel de suivi » (CAD98, 23/09/2026)
+Après la preuve (J4) et les garanties (J6) : on cherche ce qui freine encore la décision. ✎ À valider (voir J2).
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je reviens vers vous au sujet de votre proposition solaire : qu'est-ce qui reste à éclaircir avant de décider ? Si un point vous freine, le budget, la pose ou le calendrier, on le regarde ensemble.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. كنرجع ليكم بخصوص العرض ديال الطاقة الشمسية ديالكم: شنو باقي خاصو يتوضح قبل ما تقررو؟ إلا كانت شي نقطة مخلياكم مترددين، الميزانية، التركيب ولا الوقت، نشوفوها مع بعضياتنا.
+
 ### j9_validite — J9, WhatsApp
 FR : Votre proposition est valable jusqu'au [date]. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.
 DARIJA : العرض ديالكم صالح حتى [date]. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.
+
+### appel_suivi_j11 — J11, script de l'« Appel de suivi » (CAD98, 23/09/2026)
+Le point d'étape avant le dernier message (J13). Ni date d'échéance ni « dernier appel » : la validité est dite par
+`j9_validite`, et le réveil J30 est encore un appel (CAD74). ✎ À valider (voir J2).
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je fais le point avec vous sur votre proposition solaire : où en est votre réflexion ? S'il vous faut plus de temps ou d'autres informations, dites-le-moi simplement.
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. بغيت نديرو النقطة معاكم على العرض ديال الطاقة الشمسية ديالكم: فين وصلتو ف التفكير؟ إلا خاصكم شي وقت زايد ولا شي معلومات أخرى، غير قولوها ليا بلا حرج.
 
 ### j13_dernier — J13, WhatsApp
 CAD110 — porte de sortie (voir note, section `je_classe_j7`) : les deux DERNIÈRES touches après-devis.
