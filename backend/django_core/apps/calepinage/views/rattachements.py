@@ -101,6 +101,10 @@ from . import troncons as _troncons_action  # noqa: F401
 # en pixels de la pièce jointe que le document désigne comme plan de fond).
 # LECTURE PURE : la porte n'écrit rien.
 from . import plan_importe as _plan_importe_action  # noqa: F401
+# CALX297 — même patron : rattache les DOCUMENTS du lot 6
+# (``views/documents.py`` : ``rapport-etude.pdf`` d'abord, puis les pièces
+# suivantes du lot dans le MÊME fichier). Lecture PURE : aucun statut ne bouge.
+from . import documents as _documents_actions  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -128,6 +132,7 @@ MODULES_RATTACHES = (
     'troncons',  # CALX228
 
     'plan_importe',  # CALX107
+    'documents',  # CALX297
 )
 
 __all__ = ['MODULES_RATTACHES']

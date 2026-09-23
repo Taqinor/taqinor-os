@@ -241,12 +241,16 @@ def _source_lisible(code):
     return LIBELLE_SOURCE.get(texte, str(code))
 
 
-def construire_note_calcul(resultat, *, site=None, identite=None):
+def construire_note_calcul(resultat, *, site=None, identite=None, styles=None):
     """``Calepinage.resultat`` -> la note, prête à mettre en page.
 
     ``site`` est le contexte géographique du calepinage
     (``selectors.contexte_geographique`` : ville, adresse, source du repère) —
     des données de SITE, jamais des grandeurs recalculées.
+
+    CALX295 — ``identite`` (projet, client, date de production) et ``styles``
+    (la marque de la société, ``gabarit_document.styles_de_societe``) sont
+    IMPRIMÉS sur la page de garde ; absents, la garde les barre.
     """
     if not isinstance(resultat, dict) or not resultat:
         raise NoteRefusee(
@@ -266,6 +270,8 @@ def construire_note_calcul(resultat, *, site=None, identite=None):
 
     note = {
         'identite': dict(identite or {}),
+        # CALX295 — la marque de la société, pour la page de garde.
+        'styles': dict(styles or {}),
         'site': {
             'ville': site.get('ville'),
             'adresse': site.get('adresse'),
@@ -426,8 +432,29 @@ def _section_verdict(verdict):
     return ''.join(blocs)
 
 
-def html_de_note_calcul(note):
-    """La note en HTML autonome (aucune police distante, aucune image)."""
+#: CALX295 — le titre de la note sur sa page de garde.
+TITRE_NOTE = 'Note de calcul'
+
+
+def _garde_de_note(note):
+    """CALX295 — la page de garde de la note (identité société et projet)."""
+    from .documents.gabarit_document import page_de_garde_html
+
+    identite = dict(note.get('identite') or {})
+    identite.setdefault('titre_document', TITRE_NOTE)
+    return page_de_garde_html(identite, note.get('site') or {},
+                              note.get('provenance') or {},
+                              note.get('styles') or {})
+
+
+def html_de_note_calcul(note, *, garde=True):
+    """La note en HTML autonome (aucune police distante).
+
+    CALX295 — la note s'ouvre sur une page de GARDE (société, projet, client,
+    date, empreinte) ; ``garde=False`` rend la note d'avant, et sert au
+    contrôle « la note gagne exactement une page ». Aucune image n'est posée
+    sans logo SAISI par la société (``TenantTheme``).
+    """
     provenance = note['provenance']
     site, pose = note['site'], note['pose']
     production = note['production']
@@ -488,6 +515,7 @@ def html_de_note_calcul(note):
         'th{background:#f2f2f2;font-weight:bold;}'
         '.note{color:#555;font-size:8pt;}'
         '</style></head><body>'
+        '%(garde)s'
         '<h1>Note de calcul — calepinage</h1>'
         '<p class="note">%(mention_simulee)s</p>'
         '<h2>Site et irradiance</h2><table>%(site)s</table>'
@@ -505,6 +533,7 @@ def html_de_note_calcul(note):
         '%(avertissements)s'
         '</body></html>'
     ) % {
+        'garde': _garde_de_note(note) if garde else '',
         'pied': escape(_pied_de_page(provenance), quote=True).replace('"', ''),
         'mention_simulee': escape(
             'Grandeurs LUES du résultat du moteur — aucune n\'est saisie dans '
@@ -545,21 +574,35 @@ def html_de_note_calcul(note):
     }
 
 
-def rendre_note_calcul(calepinage, *, company=None, site=None, identite=None):
+def rendre_note_calcul(calepinage, *, company=None, site=None, identite=None,
+                       styles=None):
     """Octets PDF de la note, via ``core.pdf.render_pdf`` (ARC11).
 
     JAMAIS un import direct de WeasyPrint (``check_platform.py`` refuserait le
     fichier, et la plomberie PDF n'a pas à être re-codée par pièce). Le site
     est LU par ``selectors.contexte_geographique`` quand l'appelant ne le
     fournit pas — jamais reconstruit ici.
+
+    CALX295 — l'identité (projet, client, date) et la marque de la société
+    sont LUES quand l'appelant ne les fournit pas : la note sort avec sa
+    page de garde.
     """
     from core.pdf import render_pdf
 
+    from .documents.gabarit_document import (
+        identite_du_calepinage, styles_de_societe,
+    )
+
+    company = company or getattr(calepinage, 'company', None)
     if site is None:
         from .. import selectors
 
         site = selectors.contexte_geographique(calepinage)
+    if identite is None:
+        identite = identite_du_calepinage(calepinage,
+                                          titre_document=TITRE_NOTE)
+    if styles is None:
+        styles = styles_de_societe(company)
     note = construire_note_calcul(getattr(calepinage, 'resultat', None),
-                                  site=site, identite=identite)
-    return render_pdf(html=html_de_note_calcul(note),
-                      company=company or getattr(calepinage, 'company', None))
+                                  site=site, identite=identite, styles=styles)
+    return render_pdf(html=html_de_note_calcul(note), company=company)

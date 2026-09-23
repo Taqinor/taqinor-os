@@ -226,6 +226,14 @@ SANS_PRODUCTEUR_PUR = {
         'dimensions (en-tête PNG/JPEG) et les quatre refus nommés sont '
         'affirmés sans base par '
         'apps/calepinage/tests/test_calx107_plan_importe.py',
+
+    # CALX292
+    'rapport_etude.json':
+        "DÉCLARATION des sections du rapport d'étude, lue par l'assembleur "
+        '(CALX297) : la route déclarée sert un PDF, il n’y a donc aucune '
+        'forme JSON servie à comparer — les chemins exigés sont résolus '
+        'contre calepinage_resultat.json, sans base, par '
+        'apps/calepinage/tests/test_calx292_contrat_rapport.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -239,6 +247,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/raccordement.py``) : ``calepinage_troncons.json`` et
     # ``calepinage_raccordement.json`` en sont SORTIS, et le contrôle 2
     # vérifie désormais leurs routes comme celles des autres.
+    # CALX297 a livré ``GET calepinages/<pk>/rapport-etude.pdf/``
+    # (``views/documents.py``) : ``rapport_etude.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
