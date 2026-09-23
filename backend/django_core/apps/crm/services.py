@@ -2664,6 +2664,30 @@ def texte_en_repli_de_langue(company, cle, langue):
     return corps_langue == (MessageTemplate.get_corps(company, cle, 'fr') or '')
 
 
+# ── CAD-F ── CAD69 — les crochets [ ] ne partent plus en silence ────────────
+#
+# `render_message_template` ne substitue que les {accolades} et MRY13 n'omet
+# que les phrases à accolades vides : un blanc écrit « [jour] », « [montant en
+# dirhams] » dans un texte validé (`rappel_plus_tard`, `offre_reda`) partait
+# TEL QUEL dans WhatsApp, alors que le catalogue promet « jamais un crochet
+# vide envoyé au client ». Ces blancs sont à compléter À LA MAIN (on n'invente
+# ni un jour ni un montant) : le rendu les LISTE, l'aperçu bloque l'ouverture
+# tant qu'ils sont là.
+
+#: Un blanc à compléter : un texte court entre crochets, sur une seule ligne.
+_RE_CROCHET = _re.compile(r'\[[^\[\]\n]{1,80}\]')
+
+
+def crochets_a_completer(texte):
+    """CAD69 — les blancs ``[…]`` encore présents dans ``texte``, dans l'ordre
+    d'apparition, sans doublon (``[]`` si aucun)."""
+    vus = []
+    for trou in _RE_CROCHET.findall(texte or ''):
+        if trou not in vus:
+            vus.append(trou)
+    return vus
+
+
 def message_pour_etape(etape, *, request=None, user=None, cle=None,
                        langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
@@ -2821,6 +2845,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         # CAD64 — `True` : le texte n'existe pas dans `langue`, la version
         # française part à sa place (l'aperçu le dit ; le cas se mesure).
         'repli_langue': repli_langue,
+        # CAD69 — les blancs `[…]` à compléter à la main avant tout envoi
+        # (l'aperçu bloque « Ouvrir WhatsApp » tant qu'il y en a).
+        'crochets': crochets_a_completer(message),
     }
 
 

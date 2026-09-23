@@ -83,6 +83,41 @@ describe('CAD63 — changer la langue au moment utile', () => {
   })
 })
 
+describe('CAD69 — les crochets ne partent jamais tels quels', () => {
+  const CROCHETS = exempleContrat('crm', 'relance_etape_message', 'exemple_crochets')
+
+  it('un texte contenant […] affiche l’avertissement et désactive « Ouvrir WhatsApp »', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: CROCHETS })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(CROCHETS.message)
+    const bandeau = screen.getByTestId('crochets-a-completer')
+    expect(bandeau).toHaveTextContent('[jour], [heure]')
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).toBeDisabled()
+    // Le texte reste copiable pour être complété dans la conversation.
+    expect(screen.getByRole('button', { name: /Copier/ })).not.toBeDisabled()
+  })
+
+  it('la conversation s’ouvre SANS texte pré-rempli (jamais un crochet envoyé)', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: CROCHETS })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(CROCHETS.message)
+    fireEvent.click(screen.getByRole('button', { name: /Ouvrir la conversation/ }))
+    const url = openSpy.mock.calls[0][0]
+    expect(url).toBe(CROCHETS.wa_url.split('?text=')[0])
+    expect(url).not.toContain('%5B')
+    await waitFor(() => expect(crmApi.whatsappRelanceEtape).toHaveBeenCalledWith(ETAPE.id))
+    openSpy.mockRestore()
+  })
+
+  it('sans crochet : aucun bandeau, « Ouvrir WhatsApp » actif', async () => {
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(MESSAGE.message)
+    expect(screen.queryByTestId('crochets-a-completer')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).not.toBeDisabled()
+  })
+})
+
 describe('CAD64 — le repli de langue est VISIBLE', () => {
   const REPLI = exempleContrat('crm', 'relance_etape_message', 'exemple_repli_langue')
 

@@ -13,7 +13,7 @@
 // Cockpit, l'écran de suivi, et leur test `ToucheMessageDialog.mry14.test.jsx`
 // qui importe encore `./ToucheMessageDialog`).
 import { useEffect, useState } from 'react'
-import { Send, TriangleAlert } from 'lucide-react'
+import { Copy, Send, TriangleAlert } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import { toast } from '../../../ui/confirm'
 import {
@@ -109,11 +109,29 @@ export default function ToucheMessageDialog({
     }
   }
 
-  const ouvrirWhatsApp = async () => {
-    if (!rendu?.wa_url) return
+  // CAD69 — les blancs `[…]` à compléter à la main (liste servie par le
+  // serveur) : tant qu'il y en a, le texte ne part pas pré-rempli.
+  const crochets = rendu?.crochets ?? []
+  const aCompleter = crochets.length > 0
+  // La conversation SANS texte pré-rempli (même numéro, même lien serveur).
+  const urlConversation = rendu?.wa_url ? rendu.wa_url.split('?text=')[0] : null
+
+  const copier = async () => {
+    if (!rendu?.message) return
+    try {
+      await navigator.clipboard.writeText(rendu.message)
+      toast.success('Texte copié.')
+    } catch {
+      // best-effort — presse-papier indisponible (contexte non sécurisé,
+      // permission refusée) : le texte reste lisible et sélectionnable.
+    }
+  }
+
+  const ouvrirWhatsApp = async (url = rendu?.wa_url) => {
+    if (!url) return
     // Le clic humain d'abord (le message est déjà écrit) — le marquage
     // serveur qui suit ne doit jamais bloquer l'ouverture déjà faite.
-    window.open(rendu.wa_url, '_blank', 'noopener')
+    window.open(url, '_blank', 'noopener')
     if (etape.message_cle) {
       // CAD-A — un accusé de RÉPONSE suit une touche DÉJÀ close : il n'y a
       // pas de touche à journaliser comme « message ouvert » (RLC3 ne vaut
@@ -211,6 +229,17 @@ export default function ToucheMessageDialog({
                 phrase correspondante a été omise du message.
               </p>
             )}
+            {/* CAD69 — un crochet ne part JAMAIS tel quel chez le client
+                (« [montant en dirhams] » serait exactement la fuite que la
+                règle « zéro chiffre inventé » vise) : ils sont listés, et
+                « Ouvrir WhatsApp » reste bloqué tant qu'ils sont là. */}
+            {aCompleter && (
+              <p className="flex items-start gap-1.5 text-xs text-warning" role="alert" data-testid="crochets-a-completer">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                À compléter avant envoi : {crochets.join(', ')} — copiez le texte, complétez
+                les crochets dans la conversation : il ne part jamais pré-rempli avec eux.
+              </p>
+            )}
             {!rendu?.wa_url && (
               <p className="text-sm text-destructive">
                 Aucun numéro exploitable : le message ne peut pas être ouvert dans WhatsApp.
@@ -222,7 +251,22 @@ export default function ToucheMessageDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
             Fermer
           </Button>
-          <Button onClick={ouvrirWhatsApp} disabled={!rendu?.wa_url || sending} loading={sending}>
+          <Button variant="outline" onClick={copier} disabled={!rendu?.message}>
+            <Copy className="mr-1 size-4" aria-hidden="true" />
+            Copier
+          </Button>
+          {aCompleter && (
+            <Button
+              variant="outline" onClick={() => ouvrirWhatsApp(urlConversation)}
+              disabled={!urlConversation || sending}
+            >
+              Ouvrir la conversation (sans texte)
+            </Button>
+          )}
+          <Button
+            onClick={() => ouvrirWhatsApp()}
+            disabled={!rendu?.wa_url || aCompleter || sending} loading={sending}
+          >
             <Send className="mr-1 size-4" aria-hidden="true" />
             Ouvrir WhatsApp
           </Button>

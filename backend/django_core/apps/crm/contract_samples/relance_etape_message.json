@@ -7,7 +7,8 @@
     "langue": "fr",
     "phone": "+212651971400",
     "placeholders_manquants": [],
-    "repli_langue": false
+    "repli_langue": false,
+    "crochets": []
   },
   "exemple_phrase_omise": {
     "message": "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité.",
@@ -17,7 +18,8 @@
     "placeholders_manquants": [
       "date_validite"
     ],
-    "repli_langue": true
+    "repli_langue": true,
+    "crochets": []
   },
   "exemple_numero_invalide": {
     "message": "Bonjour Salma, Karim de TAQINOR.",
@@ -25,7 +27,8 @@
     "langue": "fr",
     "phone": "",
     "placeholders_manquants": [],
-    "repli_langue": false
+    "repli_langue": false,
+    "crochets": []
   },
   "exemple_darija": {
     "message": "السلام عليكم السي Aziz، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
@@ -33,7 +36,8 @@
     "langue": "darija",
     "phone": "+212651971400",
     "placeholders_manquants": [],
-    "repli_langue": false
+    "repli_langue": false,
+    "crochets": []
   },
   "exemple_repli_langue": {
     "message": "Bonjour M. Omar, petit mot de suivi de votre demande solaire.",
@@ -41,9 +45,23 @@
     "langue": "ar",
     "phone": "+212661000552",
     "placeholders_manquants": [],
-    "repli_langue": true
+    "repli_langue": true,
+    "crochets": []
+  },
+  "exemple_crochets": {
+    "message": "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
+    "wa_url": "https://wa.me/212651971400?text=Tr%C3%A8s%20bien%2C%20je%20vous%20rappelle%20%5Bjour%5D%20%C3%A0%20%5Bheure%5D.%20D%27ici%20l%C3%A0%2C%20si%20vous%20avez%20votre%20facture%20sous%20la%20main%2C%20une%20photo%20m%27aide%20%C3%A0%20pr%C3%A9parer%20l%27estimation.",
+    "langue": "fr",
+    "phone": "+212651971400",
+    "placeholders_manquants": [],
+    "repli_langue": false,
+    "crochets": [
+      "[jour]",
+      "[heure]"
+    ]
   },
   "notes": {
+    "crochets": "CAD69 — liste, jamais null : les blancs `[…]` d'un texte validé (`rappel_plus_tard` : « [jour] à [heure] », `offre_reda` : « [montant en dirhams] »…) encore présents dans `message`, dans l'ordre, sans doublon. Ils sont à compléter À LA MAIN — le serveur n'invente ni un jour ni un montant — : l'aperçu les liste et BLOQUE « Ouvrir WhatsApp » tant qu'il y en a (copier le texte, le compléter dans la conversation ouverte vide). `exemple_crochets` : l'accusé « plus tard » (`?cle=rappel_plus_tard`).",
     "repli_langue": "CAD64 — booléen, jamais null. `langue` est la langue DEMANDÉE, résolue par le résolveur COMMUN des documents client (préférence `Lead.langue_preferee`, puis `Client.langue_document`, puis la langue de repli de la société, puis FR — `apps.crm.services.langue_relance_du_lead`) : un devis parti en arabe ne laisse plus la relance en français SANS LE DIRE. `repli_langue: true` = le texte n'existe pas dans cette langue et c'est la version FRANÇAISE qui partira (civilité « M. », jamais « السي » dans une phrase française) — l'aperçu l'écrit en toutes lettres et le cas devient mesurable. Aucune traduction automatique, aucun texte anglais ni arabe classique par défaut (`exemple_repli_langue` : client dont les documents sont en arabe, texte parti en français). `exemple_phrase_omise` est lui aussi un repli (texte français pour un lead darija).",
     "langue_choisie": "CAD63 — `?langue=fr|darija` (GET `message/`) et `langue` (corps du POST `whatsapp/`) rendent CE message dans la langue CHOISIE à l'aperçu, sans toucher la fiche : c'est le basculeur FR / Darija de la modale (`exemple` puis `exemple_darija` : la MÊME touche, les deux langues). Une autre valeur est refusée en 400 `{\"erreurs\": {\"langue\": …}}` qui NOMME le champ. La fiche ne change que par `POST .../langue/` (`{langue}`, réponse = la touche `relance_etape_v2`) ou par le champ `langue` du « Fait » (réponse « ne parle que darija »).",
     "post_whatsapp": "POST .../whatsapp/ → même corps + `etape` (objet `relance_etape_v2` remis à jour : statut « fait »).",
