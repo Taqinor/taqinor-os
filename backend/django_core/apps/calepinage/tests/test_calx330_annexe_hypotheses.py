@@ -50,6 +50,15 @@ def _charger(nom):
 
 
 RESULTAT = _charger('calepinage_resultat')
+#: La cascade du contrat CALX141 — toute étape de test en est extraite,
+#: JAMAIS un littéral de perte en dur (garde CAL238,
+#: ``test_politique_pertes_pvgis.AucunePerteCacheeTest``).
+CASCADE = _charger('calepinage_pertes_cascade')
+
+
+def _etape_du_contrat(indice=0):
+    """Une étape RÉELLE de la cascade du contrat, jamais un littéral en dur."""
+    return copy.deepcopy(CASCADE['exemple']['cascade']['etapes'][indice])
 
 
 def contexte(resultat, langue='fr'):
@@ -89,16 +98,14 @@ class SourceNonRenseigneeTest(unittest.TestCase):
 
 class PreferenceCascadeTest(unittest.TestCase):
     def test_la_cascade_prime_sur_la_liste_plate(self):
+        etape = _etape_du_contrat()
         resultat = {
-            'cascade': {'etapes': [
-                {'etape': 'irradiation_plan', 'libelle': 'Irradiation plan',
-                 'perte_pct': 0.0, 'source': 'pvgis', 'reference': 'SARAH3',
-                 'motif_omission': ''}]},
+            'cascade': {'etapes': [etape]},
             'pertes': [{'poste': 'wiring', 'libelle': 'Pertes ohmiques',
                        'pct': 2.0, 'source': 'hypothese'}],
         }
         html = html_de_section(contexte(resultat))
-        self.assertIn('Irradiation plan', table_employees(html))
+        self.assertIn(etape['libelle'], table_employees(html))
         self.assertNotIn('Pertes ohmiques', html)
 
     def test_une_etape_omise_n_entre_pas_dans_les_hypotheses_employees(self):
@@ -118,12 +125,10 @@ class PreferenceCascadeTest(unittest.TestCase):
 
 class ReferenceEtDateTest(unittest.TestCase):
     def test_la_reference_est_imprimee_quand_elle_existe(self):
-        resultat = {'cascade': {'etapes': [
-            {'etape': 'irradiation_plan', 'libelle': 'Irradiation',
-             'perte_pct': 0.0, 'source': 'pvgis',
-             'reference': 'PVGIS-SARAH3', 'motif_omission': ''}]}}
+        etape = _etape_du_contrat()
+        resultat = {'cascade': {'etapes': [etape]}}
         html = html_de_section(contexte(resultat))
-        self.assertIn('PVGIS-SARAH3', html)
+        self.assertIn(etape['reference'], html)
 
     def test_sans_date_de_saisie_le_tiret_s_imprime(self):
         html = html_de_section(contexte({'cascade': None, 'pertes': [
