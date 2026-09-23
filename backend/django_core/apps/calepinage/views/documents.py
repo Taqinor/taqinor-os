@@ -28,7 +28,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..permissions import PeutVoirCalepinage
+from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from .calepinages import CalepinageViewSet
 
 
@@ -515,3 +515,53 @@ def presentation_compacte_pdf(self, request, pk=None):
 
 
 CalepinageViewSet.presentation_compacte_pdf = presentation_compacte_pdf
+
+
+# ── CALX319 — le dossier de fin de chantier ─────────────────────────────────
+@extend_schema(responses={201: OpenApiTypes.OBJECT})
+@action(detail=True, methods=['post'], url_path='dossier-fin-chantier',
+        url_name='dossier-fin-chantier',
+        permission_classes=[PeutGererCalepinage])
+def dossier_fin_chantier(self, request, pk=None):
+    """CALX319 — produit le dossier de fin de chantier et le RANGE en GED.
+
+    Plan de pose, document as-built, plan de câblage, nomenclature, manuel
+    du propriétaire — LA MÊME mécanique que ``pack-technique`` (CAL181,
+    ``views/sorties.py``). La recette IEC 62446-1 et les garanties restent
+    PRODUITES PAR LE CHANTIER : ``signalements`` le NOMME toujours, ce
+    dossier ne les fabrique jamais.
+
+    En ÉCRITURE (POST) et gardée par ``calepinage_gerer``, comme
+    ``pack-technique`` : l'appel CRÉE des documents GED.
+
+    * **201** — le document, ses pièces (code, libellé, pages) et
+      ``signalements`` ;
+    * **400** — aucune pièce à fusionner, ou aucune société : le motif
+      français et la pièce NOMMÉE.
+    """
+    from ..services.pack_technique import (
+        PackRefuse, construire_dossier_fin_chantier,
+    )
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        resultat = construire_dossier_fin_chantier(
+            calepinage, company=calepinage.company, created_by=request.user)
+    except PackRefuse as refus:
+        return Response({refus.piece or 'pieces': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    document = resultat['document']
+    return Response({
+        'document': getattr(document, 'pk', None),
+        'nom': getattr(document, 'nom', ''),
+        'pieces': [{'code': code, 'libelle': libelle, 'pages': pages}
+                   for code, libelle, pages in resultat['pieces']],
+        'pages_attendues': resultat['pages_attendues'],
+        # Les pièces ABSENTES sont dites, jamais tues — de même la recette
+        # et les garanties, produites par le chantier (MENTION_RECETTE_
+        # GARANTIES, toujours présente ici).
+        'signalements': resultat['signalements'],
+    }, status=status.HTTP_201_CREATED)
+
+
+CalepinageViewSet.dossier_fin_chantier = dossier_fin_chantier
