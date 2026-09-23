@@ -122,6 +122,49 @@ const fieldLabels = {
 
   // ── Compléments ────────────────────────────────────────────────────────
   note: { label: 'Note générale', section: 'divers', inputId: 'lf-note' },
+
+  // ── Vague 1 du script d'appel guidé (CAD149/CAD174) ───────────────────
+  // Libellé = EXACTEMENT le `verbose_name` du champ côté serveur
+  // (`apps/crm/models.py`) — garde-fou de la tâche : l'écran et le
+  // `help_text` (la question orale) doivent dire la MÊME chose. `pending`
+  // = ces champs sont saisis par `PanneauScriptAppel.jsx` (CAD152/153, hors
+  // périmètre de cette lane), pas encore par un `<FormField htmlFor>` des
+  // six sections classiques — `inputId` est le nom RÉSERVÉ que cet écran
+  // futur doit reprendre tel quel. Un champ marqué `pending` est EXEMPTÉ de
+  // la garde « pas de fantôme » de `fieldLabels.test.jsx` ; retirer `pending`
+  // dès que son `<FormField>` existe quelque part dans les six sections.
+  type_bien: {
+    label: 'Type de bien', section: 'toiture', inputId: 'lf-type-bien',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  objectif_projet: {
+    label: 'Objectif du projet', section: 'pipeline', inputId: 'lf-objectif-projet',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  decideur: {
+    label: 'Qui décide', section: 'pipeline', inputId: 'lf-decideur',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  devis_concurrents: {
+    label: 'Autres devis en cours', section: 'pipeline', inputId: 'lf-devis-concurrents',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  equip_ve_statut: {
+    label: 'Véhicule électrique — déjà là ou prévu ?', section: 'equipements',
+    inputId: 'lf-equip-ve-statut', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  pompage_heures_jour: {
+    label: 'Pompage — heures par jour', section: 'pompage',
+    inputId: 'lf-pompage-heures-jour', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  pompe_alim_actuelle: {
+    label: 'Pompe actuelle — alimentation', section: 'pompage',
+    inputId: 'lf-pompe-alim-actuelle', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  carburant_litres_mois: {
+    label: 'Carburant consommé (litres/mois)', section: 'pompage',
+    inputId: 'lf-carburant-litres-mois', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
 }
 
 export default fieldLabels
