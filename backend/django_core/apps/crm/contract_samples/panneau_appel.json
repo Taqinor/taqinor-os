@@ -202,6 +202,7 @@
     "equipements": "Les quatre couches sont TOUJOURS servies, dans cet ordre. `declare` = le booléen du lead vaut Oui ; `compte_dans_etude` = la couche est réellement composable par `apps/ventes/courbes_journalieres.py::composer_equipements`. Les deux diffèrent exactement quand une grandeur manque — et `champs_manquants` la NOMME, pour que la question suivante soit la bonne.",
     "touche": "`null` quand aucune cadence n'est active sur ce lead. Le panneau reste servi : les questions, elles, se posent toujours. `rang` est l'ordre de la touche dans sa cadence ; `heure_cible` vaut `null` sur les touches d'avant l'échéance à la minute.",
     "script": "`null` quand il n'y a pas de touche. Sinon, forme reprise de `relance_etape_message.json` (sans `wa_url` : un appel n'ouvre pas WhatsApp).",
-    "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord."
+    "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord.",
+    "segment": "Clé de `crm.Lead.TypeInstallation` (`residentiel`, `commercial`, `industriel`, `agricole`), ou `null` quand le lead n'a pas de type d'installation saisi. CAD161 (décision fondateur du 21/09/2026) : le panneau guidé est livré pour le RÉSIDENTIEL d'abord — `frontend/src/features/crm/relances/appelGuidance.js` refuse les trois autres segments avec un message explicite (jamais une page vide) et traite `null` comme le résidentiel, « segment à confirmer » (même repli que `variante_segment`, CAD126). Le serveur sert TOUS les segments tels quels : la seconde livraison (agricole et industriel, CAD175) lit ce même champ, sans aucune migration de contrat."
   }
 }
