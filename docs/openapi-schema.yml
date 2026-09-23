@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4679, operations: 7457, components: 2121}
+counts: {paths: 4679, operations: 7457, components: 2130}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7636,10 +7636,19 @@ components:
 - CadenceRelanceEtapeRequest
 - CalendrierHegirienReponse
 - Calepinage
+- CalepinageDocumentAuteur
+- CalepinageDocumentEntree
+- CalepinageDocumentImage
+- CalepinageDocumentManque
+- CalepinageDocumentVersion
+- CalepinageDocuments
+- CalepinageDossierFinChantier
+- CalepinageDossierFinChantierPiece
 - CalepinageDossiersReglementaires
 - CalepinageExportProjet
 - CalepinageGenererDossier
 - CalepinageHorizon
+- CalepinageImageDocumentDepot
 - CalepinageImportPlan
 - CalepinageMeteoFichier
 - CalepinageMoteurAccuseTravailLong
