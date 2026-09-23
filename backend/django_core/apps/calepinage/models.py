@@ -884,12 +884,15 @@ class ParametresCalepinage(TenantModel):
     def _valider_documents(self):
         """CALX307 — la sélection de sections du rapport d'étude, si réglée.
 
-        Import FONCTION-LOCAL : ``services/rapport`` importe des modules qui
-        ne touchent jamais ``models`` au chargement, mais on garde la même
-        discipline que le reste du fichier (cycles évités par construction).
+        Import FONCTION-LOCAL (même discipline que le reste du fichier), et
+        UNIQUEMENT des FEUILLES : ``services/rapport/contrat`` (stdlib seule)
+        et ``sections_societe``, jamais l'assembleur ``services/rapport`` —
+        import-linter compte aussi les imports fonction-locaux, et les
+        siens atteignent ``apps.stock.models``/``apps.ventes.models``
+        (contrat CAL5, fix CI #714).
         """
         from .services.parametres_cles import CODE_RAPPORT_ETUDE
-        from .services.rapport import RapportRefuse
+        from .services.rapport.contrat import RapportRefuse
         from .services.rapport.sections_societe import (
             configuration_document, valider_selection,
         )

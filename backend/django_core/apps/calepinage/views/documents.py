@@ -132,7 +132,55 @@ CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
 
 
 # ── CALX321 — l'inventaire des documents du lot 6, DONNÉE PAR DONNÉE ───────
-@extend_schema(responses={200: OpenApiTypes.OBJECT})
+# Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
+from drf_spectacular.utils import inline_serializer  # noqa: E402
+from rest_framework import serializers as drf_serializers  # noqa: E402
+
+#: La forme du contrat ``calepinage_documents.json`` (CALX291), telle que
+#: ``services/documents.inventaire_des_documents`` la rend — jamais un
+#: « type: object » vide, qui validerait tout (check_openapi_shapes, R1).
+DOCUMENTS_SCHEMA = inline_serializer('CalepinageDocuments', {
+    'calepinage': drf_serializers.IntegerField(allow_null=True),
+    'layout_hash': drf_serializers.CharField(allow_null=True),
+    'version_moteur': drf_serializers.CharField(allow_null=True),
+    'langue': drf_serializers.CharField(allow_null=True),
+    'documents': inline_serializer('CalepinageDocumentEntree', {
+        'code': drf_serializers.CharField(),
+        'libelle': drf_serializers.CharField(),
+        'format': drf_serializers.CharField(),
+        'endpoint': drf_serializers.CharField(),
+        'produit_par': drf_serializers.CharField(),
+        'disponible': drf_serializers.BooleanField(),
+        'motif_indisponible': drf_serializers.CharField(allow_null=True),
+        # Une pièce indisponible NOMME le champ à saisir, et où.
+        'manque': inline_serializer('CalepinageDocumentManque', {
+            'champ': drf_serializers.CharField(),
+            'libelle': drf_serializers.CharField(),
+            'ou_saisir': drf_serializers.CharField(),
+        }, many=True),
+        # CALX322 — les versions enregistrées, la plus récente d'abord.
+        'versions': inline_serializer('CalepinageDocumentVersion', {
+            'numero': drf_serializers.IntegerField(),
+            'produit_le': drf_serializers.DateTimeField(),
+            'produit_par_utilisateur': inline_serializer(
+                'CalepinageDocumentAuteur', {
+                    'id': drf_serializers.IntegerField(),
+                    'nom_complet': drf_serializers.CharField(),
+                }, allow_null=True),
+            'attachment': drf_serializers.IntegerField(),
+        }, many=True),
+    }, many=True),
+    # CALX302 — les images déposées par le navigateur, la plus récente
+    # d'abord (``services/images_document.images_du_calepinage``).
+    'images': inline_serializer('CalepinageDocumentImage', {
+        'genre': drf_serializers.CharField(),
+        'attachment': drf_serializers.IntegerField(),
+        'depose_le': drf_serializers.DateTimeField(),
+    }, many=True),
+})
+
+
+@extend_schema(responses={200: DOCUMENTS_SCHEMA})
 @action(detail=True, methods=['get'], url_path='documents',
         url_name='documents', permission_classes=[PeutVoirCalepinage])
 def documents(self, request, pk=None):
@@ -337,8 +385,18 @@ CalepinageViewSet.export_projet_json = export_projet_json
 
 
 # ── CALX302 — le dépôt d'une image PRODUITE PAR LE NAVIGATEUR ──────────────
+#: La réponse du dépôt (``calepinage_documents.json::publication_image
+#: .reponse``) — jamais un « type: object » vide (check_openapi_shapes, R1).
+IMAGE_DOCUMENT_SCHEMA = inline_serializer('CalepinageImageDocumentDepot', {
+    'ok': drf_serializers.BooleanField(),
+    'genre': drf_serializers.CharField(),
+    'attachment': drf_serializers.IntegerField(),
+    'depose_le': drf_serializers.DateTimeField(),
+})
+
+
 @extend_schema(request=OpenApiTypes.OBJECT,
-               responses={201: OpenApiTypes.OBJECT})
+               responses={201: IMAGE_DOCUMENT_SCHEMA})
 @action(detail=True, methods=['post'], url_path='image-document',
         url_name='image-document', permission_classes=[PeutVoirCalepinage])
 def image_document(self, request, pk=None):
@@ -526,7 +584,26 @@ CalepinageViewSet.presentation_compacte_pdf = presentation_compacte_pdf
 
 
 # ── CALX319 — le dossier de fin de chantier ─────────────────────────────────
-@extend_schema(responses={201: OpenApiTypes.OBJECT})
+#: La réponse 201 telle que l'action la compose ci-dessous — jamais un
+#: « type: object » vide (check_openapi_shapes, R1).
+DOSSIER_FIN_CHANTIER_SCHEMA = inline_serializer(
+    'CalepinageDossierFinChantier', {
+        'document': drf_serializers.IntegerField(allow_null=True),
+        'nom': drf_serializers.CharField(),
+        'pieces': inline_serializer('CalepinageDossierFinChantierPiece', {
+            'code': drf_serializers.CharField(),
+            'libelle': drf_serializers.CharField(),
+            'pages': drf_serializers.IntegerField(),
+        }, many=True),
+        'pages_attendues': drf_serializers.IntegerField(),
+        # Les pièces absentes, la recette et les garanties : DITES, jamais
+        # tues (``pack_technique.MENTION_RECETTE_GARANTIES`` toujours là).
+        'signalements': drf_serializers.ListField(
+            child=drf_serializers.CharField()),
+    })
+
+
+@extend_schema(responses={201: DOSSIER_FIN_CHANTIER_SCHEMA})
 @action(detail=True, methods=['post'], url_path='dossier-fin-chantier',
         url_name='dossier-fin-chantier',
         permission_classes=[PeutGererCalepinage])
