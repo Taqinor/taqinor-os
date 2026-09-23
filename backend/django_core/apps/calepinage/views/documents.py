@@ -139,3 +139,66 @@ def documents(self, request, pk=None):
 
 
 CalepinageViewSet.documents = documents
+
+
+# ── CALX323 — l'aperçu HTML d'un document, AVANT le PDF ─────────────────────
+@extend_schema(
+    responses={200: OpenApiTypes.STR},
+    parameters=[
+        OpenApiParameter(
+            name='code', type=OpenApiTypes.STR, required=True,
+            description='Code du document (inventaire GET documents/).'),
+        OpenApiParameter(
+            name='langue', type=OpenApiTypes.STR, required=False,
+            description='Langue de sortie demandée (fr, en).'),
+    ],
+)
+@action(detail=True, methods=['get'], url_path='apercu-document',
+        url_name='apercu-document', permission_classes=[PeutVoirCalepinage])
+def apercu_document(self, request, pk=None):
+    """CALX323 — le HTML EXACT que consomme le rendu PDF de ``?code=``.
+
+    UNE seule fonction de mise en page par document (``services/documents``
+    ``::MISES_EN_PAGE``) : cette action et le rendu PDF (``rapport-etude
+    .pdf/``…) appellent la MÊME — aucune rastérisation, aucun second
+    gabarit qui pourrait diverger.
+
+    * **200** — le document en ``text/html``, sans PDF ;
+    * **400** — ``code`` absent/inconnu (le code NOMMÉ), ou le document
+      refuse (motif et champ NOMMÉS, identiques au rendu PDF).
+    """
+    from django.http import HttpResponse
+
+    from ..services.documents import mise_en_page
+    from ..services.rapport import RapportRefuse
+
+    #: Les refus RÉELLEMENT levés par les mises en page aujourd'hui
+    #: enregistrées (``MISES_EN_PAGE``) — un document neuf AJOUTE sa
+    #: propre exception ici quand il rejoint le registre, exactement comme
+    #: ``sorties.py::_tableur`` capture ``(ExportRefuse, PlancheRefusee)``.
+    REFUS_CONNUS = (RapportRefuse,)
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    code = (request.query_params.get('code') or '').strip()
+    if not code:
+        return Response({'code': "Paramètre « code » requis (voir GET "
+                                 "documents/)."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    try:
+        fonction = mise_en_page(code)
+    except KeyError as refus:
+        # ``KeyError.__str__`` ré-encapsule son message entre guillemets —
+        # ``args[0]`` reste le texte FRANÇAIS propre, tel qu'écrit.
+        message = refus.args[0] if refus.args else str(refus)
+        return Response({'code': message}, status=status.HTTP_400_BAD_REQUEST)
+
+    langue = request.query_params.get('langue')
+    try:
+        html = fonction(calepinage, langue=langue)
+    except REFUS_CONNUS as refus:
+        return Response({refus.champ or 'resultat': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return HttpResponse(html, content_type='text/html; charset=utf-8')
+
+
+CalepinageViewSet.apercu_document = apercu_document
