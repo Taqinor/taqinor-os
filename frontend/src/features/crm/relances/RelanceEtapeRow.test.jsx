@@ -173,6 +173,36 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
   })
 })
 
+// CAD6 — « Plus tard — pas maintenant » : date convenue obligatoire, la CLÉ
+// part (jamais l'issue), puis le texte `rappel_plus_tard` est PROPOSÉ.
+describe('CAD6 RelanceEtapeRow — « Plus tard — pas maintenant »', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('est proposée sur la prise de contact ET le suivi de proposition', () => {
+    ouvrirFait(ETAPE_APPEL)
+    expect(screen.getByRole('button', { name: 'Plus tard — pas maintenant' })).toBeInTheDocument()
+    cleanup()
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.getByRole('button', { name: 'Plus tard — pas maintenant' })).toBeInTheDocument()
+  })
+
+  it('exige la date convenue puis envoie {reponse, rappel_le} et propose le texte', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-23T09:00:00Z'))
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    const onOuvrirMessage = vi.fn()
+    ouvrirFait(ETAPE_APPEL, { onFait, onOuvrirMessage })
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard — pas maintenant' }))
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-10-14' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { reponse: 'plus_tard', rappel_le: '2026-10-14' }))
+    await waitFor(() => expect(onOuvrirMessage).toHaveBeenCalledWith(
+      { ...ETAPE_APPEL, message_cle: 'rappel_plus_tard' }))
+  })
+})
+
 // CAD26 — « Reporter » offre DEUX gestes ; au-delà de 7 jours, la mise en
 // veille est proposée d'elle-même. Horloge figée (seul `Date` est simulé) :
 // mercredi 23/09/2026 à Casablanca.

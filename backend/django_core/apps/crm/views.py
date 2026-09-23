@@ -3289,19 +3289,48 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
         réponse et dit où elle vaut."""
         from .services import (
-            REPONSE_NE_PLUS_CONTACTER, refus_reponse_touche,
-            repondre_ne_plus_contacter)
+            REPONSE_NE_PLUS_CONTACTER, REPONSE_PLUS_TARD,
+            refus_reponse_touche, repondre_ne_plus_contacter,
+            repondre_plus_tard, reponse_touche)
 
         etape = self.get_object()
         refus = refus_reponse_touche(etape, reponse)
         if refus:
             return Response({'erreurs': {'reponse': refus}},
                             status=status.HTTP_400_BAD_REQUEST)
+        spec = reponse_touche(reponse)
         note = (request.data.get('note') or '').strip()
         body = (request.data.get('body') or '').strip()
+        # La date convenue avec le client (« Rappeler le »), quand la réponse
+        # en exige une — même lecture, mêmes refus nommés que « À rappeler
+        # le… » (format, puis CAD27 : jamais dans le passé).
+        quand = None
+        rappel_le = (request.data.get('rappel_le') or '').strip()
+        if spec.get('date_requise') and not rappel_le:
+            return Response(
+                {'erreurs': {'rappel_le': (
+                    '« Rappeler le » : la date convenue avec le client est '
+                    f'obligatoire pour « {spec["libelle"]} ».')}},
+                status=status.HTTP_400_BAD_REQUEST)
+        if rappel_le:
+            quand = _parse_rappel(
+                rappel_le, (request.data.get('rappel_heure') or '').strip())
+            if quand is None:
+                return Response(
+                    {'erreurs': {'rappel_le': (
+                        '« Rappeler le » : date invalide (AAAA-MM-JJ '
+                        'attendu, heure HH:MM optionnelle).')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            refus = _refus_date_passee(quand, 'Rappeler le')
+            if refus:
+                return Response({'erreurs': {'rappel_le': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         if reponse == REPONSE_NE_PLUS_CONTACTER:
             etape = repondre_ne_plus_contacter(
                 etape, request.user, note=note, body=body)
+        elif reponse == REPONSE_PLUS_TARD:
+            etape = repondre_plus_tard(
+                etape, request.user, quand, note=note, body=body)
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])

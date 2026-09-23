@@ -10551,9 +10551,14 @@ def leads_avec_cadence_active(company, lead_ids):
 #: pour que le KPI de cadence ne voie qu'UN motif d'opposition.
 REPONSE_NE_PLUS_CONTACTER = 'ne_plus_contacter'
 MOTIF_NE_PLUS_CONTACTER = 'ne plus contacter'
+#: CAD6 — « Plus tard — pas maintenant » (la plus fréquente du résidentiel).
+REPONSE_PLUS_TARD = 'plus_tard'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
+#: Les trois cadences NOMMÉES du protocole (MRY4) — pas les étapes de filet
+#: (``generique``), dont « À rappeler le… » REPORTE déjà l'étape (CAD3).
+_CADENCES_PROTOCOLE = ('contact', 'apres_devis', 'reveil')
 
 #: Table UNIQUE des réponses de touche. ``outcome`` est toujours une valeur
 #: de ``LeadActivity.OUTCOMES`` ; ``cadences`` borne où la réponse a un sens ;
@@ -10566,11 +10571,20 @@ REPONSES_TOUCHE = {
         'cadences': _TOUTES_CADENCES,
         'message': 'stop_contact',
     },
+    REPONSE_PLUS_TARD: {
+        'libelle': 'Plus tard — pas maintenant',
+        'outcome': 'rappel',
+        'note': 'Plus tard — pas maintenant',
+        'cadences': _CADENCES_PROTOCOLE,
+        'message': 'rappel_plus_tard',
+        # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
+        'date_requise': True,
+    },
 }
 
 #: Les textes de RÉPONSE qu'une touche peut proposer à l'envoi — le seul
 #: vocabulaire accepté par ``?cle=`` sur ``relance-etapes/<id>/message/``.
-CLES_MESSAGE_REPONSE = ('stop_contact',)
+CLES_MESSAGE_REPONSE = ('stop_contact', 'rappel_plus_tard')
 
 
 def reponse_touche(cle):
@@ -10820,3 +10834,57 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
                   f'd’un mois d’attente, la cadence « {cible.cadence} » est '
                   f'arrêtée et {suite}.'))
     return reveil
+
+
+# ── CAD-A ── CAD6 — « Plus tard — pas maintenant » ──────────────────────────
+
+def repondre_plus_tard(etape, user, quand, *, note='', body=''):
+    """CAD6 — « rappelez-moi après l'Aïd / après la rentrée / quand les
+    travaux seront finis » : la réponse la plus fréquente du résidentiel.
+
+    Avant, seule « À rappeler le… » existait : elle CONSOMMAIT un barreau et
+    programmait le barreau scripté SUIVANT à la date donnée — reporter de six
+    semaines faisait donc partir « Je classe ? » ou « Dernier message » à un
+    client qui demandait simplement du temps.
+
+    Ici, AUCUN barreau n'est consommé : le dossier est mis en VEILLE DATÉE
+    (``mettre_en_veille``, la mécanique de CAD26) et reprend AU MÊME BARREAU
+    à la date convenue — ou bascule en réveil daté au-delà d'un mois. La
+    réponse du client est tracée par UNE ligne typée selon le canal (issue
+    « à rappeler » — un vrai échange a eu lieu, il compte comme tel), qui dit
+    aussi ce que la veille a fait. Le texte ``rappel_plus_tard`` est PROPOSÉ
+    par l'écran ; ses crochets [jour] / [heure] se complètent à la main.
+
+    Renvoie la touche qui portera la reprise."""
+    from . import horaires
+
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_PLUS_TARD]
+    libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+    quand = _instant_de_veille(quand)
+    reprise = mettre_en_veille(lead, user, quand, etape=etape,
+                               journaliser=False)
+    if reprise is not None and reprise.pk == etape.pk:
+        suite = (f'dossier en veille jusqu’au {reprise.due_date:%d/%m/%Y}, '
+                 'reprise à cette même touche — aucun barreau consommé')
+    elif reprise is not None:
+        suite = (f'plus d’un mois d’attente : la cadence est arrêtée et un '
+                 f'réveil est daté du {reprise.due_date:%d/%m/%Y}')
+    else:
+        jour = quand.astimezone(horaires.CASABLANCA).date()
+        suite = (f'veille demandée jusqu’au {jour:%d/%m/%Y}, aucune touche à '
+                 'reprendre')
+    corps = (f'Réponse du client sur la touche « {libelle} » : « '
+             f'{spec["note"]} » — {suite}.')
+    if body:
+        corps += f' {body}'
+    if (note or '').strip():
+        corps += f' Note : {note.strip()}'
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE),
+        body=corps, outcome=spec['outcome'])
+    if reprise is None:
+        etape.refresh_from_db()
+        return etape
+    return reprise

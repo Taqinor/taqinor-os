@@ -165,6 +165,23 @@ const REPONSES_TOUTES_CADENCES = [
     suite: 'Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent, sans étape de décision, et aucune ne pourra redémarrer. L’accusé « je ne vous rappellerai plus » vous est proposé juste après.' },
 ]
 
+// CAD6 — « Plus tard — pas maintenant » (la réponse la plus fréquente du
+// résidentiel) : la date convenue est OBLIGATOIRE (`rappel: true`), aucun
+// barreau n'est consommé — le dossier se met en VEILLE (mécanique CAD26).
+const REPONSE_PLUS_TARD = {
+  reponse: 'plus_tard', label: 'Plus tard — pas maintenant', rappel: true,
+  message: 'rappel_plus_tard',
+  suite: 'Le dossier se met en veille jusqu’à la date convenue et reprend à cette même touche : aucune relance de pression ne part d’ici là (au-delà d’un mois, réveil daté). Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer.',
+}
+
+// Les réponses du client propres à CHAQUE cadence de protocole (les étapes de
+// filet `generique` n'en ont pas : « À rappeler le… » y reporte déjà, CAD3).
+const REPONSES_CLIENT = {
+  contact: [REPONSE_PLUS_TARD],
+  apres_devis: [REPONSE_PLUS_TARD],
+  reveil: [REPONSE_PLUS_TARD],
+}
+
 /** Lit la PROCHAINE touche depuis la RÉPONSE serveur du « Fait » (jamais
  *  calculée côté écran — un appel programmé à tort aurait pu fausser
  *  l'agenda). `prochaine_touche` (contrat CKP2, à venir) : `{due_at, canal}`
@@ -326,6 +343,7 @@ export default function RelanceEtapeRow({
   const reponsesDisponibles = [
     ...questionsTouche.reponses,
     ...(etape.canal === 'appel' ? APPEL_REPONSES_SUPPLEMENTAIRES : []),
+    ...(REPONSES_CLIENT[etape.cadence] ?? []),
     ...REPONSES_TOUTES_CADENCES,
   ]
   const reponseChoisie = reponseIdx == null
