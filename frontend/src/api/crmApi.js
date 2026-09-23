@@ -255,6 +255,14 @@ const crmApi = {
   // 30). Lisible par TOUS les rôles (décision transparence) — aucun gate ici.
   getKpiAdherence: (params) =>
     api.get('/crm/relance-etapes/kpi-adherence/', { params }),
+  // CAD87/CAD100 — les trois mesures maison à côté de CKP3 : taux de joint
+  // par (ordre de touche × canal × heure × jour de semaine), signatures par
+  // nombre de touches consommées, part WhatsApp-seulement/darija. Forme
+  // `mesure_cadence` (contrat committé `apps/crm/contract_samples/
+  // mesure_cadence.json`, PACT10). `?jours=` (défaut serveur 90, [1, 365]).
+  // LECTURE SEULE — aucun seuil/couleur, le jugement reste humain.
+  getMesureCadence: (params) =>
+    api.get('/crm/leads/mesure-cadence/', { params }),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),

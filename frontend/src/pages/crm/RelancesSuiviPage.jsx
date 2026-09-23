@@ -100,6 +100,131 @@ function visiblesPourOnglet(onglet, results, today) {
     || (e.statut === 'a_faire' && e.due_date < today))
 }
 
+// CAD100 (moitié écran de CAD87) — canal/jour en clair, mêmes clés que le
+// serveur (jamais un vocabulaire inventé ici). `jour_semaine` : 0 = lundi
+// (contrat `mesure_cadence.json`).
+const CANAL_LABELS_MESURE = {
+  appel: 'Appel', whatsapp: 'WhatsApp', email: 'E-mail', visite: 'Visite',
+}
+const JOURS_SEMAINE_LABELS = [
+  'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
+]
+
+/** CAD100 — les deux tableaux produits par CAD87 (`mesure_cadence`), en
+ *  LECTURE SEULE : taux de joint par (touche × canal × heure × jour de
+ *  semaine) et signatures par nombre de touches consommées. Rien n'est
+ *  recalculé ici — les deux tableaux viennent TELS QUELS de la réponse
+ *  serveur. Fenêtre temporelle propre à cette mesure (défaut serveur, 90 j) :
+ *  indépendante du sélecteur de période des touches ci-dessus. */
+function MesureCadencePanel() {
+  const [loading, setLoading] = useState(true)
+  const [erreur, setErreur] = useState(false)
+  const [donnees, setDonnees] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    // Garde défensive (même motif que `JournalRelance.jsx`) : une suite
+    // existante qui mocke `crmApi` sans encore connaître `getMesureCadence`
+    // doit se taire, jamais lever une TypeError.
+    const requete = typeof crmApi.getMesureCadence === 'function'
+      ? crmApi.getMesureCadence()
+      : Promise.reject(new Error('getMesureCadence indisponible'))
+    requete
+      .then((r) => { if (active) setDonnees(r.data) })
+      .catch(() => { if (active) setErreur(true) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  if (loading) {
+    return <Card className="mt-3"><CardContent className="pt-4"><Spinner /></CardContent></Card>
+  }
+  if (erreur || !donnees) {
+    return (
+      <Card className="mt-3">
+        <CardContent className="pt-4">
+          <p className="text-sm text-muted-foreground">Mesure de la cadence indisponible pour le moment.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const creneaux = donnees.taux_joint_par_creneau ?? []
+  const distribution = donnees.signatures_par_touches_consommees ?? []
+
+  return (
+    <Card className="mt-3" data-testid="mesure-cadence-panel">
+      <CardContent className="flex flex-col gap-4 pt-4">
+        <section>
+          <h3 className="mb-1.5 text-sm font-semibold">
+            Taux de joint par touche × heure × jour × canal
+          </h3>
+          {creneaux.length === 0 ? (
+            <p className="text-xs text-muted-foreground">—</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-1 pr-2">Touche</th>
+                    <th className="py-1 pr-2">Canal</th>
+                    <th className="py-1 pr-2">Jour</th>
+                    <th className="py-1 pr-2 text-right">Heure</th>
+                    <th className="py-1 pr-2 text-right">Closes</th>
+                    <th className="py-1 pr-2 text-right">Joints</th>
+                    <th className="py-1 text-right">Taux de joint</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creneaux.map((c) => (
+                    <tr
+                      key={`${c.ordre}-${c.canal}-${c.jour_semaine}-${c.heure}`}
+                      className="border-b border-border/50"
+                    >
+                      <td className="py-1 pr-2">{c.ordre}</td>
+                      <td className="py-1 pr-2">{CANAL_LABELS_MESURE[c.canal] ?? c.canal}</td>
+                      <td className="py-1 pr-2">{JOURS_SEMAINE_LABELS[c.jour_semaine] ?? c.jour_semaine}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{c.heure}h</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{c.closes}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{c.joints}</td>
+                      <td className="py-1 text-right tabular-nums">
+                        {c.taux_joint_pct == null ? '—' : `${c.taux_joint_pct} %`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+        <section>
+          <h3 className="mb-1.5 text-sm font-semibold">Signatures par nombre de touches consommées</h3>
+          {distribution.length === 0 ? (
+            <p className="text-xs text-muted-foreground">—</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-1 pr-2">Touches consommées</th>
+                  <th className="py-1 text-right">Signatures</th>
+                </tr>
+              </thead>
+              <tbody>
+                {distribution.map((d) => (
+                  <tr key={d.touches} className="border-b border-border/50">
+                    <td className="py-1 pr-2">{d.touches}</td>
+                    <td className="py-1 text-right tabular-nums">{d.signatures}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function RelancesSuiviPage() {
   const navigate = useNavigate()
   const isResponsableOuAdmin = useIsAdminOrResponsable()
@@ -269,6 +394,8 @@ export default function RelancesSuiviPage() {
           )}
         </CardContent>
       </Card>
+
+      <MesureCadencePanel />
 
       <ToucheMessageDialog
         etape={messageEtape}
