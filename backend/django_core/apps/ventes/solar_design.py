@@ -47,6 +47,20 @@ from core.product_roles import (
     est_panneau,
 )
 
+# CALX274 — le motif « aucun tarif horaire saisi » a UNE rédaction, celle du
+# service tarifaire de la FONDATION ``apps.parametres`` (module pur : stdlib
+# seulement, ni Django ni modèle — l'import de tête reste sûr, comme ci-dessus).
+from apps.parametres.tariff import MOTIF_TOU_NON_SAISI as _MOTIF_TOU_NON_SAISI
+from apps.parametres.tariff import saison_du_mois as _saison_du_mois
+from apps.parametres.tariff import (  # CALX276 — une rédaction, une liste
+    MECANISMES_COMPENSATION,
+    MOTIF_MECANISME_NON_SAISI,
+    MOTIF_TARIF_RACHAT_ABSENT,
+)
+from apps.parametres.tariff import (  # CALX279
+    MENTION_INDEXATION_NON_SAISIE as _MENTION_INDEXATION_NON_SAISIE,
+)
+
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
 # surchargeable par l'appelant via le dict ``module``.
@@ -90,8 +104,66 @@ DEFAULT_INVERTER_WINDOW = {
 
 # Conditions de température de référence pour le calcul à froid / à chaud.
 STC_TEMP_C = 25.0          # conditions standard (Voc/Vmp donnés à 25 °C)
+# CALX286 — ces deux températures n'ont AUCUNE source (ni station, ni fiche,
+# ni site) : ``string_design`` / ``verdicts_chaines`` / ``match_inverter`` ne
+# les appliquent PLUS d'office. Sans températures fournies, la fenêtre de
+# tension est OMISE (``omissions`` + grandeurs ``None``). Les appelants
+# historiques (``apps/ventes/compatibilites.py``) les passent EXPLICITEMENT
+# pour ne rien changer en production (D12).
 DEFAULT_COLD_TEMP_C = -5.0   # température cellule mini de dimensionnement (hiver Maroc montagne)
 DEFAULT_HOT_TEMP_C = 70.0    # température cellule maxi (été, module chaud)
+
+
+# ── CALX286 — hypothèses et omissions PUBLIÉES (jamais un défaut muet) ───────
+# Toute grandeur qui dépend d'un défaut NON SOURCÉ non fourni par l'appelant
+# sort ``None`` avec une entrée ``omissions`` ; tout défaut qui reste appliqué
+# (hors des familles retirées par CALX286) est publié dans ``hypotheses`` avec
+# sa provenance. ``couvre`` liste les clés de sortie (chemins pointés) que
+# l'entrée gouverne — le test de non-invention s'appuie dessus.
+
+def _source_defaut(nom):
+    """Provenance d'un défaut codé du module : son NOM, et le fait qu'il n'est
+    pas sourcé."""
+    return (f"défaut codé du module (apps/ventes/solar_design.py {nom}) — "
+            "valeur non sourcée, appliquée faute de saisie")
+
+
+def _hypothese(cle, valeur, source, couvre=None):
+    """Une hypothèse appliquée, avec sa source et les sorties qu'elle gouverne."""
+    return {"cle": cle, "valeur": valeur, "source": source,
+            "couvre": list(couvre or [cle])}
+
+
+def _omission(cle, motif, couvre=None):
+    """Une grandeur omise faute de saisie, avec son motif et ses dépendantes."""
+    return {"cle": cle, "motif": motif, "couvre": list(couvre or [cle])}
+
+
+def _taux_ou_none(valeur):
+    """Nombre lu dans ``valeur``, ou ``None`` s'il est absent/illisible/NaN."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return v if v == v else None
+
+
+def _omissions_temperatures(cold_temp_c, hot_temp_c, couvre):
+    """Omissions des températures de dimensionnement non fournies."""
+    omissions = []
+    for cle, valeur, libelle in (("cold_temp_c", cold_temp_c, "minimale"),
+                                 ("hot_temp_c", hot_temp_c, "maximale")):
+        if _taux_ou_none(valeur) is None:
+            omissions.append(_omission(
+                cle,
+                f"omis : température cellule {libelle} de dimensionnement non "
+                f"fournie ({cle}) — la fenêtre de tension en dépend, aucune "
+                "température n'est supposée",
+                couvre))
+    return omissions
+
 
 # Ratio DC/AC maximal toléré pour considérer un onduleur « assez gros ».
 MAX_DC_AC = 1.35
@@ -556,8 +628,7 @@ def _alertes_courant(resultat_chaines, entree):
 
 
 def verdicts_chaines(n_panels, module=None, inverter=None,
-                     cold_temp_c=DEFAULT_COLD_TEMP_C,
-                     hot_temp_c=DEFAULT_HOT_TEMP_C):
+                     cold_temp_c=None, hot_temp_c=None):
     """PVCOMPAT — la TAXONOMIE du noyau pour un couple module/onduleur.
 
     ``string_design`` rend une charge utile historique (des ``checks`` binaires
@@ -578,6 +649,10 @@ def verdicts_chaines(n_panels, module=None, inverter=None,
     noyau change d'avis). Retourne un dict JSON-sérialisable
     ``{bloquants, alertes, alertes_courant, fenetre_trop_etroite,
     longueur_chaine, nb_chaines, homogene}``. Ne lève jamais.
+
+    CALX286 — ``cold_temp_c`` / ``hot_temp_c`` NE sont PLUS supposées : sans
+    elles, aucun verdict n'est prononcé (valeurs ``None``) et la charge utile
+    porte ``omissions`` qui nomme la température manquante.
     """
     from core.electrique.chaines import concevoir_chaines
 
@@ -594,6 +669,17 @@ def verdicts_chaines(n_panels, module=None, inverter=None,
             "bloquants": [], "alertes": ["aucun module à répartir"],
             "alertes_courant": [], "fenetre_trop_etroite": False,
             "longueur_chaine": 0, "nb_chaines": 0, "homogene": True,
+        }
+
+    omissions = _omissions_temperatures(
+        cold_temp_c, hot_temp_c,
+        ["bloquants", "alertes", "alertes_courant", "fenetre_trop_etroite",
+         "longueur_chaine", "nb_chaines", "homogene"])
+    if omissions:
+        return {
+            "bloquants": None, "alertes": None, "alertes_courant": None,
+            "fenetre_trop_etroite": None, "longueur_chaine": None,
+            "nb_chaines": None, "homogene": None, "omissions": omissions,
         }
 
     entree = _entree_electrique_du_dict(mod, inv, n, n_mppt,
@@ -614,8 +700,7 @@ def verdicts_chaines(n_panels, module=None, inverter=None,
 
 
 def string_design(n_panels, module=None, inverter=None,
-                  cold_temp_c=DEFAULT_COLD_TEMP_C,
-                  hot_temp_c=DEFAULT_HOT_TEMP_C):
+                  cold_temp_c=None, hot_temp_c=None):
     """FG246 — répartit ``n_panels`` panneaux sur les MPPT et vérifie la fenêtre.
 
     Distribue les panneaux en chaînes série équilibrées sur les ``n_mppt``
@@ -651,11 +736,32 @@ def string_design(n_panels, module=None, inverter=None,
     PV83 (ARC6) — SHIM : la physique (fenêtre de tension et découpe en chaînes
     égales) est celle de ``core.electrique.chaines``. Les quatre points
     volontairement conservés ici sont listés en tête de section.
+
+    CALX286 — ``cold_temp_c`` / ``hot_temp_c`` NE sont PLUS supposées : sans
+    elles, la répartition, les tensions et les contrôles valent ``None`` et
+    ``omissions`` nomme la température manquante ; ``n_panels``, ``n_mppt``,
+    ``dc_kw``, ``ac_kw`` et le ratio DC/AC (qui n'en dépendent pas) restent
+    publiés. Un ``module`` / ``inverter`` absent retombe sur ``DEFAULT_MODULE``
+    / ``DEFAULT_INVERTER_WINDOW`` et le DIT dans ``hypotheses``. Les deux clés
+    n'apparaissent que non vides : la charge utile historique reste identique
+    clé pour clé quand tout est fourni.
     """
     from core.electrique.chaines import concevoir_chaines
 
     mod = {**DEFAULT_MODULE, **(module or {})}
     inv = {**DEFAULT_INVERTER_WINDOW, **(inverter or {})}
+    hypotheses = []
+    if not module:
+        hypotheses.append(_hypothese(
+            "module", dict(DEFAULT_MODULE), _source_defaut("DEFAULT_MODULE"),
+            ["dc_kw", "dc_ac_ratio", "voltages", "strings",
+             "panels_per_string", "string_layout"]))
+    if not inverter:
+        hypotheses.append(_hypothese(
+            "inverter", dict(DEFAULT_INVERTER_WINDOW),
+            _source_defaut("DEFAULT_INVERTER_WINDOW"),
+            ["n_mppt", "string_layout", "strings", "panels_per_string",
+             "checks"]))
 
     try:
         n = int(n_panels)
@@ -672,15 +778,42 @@ def string_design(n_panels, module=None, inverter=None,
     v_mppt_min = float(inv["v_mppt_min"])
     v_mppt_max = float(inv["v_mppt_max"])
 
+    def _avec_publication(charge, omissions=()):
+        """Ajoute ``hypotheses`` / ``omissions`` SEULEMENT s'ils sont non vides."""
+        if hypotheses:
+            charge["hypotheses"] = hypotheses
+        if omissions:
+            charge["omissions"] = list(omissions)
+        return charge
+
     if n <= 0:
-        return {
+        return _avec_publication({
             "n_panels": 0, "n_mppt": n_mppt, "strings": 0,
             "panels_per_string": 0, "string_layout": [],
             "dc_kw": 0.0, "ac_kw": _as_kw(inv.get("ac_kw")),
             "dc_ac_ratio": None,
             "voltages": {}, "checks": {}, "ok": False,
             "warnings": ["aucun panneau à répartir"],
-        }
+        })
+
+    omissions = _omissions_temperatures(
+        cold_temp_c, hot_temp_c,
+        ["strings", "panels_per_string", "string_layout", "voltages",
+         "checks", "ok"])
+    if omissions:
+        panel_w_seul = float(mod.get("puissance_w")
+                             or DEFAULT_MODULE["puissance_w"])
+        dc_kw = round(n * panel_w_seul / 1000.0, 3)
+        ac_kw = _as_kw(inv.get("ac_kw"))
+        return _avec_publication({
+            "n_panels": n, "n_mppt": n_mppt, "strings": None,
+            "panels_per_string": None, "string_layout": None,
+            "dc_kw": dc_kw, "ac_kw": ac_kw,
+            "dc_ac_ratio": (round(dc_kw / ac_kw, 3)
+                            if ac_kw and ac_kw > 0 else None),
+            "voltages": None, "checks": None, "ok": None,
+            "warnings": [o["motif"] for o in omissions],
+        }, omissions)
 
     entree = _entree_electrique_du_dict(mod, inv, n, n_mppt,
                                         cold_temp_c, hot_temp_c)
@@ -785,7 +918,7 @@ def string_design(n_panels, module=None, inverter=None,
 
     ok = all(checks.values()) and not uneven and not window_too_narrow
 
-    return {
+    return _avec_publication({
         "n_panels": n,
         "n_mppt": n_mppt,
         "strings": strings,
@@ -805,7 +938,7 @@ def string_design(n_panels, module=None, inverter=None,
         "checks": checks,
         "ok": ok,
         "warnings": warnings,
-    }
+    })
 
 
 def _choose_string_layout(n, n_mppt, min_len, max_len):
@@ -837,8 +970,7 @@ def _distribute_strings(strings, n_mppt):
 # ═════════════════════════════════════════════════════════════════════════════
 def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
                    module=None, inverter_window=None,
-                   cold_temp_c=DEFAULT_COLD_TEMP_C,
-                   hot_temp_c=DEFAULT_HOT_TEMP_C):
+                   cold_temp_c=None, hot_temp_c=None):
     """FG247 — propose l'onduleur catalogue compatible pour une config panneaux.
 
     Parcourt ``produits`` (itérable de ``stock.Produit``), retient les onduleurs
@@ -861,6 +993,11 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
     Retourne un dict ``{inverter, ac_kw, dc_kw, dc_ac_ratio, string_design,
     compatible, candidates_considered, reason}`` ; ``inverter`` est le
     ``Produit`` choisi (ou None si aucun ne convient).
+
+    CALX286 — sans ``cold_temp_c`` / ``hot_temp_c`` fournies, aucune fenêtre
+    de tension ne peut être vérifiée : aucun onduleur n'est proposé
+    (``inverter: None``, ``compatible: None``) et ``omissions`` le dit, plutôt
+    que de trancher sur des températures supposées.
     """
     mod = {**DEFAULT_MODULE, **(module or {})}
     if panel_w:
@@ -875,6 +1012,17 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
         n = 0
 
     dc_kw = round(n * float(mod["puissance_w"]) / 1000.0, 3)
+
+    omissions = _omissions_temperatures(
+        cold_temp_c, hot_temp_c,
+        ["inverter", "ac_kw", "dc_ac_ratio", "string_design", "compatible"])
+    if omissions:
+        return {
+            "inverter": None, "ac_kw": None, "dc_kw": dc_kw,
+            "dc_ac_ratio": None, "string_design": None, "compatible": None,
+            "candidates_considered": 0,
+            "reason": omissions[0]["motif"], "omissions": omissions,
+        }
 
     def _window_for(produit, kw):
         """Fenêtre de tension du candidat : défauts < fiche < surcharge < kW."""
@@ -1423,9 +1571,9 @@ _EV_CHARGE_EFFICIENCY = 0.90
 _EV_STD_POWER_KW = [3.7, 7.4, 11.0, 22.0]
 
 
-def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
-                      energy_per_session_kwh=None, kwh_per_100km=18.0,
-                      km_per_session=40.0, pv_kwc=None,
+def ev_charger_sizing(*, borne_kw=None, phases=None, sessions_per_day=None,
+                      energy_per_session_kwh=None, kwh_per_100km=None,
+                      km_per_session=None, pv_kwc=None,
                       pv_daily_production_kwh=None,
                       pv_self_consumption_kwh=None,
                       pv_surplus_kwh=None, charge_window_h=None,
@@ -1465,9 +1613,16 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
                      solar_coverage_pct, base_self_consumption_pct,
                      new_self_consumption_pct, self_consumption_gain_pts,
                      pv_daily_production_kwh},
-         warnings: []}
+         hypotheses: [...], warnings: []}
+
+    CALX286 — chaque défaut encore appliqué faute de saisie (puissance de
+    borne, phases, sessions, consommation véhicule, km par session, rendement
+    de charge, tension nominale) est PUBLIÉ dans ``hypotheses`` avec sa
+    provenance et les sorties qu'il gouverne — les valeurs rendues sont
+    inchangées.
     """
     warnings = []
+    hypotheses = []
 
     # ── Normalisation des entrées (bornage minimal, jamais de rejet) ──
     def _pos(value, default):
@@ -1477,6 +1632,15 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
             return float(default)
         return v if v > 0 else float(default)
 
+    def _pos_ou_hypothese(value, cle, defaut, couvre):
+        lu = _taux_ou_none(value)
+        if lu is not None and lu > 0:
+            return lu
+        hypotheses.append(_hypothese(
+            cle, defaut, _source_defaut(f"ev_charger_sizing {cle}={defaut}"),
+            couvre))
+        return float(defaut)
+
     def _nonneg(value):
         try:
             v = float(value)
@@ -1484,9 +1648,19 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
             return None
         return v if v >= 0 else None
 
-    kw = _pos(borne_kw, 7.4)
+    kw = _pos_ou_hypothese(
+        borne_kw, "borne_kw", 7.4,
+        ["borne.kw", "borne.line_current_a", "borne.breaker_a",
+         "borne.session_charge_h", "borne.recommended_kw"])
+    if phases is None:
+        hypotheses.append(_hypothese(
+            "phases", 1, _source_defaut("ev_charger_sizing phases=1"),
+            ["borne.phases", "borne.voltage_v", "borne.line_current_a",
+             "borne.breaker_a"]))
     ph = 3 if int(phases or 1) == 3 else 1
-    sessions = _pos(sessions_per_day, 1)
+    sessions = _pos_ou_hypothese(
+        sessions_per_day, "sessions_per_day", 1,
+        ["energy.sessions_per_day", "energy.daily_demand_kwh"])
 
     # ── Énergie d'une session ──
     if energy_per_session_kwh is not None:
@@ -1495,9 +1669,25 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
             per_session = 0.0
     else:
         # Déduite de la conso véhicule × km par session.
-        kwh_100 = _pos(kwh_per_100km, 18.0)
-        km = _pos(km_per_session, 40.0)
+        couvre_session = ["energy.per_session_kwh", "energy.daily_demand_kwh",
+                          "borne.session_charge_h"]
+        kwh_100 = _pos_ou_hypothese(kwh_per_100km, "kwh_per_100km", 18.0,
+                                    couvre_session)
+        km = _pos_ou_hypothese(km_per_session, "km_per_session", 40.0,
+                               couvre_session)
         per_session = kwh_100 * km / 100.0
+    # Deux constantes toujours appliquées : le rendement de charge (non
+    # sourcé) et la tension nominale BT normalisée (sourcée).
+    hypotheses.append(_hypothese(
+        "charge_efficiency", _EV_CHARGE_EFFICIENCY,
+        _source_defaut("_EV_CHARGE_EFFICIENCY"),
+        ["energy.charge_efficiency", "energy.daily_demand_kwh",
+         "borne.session_charge_h"]))
+    hypotheses.append(_hypothese(
+        "voltage_v", {"mono": _EV_VOLTAGE_MONO, "tri": _EV_VOLTAGE_TRI},
+        "tension nominale basse tension normalisée 230 V / 400 V "
+        "(CEI 60038)",
+        ["borne.voltage_v", "borne.line_current_a", "borne.breaker_a"]))
 
     # Énergie à PRÉLEVER au tableau (pertes de charge incluses).
     daily_demand = round(
@@ -1597,6 +1787,7 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
             "charge_efficiency": _EV_CHARGE_EFFICIENCY,
         },
         "pv_impact": pv_impact,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
@@ -1622,6 +1813,10 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
 # absurdes (≤ 0) sont bornées à un défaut sensé pour éviter une division par
 # zéro.
 
+# CALX286 — les quatre constantes ci-dessous NE sont PLUS des défauts de
+# ``battery_storage_sizing`` (grandeurs omises sans saisie). Elles restent
+# définies parce que ``apps/calepinage/services/batterie.py`` relit DoD et
+# rendement comme « hypothèses de référence » ÉTIQUETÉES (source publiée).
 # Profondeur de décharge utilisable par défaut (lithium LFP courant : 90 %).
 _BATTERY_DEFAULT_DOD = 0.90
 # Rendement aller-retour (charge → décharge) d'un parc lithium + onduleur.
@@ -1643,9 +1838,10 @@ def battery_storage_sizing(*, mode="autoconso",
                            critical_load_kw=None,
                            backup_hours=None,
                            evening_peak_kw=None,
-                           depth_of_discharge=_BATTERY_DEFAULT_DOD,
-                           round_trip_efficiency=_BATTERY_DEFAULT_ROUND_TRIP,
-                           system_voltage_v=48.0):
+                           depth_of_discharge=None,
+                           round_trip_efficiency=None,
+                           system_voltage_v=None,
+                           backup_peak_factor=None):
     """FG256 — capacité (kWh) et puissance (kW) batterie utiles + nominales.
 
     Calcule le dimensionnement pour le ou les objectifs demandés et désigne la
@@ -1682,9 +1878,20 @@ def battery_storage_sizing(*, mode="autoconso",
          backup: {usable_kwh, usable_kw, nominal_kwh, ...} | None,
          recommended: {usable_kwh, usable_kw, nominal_kwh, current_a},
          binding_objective, depth_of_discharge, round_trip_efficiency,
-         warnings: []}
+         omissions: [...], hypotheses: [...], warnings: []}
+
+    CALX286 — AUCUN défaut batterie n'est plus appliqué d'office :
+    ``depth_of_discharge`` / ``round_trip_efficiency`` absents ⇒ capacités
+    NOMINALES ``None`` ; ``night_load_kwh`` absent ⇒ capacité utile
+    d'autoconsommation ``None`` (plus de « 80 % du surplus ») ;
+    ``backup_peak_factor`` absent ⇒ puissance utile de secours ``None`` —
+    chaque fois avec une entrée ``omissions``. Les constantes
+    ``_BATTERY_DEFAULT_*`` restent définies : ``apps/calepinage/services/
+    batterie.py`` les relit comme HYPOTHÈSES DE RÉFÉRENCE étiquetées.
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     def _pos(value, default):
         try:
@@ -1693,6 +1900,10 @@ def battery_storage_sizing(*, mode="autoconso",
             return float(default)
         return v if v > 0 else float(default)
 
+    def _pos_ou_none(value):
+        v = _taux_ou_none(value)
+        return v if v is not None and v > 0 else None
+
     def _nonneg(value):
         try:
             v = float(value)
@@ -1700,16 +1911,38 @@ def battery_storage_sizing(*, mode="autoconso",
             return None
         return v if v >= 0 else None
 
-    # DoD et rendement bornés à ]0, 1] (jamais une division par zéro).
-    dod = _pos(depth_of_discharge, _BATTERY_DEFAULT_DOD)
-    if dod > 1.0:
+    # DoD et rendement bornés à ]0, 1] (jamais une division par zéro) —
+    # SAISIS, sinon omis (CALX286).
+    dod = _pos_ou_none(depth_of_discharge)
+    if dod is None:
+        omissions.append(_omission(
+            "depth_of_discharge",
+            "omis : profondeur de décharge non fournie (depth_of_discharge) — "
+            "à lire sur la fiche de la batterie",
+            ["depth_of_discharge", "autoconso.nominal_kwh",
+             "backup.nominal_kwh", "recommended.nominal_kwh"]))
+    elif dod > 1.0:
         dod = 1.0
         warnings.append("profondeur de décharge plafonnée à 100 %")
-    rte = _pos(round_trip_efficiency, _BATTERY_DEFAULT_ROUND_TRIP)
-    if rte > 1.0:
+    rte = _pos_ou_none(round_trip_efficiency)
+    if rte is None:
+        omissions.append(_omission(
+            "round_trip_efficiency",
+            "omis : rendement aller-retour non fourni (round_trip_efficiency) "
+            "— à lire sur la fiche de la batterie",
+            ["round_trip_efficiency", "autoconso.nominal_kwh",
+             "backup.nominal_kwh", "recommended.nominal_kwh"]))
+    elif rte > 1.0:
         rte = 1.0
         warnings.append("rendement aller-retour plafonné à 100 %")
-    voltage = _pos(system_voltage_v, 48.0)
+    voltage = _pos_ou_none(system_voltage_v)
+    if voltage is None:
+        voltage = 48.0
+        hypotheses.append(_hypothese(
+            "system_voltage_v", 48.0,
+            _source_defaut("system_voltage_v=48.0"),
+            ["system_voltage_v", "recommended.current_a"]))
+    peak_factor = _pos_ou_none(backup_peak_factor)
 
     mode = (mode or "autoconso").lower()
     want_autoconso = mode in ("autoconso", "both")
@@ -1722,6 +1955,8 @@ def battery_storage_sizing(*, mode="autoconso",
     def _usable_to_nominal(usable_kwh):
         # Capacité nominale = utile / (DoD × √rendement aller-retour). Le √
         # répartit la perte round-trip entre charge et décharge (modèle simple).
+        if dod is None or rte is None or usable_kwh is None:
+            return None
         denom = dod * math.sqrt(rte)
         return round(usable_kwh / denom, 2) if denom > 0 else None
 
@@ -1757,20 +1992,38 @@ def battery_storage_sizing(*, mode="autoconso",
             warnings.append(
                 "autoconsommation : surplus solaire inconnu — fournir production "
                 "+ autoconsommation, surplus direct, ou kWc")
+        elif _nonneg(night_load_kwh) is None:
+            # CALX286 — plus de « 80 % du surplus » supposés : sans besoin
+            # nocturne fourni, la capacité utile n'est pas publiée.
+            omissions.append(_omission(
+                "night_load_kwh",
+                "omis : besoin nocturne non fourni (night_load_kwh) — la part "
+                "du surplus restituée le soir n'est pas supposée",
+                ["autoconso.usable_kwh", "autoconso.usable_kw",
+                 "autoconso.nominal_kwh", "autoconso.stored_kwh",
+                 "autoconso.spilled_surplus_kwh", "recommended"]))
+            autoconso = {
+                "usable_kwh": None, "usable_kw": None, "nominal_kwh": None,
+                "daily_surplus_kwh": round(surplus, 2), "night_load_kwh": None,
+                "stored_kwh": None, "spilled_surplus_kwh": None,
+                "pv_daily_production_kwh": prod,
+            }
         else:
-            # Énergie redéchargée le soir : besoin nocturne fourni, sinon une
-            # fraction du surplus (le reste serait réinjecté/perdu).
+            # Énergie redéchargée le soir : le besoin nocturne FOURNI.
             night = _nonneg(night_load_kwh)
-            if night is None:
-                night = round(surplus * _BATTERY_DEFAULT_NIGHT_FRACTION, 2)
             # On ne stocke pas plus que ce qui sera redéchargé (ni que le surplus).
             usable_kwh = round(min(surplus, night), 2)
             spilled = round(max(0.0, surplus - usable_kwh), 2)
             # Pic de décharge nocturne : fourni, sinon ~le besoin réparti sur une
-            # soirée de pointe de 4 h (modèle simple).
+            # soirée de pointe de 4 h (modèle simple, publié comme hypothèse).
             peak = _nonneg(evening_peak_kw)
             if peak is None or peak <= 0:
                 peak = round(usable_kwh / 4.0, 2) if usable_kwh > 0 else 0.0
+                hypotheses.append(_hypothese(
+                    "evening_peak_kw", "besoin nocturne réparti sur 4 h",
+                    _source_defaut("pic du soir = besoin ÷ 4 h"),
+                    ["autoconso.usable_kw", "recommended.usable_kw",
+                     "recommended.current_a"]))
             autoconso = {
                 "usable_kwh": usable_kwh,
                 "usable_kw": round(peak, 2),
@@ -1802,14 +2055,26 @@ def battery_storage_sizing(*, mode="autoconso",
             usable_kwh = round(crit_kw * hours, 2)
             # Puissance utile = charge critique avec marge de pointe (appels
             # moteurs, démarrages) — l'onduleur batterie doit la soutenir.
-            usable_kw = round(crit_kw * _BATTERY_BACKUP_PEAK_FACTOR, 2)
+            # CALX286 — la marge est SAISIE (``backup_peak_factor``), sinon
+            # la puissance utile est omise (plus de 1,25 supposé).
+            if peak_factor is None:
+                usable_kw = None
+                omissions.append(_omission(
+                    "backup_peak_factor",
+                    "omis : marge de pointe de secours non fournie "
+                    "(backup_peak_factor) — la puissance utile de secours en "
+                    "dépend",
+                    ["backup.usable_kw", "recommended.usable_kw",
+                     "recommended.current_a"]))
+            else:
+                usable_kw = round(crit_kw * peak_factor, 2)
             backup = {
                 "usable_kwh": usable_kwh,
                 "usable_kw": usable_kw,
                 "nominal_kwh": _usable_to_nominal(usable_kwh),
                 "critical_load_kw": round(crit_kw, 2),
                 "backup_hours": round(hours, 2),
-                "peak_factor": _BATTERY_BACKUP_PEAK_FACTOR,
+                "peak_factor": peak_factor,
             }
             if usable_kwh <= 0:
                 warnings.append(
@@ -1833,14 +2098,19 @@ def battery_storage_sizing(*, mode="autoconso",
         binding, chosen = max(
             candidates, key=lambda c: c[1].get("usable_kwh") or 0.0)
         usable_kwh = chosen.get("usable_kwh") or 0.0
-        usable_kw = max(
-            (c[1].get("usable_kw") or 0.0) for c in candidates)
+        # CALX286 — une puissance utile omise (marge de secours non saisie)
+        # rend la puissance retenue inconnue : jamais un max qui l'ignore.
+        if any(c[1].get("usable_kw") is None for c in candidates):
+            usable_kw = None
+            current_a = None
+        else:
+            usable_kw = max(c[1]["usable_kw"] for c in candidates)
+            current_a = round(usable_kw * 1000.0 / voltage, 1) \
+                if voltage > 0 and usable_kw else 0.0
         nominal_kwh = _usable_to_nominal(usable_kwh)
-        current_a = round(usable_kw * 1000.0 / voltage, 1) \
-            if voltage > 0 and usable_kw else 0.0
         recommended = {
             "usable_kwh": round(usable_kwh, 2),
-            "usable_kw": round(usable_kw, 2),
+            "usable_kw": None if usable_kw is None else round(usable_kw, 2),
             "nominal_kwh": nominal_kwh,
             "current_a": current_a,
         }
@@ -1851,9 +2121,11 @@ def battery_storage_sizing(*, mode="autoconso",
         "backup": backup,
         "recommended": recommended,
         "binding_objective": binding,
-        "depth_of_discharge": round(dod, 4),
-        "round_trip_efficiency": round(rte, 4),
+        "depth_of_discharge": None if dod is None else round(dod, 4),
+        "round_trip_efficiency": None if rte is None else round(rte, 4),
         "system_voltage_v": round(voltage, 1),
+        "omissions": omissions,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
@@ -1884,6 +2156,10 @@ def battery_storage_sizing(*, mode="autoconso",
 
 # Postes de perte par défaut (fractions), valeurs marché conservatrices pour une
 # centrale PV au Maroc bien conçue. Tout est surchargeable par l'appelant.
+# CALX286 — ``simulate_bankable_yield`` NE les applique PLUS d'office (PR omis
+# sans arbre fourni). Ils restent la PONDÉRATION RELATIVE que
+# ``apps/ventes/etude.py::loss_factors_canoniques`` cale sur les 20 % du
+# fondateur avant de les passer explicitement (D12).
 DEFAULT_LOSS_FACTORS = {
     "temperature": 0.08,   # échauffement cellule au-dessus du STC (climat chaud)
     "soiling": 0.03,       # salissure / poussière (Maroc : sable, à nettoyer)
@@ -1917,7 +2193,7 @@ def _clamp01(value, default):
 
 
 def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
-                            annual_variability=DEFAULT_ANNUAL_VARIABILITY,
+                            annual_variability=None,
                             kwc=None, include_p75=True):
     """FG257 — simulation bankable P50/P90 (+P75) avec modèle de pertes & PR.
 
@@ -1949,8 +2225,18 @@ def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
          z_p90, z_p75, specific_yield_kwh_kwc|None, warnings: []}
 
     Ne lève jamais : entrées dégradées → structure cohérente à 0.
+
+    CALX286 — ``loss_factors`` N'EST PLUS complété par ``DEFAULT_LOSS_FACTORS``
+    (valeurs « marché » non sourcées) : absent ⇒ PR, P50, P90, P75 et
+    productible spécifique ``None`` avec une entrée ``omissions`` ; fourni ⇒ il
+    EST l'arbre de pertes de l'appelant, poste pour poste (un poste illisible
+    est omis en le nommant, et le PR avec lui). ``annual_variability`` absente
+    ⇒ ``DEFAULT_ANNUAL_VARIABILITY`` publiée dans ``hypotheses`` avec sa
+    provenance (CALX285 la remplacera par une variabilité d'origine publiée).
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     try:
         base = float(base_production_kwh)
@@ -1960,34 +2246,55 @@ def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
         base = 0.0
         warnings.append("production de base négative ramenée à 0")
 
-    factors = {**DEFAULT_LOSS_FACTORS, **(loss_factors or {})}
-
     # ── PR = produit des rendements (1 − perte) de chaque poste ──
     loss_breakdown = {}
     pr = 1.0
-    for poste, raw in factors.items():
-        frac = _clamp01(raw, DEFAULT_LOSS_FACTORS.get(poste, 0.0))
-        loss_breakdown[poste] = {
-            "fraction": round(frac, 4),
-            "pct": round(frac * 100.0, 2),
-        }
-        pr *= (1.0 - frac)
+    if not loss_factors:
+        pr = None
+        omissions.append(_omission(
+            "loss_factors",
+            "omis : arbre de pertes non fourni (loss_factors) — aucun poste "
+            "« marché » n'est supposé",
+            ["performance_ratio", "total_loss_pct", "p50_kwh", "p90_kwh",
+             "p75_kwh", "specific_yield_kwh_kwc", "loss_breakdown"]))
+    else:
+        for poste, raw in dict(loss_factors).items():
+            if _taux_ou_none(raw) is None:
+                pr = None
+                omissions.append(_omission(
+                    f"loss_factors.{poste}",
+                    f"omis : perte « {poste} » illisible "
+                    f"(loss_factors.{poste})",
+                    ["performance_ratio", "total_loss_pct", "p50_kwh",
+                     "p90_kwh", "p75_kwh", "specific_yield_kwh_kwc"]))
+                continue
+            frac = _clamp01(raw, 0.0)
+            loss_breakdown[poste] = {
+                "fraction": round(frac, 4),
+                "pct": round(frac * 100.0, 2),
+            }
+            if pr is not None:
+                pr *= (1.0 - frac)
 
-    performance_ratio = round(pr, 4)
-    total_loss_pct = round((1.0 - pr) * 100.0, 2)
-    if performance_ratio < 0.70 and factors:
+    performance_ratio = None if pr is None else round(pr, 4)
+    total_loss_pct = None if pr is None else round((1.0 - pr) * 100.0, 2)
+    if performance_ratio is not None and performance_ratio < 0.70 \
+            and loss_breakdown:
         warnings.append(
             "ratio de performance < 0.70 — pertes cumulées élevées, vérifier les "
             "postes (température/salissure/câblage/onduleur)")
 
     # ── P50 = base × PR (production médiane attendue) ──
-    p50 = round(base * pr, 1)
+    p50 = None if pr is None else round(base * pr, 1)
 
     # ── Variabilité interannuelle → P90 / P75 (quantile gaussien borne basse) ──
-    try:
-        sigma = float(annual_variability)
-    except (TypeError, ValueError):
+    sigma = _taux_ou_none(annual_variability)
+    if sigma is None:
         sigma = DEFAULT_ANNUAL_VARIABILITY
+        hypotheses.append(_hypothese(
+            "annual_variability", DEFAULT_ANNUAL_VARIABILITY,
+            _source_defaut("DEFAULT_ANNUAL_VARIABILITY"),
+            ["annual_variability", "p90_kwh", "p75_kwh"]))
     if sigma < 0.0:
         sigma = 0.0
         warnings.append("variabilité interannuelle négative ramenée à 0")
@@ -1996,15 +2303,17 @@ def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
             "variabilité interannuelle > 30 % — valeur inhabituelle, vérifier σ")
 
     # P90/P75 = P50 × (1 − z·σ), borné ≥ 0 (un σ énorme ne donne pas un négatif).
-    p90 = round(p50 * max(0.0, 1.0 - Z_P90 * sigma), 1)
-    p75 = round(p50 * max(0.0, 1.0 - Z_P75 * sigma), 1) if include_p75 else None
+    p90 = None if p50 is None else round(
+        p50 * max(0.0, 1.0 - Z_P90 * sigma), 1)
+    p75 = (round(p50 * max(0.0, 1.0 - Z_P75 * sigma), 1)
+           if include_p75 and p50 is not None else None)
 
     specific_yield = None
     try:
         k = float(kwc) if kwc is not None else None
     except (TypeError, ValueError):
         k = None
-    if k is not None and k > 0:
+    if k is not None and k > 0 and p50 is not None:
         specific_yield = round(p50 / k, 1)
 
     return {
@@ -2020,6 +2329,12 @@ def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
         "z_p90": Z_P90,
         "z_p75": Z_P75,
         "specific_yield_kwh_kwc": specific_yield,
+        "omissions": omissions,
+        "hypotheses": hypotheses + [_hypothese(
+            "z_quantiles", {"z_p90": Z_P90, "z_p75": Z_P75},
+            "quantiles de la loi normale centrée réduite, Φ⁻¹(0,90) et "
+            "Φ⁻¹(0,75) — constantes mathématiques de la méthode",
+            ["z_p90", "z_p75"])],
         "warnings": warnings,
     }
 
@@ -2357,26 +2672,122 @@ DEFAULT_HOUR_TRANCHES = [
     "pointe", "pointe", "pointe", "pointe", "pleine", "creuse",  # 18–23 h
 ]
 
-# Tarifs TTC indicatifs (MAD/kWh) par tranche — valeurs marché conservatrices,
-# à CONFIRMER par le founder selon le contrat ONEE réel. Surchargeable via
-# ``tranche_tariffs``. La pointe est la plus chère, la creuse la moins chère.
-DEFAULT_TRANCHE_TARIFFS = {
-    "pointe": 1.45,
-    "pleine": 1.15,
-    "creuse": 0.85,
-}
+# CALX274 — PLUS AUCUN TARIF PAR TRANCHE PAR DÉFAUT. Les anciens 1,45 / 1,15 /
+# 0,85 MAD/kWh (``DEFAULT_TRANCHE_TARIFFS``, commentés « à CONFIRMER par le
+# founder selon le contrat ONEE réel ») n'avaient aucune source et étaient
+# appliqués dès qu'un appelant ne passait rien. Les tarifs par tranche sont
+# désormais SAISIS par la société (``apps.parametres.selectors.tou_pour``) ;
+# sans eux, ``net_metering_savings`` publie ``economie: None`` + ``motif``.
+#: Motif publié quand aucun tarif par tranche n'est fourni — il NOMME le
+#: réglage société à renseigner. UNE seule rédaction, celle de
+#: ``apps.parametres.tariff`` (module pur, app de fondation : l'import ne tire
+#: pas Django — ce module reste importable sans configuration).
+MOTIF_TARIFS_TOU_ABSENTS = _MOTIF_TOU_NON_SAISI
 
 # Ordre canonique des tranches (du plus cher au moins cher) pour l'allocation
 # du plafond annuel : on compense d'abord les kWh les plus chers.
 _TRANCHE_ORDER = ["pointe", "pleine", "creuse"]
 
+# ── CALX275 — tranches horaires PAR SAISON ───────────────────────────────────
+# Une grille saisie peut porter un découpage par saison ``{saison: [24]}``
+# (saisons ``apps.parametres.tariff.SAISONS_TOU``, mois = trimestres
+# météorologiques ``MOIS_PAR_SAISON_TOU``). L'heure d'un mois prend le
+# découpage de SA saison ; à défaut celui d'``annuel`` ; à défaut elle est
+# publiée ``tranche: None`` avec son motif — jamais « pleine » par défaut.
+
+#: Jours par mois d'une année non bissextile (8 760 h) — calendrier civil.
+_JOURS_PAR_MOIS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def _libelle_heure(valeur):
+    """Libellé de tranche normalisé (minuscule), ou ``None`` s'il est vide."""
+    texte = str(valeur).strip().lower() if valeur is not None else ""
+    return texte or None
+
+
+def tranches_du_mois(hour_tranches, mois=None):
+    """CALX275 — la tranche de chacune des 24 heures d'un MOIS donné.
+
+    ``hour_tranches`` : liste de 24 libellés (toute l'année — comportement
+    historique, inchangé) ou ``{saison: [24 libellés]}``. ``mois`` : 1-12,
+    ou ``None`` quand la courbe ne dit pas son mois (journée type).
+
+    Rend 24 dicts ``{heure, saison, tranche, motif}`` : ``saison`` = le
+    découpage réellement employé (``annuel`` pour une liste plate) ;
+    ``tranche`` = ``None`` quand aucune saison saisie ne couvre ce mois, avec
+    un ``motif`` qui nomme la saison manquante. Ne lève jamais.
+    """
+    if not isinstance(hour_tranches, dict):
+        liste = list(hour_tranches or [])
+        if not liste:
+            motif = ("omis : aucun découpage horaire fourni "
+                     "(tou_heures)")
+            return [{"heure": h, "saison": None, "tranche": None,
+                     "motif": motif} for h in range(24)]
+        return [{"heure": h, "saison": "annuel",
+                 "tranche": _libelle_heure(liste[h % len(liste)]),
+                 "motif": None} for h in range(24)]
+
+    saison = _saison_du_mois(mois) if mois is not None else None
+    employee = None
+    if saison and hour_tranches.get(saison):
+        employee = saison
+    elif hour_tranches.get("annuel"):
+        employee = "annuel"
+    if employee is None:
+        if saison is None:
+            motif = ("omis : mois de l'heure inconnu et aucun découpage "
+                     "« annuel » saisi (tou_heures.annuel) — l'heure ne "
+                     "peut être rattachée à aucune saison")
+        else:
+            motif = (f"omis : aucune tranche horaire saisie pour la saison "
+                     f"« {saison} » (mois {int(mois)}) ni pour « annuel » "
+                     f"(tou_heures.{saison})")
+        return [{"heure": h, "saison": None, "tranche": None,
+                 "motif": motif} for h in range(24)]
+    liste = list(hour_tranches[employee])
+    return [{"heure": h, "saison": employee,
+             "tranche": _libelle_heure(liste[h % len(liste)]) if liste
+             else None,
+             "motif": None} for h in range(24)]
+
+
+def _mois_de_l_heure(index, n_heures, mois_des_heures=None):
+    """Mois (1-12) de l'heure ``index`` d'une courbe de ``n_heures`` heures.
+
+    ``mois_des_heures`` (liste explicite, un mois par heure) PRIME. Sinon le
+    mois se DÉDUIT des deux seules formes dont la longueur le dit :
+    288 heures = 12 journées types mensuelles (convention de ``etude.py``),
+    8 760 / 8 784 heures = une année civile heure par heure. Toute autre
+    longueur (journée type, semaine…) ⇒ ``None`` : le mois est inconnu.
+    """
+    if mois_des_heures is not None:
+        try:
+            m = int(mois_des_heures[index])
+        except (IndexError, TypeError, ValueError):
+            return None
+        return m if 1 <= m <= 12 else None
+    if n_heures == 288:
+        return index // 24 + 1
+    if n_heures in (8760, 8784):
+        jour = index // 24
+        jours = list(_JOURS_PAR_MOIS)
+        if n_heures == 8784:
+            jours[1] = 29
+        for numero, nb in enumerate(jours, start=1):
+            if jour < nb:
+                return numero
+            jour -= nb
+    return None
+
 
 def net_metering_savings(injected_curve=None, import_curve=None, *,
                          hour_tranches=None, tranche_tariffs=None,
                          surplus_injecte_compense=True,
-                         days_per_year=365, spill_tariff=None,
+                         days_per_year=None, spill_tariff=None,
                          annual_cap_kwh=None,
-                         compensation_ratio=1.0):
+                         compensation_ratio=None,
+                         mois_des_heures=None):
     """FG259 — économie annuelle du surplus injecté, valorisé par tranche TOU.
 
     Croise le SURPLUS INJECTÉ horaire (kWh/h, typiquement
@@ -2402,9 +2813,22 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
     import_curve : itérable du soutirage réseau horaire (kWh/h), même mapping.
         Absent → soutirage nul → rien à compenser (économie 0).
     hour_tranches : liste de 24 libellés de tranche par heure (défaut
-        ``DEFAULT_HOUR_TRANCHES``). Un libellé inconnu retombe sur « pleine ».
-    tranche_tariffs : dict ``{tranche: MAD/kWh}`` (défaut
-        ``DEFAULT_TRANCHE_TARIFFS``). Tarif manquant/illisible → 0.
+        ``DEFAULT_HOUR_TRANCHES``, publié dans ``hypotheses`` avec sa
+        provenance : découpage du module, non validé par une société). Un
+        libellé vide retombe sur « pleine » (comportement historique). CALX275
+        — ou ``{saison: [24 libellés]}`` : chaque heure prend le découpage de
+        la saison de SON mois (:func:`tranches_du_mois`), sinon « annuel »,
+        sinon elle part dans ``non_attribue`` avec son motif (et l'économie
+        est ``None`` si du surplus y tombe).
+    mois_des_heures : mois (1-12) de chaque heure de la courbe (CALX275).
+        Absent, le mois se déduit des seules longueurs qui le disent (288 h =
+        12 journées types, 8 760 / 8 784 h = une année civile) ; sinon il est
+        inconnu et seule la saison « annuel » s'applique.
+    tranche_tariffs : dict ``{tranche: MAD/kWh}`` SAISI par la société
+        (``apps.parametres.selectors.tou_pour``). CALX274 — AUCUN défaut :
+        ``None`` ⇒ ``economie: None`` + ``motif`` (:data:`MOTIF_TARIFS_TOU_ABSENTS`)
+        et ``omissions`` nomme ``tranche_tariffs`` ; une tranche compensée sans
+        tarif rend elle aussi l'économie ``None`` en la nommant, jamais un 0.
     surplus_injecte_compense : réglage EXISTANT (toggle). False → l'injection
         n'est PAS compensée → économie 0, tout le surplus en « non compensé ».
     days_per_year : facteur d'annualisation si la courbe est une journée type
@@ -2425,65 +2849,139 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
          annual_compensated_kwh, annual_injected_kwh,
          savings_mad_per_period, annual_savings_mad,
          annual_spill_value_mad, annual_cap_kwh, compensation_ratio,
-         warnings: []}
+         economie, motif, omissions: [{cle, motif}],
+         hypotheses: [{cle, valeur, source}], warnings: []}
 
-    Ne lève jamais : toggle OFF / courbes vides / tarifs nuls → économie 0,
-    division par zéro bornée.
+    ``economie`` = ``annual_savings_mad`` (CALX274) : ``None`` quand un tarif
+    manque, avec ``motif`` qui nomme le réglage ; ``motif`` vaut ``None`` quand
+    l'économie est chiffrée.
+
+    Ne lève jamais : toggle OFF / courbes vides → économie 0 (le régime ne
+    compense rien), tarifs absents → économie ``None`` + motif, division par
+    zéro bornée.
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     injected = _coerce_series(injected_curve)
     imported = _coerce_series(import_curve)
 
-    tranches_by_hour = list(hour_tranches) if hour_tranches \
-        else list(DEFAULT_HOUR_TRANCHES)
-    if not tranches_by_hour:
+    # CALX275 — un découpage PAR SAISON ``{saison: [24]}`` : l'heure prend la
+    # tranche de la saison de SON mois (``tranches_du_mois``), jamais celle
+    # d'une autre saison, jamais « pleine » supposée.
+    saisonnier = isinstance(hour_tranches, dict) and bool(hour_tranches)
+    tranches_by_hour = [] if saisonnier else (
+        list(hour_tranches) if hour_tranches else [])
+    if not saisonnier and not tranches_by_hour:
         tranches_by_hour = list(DEFAULT_HOUR_TRANCHES)
+        hypotheses.append({
+            "cle": "hour_tranches",
+            "valeur": list(DEFAULT_HOUR_TRANCHES),
+            "source": ("découpage horaire par défaut du module "
+                       "(apps/ventes/solar_design.py DEFAULT_HOUR_TRANCHES) — "
+                       "non validé par la société"),
+            "couvre": ["tranches"],
+        })
 
-    tariffs = {**DEFAULT_TRANCHE_TARIFFS, **(tranche_tariffs or {})}
+    # CALX274 — les tarifs sont ceux FOURNIS, et eux seuls (aucune fusion avec
+    # une grille par défaut) ; libellés normalisés en minuscules comme les
+    # heures. ``None`` = aucune grille saisie.
+    if tranche_tariffs:
+        tariffs = {str(k or "").strip().lower(): v
+                   for k, v in dict(tranche_tariffs).items()}
+    else:
+        tariffs = None
+        omissions.append({"cle": "tranche_tariffs",
+                          "motif": MOTIF_TARIFS_TOU_ABSENTS})
 
     def _tariff(name):
+        """Tarif de la tranche, ``None`` s'il n'est pas fourni ou illisible."""
+        if tariffs is None or name not in tariffs:
+            return None
         try:
-            t = float(tariffs.get(name, 0.0))
+            t = float(tariffs[name])
         except (TypeError, ValueError):
-            return 0.0
+            return None
+        if t != t:  # NaN
+            return None
         return t if t >= 0 else 0.0
 
-    try:
-        ratio = float(compensation_ratio)
-    except (TypeError, ValueError):
+    # CALX286 — les deux défauts restants sont PUBLIÉS (valeurs inchangées).
+    ratio = _taux_ou_none(compensation_ratio)
+    if ratio is None:
         ratio = 1.0
+        hypotheses.append(_hypothese(
+            "compensation_ratio", 1.0,
+            "non fourni — compensation kWh pour kWh, la définition même du "
+            "net-metering (aucun abattement supposé)",
+            ["compensation_ratio"]))
     if ratio < 0.0:
         ratio = 0.0
     if ratio > 1.0:
         ratio = 1.0
 
-    try:
-        days = float(days_per_year)
-    except (TypeError, ValueError):
+    days = _taux_ou_none(days_per_year)
+    if days is None:
         days = 365.0
+        hypotheses.append(_hypothese(
+            "days_per_year", 365,
+            "non fourni — la courbe est lue comme UNE journée type, "
+            "annualisée sur les 365 jours du calendrier",
+            ["periods", "days_per_year", "annual_injected_kwh",
+             "annual_compensated_kwh", "annual_savings_mad",
+             "annual_spill_value_mad", "economie"]))
     if days <= 0:
         days = 1.0
 
     # ── Agrégation des flux PAR TRANCHE (modèle sur la période fournie) ──
     names = []
-    for label in tranches_by_hour:
+    libelles_saisis = tranches_by_hour
+    if saisonnier:
+        libelles_saisis = [lib for liste in hour_tranches.values()
+                           for lib in (liste or [])]
+    for label in libelles_saisis:
         key = (label or "pleine").lower()
         if key not in names:
             names.append(key)
     # Toujours exposer les tranches tarifées même si la courbe ne les touche pas.
-    for key in tariffs:
+    for key in (tariffs or {}):
         k = (key or "").lower()
         if k and k not in names:
             names.append(k)
 
     agg = {n: {"injected": 0.0, "import": 0.0} for n in names}
+    # CALX275 — l'énergie des heures qu'aucune saison saisie ne couvre : elle
+    # n'est rattachée à AUCUNE tranche (ni compensée, ni valorisée) et son
+    # motif est publié.
+    non_attribue = {"injected_kwh": 0.0, "import_kwh": 0.0, "heures": 0,
+                    "motifs": []}
+    par_mois = {}
 
     n_hours = max(len(injected), len(imported))
     for h in range(n_hours):
         inj = injected[h] if h < len(injected) else 0.0
         imp = imported[h] if h < len(imported) else 0.0
-        label = tranches_by_hour[h % len(tranches_by_hour)]
+        if saisonnier:
+            mois = _mois_de_l_heure(h, n_hours, mois_des_heures)
+            if mois not in par_mois:
+                par_mois[mois] = tranches_du_mois(hour_tranches, mois)
+            entree = par_mois[mois][h % 24]
+            if entree["tranche"] is None:
+                non_attribue["injected_kwh"] += inj
+                non_attribue["import_kwh"] += imp
+                non_attribue["heures"] += 1
+                # Le motif publié est celui des heures qui PORTENT de
+                # l'énergie (celles dont la valeur manque vraiment) ; les
+                # heures vides ne le fixent qu'à défaut.
+                cle_motifs = "motifs" if (inj > 0 or imp > 0) else "vides"
+                liste = non_attribue.setdefault(cle_motifs, [])
+                if entree["motif"] not in liste:
+                    liste.append(entree["motif"])
+                continue
+            label = entree["tranche"]
+        else:
+            label = tranches_by_hour[h % len(tranches_by_hour)]
         key = (label or "pleine").lower()
         if key not in agg:
             key = "pleine"
@@ -2521,7 +3019,8 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
             "eligible_kwh": round(compensable, 6),  # avant plafond annuel
             "compensated_kwh": 0.0,
             "spilled_kwh": 0.0,
-            "tariff": round(_tariff(name), 4),
+            "tariff": (None if _tariff(name) is None
+                       else round(_tariff(name), 4)),
             "savings_mad": 0.0,
         }
 
@@ -2544,9 +3043,10 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
             rank = _TRANCHE_ORDER.index(name)
         except ValueError:
             rank = len(_TRANCHE_ORDER)
-        return (-_tariff(name), rank, name)
+        return (-(_tariff(name) or 0.0), rank, name)
 
     remaining_cap = cap_period
+    tranches_sans_tarif = []
     for name in sorted(names, key=_alloc_key):
         out = tranche_out[name]
         eligible = out["eligible_kwh"]
@@ -2558,7 +3058,20 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         spilled = max(0.0, out["injected_kwh"] - comp)
         out["compensated_kwh"] = round(comp, 3)
         out["spilled_kwh"] = round(spilled, 3)
-        out["savings_mad"] = round(comp * _tariff(name), 2)
+        t = _tariff(name)
+        if not compense:
+            # Le régime ne compense rien : l'économie est nulle PAR LE RÉGIME,
+            # quel que soit le tarif (aucun kWh n'est effacé).
+            out["savings_mad"] = 0.0
+        elif t is None:
+            # CALX274 — un kWh compensé sans tarif saisi n'a AUCUNE valeur
+            # publiable : ni 0 (faux), ni un tarif supposé. Une tranche qui
+            # n'a rien compensé vaut 0 quel que soit son tarif.
+            out["savings_mad"] = None if comp > 0 else 0.0
+            if comp > 0 and tariffs is not None:
+                tranches_sans_tarif.append(name)
+        else:
+            out["savings_mad"] = round(comp * t, 2)
 
     if cap_period is not None and total_injected > 0:
         total_eligible = sum(t["eligible_kwh"] for t in tranche_out.values())
@@ -2572,8 +3085,32 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         sum(t["compensated_kwh"] for t in tranche_out.values()), 3)
     period_spilled = round(
         sum(t["spilled_kwh"] for t in tranche_out.values()), 3)
-    savings_per_period = round(
-        sum(t["savings_mad"] for t in tranche_out.values()), 2)
+    motif = None
+    if not compense:
+        savings_per_period = 0.0
+    elif tariffs is None:
+        # CALX274 — aucune grille saisie : l'économie est OMISE, jamais
+        # chiffrée sur les anciens 1,45 / 1,15 / 0,85 « à confirmer ».
+        savings_per_period = None
+        motif = MOTIF_TARIFS_TOU_ABSENTS
+    elif non_attribue["injected_kwh"] > 0:
+        # CALX275 — du surplus tombe à des heures qu'aucune saison saisie ne
+        # couvre : sa valeur est inconnue, l'économie totale aussi.
+        savings_per_period = None
+        motif = non_attribue["motifs"][0]
+        omissions.append({"cle": "hour_tranches", "motif": motif})
+    elif tranches_sans_tarif:
+        savings_per_period = None
+        premiere = sorted(tranches_sans_tarif)[0]
+        motif = (f"omis : la tranche « {premiere} » compense de l'énergie "
+                 f"mais n'a aucun tarif saisi (tou_tarifs.{premiere})")
+        omissions.append({"cle": f"tranche_tariffs.{premiere}",
+                          "motif": motif})
+    else:
+        savings_per_period = round(
+            sum(t["savings_mad"] or 0.0 for t in tranche_out.values()), 2)
+    if motif:
+        warnings.append(f"économie du surplus {motif}")
 
     # Valeur du surplus excédentaire (spill) au tarif résiduel facultatif.
     spill_value_period = 0.0
@@ -2588,7 +3125,8 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
     if spill_rate:
         spill_value_period = round(period_spilled * spill_rate, 2)
 
-    annual_savings = round(savings_per_period * days, 2)
+    annual_savings = (None if savings_per_period is None
+                      else round(savings_per_period * days, 2))
     annual_spill_value = round(spill_value_period * days, 2)
     annual_compensated = round(period_compensated * days, 3)
     annual_injected = round(total_injected * days, 3)
@@ -2616,17 +3154,243 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         "spill_tariff": spill_rate,
         "annual_cap_kwh": annual_cap_kwh,
         "compensation_ratio": round(ratio, 4),
+        # CALX275 — l'énergie des heures sans tranche (aucune saison saisie ne
+        # couvre leur mois) : hors des tranches ET des totaux ci-dessus.
+        "non_attribue": {
+            "injected_kwh": round(non_attribue["injected_kwh"], 3),
+            "import_kwh": round(non_attribue["import_kwh"], 3),
+            "heures": non_attribue["heures"],
+            "tranche": None,
+            "motif": ((non_attribue["motifs"]
+                       or non_attribue.get("vides") or [None])[0]),
+        },
+        # CALX274 — l'économie sous son nom canonique, son motif quand elle
+        # est omise, et ce qui a servi / manqué, nommé.
+        "economie": annual_savings,
+        "motif": motif,
+        "omissions": omissions,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
+
+
+# ── CALX276 — Mécanisme de compensation du surplus, TYPÉ ──────────────────────
+# Trois mécanismes SAISIS par la société (``apps.parametres.tariff.
+# MECANISMES_COMPENSATION``), au pas MENSUEL :
+#
+#   * ``injection_totale`` — toute la production est vendue au tarif de
+#     rachat ; AUCUNE autoconsommation n'est valorisée (« Buy All, Sell All »).
+#   * ``surplus`` — l'autoconsommation efface la facture (valorisée par le
+#     modèle « deux factures », hors d'ici) et seul le SURPLUS injecté est
+#     vendu au tarif de rachat (« Net Billing »).
+#   * ``net_metering_report`` — le kWh injecté efface un kWh soutiré ; le
+#     crédit d'un mois excédentaire est REPORTÉ sur les mois suivants, dans une
+#     fenêtre de ``report_periode`` mois, au terme de laquelle le SOLDE est
+#     publié (et valorisé au tarif de rachat s'il est saisi, sinon omis).
+#
+# Aucun tarif par défaut : sans tarif de rachat saisi, la vente est OMISE avec
+# ``MOTIF_TARIF_RACHAT_ABSENT`` (la loi 82-21 n'en publie aucun) ; sans tarif
+# de soutirage fourni, l'économie du net-metering est omise elle aussi.
+
+
+def _serie_mensuelle(valeurs):
+    """Série mensuelle (kWh) : illisible/négatif → 0, jamais d'exception."""
+    return _coerce_series(valeurs)
+
+
+def compensation_surplus(*, mecanisme=None, injection_kwh_mois=None,
+                         import_kwh_mois=None, production_kwh_mois=None,
+                         tarif_rachat_mad_kwh=None, tarif_import_mad_kwh=None,
+                         report_periode=None, plafond_annuel_kwh=None,
+                         ratio_compensation=None):
+    """CALX276 — valorise le surplus selon le mécanisme SAISI par la société.
+
+    Paramètres (tous au pas mensuel, kWh) : ``injection_kwh_mois`` (surplus
+    injecté), ``import_kwh_mois`` (soutirage), ``production_kwh_mois``
+    (production totale — requise par ``injection_totale``). Les réglages
+    viennent de ``apps.parametres.tariff.mecanisme_depuis_reglages``.
+
+    Rend ``{mecanisme, mois: [...], vendu_kwh, compense_kwh,
+    autoconsommation_valorisee, autoconsommation_valorisee_kwh,
+    soldes_fin_periode: [{periode, fin_mois, solde_kwh, valeur_mad}],
+    solde_fin_periode_kwh, vente_mad, economie_surplus_mad, motif,
+    omissions, hypotheses}``. ``economie_surplus_mad`` est ``None`` — avec son
+    ``motif`` — dès qu'un réglage manque ; jamais 0 par défaut. Ne lève jamais.
+    """
+    omissions = []
+    hypotheses = []
+    resultat = {
+        "mecanisme": None, "mois": [], "vendu_kwh": 0.0, "compense_kwh": 0.0,
+        "autoconsommation_valorisee": None,
+        "autoconsommation_valorisee_kwh": None,
+        "soldes_fin_periode": [], "solde_fin_periode_kwh": None,
+        "vente_mad": None, "economie_surplus_mad": None, "motif": None,
+        "omissions": omissions, "hypotheses": hypotheses,
+    }
+    meca = mecanisme.strip() if isinstance(mecanisme, str) else ""
+    if meca not in MECANISMES_COMPENSATION:
+        resultat["motif"] = (
+            MOTIF_MECANISME_NON_SAISI if not meca else
+            f"omis : mécanisme de compensation « {meca} » inconnu "
+            "(mecanisme_compensation)")
+        omissions.append({"cle": "mecanisme_compensation",
+                          "motif": resultat["motif"]})
+        return resultat
+    resultat["mecanisme"] = meca
+
+    def _positif_ou_none(valeur):
+        try:
+            v = float(valeur)
+        except (TypeError, ValueError):
+            return None
+        return v if v == v and v >= 0 else None
+
+    ratio = _positif_ou_none(ratio_compensation)
+    if ratio is None:
+        ratio = 1.0
+        hypotheses.append({
+            "cle": "ratio_compensation", "valeur": 1.0,
+            "source": ("non saisi — compensation kWh pour kWh, la définition "
+                       "même du mécanisme (aucun abattement supposé)")})
+    ratio = min(ratio, 1.0)
+    plafond = _positif_ou_none(plafond_annuel_kwh)
+    tarif_rachat = _positif_ou_none(tarif_rachat_mad_kwh)
+    if tarif_rachat is not None and tarif_rachat <= 0:
+        tarif_rachat = None
+    tarif_import = _positif_ou_none(tarif_import_mad_kwh)
+
+    injection = _serie_mensuelle(injection_kwh_mois)
+    soutirage = _serie_mensuelle(import_kwh_mois)
+    production = _serie_mensuelle(production_kwh_mois)
+
+    def _borne_annuelle(kwh):
+        if plafond is None:
+            return kwh
+        return min(kwh, plafond)
+
+    def _vente(kwh):
+        if tarif_rachat is None:
+            if MOTIF_TARIF_RACHAT_ABSENT not in [o["motif"] for o in omissions]:
+                omissions.append({"cle": "tarif_rachat_mad_kwh",
+                                  "motif": MOTIF_TARIF_RACHAT_ABSENT})
+            return None
+        return round(kwh * tarif_rachat, 2)
+
+    if meca in ("injection_totale", "surplus"):
+        if meca == "injection_totale":
+            base = production
+            resultat["autoconsommation_valorisee"] = False
+            resultat["autoconsommation_valorisee_kwh"] = 0.0
+            if not production_kwh_mois:
+                omissions.append({
+                    "cle": "production_kwh_mois",
+                    "motif": ("omis : l'injection totale vend TOUTE la "
+                              "production — production mensuelle non "
+                              "fournie (production_kwh_mois)")})
+                resultat["motif"] = omissions[-1]["motif"]
+                return resultat
+        else:
+            base = injection
+            resultat["autoconsommation_valorisee"] = True
+        vendu = _borne_annuelle(sum(base) * ratio)
+        resultat["mois"] = [{"mois": i + 1, "vendu_kwh": round(v * ratio, 3)}
+                            for i, v in enumerate(base)]
+        resultat["vendu_kwh"] = round(vendu, 3)
+        resultat["vente_mad"] = _vente(vendu)
+        resultat["economie_surplus_mad"] = resultat["vente_mad"]
+        if resultat["vente_mad"] is None:
+            resultat["motif"] = MOTIF_TARIF_RACHAT_ABSENT
+        return resultat
+
+    # ── net_metering_report : compensation mensuelle + report du crédit ──
+    resultat["autoconsommation_valorisee"] = True
+    try:
+        periode = int(report_periode)
+    except (TypeError, ValueError):
+        periode = 0
+    if periode < 1:
+        motif = ("omis : le net-metering avec report exige la période de "
+                 "report saisie (report_periode, en mois)")
+        omissions.append({"cle": "report_periode", "motif": motif})
+        resultat["motif"] = motif
+        return resultat
+
+    n_mois = max(len(injection), len(soutirage))
+    credit = 0.0
+    compense_total = 0.0
+    reste_plafond = plafond
+    lignes = []
+    soldes = []
+
+    def _clore(numero_periode, fin_mois, solde):
+        soldes.append({
+            "periode": numero_periode, "fin_mois": fin_mois,
+            "solde_kwh": round(solde, 3),
+            "valeur_mad": (None if tarif_rachat is None
+                           else round(solde * tarif_rachat, 2)),
+        })
+
+    for i in range(n_mois):
+        if i and i % periode == 0:
+            _clore(i // periode, i, credit)   # fin de fenêtre : solde publié
+            credit = 0.0
+        if i and i % 12 == 0 and plafond is not None:
+            reste_plafond = plafond             # plafond ANNUEL : nouvel an
+        inj = injection[i] if i < len(injection) else 0.0
+        imp = soutirage[i] if i < len(soutirage) else 0.0
+        genere = inj * ratio
+        credit_entrant = credit
+        direct = min(imp, genere)
+        depuis_credit = min(imp - direct, credit_entrant)
+        compense = direct + depuis_credit
+        if reste_plafond is not None:
+            compense_borne = min(compense, max(0.0, reste_plafond))
+            reste_plafond -= compense_borne
+            # Ce que le plafond refuse ne consomme pas de crédit reporté.
+            depuis_credit = max(0.0, depuis_credit - (compense - compense_borne))
+            direct = compense_borne - depuis_credit
+            compense = compense_borne
+        credit = credit_entrant - depuis_credit + (genere - direct)
+        compense_total += compense
+        lignes.append({
+            "mois": i + 1, "injection_kwh": round(inj, 3),
+            "import_kwh": round(imp, 3),
+            "credit_genere_kwh": round(genere, 3),
+            "credit_entrant_kwh": round(credit_entrant, 3),
+            "credit_consomme_kwh": round(depuis_credit, 3),
+            "compense_kwh": round(compense, 3),
+            "credit_reporte_kwh": round(credit, 3),
+        })
+    if n_mois:
+        _clore((n_mois - 1) // periode + 1, n_mois, credit)
+
+    resultat["mois"] = lignes
+    resultat["compense_kwh"] = round(compense_total, 3)
+    resultat["soldes_fin_periode"] = soldes
+    resultat["solde_fin_periode_kwh"] = soldes[-1]["solde_kwh"] if soldes \
+        else 0.0
+    if tarif_rachat is None and soldes and soldes[-1]["solde_kwh"] > 0:
+        omissions.append({"cle": "tarif_rachat_mad_kwh",
+                          "motif": MOTIF_TARIF_RACHAT_ABSENT})
+    if tarif_import is None:
+        motif = ("omis : le kWh compensé efface un kWh soutiré — tarif de "
+                 "soutirage non fourni (tarif_import_mad_kwh)")
+        omissions.append({"cle": "tarif_import_mad_kwh", "motif": motif})
+        resultat["motif"] = motif
+    else:
+        resultat["economie_surplus_mad"] = round(
+            compense_total * tarif_import, 2)
+    return resultat
 
 
 # ── FG260 — Escalade tarifaire ONEE sur 20–25 ans + VAN/TRI ──────────────────
 # Projette, année par année, la facture d'électricité ÉVITÉE (économie) sur un
 # horizon long (20–25 ans) en tenant compte de DEUX dérives bien réelles :
 #
-#   * l'ESCALADE TARIFAIRE annuelle (le kWh ONEE renchérit chaque année — taux
-#     éditable, ~6 %/an par défaut côté marché marocain) qui POUSSE l'économie
-#     vers le HAUT (chaque kWh autoconsommé évite un kWh de plus en plus cher) ;
+#   * l'ESCALADE TARIFAIRE annuelle (l'INDEXATION saisie par la société —
+#     CALX279 ; sans saisie, 0 % avec la mention « aucune indexation saisie »,
+#     la décision fondateur QRES54 de ``quote_engine/pricing.py``) qui POUSSE
+#     l'économie vers le HAUT (chaque kWh évité coûte de plus en plus cher) ;
 #   * la DÉGRADATION des modules (~0,5 %/an) qui ÉRODE la production donc
 #     l'énergie évitée, TIRANT l'économie vers le bas.
 #
@@ -2644,11 +3408,18 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
 # numériques ne sont JAMAIS rejetées (liberté de saisie du founder) — seules les
 # valeurs absurdes sont bornées pour éviter une division par zéro.
 
-# Taux d'escalade tarifaire ONEE annuel par défaut (éditable par l'appelant).
-DEFAULT_TARIFF_ESCALATION = 0.06        # 6 %/an
-# Dégradation annuelle des modules par défaut (lithium/silicium courant).
+# CALX279 — ANCIEN taux d'escalade « marché » (6 %/an, sans source). Il
+# CONTREDISAIT ``TARIFF_ESCALATION = 0.0`` (``quote_engine/pricing.py``,
+# décision fondateur) : AUCUNE fonction de ce module ne le lit plus
+# (indexation saisie, sinon 0 % + mention). Conservé comme nom seulement.
+DEFAULT_TARIFF_ESCALATION = 0.06        # 6 %/an — NON sourcé, jamais implicite
+#: Mention publiée par une projection faite sans indexation saisie.
+MENTION_INDEXATION_NON_SAISIE = _MENTION_INDEXATION_NON_SAISIE
+# CALX286 — dégradation et actualisation « marché », NON sourcées : aucune
+# fonction de ce module ne les applique plus d'office (grandeurs dépendantes
+# ``None`` + ``omissions``). ``apps/ventes/etude.py`` les passe EXPLICITEMENT
+# pour garder ses résultats (D12) jusqu'aux réglages société de CALX281/284.
 DEFAULT_MODULE_DEGRADATION = 0.005      # 0,5 %/an
-# Taux d'actualisation par défaut pour la VAN.
 DEFAULT_DISCOUNT_RATE = 0.05            # 5 %/an
 # Horizon de projection par défaut (années).
 DEFAULT_HORIZON_YEARS = 25
@@ -2726,10 +3497,10 @@ def _irr(cashflows, *, low=-0.9999, high=10.0, tol=1e-7, max_iter=200):
 
 def tariff_escalation_projection(*, annual_savings_year1,
                                  upfront_cost=0.0,
-                                 escalation_rate=DEFAULT_TARIFF_ESCALATION,
-                                 degradation_rate=DEFAULT_MODULE_DEGRADATION,
-                                 horizon_years=DEFAULT_HORIZON_YEARS,
-                                 discount_rate=DEFAULT_DISCOUNT_RATE,
+                                 escalation_rate=None,
+                                 degradation_rate=None,
+                                 horizon_years=None,
+                                 discount_rate=None,
                                  baseline_bill_year1=None):
     """FG260 — projette facture/économies sur 20–25 ans + VAN (NPV) & TRI (IRR).
 
@@ -2743,10 +3514,21 @@ def tariff_escalation_projection(*, annual_savings_year1,
     ----------
     annual_savings_year1 : économie (facture évitée) de la 1re année (MAD/an).
     upfront_cost : investissement initial TTC (MAD), placé en flux d'année 0.
-    escalation_rate : taux d'escalade tarifaire annuel (éditable, défaut ~6 %).
-    degradation_rate : dégradation annuelle de la production (défaut ~0,5 %).
-    horizon_years : durée de projection (20–25 visés ; borné 1..40).
-    discount_rate : taux d'actualisation pour la VAN (défaut 5 %).
+    escalation_rate : indexation tarifaire annuelle (fraction) PASSÉE par
+        l'appelant — celle SAISIE par la société
+        (``apps.parametres.selectors.indexation_pour``). CALX279 : absente ou
+        illisible ⇒ projection à indexation NULLE (0 %, décision fondateur
+        QRES54) avec la mention :data:`MENTION_INDEXATION_NON_SAISIE` dans
+        ``summary.indexation_mention`` et ``hypotheses`` — jamais 6 %.
+    degradation_rate : dégradation annuelle de la production (fraction).
+        CALX286 — AUCUN défaut : absente ⇒ les économies de chaque année, les
+        cumuls, la VAN, le TRI et les retours valent ``None`` et
+        ``omissions`` nomme ``degradation_rate``.
+    horizon_years : durée de projection (20–25 visés ; borné 1..40). Absente
+        ⇒ ``DEFAULT_HORIZON_YEARS`` publiée dans ``hypotheses``.
+    discount_rate : taux d'actualisation pour la VAN (fraction). CALX286 —
+        absent ⇒ VAN, économies actualisées et retour actualisé ``None`` avec
+        une entrée ``omissions`` ; le TRI, qui n'en dépend pas, reste publié.
     baseline_bill_year1 : facture ONEE de base year-1 (MAD/an), pour projeter la
         facture brute escaladée (optionnel ; sinon non renseignée).
 
@@ -2758,14 +3540,17 @@ def tariff_escalation_projection(*, annual_savings_year1,
          summary: {horizon_years, escalation_rate, degradation_rate,
                    discount_rate, upfront_cost, total_savings,
                    total_discounted_savings, npv, irr, payback_year,
-                   discounted_payback_year, savings_year1, savings_last_year},
-         warnings: []}
+                   discounted_payback_year, savings_year1, savings_last_year,
+                   indexation_mention},
+         omissions: [...], hypotheses: [...], warnings: []}
 
-    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → 0, horizon hors
-    bornes ramené dans [1, 40], division par zéro gardée, TRI = None si le flux
-    n'en admet pas (pas de boucle infinie).
+    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → omises (taux)
+    ou 0 (montants), horizon hors bornes ramené dans [1, 40], division par
+    zéro gardée, TRI = None si le flux n'en admet pas (pas de boucle infinie).
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     def _num(value, default=0.0):
         try:
@@ -2775,15 +3560,50 @@ def tariff_escalation_projection(*, annual_savings_year1,
 
     savings1 = _num(annual_savings_year1)
     cost0 = _num(upfront_cost)
-    esc = _num(escalation_rate, DEFAULT_TARIFF_ESCALATION)
-    deg = _num(degradation_rate, DEFAULT_MODULE_DEGRADATION)
-    disc = _num(discount_rate, DEFAULT_DISCOUNT_RATE)
+    # CALX279 — l'indexation est celle PASSÉE (saisie société) ; sans elle,
+    # 0 % DÉCLARÉ, jamais un taux « marché » implicite.
+    esc = _taux_ou_none(escalation_rate)
+    indexation_mention = None
+    if esc is None:
+        esc = 0.0
+        indexation_mention = MENTION_INDEXATION_NON_SAISIE
+        hypotheses.append({
+            "cle": "escalation_rate", "valeur": 0.0,
+            "source": (f"{MENTION_INDEXATION_NON_SAISIE} — projection à tarif "
+                       "constant (décision fondateur QRES54, "
+                       "quote_engine/pricing.py TARIFF_ESCALATION)"),
+            "couvre": ["summary.escalation_rate"]})
+    # CALX286 — dégradation et actualisation FOURNIES, sinon omises.
+    deg = _taux_ou_none(degradation_rate)
+    if deg is None:
+        omissions.append(_omission(
+            "degradation_rate",
+            "omis : dégradation annuelle des modules non fournie "
+            "(degradation_rate) — les économies des années suivantes, les "
+            "cumuls, la VAN, le TRI et les retours en dépendent",
+            ["schedule.degradation_factor", "schedule.annual_savings",
+             "schedule.cumulative_savings", "schedule.net_cumulative",
+             "schedule.discounted_savings", "summary"]))
+    disc = _taux_ou_none(discount_rate)
+    if disc is None:
+        omissions.append(_omission(
+            "discount_rate",
+            "omis : taux d'actualisation non fourni (discount_rate) — la VAN, "
+            "les économies actualisées et le retour actualisé en dépendent",
+            ["schedule.discounted_savings", "summary.npv",
+             "summary.total_discounted_savings",
+             "summary.discounted_payback_year"]))
 
     # Horizon : entier borné dans [1, 40] (le métier vise 20–25).
-    try:
-        horizon = int(round(_num(horizon_years, DEFAULT_HORIZON_YEARS)))
-    except (TypeError, ValueError):
+    horizon_lu = _taux_ou_none(horizon_years)
+    if horizon_lu is None:
         horizon = DEFAULT_HORIZON_YEARS
+        hypotheses.append(_hypothese(
+            "horizon_years", DEFAULT_HORIZON_YEARS,
+            _source_defaut("DEFAULT_HORIZON_YEARS"),
+            ["summary.horizon_years"]))
+    else:
+        horizon = int(round(horizon_lu))
     if horizon < _MIN_HORIZON_YEARS:
         horizon = _MIN_HORIZON_YEARS
         warnings.append("horizon ramené à 1 an (minimum)")
@@ -2798,9 +3618,9 @@ def tariff_escalation_projection(*, annual_savings_year1,
     # Garde-fous métier (avertissements, jamais de rejet).
     if esc < 0:
         warnings.append("taux d'escalade négatif — le tarif baisse, inhabituel")
-    if not (0.0 <= deg < 1.0):
+    if deg is not None and not (0.0 <= deg < 1.0):
         warnings.append("taux de dégradation hors [0, 1[ — vérifier la saisie")
-    if disc <= -1.0:
+    if disc is not None and disc <= -1.0:
         warnings.append(
             "taux d'actualisation ≤ -100 % — VAN non calculable, ramené à 0")
         disc = 0.0
@@ -2816,33 +3636,51 @@ def tariff_escalation_projection(*, annual_savings_year1,
 
     for y in range(1, horizon + 1):
         esc_factor = (1.0 + esc) ** (y - 1)
-        # Dégradation bornée : (1 - deg) ne doit pas devenir négatif.
-        deg_step = 1.0 - deg if deg < 1.0 else 0.0
-        deg_factor = deg_step ** (y - 1)
-        annual_savings = savings1 * esc_factor * deg_factor
 
         projected_bill = None
         if base_bill1 is not None:
             # La facture ONEE brute escalade au même rythme tarifaire.
             projected_bill = round(base_bill1 * esc_factor, 2)
 
+        if deg is None:
+            # CALX286 — sans dégradation fournie, aucune économie d'année
+            # n'est publiée (ni supposée constante, ni érodée d'un taux choisi
+            # ici).
+            schedule.append({
+                "year": y,
+                "escalated_tariff_factor": round(esc_factor, 6),
+                "degradation_factor": None,
+                "annual_savings": None,
+                "projected_bill": projected_bill,
+                "cumulative_savings": None,
+                "net_cumulative": None,
+                "discounted_savings": None,
+            })
+            continue
+
+        # Dégradation bornée : (1 - deg) ne doit pas devenir négatif.
+        deg_step = 1.0 - deg if deg < 1.0 else 0.0
+        deg_factor = deg_step ** (y - 1)
+        annual_savings = savings1 * esc_factor * deg_factor
+
         cumulative += annual_savings
         net_cumulative = cumulative - cost0
 
         # Actualisation : le flux de l'année y est divisé par (1+disc)^y.
-        if disc > -1.0:
-            discounted = annual_savings / ((1.0 + disc) ** y)
-        else:
-            discounted = 0.0
-        discounted_total += discounted
-        discounted_cumulative_net += discounted
+        discounted = None
+        if disc is not None:
+            discounted = (annual_savings / ((1.0 + disc) ** y)
+                          if disc > -1.0 else 0.0)
+            discounted_total += discounted
+            discounted_cumulative_net += discounted
+            if discounted_payback_year is None \
+                    and discounted_cumulative_net >= 0:
+                discounted_payback_year = y
 
         cashflows.append(annual_savings)
 
         if payback_year is None and net_cumulative >= 0:
             payback_year = y
-        if discounted_payback_year is None and discounted_cumulative_net >= 0:
-            discounted_payback_year = y
 
         schedule.append({
             "year": y,
@@ -2852,17 +3690,20 @@ def tariff_escalation_projection(*, annual_savings_year1,
             "projected_bill": projected_bill,
             "cumulative_savings": round(cumulative, 2),
             "net_cumulative": round(net_cumulative, 2),
-            "discounted_savings": round(discounted, 2),
+            "discounted_savings": (None if discounted is None
+                                   else round(discounted, 2)),
         })
 
-    npv = round(_npv(disc, cashflows), 2)
-    irr = _irr(cashflows)
+    calcule = deg is not None
+    actualise = calcule and disc is not None
+    npv = round(_npv(disc, cashflows), 2) if actualise else None
+    irr = _irr(cashflows) if calcule else None
 
-    if payback_year is None and cost0 > 0:
+    if calcule and payback_year is None and cost0 > 0:
         warnings.append(
             "retour sur investissement non atteint sur l'horizon — l'économie "
             "cumulée ne couvre pas le coût initial")
-    if irr is None and cost0 > 0:
+    if calcule and irr is None and cost0 > 0:
         warnings.append(
             "TRI non calculable (flux sans changement de signe ou non "
             "convergent) — vérifier coût initial et économies")
@@ -2870,24 +3711,32 @@ def tariff_escalation_projection(*, annual_savings_year1,
     summary = {
         "horizon_years": horizon,
         "escalation_rate": round(esc, 6),
-        "degradation_rate": round(deg, 6),
-        "discount_rate": round(disc, 6),
+        "degradation_rate": None if deg is None else round(deg, 6),
+        "discount_rate": None if disc is None else round(disc, 6),
         "upfront_cost": round(cost0, 2),
         "savings_year1": round(savings1, 2),
         "savings_last_year": (
-            round(schedule[-1]["annual_savings"], 2) if schedule else 0.0),
-        "total_savings": round(cumulative, 2),
-        "total_discounted_savings": round(discounted_total, 2),
-        "net_total": round(cumulative - cost0, 2),
+            round(schedule[-1]["annual_savings"], 2)
+            if calcule and schedule else (0.0 if calcule else None)),
+        "total_savings": round(cumulative, 2) if calcule else None,
+        "total_discounted_savings": (round(discounted_total, 2)
+                                     if actualise else None),
+        "net_total": round(cumulative - cost0, 2) if calcule else None,
         "npv": npv,
         "irr": irr,
         "payback_year": payback_year,
-        "discounted_payback_year": discounted_payback_year,
+        "discounted_payback_year": (discounted_payback_year
+                                    if actualise else None),
+        # CALX279 — « aucune indexation saisie » quand l'appelant n'a passé
+        # aucun taux (projection à 0 %), sinon None.
+        "indexation_mention": indexation_mention,
     }
 
     return {
         "schedule": schedule,
         "summary": summary,
+        "omissions": omissions,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
@@ -2962,6 +3811,7 @@ def _refus_unite_souscrite(curve_unit):
         "safety_margin": None,
         "load_source": None,
         "production_source": None,
+        "hypotheses": [],
         "warnings": [
             "unité de courbe non déclarée ou non lisible (%r) : cette fonction "
             "lit des PUISSANCES instantanées (%r), jamais des énergies "
@@ -2976,7 +3826,7 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
                               current_subscribed_kva=None,
                               capacity_tariff=0.0,
                               tariff_period="year",
-                              safety_margin=DEFAULT_SUBSCRIBED_SAFETY_MARGIN,
+                              safety_margin=None,
                               power_factor=None,
                               daily_load_kwh=None,
                               daily_production_kwh=None,
@@ -3118,10 +3968,17 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
                 "utilisée comme référence (économie indicative)")
 
     # ── Marge de sécurité ──
-    try:
-        margin = float(safety_margin)
-    except (TypeError, ValueError):
+    # CALX286 — la marge non fournie reste celle du module, PUBLIÉE avec sa
+    # provenance (valeur inchangée).
+    hypotheses = []
+    margin = _taux_ou_none(safety_margin)
+    if margin is None:
         margin = DEFAULT_SUBSCRIBED_SAFETY_MARGIN
+        hypotheses.append(_hypothese(
+            "safety_margin", DEFAULT_SUBSCRIBED_SAFETY_MARGIN,
+            _source_defaut("DEFAULT_SUBSCRIBED_SAFETY_MARGIN"),
+            ["safety_margin", "recommended_subscribed",
+             "subscribed_reduction", "annual_saving", "monthly_saving"]))
     if margin < 1.0:
         margin = 1.0
 
@@ -3179,6 +4036,7 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
         "monthly_saving": monthly_saving,
         "load_source": load_source,
         "production_source": production_source,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
@@ -3217,9 +4075,9 @@ DEFAULT_YEAR1_DEGRADATION = 0.02        # 2 % la 1re année (LID typique)
 
 
 def module_degradation_curve(production_year1=None, *,
-                             annual_degradation_rate=DEFAULT_MODULE_DEGRADATION,
-                             year1_degradation=DEFAULT_YEAR1_DEGRADATION,
-                             horizon_years=DEFAULT_HORIZON_YEARS,
+                             annual_degradation_rate=None,
+                             year1_degradation=None,
+                             horizon_years=None,
                              warranty_floors=None,
                              curve="compound"):
     """FG262 — courbe de dégradation modules + confrontation à la garantie.
@@ -3243,10 +4101,16 @@ def module_degradation_curve(production_year1=None, *,
     ----------
     production_year1 : production nominale de la 1re année (kWh/an). Si absente /
         illisible, seuls les facteurs sont calculés (production absolue = None).
-    annual_degradation_rate : dégradation annuelle (fraction, défaut ~0,5 %).
-    year1_degradation : chute initiale LID la 1re année (fraction, défaut 2 %).
-    horizon_years : durée de projection (années ; bornée [1, 40]).
-    warranty_floors : dict {année: plancher fractionnaire}. Défaut Tier-1.
+    annual_degradation_rate : dégradation annuelle (fraction). CALX286 — AUCUN
+        défaut : absente ⇒ facteurs, productions et verdicts de garantie
+        ``None`` avec une entrée ``omissions`` (le 0,5 %/an d'avant n'est plus
+        supposé ; l'étude le passe explicitement, D12).
+    year1_degradation : chute initiale LID la 1re année (fraction). Absente ⇒
+        ``DEFAULT_YEAR1_DEGRADATION`` publiée dans ``hypotheses``.
+    horizon_years : durée de projection (années ; bornée [1, 40]). Absente ⇒
+        ``DEFAULT_HORIZON_YEARS`` publiée dans ``hypotheses``.
+    warranty_floors : dict {année: plancher fractionnaire}. Absent ⇒
+        ``DEFAULT_WARRANTY_FLOORS`` publiés dans ``hypotheses``.
     curve : ``"compound"`` (défaut) ou ``"linear"``.
 
     Retourne un dict JSON-sérialisable ::
@@ -3259,12 +4123,14 @@ def module_degradation_curve(production_year1=None, *,
                    year1_degradation, factor_year1, factor_last_year,
                    total_production_kwh, any_warranty_breach,
                    first_breach_year},
-         warnings: []}
+         omissions: [...], hypotheses: [...], warnings: []}
 
-    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → défaut, horizon
-    hors bornes ramené dans [1, 40], facteur planché à 0 (jamais négatif).
+    Ne lève JAMAIS sur entrées dégradées : horizon hors bornes ramené dans
+    [1, 40], facteur planché à 0 (jamais négatif).
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     def _num(value, default=0.0):
         try:
@@ -3279,11 +4145,30 @@ def module_degradation_curve(production_year1=None, *,
             prod1 = 0.0
             warnings.append("production year-1 négative — ramenée à 0")
 
-    deg = _num(annual_degradation_rate, DEFAULT_MODULE_DEGRADATION)
-    lid = _num(year1_degradation, DEFAULT_YEAR1_DEGRADATION)
+    deg = _taux_ou_none(annual_degradation_rate)
+    if deg is None:
+        omissions.append(_omission(
+            "annual_degradation_rate",
+            "omis : dégradation annuelle des modules non fournie "
+            "(annual_degradation_rate) — à lire sur la garantie de puissance "
+            "de la fiche module",
+            ["schedule.production_factor", "schedule.production_kwh",
+             "schedule.warranty_breach", "warranty_checks.factor",
+             "warranty_checks.ok", "warranty_checks.shortfall_pct",
+             "warranty_checks.first_breach_year", "summary"]))
+    lid = _taux_ou_none(year1_degradation)
+    if lid is None:
+        lid = DEFAULT_YEAR1_DEGRADATION
+        hypotheses.append(_hypothese(
+            "year1_degradation", DEFAULT_YEAR1_DEGRADATION,
+            _source_defaut("DEFAULT_YEAR1_DEGRADATION"),
+            ["summary.year1_degradation", "schedule.production_factor",
+             "schedule.production_kwh", "warranty_checks.factor",
+             "summary.factor_year1", "summary.factor_last_year",
+             "summary.total_production_kwh"]))
 
     # Garde-fous métier (avertissements, jamais de rejet).
-    if not (0.0 <= deg < 1.0):
+    if deg is not None and not (0.0 <= deg < 1.0):
         warnings.append(
             "taux de dégradation annuel hors [0, 1[ — vérifier la saisie")
     if not (0.0 <= lid < 1.0):
@@ -3292,10 +4177,15 @@ def module_degradation_curve(production_year1=None, *,
     mode = "linear" if str(curve or "").lower() == "linear" else "compound"
 
     # Horizon : entier borné dans [1, 40] (le métier vise 20–25).
-    try:
-        horizon = int(round(_num(horizon_years, DEFAULT_HORIZON_YEARS)))
-    except (TypeError, ValueError):
+    horizon_lu = _taux_ou_none(horizon_years)
+    if horizon_lu is None:
         horizon = DEFAULT_HORIZON_YEARS
+        hypotheses.append(_hypothese(
+            "horizon_years", DEFAULT_HORIZON_YEARS,
+            _source_defaut("DEFAULT_HORIZON_YEARS"),
+            ["summary.horizon_years"]))
+    else:
+        horizon = int(round(horizon_lu))
     if horizon < _MIN_HORIZON_YEARS:
         horizon = _MIN_HORIZON_YEARS
         warnings.append("horizon ramené à 1 an (minimum)")
@@ -3305,8 +4195,14 @@ def module_degradation_curve(production_year1=None, *,
 
     # ── Planchers de garantie (normalisés en {int année: float plancher}) ──
     floors = {}
-    src_floors = DEFAULT_WARRANTY_FLOORS if warranty_floors is None \
-        else warranty_floors
+    if warranty_floors is None:
+        src_floors = DEFAULT_WARRANTY_FLOORS
+        hypotheses.append(_hypothese(
+            "warranty_floors", dict(DEFAULT_WARRANTY_FLOORS),
+            _source_defaut("DEFAULT_WARRANTY_FLOORS"),
+            ["warranty_checks", "schedule.warranty_floor"]))
+    else:
+        src_floors = warranty_floors
     try:
         items = list(src_floors.items())
     except AttributeError:
@@ -3329,6 +4225,8 @@ def module_degradation_curve(production_year1=None, *,
 
     def _factor(year):
         """Facteur de production de l'année ``year`` (base 1), planché à 0."""
+        if deg is None:
+            return None
         if mode == "linear":
             f = 1.0 - lid - deg * (year - 1)
         else:
@@ -3341,13 +4239,15 @@ def module_degradation_curve(production_year1=None, *,
     total_production = 0.0
     first_breach_year = None
     for y in range(1, horizon + 1):
-        factor = round(_factor(y), 6)
+        brut = _factor(y)
+        factor = None if brut is None else round(brut, 6)
         production_kwh = None
-        if prod1 is not None:
+        if prod1 is not None and factor is not None:
             production_kwh = round(prod1 * factor, 2)
             total_production += production_kwh
         floor = floors.get(y)
-        breach = floor is not None and factor < floor - 1e-9
+        breach = (None if factor is None
+                  else floor is not None and factor < floor - 1e-9)
         if breach and first_breach_year is None:
             first_breach_year = y
         schedule.append({
@@ -3360,9 +4260,15 @@ def module_degradation_curve(production_year1=None, *,
 
     # ── Vérification par jalon de garantie ──
     warranty_checks = []
-    any_breach = False
+    any_breach = None if deg is None else False
     for year_k in sorted(floors):
         floor_v = floors[year_k]
+        if deg is None:
+            warranty_checks.append({
+                "year": year_k, "floor": round(floor_v, 6), "factor": None,
+                "ok": None, "shortfall_pct": None, "first_breach_year": None,
+            })
+            continue
         # Facteur au jalon (recalculé même si le jalon dépasse l'horizon).
         factor_k = round(_factor(year_k), 6)
         ok = factor_k >= floor_v - 1e-9
@@ -3391,13 +4297,17 @@ def module_degradation_curve(production_year1=None, *,
     summary = {
         "curve": mode,
         "horizon_years": horizon,
-        "annual_degradation_rate": round(deg, 6),
+        "annual_degradation_rate": None if deg is None else round(deg, 6),
         "year1_degradation": round(lid, 6),
-        "factor_year1": schedule[0]["production_factor"] if schedule else 1.0,
-        "factor_last_year": (
-            schedule[-1]["production_factor"] if schedule else 1.0),
+        "factor_year1": (schedule[0]["production_factor"]
+                         if schedule and deg is not None
+                         else (1.0 if deg is not None else None)),
+        "factor_last_year": (schedule[-1]["production_factor"]
+                             if schedule and deg is not None
+                             else (1.0 if deg is not None else None)),
         "total_production_kwh": (
-            round(total_production, 2) if prod1 is not None else None),
+            round(total_production, 2)
+            if prod1 is not None and deg is not None else None),
         "any_warranty_breach": any_breach,
         "first_breach_year": first_breach_year,
     }
@@ -3406,6 +4316,8 @@ def module_degradation_curve(production_year1=None, *,
         "schedule": schedule,
         "warranty_checks": warranty_checks,
         "summary": summary,
+        "omissions": omissions,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
@@ -3439,8 +4351,16 @@ def module_degradation_curve(production_year1=None, *,
 # valeurs illisibles sont ramenées à un défaut sensé, division par zéro gardée,
 # jamais d'exception.
 
-# Tarif PPA par défaut (MAD/kWh) — placeholder marché, toujours surchargé.
-DEFAULT_PPA_TARIFF = 0.90
+# CALX287 — PLUS AUCUN TARIF PPA PAR DÉFAUT. L'ancien « placeholder marché »
+# de 0,90 MAD/kWh n'avait aucune citation : ``ppa_model`` exige désormais le
+# tarif SAISI (seule provenance admise : le tarif de rachat réglé par la
+# société, ``apps.parametres.tariff.mecanisme_depuis_reglages`` →
+# ``tarif_rachat_mad_kwh``, CALX276) et, sans lui, rend ``None`` + motif.
+#: Motif publié quand ``ppa_model`` est appelé sans tarif PPA.
+MOTIF_TARIF_PPA_ABSENT = (
+    "omis : aucun tarif PPA saisi (ppa_tariff) — le tarif de rachat se règle "
+    "dans Paramètres → Tarification & ROI (surplus_prix_kwh_ttc), jamais un "
+    "tarif « marché » supposé")
 # Escalade annuelle par défaut du tarif PPA (souvent indexée inflation).
 DEFAULT_PPA_ESCALATION = 0.02           # 2 %/an
 # Escalade annuelle par défaut de l'O&M investisseur (inflation).
@@ -3450,17 +4370,17 @@ DEFAULT_PPA_TERM_YEARS = 20
 
 
 def ppa_model(*, annual_production_kwh,
-              ppa_tariff=DEFAULT_PPA_TARIFF,
+              ppa_tariff=None,
               grid_tariff=None,
-              ppa_escalation=DEFAULT_PPA_ESCALATION,
-              grid_escalation=DEFAULT_TARIFF_ESCALATION,
-              term_years=DEFAULT_PPA_TERM_YEARS,
+              ppa_escalation=None,
+              grid_escalation=None,
+              term_years=None,
               capex=0.0,
               annual_om=0.0,
-              om_escalation=DEFAULT_OM_ESCALATION,
-              degradation_rate=DEFAULT_MODULE_DEGRADATION,
-              year1_degradation=DEFAULT_YEAR1_DEGRADATION,
-              discount_rate=DEFAULT_DISCOUNT_RATE):
+              om_escalation=None,
+              degradation_rate=None,
+              year1_degradation=None,
+              discount_rate=None):
     """FG263 — modèle financier PPA / tiers-investisseur (client sans capex).
 
     Simule un Power Purchase Agreement : le tiers-investisseur paie le capex et
@@ -3491,7 +4411,11 @@ def ppa_model(*, annual_production_kwh,
     Paramètres
     ----------
     annual_production_kwh : production nominale year-1 (kWh/an).
-    ppa_tariff : tarif PPA payé par le client (MAD/kWh).
+    ppa_tariff : tarif PPA payé par le client (MAD/kWh), SAISI — CALX287 :
+        obligatoire ; absent ⇒ ``schedule``/``investor``/``client``/``summary``
+        à ``None`` et ``motif`` = :data:`MOTIF_TARIF_PPA_ABSENT` (nomme
+        ``ppa_tariff``). Seule provenance admise : le tarif de rachat réglé par
+        la société (``apps.parametres.tariff.mecanisme_depuis_reglages``).
     grid_tariff : tarif réseau évité year-1 (MAD/kWh). Requis pour la perspective
         client ; absent → économies client non calculées (None).
     ppa_escalation / grid_escalation : escalades annuelles (fractions).
@@ -3520,11 +4444,22 @@ def ppa_model(*, annual_production_kwh,
                    degradation_rate, discount_rate, total_production_kwh},
          warnings: []}
 
-    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → défaut, durée
-    hors bornes ramenée dans [1, 40], division par zéro gardée, TRI = None si le
-    flux n'en admet pas (pas de boucle infinie).
+    Ne lève JAMAIS sur entrées dégradées : durée hors bornes ramenée dans
+    [1, 40], division par zéro gardée, TRI = None si le flux n'en admet pas
+    (pas de boucle infinie).
+
+    CALX286 — AUCUN défaut financier muet : ``degradation_rate`` absent ⇒
+    le modèle n'est PAS calculé (production, revenus et économies en
+    dépendent) et rend ``schedule``/``investor``/``client``/``summary`` à
+    ``None`` avec ``motif`` + ``omissions`` ; ``discount_rate`` absent ⇒
+    VAN et valeurs actualisées ``None`` ; ``grid_escalation`` absente ⇒ 0 %
+    avec la mention « aucune indexation saisie » (CALX279) ; les autres
+    défauts restants (escalades PPA / O&M, durée, LID) sont publiés dans
+    ``hypotheses`` avec leur provenance.
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     def _num(value, default=0.0):
         try:
@@ -3532,20 +4467,56 @@ def ppa_model(*, annual_production_kwh,
         except (TypeError, ValueError):
             return float(default)
 
+    def _ou_hypothese(valeur, cle, defaut, nom_constante, couvre):
+        lu = _taux_ou_none(valeur)
+        if lu is not None:
+            return lu
+        hypotheses.append(_hypothese(cle, defaut, _source_defaut(nom_constante),
+                                     couvre))
+        return defaut
+
     prod1 = _num(annual_production_kwh)
     if prod1 < 0:
         prod1 = 0.0
         warnings.append("production year-1 négative — ramenée à 0")
 
-    ppa = _num(ppa_tariff, DEFAULT_PPA_TARIFF)
-    ppa_esc = _num(ppa_escalation, DEFAULT_PPA_ESCALATION)
-    grid_esc = _num(grid_escalation, DEFAULT_TARIFF_ESCALATION)
+    # CALX287 — le tarif PPA est OBLIGATOIRE : absent ou illisible, le
+    # modèle n'est pas calculé (jamais un 0,90 supposé).
+    ppa = _taux_ou_none(ppa_tariff)
+    if ppa is None:
+        omissions.append(_omission("ppa_tariff", MOTIF_TARIF_PPA_ABSENT,
+                                   ["schedule", "investor", "client",
+                                    "summary"]))
+        return {"schedule": None, "investor": None, "client": None,
+                "summary": None, "motif": MOTIF_TARIF_PPA_ABSENT,
+                "omissions": omissions, "hypotheses": hypotheses,
+                "warnings": warnings}
+    ppa_esc = _ou_hypothese(
+        ppa_escalation, "ppa_escalation", DEFAULT_PPA_ESCALATION,
+        "DEFAULT_PPA_ESCALATION",
+        ["summary.ppa_escalation", "schedule.ppa_tariff_year",
+         "schedule.investor_revenue", "investor", "client"])
+    grid_esc = _taux_ou_none(grid_escalation)
+    if grid_esc is None:
+        grid_esc = 0.0
+        hypotheses.append(_hypothese(
+            "grid_escalation", 0.0,
+            f"{MENTION_INDEXATION_NON_SAISIE} — tarif réseau constant "
+            "(décision fondateur QRES54)",
+            ["summary.grid_escalation"]))
     capex0 = _num(capex)
     om1 = _num(annual_om)
-    om_esc = _num(om_escalation, DEFAULT_OM_ESCALATION)
-    deg = _num(degradation_rate, DEFAULT_MODULE_DEGRADATION)
-    lid = _num(year1_degradation, DEFAULT_YEAR1_DEGRADATION)
-    disc = _num(discount_rate, DEFAULT_DISCOUNT_RATE)
+    om_esc = _ou_hypothese(
+        om_escalation, "om_escalation", DEFAULT_OM_ESCALATION,
+        "DEFAULT_OM_ESCALATION",
+        ["summary.om_escalation", "schedule.investor_om", "investor"])
+    lid = _ou_hypothese(
+        year1_degradation, "year1_degradation", DEFAULT_YEAR1_DEGRADATION,
+        "DEFAULT_YEAR1_DEGRADATION",
+        ["summary.year1_degradation", "schedule.production_factor",
+         "schedule.production_kwh", "summary.total_production_kwh"])
+    deg = _taux_ou_none(degradation_rate)
+    disc = _taux_ou_none(discount_rate)
 
     grid1 = None
     if grid_tariff is not None:
@@ -3555,16 +4526,38 @@ def ppa_model(*, annual_production_kwh,
             warnings.append("tarif réseau négatif — ramené à 0")
 
     # ── Durée du contrat : entier borné dans [1, 40] ──
-    try:
-        term = int(round(_num(term_years, DEFAULT_PPA_TERM_YEARS)))
-    except (TypeError, ValueError):
-        term = DEFAULT_PPA_TERM_YEARS
+    term = int(round(_ou_hypothese(
+        term_years, "term_years", DEFAULT_PPA_TERM_YEARS,
+        "DEFAULT_PPA_TERM_YEARS", ["summary.term_years"])))
     if term < _MIN_HORIZON_YEARS:
         term = _MIN_HORIZON_YEARS
         warnings.append("durée ramenée à 1 an (minimum)")
     elif term > _MAX_HORIZON_YEARS:
         term = _MAX_HORIZON_YEARS
         warnings.append("durée plafonnée à 40 ans (maximum)")
+
+    if deg is None:
+        motif = ("omis : dégradation annuelle des modules non fournie "
+                 "(degradation_rate) — la production, les revenus et les "
+                 "économies de chaque année en dépendent")
+        omissions.append(_omission("degradation_rate", motif,
+                                   ["schedule", "investor", "client",
+                                    "summary"]))
+        return {"schedule": None, "investor": None, "client": None,
+                "summary": None, "motif": motif, "omissions": omissions,
+                "hypotheses": hypotheses, "warnings": warnings}
+    disc_fourni = disc is not None
+    if not disc_fourni:
+        omissions.append(_omission(
+            "discount_rate",
+            "omis : taux d'actualisation non fourni (discount_rate) — VAN et "
+            "valeurs actualisées non publiées",
+            ["schedule.investor_discounted_net",
+             "schedule.client_discounted_savings", "investor.npv",
+             "investor.total_discounted_net",
+             "investor.discounted_payback_year",
+             "client.total_discounted_savings"]))
+        disc = 0.0  # calcul interne seulement : les sorties actualisées → None
 
     # Garde-fous métier (avertissements, jamais de rejet).
     if not (0.0 <= deg < 1.0):
@@ -3720,17 +4713,32 @@ def ppa_model(*, annual_production_kwh,
         "om_escalation": round(om_esc, 6),
         "degradation_rate": round(deg, 6),
         "year1_degradation": round(lid, 6),
-        "discount_rate": round(disc, 6),
+        "discount_rate": round(disc, 6) if disc_fourni else None,
         "annual_om_year1": round(om1, 2),
         "total_production_kwh": round(total_production, 2),
         "production_year1": round(prod1, 2),
     }
+
+    if not disc_fourni:
+        # CALX286 — sans taux d'actualisation fourni, aucune valeur
+        # actualisée n'est publiée (le calcul interne à 0 % reste interne).
+        for ligne in schedule:
+            ligne["investor_discounted_net"] = None
+            ligne["client_discounted_savings"] = None
+        investor["npv"] = None
+        investor["total_discounted_net"] = None
+        investor["discounted_payback_year"] = None
+        if client is not None:
+            client["total_discounted_savings"] = None
 
     return {
         "schedule": schedule,
         "investor": investor,
         "client": client,
         "summary": summary,
+        "motif": None,
+        "omissions": omissions,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 
