@@ -349,6 +349,16 @@ Décisions fondateur du 21/09/2026 (CAD173) — TROIS RÈGLES DE CONTENU, à ten
 - **Subventions (Q22)** : on ne promet RIEN. Aucun texte n'annonce un montant, un taux, une éligibilité ni un délai de
   subvention : on renvoie le client aux conditions officielles du programme concerné.
 
+#### objectif_projet — La question « objectif du projet » de la fiche ne propose plus le surplus (CAD163, 23/09/2026)
+Décision fondateur du 21/09/2026 (Q9) — on n'aborde JAMAIS la loi 82-21 spontanément — appliquée à la fiche du lead
+(`Lead.objectif_projet`, dont le texte d'aide EST la question posée à l'appel) : la question ne propose PLUS
+« injecter le surplus », et le libellé du choix ne nomme plus la loi. La valeur `injection_8221` reste inchangée
+(données, webhooks, questionnaire) ; elle ne se coche que si le client parle lui-même de revendre son surplus — la
+réponse est alors l'objection `objection_loi_8221` du script d'appel guidé (section suivante). ✎ Formulations à
+valider par le fondateur. Darija : aucune version (question posée en FR dans la fiche).
+QUESTION : Qu'est-ce qui compte le plus pour vous — baisser la facture, tenir pendant les coupures, gagner en autonomie ?
+CHOIX : Revendre le surplus (si le client en parle)
+
 ## Script d'appel guidé — ce qui ne se dit qu'en RÉPONSE (`appelGuidance.js`, CAD163, 23/09/2026)
 
 Ces textes ne sont PAS des gabarits de message : aucun ne part au client par écrit, aucun ne figure dans un script
@@ -367,15 +377,6 @@ QUAND : Seulement si le client aborde lui-même la loi 82-21 ou la revente du su
 RÉPONSE : La loi permet de revendre une part du surplus ; je vous confirme les conditions par écrit.
 JAMAIS : Aucun tarif, aucun pourcentage, aucun délai.
 ENSUITE : Envoyer la confirmation écrite par un canal traçable ; aucune promesse de rachat tant qu'une décision ANRE datée n'a pas été lue.
-
-#### objectif_projet — La question « objectif du projet » de la fiche ne propose plus le surplus (CAD163, 23/09/2026)
-Même décision (Q9) appliquée à la fiche du lead (`Lead.objectif_projet`, texte d'aide = la question posée à l'appel) :
-la question ne propose PLUS « injecter le surplus », et le libellé du choix ne nomme plus la loi. La valeur
-`injection_8221` reste inchangée (données, webhooks, questionnaire) ; elle ne se coche que si le client parle
-lui-même de revendre son surplus — la réponse est alors l'objection ci-dessus. ✎ Formulations à valider par le
-fondateur. Darija : aucune version (question posée en FR dans la fiche).
-QUESTION : Qu'est-ce qui compte le plus pour vous — baisser la facture, tenir pendant les coupures, gagner en autonomie ?
-CHOIX : Revendre le surplus (si le client en parle)
 
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
