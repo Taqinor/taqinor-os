@@ -118,6 +118,30 @@ describe('CAD69 — les crochets ne partent jamais tels quels', () => {
   })
 })
 
+describe('CAD70 — sans catalogue Réalisations, le J4 le dit et guide', () => {
+  const SANS_PREUVE = exempleContrat('crm', 'relance_etape_message', 'exemple_preuve_manquante')
+  const ETAPE_J4 = TOUCHES.find((t) => t.template_cle === 'j4_preuve')
+
+  it('catalogue vide : le CTA WhatsApp est remplacé par le message d’aide', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: SANS_PREUVE })
+    render(<ToucheMessageDialog etape={ETAPE_J4} open onOpenChange={() => {}} />)
+    const aide = await screen.findByTestId('preuve-manquante')
+    expect(aide).toHaveTextContent('Aucune réalisation publiée : choisissez-en une ou passez cette touche.')
+    expect(aide.querySelector('a')).toHaveAttribute('href', '/parametres')
+    expect(screen.queryByRole('button', { name: /Ouvrir WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Copier/ })).not.toBeInTheDocument()
+    // La phrase orpheline n'est jamais proposée.
+    expect(screen.queryByText(SANS_PREUVE.message)).not.toBeInTheDocument()
+  })
+
+  it('catalogue rempli : le texte complet est proposé et part', async () => {
+    render(<ToucheMessageDialog etape={ETAPE_J4} open onOpenChange={() => {}} />)
+    expect(await screen.findByText(MESSAGE.message)).toBeInTheDocument()
+    expect(screen.queryByTestId('preuve-manquante')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Ouvrir WhatsApp/ })).not.toBeDisabled()
+  })
+})
+
 describe('CAD64 — le repli de langue est VISIBLE', () => {
   const REPLI = exempleContrat('crm', 'relance_etape_message', 'exemple_repli_langue')
 

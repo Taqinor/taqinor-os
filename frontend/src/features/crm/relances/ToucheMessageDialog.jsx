@@ -33,6 +33,9 @@ const NOM_LANGUE = { darija: 'darija', en: 'anglais', ar: 'arabe' }
 // Écritures de droite à gauche — seulement quand le texte EST dans cette
 // langue (jamais pour une version française partie en repli).
 const LANGUES_RTL = ['darija', 'ar']
+// CAD70 — le catalogue des réalisations vit dans Paramètres (onglet
+// « Réalisations », `RealisationsSection.jsx`).
+const LIEN_CATALOGUE_REALISATIONS = '/parametres'
 
 export default function ToucheMessageDialog({
   etape, open, onOpenChange, onSent,
@@ -115,6 +118,9 @@ export default function ToucheMessageDialog({
   const aCompleter = crochets.length > 0
   // La conversation SANS texte pré-rempli (même numéro, même lien serveur).
   const urlConversation = rendu?.wa_url ? rendu.wa_url.split('?text=')[0] : null
+  // CAD70 — la preuve J4 manque (aucune réalisation publiée) : le message
+  // n'est pas proposé du tout.
+  const preuveManquante = Boolean(rendu?.preuve_manquante)
 
   const copier = async () => {
     if (!rendu?.message) return
@@ -202,13 +208,35 @@ export default function ToucheMessageDialog({
                 navigateur range les segments (prénom en lettres latines, nom
                 de la société) dans un ordre illisible — incident du 07/09.
                 `rendu` est encore null au premier rendu (avant le chargement). */}
-            <div
-              className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${texteRtl ? ' text-right' : ''}`}
-              dir={texteRtl ? 'rtl' : 'auto'}
-              lang={texteRtl ? 'ar' : langueTexte}
-            >
-              {rendu?.message || '…'}
-            </div>
+            {/* CAD70 — sans réalisation publiée, le message J4 se réduirait à
+                une phrase orpheline : il n'est PAS proposé. L'aide dit quoi
+                faire (publier une réalisation — la porte d'entrée du catalogue
+                — ou passer la touche). Jamais une preuve inventée. */}
+            {preuveManquante ? (
+              <div
+                className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+                role="status" data-testid="preuve-manquante"
+              >
+                <p className="font-medium">
+                  Aucune réalisation publiée : choisissez-en une ou passez cette touche.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Ce message montre une installation comparable RÉELLE ; sans catalogue il se
+                  réduirait à une phrase sans sujet.{' '}
+                  <a href={LIEN_CATALOGUE_REALISATIONS} className="font-medium text-primary underline">
+                    Ouvrir le catalogue (Paramètres → Réalisations)
+                  </a>
+                </p>
+              </div>
+            ) : (
+              <div
+                className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${texteRtl ? ' text-right' : ''}`}
+                dir={texteRtl ? 'rtl' : 'auto'}
+                lang={texteRtl ? 'ar' : langueTexte}
+              >
+                {rendu?.message || '…'}
+              </div>
+            )}
             {/* CAD64 — le repli de langue n'est plus silencieux : le texte
                 n'existe pas encore dans la langue du client, c'est la version
                 française qui partira. On prévient — on ne traduit jamais. */}
@@ -222,7 +250,7 @@ export default function ToucheMessageDialog({
             {/* Règle « aucun chiffre inventé » — un placeholder sans valeur
                 réelle a fait OMETTRE la phrase côté serveur, jamais un blanc
                 à sa place : l'écran nomme juste ce qui manquait. */}
-            {rendu?.placeholders_manquants?.length > 0 && (
+            {!preuveManquante && rendu?.placeholders_manquants?.length > 0 && (
               <p className="flex items-start gap-1.5 text-xs text-warning">
                 <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 Informations manquantes ({rendu.placeholders_manquants.join(', ')}) — la
@@ -251,11 +279,15 @@ export default function ToucheMessageDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
             Fermer
           </Button>
-          <Button variant="outline" onClick={copier} disabled={!rendu?.message}>
-            <Copy className="mr-1 size-4" aria-hidden="true" />
-            Copier
-          </Button>
-          {aCompleter && (
+          {/* CAD70 — sans preuve, aucun geste d'envoi : ni copier la phrase
+              orpheline, ni ouvrir WhatsApp avec elle. */}
+          {!preuveManquante && (
+            <Button variant="outline" onClick={copier} disabled={!rendu?.message}>
+              <Copy className="mr-1 size-4" aria-hidden="true" />
+              Copier
+            </Button>
+          )}
+          {!preuveManquante && aCompleter && (
             <Button
               variant="outline" onClick={() => ouvrirWhatsApp(urlConversation)}
               disabled={!urlConversation || sending}
@@ -263,13 +295,15 @@ export default function ToucheMessageDialog({
               Ouvrir la conversation (sans texte)
             </Button>
           )}
-          <Button
-            onClick={() => ouvrirWhatsApp()}
-            disabled={!rendu?.wa_url || aCompleter || sending} loading={sending}
-          >
-            <Send className="mr-1 size-4" aria-hidden="true" />
-            Ouvrir WhatsApp
-          </Button>
+          {!preuveManquante && (
+            <Button
+              onClick={() => ouvrirWhatsApp()}
+              disabled={!rendu?.wa_url || aCompleter || sending} loading={sending}
+            >
+              <Send className="mr-1 size-4" aria-hidden="true" />
+              Ouvrir WhatsApp
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

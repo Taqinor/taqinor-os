@@ -3531,6 +3531,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 {'erreurs': {'langue': refus_langue_relance(langue)}})
         rendu = message_pour_etape(etape, request=request, user=request.user,
                                    langue=langue or None)
+        if rendu.get('preuve_manquante'):
+            # CAD70 — sans réalisation publiée, le message J4 se réduit à une
+            # phrase orpheline : il n'est pas « ouvert ». Levée (même motif
+            # que la langue) : la forme versionnée reste celle du rendu.
+            from .services import REFUS_PREUVE_MANQUANTE
+            raise DRFValidationError(
+                {'erreurs': {'preuve': REFUS_PREUVE_MANQUANTE}})
         if not rendu.get('wa_url'):
             return Response(
                 {'detail': 'Numéro de téléphone invalide.'},

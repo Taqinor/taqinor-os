@@ -2818,8 +2818,17 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     # de la société, choisie sur la ville du lead. Résolue seulement si le
     # texte la demande, et rejoignant le CONTEXTE (donc soumise au calcul des
     # placeholders manquants) — sans catalogue, la phrase est OMISE.
+    # CAD70 — sans AUCUNE réalisation utilisable (le cas PAR DÉFAUT d'une
+    # société qui n'a rien publié), les phrases de preuve sautent toutes et il
+    # ne reste qu'une phrase orpheline (« Le suivi de production est en temps
+    # réel… ») : la touche ne doit alors PAS proposer ce message. Le drapeau
+    # `preuve_manquante` le dit à l'aperçu (et le POST `whatsapp/` le refuse).
+    preuve_manquante = False
     if any(t in (corps or '') for t in _PLACEHOLDERS_PREUVE):
-        contexte.update(_contexte_preuve(lead))
+        preuve = _contexte_preuve(lead)
+        contexte.update(preuve)
+        preuve_manquante = not any(
+            str(valeur).strip() for valeur in preuve.values())
 
     manquants = [cle for cle in _PLACEHOLDERS_RENDUS
                  if '{' + cle + '}' in (corps or '')
@@ -2848,7 +2857,19 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         # CAD69 — les blancs `[…]` à compléter à la main avant tout envoi
         # (l'aperçu bloque « Ouvrir WhatsApp » tant qu'il y en a).
         'crochets': crochets_a_completer(message),
+        # CAD70 — `True` : le texte demande une preuve (J4) et la société n'a
+        # AUCUNE réalisation publiée — jamais une preuve inventée ni un
+        # chantier mélangé : l'aperçu remplace l'envoi par l'aide.
+        'preuve_manquante': preuve_manquante,
     }
+
+
+#: CAD70 — le refus du POST `whatsapp/` quand la preuve manque (le champ est
+#: nommé tel que l'écran le montre).
+REFUS_PREUVE_MANQUANTE = (
+    '« Preuve — installation comparable » : aucune réalisation publiée. '
+    'Ajoutez-en une au catalogue (Paramètres → Réalisations) ou passez cette '
+    'touche — ce message ne part pas sans preuve réelle.')
 
 
 # ── CAD-F ── CAD71 (21/09/2026) ──────────────────────────────────────────
