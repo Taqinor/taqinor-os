@@ -273,6 +273,31 @@ class TariffSettings(models.Model):
         verbose_name='Ratio de compensation (0 à 1)',
         help_text="1 = un kWh injecté compense un kWh soutiré.")
 
+    # ── CALX277 — structure de la grille (sociétés hors Maroc comprises) ──
+    # ``tranches`` (défaut) = le barème à paliers ci-dessus, facture
+    # INCHANGÉE. ``prix_unique`` / ``deux_postes`` exigent LEURS prix saisis
+    # (refus nommant le champ manquant). Clés = ``tariff.STRUCTURES_TARIF``.
+    STRUCTURES_TARIF_CHOICES = [
+        ('tranches', 'Tranches de consommation (barème à paliers)'),
+        ('prix_unique', 'Prix unique du kWh'),
+        ('deux_postes', 'Deux postes horaires (heures hautes / basses)'),
+    ]
+    structure_tarif = models.CharField(
+        max_length=12, default='tranches', choices=STRUCTURES_TARIF_CHOICES,
+        verbose_name='Structure du tarif')
+    pays_tarif = models.CharField(
+        max_length=2, blank=True, default='',
+        verbose_name='Pays du tarif (code ISO à deux lettres)')
+    prix_unique_kwh = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Prix unique du kWh')
+    poste_haut = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Prix du kWh en heures hautes')
+    poste_bas = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Prix du kWh en heures basses')
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

@@ -658,6 +658,125 @@ def mecanisme_depuis_reglages(reglages):
     }
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# CALX277 — STRUCTURE DE LA GRILLE : TRANCHES / PRIX UNIQUE / DEUX POSTES
+# ═════════════════════════════════════════════════════════════════════════════
+# La grille société n'exprimait que des paliers de consommation mensuelle
+# (barème ONEE). Une société HORS Maroc facture souvent au prix unique du kWh
+# (« Flat Rate », structure de premier rang d'OpenSolar) ou à deux postes
+# horaires (heures hautes / heures basses). ``structure_tarif`` le déclare ;
+# ``tranches`` reste le DÉFAUT et rend EXACTEMENT la facture d'aujourd'hui.
+# Une structure choisie sans ses prix est REFUSÉE en nommant le champ manquant
+# — jamais facturée sur un prix supposé.
+
+#: Les trois structures admises ; ``tranches`` = le barème ONEE historique.
+STRUCTURES_TARIF = ('tranches', 'prix_unique', 'deux_postes')
+
+#: Structure par défaut : celle d'aujourd'hui (barème à paliers ONEE).
+STRUCTURE_TARIF_DEFAUT = 'tranches'
+
+
+def erreurs_structure(structure_tarif, pays_tarif, prix_unique_kwh,
+                      poste_haut, poste_bas):
+    """Refus de la structure tarifaire, ``{champ: message}`` (vide = valide)."""
+    erreurs = {}
+    structure = (structure_tarif or STRUCTURE_TARIF_DEFAUT)
+    if structure not in STRUCTURES_TARIF:
+        erreurs['structure_tarif'] = (
+            f"structure_tarif : « {structure} » inconnue — structures admises "
+            f": {', '.join(STRUCTURES_TARIF)}.")
+        return erreurs
+    if structure == 'prix_unique' and _nombre_positif(prix_unique_kwh) is None:
+        erreurs['prix_unique_kwh'] = (
+            "prix_unique_kwh : la structure « prix unique » exige le prix du "
+            "kWh (nombre ≥ 0).")
+    if structure == 'deux_postes':
+        for champ, valeur, libelle in (
+                ('poste_haut', poste_haut, 'heures hautes'),
+                ('poste_bas', poste_bas, 'heures basses')):
+            if _nombre_positif(valeur) is None:
+                erreurs[champ] = (
+                    f"{champ} : la structure « deux postes » exige le prix du "
+                    f"kWh en {libelle} (nombre ≥ 0).")
+    if not _vide(pays_tarif):
+        code = str(pays_tarif).strip().upper()
+        if len(code) != 2 or not code.isalpha() or not code.isascii():
+            erreurs['pays_tarif'] = (
+                "pays_tarif : un code pays ISO 3166 à deux lettres est attendu "
+                "(ex. MA, FR, SN).")
+    return erreurs
+
+
+def structure_de(reglages):
+    """Structure tarifaire déclarée (``tranches`` si rien n'est saisi)."""
+    valeur = getattr(reglages, 'structure_tarif', None) or ''
+    return valeur if valeur in STRUCTURES_TARIF else STRUCTURE_TARIF_DEFAUT
+
+
+def facture_mensuelle(reglages, kwh, *, classe='residentiel',
+                      kwh_poste_haut=None):
+    """Facture mensuelle selon la STRUCTURE déclarée par la société (CALX277).
+
+    Rend ``{structure, montant_ttc, motif, detail}`` — ``montant_ttc`` est un
+    ``Decimal`` au centime, ou ``None`` avec un ``motif`` qui nomme la donnée
+    manquante (jamais un prix supposé) :
+
+    * ``tranches`` (défaut) — EXACTEMENT :func:`monthly_bill` d'aujourd'hui
+      (barème ONEE progressif/sélectif, ou classe force motrice) ;
+    * ``prix_unique`` — ``kwh × prix_unique_kwh`` ;
+    * ``deux_postes`` — ``kwh_poste_haut × poste_haut + (kwh − kwh_poste_haut)
+      × poste_bas`` : la RÉPARTITION des kWh entre les deux postes doit être
+      fournie par l'appelant (elle vient d'une courbe horaire), jamais devinée.
+
+    Les prix sont ceux SAISIS, tels que facturés (TTC par convention — CALX278
+    sépare les taxes).
+    """
+    structure = structure_de(reglages)
+    kwh_d = Decimal(str(kwh or 0))
+    resultat = {'structure': structure, 'montant_ttc': None, 'motif': None,
+                'detail': {}}
+    if classe in ('force_motrice', 'agricole') or structure == 'tranches':
+        resultat['montant_ttc'] = monthly_bill(reglages, kwh_d, classe)
+        return resultat
+    if kwh_d <= 0:
+        resultat['montant_ttc'] = Decimal('0.00')
+        return resultat
+
+    if structure == 'prix_unique':
+        prix = _nombre_positif(getattr(reglages, 'prix_unique_kwh', None))
+        if prix is None:
+            resultat['motif'] = (
+                "omis : structure « prix unique » sans prix du kWh saisi "
+                "(prix_unique_kwh)")
+            return resultat
+        resultat['detail'] = {'prix_kwh': prix}
+        resultat['montant_ttc'] = _q(kwh_d * prix)
+        return resultat
+
+    haut = _nombre_positif(getattr(reglages, 'poste_haut', None))
+    bas = _nombre_positif(getattr(reglages, 'poste_bas', None))
+    manquant = ('poste_haut' if haut is None
+                else 'poste_bas' if bas is None else None)
+    if manquant:
+        resultat['motif'] = (
+            f"omis : structure « deux postes » sans le prix du {manquant} "
+            f"saisi ({manquant})")
+        return resultat
+    part_haut = _nombre_positif(kwh_poste_haut)
+    if part_haut is None or part_haut > kwh_d:
+        resultat['motif'] = (
+            "omis : la répartition des kWh entre poste haut et poste bas n'est "
+            "pas fournie (kwh_poste_haut) — elle se lit sur une courbe "
+            "horaire, jamais supposée")
+        return resultat
+    part_bas = kwh_d - part_haut
+    resultat['detail'] = {'kwh_poste_haut': part_haut,
+                          'kwh_poste_bas': part_bas,
+                          'poste_haut': haut, 'poste_bas': bas}
+    resultat['montant_ttc'] = _q(part_haut * haut + part_bas * bas)
+    return resultat
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -673,4 +792,10 @@ def erreurs_reglages_tarif(reglages):
         getattr(reglages, 'report_periode', None),
         getattr(reglages, 'plafond_annuel_kwh', None),
         getattr(reglages, 'ratio_compensation', None)))
+    erreurs.update(erreurs_structure(
+        getattr(reglages, 'structure_tarif', None),
+        getattr(reglages, 'pays_tarif', None),
+        getattr(reglages, 'prix_unique_kwh', None),
+        getattr(reglages, 'poste_haut', None),
+        getattr(reglages, 'poste_bas', None)))
     return erreurs
