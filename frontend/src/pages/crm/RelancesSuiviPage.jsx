@@ -66,9 +66,15 @@ const ONGLETS = [
 
 /** Bornes [date_debut, date_fin] envoyées au serveur pour chaque onglet (62 j
  *  d'écart max, cf. le contrat) : l'onglet « Aujourd'hui + retard » élargit la
- *  fenêtre serveur à 30 j en arrière (un retard peut dater de plusieurs
- *  semaines) et le filtrage FIN (aujourd'hui ou encore à faire en retard) se
- *  fait CÔTÉ ÉCRAN — voir `visiblesPourOnglet` ci-dessous. */
+ *  fenêtre serveur à 62 j en arrière — CAD112 (audit L3 du 21/09/2026) : à
+ *  -30 j, un retard de 35 j apparaissait dans le cockpit (`scope='all'`,
+ *  AUCUNE borne basse côté serveur, `selectors.relance_etapes_dues`) mais pas
+ *  ici — même onglet HOMONYME « Aujourd'hui + retard », deux résultats
+ *  différents pour la même touche. -62 j est le MAXIMUM que le serveur
+ *  accepte (`SUIVI_JOURS_MAX`) : on ne peut pas aller plus loin sans retirer
+ *  la borne basse côté serveur, ce que la tâche interdit explicitement (elle
+ *  protège la requête). Le filtrage FIN (aujourd'hui ou encore à faire en
+ *  retard) se fait CÔTÉ ÉCRAN — voir `visiblesPourOnglet` ci-dessous. */
 function bornesOnglet(onglet, today) {
   if (onglet === 'demain') {
     const demain = decalerJours(today, 1)
@@ -80,7 +86,7 @@ function bornesOnglet(onglet, today) {
   if (onglet === 'precedente') {
     return { date_debut: decalerJours(today, -7), date_fin: decalerJours(today, -1) }
   }
-  return { date_debut: decalerJours(today, -30), date_fin: today }
+  return { date_debut: decalerJours(today, -62), date_fin: today }
 }
 
 // Seul l'onglet « Aujourd'hui + retard » filtre CÔTÉ ÉCRAN (fenêtre serveur
@@ -99,7 +105,14 @@ export default function RelancesSuiviPage() {
   const isResponsableOuAdmin = useIsAdminOrResponsable()
   const currentUserId = useSelector((s) => s.auth.user?.id)
   const [onglet, setOnglet] = useState('aujourdhui')
-  const [ownerFiltre, setOwnerFiltre] = useState('moi')
+  // CAD112 — défaut aligné sur le Cockpit (`RelancesDuJourWidget.jsx`), qui
+  // n'envoie AUCUN filtre propriétaire : à « Moi », un admin/responsable
+  // ouvrant le Suivi ne voyait que SES touches alors que le même admin, sur
+  // le même onglet homonyme du cockpit, voyait toute l'équipe. « Tous » ne
+  // PERCE rien : `scope_queryset` reste la seule autorité (un commercial
+  // normal, qui n'a pas ce sélecteur, reste borné à sa propre portée par le
+  // serveur quel que soit `owner`).
+  const [ownerFiltre, setOwnerFiltre] = useState('tous')
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
