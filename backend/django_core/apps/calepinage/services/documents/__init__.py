@@ -356,3 +356,9 @@ MISES_EN_PAGE['plan_cablage'] = (
 MISES_EN_PAGE['manuel_proprietaire'] = (
     'apps.calepinage.services.documents.manuel_proprietaire:'
     'html_du_manuel')
+
+
+# ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
+MISES_EN_PAGE['document_asbuilt'] = (
+    'apps.calepinage.services.documents.document_asbuilt:'
+    'html_du_document_asbuilt')

@@ -359,3 +359,32 @@ def manuel_proprietaire_pdf(self, request, pk=None):
 
 
 CalepinageViewSet.manuel_proprietaire_pdf = manuel_proprietaire_pdf
+
+
+# ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='document-asbuilt.pdf',
+        url_name='document-asbuilt-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def document_asbuilt_pdf(self, request, pk=None):
+    """CALX318 — le document as-built : prévu, posé, écarts, photos de site.
+
+    * **200** — le PDF, nommé d'après le calepinage.
+
+    Ce document ne refuse jamais : un pan sans relevé imprime sa mention
+    (``asbuilt.MENTION_SANS_SAISIE``), une conception absente laisse la
+    planche « en regard » vide, et l'absence de photo est DITE — jamais un
+    document manquant pour autant.
+    """
+    from ..services.documents.document_asbuilt import rendre_document_asbuilt
+    from ..services.planche import nom_de_fichier
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    octets = rendre_document_asbuilt(calepinage, company=calepinage.company)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'document-asbuilt.pdf'))
+
+
+CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
