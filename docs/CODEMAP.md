@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 3a92d2400f6f77156891a0afb3d906883bc06fc54b67c278cec734aed18fe179
-Plan fingerprint: c43696392c81fba82fb10df87148ebdc89d68e8ccb0644bf69aab269436cab52
+Plan fingerprint: 0fc4e1bcec015d4145b83eeff271e45e0470bb5f2725afadf236e94e1141149f
 
 
 
@@ -540,7 +540,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (429)**
+**Done (432)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -756,6 +756,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX93` — Déduire noue et arêtier en comparant les pans voisins
 - `CALX94` — Corriger à la main le type d'une arête depuis l'atelier
 - `CALX95` — Appliquer un retrait propre à chaque arête physique du contour
+- `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
 - `CALX97` — Saisir les cotes exactes d'un pan et le faire pivoter d'un bloc
 - `CALX98` — Dupliquer un pan avec ses obstacles et ses réglages
 - `CALX99` — Prendre l'azimut d'un pan depuis une arête cliquée
@@ -964,7 +965,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX324` — Journaliser l'émission d'un document dans le fil du calepinage
 - `CALX325` — Dire sur la pièce qu'elle vient d'une conception verrouillée ou archivée
 - `CALX326` — Faire entrer le rapport d'étude et le plan de câblage dans le dossier technique
+- `CALX327` — Interdire tout mot de montant dans le TEXTE EXTRAIT de chaque document du module
 - `CALX328` — Verrouiller le nombre de pages attendu de chaque document
+- `CALX329` — Poser une garde CI : un document déclaré a un rendu
 - `CALX330` — Imprimer l'annexe « hypothèses, sources et omissions » du rapport
 - `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
@@ -972,7 +975,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (177)**
+**Open — to build (174)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -1055,12 +1058,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
-- `CALX327` — Interdire tout mot de montant dans le TEXTE EXTRAIT de chaque document du module
-- `CALX329` — Poser une garde CI : un document déclaré a un rendu
 - `CALX331` — Figer le contrat de la comparaison de plusieurs calepinages
 - `CALX332` — Figer le contrat des étiquettes libres d'un calepinage
 - `CALX333` — Figer le contrat du différentiel entre deux versions
