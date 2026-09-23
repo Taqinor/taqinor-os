@@ -4351,8 +4351,16 @@ def module_degradation_curve(production_year1=None, *,
 # valeurs illisibles sont ramenées à un défaut sensé, division par zéro gardée,
 # jamais d'exception.
 
-# Tarif PPA par défaut (MAD/kWh) — placeholder marché, toujours surchargé.
-DEFAULT_PPA_TARIFF = 0.90
+# CALX287 — PLUS AUCUN TARIF PPA PAR DÉFAUT. L'ancien « placeholder marché »
+# de 0,90 MAD/kWh n'avait aucune citation : ``ppa_model`` exige désormais le
+# tarif SAISI (seule provenance admise : le tarif de rachat réglé par la
+# société, ``apps.parametres.tariff.mecanisme_depuis_reglages`` →
+# ``tarif_rachat_mad_kwh``, CALX276) et, sans lui, rend ``None`` + motif.
+#: Motif publié quand ``ppa_model`` est appelé sans tarif PPA.
+MOTIF_TARIF_PPA_ABSENT = (
+    "omis : aucun tarif PPA saisi (ppa_tariff) — le tarif de rachat se règle "
+    "dans Paramètres → Tarification & ROI (surplus_prix_kwh_ttc), jamais un "
+    "tarif « marché » supposé")
 # Escalade annuelle par défaut du tarif PPA (souvent indexée inflation).
 DEFAULT_PPA_ESCALATION = 0.02           # 2 %/an
 # Escalade annuelle par défaut de l'O&M investisseur (inflation).
@@ -4403,7 +4411,11 @@ def ppa_model(*, annual_production_kwh,
     Paramètres
     ----------
     annual_production_kwh : production nominale year-1 (kWh/an).
-    ppa_tariff : tarif PPA payé par le client (MAD/kWh).
+    ppa_tariff : tarif PPA payé par le client (MAD/kWh), SAISI — CALX287 :
+        obligatoire ; absent ⇒ ``schedule``/``investor``/``client``/``summary``
+        à ``None`` et ``motif`` = :data:`MOTIF_TARIF_PPA_ABSENT` (nomme
+        ``ppa_tariff``). Seule provenance admise : le tarif de rachat réglé par
+        la société (``apps.parametres.tariff.mecanisme_depuis_reglages``).
     grid_tariff : tarif réseau évité year-1 (MAD/kWh). Requis pour la perspective
         client ; absent → économies client non calculées (None).
     ppa_escalation / grid_escalation : escalades annuelles (fractions).
@@ -4468,12 +4480,17 @@ def ppa_model(*, annual_production_kwh,
         prod1 = 0.0
         warnings.append("production year-1 négative — ramenée à 0")
 
-    ppa = _ou_hypothese(
-        ppa_tariff, "ppa_tariff", DEFAULT_PPA_TARIFF, "DEFAULT_PPA_TARIFF",
-        ["summary.ppa_tariff", "schedule.ppa_tariff_year",
-         "schedule.investor_revenue", "schedule.investor_net",
-         "schedule.investor_discounted_net", "schedule.client_savings",
-         "investor", "client"])
+    # CALX287 — le tarif PPA est OBLIGATOIRE : absent ou illisible, le
+    # modèle n'est pas calculé (jamais un 0,90 supposé).
+    ppa = _taux_ou_none(ppa_tariff)
+    if ppa is None:
+        omissions.append(_omission("ppa_tariff", MOTIF_TARIF_PPA_ABSENT,
+                                   ["schedule", "investor", "client",
+                                    "summary"]))
+        return {"schedule": None, "investor": None, "client": None,
+                "summary": None, "motif": MOTIF_TARIF_PPA_ABSENT,
+                "omissions": omissions, "hypotheses": hypotheses,
+                "warnings": warnings}
     ppa_esc = _ou_hypothese(
         ppa_escalation, "ppa_escalation", DEFAULT_PPA_ESCALATION,
         "DEFAULT_PPA_ESCALATION",

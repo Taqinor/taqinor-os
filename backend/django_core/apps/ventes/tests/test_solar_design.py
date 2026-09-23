@@ -1824,12 +1824,13 @@ class PpaModelTest(SimpleTestCase):
         self.assertIn("schedule", res)
         self.assertIn("investor", res)
         self.assertIn("summary", res)
-        # CALX286 — dégradation illisible ⇒ modèle NON calculé (jamais
-        # 0,5 %/an supposé) : blocs à None, motif et omission le disent.
+        # CALX286/287 — tarif PPA et dégradation illisibles ⇒ modèle NON
+        # calculé (jamais 0,90 MAD/kWh ni 0,5 %/an supposés) : blocs à None,
+        # le motif nomme le premier champ manquant (le tarif PPA).
         self.assertIsNone(res["summary"])
         self.assertIsNone(res["investor"])
-        self.assertIn("degradation_rate", res["motif"])
-        self.assertTrue(any(o["cle"] == "degradation_rate"
+        self.assertIn("ppa_tariff", res["motif"])
+        self.assertTrue(any(o["cle"] == "ppa_tariff"
                             for o in res["omissions"]))
 
     def test_extreme_discount_rate_guarded(self):
