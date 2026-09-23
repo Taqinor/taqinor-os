@@ -234,6 +234,22 @@ SANS_PRODUCTEUR_PUR = {
         'forme JSON servie à comparer — les chemins exigés sont résolus '
         'contre calepinage_resultat.json, sans base, par '
         'apps/calepinage/tests/test_calx292_contrat_rapport.py',
+
+    # CALX291
+    'calepinage_documents.json':
+        "INVENTAIRE des documents du lot 6 (codes, versions, manques nommés) : "
+        'sa route GET documents/ arrive avec CALX321 (panneau Documents, '
+        'phase 2) et son producteur avec elle — la forme, les neuf codes et '
+        "l'absence de tout mot de montant sont affirmés sans base par "
+        'apps/calepinage/tests/test_calx291_contrat_documents.py',
+
+    # CALX293
+    'export_projet.json':
+        "EXPORT JSON versionné du projet et de ses résultats : sa route "
+        'GET export-projet.json/ arrive avec CALX312 (phase 2) — '
+        '`format_version`, les blocs exigés et le détecteur prix/cout/marge '
+        'sont affirmés sans base par '
+        'apps/calepinage/tests/test_calx293_contrat_export_projet.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -249,6 +265,10 @@ POSES_AVANT_LEUR_ROUTE = {
     # vérifie désormais leurs routes comme celles des autres.
     # CALX297 a livré ``GET calepinages/<pk>/rapport-etude.pdf/``
     # (``views/documents.py``) : ``rapport_etude.json`` en est SORTI.
+    # CALX291 : l'inventaire GET documents/ n'arrive qu'avec CALX321.
+    'calepinage_documents.json': 'CALX321',
+    # CALX293 : la route GET export-projet.json/ n'arrive qu'avec CALX312.
+    'export_projet.json': 'CALX312',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
