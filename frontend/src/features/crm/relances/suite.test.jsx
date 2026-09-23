@@ -54,7 +54,8 @@ describe('CAD17 suite.js — traduire les codes du serveur, rien de plus', () =>
     expect(cleSuite({ reponse: 'plus_tard', outcome: 'rappel' })).toBe('plus_tard')
     expect(cleSuite({ outcome: 'non_joint', note: 'Répondeur' })).toBe('non_joint')
     expect(cleSuite({ outcome: '' })).toBe(CLE_SANS_ISSUE)
-    // « Intéressé » a exactement l'effet moteur de « joint ».
+    // L'issue historique `interesse` a exactement l'effet moteur de `joint`
+    // (le journal d'appel de la fiche la propose encore).
     expect(cleSuite({ outcome: 'interesse' })).toBe('joint')
     expect(cleSuite(null)).toBeNull()
   })

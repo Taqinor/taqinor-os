@@ -137,6 +137,34 @@ describe('CKP1/CKP4 RelanceEtapeRow — badges honnêtes (sautée ≠ annulée)'
 // un appel de prise de contact, la seconde un WhatsApp du suivi de proposition.
 const ETAPE_APRES_DEVIS = exempleContrat('crm', 'relance_etape_v2').results[1]
 
+// CAD4 — « Client joint » est LE mot des trois cadences : une seule issue
+// serveur (`joint`), jamais une seconde étiquette pour le même effet moteur.
+describe('CAD4 RelanceEtapeRow — un seul mot pour « je l’ai eu »', () => {
+  const ETAPE_REVEIL = { ...ETAPE_APPEL, cadence: 'reveil', ordre: 1, libelle: 'Réveil J30' }
+
+  it.each([
+    ['prise de contact', ETAPE_APPEL],
+    ['suivi de proposition', ETAPE_APRES_DEVIS],
+    ['réveil', ETAPE_REVEIL],
+  ])('%s : « Client joint » envoie l’issue `joint`, aucune seconde étiquette', async (_nom, etape) => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={etape} onFait={onFait} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    // L'ancienne seconde étiquette (écrite en motif : le mot lui-même ne doit
+    // plus apparaître dans ce dossier, hors historique).
+    expect(screen.queryByRole('button', { name: /^Int.ress.$/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    // Touche message du suivi : la confirmation « sans ouverture » n'est pas
+    // demandée (message ouvert dans le contrat) — le geste part directement.
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      etape.id, expect.objectContaining({ outcome: 'joint' })))
+  })
+})
+
 function ouvrirFait(etape, props = {}) {
   render(
     <RelanceEtapeRow etape={etape} onFait={noop} onSauter={noop} onReporter={noop}

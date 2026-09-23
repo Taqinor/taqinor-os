@@ -94,7 +94,14 @@ const QUESTIONS = {
     question: 'Réponse du client sur la proposition ?',
     aide: 'Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.',
     reponses: [
-      { outcome: 'interesse', label: 'Intéressé' },
+      // CAD4 — UN SEUL mot sur les trois cadences : « Client joint » (issue
+      // `joint`). L'ancienne seconde étiquette (issue `interesse`) avait
+      // EXACTEMENT le même effet moteur (même table d'arrêt, mêmes
+      // récepteurs, mêmes indicateurs ISSUES_JOINT) : deux mots pour un seul
+      // geste, alors que « je l'ai eu, il n'a pas encore décidé » est déjà
+      // couvert par « À rappeler le… ». Aucune valeur d'énumération ajoutée
+      // ni retirée côté serveur ; l'historique garde son libellé d'origine.
+      { outcome: 'joint', label: 'Client joint' },
       // VISCAD6 (fondateur 15/09/2026) — « la visite devient une étape du
       // suivi commercial » : issue SERVEUR existante (LeadActivity.OUTCOMES,
       // jamais une nouvelle valeur inventée ici), choisie quand le client dit
