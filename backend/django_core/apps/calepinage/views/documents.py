@@ -371,3 +371,48 @@ def image_document(self, request, pk=None):
 
 
 CalepinageViewSet.image_document = image_document
+
+
+# ── CALX317 — le rapport d'ombrage AUTONOME (matrice, horizon, carte) ──────
+@extend_schema(
+    responses={200: OpenApiTypes.BINARY},
+    parameters=[OpenApiParameter(
+        name='langue', type=OpenApiTypes.STR, required=False,
+        description="Langue de sortie demandée (fr, en ; ar retombe sur le "
+                    "français en le disant au pied du document).")],
+)
+@action(detail=True, methods=['get'], url_path='rapport-ombrage.pdf',
+        url_name='rapport-ombrage-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def rapport_ombrage_pdf(self, request, pk=None):
+    """CALX317 — le rapport d'ombrage autonome : par pan (kWc, modules,
+    azimut, inclinaison, accès solaire moyen/minimum, TOF/TSRF, chaîne la
+    plus faible), la matrice 12×24, ses moyennes mensuelles, le profil
+    d'horizon enregistré et la carte de chaleur déposée (CALX302).
+
+    * **200** — le PDF, nommé d'après le calepinage ;
+    * **400** — aucune matrice d'ombrage (``shading12x24`` NOMMÉ), aucune
+      conception/résultat, ou des blocs dont l'accès solaire vient de
+      méthodes qui ne se comparent pas : le motif français et le champ
+      NOMMÉ.
+    """
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport_ombrage import (
+        RapportOmbrageRefuse, rendre_rapport_ombrage,
+    )
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    langue = request.query_params.get('langue')
+    try:
+        octets = rendre_rapport_ombrage(calepinage, company=calepinage.company,
+                                        langue=langue)
+    except RapportOmbrageRefuse as refus:
+        return Response({refus.champ or 'roof_layout': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'rapport-ombrage.pdf'))
+
+
+CalepinageViewSet.rapport_ombrage_pdf = rapport_ombrage_pdf

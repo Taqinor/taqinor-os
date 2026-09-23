@@ -53,6 +53,9 @@ LIBELLES = {
     # ── Pièces ────────────────────────────────────────────────────────────
     'rapport_etude': {'fr': "Rapport d'étude", 'en': 'Design report'},
     'note_calcul': {'fr': 'Note de calcul', 'en': 'Calculation note'},
+    # CALX317 — le rapport d'ombrage autonome (pièce séparée du rapport
+    # d'étude, MÊME titre que le libellé du document CALX291/CALX321).
+    'rapport_ombrage': {'fr': "Rapport d'ombrage", 'en': 'Shading report'},
 
     # ── Sections du rapport d'étude (codes de rapport_etude.json) ─────────
     'garde': {'fr': 'Page de garde', 'en': 'Cover page'},
