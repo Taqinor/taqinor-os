@@ -69,6 +69,10 @@
             0.0
           ],
           "energie_effacee_kwh": null,
+          "pointe_avant_kw": null,
+          "pointe_apres_kw": null,
+          "heures_au_dessus_du_seuil": null,
+          "depassements_residuels": null,
           "parametres": {
             "capacite_utile_kwh": 3.0,
             "puissance_charge_kw": 2.0,
@@ -104,6 +108,10 @@
             2.5289
           ],
           "energie_effacee_kwh": null,
+          "pointe_avant_kw": null,
+          "pointe_apres_kw": null,
+          "heures_au_dessus_du_seuil": null,
+          "depassements_residuels": null,
           "parametres": {
             "capacite_utile_kwh": 3.0,
             "puissance_charge_kw": 2.0,
@@ -135,6 +143,10 @@
         2.5289
       ],
       "energie_effacee_kwh": null,
+      "pointe_avant_kw": null,
+      "pointe_apres_kw": null,
+      "heures_au_dessus_du_seuil": null,
+      "depassements_residuels": null,
       "parametres": {
         "capacite_utile_kwh": 6.0,
         "puissance_charge_kw": 4.0,

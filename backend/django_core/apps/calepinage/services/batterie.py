@@ -246,6 +246,52 @@ def _heures(valeurs, *, champ):
     return heures
 
 
+#: Tolérance d'arithmétique flottante — jamais un seuil métier.
+_EPSILON = 1e-9
+
+#: CALX269 — les quatre grandeurs de pointe, publiées ``None`` hors
+#: effacement de pointe (aucun seuil n'a été saisi : aucune pointe « évitée »
+#: ne se chiffre sans lui).
+_POINTE_ABSENTE = {'pointe_avant_kw': None, 'pointe_apres_kw': None,
+                   'heures_au_dessus_du_seuil': None,
+                   'depassements_residuels': None}
+
+
+def _pointe(deficits, imports, *, seuil, pas, heure_de_depart):
+    """CALX269 — la pointe de soutirage AVANT et APRÈS effacement.
+
+    ``deficits`` est le soutirage de chaque pas SANS batterie (kWh),
+    ``imports`` celui qui reste APRÈS le dispatch ; la puissance d'un pas est
+    son énergie divisée par la durée du pas. ``heures_au_dessus_du_seuil``
+    compte les pas où le soutirage SANS batterie dépassait le seuil SAISI ;
+    ``depassements_residuels`` liste ceux où la batterie n'a PAS suffi.
+    Aucun montant n'entre ici : c'est la grandeur physique qui décide de la
+    prime de puissance, jamais son prix.
+    """
+    avant = [deficit / pas for deficit in deficits]
+    apres = [valeur / pas for valeur in imports]
+    if seuil is None:
+        heures = None
+        depassements = None
+    else:
+        heures = sum(1 for puissance in avant if puissance > seuil + _EPSILON)
+        depassements = []
+        for rang, puissance in enumerate(apres):
+            if puissance > seuil + _EPSILON:
+                depassements.append({
+                    'rang': rang,
+                    'heure': (int(heure_de_depart) + rang) % 24,
+                    'soutirage_kw': round(puissance, 3),
+                    'depassement_kw': round(puissance - seuil, 3),
+                })
+    return {
+        'pointe_avant_kw': round(max(avant), 3) if avant else None,
+        'pointe_apres_kw': round(max(apres), 3) if apres else None,
+        'heures_au_dessus_du_seuil': heures,
+        'depassements_residuels': depassements,
+    }
+
+
 def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      capacite_utile_kwh, puissance_charge_kw,
                      puissance_decharge_kw, rendement_ar_pct=None,
@@ -275,7 +321,12 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         ``charge_batterie_kwh``, ``decharge_batterie_kwh``,
         ``import_reseau_kwh``, ``surplus_injecte_kwh``, ``pertes_stockage_kwh``,
         ``etat_de_charge_kwh`` (série), ``energie_effacee_kwh`` (peak shaving),
-        ``parametres``.
+        ``pointe_avant_kw``, ``pointe_apres_kw``,
+        ``heures_au_dessus_du_seuil``, ``depassements_residuels`` (CALX269 —
+        effacement de pointe seulement, ``None`` sinon : la pointe que la
+        prime de puissance facture, avant et après la batterie, et chaque
+        pas où la batterie n'a pas suffi ``{rang, heure, soutirage_kw,
+        depassement_kw}``), ``parametres``.
 
     Raises:
         StrategieInvalide: stratégie inconnue, paramètre saisi manquant,
@@ -356,6 +407,8 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
     total_efface = 0.0
     entrees = []
     sorties = []
+    deficits = []
+    imports = []
 
     for rang, (conso, prod) in enumerate(zip(charge, production)):
         heure = (int(heure_de_depart) + rang) % 24
@@ -396,11 +449,20 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         etats.append(round(etat, 4))
         entrees.append(entree)
         sorties.append(sortie)
+        deficits.append(deficit)
+        imports.append(max(0.0, deficit - sortie))
 
     if isinstance(_trace, dict):
         _trace['entree'] = entrees
         _trace['sortie'] = sorties
         _trace['etat'] = etats
+        _trace['import'] = imports
+
+    # CALX269 — la pointe AVANT et APRÈS effacement, lue sur la série
+    # d'import que le dispatch vient de produire (aucun montant n'entre).
+    pointe = (_pointe(deficits, imports, seuil=seuil, pas=pas,
+                      heure_de_depart=heure_de_depart)
+              if strategie == 'peak_shaving' else dict(_POINTE_ABSENTE))
 
     objectif = {
         'autoconso': 'Maximiser l’énergie autoconsommée (stocker le surplus '
@@ -429,6 +491,7 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         'etat_de_charge_kwh': etats,
         'energie_effacee_kwh': (round(total_efface, 3)
                                 if strategie == 'peak_shaving' else None),
+        **pointe,
         'parametres': {
             'capacite_utile_kwh': capacite,
             'puissance_charge_kw': p_charge,
@@ -557,7 +620,23 @@ def _somme(valeurs, decimales=3):
     return round(sum(valeurs), decimales)
 
 
-def _agreger(lus, resultats, traces):
+def _pointe_agregee(resultats, traces, *, deficits, pas, heure_de_depart):
+    """CALX269 — la pointe de l'agrégat : avant TOUS les groupes, après TOUS.
+
+    ``None`` partout si aucun groupe n'efface de pointe ; seuils saisis
+    différents d'un groupe à l'autre ⇒ les deux pointes sont publiées, mais
+    ni heures au-dessus du seuil ni dépassements (il n'y a pas UN seuil).
+    """
+    seuils = [resultat['parametres']['seuil_effacement_kw']
+              for resultat in resultats
+              if resultat['strategie'] == 'peak_shaving']
+    if not seuils:
+        return dict(_POINTE_ABSENTE)
+    return _pointe(deficits, traces[-1]['import'], seuil=_commun(seuils),
+                   pas=pas, heure_de_depart=heure_de_depart)
+
+
+def _agreger(lus, resultats, traces, *, deficits, pas, heure_de_depart):
     """L'agrégat de plusieurs groupes — mêmes clés que :func:`simuler_batterie`.
 
     Les énergies de batterie s'additionnent (chaque groupe a tourné sur le
@@ -605,6 +684,8 @@ def _agreger(lus, resultats, traces):
         'energie_effacee_kwh': round(sum(efface), 3) if efface else None,
         'parametres': parametres,
     })
+    agregat.update(_pointe_agregee(resultats, traces, deficits=deficits,
+                                   pas=pas, heure_de_depart=heure_de_depart))
     return agregat
 
 
@@ -673,6 +754,8 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
                     'grandeurs, jamais avec celles d’un voisin.',
                     champ=f'groupes[{rang}].{nom}')
 
+    deficits = [max(0.0, conso - prod)
+                for conso, prod in zip(charge, production)]
     conso_restante = charge_horaire
     prod_restante = production_horaire
     resultats = []
@@ -712,7 +795,10 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
     if len(resultats) == 1:
         agregat = copy.deepcopy(resultats[0])
     else:
-        agregat = _agreger(lus, resultats, traces)
+        pas = _nombre(pas_heures) or 1.0
+        agregat = _agreger(lus, resultats, traces, deficits=deficits,
+                           pas=pas if pas > 0 else 1.0,
+                           heure_de_depart=heure_de_depart)
 
     return {
         'groupes': publies,
