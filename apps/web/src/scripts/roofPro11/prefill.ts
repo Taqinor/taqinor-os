@@ -20,6 +20,7 @@ import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
+import { emptyCurve, type Appliance, type ApplianceBilling, type HourlyCurve } from '../../lib/applianceConsumption'; // CALX253/CALX254
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
@@ -537,6 +538,94 @@ export function deserializeEnvironment(json: unknown): EnvironmentObject[] {
   return serializeEnvironment(raw as readonly EnvironmentObject[] | null | undefined);
 }
 
+// ═══════════ CALX251/CALX253 — CONSOMMATION (« Affiner ma consommation », sérialisation) ═══
+// Contrat `$defs/consumption` de `roof_layout_v2.schema.json` (CALX251). `methode` est
+// DÉDUITE de ce que l'utilisateur a réellement fait, jamais choisie par défaut ni saisie à
+// part : `ctx.consHandEdited` ⇒ `courbe` (la courbe a été éditée à la main dans l'atelier,
+// elle prime sur tout le reste) ; sinon des appareils présents ⇒ `appareils` ; sinon
+// `facture` (seul un socle mensuel a été saisi, `ctx.consDailyTarget`). Le bloc est OMIS EN
+// BLOC — jamais une courbe plate inventée (D-CALX 7) — quand RIEN de ce qui précède n'est
+// vrai ET que la modulation saisonnière W95 (`ctx.consSeasonal`) n'a pas été activée : c'est
+// l'état d'un `Ctx` vierge, panneau « Affiner » jamais ouvert.
+
+/**
+ * CALX251/CALX253 — la consommation affinée dans l'atelier (panneau « Affiner ma
+ * consommation », W68/W95), forme figée par `roof_layout_v2.schema.json`
+ * (`$defs/consumption`).
+ */
+export interface SerializedConsumption {
+  /** Courbe horaire (kWh/h) EFFECTIVEMENT utilisée, 24 valeurs — `ctx.consCurve`. */
+  courbe24: number[];
+  /** W95 — facteurs multiplicatifs saisonniers SAISIS (`ctx.consSummerFactor` /
+   *  `ctx.consWinterFactor`). Omis quand la modulation saisonnière n'a pas été activée. */
+  saisons?: { ete: number; hiver: number };
+  /** Appareils du calculateur (`ctx.consAppliances`). Omis si aucun appareil. */
+  appareils?: Array<{
+    kind: string;
+    label: string;
+    dailyKwh: number;
+    startHour: number;
+    endHour: number;
+    billing: ApplianceBilling;
+  }>;
+  /** Comment la courbe a été obtenue — DÉDUITE, jamais un choix par défaut. */
+  methode: 'facture' | 'courbe' | 'appareils';
+  /** Provenance déclarative du bloc (jamais un chiffre, D-CALX 7). */
+  source: { origine: string; saisi_le: string };
+}
+
+/**
+ * Sérialise la consommation affinée depuis `ctx` (contrat `$defs/consumption`, CALX251).
+ * `methode` est déduite (jamais choisie) : voir l'en-tête de section ci-dessus. Bloc OMIS
+ * ENTIER si l'utilisateur n'a rien touché — jamais une courbe plate inventée. Défensif sur
+ * chaque champ `ctx.cons*` (un `Ctx` de test partiel, construit par cast, ne les porte pas
+ * tous) : un champ absent/du mauvais type se lit comme sa valeur historique, jamais une
+ * exception.
+ */
+export function serializeConsumption(ctx: Ctx): { consumption?: SerializedConsumption } {
+  const consHandEdited = Boolean(ctx.consHandEdited);
+  const appareilsSrc: Appliance[] = Array.isArray(ctx.consAppliances) ? ctx.consAppliances : [];
+  const consDailyTarget =
+    typeof ctx.consDailyTarget === 'number' && Number.isFinite(ctx.consDailyTarget) ? ctx.consDailyTarget : 0;
+  const consSeasonal = Boolean(ctx.consSeasonal);
+  const touche = consHandEdited || appareilsSrc.length > 0 || consDailyTarget > 0 || consSeasonal;
+  if (!touche) return {};
+
+  const courbe24 =
+    Array.isArray(ctx.consCurve) && ctx.consCurve.length === 24 ? ctx.consCurve.slice() : emptyCurve();
+  const methode: 'facture' | 'courbe' | 'appareils' = consHandEdited
+    ? 'courbe'
+    : appareilsSrc.length > 0
+      ? 'appareils'
+      : 'facture';
+  const consumption: SerializedConsumption = {
+    courbe24,
+    methode,
+    source: { origine: 'atelier', saisi_le: new Date().toISOString() },
+  };
+
+  const summerFactor =
+    typeof ctx.consSummerFactor === 'number' && Number.isFinite(ctx.consSummerFactor) ? ctx.consSummerFactor : null;
+  const winterFactor =
+    typeof ctx.consWinterFactor === 'number' && Number.isFinite(ctx.consWinterFactor) ? ctx.consWinterFactor : null;
+  if (consSeasonal && summerFactor != null && winterFactor != null) {
+    consumption.saisons = { ete: summerFactor, hiver: winterFactor };
+  }
+
+  if (appareilsSrc.length > 0) {
+    consumption.appareils = appareilsSrc.map((a) => ({
+      kind: a.kind,
+      label: a.label,
+      dailyKwh: a.dailyKwh,
+      startHour: a.startHour,
+      endHour: a.endHour,
+      billing: a.billing,
+    }));
+  }
+
+  return { consumption };
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
   version: 1 | 2;
@@ -620,6 +709,16 @@ export interface SerializedLayout {
    * jamais ici. Forme figée par `roof_layout_v2.schema.json` (`$defs/moduleDocument`).
    */
   modules?: ModuleDocument[];
+  /**
+   * CALX251/CALX253 — la consommation affinée dans l'atelier (panneau « Affiner ma
+   * consommation », W68/W95 : `ctx.consCurve`/`consAppliances`/`consSeasonal`/
+   * `consSummerFactor`/`consWinterFactor`/`consHandEdited`). Clé RACINE OPTIONNELLE et
+   * additive : absente ou omise, comportement d'aujourd'hui — aucune consommation
+   * reconstruite, byte pour byte. Écrite par `serializeConsumption` (voir plus haut) :
+   * jamais émise pour une session qui n'a rien touché dans le panneau « Affiner ». Forme
+   * figée par `roof_layout_v2.schema.json` (`$defs/consumption`).
+   */
+  consumption?: SerializedConsumption;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -834,6 +933,8 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     ...underlayPourDocument(ctx), // CALX107 — le calque de fond calé voyage par le document (contrat CALX86) ; aucun fond ⇒ aucune clé
 
     ...emettreSurfacesPose(ctx.surfacesPose), // CALX123 — les surfaces de pose tracées (contrat `poseSurfaces[]`) ; aucune surface ⇒ aucune clé
+
+    ...serializeConsumption(ctx), // CALX253 — consommation affinée dans l'atelier (contrat CALX251) ; rien touché ⇒ aucune clé
   };
   // CALX111 — numéros STABLES des modules : sème la mémoire depuis ce que le document porte
   // déjà, puis écrit `n`/`rangee`/`numerotation` (bascule « Numéroter » éteinte par défaut ⇒
@@ -1040,8 +1141,91 @@ export interface DevisPayload {
   [k: string]: unknown;
 }
 
+// ═══════════ CALX254 — RÉ-HYDRATATION DE LA CONSOMMATION ═══════════
+// Contrepartie de `serializeConsumption` (CALX253) : relit `consumption` (CALX251) d'un
+// layout sérialisé et rend les six champs `Ctx` qu'il repeuple. Mêmes garde-fous que
+// `deserializeSetbacksFromLayout`/`deserializeSceneFromLayout` : un JSON douteux (longueur de
+// courbe ≠ 24, facteur non fini, appareil sans `kind`/`dailyKwh`) est ASSAINI plutôt que de
+// casser l'hydratation — jamais une exception. Bloc `consumption` absent (document antérieur
+// à CALX251, ou atelier jamais ouvert) ⇒ l'état par défaut d'AUJOURD'HUI : `consCurve` vide,
+// `consAppliances` vide, `consHandEdited`/`consSeasonal` à `false`, `consSummerFactor`/
+// `consWinterFactor` à `null` (l'appelant garde SON propre réglage par défaut — dupliquer ici
+// le 1,3/0,9 de `roof-tool-pro11.ts` serait une seconde source de vérité, jamais une courbe
+// PARTIELLE ni un facteur inventé, D-CALX 7).
+
+/** Les six champs `Ctx` que le bloc `consumption` (CALX251) repeuple. */
+export interface ConsumptionHydration {
+  consCurve: HourlyCurve;
+  consHandEdited: boolean;
+  consAppliances: Appliance[];
+  consSeasonal: boolean;
+  /** `null` = non renseigné dans le document : l'appelant garde SON défaut. */
+  consSummerFactor: number | null;
+  /** `null` = non renseigné dans le document : l'appelant garde SON défaut. */
+  consWinterFactor: number | null;
+}
+
+/**
+ * CALX254 — relit le bloc `consumption` d'un layout sérialisé (ou déjà le bloc brut) et rend
+ * les six champs `Ctx` qu'il repeuple. Utilisée par `hydrateFromDevis` ET `hydrateFromLead` :
+ * les DEUX chemins d'hydratation lisent la MÊME fonction, jamais une seconde logique dupliquée.
+ */
+export function deserializeConsumptionFromLayout(json: unknown): ConsumptionHydration {
+  const defaut: ConsumptionHydration = {
+    consCurve: emptyCurve(),
+    consHandEdited: false,
+    consAppliances: [],
+    consSeasonal: false,
+    consSummerFactor: null,
+    consWinterFactor: null,
+  };
+  const raw = ((json as { consumption?: unknown } | null | undefined)?.consumption ?? null) as {
+    courbe24?: unknown;
+    saisons?: { ete?: unknown; hiver?: unknown } | null;
+    appareils?: unknown;
+    methode?: unknown;
+  } | null;
+  if (!raw || typeof raw !== 'object') return defaut;
+
+  const courbe24 =
+    Array.isArray(raw.courbe24) && raw.courbe24.length === 24
+    && raw.courbe24.every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? (raw.courbe24 as number[]).slice()
+      : emptyCurve();
+
+  const appareils: Appliance[] = Array.isArray(raw.appareils)
+    ? (raw.appareils as Array<Record<string, unknown>>)
+        .filter((a) => a && typeof a.kind === 'string' && typeof a.dailyKwh === 'number' && Number.isFinite(a.dailyKwh))
+        .map((a) => ({
+          kind: a.kind as string,
+          label: typeof a.label === 'string' ? a.label : '',
+          dailyKwh: a.dailyKwh as number,
+          startHour: typeof a.startHour === 'number' && Number.isFinite(a.startHour) ? a.startHour : 0,
+          endHour: typeof a.endHour === 'number' && Number.isFinite(a.endHour) ? a.endHour : 24,
+          billing: a.billing === 'inBill' ? ('inBill' as const) : ('onTop' as const),
+        }))
+    : [];
+
+  const ete =
+    raw.saisons && typeof raw.saisons.ete === 'number' && Number.isFinite(raw.saisons.ete) ? raw.saisons.ete : null;
+  const hiver =
+    raw.saisons && typeof raw.saisons.hiver === 'number' && Number.isFinite(raw.saisons.hiver) ? raw.saisons.hiver : null;
+
+  return {
+    consCurve: courbe24,
+    // La courbe éditée à la main PRIME (CALX253) : `methode === 'courbe'` est la seule marque
+    // fiable de `ctx.consHandEdited` — un document sans `consumption` (defaut ci-dessus) laisse
+    // ce champ à `false`, exactement l'état d'un atelier jamais ouvert.
+    consHandEdited: raw.methode === 'courbe',
+    consAppliances: appareils,
+    consSeasonal: ete != null && hiver != null,
+    consSummerFactor: ete,
+    consWinterFactor: hiver,
+  };
+}
+
 /** Ce que l'hydratation devis rend au boot (rien n'est appliqué ici). */
-export interface DevisHydration {
+export interface DevisHydration extends ConsumptionHydration {
   /** Contour lng/lat de la zone ACTIVE (vide si seul un pin est disponible). */
   vertices: LngLat[];
   /** Centre de vol lng/lat, ou null. */
@@ -1093,6 +1277,7 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     scenario: null,
     devisId: null,
     cibleVendue: true,
+    ...deserializeConsumptionFromLayout(null), // CALX254
   };
   if (!devis) return empty;
 
@@ -1142,6 +1327,9 @@ export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisH
     // ABSENT ⇒ true : un appelant qui ne connaît pas ce drapeau (devis, AO) garde
     // EXACTEMENT le comportement d'avant.
     cibleVendue: devis.cibleVendue !== false,
+    // CALX254 — la consommation affinée voyage avec le design du devis (contrat CALX251),
+    // comme les zones ci-dessus ; document sans `consumption` ⇒ l'état par défaut.
+    ...deserializeConsumptionFromLayout(layout),
   };
 }
 
@@ -1156,8 +1344,13 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   vertices: LngLat[];
   center: LngLat | null;
   contact: { name?: string; phone?: string; city?: string };
-} {
-  const empty = { vertices: [] as LngLat[], center: null as LngLat | null, contact: {} };
+} & ConsumptionHydration {
+  const empty = {
+    vertices: [] as LngLat[],
+    center: null as LngLat | null,
+    contact: {},
+    ...deserializeConsumptionFromLayout(null), // CALX254
+  };
   if (!lead) return empty;
   // AP-F1 (fondateur 26/08/2026) — UN SEUL validateur de contour : avant ce correctif,
   // cette fonction ré-implémentait son propre filtre et n'acceptait QUE la forme
@@ -1182,7 +1375,11 @@ export function hydrateFromLead(lead: LeadPayload | null | undefined): {
   if (typeof lead.fullName === 'string' && lead.fullName.trim()) contact.name = lead.fullName.trim();
   if (typeof lead.phone === 'string' && lead.phone.trim()) contact.phone = lead.phone.trim();
   if (typeof lead.city === 'string' && lead.city.trim()) contact.city = lead.city.trim();
-  return { vertices, center, contact };
+  // CALX254 — un lead PEUT porter un `roof_layout` (calepinage autonome sans devis, CAL37) ;
+  // `LeadPayload` ne le type pas explicitement (son index `[k: string]: unknown` le tolère
+  // déjà), donc on le lit défensivement ici. Un lead d'aujourd'hui n'en porte aucun ⇒ l'état
+  // par défaut, exactement le comportement historique.
+  return { vertices, center, contact, ...deserializeConsumptionFromLayout((lead as { roof_layout?: unknown }).roof_layout) };
 }
 
 /** Un point du contour brut, TEL QUE rencontré en base : `[lat, lng]` (le
