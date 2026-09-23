@@ -350,3 +350,9 @@ def inventaire_des_documents(calepinage):
 # ── CALX310 — le plan de câblage des chaînes ────────────────────────────────
 MISES_EN_PAGE['plan_cablage'] = (
     'apps.calepinage.services.documents.plan_cablage:html_du_plan_cablage')
+
+
+# ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
+MISES_EN_PAGE['manuel_proprietaire'] = (
+    'apps.calepinage.services.documents.manuel_proprietaire:'
+    'html_du_manuel')
