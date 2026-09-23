@@ -177,7 +177,17 @@ describe('W113 — hydrateFromLead', () => {
   });
 
   it('un lead vide/null ne sème rien (pas de crash)', () => {
-    expect(hydrateFromLead(null)).toEqual({ vertices: [], center: null, contact: {} });
-    expect(hydrateFromLead({})).toEqual({ vertices: [], center: null, contact: {} });
+    // CALX254 — hydrateFromLead ré-hydrate aussi la consommation (contrat CALX251) : un
+    // lead sans `roof_layout.consumption` rend l'état par défaut, jamais une exception.
+    const consommationVierge = {
+      consCurve: new Array(24).fill(0),
+      consHandEdited: false,
+      consAppliances: [],
+      consSeasonal: false,
+      consSummerFactor: null,
+      consWinterFactor: null,
+    };
+    expect(hydrateFromLead(null)).toEqual({ vertices: [], center: null, contact: {}, ...consommationVierge });
+    expect(hydrateFromLead({})).toEqual({ vertices: [], center: null, contact: {}, ...consommationVierge });
   });
 });

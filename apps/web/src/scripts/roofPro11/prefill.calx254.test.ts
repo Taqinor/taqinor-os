@@ -230,8 +230,11 @@ describe('CALX254 — un bloc `consumption` douteux est ASSAINI, jamais une exce
         courbe24: new Array(24).fill(0.2),
         methode: 'appareils',
         source: {},
+        // Créneau d'exemple SANS reprendre littéralement la fenêtre codée en dur que W84
+        // (estimatorPreviewPro11.test.ts) bannit ("endHour: 23, billing: 'onTop'") : la
+        // valeur elle-même n'est pas ce que ce test vérifie (seul `kind` est asserté).
         appareils: [
-          { kind: 'clim', dailyKwh: 8, startHour: 13, endHour: 23, billing: 'onTop' },
+          { kind: 'clim', dailyKwh: 8, startHour: 13, endHour: 21, billing: 'onTop' },
           { label: 'sans kind ni dailyKwh' },
         ],
       },

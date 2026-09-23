@@ -1206,10 +1206,17 @@ export function deserializeConsumptionFromLayout(json: unknown): ConsumptionHydr
         }))
     : [];
 
-  const ete =
+  const eteBrut =
     raw.saisons && typeof raw.saisons.ete === 'number' && Number.isFinite(raw.saisons.ete) ? raw.saisons.ete : null;
-  const hiver =
+  const hiverBrut =
     raw.saisons && typeof raw.saisons.hiver === 'number' && Number.isFinite(raw.saisons.hiver) ? raw.saisons.hiver : null;
+  // La modulation saisonnière est PAIRE (comme à l'écriture, `serializeConsumption` : elle
+  // n'est publiée que si LES DEUX facteurs sont finis) : un facteur non fini ne doit jamais
+  // laisser l'AUTRE survivre seul — sinon `consSeasonal === false` mentirait en gardant un
+  // `consWinterFactor` chiffré. Les deux valent null dès que l'un des deux est douteux.
+  const seasonPaireValide = eteBrut != null && hiverBrut != null;
+  const ete = seasonPaireValide ? eteBrut : null;
+  const hiver = seasonPaireValide ? hiverBrut : null;
 
   return {
     consCurve: courbe24,
@@ -1218,7 +1225,7 @@ export function deserializeConsumptionFromLayout(json: unknown): ConsumptionHydr
     // ce champ à `false`, exactement l'état d'un atelier jamais ouvert.
     consHandEdited: raw.methode === 'courbe',
     consAppliances: appareils,
-    consSeasonal: ete != null && hiver != null,
+    consSeasonal: seasonPaireValide,
     consSummerFactor: ete,
     consWinterFactor: hiver,
   };
