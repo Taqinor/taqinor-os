@@ -3214,10 +3214,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             body=body)
         if quand is not None:
             reporter_prochaine_touche(etape.lead, request.user, quand)
-        # CKP2/CKP4 — la réponse porte la PROCHAINE touche programmée de cette
-        # cadence : c'est elle (et jamais un calcul d'écran) qui alimente le
-        # message « prochain appel programmé le … ». Absente quand la cadence
-        # vient de s'arrêter ou qu'aucune touche n'a été matérialisée.
+        return self._reponse_fait(etape)
+
+    def _reponse_fait(self, etape):
+        """La réponse d'un « Fait » : la touche (forme `relance_etape_v2`) et
+        la PROCHAINE touche programmée de sa cadence.
+
+        CKP2/CKP4 — c'est elle (et jamais un calcul d'écran) qui alimente le
+        message « prochain appel programmé le … ». ``prochaine_touche`` vaut
+        ``None`` quand la cadence vient de s'arrêter ou qu'aucune touche n'a
+        été matérialisée."""
         data = self.get_serializer(etape).data
         suivante = (
             RelanceEtape.objects
@@ -3233,6 +3239,29 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             if suivante is not None else None)
         return Response(data)
 
+    def _repondre(self, request, reponse):
+        """CAD-A — une RÉPONSE du client saisie sur la touche (``reponse``).
+
+        La clé est validée par le SERVEUR (``services.REPONSES_TOUCHE``) :
+        l'issue enregistrée en est dérivée ici, jamais envoyée par l'écran.
+        Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
+        réponse et dit où elle vaut."""
+        from .services import (
+            REPONSE_NE_PLUS_CONTACTER, refus_reponse_touche,
+            repondre_ne_plus_contacter)
+
+        etape = self.get_object()
+        refus = refus_reponse_touche(etape, reponse)
+        if refus:
+            return Response({'erreurs': {'reponse': refus}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        note = (request.data.get('note') or '').strip()
+        body = (request.data.get('body') or '').strip()
+        if reponse == REPONSE_NE_PLUS_CONTACTER:
+            etape = repondre_ne_plus_contacter(
+                etape, request.user, note=note, body=body)
+        return self._reponse_fait(etape)
+
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
         """Marque cette étape FAITE.
@@ -3245,7 +3274,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         (400 ``{"erreurs": {"outcome": …}}``) : c'est l'issue qui programme le
         geste suivant du protocole. Facultatif sur WhatsApp / e-mail / visite.
         Toute issue autre que « joint »/« intéressé »/« refus » fait naître la
-        touche suivante de la cadence — de même qu'un saut humain."""
+        touche suivante de la cadence — de même qu'un saut humain.
+
+        CAD-A — ``reponse`` (clé de ``services.REPONSES_TOUCHE``, par exemple
+        ``ne_plus_contacter``) remplace ``outcome`` : c'est la phrase du
+        client, et le serveur en dérive l'issue ET la suite."""
+        reponse = (request.data.get('reponse') or '').strip()
+        if reponse:
+            return self._repondre(request, reponse)
         return self._marquer(request, RelanceEtape.Statut.FAIT)
 
     @action(detail=True, methods=['post'])
@@ -3288,11 +3324,24 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         Forme `relance_etape_message` (contrat MRY25). LECTURE PURE : rien
         n'est envoyé, rien n'est marqué — l'écran affiche une modale d'aperçu
-        et c'est le clic humain qui ouvre WhatsApp (décision D5)."""
+        et c'est le clic humain qui ouvre WhatsApp (décision D5).
+
+        CAD-A — ``?cle=`` (une de ``services.CLES_MESSAGE_REPONSE``) rend le
+        texte de RÉPONSE convenu pour le client de cette touche (l'accusé
+        « ne plus contacter », « je vous rappelle plus tard ») : même forme.
+        Une autre clé est refusée en 400 nommant le champ ``cle``."""
         etape = self.get_object()
-        from .services import message_pour_etape
+        from .services import CLES_MESSAGE_REPONSE, message_pour_etape
+        cle = (request.query_params.get('cle') or '').strip()
+        if cle and cle not in CLES_MESSAGE_REPONSE:
+            # Levée, jamais un second `return` : la forme du contrat
+            # `relance_etape_message` (lue sur les `return` de cette vue par
+            # `check_api_shapes.py`) reste celle du rendu, sans `erreurs`.
+            raise DRFValidationError({'erreurs': {'cle': (
+                f'Texte de réponse inconnu : « {cle} ». Textes disponibles : '
+                + ', '.join(CLES_MESSAGE_REPONSE) + '.')}})
         return Response(message_pour_etape(
-            etape, request=request, user=request.user))
+            etape, request=request, user=request.user, cle=cle or None))
 
     @action(detail=True, methods=['post'])
     def whatsapp(self, request, pk=None):

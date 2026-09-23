@@ -1433,7 +1433,7 @@ def est_note_de_touche_sautee(activite):
 
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
-                          body=''):
+                          body='', suite=True):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
     silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
@@ -1444,7 +1444,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     CKP2 — c'est aussi ICI que naît la touche SUIVANTE du protocole
     (``materialiser_touche_suivante``) quand la clôture n'est pas un succès :
     la cadence est RÉACTIVE, une touche à la fois, et c'est l'issue saisie qui
-    programme le geste d'après."""
+    programme le geste d'après.
+
+    CAD-A (réponses de touche) — ``suite=False`` : l'APPELANT décide seul de
+    ce qui vient après (« Ne plus me contacter » n'a pas de suite, « Question
+    de prix » ou « Devis modifié » posent LEUR étape). Ni barreau suivant, ni
+    clôture au froid, ni filet d'invariant : ces trois automatismes
+    choisiraient une suite contraire à ce que le client vient de dire. La
+    trace (touche close, ligne de chatter, issue) reste identique."""
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
@@ -1531,8 +1538,8 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # « intéressé » n'arrête PAS le suivi de proposition, il en fait naître le
     # barreau suivant, exactement comme « pas de réponse ».
     suivante = None
-    if (statut == RelanceEtape.Statut.SAUTEE
-            or issue_fait_naitre_la_suite(outcome, etape.cadence)):
+    if suite and (statut == RelanceEtape.Statut.SAUTEE
+                  or issue_fait_naitre_la_suite(outcome, etape.cadence)):
         try:
             suivante = materialiser_touche_suivante(etape, user)
         except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
@@ -1556,6 +1563,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     lead.relance_date = prochaine.due_date if prochaine else None
     lead.save(update_fields=['relance_date'])
     sync_relance_activity(lead, user)
+    if not suite:
+        # CAD-A — l'appelant pose (ou refuse) lui-même la suite.
+        return etape
     # MRY11 — la cadence vient-elle de s'ÉPUISER ? Uniquement ici : une
     # cadence ARRÊTÉE (MRY9) n'est pas une cadence terminée, et clôturer un
     # lead qu'on vient de joindre serait exactement l'inverse du bon geste.
@@ -1778,12 +1788,21 @@ def annuler_touche_relance(etape, user):
 
     lead = etape.lead
     if lead.pk:
-        lead.refresh_from_db(fields=['stage', 'perdu'])
+        lead.refresh_from_db(fields=['stage', 'perdu', 'ne_plus_contacter'])
     if lead.perdu:
         raise AnnulationToucheRefusee(
             'lead',
             'Ce lead est marqué perdu : rouvrez-le avant d\'annuler une '
             'touche de son plan.')
+    if lead.ne_plus_contacter:
+        # CAD5 — rouvrir des touches sur un client qui a demandé qu'on ne le
+        # contacte plus violerait la garde dure (loi 09-08 art. 9 al. 2).
+        # L'opposition se lève sur la FICHE, par un humain, jamais par un
+        # retour arrière de touche.
+        raise AnnulationToucheRefusee(
+            'lead',
+            'Ce lead est marqué « Ne plus contacter » : décochez la case sur '
+            'la fiche avant d\'annuler une touche de son plan.')
     if lead.stage == stages.SIGNED:
         raise AnnulationToucheRefusee(
             'lead',
@@ -2515,11 +2534,17 @@ def message_visite_pour_lead(lead, cle, *, user=None):
     return rendu
 
 
-def message_pour_etape(etape, *, request=None, user=None):
+def message_pour_etape(etape, *, request=None, user=None, cle=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
 
     Forme `relance_etape_message` (contrat MRY25) :
     ``{message, wa_url, langue, phone, placeholders_manquants}``.
+
+    CAD-A — ``cle`` (une des ``CLES_MESSAGE_REPONSE``) rend, pour le lead de
+    cette touche, le texte de RÉPONSE convenu (« stop_contact » après « Ne
+    plus me contacter », « rappel_plus_tard » après « Plus tard ») au lieu du
+    gabarit de la touche. Même machinerie, même forme : l'écran propose
+    l'envoi, le clic humain ouvre WhatsApp (décision D5).
 
     Le serveur RÉEND, il n'ENVOIE pas (décision D5) : l'écran montre une
     modale d'aperçu, et c'est le clic humain qui ouvre WhatsApp. Aucun BSP,
@@ -2535,11 +2560,13 @@ def message_pour_etape(etape, *, request=None, user=None):
 
     lead = etape.lead
     langue = lead.langue_preferee or 'fr'
+    # CAD-A — le texte de réponse demandé remplace le gabarit de la touche.
+    template_cle = cle or etape.template_cle
     # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
     # de remplir notre formulaire » est faux pour un lead venu par téléphone,
     # en boutique, par recommandation ou d'un message entrant. La clé est
     # choisie d'après le canal déjà enregistré, AVANT de lire le gabarit.
-    cle_rendue = cle_identite_pour_lead(lead, etape.template_cle,
+    cle_rendue = cle_identite_pour_lead(lead, template_cle,
                                         reference=etape.due_date)
     corps = MessageTemplate.get_corps(
         lead.company, cle_rendue, langue) if cle_rendue else ''
@@ -2632,7 +2659,7 @@ def message_pour_etape(etape, *, request=None, user=None):
     message = render_message_template(corps, contexte)
 
     phone = lead.whatsapp or lead.telephone or ''
-    if etape.template_cle in _TEMPLATES_VOCAUX:
+    if template_cle in _TEMPLATES_VOCAUX:
         # Le texte est le SCRIPT du vocal : on ouvre la conversation, on ne
         # pré-remplit rien — coller un script à dire serait absurde.
         wa_url = build_wa_url(phone, '')
@@ -2962,7 +2989,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     return cible
 
 
-def arreter_cadence(lead, *, user, motif, cadences=None):
+def arreter_cadence(lead, *, user, motif, cadences=None, exclure=None):
     """MRY9 — LA fonction d'arrêt d'une (ou de toutes les) cadence(s).
 
     UNE seule implémentation pour SIX déclencheurs (devis accepté, passage
@@ -2985,10 +3012,16 @@ def arreter_cadence(lead, *, user, motif, cadences=None):
     IDEMPOTENTE : zéro touche ouverte ⇒ rien, pas même une note (sinon chaque
     passage d'étape empilerait des lignes vides dans l'historique).
 
+    CAD5 — ``exclure`` (une touche) la laisse ouverte : la réponse « Ne plus
+    me contacter » arrête TOUT le reste sous son vrai motif, puis clôt
+    elle-même la touche sur laquelle le client l'a dit (qui porte l'issue).
+
     Renvoie le nombre de touches arrêtées."""
     ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
     if cadences:
         ouvertes = ouvertes.filter(cadence__in=list(cadences))
+    if exclure is not None:
+        ouvertes = ouvertes.exclude(pk=exclure.pk)
     pks = list(ouvertes.values_list('pk', flat=True))
     if not pks:
         return 0
@@ -10496,3 +10529,130 @@ def leads_avec_cadence_active(company, lead_ids):
         company=company, lead_id__in=ids,
         statut=RelanceEtape.Statut.A_FAIRE,
     ).values_list('lead_id', flat=True))
+
+
+# ── CAD-A ── RÉPONSES DE TOUCHE : ce que le client DIT décide de la suite ─────
+#
+# Audit L3 du 21/09/2026. Les réponses offertes sur une touche se limitaient
+# aux issues de ``LeadActivity.OUTCOMES`` (joint / non joint / à rappeler /
+# refus / intéressé / visite acceptée) : « arrêtez de m'appeler », « plus
+# tard », « c'est une question de prix », « refaites-moi le devis », « on
+# décide en famille » n'avaient AUCUN bouton, et la commerciale choisissait
+# l'issue la moins fausse — dont la suite automatique était, elle, fausse.
+#
+# LA RÈGLE. Une RÉPONSE est une clé connue du SERVEUR, jamais une nouvelle
+# valeur d'énumération : elle se traduit en une issue EXISTANTE (aucune
+# migration), une note typée (la phrase du client, telle qu'elle est comptée
+# dans le chatter) et UN effet — celui que le client a demandé. L'écran
+# n'envoie que la clé ; l'issue est dérivée ICI, et nulle part ailleurs.
+
+#: CAD5 — « Ne plus me contacter ». Motif écrit sur chaque touche arrêtée :
+#: le même que celui de la case de la fiche (``LeadViewSet.perform_update``),
+#: pour que le KPI de cadence ne voie qu'UN motif d'opposition.
+REPONSE_NE_PLUS_CONTACTER = 'ne_plus_contacter'
+MOTIF_NE_PLUS_CONTACTER = 'ne plus contacter'
+
+#: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
+_TOUTES_CADENCES = None
+
+#: Table UNIQUE des réponses de touche. ``outcome`` est toujours une valeur
+#: de ``LeadActivity.OUTCOMES`` ; ``cadences`` borne où la réponse a un sens ;
+#: ``message`` nomme le texte d'accusé proposé à l'envoi (jamais envoyé seul).
+REPONSES_TOUCHE = {
+    REPONSE_NE_PLUS_CONTACTER: {
+        'libelle': 'Ne plus me contacter',
+        'outcome': 'refuse',
+        'note': 'Ne plus me contacter — opposition du client',
+        'cadences': _TOUTES_CADENCES,
+        'message': 'stop_contact',
+    },
+}
+
+#: Les textes de RÉPONSE qu'une touche peut proposer à l'envoi — le seul
+#: vocabulaire accepté par ``?cle=`` sur ``relance-etapes/<id>/message/``.
+CLES_MESSAGE_REPONSE = ('stop_contact',)
+
+
+def reponse_touche(cle):
+    """La définition de la réponse ``cle``, ou ``None`` si elle est inconnue."""
+    return REPONSES_TOUCHE.get((cle or '').strip())
+
+
+def refus_reponse_touche(etape, cle):
+    """Pourquoi la réponse ``cle`` ne vaut PAS sur cette touche — ou ``None``.
+
+    Le message NOMME la réponse et dit où elle vaut (règle fondateur du
+    08/09/2026 : jamais un refus générique). L'appelant (la vue) le range sous
+    le champ ``reponse``."""
+    spec = reponse_touche(cle)
+    if spec is None:
+        return f'Réponse inconnue : « {cle} ».'
+    if etape.statut != RelanceEtape.Statut.A_FAIRE:
+        return ('Cette touche est déjà traitée : la réponse du client se '
+                'saisit sur une touche encore à faire.')
+    cadences = spec.get('cadences')
+    if cadences is not None and etape.cadence not in cadences:
+        libelle = spec['libelle']
+        if tuple(cadences) == ('apres_devis',):
+            return (f'« {libelle} » ne vaut que sur une touche du suivi de '
+                    'proposition (après envoi du devis).')
+        return (f'« {libelle} » ne vaut pas sur une touche de la cadence '
+                f'« {etape.cadence} ».')
+    return None
+
+
+def _note_reponse(spec, note=''):
+    """La note typée de la réponse, suivie de la note libre éventuelle."""
+    note = (note or '').strip()
+    return f'{spec["note"]} — {note}' if note else spec['note']
+
+
+def marquer_lead_ne_plus_contacter(lead, user):
+    """CAD5 — coche ``Lead.ne_plus_contacter`` et le JOURNALISE comme la
+    fiche le ferait (ligne « modification » du chatter, ancien → nouveau).
+
+    Idempotente : un lead déjà coché ne produit ni écriture ni ligne.
+    Renvoie ``True`` si la case vient d'être cochée."""
+    import copy
+
+    if lead.ne_plus_contacter:
+        return False
+    avant = copy.copy(lead)
+    lead.ne_plus_contacter = True
+    lead.save(update_fields=['ne_plus_contacter'])
+    activity.log_changes(avant, lead, user)
+    return True
+
+
+def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
+    """CAD5 — le client dit « ne me contactez plus » sur une touche.
+
+    Base légale (round 2 de l'audit, texte primaire) : loi 09-08 art. 9 al.
+    2 — l'opposition à la prospection s'exerce sans frais et SANS avoir à être
+    motivée ; art. 59 — poursuivre malgré elle est puni de 3 mois à 1 an et de
+    20 000 à 200 000 DH. C'est le seul risque pénal nommé de la cadence : la
+    réponse agit donc TOUT DE SUITE, dans cet ordre —
+
+      1. la case ``ne_plus_contacter`` est cochée (garde dure : plus aucune
+         touche ne peut naître, et le redémarrage manuel est refusé) ;
+      2. TOUTES les autres touches ouvertes, toutes cadences, sont arrêtées
+         sous le motif « ne plus contacter » ;
+      3. la touche est close avec l'issue « refus » et la note typée — SANS
+         aucune étape de décision : il n'y a rien à décider, le client a
+         tranché (``suite=False`` ; le filet du récepteur MRY9 est, lui,
+         tenu par la case cochée en 1).
+
+    L'accusé ``stop_contact`` est PROPOSÉ par l'écran (jamais envoyé seul).
+    Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_NE_PLUS_CONTACTER]
+    marquer_lead_ne_plus_contacter(lead, user)
+    arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER,
+                    exclure=etape)
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    # Ceinture : rien ne doit rester ouvert (idempotent — zéro touche, zéro
+    # ligne de chatter).
+    arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER)
+    return etape

@@ -117,3 +117,58 @@ describe('CKP1/CKP4 RelanceEtapeRow — badges honnêtes (sautée ≠ annulée)'
     expect(screen.queryByText(/Sautée/)).not.toBeInTheDocument()
   })
 })
+
+// CAD5 — « Ne plus me contacter » sur TOUTES les cadences. Les deux touches du
+// contrat committé `relance_etape_v2.json` servent de départ : la première est
+// un appel de prise de contact, la seconde un WhatsApp du suivi de proposition.
+const ETAPE_APRES_DEVIS = exempleContrat('crm', 'relance_etape_v2').results[1]
+
+function ouvrirFait(etape, props = {}) {
+  render(
+    <RelanceEtapeRow etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
+      onOuvrirMessage={noop} {...props} />,
+  )
+  fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+}
+
+describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
+  it('la réponse est proposée sur une touche de prise de contact ET sur le suivi de proposition', () => {
+    ouvrirFait(ETAPE_APPEL)
+    expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
+    cleanup()
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.getByRole('button', { name: 'Ne plus me contacter' })).toBeInTheDocument()
+  })
+
+  it('envoie la CLÉ de réponse (jamais une issue inventée côté écran)', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/sans étape de décision/)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { reponse: 'ne_plus_contacter' }))
+  })
+
+  it('propose ensuite l’accusé « stop_contact » dans la modale d’aperçu (jamais envoyé seul)', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    const onOuvrirMessage = vi.fn()
+    ouvrirFait(ETAPE_APPEL, { onFait, onOuvrirMessage })
+    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onOuvrirMessage).toHaveBeenCalledWith(
+      { ...ETAPE_APPEL, message_cle: 'stop_contact' }))
+  })
+
+  it('un refus serveur {erreurs: {reponse}} s’affiche SOUS les réponses', async () => {
+    const erreur = {
+      response: { status: 400, data: { erreurs: { reponse: 'Cette touche est déjà traitée.' } } },
+    }
+    const onFait = vi.fn(() => Promise.reject(erreur))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Ne plus me contacter' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    expect(await screen.findByTestId('erreur-outcome'))
+      .toHaveTextContent('Cette touche est déjà traitée.')
+  })
+})

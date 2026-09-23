@@ -124,7 +124,11 @@ const crmApi = {
     api.post(`/crm/relance-etapes/${id}/annuler/`),
   // MRY13 — message rendu côté serveur (forme `relance_etape_message`) : lu
   // AVANT ouverture de WhatsApp (aperçu), jamais un envoi.
-  getRelanceEtapeMessage: (id) => api.get(`/crm/relance-etapes/${id}/message/`),
+  // CAD-A — `cle` (facultative) : le texte de RÉPONSE convenu (`stop_contact`,
+  // `rappel_plus_tard`) rendu pour le client de cette touche, même forme.
+  getRelanceEtapeMessage: (id, cle) => (cle
+    ? api.get(`/crm/relance-etapes/${id}/message/`, { params: { cle } })
+    : api.get(`/crm/relance-etapes/${id}/message/`)),
   // MRY13 — LE CLIC qui ouvre WhatsApp : marque la touche faite côté serveur
   // (jamais d'envoi réseau — décision D5).
   whatsappRelanceEtape: (id) => api.post(`/crm/relance-etapes/${id}/whatsapp/`),

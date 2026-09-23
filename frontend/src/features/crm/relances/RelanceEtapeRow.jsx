@@ -153,6 +153,18 @@ const APPEL_REPONSES_SUPPLEMENTAIRES = [
     suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
 ]
 
+// CAD-A — RÉPONSES DU CLIENT (clé `reponse`, table `services.REPONSES_TOUCHE`
+// côté serveur) : l'écran n'envoie que la CLÉ, jamais l'issue — le serveur en
+// dérive l'issue existante (aucune nouvelle valeur d'énumération) ET la suite.
+// `message` : le texte d'accusé PROPOSÉ juste après (aperçu + clic humain,
+// décision D5 — jamais un envoi automatique).
+// CAD5 — « Ne plus me contacter » vaut sur TOUTES les cadences : l'opposition
+// (loi 09-08 art. 9 al. 2) s'enregistre au moment où elle est dite.
+const REPONSES_TOUTES_CADENCES = [
+  { reponse: 'ne_plus_contacter', label: 'Ne plus me contacter', message: 'stop_contact',
+    suite: 'Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent, sans étape de décision, et aucune ne pourra redémarrer. L’accusé « je ne vous rappellerai plus » vous est proposé juste après.' },
+]
+
 /** Lit la PROCHAINE touche depuis la RÉPONSE serveur du « Fait » (jamais
  *  calculée côté écran — un appel programmé à tort aurait pu fausser
  *  l'agenda). `prochaine_touche` (contrat CKP2, à venir) : `{due_at, canal}`
@@ -283,9 +295,13 @@ export default function RelanceEtapeRow({
   const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
   // CKP4 — canal APPEL : Répondeur/Occupé s'ajoutent aux réponses de la
   // cadence (jamais un remplacement, voir commentaire plus haut).
-  const reponsesDisponibles = etape.canal === 'appel'
-    ? [...questionsTouche.reponses, ...APPEL_REPONSES_SUPPLEMENTAIRES]
-    : questionsTouche.reponses
+  // CAD-A — les réponses du client s'ajoutent EN DERNIER (jamais à la place
+  // des issues existantes).
+  const reponsesDisponibles = [
+    ...questionsTouche.reponses,
+    ...(etape.canal === 'appel' ? APPEL_REPONSES_SUPPLEMENTAIRES : []),
+    ...REPONSES_TOUTES_CADENCES,
+  ]
   const reponseChoisie = reponseIdx == null
     ? null : reponsesDisponibles[reponseIdx]
   // RLC3 — cette touche consiste-t-elle à écrire, et le message a-t-il été
@@ -306,6 +322,9 @@ export default function RelanceEtapeRow({
     if (note.trim()) payload.note = note.trim()
     else if (reponseChoisie.note) payload.note = reponseChoisie.note
     if (reponseChoisie.outcome) payload.outcome = reponseChoisie.outcome
+    // CAD-A — une réponse du client part sous sa CLÉ ; l'issue est dérivée
+    // côté serveur (jamais envoyée d'ici).
+    if (reponseChoisie.reponse) payload.reponse = reponseChoisie.reponse
     if (reponseChoisie.rappel && rappelLe) {
       payload.rappel_le = rappelLe
       if (rappelHeure) payload.rappel_heure = rappelHeure
@@ -321,6 +340,9 @@ export default function RelanceEtapeRow({
     // ouvrir la modale de planification dépend de CETTE réponse, jamais
     // d'un state relu après coup.
     const outcomeChoisi = reponseChoisie.outcome
+    // CAD-A — le texte d'accusé à PROPOSER après une réponse du client, lu
+    // AVANT l'appel pour la même raison que `outcomeChoisi`.
+    const messageAPropose = reponseChoisie.message
     // CKP4 — `onFait` renvoie désormais une promesse (widget/frise/suivi) :
     // succès → message de confirmation lu de LA RÉPONSE serveur uniquement
     // (jamais calculé ici) ; 400 outcome → affiché SOUS le contrôle, la ligne
@@ -332,9 +354,16 @@ export default function RelanceEtapeRow({
       // modale de planification (le commercial vient de dire oui au client,
       // jamais un second aller-retour pour la planifier).
       if (outcomeChoisi === 'visite_acceptee') setPlanifierOuvert(true)
+      // CAD-A — l'accusé convenu (« je ne vous rappellerai plus »…) est
+      // PROPOSÉ dans la modale d'aperçu du parent (elle survit au retrait de
+      // cette ligne) : rien ne part sans le clic « Ouvrir WhatsApp ».
+      if (messageAPropose) onOuvrirMessage?.({ ...etape, message_cle: messageAPropose })
     }).catch((err) => {
-      const champ = err?.response?.status === 400
-        ? err?.response?.data?.erreurs?.outcome : null
+      // Règle « le champ fautif, le message exact » : l'issue (CKP4) comme
+      // la réponse du client (CAD-A) s'affichent SOUS les réponses.
+      const erreurs = err?.response?.status === 400
+        ? err?.response?.data?.erreurs : null
+      const champ = erreurs?.outcome || erreurs?.reponse
       if (champ) setErreurOutcome(champ)
     })
   }
