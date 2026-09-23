@@ -1034,6 +1034,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',
                 new_lead.pk, exc_info=True)
+        # CAD91 — l'opposition cochée sur la fiche est inscrite au REGISTRE
+        # (``ConsentRecord`` granted=False, daté), indépendamment de l'arrêt
+        # de cadence ci-dessus : sans elle, rien ne prouverait qu'elle a été
+        # honorée. Aucun motif exigé (loi 09-08 art. 9 al. 2).
+        if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
+            from .services import (
+                CONSENT_SOURCE_OPPOSITION_FICHE, tracer_opposition_registre)
+            tracer_opposition_registre(
+                new_lead, source=CONSENT_SOURCE_OPPOSITION_FICHE)
         # CAD107 — la bascule INVERSE n'était traitée nulle part : décocher
         # « Perdu » ne déclenchait rien, alors qu'un client perdu qui revient
         # est le meilleur signal d'achat qui existe. Les trois chemins de

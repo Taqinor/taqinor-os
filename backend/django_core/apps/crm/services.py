@@ -10607,6 +10607,51 @@ def _note_reponse(spec, note=''):
     return f'{spec["note"]} — {note}' if note else spec['note']
 
 
+# ── CAD-I ── CAD91 — l'OPPOSITION est tracée au registre ─────────────────────
+#
+# Cocher « ne plus contacter » arrêtait bien les cadences et bloquait tout
+# redémarrage — mais RIEN n'écrivait de ``ConsentRecord(granted=False)`` : le
+# registre que CAD90 remplit était incapable de prouver qu'une opposition
+# avait été honorée, ce qu'un contrôle vérifie en premier après une plainte.
+# C'est ce registre qui prouve l'opposition devant l'art. 59 de la loi 09-08
+# (3 mois à 1 an, 20 000 à 200 000 DH) ; l'art. 9 al. 2 n'exige AUCUN motif
+# du client — rien ne conditionne donc l'écriture à une justification.
+
+#: La base de l'opposition, sur texte primaire (round 2 de l'audit).
+BASE_LEGALE_OPPOSITION = 'opposition : loi 09-08 art. 9 al. 2 (sans frais, ' \
+                         'sans motif)'
+#: Les deux gestes qui la recueillent — la case de la fiche, la réponse de
+#: touche (CAD5). Le registre dit PAR OÙ elle est arrivée.
+CONSENT_SOURCE_OPPOSITION_FICHE = 'case « Ne plus contacter » de la fiche'
+CONSENT_SOURCE_OPPOSITION_TOUCHE = 'réponse « Ne plus me contacter »'
+
+
+def tracer_opposition_registre(lead, *, source, occurred_at=None):
+    """CAD91 — inscrit l'opposition au registre ``core.ConsentRecord``.
+
+    UNE entrée ``granted=False`` pour la prospection
+    (``CONSENT_PURPOSE_PROSPECTION``), datée de l'instant où elle est
+    recueillie, dont la ``source`` porte le geste ET la base légale. Même
+    porte d'entrée que CAD90 (``enregistrer_consentement_lead``) : le
+    registre reste un historique append-only, et l'état courant s'y lit sur
+    la ligne la plus récente.
+
+    Best-effort intégral : l'opposition elle-même (case cochée, cadences
+    arrêtées) ne tombe jamais parce que le registre n'a pas pu être écrit.
+    Renvoie l'entrée créée, ou ``None`` (lead sans e-mail ni téléphone, ou
+    écriture impossible)."""
+    try:
+        return enregistrer_consentement_lead(
+            lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
+            source=f'{source} — {BASE_LEGALE_OPPOSITION}'[:120],
+            occurred_at=occurred_at)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD91 : opposition non écrite au registre pour le lead #%s',
+            getattr(lead, 'pk', None), exc_info=True)
+        return None
+
+
 def marquer_lead_ne_plus_contacter(lead, user):
     """CAD5 — coche ``Lead.ne_plus_contacter`` et le JOURNALISE comme la
     fiche le ferait (ligne « modification » du chatter, ancien → nouveau).
@@ -10643,10 +10688,13 @@ def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
          tenu par la case cochée en 1).
 
     L'accusé ``stop_contact`` est PROPOSÉ par l'écran (jamais envoyé seul).
+    CAD91 — l'opposition est inscrite au REGISTRE au moment où elle est dite
+    (``tracer_opposition_registre``), sans aucun motif exigé du client.
     Renvoie la touche close."""
     lead = etape.lead
     spec = REPONSES_TOUCHE[REPONSE_NE_PLUS_CONTACTER]
     marquer_lead_ne_plus_contacter(lead, user)
+    tracer_opposition_registre(lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
     arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER,
                     exclure=etape)
     etape = marquer_etape_relance(
