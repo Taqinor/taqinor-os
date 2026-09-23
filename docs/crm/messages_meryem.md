@@ -330,6 +330,14 @@ sur place), qui est aussi la vraie valeur du passage.
 Les deux variantes darija ci-dessus sont À FAIRE RELIRE par un locuteur natif : elles suivent le FR validé phrase par
 phrase (aucune promesse ajoutée, aucun chiffre) mais n'ont pas reçu la revue native du 04/09/2026.
 
+### debrief_visite — après le retour du technicien, envoi manuel (CAD151, 23/09/2026)
+Le retour du terrain n'est pas un message client (il redescend dans l'historique du lead, voir ci-dessus) mais il
+déclenche le rappel du responsable sous 24-48 h — rappel qui n'avait aucun script. Même doctrine que
+`annonce_appel_reda`/`offre_reda` (CAD60) : ENVOI MANUEL, aucun barreau de cadence ne le porte, aucun bouton ne
+l'envoie. ✎ Texte à valider par le fondateur ; darija pas encore relue par un locuteur natif (CADM1).
+FR : Bonjour M. [Prénom], [Conseiller] de [Marque]. Je vous appelle après le passage de notre technicien chez vous : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?
+DARIJA : السلام عليكم السي [الاسم]، [المستشار] من [Marque]. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟
+
 Décision fondateur du 21/09/2026 (CAD170) — VÉHICULE ÉLECTRIQUE, RECHARGE DE NUIT : **aucun texte ne conseille au
 client de recharger sa voiture en journée.** C'est le cas majoritaire (fenêtre 21h-6h) et l'effet mesuré sur
 l'autoconsommation est nul, même avec une batterie de 10 kWh. La réponse commerciale est le DIMENSIONNEMENT : les
@@ -367,6 +375,25 @@ QUAND : Seulement si le client aborde lui-même la loi 82-21 ou la revente du su
 RÉPONSE : La loi permet de revendre une part du surplus ; je vous confirme les conditions par écrit.
 JAMAIS : Aucun tarif, aucun pourcentage, aucun délai.
 ENSUITE : Envoyer la confirmation écrite par un canal traçable ; aucune promesse de rachat tant qu'une décision ANRE datée n'a pas été lue.
+
+#### objection_generateur — Le client dit qu'il a déjà un générateur
+Un onduleur solaire raccordé au réseau, SANS batterie, s'arrête pendant une coupure — c'est une protection
+anti-îlotage, pas un défaut : il ne peut donc pas remplacer un générateur de secours. La réponse fondatrice
+« le solaire travaille tous les jours » est INTENABLE ici : elle laisserait croire que le solaire tient pendant
+une coupure, ce qui est faux sans batterie. Aucune durée ni aucun nombre d'heures d'autonomie n'est promis (règle
+CAD173 Q15 : aucun dimensionnement de secours n'est calculé). ✎ Texte à valider par le fondateur. Darija : aucune
+version validée (relecture native CADM1) — aucune traduction n'est fabriquée.
+QUAND : Le client oppose son générateur pour dire qu'il n'a pas besoin du solaire.
+RÉPONSE : Sans batterie, l'onduleur solaire s'arrête pendant une coupure, comme le réseau ; ce n'est pas un concurrent de votre générateur, c'est un complément qui réduit votre facture les jours sans coupure. Si vous voulez aussi tenir pendant les coupures, on regarde une offre avec batterie.
+JAMAIS : Ne jamais répondre « le solaire travaille tous les jours » à cette objection — faux sans batterie ; aucune durée ni aucun nombre d'heures d'autonomie promis.
+
+#### objection_subventions — Le client demande une subvention ou une aide de l'État
+Dérivée mot pour mot de la décision fondateur du 21/09/2026 (CAD173, Q22, déjà citée plus haut dans ce document) :
+« on ne promet RIEN […] on renvoie le client aux conditions officielles du programme concerné ». ✎ Consignes
+d'écran (QUAND/RÉPONSE/JAMAIS) à valider par le fondateur. Darija : aucune version validée (relecture native CADM1).
+QUAND : Le client demande si une subvention ou une aide de l'État existe pour son projet.
+RÉPONSE : Je ne vous promets rien sur une subvention ; je vous renvoie aux conditions officielles du programme concerné.
+JAMAIS : Aucun montant, aucun taux, aucune éligibilité, aucun délai.
 
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.

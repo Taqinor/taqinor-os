@@ -168,15 +168,154 @@ export const OBJECTION_LOI_8221 = Object.freeze({
     + "promesse de rachat tant qu'une décision ANRE datée n'a pas été lue.",
 })
 
+// ── CAD151 — l'objection « générateur » ─────────────────────────────────────
+// Source : `docs/crm/messages_meryem.md`, section « Script d'appel guidé »
+// (`#### objection_generateur`). Un onduleur solaire raccordé au réseau,
+// SANS batterie, s'arrête pendant une coupure (protection anti-îlotage) :
+// « le solaire travaille tous les jours » est donc une réponse INTENABLE à
+// cette objection précise — elle laisserait croire que le solaire tient
+// pendant une coupure. Aucune durée ni aucun nombre d'heures d'autonomie
+// n'est promis (règle CAD173 Q15 : aucun dimensionnement de secours n'est
+// calculé, donc aucun chiffre de secours n'existe).
+export const OBJECTION_GENERATEUR = Object.freeze({
+  cle: 'objection_generateur',
+  titre: 'Le client dit qu\'il a déjà un générateur',
+  quand: "Le client oppose son générateur pour dire qu'il n'a pas besoin du "
+    + 'solaire.',
+  reponse: "Sans batterie, l'onduleur solaire s'arrête pendant une coupure, "
+    + "comme le réseau ; ce n'est pas un concurrent de votre générateur, "
+    + "c'est un complément qui réduit votre facture les jours sans coupure. "
+    + 'Si vous voulez aussi tenir pendant les coupures, on regarde une offre '
+    + 'avec batterie.',
+  jamais: 'Ne jamais répondre « le solaire travaille tous les jours » à '
+    + "cette objection — faux sans batterie ; aucune durée ni aucun nombre "
+    + "d'heures d'autonomie promis.",
+})
+
+// ── CAD151 — l'objection « subventions » ────────────────────────────────────
+// Dérivée mot pour mot de la décision fondateur du 21/09/2026 (CAD173, Q22) :
+// « on ne promet RIEN […] on renvoie le client aux conditions officielles du
+// programme concerné ». Source : `docs/crm/messages_meryem.md`, section
+// « Script d'appel guidé » (`#### objection_subventions`).
+export const OBJECTION_SUBVENTIONS = Object.freeze({
+  cle: 'objection_subventions',
+  titre: "Le client demande une subvention ou une aide de l'État",
+  quand: 'Le client demande si une subvention ou une aide de l\'État existe '
+    + 'pour son projet.',
+  reponse: 'Je ne vous promets rien sur une subvention ; je vous renvoie aux '
+    + 'conditions officielles du programme concerné.',
+  jamais: 'Aucun montant, aucun taux, aucune éligibilité, aucun délai.',
+})
+
 /** Les réponses d'objection du panneau — affichées à la demande, jamais lues
- *  d'office. CAD151 complète cette liste (générateur, subventions…). */
-export const OBJECTIONS = Object.freeze([OBJECTION_LOI_8221])
+ *  d'office. */
+export const OBJECTIONS = Object.freeze([
+  OBJECTION_LOI_8221, OBJECTION_GENERATEUR, OBJECTION_SUBVENTIONS,
+])
+
+// ── CAD151 — ce qu'on ne dit JAMAIS au téléphone ────────────────────────────
+// Doctrine du groupe, valable sur TOUTE touche d'appel (pas seulement les
+// objections ci-dessus) : consignes internes affichées à la commerciale,
+// jamais des phrases à lire au client.
+export const INTERDITS_APPEL = Object.freeze([
+  'Aucun chiffre au téléphone : ni tarif, ni tranche horaire, ni '
+    + 'pourcentage — les tranches par défaut de `solar_design.py` sont '
+    + 'marquées « à confirmer », jamais prononcées (règle checked-facts).',
+  "Jamais la grille tarifaire des agrégateurs : la seule grille canonique "
+    + "est interne (`apps/ventes/pricing/models_tariff.py`), et elle ne se "
+    + 'cite pas non plus au téléphone.',
+  "Jamais une annotation entre crochets lue à voix haute ou recopiée dans "
+    + 'une note — un crochet part au client tel quel.',
+  "Objection générateur : jamais « le solaire travaille tous les jours » "
+    + "seul en réponse — voir `OBJECTION_GENERATEUR`.",
+  'Jamais une promesse sur les subventions — voir `OBJECTION_SUBVENTIONS`.',
+])
+
+// ── CAD151 — l'issue à saisir en fin d'appel ────────────────────────────────
+// SCR-13 (audit) — les SIX issues réelles : vocabulaire EXISTANT de
+// `apps/crm/models.py` (`LeadActivity.OUTCOMES`), servi tel quel par l'écran
+// qui saisit l'issue (CAD152) — ce module ne fait que NOMMER le champ à
+// remplir, il ne redéfinit jamais la liste.
+export const ISSUES_APPEL = Object.freeze([
+  'joint', 'non_joint', 'rappel', 'refuse', 'interesse', 'visite_acceptee',
+])
+
+// ── CAD151 — Q19 : un locataire ne décide pas des travaux ──────────────────
+// Décision fondateur du 21/09/2026 (Q19) : demander les coordonnées du
+// propriétaire, créer SA fiche reliée par une note d'historique (jamais une
+// fusion automatique — même patron que `deuxieme_affaire`, CAD128) ; sans
+// elles, l'issue est un Refus avec le motif EXISTANT « Locataire »
+// (`apps/crm/views.py` `_DEFAULT_MOTIFS_PERTE`, seedé par
+// `seed_motifs_perte` — aucun nouveau motif inventé ici).
+export const FLUX_LOCATAIRE = Object.freeze({
+  quand: 'La question « propriétaire ou locataire » (posée au rappel, champ '
+    + '`ownership`) répond « Locataire ».',
+  consigne: 'Demander les coordonnées du propriétaire et créer sa fiche, '
+    + "reliée à celle du locataire par une note d'historique — jamais une "
+    + 'fusion automatique.',
+  sinon: 'Sans coordonnées du propriétaire : issue « Refus », motif '
+    + '« Locataire ».',
+})
+
+/** L'accroche de CET appel : le texte SERVI par le serveur
+ *  (`panneau.script.message`, même rendu que `relance_etape_message.json`),
+ *  jamais réécrite ici. `null` quand aucune touche n'est active. */
+export function texteAccroche(panneau) {
+  return panneau?.script?.message || null
+}
+
+/** Le budget d'un appel de RAPPEL : les cinq étapes de l'appel 1, plus la
+ *  question du rappel — jamais un chiffre à part. */
+export const BUDGET_RAPPEL = ORDRE_APPEL_1.length + QUESTIONS_DU_RAPPEL.length
+
+// ── CAD151 — la structure PAR TOUCHE ────────────────────────────────────────
+// Les cinq touches d'appel qui n'avaient aucun script avant CAD67/CAD98
+// (`apps/parametres/models_relance.py` — Appel 4 et Appel 6 de la cadence
+// contact, appels de suivi J2/J7/J11 de la cadence après-devis), plus le
+// réveil J30 (CAD74, canal APPEL) et le débrief après visite (CAD151,
+// envoi manuel). L'accroche de chacune vit dans
+// `apps/parametres/models_messages.py` (`MESSAGE_TEMPLATE_DEFAULTS`) et se
+// LIT depuis `panneau.script.message` (`texteAccroche`) — ce module ne la
+// duplique jamais. `phase` détermine les questions filtrées servies par
+// `guidanceAppel` (`estToucheDeRappel`) ; `manuel: true` signale une touche
+// HORS cadence (aucun barreau ne la déclenche, comme `annonce_appel_reda`).
+export const SCRIPTS_TOUCHES = Object.freeze({
+  repondeur: Object.freeze({
+    titre: 'Appel 2 / Appel 4 — répondeur', phase: 'appel_1', manuel: false,
+  }),
+  appel_dernier: Object.freeze({
+    titre: 'Appel 6 — dernier avant clôture', phase: 'appel_1', manuel: false,
+  }),
+  appel_suivi_j2: Object.freeze({
+    titre: 'Appel de suivi — J2', phase: 'rappel', manuel: false,
+  }),
+  appel_suivi_j7: Object.freeze({
+    titre: 'Appel de suivi — J7', phase: 'rappel', manuel: false,
+  }),
+  appel_suivi_j11: Object.freeze({
+    titre: 'Appel de suivi — J11', phase: 'rappel', manuel: false,
+  }),
+  reveil_a1: Object.freeze({
+    titre: 'Réveil — J30', phase: 'rappel', manuel: false,
+  }),
+  debrief_visite: Object.freeze({
+    titre: 'Débrief après visite technique', phase: 'rappel', manuel: true,
+  }),
+})
+
+/** La structure de CETTE touche (titre, phase, manuel), ou `null` pour une
+ *  clé hors de `SCRIPTS_TOUCHES` (ex. `appel_ouverture`, déjà couvert par
+ *  `ORDRE_APPEL_1`/`estToucheDeRappel` sans entrée dédiée nécessaire). */
+export function scriptTouche(templateCle) {
+  return SCRIPTS_TOUCHES[templateCle || ''] || null
+}
 
 /** Ce que le panneau affiche pour CE lead.
  *  - segment non livré : `{ livre: false, segment, message }` ;
  *  - résidentiel (ou segment vide) : `{ livre: true, segment,
- *    segmentAConfirmer, avertissement, phase, questions, objections }`,
- *    `phase` valant `'appel_1'` ou `'rappel'`. */
+ *    segmentAConfirmer, avertissement, phase, accroche, questions,
+ *    objections, interdits, issues }`, `phase` valant `'appel_1'` ou
+ *    `'rappel'`. */
 export function guidanceAppel(panneau) {
   const segment = panneau?.segment || null
   if (!segmentLivre(segment)) {
@@ -189,7 +328,10 @@ export function guidanceAppel(panneau) {
     segmentAConfirmer,
     avertissement: segmentAConfirmer ? MESSAGE_SEGMENT_A_CONFIRMER : null,
     phase: estToucheDeRappel(panneau?.touche) ? 'rappel' : 'appel_1',
+    accroche: texteAccroche(panneau),
     questions: questionsDeLAppel(panneau),
     objections: OBJECTIONS,
+    interdits: INTERDITS_APPEL,
+    issues: ISSUES_APPEL,
   }
 }

@@ -11,6 +11,9 @@ import {
   MESSAGE_SEGMENT_A_CONFIRMER, ORDRE_APPEL_1, BUDGET_APPEL_1,
   CLES_TOUCHES_APPEL_1, estToucheDeRappel, questionsDeLAppel, texteQuestion,
   OBJECTION_LOI_8221, OBJECTIONS,
+  OBJECTION_GENERATEUR, OBJECTION_SUBVENTIONS, INTERDITS_APPEL, ISSUES_APPEL,
+  FLUX_LOCATAIRE, QUESTIONS_DU_RAPPEL, BUDGET_RAPPEL, texteAccroche,
+  SCRIPTS_TOUCHES, scriptTouche,
 } from './appelGuidance.js'
 
 // Les charges utiles viennent du contrat COMMITTÉ (PACT10/PACT13) — jamais
@@ -284,4 +287,118 @@ test('CAD163 — jamais dans un script d\'ouverture : aucun gabarit d\'appel ne 
   for (const [cle, texte] of Object.entries(gabarits)) {
     assert.doesNotMatch(texte, /revendre une part du surplus/i, cle)
   }
+})
+
+// ── CAD151 — les cinq touches vides + réveil + débrief, objections, ────────
+// interdits et issue à saisir.
+
+test('CAD151 — SCRIPTS_TOUCHES couvre les cinq touches vides, le réveil et le débrief', () => {
+  const attendues = [
+    'repondeur', 'appel_dernier', 'appel_suivi_j2', 'appel_suivi_j7',
+    'appel_suivi_j11', 'reveil_a1', 'debrief_visite',
+  ]
+  assert.deepEqual(Object.keys(SCRIPTS_TOUCHES).sort(), [...attendues].sort())
+  for (const cle of attendues) {
+    const s = scriptTouche(cle)
+    assert.ok(s, cle)
+    assert.ok(s.titre.trim().length > 0, cle)
+    assert.ok(['appel_1', 'rappel'].includes(s.phase), cle)
+    assert.equal(typeof s.manuel, 'boolean', cle)
+  }
+  assert.equal(scriptTouche('touche_inconnue'), null)
+  assert.equal(scriptTouche(null), null)
+  assert.equal(scriptTouche(undefined), null)
+})
+
+test('CAD151 — seuls le débrief est manuel (hors cadence) ; les six autres sont sur un barreau', () => {
+  assert.equal(scriptTouche('debrief_visite').manuel, true)
+  for (const cle of ['repondeur', 'appel_dernier', 'appel_suivi_j2',
+    'appel_suivi_j7', 'appel_suivi_j11', 'reveil_a1']) {
+    assert.equal(scriptTouche(cle).manuel, false, cle)
+  }
+})
+
+test('CAD151 — la phase déclarée par touche correspond exactement à estToucheDeRappel', () => {
+  for (const [cle, { phase }] of Object.entries(SCRIPTS_TOUCHES)) {
+    const attendu = estToucheDeRappel({ template_cle: cle }) ? 'rappel' : 'appel_1'
+    assert.equal(phase, attendu, cle)
+  }
+})
+
+test('CAD151 — texteAccroche lit panneau.script.message, jamais un texte réécrit ici', () => {
+  assert.equal(texteAccroche({ script: { message: 'Bonjour, ceci est un test.' } }),
+    'Bonjour, ceci est un test.')
+  assert.equal(texteAccroche({ script: null }), null)
+  assert.equal(texteAccroche({}), null)
+  assert.equal(texteAccroche(null), null)
+})
+
+test('CAD151 — le budget de rappel additionne les deux listes figées, jamais un chiffre à part', () => {
+  assert.equal(BUDGET_RAPPEL, ORDRE_APPEL_1.length + QUESTIONS_DU_RAPPEL.length)
+})
+
+test('CAD151 — objection générateur : re-dérivée du fichier source, jamais seule « le solaire travaille tous les jours »', () => {
+  const source = sectionObjection(OBJECTION_GENERATEUR.cle)
+  assert.equal(OBJECTION_GENERATEUR.titre, source.titre)
+  assert.equal(OBJECTION_GENERATEUR.quand, source.QUAND)
+  assert.equal(OBJECTION_GENERATEUR.reponse, source['RÉPONSE'])
+  assert.equal(OBJECTION_GENERATEUR.jamais, source.JAMAIS)
+  assert.doesNotMatch(OBJECTION_GENERATEUR.reponse, /travaille tous les jours/i)
+})
+
+test('CAD151 — objection subventions : re-dérivée du fichier source, aucune promesse', () => {
+  const source = sectionObjection(OBJECTION_SUBVENTIONS.cle)
+  assert.equal(OBJECTION_SUBVENTIONS.titre, source.titre)
+  assert.equal(OBJECTION_SUBVENTIONS.quand, source.QUAND)
+  assert.equal(OBJECTION_SUBVENTIONS.reponse, source['RÉPONSE'])
+  assert.equal(OBJECTION_SUBVENTIONS.jamais, source.JAMAIS)
+})
+
+test('CAD151 — OBJECTIONS porte les trois objections, sans doublon', () => {
+  assert.equal(OBJECTIONS.length, 3)
+  assert.equal(new Set(OBJECTIONS.map((o) => o.cle)).size, 3)
+  assert.ok(OBJECTIONS.includes(OBJECTION_LOI_8221))
+  assert.ok(OBJECTIONS.includes(OBJECTION_GENERATEUR))
+  assert.ok(OBJECTIONS.includes(OBJECTION_SUBVENTIONS))
+})
+
+test('CAD151 — ISSUES_APPEL : les six issues réelles, vocabulaire existant (SCR-13)', () => {
+  assert.deepEqual(ISSUES_APPEL,
+    ['joint', 'non_joint', 'rappel', 'refuse', 'interesse', 'visite_acceptee'])
+})
+
+test('CAD151 — aucun chiffre ni crochet dans les nouvelles objections, interdits et le flux locataire', () => {
+  const textes = [
+    OBJECTION_GENERATEUR.titre, OBJECTION_GENERATEUR.quand,
+    OBJECTION_GENERATEUR.reponse, OBJECTION_GENERATEUR.jamais,
+    OBJECTION_SUBVENTIONS.titre, OBJECTION_SUBVENTIONS.quand,
+    OBJECTION_SUBVENTIONS.reponse, OBJECTION_SUBVENTIONS.jamais,
+    ...INTERDITS_APPEL,
+    FLUX_LOCATAIRE.quand, FLUX_LOCATAIRE.consigne, FLUX_LOCATAIRE.sinon,
+  ]
+  for (const texte of textes) {
+    assert.doesNotMatch(texte, /[0-9٠-٩۰-۹]/, texte)
+    assert.doesNotMatch(texte, /[[\]]/, texte)
+  }
+})
+
+test('CAD151 — guidanceAppel sert l\'accroche, les interdits et les issues au panneau', () => {
+  const panneau = leadVierge(toucheCle('appel_suivi_j2'))
+  panneau.script = { message: 'Bonjour, accroche de test.', langue: 'fr', placeholders_manquants: [] }
+  const g = guidanceAppel(panneau)
+  assert.equal(g.accroche, 'Bonjour, accroche de test.')
+  assert.deepEqual(g.interdits, INTERDITS_APPEL)
+  assert.deepEqual(g.issues, ISSUES_APPEL)
+  assert.deepEqual(g.objections, OBJECTIONS)
+})
+
+test('CAD151 — debrief_visite existe dans messages_meryem.md, sans aucun chiffre', () => {
+  // Le crochet `[Prénom]`/`[Conseiller]`/`[Marque]` du fichier source EST le
+  // format documenté (converti en placeholder au chargement Python, comme
+  // `docs/crm/messages_meryem.md` l'explique en tête de fichier) — seul le
+  // test Python (`tests_cad151_scripts_manquants.py`) vérifie l'ABSENCE de
+  // crochet côté `MESSAGE_TEMPLATE_DEFAULTS`, déjà converti.
+  const gabarits = gabaritsFr()
+  assert.ok('debrief_visite' in gabarits)
+  assert.doesNotMatch(gabarits.debrief_visite, /[0-9٠-٩۰-۹]/)
 })
