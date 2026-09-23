@@ -126,9 +126,72 @@ def _repartir(energie_kwh, heures_actives, *, longueur, heure_de_depart=0):
     return courbe
 
 
+#: Modes de recharge acceptés par CALX261 (parité PV*SOL « Default » /
+#: « PV-optimized » — https://help.valentin-software.com/pvsol/en/pages/electric-vehicles/).
+MODES_RECHARGE_VEHICULE = ('immediat', 'pv_optimise')
+
+
+def _placer_sur_surplus(energie_kwh, heures_actives, production_horaire, *,
+                        longueur, heure_de_depart):
+    """Place ``energie_kwh`` d'abord sur les heures de SURPLUS de production,
+    dans la fenêtre saisie (CALX261).
+
+    Le véhicule charge quand même le reliquat que le surplus ne couvre pas —
+    ce reliquat vient alors du RÉSEAU, jamais masqué : il est réparti
+    UNIFORMÉMENT sur la même fenêtre (exactement comme le mode ``immediat``),
+    pendant que la part couverte par le surplus est placée en PRIORITÉ sur
+    les heures de plus grand surplus. Un surplus NUL sur toute la fenêtre
+    rend donc une courbe IDENTIQUE au mode ``immediat`` — seule la source
+    (réseau vs PV) change.
+
+    Returns:
+        (courbe, energie_reseau_kwh) — ``courbe`` couvre ``longueur`` heures
+        et somme à ``energie_kwh`` ; ``energie_reseau_kwh`` est la part de
+        cette énergie que le surplus n'a pas couverte.
+    """
+    courbe = [0.0] * longueur
+    if not heures_actives or energie_kwh <= 0:
+        return courbe, max(0.0, energie_kwh)
+
+    productions = list(production_horaire)
+    # Un rang de la fenêtre (dans l'ordre de la courbe rendue) associé au
+    # surplus de production disponible à cette heure — trié du plus grand
+    # surplus au plus petit pour consommer le surplus en priorité.
+    candidats = []
+    for rang in range(longueur):
+        heure_du_jour = (int(heure_de_depart) + rang) % 24
+        if heure_du_jour not in heures_actives:
+            continue
+        surplus = (float(productions[rang]) if rang < len(productions)
+                   else 0.0)
+        candidats.append((rang, max(0.0, surplus)))
+
+    total_surplus = sum(surplus for _, surplus in candidats)
+    couvert_pv = min(energie_kwh, total_surplus)
+    energie_reseau = energie_kwh - couvert_pv
+
+    restant = couvert_pv
+    for rang, surplus in sorted(candidats, key=lambda item: item[1],
+                                reverse=True):
+        if restant <= 0:
+            break
+        place = min(restant, surplus)
+        if place > 0:
+            courbe[rang] += place
+            restant -= place
+
+    if energie_reseau > 0:
+        part_reseau = energie_reseau / len(candidats)
+        for rang, _ in candidats:
+            courbe[rang] += part_reseau
+
+    return courbe, max(0.0, energie_reseau)
+
+
 def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                     fenetre_recharge=None, longueur=24, heure_de_depart=0,
-                    rendement_recharge_pct=None):
+                    rendement_recharge_pct=None, mode='immediat',
+                    production_horaire=None):
     """La charge horaire d'un VÉHICULE ÉLECTRIQUE — tout est saisi.
 
     Args:
@@ -138,6 +201,14 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
         fenetre_recharge: les heures de recharge, SAISIES.
         rendement_recharge_pct: pertes de charge, SAISIES. Absent ⇒ aucune
             perte appliquée, et le bilan le dit (jamais un rendement supposé).
+        mode: ``'immediat'`` (défaut, CALX261) conserve EXACTEMENT le
+            comportement d'aujourd'hui — répartition uniforme sur la
+            fenêtre. ``'pv_optimise'`` exige ``production_horaire`` et place
+            l'énergie d'abord sur les heures de surplus de production dans
+            la fenêtre saisie ; le reliquat non couvert par le surplus est
+            publié séparément (``energie_reseau_kwh``), jamais masqué.
+        production_horaire: la production PV horaire (même longueur que
+            ``longueur``), REQUISE quand ``mode='pv_optimise'``.
 
     Raises:
         ChargeInvalide: paramètre manquant ou illisible, en le NOMMANT.
@@ -148,6 +219,12 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                          libelle='La consommation (kWh/100 km)')
     heures = _fenetre(fenetre_recharge, champ='vehicule.fenetre_recharge',
                       libelle='La fenêtre de recharge')
+
+    if mode not in MODES_RECHARGE_VEHICULE:
+        raise ChargeInvalide(
+            f'Le mode de recharge « {mode} » est inconnu — les modes '
+            f'acceptés sont {", ".join(MODES_RECHARGE_VEHICULE)}.',
+            champ='vehicule.mode')
 
     energie = km / 100.0 * conso
     hypotheses = [MENTION_REPARTITION]
@@ -166,15 +243,46 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                 champ='vehicule.rendement_recharge_pct')
         energie = energie / (rendement / 100.0)
 
+    parametres = {
+        'km_par_jour': km, 'kwh_par_100km': conso,
+        'fenetre_recharge': heures,
+        'rendement_recharge_pct': rendement_recharge_pct,
+        'mode': mode,
+    }
+
+    if mode == 'pv_optimise':
+        if not production_horaire:
+            raise ChargeInvalide(
+                'Le mode « pv_optimise » a besoin de '
+                '« vehicule.production_horaire » (la production PV de '
+                'chaque heure) : sans elle, aucun surplus ne peut être '
+                'identifié.', champ='vehicule.production_horaire')
+        courbe, energie_reseau = _placer_sur_surplus(
+            energie, heures, production_horaire, longueur=longueur,
+            heure_de_depart=heure_de_depart)
+        hypotheses.append(
+            "Mode « pv_optimise » : l'énergie est placée d'abord sur les "
+            'heures de surplus de production dans la fenêtre saisie ; le '
+            "reliquat non couvert par le surplus est publié en "
+            '« energie_reseau_kwh », jamais masqué.')
+        return {
+            'type': 'vehicule',
+            'libelle': 'Véhicule électrique',
+            'energie_journaliere_kwh': round(energie, 4),
+            'courbe': [round(valeur, 6) for valeur in courbe],
+            'energie_reseau_kwh': round(energie_reseau, 4),
+            'parametres': parametres,
+            'hypotheses': hypotheses,
+        }
+
     return {
         'type': 'vehicule',
         'libelle': 'Véhicule électrique',
         'energie_journaliere_kwh': round(energie, 4),
         'courbe': _repartir(energie, heures, longueur=longueur,
                             heure_de_depart=heure_de_depart),
-        'parametres': {'km_par_jour': km, 'kwh_par_100km': conso,
-                       'fenetre_recharge': heures,
-                       'rendement_recharge_pct': rendement_recharge_pct},
+        'energie_reseau_kwh': 0.0,
+        'parametres': parametres,
         'hypotheses': hypotheses,
     }
 
