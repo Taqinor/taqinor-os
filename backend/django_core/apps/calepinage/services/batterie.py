@@ -48,9 +48,10 @@ from __future__ import annotations
 import copy
 import math
 
-__all__ = ['COUPLAGES', 'GRANDEURS_BATTERIE', 'STRATEGIES',
-           'StrategieInvalide', 'simuler_batterie', 'simuler_groupes',
-           'specs_batterie', 'tranches_horaires']
+__all__ = ['COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE', 'STRATEGIES',
+           'StrategieInvalide', 'reserve_depuis_appareils',
+           'simuler_batterie', 'simuler_groupes', 'specs_batterie',
+           'tranches_horaires']
 
 #: Les stratégies simulables. ``autoconso`` et ``backup`` existaient (côté
 #: dimensionnement) ; ``peak_shaving`` et ``decalage`` sont l'apport de CAL152.
@@ -349,6 +350,119 @@ def _publier_fenetres(fenetres):
             for fenetre in fenetres]
 
 
+def reserve_depuis_appareils(appareils, *, duree_h):
+    """CALX270 — la réserve de secours DÉDUITE des appareils réellement secourus.
+
+    Parité OpenSolar, « Enter by Appliance » : chaque appareil secouru est
+    SAISI avec sa puissance continue, sa puissance de pointe et sa quantité,
+    et l'outil en tire la puissance continue et la puissance de pointe
+    totales
+    (https://support.opensolar.com/hc/en-us/articles/10632948081551-Battery-Design-Assistant-on-OpenSolar-UK-AU-US).
+
+    AUCUN facteur de pointe par défaut : celui du dimensionnement des ventes
+    (``_BATTERY_BACKUP_PEAK_FACTOR``) n'est PAS relu ici — une puissance de
+    pointe absente est refusée en NOMMANT l'appareil.
+
+    Args:
+        appareils: ``[{nom, puissance_continue_kw, puissance_pointe_kw,
+            quantite}]``, tout SAISI.
+        duree_h: la durée de coupure à tenir, SAISIE (heures).
+
+    Returns:
+        dict — ``energie_kwh`` (Σ continue × quantité × durée),
+        ``puissance_continue_kw`` (Σ continue × quantité),
+        ``puissance_pointe_kw`` (Σ pointe × quantité : les démarrages
+        simultanés, le cas qui fait tomber un onduleur), ``duree_h``,
+        ``detail`` (une ligne par appareil).
+
+    Raises:
+        StrategieInvalide: liste vide (``appareils``), durée absente
+            (``duree_h``), ou grandeur d'un appareil absente/incohérente
+            (``appareils[i].<grandeur>``).
+    """
+    duree = _nombre(duree_h)
+    if duree is None or duree <= 0:
+        raise StrategieInvalide(
+            'La durée de coupure à tenir est SAISIE (heures) : sans elle, '
+            'aucune réserve ne se déduit des appareils.', champ='duree_h')
+    if not isinstance(appareils, (list, tuple)) or not appareils:
+        raise StrategieInvalide(
+            'Aucun appareil secouru n’est déclaré : la réserve se déduit des '
+            'appareils que la batterie doit réellement tenir.',
+            champ='appareils')
+
+    detail = []
+    continue_totale = 0.0
+    pointe_totale = 0.0
+    for rang, appareil in enumerate(appareils):
+        champ = f'appareils[{rang}]'
+        if not isinstance(appareil, dict):
+            raise StrategieInvalide(
+                f'L’appareil n°{rang + 1} n’est pas lisible (reçu : '
+                f'{appareil!r}).', champ=champ)
+        nom = _texte(appareil.get('nom')) or f'Appareil {rang + 1}'
+        continu = _nombre(appareil.get('puissance_continue_kw'))
+        pointe = _nombre(appareil.get('puissance_pointe_kw'))
+        quantite = _nombre(appareil.get('quantite'))
+        if continu is None or continu <= 0:
+            raise StrategieInvalide(
+                f'« {nom} » : la puissance CONTINUE (kW) est à saisir — elle '
+                'se lit sur la plaque de l’appareil.',
+                champ=f'{champ}.puissance_continue_kw')
+        if pointe is None:
+            raise StrategieInvalide(
+                f'« {nom} » : la puissance de POINTE (kW, au démarrage) est à '
+                'saisir — aucun facteur de pointe n’est supposé.',
+                champ=f'{champ}.puissance_pointe_kw')
+        if pointe < continu:
+            raise StrategieInvalide(
+                f'« {nom} » : la puissance de pointe ({pointe} kW) ne peut '
+                f'pas être inférieure à la puissance continue ({continu} kW).',
+                champ=f'{champ}.puissance_pointe_kw')
+        if quantite is None or quantite <= 0:
+            raise StrategieInvalide(
+                f'« {nom} » : la quantité secourue est à saisir.',
+                champ=f'{champ}.quantite')
+        continue_totale += continu * quantite
+        pointe_totale += pointe * quantite
+        detail.append({
+            'nom': nom,
+            'quantite': quantite,
+            'puissance_continue_kw': continu,
+            'puissance_pointe_kw': pointe,
+            'energie_kwh': round(continu * quantite * duree, 3),
+        })
+
+    return {
+        'energie_kwh': round(continue_totale * duree, 3),
+        'puissance_continue_kw': round(continue_totale, 3),
+        'puissance_pointe_kw': round(pointe_totale, 3),
+        'duree_h': duree,
+        'detail': detail,
+    }
+
+
+def _part_effacable(part_effacable_pct, plafond_effacable_kw):
+    """CALX270 — ``(part, plafond)`` SAISIS, ou ``None`` (aucune borne)."""
+    part = None
+    if part_effacable_pct not in (None, ''):
+        part = _nombre(part_effacable_pct)
+        if part is None or not 0 < part <= 100:
+            raise StrategieInvalide(
+                'La part effaçable de la charge se compte en pourcentage, '
+                f'strictement positif et au plus 100 (reçu : '
+                f'{part_effacable_pct!r}).', champ='part_effacable_pct')
+    plafond = None
+    if plafond_effacable_kw not in (None, ''):
+        plafond = _nombre(plafond_effacable_kw)
+        if plafond is None or plafond <= 0:
+            raise StrategieInvalide(
+                'Le plafond effaçable est une puissance strictement positive '
+                f'(kW) (reçu : {plafond_effacable_kw!r}).',
+                champ='plafond_effacable_kw')
+    return part, plafond
+
+
 #: Tolérance d'arithmétique flottante — jamais un seuil métier.
 _EPSILON = 1e-9
 
@@ -400,7 +514,9 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      puissance_decharge_kw, rendement_ar_pct=None,
                      seuil_effacement_kw=None, heures_charge=None,
                      heures_decharge=None, fenetres=None,
-                     reserve_backup_kwh=None,
+                     reserve_backup_kwh=None, appareils=None,
+                     duree_secours_h=None, part_effacable_pct=None,
+                     plafond_effacable_kw=None,
                      etat_initial_kwh=0.0, pas_heures=1.0,
                      heure_de_depart=0, _trace=None):
     """Fait TOURNER la batterie heure par heure selon la stratégie retenue.
@@ -423,7 +539,18 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             charge sur le réseau n'est introduite ici). Deux fenêtres qui se
             recouvrent ⇒ refus nommant la seconde (``fenetres.charge[1]``).
         reserve_backup_kwh: la réserve à ne jamais entamer, SAISIE —
-            obligatoire pour ``backup``.
+            obligatoire pour ``backup`` (à moins que ``appareils`` ne la
+            remplace).
+        appareils / duree_secours_h: CALX270 — la réserve de ``backup``
+            DÉDUITE des appareils réellement secourus
+            (:func:`reserve_depuis_appareils`), à la place de la réserve nue ;
+            publiée sous ``parametres['reserve_appareils']``.
+        part_effacable_pct / plafond_effacable_kw: CALX270 — SAISIS, ils
+            bornent la part de la charge d'un pas que la batterie peut
+            servir (un tableau de secours partiel ne porte pas toute la
+            maison : « Load Offsettable (%) » et « Load Offsettable Cap
+            (kW) » d'OpenSolar). Non saisis ⇒ aucune borne, comportement
+            d'aujourd'hui.
         _trace: usage INTERNE (CALX267, :func:`simuler_groupes`) — un dict
             qui reçoit, pas par pas, l'énergie entrée (``entree``) et sortie
             (``sortie``) de la batterie. Il ne change RIEN au résultat rendu :
@@ -508,11 +635,35 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             f'décalage, pas « {strategie} » : elles ne s’appliquent donc '
             'pas.', champ='fenetres')
     reserve = _nombre(reserve_backup_kwh)
+    reserve_appareils = None
+    if appareils is not None:
+        if strategie != 'backup':
+            raise StrategieInvalide(
+                'Les appareils secourus dimensionnent la réserve de la '
+                f'stratégie de secours, pas « {strategie} ».',
+                champ='appareils')
+        if reserve_backup_kwh not in (None, ''):
+            raise StrategieInvalide(
+                'Une réserve nue ET des appareils secourus sont déclarés : '
+                'la réserve se saisit d’une seule façon, jamais les deux.',
+                champ='reserve_backup_kwh')
+        try:
+            reserve_appareils = reserve_depuis_appareils(
+                appareils, duree_h=duree_secours_h)
+        except StrategieInvalide as refus:
+            if refus.champ == 'duree_h':
+                raise StrategieInvalide(refus.motif,
+                                        champ='duree_secours_h') from refus
+            raise
+        reserve = reserve_appareils['energie_kwh']
     if strategie == 'backup' and (reserve is None or reserve < 0):
         raise StrategieInvalide(
-            'La stratégie de secours exige une réserve SAISIE (kWh) : la '
-            'part du parc qu’on refuse d’entamer pour tenir une coupure.',
+            'La stratégie de secours exige une réserve SAISIE (kWh) — ou les '
+            'appareils secourus dont elle se déduit : la part du parc qu’on '
+            'refuse d’entamer pour tenir une coupure.',
             champ='reserve_backup_kwh')
+    part_effacable, plafond_effacable = _part_effacable(
+        part_effacable_pct, plafond_effacable_kw)
 
     etat = min(max(0.0, _nombre(etat_initial_kwh) or 0.0), capacite)
     plancher = min(reserve, capacite) if strategie == 'backup' else 0.0
@@ -566,6 +717,12 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                 # CALX268 — la décharge ne descend pas sous l'état VISÉ.
                 plancher_du_pas = max(
                     plancher, capacite * fenetre['soc_cible_pct'] / 100.0)
+        # CALX270 — la part de la charge que ce groupe PEUT servir (tableau
+        # de secours partiel) : bornée seulement si elle est SAISIE.
+        if part_effacable is not None:
+            besoin = min(besoin, conso * part_effacable / 100.0)
+        if plafond_effacable is not None:
+            besoin = min(besoin, plafond_effacable * pas)
 
         sortie = 0.0
         if besoin > 0:
@@ -638,6 +795,9 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                           'decharge': _publier_fenetres(fenetres_decharge)}
                          if strategie == 'decalage' else None),
             'reserve_backup_kwh': reserve if strategie == 'backup' else None,
+            'reserve_appareils': reserve_appareils,
+            'part_effacable_pct': part_effacable,
+            'plafond_effacable_kw': plafond_effacable,
         },
     }
 

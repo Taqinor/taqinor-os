@@ -82,7 +82,10 @@
             "heures_charge": null,
             "heures_decharge": null,
             "fenetres": null,
-            "reserve_backup_kwh": null
+            "reserve_backup_kwh": null,
+            "reserve_appareils": null,
+            "part_effacable_pct": null,
+            "plafond_effacable_kw": null
           }
         }
       },
@@ -122,7 +125,10 @@
             "heures_charge": null,
             "heures_decharge": null,
             "fenetres": null,
-            "reserve_backup_kwh": null
+            "reserve_backup_kwh": null,
+            "reserve_appareils": null,
+            "part_effacable_pct": null,
+            "plafond_effacable_kw": null
           }
         }
       }
@@ -158,7 +164,10 @@
         "heures_charge": null,
         "heures_decharge": null,
         "fenetres": null,
-        "reserve_backup_kwh": null
+        "reserve_backup_kwh": null,
+        "reserve_appareils": null,
+        "part_effacable_pct": null,
+        "plafond_effacable_kw": null
       }
     },
     "mention_agregat": "« agrégat de capacités — approximation » : les groupes portent des modèles de batterie différents (PACK-ESSAI-A, PACK-ESSAI-B) ; leurs rendements et leurs bornes de puissance ne s’additionnent pas, les capacités et puissances cumulées de l’agrégat sont donc une approximation."
