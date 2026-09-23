@@ -27,9 +27,12 @@ import { toastError } from '../../lib/toast'
    Ce widget l'importe tel quel — comportement/markup INCHANGÉS.
 
    MRY32 — sélecteur « Aujourd'hui + retard | Demain | 7 jours » (scopes
-   `all`/`tomorrow`/`week` de MRY30) : une ligne dont l'échéance tombe APRÈS
-   aujourd'hui se lit seulement (`readOnly`) — on ne « fait » jamais une
-   touche qui n'a pas encore eu lieu.
+   `all`/`tomorrow`/`week` de MRY30). CAD44 (TRANCHÉ 21/09/2026, MRY32
+   rouverte) : une ligne dont l'échéance tombe APRÈS aujourd'hui n'est plus en
+   lecture seule — Appeler, WhatsApp et Reporter y sont actionnables (agir en
+   avance), « Fait » et « Sauter » restent verrouillés (`enAvance`) : on ne
+   coche jamais une touche qui n'a pas encore eu lieu. La frise de la fiche
+   applique la MÊME règle.
 
    CAD117 — « X leads sans cadence » : le seul filet existant était le
    panneau Adhérence (`AdherenceRelancesPanel.jsx`, section « Leads sans
@@ -327,7 +330,7 @@ export default function RelancesDuJourWidget() {
               <Fragment key={etape.id}>
                 <RelanceEtapeRow
                   etape={etape} busyId={busyId} navigate={navigate}
-                  readOnly={etape.due_date > todayCasa()}
+                  enAvance={etape.due_date > todayCasa()}
                   onFait={(id, payload) => traiter(id, 'fait', payload)}
                   onSauter={(id, note) => traiter(id, 'sauter', note)}
                   onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}

@@ -196,6 +196,46 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
   })
 })
 
+// CAD44 — agir en avance : sur une touche À VENIR, Appeler/WhatsApp/Reporter
+// sont ouverts (et le coaching de l'appel), « Fait »/« Sauter » verrouillés.
+describe('CAD44 RelanceEtapeRow — agir en avance', () => {
+  it('enAvance : les trois gestes présents, « Fait » et « Sauter » absents', () => {
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reporter/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('touche-en-avance')).toHaveTextContent(/s’ouvrira à son échéance/)
+  })
+
+  it('enAvance : « Reporter » s’ouvre et reporte la touche', async () => {
+    const onReporter = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={onReporter}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2099-03-02' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Décaler ce rappel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onReporter).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { rappel_le: '2099-03-02', rappel_heure: '09:00' }))
+  })
+
+  it('le coaching « Proposer la visite » reste proposé sur une touche après-devis à venir', () => {
+    render(
+      <RelanceEtapeRow etape={ETAPE_APRES_DEVIS} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    expect(screen.getByTestId('panneau-proposer-visite')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+  })
+})
+
 // CAD46 — « Reporter au » et « À rappeler le… » déplacent TOUT le plan : la
 // même phrase le dit sous les deux champs.
 describe('CAD46 RelanceEtapeRow — le report fait glisser tout le suivi', () => {

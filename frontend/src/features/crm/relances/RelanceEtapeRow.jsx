@@ -34,7 +34,10 @@ import { suiteAnnoncee, suiteDuSaut } from './suite'
                       correspondances pour `getByText`) — le mode compact
                       va donc directement aux badges + boutons d'action ;
      - `readOnly`   : aucun bouton d'action — une ligne qui se LIT seulement
-                      (jours futurs du widget, MRY32) ;
+                      (historique de l'écran de suivi). CAD44 : les jours
+                      FUTURS du widget ne sont plus en lecture seule, ils
+                      passent `enAvance` (Appeler/WhatsApp/Reporter ouverts,
+                      Fait/Sauter verrouillés) ;
      - `showStatut` : ajoute un badge de statut (Fait à HH:MM + auteur /
                       Sautée / À faire / En retard) — l'écran de suivi (MRY31)
                       affiche TOUS les statuts, pas seulement les étapes à
@@ -345,6 +348,13 @@ function StatutBadge({ etape }) {
 export default function RelanceEtapeRow({
   etape, onFait, onSauter, onReporter, onOuvrirMessage, busyId, navigate,
   compact = false, readOnly = false, showStatut = false,
+  // CAD44 (TRANCHÉ 21/09/2026, MRY32 rouverte) — une touche À VENIR n'est
+  // plus en lecture seule : Appeler, WhatsApp et Reporter (et le panneau de
+  // coaching qui accompagne l'appel) sont actionnables dès maintenant ;
+  // « Fait » (et « Sauter ») restent verrouillés jusqu'à l'échéance. Le
+  // cockpit ET la frise passent ce même drapeau : les deux écrans ne
+  // désignent jamais deux gestes différents (règle CADX).
+  enAvance = false,
   // VISCAD6 — appelé après qu'une visite a été planifiée depuis CETTE ligne
   // (panneau de coaching OU issue « Visite acceptée ») pour laisser le
   // parent rafraîchir (même callback que Fait/Sauter/Reporter, ex.
@@ -625,18 +635,30 @@ export default function RelanceEtapeRow({
           >
             <Clock3 className="size-3.5" /> Reporter
           </Button>
-          <Button
-            size="sm" variant="outline" disabled={busy}
-            onClick={() => setPanel('sauter')}
-          >
-            <SkipForward className="size-3.5" /> Sauter
-          </Button>
-          <Button size="sm" disabled={busy} onClick={() => setPanel('fait')}>
-            <Check className="size-3.5" /> Fait
-          </Button>
+          {/* CAD44 — sur une touche À VENIR, « Fait » (et « Sauter », qui
+              clôt la touche comme lui) restent verrouillés : on ne coche pas
+              un geste qui n'a pas eu lieu. */}
+          {!enAvance && (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => setPanel('sauter')}
+            >
+              <SkipForward className="size-3.5" /> Sauter
+            </Button>
+          )}
+          {!enAvance && (
+            <Button size="sm" disabled={busy} onClick={() => setPanel('fait')}>
+              <Check className="size-3.5" /> Fait
+            </Button>
+          )}
         </div>
       )}
-      {!readOnly && panel === 'sauter' && (
+      {!readOnly && enAvance && panel === '' && (
+        <p className="mt-1 text-right text-xs text-muted-foreground" data-testid="touche-en-avance">
+          Touche à venir : appeler, écrire ou reporter dès maintenant — « Fait » s’ouvrira à son échéance.
+        </p>
+      )}
+      {!readOnly && !enAvance && panel === 'sauter' && (
         <div className="mt-2 flex flex-col gap-1.5">
           <Textarea
             rows={2} placeholder="Note (optionnelle) — pourquoi sauter cette relance ?"
@@ -660,7 +682,7 @@ export default function RelanceEtapeRow({
           </div>
         </div>
       )}
-      {!readOnly && panel === 'fait' && (
+      {!readOnly && !enAvance && panel === 'fait' && (
         <div className="mt-2 flex flex-col gap-1.5">
           <p className="text-sm font-medium">{questionsTouche.question}</p>
           {/* CAD12 — l'issue la plus importante (« le client accepte ») ne
