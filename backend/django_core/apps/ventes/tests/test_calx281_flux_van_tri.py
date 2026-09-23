@@ -10,6 +10,10 @@ Ce qui est prouvé (le « Done » de CALX281) :
   est possible quand la marge de l'année de retour absorbe l'actualisation) ;
 * taux d'actualisation absent ⇒ ``van_mad is None`` et ``omissions`` nomme
   ``taux_actualisation_pct`` ;
+* LECTURE STRICTE (arbitrage du 23/09/2026) : indexation ou dégradation
+  absente ⇒ ``van_mad``, retours, TRI et LCOE ``None``, et le motif NOMME le
+  taux ; un taux SAISI à 0 reste fourni ; les montants absents (charges,
+  remplacements) ne bloquent rien ;
 * flux sans changement de signe ⇒ ``tri_pct is None``, jamais une valeur ;
 * sans horizon SAISI, aucun flux : tous les indicateurs ``None`` et motivés ;
 * chaque grandeur fournie est une hypothèse SOURCÉE, chaque absente une
@@ -96,17 +100,21 @@ class ActualisationTest(unittest.TestCase):
         self.assertGreater(bloc['retour_actualise_ans'], bloc['retour_ans'])
 
     def test_propriete_le_retour_actualise_n_est_jamais_plus_court(self):
+        verifies = 0
         for investissement, economie1, taux in itertools.product(
                 (50000, 100000, 250000), (6000, 12000, 30000), (1, 5, 8)):
             bloc = flux_de_tresorerie(
                 investissement_mad=investissement,
                 economie_annee1_mad=economie1, horizon_ans=30,
-                taux_actualisation_pct=taux)
+                taux_actualisation_pct=taux, indexation_pct=0,
+                degradation_pct=0)
             simple, actualise = bloc['retour_ans'], bloc['retour_actualise_ans']
             if simple is None or actualise is None:
                 continue
             with self.subTest(i=investissement, e=economie1, t=taux):
                 self.assertGreaterEqual(actualise, simple)
+            verifies += 1
+        self.assertGreater(verifies, 10)
 
     def test_sans_taux_la_van_est_omise_et_le_motif_nomme_le_taux(self):
         bloc = reference(taux_actualisation_pct=None)
@@ -202,14 +210,6 @@ class HypothesesTest(unittest.TestCase):
                     reference(**{champ: valeur})
                 self.assertEqual(refus.exception.champ, champ)
 
-    def test_indexation_absente_projection_a_tarif_constant_dite(self):
-        bloc = reference(indexation_pct=None)
-        motif = next(o['motif'] for o in bloc['omissions']
-                     if o['cle'] == 'indexation_pct')
-        self.assertIn('tarif constant', motif)
-        self.assertEqual({ligne['economie_mad'] for ligne in bloc['flux'][1:]},
-                         {12000.0})
-
     def test_indexation_et_degradation_saisies_portees_au_flux(self):
         bloc = reference(indexation_pct=4, degradation_pct=0.5)
         facteur = 1.04 ** 9 * 0.995 ** 9
@@ -263,10 +263,84 @@ class RemplacementsTest(unittest.TestCase):
                 self.assertEqual(refus.exception.champ, champ)
 
 
+class LectureStricteDesTauxTest(unittest.TestCase):
+    """Arbitrage du 23/09/2026 : un TAUX absent n'est jamais remplacé par
+    zéro ; un taux SAISI à 0 reste un taux fourni."""
+
+    DERIVES = ('van_mad', 'retour_actualise_ans', 'lcoe_mad_kwh')
+
+    def motif(self, bloc, cle):
+        return next(o['motif'] for o in bloc['omissions'] if o['cle'] == cle)
+
+    def test_indexation_absente_annule_les_indicateurs_et_la_nomme(self):
+        bloc = reference(indexation_pct=None)
+        self.assertIn('indexation_pct', cles_omises(bloc))
+        self.assertNotIn('indexation_pct', cles_retenues(bloc))
+        for cle in economie.INDICATEURS:
+            with self.subTest(cle=cle):
+                self.assertIsNone(bloc[cle])
+                self.assertIn('indexation_pct', self.motif(bloc, cle))
+        # Le flux nominal n'est pas traçable : aucune ligne publiée.
+        self.assertEqual(bloc['flux'], [])
+
+    def test_degradation_absente_annule_les_indicateurs_et_la_nomme(self):
+        bloc = reference(degradation_pct=None)
+        self.assertIn('degradation_pct', cles_omises(bloc))
+        for cle in economie.INDICATEURS:
+            with self.subTest(cle=cle):
+                self.assertIsNone(bloc[cle])
+                self.assertIn('degradation_pct', self.motif(bloc, cle))
+        self.assertEqual(bloc['flux'], [])
+
+    def test_actualisation_absente_seuls_les_indicateurs_actualises(self):
+        bloc = reference(taux_actualisation_pct=None)
+        for cle in self.DERIVES:
+            with self.subTest(cle=cle):
+                self.assertIsNone(bloc[cle])
+                self.assertIn('taux_actualisation_pct', self.motif(bloc, cle))
+        self.assertIsNotNone(bloc['tri_pct'])
+        self.assertEqual(bloc['retour_ans'], 9)
+        self.assertEqual(len(bloc['flux']), 11)
+
+    def test_deux_taux_absents_tous_nommes(self):
+        bloc = reference(indexation_pct=None, taux_actualisation_pct=None)
+        motif = self.motif(bloc, 'van_mad')
+        self.assertIn('indexation_pct', motif)
+        self.assertIn('taux_actualisation_pct', motif)
+        self.assertNotIn('taux_actualisation_pct',
+                         self.motif(bloc, 'tri_pct'))
+
+    def test_un_taux_saisi_a_zero_reste_fourni(self):
+        bloc = reference(indexation_pct={
+            'valeur': 0, 'source': 'réglage société — aucune indexation '
+                                   'retenue', 'saisie_le': '2026-09-23'})
+        self.assertIn('indexation_pct', cles_retenues(bloc))
+        for cle in economie.INDICATEURS:
+            self.assertIsNotNone(bloc[cle], cle)
+
+    def test_l_exemple_vide_du_contrat_rejoue_les_motifs_du_code(self):
+        vide = json.loads(CONTRAT.read_text(encoding='utf-8'))['exemple_vide']
+        bloc = flux_de_tresorerie(investissement_mad=100000,
+                                  economie_annee1_mad=12000,
+                                  production_annee1_kwh=10000)
+        self.assertEqual(bloc['omissions'], vide['omissions'])
+        self.assertEqual(bloc['flux'], vide['flux'])
+
+    def test_les_montants_absents_ne_bloquent_rien(self):
+        bloc = reference()   # ni charges ni remplacements saisis
+        self.assertIn('charges_annuelles_mad', cles_omises(bloc))
+        self.assertIn('remplacements', cles_omises(bloc))
+        for cle in economie.INDICATEURS:
+            self.assertIsNotNone(bloc[cle], cle)
+
+
 class RetourPlafonneTest(unittest.TestCase):
+    TAUX = dict(taux_actualisation_pct=0, indexation_pct=0, degradation_pct=0)
+
     def test_retour_au_dela_de_30_ans_non_publie(self):
         bloc = flux_de_tresorerie(investissement_mad=100000,
-                                  economie_annee1_mad=3000, horizon_ans=40)
+                                  economie_annee1_mad=3000, horizon_ans=40,
+                                  **self.TAUX)
         # Retour réel en année 34 : au-delà du plafond de 30 ans.
         self.assertIsNone(bloc['retour_ans'])
         motif = next(o['motif'] for o in bloc['omissions']
@@ -275,9 +349,12 @@ class RetourPlafonneTest(unittest.TestCase):
 
     def test_retour_non_atteint_sur_l_horizon(self):
         bloc = flux_de_tresorerie(investissement_mad=100000,
-                                  economie_annee1_mad=5000, horizon_ans=10)
+                                  economie_annee1_mad=5000, horizon_ans=10,
+                                  **self.TAUX)
         self.assertIsNone(bloc['retour_ans'])
-        self.assertIn('retour_ans', cles_omises(bloc))
+        motif = next(o['motif'] for o in bloc['omissions']
+                     if o['cle'] == 'retour_ans')
+        self.assertIn('horizon', motif)
 
 
 class AucuneCleInterditeTest(unittest.TestCase):

@@ -25,11 +25,15 @@ from apps.ventes.economie import (INDICATEURS, EconomieInvalide,
 
 FINANCE = dict(horizon_ans=20, taux_actualisation_pct=5, indexation_pct=0)
 
+#: Lecture STRICTE des taux (arbitrage du 23/09/2026) : la dégradation est
+#: SAISIE, sinon aucun indicateur n'est publié.
+TECHNIQUE = dict(degradation_pct=0.5)
+
 
 def scenario(nom, **surcharges):
     donnees = dict(nom=nom, production_annuelle_kwh=10000,
                    economie_annee1_mad=12000, investissement_mad=100000,
-                   **FINANCE)
+                   **FINANCE, **TECHNIQUE)
     donnees.update(surcharges)
     return donnees
 
@@ -68,7 +72,7 @@ class EcartsTest(unittest.TestCase):
         sans, avec = resultat['scenarios']
         attendu = flux_de_tresorerie(
             investissement_mad=130000, economie_annee1_mad=15000,
-            production_annee1_kwh=10000, **FINANCE)
+            production_annee1_kwh=10000, **FINANCE, **TECHNIQUE)
         for cle in INDICATEURS:
             self.assertEqual(avec[cle], attendu[cle], cle)
         self.assertAlmostEqual(avec['ecarts']['van_mad'],

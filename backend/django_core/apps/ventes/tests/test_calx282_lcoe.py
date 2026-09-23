@@ -9,7 +9,8 @@ Ce qui est prouvé (le « Done » de CALX282) :
 * production nulle (ou absente) ⇒ ``None`` et le motif NOMME
   ``production_annuelle_kwh`` — jamais une division bornée ;
 * sans taux d'actualisation, aucun LCOE (le calcul est actualisé par
-  définition) ;
+  définition) ; sans dégradation non plus (lecture STRICTE, arbitrage du
+  23/09/2026 : un taux absent n'est jamais remplacé par zéro) ;
 * le bloc économie (``flux_de_tresorerie``) publie le MÊME LCOE que la
   fonction, sur le même flux (charges et remplacements compris).
 
@@ -82,11 +83,20 @@ class LcoeTest(unittest.TestCase):
         self.assertGreater(reference(taux_actualisation_pct=5)['lcoe_mad_kwh'],
                            1.0)
 
-    def test_degradation_absente_non_portee_et_dite(self):
+    def test_degradation_absente_aucun_lcoe_et_motif_nomme(self):
         resultat = reference(degradation_pct=None)
-        self.assertEqual(resultat['lcoe_mad_kwh'], 1.0)
+        self.assertIsNone(resultat['lcoe_mad_kwh'])
         self.assertIn('degradation_pct',
                       {o['cle'] for o in resultat['omissions']})
+        self.assertIn('degradation_pct', motif(resultat, 'lcoe_mad_kwh'))
+
+    def test_indexation_absente_le_bloc_omet_le_lcoe(self):
+        bloc = flux_de_tresorerie(
+            investissement_mad=100000, economie_annee1_mad=12000,
+            production_annee1_kwh=10000, horizon_ans=10,
+            taux_actualisation_pct=0, degradation_pct=0)
+        self.assertIsNone(bloc['lcoe_mad_kwh'])
+        self.assertIn('indexation_pct', motif(bloc, 'lcoe_mad_kwh'))
 
     def test_le_bloc_economie_publie_le_meme_lcoe(self):
         onduleur = {'equipement': 'onduleur', 'annee': 6, 'mode': 'remplacer',
@@ -95,7 +105,8 @@ class LcoeTest(unittest.TestCase):
                       taux_actualisation_pct=4, degradation_pct=0.5,
                       charges_annuelles_mad=400, remplacements=[onduleur])
         bloc = flux_de_tresorerie(economie_annee1_mad=12000,
-                                  production_annee1_kwh=10000, **commun)
+                                  production_annee1_kwh=10000,
+                                  indexation_pct=0, **commun)
         seul = lcoe(production_annuelle_kwh=10000, **commun)
         self.assertIsNotNone(bloc['lcoe_mad_kwh'])
         self.assertEqual(bloc['lcoe_mad_kwh'], seul['lcoe_mad_kwh'])

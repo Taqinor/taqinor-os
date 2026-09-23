@@ -141,8 +141,8 @@ class InjectionDansLeFluxTest(unittest.TestCase):
         tableau = tableau_pret(**PRET)
         bloc = flux_de_tresorerie(
             investissement_mad=120000, economie_annee1_mad=15000,
-            horizon_ans=10, taux_actualisation_pct=0,
-            pret=dict(PRET, source='offre bancaire n° 3'))
+            horizon_ans=10, taux_actualisation_pct=0, indexation_pct=0,
+            degradation_pct=0, pret=dict(PRET, source='offre bancaire n° 3'))
         # Seule la part non financée sort en année 0.
         self.assertEqual(bloc['flux'][0]['flux_mad'], -20000.0)
         service_annee1 = sum(ligne['echeance_mad']
@@ -162,7 +162,8 @@ class InjectionDansLeFluxTest(unittest.TestCase):
 
     def test_sans_pret_achat_comptant(self):
         bloc = flux_de_tresorerie(investissement_mad=120000,
-                                  economie_annee1_mad=15000, horizon_ans=10)
+                                  economie_annee1_mad=15000, horizon_ans=10,
+                                  indexation_pct=0, degradation_pct=0)
         self.assertEqual(bloc['flux'][0]['flux_mad'], -120000.0)
 
     def test_pret_au_dela_de_l_horizon_refuse(self):

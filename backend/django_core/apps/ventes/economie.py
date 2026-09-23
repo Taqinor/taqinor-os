@@ -23,13 +23,16 @@ Aucun taux, aucune durée, aucun montant n'a de valeur par défaut ici :
   dans ``hypotheses`` avec un défaut ;
 * sans horizon, sans investissement ou sans économie d'année 1, AUCUN flux
   n'est construit : tous les indicateurs valent ``None`` avec leur motif ;
-* sans taux d'actualisation, la VAN, le flux actualisé et le retour actualisé
-  valent ``None`` (le TRI et le retour simple, qui n'en dépendent pas, restent
-  publiés) ;
-* un EFFET non saisi n'est pas porté au flux et l'omission le DIT : l'indexation
-  absente donne une projection à tarif constant (décision fondateur « indexation
-  tarifaire 0 % explicite avec mention », docs/PLAN2.md), la dégradation, les
-  charges et les remplacements absents ne sont pas retranchés.
+* LECTURE STRICTE DES TAUX (arbitrage du 23/09/2026) — un taux absent n'est
+  JAMAIS remplacé par zéro : sans indexation ou sans dégradation, le flux
+  nominal n'est pas traçable (ni lignes, ni TRI, ni retour, ni indicateur
+  actualisé) ; sans taux d'actualisation, la VAN, le flux actualisé, le
+  retour actualisé et le LCOE valent ``None`` (le TRI et le retour simple
+  restent publiés). Chaque motif NOMME le taux manquant. Un taux SAISI à 0
+  reste un taux fourni : c'est la voie de la décision fondateur « indexation
+  tarifaire 0 % explicite avec mention » (docs/PLAN2.md) ;
+* un MONTANT non saisi (charges, remplacements) n'est pas porté au flux et
+  l'omission le DIT ; les indicateurs restent publiés.
 
 UNE SEULE ARITHMÉTIQUE FINANCIÈRE
 ---------------------------------
@@ -517,11 +520,11 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         minimum=-100, strictement=True)
     indexation = lire(
         'indexation_pct', indexation_pct,
-        "aucune indexation tarifaire saisie — projection à tarif constant "
-        "(indexation nulle)", minimum=-100, strictement=True)
+        "aucune indexation tarifaire saisie par la société — une indexation "
+        "nulle se saisit à 0 avec sa source", minimum=-100, strictement=True)
     degradation = lire(
         'degradation_pct', degradation_pct,
-        "aucune dégradation annuelle saisie — elle n'est pas portée au flux",
+        "aucune dégradation annuelle saisie par la société",
         minimum=0, maximum=100)
     charges = lire(
         'charges_annuelles_mad', charges_annuelles_mad,
@@ -547,21 +550,63 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         'omissions': omissions,
     }
 
-    manquants = [cle for cle, valeur in (
+    # LECTURE STRICTE (arbitrage du 23/09/2026) : un TAUX absent n'est jamais
+    # remplacé par zéro. Indexation ou dégradation absente ⇒ le flux NOMINAL
+    # n'est pas traçable : ni lignes, ni TRI, ni retour, ni indicateur
+    # actualisé. Taux d'actualisation absent ⇒ tout indicateur actualisé
+    # (VAN, retour actualisé, LCOE) omis. Un taux SAISI à 0 reste un taux
+    # fourni. Les MONTANTS absents (charges, remplacements) ne sont, eux,
+    # simplement pas portés au flux — l'omission le dit.
+    entrees_flux = [cle for cle, valeur in (
         ('investissement_mad', investissement),
         ('economie_annee1_mad', economie1),
         ('horizon_ans', horizon)) if valeur is None]
-    if manquants:
-        motif = (f"non publié : aucun flux construit "
-                 f"({', '.join(manquants)} non saisi)")
-        for cle in INDICATEURS:
-            omissions.append(_omission(cle, motif))
+    taux_nominaux = [cle for cle, valeur in (
+        ('indexation_pct', indexation),
+        ('degradation_pct', degradation)) if valeur is None]
+    taux_actualisation = ['taux_actualisation_pct'] if taux is None else []
+
+    def omettre(cle, *, entrees=(), nuls=(), taux_absents=()):
+        parties = []
+        if entrees:
+            parties.append(f"{', '.join(entrees)} non saisi")
+        if nuls:
+            parties.append(f"{', '.join(nuls)} absente ou nulle — aucune "
+                           f"division bornée n'est publiée")
+        if taux_absents:
+            parties.append(f"taux non fourni : {', '.join(taux_absents)}")
+        omissions.append(_omission(cle, "non publié : " + " ; ".join(parties)))
+
+    production = next((h['valeur'] for h in hypotheses
+                       if h['cle'] == 'production_annee1_kwh'), None)
+    lcoe_entrees = [cle for cle, valeur in (
+        ('investissement_mad', investissement),
+        ('horizon_ans', horizon)) if valeur is None]
+    lcoe_nuls = [] if production else ['production_annee1_kwh']
+    lcoe_taux = taux_actualisation + taux_nominaux
+    charges = 0.0 if charges is None else charges
+    if lcoe_entrees or lcoe_nuls or lcoe_taux:
+        omettre('lcoe_mad_kwh', entrees=lcoe_entrees, nuls=lcoe_nuls,
+                taux_absents=lcoe_taux)
+    else:
+        # CALX282 — le LCOE du MÊME flux (mêmes charges, mêmes remplacements),
+        # sur l'investissement (hors financement).
+        bloc['lcoe_mad_kwh'] = _lcoe_calcule(
+            investissement=investissement, charges=charges,
+            production=production, horizon=horizon, r=taux / 100.0,
+            deg=degradation / 100.0, sorties=sorties)
+
+    if entrees_flux or taux_nominaux:
+        for cle in ('tri_pct', 'retour_ans'):
+            omettre(cle, entrees=entrees_flux, taux_absents=taux_nominaux)
+        for cle in ('van_mad', 'retour_actualise_ans'):
+            omettre(cle, entrees=entrees_flux,
+                    taux_absents=taux_actualisation + taux_nominaux)
         return bloc
 
     r = None if taux is None else taux / 100.0
-    idx = 0.0 if indexation is None else indexation / 100.0
-    deg = 0.0 if degradation is None else degradation / 100.0
-    charges = 0.0 if charges is None else charges
+    idx = indexation / 100.0
+    deg = degradation / 100.0
 
     flux = [-(investissement - principal)]
     economies = [0.0]
@@ -591,10 +636,8 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         for annee in range(len(flux))]
 
     if r is None:
-        motif = ("non publié : aucun taux d'actualisation saisi "
-                 "(taux_actualisation_pct)")
-        omissions.append(_omission('van_mad', motif))
-        omissions.append(_omission('retour_actualise_ans', motif))
+        for cle in ('van_mad', 'retour_actualise_ans'):
+            omettre(cle, taux_absents=taux_actualisation)
     else:
         bloc['van_mad'] = _arrondi(_npv(r, flux))
         cumuls_actualises, cumul = [], 0.0
@@ -605,22 +648,6 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
             'retour_actualise_ans', cumuls_actualises, horizon, omissions)
     bloc['tri_pct'] = _tri(flux, omissions)
     bloc['retour_ans'] = _retour('retour_ans', cumuls, horizon, omissions)
-    # CALX282 — le LCOE du MÊME flux (mêmes charges, mêmes remplacements).
-    production = next((h['valeur'] for h in hypotheses
-                       if h['cle'] == 'production_annee1_kwh'), None)
-    if not production:
-        omissions.append(_omission(
-            'lcoe_mad_kwh', "non publié : production_annee1_kwh absente ou "
-                            "nulle — aucune division bornée n'est publiée"))
-    elif r is None:
-        omissions.append(_omission(
-            'lcoe_mad_kwh', "non publié : aucun taux d'actualisation saisi "
-                            "(taux_actualisation_pct)"))
-    else:
-        bloc['lcoe_mad_kwh'] = _lcoe_calcule(
-            investissement=investissement, charges=charges,
-            production=production, horizon=horizon, r=r, deg=deg,
-            sorties=sorties)
     return bloc
 
 
@@ -656,10 +683,12 @@ def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
     """CALX282 — ``{lcoe_mad_kwh, hypotheses, omissions}``.
 
     Mêmes règles que :func:`flux_de_tresorerie` : aucune grandeur n'a de
-    défaut. Sans investissement, production (ou production nulle), horizon ou
-    taux d'actualisation, ``lcoe_mad_kwh`` vaut ``None`` et le motif NOMME la
-    grandeur manquante ; la dégradation, les charges et les remplacements non
-    saisis ne sont pas portés au calcul et l'omission le dit.
+    défaut. Sans investissement, production (ou production nulle), horizon,
+    taux d'actualisation ou dégradation (lecture STRICTE : un taux absent
+    n'est jamais remplacé par zéro — 0 se SAISIT), ``lcoe_mad_kwh`` vaut
+    ``None`` et le motif NOMME la grandeur manquante ; les charges et les
+    remplacements non saisis (des MONTANTS) ne sont pas portés au calcul et
+    l'omission le dit.
     """
     hypotheses, omissions = [], []
 
@@ -690,7 +719,7 @@ def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
         minimum=-100, strictement=True)
     degradation = lire(
         'degradation_pct', degradation_pct,
-        "aucune dégradation annuelle saisie — elle n'est pas portée au calcul",
+        "aucune dégradation annuelle saisie par la société",
         minimum=0, maximum=100)
     sorties, hyp_remplacements, omis_remplacements = _lire_remplacements(
         remplacements, horizon)
@@ -703,19 +732,19 @@ def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
         ('investissement_mad', investissement),
         ('production_annuelle_kwh', production or None),
         ('horizon_ans', horizon),
-        ('taux_actualisation_pct', taux)) if valeur is None]
+        ('taux_actualisation_pct', taux),
+        ('degradation_pct', degradation)) if valeur is None]
     if manquants:
         omissions.append(_omission(
             'lcoe_mad_kwh',
             f"non publié : {', '.join(manquants)} absent ou nul — aucune "
-            f"division bornée n'est publiée"))
+            f"division bornée n'est publiée, aucun taux remplacé par zéro"))
         return resultat
     resultat['lcoe_mad_kwh'] = _lcoe_calcule(
         investissement=investissement,
         charges=0.0 if charges is None else charges,
         production=production, horizon=horizon, r=taux / 100.0,
-        deg=0.0 if degradation is None else degradation / 100.0,
-        sorties=sorties)
+        deg=degradation / 100.0, sorties=sorties)
     return resultat
 
 
