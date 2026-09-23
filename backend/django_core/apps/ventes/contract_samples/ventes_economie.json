@@ -1,0 +1,75 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/economie/",
+  "pourquoi": "CALX280 (Groupe CALX, lot 5) — PACT10 : le contrat du BLOC ÉCONOMIE d'un devis, posé SEUL et EN PREMIER. Aucun contrat ne décrivait une analyse financière : ``tariff_escalation_projection`` (apps/ventes/solar_design.py) rendait un dict jamais publié sous contrat. Ce bloc est calculé par ``apps/ventes/economie.py`` (CALX281-CALX290) et servi en LECTURE SEULE par ``apps/ventes`` (CALX288) ; l'atelier de calepinage le LIT sans jamais le calculer (D5 — tout ce qui chiffre de l'argent vit dans ``apps/ventes``). Parité : PVsyst nomme exactement ces résultats — VAN, retour, TRI, tableau de flux annuel et cumulé (https://www.pvsyst.com/help/project-design/economic-evaluation/financial-results.html).",
+  "notes": {
+    "flux": "Une ligne par année, l'année 0 comprise (l'investissement). ``economie_mad`` = l'économie de l'année (l'année 1 érodée par la dégradation et portée par l'indexation SAISIES) ; ``flux_mad`` = l'économie moins les charges, remplacements et échéances de prêt SAISIS ; ``cumul_mad`` = la somme des flux depuis l'année 0 ; ``flux_actualise_mad`` = le flux divisé par (1 + taux)^année, ou ``null`` quand aucun taux d'actualisation n'est saisi.",
+    "indicateurs": "``van_mad`` = somme des flux actualisés (``null`` sans taux d'actualisation) ; ``tri_pct`` = le taux qui annule la VAN, en pour cent (``null`` si le flux ne change jamais de signe — jamais une valeur inventée) ; ``lcoe_mad_kwh`` = somme actualisée des dépenses ÷ somme actualisée de l'énergie (``null`` sans production ou sans taux) ; ``retour_ans`` / ``retour_actualise_ans`` = la PREMIÈRE année où le cumul (resp. le cumul actualisé) devient positif ou nul — ``null`` s'il n'est pas atteint sur l'horizon, ou au-delà de 30 ans (plafond documenté par PV*SOL, https://help.valentin-software.com/pvsol/en/calculation/financial-analysis/).",
+    "hypotheses": "Chaque grandeur ENTRÉE dans le calcul, avec sa ``source`` (jamais vide) et sa date de saisie ``saisie_le`` (``null`` pour une valeur tirée du devis lui-même, qui n'est pas une saisie). Une grandeur n'y figure QUE si elle a été saisie ou tirée du devis : aucun défaut n'y entre jamais.",
+    "omissions": "Chaque grandeur NON saisie et chaque indicateur NON publié, avec son motif en français. Une grandeur ne figure JAMAIS à la fois dans ``hypotheses`` et dans ``omissions``. Tant que la société n'a saisi ni horizon ni taux d'actualisation (décision fondateur n° 5 du 21/09/2026 : Reda fournit son taux avec sa source), le flux est vide et tous les indicateurs sont ``null`` avec leur motif (``exemple_vide``) — jamais affichés à zéro.",
+    "exemple": "L'``exemple`` reprend le CAS DE RÉFÉRENCE des tâches CALX281/CALX282 (docs/PLAN2.md) : 100 000 MAD investis, 12 000 MAD d'économie par an, 10 000 kWh par an, indexation, dégradation et actualisation saisies à 0, horizon de 10 ans saisi ⇒ retour en année 9, VAN 20 000 MAD, LCOE 1,0 MAD/kWh. Les valeurs sont illustratives : ce sont les CLÉS et leurs natures qui font le contrat.",
+    "argent": "Aucune clé nommée ``prix``, ``cout`` ou ``marge`` : l'investissement est le TOTAL TTC CLIENT du devis (jamais ``Produit.prix_achat``, qui n'apparaît dans aucune sortie). La garde de vocabulaire ``apps/calepinage/services/note_calcul.py`` (CLES_INTERDITES) ne trouve rien dans ce document (test_calx280_contrat_economie)."
+  },
+  "exemple": {
+    "horizon_ans": 10,
+    "flux": [
+      {"annee": 0, "economie_mad": 0.0, "flux_mad": -100000.0, "cumul_mad": -100000.0, "flux_actualise_mad": -100000.0},
+      {"annee": 1, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -88000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 2, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -76000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 3, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -64000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 4, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -52000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 5, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -40000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 6, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -28000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 7, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -16000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 8, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": -4000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 9, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": 8000.0, "flux_actualise_mad": 12000.0},
+      {"annee": 10, "economie_mad": 12000.0, "flux_mad": 12000.0, "cumul_mad": 20000.0, "flux_actualise_mad": 12000.0}
+    ],
+    "van_mad": 20000.0,
+    "tri_pct": 3.4602,
+    "lcoe_mad_kwh": 1.0,
+    "retour_ans": 9,
+    "retour_actualise_ans": 9,
+    "hypotheses": [
+      {"cle": "option_devis", "valeur": "sans", "source": "devis DEV-2026-09-0001 — option retenue par le moteur de devis (build_quote_data.scenario)", "saisie_le": null},
+      {"cle": "investissement_mad", "valeur": 100000.0, "source": "devis DEV-2026-09-0001 — total TTC client de l'option retenue (moteur de devis)", "saisie_le": null},
+      {"cle": "economie_annee1_mad", "valeur": 12000.0, "source": "devis DEV-2026-09-0001 — économie annuelle de l'option retenue (moteur de devis)", "saisie_le": null},
+      {"cle": "production_annee1_kwh", "valeur": 10000.0, "source": "devis DEV-2026-09-0001 — production annuelle (moteur de devis)", "saisie_le": null},
+      {"cle": "horizon_ans", "valeur": 10, "source": "réglage société — Paramètres › Tarification & ROI", "saisie_le": "2026-09-23"},
+      {"cle": "taux_actualisation_pct", "valeur": 0.0, "source": "réglage société — Paramètres › Tarification & ROI", "saisie_le": "2026-09-23"},
+      {"cle": "indexation_pct", "valeur": 0.0, "source": "réglage société — Paramètres › Tarification & ROI", "saisie_le": "2026-09-23"},
+      {"cle": "degradation_pct", "valeur": 0.0, "source": "réglage société — Paramètres › Tarification & ROI", "saisie_le": "2026-09-23"}
+    ],
+    "omissions": [
+      {"cle": "charges_annuelles_mad", "motif": "aucune charge annuelle saisie — aucune n'est portée au flux"},
+      {"cle": "remplacements", "motif": "aucun remplacement d'équipement saisi (retirer, remplacer ou prolonger) — aucun n'est porté au flux"}
+    ]
+  },
+  "exemple_vide": {
+    "horizon_ans": null,
+    "flux": [],
+    "van_mad": null,
+    "tri_pct": null,
+    "lcoe_mad_kwh": null,
+    "retour_ans": null,
+    "retour_actualise_ans": null,
+    "hypotheses": [
+      {"cle": "option_devis", "valeur": "sans", "source": "devis DEV-2026-09-0001 — option retenue par le moteur de devis (build_quote_data.scenario)", "saisie_le": null},
+      {"cle": "investissement_mad", "valeur": 100000.0, "source": "devis DEV-2026-09-0001 — total TTC client de l'option retenue (moteur de devis)", "saisie_le": null},
+      {"cle": "economie_annee1_mad", "valeur": 12000.0, "source": "devis DEV-2026-09-0001 — économie annuelle de l'option retenue (moteur de devis)", "saisie_le": null},
+      {"cle": "production_annee1_kwh", "valeur": 10000.0, "source": "devis DEV-2026-09-0001 — production annuelle (moteur de devis)", "saisie_le": null}
+    ],
+    "omissions": [
+      {"cle": "horizon_ans", "motif": "aucun horizon saisi par la société — aucun flux n'est construit"},
+      {"cle": "taux_actualisation_pct", "motif": "aucun taux d'actualisation saisi par la société"},
+      {"cle": "indexation_pct", "motif": "aucune indexation tarifaire saisie — projection à tarif constant (indexation nulle)"},
+      {"cle": "degradation_pct", "motif": "aucune dégradation annuelle saisie — elle n'est pas portée au flux"},
+      {"cle": "charges_annuelles_mad", "motif": "aucune charge annuelle saisie — aucune n'est portée au flux"},
+      {"cle": "remplacements", "motif": "aucun remplacement d'équipement saisi (retirer, remplacer ou prolonger) — aucun n'est porté au flux"},
+      {"cle": "van_mad", "motif": "non publiée : aucun flux construit (horizon_ans non saisi)"},
+      {"cle": "tri_pct", "motif": "non publié : aucun flux construit (horizon_ans non saisi)"},
+      {"cle": "lcoe_mad_kwh", "motif": "non publié : aucun flux construit (horizon_ans non saisi)"},
+      {"cle": "retour_ans", "motif": "non publié : aucun flux construit (horizon_ans non saisi)"},
+      {"cle": "retour_actualise_ans", "motif": "non publié : aucun flux construit (horizon_ans non saisi)"}
+    ]
+  }
+}
