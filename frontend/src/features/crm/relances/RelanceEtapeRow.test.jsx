@@ -137,6 +137,31 @@ describe('CKP1/CKP4 RelanceEtapeRow — badges honnêtes (sautée ≠ annulée)'
 // un appel de prise de contact, la seconde un WhatsApp du suivi de proposition.
 const ETAPE_APRES_DEVIS = exempleContrat('crm', 'relance_etape_v2').results[1]
 
+// CAD12 — « Le client accepte » sans quitter la touche : un LIEN vers la fiche
+// du devis rattaché (jamais une action de statut depuis le CRM, règle #4).
+describe('CAD12 RelanceEtapeRow — le client accepte', () => {
+  it('sur une touche après-devis portant un devis, le lien pointe vers la fiche de CE devis', () => {
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    const lien = screen.getByRole('link', { name: /Marquer le devis .* accepté/ })
+    expect(ETAPE_APRES_DEVIS.devis).toBeTruthy()
+    expect(lien).toHaveAttribute('href', `/ventes/devis?devis=${ETAPE_APRES_DEVIS.devis}`)
+    expect(lien).toHaveTextContent(ETAPE_APRES_DEVIS.devis_reference)
+  })
+
+  it('le clic passe par la navigation de l’application quand elle est fournie', () => {
+    const navigate = vi.fn()
+    ouvrirFait(ETAPE_APRES_DEVIS, { navigate })
+    fireEvent.click(screen.getByRole('link', { name: /Marquer le devis .* accepté/ }))
+    expect(navigate).toHaveBeenCalledWith(`/ventes/devis?devis=${ETAPE_APRES_DEVIS.devis}`)
+  })
+
+  it('sans devis dans l’ERP, l’aide d’origine reste (aucun lien inventé)', () => {
+    ouvrirFait({ ...ETAPE_APRES_DEVIS, devis: null, devis_reference: '' })
+    expect(screen.queryByRole('link', { name: /Marquer le devis/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/Marquez le devis ACCEPTÉ/)).toBeInTheDocument()
+  })
+})
+
 // CAD4 — « Client joint » est LE mot des trois cadences : une seule issue
 // serveur (`joint`), jamais une seconde étiquette pour le même effet moteur.
 describe('CAD4 RelanceEtapeRow — un seul mot pour « je l’ai eu »', () => {

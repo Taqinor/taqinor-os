@@ -632,9 +632,32 @@ export default function RelanceEtapeRow({
       {!readOnly && panel === 'fait' && (
         <div className="mt-2 flex flex-col gap-1.5">
           <p className="text-sm font-medium">{questionsTouche.question}</p>
-          {questionsTouche.aide && (
+          {/* CAD12 — l'issue la plus importante (« le client accepte ») ne
+              renvoie plus vers un autre écran à chercher : sur une touche qui
+              porte son devis (`etape.devis`, contrat `relance_etape_v2`), un
+              LIEN direct ouvre la fiche de CE devis, où « Accepter » est à
+              portée de clic. Un lien, jamais une action de statut depuis le
+              CRM : la chaîne Devis → BonCommande → Facture reste celle de
+              Ventes (règle #4). Sans devis dans l'ERP, l'aide d'origine. */}
+          {questionsTouche.aide && (etape.devis ? (
+            <p className="text-xs text-muted-foreground" data-testid="aide-devis-accepte">
+              Le client accepte ?{' '}
+              <a
+                href={`/ventes/devis?devis=${etape.devis}`}
+                className="font-medium text-primary underline"
+                onClick={(e) => {
+                  if (!navigate) return
+                  e.preventDefault()
+                  navigate(`/ventes/devis?devis=${etape.devis}`)
+                }}
+              >
+                Marquer le devis{etape.devis_reference ? ` ${etape.devis_reference}` : ''} accepté
+              </a>
+              {' '}: le dossier passe en Signé et toutes les relances s’arrêtent.
+            </p>
+          ) : (
             <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
-          )}
+          ))}
           {/* RLC3 — sur une touche MESSAGE, le panneau rappelle d'abord si le
               message a été ouvert. Ouvert : on le dit, et rien n'est demandé.
               Pas ouvert : une confirmation EXPLICITE, jamais un blocage —
