@@ -1,0 +1,289 @@
+"""CALX294 — le GABARIT SOCIÉTÉ des documents du module calepinage.
+
+Le constat
+==========
+``core.pdf.render_pdf`` sait poser un bandeau brandé, mais il est OPT-IN et les
+deux appelants du module le laissent à ``False`` ; la note de calcul n'imprime
+ni logo ni raison sociale, et ``core.models.TenantTheme`` (logo, couleurs, nom
+affiché) n'était lu par AUCUN rendu du module. Une pièce technique remise sans
+l'identité de la société qui l'émet est une pièce anonyme.
+
+Ce que ce module fait
+=====================
+* ``styles_de_societe(company)`` — la marque de la société, LUE : le thème
+  white-label ``TenantTheme`` d'abord, puis le profil société
+  (``apps.parametres.selectors.company_identity``) pour le NOM seulement, puis
+  la raison sociale de ``Company`` ;
+* ``entete_html`` / ``pied_html`` — deux éléments COURANTS
+  (``position: running(...)``) que ``css_du_gabarit`` place dans les boîtes de
+  marge ``@top-center`` et ``@bottom-left`` : ils se répètent donc sur CHAQUE
+  page, comme l'empreinte de la note de calcul (CAL176) ;
+* ``document_html(corps, ...)`` — habille un corps HTML de ce gabarit ; c'est
+  l'unique chemin par lequel une pièce du lot 6 reçoit sa marque.
+
+Zéro couleur inventée
+=====================
+Un thème ABSENT rend un document SANS logo et SANS couleur société : traits et
+titres restent au noir/gris de la charte d'impression EXISTANTE (celle de la
+note de calcul). Le profil société ne complète QUE le nom : son champ
+``couleur_principale`` porte un DÉFAUT de modèle, qui n'est pas une saisie — le
+reprendre ferait imprimer une couleur que personne n'a choisie. Pour la même
+raison, un nom de profil resté au défaut du modèle est traité comme ABSENT.
+
+Une couleur qui n'est pas un hexadécimal ``#rgb``/``#rrggbb`` est ABSENTE :
+elle part dans une feuille CSS, où une valeur libre serait une injection. Un
+logo qui n'est pas une URL ``http(s)://`` ou ``data:image/`` est ABSENT : un
+simple chemin de stockage ne se résout pas au rendu, et le module n'invente
+pas l'adresse qui lui manque.
+
+Aucune marque n'est écrite ici en dur : tout nom affiché vient de la société.
+"""
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping
+from html import escape
+
+from ..note_calcul import _pied_de_page
+
+__all__ = [
+    'NOIR', 'GRIS_TEXTE', 'GRIS_TRAIT', 'GRIS_FOND', 'CHARTE_IMPRESSION',
+    'CLES_STYLES', 'styles_vides', 'couleur_valide', 'logo_valide',
+    'styles_de_societe', 'entete_html', 'pied_html', 'css_du_gabarit',
+    'document_html',
+]
+
+# ── La charte d'impression EXISTANTE (note de calcul, CAL176) ───────────────
+#: Les SEULS codes couleur écrits dans ce module : noir et gris d'impression.
+#: Toute autre couleur vient du thème de la société, ou n'existe pas.
+NOIR = '#111'
+GRIS_TEXTE = '#555'
+GRIS_TRAIT = '#999'
+GRIS_FOND = '#f2f2f2'
+CHARTE_IMPRESSION = (NOIR, GRIS_TEXTE, GRIS_TRAIT, GRIS_FOND)
+
+#: Les clés d'une marque société — toujours présentes, ``''`` quand absentes.
+CLES_STYLES = ('nom_affiche', 'logo_url', 'couleur_primaire',
+               'couleur_secondaire')
+
+_COULEUR = re.compile(r'^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$')
+_SCHEMAS_LOGO = ('https://', 'http://', 'data:image/')
+_CARACTERES_REFUSES_LOGO = ('"', "'", '<', '>', '\\', ' ', '\n', '\r', '\t')
+
+#: Sentinelle « lire en base » — distingue « non fourni » de ``None``.
+_LIRE = object()
+
+
+def styles_vides():
+    """Une marque VIDE : aucune clé ne manque, aucune ne vaut quoi que ce soit."""
+    return {cle: '' for cle in CLES_STYLES}
+
+
+def couleur_valide(valeur):
+    """``valeur`` si c'est un hexadécimal ``#rgb``/``#rrggbb``, sinon ``''``."""
+    texte = str(valeur or '').strip()
+    return texte if _COULEUR.match(texte) else ''
+
+
+def logo_valide(valeur):
+    """``valeur`` si c'est une URL d'image imprimable, sinon ``''``."""
+    texte = str(valeur or '').strip()
+    if not texte or any(c in texte for c in _CARACTERES_REFUSES_LOGO):
+        return ''
+    return texte if texte.lower().startswith(_SCHEMAS_LOGO) else ''
+
+
+def _attr(source, cle):
+    """Lit ``cle`` sur un dict OU un objet (instance de modèle) — ``''`` sinon."""
+    if source is None:
+        return ''
+    valeur = (source.get(cle) if isinstance(source, Mapping)
+              else getattr(source, cle, None))
+    if valeur is None:
+        return ''
+    return str(valeur).strip()
+
+
+def _theme_de(company):
+    """Le ``TenantTheme`` de la société, ou ``None`` — ne lève jamais."""
+    if company is None:
+        return None
+    try:
+        from core.models import TenantTheme
+
+        return TenantTheme.objects.filter(company=company).first()
+    except Exception:  # noqa: BLE001 — un logo ne fait jamais tomber une pièce
+        return None
+
+
+def _defaut_nom_profil():
+    """Le défaut DÉCLARÉ par le modèle pour ``CompanyProfile.nom`` (introspection)."""
+    try:
+        from apps.parametres.models_company import CompanyProfile
+
+        return CompanyProfile._meta.get_field('nom').default
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _profil_de(company):
+    """L'identité du profil société (``company_identity``), ou ``{}``.
+
+    Un nom égal au défaut du modèle n'est pas une saisie : il est vidé, pour
+    que la raison sociale de ``Company`` prenne le relais.
+    """
+    if company is None:
+        return {}
+    try:
+        from apps.parametres.selectors import company_identity
+
+        profil = dict(company_identity(company) or {})
+    except Exception:  # noqa: BLE001
+        return {}
+    nom = (profil.get('nom') or '').strip()
+    if nom and nom == _defaut_nom_profil():
+        profil['nom'] = ''
+    return profil
+
+
+def styles_de_societe(company, *, theme=_LIRE, profil=_LIRE):
+    """La marque à imprimer : ``{nom_affiche, logo_url, couleur_primaire,
+    couleur_secondaire}``, chaque clé à ``''`` quand rien n'est saisi.
+
+    ``company`` est une ``authentication.Company`` — ou, pour les essais sans
+    base, un dictionnaire ``{'theme': …, 'profil': …}`` déjà lu
+    (``styles_de_societe({})`` rend une marque vide). ``theme``/``profil``
+    permettent à l'appelant qui les a déjà lus de ne pas les relire.
+
+    Repli CHAMP PAR CHAMP : le nom affiché du thème, sinon le nom du profil,
+    sinon la raison sociale ; logo et couleurs viennent du thème SEUL.
+    """
+    raison_sociale = ''
+    if isinstance(company, Mapping):
+        theme = company.get('theme') if theme is _LIRE else theme
+        profil = company.get('profil') if profil is _LIRE else profil
+    else:
+        if theme is _LIRE:
+            theme = _theme_de(company)
+        if profil is _LIRE:
+            profil = _profil_de(company)
+        raison_sociale = _attr(company, 'nom')
+    profil = profil or {}
+    return {
+        'nom_affiche': (_attr(theme, 'nom_affichage') or _attr(profil, 'nom')
+                        or raison_sociale),
+        'logo_url': logo_valide(_attr(theme, 'logo_url')),
+        'couleur_primaire': couleur_valide(_attr(theme, 'couleur_primaire')),
+        'couleur_secondaire': couleur_valide(
+            _attr(theme, 'couleur_secondaire')),
+    }
+
+
+# ── Les deux éléments courants ──────────────────────────────────────────────
+
+def entete_html(styles, *, titre=''):
+    """L'en-tête courant (logo, nom affiché, titre de la pièce), ou ``''``.
+
+    Placé dans la boîte ``@top-center`` par ``css_du_gabarit`` : il se répète
+    sur chaque page. Rien n'est imprimé pour une valeur absente — ni balise
+    vide, ni texte de remplacement.
+    """
+    styles = styles or {}
+    nom = str(styles.get('nom_affiche') or '').strip()
+    morceaux = []
+    logo = logo_valide(styles.get('logo_url'))
+    if logo:
+        morceaux.append('<img class="gabarit-logo" src="%s" alt="%s">'
+                        % (escape(logo, quote=True),
+                           escape(nom or 'logo', quote=True)))
+    if nom:
+        morceaux.append('<span class="gabarit-nom">%s</span>' % escape(nom))
+    titre = str(titre or '').strip()
+    if titre:
+        morceaux.append('<span class="gabarit-titre">%s</span>'
+                        % escape(titre))
+    if not morceaux:
+        return ''
+    return '<div class="gabarit-entete">%s</div>' % ''.join(morceaux)
+
+
+def pied_html(provenance, *, mentions=()):
+    """Le pied courant : l'empreinte (entrée · moteur · date), puis les mentions.
+
+    L'empreinte reprend la graphie de la note de calcul (``_pied_de_page``) :
+    une troisième façon d'écrire la même empreinte serait une troisième vérité.
+    Les ``mentions`` (repli de langue, conception verrouillée ou archivée…)
+    s'impriment une fois chacune, dans l'ordre reçu, sans doublon.
+    """
+    lignes = []
+    empreinte = _pied_de_page(provenance or {})
+    if empreinte:
+        lignes.append(empreinte)
+    for mention in mentions or ():
+        texte = str(mention or '').strip()
+        if texte and texte not in lignes:
+            lignes.append(texte)
+    if not lignes:
+        return ''
+    return '<div class="gabarit-pied">%s</div>' % ''.join(
+        '<div>%s</div>' % escape(ligne) for ligne in lignes)
+
+
+def css_du_gabarit(styles, *, format_page='A4'):
+    """La feuille du gabarit : boîtes de marge, pagination, typographie.
+
+    La couleur primaire de la société souligne l'en-tête et les titres ; sans
+    thème, ce sont le noir et le gris de la charte d'impression.
+    """
+    styles = styles or {}
+    primaire = couleur_valide(styles.get('couleur_primaire')) or NOIR
+    secondaire = couleur_valide(styles.get('couleur_secondaire')) or GRIS_TRAIT
+    return ''.join([
+        '@page{size:', format_page, ';margin:24mm 14mm 20mm 14mm;',
+        '@top-center{content:element(gabarit-entete);vertical-align:bottom;}',
+        '@bottom-left{content:element(gabarit-pied);vertical-align:top;}',
+        '@bottom-right{content:"page " counter(page) " / " counter(pages);',
+        'font-size:7pt;color:', GRIS_TEXTE, ';}}',
+        '.gabarit-entete{position:running(gabarit-entete);width:100%;',
+        'border-bottom:0.6mm solid ', primaire, ';padding-bottom:1.5mm;',
+        'font-size:8pt;color:', NOIR, ';}',
+        '.gabarit-logo{max-height:11mm;max-width:40mm;vertical-align:middle;',
+        'margin-right:3mm;}',
+        '.gabarit-nom{font-weight:bold;margin-right:3mm;}',
+        '.gabarit-titre{color:', GRIS_TEXTE, ';}',
+        '.gabarit-pied{position:running(gabarit-pied);font-size:7pt;color:',
+        GRIS_TEXTE, ';border-top:0.2mm solid ', secondaire,
+        ';padding-top:1mm;}',
+        'body{font-family:"DejaVu Sans",Arial,sans-serif;font-size:9pt;',
+        'color:', NOIR, ';}',
+        'h1{font-size:15pt;margin:0 0 2mm 0;color:', primaire, ';}',
+        'h2{font-size:11pt;margin:6mm 0 2mm 0;border-bottom:0.4mm solid ',
+        primaire, ';}',
+        'table{width:100%;border-collapse:collapse;margin-bottom:2mm;}',
+        'th,td{border:0.2mm solid ', GRIS_TRAIT, ';padding:1.2mm;',
+        'text-align:left;vertical-align:top;}',
+        'th{background:', GRIS_FOND, ';font-weight:bold;}',
+        '.note{color:', GRIS_TEXTE, ';font-size:8pt;}',
+    ])
+
+
+def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
+                  langue='fr', css=''):
+    """Un document HTML AUTONOME habillé du gabarit société.
+
+    Les deux éléments courants sont posés EN TÊTE du ``<body>`` : un élément
+    courant ne paraît qu'à partir de la page où il est rencontré, il doit donc
+    précéder tout contenu. ``css`` est la feuille propre à la pièce, ajoutée
+    APRÈS celle du gabarit.
+    """
+    styles = styles or styles_vides()
+    return ''.join([
+        '<!doctype html><html lang="', escape(langue or 'fr', quote=True),
+        '"><head><meta charset="utf-8"><title>', escape(titre or ''),
+        '</title><style>', css_du_gabarit(styles), css or '',
+        '</style></head><body>',
+        entete_html(styles, titre=titre),
+        pied_html(provenance, mentions=mentions),
+        corps or '',
+        '</body></html>',
+    ])
