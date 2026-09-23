@@ -196,6 +196,35 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
   })
 })
 
+// CAD46 — « Reporter au » et « À rappeler le… » déplacent TOUT le plan : la
+// même phrase le dit sous les deux champs.
+describe('CAD46 RelanceEtapeRow — le report fait glisser tout le suivi', () => {
+  const GLISSEMENT = 'Le reste du suivi glisse du même nombre de jours.'
+
+  it('la phrase est présente sous « Reporter au »', () => {
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    expect(screen.getByLabelText('Reporter au')).toBeInTheDocument()
+    expect(screen.getByTestId('glissement-plan')).toHaveTextContent(GLISSEMENT)
+  })
+
+  it('la phrase est présente sous « À rappeler le… »', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    expect(screen.getByLabelText('Rappeler le')).toBeInTheDocument()
+    expect(screen.getByTestId('glissement-plan')).toHaveTextContent(GLISSEMENT)
+  })
+
+  it('« Plus tard » (la veille) garde SA suite, sans cette phrase', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard — pas maintenant' }))
+    expect(screen.queryByTestId('glissement-plan')).not.toBeInTheDocument()
+  })
+})
+
 // CAD84 — « message ouvert ? » ne présume plus le canal suggéré : le
 // libellé est neutre (appeler à la place est normal).
 describe('CAD84 RelanceEtapeRow — une question qui ne présume pas le canal', () => {

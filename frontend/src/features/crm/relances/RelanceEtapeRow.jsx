@@ -282,6 +282,12 @@ function joursEntre(debut, fin) {
 // glisse. Le serveur, lui, bascule la veille en réveil daté au-delà d'un mois.
 const VEILLE_PROPOSEE_APRES_JOURS = 7
 
+// CAD46 — la conséquence COMMUNE de « Reporter au » (décaler) et de
+// « À rappeler le… » : `reporter_prochaine_touche` décale la touche, TOUTES
+// les suivantes et l'ancre `cadence_depart` du même écart (vérifié par la
+// garde CAD17 `GlissementDuPlanTests`). Une seule constante, deux champs.
+const GLISSEMENT_DU_PLAN = 'Le reste du suivi glisse du même nombre de jours.'
+
 // RLC3 (relevé fondateur du 08/09/2026) — les canaux dont la touche consiste à
 // ÉCRIRE : c'est là, et seulement là, que la question « le message a-t-il été
 // ouvert ? » a un sens. Un appel a déjà son issue obligatoire (CKP2/CKP4).
@@ -764,6 +770,15 @@ export default function RelanceEtapeRow({
               </div>
             </div>
           )}
+          {/* CAD46 — « À rappeler le… », le contrôle le PLUS utilisé, passe
+              par le même chemin que « Reporter » : il décale tout le reste du
+              plan. La même phrase le dit, sous le champ. (« Plus tard » a sa
+              propre suite — la veille — annoncée par le serveur.) */}
+          {reponseChoisie?.rappel && reponseChoisie.outcome === 'rappel' && (
+            <p className="text-xs text-muted-foreground" data-testid="glissement-plan">
+              {GLISSEMENT_DU_PLAN}
+            </p>
+          )}
           {reponseChoisie?.rappel && messageRappel && (
             <p className="text-xs text-danger" role="alert" data-testid="erreur-rappel-le">
               {messageRappel}
@@ -874,7 +889,7 @@ export default function RelanceEtapeRow({
           <p className="text-xs text-muted-foreground" data-testid="suite-report">
             {modeReport === 'veille'
               ? 'La cadence se tait jusqu’à cette date et reprend à cette même touche — aucune relance ne part d’ici là. Au-delà d’un mois, elle bascule en réveil daté.'
-              : 'Cette touche et la suite du plan glissent de l’écart choisi.'}
+              : 'Cette touche est déplacée à la date choisie.'}
           </p>
           {veilleProposee && !reportMode && (
             <p className="text-xs text-warning" data-testid="veille-proposee">
@@ -894,6 +909,16 @@ export default function RelanceEtapeRow({
                      value={reportHeure} onChange={(e) => setReportHeure(e.target.value)} />
             </div>
           </div>
+          {/* CAD46 — décaler une touche décale TOUT le plan (les touches
+              suivantes et l'ancre `cadence_depart`, du même écart : garde
+              CAD17 `GlissementDuPlanTests`). Sans cette phrase, Meryem croyait
+              bouger un rendez-vous et découvrait des semaines plus tard que le
+              dossier avait dérivé. */}
+          {modeReport === 'decaler' && (
+            <p className="text-xs text-muted-foreground" data-testid="glissement-plan">
+              {GLISSEMENT_DU_PLAN}
+            </p>
+          )}
           {reportPasse && (
             <p className="text-xs text-danger" role="alert" data-testid="erreur-report-date">
               « Reporter au » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.

@@ -930,6 +930,44 @@ class PariteJournalTests(PariteBase):
                             VERIFICATEURS[code](constat)
 
 
+class GlissementDuPlanTests(PariteBase):
+    """CAD46 — la phrase affichée sous « Reporter au » et « À rappeler le… »
+    (« Le reste du suivi glisse du même nombre de jours. ») est une promesse
+    d'écran comme les autres : elle est GARDÉE ici. La preuve du glissement :
+    la touche déplacée garde sa position par rapport à l'ancre de la cadence
+    (``due_at - cadence_depart`` inchangé), donc toutes les touches à naître
+    — datées depuis cette ancre — glissent du même écart."""
+    slug = 'cad17-glissement'
+
+    def test_reporter_au_fait_glisser_l_ancre_du_meme_ecart(self):
+        scenario = Scenario('glissement', 'contact', 2, APPEL)
+        lead, etape = self._fabriquer(scenario, 'base')
+        position = etape.due_at - etape.cadence_depart
+        resp = self.api.post(
+            f'/api/django/crm/relance-etapes/{etape.pk}/reporter/',
+            {'rappel_le': DATE_CHOISIE.isoformat(),
+             'rappel_heure': HEURE_CHOISIE}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        etape.refresh_from_db()
+        self.assertEqual(etape.due_date, DATE_CHOISIE)
+        self.assertNotEqual(etape.cadence_depart, GEL)
+        self.assertEqual(etape.due_at - etape.cadence_depart, position)
+
+    def test_a_rappeler_le_fait_glisser_le_reste_du_plan(self):
+        scenario = Scenario('glissement', 'contact', 1, WHATSAPP)
+        lead, etape = self._fabriquer(scenario, 'base')
+        resp = self._rejouer(etape, 'rappel', 'base')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        suivante = lead.relance_etapes.get(
+            cadence='contact', ordre=2, statut=A_FAIRE)
+        self.assertEqual(suivante.due_date, DATE_CHOISIE)
+        # Sa position dans le protocole (J0 + 3 min) est conservée : l'ancre
+        # a glissé exactement de l'écart qui l'a amenée à la date choisie.
+        self.assertNotEqual(suivante.cadence_depart, GEL)
+        self.assertEqual(suivante.due_at - suivante.cadence_depart,
+                         datetime.timedelta(minutes=3))
+
+
 class ContratServiTests(PariteBase):
     """Le sérialiseur RÉEL (liste de la file) sert l'exemple committé."""
     slug = 'cad17-contrat'
