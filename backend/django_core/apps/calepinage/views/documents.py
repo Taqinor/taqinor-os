@@ -104,3 +104,21 @@ def diagramme_pertes_svg(self, request, pk=None):
 
 
 CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
+
+
+# ── CALX321 — l'inventaire des documents du lot 6, DONNÉE PAR DONNÉE ───────
+@extend_schema(responses={200: OpenApiTypes.OBJECT})
+@action(detail=True, methods=['get'], url_path='documents',
+        url_name='documents', permission_classes=[PeutVoirCalepinage])
+def documents(self, request, pk=None):
+    """CALX321 — l'inventaire des NEUF documents du lot 6 (contrat
+    ``calepinage_documents.json``), DISTINCT de l'inventaire des sorties
+    techniques (``sorties/``, CAL175). Une pièce indisponible reste LISTÉE,
+    avec ``manque[]`` qui NOMME le ou les champs à saisir."""
+    from ..services.documents import inventaire_des_documents
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    return Response(inventaire_des_documents(calepinage))
+
+
+CalepinageViewSet.documents = documents

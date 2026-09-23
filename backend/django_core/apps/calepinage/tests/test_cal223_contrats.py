@@ -275,8 +275,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # vérifie désormais leurs routes comme celles des autres.
     # CALX297 a livré ``GET calepinages/<pk>/rapport-etude.pdf/``
     # (``views/documents.py``) : ``rapport_etude.json`` en est SORTI.
-    # CALX291 : l'inventaire GET documents/ n'arrive qu'avec CALX321.
-    'calepinage_documents.json': 'CALX321',
+    # CALX321 a livré ``GET calepinages/<pk>/documents/`` (``views/documents.py``,
+    # action ``documents``) : ``calepinage_documents.json`` en est SORTI —
+    # même retrait que CALX297 avant elle.
     # CALX293 : la route GET export-projet.json/ n'arrive qu'avec CALX312.
     'export_projet.json': 'CALX312',
 }
