@@ -31,6 +31,18 @@
     "veille_meme_touche": "Le dossier se met en veille jusqu’à la date convenue et reprend à cette même touche : aucune relance ne part d’ici là (au-delà d’un mois, la cadence s’arrête et un réveil est daté).",
     "question_prix_pause": "Le suivi de proposition se met en pause : une étape « Question de prix — préparer l’appel du fondateur » est posée pour demain, et aucun message ne part tant qu’elle n’est pas traitée.",
     "question_prix_etape": "Une étape « Question de prix — préparer l’appel du fondateur » est posée pour demain.",
-    "etape_devis_modifie": "Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; cette touche-ci ne fait naître aucune touche suivante."
+    "etape_devis_modifie": "Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; cette touche-ci ne fait naître aucune touche suivante.",
+    "journal_suite_si_rien_ouvert": "Si plus aucune relance n’est ouverte, une étape de suite est posée (le suivi d’un devis envoyé reprend s’il n’est pas allé au bout), et un dossier au Froid en sort.",
+    "journal_decider_si_rien_ouvert": "Si plus aucune relance n’est ouverte et que le dossier n’est pas au Froid, une étape « Décider la suite » (perdu ou relance ultérieure) est posée — marquer perdu reste votre décision.",
+    "journal_sans_effet": "Journalisé seulement : aucune relance n’est ajoutée, déplacée ni arrêtée. Pour faire avancer le plan de relance, traitez la touche du jour."
+  },
+  "_doc_journal": "CAD15 — les effets d'une ISSUE journalisée depuis la fiche (journal d'appel) : aucune touche n'est close, seuls les récepteurs MRY9 réagissent. Table ÉGALE à apps/crm/suite_touche.py::promesses_journal() (garde CAD17), rejouée par l'API réelle.",
+  "journal": {
+    "joint": ["contact_arretee", "reveils_arretes", "journal_suite_si_rien_ouvert"],
+    "non_joint": ["journal_sans_effet"],
+    "rappel": ["journal_sans_effet"],
+    "refuse": ["relances_arretees", "journal_decider_si_rien_ouvert"],
+    "interesse": ["contact_arretee", "reveils_arretes", "journal_suite_si_rien_ouvert"],
+    "visite_acceptee": ["journal_sans_effet"]
   }
 }

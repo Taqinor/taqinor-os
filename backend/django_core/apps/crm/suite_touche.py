@@ -77,6 +77,12 @@ VEILLE_MEME_TOUCHE = 'veille_meme_touche'
 QUESTION_PRIX_PAUSE = 'question_prix_pause'
 QUESTION_PRIX_ETAPE = 'question_prix_etape'
 ETAPE_DEVIS_MODIFIE = 'etape_devis_modifie'
+# CAD15 — le JOURNAL D'APPEL de la fiche : une issue journalisée ne clôt
+# aucune touche, seuls les récepteurs MRY9 réagissent — d'où des effets
+# propres, dits eux aussi.
+JOURNAL_SUITE_SI_RIEN_OUVERT = 'journal_suite_si_rien_ouvert'
+JOURNAL_DECIDER_SI_RIEN_OUVERT = 'journal_decider_si_rien_ouvert'
+JOURNAL_SANS_EFFET = 'journal_sans_effet'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -92,7 +98,8 @@ CODES = frozenset({
     VISITE_FROID_SI_SEULE, SUITE_SI_PLUS_RIEN_OUVERT,
     PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
-    ETAPE_DEVIS_MODIFIE,
+    ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
+    JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -389,4 +396,36 @@ def promesses_touche(etape, *, ordres=None):
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid)
         promesses[cle] = codes
+    return promesses
+
+
+def promesses_journal():
+    """CAD15 — ``{issue: [codes d'effet]}`` d'une ISSUE journalisée depuis la
+    fiche (journal d'appel, ``LeadViewSet.log_interaction``).
+
+    Là, AUCUNE touche n'est close : seul le récepteur MRY9
+    (``receivers._arreter_cadence_on_outcome``) réagit à l'issue, en lisant
+    la MÊME table que le panneau des touches (``CADENCES_ARRETEES_PAR_ISSUE``)
+    — d'où cette dérivation, jamais une liste recopiée. Un « Refus » coché
+    pour mémoire éteint toutes les relances du dossier : l'écran le DIT.
+
+    La table est committée côté écran (``suite_phrases.json``, clé
+    ``journal``) : la garde CAD17 exige qu'elle soit ÉGALE à ce calcul et
+    rejoue chaque issue par l'API réelle."""
+    from .models import LeadActivity
+    from .services import CADENCES_ARRETEES_PAR_ISSUE
+
+    promesses = {}
+    for issue, _libelle in LeadActivity.OUTCOMES:
+        if not issue:
+            continue
+        arretees = CADENCES_ARRETEES_PAR_ISSUE.get(issue, ())
+        if not arretees:
+            promesses[issue] = [JOURNAL_SANS_EFFET]
+        elif 'apres_devis' in arretees:
+            promesses[issue] = [RELANCES_ARRETEES,
+                                JOURNAL_DECIDER_SI_RIEN_OUVERT]
+        else:
+            promesses[issue] = [CONTACT_ARRETEE, REVEILS_ARRETES,
+                                JOURNAL_SUITE_SI_RIEN_OUVERT]
     return promesses

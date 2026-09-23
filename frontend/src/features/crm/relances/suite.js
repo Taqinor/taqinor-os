@@ -54,6 +54,17 @@ export function codesSuite(etape, reponse) {
   return Array.isArray(codes) ? codes : []
 }
 
+/** CAD15 — la conséquence d'une ISSUE journalisée depuis la fiche (journal
+ *  d'appel) : aucune touche n'est close, seuls les récepteurs du moteur
+ *  réagissent. Même table de phrases que le panneau « Fait » — les codes
+ *  viennent de `suite_phrases.json › journal`, gardée ÉGALE au calcul serveur
+ *  (`suite_touche.promesses_journal`) et rejouée par la garde CAD17. */
+export function suiteJournal(outcome) {
+  const codes = PHRASES.journal?.[outcome]
+  if (!Array.isArray(codes)) return ''
+  return codes.map(phraseEffet).filter(Boolean).join(' ')
+}
+
 /** La phrase complète annoncée sous les réponses : les phrases des codes
  *  d'effet (dérivées du moteur), suivies de la précision propre à la réponse
  *  (`precision` — un geste d'ÉCRAN, jamais un effet moteur : « l'accusé vous

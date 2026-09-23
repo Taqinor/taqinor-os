@@ -72,9 +72,13 @@ HEURE_CHOISIE = '11:00'
 DATE_LOINTAINE = datetime.date(2026, 11, 9)
 
 RACINE = Path(__file__).resolve().parents[4]
-PHRASES = json.loads(
+TABLE_ECRAN = json.loads(
     (RACINE / 'frontend' / 'src' / 'features' / 'crm' / 'relances'
-     / 'suite_phrases.json').read_text(encoding='utf-8'))['effets']
+     / 'suite_phrases.json').read_text(encoding='utf-8'))
+PHRASES = TABLE_ECRAN['effets']
+#: CAD15 — les effets d'une issue journalisée depuis la fiche, tels que
+#: l'écran du journal d'appel les annonce.
+JOURNAL_ECRAN = TABLE_ECRAN['journal']
 CONTRAT = json.loads(
     (Path(__file__).resolve().parent / 'contract_samples'
      / 'relance_etape_v2.json').read_text(encoding='utf-8'))
@@ -165,6 +169,10 @@ VARIANTES = {
     st.SUITE_SI_PLUS_RIEN_OUVERT: ('base', 'avec_autre', 'seule_epuise'),
     st.PROCHAINE_RELANCE_A_LA_DATE: ('base', 'avec_autre'),
     st.VEILLE_MEME_TOUCHE: ('base', 'loin'),
+    # CAD15 — le journal d'appel : la suite dépend de ce qui reste ouvert et
+    # de l'étape du dossier (Froid ou non).
+    st.JOURNAL_SUITE_SI_RIEN_OUVERT: ('base', 'avec_autre', 'froid'),
+    st.JOURNAL_DECIDER_SI_RIEN_OUVERT: ('base', 'froid', 'generique_ouverte'),
 }
 
 
@@ -201,7 +209,7 @@ class Constat:
     scenario: Scenario
     variante: str
     lead: Lead
-    etape: RelanceEtape
+    etape: RelanceEtape       # None pour le journal d'appel (aucune touche)
     avant: frozenset          # les touches ouvertes AVANT, hors la touche
     donnees: dict             # la réponse de l'API
 
@@ -209,8 +217,10 @@ class Constat:
         return self.lead.relance_etapes.filter(statut=A_FAIRE, **filtres)
 
     def nouvelles(self, **filtres):
-        return (self.ouvertes(**filtres)
-                .exclude(pk__in=self.avant).exclude(pk=self.etape.pk))
+        qs = self.ouvertes(**filtres).exclude(pk__in=self.avant)
+        if self.etape is not None:
+            qs = qs.exclude(pk=self.etape.pk)
+        return qs
 
     def barreaux(self, qs):
         return (qs.filter(ordre__lt=90)
@@ -430,6 +440,33 @@ def _etape_devis_modifie(c):
            == {VISITE_DEVIS_LIBELLE}, 'une touche suivante est née')
 
 
+# CAD15 — le journal d'appel de la fiche (aucune touche close).
+
+def _journal_suite_si_rien_ouvert(c):
+    c.vrai(c.lead.stage != stages.COLD, 'le dossier est resté au Froid')
+    if c.variante == 'avec_autre':
+        _rien_de_nouveau(c)
+    else:
+        c.vrai(c.nouvelles().exists(), 'aucune étape de suite posée')
+
+
+def _journal_decider_si_rien_ouvert(c):
+    if c.variante == 'base':
+        _etape_decider_suite(c)
+        return
+    c.vrai(not c.ouvertes(libelle=FILET_REFUS_LIBELLE).exists(),
+           'une étape « décider la suite » est posée malgré tout')
+    if c.variante == 'froid':
+        _reste_au_froid(c)
+    else:
+        _rien_de_nouveau(c)
+
+
+def _journal_sans_effet(c):
+    c.vrai(set(c.ouvertes().values_list('pk', flat=True)) == set(c.avant),
+           'une relance a été ajoutée ou arrêtée')
+
+
 VERIFICATEURS = {
     st.TOUCHE_SUIVANTE: _touche_suivante,
     st.TOUCHE_SUIVANTE_A_LA_DATE: _touche_suivante_a_la_date,
@@ -462,6 +499,9 @@ VERIFICATEURS = {
     st.QUESTION_PRIX_PAUSE: _question_prix_pause,
     st.QUESTION_PRIX_ETAPE: _question_prix,
     st.ETAPE_DEVIS_MODIFIE: _etape_devis_modifie,
+    st.JOURNAL_SUITE_SI_RIEN_OUVERT: _journal_suite_si_rien_ouvert,
+    st.JOURNAL_DECIDER_SI_RIEN_OUVERT: _journal_decider_si_rien_ouvert,
+    st.JOURNAL_SANS_EFFET: _journal_sans_effet,
 }
 
 
@@ -485,7 +525,14 @@ class VocabulaireTests(SimpleTestCase):
                 ordres=_ordres_defaut(scenario.cadence))
             for codes in promesses.values():
                 produits.update(codes)
+        for codes in st.promesses_journal().values():
+            produits.update(codes)
         self.assertEqual(produits, set(st.CODES))
+
+    def test_le_journal_de_l_ecran_est_le_calcul_du_moteur(self):
+        # CAD15 — la table committée côté écran (journal d'appel) est ÉGALE
+        # à la dérivation serveur : jamais deux listes qui divergent.
+        self.assertEqual(JOURNAL_ECRAN, st.promesses_journal())
 
     def test_chaque_reponse_proposee_a_sa_promesse(self):
         for scenario in SCENARIOS:
@@ -756,6 +803,69 @@ class PariteDeuxiemeAffaireTests(PariteBase):
 
     def test_deuxieme_affaire(self):
         self._garder('deuxieme_message', 'deuxieme_appel')
+
+
+class PariteJournalTests(PariteBase):
+    """CAD15 — le journal d'appel de la fiche : chaque issue est rejouée par
+    l'API réelle (``log-interaction``) et l'effet de chaque code annoncé à
+    l'écran est constaté, dans chacune de ses branches."""
+    slug = 'cad17-journal'
+
+    JOURNAL = Scenario('journal', 'contact', 2, APPEL)
+
+    def _fabriquer_journal(self, variante):
+        froid = variante == 'froid'
+        lead = self._lead(Scenario(
+            'journal', 'contact', 2, APPEL,
+            stage=stages.COLD if froid else stages.CONTACTED))
+        if froid:
+            # Un dormant : ses deux réveils ouverts, rien d'autre.
+            for entree in CADENCES_DEFAUT['reveil']:
+                self._touche(lead, cadence='reveil', ordre=entree['ordre'],
+                             canal=entree['canal'], libelle=entree['libelle'],
+                             due=GEL + datetime.timedelta(
+                                 days=entree['delai_jours']),
+                             depart=GEL)
+            return lead
+        # La prise de contact en cours : une touche ouverte.
+        self._touche(lead, cadence='contact', ordre=2, canal=APPEL,
+                     libelle="Appel d'ouverture", depart=GEL)
+        if variante == 'avec_autre':
+            devis = self._devis(lead)
+            self._touche(lead, cadence='apres_devis', ordre=4,
+                         canal=WHATSAPP, libelle='Preuve — chantier comparable',
+                         devis=devis, due=GEL + datetime.timedelta(days=2),
+                         depart=GEL - datetime.timedelta(days=7))
+        elif variante == 'generique_ouverte':
+            self._touche(lead, cadence='generique', ordre=2, canal=WHATSAPP,
+                         libelle='Relance WhatsApp',
+                         due=GEL + datetime.timedelta(days=3), depart=GEL)
+        return lead
+
+    def test_journal_d_appel(self):
+        for issue, codes in JOURNAL_ECRAN.items():
+            variantes = []
+            for code in codes:
+                for variante in VARIANTES.get(code, ('base',)):
+                    if variante not in variantes:
+                        variantes.append(variante)
+            for variante in variantes:
+                with self.subTest(issue=issue, variante=variante):
+                    lead = self._fabriquer_journal(variante)
+                    avant = frozenset(
+                        lead.relance_etapes.filter(statut=A_FAIRE)
+                        .values_list('pk', flat=True))
+                    resp = self.api.post(
+                        f'/api/django/crm/leads/{lead.pk}/log-interaction/',
+                        {'kind': 'appel', 'outcome': issue}, format='json')
+                    self.assertIn(resp.status_code, (200, 201), resp.data)
+                    lead.refresh_from_db()
+                    constat = Constat(
+                        test=self, scenario=self.JOURNAL, variante=variante,
+                        lead=lead, etape=None, avant=avant, donnees=resp.data)
+                    for code in codes:
+                        if variante in VARIANTES.get(code, ('base',)):
+                            VERIFICATEURS[code](constat)
 
 
 class ContratServiTests(PariteBase):
