@@ -519,7 +519,7 @@ def _rendus_du_module(calepinage, company):
         from apps.ventes.selectors import schema_unifilaire_svg
         from core.pdf import render_pdf
 
-        svg = schema_unifilaire_svg(calepinage.devis) \
+        svg = schema_unifilaire_svg(devis=calepinage.devis) \
             if getattr(calepinage, 'devis_id', None) else ''
         if not svg:
             raise DossierRefuse(
