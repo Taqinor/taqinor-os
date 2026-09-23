@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .models import SettingsAuditLog
 from .models_tariff import TariffSettings
-from .serializers_tariff import TariffSettingsSerializer
+from .serializers_tariff import CHAMPS_LOT5, TariffSettingsSerializer
 from .views_common import _audit_company
 from . import tariff as tariff_service
 from . import pvgis as pvgis_client
@@ -39,6 +39,15 @@ _TARIFF_AUDIT_FIELDS = {
     'inclinaison_defaut_deg': "Inclinaison par défaut (°)",
     'azimut_defaut_deg': "Azimut par défaut (°)",
 }
+
+# CALX72/CALX284 — les réglages du lot 5 (TOU, compensation, structure, taxes,
+# indexation, fiscalité) entrent dans l'audit de version : un champ servi à
+# l'écran sans trace d'audit dériverait en silence. Libellés = verbose_name du
+# modèle, une seule source.
+_TARIFF_AUDIT_FIELDS.update({
+    champ: str(TariffSettings._meta.get_field(champ).verbose_name)
+    for champ in CHAMPS_LOT5 if champ not in _TARIFF_AUDIT_FIELDS
+})
 
 
 def _settings(request):
