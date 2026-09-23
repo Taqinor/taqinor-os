@@ -235,6 +235,31 @@ def residential_tranches_for(company) -> dict | None:
     return {"pairs": pairs, "selective_threshold": seuil, "boundary_tolerance": tol}
 
 
+def _reglages_tarif_existants(company):
+    """``TariffSettings`` DÉJÀ enregistré pour ``company``, ou ``None``.
+
+    Lecture pure (jamais de ``get_or_create`` : un sélecteur n'écrit pas) —
+    une société qui n'a jamais ouvert l'écran Tarification n'a rien saisi.
+    """
+    if company is None:
+        return None
+    from apps.parametres.models_tariff import TariffSettings
+    return TariffSettings.objects.filter(company=company).first()
+
+
+def tou_pour(company) -> dict | None:
+    """CALX274 — grille horaire (time-of-use) SAISIE par la société, ou ``None``.
+
+    ``None`` tant que les tranches horaires, leurs tarifs, la SOURCE et sa
+    DATE ne sont pas tous saisis dans Paramètres → Tarification & ROI :
+    l'appelant publie alors l'économie horaire ``None`` avec
+    ``apps.parametres.tariff.MOTIF_TOU_NON_SAISI`` — jamais un tarif supposé.
+    Forme rendue : voir ``apps.parametres.tariff.tou_depuis_reglages``.
+    """
+    from apps.parametres.tariff import tou_depuis_reglages
+    return tou_depuis_reglages(_reglages_tarif_existants(company))
+
+
 # ── Catalogue « Réalisations » — la preuve de la touche J4 ─────────────────
 # Ordre fondateur du 08/09/2026 : le message d'après-devis « Voici une
 # installation comparable à la vôtre » ne se remplit plus à la main. Ces

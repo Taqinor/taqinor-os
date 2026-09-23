@@ -1101,20 +1101,24 @@ class NetMeteringSavingsTest(SimpleTestCase):
         self.assertEqual(res["annual_compensated_kwh"], 730.0)
 
     def test_24h_curve_maps_hours_to_default_tranches(self):
-        # Courbe 24 h + tranches par défaut : injection nocturne (creuse) et
-        # de soirée (pointe) mappées sur les bons tarifs par défaut.
+        # Courbe 24 h + découpage horaire par défaut : l'injection de soirée
+        # (19 h = pointe) est mappée sur la tranche pointe et valorisée au
+        # tarif FOURNI (CALX274 — plus aucun tarif par défaut dans le module).
         inj = [0.0] * 24
         imp = [0.0] * 24
-        inj[19] = 4.0  # 19 h = pointe (défaut)
+        inj[19] = 4.0  # 19 h = pointe (découpage par défaut)
         imp[19] = 4.0
         res = sd.net_metering_savings(
-            injected_curve=inj, import_curve=imp, days_per_year=1)
+            injected_curve=inj, import_curve=imp, days_per_year=1,
+            tranche_tariffs=self.TARIFFS)
         self.assertEqual(res["hours"], 24)
         self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 4.0)
-        # Au tarif pointe par défaut.
-        expected = 4.0 * sd.DEFAULT_TRANCHE_TARIFFS["pointe"]
+        expected = 4.0 * self.TARIFFS["pointe"]
         self.assertAlmostEqual(
             res["tranches"]["pointe"]["savings_mad"], round(expected, 2))
+        # Le découpage par défaut est PUBLIÉ comme hypothèse, avec provenance.
+        self.assertTrue(any(h["cle"] == "hour_tranches" and h["source"]
+                            for h in res["hypotheses"]))
 
     def test_no_import_means_nothing_compensated(self):
         # Surplus injecté mais aucun soutirage → rien à compenser (cap = 0).
@@ -1140,12 +1144,19 @@ class NetMeteringSavingsTest(SimpleTestCase):
         self.assertEqual(res["tranches"]["pointe"]["savings_mad"], 20.0)
 
     def test_empty_curves_never_raise(self):
-        # Courbes vides → tout à 0, jamais d'exception.
+        # Courbes vides → flux à 0, jamais d'exception. CALX274 : sans tarif
+        # saisi, l'économie est OMISE (None + motif), jamais un 0 affiché.
         res = sd.net_metering_savings(
             injected_curve=[], import_curve=[], days_per_year=1)
         self.assertEqual(res["injected_kwh"], 0.0)
         self.assertEqual(res["compensated_kwh"], 0.0)
-        self.assertEqual(res["savings_mad_per_period"], 0.0)
+        self.assertIsNone(res["savings_mad_per_period"])
+        self.assertIsNone(res["annual_savings_mad"])
+        self.assertIn("tou_tarifs", res["motif"])
+        # Avec des tarifs fournis, des courbes vides valent bien 0.
+        res = sd.net_metering_savings(
+            injected_curve=[], import_curve=[], days_per_year=1,
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS)
         self.assertEqual(res["annual_savings_mad"], 0.0)
 
     def test_zero_days_per_year_guarded(self):

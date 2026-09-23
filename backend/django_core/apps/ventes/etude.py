@@ -21,8 +21,8 @@ PV72 ferme la chaîne complète : autoconsommation horaire
 (``hourly_self_consumption`` sur les courbes charge/production 288 points —
 charge fournie ou synthétisée depuis la conso du lead, production issue de
 :func:`production_horaire_zone`), net-metering du surplus
-(``net_metering_savings``, tarifs par tranche toujours ceux DÉFAUT « à
-confirmer » de ``solar_design`` — jamais durcis ici), puissance souscrite
+(``net_metering_savings``, tarifs par tranche SAISIS par la société —
+CALX274, économie omise avec motif sans eux), puissance souscrite
 recommandée (``optimize_subscribed_power``, UNIQUEMENT en industriel/
 commercial — bloc minimal honnête ailleurs), dégradation garantie
 (``module_degradation_curve``) et projection 25 ans VAN/TRI
@@ -1063,12 +1063,19 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     mode = getattr(devis, 'mode_installation', None)
     classe = 'agricole' if mode == 'agricole' else 'residentiel'
 
-    # PV72 — les tarifs par tranche restent les DÉFAUTS « à confirmer » de
-    # solar_design (jamais durcis ici) ; seul le toggle réel de compensation
-    # société est branché (13-09 : OFF par défaut au Maroc).
+    # CALX274 — les tarifs par tranche sont ceux SAISIS par la société
+    # (Paramètres → Tarification & ROI, avec source et date) : plus aucun
+    # défaut « à confirmer ». Sans grille saisie, l'économie du surplus est
+    # OMISE (None + motif dans les avertissements) quand la compensation est
+    # activée ; le toggle réel de compensation société reste branché (13-09 :
+    # OFF par défaut au Maroc ⇒ économie nulle par le régime).
+    from apps.parametres import tariff as tariff_service
+    tou = tariff_service.tou_depuis_reglages(settings) or {}
     nm_result = net_metering_savings(
         injected_curve=surplus_curve, import_curve=import_curve,
         days_per_year=1,
+        hour_tranches=tou.get('heures'),
+        tranche_tariffs=tou.get('tarifs'),
         surplus_injecte_compense=bool(settings.surplus_injecte_compense))
     net_metering = {
         'annual_savings_mad': nm_result['annual_savings_mad'],
@@ -1090,9 +1097,12 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     }
     warnings.extend(deg_result['warnings'])
 
+    # CALX274 — une économie de surplus OMISE (aucun tarif horaire saisi)
+    # n'entre pas dans le flux : la projection porte sur l'autoconsommation
+    # seule, et l'avertissement de ``net_metering_savings`` le dit.
     annual_savings_year1 = (
         _annual_savings_year1(settings, self_consumption['self_consumed_kwh'], classe)
-        + net_metering['annual_savings_mad'])
+        + (net_metering['annual_savings_mad'] or 0.0))
     upfront_cost = _num(getattr(devis, 'total_ht', None), 0.0)
     proj_result = tariff_escalation_projection(
         annual_savings_year1=annual_savings_year1, upfront_cost=upfront_cost)

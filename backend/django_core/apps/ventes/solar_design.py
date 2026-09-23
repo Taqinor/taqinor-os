@@ -47,6 +47,11 @@ from core.product_roles import (
     est_panneau,
 )
 
+# CALX274 — le motif « aucun tarif horaire saisi » a UNE rédaction, celle du
+# service tarifaire de la FONDATION ``apps.parametres`` (module pur : stdlib
+# seulement, ni Django ni modèle — l'import de tête reste sûr, comme ci-dessus).
+from apps.parametres.tariff import MOTIF_TOU_NON_SAISI as _MOTIF_TOU_NON_SAISI
+
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
 # surchargeable par l'appelant via le dict ``module``.
@@ -2357,14 +2362,17 @@ DEFAULT_HOUR_TRANCHES = [
     "pointe", "pointe", "pointe", "pointe", "pleine", "creuse",  # 18–23 h
 ]
 
-# Tarifs TTC indicatifs (MAD/kWh) par tranche — valeurs marché conservatrices,
-# à CONFIRMER par le founder selon le contrat ONEE réel. Surchargeable via
-# ``tranche_tariffs``. La pointe est la plus chère, la creuse la moins chère.
-DEFAULT_TRANCHE_TARIFFS = {
-    "pointe": 1.45,
-    "pleine": 1.15,
-    "creuse": 0.85,
-}
+# CALX274 — PLUS AUCUN TARIF PAR TRANCHE PAR DÉFAUT. Les anciens 1,45 / 1,15 /
+# 0,85 MAD/kWh (``DEFAULT_TRANCHE_TARIFFS``, commentés « à CONFIRMER par le
+# founder selon le contrat ONEE réel ») n'avaient aucune source et étaient
+# appliqués dès qu'un appelant ne passait rien. Les tarifs par tranche sont
+# désormais SAISIS par la société (``apps.parametres.selectors.tou_pour``) ;
+# sans eux, ``net_metering_savings`` publie ``economie: None`` + ``motif``.
+#: Motif publié quand aucun tarif par tranche n'est fourni — il NOMME le
+#: réglage société à renseigner. UNE seule rédaction, celle de
+#: ``apps.parametres.tariff`` (module pur, app de fondation : l'import ne tire
+#: pas Django — ce module reste importable sans configuration).
+MOTIF_TARIFS_TOU_ABSENTS = _MOTIF_TOU_NON_SAISI
 
 # Ordre canonique des tranches (du plus cher au moins cher) pour l'allocation
 # du plafond annuel : on compense d'abord les kWh les plus chers.
@@ -2402,9 +2410,14 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
     import_curve : itérable du soutirage réseau horaire (kWh/h), même mapping.
         Absent → soutirage nul → rien à compenser (économie 0).
     hour_tranches : liste de 24 libellés de tranche par heure (défaut
-        ``DEFAULT_HOUR_TRANCHES``). Un libellé inconnu retombe sur « pleine ».
-    tranche_tariffs : dict ``{tranche: MAD/kWh}`` (défaut
-        ``DEFAULT_TRANCHE_TARIFFS``). Tarif manquant/illisible → 0.
+        ``DEFAULT_HOUR_TRANCHES``, publié dans ``hypotheses`` avec sa
+        provenance : découpage du module, non validé par une société). Un
+        libellé inconnu retombe sur « pleine ».
+    tranche_tariffs : dict ``{tranche: MAD/kWh}`` SAISI par la société
+        (``apps.parametres.selectors.tou_pour``). CALX274 — AUCUN défaut :
+        ``None`` ⇒ ``economie: None`` + ``motif`` (:data:`MOTIF_TARIFS_TOU_ABSENTS`)
+        et ``omissions`` nomme ``tranche_tariffs`` ; une tranche compensée sans
+        tarif rend elle aussi l'économie ``None`` en la nommant, jamais un 0.
     surplus_injecte_compense : réglage EXISTANT (toggle). False → l'injection
         n'est PAS compensée → économie 0, tout le surplus en « non compensé ».
     days_per_year : facteur d'annualisation si la courbe est une journée type
@@ -2425,28 +2438,56 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
          annual_compensated_kwh, annual_injected_kwh,
          savings_mad_per_period, annual_savings_mad,
          annual_spill_value_mad, annual_cap_kwh, compensation_ratio,
-         warnings: []}
+         economie, motif, omissions: [{cle, motif}],
+         hypotheses: [{cle, valeur, source}], warnings: []}
 
-    Ne lève jamais : toggle OFF / courbes vides / tarifs nuls → économie 0,
-    division par zéro bornée.
+    ``economie`` = ``annual_savings_mad`` (CALX274) : ``None`` quand un tarif
+    manque, avec ``motif`` qui nomme le réglage ; ``motif`` vaut ``None`` quand
+    l'économie est chiffrée.
+
+    Ne lève jamais : toggle OFF / courbes vides → économie 0 (le régime ne
+    compense rien), tarifs absents → économie ``None`` + motif, division par
+    zéro bornée.
     """
     warnings = []
+    omissions = []
+    hypotheses = []
 
     injected = _coerce_series(injected_curve)
     imported = _coerce_series(import_curve)
 
-    tranches_by_hour = list(hour_tranches) if hour_tranches \
-        else list(DEFAULT_HOUR_TRANCHES)
+    tranches_by_hour = list(hour_tranches) if hour_tranches else []
     if not tranches_by_hour:
         tranches_by_hour = list(DEFAULT_HOUR_TRANCHES)
+        hypotheses.append({
+            "cle": "hour_tranches",
+            "valeur": list(DEFAULT_HOUR_TRANCHES),
+            "source": ("découpage horaire par défaut du module "
+                       "(apps/ventes/solar_design.py DEFAULT_HOUR_TRANCHES) — "
+                       "non validé par la société"),
+        })
 
-    tariffs = {**DEFAULT_TRANCHE_TARIFFS, **(tranche_tariffs or {})}
+    # CALX274 — les tarifs sont ceux FOURNIS, et eux seuls (aucune fusion avec
+    # une grille par défaut) ; libellés normalisés en minuscules comme les
+    # heures. ``None`` = aucune grille saisie.
+    if tranche_tariffs:
+        tariffs = {str(k or "").strip().lower(): v
+                   for k, v in dict(tranche_tariffs).items()}
+    else:
+        tariffs = None
+        omissions.append({"cle": "tranche_tariffs",
+                          "motif": MOTIF_TARIFS_TOU_ABSENTS})
 
     def _tariff(name):
+        """Tarif de la tranche, ``None`` s'il n'est pas fourni ou illisible."""
+        if tariffs is None or name not in tariffs:
+            return None
         try:
-            t = float(tariffs.get(name, 0.0))
+            t = float(tariffs[name])
         except (TypeError, ValueError):
-            return 0.0
+            return None
+        if t != t:  # NaN
+            return None
         return t if t >= 0 else 0.0
 
     try:
@@ -2472,7 +2513,7 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         if key not in names:
             names.append(key)
     # Toujours exposer les tranches tarifées même si la courbe ne les touche pas.
-    for key in tariffs:
+    for key in (tariffs or {}):
         k = (key or "").lower()
         if k and k not in names:
             names.append(k)
@@ -2521,7 +2562,8 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
             "eligible_kwh": round(compensable, 6),  # avant plafond annuel
             "compensated_kwh": 0.0,
             "spilled_kwh": 0.0,
-            "tariff": round(_tariff(name), 4),
+            "tariff": (None if _tariff(name) is None
+                       else round(_tariff(name), 4)),
             "savings_mad": 0.0,
         }
 
@@ -2544,9 +2586,10 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
             rank = _TRANCHE_ORDER.index(name)
         except ValueError:
             rank = len(_TRANCHE_ORDER)
-        return (-_tariff(name), rank, name)
+        return (-(_tariff(name) or 0.0), rank, name)
 
     remaining_cap = cap_period
+    tranches_sans_tarif = []
     for name in sorted(names, key=_alloc_key):
         out = tranche_out[name]
         eligible = out["eligible_kwh"]
@@ -2558,7 +2601,20 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         spilled = max(0.0, out["injected_kwh"] - comp)
         out["compensated_kwh"] = round(comp, 3)
         out["spilled_kwh"] = round(spilled, 3)
-        out["savings_mad"] = round(comp * _tariff(name), 2)
+        t = _tariff(name)
+        if not compense:
+            # Le régime ne compense rien : l'économie est nulle PAR LE RÉGIME,
+            # quel que soit le tarif (aucun kWh n'est effacé).
+            out["savings_mad"] = 0.0
+        elif t is None:
+            # CALX274 — un kWh compensé sans tarif saisi n'a AUCUNE valeur
+            # publiable : ni 0 (faux), ni un tarif supposé. Une tranche qui
+            # n'a rien compensé vaut 0 quel que soit son tarif.
+            out["savings_mad"] = None if comp > 0 else 0.0
+            if comp > 0 and tariffs is not None:
+                tranches_sans_tarif.append(name)
+        else:
+            out["savings_mad"] = round(comp * t, 2)
 
     if cap_period is not None and total_injected > 0:
         total_eligible = sum(t["eligible_kwh"] for t in tranche_out.values())
@@ -2572,8 +2628,26 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         sum(t["compensated_kwh"] for t in tranche_out.values()), 3)
     period_spilled = round(
         sum(t["spilled_kwh"] for t in tranche_out.values()), 3)
-    savings_per_period = round(
-        sum(t["savings_mad"] for t in tranche_out.values()), 2)
+    motif = None
+    if not compense:
+        savings_per_period = 0.0
+    elif tariffs is None:
+        # CALX274 — aucune grille saisie : l'économie est OMISE, jamais
+        # chiffrée sur les anciens 1,45 / 1,15 / 0,85 « à confirmer ».
+        savings_per_period = None
+        motif = MOTIF_TARIFS_TOU_ABSENTS
+    elif tranches_sans_tarif:
+        savings_per_period = None
+        premiere = sorted(tranches_sans_tarif)[0]
+        motif = (f"omis : la tranche « {premiere} » compense de l'énergie "
+                 f"mais n'a aucun tarif saisi (tou_tarifs.{premiere})")
+        omissions.append({"cle": f"tranche_tariffs.{premiere}",
+                          "motif": motif})
+    else:
+        savings_per_period = round(
+            sum(t["savings_mad"] or 0.0 for t in tranche_out.values()), 2)
+    if motif:
+        warnings.append(f"économie du surplus {motif}")
 
     # Valeur du surplus excédentaire (spill) au tarif résiduel facultatif.
     spill_value_period = 0.0
@@ -2588,7 +2662,8 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
     if spill_rate:
         spill_value_period = round(period_spilled * spill_rate, 2)
 
-    annual_savings = round(savings_per_period * days, 2)
+    annual_savings = (None if savings_per_period is None
+                      else round(savings_per_period * days, 2))
     annual_spill_value = round(spill_value_period * days, 2)
     annual_compensated = round(period_compensated * days, 3)
     annual_injected = round(total_injected * days, 3)
@@ -2616,6 +2691,12 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         "spill_tariff": spill_rate,
         "annual_cap_kwh": annual_cap_kwh,
         "compensation_ratio": round(ratio, 4),
+        # CALX274 — l'économie sous son nom canonique, son motif quand elle
+        # est omise, et ce qui a servi / manqué, nommé.
+        "economie": annual_savings,
+        "motif": motif,
+        "omissions": omissions,
+        "hypotheses": hypotheses,
         "warnings": warnings,
     }
 

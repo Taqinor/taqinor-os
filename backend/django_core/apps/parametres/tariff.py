@@ -32,7 +32,8 @@ défaut faux : surplus = 0). Les hypothèses par défaut sont conservatrices.
 Fonctions PURES : pas d'I/O, pas d'ORM (on reçoit un ``TariffSettings`` déjà
 chargé). Les montants sont des ``Decimal`` arrondis au centime.
 """
-from decimal import Decimal, ROUND_HALF_UP
+import datetime as _dt
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 # Bornes « théoriques » du barème sélectif, avant tolérance. La tolérance les
 # décale vers le haut (200→210, 300→310, 500→510). Elles correspondent aux
@@ -283,3 +284,223 @@ def compute_roi(settings, kwc, conso_mensuelle_kwh, cout_total_ttc,
         'economie_totale_annuelle': economie_totale,
         'payback_annees': payback,
     }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CALX274 — TRANCHES HORAIRES (time-of-use) SAISIES PAR LA SOCIÉTÉ
+# ═════════════════════════════════════════════════════════════════════════════
+# Constat : ``apps/ventes/solar_design.py`` portait ses propres tarifs par
+# tranche (pointe 1,45 / pleine 1,15 / creuse 0,85 MAD/kWh, commentés « à
+# CONFIRMER par le founder selon le contrat ONEE réel ») et les appliquait dès
+# qu'un appelant ne passait rien. Ces trois nombres n'avaient AUCUNE source.
+#
+# Désormais le découpage horaire et ses tarifs sont SAISIS par la société
+# (``TariffSettings.tou_heures`` / ``tou_tarifs``) avec la SOURCE et sa DATE
+# (``tou_source`` / ``tou_date_source``). Tant que les quatre ne sont pas
+# saisis, :func:`tou_depuis_reglages` rend ``None`` et l'économie horaire est
+# OMISE avec son motif (:data:`MOTIF_TOU_NON_SAISI`) — jamais chiffrée sur un
+# tarif supposé. Aucun libellé de tranche n'est imposé : la société nomme ses
+# tranches comme sur SA facture (« pointe », « pleine », « creuse », …).
+#
+# Fonctions PURES : elles lisent des attributs (``getattr``) — un
+# ``TariffSettings`` chargé ou tout objet qui en porte les champs — et ne
+# touchent jamais la base. ``models_tariff.TariffSettings.clean`` et, demain,
+# le sérialiseur de l'écran Tarification appellent :func:`erreurs_reglages_tarif`
+# (point d'entrée UNIQUE des refus, clé = nom du champ fautif).
+
+#: Une journée compte 24 heures : le découpage horaire en porte exactement 24.
+HEURES_TOU = 24
+
+#: Les quatre champs d'une grille horaire société (CALX274).
+CHAMPS_TOU = ('tou_heures', 'tou_tarifs', 'tou_source', 'tou_date_source')
+
+#: Motif publié quand aucune grille horaire complète n'est saisie. Il NOMME
+#: le réglage à renseigner et l'écran où il se trouve.
+MOTIF_TOU_NON_SAISI = (
+    "omis : aucun tarif horaire saisi par la société — renseigner les tranches "
+    "horaires (tou_heures), leurs tarifs (tou_tarifs), la source (tou_source) "
+    "et sa date (tou_date_source) dans Paramètres → Tarification & ROI")
+
+
+def _vide(valeur):
+    """Vrai quand un réglage n'est pas saisi (None, chaîne/liste/dict vides)."""
+    if valeur is None:
+        return True
+    if isinstance(valeur, str):
+        return not valeur.strip()
+    if isinstance(valeur, (list, tuple, dict)):
+        return len(valeur) == 0
+    return False
+
+
+def _libelle_tranche(valeur):
+    """Libellé de tranche normalisé (minuscule, sans blancs), ou ``''``."""
+    if not isinstance(valeur, str):
+        return ''
+    return valeur.strip().lower()
+
+
+def _nombre_positif(valeur):
+    """``Decimal`` ≥ 0 lu dans ``valeur``, ou ``None`` si illisible/négatif."""
+    if isinstance(valeur, bool):
+        return None
+    try:
+        d = Decimal(str(valeur).strip().replace(',', '.'))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not d.is_finite() or d < 0:
+        return None
+    return d
+
+
+def _date_saisie(valeur):
+    """``datetime.date`` lu dans ``valeur`` (date ou ISO ``AAAA-MM-JJ``)."""
+    if isinstance(valeur, _dt.datetime):
+        return valeur.date()
+    if isinstance(valeur, _dt.date):
+        return valeur
+    if isinstance(valeur, str) and valeur.strip():
+        try:
+            return _dt.date.fromisoformat(valeur.strip()[:10])
+        except ValueError:
+            return None
+    return None
+
+
+def _libelles_d_une_liste(heures, chemin, erreurs):
+    """Valide une liste de 24 libellés ; rend les libellés normalisés.
+
+    Une erreur est rangée sous la clé ``tou_heures`` (le champ fautif) avec un
+    message qui NOMME l'élément (``chemin``) ; rend ``None`` si la liste est
+    refusée.
+    """
+    if not isinstance(heures, (list, tuple)) or len(heures) != HEURES_TOU:
+        erreurs.setdefault(
+            'tou_heures',
+            f"{chemin} : exactement {HEURES_TOU} libellés de tranche sont "
+            "attendus, un par heure de 00 h à 23 h.")
+        return None
+    libelles = [_libelle_tranche(h) for h in heures]
+    for index, libelle in enumerate(libelles):
+        if not libelle:
+            erreurs.setdefault(
+                'tou_heures',
+                f"{chemin}[{index}] : libellé de tranche vide ou illisible "
+                f"pour l'heure {index:02d} h.")
+            return None
+    return libelles
+
+
+def _libelles_des_heures(tou_heures, erreurs):
+    """Ensemble des libellés employés par ``tou_heures`` (liste de 24)."""
+    libelles = _libelles_d_une_liste(tou_heures, 'tou_heures', erreurs)
+    return set(libelles or ())
+
+
+def erreurs_tou(tou_heures, tou_tarifs, tou_source, tou_date_source):
+    """Refus d'une grille horaire société, ``{champ: message}`` (vide = valide).
+
+    * rien de saisi (ni heures ni tarifs) ⇒ aucune erreur : la société n'a
+      simplement pas de grille horaire, l'économie horaire sera OMISE ;
+    * heures et tarifs se saisissent ENSEMBLE, chaque tranche employée par
+      une heure doit porter son tarif (MAD/kWh, nombre ≥ 0) ;
+    * dès qu'une grille est saisie, ``tou_source`` et ``tou_date_source`` sont
+      OBLIGATOIRES — un tarif sans provenance datée est refusé en nommant le
+      champ, jamais enregistré en silence.
+    """
+    erreurs = {}
+    heures_saisies = not _vide(tou_heures)
+    tarifs_saisis = not _vide(tou_tarifs)
+    if not heures_saisies and not tarifs_saisis:
+        return erreurs
+
+    libelles = set()
+    if heures_saisies:
+        libelles = _libelles_des_heures(tou_heures, erreurs)
+    else:
+        erreurs['tou_heures'] = (
+            "tou_heures : des tarifs par tranche sont saisis sans le découpage "
+            "horaire qui dit à quelle heure chaque tranche s'applique.")
+
+    tarifs = {}
+    if tarifs_saisis:
+        if not isinstance(tou_tarifs, dict):
+            erreurs['tou_tarifs'] = (
+                "tou_tarifs : un objet {tranche: MAD/kWh} est attendu.")
+        else:
+            for cle, valeur in tou_tarifs.items():
+                libelle = _libelle_tranche(cle)
+                prix = _nombre_positif(valeur)
+                if not libelle or prix is None:
+                    erreurs.setdefault(
+                        'tou_tarifs',
+                        f"tou_tarifs.{cle} : tarif illisible ou négatif — un "
+                        "nombre ≥ 0 en MAD/kWh est attendu.")
+                    continue
+                tarifs[libelle] = prix
+    else:
+        erreurs['tou_tarifs'] = (
+            "tou_tarifs : le découpage horaire est saisi sans les tarifs de "
+            "ses tranches.")
+
+    if libelles and tarifs and 'tou_tarifs' not in erreurs:
+        manquants = sorted(libelles - set(tarifs))
+        if manquants:
+            erreurs['tou_tarifs'] = (
+                f"tou_tarifs.{manquants[0]} : la tranche « {manquants[0]} » est "
+                "employée par tou_heures mais n'a aucun tarif saisi.")
+
+    if _vide(tou_source):
+        erreurs['tou_source'] = (
+            "tou_source : la source des tarifs horaires est obligatoire "
+            "(facture, contrat ou barème officiel d'où viennent ces valeurs).")
+    if _date_saisie(tou_date_source) is None:
+        erreurs['tou_date_source'] = (
+            "tou_date_source : la date de la source des tarifs horaires est "
+            "obligatoire (AAAA-MM-JJ).")
+    return erreurs
+
+
+def tou_depuis_reglages(reglages):
+    """Grille horaire SAISIE par la société, ou ``None`` (économie omise).
+
+    Rend ``None`` tant que les quatre champs de :data:`CHAMPS_TOU` ne sont pas
+    tous saisis ET valides (source ET date comprises) : un appelant qui reçoit
+    ``None`` publie :data:`MOTIF_TOU_NON_SAISI`, jamais un tarif supposé.
+    Sinon ::
+
+        {'heures': [24 libellés normalisés],
+         'tarifs': {libellé: float MAD/kWh},
+         'source': str, 'date_source': 'AAAA-MM-JJ'}
+    """
+    if reglages is None:
+        return None
+    valeurs = {champ: getattr(reglages, champ, None) for champ in CHAMPS_TOU}
+    if any(_vide(v) for v in valeurs.values()):
+        return None
+    if erreurs_tou(**valeurs):
+        return None
+    heures = _libelles_d_une_liste(valeurs['tou_heures'], 'tou_heures', {})
+    tarifs = {
+        _libelle_tranche(cle): float(_nombre_positif(valeur))
+        for cle, valeur in valeurs['tou_tarifs'].items()
+    }
+    return {
+        'heures': heures,
+        'tarifs': tarifs,
+        'source': str(valeurs['tou_source']).strip(),
+        'date_source': _date_saisie(valeurs['tou_date_source']).isoformat(),
+    }
+
+
+def erreurs_reglages_tarif(reglages):
+    """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
+
+    Appelé par ``TariffSettings.clean`` (et, demain, par le sérialiseur de
+    l'écran Tarification — CALX72) : chaque tâche du lot 5 y AJOUTE son
+    contrôle, si bien qu'aucune porte de saisie ne peut en oublier un.
+    """
+    erreurs = {}
+    erreurs.update(erreurs_tou(
+        *(getattr(reglages, champ, None) for champ in CHAMPS_TOU)))
+    return erreurs

@@ -208,3 +208,47 @@ class TariffSettings(models.Model):
         # Bornes finies d'abord (croissant), palier ouvert (None) en dernier.
         tiers.sort(key=lambda t: (t['max_kwh'] is None, t['max_kwh'] or 0))
         return tiers
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # LOT 5 (CALX274 →) — réglages tarifaires SAISIS, ajoutés EN FIN de classe
+    # (les numéros de ligne des ``get_or_create`` ci-dessus restent ceux de la
+    # base ``docs/get-or-create-audit.md``). Toute la validation vit dans
+    # ``apps.parametres.tariff.erreurs_reglages_tarif`` (pure, testable sans
+    # base) ; ``clean`` ne fait que la relayer en nommant le champ fautif.
+    # ═════════════════════════════════════════════════════════════════════════
+
+    # ── CALX274 — tranches horaires (time-of-use) SAISIES par la société ──
+    # Les quatre champs sont VIDES par défaut : aucune grille horaire n'est
+    # supposée. Tant que la grille, sa source ET sa date ne sont pas saisies,
+    # ``apps.parametres.selectors.tou_pour`` rend ``None`` et toute économie
+    # horaire est OMISE avec son motif (jamais les anciens 1,45 / 1,15 / 0,85
+    # « à confirmer » de ``apps/ventes/solar_design.py``).
+    tou_heures = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Tranche de chaque heure (00 h → 23 h)',
+        help_text="24 libellés de tranche, un par heure de la journée "
+                  "(ex. « creuse », « pleine », « pointe »), tels que votre "
+                  "facture ou votre contrat les nomme.")
+    tou_tarifs = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Tarif de chaque tranche (MAD/kWh)',
+        help_text="Objet {tranche: MAD/kWh} : un tarif par libellé employé "
+                  "dans les tranches horaires.")
+    tou_source = models.TextField(
+        blank=True, default='',
+        verbose_name='Source des tarifs horaires',
+        help_text="Obligatoire dès qu'une grille est saisie : facture, contrat "
+                  "ou barème officiel d'où viennent ces valeurs.")
+    tou_date_source = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de la source des tarifs horaires')
+
+    def clean(self):
+        """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
+        from django.core.exceptions import ValidationError
+
+        from apps.parametres.tariff import erreurs_reglages_tarif
+        super().clean()
+        erreurs = erreurs_reglages_tarif(self)
+        if erreurs:
+            raise ValidationError(erreurs)
