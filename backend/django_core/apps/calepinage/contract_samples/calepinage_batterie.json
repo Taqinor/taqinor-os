@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
   "forme_serveur": "partielle",
-  "pourquoi": "CALX267 — la forme que rend services/batterie.py::simuler_groupes : PLUSIEURS groupes de batteries, chacun avec son COUPLAGE déclaré (ac | dc ; un groupe dc nomme l'onduleur hybride qui le porte), dispatchés DANS L'ORDRE saisi sur le résidu de charge/production du précédent. `groupes[]` publie chaque groupe SÉPARÉMENT (son `resultat` est le dict de simuler_batterie, clé à clé), `agregat` porte les MÊMES clés que simuler_batterie (les énergies de batterie s'additionnent, l'import et l'injection sont ceux qui restent après le dernier groupe), et `mention_agregat` vaut null pour un seul modèle ou porte « agrégat de capacités — approximation » et sa raison quand deux modèles différents coexistent (les rendements et les bornes de puissance ne s'additionnent pas). AUCUNE route ne sert encore cette forme : elle entrera dans le bloc `batterie` servi par GET resultat/ quand la chaîne de simulation adoptera les groupes (CALX63 s'appuie sur eux pour le couplage DC) — `forme_serveur: partielle`, la garde s'abstient. `exemple` est le résultat RÉEL du service sur `entree_synthetique` (six heures FABRIQUÉES pour le test, aucune installation réelle) : apps/calepinage/tests/test_calx267_groupes_batteries.py le rejoue et affirme l'égalité. Aucun prix, aucun coût : ce module ne connaît aucun tarif.",
+  "pourquoi": "CALX267 — la forme que rend services/batterie.py::simuler_groupes : PLUSIEURS groupes de batteries, chacun avec son COUPLAGE déclaré (ac | dc ; un groupe dc nomme l'onduleur hybride qui le porte), dispatchés DANS L'ORDRE saisi sur le résidu de charge/production du précédent. `groupes[]` publie chaque groupe SÉPARÉMENT (son `resultat` est le dict de simuler_batterie, clé à clé), `agregat` porte les MÊMES clés que simuler_batterie (les énergies de batterie s'additionnent, l'import et l'injection sont ceux qui restent après le dernier groupe), et `mention_agregat` vaut null pour un seul modèle ou porte « agrégat de capacités — approximation » et sa raison quand deux modèles différents coexistent (les rendements et les bornes de puissance ne s'additionnent pas). CALX63 ajoute quatre clés au résultat, toujours présentes : `ecretage_recupere_kwh` (l'énergie écrêtée par l'onduleur que stocke un groupe dc quand la série d'écrêtage de CALX172 est fournie — null sinon, et toujours null pour un groupe ac), `charge_reseau_kwh` (la charge sur le réseau des heures creuses de la stratégie heures_tarif, comptée dans l'import — null hors de cette stratégie), `ecretage_injection` (stratégie plafond_injection : plafond saisi, justification, énergie écrêtée après et SANS batterie, heures écrêtées, injection maximale — null sinon) et `tranches_horaires` (stratégie heures_tarif : nombres de pas creux, de pointe et sans tranche, motifs, source parametres.tou_heures — null sinon) ; `parametres` gagne `couplage`, `plafond_injection_kw` et `plafond_injection_justification`. AUCUNE route ne sert encore cette forme : elle entrera dans le bloc `batterie` servi par GET resultat/ quand la chaîne de simulation adoptera les groupes — `forme_serveur: partielle`, la garde s'abstient. `exemple` est le résultat RÉEL du service sur `entree_synthetique` (six heures FABRIQUÉES pour le test, aucune installation réelle) : apps/calepinage/tests/test_calx267_groupes_batteries.py le rejoue et affirme l'égalité. Aucun prix, aucun coût : ce module ne connaît aucun tarif — la grille horaire n'y entre que par ses libellés d'heures.",
   "entree_synthetique": {
     "charge_horaire": [
       1.0,
@@ -59,6 +59,10 @@
           "decharge_batterie_kwh": 2.846,
           "import_reseau_kwh": 1.154,
           "surplus_injecte_kwh": 3.838,
+          "ecretage_recupere_kwh": null,
+          "charge_reseau_kwh": null,
+          "ecretage_injection": null,
+          "tranches_horaires": null,
           "pertes_stockage_kwh": 0.316,
           "etat_de_charge_kwh": [
             0.0,
@@ -90,7 +94,10 @@
             "reserve_backup_kwh": null,
             "reserve_appareils": null,
             "part_effacable_pct": null,
-            "plafond_effacable_kw": null
+            "plafond_effacable_kw": null,
+            "couplage": "ac",
+            "plafond_injection_kw": null,
+            "plafond_injection_justification": null
           }
         }
       },
@@ -107,6 +114,10 @@
           "decharge_batterie_kwh": 0.154,
           "import_reseau_kwh": 1.0,
           "surplus_injecte_kwh": 0.838,
+          "ecretage_recupere_kwh": null,
+          "charge_reseau_kwh": null,
+          "ecretage_injection": null,
+          "tranches_horaires": null,
           "pertes_stockage_kwh": 0.317,
           "etat_de_charge_kwh": [
             0.0,
@@ -138,7 +149,10 @@
             "reserve_backup_kwh": null,
             "reserve_appareils": null,
             "part_effacable_pct": null,
-            "plafond_effacable_kw": null
+            "plafond_effacable_kw": null,
+            "couplage": "dc",
+            "plafond_injection_kw": null,
+            "plafond_injection_justification": null
           }
         }
       }
@@ -151,6 +165,10 @@
       "decharge_batterie_kwh": 3.0,
       "import_reseau_kwh": 1.0,
       "surplus_injecte_kwh": 0.838,
+      "ecretage_recupere_kwh": null,
+      "charge_reseau_kwh": null,
+      "ecretage_injection": null,
+      "tranches_horaires": null,
       "pertes_stockage_kwh": 0.633,
       "etat_de_charge_kwh": [
         0.0,
@@ -182,7 +200,10 @@
         "reserve_backup_kwh": null,
         "reserve_appareils": null,
         "part_effacable_pct": null,
-        "plafond_effacable_kw": null
+        "plafond_effacable_kw": null,
+        "couplage": null,
+        "plafond_injection_kw": null,
+        "plafond_injection_justification": null
       }
     },
     "mention_agregat": "« agrégat de capacités — approximation » : les groupes portent des modèles de batterie différents (PACK-ESSAI-A, PACK-ESSAI-B) ; leurs rendements et leurs bornes de puissance ne s’additionnent pas, les capacités et puissances cumulées de l’agrégat sont donc une approximation."

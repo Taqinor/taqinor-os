@@ -17,12 +17,32 @@ CALX189, et publie ce qu'il rend sous ``resultat['batterie']``.
 UN SEUL MOTEUR DE DISPATCH
 ----------------------------
 ``services/batterie.py::simuler_batterie`` (CAL152/CAL153) fait tourner les
-quatre stratégies heure par heure ; il est appelé TEL QUEL. Ce module ne
-réécrit aucune règle de dispatch : il lui donne les deux courbes, puis RELIT
-la trace d'état de charge qu'il publie (``etat_de_charge_kwh``) pour en
-déduire, heure par heure, l'énergie entrée et sortie de la batterie — et de
-là l'import et l'export au point de livraison. Une seconde arithmétique de
-priorité finirait par diverger de la première : il n'y en a qu'une.
+stratégies heure par heure ; il est appelé TEL QUEL. Ce module ne réécrit
+aucune règle de dispatch : il lui donne les deux courbes, puis RELIT les flux
+qu'il a produits pas par pas (sa trace interne : entrées solaire, écrêtage et
+réseau, sortie, import, surplus restant, état de charge) — CALX63 : depuis
+que la batterie peut se charger sur l'écrêtage de l'onduleur (couplage DC)
+ou sur le réseau (heures creuses), la seule variation d'état de charge ne
+désigne plus sans ambiguïté d'où vient l'énergie. Une seconde arithmétique
+de priorité finirait par diverger de la première : il n'y en a qu'une.
+
+CALX63 — CE QUE LA DÉCLARATION PEUT EN PLUS
+--------------------------------------------
+* ``couplage: 'dc'`` : l'écrêtage que l'étape « écrêtage » (CALX172) a posé
+  sur chaque point (``ecretage_kw``) est offert à la charge ;
+* ``strategie: 'plafond_injection'`` : le plafond et sa justification se
+  lisent sur le RACCORDEMENT du site (``raccordement.plafond_injection_kw``
+  / ``…_justification``, CALX190) — un refus les nomme là. La batterie ne
+  stocke que le surplus au-dessus du plafond ; l'export posé est le surplus
+  qui reste APRÈS elle, et c'est le bloc « autoconsommation » (CALX190) qui
+  l'écrête au point de livraison et publie ce qu'il écrête ;
+* ``strategie: 'heures_tarif'`` : la grille horaire de la SOCIÉTÉ se lit
+  dans le contexte (:data:`CLE_TOU_HEURES`, libellés seulement), posée par
+  l'orchestrateur depuis ``services/batterie.py::heures_tarif_societe`` ;
+  absente ⇒ bloc OMIS en nommant ``parametres.tou_heures`` ;
+* le VIEILLISSEMENT par cycles (``total.vieillissement``) quand la série
+  couvre une année entière et que la fiche publie ses cycles et sa rétention
+  de fin de vie.
 
 Parité citée :
 * PV*SOL — la priorité de dispatch explicite (consommation directe → décharge
@@ -55,15 +75,17 @@ zéro se lirait « mesuré à zéro ».
 """
 from __future__ import annotations
 
-import math
-
 from apps.calepinage.services import chaine_pertes, courbe_charge, etapes
-from apps.calepinage.services.batterie import (MOTIVATIONS, StrategieInvalide,
+from apps.calepinage.services.batterie import (CHAMP_JUSTIFICATION_PLAFOND,
+                                               CHAMP_PLAFOND,
+                                               CHAMP_TOU_HEURES, MOTIVATIONS,
+                                               StrategieInvalide,
                                                candidates_omises,
                                                capacites_candidates,
                                                reserve_depuis_appareils,
                                                simuler_batterie,
-                                               simuler_groupes)
+                                               simuler_groupes,
+                                               vieillissement_batterie)
 
 LIBELLE = 'Batterie'
 
@@ -105,6 +127,46 @@ MOTIF_DECALAGE_PAS_NON_HORAIRE = (
     'La stratégie de décalage se règle sur des HEURES saisies (0 à 23), et la '
     'série n’avance pas par pas d’une heure : rattacher chaque pas à une '
     'heure reviendrait à deviner le calendrier. Le bloc « batterie » est OMIS.')
+
+#: CALX63 — la clé du contexte qui porte les LIBELLÉS d'heures de la grille
+#: horaire SAISIE par la société (``services/batterie.py::
+#: heures_tarif_societe``, posée par l'orchestrateur, seul à lire la base).
+CLE_TOU_HEURES = 'tou_heures'
+
+#: CALX63 — la clé du contexte qui porte le raccordement du site (la même
+#: que lit CALX190).
+CLE_RACCORDEMENT = 'raccordement'
+
+MOTIF_TARIF_PAS_NON_HORAIRE = (
+    'La stratégie « heures du tarif » se règle sur les HEURES de la grille '
+    'horaire de la société, et la série n’avance pas par pas d’une heure : '
+    'rattacher chaque pas à une heure reviendrait à deviner le calendrier. Le '
+    'bloc « batterie » est OMIS.')
+
+MENTION_PLAFOND_AU_COMPTEUR = (
+    'Stratégie « plafond d’injection » : la batterie ne stocke que le surplus '
+    'AU-DESSUS du plafond saisi au raccordement ; ce qui reste au-dessus est '
+    'écrêté et publié par le bloc « autoconsommation » (CALX190), sur la '
+    'série après batterie — une seule fonction d’écrêtage, un seul endroit.')
+
+MENTION_CHARGE_RESEAU = (
+    'Stratégie « heures du tarif » : {reseau} kWh ont été chargés sur le '
+    'réseau aux heures creuses — ils sont comptés dans l’import, et la '
+    'décharge des heures de pointe les restitue avec l’énergie solaire '
+    'stockée : « autoconsommé » compte donc toute l’énergie servie par la '
+    'batterie, sans répartir sa provenance (une répartition serait un chiffre '
+    'inventé).')
+
+MOTIF_VIEILLISSEMENT_PAS_ANNUEL = (
+    'La série ne couvre pas une année entière : les cycles ANNUELS de la '
+    'batterie ne se lisent pas sur elle, et le vieillissement par cycles est '
+    'OMIS.')
+
+MOTIF_VIEILLISSEMENT_PLUSIEURS = (
+    'Plusieurs groupes de batteries sont déclarés : leurs fiches ne publient '
+    'pas forcément les mêmes cycles ni la même rétention de fin de vie, et le '
+    'nombre de cycles n’est pas publié groupe par groupe. Le vieillissement '
+    'par cycles est OMIS.')
 
 MENTION_PLUSIEURS_GROUPES = (
     'Plusieurs groupes de batteries sont déclarés : ils sont dispatchés comme '
@@ -272,6 +334,9 @@ def _groupes_declares(declaration):
             'puissance_decharge_kw': _nombre(
                 specs.get('puissance_decharge_kw')),
             'rendement_ar_pct': _grandeur(specs, 'rendement_ar_pct')[0],
+            # CALX63 — les cycles et la rétention de fin de vie PUBLIÉS.
+            'cycles_publies': _grandeur(specs, 'cycles_publies')[0],
+            'eol_pct': _grandeur(specs, 'eol_pct')[0],
             'avertissements': list(specs.get('avertissements') or []),
         })
     return lus
@@ -308,40 +373,42 @@ def _banque(groupes):
     }
 
 
-def _flux_horaires(dispatch, charge, production, *, etat_initial, banque):
-    """Relit la trace d'état de charge et en déduit les flux de chaque pas.
+def _flux_horaires(trace, charge, production):
+    """Les flux de chaque pas, RELUS sur la trace du dispatch.
 
     La POLITIQUE de dispatch est celle de ``simuler_batterie`` et d'elle
-    seule : on ne relit ici que sa trace. À chaque pas, le surplus et le
-    déficit s'excluent (l'un des deux est nul), donc la variation d'état de
-    charge désigne sans ambiguïté une charge OU une décharge.
+    seule : on ne relit ici que les flux qu'il a produits (CALX63 — l'entrée
+    se ventile entre surplus solaire, écrêtage de l'onduleur récupéré en
+    couplage DC et réseau des heures creuses). Aucun flux n'est reconstruit.
+
+    L'export posé est le surplus qui reste APRÈS la batterie, AVANT le
+    plafond d'injection : le plafond au point de livraison est appliqué et
+    publié par UN seul bloc, « autoconsommation » (CALX190), avec sa
+    fonction — le poser aussi ici lui ferait lire « 0 kWh écrêté » et sortir
+    l'énergie écrêtée de sa cascade.
     """
-    rendement = banque['rendement_ar_pct']
-    eta = math.sqrt(max(0.0, min(1.0, (rendement if rendement is not None
-                                       else 100.0) / 100.0)))
-    etats = dispatch.get('etat_de_charge_kwh') or []
-    precedent = etat_initial
+    def serie(cle):
+        return list(trace.get(cle) or [])
+
+    solaire = serie('entree')
+    ecretage = serie('entree_ecretage')
+    reseau = serie('entree_reseau')
+    sorties = serie('sortie')
+    imports = serie('import')
+    surplus = serie('surplus')
+    etats = serie('etat')
     flux = []
     for rang, (conso, prod) in enumerate(zip(charge, production)):
-        etat = etats[rang] if rang < len(etats) else precedent
-        variation = etat - precedent
-        direct = min(conso, prod)
-        surplus = prod - direct
-        deficit = conso - direct
-        entree = 0.0
-        sortie = 0.0
-        if variation > 0:
-            entree = min(surplus, variation / eta if eta > 0 else 0.0)
-        elif variation < 0:
-            sortie = min(deficit, -variation * eta)
         flux.append({
-            'conso': conso, 'prod': prod, 'direct': direct,
-            'entree': entree, 'sortie': sortie,
-            'export': max(0.0, surplus - entree),
-            'import': max(0.0, deficit - sortie),
-            'etat': etat,
+            'conso': conso, 'prod': prod, 'direct': min(conso, prod),
+            'entree': solaire[rang] + ecretage[rang] + reseau[rang],
+            'entree_ecretage': ecretage[rang],
+            'entree_reseau': reseau[rang],
+            'sortie': sorties[rang],
+            'export': surplus[rang],
+            'import': imports[rang],
+            'etat': etats[rang],
         })
-        precedent = etat
     return flux
 
 
@@ -353,6 +420,43 @@ def _omission(motif, *, champ=''):
         'groupes': [], 'total': None, 'avertissements': [],
         'motif_absence': texte,
     }
+
+
+def _ecretage_horaire(points, pas):
+    """CALX63 — l'énergie écrêtée par l'onduleur à chaque pas (kWh), ou ``None``.
+
+    Relue sur la colonne que l'étape « écrêtage » (CALX172) pose sur chaque
+    point (``ecretage_kw``, une puissance) × la durée du pas. L'étape omise
+    (aucun point ne porte la colonne) ⇒ ``None`` : rien n'est offert, et rien
+    n'est publié comme récupéré. Un point dont la puissance était illisible
+    (colonne ``None``) n'offre rien.
+    """
+    from apps.calepinage.services.etapes.ecretage import COLONNE_ECRETAGE
+
+    if not any(isinstance(point, dict) and COLONNE_ECRETAGE in point
+               for point in points):
+        return None
+    heures = float(pas) / 60.0
+    return [max(0.0, _nombre(point.get(COLONNE_ECRETAGE)) or 0.0) * heures
+            if isinstance(point, dict) else 0.0 for point in points]
+
+
+def _champ_du_refus(refus):
+    """Le champ d'un refus, NOMMÉ là où il se saisit (CALX63).
+
+    Le plafond d'injection se saisit au RACCORDEMENT (CALX190) ; la grille
+    horaire est un réglage SOCIÉTÉ (``parametres.tou_heures``) — ni l'un ni
+    l'autre n'est un champ de la déclaration de batterie. Tout le reste l'est.
+    """
+    champ = refus.champ or ''
+    if not champ:
+        return ''
+    if champ.startswith(CHAMP_TOU_HEURES):
+        return champ
+    nom = champ.rsplit('.', 1)[-1]
+    if nom in (CHAMP_PLAFOND, CHAMP_JUSTIFICATION_PLAFOND):
+        return f'{CLE_RACCORDEMENT}.{nom}'
+    return f'{CLE_CONTEXTE}.{champ}'
 
 
 # ── l'entrée unique, appelée par services/simulation.py (CALX5) ──────────
@@ -426,6 +530,9 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
     if strategie == 'decalage' and pas != 60:
         return serie, _omission(MOTIF_DECALAGE_PAS_NON_HORAIRE,
                                 champ='simulation.resolution_minutes')
+    if strategie == 'heures_tarif' and pas != 60:
+        return serie, _omission(MOTIF_TARIF_PAS_NON_HORAIRE,
+                                champ='simulation.resolution_minutes')
 
     points = (serie or {}).get('points') or []
     longueur = min(len(courbe), len(production), len(points))
@@ -474,6 +581,28 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
         'plafond_effacable_kw': declaration.get('plafond_effacable_kw'),
         'etat_initial_kwh': etat_initial,
     }
+    # CALX63 — le plafond d'injection du RACCORDEMENT, pour sa stratégie.
+    if strategie == 'plafond_injection':
+        raccordement = contexte.get(CLE_RACCORDEMENT)
+        raccordement = raccordement if isinstance(raccordement, dict) else {}
+        parametres['plafond_injection_kw'] = raccordement.get(CHAMP_PLAFOND)
+        parametres['plafond_injection_justification'] = str(
+            raccordement.get(CHAMP_JUSTIFICATION_PLAFOND) or '')
+    # CALX63 — ce que le SITE porte : l'écrêtage de l'onduleur (offert à un
+    # couplage DC), la grille horaire de la société et le mois de chaque pas.
+    communs = {
+        'ecretage_horaire': (
+            _ecretage_horaire(points[:longueur], pas)
+            if str(declaration.get('couplage') or '').strip().lower() == 'dc'
+            else None),
+        'tou_heures': (contexte.get(CLE_TOU_HEURES)
+                       if strategie == 'heures_tarif' else None),
+        'mois_des_heures': (
+            [_nombre(point.get('mois')) if isinstance(point, dict) else None
+             for point in points[:longueur]]
+            if strategie == 'heures_tarif' else None),
+    }
+    trace = {}
     try:
         if declaration.get('couplage') not in (None, ''):
             # CALX267 — la banque DÉCLARE son couplage (``ac`` | ``dc``) :
@@ -488,20 +617,26 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
                     onduleur_ref=declaration.get('onduleur_ref'),
                     modele=declaration.get('model'))],
                 pas_heures=float(pas) / 60.0,
-                heure_de_depart=heure_de_depart)['agregat']
+                heure_de_depart=heure_de_depart, _trace=trace,
+                **communs)['agregat']
         else:
             dispatch = simuler_batterie(
                 courbe, production, pas_heures=float(pas) / 60.0,
-                heure_de_depart=heure_de_depart, **parametres)
+                heure_de_depart=heure_de_depart, _trace=trace,
+                **communs, **parametres)
     except StrategieInvalide as refus:
-        return serie, _omission(refus.motif,
-                                champ=(f'{CLE_CONTEXTE}.{refus.champ}'
-                                       if refus.champ else ''))
+        return serie, _omission(refus.motif, champ=_champ_du_refus(refus))
 
-    flux = _flux_horaires(dispatch, courbe, production,
-                          etat_initial=etat_initial, banque=banque)
+    # CALX63 — l'horizon du vieillissement est CELUI de la projection de
+    # production (CALX178 : saisi, ou dérivé de la garantie des modules) —
+    # une seule lecture, celle de ``etapes/vieillissement.py``.
+    from apps.calepinage.services.etapes.vieillissement import _horizon
+
+    flux = _flux_horaires(trace, courbe, production)
     suite, bloc = _publier(serie, flux, dispatch, groupes, banque, strategie,
-                           etat_initial=etat_initial)
+                           etat_initial=etat_initial,
+                           pas_heures=float(pas) / 60.0,
+                           horizon=_horizon(contexte)[0])
     if isinstance(reserve, dict):
         bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
             nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
@@ -511,8 +646,39 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
     return suite, bloc
 
 
+#: Les durées (heures) d'une série qui couvre UNE année civile entière.
+_HEURES_D_UNE_ANNEE = (8760.0, 8784.0)
+
+
+def _vieillissement(groupes, *, total_sortie, capacite, heures_couvertes,
+                    horizon):
+    """CALX63 — le vieillissement PAR CYCLES de la banque, ou son omission.
+
+    Les cycles ANNUELS se lisent sur le dispatch d'une année entière
+    (énergie restituée ÷ capacité utile) ; les cycles et la rétention de fin
+    de vie se lisent sur la fiche (``services/batterie.py::
+    vieillissement_batterie`` omet en nommant le champ absent).
+    """
+    if len(groupes) != 1:
+        omis = vieillissement_batterie(None, None, None)
+        omis.update({'champ': f'{CLE_CONTEXTE}.groupes',
+                     'motif_absence': MOTIF_VIEILLISSEMENT_PLUSIEURS})
+        return omis
+    groupe = groupes[0]
+    annuelle = any(abs(heures_couvertes - duree) < 1e-6
+                   for duree in _HEURES_D_UNE_ANNEE)
+    cycles = (total_sortie / capacite
+              if annuelle and capacite > _EPSILON else None)
+    resultat = vieillissement_batterie(
+        cycles, groupe.get('cycles_publies'), groupe.get('eol_pct'),
+        horizon_annees=horizon)
+    if not annuelle and resultat['champ'] == 'cycles_annuels':
+        resultat['motif_absence'] = MOTIF_VIEILLISSEMENT_PAS_ANNUEL
+    return resultat
+
+
 def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
-             etat_initial):
+             etat_initial, pas_heures=1.0, horizon=None):
     """La série enrichie et le bloc, tirés des MÊMES flux pas par pas."""
     capacite = banque['capacite_utile_kwh']
     total_conso = sum(pas['conso'] for pas in flux)
@@ -522,6 +688,11 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
     total_import = sum(pas['import'] for pas in flux)
     total_export = sum(pas['export'] for pas in flux)
     total_direct = sum(pas['direct'] for pas in flux)
+    # CALX63 — les deux entrées qui ne viennent pas de la production de la
+    # série (écrêtage récupéré, réseau des heures creuses) : le bilan ferme
+    # avec elles.
+    total_ecretage = sum(pas['entree_ecretage'] for pas in flux)
+    total_reseau = sum(pas['entree_reseau'] for pas in flux)
     variation = (flux[-1]['etat'] - etat_initial) if flux else 0.0
     pertes = total_entree - total_sortie - variation
 
@@ -541,6 +712,11 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
         avertissements.extend(groupe['avertissements'])
     if plusieurs:
         avertissements.append(MENTION_PLUSIEURS_GROUPES)
+    if strategie == 'plafond_injection':
+        avertissements.append(MENTION_PLAFOND_AU_COMPTEUR)
+    if total_reseau > _EPSILON:
+        avertissements.append(MENTION_CHARGE_RESEAU.format(
+            reseau=round(total_reseau, 3)))
 
     lignes = []
     for groupe in groupes:
@@ -575,8 +751,16 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
                 'import_reseau_kwh': round(total_import, 3),
                 'pertes_batterie_kwh': round(pertes, 3),
                 'variation_stock_kwh': round(variation, 3),
+                # CALX63 — production + écrêtage récupéré + charge réseau =
+                # autoconsommé + export + pertes + variation de stock.
+                'ecretage_recupere_kwh': round(total_ecretage, 3),
+                'charge_reseau_kwh': round(total_reseau, 3),
             },
             'definition': DEFINITION_AUTONOMIE,
+            # CALX63 — la capacité année par année, par les cycles.
+            'vieillissement': _vieillissement(
+                groupes, total_sortie=total_sortie, capacite=capacite,
+                heures_couvertes=len(flux) * pas_heures, horizon=horizon),
         },
         'avertissements': avertissements,
         'motif_absence': '',

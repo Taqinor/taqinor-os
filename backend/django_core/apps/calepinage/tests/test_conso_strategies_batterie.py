@@ -143,8 +143,10 @@ class DecalageTest(unittest.TestCase):
 class RefusCommunsTest(unittest.TestCase):
 
     def test_toutes_les_strategies_sont_nommees(self):
+        # CALX63 ajoute ``plafond_injection`` et ``heures_tarif``.
         self.assertEqual(set(STRATEGIES),
-                         {'autoconso', 'peak_shaving', 'backup', 'decalage'})
+                         {'autoconso', 'peak_shaving', 'backup', 'decalage',
+                          'plafond_injection', 'heures_tarif'})
 
     def test_une_strategie_inconnue_est_refusee_en_la_nommant(self):
         with self.assertRaises(StrategieInvalide) as refus:

@@ -42,27 +42,65 @@ son COUPLAGE déclaré (``ac`` | ``dc``, un groupe ``dc`` nomme l'onduleur
 hybride qui le porte), dans l'ordre saisi et sur le résidu du précédent, et
 publie chaque groupe puis l'agrégat. Contrat partagé :
 ``contract_samples/calepinage_batterie.json``.
+
+CE QUE LE DISPATCH SAIT EN PLUS (CALX63)
+----------------------------------------
+Parité : OpenSolar (surdimensionnement DC, dégradation par débit, schémas
+TOU — https://support.opensolar.com/hc/en-us/articles/12382460685455-How-OpenSolar-Models-Battery-Energy-Storage),
+PVsyst (« Peak shaving: store energy when production exceeds grid injection
+limits » —
+https://www.pvsyst.com/help/project-design/grid-connected-system-definition/grid-systems-with-storage/index.html)
+et HelioScope (dégradation par cycles —
+https://help-center.helioscope.com/hc/en-us/articles/8198547156371-Energy-Storage).
+
+* ``couplage='dc'`` : l'énergie que l'onduleur ÉCRÊTE (``ecretage_kw`` de
+  CALX172, pas par pas) est offerte à la charge AVANT le surplus alternatif,
+  dans la limite de la puissance de charge de fiche, et publiée
+  ``ecretage_recupere_kwh``. Une batterie couplée en alternatif vit derrière
+  l'onduleur : l'écrêtage ne lui est jamais offert.
+* stratégie ``plafond_injection`` : seul le surplus AU-DESSUS du plafond
+  d'injection SAISI au raccordement (CALX190, justification obligatoire) est
+  stocké, avant d'être écrêté ; le reste est plafonné par la MÊME fonction
+  que CALX190 (``autoconsommation.plafond_injection``).
+* stratégie ``heures_tarif`` : la charge RÉSEAU se fait sur les heures
+  étiquetées ``creuse``, la décharge est réservée aux heures ``pointe`` —
+  libellés LUS dans la grille SAISIE par la société
+  (``apps.parametres.selectors.tou_pour``, CALX274/275). Aucun prix n'entre
+  (D5) ; sans grille, la stratégie est REFUSÉE en nommant le réglage
+  (``parametres.tou_heures``) — jamais la grille de référence du dépôt.
+* :func:`vieillissement_batterie` : la capacité année par année tirée des
+  cycles ANNUELS du dispatch, des cycles et de la rétention de fin de vie
+  PUBLIÉS par la fiche — l'un des deux absent ⇒ omis en nommant le champ,
+  jamais un 80 % supposé.
 """
 from __future__ import annotations
 
 import copy
 import math
 
-__all__ = ['COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE', 'MOTIVATIONS',
+__all__ = ['CHAMP_CYCLES_FICHE', 'CHAMP_EOL_FICHE', 'CHAMP_TOU_HEURES',
+           'COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE', 'MOTIVATIONS',
            'SOURCES_RENDEMENT', 'STRATEGIES',
            'StrategieInvalide', 'candidates_omises', 'capacites_candidates',
+           'capacite_batterie_par_annee', 'heures_tarif_societe',
            'reserve_depuis_appareils',
            'simuler_batterie', 'simuler_groupes', 'specs_batterie',
-           'tranches_horaires']
+           'tranches_horaires', 'vieillissement_batterie']
 
 #: Les stratégies simulables. ``autoconso`` et ``backup`` existaient (côté
-#: dimensionnement) ; ``peak_shaving`` et ``decalage`` sont l'apport de CAL152.
-STRATEGIES = ('autoconso', 'peak_shaving', 'backup', 'decalage')
+#: dimensionnement) ; ``peak_shaving`` et ``decalage`` sont l'apport de
+#: CAL152 ; ``plafond_injection`` et ``heures_tarif`` celui de CALX63.
+STRATEGIES = ('autoconso', 'peak_shaving', 'backup', 'decalage',
+              'plafond_injection', 'heures_tarif')
 
 #: Les grandeurs batterie PUBLIÉES, chacune avec sa source (CAL153).
+#: ``eol_pct`` (CALX63) : la rétention de capacité publiée en fin de vie
+#: garantie (``bat_retention_fin_de_vie_pct``, publiée ``eol_pct`` par le
+#: sélecteur du stock, CALX60) — lue par :func:`vieillissement_batterie`,
+#: jamais supposée.
 GRANDEURS_BATTERIE = ('kwh_nominal', 'kwh_usable', 'dod_pct',
                       'rendement_ar_pct', 'cycles_publies',
-                      'max_charge_kw', 'max_decharge_kw')
+                      'max_charge_kw', 'max_decharge_kw', 'eol_pct')
 
 
 class StrategieInvalide(ValueError):
@@ -549,6 +587,170 @@ def _pointe(deficits, imports, *, seuil, pas, heure_de_depart):
     }
 
 
+# ── CALX63 — couplage DC, plafond d'injection, heures du tarif ─────────────
+
+#: Le réglage société qui porte la grille horaire — nommé comme l'écran
+#: Paramètres → Tarification & ROI le saisit (CALX274/275).
+CHAMP_TOU_HEURES = 'parametres.tou_heures'
+
+#: Les deux champs du plafond d'injection — ceux de CALX190, saisis au
+#: raccordement du site.
+CHAMP_PLAFOND = 'plafond_injection_kw'
+CHAMP_JUSTIFICATION_PLAFOND = 'plafond_injection_justification'
+
+#: Les SEULS libellés de tranche que la stratégie ``heures_tarif`` lit :
+#: charge réseau en creuse, décharge en pointe. Aucun montant n'entre.
+TRANCHE_CHARGE = 'creuse'
+TRANCHE_DECHARGE = 'pointe'
+
+MOTIF_TOU_ABSENTE = (
+    'La stratégie « heures du tarif » lit la grille horaire SAISIE par la '
+    'société (Paramètres → Tarification & ROI, tranches horaires '
+    '« tou_heures ») : aucune grille n’est saisie, la stratégie est donc '
+    'REFUSÉE. Aucune grille n’est supposée — ni celle de référence du dépôt, '
+    'ni une autre.')
+
+
+def _libelle_tranche(valeur):
+    texte = str(valeur).strip().lower() if valeur is not None else ''
+    return texte or None
+
+
+def _grille_tou(tou_heures):
+    """CALX63 — la grille horaire SAISIE, vérifiée, ou un REFUS nommant le réglage.
+
+    Forme de ``apps.parametres.selectors.tou_pour(company)['heures']`` : une
+    liste de 24 libellés (toute l'année) ou ``{saison: [24 libellés]}``
+    (CALX275). Seuls les LIBELLÉS entrent ici ; les tarifs de la grille ne
+    sont jamais lus (D5).
+    """
+    vide = tou_heures in (None, '') or (
+        isinstance(tou_heures, (list, tuple, dict)) and not tou_heures)
+    if vide:
+        raise StrategieInvalide(MOTIF_TOU_ABSENTE, champ=CHAMP_TOU_HEURES)
+    if isinstance(tou_heures, dict):
+        grille = {}
+        for saison, liste in tou_heures.items():
+            if not isinstance(liste, (list, tuple)) or len(liste) != 24:
+                raise StrategieInvalide(
+                    f'La grille horaire de la saison « {saison} » doit porter '
+                    '24 libellés, un par heure (reçu : '
+                    f'{liste!r}).', champ=f'{CHAMP_TOU_HEURES}.{saison}')
+            grille[str(saison)] = [_libelle_tranche(valeur)
+                                   for valeur in liste]
+        libelles = {libelle for liste in grille.values() for libelle in liste}
+    elif isinstance(tou_heures, (list, tuple)):
+        if len(tou_heures) != 24:
+            raise StrategieInvalide(
+                'La grille horaire doit porter 24 libellés, un par heure '
+                f'(reçu : {len(tou_heures)}).', champ=CHAMP_TOU_HEURES)
+        grille = [_libelle_tranche(valeur) for valeur in tou_heures]
+        libelles = set(grille)
+    else:
+        raise StrategieInvalide(
+            'La grille horaire se lit en 24 libellés ou en {saison: [24 '
+            f'libellés]}} (reçu : {tou_heures!r}).', champ=CHAMP_TOU_HEURES)
+    if TRANCHE_DECHARGE not in libelles:
+        raise StrategieInvalide(
+            'La grille horaire saisie ne porte AUCUNE heure de pointe : la '
+            'stratégie « heures du tarif » décharge sur les heures de pointe, '
+            'elle n’a donc rien à faire.', champ=CHAMP_TOU_HEURES)
+    return grille
+
+
+def _mois_des_heures(valeurs, longueur):
+    """Le mois (1-12) de chaque pas, ou ``None`` (mois inconnu)."""
+    if valeurs is None:
+        return None
+    if not isinstance(valeurs, (list, tuple)) or len(valeurs) != longueur:
+        raise StrategieInvalide(
+            'Les mois des pas ne décrivent pas la même période que les courbes '
+            f'({len(valeurs) if isinstance(valeurs, (list, tuple)) else 0} '
+            f'mois pour {longueur} pas).', champ='mois_des_heures')
+    mois = []
+    for valeur in valeurs:
+        nombre = _nombre(valeur)
+        mois.append(int(nombre) if nombre is not None
+                    and 1 <= int(nombre) <= 12 else None)
+    return mois
+
+
+def _tranches_par_pas(grille, longueur, heure_de_depart, mois):
+    """``(tranches, motifs)`` — la tranche SAISIE de chaque pas, ou ``None``.
+
+    La tranche d'une heure se résout par ``tranches_du_mois`` (CALX275 :
+    saison saisie, sinon ``annuel``, sinon ``None`` avec son motif — jamais
+    « pleine » supposée). Import LOCAL de ``apps.ventes.solar_design`` :
+    aucun sélecteur de ``ventes`` n'expose cette résolution, et ce module
+    relit déjà ce fichier de la même façon (:func:`tranches_horaires`).
+    """
+    from apps.ventes.solar_design import tranches_du_mois
+
+    parmois = {}
+    tranches = []
+    motifs = []
+    for rang in range(longueur):
+        cle = mois[rang] if mois is not None else None
+        if cle not in parmois:
+            parmois[cle] = tranches_du_mois(grille, cle)
+        ligne = parmois[cle][(int(heure_de_depart) + rang) % 24]
+        tranches.append(ligne['tranche'])
+        if ligne['tranche'] is None and ligne['motif'] \
+                and ligne['motif'] not in motifs:
+            motifs.append(ligne['motif'])
+    return tranches, motifs
+
+
+def _plafond_valide(plafond_kw, justification, pas):
+    """CALX63 — le plafond d'injection SAISI et sa justification, vérifiés.
+
+    La vérification est celle de CALX190 (``autoconsommation.
+    plafond_injection``) — un plafond illisible, négatif ou sans
+    justification y est refusé en nommant le champ ; ce refus est rendu tel
+    quel. Plafond absent ⇒ refus : la stratégie n'a rien à stocker.
+    """
+    from apps.calepinage.services.autoconsommation import (BilanInvalide,
+                                                           plafond_injection)
+
+    if plafond_kw in (None, ''):
+        raise StrategieInvalide(
+            'La stratégie « plafond d’injection » stocke le surplus AU-DESSUS '
+            'du plafond d’injection SAISI au raccordement (avec sa '
+            'justification) : aucun plafond n’est saisi.', champ=CHAMP_PLAFOND)
+    try:
+        bloc = plafond_injection([], plafond_kw=plafond_kw,
+                                 justification=justification, pas_heures=pas)
+    except BilanInvalide as refus:
+        raise StrategieInvalide(refus.motif, champ=refus.champ) from refus
+    return bloc['plafond_kw'], bloc['justification']
+
+
+def _ecretage_injection(surplus_restant, surplus_brut, *, plafond,
+                        justification, pas):
+    """CALX63 — l'injection plafonnée APRÈS stockage, et ce qu'elle écrête.
+
+    Les DEUX écrêtages passent par la même fonction que CALX190 : celui qui
+    reste après la batterie, et celui de CALX190 seul (le surplus brut, sans
+    batterie) — c'est leur écart qui dit ce que la stratégie a récupéré.
+    """
+    from apps.calepinage.services.autoconsommation import plafond_injection
+
+    apres = plafond_injection(surplus_restant, plafond_kw=plafond,
+                              justification=justification, pas_heures=pas)
+    seul = plafond_injection(surplus_brut, plafond_kw=plafond,
+                             justification=justification, pas_heures=pas)
+    injection = list(apres['surplus_apres_ecretage'])
+    return injection, {
+        'plafond_kw': plafond,
+        'justification': justification,
+        'energie_ecretee_kwh': apres['energie_ecretee_kwh'],
+        'energie_ecretee_sans_batterie_kwh': seul['energie_ecretee_kwh'],
+        'heures_ecretees': apres['heures_ecretees'],
+        'injection_max_kw': (round(max(injection) / pas, 3) if injection
+                             else None),
+    }
+
+
 def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      capacite_utile_kwh, puissance_charge_kw,
                      puissance_decharge_kw, rendement_ar_pct=None,
@@ -556,13 +758,39 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      heures_decharge=None, fenetres=None,
                      reserve_backup_kwh=None, part_effacable_pct=None,
                      plafond_effacable_kw=None,
+                     couplage='ac', ecretage_horaire=None,
+                     plafond_injection_kw=None,
+                     plafond_injection_justification='',
+                     tou_heures=None, mois_des_heures=None,
                      etat_initial_kwh=0.0, pas_heures=1.0,
                      heure_de_depart=0, _trace=None):
     """Fait TOURNER la batterie heure par heure selon la stratégie retenue.
 
     Args:
         strategie: ``autoconso`` | ``peak_shaving`` | ``backup`` |
-            ``decalage``.
+            ``decalage`` | ``plafond_injection`` | ``heures_tarif``.
+        couplage / ecretage_horaire: CALX63 — ``couplage='dc'`` (batterie
+            sur le bus continu d'un onduleur hybride) : l'énergie ÉCRÊTÉE par
+            l'onduleur à chaque pas (kWh, la colonne ``ecretage_kw`` de
+            CALX172 × la durée du pas) est offerte à la charge AVANT le
+            surplus alternatif, dans la limite de la puissance de charge de
+            fiche (et de l'état de charge visé d'une fenêtre). ``ac`` (le
+            défaut, le comportement d'aujourd'hui) : l'écrêtage n'atteint
+            jamais la batterie.
+        plafond_injection_kw / plafond_injection_justification: CALX63 —
+            SAISIS au raccordement (CALX190), obligatoires pour
+            ``plafond_injection`` : seul le surplus AU-DESSUS du plafond est
+            stocké, puis l'injection est plafonnée par la fonction de
+            CALX190. Ils ne pilotent aucune autre stratégie.
+        tou_heures / mois_des_heures: CALX63 — la grille horaire SAISIE par
+            la société (:func:`heures_tarif_societe`, libellés seulement) et
+            le mois de chaque pas, pour ``heures_tarif`` : charge RÉSEAU sur
+            les heures ``creuse``, décharge sur les heures ``pointe`` ; le
+            surplus solaire est stocké dès qu'il existe (le stocker ne
+            soutire rien au réseau). Grille absente ⇒ refus
+            (``parametres.tou_heures``). Un pas dont le mois n'est couvert
+            par aucune saison saisie n'a pas de tranche : ni charge réseau ni
+            décharge, et le motif est publié.
         seuil_effacement_kw: SAISI — obligatoire pour ``peak_shaving`` (on
             n'efface pas au-dessus d'un seuil que personne n'a choisi).
         heures_charge / heures_decharge: SAISIES — obligatoires pour
@@ -608,7 +836,18 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         depassement_kw}``), ``batterie`` (CALX404 — ``{rendement_ar_pct,
         source, rendement_un_sens}`` : le rendement RETENU, sa provenance
         ``fiche`` | ``hypothese`` | ``saisie`` et la racine appliquée à
-        chaque sens), ``parametres``.
+        chaque sens), ``parametres``. CALX63 : ``ecretage_recupere_kwh``
+        (l'écrêtage stocké par un groupe DC, ``None`` hors couplage DC ou
+        sans série d'écrêtage), ``charge_reseau_kwh`` (la charge sur le
+        réseau des heures creuses, ``None`` hors ``heures_tarif`` ; elle est
+        COMPTÉE dans ``import_reseau_kwh`` et dans ``charge_batterie_kwh``),
+        ``ecretage_injection`` (``plafond_injection`` seulement :
+        ``{plafond_kw, justification, energie_ecretee_kwh,
+        energie_ecretee_sans_batterie_kwh, heures_ecretees,
+        injection_max_kw}`` — ``surplus_injecte_kwh`` est alors l'injection
+        APRÈS plafond) et ``tranches_horaires`` (``heures_tarif`` seulement :
+        ``{heures_creuses, heures_pointe, heures_sans_tranche,
+        motifs_sans_tranche, source}``, des nombres de PAS).
 
     Raises:
         StrategieInvalide: stratégie inconnue, paramètre saisi manquant,
@@ -696,6 +935,40 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
     part_effacable, plafond_effacable = _part_effacable(
         part_effacable_pct, plafond_effacable_kw)
 
+    # ── CALX63 — couplage, écrêtage, plafond d'injection, tranches ───────
+    couplage_lu = _texte(couplage).lower() or 'ac'
+    if couplage_lu not in COUPLAGES:
+        raise StrategieInvalide(
+            'Le couplage de la batterie se déclare « ac » (derrière son '
+            'propre onduleur-chargeur) ou « dc » (sur le bus continu d’un '
+            f'onduleur hybride) — reçu : {couplage!r}.', champ='couplage')
+    ecretage = None
+    if ecretage_horaire is not None:
+        ecretage = _serie(ecretage_horaire, champ='ecretage')
+        if len(ecretage) != len(charge):
+            raise StrategieInvalide(
+                'La série d’écrêtage ne décrit pas la même période que les '
+                f'courbes ({len(ecretage)} pas pour {len(charge)}).',
+                champ='ecretage')
+    plafond = None
+    justification = ''
+    if strategie == 'plafond_injection':
+        plafond, justification = _plafond_valide(
+            plafond_injection_kw, plafond_injection_justification, pas)
+    elif plafond_injection_kw not in (None, ''):
+        raise StrategieInvalide(
+            'Le plafond d’injection pilote la stratégie « plafond_injection », '
+            f'pas « {strategie} » : il ne s’applique donc pas ici (le bloc '
+            'autoconsommation l’applique au point de livraison).',
+            champ=CHAMP_PLAFOND)
+    tranches = None
+    motifs_tranche = []
+    if strategie == 'heures_tarif':
+        grille = _grille_tou(tou_heures)
+        tranches, motifs_tranche = _tranches_par_pas(
+            grille, len(charge), heure_de_depart,
+            _mois_des_heures(mois_des_heures, len(charge)))
+
     etat = min(max(0.0, _nombre(etat_initial_kwh) or 0.0), capacite)
     plancher = min(reserve, capacite) if strategie == 'backup' else 0.0
 
@@ -705,15 +978,21 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
     total_import = 0.0
     total_injecte = 0.0
     total_efface = 0.0
+    total_ecretage = 0.0
+    total_reseau = 0.0
     entrees = []
+    entrees_ecretage = []
+    entrees_reseau = []
     sorties = []
     deficits = []
     imports = []
+    surplus_restants = []
 
     for rang, (conso, prod) in enumerate(zip(charge, production)):
         heure = (int(heure_de_depart) + rang) % 24
         surplus = max(0.0, prod - conso)
         deficit = max(0.0, conso - prod)
+        tranche = tranches[rang] if tranches is not None else None
 
         # ── charge ───────────────────────────────────────────────────────
         autorise_charge = True
@@ -723,17 +1002,41 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             autorise_charge = fenetre is not None
             if fenetre is not None and fenetre['soc_cible_pct'] is not None:
                 cible = capacite * fenetre['soc_cible_pct'] / 100.0
-        entree = 0.0
-        if autorise_charge and surplus > 0:
+
+        def _place():
             if cible is None:
-                place = (capacite - etat) / eta if eta > 0 else 0.0
-            else:
-                # CALX268 — la charge s'arrête à l'état de charge VISÉ.
-                place = max(0.0, cible - etat) / eta if eta > 0 else 0.0
-            entree = min(surplus, p_charge * pas, place)
+                return (capacite - etat) / eta if eta > 0 else 0.0
+            # CALX268 — la charge s'arrête à l'état de charge VISÉ.
+            return max(0.0, cible - etat) / eta if eta > 0 else 0.0
+
+        budget = p_charge * pas
+        # CALX63 — couplage DC : l'écrêtage de l'onduleur est offert EN
+        # PREMIER (il serait perdu), dans la limite de la puissance de charge.
+        entree_ecretage = 0.0
+        if (autorise_charge and couplage_lu == 'dc' and ecretage is not None
+                and ecretage[rang] > 0):
+            entree_ecretage = max(0.0, min(ecretage[rang], budget, _place()))
+            etat += entree_ecretage * eta
+            budget -= entree_ecretage
+        # CALX63 — plafond d'injection : seul le surplus AU-DESSUS du plafond
+        # se stocke ; le reste s'injecte sans passer par la batterie.
+        stockable = surplus
+        if strategie == 'plafond_injection':
+            stockable = max(0.0, surplus - plafond * pas)
+        entree = 0.0
+        if autorise_charge and stockable > 0:
+            entree = min(stockable, budget, _place())
             etat += entree * eta
-            total_charge += entree
             surplus -= entree
+        # CALX63 — heures du tarif : la charge RÉSEAU des heures creuses,
+        # avec la puissance de charge qui reste.
+        entree_reseau = 0.0
+        if strategie == 'heures_tarif' and tranche == TRANCHE_CHARGE:
+            entree_reseau = max(0.0, min(budget - entree, _place()))
+            etat += entree_reseau * eta
+        total_charge += entree_ecretage + entree + entree_reseau
+        total_ecretage += entree_ecretage
+        total_reseau += entree_reseau
 
         # ── décharge ─────────────────────────────────────────────────────
         besoin = deficit
@@ -748,6 +1051,9 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                 # CALX268 — la décharge ne descend pas sous l'état VISÉ.
                 plancher_du_pas = max(
                     plancher, capacite * fenetre['soc_cible_pct'] / 100.0)
+        elif strategie == 'heures_tarif':
+            # CALX63 — la décharge est réservée aux heures de POINTE.
+            besoin = deficit if tranche == TRANCHE_DECHARGE else 0.0
         # CALX270 — la part de la charge que ce groupe PEUT servir (tableau
         # de secours partiel) : bornée seulement si elle est SAISIE.
         if part_effacable is not None:
@@ -764,19 +1070,42 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             if strategie == 'peak_shaving':
                 total_efface += sortie
 
-        total_import += max(0.0, deficit - sortie)
+        # La charge réseau des heures creuses EST un soutirage.
+        total_import += max(0.0, deficit - sortie) + entree_reseau
         total_injecte += surplus
         etats.append(round(etat, 4))
         entrees.append(entree)
+        entrees_ecretage.append(entree_ecretage)
+        entrees_reseau.append(entree_reseau)
         sorties.append(sortie)
         deficits.append(deficit)
-        imports.append(max(0.0, deficit - sortie))
+        imports.append(max(0.0, deficit - sortie) + entree_reseau)
+        surplus_restants.append(surplus)
+
+    # CALX63 — plafond d'injection : l'injection APRÈS stockage est
+    # plafonnée par la fonction de CALX190, et comparée à CALX190 seul.
+    injections = surplus_restants
+    ecretage_injection = None
+    if strategie == 'plafond_injection':
+        surplus_brut = [max(0.0, prod - conso)
+                        for conso, prod in zip(charge, production)]
+        injections, ecretage_injection = _ecretage_injection(
+            surplus_restants, surplus_brut,
+            plafond=plafond, justification=justification, pas=pas)
+        total_injecte = sum(injections)
 
     if isinstance(_trace, dict):
         _trace['entree'] = entrees
+        _trace['entree_ecretage'] = entrees_ecretage
+        _trace['entree_reseau'] = entrees_reseau
         _trace['sortie'] = sorties
         _trace['etat'] = etats
         _trace['import'] = imports
+        _trace['surplus'] = surplus_restants
+        _trace['injection'] = list(injections)
+        _trace['ecretage_injection'] = [
+            max(0.0, avant - apres)
+            for avant, apres in zip(surplus_restants, injections)]
 
     # CALX269 — la pointe AVANT et APRÈS effacement, lue sur la série
     # d'import que le dispatch vient de produire (aucun montant n'entre).
@@ -794,7 +1123,28 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                   'normal.',
         'decalage': 'Décaler la charge et la décharge sur les heures SAISIES '
                     'par l’utilisateur.',
+        'plafond_injection': (
+            'Stocker le surplus AU-DESSUS du plafond d’injection SAISI de '
+            f'{plafond} kW avant qu’il ne soit écrêté, puis le restituer à la '
+            'consommation.'),
+        'heures_tarif': (
+            'Charger sur les heures CREUSES et décharger sur les heures de '
+            'POINTE de la grille horaire SAISIE par la société (libellés '
+            'd’heures seulement — aucun montant n’entre).'),
     }[strategie]
+
+    tarif_horaire = None
+    if tranches is not None:
+        tarif_horaire = {
+            'heures_creuses': sum(1 for tranche in tranches
+                                  if tranche == TRANCHE_CHARGE),
+            'heures_pointe': sum(1 for tranche in tranches
+                                 if tranche == TRANCHE_DECHARGE),
+            'heures_sans_tranche': sum(1 for tranche in tranches
+                                       if tranche is None),
+            'motifs_sans_tranche': motifs_tranche,
+            'source': CHAMP_TOU_HEURES,
+        }
 
     return {
         'strategie': strategie,
@@ -804,6 +1154,15 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         'decharge_batterie_kwh': round(total_decharge, 3),
         'import_reseau_kwh': round(total_import, 3),
         'surplus_injecte_kwh': round(total_injecte, 3),
+        # CALX63 — ce que le couplage DC a récupéré de l'écrêtage, et la
+        # charge réseau des heures creuses (``None`` : sans objet ici).
+        'ecretage_recupere_kwh': (round(total_ecretage, 3)
+                                  if couplage_lu == 'dc'
+                                  and ecretage is not None else None),
+        'charge_reseau_kwh': (round(total_reseau, 3)
+                              if strategie == 'heures_tarif' else None),
+        'ecretage_injection': ecretage_injection,
+        'tranches_horaires': tarif_horaire,
         'pertes_stockage_kwh': round(
             max(0.0, total_charge - total_decharge
                 - (etats[-1] - min(max(0.0, _nombre(etat_initial_kwh) or 0.0),
@@ -837,6 +1196,11 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                                   else None),
             'part_effacable_pct': part_effacable,
             'plafond_effacable_kw': plafond_effacable,
+            # CALX63 — le couplage retenu et le plafond d'injection (sa
+            # justification SAISIE avec lui), ``None`` hors de sa stratégie.
+            'couplage': couplage_lu,
+            'plafond_injection_kw': plafond,
+            'plafond_injection_justification': justification or None,
         },
     }
 
@@ -853,10 +1217,14 @@ COUPLAGES = ('ac', 'dc')
 STRATEGIE_PLUSIEURS = 'plusieurs'
 
 #: Les paramètres de dispatch qu'un groupe porte lui-même — ceux de
-#: :func:`simuler_batterie`, hors les deux courbes (le RÉSIDU les remplace)
-#: et hors la chronologie commune (``pas_heures``, ``heure_de_depart``).
+#: :func:`simuler_batterie`, hors les deux courbes (le RÉSIDU les remplace),
+#: hors la chronologie commune (``pas_heures``, ``heure_de_depart``) et hors
+#: ce que le SITE porte pour tous les groupes (CALX63 : l'écrêtage de
+#: l'onduleur, la grille horaire de la société, le mois des pas).
 _HORS_GROUPE = frozenset({'charge_horaire', 'production_horaire',
-                          'pas_heures', 'heure_de_depart', '_trace'})
+                          'pas_heures', 'heure_de_depart', '_trace',
+                          'ecretage_horaire', 'tou_heures',
+                          'mois_des_heures'})
 
 #: Les paramètres de l'agrégat qui S'ADDITIONNENT d'un groupe à l'autre —
 #: les autres ne sont publiés que s'ils sont identiques partout.
@@ -954,29 +1322,104 @@ def _somme(valeurs, decimales=3):
     return round(sum(valeurs), decimales)
 
 
-def _pointe_agregee(resultats, traces, *, deficits, pas, heure_de_depart):
+def _pointe_agregee(resultats, imports, *, deficits, pas, heure_de_depart):
     """CALX269 — la pointe de l'agrégat : avant TOUS les groupes, après TOUS.
 
     ``None`` partout si aucun groupe n'efface de pointe ; seuils saisis
     différents d'un groupe à l'autre ⇒ les deux pointes sont publiées, mais
     ni heures au-dessus du seuil ni dépassements (il n'y a pas UN seuil).
+    ``imports`` est le soutirage AU POINT DE LIVRAISON, pas par pas
+    (:func:`_trace_agregee`).
     """
     seuils = [resultat['parametres']['seuil_effacement_kw']
               for resultat in resultats
               if resultat['strategie'] == 'peak_shaving']
     if not seuils:
         return dict(_POINTE_ABSENTE)
-    return _pointe(deficits, traces[-1]['import'], seuil=_commun(seuils),
+    return _pointe(deficits, imports, seuil=_commun(seuils),
                    pas=pas, heure_de_depart=heure_de_depart)
 
 
-def _agreger(lus, resultats, traces, *, deficits, pas, heure_de_depart):
+def _plafond_commun(resultats):
+    """CALX63 — ``(plafond, justification)`` des groupes ``plafond_injection``.
+
+    Un seul point de livraison, un seul plafond : deux groupes qui en
+    déclarent deux différents sont refusés en nommant le second. Aucun
+    groupe de cette stratégie ⇒ ``(None, '')``.
+    """
+    retenu = None
+    for rang, resultat in enumerate(resultats):
+        if resultat['strategie'] != 'plafond_injection':
+            continue
+        lu = (resultat['parametres']['plafond_injection_kw'],
+              resultat['parametres']['plafond_injection_justification'])
+        if retenu is None:
+            retenu = lu
+        elif lu != retenu:
+            raise StrategieInvalide(
+                'Deux groupes déclarent deux plafonds d’injection différents : '
+                'le site n’a qu’un point de livraison, donc un seul plafond.',
+                champ=f'groupes[{rang}].{CHAMP_PLAFOND}')
+    return retenu if retenu is not None else (None, '')
+
+
+def _trace_agregee(traces, *, surplus_brut, plafond, justification, pas):
+    """CALX63 — les flux AU POINT DE LIVRAISON, pas par pas, tous groupes passés.
+
+    Les entrées et sorties de batterie s'additionnent ; le soutirage est
+    celui qui reste après le DERNIER groupe, plus la charge réseau des
+    groupes précédents ; l'injection est le surplus qui reste après le
+    dernier groupe — plafonnée, s'il y a un plafond, par la fonction de
+    CALX190 appliquée au point de livraison (et non groupe par groupe).
+    """
+    longueur = len(traces[-1]['sortie'])
+
+    def somme(cle):
+        return [sum(trace[cle][rang] for trace in traces)
+                for rang in range(longueur)]
+
+    reseau_avant = [sum(trace['entree_reseau'][rang] for trace in traces[:-1])
+                    for rang in range(longueur)]
+    surplus = list(traces[-1]['surplus'])
+    injection = surplus
+    ecretage = None
+    if plafond is not None:
+        injection, ecretage = _ecretage_injection(
+            surplus, surplus_brut, plafond=plafond,
+            justification=justification, pas=pas)
+    return {
+        'entree': somme('entree'),
+        'entree_ecretage': somme('entree_ecretage'),
+        'entree_reseau': somme('entree_reseau'),
+        'sortie': somme('sortie'),
+        'etat': [round(sum(etats), 4)
+                 for etats in zip(*(trace['etat'] for trace in traces))],
+        'import': [valeur + avant for valeur, avant
+                   in zip(traces[-1]['import'], reseau_avant)],
+        'surplus': surplus,
+        'injection': list(injection),
+        'ecretage_injection': [max(0.0, avant - apres) for avant, apres
+                               in zip(surplus, injection)],
+        '_bloc_plafond': ecretage,
+    }
+
+
+def _somme_publiee(valeurs):
+    """La somme des valeurs PUBLIÉES, ou ``None`` si aucune ne l'est."""
+    lues = [valeur for valeur in valeurs if valeur is not None]
+    return round(sum(lues), 3) if lues else None
+
+
+def _agreger(lus, resultats, traces, agregee, *, deficits, pas,
+             heure_de_depart):
     """L'agrégat de plusieurs groupes — mêmes clés que :func:`simuler_batterie`.
 
     Les énergies de batterie s'additionnent (chaque groupe a tourné sur le
     résidu du précédent : aucune n'est comptée deux fois) ; l'import et
     l'injection sont ceux du DERNIER groupe, c'est-à-dire ce qui reste au
-    point de livraison une fois tous les groupes passés.
+    point de livraison une fois tous les groupes passés — plus, CALX63, la
+    charge réseau des groupes précédents, et le plafond d'injection appliqué
+    au point de livraison (``agregee`` : :func:`_trace_agregee`).
     """
     dernier = resultats[-1]
     strategies = [resultat['strategie'] for resultat in resultats]
@@ -1001,25 +1444,41 @@ def _agreger(lus, resultats, traces, *, deficits, pas, heure_de_depart):
     for cle in resultats[0]:
         valeurs = [resultat[cle] for resultat in resultats]
         agregat[cle] = _commun(valeurs)
+    # CALX63 — la charge réseau des groupes PRÉCÉDENTS le dernier est un
+    # soutirage que le dernier groupe ne voit pas : elle s'ajoute ici.
+    reseau_avant = _somme_publiee([resultat['charge_reseau_kwh']
+                                   for resultat in resultats[:-1]])
+    import_reseau = dernier['import_reseau_kwh']
+    if reseau_avant:
+        import_reseau = round(import_reseau + reseau_avant, 3)
+    bloc_plafond = agregee.get('_bloc_plafond')
     agregat.update({
         'strategie': strategie,
         'objectif_dimensionnant': objectif,
         'heures': dernier['heures'],
         'charge_batterie_kwh': round(
-            sum(sum(trace['entree']) for trace in traces), 3),
+            sum(sum(trace['entree']) + sum(trace['entree_ecretage'])
+                + sum(trace['entree_reseau']) for trace in traces), 3),
         'decharge_batterie_kwh': round(
             sum(sum(trace['sortie']) for trace in traces), 3),
-        'import_reseau_kwh': dernier['import_reseau_kwh'],
-        'surplus_injecte_kwh': dernier['surplus_injecte_kwh'],
+        'import_reseau_kwh': import_reseau,
+        'surplus_injecte_kwh': (round(sum(agregee['injection']), 3)
+                                if bloc_plafond is not None
+                                else dernier['surplus_injecte_kwh']),
         'pertes_stockage_kwh': round(
             sum(resultat['pertes_stockage_kwh'] for resultat in resultats), 3),
-        'etat_de_charge_kwh': [round(sum(etats), 4) for etats in
-                               zip(*(trace['etat'] for trace in traces))],
+        'etat_de_charge_kwh': agregee['etat'],
         'energie_effacee_kwh': round(sum(efface), 3) if efface else None,
+        'ecretage_recupere_kwh': _somme_publiee(
+            [resultat['ecretage_recupere_kwh'] for resultat in resultats]),
+        'charge_reseau_kwh': _somme_publiee(
+            [resultat['charge_reseau_kwh'] for resultat in resultats]),
+        'ecretage_injection': bloc_plafond,
         'parametres': parametres,
     })
-    agregat.update(_pointe_agregee(resultats, traces, deficits=deficits,
-                                   pas=pas, heure_de_depart=heure_de_depart))
+    agregat.update(_pointe_agregee(resultats, agregee['import'],
+                                   deficits=deficits, pas=pas,
+                                   heure_de_depart=heure_de_depart))
     # CALX404 — le rendement de l'agrégat : publié s'il est COMMUN, sinon
     # ``None`` champ par champ (jamais une moyenne qui flatterait le parc).
     agregat['batterie'] = {
@@ -1029,7 +1488,9 @@ def _agreger(lus, resultats, traces, *, deficits, pas, heure_de_depart):
 
 
 def simuler_groupes(charge_horaire, production_horaire, groupes, *,
-                    pas_heures=1.0, heure_de_depart=0):
+                    pas_heures=1.0, heure_de_depart=0,
+                    ecretage_horaire=None, tou_heures=None,
+                    mois_des_heures=None, _trace=None):
     """CALX267 — fait tourner PLUSIEURS groupes de batteries, dans l'ordre.
 
     Le premier groupe tourne sur les deux courbes reçues ; chaque groupe
@@ -1054,6 +1515,17 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
             :func:`simuler_batterie` (``strategie``, ``capacite_utile_kwh``,
             puissances, rendement, seuil/heures/réserve…).
         pas_heures, heure_de_depart: la chronologie COMMUNE aux deux courbes.
+        ecretage_horaire: CALX63 — l'énergie ÉCRÊTÉE par l'onduleur à chaque
+            pas (kWh). Elle est offerte aux groupes ``dc``, DANS L'ORDRE, et
+            chaque groupe ne voit que ce que le précédent n'a pas stocké ;
+            un groupe ``ac`` ne la voit jamais.
+        tou_heures, mois_des_heures: CALX63 — la grille horaire SAISIE par la
+            société et le mois de chaque pas, communs à tous les groupes
+            (stratégie ``heures_tarif``). Grille absente alors qu'un groupe
+            suit cette stratégie ⇒ refus ``parametres.tou_heures`` (non
+            préfixé : c'est un réglage de la société, pas du groupe).
+        _trace: usage INTERNE (``etapes/batterie.py``) — reçoit les flux AU
+            POINT DE LIVRAISON pas par pas (:func:`_trace_agregee`).
 
     Returns:
         dict — ``groupes`` (chaque groupe SÉPARÉMENT : ``groupe``,
@@ -1093,8 +1565,25 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
                     'grandeurs, jamais avec celles d’un voisin.',
                     champ=f'groupes[{rang}].{nom}')
 
+    # CALX63 — ce que le SITE porte pour tous les groupes, vérifié une fois
+    # et refusé SANS préfixe de groupe (ce n'est la saisie d'aucun groupe).
+    ecretage_restant = None
+    if ecretage_horaire is not None:
+        ecretage_restant = _serie(ecretage_horaire, champ='ecretage')
+        if len(ecretage_restant) != len(charge):
+            raise StrategieInvalide(
+                'La série d’écrêtage ne décrit pas la même période que les '
+                f'courbes ({len(ecretage_restant)} pas pour {len(charge)}).',
+                champ='ecretage')
+    if any(ligne['declaration'].get('strategie') == 'heures_tarif'
+           for ligne in lus):
+        _grille_tou(tou_heures)
+    mois = _mois_des_heures(mois_des_heures, len(charge))
+
     deficits = [max(0.0, conso - prod)
                 for conso, prod in zip(charge, production)]
+    surplus_brut = [max(0.0, prod - conso)
+                    for conso, prod in zip(charge, production)]
     conso_restante = charge_horaire
     prod_restante = production_horaire
     resultats = []
@@ -1103,11 +1592,15 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
         parametres = {nom: valeur
                       for nom, valeur in ligne['declaration'].items()
                       if nom in autorises}
+        # Le couplage VÉRIFIÉ par _groupes_valides, jamais la saisie brute.
+        parametres['couplage'] = ligne['couplage']
         trace = {}
         try:
             resultat = simuler_batterie(
                 conso_restante, prod_restante, pas_heures=pas_heures,
-                heure_de_depart=heure_de_depart, _trace=trace, **parametres)
+                heure_de_depart=heure_de_depart,
+                ecretage_horaire=ecretage_restant, tou_heures=tou_heures,
+                mois_des_heures=mois, _trace=trace, **parametres)
         except StrategieInvalide as refus:
             champ = (f'groupes[{rang}].{refus.champ}' if refus.champ
                      else f'groupes[{rang}]')
@@ -1120,8 +1613,22 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
                   for conso, sortie in zip(charge, trace['sortie'])]
         production = [max(0.0, prod - entree)
                       for prod, entree in zip(production, trace['entree'])]
+        if ecretage_restant is not None:
+            ecretage_restant = [
+                max(0.0, valeur - stockee) for valeur, stockee
+                in zip(ecretage_restant, trace['entree_ecretage'])]
         conso_restante = charge
         prod_restante = production
+
+    plafond, justification = _plafond_commun(resultats)
+    pas_lu = _nombre(pas_heures) or 1.0
+    pas_lu = pas_lu if pas_lu > 0 else 1.0
+    agregee = _trace_agregee(traces, surplus_brut=surplus_brut,
+                             plafond=plafond, justification=justification,
+                             pas=pas_lu)
+    if isinstance(_trace, dict):
+        _trace.update({cle: valeur for cle, valeur in agregee.items()
+                       if not cle.startswith('_')})
 
     publies = [{
         'groupe': ligne['groupe'],
@@ -1134,9 +1641,8 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
     if len(resultats) == 1:
         agregat = copy.deepcopy(resultats[0])
     else:
-        pas = _nombre(pas_heures) or 1.0
-        agregat = _agreger(lus, resultats, traces, deficits=deficits,
-                           pas=pas if pas > 0 else 1.0,
+        agregat = _agreger(lus, resultats, traces, agregee,
+                           deficits=deficits, pas=pas_lu,
                            heure_de_depart=heure_de_depart)
 
     return {
@@ -1398,3 +1904,205 @@ def capacites_candidates(charge_horaire, production_horaire, *, motivation,
         'avertissements': avertissements,
         'motif_absence': '',
     }
+
+
+# ── CALX63 — la grille horaire de la SOCIÉTÉ, libellés seulement ───────────
+
+def heures_tarif_societe(company):
+    """CALX63 — les LIBELLÉS d'heures de la grille TOU saisie par la société.
+
+    Lue par ``apps.parametres.selectors.tou_pour(company)`` (CALX274/275 —
+    ``parametres`` est une app de fondation, l'import direct est admis). SEULE
+    la clé ``heures`` en sort : les tarifs, la source et sa date restent dans
+    ``parametres`` — aucun prix n'entre dans le dispatch (D5).
+
+    Returns:
+        La liste de 24 libellés, ou ``{saison: [24 libellés]}`` (CALX275) —
+        ou ``None`` quand la société n'a rien saisi (ou sans société) : la
+        stratégie ``heures_tarif`` est alors refusée en nommant
+        ``parametres.tou_heures``. JAMAIS ``DEFAULT_HOUR_TRANCHES`` en repli.
+    """
+    if company is None:
+        return None
+    from apps.parametres.selectors import tou_pour
+
+    grille = tou_pour(company)
+    if not isinstance(grille, dict):
+        return None
+    heures = grille.get('heures')
+    return copy.deepcopy(heures) if heures else None
+
+
+# ── CALX63 — le vieillissement de la batterie PAR CYCLES ───────────────────
+
+#: Les deux champs de fiche lus — sous les noms que ``specs_batterie`` publie
+#: (``bat_cycles_publies`` et ``bat_retention_fin_de_vie_pct``, publiée
+#: ``eol_pct`` par le sélecteur du stock, CALX60).
+CHAMP_CYCLES_FICHE = 'fiche_batterie.cycles_publies'
+CHAMP_EOL_FICHE = 'fiche_batterie.eol_pct'
+CHAMP_CYCLES_ANNUELS = 'cycles_annuels'
+
+MODELE_VIEILLISSEMENT = 'lineaire_par_cycles'
+
+REFERENCE_VIEILLISSEMENT = (
+    'OpenSolar — dégradation de la batterie par le débit d’énergie '
+    '(https://support.opensolar.com/hc/en-us/articles/12382460685455-How-'
+    'OpenSolar-Models-Battery-Energy-Storage) ; HelioScope — dégradation par '
+    'profondeur de décharge et cycles '
+    '(https://help-center.helioscope.com/hc/en-us/articles/8198547156371-'
+    'Energy-Storage).')
+
+MENTION_CALENDAIRE = (
+    'Seul le vieillissement PAR CYCLES est publié : le vieillissement '
+    'calendaire n’est pas publié par la fiche, il n’est donc pas supposé.')
+
+
+def _vieillissement_omis(motif, *, champ, cycles_annuels=None,
+                         cycles_fiche=None, eol_pct_fiche=None):
+    return {
+        'modele': None,
+        'cycles_annuels': cycles_annuels,
+        'cycles_fiche': cycles_fiche,
+        'eol_pct_fiche': eol_pct_fiche,
+        'annee_fin_de_vie': None,
+        'annees': [],
+        'reference': REFERENCE_VIEILLISSEMENT,
+        'mention': MENTION_CALENDAIRE,
+        'champ': champ,
+        'motif_absence': motif,
+    }
+
+
+def _capacite_de_l_annee(annee, *, cycles_annuels, cycles_fiche, eol_pct):
+    """``(cycles cumulés, capacité %)`` au DÉBUT de l'année ``annee``.
+
+    La capacité va LINÉAIREMENT de 100 % (aucun cycle) à la rétention de fin
+    de vie PUBLIÉE (au nombre de cycles PUBLIÉ) — les deux seuls points que
+    la fiche donne. Au-delà des cycles publiés, la fiche ne dit rien : la
+    capacité est ``None``, jamais extrapolée.
+    """
+    cumul = cycles_annuels * (annee - 1)
+    if cumul > cycles_fiche + _EPSILON:
+        return cumul, None
+    return cumul, 100.0 - (100.0 - eol_pct) * cumul / cycles_fiche
+
+
+def vieillissement_batterie(cycles_annuels, cycles_fiche, eol_pct_fiche, *,
+                            horizon_annees=None):
+    """CALX63 — la capacité de la batterie année par année, par ses CYCLES.
+
+    Parité : OpenSolar (dégradation par le débit) et HelioScope (dégradation
+    par cycles) — :data:`REFERENCE_VIEILLISSEMENT`. Le modèle est celui que
+    les deux chiffres de la fiche définissent : la capacité décroît
+    linéairement avec les cycles cumulés, de 100 % à ``eol_pct_fiche`` au
+    bout de ``cycles_fiche`` cycles. L'année N se lit à son DÉBUT : l'année 1
+    vaut 100 %, la capacité que le dispatch a fait tourner.
+
+    Args:
+        cycles_annuels: les cycles équivalents pleins d'UNE année, tirés du
+            dispatch (énergie restituée ÷ capacité utile sur une année
+            entière).
+        cycles_fiche: le nombre de cycles PUBLIÉ par la fiche
+            (``cycles_publies``).
+        eol_pct_fiche: la rétention de fin de vie PUBLIÉE (``eol_pct``, en %
+            de la capacité).
+        horizon_annees: le nombre d'années à publier (l'horizon de la
+            projection de production). ``None`` ⇒ jusqu'à l'année où les
+            cycles publiés sont atteints.
+
+    Returns:
+        dict — ``modele``, ``cycles_annuels``, ``cycles_fiche``,
+        ``eol_pct_fiche``, ``annee_fin_de_vie`` (la dernière année dont le
+        début reste dans les cycles publiés), ``annees`` (``[{annee,
+        cycles_cumules, capacite_batterie_pct, au_dela_fiche}]`` —
+        ``capacite_batterie_pct`` ``None`` au-delà des cycles publiés),
+        ``reference``, ``mention``, ``champ`` et ``motif_absence``. Cycles ou
+        rétention absents de la fiche ⇒ ``annees`` vide, ``champ`` qui NOMME
+        le champ de fiche manquant et son motif — jamais un 80 % supposé.
+    """
+    annuels = _nombre(cycles_annuels)
+    vie = _nombre(cycles_fiche)
+    eol = _nombre(eol_pct_fiche)
+    identite = {'cycles_annuels': annuels, 'cycles_fiche': vie,
+                'eol_pct_fiche': eol}
+
+    manquants = []
+    if vie is None or vie <= 0:
+        manquants.append(CHAMP_CYCLES_FICHE)
+    if eol is None or not 0 < eol <= 100:
+        manquants.append(CHAMP_EOL_FICHE)
+    if manquants:
+        noms = ', '.join(f'« {nom} »' for nom in manquants)
+        return _vieillissement_omis(
+            'La fiche de la batterie ne publie pas ce qu’il faut pour son '
+            f'vieillissement par cycles — non renseigné(s) : {noms}. La '
+            'capacité année par année est OMISE : aucune durée de vie ni '
+            'aucune rétention de fin de vie n’est supposée.',
+            champ=manquants[0], **identite)
+    if annuels is None or annuels <= 0:
+        return _vieillissement_omis(
+            'Les cycles annuels de la batterie ne sont pas connus : ils se '
+            'lisent sur le dispatch d’une année ENTIÈRE (énergie restituée ÷ '
+            'capacité utile). La capacité année par année est OMISE.',
+            champ=CHAMP_CYCLES_ANNUELS, **identite)
+
+    fin_de_vie = int(math.floor(vie / annuels + _EPSILON)) + 1
+    horizon = None
+    if horizon_annees is not None:
+        lu = _nombre(horizon_annees)
+        if lu is None or lu < 1:
+            raise StrategieInvalide(
+                'L’horizon du vieillissement se compte en années entières, au '
+                f'moins une (reçu : {horizon_annees!r}).',
+                champ='horizon_annees')
+        horizon = int(lu)
+    annees = []
+    for annee in range(1, (horizon or fin_de_vie) + 1):
+        cumul, capacite = _capacite_de_l_annee(
+            annee, cycles_annuels=annuels, cycles_fiche=vie, eol_pct=eol)
+        annees.append({
+            'annee': annee,
+            'cycles_cumules': round(cumul, 1),
+            'capacite_batterie_pct': (round(capacite, 2)
+                                      if capacite is not None else None),
+            'au_dela_fiche': capacite is None,
+        })
+    return {
+        'modele': MODELE_VIEILLISSEMENT,
+        **identite,
+        'annee_fin_de_vie': fin_de_vie,
+        'annees': annees,
+        'reference': REFERENCE_VIEILLISSEMENT,
+        'mention': MENTION_CALENDAIRE,
+        'champ': '',
+        'motif_absence': '',
+    }
+
+
+def capacite_batterie_par_annee(annees, vieillissement):
+    """CALX63 — chaque ligne annuelle, COPIÉE, avec sa ``capacite_batterie_pct``.
+
+    ``annees`` : les lignes de la projection pluriannuelle
+    (``etapes/vieillissement.py::tableau_pluriannuel``, ``{annee: rang,
+    …}``) ; ``vieillissement`` : ce que rend :func:`vieillissement_batterie`.
+    La capacité de chaque ligne se calcule par le MÊME modèle (jamais par
+    une recherche dans un autre tableau) ; vieillissement omis ou année
+    au-delà des cycles publiés ⇒ ``None``. Les lignes reçues ne sont jamais
+    modifiées.
+    """
+    publiable = (isinstance(vieillissement, dict)
+                 and vieillissement.get('modele') == MODELE_VIEILLISSEMENT)
+    lignes = []
+    for ligne in annees or []:
+        copie = dict(ligne) if isinstance(ligne, dict) else {'annee': ligne}
+        capacite = None
+        rang = _nombre(copie.get('annee'))
+        if publiable and rang is not None and rang >= 1:
+            _cumul, valeur = _capacite_de_l_annee(
+                int(rang), cycles_annuels=vieillissement['cycles_annuels'],
+                cycles_fiche=vieillissement['cycles_fiche'],
+                eol_pct=vieillissement['eol_pct_fiche'])
+            capacite = round(valeur, 2) if valeur is not None else None
+        copie['capacite_batterie_pct'] = capacite
+        lignes.append(copie)
+    return lignes
