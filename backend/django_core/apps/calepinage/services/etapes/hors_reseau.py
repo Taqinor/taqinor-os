@@ -230,7 +230,10 @@ def bloc_hors_reseau(serie, contexte=None, *, charge=None):
             puissance_decharge_kw=fiche['puissance_decharge_kw'],
             mois_par_heure=_mois_par_heure(serie, longueur),
             etat_initial_kwh=declaration.get('etat_initial_kwh'),
-            pas_heures=heures_du_pas)
+            pas_heures=heures_du_pas,
+            # CALX272 — les seuils de protection SAISIS sur le document
+            # (``hors_reseau.seuils``) ; absents ⇒ comportement d'origine.
+            seuils=declaration.get('seuils'))
     except HorsReseauInvalide as refus:
         return serie, _omission(refus.motif,
                                 champ=refus.champ or '')
