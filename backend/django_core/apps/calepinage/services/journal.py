@@ -31,7 +31,7 @@ __all__ = [
     'journaliser_creation', 'journaliser_lien_devis',
     'journaliser_lien_appel_offre', 'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
-    'journaliser_verrou', 'noter',
+    'journaliser_verrou', 'journaliser_document_produit', 'noter',
 ]
 
 
@@ -162,6 +162,39 @@ def dernier_etat_verrou(calepinage):
             'CAL207 : lecture du dernier état de verrou en échec '
             '(calepinage %s)', getattr(calepinage, 'pk', None))
         return None
+
+
+#: CALX324 — champ du fil pour la production d'un document (lot 6). SOURCE
+#: UNIQUE lue par ``services/documents/versions_document.py`` — jamais un
+#: second littéral ailleurs.
+CHAMP_DOCUMENT_PRODUIT = 'document'
+
+
+def journaliser_document_produit(calepinage, *, code, numero, langue,
+                                 empreinte='', user=None):
+    """CALX324 — « <document> produit (version N, langue X) » au fil.
+
+    La ligne porte l'EMPREINTE du document (``layout_hash`` court /
+    ``version_moteur`` au moment de la production), JAMAIS un résumé de son
+    contenu — même discipline que ``journaliser_layout`` (le nombre de
+    modules, jamais la géométrie). Une production REFUSÉE n'appelle jamais
+    cette fonction : un refus n'est pas un événement de remise (l'appelant,
+    ``versions_document.enregistrer_version_document``, ne l'invoque
+    qu'APRÈS un enregistrement réussi).
+    """
+    from .documents.libelles_document import LibelleInconnu, libelle
+
+    try:
+        titre = libelle(code, langue or 'fr')
+    except LibelleInconnu:
+        titre = code
+    valeur = '%s (version %s, %s)' % (titre, numero, langue or 'fr')
+    if empreinte:
+        valeur = '%s — %s' % (valeur, empreinte)
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field=CHAMP_DOCUMENT_PRODUIT,
+                   field_label='Document produit', old_value='',
+                   new_value=valeur)
 
 
 def noter(calepinage, texte, *, user=None):
