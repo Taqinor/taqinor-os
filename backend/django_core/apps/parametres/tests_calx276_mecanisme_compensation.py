@@ -138,7 +138,7 @@ class MecanismeValidationPurTest(unittest.TestCase):
         # EXACTEMENT celles du service.
         import importlib
         migration = importlib.import_module(
-            'apps.parametres.migrations.0098_calx276_mecanisme_compensation')
+            'apps.parametres.migrations.0104_calx276_mecanisme_compensation')
         operation = [op for op in migration.Migration.operations
                      if op.name == 'mecanisme_compensation'][0]
         cles = tuple(cle for cle, _ in operation.field.choices)

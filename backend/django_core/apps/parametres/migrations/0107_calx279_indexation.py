@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0100_calx278_taxes_grille'),
+        ('parametres', '0106_calx278_taxes_grille'),
     ]
 
     operations = [

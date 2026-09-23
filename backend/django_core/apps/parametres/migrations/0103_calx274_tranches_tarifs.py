@@ -2,12 +2,11 @@
 # société, avec la source et sa date. Migration ADDITIVE : quatre champs vides
 # par défaut, aucune donnée existante touchée.
 #
-# Chaînage : le nom est celui pré-déclaré par l'en-tête du plan (« 0097 »), mais
-# la tête RÉELLE de ``parametres`` sur ``main`` est ``0102_cad31`` (la vague CAD
-# a posé 0097→0102 après la rédaction du plan). La dépendance pointe donc sur
-# cette tête : une seule feuille, aucun conflit de migrations (Django ordonne
-# par le graphe de dépendances, jamais par le préfixe numérique — le dépôt
-# porte déjà des préfixes doublés, ex. ventes 0021).
+# Chaînage : le plan pré-déclarait « 0097 », mais la vague CAD tenait déjà
+# 0097→0102 sur ``main`` ; la chaîne CALX du lot 5 est donc renumérotée
+# 0103→0107 (arbitrage orchestrateur M4) et part de la tête réelle
+# ``0102_cad31_paliers_premier_contact`` — une seule feuille, aucun préfixe
+# en double.
 
 from django.db import migrations, models
 

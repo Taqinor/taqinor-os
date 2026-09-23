@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0098_calx276_mecanisme_compensation'),
+        ('parametres', '0104_calx276_mecanisme_compensation'),
     ]
 
     operations = [

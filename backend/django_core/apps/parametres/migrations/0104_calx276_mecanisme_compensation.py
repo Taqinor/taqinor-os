@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('parametres', '0097_calx274_tranches_tarifs'),
+        ('parametres', '0103_calx274_tranches_tarifs'),
     ]
 
     operations = [
