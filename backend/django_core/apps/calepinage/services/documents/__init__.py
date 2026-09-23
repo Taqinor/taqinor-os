@@ -251,10 +251,15 @@ def _etat_du_document(code, calepinage, resultat):
         return True, None, []
 
     if code == 'plan_cablage':
+        # ``resultat['troncons']`` est un DICT (``{troncons[], totaux,
+        # omissions[], verdicts[]}``, contrat ``calepinage_resultat.json``)
+        # OU ``null`` tant qu'aucun cheminement n'est tracé — JAMAIS une
+        # liste vide (« mesuré, et il n'y a rien » serait faux). La
+        # grammaire ``[]`` ne s'applique donc pas ici : présence du dict.
         manque = []
         if not valeur_au_chemin(resultat, 'electrique.chainage')[0]:
             manque.append(MANQUE_CHAINAGE)
-        if not valeur_au_chemin(resultat, 'troncons[]')[0]:
+        if not valeur_au_chemin(resultat, 'troncons')[0]:
             manque.append(MANQUE_TRONCONS)
         if manque:
             return False, MOTIF_SANS_CABLAGE, manque

@@ -105,6 +105,29 @@ class FauxResultatCoute:
         return self.titre
 
 
+class FauxCablageTrace:
+    """Chaînage électrique ET cheminement mesuré PRÉSENTS — ``resultat
+    ['troncons']`` est un DICT (contrat ``calepinage_resultat.json``),
+    JAMAIS une liste : régression du bug où la grammaire ``[]`` le lisait
+    comme toujours absent."""
+
+    pk = 6
+    devis_id = None
+    roof_layout = {'zones': [{'id': 1}]}
+    resultat = {
+        'electrique': {'chainage': {'modules': 12, 'chaines': 2}},
+        'troncons': {'troncons': [{'id': 't1'}], 'totaux': {},
+                     'omissions': [], 'verdicts': []},
+    }
+    company = None
+    layout_hash = 'd' * 64
+    version_moteur = 'calepinage-1.0.0'
+    titre = 'Calepinage 6'
+
+    def __str__(self):
+        return self.titre
+
+
 class InventaireVideTest(unittest.TestCase):
     """Un calepinage nu sert EXACTEMENT ``exemple_vide`` (essai PUR)."""
 
@@ -201,6 +224,19 @@ class ChampReellementLeveTest(unittest.TestCase):
         self.assertFalse(document['disponible'])
         champs = {ligne['champ'] for ligne in document['manque']}
         self.assertEqual(champs, {'electrique.chainage', 'troncons'})
+
+    def test_plan_cablage_disponible_quand_troncons_est_un_dict_trace(self):
+        """RÉGRESSION : ``resultat['troncons']`` est un DICT non vide quand
+        un cheminement est tracé (jamais une liste) — la grammaire de
+        présence ne doit PAS exiger ``[]``."""
+        with mock.patch(
+                'apps.calepinage.services.documents._versions_pour',
+                return_value=[]):
+            servi = inventaire_des_documents(FauxCablageTrace())
+        document = next(d for d in servi['documents']
+                        if d['code'] == 'plan_cablage')
+        self.assertTrue(document['disponible'])
+        self.assertEqual(document['manque'], [])
 
     def test_les_pieces_sans_service_dedie_restent_disponibles(self):
         """La BASE (conception+résultat) suffit pour ``export_projet_json``,
