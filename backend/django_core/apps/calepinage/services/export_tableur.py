@@ -162,8 +162,56 @@ def table_chaines(resultat):
     return entetes, lignes
 
 
+def _designation_bordereau(ligne):
+    """CALX304 — désignation + spec + référence, en UNE cellule (le tableau
+    reste à 3 colonnes — ``Désignation``/``Quantité``/``Unité``, celles que
+    CAL179 vérifie au caractère près). La référence produit n'apparaît QUE
+    quand le stock en publie une ; la spec (chute de tension citée, norme,
+    ou « décision société — <motif> » pour un organe ajouté à la main,
+    ``services/protections.py::MENTION_SOCIETE``) est reprise TELLE QUELLE,
+    jamais reformulée."""
+    parties = [str(ligne.get('designation') or '').strip()]
+    spec = str(ligne.get('spec') or '').strip()
+    if spec:
+        parties.append(spec)
+    reference = ligne.get('reference')
+    if reference:
+        parties.append('réf. %s' % reference)
+    return ' — '.join(partie for partie in parties if partie)
+
+
+def _lignes_bordereau_electrique(resultat):
+    """CALX304 — structure (``services/kits.py``), câble par section et
+    longueur (``services/cables.py``), protections retenues et terre
+    (``services/protections.py``/``services/terre.py``) : ces trois listes
+    sont DÉJÀ calculées et servies par la clé racine
+    ``resultat['nomenclature']`` (CALX246/247/227/230/232,
+    ``core.electrique.nomenclature``) — une
+    LECTURE, jamais un second calcul (le module n'a ici ni la conception ni
+    la société pour recalculer quoi que ce soit). Une ligne dont la quantité
+    n'est pas un nombre calculé est OMISE, jamais mise à 0 (D-CALX 7) :
+    ``resultat['nomenclature']`` ne publie d'ailleurs déjà QUE des lignes
+    dont la quantité est connue (CALX247 — sans règle de bordereau saisie,
+    les lignes de structure sont absentes, pas nulles)."""
+    lignes = []
+    for entree in (resultat or {}).get('nomenclature') or ():
+        if not isinstance(entree, dict):
+            continue
+        quantite = entree.get('quantite')
+        if quantite is None:
+            continue
+        lignes.append([_designation_bordereau(entree), quantite,
+                       entree.get('unite') or ''])
+    return lignes
+
+
 def table_nomenclature(resultat):
-    """Désignation et QUANTITÉ. Pas de prix, pas de total, pas de fournisseur."""
+    """Désignation et QUANTITÉ. Pas de prix, pas de total, pas de fournisseur.
+
+    CALX304 — étendue aux lignes de structure/câbles/protections/terre du
+    bordereau électrique (``resultat['nomenclature']``), en plus des lignes
+    module/onduleur historiques : MÊME table, MÊMES trois colonnes.
+    """
     entetes = ['Désignation', 'Quantité', 'Unité']
     pose = (resultat or {}).get('pose') or {}
     lignes = []
@@ -178,6 +226,7 @@ def table_nomenclature(resultat):
             continue
         lignes.append(['Onduleur %s' % (onduleur.get('reference') or ''),
                        onduleur.get('nombre'), 'u'])
+    lignes.extend(_lignes_bordereau_electrique(resultat))
     return entetes, lignes
 
 
