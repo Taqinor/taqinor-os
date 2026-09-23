@@ -530,11 +530,16 @@ class Lead(SoftDeleteModel):
     # ``secours_coupures`` ABSORBE le besoin « je veux tenir pendant les
     # coupures » : c'est un objectif déclaré, pas un booléen séparé — et il
     # reste un ARGUMENT commercial, sans aucun dimensionnement de secours.
+    # CAD163 (décision fondateur du 21/09/2026, Q9) — la loi 82-21 n'est
+    # JAMAIS abordée spontanément : le libellé ne la nomme plus, et le choix ne
+    # se coche que si le client parle lui-même de revendre son surplus. La
+    # VALEUR `injection_8221` ne change pas (données, webhooks, questionnaire).
     class ObjectifProjet(models.TextChoices):
         FACTURE = 'facture', 'Baisser la facture'
         SECOURS_COUPURES = 'secours_coupures', 'Tenir pendant les coupures'
         AUTONOMIE = 'autonomie', 'Gagner en autonomie'
-        INJECTION_8221 = 'injection_8221', 'Injecter le surplus (loi 82-21)'
+        INJECTION_8221 = ('injection_8221',
+                          'Revendre le surplus (si le client en parle)')
         AUTRE = 'autre', 'Autre'
 
     # Vocabulaire REPRIS de la qualification de visite
@@ -1253,9 +1258,11 @@ class Lead(SoftDeleteModel):
         verbose_name='Objectif du projet',
         help_text="Question à l'appel : « Qu'est-ce qui compte le plus pour "
                   'vous — baisser la facture, tenir pendant les coupures, '
-                  "gagner en autonomie, injecter le surplus ? » (vide = pas "
-                  'encore posée). « Tenir pendant les coupures » est un '
-                  'ARGUMENT : aucun dimensionnement de secours n’en découle.')
+                  "gagner en autonomie ? » (vide = pas encore posée). "
+                  '« Revendre le surplus » ne se coche QUE si le client en '
+                  'parle lui-même : ce n’est jamais proposé à l’appel. '
+                  '« Tenir pendant les coupures » est un ARGUMENT : aucun '
+                  'dimensionnement de secours n’en découle.')
     decideur = models.CharField(
         max_length=20, choices=Decideur.choices, null=True, blank=True,
         verbose_name='Qui décide',

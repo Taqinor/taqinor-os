@@ -368,6 +368,15 @@ RÉPONSE : La loi permet de revendre une part du surplus ; je vous confirme les 
 JAMAIS : Aucun tarif, aucun pourcentage, aucun délai.
 ENSUITE : Envoyer la confirmation écrite par un canal traçable ; aucune promesse de rachat tant qu'une décision ANRE datée n'a pas été lue.
 
+#### objectif_projet — La question « objectif du projet » de la fiche ne propose plus le surplus (CAD163, 23/09/2026)
+Même décision (Q9) appliquée à la fiche du lead (`Lead.objectif_projet`, texte d'aide = la question posée à l'appel) :
+la question ne propose PLUS « injecter le surplus », et le libellé du choix ne nomme plus la loi. La valeur
+`injection_8221` reste inchangée (données, webhooks, questionnaire) ; elle ne se coche que si le client parle
+lui-même de revendre son surplus — la réponse est alors l'objection ci-dessus. ✎ Formulations à valider par le
+fondateur. Darija : aucune version (question posée en FR dans la fiche).
+QUESTION : Qu'est-ce qui compte le plus pour vous — baisser la facture, tenir pendant les coupures, gagner en autonomie ?
+CHOIX : Revendre le surplus (si le client en parle)
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)
