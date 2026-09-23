@@ -66,6 +66,38 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
       ETAPE_APPEL.id, { outcome: 'non_joint', note: 'Répondeur' }))
   })
 
+  // CAD13 — la précision n'est plus effacée par la note tapée : elle l'ouvre.
+  it('« Répondeur » + note tapée : la note finale COMMENCE par la précision', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'),
+      { target: { value: '  sonne dans le vide, à retenter le soir  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalled())
+    const { note } = onFait.mock.calls[0][1]
+    expect(note.startsWith('Répondeur')).toBe(true)
+    expect(note).toBe('Répondeur — sonne dans le vide, à retenter le soir')
+    expect(onFait.mock.calls[0][1].outcome).toBe('non_joint')
+  })
+
+  it('une note tapée sans précision part telle quelle', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'),
+      { target: { value: 'rappel prévu jeudi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { outcome: 'non_joint', note: 'rappel prévu jeudi' }))
+  })
+
   it('une réponse 400 {erreurs: {outcome}} s\'affiche SOUS le contrôle, jamais un toast générique', async () => {
     const erreur = {
       response: { status: 400, data: { erreurs: { outcome: 'Une issue est requise pour un appel.' } } },
@@ -136,6 +168,221 @@ describe('CKP1/CKP4 RelanceEtapeRow — badges honnêtes (sautée ≠ annulée)'
 // contrat committé `relance_etape_v2.json` servent de départ : la première est
 // un appel de prise de contact, la seconde un WhatsApp du suivi de proposition.
 const ETAPE_APRES_DEVIS = exempleContrat('crm', 'relance_etape_v2').results[1]
+
+// CAD16 — sur le DERNIER réveil (rang 2, J60), « Pas de réponse » ne promet
+// plus un réveil suivant qui n'existe pas. L'état « dernier réveil » est une
+// variante COMMITTÉE du contrat (même forme), affirmée par le test back.
+describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
+  const [DERNIER_REVEIL] = exempleContrat(
+    'crm', 'relance_etape_v2', 'exemple_dernier_reveil').results
+
+  it('rang 2 de la cadence réveil : « Pas de réponse » affiche la phrase de fin', () => {
+    expect(DERNIER_REVEIL.cadence).toBe('reveil')
+    expect(DERNIER_REVEIL.ordre).toBe(2)
+    ouvrirFait(DERNIER_REVEIL)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(
+      'C’était le dernier réveil : plus aucune relance n’est programmée, le dossier reste au Froid.')
+    expect(suite).not.toHaveTextContent(/réveil suivant/)
+    expect(suite).not.toHaveTextContent(/touche suivante est programmée/)
+  })
+
+  it('« À rappeler le… » sur le dernier réveil dit que la date ne sera reportée nulle part', () => {
+    ouvrirFait(DERNIER_REVEIL)
+    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    expect(screen.getByTestId('suite-reponse'))
+      .toHaveTextContent(/n’est reportée sur aucune relance/)
+  })
+})
+
+// CAD44 — agir en avance : sur une touche À VENIR, Appeler/WhatsApp/Reporter
+// sont ouverts (et le coaching de l'appel), « Fait »/« Sauter » verrouillés.
+describe('CAD44 RelanceEtapeRow — agir en avance', () => {
+  it('enAvance : les trois gestes présents, « Fait » et « Sauter » absents', () => {
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reporter/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('touche-en-avance')).toHaveTextContent(/s’ouvrira à son échéance/)
+  })
+
+  it('enAvance : « Reporter » s’ouvre et reporte la touche', async () => {
+    const onReporter = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={onReporter}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2099-03-02' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Décaler ce rappel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onReporter).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { rappel_le: '2099-03-02', rappel_heure: '09:00' }))
+  })
+
+  it('le coaching « Proposer la visite » reste proposé sur une touche après-devis à venir', () => {
+    render(
+      <RelanceEtapeRow etape={ETAPE_APRES_DEVIS} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    expect(screen.getByTestId('panneau-proposer-visite')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+  })
+})
+
+// CAD46 — « Reporter au » et « À rappeler le… » déplacent TOUT le plan : la
+// même phrase le dit sous les deux champs.
+describe('CAD46 RelanceEtapeRow — le report fait glisser tout le suivi', () => {
+  const GLISSEMENT = 'Le reste du suivi glisse du même nombre de jours.'
+
+  it('la phrase est présente sous « Reporter au »', () => {
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    expect(screen.getByLabelText('Reporter au')).toBeInTheDocument()
+    expect(screen.getByTestId('glissement-plan')).toHaveTextContent(GLISSEMENT)
+  })
+
+  it('la phrase est présente sous « À rappeler le… »', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    expect(screen.getByLabelText('Rappeler le')).toBeInTheDocument()
+    expect(screen.getByTestId('glissement-plan')).toHaveTextContent(GLISSEMENT)
+  })
+
+  it('« Plus tard » (la veille) garde SA suite, sans cette phrase', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Plus tard — pas maintenant' }))
+    expect(screen.queryByTestId('glissement-plan')).not.toBeInTheDocument()
+  })
+})
+
+// CAD84 — « message ouvert ? » ne présume plus le canal suggéré : le
+// libellé est neutre (appeler à la place est normal).
+describe('CAD84 RelanceEtapeRow — une question qui ne présume pas le canal', () => {
+  it('message non ouvert : le libellé neutre est rendu', () => {
+    ouvrirFait({ ...ETAPE_APRES_DEVIS, message_ouvert_le: null })
+    const question = screen.getByTestId('confirmer-sans-ouverture')
+    expect(question).toHaveTextContent(
+      'Vous n’avez pas ouvert de message WhatsApp pour cette touche — c’est normal si vous avez appelé à la place.')
+    expect(question).not.toHaveTextContent(/marquer faite sans avoir ouvert/)
+  })
+
+  it('message ouvert : aucune question', () => {
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.queryByTestId('confirmer-sans-ouverture')).not.toBeInTheDocument()
+  })
+})
+
+// CAD97 — cadence générique : « Fait — passer à la suite » n'annonce plus
+// « demain » à tort. État committé `exemple_generique` (même forme) : un
+// barreau du gabarit, puis une étape posée par le filet.
+describe('CAD97 RelanceEtapeRow — « Fait — passer à la suite » sur la générique', () => {
+  const [BARREAU, FILET] = exempleContrat('crm', 'relance_etape_v2', 'exemple_generique').results
+
+  it('barreau générique → la touche suivante « à son délai », jamais « demain »', () => {
+    ouvrirFait(BARREAU)
+    fireEvent.click(screen.getByRole('button', { name: 'Fait — passer à la suite' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(/à son délai/)
+    expect(suite).not.toHaveTextContent(/demain/)
+  })
+
+  it('étape de filet → la suite est posée « demain »', () => {
+    ouvrirFait(FILET)
+    fireEvent.click(screen.getByRole('button', { name: 'Fait — passer à la suite' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(/demain/)
+    expect(suite).not.toHaveTextContent(/à son délai/)
+  })
+})
+
+// CAD47 — « Sauter » dit ce qu'il fait : la cadence continue, la touche
+// suivante est programmée (phrase du serveur, `etape.suites.sauter`).
+describe('CAD47 RelanceEtapeRow — « Sauter » dit ce qu’il fait', () => {
+  function ouvrirSauter(etape) {
+    render(
+      <RelanceEtapeRow etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+  }
+
+  it('la phrase « la cadence continue — la touche suivante sera programmée » est dans le panneau', () => {
+    ouvrirSauter(ETAPE_APPEL)
+    expect(ETAPE_APPEL.suites.sauter).toEqual(['touche_suivante'])
+    expect(screen.getByTestId('suite-sauter')).toHaveTextContent(
+      'La cadence continue : sa touche suivante est programmée à son délai prévu.')
+  })
+
+  it('sur le DERNIER réveil, le panneau dit la vérité : plus aucune relance', () => {
+    const [dernier] = exempleContrat('crm', 'relance_etape_v2', 'exemple_dernier_reveil').results
+    ouvrirSauter(dernier)
+    expect(screen.getByTestId('suite-sauter')).toHaveTextContent(/dernier réveil/)
+    expect(screen.getByTestId('suite-sauter')).not.toHaveTextContent(/La cadence continue/)
+  })
+})
+
+// CAD12 — « Le client accepte » sans quitter la touche : un LIEN vers la fiche
+// du devis rattaché (jamais une action de statut depuis le CRM, règle #4).
+describe('CAD12 RelanceEtapeRow — le client accepte', () => {
+  it('sur une touche après-devis portant un devis, le lien pointe vers la fiche de CE devis', () => {
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    const lien = screen.getByRole('link', { name: /Marquer le devis .* accepté/ })
+    expect(ETAPE_APRES_DEVIS.devis).toBeTruthy()
+    expect(lien).toHaveAttribute('href', `/ventes/devis?devis=${ETAPE_APRES_DEVIS.devis}`)
+    expect(lien).toHaveTextContent(ETAPE_APRES_DEVIS.devis_reference)
+  })
+
+  it('le clic passe par la navigation de l’application quand elle est fournie', () => {
+    const navigate = vi.fn()
+    ouvrirFait(ETAPE_APRES_DEVIS, { navigate })
+    fireEvent.click(screen.getByRole('link', { name: /Marquer le devis .* accepté/ }))
+    expect(navigate).toHaveBeenCalledWith(`/ventes/devis?devis=${ETAPE_APRES_DEVIS.devis}`)
+  })
+
+  it('sans devis dans l’ERP, l’aide d’origine reste (aucun lien inventé)', () => {
+    ouvrirFait({ ...ETAPE_APRES_DEVIS, devis: null, devis_reference: '' })
+    expect(screen.queryByRole('link', { name: /Marquer le devis/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/Marquez le devis ACCEPTÉ/)).toBeInTheDocument()
+  })
+})
+
+// CAD4 — « Client joint » est LE mot des trois cadences : une seule issue
+// serveur (`joint`), jamais une seconde étiquette pour le même effet moteur.
+describe('CAD4 RelanceEtapeRow — un seul mot pour « je l’ai eu »', () => {
+  const ETAPE_REVEIL = { ...ETAPE_APPEL, cadence: 'reveil', ordre: 1, libelle: 'Réveil J30' }
+
+  it.each([
+    ['prise de contact', ETAPE_APPEL],
+    ['suivi de proposition', ETAPE_APRES_DEVIS],
+    ['réveil', ETAPE_REVEIL],
+  ])('%s : « Client joint » envoie l’issue `joint`, aucune seconde étiquette', async (_nom, etape) => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={etape} onFait={onFait} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    // L'ancienne seconde étiquette (écrite en motif : le mot lui-même ne doit
+    // plus apparaître dans ce dossier, hors historique).
+    expect(screen.queryByRole('button', { name: /^Int.ress.$/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    // Touche message du suivi : la confirmation « sans ouverture » n'est pas
+    // demandée (message ouvert dans le contrat) — le geste part directement.
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      etape.id, expect.objectContaining({ outcome: 'joint' })))
+  })
+})
 
 function ouvrirFait(etape, props = {}) {
   render(

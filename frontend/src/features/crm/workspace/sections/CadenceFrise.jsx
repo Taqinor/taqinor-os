@@ -55,6 +55,14 @@ function heureDueAt(dueAt) {
   }).format(t)
 }
 
+/** CAD44 — « AAAA-MM-JJ » d'aujourd'hui À CASABLANCA (jamais le fuseau du
+ *  navigateur), comparable par ordre de chaîne à `due_date` — même calcul que
+ *  `todayCasa` du cockpit « Relances du jour », copié (page → section, sens
+ *  d'import inverse) : les deux écrans appliquent la MÊME règle « à venir ». */
+function aujourdhuiCasablanca() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date())
+}
+
 // RLC1 — fenêtre d'annulation d'une touche traitée, la MÊME que le serveur
 // (`crm.services.ANNULATION_TOUCHE_HEURES`). L'écran ne fait que CACHER un
 // bouton hors fenêtre ; c'est le serveur qui refuse, avec son motif.
@@ -222,6 +230,11 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
     (it) => it.kind === 'etape' && it.data.statut === 'a_faire'
       && !it.data.overdue,
   )?.data.id ?? null
+  // CAD44 — la règle du cockpit, ici aussi : une touche À VENIR s'actionne
+  // (Appeler/WhatsApp/Reporter) mais « Fait »/« Sauter » attendent son jour.
+  // La frise autorisait « Fait » sur une touche future — deux gestes
+  // différents pour la même touche selon l'écran (contraire à CADX).
+  const aujourdhui = aujourdhuiCasablanca()
 
   // QJ-LISIBILITÉ (fondateur 07/09/2026, « all the list is still hashed ») —
   // les entrées PASSÉES (touches faites/sautées, visites terminées/validées)
@@ -354,6 +367,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
               {actionnable && (
                 <RelanceEtapeRow
                   etape={etape} busyId={busyId} compact
+                  enAvance={Boolean(etape.due_date) && etape.due_date > aujourdhui}
                   onFait={(id, payload) => traiter(id, 'fait', payload)}
                   onSauter={(id, note) => traiter(id, 'sauter', note)}
                   onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}

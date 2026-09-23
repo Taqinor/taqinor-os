@@ -1417,6 +1417,23 @@ VERBE_TOUCHE_SAUTEE = 'sautée'
 MENTION_TOUCHE_SAUTEE = f'marquée {VERBE_TOUCHE_SAUTEE}.'
 
 
+def touche_traitee_en_avance(etape):
+    """CAD44 — cette touche a-t-elle été TRAITÉE AVANT son échéance (jour local
+    Casablanca de ``traite_le`` antérieur à ``due_date``) ?
+
+    Décision fondateur du 21/09/2026 : agir en avance est permis (appeler,
+    écrire, reporter), et une touche faite avant son jour n'est PAS une faute
+    d'adhérence (``selectors._a_lheure``, CAD22). Le serveur la marque à sa
+    date RÉELLE et le chatter le dit ; le reste du plan ne bouge pas (les
+    barreaux suivants restent datés depuis l'ancre ``cadence_depart``)."""
+    from . import horaires
+
+    if etape is None or etape.traite_le is None or etape.due_date is None:
+        return False
+    return (etape.traite_le.astimezone(horaires.CASABLANCA).date()
+            < etape.due_date)
+
+
 def est_note_de_touche_sautee(activite):
     """CAD131 — cette ligne de chatter est-elle la note d'une touche SAUTÉE ?
 
@@ -1490,6 +1507,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     corps = (f'{prefixe_activite_touche(etape)} '
              f'({etape.get_canal_display()}, cadence '
              f'{etape.cadence}) marquée {verbe}.')
+    # CAD44 — une touche faite AVANT son échéance le dit dans le journal (sa
+    # date réelle est `traite_le`) ; ce n'est pas une faute d'adhérence.
+    if (statut == RelanceEtape.Statut.FAIT
+            and touche_traitee_en_avance(etape)):
+        corps += (' Traitée en avance (échéance du '
+                  f'{etape.due_date:%d/%m/%Y}).')
     if body:
         corps += f' {body}'
     if note:

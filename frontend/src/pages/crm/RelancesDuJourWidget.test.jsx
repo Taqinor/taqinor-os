@@ -187,10 +187,13 @@ describe('RelancesDuJourWidget (MRY14)', () => {
   })
 
   // MRY32 — sélecteur « Aujourd'hui + retard | Demain | 7 jours ».
-  it('MRY32 — « Demain » interroge scope=tomorrow et les lignes futures se lisent seulement (pas de bouton Fait)', async () => {
-    // Échéance FUTURE (demain, Africa/Casablanca) — `readOnly` du widget
+  // CAD44 (TRANCHÉ 21/09/2026, MRY32 rouverte) — une ligne FUTURE n'est plus
+  // en lecture seule : Appeler, WhatsApp et Reporter sont actionnables (agir
+  // en avance), « Fait » (et « Sauter ») restent verrouillés.
+  it('MRY32/CAD44 — « Demain » interroge scope=tomorrow ; une ligne future offre Appeler/WhatsApp/Reporter, jamais « Fait »', async () => {
+    // Échéance FUTURE (demain, Africa/Casablanca) — `enAvance` du widget
     // compare au jour courant, jamais au scope demandé : une ligne dont
-    // l'échéance est déjà passée resterait actionnable même sous scope=
+    // l'échéance est déjà passée garderait « Fait » même sous scope=
     // tomorrow, ce que ce test ne doit PAS prouver par accident.
     const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' })
       .format(new Date()).split('-').map(Number)
@@ -202,9 +205,21 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('radio', { name: 'Demain' }))
     await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'tomorrow' }))
+    // Les trois gestes d'avance sont présents…
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reporter/ })).toBeInTheDocument()
+    // … « Fait » est absent : on ne coche pas un geste qui n'a pas eu lieu.
     expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Reporter/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('touche-en-avance')).toBeInTheDocument()
+  })
+
+  it('CAD44 — une ligne d’aujourd’hui garde « Fait » (le verrou ne vise que l’avenir)', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    expect(screen.getAllByRole('button', { name: /^Fait$/ }).length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('touche-en-avance')).not.toBeInTheDocument()
   })
 
   it('MRY32 — « 7 jours » interroge scope=week', async () => {

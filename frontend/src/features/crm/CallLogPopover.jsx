@@ -30,6 +30,7 @@ import {
 } from '../../ui'
 import { DatePicker } from '../../ui/DatePicker'
 import { toastError, toastSuccess } from '../../lib/toast'
+import { suiteJournal } from './relances/suite'
 
 // Choix d'issue proposés (miroir de LeadActivity.OUTCOMES côté serveur, hors
 // la clé vide '—' qui ne fait pas sens comme choix explicite ici).
@@ -197,6 +198,17 @@ export default function CallLogPopover({
                   </button>
                 ))}
               </div>
+              {/* CAD15 — l'issue journalisée ici n'est pas qu'une trace : les
+                  récepteurs du moteur y réagissent (un « Refus » coché pour
+                  mémoire éteint toutes les relances du dossier). La
+                  conséquence est DITE, dans la MÊME table de phrases que le
+                  panneau « Fait » des touches (`relances/suite.js`), et gardée
+                  vraie par la garde CAD17. */}
+              {outcome && (
+                <p className="clp-suite text-xs text-muted-foreground" data-testid="clp-suite">
+                  {suiteJournal(outcome)}
+                </p>
+              )}
 
               <Textarea
                 className="clp-note"

@@ -131,7 +131,7 @@ describe('VISCAD6 — issue « Visite acceptée » du mini-formulaire Fait', () 
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
-  it('une AUTRE issue (ex. Intéressé) n\'ouvre PAS la modale', async () => {
+  it('une AUTRE issue (ex. Client joint) n\'ouvre PAS la modale', async () => {
     const onFait = vi.fn(() => Promise.resolve({}))
     render(
       <RelanceEtapeRow
@@ -139,7 +139,7 @@ describe('VISCAD6 — issue « Visite acceptée » du mini-formulaire Fait', () 
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Intéressé' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalled())
     await waitFor(() => expect(screen.queryByText('Planifier la visite technique')).toBeNull())

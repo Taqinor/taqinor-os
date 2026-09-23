@@ -11,6 +11,7 @@ import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
+import { suiteAnnoncee, suiteDuSaut } from './suite'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -33,7 +34,10 @@ import PlanifierVisiteModal from './PlanifierVisiteModal'
                       correspondances pour `getByText`) — le mode compact
                       va donc directement aux badges + boutons d'action ;
      - `readOnly`   : aucun bouton d'action — une ligne qui se LIT seulement
-                      (jours futurs du widget, MRY32) ;
+                      (historique de l'écran de suivi). CAD44 : les jours
+                      FUTURS du widget ne sont plus en lecture seule, ils
+                      passent `enAvance` (Appeler/WhatsApp/Reporter ouverts,
+                      Fait/Sauter verrouillés) ;
      - `showStatut` : ajoute un badge de statut (Fait à HH:MM + auteur /
                       Sautée / À faire / En retard) — l'écran de suivi (MRY31)
                       affiche TOUS les statuts, pas seulement les étapes à
@@ -74,64 +78,70 @@ const CADENCE_TONE = {
 // QJ-INVARIANT : la liste de relances d'un lead ne se termine que par Froid
 // ou Signé). Les réponses restent les issues serveur (LeadActivity.OUTCOMES) :
 // aucun nouveau contrat — seulement la bonne question au bon moment.
+// CAD17 — les réponses ne portent PLUS de phrase « suite » écrite par cadence
+// (elle mentait dès que le libellé ou le rang de la touche changeait la suite
+// réelle : CAD1, CAD3, CAD16, CAD97). La suite annoncée vient du SERVEUR
+// (`etape.suites`, dérivée du moteur) et se traduit dans `./suite.js`.
+// `precision` ne porte qu'un geste d'ÉCRAN, jamais un effet moteur.
 const QUESTIONS = {
   contact: {
     question: 'Résultat de la touche ?',
     reponses: [
-      { outcome: 'joint', label: 'Client joint',
-        suite: 'La prise de contact s’arrête. Message répondu → prochaine étape : l’appeler (prochain créneau d’appel). Appel fait → « préparer et envoyer le devis » demain. Le suivi de proposition démarre à l’envoi du devis.' },
-      { outcome: 'non_joint', label: 'Pas de réponse',
-        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-        suite: 'La prochaine touche est déplacée à la date choisie.' },
-      { outcome: 'refuse', label: 'Refus',
-        suite: 'Les relances s’arrêtent ; une étape « décider la suite » (perdu ou relance ultérieure) est posée.' },
+      { outcome: 'joint', label: 'Client joint' },
+      { outcome: 'non_joint', label: 'Pas de réponse' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Refus' },
     ],
   },
   apres_devis: {
     question: 'Réponse du client sur la proposition ?',
     aide: 'Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.',
     reponses: [
-      { outcome: 'interesse', label: 'Intéressé',
-        suite: 'Le suivi de proposition continue (une étape de suite est posée si c’était la dernière touche).' },
+      // CAD4 — UN SEUL mot sur les trois cadences : « Client joint » (issue
+      // `joint`). L'ancienne seconde étiquette (issue `interesse`) avait
+      // EXACTEMENT le même effet moteur (même table d'arrêt, mêmes
+      // récepteurs, mêmes indicateurs ISSUES_JOINT) : deux mots pour un seul
+      // geste, alors que « je l'ai eu, il n'a pas encore décidé » est déjà
+      // couvert par « À rappeler le… ». Aucune valeur d'énumération ajoutée
+      // ni retirée côté serveur ; l'historique garde son libellé d'origine.
+      { outcome: 'joint', label: 'Client joint' },
       // VISCAD6 (fondateur 15/09/2026) — « la visite devient une étape du
       // suivi commercial » : issue SERVEUR existante (LeadActivity.OUTCOMES,
       // jamais une nouvelle valeur inventée ici), choisie quand le client dit
       // oui à la visite pendant le suivi de proposition — ouvre la modale de
       // planification juste après confirmation (confirmerFait ci-dessous).
       { outcome: 'visite_acceptee', label: 'Visite acceptée',
-        suite: 'La cadence se met en veille jusqu’au retour de la visite — planifiez-la juste après.' },
-      { outcome: 'non_joint', label: 'Sans réponse',
-        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-        suite: 'La prochaine touche est déplacée à la date choisie.' },
-      { outcome: 'refuse', label: 'Refuse la proposition',
-        suite: 'Le suivi s’arrête ; une étape « décider la suite » est posée — marquer perdu reste votre décision.' },
+        precision: 'La planification s’ouvre juste après la confirmation.' },
+      { outcome: 'non_joint', label: 'Sans réponse' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Refuse la proposition' },
     ],
   },
+  // CAD97 — « Fait — passer à la suite » annonçait « demain » pour tous :
+  // vrai pour une étape posée par le filet, faux pour un barreau du gabarit
+  // (posé à SON délai, J+2/5/10/20/35). La phrase vient du serveur, qui lit
+  // le libellé et le rang de la touche.
   generique: {
     question: 'Où en est ce dossier ?',
     reponses: [
-      { outcome: '', label: 'Fait — passer à la suite',
-        suite: 'Devis envoyé → le suivi de proposition démarre (pour l’étape « préparer et envoyer le devis », un devis parti hors ERP compte aussi) ; sinon la prochaine étape est posée pour demain.' },
-      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-        suite: 'L’étape est déplacée à la date choisie.' },
-      { outcome: 'refuse', label: 'Client refuse',
-        suite: 'Une étape « décider la suite » est posée — marquer perdu reste votre décision.' },
+      { outcome: '', label: 'Fait — passer à la suite' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Client refuse' },
     ],
   },
 }
+// CAD16 — un texte UNIQUE pour les deux réveils promettait, sur le dernier
+// (J60), un « réveil suivant » qui n'existe pas. La suite est désormais celle
+// que le serveur annonce POUR CETTE touche (`etape.suites`, rang compris) :
+// sur le dernier réveil, la fin — le dossier reste au Froid, sans autre
+// relance.
 QUESTIONS.reveil = {
   question: 'Résultat du réveil ?',
   reponses: [
-    { outcome: 'joint', label: 'Client joint',
-      suite: 'Le dossier SORT du Froid ; prochaine étape : l’appeler (message répondu) ou préparer le devis (appel fait). Les réveils restants sont annulés.' },
-    { outcome: 'non_joint', label: 'Pas de réponse',
-      suite: 'Le réveil suivant reste programmé ; le dossier reste au Froid.' },
-    { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-      suite: 'Le prochain réveil est déplacé à la date choisie.' },
-    { outcome: 'refuse', label: 'Refus',
-      suite: 'Les réveils s’arrêtent ; le dossier reste au Froid.' },
+    { outcome: 'joint', label: 'Client joint' },
+    { outcome: 'non_joint', label: 'Pas de réponse' },
+    { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+    { outcome: 'refuse', label: 'Refus' },
   ],
 }
 
@@ -140,28 +150,26 @@ QUESTIONS.reveil = {
 // (`joint`/`non_joint`, JAMAIS réinventées) ; Répondeur/Occupé s'y AJOUTENT
 // (jamais un remplacement — rappel/refus restent disponibles) pour les
 // appels seulement, l'écran Meryem étant d'abord un écran d'appels. La suite
-// (cadence continue / dossier au Froid après la dernière touche) est celle
-// des règles d'arrêt MRY9 déjà en vigueur pour « Pas de réponse ».
+// est celle de « Pas de réponse » (même issue serveur, donc mêmes codes
+// d'effet dans `etape.suites.non_joint`).
 // Réconciliation de fold (CKP2↔CKP4) : le serveur ne connaît QUE les issues
 // de `LeadActivity.OUTCOMES` — Répondeur/Occupé s'envoient donc comme
 // `non_joint` (même règle de suite), la précision partant dans la `note`.
 // Aucune nouvelle valeur d'énumération côté serveur = aucun risque de
 // migration ; l'information reste tracée mot pour mot dans le chatter.
 const APPEL_REPONSES_SUPPLEMENTAIRES = [
-  { outcome: 'non_joint', note: 'Répondeur', label: 'Répondeur',
-    suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-  { outcome: 'non_joint', note: 'Occupé', label: 'Occupé',
-    suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+  { outcome: 'non_joint', note: 'Répondeur', label: 'Répondeur' },
+  { outcome: 'non_joint', note: 'Occupé', label: 'Occupé' },
   // CAD11 — un numéro MORT n'a pas à épuiser les six tentatives : même patron
   // (issue `non_joint` + note typée, aucune nouvelle énumération), plus la
   // PROPOSITION « perdu, motif junk » en un clic (`junk` = le motif junk
   // pré-choisi s'il existe dans la liste de la société). Le clic décide.
   { outcome: 'non_joint', note: 'Numéro invalide', label: 'Numéro invalide',
     junk: 'Numéro invalide',
-    suite: 'La touche est close « non joint » avec la note « Numéro invalide ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic ; sinon la cadence continue.' },
+    precision: 'La touche est close « non joint » avec la note « Numéro invalide ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic.' },
   { outcome: 'non_joint', note: 'A bloqué / signalé', label: 'A bloqué / signalé',
     junk: 'Jamais répondu',
-    suite: 'La touche est close « non joint » avec la note « A bloqué / signalé ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic ; sinon la cadence continue.' },
+    precision: 'La touche est close « non joint » avec la note « A bloqué / signalé ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic.' },
 ]
 
 // CAD-A — RÉPONSES DU CLIENT (clé `reponse`, table `services.REPONSES_TOUCHE`
@@ -173,7 +181,7 @@ const APPEL_REPONSES_SUPPLEMENTAIRES = [
 // (loi 09-08 art. 9 al. 2) s'enregistre au moment où elle est dite.
 const REPONSES_TOUTES_CADENCES = [
   { reponse: 'ne_plus_contacter', label: 'Ne plus me contacter', message: 'stop_contact',
-    suite: 'Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent, sans étape de décision, et aucune ne pourra redémarrer. L’accusé « je ne vous rappellerai plus » vous est proposé juste après.' },
+    precision: 'L’accusé « je ne vous rappellerai plus » vous est proposé juste après.' },
 ]
 
 // CAD6 — « Plus tard — pas maintenant » (la réponse la plus fréquente du
@@ -182,7 +190,7 @@ const REPONSES_TOUTES_CADENCES = [
 const REPONSE_PLUS_TARD = {
   reponse: 'plus_tard', label: 'Plus tard — pas maintenant', rappel: true,
   message: 'rappel_plus_tard',
-  suite: 'Le dossier se met en veille jusqu’à la date convenue et reprend à cette même touche : aucune relance de pression ne part d’ici là (au-delà d’un mois, réveil daté). Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer.',
+  precision: 'Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer.',
 }
 
 // CAD7 — la réponse la plus fréquente sur une PROPOSITION : le client
@@ -191,7 +199,7 @@ const REPONSE_PLUS_TARD = {
 // avant sa décision).
 const REPONSE_QUESTION_PRIX = {
   reponse: 'question_prix', label: 'Question de prix — veut négocier',
-  suite: 'Le suivi de proposition se met en pause : une étape « Question de prix — préparer l’appel du fondateur » est posée pour demain, et aucun message ne part tant qu’elle n’est pas traitée. Aucune offre n’est envoyée avant la décision du fondateur.',
+  precision: 'Aucune offre n’est envoyée avant la décision du fondateur.',
 }
 
 // CAD8 — une VARIANTE demandée au téléphone : l'étape « Préparer le devis
@@ -199,7 +207,6 @@ const REPONSE_QUESTION_PRIX = {
 // posée, le protocole du devis écarté se tait.
 const REPONSE_DEVIS_MODIFIE = {
   reponse: 'devis_modifie', label: 'Demande un devis modifié',
-  suite: 'Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; le suivi de ce devis s’arrête, et celui du nouveau devis démarrera de lui-même à son envoi.',
 }
 
 // CAD9 — « Décision à plusieurs » pose l'étiquette AU MOMENT où le client le
@@ -207,10 +214,9 @@ const REPONSE_DEVIS_MODIFIE = {
 // dépassé. Deux nuances, distinguées dans la note : la famille (un délai) et
 // le propriétaire (un interlocuteur à changer).
 const REPONSES_DECISION_A_PLUSIEURS = [
-  { reponse: 'decision_famille', label: 'Décision à plusieurs — en famille',
-    suite: 'L’étiquette « Décision à plusieurs » est posée : le suivi continue, et le rendez-vous « dimanche famille » est ajouté au plan s’il n’est pas encore passé.' },
+  { reponse: 'decision_famille', label: 'Décision à plusieurs — en famille' },
   { reponse: 'decision_proprietaire', label: 'Décision à plusieurs — le propriétaire',
-    suite: 'L’étiquette « Décision à plusieurs » est posée et la note dit qu’il faut joindre le propriétaire : le suivi continue (dimanche famille ajouté s’il n’est pas encore passé).' },
+    precision: 'La note dit qu’il faut joindre le propriétaire.' },
 ]
 
 // Les réponses du client propres à CHAQUE cadence de protocole (les étapes de
@@ -279,6 +285,12 @@ function joursEntre(debut, fin) {
 // glisse. Le serveur, lui, bascule la veille en réveil daté au-delà d'un mois.
 const VEILLE_PROPOSEE_APRES_JOURS = 7
 
+// CAD46 — la conséquence COMMUNE de « Reporter au » (décaler) et de
+// « À rappeler le… » : `reporter_prochaine_touche` décale la touche, TOUTES
+// les suivantes et l'ancre `cadence_depart` du même écart (vérifié par la
+// garde CAD17 `GlissementDuPlanTests`). Une seule constante, deux champs.
+const GLISSEMENT_DU_PLAN = 'Le reste du suivi glisse du même nombre de jours.'
+
 // RLC3 (relevé fondateur du 08/09/2026) — les canaux dont la touche consiste à
 // ÉCRIRE : c'est là, et seulement là, que la question « le message a-t-il été
 // ouvert ? » a un sens. Un appel a déjà son issue obligatoire (CKP2/CKP4).
@@ -336,6 +348,13 @@ function StatutBadge({ etape }) {
 export default function RelanceEtapeRow({
   etape, onFait, onSauter, onReporter, onOuvrirMessage, busyId, navigate,
   compact = false, readOnly = false, showStatut = false,
+  // CAD44 (TRANCHÉ 21/09/2026, MRY32 rouverte) — une touche À VENIR n'est
+  // plus en lecture seule : Appeler, WhatsApp et Reporter (et le panneau de
+  // coaching qui accompagne l'appel) sont actionnables dès maintenant ;
+  // « Fait » (et « Sauter ») restent verrouillés jusqu'à l'échéance. Le
+  // cockpit ET la frise passent ce même drapeau : les deux écrans ne
+  // désignent jamais deux gestes différents (règle CADX).
+  enAvance = false,
   // VISCAD6 — appelé après qu'une visite a été planifiée depuis CETTE ligne
   // (panneau de coaching OU issue « Visite acceptée ») pour laisser le
   // parent rafraîchir (même callback que Fait/Sauter/Reporter, ex.
@@ -448,7 +467,15 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.rappel && rappelPasse) return
     if (confirmationOuvertureRequise) return
     const payload = {}
-    if (note.trim()) payload.note = note.trim()
+    // CAD13 — la PRÉCISION de la réponse (« Répondeur », « Occupé »,
+    // « Numéro invalide »…) SURVIT à la note tapée : elle ouvre la note, la
+    // saisie libre la complète (« Répondeur — sonne dans le vide, à retenter
+    // le soir »). L'écraser faisait dire « Pas de réponse » à l'historique
+    // sans jamais dire qu'un répondeur avait été atteint — ce qui distingue
+    // un numéro qui existe d'un numéro mort. Le serveur ne garde qu'un champ.
+    const noteTapee = note.trim()
+    if (reponseChoisie.note && noteTapee) payload.note = `${reponseChoisie.note} — ${noteTapee}`
+    else if (noteTapee) payload.note = noteTapee
     else if (reponseChoisie.note) payload.note = reponseChoisie.note
     if (reponseChoisie.outcome) payload.outcome = reponseChoisie.outcome
     // CAD-A — une réponse du client part sous sa CLÉ ; l'issue est dérivée
@@ -582,8 +609,9 @@ export default function RelanceEtapeRow({
       )}
       {/* VISCAD — le panneau de coaching se gate lui-même sur cadence ===
           'apres_devis' ; ici on ne gate que sur `readOnly` (une ligne qui se
-          LIT seulement — jours futurs du widget, historique du suivi — n'a
-          pas d'action à proposer). Rendu dans les DEUX modes (compact ET
+          LIT seulement — historique du suivi — n'a pas d'action à proposer).
+          CAD44 : une touche À VENIR (`enAvance`) le garde — il accompagne
+          l'appel passé en avance. Rendu dans les DEUX modes (compact ET
           cockpit), jamais seulement compact. */}
       {!readOnly && (
         <PanneauProposerVisite etape={etape} onPlanifier={() => setPlanifierOuvert(true)} />
@@ -608,23 +636,43 @@ export default function RelanceEtapeRow({
           >
             <Clock3 className="size-3.5" /> Reporter
           </Button>
-          <Button
-            size="sm" variant="outline" disabled={busy}
-            onClick={() => setPanel('sauter')}
-          >
-            <SkipForward className="size-3.5" /> Sauter
-          </Button>
-          <Button size="sm" disabled={busy} onClick={() => setPanel('fait')}>
-            <Check className="size-3.5" /> Fait
-          </Button>
+          {/* CAD44 — sur une touche À VENIR, « Fait » (et « Sauter », qui
+              clôt la touche comme lui) restent verrouillés : on ne coche pas
+              un geste qui n'a pas eu lieu. */}
+          {!enAvance && (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => setPanel('sauter')}
+            >
+              <SkipForward className="size-3.5" /> Sauter
+            </Button>
+          )}
+          {!enAvance && (
+            <Button size="sm" disabled={busy} onClick={() => setPanel('fait')}>
+              <Check className="size-3.5" /> Fait
+            </Button>
+          )}
         </div>
       )}
-      {!readOnly && panel === 'sauter' && (
+      {!readOnly && enAvance && panel === '' && (
+        <p className="mt-1 text-right text-xs text-muted-foreground" data-testid="touche-en-avance">
+          Touche à venir : appeler, écrire ou reporter dès maintenant — « Fait » s’ouvrira à son échéance.
+        </p>
+      )}
+      {!readOnly && !enAvance && panel === 'sauter' && (
         <div className="mt-2 flex flex-col gap-1.5">
           <Textarea
             rows={2} placeholder="Note (optionnelle) — pourquoi sauter cette relance ?"
             value={note} onChange={(e) => setNote(e.target.value)}
           />
+          {/* CAD47 — « Sauter » faisait peur : rien ne disait que la cadence
+              continue. La phrase vient du SERVEUR (`etape.suites.sauter`,
+              dérivée du moteur, garde CAD17) : la touche suivante est
+              programmée — ou, sur la dernière touche / une étape posée par le
+              moteur, ce qui se passe réellement. */}
+          <p className="text-xs text-muted-foreground" data-testid="suite-sauter">
+            {suiteDuSaut(etape)}
+          </p>
           <div className="flex justify-end gap-1.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={fermer}>
               Annuler
@@ -635,12 +683,35 @@ export default function RelanceEtapeRow({
           </div>
         </div>
       )}
-      {!readOnly && panel === 'fait' && (
+      {!readOnly && !enAvance && panel === 'fait' && (
         <div className="mt-2 flex flex-col gap-1.5">
           <p className="text-sm font-medium">{questionsTouche.question}</p>
-          {questionsTouche.aide && (
+          {/* CAD12 — l'issue la plus importante (« le client accepte ») ne
+              renvoie plus vers un autre écran à chercher : sur une touche qui
+              porte son devis (`etape.devis`, contrat `relance_etape_v2`), un
+              LIEN direct ouvre la fiche de CE devis, où « Accepter » est à
+              portée de clic. Un lien, jamais une action de statut depuis le
+              CRM : la chaîne Devis → BonCommande → Facture reste celle de
+              Ventes (règle #4). Sans devis dans l'ERP, l'aide d'origine. */}
+          {questionsTouche.aide && (etape.devis ? (
+            <p className="text-xs text-muted-foreground" data-testid="aide-devis-accepte">
+              Le client accepte ?{' '}
+              <a
+                href={`/ventes/devis?devis=${etape.devis}`}
+                className="font-medium text-primary underline"
+                onClick={(e) => {
+                  if (!navigate) return
+                  e.preventDefault()
+                  navigate(`/ventes/devis?devis=${etape.devis}`)
+                }}
+              >
+                Marquer le devis{etape.devis_reference ? ` ${etape.devis_reference}` : ''} accepté
+              </a>
+              {' '}: le dossier passe en Signé et toutes les relances s’arrêtent.
+            </p>
+          ) : (
             <p className="text-xs text-muted-foreground">{questionsTouche.aide}</p>
-          )}
+          ))}
           {/* RLC3 — sur une touche MESSAGE, le panneau rappelle d'abord si le
               message a été ouvert. Ouvert : on le dit, et rien n'est demandé.
               Pas ouvert : une confirmation EXPLICITE, jamais un blocage —
@@ -662,9 +733,15 @@ export default function RelanceEtapeRow({
                 type="checkbox" className="mt-0.5" checked={sansOuverture}
                 onChange={(e) => setSansOuverture(e.target.checked)}
               />
+              {/* CAD84 — le canal de la touche est SUGGÉRÉ, jamais imposé
+                  (les deux boutons Appeler / WhatsApp sont toujours là) :
+                  la question ne présume plus qu'un message devait partir.
+                  Même mécanisme (case à cocher, jamais un blocage), formulation
+                  neutre. */}
               <span>
-                Ce message n’a pas été ouvert depuis l’ERP — marquer faite sans
-                avoir ouvert le message ?
+                Vous n’avez pas ouvert de message {CANAL_LABELS[etape.canal] ?? etape.canal} pour
+                cette touche — c’est normal si vous avez appelé à la place. Cochez
+                pour confirmer.
               </span>
             </label>
           )}
@@ -683,9 +760,16 @@ export default function RelanceEtapeRow({
               </Button>
             ))}
           </div>
+          {/* CAD17 — la suite annoncée vient du SERVEUR (`etape.suites`,
+              dérivée du moteur) : jamais une phrase écrite par cadence.
+              CAD11 — la case « perdu, motif junk » cochée change la suite
+              réelle (le lead passe perdu : plus aucune relance, sans suite —
+              `suite=False` côté serveur) : la phrase le dit alors. */}
           {reponseChoisie && (
             <p className="text-xs text-muted-foreground" data-testid="suite-reponse">
-              {reponseChoisie.suite}
+              {reponseChoisie.junk && perduJunk
+                ? 'Le lead passe perdu (motif junk) : toutes ses relances s’arrêtent, sans aucune suite.'
+                : suiteAnnoncee(etape, reponseChoisie)}
             </p>
           )}
           {erreurOutcome && (
@@ -708,6 +792,15 @@ export default function RelanceEtapeRow({
                        value={rappelHeure} onChange={(e) => setRappelHeure(e.target.value)} />
               </div>
             </div>
+          )}
+          {/* CAD46 — « À rappeler le… », le contrôle le PLUS utilisé, passe
+              par le même chemin que « Reporter » : il décale tout le reste du
+              plan. La même phrase le dit, sous le champ. (« Plus tard » a sa
+              propre suite — la veille — annoncée par le serveur.) */}
+          {reponseChoisie?.rappel && reponseChoisie.outcome === 'rappel' && (
+            <p className="text-xs text-muted-foreground" data-testid="glissement-plan">
+              {GLISSEMENT_DU_PLAN}
+            </p>
           )}
           {reponseChoisie?.rappel && messageRappel && (
             <p className="text-xs text-danger" role="alert" data-testid="erreur-rappel-le">
@@ -819,7 +912,7 @@ export default function RelanceEtapeRow({
           <p className="text-xs text-muted-foreground" data-testid="suite-report">
             {modeReport === 'veille'
               ? 'La cadence se tait jusqu’à cette date et reprend à cette même touche — aucune relance ne part d’ici là. Au-delà d’un mois, elle bascule en réveil daté.'
-              : 'Cette touche et la suite du plan glissent de l’écart choisi.'}
+              : 'Cette touche est déplacée à la date choisie.'}
           </p>
           {veilleProposee && !reportMode && (
             <p className="text-xs text-warning" data-testid="veille-proposee">
@@ -839,6 +932,16 @@ export default function RelanceEtapeRow({
                      value={reportHeure} onChange={(e) => setReportHeure(e.target.value)} />
             </div>
           </div>
+          {/* CAD46 — décaler une touche décale TOUT le plan (les touches
+              suivantes et l'ancre `cadence_depart`, du même écart : garde
+              CAD17 `GlissementDuPlanTests`). Sans cette phrase, Meryem croyait
+              bouger un rendez-vous et découvrait des semaines plus tard que le
+              dossier avait dérivé. */}
+          {modeReport === 'decaler' && (
+            <p className="text-xs text-muted-foreground" data-testid="glissement-plan">
+              {GLISSEMENT_DU_PLAN}
+            </p>
+          )}
           {reportPasse && (
             <p className="text-xs text-danger" role="alert" data-testid="erreur-report-date">
               « Reporter au » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.

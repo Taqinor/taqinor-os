@@ -45,7 +45,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     expect(screen.getByTestId('confirmer-sans-ouverture')).toBeInTheDocument()
     // Une issue choisie NE suffit pas : la question reste posée.
-    fireEvent.click(screen.getByRole('button', { name: 'Intéressé' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
   })
 
@@ -53,7 +53,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     const onFait = vi.fn(() => Promise.resolve({}))
     monter({ ...ETAPE_MESSAGE, message_ouvert_le: null }, onFait)
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Intéressé' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     fireEvent.click(screen.getByRole('checkbox'))
     const confirmer = screen.getByRole('button', { name: 'Confirmer' })
     expect(confirmer).not.toBeDisabled()
@@ -61,7 +61,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_MESSAGE.id,
       {
-        outcome: 'interesse',
+        outcome: 'joint',
         body: 'Marquée faite sans ouverture du message depuis l’ERP.',
       }))
   })
@@ -70,10 +70,10 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     const onFait = vi.fn(() => Promise.resolve({}))
     monter(ETAPE_MESSAGE, onFait)
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Intéressé' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
-      ETAPE_MESSAGE.id, { outcome: 'interesse' }))
+      ETAPE_MESSAGE.id, { outcome: 'joint' }))
   })
 
   it('une touche APPEL ne pose jamais la question (son issue est déjà obligatoire)', () => {
