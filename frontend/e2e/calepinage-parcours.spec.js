@@ -194,34 +194,51 @@ test('CALX1: l’atelier ouvre trois onglets de suite, sans quitter l’écran',
 //
 // POURQUOI CETTE SPEC EXISTE. Les gestes ajoutés par le lot 2 (angles droits CALX89,
 // insertion de sommet CALX91, obstacle polygonal CALX103, cible d'optimisation CALX114,
-// course du soleil CALX118) avaient chacun leur vitest, mais aucune traversée COMPLÈTE ne
-// prouvait qu'un utilisateur réel les enchaîne sur le MÊME calepinage, les enregistre, et
-// les retrouve intacts à la réouverture — exactement le piège que PACT10 nomme (l'écran AO
-// du 03/08/2026, 0 clé sur 6 concordante, faute d'un contrat/parcours vérifié de bout en bout).
+// course du soleil CALX118, correction de type d'arête CALX94, choix de module CALX109)
+// avaient chacun leur vitest, mais aucune traversée COMPLÈTE ne prouvait qu'un utilisateur
+// réel les enchaîne sur le MÊME calepinage, les enregistre, et les retrouve intacts à la
+// réouverture — exactement le piège que PACT10 nomme (l'écran AO du 03/08/2026, 0 clé sur 6
+// concordante, faute d'un contrat/parcours vérifié de bout en bout).
 //
-// DEUX GESTES DU LOT NE SONT PAS JOUÉS ICI, ET C'EST DIT PLUTÔT QUE CACHÉ. « Corriger le
-// type d'une arête » (CALX94) et « choisir un module du stock » (CALX109) ouvrent chacun un
-// panneau ancré sur `ctx.dom.areasWindowEl` (`apps/web/src/scripts/roofPro11/edgesUi.ts:249`,
+// FIX-RP9 — CALX94/CALX109 ÉTAIENT INJOIGNABLES, ET C'EST MAINTENANT CORRIGÉ. Les deux
+// panneaux s'ancrent sur `ctx.dom.areasWindowEl` (`apps/web/src/scripts/roofPro11/edgesUi.ts:249`,
 // `.../zones.ts:691-692`), lui-même lu depuis `#rp9-areas-window`
-// (`apps/web/src/scripts/roof-tool-pro11.ts:354-357`, commentaire du module : « facultatifs,
-// le harness jsdom ne les fournit pas »). Cet id n'existe QUE dans la page de démonstration
-// `apps/web/src/pages/preview/toiture-3d-pro-11.astro:739` — recherche exhaustive vérifiée
-// sur `frontend/` (aucune occurrence de `rp9-areas-window` NI de son repli `rp9-edges-host`) :
-// la page RÉELLE `pages/ventes/ToitureDesign.jsx`, servie par `/calepinage/:id` comme par
-// `/devis-design/:id`, ne rend NULLE PART ce conteneur. Un clic sur ces deux panneaux
-// timeout-erait donc sur un élément introuvable dans l'atelier tel qu'il est livré
-// aujourd'hui, pas sur un vrai refus produit — ce n'est PAS ce que cette spec doit prouver.
-// C'est un écart d'intégration ANTÉRIEUR à cette tâche (CALX109 listait pourtant
-// `ToitureDesign.jsx` parmi ses fichiers) et hors du fichier unique de cette lane :
-// `[BLOCKED: ToitureDesign.jsx ne rend aucun conteneur #rp9-areas-window ni #rp9-edges-host
-// — il faut lui ajouter ce conteneur pour que edgesUi.ts/zones.ts s'y accrochent, hors
-// périmètre de frontend/e2e/calepinage-parcours.spec.js]` — crochet pour une tâche de phase 2.
-test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’optimisation, course du soleil — relus à l’identique', async ({ page }) => {
+// (`apps/web/src/scripts/roof-tool-pro11.ts:357`). Cet id n'existait QUE dans la page de
+// démonstration `apps/web/src/pages/preview/toiture-3d-pro-11.astro:739` — la page RÉELLE
+// `pages/ventes/ToitureDesign.jsx`, servie par `/calepinage/:id` comme par `/devis-design/:id`,
+// ne rendait NULLE PART ce conteneur (CALX109 listait pourtant `ToitureDesign.jsx` parmi ses
+// fichiers : un reliquat d'acceptation). Le conteneur (même contenu/emplacement que la page
+// publique) est maintenant posé dans `ToitureDesign.jsx`, juste après `#rp9-results` — les deux
+// gestes sont donc joués ci-dessous, avec preuve de persistance comme les cinq autres.
+test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’optimisation, course du soleil, arête corrigée, module choisi — relus à l’identique', async ({ page }) => {
   // ── 0. Un lead FRAIS, un calepinage FRAIS créé depuis lui (même patron que CAL221) ──
   await gotoLeads(page)
   const nomLead = await createLead(page, {
     nom: uniq('CALX130 Lead'), facture: 900, ville: 'Casablanca',
   })
+
+  // ── 0bis. CALX109 — UN MODULE RÉEL DU CATALOGUE, posé par l'API (même patron que la
+  // variante CAL221 : l'écran ne sait pas SAISIR une fiche technique, seul le geste de
+  // CHOIX se joue à l'écran). Fiche complète (longueur/largeur/puissance crête) pour que
+  // `apps.stock.selectors.dimensions_de_pose` la rende SÉLECTIONNABLE (jamais grisée) —
+  // posé AVANT la création du calepinage : le catalogue est lu une fois, à l'ouverture de
+  // l'atelier (`calepinageApi.calepinages.modulesDisponibles`).
+  const nomModule = uniq('CALX109 Module')
+  const produitRes = await page.request.post('/api/django/stock/produits/', {
+    data: { nom: nomModule, prix_vente: '1000.00' },
+  })
+  expect(produitRes.ok(),
+    `produit module refusé : ${produitRes.status()} ${await produitRes.text()}`).toBeTruthy()
+  const { id: produitId } = await produitRes.json()
+  const ficheRes = await page.request.post('/api/django/stock/fiches-techniques/', {
+    data: {
+      produit: produitId, type_fiche: 'module',
+      longueur_mm: 2384, largeur_mm: 1303, pmax_wc: 720,
+    },
+  })
+  expect(ficheRes.ok(),
+    `fiche technique refusée : ${ficheRes.status()} ${await ficheRes.text()}`).toBeTruthy()
+  const moduleIdAttendu = `produit-${produitId}`
 
   await page.goto('/calepinage/nouveau')
   await expect(page.getByRole('heading', { name: 'Nouveau calepinage' })).toBeVisible()
@@ -318,6 +335,40 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
   await expect(page.getByTestId('cal-onglet-erreur')).toHaveCount(0)
 
+  // ── 7bis. CALX94 — CORRIGER LE TYPE D'UNE ARÊTE. Le panneau (`#rp9-edge-mode` /
+  // `#rp9-edge-type`) n'existe QUE si `#rp9-areas-window` est présent dans le DOM
+  // (`edgesUi.ts ensurePanel`, anchor = repli sur cette fenêtre) — la preuve directe que
+  // le conteneur ajouté par FIX-RP9 rend enfin ce geste joignable. Clic au milieu du côté
+  // BAS (corners[2]→corners[3]) : le seul côté qu'aucun autre geste de ce test ne touche
+  // (le sommet CALX91 a été inséré sur le côté HAUT, l'obstacle est près du centre). ──
+  const edgeModeBtn = page.locator('#rp9-edge-mode')
+  await expect(edgeModeBtn).toBeVisible({ timeout: 10_000 })
+  await edgeModeBtn.click()
+  await expect(edgeModeBtn).toHaveAttribute('aria-pressed', 'true')
+  const milieuBas = { x: (corners[2].x + corners[3].x) / 2, y: (corners[2].y + corners[3].y) / 2 }
+  await page.mouse.click(milieuBas.x, milieuBas.y)
+  const edgeInfo = page.locator('#rp9-edge-info')
+  await expect(edgeInfo).toContainText('Arête nº', { timeout: 5_000 })
+  // L'arête sélectionnée est NOMMÉE dans le texte — on lit son numéro plutôt que de
+  // supposer un index (CALX91 a déjà décalé l'ordre des sommets en insérant un point).
+  const infoArete = (await edgeInfo.textContent()) ?? ''
+  const numeroArete = Number(/Arête nº(\d+)/.exec(infoArete)?.[1])
+  expect(numeroArete, `numéro d’arête introuvable dans « ${infoArete} »`).toBeGreaterThan(0)
+  await page.locator('#rp9-edge-type').selectOption('faitage')
+  await expect(edgeInfo).toContainText('Faîtage', { timeout: 5_000 })
+  await expect(edgeInfo).toContainText('corrigé à la main', { timeout: 5_000 })
+  await edgeModeBtn.click() // désarme le mode — rend le clic carte au tracé/obstacles
+  await expect(edgeModeBtn).toHaveAttribute('aria-pressed', 'false')
+
+  // ── 7ter. CALX109 — CHOISIR UN MODULE DU STOCK sur le pan actif. Même anchor que
+  // CALX94 ci-dessus (`zones.ts ensureModulePicker`, `ctx.dom.areasWindowEl`) : le
+  // sélecteur ne peut exister que depuis le même correctif. Le module posé en 0bis
+  // (fiche complète) est SÉLECTIONNABLE — jamais l'un des modèles grisés. ─────────
+  const moduleSelect = page.locator('#rp9-pan-module-select')
+  await expect(moduleSelect).toBeVisible({ timeout: 10_000 })
+  await moduleSelect.selectOption({ label: nomModule })
+  await expect(page.locator('#rp9-status')).toContainText('repavé à ses cotes', { timeout: 10_000 })
+
   // ── 8. ENREGISTRER le calepinage (CAL37, bouton unique posé par
   // `AtelierPanneaux`, JAMAIS un statut ni un devis touché — règle #4). ─────
   const enregistrer = page.getByRole('button', { name: 'Enregistrer le calepinage' })
@@ -328,8 +379,9 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
 
   // ── 9. RELU À L'IDENTIQUE, PAR LE DOCUMENT SERVEUR — la preuve la plus
   // stable : le document `roof_layout` enregistré porte la forme réelle de
-  // l'obstacle (CALX85/CALX103) et la cible saisie (CALX88/CALX114), sans
-  // dépendre du recentrage 3D de la caméra à la réouverture de l'écran. ─────
+  // l'obstacle (CALX85/CALX103), la cible saisie (CALX88/CALX114), l'arête corrigée
+  // (CALX94) et le module choisi (CALX109), sans dépendre du recentrage 3D de la
+  // caméra à la réouverture de l'écran. ─────────────────────────────────────
   const detail = await page.request.get(`${API}/calepinages/${calepinageId}/`)
   expect(detail.ok(), `GET calepinage (${detail.status()})`).toBeTruthy()
   const layout = (await detail.json())?.roof_layout ?? {}
@@ -340,6 +392,22 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   )
   expect(aUnObstaclePolygonal, 'l’obstacle polygonal doit survivre à l’enregistrement').toBeTruthy()
   expect(layout.optimisation?.cible, 'la cible d’optimisation doit survivre à l’enregistrement').toBe('compte')
+
+  // CALX94 — l'arête corrigée à la main (index 0-based = le numéro lu à l'écran − 1)
+  // porte le type choisi ET `manuel: true` — jamais re-déduite en silence.
+  const areteEcrite = zones
+    .flatMap((z) => (Array.isArray(z.edges) ? z.edges : []))
+    .find((e) => e.index === numeroArete - 1)
+  expect(areteEcrite, `aucune arête nº${numeroArete} enregistrée parmi ${JSON.stringify(zones.map((z) => z.edges))}`)
+    .toBeTruthy()
+  expect(areteEcrite?.type, 'le type corrigé (Faîtage) doit survivre à l’enregistrement').toBe('faitage')
+  expect(areteEcrite?.manuel, 'la correction doit rester marquée manuelle').toBe(true)
+
+  // CALX109 — le module choisi voyage dans `zones[].geometry.moduleId` (contrat CALX82).
+  const moduleEcrit = zones.some((z) => z.geometry?.moduleId === moduleIdAttendu)
+  expect(moduleEcrit,
+    `moduleId « ${moduleIdAttendu} » introuvable parmi ${JSON.stringify(zones.map((z) => z.geometry?.moduleId))}`)
+    .toBeTruthy()
 
   // ── 10. ROUVRIR LE CALEPINAGE — la cible reste affichée par l'ÉCRAN, cette
   // fois par une VRAIE réhydratation (`prefill.ts semerOptimisationDepuisDocument`),
