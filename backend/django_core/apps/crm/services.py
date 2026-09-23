@@ -10565,6 +10565,8 @@ MOTIF_NE_PLUS_CONTACTER = 'ne plus contacter'
 REPONSE_PLUS_TARD = 'plus_tard'
 #: CAD7 — « Question de prix — veut négocier ».
 REPONSE_QUESTION_PRIX = 'question_prix'
+#: CAD8 — « Demande un devis modifié ».
+REPONSE_DEVIS_MODIFIE = 'devis_modifie'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
@@ -10601,6 +10603,16 @@ REPONSES_TOUCHE = {
         'cadences': ('apres_devis',),
         # Aucun texte proposé : ni `annonce_appel_reda` ni `offre_reda` ne
         # partent avant la décision du fondateur (CAD60).
+        'message': None,
+    },
+    REPONSE_DEVIS_MODIFIE: {
+        'libelle': 'Demande un devis modifié',
+        # « à rappeler » : l'étape posée dit « … — rappeler le client ».
+        # Surtout PAS « joint » : son récepteur (MRY9) ferait naître le
+        # barreau suivant du devis ÉCARTÉ avant que l'étape soit posée.
+        'outcome': 'rappel',
+        'note': 'Demande un devis modifié',
+        'cadences': ('apres_devis',),
         'message': None,
     },
 }
@@ -10978,4 +10990,45 @@ def repondre_question_prix(etape, user, *, note='', body=''):
               f'{QUESTION_PRIX_LIBELLE} » posée pour le '
               f'{pause.due_date:%d/%m/%Y}. Aucun message de relance ne part '
               'tant qu’elle n’est pas traitée.'))
+    return etape
+
+
+# ── CAD-A ── CAD8 — « Demande un devis modifié », atteignable au téléphone ──
+
+def repondre_devis_modifie(etape, user, *, note='', body=''):
+    """CAD8 — le client demande une VARIANTE du devis, sur une touche du suivi
+    de proposition.
+
+    Le libellé existait déjà (``VISITE_DEVIS_LIBELLE``, « Préparer le devis
+    modifié — rappeler le client ») mais n'était posé que depuis la
+    qualification rapportée par une visite : au téléphone, « Intéressé »
+    relançait le protocole sur un devis déjà écarté. Zéro nouveau concept :
+
+      1. la touche est close (issue « à rappeler » + note typée), SANS
+         barreau suivant — le protocole du devis écarté se tait ;
+      2. l'étape « Préparer le devis modifié » est posée pour demain par la
+         mécanique EXISTANTE des gestes de visite (``_poser_etape_visite``,
+         idempotente par libellé) ; un débrief déjà ouvert est RENOMMÉ plutôt
+         que doublé — c'est la même étape, dont la nature vient de changer
+         (même règle qu'``appliquer_retour_visite``).
+
+    L'ENVOI du nouveau devis démarre son propre suivi de proposition, par la
+    mécanique existante — rien n'est câblé ici pour ça. Renvoie la touche
+    close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_DEVIS_MODIFIE]
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    existante = _debrief_ouvert(lead)
+    if existante is not None and existante.libelle != VISITE_DEVIS_LIBELLE:
+        existante.libelle = VISITE_DEVIS_LIBELLE
+        existante.save(update_fields=['libelle'])
+    _poser_etape_visite(
+        lead, libelle=VISITE_DEVIS_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        ordre=VISITE_ORDRE_DEBRIEF,
+        quand=aujourd_hui_local() + datetime.timedelta(
+            days=FILET_JOINT_DELAI_JOURS),
+        devis_id=etape.devis_id)
+    _recaler_file(lead, user)
     return etape

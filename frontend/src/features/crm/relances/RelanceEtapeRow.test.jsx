@@ -230,6 +230,29 @@ describe('CAD7 RelanceEtapeRow — « Question de prix — veut négocier »', (
   })
 })
 
+// CAD8 — « Demande un devis modifié » : atteignable sur toute touche du
+// suivi de proposition (plus seulement après une visite).
+describe('CAD8 RelanceEtapeRow — « Demande un devis modifié »', () => {
+  it('est proposée sur le suivi de proposition, jamais en prise de contact', () => {
+    ouvrirFait(ETAPE_APPEL)
+    expect(screen.queryByRole('button', { name: 'Demande un devis modifié' }))
+      .not.toBeInTheDocument()
+    cleanup()
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.getByRole('button', { name: 'Demande un devis modifié' })).toBeInTheDocument()
+  })
+
+  it('envoie la clé de réponse', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APRES_DEVIS, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Demande un devis modifié' }))
+    expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/Préparer le devis modifié/)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APRES_DEVIS.id, { reponse: 'devis_modifie' }))
+  })
+})
+
 // CAD26 — « Reporter » offre DEUX gestes ; au-delà de 7 jours, la mise en
 // veille est proposée d'elle-même. Horloge figée (seul `Date` est simulé) :
 // mercredi 23/09/2026 à Casablanca.

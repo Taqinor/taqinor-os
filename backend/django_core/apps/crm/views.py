@@ -3289,10 +3289,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
         réponse et dit où elle vaut."""
         from .services import (
-            REPONSE_NE_PLUS_CONTACTER, REPONSE_PLUS_TARD,
-            REPONSE_QUESTION_PRIX, refus_reponse_touche,
-            repondre_ne_plus_contacter, repondre_plus_tard,
-            repondre_question_prix, reponse_touche)
+            REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER,
+            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_reponse_touche,
+            repondre_devis_modifie, repondre_ne_plus_contacter,
+            repondre_plus_tard, repondre_question_prix, reponse_touche)
 
         etape = self.get_object()
         refus = refus_reponse_touche(etape, reponse)
@@ -3334,6 +3334,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 etape, request.user, quand, note=note, body=body)
         elif reponse == REPONSE_QUESTION_PRIX:
             etape = repondre_question_prix(
+                etape, request.user, note=note, body=body)
+        elif reponse == REPONSE_DEVIS_MODIFIE:
+            etape = repondre_devis_modifie(
                 etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 

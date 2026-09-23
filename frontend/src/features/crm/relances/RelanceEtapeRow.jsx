@@ -183,11 +183,19 @@ const REPONSE_QUESTION_PRIX = {
   suite: 'Le suivi de proposition se met en pause : une étape « Question de prix — préparer l’appel du fondateur » est posée pour demain, et aucun message ne part tant qu’elle n’est pas traitée. Aucune offre n’est envoyée avant la décision du fondateur.',
 }
 
+// CAD8 — une VARIANTE demandée au téléphone : l'étape « Préparer le devis
+// modifié — rappeler le client » (déjà écrite pour le retour de visite) est
+// posée, le protocole du devis écarté se tait.
+const REPONSE_DEVIS_MODIFIE = {
+  reponse: 'devis_modifie', label: 'Demande un devis modifié',
+  suite: 'Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; le suivi de ce devis s’arrête, et celui du nouveau devis démarrera de lui-même à son envoi.',
+}
+
 // Les réponses du client propres à CHAQUE cadence de protocole (les étapes de
 // filet `generique` n'en ont pas : « À rappeler le… » y reporte déjà, CAD3).
 const REPONSES_CLIENT = {
   contact: [REPONSE_PLUS_TARD],
-  apres_devis: [REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX],
+  apres_devis: [REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, REPONSE_DEVIS_MODIFIE],
   reveil: [REPONSE_PLUS_TARD],
 }
 
