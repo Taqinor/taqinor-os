@@ -160,6 +160,12 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # vivait au niveau du lead, à trois écrans de la touche : l'exposer ici
     # rend mesurable la qualité des numéros qui arrivent des publicités.
     lead_est_junk = serializers.SerializerMethodField()
+    # CAD17 — la SUITE de chaque réponse du panneau « Fait », DÉRIVÉE du
+    # moteur (``suite_touche.promesses_touche``) : ``{cle: [codes d'effet]}``.
+    # L'écran ne fait plus que traduire chaque code en UNE phrase ; il
+    # n'écrit plus de promesse par cadence, qui mentait dès que le libellé ou
+    # le rang de la touche changeait la suite réelle (CAD1/CAD3/CAD16/CAD97).
+    suites = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -175,7 +181,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
             'statut_libelle', 'message_ouvert_le', 'canal_adapte',
-            'lead_est_junk',
+            'lead_est_junk', 'suites',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -262,6 +268,25 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_statut_libelle(self, obj) -> str:
         return obj.get_statut_display()
+
+    @extend_schema_field(serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField())))
+    def get_suites(self, obj):
+        """CAD17 — ``{cle_de_reponse: [codes d'effet]}`` pour une touche À
+        FAIRE ; ``{}`` pour une touche déjà traitée (plus rien à annoncer).
+
+        COÛT BORNÉ : aucune requête pour une touche traitée ; sinon UNE lecture
+        des barreaux actifs par (société, cadence) et par réponse, mise en
+        cache dans le contexte partagé du sérialiseur (liste comprise) — même
+        patron que ``get_lead_est_junk``."""
+        if obj.statut != RelanceEtape.Statut.A_FAIRE:
+            return {}
+        from .suite_touche import ordres_de_la_cadence, promesses_touche
+        cache = self.context.setdefault('_cad17_ordres', {})
+        cle = (obj.company_id, obj.cadence)
+        if cle not in cache:
+            cache[cle] = ordres_de_la_cadence(obj.company_id, obj.cadence)
+        return promesses_touche(obj, ordres=cache[cle])
 
     @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_message_ouvert_le(self, obj):

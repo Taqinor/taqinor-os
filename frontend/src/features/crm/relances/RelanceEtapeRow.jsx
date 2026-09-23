@@ -11,6 +11,7 @@ import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
+import { suiteAnnoncee } from './suite'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -74,64 +75,54 @@ const CADENCE_TONE = {
 // QJ-INVARIANT : la liste de relances d'un lead ne se termine que par Froid
 // ou Signé). Les réponses restent les issues serveur (LeadActivity.OUTCOMES) :
 // aucun nouveau contrat — seulement la bonne question au bon moment.
+// CAD17 — les réponses ne portent PLUS de phrase « suite » écrite par cadence
+// (elle mentait dès que le libellé ou le rang de la touche changeait la suite
+// réelle : CAD1, CAD3, CAD16, CAD97). La suite annoncée vient du SERVEUR
+// (`etape.suites`, dérivée du moteur) et se traduit dans `./suite.js`.
+// `precision` ne porte qu'un geste d'ÉCRAN, jamais un effet moteur.
 const QUESTIONS = {
   contact: {
     question: 'Résultat de la touche ?',
     reponses: [
-      { outcome: 'joint', label: 'Client joint',
-        suite: 'La prise de contact s’arrête. Message répondu → prochaine étape : l’appeler (prochain créneau d’appel). Appel fait → « préparer et envoyer le devis » demain. Le suivi de proposition démarre à l’envoi du devis.' },
-      { outcome: 'non_joint', label: 'Pas de réponse',
-        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-        suite: 'La prochaine touche est déplacée à la date choisie.' },
-      { outcome: 'refuse', label: 'Refus',
-        suite: 'Les relances s’arrêtent ; une étape « décider la suite » (perdu ou relance ultérieure) est posée.' },
+      { outcome: 'joint', label: 'Client joint' },
+      { outcome: 'non_joint', label: 'Pas de réponse' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Refus' },
     ],
   },
   apres_devis: {
     question: 'Réponse du client sur la proposition ?',
     aide: 'Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.',
     reponses: [
-      { outcome: 'interesse', label: 'Intéressé',
-        suite: 'Le suivi de proposition continue (une étape de suite est posée si c’était la dernière touche).' },
+      { outcome: 'interesse', label: 'Intéressé' },
       // VISCAD6 (fondateur 15/09/2026) — « la visite devient une étape du
       // suivi commercial » : issue SERVEUR existante (LeadActivity.OUTCOMES,
       // jamais une nouvelle valeur inventée ici), choisie quand le client dit
       // oui à la visite pendant le suivi de proposition — ouvre la modale de
       // planification juste après confirmation (confirmerFait ci-dessous).
       { outcome: 'visite_acceptee', label: 'Visite acceptée',
-        suite: 'La cadence se met en veille jusqu’au retour de la visite — planifiez-la juste après.' },
-      { outcome: 'non_joint', label: 'Sans réponse',
-        suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-        suite: 'La prochaine touche est déplacée à la date choisie.' },
-      { outcome: 'refuse', label: 'Refuse la proposition',
-        suite: 'Le suivi s’arrête ; une étape « décider la suite » est posée — marquer perdu reste votre décision.' },
+        precision: 'La planification s’ouvre juste après la confirmation.' },
+      { outcome: 'non_joint', label: 'Sans réponse' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Refuse la proposition' },
     ],
   },
   generique: {
     question: 'Où en est ce dossier ?',
     reponses: [
-      { outcome: '', label: 'Fait — passer à la suite',
-        suite: 'Devis envoyé → le suivi de proposition démarre (pour l’étape « préparer et envoyer le devis », un devis parti hors ERP compte aussi) ; sinon la prochaine étape est posée pour demain.' },
-      { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-        suite: 'L’étape est déplacée à la date choisie.' },
-      { outcome: 'refuse', label: 'Client refuse',
-        suite: 'Une étape « décider la suite » est posée — marquer perdu reste votre décision.' },
+      { outcome: '', label: 'Fait — passer à la suite' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Client refuse' },
     ],
   },
 }
 QUESTIONS.reveil = {
   question: 'Résultat du réveil ?',
   reponses: [
-    { outcome: 'joint', label: 'Client joint',
-      suite: 'Le dossier SORT du Froid ; prochaine étape : l’appeler (message répondu) ou préparer le devis (appel fait). Les réveils restants sont annulés.' },
-    { outcome: 'non_joint', label: 'Pas de réponse',
-      suite: 'Le réveil suivant reste programmé ; le dossier reste au Froid.' },
-    { outcome: 'rappel', label: 'À rappeler le…', rappel: true,
-      suite: 'Le prochain réveil est déplacé à la date choisie.' },
-    { outcome: 'refuse', label: 'Refus',
-      suite: 'Les réveils s’arrêtent ; le dossier reste au Froid.' },
+    { outcome: 'joint', label: 'Client joint' },
+    { outcome: 'non_joint', label: 'Pas de réponse' },
+    { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+    { outcome: 'refuse', label: 'Refus' },
   ],
 }
 
@@ -140,28 +131,26 @@ QUESTIONS.reveil = {
 // (`joint`/`non_joint`, JAMAIS réinventées) ; Répondeur/Occupé s'y AJOUTENT
 // (jamais un remplacement — rappel/refus restent disponibles) pour les
 // appels seulement, l'écran Meryem étant d'abord un écran d'appels. La suite
-// (cadence continue / dossier au Froid après la dernière touche) est celle
-// des règles d'arrêt MRY9 déjà en vigueur pour « Pas de réponse ».
+// est celle de « Pas de réponse » (même issue serveur, donc mêmes codes
+// d'effet dans `etape.suites.non_joint`).
 // Réconciliation de fold (CKP2↔CKP4) : le serveur ne connaît QUE les issues
 // de `LeadActivity.OUTCOMES` — Répondeur/Occupé s'envoient donc comme
 // `non_joint` (même règle de suite), la précision partant dans la `note`.
 // Aucune nouvelle valeur d'énumération côté serveur = aucun risque de
 // migration ; l'information reste tracée mot pour mot dans le chatter.
 const APPEL_REPONSES_SUPPLEMENTAIRES = [
-  { outcome: 'non_joint', note: 'Répondeur', label: 'Répondeur',
-    suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
-  { outcome: 'non_joint', note: 'Occupé', label: 'Occupé',
-    suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+  { outcome: 'non_joint', note: 'Répondeur', label: 'Répondeur' },
+  { outcome: 'non_joint', note: 'Occupé', label: 'Occupé' },
   // CAD11 — un numéro MORT n'a pas à épuiser les six tentatives : même patron
   // (issue `non_joint` + note typée, aucune nouvelle énumération), plus la
   // PROPOSITION « perdu, motif junk » en un clic (`junk` = le motif junk
   // pré-choisi s'il existe dans la liste de la société). Le clic décide.
   { outcome: 'non_joint', note: 'Numéro invalide', label: 'Numéro invalide',
     junk: 'Numéro invalide',
-    suite: 'La touche est close « non joint » avec la note « Numéro invalide ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic ; sinon la cadence continue.' },
+    precision: 'La touche est close « non joint » avec la note « Numéro invalide ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic.' },
   { outcome: 'non_joint', note: 'A bloqué / signalé', label: 'A bloqué / signalé',
     junk: 'Jamais répondu',
-    suite: 'La touche est close « non joint » avec la note « A bloqué / signalé ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic ; sinon la cadence continue.' },
+    precision: 'La touche est close « non joint » avec la note « A bloqué / signalé ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic.' },
 ]
 
 // CAD-A — RÉPONSES DU CLIENT (clé `reponse`, table `services.REPONSES_TOUCHE`
@@ -173,7 +162,7 @@ const APPEL_REPONSES_SUPPLEMENTAIRES = [
 // (loi 09-08 art. 9 al. 2) s'enregistre au moment où elle est dite.
 const REPONSES_TOUTES_CADENCES = [
   { reponse: 'ne_plus_contacter', label: 'Ne plus me contacter', message: 'stop_contact',
-    suite: 'Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent, sans étape de décision, et aucune ne pourra redémarrer. L’accusé « je ne vous rappellerai plus » vous est proposé juste après.' },
+    precision: 'L’accusé « je ne vous rappellerai plus » vous est proposé juste après.' },
 ]
 
 // CAD6 — « Plus tard — pas maintenant » (la réponse la plus fréquente du
@@ -182,7 +171,7 @@ const REPONSES_TOUTES_CADENCES = [
 const REPONSE_PLUS_TARD = {
   reponse: 'plus_tard', label: 'Plus tard — pas maintenant', rappel: true,
   message: 'rappel_plus_tard',
-  suite: 'Le dossier se met en veille jusqu’à la date convenue et reprend à cette même touche : aucune relance de pression ne part d’ici là (au-delà d’un mois, réveil daté). Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer.',
+  precision: 'Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer.',
 }
 
 // CAD7 — la réponse la plus fréquente sur une PROPOSITION : le client
@@ -191,7 +180,7 @@ const REPONSE_PLUS_TARD = {
 // avant sa décision).
 const REPONSE_QUESTION_PRIX = {
   reponse: 'question_prix', label: 'Question de prix — veut négocier',
-  suite: 'Le suivi de proposition se met en pause : une étape « Question de prix — préparer l’appel du fondateur » est posée pour demain, et aucun message ne part tant qu’elle n’est pas traitée. Aucune offre n’est envoyée avant la décision du fondateur.',
+  precision: 'Aucune offre n’est envoyée avant la décision du fondateur.',
 }
 
 // CAD8 — une VARIANTE demandée au téléphone : l'étape « Préparer le devis
@@ -199,7 +188,6 @@ const REPONSE_QUESTION_PRIX = {
 // posée, le protocole du devis écarté se tait.
 const REPONSE_DEVIS_MODIFIE = {
   reponse: 'devis_modifie', label: 'Demande un devis modifié',
-  suite: 'Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; le suivi de ce devis s’arrête, et celui du nouveau devis démarrera de lui-même à son envoi.',
 }
 
 // CAD9 — « Décision à plusieurs » pose l'étiquette AU MOMENT où le client le
@@ -207,10 +195,9 @@ const REPONSE_DEVIS_MODIFIE = {
 // dépassé. Deux nuances, distinguées dans la note : la famille (un délai) et
 // le propriétaire (un interlocuteur à changer).
 const REPONSES_DECISION_A_PLUSIEURS = [
-  { reponse: 'decision_famille', label: 'Décision à plusieurs — en famille',
-    suite: 'L’étiquette « Décision à plusieurs » est posée : le suivi continue, et le rendez-vous « dimanche famille » est ajouté au plan s’il n’est pas encore passé.' },
+  { reponse: 'decision_famille', label: 'Décision à plusieurs — en famille' },
   { reponse: 'decision_proprietaire', label: 'Décision à plusieurs — le propriétaire',
-    suite: 'L’étiquette « Décision à plusieurs » est posée et la note dit qu’il faut joindre le propriétaire : le suivi continue (dimanche famille ajouté s’il n’est pas encore passé).' },
+    precision: 'La note dit qu’il faut joindre le propriétaire.' },
 ]
 
 // Les réponses du client propres à CHAQUE cadence de protocole (les étapes de
@@ -683,9 +670,16 @@ export default function RelanceEtapeRow({
               </Button>
             ))}
           </div>
+          {/* CAD17 — la suite annoncée vient du SERVEUR (`etape.suites`,
+              dérivée du moteur) : jamais une phrase écrite par cadence.
+              CAD11 — la case « perdu, motif junk » cochée change la suite
+              réelle (le lead passe perdu : plus aucune relance, sans suite —
+              `suite=False` côté serveur) : la phrase le dit alors. */}
           {reponseChoisie && (
             <p className="text-xs text-muted-foreground" data-testid="suite-reponse">
-              {reponseChoisie.suite}
+              {reponseChoisie.junk && perduJunk
+                ? 'Le lead passe perdu (motif junk) : toutes ses relances s’arrêtent, sans aucune suite.'
+                : suiteAnnoncee(etape, reponseChoisie)}
             </p>
           )}
           {erreurOutcome && (
