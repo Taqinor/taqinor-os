@@ -30,9 +30,9 @@ Module PUR : aucune base, aucun réseau, aucun prix.
 from __future__ import annotations
 
 __all__ = ['ChargeInvalide', 'TYPES_DE_CHARGE', 'ajouter_charges',
-           'courbe_pac', 'courbe_vehicule']
+           'courbe_climatisation', 'courbe_pac', 'courbe_vehicule']
 
-TYPES_DE_CHARGE = ('vehicule', 'pac')
+TYPES_DE_CHARGE = ('vehicule', 'pac', 'clim')
 
 #: La répartition employée dans une fenêtre saisie, DITE explicitement.
 MENTION_REPARTITION = (
@@ -485,6 +485,63 @@ def courbe_pac(*, puissance_kw=None, cop=None, cop_points=None,
         'courbe': _repartir(energie, heures, longueur=longueur,
                             heure_de_depart=heure_de_depart),
         'parametres': {'puissance_kw': puissance, 'cop': coefficient,
+                       'heures_fonctionnement': heures,
+                       'facteur_saison': facteur_saison},
+        'hypotheses': hypotheses,
+    }
+
+
+def courbe_climatisation(*, btu=None, eer=None, heures_fonctionnement=None,
+                         facteur_saison=None, longueur=24, heure_de_depart=0):
+    """La charge horaire d'une CLIMATISATION — tout est saisi (CALX263).
+
+    Le CONSTAT : la clim n'existait que côté navigateur, avec un défaut NON
+    sourcé (``AC_EER_DEFAULT_NON_INVERTER = 9``,
+    ``apps/web/src/lib/applianceConsumption.ts:649``) appliqué dès que le
+    champ EER était vide. Ce module ne connaît AUCUN défaut : un EER absent
+    est REFUSÉ en nommant le champ — jamais le 9 de l'atelier.
+
+    Args:
+        btu: la puissance frigorifique (BTU/h), SAISIE.
+        eer: l'EER (Energy Efficiency Ratio) SAISI — puissance électrique =
+            BTU/h ÷ EER (cité depuis ``applianceConsumption.ts:640-649``).
+        heures_fonctionnement: les heures de marche, SAISIES.
+        facteur_saison: coefficient de saisonnalité SAISI (1 = saison de
+            référence). Absent ⇒ 1, et le bilan le dit.
+
+    Raises:
+        ChargeInvalide: paramètre manquant ou illisible, en le NOMMANT —
+            dont un EER absent (``clim.eer``), jamais complété par défaut.
+    """
+    btu_h = _obligatoire(btu, champ='clim.btu',
+                         libelle='La puissance frigorifique (BTU/h)')
+    eer_valeur = _obligatoire(
+        eer, champ='clim.eer',
+        libelle="L'EER (Energy Efficiency Ratio) de la climatisation")
+    heures = _fenetre(heures_fonctionnement, champ='clim.heures_fonctionnement',
+                      libelle='Les heures de fonctionnement')
+
+    hypotheses = [MENTION_REPARTITION]
+    if facteur_saison is None:
+        saison = 1.0
+        hypotheses.append(
+            'Aucun facteur de saison saisi : la charge est publiée pour la '
+            'saison de référence, sans pondération inventée.')
+    else:
+        saison = _obligatoire(facteur_saison, champ='clim.facteur_saison',
+                              libelle='Le facteur de saison', positif=False)
+
+    # Puissance ÉLECTRIQUE = puissance frigorifique ÷ EER (W), convertie kW.
+    puissance_kw = (btu_h / eer_valeur) / 1000.0
+    energie = puissance_kw * len(heures) * saison
+
+    return {
+        'type': 'clim',
+        'libelle': 'Climatisation',
+        'energie_journaliere_kwh': round(energie, 4),
+        'courbe': _repartir(energie, heures, longueur=longueur,
+                            heure_de_depart=heure_de_depart),
+        'parametres': {'btu': btu_h, 'eer': eer_valeur,
                        'heures_fonctionnement': heures,
                        'facteur_saison': facteur_saison},
         'hypotheses': hypotheses,
