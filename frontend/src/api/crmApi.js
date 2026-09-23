@@ -437,6 +437,11 @@ const crmApi = {
   // langue_preferee`) en un geste. Réponse : la touche (`relance_etape_v2`).
   definirLangueRelanceEtape: (id, langue) =>
     api.post(`/crm/relance-etapes/${id}/langue/`, { langue }),
+  // CAD99 — « cadences échues à clore » (sélecteur CAD75) : LECTURE PURE.
+  // `params.jours` OBLIGATOIRE (le seuil que l'écran affiche). Forme :
+  // `contract_samples/cadences_echues.json` (PACT10).
+  getCadencesEchues: (params) =>
+    api.get('/crm/relance-etapes/cadences-echues/', { params }),
 }
 
 export default crmApi

@@ -1,0 +1,33 @@
+{
+  "endpoint": "GET /api/django/crm/relance-etapes/cadences-echues/?jours=7",
+  "pourquoi": "CAD99 (moitié écran de CAD75, PACT10) — les dossiers dont la cadence est ÉCHUE et que PERSONNE n'a clos : `cloturer_cadence` n'a qu'un seul appelant (le « Fait » de la dernière touche), donc un dossier abandonné n'entre jamais au Froid et ne reçoit aucun réveil. Le sélecteur `apps.crm.selectors.cadences_echues_a_clore` (CAD75) les liste ; cette route les SERT au cockpit « Relances du jour » (`RelancesDuJourWidget.jsx`), qui les affiche en lecture seule. `?jours=` est OBLIGATOIRE et c'est l'écran qui le choisit et l'AFFICHE (aucun réglage société ni texte de tâche ne porte ce nombre — le serveur n'en invente pas) ; sans lui, 400 `{\"jours\": …}` qui nomme le champ. LECTURE PURE : rien n'est clos, rien n'est écrit — la clôture reste une décision humaine prise sur la fiche du lead. Un lead n'apparaît qu'UNE fois (sur son retard le plus ancien), trié du plus ancien au plus récent, dans la portée de visibilité du demandeur.",
+  "exemple": {
+    "count": 1,
+    "jours": 7,
+    "results": [
+      {
+        "etape_id": 512,
+        "lead_id": 1533,
+        "lead": "Tazi Karim",
+        "ville": "Marrakech",
+        "stage": "CONTACTED",
+        "owner": "commerciale",
+        "cadence": "contact",
+        "ordre": 6,
+        "canal": "appel",
+        "libelle": "Appel 4",
+        "due_date": "2026-09-10",
+        "jours_de_retard": 13
+      }
+    ]
+  },
+  "exemple_vide": {
+    "count": 0,
+    "jours": 7,
+    "results": []
+  },
+  "notes": {
+    "jours": "Le seuil RENVOYÉ tel qu'il a été appliqué (entier ≥ 0) : l'écran l'affiche à côté de la liste, jamais un nombre implicite.",
+    "results": "Lignes du sélecteur CAD75, dans son ordre : `etape_id`, `lead_id`, `lead` (nom affiché), `ville` ('' si inconnue), `stage` (clé STAGES.py), `owner` (nom du responsable, '' si aucun), `cadence`, `ordre`, `canal`, `libelle`, `due_date` (AAAA-MM-JJ), `jours_de_retard` (jours calendaires, Casablanca)."
+  }
+}

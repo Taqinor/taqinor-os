@@ -127,6 +127,82 @@ function ArreterCadenceControl({ leadId, onArreter }) {
   )
 }
 
+// CAD99 — seuil de retard INITIAL de la liste « cadences échues à clore ».
+// Le sélecteur CAD75 exige que l'APPELANT fournisse ce nombre et l'affiche :
+// ni la tâche ni un réglage société ne le portent. C'est une valeur
+// d'AFFICHAGE, visible et modifiable à l'écran (« en retard de plus de N
+// jours »), jamais une règle métier — elle ne ferme rien, ne déplace rien.
+const SEUIL_ECHUES_DEFAUT = 7
+
+// CAD99 — la liste des dossiers dont la cadence est ÉCHUE et que personne n'a
+// clos (moitié écran de CAD75). LECTURE SEULE : chaque ligne ouvre la fiche
+// du lead, où la décision humaine se prend — aucun bouton de clôture ici
+// (garde-fou de la tâche). Absente quand le serveur ne renvoie rien.
+function CadencesEchues({ navigate }) {
+  const [seuil, setSeuil] = useState(SEUIL_ECHUES_DEFAUT)
+  const [lignes, setLignes] = useState([])
+  const [ouvert, setOuvert] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    // Garde défensive (même motif que CAD117) : les suites existantes
+    // mockent `crmApi` sans `getCadencesEchues` — la section se tait.
+    const requete = typeof crmApi.getCadencesEchues === 'function'
+      ? crmApi.getCadencesEchues({ jours: seuil })
+      : Promise.reject(new Error('getCadencesEchues indisponible'))
+    requete
+      .then((r) => { if (active) setLignes(r.data?.results ?? []) })
+      .catch(() => { if (active) setLignes([]) })
+    return () => { active = false }
+  }, [seuil])
+
+  if (lignes.length === 0) return null
+  return (
+    <div className="mb-3" data-testid="cad99-cadences-echues">
+      <button
+        type="button"
+        className="text-xs font-medium text-warning hover:underline"
+        aria-expanded={ouvert}
+        onClick={() => setOuvert((o) => !o)}
+      >
+        {lignes.length} cadence{lignes.length > 1 ? 's' : ''} échue{lignes.length > 1 ? 's' : ''} à clore
+      </button>
+      {ouvert && (
+        <div className="mt-1.5 flex flex-col gap-1.5">
+          <label className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            Dernière touche en retard de plus de
+            <Input
+              type="number" min={0} step="1" className="w-16"
+              aria-label="Retard de plus de (jours)"
+              value={seuil}
+              onChange={(e) => {
+                const n = Number.parseInt(e.target.value, 10)
+                if (Number.isFinite(n) && n >= 0) setSeuil(n)
+              }}
+            />
+            jours — personne n’a clos ces dossiers : ouvrez-les pour décider (aucune clôture automatique).
+          </label>
+          <ul className="flex flex-col gap-1">
+            {lignes.map((ligne) => (
+              <li key={ligne.etape_id}>
+                <button
+                  type="button"
+                  className="w-full rounded-md border border-border p-1.5 text-left text-xs hover:bg-muted"
+                  onClick={() => navigate(`/crm/leads?lead=${ligne.lead_id}`)}
+                >
+                  <span className="font-medium">{ligne.lead}</span>
+                  {ligne.ville ? ` · ${ligne.ville}` : ''}
+                  {` · ${ligne.libelle} · en retard de ${ligne.jours_de_retard} j`}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RelancesDuJourWidget() {
   const navigate = useNavigate()
   const [scope, setScope] = useState('all')
@@ -294,6 +370,9 @@ export default function RelancesDuJourWidget() {
             )}
           </div>
         )}
+        {/* CAD99 — les cadences échues que personne n'a closes (CAD75),
+            en lecture seule, à côté du compteur « sans cadence ». */}
+        <CadencesEchues navigate={navigate} />
         {/* CAD50 — retour arrière : les touches traitées DANS CETTE session
             (Fait/Sauter), fenêtre serveur 24h. Disparaît dès qu'annulée OU
             dès que le refetch confirme la clôture (`justeTraitees` filtré). */}

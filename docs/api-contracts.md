@@ -78,6 +78,8 @@
     client:inconnu, detail:texte, mode:inconnu
 - frontend/src/api/crmApi.js :: deleteLead -> /api/django/crm/leads/<>
     corbeille_id:inconnu, detail:texte, id:inconnu
+- frontend/src/api/crmApi.js :: getCadencesEchues -> /api/django/crm/relance-etapes/cadences-echues
+    count:nombre, jours:inconnu, results:inconnu
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
     ca_devis_total:texte, ca_factures_total:texte, filiales:liste, nb_devis_total:inconnu, nb_factures_total:inconnu
 - frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants

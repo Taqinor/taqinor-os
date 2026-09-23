@@ -2922,8 +2922,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # RLC2 — `journal` est une LECTURE PURE (le sélecteur n'écrit rien) :
         # même garde que `list`, et listée ICI nommément parce que
         # get_permissions() PRIME sur le `permission_classes` de l'@action.
+        # CAD99 — `cadences_echues` est une LECTURE PURE (le sélecteur CAD75
+        # ne clôt rien, n'écrit rien) : même garde que `list`, listée ICI
+        # nommément pour la même raison que `journal`.
         if self.action in ('list', 'message', 'suivi',
-                           'kpi_adherence', 'mes_stats', 'journal'):
+                           'kpi_adherence', 'mes_stats', 'journal',
+                           'cadences_echues'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -3082,6 +3086,39 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response({'detail': 'Lead inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
         return Response(journal)
+
+    @extend_schema(responses=inline_serializer('CrmCadencesEchues', {
+        'count': serializers.IntegerField(),
+        'jours': serializers.IntegerField(),
+        'results': serializers.ListField(child=serializers.DictField()),
+    }))
+    @action(detail=False, methods=['get'], url_path='cadences-echues',
+            permission_classes=[IsAnyRole])
+    def cadences_echues(self, request):
+        """CAD99 — la liste « cadences échues à clore » (forme
+        `cadences_echues`), moitié écran de CAD75.
+
+        ``?jours=`` OBLIGATOIRE : le seuil de retard, en jours, que l'écran
+        AFFICHE — ni la tâche ni aucun réglage société ne porte ce nombre, le
+        sélecteur ``cadences_echues_a_clore`` refuse donc d'en inventer un.
+        Refus 400 ``{"jours": …}`` qui nomme le champ.
+
+        LECTURE PURE — garde-fou de la tâche : rien n'est clos, rien n'est
+        écrit ; la clôture reste une décision humaine, prise sur la fiche. La
+        portée de visibilité du demandeur s'applique (sélecteur)."""
+        from .selectors import cadences_echues_a_clore
+
+        brut = (request.query_params.get('jours') or '').strip()
+        if not brut.isdigit():
+            # Levée : la forme versionnée reste celle de la réponse.
+            raise DRFValidationError({'jours': (
+                '« Retard de plus de (jours) » : un nombre entier de jours '
+                '(0 ou plus) est obligatoire.')})
+        jours = int(brut)
+        lignes = cadences_echues_a_clore(
+            request.user.company, request.user, jours=jours)
+        return Response({'count': len(lignes), 'jours': jours,
+                         'results': lignes})
 
     @extend_schema(responses=inline_serializer('CrmKpiAdherence', {
         'periode_jours': serializers.IntegerField(),
