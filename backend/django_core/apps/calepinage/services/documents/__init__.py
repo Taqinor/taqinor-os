@@ -40,3 +40,8 @@ def mise_en_page(code):
                        % code) from None
     module, _, fonction = chemin.partition(':')
     return getattr(import_module(module), fonction)
+
+
+# ── CALX310 — le plan de câblage des chaînes ────────────────────────────────
+MISES_EN_PAGE['plan_cablage'] = (
+    'apps.calepinage.services.documents.plan_cablage:html_du_plan_cablage')

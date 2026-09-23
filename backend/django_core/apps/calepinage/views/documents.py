@@ -104,3 +104,66 @@ def diagramme_pertes_svg(self, request, pk=None):
 
 
 CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
+
+
+# ── CALX310 — le plan de câblage des chaînes (PDF et DXF) ──────────────────
+def _refus_plan_cablage(refus):
+    """400 + la donnée NOMMÉE (géométrie, chaînage, pare-feu de montants)."""
+    return Response({getattr(refus, 'champ', '') or 'electrique.chainage':
+                     str(refus)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='plan-cablage.pdf',
+        url_name='plan-cablage-pdf', permission_classes=[PeutVoirCalepinage])
+def plan_cablage_pdf(self, request, pk=None):
+    """CALX310 — le plan de câblage : modules teintés par chaîne, légende.
+
+    * **200** — le PDF A3, nommé d'après le calepinage ;
+    * **400** — aucune conception, aucune chaîne publiée, ou une donnée
+      refusée : le motif français et le champ NOMMÉ.
+    """
+    from ..services.documents.plan_cablage import rendre_plan_cablage_pdf
+    from ..services.planche import PlancheRefusee, nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        octets = rendre_plan_cablage_pdf(calepinage,
+                                         company=calepinage.company)
+    except (PlancheRefusee, RapportRefuse) as refus:
+        return _refus_plan_cablage(refus)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'plan-cablage.pdf'))
+
+
+CalepinageViewSet.plan_cablage_pdf = plan_cablage_pdf
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='plan-cablage.dxf',
+        url_name='plan-cablage-dxf', permission_classes=[PeutVoirCalepinage])
+def plan_cablage_dxf(self, request, pk=None):
+    """CALX310 — le DXF de pose AVEC le calque ``CHAINES``.
+
+    * **200** — le DXF (mètres), nommé d'après le calepinage ;
+    * **400** — mêmes refus que le PDF, champ NOMMÉ.
+    """
+    from ..services.documents.plan_cablage import exporter_plan_cablage_dxf
+    from ..services.planche import PlancheRefusee, nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_DXF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        octets = exporter_plan_cablage_dxf(calepinage)
+    except (PlancheRefusee, RapportRefuse) as refus:
+        return _refus_plan_cablage(refus)
+    return reponse_de_fichier(
+        octets, mime=MIME_DXF,
+        nom_fichier=nom_de_fichier(calepinage, 'plan-cablage.dxf'))
+
+
+CalepinageViewSet.plan_cablage_dxf = plan_cablage_dxf

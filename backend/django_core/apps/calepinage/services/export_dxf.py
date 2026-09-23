@@ -28,12 +28,23 @@ lecteurs, et le plan y fait alors 39 fois sa taille.
 
 La géométrie est celle de la planche (``services.planche.geometrie_de_planche``)
 — la MÊME projection, donc le DXF et le PDF ne peuvent pas diverger.
+
+CALX310 — le calque ``CHAINES``, SOUS UN PARAMÈTRE EXPLICITE
+============================================================
+``document_dxf(geometrie, chaines=…)`` ajoute un cinquième calque, ``CHAINES`` :
+un objet par module AFFECTÉ, teint de la couleur de sa chaîne (celle du plan de
+câblage et de l'écran), et un texte ``C<n>`` (``C<n>*`` en affectation
+manuelle). Sans le paramètre, le fichier est EXACTEMENT celui de CAL178 — les
+quatre calques et rien d'autre. Un module non affecté n'entre PAS sur ce
+calque : il reste sur ``MODULES``, jamais teinté d'une chaîne voisine.
 """
 from __future__ import annotations
 
 __all__ = [
     'CALQUE_TOITURE', 'CALQUE_OBSTACLES', 'CALQUE_MODULES', 'CALQUE_COTES',
     'CALQUES', 'document_dxf', 'octets_dxf', 'exporter_dxf',
+    # CALX310
+    'CALQUE_CHAINES',
 ]
 
 CALQUE_TOITURE = 'TOITURE'
@@ -51,8 +62,17 @@ CALQUES = (
     (CALQUE_COTES, 5),
 )
 
+#: CALX310 — le calque du câblage, déclaré SEULEMENT sur demande explicite
+#: (``chaines=``), avec sa couleur d'index (6 = magenta) ; chaque objet y
+#: porte en plus la couleur VRAIE de sa chaîne.
+CALQUE_CHAINES = 'CHAINES'
+COULEUR_CALQUE_CHAINES = 6
+
 #: Hauteur du texte des cotes, en mètres (l'unité du dessin).
 HAUTEUR_TEXTE_M = 0.25
+
+#: Hauteur du repère de chaîne ``C<n>`` posé sur chaque module (m).
+HAUTEUR_REPERE_CHAINE_M = 0.2
 
 
 def _rectangle(centre, longueur, largeur):
@@ -63,12 +83,17 @@ def _rectangle(centre, longueur, largeur):
             (x + demi_l, y + demi_c), (x - demi_l, y + demi_c)]
 
 
-def document_dxf(geometrie):
+def document_dxf(geometrie, *, chaines=None):
     """``geometrie_de_planche(...)`` -> un document ``ezdxf`` prêt à écrire.
 
     L'import d'``ezdxf`` est FONCTION-LOCAL : la bibliothèque n'a aucune raison
     d'être chargée au démarrage de Django pour une sortie qu'on demande
     rarement.
+
+    CALX310 — ``chaines`` (les ``modules`` de
+    ``services.documents.plan_cablage.plan_de_cablage`` : ``{module, centre,
+    chaine, couleur, manuel}``) ajoute le calque ``CHAINES``. ``None`` (le
+    défaut) : aucun calque de plus.
     """
     import ezdxf
     from ezdxf import units
@@ -118,7 +143,41 @@ def document_dxf(geometrie):
                     dxfattribs={'layer': CALQUE_MODULES})
 
     _coter(espace, geometrie.get('etendue'))
+    if chaines is not None:
+        _calque_chaines(document, espace, chaines, module_m)
     return document
+
+
+def _calque_chaines(document, espace, chaines, module_m):
+    """CALX310 — un objet TEINT et un repère ``C<n>`` par module AFFECTÉ.
+
+    Rien n'est recalculé : la chaîne et sa couleur viennent du plan de câblage,
+    qui les a LUES dans l'affectation publiée.
+    """
+    from ezdxf import colors
+
+    from .documents.plan_cablage import rgb_de
+
+    document.layers.add(name=CALQUE_CHAINES, color=COULEUR_CALQUE_CHAINES)
+    for module in chaines:
+        if not isinstance(module, dict) or module.get('chaine') is None:
+            continue
+        attributs = {'layer': CALQUE_CHAINES}
+        if module.get('couleur'):
+            attributs['true_color'] = colors.rgb2int(
+                rgb_de(module['couleur']))
+        centre = module['centre']
+        if module_m is None:
+            espace.add_point((centre[0], centre[1]), dxfattribs=attributs)
+        else:
+            espace.add_lwpolyline(
+                _rectangle(centre, module_m[0], module_m[1]), close=True,
+                dxfattribs=attributs)
+        repere = 'C%s%s' % (module['chaine'], '*' if module.get('manuel')
+                            else '')
+        espace.add_text(repere, height=HAUTEUR_REPERE_CHAINE_M,
+                        dxfattribs=dict(attributs)).set_placement(
+                            (centre[0], centre[1]))
 
 
 def _coter(espace, etendue):
@@ -151,12 +210,15 @@ def _coter(espace, etendue):
             (x0 - decalage * 1.6, (y0 + y1) / 2.0))
 
 
-def octets_dxf(geometrie):
-    """Le DXF en OCTETS (utf-8) — aucun fichier n'est écrit sur le disque."""
+def octets_dxf(geometrie, *, chaines=None):
+    """Le DXF en OCTETS (utf-8) — aucun fichier n'est écrit sur le disque.
+
+    ``chaines`` : voir ``document_dxf`` (CALX310, calque ``CHAINES``).
+    """
     import io
 
     tampon = io.StringIO()
-    document_dxf(geometrie).write(tampon)
+    document_dxf(geometrie, chaines=chaines).write(tampon)
     return tampon.getvalue().encode('utf-8')
 
 
