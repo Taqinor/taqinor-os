@@ -34,7 +34,8 @@
     "etape_devis_modifie": "Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; cette touche-ci ne fait naître aucune touche suivante.",
     "journal_suite_si_rien_ouvert": "Si plus aucune relance n’est ouverte, une étape de suite est posée (le suivi d’un devis envoyé reprend s’il n’est pas allé au bout), et un dossier au Froid en sort.",
     "journal_decider_si_rien_ouvert": "Si plus aucune relance n’est ouverte et que le dossier n’est pas au Froid, une étape « Décider la suite » (perdu ou relance ultérieure) est posée — marquer perdu reste votre décision.",
-    "journal_sans_effet": "Journalisé seulement : aucune relance n’est ajoutée, déplacée ni arrêtée. Pour faire avancer le plan de relance, traitez la touche du jour."
+    "journal_sans_effet": "Journalisé seulement : aucune relance n’est ajoutée, déplacée ni arrêtée. Pour faire avancer le plan de relance, traitez la touche du jour.",
+    "suivi_demarre_sans_envoi": "Attention : pour le moteur, sauter cette étape vaut « devis parti » — le suivi de proposition démarre, sans que le dossier passe « Devis envoyé ». Si le devis n’est pas encore parti, utilisez plutôt « Reporter »."
   },
   "_doc_journal": "CAD15 — les effets d'une ISSUE journalisée depuis la fiche (journal d'appel) : aucune touche n'est close, seuls les récepteurs MRY9 réagissent. Table ÉGALE à apps/crm/suite_touche.py::promesses_journal() (garde CAD17), rejouée par l'API réelle.",
   "journal": {

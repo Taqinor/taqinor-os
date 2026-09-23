@@ -83,6 +83,9 @@ ETAPE_DEVIS_MODIFIE = 'etape_devis_modifie'
 JOURNAL_SUITE_SI_RIEN_OUVERT = 'journal_suite_si_rien_ouvert'
 JOURNAL_DECIDER_SI_RIEN_OUVERT = 'journal_decider_si_rien_ouvert'
 JOURNAL_SANS_EFFET = 'journal_sans_effet'
+# CAD47 — sauter l'étape « préparer et envoyer le devis » : le moteur la lit
+# comme « devis parti » (RELANCE-SUITE) et démarre le suivi de proposition.
+SUIVI_DEMARRE_SANS_ENVOI = 'suivi_demarre_sans_envoi'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -100,6 +103,7 @@ CODES = frozenset({
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
+    SUIVI_DEMARRE_SANS_ENVOI,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -120,6 +124,8 @@ NATURE_VISITE = 'visite'
 #: La clé de la réponse « Fait — passer à la suite » (aucune issue) : une
 #: chaîne vide ferait une clé JSON illisible côté écran.
 CLE_SANS_ISSUE = 'sans_issue'
+#: CAD47 — la clé du geste « Sauter » (panneau distinct du « Fait »).
+CLE_SAUTER = 'sauter'
 
 #: Les canaux d'une touche ÉCRITE : c'est le canal qui décide, après une
 #: réponse du client, si la suite est de l'appeler (message répondu) ou de
@@ -323,11 +329,26 @@ def _codes_a_cote_du_plan(issue, *, visite):
     if issue == 'rappel':
         return ([PROCHAINE_RELANCE_A_LA_DATE] if visite
                 else [ETAPE_DEPLACEE_A_LA_DATE])
-    if issue == 'non_joint' and visite:
-        # Une étape de visite n'est pas un filet : son « pas de réponse »
-        # peut ÉPUISER la cadence après-devis (clôture MRY11).
+    if issue in ('non_joint', '') and visite:
+        # Une étape de visite n'est pas un filet : son « pas de réponse » (ou
+        # son saut, CAD47) peut ÉPUISER la cadence après-devis (clôture MRY11).
         return [VISITE_FROID_SI_SEULE]
     return [SUITE_SI_PLUS_RIEN_OUVERT]
+
+
+def _codes_sauter(etape, *, nature, derniere, au_froid):
+    """CAD47 — ce que fait « Sauter » : le moteur clôt la touche SAUTÉE sans
+    issue (``marquer_etape_relance``), et la suite est celle d'une touche
+    close sans réponse — barreau suivant, clôture au Froid après la dernière,
+    filet sinon. Une exception, et elle se DIT : sauter l'étape « préparer et
+    envoyer le devis » vaut « devis parti » pour le moteur."""
+    if nature == NATURE_ENVOI_DEVIS:
+        return [SUIVI_DEMARRE_SANS_ENVOI]
+    if nature == NATURE_FILET:
+        return _codes_filet(etape, '')
+    if nature in (NATURE_VISITE, NATURE_PASSATION):
+        return _codes_a_cote_du_plan('', visite=nature == NATURE_VISITE)
+    return _codes_barreau(etape, '', derniere=derniere, au_froid=au_froid)
 
 
 def _codes_reponse_client(cle, *, nature, derniere):
@@ -396,6 +417,9 @@ def promesses_touche(etape, *, ordres=None):
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid)
         promesses[cle] = codes
+    # CAD47 — le panneau « Sauter » dit lui aussi ce qu'il déclenche.
+    promesses[CLE_SAUTER] = _codes_sauter(
+        etape, nature=nature, derniere=derniere, au_froid=au_froid)
     return promesses
 
 

@@ -21,6 +21,9 @@ import PHRASES from './suite_phrases.json'
 /** Clé de la réponse « Fait — passer à la suite » (aucune issue). */
 export const CLE_SANS_ISSUE = 'sans_issue'
 
+/** CAD47 — clé du geste « Sauter » (le serveur l'annonce comme une réponse). */
+export const CLE_SAUTER = 'sauter'
+
 /** La phrase d'UN code d'effet, ou '' s'il est inconnu de l'écran. */
 export function phraseEffet(code) {
   return PHRASES.effets[code] ?? ''
@@ -52,6 +55,13 @@ export function codesSuite(etape, reponse) {
   if (!cle) return []
   const codes = etape?.suites?.[cle]
   return Array.isArray(codes) ? codes : []
+}
+
+/** CAD47 — ce que « Sauter » déclenche sur CETTE touche : la cadence continue
+ *  (touche suivante programmée), sauf sur la dernière (clôture) ou sur une
+ *  étape posée par le moteur — le serveur le dit, l'écran le traduit. */
+export function suiteDuSaut(etape) {
+  return suiteAnnoncee(etape, { reponse: CLE_SAUTER })
 }
 
 /** CAD15 — la conséquence d'une ISSUE journalisée depuis la fiche (journal

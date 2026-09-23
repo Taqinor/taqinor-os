@@ -11,7 +11,7 @@ import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
-import { suiteAnnoncee } from './suite'
+import { suiteAnnoncee, suiteDuSaut } from './suite'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -632,6 +632,14 @@ export default function RelanceEtapeRow({
             rows={2} placeholder="Note (optionnelle) — pourquoi sauter cette relance ?"
             value={note} onChange={(e) => setNote(e.target.value)}
           />
+          {/* CAD47 — « Sauter » faisait peur : rien ne disait que la cadence
+              continue. La phrase vient du SERVEUR (`etape.suites.sauter`,
+              dérivée du moteur, garde CAD17) : la touche suivante est
+              programmée — ou, sur la dernière touche / une étape posée par le
+              moteur, ce qui se passe réellement. */}
+          <p className="text-xs text-muted-foreground" data-testid="suite-sauter">
+            {suiteDuSaut(etape)}
+          </p>
           <div className="flex justify-end gap-1.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={fermer}>
               Annuler

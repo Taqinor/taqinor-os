@@ -196,6 +196,32 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
   })
 })
 
+// CAD47 — « Sauter » dit ce qu'il fait : la cadence continue, la touche
+// suivante est programmée (phrase du serveur, `etape.suites.sauter`).
+describe('CAD47 RelanceEtapeRow — « Sauter » dit ce qu’il fait', () => {
+  function ouvrirSauter(etape) {
+    render(
+      <RelanceEtapeRow etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+  }
+
+  it('la phrase « la cadence continue — la touche suivante sera programmée » est dans le panneau', () => {
+    ouvrirSauter(ETAPE_APPEL)
+    expect(ETAPE_APPEL.suites.sauter).toEqual(['touche_suivante'])
+    expect(screen.getByTestId('suite-sauter')).toHaveTextContent(
+      'La cadence continue : sa touche suivante est programmée à son délai prévu.')
+  })
+
+  it('sur le DERNIER réveil, le panneau dit la vérité : plus aucune relance', () => {
+    const [dernier] = exempleContrat('crm', 'relance_etape_v2', 'exemple_dernier_reveil').results
+    ouvrirSauter(dernier)
+    expect(screen.getByTestId('suite-sauter')).toHaveTextContent(/dernier réveil/)
+    expect(screen.getByTestId('suite-sauter')).not.toHaveTextContent(/La cadence continue/)
+  })
+})
+
 // CAD12 — « Le client accepte » sans quitter la touche : un LIEN vers la fiche
 // du devis rattaché (jamais une action de statut depuis le CRM, règle #4).
 describe('CAD12 RelanceEtapeRow — le client accepte', () => {
