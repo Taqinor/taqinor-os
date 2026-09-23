@@ -203,6 +203,33 @@ describe('CAD6 RelanceEtapeRow — « Plus tard — pas maintenant »', () => {
   })
 })
 
+// CAD7 — « Question de prix » : seulement sur le suivi de proposition ; la
+// CLÉ part, et aucun texte n'est proposé (l'offre du fondateur attend sa
+// décision).
+describe('CAD7 RelanceEtapeRow — « Question de prix — veut négocier »', () => {
+  it('n’existe que sur le suivi de proposition', () => {
+    ouvrirFait(ETAPE_APPEL)
+    expect(screen.queryByRole('button', { name: 'Question de prix — veut négocier' }))
+      .not.toBeInTheDocument()
+    cleanup()
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.getByRole('button', { name: 'Question de prix — veut négocier' }))
+      .toBeInTheDocument()
+  })
+
+  it('envoie la clé et ne propose AUCUN message', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    const onOuvrirMessage = vi.fn()
+    ouvrirFait(ETAPE_APRES_DEVIS, { onFait, onOuvrirMessage })
+    fireEvent.click(screen.getByRole('button', { name: 'Question de prix — veut négocier' }))
+    expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/aucun message ne part/)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APRES_DEVIS.id, { reponse: 'question_prix' }))
+    expect(onOuvrirMessage).not.toHaveBeenCalled()
+  })
+})
+
 // CAD26 — « Reporter » offre DEUX gestes ; au-delà de 7 jours, la mise en
 // veille est proposée d'elle-même. Horloge figée (seul `Date` est simulé) :
 // mercredi 23/09/2026 à Casablanca.

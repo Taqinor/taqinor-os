@@ -2028,6 +2028,15 @@ FILET_DERNIER_APPEL_LIBELLE = 'Rappeler — dernier essai avant de chiffrer'
 #: ses sœurs pour que `_LIBELLES_FILET` la connaisse sans second littéral.
 PASSATION_LIBELLE = 'Passation — prévenir le client du changement de conseiller'
 
+#: CAD7 — le client NÉGOCIE le prix : le suivi de proposition se met en PAUSE
+#: le temps de préparer l'appel du fondateur. Étape de FILET (posée par le
+#: moteur, hors protocole) : la traiter rouvre le suivi au barreau suivant
+#: (CAD1). Aucun texte d'offre n'y est attaché — l'offre ne part JAMAIS avant
+#: la décision du fondateur (CAD60).
+QUESTION_PRIX_LIBELLE = (
+    'Question de prix — préparer l’appel du fondateur (aucune offre avant '
+    'sa décision)')
+
 #: CKP2 — les libellés des étapes POSÉES PAR LE FILET. Elles portent la
 #: cadence `generique` sans être un barreau du gabarit `generique` : leur suite
 #: est décidée par `assurer_prochaine_etape_apres_succes`, jamais par la
@@ -2038,6 +2047,7 @@ _LIBELLES_FILET = frozenset({
     FILET_RAPPEL_LIBELLE,  # CAD3
     FILET_MESSAGE_CRENEAU_LIBELLE, FILET_DERNIER_APPEL_LIBELLE,  # CAD102
     PASSATION_LIBELLE,  # CAD54
+    QUESTION_PRIX_LIBELLE,  # CAD7
 })
 
 # ── VISITE-CADENCE — LES TROIS GESTES DU RENDEZ-VOUS ────────────────────────
@@ -10553,6 +10563,8 @@ REPONSE_NE_PLUS_CONTACTER = 'ne_plus_contacter'
 MOTIF_NE_PLUS_CONTACTER = 'ne plus contacter'
 #: CAD6 — « Plus tard — pas maintenant » (la plus fréquente du résidentiel).
 REPONSE_PLUS_TARD = 'plus_tard'
+#: CAD7 — « Question de prix — veut négocier ».
+REPONSE_QUESTION_PRIX = 'question_prix'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
@@ -10579,6 +10591,17 @@ REPONSES_TOUCHE = {
         'message': 'rappel_plus_tard',
         # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
         'date_requise': True,
+    },
+    REPONSE_QUESTION_PRIX: {
+        'libelle': 'Question de prix — veut négocier',
+        # Version minimale, SANS nouvelle énumération : l'issue « à
+        # rappeler » + la note typée (le client n'a dit ni oui ni non).
+        'outcome': 'rappel',
+        'note': 'Question de prix — veut négocier',
+        'cadences': ('apres_devis',),
+        # Aucun texte proposé : ni `annonce_appel_reda` ni `offre_reda` ne
+        # partent avant la décision du fondateur (CAD60).
+        'message': None,
     },
 }
 
@@ -10888,3 +10911,71 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
         etape.refresh_from_db()
         return etape
     return reprise
+
+
+# ── CAD-A ── CAD7 — « Question de prix — veut négocier » ────────────────────
+
+def _poser_etape_de_filet(lead, *, libelle, canal, vise, note):
+    """Pose UNE étape de FILET (cadence ``generique``, hors protocole) au
+    prochain créneau de son canal — ou DÉPLACE celle du même libellé encore
+    ouverte : jamais deux fois la même étape dans la file."""
+    from . import horaires
+
+    quand = horaires.prochain_creneau_appel(vise, lead.company, canal=canal)
+    ouverte = (lead.relance_etapes
+               .filter(libelle=libelle, statut=RelanceEtape.Statut.A_FAIRE)
+               .order_by('due_date', 'pk').first())
+    if ouverte is not None:
+        ouverte.due_at = quand
+        ouverte.due_date = quand.astimezone(horaires.CASABLANCA).date()
+        ouverte.save(update_fields=['due_at', 'due_date'])
+        return ouverte
+    return RelanceEtape.objects.create(
+        company=lead.company, lead=lead, cadence='generique', ordre=1,
+        canal=canal, libelle=libelle,
+        template_cle=FILET_TEMPLATE_CLES.get(libelle, ''),
+        due_at=quand, due_date=quand.astimezone(horaires.CASABLANCA).date(),
+        note=note)
+
+
+def repondre_question_prix(etape, user, *, note='', body=''):
+    """CAD7 — le client NÉGOCIE le prix, sur une touche du suivi de
+    proposition.
+
+    Avant, la réponse la plus fréquente sur une proposition n'avait pas de
+    bouton : « Intéressé » était faux (il n'a pas dit oui), « Refuse la
+    proposition » aussi (il négocie), et la négociation ne laissait aucune
+    trace. Version minimale, SANS nouvelle énumération :
+
+      1. la touche est close avec l'issue « à rappeler » et la note typée
+         « Question de prix » — sans barreau suivant (``suite=False``) ;
+      2. le TAMBOUR DE MESSAGES SE MET EN PAUSE : une étape de filet
+         « Question de prix — préparer l'appel du fondateur » est posée pour
+         le prochain jour ouvré, et AUCUNE touche du suivi de proposition ne
+         reste ouverte tant qu'elle n'est pas traitée. La traiter rouvre le
+         suivi au barreau SUIVANT (CAD1, jamais un redémarrage) ; annuler la
+         touche (RLC1) la rouvre elle-même.
+
+    Garde-fou : RIEN n'est envoyé — ni ``annonce_appel_reda`` ni
+    ``offre_reda`` : l'offre du fondateur ne part jamais avant sa décision
+    (CAD60). Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_QUESTION_PRIX]
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    pause = _poser_etape_de_filet(
+        lead, libelle=QUESTION_PRIX_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        vise=timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS),
+        note='Posée automatiquement : question de prix — le suivi de '
+             'proposition est en pause.')
+    _recaler_file(lead, user)
+    # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Suivi de proposition en pause (question de prix) : étape « '
+              f'{QUESTION_PRIX_LIBELLE} » posée pour le '
+              f'{pause.due_date:%d/%m/%Y}. Aucun message de relance ne part '
+              'tant qu’elle n’est pas traitée.'))
+    return etape

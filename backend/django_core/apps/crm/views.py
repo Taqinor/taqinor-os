@@ -3290,8 +3290,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         réponse et dit où elle vaut."""
         from .services import (
             REPONSE_NE_PLUS_CONTACTER, REPONSE_PLUS_TARD,
-            refus_reponse_touche, repondre_ne_plus_contacter,
-            repondre_plus_tard, reponse_touche)
+            REPONSE_QUESTION_PRIX, refus_reponse_touche,
+            repondre_ne_plus_contacter, repondre_plus_tard,
+            repondre_question_prix, reponse_touche)
 
         etape = self.get_object()
         refus = refus_reponse_touche(etape, reponse)
@@ -3331,6 +3332,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         elif reponse == REPONSE_PLUS_TARD:
             etape = repondre_plus_tard(
                 etape, request.user, quand, note=note, body=body)
+        elif reponse == REPONSE_QUESTION_PRIX:
+            etape = repondre_question_prix(
+                etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])

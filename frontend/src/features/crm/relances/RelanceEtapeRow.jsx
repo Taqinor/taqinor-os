@@ -174,11 +174,20 @@ const REPONSE_PLUS_TARD = {
   suite: 'Le dossier se met en veille jusqu’à la date convenue et reprend à cette même touche : aucune relance de pression ne part d’ici là (au-delà d’un mois, réveil daté). Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer.',
 }
 
+// CAD7 — la réponse la plus fréquente sur une PROPOSITION : le client
+// négocie. Issue « à rappeler » + note typée côté serveur ; le suivi se met
+// en pause le temps de préparer l'appel du fondateur (aucune offre ne part
+// avant sa décision).
+const REPONSE_QUESTION_PRIX = {
+  reponse: 'question_prix', label: 'Question de prix — veut négocier',
+  suite: 'Le suivi de proposition se met en pause : une étape « Question de prix — préparer l’appel du fondateur » est posée pour demain, et aucun message ne part tant qu’elle n’est pas traitée. Aucune offre n’est envoyée avant la décision du fondateur.',
+}
+
 // Les réponses du client propres à CHAQUE cadence de protocole (les étapes de
 // filet `generique` n'en ont pas : « À rappeler le… » y reporte déjà, CAD3).
 const REPONSES_CLIENT = {
   contact: [REPONSE_PLUS_TARD],
-  apres_devis: [REPONSE_PLUS_TARD],
+  apres_devis: [REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX],
   reveil: [REPONSE_PLUS_TARD],
 }
 
