@@ -167,3 +167,61 @@ def plan_cablage_dxf(self, request, pk=None):
 
 
 CalepinageViewSet.plan_cablage_dxf = plan_cablage_dxf
+
+
+# ── CALX312 — l'export JSON versionné du projet et de ses résultats ────────
+# Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
+from drf_spectacular.utils import inline_serializer  # noqa: E402
+from rest_framework import serializers as drf_serializers  # noqa: E402
+from rest_framework.renderers import JSONRenderer  # noqa: E402
+
+#: La forme du contrat ``export_projet.json`` (onze clés) — jamais un
+#: « type: object » vide, qui validerait tout (check_openapi_shapes, R1).
+EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
+    'format_version': drf_serializers.IntegerField(),
+    'produit_le': drf_serializers.CharField(),
+    'calepinage': drf_serializers.DictField(),
+    'site': drf_serializers.DictField(),
+    'equipements': drf_serializers.DictField(),
+    'roof_layout': drf_serializers.JSONField(allow_null=True),
+    'layout_hash': drf_serializers.CharField(allow_null=True),
+    'version_moteur': drf_serializers.CharField(allow_null=True),
+    'resultat': drf_serializers.JSONField(allow_null=True),
+    'pertes': drf_serializers.ListField(child=drf_serializers.DictField()),
+    'avertissements': drf_serializers.ListField(
+        child=drf_serializers.CharField()),
+})
+
+
+@extend_schema(responses={200: EXPORT_PROJET_SCHEMA})
+@action(detail=True, methods=['get'], url_path='export-projet.json',
+        url_name='export-projet-json', permission_classes=[PeutVoirCalepinage],
+        renderer_classes=[JSONRenderer])
+def export_projet_json(self, request, pk=None):
+    """CALX312 — projet + résultats en JSON, forme ``export_projet.json``.
+
+    * **200** — le document, en TÉLÉCHARGEMENT nommé d'après le calepinage
+      (``Content-Disposition: attachment``, même nom assaini que
+      ``reponse_de_fichier``). Servi par une ``Response`` DRF au rendu JSON
+      SEUL (jamais l'API navigable) plutôt que par un ``HttpResponse`` nu :
+      la garde de surface CAL122 (``tests/test_aucun_prix_achat.py``) balaie
+      le ``.data`` de chaque GET — un corps brut lui échapperait ;
+    * **400** — une clé de montant, une valeur non finie ou des températures
+      illisibles : le motif français et le champ NOMMÉ.
+    """
+    from ..services.export_projet import ExportProjetRefuse, document_de_projet
+    from ..services.planche import nom_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        document = document_de_projet(calepinage)
+    except ExportProjetRefuse as refus:
+        return Response({refus.champ or 'resultat': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    reponse = Response(document)
+    reponse['Content-Disposition'] = 'attachment; filename="%s"' % (
+        nom_de_fichier(calepinage, 'export-projet.json'))
+    return reponse
+
+
+CalepinageViewSet.export_projet_json = export_projet_json
