@@ -24,6 +24,7 @@ vi.mock('../../../api/calepinageApi', () => ({
       composerPackTechnique: vi.fn(),
       exporterConception: vi.fn(),
       importerConception: vi.fn(),
+      deposerImageDocument: vi.fn(), // CALX302
     },
   },
 }))
@@ -496,5 +497,60 @@ describe('PanneauDocuments — export/import du document de conception (CALX28)'
       expect(screen.getByTestId('cal-doc-conception')).toHaveTextContent('JSON valide')
     })
     expect(calepinageApi.calepinages.importerConception).not.toHaveBeenCalled()
+  })
+})
+
+describe('PanneauDocuments — joindre la carte de chaleur (CALX302)', () => {
+  const rendreAvecBuilder = (builderApi, calepinageId = 41) => render(
+    <MemoryRouter><PanneauDocuments calepinageId={calepinageId} builderApi={builderApi} /></MemoryRouter>,
+  )
+
+  it('sans builderApi, le bouton est désactivé et le dit', async () => {
+    servirInventaire('exemple')
+
+    rendreAvecBuilder(null)
+
+    expect(await screen.findByTestId('cal-doc-bouton-joindre-ombrage')).toBeDisabled()
+    expect(screen.getByTestId('cal-doc-images-outil-absent')).toBeInTheDocument()
+  })
+
+  it('clic → renderImageHd(2) puis dépôt genre « ombrage », confirmation affichée', async () => {
+    servirInventaire('exemple')
+    const blob = new Blob(['png-simule'], { type: 'image/png' })
+    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
+    calepinageApi.calepinages.deposerImageDocument.mockResolvedValue({
+      data: { ok: true, genre: 'ombrage', attachment: 512, depose_le: '2026-09-23T10:00:00Z' },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendreAvecBuilder({ renderImageHd })
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-images-confirmation'))
+        .toHaveTextContent('2026-09-23T10:00:00Z')
+    })
+    expect(renderImageHd).toHaveBeenCalledWith(2)
+    expect(calepinageApi.calepinages.deposerImageDocument).toHaveBeenCalledWith(
+      41, { genre: 'ombrage', fichier: expect.stringContaining('data:') },
+    )
+  })
+
+  it('un refus serveur (champ nommé) s’affiche SOUS la carte, jamais en tête de panneau', async () => {
+    servirInventaire('exemple')
+    const blob = new Blob(['png-simule'], { type: 'image/png' })
+    const renderImageHd = vi.fn().mockResolvedValue({ blob, width: 800, height: 600, scale: 2 })
+    calepinageApi.calepinages.deposerImageDocument.mockRejectedValue({
+      response: { status: 400, data: { genre: 'Genre d’image inconnu : « ombrage ».' } },
+    })
+    const utilisateur = userEvent.setup()
+
+    rendreAvecBuilder({ renderImageHd })
+    await utilisateur.click(await screen.findByTestId('cal-doc-bouton-joindre-ombrage'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-doc-images')).toHaveTextContent('Genre d’image inconnu')
+    })
+    expect(screen.queryByTestId('cal-doc-images-confirmation')).toBeNull()
   })
 })

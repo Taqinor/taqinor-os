@@ -401,6 +401,15 @@ const calepinageApi = {
     // `null` avec son motif — l'écran affiche CELUI-LÀ, il n'invente aucune
     // étendue.
     planImporte: (id) => api.get(`${pivot(id)}plan-importe/`),
+
+    // CALX302 — dépose une image PRODUITE PAR LE NAVIGATEUR (carte de
+    // chaleur d'ombrage, diagramme de pertes, rendu 3D). `genre` : un des
+    // trois admis (`ombrage`, `sankey`, `plan3d`), `fichier` : une data-URL
+    // base64 (`documents/deposerImage.js` la produit depuis un Blob) — le
+    // serveur refuse tout le reste en NOMMANT le champ fautif (jamais une
+    // confiance au type déclaré par le navigateur).
+    deposerImageDocument: (id, { genre, fichier }) =>
+      api.post(`${pivot(id)}image-document/`, { genre, fichier }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

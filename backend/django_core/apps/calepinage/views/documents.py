@@ -326,3 +326,48 @@ def export_projet_json(self, request, pk=None):
 
 
 CalepinageViewSet.export_projet_json = export_projet_json
+
+
+# ── CALX302 — le dépôt d'une image PRODUITE PAR LE NAVIGATEUR ──────────────
+@extend_schema(request=OpenApiTypes.OBJECT,
+               responses={201: OpenApiTypes.OBJECT})
+@action(detail=True, methods=['post'], url_path='image-document',
+        url_name='image-document', permission_classes=[PeutVoirCalepinage])
+def image_document(self, request, pk=None):
+    """CALX302 — dépose une image PRODUITE PAR LE NAVIGATEUR (carte de
+    chaleur d'ombrage, diagramme de pertes, rendu 3D) — genre parmi une
+    énumération FERMÉE (``ombrage``, ``sankey``, ``plan3d``), stockée en
+    ``records.Attachment`` (MinIO, jamais un binaire au dépôt). Corps
+    ``{genre, fichier}`` — ``fichier`` accepte un fichier multipart OU une
+    data-URL base64 produite par le navigateur.
+
+    * **201** — ``{ok, genre, attachment, depose_le}`` ;
+    * **400** — genre inconnu, fichier absent/illisible, format ou
+      dimensions refusés : le motif français et le CHAMP NOMMÉ (jamais une
+      confiance au ``Content-Type`` déclaré par le navigateur).
+    """
+    from ..services.images_document import (
+        ImageDocumentRefuse, deposer_image_document,
+    )
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    fichier = request.FILES.get('fichier')
+    if fichier is None:
+        fichier = request.data.get('fichier')
+    genre = request.data.get('genre')
+    try:
+        depot = deposer_image_document(
+            calepinage, genre=genre, fichier=fichier,
+            user=getattr(request, 'user', None))
+    except ImageDocumentRefuse as refus:
+        return Response({refus.champ or 'fichier': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return Response({
+        'ok': True,
+        'genre': depot['genre'],
+        'attachment': depot['attachment'].pk,
+        'depose_le': depot['attachment'].created_at,
+    }, status=status.HTTP_201_CREATED)
+
+
+CalepinageViewSet.image_document = image_document
