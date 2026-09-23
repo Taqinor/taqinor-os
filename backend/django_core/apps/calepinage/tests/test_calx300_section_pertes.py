@@ -173,7 +173,7 @@ class DansLeRapportTest(unittest.TestCase):
     def test_la_section_passe_par_ce_redacteur_et_sa_feuille_est_en_tete(self):
         rapport = construire_rapport(
             SimpleNamespace(company=None, client_id=None, lead_id=None,
-                            titre='Villa', resultat=None, pk=1),
+                            titre='Villa', resultat=None, pk=None),
             resultat=copy.deepcopy(RESULTAT['exemple']),
             site={}, identite={}, styles={})
         html = html_de_rapport(rapport)

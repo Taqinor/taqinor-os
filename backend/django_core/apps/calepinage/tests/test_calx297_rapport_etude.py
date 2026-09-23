@@ -52,9 +52,10 @@ CONTRAT = json.loads(
 SOURCE = (RACINE_APP / 'services' / 'rapport' / '__init__.py').read_text(
     encoding='utf-8')
 
-#: Un calepinage SANS société ni client : aucune lecture en base.
+#: Un calepinage NON ENREGISTRÉ, sans société ni client : aucune lecture en
+#: base (ni verrou, ni corbeille, ni CRM).
 NU = SimpleNamespace(company=None, client_id=None, lead_id=None,
-                     titre='Villa Anfa', resultat=None, pk=1)
+                     titre='Villa Anfa', resultat=None, pk=None)
 SITE = {'ville': 'Bouskoura', 'adresse': 'Zone industrielle',
         'source': 'roof_point', 'pin': None, 'outline': None}
 IDENTITE = {'titre_document': "Rapport d'étude", 'projet': 'Villa Anfa',

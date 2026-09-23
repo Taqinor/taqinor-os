@@ -55,6 +55,9 @@ __all__ = [
     # CALX295 — la page de garde
     'LIBELLES_GARDE_FR', 'CHAMPS_GARDE', 'page_de_garde_html',
     'identite_du_calepinage',
+    # CALX325 — conception verrouillée / archivée
+    'MENTION_VERROUILLE', 'MENTION_ARCHIVE', 'DATE_NON_ENREGISTREE',
+    'ETAT_COURANT', 'etat_de_conception', 'mentions_d_etat',
 ]
 
 # ── La charte d'impression EXISTANTE (note de calcul, CAL176) ───────────────
@@ -211,19 +214,20 @@ def entete_html(styles, *, titre=''):
     return '<div class="gabarit-entete">%s</div>' % ''.join(morceaux)
 
 
-def pied_html(provenance, *, mentions=()):
+def pied_html(provenance, *, mentions=(), etat=None):
     """Le pied courant : l'empreinte (entrée · moteur · date), puis les mentions.
 
     L'empreinte reprend la graphie de la note de calcul (``_pied_de_page``) :
     une troisième façon d'écrire la même empreinte serait une troisième vérité.
-    Les ``mentions`` (repli de langue, conception verrouillée ou archivée…)
-    s'impriment une fois chacune, dans l'ordre reçu, sans doublon.
+    Les ``mentions`` (repli de langue…) puis celles de l'``etat`` de la
+    conception (CALX325 : verrouillée, archivée) s'impriment une fois
+    chacune, dans l'ordre reçu, sans doublon.
     """
     lignes = []
     empreinte = _pied_de_page(provenance or {})
     if empreinte:
         lignes.append(empreinte)
-    for mention in mentions or ():
+    for mention in list(mentions or ()) + mentions_d_etat(etat):
         texte = str(mention or '').strip()
         if texte and texte not in lignes:
             lignes.append(texte)
@@ -272,13 +276,14 @@ def css_du_gabarit(styles, *, format_page='A4'):
 
 
 def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
-                  langue='fr', css=''):
+                  langue='fr', css='', etat=None):
     """Un document HTML AUTONOME habillé du gabarit société.
 
     Les deux éléments courants sont posés EN TÊTE du ``<body>`` : un élément
     courant ne paraît qu'à partir de la page où il est rencontré, il doit donc
     précéder tout contenu. ``css`` est la feuille propre à la pièce, ajoutée
-    APRÈS celle du gabarit.
+    APRÈS celle du gabarit. ``etat`` (CALX325, ``etat_de_conception``) fait
+    porter au pied de CHAQUE page la mention « verrouillée »/« archivée ».
     """
     styles = styles or styles_vides()
     return ''.join([
@@ -287,7 +292,7 @@ def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
         '</title><style>', css_du_gabarit(styles), css or '',
         '</style></head><body>',
         entete_html(styles, titre=titre),
-        pied_html(provenance, mentions=mentions),
+        pied_html(provenance, mentions=mentions, etat=etat),
         corps or '',
         '</body></html>',
     ])
@@ -424,3 +429,85 @@ def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
         'client': client,
         'produit_le': moment.strftime('%d/%m/%Y'),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX325 — la pièce DIT qu'elle vient d'une conception verrouillée/archivée
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Le verrou de lecture seule (``services/verrou.py``) et l'archivage
+# (``services/archivage.py``) existent, mais aucun document ne les
+# mentionnait : une pièce d'un calepinage archivé se téléchargeait sans rien
+# qui la distingue d'une pièce courante. La mention vient de l'état RÉEL servi
+# par ces deux services — jamais d'un drapeau recopié dans le document — et
+# elle ne REFUSE rien : une pièce d'archive reste consultable.
+
+#: Les deux mentions, avec leur date (ou l'aveu qu'elle n'est pas enregistrée).
+MENTION_VERROUILLE = ('Conception verrouillée depuis le {date} (devis lié '
+                      'envoyé) : pièce produite en lecture seule.')
+MENTION_ARCHIVE = ('Conception archivée le {date} : pièce d\'archive, '
+                   'consultable, qui ne décrit pas une conception en cours.')
+DATE_NON_ENREGISTREE = 'date non enregistrée'
+
+#: L'état d'une conception COURANTE : aucune mention.
+ETAT_COURANT = {'verrouille': False, 'verrouille_le': '', 'archive': False,
+                'archive_le': ''}
+
+
+def _date_lisible(moment):
+    """``jj/mm/aaaa`` à l'heure LOCALE d'un instant aware, ou ``''``."""
+    if moment is None:
+        return ''
+    try:
+        from django.utils import timezone
+
+        return timezone.localtime(moment).strftime('%d/%m/%Y')
+    except (ValueError, TypeError, AttributeError):
+        return ''
+
+
+def etat_de_conception(calepinage):
+    """``{verrouille, verrouille_le, archive, archive_le}`` — LU, jamais recopié.
+
+    * verrouillé : ``services.verrou.est_verrouille`` (devis lié envoyé, sans
+      déverrouillage tracé) ; la date est celle de l'ENVOI du devis lié ;
+    * archivé : ``services.archivage.est_archive`` (entrée ACTIVE de la
+      corbeille plateforme) ; la date est celle de l'archivage.
+
+    Un calepinage non enregistré est courant, sans lecture en base.
+    """
+    etat = dict(ETAT_COURANT)
+    if calepinage is None or not getattr(calepinage, 'pk', None):
+        return etat
+    from ..archivage import est_archive
+    from ..verrou import est_verrouille
+
+    if est_verrouille(calepinage):
+        etat['verrouille'] = True
+        etat['verrouille_le'] = _date_lisible(getattr(
+            getattr(calepinage, 'devis', None), 'date_envoi', None))
+    if est_archive(calepinage):
+        from apps.trash.selectors import entree_active
+
+        entree = entree_active(calepinage)
+        etat['archive'] = True
+        etat['archive_le'] = _date_lisible(getattr(entree, 'supprime_le',
+                                                   None))
+    return etat
+
+
+def mentions_d_etat(etat):
+    """Les mentions du pied pour ``etat`` — ``[]`` pour une conception courante.
+
+    Verrouillée ET archivée ⇒ les DEUX mentions, une fois chacune.
+    """
+    if not isinstance(etat, Mapping):
+        return []
+    mentions = []
+    if etat.get('verrouille'):
+        mentions.append(MENTION_VERROUILLE.format(
+            date=_texte(etat.get('verrouille_le')) or DATE_NON_ENREGISTREE))
+    if etat.get('archive'):
+        mentions.append(MENTION_ARCHIVE.format(
+            date=_texte(etat.get('archive_le')) or DATE_NON_ENREGISTREE))
+    return mentions

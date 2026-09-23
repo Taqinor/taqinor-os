@@ -343,7 +343,7 @@ def _codes_retenus(sections, declarees):
 
 def construire_rapport(calepinage, *, langue=None, sections=None,
                        resultat=None, resultat_stocke=None, site=None,
-                       identite=None, styles=None, mentions=None):
+                       identite=None, styles=None, mentions=None, etat=None):
     """Le rapport, prêt à mettre en page — aucune grandeur recalculée.
 
     Args:
@@ -355,11 +355,14 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
             sections déclarées, c'est-à-dire le rapport d'aujourd'hui.
         resultat / resultat_stocke / site / identite / styles: déjà lus par
             l'appelant (essais sans base) — sinon LUS ici.
-        mentions: mentions supplémentaires du pied (CALX325).
+        mentions: mentions supplémentaires du pied.
+        etat: l'état de la conception (CALX325 — verrouillée, archivée) ; LU
+            par ``gabarit_document.etat_de_conception`` quand il n'est pas
+            fourni. Il ajoute sa mention au pied, il ne refuse jamais rien.
     """
     from ... import selectors
     from ..documents.gabarit_document import (
-        identite_du_calepinage, styles_de_societe,
+        etat_de_conception, identite_du_calepinage, styles_de_societe,
     )
     from ..documents.libelles_document import libelle, resolution_langue
 
@@ -380,6 +383,8 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
             calepinage, titre_document=libelle(CODE_DOCUMENT, langue_servie))
     if styles is None:
         styles = styles_de_societe(getattr(calepinage, 'company', None))
+    if etat is None:
+        etat = etat_de_conception(calepinage)
 
     declarees = sections_declarees()
     retenus = _codes_retenus(sections, declarees)
@@ -411,6 +416,7 @@ def construire_rapport(calepinage, *, langue=None, sections=None,
             'calcule_le': resultat.get('calcule_le') or '',
         },
         'mentions': [m for m in pied if m],
+        'etat': dict(etat or {}),
         'sections': lignes,
         'resultat': resultat,
         'resultat_stocke': (resultat_stocke if isinstance(resultat_stocke,
@@ -497,7 +503,8 @@ def html_de_rapport(rapport):
     return document_html(
         ''.join(corps), titre=libelle(CODE_DOCUMENT, langue),
         styles=rapport['styles'], provenance=rapport['provenance'],
-        mentions=rapport['mentions'], langue=langue, css=''.join(feuilles))
+        mentions=rapport['mentions'], langue=langue, css=''.join(feuilles),
+        etat=rapport.get('etat'))
 
 
 def html_du_rapport(calepinage, **options):
