@@ -36,9 +36,9 @@ import math
 
 __all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
            'PROVENANCES_APPAREIL', 'ProfilInvalide', 'SOURCES_MOIS', 'UNITES',
-           'apercu_courbe_csv', 'courbe_appareils', 'interpoler_factures',
-           'profil_depuis_lead', 'profil_depuis_layout', 'profil_mensuel',
-           'publier_kwh']
+           'apercu_courbe_csv', 'appliquer_ramadan', 'courbe_appareils',
+           'interpoler_factures', 'profil_depuis_lead',
+           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh']
 
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
@@ -313,6 +313,17 @@ def publier_kwh(profil, company, *, classe, lire_reglages=None):
 # sur une autre source. Une courbe dont la longueur n'est pas 24 est REFUSÉE
 # en NOMMANT le champ fautif (``consumption.courbe24``).
 
+def _verifier_courbe24(courbe24, *, champ, quoi=''):
+    """Refuse une courbe horaire qui ne compte pas 24 valeurs, en NOMMANT le
+    champ — jamais tronquée ni complétée (règle CALX255, partagée CALX260)."""
+    if courbe24 is not None and len(courbe24) != 24:
+        raise ProfilInvalide(
+            f'La courbe horaire {quoi}(« {champ} ») '
+            f'compte {len(courbe24)} valeur(s) au lieu de 24 : elle est '
+            'refusée plutôt que tronquée ou complétée.',
+            champ=champ)
+
+
 def profil_depuis_layout(layout, *, saisies=None):
     """Le profil de consommation depuis le document ATELIER (``roof_layout``).
 
@@ -342,12 +353,8 @@ def profil_depuis_layout(layout, *, saisies=None):
     consumption = (layout or {}).get('consumption') or {}
     courbe24 = consumption.get('courbe24')
 
-    if courbe24 is not None and len(courbe24) != 24:
-        raise ProfilInvalide(
-            "La courbe horaire de l'atelier (« consumption.courbe24 ») "
-            f'compte {len(courbe24)} valeur(s) au lieu de 24 : elle est '
-            'refusée plutôt que tronquée ou complétée.',
-            champ='consumption.courbe24')
+    _verifier_courbe24(courbe24, champ='consumption.courbe24',
+                       quoi="de l'atelier ")
 
     if not consumption or courbe24 is None:
         return {
@@ -569,6 +576,130 @@ def courbe_appareils(appareils, *, longueur=24, total_annuel_kwh=None):
         'appareils': publies,
         'avertissements': avertissements,
     }
+
+
+# ── CALX260 — le Ramadan décale la courbe, sans un seul chiffre neuf ─────
+#
+# LE CONSTAT : ``apps/ventes/ramadan.py`` porte les plages 2025→2033, le
+# calcul solaire de l'imsak/iftar et ``part_ramadan_par_mois`` ; aucun module
+# du calepinage ne l'importait — la consommation ignorait un mois entier de
+# décalage d'horloge. Parité : PV*SOL, variation des profils de charge selon
+# les jours particuliers.
+#
+# LA RÈGLE : TOUT est relu — la plage dans ``apps.ventes.ramadan`` (jamais
+# une seconde table ; aucun sélecteur de ``ventes`` ne l'expose, d'où l'import
+# fonction-local de ce module utilitaire PUR), l'heure légale dans la base de
+# fuseaux par ``ramadan.decalage_maroc_h``. Aucune heure n'est écrite ici
+# (garde : ``tests/test_calx260_ramadan_conso.py``).
+#
+# LE DÉCALAGE est l'écart d'HORLOGE entre le jour demandé et l'horloge
+# ORDINAIRE : un foyer garde ses habitudes à l'heure de sa montre ; quand la
+# montre recule, ces habitudes tombent plus tard sur l'horloge ordinaire. La
+# date d'horloge ordinaire est prise AUTANT DE JOURS AVANT le début du
+# Ramadan qu'il en dure : hors de la fenêtre de changement d'heure (qui ne
+# l'encadre que de quelques jours) et loin du Ramadan précédent. Depuis le
+# 20/09/2026 (décret n° 2.26.530) la base de fuseaux ne connaît plus de
+# changement d'heure : l'écart est alors nul et la courbe rendue telle quelle.
+#
+# LE REPÈRE : la courbe rendue est exprimée sur l'horloge ORDINAIRE. Une série
+# météo déjà alignée date par date sur l'heure LÉGALE (CALX59) porte déjà ce
+# changement d'heure : elle ne doit pas recevoir une courbe décalée ici.
+
+def _tourner(courbe, decalage):
+    """Rotation circulaire : la valeur du pas ``h`` passe au pas ``h + decalage``.
+
+    PERMUTATION PURE — aucune valeur créée ni perdue, l'intégrale est
+    conservée à l'identique.
+    """
+    longueur = len(courbe)
+    return [courbe[(pas - decalage) % longueur] for pas in range(longueur)]
+
+
+def appliquer_ramadan(courbe24, *, jour, lat=None, lon=None):
+    """La courbe 24 h du jour ``jour``, décalée si ce jour tombe en Ramadan.
+
+    Args:
+        courbe24: les 24 valeurs horaires (kWh/h) sur l'horloge de la montre.
+        jour: la date (``datetime.date``) à simuler.
+        lat / lon: le point du chantier — servent la fenêtre imsak/iftar
+            publiée (``ramadan.fenetre_ramadan``, repli documenté sans GPS).
+
+    Returns:
+        dict — ``courbe24`` (hors Ramadan : la MÊME liste de valeurs),
+        ``dans_ramadan``, ``decalage_h`` (lu dans la base de fuseaux ;
+        ``None`` hors Ramadan — aucun décalage n'y est calculé),
+        ``hijri``, ``part_du_mois`` (part du mois de ``jour`` passée en
+        Ramadan, ``ramadan.part_ramadan_par_mois``), ``fuseau`` (nom + mention
+        du décalage légal), ``fenetre`` (imsak/iftar ou ``None``), ``repere``,
+        ``avertissements``.
+
+    Raises:
+        ProfilInvalide: ``courbe24`` d'une autre longueur que 24 ou ``jour``
+            qui n'est pas une date — en NOMMANT le champ.
+    """
+    from datetime import date
+
+    from apps.parametres.pvgis_profils import FUSEAU_MAROC
+    from apps.ventes import ramadan
+
+    _verifier_courbe24(courbe24, champ='courbe24')
+    if courbe24 is None:
+        raise ProfilInvalide(
+            '« courbe24 » est obligatoire : aucune courbe à décaler.',
+            champ='courbe24')
+    if not isinstance(jour, date):
+        raise ProfilInvalide(
+            f'« jour » doit être une date (reçu : {jour!r}).', champ='jour')
+
+    parts = ramadan.part_ramadan_par_mois(jour)
+    trouve = ramadan.plage_ramadan_pour(jour)
+    resultat = {
+        'courbe24': list(courbe24),
+        'dans_ramadan': False,
+        'decalage_h': None,
+        'hijri': None,
+        'part_du_mois': (dict(zip(MOIS, parts)).get(jour.month)
+                         if parts else None),
+        'fuseau': None,
+        'fenetre': None,
+        'repere': "horloge ordinaire (heure légale hors Ramadan)",
+        'avertissements': [],
+    }
+    if trouve is None:
+        resultat['avertissements'].append(
+            'Date au-delà de la table des plages du Ramadan '
+            '(apps.ventes.ramadan) : la courbe est rendue telle quelle.')
+        return resultat
+    plage, dedans = trouve
+    if not dedans:
+        return resultat
+
+    ordinaire = plage['debut'] - (plage['fin'] - plage['debut'])
+    heure_jour = ramadan.decalage_maroc_h(jour)
+    heure_ordinaire = ramadan.decalage_maroc_h(ordinaire)
+    decalage = heure_ordinaire - heure_jour
+    resultat.update({
+        'dans_ramadan': True,
+        'decalage_h': decalage,
+        'hijri': plage['hijri'],
+        'fuseau': {
+            'nom': FUSEAU_MAROC,
+            'utc_jour_h': heure_jour,
+            'utc_ordinaire_h': heure_ordinaire,
+            'mention': (
+                f'Heure légale « {FUSEAU_MAROC} » : UTC{heure_jour:+d} ce '
+                f'jour-là, UTC{heure_ordinaire:+d} en temps ordinaire '
+                '(base de fuseaux IANA).'),
+        },
+        'fenetre': ramadan.fenetre_ramadan(jour, lat=lat, lon=lon),
+    })
+    if decalage:
+        resultat['courbe24'] = _tourner(list(courbe24), decalage)
+    else:
+        resultat['avertissements'].append(
+            "La base de fuseaux ne prévoit aucun changement d'heure pendant "
+            'ce Ramadan : la courbe est rendue telle quelle.')
+    return resultat
 
 
 # ── CAL148 — import d'une courbe de charge HORAIRE en CSV ────────────────
