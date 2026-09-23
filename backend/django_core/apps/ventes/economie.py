@@ -1,4 +1,5 @@
-"""CALX281-283 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE, prêts.
+"""CALX281-285 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE, prêts,
+scénarios P50/P90.
 
 LE CONSTAT (CALX281)
 --------------------
@@ -62,8 +63,9 @@ import math
 from .solar_design import _irr, _npv
 
 __all__ = [
-    'EconomieInvalide', 'MODES_REMPLACEMENT', 'RETOUR_MAX_ANS',
-    'SOURCE_SAISIE_NUE', 'TYPES_PRET', 'flux_de_tresorerie', 'lcoe',
+    'EconomieInvalide', 'MODES_REMPLACEMENT', 'ORIGINES_VARIABILITE',
+    'RETOUR_MAX_ANS', 'SCENARIOS_PRODUCTION', 'SOURCE_SAISIE_NUE',
+    'TYPES_PRET', 'economie_par_scenario', 'flux_de_tresorerie', 'lcoe',
     'tableau_pret',
 ]
 
@@ -712,3 +714,152 @@ def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
         deg=0.0 if degradation is None else degradation / 100.0,
         sorties=sorties)
     return resultat
+
+
+# ── CALX285 — le P90 dans le flux ───────────────────────────────────────────
+#
+# ``bankable`` (``apps/calepinage/services/p50p90.py``) et
+# ``simulate_bankable_yield`` (``solar_design.py``) produisent un P90, mais le
+# flux vendu au client n'avait qu'un scénario, le médian. PV*SOL consacre une
+# page « bankability » au cadrage par probabilité de dépassement
+# (https://help.valentin-software.com/pvsol/en/pages/financial-analysis/bankability/).
+#
+# Le P90 n'est JAMAIS dérivé ici d'un écart-type supposé : seule une
+# production P90 FOURNIE ouvre le second jeu. L'économie du scénario est
+# DÉRIVÉE de celle du P50 au prorata de la production — la dérivation est
+# publiée dans ``hypotheses`` avec sa formule, jamais tue.
+
+#: Les scénarios de production admis, dans l'ordre de publication.
+SCENARIOS_PRODUCTION = ('p50', 'p90')
+
+#: Origines admises de la variabilité interannuelle publiée à côté des jeux.
+#: ``mesuree`` et ``saisie`` sont le vocabulaire de
+#: ``apps/calepinage/services/incertitude.py`` (``ORIGINE_MESUREE``,
+#: ``ORIGINE_SAISIE``, ré-exportés par ``p50p90.py``) ; ``hypothese`` est
+#: l'origine que CALX285 nomme (et que ``note_calcul.LIBELLE_SOURCE`` lit
+#: « hypothèse société ») — elle est RÉPERCUTÉE dans la source, jamais tue.
+#: Une variabilité ``absente`` ne se publie pas : elle devient une omission.
+ORIGINES_VARIABILITE = ('mesuree', 'saisie', 'hypothese')
+
+
+def _lire_variabilite(variabilite):
+    """``(hypothèses, omissions)`` de la variabilité interannuelle."""
+    if variabilite is None:
+        return [], [_omission(
+            'variabilite_interannuelle_pct',
+            "aucune variabilité interannuelle fournie avec les scénarios")]
+    if not isinstance(variabilite, dict):
+        raise EconomieInvalide(
+            "variabilite : un dict {sigma_pct, origine, source} est attendu.",
+            champ='variabilite')
+    sigma = _exiger('variabilite.sigma_pct', variabilite.get('sigma_pct'),
+                    minimum=0)
+    origine = variabilite.get('origine')
+    if origine not in ORIGINES_VARIABILITE:
+        raise EconomieInvalide(
+            f"variabilite.origine : choisir parmi "
+            f"{', '.join(ORIGINES_VARIABILITE)}.",
+            champ='variabilite.origine')
+    source = str(variabilite.get('source') or '').strip()
+    if not source:
+        raise EconomieInvalide(
+            "variabilite.source : la provenance de la variabilité doit être "
+            "saisie.", champ='variabilite.source')
+    return [_hypothese('variabilite_interannuelle_pct', sigma,
+                       f"origine : {origine} — {source}",
+                       variabilite.get('saisie_le'))], []
+
+
+def economie_par_scenario(*, production_par_scenario, economie_annee1_mad=None,
+                          variabilite=None, **parametres):
+    """CALX285 — un jeu d'indicateurs PAR scénario de production.
+
+    Args:
+        production_par_scenario: ``{'p50': kWh, 'p90': kWh}`` — ``p50``
+            obligatoire (> 0) ; ``p90`` facultatif (absent ⇒ un seul jeu
+            publié et ``omissions`` nomme ``p90``) ; un P90 supérieur au P50
+            est refusé (probabilité de dépassement).
+        economie_annee1_mad: économie de l'année 1 du scénario P50.
+        variabilite: ``{sigma_pct, origine, source}`` — publiée dans
+            ``hypotheses`` avec son origine.
+        **parametres: les autres grandeurs de :func:`flux_de_tresorerie`
+            (investissement, horizon, taux…), COMMUNES aux scénarios.
+
+    Returns:
+        ``{scenarios: {p50: {van_mad, tri_pct, lcoe_mad_kwh, retour_ans,
+        retour_actualise_ans}, p90: {…}}, hypotheses, omissions}``.
+    """
+    if 'production_annee1_kwh' in parametres:
+        raise EconomieInvalide(
+            "production_annee1_kwh : la production vient de "
+            "production_par_scenario, pas d'une seconde entrée.",
+            champ='production_annee1_kwh')
+    if not isinstance(production_par_scenario, dict):
+        raise EconomieInvalide(
+            "production_par_scenario : un dict {'p50': kWh, 'p90': kWh} est "
+            "attendu.", champ='production_par_scenario')
+    for cle in production_par_scenario:
+        if cle not in SCENARIOS_PRODUCTION:
+            raise EconomieInvalide(
+                f"production_par_scenario.{cle} : scénario inconnu — "
+                f"{', '.join(SCENARIOS_PRODUCTION)} seulement.",
+                champ=f'production_par_scenario.{cle}')
+    productions, hypotheses, omissions = {}, [], []
+    for cle in SCENARIOS_PRODUCTION:
+        champ = f'production_par_scenario.{cle}'
+        valeur, source, saisie_le = _saisie(
+            champ, production_par_scenario.get(cle), minimum=0,
+            strictement=True)
+        if valeur is None:
+            continue
+        productions[cle] = valeur
+        hypotheses.append(_hypothese(champ, valeur, source, saisie_le))
+    if 'p50' not in productions:
+        raise EconomieInvalide(
+            "production_par_scenario.p50 : la production médiane est "
+            "obligatoire.", champ='production_par_scenario.p50')
+    if 'p90' not in productions:
+        omissions.append(_omission(
+            'p90', "aucune production P90 fournie — un seul jeu publié, "
+                   "jamais un P90 dérivé d'un écart-type supposé"))
+    elif productions['p90'] > productions['p50']:
+        raise EconomieInvalide(
+            "production_par_scenario.p90 : un P90 (dépassé 90 % du temps) "
+            "ne peut excéder le P50.", champ='production_par_scenario.p90')
+    hyp_var, omis_var = _lire_variabilite(variabilite)
+
+    economie_p50, source_eco, saisie_eco = _saisie(
+        'economie_annee1_mad', economie_annee1_mad)
+    scenarios = {}
+    for rang, cle in enumerate(c for c in SCENARIOS_PRODUCTION
+                               if c in productions):
+        ratio = productions[cle] / productions['p50']
+        economie = None
+        if economie_p50 is not None:
+            economie = economie_p50 * ratio
+            if cle == 'p50':
+                economie = {'valeur': economie_p50, 'source': source_eco,
+                            'saisie_le': saisie_eco}
+            else:
+                hypotheses.append(_hypothese(
+                    f'economie_annee1_mad.{cle}', round(economie, 2),
+                    f"dérivé : economie_annee1_mad × {cle} ÷ p50 "
+                    f"(économie proportionnelle à la production)"))
+        bloc = flux_de_tresorerie(
+            economie_annee1_mad=economie,
+            production_annee1_kwh=productions[cle], **parametres)
+        scenarios[cle] = {indicateur: bloc[indicateur]
+                          for indicateur in INDICATEURS}
+        for omission in bloc['omissions']:
+            if omission['cle'] in INDICATEURS:
+                omissions.append(_omission(f"{cle}.{omission['cle']}",
+                                           omission['motif']))
+            elif rang == 0 and omission['cle'] != 'production_annee1_kwh':
+                omissions.append(omission)
+        if rang == 0:
+            hypotheses[:0] = [h for h in bloc['hypotheses']
+                              if h['cle'] != 'production_annee1_kwh']
+    hypotheses.extend(hyp_var)
+    omissions.extend(omis_var)
+    return {'scenarios': scenarios, 'hypotheses': hypotheses,
+            'omissions': omissions}
