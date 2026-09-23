@@ -29,6 +29,14 @@ import { toastError } from '../../lib/toast'
    `all`/`tomorrow`/`week` de MRY30) : une ligne dont l'échéance tombe APRÈS
    aujourd'hui se lit seulement (`readOnly`) — on ne « fait » jamais une
    touche qui n'a pas encore eu lieu.
+
+   CAD117 — « X leads sans cadence » : le seul filet existant était le
+   panneau Adhérence (`AdherenceRelancesPanel.jsx`, section « Leads sans
+   touche due »), invisible tant qu'on n'ouvre pas cet écran-là. Le compteur
+   ci-dessous lit le MÊME sélecteur serveur (`kpi_adherence.leads_sans_touche`,
+   `GET relance-etapes/kpi-adherence/`) — jamais recompté ici — et ouvre la
+   même liste en lecture seule, à côté des relances du jour. Aucun démarrage
+   de cadence en masse depuis ce compteur (garde-fou de la tâche).
    ========================================================================== */
 
 const SCOPES = [
@@ -54,6 +62,25 @@ export default function RelancesDuJourWidget() {
   const [etapes, setEtapes] = useState([])
   const [busyId, setBusyId] = useState(null)
   const [messageEtape, setMessageEtape] = useState(null)
+  // CAD117 — indépendant du scope ci-dessus (« sans cadence » n'a pas de
+  // notion d'échéance) : une seule lecture au montage, repliée par défaut.
+  const [sansCadence, setSansCadence] = useState([])
+  const [sansCadenceOuvert, setSansCadenceOuvert] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    // Garde défensive (même motif que `JournalRelance.jsx getJournalRelance`) :
+    // les suites existantes mockent `crmApi` avec un sous-ensemble de méthodes
+    // qui ne connaît pas encore `getKpiAdherence` — le compteur doit alors se
+    // taire exactement comme sur une panne réseau, jamais lever une TypeError.
+    const requete = typeof crmApi.getKpiAdherence === 'function'
+      ? crmApi.getKpiAdherence({ jours: 30 })
+      : Promise.reject(new Error('getKpiAdherence indisponible'))
+    requete
+      .then((r) => { if (active) setSansCadence(r.data?.leads_sans_touche ?? []) })
+      .catch(() => { if (active) setSansCadence([]) })
+    return () => { active = false }
+  }, [])
 
   const charger = () => {
     let active = true
@@ -124,6 +151,35 @@ export default function RelancesDuJourWidget() {
         <Segmented
           className="mb-3" size="sm" options={SCOPES} value={scope} onChange={setScope}
         />
+        {/* CAD117 — lecture seule : ouvre/replie la liste, ne démarre jamais
+            rien. Absent quand `sansCadence` est vide (rien à signaler). */}
+        {sansCadence.length > 0 && (
+          <div className="mb-3" data-testid="cad117-sans-cadence">
+            <button
+              type="button"
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={() => setSansCadenceOuvert((o) => !o)}
+            >
+              {sansCadence.length} lead{sansCadence.length > 1 ? 's' : ''} sans cadence
+            </button>
+            {sansCadenceOuvert && (
+              <ul className="mt-1.5 flex flex-col gap-1">
+                {sansCadence.map((lead) => (
+                  <li key={lead.lead_id}>
+                    <button
+                      type="button"
+                      className="w-full rounded-md border border-border p-1.5 text-left text-xs hover:bg-muted"
+                      onClick={() => navigate(`/crm/leads?lead=${lead.lead_id}`)}
+                    >
+                      <span className="font-medium">{lead.nom}</span>
+                      {lead.ville ? ` · ${lead.ville}` : ''}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {loading ? (
           <Spinner />
         ) : error ? (
