@@ -195,7 +195,7 @@ def tables_du_resultat(geometrie, resultat=None):
 
 # ── Les sorties, par l'utilitaire PARTAGÉ ───────────────────────────────────
 
-def classeur_octets(tables):
+def classeur_octets(tables, *, provenance=None):
     """Les trois feuilles dans UN classeur .xlsx, en octets.
 
     ``apps.records.xlsx.build_workbook`` construit la PREMIÈRE feuille (en-têtes
@@ -203,6 +203,11 @@ def classeur_octets(tables):
     avec la MÊME coercition (``coerce_cell``) et la MÊME neutralisation
     d'injection de formules (``neutralize_rows``) — l'utilitaire partagé ne sait
     pas encore faire plusieurs feuilles, mais on n'en recode aucune règle.
+
+    CALX314 — ``provenance`` (les lignes de
+    ``services.provenance_document.lignes_de_provenance``) pose une feuille
+    ``Provenance`` EN TÊTE du classeur, sous la même garde de prix. Sans elle,
+    le classeur est EXACTEMENT celui de CAL179.
     """
     import io
 
@@ -211,6 +216,15 @@ def classeur_octets(tables):
     from apps.records.xlsx import (
         build_workbook, coerce_cell, neutralize_rows,
     )
+
+    if provenance is not None:
+        from .provenance_document import ENTETES, TITRE_FEUILLE
+
+        feuille_provenance = (TITRE_FEUILLE, list(ENTETES),
+                              [list(ligne) for ligne in provenance])
+        verifier_absence_de_prix(feuille_provenance[1],
+                                 feuille_provenance[2])
+        tables = [feuille_provenance] + list(tables)
 
     titre, entetes, lignes = tables[0]
     classeur = build_workbook(entetes, neutralize_rows(lignes),
@@ -267,8 +281,16 @@ def _tables_du_calepinage(calepinage):
 
 
 def exporter_xlsx(calepinage):
-    """Le classeur d'un ``Calepinage``. Lève ``PlancheRefusee`` sans conception."""
-    return classeur_octets(_tables_du_calepinage(calepinage))
+    """Le classeur d'un ``Calepinage``. Lève ``PlancheRefusee`` sans conception.
+
+    CALX314 — la feuille ``Provenance`` en tête, composée par
+    ``provenance_document.lignes_de_provenance`` (la fonction PARTAGÉE avec le
+    DXF et l'export JSON).
+    """
+    from .provenance_document import lignes_de_provenance
+
+    return classeur_octets(_tables_du_calepinage(calepinage),
+                           provenance=lignes_de_provenance(calepinage))
 
 
 def exporter_csv(calepinage, feuille=None):

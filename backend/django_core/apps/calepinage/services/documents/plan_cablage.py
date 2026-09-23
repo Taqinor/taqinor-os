@@ -532,8 +532,10 @@ def rendre_plan_cablage_pdf(calepinage, *, company=None, **options):
 
 def exporter_plan_cablage_dxf(calepinage, *, affectation=None):
     """Le DXF de pose AVEC le calque ``CHAINES`` (``export_dxf``, paramètre
-    explicite ``chaines=``)."""
+    explicite ``chaines=``) — et, CALX314, le calque ``PROVENANCE``."""
     from ..export_dxf import octets_dxf
+    from ..provenance_document import lignes_de_provenance
 
     plan = plan_du_calepinage(calepinage, affectation=affectation)
-    return octets_dxf(plan['geometrie'], chaines=plan['modules'])
+    return octets_dxf(plan['geometrie'], chaines=plan['modules'],
+                      provenance=lignes_de_provenance(calepinage))

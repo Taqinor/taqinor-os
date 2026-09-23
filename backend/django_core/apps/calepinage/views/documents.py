@@ -175,7 +175,7 @@ from drf_spectacular.utils import inline_serializer  # noqa: E402
 from rest_framework import serializers as drf_serializers  # noqa: E402
 from rest_framework.renderers import JSONRenderer  # noqa: E402
 
-#: La forme du contrat ``export_projet.json`` (onze clés) — jamais un
+#: La forme du contrat ``export_projet.json`` (douze clés) — jamais un
 #: « type: object » vide, qui validerait tout (check_openapi_shapes, R1).
 EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
     'format_version': drf_serializers.IntegerField(),
@@ -190,6 +190,9 @@ EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
     'pertes': drf_serializers.ListField(child=drf_serializers.DictField()),
     'avertissements': drf_serializers.ListField(
         child=drf_serializers.CharField()),
+    # CALX314 — la provenance partagée avec le XLSX et le DXF.
+    'provenance': drf_serializers.ListField(
+        child=drf_serializers.DictField()),
 })
 
 

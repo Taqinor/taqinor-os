@@ -3,7 +3,7 @@
 Ce qui est prouvé ici :
 
 * le document servi a EXACTEMENT la forme de l'exemple committé
-  ``contract_samples/export_projet.json`` (onze clés, blocs imbriqués), sur
+  ``contract_samples/export_projet.json`` (toutes ses clés, blocs imbriqués), sur
   ``exemple`` (calepinage simulé) ET sur ``exemple_vide`` (jamais posé) —
   l'exemple est AFFIRMÉ, pas recopié ;
 * ``format_version`` est l'ENTIER 1 ; ``produit_le`` l'instant de production,
@@ -100,7 +100,7 @@ class FormeDuContratTest(unittest.TestCase):
         self.assertEqual(sorted(attendu), sorted(obtenu),
                          'clés divergentes en %s' % chemin)
 
-    def test_les_onze_cles_du_contrat_simule(self):
+    def test_les_cles_du_contrat_simule(self):
         document = exporte()
         exemple = CONTRAT['exemple']
         self.comparer(exemple, document)

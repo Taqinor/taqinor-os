@@ -247,7 +247,7 @@ SANS_PRODUCTEUR_PUR = {
     'export_projet.json':
         "EXPORT JSON versionné du projet et de ses résultats, servi par "
         'GET export-projet.json/ (CALX312) : son producteur lit le devis, le '
-        'CRM et le résultat du moteur en base — la forme servie (onze clés, '
+        'CRM et le résultat du moteur en base — la forme servie (toutes clés, '
         'blocs imbriqués) est affirmée CONTRE l’exemple committé sans base '
         'par apps/calepinage/tests/test_calx312_export_projet.py, le contrat '
         'lui-même par test_calx293_contrat_export_projet.py',

@@ -84,10 +84,12 @@ class EnveloppeTest(unittest.TestCase):
             'export-projet.json/')
 
     def test_l_exemple_porte_les_cles_annoncees_par_le_done(self):
+        # CALX314 — ``provenance`` rejoint le fichier avant sa première
+        # livraison (même merge que la route CALX312).
         attendues = {'format_version', 'produit_le', 'calepinage', 'site',
                      'equipements', 'roof_layout', 'layout_hash',
                      'version_moteur', 'resultat', 'pertes',
-                     'avertissements'}
+                     'avertissements', 'provenance'}
         self.assertEqual(set(CONTRAT['exemple']), attendues)
         self.assertEqual(set(CONTRAT['exemple_vide']), attendues,
                          "exemple_vide doit garder TOUTES les clés (règle "

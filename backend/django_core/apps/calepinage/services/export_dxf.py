@@ -37,6 +37,15 @@ câblage et de l'écran), et un texte ``C<n>`` (``C<n>*`` en affectation
 manuelle). Sans le paramètre, le fichier est EXACTEMENT celui de CAL178 — les
 quatre calques et rien d'autre. Un module non affecté n'entre PAS sur ce
 calque : il reste sur ``MODULES``, jamais teinté d'une chaîne voisine.
+
+CALX314 — le calque ``PROVENANCE`` (non imprimable)
+===================================================
+``document_dxf(geometrie, provenance=…)`` pose UN bloc de texte (MTEXT) sur un
+calque ``PROVENANCE`` marqué NON IMPRIMABLE : le fichier dit d'où il vient
+(base de rayonnement, version du moteur, empreintes) sans charger le tirage.
+Les lignes sont celles de ``provenance_document.lignes_de_provenance`` — la
+fonction PARTAGÉE avec le classeur XLSX et l'export JSON. ``exporter_dxf`` la
+passe toujours ; sans le paramètre, ``document_dxf`` reste celui de CAL178.
 """
 from __future__ import annotations
 
@@ -45,6 +54,8 @@ __all__ = [
     'CALQUES', 'document_dxf', 'octets_dxf', 'exporter_dxf',
     # CALX310
     'CALQUE_CHAINES',
+    # CALX314
+    'CALQUE_PROVENANCE',
 ]
 
 CALQUE_TOITURE = 'TOITURE'
@@ -74,6 +85,10 @@ HAUTEUR_TEXTE_M = 0.25
 #: Hauteur du repère de chaîne ``C<n>`` posé sur chaque module (m).
 HAUTEUR_REPERE_CHAINE_M = 0.2
 
+#: CALX314 — le calque de provenance, NON IMPRIMABLE (8 = gris d'index).
+CALQUE_PROVENANCE = 'PROVENANCE'
+COULEUR_CALQUE_PROVENANCE = 8
+
 
 def _rectangle(centre, longueur, largeur):
     """Les 4 coins d'un rectangle centré, dans le plan du dessin."""
@@ -83,7 +98,7 @@ def _rectangle(centre, longueur, largeur):
             (x + demi_l, y + demi_c), (x - demi_l, y + demi_c)]
 
 
-def document_dxf(geometrie, *, chaines=None):
+def document_dxf(geometrie, *, chaines=None, provenance=None):
     """``geometrie_de_planche(...)`` -> un document ``ezdxf`` prêt à écrire.
 
     L'import d'``ezdxf`` est FONCTION-LOCAL : la bibliothèque n'a aucune raison
@@ -94,6 +109,10 @@ def document_dxf(geometrie, *, chaines=None):
     ``services.documents.plan_cablage.plan_de_cablage`` : ``{module, centre,
     chaine, couleur, manuel}``) ajoute le calque ``CHAINES``. ``None`` (le
     défaut) : aucun calque de plus.
+
+    CALX314 — ``provenance`` (les lignes ``(libellé, valeur)`` de
+    ``provenance_document.lignes_de_provenance``) ajoute le calque
+    ``PROVENANCE``, non imprimable. ``None`` (le défaut) : aucun calque de plus.
     """
     import ezdxf
     from ezdxf import units
@@ -145,7 +164,34 @@ def document_dxf(geometrie, *, chaines=None):
     _coter(espace, geometrie.get('etendue'))
     if chaines is not None:
         _calque_chaines(document, espace, chaines, module_m)
+    if provenance is not None:
+        _calque_provenance(document, espace, provenance,
+                           geometrie.get('etendue'))
     return document
+
+
+def _calque_provenance(document, espace, lignes, etendue):
+    """CALX314 — UN bloc de texte, sous le dessin, sur un calque NON imprimé.
+
+    Chaque ligne est « libellé : valeur » (``provenance_document
+    .texte_de_ligne``) ; le bloc est posé sous les cotes d'encombrement pour
+    ne recouvrir aucun objet du plan.
+    """
+    from .provenance_document import texte_de_ligne
+
+    calque = document.layers.add(name=CALQUE_PROVENANCE,
+                                 color=COULEUR_CALQUE_PROVENANCE)
+    calque.dxf.plot = 0  # non imprimable : il documente, il ne se tire pas
+    if etendue:
+        x0, y0, x1, y1 = etendue
+        decalage = max((x1 - x0), (y1 - y0)) * 0.04 + 0.5
+        position = (x0, y0 - decalage * 3.0)
+    else:
+        position = (0.0, 0.0)
+    texte = '\n'.join(texte_de_ligne(ligne) for ligne in lignes)
+    espace.add_mtext(texte, dxfattribs={
+        'layer': CALQUE_PROVENANCE, 'char_height': HAUTEUR_TEXTE_M,
+    }).set_location(position)
 
 
 def _calque_chaines(document, espace, chaines, module_m):
@@ -210,15 +256,17 @@ def _coter(espace, etendue):
             (x0 - decalage * 1.6, (y0 + y1) / 2.0))
 
 
-def octets_dxf(geometrie, *, chaines=None):
+def octets_dxf(geometrie, *, chaines=None, provenance=None):
     """Le DXF en OCTETS (utf-8) — aucun fichier n'est écrit sur le disque.
 
-    ``chaines`` : voir ``document_dxf`` (CALX310, calque ``CHAINES``).
+    ``chaines`` : voir ``document_dxf`` (CALX310, calque ``CHAINES``) ;
+    ``provenance`` : voir ``document_dxf`` (CALX314, calque ``PROVENANCE``).
     """
     import io
 
     tampon = io.StringIO()
-    document_dxf(geometrie, chaines=chaines).write(tampon)
+    document_dxf(geometrie, chaines=chaines,
+                 provenance=provenance).write(tampon)
     return tampon.getvalue().encode('utf-8')
 
 
@@ -226,9 +274,13 @@ def exporter_dxf(calepinage):
     """Le DXF d'un ``Calepinage``. Lève ``PlancheRefusee`` sans conception.
 
     La géométrie est celle de la planche : le DXF et le PDF ne peuvent pas
-    diverger, parce qu'il n'y a qu'une seule projection.
+    diverger, parce qu'il n'y a qu'une seule projection. CALX314 — le calque
+    ``PROVENANCE`` (non imprimable) porte les lignes de la fonction PARTAGÉE
+    ``provenance_document.lignes_de_provenance``.
     """
     from .planche import geometrie_de_planche
+    from .provenance_document import lignes_de_provenance
 
     return octets_dxf(
-        geometrie_de_planche(getattr(calepinage, 'roof_layout', None)))
+        geometrie_de_planche(getattr(calepinage, 'roof_layout', None)),
+        provenance=lignes_de_provenance(calepinage))

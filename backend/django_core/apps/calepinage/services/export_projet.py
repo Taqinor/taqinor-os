@@ -11,8 +11,8 @@ reçoit ce fichier ne peut pas refaire le calcul ailleurs. Parité : PV*SOL 2026
 La forme : le contrat ``contract_samples/export_projet.json`` (CALX293)
 =======================================================================
 ``{format_version, produit_le, calepinage, site, equipements, roof_layout,
-layout_hash, version_moteur, resultat, pertes, avertissements}`` — ONZE clés,
-TOUJOURS présentes. Chaque bloc est LU, rien n'est recalculé :
+layout_hash, version_moteur, resultat, pertes, avertissements, provenance}`` —
+DOUZE clés, TOUJOURS présentes. Chaque bloc est LU, rien n'est recalculé :
 
 * ``calepinage`` — identifiant, titre, client (``apps.crm.selectors``, borné
   à la société du calepinage) ;
@@ -27,7 +27,10 @@ TOUJOURS présentes. Chaque bloc est LU, rien n'est recalculé :
   (``services/electrique.resultat_calepinage``, fraîcheur CALX70 comprise),
   SON empreinte (``hash_entree``, ``version_moteur``) comprise ;
 * ``pertes`` — la MÊME liste plate que ``resultat.pertes``, à la racine ;
-* ``avertissements`` — ceux du résultat servi, précédés du motif d'export.
+* ``avertissements`` — ceux du résultat servi, précédés du motif d'export ;
+* ``provenance`` (CALX314) — ``[{libelle, valeur}]`` composé par
+  ``provenance_document.lignes_de_provenance``, la fonction PARTAGÉE avec la
+  feuille ``Provenance`` du XLSX et le calque ``PROVENANCE`` du DXF.
 
 ``format_version`` est un ENTIER du fichier (``FORMAT_VERSION``), jamais dérivé
 d'une date ni du ``schema_version`` du document de pose ; ``produit_le`` est
@@ -71,10 +74,12 @@ FORMAT_VERSION = 1
 #: Le code du document dans l'inventaire (contrat ``calepinage_documents``).
 CODE_DOCUMENT = 'export_projet_json'
 
-#: Les onze clés du contrat, dans l'ordre du fichier.
+#: Les douze clés du contrat, dans l'ordre du fichier (``provenance`` :
+#: CALX314).
 CLES_DOCUMENT = ('format_version', 'produit_le', 'calepinage', 'site',
                  'equipements', 'roof_layout', 'layout_hash',
-                 'version_moteur', 'resultat', 'pertes', 'avertissements')
+                 'version_moteur', 'resultat', 'pertes', 'avertissements',
+                 'provenance')
 
 #: Les clés du bloc ``site``.
 CLES_SITE = ('adresse', 'ville', 'pin', 'altitude_m', 'fuseau',
@@ -274,6 +279,7 @@ def document_de_projet(calepinage, *, moment=None, resultat=_LIRE,
     from .. import selectors
     from .equipements import equipements_du_calepinage
     from .io_layout import exporter_layout
+    from .provenance_document import lignes_de_provenance, lignes_json
 
     layout = exporter_layout(calepinage)
     avertissements = []
@@ -310,6 +316,8 @@ def document_de_projet(calepinage, *, moment=None, resultat=_LIRE,
         'resultat': resultat_exporte,
         'pertes': copy.deepcopy(pertes) if isinstance(pertes, list) else [],
         'avertissements': avertissements,
+        # CALX314 — LA composition partagée avec le XLSX et le DXF.
+        'provenance': lignes_json(lignes_de_provenance(calepinage)),
     }
     verifier_aucun_montant(document)
     octets_de_projet(document)  # JSON strict, ou refus nommé

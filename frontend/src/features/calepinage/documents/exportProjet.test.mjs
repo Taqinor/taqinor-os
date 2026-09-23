@@ -13,7 +13,8 @@ import { dirname, join, resolve } from 'node:path'
    servi — au lieu d'écrire un payload à la main. Un tiers (ou un écran) qui
    lit ce fichier peut donc compter sur ce qui est vérifié ici :
    - `format_version` est l'ENTIER 1, jamais une date ;
-   - les onze clés sont TOUJOURS présentes, même sur un calepinage vide ;
+   - les douze clés sont TOUJOURS présentes, même sur un calepinage vide ;
+   - `provenance` (CALX314) est une liste {libelle, valeur}, sans valeur vide ;
    - un calepinage non simulé exporte `resultat: null` et `pertes: []` ;
    - aucune clé de la famille prix_* / cout_* / marge_* n'y figure (D5) ;
    - la route servie existe côté serveur (`url_path='export-projet.json'`).
@@ -36,10 +37,11 @@ const CONTRAT = JSON.parse(
   readFileSync(join(APP, 'contract_samples', 'export_projet.json'), 'utf8'),
 )
 
+// CALX314 — `provenance` : la composition partagée avec le XLSX et le DXF.
 const CLES = [
   'format_version', 'produit_le', 'calepinage', 'site', 'equipements',
   'roof_layout', 'layout_hash', 'version_moteur', 'resultat', 'pertes',
-  'avertissements',
+  'avertissements', 'provenance',
 ]
 
 function clesDeMontant(noeud, chemin = '<racine>') {
@@ -75,7 +77,21 @@ test('format_version est l’entier 1, sur les deux exemples', () => {
   }
 })
 
-test('les onze clés sont toujours présentes, même vides', () => {
+test('la provenance est une liste {libelle, valeur}, jamais une valeur vide', () => {
+  for (const cle of ['exemple', 'exemple_vide']) {
+    const lignes = CONTRAT[cle].provenance
+    assert.ok(Array.isArray(lignes) && lignes.length > 0)
+    for (const ligne of lignes) {
+      assert.deepEqual(Object.keys(ligne).sort(), ['libelle', 'valeur'])
+      assert.ok(String(ligne.valeur).trim().length > 0, ligne.libelle)
+    }
+  }
+  const empreinte = CONTRAT.exemple_vide.provenance
+    .find((ligne) => ligne.libelle === 'Empreinte du calepinage')
+  assert.equal(empreinte.valeur, 'non calculée')
+})
+
+test('les douze clés sont toujours présentes, même vides', () => {
   assert.deepEqual(Object.keys(CONTRAT.exemple).sort(), [...CLES].sort())
   assert.deepEqual(Object.keys(CONTRAT.exemple_vide).sort(), [...CLES].sort())
 })
