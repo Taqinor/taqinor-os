@@ -609,8 +609,9 @@ export default function RelanceEtapeRow({
       )}
       {/* VISCAD — le panneau de coaching se gate lui-même sur cadence ===
           'apres_devis' ; ici on ne gate que sur `readOnly` (une ligne qui se
-          LIT seulement — jours futurs du widget, historique du suivi — n'a
-          pas d'action à proposer). Rendu dans les DEUX modes (compact ET
+          LIT seulement — historique du suivi — n'a pas d'action à proposer).
+          CAD44 : une touche À VENIR (`enAvance`) le garde — il accompagne
+          l'appel passé en avance. Rendu dans les DEUX modes (compact ET
           cockpit), jamais seulement compact. */}
       {!readOnly && (
         <PanneauProposerVisite etape={etape} onPlanifier={() => setPlanifierOuvert(true)} />
