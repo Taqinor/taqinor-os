@@ -554,8 +554,7 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      puissance_decharge_kw, rendement_ar_pct=None,
                      seuil_effacement_kw=None, heures_charge=None,
                      heures_decharge=None, fenetres=None,
-                     reserve_backup_kwh=None, appareils=None,
-                     duree_secours_h=None, part_effacable_pct=None,
+                     reserve_backup_kwh=None, part_effacable_pct=None,
                      plafond_effacable_kw=None,
                      etat_initial_kwh=0.0, pas_heures=1.0,
                      heure_de_depart=0, _trace=None):
@@ -579,12 +578,11 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             charge sur le réseau n'est introduite ici). Deux fenêtres qui se
             recouvrent ⇒ refus nommant la seconde (``fenetres.charge[1]``).
         reserve_backup_kwh: la réserve à ne jamais entamer, SAISIE —
-            obligatoire pour ``backup`` (à moins que ``appareils`` ne la
-            remplace).
-        appareils / duree_secours_h: CALX270 — la réserve de ``backup``
-            DÉDUITE des appareils réellement secourus
-            (:func:`reserve_depuis_appareils`), à la place de la réserve nue ;
-            publiée sous ``parametres['reserve_appareils']``.
+            obligatoire pour ``backup``. CALX270 : elle s'accepte aussi sous
+            la forme que rend :func:`reserve_depuis_appareils` (la réserve
+            DÉDUITE des appareils réellement secourus), à la place du nombre
+            nu — son ``energie_kwh`` devient la réserve, et le détail est
+            publié sous ``parametres['reserve_appareils']``.
         part_effacable_pct / plafond_effacable_kw: CALX270 — SAISIS, ils
             bornent la part de la charge d'un pas que la batterie peut
             servir (un tableau de secours partiel ne porte pas toute la
@@ -681,28 +679,14 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             'Les fenêtres de charge et de décharge pilotent la stratégie de '
             f'décalage, pas « {strategie} » : elles ne s’appliquent donc '
             'pas.', champ='fenetres')
-    reserve = _nombre(reserve_backup_kwh)
     reserve_appareils = None
-    if appareils is not None:
-        if strategie != 'backup':
-            raise StrategieInvalide(
-                'Les appareils secourus dimensionnent la réserve de la '
-                f'stratégie de secours, pas « {strategie} ».',
-                champ='appareils')
-        if reserve_backup_kwh not in (None, ''):
-            raise StrategieInvalide(
-                'Une réserve nue ET des appareils secourus sont déclarés : '
-                'la réserve se saisit d’une seule façon, jamais les deux.',
-                champ='reserve_backup_kwh')
-        try:
-            reserve_appareils = reserve_depuis_appareils(
-                appareils, duree_h=duree_secours_h)
-        except StrategieInvalide as refus:
-            if refus.champ == 'duree_h':
-                raise StrategieInvalide(refus.motif,
-                                        champ='duree_secours_h') from refus
-            raise
-        reserve = reserve_appareils['energie_kwh']
+    if isinstance(reserve_backup_kwh, dict):
+        # CALX270 — la réserve DÉDUITE des appareils secourus, telle que
+        # :func:`reserve_depuis_appareils` la rend, à la place du nombre nu.
+        reserve_appareils = reserve_backup_kwh
+        reserve = _nombre(reserve_backup_kwh.get('energie_kwh'))
+    else:
+        reserve = _nombre(reserve_backup_kwh)
     if strategie == 'backup' and (reserve is None or reserve < 0):
         raise StrategieInvalide(
             'La stratégie de secours exige une réserve SAISIE (kWh) — ou les '
@@ -849,7 +833,8 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                           'decharge': _publier_fenetres(fenetres_decharge)}
                          if strategie == 'decalage' else None),
             'reserve_backup_kwh': reserve if strategie == 'backup' else None,
-            'reserve_appareils': reserve_appareils,
+            'reserve_appareils': (reserve_appareils if strategie == 'backup'
+                                  else None),
             'part_effacable_pct': part_effacable,
             'plafond_effacable_kw': plafond_effacable,
         },

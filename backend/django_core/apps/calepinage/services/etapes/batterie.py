@@ -61,7 +61,9 @@ from apps.calepinage.services import chaine_pertes, courbe_charge, etapes
 from apps.calepinage.services.batterie import (MOTIVATIONS, StrategieInvalide,
                                                candidates_omises,
                                                capacites_candidates,
-                                               simuler_batterie)
+                                               reserve_depuis_appareils,
+                                               simuler_batterie,
+                                               simuler_groupes)
 
 LIBELLE = 'Batterie'
 
@@ -109,6 +111,17 @@ MENTION_PLUSIEURS_GROUPES = (
     'UNE banque (c’est le même point de livraison). L’énergie restituée et le '
     'nombre de cycles ne sont donc PAS publiés groupe par groupe — les '
     'répartir au prorata serait un chiffre inventé.')
+
+MOTIF_RESERVE_EN_DOUBLE = (
+    'Une réserve de secours nue ET des appareils secourus sont déclarés : la '
+    'réserve se saisit d’une seule façon, jamais les deux. Le bloc '
+    '« batterie » est OMIS.')
+
+#: CALX270 — la réserve DÉDUITE des appareils, dite en clair dans le bloc.
+MENTION_RESERVE_APPAREILS = (
+    'Réserve de secours déduite de {nombre} appareil(s) secouru(s) : '
+    '{energie} kWh pour {duree} h de coupure (puissance continue '
+    '{continue_kw} kW, pointe au démarrage {pointe_kw} kW).')
 
 DEFINITION_AUTONOMIE = (
     "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. "
@@ -424,21 +437,62 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
 
     etat_initial = min(max(0.0, _nombre(declaration.get('etat_initial_kwh'))
                            or 0.0), banque['capacite_utile_kwh'])
+
+    # CALX270 — la réserve de secours DÉDUITE des appareils que le document
+    # déclare secourus (``battery.appareils`` + ``battery.duree_secours_h``),
+    # à la place de la réserve nue ; jamais les deux à la fois.
+    reserve = declaration.get('reserve_backup_kwh')
+    if declaration.get('appareils') is not None:
+        if reserve not in (None, ''):
+            return serie, _omission(
+                MOTIF_RESERVE_EN_DOUBLE,
+                champ=f'{CLE_CONTEXTE}.reserve_backup_kwh')
+        try:
+            reserve = reserve_depuis_appareils(
+                declaration.get('appareils'),
+                duree_h=declaration.get('duree_secours_h'))
+        except StrategieInvalide as refus:
+            champ = ('duree_secours_h' if refus.champ == 'duree_h'
+                     else refus.champ)
+            return serie, _omission(refus.motif,
+                                    champ=f'{CLE_CONTEXTE}.{champ}')
+
+    parametres = {
+        'strategie': strategie,
+        'capacite_utile_kwh': banque['capacite_utile_kwh'],
+        'puissance_charge_kw': banque['puissance_charge_kw'],
+        'puissance_decharge_kw': banque['puissance_decharge_kw'],
+        'rendement_ar_pct': banque['rendement_ar_pct'],
+        'seuil_effacement_kw': declaration.get('seuil_effacement_kw'),
+        'heures_charge': declaration.get('heures_charge'),
+        'heures_decharge': declaration.get('heures_decharge'),
+        # CALX268 — la commande horaire à SOC cible, quand le document la
+        # déclare ; CALX270 — la part effaçable d'un tableau partiel.
+        'fenetres': declaration.get('fenetres'),
+        'reserve_backup_kwh': reserve,
+        'part_effacable_pct': declaration.get('part_effacable_pct'),
+        'plafond_effacable_kw': declaration.get('plafond_effacable_kw'),
+        'etat_initial_kwh': etat_initial,
+    }
     try:
-        dispatch = simuler_batterie(
-            courbe, production,
-            strategie=strategie,
-            capacite_utile_kwh=banque['capacite_utile_kwh'],
-            puissance_charge_kw=banque['puissance_charge_kw'],
-            puissance_decharge_kw=banque['puissance_decharge_kw'],
-            rendement_ar_pct=banque['rendement_ar_pct'],
-            seuil_effacement_kw=declaration.get('seuil_effacement_kw'),
-            heures_charge=declaration.get('heures_charge'),
-            heures_decharge=declaration.get('heures_decharge'),
-            reserve_backup_kwh=declaration.get('reserve_backup_kwh'),
-            etat_initial_kwh=etat_initial,
-            pas_heures=float(pas) / 60.0,
-            heure_de_depart=heure_de_depart)
+        if declaration.get('couplage') not in (None, ''):
+            # CALX267 — la banque DÉCLARE son couplage (``ac`` | ``dc``) :
+            # elle passe par ``simuler_groupes`` (un groupe DC sans onduleur
+            # est refusé en le nommant) ; un seul groupe rend exactement le
+            # dispatch de ``simuler_batterie``.
+            dispatch = simuler_groupes(
+                courbe, production, [dict(
+                    parametres,
+                    groupe=' + '.join(groupe['groupe'] for groupe in groupes),
+                    couplage=declaration.get('couplage'),
+                    onduleur_ref=declaration.get('onduleur_ref'),
+                    modele=declaration.get('model'))],
+                pas_heures=float(pas) / 60.0,
+                heure_de_depart=heure_de_depart)['agregat']
+        else:
+            dispatch = simuler_batterie(
+                courbe, production, pas_heures=float(pas) / 60.0,
+                heure_de_depart=heure_de_depart, **parametres)
     except StrategieInvalide as refus:
         return serie, _omission(refus.motif,
                                 champ=(f'{CLE_CONTEXTE}.{refus.champ}'
@@ -446,8 +500,15 @@ def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
 
     flux = _flux_horaires(dispatch, courbe, production,
                           etat_initial=etat_initial, banque=banque)
-    return _publier(serie, flux, dispatch, groupes, banque, strategie,
-                    etat_initial=etat_initial)
+    suite, bloc = _publier(serie, flux, dispatch, groupes, banque, strategie,
+                           etat_initial=etat_initial)
+    if isinstance(reserve, dict):
+        bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
+            nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
+            duree=reserve['duree_h'],
+            continue_kw=reserve['puissance_continue_kw'],
+            pointe_kw=reserve['puissance_pointe_kw']))
+    return suite, bloc
 
 
 def _publier(serie, flux, dispatch, groupes, banque, strategie, *,

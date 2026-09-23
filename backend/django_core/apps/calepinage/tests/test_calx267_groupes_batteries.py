@@ -24,6 +24,8 @@ import json
 import pathlib
 import unittest
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.services.batterie import (
     COUPLAGES, StrategieInvalide, simuler_batterie, simuler_groupes,
 )
@@ -251,6 +253,39 @@ class ContratPartageTest(unittest.TestCase):
         self.assertTrue(self.document['endpoint'].startswith('GET /api/'))
         self.assertEqual(self.document['forme_serveur'], 'partielle')
         self.assertTrue(self.document['pourquoi'])
+
+
+class ChaineDeSimulationTest(SimpleTestCase):
+    """La banque du document DÉCLARE son couplage : la chaîne la fait
+    passer par ``simuler_groupes`` (``etapes/batterie.py``)."""
+
+    def _bloc(self, **declaration):
+        from apps.calepinage.services.etapes import batterie as bloc
+        from apps.calepinage.tests.test_calx188_batterie import (
+            contexte_de_test, serie_de_test,
+        )
+
+        contexte = contexte_de_test(heures=48, **declaration)
+        return bloc.bloc_batterie(serie_de_test(heures=48), contexte)
+
+    def test_un_couplage_ac_declare_rend_le_dispatch_d_aujourd_hui(self):
+        _suite, sans = self._bloc()
+        _suite, avec = self._bloc(couplage='ac')
+        self.assertEqual(avec['motif_absence'], '')
+        self.assertEqual(avec['total'], sans['total'])
+
+    def test_une_banque_dc_sans_onduleur_omet_le_bloc_en_le_nommant(self):
+        suite, resultat = self._bloc(couplage='dc')
+        self.assertIsNone(resultat['total'])
+        self.assertIn('batterie.groupes[0].onduleur_ref',
+                      resultat['motif_absence'])
+        self.assertNotIn('batterie_soc_pct', suite['points'][0])
+
+    def test_une_banque_dc_avec_son_onduleur_est_simulee(self):
+        _suite, resultat = self._bloc(couplage='dc',
+                                      onduleur_ref='OND-TEST-1')
+        self.assertEqual(resultat['motif_absence'], '')
+        self.assertIsNotNone(resultat['total'])
 
 
 class AucunPrixTest(unittest.TestCase):

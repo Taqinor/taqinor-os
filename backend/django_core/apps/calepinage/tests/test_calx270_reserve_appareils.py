@@ -19,6 +19,8 @@ from __future__ import annotations
 import pathlib
 import unittest
 
+from django.test import SimpleTestCase
+
 from apps.calepinage.services.batterie import (
     StrategieInvalide, reserve_depuis_appareils, simuler_batterie,
     simuler_groupes,
@@ -102,11 +104,15 @@ class ReserveDepuisAppareilsTest(unittest.TestCase):
 
 
 class SimulationDeSecoursTest(unittest.TestCase):
+    """La réserve DÉDUITE entre dans ``simuler_batterie`` à la place du
+    nombre nu (``reserve_backup_kwh`` = ce que rend
+    ``reserve_depuis_appareils``)."""
 
     def test_les_appareils_remplacent_la_reserve_nue(self):
+        reserve = reserve_depuis_appareils(DEUX_APPAREILS, duree_h=4)
         par_appareils = simuler_batterie(
-            CONSO, PROD, strategie='backup', appareils=DEUX_APPAREILS,
-            duree_secours_h=4, etat_initial_kwh=10.0, **PARC)
+            CONSO, PROD, strategie='backup', reserve_backup_kwh=reserve,
+            etat_initial_kwh=10.0, **PARC)
         nue = simuler_batterie(
             CONSO, PROD, strategie='backup', reserve_backup_kwh=4.0,
             etat_initial_kwh=10.0, **PARC)
@@ -127,34 +133,61 @@ class SimulationDeSecoursTest(unittest.TestCase):
         self.assertEqual(resultat['parametres']['reserve_backup_kwh'], 6.0)
         self.assertIsNone(resultat['parametres']['reserve_appareils'])
 
-    def test_un_appareil_sans_pointe_refuse_la_simulation(self):
-        sans = [dict(DEUX_APPAREILS[0])]
-        sans[0]['puissance_pointe_kw'] = None
-        with self.assertRaises(StrategieInvalide) as refus:
-            simuler_batterie(CONSO, PROD, strategie='backup', appareils=sans,
-                             duree_secours_h=4, **PARC)
-        self.assertEqual(refus.exception.champ,
-                         'appareils[0].puissance_pointe_kw')
-
-    def test_la_duree_de_secours_est_nommee(self):
+    def test_une_reserve_deduite_illisible_est_refusee(self):
         with self.assertRaises(StrategieInvalide) as refus:
             simuler_batterie(CONSO, PROD, strategie='backup',
-                             appareils=DEUX_APPAREILS, **PARC)
-        self.assertEqual(refus.exception.champ, 'duree_secours_h')
-
-    def test_reserve_nue_et_appareils_a_la_fois(self):
-        with self.assertRaises(StrategieInvalide) as refus:
-            simuler_batterie(CONSO, PROD, strategie='backup',
-                             reserve_backup_kwh=2.0, appareils=DEUX_APPAREILS,
-                             duree_secours_h=4, **PARC)
+                             reserve_backup_kwh={'energie_kwh': None}, **PARC)
         self.assertEqual(refus.exception.champ, 'reserve_backup_kwh')
 
-    def test_des_appareils_hors_secours(self):
-        with self.assertRaises(StrategieInvalide) as refus:
-            simuler_batterie(CONSO, PROD, strategie='autoconso',
-                             appareils=DEUX_APPAREILS, duree_secours_h=4,
-                             **PARC)
-        self.assertEqual(refus.exception.champ, 'appareils')
+    def test_hors_secours_la_reserve_deduite_n_est_pas_publiee(self):
+        reserve = reserve_depuis_appareils(DEUX_APPAREILS, duree_h=4)
+        resultat = simuler_batterie(CONSO, PROD, strategie='autoconso',
+                                    reserve_backup_kwh=reserve, **PARC)
+        self.assertIsNone(resultat['parametres']['reserve_appareils'])
+        self.assertIsNone(resultat['parametres']['reserve_backup_kwh'])
+
+
+class ChaineDeSimulationTest(SimpleTestCase):
+    """Le document déclare les appareils secourus : la chaîne en DÉDUIT la
+    réserve (``etapes/batterie.py`` appelle ``reserve_depuis_appareils``)."""
+
+    def _bloc(self, **declaration):
+        from apps.calepinage.services.etapes import batterie as bloc
+        from apps.calepinage.tests.test_calx188_batterie import (
+            contexte_de_test, serie_de_test,
+        )
+
+        contexte = contexte_de_test(strategie='backup', heures=48,
+                                    **declaration)
+        return bloc.bloc_batterie(serie_de_test(heures=48), contexte)
+
+    def test_la_reserve_deduite_n_est_jamais_entamee(self):
+        suite, resultat = self._bloc(appareils=DEUX_APPAREILS,
+                                     duree_secours_h=4, etat_initial_kwh=10.0)
+        self.assertEqual(resultat['motif_absence'], '')
+        # 4 kWh de réserve sur 10 kWh utiles : jamais sous 40 %.
+        valeurs = [point['batterie_soc_pct'] for point in suite['points']]
+        self.assertGreaterEqual(min(valeurs), 40.0 - 0.01)
+        self.assertTrue(any('déduite de 2 appareil' in texte
+                            for texte in resultat['avertissements']))
+
+    def test_un_appareil_sans_pointe_omet_le_bloc_en_le_nommant(self):
+        sans = [dict(DEUX_APPAREILS[0], puissance_pointe_kw=None)]
+        _suite, resultat = self._bloc(appareils=sans, duree_secours_h=4)
+        self.assertIsNone(resultat['total'])
+        self.assertIn('batterie.appareils[0].puissance_pointe_kw',
+                      resultat['motif_absence'])
+
+    def test_la_duree_de_secours_est_nommee_dans_la_chaine(self):
+        _suite, resultat = self._bloc(appareils=DEUX_APPAREILS)
+        self.assertIn('batterie.duree_secours_h', resultat['motif_absence'])
+
+    def test_reserve_nue_et_appareils_a_la_fois(self):
+        _suite, resultat = self._bloc(appareils=DEUX_APPAREILS,
+                                      duree_secours_h=4,
+                                      reserve_backup_kwh=2.0)
+        self.assertIsNone(resultat['total'])
+        self.assertIn('batterie.reserve_backup_kwh', resultat['motif_absence'])
 
 
 class PartEffacableTest(unittest.TestCase):
