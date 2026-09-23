@@ -10704,3 +10704,119 @@ def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
     # ligne de chatter).
     arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER)
     return etape
+
+
+# ── CAD-B ── CAD26 — « rappelez-moi dans trois semaines » : une VEILLE ──────
+#
+# ``reporter_prochaine_touche`` décale la touche, toute la suite de sa cadence
+# et l'ancre, du même écart, sans plafond ni bifurcation : « rappelez-moi dans
+# trois semaines » envoyait la clôture J+14 à J+35, et un client qui avait
+# fixé LA date où il voulait qu'on revienne ne la retrouvait nulle part.
+#
+# DEUX GESTES DISTINCTS désormais, au choix de la commerciale :
+#
+#   * « Décaler ce rappel » — le comportement historique, pour quelques
+#     jours (``reporter_prochaine_touche`` inchangé) ;
+#   * « Mettre en veille jusqu'au… » — la cadence SE TAIT jusqu'à la date du
+#     client et reprend au MÊME barreau : rien n'est consommé, rien n'est
+#     recréé (« décaler, jamais redémarrer ») ; au-delà d'un mois d'attente,
+#     elle BASCULE en réveil daté — et le dit, parce que cette bascule
+#     arrête la cadence en cours (CADX : une seule cadence à la fois).
+#
+# L'écran propose le second geste de lui-même au-delà de 7 jours.
+
+#: Au-delà de cette attente (en jours calendaires, « un mois »), une veille
+#: ne suspend plus la cadence : elle la remplace par un réveil daté.
+VEILLE_BASCULE_REVEIL_JOURS = 30
+
+
+def _instant_de_veille(quand):
+    """``quand`` (date, datetime naïf ou aware) → datetime AWARE."""
+    from . import horaires
+
+    if not isinstance(quand, datetime.datetime):
+        return datetime.datetime.combine(
+            quand, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
+    if timezone.is_naive(quand):
+        return timezone.make_aware(quand, datetime.timezone.utc)
+    return quand
+
+
+def mettre_en_veille(lead, user, quand, *, etape=None, journaliser=True):
+    """CAD26 — met le dossier en VEILLE jusqu'à ``quand`` (date du client).
+
+    * attente ≤ ``VEILLE_BASCULE_REVEIL_JOURS`` : la touche ``etape`` (sinon
+      la prochaine à faire) N'EST PAS consommée — elle est déplacée à la date
+      du client par la mécanique EXISTANTE (``reporter_prochaine_touche``),
+      avec la suite de sa cadence et son ancre. Aucune touche intermédiaire
+      ne part d'ici là, et la reprise se fait AU MÊME BARREAU ;
+    * au-delà : bascule en RÉVEIL DATÉ (``_basculer_veille_en_reveil``).
+
+    ``journaliser=False`` supprime la note de veille : l'appelant en écrit
+    une qui dit la vraie raison (la réponse « Plus tard » de CAD6), jamais
+    deux lignes pour un seul geste. Renvoie la touche qui portera la reprise
+    (la même, déplacée — ou la première touche du réveil), ou ``None``."""
+    from . import horaires
+
+    cible = etape or _prochaine_touche_a_faire(lead)
+    if cible is None:
+        return None
+    quand = _instant_de_veille(quand)
+    jour = quand.astimezone(horaires.CASABLANCA).date()
+    if (jour - aujourd_hui_local()).days > VEILLE_BASCULE_REVEIL_JOURS:
+        return _basculer_veille_en_reveil(
+            lead, user, cible, quand, journaliser=journaliser)
+    deplacee = reporter_prochaine_touche(
+        lead, user, quand, etape=cible, journaliser=False)
+    if deplacee is not None and journaliser:
+        libelle = (deplacee.libelle or '').strip() \
+            or deplacee.get_canal_display()
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Mise en veille jusqu’au {deplacee.due_date:%d/%m/%Y} à '
+                  'la demande du client — la cadence reprendra à la touche '
+                  f'« {libelle} », aucune touche ne part d’ici là.'))
+    return deplacee
+
+
+def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
+    """CAD26 — plus d'un mois d'attente : la cadence en cours s'ARRÊTE (motif
+    tracé sur chaque touche + note) et un RÉVEIL est daté du jour demandé.
+
+    La première touche du gabarit « réveil » tombe SUR la date du client :
+    l'ancre est rétrodatée de son délai (même méthode que le placement MRY30,
+    ``calculer_echeances_cadence`` garde l'ancre d'un réveil telle quelle).
+    Rend la première touche du réveil, ou ``None`` (société sans gabarit
+    réveil, lead qu'on ne relance plus)."""
+    from apps.parametres.models_relance import CadenceRelanceEtape
+
+    from . import horaires
+
+    jour = quand.astimezone(horaires.CASABLANCA).date()
+    arreter_cadence(
+        lead, user=user,
+        motif=(f'mise en veille jusqu’au {jour:%d/%m/%Y} — plus d’un mois '
+               'd’attente : bascule en réveil daté'))
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, 'reveil')
+    if not gabarits:
+        return None
+    premier = min(gabarits, key=lambda g: g.ordre)
+    depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
+    try:
+        etapes = initialiser_plan_relance(
+            lead, user, cadence='reveil', depart=depart)
+    except CadenceActiveConflit:
+        etapes = []
+    ouvertes = [e for e in etapes if e.statut == RelanceEtape.Statut.A_FAIRE]
+    reveil = ouvertes[0] if ouvertes else None
+    if journaliser:
+        suite = (f'un réveil est daté du {reveil.due_date:%d/%m/%Y}'
+                 if reveil is not None else 'aucun réveil n’a pu être daté')
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Mise en veille demandée jusqu’au {jour:%d/%m/%Y} : plus '
+                  f'd’un mois d’attente, la cadence « {cible.cadence} » est '
+                  f'arrêtée et {suite}.'))
+    return reveil

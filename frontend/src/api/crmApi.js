@@ -138,8 +138,11 @@ const crmApi = {
   // `marquerRelanceEtapeFait` ci-dessus) : jamais un `due_at` calculé côté
   // écran depuis le fuseau du NAVIGATEUR (incident — l'heure demandée par
   // l'agent dérivait de son fuseau local, pas de Casablanca).
-  reporterRelanceEtape: (id, { rappel_le, rappel_heure }) =>
-    api.post(`/crm/relance-etapes/${id}/reporter/`, { rappel_le, rappel_heure }),
+  // CAD26 — `mode: 'veille'` (facultatif) : « Mettre en veille jusqu'au… »
+  // au lieu du décalage historique ; absent, le corps est inchangé.
+  reporterRelanceEtape: (id, { rappel_le, rappel_heure, mode }) =>
+    api.post(`/crm/relance-etapes/${id}/reporter/`,
+      mode ? { rappel_le, rappel_heure, mode } : { rappel_le, rappel_heure }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),

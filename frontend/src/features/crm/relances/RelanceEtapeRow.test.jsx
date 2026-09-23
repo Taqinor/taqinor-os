@@ -172,3 +172,54 @@ describe('CAD5 RelanceEtapeRow — « Ne plus me contacter »', () => {
       .toHaveTextContent('Cette touche est déjà traitée.')
   })
 })
+
+// CAD26 — « Reporter » offre DEUX gestes ; au-delà de 7 jours, la mise en
+// veille est proposée d'elle-même. Horloge figée (seul `Date` est simulé) :
+// mercredi 23/09/2026 à Casablanca.
+describe('CAD26 RelanceEtapeRow — décaler ou mettre en veille', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  function ouvrirReporter(onReporter) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-23T09:00:00Z'))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop}
+        onReporter={onReporter} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+  }
+
+  it('un report de quelques jours reste un décalage (corps inchangé)', async () => {
+    const onReporter = vi.fn(() => Promise.resolve({}))
+    ouvrirReporter(onReporter)
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-25' } })
+    expect(screen.queryByTestId('veille-proposee')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onReporter).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { rappel_le: '2026-09-25', rappel_heure: '09:00' }))
+  })
+
+  it('au-delà de 7 jours, la veille est proposée et part avec mode=veille', async () => {
+    const onReporter = vi.fn(() => Promise.resolve({ ...ETAPE_APPEL, due_date: '2026-10-14' }))
+    ouvrirReporter(onReporter)
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-10-14' } })
+    expect(screen.getByTestId('veille-proposee')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Mettre en veille/ }))
+      .toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onReporter).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { rappel_le: '2026-10-14', rappel_heure: '09:00', mode: 'veille' }))
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith(
+      'Dossier en veille : la cadence reprendra à cette même touche.'))
+  })
+
+  it('le choix explicite « Décaler ce rappel » prime sur la proposition', async () => {
+    const onReporter = vi.fn(() => Promise.resolve({}))
+    ouvrirReporter(onReporter)
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-10-14' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Décaler ce rappel' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onReporter).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { rappel_le: '2026-10-14', rappel_heure: '09:00' }))
+  })
+})

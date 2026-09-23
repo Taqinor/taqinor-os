@@ -199,6 +199,27 @@ function heureDue(etape) {
   }).format(t)
 }
 
+/** « AAAA-MM-JJ » d'aujourd'hui À CASABLANCA (jamais le fuseau du
+    navigateur : un commercial en déplacement comparerait sinon ses dates à
+    une autre journée que celle du serveur). */
+function aujourdhuiCasablanca() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date())
+}
+
+/** Jours calendaires entre deux dates « AAAA-MM-JJ » (arithmétique pure sur
+    les dates, aucun fuseau en jeu). */
+function joursEntre(debut, fin) {
+  return Math.round((Date.parse(`${fin}T00:00:00Z`) - Date.parse(`${debut}T00:00:00Z`)) / 86400000)
+}
+
+// CAD26 — au-delà de ce report (7 à 10 jours dans l'audit : on retient le bas
+// de la fourchette), « Mettre en veille jusqu'au… » est PROPOSÉ de lui-même :
+// un client qui fixe une date lointaine demande du temps, pas que tout le plan
+// glisse. Le serveur, lui, bascule la veille en réveil daté au-delà d'un mois.
+const VEILLE_PROPOSEE_APRES_JOURS = 7
+
 // RLC3 (relevé fondateur du 08/09/2026) — les canaux dont la touche consiste à
 // ÉCRIRE : c'est là, et seulement là, que la question « le message a-t-il été
 // ouvert ? » a un sens. Un appel a déjà son issue obligatoire (CKP2/CKP4).
@@ -270,6 +291,9 @@ export default function RelanceEtapeRow({
   const [rappelHeure, setRappelHeure] = useState('')
   const [reportDate, setReportDate] = useState('')
   const [reportHeure, setReportHeure] = useState('')
+  // CAD26 — '' = le geste PROPOSÉ selon la date ; 'decaler' | 'veille' = le
+  // choix explicite de la commerciale, qui prime toujours.
+  const [reportMode, setReportMode] = useState('')
   // CKP4 — erreur DE CHAMP renvoyée par le serveur (400
   // `{erreurs: {outcome: "…"}}` pour un canal APPEL clôturé sans issue) :
   // s'affiche SOUS le contrôle concerné, jamais un toast générique qui
@@ -289,7 +313,7 @@ export default function RelanceEtapeRow({
     setPanel('')
     setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
-    setSansOuverture(false)
+    setSansOuverture(false); setReportMode('')
   }
 
   const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
@@ -368,13 +392,28 @@ export default function RelanceEtapeRow({
     })
   }
 
+  // CAD26 — le geste de report : décaler (historique) ou mettre en veille.
+  const veilleProposee = Boolean(reportDate)
+    && joursEntre(aujourdhuiCasablanca(), reportDate) > VEILLE_PROPOSEE_APRES_JOURS
+  const modeReport = reportMode || (veilleProposee ? 'veille' : 'decaler')
+
   const confirmerReporter = () => {
     if (!reportDate) return
     // F1 — forme SÛRE ancrée Casablanca CÔTÉ SERVEUR (`_parse_rappel`) :
     // jamais un `new Date(...).toISOString()`, qui interprète
     // `${date}T${heure}:00` dans le fuseau du NAVIGATEUR et décale l'heure
     // réellement reportée dès que l'agent n'est pas sur ce fuseau.
-    onReporter(etape.id, { rappel_le: reportDate, rappel_heure: reportHeure || '09:00' })
+    const payload = { rappel_le: reportDate, rappel_heure: reportHeure || '09:00' }
+    const enVeille = modeReport === 'veille'
+    if (enVeille) payload.mode = 'veille'
+    Promise.resolve(onReporter(etape.id, payload)).then((data) => {
+      if (!enVeille || !data) return
+      // La réponse serveur dit ce qui s'est réellement passé : la touche
+      // déplacée (même barreau) ou la première touche d'un réveil daté.
+      toastInfo(data.cadence === 'reveil' && etape.cadence !== 'reveil'
+        ? 'Plus d’un mois d’attente : la cadence est arrêtée et un réveil est daté.'
+        : 'Dossier en veille : la cadence reprendra à cette même touche.')
+    })
   }
 
   const heure = heureDue(etape)
@@ -562,6 +601,38 @@ export default function RelanceEtapeRow({
       )}
       {!readOnly && panel === 'reporter' && (
         <div className="mt-2 flex flex-col gap-1.5">
+          {/* CAD26 — DEUX gestes : décaler (quelques jours, la suite glisse)
+              ou mettre en veille (la cadence se tait et reprend au même
+              barreau ; au-delà d'un mois, réveil daté). Au-delà de 7 jours,
+              la veille est proposée d'elle-même — le choix explicite prime. */}
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Geste de report">
+            <Button
+              type="button" size="sm"
+              variant={modeReport === 'decaler' ? 'default' : 'outline'}
+              aria-pressed={modeReport === 'decaler'}
+              onClick={() => setReportMode('decaler')}
+            >
+              Décaler ce rappel
+            </Button>
+            <Button
+              type="button" size="sm"
+              variant={modeReport === 'veille' ? 'default' : 'outline'}
+              aria-pressed={modeReport === 'veille'}
+              onClick={() => setReportMode('veille')}
+            >
+              Mettre en veille jusqu’au…
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground" data-testid="suite-report">
+            {modeReport === 'veille'
+              ? 'La cadence se tait jusqu’à cette date et reprend à cette même touche — aucune relance ne part d’ici là. Au-delà d’un mois, elle bascule en réveil daté.'
+              : 'Cette touche et la suite du plan glissent de l’écart choisi.'}
+          </p>
+          {veilleProposee && !reportMode && (
+            <p className="text-xs text-warning" data-testid="veille-proposee">
+              Report de plus de {VEILLE_PROPOSEE_APRES_JOURS} jours : la mise en veille est proposée.
+            </p>
+          )}
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex flex-col gap-1">
               <Label className="text-xs" htmlFor={`report-date-${etape.id}`}>Reporter au</Label>

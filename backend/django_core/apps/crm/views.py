@@ -3393,7 +3393,21 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         delta). Corps : ``{due_at}`` (ISO) ou ``{rappel_le, rappel_heure?}``.
 
         Décaler la seule touche du jour serait faux : les suivantes se
-        téléscoperaient avec elle."""
+        téléscoperaient avec elle.
+
+        CAD26 — ``mode`` : ``decaler`` (défaut, le geste historique) ou
+        ``veille`` (« Mettre en veille jusqu'au… ») — la cadence se tait
+        jusqu'à la date et reprend au MÊME barreau ; au-delà d'un mois, elle
+        bascule en réveil daté (``services.mettre_en_veille``). La réponse est
+        la touche qui portera la reprise (forme `relance_etape_v2`)."""
+        mode = (request.data.get('mode') or '').strip()
+        if mode not in ('', 'decaler', 'veille'):
+            return Response(
+                {'erreurs': {'mode': (
+                    f'Geste inconnu : « {mode} ». Choisir « decaler » '
+                    '(décaler ce rappel) ou « veille » (mettre en veille '
+                    'jusqu’au…).')}},
+                status=status.HTTP_400_BAD_REQUEST)
         etape = self.get_object()
         brut = (request.data.get('due_at') or '').strip()
         quand = None
@@ -3411,6 +3425,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'due_at': 'Échéance invalide (datetime ISO attendu).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        if mode == 'veille':
+            from .services import mettre_en_veille
+            reprise = mettre_en_veille(
+                etape.lead, request.user, quand, etape=etape)
+            if reprise is None:
+                # Bascule sans réveil possible : la touche (arrêtée) est
+                # rendue telle quelle, jamais une réponse vide.
+                etape.refresh_from_db()
+                reprise = etape
+            return Response(self.get_serializer(reprise).data)
         from .services import reporter_prochaine_touche
         etape = reporter_prochaine_touche(
             etape.lead, request.user, quand, etape=etape)
