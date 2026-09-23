@@ -247,8 +247,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/raccordement.py``) : ``calepinage_troncons.json`` et
     # ``calepinage_raccordement.json`` en sont SORTIS, et le contrôle 2
     # vérifie désormais leurs routes comme celles des autres.
-    # CALX292 — la route ``rapport-etude.pdf/`` arrive avec CALX297.
-    'rapport_etude.json': 'GET calepinages/<pk>/rapport-etude.pdf/ (CALX297)',
+    # CALX297 a livré ``GET calepinages/<pk>/rapport-etude.pdf/``
+    # (``views/documents.py``) : ``rapport_etude.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

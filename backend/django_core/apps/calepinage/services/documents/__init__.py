@@ -15,3 +15,28 @@ Rien ici n'est un devis client : ``/proposal`` reste le seul PDF de devis
 (règle #4) et aucune pièce du module ne porte de montant (D5).
 """
 from __future__ import annotations
+
+
+# ── CALX297 — le rapport d'étude ────────────────────────────────────────────
+#: ``code du document -> chemin de SA fonction de mise en page`` : UNE seule
+#: fonction HTML par document, que le rendu PDF et l'aperçu (CALX323)
+#: partagent. Les pièces suivantes du lot AJOUTENT leur ligne ici.
+MISES_EN_PAGE = {
+    'rapport_etude': 'apps.calepinage.services.rapport:html_du_rapport',
+}
+
+
+def mise_en_page(code):
+    """La fonction de mise en page HTML du document ``code`` (import tardif).
+
+    Lève ``KeyError`` en nommant le code quand le document n'en a pas.
+    """
+    from importlib import import_module
+
+    try:
+        chemin = MISES_EN_PAGE[code]
+    except KeyError:
+        raise KeyError('Document sans mise en page déclarée : « %s ».'
+                       % code) from None
+    module, _, fonction = chemin.partition(':')
+    return getattr(import_module(module), fonction)
