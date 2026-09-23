@@ -442,6 +442,21 @@ const crmApi = {
   // `contract_samples/cadences_echues.json` (PACT10).
   getCadencesEchues: (params) =>
     api.get('/crm/relance-etapes/cadences-echues/', { params }),
+  // CAD101 — « pièce reçue » (facture / adresse / localisation) : clôt la
+  // touche (client joint), attache le document, pose « préparer le devis ».
+  // Multipart quand un fichier est joint, JSON sinon. Forme :
+  // `contract_samples/relance_piece_recue.json` (PACT10).
+  enregistrerPieceRecue: (id, { type_piece, note, fichier } = {}) => {
+    const url = `/crm/relance-etapes/${id}/piece-recue/`
+    if (fichier) {
+      const form = new FormData()
+      form.append('type_piece', type_piece)
+      if (note) form.append('note', note)
+      form.append('fichier', fichier)
+      return api.post(url, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    }
+    return api.post(url, note ? { type_piece, note } : { type_piece })
+  },
 }
 
 export default crmApi

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   Check, SkipForward, Phone, MessageCircle, Clock3, ChevronDown, ChevronRight,
-  Copy, Mail,
+  Copy, Mail, Paperclip,
 } from 'lucide-react'
 import {
   Badge, Button, Textarea, Input, Label,
@@ -304,6 +304,14 @@ const GLISSEMENT_DU_PLAN = 'Le reste du suivi glisse du même nombre de jours.'
 // ouvert ? » a un sens. Un appel a déjà son issue obligatoire (CKP2/CKP4).
 const CANAUX_MESSAGE = ['whatsapp', 'email']
 
+// CAD101 — les pièces qu'un client envoie spontanément (clés servies par le
+// serveur, `services.TYPES_PIECE_RECUE`).
+const PIECES_RECUES = [
+  { cle: 'facture', label: 'Facture' },
+  { cle: 'adresse', label: 'Adresse' },
+  { cle: 'localisation', label: 'Localisation' },
+]
+
 // CAD80 — « Appeler » cède la main au téléphone (`tel:`) : sur mobile la page
 // se décharge et se recharge au retour d'appel, et la note déjà tapée dans le
 // panneau « Fait » disparaissait. Le BROUILLON (note du panneau « Fait ») est
@@ -487,6 +495,10 @@ export default function RelanceEtapeRow({
   // parent rafraîchir (même callback que Fait/Sauter/Reporter, ex.
   // `CadenceFrise.onChanged`) — optionnel, une ligne readOnly n'en a pas besoin.
   onVisiteChanged,
+  // CAD101 — appelé après une « pièce reçue » enregistrée (la touche est
+  // close, une étape « préparer le devis » est née) pour que le parent relise
+  // sa file ; à défaut, `onVisiteChanged` (même rôle : « rafraîchis-toi »).
+  onPieceRecue,
 }) {
   // CAD80 — un brouillon de note laissé par un appel (page rechargée au
   // retour) rouvre le panneau « Fait » avec SA note, jamais une page vide.
@@ -535,6 +547,12 @@ export default function RelanceEtapeRow({
   const [erreurLangue, setErreurLangue] = useState('')
   // CAD78 — la bulle du TEXTE de la touche (script d'appel / texte e-mail).
   const [texteOuvert, setTexteOuvert] = useState(false)
+  // CAD101 — le geste « pièce reçue » : quelle pièce, le fichier éventuel,
+  // l'envoi en cours et l'erreur de CHAMP renvoyée par le serveur.
+  const [typePiece, setTypePiece] = useState('')
+  const [fichierPiece, setFichierPiece] = useState(null)
+  const [envoiPiece, setEnvoiPiece] = useState(false)
+  const [erreurPiece, setErreurPiece] = useState('')
   const busy = busyId === etape.id
   // CAD78 — une touche d'APPEL qui porte un gabarit a un script écrit mot pour
   // mot par le fondateur ; une touche E-MAIL a son texte. Ni l'une ni l'autre
@@ -581,6 +599,7 @@ export default function RelanceEtapeRow({
     setMotifRefus(''); setErreurMotif('')
     setPerduJunk(false); setMotifJunk('')
     setQueDarija(false); setErreurLangue('')
+    setTypePiece(''); setFichierPiece(null); setErreurPiece('')
   }
 
   // CAD10 — lecture paresseuse des motifs, au geste (jamais dans un effet) :
@@ -741,6 +760,36 @@ export default function RelanceEtapeRow({
     })
   }
 
+  // CAD101 — « pièce reçue » : un geste humain, envoyé tel quel au serveur
+  // (qui clôt la touche, attache le document et pose « préparer le devis »).
+  // La confirmation affichée vient de LA RÉPONSE (`prochaine_touche`),
+  // jamais d'un calcul d'écran ; un refus s'affiche SOUS le panneau.
+  const confirmerPiece = () => {
+    if (!typePiece || envoiPiece) return
+    if (typeof crmApi.enregistrerPieceRecue !== 'function') return
+    setEnvoiPiece(true); setErreurPiece('')
+    Promise.resolve()
+      .then(() => crmApi.enregistrerPieceRecue(etape.id, {
+        type_piece: typePiece, note: note.trim() || undefined,
+        fichier: fichierPiece || undefined,
+      }))
+      .then((r) => {
+        const data = r?.data
+        toastInfo(messageProchaineTouche(data?.prochaine_touche)
+          ?? 'Pièce reçue enregistrée.')
+        fermer()
+        const rafraichir = onPieceRecue ?? onVisiteChanged
+        rafraichir?.(etape.id, data)
+      })
+      .catch((err) => {
+        const erreurs = err?.response?.status === 400 ? err?.response?.data?.erreurs : null
+        setErreurPiece(
+          (erreurs && (erreurs.type_piece || erreurs.fichier || erreurs.etape))
+          || 'La pièce n’a pas pu être enregistrée — réessayez.')
+      })
+      .finally(() => setEnvoiPiece(false))
+  }
+
   const heure = heureDue(etape)
 
   return (
@@ -861,6 +910,15 @@ export default function RelanceEtapeRow({
             onClick={() => setPanel('reporter')}
           >
             <Clock3 className="size-3.5" /> Reporter
+          </Button>
+          {/* CAD101 — le client a envoyé sa facture / son adresse / sa
+              localisation : UN geste, sur toute touche ouverte (même à
+              venir — c'est un événement réel, pas une coche anticipée). */}
+          <Button
+            size="sm" variant="outline" disabled={busy}
+            onClick={() => setPanel('piece')}
+          >
+            <Paperclip className="size-3.5" /> Pièce reçue
           </Button>
           {/* CAD44 — sur une touche À VENIR, « Fait » (et « Sauter », qui
               clôt la touche comme lui) restent verrouillés : on ne coche pas
@@ -1145,6 +1203,53 @@ export default function RelanceEtapeRow({
                 || confirmationOuvertureRequise}
               onClick={confirmerFait}
             >
+              Confirmer
+            </Button>
+          </div>
+        </div>
+      )}
+      {!readOnly && panel === 'piece' && (
+        <div className="mt-2 flex flex-col gap-1.5" data-testid="panneau-piece-recue">
+          <p className="text-sm font-medium">Qu’a envoyé le client ?</p>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Pièce reçue">
+            {PIECES_RECUES.map((p) => (
+              <Button
+                key={p.cle} type="button" size="sm"
+                variant={typePiece === p.cle ? 'default' : 'outline'}
+                aria-pressed={typePiece === p.cle}
+                onClick={() => { setTypePiece(p.cle); setErreurPiece('') }}
+              >
+                {p.label}
+              </Button>
+            ))}
+          </div>
+          {/* La conséquence est DITE avant le clic (règle CAD17 : jamais un
+              effet caché) : c'est exactement ce que le serveur fait. */}
+          <p className="text-xs text-muted-foreground" data-testid="suite-piece-recue">
+            La touche est close (le client a répondu), le document est joint à la fiche et
+            l’étape « Préparer et envoyer le devis » est posée.
+          </p>
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs" htmlFor={`piece-fichier-${etape.id}`}>Fichier (facultatif)</Label>
+            <Input
+              id={`piece-fichier-${etape.id}`} type="file"
+              onChange={(e) => { setFichierPiece(e.target.files?.[0] ?? null); setErreurPiece('') }}
+            />
+          </div>
+          <Textarea
+            rows={2} placeholder="Note (facultative) — ex. l’adresse exacte"
+            value={note} onChange={(e) => setNote(e.target.value)}
+          />
+          {erreurPiece && (
+            <p className="text-xs text-danger" role="alert" data-testid="erreur-piece-recue">
+              {erreurPiece}
+            </p>
+          )}
+          <div className="flex justify-end gap-1.5">
+            <Button size="sm" variant="outline" disabled={envoiPiece} onClick={fermer}>
+              Annuler
+            </Button>
+            <Button size="sm" disabled={!typePiece || envoiPiece} loading={envoiPiece} onClick={confirmerPiece}>
               Confirmer
             </Button>
           </div>

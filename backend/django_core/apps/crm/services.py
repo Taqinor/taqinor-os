@@ -11276,6 +11276,96 @@ def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
         outcome=spec['outcome'], body=body)
 
 
+# ── CAD-A ── CAD101 — « pièce reçue » : le geste pour l'enregistrer ─────────
+#
+# Le client envoie sa facture, son adresse ou sa localisation sur WhatsApp :
+# c'est l'événement commercial le plus important du parcours, et le seul qui
+# ne s'enregistrait pas en un clic. Le raccordement WhatsApp entrant ne lit que
+# le texte, et un message entrant est une note SYSTÈME (``user=None``) que les
+# récepteurs d'arrêt ignorent — volontairement : un « merci » ne doit jamais
+# tuer une cadence (décision confirmée au round 2, CAD61). Le geste reste donc
+# HUMAIN : Meryem dit « pièce reçue » sur la touche ouverte.
+
+#: Les pièces qu'un client envoie spontanément, et leur libellé.
+TYPES_PIECE_RECUE = {
+    'facture': 'Facture',
+    'adresse': 'Adresse',
+    'localisation': 'Localisation',
+}
+
+
+def refus_piece_recue(etape, type_piece):
+    """CAD101 — ``(champ, message)`` si le geste ne vaut pas, sinon ``None``.
+    Le message NOMME le champ tel que l'écran l'affiche."""
+    if etape.statut != RelanceEtape.Statut.A_FAIRE:
+        return ('etape', '« Pièce reçue » : cette touche est déjà traitée — '
+                'le geste se fait sur une touche encore à faire.')
+    if (type_piece or '').strip() not in TYPES_PIECE_RECUE:
+        choix = ', '.join(v.lower() for v in TYPES_PIECE_RECUE.values())
+        return ('type_piece', f'« Pièce reçue » : choisissez la pièce ({choix}).')
+    return None
+
+
+def enregistrer_piece_recue(etape, user, *, type_piece, attachment=None,
+                            note=''):
+    """CAD101 — le client a ENVOYÉ une pièce : un geste, trois effets.
+
+      1. l'étape « Préparer et envoyer le devis (ou fixer un rappel) » est
+         posée (filet existant, même délai que le filet « joint ») — AVANT la
+         clôture, pour que le filet du récepteur « joint » la trouve ouverte et
+         n'en pose pas une seconde ;
+      2. la touche est CLOSE, issue « joint » (le client a répondu : la prise
+         de contact a atteint son but, récepteur MRY9 inchangé) avec la note
+         typée « Pièce reçue — facture », SANS barreau suivant ;
+      3. le document éventuel est ATTACHÉ à la ligne de chatter de la touche
+         (magasin ``records.Attachment`` existant, déposé par la vue).
+
+    Aucun arrêt n'est jamais déclenché par un message ENTRANT : ce geste est
+    humain. Renvoie ``(touche close, étape « préparer le devis »)``."""
+    lead = etape.lead
+    libelle_piece = TYPES_PIECE_RECUE[type_piece]
+    if (etape.libelle or '').strip() in (FILET_JOINT_LIBELLE,
+                                         _FILET_JOINT_LIBELLE_ANCIEN):
+        # La touche ouverte EST déjà « préparer le devis » : la clore pour la
+        # reposer à l'identique n'aurait aucun sens. La pièce est tracée (et
+        # attachée) sur la fiche, l'étape reste ouverte — son « Fait » vaudra
+        # toujours « devis parti » (QJ-FUNNEL).
+        ligne = LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Pièce reçue du client : {libelle_piece.lower()} — '
+                  f'l’étape « {etape.libelle} » reste ouverte.'
+                  + (f' Note : {note.strip()}' if (note or '').strip()
+                     else '')))
+        if attachment is not None:
+            ligne.attachment = attachment
+            ligne.save(update_fields=['attachment'])
+        return etape, etape
+    etape_devis = _poser_etape_de_filet(
+        lead, libelle=FILET_JOINT_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+        vise=timezone.now() + datetime.timedelta(days=FILET_JOINT_DELAI_JOURS),
+        note=f'Posée : pièce reçue du client ({libelle_piece.lower()}).')
+    note_typee = f'Pièce reçue — {libelle_piece.lower()}'
+    if (note or '').strip():
+        note_typee = f'{note_typee} — {note.strip()}'
+    corps = f'Pièce reçue du client : {libelle_piece.lower()}'
+    corps += ' (fichier joint).' if attachment is not None else '.'
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note_typee,
+        outcome='joint', body=corps, suite=False)
+    if attachment is not None:
+        ligne = (LeadActivity.objects
+                 .filter(company=lead.company, lead=lead, user=user,
+                         body__startswith=prefixe_activite_touche(etape))
+                 .order_by('-pk').first())
+        if ligne is not None:
+            ligne.attachment = attachment
+            ligne.save(update_fields=['attachment'])
+    _recaler_file(lead, user)
+    etape_devis.refresh_from_db()
+    return etape, etape_devis
+
+
 # ── CAD-A ── CAD10 — le motif de refus, FACULTATIF, au moment où il est dit ─
 #
 # « Refus » posait l'étape « Décider la suite » sans demander pourquoi ; le

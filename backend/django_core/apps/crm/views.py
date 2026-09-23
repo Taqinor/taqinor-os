@@ -3618,6 +3618,61 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         definir_langue_preferee(etape.lead, request.user, langue)
         return Response(self.get_serializer(etape).data)
 
+    @action(detail=True, methods=['post'], url_path='piece-recue',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def piece_recue(self, request, pk=None):
+        """CAD101 — « pièce reçue » : le client a envoyé sa facture, son
+        adresse ou sa localisation (sur WhatsApp, le plus souvent).
+
+        Corps (multipart ou JSON) : ``type_piece`` (``facture`` | ``adresse``
+        | ``localisation``, OBLIGATOIRE), ``fichier`` (facultatif — attaché à
+        la fiche, magasin ``records.Attachment`` existant), ``note``
+        (facultative). UN geste : la touche est close (issue « joint »), le
+        document attaché, et l'étape « Préparer et envoyer le devis » posée.
+
+        Réponse : la touche (forme `relance_etape_v2`) + ``prochaine_touche``
+        (l'étape « préparer le devis »), comme le « Fait ». Refus 400
+        ``{"erreurs": {champ: message}}`` nommant le champ. Jamais déclenché
+        par un message ENTRANT : c'est un geste humain. Écriture → garde
+        ``IsResponsableOrAdmin`` par défaut de ``get_permissions``."""
+        etape = self.get_object()
+        from .services import enregistrer_piece_recue, refus_piece_recue
+        type_piece = (request.data.get('type_piece') or '').strip()
+        refus = refus_piece_recue(etape, type_piece)
+        if refus:
+            champ, message = refus
+            return Response({'erreurs': {champ: message}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        attachment = None
+        fichier = request.FILES.get('fichier')
+        if fichier:
+            from django.contrib.contenttypes.models import ContentType
+
+            from apps.records.models import Attachment
+            from apps.records.storage import store_attachment
+            meta, err = store_attachment(fichier, company=etape.company)
+            if err:
+                return Response(
+                    {'erreurs': {'fichier': f'« Pièce jointe » : {err}'}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            attachment = Attachment.objects.create(
+                company=etape.company,
+                content_type=ContentType.objects.get(
+                    app_label='crm', model='lead'),
+                object_id=etape.lead_id, uploaded_by=request.user, **meta)
+        etape, etape_devis = enregistrer_piece_recue(
+            etape, request.user, type_piece=type_piece,
+            attachment=attachment,
+            note=(request.data.get('note') or '').strip())
+        data = self.get_serializer(etape).data
+        data['prochaine_touche'] = (
+            {'due_at': (etape_devis.due_at.isoformat()
+                        if etape_devis.due_at else None),
+             'due_date': etape_devis.due_date.isoformat(),
+             'canal': etape_devis.canal}
+            if etape_devis is not None else None)
+        return Response(data)
+
     @action(detail=True, methods=['post'])
     def reporter(self, request, pk=None):
         """MRY10 — Reporte CETTE touche (et décale les suivantes du même

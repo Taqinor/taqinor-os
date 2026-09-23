@@ -414,6 +414,9 @@ export default function RelancesDuJourWidget() {
                   onSauter={(id, note) => traiter(id, 'sauter', note)}
                   onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
                   onOuvrirMessage={setMessageEtape}
+                  // CAD101 — « pièce reçue » : la touche est close et une étape
+                  // « préparer le devis » est née — la file est relue.
+                  onPieceRecue={(id) => { retirer(id); charger() }}
                 />
                 <ArreterCadenceControl leadId={etape.lead} onArreter={arreterCadenceLead} />
               </Fragment>

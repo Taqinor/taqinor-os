@@ -13,8 +13,11 @@ vi.mock('../../../api/crmApi', () => ({
     getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
     getRelanceEtapeMessage: vi.fn(),
     whatsappRelanceEtape: vi.fn(),
+    enregistrerPieceRecue: vi.fn(),
   },
 }))
+
+import { toastInfo } from '../../../lib/toast'
 
 import crmApi from '../../../api/crmApi'
 
@@ -174,6 +177,50 @@ describe('CAD78 — le script d’appel du fondateur est ENFIN affiché', () => 
     ligne(etape, { onOuvrirMessage })
     fireEvent.click(screen.getByRole('button', { name: /WhatsApp/ }))
     expect(onOuvrirMessage).toHaveBeenCalledWith(etape)
+  })
+})
+
+describe('CAD101 — pièce reçue sur WhatsApp : le geste pour l’enregistrer', () => {
+  const REPONSE = exempleContrat('crm', 'relance_piece_recue')
+
+  it('le geste apparaît sur toute touche ouverte (appel, WhatsApp, même à venir), jamais en lecture seule', () => {
+    const { unmount } = ligne(ETAPE_APPEL)
+    expect(screen.getByRole('button', { name: /Pièce reçue/ })).toBeInTheDocument()
+    unmount()
+    const { unmount: u2 } = ligne(ETAPE_WHATSAPP, { enAvance: true })
+    expect(screen.getByRole('button', { name: /Pièce reçue/ })).toBeInTheDocument()
+    u2()
+    ligne(ETAPE_APPEL, { readOnly: true })
+    expect(screen.queryByRole('button', { name: /Pièce reçue/ })).not.toBeInTheDocument()
+  })
+
+  it('« Facture » + Confirmer : la touche est close et l’étape « préparer le devis » annoncée', async () => {
+    crmApi.enregistrerPieceRecue.mockResolvedValue({ data: REPONSE })
+    const onPieceRecue = vi.fn()
+    ligne(ETAPE_WHATSAPP, { onPieceRecue })
+    fireEvent.click(screen.getByRole('button', { name: /Pièce reçue/ }))
+    expect(screen.getByTestId('suite-piece-recue'))
+      .toHaveTextContent('l’étape « Préparer et envoyer le devis » est posée')
+    // Confirmer reste bloqué tant que la pièce n'est pas choisie.
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Facture' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.enregistrerPieceRecue).toHaveBeenCalledWith(
+      ETAPE_WHATSAPP.id, { type_piece: 'facture', note: undefined, fichier: undefined }))
+    await waitFor(() => expect(onPieceRecue).toHaveBeenCalledWith(ETAPE_WHATSAPP.id, REPONSE))
+    // La confirmation vient de LA RÉPONSE (`prochaine_touche`), jamais d'un calcul d'écran.
+    expect(toastInfo).toHaveBeenCalledWith(expect.stringMatching(/^Prochain appel programmé le /))
+  })
+
+  it('un refus serveur s’affiche SOUS le panneau, avec le message exact', async () => {
+    const erreur = { response: { status: 400, data: { erreurs: { etape: '« Pièce reçue » : cette touche est déjà traitée.' } } } }
+    crmApi.enregistrerPieceRecue.mockRejectedValue(erreur)
+    ligne(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: /Pièce reçue/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Adresse' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    expect(await screen.findByTestId('erreur-piece-recue'))
+      .toHaveTextContent('« Pièce reçue » : cette touche est déjà traitée.')
   })
 })
 
