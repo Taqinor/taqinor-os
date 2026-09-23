@@ -48,9 +48,10 @@ from __future__ import annotations
 import copy
 import math
 
-__all__ = ['COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE',
+__all__ = ['COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE', 'MOTIVATIONS',
            'SOURCES_RENDEMENT', 'STRATEGIES',
-           'StrategieInvalide', 'reserve_depuis_appareils',
+           'StrategieInvalide', 'candidates_omises', 'capacites_candidates',
+           'reserve_depuis_appareils',
            'simuler_batterie', 'simuler_groupes', 'specs_batterie',
            'tranches_horaires']
 
@@ -1157,4 +1158,258 @@ def simuler_groupes(charge_horaire, production_horaire, groupes, *,
         'groupes': publies,
         'agregat': agregat,
         'mention_agregat': _mention_agregat(lus),
+    }
+
+
+# ── CALX271 — des capacités CANDIDATES, classées par la motivation ─────────
+
+#: Les trois motivations d'OpenSolar (Battery Design Assistant —
+#: https://support.opensolar.com/hc/en-us/articles/10632948081551-Battery-Design-Assistant-on-OpenSolar-UK-AU-US),
+#: chacune avec l'indicateur PHYSIQUE qui la classe. « Maximize Savings »
+#: devient ici la COUVERTURE : ce module ne connaît aucun prix (D5), il dit
+#: quelle capacité évite le plus de kWh importés, jamais combien elle
+#: rapporte.
+MOTIVATIONS = {
+    'autoconso': {
+        'libelle': 'Autoconsommation',
+        'parite': 'Self-Consumption',
+        'indicateur': 'taux_autoconsommation',
+        'ordre': 'decroissant',
+        'strategie': 'autoconso',
+        'critere': (
+            'Taux d’autoconsommation : la part de la production solaire '
+            'consommée sur place, directement ou restituée par la batterie. '
+            'Classement du plus élevé au plus faible ; à égalité, la plus '
+            'petite capacité d’abord.'),
+    },
+    'couverture': {
+        'libelle': 'Couverture des besoins',
+        'parite': 'Maximize Savings',
+        'indicateur': 'taux_couverture',
+        'ordre': 'decroissant',
+        'strategie': 'autoconso',
+        'critere': (
+            'Taux de couverture : la part de la consommation servie sans le '
+            'réseau (production directe et restitution de la batterie). '
+            'Aucun montant n’entre : le classement dit quelle capacité évite '
+            'le plus de kWh importés, jamais combien elle rapporte. '
+            'Classement du plus élevé au plus faible ; à égalité, la plus '
+            'petite capacité d’abord.'),
+    },
+    'pointe': {
+        'libelle': 'Effacement de pointe',
+        'parite': 'Peak Demand Shaving',
+        'indicateur': 'pointe_apres_kw',
+        'ordre': 'croissant',
+        'strategie': 'peak_shaving',
+        'critere': (
+            'Pointe de soutirage après effacement (kW), la batterie ne '
+            'servant que le soutirage au-dessus du seuil SAISI de {seuil} kW. '
+            'Classement de la plus basse à la plus haute ; à égalité, la '
+            'plus petite capacité d’abord.'),
+    },
+}
+
+
+def candidates_omises(motivation, motif):
+    """La forme d'une comparaison OMISE — mêmes clés, aucun chiffre."""
+    regle = MOTIVATIONS.get(motivation) or {}
+    return {
+        'motivation': motivation,
+        'libelle': regle.get('libelle'),
+        'indicateur': regle.get('indicateur'),
+        'ordre': regle.get('ordre'),
+        'critere': None,
+        'strategie_simulee': regle.get('strategie'),
+        'candidates': [],
+        'avertissements': [],
+        'motif_absence': motif,
+    }
+
+
+def _candidate_saisie(brute, rang, communs):
+    """Une capacité candidate : un nombre SAISI, ou une fiche du stock."""
+    champ = f'capacites_kwh[{rang}]'
+    if isinstance(brute, dict):
+        capacite = _nombre(brute.get('capacite_utile_kwh'))
+        if capacite is None or capacite <= 0:
+            raise StrategieInvalide(
+                f'La capacité candidate n°{rang + 1} ne publie pas de '
+                'capacité UTILE lisible : elle se lit sur la fiche, elle ne '
+                'se suppose pas.', champ=f'{champ}.capacite_utile_kwh')
+        candidate = dict(communs)
+        for cle in ('puissance_charge_kw', 'puissance_decharge_kw',
+                    'rendement_ar_pct'):
+            if brute.get(cle) is not None:
+                candidate[cle] = brute[cle]
+        candidate.update({
+            'libelle': _texte(brute.get('libelle')) or f'{capacite:g} kWh',
+            'source': _texte(brute.get('source')) or 'saisie',
+            'capacite_utile_kwh': capacite,
+        })
+        return candidate
+    capacite = _nombre(brute)
+    if capacite is None or capacite <= 0:
+        raise StrategieInvalide(
+            f'La capacité candidate n°{rang + 1} est illisible (reçu : '
+            f'{brute!r}) : une capacité SAISIE est un nombre de kWh utiles '
+            'strictement positif.', champ=champ)
+    candidate = dict(communs)
+    candidate.update({'libelle': f'{capacite:g} kWh', 'source': 'saisie',
+                      'capacite_utile_kwh': capacite})
+    return candidate
+
+
+def _taux(numerateur, denominateur):
+    if denominateur <= _EPSILON:
+        return None
+    return round(max(0.0, numerateur) / denominateur, 4)
+
+
+def capacites_candidates(charge_horaire, production_horaire, *, motivation,
+                         capacites_kwh, puissance_charge_kw=None,
+                         puissance_decharge_kw=None, rendement_ar_pct=None,
+                         seuil_effacement_kw=None, pas_heures=1.0,
+                         heure_de_depart=0):
+    """CALX271 — des capacités CANDIDATES classées par la motivation du client.
+
+    Fait tourner le dispatch EXISTANT (:func:`simuler_batterie`) sur une
+    LISTE de capacités SAISIES — issues du stock, jamais inventées — et les
+    classe par l'indicateur de la motivation (:data:`MOTIVATIONS` :
+    ``taux_autoconsommation``, ``taux_couverture`` ou ``pointe_apres_kw``).
+    Aucun montant, aucun prix, aucune recommandation UNIQUE : une liste
+    ordonnée avec son critère écrit en toutes lettres.
+
+    Args:
+        motivation: ``autoconso`` | ``couverture`` | ``pointe``.
+        capacites_kwh: la liste des candidates — un nombre de kWh utiles
+            SAISI, ou ``{libelle, capacite_utile_kwh, puissance_charge_kw,
+            puissance_decharge_kw, rendement_ar_pct, source}`` lu sur une
+            fiche du stock.
+        puissance_charge_kw / puissance_decharge_kw / rendement_ar_pct: les
+            grandeurs COMMUNES des candidates qui ne portent pas les leurs
+            (rien n'est supposé : une candidate sans elles est ÉCARTÉE avec
+            son motif, jamais simulée à 100 %).
+        seuil_effacement_kw: SAISI — obligatoire pour ``pointe``.
+
+    Returns:
+        dict — ``motivation``, ``libelle``, ``indicateur``, ``ordre``,
+        ``critere``, ``strategie_simulee``, ``candidates`` (ordonnées :
+        ``rang``, ``libelle``, ``source``, ``capacite_utile_kwh``,
+        ``valeur`` — l'indicateur du critère —, ``taux_autoconsommation``,
+        ``taux_couverture``, ``pointe_apres_kw``, ``energie_restituee_kwh``,
+        ``import_reseau_kwh``, ``motif_absence``), ``avertissements``,
+        ``motif_absence``.
+
+    Raises:
+        StrategieInvalide: motivation inconnue (``motivation``), liste vide
+            (``capacites_kwh``), capacité illisible (``capacites_kwh[i]``),
+            seuil absent pour ``pointe`` (``seuil_effacement_kw``), courbes
+            absentes ou de périodes différentes.
+    """
+    regle = MOTIVATIONS.get(motivation)
+    if regle is None:
+        raise StrategieInvalide(
+            f'Motivation inconnue : « {motivation} ». Motivations admises : '
+            f'{", ".join(MOTIVATIONS)}.', champ='motivation')
+    if not isinstance(capacites_kwh, (list, tuple)) or not capacites_kwh:
+        raise StrategieInvalide(
+            'Aucune capacité candidate n’est fournie : la comparaison porte '
+            'sur des capacités du stock de la société, jamais sur des '
+            'capacités inventées.', champ='capacites_kwh')
+
+    charge = _serie(charge_horaire, champ='consommation')
+    production = _serie(production_horaire, champ='production')
+    if not charge or not production:
+        raise StrategieInvalide(
+            'La comparaison de capacités exige les DEUX courbes horaires '
+            '(consommation et production).', champ='production')
+    if len(charge) != len(production):
+        raise StrategieInvalide(
+            'Les deux courbes ne décrivent pas la même période '
+            f'(consommation : {len(charge)} h, production : '
+            f'{len(production)} h).', champ='production')
+
+    seuil = None
+    critere = regle['critere']
+    if regle['strategie'] == 'peak_shaving':
+        seuil = _nombre(seuil_effacement_kw)
+        if seuil is None or seuil < 0:
+            raise StrategieInvalide(
+                'Classer des capacités par la pointe exige un seuil '
+                'd’effacement SAISI (kW) : aucun seuil n’est deviné.',
+                champ='seuil_effacement_kw')
+        critere = critere.format(seuil=f'{seuil:g}')
+
+    communs = {'puissance_charge_kw': puissance_charge_kw,
+               'puissance_decharge_kw': puissance_decharge_kw,
+               'rendement_ar_pct': rendement_ar_pct}
+    saisies = [_candidate_saisie(brute, rang, communs)
+               for rang, brute in enumerate(capacites_kwh)]
+
+    total_conso = sum(charge)
+    total_prod = sum(production)
+    lignes = []
+    avertissements = []
+    for rang, candidate in enumerate(saisies):
+        ligne = {
+            'libelle': candidate['libelle'],
+            'source': candidate['source'],
+            'capacite_utile_kwh': candidate['capacite_utile_kwh'],
+            'valeur': None,
+            'taux_autoconsommation': None,
+            'taux_couverture': None,
+            'pointe_apres_kw': None,
+            'energie_restituee_kwh': None,
+            'import_reseau_kwh': None,
+            'motif_absence': '',
+        }
+        try:
+            resultat = simuler_batterie(
+                charge, production, strategie=regle['strategie'],
+                capacite_utile_kwh=candidate['capacite_utile_kwh'],
+                puissance_charge_kw=candidate['puissance_charge_kw'],
+                puissance_decharge_kw=candidate['puissance_decharge_kw'],
+                rendement_ar_pct=candidate['rendement_ar_pct'],
+                seuil_effacement_kw=seuil, pas_heures=pas_heures,
+                heure_de_depart=heure_de_depart)
+        except StrategieInvalide as refus:
+            ligne['motif_absence'] = (
+                f'{refus.motif} (champ : capacites_kwh[{rang}].'
+                f'{refus.champ}).')
+            avertissements.append(
+                f'« {candidate["libelle"]} » est ÉCARTÉE du classement : '
+                f'{refus.motif}')
+            lignes.append(ligne)
+            continue
+        ligne.update({
+            'taux_autoconsommation': _taux(
+                total_prod - resultat['surplus_injecte_kwh'], total_prod),
+            'taux_couverture': _taux(
+                total_conso - resultat['import_reseau_kwh'], total_conso),
+            'pointe_apres_kw': resultat['pointe_apres_kw'],
+            'energie_restituee_kwh': resultat['decharge_batterie_kwh'],
+            'import_reseau_kwh': resultat['import_reseau_kwh'],
+        })
+        ligne['valeur'] = ligne[regle['indicateur']]
+        lignes.append(ligne)
+
+    signe = -1.0 if regle['ordre'] == 'decroissant' else 1.0
+    classees = sorted(
+        lignes, key=lambda ligne: (
+            ligne['valeur'] is None,
+            signe * ligne['valeur'] if ligne['valeur'] is not None else 0.0,
+            ligne['capacite_utile_kwh']))
+
+    return {
+        'motivation': motivation,
+        'libelle': regle['libelle'],
+        'indicateur': regle['indicateur'],
+        'ordre': regle['ordre'],
+        'critere': critere,
+        'strategie_simulee': regle['strategie'],
+        'candidates': [{'rang': rang, **ligne}
+                       for rang, ligne in enumerate(classees, start=1)],
+        'avertissements': avertissements,
+        'motif_absence': '',
     }
