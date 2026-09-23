@@ -66,6 +66,38 @@ describe('CKP4 RelanceEtapeRow — issue obligatoire sur un appel', () => {
       ETAPE_APPEL.id, { outcome: 'non_joint', note: 'Répondeur' }))
   })
 
+  // CAD13 — la précision n'est plus effacée par la note tapée : elle l'ouvre.
+  it('« Répondeur » + note tapée : la note finale COMMENCE par la précision', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Répondeur' }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'),
+      { target: { value: '  sonne dans le vide, à retenter le soir  ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalled())
+    const { note } = onFait.mock.calls[0][1]
+    expect(note.startsWith('Répondeur')).toBe(true)
+    expect(note).toBe('Répondeur — sonne dans le vide, à retenter le soir')
+    expect(onFait.mock.calls[0][1].outcome).toBe('non_joint')
+  })
+
+  it('une note tapée sans précision part telle quelle', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'),
+      { target: { value: 'rappel prévu jeudi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { outcome: 'non_joint', note: 'rappel prévu jeudi' }))
+  })
+
   it('une réponse 400 {erreurs: {outcome}} s\'affiche SOUS le contrôle, jamais un toast générique', async () => {
     const erreur = {
       response: { status: 400, data: { erreurs: { outcome: 'Une issue est requise pour un appel.' } } },

@@ -442,7 +442,15 @@ export default function RelanceEtapeRow({
     if (reponseChoisie.rappel && rappelPasse) return
     if (confirmationOuvertureRequise) return
     const payload = {}
-    if (note.trim()) payload.note = note.trim()
+    // CAD13 — la PRÉCISION de la réponse (« Répondeur », « Occupé »,
+    // « Numéro invalide »…) SURVIT à la note tapée : elle ouvre la note, la
+    // saisie libre la complète (« Répondeur — sonne dans le vide, à retenter
+    // le soir »). L'écraser faisait dire « Pas de réponse » à l'historique
+    // sans jamais dire qu'un répondeur avait été atteint — ce qui distingue
+    // un numéro qui existe d'un numéro mort. Le serveur ne garde qu'un champ.
+    const noteTapee = note.trim()
+    if (reponseChoisie.note && noteTapee) payload.note = `${reponseChoisie.note} — ${noteTapee}`
+    else if (noteTapee) payload.note = noteTapee
     else if (reponseChoisie.note) payload.note = reponseChoisie.note
     if (reponseChoisie.outcome) payload.outcome = reponseChoisie.outcome
     // CAD-A — une réponse du client part sous sa CLÉ ; l'issue est dérivée
