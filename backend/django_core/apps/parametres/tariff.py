@@ -1110,6 +1110,131 @@ def indexation_depuis_reglages(reglages):
             'source': str(source).strip()}
 
 
+# ═════════════════════════════════════════════════════════════════════════════
+# CALX284 — FISCALITÉ ET AMORTISSEMENT EN PARAMÈTRES SOCIÉTÉ
+# ═════════════════════════════════════════════════════════════════════════════
+# Aucun amortissement ni aucun taux d'imposition n'existait : un projet
+# industriel ne pouvait pas être chiffré après impôt. PV*SOL offre
+# l'amortissement linéaire et dégressif et un taux marginal d'imposition
+# (https://help.valentin-software.com/pvsol/en/pages/financial-analysis/economic-parameters/) ;
+# PVsyst une section « Tax Depreciation » et un taux d'impôt sur le résultat
+# (https://www.pvsyst.com/help/project-design/economic-evaluation/financial-parameters.html).
+# Tout est SAISI par la société avec sa ``fiscalite_source`` : aucun taux,
+# aucune durée, aucun coefficient n'est supposé. Rien de saisi (mode
+# ``aucun``, taux vide) ⇒ le flux après impôt reprend le flux avant impôt.
+
+#: Modes d'amortissement admis ; ``aucun`` = le défaut (aucune dotation).
+AMORTISSEMENT_MODES = ('aucun', 'lineaire', 'degressif')
+
+#: Les champs fiscaux d'une société (CALX284), dans l'ordre de l'écran.
+CHAMPS_FISCALITE = ('taux_imposition_pct', 'amortissement_mode',
+                    'amortissement_duree_ans', 'amortissement_coefficient',
+                    'fiscalite_source')
+
+
+def _decimal_saisi(valeur):
+    """``Decimal`` fini lu dans ``valeur`` (virgule admise), ou ``None``."""
+    if isinstance(valeur, bool):
+        return None
+    try:
+        d = Decimal(str(valeur).strip().replace(',', '.'))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return d if d.is_finite() else None
+
+
+def erreurs_fiscalite(taux_imposition_pct, amortissement_mode,
+                      amortissement_duree_ans, amortissement_coefficient,
+                      fiscalite_source):
+    """Refus de la fiscalité société, ``{champ: message}`` (vide = valide).
+
+    * taux saisi ⇒ un pourcentage dans [0, 100[ ;
+    * ``lineaire`` / ``degressif`` ⇒ ``amortissement_duree_ans`` (entier ≥ 1)
+      obligatoire ; ``degressif`` ⇒ ``amortissement_coefficient`` (> 1)
+      obligatoire — jamais un coefficient supposé ;
+    * dès qu'un taux ou un amortissement est saisi, ``fiscalite_source`` est
+      OBLIGATOIRE (refus nommant le champ).
+    """
+    erreurs = {}
+    mode = (amortissement_mode or '').strip() if isinstance(
+        amortissement_mode, str) else ''
+    mode = mode or 'aucun'
+    if mode not in AMORTISSEMENT_MODES:
+        erreurs['amortissement_mode'] = (
+            f"amortissement_mode : « {mode} » inconnu — modes admis : "
+            f"{', '.join(AMORTISSEMENT_MODES)}.")
+    taux_saisi = not _vide(taux_imposition_pct)
+    if taux_saisi:
+        taux = _decimal_saisi(taux_imposition_pct)
+        if taux is None or taux < 0 or taux >= 100:
+            erreurs['taux_imposition_pct'] = (
+                "taux_imposition_pct : un taux en % compris entre 0 et 100 "
+                "(exclu) est attendu.")
+    if mode in ('lineaire', 'degressif') and _entier_positif(
+            amortissement_duree_ans) is None:
+        erreurs['amortissement_duree_ans'] = (
+            f"amortissement_duree_ans : obligatoire pour l'amortissement "
+            f"{mode} — durée en années (entier ≥ 1).")
+    elif not _vide(amortissement_duree_ans) and _entier_positif(
+            amortissement_duree_ans) is None:
+        erreurs['amortissement_duree_ans'] = (
+            "amortissement_duree_ans : un nombre entier d'années ≥ 1 est "
+            "attendu.")
+    coefficient = _decimal_saisi(amortissement_coefficient)
+    if mode == 'degressif' and _vide(amortissement_coefficient):
+        erreurs['amortissement_coefficient'] = (
+            "amortissement_coefficient : obligatoire pour l'amortissement "
+            "dégressif (taux dégressif = coefficient ÷ durée) — aucun "
+            "coefficient n'est supposé.")
+    elif not _vide(amortissement_coefficient) and (
+            coefficient is None or coefficient <= 1):
+        erreurs['amortissement_coefficient'] = (
+            "amortissement_coefficient : un coefficient strictement "
+            "supérieur à 1 est attendu (1 = linéaire).")
+    if (taux_saisi or mode in ('lineaire', 'degressif')) \
+            and _vide(fiscalite_source):
+        erreurs['fiscalite_source'] = (
+            "fiscalite_source : la source du taux d'imposition et de "
+            "l'amortissement est obligatoire (texte de loi, avis fiscal).")
+    return erreurs
+
+
+def fiscalite_depuis_reglages(reglages):
+    """Les grandeurs fiscales SAISIES, en arguments de
+    ``apps.ventes.economie.flux_apres_impot`` (``{}`` si rien de saisi).
+
+    Chaque nombre sort en ``{valeur, source, saisie_le}`` avec
+    ``fiscalite_source`` ; des réglages refusés par :func:`erreurs_fiscalite`
+    (source manquante comprise) ne rendent RIEN — jamais une valeur sans
+    provenance.
+    """
+    if reglages is None:
+        return {}
+    valeurs = {champ: getattr(reglages, champ, None)
+               for champ in CHAMPS_FISCALITE}
+    if erreurs_fiscalite(*valeurs.values()):
+        return {}
+    source = str(valeurs['fiscalite_source'] or '').strip()
+    mode = (valeurs['amortissement_mode'] or 'aucun').strip() or 'aucun'
+    parametres = {}
+    if not _vide(valeurs['taux_imposition_pct']):
+        parametres['taux_imposition_pct'] = {
+            'valeur': float(_decimal_saisi(valeurs['taux_imposition_pct'])),
+            'source': source, 'saisie_le': None}
+    if mode != 'aucun':
+        parametres['amortissement_mode'] = {
+            'valeur': mode, 'source': source, 'saisie_le': None}
+        parametres['amortissement_duree_ans'] = {
+            'valeur': _entier_positif(valeurs['amortissement_duree_ans']),
+            'source': source, 'saisie_le': None}
+        if mode == 'degressif':
+            parametres['amortissement_coefficient'] = {
+                'valeur': float(_decimal_saisi(
+                    valeurs['amortissement_coefficient'])),
+                'source': source, 'saisie_le': None}
+    return parametres
+
+
 def erreurs_reglages_tarif(reglages):
     """Point d'entrée UNIQUE des refus des réglages tarifaires, ``{champ: msg}``.
 
@@ -1140,4 +1265,6 @@ def erreurs_reglages_tarif(reglages):
     erreurs.update(erreurs_indexation(
         getattr(reglages, 'indexation_tarif_pct_an', None),
         getattr(reglages, 'indexation_source', None)))
+    erreurs.update(erreurs_fiscalite(
+        *(getattr(reglages, champ, None) for champ in CHAMPS_FISCALITE)))
     return erreurs
