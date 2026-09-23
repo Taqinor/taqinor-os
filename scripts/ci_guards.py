@@ -206,6 +206,17 @@ GARDES = {
         ('Test the query-budgets checker itself (AUD831)',
          'python -m unittest scripts.tests.test_check_query_budgets -v',
          '.'),
+        # CALX329 (lot 6, 23/09/2026) — meme famille que check_ecrans_
+        # atteignables/check_services_appeles : un document DECLARE dans
+        # SPEC_PIECES/PIECES_PRODUITES/l'inventaire `documents` du
+        # calepinage doit avoir un RENDU (le defaut de CALX309 — 4 pieces
+        # declarees, 2 rendues, invisible avant qu'un humain ouvre l'ecran).
+        ('Check documents calepinage (un document déclaré a un rendu, CALX329)',
+         'python scripts/check_documents_calepinage.py',
+         '.'),
+        ('Test the declared-document-renders checker itself (CALX329)',
+         'python -m unittest scripts.tests.test_check_documents_calepinage -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
