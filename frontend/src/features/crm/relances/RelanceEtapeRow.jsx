@@ -191,11 +191,25 @@ const REPONSE_DEVIS_MODIFIE = {
   suite: 'Une étape « Préparer le devis modifié — rappeler le client » est posée pour demain ; le suivi de ce devis s’arrête, et celui du nouveau devis démarrera de lui-même à son envoi.',
 }
 
+// CAD9 — « Décision à plusieurs » pose l'étiquette AU MOMENT où le client le
+// dit : le « dimanche famille » réapparaît dans le plan s'il n'est pas encore
+// dépassé. Deux nuances, distinguées dans la note : la famille (un délai) et
+// le propriétaire (un interlocuteur à changer).
+const REPONSES_DECISION_A_PLUSIEURS = [
+  { reponse: 'decision_famille', label: 'Décision à plusieurs — en famille',
+    suite: 'L’étiquette « Décision à plusieurs » est posée : le suivi continue, et le rendez-vous « dimanche famille » est ajouté au plan s’il n’est pas encore passé.' },
+  { reponse: 'decision_proprietaire', label: 'Décision à plusieurs — le propriétaire',
+    suite: 'L’étiquette « Décision à plusieurs » est posée et la note dit qu’il faut joindre le propriétaire : le suivi continue (dimanche famille ajouté s’il n’est pas encore passé).' },
+]
+
 // Les réponses du client propres à CHAQUE cadence de protocole (les étapes de
 // filet `generique` n'en ont pas : « À rappeler le… » y reporte déjà, CAD3).
 const REPONSES_CLIENT = {
   contact: [REPONSE_PLUS_TARD],
-  apres_devis: [REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, REPONSE_DEVIS_MODIFIE],
+  apres_devis: [
+    REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, REPONSE_DEVIS_MODIFIE,
+    ...REPONSES_DECISION_A_PLUSIEURS,
+  ],
   reveil: [REPONSE_PLUS_TARD],
 }
 

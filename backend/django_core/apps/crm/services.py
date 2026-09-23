@@ -10567,6 +10567,13 @@ REPONSE_PLUS_TARD = 'plus_tard'
 REPONSE_QUESTION_PRIX = 'question_prix'
 #: CAD8 — « Demande un devis modifié ».
 REPONSE_DEVIS_MODIFIE = 'devis_modifie'
+#: CAD9 — « Décision à plusieurs », en deux nuances que la note distingue.
+REPONSE_DECISION_FAMILLE = 'decision_famille'
+REPONSE_DECISION_PROPRIETAIRE = 'decision_proprietaire'
+#: L'étiquette posée — la forme AFFICHÉE de l'étiquette standard (seedée par
+#: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
+#: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
+TAG_DECISION_A_PLUSIEURS = 'Décision à plusieurs'
 
 #: Les cadences de protocole (``None`` = toutes, filets et réveils compris).
 _TOUTES_CADENCES = None
@@ -10612,6 +10619,26 @@ REPONSES_TOUCHE = {
         # barreau suivant du devis ÉCARTÉ avant que l'étape soit posée.
         'outcome': 'rappel',
         'note': 'Demande un devis modifié',
+        'cadences': ('apres_devis',),
+        'message': None,
+    },
+    # CAD9 — « à rappeler » : le client n'a pas tranché, il décide avec
+    # d'autres. L'issue fait naître le barreau suivant du protocole — et
+    # comme l'étiquette est posée AVANT, la partition recalculée réinjecte
+    # le « dimanche famille » s'il n'est pas encore dépassé.
+    REPONSE_DECISION_FAMILLE: {
+        'libelle': 'Décision à plusieurs — en famille',
+        'outcome': 'rappel',
+        'note': ('Décision à plusieurs — en famille (un délai : la décision '
+                 'se prend ensemble)'),
+        'cadences': ('apres_devis',),
+        'message': None,
+    },
+    REPONSE_DECISION_PROPRIETAIRE: {
+        'libelle': 'Décision à plusieurs — le propriétaire',
+        'outcome': 'rappel',
+        'note': ('Décision à plusieurs — le propriétaire décide (un '
+                 'interlocuteur à changer)'),
         'cadences': ('apres_devis',),
         'message': None,
     },
@@ -11032,3 +11059,29 @@ def repondre_devis_modifie(etape, user, *, note='', body=''):
         devis_id=etape.devis_id)
     _recaler_file(lead, user)
     return etape
+
+
+# ── CAD-A ── CAD9 — « Décision à plusieurs (famille / propriétaire) » ───────
+
+def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
+    """CAD9 — le client dit qu'il ne décide pas SEUL, sur une touche du
+    suivi de proposition.
+
+    Le barreau « dimanche famille » n'était posé que si le lead portait DÉJÀ
+    l'étiquette « Décision à plusieurs » au démarrage du plan, et aucune
+    réponse ne la posait : le lead moyen recevait 9 touches après-devis, pas
+    10. Ici l'étiquette est posée AU MOMENT où le client le dit, PUIS la
+    touche est close — dans cet ordre, parce que ``materialiser_touche_
+    suivante`` recalcule la partition à chaque touche (filtre d'étiquette de
+    ``calculer_echeances_cadence``) : le dimanche famille est RÉINJECTÉ s'il
+    n'est pas encore dépassé, jamais inventé s'il l'est.
+
+    La note distingue « en famille » (un DÉLAI) de « le propriétaire décide »
+    (un INTERLOCUTEUR à changer). Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[cle]
+    if not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS):
+        poser_tag_lead(lead, user, TAG_DECISION_A_PLUSIEURS)
+    return marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body)

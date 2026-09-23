@@ -253,6 +253,27 @@ describe('CAD8 RelanceEtapeRow — « Demande un devis modifié »', () => {
   })
 })
 
+// CAD9 — « Décision à plusieurs » : deux nuances sur le suivi de proposition,
+// chacune sous sa propre CLÉ (la note typée est composée côté serveur).
+describe('CAD9 RelanceEtapeRow — « Décision à plusieurs »', () => {
+  it('propose la famille ET le propriétaire sur le suivi de proposition', () => {
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.getByRole('button', { name: 'Décision à plusieurs — en famille' }))
+      .toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Décision à plusieurs — le propriétaire' }))
+      .toBeInTheDocument()
+  })
+
+  it('envoie la clé de la nuance choisie', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APRES_DEVIS, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Décision à plusieurs — le propriétaire' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APRES_DEVIS.id, { reponse: 'decision_proprietaire' }))
+  })
+})
+
 // CAD26 — « Reporter » offre DEUX gestes ; au-delà de 7 jours, la mise en
 // veille est proposée d'elle-même. Horloge figée (seul `Date` est simulé) :
 // mercredi 23/09/2026 à Casablanca.

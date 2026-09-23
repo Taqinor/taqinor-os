@@ -3289,10 +3289,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         Refus en 400 ``{"erreurs": {"reponse": …}}`` — le message nomme la
         réponse et dit où elle vaut."""
         from .services import (
+            REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
             REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER,
             REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_reponse_touche,
-            repondre_devis_modifie, repondre_ne_plus_contacter,
-            repondre_plus_tard, repondre_question_prix, reponse_touche)
+            repondre_decision_a_plusieurs, repondre_devis_modifie,
+            repondre_ne_plus_contacter, repondre_plus_tard,
+            repondre_question_prix, reponse_touche)
 
         etape = self.get_object()
         refus = refus_reponse_touche(etape, reponse)
@@ -3338,6 +3340,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         elif reponse == REPONSE_DEVIS_MODIFIE:
             etape = repondre_devis_modifie(
                 etape, request.user, note=note, body=body)
+        elif reponse in (REPONSE_DECISION_FAMILLE,
+                         REPONSE_DECISION_PROPRIETAIRE):
+            etape = repondre_decision_a_plusieurs(
+                etape, request.user, reponse, note=note, body=body)
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])
