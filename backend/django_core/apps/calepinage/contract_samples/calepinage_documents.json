@@ -1,0 +1,344 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/documents/",
+  "pourquoi": "CALX291 — CONTRAT D'ABORD (PACT10, incident « AO — Tableau de bord » du 03/08/2026 : 0 clé sur 6 concordante). LE CONSTAT : l'inventaire des sorties existe déjà (`views/sorties.py:87-165`, contrat `calepinage_sorties.json`, CAL175) et liste douze pièces TECHNIQUES (planche, plans, note de calcul, DXF, tableur, pack) — mais aucune entrée pour un rapport d'étude, un export JSON, un plan de câblage, un manuel propriétaire ou un dossier de fin de chantier : les LIVRABLES du lot 6, ceux qu'un client ou un bureau d'études reçoit une fois le chantier posé, n'ont aucun inventaire. `documents/` est CET inventaire, distinct de `sorties/` : il porte les neuf codes neufs de ce lot, chacun avec son HISTORIQUE de versions (une pièce livrée peut être régénérée après une modification du calepinage — CALX292/CALX297 la reproduiront) et, quand elle manque, la liste PRÉCISE de ce qu'il faut saisir pour la produire (`manque[]`) — jamais une phrase libre comme le `motif_indisponible` de `sorties/` (`views/sorties.py:108-117`), qui ne NOMME pas le champ manquant. Parité : PV*SOL (https://help.valentin-software.com/pvsol/en/pages/presentation/ — les gabarits de document sont listés et cochés au même endroit, avec leur état). PACT10 : le rédacteur des vues (`views/documents.py`, `services/documents/`, phase 2 de ce même lot) et le rédacteur de l'écran « Documents » (frontend, lane disjointe) inventeraient chacun sa propre forme sans ce fichier posé SEUL en premier — cette tâche ne code AUCUNE vue, elle publie l'exemple et le confirme par un test qui ne lit QUE ce fichier.\n\nLES NEUF CODES NEUFS, et pourquoi ils n'existent nulle part ailleurs : `rapport_etude` (CALX297, l'assemblage site+système+pertes+production+électrique — `note_calcul.py` n'en imprime qu'un condensé de 6 lignes) ; `rapport_ombrage` (CALX302, la carte de chaleur et les indicateurs TOF/TSRF par pan — aucune pièce imprimable ne les montre aujourd'hui) ; `export_projet_json` (contrat `export_projet.json`, CALX293 — le seul export JSON actuel, `io_layout.exporter_layout`, ne rend QUE le document de pose) ; `plan_cablage` (le schéma unifilaire et les cheminements mesurés, jamais assemblés en une seule pièce) ; `manuel_proprietaire` (mise en service et entretien — inexistant) ; `document_asbuilt` (l'implantation posée comparée à la conception, avec preuve terrain) ; `dossier_fin_chantier` (les pièces techniques fusionnées PLUS les preuves terrain — le pack technique actuel, `services/pack_technique.py:50-104`, en déclare quatre et n'en rend que deux) ; `diagramme_pertes` (l'image SVG→PNG du composant `DiagrammePertes`, capturée par le NAVIGATEUR — aucun rasteriseur SVG n'est installé côté serveur, même limite que `sorties/planche_png`, CAL175) ; `presentation_compacte` (une synthèse une page, pendant compact du rapport d'étude).\n\nDISCIPLINE DU NULL ET DE LA COMPLÉTUDE — même régime que `calepinage_sorties.json` : une pièce indisponible reste LISTÉE (on ne cache jamais une sortie, on dit pourquoi elle manque) et porte AU MOINS une ligne `manque` qui NOMME le champ, son libellé lisible et OÙ le saisir — jamais une phrase générique. `versions[]` est vide tant qu'aucune génération n'a eu lieu, jamais `null` (une liste vide se lit sans ambiguïté « rien produit », un `null` se lirait « fonctionnalité absente »). `layout_hash`/`version_moteur`/`langue` valent `null` sur un calepinage sans conception — jamais une chaîne vide (`exemple_vide`).\n\nAUCUN CHIFFRE, AUCUN PRIX — D5. Ces neuf pièces sont TECHNIQUES : aucune ne porte `prix_achat`, coût de revient ni marge (gardé par `tests/test_aucun_prix_achat.py`, CAL122, qui balaie aussi CE fichier) ; aucune n'est un devis client — le PDF de devis reste rendu par le seul moteur premium (règle #4). Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiant à un chiffre, empreinte visiblement factice, libellés « d'essai »).\n\nLA SECONDE ROUTE PORTÉE ICI, `publication_image` — CAL175 l'a déjà établi pour `sorties/` : aucun rasteriseur SVG n'est installé côté serveur (weasyprint 62.3 n'a plus de sortie PNG). `diagramme_pertes` et les futures cartes d'ombrage/rendu 3D (CALX302) sont donc des PNG produits par le NAVIGATEUR (conversion SVG→PNG déjà en place, `frontend/src/features/ao/studio/svgToPng.js`) puis DÉPOSÉS par `POST .../image-document/` (`{genre, fichier}`). Ce n'est pas l'endpoint racine de ce fichier — `forme_serveur` n'est donc PAS déclarée dessus, et `scripts/check_api_shapes.py` ne le compare à aucune vue tant qu'aucune n'existe (« un doute ne rougit jamais ») ; il documente le CORPS de la requête pour que la lane qui écrira `views/documents.py` (phase 2, hors périmètre de CALX291) n'invente pas la sienne. L'énumération EXACTE des `genre` admis appartient à CALX302 (`'ombrage'|'sankey'|'plan3d'`), pas à ce fichier.",
+  "exemple": {
+    "calepinage": 1,
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "version_moteur": "calepinage-1.0.0",
+    "langue": "fr",
+    "documents": [
+      {
+        "code": "rapport_etude",
+        "libelle": "Rapport d'étude (site, système, pertes, production, électrique)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/rapport-etude.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null,
+        "manque": [],
+        "versions": [
+          {
+            "numero": 1,
+            "produit_le": "2026-09-19T11:30:00Z",
+            "produit_par_utilisateur": {
+              "id": 1,
+              "nom_complet": "Utilisateur d'essai"
+            },
+            "attachment": 501
+          }
+        ]
+      },
+      {
+        "code": "rapport_ombrage",
+        "libelle": "Rapport d'ombrage (cartes de chaleur et TOF/TSRF)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/rapport-ombrage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucun accès solaire par module mesuré : le rapport d'ombrage ne se rend pas sans une trace d'ombre par module.",
+        "manque": [
+          {
+            "champ": "roof_layout.zones[].geometry.solarAccess.values",
+            "libelle": "Accès solaire par module (matrice d'ombrage)",
+            "ou_saisir": "Calculer l'ombrage sur l'onglet Toiture avant d'imprimer ce rapport."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "export_projet_json",
+        "libelle": "Export JSON projet + résultats",
+        "format": "json",
+        "endpoint": "/api/django/calepinage/calepinages/1/export-projet.json/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null,
+        "manque": [],
+        "versions": []
+      },
+      {
+        "code": "plan_cablage",
+        "libelle": "Plan de câblage (schéma unifilaire + cheminements)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/plan-cablage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucun schéma unifilaire tracé et aucun cheminement mesuré : le plan de câblage assemble les deux, et aucun des deux n'existe encore.",
+        "manque": [
+          {
+            "champ": "electrique.chainage",
+            "libelle": "Schéma unifilaire (chaînage électrique)",
+            "ou_saisir": "Chaîner l'électrique sur l'onglet Électrique."
+          },
+          {
+            "champ": "troncons",
+            "libelle": "Cheminements mesurés",
+            "ou_saisir": "Tracer au moins un cheminement sur le plan avant d'imprimer."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "manuel_proprietaire",
+        "libelle": "Manuel propriétaire (mise en service et entretien)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/manuel-proprietaire.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null,
+        "manque": [],
+        "versions": []
+      },
+      {
+        "code": "document_asbuilt",
+        "libelle": "Document as-built (conforme à l'exécution)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/document-asbuilt.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune preuve terrain déposée : le document as-built compare l'implantation posée à la conception, et rien ne l'atteste encore.",
+        "manque": [
+          {
+            "champ": "images",
+            "libelle": "Preuve terrain (photo déposée depuis le chantier)",
+            "ou_saisir": "Déposer au moins une photo depuis l'onglet Documents."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "dossier_fin_chantier",
+        "libelle": "Dossier de fin de chantier (pièces fusionnées + preuves terrain)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/dossier-fin-chantier.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune preuve terrain déposée : le dossier de fin de chantier fusionne les pièces techniques et les preuves terrain, et la seconde manque encore.",
+        "manque": [
+          {
+            "champ": "images",
+            "libelle": "Preuves terrain (photos)",
+            "ou_saisir": "Déposer au moins une photo de fin de chantier depuis l'onglet Documents."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "diagramme_pertes",
+        "libelle": "Diagramme de pertes (cascade, capturé par le navigateur)",
+        "format": "png",
+        "endpoint": "/api/django/calepinage/calepinages/1/documents/",
+        "produit_par": "navigateur",
+        "disponible": false,
+        "motif_indisponible": "Aucune image déposée : le diagramme de pertes est capturé par le navigateur puis déposé par POST image-document, et rien n'a encore été joint.",
+        "manque": [
+          {
+            "champ": "images",
+            "libelle": "Diagramme de pertes (image déposée par le navigateur)",
+            "ou_saisir": "Ouvrir le panneau Pertes et déposer l'image du diagramme."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "presentation_compacte",
+        "libelle": "Présentation compacte (synthèse une page)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/1/presentation-compacte.pdf/",
+        "produit_par": "serveur",
+        "disponible": true,
+        "motif_indisponible": null,
+        "manque": [],
+        "versions": []
+      }
+    ],
+    "images": [
+      {
+        "genre": "ombrage",
+        "attachment": 512,
+        "depose_le": "2026-09-19T11:30:00Z"
+      }
+    ]
+  },
+  "exemple_vide": {
+    "calepinage": 2,
+    "layout_hash": null,
+    "version_moteur": null,
+    "langue": null,
+    "documents": [
+      {
+        "code": "rapport_etude",
+        "libelle": "Rapport d'étude (site, système, pertes, production, électrique)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/rapport-etude.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "rapport_ombrage",
+        "libelle": "Rapport d'ombrage (cartes de chaleur et TOF/TSRF)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/rapport-ombrage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "export_projet_json",
+        "libelle": "Export JSON projet + résultats",
+        "format": "json",
+        "endpoint": "/api/django/calepinage/calepinages/2/export-projet.json/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "plan_cablage",
+        "libelle": "Plan de câblage (schéma unifilaire + cheminements)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/plan-cablage.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "manuel_proprietaire",
+        "libelle": "Manuel propriétaire (mise en service et entretien)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/manuel-proprietaire.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "document_asbuilt",
+        "libelle": "Document as-built (conforme à l'exécution)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/document-asbuilt.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "dossier_fin_chantier",
+        "libelle": "Dossier de fin de chantier (pièces fusionnées + preuves terrain)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/dossier-fin-chantier.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "diagramme_pertes",
+        "libelle": "Diagramme de pertes (cascade, capturé par le navigateur)",
+        "format": "png",
+        "endpoint": "/api/django/calepinage/calepinages/2/documents/",
+        "produit_par": "navigateur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      },
+      {
+        "code": "presentation_compacte",
+        "libelle": "Présentation compacte (synthèse une page)",
+        "format": "pdf",
+        "endpoint": "/api/django/calepinage/calepinages/2/presentation-compacte.pdf/",
+        "produit_par": "serveur",
+        "disponible": false,
+        "motif_indisponible": "Aucune conception enregistrée : ce document se compose de la conception et du résultat enregistrés, jamais d'un calcul reconstitué.",
+        "manque": [
+          {
+            "champ": "roof_layout",
+            "libelle": "Conception enregistrée (toiture et modules)",
+            "ou_saisir": "Dessiner et enregistrer une conception sur l'onglet Toiture."
+          }
+        ],
+        "versions": []
+      }
+    ],
+    "images": []
+  },
+  "publication_image": {
+    "endpoint": "POST /api/django/calepinage/calepinages/<int:pk>/image-document/",
+    "notes": {
+      "png_navigateur": "D-CAL10 — même limite que `sorties/planche_png` (CAL175) : aucun rasteriseur SVG n'est installé côté serveur (weasyprint 62.3 n'a plus de sortie PNG, ni cairosvg ni svglib ne sont des dépendances). Le PNG est une conversion NAVIGATEUR d'un SVG déjà rendu à l'écran, jamais un rendu serveur.",
+      "genres": "L'énumération EXACTE des `genre` admis (`'ombrage'|'sankey'|'plan3d'`) est déclarée par CALX302, pas par ce fichier — CALX291 documente seulement la FORME du corps et de la réponse.",
+      "stockage": "L'image est stockée en `records.Attachment` (clé MinIO, jamais de binaire au dépôt), bornée à la société du calepinage.",
+      "argent": "Aucune clé de montant dans le corps ni dans la réponse — un dépôt d'image ne porte ni prix, ni coût, ni marge."
+    },
+    "body": {
+      "genre": "ombrage",
+      "fichier": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA... (PNG produit par le navigateur)"
+    },
+    "reponse": {
+      "ok": true,
+      "genre": "ombrage",
+      "attachment": 512,
+      "depose_le": "2026-09-19T11:30:00Z"
+    }
+  }
+}
