@@ -345,3 +345,8 @@ def inventaire_des_documents(calepinage):
         # cette porte n'a pas été posée.
         'images': [],
     }
+
+
+# ── CALX310 — le plan de câblage des chaînes ────────────────────────────────
+MISES_EN_PAGE['plan_cablage'] = (
+    'apps.calepinage.services.documents.plan_cablage:html_du_plan_cablage')

@@ -245,11 +245,12 @@ SANS_PRODUCTEUR_PUR = {
 
     # CALX293
     'export_projet.json':
-        "EXPORT JSON versionné du projet et de ses résultats : sa route "
-        'GET export-projet.json/ arrive avec CALX312 (phase 2) — '
-        '`format_version`, les blocs exigés et le détecteur prix/cout/marge '
-        'sont affirmés sans base par '
-        'apps/calepinage/tests/test_calx293_contrat_export_projet.py',
+        "EXPORT JSON versionné du projet et de ses résultats, servi par "
+        'GET export-projet.json/ (CALX312) : son producteur lit le devis, le '
+        'CRM et le résultat du moteur en base — la forme servie (toutes clés, '
+        'blocs imbriqués) est affirmée CONTRE l’exemple committé sans base '
+        'par apps/calepinage/tests/test_calx312_export_projet.py, le contrat '
+        'lui-même par test_calx293_contrat_export_projet.py',
 
     # CALX267
     'calepinage_batterie.json':
@@ -278,8 +279,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # CALX321 a livré ``GET calepinages/<pk>/documents/`` (``views/documents.py``,
     # action ``documents``) : ``calepinage_documents.json`` en est SORTI —
     # même retrait que CALX297 avant elle.
-    # CALX293 : la route GET export-projet.json/ n'arrive qu'avec CALX312.
-    'export_projet.json': 'CALX312',
+    # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
+    # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
