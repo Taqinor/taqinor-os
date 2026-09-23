@@ -177,6 +177,170 @@ def effective_kwh_price(settings, kwh, classe='residentiel'):
     return _q(monthly_bill(settings, kwh, classe) / kwh)
 
 
+# ── CALX257 — l'INVERSE du barème : facture MAD TTC/mois → kWh/mois ──────────
+# Les deux jumeaux ci-dessus vont kWh → MAD ; le module Calepinage avait
+# besoin du sens inverse (ses profils partent des FACTURES du lead) et rendait
+# ``kwh: null`` faute de barème. L'inversion est écrite ICI, à côté d'eux, pour
+# qu'elle soit par construction l'inverse de LEUR facture — le calepinage ne
+# fait que l'appeler (D5 : l'argent se chiffre hors du module).
+#
+# CE QUI EST RETIRÉ AVANT D'INVERSER : les charges FIXES d'abonnement
+# (``redevance_compteur_mad_mois``) — les attribuer à l'énergie fabriquerait
+# ~29 kWh/mois fantômes (QJR142 (d), moteur de devis). Réglage VIDE ⇒ ``kwh``
+# vaut ``None`` avec un motif qui le NOMME : le défaut relevé sur facture vit
+# dans le moteur de devis (``apps.ventes``), que cette app de FONDATION ne lit
+# jamais — et le recopier ici ferait une seconde table.
+
+#: Classes admises — la classe est SAISIE, jamais supposée : un même montant ne
+#: décrit pas la même énergie au barème résidentiel et au tarif force motrice.
+#: ``agricole`` est l'alias déjà accepté par :func:`monthly_bill`.
+CLASSES_INVERSION = ('residentiel', 'force_motrice', 'agricole')
+
+#: Le réglage qui porte le barème, nommé dans chaque motif.
+REGLAGE_TARIF = 'Paramètres → Tarification & ROI'
+
+#: Ce que le montant inversé est censé contenir — publié avec chaque résultat.
+PERIMETRE_INVERSION = (
+    "Montant inversé : la facture TTC du mois, charges fixes d'abonnement "
+    "comprises (retirées avant l'inversion). La taxe audiovisuelle (TPPAN) "
+    "n'est pas modélisée par ce barème : elle n'est pas retirée.")
+
+#: Borne haute de la recherche (kWh/mois). Au-delà, le montant ne décrit aucune
+#: consommation du barème : ``kwh`` vaut ``None`` avec son motif, jamais la
+#: borne elle-même (même règle que le moteur de devis, QJR142 (e)).
+_PLAFOND_INVERSION_KWH = Decimal('1000000')
+
+_DIXIEME = Decimal('0.1')
+
+
+class FactureInvalide(ValueError):
+    """Une entrée de l'inversion refusée, en NOMMANT le champ fautif."""
+
+    def __init__(self, message, *, champ=''):
+        super().__init__(message)
+        self.champ = champ
+        self.motif = message
+
+
+def _resultat_inversion(settings, classe, kwh, motif, *, charges_fixes=None,
+                        energie=None):
+    return {
+        'kwh': kwh,
+        'motif': motif,
+        'classe': classe,
+        'charges_fixes_mad': charges_fixes,
+        'energie_mad': energie,
+        'reglage': REGLAGE_TARIF,
+        'reglage_version': getattr(settings, 'version', None),
+        'perimetre': PERIMETRE_INVERSION,
+    }
+
+
+def kwh_depuis_facture(settings, mad_ttc, *, classe):
+    """Facture mensuelle TTC (MAD) → consommation du mois (kWh), ou ``None``.
+
+    L'INVERSE de :func:`monthly_bill` : charges fixes retirées, puis recherche
+    DICHOTOMIQUE de ``inf{k : monthly_bill(k) ≥ énergie}`` — le seul inverse
+    correct d'une facture qui SAUTE aux bornes du barème sélectif. Un montant
+    tombé dans un saut est résolu à la borne BASSE (côté prudent : moins de kWh,
+    jamais plus). Ancre : la facture réelle SRM n° 643769639 (359 kWh ×
+    1,381704 = 496,03 MAD TTC d'énergie, ``models_tariff.py``).
+
+    Args:
+        settings: le ``TariffSettings`` DE LA SOCIÉTÉ, déjà chargé — ``None``
+            quand aucune société n'est résolue (jamais le réglage de repli).
+        mad_ttc: le montant TTC de la facture du mois.
+        classe: ``residentiel`` | ``force_motrice`` (alias ``agricole``),
+            SAISIE par l'appelant.
+
+    Returns:
+        dict — ``kwh`` (``Decimal`` au dixième, ou ``None``), ``motif`` (vide
+        quand la conversion a abouti, sinon la raison qui NOMME le réglage ou
+        le champ en cause), ``classe``, ``charges_fixes_mad``, ``energie_mad``,
+        ``reglage``, ``reglage_version``, ``perimetre``.
+
+    Raises:
+        FactureInvalide: classe absente ou inconnue (``champ='classe'``),
+            montant illisible ou négatif (``champ='mad_ttc'``).
+    """
+    if classe not in CLASSES_INVERSION:
+        raise FactureInvalide(
+            f'Classe tarifaire « {classe} » refusée : elle doit être saisie '
+            f'parmi {", ".join(CLASSES_INVERSION)}.', champ='classe')
+
+    if settings is None:
+        return _resultat_inversion(settings, classe, None, (
+            f"Aucune société résolue : le réglage « {REGLAGE_TARIF} » "
+            '(TariffSettings) est introuvable. La conversion MAD → kWh '
+            "n'est pas faite — jamais à partir d'un prix moyen supposé."))
+
+    if mad_ttc in (None, ''):
+        return _resultat_inversion(settings, classe, None, (
+            'Aucun montant de facture pour ce mois : rien à convertir.'))
+    try:
+        montant = Decimal(str(mad_ttc))
+    except Exception:  # noqa: BLE001 — InvalidOperation et types exotiques
+        raise FactureInvalide(
+            f'Montant de facture illisible (reçu : {mad_ttc!r}).',
+            champ='mad_ttc')
+    if not montant.is_finite():
+        raise FactureInvalide(
+            f'Montant de facture illisible (reçu : {mad_ttc!r}).',
+            champ='mad_ttc')
+    if montant < 0:
+        raise FactureInvalide(
+            f'Un montant de facture ne peut pas être négatif (reçu : '
+            f'{montant}).', champ='mad_ttc')
+
+    fixes = settings.redevance_compteur_mad_mois
+    if fixes is None:
+        return _resultat_inversion(settings, classe, None, (
+            "Les charges fixes d'abonnement ne sont pas déclarées "
+            f"(« {REGLAGE_TARIF} » → redevance_compteur_mad_mois) : sans "
+            'elles, la location du compteur serait comptée comme de '
+            "l'énergie. Renseignez-les (0 si votre facture n'en porte pas) "
+            'pour convertir.'))
+    fixes = Decimal(str(fixes))
+    if fixes < 0:
+        return _resultat_inversion(settings, classe, None, (
+            "Les charges fixes d'abonnement déclarées sont négatives "
+            f'({fixes} MAD, « {REGLAGE_TARIF} » → '
+            'redevance_compteur_mad_mois) : conversion refusée.'),
+            charges_fixes=fixes)
+
+    energie = montant - fixes
+    if energie < 0:
+        return _resultat_inversion(settings, classe, None, (
+            f'Le montant ({montant} MAD) est inférieur aux charges fixes '
+            f"d'abonnement déclarées ({fixes} MAD) : il ne correspond à "
+            'aucune consommation.'), charges_fixes=fixes, energie=energie)
+    if energie == 0:
+        return _resultat_inversion(settings, classe, Decimal('0.0'), '',
+                                   charges_fixes=fixes, energie=energie)
+
+    def facture(kwh):
+        return monthly_bill(settings, kwh, classe)
+
+    bas, haut = Decimal('0'), Decimal('1000')
+    while facture(haut) < energie and haut < _PLAFOND_INVERSION_KWH:
+        haut *= 2
+    if facture(haut) < energie:
+        return _resultat_inversion(settings, classe, None, (
+            f"Le montant ({montant} MAD) dépasse ce que le barème « "
+            f"{REGLAGE_TARIF} » facture pour {_PLAFOND_INVERSION_KWH} kWh/mois "
+            ": il ne décrit aucune consommation de ce barème."),
+            charges_fixes=fixes, energie=energie)
+    for _ in range(60):
+        milieu = (bas + haut) / 2
+        if facture(milieu) < energie:
+            bas = milieu
+        else:
+            haut = milieu
+    kwh = haut.quantize(_DIXIEME, rounding=ROUND_HALF_UP)
+    return _resultat_inversion(settings, classe, kwh, '',
+                               charges_fixes=fixes, energie=energie)
+
+
 def annual_productible_kwh(settings, kwc, productible_kwh_kwc=None):
     """Production annuelle (kWh) d'un champ ``kwc`` kWc.
 
