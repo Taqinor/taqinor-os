@@ -63,6 +63,7 @@ __all__ = [
     'CODE_DOCUMENT', 'CHEMIN_CONTRAT', 'MODULES_DE_SECTION', 'RapportRefuse',
     'sections_declarees', 'valeur_au_chemin', 'entrees_manquantes',
     'verifier_etancheite', 'resultat_du_rapport', 'redacteur_de_section',
+    'feuille_de_section',
     'nombre_tel_que_servi', 'valeur_imprimable', 'construire_rapport',
     'contexte_de_section', 'html_de_rapport', 'html_du_rapport',
     'rendre_rapport', 'CSS_RAPPORT',
@@ -202,8 +203,8 @@ def resultat_du_rapport(calepinage):
     return servi, stocke
 
 
-def redacteur_de_section(code):
-    """``html_de_section`` du module rédacteur de ``code``, ou ``None``.
+def _module_de_section(code):
+    """Le module rédacteur de ``code``, ou ``None`` s'il n'existe pas ENCORE.
 
     Seule l'ABSENCE du module lui-même fait retomber sur le rendu générique :
     une erreur d'import À L'INTÉRIEUR d'un rédacteur remonte (un défaut ne se
@@ -214,12 +215,25 @@ def redacteur_de_section(code):
         return None
     chemin = '%s.%s' % (__name__, nom)
     try:
-        module = importlib.import_module(chemin)
+        return importlib.import_module(chemin)
     except ModuleNotFoundError as erreur:
         if erreur.name != chemin:
             raise
         return None
-    return getattr(module, 'html_de_section', None)
+
+
+def redacteur_de_section(code):
+    """``html_de_section(contexte)`` du rédacteur de ``code``, ou ``None``."""
+    return getattr(_module_de_section(code), 'html_de_section', None)
+
+
+def feuille_de_section(code):
+    """La feuille ``CSS_SECTION`` du rédacteur de ``code``, ou ``''``.
+
+    Ramassée par l'assembleur dans le ``<head>`` : un rédacteur ne pose jamais
+    de ``<style>`` au milieu du corps.
+    """
+    return getattr(_module_de_section(code), 'CSS_SECTION', '') or ''
 
 
 # ── Impression TELLE QUE SERVIE ─────────────────────────────────────────────
@@ -471,7 +485,7 @@ def html_de_rapport(rapport):
     from ..documents.libelles_document import libelle, libelles_de_garde
 
     langue = rapport['langue']
-    corps = []
+    corps, feuilles = [], [CSS_RAPPORT]
     for section in rapport['sections']:
         if section['code'] == 'garde':
             corps.append(page_de_garde_html(
@@ -479,10 +493,11 @@ def html_de_rapport(rapport):
                 rapport['styles'], libelles=libelles_de_garde(langue)))
         else:
             corps.append(_html_section(rapport, section))
+            feuilles.append(feuille_de_section(section['code']))
     return document_html(
         ''.join(corps), titre=libelle(CODE_DOCUMENT, langue),
         styles=rapport['styles'], provenance=rapport['provenance'],
-        mentions=rapport['mentions'], langue=langue, css=CSS_RAPPORT)
+        mentions=rapport['mentions'], langue=langue, css=''.join(feuilles))
 
 
 def html_du_rapport(calepinage, **options):
