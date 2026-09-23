@@ -331,6 +331,41 @@ class TariffSettings(models.Model):
         help_text="Obligatoire dès qu'un taux est saisi (historique des "
                   "tarifs publiés, contrat, étude).")
 
+    # ── CALX284 — fiscalité et amortissement, SAISIS et sourcés ──
+    # Vides par défaut (mode ``aucun``) : sans saisie, aucun impôt n'est porté
+    # au flux et le flux APRÈS impôt reprend le flux avant impôt
+    # (``apps.ventes.economie.flux_apres_impot``). Aucun taux d'impôt, aucune
+    # durée, aucun coefficient n'est supposé : tout se saisit avec sa
+    # ``fiscalite_source`` (texte de loi, avis fiscal). Les clés de mode sont
+    # celles de ``apps.parametres.tariff.AMORTISSEMENT_MODES`` (un test
+    # verrouille l'égalité).
+    AMORTISSEMENT_MODES_CHOICES = [
+        ('aucun', 'Aucun amortissement'),
+        ('lineaire', 'Linéaire'),
+        ('degressif', 'Dégressif'),
+    ]
+    taux_imposition_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name="Taux d'imposition des résultats (%)",
+        help_text="Taux marginal appliqué au résultat imposable du projet. "
+                  "Vide = aucun impôt porté au flux.")
+    amortissement_mode = models.CharField(
+        max_length=10, default='aucun', choices=AMORTISSEMENT_MODES_CHOICES,
+        verbose_name="Mode d'amortissement")
+    amortissement_duree_ans = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name="Durée d'amortissement (ans)")
+    amortissement_coefficient = models.DecimalField(
+        max_digits=5, decimal_places=3, null=True, blank=True,
+        verbose_name='Coefficient dégressif',
+        help_text="Obligatoire en mode dégressif : taux dégressif = "
+                  "coefficient ÷ durée.")
+    fiscalite_source = models.TextField(
+        blank=True, default='',
+        verbose_name='Source de la fiscalité',
+        help_text="Obligatoire dès qu'un taux d'imposition ou un "
+                  "amortissement est saisi (texte de loi, avis fiscal).")
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

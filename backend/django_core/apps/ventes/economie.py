@@ -63,15 +63,18 @@ aucune marge. Les clés publiées ne contiennent jamais ``prix``, ``cout`` ni
 from __future__ import annotations
 
 import math
+from decimal import ROUND_HALF_UP, Decimal
 
 from .solar_design import _irr, _npv
 
 __all__ = [
-    'EconomieInvalide', 'HYPOTHESES_FINANCIERES', 'INDICATEURS',
+    'AMORTISSEMENT_MODES', 'EconomieInvalide', 'HYPOTHESES_FINANCIERES',
+    'INDICATEURS', 'INDICATEURS_APRES_IMPOT',
     'MODES_REMPLACEMENT', 'ORIGINES_VARIABILITE', 'RETOUR_MAX_ANS',
     'SCENARIOS_MAX',
     'SCENARIOS_PRODUCTION', 'SOURCE_SAISIE_NUE', 'TYPES_PRET',
-    'comparer_scenarios', 'economie_par_scenario', 'economie_pour_devis',
+    'comparer_scenarios', 'dotations_amortissement', 'economie_par_scenario',
+    'economie_pour_devis', 'flux_apres_impot',
     'flux_de_tresorerie', 'lcoe', 'reglages_economiques', 'tableau_pret',
 ]
 
@@ -649,6 +652,358 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
     bloc['tri_pct'] = _tri(flux, omissions)
     bloc['retour_ans'] = _retour('retour_ans', cumuls, horizon, omissions)
     return bloc
+
+
+# ── CALX284 — l'amortissement et le flux APRÈS impôt ────────────────────────
+#
+# PV*SOL : amortissement linéaire (« investment divided by depreciation
+# period ») et dégressif (« If the annual depreciation falls below the value
+# resulting from straight-line depreciation, the residual value is depreciated
+# on a straight-line basis over the remaining period »), plus un taux marginal
+# d'imposition (https://help.valentin-software.com/pvsol/en/pages/financial-analysis/economic-parameters/) ;
+# PVsyst : « Tax depreciation » et un taux d'impôt appliqué au résultat
+# imposable de chaque année
+# (https://www.pvsyst.com/help/project-design/economic-evaluation/financial-parameters.html).
+#
+# Le flux AVANT impôt reste :func:`flux_de_tresorerie`, INCHANGÉ (contrat
+# CALX280) ; :func:`flux_apres_impot` le publie À CÔTÉ de la dotation annuelle
+# et du flux après impôt. Mêmes règles : aucun taux, aucune durée, aucun
+# coefficient n'a de défaut ; LECTURE STRICTE — sans taux d'imposition, aucun
+# impôt n'est porté (le flux après impôt reprend le flux avant impôt, terme à
+# terme) et les indicateurs APRÈS impôt valent ``None`` avec un motif qui
+# NOMME ``taux_imposition_pct`` ; un taux SAISI à 0 reste un taux fourni.
+#
+# Résultat imposable de l'année t = économie − charges − intérêts d'emprunt −
+# dotation. Une année où il est négatif ou nul ne porte AUCUN impôt, et aucune
+# économie d'impôt ni report déficitaire n'est supposé (ni PV*SOL ni PVsyst ne
+# documentent ce cas — l'omission le dit, année par année). Les remplacements
+# d'équipements ne réduisent pas le résultat imposable (aucune dotation n'est
+# saisie pour eux — l'omission le dit).
+
+#: Modes d'amortissement admis — les clés de
+#: ``apps.parametres.tariff.AMORTISSEMENT_MODES`` (un test verrouille l'égalité).
+AMORTISSEMENT_MODES = ('aucun', 'lineaire', 'degressif')
+
+#: Les indicateurs publiés APRÈS impôt (le LCOE, coût du kWh, reste avant
+#: impôt).
+INDICATEURS_APRES_IMPOT = ('van_mad', 'tri_pct', 'retour_ans',
+                           'retour_actualise_ans')
+
+_CENTIME = Decimal('0.01')
+
+
+def _en_centimes(valeur):
+    """``valeur`` au centime (arrondi commercial), en ``Decimal``."""
+    return Decimal(str(valeur)).quantize(_CENTIME, rounding=ROUND_HALF_UP)
+
+
+def _exiger_mode(mode):
+    if mode not in AMORTISSEMENT_MODES:
+        raise EconomieInvalide(
+            f"amortissement_mode : choisir parmi "
+            f"{', '.join(AMORTISSEMENT_MODES)}.", champ='amortissement_mode')
+    return mode
+
+
+def dotations_amortissement(*, base_mad=None, mode=None, duree_ans=None,
+                            coefficient=None):
+    """CALX284 — la dotation de chaque année d'amortissement.
+
+    Args:
+        base_mad: montant amorti (>= 0).
+        mode: ``aucun`` (aucune dotation), ``lineaire`` (base ÷ durée chaque
+            année) ou ``degressif`` (valeur nette × coefficient ÷ durée, puis
+            linéaire sur les années restantes dès que le linéaire dépasse —
+            la règle PV*SOL citée en tête de section).
+        duree_ans: durée SAISIE (entier >= 1) — obligatoire hors ``aucun``.
+        coefficient: coefficient dégressif SAISI (> 1) — obligatoire en
+            ``degressif``, jamais supposé.
+
+    Returns:
+        ``[{annee, dotation_mad, valeur_nette_mad}]`` (année 1 = première
+        année d'exploitation, années pleines). Tenue AU CENTIME : la
+        DERNIÈRE dotation solde la valeur nette, si bien que la somme des
+        dotations égale la base exactement.
+    """
+    _exiger_mode(mode)
+    if mode == 'aucun':
+        return []
+    if duree_ans is None:
+        raise EconomieInvalide(
+            f"amortissement_duree_ans : obligatoire pour l'amortissement "
+            f"{mode} — aucune durée n'est supposée.",
+            champ='amortissement_duree_ans')
+    duree = _saisie('amortissement_duree_ans', duree_ans, minimum=1,
+                    entier=True)[0]
+    taux_degressif = None
+    if mode == 'degressif':
+        if coefficient is None:
+            raise EconomieInvalide(
+                "amortissement_coefficient : obligatoire pour l'amortissement "
+                "dégressif (taux dégressif = coefficient ÷ durée) — aucun "
+                "coefficient n'est supposé.",
+                champ='amortissement_coefficient')
+        valeur = _saisie('amortissement_coefficient', coefficient, minimum=1,
+                         strictement=True)[0]
+        taux_degressif = Decimal(str(valeur)) / duree
+    base = _exiger('base_amortissable_mad', base_mad, minimum=0)
+
+    restant = _en_centimes(base)
+    annuite_lineaire = _en_centimes(restant / duree)
+    dotations = []
+    for annee in range(1, duree + 1):
+        if annee == duree:
+            dotation = restant
+        elif taux_degressif is None:
+            # Linéaire : base ÷ durée chaque année (PV*SOL).
+            dotation = min(annuite_lineaire, restant)
+        else:
+            # Dégressif : valeur nette × taux, sauf quand le linéaire sur les
+            # années RESTANTES le dépasse (la règle PV*SOL).
+            dotation = min(max(
+                _en_centimes(restant / (duree - annee + 1)),
+                _en_centimes(restant * taux_degressif)), restant)
+        restant -= dotation
+        dotations.append({'annee': annee, 'dotation_mad': float(dotation),
+                          'valeur_nette_mad': float(restant)})
+    return dotations
+
+
+def _lire_mode(brute):
+    """``(mode, source, saisie_le)`` d'un mode saisi (texte ou dict)."""
+    if brute is None:
+        return None, None, None
+    source, saisie_le, mode = SOURCE_SAISIE_NUE, None, brute
+    if isinstance(brute, dict):
+        mode = brute.get('valeur')
+        if mode is None:
+            return None, None, None
+        source = str(brute.get('source') or '').strip()
+        saisie_le = brute.get('saisie_le')
+        if not source:
+            raise EconomieInvalide(
+                "amortissement_mode : une valeur saisie doit porter sa "
+                "source.", champ='amortissement_mode.source')
+    return _exiger_mode(mode), source, saisie_le
+
+
+def _valeur_retenue(bloc, cle):
+    """La valeur d'une hypothèse du flux avant impôt, ou ``None``."""
+    return next((h['valeur'] for h in bloc['hypotheses'] if h['cle'] == cle),
+                None)
+
+
+def _interets_par_annee(pret):
+    """Intérêts d'emprunt par année (déductibles), ``{}`` sans prêt."""
+    if not isinstance(pret, dict):
+        return {}
+    tableau = tableau_pret(**{cle: pret.get(cle) for cle in (
+        'principal_mad', 'taux_annuel_pct', 'duree_mois', 'type_pret',
+        'differe_mois')})
+    interets = {}
+    for echeance in tableau['echeances']:
+        annee = (echeance['mois'] - 1) // 12 + 1
+        interets[annee] = interets.get(annee, 0.0) + echeance['interets_mad']
+    return interets
+
+
+def flux_apres_impot(*, taux_imposition_pct=None, amortissement_mode=None,
+                     amortissement_duree_ans=None,
+                     amortissement_coefficient=None,
+                     base_amortissable_mad=None, **parametres):
+    """CALX284 — le flux AVANT impôt et, À CÔTÉ, les dotations et le flux APRÈS
+    impôt.
+
+    Args:
+        taux_imposition_pct: taux marginal d'imposition du résultat (%,
+            [0, 100[) — absent ⇒ aucun impôt porté, indicateurs après impôt
+            ``None`` + motif.
+        amortissement_mode: ``aucun`` / ``lineaire`` / ``degressif`` (texte
+            ou ``{valeur, source}``) — absent ⇒ aucune dotation + omission.
+        amortissement_duree_ans: durée (entier >= 1), obligatoire hors
+            ``aucun``.
+        amortissement_coefficient: coefficient dégressif (> 1), obligatoire
+            en ``degressif``.
+        base_amortissable_mad: montant amorti ; absent ⇒ DÉRIVÉ de
+            ``investissement_mad`` (dérivation publiée dans ``hypotheses``).
+        **parametres: les entrées de :func:`flux_de_tresorerie`, inchangées.
+
+    Returns:
+        ``{avant_impot: <bloc CALX280, inchangé>, apres_impot: {dotations,
+        flux: [{annee, flux_avant_impot_mad, dotation_mad,
+        base_imposable_mad, impot_mad, flux_mad, cumul_mad,
+        flux_actualise_mad}], van_mad, tri_pct, retour_ans,
+        retour_actualise_ans, hypotheses, omissions}}``.
+
+    Raises:
+        EconomieInvalide: une saisie refusée, le champ NOMMÉ
+        (``amortissement_coefficient`` pour un dégressif sans coefficient,
+        ``taux_imposition_pct.source`` pour un taux promis sans source…).
+    """
+    avant = flux_de_tresorerie(**parametres)
+    hypotheses, omissions = [], []
+
+    taux, source, saisie_le = _saisie(
+        'taux_imposition_pct', taux_imposition_pct, minimum=0, maximum=100)
+    if taux is None:
+        omissions.append(_omission(
+            'taux_imposition_pct',
+            "aucun taux d'imposition saisi par la société — aucun impôt "
+            "n'est porté : le flux après impôt reprend le flux avant impôt"))
+    else:
+        hypotheses.append(_hypothese('taux_imposition_pct', taux, source,
+                                     saisie_le))
+
+    mode, source_mode, saisie_mode = _lire_mode(amortissement_mode)
+    if mode is None:
+        omissions.append(_omission(
+            'amortissement_mode',
+            "aucun mode d'amortissement saisi par la société — aucune "
+            "dotation n'est portée"))
+    else:
+        hypotheses.append(_hypothese('amortissement_mode', mode, source_mode,
+                                     saisie_mode))
+
+    dotations = []
+    if mode in ('lineaire', 'degressif'):
+        base = _saisie('base_amortissable_mad', base_amortissable_mad,
+                       minimum=0)
+        if base[0] is None:
+            investissement = _valeur_retenue(avant, 'investissement_mad')
+            base = (investissement,
+                    "dérivé : base amortissable = investissement_mad (aucune "
+                    "base distincte saisie — montant tel qu'il est fourni)",
+                    None)
+        if base[0] is None:
+            # Les refus nommés passent AVANT l'omission de la base.
+            dotations_amortissement(
+                base_mad=0, mode=mode, duree_ans=amortissement_duree_ans,
+                coefficient=amortissement_coefficient)
+            omissions.append(_omission(
+                'dotations',
+                "aucune base amortissable : ni base_amortissable_mad ni "
+                "investissement_mad fourni — aucune dotation n'est portée"))
+        else:
+            dotations = dotations_amortissement(
+                base_mad=base[0], mode=mode,
+                duree_ans=amortissement_duree_ans,
+                coefficient=amortissement_coefficient)
+            hypotheses.append(_hypothese('base_amortissable_mad', base[0],
+                                         base[1], base[2]))
+            for cle, brute in (
+                    ('amortissement_duree_ans', amortissement_duree_ans),
+                    ('amortissement_coefficient', amortissement_coefficient)):
+                valeur, src, le = _saisie(cle, brute)
+                if valeur is not None and (
+                        cle != 'amortissement_coefficient'
+                        or mode == 'degressif'):
+                    hypotheses.append(_hypothese(
+                        cle, int(valeur) if cle.endswith('_ans') else valeur,
+                        src, le))
+
+    apres = {
+        'dotations': dotations,
+        'flux': [],
+        'van_mad': None,
+        'tri_pct': None,
+        'retour_ans': None,
+        'retour_actualise_ans': None,
+        'hypotheses': hypotheses,
+        'omissions': omissions,
+    }
+    resultat = {'avant_impot': avant, 'apres_impot': apres}
+
+    if not avant['flux']:
+        for cle in INDICATEURS_APRES_IMPOT:
+            omissions.append(_omission(
+                cle, "non publié : le flux avant impôt n'est pas construit "
+                     "(voir ses omissions)"))
+        return resultat
+
+    horizon = avant['horizon_ans']
+    if len(dotations) > horizon:
+        omissions.append(_omission(
+            'dotations',
+            f"{len(dotations) - horizon} dotation(s) au-delà de l'horizon "
+            f"saisi ({horizon} ans) ne sont pas portées au flux"))
+    if any(h['cle'].startswith('remplacements[') for h in avant['hypotheses']):
+        omissions.append(_omission(
+            'remplacements',
+            "les remplacements saisis ne réduisent pas le résultat imposable "
+            "— aucune dotation n'est saisie pour eux"))
+
+    charges = _valeur_retenue(avant, 'charges_annuelles_mad') or 0.0
+    interets = _interets_par_annee(parametres.get('pret'))
+    taux_act = _valeur_retenue(avant, 'taux_actualisation_pct')
+    r = None if taux_act is None else taux_act / 100.0
+
+    flux, lignes, deficitaires = [], [], []
+    for ligne in avant['flux']:
+        annee = ligne['annee']
+        base_imposable = impot = None
+        dotation = 0.0
+        if annee == 0:
+            impot = None if taux is None else 0.0
+        else:
+            dotation = (dotations[annee - 1]['dotation_mad']
+                        if annee <= len(dotations) else 0.0)
+            base_imposable = _arrondi(ligne['economie_mad'] - charges
+                                      - interets.get(annee, 0.0) - dotation)
+            if taux is not None:
+                if base_imposable <= 0:
+                    deficitaires.append(annee)
+                    impot = 0.0
+                else:
+                    impot = _arrondi(base_imposable * taux / 100.0)
+        flux.append(_arrondi(ligne['flux_mad'] - (impot or 0.0)))
+        lignes.append({'annee': annee,
+                       'flux_avant_impot_mad': ligne['flux_mad'],
+                       'dotation_mad': dotation,
+                       'base_imposable_mad': base_imposable,
+                       'impot_mad': impot})
+    if deficitaires:
+        omissions.append(_omission(
+            'impot_mad',
+            f"résultat imposable négatif ou nul en année(s) "
+            f"{', '.join(str(a) for a in deficitaires)} : aucun impôt, et "
+            f"aucune économie d'impôt ni report déficitaire n'est supposé"))
+
+    cumuls, cumul = [], 0.0
+    for valeur in flux:
+        cumul += valeur
+        cumuls.append(cumul)
+    actualises = None
+    if r is not None:
+        actualises = [valeur / (1.0 + r) ** annee
+                      for annee, valeur in enumerate(flux)]
+    for rang, ligne in enumerate(lignes):
+        ligne.update({
+            'flux_mad': flux[rang],
+            'cumul_mad': _arrondi(cumuls[rang]),
+            'flux_actualise_mad': (None if actualises is None
+                                   else _arrondi(actualises[rang]))})
+    apres['flux'] = lignes
+
+    if taux is None:
+        for cle in INDICATEURS_APRES_IMPOT:
+            omissions.append(_omission(
+                cle, "non publié : taux non fourni : taux_imposition_pct"))
+        return resultat
+    if r is None:
+        for cle in ('van_mad', 'retour_actualise_ans'):
+            omissions.append(_omission(
+                cle, "non publié : taux non fourni : taux_actualisation_pct"))
+    else:
+        apres['van_mad'] = _arrondi(_npv(r, flux))
+        cumuls_actualises, cumul = [], 0.0
+        for valeur in actualises:
+            cumul += valeur
+            cumuls_actualises.append(cumul)
+        apres['retour_actualise_ans'] = _retour(
+            'retour_actualise_ans', cumuls_actualises, horizon, omissions)
+    apres['tri_pct'] = _tri(flux, omissions)
+    apres['retour_ans'] = _retour('retour_ans', cumuls, horizon, omissions)
+    return resultat
 
 
 # ── CALX282 — le coût actualisé du kWh (LCOE) ───────────────────────────────
