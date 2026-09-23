@@ -32,10 +32,13 @@ LES RÈGLES POSÉES ICI
 """
 from __future__ import annotations
 
-__all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide', 'ProfilInvalide',
-           'SOURCES_MOIS', 'UNITES', 'apercu_courbe_csv',
-           'interpoler_factures', 'profil_depuis_lead',
-           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh']
+import math
+
+__all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
+           'PROVENANCES_APPAREIL', 'ProfilInvalide', 'SOURCES_MOIS', 'UNITES',
+           'apercu_courbe_csv', 'courbe_appareils', 'interpoler_factures',
+           'profil_depuis_lead', 'profil_depuis_layout', 'profil_mensuel',
+           'publier_kwh']
 
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
@@ -367,6 +370,204 @@ def profil_depuis_layout(layout, *, saisies=None):
         'methode': consumption.get('methode'),
         'source': 'layout',
         'avertissements': [],
+    }
+
+
+# ── CALX256 — la méthode « somme d'appareils », provenance par appareil ──
+#
+# LE CONSTAT : le calculateur d'appareils vivait entièrement dans le
+# navigateur (``apps/web/src/scripts/roofPro11/consumption.ts``, table
+# ``APPLIANCE_TYPICALS``) ; aucun appareil n'atteignait le serveur et ce
+# module n'avait aucune agrégation. Parité : PV*SOL, méthode « sum of
+# pre-defined individual appliances ».
+#
+# LES RÈGLES :
+#   * chaque appareil DÉCLARE sa provenance — ``saisi`` (le client l'a
+#     donnée) ou ``table_atelier`` (valeur type de la table de l'atelier) —
+#     et la seconde est publiée comme telle, jamais présentée comme un relevé ;
+#   * l'énergie d'un appareil est répartie UNIFORMÉMENT sur son créneau
+#     ``[startHour, endHour[`` (même convention que ``windowHours`` côté
+#     atelier : le créneau peut traverser minuit, début = fin ⇒ la journée) ;
+#   * frontière d'Aurora : ajouter ou retirer un appareil ne touche PAS le
+#     total annuel déjà saisi — la courbe d'appareils est NORMALISÉE sur ce
+#     total et ne fournit que la répartition horaire ; l'écart entre la somme
+#     des appareils et ce total est PUBLIÉ (les deux nombres et le pourcentage),
+#     jamais absorbé en silence.
+
+#: Provenances admises pour un appareil.
+PROVENANCES_APPAREIL = ('saisi', 'table_atelier')
+
+#: Ce que chaque provenance veut dire, publié avec l'appareil.
+MENTIONS_PROVENANCE = {
+    'saisi': 'valeur saisie',
+    'table_atelier': "valeur type de l'atelier, non mesurée",
+}
+
+
+def _energie_positive(valeur, *, champ, quoi):
+    """Une énergie lisible, finie et ≥ 0 — sinon refus NOMMANT le champ."""
+    refus = ProfilInvalide(
+        f'« {champ} » doit être {quoi} positive ou nulle (reçu : '
+        f'{valeur!r}).', champ=champ)
+    if isinstance(valeur, bool) or valeur in (None, ''):
+        raise refus
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        raise refus
+    if not math.isfinite(nombre) or nombre < 0:
+        raise refus
+    return nombre
+
+
+def _entier_appareil(appareil, cle, *, rang, borne_max):
+    champ = f'appareils[{rang}].{cle}'
+    valeur = appareil.get(cle)
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        raise ProfilInvalide(
+            f'« {champ} » doit être un entier (reçu : {valeur!r}).',
+            champ=champ)
+    if valeur != int(valeur) or not 0 <= valeur <= borne_max:
+        raise ProfilInvalide(
+            f'« {champ} » doit être un entier entre 0 et {borne_max} '
+            f'(reçu : {valeur!r}).', champ=champ)
+    return int(valeur)
+
+
+def _creneau(debut, fin, longueur):
+    """Pas couverts par ``[debut, fin[`` — port de ``windowHours`` (atelier)."""
+    duree = (fin - debut) % longueur or longueur
+    return [(debut + pas) % longueur for pas in range(duree)]
+
+
+def _appareil_valide(appareil, *, rang, longueur):
+    if not isinstance(appareil, dict):
+        raise ProfilInvalide(
+            f'« appareils[{rang}] » doit être un objet (reçu : '
+            f'{appareil!r}).', champ=f'appareils[{rang}]')
+    provenance = appareil.get('provenance')
+    if provenance not in PROVENANCES_APPAREIL:
+        raise ProfilInvalide(
+            f'« appareils[{rang}].provenance » est obligatoire, parmi '
+            f'{", ".join(PROVENANCES_APPAREIL)} (reçu : {provenance!r}).',
+            champ=f'appareils[{rang}].provenance')
+    energie = _energie_positive(
+        appareil.get('dailyKwh'), champ=f'appareils[{rang}].dailyKwh',
+        quoi='une énergie journalière')
+    debut = _entier_appareil(appareil, 'startHour', rang=rang,
+                             borne_max=longueur - 1)
+    fin = _entier_appareil(appareil, 'endHour', rang=rang,
+                           borne_max=longueur)
+    return {
+        'kind': appareil.get('kind'),
+        'label': appareil.get('label'),
+        'dailyKwh': energie,
+        'startHour': debut,
+        'endHour': fin,
+        'billing': appareil.get('billing'),
+        'source': provenance,
+        'mention': MENTIONS_PROVENANCE[provenance],
+        'creneau': _creneau(debut, fin, longueur),
+    }
+
+
+def courbe_appareils(appareils, *, longueur=24, total_annuel_kwh=None):
+    """La courbe journalière composée par la somme des appareils déclarés.
+
+    Args:
+        appareils: ``[{kind, label, dailyKwh, startHour, endHour, billing,
+            provenance}]`` — ``provenance`` ∈ :data:`PROVENANCES_APPAREIL`
+            OBLIGATOIRE pour chacun. Les heures sont des indices de pas
+            (des heures quand ``longueur`` vaut 24).
+        longueur: le nombre de pas de la journée type.
+        total_annuel_kwh: le total annuel DÉJÀ SAISI par ailleurs (facture,
+            relevé). Présent ⇒ la courbe est normalisée sur lui (les appareils
+            ne donnent que la répartition) et l'écart est publié ; absent ⇒ la
+            courbe est la somme brute des appareils.
+
+    Returns:
+        dict — ``courbe`` (``longueur`` valeurs kWh, ou ``None``),
+        ``total_appareils_kwh_jour``, ``total_journalier_kwh``,
+        ``normalisation`` (``None`` sans total saisi), ``appareils`` (chacun
+        publié avec ``source``, ``mention`` et ``creneau``),
+        ``avertissements``.
+
+    Raises:
+        ProfilInvalide: appareil sans ``provenance`` valide, énergie ou heure
+            illisible, total saisi négatif — en NOMMANT le champ
+            (``appareils[0].provenance``…).
+    """
+    if isinstance(longueur, bool) or not isinstance(longueur, int) \
+            or longueur <= 0:
+        raise ProfilInvalide(
+            f'« longueur » doit être un entier positif (reçu : '
+            f'{longueur!r}).', champ='longueur')
+    publies = [_appareil_valide(appareil, rang=rang, longueur=longueur)
+               for rang, appareil in enumerate(appareils or [])]
+
+    avertissements = []
+    brute = [0.0] * longueur
+    for appareil in publies:
+        part = appareil['dailyKwh'] / len(appareil['creneau'])
+        for pas in appareil['creneau']:
+            brute[pas] += part
+    somme_jour = sum(appareil['dailyKwh'] for appareil in publies)
+
+    if not publies:
+        avertissements.append(
+            'Aucun appareil déclaré : aucune répartition horaire à publier.')
+        courbe = None
+    else:
+        courbe = brute
+
+    normalisation = None
+    if total_annuel_kwh is not None:
+        total_annuel_kwh = _energie_positive(
+            total_annuel_kwh, champ='total_annuel_kwh',
+            quoi='une énergie annuelle')
+        from .pompage import JOURS_PAR_MOIS
+        jours = sum(JOURS_PAR_MOIS)
+        somme_annuelle = somme_jour * jours
+        ecart_pct = (round((somme_annuelle - total_annuel_kwh)
+                           / total_annuel_kwh * 100, 1)
+                     if total_annuel_kwh > 0 else None)
+        normalisation = {
+            'total_annuel_saisi_kwh': total_annuel_kwh,
+            'total_appareils_annuel_kwh': round(somme_annuelle, 4),
+            'ecart_pct': ecart_pct,
+            'jours_par_an': jours,
+        }
+        if courbe is not None and somme_jour <= 0:
+            courbe = None
+            avertissements.append(
+                "Les appareils déclarés ne consomment rien : ils ne donnent "
+                'aucune répartition horaire du total saisi.')
+        elif courbe is not None:
+            facteur = total_annuel_kwh / jours / somme_jour
+            courbe = [valeur * facteur for valeur in brute]
+            if ecart_pct:
+                avertissements.append(
+                    f'La somme des appareils ({round(somme_annuelle, 1)} '
+                    f"kWh/an) s'écarte de {ecart_pct:+.1f} % du total saisi "
+                    f'({total_annuel_kwh} kWh/an) : la courbe garde '
+                    'le total saisi, les appareils ne donnent que la '
+                    'répartition horaire.')
+
+    if any(appareil['source'] == 'table_atelier' for appareil in publies):
+        avertissements.append(
+            "Certains appareils portent une valeur type de l'atelier, non "
+            'mesurée : elle ne remplace pas un relevé.')
+
+    return {
+        'courbe': (None if courbe is None
+                   else [round(valeur, 4) for valeur in courbe]),
+        'longueur': longueur,
+        'total_appareils_kwh_jour': round(somme_jour, 4),
+        'total_journalier_kwh': (None if courbe is None
+                                 else round(sum(courbe), 4)),
+        'normalisation': normalisation,
+        'appareils': publies,
+        'avertissements': avertissements,
     }
 
 
