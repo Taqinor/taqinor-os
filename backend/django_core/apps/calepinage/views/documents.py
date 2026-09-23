@@ -388,3 +388,40 @@ def document_asbuilt_pdf(self, request, pk=None):
 
 
 CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
+
+
+# ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='presentation-compacte.pdf',
+        url_name='presentation-compacte-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def presentation_compacte_pdf(self, request, pk=None):
+    """CALX315 — la présentation compacte : deux pages, INTERNE, sans aucun
+    montant — ne vaut jamais offre de prix (règle #4, ``/proposal`` seul
+    chemin de devis client).
+
+    * **200** — le PDF (2 pages), nommé d'après le calepinage ;
+    * **400** — une donnée refusée (clé de coût) : le motif français et le
+      champ NOMMÉ. Un calepinage non simulé ne refuse PAS : la page 2 nomme
+      ce qui manque.
+    """
+    from ..services.documents.presentation_compacte import (
+        rendre_presentation_compacte,
+    )
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        octets = rendre_presentation_compacte(calepinage,
+                                              company=calepinage.company)
+    except RapportRefuse as refus:
+        return Response({refus.champ or 'resultat': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'presentation-compacte.pdf'))
+
+
+CalepinageViewSet.presentation_compacte_pdf = presentation_compacte_pdf

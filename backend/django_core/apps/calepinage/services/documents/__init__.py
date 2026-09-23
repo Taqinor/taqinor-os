@@ -362,3 +362,9 @@ MISES_EN_PAGE['manuel_proprietaire'] = (
 MISES_EN_PAGE['document_asbuilt'] = (
     'apps.calepinage.services.documents.document_asbuilt:'
     'html_du_document_asbuilt')
+
+
+# ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
+MISES_EN_PAGE['presentation_compacte'] = (
+    'apps.calepinage.services.documents.presentation_compacte:'
+    'html_de_presentation_compacte')
