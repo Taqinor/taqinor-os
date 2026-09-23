@@ -335,6 +335,12 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
         "السلام عليكم السي {prenom}، أنا {conseiller} من {marque}. كنتو سولتونا ف {mois_dossier} على الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير محين. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'deuxieme_affaire':
         "السلام عليكم السي {prenom}، {conseiller} من {marque}. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم — شكرا على الثقة ديالكم من جديد. قولوا ليا شنو بغيتو تجهزو هاد المرة ونوجد ليكم الدراسة؛ غادي نعيط ليكم من دابا شي دقايق.",
+    # CAD151 (23/09/2026) — traduction phrase par phrase du FR validé (aucune
+    # promesse ajoutée, aucun chiffre, jamais une traduction automatique),
+    # PAS ENCORE relue par un locuteur natif (CADM1, à faire avant tout usage
+    # réel — comme le reste des textes nés dans ce lot).
+    'debrief_visite':
+        "السلام عليكم السي {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
@@ -412,6 +418,9 @@ CLES_RELANCE = [
     # confirmée la veille.
     'visite_proposition',
     'visite_confirmation',
+    # CAD151 — le débrief après le retour du technicien (envoi manuel, comme
+    # `annonce_appel_reda`/`offre_reda` juste en dessous).
+    'debrief_visite',
     # CAD125 — dossiers institutionnels, posés par playbook de SEGMENT
     # (industriel/commercial et agricole), jamais par un barreau de cadence.
     'dossier_8221',
@@ -436,7 +445,12 @@ CLES_RELANCE = [
 #: décide au cas par cas, après SA décision — jamais avant. Câbler un bouton
 #: conditionnel serait de la sur-ingénierie ; la liste existe pour que l'écran
 #: puisse DIRE « envoi manuel » au lieu de laisser chercher un bouton absent.
-CLES_ENVOI_MANUEL = frozenset({'annonce_appel_reda', 'offre_reda'})
+CLES_ENVOI_MANUEL = frozenset({
+    'annonce_appel_reda', 'offre_reda',
+    # CAD151 — le débrief après le retour du technicien : même doctrine,
+    # aucun barreau de cadence ne le porte.
+    'debrief_visite',
+})
 
 #: La phrase à afficher à côté de ces textes, au catalogue comme au guide.
 MENTION_ENVOI_MANUEL = (
@@ -515,6 +529,14 @@ class MessageTemplate(models.Model):
         VISITE_CONFIRMATION = (
             'visite_confirmation',
             "Visite — confirmation la veille")
+        # CAD151 (23/09/2026) — le DÉBRIEF après le retour du technicien.
+        # ENVOI MANUEL comme `annonce_appel_reda`/`offre_reda` (CAD60) : aucun
+        # barreau de cadence ne le déclenche, c'est le rappel du responsable
+        # sous 24-48 h que `apps.crm.services.reprendre_plan_apres_retour_visite`
+        # documente déjà (note d'historique) qui s'en sert, au moment choisi.
+        DEBRIEF_VISITE = (
+            'debrief_visite',
+            "Après visite — débrief avec le client (envoi manuel)")
         # CAD125 — dossiers institutionnels, par SEGMENT (playbook conditionné
         # sur `{type_installation}`), jamais un barreau de cadence.
         DOSSIER_8221 = (
@@ -754,4 +776,22 @@ CLE_IDENTITE_PAR_CANAL = {
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'deuxieme_affaire':
         "Bonjour M. {prenom}, {conseiller} de {marque}. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.",
+})
+
+# ── CAD151 (23/09/2026) — LE DÉBRIEF APRÈS LE RETOUR DU TECHNICIEN ─────────
+#
+# La visite technique (VISITE-CADENCE, 15/09/2026) se PROPOSE puis se
+# CONFIRME — mais son RETOUR n'avait aucun script : `reprendre_plan_apres_
+# retour_visite` reprend la cadence après-devis là où elle en était, et
+# `composer_note_retour_visite` écrit le compte-rendu dans l'historique, mais
+# rien ne guide l'appel que le responsable passe au client dans les 24-48 h
+# qui suivent (la note d'historique existante le dit déjà). ENVOI MANUEL,
+# même patron que `annonce_appel_reda`/`offre_reda` (CAD60) : aucun barreau
+# de cadence ne le porte, et il n'en aura pas — ouvrir un barreau dédié
+# dupliquerait la reprise déjà exécutée par le retour de visite.
+# ✎ Texte à valider par le fondateur ; darija pas encore relue par un
+# locuteur natif (CADM1), comme le reste des textes nés dans ce lot.
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'debrief_visite':
+        "Bonjour M. {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien chez vous : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
 })
