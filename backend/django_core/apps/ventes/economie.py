@@ -52,9 +52,10 @@ https://support.opensolar.com/hc/en-us/articles/13250869794319-How-to-design-in-
 Le montant SAISI est retranché du flux l'année dite ; sans entrée, aucun
 remplacement n'est porté au flux et l'omission est publiée.
 
-Module PUR : aucune base, aucun réseau, aucun prix d'achat, aucune marge. Les
-clés publiées ne contiennent jamais ``prix``, ``cout`` ni ``marge`` (garde de
-vocabulaire ``apps/calepinage/services/note_calcul.py``).
+Module PUR — sauf :func:`economie_pour_devis` (CALX288), seul point qui lit la
+base (le devis, les réglages société) : aucun réseau, aucun prix d'achat,
+aucune marge. Les clés publiées ne contiennent jamais ``prix``, ``cout`` ni
+``marge`` (garde de vocabulaire ``apps/calepinage/services/note_calcul.py``).
 """
 from __future__ import annotations
 
@@ -67,8 +68,8 @@ __all__ = [
     'MODES_REMPLACEMENT', 'ORIGINES_VARIABILITE', 'RETOUR_MAX_ANS',
     'SCENARIOS_MAX',
     'SCENARIOS_PRODUCTION', 'SOURCE_SAISIE_NUE', 'TYPES_PRET',
-    'comparer_scenarios', 'economie_par_scenario', 'flux_de_tresorerie',
-    'lcoe', 'tableau_pret',
+    'comparer_scenarios', 'economie_par_scenario', 'economie_pour_devis',
+    'flux_de_tresorerie', 'lcoe', 'reglages_economiques', 'tableau_pret',
 ]
 
 
@@ -994,3 +995,121 @@ def comparer_scenarios(scenarios):
             for cle in INDICATEURS}
     return {'reference': noms[0], 'scenarios': resultats,
             'hypotheses': hypotheses, 'omissions': omissions}
+
+
+# ── CALX288 — le bloc économie D'UN DEVIS (lecture seule) ───────────────────
+#
+# Le SEUL point de ce module qui touche la base. Il assemble :
+#   * ce que le DEVIS publie déjà, tel que le moteur de devis le calcule pour
+#     le PDF et la proposition (``build_quote_data`` — même source que
+#     ``DevisSerializer.comparaison_options``) : le total TTC client de
+#     l'option retenue, son économie annuelle, la production annuelle ;
+#   * les RÉGLAGES SOCIÉTÉ qui existent (``apps.parametres``, app fondation) ;
+#   * :func:`flux_de_tresorerie`, qui fait le reste sous contrat.
+# Aucun horizon, aucun taux d'actualisation, aucune dégradation n'a encore de
+# réglage société (décision fondateur n° 5 du 21/09/2026 : Reda fournit son
+# taux avec sa source) : ils sortent donc OMIS avec leur motif, et le flux
+# reste vide tant que l'horizon n'est pas saisi — jamais un chiffre à zéro.
+# ``Produit.prix_achat`` n'est JAMAIS lu : l'investissement est le TTC CLIENT.
+
+#: Le scénario du moteur de devis → l'option du vocabulaire de
+#: ``contract_samples/variantes_servables.json`` (``sans``/``avec``). Même
+#: règle que ``_sm_eco_ref`` de ``quote_engine/builder.py`` : l'option « avec
+#: batterie » quand c'est elle que le devis retient, sinon l'option « sans ».
+_SCENARIO_AVEC = 'Avec batterie'
+
+
+def reglages_economiques(company):
+    """Les grandeurs du flux que la SOCIÉTÉ a saisies, en ``{valeur, source}``.
+
+    Lit ``TariffSettings`` sans jamais le créer (une lecture n'écrit pas).
+    L'indexation est lue sur les champs que CALX279 déclare
+    (``indexation_tarif_pct_an`` + ``indexation_source``) : tant qu'ils
+    n'existent pas ou ne sont pas saisis AVEC leur source, rien n'est rendu —
+    et le flux publie l'omission.
+    """
+    if company is None:
+        return {}
+    from apps.parametres.models_tariff import TariffSettings
+    reglage = TariffSettings.objects.filter(company=company).first()
+    if reglage is None:
+        return {}
+    reglages = {}
+    indexation = getattr(reglage, 'indexation_tarif_pct_an', None)
+    source = str(getattr(reglage, 'indexation_source', '') or '').strip()
+    if indexation is not None and source:
+        reglages['indexation_pct'] = {
+            'valeur': indexation,
+            'source': f"réglage société — Tarification & ROI : {source}",
+            'saisie_le': None}
+    return reglages
+
+
+def _donnees_du_devis(devis):
+    """``(entrées du flux, hypothèse d'option, omissions)`` lues sur le devis."""
+    from .quote_engine.builder import build_quote_data
+
+    reference = devis.reference or f'n° {devis.pk}'
+    try:
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+    except Exception:  # noqa: BLE001 — un devis illisible s'OMET, jamais 500
+        return {}, [], [_omission(
+            'devis', f"devis {reference} : le moteur de devis n'a pas pu en "
+                     f"lire les montants — aucune donnée économique publiée")]
+    option = 'avec' if data.get('scenario') == _SCENARIO_AVEC else 'sans'
+    totaux = data.get(f'totaux_{option}') or {}
+    economie = data.get('eco_a_ann' if option == 'avec' else 'eco_s_ann')
+    estimation = ' — estimation' if data.get('savings_estimated') else ''
+    moteur = f"devis {reference}"
+
+    def lu(valeur, libelle):
+        try:
+            nombre = float(valeur)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(nombre) or nombre <= 0:
+            return None
+        return {'valeur': nombre, 'source': f"{moteur} — {libelle}",
+                'saisie_le': None}
+
+    entrees = {
+        'investissement_mad': lu(
+            totaux.get('ttc'),
+            "total TTC client de l'option retenue (moteur de devis)"),
+        'economie_annee1_mad': lu(
+            economie, f"économie annuelle de l'option retenue "
+                      f"(moteur de devis{estimation})"),
+        'production_annee1_kwh': lu(
+            data.get('prod_kwh'), "production annuelle (moteur de devis)"),
+    }
+    hypothese_option = _hypothese(
+        'option_devis', option,
+        f"{moteur} — option retenue par le moteur de devis "
+        f"(build_quote_data.scenario)")
+    return entrees, [hypothese_option], []
+
+
+def economie_pour_devis(devis_id, company, *, reglages=None):
+    """CALX288 — le bloc économie d'un devis, forme du contrat CALX280.
+
+    Args:
+        devis_id: clé du devis — cherché DANS ``company`` seulement.
+        company: la société du devis (jamais lue depuis une requête).
+        reglages: grandeurs du flux déjà résolues (``{cle: {valeur, source,
+            saisie_le}}``) ; ``None`` ⇒ :func:`reglages_economiques`.
+
+    Raises:
+        Devis.DoesNotExist: devis inconnu ou d'une autre société.
+    """
+    from .models import Devis
+
+    devis = Devis.objects.get(pk=devis_id, company=company)
+    entrees, hypotheses, omissions = _donnees_du_devis(devis)
+    if reglages is None:
+        reglages = reglages_economiques(company)
+    parametres = {cle: valeur for cle, valeur in reglages.items()
+                  if cle not in entrees}
+    bloc = flux_de_tresorerie(**entrees, **parametres)
+    bloc['hypotheses'][:0] = hypotheses
+    bloc['omissions'][:0] = omissions
+    return bloc
