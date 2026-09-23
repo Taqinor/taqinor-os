@@ -157,7 +157,15 @@ def variables_systeme(calepinage, *, resultat=None):
     electrique = resultat.get('electrique') or {}
     chainage = electrique.get('chainage') or {}
     nombre_chaines = chainage.get('chaines')
-    identite = company_identity(getattr(calepinage, 'company', None))
+    company = getattr(calepinage, 'company', None)
+    # ``company_identity(None)`` ne rend PAS une identité vide : par
+    # rétro-compatibilité (``CompanyProfile.get``), elle lit/crée le profil
+    # GLOBAL pk=1 — le même que verrait n'importe quelle société sans
+    # profil dédié. Publier ce profil comme « l'installateur » d'un
+    # calepinage SANS société attribuerait un nom/téléphone à une pièce qui
+    # ne tient à AUCUNE société : sans société, l'identité reste strictement
+    # vide, jamais le repli global.
+    identite = company_identity(company) if company is not None else {}
     return {
         'modules': _designation_modules(calepinage),
         'onduleurs': _designation_onduleurs(electrique.get('onduleurs')),
