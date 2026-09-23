@@ -14,6 +14,20 @@ import RelanceEtapeRow from './RelanceEtapeRow'
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn() }))
 import { toastInfo } from '../../../lib/toast'
 
+// CAD10 — la liste des motifs de perte (Paramètres → CRM), lue au premier
+// refus choisi. Forme du `MotifPerteSerializer` (id, nom, archived, est_junk).
+vi.mock('../../../api/crmApi', () => ({
+  default: {
+    getMotifsPerte: vi.fn(() => Promise.resolve({
+      data: [
+        { id: 1, nom: 'Prix', archived: false, est_junk: false },
+        { id: 2, nom: 'Numéro invalide', archived: false, est_junk: true },
+        { id: 3, nom: 'Ancien motif', archived: true, est_junk: false },
+      ],
+    })),
+  },
+}))
+
 const ETAPE_APPEL = exempleContrat('crm', 'relance_etape_v2').results[0]
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -271,6 +285,39 @@ describe('CAD9 RelanceEtapeRow — « Décision à plusieurs »', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_APRES_DEVIS.id, { reponse: 'decision_proprietaire' }))
+  })
+})
+
+// CAD10 — le motif de refus, FACULTATIF, proposé au seul moment où il est
+// connu : le refus sans motif passe toujours ; le motif choisi part avec lui.
+describe('CAD10 RelanceEtapeRow — motif de refus facultatif', () => {
+  it('le refus propose la liste paramétrée (sans les archivés) et passe sans motif', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Refus' }))
+    expect(screen.getByLabelText('Motif du refus (facultatif)')).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: 'Prix' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Ancien motif' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { outcome: 'refuse' }))
+  })
+
+  it('le motif choisi part avec le refus', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APRES_DEVIS, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Refuse la proposition' }))
+    await screen.findByRole('option', { name: 'Prix' })
+    fireEvent.change(screen.getByLabelText('Motif du refus (facultatif)'), { target: { value: 'Prix' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APRES_DEVIS.id, { outcome: 'refuse', motif_refus: 'Prix' }))
+  })
+
+  it('aucune liste n’est proposée hors refus', () => {
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    expect(screen.queryByLabelText('Motif du refus (facultatif)')).not.toBeInTheDocument()
   })
 })
 

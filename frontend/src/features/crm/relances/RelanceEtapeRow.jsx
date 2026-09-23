@@ -8,6 +8,7 @@ import {
 import ScoreBadge from '../ScoreBadge'
 import { PRIORITE_LABELS } from '../stages'
 import { toastInfo } from '../../../lib/toast'
+import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
 
@@ -349,6 +350,12 @@ export default function RelanceEtapeRow({
   const [erreurOutcome, setErreurOutcome] = useState('')
   // CAD27 — erreur SERVEUR sur la date de rappel (`{erreurs: {rappel_le}}`).
   const [erreurRappel, setErreurRappel] = useState('')
+  // CAD10 — le motif de refus FACULTATIF : la liste paramétrée (Paramètres →
+  // CRM) n'est chargée qu'au premier refus choisi (`null` = pas encore lue),
+  // jamais pour chaque ligne de la file.
+  const [motifs, setMotifs] = useState(null)
+  const [motifRefus, setMotifRefus] = useState('')
+  const [erreurMotif, setErreurMotif] = useState('')
   // VISCAD6 — modale de planification de la visite, PARTAGÉE par le panneau
   // de coaching (ci-dessous) et l'issue « Visite acceptée » du Fait.
   const [planifierOuvert, setPlanifierOuvert] = useState(false)
@@ -364,6 +371,19 @@ export default function RelanceEtapeRow({
     setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
     setSansOuverture(false); setReportMode(''); setErreurRappel('')
+    setMotifRefus(''); setErreurMotif('')
+  }
+
+  // CAD10 — lecture paresseuse des motifs, au geste (jamais dans un effet) :
+  // un échec laisse simplement la liste vide — le motif est FACULTATIF.
+  const chargerMotifs = () => {
+    if (motifs !== null) return
+    setMotifs([])
+    Promise.resolve()
+      .then(() => crmApi.getMotifsPerte())
+      .then((r) => setMotifs(
+        (r?.data?.results ?? r?.data ?? []).filter((m) => !m.archived)))
+      .catch(() => setMotifs([]))
   }
 
   const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
@@ -417,6 +437,8 @@ export default function RelanceEtapeRow({
       payload.rappel_le = rappelLe
       if (rappelHeure) payload.rappel_heure = rappelHeure
     }
+    // CAD10 — le motif n'accompagne QUE le refus, et seulement s'il est choisi.
+    if (reponseChoisie.outcome === 'refuse' && motifRefus) payload.motif_refus = motifRefus
     // RLC3 — le geste assumé est TRACÉ : `body` s'ajoute à la ligne de chatter
     // de la touche (`marquer_etape_relance`), sans toucher à la note libre.
     if (toucheMessage && !messageOuvertLe) {
@@ -455,6 +477,8 @@ export default function RelanceEtapeRow({
       if (champ) setErreurOutcome(champ)
       // CAD27 — la date refusée par le serveur s'affiche SOUS son champ.
       if (erreurs?.rappel_le) setErreurRappel(erreurs.rappel_le)
+      // CAD10 — de même pour le motif de refus.
+      if (erreurs?.motif_refus) setErreurMotif(erreurs.motif_refus)
     })
   }
 
@@ -615,7 +639,10 @@ export default function RelanceEtapeRow({
               <Button
                 key={r.label} type="button" size="sm"
                 variant={reponseIdx === idx ? 'default' : 'outline'}
-                onClick={() => { setReponseIdx((cur) => (cur === idx ? null : idx)); setErreurOutcome('') }}
+                onClick={() => {
+                  setReponseIdx((cur) => (cur === idx ? null : idx)); setErreurOutcome('')
+                  if (r.outcome === 'refuse') chargerMotifs()
+                }}
               >
                 {r.label}
               </Button>
@@ -651,6 +678,33 @@ export default function RelanceEtapeRow({
             <p className="text-xs text-danger" role="alert" data-testid="erreur-rappel-le">
               {messageRappel}
             </p>
+          )}
+          {/* CAD10 — le seul moment où la raison du refus est connue : la
+              liste courte déjà paramétrée est PROPOSÉE, jamais exigée
+              (« perdu » reste une décision humaine). Le motif part sur la
+              ligne de chatter de la touche, pas sur le motif de perte. */}
+          {reponseChoisie?.outcome === 'refuse' && (
+            <div className="flex flex-col gap-1">
+              <Label className="text-xs" htmlFor={`motif-refus-${etape.id}`}>
+                Motif du refus (facultatif)
+              </Label>
+              <select
+                id={`motif-refus-${etape.id}`}
+                className={erreurMotif ? 'form-select is-invalid' : 'form-select'}
+                value={motifRefus}
+                onChange={(e) => { setMotifRefus(e.target.value); setErreurMotif('') }}
+              >
+                <option value="">— Sans motif —</option>
+                {(motifs ?? []).map((m) => (
+                  <option key={m.id ?? m.nom} value={m.nom}>{m.nom}</option>
+                ))}
+              </select>
+              {erreurMotif && (
+                <p className="text-xs text-danger" role="alert" data-testid="erreur-motif-refus">
+                  {erreurMotif}
+                </p>
+              )}
+            </div>
           )}
           <Textarea
             rows={2} placeholder="Note (optionnelle)"

@@ -11085,3 +11085,32 @@ def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     return marquer_etape_relance(
         etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
         outcome=spec['outcome'], body=body)
+
+
+# ── CAD-A ── CAD10 — le motif de refus, FACULTATIF, au moment où il est dit ─
+#
+# « Refus » posait l'étape « Décider la suite » sans demander pourquoi ; le
+# motif n'était exigé que bien plus tard, à la mise en « perdu », quand
+# personne ne se souvient de ce que le client a dit. Ici le motif est PROPOSÉ
+# dans le panneau de réponse, parmi la liste déjà paramétrée (Paramètres →
+# CRM, ``MotifPerte``) — FACULTATIF (MRY22 : « perdu » reste une décision
+# humaine) et journalisé sur la ligne de chatter de la touche, JAMAIS sur
+# ``Lead.motif_perte``.
+
+def motif_refus_valide(company, nom):
+    """Le libellé EXACT du motif de perte ``nom`` de ``company`` (actif,
+    comparaison sans casse), ou ``None`` s'il n'existe pas. Filtre société
+    posé ICI."""
+    from .models import MotifPerte
+
+    nom = (nom or '').strip()
+    if not nom or company is None:
+        return None
+    return (MotifPerte.objects
+            .filter(company=company, archived=False, nom__iexact=nom)
+            .values_list('nom', flat=True).first())
+
+
+def mention_motif_refus(nom):
+    """La phrase ajoutée à la ligne de chatter de la touche refusée."""
+    return f'Motif de refus : {nom}.'

@@ -3162,6 +3162,27 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'outcome': 'Issue inconnue.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CAD10 — le motif de refus, FACULTATIF : seulement avec l'issue
+        # « refus », seulement un motif de la liste paramétrée, et journalisé
+        # sur la ligne de chatter de la touche (jamais sur `motif_perte` :
+        # « perdu » reste une décision humaine, MRY22).
+        motif_refus = (request.data.get('motif_refus') or '').strip()
+        if motif_refus:
+            from .services import mention_motif_refus, motif_refus_valide
+            if outcome != 'refuse':
+                return Response(
+                    {'erreurs': {'motif_refus': (
+                        '« Motif du refus » ne vaut qu’avec la réponse '
+                        '« Refus ».')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            nom = motif_refus_valide(etape.company, motif_refus)
+            if nom is None:
+                return Response(
+                    {'erreurs': {'motif_refus': (
+                        f'« Motif du refus » : « {motif_refus} » n’est pas '
+                        'un motif de la liste (Paramètres → CRM).')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            body = f'{body} {mention_motif_refus(nom)}'.strip()
         # VISITE-CADENCE (revue Fable 15/09) — « Visite acceptée » n'a de sens
         # que sur le suivi de PROPOSITION : la visite se place APRÈS l'envoi
         # du devis (doctrine fondateur), jamais en prise de contact/réveil.
