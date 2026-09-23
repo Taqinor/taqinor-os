@@ -91,17 +91,28 @@ def _rendus(calepinage, company):
     aucune raison d'être chargée au démarrage de Django.
     """
     from .note_calcul import rendre_note_calcul
-    from .planche import rendre_planche_pdf
+    from .planche import (
+        CONTENU_MASSE, CONTENU_TOITURE, rendre_plan_pdf, rendre_planche_pdf,
+    )
 
-    # Les deux pièces FACULTATIVES (plan de toiture, plan de masse) ne sont
-    # pas encore produites par le dépôt : elles restent DÉCLARÉES dans
-    # ``SPEC_PIECES`` et sortent donc en SIGNALEMENT (« aucun rendu
-    # disponible »), jamais sautées en silence. Le jour où leur rendu existe,
-    # il s'ajoute ICI et le pack les emporte sans rien changer d'autre.
+    # CALX309 — le plan de toiture et le plan de masse EXISTENT déjà
+    # (``rendre_plan_pdf``, déjà servis en HTTP par
+    # ``views/sorties.py:plan_toiture_pdf``/``plan_masse_pdf``) : ils
+    # n'étaient simplement jamais BRANCHÉS ici, alors que ``SPEC_PIECES`` les
+    # déclarait déjà — le pack sortait donc toujours amputé de deux pièces
+    # qui existaient. Le plan de masse reste REFUSÉ (``PlancheRefusee``,
+    # champ ``parcelle``) tant qu'aucune parcelle n'est saisie : cette
+    # exception remonte telle quelle jusqu'à ``rendre_pieces``, qui la
+    # SIGNALE (pièce FACULTATIVE) plutôt que de faire échouer le pack — le
+    # motif nomme la parcelle, il n'est pas reformulé ici.
     return {
         'planche': lambda: rendre_planche_pdf(calepinage, company=company),
         'note_calcul': lambda: rendre_note_calcul(calepinage,
                                                   company=company),
+        'plan_toiture': lambda: rendre_plan_pdf(
+            calepinage, contenu=CONTENU_TOITURE, company=company),
+        'plan_masse': lambda: rendre_plan_pdf(
+            calepinage, contenu=CONTENU_MASSE, company=company),
     }
 
 
