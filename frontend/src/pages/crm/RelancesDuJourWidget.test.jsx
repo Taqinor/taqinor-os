@@ -109,7 +109,10 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.marquerRelanceEtapeFait)
       .toHaveBeenCalledWith(PREMIERE.id, { outcome: 'joint' }))
-    await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
+    // CAD50 — la touche traitée QUITTE la file (sa ligne disparaît) mais son
+    // nom reste affiché dans « Annuler » (retour arrière 24 h) : on vérifie la
+    // LIGNE, plus le texte du nom.
+    await waitFor(() => expect(screen.queryByTestId('relance-etape-row')).not.toBeInTheDocument())
   })
 
   it('F1 — Reporter envoie {rappel_le, rappel_heure} (forme sûre ancrée Casablanca, jamais un due_at fuseau-navigateur)', async () => {
@@ -143,7 +146,10 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee)
       .toHaveBeenCalledWith(PREMIERE.id, 'Client en congé'))
-    await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
+    // CAD50 — la touche traitée QUITTE la file (sa ligne disparaît) mais son
+    // nom reste affiché dans « Annuler » (retour arrière 24 h) : on vérifie la
+    // LIGNE, plus le texte du nom.
+    await waitFor(() => expect(screen.queryByTestId('relance-etape-row')).not.toBeInTheDocument())
   })
 
   it('Sauter → Annuler referme la note sans appeler l\'API', async () => {
