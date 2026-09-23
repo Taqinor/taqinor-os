@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import crmApi from '../../../../api/crmApi'
@@ -151,6 +151,27 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
     onRelanceChanged?.()
   }
 
+  // CAD48 — le champ « Relance le » ci-dessous ment sur ce qu'il fait : sur
+  // un lead à cadence active, son PATCH n'ajoute pas un rappel, il appelle
+  // `reporter_prochaine_touche` (`apps/crm/views.py`) — il déplace la
+  // PROCHAINE touche ET tout le reste du plan. Lu ici en LECTURE SEULE
+  // (`getRelanceEtapesLead`, même appel que `CadenceFrise`) : une cadence est
+  // « active » tant qu'au moins une étape reste `a_faire`. Recalculé après
+  // chaque geste de cadence (mêmes jetons que la frise/le journal).
+  const [cadenceActive, setCadenceActive] = useState(false)
+  useEffect(() => {
+    if (state.leadId == null) { setCadenceActive(false); return undefined }
+    let actif = true
+    crmApi.getRelanceEtapesLead(state.leadId)
+      .then((r) => {
+        if (!actif) return
+        const etapes = r.data?.results ?? r.data ?? []
+        setCadenceActive(etapes.some((e) => e.statut === 'a_faire'))
+      })
+      .catch(() => { if (actif) setCadenceActive(false) })
+    return () => { actif = false }
+  }, [state.leadId, friseReload, relanceVersion])
+
   return (
     <>
       <div className="form-row">
@@ -188,6 +209,16 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
               value={v('relance_date')} onChange={(e) => setField('relance_date', e.target.value)}
             />
           </FormField>
+          {/* CAD48 — dit ce que le champ fait RÉELLEMENT sur un lead à
+              cadence active, jamais un rappel libre en plus (contraire à
+              MRY10, « un seul système de rappel ») : on dit la vérité sur le
+              champ existant. */}
+          {cadenceActive && (
+            <p className="mt-1 text-xs text-muted-foreground" data-testid="cad48-relance-le-note">
+              Une cadence est active : modifier cette date déplace la
+              prochaine touche ET tout le reste du plan.
+            </p>
+          )}
         </div>
       </div>
       {/* QJ-ARBRE (fondateur 09/09/2026) — le Suivi commercial se scinde en
