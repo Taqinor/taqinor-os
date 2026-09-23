@@ -1,4 +1,4 @@
-"""CALX281 — l'économie d'un projet : flux de trésorerie, VAN, TRI, retours.
+"""CALX281-282 — l'économie d'un projet : flux, VAN, TRI, retours, LCOE.
 
 LE CONSTAT (CALX281)
 --------------------
@@ -63,7 +63,7 @@ from .solar_design import _irr, _npv
 
 __all__ = [
     'EconomieInvalide', 'MODES_REMPLACEMENT', 'RETOUR_MAX_ANS',
-    'SOURCE_SAISIE_NUE', 'flux_de_tresorerie',
+    'SOURCE_SAISIE_NUE', 'flux_de_tresorerie', 'lcoe',
 ]
 
 
@@ -421,7 +421,115 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
             'retour_actualise_ans', cumuls_actualises, horizon, omissions)
     bloc['tri_pct'] = _tri(flux, omissions)
     bloc['retour_ans'] = _retour('retour_ans', cumuls, horizon, omissions)
-    omissions.append(_omission(
-        'lcoe_mad_kwh', "non publié : le coût actualisé du kWh arrive avec "
-                        "CALX282"))
+    # CALX282 — le LCOE du MÊME flux (mêmes charges, mêmes remplacements).
+    production = next((h['valeur'] for h in hypotheses
+                       if h['cle'] == 'production_annee1_kwh'), None)
+    if not production:
+        omissions.append(_omission(
+            'lcoe_mad_kwh', "non publié : production_annee1_kwh absente ou "
+                            "nulle — aucune division bornée n'est publiée"))
+    elif r is None:
+        omissions.append(_omission(
+            'lcoe_mad_kwh', "non publié : aucun taux d'actualisation saisi "
+                            "(taux_actualisation_pct)"))
+    else:
+        bloc['lcoe_mad_kwh'] = _lcoe_calcule(
+            investissement=investissement, charges=charges,
+            production=production, horizon=horizon, r=r, deg=deg,
+            sorties=sorties)
     return bloc
+
+
+# ── CALX282 — le coût actualisé du kWh (LCOE) ───────────────────────────────
+#
+# PV*SOL : « for the electricity production costs k (also LCOE) applies :
+# k = Z/E » (https://help.valentin-software.com/pvsol/en/calculation/financial-analysis/)
+# — Z la somme actualisée des dépenses, E la somme actualisée de l'énergie.
+# PVsyst en fait un résultat de premier rang
+# (https://www.pvsyst.com/help/project-design/economic-evaluation/financial-parameters.html).
+# Production absente ou nulle ⇒ ``None`` + motif : JAMAIS une division bornée
+# qui publierait un nombre.
+
+def _lcoe_calcule(*, investissement, charges, production, horizon, r, deg,
+                  sorties=None):
+    """Z/E — toutes les entrées déjà VALIDÉES (fractions, pas des %)."""
+    sorties = sorties or {}
+    depenses = investissement
+    energie = 0.0
+    for annee in range(1, horizon + 1):
+        actualisation = (1.0 + r) ** annee
+        depenses += (charges + sorties.get(annee, 0.0)) / actualisation
+        energie += production * (1.0 - deg) ** (annee - 1) / actualisation
+    if energie <= 0:
+        return None
+    return round(depenses / energie, 6)
+
+
+def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
+         production_annuelle_kwh=None, horizon_ans=None,
+         taux_actualisation_pct=None, degradation_pct=None,
+         remplacements=None):
+    """CALX282 — ``{lcoe_mad_kwh, hypotheses, omissions}``.
+
+    Mêmes règles que :func:`flux_de_tresorerie` : aucune grandeur n'a de
+    défaut. Sans investissement, production (ou production nulle), horizon ou
+    taux d'actualisation, ``lcoe_mad_kwh`` vaut ``None`` et le motif NOMME la
+    grandeur manquante ; la dégradation, les charges et les remplacements non
+    saisis ne sont pas portés au calcul et l'omission le dit.
+    """
+    hypotheses, omissions = [], []
+
+    def lire(cle, brute, motif_absent, **bornes):
+        valeur, source, saisie_le = _saisie(cle, brute, **bornes)
+        if valeur is None:
+            omissions.append(_omission(cle, motif_absent))
+        else:
+            hypotheses.append(_hypothese(cle, valeur, source, saisie_le))
+        return valeur
+
+    investissement = lire(
+        'investissement_mad', investissement_mad,
+        "aucun investissement fourni", minimum=0)
+    charges = lire(
+        'charges_annuelles_mad', charges_annuelles_mad,
+        "aucune charge annuelle saisie — aucune n'est portée au calcul",
+        minimum=0)
+    production = lire(
+        'production_annuelle_kwh', production_annuelle_kwh,
+        "aucune production annuelle fournie", minimum=0)
+    horizon = lire(
+        'horizon_ans', horizon_ans, "aucun horizon saisi par la société",
+        minimum=1, entier=True)
+    taux = lire(
+        'taux_actualisation_pct', taux_actualisation_pct,
+        "aucun taux d'actualisation saisi par la société",
+        minimum=-100, strictement=True)
+    degradation = lire(
+        'degradation_pct', degradation_pct,
+        "aucune dégradation annuelle saisie — elle n'est pas portée au calcul",
+        minimum=0, maximum=100)
+    sorties, hyp_remplacements, omis_remplacements = _lire_remplacements(
+        remplacements, horizon)
+    hypotheses.extend(hyp_remplacements)
+    omissions.extend(omis_remplacements)
+
+    resultat = {'lcoe_mad_kwh': None, 'hypotheses': hypotheses,
+                'omissions': omissions}
+    manquants = [cle for cle, valeur in (
+        ('investissement_mad', investissement),
+        ('production_annuelle_kwh', production or None),
+        ('horizon_ans', horizon),
+        ('taux_actualisation_pct', taux)) if valeur is None]
+    if manquants:
+        omissions.append(_omission(
+            'lcoe_mad_kwh',
+            f"non publié : {', '.join(manquants)} absent ou nul — aucune "
+            f"division bornée n'est publiée"))
+        return resultat
+    resultat['lcoe_mad_kwh'] = _lcoe_calcule(
+        investissement=investissement,
+        charges=0.0 if charges is None else charges,
+        production=production, horizon=horizon, r=taux / 100.0,
+        deg=0.0 if degradation is None else degradation / 100.0,
+        sorties=sorties)
+    return resultat

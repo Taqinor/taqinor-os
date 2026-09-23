@@ -83,7 +83,7 @@ class CasDeReferenceTest(unittest.TestCase):
         exemple = json.loads(CONTRAT.read_text(encoding='utf-8'))['exemple']
         bloc = reference()
         self.assertEqual(bloc['flux'], exemple['flux'])
-        for cle in ('van_mad', 'tri_pct', 'retour_ans',
+        for cle in ('van_mad', 'tri_pct', 'lcoe_mad_kwh', 'retour_ans',
                     'retour_actualise_ans'):
             self.assertEqual(bloc[cle], exemple[cle], cle)
 
