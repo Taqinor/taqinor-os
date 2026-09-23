@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { CalendarClock } from 'lucide-react'
@@ -7,6 +7,7 @@ import {
   Card, CardContent, Badge, Spinner,
   Tabs, TabsList, TabsTrigger,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, Input,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ToucheMessageDialog from './ToucheMessageDialog'
@@ -225,6 +226,89 @@ function MesureCadencePanel() {
   )
 }
 
+// CAD50 — « Annuler » (retour arrière 24h, `crmApi.annulerRelanceEtape`) et
+// « Arrêter la cadence » (motif obligatoire, `crmApi.arreterCadence` — même
+// contrat que `SectionPipeline.jsx RelanceCadenceControls`) directement sur
+// la ligne : les deux actions n'existaient jusqu'ici que sur la fiche du
+// lead (`apps/crm/services.py annuler_touche_relance` porte déjà la fenêtre
+// 24h, refus motivé au-delà). Contrairement au Cockpit
+// (`RelancesDuJourWidget.jsx`), cet écran sert TOUS les statuts
+// (`relance_etapes_periode`) : une touche fait/sautée récente est déjà dans
+// `donnees.results`, aucun suivi local séparé n'est nécessaire ici. Rendu en
+// `<li>` SIBLING de `RelanceEtapeRow` (jamais à l'intérieur — composant
+// possédé par une autre lane) via un `Fragment` keyé.
+function estAnnulable(etape) {
+  if (!etape.traite_le) return false
+  if (etape.statut !== 'fait' && etape.statut !== 'sautee') return false
+  return Date.now() - new Date(etape.traite_le).getTime() < 24 * 3600 * 1000
+}
+
+function AnnulerArreterControl({ etape, onAnnuler, onArreter }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [busy, setBusy] = useState(false)
+  const annulable = estAnnulable(etape)
+  const arretable = etape.statut === 'a_faire'
+  if (!annulable && !arretable) return null
+
+  const annuler = async () => {
+    setBusy(true)
+    try {
+      await onAnnuler(etape.id)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmerArret = async () => {
+    const m = motif.trim()
+    if (!m) return
+    setBusy(true)
+    try {
+      const ok = await onArreter(etape.lead, m)
+      if (ok) { setOuvert(false); setMotif('') }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-1.5 pb-1 pl-1" data-testid="cad50-controls">
+      {annulable && (
+        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={annuler}>
+          Annuler
+        </Button>
+      )}
+      {arretable && !ouvert && (
+        <Button
+          type="button" size="sm" variant="outline" disabled={busy}
+          onClick={() => setOuvert(true)}
+        >
+          Arrêter la cadence
+        </Button>
+      )}
+      {arretable && ouvert && (
+        <>
+          <Input
+            placeholder="Motif d'arrêt (obligatoire)" value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            data-testid="cad50-arreter-motif"
+          />
+          <Button
+            type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => { setOuvert(false); setMotif('') }}
+          >
+            Annuler
+          </Button>
+          <Button type="button" size="sm" disabled={busy || !motif.trim()} onClick={confirmerArret}>
+            Confirmer
+          </Button>
+        </>
+      )}
+    </li>
+  )
+}
+
 export default function RelancesSuiviPage() {
   const navigate = useNavigate()
   const isResponsableOuAdmin = useIsAdminOrResponsable()
@@ -298,6 +382,31 @@ export default function RelancesSuiviPage() {
       return undefined
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // CAD50 — retour arrière (24h, refus motivé du serveur au-delà). Un
+  // refetch fait réapparaître la touche redevenue `a_faire`.
+  const annulerTouche = async (id) => {
+    try {
+      await crmApi.annulerRelanceEtape(id)
+      charger()
+    } catch {
+      toastError('Annulation impossible pour le moment.')
+    }
+  }
+
+  // CAD50 — motif OBLIGATOIRE (même contrat que `SectionPipeline.jsx`).
+  // Renvoie `true`/`false` (jamais un throw non capturé) : le contrôle
+  // referme SEULEMENT sur succès.
+  const arreterCadenceLead = async (leadId, motif) => {
+    try {
+      await crmApi.arreterCadence(leadId, { motif })
+      charger()
+      return true
+    } catch {
+      toastError('Arrêt de la cadence impossible pour le moment.')
+      return false
     }
   }
 
@@ -377,15 +486,20 @@ export default function RelancesSuiviPage() {
                   <h3 className="mb-1.5 text-sm font-semibold capitalize">{jourTitre(jour)}</h3>
                   <ul className="space-y-2">
                     {etapesJour.map((etape) => (
-                      <RelanceEtapeRow
-                        key={etape.id} etape={etape} busyId={busyId} navigate={navigate}
-                        showStatut
-                        readOnly={!actionnable || etape.statut !== 'a_faire'}
-                        onFait={(id, payload) => traiter(id, 'fait', payload)}
-                        onSauter={(id, note) => traiter(id, 'sauter', note)}
-                        onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
-                        onOuvrirMessage={setMessageEtape}
-                      />
+                      <Fragment key={etape.id}>
+                        <RelanceEtapeRow
+                          etape={etape} busyId={busyId} navigate={navigate}
+                          showStatut
+                          readOnly={!actionnable || etape.statut !== 'a_faire'}
+                          onFait={(id, payload) => traiter(id, 'fait', payload)}
+                          onSauter={(id, note) => traiter(id, 'sauter', note)}
+                          onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
+                          onOuvrirMessage={setMessageEtape}
+                        />
+                        <AnnulerArreterControl
+                          etape={etape} onAnnuler={annulerTouche} onArreter={arreterCadenceLead}
+                        />
+                      </Fragment>
                     ))}
                   </ul>
                 </div>

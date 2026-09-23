@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { CalendarClock } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import crmApi from '../../api/crmApi'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Spinner, Segmented,
+  Button, Input,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ToucheMessageDialog from './ToucheMessageDialog'
@@ -37,6 +38,19 @@ import { toastError } from '../../lib/toast'
    `GET relance-etapes/kpi-adherence/`) — jamais recompté ici — et ouvre la
    même liste en lecture seule, à côté des relances du jour. Aucun démarrage
    de cadence en masse depuis ce compteur (garde-fou de la tâche).
+
+   CAD50 — « Annuler »/« Arrêter » n'existaient que sur la fiche du lead.
+   « Arrêter la cadence » (`crmApi.arreterCadence`, motif obligatoire — même
+   contrat que `SectionPipeline.jsx RelanceCadenceControls`) se pose sur
+   CHAQUE ligne : ce cockpit ne montre que des touches `a_faire`, donc une
+   cadence toujours ouverte à arrêter. « Annuler » (retour arrière à 24h,
+   `crmApi.annulerRelanceEtape`) n'a en revanche RIEN à annuler dans la liste
+   ci-dessous par construction : le serveur ne sert ici que des étapes encore
+   `a_faire` (`crm.selectors.relance_etapes_dues`), jamais fait/sautée. La
+   touche que Meryem vient de traiter DANS CETTE session est donc suivie à
+   part (`justeTraitees`, peuplée par `traiter()` sur Fait/Sauter, retirée au
+   clic « Annuler ») — c'est elle, et seulement elle, qui porte « Annuler »
+   ici.
    ========================================================================== */
 
 const SCOPES = [
@@ -54,6 +68,62 @@ function todayCasa() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date())
 }
 
+// CAD50 — « Arrêter la cadence » depuis la ligne, motif OBLIGATOIRE (même
+// contrat que `SectionPipeline.jsx RelanceCadenceControls`, jamais recopié —
+// deux petits composants indépendants sur le même appel serveur). Rendu en
+// `<li>` SIBLING de `RelanceEtapeRow` (jamais À L'INTÉRIEUR : ce composant
+// est possédé par une autre lane) — les deux sont des enfants directs du même
+// `<ul>` via un `Fragment` keyé.
+function ArreterCadenceControl({ leadId, onArreter }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  if (leadId == null) return null
+
+  const confirmer = async () => {
+    const m = motif.trim()
+    if (!m) return
+    setBusy(true)
+    try {
+      const ok = await onArreter(leadId, m)
+      if (ok) { setOuvert(false); setMotif('') }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-1.5 pb-1 pl-1" data-testid="cad50-arreter">
+      {!ouvert ? (
+        <Button
+          type="button" size="sm" variant="outline" disabled={busy}
+          onClick={() => setOuvert(true)}
+        >
+          Arrêter la cadence
+        </Button>
+      ) : (
+        <>
+          <Input
+            placeholder="Motif d'arrêt (obligatoire)" value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            data-testid="cad50-arreter-motif"
+          />
+          <Button
+            type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => { setOuvert(false); setMotif('') }}
+          >
+            Annuler
+          </Button>
+          <Button type="button" size="sm" disabled={busy || !motif.trim()} onClick={confirmer}>
+            Confirmer
+          </Button>
+        </>
+      )}
+    </li>
+  )
+}
+
 export default function RelancesDuJourWidget() {
   const navigate = useNavigate()
   const [scope, setScope] = useState('all')
@@ -66,6 +136,11 @@ export default function RelancesDuJourWidget() {
   // notion d'échéance) : une seule lecture au montage, repliée par défaut.
   const [sansCadence, setSansCadence] = useState([])
   const [sansCadenceOuvert, setSansCadenceOuvert] = useState(false)
+  // CAD50 — étapes traitées (Fait/Sauter) DANS CETTE session, offertes au
+  // retour arrière (`annulerRelanceEtape`, fenêtre serveur 24h — voir la note
+  // d'en-tête). Purement local : le serveur ne renvoie plus ces étapes une
+  // fois traitées (`relance_etapes_dues` ne sert que du `a_faire`).
+  const [justeTraitees, setJusteTraitees] = useState([])
 
   useEffect(() => {
     let active = true
@@ -106,6 +181,13 @@ export default function RelancesDuJourWidget() {
       if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
       else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
       else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
+      // CAD50 — Fait/Sauter : la touche quitte cette liste (retirer), mais
+      // reste offerte au retour arrière (`justeTraitees`) — Reporter, lui,
+      // ne clôt rien, rien à annuler.
+      if (action === 'fait' || action === 'sauter') {
+        const etape = etapes.find((e) => e.id === id)
+        if (etape) setJusteTraitees((prev) => [...prev.filter((e) => e.id !== id), etape])
+      }
       retirer(id)
       // MRY9/MRY11 — une action peut faire naître une NOUVELLE touche due
       // (report, clôture de cadence…) : refetch silencieux, jamais bloquant.
@@ -126,6 +208,35 @@ export default function RelancesDuJourWidget() {
       return undefined
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // CAD50 — retour arrière (24h, refus motivé du serveur au-delà — voir
+  // `apps/crm/services.py annuler_touche_relance`) : la touche redevient
+  // `a_faire`, donc un refetch la fait réapparaître dans la liste normale.
+  const annulerTouche = async (id) => {
+    try {
+      await crmApi.annulerRelanceEtape(id)
+      setJusteTraitees((prev) => prev.filter((e) => e.id !== id))
+      charger()
+    } catch {
+      toastError('Annulation impossible pour le moment.')
+    }
+  }
+
+  // CAD50 — motif OBLIGATOIRE porté par `ArreterCadenceControl` (même contrat
+  // que `SectionPipeline.jsx`). Un refetch retire les touches désormais
+  // arrêtées de la liste. Renvoie `true`/`false` (jamais un throw non
+  // capturé) : le contrôle referme SEULEMENT sur succès, même patron que
+  // `RelanceCadenceControls.arreter` de `SectionPipeline.jsx`.
+  const arreterCadenceLead = async (leadId, motif) => {
+    try {
+      await crmApi.arreterCadence(leadId, { motif })
+      charger()
+      return true
+    } catch {
+      toastError('Arrêt de la cadence impossible pour le moment.')
+      return false
     }
   }
 
@@ -180,6 +291,28 @@ export default function RelancesDuJourWidget() {
             )}
           </div>
         )}
+        {/* CAD50 — retour arrière : les touches traitées DANS CETTE session
+            (Fait/Sauter), fenêtre serveur 24h. Disparaît dès qu'annulée OU
+            dès que le refetch confirme la clôture (`justeTraitees` filtré). */}
+        {justeTraitees.length > 0 && (
+          <ul className="mb-3 flex flex-col gap-1" data-testid="cad50-annuler-liste">
+            {justeTraitees.map((etape) => (
+              <li
+                key={etape.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border p-1.5 text-xs"
+              >
+                <span>
+                  <span className="font-medium">{etape.lead_nom}</span>
+                  {' — '}
+                  {etape.statut_libelle || (etape.statut === 'sautee' ? 'Sautée' : 'Faite')}
+                </span>
+                <Button type="button" size="sm" variant="outline" onClick={() => annulerTouche(etape.id)}>
+                  Annuler
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
         {loading ? (
           <Spinner />
         ) : error ? (
@@ -191,14 +324,17 @@ export default function RelancesDuJourWidget() {
         ) : (
           <ul className="space-y-2">
             {etapes.map((etape) => (
-              <RelanceEtapeRow
-                key={etape.id} etape={etape} busyId={busyId} navigate={navigate}
-                readOnly={etape.due_date > todayCasa()}
-                onFait={(id, payload) => traiter(id, 'fait', payload)}
-                onSauter={(id, note) => traiter(id, 'sauter', note)}
-                onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
-                onOuvrirMessage={setMessageEtape}
-              />
+              <Fragment key={etape.id}>
+                <RelanceEtapeRow
+                  etape={etape} busyId={busyId} navigate={navigate}
+                  readOnly={etape.due_date > todayCasa()}
+                  onFait={(id, payload) => traiter(id, 'fait', payload)}
+                  onSauter={(id, note) => traiter(id, 'sauter', note)}
+                  onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
+                  onOuvrirMessage={setMessageEtape}
+                />
+                <ArreterCadenceControl leadId={etape.lead} onArreter={arreterCadenceLead} />
+              </Fragment>
             ))}
           </ul>
         )}
