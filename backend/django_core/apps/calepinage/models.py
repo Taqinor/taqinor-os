@@ -577,11 +577,20 @@ class ProfilTypeConsommation(TenantModel):
     #: Les heures d'une journée — une courbe en a exactement 24.
     HEURES = 24
 
+    #: CALX258 — en plus de la forme plate ``{saison: [24]}``, une courbe
+    #: peut se SEGMENTER par type de jour : ``{saison: {jour_type: [24]}}``.
+    #: Une société qui n'édite rien continue de lire la forme plate,
+    #: inchangée (D12) ; PVsyst distingue de même jour ouvré / week-end.
+    JOURS_TYPES = ('ouvre', 'weekend', 'ferie')
+
     class Famille(models.TextChoices):
         RESIDENTIEL = 'residentiel', 'Résidentiel'
         COMMERCIAL = 'commercial', 'Commercial / tertiaire'
         INDUSTRIEL = 'industriel', 'Industriel'
         AGRICOLE = 'agricole', 'Agricole'
+        #: CALX258 — ``services/pompage.py`` est la partie la mieux câblée du
+        #: module ; elle n'avait pourtant aucune famille de profil à elle.
+        POMPAGE = 'pompage', 'Pompage'
         AUTRE = 'autre', 'Autre'
 
     #: La clé employée par les écrans et les calculs (stable, minuscule).
@@ -621,6 +630,51 @@ class ProfilTypeConsommation(TenantModel):
     def __str__(self):
         return self.libelle or self.cle
 
+    @classmethod
+    def _valider_courbe24(cls, contexte, valeurs):
+        """24 valeurs numériques ≥ 0, non toutes nulles — ou un message.
+
+        Factorisée pour servir IDENTIQUEMENT la forme plate (``contexte`` =
+        « la saison « X » ») et, depuis CALX258, chaque courbe d'une forme
+        segmentée (``contexte`` = « la saison « X », type de jour « Y » »).
+        """
+        if not isinstance(valeurs, (list, tuple)) or len(valeurs) != cls.HEURES:
+            return (f"La courbe de {contexte} attend "
+                    f"exactement {cls.HEURES} valeurs, une par heure.")
+        try:
+            nombres = [float(valeur) for valeur in valeurs]
+        except (TypeError, ValueError):
+            return f"La courbe de {contexte} contient une valeur illisible."
+        if any(nombre < 0 for nombre in nombres):
+            return (f"La courbe de {contexte} ne peut pas porter d'heure "
+                    "négative.")
+        if sum(nombres) <= 0:
+            return (f"La courbe de {contexte} est entièrement nulle : elle "
+                    "ne décrit aucune journée.")
+        return None
+
+    @classmethod
+    def _valider_jours_types(cls, saison, mapping):
+        """CALX258 — la forme segmentée ``{jour_type: [24 valeurs]}``."""
+        if not mapping:
+            return (
+                f"La courbe segmentée de la saison « {saison} » attend au "
+                f"moins un type de jour ({', '.join(cls.JOURS_TYPES)})."
+            )
+        for jour_type, valeurs in mapping.items():
+            if jour_type not in cls.JOURS_TYPES:
+                return (
+                    f"Type de jour inconnu : « {jour_type} » (saison "
+                    f"« {saison} »). Types admis : "
+                    f"{', '.join(cls.JOURS_TYPES)}."
+                )
+            erreur = cls._valider_courbe24(
+                f"la saison « {saison} », type de jour « {jour_type} »",
+                valeurs)
+            if erreur:
+                return erreur
+        return None
+
     def clean(self):
         """Refuse, EN FRANÇAIS et en NOMMANT le champ, un profil indéfendable."""
         erreurs = {}
@@ -643,32 +697,15 @@ class ProfilTypeConsommation(TenantModel):
                         f"{', '.join(self.SAISONS)}."
                     )
                     break
-                if not isinstance(valeurs, (list, tuple)) \
-                        or len(valeurs) != self.HEURES:
-                    erreurs['courbe'] = (
-                        f"La courbe de la saison « {saison} » attend "
-                        f"exactement {self.HEURES} valeurs, une par heure."
-                    )
-                    break
-                try:
-                    nombres = [float(valeur) for valeur in valeurs]
-                except (TypeError, ValueError):
-                    erreurs['courbe'] = (
-                        f"La courbe de la saison « {saison} » contient une "
-                        "valeur illisible."
-                    )
-                    break
-                if any(nombre < 0 for nombre in nombres):
-                    erreurs['courbe'] = (
-                        f"La courbe de la saison « {saison} » ne peut pas "
-                        "porter d'heure négative."
-                    )
-                    break
-                if sum(nombres) <= 0:
-                    erreurs['courbe'] = (
-                        f"La courbe de la saison « {saison} » est entièrement "
-                        "nulle : elle ne décrit aucune journée."
-                    )
+                # CALX258 — forme SEGMENTÉE par type de jour, en plus de la
+                # forme plate ``[24 valeurs]`` conservée à l'identique.
+                if isinstance(valeurs, dict):
+                    erreur = self._valider_jours_types(saison, valeurs)
+                else:
+                    erreur = self._valider_courbe24(
+                        f"la saison « {saison} »", valeurs)
+                if erreur:
+                    erreurs['courbe'] = erreur
                     break
         if erreurs:
             raise ValidationError(erreurs)

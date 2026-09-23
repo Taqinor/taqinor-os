@@ -105,6 +105,38 @@ def profil_de_repli(cle):
     return None
 
 
+def _courbes_normalisees(courbe_brute):
+    """``objet.courbe`` (forme plate OU segmentée, CALX258) → NORMALISÉE.
+
+    Forme plate : ``{saison: [24]}`` → ``{saison: [24 fractions]}`` —
+    inchangé depuis CAL149 (D12 : une société qui n'édite rien relit
+    exactement ce qu'elle relisait avant CALX258).
+
+    Forme segmentée : ``{saison: {jour_type: [24]}}`` →
+    ``{saison: {jour_type: [24 fractions]}}`` : deux types de jour d'une
+    même saison rendent deux courbes DISTINCTES, jamais moyennées entre eux
+    (moyenner ouvré et week-end effacerait précisément l'écart saisi).
+
+    Une valeur qui ne normalise pas (nulle, illisible) est simplement
+    OMISE — jamais remplacée par une valeur supposée.
+    """
+    courbes = {}
+    for saison, valeurs in (courbe_brute or {}).items():
+        if isinstance(valeurs, dict):
+            segmentee = {}
+            for jour_type, brutes in valeurs.items():
+                normalisee = _normaliser(brutes)
+                if normalisee is not None:
+                    segmentee[jour_type] = normalisee
+            if segmentee:
+                courbes[saison] = segmentee
+        else:
+            normalisee = _normaliser(valeurs)
+            if normalisee is not None:
+                courbes[saison] = normalisee
+    return courbes
+
+
 def profils_de_societe(company, *, inclure_replis=True):
     """Les profils SAISIS par la société, puis les replis étiquetés.
 
@@ -120,11 +152,7 @@ def profils_de_societe(company, *, inclure_replis=True):
         for objet in (ProfilTypeConsommation.objects
                       .filter(company=company, actif=True)
                       .order_by('famille', 'libelle', 'id')):
-            courbes = {}
-            for saison, valeurs in (objet.courbe or {}).items():
-                normalisee = _normaliser(valeurs)
-                if normalisee is not None:
-                    courbes[saison] = normalisee
+            courbes = _courbes_normalisees(objet.courbe)
             profils.append({
                 'id': objet.pk,
                 'cle': objet.cle,
