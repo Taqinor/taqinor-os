@@ -45,12 +45,16 @@ from collections.abc import Mapping
 from html import escape
 
 from ..note_calcul import _pied_de_page
+from ..planche import hash_court
 
 __all__ = [
     'NOIR', 'GRIS_TEXTE', 'GRIS_TRAIT', 'GRIS_FOND', 'CHARTE_IMPRESSION',
     'CLES_STYLES', 'styles_vides', 'couleur_valide', 'logo_valide',
     'styles_de_societe', 'entete_html', 'pied_html', 'css_du_gabarit',
     'document_html',
+    # CALX295 — la page de garde
+    'LIBELLES_GARDE_FR', 'CHAMPS_GARDE', 'page_de_garde_html',
+    'identite_du_calepinage',
 ]
 
 # ── La charte d'impression EXISTANTE (note de calcul, CAL176) ───────────────
@@ -287,3 +291,136 @@ def document_html(corps, *, titre, styles=None, provenance=None, mentions=(),
         corps or '',
         '</body></html>',
     ])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CALX295 — LA PAGE DE GARDE : identité société et projet
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``construire_note_calcul`` rangeait une identité dans la note sans que
+# ``html_de_note_calcul`` ne l'imprime NULLE PART : la pièce sortait sans nom
+# de société, sans client, sans date. La garde imprime ce qui est CONNU, et
+# BARRE ce qui ne l'est pas : une valeur absente reste visible comme absente
+# (son libellé barré, « non renseigné »), jamais remplacée par un texte qui
+# aurait l'air d'une donnée.
+
+#: Libellés français de la garde. ``page_de_garde_html(libelles=…)`` accepte
+#: la table d'une autre langue (CALX296), clé par clé.
+LIBELLES_GARDE_FR = {
+    'titre_defaut': 'Document technique du calepinage',
+    'societe': 'Société',
+    'projet': 'Projet',
+    'client': 'Client',
+    'adresse': 'Adresse du site',
+    'ville': 'Ville',
+    'produit_le': 'Date de production',
+    'empreinte': "Empreinte d'entrée",
+    'version_moteur': 'Version du moteur',
+    'non_renseigne': 'non renseigné',
+}
+
+#: Les lignes de la garde, dans l'ordre d'impression.
+CHAMPS_GARDE = ('societe', 'projet', 'client', 'adresse', 'ville',
+                'produit_le', 'empreinte', 'version_moteur')
+
+
+def _texte(valeur):
+    """Une valeur imprimable, ou ``''`` — ``None`` n'est jamais écrit."""
+    if valeur is None:
+        return ''
+    return str(valeur).strip()
+
+
+def page_de_garde_html(identite, site, provenance, styles, *, libelles=None):
+    """La page de garde : UN ``<h1>``, puis une table identité / empreinte.
+
+    Args:
+        identite: ``{titre_document, projet, client, produit_le}`` — composée
+            par ``identite_du_calepinage`` ; aucune clé n'est obligatoire.
+        site: le contexte géographique (``selectors.contexte_geographique`` :
+            ``adresse``, ``ville``) — des données de SITE, jamais recalculées.
+        provenance: ``{hash_entree, version_moteur}`` — l'empreinte est
+            imprimée COURTE (``planche.hash_court``, la graphie des planches).
+        styles: la marque (``styles_de_societe``) — nom affiché et logo.
+        libelles: la table de libellés d'une autre langue (CALX296).
+
+    La garde se termine par un saut de page : le corps de la pièce commence
+    toujours sur la page suivante.
+    """
+    identite = identite if isinstance(identite, Mapping) else {}
+    site = site if isinstance(site, Mapping) else {}
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    styles = styles if isinstance(styles, Mapping) else {}
+    textes = dict(LIBELLES_GARDE_FR)
+    textes.update({cle: valeur for cle, valeur in (libelles or {}).items()
+                   if _texte(valeur)})
+
+    valeurs = {
+        'societe': _texte(styles.get('nom_affiche')),
+        'projet': _texte(identite.get('projet')),
+        'client': _texte(identite.get('client')),
+        'adresse': _texte(site.get('adresse')),
+        'ville': _texte(site.get('ville')),
+        'produit_le': _texte(identite.get('produit_le')),
+        'empreinte': hash_court(_texte(provenance.get('hash_entree')
+                                       or provenance.get('entree_hash'))),
+        'version_moteur': _texte(provenance.get('version_moteur')),
+    }
+    lignes = []
+    for champ in CHAMPS_GARDE:
+        libelle = escape(textes[champ])
+        valeur = valeurs[champ]
+        if valeur:
+            lignes.append('<tr><th>%s</th><td>%s</td></tr>'
+                          % (libelle, escape(valeur)))
+        else:
+            lignes.append('<tr class="absent"><th><s>%s</s></th><td>%s</td>'
+                          '</tr>' % (libelle, escape(textes['non_renseigne'])))
+
+    titre = _texte(identite.get('titre_document')) or textes['titre_defaut']
+    logo = logo_valide(styles.get('logo_url'))
+    bloc_logo = ('<p class="garde-logo"><img src="%s" alt="%s"></p>'
+                 % (escape(logo, quote=True),
+                    escape(valeurs['societe'] or 'logo', quote=True))
+                 if logo else '')
+    return ('<section class="page-de-garde" '
+            'style="break-after:page;page-break-after:always;">'
+            '%s<h1>%s</h1><table class="garde">%s</table></section>'
+            % (bloc_logo, escape(titre), ''.join(lignes)))
+
+
+def identite_du_calepinage(calepinage, *, titre_document='', moment=None):
+    """L'identité d'une pièce : projet, client et date de production — LUS.
+
+    Le client est lu par les sélecteurs du CRM (``client_label``, sinon le
+    lead d'origine), bornés à la société du calepinage — jamais un import de
+    ``apps.crm.models``. ``moment`` est fourni par l'appelant pour un rendu
+    reproductible ; à défaut, c'est l'heure LOCALE du serveur (aware), jamais
+    un constructeur naïf.
+    """
+    company = getattr(calepinage, 'company', None)
+    client = ''
+    try:
+        from apps.crm.selectors import client_label, get_company_lead
+
+        client = _texte(client_label(
+            company, getattr(calepinage, 'client_id', None)))
+        if not client:
+            lead = get_company_lead(company,
+                                    getattr(calepinage, 'lead_id', None))
+            if lead is not None:
+                client = ' '.join(filter(None, (
+                    _texte(getattr(lead, 'prenom', '')),
+                    _texte(getattr(lead, 'nom', '')))))
+    except Exception:  # noqa: BLE001 — une garde sans client reste une garde
+        client = ''
+    if moment is None:
+        from django.utils import timezone
+
+        moment = timezone.localtime(timezone.now())
+    return {
+        'titre_document': _texte(titre_document),
+        'projet': _texte(getattr(calepinage, 'titre', '')),
+        'client': client,
+        'produit_le': moment.strftime('%d/%m/%Y'),
+    }
