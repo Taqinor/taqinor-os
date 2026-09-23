@@ -12,7 +12,8 @@ produite par ``services/chaine_pertes.py::appliquer_chaine`` qui enchaîne les
 Ce que la section imprime
 =========================
 Six colonnes, de l'irradiance incidente à l'énergie livrée — étape, poste,
-part, énergie avant, énergie après, source — puis la ligne de TOTAL. Le
+part, énergie avant, énergie après, source — puis la ligne de TOTAL, puis le
+diagramme de la même cascade dessiné par le serveur (CALX308). Le
 contrat réel de la cascade nomme ses champs ``etape`` / ``perte_pct`` là où
 l'énoncé disait ``code`` / ``pct`` : ce sont les MÊMES grandeurs, lues sous
 leur nom publié.
@@ -55,6 +56,9 @@ CSS_SECTION = (
     '.pertes-cascade tr.total td,.pertes-cascade tr.total th'
     '{font-weight:bold;border-top:0.5mm solid #111;}'
     '.pertes-cascade .detail{display:block;font-size:7.5pt;color:#555;}'
+    '.diagramme-pertes{margin-top:4mm;page-break-inside:avoid;'
+    'break-inside:avoid;}'
+    '.diagramme-pertes svg{display:block;}'
 )
 
 #: La mention de repli — la cascade n'existe pas, la liste plate si.
@@ -161,6 +165,13 @@ def _table_cascade(contexte, cascade, langue):
         blocs.append('<p class="note">%s : %s</p>' % (
             escape(_libelle(contexte, 'source_non_renseignee')),
             escape(', '.join(non_sources))))
+    # CALX308 — le diagramme de la MÊME cascade, dessiné par le serveur
+    # (``services/diagramme_pertes.py``) et embarqué tel quel : aucune part
+    # n'y est recalculée.
+    from ..diagramme_pertes import svg_de_cascade, svg_embarquable
+
+    blocs.append('<div class="diagramme-pertes">%s</div>' % svg_embarquable(
+        svg_de_cascade(cascade, langue=langue)))
     return ''.join(blocs)
 
 

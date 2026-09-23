@@ -67,3 +67,40 @@ def rapport_etude_pdf(self, request, pk=None):
 
 
 CalepinageViewSet.rapport_etude_pdf = rapport_etude_pdf
+
+
+# ── CALX308 — le diagramme de pertes (SVG dessiné par le serveur) ──────────
+@extend_schema(
+    responses={200: OpenApiTypes.BINARY},
+    parameters=[OpenApiParameter(
+        name='langue', type=OpenApiTypes.STR, required=False,
+        description='Langue des libellés (fr, en ; ar retombe sur fr).')],
+)
+@action(detail=True, methods=['get'], url_path='diagramme-pertes.svg',
+        url_name='diagramme-pertes-svg',
+        permission_classes=[PeutVoirCalepinage])
+def diagramme_pertes_svg(self, request, pk=None):
+    """CALX308 — la cascade de pertes en SVG autonome (aucun accès réseau).
+
+    * **200** — le SVG, nommé d'après le calepinage ;
+    * **400** — aucun résultat, aucune cascade produite, ou une donnée
+      refusée : le motif français et le champ NOMMÉ.
+    """
+    from ..services.diagramme_pertes import DiagrammeRefuse, svg_du_calepinage
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_SVG, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        svg = svg_du_calepinage(calepinage,
+                                langue=request.query_params.get('langue'))
+    except (DiagrammeRefuse, RapportRefuse) as refus:
+        return Response({refus.champ or 'cascade': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return reponse_de_fichier(
+        svg.encode('utf-8'), mime=MIME_SVG,
+        nom_fichier=nom_de_fichier(calepinage, 'diagramme-pertes.svg'))
+
+
+CalepinageViewSet.diagramme_pertes_svg = diagramme_pertes_svg
