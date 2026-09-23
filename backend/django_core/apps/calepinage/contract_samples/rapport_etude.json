@@ -1,0 +1,108 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/rapport-etude.pdf/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CALX292 — LE CONTRAT DES SECTIONS DU RAPPORT D'ÉTUDE, posé SEUL et EN PREMIER (PACT10). Aucun rapport d'étude n'existait : la seule pièce imprimée de grandeurs était la note de calcul, qui rend six sections écrites EN DUR dans une chaîne HTML (`services/note_calcul.py::html_de_note_calcul`) — aucune liste de sections manipulable. Ce document EST cette liste : l'assembleur du rapport (`services/rapport/__init__.py`, CALX297) la lit pour savoir QUOI imprimer et dans QUEL ORDRE, les rédacteurs de section (`services/rapport/<section>.py`, CALX298-CALX305, CALX330) la lisent pour savoir de quelles données ils dépendent, le choix des sections par la société (CALX307) la lit pour refuser un code inconnu ou le retrait d'une section obligatoire, l'inventaire des documents (CALX321) la lit pour NOMMER ce qui manque, et les libellés FR/EN (CALX296) doivent couvrir CHAQUE code d'ici.\n\nPOURQUOI L'ENDPOINT SERT UN FICHIER. La route déclarée sert un PDF, pas un JSON : il n'y a donc aucune forme de réponse à comparer (même cas que `calepinage_serie_horaire.json`, dont le seul lecteur sert un CSV), d'où `forme_serveur: partielle`. L'exemple ci-dessous n'est pas une réponse HTTP : c'est la DÉCLARATION que le rendu consomme, versionnée ici pour que les lanes file-disjointes du lot 6 ne s'inventent pas chacune leur liste.\n\nLES CLÉS D'UNE SECTION.\n* `code` — identifiant stable, jamais traduit ; c'est lui que la société coche (CALX307) et que les libellés FR/EN indexent (CALX296).\n* `titre` — le titre FRANÇAIS de référence ; la langue de sortie passe par `services/documents/libelles_document.py`.\n* `ordre` — rang d'impression, STRICTEMENT croissant d'une section à la suivante, par pas de 10 pour qu'une section future s'insère sans renuméroter.\n* `obligatoire` — une section obligatoire ne peut pas être décochée par la société (CALX307). Choix du contrat : la garde, le site et sa source météo, le système, la chaîne de pertes, la production, le régime de preuve et l'annexe des hypothèses font le rapport ; ombrage, électrique et nomenclature se retirent.\n* `entrees_exigees` — les CHEMINS, dans le contrat `calepinage_resultat.json` (la réponse de `GET calepinages/<pk>/resultat/`), sans lesquels la section n'a rien d'honnête à dire. Grammaire : `a.b.c` désigne une clé imbriquée ; le suffixe `[]` exige une LISTE NON VIDE ; une valeur `null` ou une chaîne vide est ABSENTE (jamais un zéro). Une liste vide `[]` veut dire que la section tient toujours debout : la garde (identité société et projet, hors résultat), la chaîne de pertes (deux sources légitimes, la cascade CALX141 ou la liste plate des postes déclarés, que la section départage elle-même — CALX300) et l'annexe des hypothèses (dont le rôle est justement de lister ce qui manque — CALX330).\n* `motif_si_absent` — la phrase IMPRIMÉE à la place de la section quand une entrée exigée manque : une section n'est jamais imprimée vide, et jamais masquée ; la phrase dit OÙ aller saisir.\n\nZÉRO CHIFFRE, ZÉRO MONTANT. Ce document ne porte aucun nombre de résultat et aucune clé de montant : le rapport d'étude est une pièce TECHNIQUE (D5, règle #4 — `/proposal` reste le seul PDF de devis client).",
+  "exemple": {
+    "sections": [
+      {
+        "code": "garde",
+        "titre": "Page de garde",
+        "ordre": 10,
+        "obligatoire": true,
+        "entrees_exigees": [],
+        "motif_si_absent": "La page de garde s'imprime toujours : une mention absente y est barrée « non renseigné », jamais inventée."
+      },
+      {
+        "code": "site_meteo",
+        "titre": "Site et source météo",
+        "ordre": 20,
+        "obligatoire": true,
+        "entrees_exigees": [
+          "production.base"
+        ],
+        "motif_si_absent": "Aucune base d'irradiance publiée pour ce calepinage : lancez la simulation (onglet Production) pour que la source météo soit connue."
+      },
+      {
+        "code": "systeme",
+        "titre": "Système",
+        "ordre": 30,
+        "obligatoire": true,
+        "entrees_exigees": [
+          "pose.total_modules",
+          "pose.kwc",
+          "pose.pans[]"
+        ],
+        "motif_si_absent": "Aucune pose enregistrée : le système (modules, pans, puissance crête) se lit sur la conception posée — calepinez la toiture dans l'atelier."
+      },
+      {
+        "code": "pertes",
+        "titre": "Chaîne de pertes",
+        "ordre": 40,
+        "obligatoire": true,
+        "entrees_exigees": [],
+        "motif_si_absent": "Ni cascade de pertes ni poste de perte déclaré : lancez la simulation (onglet Production), ou déclarez les postes dans l'éditeur de pertes."
+      },
+      {
+        "code": "production",
+        "titre": "Production",
+        "ordre": 50,
+        "obligatoire": true,
+        "entrees_exigees": [
+          "production.total.p50_kwh",
+          "production.mensuel[]"
+        ],
+        "motif_si_absent": "Production non simulée : le productible annuel et mensuel n'est publié qu'après la simulation (onglet Production)."
+      },
+      {
+        "code": "ombrage",
+        "titre": "Ombrage",
+        "ordre": 60,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "ombrage.par_pan[]"
+        ],
+        "motif_si_absent": "Aucun accès solaire par pan n'a été publié : l'ombrage se relève dans l'atelier (carte d'ombrage) puis se chiffre par la simulation."
+      },
+      {
+        "code": "electrique",
+        "titre": "Électrique",
+        "ordre": 70,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "electrique.chainage",
+          "electrique.verdicts[]"
+        ],
+        "motif_si_absent": "Aucun chaînage ni verdict électrique : désignez le module et l'onduleur dans l'onglet Électrique."
+      },
+      {
+        "code": "nomenclature",
+        "titre": "Nomenclature",
+        "ordre": 80,
+        "obligatoire": false,
+        "entrees_exigees": [
+          "pose.total_modules",
+          "electrique.onduleurs[]"
+        ],
+        "motif_si_absent": "Nomenclature incomplète : le nombre de modules posés et les onduleurs désignés sont nécessaires (atelier, puis onglet Électrique)."
+      },
+      {
+        "code": "preuve",
+        "titre": "Régime de preuve et empreinte",
+        "ordre": 90,
+        "obligatoire": true,
+        "entrees_exigees": [
+          "hash_entree"
+        ],
+        "motif_si_absent": "Aucune empreinte d'entrée publiée : le calepinage n'a pas encore été calculé."
+      },
+      {
+        "code": "hypotheses",
+        "titre": "Hypothèses, sources et omissions",
+        "ordre": 100,
+        "obligatoire": true,
+        "entrees_exigees": [],
+        "motif_si_absent": "L'annexe s'imprime toujours : ce qui n'a pas pu être calculé y est listé avec son motif."
+      }
+    ]
+  }
+}
