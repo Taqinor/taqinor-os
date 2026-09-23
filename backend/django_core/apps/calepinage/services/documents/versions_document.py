@@ -31,9 +31,15 @@ jamais faire remettre un numéro déjà remis à un client.
 CE QUE CE MODULE NE FAIT PAS
 -----------------------------
 Il ne rend AUCUN document — ``code``/``octets`` lui arrivent déjà
-PRODUITS (par ``services/rapport`` ou un futur rédacteur du lot 6). Il ne
-journalise rien non plus (CALX324 le branche, une ligne à la fin
-d'``enregistrer_version_document`` — cette section n'y touche pas).
+PRODUITS (par ``services/rapport`` ou un futur rédacteur du lot 6).
+
+CALX324 — LE FIL DU CALEPINAGE
+-------------------------------
+Chaque enregistrement RÉUSSI journalise UNE ligne
+(``services/journal.py::journaliser_document_produit``) — best-effort,
+comme le reste du chatter (``journal._ecrire`` avale déjà ses propres
+échecs). Un enregistrement REFUSÉ n'appelle jamais le journal : un refus
+n'est pas un événement de remise.
 """
 from __future__ import annotations
 
@@ -183,8 +189,7 @@ def enregistrer_version_document(calepinage, *, code, octets, langue=None,
         content_type=_content_type_calepinage(), object_id=calepinage.pk,
         uploaded_by=utilisateur, **donnees)
 
-    # CALX324 branche le journal ici (une ligne, best-effort) — SEULE cette
-    # ligne et l'import qu'elle nomme changent à cette étape.
+    # CALX324 — une ligne de fil, best-effort (jamais après un refus).
     _journaliser_si_branche(calepinage, code=code, numero=numero,
                             langue=langue or 'fr', user=utilisateur)
 
@@ -198,7 +203,19 @@ def enregistrer_version_document(calepinage, *, code, octets, langue=None,
 
 
 def _journaliser_si_branche(calepinage, *, code, numero, langue, user):
-    """CALX322 ne journalise pas encore — CALX324 remplace CE corps par un
-    appel réel à ``services/journal.py`` ; aucune autre ligne du fichier ne
-    bouge à cette étape."""
-    return None
+    """CALX324 — une ligne de fil, l'EMPREINTE du document, jamais un
+    résumé de son contenu (même discipline que ``services/planche.py::
+    empreinte_du_calepinage``). Best-effort : ``services/journal.py``
+    avale déjà ses propres échecs (``_ecrire``) — cet appel ne peut donc
+    pas casser un enregistrement de version déjà réussi."""
+    from ..journal import journaliser_document_produit
+    from ..planche import hash_court
+
+    empreinte = hash_court(getattr(calepinage, 'layout_hash', ''))
+    version_moteur = getattr(calepinage, 'version_moteur', '') or ''
+    if version_moteur:
+        empreinte = '%s · moteur %s' % (empreinte, version_moteur) \
+            if empreinte else 'moteur %s' % version_moteur
+    journaliser_document_produit(
+        calepinage, code=code, numero=numero, langue=langue,
+        empreinte=empreinte, user=user)
