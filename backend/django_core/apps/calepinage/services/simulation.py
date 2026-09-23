@@ -266,6 +266,40 @@ def _declaration_batterie(calepinage, document, entree, company):
     return declaration
 
 
+def _capacites_batterie_du_stock(company):
+    """CALX271 — les batteries du STOCK de la société, lues sur leur fiche.
+
+    Le sélecteur du stock rend les produits ACTIFS de catégorie « batterie »
+    SANS filtre de prix (``avec_prix=False`` : aucun prix n'est lu, D5) ;
+    ``specs_batterie`` lit leur fiche. Une capacité candidate est ainsi une
+    fiche RÉELLE, jamais une capacité inventée — celles qui ne publient pas
+    de capacité utile sont écartées par ``etapes/batterie.py``, qui compare
+    les autres. Sans société : aucune lecture, liste vide.
+    """
+    if company is None:
+        return []
+    from apps.stock.selectors import produits_par_type_equipement
+
+    from .batterie import specs_batterie
+
+    capacites = []
+    for produit in produits_par_type_equipement(company, 'batterie',
+                                                avec_prix=False):
+        specs = specs_batterie(produit)
+        grandeurs = specs.get('grandeurs') or {}
+        capacites.append({
+            'produit': produit.pk,
+            'libelle': str(getattr(produit, 'nom', '') or '').strip()
+            or f'Batterie {produit.pk}',
+            'capacite_utile_kwh': specs.get('capacite_utile_kwh'),
+            'puissance_charge_kw': specs.get('puissance_charge_kw'),
+            'puissance_decharge_kw': specs.get('puissance_decharge_kw'),
+            'rendement_ar_pct': grandeurs.get('rendement_ar_pct'),
+            'source': specs.get('capacite_utile_source') or 'fiche',
+        })
+    return capacites
+
+
 def _section_du_document(document, nom):
     """Une section DÉCLARÉE du document (``{}`` quand elle n'y est pas).
 
@@ -387,6 +421,8 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
                                           company),
         'raccordement': _section_du_document(document, 'raccordement'),
         'hors_reseau': _section_du_document(document, 'hors_reseau'),
+        # CALX271 — les batteries du STOCK, pour comparer leurs capacités.
+        'capacites_batterie_stock': _capacites_batterie_du_stock(company),
     }
     contexte['hash_entree'] = empreinte_entree(
         document, module_specs=materiel_resolu['module'],

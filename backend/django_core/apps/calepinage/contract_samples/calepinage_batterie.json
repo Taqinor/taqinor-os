@@ -1,0 +1,190 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/resultat/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CALX267 — la forme que rend services/batterie.py::simuler_groupes : PLUSIEURS groupes de batteries, chacun avec son COUPLAGE déclaré (ac | dc ; un groupe dc nomme l'onduleur hybride qui le porte), dispatchés DANS L'ORDRE saisi sur le résidu de charge/production du précédent. `groupes[]` publie chaque groupe SÉPARÉMENT (son `resultat` est le dict de simuler_batterie, clé à clé), `agregat` porte les MÊMES clés que simuler_batterie (les énergies de batterie s'additionnent, l'import et l'injection sont ceux qui restent après le dernier groupe), et `mention_agregat` vaut null pour un seul modèle ou porte « agrégat de capacités — approximation » et sa raison quand deux modèles différents coexistent (les rendements et les bornes de puissance ne s'additionnent pas). AUCUNE route ne sert encore cette forme : elle entrera dans le bloc `batterie` servi par GET resultat/ quand la chaîne de simulation adoptera les groupes (CALX63 s'appuie sur eux pour le couplage DC) — `forme_serveur: partielle`, la garde s'abstient. `exemple` est le résultat RÉEL du service sur `entree_synthetique` (six heures FABRIQUÉES pour le test, aucune installation réelle) : apps/calepinage/tests/test_calx267_groupes_batteries.py le rejoue et affirme l'égalité. Aucun prix, aucun coût : ce module ne connaît aucun tarif.",
+  "entree_synthetique": {
+    "charge_horaire": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "production_horaire": [
+      0.0,
+      4.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "groupes": [
+      {
+        "groupe": "BAT-ESSAI-AC",
+        "couplage": "ac",
+        "onduleur_ref": null,
+        "modele": "PACK-ESSAI-A",
+        "strategie": "autoconso",
+        "capacite_utile_kwh": 3.0,
+        "puissance_charge_kw": 2.0,
+        "puissance_decharge_kw": 2.0,
+        "rendement_ar_pct": 90.0
+      },
+      {
+        "groupe": "BAT-ESSAI-DC",
+        "couplage": "dc",
+        "onduleur_ref": "OND-ESSAI-1",
+        "modele": "PACK-ESSAI-B",
+        "strategie": "autoconso",
+        "capacite_utile_kwh": 3.0,
+        "puissance_charge_kw": 2.0,
+        "puissance_decharge_kw": 2.0,
+        "rendement_ar_pct": 81.0
+      }
+    ]
+  },
+  "exemple": {
+    "groupes": [
+      {
+        "groupe": "BAT-ESSAI-AC",
+        "couplage": "ac",
+        "onduleur_ref": null,
+        "modele": "PACK-ESSAI-A",
+        "resultat": {
+          "strategie": "autoconso",
+          "objectif_dimensionnant": "Maximiser l’énergie autoconsommée (stocker le surplus du jour pour le restituer le soir).",
+          "heures": 6,
+          "charge_batterie_kwh": 3.162,
+          "decharge_batterie_kwh": 2.846,
+          "import_reseau_kwh": 1.154,
+          "surplus_injecte_kwh": 3.838,
+          "pertes_stockage_kwh": 0.316,
+          "etat_de_charge_kwh": [
+            0.0,
+            1.8974,
+            3.0,
+            1.9459,
+            0.8918,
+            0.0
+          ],
+          "energie_effacee_kwh": null,
+          "pointe_avant_kw": null,
+          "pointe_apres_kw": null,
+          "heures_au_dessus_du_seuil": null,
+          "depassements_residuels": null,
+          "batterie": {
+            "rendement_ar_pct": 90.0,
+            "source": "saisie",
+            "rendement_un_sens": 0.948683
+          },
+          "parametres": {
+            "capacite_utile_kwh": 3.0,
+            "puissance_charge_kw": 2.0,
+            "puissance_decharge_kw": 2.0,
+            "rendement_ar_pct": 90.0,
+            "seuil_effacement_kw": null,
+            "heures_charge": null,
+            "heures_decharge": null,
+            "fenetres": null,
+            "reserve_backup_kwh": null,
+            "reserve_appareils": null,
+            "part_effacable_pct": null,
+            "plafond_effacable_kw": null
+          }
+        }
+      },
+      {
+        "groupe": "BAT-ESSAI-DC",
+        "couplage": "dc",
+        "onduleur_ref": "OND-ESSAI-1",
+        "modele": "PACK-ESSAI-B",
+        "resultat": {
+          "strategie": "autoconso",
+          "objectif_dimensionnant": "Maximiser l’énergie autoconsommée (stocker le surplus du jour pour le restituer le soir).",
+          "heures": 6,
+          "charge_batterie_kwh": 3.0,
+          "decharge_batterie_kwh": 0.154,
+          "import_reseau_kwh": 1.0,
+          "surplus_injecte_kwh": 0.838,
+          "pertes_stockage_kwh": 0.317,
+          "etat_de_charge_kwh": [
+            0.0,
+            0.9,
+            2.7,
+            2.7,
+            2.7,
+            2.5289
+          ],
+          "energie_effacee_kwh": null,
+          "pointe_avant_kw": null,
+          "pointe_apres_kw": null,
+          "heures_au_dessus_du_seuil": null,
+          "depassements_residuels": null,
+          "batterie": {
+            "rendement_ar_pct": 81.0,
+            "source": "saisie",
+            "rendement_un_sens": 0.9
+          },
+          "parametres": {
+            "capacite_utile_kwh": 3.0,
+            "puissance_charge_kw": 2.0,
+            "puissance_decharge_kw": 2.0,
+            "rendement_ar_pct": 81.0,
+            "seuil_effacement_kw": null,
+            "heures_charge": null,
+            "heures_decharge": null,
+            "fenetres": null,
+            "reserve_backup_kwh": null,
+            "reserve_appareils": null,
+            "part_effacable_pct": null,
+            "plafond_effacable_kw": null
+          }
+        }
+      }
+    ],
+    "agregat": {
+      "strategie": "autoconso",
+      "objectif_dimensionnant": "Maximiser l’énergie autoconsommée (stocker le surplus du jour pour le restituer le soir).",
+      "heures": 6,
+      "charge_batterie_kwh": 6.162,
+      "decharge_batterie_kwh": 3.0,
+      "import_reseau_kwh": 1.0,
+      "surplus_injecte_kwh": 0.838,
+      "pertes_stockage_kwh": 0.633,
+      "etat_de_charge_kwh": [
+        0.0,
+        2.7974,
+        5.7,
+        4.6459,
+        3.5918,
+        2.5289
+      ],
+      "energie_effacee_kwh": null,
+      "pointe_avant_kw": null,
+      "pointe_apres_kw": null,
+      "heures_au_dessus_du_seuil": null,
+      "depassements_residuels": null,
+      "batterie": {
+        "rendement_ar_pct": null,
+        "source": "saisie",
+        "rendement_un_sens": null
+      },
+      "parametres": {
+        "capacite_utile_kwh": 6.0,
+        "puissance_charge_kw": 4.0,
+        "puissance_decharge_kw": 4.0,
+        "rendement_ar_pct": null,
+        "seuil_effacement_kw": null,
+        "heures_charge": null,
+        "heures_decharge": null,
+        "fenetres": null,
+        "reserve_backup_kwh": null,
+        "reserve_appareils": null,
+        "part_effacable_pct": null,
+        "plafond_effacable_kw": null
+      }
+    },
+    "mention_agregat": "« agrégat de capacités — approximation » : les groupes portent des modèles de batterie différents (PACK-ESSAI-A, PACK-ESSAI-B) ; leurs rendements et leurs bornes de puissance ne s’additionnent pas, les capacités et puissances cumulées de l’agrégat sont donc une approximation."
+  }
+}

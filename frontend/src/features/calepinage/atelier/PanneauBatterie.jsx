@@ -293,6 +293,139 @@ function BlocBatterie({ batterie }) {
   )
 }
 
+/* ============================================================================
+   CALX271 — « COMPARER DES CAPACITÉS DU STOCK », SANS AUCUN PRIX.
+   ----------------------------------------------------------------------------
+   La chaîne de simulation compare les batteries du STOCK de la société (leurs
+   fiches, jamais une capacité inventée) sur la série réelle et publie, pour
+   chacune des trois motivations d'OpenSolar (Battery Design Assistant), une
+   liste ORDONNÉE avec son critère écrit en toutes lettres
+   (`resultat.batterie.capacites_candidates`, contrat
+   `calepinage_simulation.json`). Ce bloc ne fait que l'AFFICHER : aucun
+   classement n'est refait ici, aucun montant n'y transite, et aucune
+   capacité n'est « recommandée » — la liste et son critère, rien de plus.
+   Sans capacité au stock, le bouton est INACTIF et le motif du serveur est
+   lu à côté. */
+const MOTIF_SANS_COMPARAISON = 'La simulation enregistrée ne compare pas encore '
+  + 'les capacités du stock : relancez la simulation pour obtenir la comparaison.'
+
+const LIBELLES_INDICATEUR = {
+  taux_autoconsommation: 'Taux d’autoconsommation',
+  taux_couverture: 'Taux de couverture',
+  pointe_apres_kw: 'Pointe après effacement',
+}
+
+function valeurIndicateur(indicateur, valeur) {
+  if (valeur === null || valeur === undefined) return 'non calculée'
+  if (indicateur === 'pointe_apres_kw') return `${formatNumber(valeur, { decimals: 1 })} kW`
+  return formatPercent(valeur * 100, { decimals: 1 })
+}
+
+function ListeCandidates({ liste }) {
+  if (!liste) return null
+  if (liste.motif_absence) {
+    return <MotifAbsence testId="calx271-motivation-motif" motif={liste.motif_absence} />
+  }
+  const entete = LIBELLES_INDICATEUR[liste.indicateur] || liste.indicateur
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-xs text-muted-foreground" data-testid="calx271-critere">
+        <span className="font-medium">Critère : </span>
+        {liste.critere}
+      </p>
+      <table className="w-full text-sm" data-testid="calx271-candidates">
+        <thead>
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="py-1 font-normal">Rang</th>
+            <th className="py-1 font-normal">Batterie du stock</th>
+            <th className="py-1 text-right font-normal">Capacité utile</th>
+            <th className="py-1 text-right font-normal">{entete}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(liste.candidates || []).map((ligne) => (
+            <tr key={`${ligne.rang}-${ligne.libelle}`} className="border-t border-border/60" data-testid="calx271-candidate">
+              <td className="py-1 tabular-nums">{ligne.rang}</td>
+              <td className="py-1">
+                {ligne.libelle}
+                {ligne.motif_absence && (
+                  <span className="block text-xs text-muted-foreground">{ligne.motif_absence}</span>
+                )}
+              </td>
+              <td className="py-1 text-right tabular-nums">{kwh(ligne.capacite_utile_kwh)}</td>
+              <td className="py-1 text-right tabular-nums">{valeurIndicateur(liste.indicateur, ligne.valeur)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {liste.avertissements?.length > 0 && (
+        <ul className="list-disc pl-5 text-xs text-muted-foreground" data-testid="calx271-avertissements">
+          {liste.avertissements.map((a) => <li key={a}>{a}</li>)}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function ComparateurCapacites({ bloc }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [choix, setChoix] = useState(null)
+
+  const parMotivation = bloc?.par_motivation || null
+  const motivations = parMotivation ? Object.keys(parMotivation) : []
+  const actif = Boolean(parMotivation) && motivations.length > 0
+    && (bloc?.capacites_stock?.length ?? 0) > 0 && !bloc?.motif_absence
+  const declaree = bloc?.motivation_declaree && parMotivation?.[bloc.motivation_declaree]
+    ? bloc.motivation_declaree : null
+  const motivation = choix || declaree || motivations[0]
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-border/60 pt-3" data-testid="calx271-comparateur">
+      <Button
+        type="button"
+        size="sm"
+        className="w-fit"
+        disabled={!actif}
+        aria-expanded={actif && ouvert}
+        onClick={() => setOuvert((valeur) => !valeur)}
+        data-testid="calx271-comparer"
+      >
+        Comparer des capacités du stock
+      </Button>
+      {!actif && (
+        <p className="text-sm text-muted-foreground" data-testid="calx271-motif">
+          {bloc?.motif_absence || MOTIF_SANS_COMPARAISON}
+        </p>
+      )}
+      {actif && ouvert && (
+        <div className="flex flex-col gap-2" data-testid="calx271-liste">
+          {declaree && (
+            <p className="text-xs text-muted-foreground" data-testid="calx271-motivation-declaree">
+              Motivation déclarée par le client : {parMotivation[declaree].libelle}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Motivation du client">
+            {motivations.map((nom) => (
+              <Button
+                key={nom}
+                type="button"
+                size="sm"
+                variant={nom === motivation ? 'default' : 'outline'}
+                aria-pressed={nom === motivation}
+                onClick={() => setChoix(nom)}
+                data-testid={`calx271-motivation-${nom}`}
+              >
+                {parMotivation[nom].libelle || nom}
+              </Button>
+            ))}
+          </div>
+          <ListeCandidates liste={parMotivation[motivation]} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TableauParMois({ parMois }) {
   if (!parMois?.length) return null
   return (
@@ -391,6 +524,7 @@ export default function PanneauBatterie({ calepinageId }) {
       {!perime && data?.simule && (
         <>
           <BlocBatterie batterie={data?.batterie} />
+          <ComparateurCapacites bloc={data?.batterie?.capacites_candidates} />
           <div className="border-t border-border/60 pt-3">
             <h3 className="mb-2 text-sm font-semibold">Hors réseau</h3>
             <BlocHorsReseau horsReseau={data?.hors_reseau} />

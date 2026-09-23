@@ -58,8 +58,12 @@ from __future__ import annotations
 import math
 
 from apps.calepinage.services import chaine_pertes, courbe_charge, etapes
-from apps.calepinage.services.batterie import (StrategieInvalide,
-                                               simuler_batterie)
+from apps.calepinage.services.batterie import (MOTIVATIONS, StrategieInvalide,
+                                               candidates_omises,
+                                               capacites_candidates,
+                                               reserve_depuis_appareils,
+                                               simuler_batterie,
+                                               simuler_groupes)
 
 LIBELLE = 'Batterie'
 
@@ -107,6 +111,17 @@ MENTION_PLUSIEURS_GROUPES = (
     'UNE banque (c’est le même point de livraison). L’énergie restituée et le '
     'nombre de cycles ne sont donc PAS publiés groupe par groupe — les '
     'répartir au prorata serait un chiffre inventé.')
+
+MOTIF_RESERVE_EN_DOUBLE = (
+    'Une réserve de secours nue ET des appareils secourus sont déclarés : la '
+    'réserve se saisit d’une seule façon, jamais les deux. Le bloc '
+    '« batterie » est OMIS.')
+
+#: CALX270 — la réserve DÉDUITE des appareils, dite en clair dans le bloc.
+MENTION_RESERVE_APPAREILS = (
+    'Réserve de secours déduite de {nombre} appareil(s) secouru(s) : '
+    '{energie} kWh pour {duree} h de coupure (puissance continue '
+    '{continue_kw} kW, pointe au démarrage {pointe_kw} kW).')
 
 DEFINITION_AUTONOMIE = (
     "Taux d'autonomie = 1 − énergie importée du réseau ÷ consommation. "
@@ -343,6 +358,20 @@ def _omission(motif, *, champ=''):
 # ── l'entrée unique, appelée par services/simulation.py (CALX5) ──────────
 
 def bloc_batterie(serie, contexte=None, *, charge=None):
+    """Le bloc ``resultat['batterie']``, capacités candidates comprises.
+
+    CALX271 — le bloc porte TOUJOURS ``capacites_candidates`` (voir
+    :func:`_capacites_du_site`), qu'il soit calculé ou OMIS : c'est
+    précisément quand aucune batterie n'est encore choisie que la
+    comparaison des capacités du stock sert.
+    """
+    suite, bloc = _bloc_batterie_dispatch(serie, contexte, charge=charge)
+    bloc['capacites_candidates'] = _capacites_du_site(serie, contexte,
+                                                      charge=charge)
+    return suite, bloc
+
+
+def _bloc_batterie_dispatch(serie, contexte=None, *, charge=None):
     """Le bloc ``resultat['batterie']`` et la série enrichie de ses colonnes.
 
     Args:
@@ -408,21 +437,62 @@ def bloc_batterie(serie, contexte=None, *, charge=None):
 
     etat_initial = min(max(0.0, _nombre(declaration.get('etat_initial_kwh'))
                            or 0.0), banque['capacite_utile_kwh'])
+
+    # CALX270 — la réserve de secours DÉDUITE des appareils que le document
+    # déclare secourus (``battery.appareils`` + ``battery.duree_secours_h``),
+    # à la place de la réserve nue ; jamais les deux à la fois.
+    reserve = declaration.get('reserve_backup_kwh')
+    if declaration.get('appareils') is not None:
+        if reserve not in (None, ''):
+            return serie, _omission(
+                MOTIF_RESERVE_EN_DOUBLE,
+                champ=f'{CLE_CONTEXTE}.reserve_backup_kwh')
+        try:
+            reserve = reserve_depuis_appareils(
+                declaration.get('appareils'),
+                duree_h=declaration.get('duree_secours_h'))
+        except StrategieInvalide as refus:
+            champ = ('duree_secours_h' if refus.champ == 'duree_h'
+                     else refus.champ)
+            return serie, _omission(refus.motif,
+                                    champ=f'{CLE_CONTEXTE}.{champ}')
+
+    parametres = {
+        'strategie': strategie,
+        'capacite_utile_kwh': banque['capacite_utile_kwh'],
+        'puissance_charge_kw': banque['puissance_charge_kw'],
+        'puissance_decharge_kw': banque['puissance_decharge_kw'],
+        'rendement_ar_pct': banque['rendement_ar_pct'],
+        'seuil_effacement_kw': declaration.get('seuil_effacement_kw'),
+        'heures_charge': declaration.get('heures_charge'),
+        'heures_decharge': declaration.get('heures_decharge'),
+        # CALX268 — la commande horaire à SOC cible, quand le document la
+        # déclare ; CALX270 — la part effaçable d'un tableau partiel.
+        'fenetres': declaration.get('fenetres'),
+        'reserve_backup_kwh': reserve,
+        'part_effacable_pct': declaration.get('part_effacable_pct'),
+        'plafond_effacable_kw': declaration.get('plafond_effacable_kw'),
+        'etat_initial_kwh': etat_initial,
+    }
     try:
-        dispatch = simuler_batterie(
-            courbe, production,
-            strategie=strategie,
-            capacite_utile_kwh=banque['capacite_utile_kwh'],
-            puissance_charge_kw=banque['puissance_charge_kw'],
-            puissance_decharge_kw=banque['puissance_decharge_kw'],
-            rendement_ar_pct=banque['rendement_ar_pct'],
-            seuil_effacement_kw=declaration.get('seuil_effacement_kw'),
-            heures_charge=declaration.get('heures_charge'),
-            heures_decharge=declaration.get('heures_decharge'),
-            reserve_backup_kwh=declaration.get('reserve_backup_kwh'),
-            etat_initial_kwh=etat_initial,
-            pas_heures=float(pas) / 60.0,
-            heure_de_depart=heure_de_depart)
+        if declaration.get('couplage') not in (None, ''):
+            # CALX267 — la banque DÉCLARE son couplage (``ac`` | ``dc``) :
+            # elle passe par ``simuler_groupes`` (un groupe DC sans onduleur
+            # est refusé en le nommant) ; un seul groupe rend exactement le
+            # dispatch de ``simuler_batterie``.
+            dispatch = simuler_groupes(
+                courbe, production, [dict(
+                    parametres,
+                    groupe=' + '.join(groupe['groupe'] for groupe in groupes),
+                    couplage=declaration.get('couplage'),
+                    onduleur_ref=declaration.get('onduleur_ref'),
+                    modele=declaration.get('model'))],
+                pas_heures=float(pas) / 60.0,
+                heure_de_depart=heure_de_depart)['agregat']
+        else:
+            dispatch = simuler_batterie(
+                courbe, production, pas_heures=float(pas) / 60.0,
+                heure_de_depart=heure_de_depart, **parametres)
     except StrategieInvalide as refus:
         return serie, _omission(refus.motif,
                                 champ=(f'{CLE_CONTEXTE}.{refus.champ}'
@@ -430,8 +500,15 @@ def bloc_batterie(serie, contexte=None, *, charge=None):
 
     flux = _flux_horaires(dispatch, courbe, production,
                           etat_initial=etat_initial, banque=banque)
-    return _publier(serie, flux, dispatch, groupes, banque, strategie,
-                    etat_initial=etat_initial)
+    suite, bloc = _publier(serie, flux, dispatch, groupes, banque, strategie,
+                           etat_initial=etat_initial)
+    if isinstance(reserve, dict):
+        bloc['avertissements'].append(MENTION_RESERVE_APPAREILS.format(
+            nombre=len(reserve['detail']), energie=reserve['energie_kwh'],
+            duree=reserve['duree_h'],
+            continue_kw=reserve['puissance_continue_kw'],
+            pointe_kw=reserve['puissance_pointe_kw']))
+    return suite, bloc
 
 
 def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
@@ -505,3 +582,120 @@ def _publier(serie, flux, dispatch, groupes, banque, strategie, *,
         'motif_absence': '',
     }
     return suite, bloc
+
+
+# ── CALX271 — les capacités du STOCK, comparées sur la série réelle ──────
+
+#: La clé du contexte qui porte les batteries du stock de la société, lues
+#: par ``services/simulation.py`` (seul à toucher le stock) :
+#: ``[{produit, libelle, capacite_utile_kwh, puissance_charge_kw,
+#: puissance_decharge_kw, rendement_ar_pct: {valeur, source}, source}]``.
+CLE_CAPACITES_STOCK = 'capacites_batterie_stock'
+
+MOTIF_SANS_CAPACITES_STOCK = (
+    "Aucune batterie du stock de la société ne publie de capacité utile "
+    'lisible sur sa fiche : il n’y a rien à comparer. Complétez la fiche '
+    'd’une batterie du stock (capacité utile, ou capacité nominale et '
+    'profondeur de décharge) — aucune capacité n’est inventée.')
+
+
+def _capacites_du_stock(contexte):
+    """Les fiches du stock UTILISABLES (capacité utile lisible), et elles seules."""
+    lues = []
+    for capacite in (contexte or {}).get(CLE_CAPACITES_STOCK) or []:
+        if not isinstance(capacite, dict):
+            continue
+        utile = _nombre(capacite.get('capacite_utile_kwh'))
+        if utile is None or utile <= 0:
+            continue
+        lues.append(capacite)
+    return lues
+
+
+def _declaration_du_document(contexte):
+    """La section ``battery`` du document (seuil, motivation), ou ``{}``."""
+    declaration = (contexte or {}).get(CLE_CONTEXTE)
+    if isinstance(declaration, dict) and declaration:
+        return declaration
+    layout = (contexte or {}).get('layout')
+    brute = layout.get('battery') if isinstance(layout, dict) else None
+    return brute if isinstance(brute, dict) else {}
+
+
+def _capacites_du_site(serie, contexte=None, *, charge=None):
+    """CALX271 — les capacités candidates du stock, classées par motivation.
+
+    Le dispatch EXISTANT tourne, pour chaque batterie du stock dont la fiche
+    publie une capacité utile, sur la courbe de charge (CALX189) et la série
+    AC sortie de chaîne — puis les candidates sont classées, pour CHACUNE des
+    trois motivations (``services/batterie.py::MOTIVATIONS``), par
+    ``capacites_candidates``. La motivation déclarée par le client
+    (``roof_layout.battery.motivation``) est republiée pour que l'écran la
+    présélectionne ; aucune n'est supposée. Aucun prix n'entre.
+
+    Returns:
+        dict — ``capacites_stock`` (les fiches comparées : ``produit``,
+        ``libelle``, ``capacite_utile_kwh``, ``source``),
+        ``motivation_declaree``, ``par_motivation`` (``{motivation:
+        <capacites_candidates>}``, ou ``None`` quand rien n'est comparable)
+        et ``motif_absence``.
+    """
+    contexte = contexte or {}
+    utilisables = _capacites_du_stock(contexte)
+    declaration = _declaration_du_document(contexte)
+    motivation = declaration.get('motivation')
+    bloc = {
+        'capacites_stock': [{
+            'produit': capacite.get('produit'),
+            'libelle': capacite.get('libelle'),
+            'capacite_utile_kwh': _nombre(capacite.get('capacite_utile_kwh')),
+            'source': capacite.get('source'),
+        } for capacite in utilisables],
+        'motivation_declaree': motivation if motivation in MOTIVATIONS
+        else None,
+        'par_motivation': None,
+        'motif_absence': '',
+    }
+    if not utilisables:
+        bloc['motif_absence'] = MOTIF_SANS_CAPACITES_STOCK
+        return bloc
+
+    possible, motif_fuseau = verdict_horaire(contexte)
+    if not possible:
+        bloc['motif_absence'] = motif_fuseau
+        return bloc
+    bloc_charge = courbe_de_charge(serie, contexte, charge=charge)
+    courbe = bloc_charge.get('courbe')
+    if not courbe:
+        motif = (bloc_charge.get('omissions') or {}).get('batterie')
+        bloc['motif_absence'] = motif or courbe_charge.MOTIF_BATTERIE
+        return bloc
+    production = production_horaire(serie)
+    if production is None:
+        bloc['motif_absence'] = MOTIF_SANS_PRODUCTION
+        return bloc
+
+    points = (serie or {}).get('points') or []
+    longueur = min(len(courbe), len(production), len(points))
+    heure_de_depart = 0
+    if points and isinstance(points[0], dict):
+        heure_de_depart = int(_nombre(points[0].get('heure')) or 0)
+    pas = pas_minutes(serie, bloc_charge)
+
+    par_motivation = {}
+    for nom in MOTIVATIONS:
+        try:
+            par_motivation[nom] = capacites_candidates(
+                list(courbe[:longueur]), list(production[:longueur]),
+                motivation=nom, capacites_kwh=utilisables,
+                seuil_effacement_kw=declaration.get('seuil_effacement_kw'),
+                pas_heures=float(pas) / 60.0,
+                heure_de_depart=heure_de_depart)
+        except StrategieInvalide as refus:
+            texte = refus.motif.strip()
+            if refus.champ:
+                texte = (f'{texte} Champ manquant : '
+                         f'« {CLE_CONTEXTE}.{refus.champ} ».')
+            par_motivation[nom] = candidates_omises(nom, texte)
+    bloc['par_motivation'] = par_motivation
+    return bloc
