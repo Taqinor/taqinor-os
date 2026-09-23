@@ -554,12 +554,20 @@ def ajouter_charges(courbe_de_base, charges):
     Args:
         courbe_de_base: la courbe horaire du profil (kWh/h).
         charges: les blocs rendus par :func:`courbe_vehicule` /
-            :func:`courbe_pac`.
+            :func:`courbe_pac` / :func:`courbe_climatisation` — chacun peut
+            porter une ``cle_tarifaire`` (chaîne libre SAISIE, CALX265) pour
+            être distingué par la finance ; absente, la charge est comptée
+            au tarif du foyer (clé ``'foyer'``), JAMAIS un second tarif
+            supposé.
 
     Returns:
         dict — ``courbe`` (la somme), ``courbe_de_base`` (INTACTE),
-        ``charges`` (chacune avec son énergie et sa courbe, VISIBLE à part),
-        ``total_base_kwh``, ``total_charges_kwh``, ``total_kwh``.
+        ``charges`` (chacune avec son énergie, sa courbe et sa
+        ``cle_tarifaire`` résolue, VISIBLE à part), ``total_base_kwh``,
+        ``total_charges_kwh``, ``total_kwh``, ``energie_par_cle`` (agrégat
+        par ``cle_tarifaire``, dont la somme égale ``total_charges_kwh``),
+        ``hypotheses`` (mentionne le repli sur ``'foyer'`` quand au moins
+        une charge n'a pas de ``cle_tarifaire``, sinon liste vide).
 
     Raises:
         ChargeInvalide: une charge dont la courbe n'a pas la longueur de la
@@ -568,6 +576,8 @@ def ajouter_charges(courbe_de_base, charges):
     base = [max(0.0, float(valeur)) for valeur in (courbe_de_base or [])]
     cumul = list(base)
     detail = []
+    energie_par_cle = {}
+    clef_absente = False
     for rang, charge in enumerate(charges or []):
         courbe = charge.get('courbe') or []
         if len(courbe) != len(base):
@@ -577,13 +587,28 @@ def ajouter_charges(courbe_de_base, charges):
                 f'couvre {len(base)} : elles ne décrivent pas la même '
                 'période.', champ=f'charges[{rang}]')
         cumul = [total + ajout for total, ajout in zip(cumul, courbe)]
+        cle_saisie = charge.get('cle_tarifaire')
+        cle = cle_saisie if cle_saisie else 'foyer'
+        if not cle_saisie:
+            clef_absente = True
+        energie_charge = round(sum(courbe), 4)
         detail.append({
             'type': charge.get('type'),
             'libelle': charge.get('libelle'),
-            'energie_kwh': round(sum(courbe), 4),
+            'energie_kwh': energie_charge,
             'courbe': list(courbe),
             'hypotheses': list(charge.get('hypotheses') or []),
+            'cle_tarifaire': cle,
         })
+        energie_par_cle[cle] = round(
+            energie_par_cle.get(cle, 0.0) + energie_charge, 4)
+
+    hypotheses = []
+    if clef_absente:
+        hypotheses.append(
+            "Au moins une charge n'a pas de « cle_tarifaire » saisie : elle "
+            "est comptée au tarif du foyer (clé « foyer »), jamais un "
+            'second tarif supposé.')
 
     return {
         'courbe': cumul,
@@ -594,4 +619,6 @@ def ajouter_charges(courbe_de_base, charges):
         'total_base_kwh': round(sum(base), 4),
         'total_charges_kwh': round(sum(c['energie_kwh'] for c in detail), 4),
         'total_kwh': round(sum(cumul), 4),
+        'energie_par_cle': energie_par_cle,
+        'hypotheses': hypotheses,
     }
