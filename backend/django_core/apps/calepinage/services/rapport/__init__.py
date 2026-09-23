@@ -12,6 +12,9 @@ La forme : un PAQUET, une section par fichier (D-CALX 13)
 * ``__init__`` (ce fichier) — l'ASSEMBLEUR : il lit la liste des sections
   déclarée par ``contract_samples/rapport_etude.json`` (CALX292), vérifie pour
   chacune ses ``entrees_exigees`` dans le résultat servi, et met en page ;
+* ``contrat.py`` — la FEUILLE (stdlib seule) : ``CODE_DOCUMENT``,
+  ``sections_declarees`` et ``RapportRefuse``, réexportés ici ; ``models.py``
+  l'importe sans tirer l'assembleur (contrat import-linter CAL5) ;
 * ``<section>.py`` — un RÉDACTEUR par section (``pertes.py`` CALX300,
   ``site.py`` CALX298, ``systeme.py`` CALX299, ``production.py`` CALX301,
   ``ombrage.py`` CALX302, ``electrique.py`` CALX303, ``nomenclature.py``
@@ -56,8 +59,16 @@ from __future__ import annotations
 import functools
 import importlib
 import json
-import pathlib
 from html import escape
+
+#: Le code du document, la déclaration des sections (CALX292) et le refus
+#: vivent dans la FEUILLE ``contrat.py`` (stdlib seule) : ``models.py``
+#: (CALX307) les importe SANS toucher cet assembleur, dont les imports
+#: atteignent stock/ventes (contrat import-linter CAL5, fix CI #714). Ils
+#: sont RÉEXPORTÉS ici — même objet, même identité pour ``except``.
+from .contrat import (  # noqa: F401 — réexport (__all__)
+    CHEMIN_CONTRAT, CODE_DOCUMENT, RapportRefuse, sections_declarees,
+)
 
 __all__ = [
     'CODE_DOCUMENT', 'CHEMIN_CONTRAT', 'MODULES_DE_SECTION', 'RapportRefuse',
@@ -68,13 +79,6 @@ __all__ = [
     'contexte_de_section', 'html_de_rapport', 'html_du_rapport',
     'rendre_rapport', 'CSS_RAPPORT',
 ]
-
-#: Le code du document dans l'inventaire (contrat ``calepinage_documents``).
-CODE_DOCUMENT = 'rapport_etude'
-
-#: La déclaration des sections (CALX292) — lue, jamais recopiée ici.
-CHEMIN_CONTRAT = (pathlib.Path(__file__).resolve().parents[2]
-                  / 'contract_samples' / 'rapport_etude.json')
 
 #: ``code de section -> module rédacteur de ce paquet`` (phase 2 : chaque
 #: tâche pose SON fichier ; l'absence du fichier fait retomber sur le rendu
@@ -96,28 +100,6 @@ MODULES_DE_SECTION = {
 SANS_RESULTAT = ("Aucun résultat de moteur enregistré pour ce calepinage : le "
                  "rapport d'étude ne se rend pas à partir d'un calcul qui n'a "
                  "pas eu lieu. Calculez la pose, puis lancez la simulation.")
-
-
-class RapportRefuse(ValueError):
-    """Le rapport refuse de sortir, et il NOMME la donnée en cause."""
-
-    def __init__(self, message, *, champ=''):
-        super().__init__(message)
-        self.champ = champ
-
-
-# ── La déclaration des sections (CALX292) ───────────────────────────────────
-
-@functools.lru_cache(maxsize=1)
-def _contrat():
-    return json.loads(CHEMIN_CONTRAT.read_text(encoding='utf-8'))
-
-
-def sections_declarees():
-    """Les sections du contrat, dans l'ordre d'impression (copies détachées)."""
-    sections = _contrat()['exemple']['sections']
-    return [dict(section, entrees_exigees=list(section['entrees_exigees']))
-            for section in sorted(sections, key=lambda s: s['ordre'])]
 
 
 def valeur_au_chemin(source, chemin):

@@ -62,7 +62,10 @@ de la société soit RENDU — voir le rapport de lane pour le détail.
 """
 from __future__ import annotations
 
-from . import RapportRefuse, sections_declarees
+# La FEUILLE ``contrat`` et non le paquet : ``models.py`` importe ce module
+# depuis ``clean()``, et l'assembleur (``__init__``) atteint stock/ventes —
+# contrat import-linter CAL5 (fix CI #714).
+from .contrat import RapportRefuse, sections_declarees
 from ..parametres_cles import CODE_RAPPORT_ETUDE
 
 __all__ = ['configuration_document', 'valider_selection', 'sections_retenues']
