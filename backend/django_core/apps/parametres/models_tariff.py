@@ -298,6 +298,26 @@ class TariffSettings(models.Model):
         max_digits=9, decimal_places=6, null=True, blank=True,
         verbose_name='Prix du kWh en heures basses')
 
+    # ── CALX278 — taxes séparées des prix ──
+    # VRAI (défaut) = aujourd'hui : les prix saisis sont TTC, facture
+    # inchangée. FAUX = prix HT, les ``taxes`` saisies (chacune AVEC sa
+    # source) s'appliquent et la facture publie HT / taxes / TTC.
+    prix_incluent_taxes = models.BooleanField(
+        default=True,
+        verbose_name='Les prix saisis incluent les taxes',
+        help_text="Décocher si vos prix sont hors taxes : les taxes "
+                  "saisies ci-dessous seront alors appliquées.")
+    taxes = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Taxes de la facture',
+        help_text="Liste [{libelle, taux_pct, assiette (energie|total), "
+                  "source}] — chaque taxe porte sa source.")
+    charge_minimale_mad_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge minimale (par jour)',
+        help_text="Montant minimal facturé par jour, dans la même base que "
+                  "les prix (TTC ou HT).")
+
     def clean(self):
         """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
         from django.core.exceptions import ValidationError

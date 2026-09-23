@@ -713,13 +713,48 @@ def structure_de(reglages):
     return valeur if valeur in STRUCTURES_TARIF else STRUCTURE_TARIF_DEFAUT
 
 
+def _montant_selon_structure(reglages, structure, kwh_d, classe,
+                             kwh_poste_haut):
+    """Montant AUX PRIX SAISIS (``Decimal`` | ``None``, motif, détail)."""
+    if classe in ('force_motrice', 'agricole') or structure == 'tranches':
+        return monthly_bill(reglages, kwh_d, classe), None, {}
+    if kwh_d <= 0:
+        return Decimal('0.00'), None, {}
+
+    if structure == 'prix_unique':
+        prix = _nombre_positif(getattr(reglages, 'prix_unique_kwh', None))
+        if prix is None:
+            return None, ("omis : structure « prix unique » sans prix du kWh "
+                          "saisi (prix_unique_kwh)"), {}
+        return _q(kwh_d * prix), None, {'prix_kwh': prix}
+
+    haut = _nombre_positif(getattr(reglages, 'poste_haut', None))
+    bas = _nombre_positif(getattr(reglages, 'poste_bas', None))
+    manquant = ('poste_haut' if haut is None
+                else 'poste_bas' if bas is None else None)
+    if manquant:
+        return None, (f"omis : structure « deux postes » sans le prix du "
+                      f"{manquant} saisi ({manquant})"), {}
+    part_haut = _nombre_positif(kwh_poste_haut)
+    if part_haut is None or part_haut > kwh_d:
+        return None, (
+            "omis : la répartition des kWh entre poste haut et poste bas n'est "
+            "pas fournie (kwh_poste_haut) — elle se lit sur une courbe "
+            "horaire, jamais supposée"), {}
+    part_bas = kwh_d - part_haut
+    return (_q(part_haut * haut + part_bas * bas), None,
+            {'kwh_poste_haut': part_haut, 'kwh_poste_bas': part_bas,
+             'poste_haut': haut, 'poste_bas': bas})
+
+
 def facture_mensuelle(reglages, kwh, *, classe='residentiel',
-                      kwh_poste_haut=None):
+                      kwh_poste_haut=None, jours=None):
     """Facture mensuelle selon la STRUCTURE déclarée par la société (CALX277).
 
-    Rend ``{structure, montant_ttc, motif, detail}`` — ``montant_ttc`` est un
-    ``Decimal`` au centime, ou ``None`` avec un ``motif`` qui nomme la donnée
-    manquante (jamais un prix supposé) :
+    Rend ``{structure, montant_ttc, motif, detail, taxes_incluses,
+    ventilation}`` — ``montant_ttc`` est un ``Decimal`` au centime, ou
+    ``None`` avec un ``motif`` qui nomme la donnée manquante (jamais un prix
+    supposé) :
 
     * ``tranches`` (défaut) — EXACTEMENT :func:`monthly_bill` d'aujourd'hui
       (barème ONEE progressif/sélectif, ou classe force motrice) ;
@@ -728,53 +763,131 @@ def facture_mensuelle(reglages, kwh, *, classe='residentiel',
       × poste_bas`` : la RÉPARTITION des kWh entre les deux postes doit être
       fournie par l'appelant (elle vient d'une courbe horaire), jamais devinée.
 
-    Les prix sont ceux SAISIS, tels que facturés (TTC par convention — CALX278
-    sépare les taxes).
+    CALX278 — ``prix_incluent_taxes`` (défaut VRAI, comportement d'aujourd'hui)
+    ⇒ le montant aux prix saisis EST le TTC, ``ventilation`` vaut ``None``.
+    FAUX ⇒ ce montant est le HT, les ``taxes`` SAISIES s'y appliquent et
+    ``ventilation`` publie ``{ht, taxes: [...], ttc}``. La
+    ``charge_minimale_mad_jour`` (même base que les prix) relève le montant au
+    minimum de la période — ``jours`` doit alors être fourni, sinon la facture
+    est omise en le disant.
     """
     structure = structure_de(reglages)
     kwh_d = Decimal(str(kwh or 0))
+    incluses = getattr(reglages, 'prix_incluent_taxes', True)
+    incluses = True if incluses is None else bool(incluses)
     resultat = {'structure': structure, 'montant_ttc': None, 'motif': None,
-                'detail': {}}
-    if classe in ('force_motrice', 'agricole') or structure == 'tranches':
-        resultat['montant_ttc'] = monthly_bill(reglages, kwh_d, classe)
-        return resultat
-    if kwh_d <= 0:
-        resultat['montant_ttc'] = Decimal('0.00')
+                'detail': {}, 'taxes_incluses': incluses, 'ventilation': None}
+    montant, motif, detail = _montant_selon_structure(
+        reglages, structure, kwh_d, classe, kwh_poste_haut)
+    resultat['detail'] = detail
+    if montant is None:
+        resultat['motif'] = motif
         return resultat
 
-    if structure == 'prix_unique':
-        prix = _nombre_positif(getattr(reglages, 'prix_unique_kwh', None))
-        if prix is None:
+    montant_energie = montant
+    charge_jour = _nombre_positif(
+        getattr(reglages, 'charge_minimale_mad_jour', None))
+    if charge_jour is not None:
+        nb_jours = _entier_positif(jours)
+        if nb_jours is None:
             resultat['motif'] = (
-                "omis : structure « prix unique » sans prix du kWh saisi "
-                "(prix_unique_kwh)")
+                "omis : une charge minimale journalière est saisie "
+                "(charge_minimale_mad_jour) mais le nombre de jours de la "
+                "période n'est pas fourni (jours)")
             return resultat
-        resultat['detail'] = {'prix_kwh': prix}
-        resultat['montant_ttc'] = _q(kwh_d * prix)
+        minimum = _q(charge_jour * nb_jours)
+        resultat['detail'] = {**detail, 'charge_minimale': minimum}
+        montant = max(montant, minimum)
+
+    if incluses:
+        resultat['montant_ttc'] = montant
         return resultat
 
-    haut = _nombre_positif(getattr(reglages, 'poste_haut', None))
-    bas = _nombre_positif(getattr(reglages, 'poste_bas', None))
-    manquant = ('poste_haut' if haut is None
-                else 'poste_bas' if bas is None else None)
-    if manquant:
-        resultat['motif'] = (
-            f"omis : structure « deux postes » sans le prix du {manquant} "
-            f"saisi ({manquant})")
-        return resultat
-    part_haut = _nombre_positif(kwh_poste_haut)
-    if part_haut is None or part_haut > kwh_d:
-        resultat['motif'] = (
-            "omis : la répartition des kWh entre poste haut et poste bas n'est "
-            "pas fournie (kwh_poste_haut) — elle se lit sur une courbe "
-            "horaire, jamais supposée")
-        return resultat
-    part_bas = kwh_d - part_haut
-    resultat['detail'] = {'kwh_poste_haut': part_haut,
-                          'kwh_poste_bas': part_bas,
-                          'poste_haut': haut, 'poste_bas': bas}
-    resultat['montant_ttc'] = _q(part_haut * haut + part_bas * bas)
+    lignes = []
+    total_taxes = Decimal('0')
+    for taxe in (getattr(reglages, 'taxes', None) or []):
+        taux = _nombre_positif(taxe.get('taux_pct')) or Decimal('0')
+        assiette = taxe.get('assiette') or 'total'
+        # « energie » = le seul montant de l'énergie ; « total » = le HT
+        # facturé, charge minimale comprise.
+        base = montant_energie if assiette == 'energie' else montant
+        montant_taxe = _q(base * taux / Decimal('100'))
+        total_taxes += montant_taxe
+        lignes.append({'libelle': str(taxe.get('libelle', '')).strip(),
+                       'taux_pct': taux, 'assiette': assiette,
+                       'source': str(taxe.get('source', '')).strip(),
+                       'montant': montant_taxe})
+    ttc = _q(montant + total_taxes)
+    resultat['ventilation'] = {'ht': montant, 'taxes': lignes, 'ttc': ttc}
+    resultat['montant_ttc'] = ttc
     return resultat
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CALX278 — TAXES SÉPARÉES DES PRIX
+# ═════════════════════════════════════════════════════════════════════════════
+# Le barème par défaut stocke des prix TTC re-dérivés à la main (HT × 1,20) :
+# une société qui change de taux de TVA devait re-dériver six nombres, et rien
+# ne disait quelles taxes étaient incluses. ``prix_incluent_taxes`` (défaut
+# VRAI = aujourd'hui) le DÉCLARE ; FAUX ⇒ les ``taxes`` SAISIES, chacune AVEC
+# SA SOURCE, s'appliquent au HT et la facture publie la ventilation.
+
+#: Assiettes admises d'une taxe : l'énergie facturée, ou le total HT.
+ASSIETTES_TAXE = ('energie', 'total')
+
+
+def erreurs_taxes(prix_incluent_taxes, taxes, charge_minimale_mad_jour,
+                  structure_tarif=None, residential_tiers=None):
+    """Refus des taxes de la grille, ``{champ: message}`` (vide = valide).
+
+    Chaque taxe exige ``libelle``, ``taux_pct`` (≥ 0), ``assiette``
+    (:data:`ASSIETTES_TAXE`) et sa ``source`` — une taxe sans source est
+    refusée en nommant ``taxes[i].source``. Prix déclarés HORS taxes sur le
+    barème à paliers PAR DÉFAUT (qui est TTC) : refusé, la TVA serait comptée
+    deux fois.
+    """
+    erreurs = {}
+    if not _vide(taxes):
+        if not isinstance(taxes, list):
+            erreurs['taxes'] = (
+                "taxes : une liste [{libelle, taux_pct, assiette, source}] "
+                "est attendue.")
+        else:
+            for i, taxe in enumerate(taxes):
+                if not isinstance(taxe, dict):
+                    erreurs['taxes'] = (
+                        f"taxes[{i}] : un objet {{libelle, taux_pct, assiette, "
+                        "source}} est attendu.")
+                    break
+                if _vide(taxe.get('libelle')):
+                    erreurs['taxes'] = f"taxes[{i}].libelle : libellé obligatoire."
+                    break
+                if _nombre_positif(taxe.get('taux_pct')) is None:
+                    erreurs['taxes'] = (
+                        f"taxes[{i}].taux_pct : un taux ≥ 0 (en %) est attendu.")
+                    break
+                if taxe.get('assiette') not in ASSIETTES_TAXE:
+                    erreurs['taxes'] = (
+                        f"taxes[{i}].assiette : assiettes admises : "
+                        f"{', '.join(ASSIETTES_TAXE)}.")
+                    break
+                if _vide(taxe.get('source')):
+                    erreurs['taxes'] = (
+                        f"taxes[{i}].source : la source de la taxe est "
+                        "obligatoire (texte de loi, facture, barème officiel).")
+                    break
+    if not _vide(charge_minimale_mad_jour) and _nombre_positif(
+            charge_minimale_mad_jour) is None:
+        erreurs['charge_minimale_mad_jour'] = (
+            "charge_minimale_mad_jour : un montant ≥ 0 par jour est attendu.")
+    if prix_incluent_taxes is False and (
+            (structure_tarif or STRUCTURE_TARIF_DEFAUT) == 'tranches'
+            and _vide(residential_tiers)):
+        erreurs['prix_incluent_taxes'] = (
+            "prix_incluent_taxes : le barème à paliers par défaut est TTC — "
+            "saisissez vos paliers HT (residential_tiers) avant de déclarer "
+            "des prix hors taxes, sinon la TVA serait comptée deux fois.")
+    return erreurs
 
 
 def erreurs_reglages_tarif(reglages):
@@ -798,4 +911,10 @@ def erreurs_reglages_tarif(reglages):
         getattr(reglages, 'prix_unique_kwh', None),
         getattr(reglages, 'poste_haut', None),
         getattr(reglages, 'poste_bas', None)))
+    erreurs.update(erreurs_taxes(
+        getattr(reglages, 'prix_incluent_taxes', True),
+        getattr(reglages, 'taxes', None),
+        getattr(reglages, 'charge_minimale_mad_jour', None),
+        getattr(reglages, 'structure_tarif', None),
+        getattr(reglages, 'residential_tiers', None)))
     return erreurs
