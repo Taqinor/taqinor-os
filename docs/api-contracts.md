@@ -99,9 +99,9 @@
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessage -> /api/django/crm/relance-etapes/<>/message
-    crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, wa_url:inconnu
+    crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessageLangue -> /api/django/crm/relance-etapes/<>/message
-    crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, wa_url:inconnu
+    crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesDues -> /api/django/crm/relance-etapes
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesLead -> /api/django/crm/relance-etapes
@@ -131,9 +131,9 @@
 - frontend/src/api/crmApi.js :: whatsappDevis -> /api/django/crm/leads/<>/whatsapp-devis
     detail:texte, links:inconnu, message:inconnu, phone:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
-    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, wa_url:inconnu
+    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp
-    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, wa_url:inconnu
+    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
     count:nombre, detail:texte, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo

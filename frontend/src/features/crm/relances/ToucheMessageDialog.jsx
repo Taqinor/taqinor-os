@@ -13,7 +13,7 @@
 // Cockpit, l'écran de suivi, et leur test `ToucheMessageDialog.mry14.test.jsx`
 // qui importe encore `./ToucheMessageDialog`).
 import { useEffect, useState } from 'react'
-import { Copy, Send, TriangleAlert } from 'lucide-react'
+import { Copy, Mic, Send, TriangleAlert } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import { toast } from '../../../ui/confirm'
 import {
@@ -124,6 +124,10 @@ export default function ToucheMessageDialog({
   // CAD78 — une touche e-mail : jamais de CTA WhatsApp (texte à copier).
   const toucheEmail = etape?.canal === 'email'
   const envoiWhatsApp = !preuveManquante && !toucheEmail
+  // CAD79 — le « vocal » : un SCRIPT à lire en note vocale (le serveur le dit,
+  // `vocal`, et son lien n'a pas de texte pré-rempli) — jamais un message
+  // écrit envoyé à la place de la voix.
+  const vocal = Boolean(rendu?.vocal)
 
   const copier = async () => {
     if (!rendu?.message) return
@@ -159,7 +163,9 @@ export default function ToucheMessageDialog({
       // RELANCE-WA (fondateur 08/09/2026) — ouvrir WhatsApp n'avance plus la
       // touche : le clic est journalisé, la touche reste à faire jusqu'à la
       // réponse du client (questions « Fait »).
-      toast.success('WhatsApp ouvert — la touche reste à faire : marquez « Fait » après la réponse du client.')
+      toast.success(vocal
+        ? 'Conversation ouverte : enregistrez la note vocale — la touche reste à faire : marquez « Fait » après la réponse du client.'
+        : 'WhatsApp ouvert — la touche reste à faire : marquez « Fait » après la réponse du client.')
       onSent?.(etape.id, r?.data)
       onOpenChange(false)
     } catch {
@@ -176,7 +182,9 @@ export default function ToucheMessageDialog({
         <DialogHeader>
           {/* CAD78 — une touche e-mail n'est jamais présentée comme un
               WhatsApp (la ligne ouvre son texte en place ; ceinture ici). */}
-          <DialogTitle>{toucheEmail ? 'E-mail' : 'WhatsApp'} — {etape?.lead_nom || 'Lead'}</DialogTitle>
+          <DialogTitle>
+            {toucheEmail ? 'E-mail' : (vocal ? 'Note vocale' : 'WhatsApp')} — {etape?.lead_nom || 'Lead'}
+          </DialogTitle>
         </DialogHeader>
         {loading ? (
           <Spinner />
@@ -234,13 +242,22 @@ export default function ToucheMessageDialog({
                 </p>
               </div>
             ) : (
-              <div
-                className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${texteRtl ? ' text-right' : ''}`}
-                dir={texteRtl ? 'rtl' : 'auto'}
-                lang={texteRtl ? 'ar' : langueTexte}
-              >
-                {rendu?.message || '…'}
-              </div>
+              <>
+                {/* CAD79 — le texte du vocal est un script à LIRE à voix
+                    haute : il n'est jamais pré-rempli dans la conversation. */}
+                {vocal && (
+                  <p className="text-xs font-medium text-muted-foreground" data-testid="script-vocal">
+                    Script à lire en note vocale — il ne part pas en texte écrit.
+                  </p>
+                )}
+                <div
+                  className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${texteRtl ? ' text-right' : ''}`}
+                  dir={texteRtl ? 'rtl' : 'auto'}
+                  lang={texteRtl ? 'ar' : langueTexte}
+                >
+                  {rendu?.message || '…'}
+                </div>
+              </>
             )}
             {/* CAD64 — le repli de langue n'est plus silencieux : le texte
                 n'existe pas encore dans la langue du client, c'est la version
@@ -305,8 +322,17 @@ export default function ToucheMessageDialog({
               onClick={() => ouvrirWhatsApp()}
               disabled={!rendu?.wa_url || aCompleter || sending} loading={sending}
             >
-              <Send className="mr-1 size-4" aria-hidden="true" />
-              Ouvrir WhatsApp
+              {vocal ? (
+                <>
+                  <Mic className="mr-1 size-4" aria-hidden="true" />
+                  Enregistrer une note vocale
+                </>
+              ) : (
+                <>
+                  <Send className="mr-1 size-4" aria-hidden="true" />
+                  Ouvrir WhatsApp
+                </>
+              )}
             </Button>
           )}
         </DialogFooter>

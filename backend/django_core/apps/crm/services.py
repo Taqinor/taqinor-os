@@ -2861,6 +2861,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         # AUCUNE réalisation publiée — jamais une preuve inventée ni un
         # chantier mélangé : l'aperçu remplace l'envoi par l'aide.
         'preuve_manquante': preuve_manquante,
+        # CAD79 — `True` : le texte est le SCRIPT d'une note vocale à DIRE
+        # (`wa_url` sans `?text=`), jamais un message écrit à envoyer.
+        'vocal': template_cle in _TEMPLATES_VOCAUX,
     }
 
 

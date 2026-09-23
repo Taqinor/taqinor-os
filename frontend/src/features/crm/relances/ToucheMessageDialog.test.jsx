@@ -152,6 +152,34 @@ describe('CAD78 — une touche e-mail n’est jamais présentée comme un WhatsA
   })
 })
 
+describe('CAD79 — le « vocal » ne part plus en texte écrit', () => {
+  const VOCAL = exempleContrat('crm', 'relance_etape_message', 'exemple_vocal')
+
+  it('le CTA et l’intitulé disent « note vocale », le texte est un script à lire', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: VOCAL })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(VOCAL.message)
+    expect(screen.getByRole('heading', { name: /^Note vocale — / })).toBeInTheDocument()
+    expect(screen.getByTestId('script-vocal')).toHaveTextContent('Script à lire en note vocale')
+    expect(screen.getByRole('button', { name: /Enregistrer une note vocale/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Ouvrir WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Copier/ })).not.toBeDisabled()
+  })
+
+  it('le texte n’est PAS pré-rempli dans le lien ouvert', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: VOCAL })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(VOCAL.message)
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer une note vocale/ }))
+    const url = openSpy.mock.calls[0][0]
+    expect(url).toBe(VOCAL.wa_url)
+    expect(url).not.toContain('?text=')
+    await waitFor(() => expect(crmApi.whatsappRelanceEtape).toHaveBeenCalledWith(ETAPE.id))
+    openSpy.mockRestore()
+  })
+})
+
 describe('CAD64 — le repli de langue est VISIBLE', () => {
   const REPLI = exempleContrat('crm', 'relance_etape_message', 'exemple_repli_langue')
 

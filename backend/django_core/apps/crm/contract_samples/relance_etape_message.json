@@ -9,7 +9,8 @@
     "placeholders_manquants": [],
     "repli_langue": false,
     "crochets": [],
-    "preuve_manquante": false
+    "preuve_manquante": false,
+    "vocal": false
   },
   "exemple_phrase_omise": {
     "message": "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité.",
@@ -21,7 +22,8 @@
     ],
     "repli_langue": true,
     "crochets": [],
-    "preuve_manquante": false
+    "preuve_manquante": false,
+    "vocal": false
   },
   "exemple_numero_invalide": {
     "message": "Bonjour Salma, Karim de TAQINOR.",
@@ -31,7 +33,8 @@
     "placeholders_manquants": [],
     "repli_langue": false,
     "crochets": [],
-    "preuve_manquante": false
+    "preuve_manquante": false,
+    "vocal": false
   },
   "exemple_darija": {
     "message": "السلام عليكم السي Aziz، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
@@ -41,7 +44,8 @@
     "placeholders_manquants": [],
     "repli_langue": false,
     "crochets": [],
-    "preuve_manquante": false
+    "preuve_manquante": false,
+    "vocal": false
   },
   "exemple_repli_langue": {
     "message": "Bonjour M. Omar, petit mot de suivi de votre demande solaire.",
@@ -51,7 +55,8 @@
     "placeholders_manquants": [],
     "repli_langue": true,
     "crochets": [],
-    "preuve_manquante": false
+    "preuve_manquante": false,
+    "vocal": false
   },
   "exemple_crochets": {
     "message": "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
@@ -64,7 +69,8 @@
       "[jour]",
       "[heure]"
     ],
-    "preuve_manquante": false
+    "preuve_manquante": false,
+    "vocal": false
   },
   "exemple_preuve_manquante": {
     "message": "Le suivi de production est en temps réel, je peux vous montrer.",
@@ -80,9 +86,22 @@
     ],
     "repli_langue": false,
     "crochets": [],
-    "preuve_manquante": true
+    "preuve_manquante": true,
+    "vocal": false
+  },
+  "exemple_vocal": {
+    "message": "Bonjour M. Aziz, c'est Nadia de TAQINOR. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
+    "wa_url": "https://wa.me/212651971400",
+    "langue": "fr",
+    "phone": "+212651971400",
+    "placeholders_manquants": [],
+    "repli_langue": false,
+    "crochets": [],
+    "preuve_manquante": false,
+    "vocal": true
   },
   "notes": {
+    "vocal": "CAD79 — booléen, jamais null. `true` pour le script du VOCAL (`vocal_j3`) : c'est un texte à DIRE en note vocale, pas un message à envoyer — `wa_url` n'a pas de `?text=` (`exemple_vocal`). L'aperçu le présente comme un script à LIRE (bouton Copier) et son CTA dit « Enregistrer une note vocale » : il ouvre la conversation vide, le clic reste journalisé comme pour toute touche WhatsApp.",
     "script_appel": "CAD78 — le MÊME GET sert le SCRIPT d'une touche d'APPEL scriptée (`template_cle` non vide : ouverture, répondeur, vocal, dimanche…) et le texte d'une touche E-MAIL : la ligne de relance le déplie AU-DESSUS du bouton « Appeler », dans une bulle, sans modale et SANS le POST `whatsapp/` (qui journaliserait un faux « WhatsApp ouvert » et horodaterait le premier contact, MRY19). Le rendu ne teste jamais le canal.",
     "preuve_manquante": "CAD70 — booléen, jamais null. `true` : le texte demande une PREUVE (touche J4 `j4_preuve` : mois / ville / lien / puissance / vidéo d'une `parametres.Realisation` réelle) et la société n'a AUCUNE réalisation utilisable — le cas par défaut. Les phrases de preuve sont omises (MRY13) et il ne resterait qu'une phrase orpheline (`exemple_preuve_manquante`) : l'aperçu NE PROPOSE PAS ce message, il affiche « aucune réalisation publiée : ajoutez-en une ou passez cette touche » (la porte d'entrée du catalogue), et le POST `whatsapp/` est refusé en 400 `{\"erreurs\": {\"preuve\": …}}`. Jamais une preuve inventée ni un chantier mélangé.",
     "crochets": "CAD69 — liste, jamais null : les blancs `[…]` d'un texte validé (`rappel_plus_tard` : « [jour] à [heure] », `offre_reda` : « [montant en dirhams] »…) encore présents dans `message`, dans l'ordre, sans doublon. Ils sont à compléter À LA MAIN — le serveur n'invente ni un jour ni un montant — : l'aperçu les liste et BLOQUE « Ouvrir WhatsApp » tant qu'il y en a (copier le texte, le compléter dans la conversation ouverte vide). `exemple_crochets` : l'accusé « plus tard » (`?cle=rappel_plus_tard`).",
