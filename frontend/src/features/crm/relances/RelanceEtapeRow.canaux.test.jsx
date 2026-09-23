@@ -23,7 +23,7 @@ const ETAPE_APPEL = TOUCHES.find((t) => t.canal === 'appel')
 const ETAPE_WHATSAPP = TOUCHES.find((t) => t.canal === 'whatsapp')
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); window.sessionStorage.clear() })
 
 function noop() {}
 
@@ -67,6 +67,46 @@ describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => 
     fireEvent.click(screen.getByRole('checkbox', { name: /ne parle que darija/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByTestId('erreur-langue')).toHaveTextContent('« Langue du message »')
+  })
+})
+
+describe('CAD80 — « Appeler » ne fait plus perdre la note en cours', () => {
+  const NOTE = 'Répond après 18 h, a déjà une offre concurrente'
+
+  it('une note saisie puis un appel : la note est toujours là après remontage', () => {
+    const { unmount } = ligne(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'), { target: { value: NOTE } })
+    // L'appel part du panneau lui-même (la page peut se décharger ensuite).
+    fireEvent.click(screen.getByRole('button', { name: /Appeler \(note gardée\)/ }))
+    unmount()
+    ligne(ETAPE_APPEL)
+    // Le panneau « Fait » est rouvert, avec SA note.
+    expect(screen.getByPlaceholderText('Note (optionnelle)')).toHaveValue(NOTE)
+  })
+
+  it('la touche enregistrée efface le brouillon', async () => {
+    const onFait = vi.fn(() => Promise.resolve({}))
+    const { unmount } = ligne(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'), { target: { value: NOTE } })
+    fireEvent.click(screen.getByRole('button', { name: 'Pas de réponse' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalled())
+    await waitFor(() => expect(window.sessionStorage.length).toBe(0))
+    unmount()
+    ligne(ETAPE_APPEL)
+    expect(screen.queryByPlaceholderText('Note (optionnelle)')).not.toBeInTheDocument()
+  })
+
+  it('« Annuler » efface le brouillon (geste explicite de la commerciale)', () => {
+    const { unmount } = ligne(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    fireEvent.change(screen.getByPlaceholderText('Note (optionnelle)'), { target: { value: NOTE } })
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    unmount()
+    ligne(ETAPE_APPEL)
+    expect(screen.queryByPlaceholderText('Note (optionnelle)')).not.toBeInTheDocument()
   })
 })
 

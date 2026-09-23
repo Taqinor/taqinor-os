@@ -297,6 +297,41 @@ const GLISSEMENT_DU_PLAN = 'Le reste du suivi glisse du même nombre de jours.'
 // ouvert ? » a un sens. Un appel a déjà son issue obligatoire (CKP2/CKP4).
 const CANAUX_MESSAGE = ['whatsapp', 'email']
 
+// CAD80 — « Appeler » cède la main au téléphone (`tel:`) : sur mobile la page
+// se décharge et se recharge au retour d'appel, et la note déjà tapée dans le
+// panneau « Fait » disparaissait. Le BROUILLON (note du panneau « Fait ») est
+// donc gardé dans le stockage de SESSION de l'onglet — il survit au
+// rechargement, meurt avec l'onglet — et restauré au remontage. Effacé dès
+// que la touche est enregistrée ou que le panneau est annulé. Lecture et
+// écriture best-effort : un stockage indisponible ne bloque jamais le geste.
+const CLE_BROUILLON = (id) => `taqinor.relance.brouillon.${id}`
+
+function lireBrouillon(id) {
+  try {
+    const brut = window.sessionStorage.getItem(CLE_BROUILLON(id))
+    const brouillon = brut ? JSON.parse(brut) : null
+    return typeof brouillon?.note === 'string' && brouillon.note ? brouillon : null
+  } catch {
+    return null
+  }
+}
+
+function ecrireBrouillon(id, brouillon) {
+  try {
+    window.sessionStorage.setItem(CLE_BROUILLON(id), JSON.stringify(brouillon))
+  } catch {
+    // stockage plein ou interdit : la note reste à l'écran, simplement non gardée.
+  }
+}
+
+function effacerBrouillon(id) {
+  try {
+    window.sessionStorage.removeItem(CLE_BROUILLON(id))
+  } catch {
+    // idem — rien à faire.
+  }
+}
+
 /** `traite_le` (ISO, MRY30/MRY31) → « HH:MM » heure Casablanca — JAMAIS le
     repli « maintenant » de `heureDue` ci-dessus (c'est un horodatage PASSÉ,
     pas une échéance à venir). `null` si absent/invalide. */
@@ -446,9 +481,13 @@ export default function RelanceEtapeRow({
   // `CadenceFrise.onChanged`) — optionnel, une ligne readOnly n'en a pas besoin.
   onVisiteChanged,
 }) {
+  // CAD80 — un brouillon de note laissé par un appel (page rechargée au
+  // retour) rouvre le panneau « Fait » avec SA note, jamais une page vide.
+  // Lu UNE fois, au montage (initialiseur paresseux).
+  const [brouillon] = useState(() => (readOnly ? null : lireBrouillon(etape.id)))
   // '' | 'sauter' | 'fait' | 'reporter' — un seul panneau ouvert à la fois.
-  const [panel, setPanel] = useState('')
-  const [note, setNote] = useState('')
+  const [panel, setPanel] = useState(brouillon ? 'fait' : '')
+  const [note, setNote] = useState(brouillon?.note ?? '')
   const [reponseIdx, setReponseIdx] = useState(null)
   const [rappelLe, setRappelLe] = useState('')
   const [rappelHeure, setRappelHeure] = useState('')
@@ -495,6 +534,23 @@ export default function RelanceEtapeRow({
   // ne passe par la modale WhatsApp.
   const scriptAppel = etape.canal === 'appel' && Boolean(etape.template_cle)
   const toucheEmail = etape.canal === 'email'
+
+  // CAD80 — la note du panneau « Fait » est gardée à chaque frappe (elle
+  // survit à un rechargement), effacée quand le panneau se ferme ou que la
+  // note est vidée. Aucun setState ici : l'effet n'écrit que le stockage.
+  useEffect(() => {
+    if (readOnly) return
+    if (panel === 'fait' && note.trim()) ecrireBrouillon(etape.id, { note })
+    else if (panel === '' || panel === 'fait') effacerBrouillon(etape.id)
+  }, [panel, note, etape.id, readOnly])
+
+  // CAD80 — « Appeler » : le brouillon est écrit AVANT de céder la main au
+  // téléphone (la page peut être déchargée dans la foulée).
+  const appeler = () => {
+    if (!etape.lead_telephone) return
+    if (panel === 'fait' && note.trim()) ecrireBrouillon(etape.id, { note })
+    window.location.href = `tel:${etape.lead_telephone}`
+  }
 
   const fermer = () => {
     setPanel('')
@@ -611,6 +667,8 @@ export default function RelanceEtapeRow({
     // (jamais calculé ici) ; 400 outcome → affiché SOUS le contrôle, la ligne
     // reste ouverte (le parent ne l'a pas retirée sur un échec).
     Promise.resolve(onFait(etape.id, payload)).then((data) => {
+      // CAD80 — la touche est enregistrée : le brouillon n'a plus d'objet.
+      effacerBrouillon(etape.id)
       const message = messageProchaineTouche(data?.prochaine_touche)
       if (message) toastInfo(message)
       // VISCAD6 — « Visite acceptée » confirmée : ouvre tout de suite la
@@ -734,7 +792,7 @@ export default function RelanceEtapeRow({
         <div className="mt-2 flex flex-wrap justify-end gap-1.5">
           <Button
             size="sm" variant="outline" disabled={busy || !etape.lead_telephone}
-            onClick={() => { if (etape.lead_telephone) window.location.href = `tel:${etape.lead_telephone}` }}
+            onClick={appeler}
           >
             <Phone className="size-3.5" /> Appeler
           </Button>
@@ -1012,7 +1070,16 @@ export default function RelanceEtapeRow({
             rows={2} placeholder="Note (optionnelle)"
             value={note} onChange={(e) => setNote(e.target.value)}
           />
-          <div className="flex justify-end gap-1.5">
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {/* CAD80 — rappeler depuis le panneau sans perdre la note : elle
+                est gardée avant de céder la main au téléphone et retrouvée au
+                retour, même si la page s'est rechargée. */}
+            {etape.lead_telephone && (
+              <Button size="sm" variant="outline" disabled={busy} onClick={appeler}
+                      title="La note tapée est gardée pendant l’appel.">
+                <Phone className="size-3.5" /> Appeler (note gardée)
+              </Button>
+            )}
             <Button size="sm" variant="outline" disabled={busy} onClick={fermer}>
               Annuler
             </Button>
