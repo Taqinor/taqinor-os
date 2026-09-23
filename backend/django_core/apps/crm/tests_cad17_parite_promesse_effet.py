@@ -572,6 +572,7 @@ class VocabulaireTests(SimpleTestCase):
 #: Les touches committées dans le contrat : l'exemple principal ET l'état
 #: « dernier réveil » (CAD16), que l'écran importe tous deux.
 TOUCHES_DU_CONTRAT = (CONTRAT['exemple']['results']
+                      + CONTRAT['exemple_generique']['results']
                       + CONTRAT['exemple_dernier_reveil']['results'])
 
 
@@ -606,11 +607,22 @@ class ContratTests(SimpleTestCase):
             for codes in resultat['suites'].values():
                 self.assertTrue(set(codes) <= set(PHRASES))
 
-    def test_l_etat_dernier_reveil_a_la_forme_de_l_exemple(self):
+    def test_les_autres_etats_ont_la_forme_de_l_exemple(self):
         # Un AUTRE état du serveur, jamais une autre forme (PACT10).
         forme = set(CONTRAT['exemple']['results'][0])
-        for resultat in CONTRAT['exemple_dernier_reveil']['results']:
+        for resultat in (CONTRAT['exemple_generique']['results']
+                         + CONTRAT['exemple_dernier_reveil']['results']):
             self.assertEqual(set(resultat), forme)
+
+    def test_cad97_le_barreau_generique_n_annonce_pas_demain(self):
+        # CAD97 — barreau du gabarit : la touche suivante à SON délai ; étape
+        # posée par le filet : la suite demain (ou le suivi d'un devis).
+        barreau, filet = CONTRAT['exemple_generique']['results']
+        self.assertEqual(barreau['suites']['sans_issue'], [st.TOUCHE_SUIVANTE])
+        self.assertNotIn('demain', PHRASES[st.TOUCHE_SUIVANTE])
+        self.assertEqual(filet['suites']['sans_issue'],
+                         [st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
+        self.assertIn('demain', PHRASES[st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
 
     def test_cad16_le_dernier_reveil_annonce_la_fin(self):
         # CAD16 — sur la touche de rang 2 du réveil, « Pas de réponse »

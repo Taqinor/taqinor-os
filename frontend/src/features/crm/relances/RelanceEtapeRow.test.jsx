@@ -196,6 +196,29 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
   })
 })
 
+// CAD97 — cadence générique : « Fait — passer à la suite » n'annonce plus
+// « demain » à tort. État committé `exemple_generique` (même forme) : un
+// barreau du gabarit, puis une étape posée par le filet.
+describe('CAD97 RelanceEtapeRow — « Fait — passer à la suite » sur la générique', () => {
+  const [BARREAU, FILET] = exempleContrat('crm', 'relance_etape_v2', 'exemple_generique').results
+
+  it('barreau générique → la touche suivante « à son délai », jamais « demain »', () => {
+    ouvrirFait(BARREAU)
+    fireEvent.click(screen.getByRole('button', { name: 'Fait — passer à la suite' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(/à son délai/)
+    expect(suite).not.toHaveTextContent(/demain/)
+  })
+
+  it('étape de filet → la suite est posée « demain »', () => {
+    ouvrirFait(FILET)
+    fireEvent.click(screen.getByRole('button', { name: 'Fait — passer à la suite' }))
+    const suite = screen.getByTestId('suite-reponse')
+    expect(suite).toHaveTextContent(/demain/)
+    expect(suite).not.toHaveTextContent(/à son délai/)
+  })
+})
+
 // CAD47 — « Sauter » dit ce qu'il fait : la cadence continue, la touche
 // suivante est programmée (phrase du serveur, `etape.suites.sauter`).
 describe('CAD47 RelanceEtapeRow — « Sauter » dit ce qu’il fait', () => {

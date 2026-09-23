@@ -114,6 +114,10 @@ const QUESTIONS = {
       { outcome: 'refuse', label: 'Refuse la proposition' },
     ],
   },
+  // CAD97 — « Fait — passer à la suite » annonçait « demain » pour tous :
+  // vrai pour une étape posée par le filet, faux pour un barreau du gabarit
+  // (posé à SON délai, J+2/5/10/20/35). La phrase vient du serveur, qui lit
+  // le libellé et le rang de la touche.
   generique: {
     question: 'Où en est ce dossier ?',
     reponses: [
