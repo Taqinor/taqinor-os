@@ -140,6 +140,14 @@ describe('PV19 — garde-fous', () => {
       devisId: null,
       // CAL37 — absent du document ⇒ « cible vendue » (comportement devis/AO inchangé).
       cibleVendue: true,
+      // CALX254 — un devis sans `consumption` ré-hydrate l'état par défaut (jamais une
+      // exception ni une valeur inventée).
+      consCurve: new Array(24).fill(0),
+      consHandEdited: false,
+      consAppliances: [],
+      consSeasonal: false,
+      consSummerFactor: null,
+      consWinterFactor: null,
     });
     const empty = hydrateFromDevis({});
     expect(empty.zones).toBeNull();
@@ -174,7 +182,22 @@ describe('PV19 — le boot LEAD reste strictement inchangé (golden)', () => {
     expect(h.center).toEqual([-7.5997, 33.5905]);
     expect(h.contact).toEqual({ name: 'Reda K.', phone: '0612345678', city: 'Casablanca' });
     // Aucun champ devis ne s'invite dans l'hydratation lead.
-    expect(Object.keys(h).sort()).toEqual(['center', 'contact', 'vertices']);
-    expect(hydrateFromLead(null)).toEqual({ vertices: [], center: null, contact: {} });
+    // CALX254 — hydrateFromLead ré-hydrate aussi la consommation (contrat CALX251) : les
+    // six clés cons* s'ajoutent, jamais un champ devis.
+    expect(Object.keys(h).sort()).toEqual([
+      'center', 'consAppliances', 'consCurve', 'consHandEdited', 'consSeasonal',
+      'consSummerFactor', 'consWinterFactor', 'contact', 'vertices',
+    ]);
+    expect(hydrateFromLead(null)).toEqual({
+      vertices: [],
+      center: null,
+      contact: {},
+      consCurve: new Array(24).fill(0),
+      consHandEdited: false,
+      consAppliances: [],
+      consSeasonal: false,
+      consSummerFactor: null,
+      consWinterFactor: null,
+    });
   });
 });
