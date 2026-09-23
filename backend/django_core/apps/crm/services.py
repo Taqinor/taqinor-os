@@ -2517,12 +2517,19 @@ def _civilite_et_prenom(lead, langue):
 CLES_MESSAGE_VISITE = ('visite_proposition', 'visite_confirmation')
 
 
-def message_visite_pour_lead(lead, cle, *, user=None):
+def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
     """VISITE-CADENCE — le message de visite d'un LEAD, rendu côté serveur.
 
     ``{'corps_fr': str, 'corps_darija': str}`` — les DEUX langues d'un coup :
     l'écran propose le copier-coller dans celle que le client parle, sans
     second aller-retour.
+
+    CAD111 — plus ``wa_url_fr`` / ``wa_url_darija`` / ``phone`` : le lien
+    wa.me est construit CÔTÉ SERVEUR (numéro normalisé E.164 par
+    ``build_wa_url`` — « 06… » devient « 2126… »), comme pour les touches
+    normales ; l'écran ne fabrique plus un lien en chiffres bruts.
+    ``masquer_numero`` (rôle sans ``client_pii_voir``) : aucun numéro ne sort
+    — liens ``None``, ``phone`` vide, même règle que la file des relances.
 
     MÊME machinerie que les messages de cadence (``message_pour_etape``) :
     mêmes placeholders autorisés, même ``{conseiller}`` = le RESPONSABLE du
@@ -2537,7 +2544,7 @@ def message_visite_pour_lead(lead, cle, *, user=None):
     l'appelant (la vue) qui en fait un 400 nommant le champ.
     """
     from apps.parametres.models_messages import MessageTemplate
-    from apps.ventes.utils.whatsapp import render_message_template
+    from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
 
     if cle not in CLES_MESSAGE_VISITE:
         return None
@@ -2564,7 +2571,48 @@ def message_visite_pour_lead(lead, cle, *, user=None):
                      and not str(contexte.get(c, '')).strip()]
         rendu[champ] = render_message_template(
             _omettre_phrases_incompletes(corps, manquants), contexte)
+    # CAD111 — les liens wa.me construits par le SERVEUR (E.164), un par
+    # langue, jamais par l'écran ; aucun numéro pour un rôle sans droit PII.
+    phone = '' if masquer_numero else (lead.whatsapp or lead.telephone or '')
+    rendu['wa_url_fr'] = build_wa_url(phone, rendu['corps_fr']) if phone else None
+    rendu['wa_url_darija'] = (build_wa_url(phone, rendu['corps_darija'])
+                              if phone else None)
+    rendu['phone'] = phone
     return rendu
+
+
+#: CAD111 — les langues dans lesquelles le message de visite peut être ouvert
+#: (les deux corps que `message_visite_pour_lead` rend).
+LANGUES_MESSAGE_VISITE = ('fr', 'darija')
+
+
+def journaliser_message_visite_ouvert(lead, user, *, cle, langue, etape=None):
+    """CAD111 — le message de VISITE a été OUVERT dans WhatsApp (clic humain).
+
+    Jumeau de ``journaliser_whatsapp_ouvert`` : une activité typée WhatsApp au
+    chatter — comptée comme tentative et premier contact par les récepteurs —,
+    journalisée comme « ouvert » et JAMAIS comme « fait » : aucune issue,
+    aucune touche avancée, aucune cadence arrêtée. Quand le message est ouvert
+    depuis une TOUCHE (``etape``, encore à faire), la ligne porte le préfixe
+    RLC3 de cette touche : son panneau « Fait » sait alors que le message a
+    été ouvert, au lieu de faire cocher l'aveu faux « marquée faite sans avoir
+    ouvert le message ». Renvoie l'activité créée."""
+    quoi = ('proposer la visite' if cle == 'visite_proposition'
+            else 'confirmer la visite')
+    langue_txt = 'darija' if langue == 'darija' else 'français'
+    if etape is not None:
+        corps = (f'{prefixe_activite_message_ouvert(etape)} (cadence '
+                 f'{etape.cadence}) : message de visite « {quoi} » ouvert en '
+                 f'{langue_txt} ; la touche reste à faire jusqu’à la réponse '
+                 'du client.')
+    else:
+        corps = (f'WhatsApp ouvert — message de visite « {quoi} » en '
+                 f'{langue_txt} : message préparé, rien n’est marqué fait.')
+    activite = LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.WHATSAPP, body=corps)
+    marquer_premier_contact(lead)
+    return activite
 
 
 # ── CAD-F ── CAD63 — changer la langue AU MOMENT UTILE ───────────────────────

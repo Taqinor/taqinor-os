@@ -1176,6 +1176,10 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'resoudre_gps',
             # VREF — même motif (bug CI #25) pour « Vérifier la ville ».
             'ville_statut',
+            # CAD111 — journaliser l'ouverture du message de visite : une
+            # ÉCRITURE commerciale (chatter), même garde que `whatsapp_devis`
+            # — listée ICI parce que get_permissions() PRIME (bug CI #25).
+            'message_visite_ouvert',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
             return [IsResponsableOrAdmin()]
@@ -2319,17 +2323,79 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
         LECTURE PURE : le serveur REND, il n'ENVOIE pas (décision D5).
         """
+        from .serializers import pii_masquee_pour
         from .services import CLES_MESSAGE_VISITE, message_visite_pour_lead
 
         cle = (request.query_params.get('cle') or '').strip()
+        # CAD111 — les liens wa.me sont construits ICI (E.164) ; un rôle sans
+        # `client_pii_voir` ne reçoit aucun numéro (liens nuls, `phone` vide).
         rendu = message_visite_pour_lead(
-            self.get_object(), cle, user=request.user)
+            self.get_object(), cle, user=request.user,
+            masquer_numero=pii_masquee_pour(request.user))
         if rendu is None:
             return Response(
                 {'cle': ['Message de visite inconnu « ' + cle + ' ». Clés '
                          'connues : ' + ', '.join(CLES_MESSAGE_VISITE) + '.']},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
+
+    @extend_schema(responses=inline_serializer('CrmMessageVisiteOuvert', {
+        'journalise': serializers.BooleanField(),
+        'cle': serializers.CharField(),
+        'langue': serializers.CharField(),
+        'etape': serializers.IntegerField(allow_null=True),
+    }))
+    @action(detail=True, methods=['post'], url_path='message-visite/ouvert',
+            permission_classes=[IsResponsableOrAdmin])
+    def message_visite_ouvert(self, request, pk=None):
+        """CAD111 — le message de VISITE vient d'être OUVERT dans WhatsApp.
+
+        Jumeau POST de la lecture ``message-visite`` (même patron que la
+        touche : ``window.open`` d'abord, puis cet appel best-effort). Corps :
+        ``{cle, langue, etape?}``. Journalise « WhatsApp ouvert » au chatter
+        (tentative + premier contact + AuditLog) — JAMAIS « fait » : aucune
+        issue, aucune touche avancée. ``etape`` (une touche à faire de CE lead)
+        rattache l'ouverture à la touche, que son panneau « Fait » reconnaît.
+        Refus 400 nommant le champ (``cle``, ``langue``, ``etape``)."""
+        from .services import (
+            CLES_MESSAGE_VISITE, LANGUES_MESSAGE_VISITE,
+            journaliser_message_visite_ouvert,
+        )
+        lead = self.get_object()
+        cle = (request.data.get('cle') or '').strip()
+        if cle not in CLES_MESSAGE_VISITE:
+            raise DRFValidationError({'erreurs': {'cle': (
+                f'« Message de visite » inconnu : « {cle} ». Clés connues : '
+                + ', '.join(CLES_MESSAGE_VISITE) + '.')}})
+        langue = (request.data.get('langue') or 'fr').strip()
+        if langue not in LANGUES_MESSAGE_VISITE:
+            raise DRFValidationError({'erreurs': {'langue': (
+                f'« Langue du message » inconnue : « {langue} ». Langues : '
+                + ', '.join(LANGUES_MESSAGE_VISITE) + '.')}})
+        etape = None
+        brut = str(request.data.get('etape') or '').strip()
+        if brut:
+            if brut.isdigit():
+                etape = (RelanceEtape.objects
+                         .filter(pk=int(brut), lead=lead, company=lead.company,
+                                 statut=RelanceEtape.Statut.A_FAIRE)
+                         .first())
+            if etape is None:
+                raise DRFValidationError({'erreurs': {'etape': (
+                    '« Touche » : aucune touche à faire de ce lead ne porte '
+                    f'l’identifiant « {brut} ».')}})
+        journaliser_message_visite_ouvert(
+            lead, request.user, cle=cle, langue=langue, etape=etape)
+        try:
+            from apps.audit.models import AuditLog
+            from apps.audit.recorder import record
+            record(AuditLog.Action.WHATSAPP, instance=lead,
+                   detail=f'Message de visite ouvert ({cle})')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('CAD111: AuditLog non écrit (lead #%s)', lead.pk,
+                           exc_info=True)
+        return Response({'journalise': True, 'cle': cle, 'langue': langue,
+                         'etape': etape.pk if etape is not None else None})
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],

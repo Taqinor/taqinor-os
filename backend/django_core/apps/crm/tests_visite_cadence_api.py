@@ -229,7 +229,14 @@ class MessageVisiteApiTests(VisiteApiBase):
         reponse = self.api.get(
             self._url(self.URL) + '?cle=visite_confirmation')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(sorted(reponse.data), ['corps_darija', 'corps_fr'])
+        # CAD111 — les deux corps + les liens wa.me construits par le serveur
+        # et le numéro : EXACTEMENT les clés du contrat committé.
+        import json
+        from pathlib import Path
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_message_visite.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(reponse.data), set(contrat['exemple']))
         self.assertIn('mardi 22 septembre', reponse.data['corps_fr'])
 
     def test_la_proposition_ne_reclame_aucune_date(self):

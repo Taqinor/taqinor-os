@@ -457,6 +457,12 @@ const crmApi = {
     }
     return api.post(url, note ? { type_piece, note } : { type_piece })
   },
+  // CAD111 — le message de VISITE vient d'être ouvert dans WhatsApp :
+  // journalisé « ouvert » (jamais « fait ») au chatter, en best-effort APRÈS
+  // `window.open`. `payload` : {cle, langue, etape?}. Forme :
+  // `contract_samples/lead_message_visite_ouvert.json` (PACT10).
+  journaliserMessageVisiteOuvert: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/message-visite/ouvert/`, payload),
 }
 
 export default crmApi

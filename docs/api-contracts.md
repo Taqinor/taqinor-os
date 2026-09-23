@@ -112,6 +112,8 @@
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach
     count:nombre, results:inconnu, sla_hours:inconnu
+- frontend/src/api/crmApi.js :: journaliserMessageVisiteOuvert -> /api/django/crm/leads/<>/message-visite/ouvert
+    cle:inconnu, etape:inconnu, journalise:booleen, langue:inconnu
 - frontend/src/api/crmApi.js :: mintQuestionnaireLien -> /api/django/crm/leads/<>/questionnaire-lien
     detail:texte, expires_at:texte, manquantes:inconnu, questions:inconnu, token:inconnu, url:inconnu, url_interne:inconnu
 - frontend/src/api/crmApi.js :: parrainageStats -> /api/django/crm/parrainages/stats

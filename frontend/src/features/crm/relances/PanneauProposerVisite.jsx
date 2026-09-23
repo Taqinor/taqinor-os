@@ -23,7 +23,6 @@ export default function PanneauProposerVisite({ etape, onPlanifier }) {
 
   const phase = phaseVisite(etape)
   const guidance = PHASE_GUIDANCE[phase]
-  const telephone = etape.lead_whatsapp || etape.lead_telephone
 
   return (
     <div className="mt-1.5 rounded-md border border-dashed border-border p-2" data-testid="panneau-proposer-visite">
@@ -71,9 +70,11 @@ export default function PanneauProposerVisite({ etape, onPlanifier }) {
           </div>
         </div>
       )}
+      {/* CAD111 — le lien wa.me vient du serveur (E.164) ; l'ouverture est
+          journalisée et rattachée à CETTE touche. */}
       <MessageVisiteDialog
         leadId={etape.lead}
-        telephone={telephone}
+        etapeId={etape.id}
         cle="visite_proposition"
         open={messageOuvert}
         onOpenChange={setMessageOuvert}
