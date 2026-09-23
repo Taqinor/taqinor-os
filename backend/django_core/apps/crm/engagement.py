@@ -1,18 +1,16 @@
-"""NTCRM16 — Score d'ACTIVITÉ COMMERCIALE multi-signaux d'un CLIENT
-(fidélisation/upsell).
+"""NTCRM16 — Score d'engagement multi-signaux d'un CLIENT (fidélisation/
+upsell).
 
-CAD140 (audit L3 du 21/09/2026, round 2) — RENOMMÉ EN TÊTE (23/09/2026) : ce
-module s'appelait « score d'engagement » alors qu'il a ABANDONNÉ le seul
-signal réellement COMPORTEMENTAL qu'il devait porter (l'ouverture de PDF/
-ShareLink) et ne mesure plus, en pratique, que quatre signaux
-ADMINISTRATIFS (fréquence de contact, récence, paiements à temps, taux
-d'acceptation) — une vraie mesure d'activité commerciale, pas d'engagement
-client. Les NOMS PUBLICS (`compute_engagement_score`, `engagement_label`,
-`engagement_for_client`, `engagement_bulk`) ne sont PAS renommés ici : ils
-sont consommés depuis `apps/crm/views.py`, hors du périmètre de cette lane
-(fichier possédé par une autre lane du même run — voir la garde de lane) ;
-un renommage de l'API publique attend une lane qui peut toucher `views.py`
-dans le MÊME commit.
+CAD140 (audit L3 du 21/09/2026, round 2 ; LIVRÉ le 23/09/2026) — le module
+avait ABANDONNÉ à sa création le seul signal réellement COMPORTEMENTAL qu'il
+devait porter (l'ouverture de PDF/ShareLink), faute d'un sélecteur PAR CLIENT
+côté `apps.ventes` (hors périmètre de la lane `crm` qui l'a créé — voir
+CLAUDE.md frontière cross-app) : son poids était redistribué sur les quatre
+signaux administratifs ci-dessous (25 pts chacun plutôt que 20). Ce
+sélecteur existe désormais (`apps.ventes.selectors.devis_ouverts_ratio_
+client`, CAD140/CAD137) : le signal est RÉINTÉGRÉ, à son poids d'origine
+(20 pts, la part symétrique des 5 signaux sur 100 — jamais un poids inventé,
+voir git 67b2644f pour la redistribution qu'il inverse).
 
 Distinct du lead-scoring existant (`scoring.py`, qui porte sur les LEADS en
 phase de conversion) : ce module porte sur les `Client` déjà signés, pour
@@ -21,8 +19,15 @@ détecter qui mérite une action de fidélisation/upsell avant de dormir
 pour rester cohérent côté UX.
 
 Pur et stateless : aucune écriture, aucun état partagé entre appels. Signaux
-utilisés (25 pts chacun, total 0-100) :
+utilisés (20 pts chacun, total 0-100) :
 
+  ouverture_propositions
+                       ratio de devis (hors brouillon) OUVERTS au moins une
+                       fois par le client (`ShareLink.view_count`, compteur
+                       de visites DISTINCTES fiabilisé par CAD137) — LE
+                       signal comportemental (`apps.ventes.selectors.
+                       devis_ouverts_ratio_client`, jamais `apps.ventes.
+                       models`).
   fréquence_contact   `crm.PointContact` récents (90 derniers jours) sur les
                        leads liés au client — signal crm natif.
   activite_recente     dernier `LeadActivity`/`PointContact` sur un lead lié —
@@ -32,28 +37,16 @@ utilisés (25 pts chacun, total 0-100) :
                        portail`, jamais `apps.ventes.models`).
   ratio_devis_acceptes ratio de devis ACCEPTÉS parmi les devis envoyés
                        (`apps.ventes.selectors.devis_du_client_portail`).
-
-NOTE DE PÉRIMÈTRE (toujours vraie au 23/09/2026 — RECONFIRMÉE, pas seulement
-héritée) : reprendre le signal d'ouverture de PDF exigerait un sélecteur
-PAR CLIENT côté `apps.ventes` — `apps.ventes.selectors.
-devis_view_tracking_segments` existe déjà mais agrège en PANIER de contacts
-(email/téléphone), jamais par `client_id`, et `apps.ventes.selectors.
-devis_du_client_portail` (déjà lu ci-dessus pour `ratio_devis_acceptes`) ne
-porte aucune colonne de consultation. Toute app `apps/ventes/*` est HORS
-PÉRIMÈTRE de cette lane (`apps/crm` uniquement — voir CLAUDE.md frontière
-cross-app) : son poids reste redistribué sur les 4 signaux ci-dessus plutôt
-que de bloquer la tâche. À réintégrer par une lane `ventes` future qui ajoute
-ce sélecteur PAR CLIENT (le compteur de consultations visé par CAD140 sera
-fiabilisé par CAD137).
 """
 from __future__ import annotations
 
 from django.utils import timezone
 
-_W_CONTACT = 25
-_W_RECENCE = 25
-_W_PAIEMENTS = 25
-_W_DEVIS_ACCEPTES = 25
+_W_OUVERTURE = 20
+_W_CONTACT = 20
+_W_RECENCE = 20
+_W_PAIEMENTS = 20
+_W_DEVIS_ACCEPTES = 20
 
 RECENCE_FENETRE_JOURS = 90
 CONTACT_FENETRE_JOURS = 90
@@ -65,8 +58,21 @@ def _lead_ids_for_client(client):
         company=client.company, client=client).values_list('id', flat=True))
 
 
+def _ouverture_propositions_score(company, client):
+    """20 pts max — ratio de devis (hors brouillon) OUVERTS au moins une fois
+    par le client. LE signal comportemental que ce module devait porter
+    depuis NTCRM16 (CAD140) : `ShareLink.view_count`, compteur de visites
+    DISTINCTES fiabilisé par CAD137. Aucun devis non-brouillon = score neutre
+    0, jamais une pénalité fantôme pour un client encore sans document."""
+    from apps.ventes.selectors import devis_ouverts_ratio_client
+    stats = devis_ouverts_ratio_client(company, client.id, limit=200)
+    if not stats['total']:
+        return 0
+    return round(_W_OUVERTURE * stats['ouverts'] / stats['total'])
+
+
 def _frequence_contact_score(client, lead_ids, now):
-    """25 pts max — nombre de `PointContact` sur les leads du client dans les
+    """20 pts max — nombre de `PointContact` sur les leads du client dans les
     `CONTACT_FENETRE_JOURS` derniers jours (3+ contacts = score plein)."""
     if not lead_ids:
         return 0
@@ -78,7 +84,7 @@ def _frequence_contact_score(client, lead_ids, now):
 
 
 def _activite_recente_score(client, lead_ids, now):
-    """25 pts max — âge de la dernière activité (LeadActivity/PointContact)
+    """20 pts max — âge de la dernière activité (LeadActivity/PointContact)
     sur un lead lié : plus récent = plus de points, dégressif linéaire sur
     `RECENCE_FENETRE_JOURS`."""
     if not lead_ids:
@@ -105,7 +111,7 @@ def _activite_recente_score(client, lead_ids, now):
 
 
 def _paiements_a_temps_score(company, client):
-    """25 pts max — ratio de factures PAYÉES parmi les factures émises
+    """20 pts max — ratio de factures PAYÉES parmi les factures émises
     (proxy « paiements à temps » ; aucune facture émise = score neutre 0,
     jamais une pénalité fantôme pour un client encore sans facture)."""
     from apps.ventes.selectors import factures_du_client_portail
@@ -117,7 +123,7 @@ def _paiements_a_temps_score(company, client):
 
 
 def _ratio_devis_acceptes_score(company, client):
-    """25 pts max — ratio de devis ACCEPTÉS parmi les devis envoyés au client."""
+    """20 pts max — ratio de devis ACCEPTÉS parmi les devis envoyés au client."""
     from apps.ventes.selectors import devis_du_client_portail
     devis = devis_du_client_portail(company, client.id, limit=200)
     if not devis:
@@ -133,6 +139,7 @@ def compute_engagement_score(client, now=None) -> int:
     company = client.company
     lead_ids = _lead_ids_for_client(client)
     score = 0
+    score += _ouverture_propositions_score(company, client)
     score += _frequence_contact_score(client, lead_ids, now)
     score += _activite_recente_score(client, lead_ids, now)
     score += _paiements_a_temps_score(company, client)

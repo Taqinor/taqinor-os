@@ -1697,6 +1697,45 @@ def devis_view_tracking_segments(company):
     return {'jamais_ouvert': jamais_ouvert, 'ouvert_non_signe': ouvert_non_signe}
 
 
+def devis_ouverts_ratio_client(company, client_id, *, limit=200):
+    """CAD140 — pour chaque devis NON-BROUILLON du client ``client_id``, a-t-il
+    été ouvert au moins une fois par le client (``ShareLink.view_count`` > 0,
+    compteur de visites DISTINCTES fiabilisé par CAD137) ?
+
+    Reprend le signal comportemental (ouverture de proposition) que
+    ``apps.crm.engagement`` cite depuis sa création mais n'a jamais pu porter,
+    faute d'un sélecteur PAR CLIENT côté ``ventes`` — ``devis_view_tracking_
+    segments`` (PUB58) n'agrège qu'en PANIER de contacts (email/téléphone),
+    jamais par ``client_id``.
+
+    Renvoie ``{'total': int, 'ouverts': int}`` — jamais un ratio pré-calculé,
+    pour ne rien arrondir deux fois côté appelant (même patron que
+    ``_ratio_devis_acceptes_score``/``devis_du_client_portail``). Un client
+    sans aucun devis non-brouillon renvoie ``{'total': 0, 'ouverts': 0}`` —
+    zéro documents, jamais une pénalité fantôme.
+
+    Lecture seule. Jamais un import de ``apps.crm.models`` : ``client_id``
+    suffit, exactement le même contrat que ``devis_du_client_portail``.
+    """
+    from .models import Devis
+
+    if company is None or not client_id:
+        return {'total': 0, 'ouverts': 0}
+    qs = (Devis.objects
+          .filter(company=company, client_id=client_id)
+          .exclude(statut=Devis.Statut.BROUILLON)
+          .prefetch_related('share_links')
+          .order_by('-date_creation')[:limit])
+    total = 0
+    ouverts = 0
+    for devis in qs:
+        total += 1
+        views = [sl.view_count for sl in devis.share_links.all()]
+        if views and max(views) > 0:
+            ouverts += 1
+    return {'total': total, 'ouverts': ouverts}
+
+
 def expired_devis_contacts(company):
     """PUB59 — Contacts des devis EXPIRÉS (``Devis.statut='expire'``) de la
     société — angle de relance « votre prix était valable 30 j, nouvelle
