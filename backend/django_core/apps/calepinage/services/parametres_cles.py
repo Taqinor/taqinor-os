@@ -67,6 +67,17 @@ from __future__ import annotations
 SECTION_SIMULATION = 'simulation'
 SECTION_ELECTRIQUE_SOCIETE = 'electrique_societe'
 
+#: CALX307 — la section « documents » (configuration DOCUMENTAIRE, par CODE
+#: de document — ``{code_document: {sections: [...], langue: null}}``), et
+#: le CODE du seul document qui s'y range aujourd'hui. Nommés ici pour la
+#: même raison que les deux constantes ci-dessus (une chaîne écrite UNE
+#: fois) — mais cette section n'entre PAS dans ``REGISTRES`` : sa forme
+#: n'est pas ``{clé: {valeur, source, reference}}``, c'est une sélection de
+#: codes validée par ``services/rapport/sections_societe.py`` contre le
+#: contrat ``rapport_etude.json``, pas par ce registre.
+SECTION_DOCUMENTS = 'documents'
+CODE_RAPPORT_ETUDE = 'rapport_etude'
+
 #: LA PROVENANCE ADMISE d'une valeur saisie — sans elle, la valeur est
 #: refusée en nommant la clé (D-CALX 7 : un chiffre qu'on ne peut pas sourcer
 #: ne se défend pas).
@@ -134,8 +145,9 @@ REGISTRES = {
 }
 
 __all__ = [
-    'SECTION_SIMULATION', 'SECTION_ELECTRIQUE_SOCIETE', 'SOURCES_ADMISES',
-    'CLES_SIMULATION', 'CLES_ELECTRIQUE_SOCIETE', 'REGISTRES', 'registre',
+    'SECTION_SIMULATION', 'SECTION_ELECTRIQUE_SOCIETE', 'SECTION_DOCUMENTS',
+    'CODE_RAPPORT_ETUDE', 'SOURCES_ADMISES', 'CLES_SIMULATION',
+    'CLES_ELECTRIQUE_SOCIETE', 'REGISTRES', 'registre',
 ]
 
 

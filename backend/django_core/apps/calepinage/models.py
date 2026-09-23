@@ -740,6 +740,7 @@ class ParametresCalepinage(TenantModel):
         'lestage',             # CAL163 — paramètres de lestage SAISIS
         'simulation',          # CALX145 — réglages de simulation SAISIS
         'electrique_societe',  # CALX145 — seuils électriques de la société
+        'documents',           # CALX307 — sections incluses dans les rapports
     )
 
     imagerie = models.JSONField('Imagerie et pays', default=dict, blank=True)
@@ -845,6 +846,25 @@ class ParametresCalepinage(TenantModel):
     electrique_societe = models.JSONField('Seuils électriques de la société',
                                           default=dict, blank=True)
 
+    #: CALX307 — LA CONFIGURATION DOCUMENTAIRE de la société, par CODE de
+    #: document (``{code_document: {sections: [codes], langue: null}}``).
+    #: Aujourd'hui seul ``rapport_etude`` (``services/rapport.CODE_DOCUMENT``)
+    #: y range quelque chose (CALX292/CALX297) ; un futur document du module
+    #: range sa PROPRE configuration sous SON code, dans cette MÊME section —
+    #: pas un nouveau champ par document.
+    #:
+    #: ``sections`` ABSENT ou ``null`` = TOUTES les sections déclarées par le
+    #: contrat (``rapport_etude.json``) : le comportement D'AUJOURD'HUI,
+    #: strictement préservé (D12) — aucune société existante ne change de
+    #: rapport en recevant ce champ (AJOUTÉ EN FIN DE CLASSE, migration
+    #: ``0012``). Le détail de la validation (un code inconnu refusé en le
+    #: nommant, une section ``obligatoire`` du contrat non décochable) vit
+    #: dans ``services/rapport/sections_societe.py`` — appelé depuis
+    #: ``clean()`` ci-dessous, pour que l'écriture normale des réglages
+    #: (``services/parametres.enregistrer_parametres`` → ``full_clean``) la
+    #: refuse au même titre que les onze autres sections.
+    documents = models.JSONField('Documents', default=dict, blank=True)
+
     def clean(self):
         """Chaque section est un OBJET — jamais une liste ni un scalaire."""
         erreurs = {}
@@ -859,6 +879,35 @@ class ParametresCalepinage(TenantModel):
                 )
         if erreurs:
             raise ValidationError(erreurs)
+        self._valider_documents()
+
+    def _valider_documents(self):
+        """CALX307 — la sélection de sections du rapport d'étude, si réglée.
+
+        Import FONCTION-LOCAL : ``services/rapport`` importe des modules qui
+        ne touchent jamais ``models`` au chargement, mais on garde la même
+        discipline que le reste du fichier (cycles évités par construction).
+        """
+        from .services.parametres_cles import CODE_RAPPORT_ETUDE
+        from .services.rapport import RapportRefuse
+        from .services.rapport.sections_societe import (
+            configuration_document, valider_selection,
+        )
+
+        config = configuration_document(self, code=CODE_RAPPORT_ETUDE)
+        codes = config.get('sections')
+        if codes is None:
+            return
+        if not isinstance(codes, list):
+            raise ValidationError({
+                'documents': (
+                    f"Le réglage « sections » du document "
+                    f"« {CODE_RAPPORT_ETUDE} » doit être une liste de codes "
+                    f"(reçu : {type(codes).__name__}).")})
+        try:
+            valider_selection(codes)
+        except RapportRefuse as refus:
+            raise ValidationError({refus.champ or 'documents': str(refus)})
 
 
 class GabaritDossierReglementaire(TenantModel):
