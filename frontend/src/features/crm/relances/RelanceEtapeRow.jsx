@@ -60,6 +60,13 @@ const CANAL_LABELS = {
   visite: 'Visite',
 }
 
+// CAD81 — libellés COURTS de la langue du client (valeurs de
+// `Lead.langue_preferee`, servies en `lead_langue`).
+const LANGUE_LABELS = {
+  fr: 'FR',
+  darija: 'Darija',
+}
+
 const CADENCE_LABELS = {
   contact: 'Contact',
   apres_devis: 'Après devis',
@@ -753,6 +760,20 @@ export default function RelanceEtapeRow({
         {!compact && etape.lead_priorite && etape.lead_priorite !== 'normale' && (
           <Badge tone={etape.lead_priorite === 'haute' ? 'warning' : 'neutral'}>
             {PRIORITE_LABELS[etape.lead_priorite] ?? etape.lead_priorite}
+          </Badge>
+        )}
+        {/* CAD81 — la langue du client AVANT de décrocher : sur une touche
+            d'appel aucune modale ne s'ouvre, et le script affiché (CAD78) ne
+            dit pas dans quelle langue attaquer. `lead_langue` vient du
+            serveur (contrat `relance_etape_v2`), rendu sur toutes les lignes
+            (cockpit comme frise). */}
+        {etape.lead_langue && (
+          <Badge
+            tone={etape.lead_langue === 'fr' ? 'outline' : 'info'}
+            title={`Langue du client : ${LANGUE_LABELS[etape.lead_langue] ?? etape.lead_langue}`}
+            data-testid="badge-langue"
+          >
+            {LANGUE_LABELS[etape.lead_langue] ?? etape.lead_langue}
           </Badge>
         )}
         {showStatut && <StatutBadge etape={etape} />}

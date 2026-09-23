@@ -110,6 +110,25 @@ describe('CAD80 — « Appeler » ne fait plus perdre la note en cours', () => {
   })
 })
 
+describe('CAD81 — la langue du lead affichée avant de décrocher', () => {
+  it('le badge de langue est rendu sur la ligne pour un lead darija', () => {
+    ligne({ ...ETAPE_APPEL, lead_langue: 'darija' })
+    const badge = screen.getByTestId('badge-langue')
+    expect(badge).toHaveTextContent('Darija')
+    expect(badge).toHaveAttribute('title', 'Langue du client : Darija')
+  })
+
+  it('un lead en français porte aussi sa langue (jamais un silence ambigu)', () => {
+    ligne(ETAPE_APPEL)
+    expect(screen.getByTestId('badge-langue')).toHaveTextContent('FR')
+  })
+
+  it('le badge est aussi sur la ligne compacte de la frise', () => {
+    ligne({ ...ETAPE_APPEL, lead_langue: 'darija' }, { compact: true })
+    expect(screen.getByTestId('badge-langue')).toHaveTextContent('Darija')
+  })
+})
+
 describe('CAD78 — le script d’appel du fondateur est ENFIN affiché', () => {
   it('sur une touche d’appel scriptée, le script est visible sans modale et sans POST /whatsapp/', async () => {
     crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: MESSAGE })
