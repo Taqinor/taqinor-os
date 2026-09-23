@@ -83,6 +83,34 @@ def _parse_rappel(date_str, heure_str=''):
     return _dt.datetime.combine(jour, heure, tzinfo=_horaires.CASABLANCA)
 
 
+def _refus_date_passee(quand, libelle_champ):
+    """CAD27 — le message d'erreur si ``quand`` tombe AVANT la journée en
+    cours (heure de Casablanca), sinon ``None``.
+
+    Une faute de frappe sur l'année reportait la touche dans le passé et
+    tirait tout le plan en arrière (le delta s'appliquait sans contrôle de
+    signe) : plusieurs touches apparaissaient d'un coup « en retard ». Le
+    contrôle vit ICI, à la frontière de la saisie humaine : AUJOURD'HUI reste
+    accepté (avancer une touche à aujourd'hui est un geste utile), et les
+    recalages INTERNES du moteur (visite, reprise) ne passent pas par là.
+    Le message NOMME le champ, tel que l'écran l'affiche (règle fondateur du
+    08/09/2026)."""
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from apps.crm import horaires as _horaires
+    from core.dates import aujourd_hui_local
+
+    if _tz.is_naive(quand):
+        quand = _tz.make_aware(quand, _dt.timezone.utc)
+    jour = quand.astimezone(_horaires.CASABLANCA).date()
+    if jour >= aujourd_hui_local():
+        return None
+    return (f'« {libelle_champ} » : le {jour:%d/%m/%Y} est déjà passé — '
+            'choisissez aujourd’hui ou une date à venir.')
+
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -3190,6 +3218,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
                                   'heure HH:MM optionnelle).'},
                     status=status.HTTP_400_BAD_REQUEST)
+            # CAD27 — jamais un rappel dans le passé (le champ est nommé).
+            refus = _refus_date_passee(quand, 'Rappeler le')
+            if refus:
+                return Response({'erreurs': {'rappel_le': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         from .services import (est_etape_de_filet, marquer_etape_relance,
                                reporter_prochaine_touche)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
@@ -3425,6 +3458,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'due_at': 'Échéance invalide (datetime ISO attendu).'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CAD27 — une date de report dans le passé tirait tout le plan en
+        # arrière : refusée, le champ fautif NOMMÉ (celui du corps reçu).
+        refus = _refus_date_passee(quand, 'Reporter au')
+        if refus:
+            champ = 'due_at' if brut else 'rappel_le'
+            return Response({'erreurs': {champ: refus}},
+                            status=status.HTTP_400_BAD_REQUEST)
         if mode == 'veille':
             from .services import mettre_en_veille
             reprise = mettre_en_veille(

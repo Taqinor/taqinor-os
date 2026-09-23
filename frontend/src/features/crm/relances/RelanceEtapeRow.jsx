@@ -299,6 +299,8 @@ export default function RelanceEtapeRow({
   // s'affiche SOUS le contrôle concerné, jamais un toast générique qui
   // masquerait le champ fautif (règle « le champ fautif, message exact »).
   const [erreurOutcome, setErreurOutcome] = useState('')
+  // CAD27 — erreur SERVEUR sur la date de rappel (`{erreurs: {rappel_le}}`).
+  const [erreurRappel, setErreurRappel] = useState('')
   // VISCAD6 — modale de planification de la visite, PARTAGÉE par le panneau
   // de coaching (ci-dessous) et l'issue « Visite acceptée » du Fait.
   const [planifierOuvert, setPlanifierOuvert] = useState(false)
@@ -313,7 +315,7 @@ export default function RelanceEtapeRow({
     setPanel('')
     setNote(''); setReponseIdx(null); setRappelLe(''); setRappelHeure('')
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
-    setSansOuverture(false); setReportMode('')
+    setSansOuverture(false); setReportMode(''); setErreurRappel('')
   }
 
   const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
@@ -338,9 +340,22 @@ export default function RelanceEtapeRow({
   const confirmationOuvertureRequise = (
     toucheMessage && !messageOuvertLe && !sansOuverture)
 
+  // CAD27 — une date de rappel/report dans le PASSÉ tirait tout le plan en
+  // arrière (plusieurs touches « en retard » d'un coup, pour une faute de
+  // frappe sur l'année). L'écran la REFUSE : champ borné à aujourd'hui
+  // (Casablanca), message sous le champ qui le NOMME, Confirmer désactivé.
+  // Le serveur refuse aussi (400 `{erreurs: {rappel_le}}`) — ceinture.
+  const aujourdhui = aujourdhuiCasablanca()
+  const rappelPasse = Boolean(rappelLe) && rappelLe < aujourdhui
+  const reportPasse = Boolean(reportDate) && reportDate < aujourdhui
+  const messageRappel = erreurRappel || (rappelPasse
+    ? '« Rappeler le » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.'
+    : '')
+
   const confirmerFait = () => {
     if (!reponseChoisie) return
     if (reponseChoisie.rappel && !rappelLe) return
+    if (reponseChoisie.rappel && rappelPasse) return
     if (confirmationOuvertureRequise) return
     const payload = {}
     if (note.trim()) payload.note = note.trim()
@@ -389,6 +404,8 @@ export default function RelanceEtapeRow({
         ? err?.response?.data?.erreurs : null
       const champ = erreurs?.outcome || erreurs?.reponse
       if (champ) setErreurOutcome(champ)
+      // CAD27 — la date refusée par le serveur s'affiche SOUS son champ.
+      if (erreurs?.rappel_le) setErreurRappel(erreurs.rappel_le)
     })
   }
 
@@ -398,7 +415,7 @@ export default function RelanceEtapeRow({
   const modeReport = reportMode || (veilleProposee ? 'veille' : 'decaler')
 
   const confirmerReporter = () => {
-    if (!reportDate) return
+    if (!reportDate || reportPasse) return
     // F1 — forme SÛRE ancrée Casablanca CÔTÉ SERVEUR (`_parse_rappel`) :
     // jamais un `new Date(...).toISOString()`, qui interprète
     // `${date}T${heure}:00` dans le fuseau du NAVIGATEUR et décale l'heure
@@ -570,7 +587,9 @@ export default function RelanceEtapeRow({
               <div className="flex flex-col gap-1">
                 <Label className="text-xs" htmlFor={`rappel-le-${etape.id}`}>Rappeler le</Label>
                 <Input id={`rappel-le-${etape.id}`} type="date" className="w-40"
-                       value={rappelLe} onChange={(e) => setRappelLe(e.target.value)} />
+                       min={aujourdhui} aria-invalid={Boolean(messageRappel)}
+                       value={rappelLe}
+                       onChange={(e) => { setRappelLe(e.target.value); setErreurRappel('') }} />
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs" htmlFor={`rappel-heure-${etape.id}`}>Heure</Label>
@@ -578,6 +597,11 @@ export default function RelanceEtapeRow({
                        value={rappelHeure} onChange={(e) => setRappelHeure(e.target.value)} />
               </div>
             </div>
+          )}
+          {reponseChoisie?.rappel && messageRappel && (
+            <p className="text-xs text-danger" role="alert" data-testid="erreur-rappel-le">
+              {messageRappel}
+            </p>
           )}
           <Textarea
             rows={2} placeholder="Note (optionnelle)"
@@ -590,7 +614,7 @@ export default function RelanceEtapeRow({
             <Button
               size="sm"
               disabled={busy || !reponseChoisie
-                || (reponseChoisie.rappel && !rappelLe)
+                || (reponseChoisie.rappel && (!rappelLe || rappelPasse))
                 || confirmationOuvertureRequise}
               onClick={confirmerFait}
             >
@@ -637,6 +661,7 @@ export default function RelanceEtapeRow({
             <div className="flex flex-col gap-1">
               <Label className="text-xs" htmlFor={`report-date-${etape.id}`}>Reporter au</Label>
               <Input id={`report-date-${etape.id}`} type="date" className="w-40"
+                     min={aujourdhui} aria-invalid={reportPasse}
                      value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1">
@@ -645,11 +670,16 @@ export default function RelanceEtapeRow({
                      value={reportHeure} onChange={(e) => setReportHeure(e.target.value)} />
             </div>
           </div>
+          {reportPasse && (
+            <p className="text-xs text-danger" role="alert" data-testid="erreur-report-date">
+              « Reporter au » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.
+            </p>
+          )}
           <div className="flex justify-end gap-1.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={fermer}>
               Annuler
             </Button>
-            <Button size="sm" disabled={busy || !reportDate} onClick={confirmerReporter}>
+            <Button size="sm" disabled={busy || !reportDate || reportPasse} onClick={confirmerReporter}>
               Confirmer
             </Button>
           </div>

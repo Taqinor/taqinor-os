@@ -213,6 +213,46 @@ describe('CAD26 RelanceEtapeRow — décaler ou mettre en veille', () => {
       'Dossier en veille : la cadence reprendra à cette même touche.'))
   })
 
+  // CAD27 — une date passée est REFUSÉE par l'écran (champ borné, message qui
+  // nomme le champ, Confirmer désactivé).
+  it('CAD27 — « Reporter au » refuse hier et le dit sous le champ', () => {
+    const onReporter = vi.fn()
+    ouvrirReporter(onReporter)
+    expect(screen.getByLabelText('Reporter au')).toHaveAttribute('min', '2026-09-23')
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-22' } })
+    expect(screen.getByTestId('erreur-report-date')).toHaveTextContent('« Reporter au »')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    expect(onReporter).not.toHaveBeenCalled()
+  })
+
+  it('CAD27 — « À rappeler le… » refuse hier ; aujourd’hui reste accepté', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-23T09:00:00Z'))
+    ouvrirFait(ETAPE_APPEL)
+    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-09-22' } })
+    expect(screen.getByTestId('erreur-rappel-le')).toHaveTextContent('« Rappeler le »')
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-09-23' } })
+    expect(screen.queryByTestId('erreur-rappel-le')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeEnabled()
+  })
+
+  it('CAD27 — le refus serveur {erreurs: {rappel_le}} s’affiche sous le champ', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-23T09:00:00Z'))
+    const refus = '« Rappeler le » : le 22/09/2026 est déjà passé — choisissez aujourd’hui ou une date à venir.'
+    const onFait = vi.fn(() => Promise.reject({
+      response: { status: 400, data: { erreurs: { rappel_le: refus } } },
+    }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    fireEvent.change(screen.getByLabelText('Rappeler le'), { target: { value: '2026-09-24' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    expect(await screen.findByTestId('erreur-rappel-le')).toHaveTextContent(refus)
+  })
+
   it('le choix explicite « Décaler ce rappel » prime sur la proposition', async () => {
     const onReporter = vi.fn(() => Promise.resolve({}))
     ouvrirReporter(onReporter)

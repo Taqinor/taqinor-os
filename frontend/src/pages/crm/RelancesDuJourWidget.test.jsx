@@ -19,6 +19,12 @@ const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const PREMIERE = ETAPES[0]
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 
+// CAD27 — l'écran REFUSE un report dans le passé : la date des tests de
+// report est DEMAIN à Casablanca, jamais une date figée qui finit par passer.
+const DEMAIN = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(Date.now() + 24 * 3600 * 1000))
+
 vi.mock('../../api/crmApi', () => ({
   default: {
     getRelanceEtapesDues: vi.fn(),
@@ -110,11 +116,11 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
-    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-10' } })
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: DEMAIN } })
     fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '11:00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
-      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '11:00' }))
+      PREMIERE.id, { rappel_le: DEMAIN, rappel_heure: '11:00' }))
     await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
   })
 
@@ -122,10 +128,10 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
-    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-10' } })
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: DEMAIN } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
-      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '09:00' }))
+      PREMIERE.id, { rappel_le: DEMAIN, rappel_heure: '09:00' }))
   })
 
   it('Sauter ouvre une note optionnelle puis confirme', async () => {
