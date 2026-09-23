@@ -392,9 +392,61 @@ def _libelles_d_une_liste(heures, chemin, erreurs):
 
 
 def _libelles_des_heures(tou_heures, erreurs):
-    """Ensemble des libellés employés par ``tou_heures`` (liste de 24)."""
+    """Ensemble des libellés employés par ``tou_heures``.
+
+    ``tou_heures`` est une liste de 24 libellés (toute l'année) ou, depuis
+    CALX275, un objet ``{saison: [24 libellés]}`` — chaque saison validée
+    séparément, une saison inconnue refusée en la NOMMANT.
+    """
+    if isinstance(tou_heures, dict):
+        libelles = set()
+        for saison, heures in tou_heures.items():
+            if saison not in SAISONS_TOU:
+                erreurs.setdefault(
+                    'tou_heures',
+                    f"tou_heures.{saison} : saison inconnue — saisons "
+                    f"admises : {', '.join(SAISONS_TOU)}.")
+                return set()
+            liste = _libelles_d_une_liste(
+                heures, f'tou_heures.{saison}', erreurs)
+            if liste is None:
+                return set()
+            libelles.update(liste)
+        return libelles
     libelles = _libelles_d_une_liste(tou_heures, 'tou_heures', erreurs)
     return set(libelles or ())
+
+
+# ── CALX275 — tranches horaires PAR SAISON ───────────────────────────────────
+#: Les saisons admises d'un découpage horaire : EXACTEMENT celles des profils
+#: de consommation société (``ProfilTypeConsommation.SAISONS``,
+#: ``apps/calepinage/models.py``) — un test CI verrouille l'égalité. ``annuel``
+#: = un découpage valable toute l'année, déclaré comme tel.
+SAISONS_TOU = ('annuel', 'hiver', 'printemps', 'ete', 'automne')
+
+#: Mois (1-12) de chaque saison : les trimestres MÉTÉOROLOGIQUES standard,
+#: ceux qu'emploie déjà le dépôt pour PVGIS (``apps/parametres/pvgis_profils.py``
+#: ``MOIS_PAR_SAISON`` : hiver = DJF, été = JJA, mi-saison = MAM + SON, ici
+#: séparée en printemps = MAM et automne = SON). Aucun mois n'est choisi ici.
+MOIS_PAR_SAISON_TOU = {
+    'hiver': (12, 1, 2),
+    'printemps': (3, 4, 5),
+    'ete': (6, 7, 8),
+    'automne': (9, 10, 11),
+}
+
+
+def saison_du_mois(mois):
+    """Saison météorologique (``hiver``/``printemps``/``ete``/``automne``) du
+    mois ``mois`` (1-12), ou ``None`` si le mois est inconnu/illisible."""
+    try:
+        m = int(mois)
+    except (TypeError, ValueError):
+        return None
+    for saison, mois_saison in MOIS_PAR_SAISON_TOU.items():
+        if m in mois_saison:
+            return saison
+    return None
 
 
 def erreurs_tou(tou_heures, tou_tarifs, tou_source, tou_date_source):
@@ -469,7 +521,8 @@ def tou_depuis_reglages(reglages):
     ``None`` publie :data:`MOTIF_TOU_NON_SAISI`, jamais un tarif supposé.
     Sinon ::
 
-        {'heures': [24 libellés normalisés],
+        {'heures': [24 libellés normalisés]
+                   | {saison: [24 libellés]}   (CALX275, saisons SAISONS_TOU),
          'tarifs': {libellé: float MAD/kWh},
          'source': str, 'date_source': 'AAAA-MM-JJ'}
     """
@@ -480,7 +533,13 @@ def tou_depuis_reglages(reglages):
         return None
     if erreurs_tou(**valeurs):
         return None
-    heures = _libelles_d_une_liste(valeurs['tou_heures'], 'tou_heures', {})
+    brutes = valeurs['tou_heures']
+    if isinstance(brutes, dict):
+        # CALX275 — découpage PAR SAISON : chaque saison saisie, normalisée.
+        heures = {saison: _libelles_d_une_liste(liste, saison, {})
+                  for saison, liste in brutes.items()}
+    else:
+        heures = _libelles_d_une_liste(brutes, 'tou_heures', {})
     tarifs = {
         _libelle_tranche(cle): float(_nombre_positif(valeur))
         for cle, valeur in valeurs['tou_tarifs'].items()

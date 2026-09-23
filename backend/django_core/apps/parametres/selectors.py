@@ -255,6 +255,12 @@ def tou_pour(company) -> dict | None:
     l'appelant publie alors l'économie horaire ``None`` avec
     ``apps.parametres.tariff.MOTIF_TOU_NON_SAISI`` — jamais un tarif supposé.
     Forme rendue : voir ``apps.parametres.tariff.tou_depuis_reglages``.
+
+    CALX275 — ``heures`` est soit une liste de 24 libellés (toute l'année),
+    soit ``{saison: [24 libellés]}`` (saisons ``tariff.SAISONS_TOU``) : le
+    lecteur résout l'heure d'un mois donné par
+    ``apps.ventes.solar_design.tranches_du_mois`` (saison saisie, sinon
+    ``annuel``, sinon ``tranche: None`` + motif — jamais « pleine » supposée).
     """
     from apps.parametres.tariff import tou_depuis_reglages
     return tou_depuis_reglages(_reglages_tarif_existants(company))

@@ -51,6 +51,7 @@ from core.product_roles import (
 # service tarifaire de la FONDATION ``apps.parametres`` (module pur : stdlib
 # seulement, ni Django ni modèle — l'import de tête reste sûr, comme ci-dessus).
 from apps.parametres.tariff import MOTIF_TOU_NON_SAISI as _MOTIF_TOU_NON_SAISI
+from apps.parametres.tariff import saison_du_mois as _saison_du_mois
 
 # ── Paramètres électriques par défaut (module silicium cristallin) ────────────
 # Valeurs marché conservatrices pour un panneau PV mono/poly courant. Tout est
@@ -2378,13 +2379,106 @@ MOTIF_TARIFS_TOU_ABSENTS = _MOTIF_TOU_NON_SAISI
 # du plafond annuel : on compense d'abord les kWh les plus chers.
 _TRANCHE_ORDER = ["pointe", "pleine", "creuse"]
 
+# ── CALX275 — tranches horaires PAR SAISON ───────────────────────────────────
+# Une grille saisie peut porter un découpage par saison ``{saison: [24]}``
+# (saisons ``apps.parametres.tariff.SAISONS_TOU``, mois = trimestres
+# météorologiques ``MOIS_PAR_SAISON_TOU``). L'heure d'un mois prend le
+# découpage de SA saison ; à défaut celui d'``annuel`` ; à défaut elle est
+# publiée ``tranche: None`` avec son motif — jamais « pleine » par défaut.
+
+#: Jours par mois d'une année non bissextile (8 760 h) — calendrier civil.
+_JOURS_PAR_MOIS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+
+
+def _libelle_heure(valeur):
+    """Libellé de tranche normalisé (minuscule), ou ``None`` s'il est vide."""
+    texte = str(valeur).strip().lower() if valeur is not None else ""
+    return texte or None
+
+
+def tranches_du_mois(hour_tranches, mois=None):
+    """CALX275 — la tranche de chacune des 24 heures d'un MOIS donné.
+
+    ``hour_tranches`` : liste de 24 libellés (toute l'année — comportement
+    historique, inchangé) ou ``{saison: [24 libellés]}``. ``mois`` : 1-12,
+    ou ``None`` quand la courbe ne dit pas son mois (journée type).
+
+    Rend 24 dicts ``{heure, saison, tranche, motif}`` : ``saison`` = le
+    découpage réellement employé (``annuel`` pour une liste plate) ;
+    ``tranche`` = ``None`` quand aucune saison saisie ne couvre ce mois, avec
+    un ``motif`` qui nomme la saison manquante. Ne lève jamais.
+    """
+    if not isinstance(hour_tranches, dict):
+        liste = list(hour_tranches or [])
+        if not liste:
+            motif = ("omis : aucun découpage horaire fourni "
+                     "(tou_heures)")
+            return [{"heure": h, "saison": None, "tranche": None,
+                     "motif": motif} for h in range(24)]
+        return [{"heure": h, "saison": "annuel",
+                 "tranche": _libelle_heure(liste[h % len(liste)]),
+                 "motif": None} for h in range(24)]
+
+    saison = _saison_du_mois(mois) if mois is not None else None
+    employee = None
+    if saison and hour_tranches.get(saison):
+        employee = saison
+    elif hour_tranches.get("annuel"):
+        employee = "annuel"
+    if employee is None:
+        if saison is None:
+            motif = ("omis : mois de l'heure inconnu et aucun découpage "
+                     "« annuel » saisi (tou_heures.annuel) — l'heure ne "
+                     "peut être rattachée à aucune saison")
+        else:
+            motif = (f"omis : aucune tranche horaire saisie pour la saison "
+                     f"« {saison} » (mois {int(mois)}) ni pour « annuel » "
+                     f"(tou_heures.{saison})")
+        return [{"heure": h, "saison": None, "tranche": None,
+                 "motif": motif} for h in range(24)]
+    liste = list(hour_tranches[employee])
+    return [{"heure": h, "saison": employee,
+             "tranche": _libelle_heure(liste[h % len(liste)]) if liste
+             else None,
+             "motif": None} for h in range(24)]
+
+
+def _mois_de_l_heure(index, n_heures, mois_des_heures=None):
+    """Mois (1-12) de l'heure ``index`` d'une courbe de ``n_heures`` heures.
+
+    ``mois_des_heures`` (liste explicite, un mois par heure) PRIME. Sinon le
+    mois se DÉDUIT des deux seules formes dont la longueur le dit :
+    288 heures = 12 journées types mensuelles (convention de ``etude.py``),
+    8 760 / 8 784 heures = une année civile heure par heure. Toute autre
+    longueur (journée type, semaine…) ⇒ ``None`` : le mois est inconnu.
+    """
+    if mois_des_heures is not None:
+        try:
+            m = int(mois_des_heures[index])
+        except (IndexError, TypeError, ValueError):
+            return None
+        return m if 1 <= m <= 12 else None
+    if n_heures == 288:
+        return index // 24 + 1
+    if n_heures in (8760, 8784):
+        jour = index // 24
+        jours = list(_JOURS_PAR_MOIS)
+        if n_heures == 8784:
+            jours[1] = 29
+        for numero, nb in enumerate(jours, start=1):
+            if jour < nb:
+                return numero
+            jour -= nb
+    return None
+
 
 def net_metering_savings(injected_curve=None, import_curve=None, *,
                          hour_tranches=None, tranche_tariffs=None,
                          surplus_injecte_compense=True,
                          days_per_year=365, spill_tariff=None,
                          annual_cap_kwh=None,
-                         compensation_ratio=1.0):
+                         compensation_ratio=1.0,
+                         mois_des_heures=None):
     """FG259 — économie annuelle du surplus injecté, valorisé par tranche TOU.
 
     Croise le SURPLUS INJECTÉ horaire (kWh/h, typiquement
@@ -2412,7 +2506,15 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
     hour_tranches : liste de 24 libellés de tranche par heure (défaut
         ``DEFAULT_HOUR_TRANCHES``, publié dans ``hypotheses`` avec sa
         provenance : découpage du module, non validé par une société). Un
-        libellé inconnu retombe sur « pleine ».
+        libellé vide retombe sur « pleine » (comportement historique). CALX275
+        — ou ``{saison: [24 libellés]}`` : chaque heure prend le découpage de
+        la saison de SON mois (:func:`tranches_du_mois`), sinon « annuel »,
+        sinon elle part dans ``non_attribue`` avec son motif (et l'économie
+        est ``None`` si du surplus y tombe).
+    mois_des_heures : mois (1-12) de chaque heure de la courbe (CALX275).
+        Absent, le mois se déduit des seules longueurs qui le disent (288 h =
+        12 journées types, 8 760 / 8 784 h = une année civile) ; sinon il est
+        inconnu et seule la saison « annuel » s'applique.
     tranche_tariffs : dict ``{tranche: MAD/kWh}`` SAISI par la société
         (``apps.parametres.selectors.tou_pour``). CALX274 — AUCUN défaut :
         ``None`` ⇒ ``economie: None`` + ``motif`` (:data:`MOTIF_TARIFS_TOU_ABSENTS`)
@@ -2456,8 +2558,13 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
     injected = _coerce_series(injected_curve)
     imported = _coerce_series(import_curve)
 
-    tranches_by_hour = list(hour_tranches) if hour_tranches else []
-    if not tranches_by_hour:
+    # CALX275 — un découpage PAR SAISON ``{saison: [24]}`` : l'heure prend la
+    # tranche de la saison de SON mois (``tranches_du_mois``), jamais celle
+    # d'une autre saison, jamais « pleine » supposée.
+    saisonnier = isinstance(hour_tranches, dict) and bool(hour_tranches)
+    tranches_by_hour = [] if saisonnier else (
+        list(hour_tranches) if hour_tranches else [])
+    if not saisonnier and not tranches_by_hour:
         tranches_by_hour = list(DEFAULT_HOUR_TRANCHES)
         hypotheses.append({
             "cle": "hour_tranches",
@@ -2508,7 +2615,11 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
 
     # ── Agrégation des flux PAR TRANCHE (modèle sur la période fournie) ──
     names = []
-    for label in tranches_by_hour:
+    libelles_saisis = tranches_by_hour
+    if saisonnier:
+        libelles_saisis = [lib for liste in hour_tranches.values()
+                           for lib in (liste or [])]
+    for label in libelles_saisis:
         key = (label or "pleine").lower()
         if key not in names:
             names.append(key)
@@ -2519,12 +2630,37 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
             names.append(k)
 
     agg = {n: {"injected": 0.0, "import": 0.0} for n in names}
+    # CALX275 — l'énergie des heures qu'aucune saison saisie ne couvre : elle
+    # n'est rattachée à AUCUNE tranche (ni compensée, ni valorisée) et son
+    # motif est publié.
+    non_attribue = {"injected_kwh": 0.0, "import_kwh": 0.0, "heures": 0,
+                    "motifs": []}
+    par_mois = {}
 
     n_hours = max(len(injected), len(imported))
     for h in range(n_hours):
         inj = injected[h] if h < len(injected) else 0.0
         imp = imported[h] if h < len(imported) else 0.0
-        label = tranches_by_hour[h % len(tranches_by_hour)]
+        if saisonnier:
+            mois = _mois_de_l_heure(h, n_hours, mois_des_heures)
+            if mois not in par_mois:
+                par_mois[mois] = tranches_du_mois(hour_tranches, mois)
+            entree = par_mois[mois][h % 24]
+            if entree["tranche"] is None:
+                non_attribue["injected_kwh"] += inj
+                non_attribue["import_kwh"] += imp
+                non_attribue["heures"] += 1
+                # Le motif publié est celui des heures qui PORTENT de
+                # l'énergie (celles dont la valeur manque vraiment) ; les
+                # heures vides ne le fixent qu'à défaut.
+                cle_motifs = "motifs" if (inj > 0 or imp > 0) else "vides"
+                liste = non_attribue.setdefault(cle_motifs, [])
+                if entree["motif"] not in liste:
+                    liste.append(entree["motif"])
+                continue
+            label = entree["tranche"]
+        else:
+            label = tranches_by_hour[h % len(tranches_by_hour)]
         key = (label or "pleine").lower()
         if key not in agg:
             key = "pleine"
@@ -2636,6 +2772,12 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         # chiffrée sur les anciens 1,45 / 1,15 / 0,85 « à confirmer ».
         savings_per_period = None
         motif = MOTIF_TARIFS_TOU_ABSENTS
+    elif non_attribue["injected_kwh"] > 0:
+        # CALX275 — du surplus tombe à des heures qu'aucune saison saisie ne
+        # couvre : sa valeur est inconnue, l'économie totale aussi.
+        savings_per_period = None
+        motif = non_attribue["motifs"][0]
+        omissions.append({"cle": "hour_tranches", "motif": motif})
     elif tranches_sans_tarif:
         savings_per_period = None
         premiere = sorted(tranches_sans_tarif)[0]
@@ -2691,6 +2833,16 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         "spill_tariff": spill_rate,
         "annual_cap_kwh": annual_cap_kwh,
         "compensation_ratio": round(ratio, 4),
+        # CALX275 — l'énergie des heures sans tranche (aucune saison saisie ne
+        # couvre leur mois) : hors des tranches ET des totaux ci-dessus.
+        "non_attribue": {
+            "injected_kwh": round(non_attribue["injected_kwh"], 3),
+            "import_kwh": round(non_attribue["import_kwh"], 3),
+            "heures": non_attribue["heures"],
+            "tranche": None,
+            "motif": ((non_attribue["motifs"]
+                       or non_attribue.get("vides") or [None])[0]),
+        },
         # CALX274 — l'économie sous son nom canonique, son motif quand elle
         # est omise, et ce qui a servi / manqué, nommé.
         "economie": annual_savings,
