@@ -551,6 +551,20 @@ export default function RelanceEtapeRow({
     else if (panel === '' || panel === 'fait') effacerBrouillon(etape.id)
   }, [panel, note, etape.id, readOnly])
 
+  // CAD82 — un bouton désactivé DIT pourquoi (règle fondateur du 08/09 : le
+  // champ fautif, le message exact). Deux causes, jamais confondues : le
+  // numéro est MASQUÉ par les droits du rôle (`lead_pii_masquee`, servi par le
+  // serveur) ou il n'y a AUCUN numéro sur la fiche.
+  const raisonSansNumero = (geste) => (etape.lead_pii_masquee
+    ? `« ${geste} » : numéro masqué — votre rôle n’a pas le droit de voir les coordonnées client (client_pii_voir).`
+    : `« ${geste} » : aucun numéro de téléphone sur la fiche du lead.`)
+  const sansTelephone = !etape.lead_telephone
+  // Garde SYMÉTRIQUE : WhatsApp n'est plus un aller-retour réseau vers une
+  // impasse que la ligne connaissait déjà (sauf touche e-mail, dont le bouton
+  // ouvre le texte en place — aucun numéro requis).
+  const sansNumeroWhatsApp = !toucheEmail && !(etape.lead_whatsapp || etape.lead_telephone)
+  const whatsappSeulement = etape.lead_contact_preference === 'whatsapp_only'
+
   // CAD80 — « Appeler » : le brouillon est écrit AVANT de céder la main au
   // téléphone (la page peut être déchargée dans la foulée).
   const appeler = () => {
@@ -789,6 +803,14 @@ export default function RelanceEtapeRow({
       {showStatut && etape.note && (
         <p className="mt-1 text-xs text-muted-foreground">{etape.note}</p>
       )}
+      {/* CAD82 — la PRÉFÉRENCE du client atteint la ligne : Appeler et
+          WhatsApp ne sont plus proposés à égalité sans dire qu'il a demandé
+          à n'être joint que par écrit (`lead_contact_preference`). */}
+      {whatsappSeulement && (
+        <p className="mt-1 text-xs font-medium text-warning" data-testid="preference-contact">
+          Le client a demandé à être joint par écrit uniquement (WhatsApp) — évitez d’appeler.
+        </p>
+      )}
       {/* VISCAD — le panneau de coaching se gate lui-même sur cadence ===
           'apres_devis' ; ici on ne gate que sur `readOnly` (une ligne qui se
           LIT seulement — historique du suivi — n'a pas d'action à proposer).
@@ -828,7 +850,7 @@ export default function RelanceEtapeRow({
             </Button>
           ) : (
             <Button
-              size="sm" variant="outline" disabled={busy}
+              size="sm" variant="outline" disabled={busy || sansNumeroWhatsApp}
               onClick={() => onOuvrirMessage(etape)}
             >
               <MessageCircle className="size-3.5" /> WhatsApp
@@ -857,6 +879,18 @@ export default function RelanceEtapeRow({
             </Button>
           )}
         </div>
+      )}
+      {/* CAD82 — sous chaque bouton désactivé, sa raison exacte (numéro
+          absent vs droits PII), jamais un bouton mort sans cause. */}
+      {!readOnly && panel === '' && sansTelephone && (
+        <p className="mt-1 text-right text-xs text-muted-foreground" data-testid="raison-appeler">
+          {raisonSansNumero('Appeler')}
+        </p>
+      )}
+      {!readOnly && panel === '' && sansNumeroWhatsApp && (
+        <p className="mt-1 text-right text-xs text-muted-foreground" data-testid="raison-whatsapp">
+          {raisonSansNumero('WhatsApp')}
+        </p>
       )}
       {!readOnly && enAvance && panel === '' && (
         <p className="mt-1 text-right text-xs text-muted-foreground" data-testid="touche-en-avance">

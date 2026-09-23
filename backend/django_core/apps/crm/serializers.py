@@ -166,6 +166,16 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # n'écrit plus de promesse par cadence, qui mentait dès que le libellé ou
     # le rang de la touche changeait la suite réelle (CAD1/CAD3/CAD16/CAD97).
     suites = serializers.SerializerMethodField()
+    # CAD82 — la PRÉFÉRENCE de contact du client atteint enfin la touche :
+    # deux boutons (Appeler / WhatsApp) étaient proposés à égalité sans dire
+    # que ce client a demandé à n'être joint que par écrit. Chaîne VIDE —
+    # jamais null — quand rien n'est posé (valeurs de `Lead.ContactPreference`).
+    lead_contact_preference = serializers.SerializerMethodField()
+    # CAD82 — POURQUOI le numéro est vide : `lead_telephone` vaut '' aussi bien
+    # pour un lead SANS numéro que pour un rôle privé de `client_pii_voir`.
+    # Sans ce drapeau, le bouton « Appeler » désactivé ne pouvait pas dire sa
+    # cause (règle fondateur : le champ fautif, le message exact).
+    lead_pii_masquee = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -182,6 +192,8 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'devis_reference', 'traite_le', 'traite_par_nom',
             'statut_libelle', 'message_ouvert_le', 'canal_adapte',
             'lead_est_junk', 'suites',
+            # CAD82 — additifs.
+            'lead_contact_preference', 'lead_pii_masquee',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -209,6 +221,16 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
+
+    def get_lead_contact_preference(self, obj) -> str:
+        """CAD82 — ``whatsapp_only`` | ``phone_ok`` | '' (rien de posé)."""
+        return getattr(obj.lead, 'contact_preference', '') or ''
+
+    def get_lead_pii_masquee(self, obj) -> bool:
+        """CAD82 — ``True`` quand les coordonnées sont MASQUÉES pour ce
+        demandeur (même règle que ``get_lead_telephone``) : un numéro vide
+        n'est alors pas un numéro absent. Aucune requête (drapeau utilisateur)."""
+        return self._pii_masquee()
 
     def get_canal_adapte(self, obj) -> str:
         """CAD32 — la phrase qui explique un canal qui n'est pas celui du

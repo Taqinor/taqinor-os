@@ -165,8 +165,57 @@ describe('CAD78 — le script d’appel du fondateur est ENFIN affiché', () => 
 
   it('une touche WhatsApp garde son bouton WhatsApp (la modale d’aperçu)', () => {
     const onOuvrirMessage = vi.fn()
-    ligne(ETAPE_WHATSAPP, { onOuvrirMessage })
+    // La touche WhatsApp du contrat n'a pas de numéro (CAD82 : bouton
+    // désactivé) — on lui prête celui de la touche d'appel.
+    const etape = {
+      ...ETAPE_WHATSAPP,
+      lead_telephone: ETAPE_APPEL.lead_telephone, lead_whatsapp: ETAPE_APPEL.lead_whatsapp,
+    }
+    ligne(etape, { onOuvrirMessage })
     fireEvent.click(screen.getByRole('button', { name: /WhatsApp/ }))
-    expect(onOuvrirMessage).toHaveBeenCalledWith(ETAPE_WHATSAPP)
+    expect(onOuvrirMessage).toHaveBeenCalledWith(etape)
+  })
+})
+
+describe('CAD82 — « Appeler » désactivé EXPLIQUÉ, préférence du client visible', () => {
+  const PII = exempleContrat('crm', 'relance_etape_v2', 'exemple_pii_masquee').results[0]
+  const ECRIT = exempleContrat('crm', 'relance_etape_v2', 'exemple_whatsapp_uniquement').results[0]
+
+  it('numéro absent de la fiche : le bouton désactivé dit pourquoi (et WhatsApp aussi)', () => {
+    // 2e touche du contrat : aucun numéro, coordonnées NON masquées.
+    ligne(ETAPE_WHATSAPP)
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeDisabled()
+    expect(screen.getByTestId('raison-appeler'))
+      .toHaveTextContent('« Appeler » : aucun numéro de téléphone sur la fiche du lead.')
+    // Garde symétrique : WhatsApp ne fait plus d'aller-retour vers une impasse.
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeDisabled()
+    expect(screen.getByTestId('raison-whatsapp')).toHaveTextContent('« WhatsApp » : aucun numéro')
+  })
+
+  it('droits PII manquants : la raison nomme les droits, jamais « aucun numéro »', () => {
+    ligne(PII)
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeDisabled()
+    const raison = screen.getByTestId('raison-appeler')
+    expect(raison).toHaveTextContent('numéro masqué')
+    expect(raison).toHaveTextContent('client_pii_voir')
+    expect(raison).not.toHaveTextContent('aucun numéro')
+  })
+
+  it('un numéro présent : aucun motif affiché', () => {
+    ligne(ETAPE_APPEL)
+    expect(screen.getByRole('button', { name: /Appeler/ })).not.toBeDisabled()
+    expect(screen.queryByTestId('raison-appeler')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('raison-whatsapp')).not.toBeInTheDocument()
+  })
+
+  it('lead « WhatsApp uniquement » : la mention est visible sur la ligne', () => {
+    ligne(ECRIT)
+    expect(screen.getByTestId('preference-contact'))
+      .toHaveTextContent('joint par écrit uniquement (WhatsApp)')
+  })
+
+  it('sans préférence posée, aucune mention', () => {
+    ligne(ETAPE_APPEL)
+    expect(screen.queryByTestId('preference-contact')).not.toBeInTheDocument()
   })
 })

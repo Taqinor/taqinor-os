@@ -32,6 +32,8 @@
         "message_ouvert_le": null,
         "canal_adapte": "",
         "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
         "suites": {
           "joint": ["contact_arretee", "etape_devis_demain"],
           "non_joint": ["touche_suivante"],
@@ -70,6 +72,8 @@
         "message_ouvert_le": "2026-09-05T13:04:00Z",
         "canal_adapte": "",
         "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
         "suites": {
           "joint": ["touche_suivante"],
           "visite_acceptee": ["etape_planifier_visite"],
@@ -122,6 +126,8 @@
         "message_ouvert_le": null,
         "canal_adapte": "",
         "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
         "suites": {
           "sans_issue": ["touche_suivante"],
           "non_joint": ["touche_suivante"],
@@ -159,6 +165,8 @@
         "message_ouvert_le": null,
         "canal_adapte": "",
         "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
         "suites": {
           "sans_issue": ["etape_devis_demain_sauf_suivi"],
           "non_joint": ["etape_devis_demain_sauf_suivi"],
@@ -201,6 +209,8 @@
         "message_ouvert_le": null,
         "canal_adapte": "",
         "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
         "suites": {
           "joint": ["sort_du_froid", "reveils_arretes", "etape_appeler_sauf_suivi"],
           "non_joint": ["dernier_reveil"],
@@ -213,7 +223,131 @@
       }
     ]
   },
+  "exemple_pii_masquee": {
+    "count": 1,
+    "results": [
+      {
+        "id": 450,
+        "lead": 1520,
+        "lead_nom": "Youssef Amrani",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "",
+        "lead_whatsapp": "",
+        "lead_langue": "fr",
+        "lead_score": 51,
+        "lead_priorite": "haute",
+        "cadence": "contact",
+        "ordre": 2,
+        "due_date": "2026-09-06",
+        "due_at": "2026-09-06T09:33:00Z",
+        "canal": "appel",
+        "libelle": "Appel d'ouverture",
+        "template_cle": "appel_ouverture",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": true,
+        "suites": {
+          "joint": [
+            "contact_arretee",
+            "etape_devis_demain"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        }
+      }
+    ]
+  },
+  "exemple_whatsapp_uniquement": {
+    "count": 1,
+    "results": [
+      {
+        "id": 451,
+        "lead": 1521,
+        "lead_nom": "Samira Chraibi",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000451",
+        "lead_whatsapp": "+212661000451",
+        "lead_langue": "fr",
+        "lead_score": 44,
+        "lead_priorite": "normale",
+        "cadence": "contact",
+        "ordre": 4,
+        "due_date": "2026-09-06",
+        "due_at": "2026-09-06T09:33:00Z",
+        "canal": "whatsapp",
+        "libelle": "Appel 3 (répondeur)",
+        "template_cle": "repondeur",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "Canal adapté à la préférence du client : WhatsApp uniquement.",
+        "lead_est_junk": false,
+        "lead_contact_preference": "whatsapp_only",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": [
+            "contact_arretee",
+            "etape_devis_demain"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        }
+      }
+    ]
+  },
   "notes": {
+    "lead_contact_preference": "CAD82 — préférence de contact du CLIENT (`Lead.contact_preference` : `whatsapp_only` | `phone_ok`), chaîne VIDE — jamais null — quand rien n'est posé. La ligne l'écrit en clair (« joint par écrit seulement ») au lieu de proposer Appeler et WhatsApp à égalité (`exemple_whatsapp_uniquement`).",
+    "lead_pii_masquee": "CAD82 — booléen, jamais null : les coordonnées sont MASQUÉES pour CE demandeur (pas de `client_pii_voir`), même règle que `lead_telephone`/`lead_whatsapp`. Un numéro vide n'a donc plus UNE cause devinable mais deux causes nommées : « aucun numéro sur la fiche » (`exemple`, 2e ligne) ou « numéro masqué par vos droits » (`exemple_pii_masquee`) — la raison s'affiche sous le bouton désactivé.",
     "post_langue": "CAD63 — `POST /api/django/crm/relance-etapes/<id>/langue/` `{langue: 'fr'|'darija'}` enregistre la langue du CLIENT de la touche (`Lead.langue_preferee`, journalisé comme une édition de la fiche) et renvoie CETTE forme, `lead_langue` à jour. Le « Fait » accepte le même champ `langue` (réponse « ne parle que darija ») : posé seulement si la touche est enregistrée. Refus 400 `{erreurs: {langue}}` nommant le champ.",
     "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
     "statut_libelle": "CKP1 — libellé français du statut, servi par le serveur (« À faire », « Fait », « Sautée », « Annulée (moteur) ») : le badge n'a plus à réinventer la table des libellés, et une annulation MOTEUR ne peut plus s'afficher comme un saut humain.",
