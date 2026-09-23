@@ -12,6 +12,7 @@ Run :
     DB_NAME=erp_ventes python manage.py test \
         apps.ventes.tests.test_solar_design -v 2
 """
+from functools import partial
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -19,12 +20,22 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.ventes import solar_design as sd
 
+# CALX286 — ``solar_design`` ne suppose PLUS les températures de
+# dimensionnement : ces tests de PHYSIQUE passent explicitement celles
+# d'avant (−5 / 70 °C), exactement comme l'appelant historique
+# ``apps/ventes/compatibilites.py`` (D12).
+_TEMPERATURES = {'cold_temp_c': sd.DEFAULT_COLD_TEMP_C,
+                 'hot_temp_c': sd.DEFAULT_HOT_TEMP_C}
+_string_design = partial(sd.string_design, **_TEMPERATURES)
+_verdicts_chaines = partial(sd.verdicts_chaines, **_TEMPERATURES)
+_match_inverter = partial(sd.match_inverter, **_TEMPERATURES)
+
 
 # ── FG246 : conception de chaînes & ratio DC/AC (calcul pur, SimpleTestCase) ───
 class StringDesignTest(SimpleTestCase):
     def test_balanced_distribution_over_two_mppt(self):
         # 24 panneaux, fenêtre large : doit répartir en chaînes égales sur 2 MPPT.
-        res = sd.string_design(
+        res = _string_design(
             24,
             module={"vmp": 34, "voc": 41, "puissance_w": 550},
             inverter={"v_min": 90, "v_max": 1000, "v_mppt_min": 120,
@@ -41,7 +52,7 @@ class StringDesignTest(SimpleTestCase):
     def test_voc_cold_under_vmax_flag(self):
         # Onduleur incompatible : même un SEUL module dépasse V_max au Voc froid
         # → le contrôle de sécurité échoue, warning « V_max », jamais d'exception.
-        res = sd.string_design(
+        res = _string_design(
             5,
             module={"vmp": 40, "voc": 49, "puissance_w": 550,
                     "temp_coeff_voc": -0.30, "temp_coeff_vmp": -0.35},
@@ -56,7 +67,7 @@ class StringDesignTest(SimpleTestCase):
 
     def test_cold_voltage_higher_than_stc(self):
         # Vérifie la physique : Voc/Vmp montent quand il fait froid.
-        res = sd.string_design(
+        res = _string_design(
             10,
             module={"vmp": 34, "voc": 41, "puissance_w": 450},
             inverter={"v_min": 90, "v_max": 1000, "v_mppt_min": 120,
@@ -70,7 +81,7 @@ class StringDesignTest(SimpleTestCase):
 
     def test_dc_ac_ratio(self):
         # 18 × 550 W = 9.9 kWc DC ; onduleur 7 kW → ratio ≈ 1.414.
-        res = sd.string_design(
+        res = _string_design(
             18,
             module={"vmp": 34, "voc": 41, "puissance_w": 550},
             inverter={"v_min": 90, "v_max": 1000, "v_mppt_min": 120,
@@ -82,7 +93,7 @@ class StringDesignTest(SimpleTestCase):
         self.assertIsNotNone(res["dc_ac_ratio"])
 
     def test_high_dc_ac_ratio_warns(self):
-        res = sd.string_design(
+        res = _string_design(
             30,
             module={"vmp": 34, "voc": 41, "puissance_w": 550},
             inverter={"v_min": 90, "v_max": 1100, "v_mppt_min": 120,
@@ -93,7 +104,7 @@ class StringDesignTest(SimpleTestCase):
         self.assertTrue(any("DC/AC" in w for w in res["warnings"]))
 
     def test_no_ac_kw_means_no_ratio(self):
-        res = sd.string_design(
+        res = _string_design(
             12,
             module={"vmp": 34, "voc": 41, "puissance_w": 450},
             inverter={"v_min": 90, "v_max": 1000, "v_mppt_min": 120,
@@ -102,7 +113,7 @@ class StringDesignTest(SimpleTestCase):
         self.assertIsNone(res["dc_ac_ratio"])
 
     def test_zero_panels_safe(self):
-        res = sd.string_design(0)
+        res = _string_design(0)
         self.assertEqual(res["n_panels"], 0)
         self.assertEqual(res["strings"], 0)
         self.assertFalse(res["ok"])
@@ -110,7 +121,7 @@ class StringDesignTest(SimpleTestCase):
 
     def test_defaults_apply_when_no_specs(self):
         # Sans module/onduleur fournis, les défauts sensés s'appliquent.
-        res = sd.string_design(12)
+        res = _string_design(12)
         self.assertEqual(res["n_mppt"], sd.DEFAULT_INVERTER_WINDOW["n_mppt"])
         self.assertGreater(res["dc_kw"], 0)
         self.assertIn("voc_cold", res["voltages"])
@@ -118,7 +129,7 @@ class StringDesignTest(SimpleTestCase):
     def test_narrow_window_degrades_gracefully(self):
         # Fenêtre incohérente (min MPPT chaud > max MPPT froid) → not ok + warn,
         # mais jamais d'exception.
-        res = sd.string_design(
+        res = _string_design(
             8,
             module={"vmp": 34, "voc": 41, "puissance_w": 450},
             inverter={"v_min": 700, "v_max": 750, "v_mppt_min": 700,
@@ -129,7 +140,7 @@ class StringDesignTest(SimpleTestCase):
 
     def test_non_integer_input_safe(self):
         # Une entrée non entière ne casse pas (repli à 0).
-        res = sd.string_design("abc")
+        res = _string_design("abc")
         self.assertEqual(res["n_panels"], 0)
 
 
@@ -168,7 +179,7 @@ class MatchInverterTest(TestCase):
     def test_picks_smallest_compatible_reseau(self):
         # 16 × 550 W = 8.8 kWc DC ; ratio ≤ 1.35 → besoin ≥ 6.5 kW AC.
         # Le 5 kW (ratio 1.76) est rejeté, le 10 kW retenu.
-        res = sd.match_inverter(
+        res = _match_inverter(
             self._produits(), n_panels=16, panel_w=550, hybrid=False)
         self.assertIsNotNone(res["inverter"])
         self.assertEqual(res["inverter"].id, self.r10.id)
@@ -176,14 +187,14 @@ class MatchInverterTest(TestCase):
         self.assertEqual(res["ac_kw"], 10)
 
     def test_hybrid_family_selected(self):
-        res = sd.match_inverter(
+        res = _match_inverter(
             self._produits(), n_panels=10, panel_w=550, hybrid=True)
         self.assertIsNotNone(res["inverter"])
         self.assertEqual(res["inverter"].id, self.h8.id)
 
     def test_never_picks_priceless_inverter(self):
         # Même si le « Sans Prix 6kW » conviendrait par la taille, il est exclu.
-        res = sd.match_inverter(
+        res = _match_inverter(
             self._produits(), n_panels=12, panel_w=550, hybrid=False)
         self.assertIsNotNone(res["inverter"])
         self.assertNotEqual(res["inverter"].nom,
@@ -193,12 +204,12 @@ class MatchInverterTest(TestCase):
         # Catalogue sans onduleur réseau chiffrable.
         from apps.stock.models import Produit
         empty = list(Produit.objects.filter(company=self.company, sku="PAN550"))
-        res = sd.match_inverter(empty, n_panels=10, panel_w=550, hybrid=False)
+        res = _match_inverter(empty, n_panels=10, panel_w=550, hybrid=False)
         self.assertIsNone(res["inverter"])
         self.assertIn("aucun onduleur", res["reason"])
 
     def test_dc_kw_computed_from_panels(self):
-        res = sd.match_inverter(
+        res = _match_inverter(
             self._produits(), n_panels=20, panel_w=600, hybrid=False)
         self.assertAlmostEqual(res["dc_kw"], 12.0, places=2)
 
@@ -384,7 +395,7 @@ class GenerateBoqTest(SimpleTestCase):
         self.assertTrue(res["warnings"])
 
     def test_basic_reseau_boq_categories(self):
-        sr = sd.string_design(
+        sr = _string_design(
             12, inverter={"ac_kw": 5, "n_mppt": 2})
         res = sd.generate_boq(
             n_panels=12, string_result=sr, installation_type="reseau")
@@ -426,7 +437,7 @@ class GenerateBoqTest(SimpleTestCase):
         self.assertIn("Protection batterie", cats)
 
     def test_strings_drive_string_protections(self):
-        sr = sd.string_design(
+        sr = _string_design(
             16, inverter={"ac_kw": 6, "n_mppt": 2})
         res = sd.generate_boq(n_panels=16, string_result=sr)
         fuses = next(it["quantite"] for it in res["items"]
@@ -580,8 +591,10 @@ class BatteryStorageSizingTest(SimpleTestCase):
 
     def test_backup_capacity_is_load_times_hours(self):
         # 2 kW critiques × 8 h = 16 kWh utiles ; puissance 2 × 1.25 = 2.5 kW.
+        # CALX286 — la marge de pointe n'est plus implicite : passée ici.
         res = sd.battery_storage_sizing(
-            mode="backup", critical_load_kw=2.0, backup_hours=8.0)
+            mode="backup", critical_load_kw=2.0, backup_hours=8.0,
+            backup_peak_factor=1.25)
         bk = res["backup"]
         self.assertEqual(bk["usable_kwh"], 16.0)
         self.assertEqual(bk["usable_kw"], 2.5)
@@ -608,7 +621,7 @@ class BatteryStorageSizingTest(SimpleTestCase):
         res = sd.battery_storage_sizing(
             mode="both", pv_daily_production_kwh=30.0,
             pv_self_consumption_kwh=12.0, night_load_kwh=14.0,
-            critical_load_kw=3.0, backup_hours=8.0)
+            critical_load_kw=3.0, backup_hours=8.0, backup_peak_factor=1.25)
         self.assertEqual(res["autoconso"]["usable_kwh"], 14.0)
         self.assertEqual(res["backup"]["usable_kwh"], 24.0)
         self.assertEqual(res["binding_objective"], "backup")
@@ -621,7 +634,7 @@ class BatteryStorageSizingTest(SimpleTestCase):
         # Pic 2.5 kW à 48 V → courant ≈ 52.1 A.
         res = sd.battery_storage_sizing(
             mode="backup", critical_load_kw=2.0, backup_hours=4.0,
-            system_voltage_v=48.0)
+            system_voltage_v=48.0, backup_peak_factor=1.25)
         self.assertAlmostEqual(
             res["recommended"]["current_a"], 52.1, delta=0.5)
 
@@ -659,10 +672,16 @@ class BatteryStorageSizingTest(SimpleTestCase):
             critical_load_kw=-2, backup_hours=-4,
             depth_of_discharge=0, round_trip_efficiency=-1,
             system_voltage_v=0)
-        # DoD/rendement/tension absurdes → bornés à leurs défauts > 0.
-        self.assertGreater(res["depth_of_discharge"], 0)
-        self.assertGreater(res["round_trip_efficiency"], 0)
+        # CALX286 — DoD/rendement absurdes → OMIS (jamais un 90 % supposé) ;
+        # la tension retombe sur celle du module, publiée comme hypothèse.
+        self.assertIsNone(res["depth_of_discharge"])
+        self.assertIsNone(res["round_trip_efficiency"])
+        omis = {o["cle"] for o in res["omissions"]}
+        self.assertIn("depth_of_discharge", omis)
+        self.assertIn("round_trip_efficiency", omis)
         self.assertGreater(res["system_voltage_v"], 0)
+        self.assertTrue(any(h["cle"] == "system_voltage_v"
+                            for h in res["hypotheses"]))
         # Aucun objectif chiffrable → recommandation vide, pas d'exception.
         self.assertIsNone(res["binding_objective"])
         self.assertIsNone(res["recommended"]["usable_kwh"])
@@ -684,11 +703,12 @@ class SimulateBankableYieldTest(SimpleTestCase):
                   "inverter": 0.03}
         res = sd.simulate_bankable_yield(
             10000, loss_factors=losses, annual_variability=0.0)
-        # On surcharge tous les postes par défaut, mais le défaut garde aussi
-        # mismatch/availability → on construit le PR attendu sur les 6 postes.
+        # CALX286 — l'arbre fourni EST l'arbre appliqué : plus aucun poste
+        # « marché » (mismatch/availability) n'est ajouté en silence.
         expected_pr = 1.0
-        for poste, default in sd.DEFAULT_LOSS_FACTORS.items():
-            expected_pr *= (1.0 - losses.get(poste, default))
+        for frac in losses.values():
+            expected_pr *= (1.0 - frac)
+        self.assertEqual(set(res["applied_losses"]), set(losses))
         self.assertAlmostEqual(res["performance_ratio"], round(expected_pr, 4),
                                places=4)
         # total_loss_pct = (1 - PR) × 100.
@@ -708,7 +728,8 @@ class SimulateBankableYieldTest(SimpleTestCase):
     def test_p90_below_p50_and_p75_between(self):
         # Avec σ > 0, P90 < P75 < P50 (ordre des quantiles bas).
         res = sd.simulate_bankable_yield(
-            10000, annual_variability=0.06)
+            10000, annual_variability=0.06,
+            loss_factors=sd.DEFAULT_LOSS_FACTORS)
         self.assertLess(res["p90_kwh"], res["p50_kwh"])
         self.assertLess(res["p90_kwh"], res["p75_kwh"])
         self.assertLess(res["p75_kwh"], res["p50_kwh"])
@@ -725,8 +746,12 @@ class SimulateBankableYieldTest(SimpleTestCase):
 
     def test_higher_sigma_lowers_p90(self):
         # Plus la variabilité est forte, plus le P90 (bancable) descend.
-        low = sd.simulate_bankable_yield(10000, annual_variability=0.03)
-        high = sd.simulate_bankable_yield(10000, annual_variability=0.08)
+        low = sd.simulate_bankable_yield(
+            10000, annual_variability=0.03,
+            loss_factors=sd.DEFAULT_LOSS_FACTORS)
+        high = sd.simulate_bankable_yield(
+            10000, annual_variability=0.08,
+            loss_factors=sd.DEFAULT_LOSS_FACTORS)
         self.assertEqual(low["p50_kwh"], high["p50_kwh"])  # même médiane
         self.assertGreater(low["p90_kwh"], high["p90_kwh"])
 
@@ -748,8 +773,16 @@ class SimulateBankableYieldTest(SimpleTestCase):
         self.assertEqual(res["p50_kwh"], 0.0)
 
     def test_default_losses_give_realistic_pr(self):
-        # Sans surcharge, le PR par défaut est dans une plage réaliste (~0.78).
-        res = sd.simulate_bankable_yield(10000)
+        # CALX286 — sans arbre fourni, le PR est OMIS (plus de postes
+        # « marché » appliqués en silence) ; l'arbre du module, passé
+        # EXPLICITEMENT, garde un PR dans une plage réaliste (~0.83).
+        omis = sd.simulate_bankable_yield(10000)
+        self.assertIsNone(omis["performance_ratio"])
+        self.assertIsNone(omis["p50_kwh"])
+        self.assertTrue(any(o["cle"] == "loss_factors"
+                            for o in omis["omissions"]))
+        res = sd.simulate_bankable_yield(
+            10000, loss_factors=sd.DEFAULT_LOSS_FACTORS)
         self.assertGreater(res["performance_ratio"], 0.70)
         self.assertLess(res["performance_ratio"], 0.90)
         self.assertEqual(
@@ -775,21 +808,26 @@ class SimulateBankableYieldTest(SimpleTestCase):
 
     def test_extra_loss_poste_is_counted(self):
         # Un poste inconnu (extensibilité) est accepté et ronge le PR.
-        without = sd.simulate_bankable_yield(10000, annual_variability=0.0)
+        without = sd.simulate_bankable_yield(
+            10000, annual_variability=0.0,
+            loss_factors=sd.DEFAULT_LOSS_FACTORS)
         with_extra = sd.simulate_bankable_yield(
-            10000, loss_factors={"shading": 0.05}, annual_variability=0.0)
+            10000, loss_factors={**sd.DEFAULT_LOSS_FACTORS, "shading": 0.05},
+            annual_variability=0.0)
         self.assertIn("shading", with_extra["loss_breakdown"])
         self.assertLess(with_extra["performance_ratio"],
                         without["performance_ratio"])
 
     def test_zero_base_safe(self):
-        res = sd.simulate_bankable_yield(0)
+        res = sd.simulate_bankable_yield(
+            0, loss_factors=sd.DEFAULT_LOSS_FACTORS)
         self.assertEqual(res["p50_kwh"], 0.0)
         self.assertEqual(res["p90_kwh"], 0.0)
         self.assertEqual(res["base_production_kwh"], 0.0)
 
     def test_negative_base_clamped_and_warns(self):
-        res = sd.simulate_bankable_yield(-5000)
+        res = sd.simulate_bankable_yield(
+            -5000, loss_factors=sd.DEFAULT_LOSS_FACTORS)
         self.assertEqual(res["base_production_kwh"], 0.0)
         self.assertEqual(res["p50_kwh"], 0.0)
         self.assertTrue(any("négative" in w for w in res["warnings"]))
@@ -807,7 +845,9 @@ class SimulateBankableYieldTest(SimpleTestCase):
 
     def test_huge_sigma_never_negative_p90(self):
         # σ énorme : 1 − z·σ deviendrait négatif → borné à 0, jamais < 0.
-        res = sd.simulate_bankable_yield(10000, annual_variability=0.95)
+        res = sd.simulate_bankable_yield(
+            10000, annual_variability=0.95,
+            loss_factors=sd.DEFAULT_LOSS_FACTORS)
         self.assertGreaterEqual(res["p90_kwh"], 0.0)
         self.assertTrue(any("σ" in w or "variabilité" in w
                             for w in res["warnings"]))
@@ -1221,9 +1261,10 @@ class TariffEscalationProjectionTest(SimpleTestCase):
                            res["schedule"][0]["annual_savings"])
 
     def test_cumulative_savings_monotone_increasing(self):
+        # CALX286 — dégradation et actualisation passées explicitement.
         res = sd.tariff_escalation_projection(
             annual_savings_year1=5000, upfront_cost=20000,
-            horizon_years=20)
+            horizon_years=20, degradation_rate=0.005, discount_rate=0.05)
         cums = [row["cumulative_savings"] for row in res["schedule"]]
         for a, b in zip(cums, cums[1:]):
             self.assertGreater(b, a)
@@ -1248,7 +1289,7 @@ class TariffEscalationProjectionTest(SimpleTestCase):
     def test_payback_none_when_savings_never_cover_cost(self):
         res = sd.tariff_escalation_projection(
             annual_savings_year1=100, upfront_cost=1_000_000,
-            horizon_years=20)
+            horizon_years=20, degradation_rate=0.005)
         self.assertIsNone(res["summary"]["payback_year"])
         self.assertTrue(any("retour sur investissement" in w
                             for w in res["warnings"]))
@@ -1610,8 +1651,12 @@ class ModuleDegradationCurveTest(SimpleTestCase):
         self.assertIn("schedule", res)
         self.assertIn("summary", res)
         self.assertIn("warranty_checks", res)
-        # production illisible → 0 ; floors illisibles → ignorées (avertissement).
-        self.assertEqual(res["summary"]["total_production_kwh"], 0.0)
+        # CALX286 — taux de dégradation illisible ⇒ OMIS (jamais 0,5 %
+        # supposé) : production totale None et l'omission le nomme ;
+        # floors illisibles → ignorées (avertissement).
+        self.assertIsNone(res["summary"]["total_production_kwh"])
+        self.assertTrue(any(o["cle"] == "annual_degradation_rate"
+                            for o in res["omissions"]))
         self.assertEqual(res["warranty_checks"], [])
 
     def test_zero_degradation_stays_full(self):
@@ -1779,8 +1824,13 @@ class PpaModelTest(SimpleTestCase):
         self.assertIn("schedule", res)
         self.assertIn("investor", res)
         self.assertIn("summary", res)
-        # production illisible → 0 ; le flux reste cohérent sans lever.
-        self.assertEqual(res["summary"]["total_production_kwh"], 0.0)
+        # CALX286 — dégradation illisible ⇒ modèle NON calculé (jamais
+        # 0,5 %/an supposé) : blocs à None, motif et omission le disent.
+        self.assertIsNone(res["summary"])
+        self.assertIsNone(res["investor"])
+        self.assertIn("degradation_rate", res["motif"])
+        self.assertTrue(any(o["cle"] == "degradation_rate"
+                            for o in res["omissions"]))
 
     def test_extreme_discount_rate_guarded(self):
         # Taux d'actualisation ≤ -100 % ramené à 0, jamais de division par zéro.
@@ -1961,7 +2011,10 @@ class CompareScenariosTest(SimpleTestCase):
             {'label': 'C (3 kWc)', 'kwc': 3, 'productible_kwh_kwc': 1600,
              'annual_savings': 5500, 'upfront_cost': 40000},
         ]
-        res = sd.compare_scenarios(scenarios)
+        # CALX286 — dégradation et actualisation passées explicitement (le
+        # comparateur ne les suppose plus).
+        res = sd.compare_scenarios(scenarios, degradation_rate=0.005,
+                                   discount_rate=0.05)
         self.assertEqual(len(res['scenarios']), 3)
         # Production : B (8 kWc) > A (5) > C (3).
         self.assertEqual(res['ranking']['by_production'], [1, 0, 2])
@@ -2074,8 +2127,8 @@ class SpecsProduitBridgeTest(TestCase):
         self.assertEqual(sd.fenetre_onduleur_pour_produit(None), {})
 
     def test_no_fiche_string_design_is_byte_identical_to_golden(self):
-        golden = sd.string_design(17)
-        via_pont = sd.string_design(
+        golden = _string_design(17)
+        via_pont = _string_design(
             17,
             module=sd.specs_module_pour_produit(self.pan_nu),
             inverter=sd.fenetre_onduleur_pour_produit(self.ond_nu))
@@ -2086,9 +2139,9 @@ class SpecsProduitBridgeTest(TestCase):
         self.assertEqual(sd.fenetre_onduleur_pour_produit(self.ond_bat), {})
         self.assertEqual(sd.specs_module_pour_produit(self.ond_bat), {})
         self.assertEqual(
-            sd.string_design(
+            _string_design(
                 17, inverter=sd.fenetre_onduleur_pour_produit(self.ond_bat)),
-            sd.string_design(17))
+            _string_design(17))
 
     # ── (2) Avec fiche : mapping des clés et vraies valeurs ──
     def test_module_keys_mapped_to_default_module_names(self):
@@ -2123,24 +2176,24 @@ class SpecsProduitBridgeTest(TestCase):
                          sd.DEFAULT_INVERTER_WINDOW["v_min"])
 
     def test_real_module_fiche_drives_dc_power(self):
-        res = sd.string_design(
+        res = _string_design(
             10, module=sd.specs_module_pour_produit(self.pan_fiche))
         # 10 × 710 Wc = 7,1 kWc (et non 10 × 450 Wc du défaut).
         self.assertAlmostEqual(res["dc_kw"], 7.1, places=3)
         self.assertNotAlmostEqual(res["dc_kw"],
-                                  sd.string_design(10)["dc_kw"], places=3)
+                                  _string_design(10)["dc_kw"], places=3)
 
     def test_real_inverter_fiche_flips_cold_voc_outcome(self):
         # 17 modules : la fenêtre PAR DÉFAUT (V_max 600 V) plafonne la chaîne à
         # 13 modules → aucune répartition égale → conception refusée.
-        defaut = sd.string_design(17, module={"puissance_w": 550})
+        defaut = _string_design(17, module={"puissance_w": 550})
         self.assertFalse(defaut["ok"])
         self.assertEqual(defaut["panels_per_string"], 13)
 
         # Avec la VRAIE fenêtre du constructeur (V_max 1100 V, 1 MPPT), la
         # chaîne de 17 modules passe la vérif Voc à froid et la conception
         # devient valide.
-        reel = sd.string_design(
+        reel = _string_design(
             17, module={"puissance_w": 550},
             inverter=sd.fenetre_onduleur_pour_produit(self.ond_fiche))
         self.assertTrue(reel["ok"])
@@ -2156,13 +2209,13 @@ class SpecsProduitBridgeTest(TestCase):
     def test_match_inverter_uses_candidate_fiche_window(self):
         # Même onduleur 12 kW, même champ PV : sans fiche la conception est
         # refusée (fenêtre par défaut), avec la fiche elle est compatible.
-        sans = sd.match_inverter([self.ond_nu], n_panels=17, panel_w=550,
-                                 hybrid=False)
+        sans = _match_inverter([self.ond_nu], n_panels=17, panel_w=550,
+                               hybrid=False)
         self.assertFalse(sans["compatible"])
         self.assertEqual(sans["string_design"]["panels_per_string"], 13)
 
-        avec = sd.match_inverter([self.ond_fiche], n_panels=17, panel_w=550,
-                                 hybrid=False)
+        avec = _match_inverter([self.ond_fiche], n_panels=17, panel_w=550,
+                               hybrid=False)
         self.assertTrue(avec["compatible"])
         self.assertEqual(avec["string_design"]["panels_per_string"], 17)
         self.assertEqual(avec["string_design"]["n_mppt"], 1)
@@ -2171,17 +2224,17 @@ class SpecsProduitBridgeTest(TestCase):
 
     def test_match_inverter_unchanged_when_fiche_is_another_type(self):
         # Fiche batterie sur l'onduleur → résultat identique au produit nu.
-        nu = sd.match_inverter([self.ond_nu], n_panels=17, panel_w=550,
-                               hybrid=False)
-        bat = sd.match_inverter([self.ond_bat], n_panels=17, panel_w=550,
-                                hybrid=False)
+        nu = _match_inverter([self.ond_nu], n_panels=17, panel_w=550,
+                             hybrid=False)
+        bat = _match_inverter([self.ond_bat], n_panels=17, panel_w=550,
+                              hybrid=False)
         self.assertEqual(nu["string_design"], bat["string_design"])
         self.assertEqual(nu["compatible"], bat["compatible"])
         self.assertEqual(nu["ac_kw"], bat["ac_kw"])
 
     def test_explicit_inverter_window_still_wins_over_fiche(self):
         # Surcharge explicite de l'appelant > fiche produit.
-        res = sd.match_inverter(
+        res = _match_inverter(
             [self.ond_fiche], n_panels=17, panel_w=550, hybrid=False,
             inverter_window={"n_mppt": 3})
         self.assertEqual(res["string_design"]["n_mppt"], 3)

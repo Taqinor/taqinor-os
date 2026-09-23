@@ -74,7 +74,9 @@ from apps.ventes.quote_engine.pricing import (
     SYSTEM_LOSS_TOTAL,
 )
 from apps.ventes.solar_design import (
+    DEFAULT_DISCOUNT_RATE,
     DEFAULT_LOSS_FACTORS,
+    DEFAULT_MODULE_DEGRADATION,
     SUBSCRIBED_CURVE_UNIT_KW,
     TYPICAL_LOAD_PROFILE_COMMERCIAL,
     TYPICAL_LOAD_PROFILE_RESIDENTIAL,
@@ -1089,7 +1091,8 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     warnings.extend(sp_warnings)
 
     deg_result = module_degradation_curve(
-        production_year1=base_total if base_total > 0 else None)
+        production_year1=base_total if base_total > 0 else None,
+        annual_degradation_rate=DEFAULT_MODULE_DEGRADATION)  # CALX286 — D12
     degradation = {
         'factor_year1': deg_result['summary']['factor_year1'],
         'factor_last_year': deg_result['summary']['factor_last_year'],
@@ -1108,9 +1111,15 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     # source) ; sans elle la projection est à tarif constant (0 %, décision
     # fondateur QRES54) et le dit — plus jamais les 6 %/an implicites.
     indexation = tariff_service.indexation_depuis_reglages(settings)
+    # CALX286 — dégradation et actualisation ne sont plus implicites dans
+    # ``solar_design`` : l'étude passe EXPLICITEMENT les valeurs qu'elle
+    # utilisait jusqu'ici (D12, résultats identiques) ; les réglages société
+    # sourcés les remplaceront (CALX281/CALX284).
     proj_result = tariff_escalation_projection(
         annual_savings_year1=annual_savings_year1, upfront_cost=upfront_cost,
-        escalation_rate=indexation['taux'] if indexation else None)
+        escalation_rate=indexation['taux'] if indexation else None,
+        degradation_rate=DEFAULT_MODULE_DEGRADATION,
+        discount_rate=DEFAULT_DISCOUNT_RATE)
     if proj_result['summary'].get('indexation_mention'):
         warnings.append(
             "projection 25 ans à tarif constant : "

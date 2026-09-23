@@ -134,7 +134,10 @@ class EconomieHorairePurTest(unittest.TestCase):
         self.assertEqual(res['economie'], 8.0)
         self.assertIsNone(res['motif'])
         self.assertEqual(res['tranches']['pointe']['tariff'], 2.0)
-        self.assertEqual(res['hypotheses'], [])
+        # Découpage et tarifs viennent de la société : aucune hypothèse sur
+        # eux (seule la compensation kWh pour kWh, non fournie, est publiée).
+        self.assertFalse(any(h['cle'] in ('hour_tranches', 'tranche_tariffs')
+                             for h in res['hypotheses']))
 
     def test_tranche_compensee_sans_tarif_omise_en_la_nommant(self):
         res = sd.net_metering_savings(
