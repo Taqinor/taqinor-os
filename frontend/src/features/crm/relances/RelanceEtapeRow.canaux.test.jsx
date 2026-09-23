@@ -16,8 +16,12 @@ vi.mock('../../../api/crmApi', () => ({
   },
 }))
 
+import crmApi from '../../../api/crmApi'
+
 const TOUCHES = exempleContrat('crm', 'relance_etape_v2').results
 const ETAPE_APPEL = TOUCHES.find((t) => t.canal === 'appel')
+const ETAPE_WHATSAPP = TOUCHES.find((t) => t.canal === 'whatsapp')
+const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -63,5 +67,47 @@ describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => 
     fireEvent.click(screen.getByRole('checkbox', { name: /ne parle que darija/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     expect(await screen.findByTestId('erreur-langue')).toHaveTextContent('« Langue du message »')
+  })
+})
+
+describe('CAD78 — le script d’appel du fondateur est ENFIN affiché', () => {
+  it('sur une touche d’appel scriptée, le script est visible sans modale et sans POST /whatsapp/', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: MESSAGE })
+    const onOuvrirMessage = vi.fn()
+    ligne(ETAPE_APPEL, { onOuvrirMessage })
+    // La bulle est AU-DESSUS du bouton « Appeler », repliée par défaut.
+    const bascule = screen.getByRole('button', { name: /Script d’appel/ })
+    expect(bascule).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(bascule)
+    expect(await screen.findByTestId('texte-touche-contenu')).toHaveTextContent(MESSAGE.message)
+    // Lecture pure : le GET du rendu, jamais le POST qui journalise.
+    expect(crmApi.getRelanceEtapeMessage).toHaveBeenCalledWith(ETAPE_APPEL.id)
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+    expect(onOuvrirMessage).not.toHaveBeenCalled()
+    // Le bouton « Appeler » reste là, à côté du script.
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
+  })
+
+  it('une touche d’appel sans gabarit n’a pas de bulle de script', () => {
+    ligne({ ...ETAPE_APPEL, template_cle: '' })
+    expect(screen.queryByTestId('texte-touche')).not.toBeInTheDocument()
+  })
+
+  it('sur une touche e-mail, le bouton ne dit plus « WhatsApp » et n’ouvre plus la modale', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: MESSAGE })
+    const onOuvrirMessage = vi.fn()
+    ligne({ ...ETAPE_WHATSAPP, canal: 'email' }, { onOuvrirMessage })
+    expect(screen.queryByRole('button', { name: /WhatsApp/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^E-mail$/ }))
+    expect(await screen.findByTestId('texte-touche-contenu')).toHaveTextContent(MESSAGE.message)
+    expect(onOuvrirMessage).not.toHaveBeenCalled()
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+  })
+
+  it('une touche WhatsApp garde son bouton WhatsApp (la modale d’aperçu)', () => {
+    const onOuvrirMessage = vi.fn()
+    ligne(ETAPE_WHATSAPP, { onOuvrirMessage })
+    fireEvent.click(screen.getByRole('button', { name: /WhatsApp/ }))
+    expect(onOuvrirMessage).toHaveBeenCalledWith(ETAPE_WHATSAPP)
   })
 })

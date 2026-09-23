@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  Check, SkipForward, Phone, MessageCircle, Clock3,
+  Check, SkipForward, Phone, MessageCircle, Clock3, ChevronDown, ChevronRight,
+  Copy, Mail,
 } from 'lucide-react'
 import {
   Badge, Button, Textarea, Input, Label,
@@ -345,6 +346,90 @@ function StatutBadge({ etape }) {
   return <Badge tone="outline">À faire</Badge>
 }
 
+// CAD78 — le TEXTE d'une touche lu SANS ouvrir WhatsApp : le script d'appel
+// écrit par le fondateur (touches d'appel scriptées) ou le texte d'une touche
+// e-mail. Bulle DÉPLIABLE au-dessus des boutons (patron « Proposer la visite »
+// qui montre déjà son propre script) : le rendu est le MÊME que celui du
+// message (`getRelanceEtapeMessage`, forme `relance_etape_message` — le
+// serveur ne filtre pas par canal), lu à la demande, par une LECTURE pure :
+// aucun POST `/whatsapp/`, donc aucun faux « WhatsApp ouvert » qui horodaterait
+// un premier contact (MRY19). « Copier » pour le coller où il faut.
+function TexteDeTouche({ etape, titre, ouvert, onBasculer }) {
+  const [etat, setEtat] = useState({ chargement: false, rendu: null, erreur: false })
+
+  // Lu à CHAQUE ouverture (un GET bon marché, toujours le texte du moment) —
+  // même patron `queueMicrotask` que `ToucheMessageDialog` (règle react-hooks
+  // v7 : aucun setState synchrone dans le corps de l'effet).
+  useEffect(() => {
+    let active = true
+    if (!ouvert) return () => { active = false }
+    if (typeof crmApi.getRelanceEtapeMessage !== 'function') {
+      queueMicrotask(() => { if (active) setEtat({ chargement: false, rendu: null, erreur: true }) })
+      return () => { active = false }
+    }
+    queueMicrotask(() => { if (active) setEtat((e) => ({ ...e, chargement: true, erreur: false })) })
+    crmApi.getRelanceEtapeMessage(etape.id)
+      .then((r) => { if (active) setEtat({ chargement: false, rendu: r?.data ?? null, erreur: false }) })
+      .catch(() => { if (active) setEtat({ chargement: false, rendu: null, erreur: true }) })
+    return () => { active = false }
+  }, [ouvert, etape.id])
+
+  const copier = async () => {
+    const texte = etat.rendu?.message
+    if (!texte) return
+    try {
+      await navigator.clipboard.writeText(texte)
+      toastInfo('Texte copié.')
+    } catch {
+      // best-effort — presse-papier indisponible : le texte reste lisible.
+    }
+  }
+
+  const rendu = etat.rendu
+  // Écriture de droite à gauche seulement quand le texte EST en darija/arabe
+  // (jamais pour une version française partie en repli — CAD64).
+  const rtl = Boolean(rendu) && !rendu.repli_langue && ['darija', 'ar'].includes(rendu.langue)
+
+  return (
+    <div className="mt-1.5 rounded-md border border-dashed border-border p-2" data-testid="texte-touche">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1.5 text-left text-xs font-medium text-foreground"
+        aria-expanded={ouvert}
+        onClick={onBasculer}
+      >
+        {ouvert ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
+          : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
+        <span>{titre}</span>
+      </button>
+      {ouvert && (
+        <div className="mt-1.5 flex flex-col gap-1.5">
+          {etat.chargement && <p className="text-xs text-muted-foreground">Chargement du texte…</p>}
+          {etat.erreur && (
+            <p className="text-xs text-muted-foreground">Texte indisponible pour le moment.</p>
+          )}
+          {rendu && (
+            <>
+              <p
+                className={`whitespace-pre-wrap rounded-md bg-muted/40 p-2 text-sm${rtl ? ' text-right' : ''}`}
+                dir={rtl ? 'rtl' : 'auto'} lang={rtl ? 'ar' : 'fr'}
+                data-testid="texte-touche-contenu"
+              >
+                {rendu.message || '—'}
+              </p>
+              <div className="flex justify-end">
+                <Button type="button" size="sm" variant="outline" onClick={copier} disabled={!rendu.message}>
+                  <Copy className="size-3.5" /> Copier
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function RelanceEtapeRow({
   etape, onFait, onSauter, onReporter, onOuvrirMessage, busyId, navigate,
   compact = false, readOnly = false, showStatut = false,
@@ -402,7 +487,14 @@ export default function RelanceEtapeRow({
   // `langue` du « Fait », seulement si la touche est bien enregistrée).
   const [queDarija, setQueDarija] = useState(false)
   const [erreurLangue, setErreurLangue] = useState('')
+  // CAD78 — la bulle du TEXTE de la touche (script d'appel / texte e-mail).
+  const [texteOuvert, setTexteOuvert] = useState(false)
   const busy = busyId === etape.id
+  // CAD78 — une touche d'APPEL qui porte un gabarit a un script écrit mot pour
+  // mot par le fondateur ; une touche E-MAIL a son texte. Ni l'une ni l'autre
+  // ne passe par la modale WhatsApp.
+  const scriptAppel = etape.canal === 'appel' && Boolean(etape.template_cle)
+  const toucheEmail = etape.canal === 'email'
 
   const fermer = () => {
     setPanel('')
@@ -627,6 +719,17 @@ export default function RelanceEtapeRow({
       {!readOnly && (
         <PanneauProposerVisite etape={etape} onPlanifier={() => setPlanifierOuvert(true)} />
       )}
+      {/* CAD78 — le script d'appel s'affiche AU-DESSUS du bouton « Appeler »,
+          sans ouvrir de modale ni émettre de POST ; une touche e-mail montre
+          son texte au même endroit. */}
+      {!readOnly && (scriptAppel || toucheEmail) && (
+        <TexteDeTouche
+          etape={etape}
+          titre={toucheEmail ? 'Texte de l’e-mail' : 'Script d’appel'}
+          ouvert={texteOuvert}
+          onBasculer={() => setTexteOuvert((v) => !v)}
+        />
+      )}
       {!readOnly && panel === '' && (
         <div className="mt-2 flex flex-wrap justify-end gap-1.5">
           <Button
@@ -635,12 +738,23 @@ export default function RelanceEtapeRow({
           >
             <Phone className="size-3.5" /> Appeler
           </Button>
-          <Button
-            size="sm" variant="outline" disabled={busy}
-            onClick={() => onOuvrirMessage(etape)}
-          >
-            <MessageCircle className="size-3.5" /> WhatsApp
-          </Button>
+          {/* CAD78 — une touche e-mail ne dit plus « WhatsApp » et n'ouvre plus
+              la modale WhatsApp : son bouton déplie le texte de l'e-mail. */}
+          {toucheEmail ? (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => setTexteOuvert(true)}
+            >
+              <Mail className="size-3.5" /> E-mail
+            </Button>
+          ) : (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => onOuvrirMessage(etape)}
+            >
+              <MessageCircle className="size-3.5" /> WhatsApp
+            </Button>
+          )}
           <Button
             size="sm" variant="outline" disabled={busy}
             onClick={() => setPanel('reporter')}

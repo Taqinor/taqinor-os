@@ -142,6 +142,16 @@ describe('CAD70 — sans catalogue Réalisations, le J4 le dit et guide', () => 
   })
 })
 
+describe('CAD78 — une touche e-mail n’est jamais présentée comme un WhatsApp', () => {
+  it('titre « E-mail », aucun CTA WhatsApp, le texte reste copiable', async () => {
+    render(<ToucheMessageDialog etape={{ ...ETAPE, canal: 'email' }} open onOpenChange={() => {}} />)
+    await screen.findByText(MESSAGE.message)
+    expect(screen.getByRole('heading', { name: /^E-mail — / })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Ouvrir WhatsApp/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Copier/ })).toBeInTheDocument()
+  })
+})
+
 describe('CAD64 — le repli de langue est VISIBLE', () => {
   const REPLI = exempleContrat('crm', 'relance_etape_message', 'exemple_repli_langue')
 

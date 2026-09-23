@@ -121,6 +121,9 @@ export default function ToucheMessageDialog({
   // CAD70 — la preuve J4 manque (aucune réalisation publiée) : le message
   // n'est pas proposé du tout.
   const preuveManquante = Boolean(rendu?.preuve_manquante)
+  // CAD78 — une touche e-mail : jamais de CTA WhatsApp (texte à copier).
+  const toucheEmail = etape?.canal === 'email'
+  const envoiWhatsApp = !preuveManquante && !toucheEmail
 
   const copier = async () => {
     if (!rendu?.message) return
@@ -171,7 +174,9 @@ export default function ToucheMessageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>WhatsApp — {etape?.lead_nom || 'Lead'}</DialogTitle>
+          {/* CAD78 — une touche e-mail n'est jamais présentée comme un
+              WhatsApp (la ligne ouvre son texte en place ; ceinture ici). */}
+          <DialogTitle>{toucheEmail ? 'E-mail' : 'WhatsApp'} — {etape?.lead_nom || 'Lead'}</DialogTitle>
         </DialogHeader>
         {loading ? (
           <Spinner />
@@ -268,7 +273,7 @@ export default function ToucheMessageDialog({
                 les crochets dans la conversation : il ne part jamais pré-rempli avec eux.
               </p>
             )}
-            {!rendu?.wa_url && (
+            {!toucheEmail && !rendu?.wa_url && (
               <p className="text-sm text-destructive">
                 Aucun numéro exploitable : le message ne peut pas être ouvert dans WhatsApp.
               </p>
@@ -287,7 +292,7 @@ export default function ToucheMessageDialog({
               Copier
             </Button>
           )}
-          {!preuveManquante && aCompleter && (
+          {envoiWhatsApp && aCompleter && (
             <Button
               variant="outline" onClick={() => ouvrirWhatsApp(urlConversation)}
               disabled={!urlConversation || sending}
@@ -295,7 +300,7 @@ export default function ToucheMessageDialog({
               Ouvrir la conversation (sans texte)
             </Button>
           )}
-          {!preuveManquante && (
+          {envoiWhatsApp && (
             <Button
               onClick={() => ouvrirWhatsApp()}
               disabled={!rendu?.wa_url || aCompleter || sending} loading={sending}
