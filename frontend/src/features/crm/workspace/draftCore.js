@@ -57,6 +57,17 @@ export const TRACKED_KEYS = [
   'visite_prevue_le', 'visite_effectuee', 'visite_notes',
   // Divers
   'note', 'custom_data',
+  // CAD149/CAD174 — vague 1 du script d'appel guidé (audit L3 du
+  // 21/09/2026, huit champs CONFIRMÉS TELS QUELS par la décision fondateur
+  // du 21/09/2026, CAD160). `help_text` de chaque champ (apps/crm/models.py)
+  // EST la question orale — la question n'est PAS recopiée ici, l'écran la
+  // lit depuis fieldLabels.js. Saisis principalement par
+  // `PanneauScriptAppel.jsx` (CAD152/153, hors périmètre de cette lane) ;
+  // déclarés ici pour que le brouillon de fiche les suive quand même s'ils
+  // sont un jour édités depuis la fiche classique.
+  'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
+  'equip_ve_statut', 'pompage_heures_jour', 'pompe_alim_actuelle',
+  'carburant_litres_mois',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -159,9 +170,13 @@ export function isSuggested(state, key) {
 export const SECTION_FIELDS = {
   contact: ['nom', 'prenom', 'societe', 'email', 'telephone', 'whatsapp',
     'adresse', 'ville', 'gps_lat', 'gps_lng'],
+  // CAD149/CAD174 — `objectif_projet`/`decideur`/`devis_concurrents`
+  // rejoignent le pipeline (questions de qualification commerciale, comme
+  // priorité/tags), jamais l'énergie (elles ne chiffrent rien).
   pipeline: ['owner', 'canal', 'contact_preference', 'priorite',
     'langue_preferee', 'tags', 'motif_perte', 'relance_date',
-    'type_installation', 'montant_estime', 'date_cloture_prevue'],
+    'type_installation', 'montant_estime', 'date_cloture_prevue',
+    'objectif_projet', 'decideur', 'devis_concurrents'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
     'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221'],
   // L4 — questionnaire d'appel (occupation + équipements piscine/VE/clim/
@@ -175,11 +190,23 @@ export const SECTION_FIELDS = {
     'equip_ve_chargeur_kw', 'equip_ve_creneau',
     'equip_clim_kw',
     'equip_piscine_heures_jour',
-    'equip_clim_creneau', 'equip_piscine_creneau'],
-  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
+    'equip_clim_creneau', 'equip_piscine_creneau',
+    // CAD149/CAD174 — précise le « avez-vous OU prévoyez-vous » du véhicule
+    // électrique juste au-dessus, jamais une question à part.
+    'equip_ve_statut'],
+  // CAD149/CAD174 — `pompage_heures_jour`/`pompe_alim_actuelle`/
+  // `carburant_litres_mois` : promotions du sac `web_questionnaire` en
+  // colonnes dédiées (vocabulaire déjà émis par le site, jamais inventé ici).
+  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois'],
+  // CAD149/CAD174 — `type_bien` REMPLACE l'idée de rendre `roof_type`
+  // posable (chemin fermé par la décision du 18/08/2026, voir
+  // WEB_QUESTIONNAIRE_STRUCTURED_FIELDS plus bas) : le type de BIEN (villa/
+  // appartement/immeuble/riad/ferme), pas le type de TOIT.
   toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
     'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
-    'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee'],
+    'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee',
+    'type_bien'],
   visite: ['visite_prevue_le', 'visite_effectuee', 'visite_notes'],
   divers: ['note', 'custom_data'],
 }

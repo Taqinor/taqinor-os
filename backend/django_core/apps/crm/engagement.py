@@ -1,4 +1,18 @@
-"""NTCRM16 — Score d'engagement multi-signaux d'un CLIENT (fidélisation/upsell).
+"""NTCRM16 — Score d'ACTIVITÉ COMMERCIALE multi-signaux d'un CLIENT
+(fidélisation/upsell).
+
+CAD140 (audit L3 du 21/09/2026, round 2) — RENOMMÉ EN TÊTE (23/09/2026) : ce
+module s'appelait « score d'engagement » alors qu'il a ABANDONNÉ le seul
+signal réellement COMPORTEMENTAL qu'il devait porter (l'ouverture de PDF/
+ShareLink) et ne mesure plus, en pratique, que quatre signaux
+ADMINISTRATIFS (fréquence de contact, récence, paiements à temps, taux
+d'acceptation) — une vraie mesure d'activité commerciale, pas d'engagement
+client. Les NOMS PUBLICS (`compute_engagement_score`, `engagement_label`,
+`engagement_for_client`, `engagement_bulk`) ne sont PAS renommés ici : ils
+sont consommés depuis `apps/crm/views.py`, hors du périmètre de cette lane
+(fichier possédé par une autre lane du même run — voir la garde de lane) ;
+un renommage de l'API publique attend une lane qui peut toucher `views.py`
+dans le MÊME commit.
 
 Distinct du lead-scoring existant (`scoring.py`, qui porte sur les LEADS en
 phase de conversion) : ce module porte sur les `Client` déjà signés, pour
@@ -19,13 +33,18 @@ utilisés (25 pts chacun, total 0-100) :
   ratio_devis_acceptes ratio de devis ACCEPTÉS parmi les devis envoyés
                        (`apps.ventes.selectors.devis_du_client_portail`).
 
-NOTE DE PÉRIMÈTRE : l'ouverture de PDF (ShareLink/`DevisActivity`) citée dans
-la tâche NTCRM16 nécessiterait un nouveau sélecteur côté `apps.ventes`
-(hors périmètre de cette lane, réservée à `apps/crm` uniquement — voir
-CLAUDE.md frontière cross-app) ; son poids est redistribué sur les 4 signaux
-ci-dessus plutôt que de bloquer la tâche. À réintégrer par une lane `ventes`
-future (`apps.ventes.selectors.devis_view_tracking_segments` existe déjà pour
-un panier agrégé, pas encore par client).
+NOTE DE PÉRIMÈTRE (toujours vraie au 23/09/2026 — RECONFIRMÉE, pas seulement
+héritée) : reprendre le signal d'ouverture de PDF exigerait un sélecteur
+PAR CLIENT côté `apps.ventes` — `apps.ventes.selectors.
+devis_view_tracking_segments` existe déjà mais agrège en PANIER de contacts
+(email/téléphone), jamais par `client_id`, et `apps.ventes.selectors.
+devis_du_client_portail` (déjà lu ci-dessus pour `ratio_devis_acceptes`) ne
+porte aucune colonne de consultation. Toute app `apps/ventes/*` est HORS
+PÉRIMÈTRE de cette lane (`apps/crm` uniquement — voir CLAUDE.md frontière
+cross-app) : son poids reste redistribué sur les 4 signaux ci-dessus plutôt
+que de bloquer la tâche. À réintégrer par une lane `ventes` future qui ajoute
+ce sélecteur PAR CLIENT (le compteur de consultations visé par CAD140 sera
+fiabilisé par CAD137).
 """
 from __future__ import annotations
 

@@ -127,10 +127,43 @@ describe('RelancesSuiviPage (MRY31)', () => {
     expect(screen.queryByLabelText('Responsable')).not.toBeInTheDocument()
   })
 
-  it('le filtre Responsable est visible aux rôles responsable/admin, par défaut « Moi »', async () => {
+  it('le filtre Responsable est visible aux rôles responsable/admin, par défaut « Toute l\'équipe » (CAD112)', async () => {
     isAdminOrResponsableMock.mockReturnValue(true)
     mount()
     await waitFor(() => expect(screen.getByLabelText('Responsable')).toBeInTheDocument())
-    expect(screen.getByText('Moi')).toBeInTheDocument()
+    // CAD112 — aligné sur le Cockpit (`RelancesDuJourWidget.jsx`), qui n'a
+    // aucun filtre propriétaire : à « Moi », un admin ouvrant le Suivi ne
+    // voyait que SES touches quand le même admin, sur l'onglet HOMONYME
+    // « Aujourd'hui + retard » du cockpit, voyait toute l'équipe.
+    expect(screen.getByText("Toute l'équipe")).toBeInTheDocument()
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledWith(
+      expect.not.objectContaining({ owner: expect.anything() }),
+    ))
+  })
+})
+
+describe('RelancesSuiviPage — CAD112 (deux onglets homonymes « Aujourd\'hui + retard »)', () => {
+  // `casaISO`/`decalerJours` : déjà déclarées plus haut dans ce fichier
+  // (helpers de test « Demain », mêmes calculs que ceux internes de l'écran).
+
+  it('la fenêtre de « Aujourd\'hui + retard » couvre 62 jours en arrière (une touche J-35 y entre, comme dans le Cockpit sans borne basse)', async () => {
+    mount()
+    const today = casaISO(new Date())
+    const borneBasse = decalerJours(today, -62)
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledWith(
+      expect.objectContaining({ date_debut: borneBasse, date_fin: today }),
+    ))
+  })
+
+  it('une touche en retard de 35 jours (J-35), renvoyée par le serveur, s\'affiche sur cet onglet', async () => {
+    const j35 = decalerJours(casaISO(new Date()), -35)
+    crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+      data: {
+        results: [{ ...ETAPES[0], id: 777, due_date: j35, statut: 'a_faire' }],
+        resume: { a_faire: 1, en_retard: 1, fait: 0, sautee: 0, annulee: 0 },
+      },
+    })
+    mount()
+    expect(await screen.findAllByTestId('relance-etape-row')).toHaveLength(1)
   })
 })

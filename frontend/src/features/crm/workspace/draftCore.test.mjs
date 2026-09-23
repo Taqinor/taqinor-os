@@ -15,6 +15,8 @@ import {
   toPayload,
   currentFields,
   buildCreateDefaults,
+  TRACKED_KEYS,
+  SECTION_FIELDS,
 } from './draftCore.js'
 
 // Un état d'édition minimal, avec de l'état satellite non trivial à purger.
@@ -169,4 +171,22 @@ test('currentFields / buildCreateDefaults — inventaire de champs cohérent', (
   assert.equal(d.priorite, 'normale')
   const s = initState({ lead: { id: 3, nom: 'Z', ville: 'Fès' }, mode: 'edit' })
   assert.equal(currentFields(s).ville, 'Fès')
+})
+
+// CAD174 — les huit champs de la vague 1 (CAD149) sont SAISISSABLES
+// (TRACKED_KEYS) et rattachés à UNE section du registre (SECTION_FIELDS) —
+// sinon ils n'apparaissent dans aucune section (le bug que CAD174 corrige).
+test('CAD174 — les huit champs CAD149 sont dans TRACKED_KEYS et dans une SECTION_FIELDS', () => {
+  const champsCad149 = [
+    'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
+    'equip_ve_statut', 'pompage_heures_jour', 'pompe_alim_actuelle',
+    'carburant_litres_mois',
+  ]
+  for (const champ of champsCad149) {
+    assert.ok(TRACKED_KEYS.includes(champ), `${champ} absent de TRACKED_KEYS`)
+    const sections = Object.entries(SECTION_FIELDS)
+      .filter(([, champs]) => champs.includes(champ))
+      .map(([id]) => id)
+    assert.equal(sections.length, 1, `${champ} doit être dans EXACTEMENT une section (trouvé : ${sections})`)
+  }
 })
