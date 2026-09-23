@@ -11114,3 +11114,47 @@ def motif_refus_valide(company, nom):
 def mention_motif_refus(nom):
     """La phrase ajoutée à la ligne de chatter de la touche refusée."""
     return f'Motif de refus : {nom}.'
+
+
+# ── CAD-A ── CAD11 — « Numéro invalide / a bloqué » : junk en un clic ───────
+#
+# Un numéro mort épuisait les six tentatives du protocole : Répondeur et
+# Occupé retombaient sur « non joint » avec une note, et le drapeau
+# ``MotifPerte.est_junk`` vivait au niveau du lead, à trois écrans de la
+# touche. Le raccourci suit le patron Répondeur/Occupé (issue ``non_joint`` +
+# note typée, AUCUNE nouvelle valeur d'énumération, aucune migration) et
+# PROPOSE « perdu, motif junk » en un clic — une proposition : c'est le clic
+# humain qui décide (MRY22), jamais le moteur.
+
+def motif_junk_valide(company, nom):
+    """Le libellé EXACT du motif JUNK (``est_junk``, actif) ``nom`` de
+    ``company`` (comparaison sans casse), ou ``None``."""
+    from .models import MotifPerte
+
+    nom = (nom or '').strip()
+    if not nom or company is None:
+        return None
+    return (MotifPerte.objects
+            .filter(company=company, archived=False, est_junk=True,
+                    nom__iexact=nom)
+            .values_list('nom', flat=True).first())
+
+
+def marquer_lead_perdu_junk(lead, user, motif):
+    """CAD11 — le lead passe PERDU avec le motif junk ``motif`` (déjà
+    validé), journalisé comme la fiche le ferait (lignes « modification »
+    ancien → nouveau), et TOUTES ses touches ouvertes sont arrêtées sous ce
+    motif — la même conséquence que la bascule « perdu » de la fiche
+    (``LeadViewSet.perform_update``, MRY9). Idempotente : un lead déjà perdu
+    n'est pas réécrit. Renvoie ``True`` si le lead vient de passer perdu."""
+    import copy
+
+    if lead.perdu:
+        return False
+    avant = copy.copy(lead)
+    lead.perdu = True
+    lead.motif_perte = motif
+    lead.save(update_fields=['perdu', 'motif_perte'])
+    activity.log_changes(avant, lead, user)
+    arreter_cadence(lead, user=user, motif=motif)
+    return True

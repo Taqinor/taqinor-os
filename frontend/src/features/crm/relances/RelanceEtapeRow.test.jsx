@@ -321,6 +321,59 @@ describe('CAD10 RelanceEtapeRow — motif de refus facultatif', () => {
   })
 })
 
+// CAD11 — « Numéro invalide / a bloqué » : raccourci sur une touche APPEL
+// (patron Répondeur/Occupé, aucune nouvelle issue), « perdu, motif junk »
+// proposé en un clic, et `lead_est_junk` (contrat committé) visible.
+describe('CAD11 RelanceEtapeRow — numéro invalide et junk', () => {
+  it('le raccourci apparaît sur une touche appel, pas sur un WhatsApp', () => {
+    ouvrirFait(ETAPE_APPEL)
+    expect(screen.getByRole('button', { name: 'Numéro invalide' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'A bloqué / signalé' })).toBeInTheDocument()
+    cleanup()
+    ouvrirFait(ETAPE_APRES_DEVIS)
+    expect(screen.queryByRole('button', { name: 'Numéro invalide' })).not.toBeInTheDocument()
+  })
+
+  it('sans la case, seule l’issue non_joint + la note typée partent', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Numéro invalide' }))
+    await screen.findByTestId('proposition-perdu-junk')
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
+      ETAPE_APPEL.id, { outcome: 'non_joint', note: 'Numéro invalide' }))
+  })
+
+  it('la case cochée propose « perdu, motif junk » en un clic', async () => {
+    const onFait = vi.fn(() => Promise.resolve({ prochaine_touche: null }))
+    ouvrirFait(ETAPE_APPEL, { onFait })
+    fireEvent.click(screen.getByRole('button', { name: 'Numéro invalide' }))
+    await screen.findByTestId('proposition-perdu-junk')
+    fireEvent.click(screen.getByRole('checkbox', { name: /Marquer le lead perdu/ }))
+    // Seuls les motifs JUNK de la liste sont proposés.
+    expect(screen.queryByRole('option', { name: 'Prix' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onFait).toHaveBeenCalledWith(ETAPE_APPEL.id, {
+      outcome: 'non_joint', note: 'Numéro invalide', perdu_junk: 'Numéro invalide',
+    }))
+  })
+
+  it('`lead_est_junk` du contrat est visible sur la touche', () => {
+    render(
+      <RelanceEtapeRow etape={{ ...ETAPE_APPEL, lead_est_junk: true }} onFait={noop}
+        onSauter={noop} onReporter={noop} onOuvrirMessage={noop} readOnly showStatut />,
+    )
+    expect(screen.getByText('Junk')).toBeInTheDocument()
+    cleanup()
+    render(
+      <RelanceEtapeRow etape={ETAPE_APPEL} onFait={noop} onSauter={noop}
+        onReporter={noop} onOuvrirMessage={noop} readOnly showStatut />,
+    )
+    expect(ETAPE_APPEL.lead_est_junk).toBe(false)
+    expect(screen.queryByText('Junk')).not.toBeInTheDocument()
+  })
+})
+
 // CAD26 — « Reporter » offre DEUX gestes ; au-delà de 7 jours, la mise en
 // veille est proposée d'elle-même. Horloge figée (seul `Date` est simulé) :
 // mercredi 23/09/2026 à Casablanca.

@@ -3183,6 +3183,27 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                         'un motif de la liste (Paramètres → CRM).')}},
                     status=status.HTTP_400_BAD_REQUEST)
             body = f'{body} {mention_motif_refus(nom)}'.strip()
+        # CAD11 — « Numéro invalide / a bloqué » : la PROPOSITION « perdu,
+        # motif junk » acceptée en un clic. Seulement sur une touche close
+        # « non joint » (le patron Répondeur/Occupé), seulement avec un motif
+        # JUNK de la liste de la société — le clic humain décide (MRY22).
+        perdu_junk = (request.data.get('perdu_junk') or '').strip()
+        motif_junk = None
+        if perdu_junk:
+            from .services import motif_junk_valide
+            if statut != RelanceEtape.Statut.FAIT or outcome != 'non_joint':
+                return Response(
+                    {'erreurs': {'perdu_junk': (
+                        '« Marquer perdu (junk) » ne vaut qu’avec une touche '
+                        'faite « Numéro invalide » ou « A bloqué ».')}},
+                    status=status.HTTP_400_BAD_REQUEST)
+            motif_junk = motif_junk_valide(etape.company, perdu_junk)
+            if motif_junk is None:
+                return Response(
+                    {'erreurs': {'perdu_junk': (
+                        f'« Marquer perdu (junk) » : « {perdu_junk} » n’est '
+                        'pas un motif junk de la liste (Paramètres → CRM).')}},
+                    status=status.HTTP_400_BAD_REQUEST)
         # VISITE-CADENCE (revue Fable 15/09) — « Visite acceptée » n'a de sens
         # que sur le suivi de PROPOSITION : la visite se place APRÈS l'envoi
         # du devis (doctrine fondateur), jamais en prise de contact/réveil.
@@ -3272,9 +3293,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     'canal': etape.canal,
                 }
                 return Response(data)
+        # CAD11 — un lead qu'on marque perdu n'a pas de suite : ni barreau
+        # suivant, ni clôture au froid avec réveils (``suite=False``).
         etape = marquer_etape_relance(
             etape, request.user, statut, note=note, outcome=outcome,
-            body=body)
+            body=body, suite=motif_junk is None)
+        if motif_junk is not None:
+            from .services import marquer_lead_perdu_junk
+            marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
             reporter_prochaine_touche(etape.lead, request.user, quand)
         return self._reponse_fait(etape)

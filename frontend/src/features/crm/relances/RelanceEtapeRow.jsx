@@ -152,6 +152,16 @@ const APPEL_REPONSES_SUPPLEMENTAIRES = [
     suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
   { outcome: 'non_joint', note: 'Occupé', label: 'Occupé',
     suite: 'La cadence continue ; si c’était la dernière touche, le dossier part au Froid avec deux réveils.' },
+  // CAD11 — un numéro MORT n'a pas à épuiser les six tentatives : même patron
+  // (issue `non_joint` + note typée, aucune nouvelle énumération), plus la
+  // PROPOSITION « perdu, motif junk » en un clic (`junk` = le motif junk
+  // pré-choisi s'il existe dans la liste de la société). Le clic décide.
+  { outcome: 'non_joint', note: 'Numéro invalide', label: 'Numéro invalide',
+    junk: 'Numéro invalide',
+    suite: 'La touche est close « non joint » avec la note « Numéro invalide ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic ; sinon la cadence continue.' },
+  { outcome: 'non_joint', note: 'A bloqué / signalé', label: 'A bloqué / signalé',
+    junk: 'Jamais répondu',
+    suite: 'La touche est close « non joint » avec la note « A bloqué / signalé ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic ; sinon la cadence continue.' },
 ]
 
 // CAD-A — RÉPONSES DU CLIENT (clé `reponse`, table `services.REPONSES_TOUCHE`
@@ -356,6 +366,10 @@ export default function RelanceEtapeRow({
   const [motifs, setMotifs] = useState(null)
   const [motifRefus, setMotifRefus] = useState('')
   const [erreurMotif, setErreurMotif] = useState('')
+  // CAD11 — la proposition « perdu, motif junk » (case à cocher : le clic
+  // humain décide) et le motif junk choisi ('' = celui proposé par défaut).
+  const [perduJunk, setPerduJunk] = useState(false)
+  const [motifJunk, setMotifJunk] = useState('')
   // VISCAD6 — modale de planification de la visite, PARTAGÉE par le panneau
   // de coaching (ci-dessous) et l'issue « Visite acceptée » du Fait.
   const [planifierOuvert, setPlanifierOuvert] = useState(false)
@@ -372,6 +386,7 @@ export default function RelanceEtapeRow({
     setReportDate(''); setReportHeure(''); setErreurOutcome('')
     setSansOuverture(false); setReportMode(''); setErreurRappel('')
     setMotifRefus(''); setErreurMotif('')
+    setPerduJunk(false); setMotifJunk('')
   }
 
   // CAD10 — lecture paresseuse des motifs, au geste (jamais dans un effet) :
@@ -420,6 +435,12 @@ export default function RelanceEtapeRow({
   const messageRappel = erreurRappel || (rappelPasse
     ? '« Rappeler le » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.'
     : '')
+  // CAD11 — les motifs JUNK de la société ; celui proposé par défaut est le
+  // motif nommé par la réponse s'il existe, sinon le premier de la liste.
+  const motifsJunk = (motifs ?? []).filter((m) => m.est_junk)
+  const motifJunkEffectif = motifJunk
+    || (motifsJunk.find((m) => m.nom === reponseChoisie?.junk) ?? motifsJunk[0])?.nom
+    || ''
 
   const confirmerFait = () => {
     if (!reponseChoisie) return
@@ -439,6 +460,10 @@ export default function RelanceEtapeRow({
     }
     // CAD10 — le motif n'accompagne QUE le refus, et seulement s'il est choisi.
     if (reponseChoisie.outcome === 'refuse' && motifRefus) payload.motif_refus = motifRefus
+    // CAD11 — « perdu, motif junk » seulement si la case est COCHÉE.
+    if (reponseChoisie.junk && perduJunk && motifJunkEffectif) {
+      payload.perdu_junk = motifJunkEffectif
+    }
     // RLC3 — le geste assumé est TRACÉ : `body` s'ajoute à la ligne de chatter
     // de la touche (`marquer_etape_relance`), sans toucher à la note libre.
     if (toucheMessage && !messageOuvertLe) {
@@ -477,8 +502,9 @@ export default function RelanceEtapeRow({
       if (champ) setErreurOutcome(champ)
       // CAD27 — la date refusée par le serveur s'affiche SOUS son champ.
       if (erreurs?.rappel_le) setErreurRappel(erreurs.rappel_le)
-      // CAD10 — de même pour le motif de refus.
+      // CAD10 — de même pour le motif de refus (et CAD11, le motif junk).
       if (erreurs?.motif_refus) setErreurMotif(erreurs.motif_refus)
+      if (erreurs?.perdu_junk) setErreurMotif(erreurs.perdu_junk)
     })
   }
 
@@ -542,6 +568,14 @@ export default function RelanceEtapeRow({
           </Badge>
         )}
         {showStatut && <StatutBadge etape={etape} />}
+        {/* CAD11 — `lead_est_junk` (contrat `relance_etape_v2`) : le lead
+            est perdu avec un motif junk — visible SUR la touche, pour que la
+            qualité des numéros venus des publicités se lise dans la file. */}
+        {etape.lead_est_junk && (
+          <Badge tone="danger" title="Lead perdu — motif junk (pas un vrai prospect)">
+            Junk
+          </Badge>
+        )}
       </div>
       {showStatut && etape.note && (
         <p className="mt-1 text-xs text-muted-foreground">{etape.note}</p>
@@ -641,7 +675,8 @@ export default function RelanceEtapeRow({
                 variant={reponseIdx === idx ? 'default' : 'outline'}
                 onClick={() => {
                   setReponseIdx((cur) => (cur === idx ? null : idx)); setErreurOutcome('')
-                  if (r.outcome === 'refuse') chargerMotifs()
+                  setErreurMotif('')
+                  if (r.outcome === 'refuse' || r.junk) chargerMotifs()
                 }}
               >
                 {r.label}
@@ -701,6 +736,37 @@ export default function RelanceEtapeRow({
               </select>
               {erreurMotif && (
                 <p className="text-xs text-danger" role="alert" data-testid="erreur-motif-refus">
+                  {erreurMotif}
+                </p>
+              )}
+            </div>
+          )}
+          {/* CAD11 — la proposition « perdu, motif junk » en UN clic, jamais
+              imposée : la case reste décochée tant que la commerciale ne
+              décide pas. Sans motif junk paramétré, rien n'est proposé. */}
+          {reponseChoisie?.junk && motifsJunk.length > 0 && (
+            <div className="flex flex-col gap-1" data-testid="proposition-perdu-junk">
+              <label className="flex items-center gap-1.5 text-xs">
+                <input
+                  type="checkbox" checked={perduJunk}
+                  onChange={(e) => { setPerduJunk(e.target.checked); setErreurMotif('') }}
+                />
+                <span>Marquer le lead perdu — motif junk (pas un vrai prospect)</span>
+              </label>
+              {perduJunk && (
+                <select
+                  aria-label="Motif junk"
+                  className={erreurMotif ? 'form-select is-invalid' : 'form-select'}
+                  value={motifJunkEffectif}
+                  onChange={(e) => { setMotifJunk(e.target.value); setErreurMotif('') }}
+                >
+                  {motifsJunk.map((m) => (
+                    <option key={m.id ?? m.nom} value={m.nom}>{m.nom}</option>
+                  ))}
+                </select>
+              )}
+              {erreurMotif && (
+                <p className="text-xs text-danger" role="alert" data-testid="erreur-perdu-junk">
                   {erreurMotif}
                 </p>
               )}
