@@ -43,9 +43,9 @@ PANIERS = [
 # Clés d'une ligne d'affichage — affirmées ICI contre la VRAIE sortie du
 # sélecteur (voir test_la_ligne_d_affichage_est_servie_par_le_serveur) ET
 # contre l'exemple de contrat que le test frontend importe : les deux moitiés
-# ne peuvent plus diverger.
+# ne peuvent plus diverger. CAD115 — `prochaine_touche_crm` ajouté (SIG9).
 CLES_LIGNE = ['client_nom', 'client_telephone', 'client_whatsapp', 'id',
-              'reference', 'total_ttc']
+              'prochaine_touche_crm', 'reference', 'total_ttc']
 
 
 class Pact17ActionRequiseSelectorTests(TestCase):
@@ -102,6 +102,10 @@ class Pact17ActionRequiseSelectorTests(TestCase):
         # Le total est du TEXTE décimal (jamais un flottant), et AUCUN prix
         # d'achat ni aucune marge n'accompagne la ligne (règle #4).
         self.assertIsInstance(ligne['total_ttc'], str)
+        # CAD115 — ce devis n'a pas de lead : `prochaine_touche_crm` est
+        # `None`, jamais une valeur inventée (voir tests_cad115_* pour le
+        # cas d'un lead avec une touche À FAIRE).
+        self.assertIsNone(ligne['prochaine_touche_crm'])
         self.assertEqual(sorted(ligne), CLES_LIGNE)
 
     def test_aucune_ligne_pour_un_devis_hors_panier(self):

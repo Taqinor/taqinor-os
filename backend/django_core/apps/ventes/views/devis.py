@@ -267,15 +267,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # permission_classes de l'@action, donc la garde fine doit être ICI.
             return [HasPermissionOrLegacy('ventes_valider')()]
         elif self.action == 'action_requise':
-            # PACT17 — « Relances du jour » est une LECTURE agrégée réservée au
-            # même périmètre que son entrée de menu (features/ventes/
-            # module.config.jsx : roles responsable + admin), exactement comme
-            # son miroir SAV `/sav/tickets/file-action/` (ZSAV6). La garde doit
-            # être ICI : get_permissions PRIME sur le `permission_classes` de
-            # l'@action (son repli est IsAdminRole, qui fermerait l'écran aux
-            # responsables) — l'@action déclare donc la MÊME classe pour ne
-            # jamais mentir sur la garde effective.
-            return [IsResponsableOrAdmin()]
+            # PACT17/CAD115 — « Relances du jour » est une LECTURE agrégée,
+            # réservée au même périmètre que son entrée de menu
+            # (features/ventes/module.config.jsx). CAD115 (SIG9) a OUVERT ce
+            # tableau au rôle qui relance réellement les clients (le nav est
+            # passé à ``['normal','responsable','admin']``, même palier que
+            # `/crm/relances` — la file calendaire du CRM qu'il arbitre
+            # désormais via `prochaine_touche_crm`) : la garde suit ici, sinon
+            # un rôle normal verrait l'entrée de menu et tomberait sur un 403.
+            # La garde doit être ICI : get_permissions PRIME sur le
+            # `permission_classes` de l'@action (son repli est IsAdminRole,
+            # qui fermerait l'écran aux autres rôles) — l'@action déclare donc
+            # la MÊME classe pour ne jamais mentir sur la garde effective.
+            return [IsAnyRole()]
         elif self.action == 'proposal':
             # NTPRT10 — ``/proposal`` reste l'UNIQUE chemin PDF client (règle
             # #4) : plutôt qu'un second rendu pour le portail, on OUVRE ce
@@ -2204,7 +2208,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
     @extend_schema(responses=DevisActionRequiseSerializer)
     @action(detail=False, methods=['get'], url_path='action-requise',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAnyRole])
     def action_requise(self, request):
         """PACT17 (QX29/QX30) — « Relances du jour » : les devis nécessitant
         une action, groupés par MOTIF.
@@ -2216,6 +2220,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         n'importe quel segment), donc un 404, donc un écran mort. Cette action
         est cette moitié manquante, miroir de ``/sav/tickets/file-action/``
         (ZSAV6).
+
+        CAD115 (SIG9) — le tableau est désormais ouvert au rôle qui relance
+        réellement (nav ``['normal','responsable','admin']``), et chaque
+        ligne publie ``prochaine_touche_crm`` pour arbitrer avec la file
+        calendaire du CRM.
 
         Lecture PURE via ``selectors.devis_action_requise``, bornée à
         ``request.user.company`` — jamais de devis d'une autre société. RÈGLE

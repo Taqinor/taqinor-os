@@ -118,6 +118,22 @@ describe('DevisActionBoardPage — QX30 : file déclenchée par l\'engagement + 
   })
 })
 
+describe('DevisActionBoardPage — CAD115 (SIG9) : prochaine touche CRM programmée', () => {
+  it('affiche la prochaine touche CRM sur la ligne qui en porte une, jamais sur les autres', async () => {
+    ventesApi.getDevisActionBoard.mockResolvedValue(
+      reponseContrat('ventes', 'devis_action_requise'))
+    render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
+    // Fixture du contrat committé : seul le devis 52 (engagement_relance)
+    // porte une touche À FAIRE — les autres lignes ne l'affichent jamais
+    // (`prochaine_touche_crm: null`), donc UN SEUL rendu attendu.
+    const avecTouche = Object.entries(BOARD.devis)
+      .filter(([, ligne]) => ligne.prochaine_touche_crm)
+    expect(avecTouche.length).toBe(1)
+    const lignes = await screen.findAllByText(/Prochaine touche CRM : WhatsApp/)
+    expect(lignes.length).toBe(1)
+  })
+})
+
 describe('DevisActionBoardPage — CHT14 : carte "Chantiers à facturer"', () => {
   // Schéma RÉEL de `installations.services.chantiers_a_facturer` (YSERV7) —
   // une entrée PAR TRANCHE due, jamais un devis_id (endpoint EXISTANT

@@ -17,6 +17,10 @@
 // déclarée (DevisActionRequiseSerializer) et exemple committé dans
 // `apps/ventes/contract_samples/devis_action_requise.json`, et il sert aussi
 // `devis[id]` — un seul appel, plus de re-téléchargement de toute la liste.
+// CAD115 (SIG9) — ouvert au rôle qui relance réellement (nav + garde serveur
+// `IsAnyRole`), et chaque ligne affiche désormais `prochaine_touche_crm` : la
+// touche CRM (`crm.RelanceEtape`) déjà programmée pour le lead d'origine, pour
+// que personne ne relance deux fois le même client le même jour.
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -25,7 +29,14 @@ import {
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
-import { formatMAD } from '../../lib/format'
+import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
+
+// CAD115 (SIG9) — libellés FR du canal de la prochaine touche CRM
+// (`crm.RelanceEtape.Canal`, mêmes clés que le serveur) ; repli sur la clé
+// brute pour un canal encore inconnu de cet écran, jamais un blanc muet.
+const CANAL_LABELS = {
+  appel: 'Appel', whatsapp: 'WhatsApp', email: 'E-mail', visite: 'Visite',
+}
 
 const BUCKETS = [
   { key: 'envoyes_sans_reponse', label: 'Envoyés sans réponse', icon: Clock, tone: 'warning' },
@@ -67,10 +78,10 @@ export default function DevisActionBoardPage() {
   // backend nouveau. `GET installations/a-facturer/` (YSERV7) existait déjà,
   // sans aucun consommateur. Schéma différent des BUCKETS (tranche/jalon/
   // chantier, pas devis/client) — jamais forcé dans `board.buckets`. Best
-  // effort, indépendant du board principal : un rôle sans accès
-  // (IsResponsableOrAdmin, comme la page elle-même — nav `roles:
-  // ['responsable','admin']`) n'affiche simplement aucune ligne, sans casser
-  // le reste de l'écran.
+  // effort, indépendant du board principal : un rôle sans accès à cet
+  // endpoint DISTINCT (`installations/a-facturer/`, sa propre garde,
+  // inchangée par CAD115) n'affiche simplement aucune ligne, sans casser le
+  // reste de l'écran.
   const [chantiersAFacturer, setChantiersAFacturer] = useState([])
 
   // PACT17 — UN SEUL appel : le serveur renvoie `devis[id]` (référence,
@@ -152,29 +163,42 @@ export default function DevisActionBoardPage() {
                       const draft = board.wa_drafts?.[id]
                       const tel = telHref(d?.client_telephone)
                       const wa = waHref(d?.client_whatsapp ?? d?.client_telephone ?? d?.telephone, draft)
+                      // CAD115 (SIG9) — prochaine touche CRM déjà programmée
+                      // pour le lead d'origine : évite qu'une relance parte
+                      // ici alors que la cadence de Meryem s'en charge déjà
+                      // le même jour. `null` quand aucune touche n'est due.
+                      const touche = d?.prochaine_touche_crm
                       return (
-                        <li key={id} className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            className="flex-1 truncate text-left text-xs text-primary hover:underline"
-                            onClick={() => navigate(`/ventes/devis?devis=${id}`)}
-                            title={d?.total_ttc != null ? formatMAD(d.total_ttc) : undefined}
-                          >
-                            {d?.reference ?? `#${id}`}{d?.client_nom ? ` — ${d.client_nom}` : ''}
-                          </button>
-                          {tel && (
-                            <a href={tel} title="Appeler" aria-label={`Appeler ${d?.client_nom ?? ''}`}
-                               className="text-muted-foreground hover:text-foreground">
-                              <PhoneCall className="size-3.5" aria-hidden="true" />
-                            </a>
-                          )}
-                          {wa && (
-                            <a href={wa} target="_blank" rel="noopener noreferrer"
-                               title={draft ? 'Ouvrir WhatsApp (message pré-rempli)' : 'Ouvrir WhatsApp'}
-                               aria-label={`WhatsApp ${d?.client_nom ?? ''}`}
-                               className="text-muted-foreground hover:text-foreground">
-                              <MessageCircle className="size-3.5" aria-hidden="true" />
-                            </a>
+                        <li key={id} className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              className="flex-1 truncate text-left text-xs text-primary hover:underline"
+                              onClick={() => navigate(`/ventes/devis?devis=${id}`)}
+                              title={d?.total_ttc != null ? formatMAD(d.total_ttc) : undefined}
+                            >
+                              {d?.reference ?? `#${id}`}{d?.client_nom ? ` — ${d.client_nom}` : ''}
+                            </button>
+                            {tel && (
+                              <a href={tel} title="Appeler" aria-label={`Appeler ${d?.client_nom ?? ''}`}
+                                 className="text-muted-foreground hover:text-foreground">
+                                <PhoneCall className="size-3.5" aria-hidden="true" />
+                              </a>
+                            )}
+                            {wa && (
+                              <a href={wa} target="_blank" rel="noopener noreferrer"
+                                 title={draft ? 'Ouvrir WhatsApp (message pré-rempli)' : 'Ouvrir WhatsApp'}
+                                 aria-label={`WhatsApp ${d?.client_nom ?? ''}`}
+                                 className="text-muted-foreground hover:text-foreground">
+                                <MessageCircle className="size-3.5" aria-hidden="true" />
+                              </a>
+                            )}
+                          </div>
+                          {touche && (
+                            <p className="pl-0.5 text-[11px] text-muted-foreground">
+                              Prochaine touche CRM : {CANAL_LABELS[touche.canal] ?? touche.canal}{' '}
+                              {touche.due_at ? formatDateTime(touche.due_at) : formatDate(touche.due_date)}
+                            </p>
                           )}
                         </li>
                       )

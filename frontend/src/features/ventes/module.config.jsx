@@ -39,7 +39,12 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    de menu. Rôles alignés sur ce que la page permet réellement : lecture
    `ListesPrixPage` ouverte à tout rôle authentifié (écriture Responsable/
    Admin gardée serveur, cf. `apps/ventes/views/liste_prix.py`) ;
-   `DevisActionBoardPage` réservé responsable/admin, comme son miroir SAV.
+   `DevisActionBoardPage` était réservé responsable/admin, comme son miroir
+   SAV — CAD115 (SIG9) l'a rouvert à `['normal','responsable','admin']`,
+   même palier que `/crm/relances` (la file calendaire du CRM qu'il arbitre
+   désormais via `prochaine_touche_crm`) : c'est le rôle qui relance
+   réellement les clients qui en avait besoin, pas seulement responsable/
+   admin. Garde serveur alignée (`IsAnyRole`, `apps/ventes/views/devis.py`).
    ========================================================================== */
 
 // eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
@@ -116,8 +121,11 @@ const config = {
       { to: '/ventes/paiements/import-releve', label: 'Import relevé bancaire', k: 'nav.import_releve', icon: navIcon(Wallet), roles: ['responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'], navGroup: 'facturation' },
       // WIR23 — miroir de `/sav/action-requise` (ZSAV6) : « quels devis
-      // traiter aujourd'hui » (QX29/QX30), réservé responsable/admin.
-      { to: '/ventes/devis/action-requise', label: 'Action requise', k: 'nav.devis_action_requise', icon: navIcon(AlertTriangle), roles: ['responsable','admin'] },
+      // traiter aujourd'hui » (QX29/QX30). CAD115 (SIG9) — ouvert au rôle
+      // qui relance réellement (même palier que `/crm/relances`, la file
+      // calendaire du CRM que ce tableau arbitre désormais) ; garde serveur
+      // alignée (`IsAnyRole`, apps/ventes/views/devis.py::action_requise).
+      { to: '/ventes/devis/action-requise', label: 'Action requise', k: 'nav.devis_action_requise', icon: navIcon(AlertTriangle), roles: ['normal','responsable','admin'] },
       // WIR23 — lecture ouverte à tout rôle (écriture Responsable/Admin
       // gardée serveur, cf. apps/ventes/views/liste_prix.py).
       { to: '/ventes/listes-prix',   label: 'Listes de prix',   k: 'nav.listes_prix', icon: navIcon(Tags),  roles: ['normal','responsable','admin'] },
