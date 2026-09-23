@@ -226,6 +226,16 @@ SANS_PRODUCTEUR_PUR = {
         'dimensions (en-tête PNG/JPEG) et les quatre refus nommés sont '
         'affirmés sans base par '
         'apps/calepinage/tests/test_calx107_plan_importe.py',
+
+    # CALX267
+    'calepinage_batterie.json':
+        'forme de services/batterie.py::simuler_groupes (plusieurs groupes '
+        'de batteries, chacun avec son couplage) : producteur PUR mais que '
+        'AUCUNE route ne sert encore (le bloc `batterie` de GET resultat/ '
+        "l'adoptera avec la chaîne de simulation) — l'exemple est le "
+        'résultat RÉEL du service sur son `entree_synthetique`, rejoué et '
+        'affirmé égal sans base par '
+        'apps/calepinage/tests/test_calx267_groupes_batteries.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur

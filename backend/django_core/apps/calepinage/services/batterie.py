@@ -34,13 +34,23 @@ l'utilisateur n'a pas choisi.
 
 Module PUR côté calcul ; la fiche est lue par le SÉLECTEUR du stock, jamais par
 ses modèles.
+
+PLUSIEURS GROUPES (CALX267)
+---------------------------
+``simuler_groupes`` fait tourner plusieurs groupes de batteries, chacun avec
+son COUPLAGE déclaré (``ac`` | ``dc``, un groupe ``dc`` nomme l'onduleur
+hybride qui le porte), dans l'ordre saisi et sur le résidu du précédent, et
+publie chaque groupe puis l'agrégat. Contrat partagé :
+``contract_samples/calepinage_batterie.json``.
 """
 from __future__ import annotations
 
+import copy
 import math
 
-__all__ = ['GRANDEURS_BATTERIE', 'STRATEGIES', 'StrategieInvalide',
-           'simuler_batterie', 'specs_batterie', 'tranches_horaires']
+__all__ = ['COUPLAGES', 'GRANDEURS_BATTERIE', 'STRATEGIES',
+           'StrategieInvalide', 'simuler_batterie', 'simuler_groupes',
+           'specs_batterie', 'tranches_horaires']
 
 #: Les stratégies simulables. ``autoconso`` et ``backup`` existaient (côté
 #: dimensionnement) ; ``peak_shaving`` et ``decalage`` sont l'apport de CAL152.
@@ -242,7 +252,7 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                      seuil_effacement_kw=None, heures_charge=None,
                      heures_decharge=None, reserve_backup_kwh=None,
                      etat_initial_kwh=0.0, pas_heures=1.0,
-                     heure_de_depart=0):
+                     heure_de_depart=0, _trace=None):
     """Fait TOURNER la batterie heure par heure selon la stratégie retenue.
 
     Args:
@@ -254,6 +264,11 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
             ``decalage``.
         reserve_backup_kwh: la réserve à ne jamais entamer, SAISIE —
             obligatoire pour ``backup``.
+        _trace: usage INTERNE (CALX267, :func:`simuler_groupes`) — un dict
+            qui reçoit, pas par pas, l'énergie entrée (``entree``) et sortie
+            (``sortie``) de la batterie. Il ne change RIEN au résultat rendu :
+            c'est ce qui permet au groupe suivant de tourner sur le RÉSIDU du
+            précédent sans seconde arithmétique de dispatch.
 
     Returns:
         dict — ``strategie``, ``objectif_dimensionnant``, ``heures``,
@@ -339,6 +354,8 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
     total_import = 0.0
     total_injecte = 0.0
     total_efface = 0.0
+    entrees = []
+    sorties = []
 
     for rang, (conso, prod) in enumerate(zip(charge, production)):
         heure = (int(heure_de_depart) + rang) % 24
@@ -377,6 +394,13 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         total_import += max(0.0, deficit - sortie)
         total_injecte += surplus
         etats.append(round(etat, 4))
+        entrees.append(entree)
+        sorties.append(sortie)
+
+    if isinstance(_trace, dict):
+        _trace['entree'] = entrees
+        _trace['sortie'] = sorties
+        _trace['etat'] = etats
 
     objectif = {
         'autoconso': 'Maximiser l’énergie autoconsommée (stocker le surplus '
@@ -417,4 +441,281 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
                                 if strategie == 'decalage' else None),
             'reserve_backup_kwh': reserve if strategie == 'backup' else None,
         },
+    }
+
+
+# ── CALX267 — plusieurs groupes de batteries, chacun avec son couplage ─────
+
+#: Les couplages déclarables d'un groupe : côté ALTERNATIF (derrière son
+#: propre onduleur-chargeur) ou côté CONTINU (sur le bus DC d'un onduleur
+#: hybride — qu'il faut alors nommer).
+COUPLAGES = ('ac', 'dc')
+
+#: La valeur publiée en ``agregat['strategie']`` quand les groupes ne suivent
+#: pas la même stratégie : l'agrégat n'en a alors pas UNE.
+STRATEGIE_PLUSIEURS = 'plusieurs'
+
+#: Les paramètres de dispatch qu'un groupe porte lui-même — ceux de
+#: :func:`simuler_batterie`, hors les deux courbes (le RÉSIDU les remplace)
+#: et hors la chronologie commune (``pas_heures``, ``heure_de_depart``).
+_HORS_GROUPE = frozenset({'charge_horaire', 'production_horaire',
+                          'pas_heures', 'heure_de_depart', '_trace'})
+
+#: Les paramètres de l'agrégat qui S'ADDITIONNENT d'un groupe à l'autre —
+#: les autres ne sont publiés que s'ils sont identiques partout.
+_PARAMETRES_CUMULES = ('capacite_utile_kwh', 'puissance_charge_kw',
+                       'puissance_decharge_kw')
+
+MENTION_AGREGAT = '« agrégat de capacités — approximation »'
+
+
+def _parametres_de_groupe():
+    """``(admis, obligatoires)`` — lus sur la signature de simuler_batterie."""
+    import inspect
+
+    parametres = inspect.signature(simuler_batterie).parameters
+    admis = tuple(nom for nom in parametres if nom not in _HORS_GROUPE)
+    obligatoires = tuple(nom for nom in admis
+                         if parametres[nom].default is inspect.Parameter.empty)
+    return admis, obligatoires
+
+
+def _texte(valeur):
+    return str(valeur).strip() if valeur not in (None, '') else ''
+
+
+def _groupes_valides(groupes):
+    """Les groupes déclarés, VÉRIFIÉS avant tout dispatch."""
+    if not isinstance(groupes, (list, tuple)) or not groupes:
+        raise StrategieInvalide(
+            'Aucun groupe de batteries n’est déclaré : il en faut au moins '
+            'un pour simuler un stockage.', champ='groupes')
+    lus = []
+    for rang, groupe in enumerate(groupes):
+        if not isinstance(groupe, dict):
+            raise StrategieInvalide(
+                f'Le groupe n°{rang + 1} n’est pas une déclaration lisible '
+                f'(reçu : {groupe!r}).', champ=f'groupes[{rang}]')
+        couplage = _texte(groupe.get('couplage')).lower()
+        if couplage not in COUPLAGES:
+            raise StrategieInvalide(
+                f'Le couplage du groupe n°{rang + 1} doit être DÉCLARÉ : '
+                '« ac » (derrière son propre onduleur-chargeur) ou « dc » '
+                '(sur le bus continu d’un onduleur hybride) — reçu : '
+                f'{groupe.get("couplage")!r}. Il ne se devine pas.',
+                champ=f'groupes[{rang}].couplage')
+        onduleur = _texte(groupe.get('onduleur_ref'))
+        if couplage == 'dc' and not onduleur:
+            raise StrategieInvalide(
+                f'Le groupe n°{rang + 1} est couplé côté CONTINU : il vit sur '
+                'le bus DC d’un onduleur hybride, qu’il faut nommer '
+                '(référence de l’onduleur affecté).',
+                champ=f'groupes[{rang}].onduleur_ref')
+        lus.append({
+            'groupe': _texte(groupe.get('groupe')) or f'Groupe {rang + 1}',
+            'couplage': couplage,
+            'onduleur_ref': onduleur or None,
+            'modele': _texte(groupe.get('modele')) or None,
+            'declaration': groupe,
+        })
+    return lus
+
+
+def _mention_agregat(lus):
+    """La mention d'approximation, ou ``None`` (un seul modèle, un groupe)."""
+    if len(lus) < 2:
+        return None
+    sans_modele = [ligne['groupe'] for ligne in lus if not ligne['modele']]
+    if sans_modele:
+        return (f'{MENTION_AGREGAT} : le modèle de batterie n’est pas déclaré '
+                f'pour {", ".join(f"« {nom} »" for nom in sans_modele)} — '
+                'rien n’établit que les groupes portent le même modèle ; '
+                'leurs rendements et leurs bornes de puissance ne '
+                's’additionnent pas, les capacités et puissances cumulées de '
+                'l’agrégat sont donc une approximation.')
+    modeles = []
+    for ligne in lus:
+        if ligne['modele'] not in modeles:
+            modeles.append(ligne['modele'])
+    if len(modeles) < 2:
+        return None
+    return (f'{MENTION_AGREGAT} : les groupes portent des modèles de batterie '
+            f'différents ({", ".join(modeles)}) ; leurs rendements et leurs '
+            'bornes de puissance ne s’additionnent pas, les capacités et '
+            'puissances cumulées de l’agrégat sont donc une approximation.')
+
+
+def _commun(valeurs):
+    """La valeur partagée par tous, sinon ``None`` (jamais une moyenne)."""
+    premiere = valeurs[0]
+    return premiere if all(valeur == premiere for valeur in valeurs) else None
+
+
+def _somme(valeurs, decimales=3):
+    if any(valeur is None for valeur in valeurs):
+        return None
+    return round(sum(valeurs), decimales)
+
+
+def _agreger(lus, resultats, traces):
+    """L'agrégat de plusieurs groupes — mêmes clés que :func:`simuler_batterie`.
+
+    Les énergies de batterie s'additionnent (chaque groupe a tourné sur le
+    résidu du précédent : aucune n'est comptée deux fois) ; l'import et
+    l'injection sont ceux du DERNIER groupe, c'est-à-dire ce qui reste au
+    point de livraison une fois tous les groupes passés.
+    """
+    dernier = resultats[-1]
+    strategies = [resultat['strategie'] for resultat in resultats]
+    strategie = _commun(strategies) or STRATEGIE_PLUSIEURS
+    if strategie != STRATEGIE_PLUSIEURS:
+        objectif = resultats[0]['objectif_dimensionnant']
+    else:
+        objectif = ' ; '.join(
+            f'« {ligne["groupe"]} » : {resultat["objectif_dimensionnant"]}'
+            for ligne, resultat in zip(lus, resultats))
+
+    efface = [resultat['energie_effacee_kwh'] for resultat in resultats
+              if resultat['energie_effacee_kwh'] is not None]
+
+    parametres = {}
+    for nom in resultats[0]['parametres']:
+        valeurs = [resultat['parametres'][nom] for resultat in resultats]
+        parametres[nom] = (_somme(valeurs) if nom in _PARAMETRES_CUMULES
+                           else _commun(valeurs))
+
+    agregat = {}
+    for cle in resultats[0]:
+        valeurs = [resultat[cle] for resultat in resultats]
+        agregat[cle] = _commun(valeurs)
+    agregat.update({
+        'strategie': strategie,
+        'objectif_dimensionnant': objectif,
+        'heures': dernier['heures'],
+        'charge_batterie_kwh': round(
+            sum(sum(trace['entree']) for trace in traces), 3),
+        'decharge_batterie_kwh': round(
+            sum(sum(trace['sortie']) for trace in traces), 3),
+        'import_reseau_kwh': dernier['import_reseau_kwh'],
+        'surplus_injecte_kwh': dernier['surplus_injecte_kwh'],
+        'pertes_stockage_kwh': round(
+            sum(resultat['pertes_stockage_kwh'] for resultat in resultats), 3),
+        'etat_de_charge_kwh': [round(sum(etats), 4) for etats in
+                               zip(*(trace['etat'] for trace in traces))],
+        'energie_effacee_kwh': round(sum(efface), 3) if efface else None,
+        'parametres': parametres,
+    })
+    return agregat
+
+
+def simuler_groupes(charge_horaire, production_horaire, groupes, *,
+                    pas_heures=1.0, heure_de_depart=0):
+    """CALX267 — fait tourner PLUSIEURS groupes de batteries, dans l'ordre.
+
+    Le premier groupe tourne sur les deux courbes reçues ; chaque groupe
+    suivant tourne sur le RÉSIDU du précédent — la consommation que le
+    précédent n'a pas servie, la production qu'il n'a pas stockée. Aucune
+    règle de dispatch n'est réécrite : chaque groupe passe par
+    :func:`simuler_batterie`, tel quel.
+
+    Parité : PV*SOL 2024 (plusieurs systèmes de batteries par projet —
+    https://valentin-software.com/en/product-news-blog-en/pvsol-premium-2024-available-now/)
+    et OpenSolar sur le couplage
+    (https://support.opensolar.com/hc/en-us/articles/12382460685455-How-OpenSolar-Models-Battery-Energy-Storage).
+    Cette fonction pose la STRUCTURE (couplage déclaré, onduleur affecté,
+    agrégat) ; ce que le couplage DC change au dispatch — l'énergie écrêtée
+    offerte à la charge — est traité par CALX63, sur ces groupes.
+
+    Args:
+        groupes: la liste ORDONNÉE des groupes. Chacun porte ``couplage``
+            (``ac`` | ``dc``, DÉCLARÉ), ``onduleur_ref`` (OBLIGATOIRE en
+            ``dc``), ``groupe`` (libellé), ``modele`` (le modèle de batterie,
+            pour la mention d'approximation) et les paramètres de
+            :func:`simuler_batterie` (``strategie``, ``capacite_utile_kwh``,
+            puissances, rendement, seuil/heures/réserve…).
+        pas_heures, heure_de_depart: la chronologie COMMUNE aux deux courbes.
+
+    Returns:
+        dict — ``groupes`` (chaque groupe SÉPARÉMENT : ``groupe``,
+        ``couplage``, ``onduleur_ref``, ``modele`` et son ``resultat``, le
+        dict de :func:`simuler_batterie`), ``agregat`` (mêmes clés que
+        :func:`simuler_batterie`) et ``mention_agregat``. Un SEUL groupe :
+        ``agregat`` est, clé à clé, le résultat d'aujourd'hui de
+        :func:`simuler_batterie` — aucune clé ajoutée ni retirée — et
+        ``mention_agregat`` vaut ``None``. Deux modèles différents ⇒ la
+        mention « agrégat de capacités — approximation » et sa raison, parce
+        que les rendements et les bornes de puissance ne s'additionnent pas
+        (même limite publiée par Aurora :
+        https://help.aurorasolar.com/hc/en-us/articles/51222791731603-Running-and-interpreting-storage-simulations).
+
+    Raises:
+        StrategieInvalide: aucun groupe, couplage non déclaré, groupe DC sans
+            onduleur (``groupes[i].onduleur_ref``), ou un paramètre refusé
+            par :func:`simuler_batterie` — son champ est alors PRÉFIXÉ du
+            groupe (``groupes[i].<champ>``).
+    """
+    lus = _groupes_valides(groupes)
+    charge = _serie(charge_horaire, champ='consommation')
+    production = _serie(production_horaire, champ='production')
+    if len(charge) != len(production):
+        raise StrategieInvalide(
+            'Les deux courbes ne décrivent pas la même période '
+            f'(consommation : {len(charge)} h, production : '
+            f'{len(production)} h).', champ='production')
+
+    autorises, obligatoires = _parametres_de_groupe()
+    for rang, ligne in enumerate(lus):
+        for nom in obligatoires:
+            if nom not in ligne['declaration']:
+                raise StrategieInvalide(
+                    f'Le groupe « {ligne["groupe"]} » ne déclare pas « {nom} » '
+                    ': un groupe de batteries se simule avec ses propres '
+                    'grandeurs, jamais avec celles d’un voisin.',
+                    champ=f'groupes[{rang}].{nom}')
+
+    conso_restante = charge_horaire
+    prod_restante = production_horaire
+    resultats = []
+    traces = []
+    for rang, ligne in enumerate(lus):
+        parametres = {nom: valeur
+                      for nom, valeur in ligne['declaration'].items()
+                      if nom in autorises}
+        trace = {}
+        try:
+            resultat = simuler_batterie(
+                conso_restante, prod_restante, pas_heures=pas_heures,
+                heure_de_depart=heure_de_depart, _trace=trace, **parametres)
+        except StrategieInvalide as refus:
+            champ = (f'groupes[{rang}].{refus.champ}' if refus.champ
+                     else f'groupes[{rang}]')
+            raise StrategieInvalide(
+                f'Groupe « {ligne["groupe"]} » : {refus.motif}',
+                champ=champ) from refus
+        resultats.append(resultat)
+        traces.append(trace)
+        charge = [max(0.0, conso - sortie)
+                  for conso, sortie in zip(charge, trace['sortie'])]
+        production = [max(0.0, prod - entree)
+                      for prod, entree in zip(production, trace['entree'])]
+        conso_restante = charge
+        prod_restante = production
+
+    publies = [{
+        'groupe': ligne['groupe'],
+        'couplage': ligne['couplage'],
+        'onduleur_ref': ligne['onduleur_ref'],
+        'modele': ligne['modele'],
+        'resultat': resultat,
+    } for ligne, resultat in zip(lus, resultats)]
+
+    if len(resultats) == 1:
+        agregat = copy.deepcopy(resultats[0])
+    else:
+        agregat = _agreger(lus, resultats, traces)
+
+    return {
+        'groupes': publies,
+        'agregat': agregat,
+        'mention_agregat': _mention_agregat(lus),
     }
