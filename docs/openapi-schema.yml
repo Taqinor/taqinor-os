@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4651, operations: 7429, components: 2120}
+counts: {paths: 4679, operations: 7457, components: 2121}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -522,6 +522,7 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_retrieve
 - patch /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_partial_update
 - put /api/django/calepinage/calepinages/{id}/ -> django_calepinage_calepinages_update
+- get /api/django/calepinage/calepinages/{id}/apercu-document/ -> django_calepinage_calepinages_apercu_document_retrieve
 - post /api/django/calepinage/calepinages/{id}/archiver/ -> django_calepinage_calepinages_archiver_create
 - post /api/django/calepinage/calepinages/{id}/champs-dossier/ -> django_calepinage_calepinages_champs_dossier_create
 - get /api/django/calepinage/calepinages/{id}/chatter/historique/ -> django_calepinage_calepinages_chatter_historique_retrieve
@@ -530,6 +531,10 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/demarquer-modele/ -> django_calepinage_calepinages_demarquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/design-context/ -> django_calepinage_calepinages_design_context_retrieve
 - post /api/django/calepinage/calepinages/{id}/deverrouiller/ -> django_calepinage_calepinages_deverrouiller_create
+- get /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> django_calepinage_calepinages_diagramme_pertes.svg_retrieve
+- get /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> django_calepinage_calepinages_document_asbuilt.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/documents/ -> django_calepinage_calepinages_documents_retrieve
+- post /api/django/calepinage/calepinages/{id}/dossier-fin-chantier/ -> django_calepinage_calepinages_dossier_fin_chantier_create
 - get /api/django/calepinage/calepinages/{id}/dossiers-reglementaires/ -> django_calepinage_calepinages_dossiers_reglementaires_retrieve
 - post /api/django/calepinage/calepinages/{id}/dupliquer/ -> django_calepinage_calepinages_dupliquer_create
 - post /api/django/calepinage/calepinages/{id}/enregistrer-pertes/ -> django_calepinage_calepinages_enregistrer_pertes_create
@@ -538,16 +543,19 @@ operations:
 - post /api/django/calepinage/calepinages/{id}/evaluer-electrique/ -> django_calepinage_calepinages_evaluer_electrique_create
 - get /api/django/calepinage/calepinages/{id}/export-csv/ -> django_calepinage_calepinages_export_csv_retrieve
 - get /api/django/calepinage/calepinages/{id}/export-layout/ -> django_calepinage_calepinages_export_layout_retrieve
+- get /api/django/calepinage/calepinages/{id}/export-projet.json/ -> django_calepinage_calepinages_export_projet.json_retrieve
 - get /api/django/calepinage/calepinages/{id}/export.csv/ -> django_calepinage_calepinages_export.csv_retrieve
 - get /api/django/calepinage/calepinages/{id}/export.dxf/ -> django_calepinage_calepinages_export.dxf_retrieve
 - get /api/django/calepinage/calepinages/{id}/export.xlsx/ -> django_calepinage_calepinages_export.xlsx_retrieve
 - post /api/django/calepinage/calepinages/{id}/generer-devis/ -> django_calepinage_calepinages_generer_devis_create
 - post /api/django/calepinage/calepinages/{id}/generer-dossier/ -> django_calepinage_calepinages_generer_dossier_create
 - get /api/django/calepinage/calepinages/{id}/horizon/ -> django_calepinage_calepinages_horizon_retrieve
+- post /api/django/calepinage/calepinages/{id}/image-document/ -> django_calepinage_calepinages_image_document_create
 - post /api/django/calepinage/calepinages/{id}/import-layout/ -> django_calepinage_calepinages_import_layout_create
 - post /api/django/calepinage/calepinages/{id}/importer-plan/ -> django_calepinage_calepinages_importer_plan_create
 - get /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_retrieve
 - post /api/django/calepinage/calepinages/{id}/layout/ -> django_calepinage_calepinages_layout_create
+- get /api/django/calepinage/calepinages/{id}/manuel-proprietaire.pdf/ -> django_calepinage_calepinages_manuel_proprietaire.pdf_retrieve
 - post /api/django/calepinage/calepinages/{id}/marquer-modele/ -> django_calepinage_calepinages_marquer_modele_create
 - get /api/django/calepinage/calepinages/{id}/masse-lestage/ -> django_calepinage_calepinages_masse_lestage_retrieve
 - post /api/django/calepinage/calepinages/{id}/meteo-fichier/ -> django_calepinage_calepinages_meteo_fichier_create
@@ -558,6 +566,8 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_retrieve
 - post /api/django/calepinage/calepinages/{id}/photos/ -> django_calepinage_calepinages_photos_create
 - patch /api/django/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> django_calepinage_calepinages_photos_calage_partial_update
+- get /api/django/calepinage/calepinages/{id}/plan-cablage.dxf/ -> django_calepinage_calepinages_plan_cablage.dxf_retrieve
+- get /api/django/calepinage/calepinages/{id}/plan-cablage.pdf/ -> django_calepinage_calepinages_plan_cablage.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-importe/ -> django_calepinage_calepinages_plan_importe_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-masse.pdf/ -> django_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/plan-pose.pdf/ -> django_calepinage_calepinages_plan_pose.pdf_retrieve
@@ -565,8 +575,11 @@ operations:
 - get /api/django/calepinage/calepinages/{id}/planche.pdf/ -> django_calepinage_calepinages_planche.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/planche.svg/ -> django_calepinage_calepinages_planche.svg_retrieve
 - post /api/django/calepinage/calepinages/{id}/pompage/ -> django_calepinage_calepinages_pompage_create
+- get /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> django_calepinage_calepinages_presentation_compacte.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_retrieve
 - post /api/django/calepinage/calepinages/{id}/raccordement/ -> django_calepinage_calepinages_raccordement_create
+- get /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/ -> django_calepinage_calepinages_rapport_etude.pdf_retrieve
+- get /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/ -> django_calepinage_calepinages_rapport_ombrage.pdf_retrieve
 - get /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_retrieve
 - post /api/django/calepinage/calepinages/{id}/releve/ -> django_calepinage_calepinages_releve_create
 - post /api/django/calepinage/calepinages/{id}/restaurer-corbeille/ -> django_calepinage_calepinages_restaurer_corbeille_create
@@ -3480,6 +3493,7 @@ operations:
 - post /api/django/ventes/devis/{id}/dupliquer-variante-gamme/ -> django_ventes_devis_dupliquer_variante_gamme_create
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
+- get /api/django/ventes/devis/{id}/economie/ -> django_ventes_devis_economie_retrieve
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
 - get /api/django/ventes/devis/{id}/etat-pdf/ -> django_ventes_devis_etat_pdf_retrieve
 - get /api/django/ventes/devis/{id}/etude-params/ -> django_ventes_devis_etude_params_retrieve
@@ -4274,6 +4288,7 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_retrieve
 - patch /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_partial_update
 - put /api/v1/calepinage/calepinages/{id}/ -> v1_calepinage_calepinages_update
+- get /api/v1/calepinage/calepinages/{id}/apercu-document/ -> v1_calepinage_calepinages_apercu_document_retrieve
 - post /api/v1/calepinage/calepinages/{id}/archiver/ -> v1_calepinage_calepinages_archiver_create
 - post /api/v1/calepinage/calepinages/{id}/champs-dossier/ -> v1_calepinage_calepinages_champs_dossier_create
 - get /api/v1/calepinage/calepinages/{id}/chatter/historique/ -> v1_calepinage_calepinages_chatter_historique_retrieve
@@ -4282,6 +4297,10 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/demarquer-modele/ -> v1_calepinage_calepinages_demarquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/design-context/ -> v1_calepinage_calepinages_design_context_retrieve
 - post /api/v1/calepinage/calepinages/{id}/deverrouiller/ -> v1_calepinage_calepinages_deverrouiller_create
+- get /api/v1/calepinage/calepinages/{id}/diagramme-pertes.svg/ -> v1_calepinage_calepinages_diagramme_pertes.svg_retrieve
+- get /api/v1/calepinage/calepinages/{id}/document-asbuilt.pdf/ -> v1_calepinage_calepinages_document_asbuilt.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/documents/ -> v1_calepinage_calepinages_documents_retrieve
+- post /api/v1/calepinage/calepinages/{id}/dossier-fin-chantier/ -> v1_calepinage_calepinages_dossier_fin_chantier_create
 - get /api/v1/calepinage/calepinages/{id}/dossiers-reglementaires/ -> v1_calepinage_calepinages_dossiers_reglementaires_retrieve
 - post /api/v1/calepinage/calepinages/{id}/dupliquer/ -> v1_calepinage_calepinages_dupliquer_create
 - post /api/v1/calepinage/calepinages/{id}/enregistrer-pertes/ -> v1_calepinage_calepinages_enregistrer_pertes_create
@@ -4290,16 +4309,19 @@ operations:
 - post /api/v1/calepinage/calepinages/{id}/evaluer-electrique/ -> v1_calepinage_calepinages_evaluer_electrique_create
 - get /api/v1/calepinage/calepinages/{id}/export-csv/ -> v1_calepinage_calepinages_export_csv_retrieve
 - get /api/v1/calepinage/calepinages/{id}/export-layout/ -> v1_calepinage_calepinages_export_layout_retrieve
+- get /api/v1/calepinage/calepinages/{id}/export-projet.json/ -> v1_calepinage_calepinages_export_projet.json_retrieve
 - get /api/v1/calepinage/calepinages/{id}/export.csv/ -> v1_calepinage_calepinages_export.csv_retrieve
 - get /api/v1/calepinage/calepinages/{id}/export.dxf/ -> v1_calepinage_calepinages_export.dxf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/export.xlsx/ -> v1_calepinage_calepinages_export.xlsx_retrieve
 - post /api/v1/calepinage/calepinages/{id}/generer-devis/ -> v1_calepinage_calepinages_generer_devis_create
 - post /api/v1/calepinage/calepinages/{id}/generer-dossier/ -> v1_calepinage_calepinages_generer_dossier_create
 - get /api/v1/calepinage/calepinages/{id}/horizon/ -> v1_calepinage_calepinages_horizon_retrieve
+- post /api/v1/calepinage/calepinages/{id}/image-document/ -> v1_calepinage_calepinages_image_document_create
 - post /api/v1/calepinage/calepinages/{id}/import-layout/ -> v1_calepinage_calepinages_import_layout_create
 - post /api/v1/calepinage/calepinages/{id}/importer-plan/ -> v1_calepinage_calepinages_importer_plan_create
 - get /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_retrieve
 - post /api/v1/calepinage/calepinages/{id}/layout/ -> v1_calepinage_calepinages_layout_create
+- get /api/v1/calepinage/calepinages/{id}/manuel-proprietaire.pdf/ -> v1_calepinage_calepinages_manuel_proprietaire.pdf_retrieve
 - post /api/v1/calepinage/calepinages/{id}/marquer-modele/ -> v1_calepinage_calepinages_marquer_modele_create
 - get /api/v1/calepinage/calepinages/{id}/masse-lestage/ -> v1_calepinage_calepinages_masse_lestage_retrieve
 - post /api/v1/calepinage/calepinages/{id}/meteo-fichier/ -> v1_calepinage_calepinages_meteo_fichier_create
@@ -4310,6 +4332,8 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_retrieve
 - post /api/v1/calepinage/calepinages/{id}/photos/ -> v1_calepinage_calepinages_photos_create
 - patch /api/v1/calepinage/calepinages/{id}/photos/{photo_id}/calage/ -> v1_calepinage_calepinages_photos_calage_partial_update
+- get /api/v1/calepinage/calepinages/{id}/plan-cablage.dxf/ -> v1_calepinage_calepinages_plan_cablage.dxf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/plan-cablage.pdf/ -> v1_calepinage_calepinages_plan_cablage.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-importe/ -> v1_calepinage_calepinages_plan_importe_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-masse.pdf/ -> v1_calepinage_calepinages_plan_masse.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/plan-pose.pdf/ -> v1_calepinage_calepinages_plan_pose.pdf_retrieve
@@ -4317,8 +4341,11 @@ operations:
 - get /api/v1/calepinage/calepinages/{id}/planche.pdf/ -> v1_calepinage_calepinages_planche.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/planche.svg/ -> v1_calepinage_calepinages_planche.svg_retrieve
 - post /api/v1/calepinage/calepinages/{id}/pompage/ -> v1_calepinage_calepinages_pompage_create
+- get /api/v1/calepinage/calepinages/{id}/presentation-compacte.pdf/ -> v1_calepinage_calepinages_presentation_compacte.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_retrieve
 - post /api/v1/calepinage/calepinages/{id}/raccordement/ -> v1_calepinage_calepinages_raccordement_create
+- get /api/v1/calepinage/calepinages/{id}/rapport-etude.pdf/ -> v1_calepinage_calepinages_rapport_etude.pdf_retrieve
+- get /api/v1/calepinage/calepinages/{id}/rapport-ombrage.pdf/ -> v1_calepinage_calepinages_rapport_ombrage.pdf_retrieve
 - get /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_retrieve
 - post /api/v1/calepinage/calepinages/{id}/releve/ -> v1_calepinage_calepinages_releve_create
 - post /api/v1/calepinage/calepinages/{id}/restaurer-corbeille/ -> v1_calepinage_calepinages_restaurer_corbeille_create
@@ -7198,6 +7225,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/dupliquer-variante-gamme/ -> v1_ventes_devis_dupliquer_variante_gamme_create
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
+- get /api/v1/ventes/devis/{id}/economie/ -> v1_ventes_devis_economie_retrieve
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
 - get /api/v1/ventes/devis/{id}/etat-pdf/ -> v1_ventes_devis_etat_pdf_retrieve
 - get /api/v1/ventes/devis/{id}/etude-params/ -> v1_ventes_devis_etude_params_retrieve
@@ -7609,6 +7637,7 @@ components:
 - CalendrierHegirienReponse
 - Calepinage
 - CalepinageDossiersReglementaires
+- CalepinageExportProjet
 - CalepinageGenererDossier
 - CalepinageHorizon
 - CalepinageImportPlan

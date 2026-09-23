@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 49f6634ec6aa1bccd39eaa58ca3e99e7bfaa3fcc4e8caaf19f7f5c53a5279fd4
-Plan fingerprint: d1979dfea7c541fde906b7fc892e824b777ac41492454c56a7ea07eb549b8749
+Structure fingerprint: 4a88ab5385f2bd01861a2304a66e6c5c2cac3deb52c9de66bcdfc95df36fa541
+Plan fingerprint: c43696392c81fba82fb10df87148ebdc89d68e8ccb0644bf69aab269436cab52
 
 
 
@@ -329,6 +329,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **Lot 4 « Électrique pro » (CALX201-250 + 172/183, 21/09/2026)** : la TOPOLOGIE électrique entre dans le document et le résultat — contrats `roof_layout_v2.schema.json::electrical` (`equipements[]` 8 types fermés, `cheminements[]` avec `origine` plan/saisie/mixte), échantillons `electrique_equipements.json`, `electrique_cheminements.json`, `calepinage_troncons.json` (+ `verdicts[]`), `calepinage_sld.json`, `calepinage_raccordement.json`. Noyau pur `core/electrique/` : `VerdictElectrique {code, nature, statut, libelle, borne, valeur, source, temperature_*}` (CALX215/214, `bloquants`/`alertes` en DÉRIVENT ; `passer_outre` = dérogation écrite dans le fil par `services/electrique.py`), `ChoixLongueur` motivé (216), bornes onduleur `s_max_kva`/`dc_max_kwc` + paliers DC/AC en RÉGLAGES (213, `bornes_dc_ac`), branches AC micro-onduleurs (`calibrer_branches_ac`/`dimensionner_branches_ac`/`dimensionner_cables(branches_ac=)`, 210), `blocs_du_schema(branches_onduleur=)` « typique de N » (238), API publique du schéma `GEOMETRIE`/`places_du_schema`/`bloc_svg`/`rendre_schema(blocs=, bandeau=)`, nomenclature à références catalogue + coffrets réellement posés + métré par section (246/230/227), structure SOURCÉE ou omise (247, `regle_bom_structure`). Services : `polystring.py` (206/207), `micro_onduleurs.py` (209), `troncons.py` (224-226 : longueur réelle avec origine, section/chute par tronçon lues sur la NORME, chute cumulée verdictée une fois par côté, métré), `coffrets.py` (230-232), `raccordement.py` (241-243 + `bloc_raccordement` contrat CALX205), `terre.py` continuité (245), `agregation_electrique.py` (183), `sld.py`/`sld_export.py` (233-237 : édition persistée dans `resultat['sld_edition']`, gabarit par pays — `pays=ma` sans norme = gabarit neutre, DXF `ezdxf` reproductible), `etapes/ecretage.py` (172), `cables.py::course_de_chaine` (218), `electrique.py::verdict_publiable` (248 : publiable ⇔ zéro bloquant ET zéro conclusion sans source, exposé par la clé `publication` de `evaluer-electrique`). Routes : `troncons/` (GET), `raccordement/` (GET|POST), `schema-unifilaire/` (GET|POST), `schema-unifilaire.dxf/` (GET) — toutes greffées par affectation de classe (`rattachements.py`, la garde `check_api_contract` les voit). 3D (`apps/web/src/scripts/roofPro11/electrique3d.ts`, 219-223) : couche d'organes et de cheminements persistée par `serializeLayout` (`electrical`), calque « Électrique » piloté depuis `ToitureDesign.jsx` — réservé au lot 2 : attacher `electrique.groupe` à `sceneRoot` (`scene3d.ts`), Ctrl+Z/Y (`layoutEditor.ts`). Onglets React `features/calepinage/electrique/` : Équipements (222), Cheminement & câbles (229), Raccordement (244), Verdict électrique (249) ; `Rail.jsx` relaie `builderApi` à chaque onglet. Gardes : `scripts/check_seuils_electriques.py` (250 : aucun littéral numérique non trivial sans commentaire de provenance dans `core/electrique/` + services électriques ; base `seuils_electriques_exceptions.txt` ne peut que rétrécir, motifs manuscrits, tests épinglés par NOM de constante) ; `check_services_appeles` : une fonction publique de service sans appelant hors module = rouge (les assembleurs appelés dans leur propre module sont privés).
 
 - **Lot 2 « site, toit & atelier 3D » (21/09/2026, 53/54 tâches — CALX130 e2e ouverte)** : contrat `roof_layout_v2` étendu (retraits par arête, `modules[]`/`moduleId`, `numerotation`, `buildings[]`, obstacles `forme`/`contour`/`rayonM`, allées `usage`/`axe`/`largeurM`, `underlay`, `poseSurfaces` façade + `appuis`, `optimisation`, `scene`) ; backend `views/modules_disponibles.py` (`GET calepinages/<pk>/modules-disponibles/`), `views/plan_importe.py` (`GET …/plan-importe/`), `services/modules_stock.py`, `gabarits.py`/`traduction.py` (CALX405), `degagements.py` (allées par pays), `zones_reglementaires.py` (gabarits d'obstacle sans genre), `apps/crm/roof_detect.py` (bloc `batiment` OSM), `apps/ventes/selectors.py::_reglages_atelier` (mode devis) ; apps/web `roofPro11/` : `snap`, `mapDraw` (grille, fond, calage), `underlay`, `clavier`, `mesureUi`, `edges`/`edgesUi`, `layoutEditor`, `shadingUi` (seuil, info-bulle), `batiment`, `numerotation`, `moduleSelect`, `panStats` (totaux site), `poseSurfaces` (sol/ombrière/façade), `obstaclesUi` (polygone/cercle/allées), `optimizer` (cible, seuil, module, retraits par arête → `solveLive*`), `soleilPlay`, `calageFondUi`, `teinteAllees`, `optimisationDocument`, `fondDocument`, `infoBulleOmbrage` ; frontend `atelier/OngletCoupeRangees.jsx`, `CourseSoleil.jsx`, `ToitureDesign.jsx` (reglagesAtelier, modulesDisponibles, batiment OSM, fond photo/plan, panId).
+- **Lots 5 « Consommation, tarifs & finance » + 6 « Livrables & rapports » (23/09/2026, 76 tâches + CALX130 ; restent CALX327/329 + CALX96)** : consommation — contrat `roof_layout_v2::consumption` (courbe24/saisons/appareils, sérialisé/réhydraté par `prefill.ts`), `services/consommation.py` (`publier_kwh` via `apps/parametres/tariff.py::kwh_depuis_facture` — inversion dichotomique du barème, D5 ; `courbe_appareils` normalisée sur le total saisi ; `appliquer_ramadan` relit `apps.ventes.ramadan`, courbe en horloge ORDINAIRE), `charges.py` (VE `immediat|pv_optimise` + `puissance_borne_kw`, `courbe_climatisation` BTU/EER saisis, `cle_tarifaire`), profils société `pompage` + `jour_type` (migration `0011`), `profil_depuis_import` avec provenance ; batterie — `simuler_groupes` multi-groupes AC/DC, SOC cible, pointe avant/après, réserve par appareils secourus, rendement OBLIGATOIRE, capacités candidates SANS prix (stock `avec_prix=False`), `hors_reseau.py` seuils saisis, CALX63 (écrêtage récupéré DC, plafond d'injection justifié, stratégie TOU sur `tou_pour` société — jamais `DEFAULT_HOUR_TRANCHES` en repli) câblé dans `simulation.py` (`tou_heures`, capacité batterie/année sur `production.projection`) ; tarifs société — `models_tariff.py` TOU par saison/compensation typée/structures hors-Maroc/taxes séparées/indexation SAISIE/amortissement-fiscalité (migrations parametres **0103→0108** — 0097-0102 étaient tenues par la vague CAD), défauts financiers non sourcés SUPPRIMÉS (`DEFAULT_TRANCHE_TARIFFS`, `DEFAULT_PPA_TARIFF`, escalade 6 % → 0 % avec avertissement), audit de version branché sur `CHAMPS_LOT5`, écran `pages/parametres/TarificationSection.jsx` + `serializers_tariff.py::validate` ; économie (D5, `apps/ventes`) — contrat `ventes_economie.json`, `economie.py` (flux/VAN/TRI/retours, LCOE, prêts, P90, comparaison ; LECTURE STRICTE : tout taux manquant ⇒ indicateurs `None` motivés), route `GET devis/<pk>/economie/` (action greffée), onglet atelier `PanneauEconomie.jsx` (lecture seule, omissions visibles) ; documents — hub `services/rapport/` (une section par fichier : site, système+annexes fiches PDF, pertes+SVG serveur, production/PR/P50-P90, électrique+SLD, nomenclature SANS prix, preuve, annexe hypothèses, sommaire/pages), gabarit société + libellés FR/EN, sections choisies par société (migration `0012`, réglage `documents` servi par `parametres/`), `views/documents.py` (rapport-etude.pdf, diagramme-pertes.svg, documents/, apercu-document/, image-document POST — genres fermés `ombrage|sankey|plan3d`, validation octets magiques —, rapport-ombrage.pdf, plan-cablage.pdf|.dxf, export-projet.json, manuel-proprietaire.pdf, document-asbuilt.pdf, presentation-compacte.pdf, dossier-fin-chantier POST), inventaire à manques NOMMÉS + versions (`records.Attachment`) + journal, exports avec bloc de provenance UNIFIÉ (XLSX/DXF/JSON), packs (plans, rapport, câblage, fin de chantier), panneau `PanneauDocuments.jsx` (9 cartes, liens `ou_saisir` seulement vers de VRAIS onglets), e2e `calepinage-parcours.spec.js` (7 gestes lot 2, ancre `#rp9-areas-window` réparée) ; base `services_appeles_allow` élargie de 69 fonctions M4 (consommateurs planifiés lots 7-8, `--autoriser-croissance` de clôture, visible en revue).
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
 `ocr.py` (Zhipu/GLM vision invoice + document OCR, key-gated by `ZHIPU_API_KEY`) and
@@ -539,7 +540,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (353)**
+**Done (429)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -733,11 +734,13 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX60` — Ajouter à la fiche technique, en UNE migration, tout ce que la chaîne de pertes et…
 - `CALX61` — Brancher enfin le fournisseur de températures TMY que la chaîne électrique attend
 - `CALX62` — Accepter un fichier météo horaire déposé par la société, à la place de PVGIS, pour un…
+- `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
 - `CALX64` — Montrer la série horaire : tapis de chaleur jour × heure et journée type par mois
 - `CALX65` — Dire dans l'atelier laquelle des deux productions parle : l'estimation rapide du…
 - `CALX68` — Garder un brouillon local de l'atelier et proposer sa reprise
 - `CALX69` — Donner une saisie aux réglages société de simulation et d'électrique, avec provenance…
 - `CALX70` — Faire servir la simulation persistée par `GET resultat/`, avec un contrôle de fraîcheur
+- `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX81` — Porter au contrat le type d'arête corrigé à la main et le retrait PAR arête
 - `CALX82` — Porter au contrat un catalogue de MODULES dans le document et le module retenu par pan
 - `CALX83` — Porter au contrat la numérotation persistante des modules et des rangées
@@ -785,6 +788,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX126` — Totaliser le site par bâtiment et par surface de pose dans l'atelier
 - `CALX128` — Rendre les gestes de l'atelier utilisables au clavier et annoncés
 - `CALX129` — Basculer la vue 3D d'édition en plein écran
+- `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX132` — Proposer la hauteur OSM dans le panneau Bâtiment du constructeur, sans jamais l'écrire…
 - `CALX141` — Déclarer le contrat de la cascade de pertes séquentielle, sous une clé neuve
 - `CALX142` — Déclarer le contrat de la série horaire persistée
@@ -888,14 +892,87 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX248` — Prononcer un verdict électrique publiable unique, entrée par entrée sourcée
 - `CALX249` — Donner à l'atelier son onglet « Verdict électrique »
 - `CALX250` — Garder en CI qu'aucun seuil électrique n'entre sans source
+- `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
+- `CALX253` — Sérialiser la consommation de l'atelier dans le document
+- `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
 - `CALX255` — Lire la consommation du document côté serveur
+- `CALX256` — Persister la méthode « somme d'appareils » avec la provenance de chaque appareil
+- `CALX257` — Convertir les montants MAD en kWh par le barème de la société
+- `CALX258` — Ouvrir les profils société au segment pompage et au type de jour
+- `CALX259` — Enregistrer une courbe importée comme profil société, avec sa provenance de fichier
+- `CALX260` — Décaler la courbe pendant le Ramadan sans introduire un seul chiffre neuf
+- `CALX261` — Offrir les deux modes de recharge du véhicule électrique
+- `CALX262` — Borner la recharge par la puissance de la borne et dire le débordement
+- `CALX263` — Modéliser la climatisation en BTU avec un EER saisi
 - `CALX264` — Faire dépendre le COP de la pompe à chaleur de la température saisie
+- `CALX265` — Rattacher une clé tarifaire à chaque charge déclarée
+- `CALX267` — Simuler plusieurs groupes de batteries, chacun avec son couplage
+- `CALX268` — Ajouter la commande horaire à SOC cible par groupe
+- `CALX269` — Publier la pointe avant et après effacement
+- `CALX270` — Déduire la réserve de secours des appareils réellement secourus
+- `CALX271` — Proposer des capacités candidates depuis la motivation du client, sans aucun prix
+- `CALX272` — Rendre saisissables les seuils de protection de la batterie hors-réseau
+- `CALX274` — Faire saisir les tranches horaires et leurs tarifs par la société, avec source et date
+- `CALX275` — Découper les tranches horaires par saison
+- `CALX276` — Typer le mécanisme de compensation du surplus
+- `CALX277` — Admettre une grille tarifaire à prix unique ou à deux postes horaires pour les sociétés…
+- `CALX278` — Séparer les taxes des prix dans la grille société
+- `CALX279` — Faire saisir l'indexation annuelle et trancher la contradiction interne
+- `CALX280` — Poser le contrat du bloc économie servi par `apps/ventes`
+- `CALX281` — Construire le flux de trésorerie, la VAN, le TRI et le retour actualisé dans…
+- `CALX282` — Calculer le coût actualisé du kWh (LCOE)
+- `CALX283` — Modéliser les prêts : annuité, échéances constantes, différé
+- `CALX284` — Ajouter l'amortissement et la fiscalité en paramètres société
+- `CALX285` — Faire passer le P90 dans le flux de trésorerie
+- `CALX286` — Remplacer les défauts financiers non sourcés par une omission motivée, et le prouver
+- `CALX287` — Exiger un tarif PPA saisi
+- `CALX288` — Servir le bloc économie en lecture seule depuis `apps/ventes`
+- `CALX289` — Monter un onglet « Économie » en lecture seule dans l'atelier
+- `CALX290` — Comparer deux scénarios sur le MÊME flux
+- `CALX291` — Publier le contrat de l'inventaire « Documents »
+- `CALX292` — Publier le contrat des sections du rapport d'étude
+- `CALX293` — Publier le contrat de l'export JSON projet + résultats
+- `CALX294` — Donner aux documents du module un gabarit société (en-tête, pied, logo, couleurs)
+- `CALX295` — Imprimer une page de garde avec l'identité société et projet
+- `CALX296` — Servir les documents techniques en français et en anglais
+- `CALX297` — Bâtir le rapport d'étude PDF et son endpoint
+- `CALX298` — Écrire la section Site et source météo du rapport
+- `CALX299` — Écrire la section Système, l'annexe des fiches et JOINDRE les fiches PDF constructeur
+- `CALX300` — Écrire la section Chaîne de pertes SÉQUENTIELLE (table)
+- `CALX301` — Écrire la section Production mensuelle, PR et P50/P90
+- `CALX302` — Écrire la section Ombrage et recevoir sa carte de chaleur produite par le navigateur
+- `CALX303` — Écrire la section Électrique du rapport, schéma unifilaire inclus
+- `CALX304` — Écrire la section Nomenclature SANS prix du rapport
+- `CALX305` — Écrire la section Régime de preuve et empreinte du rapport
+- `CALX306` — Donner au rapport un sommaire, une pagination et un test de pages
+- `CALX307` — Laisser la société choisir les sections incluses dans ses rapports
+- `CALX308` — Rendre le diagramme de pertes en SVG côté serveur
+- `CALX309` — Rendre enfin le plan de toiture et le plan de masse dans le dossier technique
+- `CALX310` — Produire le plan de câblage des chaînes, en PDF et en DXF
+- `CALX312` — Exporter le projet et ses résultats en JSON versionné
+- `CALX313` — Laisser choisir les colonnes et le pas de temps de l'export horaire
+- `CALX314` — Poser la provenance sur TOUS les exports, pas seulement le CSV
+- `CALX315` — Produire une présentation compacte INTERNE de deux pages, sans aucun montant
+- `CALX316` — Produire le manuel du propriétaire depuis un gabarit société
+- `CALX317` — Produire un rapport d'ombrage autonome
+- `CALX318` — Imprimer le document as-built (prévu, posé, écarts, photos)
+- `CALX319` — Assembler le dossier de fin de chantier du calepinage
+- `CALX320` — Étendre le panneau Documents : versions, données manquantes nommées, images jointes
+- `CALX321` — Nommer, donnée par donnée, ce qui manque à chaque document
+- `CALX322` — Versionner les documents produits
+- `CALX323` — Servir un aperçu HTML avant le PDF
+- `CALX324` — Journaliser l'émission d'un document dans le fil du calepinage
+- `CALX325` — Dire sur la pièce qu'elle vient d'une conception verrouillée ou archivée
+- `CALX326` — Faire entrer le rapport d'étude et le plan de câblage dans le dossier technique
+- `CALX328` — Verrouiller le nombre de pages attendu de chaque document
+- `CALX330` — Imprimer l'annexe « hypothèses, sources et omissions » du rapport
 - `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
 - `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
 - `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
+- `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 
-**Open — to build (253)**
+**Open — to build (177)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -978,87 +1055,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX63` — Compléter le dispatch batterie : écrêtage récupéré en couplage DC, stratégie « plafond…
-- `CALX72` — Saisir dans l'écran Tarification les réglages ajoutés par le lot 5
 - `CALX96` — Ajouter les formes de toit en L et en T à la bibliothèque de préréts
-- `CALX130` — Prouver le parcours de conception enrichi de bout en bout
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
 - `CALX200` — Trancher le pas infra-horaire
-- `CALX251` — Déclarer `consumption` dans le contrat `roof_layout` v2
-- `CALX253` — Sérialiser la consommation de l'atelier dans le document
-- `CALX254` — Ré-hydrater la consommation au rechargement de l'atelier
-- `CALX256` — Persister la méthode « somme d'appareils » avec la provenance de chaque appareil
-- `CALX257` — Convertir les montants MAD en kWh par le barème de la société
-- `CALX258` — Ouvrir les profils société au segment pompage et au type de jour
-- `CALX259` — Enregistrer une courbe importée comme profil société, avec sa provenance de fichier
-- `CALX260` — Décaler la courbe pendant le Ramadan sans introduire un seul chiffre neuf
-- `CALX261` — Offrir les deux modes de recharge du véhicule électrique
-- `CALX262` — Borner la recharge par la puissance de la borne et dire le débordement
-- `CALX263` — Modéliser la climatisation en BTU avec un EER saisi
-- `CALX265` — Rattacher une clé tarifaire à chaque charge déclarée
-- `CALX267` — Simuler plusieurs groupes de batteries, chacun avec son couplage
-- `CALX268` — Ajouter la commande horaire à SOC cible par groupe
-- `CALX269` — Publier la pointe avant et après effacement
-- `CALX270` — Déduire la réserve de secours des appareils réellement secourus
-- `CALX271` — Proposer des capacités candidates depuis la motivation du client, sans aucun prix
-- `CALX272` — Rendre saisissables les seuils de protection de la batterie hors-réseau
-- `CALX274` — Faire saisir les tranches horaires et leurs tarifs par la société, avec source et date
-- `CALX275` — Découper les tranches horaires par saison
-- `CALX276` — Typer le mécanisme de compensation du surplus
-- `CALX277` — Admettre une grille tarifaire à prix unique ou à deux postes horaires pour les sociétés…
-- `CALX278` — Séparer les taxes des prix dans la grille société
-- `CALX279` — Faire saisir l'indexation annuelle et trancher la contradiction interne
-- `CALX280` — Poser le contrat du bloc économie servi par `apps/ventes`
-- `CALX281` — Construire le flux de trésorerie, la VAN, le TRI et le retour actualisé dans…
-- `CALX282` — Calculer le coût actualisé du kWh (LCOE)
-- `CALX283` — Modéliser les prêts : annuité, échéances constantes, différé
-- `CALX284` — Ajouter l'amortissement et la fiscalité en paramètres société
-- `CALX285` — Faire passer le P90 dans le flux de trésorerie
-- `CALX286` — Remplacer les défauts financiers non sourcés par une omission motivée, et le prouver
-- `CALX287` — Exiger un tarif PPA saisi
-- `CALX288` — Servir le bloc économie en lecture seule depuis `apps/ventes`
-- `CALX289` — Monter un onglet « Économie » en lecture seule dans l'atelier
-- `CALX290` — Comparer deux scénarios sur le MÊME flux
-- `CALX291` — Publier le contrat de l'inventaire « Documents »
-- `CALX292` — Publier le contrat des sections du rapport d'étude
-- `CALX293` — Publier le contrat de l'export JSON projet + résultats
-- `CALX294` — Donner aux documents du module un gabarit société (en-tête, pied, logo, couleurs)
-- `CALX295` — Imprimer une page de garde avec l'identité société et projet
-- `CALX296` — Servir les documents techniques en français et en anglais
-- `CALX297` — Bâtir le rapport d'étude PDF et son endpoint
-- `CALX298` — Écrire la section Site et source météo du rapport
-- `CALX299` — Écrire la section Système, l'annexe des fiches et JOINDRE les fiches PDF constructeur
-- `CALX300` — Écrire la section Chaîne de pertes SÉQUENTIELLE (table)
-- `CALX301` — Écrire la section Production mensuelle, PR et P50/P90
-- `CALX302` — Écrire la section Ombrage et recevoir sa carte de chaleur produite par le navigateur
-- `CALX303` — Écrire la section Électrique du rapport, schéma unifilaire inclus
-- `CALX304` — Écrire la section Nomenclature SANS prix du rapport
-- `CALX305` — Écrire la section Régime de preuve et empreinte du rapport
-- `CALX306` — Donner au rapport un sommaire, une pagination et un test de pages
-- `CALX307` — Laisser la société choisir les sections incluses dans ses rapports
-- `CALX308` — Rendre le diagramme de pertes en SVG côté serveur
-- `CALX309` — Rendre enfin le plan de toiture et le plan de masse dans le dossier technique
-- `CALX310` — Produire le plan de câblage des chaînes, en PDF et en DXF
-- `CALX312` — Exporter le projet et ses résultats en JSON versionné
-- `CALX313` — Laisser choisir les colonnes et le pas de temps de l'export horaire
-- `CALX314` — Poser la provenance sur TOUS les exports, pas seulement le CSV
-- `CALX315` — Produire une présentation compacte INTERNE de deux pages, sans aucun montant
-- `CALX316` — Produire le manuel du propriétaire depuis un gabarit société
-- `CALX317` — Produire un rapport d'ombrage autonome
-- `CALX318` — Imprimer le document as-built (prévu, posé, écarts, photos)
-- `CALX319` — Assembler le dossier de fin de chantier du calepinage
-- `CALX320` — Étendre le panneau Documents : versions, données manquantes nommées, images jointes
-- `CALX321` — Nommer, donnée par donnée, ce qui manque à chaque document
-- `CALX322` — Versionner les documents produits
-- `CALX323` — Servir un aperçu HTML avant le PDF
-- `CALX324` — Journaliser l'émission d'un document dans le fil du calepinage
-- `CALX325` — Dire sur la pièce qu'elle vient d'une conception verrouillée ou archivée
-- `CALX326` — Faire entrer le rapport d'étude et le plan de câblage dans le dossier technique
 - `CALX327` — Interdire tout mot de montant dans le TEXTE EXTRAIT de chaque document du module
-- `CALX328` — Verrouiller le nombre de pages attendu de chaque document
 - `CALX329` — Poser une garde CI : un document déclaré a un rendu
-- `CALX330` — Imprimer l'annexe « hypothèses, sources et omissions » du rapport
 - `CALX331` — Figer le contrat de la comparaison de plusieurs calepinages
 - `CALX332` — Figer le contrat des étiquettes libres d'un calepinage
 - `CALX333` — Figer le contrat du différentiel entre deux versions
@@ -1120,7 +1122,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX398` — Re-mesurer le budget de poids du module après le lot
 - `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
 - `CALX400` — Geler les repères DOM `cal-*` en contrat
-- `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
