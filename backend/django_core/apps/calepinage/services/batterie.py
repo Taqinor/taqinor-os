@@ -48,7 +48,8 @@ from __future__ import annotations
 import copy
 import math
 
-__all__ = ['COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE', 'STRATEGIES',
+__all__ = ['COUPLAGES', 'FENETRES_MAX', 'GRANDEURS_BATTERIE',
+           'SOURCES_RENDEMENT', 'STRATEGIES',
            'StrategieInvalide', 'reserve_depuis_appareils',
            'simuler_batterie', 'simuler_groupes', 'specs_batterie',
            'tranches_horaires']
@@ -350,6 +351,44 @@ def _publier_fenetres(fenetres):
             for fenetre in fenetres]
 
 
+#: CALX404 — les provenances publiables d'un rendement aller-retour.
+SOURCES_RENDEMENT = ('fiche', 'hypothese', 'saisie')
+
+
+def _rendement(rendement_ar_pct):
+    """CALX404 — ``(rendement_pct, source)``, ou un REFUS nommant le champ.
+
+    Accepte un nombre SAISI (``source: 'saisie'``) ou la grandeur telle que
+    :func:`specs_batterie` la publie (``{valeur, source}``, source ``fiche``
+    ou ``hypothese`` nommée). Absent ou non numérique ⇒ refus : une batterie
+    dont on ignore le rendement n'est JAMAIS simulée sans perte.
+    """
+    source = 'saisie'
+    valeur = rendement_ar_pct
+    if isinstance(rendement_ar_pct, dict):
+        valeur = rendement_ar_pct.get('valeur')
+        source = rendement_ar_pct.get('source') or None
+    rendement = _nombre(valeur)
+    if rendement is None:
+        raise StrategieInvalide(
+            'Le rendement aller-retour de la batterie est inconnu : complétez '
+            'la fiche produit de la batterie (« rendement aller-retour », '
+            'bat_rendement_ar_pct) ou saisissez-le. Aucun rendement de 100 % '
+            'n’est supposé — une batterie sans pertes n’existe pas.',
+            champ='rendement_ar_pct')
+    if not 0 < rendement <= 100:
+        raise StrategieInvalide(
+            'Le rendement aller-retour se compte en pourcentage, strictement '
+            f'positif et au plus 100 (reçu : {valeur!r}).',
+            champ='rendement_ar_pct')
+    if source not in SOURCES_RENDEMENT:
+        raise StrategieInvalide(
+            'La provenance du rendement aller-retour doit être nommée '
+            f'({", ".join(SOURCES_RENDEMENT)}) — reçu : {source!r}.',
+            champ='rendement_ar_pct')
+    return rendement, source
+
+
 def reserve_depuis_appareils(appareils, *, duree_h):
     """CALX270 — la réserve de secours DÉDUITE des appareils réellement secourus.
 
@@ -567,12 +606,19 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         effacement de pointe seulement, ``None`` sinon : la pointe que la
         prime de puissance facture, avant et après la batterie, et chaque
         pas où la batterie n'a pas suffi ``{rang, heure, soutirage_kw,
-        depassement_kw}``), ``parametres``.
+        depassement_kw}``), ``batterie`` (CALX404 — ``{rendement_ar_pct,
+        source, rendement_un_sens}`` : le rendement RETENU, sa provenance
+        ``fiche`` | ``hypothese`` | ``saisie`` et la racine appliquée à
+        chaque sens), ``parametres``.
 
     Raises:
         StrategieInvalide: stratégie inconnue, paramètre saisi manquant,
             capacité ou puissance absente (on ne fait pas tourner une batterie
-            dont on ignore la taille).
+            dont on ignore la taille), rendement aller-retour absent ou non
+            numérique (CALX404 — ``rendement_ar_pct`` : jamais un rendement
+            de 100 % supposé ; parité OpenSolar, qui lit le rendement sur la
+            fiche et en tire chaque sens par sa racine,
+            https://support.opensolar.com/hc/en-us/articles/12382460685455-How-OpenSolar-Models-Battery-Energy-Storage).
     """
     if strategie not in STRATEGIES:
         raise StrategieInvalide(
@@ -610,10 +656,10 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
     pas = _nombre(pas_heures) or 1.0
     if pas <= 0:
         pas = 1.0
-    rendement = _nombre(rendement_ar_pct)
+    rendement, source_rendement = _rendement(rendement_ar_pct)
     # Rendement ALLER-RETOUR : la racine de part et d'autre, pour que le
     # produit des deux sens vaille exactement le rendement publié.
-    eta = math.sqrt(max(0.0, min(1.0, (rendement or 100.0) / 100.0)))
+    eta = math.sqrt(rendement / 100.0)
 
     seuil = _nombre(seuil_effacement_kw)
     if strategie == 'peak_shaving' and (seuil is None or seuil < 0):
@@ -781,6 +827,13 @@ def simuler_batterie(charge_horaire, production_horaire, *, strategie,
         'energie_effacee_kwh': (round(total_efface, 3)
                                 if strategie == 'peak_shaving' else None),
         **pointe,
+        # CALX404 — le rendement RETENU et sa provenance : jamais un 100 %
+        # muet ; chaque sens vaut sa racine carrée.
+        'batterie': {
+            'rendement_ar_pct': rendement,
+            'source': source_rendement,
+            'rendement_un_sens': round(eta, 6),
+        },
         'parametres': {
             'capacite_utile_kwh': capacite,
             'puissance_charge_kw': p_charge,
@@ -981,6 +1034,11 @@ def _agreger(lus, resultats, traces, *, deficits, pas, heure_de_depart):
     })
     agregat.update(_pointe_agregee(resultats, traces, deficits=deficits,
                                    pas=pas, heure_de_depart=heure_de_depart))
+    # CALX404 — le rendement de l'agrégat : publié s'il est COMMUN, sinon
+    # ``None`` champ par champ (jamais une moyenne qui flatterait le parc).
+    agregat['batterie'] = {
+        cle: _commun([resultat['batterie'][cle] for resultat in resultats])
+        for cle in resultats[0]['batterie']}
     return agregat
 
 

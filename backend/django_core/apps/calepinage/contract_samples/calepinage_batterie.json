@@ -73,6 +73,11 @@
           "pointe_apres_kw": null,
           "heures_au_dessus_du_seuil": null,
           "depassements_residuels": null,
+          "batterie": {
+            "rendement_ar_pct": 90.0,
+            "source": "saisie",
+            "rendement_un_sens": 0.948683
+          },
           "parametres": {
             "capacite_utile_kwh": 3.0,
             "puissance_charge_kw": 2.0,
@@ -116,6 +121,11 @@
           "pointe_apres_kw": null,
           "heures_au_dessus_du_seuil": null,
           "depassements_residuels": null,
+          "batterie": {
+            "rendement_ar_pct": 81.0,
+            "source": "saisie",
+            "rendement_un_sens": 0.9
+          },
           "parametres": {
             "capacite_utile_kwh": 3.0,
             "puissance_charge_kw": 2.0,
@@ -155,6 +165,11 @@
       "pointe_apres_kw": null,
       "heures_au_dessus_du_seuil": null,
       "depassements_residuels": null,
+      "batterie": {
+        "rendement_ar_pct": null,
+        "source": "saisie",
+        "rendement_un_sens": null
+      },
       "parametres": {
         "capacite_utile_kwh": 6.0,
         "puissance_charge_kw": 4.0,
