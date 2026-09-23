@@ -384,10 +384,16 @@ def construire_contexte(calepinage, *, entree=None, layout=None,
     rattachement = affectation_du_calepinage(conception, donnees)
     table_affectation = list(rattachement['affectation'])
 
+    # CALX63 — la grille horaire de la société (heures seules, jamais un prix)
+    # pour la stratégie « heures_tarif » : aucune grille saisie ⇒ None, et la
+    # stratégie publie son omission en nommant `parametres.tou_heures`.
+    from .batterie import heures_tarif_societe
+
     contexte = {
         # ── les réglages société (CALX145) ──────────────────────────────
         'reglages_simulation': dict(reglages.get('simulation') or {}),
         'electrique_societe': dict(reglages.get('electrique_societe') or {}),
+        'tou_heures': heures_tarif_societe(company),
         # ── les fiches produit, déjà résolues ───────────────────────────
         'fiche_module': materiel_resolu.get('module') or {},
         'fiche_onduleur': materiel_resolu.get('onduleur') or {},
@@ -956,7 +962,13 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     _ajouter_avertissement(blocs, blocs['validation'].get('avertissement'))
 
     projection = tableau_pluriannuel(total.get('p50_kwh'), contexte)
-    blocs['production']['projection'] = projection['annees']
+    # CALX63 — chaque année de la projection porte la capacité restante de la
+    # batterie quand le vieillissement est publié (fiche cycles/EOL saisie) ;
+    # sans lui, les lignes sortent inchangées.
+    from .batterie import capacite_batterie_par_annee
+    blocs['production']['projection'] = capacite_batterie_par_annee(
+        projection['annees'],
+        ((blocs.get('batterie') or {}).get('total') or {}).get('vieillissement'))
     if projection.get('motif_omission'):
         _ajouter_avertissement(blocs, MOTIF_PROJECTION.format(
             motif=projection['motif_omission']))
