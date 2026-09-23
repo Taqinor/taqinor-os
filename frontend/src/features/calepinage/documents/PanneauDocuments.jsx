@@ -4,6 +4,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { Button, Card, Spinner } from '../../../ui'
+import { deposerCarteDeChaleur } from './deposerImage'
 
 /* ============================================================================
    CALX19 — LE PANNEAU « DOCUMENTS » : l'INVENTAIRE des sorties, enfin lu.
@@ -301,7 +302,48 @@ function SectionConception({
   )
 }
 
-export default function PanneauDocuments({ calepinageId }) {
+/** CALX302 — les images PRODUITES PAR LE NAVIGATEUR jointes au calepinage.
+    Aucun rasteriseur SVG côté serveur (même limite que `planche_png`,
+    CAL175) : la carte de chaleur d'ombrage est rendue par l'atelier 3D
+    (`builderApi.renderImageHd(2)`, CALX222 — la même API que `exportImage
+    .js`) puis DÉPOSÉE (`documents/deposerImage.js`), jamais générée ici.
+    Sans `builderApi` (panneau ouvert hors de la scène 3D), le bouton le DIT
+    au lieu d'échouer en silence — même discipline que `EquipementsElectriques
+    .jsx`. Le genre et l'horodatage du DERNIER dépôt réussi de cette session
+    s'affichent sous le bouton — un historique complet vit dans l'inventaire
+    `documents/` (CALX291/321), hors périmètre de cette carte. */
+function SectionImages({ builderApi, enCours, erreurs, deposeLe, onDeposerCarteDeChaleur }) {
+  return (
+    <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-images">
+      <p className="text-sm font-medium text-foreground">Images de l’atelier</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant="outline"
+          loading={enCours === 'ombrage'}
+          disabled={!builderApi}
+          onClick={onDeposerCarteDeChaleur}
+          data-testid="cal-doc-bouton-joindre-ombrage"
+        >
+          Joindre la carte de chaleur
+        </Button>
+      </div>
+      {!builderApi && (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-doc-images-outil-absent">
+          Outil 3D non ouvert — ouvrez la conception pour joindre une carte de chaleur.
+        </p>
+      )}
+      {deposeLe?.genre === 'ombrage' && (
+        <p role="status" className="mt-2 text-xs text-foreground" data-testid="cal-doc-images-confirmation">
+          Carte de chaleur jointe ({deposeLe.deposeLe}).
+        </p>
+      )}
+      <ErreursSortie erreurs={erreurs} />
+    </div>
+  )
+}
+
+export default function PanneauDocuments({ calepinageId, builderApi = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -323,6 +365,11 @@ export default function PanneauDocuments({ calepinageId }) {
   const [enCoursConception, setEnCoursConception] = useState(null)
   const [erreurConception, setErreurConception] = useState(null)
   const [confirmationConception, setConfirmationConception] = useState(null)
+  // CALX302 — dépôt d'image : 'ombrage' | null pendant l'appel, ses erreurs
+  // (`{champ,message}`) et le dernier dépôt RÉUSSI de cette session.
+  const [enCoursImage, setEnCoursImage] = useState(null)
+  const [erreursImage, setErreursImage] = useState(null)
+  const [derniereImageDeposee, setDerniereImageDeposee] = useState(null)
 
   const parCode = useMemo(() => {
     const carte = new Map()
@@ -419,6 +466,24 @@ export default function PanneauDocuments({ calepinageId }) {
     }
   }
 
+  // CALX302 — joint la carte de chaleur ACTIVE de l'atelier 3D. Jamais
+  // d'exception non attrapée : `deposerCarteDeChaleur` rend toujours
+  // `{ok, motif, erreurs?}`, régime IDENTIQUE aux autres boutons du panneau.
+  async function joindreCarteDeChaleur() {
+    setErreursImage(null)
+    setEnCoursImage('ombrage')
+    try {
+      const resultat = await deposerCarteDeChaleur(id, builderApi)
+      if (resultat.ok) {
+        setDerniereImageDeposee({ genre: resultat.genre, deposeLe: resultat.deposeLe })
+      } else {
+        setErreursImage(resultat.erreurs || [{ champ: '', message: resultat.motif }])
+      }
+    } finally {
+      setEnCoursImage(null)
+    }
+  }
+
   if (loading) return <Spinner />
   if (error) {
     return <p className="text-sm text-destructive" data-testid="cal-doc-erreur">{error}</p>
@@ -484,6 +549,15 @@ export default function PanneauDocuments({ calepinageId }) {
         confirmation={confirmationConception}
         onExporter={exporterConception}
         onImporter={importerConception}
+      />
+      {/* CALX302 — HORS inventaire (aucune sortie ne le déclare), comme
+          `SectionConception` ci-dessus. */}
+      <SectionImages
+        builderApi={builderApi}
+        enCours={enCoursImage}
+        erreurs={erreursImage}
+        deposeLe={derniereImageDeposee}
+        onDeposerCarteDeChaleur={joindreCarteDeChaleur}
       />
     </Card>
   )

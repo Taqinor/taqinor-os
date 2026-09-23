@@ -287,6 +287,16 @@ def _versions_pour(calepinage, code):
     return versions_du_document(calepinage, code)
 
 
+def _images_pour(calepinage):
+    """Les images déposées par le navigateur (CALX302,
+    ``services/images_document.py``) — MÊME GESTE que ``_versions_pour``
+    ci-dessus (CALX322) : SEULE la ligne ``'images': ...`` de
+    ``inventaire_des_documents`` a changé pour l'appeler."""
+    from ..images_document import images_du_calepinage
+
+    return images_du_calepinage(calepinage)
+
+
 def _entree_document(code, libelle, format_, endpoint, produit_par,
                      disponible, motif, manque, versions):
     return {
@@ -340,10 +350,10 @@ def inventaire_des_documents(calepinage):
         'version_moteur': getattr(calepinage, 'version_moteur', '') or None,
         'langue': langue,
         'documents': documents,
-        # CALX291 : le dépôt d'image (POST image-document/, CALX302) est
-        # hors périmètre de CALX321 — aucune image ne peut exister tant que
-        # cette porte n'a pas été posée.
-        'images': [],
+        # CALX302 : la porte est posée (``POST image-document/``,
+        # ``services/images_document.py``) — les images RÉELLEMENT déposées,
+        # la plus récente d'abord.
+        'images': _images_pour(calepinage),
     }
 
 
