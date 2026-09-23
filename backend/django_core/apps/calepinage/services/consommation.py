@@ -25,13 +25,17 @@ LES RÈGLES POSÉES ICI
    vient du client.
 4. **La conversion MAD → kWh n'est PAS faite ici.** Elle dépend du barème du
    distributeur ; tant qu'elle n'est pas branchée, ``kwh`` vaut ``null`` avec
-   sa raison, jamais un kWh dérivé d'un prix moyen supposé.
+   sa raison, jamais un kWh dérivé d'un prix moyen supposé. CALX257 : elle est
+   écrite dans le barème SOCIÉTÉ (``apps.parametres.tariff.
+   kwh_depuis_facture``) ; :func:`publier_kwh` ne fait que l'appeler et
+   publier ``kwh`` avec son motif — cette règle reste vraie (D5).
 """
 from __future__ import annotations
 
-__all__ = ['ImportCourbeInvalide', 'ProfilInvalide', 'SOURCES_MOIS',
-           'UNITES', 'apercu_courbe_csv', 'interpoler_factures',
-           'profil_depuis_lead', 'profil_depuis_layout', 'profil_mensuel']
+__all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide', 'ProfilInvalide',
+           'SOURCES_MOIS', 'UNITES', 'apercu_courbe_csv',
+           'interpoler_factures', 'profil_depuis_lead',
+           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh']
 
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
@@ -43,6 +47,13 @@ MOIS = tuple(range(1, 13))
 #: devis, reprise à l'identique ci-dessous).
 MOIS_FACTURE_HIVER = 1
 MOIS_FACTURE_ETE = 7
+
+#: L'avertissement d'un profil dont les kWh ne sont pas convertis — retiré par
+#: :func:`publier_kwh` dès que le barème société a été consulté.
+AVIS_KWH_NON_CONVERTIS = (
+    'Les montants sont en MAD par mois. La conversion en kWh dépend du '
+    'barème du distributeur : elle n\'est pas faite ici, et « kwh » reste '
+    '« non calculé » plutôt qu\'estimé à partir d\'un prix moyen.')
 
 
 class ProfilInvalide(ValueError):
@@ -146,10 +157,7 @@ def profil_mensuel(*, facture_hiver, facture_ete=None, ete_differente=False,
             "Aucune facture n'est renseignée sur ce lead : le profil de "
             'consommation reste VIDE et attend une saisie — aucune facture '
             "moyenne n'est inventée.")
-    avertissements.append(
-        'Les montants sont en MAD par mois. La conversion en kWh dépend du '
-        'barème du distributeur : elle n\'est pas faite ici, et « kwh » reste '
-        '« non calculé » plutôt qu\'estimé à partir d\'un prix moyen.')
+    avertissements.append(AVIS_KWH_NON_CONVERTIS)
 
     connus = [ligne['facture_mad'] for ligne in lignes
               if ligne['facture_mad'] is not None]
@@ -199,6 +207,88 @@ def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
         saisies=saisies,
         conso_mensuelle_kwh=getattr(lead, 'conso_mensuelle_kwh', None),
     )
+
+
+# ── CALX257 — les kWh publiés par le barème de la SOCIÉTÉ ─────────────────
+#
+# LE CONSTAT : la règle 4 de l'en-tête laissait ``kwh: null`` sur les douze
+# mois alors que le barème existe en réglage société (Paramètres →
+# Tarification & ROI). Parité : OpenSolar, le tarif porte la conversion
+# facture ↔ énergie.
+#
+# LA RÈGLE (D5) : l'inversion vit dans ``apps.parametres.tariff`` (app de
+# FONDATION — import direct autorisé), à côté des jumeaux kWh → MAD. Ce module
+# ne fait QUE l'appeler et recopier ``kwh`` + son motif : aucune arithmétique
+# de montant ici (garde de source : ``tests/test_calx257_kwh_publie.py``). La
+# classe tarifaire est SAISIE ; sans société, aucun réglage n'est lu — jamais
+# le réglage de repli « sans société » — et ``kwh`` reste ``null`` avec le
+# motif qui nomme le réglage manquant.
+
+def _lire_reglages_tarif(company):
+    """Le réglage « Tarification & ROI » DE LA SOCIÉTÉ (fondation parametres)."""
+    from apps.parametres.models_tariff import TariffSettings
+    return TariffSettings.get(company=company)
+
+
+def publier_kwh(profil, company, *, classe, lire_reglages=None):
+    """Renseigne ``kwh`` de chaque mois par le barème SOCIÉTÉ, avec son motif.
+
+    Args:
+        profil: un profil de :func:`profil_mensuel` / :func:`profil_depuis_lead`
+            (modifié EN PLACE et rendu).
+        company: la société — posée côté serveur. ``None`` ⇒ aucun réglage
+            n'est lu et chaque ``kwh`` reste ``None`` avec le motif.
+        classe: ``residentiel`` | ``force_motrice`` — SAISIE, jamais supposée.
+        lire_reglages: point d'injection (tests) ; par défaut
+            ``TariffSettings.get(company=...)``.
+
+    Returns:
+        Le profil : chaque mois porte ``kwh`` et ``kwh_motif`` (vide quand la
+        conversion a abouti) ; ``conversion_kwh`` publie la classe, le réglage
+        et sa version, le périmètre du montant inversé et les motifs.
+
+    Raises:
+        ProfilInvalide: classe absente ou inconnue (``champ='classe'``).
+    """
+    from apps.parametres.tariff import (
+        PERIMETRE_INVERSION, REGLAGE_TARIF, FactureInvalide,
+        kwh_depuis_facture,
+    )
+
+    reglages = None
+    if company is not None:
+        reglages = (lire_reglages or _lire_reglages_tarif)(company)
+
+    motifs = []
+    converti = False
+    for ligne in profil['mois']:
+        try:
+            conversion = kwh_depuis_facture(
+                reglages, ligne['facture_mad'], classe=classe)
+        except FactureInvalide as refus:
+            raise ProfilInvalide(refus.motif, champ=refus.champ) from refus
+        ligne['kwh'] = (None if conversion['kwh'] is None
+                        else float(conversion['kwh']))
+        ligne['kwh_motif'] = conversion['motif']
+        if conversion['kwh'] is not None:
+            converti = True
+        elif conversion['motif'] not in motifs:
+            motifs.append(conversion['motif'])
+
+    profil['conversion_kwh'] = {
+        'classe': classe,
+        'reglage': REGLAGE_TARIF,
+        'reglage_version': getattr(reglages, 'version', None),
+        'perimetre': PERIMETRE_INVERSION,
+        'motifs': motifs,
+    }
+    avertissements = [avis for avis in profil['avertissements']
+                      if avis != AVIS_KWH_NON_CONVERTIS]
+    avertissements.extend(motifs)
+    if converti:
+        avertissements.append(PERIMETRE_INVERSION)
+    profil['avertissements'] = avertissements
+    return profil
 
 
 # ── CALX255 — le profil de consommation depuis le DOCUMENT (atelier) ─────
