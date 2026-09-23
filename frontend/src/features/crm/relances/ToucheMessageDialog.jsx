@@ -26,6 +26,13 @@ import {
 // l'anglais ni l'arabe classique : aucun texte de relance validé (CAD64).
 const LANGUES_MESSAGE = [['fr', 'FR'], ['darija', 'Darija']]
 const LIBELLE_LANGUE = { fr: 'le français', darija: 'la darija' }
+// CAD64 — le nom de la langue DEMANDÉE dans l'avertissement de repli
+// (« ce texte n'existe pas encore en darija »). `en`/`ar` viennent du
+// résolveur commun des documents client (langue documentaire du client).
+const NOM_LANGUE = { darija: 'darija', en: 'anglais', ar: 'arabe' }
+// Écritures de droite à gauche — seulement quand le texte EST dans cette
+// langue (jamais pour une version française partie en repli).
+const LANGUES_RTL = ['darija', 'ar']
 
 export default function ToucheMessageDialog({
   etape, open, onOpenChange, onSent,
@@ -79,6 +86,10 @@ export default function ToucheMessageDialog({
   const langueAffichee = langueChoisie ?? rendu?.langue ?? null
   const langueFiche = langueEnregistree ?? etape?.lead_langue ?? 'fr'
   const proposerEnregistrement = Boolean(langueChoisie) && langueChoisie !== langueFiche
+  // CAD64 — la langue du TEXTE réellement rendu : le français quand le
+  // serveur signale un repli, sinon la langue demandée.
+  const langueTexte = rendu?.repli_langue ? 'fr' : (rendu?.langue ?? 'fr')
+  const texteRtl = LANGUES_RTL.includes(langueTexte)
 
   const enregistrerLangue = async () => {
     if (!langueChoisie) return
@@ -174,12 +185,22 @@ export default function ToucheMessageDialog({
                 de la société) dans un ordre illisible — incident du 07/09.
                 `rendu` est encore null au premier rendu (avant le chargement). */}
             <div
-              className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${rendu?.langue === 'darija' ? ' text-right' : ''}`}
-              dir={rendu?.langue === 'darija' ? 'rtl' : 'auto'}
-              lang={rendu?.langue === 'darija' ? 'ar' : 'fr'}
+              className={`whitespace-pre-wrap rounded-lg border border-border bg-muted/40 p-3 text-sm${texteRtl ? ' text-right' : ''}`}
+              dir={texteRtl ? 'rtl' : 'auto'}
+              lang={texteRtl ? 'ar' : langueTexte}
             >
               {rendu?.message || '…'}
             </div>
+            {/* CAD64 — le repli de langue n'est plus silencieux : le texte
+                n'existe pas encore dans la langue du client, c'est la version
+                française qui partira. On prévient — on ne traduit jamais. */}
+            {rendu?.repli_langue && (
+              <p className="flex items-start gap-1.5 text-xs text-warning" data-testid="repli-langue">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                Ce texte n’existe pas encore en {NOM_LANGUE[rendu.langue] ?? rendu.langue} : c’est la
+                version française qui partira.
+              </p>
+            )}
             {/* Règle « aucun chiffre inventé » — un placeholder sans valeur
                 réelle a fait OMETTRE la phrase côté serveur, jamais un blanc
                 à sa place : l'écran nomme juste ce qui manquait. */}

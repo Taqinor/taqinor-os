@@ -6,7 +6,8 @@
     "wa_url": "https://wa.me/212651971400?text=Bonjour%20Aziz%2C%20je%20n%27ai%20pas%20r%C3%A9ussi%20%C3%A0%20vous%20joindre.",
     "langue": "fr",
     "phone": "+212651971400",
-    "placeholders_manquants": []
+    "placeholders_manquants": [],
+    "repli_langue": false
   },
   "exemple_phrase_omise": {
     "message": "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité.",
@@ -15,23 +16,35 @@
     "phone": "+212661112233",
     "placeholders_manquants": [
       "date_validite"
-    ]
+    ],
+    "repli_langue": true
   },
   "exemple_numero_invalide": {
     "message": "Bonjour Salma, Karim de TAQINOR.",
     "wa_url": null,
     "langue": "fr",
     "phone": "",
-    "placeholders_manquants": []
+    "placeholders_manquants": [],
+    "repli_langue": false
   },
   "exemple_darija": {
     "message": "السلام عليكم السي Aziz، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
     "wa_url": "https://wa.me/212651971400?text=%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%20%D8%B9%D9%84%D9%8A%D9%83%D9%85%20%D8%A7%D9%84%D8%B3%D9%8A%20Aziz%D8%8C%20%D8%AD%D8%A7%D9%88%D9%84%D8%AA%20%D9%86%D8%B9%D9%8A%D8%B7%20%D9%84%D9%8A%D9%83%D9%85%20%D9%88%D9%84%D9%83%D9%86%20%D9%85%D8%A7%20%D9%84%D9%82%D9%8A%D8%AA%D9%83%D9%85%D8%B4.",
     "langue": "darija",
     "phone": "+212651971400",
-    "placeholders_manquants": []
+    "placeholders_manquants": [],
+    "repli_langue": false
+  },
+  "exemple_repli_langue": {
+    "message": "Bonjour M. Omar, petit mot de suivi de votre demande solaire.",
+    "wa_url": "https://wa.me/212661000552?text=Bonjour%20M.%20Omar%2C%20petit%20mot%20de%20suivi%20de%20votre%20demande%20solaire.",
+    "langue": "ar",
+    "phone": "+212661000552",
+    "placeholders_manquants": [],
+    "repli_langue": true
   },
   "notes": {
+    "repli_langue": "CAD64 — booléen, jamais null. `langue` est la langue DEMANDÉE, résolue par le résolveur COMMUN des documents client (préférence `Lead.langue_preferee`, puis `Client.langue_document`, puis la langue de repli de la société, puis FR — `apps.crm.services.langue_relance_du_lead`) : un devis parti en arabe ne laisse plus la relance en français SANS LE DIRE. `repli_langue: true` = le texte n'existe pas dans cette langue et c'est la version FRANÇAISE qui partira (civilité « M. », jamais « السي » dans une phrase française) — l'aperçu l'écrit en toutes lettres et le cas devient mesurable. Aucune traduction automatique, aucun texte anglais ni arabe classique par défaut (`exemple_repli_langue` : client dont les documents sont en arabe, texte parti en français). `exemple_phrase_omise` est lui aussi un repli (texte français pour un lead darija).",
     "langue_choisie": "CAD63 — `?langue=fr|darija` (GET `message/`) et `langue` (corps du POST `whatsapp/`) rendent CE message dans la langue CHOISIE à l'aperçu, sans toucher la fiche : c'est le basculeur FR / Darija de la modale (`exemple` puis `exemple_darija` : la MÊME touche, les deux langues). Une autre valeur est refusée en 400 `{\"erreurs\": {\"langue\": …}}` qui NOMME le champ. La fiche ne change que par `POST .../langue/` (`{langue}`, réponse = la touche `relance_etape_v2`) ou par le champ `langue` du « Fait » (réponse « ne parle que darija »).",
     "post_whatsapp": "POST .../whatsapp/ → même corps + `etape` (objet `relance_etape_v2` remis à jour : statut « fait »).",
     "permissions": "`message` = lecture (rôle normal suffisant) ; `whatsapp` = `IsResponsableOrAdmin` (il ÉCRIT : touche faite, activité WHATSAPP, premier contact, AuditLog).",

@@ -82,3 +82,34 @@ describe('CAD63 — changer la langue au moment utile', () => {
     openSpy.mockRestore()
   })
 })
+
+describe('CAD64 — le repli de langue est VISIBLE', () => {
+  const REPLI = exempleContrat('crm', 'relance_etape_message', 'exemple_repli_langue')
+
+  it('texte absent dans la langue du client : l’aperçu le dit, en nommant la langue', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: REPLI })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    const bloc = await screen.findByText(REPLI.message)
+    expect(screen.getByTestId('repli-langue'))
+      .toHaveTextContent('Ce texte n’existe pas encore en arabe : c’est la version française qui partira.')
+    // La version française partie en repli se lit de gauche à droite.
+    expect(bloc).toHaveAttribute('dir', 'auto')
+    expect(bloc).toHaveAttribute('lang', 'fr')
+  })
+
+  it('un lead darija dont la clé n’a pas de darija : « pas encore en darija »', async () => {
+    const OMISE = exempleContrat('crm', 'relance_etape_message', 'exemple_phrase_omise')
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: OMISE })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(OMISE.message)
+    expect(screen.getByTestId('repli-langue')).toHaveTextContent('pas encore en darija')
+  })
+
+  it('texte présent dans la langue demandée : aucun avertissement', async () => {
+    crmApi.getRelanceEtapeMessage.mockResolvedValue({ data: MESSAGE_DARIJA })
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    const bloc = await screen.findByText(MESSAGE_DARIJA.message)
+    expect(screen.queryByTestId('repli-langue')).not.toBeInTheDocument()
+    expect(bloc).toHaveAttribute('dir', 'rtl')
+  })
+})

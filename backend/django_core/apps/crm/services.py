@@ -2618,6 +2618,52 @@ def definir_langue_preferee(lead, user, langue):
     return True
 
 
+# ── CAD-F ── CAD64 — le repli de langue devient VISIBLE ─────────────────────
+#
+# Deux causes, un seul effet silencieux. (1) La langue de la relance se lisait
+# ``lead.langue_preferee or 'fr'`` au lieu de passer par le résolveur COMMUN
+# des documents client (``parametres.i18n_resolver.resolve_langue_sortie`` —
+# ``Client.langue_document`` puis la langue de repli de la société) : un devis
+# pouvait partir en arabe pendant que la relance restait en français, sans que
+# rien ne le dise. (2) ``MessageTemplate.get_corps`` retombe sur le FRANÇAIS
+# quand la clé n'a pas de texte dans la langue demandée — darija, anglais ou
+# arabe classique — sans un mot. On ne traduit JAMAIS automatiquement : on
+# PRÉVIENT (``repli_langue`` dans la réponse, avertissement à l'aperçu).
+
+def langue_relance_du_lead(lead):
+    """CAD64 — la langue DEMANDÉE pour les messages de relance de ce lead.
+
+    La préférence posée sur le lead (``langue_preferee`` — FR ou darija, le
+    seul registre de la relance WhatsApp) prime ; à défaut, le résolveur
+    COMMUN des documents client (langue documentaire du client, puis repli de
+    la société, puis FR). Aucun texte n'est ouvert ici : si la langue résolue
+    n'a pas de texte validé pour une clé, le rendu retombe sur le français et
+    le DIT (``repli_langue``)."""
+    preference = (getattr(lead, 'langue_preferee', '') or '').strip()
+    if preference:
+        return preference
+    from apps.parametres.i18n_resolver import resolve_langue_sortie
+    return resolve_langue_sortie(
+        client=getattr(lead, 'client', None),
+        company=getattr(lead, 'company', None))
+
+
+def texte_en_repli_de_langue(company, cle, langue):
+    """CAD64 — le texte de ``cle`` retombe-t-il sur le FRANÇAIS faute
+    d'exister dans ``langue`` ?
+
+    Lu par l'API publique du catalogue (``MessageTemplate.get_corps``), jamais
+    en recopiant sa règle : la langue demandée est en repli quand elle n'est
+    pas le français et que son corps est EXACTEMENT le corps français."""
+    if not cle or (langue or 'fr') == 'fr':
+        return False
+    from apps.parametres.models_messages import MessageTemplate
+    corps_langue = MessageTemplate.get_corps(company, cle, langue) or ''
+    if not corps_langue.strip():
+        return False
+    return corps_langue == (MessageTemplate.get_corps(company, cle, 'fr') or '')
+
+
 def message_pour_etape(etape, *, request=None, user=None, cle=None,
                        langue=None):
     """MRY13 — Le message d'UNE touche, rendu côté serveur.
@@ -2648,7 +2694,11 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     from apps.ventes.utils.whatsapp import build_wa_url, render_message_template
 
     lead = etape.lead
-    langue = langue or lead.langue_preferee or 'fr'
+    # CAD64 — la langue passe par le résolveur COMMUN (préférence du lead,
+    # puis langue documentaire du client, puis repli société), jamais un
+    # `or 'fr'` local qui laissait la relance en français pendant que le
+    # devis partait en arabe.
+    langue = langue or langue_relance_du_lead(lead)
     # CAD-A — le texte de réponse demandé remplace le gabarit de la touche.
     template_cle = cle or etape.template_cle
     # CAD127 — le premier message dit la VÉRITÉ sur l'origine : « vous venez
@@ -2659,13 +2709,19 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
                                         reference=etape.due_date)
     corps = MessageTemplate.get_corps(
         lead.company, cle_rendue, langue) if cle_rendue else ''
+    # CAD64 — le texte n'existe pas dans la langue demandée : c'est la version
+    # FRANÇAISE qui part, et on le DIT. Le texte est alors rendu comme un
+    # texte français (civilité « M. », variante de segment), jamais un
+    # « السي » collé dans une phrase française.
+    repli_langue = texte_en_repli_de_langue(lead.company, cle_rendue, langue)
+    langue_texte = 'fr' if repli_langue else langue
     # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
     # pas à un pompage au bord d'un forage, « en famille » pas à une
     # entreprise. Par exception SEULEMENT, et jamais sur un texte que la
     # société a personnalisé.
-    corps = _corps_pour_segment(corps, cle_rendue, lead, langue)
+    corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
 
-    civilite, prenom = _civilite_et_prenom(lead, langue)
+    civilite, prenom = _civilite_et_prenom(lead, langue_texte)
     contexte = {
         'civilite': civilite,
         'nom': (lead.nom or '').strip(),
@@ -2762,6 +2818,9 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         'langue': langue,
         'phone': phone,
         'placeholders_manquants': manquants,
+        # CAD64 — `True` : le texte n'existe pas dans `langue`, la version
+        # française part à sa place (l'aperçu le dit ; le cas se mesure).
+        'repli_langue': repli_langue,
     }
 
 
