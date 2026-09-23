@@ -360,3 +360,21 @@ def inventaire_des_documents(calepinage):
 # ── CALX310 — le plan de câblage des chaînes ────────────────────────────────
 MISES_EN_PAGE['plan_cablage'] = (
     'apps.calepinage.services.documents.plan_cablage:html_du_plan_cablage')
+
+
+# ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
+MISES_EN_PAGE['manuel_proprietaire'] = (
+    'apps.calepinage.services.documents.manuel_proprietaire:'
+    'html_du_manuel')
+
+
+# ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
+MISES_EN_PAGE['document_asbuilt'] = (
+    'apps.calepinage.services.documents.document_asbuilt:'
+    'html_du_document_asbuilt')
+
+
+# ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
+MISES_EN_PAGE['presentation_compacte'] = (
+    'apps.calepinage.services.documents.presentation_compacte:'
+    'html_de_presentation_compacte')

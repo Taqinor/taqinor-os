@@ -416,3 +416,102 @@ def rapport_ombrage_pdf(self, request, pk=None):
 
 
 CalepinageViewSet.rapport_ombrage_pdf = rapport_ombrage_pdf
+# ── CALX316 — le manuel du propriétaire, depuis le gabarit société ─────────
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='manuel-proprietaire.pdf',
+        url_name='manuel-proprietaire-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def manuel_proprietaire_pdf(self, request, pk=None):
+    """CALX316 — le manuel du propriétaire : gabarit société (genre
+    « manuel »), aucun texte de consigne rédigé par le module.
+
+    * **200** — le PDF, nommé d'après le calepinage ;
+    * **400** — aucun gabarit de genre « manuel » déposé, aucun résultat de
+      moteur, une variable inconnue dans le gabarit, ou une donnée refusée
+      (clé de coût) : le motif français et le champ NOMMÉ.
+    """
+    from ..services.documents.manuel_proprietaire import rendre_manuel
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        octets = rendre_manuel(calepinage, company=calepinage.company)
+    except RapportRefuse as refus:  # ManuelRefuse en est une sous-classe
+        return Response({refus.champ or 'gabarit': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'manuel-proprietaire.pdf'))
+
+
+CalepinageViewSet.manuel_proprietaire_pdf = manuel_proprietaire_pdf
+
+
+# ── CALX318 — le document as-built (prévu, posé, écarts, photos) ───────────
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='document-asbuilt.pdf',
+        url_name='document-asbuilt-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def document_asbuilt_pdf(self, request, pk=None):
+    """CALX318 — le document as-built : prévu, posé, écarts, photos de site.
+
+    * **200** — le PDF, nommé d'après le calepinage.
+
+    Ce document ne refuse jamais : un pan sans relevé imprime sa mention
+    (``asbuilt.MENTION_SANS_SAISIE``), une conception absente laisse la
+    planche « en regard » vide, et l'absence de photo est DITE — jamais un
+    document manquant pour autant.
+    """
+    from ..services.documents.document_asbuilt import rendre_document_asbuilt
+    from ..services.planche import nom_de_fichier
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    octets = rendre_document_asbuilt(calepinage, company=calepinage.company)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'document-asbuilt.pdf'))
+
+
+CalepinageViewSet.document_asbuilt_pdf = document_asbuilt_pdf
+
+
+# ── CALX315 — la présentation compacte interne, deux pages, sans montant ───
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@action(detail=True, methods=['get'], url_path='presentation-compacte.pdf',
+        url_name='presentation-compacte-pdf',
+        permission_classes=[PeutVoirCalepinage])
+def presentation_compacte_pdf(self, request, pk=None):
+    """CALX315 — la présentation compacte : deux pages, INTERNE, sans aucun
+    montant — ne vaut jamais offre de prix (règle #4, ``/proposal`` seul
+    chemin de devis client).
+
+    * **200** — le PDF (2 pages), nommé d'après le calepinage ;
+    * **400** — une donnée refusée (clé de coût) : le motif français et le
+      champ NOMMÉ. Un calepinage non simulé ne refuse PAS : la page 2 nomme
+      ce qui manque.
+    """
+    from ..services.documents.presentation_compacte import (
+        rendre_presentation_compacte,
+    )
+    from ..services.planche import nom_de_fichier
+    from ..services.rapport import RapportRefuse
+    from .sorties import MIME_PDF, reponse_de_fichier
+
+    calepinage = self.get_object()  # borné société par get_queryset
+    try:
+        octets = rendre_presentation_compacte(calepinage,
+                                              company=calepinage.company)
+    except RapportRefuse as refus:
+        return Response({refus.champ or 'resultat': str(refus)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return reponse_de_fichier(
+        octets, mime=MIME_PDF,
+        nom_fichier=nom_de_fichier(calepinage, 'presentation-compacte.pdf'))
+
+
+CalepinageViewSet.presentation_compacte_pdf = presentation_compacte_pdf
