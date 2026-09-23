@@ -188,10 +188,25 @@ def _placer_sur_surplus(energie_kwh, heures_actives, production_horaire, *,
     return courbe, max(0.0, energie_reseau)
 
 
+def _borner_puissance(courbe, plafond_kw):
+    """Plafonne CHAQUE heure de ``courbe`` à ``plafond_kw`` (CALX262).
+
+    L'énergie qui ne tient pas dans la fenêtre à cause de ce plafond est
+    rendue à part — JAMAIS masquée : c'est ``energie_non_placee_kwh``, avec
+    la mention que la fenêtre est trop courte pour la borne saisie.
+
+    Returns:
+        (courbe_bornee, energie_non_placee_kwh)
+    """
+    bornee = [min(valeur, plafond_kw) for valeur in courbe]
+    deborde = sum(valeur - place for valeur, place in zip(courbe, bornee))
+    return bornee, max(0.0, deborde)
+
+
 def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                     fenetre_recharge=None, longueur=24, heure_de_depart=0,
                     rendement_recharge_pct=None, mode='immediat',
-                    production_horaire=None):
+                    production_horaire=None, puissance_borne_kw=None):
     """La charge horaire d'un VÉHICULE ÉLECTRIQUE — tout est saisi.
 
     Args:
@@ -209,6 +224,12 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
             publié séparément (``energie_reseau_kwh``), jamais masqué.
         production_horaire: la production PV horaire (même longueur que
             ``longueur``), REQUISE quand ``mode='pv_optimise'``.
+        puissance_borne_kw: la puissance de la borne de recharge, SAISIE
+            (CALX262). Plafonne l'énergie horaire à cette puissance ; le
+            reliquat qui ne tient pas dans la fenêtre à cause de ce plafond
+            est publié séparément (``energie_non_placee_kwh``) avec la
+            mention de la fenêtre trop courte. Absente ⇒ aucun plafond, et
+            le bilan le DIT (comportement d'aujourd'hui).
 
     Raises:
         ChargeInvalide: paramètre manquant ou illisible, en le NOMMANT.
@@ -243,11 +264,21 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                 champ='vehicule.rendement_recharge_pct')
         energie = energie / (rendement / 100.0)
 
+    plafond = None
+    if puissance_borne_kw is not None:
+        plafond = _obligatoire(
+            puissance_borne_kw, champ='vehicule.puissance_borne_kw',
+            libelle='La puissance de la borne de recharge')
+    else:
+        hypotheses.append(
+            'Aucune puissance de borne saisie : aucun plafond horaire '
+            "n'est appliqué (comportement d'aujourd'hui).")
+
     parametres = {
         'km_par_jour': km, 'kwh_par_100km': conso,
         'fenetre_recharge': heures,
         'rendement_recharge_pct': rendement_recharge_pct,
-        'mode': mode,
+        'mode': mode, 'puissance_borne_kw': puissance_borne_kw,
     }
 
     if mode == 'pv_optimise':
@@ -265,23 +296,28 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
             'heures de surplus de production dans la fenêtre saisie ; le '
             "reliquat non couvert par le surplus est publié en "
             '« energie_reseau_kwh », jamais masqué.')
-        return {
-            'type': 'vehicule',
-            'libelle': 'Véhicule électrique',
-            'energie_journaliere_kwh': round(energie, 4),
-            'courbe': [round(valeur, 6) for valeur in courbe],
-            'energie_reseau_kwh': round(energie_reseau, 4),
-            'parametres': parametres,
-            'hypotheses': hypotheses,
-        }
+    else:
+        courbe = _repartir(energie, heures, longueur=longueur,
+                           heure_de_depart=heure_de_depart)
+        energie_reseau = 0.0
+
+    energie_non_placee = 0.0
+    if plafond is not None:
+        courbe, energie_non_placee = _borner_puissance(courbe, plafond)
+        if energie_non_placee > 0:
+            hypotheses.append(
+                'La puissance de la borne saisie ne laisse pas passer '
+                'toute l’énergie sur la fenêtre de recharge : la fenêtre '
+                'est trop courte pour cette borne — le reliquat est publié '
+                'en « energie_non_placee_kwh ».')
 
     return {
         'type': 'vehicule',
         'libelle': 'Véhicule électrique',
         'energie_journaliere_kwh': round(energie, 4),
-        'courbe': _repartir(energie, heures, longueur=longueur,
-                            heure_de_depart=heure_de_depart),
-        'energie_reseau_kwh': 0.0,
+        'courbe': [round(valeur, 6) for valeur in courbe],
+        'energie_reseau_kwh': round(energie_reseau, 4),
+        'energie_non_placee_kwh': round(energie_non_placee, 4),
         'parametres': parametres,
         'hypotheses': hypotheses,
     }
