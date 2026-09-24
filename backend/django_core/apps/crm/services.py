@@ -10411,6 +10411,10 @@ def _nom_prescripteur(lead):
     Lu sur le parrainage enregistré (``crm.Parrainage.parrain``) — jamais un
     prénom codé en dur (règle fondateur du 08/09). Absent ⇒ chaîne vide ⇒ la
     phrase qui le porte est OMISE (MRY13), jamais un crochet envoyé.
+
+    CAD164 — à défaut de parrainage, le LOCATAIRE qui a donné les coordonnées
+    de son propriétaire : la note de lien (``PREFIXE_LIEN_LOCATAIRE``) porte
+    l'id de sa fiche, et c'est son PRÉNOM (à défaut son nom) qui est rendu.
     """
     try:
         from .models import Parrainage
@@ -10422,9 +10426,37 @@ def _nom_prescripteur(lead):
         logger.warning('CAD127 : prescripteur illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return ''
-    if lien is None or lien.parrain is None:
+    if lien is not None and lien.parrain is not None:
+        return (getattr(lien.parrain, 'nom', '') or '').strip()
+    return _prenom_du_locataire_prescripteur(lead)
+
+
+def _prenom_du_locataire_prescripteur(lead):
+    """CAD164 — le prénom (à défaut le nom) du locataire qui a recommandé ce
+    propriétaire, lu sur la note de lien ; ``''`` sinon. Bornée à la SOCIÉTÉ
+    du lead. Ne lève jamais."""
+    try:
+        note = (LeadActivity.objects
+                .filter(company=lead.company, lead=lead,
+                        kind=LeadActivity.Kind.NOTE,
+                        body__startswith=PREFIXE_LIEN_LOCATAIRE)
+                .order_by('-created_at', '-pk')
+                .values_list('body', flat=True).first())
+        if not note:
+            return ''
+        brut = note[len(PREFIXE_LIEN_LOCATAIRE):].split(' ', 1)[0]
+        if not brut.isdigit():
+            return ''
+        locataire = Lead.objects.filter(
+            company=lead.company, pk=int(brut)).first()
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+        logger.warning('CAD164 : locataire prescripteur illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
         return ''
-    return (getattr(lien.parrain, 'nom', '') or '').strip()
+    if locataire is None:
+        return ''
+    return ((locataire.prenom or '').strip()
+            or (locataire.nom or '').strip())
 
 
 def _mois_dossier_francais(lead):
@@ -11906,3 +11938,152 @@ def facture_au_mois(montant, periodicite):
         return None
     mois = Lead.PERIODICITES_FACTURE[periodicite]
     return quantize_mad(Decimal(str(montant)) / Decimal(mois))
+
+
+# ── CAD164 — le LOCATAIRE : demander le propriétaire, sinon « Perdu — Locataire »
+#
+# Décision fondateur du 21/09/2026 : on demande le propriétaire ; s'il est
+# joignable, on crée SA fiche, LIÉE à celle du locataire (le locataire reste le
+# prescripteur : son prénom passe par la variable `{prescripteur}` du texte
+# d'origine « recommandation », CAD127 — jamais en dur) ; sinon on clôt avec
+# le motif EXISTANT « Locataire ». Aucune valeur d'énumération neuve : le motif
+# existe (`MotifPerte`), le canal « Référence » aussi, et le lien entre les deux
+# fiches est une NOTE d'historique de chaque côté — jamais une fusion
+# automatique (conduite `FLUX_LOCATAIRE` du script d'appel).
+
+#: Le motif de perte d'un locataire sans propriétaire joignable (existant).
+MOTIF_PERTE_LOCATAIRE = 'Locataire'
+
+#: Le préfixe de la note posée sur la fiche du PROPRIÉTAIRE : il porte l'id de
+#: la fiche du locataire, et c'est lui que `_nom_prescripteur` relit. Source
+#: unique (même discipline que les préfixes RLC2).
+PREFIXE_LIEN_LOCATAIRE = 'Recommandé par le locataire — fiche #'
+
+#: Les deux suites que l'écran propose quand la réponse est « locataire ».
+SUITES_LOCATAIRE = ('creer_proprietaire', 'perdu_locataire')
+
+#: Ce que la fiche du propriétaire reprend de celle du locataire : c'est le
+#: MÊME logement (l'adresse, le repère, le segment) — jamais l'identité ni la
+#: consommation, qui sont celles du locataire.
+_CHAMPS_LOGEMENT = ('adresse', 'ville', 'gps_lat', 'gps_lng', 'lien_maps',
+                    'type_installation')
+
+
+def proposition_locataire(lead):
+    """CAD164 — ce que l'écran propose pour ce lead : les deux suites quand
+    la réponse « propriétaire ou locataire » est « locataire », rien sinon."""
+    locataire = (getattr(lead, 'ownership', None)
+                 == Lead.Ownership.LOCATAIRE)
+    return {
+        'locataire': locataire,
+        'propose': list(SUITES_LOCATAIRE) if locataire else [],
+        'motif_perte': MOTIF_PERTE_LOCATAIRE,
+    }
+
+
+def refus_proprietaire(donnees):
+    """CAD164 — ``{champ: [message]}`` si les coordonnées du propriétaire ne
+    permettent pas de créer sa fiche, sinon ``None``. Chaque message NOMME le
+    champ tel que l'écran l'affiche."""
+    if not isinstance(donnees, dict):
+        return {'proprietaire': ['« Propriétaire » : coordonnées attendues '
+                                 '(nom et téléphone).']}
+    erreurs = {}
+    if not (donnees.get('nom') or '').strip():
+        erreurs['nom'] = ['« Nom du propriétaire » : obligatoire.']
+    numero = (donnees.get('telephone') or donnees.get('whatsapp') or '')
+    if not normalize_phone(numero):
+        erreurs['telephone'] = ['« Téléphone du propriétaire » : un numéro '
+                                'joignable est obligatoire.']
+    return erreurs or None
+
+
+def _marquer_locataire(lead, user):
+    """La réponse « locataire » est posée sur la fiche (journalisée) si elle
+    ne l'était pas déjà."""
+    import copy
+
+    if lead.ownership == Lead.Ownership.LOCATAIRE:
+        return
+    avant = copy.copy(lead)
+    lead.ownership = Lead.Ownership.LOCATAIRE
+    lead.save(update_fields=['ownership'])
+    activity.log_changes(avant, lead, user)
+
+
+def creer_lead_proprietaire(locataire, user, donnees):
+    """CAD164 — le propriétaire est joignable : SA fiche, liée au locataire.
+
+    Un propriétaire DÉJÀ connu (même téléphone, même société) est RELIÉ, jamais
+    dupliqué. Sinon sa fiche naît au canal « Référence » (le texte d'origine
+    « recommandation » de CAD127 s'applique à sa première touche), avec le
+    logement du locataire (adresse, repère, segment) et le même responsable,
+    puis sa cadence de prise de contact démarre par le chemin ordinaire.
+
+    Renvoie ``(fiche du propriétaire, créée ?)``."""
+    from django.db import transaction
+
+    nom = (donnees.get('nom') or '').strip()
+    prenom = (donnees.get('prenom') or '').strip()
+    telephone = (donnees.get('telephone') or '').strip()
+    whatsapp = (donnees.get('whatsapp') or '').strip()
+    with transaction.atomic():
+        _marquer_locataire(locataire, user)
+        existant = next(iter(find_duplicates_by_contact(
+            locataire.company, phone=telephone or whatsapp,
+            exclude_pk=locataire.pk)), None)
+        cree = existant is None
+        if cree:
+            proprietaire = Lead(
+                company=locataire.company, nom=nom, prenom=prenom or None,
+                telephone=telephone or None, whatsapp=whatsapp or None,
+                ownership=Lead.Ownership.PROPRIETAIRE,
+                canal=Lead.Canal.REFERENCE, owner=locataire.owner)
+            for champ in _CHAMPS_LOGEMENT:
+                setattr(proprietaire, champ, getattr(locataire, champ, None))
+            proprietaire.save()
+            activity.log_creation(proprietaire, user)
+        else:
+            proprietaire = existant
+        nom_locataire = ' '.join(
+            p for p in ((locataire.prenom or '').strip(),
+                        (locataire.nom or '').strip()) if p)
+        LeadActivity.objects.create(
+            company=proprietaire.company, lead=proprietaire, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'{PREFIXE_LIEN_LOCATAIRE}{locataire.pk} ({nom_locataire}) '
+                  ': le locataire du logement nous a donné les coordonnées du '
+                  'propriétaire.'))
+        LeadActivity.objects.create(
+            company=locataire.company, lead=locataire, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Locataire — propriétaire du logement : fiche '
+                  f'#{proprietaire.pk} '
+                  + ('créée' if cree else 'déjà connue, reliée')
+                  + f' ({proprietaire.nom}).'))
+    if cree:
+        demarrer_cadence_contact(proprietaire, user=user,
+                                 origine='recommandation (locataire)')
+    return proprietaire, cree
+
+
+def clore_locataire_sans_proprietaire(lead, user):
+    """CAD164 — le locataire ne communique pas son propriétaire (ou il est
+    injoignable) : « Perdu — Locataire », motif EXISTANT, et toutes ses
+    touches s'arrêtent (même conséquence que la bascule « perdu » de la
+    fiche, MRY9). Idempotente. Renvoie ``True`` si le lead vient de passer
+    perdu."""
+    import copy
+
+    _marquer_locataire(lead, user)
+    if lead.perdu:
+        return False
+    motif = (motif_refus_valide(lead.company, MOTIF_PERTE_LOCATAIRE)
+             or MOTIF_PERTE_LOCATAIRE)
+    avant = copy.copy(lead)
+    lead.perdu = True
+    lead.motif_perte = motif
+    lead.save(update_fields=['perdu', 'motif_perte'])
+    activity.log_changes(avant, lead, user)
+    arreter_cadence(lead, user=user, motif=motif)
+    return True

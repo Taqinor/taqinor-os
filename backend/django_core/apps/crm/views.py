@@ -1161,6 +1161,16 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # rôle) et `jalons_devis`, absent de toutes les listes, sur le
             # `return [IsAdminRole()]` final (403 pour la Commerciale).
             return [HasPermissionOrLegacy('crm_voir')()]
+        elif self.action == 'locataire':
+            # CAD164 — LIRE la proposition « locataire » est une lecture de la
+            # fiche (`crm_voir`) ; créer la fiche du propriétaire ou clore
+            # « Perdu — Locataire » est une écriture commerciale ordinaire
+            # (`crm_modifier`). Listé ICI : get_permissions() PRIME sur
+            # l'@action (bug CI #25).
+            code = ('crm_voir' if self.request.method in ('GET', 'HEAD',
+                                                          'OPTIONS')
+                    else 'crm_modifier')
+            return [HasPermissionOrLegacy(code)()]
         elif self.action in (
                 'merge', 'convertir_client', 'epingler', 'desepingler',
                 # VISITE-CADENCE — POSER un rendez-vous de visite est une
@@ -2346,6 +2356,70 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
         return Response({'visite': ligne_visite_pour_lead(visite)},
                         status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses=inline_serializer('CrmLeadLocataire', {
+        'locataire': serializers.BooleanField(),
+        'propose': serializers.ListField(child=serializers.CharField()),
+        'motif_perte': serializers.CharField(),
+    }))
+    @action(detail=True, methods=['get', 'post'], url_path='locataire')
+    def locataire(self, request, pk=None):
+        """CAD164 — [TRANCHÉ 21/09/2026] le client est LOCATAIRE.
+
+        ``GET`` : ce que l'écran propose — les deux suites (créer la fiche du
+        propriétaire, ou « Perdu — Locataire ») quand la réponse est
+        « locataire ».
+
+        ``POST`` : ``{proprietaire: {nom, prenom?, telephone|whatsapp}}`` crée
+        (ou relie, s'il est déjà connu) la fiche du propriétaire, liée au
+        locataire — 201 ; ``{proprietaire_inconnu: true}`` clôt la fiche du
+        locataire avec le motif EXISTANT « Locataire » — 200. Chaque refus
+        NOMME son champ. Aucune valeur d'énumération neuve (contrat
+        ``lead_locataire``)."""
+        from .services import (
+            clore_locataire_sans_proprietaire, creer_lead_proprietaire,
+            proposition_locataire, refus_proprietaire)
+
+        lead = self.get_object()
+        if request.method == 'GET':
+            return Response(proposition_locataire(lead))
+
+        if request.data.get('proprietaire_inconnu') is True:
+            clore_locataire_sans_proprietaire(lead, request.user)
+            lead.refresh_from_db()
+            return Response({
+                'issue': 'perdu_locataire',
+                'lead_proprietaire': None,
+                'locataire': {'id': lead.pk, 'ownership': lead.ownership,
+                              'perdu': lead.perdu,
+                              'motif_perte': lead.motif_perte or ''},
+            })
+
+        donnees = request.data.get('proprietaire')
+        if donnees is None:
+            return Response(
+                {'proprietaire': ['« Propriétaire » : ses coordonnées, ou '
+                                  '« propriétaire inconnu » pour clore la '
+                                  'fiche avec le motif « Locataire ».']},
+                status=status.HTTP_400_BAD_REQUEST)
+        refus = refus_proprietaire(donnees)
+        if refus:
+            # Les erreurs de CHAMP vivent sous `proprietaire` (même forme que
+            # le corps) ; une charge illisible est refusée sur `proprietaire`.
+            corps = refus if 'proprietaire' in refus else {'proprietaire': refus}
+            return Response(corps, status=status.HTTP_400_BAD_REQUEST)
+        proprietaire, cree = creer_lead_proprietaire(
+            lead, request.user, donnees)
+        lead.refresh_from_db()
+        return Response({
+            'issue': 'proprietaire_cree' if cree else 'proprietaire_relie',
+            'lead_proprietaire': {'id': proprietaire.pk,
+                                  'nom': proprietaire.nom,
+                                  'prenom': proprietaire.prenom or ''},
+            'locataire': {'id': lead.pk, 'ownership': lead.ownership,
+                          'perdu': lead.perdu,
+                          'motif_perte': lead.motif_perte or ''},
+        }, status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
     @extend_schema(responses=inline_serializer('CrmLeadMessageVisite', {
         'corps_fr': serializers.CharField(),

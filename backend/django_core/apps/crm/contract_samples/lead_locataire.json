@@ -1,0 +1,60 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/locataire/",
+  "pourquoi": "CAD164 (PACT10, décision fondateur du 21/09/2026) — « Locataire » existait comme motif de perte et `ownership` était capté, mais la commerciale n'avait AUCUNE conduite à tenir. La règle : on demande le PROPRIÉTAIRE ; s'il est joignable, on crée SA fiche, LIÉE à celle du locataire (le locataire reste le prescripteur : son prénom passe par la variable `{prescripteur}` du texte d'origine « recommandation », CAD127 — jamais en dur) ; sinon on clôt avec le motif EXISTANT « Locataire ». Aucune valeur d'énumération neuve : motif existant, canal « Référence » existant, lien = une note d'historique de chaque côté (`PREFIXE_LIEN_LOCATAIRE`), jamais une fusion automatique — la conduite `FLUX_LOCATAIRE` du script d'appel. GET : ce que l'écran PROPOSE (`propose` vide tant que la réponse n'est pas « locataire »). POST : `corps_proprietaire` crée (201) — ou RELIE, s'il est déjà connu au même numéro (200, `proprietaire_relie`) — la fiche du propriétaire et démarre sa prise de contact ; `corps_proprietaire_inconnu` clôt la fiche du locataire « Perdu — Locataire » (200) et arrête ses touches. Chaque refus NOMME son champ.",
+  "exemple": {
+    "locataire": true,
+    "propose": ["creer_proprietaire", "perdu_locataire"],
+    "motif_perte": "Locataire"
+  },
+  "exemple_pas_locataire": {
+    "locataire": false,
+    "propose": [],
+    "motif_perte": "Locataire"
+  },
+  "corps_proprietaire": {
+    "proprietaire": {
+      "nom": "Tazi",
+      "prenom": "Karim",
+      "telephone": "0661223355"
+    }
+  },
+  "exemple_proprietaire_cree": {
+    "issue": "proprietaire_cree",
+    "lead_proprietaire": {
+      "id": 1600,
+      "nom": "Tazi",
+      "prenom": "Karim"
+    },
+    "locataire": {
+      "id": 1489,
+      "ownership": "locataire",
+      "perdu": false,
+      "motif_perte": ""
+    }
+  },
+  "corps_proprietaire_inconnu": {
+    "proprietaire_inconnu": true
+  },
+  "exemple_perdu_locataire": {
+    "issue": "perdu_locataire",
+    "lead_proprietaire": null,
+    "locataire": {
+      "id": 1489,
+      "ownership": "locataire",
+      "perdu": true,
+      "motif_perte": "Locataire"
+    }
+  },
+  "exemple_erreur_proprietaire": {
+    "proprietaire": {
+      "telephone": [
+        "« Téléphone du propriétaire » : un numéro joignable est obligatoire."
+      ]
+    }
+  },
+  "notes": {
+    "issue": "`proprietaire_cree` | `proprietaire_relie` (même téléphone déjà connu dans la société : reliée, jamais dupliquée) | `perdu_locataire`.",
+    "prescripteur": "La première touche de la fiche du propriétaire est le texte d'origine « recommandation » (`identite_reference`, canal Référence) : `{prescripteur}` y rend le PRÉNOM du locataire (à défaut son nom), lu sur la note de lien — la phrase est omise s'il manque, jamais un prénom en dur.",
+    "logement": "La fiche du propriétaire reprend le LOGEMENT du locataire (adresse, ville, repère GPS, lien Maps, segment) et son responsable — jamais son identité ni sa consommation."
+  }
+}
