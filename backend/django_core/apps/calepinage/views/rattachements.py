@@ -119,6 +119,12 @@ from . import etiquettes as _etiquettes_action  # noqa: F401
 # ``versions/<version_id>/diff/``, le différentiel entre deux versions).
 # Lecture PURE : aucune version n'est créée.
 from . import versions_diff as _versions_diff_action  # noqa: F401
+# CALX347 — même patron : rattache ``approbation`` (GET l'état / POST la
+# décision du second regard, contrat CALX334, services/approbation.py).
+from . import approbation as _approbation_action  # noqa: F401
+# CALX359 — même patron : rattache ``bom-fixation`` (la nomenclature de
+# fixation, contrat CALX335, services/fixation.py). Lecture PURE.
+from . import fixation as _fixation_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -151,6 +157,8 @@ MODULES_RATTACHES = (
     'comparaison_projets',  # CALX341
     'etiquettes',  # CALX343
     'versions_diff',  # CALX345
+    'approbation',  # CALX347
+    'fixation',  # CALX359
 )
 
 __all__ = ['MODULES_RATTACHES']

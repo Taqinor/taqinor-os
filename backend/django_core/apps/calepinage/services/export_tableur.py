@@ -327,7 +327,15 @@ def _tables_du_calepinage(calepinage):
     from .planche import geometrie_de_planche
 
     geometrie = geometrie_de_planche(getattr(calepinage, 'roof_layout', None))
-    return tables_du_resultat(geometrie, getattr(calepinage, 'resultat', None))
+    tables = tables_du_resultat(geometrie,
+                                getattr(calepinage, 'resultat', None))
+    # CALX359 — la feuille « Fixation », EN FIN, seulement quand la société
+    # a un catalogue de fixation : sans lui, le classeur est EXACTEMENT
+    # celui d'aujourd'hui (D12). Même garde de prix que les trois autres.
+    fixation = _table_fixation(calepinage)
+    if fixation is not None:
+        tables.append(fixation)
+    return tables
 
 
 def exporter_xlsx(calepinage):
@@ -400,3 +408,21 @@ def exporter_comparatif_xlsx(comparaison):
     entetes, lignes = _table_comparatif(comparaison)
     verifier_absence_de_prix(entetes, [ligne[1:] for ligne in lignes])
     return classeur_octets([(FEUILLE_COMPARATIF, entetes, lignes)])
+# ── CALX359 — la feuille « Fixation » ───────────────────────────────────────
+
+
+def _table_fixation(calepinage):
+    """``(titre, entetes, lignes)`` de la nomenclature de fixation, PRIX
+    VÉRIFIÉS, ou ``None`` quand la société n'a aucun système de fixation.
+
+    La nomenclature est celle de ``services/fixation.py`` (la MÊME que
+    ``GET bom-fixation/``) : aucune quantité n'est recalculée ici.
+    """
+    from .fixation import table_fixation
+
+    table = table_fixation(calepinage)
+    if table is None:
+        return None
+    _titre, entetes, lignes = table
+    verifier_absence_de_prix(entetes, lignes)
+    return table

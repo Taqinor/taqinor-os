@@ -464,6 +464,15 @@ const calepinageApi = {
       api.post(`${pivot(id)}etiquettes/`, { tag_id: tagId }),
     retirerEtiquette: (id, tagId) =>
       api.delete(`${pivot(id)}etiquettes/`, { data: { tag_id: tagId } }),
+    // CALX352 — démarrer un calepinage depuis un MODÈLE et/ou un JEU DE
+    // RÉGLAGES société (`views/bibliotheque.py::depuis_modele`, CALX351) :
+    // `{modele_id?, lead_id|client_id|devis_id, titre?, preset_id?}` → le
+    // DÉTAIL agrégé (contrat `calepinage_detail.json`). Un refus 400 NOMME
+    // le champ du corps (`preset_id`, `modele_id`…) ; un modèle d'une autre
+    // société est introuvable (404). Sans modèle ni jeu, l'écran de création
+    // garde `create()` — la création d'aujourd'hui, inchangée.
+    depuisModele: (corps) =>
+      api.post('/calepinage/calepinages/depuis-modele/', corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

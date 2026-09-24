@@ -6,6 +6,10 @@ Deux codes DISJOINTS, déclarés dans ``apps.roles.models.ALL_PERMISSIONS`` :
 * ``calepinage_gerer`` — écriture (création/édition/suppression, actions
   métier : enregistrer un layout, créer/retenir une variante, dupliquer).
 
+CALX347 ajoute un TROISIÈME code, hors palier : ``calepinage_approuver`` —
+la décision d'approbation (second regard interne), jamais impliquée par
+``calepinage_gerer``.
+
 Ce fichier est la SOURCE UNIQUE des codes du domaine (patron
 ``apps/ao/permissions.py``) : aucun littéral de permission ne vit dans un
 viewset. Les viewsets les consomment en ``read_permission`` /
@@ -27,6 +31,14 @@ CAL_GERER = 'calepinage_gerer'
 
 #: Les deux codes du domaine, pour les gardes et les tests.
 CODES = (CAL_VOIR, CAL_GERER)
+
+#: CALX347 — le SECOND REGARD : approuver ou refuser une conception. Code
+#: DISTINCT de ``calepinage_gerer`` (« qui peut écrire » ne vaut pas « qui peut
+#: valider ») et à ZÉRO titulaire par défaut hors Directeur/Administrateur
+#: (héritage du catalogue) : il s'attribue par la matrice des rôles. Il n'entre
+#: PAS dans ``CODES`` — ce tuple fige les deux codes du palier ``ventes``
+#: (CAL6) et ce code-ci n'a volontairement aucun palier.
+CAL_APPROUVER = 'calepinage_approuver'
 
 
 # ── CAL16 — les DEUX gardes DRF par action (jamais un littéral en viewset) ──
@@ -89,4 +101,31 @@ class PeutLireOuEcrireCalepinage(_PermissionCalepinage):
 
         garde = (PeutVoirCalepinage() if request.method in SAFE_METHODS
                  else PeutGererCalepinage())
+        return garde.has_permission(request, view)
+
+
+class PeutApprouverCalepinage(_PermissionCalepinage):
+    """CALX347 — décider l'approbation d'un calepinage (``calepinage_approuver``).
+
+    Un porteur de ``calepinage_gerer`` SEUL ne passe pas : c'est tout l'objet
+    d'un second regard interne.
+    """
+
+    code = CAL_APPROUVER
+
+
+class PeutLireOuApprouverCalepinage(_PermissionCalepinage):
+    """CALX347 — la garde de ``approbation/`` (GET **et** POST).
+
+    Même raisonnement que ``PeutLireOuEcrireCalepinage`` : le code est choisi
+    par la MÉTHODE. Lire l'état d'approbation est une lecture ordinaire
+    (``calepinage_voir``) ; DÉCIDER exige le code d'approbation, jamais le
+    simple code d'écriture.
+    """
+
+    def has_permission(self, request, view):
+        from rest_framework.permissions import SAFE_METHODS
+
+        garde = (PeutVoirCalepinage() if request.method in SAFE_METHODS
+                 else PeutApprouverCalepinage())
         return garde.has_permission(request, view)

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CAL36 — créer un calepinage depuis un LEAD **ou** un CLIENT.
@@ -22,6 +23,10 @@ const mocks = vi.hoisted(() => ({
   getLeads: vi.fn(),
   searchClients: vi.fn(),
   navigate: vi.fn(),
+  // CALX352 — les deux listes de départ et la porte CALX351.
+  modeles: vi.fn(),
+  getParametres: vi.fn(),
+  depuisModele: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -30,7 +35,14 @@ vi.mock('react-router-dom', async () => {
 })
 
 vi.mock('../../api/calepinageApi', () => ({
-  default: { calepinages: { create: mocks.create } },
+  default: {
+    calepinages: {
+      create: mocks.create,
+      modeles: (...a) => mocks.modeles(...a),
+      depuisModele: (...a) => mocks.depuisModele(...a),
+    },
+    parametres: { get: (...a) => mocks.getParametres(...a) },
+  },
 }))
 
 vi.mock('../../api/crmApi', () => ({
@@ -65,6 +77,18 @@ const choisirDansCombobox = async (nomChamp, libelleOption) => {
   fireEvent.click(await screen.findByText(libelleOption))
 }
 
+/* CALX352 — un MODÈLE tel que `modeles()` le sert (CalepinageSerializer :
+   `layout_nb_panneaux`, `layout_hash`). */
+const MODELE = {
+  id: 5, titre: 'Villa type R+1', layout_nb_panneaux: 12,
+  layout_hash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9',
+}
+/* Les réglages société : l'échantillon COMMITTÉ (préréglage nommé
+   `villa_standard`), jamais une forme tapée à la main. */
+const REGLAGES = exempleContrat('calepinage', 'parametres_calepinage')
+/* La réponse de `depuis-modele` : le DÉTAIL agrégé du contrat committé. */
+const DETAIL = exempleContrat('calepinage', 'calepinage_detail')
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getLeads.mockResolvedValue({
@@ -72,7 +96,17 @@ beforeEach(() => {
   })
   mocks.searchClients.mockResolvedValue({ data: [CLIENT_AVEC_ADRESSE, CLIENT_SANS_ADRESSE] })
   mocks.create.mockResolvedValue({ data: { id: 77 } })
+  mocks.modeles.mockResolvedValue({ data: [MODELE] })
+  mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+  mocks.depuisModele.mockResolvedValue(reponseContrat('calepinage', 'calepinage_detail'))
 })
+
+/* Les deux listes arrivent APRÈS le premier rendu : on attend qu'elles
+   soient servies avant d'y choisir quoi que ce soit. */
+const attendreChoix = async () => {
+  await waitFor(() => expect(screen.getByLabelText(/Partir d’un modèle/)).not.toBeDisabled())
+  await waitFor(() => expect(screen.getByLabelText(/Jeu de réglages société/)).not.toBeDisabled())
+}
 
 describe('CalepinageNouveau (CAL36)', () => {
   it('ouvre sur l’onglet Lead, avec les deux onglets disponibles', () => {
@@ -209,5 +243,131 @@ describe('CalepinageNouveau (CAL36)', () => {
     expect(await screen.findByTestId('erreur-lead')).toBeInTheDocument()
     await choisirDansCombobox('Lead', 'Lead d’essai')
     await waitFor(() => expect(screen.queryByTestId('erreur-lead')).not.toBeInTheDocument())
+  })
+})
+
+/* ============================================================================
+   CALX352 — PARTIR D'UN MODÈLE et/ou d'un JEU DE RÉGLAGES société.
+   ----------------------------------------------------------------------------
+     * aucun choix fait ⇒ la création d'aujourd'hui (`create`), inchangée ;
+     * un modèle choisi affiche son nombre de modules et son empreinte AVANT
+       validation, puis part par la porte CALX351 (`depuis-modele`), dont la
+       réponse est le DÉTAIL du contrat committé ;
+     * les deux formes de jeux de réglages sont offertes (liste `jeux` et
+       préréglages nommés), jamais `kits` ni un interrupteur ;
+     * un refus serveur nommant `preset_id` s'affiche SOUS le champ du jeu.
+   ========================================================================== */
+describe('CalepinageNouveau — modèle et jeu de réglages (CALX352)', () => {
+  it('aucun choix fait : la création d’aujourd’hui, jamais la porte des modèles', async () => {
+    rendre()
+    await attendreChoix()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1' }))
+    expect(mocks.depuisModele).not.toHaveBeenCalled()
+  })
+
+  it('un modèle choisi affiche son nombre de modules et son empreinte avant validation', async () => {
+    rendre()
+    await attendreChoix()
+    expect(screen.queryByTestId('cal-nouveau-modele-apercu')).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText(/Partir d’un modèle/), { target: { value: '5' } })
+    const apercu = await screen.findByTestId('cal-nouveau-modele-apercu')
+    expect(apercu).toHaveTextContent('12')
+    expect(apercu).toHaveTextContent(MODELE.layout_hash.slice(0, 12))
+    expect(mocks.depuisModele).not.toHaveBeenCalled()
+  })
+
+  it('un modèle sans nombre de modules connu : « non renseigné », rien n’est deviné', async () => {
+    mocks.modeles.mockResolvedValue({ data: [{ id: 9, titre: 'Hangar', layout_nb_panneaux: null, layout_hash: '' }] })
+    rendre()
+    await attendreChoix()
+    fireEvent.change(screen.getByLabelText(/Partir d’un modèle/), { target: { value: '9' } })
+    const apercu = await screen.findByTestId('cal-nouveau-modele-apercu')
+    expect(apercu).toHaveTextContent('non renseigné')
+  })
+
+  it('créer depuis un modèle part par `depuis-modele` et ouvre le calepinage servi', async () => {
+    rendre()
+    await attendreChoix()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    fireEvent.change(screen.getByLabelText(/Partir d’un modèle/), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.depuisModele)
+      .toHaveBeenCalledWith({ lead_id: '1', modele_id: '5' }))
+    expect(mocks.create).not.toHaveBeenCalled()
+    expect(mocks.navigate).toHaveBeenCalledWith(`/calepinage/${DETAIL.id}`)
+  })
+
+  it('un jeu de réglages SEUL part aussi par la porte CALX351, sur le client choisi', async () => {
+    rendre()
+    await attendreChoix()
+    allerSurOnglet('Client')
+    await choisirDansCombobox('Client', 'Client d’essai')
+    fireEvent.change(screen.getByLabelText(/Jeu de réglages société/), {
+      target: { value: 'villa_standard' },
+    })
+    fireEvent.change(screen.getByLabelText(/Nom du calepinage/), { target: { value: 'Hangar 2' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.depuisModele).toHaveBeenCalledWith({
+      client_id: '3', preset_id: 'villa_standard', titre: 'Hangar 2',
+    }))
+  })
+
+  it('les deux formes de jeux sont offertes — jamais `kits` ni un interrupteur', async () => {
+    mocks.getParametres.mockResolvedValue({
+      data: {
+        ...REGLAGES,
+        presets: {
+          jeux: [{ id: 'villa', nom: 'Villa tuiles' }],
+          hangar: { orientation: 'paysage', source: 'Fiche pose' },
+          kits: [{ id: 3 }],
+          feu_vert_bureau_etudes: true,
+          approbation_exigee: false,
+        },
+      },
+    })
+    rendre()
+    await attendreChoix()
+    const select = screen.getByLabelText(/Jeu de réglages société/)
+    const options = Array.from(select.querySelectorAll('option')).map((o) => o.value)
+    expect(options).toEqual(['', 'villa', 'hangar'])
+  })
+
+  it('aucun modèle ni jeu enregistré : l’écran le DIT, la création reste possible', async () => {
+    mocks.modeles.mockResolvedValue({ data: [] })
+    mocks.getParametres.mockResolvedValue({ data: { ...REGLAGES, presets: {} } })
+    rendre()
+    await attendreChoix()
+    expect(screen.getByTestId('cal-nouveau-modeles-vide')).toBeInTheDocument()
+    expect(screen.getByTestId('cal-nouveau-jeux-vide')).toBeInTheDocument()
+  })
+
+  it('un refus serveur nommant `preset_id` s’affiche SOUS le champ du jeu, et le bandeau le NOMME', async () => {
+    mocks.depuisModele.mockRejectedValue({
+      response: { data: { preset_id: 'Jeu de réglages inconnu : « villa_standard ».' } },
+    })
+    rendre()
+    await attendreChoix()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    fireEvent.change(screen.getByLabelText(/Jeu de réglages société/), {
+      target: { value: 'villa_standard' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    expect(await screen.findByTestId('erreur-preset'))
+      .toHaveTextContent('Jeu de réglages inconnu : « villa_standard ».')
+    expect(screen.getByRole('button', { name: /Corriger le champ « Jeu de réglages société »/ }))
+      .toBeInTheDocument()
+    expect(mocks.navigate).not.toHaveBeenCalled()
+  })
+
+  it('une liste de départ indisponible ne bloque pas la création ordinaire', async () => {
+    mocks.modeles.mockRejectedValue(new Error('réseau'))
+    mocks.getParametres.mockRejectedValue(new Error('réseau'))
+    rendre()
+    await attendreChoix()
+    await choisirDansCombobox('Lead', 'Lead d’essai')
+    fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1' }))
   })
 })

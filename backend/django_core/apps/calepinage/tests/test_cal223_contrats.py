@@ -316,6 +316,16 @@ SANS_PRODUCTEUR_PUR = {
         'CAL212/CALX366) lit les `PoseReelle` et la variante retenue en base '
         '— la forme est affirmée contre l’exemple committé par '
         'apps/calepinage/tests/test_calx366_pose_reelle.py',
+    # CALX335
+    'calepinage_fixation_bom.json':
+        'nomenclature de fixation : son producteur (CALX359, '
+        'services/fixation.py) lit le catalogue de systèmes de fixation de '
+        'la société EN BASE (CALX358) — la forme (lignes non calculées à '
+        '`quantite: null` + `manquant` nommé, aucune clé d’argent) est '
+        'affirmée sans base par '
+        'apps/calepinage/tests/test_calx335_contrat_fixation_bom.py, et le '
+        'coeur PUR du producteur (_lignes_de_fixation) est rejoué contre '
+        "l'exemple par apps/calepinage/tests/test_calx359_bom_fixation.py",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -351,6 +361,8 @@ POSES_AVANT_LEUR_ROUTE = {
     'calepinage_approbation.json': 'CALX347',
     # CALX337 — ``GET/POST calepinages/<pk>/pose-reelle/`` arrive avec CALX366.
     'calepinage_asbuilt_ecarts.json': 'CALX366',
+    # CALX359 a livré ``GET calepinages/<pk>/bom-fixation/``
+    # (``views/fixation.py``) : ``calepinage_fixation_bom.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

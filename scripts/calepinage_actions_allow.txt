@@ -27,6 +27,7 @@ backend/django_core/apps/calepinage/views/documents.py:497  manuel-proprietaire.
 backend/django_core/apps/calepinage/views/documents.py:530  document-asbuilt.pdf  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/documents.py:559  presentation-compacte.pdf  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/documents.py:615  dossier-fin-chantier  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/fixation.py:33  bom-fixation  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/io_layout.py:37  export-layout  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/io_layout.py:45  import-layout  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/projet_json.py:73  import-projet  # non consommee au 23/09/2026 (CALX381)
