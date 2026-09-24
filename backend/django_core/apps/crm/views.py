@@ -2267,14 +2267,30 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     @extend_schema(responses=inline_serializer('CrmLeadVisites', {
         'visites': serializers.ListField(child=serializers.DictField()),
+        'avertissement_sans_devis': serializers.CharField(),
+        'rappel_juridique': serializers.CharField(),
     }))
     @action(detail=True, methods=['get'], url_path='visites',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def visites(self, request, pk=None):
-        """Les visites techniques du lead, de la plus récente à la plus ancienne."""
+        """Les visites techniques du lead, de la plus récente à la plus ancienne.
+
+        CAD123 — plus l'AVERTISSEMENT (jamais un blocage) quand aucun devis
+        n'est encore parti : la règle « la visite se propose après le devis »
+        et son effet de bord juridique (CAD122), textes du serveur — deux
+        chaînes vides sinon."""
         from apps.visites.selectors import visites_pour_lead
 
-        return Response({'visites': visites_pour_lead(self.get_object())})
+        from .services import avertissement_visite
+
+        lead = self.get_object()
+        avertissement = avertissement_visite(lead)
+        return Response({
+            'visites': visites_pour_lead(lead),
+            'avertissement_sans_devis': avertissement[
+                'avertissement_sans_devis'],
+            'rappel_juridique': avertissement['rappel_juridique'],
+        })
 
     @extend_schema(responses=inline_serializer('CrmLeadVisitePlanifiee', {
         'visite': serializers.DictField(),

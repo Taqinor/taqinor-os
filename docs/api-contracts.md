@@ -95,7 +95,7 @@
 - frontend/src/api/crmApi.js :: getLeadPointsContact -> /api/django/crm/leads/<>/points-contact
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getLeadVisites -> /api/django/crm/leads/<>/visites
-    visites:inconnu
+    avertissement_sans_devis:inconnu, rappel_juridique:inconnu, visites:inconnu
 - frontend/src/api/crmApi.js :: getMesStatsRelance -> /api/django/crm/relance-etapes/mes-stats
     a_faire_maintenant:inconnu, a_lheure_7j_pct:inconnu, cadences_completees_14j:inconnu, en_retard:inconnu, serie_jours_sans_retard:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille

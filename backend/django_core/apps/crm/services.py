@@ -9349,6 +9349,68 @@ def _devis_id_de_la_cadence(lead):
     return ids.pop() if len(ids) == 1 else None
 
 
+# ── CAD123 — une visite SANS devis envoyé : on AVERTIT, on ne bloque pas
+# (décision fondateur du 21/09/2026).
+#
+# La doctrine du 15/09 est « visite technique jamais avant le devis » : le
+# panneau de coaching la respecte (il ne vit que sur le suivi de proposition),
+# mais la fiche (``SectionVisite``) planifiait sans aucune garde. Le terrain a
+# des exceptions légitimes : l'écran NOMME la règle et laisse passer. Le texte
+# vit ICI, une fois — chaque chemin qui planifie l'affiche tel quel, il ne
+# peut donc pas dire deux choses différentes. La visite posée malgré tout est
+# signalée comme telle dans le suivi (note de ``appliquer_visite_planifiee``).
+
+#: CAD123 — la règle, telle que l'écran la dit.
+AVERTISSEMENT_VISITE_SANS_DEVIS = (
+    'Aucun devis n’a encore été envoyé à ce client. Règle : la visite '
+    'technique se propose APRÈS le devis (c’est un outil de closing). Vous '
+    'pouvez la planifier quand même — elle sera signalée « sans devis » dans '
+    'le suivi.')
+
+#: CAD123 × CAD122 — l'effet de bord juridique, rappelé à côté : un bon de
+#: commande signé pendant la visite, chez le client, est un démarchage à
+#: domicile (loi 31-08, art. 45) ; les mentions viennent de la décision
+#: CAD122 (`docs/crm/messages_meryem.md`), rien n'est ajouté.
+RAPPEL_JURIDIQUE_VISITE_DOMICILE = (
+    'Si le bon de commande se signe pendant la visite, chez le client : '
+    'démarchage à domicile (loi 31-08, art. 45) — cocher « signé au '
+    'domicile », formulaire de rétractation remis, aucun acompte encaissé '
+    'avant 7 jours (art. 49 et 50).')
+
+#: La phrase ajoutée à la note de planification quand aucun devis n'est parti.
+MENTION_VISITE_SANS_DEVIS = (
+    'Planifiée SANS devis envoyé — exception à la règle « la visite se '
+    'propose après le devis ».')
+
+
+def visite_sans_devis(lead):
+    """CAD123 — ce lead n'a-t-il encore reçu AUCUN devis (sorti du
+    brouillon) ? Lecture par le sélecteur de ``ventes`` (frontière M3).
+    Best-effort : dans le doute (lecture en échec), on répond NON — un
+    avertissement faux vaut moins que pas d'avertissement."""
+    if lead is None or not getattr(lead, 'pk', None):
+        return False
+    try:
+        from apps.ventes.selectors import lead_a_un_devis
+
+        return not lead_a_un_devis(lead)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning('CAD123 : devis du lead #%s illisibles',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return False
+
+
+def avertissement_visite(lead):
+    """CAD123 — ``{'avertissement_sans_devis', 'rappel_juridique'}`` pour
+    l'écran qui planifie une visite : les deux textes quand aucun devis n'est
+    parti, deux chaînes VIDES (jamais null) sinon. Aucun blocage : c'est une
+    information, pas un refus."""
+    if visite_sans_devis(lead):
+        return {'avertissement_sans_devis': AVERTISSEMENT_VISITE_SANS_DEVIS,
+                'rappel_juridique': RAPPEL_JURIDIQUE_VISITE_DOMICILE}
+    return {'avertissement_sans_devis': '', 'rappel_juridique': ''}
+
+
 def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     """Un RENDEZ-VOUS de visite est posé (ou déplacé) : le suivi s'y recale.
 
@@ -9393,6 +9455,10 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
               else ' — pas encore assignée.')
     if decalee is not None:
         corps += ' Relances décalées après la visite.'
+    if visite_sans_devis(lead):
+        # CAD123 — la visite posée avant tout devis est VISIBLE comme telle
+        # dans le suivi : on a averti, on n'a pas bloqué, on le dit.
+        corps += f' {MENTION_VISITE_SANS_DEVIS}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
     # lead — même motif que ``arreter_cadence`` / ``initialiser_plan_relance``
     # (garde QJ7, qui traiterait sinon cette note comme un premier contact).
