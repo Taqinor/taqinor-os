@@ -277,6 +277,14 @@ SANS_PRODUCTEUR_PUR = {
         'les étiquettes posées en base — la forme, les refus nommés et '
         'l’exclusion du tag système sont affirmés contre l’exemple committé '
         'par apps/calepinage/tests/test_calx343_etiquettes.py',
+
+    # CALX333
+    'calepinage_versions_diff.json':
+        'différentiel champ par champ entre deux versions : son producteur '
+        '(services/diff_versions.py, CALX345) est PUR mais la porte lit les '
+        'versions du calepinage en base — les écarts de l’exemple sont '
+        'RECALCULÉS depuis deux documents v2 en mémoire par '
+        'apps/calepinage/tests/test_calx345_diff_versions.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -302,6 +310,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # en est SORTI.
     # CALX343 a livré ``GET/POST/DELETE calepinages/<pk>/etiquettes/``
     # (``views/etiquettes.py``) : ``calepinage_etiquettes.json`` en est SORTI.
+    # CALX333 — ``GET calepinages/<pk>/versions/<id>/diff/`` arrive avec
+    # CALX345.
+    'calepinage_versions_diff.json': 'CALX345',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

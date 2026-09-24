@@ -1,0 +1,169 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/versions/<int:version_id>/diff/",
+  "pourquoi": "CALX333 — LE DIFFÉRENTIEL ENTRE DEUX VERSIONS, figé AVANT sa vue (PACT10 : le contrat part SEUL ; producteur `services/diff_versions.py::comparer_versions`, CALX345). CONSTAT : `services/versions.py` n'expose que derniere_version / enregistrer_version / borne_de_purge / purger_versions / restaurer_version — aucune fonction de différence ; `CalepinageVersion` gèle un instantané ENTIER et le chatter ne note que l'ancien/nouveau nombre de modules (`services/journal.py`). Comparer deux versions obligeait à diffuser deux blocs JSON complets au navigateur. PARITÉ : HelioScope (https://help-center.helioscope.com/hc/en-us/articles/4419967126931-5-Simulation-and-Report — bascule de métrique « for quick comparison between simulations »). LA PORTE : `GET calepinages/<pk>/versions/<version_id>/diff/?contre=<autre_id>` — `gauche` est la version du chemin, `droite` celle de `contre` ; SANS `contre`, `droite` est l'ÉTAT COURANT du calepinage (`id: null`, voir `exemple_contre_courant`) — « qu'est-ce qui a changé depuis cette version ? ». `avant` se lit à gauche, `apres` à droite. BORNÉ AUX GRANDEURS COMPTABLES DU DOCUMENT, JAMAIS UN DIFF DE JSON BRUT : nombre de modules, kWc, nombre de pans, nombre d'obstacles, orientation et inclinaison PAR PAN (le pan est désigné par son `id` du document : `pan:<id>:azimut_deg`, `pan:<id>:inclinaison_deg`), empreinte du layout, version du moteur — la liste fermée est `champs_compares`. Chaque écart porte sa clé stable (`champ`), son libellé français (`libelle`) et ses deux valeurs. UNE GRANDEUR ÉGALE DES DEUX CÔTÉS N'EST PAS UN ÉCART : deux versions identiques rendent `ecarts: []` (`exemple_identiques`). UN CHAMP ABSENT DES DEUX CÔTÉS EST OMIS, JAMAIS `null` CONTRE `null` : dans `exemple`, aucune des deux versions ne porte de version du moteur — `version_moteur` n'apparaît donc PAS dans `ecarts` (voir `omis_dans_l_exemple`). Un champ présent d'UN seul côté est un écart réel et porte `null` du côté où il manque (le pan `PAN-B` n'a plus d'inclinaison saisie à droite) — un `null` n'est jamais remplacé par `0`. `pans` est absent de `ecarts` parce qu'il est ÉGAL des deux côtés, pas parce qu'il est inconnu. BORNÉ AU CALEPINAGE : une version d'un AUTRE calepinage (ou d'une autre société) est INTROUVABLE — 404 `{detail}` (`refus_version_introuvable`), pour la version du chemin comme pour `contre` ; un `contre` non entier est refusé 400 en nommant le champ (`refus_contre_illisible`). LECTURE PURE : rien n'est écrit, aucune version n'est créée. Garde `calepinage_voir`. Valeurs : des PLACEHOLDERS assumés.",
+  "parametres": {
+    "contre": "identifiant d'une AUTRE version du MÊME calepinage — facultatif ; absent ⇒ l'état courant du calepinage"
+  },
+  "champs_compares": [
+    {
+      "champ": "modules",
+      "libelle": "Nombre de modules"
+    },
+    {
+      "champ": "kwc",
+      "libelle": "Puissance crête (kWc)"
+    },
+    {
+      "champ": "pans",
+      "libelle": "Nombre de pans"
+    },
+    {
+      "champ": "obstacles",
+      "libelle": "Nombre d'obstacles"
+    },
+    {
+      "champ": "pan:<id>:azimut_deg",
+      "libelle": "Orientation du pan « <libellé> » (°)"
+    },
+    {
+      "champ": "pan:<id>:inclinaison_deg",
+      "libelle": "Inclinaison du pan « <libellé> » (°)"
+    },
+    {
+      "champ": "layout_hash",
+      "libelle": "Empreinte de la conception"
+    },
+    {
+      "champ": "version_moteur",
+      "libelle": "Version du moteur"
+    }
+  ],
+  "omis_dans_l_exemple": [
+    "version_moteur"
+  ],
+  "exemple": {
+    "gauche": {
+      "id": 12,
+      "libelle": "Version du 19/09 — avant reprise",
+      "cree_le": "2026-09-19T09:00:00Z",
+      "layout_hash": "abababababababababababababababababababababababababababababababab"
+    },
+    "droite": {
+      "id": 15,
+      "libelle": "Restauration de la version #9",
+      "cree_le": "2026-09-19T11:30:00Z",
+      "layout_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+    },
+    "ecarts": [
+      {
+        "champ": "modules",
+        "libelle": "Nombre de modules",
+        "avant": 12,
+        "apres": 14
+      },
+      {
+        "champ": "kwc",
+        "libelle": "Puissance crête (kWc)",
+        "avant": 8.64,
+        "apres": 10.08
+      },
+      {
+        "champ": "obstacles",
+        "libelle": "Nombre d'obstacles",
+        "avant": 2,
+        "apres": 1
+      },
+      {
+        "champ": "pan:PAN-A:azimut_deg",
+        "libelle": "Orientation du pan « Pan sud » (°)",
+        "avant": 180.0,
+        "apres": 175.0
+      },
+      {
+        "champ": "pan:PAN-B:inclinaison_deg",
+        "libelle": "Inclinaison du pan « PAN-B » (°)",
+        "avant": 15.0,
+        "apres": null
+      },
+      {
+        "champ": "layout_hash",
+        "libelle": "Empreinte de la conception",
+        "avant": "abababababababababababababababababababababababababababababababab",
+        "apres": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+    ]
+  },
+  "exemple_identiques": {
+    "gauche": {
+      "id": 12,
+      "libelle": "Version du 19/09 — avant reprise",
+      "cree_le": "2026-09-19T09:00:00Z",
+      "layout_hash": "abababababababababababababababababababababababababababababababab"
+    },
+    "droite": {
+      "id": 13,
+      "libelle": "Ré-enregistrement à l'identique",
+      "cree_le": "2026-09-19T09:05:00Z",
+      "layout_hash": "abababababababababababababababababababababababababababababababab"
+    },
+    "ecarts": []
+  },
+  "exemple_contre_courant": {
+    "gauche": {
+      "id": 12,
+      "libelle": "Version du 19/09 — avant reprise",
+      "cree_le": "2026-09-19T09:00:00Z",
+      "layout_hash": "abababababababababababababababababababababababababababababababab"
+    },
+    "droite": {
+      "id": null,
+      "libelle": "État courant",
+      "cree_le": "2026-09-20T08:15:00Z",
+      "layout_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+    },
+    "ecarts": [
+      {
+        "champ": "modules",
+        "libelle": "Nombre de modules",
+        "avant": 12,
+        "apres": 14
+      },
+      {
+        "champ": "kwc",
+        "libelle": "Puissance crête (kWc)",
+        "avant": 8.64,
+        "apres": 10.08
+      },
+      {
+        "champ": "obstacles",
+        "libelle": "Nombre d'obstacles",
+        "avant": 2,
+        "apres": 1
+      },
+      {
+        "champ": "pan:PAN-A:azimut_deg",
+        "libelle": "Orientation du pan « Pan sud » (°)",
+        "avant": 180.0,
+        "apres": 175.0
+      },
+      {
+        "champ": "pan:PAN-B:inclinaison_deg",
+        "libelle": "Inclinaison du pan « PAN-B » (°)",
+        "avant": 15.0,
+        "apres": null
+      },
+      {
+        "champ": "layout_hash",
+        "libelle": "Empreinte de la conception",
+        "avant": "abababababababababababababababababababababababababababababababab",
+        "apres": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+      }
+    ]
+  },
+  "refus_version_introuvable": {
+    "detail": "Version introuvable."
+  },
+  "refus_contre_illisible": {
+    "contre": "Le paramètre « contre » attend l'identifiant d'une version (reçu : « abc »)."
+  }
+}
