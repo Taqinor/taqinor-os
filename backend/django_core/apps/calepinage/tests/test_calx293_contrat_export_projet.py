@@ -8,11 +8,25 @@ l'ÉCHANTILLON lui-même, pas une réponse HTTP réelle, contre les trois
 promesses du « Done » de CALX293 :
 
 1. l'exemple committé se charge et tient son enveloppe PACT10 ;
-2. `format_version == 1` — un ENTIER versionné dans le fichier, jamais une
-   date ;
+2. `format_version == 2` — un ENTIER versionné dans le fichier, jamais une
+   date (CALX370, 2026-09-24 : voir plus bas) ;
 3. le fichier est REJETÉ (par le détecteur ci-dessous, qui reprend le
    vocabulaire `prix_*`/`cout_*`/`marge_*` du « Done ») dès qu'une clé de
    cette famille y apparaît — et l'exemple committé en est indemne.
+
+CALX370 (2026-09-24, lot 7/M5, fix CI #716) — LE FORMAT EST PASSÉ À 2. Le
+même fichier `export_projet.json` sert désormais aussi de MOITIÉ « export »
+au aller-retour import/export de CALX370 (« réimporter un projet de
+calepinage complet », `POST calepinages/import-projet/`, contrat SÉPARÉ
+`calepinage_projet_json.json` pour la porte d'import) : deux blocs rejoignent
+le document EN FIN, `postes_pertes` (les postes SAISIS, `Calepinage.pertes`)
+et `variantes` (`[{nom, retenue, roof_layout, layout_hash, resultat}]`) — le
+texte du contrat committé (clé `pourquoi`) le documente lui-même : « CALX370
+— FORMAT 2 : LE FICHIER SE RÉIMPORTE ». `test_calx312_export_projet.py` (la
+vue elle-même) a été réaligné sur v2 DANS LE MÊME commit CALX370
+(d913d7ce) ; ce fichier-ci (CALX293, le contrat SEUL avant vue) avait été
+oublié — c'est lui que ce correctif aligne, la VÉRITÉ du format étant v2
+(deux tâches, un seul contrat partagé, jamais deux vérités).
 
 Aucune base de données, aucun réseau.
 
@@ -86,10 +100,15 @@ class EnveloppeTest(unittest.TestCase):
     def test_l_exemple_porte_les_cles_annoncees_par_le_done(self):
         # CALX314 — ``provenance`` rejoint le fichier avant sa première
         # livraison (même merge que la route CALX312).
+        # CALX370 (2026-09-24) — format 2 : ``postes_pertes`` (postes SAISIS,
+        # ``Calepinage.pertes``) et ``variantes`` rejoignent le document EN
+        # FIN, pour que ``POST calepinages/import-projet/`` puisse relire
+        # exactement ce que cette route exporte (aller-retour).
         attendues = {'format_version', 'produit_le', 'calepinage', 'site',
                      'equipements', 'roof_layout', 'layout_hash',
                      'version_moteur', 'resultat', 'pertes',
-                     'avertissements', 'provenance'}
+                     'avertissements', 'provenance',
+                     'postes_pertes', 'variantes'}
         self.assertEqual(set(CONTRAT['exemple']), attendues)
         self.assertEqual(set(CONTRAT['exemple_vide']), attendues,
                          "exemple_vide doit garder TOUTES les clés (règle "
@@ -98,16 +117,21 @@ class EnveloppeTest(unittest.TestCase):
 
 
 class FormatVersionTest(unittest.TestCase):
-    """Un ENTIER versionné, jamais dérivé d'une date."""
+    """Un ENTIER versionné, jamais dérivé d'une date.
 
-    def test_format_version_vaut_un(self):
-        self.assertEqual(CONTRAT['exemple']['format_version'], 1)
+    CALX370 (2026-09-24) a fait passer le format de 1 à 2 (``postes_pertes``
+    + ``variantes``, pour l'aller-retour import/export) — voir le docstring
+    du module.
+    """
+
+    def test_format_version_vaut_deux(self):
+        self.assertEqual(CONTRAT['exemple']['format_version'], 2)
         self.assertIsInstance(CONTRAT['exemple']['format_version'], int)
 
     def test_format_version_est_le_meme_sur_l_exemple_vide(self):
         # Le NUMÉRO DE FORMAT ne dépend jamais de l'état du calepinage —
         # seul son CONTENU change entre `exemple` et `exemple_vide`.
-        self.assertEqual(CONTRAT['exemple_vide']['format_version'], 1)
+        self.assertEqual(CONTRAT['exemple_vide']['format_version'], 2)
 
     def test_produit_le_est_un_horodatage_distinct_de_format_version(self):
         """CALX293 : `produit_le` (horodatage réel) et `format_version`
