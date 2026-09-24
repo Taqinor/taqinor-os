@@ -31,6 +31,7 @@ import {
   EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
+  CONSIGNE_CHARGES_FIXES,
 } from './appelGuidance'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
@@ -361,6 +362,14 @@ export default function PanneauScriptAppel({
           {questions.length > 0
             ? questions.map(rendreQuestion)
             : !g.enTete && <p data-testid="aucune-question">{AUCUNE_QUESTION}</p>}
+          {/* CAD168 — les deux lignes fixes de la facture : la question de
+              découverte, sans aucun montant (il vit au barème). */}
+          {g.questionChargesFixes && (
+            <div className="flex flex-col gap-0.5" data-testid="question-charges-fixes">
+              <p className="text-sm text-foreground">{g.questionChargesFixes}</p>
+              <p>{CONSIGNE_CHARGES_FIXES}</p>
+            </div>
+          )}
           {/* CAD175 — réponses sans colonne : à NOTER, jamais un champ inventé. */}
           {g.aNoter?.length > 0 && (
             <ul className="ml-4 list-disc" data-testid="a-noter">

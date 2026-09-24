@@ -498,6 +498,29 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
   })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+// CAD168 — les deux lignes fixes de la facture, enfin dites (sans chiffre)
+// ════════════════════════════════════════════════════════════════════════════
+describe('CAD168 — la question des lignes fixes figure au script', () => {
+  it('résidentiel : la question de découverte et sa consigne, sans aucun montant', async () => {
+    armer()
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const bloc = await screen.findByTestId('question-charges-fixes')
+    expect(bloc).toHaveTextContent(guidance.QUESTION_CHARGES_FIXES)
+    expect(bloc).toHaveTextContent(guidance.CONSIGNE_CHARGES_FIXES)
+    // AUCUN chiffre prononçable : le montant vit au barème, jamais ici.
+    expect(bloc.textContent).not.toMatch(/[0-9]/)
+  })
+
+  it('agricole : pas de ligne fixe BT domestique à demander', async () => {
+    armer({ panneau: exempleContrat('crm', 'panneau_appel', 'exemple_sans_cadence_active') })
+    render(<PanneauScriptAppel mode="fiche" leadId={1} />)
+    expect(await screen.findByTestId('questions-appel')).toBeInTheDocument()
+    expect(screen.queryByTestId('question-charges-fixes')).not.toBeInTheDocument()
+  })
+})
+
 describe('CAD153 — une question déjà répondue n’est JAMAIS reposée', () => {
   it('même si le serveur la servait encore, une colonne présente en prefill ne s’affiche pas', async () => {
     // Incohérence simulée À PARTIR du contrat : la présence est à la fois

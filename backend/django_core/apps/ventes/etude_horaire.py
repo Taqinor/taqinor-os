@@ -3000,6 +3000,37 @@ def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
         return None
 
 
+#: CAD168 — les DEUX lignes fixes de toute facture (location du compteur,
+#: entretien du branchement) ne sont PAS solarisables : le calcul les porte
+#: des deux côtés (elles s'annulent dans l'économie), mais aucun écran ne le
+#: disait, et le client qui annonce « ma facture fait 400 dirhams » ne
+#: retrouvait pas son chiffre sur la suivante. Le LIBELLÉ nomme la part ; il
+#: ne porte AUCUN montant — le montant voyage à côté, lu au barème ou au
+#: réglage société, jamais recopié dans un texte.
+LIBELLE_PART_NON_SOLARISABLE = (
+    'Location du compteur et entretien du branchement : non solarisables, '
+    'ils restent sur chaque facture, avant comme après les panneaux.')
+
+
+def part_non_solarisable(charges_fixes_mad=None, *,
+                         millesime=bareme.MILLESIME_COURANT):
+    """CAD168 — ``{montant_mad_mois, libelle, source}`` des deux lignes fixes.
+
+    Le montant et sa source sont ceux que le BARÈME applique réellement
+    (:func:`bareme.facture_mad` sur zéro kWh : il ne reste que les lignes
+    fixes) — le réglage société quand il est renseigné, sinon les valeurs
+    SOURCÉES des factures. Aucune seconde règle n'est écrite ici.
+    """
+    facture_a_vide = bareme.facture_mad(
+        0, charges_fixes_mad=charges_fixes_mad, tppan=False,
+        millesime=millesime)
+    return {
+        'montant_mad_mois': round(facture_a_vide['location_entretien_mad'], 2),
+        'libelle': LIBELLE_PART_NON_SOLARISABLE,
+        'source': facture_a_vide['charges_fixes_source'],
+    }
+
+
 def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
                               occupation=None, jour_reference=None):
     """Cœur de :func:`etude_horaire_pour_devis` (exceptions gérées au-dessus)."""
@@ -3106,6 +3137,10 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         jour_reference=jour_reference)
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
+        # CAD168 — l'économie présentée NOMME la part non solarisable (clé
+        # posée ici, comme `occupation_source` : la forme historique de
+        # `calculer_etude_horaire` ne bouge pas).
+        resultat['part_non_solarisable'] = part_non_solarisable(charges_fixes)
     return resultat
 
 

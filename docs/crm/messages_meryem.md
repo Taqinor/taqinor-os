@@ -436,6 +436,8 @@ A_NOTER_GROUPE : À noter dans la note d’appel : le site a-t-il un groupe éle
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
 AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
+QUESTION_CHARGES_FIXES : Question à l'appel : « Votre montant inclut l'abonnement et l'entretien du compteur ? » — réponse à noter dans la note d’appel.
+CONSIGNE_CHARGES_FIXES : Ces deux lignes restent sur chaque facture, avant comme après les panneaux : elles ne se prononcent jamais en chiffres.
 
 CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
 fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan
@@ -458,6 +460,13 @@ culture, tension bt/mt, rythme d'activité et week-end, groupe électrogène, pr
 `AUCUNE_ESTIMATION_SEGMENT` rappelle qu'aucun chiffre d'économie ne s'annonce (le moteur horaire ne les traite pas) ;
 `CARBURANT_DECLARE_SEUL` reprend la règle CAD173 (Q17). ✎ Formulations à valider par le fondateur. Darija : aucune
 version (consignes d'écran).
+
+CAD168 (24/09/2026) — toute facture porte DEUX lignes fixes (location du compteur, entretien du branchement) qui ne
+sont pas solarisables : le calcul les porte des deux côtés, mais aucun script ne les disait. `QUESTION_CHARGES_FIXES`
+est la question de découverte (résidentiel, barème BT domestique) ; `CONSIGNE_CHARGES_FIXES` rappelle qu'elles ne se
+prononcent jamais en chiffres. Leur MONTANT n'est écrit dans aucun texte : il est lu au barème ou au réglage société
+et l'étude horaire le NOMME à côté de l'économie (`etude_horaire.part_non_solarisable` : montant + libellé
+`LIBELLE_PART_NON_SOLARISABLE`, sans chiffre). ✎ Formulations à valider par le fondateur.
 
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.

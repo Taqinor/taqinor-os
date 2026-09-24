@@ -533,6 +533,22 @@ export const A_NOTER_GROUPE = 'À noter dans la note d’appel : le site '
 export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
   + 'critiques, qui ne doivent jamais s’arrêter.'
 
+// ── CAD168 — les deux lignes fixes de la facture, jamais dites ────────────
+// Toute facture porte deux lignes fixes (location du compteur, entretien du
+// branchement) qui ne sont PAS solarisables : le calcul les porte des deux
+// côtés, mais un client qui annonce « ma facture fait … » peut parler TTC
+// abonnement compris ou non. La question de découverte le demande ; la
+// réponse se NOTE (aucune colonne ne la porte). AUCUN montant n'est écrit
+// ici ni prononcé : le montant vit au barème / réglage société, et l'étude
+// le NOMME à côté de l'économie (`etude_horaire.part_non_solarisable`).
+// Résidentiel seulement : c'est le barème BT domestique qui porte ces lignes.
+export const QUESTION_CHARGES_FIXES = "Question à l'appel : « Votre montant "
+  + "inclut l'abonnement et l'entretien du compteur ? » — réponse à noter "
+  + 'dans la note d’appel.'
+export const CONSIGNE_CHARGES_FIXES = 'Ces deux lignes restent sur chaque '
+  + 'facture, avant comme après les panneaux : elles ne se prononcent jamais '
+  + 'en chiffres.'
+
 /** Les consignes à noter, par famille (le résidentiel n'en a aucune). */
 export const A_NOTER_PAR_FAMILLE = Object.freeze({
   residentiel: Object.freeze([]),
@@ -598,5 +614,6 @@ export function guidanceAppel(panneau, options = {}) {
     fenetre: fenetreAppel(vu),
     aNoter: A_NOTER_PAR_FAMILLE[famille],
     gardeFous: GARDE_FOUS_PAR_FAMILLE[famille],
+    questionChargesFixes: famille === 'residentiel' ? QUESTION_CHARGES_FIXES : null,
   }
 }
