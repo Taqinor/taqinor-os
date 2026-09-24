@@ -114,6 +114,14 @@ def _refus_date_passee(quand, libelle_champ):
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+#: CAD4 (résiduel) — le refus d'un appel coché « Fait » sans issue NOMME les
+#: réponses que le panneau propose RÉELLEMENT (`RelanceEtapeRow.jsx`,
+#: QUESTIONS) : « Intéressé » n'existe plus à l'écran depuis CAD4 (un seul mot,
+#: « Client joint »), le citer ici renvoyait vers un bouton introuvable.
+MESSAGE_ISSUE_APPEL_OBLIGATOIRE = (
+    "Issue de l'appel obligatoire : Client joint, Pas de réponse, "
+    'À rappeler le… ou Refus. C\'est elle qui programme le prochain geste.')
+
 
 @contextmanager
 def _save_borne_aux_champs(instance, champs):
@@ -3460,11 +3468,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 and not outcome
                 and not _message_ouvert_sur_touche(etape)):
             return Response(
-                {'erreurs': {'outcome': "Issue de l'appel obligatoire : "
-                                        'Joint, Non joint, À rappeler, '
-                                        'Intéressé ou Refus. '
-                                        "C'est elle qui programme le "
-                                        'prochain geste.'}},
+                {'erreurs': {'outcome': MESSAGE_ISSUE_APPEL_OBLIGATOIRE}},
                 status=status.HTTP_400_BAD_REQUEST)
         # MRY10 — « rappelez-moi jeudi » saisi DEPUIS la touche : elle est
         # reportée, plutôt que marquée faite et oubliée.
