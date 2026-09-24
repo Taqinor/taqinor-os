@@ -261,6 +261,16 @@ SANS_PRODUCTEUR_PUR = {
         'résultat RÉEL du service sur son `entree_synthetique`, rejoué et '
         'affirmé égal sans base par '
         'apps/calepinage/tests/test_calx267_groupes_batteries.py',
+
+    # CALX336
+    'calepinage_releve_visite.json':
+        'REPRISE d’une visite technique VALIDÉE dans le calepinage : la '
+        'lecture vit dans une AUTRE app (apps.visites.selectors.'
+        'releve_pour_calepinage, CALX363) et lit la visite et ses photos en '
+        'base, et l’action (CALX364) crée un ReleveTerrain — le producteur '
+        'exige la base ; la forme est affirmée contre l’exemple committé par '
+        'apps/visites/tests/test_calx363_releve_pour_calepinage.py et '
+        'apps/calepinage/tests/test_calx364_reprise_visite.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -281,6 +291,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # même retrait que CALX297 avant elle.
     # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
     # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
+    'calepinage_releve_visite.json':
+        'GET/POST calepinages/<pk>/releve-visite/ arrive avec CALX364 '
+        '(views/reprise_visite.py) — retirer cette entrée dans la même tâche',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
