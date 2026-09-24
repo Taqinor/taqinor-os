@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import crmApi from '../../../../api/crmApi'
@@ -47,6 +47,11 @@ function RelanceCadenceControls({ leadId, onChanged }) {
   const [motifRemplacement, setMotifRemplacement] = useState('')
   const [devisChoisi, setDevisChoisi] = useState('')
   const [erreurs, setErreurs] = useState({})
+  // Champs de la CONFIRMATION de relance, pas des champs du lead : ids
+  // générés (hors `fieldLabels`, qui ne cartographie que les colonnes du
+  // lead) — leurs erreurs 400 s'affichent directement sous eux.
+  const idMotif = useId()
+  const idDevis = useId()
 
   if (leadId == null) return null
 
@@ -176,10 +181,10 @@ function RelanceCadenceControls({ leadId, onChanged }) {
               <p className="text-xs">{questions.messageRemplacement}</p>
               <FormField
                 label="Motif d’arrêt de la cadence en cours" required
-                htmlFor="lf-remplacement-motif" error={erreurMotif} errorKind="required"
+                htmlFor={idMotif} error={erreurMotif} errorKind="required"
               >
                 <Input
-                  id="lf-remplacement-motif" invalid={!!erreurMotif}
+                  id={idMotif} invalid={!!erreurMotif}
                   value={motifRemplacement}
                   onChange={(e) => setMotifRemplacement(e.target.value)}
                   data-testid="lf-remplacement-motif"
@@ -190,9 +195,9 @@ function RelanceCadenceControls({ leadId, onChanged }) {
           {questions.devisAChoisir && (
             <div className="flex flex-col gap-1.5" data-testid="cad55-choix-devis">
               <p className="text-xs">{questions.messageDevis}</p>
-              <FormField label="Devis cité par le suivi" htmlFor="lf-relance-devis" error={erreurDevis}>
+              <FormField label="Devis cité par le suivi" htmlFor={idDevis} error={erreurDevis}>
                 <select
-                  id="lf-relance-devis"
+                  id={idDevis}
                   className={erreurDevis ? 'form-select is-invalid' : 'form-select'}
                   aria-invalid={erreurDevis ? true : undefined}
                   value={devisChoisi} onChange={(e) => setDevisChoisi(e.target.value)}
