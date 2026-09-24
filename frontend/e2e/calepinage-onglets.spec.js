@@ -139,9 +139,14 @@ test('CALX387: le lien profond /calepinage/:id/<cle> ouvre le MÊME panneau que 
   // sans route dédiée si l'ordre change.
   expect(CLES, '« pente » doit rester au registre pour cette preuve').toContain('pente')
   const cle = 'pente'
+  // « Ouvre le MÊME panneau » (texte CALX387) : la route profonde monte le
+  // COMPOSANT du registre en plein écran, SANS le chrome du rail (design
+  // CALX1 — `module.config.jsx` monte `SaisiePente` sur `/:id/pente`). La
+  // preuve d'équivalence est donc le repère du PANNEAU (`cal-pente`), le
+  // même sous la route profonde et sous l'onglet — jamais le bouton du rail,
+  // absent d'une route profonde.
   await page.goto(`/calepinage/${calepinageId}/${cle}`)
-  await expect(page.getByTestId(`cal-onglet-${cle}`)).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+  await expect(page.getByTestId('cal-pente')).toBeVisible()
 
   // Puis l'onglet, cliqué depuis le rail, mène au MÊME panneau — même clé
   // dans l'URL, même contenu, un seul chemin de vérité.
@@ -149,4 +154,5 @@ test('CALX387: le lien profond /calepinage/:id/<cle> ouvre le MÊME panneau que 
   await page.getByTestId(`cal-onglet-${cle}`).click()
   await expect(page).toHaveURL(new RegExp(`/calepinage/${calepinageId}\\?onglet=${cle}`))
   await expect(page.getByTestId('cal-onglet-panneau')).toBeVisible()
+  await expect(page.getByTestId('cal-pente')).toBeVisible()
 })

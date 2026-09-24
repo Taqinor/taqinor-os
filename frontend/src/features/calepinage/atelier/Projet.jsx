@@ -94,9 +94,11 @@ export default function Projet({ calepinageId: idPropose } = {}) {
      désactivé, jamais un envoi sans rattachement deviné). */
   const [rattachement, setRattachement] = useState(null)
   useEffect(() => {
-    if (!calepinageId) { setRattachement({}); return }
-    Promise.resolve(calepinageApi.calepinages.get(calepinageId))
+    // Aucun setState SYNCHRONE dans l'effet (react-hooks v7) : le cas « pas
+    // d'identifiant » se règle dans la même microtâche que la lecture.
+    Promise.resolve(calepinageId ? calepinageApi.calepinages.get(calepinageId) : null)
       .then((res) => {
+        if (!res) { setRattachement({}); return }
         const detail = res?.data || {}
         if (detail.lead?.id) setRattachement({ lead: detail.lead.id })
         else if (detail.client?.id) setRattachement({ client: detail.client.id })

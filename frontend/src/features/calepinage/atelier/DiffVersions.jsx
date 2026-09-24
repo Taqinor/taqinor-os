@@ -54,11 +54,11 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
 
   const comparer = useCallback(() => {
     if (!calepinageId || !gaucheId) return undefined
-    setChargement(true)
-    setErreurDiff(null)
-    return Promise.resolve(
-      calepinageApi.calepinages.versionsDiff(calepinageId, gaucheId, droiteId || undefined),
-    )
+    // Aucun setState SYNCHRONE sur le chemin de l'effet (react-hooks v7) :
+    // les marqueurs de départ passent par la microtâche, comme le reste.
+    return Promise.resolve()
+      .then(() => { setChargement(true); setErreurDiff(null) })
+      .then(() => calepinageApi.calepinages.versionsDiff(calepinageId, gaucheId, droiteId || undefined))
       .then((res) => setDiff(res?.data || null))
       .catch(() => { setErreurDiff('Le différentiel n’a pas pu être calculé.'); setDiff(null) })
       .finally(() => setChargement(false))
