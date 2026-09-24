@@ -5934,6 +5934,252 @@ def notifier_signal_client(lead, signal, *, detail='') -> None:
             getattr(lead, 'pk', None), signal, exc_info=True)
 
 
+# ── CAD-K ── CAD130 — un signal du client fait BOUGER la cadence ────────────
+#
+# Audit L3 du 21/09/2026. Le client rouvre sa proposition trois fois dans la
+# soirée : une note, une notification — et la file de Meryem ne bouge pas d'un
+# millimètre. L'avance d'étape sur ouverture a été débranchée à juste titre
+# (règle fondateur du 07/09 : le FUNNEL ne bouge que sur une réponse
+# confirmée), mais rien n'avait pris sa place côté RAPPEL.
+#
+# DÉCISION DE CONCEPTION (round 2) — ``reporter_prochaine_touche`` DÉCALE une
+# touche existante, il n'en fabrique pas une. Un signal, lui, doit PRODUIRE
+# une touche visible, nommée par ce qui s'est passé (« Proposition rouverte —
+# appeler »). Elle est donc CRÉÉE — une, jamais deux — et elle REMPLACE la
+# prochaine touche du plan : si celle-ci tomberait avant elle ou le même
+# jour, elle glisse derrière (avec toute sa suite et son ancre, par la
+# mécanique existante — décaler, jamais redémarrer, jamais un second plan).
+#
+# LES CINQ GARDES, toutes vérifiables :
+#   1. la touche signal remplace la prochaine touche du plan en la décalant ;
+#   2. jamais plus d'un appel et d'un message par jour et par lead (CAD20) ;
+#   3. jamais hors fenêtre (``horaires.prochain_creneau_appel``) ;
+#   4. jamais sur un lead « ne plus contacter », perdu, archivé ou signé ;
+#   5. un délai minimal depuis la dernière touche faite
+#      (``cadence_temps.SIGNAL_ECART_MIN``).
+
+#: La nature du signal qui a posé la touche. `SIGNAL_QUESTIONNAIRE` (CAD136)
+#: est déclaré plus haut : même vocabulaire que la notification.
+SIGNAL_PROPOSITION_ROUVERTE = 'proposition_rouverte'
+
+#: Le libellé de la touche que chaque signal pose. Il dit le GESTE (« appeler »)
+#: et sa raison — c'est ce que la file affiche. Sert aussi de clé
+#: d'idempotence : une touche signal encore ouverte n'est jamais doublée.
+TOUCHES_SIGNAL = {
+    SIGNAL_PROPOSITION_ROUVERTE: 'Proposition rouverte — appeler',
+    SIGNAL_QUESTIONNAIRE: 'Questionnaire complété — appeler',
+}
+
+#: Les touches signal vivent dans la cadence hors protocole déjà utilisée par
+#: le dépôt (même choix que le rappel demandé de CAD129) : elles ne sont pas
+#: un barreau, et aucune matérialisation réactive ne leur fait naître de suite.
+SIGNAL_CADENCE = 'generique'
+
+#: Ce que le moteur a fait, en une phrase, pour le chatter — et pourquoi une
+#: touche n'a PAS été posée (lead hors cadence), pour les journaux.
+_SIGNAL_RAISONS = {
+    SIGNAL_PROPOSITION_ROUVERTE: 'le client a rouvert sa proposition à '
+                                 'plusieurs reprises',
+    SIGNAL_QUESTIONNAIRE: 'le client vient de répondre au questionnaire',
+}
+
+
+def _libelles_touche_signal():
+    """Les touches qui COUVRENT déjà un signal : les touches signal elles-mêmes
+    et le rappel que le client a demandé (CAD129) — un client qui attend
+    notre appel n'a pas besoin d'une seconde touche pour le même appel."""
+    return tuple(TOUCHES_SIGNAL.values()) + (RAPPEL_DEMANDE_LIBELLE,)
+
+
+def refus_touche_signal(lead):
+    """CAD130 — la raison (FR) pour laquelle AUCUNE touche signal ne se pose
+    sur ce lead, ou ``''``. Garde 4 : ne plus contacter, perdu, archivé,
+    signé — dans cet ordre, la première qui s'applique."""
+    if lead is None or getattr(lead, 'company_id', None) is None:
+        return 'lead sans société'
+    if getattr(lead, 'ne_plus_contacter', False):
+        return 'le client a demandé à ne plus être contacté'
+    if getattr(lead, 'perdu', False):
+        return 'lead perdu'
+    if getattr(lead, 'is_archived', False):
+        return 'lead archivé'
+    if getattr(lead, 'stage', None) == stages.SIGNED:
+        return 'lead signé'
+    return ''
+
+
+def _prochaine_touche_du_plan(lead, exclure_libelles):
+    """La prochaine touche À FAIRE du PLAN — un barreau de protocole, pas une
+    étape posée à la main par le moteur (filet, visite, rappel, signal) :
+    celles-là ont leur propre date, décidée pour une autre raison."""
+    from django.db.models import F
+
+    return (lead.relance_etapes
+            .filter(statut=RelanceEtape.Statut.A_FAIRE)
+            .exclude(libelle__in=tuple(_LIBELLES_FILET | _LIBELLES_VISITE)
+                     + tuple(exclure_libelles))
+            .order_by(F('due_at').asc(nulls_last=True), 'due_date', 'ordre')
+            .first())
+
+
+def _genre_du_canal(canal):
+    """CAD20 — les deux seuls genres que la règle distingue : un MESSAGE
+    (WhatsApp / e-mail, ``horaires.est_un_message`` fait autorité) ou un
+    APPEL (tout le reste, visite comprise — le plus prudent)."""
+    from . import horaires
+
+    return 'message' if horaires.est_un_message(canal) else 'appel'
+
+
+def _jour_occupe_pour(lead, genre, exclure_pk=None):
+    """CAD20 — ``jour_occupe(date_locale)`` pour ce lead et ce GENRE (appel /
+    message) : une touche du même genre déjà FAITE ce jour-là, ou encore À
+    FAIRE à ce jour-là (la touche du plan qui va glisser exceptée)."""
+    from . import horaires
+
+    def _meme_genre(canal):
+        return _genre_du_canal(canal) == genre
+
+    def jour_occupe(jour):
+        debut = datetime.datetime.combine(
+            jour, datetime.time(0, 0), tzinfo=horaires.CASABLANCA)
+        fin = debut + datetime.timedelta(days=1)
+        a_faire = (lead.relance_etapes
+                   .filter(statut=RelanceEtape.Statut.A_FAIRE, due_date=jour))
+        faites = (lead.relance_etapes
+                  .filter(statut=RelanceEtape.Statut.FAIT,
+                          traite_le__gte=debut, traite_le__lt=fin))
+        if exclure_pk is not None:
+            a_faire = a_faire.exclude(pk=exclure_pk)
+        canaux = (list(a_faire.values_list('canal', flat=True))
+                  + list(faites.values_list('canal', flat=True)))
+        return any(_meme_genre(c) for c in canaux)
+
+    return jour_occupe
+
+
+def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
+    """CAD130 — un SIGNAL du client pose UNE touche « …, appeler » dans la file.
+
+    ``signal`` ∈ ``TOUCHES_SIGNAL`` (proposition rouverte, questionnaire
+    complété). Renvoie la touche signal (créée, ou déjà ouverte), ou ``None``
+    quand le signal ne pose rien (signal inconnu, garde 4).
+
+    IDEMPOTENTE : une touche signal — ou un rappel demandé par le client —
+    encore ouverte couvre déjà le signal ; trois ouvertures de la proposition
+    ne font jamais trois touches, ni trois décalages du plan.
+
+    Best-effort intégral : un signal ne fait jamais retomber la requête ou la
+    tâche planifiée qui l'observe."""
+    from . import cadence_temps, horaires
+
+    libelle = TOUCHES_SIGNAL.get(signal)
+    if libelle is None:
+        return None
+    if getattr(lead, 'pk', None):
+        # L'instance de l'appelant peut être périmée (même précaution que
+        # `assurer_prochaine_etape_apres_succes`) : la garde 4 lit l'état réel.
+        try:
+            lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived',
+                                         'ne_plus_contacter',
+                                         'contact_preference'])
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning('CAD130 : lead #%s illisible', lead.pk,
+                           exc_info=True)
+            return None
+    if refus_touche_signal(lead):
+        return None
+    try:
+        # 1. Idempotence : le signal est déjà couvert par une touche ouverte.
+        deja = (lead.relance_etapes
+                .filter(libelle__in=_libelles_touche_signal(),
+                        statut=RelanceEtape.Statut.A_FAIRE)
+                .order_by('due_date', 'pk').first())
+        if deja is not None:
+            return deja
+
+        # 2. Le canal : un appel — sauf pour un client « WhatsApp uniquement »
+        #    (CAD32 : sa préférence gagne toujours, on lui écrit).
+        canal = RelanceEtape.Canal.APPEL
+        if (getattr(lead, 'contact_preference', '')
+                == cadence_temps.PREFERENCE_WHATSAPP_ONLY):
+            canal = RelanceEtape.Canal.WHATSAPP
+        genre = _genre_du_canal(canal)
+
+        # 3. Les dates, par la règle PURE (cadence_temps.echeances_signal).
+        instant = maintenant or timezone.now()
+        derniere = (lead.relance_etapes
+                    .filter(statut=RelanceEtape.Statut.FAIT,
+                            traite_le__isnull=False)
+                    .order_by('-traite_le').values_list('traite_le',
+                                                        flat=True).first())
+        plan = _prochaine_touche_du_plan(lead, _libelles_touche_signal())
+        echeance, glisse_a = cadence_temps.echeances_signal(
+            maintenant=instant, derniere_faite=derniere,
+            prochaine=getattr(plan, 'due_at', None),
+            jour_occupe=_jour_occupe_pour(
+                lead, genre, exclure_pk=getattr(plan, 'pk', None)),
+            creneau=lambda dt: horaires.prochain_creneau_appel(
+                dt, lead.company, canal=canal),
+            lendemain=lambda dt: cadence_temps.lendemain_joignable(
+                dt, lead.company, canal))
+
+        # 4. La touche du plan glisse DERRIÈRE la touche signal, avec toute sa
+        #    suite et son ancre (mécanique existante, jamais une seconde).
+        deplacee = None
+        if plan is not None and glisse_a is not None:
+            deplacee = reporter_prochaine_touche(
+                lead, user, glisse_a, etape=plan, journaliser=False)
+
+        # 5. LA touche signal.
+        etape = RelanceEtape.objects.create(
+            company=lead.company, lead=lead, cadence=SIGNAL_CADENCE, ordre=0,
+            canal=canal, libelle=libelle,
+            due_at=echeance,
+            due_date=echeance.astimezone(horaires.CASABLANCA).date(),
+            note=f'Posée automatiquement : {_SIGNAL_RAISONS[signal]}.')
+        _recaler_file(lead, user)
+
+        # 6. UNE note système (``user=None`` : poser une touche n'est pas un
+        #    contact, garde QJ7) qui dit ce que le moteur a fait.
+        quand = echeance.astimezone(horaires.CASABLANCA)
+        corps = (f'Signal client — {_SIGNAL_RAISONS[signal]} : touche « '
+                 f'{libelle} » posée pour le {quand:%d/%m/%Y à %H:%M}.')
+        if deplacee is not None:
+            apres = deplacee.due_at.astimezone(horaires.CASABLANCA)
+            nom = (deplacee.libelle or '').strip() \
+                or deplacee.get_canal_display()
+            corps += (f' La touche du plan « {nom} » glisse au '
+                      f'{apres:%d/%m/%Y à %H:%M}, avec sa suite (décaler, '
+                      'jamais redémarrer).')
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE, body=corps)
+        return etape
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD130 : touche signal non posée (lead #%s, %s)',
+            getattr(lead, 'pk', None), signal, exc_info=True)
+        return None
+
+
+def poser_touche_signal_du_lead_id(lead_id, signal, *, company):
+    """CAD130 — variante par ID pour les autres apps (``ventes`` ne tient que
+    ``devis.lead_id`` et n'importe jamais les modèles du CRM). La société est
+    TOUJOURS celle de l'appelant (le devis), jamais déduite du lead seul.
+    Ne lève jamais."""
+    if not lead_id or company is None:
+        return None
+    try:
+        lead = Lead.objects.filter(pk=lead_id, company=company).first()
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('CAD130 : lead #%s illisible', lead_id, exc_info=True)
+        return None
+    if lead is None:
+        return None
+    return poser_touche_signal(lead, signal)
+
+
 #: QW5 — libellés FR par canal de contact proposition (WJ85/WJ54 — le site
 #: envoie 'rappel'/'whatsapp'/'question'/'voice'/'revision', un vocabulaire
 #: plus large que ce que ce module connaissait (whatsapp/rappel seuls).
