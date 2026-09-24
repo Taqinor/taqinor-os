@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { useHasPermission } from '../../../hooks/useHasPermission'
+import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 
 /* ============================================================================
@@ -31,11 +32,12 @@ import { Button, Card, Spinner } from '../../../ui'
 
 const LIBELLE_DECISION = { approuve: 'Approuvée', refuse: 'Refusée' }
 
-/** Un horodatage ISO, mis en forme humainement ; brut si non parsable. */
+/* VX75 — passe par `lib/format.js` (jamais un appel natif à cette méthode
+   d'`Intl` posée directement sur `Date` : `format.guard.test.mjs` refuse
+   tout contournement hors ce fichier). */
 function formaterDate(iso) {
   if (!iso) return ''
-  const date = new Date(iso)
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString('fr-FR')
+  return formatDateTime(iso)
 }
 
 /** Les clés d'erreur qui NE SONT PAS `decision`/`motif`/`detail` : ce sont
