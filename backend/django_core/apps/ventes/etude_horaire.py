@@ -83,11 +83,13 @@ from apps.parametres.pvgis_profils import (
     vers_heure_locale,
 )
 from apps.ventes.courbes_journalieres import (
+    BANDEAU_PROFIL_SUPPOSE,
     COUCHES_REDISTRIBUTION,
     contexte_ramadan_du_mois,
     equipements_du_devis,
     forme_consommation_detaillee,
     occupation_du_devis,
+    profil_suppose,
     renormalisation_redistribution,
 )
 from apps.ventes.quote_engine import bareme
@@ -3141,6 +3143,12 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         # posée ici, comme `occupation_source` : la forme historique de
         # `calculer_etude_horaire` ne bouge pas).
         resultat['part_non_solarisable'] = part_non_solarisable(charges_fixes)
+        # CAD172 — l'étude calculée sur un profil SUPPOSÉ (présence en
+        # journée jamais posée) le porte : même drapeau que la courbe de la
+        # proposition, absent dès que le client a répondu.
+        if profil_suppose(occupation_source):
+            resultat['profil_suppose'] = True
+            resultat['bandeau_profil'] = BANDEAU_PROFIL_SUPPOSE
     return resultat
 
 

@@ -99,7 +99,8 @@
       "fin": "20:00",
       "pause": null,
       "ramadan": false
-    }
+    },
+    "profil_suppose": true
   },
   "exemple_sans_cadence_active": {
     "lead_id": 977,
@@ -157,7 +158,8 @@
       "fin": "20:00",
       "pause": { "debut": "11:30", "fin": "15:00" },
       "ramadan": false
-    }
+    },
+    "profil_suppose": true
   },
   "exemple_tout_repondu": {
     "lead_id": 58,
@@ -220,7 +222,8 @@
       "fin": null,
       "pause": null,
       "ramadan": false
-    }
+    },
+    "profil_suppose": false
   },
   "exemple_ramadan": {
     "lead_id": 412,
@@ -294,7 +297,8 @@
       "fin": "14:00",
       "pause": null,
       "ramadan": true
-    }
+    },
+    "profil_suppose": true
   },
   "notes": {
     "questions": "`question` est le `help_text` du champ `crm.Lead`, servi tel quel. L'écran ne le réécrit pas : améliorer une formulation, c'est modifier le `help_text`. `section` vaut `null` pour une question ORALE — celles que le questionnaire envoyé au client ne porte pas (décideur, concurrents, frein, déclencheur ; pour le segment agricole la pompe — puissance, HMT, débit — puis les heures de pompage, l'alimentation actuelle et le carburant ; pour l'industriel et le commercial la puissance souscrite du compteur, CAD175).",
@@ -306,6 +310,7 @@
     "touche": "`null` quand aucune cadence n'est active sur ce lead. Le panneau reste servi : les questions, elles, se posent toujours. `rang` est l'ordre de la touche dans sa cadence ; `heure_cible` vaut `null` sur les touches d'avant l'échéance à la minute.",
     "script": "`null` quand il n'y a pas de touche. Sinon, forme reprise de `relance_etape_message.json` (sans `wa_url` : un appel n'ouvre pas WhatsApp).",
     "fenetre_du_jour": "CAD155 — la fenêtre d'APPEL du jour (heure de Casablanca), lue par `apps.crm.horaires.fenetre_du_jour` : celle que le moteur applique aux touches, Ramadan SAISI par la société et pause du vendredi compris — jamais recopiée par l'écran. `appelable: false` un jour non ouvré (heures `null`). `pause` : `{debut, fin}` le vendredi, sinon `null`. `ramadan: true` pendant la période saisie : la fenêtre est alors commune à tous les canaux et AUCUN créneau du soir n'existe (décision fondateur du 21/09/2026). `exemple_ramadan` : une société qui a saisi 10:00-14:00. Le bloc entier vaut `null` si l'horaire est illisible (jamais un horaire supposé).",
+    "profil_suppose": "CAD172 (décision fondateur du 21/09/2026, Q5) — `true` tant que `occupation_jour` n'a pas de réponse : l'étude SUPPOSE le profil de journée (présence en résidentiel) et la proposition porte le bandeau « Profil supposé, à confirmer ». C'est LE MÊME drapeau que la courbe de la proposition (`apps/ventes/courbes_journalieres.py::profil_suppose`) ; l'écran d'appel s'en sert pour faire remonter la question en tête (résidentiel seulement). `false` dès la réponse.",
     "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord.",
     "segment": "Clé de `crm.Lead.TypeInstallation` (`residentiel`, `commercial`, `industriel`, `agricole`), ou `null` quand le lead n'a pas de type d'installation saisi. CAD161 (décision fondateur du 21/09/2026) : le panneau guidé est livré pour le RÉSIDENTIEL d'abord — `frontend/src/features/crm/relances/appelGuidance.js` refuse les trois autres segments avec un message explicite (jamais une page vide) et traite `null` comme le résidentiel, « segment à confirmer » (même repli que `variante_segment`, CAD126). Le serveur sert TOUS les segments tels quels : la seconde livraison (agricole et industriel, CAD175) lit ce même champ, sans aucune migration de contrat. CAD175 (livrée) : `appelGuidance.js` sert désormais un jeu de questions PAR SEGMENT (résidentiel, agricole, industriel/commercial) et ne refuse plus qu'une clé de segment inconnue ; sur l'agricole et l'industriel, aucun chiffre d'économie n'est annoncé."
   }

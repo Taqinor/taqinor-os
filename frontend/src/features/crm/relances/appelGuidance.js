@@ -596,7 +596,14 @@ export function guidanceAppel(panneau, options = {}) {
   const vu = { ...(panneau || {}), touche }
   const famille = familleDuSegment(segment)
   const segmentAConfirmer = !segment
-  const enTete = famille === 'residentiel' ? questionEnTete(vu) : null
+  // CAD172 — LE drapeau du serveur (`profil_suppose`, le même que la
+  // proposition) décide ; à défaut (réponse d'avant CAD172), la présence
+  // encore à poser en tient lieu. Résidentiel seulement.
+  const entreePresence = questionEnTete(vu)
+  const drapeau = typeof vu.profil_suppose === 'boolean' ? vu.profil_suppose : null
+  const profilSuppose = famille === 'residentiel'
+    && (drapeau === null ? Boolean(entreePresence) : drapeau)
+  const enTete = profilSuppose ? entreePresence : null
   return {
     livre: true,
     segment,
@@ -610,7 +617,7 @@ export function guidanceAppel(panneau, options = {}) {
     interdits: INTERDITS_APPEL,
     issues: ISSUES_APPEL,
     enTete,
-    profilSuppose: Boolean(enTete),
+    profilSuppose,
     fenetre: fenetreAppel(vu),
     aNoter: A_NOTER_PAR_FAMILLE[famille],
     gardeFous: GARDE_FOUS_PAR_FAMILLE[famille],

@@ -259,7 +259,9 @@ export default function PanneauScriptAppel({
 
   const contenu = (
     <div className="mt-2 flex flex-col gap-2 text-xs text-muted-foreground">
-      {g?.livre && g.profilSuppose && g.enTete && (
+      {/* CAD152/CAD172 (Q5) — profil SUPPOSÉ (drapeau servi, le même que la
+          proposition) : le bandeau, et la question de présence EN TÊTE. */}
+      {g?.livre && g.profilSuppose && (
         <div
           className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2"
           role="status" data-testid="bandeau-profil-suppose"
@@ -269,7 +271,7 @@ export default function PanneauScriptAppel({
             {BANDEAU_PROFIL_SUPPOSE}
           </p>
           <p>{EXPLICATION_PROFIL_SUPPOSE}</p>
-          {rendreQuestion(g.enTete)}
+          {g.enTete && rendreQuestion(g.enTete)}
         </div>
       )}
       {g?.avertissement && (

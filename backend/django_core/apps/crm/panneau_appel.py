@@ -377,6 +377,24 @@ def fenetre_du_jour_servie(lead, *, maintenant=None):
     }
 
 
+def profil_suppose_servi(lead):
+    """CAD172 — le profil de journée de l'étude est-il SUPPOSÉ pour ce lead ?
+
+    LE MÊME drapeau que la proposition (``apps.ventes.courbes_journalieres``
+    ``profil_suppose_du_lead`` — même traducteur que le chemin sans devis) :
+    vrai tant que ``occupation_jour`` n'a pas de réponse. C'est lui qui fait
+    remonter la question EN TÊTE du panneau (décision Q5). Lecture de la
+    façade publique d'``apps.ventes``, jamais ses modèles ; best-effort (un
+    drapeau illisible vaut ``False`` : on ne crie jamais au loup)."""
+    try:
+        from apps.ventes.courbes_journalieres import profil_suppose_du_lead
+        return bool(profil_suppose_du_lead(lead))
+    except Exception:  # noqa: BLE001 — le panneau reste servi
+        logger.warning('CAD172: drapeau de profil illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return False
+
+
 def panneau_appel(lead, *, request=None, user=None) -> dict:
     """Le panneau d'appel guidé d'UN lead — lecture seule, aucun effet de bord."""
     etape = _touche_en_cours(lead)
@@ -392,4 +410,5 @@ def panneau_appel(lead, *, request=None, user=None) -> dict:
         'prefill': prefill_du_panneau(lead),
         'equipements': drapeaux_equipements(lead),
         'fenetre_du_jour': fenetre_du_jour_servie(lead),
+        'profil_suppose': profil_suppose_servi(lead),
     }

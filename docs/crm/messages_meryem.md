@@ -468,6 +468,11 @@ prononcent jamais en chiffres. Leur MONTANT n'est écrit dans aucun texte : il e
 et l'étude horaire le NOMME à côté de l'économie (`etude_horaire.part_non_solarisable` : montant + libellé
 `LIBELLE_PART_NON_SOLARISABLE`, sans chiffre). ✎ Formulations à valider par le fondateur.
 
+CAD172 (24/09/2026) — `BANDEAU_PROFIL_SUPPOSE` est aussi le texte que la PROPOSITION reçoit (bloc
+`courbes_journalieres`, clés `profil_suppose` + `bandeau_profil`) et que porte l'étude du devis, tant que la présence
+en journée n'a pas été posée : c'est le même drapeau (`apps/ventes/courbes_journalieres.py::profil_suppose`) qui fait
+remonter la question en tête du panneau d'appel. Il disparaît dès la réponse.
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)

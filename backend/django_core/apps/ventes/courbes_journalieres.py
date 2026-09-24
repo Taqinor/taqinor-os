@@ -96,6 +96,41 @@ _OCCUPATION_JOUR_VERS_DRAPEAU = {
 # puisse l'étiqueter honnêtement.
 DEFAUT_RESIDENTIEL = (OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur')
 
+#: Source d'occupation du défaut NON résidentiel (sans profil d'activité).
+SOURCE_DEFAUT_NON_RESIDENTIEL = 'defaut_non_residentiel'
+
+# ── CAD172 — occupation non posée : présence SUPPOSÉE, et on le DIT ─────────
+# Décision fondateur du 21/09/2026 : quand ``occupation_jour`` n'a pas été
+# posée, on GARDE le défaut (présence en journée en résidentiel — l'écart
+# présence/absence mesuré par l'audit du 21/09/2026 pèse lourd sur
+# l'économie annoncée) ET la proposition porte le bandeau « profil supposé, à
+# confirmer ». Écartés : bloquer le devis (trop dur au premier échange) et un
+# profil partiel (invérifiable). Le bandeau disparaît dès que la question a
+# une réponse ; c'est le MÊME drapeau qui fait remonter la question en tête
+# du panneau d'appel (``apps/crm/panneau_appel.py``, CAD152).
+#: Les sources qui ne sont PAS une réponse du client : un défaut appliqué.
+SOURCES_OCCUPATION_SUPPOSEE = frozenset({
+    DEFAUT_RESIDENTIEL[1], SOURCE_DEFAUT_NON_RESIDENTIEL,
+})
+#: Texte du bandeau — mot pour mot la décision fondateur (Q5).
+BANDEAU_PROFIL_SUPPOSE = 'Profil supposé, à confirmer'
+
+
+def profil_suppose(occupation_source):
+    """Le profil de journée servi est-il SUPPOSÉ (un défaut, pas une réponse) ?
+
+    Vrai pour les deux défauts (résidentiel, non résidentiel sans profil
+    d'activité) ; faux pour une réponse du lead (``lead_occupation_jour:*``),
+    un profil d'activité déclaré (``lead_profil_activite:*``) ou une variante
+    DEMANDÉE (``variante_demandee:*``, L-PCMP)."""
+    return occupation_source in SOURCES_OCCUPATION_SUPPOSEE
+
+
+def profil_suppose_du_lead(lead):
+    """CAD172 — le même drapeau, sur un LEAD seul (panneau d'appel) : même
+    traducteur que :func:`occupation_du_lead`, jamais une seconde règle."""
+    return profil_suppose(occupation_du_lead(lead)[1])
+
 
 def _nombre(valeur):
     """Flottant strictement positif, ou ``None``."""
@@ -236,7 +271,7 @@ def _occupation(devis, data):
         profil = None
     if profil in ('day', 'day_evening', 'continuous'):
         return OCCUPATION_PRESENCE, 'lead_profil_activite:%s' % profil
-    return OCCUPATION_ABSENCE, 'defaut_non_residentiel'
+    return OCCUPATION_ABSENCE, SOURCE_DEFAUT_NON_RESIDENTIEL
 
 
 def _production(kwc, mensuel, ville, lat, lon):
@@ -1294,6 +1329,12 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
             'occupation': occupation,
             'occupation_source': occupation_source,
         }
+        # CAD172 — profil de journée SUPPOSÉ (question pas encore posée) : la
+        # proposition porte le bandeau. Clés ABSENTES quand le client a
+        # répondu : la forme du bloc répondu reste celle d'avant, à l'octet.
+        if profil_suppose(occupation_source):
+            bloc['profil_suppose'] = True
+            bloc['bandeau_profil'] = BANDEAU_PROFIL_SUPPOSE
         if production:
             bloc['production'] = production
         if consommation:

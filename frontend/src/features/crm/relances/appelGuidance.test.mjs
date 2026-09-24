@@ -479,6 +479,21 @@ test('CAD175 — consignes à noter et garde-fous : ni chiffre ni crochet', () =
   assert.deepEqual(guidance.GARDE_FOUS_PAR_FAMILLE.residentiel, [])
 })
 
+// ── CAD172 — le drapeau « profil supposé » du serveur ───────────────────────
+
+test('CAD172 — le drapeau servi décide ; sans lui, la présence encore à poser en tient lieu', () => {
+  const avec = guidanceAppel(exemple())
+  assert.equal(exemple().profil_suppose, true)
+  assert.equal(avec.profilSuppose, true)
+  assert.equal(avec.enTete.champ, 'occupation_jour')
+  const faux = guidanceAppel({ ...exemple(), profil_suppose: false })
+  assert.equal(faux.profilSuppose, false)
+  assert.equal(faux.enTete, null)
+  const { profil_suppose: _absent, ...ancien } = exemple()
+  assert.equal(guidanceAppel(ancien).profilSuppose, true)
+  assert.equal(guidanceAppel(exemple('exemple_tout_repondu')).profilSuppose, false)
+})
+
 // ── CAD155 — la fenêtre du jour, découpée, jamais inventée ─────────────────
 
 test('CAD155 — Ramadan saisi : un seul créneau, celui de la fenêtre servie', () => {

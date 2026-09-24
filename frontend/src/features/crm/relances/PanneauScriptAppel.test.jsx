@@ -521,11 +521,51 @@ describe('CAD168 — la question des lignes fixes figure au script', () => {
   })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+// CAD172 — occupation non posée : présence supposée + bandeau (même drapeau)
+// ════════════════════════════════════════════════════════════════════════════
+describe('CAD172 — le drapeau « profil supposé » du serveur pilote le bandeau', () => {
+  it('drapeau servi : bandeau « Profil supposé, à confirmer » et la question de présence en tête', async () => {
+    expect(PANNEAU.profil_suppose).toBe(true)
+    armer()
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const bandeau = await screen.findByTestId('bandeau-profil-suppose')
+    expect(bandeau).toHaveTextContent('Profil supposé, à confirmer')
+    expect(within(bandeau).getByTestId('question-appel-occupation_jour')).toBeInTheDocument()
+  })
+
+  it('avec la réponse (drapeau faux), ni bandeau ni question', async () => {
+    const REPONDU = exempleContrat('crm', 'panneau_appel', 'exemple_tout_repondu')
+    expect(REPONDU.profil_suppose).toBe(false)
+    armer({ panneau: REPONDU })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('non-compte')).toBeInTheDocument()
+    expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('question-appel-occupation_jour')).not.toBeInTheDocument()
+  })
+
+  it('le drapeau du serveur prime : faux, le bandeau se tait même si la question était servie', async () => {
+    armer({ panneau: { ...PANNEAU, profil_suppose: false } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('non-compte')).toBeInTheDocument()
+    expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
+  })
+})
+
 describe('CAD153 — une question déjà répondue n’est JAMAIS reposée', () => {
   it('même si le serveur la servait encore, une colonne présente en prefill ne s’affiche pas', async () => {
     // Incohérence simulée À PARTIR du contrat : la présence est à la fois
-    // « à poser » et « déjà sur la fiche » — le prefill gagne toujours.
-    armer({ panneau: { ...PANNEAU, prefill: { ...PANNEAU.prefill, occupation_jour: 'present' } } })
+    // « à poser » et « déjà sur la fiche » — le prefill gagne toujours (et le
+    // drapeau CAD172 d'un lead qui a répondu est faux).
+    armer({
+      panneau: {
+        ...PANNEAU, profil_suppose: false,
+        prefill: { ...PANNEAU.prefill, occupation_jour: 'present' },
+      },
+    })
     ligne()
     fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
     expect(await screen.findByTestId('mention-d7')).toBeInTheDocument()
