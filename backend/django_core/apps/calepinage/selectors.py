@@ -743,3 +743,41 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
                            produit_panneau=produit_panneau, company=company,
                            retrait_m=retrait_m,
                            pas_recherche_m=pas_recherche_m, famille=famille)
+
+
+# ── CALX369 — le résultat SERVI, pour une lecture HORS module ──────────────
+#
+# L'API publique (``apps.publicapi``) publie la production simulée d'un
+# calepinage. Elle ne la relit PAS dans ``Calepinage.resultat`` brut : elle
+# demande ici le résultat que l'atelier lui-même sert, contrôle de FRAÎCHEUR
+# compris (CALX70) — une intégration ne doit jamais recevoir une production
+# que l'écran déclarerait périmée.
+
+def resultat_servi(calepinage):
+    """CALX369 — le ``resultat`` servi par ``GET resultat/`` (CALX70).
+
+    EXACTEMENT ``services.electrique.resultat_calepinage`` : mêmes blocs,
+    même verdict de fraîcheur (``simule``, ``simulation_perimee``, ``motif``,
+    ``calcule_le``). Lecture PURE — rien n'est écrit, aucun statut touché.
+
+    Une conception illisible (températures refusées) ne fait pas tomber la
+    lecture : le dictionnaire rendu dit ``simule: False`` et porte le refus
+    comme ``motif`` — l'appelant n'a jamais à attraper une exception du
+    module.
+    """
+    from .services.electrique import TemperaturesInvalides, resultat_calepinage
+
+    try:
+        return resultat_calepinage(calepinage)
+    except TemperaturesInvalides as refus:
+        return {
+            'calepinage': getattr(calepinage, 'pk', None),
+            'simule': False,
+            'calcule_le': None,
+            'production': None,
+            'pertes': [],
+            'cascade': None,
+            'simulation_perimee': False,
+            'motif': str(refus),
+            'avertissements': [str(refus)],
+        }

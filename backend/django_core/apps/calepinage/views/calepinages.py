@@ -205,6 +205,22 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         serializer.save(company=self.request.user.company,
                         cree_par=self.request.user)
 
+    def filter_queryset(self, queryset):
+        """CALX390 — la LISTE charge d'avance les lignes du devis lié.
+
+        ``CalepinageSerializer`` publie ``layout_stale``/``layout_nb_panneaux``
+        pour CHAQUE ligne, lus sur le devis (``select_related('devis')``) et
+        ses lignes : sans ce ``prefetch_related``, chaque calepinage rattaché
+        à un devis coûtait sa propre requête de lignes (N+1). Réservé à la
+        liste : le détail et les actions n'en lisent pas les lignes.
+        Budget gardé par ``docs/query-budgets.yml`` et
+        ``tests/test_calx390_budgets_requetes.py``.
+        """
+        queryset = super().filter_queryset(queryset)
+        if getattr(self, 'action', None) == 'list':
+            queryset = queryset.prefetch_related('devis__lignes')
+        return queryset
+
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
     def retrieve(self, request, *args, **kwargs):
         """CAL17 — TOUT ce que la fiche calepinage affiche, en UN appel.

@@ -10,7 +10,10 @@ HMAC `X-Taqinor-Signature`.
 La source de vérité des scopes/évènements reste `constants.py` : on lit
 `SCOPE_CHOICES`/`EVENT_CHOICES` pour ne jamais diverger de l'implémentation.
 """
-from .constants import SCOPE_CHOICES, EVENT_CHOICES, SCOPE_READ_FIABILITE
+from .constants import (
+    SCOPE_CHOICES, EVENT_CHOICES, EVENT_CALEPINAGE_SIMULE,
+    SCOPE_READ_FIABILITE,
+)
 from .auth import AUTH_KEYWORD
 from .delivery import (
     SIGNATURE_HEADER, SIGNATURE_HEADER_V2, EVENT_HEADER, TIMESTAMP_HEADER,
@@ -53,6 +56,80 @@ _HMAC_RECIPE_V2_PYTHON = (
     "valide = hmac.compare_digest(expected, recu)\n"
     "# `event_id` (dans le corps JSON) est stable : dédupliquez dessus."
 )
+
+
+#: CALX369 — les champs de ``GET calepinages/<id>/resultat/``, un par un, dans
+#: l'ordre de ``PublicCalepinageResultatSerializer`` (un test vérifie que les
+#: deux listes ne divergent jamais). ``openapi.py`` les projette en propriétés
+#: déclarées : la forme publiée n'est jamais « un objet ».
+CHAMPS_RESULTAT_CALEPINAGE = [
+    {'nom': 'calepinage_id', 'type': 'integer', 'nullable': False,
+     'description': "Identifiant du calepinage."},
+    {'nom': 'simule', 'type': 'boolean', 'nullable': False,
+     'description': (
+         "Vrai seulement si une production simulée est servie ET décrit "
+         "encore la conception d'aujourd'hui.")},
+    {'nom': 'production_annuelle_kwh', 'type': 'number', 'nullable': True,
+     'description': (
+         "Énergie annuelle simulée (année médiane) — même grandeur que "
+         "`p50_kwh`.")},
+    {'nom': 'rendement_specifique_kwh_kwc', 'type': 'number',
+     'nullable': True,
+     'description': "kWh produits par kWc installé et par an."},
+    {'nom': 'ratio_performance', 'type': 'number', 'nullable': True,
+     'description': "Ratio de performance (PR), en fraction (0,80 = 80 %)."},
+    {'nom': 'p50_kwh', 'type': 'number', 'nullable': True,
+     'description': "Production annuelle P50."},
+    {'nom': 'p75_kwh', 'type': 'number', 'nullable': True,
+     'description': "Production annuelle P75."},
+    {'nom': 'p90_kwh', 'type': 'number', 'nullable': True,
+     'description': "Production annuelle P90."},
+    {'nom': 'pertes', 'type': 'array', 'nullable': True,
+     'description': (
+         "Chaîne de pertes appliquée : `{code, libelle, pourcentage, "
+         "source, gain, motif}` par poste ; `pourcentage` null pour une "
+         "étape omise (son `motif` dit pourquoi). Null si non simulé.")},
+    {'nom': 'calcule_le', 'type': 'string', 'nullable': True,
+     'description': "Horodatage (UTC) enregistré par la simulation servie."},
+    {'nom': 'simulation_perimee', 'type': 'boolean', 'nullable': False,
+     'description': (
+         "Vrai quand une simulation existe mais que la conception a changé "
+         "depuis : ses grandeurs ne sont alors pas publiées.")},
+    {'nom': 'motif', 'type': 'string', 'nullable': False,
+     'description': "Pourquoi rien n'est publié (vide quand `simule`)."},
+]
+
+#: CALX368 — la charge utile de ``calepinage.simule``, clé par clé, dans
+#: l'ordre de ``calepinage_event_receivers.CLES_CHARGE_SIMULE`` (garde de
+#: test). Plus ``event_id``, posé par la livraison sur tout évènement.
+CHARGE_CALEPINAGE_SIMULE = [
+    {'nom': 'id', 'type': 'integer', 'nullable': False,
+     'description': "Identifiant du calepinage."},
+    {'nom': 'titre', 'type': 'string', 'nullable': False,
+     'description': "Titre du calepinage."},
+    {'nom': 'statut', 'type': 'string', 'nullable': False,
+     'description': "Statut du calepinage (inchangé par la simulation)."},
+    {'nom': 'lead_id', 'type': 'integer', 'nullable': True,
+     'description': "Lead rattaché."},
+    {'nom': 'client_id', 'type': 'integer', 'nullable': True,
+     'description': "Client rattaché."},
+    {'nom': 'devis_id', 'type': 'integer', 'nullable': True,
+     'description': "Devis rattaché."},
+    {'nom': 'appel_offre_id', 'type': 'integer', 'nullable': True,
+     'description': "Affaire rattachée."},
+    {'nom': 'layout_hash', 'type': 'string', 'nullable': False,
+     'description': "Empreinte de la conception simulée."},
+    {'nom': 'version_moteur', 'type': 'string', 'nullable': False,
+     'description': "Version du moteur de calepinage."},
+    {'nom': 'kwc', 'type': 'number', 'nullable': True,
+     'description': "Puissance crête réellement calculée."},
+    {'nom': 'modules', 'type': 'integer', 'nullable': True,
+     'description': "Nombre de modules réellement calculé."},
+    {'nom': 'p50_kwh', 'type': 'number', 'nullable': True,
+     'description': "Production annuelle P50 simulée."},
+    {'nom': 'performance_ratio', 'type': 'number', 'nullable': True,
+     'description': "Ratio de performance simulé, en fraction."},
+]
 
 
 def public_api_reference():
@@ -240,6 +317,35 @@ def public_api_reference():
                 'updated_since': 'date_modification',
             },
         ],
+        # CALX369 — sous-ressources en LECTURE d'une ressource ci-dessus,
+        # sous le MÊME scope (aucune nouvelle famille d'URL).
+        'sous_ressources': {
+            'description': (
+                "Sous-ressources en lecture seule d'un objet déjà publié, "
+                "servies sous le scope de lecture de leur ressource."
+            ),
+            'liste': [
+                {
+                    'chemin': '/api/public/v1/calepinages/<id>/resultat/',
+                    'methode': 'GET',
+                    'scope': 'read:calepinages',
+                    'description': (
+                        "CALX369 — résultat de SIMULATION d'un calepinage : "
+                        "production annuelle, rendement spécifique, ratio de "
+                        "performance, P50/P75/P90, postes de pertes (libellé, "
+                        "pourcentage, source) et horodatage du calcul. Non "
+                        "simulé ou simulation périmée (la conception a changé "
+                        "depuis) ⇒ grandeurs à null, jamais 0, et `motif` dit "
+                        "pourquoi. Le scope `read:calepinages` ne permet NI "
+                        "d'écrire NI de lancer une simulation : le calcul "
+                        "reste déclenché depuis l'atelier. La série horaire "
+                        "n'est pas publiée ici (volume : 8 760 points par "
+                        "année simulée). Jamais la géométrie, jamais un coût."
+                    ),
+                    'champs': CHAMPS_RESULTAT_CALEPINAGE,
+                },
+            ],
+        },
         'endpoints_ecriture': {
             'description': (
                 "XPLT5 — endpoints d'ÉCRITURE (scopes dédiés `leads:write` / "
@@ -492,6 +598,23 @@ def public_api_reference():
             'evenements': [
                 {'code': code, 'libelle': libelle}
                 for code, libelle in EVENT_CHOICES
+            ],
+            # CALX368 — évènements dont la charge utile est décrite clé par
+            # clé (et projetée dans `webhooks` du document OpenAPI).
+            'charges_utiles': [
+                {
+                    'code': EVENT_CALEPINAGE_SIMULE,
+                    'description': (
+                        "Une simulation de calepinage vient d'aboutir et son "
+                        "résultat est enregistré (jamais pour un « déjà "
+                        "calculé », un refus ou un calcul à blanc). POST JSON "
+                        f"signé ({SIGNATURE_HEADER_V2} + {TIMESTAMP_HEADER}) "
+                        "— aucune valeur n'est portée dans l'URL. Même scope "
+                        "de lecture que la ressource : `read:calepinages` "
+                        "pour le flux. Ni géométrie, ni coût."
+                    ),
+                    'champs': CHARGE_CALEPINAGE_SIMULE,
+                },
             ],
             'verification_signature': {
                 'algorithme': (

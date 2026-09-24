@@ -409,6 +409,14 @@ CATALOG = {
         "Le statut de crédit SLA d'un SlaSnapshot est décidé par un humain "
         "(émis ou refusé) — aucun avoir n'est créé par cet événement.",
         ['snapshot', 'company', 'ancien_statut', 'nouveau_statut', 'user']),
+    # CALX368 — la simulation d'un calepinage a abouti (résultat fusionné).
+    # Producteur unique : ``apps.calepinage.services.simulation``.
+    # Consommateur : ``apps.publicapi.calepinage_event_receivers`` (webhook
+    # ``calepinage.simule``).
+    'calepinage_simule': _e(
+        'La simulation d\'un calepinage a abouti et son résultat vient '
+        'd\'être enregistré — aucun statut ne bouge.',
+        ['calepinage', 'company_id']),
 }
 
 

@@ -45,6 +45,25 @@ endpoints:
     enforced: true
     note: "Liste des devis (YOPSB13) — appelle le moteur d'affichage TTC."
 
+  # CALX390 — module calepinage. Plafonds MESURÉS en régime permanent (après
+  # un appel « à blanc »), identiques à 10 puis 25 objets, par
+  # apps/calepinage/tests/test_calx390_budgets_requetes.py, qui LIT ces
+  # valeurs ici (aucune recopie). Mesure du 24/09/2026 : 10 / 20 / 13.
+  - path: /api/django/calepinage/calepinages/
+    budget: 10
+    enforced: true
+    note: "Liste des calepinages (CALX390) — layout_stale lu sur le devis lié (select_related + prefetch devis__lignes)."
+
+  - path: /api/django/calepinage/calepinages/<pk>/
+    budget: 20
+    enforced: true
+    note: "Détail agrégé (CALX390) — lead, client, devis, compteurs de versions/variantes, contexte géographique, droits."
+
+  - path: /api/django/calepinage/calepinages/<pk>/resultat/
+    budget: 13
+    enforced: true
+    note: "Résultat servi (CALX390) — pose, électrique, simulation persistée et fraîcheur."
+
   # --- Endpoints à couvrir (test de budget pas encore écrit) ---------------
   - path: /api/django/ventes/factures/
     budget: 15
