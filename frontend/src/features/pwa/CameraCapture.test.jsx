@@ -39,8 +39,16 @@ function installGeolocation(behavior) {
   }
 }
 
+// Le bouton « Prendre la photo » est rendu DÉSACTIVÉ tant que le flux caméra
+// (getUserMedia → play → setActive) n'a pas démarré — démarrage déféré par
+// requestAnimationFrame. `findByRole` le trouve avant ce moment, et un clic
+// sur un bouton désactivé ne fait rien : la photo n'était jamais prise et le
+// test attendait « Garder et continuer » jusqu'au timeout (instable, ~1 run
+// sur 2). On attend donc que le bouton soit ACTIVÉ avant de cliquer.
 async function takeOnePhoto(user) {
-  await user.click(await screen.findByRole('button', { name: /prendre la photo|photo suivante/i }, { timeout: 5000 }))
+  const bouton = await screen.findByRole('button', { name: /prendre la photo|photo suivante/i }, { timeout: 5000 })
+  await waitFor(() => expect(bouton).toBeEnabled())
+  await user.click(bouton)
 }
 
 describe('CameraCapture — NTMOB11 (mode multiple + géoloc)', () => {
