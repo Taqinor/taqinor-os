@@ -65,8 +65,7 @@ EMPLACEMENTS = {
 
 __all__ = [
     'APPROUVE', 'REFUSE', 'DECISIONS', 'CLE_EXIGEE', 'ApprobationRefusee',
-    'suggestions_en_attente', 'approbation_exigee', 'etat_approbation',
-    'decider', 'est_approuve',
+    'approbation_exigee', 'etat_approbation', 'decider', 'est_approuve',
 ]
 
 
@@ -89,7 +88,7 @@ def _libelle_objet(objet, collection):
     return f'{genre} « {nom} »' if nom else f'{genre} sans nom'
 
 
-def suggestions_en_attente(roof_layout):
+def _suggestions_en_attente(roof_layout):
     """Les valeurs d'origine AUTOMATIQUE encore en attente d'un humain.
 
     Lecture PURE du document. Returns ``[{champ, libelle, source, cle}]`` —
@@ -194,7 +193,7 @@ def _valider(decision, motif, roof_layout):
             "Un refus s'accompagne de son motif : renseignez « Motif » pour "
             "que le concepteur sache quoi reprendre.", champ='motif')
     if decision == APPROUVE:
-        en_attente = suggestions_en_attente(roof_layout)
+        en_attente = _suggestions_en_attente(roof_layout)
         if en_attente:
             champs = ', '.join(
                 f"{ligne['champ']} ({ligne['libelle']}"

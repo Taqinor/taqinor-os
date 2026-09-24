@@ -135,12 +135,12 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
     """Les valeurs automatiques non acceptées, nommées champ par champ."""
 
     def test_document_vide_ou_illisible(self):
-        self.assertEqual(service.suggestions_en_attente(None), [])
-        self.assertEqual(service.suggestions_en_attente([]), [])
-        self.assertEqual(service.suggestions_en_attente({'zones': 'x'}), [])
+        self.assertEqual(service._suggestions_en_attente(None), [])
+        self.assertEqual(service._suggestions_en_attente([]), [])
+        self.assertEqual(service._suggestions_en_attente({'zones': 'x'}), [])
 
     def test_pente_lidar_et_hauteur_osm_en_attente(self):
-        en_attente = service.suggestions_en_attente(conception())
+        en_attente = service._suggestions_en_attente(conception())
         champs = [ligne['champ'] for ligne in en_attente]
         self.assertEqual(champs, ['zones[z1].pitchDeg',
                                   'buildings[bat-1].hauteurM'])
@@ -150,21 +150,21 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
 
     def test_suggestions_decidees_ne_bloquent_plus(self):
         document = conception(pente='refusee', hauteur='validee')
-        self.assertEqual(service.suggestions_en_attente(document), [])
+        self.assertEqual(service._suggestions_en_attente(document), [])
 
     def test_acceptation_lidar_reelle_vaut_decision(self):
         document = conception(hauteur='validee')
         pan = document['zones'][0]
         accepter_suggestion(pan, pan['pitchSuggestion'],
                             maintenant=MAINTENANT)
-        self.assertEqual(service.suggestions_en_attente(document), [])
+        self.assertEqual(service._suggestions_en_attente(document), [])
 
     def test_suggestion_sans_statut_reste_en_attente(self):
         document = conception(hauteur='validee')
         del document['zones'][0]['pitchSuggestion']['status']
         self.assertEqual(
             [ligne['champ']
-             for ligne in service.suggestions_en_attente(document)],
+             for ligne in service._suggestions_en_attente(document)],
             ['zones[z1].pitchDeg'])
 
     def test_source_automatique_inconnue_tenue_par_sa_cle(self):
@@ -172,7 +172,7 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
             'id': 'b2', 'azimutSuggestion': {'status': 'suggeree'}}]}
         self.assertEqual(
             [ligne['champ']
-             for ligne in service.suggestions_en_attente(document)],
+             for ligne in service._suggestions_en_attente(document)],
             ['buildings[b2].azimutSuggestion'])
 
 
