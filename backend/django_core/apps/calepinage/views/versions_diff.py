@@ -23,6 +23,8 @@ sous-route de ``versions/<version_id>/`` — même forme que ``restaurer``
 """
 from __future__ import annotations
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -39,6 +41,18 @@ def _identifiant(brut):
     return int(texte) if texte.isdigit() and int(texte) > 0 else None
 
 
+# Le paramètre de chemin ``version_id`` n'est pas un champ du modèle pivot :
+# sans cette déclaration, drf-spectacular ne sait pas le typer (même
+# déclaration que ``restaurer``, ``views/calepinages.py``).
+@extend_schema(parameters=[
+    OpenApiParameter(name='version_id', type=OpenApiTypes.INT,
+                     location=OpenApiParameter.PATH,
+                     description="L'identifiant de la version de gauche."),
+    OpenApiParameter(name='contre', type=OpenApiTypes.INT,
+                     location=OpenApiParameter.QUERY, required=False,
+                     description=("La version de droite ; absente, l'état "
+                                  'courant du calepinage.')),
+])
 @action(detail=True, methods=['get'],
         url_path=r'versions/(?P<version_id>[^/.]+)/diff',
         url_name='versions-diff', permission_classes=[PeutVoirCalepinage])
