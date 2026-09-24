@@ -473,6 +473,16 @@ const calepinageApi = {
     // garde `create()` — la création d'aujourd'hui, inchangée.
     depuisModele: (corps) =>
       api.post('/calepinage/calepinages/depuis-modele/', corps),
+
+    // CALX349 — la DÉCISION D'APPROBATION (second regard interne, CALX347) :
+    // GET rend `{etat, decide_par, decide_le, motif, exigee}` (contrat
+    // `contract_samples/calepinage_approbation.json`) ; POST décide
+    // (`{decision: 'approuve'|'refuse', motif}`) et rend le MÊME état à jour
+    // — l'écran n'enchaîne aucun second appel de lecture. Un refus 400 NOMME
+    // son champ (`decision`, `motif`, ou une clé par suggestion automatique
+    // encore en attente, ex. `buildings[0].hauteurM`).
+    approbation: (id) => api.get(`${pivot(id)}approbation/`),
+    decisionApprobation: (id, corps) => api.post(`${pivot(id)}approbation/`, corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
