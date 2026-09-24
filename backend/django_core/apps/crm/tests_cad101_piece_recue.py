@@ -113,9 +113,13 @@ class PieceRecueTests(_Base):
         # processus : sous gel, botocore signe à MERCREDI (prouvé — l'ignore
         # freezegun ne couvre pas ce chemin) et MinIO refuse en
         # RequestTimeTooSkewed dès que |réel − gel| > 15 min → 500. Ce test
-        # n'affirme aucune date : le geste s'exécute à l'horloge réelle.
+        # n'affirme aucune date : le geste s'exécute à l'horloge réelle — avec
+        # un jeton minté DANS la même fenêtre (celui du setUp, né sous gel,
+        # serait déjà expiré à l'horloge réelle : 401).
         self.gel.stop()
         try:
+            self.api.credentials(
+                HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
             resp = self._piece(type_piece='facture', fichier=fichier)
         finally:
             self.gel.start()
