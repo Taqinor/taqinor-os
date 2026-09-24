@@ -162,8 +162,56 @@ def table_chaines(resultat):
     return entetes, lignes
 
 
+def _designation_bordereau(ligne):
+    """CALX304 — désignation + spec + référence, en UNE cellule (le tableau
+    reste à 3 colonnes — ``Désignation``/``Quantité``/``Unité``, celles que
+    CAL179 vérifie au caractère près). La référence produit n'apparaît QUE
+    quand le stock en publie une ; la spec (chute de tension citée, norme,
+    ou « décision société — <motif> » pour un organe ajouté à la main,
+    ``services/protections.py::MENTION_SOCIETE``) est reprise TELLE QUELLE,
+    jamais reformulée."""
+    parties = [str(ligne.get('designation') or '').strip()]
+    spec = str(ligne.get('spec') or '').strip()
+    if spec:
+        parties.append(spec)
+    reference = ligne.get('reference')
+    if reference:
+        parties.append('réf. %s' % reference)
+    return ' — '.join(partie for partie in parties if partie)
+
+
+def _lignes_bordereau_electrique(resultat):
+    """CALX304 — structure (``services/kits.py``), câble par section et
+    longueur (``services/cables.py``), protections retenues et terre
+    (``services/protections.py``/``services/terre.py``) : ces trois listes
+    sont DÉJÀ calculées et servies par la clé racine
+    ``resultat['nomenclature']`` (CALX246/247/227/230/232,
+    ``core.electrique.nomenclature``) — une
+    LECTURE, jamais un second calcul (le module n'a ici ni la conception ni
+    la société pour recalculer quoi que ce soit). Une ligne dont la quantité
+    n'est pas un nombre calculé est OMISE, jamais mise à 0 (D-CALX 7) :
+    ``resultat['nomenclature']`` ne publie d'ailleurs déjà QUE des lignes
+    dont la quantité est connue (CALX247 — sans règle de bordereau saisie,
+    les lignes de structure sont absentes, pas nulles)."""
+    lignes = []
+    for entree in (resultat or {}).get('nomenclature') or ():
+        if not isinstance(entree, dict):
+            continue
+        quantite = entree.get('quantite')
+        if quantite is None:
+            continue
+        lignes.append([_designation_bordereau(entree), quantite,
+                       entree.get('unite') or ''])
+    return lignes
+
+
 def table_nomenclature(resultat):
-    """Désignation et QUANTITÉ. Pas de prix, pas de total, pas de fournisseur."""
+    """Désignation et QUANTITÉ. Pas de prix, pas de total, pas de fournisseur.
+
+    CALX304 — étendue aux lignes de structure/câbles/protections/terre du
+    bordereau électrique (``resultat['nomenclature']``), en plus des lignes
+    module/onduleur historiques : MÊME table, MÊMES trois colonnes.
+    """
     entetes = ['Désignation', 'Quantité', 'Unité']
     pose = (resultat or {}).get('pose') or {}
     lignes = []
@@ -178,6 +226,7 @@ def table_nomenclature(resultat):
             continue
         lignes.append(['Onduleur %s' % (onduleur.get('reference') or ''),
                        onduleur.get('nombre'), 'u'])
+    lignes.extend(_lignes_bordereau_electrique(resultat))
     return entetes, lignes
 
 
@@ -195,7 +244,7 @@ def tables_du_resultat(geometrie, resultat=None):
 
 # ── Les sorties, par l'utilitaire PARTAGÉ ───────────────────────────────────
 
-def classeur_octets(tables):
+def classeur_octets(tables, *, provenance=None):
     """Les trois feuilles dans UN classeur .xlsx, en octets.
 
     ``apps.records.xlsx.build_workbook`` construit la PREMIÈRE feuille (en-têtes
@@ -203,6 +252,11 @@ def classeur_octets(tables):
     avec la MÊME coercition (``coerce_cell``) et la MÊME neutralisation
     d'injection de formules (``neutralize_rows``) — l'utilitaire partagé ne sait
     pas encore faire plusieurs feuilles, mais on n'en recode aucune règle.
+
+    CALX314 — ``provenance`` (les lignes de
+    ``services.provenance_document.lignes_de_provenance``) pose une feuille
+    ``Provenance`` EN TÊTE du classeur, sous la même garde de prix. Sans elle,
+    le classeur est EXACTEMENT celui de CAL179.
     """
     import io
 
@@ -211,6 +265,15 @@ def classeur_octets(tables):
     from apps.records.xlsx import (
         build_workbook, coerce_cell, neutralize_rows,
     )
+
+    if provenance is not None:
+        from .provenance_document import ENTETES, TITRE_FEUILLE
+
+        feuille_provenance = (TITRE_FEUILLE, list(ENTETES),
+                              [list(ligne) for ligne in provenance])
+        verifier_absence_de_prix(feuille_provenance[1],
+                                 feuille_provenance[2])
+        tables = [feuille_provenance] + list(tables)
 
     titre, entetes, lignes = tables[0]
     classeur = build_workbook(entetes, neutralize_rows(lignes),
@@ -267,8 +330,16 @@ def _tables_du_calepinage(calepinage):
 
 
 def exporter_xlsx(calepinage):
-    """Le classeur d'un ``Calepinage``. Lève ``PlancheRefusee`` sans conception."""
-    return classeur_octets(_tables_du_calepinage(calepinage))
+    """Le classeur d'un ``Calepinage``. Lève ``PlancheRefusee`` sans conception.
+
+    CALX314 — la feuille ``Provenance`` en tête, composée par
+    ``provenance_document.lignes_de_provenance`` (la fonction PARTAGÉE avec le
+    DXF et l'export JSON).
+    """
+    from .provenance_document import lignes_de_provenance
+
+    return classeur_octets(_tables_du_calepinage(calepinage),
+                           provenance=lignes_de_provenance(calepinage))
 
 
 def exporter_csv(calepinage, feuille=None):

@@ -24,6 +24,7 @@ Run :
     DB_NAME=erp_ventes python manage.py test \
         apps.ventes.tests.test_pvcompat_verdicts -v 2
 """
+from functools import partial
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -36,6 +37,16 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.ventes import compatibilites as cp
 from apps.ventes import services as sv
 from apps.ventes import solar_design as sd
+
+# CALX286 — ``solar_design`` ne suppose PLUS les températures de
+# dimensionnement : ces tests de PHYSIQUE passent explicitement celles
+# d'avant (−5 / 70 °C), exactement comme l'appelant historique
+# ``apps/ventes/compatibilites.py`` (D12).
+_TEMPERATURES = {'cold_temp_c': sd.DEFAULT_COLD_TEMP_C,
+                 'hot_temp_c': sd.DEFAULT_HOT_TEMP_C}
+_string_design = partial(sd.string_design, **_TEMPERATURES)
+_verdicts_chaines = partial(sd.verdicts_chaines, **_TEMPERATURES)
+_match_inverter = partial(sd.match_inverter, **_TEMPERATURES)
 
 User = get_user_model()
 
@@ -243,7 +254,7 @@ class SeveriteDuNoyauTest(SimpleTestCase):
         module = sd.specs_module_pour_produit(_panneau_710())
         fenetre = sd.fenetre_onduleur_pour_produit(
             _onduleur(13, 'Onduleur hybride Deye 10kW Triphasé'))
-        verdicts = sd.verdicts_chaines(36, module=module, inverter=fenetre)
+        verdicts = _verdicts_chaines(36, module=module, inverter=fenetre)
         self.assertTrue(verdicts['alertes_courant'],
                         'le noyau doit prononcer un verdict de courant')
         joint = ' '.join(verdicts['alertes_courant'])
@@ -257,7 +268,7 @@ class SeveriteDuNoyauTest(SimpleTestCase):
         module = sd.specs_module_pour_produit(_panneau_710())
         fenetre = sd.fenetre_onduleur_pour_produit(
             _onduleur_isc_etroit_fictif())
-        verdicts = sd.verdicts_chaines(30, module=module, inverter=fenetre)
+        verdicts = _verdicts_chaines(30, module=module, inverter=fenetre)
         self.assertTrue(verdicts['bloquants'])
         joint = ' '.join(verdicts['bloquants'])
         self.assertIn('55,8 A', joint)
@@ -275,7 +286,7 @@ class SeveriteDuNoyauTest(SimpleTestCase):
         module = sd.specs_module_pour_produit(_panneau_710())
         fenetre = sd.fenetre_onduleur_pour_produit(
             _onduleur(13, 'Onduleur hybride Deye 10kW Triphasé'))
-        design = sd.string_design(36, module=module, inverter=fenetre)
+        design = _string_design(36, module=module, inverter=fenetre)
         self.assertTrue(
             any('MPPT' in w and ('Imp cumulé' in w or 'Isc cumulé' in w)
                 for w in design['warnings']),
@@ -283,7 +294,7 @@ class SeveriteDuNoyauTest(SimpleTestCase):
 
     def test_sans_fiche_aucun_verdict_de_courant(self):
         """Fiches muettes ⇒ le noyau se tait : dégradé, jamais inventé."""
-        verdicts = sd.verdicts_chaines(12)
+        verdicts = _verdicts_chaines(12)
         self.assertEqual(verdicts['alertes_courant'], [])
         self.assertEqual(sd.DEFAULT_MODULE['isc_a'], 0.0)
         self.assertEqual(sd.DEFAULT_MODULE['imp_a'], 0.0)

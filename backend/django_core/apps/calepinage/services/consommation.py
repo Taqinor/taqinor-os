@@ -25,13 +25,20 @@ LES RÈGLES POSÉES ICI
    vient du client.
 4. **La conversion MAD → kWh n'est PAS faite ici.** Elle dépend du barème du
    distributeur ; tant qu'elle n'est pas branchée, ``kwh`` vaut ``null`` avec
-   sa raison, jamais un kWh dérivé d'un prix moyen supposé.
+   sa raison, jamais un kWh dérivé d'un prix moyen supposé. CALX257 : elle est
+   écrite dans le barème SOCIÉTÉ (``apps.parametres.tariff.
+   kwh_depuis_facture``) ; :func:`publier_kwh` ne fait que l'appeler et
+   publier ``kwh`` avec son motif — cette règle reste vraie (D5).
 """
 from __future__ import annotations
 
-__all__ = ['ImportCourbeInvalide', 'ProfilInvalide', 'SOURCES_MOIS',
-           'UNITES', 'apercu_courbe_csv', 'interpoler_factures',
-           'profil_depuis_lead', 'profil_depuis_layout', 'profil_mensuel']
+import math
+
+__all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
+           'PROVENANCES_APPAREIL', 'ProfilInvalide', 'SOURCES_MOIS', 'UNITES',
+           'apercu_courbe_csv', 'appliquer_ramadan', 'courbe_appareils',
+           'interpoler_factures', 'profil_depuis_lead',
+           'profil_depuis_layout', 'profil_mensuel', 'publier_kwh']
 
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
@@ -43,6 +50,13 @@ MOIS = tuple(range(1, 13))
 #: devis, reprise à l'identique ci-dessous).
 MOIS_FACTURE_HIVER = 1
 MOIS_FACTURE_ETE = 7
+
+#: L'avertissement d'un profil dont les kWh ne sont pas convertis — retiré par
+#: :func:`publier_kwh` dès que le barème société a été consulté.
+AVIS_KWH_NON_CONVERTIS = (
+    'Les montants sont en MAD par mois. La conversion en kWh dépend du '
+    'barème du distributeur : elle n\'est pas faite ici, et « kwh » reste '
+    '« non calculé » plutôt qu\'estimé à partir d\'un prix moyen.')
 
 
 class ProfilInvalide(ValueError):
@@ -146,10 +160,7 @@ def profil_mensuel(*, facture_hiver, facture_ete=None, ete_differente=False,
             "Aucune facture n'est renseignée sur ce lead : le profil de "
             'consommation reste VIDE et attend une saisie — aucune facture '
             "moyenne n'est inventée.")
-    avertissements.append(
-        'Les montants sont en MAD par mois. La conversion en kWh dépend du '
-        'barème du distributeur : elle n\'est pas faite ici, et « kwh » reste '
-        '« non calculé » plutôt qu\'estimé à partir d\'un prix moyen.')
+    avertissements.append(AVIS_KWH_NON_CONVERTIS)
 
     connus = [ligne['facture_mad'] for ligne in lignes
               if ligne['facture_mad'] is not None]
@@ -201,6 +212,88 @@ def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
     )
 
 
+# ── CALX257 — les kWh publiés par le barème de la SOCIÉTÉ ─────────────────
+#
+# LE CONSTAT : la règle 4 de l'en-tête laissait ``kwh: null`` sur les douze
+# mois alors que le barème existe en réglage société (Paramètres →
+# Tarification & ROI). Parité : OpenSolar, le tarif porte la conversion
+# facture ↔ énergie.
+#
+# LA RÈGLE (D5) : l'inversion vit dans ``apps.parametres.tariff`` (app de
+# FONDATION — import direct autorisé), à côté des jumeaux kWh → MAD. Ce module
+# ne fait QUE l'appeler et recopier ``kwh`` + son motif : aucune arithmétique
+# de montant ici (garde de source : ``tests/test_calx257_kwh_publie.py``). La
+# classe tarifaire est SAISIE ; sans société, aucun réglage n'est lu — jamais
+# le réglage de repli « sans société » — et ``kwh`` reste ``null`` avec le
+# motif qui nomme le réglage manquant.
+
+def _lire_reglages_tarif(company):
+    """Le réglage « Tarification & ROI » DE LA SOCIÉTÉ (fondation parametres)."""
+    from apps.parametres.models_tariff import TariffSettings
+    return TariffSettings.get(company=company)
+
+
+def publier_kwh(profil, company, *, classe, lire_reglages=None):
+    """Renseigne ``kwh`` de chaque mois par le barème SOCIÉTÉ, avec son motif.
+
+    Args:
+        profil: un profil de :func:`profil_mensuel` / :func:`profil_depuis_lead`
+            (modifié EN PLACE et rendu).
+        company: la société — posée côté serveur. ``None`` ⇒ aucun réglage
+            n'est lu et chaque ``kwh`` reste ``None`` avec le motif.
+        classe: ``residentiel`` | ``force_motrice`` — SAISIE, jamais supposée.
+        lire_reglages: point d'injection (tests) ; par défaut
+            ``TariffSettings.get(company=...)``.
+
+    Returns:
+        Le profil : chaque mois porte ``kwh`` et ``kwh_motif`` (vide quand la
+        conversion a abouti) ; ``conversion_kwh`` publie la classe, le réglage
+        et sa version, le périmètre du montant inversé et les motifs.
+
+    Raises:
+        ProfilInvalide: classe absente ou inconnue (``champ='classe'``).
+    """
+    from apps.parametres.tariff import (
+        PERIMETRE_INVERSION, REGLAGE_TARIF, FactureInvalide,
+        kwh_depuis_facture,
+    )
+
+    reglages = None
+    if company is not None:
+        reglages = (lire_reglages or _lire_reglages_tarif)(company)
+
+    motifs = []
+    converti = False
+    for ligne in profil['mois']:
+        try:
+            conversion = kwh_depuis_facture(
+                reglages, ligne['facture_mad'], classe=classe)
+        except FactureInvalide as refus:
+            raise ProfilInvalide(refus.motif, champ=refus.champ) from refus
+        ligne['kwh'] = (None if conversion['kwh'] is None
+                        else float(conversion['kwh']))
+        ligne['kwh_motif'] = conversion['motif']
+        if conversion['kwh'] is not None:
+            converti = True
+        elif conversion['motif'] not in motifs:
+            motifs.append(conversion['motif'])
+
+    profil['conversion_kwh'] = {
+        'classe': classe,
+        'reglage': REGLAGE_TARIF,
+        'reglage_version': getattr(reglages, 'version', None),
+        'perimetre': PERIMETRE_INVERSION,
+        'motifs': motifs,
+    }
+    avertissements = [avis for avis in profil['avertissements']
+                      if avis != AVIS_KWH_NON_CONVERTIS]
+    avertissements.extend(motifs)
+    if converti:
+        avertissements.append(PERIMETRE_INVERSION)
+    profil['avertissements'] = avertissements
+    return profil
+
+
 # ── CALX255 — le profil de consommation depuis le DOCUMENT (atelier) ─────
 #
 # LE CONSTAT : ce module ne savait partir que des factures du lead
@@ -219,6 +312,17 @@ def profil_depuis_lead(company, lead_id, *, saisies=None, lire_lead=None):
 # rend un profil VIDE (``courbe24: None``) avec son motif, JAMAIS un repli
 # sur une autre source. Une courbe dont la longueur n'est pas 24 est REFUSÉE
 # en NOMMANT le champ fautif (``consumption.courbe24``).
+
+def _verifier_courbe24(courbe24, *, champ, quoi=''):
+    """Refuse une courbe horaire qui ne compte pas 24 valeurs, en NOMMANT le
+    champ — jamais tronquée ni complétée (règle CALX255, partagée CALX260)."""
+    if courbe24 is not None and len(courbe24) != 24:
+        raise ProfilInvalide(
+            f'La courbe horaire {quoi}(« {champ} ») '
+            f'compte {len(courbe24)} valeur(s) au lieu de 24 : elle est '
+            'refusée plutôt que tronquée ou complétée.',
+            champ=champ)
+
 
 def profil_depuis_layout(layout, *, saisies=None):
     """Le profil de consommation depuis le document ATELIER (``roof_layout``).
@@ -249,12 +353,8 @@ def profil_depuis_layout(layout, *, saisies=None):
     consumption = (layout or {}).get('consumption') or {}
     courbe24 = consumption.get('courbe24')
 
-    if courbe24 is not None and len(courbe24) != 24:
-        raise ProfilInvalide(
-            "La courbe horaire de l'atelier (« consumption.courbe24 ») "
-            f'compte {len(courbe24)} valeur(s) au lieu de 24 : elle est '
-            'refusée plutôt que tronquée ou complétée.',
-            champ='consumption.courbe24')
+    _verifier_courbe24(courbe24, champ='consumption.courbe24',
+                       quoi="de l'atelier ")
 
     if not consumption or courbe24 is None:
         return {
@@ -278,6 +378,328 @@ def profil_depuis_layout(layout, *, saisies=None):
         'source': 'layout',
         'avertissements': [],
     }
+
+
+# ── CALX256 — la méthode « somme d'appareils », provenance par appareil ──
+#
+# LE CONSTAT : le calculateur d'appareils vivait entièrement dans le
+# navigateur (``apps/web/src/scripts/roofPro11/consumption.ts``, table
+# ``APPLIANCE_TYPICALS``) ; aucun appareil n'atteignait le serveur et ce
+# module n'avait aucune agrégation. Parité : PV*SOL, méthode « sum of
+# pre-defined individual appliances ».
+#
+# LES RÈGLES :
+#   * chaque appareil DÉCLARE sa provenance — ``saisi`` (le client l'a
+#     donnée) ou ``table_atelier`` (valeur type de la table de l'atelier) —
+#     et la seconde est publiée comme telle, jamais présentée comme un relevé ;
+#   * l'énergie d'un appareil est répartie UNIFORMÉMENT sur son créneau
+#     ``[startHour, endHour[`` (même convention que ``windowHours`` côté
+#     atelier : le créneau peut traverser minuit, début = fin ⇒ la journée) ;
+#   * frontière d'Aurora : ajouter ou retirer un appareil ne touche PAS le
+#     total annuel déjà saisi — la courbe d'appareils est NORMALISÉE sur ce
+#     total et ne fournit que la répartition horaire ; l'écart entre la somme
+#     des appareils et ce total est PUBLIÉ (les deux nombres et le pourcentage),
+#     jamais absorbé en silence.
+
+#: Provenances admises pour un appareil.
+PROVENANCES_APPAREIL = ('saisi', 'table_atelier')
+
+#: Ce que chaque provenance veut dire, publié avec l'appareil.
+MENTIONS_PROVENANCE = {
+    'saisi': 'valeur saisie',
+    'table_atelier': "valeur type de l'atelier, non mesurée",
+}
+
+
+def _energie_positive(valeur, *, champ, quoi):
+    """Une énergie lisible, finie et ≥ 0 — sinon refus NOMMANT le champ."""
+    refus = ProfilInvalide(
+        f'« {champ} » doit être {quoi} positive ou nulle (reçu : '
+        f'{valeur!r}).', champ=champ)
+    if isinstance(valeur, bool) or valeur in (None, ''):
+        raise refus
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        raise refus
+    if not math.isfinite(nombre) or nombre < 0:
+        raise refus
+    return nombre
+
+
+def _entier_appareil(appareil, cle, *, rang, borne_max):
+    champ = f'appareils[{rang}].{cle}'
+    valeur = appareil.get(cle)
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        raise ProfilInvalide(
+            f'« {champ} » doit être un entier (reçu : {valeur!r}).',
+            champ=champ)
+    if valeur != int(valeur) or not 0 <= valeur <= borne_max:
+        raise ProfilInvalide(
+            f'« {champ} » doit être un entier entre 0 et {borne_max} '
+            f'(reçu : {valeur!r}).', champ=champ)
+    return int(valeur)
+
+
+def _creneau(debut, fin, longueur):
+    """Pas couverts par ``[debut, fin[`` — port de ``windowHours`` (atelier)."""
+    duree = (fin - debut) % longueur or longueur
+    return [(debut + pas) % longueur for pas in range(duree)]
+
+
+def _appareil_valide(appareil, *, rang, longueur):
+    if not isinstance(appareil, dict):
+        raise ProfilInvalide(
+            f'« appareils[{rang}] » doit être un objet (reçu : '
+            f'{appareil!r}).', champ=f'appareils[{rang}]')
+    provenance = appareil.get('provenance')
+    if provenance not in PROVENANCES_APPAREIL:
+        raise ProfilInvalide(
+            f'« appareils[{rang}].provenance » est obligatoire, parmi '
+            f'{", ".join(PROVENANCES_APPAREIL)} (reçu : {provenance!r}).',
+            champ=f'appareils[{rang}].provenance')
+    energie = _energie_positive(
+        appareil.get('dailyKwh'), champ=f'appareils[{rang}].dailyKwh',
+        quoi='une énergie journalière')
+    debut = _entier_appareil(appareil, 'startHour', rang=rang,
+                             borne_max=longueur - 1)
+    fin = _entier_appareil(appareil, 'endHour', rang=rang,
+                           borne_max=longueur)
+    return {
+        'kind': appareil.get('kind'),
+        'label': appareil.get('label'),
+        'dailyKwh': energie,
+        'startHour': debut,
+        'endHour': fin,
+        'billing': appareil.get('billing'),
+        'source': provenance,
+        'mention': MENTIONS_PROVENANCE[provenance],
+        'creneau': _creneau(debut, fin, longueur),
+    }
+
+
+def courbe_appareils(appareils, *, longueur=24, total_annuel_kwh=None):
+    """La courbe journalière composée par la somme des appareils déclarés.
+
+    Args:
+        appareils: ``[{kind, label, dailyKwh, startHour, endHour, billing,
+            provenance}]`` — ``provenance`` ∈ :data:`PROVENANCES_APPAREIL`
+            OBLIGATOIRE pour chacun. Les heures sont des indices de pas
+            (des heures quand ``longueur`` vaut 24).
+        longueur: le nombre de pas de la journée type.
+        total_annuel_kwh: le total annuel DÉJÀ SAISI par ailleurs (facture,
+            relevé). Présent ⇒ la courbe est normalisée sur lui (les appareils
+            ne donnent que la répartition) et l'écart est publié ; absent ⇒ la
+            courbe est la somme brute des appareils.
+
+    Returns:
+        dict — ``courbe`` (``longueur`` valeurs kWh, ou ``None``),
+        ``total_appareils_kwh_jour``, ``total_journalier_kwh``,
+        ``normalisation`` (``None`` sans total saisi), ``appareils`` (chacun
+        publié avec ``source``, ``mention`` et ``creneau``),
+        ``avertissements``.
+
+    Raises:
+        ProfilInvalide: appareil sans ``provenance`` valide, énergie ou heure
+            illisible, total saisi négatif — en NOMMANT le champ
+            (``appareils[0].provenance``…).
+    """
+    if isinstance(longueur, bool) or not isinstance(longueur, int) \
+            or longueur <= 0:
+        raise ProfilInvalide(
+            f'« longueur » doit être un entier positif (reçu : '
+            f'{longueur!r}).', champ='longueur')
+    publies = [_appareil_valide(appareil, rang=rang, longueur=longueur)
+               for rang, appareil in enumerate(appareils or [])]
+
+    avertissements = []
+    brute = [0.0] * longueur
+    for appareil in publies:
+        part = appareil['dailyKwh'] / len(appareil['creneau'])
+        for pas in appareil['creneau']:
+            brute[pas] += part
+    somme_jour = sum(appareil['dailyKwh'] for appareil in publies)
+
+    if not publies:
+        avertissements.append(
+            'Aucun appareil déclaré : aucune répartition horaire à publier.')
+        courbe = None
+    else:
+        courbe = brute
+
+    normalisation = None
+    if total_annuel_kwh is not None:
+        total_annuel_kwh = _energie_positive(
+            total_annuel_kwh, champ='total_annuel_kwh',
+            quoi='une énergie annuelle')
+        from .pompage import JOURS_PAR_MOIS
+        jours = sum(JOURS_PAR_MOIS)
+        somme_annuelle = somme_jour * jours
+        ecart_pct = (round((somme_annuelle - total_annuel_kwh)
+                           / total_annuel_kwh * 100, 1)
+                     if total_annuel_kwh > 0 else None)
+        normalisation = {
+            'total_annuel_saisi_kwh': total_annuel_kwh,
+            'total_appareils_annuel_kwh': round(somme_annuelle, 4),
+            'ecart_pct': ecart_pct,
+            'jours_par_an': jours,
+        }
+        if courbe is not None and somme_jour <= 0:
+            courbe = None
+            avertissements.append(
+                "Les appareils déclarés ne consomment rien : ils ne donnent "
+                'aucune répartition horaire du total saisi.')
+        elif courbe is not None:
+            facteur = total_annuel_kwh / jours / somme_jour
+            courbe = [valeur * facteur for valeur in brute]
+            if ecart_pct:
+                avertissements.append(
+                    f'La somme des appareils ({round(somme_annuelle, 1)} '
+                    f"kWh/an) s'écarte de {ecart_pct:+.1f} % du total saisi "
+                    f'({total_annuel_kwh} kWh/an) : la courbe garde '
+                    'le total saisi, les appareils ne donnent que la '
+                    'répartition horaire.')
+
+    if any(appareil['source'] == 'table_atelier' for appareil in publies):
+        avertissements.append(
+            "Certains appareils portent une valeur type de l'atelier, non "
+            'mesurée : elle ne remplace pas un relevé.')
+
+    return {
+        'courbe': (None if courbe is None
+                   else [round(valeur, 4) for valeur in courbe]),
+        'longueur': longueur,
+        'total_appareils_kwh_jour': round(somme_jour, 4),
+        'total_journalier_kwh': (None if courbe is None
+                                 else round(sum(courbe), 4)),
+        'normalisation': normalisation,
+        'appareils': publies,
+        'avertissements': avertissements,
+    }
+
+
+# ── CALX260 — le Ramadan décale la courbe, sans un seul chiffre neuf ─────
+#
+# LE CONSTAT : ``apps/ventes/ramadan.py`` porte les plages 2025→2033, le
+# calcul solaire de l'imsak/iftar et ``part_ramadan_par_mois`` ; aucun module
+# du calepinage ne l'importait — la consommation ignorait un mois entier de
+# décalage d'horloge. Parité : PV*SOL, variation des profils de charge selon
+# les jours particuliers.
+#
+# LA RÈGLE : TOUT est relu — la plage dans ``apps.ventes.ramadan`` (jamais
+# une seconde table ; aucun sélecteur de ``ventes`` ne l'expose, d'où l'import
+# fonction-local de ce module utilitaire PUR), l'heure légale dans la base de
+# fuseaux par ``ramadan.decalage_maroc_h``. Aucune heure n'est écrite ici
+# (garde : ``tests/test_calx260_ramadan_conso.py``).
+#
+# LE DÉCALAGE est l'écart d'HORLOGE entre le jour demandé et l'horloge
+# ORDINAIRE : un foyer garde ses habitudes à l'heure de sa montre ; quand la
+# montre recule, ces habitudes tombent plus tard sur l'horloge ordinaire. La
+# date d'horloge ordinaire est prise AUTANT DE JOURS AVANT le début du
+# Ramadan qu'il en dure : hors de la fenêtre de changement d'heure (qui ne
+# l'encadre que de quelques jours) et loin du Ramadan précédent. Depuis le
+# 20/09/2026 (décret n° 2.26.530) la base de fuseaux ne connaît plus de
+# changement d'heure : l'écart est alors nul et la courbe rendue telle quelle.
+#
+# LE REPÈRE : la courbe rendue est exprimée sur l'horloge ORDINAIRE. Une série
+# météo déjà alignée date par date sur l'heure LÉGALE (CALX59) porte déjà ce
+# changement d'heure : elle ne doit pas recevoir une courbe décalée ici.
+
+def _tourner(courbe, decalage):
+    """Rotation circulaire : la valeur du pas ``h`` passe au pas ``h + decalage``.
+
+    PERMUTATION PURE — aucune valeur créée ni perdue, l'intégrale est
+    conservée à l'identique.
+    """
+    longueur = len(courbe)
+    return [courbe[(pas - decalage) % longueur] for pas in range(longueur)]
+
+
+def appliquer_ramadan(courbe24, *, jour, lat=None, lon=None):
+    """La courbe 24 h du jour ``jour``, décalée si ce jour tombe en Ramadan.
+
+    Args:
+        courbe24: les 24 valeurs horaires (kWh/h) sur l'horloge de la montre.
+        jour: la date (``datetime.date``) à simuler.
+        lat / lon: le point du chantier — servent la fenêtre imsak/iftar
+            publiée (``ramadan.fenetre_ramadan``, repli documenté sans GPS).
+
+    Returns:
+        dict — ``courbe24`` (hors Ramadan : la MÊME liste de valeurs),
+        ``dans_ramadan``, ``decalage_h`` (lu dans la base de fuseaux ;
+        ``None`` hors Ramadan — aucun décalage n'y est calculé),
+        ``hijri``, ``part_du_mois`` (part du mois de ``jour`` passée en
+        Ramadan, ``ramadan.part_ramadan_par_mois``), ``fuseau`` (nom + mention
+        du décalage légal), ``fenetre`` (imsak/iftar ou ``None``), ``repere``,
+        ``avertissements``.
+
+    Raises:
+        ProfilInvalide: ``courbe24`` d'une autre longueur que 24 ou ``jour``
+            qui n'est pas une date — en NOMMANT le champ.
+    """
+    from datetime import date
+
+    from apps.parametres.pvgis_profils import FUSEAU_MAROC
+    from apps.ventes import ramadan
+
+    _verifier_courbe24(courbe24, champ='courbe24')
+    if courbe24 is None:
+        raise ProfilInvalide(
+            '« courbe24 » est obligatoire : aucune courbe à décaler.',
+            champ='courbe24')
+    if not isinstance(jour, date):
+        raise ProfilInvalide(
+            f'« jour » doit être une date (reçu : {jour!r}).', champ='jour')
+
+    parts = ramadan.part_ramadan_par_mois(jour)
+    trouve = ramadan.plage_ramadan_pour(jour)
+    resultat = {
+        'courbe24': list(courbe24),
+        'dans_ramadan': False,
+        'decalage_h': None,
+        'hijri': None,
+        'part_du_mois': (dict(zip(MOIS, parts)).get(jour.month)
+                         if parts else None),
+        'fuseau': None,
+        'fenetre': None,
+        'repere': "horloge ordinaire (heure légale hors Ramadan)",
+        'avertissements': [],
+    }
+    if trouve is None:
+        resultat['avertissements'].append(
+            'Date au-delà de la table des plages du Ramadan '
+            '(apps.ventes.ramadan) : la courbe est rendue telle quelle.')
+        return resultat
+    plage, dedans = trouve
+    if not dedans:
+        return resultat
+
+    ordinaire = plage['debut'] - (plage['fin'] - plage['debut'])
+    heure_jour = ramadan.decalage_maroc_h(jour)
+    heure_ordinaire = ramadan.decalage_maroc_h(ordinaire)
+    decalage = heure_ordinaire - heure_jour
+    resultat.update({
+        'dans_ramadan': True,
+        'decalage_h': decalage,
+        'hijri': plage['hijri'],
+        'fuseau': {
+            'nom': FUSEAU_MAROC,
+            'utc_jour_h': heure_jour,
+            'utc_ordinaire_h': heure_ordinaire,
+            'mention': (
+                f'Heure légale « {FUSEAU_MAROC} » : UTC{heure_jour:+d} ce '
+                f'jour-là, UTC{heure_ordinaire:+d} en temps ordinaire '
+                '(base de fuseaux IANA).'),
+        },
+        'fenetre': ramadan.fenetre_ramadan(jour, lat=lat, lon=lon),
+    })
+    if decalage:
+        resultat['courbe24'] = _tourner(list(courbe24), decalage)
+    else:
+        resultat['avertissements'].append(
+            "La base de fuseaux ne prévoit aucun changement d'heure pendant "
+            'ce Ramadan : la courbe est rendue telle quelle.')
+    return resultat
 
 
 # ── CAL148 — import d'une courbe de charge HORAIRE en CSV ────────────────

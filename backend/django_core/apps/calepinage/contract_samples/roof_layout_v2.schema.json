@@ -172,6 +172,10 @@
       "items": {
         "$ref": "#/$defs/moduleDocument"
       }
+    },
+    "consumption": {
+      "description": "CALX251 — la consommation affinée dans l'atelier « Affiner ma consommation » (W68/W95 : `ctx.consCurve`/`consAppliances`/`consSeasonal`/`consSummerFactor`/`consWinterFactor`/`consHandEdited`), telle que `serializeLayout` l'émet (CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`) et que `hydrateFromLead`/`hydrateFromDevis` la relisent (CALX254). Clé RACINE OPTIONNELLE et additive : absente, comportement d'aujourd'hui — aucune consommation reconstruite, byte pour byte, exactement comme les six autres clés v2 de cette section. Elle N'EST JAMAIS émise par une session qui n'a rien touché dans le panneau « Affiner » : mieux vaut l'absence qu'une courbe plate inventée (D-CALX 7).",
+      "$ref": "#/$defs/consumption"
     }
   },
   "$defs": {
@@ -977,6 +981,120 @@
           "description": "D'OÙ viennent les valeurs ci-dessus, en clair et en français (« fiche produit », « saisie atelier », « fiche technique du fabricant »…). Sans elle, deux modèles renseignés par deux chemins différents ne sont pas comparables, et rien ne dit à l'utilisateur ce qu'il peut engager (D-CALX 7).",
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "consumption": {
+      "description": "CALX251 — la consommation affinée dans le panneau « Affiner ma consommation » de l'atelier (W68/W95). `methode` est DÉDUITE de ce que l'utilisateur a réellement fait (`serializeConsumption`, CALX253, `apps/web/src/scripts/roofPro11/prefill.ts`), jamais un choix par défaut : `courbe` = la courbe horaire a été éditée à la main (`ctx.consHandEdited`) et prime sur tout le reste ; `appareils` = calculée depuis la liste d'appareils (`ctx.consAppliances`) ; `facture` = seul un socle mensuel a été saisi (`ctx.consDailyTarget`). `courbe24`/`methode`/`source` sont TOUJOURS présents ensemble — un producteur qui émet ce bloc les émet toujours les trois ; `saisons` et `appareils` sont chacun OMIS quand ils n'apportent rien (aucune modulation saisonnière activée, aucun appareil ajouté). Aucune valeur n'est inventée par le schéma (D-CALX 7) : un bloc absent à la racine reste le seul état « rien n'a été touché ».",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "courbe24",
+        "methode",
+        "source"
+      ],
+      "properties": {
+        "courbe24": {
+          "description": "Courbe horaire de consommation (kWh/h) EFFECTIVEMENT utilisée, 24 valeurs — une par heure de la journée. Reprend `ctx.consCurve`.",
+          "type": "array",
+          "minItems": 24,
+          "maxItems": 24,
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "saisons": {
+          "description": "W95 — facteurs multiplicatifs saisonniers SAISIS (`ctx.consSummerFactor`/`ctx.consWinterFactor`). Absents = la modulation saisonnière n'a pas été activée dans l'atelier ; le schéma n'en propose aucun (D-CALX 7).",
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "ete": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "hiver": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          }
+        },
+        "appareils": {
+          "description": "Appareils du calculateur de consommation (`ctx.consAppliances`), un par appareil ajouté dans l'atelier. Absent ou vide = aucun appareil.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/consumptionAppliance"
+          }
+        },
+        "methode": {
+          "description": "Comment la courbe `courbe24` a été obtenue — DÉDUITE de ce que l'utilisateur a réellement fait, jamais une saisie ni un choix par défaut.",
+          "type": "string",
+          "enum": [
+            "facture",
+            "courbe",
+            "appareils"
+          ]
+        },
+        "source": {
+          "description": "Provenance déclarative du bloc (jamais un chiffre, D-CALX 7) : d'où et quand la consommation a été affinée.",
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "origine": {
+              "type": "string"
+            },
+            "saisi_le": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "consumptionAppliance": {
+      "description": "CALX251 — un appareil du calculateur de consommation, miroir de l'interface `Appliance` (`apps/web/src/lib/applianceConsumption.ts`). Toutes les valeurs sont SAISIES ou reprises d'un appareil TYPE de l'atelier ; aucune n'est déduite ici.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "kind",
+        "dailyKwh",
+        "startHour",
+        "endHour",
+        "billing"
+      ],
+      "properties": {
+        "kind": {
+          "description": "Identifiant de type d'appareil (pour l'UI / la table d'appareils typiques).",
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "description": "Libellé FRANÇAIS affiché.",
+          "type": "string"
+        },
+        "dailyKwh": {
+          "description": "Énergie journalière de l'appareil (kWh/jour).",
+          "type": "number",
+          "minimum": 0
+        },
+        "startHour": {
+          "description": "Heure de début du créneau (0–23).",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 23
+        },
+        "endHour": {
+          "description": "Heure de fin du créneau (exclusive ; peut traverser minuit — jusqu'à 24).",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "billing": {
+          "description": "Prise en compte dans la facture, énumération FERMÉE. `onTop` = pas encore reflété dans la facture (ajoute au total) ; `inBill` = déjà dans la facture (reshape uniquement).",
+          "type": "string",
+          "enum": [
+            "onTop",
+            "inBill"
+          ]
         }
       }
     },

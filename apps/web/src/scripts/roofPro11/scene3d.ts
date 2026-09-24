@@ -387,8 +387,10 @@ export function computeMixedAltitudeOffsets(pans: MixedRidgePan[]): number[] {
 
 /** Préréts de forme proposés. 'flat' et 'shed' (appentis) ne redécoupent rien (1 pan) ;
  *  'gable' (2 pans, faîtière centrale) et 'hip' (4 pans/croupe, pans en éventail depuis le
- *  centre) partitionnent le contour tracé. */
-export type RoofShapePreset = 'flat' | 'shed' | 'gable' | 'hip';
+ *  centre) partitionnent le contour tracé. CALX96 — 'l_gable' et 't_gable' partitionnent un
+ *  contour CONCAVE (bâtiment en L ou en T) en ailes rectangulaires, chacune ensuite
+ *  redécoupée comme 'gable' (deux (ou trois) axes de faîtière détectés sur le contour). */
+export type RoofShapePreset = 'flat' | 'shed' | 'gable' | 'hip' | 'l_gable' | 't_gable';
 
 /** Un pan généré : son contour (même convention que `ctx.vertices` — anneau OUVERT, sans
  *  point de fermeture dupliqué) + l'azimut de face proposé (perpendiculaire sortant de son
@@ -473,6 +475,199 @@ function clipHalfPlane(
   return out;
 }
 
+/** 'gable' pour UN contour ENU déjà découpé (utilisé tel quel par le préré 'gable' sur le
+ *  contour entier, et une fois PAR AILE par 'l_gable'/'t_gable' ci-dessous, CALX96) — axe de
+ *  faîtière = direction de l'arête la plus longue de `enu`, coupe à mi-profondeur. */
+function gablePansEnu(enu: readonly [number, number][], origin: LngLat): RoofShapePan[] {
+  let bestLen = -1;
+  let ux = 1;
+  let uy = 0;
+  for (let i = 0; i < enu.length; i++) {
+    const a = enu[i];
+    const b = enu[(i + 1) % enu.length];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = dx * dx + dy * dy;
+    if (len > bestLen) {
+      bestLen = len;
+      const l = Math.sqrt(len) || 1;
+      ux = dx / l;
+      uy = dy / l;
+    }
+  }
+  // Axe perpendiculaire (profondeur du pan) — normale unitaire de l'axe de faîtière.
+  const vx = -uy;
+  const vy = ux;
+  const proj = (p: readonly [number, number]) => p[0] * vx + p[1] * vy;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (const p of enu) {
+    const v = proj(p);
+    if (v < vMin) vMin = v;
+    if (v > vMax) vMax = v;
+  }
+  const vMid = (vMin + vMax) / 2;
+  const sideA = clipHalfPlane(enu, [vx, vy], vMid); // v ≤ vMid → face vers −v (loin de la faîtière)
+  const sideB = clipHalfPlane(enu, [-vx, -vy], -vMid); // v ≥ vMid → face vers +v
+  // La face de CHAQUE pan est perpendiculaire à l'axe de faîtière, à l'opposé de la coupe —
+  // calculée DIRECTEMENT depuis l'axe (v), jamais en cherchant « la plus longue arête » du
+  // pan : celle-ci est à ÉGALITÉ entre l'égout réel et l'arête de coupe (même longueur, la
+  // faîtière étant parallèle aux égouts), un départage ambigu aurait pu retenir la coupe.
+  const pans: RoofShapePan[] = [];
+  if (sideA.length >= 3) pans.push({ vertices: sideA.map((p) => shapeFromEnu(p, origin)), facingAzimuthDeg: enuAzimuthDeg(-vx, -vy) });
+  if (sideB.length >= 3) pans.push({ vertices: sideB.map((p) => shapeFromEnu(p, origin)), facingAzimuthDeg: enuAzimuthDeg(vx, vy) });
+  return pans;
+}
+
+// ═══════════ CALX96 — préréts EN L / EN T (contour CONCAVE) ═══════════
+// Un toit en L ne s'obtenait jusqu'ici qu'en traçant PLUSIEURS zones à la main (aucun préré
+// ne détectait le coin concave). Ci-dessous : détection du (des) sommet(s) RÉFLEXE(S) d'un
+// contour ENU, découpe récursive en ailes rectangulaires CONVEXES à chaque coin trouvé (une
+// aile en L = 1 coin = 2 ailes ; une aile en T = 2 coins = 3 ailes — les « deux (ou trois) axes
+// de faîtière » du constat), puis `gablePansEnu` sur CHAQUE aile (même géométrie que 'gable',
+// aire EXACTEMENT conservée : c'est une PARTITION par plans de coupe successifs, jamais un
+// double-compte ni une perte). Un contour CONVEXE (aucun coin réflexe) est REFUSÉ en le
+// disant — produire malgré tout un « gable » simple serait un découpage FAUX pour la forme
+// demandée, pas un repli raisonnable.
+
+/** Deux fois l'aire signée (positif ⇒ contour CCW, négatif ⇒ CW) — sert UNIQUEMENT à
+ *  connaître le sens de rotation pour distinguer un virage CONVEXE d'un virage RÉFLEXE. */
+function enuSignedArea2(poly: readonly [number, number][]): number {
+  let sum = 0;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i];
+    const b = poly[(i + 1) % n];
+    sum += a[0] * b[1] - b[0] * a[1];
+  }
+  return sum;
+}
+
+/** Tolérance sur le produit vectoriel d'un virage — sous ce seuil, trois points quasi
+ *  alignés (un sommet redondant introduit par une coupe précédente) ne comptent NI comme
+ *  convexes NI comme réflexes : ni retenus pour une NOUVELLE coupe, ni un faux refus. */
+const REFLEX_EPS = 1e-9;
+
+/** L'INDICE du premier sommet RÉFLEXE (angle intérieur > 180°) de `poly`, ou -1 si le
+ *  contour est CONVEXE (aucun coin à séparer). */
+function findReflexVertexIndex(poly: readonly [number, number][]): number {
+  const n = poly.length;
+  if (n < 4) return -1; // un triangle est toujours convexe
+  const orientation = enuSignedArea2(poly) >= 0 ? 1 : -1;
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const cur = poly[i];
+    const next = poly[(i + 1) % n];
+    const e1x = cur[0] - prev[0];
+    const e1y = cur[1] - prev[1];
+    const e2x = next[0] - cur[0];
+    const e2y = next[1] - cur[1];
+    const cross = e1x * e2y - e1y * e2x;
+    if (cross * orientation < -REFLEX_EPS) return i;
+  }
+  return -1;
+}
+
+/** Intersection du RAYON (`origin + t·dir`, t > 0) avec le segment `[a, b]` (s ∈ [0, 1]),
+ *  résolue par Cramer — `null` si parallèle ou hors segment/derrière l'origine. */
+function rayEdgeIntersection(
+  origin: readonly [number, number],
+  dir: readonly [number, number],
+  a: readonly [number, number],
+  b: readonly [number, number],
+): { t: number; s: number; point: [number, number] } | null {
+  const ex = b[0] - a[0];
+  const ey = b[1] - a[1];
+  const det = dir[0] * -ey - -ex * dir[1]; // = ex·dir.y − ey·dir.x
+  if (Math.abs(det) < 1e-12) return null; // rayon parallèle à l'arête
+  const ox = a[0] - origin[0];
+  const oy = a[1] - origin[1];
+  const t = (ox * -ey - -ex * oy) / det;
+  const s = (dir[0] * oy - dir[1] * ox) / det;
+  if (t <= 1e-9 || s < -1e-9 || s > 1 + 1e-9) return null;
+  return { t, s, point: [origin[0] + t * dir[0], origin[1] + t * dir[1]] };
+}
+
+/** Le point le plus proche où le rayon partant de `poly[i]` en direction `dir` recroise la
+ *  frontière du polygone — les deux arêtes ADJACENTES au sommet `i` sont ignorées (le rayon en
+ *  part, il ne peut pas y revenir). `{edge}` est l'indice `k` du segment `poly[k]→poly[k+1]`
+ *  où tombe le point, pour reconstruire les deux morceaux ensuite. */
+function castRayToBoundary(
+  poly: readonly [number, number][],
+  i: number,
+  dir: readonly [number, number],
+): { point: [number, number]; edge: number } | null {
+  const n = poly.length;
+  const origin = poly[i];
+  let best: { t: number; point: [number, number]; edge: number } | null = null;
+  for (let k = 0; k < n; k++) {
+    if (k === i || k === (i - 1 + n) % n) continue;
+    const hit = rayEdgeIntersection(origin, dir, poly[k], poly[(k + 1) % n]);
+    if (hit && (!best || hit.t < best.t)) best = { t: hit.t, point: hit.point, edge: k };
+  }
+  return best;
+}
+
+/** Découpe `poly` en 2 morceaux par une DIAGONALE : du sommet réflexe `i`, en suivant `dir`
+ *  (le PROLONGEMENT d'une de ses deux arêtes adjacentes), jusqu'au point où elle recroise la
+ *  frontière. Chirurgie de LISTE DE SOMMETS — jamais un clip par demi-plan général
+ *  (`clipHalfPlane`) : pour un contour rectiligne, la ligne de coupe est TOUJOURS colinéaire à
+ *  une arête EXISTANTE (l'arête même qui définit la frontière partagée des deux ailes), ce qui
+ *  dégénère Sutherland-Hodgman en sommets dupliqués (mesuré, CALX96 — un rectangle recoupé
+ *  restait réflexe en boucle). `null` si le rayon ne recroise rien d'exploitable (défensif). */
+function splitAtReflexVertex(
+  poly: readonly [number, number][],
+  i: number,
+  dir: readonly [number, number],
+): [[number, number][], [number, number][]] | null {
+  const hit = castRayToBoundary(poly, i, dir);
+  if (!hit) return null;
+  const n = poly.length;
+  const { point: cutPoint, edge: k } = hit;
+  const a: [number, number][] = [];
+  for (let idx = i; ; idx = (idx + 1) % n) {
+    a.push(poly[idx]);
+    if (idx === k) break;
+  }
+  a.push(cutPoint);
+  const b: [number, number][] = [cutPoint];
+  for (let idx = (k + 1) % n; ; idx = (idx + 1) % n) {
+    b.push(poly[idx]);
+    if (idx === i) break;
+  }
+  if (a.length < 3 || b.length < 3) return null;
+  return [a, b];
+}
+
+/** Décompose récursivement un contour CONCAVE en ailes CONVEXES — une coupe par sommet
+ *  réflexe rencontré (en essayant le PROLONGEMENT de son arête entrante, puis sortante),
+ *  jusqu'à ce qu'aucun morceau n'en porte plus. `depth` est un garde-fou défensif (un contour
+ *  réel n'a jamais plus de quelques coins) ; au-delà, le morceau restant est rendu TEL QUEL
+ *  plutôt que de boucler. */
+function splitIntoConvexWings(poly: readonly [number, number][], depth = 0): [number, number][][] {
+  const reflexIndex = findReflexVertexIndex(poly);
+  if (reflexIndex < 0 || depth > 6) return [Array.from(poly)];
+  const n = poly.length;
+  const prev = poly[(reflexIndex - 1 + n) % n];
+  const cur = poly[reflexIndex];
+  const next = poly[(reflexIndex + 1) % n];
+  const directions: [number, number][] = [
+    [cur[0] - prev[0], cur[1] - prev[1]], // prolongement de l'arête ENTRANTE
+    [next[0] - cur[0], next[1] - cur[1]], // prolongement de l'arête SORTANTE
+  ];
+  for (const [dx, dy] of directions) {
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-9) continue; // arête dégénérée (deux sommets confondus) — l'autre tranchera
+    const split = splitAtReflexVertex(poly, reflexIndex, [dx / len, dy / len]);
+    if (!split) continue;
+    const [a, b] = split;
+    return [...splitIntoConvexWings(a, depth + 1), ...splitIntoConvexWings(b, depth + 1)];
+  }
+  // Ni l'une ni l'autre arête adjacente n'a pu servir de ligne de coupe (défensif) : le
+  // morceau est rendu tel quel plutôt qu'un découpage inventé.
+  return [Array.from(poly)];
+}
+
 /**
  * CAL56 — génère les pans d'un préré de forme depuis le contour FERMÉ tracé (≥ 3 sommets).
  * PUR : aucune dimension inventée, seule la géométrie du tracé (+ la pente saisie, laissée
@@ -485,6 +680,10 @@ function clipHalfPlane(
  *    éventail depuis le centre — chaque arête devient la base d'un pan, l'aire totale est
  *    EXACTEMENT conservée (identité shoelace : la somme des aires signées des triangles
  *    (centre, sommet_i, sommet_i+1) vaut l'aire du polygone, quel que soit le point centre).
+ *  - 'l_gable'/'t_gable' (CALX96) : le contour DOIT être concave (un coin en L/T) — il est
+ *    séparé en ailes rectangulaires convexes (`splitIntoConvexWings`) puis chaque aile reçoit
+ *    SA propre faîtière (`gablePansEnu`) ; un contour CONVEXE est REFUSÉ (`Error`, en nommant
+ *    la raison) plutôt que de produire un simple gable qui ignorerait la forme demandée.
  * Un contour < 3 sommets renvoie [] (rien à découper).
  */
 export function generateRoofShapePans(ring: LngLat[], shape: RoofShapePreset): RoofShapePan[] {
@@ -524,45 +723,21 @@ export function generateRoofShapePans(ring: LngLat[], shape: RoofShapePreset): R
     }
     return pans;
   }
-  // 'gable' — axe de faîtière = direction de l'arête la plus longue.
-  let bestLen = -1;
-  let ux = 1;
-  let uy = 0;
-  for (let i = 0; i < enu.length; i++) {
-    const a = enu[i];
-    const b = enu[(i + 1) % enu.length];
-    const dx = b[0] - a[0];
-    const dy = b[1] - a[1];
-    const len = dx * dx + dy * dy;
-    if (len > bestLen) {
-      bestLen = len;
-      const l = Math.sqrt(len) || 1;
-      ux = dx / l;
-      uy = dy / l;
+  if (shape === 'l_gable' || shape === 't_gable') {
+    if (findReflexVertexIndex(enu) < 0) {
+      throw new Error(
+        `generateRoofShapePans: le préré « ${shape} » suppose un contour CONCAVE (un coin ` +
+          "en L/T à séparer en ailes) — ce contour est CONVEXE, aucun coin à trouver. " +
+          "Utilisez 'gable' ou 'hip' pour un contour convexe.",
+      );
     }
+    const wings = splitIntoConvexWings(enu);
+    const pans: RoofShapePan[] = [];
+    for (const wing of wings) pans.push(...gablePansEnu(wing, origin));
+    return pans;
   }
-  // Axe perpendiculaire (profondeur du pan) — normale unitaire de l'axe de faîtière.
-  const vx = -uy;
-  const vy = ux;
-  const proj = (p: [number, number]) => p[0] * vx + p[1] * vy;
-  let vMin = Infinity;
-  let vMax = -Infinity;
-  for (const p of enu) {
-    const v = proj(p);
-    if (v < vMin) vMin = v;
-    if (v > vMax) vMax = v;
-  }
-  const vMid = (vMin + vMax) / 2;
-  const sideA = clipHalfPlane(enu, [vx, vy], vMid); // v ≤ vMid → face vers −v (loin de la faîtière)
-  const sideB = clipHalfPlane(enu, [-vx, -vy], -vMid); // v ≥ vMid → face vers +v
-  // La face de CHAQUE pan est perpendiculaire à l'axe de faîtière, à l'opposé de la coupe —
-  // calculée DIRECTEMENT depuis l'axe (v), jamais en cherchant « la plus longue arête » du
-  // pan : celle-ci est à ÉGALITÉ entre l'égout réel et l'arête de coupe (même longueur, la
-  // faîtière étant parallèle aux égouts), un départage ambigu aurait pu retenir la coupe.
-  const pans: RoofShapePan[] = [];
-  if (sideA.length >= 3) pans.push({ vertices: sideA.map((p) => shapeFromEnu(p, origin)), facingAzimuthDeg: enuAzimuthDeg(-vx, -vy) });
-  if (sideB.length >= 3) pans.push({ vertices: sideB.map((p) => shapeFromEnu(p, origin)), facingAzimuthDeg: enuAzimuthDeg(vx, vy) });
-  return pans;
+  // 'gable' — axe de faîtière = direction de l'arête la plus longue.
+  return gablePansEnu(enu, origin);
 }
 
 // ═══════════ STRUCTURE RÉELLE TAQINOR — toit plat (fiche géométrique du 18/08) ═══════════

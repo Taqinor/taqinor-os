@@ -226,6 +226,41 @@ SANS_PRODUCTEUR_PUR = {
         'dimensions (en-tête PNG/JPEG) et les quatre refus nommés sont '
         'affirmés sans base par '
         'apps/calepinage/tests/test_calx107_plan_importe.py',
+
+    # CALX292
+    'rapport_etude.json':
+        "DÉCLARATION des sections du rapport d'étude, lue par l'assembleur "
+        '(CALX297) : la route déclarée sert un PDF, il n’y a donc aucune '
+        'forme JSON servie à comparer — les chemins exigés sont résolus '
+        'contre calepinage_resultat.json, sans base, par '
+        'apps/calepinage/tests/test_calx292_contrat_rapport.py',
+
+    # CALX291
+    'calepinage_documents.json':
+        "INVENTAIRE des documents du lot 6 (codes, versions, manques nommés) : "
+        'sa route GET documents/ arrive avec CALX321 (panneau Documents, '
+        'phase 2) et son producteur avec elle — la forme, les neuf codes et '
+        "l'absence de tout mot de montant sont affirmés sans base par "
+        'apps/calepinage/tests/test_calx291_contrat_documents.py',
+
+    # CALX293
+    'export_projet.json':
+        "EXPORT JSON versionné du projet et de ses résultats, servi par "
+        'GET export-projet.json/ (CALX312) : son producteur lit le devis, le '
+        'CRM et le résultat du moteur en base — la forme servie (toutes clés, '
+        'blocs imbriqués) est affirmée CONTRE l’exemple committé sans base '
+        'par apps/calepinage/tests/test_calx312_export_projet.py, le contrat '
+        'lui-même par test_calx293_contrat_export_projet.py',
+
+    # CALX267
+    'calepinage_batterie.json':
+        'forme de services/batterie.py::simuler_groupes (plusieurs groupes '
+        'de batteries, chacun avec son couplage) : producteur PUR mais que '
+        'AUCUNE route ne sert encore (le bloc `batterie` de GET resultat/ '
+        "l'adoptera avec la chaîne de simulation) — l'exemple est le "
+        'résultat RÉEL du service sur son `entree_synthetique`, rejoué et '
+        'affirmé égal sans base par '
+        'apps/calepinage/tests/test_calx267_groupes_batteries.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -239,6 +274,13 @@ POSES_AVANT_LEUR_ROUTE = {
     # (``views/raccordement.py``) : ``calepinage_troncons.json`` et
     # ``calepinage_raccordement.json`` en sont SORTIS, et le contrôle 2
     # vérifie désormais leurs routes comme celles des autres.
+    # CALX297 a livré ``GET calepinages/<pk>/rapport-etude.pdf/``
+    # (``views/documents.py``) : ``rapport_etude.json`` en est SORTI.
+    # CALX321 a livré ``GET calepinages/<pk>/documents/`` (``views/documents.py``,
+    # action ``documents``) : ``calepinage_documents.json`` en est SORTI —
+    # même retrait que CALX297 avant elle.
+    # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
+    # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

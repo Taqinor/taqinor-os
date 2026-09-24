@@ -2187,6 +2187,56 @@ export default function ToitureDesign({ mode = 'lead' }) {
           <p id="rp9-maxline" className="mt-3 text-xs text-lune-faint"></p>
         </div>
 
+        {/* CALX94/CALX109 — L'ANCRAGE ATTENDU par `roofPro11/edgesUi.ts` (« Corriger le
+            type d'une arête », CALX94) et `roofPro11/zones.ts` (sélecteur de module du pan
+            actif, CALX109) : les deux s'accrochent à `ctx.dom.areasWindowEl`, lu depuis
+            `#rp9-areas-window` (`roof-tool-pro11.ts`). Cet id n'existait QUE sur la page de
+            démonstration publique (`pages/preview/toiture-3d-pro-11.astro`) — absent d'ici,
+            il rendait les deux gestes injoignables sur l'écran RÉELLEMENT servi par
+            `/calepinage/:id` comme par `/devis-design/:id` (voir l'en-tête de
+            `frontend/e2e/calepinage-parcours.spec.js`, CALX130). `edgesUi.ts` retombe sur
+            ce même conteneur dès que `#rp9-edges-host` est absent (son repli documenté) :
+            un seul ancrage suffit aux deux modules, aucun besoin d'un second conteneur.
+            Même contenu/emplacement que la page publique, juste après `#rp9-results` :
+            masqué par défaut, affiché par le script dès qu'une zone a un résultat
+            (`zones.ts renderAreasPanel`). Non conditionnel au mode — comme `#rp9-results`
+            ci-dessus, c'est un module du CONSTRUCTEUR partagé par les trois modes ; un
+            conteneur `hidden` par défaut ne change rien au mode devis. */}
+        <div id="rp9-areas-window" hidden className="cine-card mt-6 p-5 sm:p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p className="tech-label rule-brass text-brass-300">Total — toutes les zones</p>
+            <p className="text-xs text-lune-faint">Chaque zone est dimensionnée puis ajustable ; les totaux additionnent toutes les zones.</p>
+          </div>
+          <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4" aria-live="polite">
+            <div>
+              <dd id="rp9-areas-total-panels" className="fig text-lg text-white sm:text-xl">—</dd>
+              <dt className="tech-label mt-0.5 text-lune-faint">Panneaux</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-kwc" className="fig text-lg text-white sm:text-xl">—</dd>
+              <dt className="tech-label mt-0.5 text-lune-faint">Puissance</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-prod" className="fig text-lg text-white sm:text-xl">—</dd>
+              <dt className="tech-label mt-0.5 text-lune-faint">Production estimée</dt>
+            </div>
+            <div>
+              <dd id="rp9-areas-total-savings" className="fig text-lg text-brass-300 sm:text-xl">—</dd>
+              <dt className="tech-label mt-0.5 text-lune-faint">Économies estimées</dt>
+            </div>
+          </dl>
+          {/* Liste des zones (script-rendu) : libellé, panneaux, kWc, « Voir » + suppr. La
+              zone active est mise en évidence. `edgesUi.ts`/`zones.ts` (module picker,
+              CALX109) ajoutent aussi leurs propres panneaux ICI (`appendChild`, patron
+              `obstaclesUi.ts ensureTypePicker`) — rien d'autre à câbler côté écran. */}
+          <ul id="rp9-areas-list" className="mt-5 space-y-2"></ul>
+          <p className="mt-3 text-xs leading-relaxed text-lune-faint">
+            « + Ajouter une zone » fige la zone tracée et démarre un nouveau tracé sur la même
+            facture. La 3D et les graphes détaillés affichent la zone sélectionnée (« Voir ») ;
+            les totaux ci-dessus restent la somme de toutes les zones. Chiffres indicatifs, pas un devis.
+          </p>
+        </div>
+
         {/* CALX65 — sous la carte du constructeur, en mode calepinage
             UNIQUEMENT : dit laquelle des deux productions on regarde, sans
             jamais toucher un seul chiffre de `rp9-results` ci-dessus. */}

@@ -5,10 +5,33 @@ Expose le barème ONEE, le modèle de facturation et les hypothèses ROI/product
 jamais lus du corps de la requête. Tout champ non renseigné garde son défaut
 (barème ONEE courant, hypothèses conservatrices)."""
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 
 from rest_framework import serializers
 
 from .models_tariff import TariffSettings
+from .tariff import erreurs_reglages_tarif
+
+# CALX72 — les réglages SAISIS du lot 5 (CALX274 → CALX284), dans l'ordre de
+# l'écran Réglages → Tarification. Tous vides par défaut côté modèle : aucun
+# défaut n'est suggéré, tout se saisit avec sa source.
+CHAMPS_LOT5 = [
+    # CALX274/275 — tranches horaires (par saison) et leurs tarifs
+    'tou_heures', 'tou_tarifs', 'tou_source', 'tou_date_source',
+    # CALX276 — mécanisme de compensation du surplus
+    'mecanisme_compensation', 'report_periode', 'plafond_annuel_kwh',
+    'ratio_compensation',
+    # CALX277 — structure de la grille
+    'structure_tarif', 'pays_tarif', 'prix_unique_kwh', 'poste_haut',
+    'poste_bas',
+    # CALX278 — taxes et charge minimale
+    'prix_incluent_taxes', 'taxes', 'charge_minimale_mad_jour',
+    # CALX279 — indexation
+    'indexation_tarif_pct_an', 'indexation_source',
+    # CALX284 — fiscalité et amortissement
+    'taux_imposition_pct', 'amortissement_mode', 'amortissement_duree_ans',
+    'amortissement_coefficient', 'fiscalite_source',
+]
 
 
 class TariffSettingsSerializer(serializers.ModelSerializer):
@@ -29,9 +52,27 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
             'azimut_defaut_deg',
             'version',
             'date_modification',
-        ]
+        ] + CHAMPS_LOT5
         # version/date posés serveur ; company jamais exposée ni acceptée.
         read_only_fields = ['version', 'date_modification']
+
+    def validate(self, attrs):
+        """CALX72 — la porte de saisie relaie ``erreurs_reglages_tarif``.
+
+        L'état VALIDÉ est celui qui sera enregistré : les valeurs en base,
+        recouvertes par celles de la requête (un PATCH partiel ne peut donc
+        pas laisser une grille horaire sans sa source). Chaque refus est rangé
+        sous le NOM du champ fautif — l'écran l'affiche sous ce champ.
+        """
+        attrs = super().validate(attrs)
+        base = self.instance if self.instance is not None else TariffSettings()
+        etat = SimpleNamespace(**{
+            champ: attrs.get(champ, getattr(base, champ, None))
+            for champ in CHAMPS_LOT5 + ['residential_tiers']})
+        erreurs = erreurs_reglages_tarif(etat)
+        if erreurs:
+            raise serializers.ValidationError(erreurs)
+        return attrs
 
     def validate_residential_tiers(self, value):
         """Liste de paliers {max_kwh: int|null, prix_kwh_ttc} ou NULL.

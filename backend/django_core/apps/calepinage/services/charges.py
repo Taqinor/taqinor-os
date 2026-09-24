@@ -30,9 +30,9 @@ Module PUR : aucune base, aucun réseau, aucun prix.
 from __future__ import annotations
 
 __all__ = ['ChargeInvalide', 'TYPES_DE_CHARGE', 'ajouter_charges',
-           'courbe_pac', 'courbe_vehicule']
+           'courbe_climatisation', 'courbe_pac', 'courbe_vehicule']
 
-TYPES_DE_CHARGE = ('vehicule', 'pac')
+TYPES_DE_CHARGE = ('vehicule', 'pac', 'clim')
 
 #: La répartition employée dans une fenêtre saisie, DITE explicitement.
 MENTION_REPARTITION = (
@@ -126,9 +126,87 @@ def _repartir(energie_kwh, heures_actives, *, longueur, heure_de_depart=0):
     return courbe
 
 
+#: Modes de recharge acceptés par CALX261 (parité PV*SOL « Default » /
+#: « PV-optimized » — https://help.valentin-software.com/pvsol/en/pages/electric-vehicles/).
+MODES_RECHARGE_VEHICULE = ('immediat', 'pv_optimise')
+
+
+def _placer_sur_surplus(energie_kwh, heures_actives, production_horaire, *,
+                        longueur, heure_de_depart):
+    """Place ``energie_kwh`` d'abord sur les heures de SURPLUS de production,
+    dans la fenêtre saisie (CALX261).
+
+    Le véhicule charge quand même le reliquat que le surplus ne couvre pas —
+    ce reliquat vient alors du RÉSEAU, jamais masqué : il est réparti
+    UNIFORMÉMENT sur la même fenêtre (exactement comme le mode ``immediat``),
+    pendant que la part couverte par le surplus est placée en PRIORITÉ sur
+    les heures de plus grand surplus. Un surplus NUL sur toute la fenêtre
+    rend donc une courbe IDENTIQUE au mode ``immediat`` — seule la source
+    (réseau vs PV) change.
+
+    Returns:
+        (courbe, energie_reseau_kwh) — ``courbe`` couvre ``longueur`` heures
+        et somme à ``energie_kwh`` ; ``energie_reseau_kwh`` est la part de
+        cette énergie que le surplus n'a pas couverte.
+    """
+    courbe = [0.0] * longueur
+    if not heures_actives or energie_kwh <= 0:
+        return courbe, max(0.0, energie_kwh)
+
+    productions = list(production_horaire)
+    # Un rang de la fenêtre (dans l'ordre de la courbe rendue) associé au
+    # surplus de production disponible à cette heure — trié du plus grand
+    # surplus au plus petit pour consommer le surplus en priorité.
+    candidats = []
+    for rang in range(longueur):
+        heure_du_jour = (int(heure_de_depart) + rang) % 24
+        if heure_du_jour not in heures_actives:
+            continue
+        surplus = (float(productions[rang]) if rang < len(productions)
+                   else 0.0)
+        candidats.append((rang, max(0.0, surplus)))
+
+    total_surplus = sum(surplus for _, surplus in candidats)
+    couvert_pv = min(energie_kwh, total_surplus)
+    energie_reseau = energie_kwh - couvert_pv
+
+    restant = couvert_pv
+    for rang, surplus in sorted(candidats, key=lambda item: item[1],
+                                reverse=True):
+        if restant <= 0:
+            break
+        place = min(restant, surplus)
+        if place > 0:
+            courbe[rang] += place
+            restant -= place
+
+    if energie_reseau > 0:
+        part_reseau = energie_reseau / len(candidats)
+        for rang, _ in candidats:
+            courbe[rang] += part_reseau
+
+    return courbe, max(0.0, energie_reseau)
+
+
+def _borner_puissance(courbe, plafond_kw):
+    """Plafonne CHAQUE heure de ``courbe`` à ``plafond_kw`` (CALX262).
+
+    L'énergie qui ne tient pas dans la fenêtre à cause de ce plafond est
+    rendue à part — JAMAIS masquée : c'est ``energie_non_placee_kwh``, avec
+    la mention que la fenêtre est trop courte pour la borne saisie.
+
+    Returns:
+        (courbe_bornee, energie_non_placee_kwh)
+    """
+    bornee = [min(valeur, plafond_kw) for valeur in courbe]
+    deborde = sum(valeur - place for valeur, place in zip(courbe, bornee))
+    return bornee, max(0.0, deborde)
+
+
 def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                     fenetre_recharge=None, longueur=24, heure_de_depart=0,
-                    rendement_recharge_pct=None):
+                    rendement_recharge_pct=None, mode='immediat',
+                    production_horaire=None, puissance_borne_kw=None):
     """La charge horaire d'un VÉHICULE ÉLECTRIQUE — tout est saisi.
 
     Args:
@@ -138,6 +216,20 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
         fenetre_recharge: les heures de recharge, SAISIES.
         rendement_recharge_pct: pertes de charge, SAISIES. Absent ⇒ aucune
             perte appliquée, et le bilan le dit (jamais un rendement supposé).
+        mode: ``'immediat'`` (défaut, CALX261) conserve EXACTEMENT le
+            comportement d'aujourd'hui — répartition uniforme sur la
+            fenêtre. ``'pv_optimise'`` exige ``production_horaire`` et place
+            l'énergie d'abord sur les heures de surplus de production dans
+            la fenêtre saisie ; le reliquat non couvert par le surplus est
+            publié séparément (``energie_reseau_kwh``), jamais masqué.
+        production_horaire: la production PV horaire (même longueur que
+            ``longueur``), REQUISE quand ``mode='pv_optimise'``.
+        puissance_borne_kw: la puissance de la borne de recharge, SAISIE
+            (CALX262). Plafonne l'énergie horaire à cette puissance ; le
+            reliquat qui ne tient pas dans la fenêtre à cause de ce plafond
+            est publié séparément (``energie_non_placee_kwh``) avec la
+            mention de la fenêtre trop courte. Absente ⇒ aucun plafond, et
+            le bilan le DIT (comportement d'aujourd'hui).
 
     Raises:
         ChargeInvalide: paramètre manquant ou illisible, en le NOMMANT.
@@ -148,6 +240,12 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                          libelle='La consommation (kWh/100 km)')
     heures = _fenetre(fenetre_recharge, champ='vehicule.fenetre_recharge',
                       libelle='La fenêtre de recharge')
+
+    if mode not in MODES_RECHARGE_VEHICULE:
+        raise ChargeInvalide(
+            f'Le mode de recharge « {mode} » est inconnu — les modes '
+            f'acceptés sont {", ".join(MODES_RECHARGE_VEHICULE)}.',
+            champ='vehicule.mode')
 
     energie = km / 100.0 * conso
     hypotheses = [MENTION_REPARTITION]
@@ -166,15 +264,61 @@ def courbe_vehicule(*, km_par_jour=None, kwh_par_100km=None,
                 champ='vehicule.rendement_recharge_pct')
         energie = energie / (rendement / 100.0)
 
+    plafond = None
+    if puissance_borne_kw is not None:
+        plafond = _obligatoire(
+            puissance_borne_kw, champ='vehicule.puissance_borne_kw',
+            libelle='La puissance de la borne de recharge')
+    else:
+        hypotheses.append(
+            'Aucune puissance de borne saisie : aucun plafond horaire '
+            "n'est appliqué (comportement d'aujourd'hui).")
+
+    parametres = {
+        'km_par_jour': km, 'kwh_par_100km': conso,
+        'fenetre_recharge': heures,
+        'rendement_recharge_pct': rendement_recharge_pct,
+        'mode': mode, 'puissance_borne_kw': puissance_borne_kw,
+    }
+
+    if mode == 'pv_optimise':
+        if not production_horaire:
+            raise ChargeInvalide(
+                'Le mode « pv_optimise » a besoin de '
+                '« vehicule.production_horaire » (la production PV de '
+                'chaque heure) : sans elle, aucun surplus ne peut être '
+                'identifié.', champ='vehicule.production_horaire')
+        courbe, energie_reseau = _placer_sur_surplus(
+            energie, heures, production_horaire, longueur=longueur,
+            heure_de_depart=heure_de_depart)
+        hypotheses.append(
+            "Mode « pv_optimise » : l'énergie est placée d'abord sur les "
+            'heures de surplus de production dans la fenêtre saisie ; le '
+            "reliquat non couvert par le surplus est publié en "
+            '« energie_reseau_kwh », jamais masqué.')
+    else:
+        courbe = _repartir(energie, heures, longueur=longueur,
+                           heure_de_depart=heure_de_depart)
+        energie_reseau = 0.0
+
+    energie_non_placee = 0.0
+    if plafond is not None:
+        courbe, energie_non_placee = _borner_puissance(courbe, plafond)
+        if energie_non_placee > 0:
+            hypotheses.append(
+                'La puissance de la borne saisie ne laisse pas passer '
+                'toute l’énergie sur la fenêtre de recharge : la fenêtre '
+                'est trop courte pour cette borne — le reliquat est publié '
+                'en « energie_non_placee_kwh ».')
+
     return {
         'type': 'vehicule',
         'libelle': 'Véhicule électrique',
         'energie_journaliere_kwh': round(energie, 4),
-        'courbe': _repartir(energie, heures, longueur=longueur,
-                            heure_de_depart=heure_de_depart),
-        'parametres': {'km_par_jour': km, 'kwh_par_100km': conso,
-                       'fenetre_recharge': heures,
-                       'rendement_recharge_pct': rendement_recharge_pct},
+        'courbe': [round(valeur, 6) for valeur in courbe],
+        'energie_reseau_kwh': round(energie_reseau, 4),
+        'energie_non_placee_kwh': round(energie_non_placee, 4),
+        'parametres': parametres,
         'hypotheses': hypotheses,
     }
 
@@ -347,18 +491,83 @@ def courbe_pac(*, puissance_kw=None, cop=None, cop_points=None,
     }
 
 
+def courbe_climatisation(*, btu=None, eer=None, heures_fonctionnement=None,
+                         facteur_saison=None, longueur=24, heure_de_depart=0):
+    """La charge horaire d'une CLIMATISATION — tout est saisi (CALX263).
+
+    Le CONSTAT : la clim n'existait que côté navigateur, avec un défaut NON
+    sourcé (``AC_EER_DEFAULT_NON_INVERTER = 9``,
+    ``apps/web/src/lib/applianceConsumption.ts:649``) appliqué dès que le
+    champ EER était vide. Ce module ne connaît AUCUN défaut : un EER absent
+    est REFUSÉ en nommant le champ — jamais le 9 de l'atelier.
+
+    Args:
+        btu: la puissance frigorifique (BTU/h), SAISIE.
+        eer: l'EER (Energy Efficiency Ratio) SAISI — puissance électrique =
+            BTU/h ÷ EER (cité depuis ``applianceConsumption.ts:640-649``).
+        heures_fonctionnement: les heures de marche, SAISIES.
+        facteur_saison: coefficient de saisonnalité SAISI (1 = saison de
+            référence). Absent ⇒ 1, et le bilan le dit.
+
+    Raises:
+        ChargeInvalide: paramètre manquant ou illisible, en le NOMMANT —
+            dont un EER absent (``clim.eer``), jamais complété par défaut.
+    """
+    btu_h = _obligatoire(btu, champ='clim.btu',
+                         libelle='La puissance frigorifique (BTU/h)')
+    eer_valeur = _obligatoire(
+        eer, champ='clim.eer',
+        libelle="L'EER (Energy Efficiency Ratio) de la climatisation")
+    heures = _fenetre(heures_fonctionnement, champ='clim.heures_fonctionnement',
+                      libelle='Les heures de fonctionnement')
+
+    hypotheses = [MENTION_REPARTITION]
+    if facteur_saison is None:
+        saison = 1.0
+        hypotheses.append(
+            'Aucun facteur de saison saisi : la charge est publiée pour la '
+            'saison de référence, sans pondération inventée.')
+    else:
+        saison = _obligatoire(facteur_saison, champ='clim.facteur_saison',
+                              libelle='Le facteur de saison', positif=False)
+
+    # Puissance ÉLECTRIQUE = puissance frigorifique ÷ EER (W), convertie kW.
+    puissance_kw = (btu_h / eer_valeur) / 1000.0
+    energie = puissance_kw * len(heures) * saison
+
+    return {
+        'type': 'clim',
+        'libelle': 'Climatisation',
+        'energie_journaliere_kwh': round(energie, 4),
+        'courbe': _repartir(energie, heures, longueur=longueur,
+                            heure_de_depart=heure_de_depart),
+        'parametres': {'btu': btu_h, 'eer': eer_valeur,
+                       'heures_fonctionnement': heures,
+                       'facteur_saison': facteur_saison},
+        'hypotheses': hypotheses,
+    }
+
+
 def ajouter_charges(courbe_de_base, charges):
     """Ajoute les charges déclarées à la courbe — sans jamais la modifier.
 
     Args:
         courbe_de_base: la courbe horaire du profil (kWh/h).
         charges: les blocs rendus par :func:`courbe_vehicule` /
-            :func:`courbe_pac`.
+            :func:`courbe_pac` / :func:`courbe_climatisation` — chacun peut
+            porter une ``cle_tarifaire`` (chaîne libre SAISIE, CALX265) pour
+            être distingué par la finance ; absente, la charge est comptée
+            au tarif du foyer (clé ``'foyer'``), JAMAIS un second tarif
+            supposé.
 
     Returns:
         dict — ``courbe`` (la somme), ``courbe_de_base`` (INTACTE),
-        ``charges`` (chacune avec son énergie et sa courbe, VISIBLE à part),
-        ``total_base_kwh``, ``total_charges_kwh``, ``total_kwh``.
+        ``charges`` (chacune avec son énergie, sa courbe et sa
+        ``cle_tarifaire`` résolue, VISIBLE à part), ``total_base_kwh``,
+        ``total_charges_kwh``, ``total_kwh``, ``energie_par_cle`` (agrégat
+        par ``cle_tarifaire``, dont la somme égale ``total_charges_kwh``),
+        ``hypotheses`` (mentionne le repli sur ``'foyer'`` quand au moins
+        une charge n'a pas de ``cle_tarifaire``, sinon liste vide).
 
     Raises:
         ChargeInvalide: une charge dont la courbe n'a pas la longueur de la
@@ -367,6 +576,8 @@ def ajouter_charges(courbe_de_base, charges):
     base = [max(0.0, float(valeur)) for valeur in (courbe_de_base or [])]
     cumul = list(base)
     detail = []
+    energie_par_cle = {}
+    clef_absente = False
     for rang, charge in enumerate(charges or []):
         courbe = charge.get('courbe') or []
         if len(courbe) != len(base):
@@ -376,13 +587,28 @@ def ajouter_charges(courbe_de_base, charges):
                 f'couvre {len(base)} : elles ne décrivent pas la même '
                 'période.', champ=f'charges[{rang}]')
         cumul = [total + ajout for total, ajout in zip(cumul, courbe)]
+        cle_saisie = charge.get('cle_tarifaire')
+        cle = cle_saisie if cle_saisie else 'foyer'
+        if not cle_saisie:
+            clef_absente = True
+        energie_charge = round(sum(courbe), 4)
         detail.append({
             'type': charge.get('type'),
             'libelle': charge.get('libelle'),
-            'energie_kwh': round(sum(courbe), 4),
+            'energie_kwh': energie_charge,
             'courbe': list(courbe),
             'hypotheses': list(charge.get('hypotheses') or []),
+            'cle_tarifaire': cle,
         })
+        energie_par_cle[cle] = round(
+            energie_par_cle.get(cle, 0.0) + energie_charge, 4)
+
+    hypotheses = []
+    if clef_absente:
+        hypotheses.append(
+            "Au moins une charge n'a pas de « cle_tarifaire » saisie : elle "
+            "est comptée au tarif du foyer (clé « foyer »), jamais un "
+            'second tarif supposé.')
 
     return {
         'courbe': cumul,
@@ -393,4 +619,6 @@ def ajouter_charges(courbe_de_base, charges):
         'total_base_kwh': round(sum(base), 4),
         'total_charges_kwh': round(sum(c['energie_kwh'] for c in detail), 4),
         'total_kwh': round(sum(cumul), 4),
+        'energie_par_cle': energie_par_cle,
+        'hypotheses': hypotheses,
     }

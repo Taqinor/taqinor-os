@@ -109,6 +109,7 @@
         "reference": "valeur d'essai saisie par la société — le module n'en propose aucune"
       }
     },
+    "documents": {},
     "registre": {
       "simulation": [
         {
@@ -369,6 +370,7 @@
     "lestage": {},
     "simulation": {},
     "electrique_societe": {},
+    "documents": {},
     "registre": {
       "simulation": [
         {

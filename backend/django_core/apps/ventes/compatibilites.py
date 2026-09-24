@@ -57,6 +57,8 @@ from __future__ import annotations
 import math
 
 from apps.ventes.solar_design import (
+    DEFAULT_COLD_TEMP_C,
+    DEFAULT_HOT_TEMP_C,
     DEFAULT_INVERTER_WINDOW,
     DEFAULT_MODULE,
     fenetre_onduleur_pour_produit,
@@ -64,6 +66,16 @@ from apps.ventes.solar_design import (
     string_design,
     verdicts_chaines,
 )
+
+# CALX286 — ``solar_design`` ne suppose PLUS les températures de
+# dimensionnement : ce module, appelant historique, les passe EXPLICITEMENT
+# (les mêmes −5 / 70 °C qu'avant) pour que ses verdicts restent identiques
+# (D12). Les températures du SITE (fiche thermique, calepinage) les
+# remplaceront quand ce chemin les recevra.
+_TEMPERATURES_DIMENSIONNEMENT = {
+    'cold_temp_c': DEFAULT_COLD_TEMP_C,
+    'hot_temp_c': DEFAULT_HOT_TEMP_C,
+}
 
 # ── Vocabulaire des verdicts (contrat partagé avec l'écran) ──────────────────
 STATUT_COMPATIBLE = 'compatible'
@@ -220,7 +232,8 @@ def _detail_chaines(n, mod, inv, verdicts):
     """
     from core.electrique.types import fr_a, fr_v
 
-    design = string_design(n, module=mod, inverter=inv)
+    design = string_design(n, module=mod, inverter=inv,
+                           **_TEMPERATURES_DIMENSIONNEMENT)
     tensions = design.get('voltages') or {}
     longueur = verdicts['longueur_chaine'] or design['panels_per_string']
     nb_chaines = verdicts['nb_chaines'] or design['strings']
@@ -296,7 +309,8 @@ def verdict_panneau_onduleur(panneau, onduleur):
     meilleur_reserve = None
     meilleur_bloque = None
     for n in _comptes_plausibles(pmax_wc, ac_kw):
-        verdicts = verdicts_chaines(n, module=mod, inverter=inv)
+        verdicts = verdicts_chaines(n, module=mod, inverter=inv,
+                                    **_TEMPERATURES_DIMENSIONNEMENT)
         ecart = _distance_au_ratio_cible(n, pmax_wc, ac_kw)
         if verdicts['bloquants']:
             if meilleur_bloque is None or ecart < meilleur_bloque[0]:

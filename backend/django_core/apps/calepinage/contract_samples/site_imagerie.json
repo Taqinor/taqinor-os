@@ -33,7 +33,8 @@
     "norme_electrique": {},
     "lestage": {},
     "simulation": {},
-    "electrique_societe": {}
+    "electrique_societe": {},
+    "documents": {}
   },
   "exemple_vide": {
     "imagerie": {},
@@ -46,7 +47,8 @@
     "norme_electrique": {},
     "lestage": {},
     "simulation": {},
-    "electrique_societe": {}
+    "electrique_societe": {},
+    "documents": {}
   },
   "exemple_section_declaree_sans_valeur": {
     "imagerie": {
@@ -68,6 +70,7 @@
     "norme_electrique": {},
     "lestage": {},
     "simulation": {},
-    "electrique_societe": {}
+    "electrique_societe": {},
+    "documents": {}
   }
 }

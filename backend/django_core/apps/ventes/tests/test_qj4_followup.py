@@ -24,7 +24,7 @@ Garanties testées :
 Run :
     python manage.py test apps.ventes.tests.test_qj4_followup -v 2
 """
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -105,7 +105,18 @@ class QJ4CadenceTests(TestCase):
         try:
             return Devis.objects.get(reference=ref)
         except Devis.DoesNotExist:
-            date_envoi = timezone.now() - timedelta(days=days_ago)
+            # Midi LOCAL du jour J-N, et non « maintenant - N x 24 h » : la
+            # cadence compte des JOURS CALENDAIRES à Casablanca, et un jour
+            # légal n'a pas toujours 24 h — le 20/09/2026 en a duré 25 (le
+            # Maroc est passé de UTC+1 à UTC+0). Entre 23 h et minuit UTC,
+            # « maintenant - 5 x 24 h » tombait avant la bascule, donc sur le
+            # LENDEMAIN en heure légale : J-4, et le palier J+5 ne partait pas
+            # (run CI 35933182629, 23:24 UTC : « 1 not greater than or equal
+            # to 2 »). Le service a raison ; c'est le décor qui trichait.
+            jour_envoi = timezone.localdate() - timedelta(days=days_ago)
+            date_envoi = datetime.combine(
+                jour_envoi, time(12, 0),
+                tzinfo=timezone.get_current_timezone())
             return Devis.objects.create(
                 company=self.company,
                 reference=ref,

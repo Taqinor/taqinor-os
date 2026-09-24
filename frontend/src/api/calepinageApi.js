@@ -401,6 +401,41 @@ const calepinageApi = {
     // `null` avec son motif — l'écran affiche CELUI-LÀ, il n'invente aucune
     // étendue.
     planImporte: (id) => api.get(`${pivot(id)}plan-importe/`),
+
+    // CALX302 — dépose une image PRODUITE PAR LE NAVIGATEUR (carte de
+    // chaleur d'ombrage, diagramme de pertes, rendu 3D). `genre` : un des
+    // trois admis (`ombrage`, `sankey`, `plan3d`), `fichier` : une data-URL
+    // base64 (`documents/deposerImage.js` la produit depuis un Blob) — le
+    // serveur refuse tout le reste en NOMMANT le champ fautif (jamais une
+    // confiance au type déclaré par le navigateur).
+    deposerImageDocument: (id, { genre, fichier }) =>
+      api.post(`${pivot(id)}image-document/`, { genre, fichier }),
+
+    // CALX320 — l'inventaire des NEUF documents du lot 6 (CALX291/321/322),
+    // contrat `contract_samples/calepinage_documents.json`, DISTINCT de
+    // `sorties()` ci-dessus : chaque pièce porte `manque[]` (le champ NOMMÉ
+    // qui manque, jamais une phrase générique) et `versions[]` (l'historique
+    // retrouvable, la plus récente d'abord). C'est CET inventaire que
+    // `documents/PanneauDocuments.jsx` consomme désormais — lecture PURE,
+    // même discipline que `sorties()`.
+    documents: (id) => api.get(`${pivot(id)}documents/`),
+
+    // CALX320 — le téléchargement GÉNÉRIQUE d'UN document de l'inventaire
+    // `documents()` ci-dessus : MÊME geste que `telechargerSortie`
+    // (`endpoint` vient TOUJOURS de l'entrée servie, jamais reconstruit),
+    // nommé à part — un document du lot 6 n'est pas une sortie technique.
+    telechargerDocument: (endpoint, params) =>
+      api.get(endpoint, { responseType: 'blob', params }),
+
+    // CALX320 — le diagramme de pertes SERVEUR, SVG autonome (CALX308,
+    // `services/diagramme_pertes.py`, la MÊME cascade que la pièce
+    // imprimable) — à RASTÉRISER dans CE navigateur avant de le déposer
+    // comme image `sankey` (`deposerImageDocument` ci-dessus,
+    // `documents/deposerImage.js::deposerDiagrammeDePertes`) : aucun
+    // rasteriseur SVG n'est installé côté serveur (même limite que
+    // `sorties/planche_png`, CAL175).
+    diagrammePertesSvg: (id, params) =>
+      api.get(`${pivot(id)}diagramme-pertes.svg/`, { responseType: 'blob', params }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
