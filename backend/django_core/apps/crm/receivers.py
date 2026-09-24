@@ -33,6 +33,7 @@ from .services import (
     arreter_cadence_du_lead_id,
     CADENCES_ARRETEES_PAR_ISSUE,
     FILET_REFUS_LIBELLE,
+    OUTCOME_VISITE_ACCEPTEE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
@@ -43,6 +44,7 @@ from .services import (
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
+    poser_filet_visite_a_planifier,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -558,6 +560,10 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
       « perdu » est une décision humaine qui exige un motif (MRY22), pas un
       effet de bord d'un appel.
+    * `visite_acceptee` (décision fondateur du 24/09/2026) → arrête `contact`
+      et `reveil` exactement comme `joint` (un dormant qui accepte la visite
+      sort du Froid), mais la suite n'est pas l'étape générique : c'est
+      « Planifier la visite technique convenue », pour aujourd'hui.
 
     Seule une activité créée par un HUMAIN compte (``user`` non nul) — une
     ligne système ne décide pas d'un arrêt."""
@@ -574,7 +580,12 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     cadences = list(CADENCES_ARRETEES_PAR_ISSUE.get(issue, ()))
     if not cadences:
         return
-    motif = 'joint' if issue in ('joint', 'interesse') else 'refus au téléphone'
+    if issue in ('joint', 'interesse'):
+        motif = 'joint'
+    elif issue == OUTCOME_VISITE_ACCEPTEE:
+        motif = 'visite acceptée'
+    else:
+        motif = 'refus au téléphone'
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)
@@ -583,15 +594,26 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
         # disparaît jamais des files, et un REFUS téléphonique laisse une
         # étape « décider la suite » — la décision (perdu + motif, MRY22)
         # reste humaine, mais le dossier reste visible en attendant.
-        if issue in ('joint', 'interesse'):
+        if issue in ('joint', 'interesse', OUTCOME_VISITE_ACCEPTEE):
             # M1 — un client joint pendant un RÉVEIL sort du parking : COLD
             # est rangé SOUS toute étape active (rang -1), l'avance vers
             # CONTACTED est donc légitime et réactive le dossier — sans quoi
             # la garde COLD du filet le laisserait figé au Froid sans suite.
+            # 24/09/2026 — même chose pour un dormant qui ACCEPTE LA VISITE :
+            # resté au Froid, plus aucun filet ne le relèverait après elle.
             instance.lead.refresh_from_db(fields=['stage'])
             if instance.lead.stage == stages.COLD:
                 avancer_stage_lead_vers(
                     instance.lead, instance.user, stages.CONTACTED)
+        if issue == OUTCOME_VISITE_ACCEPTEE:
+            # 24/09/2026 — la seule suite utile est de CALER la visite, pour
+            # aujourd'hui (no-op si un rendez-vous est déjà calé). Posée ICI
+            # pour que l'issue saisie au journal d'appel de la fiche (aucune
+            # touche close) ait la même suite qu'au « Fait » d'une touche ;
+            # sur ce second chemin, ``marquer_etape_relance`` repasse derrière
+            # (idempotent par libellé : l'étape est déplacée, jamais doublée).
+            poser_filet_visite_a_planifier(instance.lead, instance.user)
+        elif issue in ('joint', 'interesse'):
             # RELANCE-SUITE (08/09/2026) — la suite dépend du CANAL de la
             # touche : message répondu → l'appeler ; appel fait → préparer
             # et envoyer le devis. Le plan après-devis, lui, ne démarre qu'à

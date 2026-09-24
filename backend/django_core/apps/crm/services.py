@@ -1360,10 +1360,15 @@ _OUTCOMES_ARRET_CADENCE = frozenset({'joint', 'interesse', 'refuse'})
 
 #: VISITE-CADENCE (fondateur 15/09/2026) — « le client accepte la visite ».
 #: C'est une issue de SUCCÈS d'un genre nouveau : le client n'a ni signé ni
-#: refusé, il a dit oui à un RENDEZ-VOUS. La cadence ne s'arrête donc PAS
-#: (la proposition reste à relancer si la visite tombe à l'eau), mais poser
-#: le geste générique suivant du protocole serait absurde : la seule chose à
-#: faire est de CALER la visite. Le filet ci-dessous s'en charge.
+#: refusé, il a dit oui à un RENDEZ-VOUS. Le suivi de PROPOSITION ne
+#: s'arrête donc PAS (la proposition reste à relancer si la visite tombe à
+#: l'eau), mais poser le geste générique suivant du protocole serait absurde :
+#: la seule chose à faire est de CALER la visite. Le filet ci-dessous s'en
+#: charge.
+#: Décision fondateur du 24/09/2026 — l'issue vaut sur TOUTE touche, prise de
+#: contact et réveil compris : un client qui accepte la visite a atteint le
+#: but de la prise de contact, exactement comme « joint » — ces deux cadences
+#: s'arrêtent (``CADENCES_ARRETEES_PAR_ISSUE``, bas de fichier).
 OUTCOME_VISITE_ACCEPTEE = 'visite_acceptee'
 
 #: CKP2 × VISITE-CADENCE — les issues qui ne font naître AUCUNE touche
@@ -9520,13 +9525,22 @@ def poser_filet_visite_a_planifier(lead, user, *, devis_id=None):
     Une étape d'APPEL due AUJOURD'HUI — pas demain : un accord de principe se
     transforme en rendez-vous dans la foulée, sinon il refroidit. No-op si un
     rendez-vous est déjà calé (le client avait déjà sa date) ou si le lead
-    n'est plus relançable. Renvoie l'étape posée, ou ``None``."""
+    n'est plus relançable. Renvoie l'étape posée, ou ``None``.
+
+    Appelée deux fois pour UNE issue « visite acceptée » saisie sur une touche
+    (décision fondateur du 24/09/2026) : par le récepteur d'issue MRY9, qui ne
+    connaît pas la touche, puis par ``marquer_etape_relance``, qui la connaît.
+    L'étape est UNE (idempotente par libellé) ; le devis de la touche lui est
+    rattaché s'il lui manquait."""
     if not _lead_relancable(lead) or _visite_a_venir(lead):
         return None
     etape = _poser_etape_visite(
         lead, libelle=VISITE_FILET_LIBELLE, canal=RelanceEtape.Canal.APPEL,
         ordre=VISITE_ORDRE_FILET, quand=aujourd_hui_local(),
         devis_id=devis_id)
+    if devis_id is not None and etape.devis_id is None:
+        etape.devis_id = devis_id
+        etape.save(update_fields=['devis'])
     _recaler_file(lead, user)
     return etape
 
@@ -11004,10 +11018,18 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
 #:   continue : un client joint reste à relancer sur son devis.
 #: * ``refuse`` → tout s'arrête, y compris la proposition refusée. Le lead
 #:   n'est PAS marqué perdu pour autant (MRY22 : décision humaine, avec motif).
+#: * ``visite_acceptee`` (décision fondateur du 24/09/2026) → exactement comme
+#:   ``joint`` : le client qui accepte la visite a atteint le but de la prise
+#:   de contact, et un dormant qui l'accepte n'a plus à être réveillé. Le
+#:   suivi de proposition continue (il se décale autour du rendez-vous,
+#:   ``suspendre_plan_jusqu_apres_visite``). La suite n'est pas l'étape
+#:   générique du filet mais « Planifier la visite technique convenue »
+#:   (``poser_filet_visite_a_planifier``).
 CADENCES_ARRETEES_PAR_ISSUE = {
     'joint': ('contact', 'reveil'),
     'interesse': ('contact', 'reveil'),
     'refuse': ('contact', 'apres_devis', 'reveil'),
+    OUTCOME_VISITE_ACCEPTEE: ('contact', 'reveil'),
 }
 
 
