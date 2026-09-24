@@ -34,8 +34,11 @@ from .scoring import compute_score, score_label, score_reasons
 # d'activité, donc PAR CONSTRUCTION sur les trois surfaces qui servent le
 # chatter (action ``historique``, ``chatter_recent`` embarqué au retrieve, et
 # l'enveloppe uniforme ARC9).
+#: CAD144 — + le téléphone du contact SECONDAIRE (co-associé, technicien) :
+#: un numéro reste une PII, qu'il soit le premier ou le second de la fiche.
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
-                   'gps_lat', 'gps_lng', 'lien_maps')
+                   'gps_lat', 'gps_lng', 'lien_maps',
+                   'contact_secondaire_telephone')
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'
@@ -155,6 +158,27 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # demandé le contraire. Chaîne VIDE — jamais null — quand rien n'est
     # adapté, comme les autres champs de confort de ce sérialiseur.
     canal_adapte = serializers.SerializerMethodField()
+    # CAD11 — le lead de cette touche est-il JUNK (perdu avec un motif marqué
+    # `MotifPerte.est_junk` : numéro invalide, spam, hors zone…) ? Le drapeau
+    # vivait au niveau du lead, à trois écrans de la touche : l'exposer ici
+    # rend mesurable la qualité des numéros qui arrivent des publicités.
+    lead_est_junk = serializers.SerializerMethodField()
+    # CAD17 — la SUITE de chaque réponse du panneau « Fait », DÉRIVÉE du
+    # moteur (``suite_touche.promesses_touche``) : ``{cle: [codes d'effet]}``.
+    # L'écran ne fait plus que traduire chaque code en UNE phrase ; il
+    # n'écrit plus de promesse par cadence, qui mentait dès que le libellé ou
+    # le rang de la touche changeait la suite réelle (CAD1/CAD3/CAD16/CAD97).
+    suites = serializers.SerializerMethodField()
+    # CAD82 — la PRÉFÉRENCE de contact du client atteint enfin la touche :
+    # deux boutons (Appeler / WhatsApp) étaient proposés à égalité sans dire
+    # que ce client a demandé à n'être joint que par écrit. Chaîne VIDE —
+    # jamais null — quand rien n'est posé (valeurs de `Lead.ContactPreference`).
+    lead_contact_preference = serializers.SerializerMethodField()
+    # CAD82 — POURQUOI le numéro est vide : `lead_telephone` vaut '' aussi bien
+    # pour un lead SANS numéro que pour un rôle privé de `client_pii_voir`.
+    # Sans ce drapeau, le bouton « Appeler » désactivé ne pouvait pas dire sa
+    # cause (règle fondateur : le champ fautif, le message exact).
+    lead_pii_masquee = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -170,6 +194,9 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'template_cle', 'statut', 'note', 'overdue', 'devis',
             'devis_reference', 'traite_le', 'traite_par_nom',
             'statut_libelle', 'message_ouvert_le', 'canal_adapte',
+            'lead_est_junk', 'suites',
+            # CAD82 — additifs.
+            'lead_contact_preference', 'lead_pii_masquee',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -198,6 +225,16 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'
 
+    def get_lead_contact_preference(self, obj) -> str:
+        """CAD82 — ``whatsapp_only`` | ``phone_ok`` | '' (rien de posé)."""
+        return getattr(obj.lead, 'contact_preference', '') or ''
+
+    def get_lead_pii_masquee(self, obj) -> bool:
+        """CAD82 — ``True`` quand les coordonnées sont MASQUÉES pour ce
+        demandeur (même règle que ``get_lead_telephone``) : un numéro vide
+        n'est alors pas un numéro absent. Aucune requête (drapeau utilisateur)."""
+        return self._pii_masquee()
+
     def get_canal_adapte(self, obj) -> str:
         """CAD32 — la phrase qui explique un canal qui n'est pas celui du
         libellé. Jamais un comportement caché."""
@@ -206,6 +243,31 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             return ('Canal adapté à la préférence du client : '
                     'WhatsApp uniquement.')
         return ''
+
+    def get_lead_est_junk(self, obj) -> bool:
+        """CAD11 — ``True`` si le lead est PERDU avec un motif « junk » de sa
+        société (même rapprochement insensible à la casse que le signal
+        qualité PUB28 : ``Lead.motif_perte`` reste un texte libre).
+
+        COÛT BORNÉ : aucune requête pour un lead non perdu (le cas de toute
+        touche encore dans la file), et une seule lecture des motifs junk par
+        société et par réponse (cache dans le contexte partagé du
+        sérialiseur, liste comprise)."""
+        lead = obj.lead
+        if not getattr(lead, 'perdu', False):
+            return False
+        motif = (getattr(lead, 'motif_perte', '') or '').strip().lower()
+        if not motif:
+            return False
+        cache = self.context.setdefault('_cad11_motifs_junk', {})
+        if lead.company_id not in cache:
+            from .models import MotifPerte
+            cache[lead.company_id] = {
+                (nom or '').strip().lower()
+                for nom in MotifPerte.objects.filter(
+                    company_id=lead.company_id, est_junk=True,
+                ).values_list('nom', flat=True)}
+        return motif in cache[lead.company_id]
 
     @extend_schema_field(serializers.IntegerField())
     def get_lead_score(self, obj):
@@ -231,6 +293,25 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_statut_libelle(self, obj) -> str:
         return obj.get_statut_display()
+
+    @extend_schema_field(serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField())))
+    def get_suites(self, obj):
+        """CAD17 — ``{cle_de_reponse: [codes d'effet]}`` pour une touche À
+        FAIRE ; ``{}`` pour une touche déjà traitée (plus rien à annoncer).
+
+        COÛT BORNÉ : aucune requête pour une touche traitée ; sinon UNE lecture
+        des barreaux actifs par (société, cadence) et par réponse, mise en
+        cache dans le contexte partagé du sérialiseur (liste comprise) — même
+        patron que ``get_lead_est_junk``."""
+        if obj.statut != RelanceEtape.Statut.A_FAIRE:
+            return {}
+        from .suite_touche import ordres_de_la_cadence, promesses_touche
+        cache = self.context.setdefault('_cad17_ordres', {})
+        cle = (obj.company_id, obj.cadence)
+        if cle not in cache:
+            cache[cle] = ordres_de_la_cadence(obj.company_id, obj.cadence)
+        return promesses_touche(obj, ordres=cache[cle])
 
     @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_message_ouvert_le(self, obj):
@@ -579,6 +660,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # pré-signée PAR LEAD, ce qui serait un N+1 franc sur une liste de 50
     # cartes. Voir get_fields() plus bas.
     conception = serializers.SerializerMethodField()
+    # CAD150/CAD159 — la PROVENANCE des champs captés par le site
+    # (`selectors.provenance_site`) : RETRIEVE SEULEMENT, même porte que
+    # `conception` (une requête par lead — jamais sur une liste).
+    provenance_site = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -620,6 +705,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # Ce qu'il n'ouvre PAS : le verrou du lead perdu (vérifié AVANT, comme pour
     # ``undo``) et les actions en MASSE (voir la garde funnel plus bas).
     confirme_recul = serializers.BooleanField(write_only=True, required=False)
+    # CAD158 (décision fondateur du 21/09/2026, Q24) — combien de mois couvre
+    # la facture DÉCLARÉE dans ce même corps (`mensuelle` | `bimestrielle`).
+    # Jamais stocké (aucun champ « périodicité ») : le montant est ramené au
+    # mois dans `validate`, et c'est lui qu'on enregistre et qu'on relit.
+    facture_periodicite = serializers.CharField(
+        write_only=True, required=False, allow_blank=True)
 
     @staticmethod
     def _canonical_phone(value):
@@ -854,6 +945,24 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # Ordre fondateur 2026-08-01 : confirmation humaine d'un recul. Jamais
         # persisté non plus (champ hors modèle) — retiré ici comme ``undo``.
         confirme_recul = bool(attrs.pop('confirme_recul', False))
+        # CAD158 — une facture déclarée sur DEUX mois est ramenée au mois
+        # AVANT d'être enregistrée (le moteur lit un montant mensuel). Refus
+        # qui NOMME le champ : période inconnue, ou période sans montant.
+        periodicite = (attrs.pop('facture_periodicite', '') or '').strip()
+        if periodicite:
+            from .services import facture_au_mois, refus_periodicite_facture
+            refus = refus_periodicite_facture(periodicite)
+            if refus:
+                raise serializers.ValidationError(
+                    {'facture_periodicite': [refus]})
+            montants = [champ for champ in ('facture_hiver', 'facture_ete')
+                        if attrs.get(champ) is not None]
+            if not montants:
+                raise serializers.ValidationError({'facture_periodicite': [
+                    '« Période de la facture » : indiquez le montant de la '
+                    'facture dans la même saisie.']})
+            for champ in montants:
+                attrs[champ] = facture_au_mois(attrs[champ], periodicite)
         # MRY22 — MOTIF DE PERTE OBLIGATOIRE. « Perdu sans raison » est la
         # ligne qui ne sert à personne : elle sort le lead du pipeline sans
         # rien apprendre, et le KPI « perdus avec motif » (MRY21) ne peut plus
@@ -949,11 +1058,14 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'is_deleted', 'deleted_at', 'deleted_by',
             'first_contacted_at',  # FG28 — posé server-side uniquement
             'updated_by',  # VX98 — posé server-side (perform_update) uniquement
-            # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
+            # B3 — toiture 3D : pin/contour bruts saisis par le client
             # (webhook site, posés server-side). Exposés en LECTURE SEULE sur la
             # fiche lead pour que la page de conception authentifiée réhydrate la
             # toiture épinglée du client ; jamais réécrits via un PATCH du corps.
-            'roof_point', 'roof_outline', 'bill_kwh',
+            # CAD150 (décision fondateur du 21/09/2026) — `bill_kwh` en SORT :
+            # les champs captés par le site sont TOUJOURS éditables par la
+            # commerciale, leur provenance reste visible (`provenance_site`).
+            'roof_point', 'roof_outline',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
@@ -988,6 +1100,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # conception, qui coûte une requête + une URL pré-signée par lead,
             # ne descend donc jamais dans une liste.
             fields.pop('conception', None)
+            # CAD150 — la provenance « saisie sur le site » coûte une requête
+            # par lead : détail seulement, même porte.
+            fields.pop('provenance_site', None)
         return fields
 
     def to_representation(self, instance):
@@ -1028,6 +1143,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_provenance_site(self, obj):
+        """CAD150/CAD159 — ``{champ: {valeur, le, ecrasee}}`` des champs
+        captés par le site (contrat ``lead_provenance_site``)."""
+        from .selectors import provenance_site
+        return provenance_site(obj)
 
     def get_chatter_recent(self, obj):
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord

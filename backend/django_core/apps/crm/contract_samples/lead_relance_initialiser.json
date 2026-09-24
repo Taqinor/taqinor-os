@@ -1,0 +1,92 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/relance/initialiser/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD51 (PACT10) — « Relancer la cadence » pouvait TUER une cadence en cours, en silence et sans motif : `initialiser_plan_relance` arbitre par priorité (réveil < générique < contact = deuxième affaire < après devis) et, quand la cadence demandée est PLUS prioritaire, appelait `arreter_cadence` sans rien demander, pendant que l'écran toastait « Cadence relancée. ». Le moteur (devis envoyé, placement) garde ce remplacement silencieux — c'est voulu (CADX). Le chemin HUMAIN, lui, est refusé AVANT toute écriture tant que la personne n'a pas confirmé : 409 qui NOMME la ou les cadences qui seraient arrêtées et le nombre de touches ouvertes perdues (`remplacement`). La confirmation (`corps_confirme`) porte un `motif` OBLIGATOIRE — même règle que « Arrêter la cadence » — et l'arrêt passe par `arreter_cadence` comme un arrêt normal, sous ce motif (touches annulées + note d'historique « Cadence reveil arrêtée (2 touche(s)) : <motif> (remplacée par la cadence « Prise de contact »). »). CAD55 — « Après devis » depuis la fiche partait SANS devis (le serveur ne recevait que la cadence) : toutes les touches perdaient leur lien, « Le PDF s'ouvre bien ? » sa phrase, « Validité de la proposition » sa date, et la validité du devis n'était jamais posée. Désormais le devis ENVOYÉ (en attente de réponse) du lead est rattaché : un seul → d'office ; plusieurs → 409 `devis_a_choisir` (le plus récent d'abord et proposé), la réponse revient en `devis` ; aucun → 409 `sans_devis` qui le dit AVANT le lancement, `sans_devis_confirme: true` lance quand même. Toutes les questions en attente partent dans UN SEUL 409 (`detail` les enchaîne, `erreurs` les range par champ). Un plan après-devis déjà OUVERT est renvoyé tel quel (idempotence), sans question. `exemple` = le refus 409 de remplacement (l'objet que ce contrat fige) ; la réponse de SUCCÈS (200) est inchangée : la LISTE des touches matérialisées, forme `relance_etape_v2.json` → `exemple.results[*]` (`devis`/`devis_reference` renseignés quand un devis est rattaché).",
+  "corps": {
+    "cadence": "contact"
+  },
+  "corps_confirme": {
+    "cadence": "contact",
+    "confirmer_remplacement": true,
+    "motif": "Le client a rappelé — il reprend son projet"
+  },
+  "exemple": {
+    "detail": "Relancer la cadence « Prise de contact » arrête la cadence « Réveil » en cours : 2 touches ouvertes seront annulées. Confirmez, avec un motif d'arrêt.",
+    "erreurs": {
+      "confirmer_remplacement": [
+        "Relancer la cadence « Prise de contact » arrête la cadence « Réveil » en cours : 2 touches ouvertes seront annulées. Confirmez, avec un motif d'arrêt."
+      ]
+    },
+    "remplacement": {
+      "cadence": "contact",
+      "cadence_libelle": "Prise de contact",
+      "cadences_arretees": ["reveil"],
+      "cadences_arretees_libelles": ["Réveil"],
+      "touches_ouvertes": 2
+    }
+  },
+  "exemple_erreur_motif": {
+    "detail": "Le motif d'arrêt est obligatoire.",
+    "erreurs": {
+      "motif": [
+        "Le motif d'arrêt est obligatoire : Relancer la cadence « Prise de contact » arrête la cadence « Réveil » en cours : 2 touches ouvertes seront annulées. Confirmez, avec un motif d'arrêt."
+      ]
+    },
+    "remplacement": {
+      "cadence": "contact",
+      "cadence_libelle": "Prise de contact",
+      "cadences_arretees": ["reveil"],
+      "cadences_arretees_libelles": ["Réveil"],
+      "touches_ouvertes": 2
+    }
+  },
+  "corps_apres_devis": {
+    "cadence": "apres_devis"
+  },
+  "corps_devis_choisi": {
+    "cadence": "apres_devis",
+    "devis": 911
+  },
+  "corps_sans_devis": {
+    "cadence": "apres_devis",
+    "sans_devis_confirme": true
+  },
+  "exemple_devis_a_choisir": {
+    "detail": "Plusieurs devis envoyés sur ce lead : lequel ce suivi doit-il citer ?",
+    "erreurs": {
+      "devis": [
+        "Plusieurs devis envoyés sur ce lead : lequel ce suivi doit-il citer ?"
+      ]
+    },
+    "devis_a_choisir": {
+      "choix": [
+        {"id": 911, "reference": "DEV-2609-0057", "date_envoi": "2026-09-12"},
+        {"id": 903, "reference": "DEV-2609-0042", "date_envoi": "2026-09-05"}
+      ],
+      "propose": 911
+    }
+  },
+  "exemple_sans_devis": {
+    "detail": "Aucun devis envoyé sur ce lead — les messages ne pourront pas citer la proposition.",
+    "erreurs": {
+      "devis": [
+        "Aucun devis envoyé sur ce lead — les messages ne pourront pas citer la proposition."
+      ]
+    },
+    "sans_devis": true
+  },
+  "exemple_erreur_devis": {
+    "detail": "Ce devis n'est pas un devis envoyé de ce lead, en attente de réponse.",
+    "erreurs": {
+      "devis": [
+        "Ce devis n'est pas un devis envoyé de ce lead, en attente de réponse."
+      ]
+    }
+  },
+  "notes": {
+    "statuts": "409 = confirmation requise (rien n'est écrit) ; 400 `erreurs.motif` = confirmation sans motif ; 400 `erreurs.devis` = devis étranger au lead ou pas envoyé ; 400 `erreurs.cadence` = cadence au moins aussi prioritaire déjà active (CADX, inchangé) ; 200 = liste des touches.",
+    "note_historique": "Cadence reveil arrêtée (2 touche(s)) : Le client a rappelé — il reprend son projet (remplacée par la cadence « Prise de contact »).",
+    "cumul": "« Après devis » sur un lead en prise de contact SANS devis envoyé : UN 409 porte `remplacement` ET `sans_devis`, `detail` enchaîne les deux phrases ; la confirmation renvoie `confirmer_remplacement` + `motif` + `sans_devis_confirme` ensemble.",
+    "moteur": "Les démarrages AUTOMATIQUES (envoi du devis, placement, filets) ne passent pas par cette vue : le remplacement y reste silencieux, motif « remplacée par la cadence « <clé> » », et le devis y est toujours transmis."
+  }
+}

@@ -711,6 +711,16 @@ REFUS = {
     # features/crm/relances/RelanceEtapeRow.jsx (même promesse, même motif).
     "frontend/src/features/crm/relances/RelanceEtapeRow.jsx": [
         ("miroir de", "MIROIR_JS")],
+    # CAD112 — le defaut du filtre proprietaire (etat local `ownerFiltre`,
+    # useState) est aligne sur le comportement d'un AUTRE composant frontend
+    # (RelancesDuJourWidget.jsx, le Cockpit) : aucun champ `choices=` serveur
+    # a declarer, ni meme une liste de valeurs — juste une valeur initiale.
+    "frontend/src/pages/crm/RelancesSuiviPage.jsx": [
+        ("aligné sur le Cockpit", "MIROIR_JS")],
+    # Meme promesse CAD112, cote test : decrit la parite avec le Cockpit,
+    # ne rend aucun choix a l'ecran.
+    "frontend/src/pages/crm/RelancesSuiviPage.test.jsx": [
+        ("aligné sur le Cockpit", "TEST")],
     "frontend/src/pages/crm/leads/views/KanbanView.jsx": [
         ("STAGES.py", "HORS_MODELE")],
     "frontend/src/pages/crm/leads/views/ListView.jsx": [

@@ -1465,6 +1465,19 @@ class DevisActionBucketsSerializer(serializers.Serializer):
     engagement_relance = DevisActionPanierSerializer()
 
 
+class ProchaineToucheCrmSerializer(serializers.Serializer):
+    """CAD115 — prochaine touche CRM (``crm.RelanceEtape`` À FAIRE) déjà
+    programmée pour le lead d'origine du devis. Évite que la file Ventes et
+    la file calendaire du CRM réclament le même devis le même jour avec deux
+    messages différents (SIG9)."""
+    due_at = serializers.DateTimeField(
+        allow_null=True, help_text="Échéance à la minute — absente sur les "
+        "touches créées avant MRY5.")
+    due_date = serializers.DateField(allow_null=True)
+    cadence = serializers.CharField(allow_blank=True)
+    canal = serializers.CharField(allow_blank=True)
+
+
 class DevisActionLigneSerializer(serializers.Serializer):
     """De quoi RENDRE une ligne de la file : jamais un prix d'achat ni une
     marge (règle #4), seulement ce que le client voit déjà."""
@@ -1476,6 +1489,10 @@ class DevisActionLigneSerializer(serializers.Serializer):
     total_ttc = serializers.CharField(
         allow_null=True,
         help_text="Total TTC en TEXTE décimal (jamais un flottant).")
+    prochaine_touche_crm = ProchaineToucheCrmSerializer(
+        allow_null=True,
+        help_text="CAD115 — prochaine touche CRM programmée pour le lead "
+        "d'origine ; `null` sans lead ou sans touche À FAIRE.")
 
 
 class DevisActionRequiseSerializer(serializers.Serializer):

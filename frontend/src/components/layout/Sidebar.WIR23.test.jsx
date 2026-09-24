@@ -64,10 +64,16 @@ describe('Sidebar — WIR23 : trois écrans orphelins désormais cliquables', ()
     expect(navHrefs(container)).toContain('/ia/actions')
   })
 
-  it('un rôle normal voit Listes de prix (lecture ouverte) mais PAS Action requise (responsable/admin)', () => {
+  // CAD115 (SIG9, 21/09/2026) — « Action requise » n'est plus réservée à
+  // responsable/admin : elle s'ouvre désormais au rôle qui relance
+  // réellement, au MÊME palier que `/crm/relances` (roles: ['normal',
+  // 'responsable','admin'], frontend/src/features/ventes/module.config.jsx),
+  // garde serveur alignée sur `IsAnyRole` (apps/ventes/views/devis.py) —
+  // verrouillé côté backend par tests_cad115_action_requise_role.py.
+  it('un rôle normal voit Listes de prix (lecture ouverte) et Action requise (CAD115 — rôle qui relance)', () => {
     const { container } = renderSidebar({ path: '/ventes/devis', role: 'normal' })
     const hrefs = navHrefs(container)
     expect(hrefs).toContain('/ventes/listes-prix')
-    expect(hrefs).not.toContain('/ventes/devis/action-requise')
+    expect(hrefs).toContain('/ventes/devis/action-requise')
   })
 })

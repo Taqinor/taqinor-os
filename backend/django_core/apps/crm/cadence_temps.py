@@ -10,7 +10,9 @@ le moteur de cadence :
   * `nee_en_retard` (CAD22) — la touche a-t-elle été CRÉÉE après son échéance
     (auquel cas personne n'a jamais eu la chance de la faire à l'heure) ?
   * `un_geste_par_jour` (CAD20) — jamais plus d'un appel ET d'un message le
-    même jour, hors les trois touches du jour même.
+    même jour, hors les trois touches du jour même ;
+  * `echeances_signal` (CAD130) — quand tombe une touche déclenchée par un
+    SIGNAL du client, et où glisse la touche du plan qu'elle remplace.
 
 La règle du groupe reste entière : ni le NOMBRE, ni l'ORDRE, ni le J+N du
 gabarit ne changent ici — seule change la DATE à laquelle une touche tombe
@@ -160,6 +162,68 @@ def un_geste_par_jour(echeances, company):
             (echeance.astimezone(horaires.CASABLANCA).date(), genre))
         resultat.append((gabarit, echeance))
     return resultat
+
+
+# ── CAD-K ── CAD130 ─────────────────────────────────────────────────────────
+
+#: CAD130 — l'écart MINIMAL entre un geste déclenché par un SIGNAL du client
+#: (proposition rouverte, questionnaire complété) et les gestes qui
+#: l'entourent : la dernière touche FAITE avant lui, la prochaine touche du
+#: plan après lui. UN JOUR — le grain même de CAD20 (« un geste par jour ») :
+#: un signal ne fait jamais revenir vers le client moins d'un jour après le
+#: dernier geste (sinon il ne ferait que doubler l'échange qu'il vient
+#: d'avoir), et la touche du plan qu'il remplace ne retombe jamais moins d'un
+#: jour après lui.
+SIGNAL_ECART_MIN = datetime.timedelta(days=1)
+
+
+def echeances_signal(*, maintenant, derniere_faite, prochaine, jour_occupe,
+                     creneau, lendemain, ecart_min=SIGNAL_ECART_MIN):
+    """CAD130 — QUAND tombe la touche signal, et OÙ glisse la touche du plan.
+
+    Module pur : les trois accès au monde sont INJECTÉS — ``creneau(dt)``
+    rend le prochain instant joignable du canal de la touche signal
+    (``horaires.prochain_creneau_appel``), ``lendemain(dt)`` le même horaire
+    le jour joignable suivant, ``jour_occupe(date_locale)`` dit si ce jour
+    porte déjà un geste du même genre que la touche signal (CAD20 : un appel
+    ET un message par jour, jamais plus).
+
+    ``derniere_faite`` : instant de la dernière touche FAITE, ou ``None`` ;
+    ``prochaine`` : échéance de la prochaine touche du PLAN, ou ``None``.
+
+    Les gardes, dans l'ordre :
+
+      1. jamais moins de ``ecart_min`` après la dernière touche faite ;
+      2. jamais hors fenêtre (``creneau``) — « la prochaine minute joignable » ;
+      3. jamais un second geste du même genre le même jour (CAD20) : le jour
+         pris, on passe au lendemain joignable ;
+      4. la touche signal REMPLACE la prochaine touche du plan : si celle-ci
+         tomberait avant, ou moins de ``ecart_min`` après, elle GLISSE à
+         ``ecart_min`` après la touche signal — jamais EN AVANT (on ne tire
+         pas une relance plus tôt), jamais doublée.
+
+    Rend ``(echeance_signal, nouvelle_echeance_prochaine)`` — la seconde vaut
+    ``None`` quand la touche du plan n'a pas à bouger (ou qu'il n'y en a pas).
+    """
+    depart = maintenant
+    if derniere_faite is not None and derniere_faite + ecart_min > depart:
+        depart = derniere_faite + ecart_min
+    echeance = creneau(depart)
+    for _ in range(_MAX_DECALAGES):
+        if not jour_occupe(echeance.astimezone(horaires.CASABLANCA).date()):
+            break
+        echeance = lendemain(echeance)
+    nouvelle = None
+    if prochaine is not None and prochaine < echeance + ecart_min:
+        nouvelle = echeance + ecart_min
+    return echeance, nouvelle
+
+
+def lendemain_joignable(echeance, company, canal):
+    """CAD130 — le même horaire, le jour joignable suivant (public : c'est
+    la brique ``lendemain`` que le service injecte dans
+    ``echeances_signal``, la même que CAD20 utilise en interne)."""
+    return _lendemain_joignable(echeance, company, canal)
 
 
 # ── CAD-B ── CAD32 ──────────────────────────────────────────────────────────

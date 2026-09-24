@@ -78,6 +78,8 @@
     client:inconnu, detail:texte, mode:inconnu
 - frontend/src/api/crmApi.js :: deleteLead -> /api/django/crm/leads/<>
     corbeille_id:inconnu, detail:texte, id:inconnu
+- frontend/src/api/crmApi.js :: getCadencesEchues -> /api/django/crm/relance-etapes/cadences-echues
+    count:nombre, jours:inconnu, results:inconnu
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
     ca_devis_total:texte, ca_factures_total:texte, filiales:liste, nb_devis_total:inconnu, nb_factures_total:inconnu
 - frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants
@@ -93,13 +95,15 @@
 - frontend/src/api/crmApi.js :: getLeadPointsContact -> /api/django/crm/leads/<>/points-contact
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getLeadVisites -> /api/django/crm/leads/<>/visites
-    visites:inconnu
+    avertissement_sans_devis:inconnu, rappel_juridique:inconnu, visites:inconnu
 - frontend/src/api/crmApi.js :: getMesStatsRelance -> /api/django/crm/relance-etapes/mes-stats
     a_faire_maintenant:inconnu, a_lheure_7j_pct:inconnu, cadences_completees_14j:inconnu, en_retard:inconnu, serie_jours_sans_retard:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessage -> /api/django/crm/relance-etapes/<>/message
-    langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, wa_url:inconnu
+    crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
+- frontend/src/api/crmApi.js :: getRelanceEtapeMessageLangue -> /api/django/crm/relance-etapes/<>/message
+    crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesDues -> /api/django/crm/relance-etapes
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesLead -> /api/django/crm/relance-etapes
@@ -108,6 +112,8 @@
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach
     count:nombre, results:inconnu, sla_hours:inconnu
+- frontend/src/api/crmApi.js :: journaliserMessageVisiteOuvert -> /api/django/crm/leads/<>/message-visite/ouvert
+    cle:inconnu, etape:inconnu, journalise:booleen, langue:inconnu
 - frontend/src/api/crmApi.js :: mintQuestionnaireLien -> /api/django/crm/leads/<>/questionnaire-lien
     detail:texte, expires_at:texte, manquantes:inconnu, questions:inconnu, token:inconnu, url:inconnu, url_interne:inconnu
 - frontend/src/api/crmApi.js :: parrainageStats -> /api/django/crm/parrainages/stats
@@ -129,7 +135,9 @@
 - frontend/src/api/crmApi.js :: whatsappDevis -> /api/django/crm/leads/<>/whatsapp-devis
     detail:texte, links:inconnu, message:inconnu, phone:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
-    detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, wa_url:inconnu
+    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
+- frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp
+    crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/customFieldsApi.js :: reorder -> /api/django/custom-fields/definitions/reorder
     count:nombre, detail:texte, ok:booleen
 - frontend/src/api/demoApi.js :: resetDemo -> /api/django/companies/<>/reset-demo

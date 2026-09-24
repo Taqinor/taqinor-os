@@ -1,12 +1,20 @@
 // VISCAD2 — Aperçu du message « proposer la visite » (patron
 // `ToucheMessageDialog.jsx` : aperçu AVANT ouverture de WhatsApp, jamais un
 // envoi automatique — décision D5). Distinct de `ToucheMessageDialog` :
-// `crmApi.getMessageVisite` renvoie {corps_fr, corps_darija} — LES DEUX
-// corps rendus côté serveur pour CE lead (pas un seul, contrairement au
-// message d'une touche) — donc un vrai bascule FR/Darija ici, et le lien
-// wa.me se construit CÔTÉ ÉCRAN depuis le téléphone déjà porté par la touche
-// (`etape.lead_whatsapp`, contrat `relance_etape_v2.json`) puisque l'endpoint
-// ne renvoie pas de `wa_url` (contrat fixé — jamais une forme inventée).
+// `crmApi.getMessageVisite` renvoie LES DEUX corps rendus côté serveur pour
+// CE lead (pas un seul, contrairement au message d'une touche) — donc un vrai
+// bascule FR/Darija ici.
+//
+// CAD111 — deux défauts corrigés :
+//   * le lien wa.me était construit CÔTÉ ÉCRAN, en chiffres bruts (« 06… »
+//     partait tel quel, sans indicatif) : il vient désormais du SERVEUR
+//     (`wa_url_fr` / `wa_url_darija`, numéro normalisé E.164 — contrat
+//     `lead_message_visite.json`), comme pour les touches normales ;
+//   * l'ouverture ne laissait AUCUNE trace : un POST jumeau
+//     (`journaliserMessageVisiteOuvert`) est appelé en best-effort APRÈS
+//     `window.open` — journalisé « ouvert », jamais « fait » — et, ouvert
+//     depuis une touche (`etapeId`), il est rattaché à CETTE touche (son
+//     panneau « Fait » sait alors que le message a été ouvert).
 import { useEffect, useState } from 'react'
 import { Send, Copy } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
@@ -16,18 +24,10 @@ import {
   Button, Spinner,
 } from '../../../ui'
 
-// Lien wa.me AVEC message pré-rempli — même nettoyage que `lib/contactLinks.js
-// waHref` (chiffres seuls) + `?text=`, motif déjà utilisé localement par
-// `DevisActionBoardPage.jsx` (brouillon `wa_drafts`) faute d'un `wa_url`
-// serveur ici.
-function waHrefAvecTexte(raw, texte) {
-  const digits = String(raw ?? '').replace(/\D/g, '')
-  if (!digits) return null
-  return `https://wa.me/${digits}?text=${encodeURIComponent(texte || '')}`
-}
-
 export default function MessageVisiteDialog({
-  leadId, telephone, cle = 'visite_proposition', open, onOpenChange,
+  leadId, cle = 'visite_proposition', open, onOpenChange,
+  // CAD111 — la touche depuis laquelle le message est ouvert (facultatif).
+  etapeId = null,
 }) {
   const [loading, setLoading] = useState(false)
   const [erreur, setErreur] = useState(false)
@@ -54,7 +54,8 @@ export default function MessageVisiteDialog({
   }, [open, leadId, cle])
 
   const message = langue === 'darija' ? rendu?.corps_darija : rendu?.corps_fr
-  const wa = waHrefAvecTexte(telephone, message)
+  // CAD111 — le lien du SERVEUR (E.164), jamais reconstruit ici.
+  const wa = (langue === 'darija' ? rendu?.wa_url_darija : rendu?.wa_url_fr) || null
 
   const copier = async () => {
     if (!message) return
@@ -69,7 +70,19 @@ export default function MessageVisiteDialog({
 
   const ouvrirWhatsApp = () => {
     if (!wa) return
+    // Le clic humain d'abord (le message est déjà écrit) ; la trace suit, en
+    // best-effort : elle ne bloque jamais l'ouverture déjà faite.
     window.open(wa, '_blank', 'noopener')
+    if (typeof crmApi.journaliserMessageVisiteOuvert === 'function') {
+      const payload = { cle, langue }
+      if (etapeId != null) payload.etape = etapeId
+      Promise.resolve()
+        .then(() => crmApi.journaliserMessageVisiteOuvert(leadId, payload))
+        .catch(() => {
+          // best-effort — WhatsApp est déjà ouvert ; une trace manquée ne
+          // doit jamais gêner la commerciale (la touche reste à faire).
+        })
+    }
     onOpenChange(false)
   }
 
@@ -110,7 +123,7 @@ export default function MessageVisiteDialog({
             >
               {message || '…'}
             </div>
-            {!wa && (
+            {rendu && !wa && (
               <p className="text-sm text-destructive">
                 Aucun numéro WhatsApp exploitable : le message ne peut pas être ouvert dans WhatsApp.
               </p>

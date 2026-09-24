@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
+import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
@@ -23,6 +24,9 @@ vi.mock('../../../api/crmApi', () => ({
     getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
     getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
     mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
+    // CAD152 — le panneau d'appel guidé (réponse = l'exemple COMMITTÉ).
+    getPanneauAppel: vi.fn(),
+    updateLead: vi.fn(),
   },
 }))
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
@@ -51,6 +55,8 @@ vi.mock('../../../ui', async (importOriginal) => {
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+const PANNEAU = exempleContrat('crm', 'panneau_appel')
 
 // LWC2 — les actions secondaires vivent dans le menu « ⋯ ». Radix ouvre au
 // clavier comme au pointeur ; le clavier est le chemin stable en jsdom.
@@ -383,6 +389,44 @@ describe('LWC2 — bande « Faits clés » (remplace la pile de boutons)', () =>
     // `points-contact/` (l'autre source « dernier échange ») reste l'affaire de
     // l'onglet Historique : le rail ne peut structurellement pas l'appeler.
     expect(crmApi.getLeadPointsContact).toBeUndefined()
+  })
+})
+
+describe('CAD152 — les tel: du rail ouvrent le panneau d’appel AVANT de composer', () => {
+  let onAction
+  beforeEach(() => {
+    onAction = vi.fn()
+    crmApi.getPanneauAppel.mockResolvedValue(reponseContrat('crm', 'panneau_appel'))
+  })
+
+  it('le lien du numéro ouvre la modale d’appel (script + questions), sans composer', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(document.querySelector('a[href="tel:0612345678"]'))
+    const modale = await screen.findByRole('dialog')
+    expect(modale).toHaveTextContent('Appel — Karim B.')
+    await waitFor(() => expect(crmApi.getPanneauAppel).toHaveBeenCalledWith(7))
+    expect(await screen.findByTestId('script-accroche'))
+      .toHaveTextContent(PANNEAU.script.message)
+    expect(screen.getByRole('button', { name: /Composer le numéro/ })).toBeInTheDocument()
+  })
+
+  it('« Appeler » du menu « ⋯ » ouvre la même modale', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    ouvrirPlus()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Appeler/ }))
+    expect(await screen.findByRole('dialog')).toHaveTextContent('Appel — Karim B.')
+  })
+
+  it('une réponse enregistrée depuis la modale rafraîchit la fiche (onAction refresh)', async () => {
+    crmApi.updateLead.mockResolvedValue({ data: { id: 7, score: 55 } })
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.click(document.querySelector('a[href="tel:0612345678"]'))
+    const bandeau = await screen.findByTestId('bandeau-profil-suppose')
+    const occupation = PANNEAU.champs_a_poser.find((q) => q.champ === 'occupation_jour')
+    fireEvent.click(within(bandeau).getByRole('button', { name: occupation.choix[0].libelle }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(7, { occupation_jour: occupation.choix[0].valeur }))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
   })
 })
 

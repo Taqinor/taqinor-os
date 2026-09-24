@@ -1697,6 +1697,45 @@ def devis_view_tracking_segments(company):
     return {'jamais_ouvert': jamais_ouvert, 'ouvert_non_signe': ouvert_non_signe}
 
 
+def devis_ouverts_ratio_client(company, client_id, *, limit=200):
+    """CAD140 — pour chaque devis NON-BROUILLON du client ``client_id``, a-t-il
+    été ouvert au moins une fois par le client (``ShareLink.view_count`` > 0,
+    compteur de visites DISTINCTES fiabilisé par CAD137) ?
+
+    Reprend le signal comportemental (ouverture de proposition) que
+    ``apps.crm.engagement`` cite depuis sa création mais n'a jamais pu porter,
+    faute d'un sélecteur PAR CLIENT côté ``ventes`` — ``devis_view_tracking_
+    segments`` (PUB58) n'agrège qu'en PANIER de contacts (email/téléphone),
+    jamais par ``client_id``.
+
+    Renvoie ``{'total': int, 'ouverts': int}`` — jamais un ratio pré-calculé,
+    pour ne rien arrondir deux fois côté appelant (même patron que
+    ``_ratio_devis_acceptes_score``/``devis_du_client_portail``). Un client
+    sans aucun devis non-brouillon renvoie ``{'total': 0, 'ouverts': 0}`` —
+    zéro documents, jamais une pénalité fantôme.
+
+    Lecture seule. Jamais un import de ``apps.crm.models`` : ``client_id``
+    suffit, exactement le même contrat que ``devis_du_client_portail``.
+    """
+    from .models import Devis
+
+    if company is None or not client_id:
+        return {'total': 0, 'ouverts': 0}
+    qs = (Devis.objects
+          .filter(company=company, client_id=client_id)
+          .exclude(statut=Devis.Statut.BROUILLON)
+          .prefetch_related('share_links')
+          .order_by('-date_creation')[:limit])
+    total = 0
+    ouverts = 0
+    for devis in qs:
+        total += 1
+        views = [sl.view_count for sl in devis.share_links.all()]
+        if views and max(views) > 0:
+            ouverts += 1
+    return {'total': total, 'ouverts': ouverts}
+
+
 def expired_devis_contacts(company):
     """PUB59 — Contacts des devis EXPIRÉS (``Devis.statut='expire'``) de la
     société — angle de relance « votre prix était valable 30 j, nouvelle
@@ -2219,13 +2258,13 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
         où le serveur sait quoi dire) ; l'écran retombe sur le lien wa.me nu
         partout ailleurs.
       * ``devis`` porte de quoi RENDRE chaque ligne (référence, client,
-        téléphone, WhatsApp, total) pour les ids cités. Sans lui l'écran
-        devait re-télécharger la liste des devis et n'y trouvait ni
-        ``client_telephone`` ni ``client_whatsapp`` (``DevisSerializer`` ne
-        les publie pas) : les raccourcis « Appeler » / WhatsApp ne
-        s'affichaient JAMAIS, et une référence au-delà de la première page de
-        50 tombait sur « #42 ». Le serveur sert donc ce dont l'écran a besoin,
-        en un seul appel.
+        téléphone, WhatsApp, total, CAD115 : ``prochaine_touche_crm``) pour
+        les ids cités. Sans lui l'écran devait re-télécharger la liste des
+        devis et n'y trouvait ni ``client_telephone`` ni ``client_whatsapp``
+        (``DevisSerializer`` ne les publie pas) : les raccourcis « Appeler » /
+        WhatsApp ne s'affichaient JAMAIS, et une référence au-delà de la
+        première page de 50 tombait sur « #42 ». Le serveur sert donc ce dont
+        l'écran a besoin, en un seul appel.
 
     Lecture seule, bornée à ``company`` — jamais de fuite cross-société.
     Aucun prix d'achat ni marge n'est exposé (règle #4) : seul le total TTC,
@@ -2305,21 +2344,34 @@ def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
     cites = {i for ids in paniers.values() for i in ids}
     # `prefetch_related('lignes')` : `Devis.total_ttc` itère les lignes — sans
     # ce préchargement, une requête PAR devis affiché (N+1).
-    lignes = (Devis.objects
-              .filter(company=company, pk__in=cites)
-              .select_related('client', 'lead')
-              .prefetch_related('lignes'))
+    lignes = list(
+        Devis.objects
+        .filter(company=company, pk__in=cites)
+        .select_related('client', 'lead')
+        .prefetch_related('lignes'))
+
+    # CAD115 — SIG9 : « Action requise » (vue Ventes) et la file calendaire du
+    # CRM pouvaient réclamer le même devis le même jour avec deux messages
+    # différents, sans aucun arbitrage entre elles. Chaque ligne affiche donc
+    # ici la prochaine touche CRM déjà programmée (``crm.RelanceEtape`` À
+    # FAIRE) — lue via le selector CRM sanctionné (jamais un import de
+    # ``apps.crm.models``), une seule requête pour tous les leads cités
+    # (même patron que ``prochaine_touche_par_lead`` côté MRY5).
+    from apps.crm.selectors import prochaine_touche_par_lead
+    lead_ids = {d.lead_id for d in lignes if d.lead_id}
+    touches = prochaine_touche_par_lead(company, lead_ids)
+
     return {
         'buckets': {
             cle: {'count': len(ids), 'ids': list(ids)}
             for cle, ids in paniers.items()
         },
         'wa_drafts': wa_drafts,
-        'devis': {d.id: _ligne_action_requise(d) for d in lignes},
+        'devis': {d.id: _ligne_action_requise(d, touches) for d in lignes},
     }
 
 
-def _ligne_action_requise(devis):
+def _ligne_action_requise(devis, touches=None):
     """PACT17 — de quoi RENDRE une ligne de « Relances du jour », rien de plus.
 
     Le WhatsApp vient du lead lié quand il existe (``crm.Lead.whatsapp``, lu
@@ -2328,6 +2380,11 @@ def _ligne_action_requise(devis):
     sinon le téléphone du client fait office de numéro joignable. Le total est
     rendu en TEXTE décimal (jamais un flottant) — ``formatMAD`` le lit tel
     quel côté écran.
+
+    CAD115 — ``touches`` est le dict ``{lead_id: (due_at, due_date, cadence,
+    canal)}`` de ``apps.crm.selectors.prochaine_touche_par_lead`` : la ligne
+    publie ``prochaine_touche_crm`` (``None`` quand le devis n'a pas de lead
+    ou que le lead n'a aucune touche À FAIRE — jamais une valeur inventée).
     """
     client = getattr(devis, 'client', None)
     telephone = (getattr(client, 'telephone', '') or '') if client else ''
@@ -2335,6 +2392,16 @@ def _ligne_action_requise(devis):
     if devis.lead_id:
         whatsapp = getattr(devis.lead, 'whatsapp', '') or ''
     total = devis.total_ttc
+    touche = (touches or {}).get(devis.lead_id) if devis.lead_id else None
+    prochaine_touche_crm = None
+    if touche:
+        due_at, due_date, cadence, canal = touche
+        prochaine_touche_crm = {
+            'due_at': due_at.isoformat() if due_at else None,
+            'due_date': due_date.isoformat() if due_date else None,
+            'cadence': cadence or '',
+            'canal': canal or '',
+        }
     return {
         'id': devis.id,
         'reference': devis.reference or '',
@@ -2342,6 +2409,7 @@ def _ligne_action_requise(devis):
         'client_telephone': telephone,
         'client_whatsapp': whatsapp,
         'total_ttc': str(total) if total is not None else None,
+        'prochaine_touche_crm': prochaine_touche_crm,
     }
 
 

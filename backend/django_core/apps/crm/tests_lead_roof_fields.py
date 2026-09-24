@@ -57,6 +57,9 @@ class TestLeadRoofFieldsExposed(TestCase):
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.lead.refresh_from_db()
-        # Unchanged — the read-only fields were ignored.
+        # Unchanged — the read-only pin was ignored.
         self.assertEqual(self.lead.roof_point, {'lat': 34.02, 'lng': -6.83})
-        self.assertEqual(str(self.lead.bill_kwh), '420.00')
+        # CAD150 (décision fondateur du 21/09/2026) — `bill_kwh` est un champ
+        # CAPTÉ PAR LE SITE, désormais toujours éditable par la commerciale ;
+        # sa valeur d'origine reste lisible (`provenance_site`).
+        self.assertEqual(str(self.lead.bill_kwh), '1.00')

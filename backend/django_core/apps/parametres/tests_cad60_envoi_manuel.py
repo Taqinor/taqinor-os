@@ -41,8 +41,12 @@ def _guide():
 
 class LaMentionExisteTests(SimpleTestCase):
     def test_les_deux_cles_sont_declarees_a_envoi_manuel(self):
+        # CAD151 (23/09/2026) a rejoint cette doctrine avec `debrief_visite`
+        # (même raison : aucun barreau de cadence ne le porte) — verrouillé
+        # par ailleurs par tests_cad151_scripts_manquants.py.
         self.assertEqual(CLES_ENVOI_MANUEL,
-                         frozenset({'annonce_appel_reda', 'offre_reda'}))
+                         frozenset({'annonce_appel_reda', 'offre_reda',
+                                   'debrief_visite'}))
 
     def test_elles_restent_des_cles_de_relance_a_part_entiere(self):
         """« Manuel » ne veut pas dire « absent du catalogue » : la

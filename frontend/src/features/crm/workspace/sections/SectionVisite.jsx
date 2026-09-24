@@ -25,6 +25,11 @@ export default function SectionVisite({ state, setField, errors = {}, mode, refD
   const { leadId } = refData
 
   const [visites, setVisites] = useState([])
+  // CAD123 — textes du SERVEUR (contrat `lead_visites`) : la règle « la
+  // visite se propose après le devis » et son rappel juridique (CAD122),
+  // deux chaînes vides dès qu'un devis est parti. On AVERTIT, on ne bloque
+  // jamais : le bouton « Planifier » reste actif.
+  const [avertissement, setAvertissement] = useState({ texte: '', juridique: '' })
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
   const [planifierOuvert, setPlanifierOuvert] = useState(false)
@@ -42,7 +47,13 @@ export default function SectionVisite({ state, setField, errors = {}, mode, refD
       ? crmApi.getLeadVisites(leadId)
       : Promise.reject(new Error('getLeadVisites indisponible'))
     requete
-      .then((r) => setVisites(r.data?.visites ?? []))
+      .then((r) => {
+        setVisites(r.data?.visites ?? [])
+        setAvertissement({
+          texte: r.data?.avertissement_sans_devis ?? '',
+          juridique: r.data?.rappel_juridique ?? '',
+        })
+      })
       .catch(() => setErreur(true))
       .finally(() => setLoading(false))
   }, [leadId])
@@ -60,6 +71,18 @@ export default function SectionVisite({ state, setField, errors = {}, mode, refD
               <MapPin className="size-3.5" /> Planifier la visite technique
             </Button>
           </div>
+          {avertissement.texte && (
+            <div
+              role="note"
+              data-testid="visite-sans-devis"
+              className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs"
+            >
+              <p className="font-medium text-warning">{avertissement.texte}</p>
+              {avertissement.juridique && (
+                <p className="mt-1 text-muted-foreground">{avertissement.juridique}</p>
+              )}
+            </div>
+          )}
           {loading ? (
             <Spinner className="size-3.5" />
           ) : erreur ? (

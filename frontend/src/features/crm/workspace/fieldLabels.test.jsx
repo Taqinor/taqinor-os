@@ -61,8 +61,13 @@ describe('fieldLabels — la carte ne dérive pas des sections réelles (règle 
   }
 
   it('aucune entrée de fieldLabels ne pointe un inputId absent des sections (pas de fantôme)', () => {
+    // CAD174 — `pending` EXEMPTE un champ dont l'écran n'est pas encore
+    // dans une des six sections classiques (vague 1 du script d'appel
+    // guidé, saisie par `PanneauScriptAppel.jsx` — CAD152/153) : son
+    // `inputId` est un nom RÉSERVÉ, pas encore un `htmlFor` réel. Retirer
+    // `pending` dès que son `<FormField>` existe quelque part ci-dessus.
     const fantomes = Object.entries(fieldLabels)
-      .filter(([, entry]) => !allKnownIds.has(entry.inputId))
+      .filter(([, entry]) => !entry.pending && !allKnownIds.has(entry.inputId))
       .map(([key, entry]) => `${key} → ${entry.inputId}`)
     expect(fantomes).toEqual([])
   })
@@ -89,5 +94,29 @@ describe('fieldLabels — la carte ne dérive pas des sections réelles (règle 
       section: 'equipements',
       inputId: 'lf-equip-clim-kw',
     })
+  })
+
+  // CAD174 — les huit champs de la vague 1 (CAD149) ont chacun une entrée,
+  // avec le MÊME libellé que le `verbose_name` serveur (`apps/crm/models.py`)
+  // — le garde-fou de la tâche (l'écran et le `help_text` disent la même
+  // chose). `pending` est EXPLICITE : ces champs n'ont pas encore leur
+  // `<FormField>` dans une des six sections classiques.
+  it('les huit champs CAD149 (vague 1) ont une entrée fieldLabels, marquée pending', () => {
+    const attendus = {
+      type_bien: 'Type de bien',
+      objectif_projet: 'Objectif du projet',
+      decideur: 'Qui décide',
+      devis_concurrents: 'Autres devis en cours',
+      equip_ve_statut: 'Véhicule électrique — déjà là ou prévu ?',
+      pompage_heures_jour: 'Pompage — heures par jour',
+      pompe_alim_actuelle: 'Pompe actuelle — alimentation',
+      carburant_litres_mois: 'Carburant consommé (litres/mois)',
+    }
+    for (const [cle, label] of Object.entries(attendus)) {
+      const entree = fieldLabels[cle]
+      expect(entree, cle).toBeTruthy()
+      expect(entree.label, cle).toBe(label)
+      expect(entree.pending, cle).toBeTruthy()
+    }
   })
 })

@@ -19,6 +19,12 @@ const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const PREMIERE = ETAPES[0]
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 
+// CAD27 — l'écran REFUSE un report dans le passé : la date des tests de
+// report est DEMAIN à Casablanca, jamais une date figée qui finit par passer.
+const DEMAIN = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(Date.now() + 24 * 3600 * 1000))
+
 vi.mock('../../api/crmApi', () => ({
   default: {
     getRelanceEtapesDues: vi.fn(),
@@ -103,18 +109,21 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.marquerRelanceEtapeFait)
       .toHaveBeenCalledWith(PREMIERE.id, { outcome: 'joint' }))
-    await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
+    // CAD50 — la touche traitée QUITTE la file (sa ligne disparaît) mais son
+    // nom reste affiché dans « Annuler » (retour arrière 24 h) : on vérifie la
+    // LIGNE, plus le texte du nom.
+    await waitFor(() => expect(screen.queryByTestId('relance-etape-row')).not.toBeInTheDocument())
   })
 
   it('F1 — Reporter envoie {rappel_le, rappel_heure} (forme sûre ancrée Casablanca, jamais un due_at fuseau-navigateur)', async () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
-    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-10' } })
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: DEMAIN } })
     fireEvent.change(screen.getByLabelText('Heure'), { target: { value: '11:00' } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
-      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '11:00' }))
+      PREMIERE.id, { rappel_le: DEMAIN, rappel_heure: '11:00' }))
     await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
   })
 
@@ -122,10 +131,10 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
-    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: '2026-09-10' } })
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: DEMAIN } })
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
-      PREMIERE.id, { rappel_le: '2026-09-10', rappel_heure: '09:00' }))
+      PREMIERE.id, { rappel_le: DEMAIN, rappel_heure: '09:00' }))
   })
 
   it('Sauter ouvre une note optionnelle puis confirme', async () => {
@@ -137,7 +146,10 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee)
       .toHaveBeenCalledWith(PREMIERE.id, 'Client en congé'))
-    await waitFor(() => expect(screen.queryByText(PREMIERE.lead_nom)).not.toBeInTheDocument())
+    // CAD50 — la touche traitée QUITTE la file (sa ligne disparaît) mais son
+    // nom reste affiché dans « Annuler » (retour arrière 24 h) : on vérifie la
+    // LIGNE, plus le texte du nom.
+    await waitFor(() => expect(screen.queryByTestId('relance-etape-row')).not.toBeInTheDocument())
   })
 
   it('Sauter → Annuler referme la note sans appeler l\'API', async () => {
@@ -181,10 +193,13 @@ describe('RelancesDuJourWidget (MRY14)', () => {
   })
 
   // MRY32 — sélecteur « Aujourd'hui + retard | Demain | 7 jours ».
-  it('MRY32 — « Demain » interroge scope=tomorrow et les lignes futures se lisent seulement (pas de bouton Fait)', async () => {
-    // Échéance FUTURE (demain, Africa/Casablanca) — `readOnly` du widget
+  // CAD44 (TRANCHÉ 21/09/2026, MRY32 rouverte) — une ligne FUTURE n'est plus
+  // en lecture seule : Appeler, WhatsApp et Reporter sont actionnables (agir
+  // en avance), « Fait » (et « Sauter ») restent verrouillés.
+  it('MRY32/CAD44 — « Demain » interroge scope=tomorrow ; une ligne future offre Appeler/WhatsApp/Reporter, jamais « Fait »', async () => {
+    // Échéance FUTURE (demain, Africa/Casablanca) — `enAvance` du widget
     // compare au jour courant, jamais au scope demandé : une ligne dont
-    // l'échéance est déjà passée resterait actionnable même sous scope=
+    // l'échéance est déjà passée garderait « Fait » même sous scope=
     // tomorrow, ce que ce test ne doit PAS prouver par accident.
     const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' })
       .format(new Date()).split('-').map(Number)
@@ -196,9 +211,21 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     fireEvent.click(screen.getByRole('radio', { name: 'Demain' }))
     await waitFor(() => expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'tomorrow' }))
+    // Les trois gestes d'avance sont présents…
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Reporter/ })).toBeInTheDocument()
+    // … « Fait » est absent : on ne coche pas un geste qui n'a pas eu lieu.
     expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Reporter/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('touche-en-avance')).toBeInTheDocument()
+  })
+
+  it('CAD44 — une ligne d’aujourd’hui garde « Fait » (le verrou ne vise que l’avenir)', async () => {
+    mount()
+    await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
+    expect(screen.getAllByRole('button', { name: /^Fait$/ }).length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('touche-en-avance')).not.toBeInTheDocument()
   })
 
   it('MRY32 — « 7 jours » interroge scope=week', async () => {

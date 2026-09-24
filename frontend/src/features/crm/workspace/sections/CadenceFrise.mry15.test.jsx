@@ -140,14 +140,33 @@ describe('MRY32 — actions directement depuis la frise', () => {
     const lis = screen.getAllByTestId('cadence-frise-etape')
     // Ordre d'affichage : chronologique (le contact d'aujourd'hui d'abord).
     expect(lis[0]).toHaveTextContent('Appel 2 (répondeur)')
-    // Actionnable : la ligne compacte (boutons Fait/Sauter…) est rendue pour
-    // LA touche la plus proche — et une seule.
-    const boutonsFait = screen.getAllByRole('button', { name: 'Fait' })
-    expect(boutonsFait).toHaveLength(1)
+    // Actionnable : la ligne compacte est rendue pour LA touche la plus
+    // proche — et une seule. CAD44 : ces deux touches sont À VENIR (2099) :
+    // la ligne offre Appeler/WhatsApp/Reporter, jamais « Fait » — on la
+    // repère donc par « Reporter ».
+    const boutonsReporter = screen.getAllByRole('button', { name: 'Reporter' })
+    expect(boutonsReporter).toHaveLength(1)
     // La ligne d'action compacte porte le badge de SA cadence : c'est bien
-    // la touche « contact » d'aujourd'hui qui est actionnable, jamais
-    // l'après-devis de demain.
-    expect(boutonsFait[0].closest('li')).toHaveTextContent('Contact')
-    expect(boutonsFait[0].closest('li')).not.toHaveTextContent('Après devis')
+    // la touche « contact » la plus proche qui est actionnable, jamais
+    // l'après-devis suivant.
+    expect(boutonsReporter[0].closest('li')).toHaveTextContent('Contact')
+    expect(boutonsReporter[0].closest('li')).not.toHaveTextContent('Après devis')
+  })
+
+  // CAD44 (TRANCHÉ 21/09/2026, MRY32 rouverte) — la frise applique la MÊME
+  // règle que le cockpit : une touche À VENIR offre Appeler, WhatsApp et
+  // Reporter, « Fait » (et « Sauter ») restent verrouillés jusqu'à son jour.
+  it('CAD44 — une prochaine touche À VENIR : les trois gestes d’avance présents, « Fait » absent', async () => {
+    const future = {
+      ...ETAPES[0], id: 9201, statut: 'a_faire', overdue: false,
+      due_date: '2099-03-02', due_at: '2099-03-02T09:00:00Z',
+    }
+    crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { count: 1, results: [future] } })
+    render(<CadenceFrise leadId={1489} />)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Reporter/ })).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
   })
 })

@@ -98,6 +98,30 @@ def _decode_photo(data: dict):
     return content, filename or 'photo-capture.jpg'
 
 
+#: CAD136 — clés du payload qui désignent une photo de COMPTEUR (le site les
+#: distingue de la facture) et mots du NOM de fichier qui trahissent une photo
+#: qui n'est pas une facture (ceux que pose le questionnaire pour ses sections
+#: compteur / tableau, cf. ``questionnaire._PHOTO_MOTS_CLES``).
+_CLES_COMPTEUR = ('meterPhoto', 'meter_photo')
+_MOTS_PAS_FACTURE = ('compteur', 'meter', 'tableau', 'disjoncteur')
+
+
+def est_photo_de_facture(data: dict, filename: str) -> bool:
+    """CAD136 — cette photo est-elle celle de la FACTURE (la pièce qui permet
+    de chiffrer) ? PURE.
+
+    Oui par défaut — la photo du site est « la photo de votre facture » ; non
+    quand le payload l'a envoyée comme photo de compteur, ou quand son nom dit
+    compteur / tableau (sections photo du questionnaire). Dans le doute on
+    garde « facture » : c'est le comportement d'avant cette distinction."""
+    data = data or {}
+    if any(isinstance(data.get(cle), str) and data.get(cle).strip()
+           for cle in _CLES_COMPTEUR):
+        return False
+    nom = (filename or '').lower()
+    return not any(mot in nom for mot in _MOTS_PAS_FACTURE)
+
+
 def attach_capture_photo(lead, data: dict):
     """Attache la photo du payload au lead (+ OCR si configuré). Best-effort.
 
@@ -144,6 +168,14 @@ def attach_capture_photo(lead, data: dict):
         # jamais) : la photo ne fait pas retomber le webhook.
         from .services import SIGNAL_PHOTO_FACTURE, notifier_signal_client
         notifier_signal_client(lead, SIGNAL_PHOTO_FACTURE)
+        # CAD136 — et le GESTE qu'elle appelle entre dans la file : la tâche
+        # de production « Préparer et envoyer le devis (ou fixer un rappel) »,
+        # jamais une relance. Seulement pour une photo de FACTURE — un
+        # compteur ou un tableau ne suffit pas à chiffrer. Best-effort.
+        if est_photo_de_facture(data, filename):
+            from .services import poser_etape_preparer_devis
+            poser_etape_preparer_devis(
+                lead, origine='photo de facture reçue du site')
 
         # OCR key-gated : sans flag/clé → simple pièce jointe (dégradation douce).
         if capture_ocr_enabled():

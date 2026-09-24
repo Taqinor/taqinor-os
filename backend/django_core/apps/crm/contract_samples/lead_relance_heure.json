@@ -1,0 +1,22 @@
+{
+  "endpoint": "PATCH /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD156 (PACT10) — « Je vous rappelle jeudi à 18 h » : l'heure promise au téléphone n'avait AUCUN champ — `Lead.relance_date` est une DATE, et le journal d'appel (`CallLogPopover.jsx`) ne PATCHait qu'elle, alors que le report d'une touche accepte, lui, une heure. `relance_heure` (HH:MM) voyage désormais AVEC `relance_date` dans le MÊME PATCH et emprunte le MÊME chemin que le report de touche : `reporter_prochaine_touche` (date + heure, recalée sur la fenêtre d'appel de la société) — un seul système de rappel (MRY10), aucun second champ, aucune migration. `relance_heure` n'est pas une colonne : elle n'est jamais RENVOYÉE ; l'heure vit sur la touche reportée (`relance_etape_v2.due_at`). Une heure saisie reporte la touche même quand la date ne change pas. Refus 400 AVANT toute écriture, qui NOMME le champ : `{\"relance_heure\": …}` (heure illisible, ou heure sans date). Le document décrit le CORPS envoyé et les deux champs de la réponse que l'écran relit ; la réponse complète est celle du sérialiseur de lead (`forme_serveur: partielle`).",
+  "corps": {
+    "relance_date": "2026-09-24",
+    "relance_heure": "18:00"
+  },
+  "exemple": {
+    "id": 1490,
+    "relance_date": "2026-09-24"
+  },
+  "exemple_erreur_heure": {
+    "relance_heure": [
+      "« Heure du rappel » : « 18h » n’est pas une heure (HH:MM attendu)."
+    ]
+  },
+  "notes": {
+    "touche": "Sur un lead à cadence active, la prochaine touche à faire passe à la date ET à l'heure données (jeudi 24/09 à 18:00, heure de Casablanca — recalée sur la fenêtre d'appel de la société si besoin), ses suivantes glissent du même écart — exactement comme « Reporter au » de la ligne de relance.",
+    "sans_heure": "Sans `relance_heure`, le comportement historique est inchangé : la date seule reporte la touche au premier créneau d'appel de ce jour (repli de `reporter_prochaine_touche`)."
+  }
+}

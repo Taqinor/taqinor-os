@@ -17,9 +17,13 @@
 // PLUS AUCUN écrasement silencieux. `PlanActiviteDialog` garde son rôle —
 // appliquer un gabarit multi-étapes — qui est autre chose.
 //
-// PAS D'HEURE : `Lead.relance_date` et `records.Activity.due_date` sont des
-// DateField. Poser une heure ici demanderait une tâche SCHEMA dédiée ; on ne
-// fait pas semblant.
+// CAD156 — L'HEURE PROMISE (« je vous rappelle jeudi à 18 h ») : `Lead.
+// relance_date` reste une DateField, mais l'heure voyage avec elle dans le
+// MÊME PATCH (`relance_heure`, HH:MM) et emprunte le chemin du report de
+// touche côté serveur (`reporter_prochaine_touche` : date + heure) — un seul
+// système de rappel (MRY10), aucun second champ. Contrat :
+// `apps/crm/contract_samples/lead_relance_heure.json`. L'activité datée d'un
+// OBJET (`records.Activity.due_date`) reste, elle, au jour.
 import { useEffect, useRef, useState } from 'react'
 import { Phone, Mail } from 'lucide-react'
 import crmApi from '../../api/crmApi'
@@ -30,6 +34,7 @@ import {
 } from '../../ui'
 import { DatePicker } from '../../ui/DatePicker'
 import { toastError, toastSuccess } from '../../lib/toast'
+import { suiteJournal } from './relances/suite'
 
 // Choix d'issue proposés (miroir de LeadActivity.OUTCOMES côté serveur, hors
 // la clé vide '—' qui ne fait pas sens comme choix explicite ici).
@@ -96,6 +101,10 @@ export default function CallLogPopover({
   // EZ1 — UNE seule valeur de date : les chips J+0/1/3/7 ne sont plus un
   // mécanisme parallèle, ce sont des raccourcis qui REMPLISSENT ce champ.
   const [dateRelance, setDateRelance] = useState('')
+  // CAD156 — l'heure convenue (facultative, HH:MM) et l'erreur de CHAMP que
+  // le serveur renverrait (400 `{relance_heure: …}`), affichée sous le champ.
+  const [heureRelance, setHeureRelance] = useState('')
+  const [erreurHeure, setErreurHeure] = useState('')
   const [objet, setObjet] = useState('')
   // EZ1 — décision explicite quand une relance existe déjà. Défaut 'garder' :
   // on ne peut pas écraser sans avoir dit oui.
@@ -106,6 +115,8 @@ export default function CallLogPopover({
     setOutcome('')
     setNote('')
     setDateRelance('')
+    setHeureRelance('')
+    setErreurHeure('')
     setObjet('')
     setConflit('garder')
   }
@@ -129,7 +140,11 @@ export default function CallLogPopover({
         })
       }
       if (ecrasera) {
-        await crmApi.updateLead(leadId, { relance_date: dateRelance })
+        // CAD156 — l'heure part AVEC la date (même PATCH) : le serveur
+        // reporte la touche à cette date ET à cette heure.
+        await crmApi.updateLead(leadId, heureRelance
+          ? { relance_date: dateRelance, relance_heure: heureRelance }
+          : { relance_date: dateRelance })
       }
       // EZ1 — un OBJET transforme la relance en vraie activité datée
       // (`POST /records/activities/`, cible `crm.lead` déjà déclarée dans
@@ -147,10 +162,18 @@ export default function CallLogPopover({
       reset()
       setOpen(false)
       onLogged?.()
-    } catch {
-      toastError(planificationSeule
-        ? "La relance n'a pas pu être planifiée — réessayez."
-        : "L'appel n'a pas pu être journalisé — réessayez.")
+    } catch (err) {
+      // CAD156 — règle « le champ fautif, le message exact » : un refus
+      // sur l'heure s'affiche SOUS le champ Heure, jamais un toast générique.
+      const refusHeure = err?.response?.status === 400
+        ? err?.response?.data?.relance_heure : null
+      if (refusHeure) {
+        setErreurHeure(Array.isArray(refusHeure) ? refusHeure.join(' ') : String(refusHeure))
+      } else {
+        toastError(planificationSeule
+          ? "La relance n'a pas pu être planifiée — réessayez."
+          : "L'appel n'a pas pu être journalisé — réessayez.")
+      }
     } finally {
       setBusy(false)
     }
@@ -197,6 +220,17 @@ export default function CallLogPopover({
                   </button>
                 ))}
               </div>
+              {/* CAD15 — l'issue journalisée ici n'est pas qu'une trace : les
+                  récepteurs du moteur y réagissent (un « Refus » coché pour
+                  mémoire éteint toutes les relances du dossier). La
+                  conséquence est DITE, dans la MÊME table de phrases que le
+                  panneau « Fait » des touches (`relances/suite.js`), et gardée
+                  vraie par la garde CAD17. */}
+              {outcome && (
+                <p className="clp-suite text-xs text-muted-foreground" data-testid="clp-suite">
+                  {suiteJournal(outcome)}
+                </p>
+              )}
 
               <Textarea
                 className="clp-note"
@@ -228,9 +262,9 @@ export default function CallLogPopover({
                 )
               })}
             </div>
-            {/* EZ1 — DATE LIBRE. Pas d'heure : `relance_date` et
-                `Activity.due_date` sont des DateField (une heure demanderait
-                une tâche SCHEMA dédiée). */}
+            {/* EZ1 — DATE LIBRE. CAD156 — et l'HEURE promise au client
+                (facultative) : elle part avec la date et place la touche de
+                relance à cette heure-là (chemin du report de touche). */}
             <div className="clp-free-date">
               <Label htmlFor={`clp-date-${leadId}`}>Ou une date précise</Label>
               <DatePicker
@@ -240,6 +274,23 @@ export default function CallLogPopover({
                 onChange={(d) => setDateRelance(ymd(d))}
               />
             </div>
+            {dateRelance && (
+              <div className="clp-free-date">
+                <Label htmlFor={`clp-heure-${leadId}`}>Heure promise (facultative)</Label>
+                <Input
+                  id={`clp-heure-${leadId}`}
+                  type="time"
+                  aria-invalid={Boolean(erreurHeure)}
+                  value={heureRelance}
+                  onChange={(e) => { setHeureRelance(e.target.value); setErreurHeure('') }}
+                />
+                {erreurHeure && (
+                  <p className="text-xs text-danger" role="alert" data-testid="clp-erreur-heure">
+                    {erreurHeure}
+                  </p>
+                )}
+              </div>
+            )}
             {/* EZ1 — OBJET optionnel : renseigné, il crée une vraie activité
                 datée (records) en plus de la relance — elle apparaît dans
                 « Ma file » comme n'importe quelle autre. */}

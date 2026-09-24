@@ -225,4 +225,6 @@ class ChatterPiiMasqueTests(TestCase):
         self.assertIs(LeadSerializer.PII_FIELDS, LEAD_PII_FIELDS)
         # GPS7 (07/09/2026) : + `lien_maps` — le lien Google Maps du client
         # localise son domicile, PII au même titre que gps_lat/gps_lng.
-        self.assertEqual(len(LEAD_PII_FIELDS), 7)
+        # CAD144 (21/09/2026) : + `contact_secondaire_telephone` — le numéro
+        # du second interlocuteur (coopérative, comité) est une PII.
+        self.assertEqual(len(LEAD_PII_FIELDS), 8)

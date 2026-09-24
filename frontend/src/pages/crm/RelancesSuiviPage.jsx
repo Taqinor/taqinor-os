@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { CalendarClock } from 'lucide-react'
@@ -7,6 +7,7 @@ import {
   Card, CardContent, Badge, Spinner,
   Tabs, TabsList, TabsTrigger,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, Input,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ToucheMessageDialog from './ToucheMessageDialog'
@@ -66,9 +67,15 @@ const ONGLETS = [
 
 /** Bornes [date_debut, date_fin] envoyées au serveur pour chaque onglet (62 j
  *  d'écart max, cf. le contrat) : l'onglet « Aujourd'hui + retard » élargit la
- *  fenêtre serveur à 30 j en arrière (un retard peut dater de plusieurs
- *  semaines) et le filtrage FIN (aujourd'hui ou encore à faire en retard) se
- *  fait CÔTÉ ÉCRAN — voir `visiblesPourOnglet` ci-dessous. */
+ *  fenêtre serveur à 62 j en arrière — CAD112 (audit L3 du 21/09/2026) : à
+ *  -30 j, un retard de 35 j apparaissait dans le cockpit (`scope='all'`,
+ *  AUCUNE borne basse côté serveur, `selectors.relance_etapes_dues`) mais pas
+ *  ici — même onglet HOMONYME « Aujourd'hui + retard », deux résultats
+ *  différents pour la même touche. -62 j est le MAXIMUM que le serveur
+ *  accepte (`SUIVI_JOURS_MAX`) : on ne peut pas aller plus loin sans retirer
+ *  la borne basse côté serveur, ce que la tâche interdit explicitement (elle
+ *  protège la requête). Le filtrage FIN (aujourd'hui ou encore à faire en
+ *  retard) se fait CÔTÉ ÉCRAN — voir `visiblesPourOnglet` ci-dessous. */
 function bornesOnglet(onglet, today) {
   if (onglet === 'demain') {
     const demain = decalerJours(today, 1)
@@ -80,7 +87,7 @@ function bornesOnglet(onglet, today) {
   if (onglet === 'precedente') {
     return { date_debut: decalerJours(today, -7), date_fin: decalerJours(today, -1) }
   }
-  return { date_debut: decalerJours(today, -30), date_fin: today }
+  return { date_debut: decalerJours(today, -62), date_fin: today }
 }
 
 // Seul l'onglet « Aujourd'hui + retard » filtre CÔTÉ ÉCRAN (fenêtre serveur
@@ -94,12 +101,227 @@ function visiblesPourOnglet(onglet, results, today) {
     || (e.statut === 'a_faire' && e.due_date < today))
 }
 
+// CAD100 (moitié écran de CAD87) — canal/jour en clair, mêmes clés que le
+// serveur (jamais un vocabulaire inventé ici). `jour_semaine` : 0 = lundi
+// (contrat `mesure_cadence.json`).
+const CANAL_LABELS_MESURE = {
+  appel: 'Appel', whatsapp: 'WhatsApp', email: 'E-mail', visite: 'Visite',
+}
+const JOURS_SEMAINE_LABELS = [
+  'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
+]
+
+/** CAD100 — les deux tableaux produits par CAD87 (`mesure_cadence`), en
+ *  LECTURE SEULE : taux de joint par (touche × canal × heure × jour de
+ *  semaine) et signatures par nombre de touches consommées. Rien n'est
+ *  recalculé ici — les deux tableaux viennent TELS QUELS de la réponse
+ *  serveur. Fenêtre temporelle propre à cette mesure (défaut serveur, 90 j) :
+ *  indépendante du sélecteur de période des touches ci-dessus. */
+function MesureCadencePanel() {
+  const [loading, setLoading] = useState(true)
+  const [erreur, setErreur] = useState(false)
+  const [donnees, setDonnees] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    // Garde défensive (même motif que `JournalRelance.jsx`) : une suite
+    // existante qui mocke `crmApi` sans encore connaître `getMesureCadence`
+    // doit se taire, jamais lever une TypeError.
+    const requete = typeof crmApi.getMesureCadence === 'function'
+      ? crmApi.getMesureCadence()
+      : Promise.reject(new Error('getMesureCadence indisponible'))
+    requete
+      .then((r) => { if (active) setDonnees(r.data) })
+      .catch(() => { if (active) setErreur(true) })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  if (loading) {
+    return <Card className="mt-3"><CardContent className="pt-4"><Spinner /></CardContent></Card>
+  }
+  if (erreur || !donnees) {
+    return (
+      <Card className="mt-3">
+        <CardContent className="pt-4">
+          <p className="text-sm text-muted-foreground">Mesure de la cadence indisponible pour le moment.</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const creneaux = donnees.taux_joint_par_creneau ?? []
+  const distribution = donnees.signatures_par_touches_consommees ?? []
+
+  return (
+    <Card className="mt-3" data-testid="mesure-cadence-panel">
+      <CardContent className="flex flex-col gap-4 pt-4">
+        <section>
+          <h3 className="mb-1.5 text-sm font-semibold">
+            Taux de joint par touche × heure × jour × canal
+          </h3>
+          {creneaux.length === 0 ? (
+            <p className="text-xs text-muted-foreground">—</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted-foreground">
+                    <th className="py-1 pr-2">Touche</th>
+                    <th className="py-1 pr-2">Canal</th>
+                    <th className="py-1 pr-2">Jour</th>
+                    <th className="py-1 pr-2 text-right">Heure</th>
+                    <th className="py-1 pr-2 text-right">Closes</th>
+                    <th className="py-1 pr-2 text-right">Joints</th>
+                    <th className="py-1 text-right">Taux de joint</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {creneaux.map((c) => (
+                    <tr
+                      key={`${c.ordre}-${c.canal}-${c.jour_semaine}-${c.heure}`}
+                      className="border-b border-border/50"
+                    >
+                      <td className="py-1 pr-2">{c.ordre}</td>
+                      <td className="py-1 pr-2">{CANAL_LABELS_MESURE[c.canal] ?? c.canal}</td>
+                      <td className="py-1 pr-2">{JOURS_SEMAINE_LABELS[c.jour_semaine] ?? c.jour_semaine}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{c.heure}h</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{c.closes}</td>
+                      <td className="py-1 pr-2 text-right tabular-nums">{c.joints}</td>
+                      <td className="py-1 text-right tabular-nums">
+                        {c.taux_joint_pct == null ? '—' : `${c.taux_joint_pct} %`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+        <section>
+          <h3 className="mb-1.5 text-sm font-semibold">Signatures par nombre de touches consommées</h3>
+          {distribution.length === 0 ? (
+            <p className="text-xs text-muted-foreground">—</p>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-1 pr-2">Touches consommées</th>
+                  <th className="py-1 text-right">Signatures</th>
+                </tr>
+              </thead>
+              <tbody>
+                {distribution.map((d) => (
+                  <tr key={d.touches} className="border-b border-border/50">
+                    <td className="py-1 pr-2">{d.touches}</td>
+                    <td className="py-1 text-right tabular-nums">{d.signatures}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </CardContent>
+    </Card>
+  )
+}
+
+// CAD50 — « Annuler » (retour arrière 24h, `crmApi.annulerRelanceEtape`) et
+// « Arrêter la cadence » (motif obligatoire, `crmApi.arreterCadence` — même
+// contrat que `SectionPipeline.jsx RelanceCadenceControls`) directement sur
+// la ligne : les deux actions n'existaient jusqu'ici que sur la fiche du
+// lead (`apps/crm/services.py annuler_touche_relance` porte déjà la fenêtre
+// 24h, refus motivé au-delà). Contrairement au Cockpit
+// (`RelancesDuJourWidget.jsx`), cet écran sert TOUS les statuts
+// (`relance_etapes_periode`) : une touche fait/sautée récente est déjà dans
+// `donnees.results`, aucun suivi local séparé n'est nécessaire ici. Rendu en
+// `<li>` SIBLING de `RelanceEtapeRow` (jamais à l'intérieur — composant
+// possédé par une autre lane) via un `Fragment` keyé.
+function estAnnulable(etape) {
+  if (!etape.traite_le) return false
+  if (etape.statut !== 'fait' && etape.statut !== 'sautee') return false
+  return Date.now() - new Date(etape.traite_le).getTime() < 24 * 3600 * 1000
+}
+
+function AnnulerArreterControl({ etape, onAnnuler, onArreter }) {
+  const [ouvert, setOuvert] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [busy, setBusy] = useState(false)
+  const annulable = estAnnulable(etape)
+  const arretable = etape.statut === 'a_faire'
+  if (!annulable && !arretable) return null
+
+  const annuler = async () => {
+    setBusy(true)
+    try {
+      await onAnnuler(etape.id)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const confirmerArret = async () => {
+    const m = motif.trim()
+    if (!m) return
+    setBusy(true)
+    try {
+      const ok = await onArreter(etape.lead, m)
+      if (ok) { setOuvert(false); setMotif('') }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="flex flex-wrap items-center gap-1.5 pb-1 pl-1" data-testid="cad50-controls">
+      {annulable && (
+        <Button type="button" size="sm" variant="outline" disabled={busy} onClick={annuler}>
+          Annuler
+        </Button>
+      )}
+      {arretable && !ouvert && (
+        <Button
+          type="button" size="sm" variant="outline" disabled={busy}
+          onClick={() => setOuvert(true)}
+        >
+          Arrêter la cadence
+        </Button>
+      )}
+      {arretable && ouvert && (
+        <>
+          <Input
+            placeholder="Motif d'arrêt (obligatoire)" value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            data-testid="cad50-arreter-motif"
+          />
+          <Button
+            type="button" size="sm" variant="outline" disabled={busy}
+            onClick={() => { setOuvert(false); setMotif('') }}
+          >
+            Annuler
+          </Button>
+          <Button type="button" size="sm" disabled={busy || !motif.trim()} onClick={confirmerArret}>
+            Confirmer
+          </Button>
+        </>
+      )}
+    </li>
+  )
+}
+
 export default function RelancesSuiviPage() {
   const navigate = useNavigate()
   const isResponsableOuAdmin = useIsAdminOrResponsable()
   const currentUserId = useSelector((s) => s.auth.user?.id)
   const [onglet, setOnglet] = useState('aujourdhui')
-  const [ownerFiltre, setOwnerFiltre] = useState('moi')
+  // CAD112 — défaut aligné sur le Cockpit (`RelancesDuJourWidget.jsx`), qui
+  // n'envoie AUCUN filtre propriétaire : à « Moi », un admin/responsable
+  // ouvrant le Suivi ne voyait que SES touches alors que le même admin, sur
+  // le même onglet homonyme du cockpit, voyait toute l'équipe. « Tous » ne
+  // PERCE rien : `scope_queryset` reste la seule autorité (un commercial
+  // normal, qui n'a pas ce sélecteur, reste borné à sa propre portée par le
+  // serveur quel que soit `owner`).
+  const [ownerFiltre, setOwnerFiltre] = useState('tous')
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState(false)
@@ -160,6 +382,31 @@ export default function RelancesSuiviPage() {
       return undefined
     } finally {
       setBusyId(null)
+    }
+  }
+
+  // CAD50 — retour arrière (24h, refus motivé du serveur au-delà). Un
+  // refetch fait réapparaître la touche redevenue `a_faire`.
+  const annulerTouche = async (id) => {
+    try {
+      await crmApi.annulerRelanceEtape(id)
+      charger()
+    } catch {
+      toastError('Annulation impossible pour le moment.')
+    }
+  }
+
+  // CAD50 — motif OBLIGATOIRE (même contrat que `SectionPipeline.jsx`).
+  // Renvoie `true`/`false` (jamais un throw non capturé) : le contrôle
+  // referme SEULEMENT sur succès.
+  const arreterCadenceLead = async (leadId, motif) => {
+    try {
+      await crmApi.arreterCadence(leadId, { motif })
+      charger()
+      return true
+    } catch {
+      toastError('Arrêt de la cadence impossible pour le moment.')
+      return false
     }
   }
 
@@ -239,15 +486,20 @@ export default function RelancesSuiviPage() {
                   <h3 className="mb-1.5 text-sm font-semibold capitalize">{jourTitre(jour)}</h3>
                   <ul className="space-y-2">
                     {etapesJour.map((etape) => (
-                      <RelanceEtapeRow
-                        key={etape.id} etape={etape} busyId={busyId} navigate={navigate}
-                        showStatut
-                        readOnly={!actionnable || etape.statut !== 'a_faire'}
-                        onFait={(id, payload) => traiter(id, 'fait', payload)}
-                        onSauter={(id, note) => traiter(id, 'sauter', note)}
-                        onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
-                        onOuvrirMessage={setMessageEtape}
-                      />
+                      <Fragment key={etape.id}>
+                        <RelanceEtapeRow
+                          etape={etape} busyId={busyId} navigate={navigate}
+                          showStatut
+                          readOnly={!actionnable || etape.statut !== 'a_faire'}
+                          onFait={(id, payload) => traiter(id, 'fait', payload)}
+                          onSauter={(id, note) => traiter(id, 'sauter', note)}
+                          onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
+                          onOuvrirMessage={setMessageEtape}
+                        />
+                        <AnnulerArreterControl
+                          etape={etape} onAnnuler={annulerTouche} onArreter={arreterCadenceLead}
+                        />
+                      </Fragment>
                     ))}
                   </ul>
                 </div>
@@ -256,6 +508,8 @@ export default function RelancesSuiviPage() {
           )}
         </CardContent>
       </Card>
+
+      <MesureCadencePanel />
 
       <ToucheMessageDialog
         etape={messageEtape}

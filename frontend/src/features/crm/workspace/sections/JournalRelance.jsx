@@ -13,6 +13,15 @@
 // Distinct de `ArbreHistorique` juste à côté (le chatter CONDENSÉ du client,
 // données déjà chargées par le shell) : ici c'est le PLAN DE RELANCE qui parle,
 // avec ses causes, et c'est une lecture serveur dédiée.
+//
+// CAD142 (round 2, 23/09/2026) — les visites ne sont PAS un type de ligne à
+// part : la preuve d'origine du constat était fausse (`planifier_visite` ne
+// journalise rien) et le Journal reste borné au plan de relance par sa spec.
+// Version minimale retenue : une touche close par l'issue « Visite acceptée »
+// (`RelanceEtape.outcome`) porte déjà ce libellé exact comme `cause` d'une
+// ligne `touche_faite` — le rendu générique ci-dessous (`{ligne.cause}`)
+// suffit, AUCUN code n'a été ajouté ici. Preuve :
+// `JournalRelance.cad142.test.jsx`.
 import { useEffect, useState } from 'react'
 import {
   Check, SkipForward, Ban, Clock3, MessageCircle, TrendingUp, Send,

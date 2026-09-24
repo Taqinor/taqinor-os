@@ -645,6 +645,12 @@ def engagement_followup_engine():
 
         for key, label in to_fire:
             _post_engagement_notification(devis, vendeur, key, label)
+            if key == 'reopened_3x':
+                # CAD130 — la cadence BOUGE : une touche « Proposition
+                # rouverte — appeler » dans la file du CRM, pas seulement une
+                # cloche. Une fois par lien (même idempotence que la
+                # notification), et le CRM décide seul de ses gardes.
+                _poser_touche_signal_reouverture(devis)
             # CAD138 — la date d'allumage est écrite AVEC la clé : c'est elle
             # qui fait courir la péremption du panier.
             marquer_declencheur(link, key, quand=now)
@@ -655,6 +661,25 @@ def engagement_followup_engine():
 
     logger.info('ventes.engagement_followup_engine: %d notification(s)', posted)
     return posted
+
+
+def _poser_touche_signal_reouverture(devis):
+    """CAD130 — « rouverte 3 fois » pose UNE touche d'appel dans la file du
+    lead, par la porte d'écriture du CRM (``apps.crm.services``, frontière M3 :
+    jamais ses modèles). La société est celle du DEVIS. Best-effort : la
+    notification est déjà partie, une touche non posée ne casse rien."""
+    lead_id = getattr(devis, 'lead_id', None)
+    if not lead_id:
+        return None
+    try:
+        from apps.crm.services import (
+            SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal_du_lead_id)
+        return poser_touche_signal_du_lead_id(
+            lead_id, SIGNAL_PROPOSITION_ROUVERTE, company=devis.company)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('CAD130: touche signal échec devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+        return None
 
 
 def _post_engagement_notification(devis, vendeur, key, label):
