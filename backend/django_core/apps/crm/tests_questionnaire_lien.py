@@ -547,8 +547,12 @@ class PublicQuestionnaireTests(TestCase):
     def test_reponse_ecrit_une_note_de_section_et_le_detail_des_champs(self):
         self._post({'section': 'gps',
                     'reponses': {'gps_lat': 34.0, 'gps_lng': -6.8}})
+        # CAD136 × CAD130 — la réponse pose aussi une touche « Questionnaire
+        # complété — appeler », qui laisse SA note système : on compte ici la
+        # seule note de SECTION.
         notes = LeadActivity.objects.filter(
-            lead=self.lead, kind=LeadActivity.Kind.NOTE)
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Questionnaire — section')
         self.assertEqual(notes.count(), 1)
         self.assertIn('localisation GPS', notes.first().body)
         modifs = LeadActivity.objects.filter(

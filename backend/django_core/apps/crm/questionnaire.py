@@ -492,10 +492,16 @@ def appliquer_section(lien, section, reponses=None, photo=None):
     # écrivait une note — sans aucune notification, et `derniere_reponse_at`
     # n'était relu par personne dans tout le dépôt. Le client vient pourtant
     # de passer cinq minutes sur NOTRE formulaire.
-    from .services import SIGNAL_QUESTIONNAIRE, notifier_signal_client
+    from .services import (
+        SIGNAL_QUESTIONNAIRE, notifier_signal_client, poser_touche_signal)
     notifier_signal_client(
         lead, SIGNAL_QUESTIONNAIRE,
         detail=f'Section « {LIBELLE_SECTION[section]} » renseignée.')
+    # CAD136 × CAD130 — et la cadence BOUGE : une touche « Questionnaire
+    # complété — appeler » dans la file, par la mécanique de CAD130 (UNE
+    # touche même si le client répond à neuf sections, jamais hors fenêtre,
+    # jamais sur un lead qu'on ne relance plus). Best-effort par construction.
+    poser_touche_signal(lead, SIGNAL_QUESTIONNAIRE)
     return enregistrees
 
 

@@ -5862,13 +5862,12 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
 # pourtant de passer cinq minutes sur NOTRE formulaire : c'est la meilleure
 # fenêtre de la semaine.
 #
-# CE QUE CE POINT D'ENTRÉE FAIT, ET NE FAIT PAS. Il NOTIFIE. Il ne pose AUCUNE
-# touche : la « touche questionnaire complété, appeler » demandée par CAD136
-# passe par la mécanique de CAD130, qui n'est pas encore construite — et la
-# règle de composition interdit d'en bricoler un substitut local. La photo de
-# facture, elle, appelle une tâche de PRODUCTION (« préparer le devis »), pas
-# une relance : la nuance du round 2 est portée par le LIBELLÉ de la
-# notification, en attendant que CAD130 pose la tâche.
+# CE QUE CE POINT D'ENTRÉE FAIT, ET NE FAIT PAS. Il NOTIFIE, et rien d'autre.
+# Les deux GESTES que ces signaux appellent sont posés par leurs appelants,
+# chacun par sa mécanique : la touche « Questionnaire complété — appeler »
+# par celle de CAD130 (``poser_touche_signal``, plus bas), et la photo de
+# facture, qui appelle une tâche de PRODUCTION (« préparer le devis ») et non
+# une relance (nuance du round 2), par ``poser_etape_preparer_devis``.
 
 #: Les deux natures de signal, et le geste qu'elles appellent. Le libellé dit
 #: au responsable ce qu'il a à faire — jamais un « il s'est passé quelque
@@ -6160,6 +6159,53 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
         logger.warning(
             'CAD130 : touche signal non posée (lead #%s, %s)',
             getattr(lead, 'pk', None), signal, exc_info=True)
+        return None
+
+
+def poser_etape_preparer_devis(lead, *, origine, user=None):
+    """CAD136 — une pièce qui permet de CHIFFRER (la photo de la facture) pose
+    la tâche de PRODUCTION « Préparer et envoyer le devis (ou fixer un
+    rappel) » — jamais une relance (nuance du round 2) : tout est là pour
+    faire le devis, c'est ce geste-là qu'il faut dans la file.
+
+    Même étape, même délai que le filet « client joint » et que la pièce reçue
+    sur WhatsApp (CAD101) : DEMAIN, au prochain créneau d'appel. Une étape
+    « préparer le devis » déjà ouverte n'est ni doublée ni DÉPLACÉE (elle a
+    peut-être été datée à la main). Garde 4 de CAD130 : rien sur un lead ne
+    plus contacter, perdu, archivé ou signé. Best-effort : ne lève jamais.
+    Renvoie l'étape (posée ou déjà ouverte), ou ``None``."""
+    from . import horaires
+
+    if getattr(lead, 'pk', None) is None or refus_touche_signal(lead):
+        return None
+    try:
+        ouverte = (lead.relance_etapes
+                   .filter(libelle__in=(FILET_JOINT_LIBELLE,
+                                        _FILET_JOINT_LIBELLE_ANCIEN),
+                           statut=RelanceEtape.Statut.A_FAIRE)
+                   .order_by('due_date', 'pk').first())
+        if ouverte is not None:
+            return ouverte
+        etape = _poser_etape_de_filet(
+            lead, libelle=FILET_JOINT_LIBELLE, canal=RelanceEtape.Canal.APPEL,
+            vise=timezone.now() + datetime.timedelta(
+                days=FILET_JOINT_DELAI_JOURS),
+            note=f'Posée : {origine}.')
+        _recaler_file(lead, user)
+        quand = etape.due_at.astimezone(horaires.CASABLANCA)
+        # Note SYSTÈME (``user=None``) : poser une tâche n'est pas un contact.
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'{origine[:1].upper()}{origine[1:]} : étape « '
+                  f'{FILET_JOINT_LIBELLE} » posée pour le '
+                  f'{quand:%d/%m/%Y à %H:%M} — tâche de production, pas une '
+                  'relance.'))
+        return etape
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'CAD136 : étape « préparer le devis » non posée (lead #%s)',
+            getattr(lead, 'pk', None), exc_info=True)
         return None
 
 
