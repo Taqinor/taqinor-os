@@ -1,0 +1,73 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/releve-visite/",
+  "pourquoi": "CALX336 — la REPRISE d'une visite technique dans un calepinage. `apps/visites/visite_checklist.py` déclare des mesures réelles (longueur, largeur, pente, orientation, couverture…) et des emplacements photo, mais la seule porte visite → reste de l'ERP est `apps/visites/selectors.py::texture_toit_pour_lead` (une image) : ce que le commercial a mesuré sur le toit ne sort nulle part, et le concepteur le ressaisit. Ce contrat part SEUL (PACT10) avant ses trois moitiés : la LECTURE côté visites (`apps.visites.selectors.releve_pour_calepinage`, CALX363 — elle sert `visite_id`, `validee_le`, `mesures`, `photos`, `motif_absence`), l'ACTION côté calepinage (`views/reprise_visite.py` + `services/reprise_visite.py`, CALX364 — elle ajoute `deja_repris` et `releve`) et l'ONGLET de l'atelier (`atelier/RepriseVisite.jsx`, CALX365). GET et POST partagent la MÊME action (`url_path='releve-visite'`) et la MÊME forme : le GET montre la dernière visite VALIDÉE du lead du calepinage ; le POST la reprend (UN `ReleveTerrain` créé, les `PhotoSite` rattachées aux pièces jointes EXISTANTES sans les redupliquer) et rend la même réponse, `deja_repris: true` et `releve` rempli. Un second POST ne crée rien : il rend `deja_repris: true` et le relevé DÉJÀ créé. LA PROVENANCE ÉCRITE CÔTÉ CALEPINAGE est nommée dans `releve.provenance` (et sur chaque photo de `releve.photos`) : `'visite'` pour ce qui vient d'une visite reprise, `'saisie'` pour tout l'existant et toute saisie à la main (valeur par défaut de la migration, D12) — un concepteur voit toujours d'où vient une cote. RIEN N'EST SERVI TANT QUE LA VISITE N'EST PAS VALIDÉE (feu vert du bureau d'études) : une visite en cours, terminée ou renvoyée ne sort pas. Sans visite validée, les MÊMES clés sortent à `null` (`exemple_vide`) — jamais une seconde forme de réponse — et `motif_absence` NOMME ce qui manque : aucune visite, ou une visite pas encore validée (l'onglet l'affiche tel quel). UNE MESURE NON SAISIE EST OMISE de `mesures`, jamais servie à `null` : ici la longueur estimée du cheminement (`longueur_estimee_m`) et les mesures du local onduleur n'ont pas été relevées, elles n'apparaissent donc pas. `valeur` n'est jamais `null` ; `unite` est l'unité DÉCLARÉE par le libellé de la checklist (« (m) », « (°) », « (A) », « (cm) ») et vaut `null` pour une mesure SANS unité (choix, booléen, texte, nombre sans unité). AUCUNE MESURE N'EST CONVERTIE NI COMPLÉTÉE (D7) : l'orientation reste le choix saisi (« sud »), jamais un azimut deviné. `photos` liste chaque photo retenue de la visite (une photo marquée « à refaire » n'en fait pas partie) avec son emplacement de checklist et l'identifiant de sa `records.Attachment` — la pièce jointe n'est pas copiée. `validee_le` est l'instant du feu vert : `VisiteTerrain` ne l'horodate PAS aujourd'hui (`services.valider_visite` n'écrit que `statut`, sans même bouger `updated_at`) — tant qu'aucun horodatage de validation n'est stocké, la lecture le sert à `null`, jamais une autre date (`date_realisee`, `updated_at`) présentée à sa place. La société vient du LEAD du calepinage : une visite d'une autre société ne peut structurellement pas sortir. Toutes les valeurs de ce document sont des PLACEHOLDERS assumés (identifiants à un ou deux chiffres, mesures d'essai) ; les libellés sont ceux de la checklist, recopiés.",
+  "exemple": {
+    "visite_id": 7,
+    "validee_le": "2026-09-18T16:40:00+01:00",
+    "mesures": [
+      { "code": "longueur_m", "libelle": "Longueur de la zone utile (m)", "valeur": 12.5, "unite": "m" },
+      { "code": "largeur_m", "libelle": "Largeur de la zone utile (m)", "valeur": 8.0, "unite": "m" },
+      { "code": "pente_deg", "libelle": "Pente du toit (°)", "valeur": 15.0, "unite": "°" },
+      { "code": "toit_plat", "libelle": "Toit plat", "valeur": false, "unite": null },
+      { "code": "orientation", "libelle": "Orientation du pan", "valeur": "sud", "unite": null },
+      { "code": "type_couverture", "libelle": "Type de couverture", "valeur": "tuile", "unite": null },
+      { "code": "etat_couverture", "libelle": "État de la couverture", "valeur": "bon", "unite": null },
+      { "code": "calibre_disjoncteur_a", "libelle": "Calibre du disjoncteur principal (A)", "valeur": 63, "unite": "A" },
+      { "code": "type_alimentation", "libelle": "Type d’alimentation", "valeur": "mono", "unite": null }
+    ],
+    "photos": [
+      { "slot_code": "toiture_vue_generale", "libelle": "Vue générale du toit", "attachment_id": 41 },
+      { "slot_code": "toiture_vue_generale", "libelle": "Vue générale du toit", "attachment_id": 42 },
+      { "slot_code": "toiture_obstacles", "libelle": "Obstacles et ombrages", "attachment_id": 43 },
+      { "slot_code": "general_facade", "libelle": "Façade du bâtiment", "attachment_id": 44 }
+    ],
+    "motif_absence": null,
+    "deja_repris": true,
+    "releve": {
+      "id": 3,
+      "provenance": "visite",
+      "releve_le": "2026-09-19",
+      "releve_par": "concepteur.essai",
+      "created_at": "2026-09-19T10:05:00+01:00",
+      "photos": [
+        { "id": 11, "attachment_id": 41, "slot_code": "toiture_vue_generale", "provenance": "visite" },
+        { "id": 12, "attachment_id": 42, "slot_code": "toiture_vue_generale", "provenance": "visite" },
+        { "id": 13, "attachment_id": 43, "slot_code": "toiture_obstacles", "provenance": "visite" },
+        { "id": 14, "attachment_id": 44, "slot_code": "general_facade", "provenance": "visite" }
+      ]
+    }
+  },
+  "exemple_avant_reprise": {
+    "visite_id": 7,
+    "validee_le": "2026-09-18T16:40:00+01:00",
+    "mesures": [
+      { "code": "longueur_m", "libelle": "Longueur de la zone utile (m)", "valeur": 12.5, "unite": "m" },
+      { "code": "largeur_m", "libelle": "Largeur de la zone utile (m)", "valeur": 8.0, "unite": "m" },
+      { "code": "pente_deg", "libelle": "Pente du toit (°)", "valeur": 15.0, "unite": "°" },
+      { "code": "toit_plat", "libelle": "Toit plat", "valeur": false, "unite": null },
+      { "code": "orientation", "libelle": "Orientation du pan", "valeur": "sud", "unite": null },
+      { "code": "type_couverture", "libelle": "Type de couverture", "valeur": "tuile", "unite": null },
+      { "code": "etat_couverture", "libelle": "État de la couverture", "valeur": "bon", "unite": null },
+      { "code": "calibre_disjoncteur_a", "libelle": "Calibre du disjoncteur principal (A)", "valeur": 63, "unite": "A" },
+      { "code": "type_alimentation", "libelle": "Type d’alimentation", "valeur": "mono", "unite": null }
+    ],
+    "photos": [
+      { "slot_code": "toiture_vue_generale", "libelle": "Vue générale du toit", "attachment_id": 41 },
+      { "slot_code": "toiture_vue_generale", "libelle": "Vue générale du toit", "attachment_id": 42 },
+      { "slot_code": "toiture_obstacles", "libelle": "Obstacles et ombrages", "attachment_id": 43 },
+      { "slot_code": "general_facade", "libelle": "Façade du bâtiment", "attachment_id": 44 }
+    ],
+    "motif_absence": null,
+    "deja_repris": false,
+    "releve": null
+  },
+  "exemple_vide": {
+    "visite_id": null,
+    "validee_le": null,
+    "mesures": null,
+    "photos": null,
+    "motif_absence": "La visite technique de ce lead n'est pas encore validée par le bureau d'études : ses mesures et ses photos ne sont pas reprises tant que le feu vert n'est pas donné.",
+    "deja_repris": false,
+    "releve": null
+  }
+}
