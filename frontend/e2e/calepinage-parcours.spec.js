@@ -253,6 +253,31 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
+  // ── 0ter. PRÉREQUIS D'ENVIRONNEMENT : UNE CARTE SERVIE (FIX-M5-E2E). ─────
+  // Tous les gestes ci-dessous vivent dans le CONSTRUCTEUR (`initRoofToolPro8`
+  // → `createMapDraw`, qui crée lui-même `#rp9-snap-angle`). Or l'atelier ne le
+  // boote QUE si le serveur publie une carte (`design-context` → `carte`, lue
+  // par `_config_carte()` dans `PUBLIC_MAPTILER_KEY`) ; sans elle il s'arrête
+  // en NOMMANT la panne (`ToitureDesign.jsx` `bootCalepinage`) — et `#rp9-map`,
+  // simple conteneur JSX, reste « visible » quand même. Le job e2e de la CI ne
+  // pose AUCUNE clé MapTiler (secret non provisionné) : ce parcours n'y est
+  // donc pas rejouable, et il le DIT (skip motivé) au lieu d'échouer 15 s plus
+  // loin sur une puce jamais créée. La vérité vient du SERVEUR (même porte que
+  // l'écran), jamais d'une variable devinée côté spec : là où la carte est
+  // servie, le parcours complet se joue, inchangé.
+  const contexteRes = await page.request.get(
+    `${API}/calepinages/${calepinageId}/design-context/`)
+  expect(contexteRes.ok(),
+    `design-context refusé : ${contexteRes.status()}`).toBeTruthy()
+  const { carte } = await contexteRes.json()
+  if (!carte?.available) {
+    // Même sans carte, l'écran ne montre jamais une carte morte muette.
+    await expect(page.getByRole('alert').filter({ hasText: 'clé MapTiler' })).toBeVisible()
+  }
+  test.skip(!carte?.available,
+    'carte indisponible sur cet environnement (le serveur ne publie aucune clé MapTiler) : '
+    + 'le constructeur de l’atelier ne boote pas — gestes CALX89…CALX109 non rejouables ici')
+
   // ── 1. LA CARTE ──────────────────────────────────────────────────────────
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
