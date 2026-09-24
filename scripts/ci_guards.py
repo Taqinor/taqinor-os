@@ -217,6 +217,17 @@ GARDES = {
         ('Test the declared-document-renders checker itself (CALX329)',
          'python -m unittest scripts.tests.test_check_documents_calepinage -v',
          '.'),
+        # CALX381 (lot 8, 23/09/2026) — meme famille que check_services_appeles/
+        # check_ecrans_atteignables : rapport_backend_sombre.py ecarte EXPRES
+        # les sous-routes @action de son perimetre (« une @action n'est pas
+        # une ressource ») — angle mort total sur les 71 @action calepinage,
+        # dont 21 sans aucun consommateur au 23/09/2026.
+        ('Check actions calepinage consommées (aucune @action sans appelant, CALX381)',
+         'python scripts/check_calepinage_actions_consommees.py',
+         '.'),
+        ('Test the calepinage-actions-consumed checker itself (CALX381)',
+         'python -m unittest scripts.tests.test_check_calepinage_actions_consommees -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',

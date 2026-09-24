@@ -1,0 +1,38 @@
+# Base de reference de check_calepinage_actions_consommees.py — DETTE
+# HISTORIQUE, RIEN D'AUTRE (CALX381).
+#
+# Chaque ligne est une `@action` de `apps/calepinage/views/*.py` qu'AUCUN
+# appel axios de frontend/src ni aucun `window.open`/`href` ne consomme.
+# Cette liste gele l'etat du jour : la garde empeche la RECIDIVE, elle ne
+# repare pas le passif — chaque ligne drainee est une action enfin branchee,
+# retiree du code, ou expliquee par un vrai consommateur non litteral.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - brancher (ou supprimer) une action puis `python
+#     scripts/check_calepinage_actions_consommees.py --write-baseline` retire
+#     sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# Format : `<fichier>:<ligne>  <url_path>  # <raison datee>`.
+backend/django_core/apps/calepinage/views/archivage.py:51  archiver  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/archivage.py:67  restaurer-corbeille  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:45  rapport-etude.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:214  apercu-document  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:273  plan-cablage.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:302  plan-cablage.dxf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:357  export-projet.json  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:453  rapport-ombrage.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:492  manuel-proprietaire.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:525  document-asbuilt.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:554  presentation-compacte.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/documents.py:610  dossier-fin-chantier  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/io_layout.py:37  export-layout  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/io_layout.py:45  import-layout  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:179  planche.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:198  planche.svg  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:244  plan-pose.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:253  plan-toiture.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:262  plan-masse.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:272  note-calcul.pdf  # non consommee au 23/09/2026 (CALX381)
+backend/django_core/apps/calepinage/views/sorties.py:291  export.dxf  # non consommee au 23/09/2026 (CALX381)
