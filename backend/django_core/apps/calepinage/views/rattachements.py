@@ -105,6 +105,10 @@ from . import plan_importe as _plan_importe_action  # noqa: F401
 # (``views/documents.py`` : ``rapport-etude.pdf`` d'abord, puis les pièces
 # suivantes du lot dans le MÊME fichier). Lecture PURE : aucun statut ne bouge.
 from . import documents as _documents_actions  # noqa: F401
+# CALX341 — même patron : rattache ``comparer-projets`` (comparatif de 1 à 5
+# calepinages, action de liste) et ``comparatif.xlsx`` (le même en classeur).
+# Lecture PURE : aucune simulation lancée, aucun statut ne bouge.
+from . import comparaison_projets as _comparaison_projets_actions  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -133,6 +137,7 @@ MODULES_RATTACHES = (
 
     'plan_importe',  # CALX107
     'documents',  # CALX297
+    'comparaison_projets',  # CALX341
 )
 
 __all__ = ['MODULES_RATTACHES']

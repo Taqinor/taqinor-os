@@ -40,6 +40,7 @@ __all__ = [
     'rangees_du_pan', 'table_modules', 'table_chaines', 'table_nomenclature',
     'tables_du_resultat',
     'classeur_octets', 'csv_octets', 'exporter_xlsx', 'exporter_csv',
+    'FEUILLE_COMPARATIF', 'exporter_comparatif_xlsx',
 ]
 
 #: Les trois feuilles, dans l'ordre du classeur.
@@ -345,3 +346,57 @@ def exporter_xlsx(calepinage):
 def exporter_csv(calepinage, feuille=None):
     """La variante CSV d'une feuille du même classeur."""
     return csv_octets(_tables_du_calepinage(calepinage), feuille=feuille)
+
+
+# ── CALX341 — la feuille « Comparatif » de plusieurs calepinages ───────────
+
+#: Le titre de la feuille du comparatif de calepinages (CALX341).
+FEUILLE_COMPARATIF = 'Comparatif'
+
+
+def _table_comparatif(comparaison):
+    """``(entetes, lignes)`` du comparatif — LU dans la réponse du service.
+
+    Les colonnes de grandeurs sont EXACTEMENT celles du contrat
+    (``comparaison['colonnes']``, source unique
+    ``services/comparaison_projets.COLONNES``) : l'écran et le classeur ne
+    peuvent pas diverger. Une grandeur non simulée reste une cellule VIDE
+    (``coerce_cell(None)``), jamais un 0 ; son motif est recopié dans la
+    dernière colonne. Les identifiants REFUSÉS (autre société ou inexistants)
+    sont listés en fin de feuille avec leur motif : un classeur qui les
+    tairait laisserait croire qu'ils ont été comparés.
+    """
+    colonnes = list((comparaison or {}).get('colonnes') or ())
+    entetes = (['Calepinage', 'Statut', 'Simulé']
+               + ['%s (%s)' % (colonne['libelle'], colonne['unite'])
+                  if colonne.get('unite') else colonne['libelle']
+                  for colonne in colonnes]
+               + ['Motif'])
+    lignes = []
+    for ligne in (comparaison or {}).get('lignes') or ():
+        lignes.append(
+            [ligne.get('titre') or 'Calepinage #%s' % ligne.get('id'),
+             ligne.get('statut') or '',
+             'oui' if ligne.get('simule') else 'non']
+            + [ligne.get(colonne['cle']) for colonne in colonnes]
+            + [ligne.get('motif') or ''])
+    for refus in (comparaison or {}).get('refus') or ():
+        lignes.append(['Calepinage #%s' % refus.get('id'), '', '']
+                      + [None for _colonne in colonnes]
+                      + [refus.get('motif') or ''])
+    return entetes, lignes
+
+
+def exporter_comparatif_xlsx(comparaison):
+    """CALX341 — le classeur d'UNE feuille « Comparatif », en octets.
+
+    AUCUN prix : la garde ``verifier_absence_de_prix`` porte sur les en-têtes
+    et sur toutes les cellules produites par le serveur. La colonne
+    « Calepinage » (le TITRE saisi par l'utilisateur) en est exclue, et c'est
+    voulu : un titre n'est pas une donnée de coût, et un nom de famille comme
+    « Hammadi » contient la sous-chaîne « mad » — la garde refuserait
+    l'export d'un client pour son nom.
+    """
+    entetes, lignes = _table_comparatif(comparaison)
+    verifier_absence_de_prix(entetes, [ligne[1:] for ligne in lignes])
+    return classeur_octets([(FEUILLE_COMPARATIF, entetes, lignes)])
