@@ -97,6 +97,13 @@ const QUESTIONS = {
     question: 'Résultat de la touche ?',
     reponses: [
       { outcome: 'joint', label: 'Client joint' },
+      // VISCAD6-B (fondateur 24/09/2026) — « après l'appel il n'y a plus
+      // rien à faire, sauf organiser la visite » : la planification peut se
+      // caler dès la PRISE DE CONTACT, pas seulement après l'envoi du devis
+      // — issue SERVEUR existante (LeadActivity.OUTCOMES), jamais une
+      // nouvelle valeur inventée ici.
+      { outcome: 'visite_acceptee', label: 'Visite acceptée',
+        precision: 'La planification s’ouvre juste après la confirmation.' },
       { outcome: 'non_joint', label: 'Pas de réponse' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
       { outcome: 'refuse', label: 'Refus' },
@@ -114,11 +121,16 @@ const QUESTIONS = {
       // couvert par « À rappeler le… ». Aucune valeur d'énumération ajoutée
       // ni retirée côté serveur ; l'historique garde son libellé d'origine.
       { outcome: 'joint', label: 'Client joint' },
-      // VISCAD6 (fondateur 15/09/2026) — « la visite devient une étape du
-      // suivi commercial » : issue SERVEUR existante (LeadActivity.OUTCOMES,
-      // jamais une nouvelle valeur inventée ici), choisie quand le client dit
-      // oui à la visite pendant le suivi de proposition — ouvre la modale de
+      // VISCAD6 (fondateur 15/09/2026, ÉLARGI 24/09/2026) — « la visite
+      // devient une étape du suivi commercial » : issue SERVEUR existante
+      // (LeadActivity.OUTCOMES, jamais une nouvelle valeur inventée ici),
+      // choisie quand le client dit oui à la visite — ouvre la modale de
       // planification juste après confirmation (confirmerFait ci-dessous).
+      // Décision fondateur du 24/09/2026 : « après l'appel il n'y a plus
+      // rien à faire, sauf organiser la visite » — la même réponse est
+      // désormais proposée dès la prise de contact (cadence `contact`), le
+      // réveil et le filet générique (voir `contact`/`reveil`/`generique`
+      // ci-dessous), pas seulement après l'envoi du devis.
       { outcome: 'visite_acceptee', label: 'Visite acceptée',
         precision: 'La planification s’ouvre juste après la confirmation.' },
       { outcome: 'non_joint', label: 'Sans réponse' },
@@ -134,6 +146,11 @@ const QUESTIONS = {
     question: 'Où en est ce dossier ?',
     reponses: [
       { outcome: '', label: 'Fait — passer à la suite' },
+      // VISCAD6-B (fondateur 24/09/2026) — le filet générique couvre aussi
+      // bien un rappel qu'une relance sans devis : la visite peut se caler
+      // ici aussi, même issue serveur que les autres cadences.
+      { outcome: 'visite_acceptee', label: 'Visite acceptée',
+        precision: 'La planification s’ouvre juste après la confirmation.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
       { outcome: 'refuse', label: 'Client refuse' },
     ],
@@ -148,6 +165,11 @@ QUESTIONS.reveil = {
   question: 'Résultat du réveil ?',
   reponses: [
     { outcome: 'joint', label: 'Client joint' },
+    // VISCAD6-B (fondateur 24/09/2026) — un réveil qui aboutit à un oui pour
+    // la visite se planifie tout de suite, même issue serveur que les autres
+    // cadences.
+    { outcome: 'visite_acceptee', label: 'Visite acceptée',
+      precision: 'La planification s’ouvre juste après la confirmation.' },
     { outcome: 'non_joint', label: 'Pas de réponse' },
     { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
     { outcome: 'refuse', label: 'Refus' },
