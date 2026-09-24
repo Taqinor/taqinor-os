@@ -18,7 +18,6 @@
 #
 # Format : `<nom_de_fichier.json>  # <raison datee>`.
 calepinage_approbation.json  # sans moitié cliente au 23/09/2026 (CALX385)
-calepinage_asbuilt_ecarts.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_fixation_bom.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_incertitude.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_meteo.json  # sans moitié cliente au 23/09/2026 (CALX385)

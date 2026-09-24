@@ -481,6 +481,15 @@ const calepinageApi = {
     // champ `visite_id`, le motif du serveur tel quel.
     releveVisite: (id) => api.get(`${pivot(id)}releve-visite/`),
     reprendreVisite: (id) => api.post(`${pivot(id)}releve-visite/`),
+    // CALX367 — la POSE RÉELLE et ses écarts (contrat
+    // `contract_samples/calepinage_asbuilt_ecarts.json`, CALX337 ; porte
+    // `views/asbuilt.py`, CALX366). UNE URL, UNE forme en GET comme en POST :
+    // POST `{pan, modules_poses, ecarts_position, releve_le}` saisit UN pan,
+    // POST `{creer_version: true}` gèle une version des écarts. Un refus 400
+    // NOMME le champ (`pan`, `modules_poses`, `releve_le`, `creer_version`).
+    poseReelle: (id) => api.get(`${pivot(id)}pose-reelle/`),
+    enregistrerPoseReelle: (id, corps) => api.post(`${pivot(id)}pose-reelle/`, corps),
+    creerVersionPoseReelle: (id) => api.post(`${pivot(id)}pose-reelle/`, { creer_version: true }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
