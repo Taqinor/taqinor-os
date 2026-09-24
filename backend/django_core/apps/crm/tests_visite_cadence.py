@@ -100,6 +100,29 @@ class VisiteCadenceBase(TestCase):
             qs = qs.filter(libelle=libelle)
         return qs
 
+    def _devis_envoye(self):
+        """Un devis ENVOYÉ au client (sorti du brouillon).
+
+        Décision fondateur du 24/09/2026 : sans devis parti, le retour
+        terrain ne pose plus de débrief « rappeler le client » mais l'étape
+        « Préparer et envoyer le devis » (``tests_visite_sans_devis_suite``).
+        Les tests de la MÉCANIQUE du débrief (calage, renommage, jamais
+        repoussé) portent donc désormais un devis envoyé : c'est le cas où
+        le débrief reste la bonne suite."""
+        from decimal import Decimal
+
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+
+        client = Client.objects.create(
+            company=self.company, nom='Bennani',
+            email='vcadcrm-bennani@example.com')
+        return Devis.objects.create(
+            company=self.company, reference='DEV-VCAD-00001', client=client,
+            lead=self.lead, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20.00'),
+            date_envoi=MAINTENANT - datetime.timedelta(days=5))
+
     def _touche_generique_ouverte(self, ordre=1, jour=None):
         """Une touche du GABARIT après-devis, ouverte — ce que la visite
         doit faire TAIRE (décaler), jamais tuer."""
@@ -348,6 +371,13 @@ class VisitePlanifieeTests(VisiteCadenceBase):
 
 
 class RetourVisiteTests(VisiteCadenceBase):
+    """Retour terrain d'une visite faite APRÈS l'envoi du devis (décision
+    fondateur du 24/09/2026 : sans devis, voir
+    ``tests_visite_sans_devis_suite``)."""
+
+    def setUp(self):
+        super().setUp()
+        self._devis_envoye()
 
     RETOUR = {
         'notes': 'Le tableau est saturé, prévoir un départ dédié.',
@@ -529,7 +559,15 @@ class QualificationDansLeChatterTests(VisiteCadenceBase):
 
 
 class DebriefCaleSurLaQualificationTests(VisiteCadenceBase):
-    """AMENDEMENT n°2 — c'est le terrain qui décide de la suite."""
+    """AMENDEMENT n°2 — c'est le terrain qui décide de la suite.
+
+    Devis envoyé : c'est le cas où la suite est un DÉBRIEF (décision
+    fondateur du 24/09/2026 — sans devis, la suite est la préparation du
+    devis, au même délai : ``tests_visite_sans_devis_suite``)."""
+
+    def setUp(self):
+        super().setUp()
+        self._devis_envoye()
 
     RETOUR = {'notes': '', 'commentaires_photos': [], 'nb_photos': 0}
 
