@@ -197,12 +197,18 @@ describe('LW37 — adversité du moteur (blueprint D2)', () => {
   it('F4 — le raccourci « ⋯ » du rail recharge la frise de cadence (CadenceFrise)', async () => {
     renderEdit()
     await settled()
-    // Chargement initial de la frise, au montage de SectionPipeline.
-    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1))
+    // CAD48 — l'assertion « appelé 1 fois » est PÉRIMÉE : depuis CAD48, le
+    // champ « Relance le » (SectionPipeline, en LECTURE SEULE) lit lui aussi
+    // `getRelanceEtapesLead` pour savoir si une cadence est encore active —
+    // en plus du chargement initial de CadenceFrise. Deux lecteurs, deux
+    // appels légitimes au montage, jamais une seule requête dupliquée.
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(2))
     fireEvent.click(screen.getByText('rail-relance-cadence'))
     await waitFor(() => expect(crmApi.initialiserRelance).toHaveBeenCalledWith(1, { cadence: 'contact' }))
-    // La frise doit être rechargée UNE SECONDE fois après résolution.
-    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(2))
+    // CAD48 — même raison : le raccourci bump `relanceVersion`, qui refait
+    // recalculer LES DEUX lecteurs (CadenceFrise ET le champ « Relance le »
+    // de SectionPipeline) — deux appels de plus après résolution.
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(4))
   })
 })
 
