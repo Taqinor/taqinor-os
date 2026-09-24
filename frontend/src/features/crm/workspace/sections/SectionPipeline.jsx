@@ -137,6 +137,8 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   const { labels: canalLabels } = useCanaux()
   const perdu = !!getField(state, 'perdu')
   const neplusContacter = !!getField(state, 'ne_plus_contacter')
+  // CAD144 — même règle que SectionContact : `pii_masked` vient du serveur.
+  const piiMasked = !!(state.server && state.server.pii_masked)
   const ownerSuggested = isSuggested(state, 'owner')
   // MRY15 — bumped après « Relancer »/« Arrêter la cadence » pour forcer
   // CadenceFrise à recharger, sans dupliquer sa logique réseau ici.
@@ -310,6 +312,39 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             {tagOptions.map((t) => <option key={t.id} value={t.nom} />)}
           </datalist>
         </div>
+      </div>
+      {/* CAD144 — coopérative, comité industriel : un SECOND interlocuteur
+          (co-associé, technicien). Champ libre, rien d'automatique : aucune
+          relance ne lui part — le joindre reste un geste manuel. Le numéro
+          est une PII (verrouillé sans `client_pii_voir`, comme le principal). */}
+      <div className="form-row" data-testid="contact-secondaire">
+        <FormField
+          label="Contact secondaire (nom)" htmlFor="lf-contact-secondaire-nom"
+          error={errors.contact_secondaire_nom}
+        >
+          <Input
+            id="lf-contact-secondaire-nom" invalid={!!errors.contact_secondaire_nom}
+            value={v('contact_secondaire_nom')}
+            placeholder="ex : co-associé, technicien d’usine"
+            onChange={(e) => setField('contact_secondaire_nom', e.target.value)}
+          />
+        </FormField>
+        <FormField
+          label="Contact secondaire (téléphone)" htmlFor="lf-contact-secondaire-tel"
+          error={errors.contact_secondaire_telephone}
+        >
+          <Input
+            id="lf-contact-secondaire-tel" type="tel" invalid={!!errors.contact_secondaire_telephone}
+            value={v('contact_secondaire_telephone')} disabled={piiMasked}
+            title={piiMasked
+              ? 'Coordonnées masquées — votre rôle ne permet pas de voir/modifier les données personnelles.'
+              : undefined}
+            onChange={(e) => setField('contact_secondaire_telephone', e.target.value)}
+          />
+        </FormField>
+        <p className="w-full text-xs text-muted-foreground">
+          Aucune relance automatique n’est adressée à ce contact : le joindre reste un geste manuel.
+        </p>
       </div>
       {/* QW3 — préférence de contact explicite (posée par le site/webhook),
           lecture seule ici. */}

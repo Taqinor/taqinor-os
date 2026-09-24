@@ -68,6 +68,10 @@ export const TRACKED_KEYS = [
   'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
   'equip_ve_statut', 'pompage_heures_jour', 'pompe_alim_actuelle',
   'carburant_litres_mois',
+  // CAD144 — contact SECONDAIRE (coopérative, comité industriel) : champ
+  // libre du Suivi commercial, qu'aucune cadence ne lit (contrat
+  // `lead_contact_secondaire`).
+  'contact_secondaire_nom', 'contact_secondaire_telephone',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -176,7 +180,9 @@ export const SECTION_FIELDS = {
   pipeline: ['owner', 'canal', 'contact_preference', 'priorite',
     'langue_preferee', 'tags', 'motif_perte', 'relance_date',
     'type_installation', 'montant_estime', 'date_cloture_prevue',
-    'objectif_projet', 'decideur', 'devis_concurrents'],
+    'objectif_projet', 'decideur', 'devis_concurrents',
+    // CAD144 — le second interlocuteur (saisie libre, aucune automatisation).
+    'contact_secondaire_nom', 'contact_secondaire_telephone'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
     'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221'],
   // L4 — questionnaire d'appel (occupation + équipements piscine/VE/clim/
@@ -339,6 +345,8 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     taille_souhaitee_kwc: '', batterie_souhaitee: '',
     visite_prevue_le: '', visite_effectuee: false, visite_notes: '',
     note: '', custom_data: {},
+    // CAD144 — contact secondaire : vide à la création (⇒ null serveur).
+    contact_secondaire_nom: '', contact_secondaire_telephone: '',
   }
 }
 

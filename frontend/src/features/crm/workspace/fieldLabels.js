@@ -43,6 +43,13 @@ const fieldLabels = {
   langue_preferee: { label: 'Langue préférée', section: 'pipeline', inputId: 'lf-langue-preferee' },
   tags: { label: 'Tags (séparés par des virgules)', section: 'pipeline', inputId: 'lf-tags' },
   motif_perte: { label: 'Motif de perte', section: 'pipeline', inputId: 'lf-motif-perte' },
+  // CAD144 — libellés = `verbose_name` serveur (apps/crm/models.py).
+  contact_secondaire_nom: {
+    label: 'Contact secondaire (nom)', section: 'pipeline', inputId: 'lf-contact-secondaire-nom',
+  },
+  contact_secondaire_telephone: {
+    label: 'Contact secondaire (téléphone)', section: 'pipeline', inputId: 'lf-contact-secondaire-tel',
+  },
 
   // ── Profil énergétique (energie) ──────────────────────────────────────
   facture_hiver: { label: 'Facture mensuelle (MAD/mois)', section: 'energie', inputId: 'lf-facture-hiver' },

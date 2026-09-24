@@ -34,8 +34,11 @@ from .scoring import compute_score, score_label, score_reasons
 # d'activité, donc PAR CONSTRUCTION sur les trois surfaces qui servent le
 # chatter (action ``historique``, ``chatter_recent`` embarqué au retrieve, et
 # l'enveloppe uniforme ARC9).
+#: CAD144 — + le téléphone du contact SECONDAIRE (co-associé, technicien) :
+#: un numéro reste une PII, qu'il soit le premier ou le second de la fiche.
 LEAD_PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
-                   'gps_lat', 'gps_lng', 'lien_maps')
+                   'gps_lat', 'gps_lng', 'lien_maps',
+                   'contact_secondaire_telephone')
 
 #: Remplacement affiché à la place d'une valeur PII masquée.
 PII_MASQUE = '•••'

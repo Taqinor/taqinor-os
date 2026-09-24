@@ -611,6 +611,23 @@ class Lead(SoftDeleteModel):
     adresse = models.TextField(blank=True, null=True)
     ville = models.CharField(max_length=120, blank=True, null=True)
 
+    # CAD144 (audit L3 du 21/09/2026) — un achat de coopérative ou un comité
+    # industriel a PLUSIEURS interlocuteurs (co-associé, technicien d'usine).
+    # Un champ libre, visible sur la fiche, et RIEN d'autre : aucune cadence,
+    # aucun message, aucune dédup ne lit jamais ces deux colonnes — le
+    # protocole vers ce second contact reste MANUEL. Le téléphone est une PII
+    # (masqué sans `client_pii_voir`, comme le numéro principal).
+    contact_secondaire_nom = models.CharField(
+        max_length=255, blank=True, null=True,
+        verbose_name='Contact secondaire (nom)',
+        help_text='Co-associé de coopérative, technicien d’usine, membre du '
+                  'comité… Aucune relance automatique ne lui est adressée.')
+    contact_secondaire_telephone = models.CharField(
+        max_length=50, blank=True, null=True,
+        verbose_name='Contact secondaire (téléphone)',
+        help_text='Numéro du second interlocuteur — jamais utilisé par la '
+                  'cadence : le contacter reste un geste manuel.')
+
     # Client (fiche structurée) résolu depuis ce lead — rempli au premier devis
     # ou manuellement ; la résolution évite les doublons (voir services.py).
     client = models.ForeignKey(
