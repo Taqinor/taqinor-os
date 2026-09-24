@@ -154,6 +154,60 @@ QUESTIONS.reveil = {
   ],
 }
 
+// CAD2 — la nature d'un geste de VISITE (rendez-vous technique) se lit sur
+// son LIBELLÉ (`services._LIBELLES_VISITE`), jamais sur sa cadence : les
+// quatre gestes du rendez-vous portent tous la cadence `apres_devis`
+// (VISITE-CADENCE, pour vivre dans la même frise) — avant CAD2, ils
+// héritaient donc du jeu de questions du suivi de proposition
+// (« Visite acceptée », « Refuse la proposition »…), qui ne correspond à
+// AUCUN d'eux. Chacun pose désormais SA question, sur les issues EXISTANTES
+// du panneau « Fait » (contrat `relance_etape_v2`, `exemple_debrief_visite` :
+// mêmes clés `suites` que le suivi de proposition — joint/visite_acceptee/
+// non_joint/rappel/refuse) — jamais une valeur d'énumération neuve, et
+// jamais « Intéressé » (retiré par CAD4, même effet moteur que
+// « Client joint »). Patron « libellé + note » (comme Répondeur/Occupé,
+// CKP4) : une nuance plus précise que l'issue brute se dirait en note,
+// jamais en nouvelle clé.
+const QUESTIONS_VISITE = {
+  'Planifier la visite technique convenue': {
+    question: 'La date du rendez-vous a-t-elle été calée ?',
+    reponses: [
+      { outcome: 'visite_acceptee', label: 'Oui, la date est calée',
+        precision: 'La planification s’ouvre juste après la confirmation.' },
+      { outcome: 'non_joint', label: 'Sans réponse' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Ne veut plus de visite' },
+    ],
+  },
+  'Confirmer la visite (veille)': {
+    question: 'Le rendez-vous de demain est-il confirmé ?',
+    reponses: [
+      { outcome: 'joint', label: 'Confirmé — le rendez-vous tient' },
+      { outcome: 'non_joint', label: 'Sans réponse' },
+      { outcome: 'rappel', label: 'Reportée à une autre date', rappel: true },
+      { outcome: 'refuse', label: 'Annule le rendez-vous' },
+    ],
+  },
+  'Débrief visite — rappeler le client': {
+    question: 'La visite a-t-elle eu lieu ?',
+    reponses: [
+      { outcome: 'joint', label: 'Oui, client joint après la visite' },
+      { outcome: 'non_joint', label: 'Sans réponse' },
+      { outcome: 'rappel', label: 'Visite reportée — à rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Refuse la proposition' },
+    ],
+  },
+  'Préparer le devis modifié — rappeler le client': {
+    question: 'Le devis modifié est prêt : le client est-il rappelé ?',
+    reponses: [
+      { outcome: 'joint', label: 'Oui, client joint' },
+      { outcome: 'non_joint', label: 'Sans réponse' },
+      { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
+      { outcome: 'refuse', label: 'Refuse la proposition' },
+    ],
+  },
+}
+
 // CKP4 (fondateur 2026-09-10) — un canal APPEL clôturé « Fait » exige TOUJOURS
 // une issue : Joint/Pas de réponse restent les réponses existantes ci-dessus
 // (`joint`/`non_joint`, JAMAIS réinventées) ; Répondeur/Occupé s'y AJOUTENT
@@ -632,7 +686,12 @@ export default function RelanceEtapeRow({
       .catch(() => setMotifs([]))
   }
 
-  const questionsTouche = QUESTIONS[etape.cadence] ?? QUESTIONS.contact
+  // CAD2 — la nature de la touche (LIBELLÉ) prime sur sa cadence pour choisir
+  // le jeu de questions : les quatre gestes de visite (`QUESTIONS_VISITE`)
+  // portent tous la cadence `apres_devis`, mais aucun n'est un barreau du
+  // suivi de proposition.
+  const questionsTouche = QUESTIONS_VISITE[etape.libelle]
+    ?? QUESTIONS[etape.cadence] ?? QUESTIONS.contact
   // CKP4 — canal APPEL : Répondeur/Occupé s'ajoutent aux réponses de la
   // cadence (jamais un remplacement, voir commentaire plus haut).
   // CAD-A — les réponses du client s'ajoutent EN DERNIER (jamais à la place
