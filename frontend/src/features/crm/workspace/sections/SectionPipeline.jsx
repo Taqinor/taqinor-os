@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import crmApi from '../../../../api/crmApi'
-import { toastPromise } from '../../../../ui/confirm'
+import { toast, toastPromise } from '../../../../ui/confirm'
+import { getApiError } from '../../../../lib/apiError'
 import useCanaux from '../../useCanaux'
 import { TYPE_INSTALLATION_LABELS, PRIORITE_LABELS } from '../../stages'
 import { getField, isSuggested } from '../draftCore'
@@ -33,24 +34,88 @@ function RelanceCadenceControls({ leadId, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [arretOpen, setArretOpen] = useState(false)
   const [motif, setMotif] = useState('')
+  // CAD51 — relancer une cadence PLUS prioritaire ARRÊTE celle en cours : le
+  // serveur refuse (409) tant que ce n'est pas confirmé, et renvoie ce qui
+  // serait perdu (`remplacement` : cadence(s) arrêtée(s), touches ouvertes).
+  // L'écran le dit, demande un motif (comme « Arrêter la cadence ») et ne
+  // relance qu'après. CAD55 — « Après devis » cite le devis envoyé du lead :
+  // plusieurs → « lequel ? » en une ligne (`devis_a_choisir`, le plus récent
+  // proposé) ; aucun → l'avertissement AVANT le lancement (`sans_devis`).
+  // Toutes les questions arrivent dans UN 409 et repartent ensemble.
+  // Contrat : apps/crm/contract_samples/lead_relance_initialiser.json.
+  const [questions, setQuestions] = useState(null)
+  const [motifRemplacement, setMotifRemplacement] = useState('')
+  const [devisChoisi, setDevisChoisi] = useState('')
+  const [erreurs, setErreurs] = useState({})
+  // Champs de la CONFIRMATION de relance, pas des champs du lead : ids
+  // générés (hors `fieldLabels`, qui ne cartographie que les colonnes du
+  // lead) — leurs erreurs 400 s'affichent directement sous eux.
+  const idMotif = useId()
+  const idDevis = useId()
 
   if (leadId == null) return null
 
-  const relancer = async () => {
+  const fermerQuestions = () => {
+    setQuestions(null)
+    setMotifRemplacement('')
+    setDevisChoisi('')
+    setErreurs({})
+  }
+
+  const relancer = async (reponses = {}) => {
     setBusy(true)
+    setErreurs({})
     try {
-      await toastPromise(crmApi.initialiserRelance(leadId, { cadence }), {
-        loading: 'Relance de la cadence…',
-        success: 'Cadence relancée.',
-        error: 'Relance de la cadence impossible.',
-      })
+      await crmApi.initialiserRelance(leadId, { cadence, ...reponses }, { suppressErrorToast: true })
+      toast.success('Cadence relancée.')
+      fermerQuestions()
       onChanged?.()
-    } catch {
-      // toastPromise a déjà affiché l'erreur — rien de plus à faire ici.
+    } catch (err) {
+      const data = err?.response?.data
+      const aDesQuestions = !!(data && (data.remplacement || data.devis_a_choisir || data.sans_devis))
+      if (err?.response?.status === 409 && aDesQuestions) {
+        // Les textes qui NOMMENT ce qui se passera viennent du serveur.
+        setQuestions({
+          remplacement: data.remplacement ?? null,
+          messageRemplacement: data.erreurs?.confirmer_remplacement?.[0] ?? '',
+          devisAChoisir: data.devis_a_choisir ?? null,
+          sansDevis: !!data.sans_devis,
+          messageDevis: data.erreurs?.devis?.[0] ?? '',
+        })
+        if (data.devis_a_choisir) setDevisChoisi(String(data.devis_a_choisir.propose))
+      } else if (data?.erreurs) {
+        // 400 qui nomme le champ (motif, devis, cadence) : affiché dessous.
+        setErreurs(data.erreurs)
+      } else {
+        toast.error(getApiError(err, 'Relance de la cadence impossible.').message)
+      }
     } finally {
       setBusy(false)
     }
   }
+
+  const confirmer = () => {
+    const reponses = {}
+    if (questions.remplacement) {
+      reponses.confirmer_remplacement = true
+      reponses.motif = motifRemplacement.trim()
+    }
+    if (questions.devisAChoisir) reponses.devis = Number(devisChoisi)
+    if (questions.sansDevis) reponses.sans_devis_confirme = true
+    relancer(reponses)
+  }
+
+  const erreurCadence = erreurs.cadence?.[0]
+  const erreurMotif = erreurs.motif?.[0]
+  const erreurDevis = erreurs.devis?.[0]
+  const libelleConfirmer = !questions ? ''
+    : questions.remplacement
+      ? `Arrêter ${questions.remplacement.cadences_arretees_libelles.map((l) => `« ${l} »`).join(', ')} et relancer`
+      : questions.sansDevis ? 'Lancer sans devis' : 'Relancer avec ce devis'
+  const confirmationIncomplete = !!questions && (
+    (!!questions.remplacement && !motifRemplacement.trim())
+    || (!!questions.devisAChoisir && !devisChoisi))
+  const dateFr = (iso) => (iso ? iso.split('-').reverse().join('/') : '')
 
   const arreter = async () => {
     const m = motif.trim()
@@ -76,14 +141,17 @@ function RelanceCadenceControls({ leadId, onChanged }) {
     <div className="mt-1.5 flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
         <select
-          className="form-select" aria-label="Cadence à relancer" value={cadence}
-          onChange={(e) => setCadence(e.target.value)} disabled={busy}
+          className={erreurCadence ? 'form-select is-invalid' : 'form-select'}
+          aria-label="Cadence à relancer" value={cadence}
+          aria-invalid={erreurCadence ? true : undefined}
+          aria-describedby={erreurCadence ? 'lf-relance-cadence-erreur' : undefined}
+          onChange={(e) => { setCadence(e.target.value); fermerQuestions() }} disabled={busy}
         >
           {CADENCE_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
         <Button
           type="button" size="sm" variant="outline" disabled={busy}
-          data-testid="lf-relance-cadence" onClick={relancer}
+          data-testid="lf-relance-cadence" onClick={() => relancer()}
         >
           Relancer la cadence
         </Button>
@@ -94,6 +162,76 @@ function RelanceCadenceControls({ leadId, onChanged }) {
           Arrêter la cadence
         </Button>
       </div>
+      {erreurCadence && (
+        <p id="lf-relance-cadence-erreur" role="alert" className="text-xs text-destructive">
+          {erreurCadence}
+        </p>
+      )}
+      {erreurDevis && !questions?.devisAChoisir && (
+        <p role="alert" className="text-xs text-destructive">{erreurDevis}</p>
+      )}
+      {questions && (
+        <div
+          className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2"
+          data-testid="lf-relance-confirmation" role="alertdialog"
+          aria-label="Confirmer avant de relancer la cadence"
+        >
+          {questions.remplacement && (
+            <div className="flex flex-col gap-1.5" data-testid="cad51-confirmer-remplacement">
+              <p className="text-xs">{questions.messageRemplacement}</p>
+              <FormField
+                label="Motif d’arrêt de la cadence en cours" required
+                htmlFor={idMotif} error={erreurMotif} errorKind="required"
+              >
+                <Input
+                  id={idMotif} invalid={!!erreurMotif}
+                  value={motifRemplacement}
+                  onChange={(e) => setMotifRemplacement(e.target.value)}
+                  data-testid="lf-remplacement-motif"
+                />
+              </FormField>
+            </div>
+          )}
+          {questions.devisAChoisir && (
+            <div className="flex flex-col gap-1.5" data-testid="cad55-choix-devis">
+              <p className="text-xs">{questions.messageDevis}</p>
+              <FormField label="Devis cité par le suivi" htmlFor={idDevis} error={erreurDevis}>
+                <select
+                  id={idDevis}
+                  className={erreurDevis ? 'form-select is-invalid' : 'form-select'}
+                  aria-invalid={erreurDevis ? true : undefined}
+                  value={devisChoisi} onChange={(e) => setDevisChoisi(e.target.value)}
+                >
+                  {questions.devisAChoisir.choix.map((d) => (
+                    <option key={d.id} value={String(d.id)}>
+                      {d.reference}{d.date_envoi ? ` — envoyé le ${dateFr(d.date_envoi)}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+            </div>
+          )}
+          {questions.sansDevis && (
+            <p className="text-xs" data-testid="cad55-sans-devis" role="status">
+              {questions.messageDevis}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button" size="sm" variant="outline" disabled={busy}
+              onClick={fermerQuestions}
+            >
+              Annuler
+            </Button>
+            <Button
+              type="button" size="sm" disabled={busy || confirmationIncomplete}
+              data-testid="lf-relance-confirmer" onClick={confirmer}
+            >
+              {libelleConfirmer}
+            </Button>
+          </div>
+        </div>
+      )}
       {arretOpen && (
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
@@ -118,6 +256,12 @@ function RelanceCadenceControls({ leadId, onChanged }) {
 
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
+
+// CAD65 — civilité du client (FACULTATIVE) : elle décide de la salutation de
+// tous les messages (« Bonjour Mme Salma » / « لالة »). Vide = salutation
+// NEUTRE (le prénom seul), jamais un « M. » supposé.
+// source-choix: crm.Lead.civilite
+const CIVILITES = { 'M.': 'M.', Mme: 'Mme' }
 
 // CAD150 — préférence de contact du CLIENT (vide = non renseignée).
 // source-choix: crm.Lead.contact_preference
@@ -297,6 +441,20 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             value={v('canal')} onChange={(e) => setField('canal', e.target.value)}
           >
             {enumOptions(canalLabels)}
+          </select>
+        </FormField>
+        {/* CAD65 — la civilité est une DONNÉE, plus un « M. » codé en dur
+            dans les textes : saisie au premier contact, facultative. */}
+        <FormField
+          label="Civilité" htmlFor="lf-civilite" error={errors.civilite}
+          hint="Facultative — vide : « Bonjour [prénom] », jamais un genre supposé."
+        >
+          <select
+            id="lf-civilite" className={errors.civilite ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.civilite ? true : undefined}
+            value={v('civilite')} onChange={(e) => setField('civilite', e.target.value)}
+          >
+            {enumOptions(CIVILITES)}
           </select>
         </FormField>
         <FormField label="Langue préférée" htmlFor="lf-langue-preferee" error={errors.langue_preferee}>

@@ -422,6 +422,13 @@ class Lead(SoftDeleteModel):
         FR = 'fr', 'Français'
         DARIJA = 'darija', 'Darija'
 
+    # CAD65 (audit L3 du 21/09/2026) — la civilité est une DONNÉE du lead,
+    # rendue par `{civilite}` dans les textes client (FR « M. »/« Mme »,
+    # darija « السي »/« لالة ») : plus aucun « M. » codé en dur.
+    class Civilite(models.TextChoices):
+        M = 'M.', 'M.'
+        MME = 'Mme', 'Mme'
+
     # ── QK1 — Qualification captée par le site (tous additifs, optionnels) ──
     # Distributeur d'électricité du prospect (détermine la tranche tarifaire).
     # ── CAD-M ── CAD167 — LES SRM RÉGIONALES (décision fondateur du
@@ -601,6 +608,19 @@ class Lead(SoftDeleteModel):
     # Contact identity (a lead may not yet be a structured client).
     nom = models.CharField(max_length=255)
     prenom = models.CharField(max_length=255, blank=True, null=True)
+    # CAD65 (audit L3 du 21/09/2026) — « Bonjour M. » partait à une cliente :
+    # la civilité était codée en dur dans 17 textes FR et 12 darija, et NI
+    # le lead NI le client n'en portaient une. FACULTATIVE, saisie au premier
+    # contact : vide ⇒ salutation NEUTRE (le prénom seul), jamais un genre
+    # supposé. Nullable comme `langue_preferee` (l'écran envoie null pour
+    # « non renseignée »).
+    civilite = models.CharField(
+        max_length=4, choices=Civilite.choices, blank=True, null=True,
+        verbose_name='Civilité',
+        help_text="Question au premier appel, seulement en cas de doute : "
+                  "« Je vous note Monsieur ou Madame ? » — facultative : "
+                  'vide, les messages disent « Bonjour [prénom] », jamais un '
+                  'genre supposé.')
     societe = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     # CAD146 (21/09/2026) — pas de fuseau horaire par lead : un numéro

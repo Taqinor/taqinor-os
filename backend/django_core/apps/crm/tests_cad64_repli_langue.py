@@ -56,8 +56,11 @@ class _Base(TestCase):
         self.acteur = User.objects.create_user(
             username=f'{self.slug}-resp', password='x',
             role_legacy='responsable', company=self.company)
+        # CAD65 — civilité SAISIE (M.) : ces tests prouvent qu'un texte
+        # français part avec la civilité FRANÇAISE, jamais « السي ». Sans
+        # civilité, la salutation serait neutre (tests_cad65_civilite).
         self.lead = Lead.objects.create(
-            company=self.company, nom='Alaoui', prenom='Omar',
+            company=self.company, nom='Alaoui', prenom='Omar', civilite='M.',
             stage=stages.CONTACTED, owner=self.acteur,
             telephone='+212661000552', whatsapp='+212661000552')
         # Une clé SANS texte darija (ni défaut, ni texte société) : le

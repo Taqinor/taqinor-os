@@ -88,9 +88,11 @@ const crmApi = {
   // Initialise (à la demande) le plan de relance d'un lead à partir de la
   // cadence par défaut de la société — idempotent PAR CADENCE (ré-appel = pas
   // de doublon). MRY15 — `payload` optionnel `{cadence}` (contact/après
-  // devis/réveil), défaut serveur = 'contact'.
-  initialiserRelance: (leadId, payload) =>
-    api.post(`/crm/leads/${leadId}/relance/initialiser/`, payload || {}),
+  // devis/réveil), défaut serveur = 'contact'. CAD51 — `config` optionnel
+  // (`suppressErrorToast`) : le 409 « confirmation requise » n'est pas une
+  // erreur à toaster, l'écran l'affiche (contrat lead_relance_initialiser).
+  initialiserRelance: (leadId, payload, config) =>
+    api.post(`/crm/leads/${leadId}/relance/initialiser/`, payload || {}, config),
   // MRY15 — frise de la fiche lead : TOUTES les étapes du lead (tous statuts,
   // toutes cadences), tri serveur cadence puis ordre (`?lead=` de MRY5).
   getRelanceEtapesLead: (leadId) =>

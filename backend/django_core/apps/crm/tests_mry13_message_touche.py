@@ -386,23 +386,39 @@ class AucunEnvoiReseauTests(_Base):
         """Le rendu part des textes VALIDÉS, jamais d'un texte fabriqué."""
         rendu = message_pour_etape(self._touche(), user=self.acteur)
         defaut = MESSAGE_TEMPLATE_DEFAULTS['identite']
-        self.assertIn(defaut.split('{prenom}')[0].strip()[:20],
+        # CAD65 — la salutation porte `{civilite}` (vide ici : neutre) ; on
+        # compare les fragments LITTÉRAUX qui l'encadrent.
+        self.assertIn(defaut.split('{civilite}')[0].strip(),
+                      rendu['message'])
+        self.assertIn(defaut.split('{prenom}')[1].split('{')[0],
                       rendu['message'])
 
 
 class CiviliteTests(_Base):
-    """Décision fondateur 07/09/2026 : on s'adresse à quelqu'un qu'on ne
-    connaît pas avec « M. » / « السي » devant le prénom — jamais le prénom
-    nu — et un prénom manquant ne fait pas sauter la salutation."""
+    """CAD65 (audit L3 du 21/09/2026) — la civilité est une DONNÉE du lead
+    (`Lead.civilite`), plus un « M. » posé d'office (décision du 07/09/2026,
+    qui faisait dire « Bonjour M. » à une cliente) : civilité connue ⇒
+    « M. »/« Mme » (« السي »/« لالة » en darija) ; inconnue ⇒ salutation
+    NEUTRE, jamais un genre supposé. Un prénom manquant ne fait toujours pas
+    sauter la salutation."""
     slug = 'mry13-civilite'
 
-    def test_le_defaut_francais_dit_monsieur_devant_le_prenom(self):
+    def test_sans_civilite_la_salutation_est_neutre(self):
         rendu = message_pour_etape(self._touche(), user=self.acteur)
-        self.assertIn('Bonjour M. Aziz', rendu['message'])
+        self.assertIn('Bonjour Aziz', rendu['message'])
+        self.assertNotIn('M. Aziz', rendu['message'])
+        self.assertNotIn('civilite', rendu['placeholders_manquants'])
 
-    def test_la_civilite_darija_est_si(self):
+    def test_la_civilite_saisie_est_rendue(self):
+        self.lead.civilite = 'Mme'
+        self.lead.save(update_fields=['civilite'])
+        rendu = message_pour_etape(self._touche(), user=self.acteur)
+        self.assertIn('Bonjour Mme Aziz', rendu['message'])
+
+    def test_la_civilite_darija_suit_la_donnee(self):
         self.lead.langue_preferee = 'darija'
-        self.lead.save(update_fields=['langue_preferee'])
+        self.lead.civilite = 'M.'
+        self.lead.save(update_fields=['langue_preferee', 'civilite'])
         MessageTemplate.objects.create(
             company=self.company, cle='identite',
             corps_fr='Bonjour {civilite} {prenom}',
@@ -414,7 +430,7 @@ class CiviliteTests(_Base):
         self.lead.prenom = ''
         self.lead.save(update_fields=['prenom'])
         rendu = message_pour_etape(self._touche(), user=self.acteur)
-        self.assertIn(f'Bonjour M. {self.lead.nom}', rendu['message'])
+        self.assertIn(f'Bonjour {self.lead.nom}', rendu['message'])
         self.assertNotIn('prenom', rendu['placeholders_manquants'])
 
 

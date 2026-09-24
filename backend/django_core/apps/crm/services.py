@@ -1000,8 +1000,119 @@ class CadenceActiveConflit(Exception):
     """CADX — une cadence au moins aussi prioritaire est déjà active."""
 
 
+class CadenceRemplacementAConfirmer(Exception):
+    """CAD51 — démarrer la cadence demandée ARRÊTERAIT une cadence en cours.
+
+    Le moteur (devis envoyé, placement…) remplace en silence, c'est voulu :
+    la cadence la plus prioritaire gagne (CADX). Mais un HUMAIN qui clique
+    « Relancer la cadence » doit savoir ce qu'il tue : ce refus porte
+    ``apercu`` (``apercu_remplacement_cadence``) — la ou les cadences qui
+    seraient arrêtées et le nombre de touches ouvertes perdues — et n'est
+    levé que sur demande (``exiger_confirmation``), tant qu'aucun motif
+    d'arrêt n'accompagne la demande."""
+
+    def __init__(self, message, *, apercu):
+        super().__init__(message)
+        self.apercu = apercu
+
+
+def _libelle_cadence(cadence):
+    """Libellé FR d'une cadence (``parametres.Cadence``), la clé sinon."""
+    from apps.parametres.models_relance import Cadence
+    return dict(Cadence.choices).get(cadence, cadence)
+
+
+def apercu_remplacement_cadence(lead, cadence, *, devis=None):
+    """CAD51 — ce que DÉMARRER ``cadence`` sur ``lead`` arrêterait, SANS rien
+    écrire. ``None`` quand rien ne serait arrêté.
+
+    Miroir EXACT des gardes de ``initialiser_plan_relance``, dans le même
+    ordre : un lead ``ne_plus_contacter``/perdu/archivé n'arrête rien (refus
+    en amont) ; un plan OUVERT de la même cadence (du même devis pour
+    ``apres_devis``) est renvoyé tel quel (idempotence) ; une cadence active
+    au moins aussi prioritaire est un REFUS (``CadenceActiveConflit``), pas un
+    remplacement. Reste le cas qui tuait en silence : une cadence MOINS
+    prioritaire est en cours.
+
+    Renvoie ``{cadence, cadence_libelle, cadences_arretees,
+    cadences_arretees_libelles, touches_ouvertes}`` — la forme publiée dans
+    ``contract_samples/lead_relance_initialiser.json`` (``remplacement``)."""
+    if (getattr(lead, 'ne_plus_contacter', False)
+            or getattr(lead, 'perdu', False)
+            or getattr(lead, 'is_archived', False)):
+        return None
+    ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
+    meme = ouvertes.filter(cadence=cadence)
+    if cadence == 'apres_devis' and devis is not None:
+        meme = meme.filter(devis=devis)
+    if meme.exists():
+        return None
+    autres = ouvertes.exclude(cadence=cadence)
+    actives = sorted(set(autres.values_list('cadence', flat=True)))
+    if not actives:
+        return None
+    prio = _PRIORITE_CADENCE.get(cadence, 1)
+    if any(_PRIORITE_CADENCE.get(c, 1) >= prio for c in actives):
+        return None
+    return {
+        'cadence': cadence,
+        'cadence_libelle': _libelle_cadence(cadence),
+        'cadences_arretees': actives,
+        'cadences_arretees_libelles': [_libelle_cadence(c) for c in actives],
+        'touches_ouvertes': autres.count(),
+    }
+
+
+def message_remplacement_cadence(apercu):
+    """CAD51 — la phrase qui NOMME ce qui sera arrêté (écran + refus 409)."""
+    libelles = apercu['cadences_arretees_libelles']
+    arretees = ('la cadence ' if len(libelles) == 1 else 'les cadences ') \
+        + ', '.join(f'« {x} »' for x in libelles)
+    n = apercu['touches_ouvertes']
+    perte = ('1 touche ouverte sera annulée' if n == 1
+             else f'{n} touches ouvertes seront annulées')
+    return (f'Relancer la cadence « {apercu["cadence_libelle"]} » arrête '
+            f'{arretees} en cours : {perte}. '
+            "Confirmez, avec un motif d'arrêt.")
+
+
+#: CAD55 — les deux phrases qui préviennent AVANT le lancement d'un suivi
+#: « après devis » depuis la fiche (jamais découvert touche par touche).
+MESSAGE_RELANCE_SANS_DEVIS = (
+    'Aucun devis envoyé sur ce lead — les messages ne pourront pas citer la '
+    'proposition.')
+MESSAGE_RELANCE_PLUSIEURS_DEVIS = (
+    'Plusieurs devis envoyés sur ce lead : lequel ce suivi doit-il citer ?')
+
+
+def devis_envoyes_pour_relance(lead):
+    """CAD55 — les devis ENVOYÉS du lead, toujours en attente de réponse, le
+    PLUS RÉCENT d'abord : ceux qu'un suivi « après devis » peut citer.
+
+    Même ensemble que ``ventes.selectors.dernier_devis_envoye_par_lead``
+    (statut ``envoye``, ``date_envoi`` renseignée) — dont le premier élément
+    est donc le « dernier devis envoyé ». Lecture via le sélecteur de ventes
+    (frontière M3), jamais ``ventes.models``."""
+    from apps.ventes.selectors import devis_envoyes_en_attente
+    return list(
+        devis_envoyes_en_attente(lead.company)
+        .filter(lead_id=lead.pk).order_by('-date_envoi', '-id'))
+
+
+def choix_devis_relance(devis_liste):
+    """CAD55 — la ligne de choix « lequel ? » : ``[{id, reference,
+    date_envoi}]`` (date LOCALE Casablanca, AAAA-MM-JJ). Aucun montant."""
+    from . import horaires
+    return [
+        {'id': d.pk, 'reference': d.reference or '',
+         'date_envoi': (timezone.localtime(d.date_envoi, horaires.CASABLANCA)
+                        .date().isoformat() if d.date_envoi else None)}
+        for d in devis_liste]
+
+
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
-                             devis=None):
+                             devis=None, exiger_confirmation=False,
+                             motif_remplacement=''):
     """Matérialise UNE cadence de relance sur ``lead`` depuis le gabarit de sa
     société (``parametres.CadenceRelanceEtape.cadence_pour``).
 
@@ -1063,6 +1174,13 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     ``cadence_depart`` pour que la J+5 tombe, des semaines plus tard, très
     exactement là où l'aperçu l'avait annoncée.
 
+    CAD51 — ``exiger_confirmation`` (le chemin HUMAIN « Relancer la
+    cadence ») : si démarrer cette cadence en ARRÊTAIT une autre, la demande
+    est refusée (``CadenceRemplacementAConfirmer``, avant toute écriture)
+    tant que ``motif_remplacement`` est vide ; avec un motif, l'arrêt passe
+    par ``arreter_cadence`` comme un arrêt normal, sous ce motif. Sans
+    ``exiger_confirmation`` (le moteur), le remplacement reste silencieux.
+
     Retourne la liste des ``RelanceEtape`` MATÉRIALISÉES de CETTE cadence
     (créées ou déjà existantes)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
@@ -1094,10 +1212,12 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         return ouvertes_deja
 
     # CADX — jamais deux cadences en parallèle (voir le bandeau plus haut).
-    actives = list(
+    # CAD51 — `set` : le tri Meta (`ordre`, `due_date`) entre dans le SELECT
+    # DISTINCT et répète la clé (« Cadence reveil, reveil arrêtée »).
+    actives = sorted(set(
         lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
         .exclude(cadence=cadence)
-        .values_list('cadence', flat=True).distinct())
+        .values_list('cadence', flat=True)))
     if actives:
         prio = _PRIORITE_CADENCE.get(cadence, 1)
         bloquantes = sorted(
@@ -1107,10 +1227,22 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                 'Une seule cadence à la fois : la cadence '
                 f'« {bloquantes[0]} » est déjà active sur ce lead — '
                 'arrêtez-la d’abord (« Arrêter la cadence »).')
-        arreter_cadence(
-            lead, user=user,
-            motif=f'remplacée par la cadence « {cadence} »',
-            cadences=actives)
+        motif_humain = (motif_remplacement or '').strip()
+        if exiger_confirmation and not motif_humain:
+            # CAD51 — jamais un arrêt silencieux depuis la fiche : on refuse
+            # AVANT toute écriture, en nommant ce qui serait arrêté.
+            apercu = apercu_remplacement_cadence(lead, cadence, devis=devis)
+            if apercu is not None:
+                raise CadenceRemplacementAConfirmer(
+                    message_remplacement_cadence(apercu), apercu=apercu)
+        if motif_humain:
+            # CAD51 — l'arrêt confirmé est un arrêt NORMAL : même fonction,
+            # le motif de l'humain en tête, le remplacement nommé à la suite.
+            motif = (f'{motif_humain} (remplacée par la cadence '
+                     f'« {_libelle_cadence(cadence)} »)')
+        else:
+            motif = f'remplacée par la cadence « {cadence} »'
+        arreter_cadence(lead, user=user, motif=motif, cadences=actives)
 
     gabarits = CadenceRelanceEtape.cadence_pour(lead.company, cadence)
     if not gabarits:
@@ -2503,10 +2635,14 @@ def _nom_affiche_marque(lead):
 def _civilite_et_prenom(lead, langue):
     """``(civilite, prenom)`` de la salutation d'un message client.
 
-    Civilité (décision fondateur 07/09/2026) : on s'adresse à une personne
-    qu'on ne connaît pas encore avec « M. » / « السي » devant le prénom —
-    l'usage marocain respectueux — jamais le prénom nu. Une civilité connue
-    sur le lead (champ futur) prime ; « Mme » se rend « لالة » en darija.
+    CAD65 (audit L3 du 21/09/2026) — la civilité vient de la DONNÉE
+    ``Lead.civilite`` (M./Mme, saisie au premier contact), jamais d'un défaut
+    codé en dur : le « M. » posé d'office le 07/09/2026 faisait écrire
+    « Bonjour M. » à une cliente sur tous les messages. Rendu : « M. » /
+    « Mme » en français, « السي » / « لالة » en darija. Civilité INCONNUE ⇒
+    chaîne VIDE ⇒ salutation NEUTRE (le prénom seul), jamais un genre supposé
+    — ``_placer_civilite`` retire alors le placeholder et son espace, sans
+    faire sauter la phrase d'accueil.
 
     Sans prénom (formulaire Meta au nom seul, société), le NOM prend sa place
     dans la salutation plutôt que de faire SAUTER toute la phrase d'accueil.
@@ -2518,12 +2654,27 @@ def _civilite_et_prenom(lead, langue):
     """
     civilite = (getattr(lead, 'civilite', '') or '').strip()
     if langue == 'darija':
-        civilite = {'': 'السي', 'M.': 'السي', 'Mme': 'لالة'}.get(
-            civilite, civilite)
-    else:
-        civilite = civilite or 'M.'
+        civilite = _CIVILITE_DARIJA.get(civilite, '')
+    elif civilite not in _CIVILITES_CONNUES:
+        civilite = ''
     prenom = (lead.prenom or '').strip() or (lead.nom or '').strip()
     return civilite, prenom
+
+
+#: CAD65 — les civilités du lead (``Lead.Civilite``) et leur rendu darija.
+_CIVILITES_CONNUES = ('M.', 'Mme')
+_CIVILITE_DARIJA = {'M.': 'السي', 'Mme': 'لالة'}
+
+
+def _placer_civilite(corps, civilite):
+    """CAD65 — ``{civilite}`` est FACULTATIF : sans valeur, on retire le
+    placeholder ET son espace (« Bonjour {civilite} {prenom} » → « Bonjour
+    {prenom} »), au lieu de le compter manquant — ce qui ferait OMETTRE
+    toute la phrase d'accueil (MRY13) — ou de laisser un double espace."""
+    if civilite or '{civilite}' not in (corps or ''):
+        return corps
+    return (corps.replace('{civilite} ', '').replace(' {civilite}', '')
+            .replace('{civilite}', ''))
 
 
 #: VISITE-CADENCE — les clés de gabarit que le rendu « message de visite »
@@ -2581,6 +2732,8 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
         # CAD126 — variante de SEGMENT par exception (pompage / B2B).
         corps = _corps_pour_segment(corps, cle, lead, langue)
+        # CAD65 — civilité inconnue : salutation neutre, jamais omise.
+        corps = _placer_civilite(corps, civilite)
         manquants = [c for c in _PLACEHOLDERS_RENDUS
                      if '{' + c + '}' in corps
                      and not str(contexte.get(c, '')).strip()]
@@ -2798,8 +2951,8 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         lead.company, cle_rendue, langue) if cle_rendue else ''
     # CAD64 — le texte n'existe pas dans la langue demandée : c'est la version
     # FRANÇAISE qui part, et on le DIT. Le texte est alors rendu comme un
-    # texte français (civilité « M. », variante de segment), jamais un
-    # « السي » collé dans une phrase française.
+    # texte français (civilité « M. »/« Mme » — CAD65 —, variante de
+    # segment), jamais un « السي » collé dans une phrase française.
     repli_langue = texte_en_repli_de_langue(lead.company, cle_rendue, langue)
     langue_texte = 'fr' if repli_langue else langue
     # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
@@ -2809,6 +2962,8 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
 
     civilite, prenom = _civilite_et_prenom(lead, langue_texte)
+    # CAD65 — civilité inconnue : salutation neutre, jamais omise.
+    corps = _placer_civilite(corps, civilite)
     contexte = {
         'civilite': civilite,
         'nom': (lead.nom or '').strip(),
@@ -3569,7 +3724,8 @@ def callback_sla_hours(company) -> int:
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
 # (« on garde la valeur la plus complète », jamais d'écrasement).
 _MERGE_FILL_FIELDS = [
-    'prenom', 'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
+    'prenom', 'civilite',  # CAD65 — la civilité saisie survit à la fusion
+    'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
     'langue_preferee', 'gps_lat', 'gps_lng',
     'facture_hiver', 'facture_ete', 'ete_differente',
     'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',

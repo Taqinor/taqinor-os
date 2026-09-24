@@ -41,6 +41,8 @@ const fieldLabels = {
   priorite: { label: 'Priorité', section: 'pipeline', inputId: 'lf-priorite' },
   canal: { label: 'Canal', section: 'pipeline', inputId: 'lf-canal' },
   langue_preferee: { label: 'Langue préférée', section: 'pipeline', inputId: 'lf-langue-preferee' },
+  // CAD65 — libellé = `verbose_name` serveur (apps/crm/models.py).
+  civilite: { label: 'Civilité', section: 'pipeline', inputId: 'lf-civilite' },
   tags: { label: 'Tags (séparés par des virgules)', section: 'pipeline', inputId: 'lf-tags' },
   motif_perte: { label: 'Motif de perte', section: 'pipeline', inputId: 'lf-motif-perte' },
   // CAD150 — le contrôle qui manquait à `contact_preference`.
