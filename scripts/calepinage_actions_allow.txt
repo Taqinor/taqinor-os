@@ -29,7 +29,6 @@ backend/django_core/apps/calepinage/views/documents.py:559  presentation-compact
 backend/django_core/apps/calepinage/views/documents.py:615  dossier-fin-chantier  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/io_layout.py:37  export-layout  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/io_layout.py:45  import-layout  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/projet_json.py:73  import-projet  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/sorties.py:179  planche.pdf  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/sorties.py:198  planche.svg  # non consommee au 23/09/2026 (CALX381)
 backend/django_core/apps/calepinage/views/sorties.py:244  plan-pose.pdf  # non consommee au 23/09/2026 (CALX381)

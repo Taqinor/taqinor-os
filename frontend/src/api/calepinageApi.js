@@ -464,6 +464,18 @@ const calepinageApi = {
       api.post(`${pivot(id)}etiquettes/`, { tag_id: tagId }),
     retirerEtiquette: (id, tagId) =>
       api.delete(`${pivot(id)}etiquettes/`, { data: { tag_id: tagId } }),
+
+    // CALX371 — le PROJET COMPLET en JSON : téléchargement TEL QUEL du
+    // document déjà servi (CALX312/CALX370, contrat
+    // `contract_samples/export_projet.json`) et sa réimportation (`POST
+    // calepinages/import-projet/`, contrat `calepinage_projet_json.json`,
+    // porte `views/projet_json.py`). `apercu: true` ne fait qu'afficher ce
+    // qui SERAIT écrit — le serveur n'écrit rien tant que l'écran ne
+    // renvoie pas `apercu: false` en confirmation explicite.
+    exporterProjet: (id) =>
+      api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob' }),
+    importerProjet: (corps) =>
+      api.post('/calepinage/calepinages/import-projet/', corps),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
