@@ -63,7 +63,24 @@ function seulSelectionne(attendu) {
   expect(selectionnes).toEqual(attendu ? [attendu] : [])
 }
 
+/* CALX396 — l'aide du rail (le lien vers le lexique) précède la liste
+   d'onglets : la touche Tab la traverse d'abord, puis entre dans le rail. */
+async function entrerDansLeRail(utilisateur) {
+  await utilisateur.tab()
+  expect(document.activeElement).toBe(screen.getByRole('link', { name: 'Lexique des termes du solaire' }))
+  await utilisateur.tab()
+}
+
 afterEach(() => { cleanup() })
+
+describe('CALX396 — l’aide du rail mène au lexique', () => {
+  it('le lien d’aide mène à /aide/lexique — aucune définition dans une bulle', () => {
+    rendreRail()
+    const lien = screen.getByRole('link', { name: 'Lexique des termes du solaire' })
+    expect(lien).toHaveAttribute('href', '/aide/lexique')
+    expect(screen.getByTestId('cal-rail-lexique')).toBe(lien)
+  })
+})
 
 describe('CALX392 — le rail d’onglets au clavier', () => {
   it('porte la sémantique ARIA des onglets, sans aucun panneau ouvert d’office', () => {
@@ -85,8 +102,9 @@ describe('CALX392 — le rail d’onglets au clavier', () => {
     rendreRail()
     const tous = onglets()
 
-    // La touche Tab entre dans le rail sur le PREMIER onglet.
-    await utilisateur.tab()
+    // La touche Tab passe par l'aide du rail (CALX396), puis entre dans le
+    // rail sur le PREMIER onglet.
+    await entrerDansLeRail(utilisateur)
     expect(document.activeElement).toBe(tous[0])
 
     for (let rang = 0; rang < tous.length; rang += 1) {
@@ -130,7 +148,7 @@ describe('CALX392 — le rail d’onglets au clavier', () => {
     const utilisateur = userEvent.setup()
     rendreRail()
     const tous = onglets()
-    await utilisateur.tab()
+    await entrerDansLeRail(utilisateur)
     expect(document.activeElement).toBe(tous[0])
 
     await utilisateur.keyboard('{End}')

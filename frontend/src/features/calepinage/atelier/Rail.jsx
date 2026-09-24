@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useRef } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
 import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
 
@@ -120,6 +120,16 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
       className="mt-5"
       data-testid="cal-rail-onglets"
     >
+      {/* CALX396 — l'AIDE du rail : un lien vers le lexique métier (PR,
+          P50/P90, GCR, TSRF, PVGIS, MPPT…), jamais une seconde définition dans
+          une bulle. Placé AVANT la liste d'onglets : il reste hors du trajet
+          Maj+Tab qui ramène du panneau à l'onglet ouvert (CALX392). */}
+      <p className="mb-1.5 text-right text-xs text-lune-faint">
+        <Link to="/aide/lexique" className="underline underline-offset-2"
+          data-testid="cal-rail-lexique">
+          Lexique des termes du solaire
+        </Link>
+      </p>
       <TabsList
         aria-label="Onglets du calepinage"
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
