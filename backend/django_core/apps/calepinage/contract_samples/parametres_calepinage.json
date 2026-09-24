@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/parametres/",
-  "pourquoi": "CAL45 — LES réglages société du module Calepinage : UNE base, sept extensions. Sept tâches du groupe (imagerie/pays CAL47, dégagements CAL71, zones réglementaires CAL74, gabarits de disposition CAL82, presets CAL197, favoris matériel CAL200, gabarits de dossier CAL190) voulaient chacune leur modèle et leur migration pour la même surface : elles ÉTENDENT désormais une section de ce document, elles n'en créent plus. PACT10 : ce fichier part AVANT les deux moitiés — sans lui, la lane écran et la lane serveur inventent deux formes, exactement l'incident du 03/08/2026. Les SEPT clés sont TOUJOURS présentes : une société qui n'a jamais rien réglé reçoit sept objets vides, ce qui veut dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé absente que l'écran devrait deviner. Une section inconnue envoyée en PUT est refusée en NOMMANT la clé fautive. Source de vérité : apps/calepinage/selectors.py::parametres_de_societe (SECTIONS_PARAMETRES). CAL246 — la réponse porte AUSSI `kits` : le catalogue de kits de pose AO (apps.ao.selectors.kits_de_pose, CAL198), LU, jamais stocké — ce n'est pas une huitième section, et PUT le refuse comme toute clé inconnue (lecture seule depuis cet endpoint). La bibliothèque des calepinages MARQUÉS modèle (CAL199) est servie à part, `GET /api/django/calepinage/calepinages/modeles/`. CAL163 — la section « lestage » rejoint les autres : elle porte les paramètres de vent/neige/frottement SAISIS par la société, chacun sous la forme {valeur, source} (la référence du texte appliqué). Section vide = aucun paramètre saisi, donc AUCUN résultat de lestage calculé — jamais un coefficient par défaut. Les valeurs de l'exemple sont des PLACEHOLDERS assumés : aucune n'est présentée comme un fait normatif. CALX145 — deux sections de plus, « simulation » et « electrique_societe », dont les clés admises sont DÉCLARÉES une par une dans apps/calepinage/services/parametres_cles.py (registre APPEND-ONLY : CLES_SIMULATION, CLES_ELECTRIQUE_SOCIETE). Chaque valeur s'y saisit {valeur, source, reference} avec source parmi societe/mesure/saisie/texte : une valeur sans source est REFUSÉE en nommant la clé, et une clé hors registre est refusée en la nommant. Sections vides = aucune clé saisie, donc chaque étape de simulation et chaque contrôle électrique qui en dépend reste OMIS en nommant ce qui manque — jamais un forfait, jamais un seuil supposé, c'est le comportement d'aujourd'hui. Les seuils publiés par les logiciels du marché (tolérances de polystring PV*SOL, coefficients thermiques PVsyst, LID) sont proposés en AIDE à la saisie par l'écran de réglages, jamais préremplis ici. CALX145/69 — la réponse porte AUSSI `registre` : les DEUX tables `simulation`/`electrique_societe` de `apps/calepinage/services/parametres_cles.py` (labels français, unités, références doctrinales), une LISTE ordonnée `{cle, libelle, unite, reference}` par section, dans l'ordre du registre — comme `kits`, ce n'est pas une section de plus (aucune valeur, aucune saisie possible) : PUT la refuse comme toute clé inconnue. Avant CALX69, l'écran de réglages redéclarait ces deux tables à la main faute de les trouver ici ; `registre` supprime cette seconde source de vérité.",
+  "pourquoi": "CAL45 — LES réglages société du module Calepinage : UNE base, sept extensions. Sept tâches du groupe (imagerie/pays CAL47, dégagements CAL71, zones réglementaires CAL74, gabarits de disposition CAL82, presets CAL197, favoris matériel CAL200, gabarits de dossier CAL190) voulaient chacune leur modèle et leur migration pour la même surface : elles ÉTENDENT désormais une section de ce document, elles n'en créent plus. PACT10 : ce fichier part AVANT les deux moitiés — sans lui, la lane écran et la lane serveur inventent deux formes, exactement l'incident du 03/08/2026. Les SEPT clés sont TOUJOURS présentes : une société qui n'a jamais rien réglé reçoit sept objets vides, ce qui veut dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé absente que l'écran devrait deviner. Une section inconnue envoyée en PUT est refusée en NOMMANT la clé fautive. Source de vérité : apps/calepinage/selectors.py::parametres_de_societe (SECTIONS_PARAMETRES). CAL246 — la réponse porte AUSSI `kits` : le catalogue de kits de pose AO (apps.ao.selectors.kits_de_pose, CAL198), LU, jamais stocké — ce n'est pas une huitième section, et PUT le refuse comme toute clé inconnue (lecture seule depuis cet endpoint). La bibliothèque des calepinages MARQUÉS modèle (CAL199) est servie à part, `GET /api/django/calepinage/calepinages/modeles/`. CAL163 — la section « lestage » rejoint les autres : elle porte les paramètres de vent/neige/frottement SAISIS par la société, chacun sous la forme {valeur, source} (la référence du texte appliqué). Section vide = aucun paramètre saisi, donc AUCUN résultat de lestage calculé — jamais un coefficient par défaut. Les valeurs de l'exemple sont des PLACEHOLDERS assumés : aucune n'est présentée comme un fait normatif. CALX145 — deux sections de plus, « simulation » et « electrique_societe », dont les clés admises sont DÉCLARÉES une par une dans apps/calepinage/services/parametres_cles.py (registre APPEND-ONLY : CLES_SIMULATION, CLES_ELECTRIQUE_SOCIETE). Chaque valeur s'y saisit {valeur, source, reference} avec source parmi societe/mesure/saisie/texte : une valeur sans source est REFUSÉE en nommant la clé, et une clé hors registre est refusée en la nommant. Sections vides = aucune clé saisie, donc chaque étape de simulation et chaque contrôle électrique qui en dépend reste OMIS en nommant ce qui manque — jamais un forfait, jamais un seuil supposé, c'est le comportement d'aujourd'hui. Les seuils publiés par les logiciels du marché (tolérances de polystring PV*SOL, coefficients thermiques PVsyst, LID) sont proposés en AIDE à la saisie par l'écran de réglages, jamais préremplis ici. CALX145/69 — la réponse porte AUSSI `registre` : les DEUX tables `simulation`/`electrique_societe` de `apps/calepinage/services/parametres_cles.py` (labels français, unités, références doctrinales), une LISTE ordonnée `{cle, libelle, unite, reference}` par section, dans l'ordre du registre — comme `kits`, ce n'est pas une section de plus (aucune valeur, aucune saisie possible) : PUT la refuse comme toute clé inconnue. Avant CALX69, l'écran de réglages redéclarait ces deux tables à la main faute de les trouver ici ; `registre` supprime cette seconde source de vérité. CALX340 — ZONES DE VENT ET DE NEIGE PAR SITE, section `lestage` : une société qui travaille deux villes de zones différentes n'avait nulle part où le dire (UN jeu unique, services/lestage.py:50,56). Deux clés ADDITIVES rejoignent la section : `lestage.zones` = `[{code, libelle, commune_ou_region, parametres: {<clé de lestage>: {valeur, source}}}]` et `lestage.zone_par_defaut` (le `code` d'une zone saisie). Les paramètres d'une zone sont ceux qui DÉPENDENT du site — vitesse de vent de référence, catégorie et coefficient de terrain, charge de neige — et chacun garde l'exigence de source de services/lestage.py:139 (une valeur sans sa référence est refusée en nommant le champ, aucune zone n'entre sans source) ; les paramètres qui ne dépendent pas du site (masse volumique de l'air, coefficients de pression, frottement, pesanteur, masse de structure) restent dans le jeu global. Le calepinage désigne SA zone (champ `zoneLestage` de son document, sinon `zone_par_defaut`) ; quand une zone s'applique, un paramètre de site qu'elle ne porte pas N'EST PAS repris du jeu global : la ligne qui en dépend sort à `null` en le nommant. ÉQUIVALENCE (D12) : une société SANS `zones` obtient EXACTEMENT la forme d'aujourd'hui — `exemple_vide.lestage` reste `{}` et le jeu global (les clés de paramètre à plat) est servi tel quel, sans aucune clé ajoutée. Les valeurs des zones de l'exemple sont des PLACEHOLDERS assumés (parité : Renusol, normes de charge de neige et de vent de 17 pays — https://www.renusol.com/en/configurator/ ; Esdec, catégorie de terrain et zone de vent — https://www.esdec.com/en/calculator/).",
   "exemple": {
     "imagerie": {
       "fournisseur": "google",
@@ -88,7 +88,52 @@
       "coefficient_terrain": {
         "valeur": 1.0,
         "source": "valeur d'essai saisie par la société — catégorie de terrain retenue"
-      }
+      },
+      "zones": [
+        {
+          "code": "littoral",
+          "libelle": "Littoral atlantique (exemple)",
+          "commune_ou_region": "Casablanca-Settat",
+          "parametres": {
+            "vitesse_vent_reference_m_s": {
+              "valeur": 28.0,
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            },
+            "categorie_terrain": {
+              "valeur": "bord de mer",
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            },
+            "coefficient_terrain": {
+              "valeur": 1.1,
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            }
+          }
+        },
+        {
+          "code": "moyen-atlas",
+          "libelle": "Moyen Atlas (exemple)",
+          "commune_ou_region": "Fès-Meknès",
+          "parametres": {
+            "vitesse_vent_reference_m_s": {
+              "valeur": 24.0,
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            },
+            "categorie_terrain": {
+              "valeur": "rase campagne",
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            },
+            "coefficient_terrain": {
+              "valeur": 1.0,
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            },
+            "charge_neige_kn_m2": {
+              "valeur": 0.65,
+              "source": "valeur d'essai saisie par la société — carte de zones qu'elle applique"
+            }
+          }
+        }
+      ],
+      "zone_par_defaut": "littoral"
     },
     "simulation": {
       "mode_meteo": {
