@@ -48,9 +48,14 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
     layout_stale = serializers.SerializerMethodField()
     layout_nb_panneaux = serializers.SerializerMethodField()
+    #: CALX406 — le NOM du responsable, pour la colonne de la liste (le champ
+    #: ``responsable`` lui-même reste l'identifiant, en lecture-écriture).
+    responsable_nom = serializers.SerializerMethodField()
 
     #: AUD601 — une FK cross-app ne pointe jamais la ligne d'une autre société.
-    same_company_fields = ('client', 'devis')
+    #: CALX406 — le responsable non plus : un compte d'une société voisine est
+    #: refusé sous le champ ``responsable``, sans jamais être nommé.
+    same_company_fields = ('client', 'devis', 'responsable')
 
     class Meta:
         model = Calepinage
@@ -60,6 +65,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'layout_hash', 'roof_image', 'version_moteur',
             'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',
+            'responsable', 'responsable_nom',  # CALX406
         ]
         read_only_fields = [
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
@@ -83,6 +89,20 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_layout_nb_panneaux(self, calepinage):
         return self._peremption(calepinage)['layout_nb_panneaux']
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_responsable_nom(self, calepinage):
+        """CALX406 — ``None`` sans responsable, jamais un nom deviné.
+
+        Lu sur l'utilisateur DÉJÀ CHARGÉ par la liste
+        (``select_related('responsable')`` du viewset) : aucune requête par
+        ligne (budget CALX390).
+        """
+        user = getattr(calepinage, 'responsable', None)
+        if user is None:
+            return None
+        nom = (getattr(user, 'get_full_name', lambda: '')() or '').strip()
+        return nom or getattr(user, 'username', '') or None
 
     def _peremption(self, calepinage):
         """Le MÊME helper serveur que le détail devis et la page publique.

@@ -121,6 +121,7 @@ retiré plus un hook ajouté.
 
 | Hook | Sémantique |
 |---|---|
+| `cal-responsable` | vignette — responsable du calepinage, ou « Sans responsable » (CALX406). |
 | `cal-vignette` | vignette. |
 | `cal-vignette-image` | vignette image. |
 | `cal-vignette-sans-image` | vignette sans image. |

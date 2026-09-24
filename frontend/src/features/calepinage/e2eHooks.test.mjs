@@ -106,6 +106,7 @@ export const ALL_HOOKS = [
   'cal-generer-devis',
   'cal-resynchroniser-devis',
   // ── CalepinageList.jsx ──
+  'cal-responsable', // CALX406
   'cal-vignette',
   'cal-vignette-image',
   'cal-vignette-sans-image',

@@ -135,6 +135,26 @@ class Calepinage(TenantModel):
     approbation = models.JSONField('Approbation', null=True, blank=True,
                                    default=None)
 
+    #: CALX406 — À QUI la conception est CONFIÉE une fois créée (``cree_par``
+    #: dit seulement qui l'a ouverte). ``None`` par défaut — l'état de TOUT
+    #: calepinage existant (migration ``0016`` additive) — et un responsable
+    #: vide reste admis. Aucun compte n'est désigné d'office : le champ se
+    #: SAISIT (sérialiseur du viewset), jamais un prénom ni un identifiant
+    #: écrit en dur. Il porte la vue restreinte optionnelle de la société
+    #: (``presets.vue_restreinte_au_responsable``, ``views/calepinages.py``).
+    responsable = models.ForeignKey(
+        'authentication.CustomUser',
+        # PROTECT, pas SET_NULL (garde YDATA3 ``check_on_delete``) : effacer le
+        # compte viderait ce champ EN SILENCE et ferait sortir le calepinage de
+        # la vue restreinte de son responsable. Un compte qui porte des
+        # calepinages se DÉSACTIVE ; pour le supprimer, on confie d'abord ses
+        # conceptions à quelqu'un d'autre.
+        on_delete=models.PROTECT,  # on_delete: un compte responsable ne disparaît pas sous ses calepinages
+        null=True, blank=True,
+        related_name='calepinages_responsable',
+        verbose_name='Responsable',
+    )
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
