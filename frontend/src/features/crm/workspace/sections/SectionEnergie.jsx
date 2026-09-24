@@ -1,6 +1,13 @@
 import { FormField, Input } from '../../../../ui'
 import { getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
+// CAD157 — les mentions « ce que le chiffre ne compte pas » : UNE source de
+// texte (le script d'appel guidé), partagée par la fiche et le panneau.
+import { NON_COMPTE_PLAQUE, NON_COMPTE_TRANCHE_ONEE } from '../../relances/appelGuidance'
+
+// CAD157 — une valeur de grandeur réellement saisie (0 compris : c'est une
+// réponse, pas un silence ; `''`/null = rien de saisi).
+const saisi = (valeur) => valeur !== '' && valeur !== null && valeur !== undefined
 
 // OFFGRID (ajout produit onduleur hors réseau, backend crm.Lead.Raccordement.
 // AUCUN = 'aucun') — site jamais raccordé au réseau ONEE : dérive le devis en
@@ -78,7 +85,11 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
             value={v('conso_mensuelle_kwh')} onChange={(e) => setField('conso_mensuelle_kwh', e.target.value)}
           />
         </FormField>
-        <FormField label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}>
+        {/* CAD157 — texte libre qu'AUCUN calcul ne lit : la fiche le dit. */}
+        <FormField
+          label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}
+          hint={NON_COMPTE_TRANCHE_ONEE}
+        >
           <Input
             id="lf-tranche-onee" invalid={!!errors.tranche_onee}
             value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
@@ -156,6 +167,12 @@ const AUTRES_QUESTIONS_APPEL = [
   { label: "L'été est différent de l'hiver ?", section: 'energie', field: 'lf-facture-hiver' },
 ]
 
+// CAD157 — sous chaque champ de PUISSANCE d'un équipement déclaré : « pas
+// compté tant que la puissance manque ». La condition suit la règle de
+// composition du serveur (`apps/ventes/courbes_journalieres.py::_equipements`
+// — piscine : puissance de pompe ; clim : puissance OU nombre de pièces ;
+// chauffe-eau : puissance), sans rien calculer ici ; le panneau d'appel, lui,
+// lit le drapeau SERVI (`panneau_appel.equipements[].compte_dans_etude`).
 export function SectionEquipements({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const piscine = getField(state, 'equip_piscine')
@@ -192,6 +209,7 @@ export function SectionEquipements({ state, setField, errors = {} }) {
             label="Puissance de la pompe de filtration (kW)"
             htmlFor="lf-equip-piscine-kw"
             error={errors.equip_piscine_pompe_kw}
+            hint={saisi(v('equip_piscine_pompe_kw')) ? undefined : NON_COMPTE_PLAQUE}
           >
             <Input
               id="lf-equip-piscine-kw" type="number" step="any" invalid={!!errors.equip_piscine_pompe_kw}
@@ -315,6 +333,8 @@ export function SectionEquipements({ state, setField, errors = {} }) {
           <FormField
             label="Puissance totale climatisation (kW)" htmlFor="lf-equip-clim-kw"
             error={errors.equip_clim_kw}
+            hint={saisi(v('equip_clim_kw')) || saisi(v('equip_clim_pieces'))
+              ? undefined : NON_COMPTE_PLAQUE}
           >
             <Input
               id="lf-equip-clim-kw" type="number" step="any" placeholder="ex: 2.8" invalid={!!errors.equip_clim_kw}
@@ -355,6 +375,7 @@ export function SectionEquipements({ state, setField, errors = {} }) {
           <FormField
             label="Puissance chauffe-eau (kW)" htmlFor="lf-equip-chauffe-eau-kw"
             error={errors.equip_chauffe_eau_kw}
+            hint={saisi(v('equip_chauffe_eau_kw')) ? undefined : NON_COMPTE_PLAQUE}
           >
             <Input
               id="lf-equip-chauffe-eau-kw" type="number" step="any" placeholder="ex: 2.4"

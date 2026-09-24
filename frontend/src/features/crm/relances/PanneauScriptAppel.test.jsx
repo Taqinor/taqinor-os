@@ -370,6 +370,50 @@ describe('CAD155 — la fenêtre RÉELLE du jour, lue du moteur', () => {
   })
 })
 
+// ════════════════════════════════════════════════════════════════════════════
+// CAD157 — dire à l'écran ce qui n'est PAS compté
+// ════════════════════════════════════════════════════════════════════════════
+describe('CAD157 — les quatre cas « pas compté » affichent leur mention', () => {
+  it('D7, charges futures, tranche ONEE et équipement déclaré sans grandeur — aucun calcul touché', async () => {
+    armer()
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const bloc = await screen.findByTestId('non-compte')
+    // 1. Orientation, inclinaison, ombrage (décision D7).
+    expect(within(bloc).getByTestId('mention-d7')).toHaveTextContent(guidance.MENTION_D7)
+    expect(guidance.MENTION_D7).toContain('inclinaison')
+    // 2. Charges futures cochées sur le site.
+    expect(within(bloc).getByTestId('non-compte-futures-charges'))
+      .toHaveTextContent(guidance.NON_COMPTE_FUTURES_CHARGES)
+    // 3. Tranche ONEE, texte libre qu'aucun calcul ne lit.
+    expect(within(bloc).getByTestId('non-compte-tranche-onee'))
+      .toHaveTextContent(guidance.NON_COMPTE_TRANCHE_ONEE)
+    // 4. Équipement déclaré sans sa grandeur : le DRAPEAU SERVI décide, et le
+    //    champ qui manque est nommé par son libellé d'écran.
+    const clim = within(bloc).getByTestId('non-compte-equipement-clim')
+    expect(clim).toHaveTextContent('Climatisation : pas compté dans le chiffre')
+    expect(clim).toHaveTextContent(fieldLabels.equip_clim_kw.label)
+    expect(clim).toHaveTextContent('photo de la plaque pour que ce soit compté')
+    expect(within(bloc).getByTestId('non-compte-equipement-chauffe_eau'))
+      .toHaveTextContent(fieldLabels.equip_chauffe_eau_kw.label)
+    // Une couche comptée, ou un équipement non déclaré : aucune mention.
+    expect(within(bloc).queryByTestId('non-compte-equipement-piscine')).not.toBeInTheDocument()
+    expect(within(bloc).queryByTestId('non-compte-equipement-ve')).not.toBeInTheDocument()
+    // Aucun calcul modifié : l'affichage n'écrit rien.
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('mentionEquipementNonCompte : une grandeur qui n’est pas une puissance ne parle pas de plaque', () => {
+    const ve = { cle: 've', libelle: 'Véhicule électrique', declare: true, compte_dans_etude: false,
+      champs_manquants: ['equip_ve_km_semaine'] }
+    const texte = guidance.mentionEquipementNonCompte(ve, (c) => fieldLabels[c].label)
+    expect(texte).toContain(fieldLabels.equip_ve_km_semaine.label)
+    expect(texte).not.toContain('plaque')
+    expect(guidance.mentionEquipementNonCompte({ ...ve, compte_dans_etude: true })).toBeNull()
+    expect(guidance.mentionEquipementNonCompte({ ...ve, declare: false })).toBeNull()
+  })
+})
+
 describe('CAD153 — une question déjà répondue n’est JAMAIS reposée', () => {
   it('même si le serveur la servait encore, une colonne présente en prefill ne s’affiche pas', async () => {
     // Incohérence simulée À PARTIR du contrat : la présence est à la fois

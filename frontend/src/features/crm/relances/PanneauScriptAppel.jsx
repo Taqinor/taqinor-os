@@ -23,12 +23,14 @@ import {
 import { Badge, Button, Input } from '../../../ui'
 import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
+import fieldLabels from '../workspace/fieldLabels'
 import {
   guidanceAppel, texteQuestion, scriptTouche, normaliserSaisie,
-  messageErreurServeur, fenetreAppel, FLUX_LOCATAIRE, MENTION_D7,
-  BANDEAU_PROFIL_SUPPOSE, EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE,
-  ISSUE_VERROUILLEE, AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR,
-  JOUR_NON_APPELABLE,
+  messageErreurServeur, fenetreAppel, mentionEquipementNonCompte,
+  FLUX_LOCATAIRE, MENTION_D7, BANDEAU_PROFIL_SUPPOSE,
+  EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
+  AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
+  NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
 } from './appelGuidance'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
@@ -352,8 +354,24 @@ export default function PanneauScriptAppel({
           <p>{FLUX_LOCATAIRE.sinon}</p>
         </div>
       )}
+      {/* CAD157 — ce que le chiffre ne compte PAS, dit à côté des réponses :
+          aucune de ces mentions n'ouvre un champ au calcul (D7 tranchée). */}
       {g?.livre && (
-        <p data-testid="mention-d7">{MENTION_D7}</p>
+        <div className="flex flex-col gap-1 rounded-md border border-border p-2" data-testid="non-compte">
+          <p className="font-medium text-foreground">{NON_COMPTE_TITRE}</p>
+          <p data-testid="mention-d7">{MENTION_D7}</p>
+          <p data-testid="non-compte-futures-charges">{NON_COMPTE_FUTURES_CHARGES}</p>
+          <p data-testid="non-compte-tranche-onee">{NON_COMPTE_TRANCHE_ONEE}</p>
+          {(panneau?.equipements || []).map((e) => {
+            const mention = mentionEquipementNonCompte(
+              e, (champ) => fieldLabels[champ]?.label || champ)
+            return mention && (
+              <p key={e.cle} className="text-warning" data-testid={`non-compte-equipement-${e.cle}`}>
+                {mention}
+              </p>
+            )
+          })}
+        </div>
       )}
       {score !== null && (
         <p className="font-medium text-foreground" data-testid="score-recalcule">

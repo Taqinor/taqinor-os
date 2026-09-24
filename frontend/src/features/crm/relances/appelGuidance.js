@@ -318,9 +318,41 @@ export function scriptTouche(templateCle) {
 
 /** Décision D7 (tranchée, `apps/crm/selectors.py` « NE PAS LES SUPPRIMER, NE
  *  PAS LES CÂBLER ») : l'écran DIT que ces trois réponses ne font pas le
- *  chiffre — mot pour mot la phrase de la tâche CAD152. */
-export const MENTION_D7 = 'Orientation et ombrage servent au dossier et à la '
+ *  chiffre — la phrase de la tâche CAD152, complétée de l'inclinaison par
+ *  CAD157 (la décision D7 porte sur les trois). */
+export const MENTION_D7 = 'Orientation, inclinaison et ombrage servent au '
+  + 'dossier et à la visite, pas au chiffre.'
+
+// ── CAD157 — dire à l'écran ce qui n'est PAS compté ────────────────────────
+// Quatre réponses données au téléphone n'entrent dans aucun calcul : D7
+// (ci-dessus), les charges futures cochées sur le site (lues par aucun
+// calcul de ventes), la tranche ONEE (texte libre qu'aucun calcul ne lit :
+// elle se dérive de la facture) et tout équipement déclaré sans sa grandeur
+// (il ne compose aucune couche, `courbes_journalieres.composer_equipements`).
+// On n'ouvre PAS ces champs au calcul (D7 est tranchée) : on arrête seulement
+// de laisser croire qu'ils comptent.
+export const NON_COMPTE_TITRE = 'Ce que le chiffre ne compte pas'
+export const NON_COMPTE_FUTURES_CHARGES = 'Charges futures cochées sur le '
+  + 'site (clim, véhicule électrique, pompe) : servent au dossier et à la '
   + 'visite, pas au chiffre.'
+export const NON_COMPTE_TRANCHE_ONEE = 'Tarif / tranche ONEE : sert au '
+  + "dossier, pas au chiffre — l'estimation part du montant de la facture."
+export const NON_COMPTE_PLAQUE = 'Pas compté dans le chiffre tant que la '
+  + 'puissance manque : photo de la plaque pour que ce soit compté.'
+
+/** La mention d'un équipement DÉCLARÉ mais PAS compté, d'après le drapeau
+ *  SERVI (`panneau.equipements[]` — le serveur applique la règle de
+ *  composition, jamais ce module). Le champ qui manque est NOMMÉ
+ *  (`libelleChamp` : clé → libellé d'écran). `null` sinon. */
+export function mentionEquipementNonCompte(equipement, libelleChamp = (c) => c) {
+  if (!equipement?.declare || equipement.compte_dans_etude) return null
+  const manquants = equipement.champs_manquants || []
+  const puissance = manquants.some((c) => /_kw$/.test(c))
+  const manque = manquants.map(libelleChamp).join(', ')
+  return `${equipement.libelle} : pas compté dans le chiffre`
+    + (manque ? ` (il manque : ${manque})` : '')
+    + (puissance ? ' — photo de la plaque pour que ce soit compté.' : '.')
+}
 
 /** Q5 (décision fondateur du 21/09/2026) : sans réponse à la présence en
  *  journée, l'estimation SUPPOSE une présence — elle porte le bandeau

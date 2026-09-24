@@ -411,11 +411,11 @@ Ces lignes ne sont PAS des gabarits de message ni des phrases à lire au client 
 la commerciale dans le panneau d'appel guidé, PENDANT l'appel. Elles vivent dans
 `frontend/src/features/crm/relances/appelGuidance.js` (constantes du même nom) ; le test
 `PanneauScriptAppel.test.jsx` les re-dérive de ce fichier : une modification se fait ICI et dans le module, dans le
-même commit. Aucune ne porte un chiffre. `MENTION_D7` reprend mot pour mot la tâche CAD152 (décision D7 tranchée :
-orientation, inclinaison et ombrage ne sont pas câblés au calcul) ; `BANDEAU_PROFIL_SUPPOSE` reprend mot pour mot la
-décision fondateur du 21/09/2026 (Q5). ✎ Les autres formulations sont à valider par le fondateur. Darija : aucune
-version (consignes d'écran, jamais dites au client).
-MENTION_D7 : Orientation et ombrage servent au dossier et à la visite, pas au chiffre.
+même commit. Aucune ne porte un chiffre. `MENTION_D7` reprend la tâche CAD152, complétée de l'inclinaison par CAD157
+(décision D7 tranchée : orientation, inclinaison et ombrage ne sont pas câblés au calcul) ; `BANDEAU_PROFIL_SUPPOSE`
+reprend mot pour mot la décision fondateur du 21/09/2026 (Q5). ✎ Les autres formulations sont à valider par le
+fondateur. Darija : aucune version (consignes d'écran, jamais dites au client).
+MENTION_D7 : Orientation, inclinaison et ombrage servent au dossier et à la visite, pas au chiffre.
 BANDEAU_PROFIL_SUPPOSE : Profil supposé, à confirmer
 EXPLICATION_PROFIL_SUPPOSE : La présence en journée n'a pas été posée : l'estimation suppose quelqu'un à la maison en journée. Posez cette question en premier.
 CONSIGNE_ISSUE : L'issue se saisit avec les réponses de la touche (« Fait ») : client joint, pas de réponse, répondeur, à rappeler, refus.
@@ -424,11 +424,22 @@ AUCUNE_QUESTION : Rien à demander sur cet appel : tout ce que le script pose es
 CONSIGNE_CRENEAU : Si le client n'est pas disponible, proposez un rappel dans un de ces créneaux :
 RAMADAN_PAS_DE_SOIR : Ramadan : pas d'appel le soir. La journée d'appel s'arrête plus tôt — ne proposez aucun rappel après la fin de la fenêtre.
 JOUR_NON_APPELABLE : Aujourd'hui n'est pas un jour d'appel : proposez un rappel un jour ouvré.
+NON_COMPTE_TITRE : Ce que le chiffre ne compte pas
+NON_COMPTE_FUTURES_CHARGES : Charges futures cochées sur le site (clim, véhicule électrique, pompe) : servent au dossier et à la visite, pas au chiffre.
+NON_COMPTE_TRANCHE_ONEE : Tarif / tranche ONEE : sert au dossier, pas au chiffre — l'estimation part du montant de la facture.
+NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : photo de la plaque pour que ce soit compté.
 
-CAD155 (24/09/2026) — les trois consignes ci-dessus n'écrivent AUCUNE heure : la fenêtre et ses créneaux sont LUS du
-moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan saisi et pause du vendredi compris —
-jamais recopiés dans un texte, sinon l'écran divergerait du moteur au premier réglage. Pendant le Ramadan, la fenêtre
-est commune à tous les canaux et aucun créneau du soir n'existe (décision fondateur du 21/09/2026).
+CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
+fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan
+saisi et pause du vendredi compris — jamais recopiés dans un texte, sinon l'écran divergerait du moteur au premier
+réglage. Pendant le Ramadan, la fenêtre est commune à tous les canaux et aucun créneau du soir n'existe (décision
+fondateur du 21/09/2026).
+
+CAD157 (24/09/2026) — les mentions `NON_COMPTE_*` DISENT ce que le chiffre ne compte pas, sans ouvrir aucun champ au
+calcul (D7 est tranchée). Un équipement déclaré sans sa grandeur reçoit en plus, dans le panneau, une ligne composée
+par `mentionEquipementNonCompte` à partir du drapeau SERVI (`compte_dans_etude`) : « [équipement] : pas compté dans
+le chiffre (il manque : [champ]) — photo de la plaque pour que ce soit compté. » (la plaque seulement quand c'est une
+puissance qui manque). ✎ Formulations à valider par le fondateur.
 
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
