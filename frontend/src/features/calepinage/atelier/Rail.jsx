@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
+import api from '../../../api/axios'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
 import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
 
@@ -61,6 +62,61 @@ import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
    (`aria-hidden`), et leur conteneur n'a aucun rôle (`role="none"`).
    ========================================================================== */
 
+/* ============================================================================
+   CALX397 — SAVOIR QUELS ONGLETS SONT RÉELLEMENT OUVERTS.
+   ----------------------------------------------------------------------------
+   `uxviews.EcranRecent` (UNE ligne par société + utilisateur + écran, jamais
+   un journal qui grossit) n'a qu'un chemin d'écriture : la lecture
+   `GET saved-views/?ecran=` (`SavedViewViewSet.list`). Un onglet n'étant pas
+   une route d'écran, aucune ligne n'était jamais écrite pour lui. Le rail
+   emprunte donc CE chemin existant — aucun modèle, aucune migration, aucun
+   endpoint neuf — avec la seule CLÉ du registre (`calepinage:<cle>`, jamais
+   un libellé traduit, jamais une donnée du calepinage).
+     - au plus UNE fois par onglet et par session du navigateur
+       (`sessionStorage` ; à défaut, la mémoire de la page) ;
+     - jamais bloquant : l'appel part après le rendu, et son échec est avalé —
+       l'onglet s'affiche exactement pareil, SANS le toast d'erreur global
+       (`suppressErrorToast`, cf. `api/axios.js`) : une mesure d'usage qui
+       échoue n'a rien à dire à l'utilisateur. Même URL et même paramètre que
+       `uxviewsApi.listSavedViews` — c'est l'instance axios partagée qui porte
+       l'option, que ce raccourci ne transmet pas.
+   ========================================================================== */
+
+/** Le chemin EXISTANT qui écrit `EcranRecent` (NTUX39). */
+const URL_VUES_SAUVEGARDEES = '/uxviews/saved-views/'
+
+const CLE_SESSION_ONGLETS = 'calepinage:onglets-signales'
+const ongletsSignalesEnMemoire = new Set()
+
+/** Vrai la PREMIÈRE fois que `cle` est vue dans la session — et la retient. */
+function premiereOuvertureDeLaSession(cle) {
+  try {
+    const brut = window.sessionStorage.getItem(CLE_SESSION_ONGLETS)
+    const vus = brut ? JSON.parse(brut) : []
+    const liste = Array.isArray(vus) ? vus : []
+    if (liste.includes(cle)) return false
+    window.sessionStorage.setItem(CLE_SESSION_ONGLETS, JSON.stringify([...liste, cle]))
+    return true
+  } catch {
+    // Stockage indisponible (navigation privée, quota) : la mémoire de la
+    // page tient lieu de session — jamais une rafale d'appels.
+    if (ongletsSignalesEnMemoire.has(cle)) return false
+    ongletsSignalesEnMemoire.add(cle)
+    return true
+  }
+}
+
+/** Signale l'ouverture de l'onglet `cle` — best-effort, jamais bloquant. */
+function signalerOuverture(cle) {
+  if (!cle || !premiereOuvertureDeLaSession(cle)) return
+  Promise.resolve()
+    .then(() => api.get(URL_VUES_SAUVEGARDEES, {
+      params: { ecran: `calepinage:${cle}` },
+      suppressErrorToast: true,
+    }))
+    .catch(() => {})
+}
+
 /** Le bandeau d'erreur d'un panneau : il NOMME l'onglet qui n'a pas pu s'ouvrir. */
 function EchecOnglet({ libelle }) {
   return (
@@ -91,6 +147,11 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
     if (!focusApresOuverture.current) return
     focusApresOuverture.current = false
     panneauRef.current?.focus()
+  }, [cleActive])
+
+  // CALX397 — l'onglet MONTÉ est signalé (une fois par session, sans bloquer).
+  useEffect(() => {
+    signalerOuverture(cleActive)
   }, [cleActive])
 
   /* Un changement d'onglet n'écrase pas les autres paramètres de l'URL : le
