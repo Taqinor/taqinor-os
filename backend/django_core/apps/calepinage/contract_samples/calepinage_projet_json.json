@@ -1,0 +1,92 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/import-projet/",
+  "pourquoi": "CALX370 — RÉIMPORTER UN PROJET COMPLET. Le seul aller-retour du module transportait le document de pose SEUL (`services/io_layout.py`, `export-layout/`/`import-layout/`, CAL216/CALX28) : les postes de pertes saisis (`Calepinage.pertes`), les variantes, les réglages restaient sur place — un transfert entre deux sociétés, ou une sauvegarde hors base, perdait tout le reste. Parité : PV*SOL 2026 (https://valentin-software.com/en/product-news-blog-en/pvsol-premium-2026-available-now/ — export JSON des données de projet ET des résultats).\n\nUN SEUL EXPORT, SON INVERSE ICI. Le fichier réimporté est celui de `GET calepinages/<pk>/export-projet.json/` (CALX312, contrat `export_projet.json`, format 2 depuis CALX370 : `postes_pertes` et `variantes` y ont été ajoutés) ; la réimportation vit dans le MÊME module de service (`services/export_projet.importer_projet`) — aucun second export. Chaque `roof_layout` du fichier (celui du projet et celui de chaque variante) passe par `io_layout.valider_document` : l'aller-retour du document de pose n'est pas dupliqué, il est ENVELOPPÉ.\n\nLA REQUÊTE (`requete`) : `projet` = le fichier tel que téléchargé ; `lead` OU `client` = le rattachement dans la société de l'APPELANT (les identifiants du fichier désignent la société de départ et ne sont jamais repris) ; `titre` remplace le titre du fichier s'il est donné ; `apercu: true` valide TOUT et rend ce qui SERAIT écrit (`exemple_apercu`, 200, `ecrit: false`, `calepinage: null`) sans rien écrire — l'écran le montre avant la confirmation explicite. Sans `apercu`, un NOUVEAU calepinage est créé (`exemple`, 201) par `services/creation.py`, sa conception enregistrée par `services/layout.py::enregistrer_layout`, ses postes par `services/pertes.enregistrer_pertes`, ses variantes par `services/variantes` (la retenue par `retenir_variante`, feu vert du bureau d'études compris : un refus laisse la variante NON retenue et l'avertissement le dit).\n\nLA SOCIÉTÉ ET L'AUTEUR SONT REPOSÉS PAR LE SERVEUR : aucune société ni aucun utilisateur n'est lu du fichier ni du corps. `repris` liste les blocs ÉCRITS ; `ignores` liste, chacun avec son motif, les blocs lus mais jamais écrits (le `resultat` se recalcule dans la société d'arrivée : un résultat venu d'ailleurs ne décrit pas son matériel).\n\nREFUS NOMMÉS — 400 dont la clé est le CHEMIN du champ fautif : `format_version` pour une version inconnue (formats relus : 1 et 2 ; `exemple_refus_version`), `roof_layout.zones.0.vertices` pour un document de pose invalide (`exemple_refus_champ`), `variantes[1].nom`, `postes_pertes[2]`, ou le chemin d'une clé de coût (`prix_*`/`cout_*`/`marge_*`, D5 : aucune n'entre dans un calepinage, le fichier est refusé). Un fichier au format 1 est relu : ses postes viennent de la liste `pertes` servie, aucune variante n'est créée, et l'avertissement le dit.\n\nValeurs : des PLACEHOLDERS assumés (identifiant à deux chiffres), aucun chiffre client, aucun prix.",
+  "requete": {
+    "projet": "<le fichier export-projet.json — contrat export_projet.json, formats 1 et 2>",
+    "lead": 12,
+    "titre": "",
+    "apercu": false
+  },
+  "exemple": {
+    "calepinage": 41,
+    "titre": "Toiture atelier — Bouskoura",
+    "format_version": 2,
+    "ecrit": true,
+    "modules": 12,
+    "postes_pertes": 3,
+    "variantes": 2,
+    "variante_retenue": "Variante A — 12 modules",
+    "repris": [
+      "roof_layout",
+      "postes_pertes",
+      "variantes"
+    ],
+    "ignores": [
+      {
+        "bloc": "resultat",
+        "motif": "La simulation se relance dans la société d'arrivée : un résultat calculé ailleurs ne décrit ni son matériel ni son stock."
+      },
+      {
+        "bloc": "equipements",
+        "motif": "Les produits désignés appartiennent au catalogue de la société de départ : choisissez-les dans le vôtre."
+      },
+      {
+        "bloc": "site",
+        "motif": "Le repère du site est relu du lead ou du client de rattachement (et de l’épingle du document de pose)."
+      },
+      {
+        "bloc": "provenance",
+        "motif": "La provenance se recompose à chaque document produit."
+      },
+      {
+        "bloc": "calepinage",
+        "motif": "Identifiants et client de la société de départ : le serveur rattache le projet au lead ou au client indiqué."
+      }
+    ],
+    "avertissements": []
+  },
+  "exemple_apercu": {
+    "calepinage": null,
+    "titre": "Toiture atelier — Bouskoura",
+    "format_version": 2,
+    "ecrit": false,
+    "modules": 12,
+    "postes_pertes": 3,
+    "variantes": 2,
+    "variante_retenue": "Variante A — 12 modules",
+    "repris": [
+      "roof_layout",
+      "postes_pertes",
+      "variantes"
+    ],
+    "ignores": [
+      {
+        "bloc": "resultat",
+        "motif": "La simulation se relance dans la société d'arrivée : un résultat calculé ailleurs ne décrit ni son matériel ni son stock."
+      },
+      {
+        "bloc": "equipements",
+        "motif": "Les produits désignés appartiennent au catalogue de la société de départ : choisissez-les dans le vôtre."
+      },
+      {
+        "bloc": "site",
+        "motif": "Le repère du site est relu du lead ou du client de rattachement (et de l’épingle du document de pose)."
+      },
+      {
+        "bloc": "provenance",
+        "motif": "La provenance se recompose à chaque document produit."
+      },
+      {
+        "bloc": "calepinage",
+        "motif": "Identifiants et client de la société de départ : le serveur rattache le projet au lead ou au client indiqué."
+      }
+    ],
+    "avertissements": []
+  },
+  "exemple_refus_version": {
+    "format_version": "Fichier de projet refusé : « format_version » vaut 7, une version que ce serveur ne sait pas relire (versions lues : 1, 2). Réexportez le projet depuis une version à jour."
+  },
+  "exemple_refus_champ": {
+    "roof_layout.zones.0.vertices": "Fichier de projet refusé au champ « roof_layout.zones.0.vertices » : Document refusé au champ « zones.0.vertices » : 'x' is not of type 'array'."
+  }
+}

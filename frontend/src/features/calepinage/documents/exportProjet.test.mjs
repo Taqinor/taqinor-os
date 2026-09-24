@@ -12,8 +12,9 @@ import { dirname, join, resolve } from 'node:path'
    `test_calx312_export_projet.py` affirme contre le document RÉELLEMENT
    servi — au lieu d'écrire un payload à la main. Un tiers (ou un écran) qui
    lit ce fichier peut donc compter sur ce qui est vérifié ici :
-   - `format_version` est l'ENTIER 1, jamais une date ;
-   - les douze clés sont TOUJOURS présentes, même sur un calepinage vide ;
+   - `format_version` est l'ENTIER 2 (CALX370 : `postes_pertes` et
+     `variantes` rejoignent le fichier, qui se RÉIMPORTE), jamais une date ;
+   - les quatorze clés sont TOUJOURS présentes, même sur un calepinage vide ;
    - `provenance` (CALX314) est une liste {libelle, valeur}, sans valeur vide ;
    - un calepinage non simulé exporte `resultat: null` et `pertes: []` ;
    - aucune clé de la famille prix_* / cout_* / marge_* n'y figure (D5) ;
@@ -42,6 +43,8 @@ const CLES = [
   'format_version', 'produit_le', 'calepinage', 'site', 'equipements',
   'roof_layout', 'layout_hash', 'version_moteur', 'resultat', 'pertes',
   'avertissements', 'provenance',
+  // CALX370 — format 2 : ce que la réimportation restitue.
+  'postes_pertes', 'variantes',
 ]
 
 function clesDeMontant(noeud, chemin = '<racine>') {
@@ -69,9 +72,9 @@ test("la route de l'export est celle que le serveur déclare", () => {
     "aucune @action ne sert url_path='export-projet.json'")
 })
 
-test('format_version est l’entier 1, sur les deux exemples', () => {
+test('format_version est l’entier 2, sur les deux exemples', () => {
   for (const cle of ['exemple', 'exemple_vide']) {
-    assert.equal(CONTRAT[cle].format_version, 1)
+    assert.equal(CONTRAT[cle].format_version, 2)
     assert.ok(Number.isInteger(CONTRAT[cle].format_version))
     assert.match(CONTRAT[cle].produit_le, /Z$/)
   }
@@ -91,7 +94,7 @@ test('la provenance est une liste {libelle, valeur}, jamais une valeur vide', ()
   assert.equal(empreinte.valeur, 'non calculée')
 })
 
-test('les douze clés sont toujours présentes, même vides', () => {
+test('les quatorze clés sont toujours présentes, même vides', () => {
   assert.deepEqual(Object.keys(CONTRAT.exemple).sort(), [...CLES].sort())
   assert.deepEqual(Object.keys(CONTRAT.exemple_vide).sort(), [...CLES].sort())
 })
@@ -118,4 +121,15 @@ test('aucune clé de montant (prix_* / cout_* / marge_*) — D5', () => {
   assert.deepEqual(clesDeMontant(CONTRAT.exemple), [])
   assert.deepEqual(clesDeMontant(CONTRAT.exemple_vide), [])
   assert.deepEqual(clesDeMontant({ a: { prix_achat: 1 } }), ['<racine>.a.prix_achat'])
+})
+
+test('CALX370 — une variante porte nom/retenue/roof_layout/layout_hash/resultat', () => {
+  const cles = ['layout_hash', 'nom', 'resultat', 'retenue', 'roof_layout']
+  for (const variante of CONTRAT.exemple.variantes) {
+    assert.deepEqual(Object.keys(variante).sort(), cles)
+    assert.equal(typeof variante.retenue, 'boolean')
+  }
+  assert.equal(CONTRAT.exemple.variantes.filter((v) => v.retenue).length, 1)
+  assert.deepEqual(CONTRAT.exemple_vide.variantes, [])
+  assert.deepEqual(CONTRAT.exemple_vide.postes_pertes, [])
 })

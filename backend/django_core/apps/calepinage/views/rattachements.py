@@ -105,6 +105,9 @@ from . import plan_importe as _plan_importe_action  # noqa: F401
 # (``views/documents.py`` : ``rapport-etude.pdf`` d'abord, puis les pièces
 # suivantes du lot dans le MÊME fichier). Lecture PURE : aucun statut ne bouge.
 from . import documents as _documents_actions  # noqa: F401
+# CALX370 — même patron : rattache ``import-projet`` (réimportation du fichier
+# ``export-projet.json``, ``services/export_projet.importer_projet``).
+from . import projet_json as _projet_json_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -133,6 +136,7 @@ MODULES_RATTACHES = (
 
     'plan_importe',  # CALX107
     'documents',  # CALX297
+    'projet_json',  # CALX370
 )
 
 __all__ = ['MODULES_RATTACHES']

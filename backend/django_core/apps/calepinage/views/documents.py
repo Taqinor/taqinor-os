@@ -347,6 +347,11 @@ EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
     # CALX314 — la provenance partagée avec le XLSX et le DXF.
     'provenance': drf_serializers.ListField(
         child=drf_serializers.DictField()),
+    # CALX370 — format 2 : ce que la réimportation restitue.
+    'postes_pertes': drf_serializers.ListField(
+        child=drf_serializers.DictField()),
+    'variantes': drf_serializers.ListField(
+        child=drf_serializers.DictField()),
 })
 
 
