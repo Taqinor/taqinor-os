@@ -15,9 +15,12 @@ la clé).
 """
 from django.utils.dateparse import parse_datetime, parse_date
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter
+from rest_framework.response import Response
 
 from apps.crm.models import Lead
 from apps.ventes.models import Devis, Facture
@@ -34,6 +37,7 @@ from .public_serializers import (
     PublicLeadSerializer, PublicDevisSerializer,
     PublicFactureSerializer, PublicChantierSerializer,
     PublicProduitSerializer, PublicCalepinageSerializer,
+    PublicCalepinageResultatSerializer, resultat_calepinage_public,
 )
 
 # Paramètres de requête réservés à la pagination / au tri : jamais traités comme
@@ -187,6 +191,48 @@ class PublicCalepinageViewSet(PublicReadOnlyViewSet):
         """
         requete = getattr(self, 'request', None)
         return getattr(getattr(requete, 'auth', None), 'company', None)
+
+    @extend_schema(responses={200: PublicCalepinageResultatSerializer})
+    @action(detail=True, methods=['get'], url_path='resultat')
+    def resultat(self, request, pk=None):
+        """CALX369 — ``GET calepinages/<pk>/resultat/`` : la simulation servie.
+
+        Sous-ressource en LECTURE SEULE, sous le scope EXISTANT
+        ``read:calepinages`` (aucune nouvelle famille d'URL). Elle publie ce
+        que ``PublicCalepinageResultatSerializer`` déclare champ par champ :
+        production annuelle, rendement spécifique, ratio de performance,
+        P50/P75/P90, postes de pertes (libellé, pourcentage, source) et
+        horodatage du calcul. Le résultat est celui que l'atelier SERT
+        (``apps.calepinage.selectors.resultat_servi``), contrôle de fraîcheur
+        compris : non simulé ou périmé ⇒ grandeurs à ``null`` et ``motif``.
+
+        CE QUE CETTE PORTÉE N'OUVRE PAS. ``read:calepinages`` ne permet NI
+        d'écrire NI de LANCER une simulation : déclencher un calcul reste une
+        porte INTERNE
+        (``POST /api/django/calepinage/calepinages/<pk>/simuler/``,
+        derrière la permission de gestion du module), et aucune
+        portée publique ne l'ouvre aujourd'hui. Aurora sépare ces trois
+        familles — lecture (``read_designs``), écriture (``write_designs``)
+        et exécution (``run_design_automation`` : « Run Performance
+        Simulation »),
+        https://help.aurorasolar.com/hc/en-us/articles/29421703614995-Access-Scopes.
+        Le jour où un intégrateur demandera de lancer une simulation, la
+        portée à créer s'appellera ``calepinages:simuler`` (même forme que
+        ``leads:write``) — elle n'est PAS créée ici.
+
+        LA SÉRIE HORAIRE N'EST PAS PUBLIÉE ICI, et c'est voulu : 8 760 points
+        par année simulée, sur plusieurs années, pèsent des mégaoctets — ce
+        volume ruinerait le quota et le temps de réponse d'une lecture qu'une
+        intégration appelle pour trois nombres. Même décision que le
+        ``GET resultat/`` interne (D-CALX 14) : la série reste servie par
+        l'export CSV de l'atelier.
+        """
+        from apps.calepinage.selectors import resultat_servi
+
+        calepinage = self.get_object()
+        charge = resultat_calepinage_public(calepinage.pk,
+                                            resultat_servi(calepinage))
+        return Response(PublicCalepinageResultatSerializer(charge).data)
 
 
 class PublicProduitViewSet(PublicReadOnlyViewSet):

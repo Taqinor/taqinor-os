@@ -101,9 +101,12 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # explicitement ici, d'où l'écart avec les sous-totaux ci-dessus) =
         # 37 opérations, sur autant de chemins distincts (aucun chemin ne
         # cumule 2 méthodes ici) — jamais un chemin fantôme ajouté par erreur.
+        # CALX369 (2026-09-24) : + 1 sous-ressource en lecture
+        # (`docs.py::sous_ressources` — `calepinages/<id>/resultat/` GET,
+        # scope `read:calepinages`) = 38.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 37)
+        self.assertEqual(nb_operations, 38)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()

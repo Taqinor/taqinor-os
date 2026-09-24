@@ -722,6 +722,25 @@ Le module compile automatiquement un **dossier réglementaire** contenant les do
 - **Schéma unifilaire** : diagramme électrique détaillé.
 - **Production** : estimation de la production et PR (par pan, total, P50/P90).
 - **Pertes** : cascade détaillée des pertes (ombres, câbles, onduleur, etc.).
+
+**Lire la simulation depuis un autre logiciel (API publique).** Une clé d'API
+portant le droit `read:calepinages` (Paramètres → API & Webhooks) permet à votre
+CRM ou à votre tableur de lire le résultat d'une simulation, sans ouvrir
+l'atelier :
+- `GET /api/public/v1/calepinages/<id>/resultat/` rend la production annuelle,
+  le rendement spécifique (kWh/kWc), le ratio de performance, les productions
+  P50/P75/P90, les postes de pertes (libellé, pourcentage, source) et la date du
+  calcul. Un calepinage jamais simulé — ou dont la conception a changé depuis
+  la dernière simulation — rend ces valeurs **vides** (jamais 0) avec la raison.
+- Le webhook **« Calepinage — simulation aboutie »** (`calepinage.simule`)
+  prévient votre logiciel dès qu'une simulation se termine : c'est une
+  notification signée envoyée à l'adresse que vous avez déclarée, sans aucune
+  valeur ajoutée à cette adresse.
+- Ce droit est en **lecture seule** : il ne permet ni de modifier un calepinage
+  ni de lancer une simulation — la simulation se lance toujours depuis
+  l'atelier. La série horaire (8 760 points par année) n'est pas servie par
+  l'API : utilisez l'export CSV de l'atelier. La géométrie de la toiture et les
+  coûts internes ne sortent jamais.
 ---
 
 ## Facturation & Recouvrement
