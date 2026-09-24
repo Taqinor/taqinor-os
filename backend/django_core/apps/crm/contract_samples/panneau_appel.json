@@ -91,7 +91,15 @@
         "compte_dans_etude": false,
         "champs_manquants": ["equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"]
       }
-    ]
+    ],
+    "fenetre_du_jour": {
+      "date": "2026-09-23",
+      "appelable": true,
+      "debut": "09:00",
+      "fin": "20:00",
+      "pause": null,
+      "ramadan": false
+    }
   },
   "exemple_sans_cadence_active": {
     "lead_id": 977,
@@ -141,7 +149,15 @@
         "compte_dans_etude": false,
         "champs_manquants": []
       }
-    ]
+    ],
+    "fenetre_du_jour": {
+      "date": "2026-09-25",
+      "appelable": true,
+      "debut": "09:00",
+      "fin": "20:00",
+      "pause": { "debut": "11:30", "fin": "15:00" },
+      "ramadan": false
+    }
   },
   "exemple_tout_repondu": {
     "lead_id": 58,
@@ -196,7 +212,89 @@
         "compte_dans_etude": false,
         "champs_manquants": []
       }
-    ]
+    ],
+    "fenetre_du_jour": {
+      "date": "2026-09-27",
+      "appelable": false,
+      "debut": null,
+      "fin": null,
+      "pause": null,
+      "ramadan": false
+    }
+  },
+  "exemple_ramadan": {
+    "lead_id": 412,
+    "segment": "residentiel",
+    "segment_libelle": "Résidentiel",
+    "touche": {
+      "id": 2041,
+      "rang": 3,
+      "template_cle": "appel_relance",
+      "canal": "appel",
+      "statut": "a_faire",
+      "prevue_le": "2027-02-17",
+      "heure_cible": "10:30"
+    },
+    "script": {
+      "message": "Bonjour, je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
+      "langue": "fr",
+      "placeholders_manquants": []
+    },
+    "champs_a_poser": [
+      {
+        "champ": "occupation_jour",
+        "section": "occupation",
+        "libelle": "Présence en journée",
+        "question": "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? »",
+        "choix": [
+          { "valeur": "present", "libelle": "Présent en journée" },
+          { "valeur": "absent", "libelle": "Absent en journée" },
+          { "valeur": "partiel", "libelle": "Présence partielle (télétravail/mi-temps)" }
+        ],
+        "nature": "choix"
+      }
+    ],
+    "prefill": {
+      "facture_hiver": 1200.0
+    },
+    "equipements": [
+      {
+        "cle": "piscine",
+        "libelle": "Piscine",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "clim",
+        "libelle": "Climatisation",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "ve",
+        "libelle": "Véhicule électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      },
+      {
+        "cle": "chauffe_eau",
+        "libelle": "Chauffe-eau électrique",
+        "declare": false,
+        "compte_dans_etude": false,
+        "champs_manquants": []
+      }
+    ],
+    "fenetre_du_jour": {
+      "date": "2027-02-17",
+      "appelable": true,
+      "debut": "10:00",
+      "fin": "14:00",
+      "pause": null,
+      "ramadan": true
+    }
   },
   "notes": {
     "questions": "`question` est le `help_text` du champ `crm.Lead`, servi tel quel. L'écran ne le réécrit pas : améliorer une formulation, c'est modifier le `help_text`. `section` vaut `null` pour une question ORALE — celles que le questionnaire envoyé au client ne porte pas (décideur, concurrents, et les trois questions de pompage du segment agricole).",
@@ -207,6 +305,7 @@
     "equipements": "Les quatre couches sont TOUJOURS servies, dans cet ordre. `declare` = le booléen du lead vaut Oui ; `compte_dans_etude` = la couche est réellement composable par `apps/ventes/courbes_journalieres.py::composer_equipements`. Les deux diffèrent exactement quand une grandeur manque — et `champs_manquants` la NOMME, pour que la question suivante soit la bonne.",
     "touche": "`null` quand aucune cadence n'est active sur ce lead. Le panneau reste servi : les questions, elles, se posent toujours. `rang` est l'ordre de la touche dans sa cadence ; `heure_cible` vaut `null` sur les touches d'avant l'échéance à la minute.",
     "script": "`null` quand il n'y a pas de touche. Sinon, forme reprise de `relance_etape_message.json` (sans `wa_url` : un appel n'ouvre pas WhatsApp).",
+    "fenetre_du_jour": "CAD155 — la fenêtre d'APPEL du jour (heure de Casablanca), lue par `apps.crm.horaires.fenetre_du_jour` : celle que le moteur applique aux touches, Ramadan SAISI par la société et pause du vendredi compris — jamais recopiée par l'écran. `appelable: false` un jour non ouvré (heures `null`). `pause` : `{debut, fin}` le vendredi, sinon `null`. `ramadan: true` pendant la période saisie : la fenêtre est alors commune à tous les canaux et AUCUN créneau du soir n'existe (décision fondateur du 21/09/2026). `exemple_ramadan` : une société qui a saisi 10:00-14:00. Le bloc entier vaut `null` si l'horaire est illisible (jamais un horaire supposé).",
     "permissions": "Lecture seule, company-scopée comme tout `LeadViewSet` (garde fine `crm_voir`) : aucune écriture, aucun effet de bord.",
     "segment": "Clé de `crm.Lead.TypeInstallation` (`residentiel`, `commercial`, `industriel`, `agricole`), ou `null` quand le lead n'a pas de type d'installation saisi. CAD161 (décision fondateur du 21/09/2026) : le panneau guidé est livré pour le RÉSIDENTIEL d'abord — `frontend/src/features/crm/relances/appelGuidance.js` refuse les trois autres segments avec un message explicite (jamais une page vide) et traite `null` comme le résidentiel, « segment à confirmer » (même repli que `variante_segment`, CAD126). Le serveur sert TOUS les segments tels quels : la seconde livraison (agricole et industriel, CAD175) lit ce même champ, sans aucune migration de contrat."
   }

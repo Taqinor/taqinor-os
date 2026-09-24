@@ -405,3 +405,24 @@ test('CAD151 — debrief_visite existe dans messages_meryem.md, sans aucun chiff
   assert.ok('debrief_visite' in gabarits)
   assert.doesNotMatch(gabarits.debrief_visite, /[0-9٠-٩۰-۹]/)
 })
+
+// ── CAD155 — la fenêtre du jour, découpée, jamais inventée ─────────────────
+
+test('CAD155 — Ramadan saisi : un seul créneau, celui de la fenêtre servie', () => {
+  const f = guidance.fenetreAppel(exemple('exemple_ramadan'))
+  assert.equal(f.ramadan, true)
+  assert.equal(f.plage, '10:00–14:00')
+  assert.deepEqual(f.creneaux, ['10:00–14:00'])
+})
+
+test('CAD155 — vendredi : la pause découpe la fenêtre, rien n\'est ajouté', () => {
+  const f = guidance.fenetreAppel(exemple('exemple_sans_cadence_active'))
+  assert.deepEqual(f.creneaux, ['09:00–11:30', '15:00–20:00'])
+  assert.equal(f.pause, '11:30–15:00')
+})
+
+test('CAD155 — jour non ouvré : aucun créneau ; horaire illisible : null', () => {
+  assert.deepEqual(guidance.fenetreAppel(exemple('exemple_tout_repondu')).creneaux, [])
+  assert.equal(guidance.fenetreAppel({ ...exemple(), fenetre_du_jour: null }), null)
+  assert.equal(guidanceAppel(exemple('exemple_ramadan')).fenetre.plage, '10:00–14:00')
+})

@@ -341,6 +341,40 @@ export const ISSUE_VERROUILLEE = 'Touche à venir : l’issue se saisira à son 
 export const AUCUNE_QUESTION = 'Rien à demander sur cet appel : tout ce que '
   + 'le script pose est déjà sur la fiche.'
 
+// ── CAD155 — la fenêtre RÉELLE du jour : pendant le Ramadan, pas de soir ───
+// La fenêtre vient du SERVEUR (`panneau.fenetre_du_jour`, lue par
+// `apps/crm/horaires.py::fenetre_du_jour`, celle que le moteur appliquera —
+// Ramadan saisi et pause du vendredi compris). Ce module n'écrit AUCUNE
+// heure : il ne fait que découper ce qui est servi en créneaux proposables.
+// Pendant le Ramadan, la journée d'appel s'arrête plus tôt et aucun créneau
+// du soir n'existe (décision fondateur du 21/09/2026, CAD39) : le script ne
+// peut donc proposer qu'un créneau DANS la fenêtre servie.
+export const CONSIGNE_CRENEAU = "Si le client n'est pas disponible, "
+  + 'proposez un rappel dans un de ces créneaux :'
+export const RAMADAN_PAS_DE_SOIR = "Ramadan : pas d'appel le soir. La "
+  + "journée d'appel s'arrête plus tôt — ne proposez aucun rappel après la "
+  + 'fin de la fenêtre.'
+export const JOUR_NON_APPELABLE = "Aujourd'hui n'est pas un jour d'appel : "
+  + 'proposez un rappel un jour ouvré.'
+
+/** La fenêtre servie, lisible par l'écran — ou `null` quand le serveur n'a
+ *  rien pu lire (on ne dit alors rien de l'horaire : jamais un supposé).
+ *  `creneaux` : la fenêtre découpée par la pause du vendredi, et RIEN
+ *  d'autre — aucun créneau n'est inventé hors de ce que le moteur ouvre. */
+export function fenetreAppel(panneau) {
+  const f = panneau?.fenetre_du_jour
+  if (!f) return null
+  const ramadan = Boolean(f.ramadan)
+  if (!f.appelable || !f.debut || !f.fin) {
+    return { appelable: false, ramadan, plage: null, pause: null, creneaux: [] }
+  }
+  const pause = f.pause?.debut && f.pause?.fin ? `${f.pause.debut}–${f.pause.fin}` : null
+  const creneaux = pause
+    ? [`${f.debut}–${f.pause.debut}`, `${f.pause.fin}–${f.fin}`]
+    : [`${f.debut}–${f.fin}`]
+  return { appelable: true, ramadan, plage: `${f.debut}–${f.fin}`, pause, creneaux }
+}
+
 /** L'entrée du contrat qui remonte EN TÊTE du panneau (Q5) : la présence en
  *  journée tant qu'elle reste à poser — `null` sinon. Lue dans
  *  `champs_a_poser`, jamais supposée : une colonne déjà dans `prefill` n'est
@@ -414,5 +448,6 @@ export function guidanceAppel(panneau, options = {}) {
     issues: ISSUES_APPEL,
     enTete,
     profilSuppose: Boolean(enTete),
+    fenetre: fenetreAppel(vu),
   }
 }

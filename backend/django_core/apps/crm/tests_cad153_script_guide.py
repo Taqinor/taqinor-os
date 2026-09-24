@@ -186,10 +186,16 @@ def _rendu_factice(*args, **kwargs):
 
 class GardeQuatreLeContratEstLaReponse(SimpleTestCase):
     def _panneau(self, lead, touche=None):
+        # Le moteur d'horaires lit la base (profil société, jours ouvrés) :
+        # il est simulé ici — sa forme est gardée par CAD155.
         with mock.patch.object(panneau, '_touche_en_cours',
                                return_value=touche), \
                 mock.patch('apps.crm.services.message_pour_etape',
-                           side_effect=_rendu_factice):
+                           side_effect=_rendu_factice), \
+                mock.patch('apps.crm.horaires.fenetre_du_jour',
+                           return_value=None), \
+                mock.patch('apps.crm.horaires.est_en_ramadan',
+                           return_value=False):
             return panneau.panneau_appel(lead)
 
     def test_sans_touche_la_racine_est_celle_de_l_exemple_sans_cadence(self):
@@ -221,9 +227,12 @@ class GardeQuatreLeContratEstLaReponse(SimpleTestCase):
         for equipement in data['equipements']:
             self.assertEqual(set(equipement), cles_equipement)
 
-    def test_les_trois_exemples_du_contrat_ont_la_meme_racine(self):
-        racines = {nom: set(CONTRAT[nom]) for nom in (
-            'exemple', 'exemple_sans_cadence_active', 'exemple_tout_repondu')}
+    def test_tous_les_exemples_du_contrat_ont_la_meme_racine(self):
+        """Une variante décrit un autre ÉTAT du serveur, jamais une autre
+        forme (règle des échantillons PACT10)."""
+        racines = {nom: set(valeur) for nom, valeur in CONTRAT.items()
+                   if nom.startswith('exemple')}
+        self.assertGreaterEqual(len(racines), 3)
         self.assertEqual(len({frozenset(r) for r in racines.values()}), 1,
                          racines)
 

@@ -317,6 +317,54 @@ def _script_servi(etape, *, request=None, user=None):
     }
 
 
+def _hhmm(heure):
+    return heure.strftime('%H:%M') if heure is not None else None
+
+
+def fenetre_du_jour_servie(lead, *, maintenant=None):
+    """CAD155 — la fenêtre d'APPEL du jour, telle que le MOTEUR l'appliquera.
+
+    Lue par ``apps.crm.horaires.fenetre_du_jour`` — l'unique autorité des
+    touches de cadence (Ramadan SAISI par la société, pause de la prière du
+    vendredi, jours ouvrés et fériés) — et jamais recopiée : sinon l'écran
+    divergerait du moteur au premier réglage. Pendant le Ramadan, la fenêtre
+    est commune à tous les canaux et AUCUN créneau du soir n'existe (décision
+    fondateur du 21/09/2026, CAD39) : l'écran n'a donc rien d'autre à
+    proposer que ce qui est servi ici.
+
+    ``None`` quand la fenêtre est illisible (best-effort : le panneau reste
+    servi, il ne dit simplement rien de l'horaire — jamais un horaire
+    supposé). Le jour est celui de Casablanca, pas celui du serveur.
+    """
+    from django.utils import timezone
+
+    from . import horaires
+
+    try:
+        instant = maintenant or timezone.now()
+        jour = instant.astimezone(horaires.CASABLANCA).date()
+        company = getattr(lead, 'company', None)
+        fenetre = horaires.fenetre_du_jour(jour, company, canal='appel')
+        ramadan = bool(horaires.est_en_ramadan(jour, company))
+    except Exception:  # noqa: BLE001 — l'horaire n'empêche jamais l'appel
+        logger.warning('CAD155: fenêtre d\'appel illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return None
+    if fenetre is None:
+        return {'date': jour.isoformat(), 'appelable': False, 'debut': None,
+                'fin': None, 'pause': None, 'ramadan': ramadan}
+    debut, fin, pause = fenetre
+    return {
+        'date': jour.isoformat(),
+        'appelable': True,
+        'debut': _hhmm(debut),
+        'fin': _hhmm(fin),
+        'pause': ({'debut': _hhmm(pause[0]), 'fin': _hhmm(pause[1])}
+                  if pause else None),
+        'ramadan': ramadan,
+    }
+
+
 def panneau_appel(lead, *, request=None, user=None) -> dict:
     """Le panneau d'appel guidé d'UN lead — lecture seule, aucun effet de bord."""
     etape = _touche_en_cours(lead)
@@ -331,4 +379,5 @@ def panneau_appel(lead, *, request=None, user=None) -> dict:
         'champs_a_poser': questions_a_poser(lead),
         'prefill': prefill_du_panneau(lead),
         'equipements': drapeaux_equipements(lead),
+        'fenetre_du_jour': fenetre_du_jour_servie(lead),
     }

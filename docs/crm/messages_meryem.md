@@ -421,6 +421,14 @@ EXPLICATION_PROFIL_SUPPOSE : La présence en journée n'a pas été posée : l'e
 CONSIGNE_ISSUE : L'issue se saisit avec les réponses de la touche (« Fait ») : client joint, pas de réponse, répondeur, à rappeler, refus.
 ISSUE_VERROUILLEE : Touche à venir : l’issue se saisira à son échéance (« Fait » verrouillé).
 AUCUNE_QUESTION : Rien à demander sur cet appel : tout ce que le script pose est déjà sur la fiche.
+CONSIGNE_CRENEAU : Si le client n'est pas disponible, proposez un rappel dans un de ces créneaux :
+RAMADAN_PAS_DE_SOIR : Ramadan : pas d'appel le soir. La journée d'appel s'arrête plus tôt — ne proposez aucun rappel après la fin de la fenêtre.
+JOUR_NON_APPELABLE : Aujourd'hui n'est pas un jour d'appel : proposez un rappel un jour ouvré.
+
+CAD155 (24/09/2026) — les trois consignes ci-dessus n'écrivent AUCUNE heure : la fenêtre et ses créneaux sont LUS du
+moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan saisi et pause du vendredi compris —
+jamais recopiés dans un texte, sinon l'écran divergerait du moteur au premier réglage. Pendant le Ramadan, la fenêtre
+est commune à tous les canaux et aucun créneau du soir n'existe (décision fondateur du 21/09/2026).
 
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.

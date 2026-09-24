@@ -16,7 +16,7 @@ import PanneauScriptAppel from './PanneauScriptAppel'
 import * as guidance from './appelGuidance'
 import {
   BANDEAU_PROFIL_SUPPOSE, MENTION_D7, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
-  ORDRE_APPEL_1, QUESTIONS_DU_RAPPEL, scriptTouche,
+  ORDRE_APPEL_1, QUESTIONS_DU_RAPPEL, scriptTouche, RAMADAN_PAS_DE_SOIR,
 } from './appelGuidance'
 
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
@@ -309,6 +309,64 @@ describe('CAD153 — tout champ que le panneau écrit est déclaré à l’écra
       expect(fieldLabels[champ], `${champ} absent de fieldLabels.js`).toBeTruthy()
       expect(fieldLabels[champ].label.trim().length, champ).toBeGreaterThan(0)
     }
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// CAD155 — pendant le Ramadan, l'appel du soir n'existe pas : le panneau le dit
+// ════════════════════════════════════════════════════════════════════════════
+describe('CAD155 — la fenêtre RÉELLE du jour, lue du moteur', () => {
+  /** « HH:MM » → minutes. */
+  const minutes = (hhmm) => {
+    const [h, m] = hhmm.split(':').map(Number)
+    return h * 60 + m
+  }
+
+  it('en période de Ramadan saisie, le panneau annonce 10 h-14 h et ne propose aucun créneau du soir', async () => {
+    const RAMADAN = exempleContrat('crm', 'panneau_appel', 'exemple_ramadan')
+    armer({ panneau: RAMADAN })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('fenetre-plage')).toHaveTextContent('10:00–14:00')
+    expect(screen.getByTestId('ramadan-pas-de-soir')).toHaveTextContent(RAMADAN_PAS_DE_SOIR)
+    const creneaux = screen.getAllByTestId('creneau-propose').map((c) => c.textContent)
+    expect(creneaux).toEqual(['10:00–14:00'])
+    // Aucun créneau ne déborde de la fenêtre servie (donc aucun créneau du soir).
+    const fin = minutes(RAMADAN.fenetre_du_jour.fin)
+    for (const creneau of creneaux) {
+      const [debut, finCreneau] = creneau.split('–')
+      expect(minutes(debut)).toBeLessThan(fin)
+      expect(minutes(finCreneau)).toBeLessThanOrEqual(fin)
+    }
+  })
+
+  it('un vendredi ordinaire : la pause de la prière découpe la fenêtre en deux créneaux', async () => {
+    const vendredi = exempleContrat('crm', 'panneau_appel', 'exemple_sans_cadence_active').fenetre_du_jour
+    armer({ panneau: { ...PANNEAU, fenetre_du_jour: vendredi } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('fenetre-plage'))
+      .toHaveTextContent(`${vendredi.debut}–${vendredi.fin} (pause ${vendredi.pause.debut}–${vendredi.pause.fin})`)
+    expect(screen.getAllByTestId('creneau-propose').map((c) => c.textContent)).toEqual([
+      `${vendredi.debut}–${vendredi.pause.debut}`, `${vendredi.pause.fin}–${vendredi.fin}`,
+    ])
+    expect(screen.queryByTestId('ramadan-pas-de-soir')).not.toBeInTheDocument()
+  })
+
+  it('un jour non ouvré : aucun créneau proposé, le panneau le dit', async () => {
+    armer({ panneau: exempleContrat('crm', 'panneau_appel', 'exemple_tout_repondu') })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('jour-non-appelable')).toBeInTheDocument()
+    expect(screen.queryAllByTestId('creneau-propose')).toHaveLength(0)
+  })
+
+  it('horaire illisible côté serveur (null) : le panneau ne dit rien de l’horaire, jamais un supposé', async () => {
+    armer({ panneau: { ...PANNEAU, fenetre_du_jour: null } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('mention-d7')).toBeInTheDocument()
+    expect(screen.queryByTestId('fenetre-du-jour')).not.toBeInTheDocument()
   })
 })
 

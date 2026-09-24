@@ -25,9 +25,10 @@ import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import {
   guidanceAppel, texteQuestion, scriptTouche, normaliserSaisie,
-  messageErreurServeur, FLUX_LOCATAIRE, MENTION_D7, BANDEAU_PROFIL_SUPPOSE,
-  EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
-  AUCUNE_QUESTION,
+  messageErreurServeur, fenetreAppel, FLUX_LOCATAIRE, MENTION_D7,
+  BANDEAU_PROFIL_SUPPOSE, EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE,
+  ISSUE_VERROUILLEE, AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR,
+  JOUR_NON_APPELABLE,
 } from './appelGuidance'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
@@ -157,6 +158,9 @@ export default function PanneauScriptAppel({
   const g = panneau ? guidanceAppel(panneau, etape ? { touche: toucheLigne } : {}) : null
   const cleTouche = etape ? etape.template_cle : panneau?.touche?.template_cle
   const titreTouche = scriptTouche(cleTouche)?.titre ?? null
+  // CAD155 — la fenêtre RÉELLE du jour (servie, jamais recopiée) : elle vaut
+  // pour tout appel, quel que soit le segment.
+  const fenetre = panneau ? fenetreAppel(panneau) : null
 
   // Le texte à lire : celui de la LIGNE (touche d'appel scriptée), sinon
   // l'accroche servie par le contrat pour la prochaine touche (fiche).
@@ -297,6 +301,34 @@ export default function PanneauScriptAppel({
         <p className="text-xs text-warning">
           Informations manquantes ({manquants.join(', ')}) — la phrase correspondante a été omise du script.
         </p>
+      )}
+      {fenetre && (
+        <div className="flex flex-col gap-1 rounded-md border border-border p-2" data-testid="fenetre-du-jour">
+          {fenetre.appelable ? (
+            <>
+              <p className="font-medium text-foreground" data-testid="fenetre-plage">
+                Fenêtre d’appel du jour : {fenetre.plage}
+                {fenetre.pause ? ` (pause ${fenetre.pause})` : ''}
+              </p>
+              {fenetre.ramadan && (
+                <p className="text-warning" data-testid="ramadan-pas-de-soir">{RAMADAN_PAS_DE_SOIR}</p>
+              )}
+              <p>{CONSIGNE_CRENEAU}</p>
+              <ul className="ml-4 list-disc">
+                {fenetre.creneaux.map((c) => (
+                  <li key={c} data-testid="creneau-propose">{c}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <p data-testid="jour-non-appelable">{JOUR_NON_APPELABLE}</p>
+              {fenetre.ramadan && (
+                <p className="text-warning" data-testid="ramadan-pas-de-soir">{RAMADAN_PAS_DE_SOIR}</p>
+              )}
+            </>
+          )}
+        </div>
       )}
       {etat.chargement && !panneau && <p>Chargement des questions…</p>}
       {etat.erreur && <p data-testid="panneau-indisponible">{etat.erreur}</p>}
