@@ -56,6 +56,27 @@ class TestAssignationScalaire(unittest.TestCase):
         self.assertEqual(_ecritures("stage = 'NEW'"), [])
 
 
+class TestDeclarationLestage(unittest.TestCase):
+    """Le français « lestage »/« délestage » contient STAGE : pas une étape."""
+
+    def test_lestage_ne_rougit_pas(self):
+        for ligne in (
+            "CLES_STRUCTURE_LESTAGE = ['zones', 'zone_par_defaut']",
+            "const plagesDelestage = ['NEW', 'COLD']",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertIsNone(cs.DECLARATION_RE.search(ligne))
+
+    def test_liste_d_etapes_rougit_toujours(self):
+        for ligne in (
+            "LEAD_STAGES = ['NEW', 'COLD']",
+            "const leadPipeline = ['NEW']",
+            "leadStageList = ('NEW',)",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertIsNotNone(cs.DECLARATION_RE.search(ligne))
+
+
 class TestFiltrageCanonique(unittest.TestCase):
     """Seuls les 6 noms canoniques comptent : un homonyme n'est pas une etape."""
 
