@@ -346,9 +346,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # même retrait que CALX297 avant elle.
     # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
     # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
-    'calepinage_releve_visite.json':
-        'GET/POST calepinages/<pk>/releve-visite/ arrive avec CALX364 '
-        '(views/reprise_visite.py) — retirer cette entrée dans la même tâche',
+    # CALX364 a livré ``GET/POST calepinages/<pk>/releve-visite/``
+    # (``views/reprise_visite.py``) : ``calepinage_releve_visite.json`` en est
+    # SORTI.
     # CALX341 a livré ``POST calepinages/comparer-projets/``
     # (``views/comparaison_projets.py``) : ``calepinage_comparaison_projets.json``
     # en est SORTI.
