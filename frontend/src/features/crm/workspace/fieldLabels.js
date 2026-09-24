@@ -43,6 +43,10 @@ const fieldLabels = {
   langue_preferee: { label: 'Langue préférée', section: 'pipeline', inputId: 'lf-langue-preferee' },
   tags: { label: 'Tags (séparés par des virgules)', section: 'pipeline', inputId: 'lf-tags' },
   motif_perte: { label: 'Motif de perte', section: 'pipeline', inputId: 'lf-motif-perte' },
+  // CAD150 — le contrôle qui manquait à `contact_preference`.
+  contact_preference: {
+    label: 'Préférence de contact', section: 'pipeline', inputId: 'lf-contact-preference',
+  },
   // CAD144 — libellés = `verbose_name` serveur (apps/crm/models.py).
   contact_secondaire_nom: {
     label: 'Contact secondaire (nom)', section: 'pipeline', inputId: 'lf-contact-secondaire-nom',
@@ -57,6 +61,9 @@ const fieldLabels = {
   conso_mensuelle_kwh: { label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
   tranche_onee: { label: 'Tarif / tranche ONEE', section: 'energie', inputId: 'lf-tranche-onee' },
   raccordement: { label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },
+  // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
+  distributeur: { label: "Distributeur d'électricité", section: 'energie', inputId: 'lf-distributeur' },
+  bill_kwh: { label: 'Consommation déclarée sur le site (kWh)', section: 'energie', inputId: 'lf-bill-kwh' },
 
   // ── Questionnaire d'appel (equipements) ───────────────────────────────
   occupation_jour: {
@@ -129,6 +136,13 @@ const fieldLabels = {
 
   // ── Compléments ────────────────────────────────────────────────────────
   note: { label: 'Note générale', section: 'divers', inputId: 'lf-note' },
+  // CAD150 — qualification captée par le site, éditable (CHAMPS_SITE).
+  ownership: { label: "Statut d'occupation", section: 'divers', inputId: 'lf-ownership' },
+  financing_intent: { label: 'Financement envisagé', section: 'divers', inputId: 'lf-financing-intent' },
+  project_timeline: { label: 'Horizon du projet', section: 'divers', inputId: 'lf-project-timeline' },
+  facility_type: { label: 'Type de site (pro)', section: 'divers', inputId: 'lf-facility-type' },
+  roof_type: { label: 'Type de toiture (site)', section: 'divers', inputId: 'lf-roof-type' },
+  roof_age: { label: 'Âge de la toiture (ans)', section: 'divers', inputId: 'lf-roof-age' },
 
   // ── Vague 1 du script d'appel guidé (CAD149/CAD174) ───────────────────
   // Libellé = EXACTEMENT le `verbose_name` du champ côté serveur

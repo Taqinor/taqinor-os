@@ -72,6 +72,10 @@ export const TRACKED_KEYS = [
   // libre du Suivi commercial, qu'aucune cadence ne lit (contrat
   // `lead_contact_secondaire`).
   'contact_secondaire_nom', 'contact_secondaire_telephone',
+  // CAD150/CAD159 — les champs CAPTÉS PAR LE SITE deviennent éditables
+  // (décision fondateur du 21/09/2026) : voir CHAMPS_SITE plus bas.
+  'distributeur', 'bill_kwh', 'ownership', 'financing_intent',
+  'project_timeline', 'facility_type', 'roof_type', 'roof_age',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -184,7 +188,9 @@ export const SECTION_FIELDS = {
     // CAD144 — le second interlocuteur (saisie libre, aucune automatisation).
     'contact_secondaire_nom', 'contact_secondaire_telephone'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
-    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221'],
+    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',
+    // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
+    'distributeur', 'bill_kwh'],
   // L4 — questionnaire d'appel (occupation + équipements piscine/VE/clim/
   // chauffe-eau). Les questions déjà couvertes par d'autres sections
   // (raccordement, factures) ne sont PAS dupliquées ici — voir la référence
@@ -214,7 +220,10 @@ export const SECTION_FIELDS = {
     'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee',
     'type_bien'],
   visite: ['visite_prevue_le', 'visite_effectuee', 'visite_notes'],
-  divers: ['note', 'custom_data'],
+  // CAD150 — la qualification captée par le site (CHAMPS_SITE hors énergie)
+  // est éditable ici, avec sa provenance.
+  divers: ['note', 'custom_data', 'ownership', 'financing_intent',
+    'project_timeline', 'facility_type', 'roof_type', 'roof_age'],
 }
 
 // La section de TRAVAIL : on n'y touche jamais automatiquement. C'est là qu'on
@@ -347,6 +356,9 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     note: '', custom_data: {},
     // CAD144 — contact secondaire : vide à la création (⇒ null serveur).
     contact_secondaire_nom: '', contact_secondaire_telephone: '',
+    // CAD150 — champs captés par le site : vides à la création manuelle.
+    distributeur: '', bill_kwh: '', ownership: '', financing_intent: '',
+    project_timeline: '', facility_type: '', roof_type: '', roof_age: '',
   }
 }
 
@@ -538,6 +550,38 @@ export const WEB_QUESTIONNAIRE_STRUCTURED_FIELDS = [
   'whatsapp_opt_in', 'consent_timestamp', 'utm_content', 'utm_term',
   'roof_type', 'bill_kwh',
 ]
+
+// ── CAD150/CAD159 — les champs CAPTÉS PAR LE SITE, toujours éditables ────────
+// Décision fondateur du 21/09/2026 : ces champs se SAISISSENT sur la fiche
+// (un lead Meta, un walk-in ou un appel entrant ne les a jamais reçus du
+// site), mais une valeur venue du site n'est jamais écrasée SANS UN GESTE
+// EXPLICITE : elle s'affiche « à confirmer », avec sa provenance (« saisie
+// sur le site le … », servie par le serveur — `provenance_site`, contrat
+// `lead_provenance_site`), et ne devient modifiable qu'après « Modifier ».
+// Miroir de `crm.Lead.CHAMPS_SITE` (apps/crm/models.py).
+export const CHAMPS_SITE = [
+  'distributeur', 'roof_age', 'ownership', 'project_timeline',
+  'financing_intent', 'facility_type', 'roof_type', 'bill_kwh',
+]
+
+/**
+ * etatChampSite — la provenance d'un champ capté par le site, et s'il doit
+ * s'afficher « à confirmer » (verrouillé derrière un geste explicite).
+ * Pur : lit seulement l'état du moteur.
+ *
+ * « À confirmer » = une provenance SITE existe, n'a pas été écrasée depuis
+ * par un humain, le champ porte une valeur, et rien n'est en cours de frappe.
+ * @returns {{provenance: object|null, aConfirmer: boolean}}
+ */
+export function etatChampSite(state, champ) {
+  const provenance = (state.server && state.server.provenance_site
+    && state.server.provenance_site[champ]) || null
+  const aConfirmer = !!provenance
+    && !provenance.ecrasee
+    && !isEmpty(getField(state, champ))
+    && !has(state.draft, champ)
+  return { provenance, aConfirmer }
+}
 
 // Une valeur « vide » au sens de cette section : '' / null / undefined / []
 // / {} ne comptent jamais comme une réponse — RÈGLE DURE, jamais de « 0 » par

@@ -1017,8 +1017,20 @@ class Lead(SoftDeleteModel):
     meta_form_id = models.CharField(max_length=64, blank=True, null=True)
 
     # ── QK1 — Qualification captée par le site (additifs, nullable) ──
-    # Le site collecte ces signaux au moment de la capture ; ils ne doivent
-    # jamais être re-demandés au prospect par le commercial.
+    # Le site collecte ces signaux au moment de la capture. RÈGLE (décision
+    # fondateur du 21/09/2026, CAD150/CAD159) : ces champs sont TOUJOURS
+    # ÉDITABLES par la commerciale — un lead Meta, un walk-in ou un appel
+    # entrant ne les a jamais reçus du site, et l'absence de `distributeur`
+    # supprime la courbe de la proposition. La valeur venue du site reste
+    # affichée avec sa PROVENANCE (« saisie sur le site le … »,
+    # `selectors.provenance_site`), y compris après un écrasement fait en
+    # connaissance de cause ; et la QUESTION n'est jamais reposée quand le
+    # champ est rempli — elle revient pré-remplie, « à confirmer ».
+    # (Remplace l'ancienne règle « jamais re-demandés, jamais édités ».)
+    #: CAD150/CAD159 — les champs captés par le site que la fiche rend
+    #: éditables avec leur provenance. Source unique (sélecteur, écran).
+    CHAMPS_SITE = ('distributeur', 'roof_age', 'ownership', 'project_timeline',
+                   'financing_intent', 'facility_type', 'roof_type', 'bill_kwh')
     # CAD167 — la colonne passe de 12 à 20 caractères pour porter les codes
     # SRM (`srm_beni_mellal` = 15) ; élargissement pur, aucune valeur
     # existante n'est touchée.

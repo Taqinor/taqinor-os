@@ -790,6 +790,79 @@ def conception_3d_du_lead(lead):
     return conception_pour_lead(lead, getattr(lead, 'company', None)) or vide
 
 
+# ── CAD150/CAD159 — la PROVENANCE des champs captés par le site ─────────────
+
+#: La valeur « rien » telle que le chatter l'écrit (``activity._display``).
+_VALEUR_CHATTER_VIDE = '—'
+
+
+def provenance_site(lead):
+    """CAD150/CAD159 — ``{champ: {valeur, le, ecrasee}}`` pour chaque champ de
+    ``Lead.CHAMPS_SITE`` dont une valeur a été SAISIE PAR LE CLIENT (formulaire
+    du site à la création, puis questionnaire du site).
+
+    Décision fondateur du 21/09/2026 : ces champs sont toujours éditables,
+    mais la valeur venue du site reste visible AVEC SA PROVENANCE, y compris
+    après un écrasement fait en connaissance de cause. Rien n'est stocké en
+    plus : tout se relit dans ce qui existe déjà —
+
+      * un lead créé par le site (``source = site_web``) porte ses valeurs
+        d'origine depuis ``date_creation`` ; si le champ a été modifié depuis,
+        la valeur d'origine est l'ANCIENNE valeur de la première ligne de
+        modification du chatter ;
+      * une écriture SYSTÈME ultérieure (``user`` nul : questionnaire du
+        client, nouvelle soumission du site) devient la nouvelle provenance ;
+      * une écriture HUMAINE ne change jamais la provenance — elle la marque
+        ``ecrasee``.
+
+    ``valeur`` est la valeur LISIBLE (libellé du choix, comme le chatter) ;
+    ``le`` l'horodatage ISO de la saisie. Un champ jamais saisi par le client
+    est ABSENT, et un lead qui n'est pas venu du site rend ``{}`` SANS AUCUNE
+    requête (le détail d'un lead manuel ne paie rien). UNE requête sinon (les
+    lignes de modification de ces champs)."""
+    from .activity import _display
+    from .models import Lead, LeadActivity
+
+    if lead is None or not getattr(lead, 'pk', None):
+        return {}
+    if getattr(lead, 'source', None) != Lead.Source.SITE_WEB:
+        return {}
+    champs = Lead.CHAMPS_SITE
+    lignes = {}
+    for ligne in (lead.activites
+                  .filter(kind=LeadActivity.Kind.MODIFICATION, field__in=champs)
+                  .order_by('created_at', 'pk')
+                  .values('field', 'old_value', 'new_value', 'user_id',
+                          'created_at')):
+        lignes.setdefault(ligne['field'], []).append(ligne)
+
+    def _renseignee(valeur):
+        return bool(valeur) and valeur != _VALEUR_CHATTER_VIDE
+
+    out = {}
+    for champ in champs:
+        historique = lignes.get(champ, [])
+        valeur, le, ecrasee = None, None, False
+        initiale = (historique[0]['old_value'] if historique
+                    else _display(lead, champ, getattr(lead, champ, None)))
+        if _renseignee(initiale):
+            valeur, le = initiale, getattr(lead, 'date_creation', None)
+        for ligne in historique:
+            if ligne['user_id'] is None:
+                if _renseignee(ligne['new_value']):
+                    valeur, le = ligne['new_value'], ligne['created_at']
+                    ecrasee = False
+            elif valeur is not None:
+                ecrasee = True
+        if valeur is not None:
+            out[champ] = {
+                'valeur': valeur,
+                'le': le.isoformat() if le is not None else None,
+                'ecrasee': ecrasee,
+            }
+    return out
+
+
 # DC12 — profil site/énergie réutilisable par client ─────────────────────────
 
 # Champs du profil que le générateur peut pré-remplir (source unique).

@@ -660,6 +660,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # pré-signée PAR LEAD, ce qui serait un N+1 franc sur une liste de 50
     # cartes. Voir get_fields() plus bas.
     conception = serializers.SerializerMethodField()
+    # CAD150/CAD159 — la PROVENANCE des champs captés par le site
+    # (`selectors.provenance_site`) : RETRIEVE SEULEMENT, même porte que
+    # `conception` (une requête par lead — jamais sur une liste).
+    provenance_site = serializers.SerializerMethodField()
     # MRY5 — prochaine touche de cadence, ANNOTÉE dans le queryset
     # (``LeadViewSet.get_queryset``), jamais un SerializerMethodField : la
     # liste et le kanban affichent le badge « touche due » pour 50 cartes,
@@ -1030,11 +1034,14 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'is_deleted', 'deleted_at', 'deleted_by',
             'first_contacted_at',  # FG28 — posé server-side uniquement
             'updated_by',  # VX98 — posé server-side (perform_update) uniquement
-            # B3 — toiture 3D : pin/contour bruts + conso saisis par le client
+            # B3 — toiture 3D : pin/contour bruts saisis par le client
             # (webhook site, posés server-side). Exposés en LECTURE SEULE sur la
             # fiche lead pour que la page de conception authentifiée réhydrate la
             # toiture épinglée du client ; jamais réécrits via un PATCH du corps.
-            'roof_point', 'roof_outline', 'bill_kwh',
+            # CAD150 (décision fondateur du 21/09/2026) — `bill_kwh` en SORT :
+            # les champs captés par le site sont TOUJOURS éditables par la
+            # commerciale, leur provenance reste visible (`provenance_site`).
+            'roof_point', 'roof_outline',
         ]
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
@@ -1069,6 +1076,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # conception, qui coûte une requête + une URL pré-signée par lead,
             # ne descend donc jamais dans une liste.
             fields.pop('conception', None)
+            # CAD150 — la provenance « saisie sur le site » coûte une requête
+            # par lead : détail seulement, même porte.
+            fields.pop('provenance_site', None)
         return fields
 
     def to_representation(self, instance):
@@ -1109,6 +1119,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """
         from .selectors import conception_3d_du_lead
         return conception_3d_du_lead(obj)
+
+    @extend_schema_field(serializers.DictField())
+    def get_provenance_site(self, obj):
+        """CAD150/CAD159 — ``{champ: {valeur, le, ecrasee}}`` des champs
+        captés par le site (contrat ``lead_provenance_site``)."""
+        from .selectors import provenance_site
+        return provenance_site(obj)
 
     def get_chatter_recent(self, obj):
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord

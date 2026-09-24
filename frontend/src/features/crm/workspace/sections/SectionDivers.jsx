@@ -1,9 +1,134 @@
-import { DefinitionList } from '../../../../ui'
-import { formatDateTime } from '../../../../lib/format'
+import { useState } from 'react'
+import {
+  Badge, Button, DefinitionList, FormField, Input,
+} from '../../../../ui'
+import { formatDate, formatDateTime } from '../../../../lib/format'
 import {
   getField, WEB_ORIGIN_FIELDS, WEB_QUESTIONNAIRE_STRUCTURED_FIELDS, estValeurWebRenseignee,
+  etatChampSite,
 } from '../draftCore'
 import CustomFieldsInput from '../../../../components/CustomFieldsInput'
+
+/* CAD150/CAD159 — UN champ capté par le site, TOUJOURS éditable (décision
+   fondateur du 21/09/2026), jamais écrasé sans geste explicite :
+   · vide → le contrôle, directement saisissable (lead Meta, walk-in, appel) ;
+   · rempli par le site → la valeur « à confirmer » + « Modifier » : aucun
+     contrôle n'est rendu tant que la commerciale ne l'a pas demandé ;
+   · dans tous les cas, la provenance servie par le serveur (« saisie sur le
+     site le … ») reste lisible sous le champ — y compris après écrasement. */
+export function ChampSite({
+  state, champ, label, htmlFor: inputId, error, renderControl,
+}) {
+  const [edition, setEdition] = useState(false)
+  const { provenance, aConfirmer } = etatChampSite(state, champ)
+  const verrouille = aConfirmer && !edition
+  const hint = provenance
+    ? `Saisie sur le site le ${formatDate(provenance.le)} : ${provenance.valeur}`
+      + (provenance.ecrasee ? ' — modifiée depuis sur la fiche.' : '')
+    : undefined
+  return (
+    <FormField label={label} htmlFor={inputId} error={error} hint={hint}>
+      {verrouille ? (
+        <div className="flex flex-wrap items-center gap-1.5" data-testid={`champ-site-${champ}`}>
+          <span id={inputId} className="text-sm">{provenance.valeur}</span>
+          <Badge tone="warning">à confirmer</Badge>
+          <Button
+            type="button" size="sm" variant="outline"
+            aria-label={`Modifier « ${label} »`}
+            onClick={() => setEdition(true)}
+          >
+            Modifier
+          </Button>
+        </div>
+      ) : renderControl()}
+    </FormField>
+  )
+}
+
+// CAD150 — vocabulaires des choix, alignés sur le serveur (garde
+// `check_choices_declares.py`).
+// source-choix: crm.Lead.ownership
+const OWNERSHIP = { proprietaire: 'Propriétaire', locataire: 'Locataire', autre: 'Autre' }
+// source-choix: crm.Lead.financing_intent
+const FINANCING_INTENT = { cash: 'Comptant', credit: 'Crédit / financement', indecis: 'Pas encore décidé' }
+// source-choix: crm.Lead.project_timeline
+const PROJECT_TIMELINE = {
+  immediat: 'Dès que possible', '3_mois': 'Moins de 3 mois', '6_mois': '3 à 6 mois',
+  plus_tard: 'Plus tard / je me renseigne',
+}
+// source-choix: crm.Lead.facility_type
+const FACILITY_TYPE = {
+  bureau: 'Bureau', entrepot: 'Entrepôt', usine: 'Usine', commerce: 'Commerce',
+  agricole: 'Agricole', autre: 'Autre',
+}
+
+const optionsDe = (labels) => [
+  <option key="" value="">—</option>,
+  ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
+]
+
+/* CAD150 — la qualification captée par le site, ÉDITABLE sur la fiche (hors
+   énergie : `distributeur` et `bill_kwh` vivent dans SectionEnergie). */
+function QualificationSite({ state, setField, errors }) {
+  const v = (k) => getField(state, k) ?? ''
+  const select = (champ, id, labels) => () => (
+    <select
+      id={id} className={errors[champ] ? 'form-select is-invalid' : 'form-select'}
+      aria-invalid={errors[champ] ? true : undefined}
+      value={v(champ)} onChange={(e) => setField(champ, e.target.value)}
+    >
+      {optionsDe(labels)}
+    </select>
+  )
+  return (
+    <div className="mt-3" data-testid="qualification-site">
+      <p className="form-label">Qualification (site ou appel)</p>
+      <div className="form-row">
+        <ChampSite
+          state={state} champ="ownership" label="Statut d'occupation" htmlFor="lf-ownership"
+          error={errors.ownership} renderControl={select('ownership', 'lf-ownership', OWNERSHIP)}
+        />
+        <ChampSite
+          state={state} champ="financing_intent" label="Financement envisagé" htmlFor="lf-financing-intent"
+          error={errors.financing_intent}
+          renderControl={select('financing_intent', 'lf-financing-intent', FINANCING_INTENT)}
+        />
+        <ChampSite
+          state={state} champ="project_timeline" label="Horizon du projet" htmlFor="lf-project-timeline"
+          error={errors.project_timeline}
+          renderControl={select('project_timeline', 'lf-project-timeline', PROJECT_TIMELINE)}
+        />
+      </div>
+      <div className="form-row">
+        <ChampSite
+          state={state} champ="facility_type" label="Type de site (pro)" htmlFor="lf-facility-type"
+          error={errors.facility_type}
+          renderControl={select('facility_type', 'lf-facility-type', FACILITY_TYPE)}
+        />
+        <ChampSite
+          state={state} champ="roof_type" label="Type de toiture (site)" htmlFor="lf-roof-type"
+          error={errors.roof_type}
+          renderControl={() => (
+            <Input
+              id="lf-roof-type" invalid={!!errors.roof_type} value={v('roof_type')}
+              onChange={(e) => setField('roof_type', e.target.value)}
+            />
+          )}
+        />
+        <ChampSite
+          state={state} champ="roof_age" label="Âge de la toiture (ans)" htmlFor="lf-roof-age"
+          error={errors.roof_age}
+          renderControl={() => (
+            <Input
+              id="lf-roof-age" type="number" step="any" invalid={!!errors.roof_age} value={v('roof_age')}
+              onChange={(e) => setField('roof_age', e.target.value)}
+            />
+          )}
+        />
+      </div>
+    </div>
+  )
+}
 
 // Champs d'origine web (taqinor.ma) en LECTURE SEULE : capturés par le site,
 // jamais édités ici. La section est masquée si tous sont vides (SectionsPane).
@@ -40,7 +165,10 @@ export function SectionOrigine({ state }) {
    arrivent déjà par le GET détail (LeadSerializer __all__) mais n'avaient
    AUCUNE place à l'écran. Section conditionnelle (SectionsPane), repliée par
    défaut, PURE AFFICHAGE — aucun TRACKED_KEYS, aucun draft : jamais éditée
-   ici, même patron lecture seule que SectionOrigine ci-dessus. */
+   ici, même patron lecture seule que SectionOrigine ci-dessus.
+   CAD150 — ce RÉCAPITULATIF reste en lecture seule ; les champs captés par
+   le site (CHAMPS_SITE) se CORRIGENT, eux, dans « Qualification (site ou
+   appel) » et dans le profil énergétique, avec leur provenance. */
 
 // (a) Colonnes structurées (QK1/QW2/QW3) — libellés FR humains ; la VALEUR
 // reste brute (choix serveur — apps/crm/models.py Lead.*.TextChoices) sauf
@@ -205,6 +333,7 @@ export default function SectionDivers({ state, setField, errors = {} }) {
         value={customData}
         onChange={(obj) => setField('custom_data', obj)}
       />
+      <QualificationSite state={state} setField={setField} errors={errors} />
     </>
   )
 }

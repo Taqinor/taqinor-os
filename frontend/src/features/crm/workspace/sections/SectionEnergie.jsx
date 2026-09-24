@@ -4,10 +4,35 @@ import { jumpToField } from '../jumpToField'
 // CAD157 — les mentions « ce que le chiffre ne compte pas » : UNE source de
 // texte (le script d'appel guidé), partagée par la fiche et le panneau.
 import { NON_COMPTE_PLAQUE, NON_COMPTE_TRANCHE_ONEE } from '../../relances/appelGuidance'
+import { ChampSite } from './SectionDivers'
 
 // CAD157 — une valeur de grandeur réellement saisie (0 compris : c'est une
 // réponse, pas un silence ; `''`/null = rien de saisi).
 const saisi = (valeur) => valeur !== '' && valeur !== null && valeur !== undefined
+
+// CAD150 — distributeur d'électricité (capté par le site, désormais éditable).
+// Sans lui la courbe de consommation disparaît de la proposition (règle M10).
+// Les libellés historiques restent choisissables pour relire une fiche ancienne.
+// source-choix: crm.Lead.distributeur
+const DISTRIBUTEURS = {
+  srm_tanger: 'SRM Tanger-Tétouan-Al Hoceïma',
+  srm_oriental: 'SRM de l’Oriental',
+  srm_fes: 'SRM Fès-Meknès',
+  srm_rabat: 'SRM Rabat-Salé-Kénitra',
+  srm_beni_mellal: 'SRM Béni Mellal-Khénifra',
+  srm_casablanca: 'SRM Casablanca-Settat',
+  srm_marrakech: 'SRM Marrakech-Safi',
+  srm_draa: 'SRM Drâa-Tafilalet',
+  srm_souss: 'SRM Souss-Massa',
+  srm_guelmim: 'SRM Guelmim-Oued Noun',
+  srm_laayoune: 'SRM Laâyoune-Sakia El Hamra',
+  srm_dakhla: 'SRM Dakhla-Oued Ed-Dahab',
+  onee: 'ONEE (historique)',
+  lydec: 'Lydec (historique)',
+  redal: 'Redal (historique)',
+  amendis: 'Amendis (historique)',
+  autre: 'Autre (historique)',
+}
 
 // OFFGRID (ajout produit onduleur hors réseau, backend crm.Lead.Raccordement.
 // AUCUN = 'aucun') — site jamais raccordé au réseau ONEE : dérive le devis en
@@ -114,6 +139,34 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
             <span>Installation existante à régulariser ? (82-21)</span>
           </label>
         </div>
+      </div>
+      {/* CAD150 — captés par le site, TOUJOURS éditables : « à confirmer »
+          tant qu'une valeur du site n'a pas été reprise explicitement. */}
+      <div className="form-row">
+        <ChampSite
+          state={state} champ="distributeur" label="Distributeur d'électricité" htmlFor="lf-distributeur"
+          error={errors.distributeur}
+          renderControl={() => (
+            <select
+              id="lf-distributeur"
+              className={errors.distributeur ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.distributeur ? true : undefined}
+              value={v('distributeur')} onChange={(e) => setField('distributeur', e.target.value)}
+            >
+              {enumOptions(DISTRIBUTEURS)}
+            </select>
+          )}
+        />
+        <ChampSite
+          state={state} champ="bill_kwh" label="Consommation déclarée sur le site (kWh)" htmlFor="lf-bill-kwh"
+          error={errors.bill_kwh}
+          renderControl={() => (
+            <Input
+              id="lf-bill-kwh" type="number" step="any" invalid={!!errors.bill_kwh}
+              value={v('bill_kwh')} onChange={(e) => setField('bill_kwh', e.target.value)}
+            />
+          )}
+        />
       </div>
     </>
   )

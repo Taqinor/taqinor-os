@@ -119,6 +119,10 @@ function RelanceCadenceControls({ leadId, onChanged }) {
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 
+// CAD150 — préférence de contact du CLIENT (vide = non renseignée).
+// source-choix: crm.Lead.contact_preference
+const CONTACT_PREFERENCES = { whatsapp_only: 'WhatsApp uniquement', phone_ok: 'Rappel téléphonique OK' }
+
 const enumOptions = (labels) => [
   <option key="" value="">—</option>,
   ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
@@ -346,8 +350,23 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
           Aucune relance automatique n’est adressée à ce contact : le joindre reste un geste manuel.
         </p>
       </div>
-      {/* QW3 — préférence de contact explicite (posée par le site/webhook),
-          lecture seule ici. */}
+      {/* CAD150 — `contact_preference` était déjà suivie (TRACKED_KEYS,
+          SECTION_FIELDS.pipeline) : il ne lui manquait que son contrôle. Posée
+          par le site OU à l'appel (« ne m'appelez pas, écrivez-moi »), elle
+          change le CANAL des touches (CAD32). */}
+      <div className="form-row">
+        <FormField label="Préférence de contact" htmlFor="lf-contact-preference" error={errors.contact_preference}>
+          <select
+            id="lf-contact-preference"
+            className={errors.contact_preference ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.contact_preference ? true : undefined}
+            value={v('contact_preference')} onChange={(e) => setField('contact_preference', e.target.value)}
+          >
+            {enumOptions(CONTACT_PREFERENCES)}
+          </select>
+        </FormField>
+      </div>
+      {/* QW3 — préférence de contact explicite (posée par le site/webhook). */}
       {getField(state, 'contact_preference') === 'phone_ok' && (
         <div className="form-row">
           <span

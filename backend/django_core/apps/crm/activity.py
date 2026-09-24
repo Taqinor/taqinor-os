@@ -77,6 +77,12 @@ TRACKED_FIELDS = {
     'visit_window_week': 'Semaine de visite préférée',
     'roof_age': 'Âge de la toiture (ans)',
     'ownership': "Statut d'occupation",
+    # CAD150 (21/09/2026) — les deux derniers champs captés par le site
+    # deviennent éditables par la commerciale : leur écrasement laisse la
+    # trace (ancienne → nouvelle valeur), sans quoi la PROVENANCE « saisie sur
+    # le site » (`selectors.provenance_site`) se perdrait au premier geste.
+    'roof_type': 'Type de toiture (site)',
+    'bill_kwh': 'Consommation déclarée sur le site (kWh)',
     # L4 (21/08/2026) — questionnaire d'appel (présence en journée +
     # équipements électriques), voir apps/ventes/courbes_journalieres.py
     # pour leur usage dans la courbe de consommation servie.
