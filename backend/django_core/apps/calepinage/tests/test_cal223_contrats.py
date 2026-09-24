@@ -269,6 +269,14 @@ SANS_PRODUCTEUR_PUR = {
         'la société en base — la ligne PURE (production lue, null jamais 0, '
         'motif) est affirmée contre l’exemple committé par '
         'apps/calepinage/tests/test_calx341_comparaison_projets.py',
+
+    # CALX332
+    'calepinage_etiquettes.json':
+        'étiquettes libres d’un calepinage (records.Tag/TaggedItem) : son '
+        'producteur (services/etiquettes.py, CALX343) lit le vocabulaire et '
+        'les étiquettes posées en base — la forme, les refus nommés et '
+        'l’exclusion du tag système sont affirmés contre l’exemple committé '
+        'par apps/calepinage/tests/test_calx343_etiquettes.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -292,6 +300,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # CALX341 a livré ``POST calepinages/comparer-projets/``
     # (``views/comparaison_projets.py``) : ``calepinage_comparaison_projets.json``
     # en est SORTI.
+    # CALX332 — ``GET/POST/DELETE calepinages/<pk>/etiquettes/`` arrive avec
+    # CALX343.
+    'calepinage_etiquettes.json': 'CALX343',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
