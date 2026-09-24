@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import { formatDateTime } from '../../lib/format'
+// CALX344 — les étiquettes libres (records.Tag), lues/posées/retirées par la
+// porte `etiquettes/` (CALX343) : un composant à part, monté sous la fiche.
+import Etiquettes from './Etiquettes'
 
 /* ============================================================================
    CAL17 (moitié écran) — LA FICHE D'UN CALEPINAGE, en un seul appel.
@@ -598,6 +601,11 @@ export default function FicheCalepinage({ detail }) {
           {gestes.length > 0 ? gestes.join(', ') : 'consulter seulement'}
         </Champ>
       </dl>
+
+      {/* CALX344 — les étiquettes libres : lecture pour tous, pose/retrait
+          réservés à `calepinage_gerer` (le MÊME droit que les gestes
+          ci-dessus), jamais sur un calepinage archivé. */}
+      <Etiquettes calepinageId={detail.id} peutGerer={peutGerer && !archive} />
     </div>
   )
 }

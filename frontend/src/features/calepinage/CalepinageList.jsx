@@ -13,6 +13,8 @@ import { formatDate } from '../../lib/format'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
 // fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
 import BadgePerime from './BadgePerime'
+// CALX344 — le filtre par étiquette libre (`?etiquette=`, CALX343).
+import { FiltreEtiquettes } from './Etiquettes'
 
 /* ============================================================================
    CAL35 — L'ÉCRAN LISTE `/calepinage` : la porte autonome, enfin.
@@ -59,7 +61,7 @@ const CHAMPS_TRI = [
 /* Les filtres, tels qu'ils partent au serveur. Une valeur vide n'est pas
    envoyée du tout : `?statut=` (vide) serait un filtre, pas une absence de
    filtre. */
-function paramsServeur({ q, statut, depuis, lead, client, page, ordering }) {
+function paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes }) {
   const params = {}
   if (q) params.q = q
   if (statut) params.statut = statut
@@ -68,6 +70,11 @@ function paramsServeur({ q, statut, depuis, lead, client, page, ordering }) {
   if (client) params.client = client
   if (ordering) params.ordering = ordering
   if (page && page > 1) params.page = page
+  // CALX344 — `?etiquette=` : ET logique côté serveur. Les identifiants
+  // voyagent joints par des virgules (le serveur les découpe) : la
+  // sérialisation par défaut d'axios écrirait `etiquette[]=`, que Django ne
+  // lit pas. Aucune étiquette retenue ⇒ AUCUN paramètre (liste inchangée).
+  if (etiquettes?.length) params.etiquette = etiquettes.map((e) => e.id).join(',')
   return params
 }
 
@@ -173,6 +180,7 @@ export default function CalepinageList() {
   const [lead, setLead] = useState(null)
   const [client, setClient] = useState(null)
   const [page, setPage] = useState(1)
+  const [etiquettes, setEtiquettes] = useState([])
 
   // CALX32 — le tri vit dans l'URL (`?ordering=`), partageable et rechargeable
   // à l'identique — contrairement aux autres filtres ci-dessus (état local).
@@ -197,8 +205,8 @@ export default function CalepinageList() {
   }
 
   const params = useMemo(
-    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering }),
-    [q, statut, depuis, lead, client, page, ordering],
+    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes }),
+    [q, statut, depuis, lead, client, page, ordering, etiquettes],
   )
 
   const { data, loading, error } = useResource(
@@ -229,8 +237,9 @@ export default function CalepinageList() {
 
   const reinitialiser = () => {
     setQ(''); setStatut(''); setDepuis(''); setLead(null); setClient(null); setPage(1)
+    setEtiquettes([])
   }
-  const filtreActif = Boolean(q || statut || depuis || lead || client)
+  const filtreActif = Boolean(q || statut || depuis || lead || client || etiquettes.length)
   const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
 
   // CALX32 — changer le champ ou le sens relance la requête avec `ordering=`
@@ -373,6 +382,12 @@ export default function CalepinageList() {
             </Select>
           </div>
         ) : null}
+
+        {/* CALX344 — le filtre par étiquette libre (vocabulaire de la société,
+            tag système exclu), sur toute la largeur de la carte. */}
+        <div className="sm:col-span-2 lg:col-span-7">
+          <FiltreEtiquettes valeur={etiquettes} onChange={surFiltre(setEtiquettes)} />
+        </div>
 
         {filtreActif ? (
           <div className="sm:col-span-2 lg:col-span-7">

@@ -450,6 +450,20 @@ const calepinageApi = {
     comparatifXlsx: (id, autres = []) =>
       api.get(`${pivot(id)}comparatif.xlsx/`,
         { responseType: 'blob', params: autres.length ? { ids: autres.join(',') } : {} }),
+
+    // CALX344 — les ÉTIQUETTES LIBRES du calepinage (contrat
+    // `contract_samples/calepinage_etiquettes.json`, CALX332 ; porte
+    // `views/etiquettes.py`, CALX343). UNE URL, trois méthodes, UNE forme :
+    // chaque réponse est la liste À JOUR `{etiquettes: [{id, nom, couleur}]}`
+    // — l'écran n'enchaîne aucun second appel. L'étiquette se CHOISIT dans le
+    // vocabulaire de la société (`recordsApi.getTags`), elle ne se crée
+    // jamais ici ; un refus 400 NOMME le champ (`tag_id`, `nom`). Le filtre de
+    // liste passe par `list({ etiquette })` (identifiants joints par virgule).
+    etiquettes: (id) => api.get(`${pivot(id)}etiquettes/`),
+    poserEtiquette: (id, tagId) =>
+      api.post(`${pivot(id)}etiquettes/`, { tag_id: tagId }),
+    retirerEtiquette: (id, tagId) =>
+      api.delete(`${pivot(id)}etiquettes/`, { data: { tag_id: tagId } }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
