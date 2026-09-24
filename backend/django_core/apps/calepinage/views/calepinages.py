@@ -53,8 +53,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
-    CAL_GERER, CAL_VOIR, PeutGererCalepinage, PeutLireOuEcrireCalepinage,
-    PeutVoirCalepinage,
+    CAL_APPROUVER, CAL_GERER, CAL_VOIR, PeutApprouverCalepinage,
+    PeutGererCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
@@ -168,13 +168,35 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     ouverte.
     """
 
-    queryset = Calepinage.objects.select_related('client', 'devis').all()
+    # CALX406 — ``responsable`` chargé d'avance : la colonne de la liste le
+    # lit sur chaque ligne sans requête de plus (budget CALX390).
+    queryset = Calepinage.objects.select_related(
+        'client', 'devis', 'responsable').all()
     serializer_class = CalepinageSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['created_at', 'updated_at', 'statut', 'titre']
 
     read_permission = CAL_VOIR
-    write_permission = CAL_GERER
+
+    #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
+    #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
+    #: relecteur qui n'a QUE le code d'approbation doit pouvoir décider. Le
+    #: défaut ``ScopedPermission`` (lu ci-dessous côté écriture) appliquerait
+    #: sinon ``calepinage_gerer`` à TOUTE ``@action`` — y compris celle-ci — en
+    #: CUMUL avec la garde déclarée par l'action (jamais en substitution,
+    #: cf. ``get_permissions`` plus bas) : sans cette exception, un relecteur
+    #: sans ``calepinage_gerer`` échouerait le volet ``ScopedPermission`` alors
+    #: même que ``PeutLireOuApprouverCalepinage`` (l'action) l'autorise — 403
+    #: au lieu de 200. Patron identique à ``apps.visites.views.
+    #: VisiteTerrainViewSet.write_permission`` (VTA10) : une PROPRIÉTÉ, pas un
+    #: ``get_permissions()`` réécrit, pour qu'aucune garde déclarée sur une
+    #: ``@action`` ne soit jamais écrasée en silence.
+    PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER}
+
+    @property
+    def write_permission(self):
+        return self.PERMISSIONS_ECRITURE_PAR_ACTION.get(
+            getattr(self, 'action', None), CAL_GERER)
 
     def get_permissions(self):
         """``ScopedPermission`` TOUJOURS, + la garde déclarée par l'action.
@@ -192,18 +214,56 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     # ── Liste : des filtres qui filtrent VRAIMENT ──────────────────────────
     def get_queryset(self):
         params = getattr(self.request, 'query_params', {}) or {}
-        return selectors.appliquer_filtres_liste(
+        lignes = selectors.appliquer_filtres_liste(
             super().get_queryset(),
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
             statut=_statut(params.get('statut')),
             depuis=_moment(params.get('depuis')),
             q=params.get('q'))
+        # CALX406 — ``?responsable=<id>`` : la colonne « Responsable » de la
+        # liste filtre VRAIMENT (leçon PV22) ; illisible ⇒ 400 qui le nomme.
+        responsable_id = _entier(params.get('responsable'), 'responsable')
+        if responsable_id:
+            lignes = lignes.filter(responsable_id=responsable_id)
+        # CALX406 — la vue restreinte au responsable, si la société l'a SAISIE.
+        lignes = _restreindre_au_responsable(lignes, self.request)
+        # CALX343 — ``?etiquette=<id>`` (répétable, ET logique) : filtre porté
+        # par ``services/etiquettes.py`` (``records.TaggedItem``), jamais par
+        # ``selectors.py``. Absent ⇒ rien n'est filtré ; illisible ⇒ 400 qui
+        # NOMME le champ (leçon PV22).
+        valeurs = (params.getlist('etiquette')
+                   if hasattr(params, 'getlist') else [])
+        if not valeurs:
+            return lignes
+        from ..services.etiquettes import (
+            EtiquetteRefusee, filtrer_par_etiquette,
+        )
+        try:
+            return filtrer_par_etiquette(lignes, valeurs)
+        except EtiquetteRefusee as refus:
+            raise DrfValidationError({refus.champ: str(refus)})
 
     def perform_create(self, serializer):
         """Société ET auteur posés côté serveur — jamais lus du corps."""
         serializer.save(company=self.request.user.company,
                         cree_par=self.request.user)
+
+    def filter_queryset(self, queryset):
+        """CALX390 — la LISTE charge d'avance les lignes du devis lié.
+
+        ``CalepinageSerializer`` publie ``layout_stale``/``layout_nb_panneaux``
+        pour CHAQUE ligne, lus sur le devis (``select_related('devis')``) et
+        ses lignes : sans ce ``prefetch_related``, chaque calepinage rattaché
+        à un devis coûtait sa propre requête de lignes (N+1). Réservé à la
+        liste : le détail et les actions n'en lisent pas les lignes.
+        Budget gardé par ``docs/query-budgets.yml`` et
+        ``tests/test_calx390_budgets_requetes.py``.
+        """
+        queryset = super().filter_queryset(queryset)
+        if getattr(self, 'action', None) == 'list':
+            queryset = queryset.prefetch_related('devis__lignes')
+        return queryset
 
     # ── Détail : l'agrégat du contrat CAL1 ─────────────────────────────────
     def retrieve(self, request, *args, **kwargs):
@@ -901,16 +961,62 @@ def _personne(user):
 
 
 def _responsable(calepinage, company):
-    """Le responsable du LEAD rattaché, ou ``None``.
+    """Le responsable du CALEPINAGE, sinon celui du LEAD, sinon ``None``.
 
-    Le calepinage ne porte pas de responsable propre : plutôt que d'en
-    inventer un (ou de coder en dur un prénom, ce que la règle fondateur
-    interdit), on rend celui du lead — la personne qui répond réellement du
-    dossier — et ``None`` quand il n'y en a pas.
+    CALX406 — le calepinage porte désormais SON responsable (le champ
+    ``Calepinage.responsable``, saisi) : il prime. À défaut — tout calepinage
+    existant, et tout calepinage qu'on n'a confié à personne — on rend, comme
+    avant, le responsable du lead rattaché : la personne qui répond réellement
+    du dossier. Jamais un compte deviné, jamais un prénom codé en dur (règle
+    fondateur) : ``None`` quand ni l'un ni l'autre n'existe.
     """
+    propre = getattr(calepinage, 'responsable', None)
+    if propre is not None:
+        return _personne(propre)
     lead = _lead_objet(calepinage, company)
     return _personne(getattr(lead, 'owner', None)) if lead is not None \
         else None
+
+
+#: CALX406 — clé, DANS la section ``presets`` des réglages société (même
+#: place que ``approbation_exigee``, CALX347 : aucune section neuve), qui
+#: réduit la liste de chacun à SES calepinages. Absente ⇒ vue inchangée (D12).
+CLE_VUE_RESTREINTE = 'vue_restreinte_au_responsable'
+
+
+def vue_restreinte_au_responsable(company):
+    """CALX406 — le réglage société, lu SANS deviner : ``True`` et rien d'autre.
+
+    Une valeur absente, ``False``, ``"oui"`` ou ``1`` laisse la vue
+    inchangée : on ne restreint jamais la vue d'une société qui n'a pas
+    explicitement choisi de le faire.
+    """
+    if company is None:
+        return False
+    presets = selectors.parametres_de_societe(company).get('presets') or {}
+    return presets.get(CLE_VUE_RESTREINTE) is True
+
+
+def _restreindre_au_responsable(lignes, request):
+    """La liste réduite aux calepinages DE l'appelant, si la société l'a voulu.
+
+    « Les siens » = ceux dont il est ``responsable`` OU qu'il a créés
+    (``cree_par``) — sinon un concepteur perdrait de vue ce qu'il vient
+    d'ouvrir. Le porteur de ``calepinage_approuver`` voit TOUT : un relecteur
+    doit pouvoir relire. Sa garde est vérifiée D'ABORD : elle ne coûte aucune
+    requête (le rôle est déjà chargé par la garde de lecture), et le réglage
+    société n'est lu que pour ceux qu'il peut restreindre.
+    """
+    from django.db.models import Q
+
+    user = getattr(request, 'user', None)
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return lignes
+    if PeutApprouverCalepinage().has_permission(request, None):
+        return lignes
+    if not vue_restreinte_au_responsable(getattr(user, 'company', None)):
+        return lignes
+    return lignes.filter(Q(responsable=user) | Q(cree_par=user))
 
 
 def _lead_objet(calepinage, company):

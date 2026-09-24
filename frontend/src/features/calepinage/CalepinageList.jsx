@@ -1,18 +1,20 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { LayoutGrid, Plus, Search, X } from 'lucide-react'
+import { Columns3, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import crmApi from '../../api/crmApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
 import {
-  Badge, Button, Card, Combobox, EmptyState, Input, Label, Spinner,
+  Badge, Button, Card, Checkbox, Combobox, EmptyState, Input, Label, Spinner,
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
 // CAL188 — le badge « calepinage périmé », lu du MÊME champ serveur que la
 // fiche devis et l'en-tête de l'atelier (CAL189), jamais recalculé ici.
 import BadgePerime from './BadgePerime'
+// CALX344 — le filtre par étiquette libre (`?etiquette=`, CALX343).
+import { FiltreEtiquettes } from './Etiquettes'
 
 /* ============================================================================
    CAL35 — L'ÉCRAN LISTE `/calepinage` : la porte autonome, enfin.
@@ -23,7 +25,8 @@ import BadgePerime from './BadgePerime'
    fondateur du 19/09/2026) — il lui fallait une liste à lui.
 
    LES FILTRES SONT CEUX QUE LE SERVEUR SERT VRAIMENT (CAL16) : `lead`,
-   `client`, `statut`, `depuis`, `q`. Aucun autre n'est envoyé. La leçon PV22
+   `client`, `statut`, `depuis`, `q` — plus `responsable` (CALX406, colonne
+   « Responsable »). Aucun autre n'est envoyé. La leçon PV22
    est qu'un filtre IGNORÉ par le serveur fait ouvrir le mauvais objet : une
    liste fausse qui a l'air juste est pire qu'une liste qui refuse de filtrer.
    Chaque champ ci-dessous part donc dans la requête, et le test le prouve.
@@ -59,15 +62,22 @@ const CHAMPS_TRI = [
 /* Les filtres, tels qu'ils partent au serveur. Une valeur vide n'est pas
    envoyée du tout : `?statut=` (vide) serait un filtre, pas une absence de
    filtre. */
-function paramsServeur({ q, statut, depuis, lead, client, page, ordering }) {
+function paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes, responsable }) {
   const params = {}
   if (q) params.q = q
   if (statut) params.statut = statut
   if (depuis) params.depuis = depuis
   if (lead) params.lead = lead
   if (client) params.client = client
+  // CALX406 — `?responsable=<id>`, servi par `views/calepinages.py`.
+  if (responsable) params.responsable = responsable
   if (ordering) params.ordering = ordering
   if (page && page > 1) params.page = page
+  // CALX344 — `?etiquette=` : ET logique côté serveur. Les identifiants
+  // voyagent joints par des virgules (le serveur les découpe) : la
+  // sérialisation par défaut d'axios écrirait `etiquette[]=`, que Django ne
+  // lit pas. Aucune étiquette retenue ⇒ AUCUN paramètre (liste inchangée).
+  if (etiquettes?.length) params.etiquette = etiquettes.map((e) => e.id).join(',')
   return params
 }
 
@@ -90,13 +100,47 @@ const chercherClients = async (q) => {
   }))
 }
 
+/* CALX406 — LE RESPONSABLE d'une ligne, quelle que soit la forme reçue :
+   l'agrégat de détail (contrat `calepinage_detail.json`) publie
+   `responsable: {id, nom_complet}` ; le sérialiseur de liste publie
+   l'identifiant `responsable` et son `responsable_nom`. `null` = personne —
+   jamais un nom deviné. */
+function responsableDe(ligne) {
+  const brut = ligne?.responsable
+  if (brut === null || brut === undefined || brut === '') return null
+  if (typeof brut === 'object') {
+    return { id: String(brut.id), nom: brut.nom_complet || `Utilisateur ${brut.id}` }
+  }
+  return { id: String(brut), nom: ligne?.responsable_nom || `Utilisateur ${brut}` }
+}
+
+/* CALX342 — la BORNE du comparatif de calepinages : celle du serveur
+   (`services/comparaison_projets.py::BORNE_PROJETS`, CALX341 — PV*SOL compare
+   5 projets). Une case de plus serait refusée 400 sous le champ `ids`. */
+const BORNE_COMPARAISON = 5
+
 /* ── La vignette ───────────────────────────────────────────────────────────
-   `image.url` présent ⇒ l'aperçu réel. Absent ⇒ carte neutre explicite. */
-export function VignetteCalepinage({ calepinage }) {
+   `image.url` présent ⇒ l'aperçu réel. Absent ⇒ carte neutre explicite.
+   CALX342 — `selection` (facultatif) pose une case « Comparer » HORS du lien :
+   cocher ne doit jamais ouvrir l'atelier. Sans elle, la vignette est
+   exactement celle d'avant. */
+export function VignetteCalepinage({ calepinage, selection = null }) {
   const url = calepinage?.image?.url || null
   const titre = calepinage?.nom || calepinage?.reference || 'Calepinage'
   return (
-    <Card className="overflow-hidden transition-shadow hover:shadow-ui-md">
+    <Card className="relative overflow-hidden transition-shadow hover:shadow-ui-md">
+      {selection ? (
+        <label className="absolute left-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-card/90 px-2 py-1 text-xs shadow-ui-xs">
+          <Checkbox
+            checked={selection.coche}
+            disabled={selection.desactive}
+            onCheckedChange={() => selection.basculer(calepinage.id)}
+            aria-label={`Comparer ${titre}`}
+            data-testid={`cal-comparer-${calepinage.id}`}
+          />
+          Comparer
+        </label>
+      ) : null}
       <Link
         to={`/calepinage/${calepinage.id}`}
         className="block"
@@ -139,6 +183,13 @@ export function VignetteCalepinage({ calepinage }) {
           <div className="text-xs text-muted-foreground">
             {calepinage?.modifie_le ? `Modifié le ${formatDate(calepinage.modifie_le)}` : '—'}
           </div>
+          {/* CALX406 — la colonne « Responsable » de la liste. */}
+          <div className="truncate text-xs text-muted-foreground"
+            data-testid={`cal-responsable-${calepinage.id}`}>
+            {responsableDe(calepinage)
+              ? `Responsable : ${responsableDe(calepinage).nom}`
+              : 'Sans responsable'}
+          </div>
         </div>
       </Link>
     </Card>
@@ -153,6 +204,9 @@ export default function CalepinageList() {
   const [lead, setLead] = useState(null)
   const [client, setClient] = useState(null)
   const [page, setPage] = useState(1)
+  const [etiquettes, setEtiquettes] = useState([])
+  // CALX406 — l'identifiant du responsable filtré ('' = tous).
+  const [responsable, setResponsable] = useState('')
 
   // CALX32 — le tri vit dans l'URL (`?ordering=`), partageable et rechargeable
   // à l'identique — contrairement aux autres filtres ci-dessus (état local).
@@ -161,9 +215,24 @@ export default function CalepinageList() {
   const champTri = ordering.replace(/^-/, '')
   const decroissant = ordering.startsWith('-')
 
+  // CALX342 — le mode « Comparer » : cocher de 2 à 5 calepinages, puis ouvrir
+  // `/calepinage/comparaison?ids=…`. `?comparer=1` l'ouvre directement (lien
+  // « Choisir dans la liste » de l'écran de comparaison).
+  const [modeComparaison, setModeComparaison] = useState(searchParams.get('comparer') === '1')
+  const [selection, setSelection] = useState([])
+  const basculerSelection = (id) => setSelection((avant) => (
+    avant.includes(id)
+      ? avant.filter((autre) => autre !== id)
+      : (avant.length >= BORNE_COMPARAISON ? avant : [...avant, id])
+  ))
+  const quitterComparaison = () => { setModeComparaison(false); setSelection([]) }
+  const ouvrirComparaison = () => {
+    navigate(`/calepinage/comparaison?ids=${selection.join(',')}`)
+  }
+
   const params = useMemo(
-    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering }),
-    [q, statut, depuis, lead, client, page, ordering],
+    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes, responsable }),
+    [q, statut, depuis, lead, client, page, ordering, etiquettes, responsable],
   )
 
   const { data, loading, error } = useResource(
@@ -192,10 +261,23 @@ export default function CalepinageList() {
     return [...vus.entries()]
   }, [lignes])
 
+  // CALX406 — options de RESPONSABLE : celles des lignes reçues (même
+  // discipline que le statut — aucune liste de personnes recopiée ici).
+  const optionsResponsable = useMemo(() => {
+    const vus = new Map()
+    for (const ligne of lignes) {
+      const r = responsableDe(ligne)
+      if (r && !vus.has(r.id)) vus.set(r.id, r.nom)
+    }
+    return [...vus.entries()]
+  }, [lignes])
+
   const reinitialiser = () => {
     setQ(''); setStatut(''); setDepuis(''); setLead(null); setClient(null); setPage(1)
+    setEtiquettes([]); setResponsable('')
   }
-  const filtreActif = Boolean(q || statut || depuis || lead || client)
+  const filtreActif = Boolean(q || statut || depuis || lead || client || etiquettes.length
+    || responsable)
   const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
 
   // CALX32 — changer le champ ou le sens relance la requête avec `ordering=`
@@ -220,11 +302,33 @@ export default function CalepinageList() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">Calepinages</h1>
-        <Button size="sm" onClick={() => navigate('/calepinage/nouveau')}>
-          <Plus size={16} aria-hidden="true" />
-          Nouveau calepinage
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline"
+            onClick={() => (modeComparaison ? quitterComparaison() : setModeComparaison(true))}
+            data-testid="cal-mode-comparer">
+            <Columns3 size={16} aria-hidden="true" />
+            {modeComparaison ? 'Annuler la comparaison' : 'Comparer'}
+          </Button>
+          <Button size="sm" onClick={() => navigate('/calepinage/nouveau')}>
+            <Plus size={16} aria-hidden="true" />
+            Nouveau calepinage
+          </Button>
+        </div>
       </div>
+
+      {modeComparaison ? (
+        <Card className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm"
+          data-testid="cal-barre-comparaison">
+          <span>
+            {`${selection.length} / ${BORNE_COMPARAISON} calepinage(s) sélectionné(s)`}
+            {selection.length < 2 ? ' — cochez-en au moins deux.' : ''}
+          </span>
+          <Button size="sm" disabled={selection.length < 2} onClick={ouvrirComparaison}
+            data-testid="cal-ouvrir-comparaison">
+            Comparer la sélection
+          </Button>
+        </Card>
+      ) : null}
 
       <Card className="grid gap-3 p-3 sm:grid-cols-2 lg:grid-cols-7">
         <div className="space-y-1">
@@ -290,6 +394,21 @@ export default function CalepinageList() {
           />
         </div>
 
+        {/* CALX406 — la colonne « Responsable » filtre VRAIMENT (`?responsable=`). */}
+        <div className="space-y-1">
+          <Label htmlFor="cal-responsable">Responsable</Label>
+          <Select value={responsable || '__tous__'}
+            onValueChange={(v) => surFiltre(setResponsable)(v === '__tous__' ? '' : v)}>
+            <SelectTrigger id="cal-responsable"><SelectValue placeholder="Tous les responsables" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__tous__">Tous les responsables</SelectItem>
+              {optionsResponsable.map(([valeur, nom]) => (
+                <SelectItem key={valeur} value={valeur}>{nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="space-y-1">
           <Label htmlFor="cal-tri">Tri</Label>
           <Select value={champTri || '__defaut__'} onValueChange={changerChampTri}>
@@ -316,6 +435,12 @@ export default function CalepinageList() {
             </Select>
           </div>
         ) : null}
+
+        {/* CALX344 — le filtre par étiquette libre (vocabulaire de la société,
+            tag système exclu), sur toute la largeur de la carte. */}
+        <div className="sm:col-span-2 lg:col-span-7">
+          <FiltreEtiquettes valeur={etiquettes} onChange={surFiltre(setEtiquettes)} />
+        </div>
 
         {filtreActif ? (
           <div className="sm:col-span-2 lg:col-span-7">
@@ -357,7 +482,16 @@ export default function CalepinageList() {
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {lignes.map((ligne) => (
-              <VignetteCalepinage key={ligne.id} calepinage={ligne} />
+              <VignetteCalepinage
+                key={ligne.id}
+                calepinage={ligne}
+                selection={modeComparaison ? {
+                  coche: selection.includes(ligne.id),
+                  desactive: !selection.includes(ligne.id)
+                    && selection.length >= BORNE_COMPARAISON,
+                  basculer: basculerSelection,
+                } : null}
+              />
             ))}
           </div>
           <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">

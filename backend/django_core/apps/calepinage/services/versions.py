@@ -56,7 +56,14 @@ def derniere_version(calepinage):
             .first())
 
 
-def enregistrer_version(calepinage, *, user=None, libelle=''):
+#: CALX366 — marqueur « prendre le résultat du calepinage » (le défaut) : un
+#: ``None`` explicite est une valeur légitime, il ne peut donc pas en tenir lieu.
+_RESULTAT_DU_CALEPINAGE = object()
+
+
+def enregistrer_version(calepinage, *, user=None, libelle='',
+                        resultat=_RESULTAT_DU_CALEPINAGE,
+                        meme_empreinte_admise=False):
     """Dépose un instantané GELÉ — seulement si l'empreinte a changé.
 
     Returns:
@@ -65,6 +72,15 @@ def enregistrer_version(calepinage, *, user=None, libelle=''):
 
     La société et l'auteur sont posés CÔTÉ SERVEUR : la société est celle du
     calepinage, jamais une valeur lue d'un corps de requête.
+
+    CALX366 — deux mots-clés ADDITIFS, sans effet par défaut (tous les
+    appelants d'avant gardent leur comportement octet pour octet) :
+    ``resultat`` gèle un résultat donné plutôt que ``calepinage.resultat``, et
+    ``meme_empreinte_admise`` historise même quand la géométrie n'a pas bougé.
+    C'est le cas de la version née des écarts de POSE RÉELLE
+    (``services/asbuilt.py::version_depuis_ecarts``) : le chantier ne change
+    pas le dessin, il en constate l'écart — et cette constatation est
+    précisément ce qu'on veut figer.
     """
     from ..models import CalepinageVersion
 
@@ -75,7 +91,8 @@ def enregistrer_version(calepinage, *, user=None, libelle=''):
 
     precedente = derniere_version(calepinage)
     empreinte = calepinage.layout_hash or ''
-    if precedente is not None and (precedente.layout_hash or '') == empreinte:
+    if (not meme_empreinte_admise and precedente is not None
+            and (precedente.layout_hash or '') == empreinte):
         return None
 
     return CalepinageVersion.objects.create(
@@ -84,7 +101,8 @@ def enregistrer_version(calepinage, *, user=None, libelle=''):
         libelle=libelle or '',
         roof_layout=calepinage.roof_layout,
         layout_hash=empreinte,
-        resultat=calepinage.resultat,
+        resultat=(calepinage.resultat if resultat is _RESULTAT_DU_CALEPINAGE
+                  else resultat),
         cree_par=user,
     )
 

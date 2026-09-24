@@ -6,8 +6,9 @@ Ce qui est prouvé ici :
   ``contract_samples/export_projet.json`` (toutes ses clés, blocs imbriqués), sur
   ``exemple`` (calepinage simulé) ET sur ``exemple_vide`` (jamais posé) —
   l'exemple est AFFIRMÉ, pas recopié ;
-* ``format_version`` est l'ENTIER 1 ; ``produit_le`` l'instant de production,
-  en UTC ;
+* ``format_version`` est l'ENTIER 2 (CALX370 : ``postes_pertes`` et
+  ``variantes`` rejoignent le fichier) ; ``produit_le`` l'instant de
+  production, en UTC ;
 * un calepinage NON SIMULÉ exporte ``resultat: null`` (jamais ``{}``),
   ``pertes: []`` et les grandeurs de simulation à ``null`` AVEC leur motif en
   tête des avertissements — aucune clé absente ;
@@ -122,9 +123,9 @@ class FormeDuContratTest(unittest.TestCase):
         exemple.pop('produit_le')
         self.assertEqual(document, exemple)
 
-    def test_format_version_est_l_entier_1(self):
+    def test_format_version_est_l_entier_2(self):
         for document in (exporte(), vide()):
-            self.assertEqual(document['format_version'], 1)
+            self.assertEqual(document['format_version'], 2)
             self.assertIs(type(document['format_version']), int)
         self.assertEqual(FORMAT_VERSION, CONTRAT['exemple']['format_version'])
 
@@ -300,7 +301,7 @@ class EndpointExportProjetEnBaseTest(BaseApiCalepinage):
         document = json.loads(reponse.content.decode('utf-8'),
                               parse_constant=_refuser_constante)
         self.assertEqual(tuple(document), CLES_DOCUMENT)
-        self.assertEqual(document['format_version'], 1)
+        self.assertEqual(document['format_version'], FORMAT_VERSION)
         self.assertEqual(document['calepinage']['id'], self.calepinage.pk)
         self.assertEqual(document['resultat']['hash_entree'],
                          resultat()['hash_entree'])

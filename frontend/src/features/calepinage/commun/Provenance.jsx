@@ -161,6 +161,13 @@ function libelleDeCode(code) {
   return String(code).replace(/_/g, ' ')
 }
 
+// CALX340 — `zones` et `zone_par_defaut` sont la STRUCTURE de la section
+// `lestage` (zones de vent et de neige par site), pas des paramètres : les
+// rendre comme un paramètre afficherait une pastille « non sourcée » sur une
+// clé qui n'est pas un chiffre. Chaque paramètre DE ZONE est rendu sous le
+// nom de sa zone, avec SA propre source.
+const CLES_STRUCTURE_LESTAGE = ['zones', 'zone_par_defaut']
+
 export default function SourcesNormatives() {
   const { data, loading, error } = useResource(
     () => calepinageApi.parametres.get(), null,
@@ -175,6 +182,9 @@ export default function SourcesNormatives() {
   const norme = data?.norme_electrique || {}
   const coefficients = norme.coefficients || {}
   const lestage = data?.lestage || {}
+  const codesLestage = Object.keys(lestage)
+    .filter((c) => !CLES_STRUCTURE_LESTAGE.includes(c))
+  const zonesLestage = Array.isArray(lestage.zones) ? lestage.zones : []
   const degagements = data?.degagements || {}
   // Le dégagement porte UNE source pour toute la section : c'est la forme du
   // contrat, elle n'est pas réinterprétée ici.
@@ -218,20 +228,37 @@ export default function SourcesNormatives() {
       <Section
         titre="Lestage"
         testId="cal165-lestage"
-        vide={Object.keys(lestage).length === 0
+        vide={codesLestage.length === 0 && zonesLestage.length === 0
           ? 'Aucun paramètre de lestage enregistré : la feuille de lestage est omise.'
           : null}
       >
-        {Object.entries(lestage).map(([code, parametre]) => (
-          <Ligne key={code} libelle={libelleDeCode(code)}>
-            <ValeurSourcee
-              valeur={parametre?.valeur}
-              origine={parametre?.source ? 'societe' : undefined}
-              reference={parametre?.source}
-              decimals={2}
-            />
-          </Ligne>
-        ))}
+        {codesLestage.map((code) => {
+          const parametre = lestage[code]
+          return (
+            <Ligne key={code} libelle={libelleDeCode(code)}>
+              <ValeurSourcee
+                valeur={parametre?.valeur}
+                origine={parametre?.source ? 'societe' : undefined}
+                reference={parametre?.source}
+                decimals={2}
+              />
+            </Ligne>
+          )
+        })}
+        {zonesLestage.flatMap((zone) => Object.entries(zone?.parametres || {})
+          .map(([code, parametre]) => (
+            <Ligne
+              key={`${zone?.code}:${code}`}
+              libelle={`zone « ${zone?.libelle || zone?.code} » — ${libelleDeCode(code)}`}
+            >
+              <ValeurSourcee
+                valeur={parametre?.valeur}
+                origine={parametre?.source ? 'societe' : undefined}
+                reference={parametre?.source}
+                decimals={2}
+              />
+            </Ligne>
+          )))}
       </Section>
 
       <Section

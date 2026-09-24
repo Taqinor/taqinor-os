@@ -32,6 +32,7 @@ __all__ = [
     'journaliser_lien_appel_offre', 'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
     'journaliser_verrou', 'journaliser_document_produit', 'noter',
+    'journaliser_pose_reelle', 'journaliser_version_pose',
 ]
 
 
@@ -117,10 +118,42 @@ def journaliser_variante_retenue(calepinage, *, ancienne=None, nouvelle=None,
 
 
 def journaliser_restauration(calepinage, *, version=None, user=None):
-    """Restauration d'une version — l'événement, pas seulement son effet."""
+    """Restauration d'une version — l'événement, pas seulement son effet.
+
+    CALX345 — l'entrée porte AUSSI, dans son corps, les ÉCARTS entre l'état
+    REMPLACÉ et la version restaurée (``services/diff_versions.py``, la MÊME
+    liste fermée que ``GET versions/<id>/diff/``) : un lecteur du journal sait
+    ce que la restauration a changé sans ouvrir deux instantanés.
+    """
     return _ecrire(calepinage, 'MODIFICATION', user=user, field='version',
                    field_label='Version restaurée', old_value='',
-                   new_value=str(getattr(version, 'pk', '') or ''))
+                   new_value=str(getattr(version, 'pk', '') or ''),
+                   body=_ecarts_de_restauration(calepinage, version))
+
+
+def _ecarts_de_restauration(calepinage, version):
+    """Les écarts « état remplacé → version restaurée », en une phrase.
+
+    Appelée APRÈS l'enregistrement de la restauration : la version la plus
+    récente est la copie restaurée, celle d'AVANT elle est l'état remplacé.
+    Best-effort, comme tout le journal : ``''`` plutôt qu'un geste cassé.
+    """
+    if version is None or not getattr(calepinage, 'pk', None):
+        return ''
+    try:
+        from ..selectors import versions
+        from .diff_versions import comparer_versions, texte_des_ecarts
+
+        recentes = list(versions(calepinage)[:2])
+        if len(recentes) < 2:
+            return ''
+        remplacee = recentes[1]
+        ecarts = comparer_versions(remplacee, version)['ecarts']
+        return "Écarts avec l'état remplacé — %s" % texte_des_ecarts(ecarts)
+    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+        logger.exception('CALX345 : écarts de restauration non calculés '
+                         '(calepinage %s)', getattr(calepinage, 'pk', None))
+        return ''
 
 
 #: CAL207 — champ + valeurs du VERROU dans le chatter (source unique lue par
@@ -207,3 +240,28 @@ def noter(calepinage, texte, *, user=None):
     if not corps:
         return None
     return _ecrire(calepinage, 'NOTE', user=user, body=corps)
+
+
+def journaliser_pose_reelle(calepinage, *, pan, ancien=None, nouveau=None,
+                            ecarts_position='', user=None):
+    """CALX366 — une saisie de pose réelle : ancien → nouveau compte posé.
+
+    ``ancien`` vaut ``None`` pour une PREMIÈRE saisie du pan : le journal
+    écrit alors une valeur vide, jamais « 0 » (personne n'avait compté). Le
+    texte libre des écarts de position voyage dans le corps de l'entrée.
+    """
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='pose_reelle',
+                   field_label=f'Pose réelle — {pan}',
+                   old_value='' if ancien is None else str(ancien),
+                   new_value='' if nouveau is None else str(nouveau),
+                   body=(ecarts_position or '').strip())
+
+
+def journaliser_version_pose(calepinage, *, version=None, user=None):
+    """CALX366 — la version gelée depuis les écarts de pose réelle, par son
+    LIBELLÉ (qui nomme les pans en écart), jamais par son seul identifiant."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user, field='version',
+                   field_label='Version depuis la pose réelle', old_value='',
+                   new_value=getattr(version, 'libelle', '') or str(
+                       getattr(version, 'pk', '') or ''))

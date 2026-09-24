@@ -243,6 +243,74 @@ def _bulk_operation(entry):
     return operation
 
 
+def _schema_des_champs(champs):
+    """CALX368/369 — la forme DÉCLARÉE d'une réponse ou d'une charge utile,
+    projetée depuis les champs décrits dans `docs.py` : jamais « un objet »
+    sans propriété (PACT7). Un champ `nullable` devient `[type, 'null']`
+    (OpenAPI 3.1 / JSON Schema 2020-12)."""
+    proprietes = {}
+    for champ in champs:
+        type_ = champ['type']
+        proprietes[champ['nom']] = {
+            'type': [type_, 'null'] if champ.get('nullable') else type_,
+            'description': champ.get('description', ''),
+        }
+    return {
+        'type': 'object',
+        'properties': proprietes,
+        'required': [champ['nom'] for champ in champs],
+    }
+
+
+def _sub_resource_operation(entry):
+    """CALX369 — opération d'une `sous_ressources` (lecture seule d'un objet
+    déjà publié, sous le scope de sa ressource) : forme DÉCLARÉE champ par
+    champ, paramètres de chemin dérivés des placeholders `<nom>`."""
+    path_params = [
+        {
+            'name': name, 'in': 'path', 'required': True,
+            'schema': {'type': 'integer' if name == 'id' else 'string'},
+        }
+        for name in _PATH_PLACEHOLDER_RE.findall(entry['chemin'])
+    ]
+    return {
+        'summary': entry['description'],
+        'security': [{'ApiKeyAuth': []}],
+        'parameters': path_params,
+        'responses': {
+            '200': {
+                'description': 'Objet trouvé.',
+                'headers': _RATE_LIMIT_HEADERS,
+                'content': {'application/json': {
+                    'schema': _schema_des_champs(entry['champs'])}},
+            },
+            **_common_error_responses(),
+        },
+    }
+
+
+def _webhooks(ref):
+    """CALX368 — `webhooks` (OpenAPI 3.1) : les évènements dont la charge
+    utile est décrite clé par clé dans `docs.py`. Chaque livraison est un
+    POST JSON signé — jamais un GET portant les valeurs dans l'URL."""
+    webhooks = {}
+    for evenement in ref['webhooks'].get('charges_utiles', []):
+        schema = _schema_des_champs(evenement['champs'])
+        schema['properties']['event_id'] = {
+            'type': 'string',
+            'description': 'Identifiant stable de l’évènement (dédup).'}
+        webhooks[evenement['code']] = {'post': {
+            'summary': evenement['description'],
+            'requestBody': {
+                'required': True,
+                'content': {'application/json': {'schema': schema}},
+            },
+            'responses': {'200': {
+                'description': 'Toute réponse 2xx acquitte la livraison.'}},
+        }}
+    return webhooks
+
+
 def build_openapi_schema():
     """Construit le document OpenAPI 3.1 complet — 100 % dérivé de
     `docs.public_api_reference()` (source de vérité unique, FG105)."""
@@ -271,6 +339,12 @@ def build_openapi_schema():
         paths[simple_endpoint['chemin']] = {
             'get': _simple_read_operation(simple_endpoint)}
 
+    for sous_ressource in ref.get('sous_ressources', {}).get('liste', []):
+        openapi_path = _PATH_PLACEHOLDER_RE.sub(r'{\1}', sous_ressource['chemin'])
+        method = sous_ressource['methode'].lower()
+        paths.setdefault(openapi_path, {})[method] = _sub_resource_operation(
+            sous_ressource)
+
     return {
         'openapi': OPENAPI_VERSION,
         'info': {
@@ -290,6 +364,7 @@ def build_openapi_schema():
         },
         'security': [{'ApiKeyAuth': []}],
         'paths': paths,
+        'webhooks': _webhooks(ref),
     }
 
 

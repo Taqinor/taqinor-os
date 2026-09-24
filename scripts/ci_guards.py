@@ -217,6 +217,59 @@ GARDES = {
         ('Test the declared-document-renders checker itself (CALX329)',
          'python -m unittest scripts.tests.test_check_documents_calepinage -v',
          '.'),
+        # CALX381 (lot 8, 23/09/2026) — meme famille que check_services_appeles/
+        # check_ecrans_atteignables : rapport_backend_sombre.py ecarte EXPRES
+        # les sous-routes @action de son perimetre (« une @action n'est pas
+        # une ressource ») — angle mort total sur les 71 @action calepinage,
+        # dont 21 sans aucun consommateur au 23/09/2026.
+        ('Check actions calepinage consommées (aucune @action sans appelant, CALX381)',
+         'python scripts/check_calepinage_actions_consommees.py',
+         '.'),
+        ('Test the calepinage-actions-consumed checker itself (CALX381)',
+         'python -m unittest scripts.tests.test_check_calepinage_actions_consommees -v',
+         '.'),
+        # CALX383 (lot 8, 23/09/2026) — le registre atelier/onglets.js (CALX1)
+        # n'obligeait mecaniquement aucun onglet a porter un test ; mesure :
+        # 5 des 27 onglets (panneaux « Site » anterieurs a CALX1) n'en ont
+        # aucun, passif gele dans onglets_calepinage_sans_test_allow.txt.
+        ('Check onglets calepinage testés (un onglet du rail arrive avec son test, CALX383)',
+         'python scripts/check_onglets_calepinage_testes.py',
+         '.'),
+        ('Test the onglets-tested checker itself (CALX383)',
+         'python -m unittest scripts.tests.test_check_onglets_calepinage_testes -v',
+         '.'),
+        # CALX384 (lot 8, 23/09/2026) — meme discipline que lestage.py:85
+        # NOMBRES_DE_FORME (CAL163), etendue a tout le paquet services/ (130
+        # modules) : ZERO exception (mesure : la discipline est deja tenue a
+        # 100% des lors qu'un commentaire `#:` couvre le BLOC CONTIGU qu'il
+        # introduit, pas seulement la ligne suivante).
+        ('Check provenance constantes calepinage (aucune constante numérique nue, CALX384)',
+         'python scripts/check_calepinage_provenance_constantes.py',
+         '.'),
+        ('Test the constants-provenance checker itself (CALX384)',
+         'python -m unittest scripts.tests.test_check_calepinage_provenance_constantes -v',
+         '.'),
+        # CALX385 (lot 8, 23/09/2026) — check_api_shapes.py s'abstient EXPRES
+        # de la question « ce contrat a-t-il un consommateur cote client ? »
+        # (principe anti-faux-positif) : un contrat a moitie morte peut donc
+        # vivre indefiniment sans qu'aucune garde ne le remarque — exactement
+        # l'incident du 03/08/2026 que PACT10 devait fermer.
+        ('Check contrats calepinage deux moitiés (aucun contrat à une seule moitié, CALX385)',
+         'python scripts/check_contrats_calepinage_deux_moities.py',
+         '.'),
+        ('Test the two-halves-contract checker itself (CALX385)',
+         'python -m unittest scripts.tests.test_check_contrats_calepinage_deux_moities -v',
+         '.'),
+        # CALX372 (lot 7, 24/09/2026) — la frontière du module calepinage :
+        # aucun import NEUF de apps.ao / apps.ged (D-CALX 2) ni de
+        # apps.visites.models (la porte est apps.visites.selectors). Base
+        # MESURÉE : 4 imports apps.ged fonction-locaux, 0 apps.ao (SOLMVP15).
+        ('Check frontière calepinage (aucun import neuf ao/ged/visites.models, CALX372)',
+         'python scripts/check_frontiere_calepinage.py',
+         '.'),
+        ('Test the calepinage-frontier checker itself (CALX372)',
+         'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',

@@ -4,7 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
 import {
-  BadgeCheck, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
+  BadgeCheck, Columns3, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -148,6 +148,11 @@ const ReglagesSimulation = lazy(() => import('./reglages/ReglagesSimulation'))
    rien) et la validation part sur `entree-electrique/`. Contextuelle à UN
    calepinage — elle corrige SON affectation, pas celle d'un autre. */
 const AffectationChaines = lazy(() => import('./plan/AffectationChaines'))
+/* CALX342 — la COMPARAISON de 1 à 5 calepinages distincts (contrat
+   `calepinage_comparaison_projets.json`, CALX331). Elle ne désigne AUCUN
+   calepinage dans son chemin (la sélection voyage en `?ids=`) : une route de
+   LISTE, atteinte depuis `CalepinageList.jsx` (mode « Comparer »). */
+const ComparaisonProjets = lazy(() => import('./ComparaisonProjets'))
 
 const config = {
   key: 'calepinage',
@@ -192,6 +197,14 @@ const config = {
         icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        // CALX342 — la comparaison de 1 à 5 calepinages ; sans sélection,
+        // l'écran renvoie choisir dans la liste (mode « Comparer »).
+        to: '/calepinage/comparaison',
+        label: 'Comparer',
+        icon: <Columns3 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   // `titles` — correspondance par PRÉFIXE, du plus spécifique au plus général.
@@ -200,6 +213,7 @@ const config = {
     ['/calepinage/bibliotheque', 'Calepinage — Bibliothèque'],
     ['/calepinage/sources', 'Calepinage — Sources des paramètres'],
     ['/calepinage/reglages', 'Calepinage — Réglages simulation'],
+    ['/calepinage/comparaison', 'Calepinage — Comparaison'],
     ['/calepinage/', 'Calepinage — Atelier'],
     ['/calepinage', 'Calepinage — Calepinages'],
   ],
@@ -214,6 +228,8 @@ const config = {
     { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
     // CALX69 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
     { path: '/calepinage/reglages', component: ReglagesSimulation, roles: ROLES },
+    // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
+    { path: '/calepinage/comparaison', component: ComparaisonProjets, roles: ROLES },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
        contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
        la redirection après création (CAL36).

@@ -298,3 +298,142 @@ def _url_apercu_calepinage(obj):
         return roof_image_signed_url(cle)
     except Exception:  # noqa: BLE001 — best-effort : jamais un 500 sur un lien
         return None
+
+
+# ── CALX369 — le RÉSULTAT DE SIMULATION d'un calepinage, en lecture ────────
+
+#: Le motif publié quand aucune simulation n'est servie (jamais simulée). Une
+#: simulation PÉRIMÉE publie, elle, le motif du module, qui nomme la date du
+#: calcul (CALX70).
+MOTIF_RESULTAT_NON_SIMULE = (
+    "Ce calepinage n'a pas été simulé : aucune production n'est publiée — "
+    'les grandeurs valent null, jamais 0.')
+
+
+class PublicPostePerteSerializer(serializers.Serializer):
+    """CALX369 — UN poste de la chaîne de pertes, champ par champ.
+
+    ``pourcentage`` vaut ``null`` quand l'étape a été OMISE (son ``motif`` dit
+    pourquoi) ; ``gain`` est vrai pour une étape qui AJOUTE de l'énergie (le
+    froid, par exemple) ; ``source`` dit d'où vient la valeur (``pvgis``,
+    ``fiche``, ``saisie``, ``mesure``…) et vaut ``null`` pour un poste non
+    sourcé — il est publié tel quel, jamais masqué.
+    """
+    code = serializers.CharField(read_only=True)
+    libelle = serializers.CharField(read_only=True, allow_blank=True)
+    pourcentage = serializers.FloatField(read_only=True, allow_null=True)
+    source = serializers.CharField(read_only=True, allow_null=True)
+    gain = serializers.BooleanField(read_only=True)
+    motif = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class PublicCalepinageResultatSerializer(serializers.Serializer):
+    """CALX369 — ``GET calepinages/<pk>/resultat/`` : serializer PLAT.
+
+    Chaque champ qui sort est déclaré ci-dessous — la liste EST le contrat,
+    et rien ne s'y ajoute parce qu'un bloc est apparu dans le résultat
+    interne. Elle est un sous-ensemble renommé du contrat interne
+    ``apps/calepinage/contract_samples/calepinage_resultat.json`` (plafond) :
+    ni ``roof_layout``, ni pose/rangées, ni électrique, ni coût.
+
+    * ``production_annuelle_kwh`` — l'énergie annuelle SIMULÉE, c'est-à-dire
+      l'année médiane : c'est la même grandeur que ``p50_kwh``, publiée sous
+      son nom métier (le résultat ne porte aucune autre énergie annuelle) ;
+    * ``rendement_specifique_kwh_kwc`` — kWh produits par kWc installé ;
+    * ``ratio_performance`` — le PR, en FRACTION (0,80 = 80 %) ;
+    * ``p50_kwh``/``p75_kwh``/``p90_kwh`` — quantiles annuels ;
+    * ``pertes`` — la chaîne de pertes réellement appliquée ;
+    * ``calcule_le`` — l'horodatage enregistré PAR la simulation servie.
+
+    Non simulé (ou simulation périmée) ⇒ ``simule`` faux, toutes les
+    grandeurs à ``null`` (jamais ``0``), ``pertes`` à ``null`` et ``motif``
+    dit pourquoi.
+    """
+    calepinage_id = serializers.IntegerField(read_only=True)
+    simule = serializers.BooleanField(read_only=True)
+    production_annuelle_kwh = serializers.FloatField(read_only=True,
+                                                     allow_null=True)
+    rendement_specifique_kwh_kwc = serializers.FloatField(read_only=True,
+                                                          allow_null=True)
+    ratio_performance = serializers.FloatField(read_only=True,
+                                               allow_null=True)
+    p50_kwh = serializers.FloatField(read_only=True, allow_null=True)
+    p75_kwh = serializers.FloatField(read_only=True, allow_null=True)
+    p90_kwh = serializers.FloatField(read_only=True, allow_null=True)
+    pertes = PublicPostePerteSerializer(many=True, read_only=True,
+                                        allow_null=True)
+    calcule_le = serializers.CharField(read_only=True, allow_null=True)
+    simulation_perimee = serializers.BooleanField(read_only=True)
+    motif = serializers.CharField(read_only=True, allow_blank=True)
+
+
+def _texte_ou_null(valeur):
+    texte = str(valeur).strip() if valeur is not None else ''
+    return texte or None
+
+
+def _postes_de_pertes_publics(servi):
+    """La chaîne de pertes SERVIE, aplatie poste par poste.
+
+    La cascade de la simulation (CALX147) fait foi : c'est elle qui a produit
+    le P50. Un résultat plus ancien, sans cascade, publie la liste plate des
+    postes saisis qu'il porte (forme CAL139). Aucun poste n'est inventé.
+    """
+    cascade = servi.get('cascade')
+    etapes = cascade.get('etapes') if isinstance(cascade, dict) else None
+    if isinstance(etapes, list) and etapes:
+        return [{
+            'code': str(etape.get('etape') or ''),
+            'libelle': str(etape.get('libelle') or ''),
+            'pourcentage': _nombre_calepinage(etape.get('perte_pct')),
+            'source': _texte_ou_null(etape.get('source')),
+            'gain': etape.get('gain') is True,
+            'motif': str(etape.get('motif_omission') or ''),
+        } for etape in etapes if isinstance(etape, dict)]
+    postes = servi.get('pertes')
+    if not isinstance(postes, list):
+        return []
+    return [{
+        'code': str(poste.get('poste') or ''),
+        'libelle': str(poste.get('libelle') or ''),
+        'pourcentage': _nombre_calepinage(poste.get('pct')),
+        'source': _texte_ou_null(poste.get('source')),
+        'gain': False,
+        'motif': '',
+    } for poste in postes if isinstance(poste, dict)]
+
+
+def resultat_calepinage_public(calepinage_id, servi):
+    """Aplatit le résultat SERVI par le module (``selectors.resultat_servi``).
+
+    ``simule`` est le verdict du module (CALX70 : vrai seulement si la
+    production est un nombre ET que la simulation décrit encore ce toit) —
+    il n'est jamais recalculé ici.
+    """
+    servi = servi if isinstance(servi, dict) else {}
+    simule = servi.get('simule') is True
+    production = servi.get('production') if simule else None
+    total = production.get('total') if isinstance(production, dict) else None
+    total = total if isinstance(total, dict) else {}
+
+    def lire(cle):
+        return _nombre_calepinage(total.get(cle)) if simule else None
+
+    p50 = lire('p50_kwh')
+    return {
+        'calepinage_id': calepinage_id,
+        'simule': simule,
+        'production_annuelle_kwh': p50,
+        'rendement_specifique_kwh_kwc': lire('specific_yield_kwh_kwc'),
+        'ratio_performance': lire('performance_ratio'),
+        'p50_kwh': p50,
+        'p75_kwh': lire('p75_kwh'),
+        'p90_kwh': lire('p90_kwh'),
+        'pertes': _postes_de_pertes_publics(servi) if simule else None,
+        'calcule_le': (_texte_ou_null(servi.get('calcule_le'))
+                       if simule else None),
+        'simulation_perimee': servi.get('simulation_perimee') is True,
+        'motif': ('' if simule else
+                  (str(servi.get('motif') or '').strip()
+                   or MOTIF_RESULTAT_NON_SIMULE)),
+    }

@@ -1373,3 +1373,18 @@ export_reversibilite_declenche = django.dispatch.Signal()
 # FAIT qu'un humain a décidé. Arguments : ``snapshot`` (le ``SlaSnapshot``),
 # ``company``, ``ancien_statut``, ``nouveau_statut``, ``user``.
 sla_credit_statut_change = django.dispatch.Signal()
+
+# CALX368 — Émis par ``apps.calepinage.services.simulation.simuler_calepinage``
+# (le SEUL chemin qui lance une simulation, D-CALX 4) quand une simulation a
+# RÉELLEMENT abouti et que son résultat vient d'être fusionné dans
+# ``Calepinage.resultat`` — jamais pour un « déjà calculé » (empreinte
+# inchangée), jamais pour une simulation refusée, jamais pour un calcul à
+# blanc (``enregistrer=False``). Ce n'est PAS un changement de statut (règle
+# #4) : le calepinage reste où il est.
+# Arguments : ``calepinage`` (l'instance, résultat déjà fusionné) et
+# ``company_id`` (ENTIER — la société du calepinage, lue sans requête).
+# Abonné dans ce repo : ``apps.publicapi`` (``calepinage_event_receivers``,
+# webhook sortant ``calepinage.simule``) — ainsi ``apps.calepinage`` ne
+# connaît pas l'API publique, et ``apps.publicapi`` n'importe jamais
+# ``apps.calepinage``.
+calepinage_simule = django.dispatch.Signal()

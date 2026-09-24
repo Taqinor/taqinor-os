@@ -674,54 +674,99 @@ modÃ¨le** sur un nouveau devis.
 
 ### Calepinage
 
-**Ce que ça fait.** Le module Calepinage est l'atelier complet de conception d'une installation solaire : vous dessinez le plan de toiture, sélectionnez les équipements (panneaux, onduleurs, câbles, structure), étudiez les variantes, synchronisez avec le devis, et exportez les sorties (plans, note de calcul, dossier réglementaire). Le calepinage est indépendant du statut du devis.
+**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous saisissez le site (toiture, terrain ou ombrière), choisissez les équipements (panneaux, onduleurs, structure), et vous consultez la simulation (production, pertes, batterie). Le calepinage est indépendant du statut du devis, et reste modifiable tant qu'aucun bon de commande n'est signé.
 
 **Où le trouver.** Trois portes d'entrée :
-1. Via le module **Calepinage** dans le menu principal : /calepinage pour lister vos calepinages, ou créer un nouveau.
-2. Depuis une fiche **lead** dans le CRM : le panneau « Calepinage » ouvre l'atelier pour ce lead (même lead, même client ou nouveau).
-3. Depuis un **Appel d'offres** (AO) : l'onglet « Calepinages » de l'affaire accède aux calepinages liés.
+1. Menu **VENTES** → **Calepinage** pour lister tous vos calepinages ou en créer un nouveau.
+2. Fiche **lead** dans le CRM : le bouton **Calepinage** ouvre ou crée l'atelier pour ce lead.
+3. Fiche **Appel d'offres** (AO) : l'onglet **Calepinages** liste les ateliers liés à cette affaire.
 
-**Comment l'utiliser.**
+**Le parcours : 10 étapes pour concevoir une installation.**
 
-*Créer un calepinage :*
-- Accédez à **Calepinage** → **Nouveau calepinage**.
-- Choisissez un **lead** ou un **client** (recherche bornée côté serveur, affichage du contexte géographique).
-- Entrez dans l'**atelier 3D** : dessinez la toiture, les panneaux, et les équipements sur le plan.
+**Étape 1 — Créer le calepinage (fiche lead ou menu Calepinage).**
+Vous entrez avec un lead ou un client, et l'atelier ouvre avec le site du lead (si saisi : adresse, GPS).
 
-*Gérer les variantes :*
-- Dans l'atelier, changez la composition (panneaux, onduleur, batterie, etc.).
-- Chaque version est enregistrée comme une **variante** isolée.
-- Cliquez sur **Variantes** pour voir un tableau comparatif de vos propositions (côte à côte ou en tableau).
-- **Retenir** une variante pour la marquer comme proposition principale.
+**Étape 2 — Saisir ou importer le plan du site (groupe « Site »).**
+L'atelier affiche une vue aérienne avec les clés d'entrée : 
+- **Plan importé** : charger un plan d'architecte et le caler en deux clics (si vous avez les cotes).
+- **Pente** : saisir l'inclinaison et l'orientation du pan (en degrés, pourcentage, ou cotes).
+- **Terrain** : mode champ au sol au lieu d'une toiture (tables ou racks sur le sol, espacement entre rangées).
+- **Ombrière** : surface sans toit (carport, hangar).
+- **Horizon lointain** : si le site a des horizons proches (montagne, bâtiment haut), tracer leur profil — c'est sinon omis sans erreur.
 
-*Générer et synchroniser le devis :*
-- Cliquez sur **Générer le devis** pour créer ou mettre à jour un devis lié à ce calepinage.
-- Cliquez sur **Resynchroniser** si vous avez modifié la composition après la génération : les lignes du devis se mettent à jour.
-- Le statut du calepinage est **indépendant** du statut du devis (brouillon, envoyé, accepté…).
+**Étape 3 — Concevoir la disposition des panneaux (vue 2D/3D du plan).**
+Sur la vue aérienne, vous dessinez les rangées de panneaux en cliquant. L'atelier refuse si :
+- Aucun pan n'est dessiné → message : « Aucun pan défini. ».
+- Un pan n'a pas d'inclinaison → message : « Inclinaison manquante. ».
 
-*Sorties et exports :*
-Le panel **Sorties** propose les exports :
-- **Planche** (SVG ou PDF) : vue d'ensemble du plan d'installation, pour le client ou le terrain.
-- **Note de calcul** : justificatifs de dimensionnement (puissance crête, production, pertes…).
-- **Exports** : DXF pour l'intégration CAO, ou tableur Excel pour le suivi interne.
+**Étape 4 — Choisir les équipements (groupe « Système »).**
+L'atelier affiche un formulaire où vous saisissez :
+- **Module PV** : panneaux solaires (puissance, dimensions, rendement).
+- **Onduleur** : marque, modèle, puissance.
+- **Batterie** (si stockage envisagé) : capacité, chimie.
+- **Structure** : type de fixation (toiture, sol), nombre de pièces.
+- **Câbles** : diamètres, longueurs (cheminement DC/AC).
 
-*Dossiers réglementaires :*
-Le module compile automatiquement un **dossier réglementaire** contenant les documents obligatoires (fiches produits, schémas, déclarations) selon votre marché et votre région.
+L'atelier refuse la simulation si :
+- Aucun module ni onduleur n'est saisi → message : « Aucun équipement. ».
+- La puissance des modules ne correspond pas au pan → message : « Vérifiez la puissance crête. ».
 
-**Ce que le module ne fait PAS.**
-- Il ne change **jamais** le statut du devis (brouillon, envoyé, accepté, refusé, expiré). Seul le devis maître contrôle cela.
-- Il ne génère **aucun PDF client** directement : utilisez le devis pour cela.
-- Il ne synchronise **pas** les prix à chaque révision de catalogue : les prix du calepinage sont figés à la génération du devis.
+**Étape 5 — Affectation électrique et schéma (groupe « Système »).**
+Vous organisez l'installation :
+- **Affectation des chaînes** : combien de strings (chaînes en série) ? Combien d'onduleurs ? Quel MPPT par string ?
+- **Schéma unifilaire** : l'atelier génère automatiquement le schéma DC/AC avec les protections (disjoncteurs, parafoudres).
+- **Raccordement réseau** : pour une injection réseau, précisez les paramètres du point de raccordement (puissance souscrite, fusible, câbles).
 
-**Écrans complémentaires (deep-links).** Une fois dans l'atelier, accédez aux panneaux spécialisés :
-- **Pompage** : dimensionnement solaire pour le pompage (puits, courbes de pompe, variateurs).
-- **Plan importé** : calage et conversion d'un plan d'architecte.
-- **Pente** : saisie de l'inclinaison et l'orientation (degrés, pourcentage, cotes).
-- **Terrain** : mode champ au sol (tables, racks, espacement).
-- **Ombrière** : surface de pose sans toit (carport, hangar).
-- **Schéma unifilaire** : diagramme électrique détaillé.
-- **Production** : estimation de la production et PR (par pan, total, P50/P90).
-- **Pertes** : cascade détaillée des pertes (ombres, câbles, onduleur, etc.).
+**Étape 6 — Lancer la simulation (groupe « Résultats »).**
+Vous cliquez sur **Simuler** (ou c'est automatique). L'atelier refuse si :
+- Aucun pan équipé de modules → message : « Aucun pan ne porte de panneaux. ».
+- Pas de point GPS du site → message : « Épingle du site manquante. ».
+- Mode météo indécis (et l'atelier demande : série pluriannuelle ou année type) → message : « Mode météo à préciser. ».
+
+**Étape 7 — Consulter les résultats de la simulation (groupe « Résultats »).**
+Une fois simulé, vous consultez :
+- **Production** : total annuel (P50, P75, P90), par pan, par mois, par module, par chaîne.
+- **Pertes** : graphique cascadé (ombrages, température, écrêtage, onduleur, câbles, etc.).
+- **Batterie** : autonomie, dimensionnement, vieillissement (si batterie envisagée).
+- **Économie** : production, économies d'électricité, temps de retour (lire depuis le **Devis**, jamais du calepinage).
+
+**Étape 8 — Générer ou synchroniser le devis (bouton du calepinage).**
+Vous cliquez **Générer le devis** (crée une ligne par équipement). Si vous changez ensuite la composition du calepinage, vous cliquez **Resynchroniser** pour mettre à jour les lignes du devis. Les prix, eux, restent gelés à la génération.
+
+**Étape 9 — Comparer les variantes (onglet « Versions »).**
+Vous créez plusieurs variantes du calepinage (panneaux différents, orientation alternative, batterie ou non) et comparez-les côte à côte : production, coût, économies.
+
+**Étape 10 — Compiler les documents et archiver (groupe « Dossiers »).**
+- **Documents** : l'atelier génère une planche d'installation (PDF/SVG), une note de calcul justificative, et un export CSV (8 760 heures).
+- **Dossiers réglementaires** : onglet qui regroupe les fiches produits et schémas (si compilés ; sinon le bouton reste inactif tant que toutes les données n'y sont pas).
+- **Versions** : historique gelé de chaque calepinage modifié.
+
+**Lire la simulation depuis un autre logiciel (API publique).** Une clé d'API
+portant le droit `read:calepinages` (Paramètres → API & Webhooks) permet à votre
+CRM ou à votre tableur de lire le résultat d'une simulation, sans ouvrir
+l'atelier :
+- `GET /api/public/v1/calepinages/<id>/resultat/` rend la production annuelle,
+  le rendement spécifique (kWh/kWc), le ratio de performance, les productions
+  P50/P75/P90, les postes de pertes (libellé, pourcentage, source) et la date du
+  calcul. Un calepinage jamais simulé — ou dont la conception a changé depuis
+  la dernière simulation — rend ces valeurs **vides** (jamais 0) avec la raison.
+- Le webhook **« Calepinage — simulation aboutie »** (`calepinage.simule`)
+  prévient votre logiciel dès qu'une simulation se termine : c'est une
+  notification signée envoyée à l'adresse que vous avez déclarée, sans aucune
+  valeur ajoutée à cette adresse.
+- Ce droit est en **lecture seule** : il ne permet ni de modifier un calepinage
+  ni de lancer une simulation — la simulation se lance toujours depuis
+  l'atelier. La série horaire (8 760 points par année) n'est pas servie par
+  l'API : utilisez l'export CSV de l'atelier. La géométrie de la toiture et les
+  coûts internes ne sortent jamais.
+---
+
+**Ce que le module NE FAIT PAS — et pourquoi.**
+- Il ne change **jamais** le statut du devis (brouillon, envoyé, accepté, refusé, expiré) : seul le devis maître le pilote.
+- Il ne génère **jamais** de PDF client directement : le devis est le seul chemin client (`/proposal`).
+- Il ne gère **pas** les prix : le calepinage lit les prix du stock, mais les montants sont calculés et figés au moment de la génération du devis.
+- Il ne simule **pas** l'ombrage précis (ombres portées d'un bâtiment). L'horizon lointain et l'accès solaire par module donnent une estimation, jamais un calcul bancable — pour cela, adressez-vous à PVsyst.
+- Il ne compare **pas** avec PVsyst ou HelioScope : l'écart contre PVGIS est affiché à titre informatif, jamais comme un ajustement.
 ---
 
 ## Facturation & Recouvrement

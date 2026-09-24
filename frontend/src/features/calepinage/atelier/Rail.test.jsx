@@ -39,6 +39,15 @@ vi.mock('../../../api/calepinageApi', () => {
 })
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
+/* CALX349 — l'onglet « Approbation » lit `useHasPermission`, qui va chercher
+   le store redux : aucun rendu de ce fichier n'en monte un (même double que
+   `AtelierPanneaux.test.jsx`). Sans lui, le panneau lève et le rail affiche
+   son bandeau d'échec au lieu du contenu. */
+const mocks = vi.hoisted(() => ({ hasPermission: vi.fn(() => false) }))
+vi.mock('../../../hooks/useHasPermission', () => ({
+  useHasPermission: (code) => mocks.hasPermission(code),
+}))
+
 import AtelierPanneaux from '../AtelierPanneaux'
 import config from '../module.config.jsx'
 import Rail from './Rail'

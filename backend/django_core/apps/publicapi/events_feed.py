@@ -31,7 +31,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max
 
 from .constants import (
-    EVENT_CALEPINAGE_VALIDE,
+    EVENT_CALEPINAGE_SIMULE, EVENT_CALEPINAGE_VALIDE,
     EVENT_CHANTIER_COMPLETED, EVENT_DEVIS_ACCEPTED, EVENT_DEVIS_SENT,
     EVENT_FACTURE_CREATED, EVENT_FACTURE_PAID, EVENT_INTERVENTION_COMPLETED,
     EVENT_LEAD_CREATED, EVENT_LEAD_LOST, EVENT_LEAD_STAGE_CHANGED,
@@ -73,6 +73,9 @@ SCOPE_PAR_EVENEMENT = {
     # de SA famille (CAL214) : le flux n'est jamais un contournement des
     # scopes, un abonné sans `read:calepinages` ne voit pas l'évènement.
     EVENT_CALEPINAGE_VALIDE: SCOPE_READ_CALEPINAGES,
+    # CALX368 — même famille, même scope : la production simulée d'un
+    # calepinage ne se lit jamais sans `read:calepinages`.
+    EVENT_CALEPINAGE_SIMULE: SCOPE_READ_CALEPINAGES,
 }
 
 

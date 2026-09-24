@@ -749,8 +749,17 @@ REFUS = {
     # PVOND — CONTRAT_ONDULEUR_FR est une liste de PAIRES [clé, libellé]
     # (variables du contrat, pas un vocabulaire de valeurs) ; le miroir est
     # verrouillé par les tests pvondFicheTechnique, pas déclarable ici.
+    # CALX355 (fold M5, 24/09/2026) — le « MIROIR de valider_courbe_irradiance
+    # / valider_courbe_rendement_onduleur » décrit la VALIDATION des courbes
+    # (clés requises, abscisse strictement croissante, liste vide refusée) —
+    # le comportement de deux fonctions serveur (apps/stock/models.py), pas
+    # un champ `choices=` ni une liste littérale de valeurs sélectionnables :
+    # `COURBES_FICHE` en dessous configure des colonnes d'éditeur, jamais un
+    # vocabulaire. Même motif COMPORTEMENT que les entrées voisines de
+    # ProduitForm.jsx ci-dessous (« miroir de l'admin »).
     "frontend/src/pages/stock/pvondFicheTechnique.js": [
-        ("CONTRAT_ONDULEUR", "FORME")],
+        ("CONTRAT_ONDULEUR", "FORME"),
+        ("valider_courbe_irradiance", "COMPORTEMENT")],
     # PVOND — prose de MIROIR sur du COMPORTEMENT (bannière/complétude), pas
     # des listes de valeurs ; le miroir réel est verrouillé par les tests
     # pvondFicheTechnique côté frontend et test_pvond côté backend.

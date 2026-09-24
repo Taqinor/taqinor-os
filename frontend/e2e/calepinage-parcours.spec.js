@@ -31,7 +31,7 @@
 // comme d'autres specs sèment leur donnée ; les gestes suivants (retenir,
 // générer le devis) passent, eux, par l'INTERFACE RÉELLE.
 import { test, expect } from '@playwright/test'
-import { uniq, gotoLeads, createLead } from './helpers'
+import { uniq, gotoLeads, createLead, openLead, closeLeadModal } from './helpers'
 
 const API = '/api/django/calepinage'
 
@@ -253,6 +253,31 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   const calepinageId = idDansUrl(page.url())
   expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
 
+  // ── 0ter. PRÉREQUIS D'ENVIRONNEMENT : UNE CARTE SERVIE (FIX-M5-E2E). ─────
+  // Tous les gestes ci-dessous vivent dans le CONSTRUCTEUR (`initRoofToolPro8`
+  // → `createMapDraw`, qui crée lui-même `#rp9-snap-angle`). Or l'atelier ne le
+  // boote QUE si le serveur publie une carte (`design-context` → `carte`, lue
+  // par `_config_carte()` dans `PUBLIC_MAPTILER_KEY`) ; sans elle il s'arrête
+  // en NOMMANT la panne (`ToitureDesign.jsx` `bootCalepinage`) — et `#rp9-map`,
+  // simple conteneur JSX, reste « visible » quand même. Le job e2e de la CI ne
+  // pose AUCUNE clé MapTiler (secret non provisionné) : ce parcours n'y est
+  // donc pas rejouable, et il le DIT (skip motivé) au lieu d'échouer 15 s plus
+  // loin sur une puce jamais créée. La vérité vient du SERVEUR (même porte que
+  // l'écran), jamais d'une variable devinée côté spec : là où la carte est
+  // servie, le parcours complet se joue, inchangé.
+  const contexteRes = await page.request.get(
+    `${API}/calepinages/${calepinageId}/design-context/`)
+  expect(contexteRes.ok(),
+    `design-context refusé : ${contexteRes.status()}`).toBeTruthy()
+  const { carte } = await contexteRes.json()
+  if (!carte?.available) {
+    // Même sans carte, l'écran ne montre jamais une carte morte muette.
+    await expect(page.getByRole('alert').filter({ hasText: 'clé MapTiler' })).toBeVisible()
+  }
+  test.skip(!carte?.available,
+    'carte indisponible sur cet environnement (le serveur ne publie aucune clé MapTiler) : '
+    + 'le constructeur de l’atelier ne boote pas — gestes CALX89…CALX109 non rejouables ici')
+
   // ── 1. LA CARTE ──────────────────────────────────────────────────────────
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })
@@ -417,4 +442,145 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
   const cibleChipRouverte = page.locator('[data-cible="compte"]')
   await expect(cibleChipRouverte).toBeVisible({ timeout: 10_000 })
   await expect(cibleChipRouverte).toHaveAttribute('aria-pressed', 'true')
+})
+
+// CALX386 — LE PARCOURS COMPLET, DE L'ATELIER AU RETOUR CRM.
+//
+// POURQUOI CETTE SPEC EXISTE. CAL221 (ci-dessus) traverse création → variante
+// (semée par l'API) → retenir → devis, mais son PROPRE en-tête le disait déjà
+// à l'écriture de CALX386 : ni la conception, ni la simulation, ni
+// l'électrique, ni les documents, ni le retour CRM n'étaient jamais
+// traversés — et `e2e-shard` ne joue cette spec QUE dans `release-verify.yml`
+// (nightly/manuel), jamais sur une PR. Ce test ajoute les maillons manquants,
+// PAR L'INTERFACE, sur un calepinage frais.
+//
+// TRAVERSÉE, PAS RÉUSSITE FORCÉE. Un calepinage tout juste créé depuis un
+// lead n'a NI toiture tracée, NI postes de pertes saisis : `BoutonLancerSimulation`
+// (`production/PanneauProduction.jsx`) est lui-même DÉSACTIVÉ tant que
+// `pertes`/`cascade.etapes` sont vides (CALX48 — « sans poste de perte, le
+// bouton est inactif »), et le générateur de devis peut tout aussi
+// légitimement REFUSER en NOMMANT le champ (`roof_layout` absent) que
+// réussir. Exiger un résultat chiffré à chaque étape ferait de cette spec un
+// test du MOTEUR, pas du PARCOURS — exactement la distinction que l'en-tête
+// de CALX1 pose déjà pour « Pente »/« Horizon lointain »/« Dossiers
+// réglementaires ». Chaque étape est donc affirmée SOIT servie, SOIT NOMMÉE
+// (jamais un écran blanc) — la garde `check_calepinage_actions_consommees.py`
+// (CALX381) et les tests unitaires des panneaux couvrent déjà la RÉUSSITE
+// chiffrée sur des données préparées.
+//
+// LE RETOUR CRM : `BlocCalepinageDevis` (`features/ventes/BlocCalepinageDevis.jsx`,
+// CAL40) n'est monté que dans le dialogue d'ÉDITION du devis
+// (`DevisForm.jsx`), ouvert depuis `DevisList.jsx` par le menu « Plus
+// d'actions » → « Éditer » d'UNE ligne — jamais depuis l'espace de travail du
+// lead (`LeadWorkspace.jsx` ouvre le devis en conception 3D, un écran
+// DIFFÉRENT). La spec revient donc au lead (preuve que le geste CRM reste
+// joignable), PUIS ouvre le devis généré par sa ligne dans la liste — les
+// DEUX preuves attendues par la tâche, dans l'ordre où l'application les rend
+// réellement disponibles.
+test('CALX386: atelier → simulation → électrique → documents → devis → retour CRM', async ({ page }) => {
+  await gotoLeads(page)
+  const nomLead = await createLead(page, {
+    nom: uniq('CALX386 Lead'), facture: 900, ville: 'Casablanca',
+  })
+
+  // ── 1. CRÉER DEPUIS LE LEAD ET OUVRIR L'ATELIER (LA CONCEPTION) ─────────
+  // Sans `?onglet=`, l'atelier rend sa vue par défaut — la conception 3D
+  // elle-même (`AtelierPanneaux.jsx`) : c'est CETTE vue que la tâche nomme
+  // « Conception », pas un onglet séparé du registre.
+  await page.goto('/calepinage/nouveau')
+  await expect(page.getByRole('heading', { name: 'Nouveau calepinage' })).toBeVisible()
+  await page.getByRole('tab', { name: 'Lead' }).click()
+  await page.locator('#cal-nouveau-lead').getByRole('combobox').click()
+  await page.getByRole('searchbox').fill(nomLead)
+  await page.getByRole('option', { name: new RegExp(nomLead) }).first().click()
+  await page.locator('#cal-nouveau-nom').fill(uniq('CALX386 Toiture'))
+  await page.getByRole('button', { name: 'Créer le calepinage' }).click()
+
+  await expect(page).toHaveURL(/\/calepinage\/\d+/)
+  await expect(page.getByTestId('cal-atelier-panneaux')).toBeVisible()
+  const calepinageId = idDansUrl(page.url())
+  expect(calepinageId, 'aucun identifiant de calepinage dans l’URL').toBeTruthy()
+
+  // ── 2. SIMULATION (onglet « Production », CALX5/CALX48) ────────────────
+  await page.getByTestId('cal-onglet-production').click()
+  await expect(page.getByTestId('cal-onglet-production')).toHaveAttribute('aria-selected', 'true')
+  const panneauProduction = page.getByTestId('cal236-panneau')
+  await expect(panneauProduction).toBeVisible()
+  const lancerSimulation = page.getByTestId('calx48-lancer-bouton')
+  await expect(lancerSimulation).toBeVisible()
+  if (await lancerSimulation.isEnabled()) {
+    await lancerSimulation.click()
+    // Le résultat SERVI : soit la simulation aboutit (le panneau total
+    // s'affiche), soit le serveur la refuse en NOMMANT le motif — les deux
+    // sont un résultat SERVI, aucun des deux n'est un écran muet.
+    await expect(
+      page.getByTestId('cal236-total').or(page.getByTestId('calx48-refus')),
+    ).toBeVisible({ timeout: 15_000 })
+  } else {
+    // Bouton désactivé (aucun poste de perte saisi, CALX48) : l'état
+    // « non simulé » est lui-même le résultat servi pour ce calepinage.
+    await expect(page.getByTestId('cal236-non-simule')).toBeVisible()
+  }
+
+  // ── 3. ÉLECTRIQUE (onglet « Équipements électriques », CALX222) ────────
+  await page.getByTestId('cal-onglet-equipements-electriques').click()
+  await expect(page.getByTestId('cal-onglet-equipements-electriques'))
+    .toHaveAttribute('aria-selected', 'true')
+  await expect(
+    page.getByTestId('calx222-panneau').or(page.getByTestId('calx222-erreur')),
+  ).toBeVisible()
+
+  // ── 4. DOCUMENTS (onglet « Documents », CALX19/CALX320) ────────────────
+  await page.getByTestId('cal-onglet-documents').click()
+  await expect(page.getByTestId('cal-onglet-documents')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('cal-doc-panneau')).toBeVisible()
+
+  // ── 5. GÉNÉRER LE DEVIS (CAL24/CAL38) — aucune variante sur ce
+  // calepinage : le serveur chiffre la conception elle-même (voir l'en-tête
+  // de `BoutonDevis.jsx`), donc le bouton n'est jamais bloqué par une
+  // variante manquante ici. ───────────────────────────────────────────────
+  await page.goto(`/calepinage/${calepinageId}`)
+  const boutonDevis = page.getByTestId('cal-bouton-devis')
+  await expect(boutonDevis).toBeVisible()
+  const generer = page.getByTestId('cal-generer-devis')
+  const resynchroniser = page.getByTestId('cal-resynchroniser-devis')
+  await expect(generer.or(resynchroniser)).toBeVisible()
+
+  let devisId = null
+  if (await generer.count() > 0) {
+    await generer.click()
+    // Succès → l'écran NAVIGUE vers la conception du devis créé (`BoutonDevis.jsx
+    // ::generer`) : l'URL porte son identifiant. Refus → le serveur NOMME le
+    // champ fautif — les deux sont un résultat servi, jamais un bouton muet.
+    await expect(page).toHaveURL(/\/ventes\/devis\/\d+\/design|\/calepinage\/\d+/)
+    if (/\/ventes\/devis\/(\d+)\/design/.test(page.url())) {
+      devisId = /\/ventes\/devis\/(\d+)\/design/.exec(page.url())[1]
+    } else {
+      await expect(page.getByTestId('cal-devis-refus')).toBeVisible()
+    }
+  } else {
+    // Déjà lié (course avec un run précédent sur le même calepinage — ne se
+    // produit pas sur un calepinage frais, mais la spec ne le suppose pas).
+    await expect(resynchroniser).toBeEnabled()
+  }
+
+  // ── 6. RETOUR CRM — le lead reste joignable (même geste que
+  // `openLead`/`calepinage-parite-crm.spec.js`), PUIS le devis généré
+  // affiche le bloc calepinage qui le pilote (CAL40). ────────────────────
+  await gotoLeads(page)
+  await openLead(page, nomLead)
+  await closeLeadModal(page)
+
+  if (devisId) {
+    await page.goto('/ventes/devis')
+    const ligne = page.locator(`#devis-row-${devisId}`)
+    await expect(ligne).toBeVisible({ timeout: 15_000 })
+    await ligne.getByRole('button', { name: /Plus d.actions/ }).click()
+    await page.getByRole('menuitem', { name: 'Éditer' }).click()
+    // Silencieux quand le devis n'a pas (encore) de calepinage résolu côté
+    // serveur (`BlocCalepinageDevis.jsx` : « jamais un bloc vide ») — mais
+    // CE devis vient JUSTEMENT d'être généré PAR ce calepinage : le bloc doit
+    // apparaître, avec le lien retour vers l'atelier.
+    await expect(page.getByTestId('cal-bloc-calepinage-devis')).toBeVisible({ timeout: 15_000 })
+  }
 })

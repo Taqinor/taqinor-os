@@ -16,6 +16,8 @@ FRONTIÈRE M3 : toute lecture de ``crm``/``ventes`` passe par LEURS selectors,
 en import PARESSEUX (fonction-local) — jamais par un import de leurs modèles.
 """
 
+import re
+
 # Ré-export M3 (revue Fable 15/09) — le VOCABULAIRE de qualification (module
 # pur, zéro modèle) fait partie de la surface de LECTURE de l'app : les
 # autres apps (crm) le consomment d'ICI, jamais du module interne.
@@ -528,4 +530,174 @@ def ma_journee(visites, *, aujourdhui):
         'date': aujourdhui.isoformat(),
         'en_retard_count': en_retard.count(),
         'visites': [ligne_ma_journee(visite) for visite in lignes],
+    }
+
+
+# -- CALX363 -- LA PORTE VISITE TECHNIQUE -> CALEPINAGE ------------------------
+#
+# Jusqu'ici la seule porte de sortie de cette app vers le reste de l'ERP etait
+# ``texture_toit_pour_lead`` (une image) : les MESURES que le commercial a
+# relevees sur le toit et les PHOTOS de la checklist ne sortaient nulle part,
+# et le concepteur du calepinage les ressaisissait. ``releve_pour_calepinage``
+# est cette porte, sur le MEME patron de bornage : le calepinage demande « le
+# releve de ce lead », il ne connait ni ``VisiteTerrain`` ni ``VisiteMedia``
+# (``apps.calepinage`` n'importe jamais ``apps.visites.models``).
+#
+# Contrat partage (PACT10) : ``apps/calepinage/contract_samples/
+# calepinage_releve_visite.json`` — cette lecture en sert ``visite_id``,
+# ``validee_le``, ``mesures``, ``photos`` et ``motif_absence`` ; ``deja_repris``
+# et ``releve`` appartiennent a l'action du calepinage (CALX364), qui seule
+# sait si CE calepinage a deja repris la visite.
+
+#: Les deux raisons d'absence, publiees TELLES QUELLES par l'onglet de reprise
+#: (CALX365) : il nomme ce qui manque au lieu d'afficher un vide muet. La
+#: seconde est recopiee mot pour mot dans ``exemple_vide`` du contrat.
+MOTIF_AUCUNE_VISITE = (
+    "Aucune visite technique n'a été faite pour ce lead : il n'y a ni mesure "
+    'ni photo de terrain à reprendre.')
+MOTIF_VISITE_NON_VALIDEE = (
+    "La visite technique de ce lead n'est pas encore validée par le bureau "
+    "d'études : ses mesures et ses photos ne sont pas reprises tant que le "
+    'feu vert n\'est pas donné.')
+
+#: L'unite DECLAREE par le libelle d'une mesure de la checklist — la
+#: parenthese finale (« Longueur de la zone utile (m) » -> « m »). La
+#: checklist reste la seule autorite : aucune unite n'est ecrite ici.
+_UNITE_DU_LIBELLE = re.compile(r'\(([^()]+)\)\s*$')
+
+
+def _releve_unite(champ):
+    """L'unite d'une mesure NOMBRE, lue dans son libelle — ``None`` sinon.
+
+    Un choix, un booleen, un texte ou un nombre sans unite declaree (le
+    nombre d'emplacements libres) n'a PAS d'unite : ``None`` le dit, rien
+    n'est suppose.
+    """
+    from . import visite_checklist as checklist
+
+    if champ.get('nature') != checklist.NOMBRE:
+        return None
+    trouve = _UNITE_DU_LIBELLE.search(champ.get('libelle') or '')
+    return trouve.group(1).strip() if trouve else None
+
+
+def _releve_valeur_saisie(valeur):
+    """Vrai si la valeur a REELLEMENT ete saisie (``False`` et ``0`` compris).
+
+    ``None``, la chaine vide ou une chaine d'espaces = « non relevee » :
+    la mesure est alors OMISE, jamais servie a ``None``.
+    """
+    if valeur is None:
+        return False
+    if isinstance(valeur, str) and not valeur.strip():
+        return False
+    return True
+
+
+def _releve_mesures_saisies(mesures_json):
+    """Les mesures SAISIES d'une visite, dans l'ordre de la checklist.
+
+    ``mesures_json`` est le JSON stocke (``{categorie: {code: valeur}}``).
+    Chaque mesure DECLAREE et reellement saisie sort en
+    ``{code, libelle, valeur, unite}`` ; une mesure vide est OMISE (jamais
+    ``valeur: None``) et une cle inconnue de la checklist n'est pas servie
+    (la checklist est la seule autorite sur ce qui est une mesure). Aucune
+    valeur n'est convertie ni completee : l'orientation reste le choix saisi,
+    jamais un azimut devine. Fonction PURE (aucune base).
+    """
+    from . import visite_checklist as checklist
+
+    saisies = mesures_json if isinstance(mesures_json, dict) else {}
+    rendu = []
+    for cat in checklist.categories():
+        valeurs = saisies.get(cat['categorie'])
+        valeurs = valeurs if isinstance(valeurs, dict) else {}
+        for champ in cat['mesures']:
+            valeur = valeurs.get(champ['code'])
+            if not _releve_valeur_saisie(valeur):
+                continue
+            rendu.append({
+                'code': champ['code'],
+                'libelle': champ['libelle'],
+                'valeur': valeur,
+                'unite': _releve_unite(champ),
+            })
+    return rendu
+
+
+def _releve_photos_retenues(medias):
+    """Les photos RETENUES d'une visite : ``[{slot_code, libelle,
+    attachment_id}]``, dans l'ordre des medias recus.
+
+    Une photo marquee « a refaire » n'est pas une prise de vue acceptee : elle
+    ne sort pas. Le libelle est celui du slot de la checklist ; un slot
+    inconnu (photo d'une version anterieure de la checklist) garde son code
+    plutot que de disparaitre. La piece jointe n'est PAS copiee : seul son
+    identifiant sort. Fonction PURE sur des objets deja lus.
+    """
+    from . import visite_checklist as checklist
+
+    photos = []
+    for media in medias:
+        if getattr(media, 'a_refaire', False):
+            continue
+        declaration = checklist.slot(media.slot_code)
+        photos.append({
+            'slot_code': media.slot_code,
+            'libelle': (declaration or {}).get('libelle') or media.slot_code,
+            'attachment_id': media.attachment_id,
+        })
+    return photos
+
+
+def releve_pour_calepinage(lead):
+    """CALX363 — le releve de terrain d'un lead, pour le calepinage.
+
+    Regles (memes que ``texture_toit_pour_lead``) :
+
+    * seule une visite **VALIDEE** (feu vert du bureau d'etudes) sort — une
+      visite en cours, terminee ou renvoyee n'est jamais reprise ;
+    * la **derniere** validee gagne (``-id`` : deterministe, aucune horloge) ;
+    * la societe vient du LEAD, jamais d'une requete : une visite d'une autre
+      societe ne peut structurellement pas sortir d'ici ;
+    * sans visite validee, les MEMES cles sortent a ``None`` — jamais une
+      seconde forme de reponse — et ``motif_absence`` NOMME ce qui manque
+      (aucune visite, ou visite pas encore validee) ;
+    * LECTURE SEULE : rien n'est ecrit, ni ici ni sur le lead.
+
+    ``validee_le`` sort a ``None`` : ``VisiteTerrain`` n'horodate PAS le feu
+    vert (``services.valider_visite`` n'ecrit que ``statut``, sans meme
+    bouger ``updated_at``). Tant qu'aucun horodatage de validation n'est
+    stocke, aucune autre date (``date_realisee``, ``updated_at``) n'est
+    presentee a sa place — ce serait une date inventee.
+
+    Returns:
+        dict — ``{visite_id, validee_le, mesures, photos, motif_absence}``.
+    """
+    from .models import VisiteTerrain
+
+    vide = {
+        'visite_id': None,
+        'validee_le': None,
+        'mesures': None,
+        'photos': None,
+        'motif_absence': MOTIF_AUCUNE_VISITE,
+    }
+    if lead is None:
+        return vide
+    visites = VisiteTerrain.objects.filter(lead=lead,
+                                           company_id=lead.company_id)
+    visite = (visites.filter(statut=VisiteTerrain.Statut.VALIDEE)
+              .order_by('-id').first())
+    if visite is None:
+        if visites.exists():
+            return dict(vide, motif_absence=MOTIF_VISITE_NON_VALIDEE)
+        return vide
+    medias = visite.medias.filter(company_id=lead.company_id).order_by('id')
+    return {
+        'visite_id': visite.id,
+        'validee_le': None,
+        'mesures': _releve_mesures_saisies(visite.mesures),
+        'photos': _releve_photos_retenues(medias),
+        'motif_absence': None,
     }

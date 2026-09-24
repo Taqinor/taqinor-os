@@ -41,6 +41,7 @@ Voir ``contract_samples/calepinage_simulation.json`` pour la forme exacte.
 from __future__ import annotations
 
 import datetime
+import logging
 import time
 
 from .chaine_pertes import (
@@ -66,6 +67,8 @@ __all__ = [
     'SOURCE_ENTREE_CHAINE', 'SimulationRefusee', 'construire_contexte',
     'simuler_calepinage',
 ]
+
+logger = logging.getLogger(__name__)
 
 #: La clé d'en-tête écrite dans ``Calepinage.resultat`` (CALX4). Elle vient de
 #: ``services/electrique.py`` : un seul nom pour l'écrivain et pour le lecteur
@@ -762,6 +765,32 @@ def _agregation_electrique(blocs, par_module, contexte, rattachement):
         _ajouter_avertissement(blocs, texte)
 
 
+def _annoncer_simulation(calepinage):
+    """CALX368 — annonce sur le bus ``core.events`` qu'une simulation a abouti.
+
+    Appelée UNIQUEMENT après la fusion réelle du résultat : un « déjà
+    calculé », un refus ou un calcul à blanc (``enregistrer=False``)
+    n'annoncent rien. Un pivot jamais enregistré (``pk`` absent) n'a rien
+    écrit et n'annonce donc rien non plus.
+
+    Le module ne sait pas qui écoute (aujourd'hui : le webhook
+    ``calepinage.simule`` de ``apps.publicapi``). Best-effort : un abonné qui
+    lève ne transforme jamais une simulation ENREGISTRÉE en échec — le
+    résultat est déjà en base, la réponse doit le dire.
+    """
+    if getattr(calepinage, 'pk', None) is None:
+        return
+    from core import events
+
+    try:
+        events.calepinage_simule.send(
+            sender=type(calepinage), calepinage=calepinage,
+            company_id=getattr(calepinage, 'company_id', None))
+    except Exception:  # noqa: BLE001 — un abonné ne casse jamais le calcul
+        logger.exception('calepinage_simule : un abonné a échoué '
+                         '(calepinage %s)', getattr(calepinage, 'pk', None))
+
+
 def _horodatage(maintenant=None):
     """L'instant du calcul, à la seconde, forme ``…Z`` du contrat."""
     moment = maintenant or datetime.datetime.now(datetime.timezone.utc)
@@ -985,6 +1014,7 @@ def simuler_calepinage(calepinage, *, forcer=False, client=None,
     }
     if enregistrer:
         _fusionner(calepinage, blocs)
+        _annoncer_simulation(calepinage)
     return {
         'deja_calcule': False,
         'hash_entree': empreinte,

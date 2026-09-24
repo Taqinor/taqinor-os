@@ -48,9 +48,14 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     #: CAL189 — le calepinage décrit-il encore ce que le devis vend ?
     layout_stale = serializers.SerializerMethodField()
     layout_nb_panneaux = serializers.SerializerMethodField()
+    #: CALX406 — le NOM du responsable, pour la colonne de la liste (le champ
+    #: ``responsable`` lui-même reste l'identifiant, en lecture-écriture).
+    responsable_nom = serializers.SerializerMethodField()
 
     #: AUD601 — une FK cross-app ne pointe jamais la ligne d'une autre société.
-    same_company_fields = ('client', 'devis')
+    #: CALX406 — le responsable non plus : un compte d'une société voisine est
+    #: refusé sous le champ ``responsable``, sans jamais être nommé.
+    same_company_fields = ('client', 'devis', 'responsable')
 
     class Meta:
         model = Calepinage
@@ -60,6 +65,7 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             'layout_hash', 'roof_image', 'version_moteur',
             'layout_stale', 'layout_nb_panneaux',
             'cree_par', 'created_at', 'updated_at',
+            'responsable', 'responsable_nom',  # CALX406
         ]
         read_only_fields = [
             'layout_hash', 'roof_image', 'version_moteur', 'cree_par',
@@ -84,21 +90,51 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
     def get_layout_nb_panneaux(self, calepinage):
         return self._peremption(calepinage)['layout_nb_panneaux']
 
-    def _peremption(self, calepinage):
-        """Le MÊME helper serveur que le détail devis et la page publique."""
-        from apps.ventes.selectors import (
-            get_devis_by_pk, peremption_layout_devis,
-        )
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_responsable_nom(self, calepinage):
+        """CALX406 — ``None`` sans responsable, jamais un nom deviné.
 
-        devis_id = getattr(calepinage, 'devis_id', None)
-        if not devis_id:
-            return {'layout_stale': None, 'layout_nb_panneaux': None}
-        devis = get_devis_by_pk(devis_id)
-        company = getattr(calepinage, 'company', None)
-        if devis is None or (company is not None
-                             and devis.company_id != company.pk):
-            return {'layout_stale': None, 'layout_nb_panneaux': None}
-        return peremption_layout_devis(devis)
+        Lu sur l'utilisateur DÉJÀ CHARGÉ par la liste
+        (``select_related('responsable')`` du viewset) : aucune requête par
+        ligne (budget CALX390).
+        """
+        user = getattr(calepinage, 'responsable', None)
+        if user is None:
+            return None
+        nom = (getattr(user, 'get_full_name', lambda: '')() or '').strip()
+        return nom or getattr(user, 'username', '') or None
+
+    def _peremption(self, calepinage):
+        """Le MÊME helper serveur que le détail devis et la page publique.
+
+        CALX390 — calculé UNE fois par calepinage (les deux champs le lisent)
+        et sur le devis DÉJÀ CHARGÉ par la liste (``select_related('devis')``
+        et ``prefetch_related('devis__lignes')`` du viewset) : relire le devis
+        par ``get_devis_by_pk`` et la société par ``calepinage.company`` coûtait
+        cinq requêtes PAR LIGNE de la liste. La garde de société compare les
+        identifiants, sans charger la société.
+        """
+        from apps.ventes.selectors import peremption_layout_devis
+
+        memo = getattr(calepinage, '_calx390_peremption', None)
+        if memo is not None:
+            return memo
+        vide = {'layout_stale': None, 'layout_nb_panneaux': None}
+        if not getattr(calepinage, 'devis_id', None):
+            memo = vide
+        else:
+            devis = getattr(calepinage, 'devis', None)
+            company_id = getattr(calepinage, 'company_id', None)
+            if devis is None or (company_id is not None
+                                 and devis.company_id != company_id):
+                memo = vide
+            else:
+                memo = peremption_layout_devis(devis)
+        try:
+            calepinage._calx390_peremption = memo
+        except AttributeError:  # objet figé (essais) : pas de mémo, rien de faux
+            pass
+        return memo
 
     def validate(self, attrs):
         """Lead XOR client, et un lead qui existe VRAIMENT dans la société."""

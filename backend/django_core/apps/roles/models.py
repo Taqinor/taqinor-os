@@ -369,6 +369,17 @@ ALL_PERMISSIONS = [
     # retiré : l'app n'existait pas avant ce groupe.
     'calepinage_voir',
     'calepinage_gerer',
+    # ── CALX347 — le SECOND REGARD sur un calepinage : ``calepinage_approuver``
+    # (source unique ``apps/calepinage/permissions.py::CAL_APPROUVER``).
+    # « Qui peut écrire » ne vaut plus « qui peut valider » : un porteur de
+    # ``calepinage_gerer`` SEUL reçoit 403 sur la décision d'approbation.
+    # ZÉRO TITULAIRE PAR DÉFAUT (décision tranchée du 21/09/2026) : le code
+    # n'est ajouté à AUCUNE liste de rôle métier ci-dessous — seuls Directeur
+    # et Administrateur le portent, par l'héritage d'``ALL_PERMISSIONS`` qui
+    # vaut pour CHAQUE code du catalogue ; tout autre rôle le reçoit par la
+    # matrice des rôles, jamais par défaut. Préfixe ``calepinage_`` : rattaché
+    # au manifeste ``calepinage`` par ``PERMISSION_MODULE`` sans ligne neuve.
+    'calepinage_approuver',
     # ── NTADM39 — permissions fines de apps.adminops. Toutes gardées DERRIÈRE
     # ``IsAdministrateur`` (palier admin déjà requis) — ces codes RESSERRENT
     # encore l'accès au sein de ce palier : un rôle admin-tier CUSTOM

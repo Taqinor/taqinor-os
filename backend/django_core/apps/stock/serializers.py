@@ -1773,6 +1773,10 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
             # CAL111 — modèle thermique NOCT / Uc-Uv (optionnels).
             'noct_c', 'uc_w_m2k', 'uv_w_m3sk',
+            # CALX355 — facteur de bifacialité (CAL112) : en base et lu par
+            # specs_for_produit, mais jamais exposé ici — une saisie du
+            # formulaire produit aurait été ignorée en silence.
+            'bifacialite_pct',
             'ond_n_mppt', 'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs',
             'ond_i_max_mppt_a', 'ond_ac_kw', 'ond_phases',
             'ond_rendement_euro_pct',

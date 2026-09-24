@@ -21,7 +21,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { reponseContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/calepinageApi', () => ({
-  default: { calepinages: { masseLestage: vi.fn() } },
+  default: { calepinages: { masseLestage: vi.fn(), zonesLestage: vi.fn() } },
 }))
 
 import calepinageApi from '../../../api/calepinageApi'
@@ -204,5 +204,80 @@ describe('provenanceEntree (CALX17)', () => {
 
   it('dit « non saisie » pour une entrée qu’aucune source ne couvre', () => {
     expect(provenanceEntree('cle_inconnue', []).provenance).toBeNull()
+  })
+})
+
+/* CALX362 — le choix de la zone (CALX361), la colonne « Source » de chaque
+   ligne, et le lien vers les réglages quand rien n'est calculable. Tout est
+   affirmé sur `calepinage_masse_lestage.json` (variante `exemple_zone`,
+   sortie RÉELLE du service backend, CALX361) — le catalogue des zones
+   (`zonesLestage`) est une donnée AUXILIAIRE, illustrée ici (pas de contrat
+   dédié : la garantie porte sur `masse-lestage`). */
+describe('PanneauMasseLestage (CALX362) — équivalence sans zones (D12)', () => {
+  it('n’affiche AUCUN bloc « choix de la zone » et ne lit pas le catalogue', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('calx17-panneau')
+    expect(screen.queryByTestId('calx362-zone')).toBeNull()
+    expect(calepinageApi.calepinages.zonesLestage).not.toHaveBeenCalled()
+  })
+})
+
+describe('PanneauMasseLestage (CALX362) — zone retenue', () => {
+  it('affiche la zone, son origine, ses sources, et la marque dans le catalogue', async () => {
+    servir('exemple_zone')
+    calepinageApi.calepinages.zonesLestage.mockResolvedValue({
+      data: {
+        lestage: {
+          zones: [
+            { code: 'littoral', libelle: 'Littoral (essai)', commune_ou_region: 'Casablanca-Settat' },
+            { code: 'atlas', libelle: 'Moyen Atlas (essai)', commune_ou_region: 'Fès-Meknès' },
+          ],
+          zone_par_defaut: 'littoral',
+        },
+      },
+    })
+    rendre()
+    await screen.findByTestId('calx362-zone')
+
+    const zone = echantillon('exemple_zone').lestage.zone
+    expect(screen.getByTestId('calx362-zone-retenue')).toHaveTextContent(zone.libelle)
+    expect(screen.getByTestId('calx362-zone-retenue')).toHaveTextContent('désignée par ce calepinage')
+    expect(screen.getByTestId('calx362-zone-sources')).toHaveTextContent(zone.sources[0])
+
+    const retenue = await screen.findByTestId('calx362-zone-catalogue-atlas')
+    expect(retenue).toHaveTextContent('retenue')
+    const autre = screen.getByTestId('calx362-zone-catalogue-littoral')
+    expect(autre).not.toHaveTextContent('retenue')
+  })
+
+  it('affiche la « colonne source » de chaque ligne calculée en mode zone', async () => {
+    servir('exemple_zone')
+    calepinageApi.calepinages.zonesLestage.mockResolvedValue({ data: { lestage: {} } })
+    rendre()
+    await screen.findByTestId('calx17-panneau')
+
+    const ligne = echantillon('exemple_zone').lestage.lignes
+      .find((l) => l.code === 'pression_dynamique')
+    expect(screen.getByTestId(`calx362-source-${ligne.code}`)).toHaveTextContent(ligne.mention)
+  })
+})
+
+describe('PanneauMasseLestage (CALX362) — rien de calculable', () => {
+  it('affiche un lien vers les réglages, jamais un tableau de zéros', async () => {
+    servir('exemple_vide')
+    rendre()
+    await screen.findByTestId('calx17-panneau')
+
+    expect(echantillon('exemple_vide').lestage.calculable).toBe(false)
+    const lien = screen.getByTestId('calx362-lien-reglages-vide')
+    expect(lien).toHaveAttribute('href', '/calepinage/reglages')
+  })
+
+  it('n’affiche PAS le lien quand des résultats sont calculés', async () => {
+    servir('exemple')
+    rendre()
+    await screen.findByTestId('calx17-panneau')
+    expect(screen.queryByTestId('calx362-lien-reglages-vide')).toBeNull()
   })
 })

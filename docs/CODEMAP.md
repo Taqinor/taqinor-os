@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 9c02767821c5faaf4189e460b3ae42449e0db9b1291bcf9eeb911f362e6c8636
-Plan fingerprint: 496dc6bf6a5920474f7b34fd306095372a6066008f2fb7e2203e75327d81b1f5
+Structure fingerprint: 040d015a46a8d75661c3bdae86741591f7f3a2d135012ca71791029f7f78a2e2
+Plan fingerprint: 8a5b8a1e45785410ad4a0154dae4bdd55bd00ea0865413599a24ad7419a41b35
 
 
 
@@ -330,6 +330,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 
 - **Lot 2 « site, toit & atelier 3D » (21/09/2026, 53/54 tâches — CALX130 e2e ouverte)** : contrat `roof_layout_v2` étendu (retraits par arête, `modules[]`/`moduleId`, `numerotation`, `buildings[]`, obstacles `forme`/`contour`/`rayonM`, allées `usage`/`axe`/`largeurM`, `underlay`, `poseSurfaces` façade + `appuis`, `optimisation`, `scene`) ; backend `views/modules_disponibles.py` (`GET calepinages/<pk>/modules-disponibles/`), `views/plan_importe.py` (`GET …/plan-importe/`), `services/modules_stock.py`, `gabarits.py`/`traduction.py` (CALX405), `degagements.py` (allées par pays), `zones_reglementaires.py` (gabarits d'obstacle sans genre), `apps/crm/roof_detect.py` (bloc `batiment` OSM), `apps/ventes/selectors.py::_reglages_atelier` (mode devis) ; apps/web `roofPro11/` : `snap`, `mapDraw` (grille, fond, calage), `underlay`, `clavier`, `mesureUi`, `edges`/`edgesUi`, `layoutEditor`, `shadingUi` (seuil, info-bulle), `batiment`, `numerotation`, `moduleSelect`, `panStats` (totaux site), `poseSurfaces` (sol/ombrière/façade), `obstaclesUi` (polygone/cercle/allées), `optimizer` (cible, seuil, module, retraits par arête → `solveLive*`), `soleilPlay`, `calageFondUi`, `teinteAllees`, `optimisationDocument`, `fondDocument`, `infoBulleOmbrage` ; frontend `atelier/OngletCoupeRangees.jsx`, `CourseSoleil.jsx`, `ToitureDesign.jsx` (reglagesAtelier, modulesDisponibles, batiment OSM, fond photo/plan, panId).
 - **Lots 5 « Consommation, tarifs & finance » + 6 « Livrables & rapports » (23/09/2026, 76 tâches + CALX130 ; restent CALX327/329 + CALX96)** : consommation — contrat `roof_layout_v2::consumption` (courbe24/saisons/appareils, sérialisé/réhydraté par `prefill.ts`), `services/consommation.py` (`publier_kwh` via `apps/parametres/tariff.py::kwh_depuis_facture` — inversion dichotomique du barème, D5 ; `courbe_appareils` normalisée sur le total saisi ; `appliquer_ramadan` relit `apps.ventes.ramadan`, courbe en horloge ORDINAIRE), `charges.py` (VE `immediat|pv_optimise` + `puissance_borne_kw`, `courbe_climatisation` BTU/EER saisis, `cle_tarifaire`), profils société `pompage` + `jour_type` (migration `0011`), `profil_depuis_import` avec provenance ; batterie — `simuler_groupes` multi-groupes AC/DC, SOC cible, pointe avant/après, réserve par appareils secourus, rendement OBLIGATOIRE, capacités candidates SANS prix (stock `avec_prix=False`), `hors_reseau.py` seuils saisis, CALX63 (écrêtage récupéré DC, plafond d'injection justifié, stratégie TOU sur `tou_pour` société — jamais `DEFAULT_HOUR_TRANCHES` en repli) câblé dans `simulation.py` (`tou_heures`, capacité batterie/année sur `production.projection`) ; tarifs société — `models_tariff.py` TOU par saison/compensation typée/structures hors-Maroc/taxes séparées/indexation SAISIE/amortissement-fiscalité (migrations parametres **0103→0108** — 0097-0102 étaient tenues par la vague CAD), défauts financiers non sourcés SUPPRIMÉS (`DEFAULT_TRANCHE_TARIFFS`, `DEFAULT_PPA_TARIFF`, escalade 6 % → 0 % avec avertissement), audit de version branché sur `CHAMPS_LOT5`, écran `pages/parametres/TarificationSection.jsx` + `serializers_tariff.py::validate` ; économie (D5, `apps/ventes`) — contrat `ventes_economie.json`, `economie.py` (flux/VAN/TRI/retours, LCOE, prêts, P90, comparaison ; LECTURE STRICTE : tout taux manquant ⇒ indicateurs `None` motivés), route `GET devis/<pk>/economie/` (action greffée), onglet atelier `PanneauEconomie.jsx` (lecture seule, omissions visibles) ; documents — hub `services/rapport/` (une section par fichier : site, système+annexes fiches PDF, pertes+SVG serveur, production/PR/P50-P90, électrique+SLD, nomenclature SANS prix, preuve, annexe hypothèses, sommaire/pages), gabarit société + libellés FR/EN, sections choisies par société (migration `0012`, réglage `documents` servi par `parametres/`), `views/documents.py` (rapport-etude.pdf, diagramme-pertes.svg, documents/, apercu-document/, image-document POST — genres fermés `ombrage|sankey|plan3d`, validation octets magiques —, rapport-ombrage.pdf, plan-cablage.pdf|.dxf, export-projet.json, manuel-proprietaire.pdf, document-asbuilt.pdf, presentation-compacte.pdf, dossier-fin-chantier POST), inventaire à manques NOMMÉS + versions (`records.Attachment`) + journal, exports avec bloc de provenance UNIFIÉ (XLSX/DXF/JSON), packs (plans, rapport, câblage, fin de chantier), panneau `PanneauDocuments.jsx` (9 cartes, liens `ou_saisir` seulement vers de VRAIS onglets), e2e `calepinage-parcours.spec.js` (7 gestes lot 2, ancre `#rp9-areas-window` réparée) ; base `services_appeles_allow` élargie de 69 fonctions M4 (consommateurs planifiés lots 7-8, `--autoriser-croissance` de clôture, visible en revue).
+- **Lots 7 « Workflow, données & intégrations » + 8 « Qualité, perf, gardes & docs » (24/09/2026, 56 tâches ; CALX339/356/357 [BLOCKED : fichiers .PAN/.OND fondateur])** : contrats posés SEULS d'abord (PACT10 — comparaison 1-5 calepinages, étiquettes, différentiel de versions, approbation, bom-fixation, reprise de visite, écarts de pose, zones vent/neige société : CALX331-337/340) puis leurs moitiés : comparaison + classeur (`comparer/`, `ComparaisonProjets.jsx`), étiquettes + filtre de liste, différentiel champ par champ + onglet `atelier/DiffVersions.jsx`, chaîne d'approbation (rôle `calepinage_approuver`, réglage société « approbation avant variante retenue », onglet), modèles & jeux de réglages à la création, fixation (catalogue systèmes, nomenclature + feuille tableur + porte, onglet, zones vent/neige par site → lestage), reprise de visite technique (porte `releve_pour_calepinage` côté visites, mesures+photos avec provenance, onglet `atelier/RepriseVisite.jsx`), pose réelle (porte, écarts → version, onglet `atelier/PoseReelle.jsx`), champs de fiche saisissables au formulaire produit, intégrations (webhook `calepinage.simule` signé, GET public `calepinages/<id>/resultat/`, export/import projet JSON + onglet `atelier/Projet.jsx` — le verdict est REJOUÉ, jamais lu du fichier), responsable d'un calepinage + visibilité par rôle (CALX406). Lot 8 : 6 gardes CI neuves inscrites dans `ci_guards.py` (`check_calepinage_actions_consommees`, `check_onglets_calepinage_testes`, `check_calepinage_provenance_constantes`, `check_contrats_calepinage_deux_moities`, garde des clés `calepinageApi.js` appelées, `check_frontiere_calepinage` à base mesurée), e2e parcours étendu + chaque onglet du rail s'ouvre, budgets (requêtes liste/détail/résultat, temps de simulation 1/4/12 pans + linéarité zéro réseau, poids du module recalé, perf atelier 10 000 modules `apps/web/roofPro11/perf.test.ts`), déterminisme de la simulation (même entrée = même empreinte), rail ARIA clavier, télémétrie des onglets ouverts, docs (`moteur-calepinage.md`, guide utilisateur, lexique métier + aide du rail), repères DOM `cal-*` gelés en contrat (`e2eHooks.test.mjs` + `E2E_HOOKS.md`). Les agrégats calepinage restent hors `docs/api-contracts.md` (CALX399 : formes statiquement indéterminables, principe anti-faux-positif). `check_stages.py` : exclusion `(?<!LE)STAGE` (« lestage »/« délestage » ≠ étape du funnel).
 ### FastAPI AI service (`backend/fastapi_ia`, root_path `/api/fastapi`)
 
 `ocr.py` (Zhipu/GLM vision invoice + document OCR, key-gated by `ZHIPU_API_KEY`) and
@@ -540,7 +541,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (501)**
+**Done (557)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -1038,32 +1039,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX328` — Verrouiller le nombre de pages attendu de chaque document
 - `CALX329` — Poser une garde CI : un document déclaré a un rendu
 - `CALX330` — Imprimer l'annexe « hypothèses, sources et omissions » du rapport
-- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
-- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
-- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
-- `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
-- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
-
-**Open — to build (108)**
-
-- `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
-- `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
-- `CAD177` — La vérification mobile nocturne des écrans de relance ne tourne plus depuis le 12/09
-- `CAD178` — Aucune mesure mobile des gestes de relance
-- `CADM1` — Relecture darija par un locuteur natif
-- `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
-- `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
-- `CADM4` — Décision RH : travaille-t-on le soir pendant le Ramadan ?
-- `CADM5` — Saisie annuelle : dates du Ramadan + 4 fêtes mobiles
-- `CADM6` — Lancer le semis des 9 fériés fixes sur la société TAQINOR
-- `CADM7` — Lecture SQL de production : les ~10 comptages qui manquent aux deux rondes
-- `CADM8` — Relever quatre valeurs d'environnement en production
-- `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
-- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
-- `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
-- `CALX199` — Trancher l'achat d'une source météo bancable
-- `CALX200` — Trancher le pas infra-horaire
 - `CALX331` — Figer le contrat de la comparaison de plusieurs calepinages
 - `CALX332` — Figer le contrat des étiquettes libres d'un calepinage
 - `CALX333` — Figer le contrat du différentiel entre deux versions
@@ -1071,7 +1046,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX335` — Figer le contrat du catalogue de fixation et de sa nomenclature
 - `CALX336` — Figer le contrat de la reprise d'une visite technique dans un calepinage
 - `CALX337` — Figer le contrat des écarts de pose réelle
-- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
 - `CALX340` — Étendre le contrat des réglages avec les zones de vent et de neige société
 - `CALX341` — Construire la comparaison de jusqu'à 5 calepinages et son export tableur
 - `CALX342` — Servir la comparaison de calepinages sur sa propre route de liste
@@ -1085,8 +1059,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX351` — Démarrer un calepinage depuis un modèle et un jeu de réglages société
 - `CALX352` — Proposer modèle et jeu de réglages au moment de la création
 - `CALX355` — Rendre les nouveaux champs de fiche saisissables dans le formulaire produit
-- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
-- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `CALX358` — Créer le catalogue de systèmes de fixation dans le module
 - `CALX359` — Calculer la nomenclature de fixation d'un calepinage et l'exporter
 - `CALX360` — Monter la fixation en onglet de l'atelier
@@ -1102,9 +1074,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX370` — Exporter et réimporter un projet de calepinage complet en JSON
 - `CALX371` — Monter l'export et l'import de projet en onglet de l'atelier
 - `CALX372` — Garder la frontière du module contre les couplages interdits, depuis une base mesurée
-- `CALX373` — (DECISION) Trancher l'aller-retour avec un configurateur de fixation constructeur
-- `CALX374` — (COST) Trancher la photogrammétrie par drone comme source de relevé
-- `CALX375` — (DECISION) Trancher les intégrations partenaires de conception et de stockage
 - `CALX381` — Garder qu'aucune `@action` du module ne reste sans consommateur
 - `CALX382` — Garder qu'aucune clé de `calepinageApi.js` ne reste jamais appelée
 - `CALX383` — Garder qu'un onglet du rail arrive avec son test
@@ -1125,7 +1094,36 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX398` — Re-mesurer le budget de poids du module après le lot
 - `CALX399` — Figer la forme des agrégats du module dans `docs/api-contracts.md`
 - `CALX400` — Geler les repères DOM `cal-*` en contrat
+- `CALX401` — Porter au contrat l'allée de circulation tracée et sa largeur
+- `CALX402` — Faire saisir par la société la largeur d'allée de circulation de chaque pays où elle…
+- `CALX403` — Tracer une allée de circulation dans l'atelier et en retirer la surface posable
+- `CALX404` — Refuser un rendement aller-retour de batterie supposé parfait
+- `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
+
+**Open — to build (49)**
+
+- `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
+- `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
+- `CAD177` — La vérification mobile nocturne des écrans de relance ne tourne plus depuis le 12/09
+- `CAD178` — Aucune mesure mobile des gestes de relance
+- `CADM1` — Relecture darija par un locuteur natif
+- `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
+- `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
+- `CADM4` — Décision RH : travaille-t-on le soir pendant le Ramadan ?
+- `CADM5` — Saisie annuelle : dates du Ramadan + 4 fêtes mobiles
+- `CADM6` — Lancer le semis des 9 fériés fixes sur la société TAQINOR
+- `CADM7` — Lecture SQL de production : les ~10 comptages qui manquent aux deux rondes
+- `CADM8` — Relever quatre valeurs d'environnement en production
+- `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
+- `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
+- `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
+- `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
+- `CALX199` — Trancher l'achat d'une source météo bancable
+- `CALX200` — Trancher le pas infra-horaire
+- `CALX373` — (DECISION) Trancher l'aller-retour avec un configurateur de fixation constructeur
+- `CALX374` — (COST) Trancher la photogrammétrie par drone comme source de relevé
+- `CALX375` — (DECISION) Trancher les intégrations partenaires de conception et de stockage
 - `CRX42` — [OPS — action fondateur] Vérification .env prod (30 min)
 - `CRXB1` — [GATED: mot fondateur « lance CRXB »] Contrat d'abord (PACT10)
 - `CRXB2` — [GATED] Scission models.py [VAGUE EXCLUSIVE]
@@ -1155,8 +1153,11 @@ Things this map could not fully verify from source — do not over-trust:
 - `VTAG1` — [GATED: décision fondateur]
 - `VTG1` — [GATED: décision fondateur coût/infra]
 
-**Blocked — awaiting founder decision (4)**
+**Blocked — awaiting founder decision (7)**
 
+- `CALX339` — Figer le contrat de l'import d'un fichier PVsyst `.PAN`/`.OND` vers une fiche technique
+- `CALX356` — Écrire le parseur de fichiers PVsyst `.PAN` et `.OND`
+- `CALX357` — Téléverser un fichier `.PAN`/`.OND` depuis le formulaire produit
 - `QC2` — [GATED: paid — Inforisk/Charika API] Registry-backed autocomplete (the true Odoo-style…
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…

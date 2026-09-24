@@ -125,6 +125,36 @@ class Calepinage(TenantModel):
     #: existante ne change de comportement en le recevant.
     pertes = models.JSONField('Postes de pertes', default=list, blank=True)
 
+    #: CALX347 — LA DÉCISION D'APPROBATION (second regard interne), dans SON
+    #: champ : jamais dans ``resultat``, qui appartient au moteur et qu'une
+    #: simulation réécrit. Forme ``{etat, decide_par_id, decide_le, motif}``
+    #: avec ``etat`` parmi ``approuve``/``refuse`` ; ``None`` = personne n'a
+    #: encore décidé (l'état de TOUT calepinage existant : la migration
+    #: ``0013`` est additive, aucune ligne n'est réécrite). Seul
+    #: ``services/approbation.py::decider`` l'écrit.
+    approbation = models.JSONField('Approbation', null=True, blank=True,
+                                   default=None)
+
+    #: CALX406 — À QUI la conception est CONFIÉE une fois créée (``cree_par``
+    #: dit seulement qui l'a ouverte). ``None`` par défaut — l'état de TOUT
+    #: calepinage existant (migration ``0016`` additive) — et un responsable
+    #: vide reste admis. Aucun compte n'est désigné d'office : le champ se
+    #: SAISIT (sérialiseur du viewset), jamais un prénom ni un identifiant
+    #: écrit en dur. Il porte la vue restreinte optionnelle de la société
+    #: (``presets.vue_restreinte_au_responsable``, ``views/calepinages.py``).
+    responsable = models.ForeignKey(
+        'authentication.CustomUser',
+        # PROTECT, pas SET_NULL (garde YDATA3 ``check_on_delete``) : effacer le
+        # compte viderait ce champ EN SILENCE et ferait sortir le calepinage de
+        # la vue restreinte de son responsable. Un compte qui porte des
+        # calepinages se DÉSACTIVE ; pour le supprimer, on confie d'abord ses
+        # conceptions à quelqu'un d'autre.
+        on_delete=models.PROTECT,  # on_delete: un compte responsable ne disparaît pas sous ses calepinages
+        null=True, blank=True,
+        related_name='calepinages_responsable',
+        verbose_name='Responsable',
+    )
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
@@ -317,6 +347,19 @@ class CalepinageVariante(TenantModel):
         return super().save(*args, **kwargs)
 
 
+class ProvenanceTerrain(models.TextChoices):
+    """CALX364 — D'OÙ VIENT une donnée de terrain du calepinage.
+
+    Partagée par ``ReleveTerrain`` et ``PhotoSite`` (migration ``0015``) :
+    un concepteur voit toujours si une cote ou une photo a été SAISIE dans le
+    module, ou REPRISE d'une visite technique validée. ``saisie`` est la
+    valeur de TOUT l'existant (D12) : rien n'est réécrit par la migration.
+    """
+
+    SAISIE = 'saisie', 'Saisie dans le calepinage'
+    VISITE = 'visite', 'Reprise de la visite technique'
+
+
 class PhotoSite(TenantModel):
     """CAL52 — une photo drone / oblique / sol du SITE, rattachée au pivot.
 
@@ -393,6 +436,15 @@ class PhotoSite(TenantModel):
         related_name='calepinage_photos_site',
         verbose_name='Ajoutée par',
     )
+    #: CALX364 — ``saisie`` (déposée dans le module, tout l'existant) ou
+    #: ``visite`` (pièce jointe d'une visite technique REPRISE, jamais copiée).
+    provenance = models.CharField('Provenance', max_length=10,
+                                  choices=ProvenanceTerrain.choices,
+                                  default=ProvenanceTerrain.SAISIE)
+    #: CALX364 — l'emplacement de checklist de la visite d'où la photo vient
+    #: (``toiture_vue_generale``…) ; vide pour une photo saisie ici.
+    slot_code = models.CharField('Emplacement de visite', max_length=80,
+                                 blank=True, default='')
 
     class Meta:
         verbose_name = 'Photo de site'
@@ -484,11 +536,38 @@ class ReleveTerrain(TenantModel):
         related_name='calepinage_releves_terrain',
         verbose_name='Relevé par',
     )
+    #: CALX364 — ``saisie`` (tout l'existant, D12) ou ``visite`` (mesures
+    #: reprises d'une visite technique validée, ``services/reprise_visite``).
+    provenance = models.CharField('Provenance', max_length=10,
+                                  choices=ProvenanceTerrain.choices,
+                                  default=ProvenanceTerrain.SAISIE)
+    #: CALX364 — la visite technique reprise : identifiant OPAQUE (jamais une
+    #: FK vers ``apps.visites``, patron ``Calepinage.lead_id``). Vide pour un
+    #: relevé saisi ici. Porte l'unicité « une reprise par visite ».
+    visite_id = models.PositiveIntegerField('Visite reprise (identifiant)',
+                                            null=True, blank=True)
+    #: CALX364 — les mesures de la visite TELLES QUE SAISIES sur le toit
+    #: (``[{code, libelle, valeur, unite}]``, forme de
+    #: ``apps.visites.selectors.releve_pour_calepinage``). Une longueur, une
+    #: pente ou une orientation ne sont PAS des chaînes de cotes : les
+    #: convertir en ``chaines`` serait inventer une géométrie (D7). Elles
+    #: restent donc à part, jamais converties ni complétées ; liste vide pour
+    #: un relevé saisi ici.
+    mesures = models.JSONField('Mesures reprises (telles que saisies)',
+                               default=list, blank=True)
 
     class Meta:
         verbose_name = 'Relevé terrain'
         verbose_name_plural = 'Relevés terrain'
         ordering = ['-releve_le', '-id']
+        constraints = [
+            # CALX364 — UNE reprise par visite et par calepinage : un second
+            # « Reprendre » ne crée rien, même lancé deux fois en parallèle.
+            models.UniqueConstraint(
+                fields=['calepinage', 'visite_id'],
+                condition=models.Q(visite_id__isnull=False),
+                name='uniq_releve_reprise_par_visite'),
+        ]
         indexes = [
             models.Index(fields=['calepinage', '-releve_le'],
                          name='cal_rel_cal_date_idx'),
@@ -1251,5 +1330,172 @@ class PoseReelle(TenantModel):
                 "La date du relevé ne peut pas être dans le futur "
                 f"(reçu : {self.releve_le:%d/%m/%Y})."
             )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
+class SystemeFixation(TenantModel):
+    """CALX358 — un SYSTÈME DE FIXATION du catalogue de la société.
+
+    LE CONSTAT
+    ----------
+    Le seul objet de pose du dépôt était ``KitCalepinage``
+    (``apps/ao/models.py:1688``) : une GÉOMÉTRIE (pas de rangée, longueur de
+    pente, faîtage, emprise) et un produit prix, lue par
+    ``apps/ao/selectors.py:945`` et combinée par ``services/kits.py:51``.
+    Aucun rail, aucune pince, aucun crochet, aucun lest n'était modélisé.
+
+    PRÉPARER, SANS RIEN RETIRER
+    ---------------------------
+    Ce catalogue PRÉPARE le remplacement de ``KitCalepinage`` (SOLMVP15) DANS
+    ``apps.calepinage`` : aucun import du module d'appels d'offres n'est
+    ajouté, ``services/kits.py`` n'est pas touché (D-CALX 2). Les lectures
+    passent par ``services/catalogue_fixation.py`` (``selectors.py`` n'est
+    pas rouvert).
+
+    Catalogue VIDE par défaut (migration ``0014``, additive) : une société
+    qui ne saisit rien se comporte exactement comme aujourd'hui (D12). Un
+    système sans PROVENANCE est refusé, en nommant le champ — une
+    nomenclature tirée d'un catalogue qu'on ne sait pas sourcer ne se défend
+    pas devant un chantier.
+    """
+
+    class ModePose(models.TextChoices):
+        TOITURE_INCLINEE = 'toiture_inclinee', 'Toiture inclinée'
+        TOIT_PLAT_LESTE = 'toit_plat_leste', 'Toit plat — lesté'
+        TOIT_PLAT_FIXE = 'toit_plat_fixe', 'Toit plat — fixé'
+        SOL = 'sol', 'Au sol'
+        OMBRIERE = 'ombriere', 'Ombrière'
+        AUTRE = 'autre', 'Autre'
+
+    code = models.SlugField('Code', max_length=60)
+    libelle = models.CharField('Libellé', max_length=200)
+    fabricant = models.CharField('Fabricant', max_length=120, blank=True,
+                                 default='')
+    mode_pose = models.CharField('Mode de pose', max_length=20,
+                                 choices=ModePose.choices,
+                                 default=ModePose.TOITURE_INCLINEE)
+    actif = models.BooleanField('Actif', default=True)
+    #: OBLIGATOIRE — d'où vient la définition du système (notice du
+    #: fabricant, référence du document, date). Refusé sans elle.
+    provenance = models.TextField('Provenance')
+
+    class Meta:
+        verbose_name = 'Système de fixation'
+        verbose_name_plural = 'Systèmes de fixation'
+        ordering = ['libelle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='uniq_systeme_fixation_code_par_societe'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cal_sfx_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle or self.code
+
+    def clean(self):
+        """Refuse, EN FRANÇAIS et en NOMMANT le champ, un système muet."""
+        erreurs = {}
+        if not (self.code or '').strip():
+            erreurs['code'] = ("Le code du système est obligatoire : c'est "
+                               "lui que la nomenclature cite.")
+        if not (self.libelle or '').strip():
+            erreurs['libelle'] = "Le libellé du système est obligatoire."
+        if not (self.provenance or '').strip():
+            erreurs['provenance'] = (
+                "La provenance du système est obligatoire (notice du "
+                "fabricant, référence du document) : un catalogue qu'on ne "
+                "sait pas sourcer ne produit aucune nomenclature défendable."
+            )
+        if erreurs:
+            raise ValidationError(erreurs)
+
+
+class ComposantFixation(TenantModel):
+    """CALX358 — un COMPOSANT d'un système de fixation, et SA règle de
+    quantité.
+
+    La QUANTITÉ n'est jamais écrite ici : elle est DÉRIVÉE du document de
+    conception par ``services/fixation.py`` (CALX359), selon la ``regle``
+    SAISIE ``{base, facteur?, diviseur?, libelle_facteur?,
+    libelle_diviseur?}`` — contrat ``calepinage_fixation_bom.json``. Une clé
+    ABSENTE de la règle ne fait pas partie de la formule ; une clé PRÉSENTE à
+    ``null`` est un paramètre déclaré mais NON SAISI (la ligne sort alors à
+    ``null`` en le nommant, jamais une quantité de repli).
+
+    ``produit_id`` est un identifiant OPAQUE (patron ``Calepinage.lead_id``) :
+    jamais une FK dure vers ``stock``, résolu borné société par
+    ``apps.stock.selectors`` à la lecture. ``source`` est OBLIGATOIRE : un
+    composant sans source est REFUSÉ en nommant le champ.
+    """
+
+    class Role(models.TextChoices):
+        RAIL = 'rail', 'Rail'
+        PINCE_MILIEU = 'pince_milieu', 'Pince de milieu'
+        PINCE_FIN = 'pince_fin', 'Pince de fin'
+        CROCHET = 'crochet', 'Crochet'
+        EMBOUT = 'embout', 'Embout'
+        LEST = 'lest', 'Lest'
+        VISSERIE = 'visserie', 'Visserie'
+
+    systeme = models.ForeignKey(
+        SystemeFixation,
+        on_delete=models.CASCADE,  # on_delete: un composant n'existe pas hors de son système
+        related_name='composants',
+        verbose_name='Système de fixation',
+    )
+    #: Produit du stock rattaché — identifiant OPAQUE, ``None`` = aucun.
+    produit_id = models.PositiveIntegerField('Produit (identifiant)',
+                                             null=True, blank=True)
+    role = models.CharField('Rôle', max_length=20, choices=Role.choices)
+    libelle = models.CharField('Composant', max_length=160)
+    unite = models.CharField('Unité', max_length=12)
+    #: La règle de quantité SAISIE — voir la docstring. ``{}`` = non saisie.
+    regle = models.JSONField('Règle de quantité', default=dict, blank=True)
+    #: OBLIGATOIRE — d'où viennent le composant et sa règle.
+    source = models.TextField('Source')
+    #: L'ordre d'affichage DANS le système (la nomenclature le suit).
+    ordre = models.PositiveIntegerField('Ordre', default=0)
+
+    class Meta:
+        verbose_name = 'Composant de fixation'
+        verbose_name_plural = 'Composants de fixation'
+        ordering = ['systeme', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'systeme'],
+                         name='cal_cfx_co_sys_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle or self.get_role_display()
+
+    def clean(self):
+        """Refuse, EN FRANÇAIS et en NOMMANT le champ, un composant muet."""
+        from .services.catalogue_fixation import erreur_de_regle
+
+        erreurs = {}
+        if not (self.libelle or '').strip():
+            erreurs['libelle'] = "Le libellé du composant est obligatoire."
+        if not (self.unite or '').strip():
+            erreurs['unite'] = ("L'unité du composant est obligatoire "
+                                "(« u », « m », « kg »…).")
+        if not (self.source or '').strip():
+            erreurs['source'] = (
+                "La source du composant est obligatoire (notice du fabricant, "
+                "référence du document) : aucun composant n'entre au "
+                "catalogue sans elle."
+            )
+        message = erreur_de_regle(self.regle)
+        if message:
+            erreurs['regle'] = message
+        systeme = getattr(self, 'systeme', None) if self.systeme_id else None
+        if (systeme is not None and self.company_id
+                and systeme.company_id != self.company_id):
+            erreurs['systeme'] = ("Le système de fixation appartient à une "
+                                  "autre société.")
         if erreurs:
             raise ValidationError(erreurs)
