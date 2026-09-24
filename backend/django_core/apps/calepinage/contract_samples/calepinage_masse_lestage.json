@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/masse-lestage/",
-  "pourquoi": "CALX17 — la MASSE POSÉE et la FEUILLE DE LESTAGE d'un calepinage, servies telles que ``services/lestage.py`` (``masse_et_lestage``, CAL163/CAL164) les compose : la réponse est sa sortie MOT POUR MOT, aucune clé n'est ajoutée ni reformulée par la vue. POURQUOI CE CONTRAT EXISTE : le calcul était écrit et testé (``tests/test_masse_toiture.py``) mais n'avait AUCUN appelant et AUCUN consommateur — ni porte HTTP, ni écran. Le panneau « Masse & lestage » de l'atelier (``frontend/src/features/calepinage/atelier/PanneauMasseLestage.jsx``) lit CET échantillon dans son test : les deux moitiés ne peuvent plus diverger. AUCUN COEFFICIENT N'EST ÉCRIT DANS LE CODE : ρ, v_réf, c_terrain, c_p, µ, s et g sont SAISIS par la société avec la référence du texte dont elle les tire, et republiés à côté de chaque résultat (``lestage.parametres``, ``lestage.mention``). Un paramètre non saisi ⇒ la ligne qui en dépend vaut ``valeur: null`` et NOMME ce qui manque (``lignes[].manquants``, ``lignes[].mention``) — jamais une valeur par défaut. Sans poids de fiche produit, AUCUNE masse n'est publiée et le champ fautif est nommé (``masse.manquants``, ``quoi: poids_module``) ; un pan dont le document ne porte pas la surface ne publie pas de masse par m² et le dit (``pans[].mention``). LE MODULE DONT LE POIDS EST LU est celui que l'appelant désigne (``?module=<id du produit>``, borné à la société par le sélecteur) ; à défaut, c'est le panneau du devis lié (CAL243). Aucun poids « moyen de catalogue » n'existe. AUCUNE ÉCRITURE : lecture pure, aucun statut, aucun document, aucun prix (le calepinage ne calcule jamais d'argent). VALEURS DE L'EXEMPLE : des PLACEHOLDERS assumés, produits en appelant les fonctions réelles du service sur une saisie fictive — aucune valeur normative n'est affirmée ici, et les ``source`` de l'exemple disent explicitement « exemple ». ``exemple_vide`` = calepinage NU (aucune conception, aucune saisie de lestage, aucun poids de fiche) : toutes les clés sont présentes, les résultats valent ``null`` et chaque absence est nommée.",
+  "pourquoi": "CALX17 — la MASSE POSÉE et la FEUILLE DE LESTAGE d'un calepinage, servies telles que ``services/lestage.py`` (``masse_et_lestage``, CAL163/CAL164) les compose : la réponse est sa sortie MOT POUR MOT, aucune clé n'est ajoutée ni reformulée par la vue. POURQUOI CE CONTRAT EXISTE : le calcul était écrit et testé (``tests/test_masse_toiture.py``) mais n'avait AUCUN appelant et AUCUN consommateur — ni porte HTTP, ni écran. Le panneau « Masse & lestage » de l'atelier (``frontend/src/features/calepinage/atelier/PanneauMasseLestage.jsx``) lit CET échantillon dans son test : les deux moitiés ne peuvent plus diverger. AUCUN COEFFICIENT N'EST ÉCRIT DANS LE CODE : ρ, v_réf, c_terrain, c_p, µ, s et g sont SAISIS par la société avec la référence du texte dont elle les tire, et republiés à côté de chaque résultat (``lestage.parametres``, ``lestage.mention``). Un paramètre non saisi ⇒ la ligne qui en dépend vaut ``valeur: null`` et NOMME ce qui manque (``lignes[].manquants``, ``lignes[].mention``) — jamais une valeur par défaut. Sans poids de fiche produit, AUCUNE masse n'est publiée et le champ fautif est nommé (``masse.manquants``, ``quoi: poids_module``) ; un pan dont le document ne porte pas la surface ne publie pas de masse par m² et le dit (``pans[].mention``). LE MODULE DONT LE POIDS EST LU est celui que l'appelant désigne (``?module=<id du produit>``, borné à la société par le sélecteur) ; à défaut, c'est le panneau du devis lié (CAL243). Aucun poids « moyen de catalogue » n'existe. AUCUNE ÉCRITURE : lecture pure, aucun statut, aucun document, aucun prix (le calepinage ne calcule jamais d'argent). VALEURS DE L'EXEMPLE : des PLACEHOLDERS assumés, produits en appelant les fonctions réelles du service sur une saisie fictive — aucune valeur normative n'est affirmée ici, et les ``source`` de l'exemple disent explicitement « exemple ». ``exemple_vide`` = calepinage NU (aucune conception, aucune saisie de lestage, aucun poids de fiche) : toutes les clés sont présentes, les résultats valent ``null`` et chaque absence est nommée. CALX361 — ZONES DE VENT ET DE NEIGE PAR SITE : quand la société a saisi des `zones` dans sa section `lestage` (contrat CALX340), la feuille porte UNE clé de plus, `lestage.zone` = `{code, libelle, commune_ou_region, origine, sources, motif}` — la zone RETENUE (`origine` : `document` quand le calepinage la désigne par la clé `zoneLestage` de son document, `defaut` quand c'est la zone par défaut de la société, `null` quand aucune n'est désignable et que le jeu global s'applique, ce que `motif` dit), et les références de ses paramètres. Les paramètres de SITE (vent, terrain, neige) viennent de la zone SEULE : un paramètre de site qu'elle ne porte pas laisse sa ligne à `null` en le nommant (`mention` cite la zone). Chaque ligne calculée porte alors « paramètres saisis par <société>, référence <texte> ». `exemple_zone` est la sortie RÉELLE du service sur l'entrée d'essai de apps/calepinage/tests/test_calx361_lestage_zones.py (égalité affirmée sans base). ÉQUIVALENCE (D12) : sans `zones`, AUCUNE clé n'est ajoutée — `exemple` et `exemple_vide` sont inchangés.",
   "exemple": {
     "masse": {
       "pans": [
@@ -422,6 +422,221 @@
       ],
       "mention": "Aucun paramètre de lestage n'a été saisi : aucun résultat n'est calculé.",
       "calculable": false
+    }
+  },
+  "exemple_zone": {
+    "masse": {
+      "pans": [],
+      "total_modules": 0,
+      "masse_totale_kg": null,
+      "poids_unitaire": {
+        "module_kg": 22.0,
+        "module_source": "fiche produit",
+        "module_designation": "Module d’essai",
+        "structure_kg_par_module": 2.5,
+        "structure_source": "Texte de référence saisi par la société (essai)"
+      },
+      "manquants": []
+    },
+    "lestage": {
+      "parametres": [
+        {
+          "cle": "masse_volumique_air_kg_m3",
+          "libelle": "Masse volumique de l'air",
+          "unite": "kg/m³",
+          "valeur": 1.2,
+          "source": "Texte de référence saisi par la société (essai)"
+        },
+        {
+          "cle": "vitesse_vent_reference_m_s",
+          "libelle": "Vitesse de vent de référence",
+          "unite": "m/s",
+          "valeur": 24.0,
+          "source": "Carte de zones de la société (essai)"
+        },
+        {
+          "cle": "categorie_terrain",
+          "libelle": "Catégorie de terrain",
+          "unite": "",
+          "valeur": "rase campagne",
+          "source": "Carte de zones de la société (essai)"
+        },
+        {
+          "cle": "coefficient_terrain",
+          "libelle": "Coefficient de terrain",
+          "unite": "",
+          "valeur": 1.0,
+          "source": "Carte de zones de la société (essai)"
+        },
+        {
+          "cle": "coefficient_pression_soulevement",
+          "libelle": "Coefficient de pression (soulèvement)",
+          "unite": "",
+          "valeur": 1.5,
+          "source": "Texte de référence saisi par la société (essai)"
+        },
+        {
+          "cle": "coefficient_pression_horizontal",
+          "libelle": "Coefficient de pression (horizontal)",
+          "unite": "",
+          "valeur": 0.5,
+          "source": "Texte de référence saisi par la société (essai)"
+        },
+        {
+          "cle": "coefficient_frottement",
+          "libelle": "Coefficient de frottement",
+          "unite": "",
+          "valeur": 0.4,
+          "source": "Texte de référence saisi par la société (essai)"
+        },
+        {
+          "cle": "charge_neige_kn_m2",
+          "libelle": "Charge de neige",
+          "unite": "kN/m²",
+          "valeur": 0.65,
+          "source": "Carte de zones de la société (essai)"
+        },
+        {
+          "cle": "acceleration_pesanteur_m_s2",
+          "libelle": "Accélération de la pesanteur",
+          "unite": "m/s²",
+          "valeur": 9.81,
+          "source": "Texte de référence saisi par la société (essai)"
+        },
+        {
+          "cle": "masse_structure_kg_par_module",
+          "libelle": "Masse de structure par module (kit)",
+          "unite": "kg",
+          "valeur": 2.5,
+          "source": "Texte de référence saisi par la société (essai)"
+        }
+      ],
+      "manquants": [],
+      "lignes": [
+        {
+          "code": "pression_dynamique",
+          "libelle": "Pression dynamique",
+          "valeur": 345.59999999999997,
+          "unite": "Pa",
+          "formule": "q = ½ · ρ · (c_terrain · v_réf)²",
+          "entrees": [
+            "masse_volumique_air_kg_m3",
+            "vitesse_vent_reference_m_s",
+            "coefficient_terrain"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)"
+        },
+        {
+          "code": "pression_soulevement",
+          "libelle": "Pression de soulèvement",
+          "valeur": 518.4,
+          "unite": "Pa",
+          "formule": "p = q · c_p,soulèvement",
+          "entrees": [
+            "masse_volumique_air_kg_m3",
+            "vitesse_vent_reference_m_s",
+            "coefficient_terrain",
+            "coefficient_pression_soulevement"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)"
+        },
+        {
+          "code": "effort_soulevement_module",
+          "libelle": "Effort de soulèvement par module",
+          "valeur": 1036.8,
+          "unite": "N",
+          "formule": "F = p · S_module",
+          "entrees": [
+            "masse_volumique_air_kg_m3",
+            "vitesse_vent_reference_m_s",
+            "coefficient_terrain",
+            "coefficient_pression_soulevement",
+            "surface_module_m2"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)"
+        },
+        {
+          "code": "lest_anti_soulevement",
+          "libelle": "Lest requis (soulèvement)",
+          "valeur": 81.1880733944954,
+          "unite": "kg",
+          "formule": "m_lest = F / g − m_résistante",
+          "entrees": [
+            "masse_volumique_air_kg_m3",
+            "vitesse_vent_reference_m_s",
+            "coefficient_terrain",
+            "coefficient_pression_soulevement",
+            "surface_module_m2",
+            "acceleration_pesanteur_m_s2",
+            "masse_resistante_kg"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)"
+        },
+        {
+          "code": "effort_horizontal_module",
+          "libelle": "Effort horizontal par module",
+          "valeur": 345.59999999999997,
+          "unite": "N",
+          "formule": "F_h = q · c_p,horizontal · S_module",
+          "entrees": [
+            "masse_volumique_air_kg_m3",
+            "vitesse_vent_reference_m_s",
+            "coefficient_terrain",
+            "coefficient_pression_horizontal",
+            "surface_module_m2"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)"
+        },
+        {
+          "code": "lest_anti_glissement",
+          "libelle": "Lest requis (glissement)",
+          "valeur": 63.57339449541283,
+          "unite": "kg",
+          "formule": "m_lest = F_h / (µ · g) − m_résistante",
+          "entrees": [
+            "masse_volumique_air_kg_m3",
+            "vitesse_vent_reference_m_s",
+            "coefficient_terrain",
+            "coefficient_pression_horizontal",
+            "surface_module_m2",
+            "coefficient_frottement",
+            "acceleration_pesanteur_m_s2",
+            "masse_resistante_kg"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)"
+        },
+        {
+          "code": "charge_neige_module",
+          "libelle": "Charge de neige par module",
+          "valeur": 1300.0,
+          "unite": "N",
+          "formule": "F_neige = s · 1000 · S_module",
+          "entrees": [
+            "charge_neige_kn_m2",
+            "surface_module_m2"
+          ],
+          "manquants": [],
+          "mention": "paramètres saisis par Société Essai, référence Carte de zones de la société (essai)"
+        }
+      ],
+      "mention": "paramètres saisis par Société Essai, référence Texte de référence saisi par la société (essai) ; Carte de zones de la société (essai)",
+      "calculable": true,
+      "zone": {
+        "code": "atlas",
+        "libelle": "Moyen Atlas",
+        "commune_ou_region": "Fès-Meknès",
+        "origine": "document",
+        "sources": [
+          "Carte de zones de la société (essai)"
+        ],
+        "motif": ""
+      }
     }
   }
 }

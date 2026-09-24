@@ -84,8 +84,30 @@ ENTREES_CALEPINAGE = ('surface_module_m2', 'masse_module_kg')
 #: littéral numérique.
 NOMBRES_DE_FORME = (0, 1, 2, 0.5, 1000)
 
+#: CALX361 — les ZONES DE VENT ET DE NEIGE par site (contrat CALX340). Deux
+#: clés de STRUCTURE rejoignent la section, à côté des paramètres à plat :
+#: ``zones`` (``[{code, libelle, commune_ou_region, parametres}]``) et
+#: ``zone_par_defaut`` (le ``code`` d'une zone saisie). Absentes = le jeu
+#: global d'aujourd'hui, servi tel quel (D12).
+CLE_ZONES = 'zones'
+CLE_ZONE_PAR_DEFAUT = 'zone_par_defaut'
+CLES_DE_STRUCTURE = (CLE_ZONES, CLE_ZONE_PAR_DEFAUT)
+
+#: Les paramètres qui DÉPENDENT du site : eux seuls se saisissent par zone.
+#: Quand une zone s'applique, ils viennent d'ELLE et de nulle part ailleurs —
+#: un paramètre de site qu'elle ne porte pas laisse sa ligne à ``None`` en le
+#: nommant (le jeu global décrit peut-être une autre région). Les autres
+#: (air, pressions, frottement, pesanteur, structure) restent globaux.
+PARAMETRES_DE_SITE = ('vitesse_vent_reference_m_s', 'categorie_terrain',
+                      'coefficient_terrain', 'charge_neige_kn_m2')
+
+#: La clé, RACINE du document ``roof_layout`` (``additionalProperties``), par
+#: laquelle un calepinage désigne SA zone. Absente = la zone par défaut.
+CLE_ZONE_DOCUMENT = 'zoneLestage'
+
 __all__ = [
-    'SECTION', 'PARAMETRES', 'NOMBRES_DE_FORME',
+    'SECTION', 'PARAMETRES', 'NOMBRES_DE_FORME', 'CLE_ZONES',
+    'CLE_ZONE_PAR_DEFAUT', 'PARAMETRES_DE_SITE', 'CLE_ZONE_DOCUMENT',
     'normaliser_section_lestage', 'feuille_de_lestage',
     'surface_module_m2', 'masse_du_layout', 'masse_et_lestage',
 ]
@@ -104,7 +126,8 @@ def normaliser_section_lestage(valeur):
     Returns:
         ``{}`` quand rien n'est saisi (ÉQUIVALENCE : aucune feuille n'est
         calculée, exactement le comportement d'aujourd'hui), sinon les seuls
-        paramètres saisis, chacun ``{'valeur', 'source'}``.
+        paramètres saisis, chacun ``{'valeur', 'source'}`` — plus, CALX361,
+        ``zones`` et ``zone_par_defaut`` quand la société en a saisi.
 
     Raises:
         ReglageInvalide: message FRANÇAIS nommant le champ fautif.
@@ -118,7 +141,7 @@ def normaliser_section_lestage(valeur):
     if not valeur:
         return {}
 
-    inconnues = sorted(set(valeur) - set(PARAMETRES))
+    inconnues = sorted(set(valeur) - set(PARAMETRES) - set(CLES_DE_STRUCTURE))
     if inconnues:
         raise _refus(
             f"Paramètre de lestage inconnu : « {', '.join(inconnues)} ». "
@@ -127,45 +150,142 @@ def normaliser_section_lestage(valeur):
 
     section = {}
     for cle, brut in valeur.items():
-        libelle = PARAMETRES[cle][0]
-        if brut is None:
+        if cle in CLES_DE_STRUCTURE:
             continue
-        if not isinstance(brut, dict):
+        parametre = _parametre_saisi(cle, brut, cle)
+        if parametre is not None:
+            section[cle] = parametre
+
+    zones = _zones_saisies(valeur.get(CLE_ZONES))
+    if zones:
+        section[CLE_ZONES] = zones
+    defaut = valeur.get(CLE_ZONE_PAR_DEFAUT)
+    if defaut not in (None, ''):
+        codes = [zone['code'] for zone in zones]
+        if not isinstance(defaut, str) or defaut.strip() not in codes:
             raise _refus(
-                f"« {libelle} » se saisit avec sa source : "
-                '{"valeur": …, "source": "référence du texte"} '
-                f"(reçu : {type(brut).__name__}).", cle)
-        surplus = sorted(set(brut) - {'valeur', 'source'})
-        if surplus:
-            raise _refus(
-                f"« {libelle} » n'accepte que « valeur » et « source » "
-                f"(reçu en plus : {', '.join(surplus)}).", cle)
-        source = brut.get('source')
-        if not isinstance(source, str) or not source.strip():
-            raise _refus(
-                f"« {libelle} » doit porter la RÉFÉRENCE du texte d'où elle "
-                "vient : aucun coefficient n'est admis sans sa source.", cle)
-        section[cle] = {
-            'valeur': _valeur_saisie(brut.get('valeur'), cle, libelle),
-            'source': source.strip(),
-        }
+                f"La zone par défaut « {defaut} » n'est aucune des zones "
+                "saisies (" + (', '.join(f'« {code} »' for code in codes)
+                               or 'aucune zone saisie') + ").",
+                CLE_ZONE_PAR_DEFAUT)
+        section[CLE_ZONE_PAR_DEFAUT] = defaut.strip()
     return section
 
 
-def _valeur_saisie(valeur, cle, libelle):
+def _parametre_saisi(cle, brut, champ):
+    """``{'valeur', 'source'}`` VALIDÉ, ``None`` si vide — refus nommant
+    ``champ`` (le nom nu du paramètre, ou son chemin dans une zone)."""
+    libelle = PARAMETRES[cle][0]
+    if brut is None:
+        return None
+    if not isinstance(brut, dict):
+        raise _refus(
+            f"« {libelle} » se saisit avec sa source : "
+            '{"valeur": …, "source": "référence du texte"} '
+            f"(reçu : {type(brut).__name__}).", champ)
+    surplus = sorted(set(brut) - {'valeur', 'source'})
+    if surplus:
+        raise _refus(
+            f"« {libelle} » n'accepte que « valeur » et « source » "
+            f"(reçu en plus : {', '.join(surplus)}).", champ)
+    source = brut.get('source')
+    if not isinstance(source, str) or not source.strip():
+        raise _refus(
+            f"« {libelle} » doit porter la RÉFÉRENCE du texte d'où elle "
+            "vient : aucun coefficient n'est admis sans sa source.", champ)
+    return {
+        'valeur': _valeur_saisie(brut.get('valeur'), cle, libelle, champ),
+        'source': source.strip(),
+    }
+
+
+def _zones_saisies(zones):
+    """CALX361 — la liste ``zones`` VALIDÉE (``[]`` si rien n'est saisi).
+
+    Chaque zone porte un ``code`` unique et un ``libelle`` ; ses
+    ``parametres`` ne sont que des paramètres DE SITE, chacun avec sa
+    source (même exigence que le jeu global, ``_parametre_saisi``).
+    """
+    if zones in (None, []):
+        return []
+    if not isinstance(zones, list):
+        raise _refus(
+            "Les zones de lestage se saisissent en liste "
+            f"(reçu : {type(zones).__name__}).", CLE_ZONES)
+    propres, codes = [], set()
+    for rang, zone in enumerate(zones):
+        prefixe = f'{CLE_ZONES}[{rang}]'
+        if not isinstance(zone, dict):
+            raise _refus(
+                f"Chaque zone de lestage est un objet (zone n° {rang + 1}).",
+                prefixe)
+        surplus = sorted(set(zone) - {'code', 'libelle',
+                                      'commune_ou_region', 'parametres'})
+        if surplus:
+            raise _refus(
+                f"Zone n° {rang + 1} : clé(s) inconnue(s) "
+                f"« {', '.join(surplus)} ».", f'{prefixe}.{surplus[0]}')
+        code = zone.get('code')
+        code = code.strip() if isinstance(code, str) else ''
+        if not code:
+            raise _refus(
+                f"Zone n° {rang + 1} : le « code » est obligatoire.",
+                f'{prefixe}.code')
+        if code in codes:
+            raise _refus(
+                f"Deux zones portent le même code « {code} ».",
+                f'{prefixe}.code')
+        codes.add(code)
+        libelle = zone.get('libelle')
+        libelle = libelle.strip() if isinstance(libelle, str) else ''
+        if not libelle:
+            raise _refus(
+                f"Zone « {code} » : le « libelle » est obligatoire.",
+                f'{prefixe}.libelle')
+        region = zone.get('commune_ou_region')
+        region = region.strip() if isinstance(region, str) else ''
+        parametres = zone.get('parametres')
+        if parametres is None:
+            parametres = {}
+        if not isinstance(parametres, dict):
+            raise _refus(
+                f"Zone « {code} » : « parametres » est un objet.",
+                f'{prefixe}.parametres')
+        hors_site = sorted(set(parametres) - set(PARAMETRES_DE_SITE))
+        if hors_site:
+            raise _refus(
+                f"Zone « {code} » : « {hors_site[0]} » n'est pas un paramètre "
+                "de site — seuls se saisissent par zone : "
+                f"{', '.join(PARAMETRES_DE_SITE)}.",
+                f'{prefixe}.parametres.{hors_site[0]}')
+        propres_parametres = {}
+        for cle, brut in parametres.items():
+            parametre = _parametre_saisi(
+                cle, brut, f'{prefixe}.parametres.{cle}')
+            if parametre is not None:
+                propres_parametres[cle] = parametre
+        propres.append({'code': code, 'libelle': libelle,
+                        'commune_ou_region': region,
+                        'parametres': propres_parametres})
+    return propres
+
+
+def _valeur_saisie(valeur, cle, libelle, champ=None):
     """Un nombre (ou un texte pour la catégorie de terrain), jamais vide."""
+    champ = champ or cle
     if cle in PARAMETRES_TEXTE:
         if not isinstance(valeur, str) or not valeur.strip():
             raise _refus(
-                f"« {libelle} » doit être un texte non vide.", cle)
+                f"« {libelle} » doit être un texte non vide.", champ)
         return valeur.strip()
     if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
         raise _refus(
             f"« {libelle} » doit être un nombre "
-            f"(reçu : {type(valeur).__name__}).", cle)
+            f"(reçu : {type(valeur).__name__}).", champ)
     if float(valeur) < 0:
         raise _refus(
-            f"« {libelle} » ne peut pas être négative (reçu : {valeur}).", cle)
+            f"« {libelle} » ne peut pas être négative (reçu : {valeur}).",
+            champ)
     return float(valeur)
 
 
@@ -504,9 +624,13 @@ def masse_et_lestage(calepinage, *, produit_module_id=None, layout=None):
     from ..selectors import parametres_de_societe
 
     company = getattr(calepinage, 'company', None)
-    section = (parametres_de_societe(company) or {}).get(SECTION) or {}
+    brute = (parametres_de_societe(company) or {}).get(SECTION) or {}
     layout = layout if layout is not None else getattr(
         calepinage, 'roof_layout', None)
+    # CALX361 — la zone du site. Sans zones saisies, ``section`` EST la
+    # section d'aujourd'hui, octet pour octet, et ``zone`` vaut ``None`` :
+    # la sortie ne change pas d'une clé (D12).
+    section, zone = _section_du_site(brute, layout)
 
     cotes, designation = {}, ''
     if produit_module_id:
@@ -515,10 +639,112 @@ def masse_et_lestage(calepinage, *, produit_module_id=None, layout=None):
             cotes = dimensions_de_pose(produit) or {}
             designation = getattr(produit, 'nom', '') or ''
 
+    societe = getattr(company, 'nom', '') or ''
     masse = masse_du_layout(layout, poids_module_kg=cotes.get('poids_kg'),
                             designation_module=designation, section=section)
     feuille = feuille_de_lestage(
         section, surface_module_m2=surface_module_m2(cotes),
-        masse_module_kg=cotes.get('poids_kg'),
-        societe=getattr(company, 'nom', '') or '')
+        masse_module_kg=cotes.get('poids_kg'), societe=societe)
+    if zone is not None:
+        feuille['zone'] = zone
+        _mentionner_chaque_ligne(feuille, section, societe, zone)
     return {'masse': masse, 'lestage': feuille}
+
+
+# ── CALX361 — LA ZONE DE VENT ET DE NEIGE DU SITE ───────────────────────────
+
+def _section_du_site(section, layout):
+    """``(section effective, zone | None)`` pour le calepinage de ``layout``.
+
+    * Aucune zone saisie ⇒ ``(section, None)`` : le jeu global tel quel.
+    * Zones saisies ⇒ la zone DÉSIGNÉE par le document (``zoneLestage``),
+      sinon la zone par défaut de la société. Les paramètres de SITE viennent
+      alors de la zone et d'elle seule ; les autres restent globaux. Aucune
+      zone désignable ⇒ le jeu global, et ``zone`` le DIT (``motif``) ; une
+      zone désignée mais inconnue ⇒ aucun paramètre de site (les lignes qui
+      en dépendent sortent à ``None`` en le nommant).
+    """
+    section = section if isinstance(section, dict) else {}
+    zones = section.get(CLE_ZONES)
+    globale = {cle: valeur for cle, valeur in section.items()
+               if cle not in CLES_DE_STRUCTURE}
+    if not isinstance(zones, list) or not zones:
+        return globale, None
+
+    demande = (layout or {}).get(CLE_ZONE_DOCUMENT) \
+        if isinstance(layout, dict) else None
+    demande = demande.strip() if isinstance(demande, str) else ''
+    origine = 'document' if demande else 'defaut'
+    code = demande or str(section.get(CLE_ZONE_PAR_DEFAUT) or '').strip()
+    if not code:
+        return globale, {
+            'code': None, 'libelle': None, 'commune_ou_region': None,
+            'origine': None, 'sources': [],
+            'motif': ("Aucune zone de lestage n'est désignée pour ce "
+                      "calepinage et la société n'a pas de zone par défaut : "
+                      "le jeu global de la société s'applique."),
+        }
+
+    hors_site = {cle: valeur for cle, valeur in globale.items()
+                 if cle not in PARAMETRES_DE_SITE}
+    retenue = next((zone for zone in zones
+                    if isinstance(zone, dict) and zone.get('code') == code),
+                   None)
+    if retenue is None:
+        return hors_site, {
+            'code': code, 'libelle': None, 'commune_ou_region': None,
+            'origine': origine, 'sources': [],
+            'motif': (f"La zone « {code} » "
+                      + ("désignée par ce calepinage"
+                         if origine == 'document' else "par défaut")
+                      + " n'existe pas dans les réglages de lestage : "
+                      "aucun paramètre de site n'est appliqué."),
+        }
+
+    parametres = retenue.get('parametres') or {}
+    effective = dict(hors_site)
+    for cle in PARAMETRES_DE_SITE:
+        if isinstance(parametres.get(cle), dict):
+            effective[cle] = parametres[cle]
+    sources = []
+    for cle in PARAMETRES_DE_SITE:
+        source = (parametres.get(cle) or {}).get('source')
+        if source and source not in sources:
+            sources.append(source)
+    absents = [PARAMETRES[cle][0] for cle in PARAMETRES_DE_SITE
+               if cle not in parametres]
+    return effective, {
+        'code': code,
+        'libelle': retenue.get('libelle') or None,
+        'commune_ou_region': retenue.get('commune_ou_region') or None,
+        'origine': origine,
+        'sources': sources,
+        'motif': ('' if not absents else
+                  f"Paramètre(s) de site non saisi(s) pour la zone « {code} » "
+                  f": {', '.join(absents)} — les lignes qui en dépendent ne "
+                  "sont pas calculées."),
+    }
+
+
+def _mentionner_chaque_ligne(feuille, section, societe, zone):
+    """« paramètres saisis par <société>, référence <texte> » sur CHAQUE
+    ligne calculée (en mode zone) ; une ligne non calculée garde ce qui
+    manque et nomme la zone."""
+    nom = str(societe or '').strip() or 'la société'
+    nom_zone = zone.get('libelle') or zone.get('code')
+    for ligne in feuille.get('lignes') or []:
+        if ligne.get('valeur') is None:
+            if nom_zone and any(cle in PARAMETRES_DE_SITE
+                                for cle in ligne.get('manquants') or []):
+                ligne['mention'] = (f"{ligne.get('mention') or ''} "
+                                    f"(zone « {nom_zone} »)").strip()
+            continue
+        references = []
+        for cle in ligne.get('entrees') or []:
+            source = (section.get(cle) or {}).get('source') \
+                if isinstance(section.get(cle), dict) else None
+            if source and source not in references:
+                references.append(source)
+        if references:
+            ligne['mention'] = ('paramètres saisis par %s, référence %s'
+                                % (nom, ' ; '.join(references)))
