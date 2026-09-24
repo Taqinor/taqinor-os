@@ -583,6 +583,17 @@ export function etatChampSite(state, champ) {
   return { provenance, aConfirmer }
 }
 
+/**
+ * CAD159 — [TRANCHÉ 21/09/2026] les champs du site encore à DEMANDER : ceux
+ * de `champs` qui sont VIDES. Un champ déjà renseigné (par le site ou à la
+ * main) n'y figure JAMAIS — la question n'est pas reposée, la valeur revient
+ * « à confirmer » (`etatChampSite`). Même règle que `champs_a_poser` du
+ * panneau d'appel côté serveur (`apps/crm/panneau_appel.py`). Pur.
+ */
+export function champsSiteAPoser(state, champs = CHAMPS_SITE) {
+  return champs.filter((champ) => isEmpty(getField(state, champ)))
+}
+
 // ── CAD158 — la facture est enregistrée AU MOIS ──────────────────────────────
 // Décision fondateur du 21/09/2026 (Q24) : une facture bimestrielle est
 // ramenée au mois AU MOMENT DE LA SAISIE, aucun champ « périodicité » n'est

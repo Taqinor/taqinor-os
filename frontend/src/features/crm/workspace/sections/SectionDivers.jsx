@@ -5,7 +5,7 @@ import {
 import { formatDate, formatDateTime } from '../../../../lib/format'
 import {
   getField, WEB_ORIGIN_FIELDS, WEB_QUESTIONNAIRE_STRUCTURED_FIELDS, estValeurWebRenseignee,
-  etatChampSite,
+  etatChampSite, champsSiteAPoser,
 } from '../draftCore'
 import CustomFieldsInput from '../../../../components/CustomFieldsInput'
 
@@ -67,10 +67,24 @@ const optionsDe = (labels) => [
   ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
 ]
 
+// CAD159 — libellés des champs de ce bloc (mêmes que leurs FormField).
+const LIBELLES_QUALIFICATION = {
+  ownership: "Statut d'occupation",
+  financing_intent: 'Financement envisagé',
+  project_timeline: 'Horizon du projet',
+  facility_type: 'Type de site (pro)',
+  roof_type: 'Type de toiture (site)',
+  roof_age: 'Âge de la toiture (ans)',
+}
+
 /* CAD150 — la qualification captée par le site, ÉDITABLE sur la fiche (hors
-   énergie : `distributeur` et `bill_kwh` vivent dans SectionEnergie). */
+   énergie : `distributeur` et `bill_kwh` vivent dans SectionEnergie).
+   CAD159 — la liste « à demander » ne porte QUE les champs vides : une
+   valeur déjà là (du site ou de la fiche) n'est jamais une question à
+   reposer, elle se confirme. */
 function QualificationSite({ state, setField, errors }) {
   const v = (k) => getField(state, k) ?? ''
+  const aDemander = champsSiteAPoser(state, Object.keys(LIBELLES_QUALIFICATION))
   const select = (champ, id, labels) => () => (
     <select
       id={id} className={errors[champ] ? 'form-select is-invalid' : 'form-select'}
@@ -83,6 +97,11 @@ function QualificationSite({ state, setField, errors }) {
   return (
     <div className="mt-3" data-testid="qualification-site">
       <p className="form-label">Qualification (site ou appel)</p>
+      {aDemander.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="qualification-a-demander">
+          À demander à l’appel : {aDemander.map((champ) => LIBELLES_QUALIFICATION[champ]).join(', ')}.
+        </p>
+      )}
       <div className="form-row">
         <ChampSite
           state={state} champ="ownership" label="Statut d'occupation" htmlFor="lf-ownership"
