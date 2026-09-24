@@ -17,10 +17,14 @@
 #     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
 #
 # Format : `<nom_de_fichier.json>  # <raison datee>`.
+calepinage_approbation.json  # sans moitié cliente au 23/09/2026 (CALX385)
+calepinage_asbuilt_ecarts.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_incertitude.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_meteo.json  # sans moitié cliente au 23/09/2026 (CALX385)
+calepinage_projet_json.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_releve_visite.json  # sans moitié cliente au 23/09/2026 (CALX385)
 calepinage_sld.json  # sans moitié cliente au 23/09/2026 (CALX385)
+calepinage_versions_diff.json  # sans moitié cliente au 23/09/2026 (CALX385)
 electrique_cheminements.json  # sans moitié cliente au 23/09/2026 (CALX385)
 lead_layout_public.json  # sans moitié cliente au 23/09/2026 (CALX385)
 rapport_etude.json  # sans moitié cliente au 23/09/2026 (CALX385)

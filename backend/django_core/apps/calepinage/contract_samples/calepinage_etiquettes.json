@@ -1,0 +1,53 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/etiquettes/",
+  "pourquoi": "CALX332 — LES ÉTIQUETTES LIBRES D'UN CALEPINAGE, figées AVANT leur vue (PACT10 : le contrat part SEUL). CONSTAT : le seul tag posé sur un calepinage est le drapeau SYSTÈME `calepinage:modele` (`services/modeles.py:32`, CAL199) et `selectors.py::appliquer_filtres_liste` n'accepte que lead/client/statut/depuis/q/archives — aucun filtre d'étiquette. PARITÉ : OpenSolar (https://www.opensolar.com/crm — « search, filters, table or Kanban views, and saved views »). LA PORTE : `GET` / `POST` / `DELETE calepinages/<pk>/etiquettes/` (sous-ressource en `@action`, une seule forme d'URL). Les trois méthodes rendent la MÊME forme — `{etiquettes: [{id, nom, couleur}]}`, la liste À JOUR des étiquettes du calepinage, triée par nom — pour que l'écran n'ait jamais à recomposer la liste après un geste. `POST` pose une étiquette, `DELETE` la retire ; le corps désigne l'étiquette par son identifiant (`corps_pose`, `{tag_id}`) OU par son nom exact (`corps_pose_par_nom`, `{nom}`). LA PRIMITIVE EST CELLE DE LA PLATEFORME : `records.Tag` / `records.TaggedItem` (`apps/records/models.py:234,262`, FG9 — vocabulaire contrôlé PAR SOCIÉTÉ ; `calepinage.calepinage` est déjà déclaré cible dans `apps/calepinage/platform.py`). AUCUNE migration, aucun modèle d'étiquette maison. `couleur` est `Tag.couleur` telle quelle (hex `#rrggbb`, ou `\"\"` = couleur par défaut de l'écran). VOCABULAIRE CONTRÔLÉ : une étiquette se CHOISIT dans le vocabulaire de la société, elle ne se crée JAMAIS à la volée depuis cette porte — un `nom` inconnu est REFUSÉ en nommant le champ (`refus_creation_a_la_volee`) ; le vocabulaire s'administre par `records` (`tags/`). Une étiquette d'une AUTRE société est refusée en nommant `tag_id` (`refus_autre_societe`) ; poser deux fois la même étiquette est IDEMPOTENT (aucune seconde ligne, aucune seconde entrée de journal) ; retirer une étiquette absente ne fait rien. LE TAG SYSTÈME `calepinage:modele` EST EXCLU de cette liste (voir `exclu_de_la_liste`) : c'est le drapeau « modèle réutilisable » de la bibliothèque (CAL199), servi par `modeles/` — il n'apparaît JAMAIS comme étiquette libre, et il ne peut être ni posé ni retiré par cette porte (`refus_tag_systeme`). LE FILTRE DE LISTE : `GET calepinages/?etiquette=<id>` — paramètre RÉPÉTABLE, ET logique (`?etiquette=3&etiquette=5` ne rend que les calepinages qui portent LES DEUX) ; absent, il ne filtre rien ; un identifiant illisible est refusé 400 en nommant `etiquette` (voir `filtre_liste`). Le geste de pose/retrait est JOURNALISÉ au chatter du calepinage (`services/journal.py::noter`). La société vient TOUJOURS du serveur, jamais du corps. Valeurs : des PLACEHOLDERS assumés.",
+  "exclu_de_la_liste": "calepinage:modele",
+  "corps_pose": {
+    "tag_id": 3
+  },
+  "corps_pose_par_nom": {
+    "nom": "Prioritaire"
+  },
+  "corps_retrait": {
+    "tag_id": 3
+  },
+  "exemple": {
+    "etiquettes": [
+      {
+        "id": 3,
+        "nom": "Prioritaire",
+        "couleur": "#dc2626"
+      },
+      {
+        "id": 5,
+        "nom": "Visite technique faite",
+        "couleur": ""
+      }
+    ]
+  },
+  "exemple_vide": {
+    "etiquettes": []
+  },
+  "refus_autre_societe": {
+    "tag_id": "Étiquette introuvable dans le vocabulaire de cette société (tag_id : 42)."
+  },
+  "refus_creation_a_la_volee": {
+    "nom": "Aucune étiquette « Urgent » dans le vocabulaire de la société : une étiquette ne se crée pas depuis un calepinage — ajoutez-la d'abord au vocabulaire des étiquettes."
+  },
+  "refus_tag_systeme": {
+    "tag_id": "« calepinage:modele » est le drapeau système des modèles réutilisables : il se pose depuis la bibliothèque, jamais comme étiquette libre."
+  },
+  "refus_sans_etiquette": {
+    "tag_id": "Indiquez l'étiquette à poser ou à retirer : « tag_id » (identifiant) ou « nom » (nom exact)."
+  },
+  "filtre_liste": {
+    "endpoint": "GET /api/django/calepinage/calepinages/",
+    "parametre": "etiquette",
+    "repetable": true,
+    "logique": "ET",
+    "exemple_requete": "/api/django/calepinage/calepinages/?etiquette=3&etiquette=5",
+    "refus_illisible": {
+      "etiquette": "Filtre « etiquette » illisible : un identifiant entier positif est attendu (reçu : « abc »)."
+    }
+  }
+}

@@ -108,6 +108,17 @@ from . import documents as _documents_actions  # noqa: F401
 # CALX370 — même patron : rattache ``import-projet`` (réimportation du fichier
 # ``export-projet.json``, ``services/export_projet.importer_projet``).
 from . import projet_json as _projet_json_action  # noqa: F401
+# CALX341 — même patron : rattache ``comparer-projets`` (comparatif de 1 à 5
+# calepinages, action de liste) et ``comparatif.xlsx`` (le même en classeur).
+# Lecture PURE : aucune simulation lancée, aucun statut ne bouge.
+from . import comparaison_projets as _comparaison_projets_actions  # noqa: F401
+# CALX343 — même patron : rattache ``etiquettes`` (GET/POST/DELETE des
+# étiquettes libres, ``records.Tag``/``TaggedItem`` ; garde choisie par méthode).
+from . import etiquettes as _etiquettes_action  # noqa: F401
+# CALX345 — même patron : rattache ``versions_diff`` (GET
+# ``versions/<version_id>/diff/``, le différentiel entre deux versions).
+# Lecture PURE : aucune version n'est créée.
+from . import versions_diff as _versions_diff_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -137,6 +148,9 @@ MODULES_RATTACHES = (
     'plan_importe',  # CALX107
     'documents',  # CALX297
     'projet_json',  # CALX370
+    'comparaison_projets',  # CALX341
+    'etiquettes',  # CALX343
+    'versions_diff',  # CALX345
 )
 
 __all__ = ['MODULES_RATTACHES']

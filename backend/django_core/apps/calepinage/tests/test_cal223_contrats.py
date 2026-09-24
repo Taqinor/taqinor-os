@@ -252,6 +252,13 @@ SANS_PRODUCTEUR_PUR = {
         'par apps/calepinage/tests/test_calx312_export_projet.py, le contrat '
         'lui-même par test_calx293_contrat_export_projet.py',
 
+    # CALX370
+    'calepinage_projet_json.json':
+        "l'IMPORT d'un projet exporté (POST calepinages/import-projet/) : "
+        'son producteur écrit calepinage + variantes en base — la forme, les '
+        'refus nommés et le tour complet export→import sont affirmés sans '
+        'base par apps/calepinage/tests/test_calx370_projet_json.py',
+
     # CALX267
     'calepinage_batterie.json':
         'forme de services/batterie.py::simuler_groupes (plusieurs groupes '
@@ -271,6 +278,44 @@ SANS_PRODUCTEUR_PUR = {
         'exige la base ; la forme est affirmée contre l’exemple committé par '
         'apps/visites/tests/test_calx363_releve_pour_calepinage.py et '
         'apps/calepinage/tests/test_calx364_reprise_visite.py',
+    # CALX331
+    'calepinage_comparaison_projets.json':
+        'comparaison de 1 à 5 calepinages DISTINCTS : son producteur '
+        '(services/comparaison_projets.py, CALX341) lit les calepinages de '
+        'la société en base — la ligne PURE (production lue, null jamais 0, '
+        'motif) est affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_calx341_comparaison_projets.py',
+
+    # CALX332
+    'calepinage_etiquettes.json':
+        'étiquettes libres d’un calepinage (records.Tag/TaggedItem) : son '
+        'producteur (services/etiquettes.py, CALX343) lit le vocabulaire et '
+        'les étiquettes posées en base — la forme, les refus nommés et '
+        'l’exclusion du tag système sont affirmés contre l’exemple committé '
+        'par apps/calepinage/tests/test_calx343_etiquettes.py',
+
+    # CALX333
+    'calepinage_versions_diff.json':
+        'différentiel champ par champ entre deux versions : son producteur '
+        '(services/diff_versions.py, CALX345) est PUR mais la porte lit les '
+        'versions du calepinage en base — les écarts de l’exemple sont '
+        'RECALCULÉS depuis deux documents v2 en mémoire par '
+        'apps/calepinage/tests/test_calx345_diff_versions.py',
+
+    # CALX334
+    'calepinage_approbation.json':
+        'décision d’approbation d’un calepinage : son producteur '
+        '(services/approbation.py, CALX347) lit et écrit le champ dédié du '
+        'calepinage et la permission `calepinage_approuver` en base — la '
+        'forme est affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_calx347_approbation.py',
+
+    # CALX337
+    'calepinage_asbuilt_ecarts.json':
+        'écarts de pose réelle : son producteur (services/asbuilt.py, '
+        'CAL212/CALX366) lit les `PoseReelle` et la variante retenue en base '
+        '— la forme est affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_calx366_pose_reelle.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -294,6 +339,18 @@ POSES_AVANT_LEUR_ROUTE = {
     'calepinage_releve_visite.json':
         'GET/POST calepinages/<pk>/releve-visite/ arrive avec CALX364 '
         '(views/reprise_visite.py) — retirer cette entrée dans la même tâche',
+    # CALX341 a livré ``POST calepinages/comparer-projets/``
+    # (``views/comparaison_projets.py``) : ``calepinage_comparaison_projets.json``
+    # en est SORTI.
+    # CALX343 a livré ``GET/POST/DELETE calepinages/<pk>/etiquettes/``
+    # (``views/etiquettes.py``) : ``calepinage_etiquettes.json`` en est SORTI.
+    # CALX345 a livré ``GET calepinages/<pk>/versions/<id>/diff/``
+    # (``views/versions_diff.py``) : ``calepinage_versions_diff.json`` en est
+    # SORTI.
+    # CALX334 — ``GET/POST calepinages/<pk>/approbation/`` arrive avec CALX347.
+    'calepinage_approbation.json': 'CALX347',
+    # CALX337 — ``GET/POST calepinages/<pk>/pose-reelle/`` arrive avec CALX366.
+    'calepinage_asbuilt_ecarts.json': 'CALX366',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
@@ -370,10 +427,14 @@ class CheminDeclareTest(unittest.TestCase):
             segment = route.rstrip('/').rsplit('/', 1)[-1]
             if segment.startswith('<'):        # ``calepinages/<int:pk>/``
                 continue
+            # CALX345 — ``or f"/{segment}'"`` : une sous-route à paramètre
+            # (``url_path=r'versions/(?P<version_id>[^/.]+)/diff'``) se
+            # termine par son segment, sans ``/`` final.
             self.assertTrue(
                 f"url_path='{segment}'" in sources
                 or f"'{segment}/'" in sources
-                or f"{segment}/'" in sources,
+                or f"{segment}/'" in sources
+                or f"/{segment}'" in sources,
                 f"{chemin.name} : le chemin « {route} » n'est déclaré nulle "
                 f"part dans urls.py ni dans une @action du module "
                 f"(segment cherché : « {segment} »).")
