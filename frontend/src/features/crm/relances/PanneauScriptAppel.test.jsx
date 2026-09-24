@@ -16,7 +16,7 @@ import PanneauScriptAppel from './PanneauScriptAppel'
 import * as guidance from './appelGuidance'
 import {
   BANDEAU_PROFIL_SUPPOSE, MENTION_D7, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
-  ORDRE_APPEL_1, QUESTIONS_DU_RAPPEL, scriptTouche, RAMADAN_PAS_DE_SOIR,
+  ORDRE_APPEL_1, scriptTouche, RAMADAN_PAS_DE_SOIR, decouperQuestion,
 } from './appelGuidance'
 
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
@@ -40,6 +40,9 @@ const ETAPE_WHATSAPP = TOUCHES.find((t) => t.canal === 'whatsapp')
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 const PANNEAU = exempleContrat('crm', 'panneau_appel')
 const OCCUPATION = PANNEAU.champs_a_poser.find((q) => q.champ === 'occupation_jour')
+// 24/09/2026 — ce que l'écran AFFICHE d'une question servie : le passage entre
+// « … » seul (le préfixe « Question à l'appel : » ne se lit pas au client).
+const QUESTION_OCCUPATION = decouperQuestion(OCCUPATION.question).question
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.sessionStorage.clear() })
 
@@ -73,8 +76,9 @@ describe('CAD152 — sur une touche d’appel, le script et les questions sans q
     await waitFor(() => expect(crmApi.getPanneauAppel).toHaveBeenCalledWith(ETAPE_APPEL.lead))
     // Le script est lu par le GET du rendu, jamais par le POST qui journalise.
     expect(crmApi.getRelanceEtapeMessage).toHaveBeenCalledWith(ETAPE_APPEL.id)
-    // La question servie (le help_text du champ, jamais réécrit ici).
-    expect(await screen.findByText(OCCUPATION.question)).toBeInTheDocument()
+    // La question servie (le help_text du champ, jamais réécrit ici — seulement
+    // découpée : le passage entre « … »).
+    expect(await screen.findByText(QUESTION_OCCUPATION)).toBeInTheDocument()
     expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
     expect(onOuvrirMessage).not.toHaveBeenCalled()
   })
@@ -85,7 +89,7 @@ describe('CAD152 — sur une touche d’appel, le script et les questions sans q
     fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
     const bandeau = await screen.findByTestId('bandeau-profil-suppose')
     expect(bandeau).toHaveTextContent(BANDEAU_PROFIL_SUPPOSE)
-    expect(within(bandeau).getByText(OCCUPATION.question)).toBeInTheDocument()
+    expect(within(bandeau).getByText(QUESTION_OCCUPATION)).toBeInTheDocument()
     // La question n'est pas répétée dans la liste ordonnée qui suit.
     expect(screen.getAllByTestId('question-appel-occupation_jour')).toHaveLength(1)
   })
@@ -304,7 +308,7 @@ describe('CAD153 — chaque touche d’appel a son script, sur la ligne', () => 
 describe('CAD153 — tout champ que le panneau écrit est déclaré à l’écran (fieldLabels)', () => {
   it('chaque colonne des étapes (appel, rappel, agricole, pro) a son libellé', () => {
     const champs = [
-      ...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL, ...guidance.ORDRE_AGRICOLE, ...guidance.ORDRE_PRO,
+      ...ORDRE_APPEL_1, ...guidance.ORDRE_AGRICOLE, ...guidance.ORDRE_PRO,
     ].flatMap((e) => e.champs)
     expect(champs.length).toBeGreaterThan(0)
     for (const champ of champs) {
@@ -499,25 +503,44 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
 })
 
 // ════════════════════════════════════════════════════════════════════════════
-// CAD168 — les deux lignes fixes de la facture, enfin dites (sans chiffre)
+// Décision fondateur du 24/09/2026 — revue des questions d'appel : plus de
+// question « abonnement et entretien du compteur » (CAD168 retiré), plus de
+// question ni de flux « propriétaire ou locataire » (Q8/Q19 retirés), et la
+// question s'affiche SEULE, sa remarque interne en retrait.
 // ════════════════════════════════════════════════════════════════════════════
-describe('CAD168 — la question des lignes fixes figure au script', () => {
-  it('résidentiel : la question de découverte et sa consigne, sans aucun montant', async () => {
+describe('24/09/2026 — les questions retirées ne s’affichent plus', () => {
+  it('résidentiel, appel 1 : ni lignes fixes de la facture, ni flux locataire', async () => {
     armer()
     ligne()
     fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
-    const bloc = await screen.findByTestId('question-charges-fixes')
-    expect(bloc).toHaveTextContent(guidance.QUESTION_CHARGES_FIXES)
-    expect(bloc).toHaveTextContent(guidance.CONSIGNE_CHARGES_FIXES)
-    // AUCUN chiffre prononçable : le montant vit au barème, jamais ici.
-    expect(bloc.textContent).not.toMatch(/[0-9]/)
-  })
-
-  it('agricole : pas de ligne fixe BT domestique à demander', async () => {
-    armer({ panneau: exempleContrat('crm', 'panneau_appel', 'exemple_sans_cadence_active') })
-    render(<PanneauScriptAppel mode="fiche" leadId={1} />)
     expect(await screen.findByTestId('questions-appel')).toBeInTheDocument()
     expect(screen.queryByTestId('question-charges-fixes')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('flux-locataire')).not.toBeInTheDocument()
+    expect(screen.queryByText(/abonnement et l'entretien du compteur/)).not.toBeInTheDocument()
+  })
+
+  it('touche de rappel, client déjà noté locataire : aucun flux locataire, aucun bouton propriétaire', async () => {
+    // Le panneau du contrat porte une touche de RAPPEL (`appel_j2`) : c'est là
+    // que « propriétaire ou locataire » se posait avant la décision.
+    armer({ panneau: { ...PANNEAU, prefill: { ...PANNEAU.prefill, ownership: 'locataire' } } })
+    render(<PanneauScriptAppel mode="fiche" leadId={1} />)
+    expect(await screen.findByText('Questions du rappel')).toBeInTheDocument()
+    expect(screen.queryByTestId('question-appel-ownership')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('flux-locataire')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /propriétaire/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/locataire/i)).not.toBeInTheDocument()
+  })
+
+  it('la question s’affiche seule : le passage entre « … », jamais le préfixe « Question à l’appel »', async () => {
+    armer()
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const question = await screen.findByTestId('question-appel-occupation_jour')
+    expect(within(question).getByText(QUESTION_OCCUPATION)).toBeInTheDocument()
+    expect(screen.queryByText(OCCUPATION.question)).not.toBeInTheDocument()
+    expect(question).not.toHaveTextContent(/Question à l'appel/)
+    // La question servie n'a aucune remarque après « … » : aucune consigne.
+    expect(screen.queryByTestId('consigne-question-occupation_jour')).not.toBeInTheDocument()
   })
 })
 

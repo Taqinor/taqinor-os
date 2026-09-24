@@ -445,8 +445,6 @@ A_NOTER_GROUPE : À noter dans la note d’appel : le site a-t-il un groupe éle
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
 AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
-QUESTION_CHARGES_FIXES : Question à l'appel : « Votre montant inclut l'abonnement et l'entretien du compteur ? » — réponse à noter dans la note d’appel.
-CONSIGNE_CHARGES_FIXES : Ces deux lignes restent sur chaque facture, avant comme après les panneaux : elles ne se prononcent jamais en chiffres.
 
 CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
 fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan
@@ -470,12 +468,16 @@ culture, tension bt/mt, rythme d'activité et week-end, groupe électrogène, pr
 `CARBURANT_DECLARE_SEUL` reprend la règle CAD173 (Q17). ✎ Formulations à valider par le fondateur. Darija : aucune
 version (consignes d'écran).
 
-CAD168 (24/09/2026) — toute facture porte DEUX lignes fixes (location du compteur, entretien du branchement) qui ne
-sont pas solarisables : le calcul les porte des deux côtés, mais aucun script ne les disait. `QUESTION_CHARGES_FIXES`
-est la question de découverte (résidentiel, barème BT domestique) ; `CONSIGNE_CHARGES_FIXES` rappelle qu'elles ne se
-prononcent jamais en chiffres. Leur MONTANT n'est écrit dans aucun texte : il est lu au barème ou au réglage société
-et l'étude horaire le NOMME à côté de l'économie (`etude_horaire.part_non_solarisable` : montant + libellé
-`LIBELLE_PART_NON_SOLARISABLE`, sans chiffre). ✎ Formulations à valider par le fondateur.
+CAD168 (24/09/2026) — RETIRÉ le jour même par le fondateur, à la revue des questions d'appel : la question « Votre
+montant inclut l'abonnement et l'entretien du compteur ? » n'apprenait rien (toute facture porte ces deux lignes
+fixes, toujours — aucun client ne les reçoit gratuitement). Le calcul continue de les porter des deux côtés, sans
+rien demander au téléphone : leur montant est lu au barème ou au réglage société et l'étude horaire le NOMME à côté
+de l'économie (`etude_horaire.part_non_solarisable` : montant + libellé `LIBELLE_PART_NON_SOLARISABLE`, sans
+chiffre). Même revue : la question « propriétaire ou locataire » (Q8, `ownership`) et le flux locataire du panneau
+(Q19 — coordonnées du propriétaire, sinon Refus motif « Locataire ») sont RETIRÉS du script d'appel : TAQINOR n'a pas
+besoin de cette information, un locataire qui veut installer et qui paie est installé. Et chaque question s'affiche
+SEULE (le passage entre « … » du `help_text`), ses remarques internes en retrait (`decouperQuestion`,
+`appelGuidance.js`) — rien n'est réécrit, le texte servi est seulement découpé.
 
 CAD172 (24/09/2026) — `BANDEAU_PROFIL_SUPPOSE` est aussi le texte que la PROPOSITION reçoit (bloc
 `courbes_journalieres`, clés `profil_suppose` + `bandeau_profil`) et que porte l'étude du devis, tant que la présence

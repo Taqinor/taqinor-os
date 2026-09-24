@@ -12,7 +12,7 @@ import {
   CLES_TOUCHES_APPEL_1, estToucheDeRappel, questionsDeLAppel, texteQuestion,
   OBJECTION_LOI_8221, OBJECTIONS,
   OBJECTION_GENERATEUR, OBJECTION_SUBVENTIONS, INTERDITS_APPEL, ISSUES_APPEL,
-  FLUX_LOCATAIRE, QUESTIONS_DU_RAPPEL, BUDGET_RAPPEL, texteAccroche,
+  texteAccroche, decouperQuestion,
   SCRIPTS_TOUCHES, scriptTouche,
 } from './appelGuidance.js'
 
@@ -170,12 +170,75 @@ test('CAD162 — « propriétaire ou locataire » absent de TOUTE touche de la p
   assert.deepEqual(questionsDeLAppel(leadVierge(null)).map((q) => q.champ), CINQ)
 })
 
-test('CAD162 — à partir de la touche de rappel, « propriétaire ou locataire » suit les cinq', () => {
+// Décision fondateur du 24/09/2026 : « propriétaire ou locataire » ne se pose
+// plus nulle part — le rappel repose les MÊMES cinq étapes, rien de plus
+// (remplace la règle Q8 « au rappel, après les cinq »).
+test('24/09/2026 — au rappel aussi, les cinq seulement : jamais « propriétaire ou locataire »', () => {
   for (const cle of ['appel_suivi_j2', 'appel_suivi_j7', 'appel_suivi_j11', '']) {
     const g = guidanceAppel(leadVierge(toucheCle(cle)))
     assert.equal(g.phase, 'rappel', cle)
-    assert.deepEqual(g.questions.map((q) => q.champ), [...CINQ, 'ownership'], cle)
+    assert.deepEqual(g.questions.map((q) => q.champ), CINQ, cle)
+    assert.ok(!g.questions.some((q) => q.champ === 'ownership'), cle)
   }
+  // Le module n'exporte plus ni la question du rappel, ni le flux locataire,
+  // ni la question des lignes fixes de la facture.
+  for (const cle of ['QUESTIONS_DU_RAPPEL', 'BUDGET_RAPPEL', 'FLUX_LOCATAIRE',
+    'QUESTION_CHARGES_FIXES', 'CONSIGNE_CHARGES_FIXES']) {
+    assert.ok(!(cle in guidance), `${cle} encore exporté`)
+  }
+  assert.ok(!('questionChargesFixes' in guidanceAppel(leadVierge(toucheCle('appel_ouverture')))))
+})
+
+// Décision fondateur du 24/09/2026 (revue des questions) : la question se lit
+// SEULE ; les remarques internes du `help_text` deviennent une consigne en
+// retrait. Rien n'est réécrit : les deux moitiés sont des morceaux du texte
+// servi. Les textes ci-dessous reprennent des `help_text` réels de
+// `apps/crm/models.py`.
+test('24/09/2026 — decouperQuestion : la question entre « … », la consigne après, sans « vide = pas encore posée »', () => {
+  const occupation = "Question à l'appel : « Y a-t-il quelqu'un à la maison en journée ? » "
+    + '(Présent/Absent/Présence partielle — vide = pas encore posée). Renseigné : PILOTE la '
+    + 'silhouette de consommation servie (apps/ventes/courbes_journalieres.py _occupation) — '
+    + 'sinon repli sur le défaut fondateur actuel, inchangé.'
+  let d = decouperQuestion(occupation)
+  assert.equal(d.question, "« Y a-t-il quelqu'un à la maison en journée ? »")
+  assert.equal(d.consigne, 'Renseigné : PILOTE la silhouette de consommation servie '
+    + '(apps/ventes/courbes_journalieres.py _occupation) — sinon repli sur le défaut '
+    + 'fondateur actuel, inchangé.')
+  assert.ok(occupation.includes(d.question) && occupation.includes(d.consigne))
+
+  const facture = "Question à l'appel : « Votre facture d'électricité, elle est de combien ? "
+    + 'Elle couvre un mois ou deux mois ? » — le montant ENREGISTRÉ est toujours MENSUEL : '
+    + 'une facture de deux mois est divisée par deux à la saisie.'
+  d = decouperQuestion(facture)
+  assert.equal(d.question, "« Votre facture d'électricité, elle est de combien ? Elle couvre un mois ou deux mois ? »")
+  assert.equal(d.consigne, 'le montant ENREGISTRÉ est toujours MENSUEL : une facture de deux '
+    + 'mois est divisée par deux à la saisie.')
+
+  // Des guillemets IMBRIQUÉS dans la remarque : la question est le PREMIER passage.
+  const decideur = "Question à l'appel : « Qui décide avec vous de ce projet ? » (vide = pas "
+    + 'encore posée). Renseigné à « avec le conjoint / la famille » ou « avec un associé / la '
+    + 'direction », il pose l’étiquette « Décision à plusieurs ».'
+  d = decouperQuestion(decideur)
+  assert.equal(d.question, '« Qui décide avec vous de ce projet ? »')
+  assert.ok(d.consigne.startsWith('Renseigné à « avec le conjoint'))
+
+  // Rien après la question (hors la mention « vide ») : aucune consigne.
+  d = decouperQuestion("Question à l'appel, EN DERNIER RECOURS seulement : « Quelle puissance "
+    + 'est inscrite sur votre compteur (kVA) ? » (vide = pas encore posée).')
+  assert.equal(d.question, '« Quelle puissance est inscrite sur votre compteur (kVA) ? »')
+  assert.equal(d.consigne, null)
+
+  // Sans guillemets (libellé de fiche, colonne sans help_text) : tout est la question.
+  assert.deepEqual(decouperQuestion('L’été est différent de l’hiver ?'),
+    { question: 'L’été est différent de l’hiver ?', consigne: null })
+  assert.deepEqual(decouperQuestion(''), { question: '', consigne: null })
+  assert.deepEqual(decouperQuestion(null), { question: '', consigne: null })
+
+  // La question servie par le contrat, telle quelle.
+  const servie = exemple().champs_a_poser.find((q) => q.champ === 'occupation_jour')
+  d = decouperQuestion(texteQuestion(servie))
+  assert.ok(servie.question.includes(d.question))
+  assert.doesNotMatch(d.question, /Question à l'appel/)
 })
 
 test('CAD162 — ce qui est déjà renseigné ne se repose pas, l\'ordre reste figé', () => {
@@ -349,10 +412,6 @@ test('CAD151 — texteAccroche lit panneau.script.message, jamais un texte réé
   assert.equal(texteAccroche(null), null)
 })
 
-test('CAD151 — le budget de rappel additionne les deux listes figées, jamais un chiffre à part', () => {
-  assert.equal(BUDGET_RAPPEL, ORDRE_APPEL_1.length + QUESTIONS_DU_RAPPEL.length)
-})
-
 test('CAD151 — objection générateur : re-dérivée du fichier source, jamais seule « le solaire travaille tous les jours »', () => {
   const source = sectionObjection(OBJECTION_GENERATEUR.cle)
   assert.equal(OBJECTION_GENERATEUR.titre, source.titre)
@@ -383,14 +442,13 @@ test('CAD151 — ISSUES_APPEL : les six issues réelles, vocabulaire existant (S
     ['joint', 'non_joint', 'rappel', 'refuse', 'interesse', 'visite_acceptee'])
 })
 
-test('CAD151 — aucun chiffre ni crochet dans les nouvelles objections, interdits et le flux locataire', () => {
+test('CAD151 — aucun chiffre ni crochet dans les nouvelles objections et les interdits', () => {
   const textes = [
     OBJECTION_GENERATEUR.titre, OBJECTION_GENERATEUR.quand,
     OBJECTION_GENERATEUR.reponse, OBJECTION_GENERATEUR.jamais,
     OBJECTION_SUBVENTIONS.titre, OBJECTION_SUBVENTIONS.quand,
     OBJECTION_SUBVENTIONS.reponse, OBJECTION_SUBVENTIONS.jamais,
     ...INTERDITS_APPEL,
-    FLUX_LOCATAIRE.quand, FLUX_LOCATAIRE.consigne, FLUX_LOCATAIRE.sinon,
   ]
   for (const texte of textes) {
     assert.doesNotMatch(texte, /[0-9٠-٩۰-۹]/, texte)

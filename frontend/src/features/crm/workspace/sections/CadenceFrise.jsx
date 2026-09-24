@@ -94,6 +94,16 @@ function annulable(etape) {
  */
 export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   const [loading, setLoading] = useState(true)
+  // Décision fondateur du 24/09/2026 — le panneau d'appel doit rester ouvert
+  // d'une réponse à l'autre. Chaque réponse enregistrée rafraîchit la fiche
+  // (`onChanged` → `reloadToken`) : si ce rechargement remplaçait la liste par
+  // le spinner, chaque ligne (et l'état « panneau ouvert » qu'elle porte)
+  // serait démontée puis remontée fermée. Le spinner ne vaut donc que pour
+  // la PREMIÈRE lecture d'un lead (`leadLu` : le lead dont les touches sont
+  // affichées) ; un rechargement du MÊME lead garde les lignes sous les yeux
+  // et les met à jour en place. Un autre lead (navigation J/K) repasse par
+  // le spinner : jamais les touches du voisin le temps de la lecture.
+  const [leadLu, setLeadLu] = useState(null)
   const [erreur, setErreur] = useState(false)
   const [montrerPassees, setMontrerPassees] = useState(false)
   const [etapes, setEtapes] = useState([])
@@ -117,7 +127,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
     let active = true
     queueMicrotask(() => { if (active) { setLoading(true); setErreur(false) } })
     crmApi.getRelanceEtapesLead(leadId)
-      .then((r) => { if (active) setEtapes(r.data?.results ?? []) })
+      .then((r) => { if (active) { setEtapes(r.data?.results ?? []); setLeadLu(leadId) } })
       .catch(() => { if (active) setErreur(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -186,7 +196,7 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   }
 
   if (!leadId) return null
-  if (loading) return <Spinner className="size-3.5" />
+  if (loading && leadLu !== leadId) return <Spinner className="size-3.5" />
   if (erreur) {
     return <p className="text-xs text-muted-foreground">Frise de cadence indisponible pour le moment.</p>
   }
