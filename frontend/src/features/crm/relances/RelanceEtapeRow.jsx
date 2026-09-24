@@ -230,6 +230,19 @@ const QUESTIONS_VISITE = {
   },
 }
 
+// VISCAD6-B (fondateur 24/09/2026) — l'étape de filet « devis parti », posée
+// par le moteur après un appel « Client joint » sans devis dans l'ERP.
+// Chaînes EXACTES de `apps.crm.services.FILET_JOINT_LIBELLE` /
+// `_FILET_JOINT_LIBELLE_ANCIEN` (l'ancien libellé vit encore sur les leads
+// créés avant le renommage) — jamais recopiées en dur ailleurs dans ce
+// fichier. Aucun libellé pareil n'existe encore dans `suite_phrases.json`
+// (il n'y vit qu'inclus dans des phrases plus longues) : rien à réutiliser
+// de là.
+const LIBELLES_ETAPE_DEVIS = [
+  'Préparer et envoyer le devis (ou fixer un rappel)',
+  'Prochaine étape — envoyer le devis ou fixer un rappel',
+]
+
 // CKP4 (fondateur 2026-09-10) — un canal APPEL clôturé « Fait » exige TOUJOURS
 // une issue : Joint/Pas de réponse restent les réponses existantes ci-dessus
 // (`joint`/`non_joint`, JAMAIS réinventées) ; Répondeur/Occupé s'y AJOUTENT
@@ -714,6 +727,10 @@ export default function RelanceEtapeRow({
   // suivi de proposition.
   const questionsTouche = QUESTIONS_VISITE[etape.libelle]
     ?? QUESTIONS[etape.cadence] ?? QUESTIONS.contact
+  // VISCAD6-B — cette LIGNE est-elle l'étape de filet « devis parti » ? Sert
+  // à la fois à proposer « Créer le devis »/« Planifier la visite » à côté
+  // des boutons existants, et à reformuler l'issue « Fait » ci-dessous.
+  const estEtapeDevis = LIBELLES_ETAPE_DEVIS.includes(etape.libelle)
   // CKP4 — canal APPEL : Répondeur/Occupé s'ajoutent aux réponses de la
   // cadence (jamais un remplacement, voir commentaire plus haut).
   // CAD-A — les réponses du client s'ajoutent EN DERNIER (jamais à la place
@@ -723,7 +740,14 @@ export default function RelanceEtapeRow({
     ...(etape.canal === 'appel' ? APPEL_REPONSES_SUPPLEMENTAIRES : []),
     ...(REPONSES_CLIENT[etape.cadence] ?? []),
     ...REPONSES_TOUTES_CADENCES,
-  ]
+    // VISCAD6-B (fondateur 24/09/2026, CAD17 « jamais un effet caché ») —
+    // SUR CETTE ÉTAPE SEULE, « Fait » vaut « devis parti » côté serveur
+    // (`touche_envoi_devis` : le lead passe Devis envoyé, le suivi de
+    // proposition démarre) : l'étiquette le dit, jamais l'issue envoyée
+    // (`outcome` reste '', même contrat) ni une étiquette recopiée ailleurs.
+  ].map((r) => (estEtapeDevis && r.outcome === '' && !r.reponse
+    ? { ...r, label: 'Devis envoyé — passer à la suite' }
+    : r))
   const reponseChoisie = reponseIdx == null
     ? null : reponsesDisponibles[reponseIdx]
   // RLC3 — cette touche consiste-t-elle à écrire, et le message a-t-il été
@@ -1038,6 +1062,36 @@ export default function RelanceEtapeRow({
           >
             <Paperclip className="size-3.5" /> Pièce reçue
           </Button>
+          {/* VISCAD6-B (fondateur 24/09/2026) — sur l'étape de filet « devis
+              parti » SEULE, deux actions RENDENT la touche actionnable au
+              lieu de la laisser en texte inerte : créer le devis tout de
+              suite (même chemin que `LeadWorkspace.jsx` — `navigate` peut
+              manquer en mode compact/frise, l'ancre `href` reste un repli
+              qui navigue vraiment), ou planifier la visite (même modale
+              PARTAGÉE que le CTA de coaching et l'issue « Visite acceptée »
+              ci-dessous, VISCAD6). */}
+          {estEtapeDevis && (
+            <Button asChild size="sm" variant="outline">
+              <a
+                href={`/ventes/devis/nouveau?lead=${encodeURIComponent(etape.lead)}`}
+                onClick={(e) => {
+                  if (!navigate) return
+                  e.preventDefault()
+                  navigate(`/ventes/devis/nouveau?lead=${encodeURIComponent(etape.lead)}`)
+                }}
+              >
+                Créer le devis
+              </a>
+            </Button>
+          )}
+          {estEtapeDevis && (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => setPlanifierOuvert(true)}
+            >
+              Planifier la visite
+            </Button>
+          )}
           {/* CAD44 — sur une touche À VENIR, « Fait » (et « Sauter », qui
               clôt la touche comme lui) restent verrouillés : on ne coche pas
               un geste qui n'a pas eu lieu. */}
