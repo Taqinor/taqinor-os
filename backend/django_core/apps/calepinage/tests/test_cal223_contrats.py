@@ -261,6 +261,14 @@ SANS_PRODUCTEUR_PUR = {
         'résultat RÉEL du service sur son `entree_synthetique`, rejoué et '
         'affirmé égal sans base par '
         'apps/calepinage/tests/test_calx267_groupes_batteries.py',
+
+    # CALX331
+    'calepinage_comparaison_projets.json':
+        'comparaison de 1 à 5 calepinages DISTINCTS : son producteur '
+        '(services/comparaison_projets.py, CALX341) lit les calepinages de '
+        'la société en base — la ligne PURE (production lue, null jamais 0, '
+        'motif) est affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_calx341_comparaison_projets.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -281,6 +289,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # même retrait que CALX297 avant elle.
     # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
     # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
+    # CALX331 — ``POST calepinages/comparer-projets/`` arrive avec CALX341.
+    'calepinage_comparaison_projets.json': 'CALX341',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

@@ -1,0 +1,171 @@
+{
+  "endpoint": "POST /api/django/calepinage/calepinages/comparer-projets/",
+  "pourquoi": "CALX331 — LA COMPARAISON DE PLUSIEURS CALEPINAGES, figée AVANT sa vue (PACT10 : le contrat part SEUL). CONSTAT : le seul comparatif du module confronte les VARIANTES d'un calepinage (`services/comparaison.py::colonnes_production`, `selectors.py::comparer_variantes`, contrat `variantes_comparer.json`) ; aucune porte ne confronte deux calepinages DISTINCTS. PARITÉ : PV*SOL compare jusqu'à 5 projets, y compris de dossiers différents (https://help.valentin-software.com/pvsol/en/project-comparison/ — « up to 5 projects can be compared »). LA PORTE : `POST calepinages/comparer-projets/` (action `detail=False` du routeur, une seule forme d'URL), corps `{ids: [1, 2, 3]}` — de 1 à 5 identifiants, dans l'ordre voulu des colonnes ; un identifiant répété n'est compté qu'une fois. LECTURE PURE : aucune simulation n'est déclenchée, rien n'est écrit, aucun statut ne bouge — la production est LUE dans `Calepinage.resultat` par le même chemin que le comparatif des variantes (`colonnes_production`), et une production calculée sur une AUTRE empreinte de layout que celle d'aujourd'hui est PÉRIMÉE (même règle que `comparaison.py:77`). LA RÉPONSE : `colonnes` — les grandeurs comparées, dans l'ordre, avec leur libellé et leur unité (SOURCE UNIQUE des en-têtes de l'écran et de la feuille « Comparatif » du classeur `GET calepinages/<pk>/comparatif.xlsx`, CALX341) ; `lignes` — un calepinage par ligne, dans l'ordre des `ids` : `id`, `titre`, `statut`, `layout_hash`, `modules`, `kwc`, `simule`, `motif` et les six clés de `CLES_PRODUCTION` (`comparaison.py:53` : `p50_kwh`, `p75_kwh`, `p90_kwh`, `performance_ratio`, `specific_yield_kwh_kwc`, `self_consumption_rate`) ; `refus` — les identifiants IGNORÉS, chacun avec son motif. NON SIMULÉ ⇒ `null`, JAMAIS `0` : un calepinage jamais simulé (ou dont la simulation est périmée) porte `simule: false`, ses six grandeurs de production à `null` et un `motif` qui dit pourquoi — un zéro se lirait « zéro kWh » là où personne n'a lancé de calcul. `modules`/`kwc` valent `null` quand la conception ne les dit pas. `motif` vaut `\"\"` pour un calepinage simulé et à jour. BORNÉ SOCIÉTÉ : un calepinage d'une AUTRE société — ou inexistant — n'est PAS comparé : il est listé dans `refus` avec le MÊME motif dans les deux cas (dire « il existe ailleurs » confirmerait son existence). Si tous les identifiants sont refusés, la réponse garde sa forme (`lignes: []`, `exemple_vide`). LES REFUS 400 NOMMENT LE CHAMP `ids` : plus de 5 identifiants ⇒ `refus_plus_de_cinq` (la borne est dite, et elle est celle de PV*SOL) ; liste absente, vide ou non entière ⇒ `refus_sans_ids` / `refus_ids_illisibles`. AUCUN MONTANT : cette porte ne compare aucun prix, aucun coût, aucune économie (D-CALX 5 — l'argent vit dans `apps/ventes`). Valeurs : des PLACEHOLDERS assumés, aucun chiffre client.",
+  "corps": {
+    "ids": [
+      1,
+      2,
+      3
+    ]
+  },
+  "exemple": {
+    "colonnes": [
+      {
+        "cle": "modules",
+        "libelle": "Modules posés",
+        "unite": "u"
+      },
+      {
+        "cle": "kwc",
+        "libelle": "Puissance crête",
+        "unite": "kWc"
+      },
+      {
+        "cle": "p50_kwh",
+        "libelle": "Production P50",
+        "unite": "kWh/an"
+      },
+      {
+        "cle": "p75_kwh",
+        "libelle": "Production P75",
+        "unite": "kWh/an"
+      },
+      {
+        "cle": "p90_kwh",
+        "libelle": "Production P90",
+        "unite": "kWh/an"
+      },
+      {
+        "cle": "performance_ratio",
+        "libelle": "Indice de performance (PR)",
+        "unite": ""
+      },
+      {
+        "cle": "specific_yield_kwh_kwc",
+        "libelle": "Productible spécifique",
+        "unite": "kWh/kWc/an"
+      },
+      {
+        "cle": "self_consumption_rate",
+        "libelle": "Taux d’autoconsommation",
+        "unite": ""
+      }
+    ],
+    "lignes": [
+      {
+        "id": 1,
+        "titre": "Calepinage d'essai A — toiture sud",
+        "statut": "valide",
+        "layout_hash": "abababababababababababababababababababababababababababababababab",
+        "modules": 12,
+        "kwc": 8.64,
+        "simule": true,
+        "motif": "",
+        "p50_kwh": 13000.0,
+        "p75_kwh": 12400.0,
+        "p90_kwh": 11900.0,
+        "performance_ratio": 0.799,
+        "specific_yield_kwh_kwc": 1504.6,
+        "self_consumption_rate": 0.62
+      },
+      {
+        "id": 2,
+        "titre": "Calepinage d'essai B — ombrière",
+        "statut": "brouillon",
+        "layout_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "modules": 20,
+        "kwc": 14.4,
+        "simule": false,
+        "motif": "Ce calepinage n'a pas été simulé : aucune production n'est publiée (les colonnes restent vides, jamais à 0).",
+        "p50_kwh": null,
+        "p75_kwh": null,
+        "p90_kwh": null,
+        "performance_ratio": null,
+        "specific_yield_kwh_kwc": null,
+        "self_consumption_rate": null
+      },
+      {
+        "id": 3,
+        "titre": "Calepinage d'essai C — toiture est-ouest",
+        "statut": "brouillon",
+        "layout_hash": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+        "modules": 16,
+        "kwc": 11.52,
+        "simule": false,
+        "motif": "La conception de ce calepinage a changé depuis sa dernière simulation : la production affichée serait celle d’un autre toit. Elle est donc traitée comme non simulée — relancez la simulation.",
+        "p50_kwh": null,
+        "p75_kwh": null,
+        "p90_kwh": null,
+        "performance_ratio": null,
+        "specific_yield_kwh_kwc": null,
+        "self_consumption_rate": null
+      }
+    ],
+    "refus": [
+      {
+        "id": 9,
+        "motif": "Calepinage introuvable dans cette société : il est ignoré, jamais comparé."
+      }
+    ]
+  },
+  "exemple_vide": {
+    "colonnes": [
+      {
+        "cle": "modules",
+        "libelle": "Modules posés",
+        "unite": "u"
+      },
+      {
+        "cle": "kwc",
+        "libelle": "Puissance crête",
+        "unite": "kWc"
+      },
+      {
+        "cle": "p50_kwh",
+        "libelle": "Production P50",
+        "unite": "kWh/an"
+      },
+      {
+        "cle": "p75_kwh",
+        "libelle": "Production P75",
+        "unite": "kWh/an"
+      },
+      {
+        "cle": "p90_kwh",
+        "libelle": "Production P90",
+        "unite": "kWh/an"
+      },
+      {
+        "cle": "performance_ratio",
+        "libelle": "Indice de performance (PR)",
+        "unite": ""
+      },
+      {
+        "cle": "specific_yield_kwh_kwc",
+        "libelle": "Productible spécifique",
+        "unite": "kWh/kWc/an"
+      },
+      {
+        "cle": "self_consumption_rate",
+        "libelle": "Taux d’autoconsommation",
+        "unite": ""
+      }
+    ],
+    "lignes": [],
+    "refus": [
+      {
+        "id": 9,
+        "motif": "Calepinage introuvable dans cette société : il est ignoré, jamais comparé."
+      }
+    ]
+  },
+  "refus_plus_de_cinq": {
+    "ids": "Au plus 5 calepinages peuvent être comparés à la fois (reçu : 6)."
+  },
+  "refus_sans_ids": {
+    "ids": "Indiquez au moins un calepinage à comparer (liste « ids » des identifiants)."
+  },
+  "refus_ids_illisibles": {
+    "ids": "La liste « ids » ne contient que des identifiants entiers positifs (reçu : « abc »)."
+  }
+}
