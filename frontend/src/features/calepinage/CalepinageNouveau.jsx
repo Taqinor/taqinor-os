@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, MapPin, Plus } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
@@ -40,7 +40,19 @@ import {
    bandeau y emmène.
    ========================================================================== */
 
-const CHAMPS = { lead: 'Lead', client: 'Client' }
+const CHAMPS = {
+  lead: 'Lead',
+  client: 'Client',
+  modele: 'Partir d’un modèle',
+  preset: 'Jeu de réglages société',
+}
+
+/* CALX352 — le corps de `POST calepinages/depuis-modele/` (CALX351) nomme ses
+   champs `<x>_id` : un refus serveur est ramené au champ de CET écran, pour
+   s'afficher SOUS lui (règle fondateur 08/09). */
+const CHAMPS_DU_CORPS = {
+  lead_id: 'lead', client_id: 'client', modele_id: 'modele', preset_id: 'preset',
+}
 
 /** Le message serveur, tel quel. Jamais un texte fabriqué par l'écran. */
 function erreursServeur(e) {
@@ -52,9 +64,37 @@ function erreursServeur(e) {
   for (const [cle, valeur] of Object.entries(data)) {
     const texte = Array.isArray(valeur) ? valeur.join(' ') : String(valeur)
     if (cle === 'detail' || cle === 'non_field_errors') global = texte
-    else parChamp[cle] = texte
+    else parChamp[CHAMPS_DU_CORPS[cle] || cle] = texte
   }
   return { ...parChamp, global }
+}
+
+/* CALX352 — les JEUX DE RÉGLAGES offerts à la création : miroir EXACT de
+   `services/creation.py::_jeux_disponibles` (CALX351). Deux formes coexistent
+   dans la section `presets` et les deux sont offertes : la liste `jeux`
+   (`[{id, nom}]`) et les préréglages NOMMÉS de la bibliothèque (`{<nom>: {…}}`,
+   dont l'id est le nom). `jeux`/`kits` et les interrupteurs (booléens) n'en
+   sont pas. Non exportée : même raison que `contexteDuLead` ci-dessous. */
+const ENTREES_RESERVEES = ['jeux', 'kits']
+
+function jeuxDeReglages(presets) {
+  const section = presets && typeof presets === 'object' ? presets : {}
+  const jeux = (Array.isArray(section.jeux) ? section.jeux : [])
+    .filter((jeu) => jeu && typeof jeu === 'object' && String(jeu.id ?? '').trim())
+    .map((jeu) => ({ id: String(jeu.id).trim(), nom: jeu.nom || String(jeu.id) }))
+  for (const [cle, valeur] of Object.entries(section)) {
+    if (ENTREES_RESERVEES.includes(cle)) continue
+    if (!valeur || typeof valeur !== 'object' || Array.isArray(valeur)) continue
+    jeux.push({ id: cle, nom: valeur.nom || cle })
+  }
+  return jeux
+}
+
+/** La liste servie par `modeles()`, paginée ou non. */
+function listeServie(res) {
+  const donnees = res?.data
+  if (Array.isArray(donnees)) return donnees
+  return Array.isArray(donnees?.results) ? donnees.results : []
 }
 
 /* Ce que l'écran sait du point de départ d'un LEAD — lu, jamais deviné.
@@ -96,6 +136,34 @@ export default function CalepinageNouveau() {
   const [envoi, setEnvoi] = useState(false)
   const refLead = useRef(null)
   const refClient = useRef(null)
+  // CALX352 — partir d'un MODÈLE et/ou d'un JEU DE RÉGLAGES société. Rien
+  // de choisi (le défaut) ⇒ la création d'aujourd'hui, strictement identique.
+  const [modeles, setModeles] = useState(null)
+  const [jeux, setJeux] = useState(null)
+  const [modeleId, setModeleId] = useState('')
+  const [presetId, setPresetId] = useState('')
+
+  useEffect(() => {
+    let annule = false
+    // Un choix indisponible (serveur muet, droit manquant) ne bloque JAMAIS
+    // la création ordinaire : la liste reste vide et l'écran le dit.
+    Promise.allSettled([
+      Promise.resolve().then(() => calepinageApi.calepinages.modeles()),
+      Promise.resolve().then(() => calepinageApi.parametres.get()),
+    ]).then(([resModeles, resParametres]) => {
+      if (annule) return
+      setModeles(resModeles.status === 'fulfilled' ? listeServie(resModeles.value) : [])
+      setJeux(resParametres.status === 'fulfilled'
+        ? jeuxDeReglages(resParametres.value?.data?.presets)
+        : [])
+    })
+    return () => { annule = true }
+  }, [])
+
+  const modeleChoisi = useMemo(
+    () => (modeles || []).find((m) => String(m.id) === String(modeleId)) || null,
+    [modeles, modeleId],
+  )
 
   const surLead = onglet === 'lead'
   const cibleId = surLead ? leadId : clientId
@@ -161,9 +229,20 @@ export default function CalepinageNouveau() {
     setEnvoi(true)
     setErreurs({})
     try {
-      const corps = { [champCible]: cibleId }
-      if (nom.trim()) corps.nom = nom.trim()
-      const res = await calepinageApi.calepinages.create(corps)
+      let res
+      if (modeleId || presetId) {
+        // CALX352 — la porte CALX351 : un modèle et/ou un jeu, sur le lead
+        // OU le client choisi. Ce qui n'est pas choisi n'est PAS envoyé.
+        const corps = { [`${champCible}_id`]: cibleId }
+        if (modeleId) corps.modele_id = modeleId
+        if (presetId) corps.preset_id = presetId
+        if (nom.trim()) corps.titre = nom.trim()
+        res = await calepinageApi.calepinages.depuisModele(corps)
+      } else {
+        const corps = { [champCible]: cibleId }
+        if (nom.trim()) corps.nom = nom.trim()
+        res = await calepinageApi.calepinages.create(corps)
+      }
       const id = res?.data?.id
       if (id) navigate(`/calepinage/${id}`)
       else setErreurs({ global: 'Le serveur n’a pas renvoyé l’identifiant du calepinage créé.' })
@@ -280,6 +359,82 @@ export default function CalepinageNouveau() {
             placeholder="Toiture — bâtiment principal"
             onChange={(e) => setNom(e.target.value)}
           />
+        </div>
+
+        {/* CALX352 — PARTIR D'UN MODÈLE et/ou d'un JEU DE RÉGLAGES société.
+            Les deux listes viennent du serveur (`modeles()`, `parametres`) ;
+            rien de choisi ⇒ la création d'aujourd'hui, inchangée. */}
+        <div className="space-y-1">
+          <Label htmlFor="cal-nouveau-modele">Partir d’un modèle (facultatif)</Label>
+          <select
+            id="cal-nouveau-modele"
+            className="block w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm"
+            value={modeleId}
+            aria-invalid={Boolean(erreurs.modele)}
+            disabled={modeles === null}
+            onChange={(e) => {
+              setModeleId(e.target.value)
+              setErreurs((avant) => ({ ...avant, modele: undefined, global: undefined }))
+            }}
+          >
+            <option value="">Aucun modèle — toiture vierge</option>
+            {(modeles || []).map((m) => (
+              <option key={m.id} value={String(m.id)}>
+                {m.titre || `Calepinage #${m.id}`}
+              </option>
+            ))}
+          </select>
+          {modeles !== null && modeles.length === 0 ? (
+            <p className="text-xs text-muted-foreground" data-testid="cal-nouveau-modeles-vide">
+              Aucun calepinage n’est marqué modèle : marquez-en un depuis la bibliothèque.
+            </p>
+          ) : null}
+          {modeleChoisi ? (
+            <div className="space-y-1 rounded-md border border-border p-3"
+              data-testid="cal-nouveau-modele-apercu">
+              <LigneContexte
+                libelle="Modules posés"
+                valeur={modeleChoisi.layout_nb_panneaux != null
+                  ? String(modeleChoisi.layout_nb_panneaux) : null}
+              />
+              <LigneContexte
+                libelle="Empreinte du document"
+                valeur={modeleChoisi.layout_hash
+                  ? String(modeleChoisi.layout_hash).slice(0, 12) : null}
+              />
+            </div>
+          ) : null}
+          {erreurs.modele ? (
+            <p className="text-sm text-destructive" data-testid="erreur-modele">{erreurs.modele}</p>
+          ) : null}
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="cal-nouveau-preset">Jeu de réglages société (facultatif)</Label>
+          <select
+            id="cal-nouveau-preset"
+            className="block w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm"
+            value={presetId}
+            aria-invalid={Boolean(erreurs.preset)}
+            disabled={jeux === null}
+            onChange={(e) => {
+              setPresetId(e.target.value)
+              setErreurs((avant) => ({ ...avant, preset: undefined, global: undefined }))
+            }}
+          >
+            <option value="">Aucun jeu de réglages</option>
+            {(jeux || []).map((jeu) => (
+              <option key={jeu.id} value={jeu.id}>{jeu.nom}</option>
+            ))}
+          </select>
+          {jeux !== null && jeux.length === 0 ? (
+            <p className="text-xs text-muted-foreground" data-testid="cal-nouveau-jeux-vide">
+              Aucun jeu de réglages n’est enregistré pour la société.
+            </p>
+          ) : null}
+          {erreurs.preset ? (
+            <p className="text-sm text-destructive" data-testid="erreur-preset">{erreurs.preset}</p>
+          ) : null}
         </div>
       </Card>
 

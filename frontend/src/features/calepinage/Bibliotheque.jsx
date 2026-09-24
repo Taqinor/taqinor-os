@@ -22,9 +22,11 @@ import { Badge, Card, Spinner } from '../../ui'
    TOUJOURS les quatre listes — seule l'ÉDITION des presets/favoris (les deux
    sections que `PUT /calepinage/parametres/` accepte SANS normaliseur dédié,
    `services/parametres.py::_normaliseurs`) est gardée par la permission.
-   Kits et modèles restent lecture seule ICI QUEL QUE SOIT LE DROIT : aucun
+   Les kits restent lecture seule ICI QUEL QUE SOIT LE DROIT : aucun
    endpoint d'écriture n'existe pour eux depuis cet écran — la tâche ne
-   l'invente pas, elle le DIT (PACT159, jamais une promesse en prose).
+   l'invente pas, elle le DIT (PACT159, jamais une promesse en prose). Les
+   MODÈLES, eux, ont leurs portes (CALX42) : « Partir de ce modèle » et, depuis
+   CALX352, « Marquer comme modèle » — toutes deux gardées par la permission.
    ========================================================================== */
 
 function Section({ titre, sousTitre, children }) {
@@ -323,6 +325,11 @@ export default function Bibliotheque() {
   const [refusDepart, setRefusDepart] = useState(null)
   const [creation, setCreation] = useState(false)
   const [calepinageCree, setCalepinageCree] = useState(null)
+  // CALX352 — « Marquer comme modèle » : l'identifiant SAISI, le refus du
+  // serveur (sous la saisie), l'envoi en cours.
+  const [marquageId, setMarquageId] = useState('')
+  const [refusMarquage, setRefusMarquage] = useState(null)
+  const [marquageEnCours, setMarquageEnCours] = useState(false)
 
   useEffect(() => {
     let annule = false
@@ -499,6 +506,32 @@ export default function Bibliotheque() {
       setRefusDepart(refusSection(e))
     } finally {
       setCreation(false)
+    }
+  }
+
+  // ── CALX352 — marquer un calepinage comme modèle ─────────────────────────
+  const marquerCommeModele = async () => {
+    const id = marquageId.trim()
+    // Un modèle se DÉSIGNE par l'identifiant d'un calepinage : ce qui n'en
+    // est pas un ne désigne rien, et n'est pas envoyé.
+    if (!/^\d+$/.test(id)) {
+      setRefusMarquage('Indiquez l’identifiant numérique du calepinage à marquer comme modèle.')
+      return
+    }
+    setMarquageEnCours(true)
+    setRefusMarquage(null)
+    try {
+      await calepinageApi.calepinages.marquerModele(id)
+      // La liste RELUE du serveur, jamais complétée à la main : c'est lui
+      // qui dit ce qui est modèle (drapeau `records.Tag`, CAL199).
+      const res = await calepinageApi.calepinages.modeles()
+      const liste = res?.data
+      setModeles(Array.isArray(liste) ? liste : (liste?.results ?? []))
+      setMarquageId('')
+    } catch (e) {
+      setRefusMarquage(refusSection(e))
+    } finally {
+      setMarquageEnCours(false)
     }
   }
 
@@ -737,6 +770,32 @@ export default function Bibliotheque() {
                 ))}
               </ul>
             )}
+
+          {/* CALX352 — MARQUER un calepinage comme modèle, depuis ici (la
+              porte `marquer-modele`, CALX42). La liste se relit ensuite. */}
+          {peutGerer ? (
+            <div className="mt-3 border border-border p-2" data-testid="cal-biblio-marquer">
+              <label className="block text-xs text-muted-foreground">
+                Calepinage à marquer comme modèle (identifiant)
+                <input type="text" value={marquageId} disabled={marquageEnCours}
+                  data-testid="cal-biblio-marquer-id"
+                  onChange={(e) => { setMarquageId(e.target.value); setRefusMarquage(null) }}
+                  className="mt-0.5 block w-full border border-border bg-transparent px-2 py-1 text-sm text-foreground" />
+              </label>
+              <button type="button" disabled={marquageEnCours}
+                className="mt-2 text-xs font-semibold underline"
+                data-testid="cal-biblio-marquer-bouton"
+                onClick={marquerCommeModele}>
+                Marquer comme modèle
+              </button>
+              {refusMarquage && (
+                <p className="mt-2 text-xs text-destructive" role="alert"
+                  data-testid="cal-biblio-marquer-erreur">
+                  {refusMarquage}
+                </p>
+              )}
+            </div>
+          ) : null}
 
           {/* CALX42 — le calepinage CRÉÉ, ouvert depuis ici. Lien simple :
               cet écran ne dépend d'aucun routeur, et ouvrir l'atelier d'un

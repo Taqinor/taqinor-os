@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   putParametres: vi.fn(),
   // CALX42 — « Partir de ce modèle » (action de LISTE).
   creerDepuisModele: vi.fn(),
+  // CALX352 — « Marquer comme modèle » (porte `marquer-modele`, CALX42).
+  marquerModele: vi.fn(),
 }))
 
 vi.mock('../../api/calepinageApi', () => ({
@@ -45,6 +47,7 @@ vi.mock('../../api/calepinageApi', () => ({
     calepinages: {
       modeles: (...a) => mocks.getModeles(...a),
       creerDepuisModele: (...a) => mocks.creerDepuisModele(...a),
+      marquerModele: (...a) => mocks.marquerModele(...a),
     },
   },
 }))
@@ -491,6 +494,59 @@ describe('CALX42 — créer un calepinage depuis un modèle', () => {
     expect(await screen.findByTestId('cal-biblio-modele-erreur'))
       .toHaveTextContent(MOTIF)
     expect(screen.queryByTestId('cal-biblio-modele-ouvrir')).toBeNull()
+  })
+})
+
+/* ============================================================================
+   CALX352 — « MARQUER COMME MODÈLE », DEPUIS LA BIBLIOTHÈQUE.
+   ========================================================================== */
+describe('CALX352 — marquer un calepinage comme modèle', () => {
+  const rendreBiblio = async (droit = true) => {
+    mocks.hasPermission.mockReturnValue(droit)
+    mocks.getParametres.mockResolvedValue({ data: REGLAGES })
+    mocks.getModeles.mockResolvedValue({ data: MODELES })
+    render(<Bibliotheque />)
+    await waitFor(() => expect(screen.getByTestId('cal-biblio-modele-5'))
+      .toBeInTheDocument())
+  }
+
+  it('sans `calepinage_gerer` : le geste n’est pas proposé', async () => {
+    await rendreBiblio(false)
+    expect(screen.queryByTestId('cal-biblio-marquer')).toBeNull()
+  })
+
+  it('marque le calepinage SAISI puis RELIT la liste du serveur', async () => {
+    mocks.marquerModele.mockResolvedValue({ data: { calepinage: 12, modele: true } })
+    await rendreBiblio()
+    mocks.getModeles.mockResolvedValue({
+      data: [...MODELES, { id: 12, titre: 'Hangar Maârif' }],
+    })
+
+    await userEvent.type(screen.getByTestId('cal-biblio-marquer-id'), '12')
+    await userEvent.click(screen.getByTestId('cal-biblio-marquer-bouton'))
+
+    await waitFor(() => expect(mocks.marquerModele).toHaveBeenCalledWith('12'))
+    expect(await screen.findByTestId('cal-biblio-modele-12'))
+      .toHaveTextContent('Hangar Maârif')
+    expect(screen.getByTestId('cal-biblio-marquer-id')).toHaveValue('')
+  })
+
+  it('un identifiant qui n’en est pas un n’est PAS envoyé : le motif est sous la saisie', async () => {
+    await rendreBiblio()
+    await userEvent.type(screen.getByTestId('cal-biblio-marquer-id'), 'villa')
+    await userEvent.click(screen.getByTestId('cal-biblio-marquer-bouton'))
+    expect(await screen.findByTestId('cal-biblio-marquer-erreur'))
+      .toHaveTextContent(/identifiant numérique/)
+    expect(mocks.marquerModele).not.toHaveBeenCalled()
+  })
+
+  it('refus serveur : le motif s’affiche tel quel, sous la saisie', async () => {
+    const MOTIF = 'Pas trouvé.'
+    mocks.marquerModele.mockRejectedValue({ response: { status: 404, data: { detail: MOTIF } } })
+    await rendreBiblio()
+    await userEvent.type(screen.getByTestId('cal-biblio-marquer-id'), '999')
+    await userEvent.click(screen.getByTestId('cal-biblio-marquer-bouton'))
+    expect(await screen.findByTestId('cal-biblio-marquer-erreur')).toHaveTextContent(MOTIF)
   })
 })
 
