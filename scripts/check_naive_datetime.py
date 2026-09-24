@@ -156,7 +156,12 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # dans crm/models.py : les deux séries d'insertions se cumulent, la
     # ligne réelle du fichier fusionné est 2854. MÊME champ, déclaration
     # identique. Bug-class #34.
-    "backend/django_core/apps/crm/models.py:2854",  # CommissionPartenaire.paye_le
+    # Remappé 2854->2902->2922 (vague CAD 2, 24/09/2026 : CAD144 contact
+    # secondaire + CAD158 + CAD65 civilite insérés AVANT CommissionPartenaire)
+    # (note d'origine : CAD144 contact
+    # secondaire + CAD158 facture_hiver insérés AVANT CommissionPartenaire)
+    # — MÊME champ, déclaration identique avant/après. Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2922",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
