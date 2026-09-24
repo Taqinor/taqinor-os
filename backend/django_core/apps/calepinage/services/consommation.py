@@ -43,6 +43,8 @@ __all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
 #: D'où vient le montant d'un mois. ``None`` = mois vide (rien de connu).
 SOURCES_MOIS = ('facture', 'interpole', 'saisi')
 
+#: Les douze mois calendaires, 1 (janvier) à 12 (décembre) — convention
+#: universelle, jamais un défaut de source de données.
 MOIS = tuple(range(1, 13))
 
 #: Les deux mois que le CRM saisit RÉELLEMENT : janvier porte la facture

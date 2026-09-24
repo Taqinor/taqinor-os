@@ -238,6 +238,17 @@ GARDES = {
         ('Test the onglets-tested checker itself (CALX383)',
          'python -m unittest scripts.tests.test_check_onglets_calepinage_testes -v',
          '.'),
+        # CALX384 (lot 8, 23/09/2026) — meme discipline que lestage.py:85
+        # NOMBRES_DE_FORME (CAL163), etendue a tout le paquet services/ (130
+        # modules) : ZERO exception (mesure : la discipline est deja tenue a
+        # 100% des lors qu'un commentaire `#:` couvre le BLOC CONTIGU qu'il
+        # introduit, pas seulement la ligne suivante).
+        ('Check provenance constantes calepinage (aucune constante numérique nue, CALX384)',
+         'python scripts/check_calepinage_provenance_constantes.py',
+         '.'),
+        ('Test the constants-provenance checker itself (CALX384)',
+         'python -m unittest scripts.tests.test_check_calepinage_provenance_constantes -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
