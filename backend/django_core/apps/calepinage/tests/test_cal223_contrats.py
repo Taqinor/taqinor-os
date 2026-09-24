@@ -285,6 +285,14 @@ SANS_PRODUCTEUR_PUR = {
         'versions du calepinage en base — les écarts de l’exemple sont '
         'RECALCULÉS depuis deux documents v2 en mémoire par '
         'apps/calepinage/tests/test_calx345_diff_versions.py',
+
+    # CALX334
+    'calepinage_approbation.json':
+        'décision d’approbation d’un calepinage : son producteur '
+        '(services/approbation.py, CALX347) lit et écrit le champ dédié du '
+        'calepinage et la permission `calepinage_approuver` en base — la '
+        'forme est affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_calx347_approbation.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -313,6 +321,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # CALX345 a livré ``GET calepinages/<pk>/versions/<id>/diff/``
     # (``views/versions_diff.py``) : ``calepinage_versions_diff.json`` en est
     # SORTI.
+    # CALX334 — ``GET/POST calepinages/<pk>/approbation/`` arrive avec CALX347.
+    'calepinage_approbation.json': 'CALX347',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

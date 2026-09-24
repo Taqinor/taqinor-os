@@ -1,0 +1,56 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/approbation/",
+  "pourquoi": "CALX334 — L'APPROBATION D'UN CALEPINAGE, figée AVANT sa vue (PACT10 : le contrat part SEUL ; producteur `services/approbation.py` + `views/approbation.py`, CALX347 ; écran `atelier/Approbation.jsx`, CALX349). CONSTAT : le module n'a que deux codes de permission (`apps/calepinage/permissions.py` : `calepinage_voir`, `calepinage_gerer`, déclarés dans `apps/roles/models.py`) — « qui peut écrire » vaut « qui peut valider » ; `services/feu_vert.py` ne vérifie qu'une visite technique validée, jamais un second regard interne. PARITÉ : OpenSolar (https://www.opensolar.com/crm — « roles, and permissions that match how your team runs projects »). LA PORTE : `GET` / `POST calepinages/<pk>/approbation/` (sous-ressource en `@action`, une seule forme d'URL). Les deux méthodes rendent la MÊME forme — `{etat, decide_par, decide_le, motif, exigee}` : le POST rend l'état APRÈS la décision, l'écran n'enchaîne aucun second appel. Corps du POST : `{decision: 'approuve' | 'refuse', motif}` (`corps_approuver`, `corps_refuser`). LES CLÉS : `etat` vaut `null` TANT QUE PERSONNE N'A DÉCIDÉ (`exemple_vide`), sinon `approuve` ou `refuse` ; `decide_par` est la personne `{id, nom_complet}` (même forme que `cree_par` du détail CAL17), `null` sans décision ; `decide_le` est l'horodatage ISO de la décision, `null` sans décision ; `motif` est le texte SAISI (exigé pour un refus, facultatif pour une approbation — `\"\"` alors), `null` sans décision ; `exigee` reflète le RÉGLAGE SOCIÉTÉ (« une approbation est exigée avant … ») — `false` tant que la société n'a rien saisi : un réglage neuf garde le comportement d'aujourd'hui (D-CALX 10), aucune approbation n'est imposée par défaut. La décision vit dans un CHAMP DÉDIÉ du calepinage (CALX347), jamais dans `Calepinage.resultat`, qui appartient au moteur. LES DROITS : lire exige `calepinage_voir` ; décider exige le code DISTINCT `calepinage_approuver` (CALX347) — un porteur de `calepinage_gerer` SANS ce code reçoit 403 (`refus_sans_code_approbation`, message standard du socle DRF). Le rôle relecteur démarre à ZÉRO titulaire tant qu'il n'est pas attribué (décision déjà tranchée, en-tête du groupe CALX). LES REFUS 400 NOMMENT LE CHAMP : un refus sans motif ⇒ `motif` (`refus_refus_sans_motif`) ; une décision inconnue ⇒ `decision` (`refus_decision_inconnue`) ; une valeur d'origine AUTOMATIQUE encore à l'état de suggestion non acceptée (hauteur OpenStreetMap, CALX106 ; pente LiDAR, CALX29) ⇒ UNE clé PAR CHAMP en attente, nommée par son chemin dans le document (`refus_suggestions_en_attente`) — Aurora impose la même revue humaine avant la pièce d'exécution. Chaque décision écrit une note au chatter du calepinage. Aucun statut de devis ne bouge (règle #4). Valeurs : des PLACEHOLDERS assumés.",
+  "code_permission_decider": "calepinage_approuver",
+  "corps_approuver": {
+    "decision": "approuve",
+    "motif": "Conception relue : conforme au relevé."
+  },
+  "corps_refuser": {
+    "decision": "refuse",
+    "motif": "Obstacle nord non relevé : à reprendre."
+  },
+  "exemple": {
+    "etat": "approuve",
+    "decide_par": {
+      "id": 2,
+      "nom_complet": "Relecteur d'essai"
+    },
+    "decide_le": "2026-09-21T10:30:00Z",
+    "motif": "Conception relue : conforme au relevé.",
+    "exigee": true
+  },
+  "exemple_vide": {
+    "etat": null,
+    "decide_par": null,
+    "decide_le": null,
+    "motif": null,
+    "exigee": false
+  },
+  "exemple_refuse": {
+    "etat": "refuse",
+    "decide_par": {
+      "id": 2,
+      "nom_complet": "Relecteur d'essai"
+    },
+    "decide_le": "2026-09-21T10:45:00Z",
+    "motif": "Obstacle nord non relevé : à reprendre.",
+    "exigee": true
+  },
+  "refus_sans_code_approbation": {
+    "statut_http": 403,
+    "corps": {
+      "detail": "Vous n'avez pas la permission d'effectuer cette action."
+    }
+  },
+  "refus_refus_sans_motif": {
+    "motif": "Un refus d'approbation exige un motif : dites ce qui est à reprendre."
+  },
+  "refus_decision_inconnue": {
+    "decision": "Décision inconnue : « valide ». Décisions admises : approuve, refuse."
+  },
+  "refus_suggestions_en_attente": {
+    "buildings[0].hauteurM": "Hauteur proposée par OpenStreetMap, jamais acceptée : acceptez-la ou saisissez-la avant d'approuver.",
+    "zones[1].pitchDeg": "Pente suggérée par le LiDAR IGN, jamais acceptée : acceptez-la ou saisissez-la avant d'approuver."
+  }
+}
