@@ -65,10 +65,18 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 
 #: Mêmes questions, réservées au segment agricole : aucune section du
 #: questionnaire client ne les porte, et elles n'ont de sens que pour un lead
-#: de pompage.
+#: de pompage. CAD175 — la seconde livraison du panneau y ajoute la pompe
+#: elle-même (puissance, HMT, débit voulu : les trois entrées du générateur
+#: en mode agricole, colonnes `pompe_*` déjà existantes), en tête.
 CHAMPS_ORAUX_AGRICOLE = (
+    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
 )
+
+#: CAD175 — industriel et commercial : la puissance souscrite est une
+#: question PREMIÈRE (en résidentiel elle ne se pose qu'en dernier recours,
+#: la photo du compteur suffit). Colonne existante (vague 2, CAD154).
+CHAMPS_ORAUX_PRO = ('compteur_puissance_kva',)
 
 #: (clé de couche, libellé, booléen déclaratif du lead, grandeurs qui rendent
 #: la couche composable). La clé de couche est celle que
@@ -173,8 +181,12 @@ def _question(lead, champ, section):
 def champs_oraux_du_segment(lead):
     """Les questions orales qui s'appliquent à CE lead, dans l'ordre."""
     champs = list(CHAMPS_ORAUX)
-    if getattr(lead, 'type_installation', None) == Lead.TypeInstallation.AGRICOLE:
+    segment = getattr(lead, 'type_installation', None)
+    if segment == Lead.TypeInstallation.AGRICOLE:
         champs += list(CHAMPS_ORAUX_AGRICOLE)
+    elif segment in (Lead.TypeInstallation.INDUSTRIEL,
+                     Lead.TypeInstallation.COMMERCIAL):
+        champs += list(CHAMPS_ORAUX_PRO)
     return tuple(champs)
 
 

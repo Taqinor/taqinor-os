@@ -89,7 +89,9 @@ def _champs(questions):
 # ── Garde 1 — jamais une question répondue, jamais une valeur par défaut ────
 class GardeUnJamaisReposeeJamaisParDefaut(SimpleTestCase):
     SEGMENTS = (None, Lead.TypeInstallation.RESIDENTIEL,
-                Lead.TypeInstallation.AGRICOLE)
+                Lead.TypeInstallation.AGRICOLE,
+                Lead.TypeInstallation.INDUSTRIEL,
+                Lead.TypeInstallation.COMMERCIAL)
 
     def test_chaque_colonne_repondue_sort_des_questions_et_se_relit(self):
         for segment in self.SEGMENTS:

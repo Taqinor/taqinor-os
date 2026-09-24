@@ -28,14 +28,37 @@
 // résidentiel est servi, marqué « segment à confirmer ». Un segment connu autre
 // que le résidentiel est REFUSÉ avec un message explicite : jamais une page
 // vide, jamais un script résidentiel déguisé.
+//
+// CAD175 — LA SECONDE LIVRAISON EST FAITE : l'agricole (pompage) et
+// l'industriel/commercial ont chacun LEUR jeu de questions (mêmes trois
+// pièces que le résidentiel : filtrées par ce qui manque, script par touche,
+// écriture par le chemin de la fiche). Seule une clé de segment INCONNUE est
+// encore refusée. Garde-fou tenu : sur ces deux segments, AUCUN chiffre
+// d'économie n'est annoncé — le moteur horaire ne sait pas les traiter.
 
-/** Clé `crm.Lead.TypeInstallation` du seul segment livré aujourd'hui. */
+/** Clés `crm.Lead.TypeInstallation`. */
 export const SEGMENT_RESIDENTIEL = 'residentiel'
+export const SEGMENT_AGRICOLE = 'agricole'
+export const SEGMENTS_PRO = Object.freeze(['industriel', 'commercial'])
+/** Les segments dont le panneau guidé est livré (CAD161 puis CAD175). */
+export const SEGMENTS_LIVRES = Object.freeze([
+  SEGMENT_RESIDENTIEL, SEGMENT_AGRICOLE, ...SEGMENTS_PRO,
+])
 
 /** Le panneau guidé est-il livré pour ce segment ? (vide = résidentiel). */
 export function segmentLivre(segment) {
   const valeur = typeof segment === 'string' ? segment.trim() : ''
-  return valeur === '' || valeur === SEGMENT_RESIDENTIEL
+  return valeur === '' || SEGMENTS_LIVRES.includes(valeur)
+}
+
+/** La FAMILLE de questions d'un segment livré : `residentiel` (vide
+ *  compris), `agricole` ou `pro` (industriel et commercial partagent la
+ *  même variante B2B, comme les gabarits de messages — CAD126). */
+export function familleDuSegment(segment) {
+  const valeur = typeof segment === 'string' ? segment.trim() : ''
+  if (valeur === SEGMENT_AGRICOLE) return 'agricole'
+  if (SEGMENTS_PRO.includes(valeur)) return 'pro'
+  return 'residentiel'
 }
 
 /** Bandeau affiché quand le lead n'a pas de segment saisi. */
@@ -48,9 +71,9 @@ export const MESSAGE_SEGMENT_A_CONFIRMER =
  *  clé : un refus ne survient que pour un segment NON vide). */
 export function messageSegmentNonLivre(panneau) {
   const nom = panneau?.segment_libelle || panneau?.segment
-  return "Le script d'appel guidé couvre le résidentiel pour l'instant. Le "
-    + `segment « ${nom} » arrive dans une prochaine livraison : posez vos `
-    + 'questions depuis la fiche du lead.'
+  return "Le script d'appel guidé couvre le résidentiel, l'agricole et "
+    + `l'industriel/commercial. Le segment « ${nom} » n'en fait pas partie : `
+    + 'posez vos questions depuis la fiche du lead.'
 }
 
 // ── CAD162 — l'ordre de l'appel 1 ───────────────────────────────────────────
@@ -112,6 +135,48 @@ export function estToucheDeRappel(touche) {
   return !CLES_TOUCHES_APPEL_1.includes(touche.template_cle || '')
 }
 
+// ── CAD175 — l'ordre des questions agricoles et industrielles ──────────────
+// Mêmes règles que l'appel 1 résidentiel : des étapes nommées, CHAQUE colonne
+// est une colonne `crm.Lead` existante servie par le contrat (aucune n'est
+// fabriquée ici), et une étape déjà répondue saute. Cinq étapes au plus,
+// comme le budget de l'appel 1 (l'ouverture promet « deux minutes »).
+// Agricole : la pompe d'abord (puissance, HMT, débit voulu — les trois
+// entrées du générateur en mode agricole), puis les heures de pompage et
+// l'énergie actuelle (le carburant consommé n'a de sens qu'ensuite).
+export const ORDRE_AGRICOLE = Object.freeze([
+  Object.freeze({ etape: 'pompe', champs: Object.freeze(['pompe_cv']) }),
+  Object.freeze({ etape: 'hmt', champs: Object.freeze(['pompe_hmt_m']) }),
+  Object.freeze({ etape: 'debit', champs: Object.freeze(['pompe_debit_m3h']) }),
+  Object.freeze({ etape: 'heures_pompage', champs: Object.freeze(['pompage_heures_jour']) }),
+  Object.freeze({
+    etape: 'energie_actuelle',
+    champs: Object.freeze(['pompe_alim_actuelle', 'carburant_litres_mois']),
+  }),
+])
+
+// Industriel et commercial : la consommation en kWh (la donnée pro qui prime
+// sur les dirhams, CAD166), la puissance souscrite du compteur (question
+// PREMIÈRE en pro), la surface disponible, puis qui décide. Les réponses
+// pro qui n'ont AUCUNE colonne (tension, rythme d'activité, groupe
+// électrogène, process critiques) sont des consignes À NOTER, plus bas.
+export const ORDRE_PRO = Object.freeze([
+  Object.freeze({ etape: 'conso', champs: Object.freeze(['conso_mensuelle_kwh']) }),
+  Object.freeze({ etape: 'puissance_souscrite', champs: Object.freeze(['compteur_puissance_kva']) }),
+  Object.freeze({ etape: 'surface', champs: Object.freeze(['surface_toiture_m2']) }),
+  Object.freeze({ etape: 'decideur', champs: Object.freeze(['decideur']) }),
+])
+
+/** Les étapes d'un panneau : résidentiel (appel 1, puis la question du
+ *  rappel), agricole ou industriel/commercial (CAD175). */
+export function etapesDuPanneau(panneau) {
+  const famille = familleDuSegment(panneau?.segment)
+  if (famille === 'agricole') return ORDRE_AGRICOLE
+  if (famille === 'pro') return ORDRE_PRO
+  return estToucheDeRappel(panneau?.touche)
+    ? [...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL]
+    : ORDRE_APPEL_1
+}
+
 /** Les étapes à poser sur CET appel, dans l'ordre figé, filtrées par ce qui
  *  est déjà renseigné. Chaque entrée reprend TELLE QUELLE l'entrée du contrat
  *  (`champ`, `section`, `libelle`, `question`, `choix`) de la première colonne
@@ -126,9 +191,7 @@ export function questionsDeLAppel(panneau) {
       aPoser.set(entree.champ, entree)
     }
   }
-  const etapes = estToucheDeRappel(panneau?.touche)
-    ? [...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL]
-    : ORDRE_APPEL_1
+  const etapes = etapesDuPanneau(panneau)
   const out = []
   for (const { etape, champs } of etapes) {
     const entrees = champs.map((champ) => aPoser.get(champ)).filter(Boolean)
@@ -449,12 +512,62 @@ export function messageErreurServeur(entree, donnees) {
   return `« ${entree?.libelle || entree?.champ} » : ${message}`
 }
 
+// ── CAD175 — ce qui se note sans colonne, et ce qui ne se chiffre pas ──────
+// Des réponses agricoles et industrielles attendues au téléphone n'ont AUCUNE
+// colonne `crm.Lead` (la vague 1 a écarté la tension bt/mt, le rythme
+// d'activité et le week-end — CAD160 ; rien ne porte la force motrice, la
+// culture, le groupe électrogène ni les process). Le panneau ne peut donc
+// pas les ÉCRIRE : il les liste comme consignes À NOTER dans la note de
+// l'appel (réponses « Fait »), jamais comme des champs inventés. Textes ✎
+// dans `docs/crm/messages_meryem.md` (re-dérivés par la garde CAD153).
+export const A_NOTER_FORCE_MOTRICE = 'À noter dans la note d’appel : le '
+  + 'compteur de la pompe est-il en abonnement force motrice ?'
+export const A_NOTER_SURFACE_CULTURE = 'À noter dans la note d’appel : la '
+  + 'surface irriguée et la culture.'
+export const A_NOTER_TENSION = 'À noter dans la note d’appel : le site est-il '
+  + 'raccordé en basse ou en moyenne tension ?'
+export const A_NOTER_RYTHME = 'À noter dans la note d’appel : le rythme '
+  + "d'activité (journée, jusqu'au soir, en continu) et le week-end."
+export const A_NOTER_GROUPE = 'À noter dans la note d’appel : le site '
+  + 'a-t-il un groupe électrogène ?'
+export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
+  + 'critiques, qui ne doivent jamais s’arrêter.'
+
+/** Les consignes à noter, par famille (le résidentiel n'en a aucune). */
+export const A_NOTER_PAR_FAMILLE = Object.freeze({
+  residentiel: Object.freeze([]),
+  agricole: Object.freeze([A_NOTER_FORCE_MOTRICE, A_NOTER_SURFACE_CULTURE]),
+  pro: Object.freeze([
+    A_NOTER_TENSION, A_NOTER_RYTHME, A_NOTER_GROUPE, A_NOTER_PROCESS,
+  ]),
+})
+
+// Garde-fou de CAD175 : le moteur horaire ne sait traiter ni l'agricole ni
+// l'industriel (aucune silhouette, barème « BT DOMESTIQUE », aucun barème
+// moyenne tension sourcé) — AUCUN chiffre d'économie ne s'annonce sur ces
+// segments. Et l'économie de carburant ne se calcule que sur ce que le client
+// DÉCLARE (CAD173, Q17) : aucun prix de gasoil de référence n'existe.
+export const AUCUNE_ESTIMATION_SEGMENT = "Aucun chiffre d'économie au "
+  + 'téléphone pour ce segment : le calcul ne sait pas encore le traiter.'
+export const CARBURANT_DECLARE_SEUL = "L'économie de carburant se calcule "
+  + 'uniquement sur ce que le client déclare (litres ou dirhams par mois) — '
+  + 'jamais sur un prix de gasoil supposé.'
+
+export const GARDE_FOUS_PAR_FAMILLE = Object.freeze({
+  residentiel: Object.freeze([]),
+  agricole: Object.freeze([AUCUNE_ESTIMATION_SEGMENT, CARBURANT_DECLARE_SEUL]),
+  pro: Object.freeze([AUCUNE_ESTIMATION_SEGMENT]),
+})
+
 /** Ce que le panneau affiche pour CE lead.
  *  - segment non livré : `{ livre: false, segment, message }` ;
- *  - résidentiel (ou segment vide) : `{ livre: true, segment,
- *    segmentAConfirmer, avertissement, phase, accroche, questions,
- *    objections, interdits, issues, enTete, profilSuppose }`, `phase`
- *    valant `'appel_1'` ou `'rappel'`.
+ *  - segment livré (CAD161 résidentiel, CAD175 agricole et pro) :
+ *    `{ livre: true, segment, famille, segmentAConfirmer, avertissement,
+ *    phase, accroche, questions, objections, interdits, issues, enTete,
+ *    profilSuppose, fenetre, aNoter, gardeFous }`, `phase` valant
+ *    `'appel_1'` ou `'rappel'`. La question « en tête » (Q5, présence en
+ *    journée) est RÉSIDENTIELLE : le profil d'un site pro vient de son
+ *    rythme d'activité, pas de la présence à la maison.
  *  `options.touche` (CAD152) : la touche de la LIGNE d'où le panneau est
  *  ouvert — elle prime sur la prochaine touche du lead servie par le contrat
  *  (la frise peut ouvrir une touche à venir : sa phase est la sienne). */
@@ -465,11 +578,13 @@ export function guidanceAppel(panneau, options = {}) {
   }
   const touche = options.touche !== undefined ? options.touche : panneau?.touche
   const vu = { ...(panneau || {}), touche }
+  const famille = familleDuSegment(segment)
   const segmentAConfirmer = !segment
-  const enTete = questionEnTete(vu)
+  const enTete = famille === 'residentiel' ? questionEnTete(vu) : null
   return {
     livre: true,
     segment,
+    famille,
     segmentAConfirmer,
     avertissement: segmentAConfirmer ? MESSAGE_SEGMENT_A_CONFIRMER : null,
     phase: estToucheDeRappel(touche) ? 'rappel' : 'appel_1',
@@ -481,5 +596,7 @@ export function guidanceAppel(panneau, options = {}) {
     enTete,
     profilSuppose: Boolean(enTete),
     fenetre: fenetreAppel(vu),
+    aNoter: A_NOTER_PAR_FAMILLE[famille],
+    gardeFous: GARDE_FOUS_PAR_FAMILLE[famille],
   }
 }

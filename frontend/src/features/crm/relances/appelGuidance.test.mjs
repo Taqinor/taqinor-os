@@ -39,27 +39,39 @@ test('CAD161 — un lead résidentiel reçoit le panneau guidé', () => {
   assert.equal(g.avertissement, null)
 })
 
-test('CAD161 — un lead agricole est refusé PROPREMENT : message explicite, jamais une page vide', () => {
+// CAD175 — la SECONDE livraison est faite : l'agricole et l'industriel/
+// commercial reçoivent LEUR panneau ; seule une clé de segment inconnue est
+// encore refusée — proprement.
+test('CAD175 — un lead agricole reçoit le panneau AGRICOLE (jamais un script résidentiel déguisé)', () => {
   const panneau = exemple('exemple_sans_cadence_active')
   assert.equal(panneau.segment, 'agricole')
   const g = guidanceAppel(panneau)
+  assert.equal(g.livre, true)
+  assert.equal(g.famille, 'agricole')
+  assert.deepEqual(g.questions.map((q) => q.champ), ['pompage_heures_jour'])
+  assert.equal(g.enTete, null, 'la présence à la maison n\'est pas une question de pompage')
+  assert.ok(g.gardeFous.includes(guidance.AUCUNE_ESTIMATION_SEGMENT))
+  assert.ok(g.gardeFous.includes(guidance.CARBURANT_DECLARE_SEUL))
+})
+
+test('CAD175 — industriel et commercial partagent le jeu PRO', () => {
+  for (const segment of ['industriel', 'commercial']) {
+    const g = guidanceAppel({ ...exemple(), segment, segment_libelle: segment })
+    assert.equal(g.livre, true, segment)
+    assert.equal(g.famille, 'pro', segment)
+    assert.deepEqual(g.gardeFous, [guidance.AUCUNE_ESTIMATION_SEGMENT], segment)
+  }
+})
+
+test('CAD161 — un segment INCONNU est refusé PROPREMENT : message explicite, jamais une page vide', () => {
+  const g = guidanceAppel({ ...exemple(), segment: 'hotellerie', segment_libelle: 'Hôtellerie' })
   assert.equal(g.livre, false)
-  assert.equal(g.segment, 'agricole')
   assert.ok(g.message.trim().length > 0)
   // CAD153 — `includes`, pas une assertion regex : ce fichier lit aussi
   // `messages_meryem.md` (une DOC, pas du code source), et la garde
   // `check_tests_source_regex.py` refuse l'association lecture + regex.
-  assert.ok(g.message.includes('résidentiel'), g.message)
-  assert.ok(g.message.includes('« Agricole »'), g.message)
-  assert.equal(g.questions, undefined, 'aucun script résidentiel déguisé')
-})
-
-test('CAD161 — industriel et commercial sont refusés avec le libellé servi', () => {
-  for (const [segment, segment_libelle] of [['industriel', 'Industriel'], ['commercial', 'Commercial']]) {
-    const g = guidanceAppel({ ...exemple(), segment, segment_libelle })
-    assert.equal(g.livre, false, segment)
-    assert.ok(g.message.includes(`« ${segment_libelle} »`), g.message)
-  }
+  assert.ok(g.message.includes('« Hôtellerie »'), g.message)
+  assert.equal(g.questions, undefined, 'aucun script déguisé')
 })
 
 test('CAD161 — un segment non saisi reçoit le résidentiel, marqué « à confirmer »', () => {
@@ -69,19 +81,20 @@ test('CAD161 — un segment non saisi reçoit le résidentiel, marqué « à con
   assert.equal(g.avertissement, MESSAGE_SEGMENT_A_CONFIRMER)
 })
 
-test('CAD161 — segmentLivre : seul le résidentiel (ou le vide) est livré', () => {
+test('CAD161/CAD175 — segmentLivre : les quatre segments connus (et le vide) sont livrés', () => {
   assert.equal(segmentLivre('residentiel'), true)
   assert.equal(segmentLivre(null), true)
   assert.equal(segmentLivre(''), true)
-  assert.equal(segmentLivre('agricole'), false)
-  assert.equal(segmentLivre('industriel'), false)
-  assert.equal(segmentLivre('commercial'), false)
+  assert.equal(segmentLivre('agricole'), true)
+  assert.equal(segmentLivre('industriel'), true)
+  assert.equal(segmentLivre('commercial'), true)
+  assert.equal(segmentLivre('hotellerie'), false)
 })
 
 test('CAD161 — les textes du refus ne portent ni crochet ni chiffre', () => {
   const textes = [
     MESSAGE_SEGMENT_A_CONFIRMER,
-    messageSegmentNonLivre({ segment: 'agricole', segment_libelle: 'Agricole' }),
+    messageSegmentNonLivre({ segment: 'hotellerie', segment_libelle: 'Hôtellerie' }),
   ]
   for (const texte of textes) {
     assert.doesNotMatch(texte, /[[\]]/)
@@ -404,6 +417,66 @@ test('CAD151 — debrief_visite existe dans messages_meryem.md, sans aucun chiff
   const gabarits = gabaritsFr()
   assert.ok('debrief_visite' in gabarits)
   assert.doesNotMatch(gabarits.debrief_visite, /[0-9٠-٩۰-۹]/)
+})
+
+// ── CAD175 — l'ordre des questions agricoles et industrielles ──────────────
+
+/** Un lead VIERGE du segment : tout ce que le serveur sert (sections du
+ *  questionnaire + questions orales du segment), à la forme du contrat. */
+function leadVierge175(segment, orauxSegment) {
+  const base = leadVierge(null)
+  const gabarit = base.champs_a_poser[0]
+  const oraux = orauxSegment.map((champ) => ({
+    ...gabarit, champ, section: null, libelle: `libellé ${champ}`, question: '', choix: null,
+  }))
+  return { ...base, segment, segment_libelle: segment, champs_a_poser: [...base.champs_a_poser, ...oraux] }
+}
+
+const ORAUX_AGRICOLE = [
+  'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h', 'pompage_heures_jour',
+  'pompe_alim_actuelle', 'carburant_litres_mois',
+]
+
+test('CAD175 — agricole vierge : pompe, HMT, débit, heures, énergie actuelle — dans cet ordre', () => {
+  const g = guidanceAppel(leadVierge175('agricole', ORAUX_AGRICOLE))
+  assert.deepEqual(g.questions.map((q) => q.champ),
+    ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h', 'pompage_heures_jour', 'pompe_alim_actuelle'])
+  // Le carburant complète l'énergie actuelle : une seule question.
+  assert.deepEqual(g.questions[4].complements.map((q) => q.champ), ['carburant_litres_mois'])
+  assert.ok(g.questions.length <= BUDGET_APPEL_1)
+  // Aucune question résidentielle ne se glisse (facture, présence, toit).
+  assert.ok(!g.questions.some((q) => CINQ.includes(q.champ)))
+  assert.deepEqual(g.aNoter, [guidance.A_NOTER_FORCE_MOTRICE, guidance.A_NOTER_SURFACE_CULTURE])
+})
+
+test('CAD175 — industriel vierge : conso, puissance souscrite, surface, décideur — jamais la présence', () => {
+  const g = guidanceAppel(leadVierge175('industriel', ['compteur_puissance_kva']))
+  assert.deepEqual(g.questions.map((q) => q.champ),
+    ['conso_mensuelle_kwh', 'compteur_puissance_kva', 'surface_toiture_m2', 'decideur'])
+  assert.equal(g.enTete, null)
+  assert.equal(g.profilSuppose, false)
+  assert.equal(g.aNoter.length, 4)
+})
+
+test('CAD175 — pro : une réponse déjà sur la fiche ne se repose pas, l\'ordre reste figé', () => {
+  const panneau = leadVierge175('commercial', ['compteur_puissance_kva'])
+  panneau.champs_a_poser = panneau.champs_a_poser.filter((q) => q.champ !== 'conso_mensuelle_kwh')
+  panneau.prefill = { conso_mensuelle_kwh: 4200 }
+  assert.deepEqual(guidanceAppel(panneau).questions.map((q) => q.champ),
+    ['compteur_puissance_kva', 'surface_toiture_m2', 'decideur'])
+})
+
+test('CAD175 — consignes à noter et garde-fous : ni chiffre ni crochet', () => {
+  const textes = [
+    ...guidance.A_NOTER_PAR_FAMILLE.agricole, ...guidance.A_NOTER_PAR_FAMILLE.pro,
+    guidance.AUCUNE_ESTIMATION_SEGMENT, guidance.CARBURANT_DECLARE_SEUL,
+  ]
+  for (const texte of textes) {
+    assert.doesNotMatch(texte, /[0-9٠-٩۰-۹]/, texte)
+    assert.doesNotMatch(texte, /[[\]]/, texte)
+  }
+  assert.deepEqual(guidance.A_NOTER_PAR_FAMILLE.residentiel, [])
+  assert.deepEqual(guidance.GARDE_FOUS_PAR_FAMILLE.residentiel, [])
 })
 
 // ── CAD155 — la fenêtre du jour, découpée, jamais inventée ─────────────────

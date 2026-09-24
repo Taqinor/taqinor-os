@@ -428,6 +428,14 @@ NON_COMPTE_TITRE : Ce que le chiffre ne compte pas
 NON_COMPTE_FUTURES_CHARGES : Charges futures cochées sur le site (clim, véhicule électrique, pompe) : servent au dossier et à la visite, pas au chiffre.
 NON_COMPTE_TRANCHE_ONEE : Tarif / tranche ONEE : sert au dossier, pas au chiffre — l'estimation part du montant de la facture.
 NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : photo de la plaque pour que ce soit compté.
+A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pompe est-il en abonnement force motrice ?
+A_NOTER_SURFACE_CULTURE : À noter dans la note d’appel : la surface irriguée et la culture.
+A_NOTER_TENSION : À noter dans la note d’appel : le site est-il raccordé en basse ou en moyenne tension ?
+A_NOTER_RYTHME : À noter dans la note d’appel : le rythme d'activité (journée, jusqu'au soir, en continu) et le week-end.
+A_NOTER_GROUPE : À noter dans la note d’appel : le site a-t-il un groupe électrogène ?
+A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
+AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
+CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
 
 CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
 fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan
@@ -440,6 +448,16 @@ calcul (D7 est tranchée). Un équipement déclaré sans sa grandeur reçoit en 
 par `mentionEquipementNonCompte` à partir du drapeau SERVI (`compte_dans_etude`) : « [équipement] : pas compté dans
 le chiffre (il manque : [champ]) — photo de la plaque pour que ce soit compté. » (la plaque seulement quand c'est une
 puissance qui manque). ✎ Formulations à valider par le fondateur.
+
+CAD175 (24/09/2026) — SECONDE LIVRAISON du panneau : agricole (pompage) et industriel/commercial ont leur jeu de
+questions, fait UNIQUEMENT de colonnes `crm.Lead` existantes (pompe : puissance, HMT, débit, heures, énergie actuelle,
+carburant ; pro : consommation en kWh, puissance souscrite, surface, décideur) — leur texte est le `help_text` du
+champ, ou à défaut le libellé de la fiche. Les réponses attendues qui n'ont AUCUNE colonne (force motrice, surface et
+culture, tension bt/mt, rythme d'activité et week-end, groupe électrogène, process critiques) sont les consignes
+`A_NOTER_*` ci-dessus : elles se notent dans la note de l'appel, jamais dans un champ inventé. Sur ces deux segments,
+`AUCUNE_ESTIMATION_SEGMENT` rappelle qu'aucun chiffre d'économie ne s'annonce (le moteur horaire ne les traite pas) ;
+`CARBURANT_DECLARE_SEUL` reprend la règle CAD173 (Q17). ✎ Formulations à valider par le fondateur. Darija : aucune
+version (consignes d'écran).
 
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.

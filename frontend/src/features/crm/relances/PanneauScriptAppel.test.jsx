@@ -302,8 +302,10 @@ describe('CAD153 — chaque touche d’appel a son script, sur la ligne', () => 
 })
 
 describe('CAD153 — tout champ que le panneau écrit est déclaré à l’écran (fieldLabels)', () => {
-  it('chaque colonne des étapes de l’appel et du rappel a son libellé', () => {
-    const champs = [...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL].flatMap((e) => e.champs)
+  it('chaque colonne des étapes (appel, rappel, agricole, pro) a son libellé', () => {
+    const champs = [
+      ...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL, ...guidance.ORDRE_AGRICOLE, ...guidance.ORDRE_PRO,
+    ].flatMap((e) => e.champs)
     expect(champs.length).toBeGreaterThan(0)
     for (const champ of champs) {
       expect(fieldLabels[champ], `${champ} absent de fieldLabels.js`).toBeTruthy()
@@ -411,6 +413,88 @@ describe('CAD157 — les quatre cas « pas compté » affichent leur mention', (
     expect(texte).not.toContain('plaque')
     expect(guidance.mentionEquipementNonCompte({ ...ve, compte_dans_etude: true })).toBeNull()
     expect(guidance.mentionEquipementNonCompte({ ...ve, declare: false })).toBeNull()
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// CAD175 — seconde livraison : agricole (pompage) et industriel
+// ════════════════════════════════════════════════════════════════════════════
+describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', () => {
+  // Les entrées sont construites À PARTIR de celles du contrat (même forme),
+  // seul l'ÉTAT (quelles colonnes restent à poser) est posé par le test.
+  const AGRICOLE = exempleContrat('crm', 'panneau_appel', 'exemple_sans_cadence_active')
+  const nombre = AGRICOLE.champs_a_poser[0]
+  const entree = (champ, extra = {}) => ({
+    ...nombre, champ, libelle: fieldLabels[champ]?.label ?? champ, question: '', ...extra,
+  })
+  const occupationServie = PANNEAU.champs_a_poser.find((q) => q.champ === 'occupation_jour')
+
+  /** Une estimation chiffrée : un nombre accolé à une unité d'argent,
+   *  d'énergie ou à un pourcentage. */
+  const ESTIMATION = /\d[\d\s.,]*\s*(MAD|DH|dirhams?|%|kWh)/i
+
+  it('lead agricole : la pompe d’abord, les consignes à noter, le garde-fou carburant — aucun chiffre', async () => {
+    armer({
+      panneau: {
+        ...AGRICOLE,
+        champs_a_poser: [
+          occupationServie, entree('pompe_cv'), entree('pompe_hmt_m'), entree('pompe_debit_m3h'),
+          ...AGRICOLE.champs_a_poser, entree('carburant_litres_mois'),
+        ],
+      },
+    })
+    render(<PanneauScriptAppel mode="fiche" leadId={AGRICOLE.lead_id} />)
+    const liste = await screen.findByTestId('questions-appel')
+    const posees = [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
+      .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
+    // `pompe_alim_actuelle` est déjà sur la fiche : le carburant la complète.
+    expect(posees).toEqual([
+      'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h', 'pompage_heures_jour', 'carburant_litres_mois',
+    ])
+    // Une colonne sans question écrite se lit avec le libellé de la FICHE.
+    expect(within(liste).getByText(fieldLabels.pompe_cv.label)).toBeInTheDocument()
+    // La présence à la maison n'est pas une question de pompage.
+    expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
+    expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_FORCE_MOTRICE)
+    const gardeFous = screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent)
+    expect(gardeFous).toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT, guidance.CARBURANT_DECLARE_SEUL])
+    expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
+  })
+
+  it('lead industriel : conso, puissance souscrite, surface, décideur — jamais la présence, aucun chiffre', async () => {
+    armer({
+      panneau: {
+        ...PANNEAU,
+        segment: 'industriel',
+        segment_libelle: 'Industriel',
+        champs_a_poser: [
+          occupationServie, entree('conso_mensuelle_kwh'), entree('surface_toiture_m2'),
+          PANNEAU.champs_a_poser.find((q) => q.champ === 'decideur'),
+          entree('compteur_puissance_kva'),
+        ],
+      },
+    })
+    render(<PanneauScriptAppel mode="fiche" leadId={PANNEAU.lead_id} />)
+    const liste = await screen.findByTestId('questions-appel')
+    const posees = [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
+      .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
+    expect(posees).toEqual(['conso_mensuelle_kwh', 'compteur_puissance_kva', 'surface_toiture_m2', 'decideur'])
+    expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
+    expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_TENSION)
+    expect(screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent))
+      .toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT])
+    expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
+  })
+
+  it('une réponse agricole s’écrit par le chemin de la fiche, normalisée', async () => {
+    armer({ panneau: { ...AGRICOLE, champs_a_poser: [entree('pompe_cv')] } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: AGRICOLE.lead_id, score: 30 } })
+    render(<PanneauScriptAppel mode="fiche" leadId={AGRICOLE.lead_id} />)
+    const question = await screen.findByTestId('question-appel-pompe_cv')
+    fireEvent.change(within(question).getByRole('textbox'), { target: { value: '7,5' } })
+    fireEvent.click(within(question).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(AGRICOLE.lead_id, { pompe_cv: '7.5' }))
   })
 })
 

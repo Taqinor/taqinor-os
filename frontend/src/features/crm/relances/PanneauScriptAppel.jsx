@@ -40,14 +40,21 @@ const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
 // langue (jamais pour une version française partie en repli, CAD64).
 const LANGUES_RTL = ['darija', 'ar']
 
+/** Le texte de la question : le `help_text` servi ; à défaut (colonne sans
+ *  question écrite, ex. `pompe_cv`), le libellé que la FICHE affiche pour ce
+ *  champ (`fieldLabels`) plutôt que le `verbose_name` technique. */
+function texteDeLaQuestion(entree) {
+  return entree?.question || fieldLabels[entree?.champ]?.label || texteQuestion(entree)
+}
+
 function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer }) {
   const id = `panneau-appel-${entree.champ}`
   return (
     <div className="flex flex-col gap-1" data-testid={`question-appel-${entree.champ}`}>
       {Array.isArray(entree.choix) ? (
-        <p className="text-sm text-foreground">{texteQuestion(entree)}</p>
+        <p className="text-sm text-foreground">{texteDeLaQuestion(entree)}</p>
       ) : (
-        <label className="text-sm text-foreground" htmlFor={id}>{texteQuestion(entree)}</label>
+        <label className="text-sm text-foreground" htmlFor={id}>{texteDeLaQuestion(entree)}</label>
       )}
       {Array.isArray(entree.choix) ? (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={entree.libelle}>
@@ -337,6 +344,15 @@ export default function PanneauScriptAppel({
       {g && !g.livre && (
         <p className="text-sm text-foreground" role="status" data-testid="segment-non-livre">{g.message}</p>
       )}
+      {/* CAD175 — garde-fou des segments que le calcul ne traite pas : aucun
+          chiffre d'économie ne s'annonce au téléphone. */}
+      {g?.livre && g.gardeFous?.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-md border border-warning/40 bg-warning/10 p-2" role="status">
+          {g.gardeFous.map((t) => (
+            <p key={t} className="text-foreground" data-testid="garde-fou-segment">{t}</p>
+          ))}
+        </div>
+      )}
       {g?.livre && (
         <div className="flex flex-col gap-2" data-testid="questions-appel">
           <p className="font-medium text-foreground">
@@ -345,6 +361,12 @@ export default function PanneauScriptAppel({
           {questions.length > 0
             ? questions.map(rendreQuestion)
             : !g.enTete && <p data-testid="aucune-question">{AUCUNE_QUESTION}</p>}
+          {/* CAD175 — réponses sans colonne : à NOTER, jamais un champ inventé. */}
+          {g.aNoter?.length > 0 && (
+            <ul className="ml-4 list-disc" data-testid="a-noter">
+              {g.aNoter.map((t) => <li key={t}>{t}</li>)}
+            </ul>
+          )}
         </div>
       )}
       {locataire && (
