@@ -54,8 +54,8 @@ jobs:
       LOCUST_PASSWORD: charge-password-not-secret
       P95_LIMIT_MS: '1000'   # 2× le seuil LISTE documenté (500 ms)
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - name: Install backend + dev deps (Faker, Locust)
@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload Locust report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: locust-report
           path: |
