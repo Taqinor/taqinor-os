@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react'
 import {
   ChevronDown, ChevronRight, Copy, PhoneCall, TriangleAlert,
 } from 'lucide-react'
-import { Badge, Button, Input } from '../../../ui'
+import { Badge, Button, Input, Label } from '../../../ui'
 import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import fieldLabels from '../workspace/fieldLabels'
@@ -119,6 +119,15 @@ export default function PanneauScriptAppel({
   const [erreurs, setErreurs] = useState({})
   const [enCours, setEnCours] = useState('')
   const [score, setScore] = useState(null)
+  // CAD164 — le locataire ne décide pas des travaux : ce que l'écran PROPOSE
+  // (créer la fiche du propriétaire, ou « Perdu — Locataire ») vient du
+  // SERVEUR (`getLeadLocataire`, contrat `lead_locataire`), jamais deviné du
+  // seul drapeau `locataire` calculé plus bas.
+  const [proposLocataire, setProposLocataire] = useState({ chargement: false, propose: null })
+  const [proprietaire, setProprietaire] = useState({ nom: '', prenom: '', telephone: '' })
+  const [erreursProprietaire, setErreursProprietaire] = useState({})
+  const [envoiLocataire, setEnvoiLocataire] = useState('') // '' | 'creer' | 'inconnu'
+  const [issueLocataire, setIssueLocataire] = useState(null)
 
   const etapeId = etape?.id ?? null
   // Le script de la LIGNE : une touche d'APPEL qui porte un gabarit (CAD78).
@@ -257,6 +266,74 @@ export default function PanneauScriptAppel({
     questions.some((q) => q.champ === 'ownership')
     || panneau?.prefill?.ownership === 'locataire')
 
+  // CAD164 — lu à chaque fois que le client se révèle locataire (jamais
+  // avant : une lecture qui ne sert à rien tant que la question n'a pas
+  // cette réponse). Patron `queueMicrotask` : aucun setState synchrone dans
+  // le corps de l'effet (règle react-hooks/set-state-in-effect).
+  useEffect(() => {
+    let active = true
+    if (!actif || !locataire || !leadId) return () => { active = false }
+    if (typeof crmApi.getLeadLocataire !== 'function') {
+      queueMicrotask(() => { if (active) setProposLocataire({ chargement: false, propose: [] }) })
+      return () => { active = false }
+    }
+    queueMicrotask(() => { if (active) setProposLocataire((e) => ({ ...e, chargement: true })) })
+    crmApi.getLeadLocataire(leadId)
+      .then((r) => {
+        if (active) setProposLocataire({ chargement: false, propose: r?.data?.propose ?? [] })
+      })
+      .catch(() => { if (active) setProposLocataire({ chargement: false, propose: [] }) })
+    return () => { active = false }
+  }, [actif, locataire, leadId])
+
+  // CAD164 — crée (ou relie) la fiche du propriétaire ; le nom est
+  // OBLIGATOIRE côté écran (le serveur refuse aussi sans lui, en le
+  // nommant), le téléphone est vérifié par le serveur (numéro joignable).
+  const creerProprietaire = () => {
+    if (envoiLocataire || typeof crmApi.postLeadLocataire !== 'function') return
+    setEnvoiLocataire('creer'); setErreursProprietaire({})
+    const corps = { nom: proprietaire.nom.trim() }
+    if (proprietaire.prenom.trim()) corps.prenom = proprietaire.prenom.trim()
+    if (proprietaire.telephone.trim()) corps.telephone = proprietaire.telephone.trim()
+    Promise.resolve()
+      .then(() => crmApi.postLeadLocataire(leadId, { proprietaire: corps }))
+      .then((r) => {
+        setIssueLocataire(r?.data ?? null)
+        toastInfo(r?.data?.issue === 'proprietaire_relie'
+          ? 'Propriétaire déjà connu — fiche reliée.'
+          : 'Fiche du propriétaire créée.')
+        onLeadEcrit?.(r?.data)
+      })
+      .catch((err) => {
+        const donnees = err?.response?.status === 400 ? err.response.data?.proprietaire : null
+        if (Array.isArray(donnees)) setErreursProprietaire({ _global: donnees[0] })
+        else if (donnees && typeof donnees === 'object') {
+          setErreursProprietaire(Object.fromEntries(
+            Object.entries(donnees).map(([champ, msgs]) => [
+              champ, Array.isArray(msgs) ? msgs[0] : msgs])))
+        } else {
+          setErreursProprietaire({ _global: 'La fiche n’a pas pu être créée — réessayez.' })
+        }
+      })
+      .finally(() => setEnvoiLocataire(''))
+  }
+
+  // CAD164 — clôt la fiche du locataire avec le motif EXISTANT « Locataire »
+  // (aucune valeur d'énumération neuve) ; idempotent côté serveur.
+  const proprietaireInconnu = () => {
+    if (envoiLocataire || typeof crmApi.postLeadLocataire !== 'function') return
+    setEnvoiLocataire('inconnu')
+    Promise.resolve()
+      .then(() => crmApi.postLeadLocataire(leadId, { proprietaire_inconnu: true }))
+      .then((r) => {
+        setIssueLocataire(r?.data ?? null)
+        toastInfo('Fiche du locataire close — motif « Locataire ».')
+        onLeadEcrit?.(r?.data)
+      })
+      .catch(() => {})
+      .finally(() => setEnvoiLocataire(''))
+  }
+
   const contenu = (
     <div className="mt-2 flex flex-col gap-2 text-xs text-muted-foreground">
       {/* CAD152/CAD172 (Q5) — profil SUPPOSÉ (drapeau servi, le même que la
@@ -385,6 +462,71 @@ export default function PanneauScriptAppel({
           <p className="font-medium text-foreground">Si le client est locataire</p>
           <p>{FLUX_LOCATAIRE.consigne}</p>
           <p>{FLUX_LOCATAIRE.sinon}</p>
+          {/* CAD164 — ce que l'écran PROPOSE vient du SERVEUR (`propose`,
+              contrat `lead_locataire`), jamais deviné : les deux suites
+              (créer la fiche du propriétaire, ou « Perdu — Locataire »)
+              tant que rien n'a encore été décidé pour CET appel. */}
+          {issueLocataire ? (
+            <p className="mt-1.5 font-medium text-foreground" data-testid="locataire-issue">
+              {issueLocataire.issue === 'perdu_locataire'
+                ? 'Fiche du locataire close — motif « Locataire ».'
+                : `${issueLocataire.issue === 'proprietaire_relie' ? 'Propriétaire relié' : 'Fiche du propriétaire créée'} : ${[issueLocataire.lead_proprietaire?.prenom, issueLocataire.lead_proprietaire?.nom].filter(Boolean).join(' ')}`}
+            </p>
+          ) : proposLocataire.propose?.length > 0 && (
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {proposLocataire.propose.includes('creer_proprietaire') && (
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Label htmlFor="locataire-nom" className="sr-only">Nom du propriétaire</Label>
+                    <Input
+                      id="locataire-nom" className="w-28" placeholder="Nom du propriétaire"
+                      invalid={Boolean(erreursProprietaire.nom)}
+                      value={proprietaire.nom}
+                      onChange={(e) => setProprietaire((p) => ({ ...p, nom: e.target.value }))}
+                    />
+                    <Label htmlFor="locataire-prenom" className="sr-only">Prénom du propriétaire</Label>
+                    <Input
+                      id="locataire-prenom" className="w-24" placeholder="Prénom"
+                      value={proprietaire.prenom}
+                      onChange={(e) => setProprietaire((p) => ({ ...p, prenom: e.target.value }))}
+                    />
+                    <Label htmlFor="locataire-telephone" className="sr-only">Téléphone du propriétaire</Label>
+                    <Input
+                      id="locataire-telephone" className="w-32" placeholder="Téléphone"
+                      invalid={Boolean(erreursProprietaire.telephone)}
+                      value={proprietaire.telephone}
+                      onChange={(e) => setProprietaire((p) => ({ ...p, telephone: e.target.value }))}
+                    />
+                  </div>
+                  {(erreursProprietaire.nom || erreursProprietaire.telephone || erreursProprietaire._global) && (
+                    <p className="text-xs text-danger" role="alert" data-testid="erreur-proprietaire">
+                      {erreursProprietaire.nom || erreursProprietaire.telephone || erreursProprietaire._global}
+                    </p>
+                  )}
+                </div>
+              )}
+              <div className="flex flex-wrap justify-end gap-1.5">
+                {proposLocataire.propose.includes('creer_proprietaire') && (
+                  <Button
+                    type="button" size="sm"
+                    disabled={envoiLocataire !== '' || !proprietaire.nom.trim()}
+                    onClick={creerProprietaire}
+                  >
+                    Créer la fiche du propriétaire
+                  </Button>
+                )}
+                {proposLocataire.propose.includes('perdu_locataire') && (
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    disabled={envoiLocataire !== ''}
+                    onClick={proprietaireInconnu}
+                  >
+                    Propriétaire inconnu
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {/* CAD157 — ce que le chiffre ne compte PAS, dit à côté des réponses :

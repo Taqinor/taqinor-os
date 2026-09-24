@@ -469,6 +469,16 @@ const crmApi = {
   // Les réponses s'écrivent par le chemin de la fiche (`updateLead`). Forme :
   // `contract_samples/panneau_appel.json` (CAD147, PACT10).
   getPanneauAppel: (leadId) => api.get(`/crm/leads/${leadId}/panneau-appel/`),
+  // CAD164 — le client est LOCATAIRE : ce que l'écran PROPOSE (créer la
+  // fiche du propriétaire, ou « Perdu — Locataire ») — LECTURE PURE. Forme :
+  // `contract_samples/lead_locataire.json` (PACT10).
+  getLeadLocataire: (leadId) => api.get(`/crm/leads/${leadId}/locataire/`),
+  // CAD164 — `{proprietaire: {nom, prenom?, telephone}}` crée (ou relie, s'il
+  // est déjà connu au même numéro) la fiche du propriétaire, liée au
+  // locataire ; `{proprietaire_inconnu: true}` clôt la fiche du locataire
+  // avec le motif EXISTANT « Locataire ». Chaque refus NOMME son champ. Forme :
+  // `contract_samples/lead_locataire.json` (PACT10).
+  postLeadLocataire: (leadId, payload) => api.post(`/crm/leads/${leadId}/locataire/`, payload),
 }
 
 export default crmApi
