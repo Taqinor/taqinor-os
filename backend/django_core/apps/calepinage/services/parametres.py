@@ -125,8 +125,12 @@ def _normaliseurs():
     from .parametres_cles import (
         SECTION_ELECTRIQUE_SOCIETE, SECTION_SIMULATION,
     )
+    from .presets import SECTION as SECTION_PRESETS, normaliser_section_presets
 
     return {
+        # CALX348 — ``presets`` ne valide QUE ``approbation_exigee`` (booléen) ;
+        # toutes ses autres clés traversent inchangées.
+        SECTION_PRESETS: normaliser_section_presets,
         SECTION_IMAGERIE: normaliser_section_imagerie,
         SECTION_ZONES: normaliser_section_zones_types,
         SECTION_DEGAGEMENTS: normaliser_section_degagements,

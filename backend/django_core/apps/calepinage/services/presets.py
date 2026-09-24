@@ -16,13 +16,27 @@ qu'on lui donne et refuse ce qui est incomplet, en NOMMANT le champ fautif.
 """
 from __future__ import annotations
 
+from .approbation import CLE_EXIGEE
+
 #: Clé, DANS la section ``presets``, qui porte la liste des jeux MAISON.
 CLE_JEUX = 'jeux'
 
+#: La section des réglages société que ce module porte (CAL45).
+SECTION = 'presets'
+
 __all__ = [
-    'PresetInvalide', 'CLE_JEUX', 'jeux_de_societe', 'enregistrer_jeu',
-    'retirer_jeu',
+    'PresetInvalide', 'CLE_JEUX', 'SECTION', 'CLE_APPROBATION_EXIGEE',
+    'jeux_de_societe', 'enregistrer_jeu', 'retirer_jeu',
+    'normaliser_section_presets',
 ]
+
+#: CALX348 — la clé, DANS la section ``presets``, qui exige l'approbation
+#: (CALX347) avant de retenir une variante. Source UNIQUE :
+#: ``services/approbation.py::CLE_EXIGEE`` (qui la LIT) ; ce module-ci la
+#: VALIDE à l'écriture (``normaliser_section_presets``). Off par défaut : une
+#: société qui n'a jamais réglé cette option retrouve le comportement
+#: d'aujourd'hui.
+CLE_APPROBATION_EXIGEE = CLE_EXIGEE
 
 
 class PresetInvalide(ValueError):
@@ -109,3 +123,30 @@ def _section(company, jeux):
     section = dict(parametres_de_societe(company).get('presets') or {})
     section[CLE_JEUX] = jeux
     return section
+
+
+def normaliser_section_presets(valeur):
+    """CALX348 — la section ``presets`` VALIDÉE, sans rien retrancher.
+
+    La section range des jeux maison, le catalogue de kits, l'interrupteur
+    du feu vert (CAL206)… : ce normaliseur n'en touche AUCUNE clé. Il ne
+    valide que ``approbation_exigee`` : un BOOLÉEN, ou rien. Une valeur d'une
+    autre nature (« oui », 1, une liste) est REFUSÉE en nommant le champ —
+    jamais interprétée : un « oui » accepté en silence laisserait croire à
+    la société que l'approbation est exigée alors que la lecture stricte
+    (``approbation.approbation_exigee``, ``is True``) la tient pour éteinte.
+
+    Raises:
+        ReglageInvalide: ``approbation_exigee`` n'est pas un booléen.
+    """
+    from .parametres import ReglageInvalide
+
+    if not isinstance(valeur, dict) or CLE_APPROBATION_EXIGEE not in valeur:
+        return valeur
+    exigee = valeur[CLE_APPROBATION_EXIGEE]
+    if exigee is None or isinstance(exigee, bool):
+        return valeur
+    raise ReglageInvalide(
+        "« Approbation exigée » se règle par oui ou non (booléen) "
+        f"(reçu : {type(exigee).__name__}).",
+        champ=CLE_APPROBATION_EXIGEE)
