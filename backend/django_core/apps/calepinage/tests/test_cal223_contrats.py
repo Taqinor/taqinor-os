@@ -293,6 +293,13 @@ SANS_PRODUCTEUR_PUR = {
         'calepinage et la permission `calepinage_approuver` en base — la '
         'forme est affirmée contre l’exemple committé par '
         'apps/calepinage/tests/test_calx347_approbation.py',
+
+    # CALX337
+    'calepinage_asbuilt_ecarts.json':
+        'écarts de pose réelle : son producteur (services/asbuilt.py, '
+        'CAL212/CALX366) lit les `PoseReelle` et la variante retenue en base '
+        '— la forme est affirmée contre l’exemple committé par '
+        'apps/calepinage/tests/test_calx366_pose_reelle.py',
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -323,6 +330,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # SORTI.
     # CALX334 — ``GET/POST calepinages/<pk>/approbation/`` arrive avec CALX347.
     'calepinage_approbation.json': 'CALX347',
+    # CALX337 — ``GET/POST calepinages/<pk>/pose-reelle/`` arrive avec CALX366.
+    'calepinage_asbuilt_ecarts.json': 'CALX366',
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
