@@ -483,6 +483,14 @@ const calepinageApi = {
     // encore en attente, ex. `buildings[0].hauteurM`).
     approbation: (id) => api.get(`${pivot(id)}approbation/`),
     decisionApprobation: (id, corps) => api.post(`${pivot(id)}approbation/`, corps),
+
+    // CALX360 — la NOMENCLATURE DE FIXATION (CALX359, contrat
+    // `contract_samples/calepinage_fixation_bom.json`) : `{systeme, lignes,
+    // refus}`, lecture PURE. `params.systeme` désigne un système du
+    // catalogue (borné société) ; à défaut, l'UNIQUE système actif de la
+    // société est appliqué, ou `refus` dit pourquoi (catalogue vide,
+    // plusieurs systèmes actifs sans choix).
+    bomFixation: (id, params) => api.get(`${pivot(id)}bom-fixation/`, { params }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
