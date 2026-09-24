@@ -178,7 +178,87 @@ rendu. C'est le but du protocole — la forme du toit disparaît du moteur.
 
 ---
 
-## 6. Les limites ASSUMÉES de la v1
+## 6. La chaîne de simulation
+
+Le moteur calcule — il ne **persiste** pas. Celui qui l'appelle règle l'orchestration :
+l'ordre des services, le contexte qu'ils partagent, et la fusion des blocs résultants
+dans `Calepinage.resultat`. C'est `services/simulation.py::simuler_calepinage` (CALX5).
+
+### L'ordre des étapes — et pourquoi celui-là
+
+1. **Décision météo** — le mode (série multiennale, TMY) est SAISI ou la
+   simulation est REFUSÉE avant tout appel réseau (CALX153).
+
+2. **La chaîne de pertes, une passe par pan** (CALX147) — chaque pan porte sa
+   propre irradiance du soleil, donc sa propre cascade de pertes thermiques et
+   électriques. Les sorties intermédiaires sont rangées sous `sorties_par_pan`
+   pour que le site (somme des pans) ne divise jamais un total égal entre des
+   pans inégaux en irradiance.
+
+3. **Simulation module par module** quand le document porte un accès solaire
+   par module (CALX182) — sinon ce bloc est omis avec son motif.
+
+4. **Courbe de charge** (CALX189), puis **batterie → autoconsommation → hors
+   réseau** dans cet ordre — chacun lit les colonnes que le précédent a posées,
+   et aucun ne calcule la colonne d'énergie du suivant (D-CALX 4 : pas de
+   préparation silencieuse).
+
+5. **Incertitude long terme** (CALX186), **ratio de performance** (CALX179),
+   **écart informatif contre PVGIS** (CALX195), **projection pluriannuelle du
+   vieillissement** (CALX178).
+
+### La météo : irradiance seule, perte totale en ENTRÉE (CALX150)
+
+La série horaire est la **RESPONSABILITÉ DE PVGIS** pour deux clés : l'irradiance
+plan des modules (`gi_w_m2`) et la température de l'air (`t2m_c`), plus la vitesse
+du vent (`ws10m`) pour le modèle de température de cellule. Appel via
+`ClientPvgis.serie_irradiance()` avec `pvcalculation=0` — pas de calcul PV côté
+PVGIS, juste l'irradiance nue, puisque **la chaîne de pertes est ENTIÈREMENT celle
+du dépôt** (liste des postes, coefficients d'atténuation, ordre d'application).
+
+Envoyer une perte à PVGIS en même temps (`loss`) quand `pvcalculation=0` n'aurait aucun
+effet, et laisser la clé dans l'appel ferait mentir le contrat sur les entrées. L'appel
+ne porte donc ni perte, ni paramètres PV (onduleur, technologie, pose) — ceux-ci
+n'affectent pas l'irradiance, et les supposer produirait un mensonge sur ce qui a
+été RÉELLEMENT demandé à PVGIS (D-CALX 7).
+
+### Ce qui est écrit dans `Calepinage.resultat`
+
+La simulation ajoute ou remplace ces clés (D-CALX 4 — fusion, jamais un remplacement
+complet) :
+
+- **`cascade`** — la chaîne de pertes appliquée au plan de référence (le plus puissant),
+  figée par `contract_samples/calepinage_pertes_cascade.json`.
+- **`production`** — totaux, variabilité interannuelle, répartition par pan, par
+  module, par chaîne avec ses deux pertes (mismatch, écrêtage), répartition par MPPT,
+  par onduleur, hors chaînes.
+- **`meteo`** — source (PVGIS ou fichier), fenêtre d'années, base rayonnement,
+  convention d'azimut déclarée, profil d'horizon si saisi.
+- **`serie_horaire`** — les 8 760 heures (ou 8 784 en année bissextile) brutes de la
+  chaîne, avec leurs colonnes d'irradiance, température de cellule, puissance DC et
+  pertes point par point. N'est PAS recopiée lors des lectures ultérieures (D-CALX 14 :
+  volume).
+- **`consommation`** — profil mensuel et courbe horaire déclarés, charges ajoutées.
+- **`autoconsommation`** — taux, plafond d'injection, sources.
+- **`batterie`** — dispatch horaire, dimensionnement, vieillissement.
+- **`hors_reseau`** — autonomie, dimensionnement, déficit.
+- **`incertitude`** — P50/P75/P90, coefficient de variation interannuelle, composantes.
+- **`performance`** — ratio de performance IEC 61724-1, référence normative, période.
+- **`ombrage`** — TOF, TSRF (accès solaire) par pan.
+- **`validation`** — écart informatif entre notre chaîne et le calcul interne de PVGIS,
+  avec la perte totale qu'elle a supposée, jamais un ajustement silencieux (CALX195).
+- **`simulation`** — empreinte des entrées (`hash_entree`, invariante multiplateforme),
+  version du moteur qui a produit ce résultat, horodatage du calcul, durée en secondes.
+
+Les clés **`pertes`** (liste plate des postes saisis, D-CALX 11), **`entree_electrique`**
+(schéma et affectation demandés), **`statuts`** ne sont JAMAIS écrites par la simulation —
+ce sont celles du document lui-même. Les quatre régimes de preuve (§2) s'appliquent à ces
+nombres nouveaux exactement comme aux anciens : un layout posé au DP produit `optimal=True`,
+un imposé à la main l'a toujours à `False` et son écart chiffré.
+
+---
+
+## 7. Les limites ASSUMÉES de la v1
 
 Ce qui suit sont des **non-objectifs**, pas des oublis. Chacun porte sa raison :
 un lecteur doit pouvoir décider s'il veut la lever, pas se demander si on y a
@@ -237,7 +317,7 @@ pensé.
 
 ---
 
-## 7. Où regarder ensuite
+## 8. Où regarder ensuite
 
 | Question | Fichier |
 |---|---|
