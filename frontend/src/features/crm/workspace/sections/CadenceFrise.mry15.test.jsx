@@ -4,7 +4,7 @@
 // `crmApi.getRelanceEtapesLead` (jamais un objet retapé à la main).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
-import { exempleContrat } from '../../../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../../../test/fixtures/contractSamples'
 import { formatDate } from '../../../../lib/format'
 
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
@@ -168,5 +168,37 @@ describe('MRY32 — actions directement depuis la frise', () => {
     expect(screen.getByRole('button', { name: /WhatsApp/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
+  })
+
+  // Décision fondateur du 24/09/2026 — le panneau d'appel reste ouvert d'une
+  // réponse à l'autre. Chaque réponse enregistrée fait rafraîchir la fiche
+  // (`reloadToken`) : ce rechargement ne remplace plus les lignes par le
+  // spinner (qui les démontait, panneau compris) — elles restent montées et
+  // se mettent à jour en place.
+  it('24/09/2026 — un rechargement (reloadToken) garde la ligne montée et son panneau d’appel ouvert', async () => {
+    const prochaine = { ...ETAPES[0], id: 501, statut: 'a_faire', overdue: false }
+    crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { count: 1, results: [prochaine] } })
+    // Le script de la touche d'appel (contrat committé), lu quand le panneau s'ouvre.
+    crmApi.getRelanceEtapeMessage.mockResolvedValue(reponseContrat('crm', 'relance_etape_message'))
+    const { rerender } = render(<CadenceFrise leadId={1489} reloadToken={0} />)
+    const bascule = await screen.findByRole('button', { name: /Script d’appel/ })
+    fireEvent.click(bascule)
+    expect(bascule).toHaveAttribute('aria-expanded', 'true')
+
+    // Le rechargement reste EN VOL : c'est pendant cette lecture que la frise
+    // affichait son spinner à la place des lignes.
+    let resoudre
+    crmApi.getRelanceEtapesLead.mockReturnValue(new Promise((r) => { resoudre = r }))
+    rerender(<CadenceFrise leadId={1489} reloadToken={1} />)
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('status', { name: 'Chargement…' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('relance-etape-row')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Script d’appel/ })).toHaveAttribute('aria-expanded', 'true')
+
+    // Lecture aboutie : même ligne, même panneau, toujours ouvert.
+    resoudre({ data: { count: 1, results: [prochaine] } })
+    await waitFor(() => expect(screen.getByRole('button', { name: /Script d’appel/ }))
+      .toHaveAttribute('aria-expanded', 'true'))
+    expect(screen.getAllByTestId('relance-etape-row')).toHaveLength(1)
   })
 })

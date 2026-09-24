@@ -101,12 +101,12 @@ export const ORDRE_APPEL_1 = Object.freeze([
 /** Le budget de l'appel 1 : le nombre de ses étapes, jamais un chiffre à part. */
 export const BUDGET_APPEL_1 = ORDRE_APPEL_1.length
 
-// Q8 — « propriétaire ou locataire » se pose au RAPPEL, jamais à l'appel 1 (il
-// vient souvent naturellement avec la question du toit). Il suit les étapes de
-// l'appel 1 restées sans réponse.
-export const QUESTIONS_DU_RAPPEL = Object.freeze([
-  Object.freeze({ etape: 'proprietaire_locataire', champs: Object.freeze(['ownership']) }),
-])
+// Décision fondateur du 24/09/2026 : « propriétaire ou locataire » ne se pose
+// PLUS — ni à l'appel 1, ni au rappel. TAQINOR n'a pas besoin de cette
+// information : un locataire qui veut installer et qui paie est installé. La
+// colonne `ownership` reste sur la fiche (renseignable, jamais demandée à
+// l'appel) ; le rappel repose seulement les étapes de l'appel 1 restées sans
+// réponse. (Remplace la décision Q8 du 21/09/2026.)
 
 // L'appel 1, c'est la PREMIÈRE CONVERSATION. Toutes les touches de la cadence
 // « contact » (et de la cadence courte « deuxième affaire ») n'en sont que des
@@ -166,15 +166,14 @@ export const ORDRE_PRO = Object.freeze([
   Object.freeze({ etape: 'decideur', champs: Object.freeze(['decideur']) }),
 ])
 
-/** Les étapes d'un panneau : résidentiel (appel 1, puis la question du
- *  rappel), agricole ou industriel/commercial (CAD175). */
+/** Les étapes d'un panneau : résidentiel (appel 1 et rappel : les MÊMES
+ *  cinq étapes, filtrées par ce qui est déjà renseigné — décision fondateur
+ *  du 24/09/2026), agricole ou industriel/commercial (CAD175). */
 export function etapesDuPanneau(panneau) {
   const famille = familleDuSegment(panneau?.segment)
   if (famille === 'agricole') return ORDRE_AGRICOLE
   if (famille === 'pro') return ORDRE_PRO
-  return estToucheDeRappel(panneau?.touche)
-    ? [...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL]
-    : ORDRE_APPEL_1
+  return ORDRE_APPEL_1
 }
 
 /** Les étapes à poser sur CET appel, dans l'ordre figé, filtrées par ce qui
@@ -206,6 +205,32 @@ export function questionsDeLAppel(panneau) {
  *  du champ — tous deux lus au serveur, jamais réécrits ici. */
 export function texteQuestion(entree) {
   return entree?.question || entree?.libelle || ''
+}
+
+// Décision fondateur du 24/09/2026 (revue des questions d'appel) : le
+// `help_text` d'un champ porte la QUESTION à dire (entre guillemets « … »)
+// suivie de remarques internes (« vide = pas encore posée », ce que la
+// réponse pilote, l'historique d'une décision). Pendant l'appel, seule la
+// question se lit ; le reste est une consigne d'écran, en retrait. Ce
+// découpage ne RÉÉCRIT rien : les deux moitiés sont le texte servi, tel quel
+// (une formulation se corrige toujours dans le modèle, jamais ici).
+const BOILERPLATE_VIDE = /\s*\([^()]*?vide = pas encore posée\)/g
+
+/** `{ question, consigne }` d'un texte servi : `question` = le premier
+ *  passage entre « … » (guillemets compris), `consigne` = ce qui suit la
+ *  question, sans la mention « vide = pas encore posée » ni la ponctuation de
+ *  raccord — `null` quand il ne reste rien. Sans guillemets, le texte entier
+ *  est la question (libellé de fiche, question sans `help_text`). */
+export function decouperQuestion(texte) {
+  const brut = typeof texte === 'string' ? texte.trim() : ''
+  const trouve = /«\s*([^»]+?)\s*»/.exec(brut)
+  if (!trouve) return { question: brut, consigne: null }
+  const question = `« ${trouve[1]} »`
+  const reste = brut.slice(trouve.index + trouve[0].length)
+    .replace(BOILERPLATE_VIDE, '')
+    .replace(/^[\s—.,;:]+/, '')
+    .trim()
+  return { question, consigne: reste || null }
 }
 
 // ── CAD163 — la loi 82-21 : rien de spontané ────────────────────────────────
@@ -303,22 +328,11 @@ export const ISSUES_APPEL = Object.freeze([
   'joint', 'non_joint', 'rappel', 'refuse', 'interesse', 'visite_acceptee',
 ])
 
-// ── CAD151 — Q19 : un locataire ne décide pas des travaux ──────────────────
-// Décision fondateur du 21/09/2026 (Q19) : demander les coordonnées du
-// propriétaire, créer SA fiche reliée par une note d'historique (jamais une
-// fusion automatique — même patron que `deuxieme_affaire`, CAD128) ; sans
-// elles, l'issue est un Refus avec le motif EXISTANT « Locataire »
-// (`apps/crm/views.py` `_DEFAULT_MOTIFS_PERTE`, seedé par
-// `seed_motifs_perte` — aucun nouveau motif inventé ici).
-export const FLUX_LOCATAIRE = Object.freeze({
-  quand: 'La question « propriétaire ou locataire » (posée au rappel, champ '
-    + '`ownership`) répond « Locataire ».',
-  consigne: 'Demander les coordonnées du propriétaire et créer sa fiche, '
-    + "reliée à celle du locataire par une note d'historique — jamais une "
-    + 'fusion automatique.',
-  sinon: 'Sans coordonnées du propriétaire : issue « Refus », motif '
-    + '« Locataire ».',
-})
+// Décision fondateur du 24/09/2026 : le flux « locataire » du panneau (Q19 du
+// 21/09/2026 — coordonnées du propriétaire, sinon Refus motif « Locataire »)
+// est RETIRÉ avec la question : un locataire qui paie est un client comme un
+// autre. Le motif de perte « Locataire » et `GET/POST leads/<id>/locataire/`
+// existent toujours côté serveur ; le panneau d'appel ne les propose plus.
 
 /** L'accroche de CET appel : le texte SERVI par le serveur
  *  (`panneau.script.message`, même rendu que `relance_etape_message.json`),
@@ -326,10 +340,6 @@ export const FLUX_LOCATAIRE = Object.freeze({
 export function texteAccroche(panneau) {
   return panneau?.script?.message || null
 }
-
-/** Le budget d'un appel de RAPPEL : les cinq étapes de l'appel 1, plus la
- *  question du rappel — jamais un chiffre à part. */
-export const BUDGET_RAPPEL = ORDRE_APPEL_1.length + QUESTIONS_DU_RAPPEL.length
 
 // ── CAD151 — la structure PAR TOUCHE ────────────────────────────────────────
 // Les cinq touches d'appel qui n'avaient aucun script avant CAD67/CAD98
@@ -533,21 +543,12 @@ export const A_NOTER_GROUPE = 'À noter dans la note d’appel : le site '
 export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
   + 'critiques, qui ne doivent jamais s’arrêter.'
 
-// ── CAD168 — les deux lignes fixes de la facture, jamais dites ────────────
-// Toute facture porte deux lignes fixes (location du compteur, entretien du
-// branchement) qui ne sont PAS solarisables : le calcul les porte des deux
-// côtés, mais un client qui annonce « ma facture fait … » peut parler TTC
-// abonnement compris ou non. La question de découverte le demande ; la
-// réponse se NOTE (aucune colonne ne la porte). AUCUN montant n'est écrit
-// ici ni prononcé : le montant vit au barème / réglage société, et l'étude
-// le NOMME à côté de l'économie (`etude_horaire.part_non_solarisable`).
-// Résidentiel seulement : c'est le barème BT domestique qui porte ces lignes.
-export const QUESTION_CHARGES_FIXES = "Question à l'appel : « Votre montant "
-  + "inclut l'abonnement et l'entretien du compteur ? » — réponse à noter "
-  + 'dans la note d’appel.'
-export const CONSIGNE_CHARGES_FIXES = 'Ces deux lignes restent sur chaque '
-  + 'facture, avant comme après les panneaux : elles ne se prononcent jamais '
-  + 'en chiffres.'
+// Décision fondateur du 24/09/2026 : la question CAD168 « Votre montant
+// inclut l'abonnement et l'entretien du compteur ? » est RETIRÉE. Toute
+// facture porte ces deux lignes fixes, toujours — aucun client ne les reçoit
+// gratuitement, la question n'apprenait rien. Le calcul continue de les
+// porter des deux côtés (`etude_horaire.part_non_solarisable`) sans rien
+// demander au téléphone.
 
 /** Les consignes à noter, par famille (le résidentiel n'en a aucune). */
 export const A_NOTER_PAR_FAMILLE = Object.freeze({
@@ -621,6 +622,5 @@ export function guidanceAppel(panneau, options = {}) {
     fenetre: fenetreAppel(vu),
     aNoter: A_NOTER_PAR_FAMILLE[famille],
     gardeFous: GARDE_FOUS_PAR_FAMILLE[famille],
-    questionChargesFixes: famille === 'residentiel' ? QUESTION_CHARGES_FIXES : null,
   }
 }
