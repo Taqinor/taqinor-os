@@ -405,6 +405,23 @@ QUAND : Le client demande si une subvention ou une aide de l'État existe pour s
 RÉPONSE : Je ne vous promets rien sur une subvention ; je vous renvoie aux conditions officielles du programme concerné.
 JAMAIS : Aucun montant, aucun taux, aucune éligibilité, aucun délai.
 
+## Panneau d'appel — consignes d'écran (`PanneauScriptAppel.jsx`, CAD152, 24/09/2026)
+
+Ces lignes ne sont PAS des gabarits de message ni des phrases à lire au client : ce sont les consignes affichées à
+la commerciale dans le panneau d'appel guidé, PENDANT l'appel. Elles vivent dans
+`frontend/src/features/crm/relances/appelGuidance.js` (constantes du même nom) ; le test
+`PanneauScriptAppel.test.jsx` les re-dérive de ce fichier : une modification se fait ICI et dans le module, dans le
+même commit. Aucune ne porte un chiffre. `MENTION_D7` reprend mot pour mot la tâche CAD152 (décision D7 tranchée :
+orientation, inclinaison et ombrage ne sont pas câblés au calcul) ; `BANDEAU_PROFIL_SUPPOSE` reprend mot pour mot la
+décision fondateur du 21/09/2026 (Q5). ✎ Les autres formulations sont à valider par le fondateur. Darija : aucune
+version (consignes d'écran, jamais dites au client).
+MENTION_D7 : Orientation et ombrage servent au dossier et à la visite, pas au chiffre.
+BANDEAU_PROFIL_SUPPOSE : Profil supposé, à confirmer
+EXPLICATION_PROFIL_SUPPOSE : La présence en journée n'a pas été posée : l'estimation suppose quelqu'un à la maison en journée. Posez cette question en premier.
+CONSIGNE_ISSUE : L'issue se saisit avec les réponses de la touche (« Fait ») : client joint, pas de réponse, répondeur, à rappeler, refus.
+ISSUE_VERROUILLEE : Touche à venir : l’issue se saisira à son échéance (« Fait » verrouillé).
+AUCUNE_QUESTION : Rien à demander sur cet appel : tout ce que le script pose est déjà sur la fiche.
+
 ## Sans texte validé (ne PAS seeder — à rédiger par Reda/Meryem avant tout usage)
 visite_veille, visite_matin, apres_visite : aucun texte validé n'existe dans le Guide v2.1 ni dans le Protocole v3.
 (`visite_proposition` et `visite_confirmation`, eux, ont reçu leur texte validé le 15/09/2026 — section ci-dessus.)

@@ -123,6 +123,11 @@ export default function ToucheMessageDialog({
   const preuveManquante = Boolean(rendu?.preuve_manquante)
   // CAD78 — une touche e-mail : jamais de CTA WhatsApp (texte à copier).
   const toucheEmail = etape?.canal === 'email'
+  // CAD152 — une touche d'APPEL ouverte ici (bouton WhatsApp de sa ligne) :
+  // le texte est le SCRIPT de l'appel. La modale ne se présente plus comme
+  // un simple « WhatsApp », et dit que l'envoi écrit est journalisé — le
+  // script se lit sans rien journaliser dans le panneau d'appel de la ligne.
+  const toucheAppel = etape?.canal === 'appel'
   const envoiWhatsApp = !preuveManquante && !toucheEmail
   // CAD79 — le « vocal » : un SCRIPT à lire en note vocale (le serveur le dit,
   // `vocal`, et son lien n'a pas de texte pré-rempli) — jamais un message
@@ -183,9 +188,18 @@ export default function ToucheMessageDialog({
           {/* CAD78 — une touche e-mail n'est jamais présentée comme un
               WhatsApp (la ligne ouvre son texte en place ; ceinture ici). */}
           <DialogTitle>
-            {toucheEmail ? 'E-mail' : (vocal ? 'Note vocale' : 'WhatsApp')} — {etape?.lead_nom || 'Lead'}
+            {toucheEmail ? 'E-mail'
+              : (vocal ? 'Note vocale'
+                : (toucheAppel ? 'Script d’appel — envoi par WhatsApp' : 'WhatsApp'))} — {etape?.lead_nom || 'Lead'}
           </DialogTitle>
         </DialogHeader>
+        {toucheAppel && (
+          <p className="text-xs text-muted-foreground" data-testid="touche-appel-dialogue">
+            Touche d’appel : ce texte est le script à lire au téléphone — le panneau
+            « Script d’appel » de la ligne l’affiche sans rien journaliser. « Ouvrir
+            WhatsApp » l’envoie par écrit à la place, et cette ouverture est journalisée.
+          </p>
+        )}
         {loading ? (
           <Spinner />
         ) : erreur ? (

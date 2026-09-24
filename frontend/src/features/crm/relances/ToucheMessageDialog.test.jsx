@@ -152,6 +152,28 @@ describe('CAD78 — une touche e-mail n’est jamais présentée comme un WhatsA
   })
 })
 
+describe('CAD152 — une touche d’appel n’est plus présentée comme un simple « WhatsApp »', () => {
+  const APPEL = TOUCHES.find((t) => t.canal === 'appel')
+
+  it('titre « Script d’appel », et la journalisation de l’envoi écrit est DITE', async () => {
+    render(<ToucheMessageDialog etape={APPEL} open onOpenChange={() => {}} />)
+    await screen.findByText(MESSAGE.message)
+    expect(screen.getByRole('heading', { name: /^Script d’appel — envoi par WhatsApp — / }))
+      .toBeInTheDocument()
+    expect(screen.getByTestId('touche-appel-dialogue'))
+      .toHaveTextContent('cette ouverture est journalisée')
+    // Ouvrir la modale ne journalise RIEN : seul le clic d'envoi le fait.
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+  })
+
+  it('une touche WhatsApp garde son intitulé, sans la mention d’appel', async () => {
+    render(<ToucheMessageDialog etape={ETAPE} open onOpenChange={() => {}} />)
+    await screen.findByText(MESSAGE.message)
+    expect(screen.getByRole('heading', { name: /^WhatsApp — / })).toBeInTheDocument()
+    expect(screen.queryByTestId('touche-appel-dialogue')).not.toBeInTheDocument()
+  })
+})
+
 describe('CAD79 — le « vocal » ne part plus en texte écrit', () => {
   const VOCAL = exempleContrat('crm', 'relance_etape_message', 'exemple_vocal')
 

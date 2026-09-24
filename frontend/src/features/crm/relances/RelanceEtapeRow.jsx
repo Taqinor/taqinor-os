@@ -11,6 +11,7 @@ import { PRIORITE_LABELS } from '../stages'
 import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
+import PanneauScriptAppel from './PanneauScriptAppel'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
 import { suiteAnnoncee, suiteDuSaut } from './suite'
 
@@ -396,9 +397,10 @@ function StatutBadge({ etape }) {
   return <Badge tone="outline">À faire</Badge>
 }
 
-// CAD78 — le TEXTE d'une touche lu SANS ouvrir WhatsApp : le script d'appel
-// écrit par le fondateur (touches d'appel scriptées) ou le texte d'une touche
-// e-mail. Bulle DÉPLIABLE au-dessus des boutons (patron « Proposer la visite »
+// CAD78 — le TEXTE d'une touche lu SANS ouvrir WhatsApp : le texte d'une
+// touche e-mail (CAD152 : le script d'une touche d'APPEL vit désormais dans
+// `PanneauScriptAppel`, qui le lit par le même GET et y ajoute les questions).
+// Bulle DÉPLIABLE au-dessus des boutons (patron « Proposer la visite »
 // qui montre déjà son propre script) : le rendu est le MÊME que celui du
 // message (`getRelanceEtapeMessage`, forme `relance_etape_message` — le
 // serveur ne filtre pas par canal), lu à la demande, par une LECTURE pure :
@@ -499,6 +501,10 @@ export default function RelanceEtapeRow({
   // close, une étape « préparer le devis » est née) pour que le parent relise
   // sa file ; à défaut, `onVisiteChanged` (même rôle : « rafraîchis-toi »).
   onPieceRecue,
+  // CAD152 — appelé après une réponse enregistrée sur la FICHE depuis le
+  // panneau d'appel (le score du lead a été recalculé par le serveur) ; à
+  // défaut, `onVisiteChanged` (même rôle : « rafraîchis-toi »).
+  onLeadEcrit,
 }) {
   // CAD80 — un brouillon de note laissé par un appel (page rechargée au
   // retour) rouvre le panneau « Fait » avec SA note, jamais une page vide.
@@ -545,8 +551,11 @@ export default function RelanceEtapeRow({
   // `langue` du « Fait », seulement si la touche est bien enregistrée).
   const [queDarija, setQueDarija] = useState(false)
   const [erreurLangue, setErreurLangue] = useState('')
-  // CAD78 — la bulle du TEXTE de la touche (script d'appel / texte e-mail).
+  // CAD78 — la bulle du TEXTE de la touche (texte e-mail).
   const [texteOuvert, setTexteOuvert] = useState(false)
+  // CAD152 — le panneau d'appel guidé (script + questions + issue) : déplié
+  // par sa bascule ou par « Appeler », qui l'ouvre AVANT de composer.
+  const [panneauAppelOuvert, setPanneauAppelOuvert] = useState(false)
   // CAD101 — le geste « pièce reçue » : quelle pièce, le fichier éventuel,
   // l'envoi en cours et l'erreur de CHAMP renvoyée par le serveur.
   const [typePiece, setTypePiece] = useState('')
@@ -554,10 +563,11 @@ export default function RelanceEtapeRow({
   const [envoiPiece, setEnvoiPiece] = useState(false)
   const [erreurPiece, setErreurPiece] = useState('')
   const busy = busyId === etape.id
-  // CAD78 — une touche d'APPEL qui porte un gabarit a un script écrit mot pour
-  // mot par le fondateur ; une touche E-MAIL a son texte. Ni l'une ni l'autre
-  // ne passe par la modale WhatsApp.
-  const scriptAppel = etape.canal === 'appel' && Boolean(etape.template_cle)
+  // CAD78/CAD152 — une touche d'APPEL a son panneau d'appel guidé (le script
+  // du fondateur quand elle porte un gabarit, et les questions encore à
+  // poser) ; une touche E-MAIL a son texte. Ni l'une ni l'autre ne passe par
+  // la modale WhatsApp.
+  const toucheAppel = etape.canal === 'appel'
   const toucheEmail = etape.canal === 'email'
 
   // CAD80 — la note du panneau « Fait » est gardée à chaque frappe (elle
@@ -589,6 +599,14 @@ export default function RelanceEtapeRow({
     if (!etape.lead_telephone) return
     if (panel === 'fait' && note.trim()) ecrireBrouillon(etape.id, { note })
     window.location.href = `tel:${etape.lead_telephone}`
+  }
+
+  // CAD152 — « Appeler » ouvre le panneau d'appel AVANT de composer : le
+  // script et les questions sont sous les yeux quand le client décroche ;
+  // « Composer le numéro » (dans le panneau) passe par `appeler` ci-dessus.
+  const ouvrirPanneauAppel = () => {
+    if (!etape.lead_telephone) return
+    setPanneauAppelOuvert(true)
   }
 
   const fermer = () => {
@@ -869,13 +887,31 @@ export default function RelanceEtapeRow({
       {!readOnly && (
         <PanneauProposerVisite etape={etape} onPlanifier={() => setPlanifierOuvert(true)} />
       )}
-      {/* CAD78 — le script d'appel s'affiche AU-DESSUS du bouton « Appeler »,
-          sans ouvrir de modale ni émettre de POST ; une touche e-mail montre
-          son texte au même endroit. */}
-      {!readOnly && (scriptAppel || toucheEmail) && (
+      {/* CAD152 — le panneau d'appel guidé, FRÈRE du coaching visite : gaté
+          sur une touche d'APPEL (ou ouvert par « Appeler » sur une autre
+          touche), AU-DESSUS du bouton, sans modale ni POST « WhatsApp
+          ouvert ». Il remplace la bulle « Script d'appel » de CAD78 (même
+          lecture du script, plus les questions). Une touche À VENIR le garde
+          (CAD44) : seule l'issue attend l'échéance. */}
+      {!readOnly && (toucheAppel || panneauAppelOuvert) && (
+        <PanneauScriptAppel
+          leadId={etape.lead}
+          etape={etape}
+          ouvert={panneauAppelOuvert}
+          onBasculer={() => setPanneauAppelOuvert((v) => !v)}
+          telephone={etape.lead_telephone}
+          onComposer={appeler}
+          onSaisirIssue={() => setPanel('fait')}
+          issueVerrouillee={enAvance}
+          onLeadEcrit={() => (onLeadEcrit ?? onVisiteChanged)?.(etape.id)}
+        />
+      )}
+      {/* CAD78 — une touche e-mail montre son texte au même endroit, sans
+          ouvrir de modale ni émettre de POST. */}
+      {!readOnly && toucheEmail && (
         <TexteDeTouche
           etape={etape}
-          titre={toucheEmail ? 'Texte de l’e-mail' : 'Script d’appel'}
+          titre="Texte de l’e-mail"
           ouvert={texteOuvert}
           onBasculer={() => setTexteOuvert((v) => !v)}
         />
@@ -884,7 +920,8 @@ export default function RelanceEtapeRow({
         <div className="mt-2 flex flex-wrap justify-end gap-1.5">
           <Button
             size="sm" variant="outline" disabled={busy || !etape.lead_telephone}
-            onClick={appeler}
+            onClick={ouvrirPanneauAppel}
+            title="Ouvre le script et les questions avant de composer le numéro."
           >
             <Phone className="size-3.5" /> Appeler
           </Button>

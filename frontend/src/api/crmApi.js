@@ -463,6 +463,12 @@ const crmApi = {
   // `contract_samples/lead_message_visite_ouvert.json` (PACT10).
   journaliserMessageVisiteOuvert: (leadId, payload) =>
     api.post(`/crm/leads/${leadId}/message-visite/ouvert/`, payload),
+  // CAD152 — le PANNEAU D'APPEL GUIDÉ d'un lead : LECTURE PURE (segment,
+  // touche en cours, script rendu, questions encore à poser, pré-remplissage,
+  // drapeaux d'équipement). Aucun effet de bord, aucun « WhatsApp ouvert ».
+  // Les réponses s'écrivent par le chemin de la fiche (`updateLead`). Forme :
+  // `contract_samples/panneau_appel.json` (CAD147, PACT10).
+  getPanneauAppel: (leadId) => api.get(`/crm/leads/${leadId}/panneau-appel/`),
 }
 
 export default crmApi

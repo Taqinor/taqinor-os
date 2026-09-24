@@ -310,28 +310,109 @@ export function scriptTouche(templateCle) {
   return SCRIPTS_TOUCHES[templateCle || ''] || null
 }
 
+// ── CAD152 — le panneau SOUS LES YEUX pendant l'appel ──────────────────────
+// Textes d'ÉCRAN (consignes à la commerciale, jamais lus au client). Source :
+// `docs/crm/messages_meryem.md`, section « Panneau d'appel — consignes
+// d'écran » (lignes `CLE : texte`) — le test re-dérive ces textes de ce
+// fichier : une modification se fait LÀ-BAS et ici, dans le même commit.
+
+/** Décision D7 (tranchée, `apps/crm/selectors.py` « NE PAS LES SUPPRIMER, NE
+ *  PAS LES CÂBLER ») : l'écran DIT que ces trois réponses ne font pas le
+ *  chiffre — mot pour mot la phrase de la tâche CAD152. */
+export const MENTION_D7 = 'Orientation et ombrage servent au dossier et à la '
+  + 'visite, pas au chiffre.'
+
+/** Q5 (décision fondateur du 21/09/2026) : sans réponse à la présence en
+ *  journée, l'estimation SUPPOSE une présence — elle porte le bandeau
+ *  « profil supposé, à confirmer » et la question remonte en tête. */
+export const CHAMP_PRESENCE_JOUR = 'occupation_jour'
+export const BANDEAU_PROFIL_SUPPOSE = 'Profil supposé, à confirmer'
+export const EXPLICATION_PROFIL_SUPPOSE = "La présence en journée n'a pas "
+  + "été posée : l'estimation suppose quelqu'un à la maison en journée. "
+  + 'Posez cette question en premier.'
+
+/** Le geste d'issue : le vocabulaire EXISTANT de la ligne (CKP4), jamais une
+ *  liste refaite ici — le panneau ne fait qu'y mener. */
+export const CONSIGNE_ISSUE = "L'issue se saisit avec les réponses de la "
+  + 'touche (« Fait ») : client joint, pas de réponse, répondeur, à '
+  + 'rappeler, refus.'
+export const ISSUE_VERROUILLEE = 'Touche à venir : l’issue se saisira à son '
+  + 'échéance (« Fait » verrouillé).'
+export const AUCUNE_QUESTION = 'Rien à demander sur cet appel : tout ce que '
+  + 'le script pose est déjà sur la fiche.'
+
+/** L'entrée du contrat qui remonte EN TÊTE du panneau (Q5) : la présence en
+ *  journée tant qu'elle reste à poser — `null` sinon. Lue dans
+ *  `champs_a_poser`, jamais supposée : une colonne déjà dans `prefill` n'est
+ *  jamais reposée. */
+export function questionEnTete(panneau) {
+  const dejaRenseigne = panneau?.prefill || {}
+  if (CHAMP_PRESENCE_JOUR in dejaRenseigne) return null
+  return (panneau?.champs_a_poser || []).find(
+    (e) => e?.champ === CHAMP_PRESENCE_JOUR) || null
+}
+
+/** La valeur à ÉCRIRE pour une saisie libre, ou l'erreur qui NOMME le champ
+ *  (règle fondateur du 08/09 : jamais un « non enregistré » générique). Un
+ *  nombre tapé à la française (« 1 200,50 ») est NORMALISÉ plutôt que
+ *  refusé : l'intention est claire. */
+export function normaliserSaisie(entree, brut) {
+  const libelle = entree?.libelle || entree?.champ || 'Réponse'
+  const texte = typeof brut === 'string' ? brut.trim() : brut
+  if (texte === '' || texte === null || texte === undefined) {
+    return { erreur: `« ${libelle} » : saisissez la réponse avant d’enregistrer.` }
+  }
+  if (entree?.nature === 'nombre') {
+    // `\s` couvre aussi les espaces insécables d'un nombre tapé à la
+    // française (« 1 200 ») : on les retire avant de lire la virgule.
+    const nettoye = String(texte).replace(/\s/g, '').replace(',', '.')
+    if (!/^-?\d+(\.\d+)?$/.test(nettoye)) {
+      return { erreur: `« ${libelle} » : « ${texte} » n’est pas un nombre.` }
+    }
+    return { valeur: nettoye }
+  }
+  return { valeur: texte }
+}
+
+/** Le refus du serveur (400 DRF `{champ: [message]}`) rendu SOUS le champ,
+ *  précédé de son libellé. `null` quand la réponse ne vise pas ce champ. */
+export function messageErreurServeur(entree, donnees) {
+  const brut = donnees?.[entree?.champ]
+  const message = Array.isArray(brut) ? brut.join(' ') : brut
+  if (!message) return null
+  return `« ${entree?.libelle || entree?.champ} » : ${message}`
+}
+
 /** Ce que le panneau affiche pour CE lead.
  *  - segment non livré : `{ livre: false, segment, message }` ;
  *  - résidentiel (ou segment vide) : `{ livre: true, segment,
  *    segmentAConfirmer, avertissement, phase, accroche, questions,
- *    objections, interdits, issues }`, `phase` valant `'appel_1'` ou
- *    `'rappel'`. */
-export function guidanceAppel(panneau) {
+ *    objections, interdits, issues, enTete, profilSuppose }`, `phase`
+ *    valant `'appel_1'` ou `'rappel'`.
+ *  `options.touche` (CAD152) : la touche de la LIGNE d'où le panneau est
+ *  ouvert — elle prime sur la prochaine touche du lead servie par le contrat
+ *  (la frise peut ouvrir une touche à venir : sa phase est la sienne). */
+export function guidanceAppel(panneau, options = {}) {
   const segment = panneau?.segment || null
   if (!segmentLivre(segment)) {
     return { livre: false, segment, message: messageSegmentNonLivre(panneau) }
   }
+  const touche = options.touche !== undefined ? options.touche : panneau?.touche
+  const vu = { ...(panneau || {}), touche }
   const segmentAConfirmer = !segment
+  const enTete = questionEnTete(vu)
   return {
     livre: true,
     segment,
     segmentAConfirmer,
     avertissement: segmentAConfirmer ? MESSAGE_SEGMENT_A_CONFIRMER : null,
-    phase: estToucheDeRappel(panneau?.touche) ? 'rappel' : 'appel_1',
-    accroche: texteAccroche(panneau),
-    questions: questionsDeLAppel(panneau),
+    phase: estToucheDeRappel(touche) ? 'rappel' : 'appel_1',
+    accroche: texteAccroche(vu),
+    questions: questionsDeLAppel(vu),
     objections: OBJECTIONS,
     interdits: INTERDITS_APPEL,
     issues: ISSUES_APPEL,
+    enTete,
+    profilSuppose: Boolean(enTete),
   }
 }

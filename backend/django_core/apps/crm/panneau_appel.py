@@ -28,6 +28,8 @@ import datetime
 import decimal
 import logging
 
+from django.db import models
+
 from . import questionnaire
 from .models import Lead, RelanceEtape
 
@@ -116,13 +118,41 @@ def _reponse_connue(lead, champ) -> bool:
     return True
 
 
+#: CAD152 — un booléen EST un vocabulaire fermé (Oui/Non) : il est servi
+#: comme tel, pour que l'écran d'appel rende deux boutons au lieu d'un champ
+#: libre où « oui » serait refusé par le serveur. L'ordre (Oui d'abord) est
+#: celui dans lequel la question se pose.
+CHOIX_BOOLEEN = (
+    {'valeur': True, 'libelle': 'Oui'},
+    {'valeur': False, 'libelle': 'Non'},
+)
+
+
 def _choix(champ):
-    """``[{valeur, libelle}]`` d'un champ à vocabulaire fermé, sinon ``None``."""
-    brut = Lead._meta.get_field(champ).choices
+    """``[{valeur, libelle}]`` d'un champ à vocabulaire fermé, sinon ``None``.
+
+    Un booléen est un vocabulaire fermé (Oui/Non, :data:`CHOIX_BOOLEEN`)."""
+    meta = Lead._meta.get_field(champ)
+    if isinstance(meta, models.BooleanField):
+        return [dict(choix) for choix in CHOIX_BOOLEEN]
+    brut = meta.choices
     if not brut:
         return None
     return [{'valeur': valeur, 'libelle': str(libelle)}
             for valeur, libelle in brut]
+
+
+def _nature(champ):
+    """CAD152 — la NATURE de la saisie : ``choix`` (vocabulaire fermé, dont
+    Oui/Non), ``nombre`` (l'écran normalise la virgule décimale avant
+    d'écrire) ou ``texte``. Lue sur le champ lui-même, jamais devinée."""
+    meta = Lead._meta.get_field(champ)
+    if isinstance(meta, models.BooleanField) or meta.choices:
+        return 'choix'
+    if isinstance(meta, (models.DecimalField, models.IntegerField,
+                         models.FloatField)):
+        return 'nombre'
+    return 'texte'
 
 
 def _question(lead, champ, section):
@@ -136,6 +166,7 @@ def _question(lead, champ, section):
         # `help_text` du modèle, jamais dans ce module.
         'question': str(meta.help_text or ''),
         'choix': _choix(champ),
+        'nature': _nature(champ),
     }
 
 
