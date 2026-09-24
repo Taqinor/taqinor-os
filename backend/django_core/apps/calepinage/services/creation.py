@@ -215,16 +215,41 @@ def _titre_depuis(nom):
 # toit, pente, azimut…) et JAMAIS la géométrie. ``preset_id`` absent ⇒ AUCUNE
 # lecture de réglage, création strictement identique à aujourd'hui (D12).
 
+#: Les entrées de la section ``presets`` qui ne sont PAS un jeu de réglages
+#: nommé : la liste des jeux elle-même (CAL197) et le catalogue de kits
+#: (SOLMVP15). Même liste que ``PRESETS_RESERVES`` de ``Bibliotheque.jsx``.
+ENTREES_RESERVEES = ('jeux', 'kits')
+
+
+def _jeux_disponibles(company):
+    """Les jeux de réglages société qu'on peut choisir à la création.
+
+    DEUX formes coexistent dans la section ``presets`` et les deux sont
+    offertes : la liste ``jeux`` (``[{id, nom, …}]``, ``services/presets.py``)
+    et les PRÉRÉGLAGES NOMMÉS édités par la bibliothèque (``{<nom>: {…,
+    source}}``, CALX43) — un préréglage nommé a pour ``id`` son nom. Les
+    interrupteurs (booléens : feu vert, approbation exigée) n'en sont pas.
+    """
+    from ..selectors import parametres_de_societe
+
+    section = parametres_de_societe(company).get('presets') or {}
+    jeux = [jeu for jeu in (section.get('jeux') or [])
+            if isinstance(jeu, dict) and str(jeu.get('id') or '').strip()]
+    for cle, valeur in section.items():
+        if cle in ENTREES_RESERVEES or not isinstance(valeur, dict):
+            continue
+        jeux.append(dict(valeur, id=cle, nom=valeur.get('nom') or cle))
+    return jeux
+
+
 def _jeu_de_reglages(company, preset_id):
-    """Le jeu MAISON ``preset_id`` de la société, ``None`` s'il n'est pas
-    demandé — refus nommant ``preset_id`` s'il est inconnu."""
+    """Le jeu ``preset_id`` de la société, ``None`` s'il n'est pas demandé —
+    refus nommant ``preset_id`` s'il est inconnu."""
     if preset_id in (None, ''):
         return None
-    from .presets import jeux_de_societe
-
     demande = str(preset_id).strip()
-    for jeu in jeux_de_societe(company):
-        if isinstance(jeu, dict) and str(jeu.get('id') or '') == demande:
+    for jeu in _jeux_disponibles(company):
+        if str(jeu.get('id') or '').strip() == demande:
             return jeu
     raise CreationRefusee(
         f"Jeu de réglages inconnu : « {demande} » — choisissez l'un des jeux "

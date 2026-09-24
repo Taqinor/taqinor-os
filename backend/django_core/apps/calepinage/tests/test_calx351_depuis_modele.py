@@ -50,27 +50,54 @@ DOCUMENT = {
 }
 
 
+#: Une section ``presets`` avec LES DEUX formes de jeux, les interrupteurs et
+#: le catalogue de kits (qui ne sont pas des jeux).
+PRESETS = {
+    'jeux': [JEU],
+    'hangar_bac_acier': {'orientation': 'paysage', 'source': 'Fiche pose'},
+    'kits': [{'id': 3}],
+    'feu_vert_bureau_etudes': True,
+    'approbation_exigee': False,
+}
+
+
+def reglages(presets=PRESETS):
+    return mock.patch('apps.calepinage.selectors.parametres_de_societe',
+                      return_value={'presets': presets})
+
+
 class JeuDeReglagesTest(SimpleTestCase):
 
     def test_absent_aucune_lecture_de_reglage(self):
-        with mock.patch('apps.calepinage.services.presets.jeux_de_societe',
+        with mock.patch('apps.calepinage.selectors.parametres_de_societe',
                         side_effect=AssertionError('lecture interdite')):
             self.assertIsNone(creation._jeu_de_reglages(object(), None))
             self.assertIsNone(creation._jeu_de_reglages(object(), ''))
 
     def test_inconnu_refuse_en_nommant_preset_id(self):
-        with mock.patch('apps.calepinage.services.presets.jeux_de_societe',
-                        return_value=[JEU]):
+        with reglages():
             with self.assertRaises(creation.CreationRefusee) as refus:
-                creation._jeu_de_reglages(object(), 'hangar')
+                creation._jeu_de_reglages(object(), 'tuile_romane')
         self.assertEqual(refus.exception.champ, 'preset_id')
-        self.assertIn('hangar', str(refus.exception))
+        self.assertIn('tuile_romane', str(refus.exception))
 
-    def test_connu_rendu(self):
-        with mock.patch('apps.calepinage.services.presets.jeux_de_societe',
-                        return_value=[JEU]):
+    def test_les_deux_formes_de_jeux_sont_offertes(self):
+        with reglages():
             self.assertEqual(creation._jeu_de_reglages(object(), 'villa'),
                              JEU)
+            nomme = creation._jeu_de_reglages(object(), 'hangar_bac_acier')
+            ids = [jeu['id'] for jeu in creation._jeux_disponibles(object())]
+        self.assertEqual(nomme['orientation'], 'paysage')
+        self.assertEqual(nomme['nom'], 'hangar_bac_acier')
+        self.assertEqual(ids, ['villa', 'hangar_bac_acier'])
+
+    def test_kits_et_interrupteurs_ne_sont_pas_des_jeux(self):
+        with reglages():
+            for cle in ('kits', 'jeux', 'feu_vert_bureau_etudes',
+                        'approbation_exigee'):
+                with self.subTest(cle=cle):
+                    with self.assertRaises(creation.CreationRefusee):
+                        creation._jeu_de_reglages(object(), cle)
 
 
 class DocumentDeDepartTest(SimpleTestCase):
