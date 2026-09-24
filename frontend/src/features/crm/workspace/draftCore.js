@@ -563,6 +563,7 @@ export const WEB_QUESTIONNAIRE_STRUCTURED_FIELDS = [
 // sur le site le … », servie par le serveur — `provenance_site`, contrat
 // `lead_provenance_site`), et ne devient modifiable qu'après « Modifier ».
 // Miroir de `crm.Lead.CHAMPS_SITE` (apps/crm/models.py).
+// source-choix: crm.Lead.CHAMPS_SITE
 export const CHAMPS_SITE = [
   'distributeur', 'roof_age', 'ownership', 'project_timeline',
   'financing_intent', 'facility_type', 'roof_type', 'bill_kwh',
