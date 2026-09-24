@@ -1,0 +1,201 @@
+{
+  "endpoint": "GET /api/django/calepinage/calepinages/<int:pk>/export-projet.json/",
+  "pourquoi": "CALX293 — CONTRAT D'ABORD (PACT10), aucune vue n'existe encore. LE CONSTAT : le seul export JSON du module rend le document de pose SEUL (`services/io_layout.py::exporter_layout`, ligne 66-82 : `{roof_layout, layout_hash, schema_version}`) — ni le site, ni les équipements retenus, ni le `resultat` de simulation, ni les pertes n'en sortent. Un bureau d'études qui reçoit ce fichier aujourd'hui ne peut PAS refaire le calcul ailleurs : il lui manque la météo, la géométrie électrique et la production. Parité : PV*SOL 2026 (https://valentin-software.com/en/product-news-blog-en/pvsol-premium-2026-available-now/ — « JSON export of project data and simulation results for simplified further processing in external CRM, ERP, or analytics tools »).\n\nCE QUE CE FICHIER AJOUTE — UN SEUL export, une SEULE forme. `export-projet.json/` n'est pas un remplacement de `export-layout/` (CAL216, `exporter_layout`, qui continue de servir le document de pose SEUL pour l'aller-retour d'import/export CALX28) : c'est un export PLUS LARGE, à l'usage d'un tiers qui veut refaire le calcul, pas rouvrir l'éditeur. `roof_layout` y est repris TEL QUEL (même discipline que `exporter_layout` : « rend le document TEL QUEL — aucune transformation, aucun champ retiré »), à côté du site, des équipements retenus et du résultat de simulation.\n\nD'OÙ VIENT CHAQUE BLOC — AUCUNE CLÉ INVENTÉE : `calepinage` (identifiant, titre, client) reprend les champs déjà publiés par `GET .../<pk>/` (`contract_samples/calepinage_detail.json`) ; `site` reprend `selectors.contexte_geographique` (adresse, ville, coordonnées, source du repère) PLUS l'altitude et le fuseau déjà publiés par `resultat['meteo'].point.altitude_m` et `.heure.fuseau_site` (`contract_samples/calepinage_meteo.json`) ; `equipements` reprend TEL QUEL le contrat `calepinage_equipements.json` (panneau/onduleur/batterie/optimiseur, chacun avec ses `specs` et ses `sources`) ; `roof_layout`/`layout_hash`/`version_moteur` reprennent `exporter_layout` ; `resultat` reprend le contrat `calepinage_resultat.json` (pose, électrique, production) ; `pertes` DUPLIQUE, à la racine, la MÊME liste plate que `resultat.pertes` — un tiers qui ne veut QUE la chaîne de pertes n'a pas besoin de descendre dans `resultat` ; `avertissements` reprend `resultat.avertissements`.\n\n`format_version` EST UN ENTIER VERSIONNÉ DANS LE FICHIER, jamais dérivé d'une date de production ni du `schema_version` de `roof_layout` (qui verse le DOCUMENT de pose, pas ce format d'export composite — les deux évoluent à des rythmes différents) : un futur ajout de bloc (plan de câblage, nomenclature) incrémente `format_version`, jamais une date qu'un import devrait reparser. `produit_le` porte, LUI, l'horodatage réel de la génération — la distinction entre les deux est délibérée (CALX293).\n\nDISCIPLINE DU NULL — un calepinage jamais simulé exporte `resultat: null` et `pertes: []` (jamais un résultat à moitié rempli) : c'est la même discipline que `calepinage_resultat.json` (`exemple_vide`, CALX70 : `simule: false` avec le motif dans `avertissements`), reprise ici sans réinvention.\n\nAUCUN CHIFFRE DE MONTANT — D5. Ce fichier décrit une INSTALLATION (géométrie, météo, production), jamais un prix. `Produit.prix_achat` n'entre dans AUCUN bloc `equipements[*].specs` (le contrat `calepinage_equipements.json` ne le publie déjà pas) et aucune clé `prix_*`/`cout_*`/`marge_*` n'est admise nulle part dans ce document — gardé par ce test ET par la garde de surface CAL122 (`tests/test_aucun_prix_achat.py`), qui balaie aussi ce fichier. Les valeurs de cet exemple sont des PLACEHOLDERS assumés (identifiants à un chiffre, empreinte visiblement factice) : aucun chiffre client réel.\n\nCALX314 — `provenance` : `[{libelle, valeur}]`, composé par `services/provenance_document.py::lignes_de_provenance`, la fonction PARTAGÉE qui pose aussi la feuille `Provenance` du classeur XLSX et le calque `PROVENANCE` du DXF (trois mises en forme, UNE composition). Ses six premières lignes REPRENNENT la provenance du CSV de simulation (`services/export_csv.py`, CAL144/CALX313) ; les deux dernières sont les empreintes (document de pose, entrées de la simulation). Une valeur absente n'est jamais une chaîne vide : « non calculée » pour une empreinte, « non publiée » pour le reste. Ce bloc entre AVANT la première livraison de la route (CALX312 et CALX314 atterrissent ensemble) : `format_version` reste donc 1 — aucun fichier de format 1 n'a circulé sans lui.",
+  "exemple": {
+    "format_version": 1,
+    "produit_le": "2026-09-19T11:30:00Z",
+    "calepinage": {
+      "id": 1,
+      "titre": "Toiture atelier — Bouskoura",
+      "client": {
+        "id": 1,
+        "nom": "Client d'essai"
+      }
+    },
+    "site": {
+      "adresse": "12 rue d'essai",
+      "ville": "Casablanca",
+      "pin": {
+        "lat": 33.5731,
+        "lng": -7.5898
+      },
+      "altitude_m": 139.0,
+      "fuseau": "Africa/Casablanca",
+      "source_repere": "lead_roof_point"
+    },
+    "equipements": {
+      "panneau": {
+        "produit": 21,
+        "designation": "Module PV 550 Wc",
+        "quantite": 12,
+        "specs": {
+          "vmp_v": 41.5,
+          "voc_v": 49.8,
+          "isc_a": 13.9,
+          "imp_a": 13.25,
+          "pmax_wc": 550,
+          "rendement_pct": 21.3
+        }
+      },
+      "onduleur": {
+        "produit": 22,
+        "designation": "Onduleur hybride 10 kW",
+        "quantite": 1,
+        "specs": {
+          "n_mppt": 2,
+          "mppt_v_min": 120,
+          "mppt_v_max": 550,
+          "ac_kw": 10,
+          "phases": 3,
+          "rendement_euro_pct": 97.5
+        }
+      },
+      "batterie": null,
+      "optimiseur": null
+    },
+    "roof_layout": {
+      "version": 2,
+      "pin": {
+        "lat": 33.5,
+        "lng": -7.6
+      },
+      "outline": [
+        [33.5, -7.6],
+        [33.5, -7.5999],
+        [33.5001, -7.5999],
+        [33.5001, -7.6]
+      ],
+      "zones": [
+        {
+          "id": "z1",
+          "label": "Pan Sud",
+          "vertices": [[0, 0], [10, 0], [10, 6], [0, 6]],
+          "geometry": {
+            "azimuthDeg": 180.0,
+            "tiltDeg": 15.0,
+            "kwc": 8.64,
+            "count": 12
+          }
+        }
+      ]
+    },
+    "layout_hash": "abababababababababababababababababababababababababababababababab",
+    "version_moteur": "calepinage-1.0.0",
+    "resultat": {
+      "pose": {
+        "total_modules": 12,
+        "kwc": 8.64,
+        "pans": [
+          {"pan": "PAN-A", "modules": 8, "kwc": 5.76, "azimut_deg": 180.0,
+           "inclinaison_deg": 15.0}
+        ]
+      },
+      "electrique": {
+        "chainage": {
+          "modules": 12,
+          "modules_par_chaine": 6,
+          "chaines": 2,
+          "reste": 0,
+          "puissance_module_wc": 720
+        },
+        "onduleurs": [
+          {"reference": "ONDULEUR-ESSAI-1", "taille_kw": 10.0, "nombre": 1,
+           "puissance_dc_kwc": 8.64, "conforme": true}
+        ]
+      },
+      "production": {
+        "base": {
+          "source": "pvgis",
+          "fenetre_annees": "2020-2020",
+          "loss_passee_pct": 20.1
+        },
+        "total": {
+          "kwc": 8.64,
+          "p50_kwh": 13000.0,
+          "p75_kwh": 12400.0,
+          "p90_kwh": 11900.0,
+          "performance_ratio": 0.799,
+          "specific_yield_kwh_kwc": 1504.6
+        },
+        "mensuel": [
+          {"mois": 1, "p50_kwh": 880.0},
+          {"mois": 2, "p50_kwh": 920.0}
+        ]
+      }
+    },
+    "pertes": [
+      {"poste": "shading", "libelle": "Horizon et ombrage proche",
+       "pct": 3.4, "source": "mesure"},
+      {"poste": "temperature",
+       "libelle": "Échauffement cellule au-dessus du STC", "pct": 8.0,
+       "source": "hypothese"},
+      {"poste": "soiling", "libelle": "Salissure et poussière", "pct": 3.0,
+       "source": "hypothese"},
+      {"poste": "wiring", "libelle": "Pertes ohmiques DC et AC", "pct": 2.0,
+       "source": "hypothese"},
+      {"poste": "inverter", "libelle": "Rendement de conversion onduleur",
+       "pct": 2.5, "source": "fiche"},
+      {"poste": "mismatch", "libelle": "Dispersion modules, connectique, LID",
+       "pct": 2.0, "source": "hypothese"},
+      {"poste": "availability",
+       "libelle": "Indisponibilité réseau et maintenance", "pct": 1.0,
+       "source": null}
+    ],
+    "avertissements": [],
+    "provenance": [
+      {"libelle": "Provenance", "valeur": "Module Calepinage"},
+      {"libelle": "Base de rayonnement", "valeur": "pvgis"},
+      {"libelle": "Fenêtre d'années", "valeur": "2020-2020"},
+      {"libelle": "Version du moteur", "valeur": "calepinage-1.0.0"},
+      {"libelle": "Pertes passées à PVGIS (%)", "valeur": "20,100"},
+      {"libelle": "Détail des pertes",
+       "valeur": "shading 3,40 % (mesure) + temperature 8,00 % (hypothese) + soiling 3,00 % (hypothese) + wiring 2,00 % (hypothese) + inverter 2,50 % (fiche) + mismatch 2,00 % (hypothese) + availability 1,00 % (source non renseignée)"},
+      {"libelle": "Empreinte du calepinage",
+       "valeur": "abababababababababababababababababababababababababababababababab"},
+      {"libelle": "Empreinte d'entrée de la simulation",
+       "valeur": "abababababababababababababababababababababababababababababababab"}
+    ]
+  },
+  "exemple_vide": {
+    "format_version": 1,
+    "produit_le": "2026-09-19T09:00:00Z",
+    "calepinage": {
+      "id": 2,
+      "titre": "",
+      "client": null
+    },
+    "site": {
+      "adresse": null,
+      "ville": null,
+      "pin": null,
+      "altitude_m": null,
+      "fuseau": null,
+      "source_repere": null
+    },
+    "equipements": {
+      "panneau": null,
+      "onduleur": null,
+      "batterie": null,
+      "optimiseur": null
+    },
+    "roof_layout": null,
+    "layout_hash": null,
+    "version_moteur": null,
+    "resultat": null,
+    "pertes": [],
+    "avertissements": [
+      "Aucune conception enregistrée : ce calepinage n'a jamais été posé."
+    ],
+    "provenance": [
+      {"libelle": "Provenance", "valeur": "Module Calepinage"},
+      {"libelle": "Base de rayonnement", "valeur": "non publiée"},
+      {"libelle": "Fenêtre d'années", "valeur": "non publiée"},
+      {"libelle": "Version du moteur", "valeur": "non publiée"},
+      {"libelle": "Pertes passées à PVGIS (%)", "valeur": "non publiée"},
+      {"libelle": "Détail des pertes", "valeur": "aucun poste publié"},
+      {"libelle": "Empreinte du calepinage", "valeur": "non calculée"},
+      {"libelle": "Empreinte d'entrée de la simulation",
+       "valeur": "non calculée"}
+    ]
+  }
+}

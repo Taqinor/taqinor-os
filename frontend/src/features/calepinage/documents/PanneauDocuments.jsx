@@ -3,90 +3,75 @@ import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
+import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
+import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
+import { deposerCarteDeChaleur, deposerDiagrammeDePertes } from './deposerImage'
 
 /* ============================================================================
-   CALX19 — LE PANNEAU « DOCUMENTS » : l'INVENTAIRE des sorties, enfin lu.
+   CALX320 — LE PANNEAU « DOCUMENTS » BASCULE SUR L'INVENTAIRE `documents/`.
    ----------------------------------------------------------------------------
-   Constat (docs/PLAN2.md, CALX19) : `views/sorties.py:171-175` (l'inventaire,
-   contrat `contract_samples/calepinage_sorties.json`) et les portes qu'il
-   décrit (`:177-217` planche PDF/SVG, et dix autres) sont servies et TESTÉES
-   depuis longtemps — aucun consommateur `frontend/src` n'existait. Ce panneau
-   est ce consommateur, monté comme un onglet de plus dans `atelier/onglets.js`
-   (D-CALX 3 : un panneau = une ligne de registre, jamais une route neuve —
-   voir le commentaire au-dessus de `/calepinage/:id` dans `module.config.jsx`).
+   CALX19 posait ce panneau sur l'inventaire `sorties/` (planche, plans, note
+   de calcul, DXF, tableurs, pack technique — des SORTIES TECHNIQUES, CAL175).
+   `sorties/` ne publie qu'une phrase libre par pièce indisponible et ne garde
+   AUCUNE version : impossible d'y montrer « ce qui manque » champ par champ
+   ou « la dernière version produite ». `documents/` (CALX291, contrat
+   `contract_samples/calepinage_documents.json`) est l'inventaire DISTINCT des
+   NEUF LIVRABLES du lot 6 (rapport d'étude, rapport d'ombrage, export projet,
+   plan de câblage, manuel propriétaire, as-built, dossier de fin de chantier,
+   diagramme de pertes, présentation compacte) — chaque pièce y porte
+   `manque: [{champ, libelle, ou_saisir}]` (CALX321) et `versions: [...]`
+   (CALX322, la plus récente d'abord). C'est CETTE inventaire que ce panneau
+   consomme désormais — MÊME FICHIER, MÊME clé d'onglet `documents` (unique
+   dans `atelier/onglets.js` — aucun second panneau n'est inscrit ici).
 
-   CE PANNEAU N'INVENTE RIEN. Chaque entrée affichée est EXACTEMENT une sortie
-   de l'inventaire servi (`sorties()`) : le libellé, le format, si le bouton
-   est actif (`disponible`) et — SINON — le motif du serveur SOUS le bouton,
-   jamais recalculé ni reformulé ici (règle fondateur « erreurs = le champ
-   fautif, message exact »).
+   CE PANNEAU N'INVENTE RIEN. Chaque entrée affichée est EXACTEMENT une pièce
+   de l'inventaire servi (`documents()`) : le libellé, le format, si le
+   bouton est actif (`disponible`), le motif du serveur ET la liste NOMMÉE de
+   ce qui manque — jamais recalculés ni reformulés ici (règle fondateur
+   « erreurs = le champ fautif, message exact »). AUCUNE pièce indisponible
+   n'est masquée : elle reste affichée, grisée, bouton désactivé, motif et
+   manque lisibles.
 
-   BRANCHEMENT PROGRESSIF (`CODES_GERES`, append-only) : chaque tâche du lot 6
-   (CALX20 → CALX24, CALX28) AJOUTE un code à cette liste, EN FIN, avec son
-   commentaire `// CALX<id>` — jamais une réécriture. Un code de l'inventaire
-   absent de cette liste N'A PAS D'ENTRÉE ICI (encore) : ce panneau ne rend
-   JAMAIS un bouton actif qui ne ferait rien au clic — c'est exactement le
-   défaut que `check_ecrans_atteignables.py` traque ailleurs, appliqué ici au
-   niveau du bouton plutôt que de l'écran.
+   LE LIEN VERS L'ONGLET. `manque[].ou_saisir` est une phrase FRANÇAISE déjà
+   écrite par le serveur (ex. « Vérifiez les températures sur l'onglet
+   Équipements électriques. ») — jamais une clé de registre. `ongletCiteDans`
+   cherche, DANS ce texte, le libellé d'un onglet qui existe RÉELLEMENT dans
+   `atelier/onglets.js` (« l'onglet <libellé> » / « le panneau <libellé> ») :
+   seul un texte qui NOMME un onglet inscrit devient un lien cliquable —
+   jamais une devinette (un champ comme `roof_layout`, dont le texte cite
+   « l'onglet Toiture », qui n'existe pas dans le registre sous ce nom,
+   n'obtient donc AUCUN lien : le texte reste lisible, sans destination
+   fausse).
 
-   TÉLÉCHARGEMENT : `calepinageApi.calepinages.telechargerSortie(endpoint)`
-   (CALX19) réutilise l'`endpoint` PUBLIÉ PAR LE SERVEUR — jamais un chemin
-   reconstruit ici — puis `utils/downloadBlob.js` (`downloadBlob` +
-   `filenameFromResponse`, l'UNIQUE helper de téléchargement du dépôt : on ne
-   réinvente pas un second `URL.createObjectURL`).
+   L'EMPREINTE. Le contrat ne publie AUCUNE empreinte par version (seulement
+   `numero`/`produit_le`/`produit_par_utilisateur`/`attachment`) — en publier
+   une par ligne serait un chiffre inventé (règle fondateur). L'EMPREINTE DE
+   LA CONCEPTION (`layout_hash`, publiée UNE fois par l'inventaire) s'affiche
+   en tête de panneau, même lecture que `FicheCalepinage.jsx` (`layout_hash
+   .slice(0, 12)`, libellé « Empreinte de la conception »).
 
-   RÉGIME D'ERREUR PARTAGÉ : une sortie refusée (400, `{champ: message}` — ou
-   une LISTE de signalements, CALX24) s'affiche SOUS SA PROPRE carte, jamais
-   en tête de panneau — un refus sur la note de calcul ne doit pas faire
-   croire que la planche a, elle aussi, échoué.
+   LE TÉLÉCHARGEMENT D'UNE VERSION ANTÉRIEURE. `versions[].attachment` n'est
+   qu'un IDENTIFIANT numérique (`records.Attachment`), jamais une URL — le
+   contrat ne publie pas mieux. Le proxy Django générique des pièces jointes
+   (`apps.records`, route DRF déclarée `attachments/<pk>/download/`) est LA
+   MÊME convention que sert `AttachmentSerializer.get_url` et que consomme
+   déjà `AttachmentsPanel.jsx` (`a.url`) : construire ce chemin à partir de
+   l'identifiant n'est pas une devinette, c'est une route STABLE du dépôt.
+
+   IMAGES JOINTES. `images[]` (CALX302) liste les dépôts RÉELLEMENT
+   persistés (`{genre, attachment, depose_le}`) — affichées ICI, en plus de
+   la confirmation éphémère de LA session courante que CALX302 posait déjà.
+
+   SectionConception (CALX28) et SectionImages (CALX302, étendue ici du
+   bouton « Joindre le diagramme de pertes ») restent HORS inventaire —
+   aucune des deux n'était gouvernée par `sorties()`, ni par `documents()`.
    ========================================================================== */
-
-// Les codes de l'inventaire déjà branchés ICI. CALX19 pose les deux premiers
-// (planche cotée) ; `planche_png` (conversion NAVIGATEUR du SVG frère) et
-// `image_3d` (pas un fichier — son URL voyage dans l'agrégat de détail) ne
-// sont jamais des téléchargements génériques de ce panneau.
-const CODES_GERES = [
-  'planche_pdf', // CALX19
-  'planche_svg', // CALX19
-  'plan_pose_pdf', // CALX20
-  'plan_toiture_pdf', // CALX20
-  'plan_masse_pdf', // CALX20 — inactif sans parcelle, motif du serveur nommant le champ.
-  // CALX21 — note de calcul. Aucune logique propre : le RÉGIME D'ERREUR
-  // générique (`ErreursSortie`, posé par CALX19) affiche déjà la grandeur
-  // manquante que `NoteRefusee` NOMME quand un résultat partiel refuse le
-  // rendu — c'est exactement « la liste NOMMÉE des valeurs indispensables
-  // absentes » que la tâche demande, sans code supplémentaire ici. Aucun
-  // montant n'entre dans ce panneau (la note est une pièce technique).
-  'note_calcul_pdf',
-  'dxf', // CALX22 — 4 calques, voir DESCRIPTIONS.
-  'tableur_xlsx', // CALX22 — 3 feuilles, voir DESCRIPTIONS.
-  'tableur_csv', // CALX23 — sélecteur de feuille, voir FEUILLES_CSV.
-  'pack_technique', // CALX24 — POST, pas un GET : voir composerPack().
-]
-
-// CALX23 — les TROIS feuilles servies par `?feuille=`, recopiées à l'IDENTIQUE
-// de `services/export_tableur.py::FEUILLES` (« Modules », « Chaînes »,
-// « Nomenclature ») — jamais un nom inventé ni une quatrième feuille : le
-// sélecteur ne propose QUE celles-là.
-const FEUILLES_CSV = ['Modules', 'Chaînes', 'Nomenclature']
-
-// CALX22 — ce que contient chaque export, affiché SOUS le bouton pour que
-// l'utilisateur sache ce qu'il télécharge AVANT de cliquer. Noms recopiés
-// TELS QUELS des services qui les produisent (jamais reformulés) :
-// `services/export_dxf.py::CALQUES` (TOITURE/OBSTACLES/MODULES/COTES) et
-// `services/export_tableur.py::FEUILLES` (Modules/Chaînes/Nomenclature) — la
-// MÊME liste que CALX23 sert au sélecteur de feuille du CSV.
-const DESCRIPTIONS = {
-  dxf: 'Calques : TOITURE, OBSTACLES, MODULES, COTES.',
-  tableur_xlsx: 'Feuilles du classeur : Modules, Chaînes, Nomenclature.',
-}
 
 /** Une erreur serveur -> `[{champ, message}]`, triée pour un affichage
     STABLE. Couvre les DEUX formes vues sur ce module : un objet
-    `{champ: message}` (`PlancheRefusee`/`NoteRefusee`/…, un seul couple à la
-    fois) et une LISTE de chaînes (les `signalements` de `pack-technique/`,
-    CALX24). Jamais un message générique tant qu'un détail existe. */
+    `{champ: message}` et une LISTE de chaînes. Jamais un message générique
+    tant qu'un détail existe. */
 function detailsErreur(donnee) {
   if (Array.isArray(donnee)) {
     return donnee.map((message, index) => ({ champ: String(index + 1), message: String(message) }))
@@ -137,13 +122,111 @@ function ErreursSortie({ erreurs }) {
   )
 }
 
-/** Une carte de sortie : libellé, format, bouton (actif seulement si
-    l'inventaire le dit), motif d'indisponibilité SOUS le bouton inactif.
-    `libelleBouton` : « Télécharger » par défaut, remplacé pour une action
-    qui n'est pas un téléchargement (CALX24 — « Composer… », une écriture). */
-function CarteSortie({
-  entree, enCours, onTelecharger, erreurs, description, enfant,
-  libelleBouton = 'Télécharger',
+/** Le proxy Django GÉNÉRIQUE d'une pièce jointe (`apps.records`), MÊME
+    convention que `AttachmentSerializer.get_url` / `AttachmentsPanel.jsx`
+    (`a.url`) : `documents()` ne publie qu'un IDENTIFIANT numérique par
+    version/image (`attachment`), jamais une URL — ce chemin est la SEULE
+    façon de le résoudre, une route DRF déclarée et stable, jamais une
+    devinette. */
+function hrefAttachment(attachmentId) {
+  return `/api/django/records/attachments/${attachmentId}/download/`
+}
+
+/** L'onglet du REGISTRE (`atelier/onglets.js`) dont le libellé est cité,
+    EN TOUTES LETTRES, par un texte `ou_saisir` (« … sur l'onglet Toiture. »,
+    « … le panneau Pertes. ») — `null` si aucun onglet du registre n'y est
+    nommé : JAMAIS un lien vers une devinette. Recherche DEPUIS le registre
+    (pas l'inverse) : ça évite toute ambiguïté de découpage de phrase. */
+function ongletCiteDans(texte) {
+  if (!texte) return null
+  const bas = texte.toLowerCase()
+  return ONGLETS.find((o) => {
+    const nom = o.libelle.toLowerCase()
+    return bas.includes(`l'onglet ${nom}`) || bas.includes(`l’onglet ${nom}`)
+      || bas.includes(`le panneau ${nom}`)
+  }) ?? null
+}
+
+/** La liste `manque[]` d'un document indisponible — chaque entrée NOMME son
+    champ et son libellé ; `ou_saisir` devient un LIEN vers l'onglet du
+    registre quand le texte en cite un qui existe réellement (voir
+    `ongletCiteDans`), sinon reste un texte simple. */
+function ListeManque({ manque, calepinageId, code }) {
+  if (!manque?.length) return null
+  return (
+    <ul className="mt-2 space-y-1 text-xs text-muted-foreground" data-testid={`cal-doc-manque-${code}`}>
+      {manque.map((m) => {
+        const onglet = ongletCiteDans(m.ou_saisir)
+        return (
+          <li key={`${code}-${m.champ}`} data-testid={`cal-doc-manque-item-${code}-${m.champ}`}>
+            <strong className="text-foreground">{m.libelle}</strong>
+            {' — '}
+            {onglet ? (
+              <Link
+                to={`/calepinage/${calepinageId}?${PARAM_ONGLET}=${onglet.cle}`}
+                className="underline"
+                data-testid={`cal-doc-manque-lien-${code}-${m.champ}`}
+              >
+                {m.ou_saisir}
+              </Link>
+            ) : m.ou_saisir}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/** Une ligne de version : numéro, date, auteur (quand le serveur le publie),
+    et son téléchargement propre (`attachment`, proxy générique). */
+function LigneVersion({ code, version, etiquette }) {
+  return (
+    <div
+      className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+      data-testid={`cal-doc-version-${code}-${version.numero}`}
+    >
+      <span>
+        {etiquette} v{version.numero} — {formatDateTime(version.produit_le)}
+        {version.produit_par_utilisateur?.nom_complet
+          ? ` · ${version.produit_par_utilisateur.nom_complet}` : ''}
+      </span>
+      <a
+        href={hrefAttachment(version.attachment)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium text-primary-text underline"
+        data-testid={`cal-doc-version-telecharger-${code}-${version.numero}`}
+      >
+        Télécharger
+      </a>
+    </div>
+  )
+}
+
+/** La « dernière version » PUIS les versions antérieures (`versions[]` sert
+    déjà la plus récente d'abord, CALX322) — rien tant que la liste est
+    vide. */
+function VersionsDocument({ versions, code }) {
+  if (!versions?.length) return null
+  const [derniere, ...anterieures] = versions
+  return (
+    <div className="mt-2 space-y-1" data-testid={`cal-doc-versions-${code}`}>
+      <LigneVersion code={code} version={derniere} etiquette="Dernière version" />
+      {anterieures.map((v) => (
+        <LigneVersion key={v.numero} code={code} version={v} etiquette="Version antérieure" />
+      ))}
+    </div>
+  )
+}
+
+/** Une carte de document (contrat `calepinage_documents.json`) : libellé,
+    format, bouton de téléchargement (actif seulement si `disponible`), le
+    motif SOUS le bouton quand il ne l'est pas — suivi de la liste `manque[]`
+    NOMMÉE (CALX321) — puis les versions déjà produites (CALX322), qu'il
+    soit disponible ou non (une pièce redevenue indisponible garde son
+    historique). */
+function CarteDocument({
+  entree, calepinageId, enCours, onTelecharger, erreurs,
 }) {
   return (
     <div
@@ -163,90 +246,31 @@ function CarteSortie({
           onClick={onTelecharger}
           data-testid={`cal-doc-bouton-${entree.code}`}
         >
-          {libelleBouton}
+          Télécharger
         </Button>
       </div>
-      {description && (
-        <p
-          className="mt-2 text-xs text-muted-foreground"
-          data-testid={`cal-doc-description-${entree.code}`}
-        >
-          {description}
-        </p>
-      )}
       {!entree.disponible && (
-        <p
-          className="mt-2 text-xs text-muted-foreground"
-          data-testid={`cal-doc-motif-${entree.code}`}
-        >
-          {entree.motif_indisponible}
-        </p>
+        <>
+          <p
+            className="mt-2 text-xs text-muted-foreground"
+            data-testid={`cal-doc-motif-${entree.code}`}
+          >
+            {entree.motif_indisponible}
+          </p>
+          <ListeManque manque={entree.manque} calepinageId={calepinageId} code={entree.code} />
+        </>
       )}
-      {enfant}
+      <VersionsDocument versions={entree.versions} code={entree.code} />
       <ErreursSortie erreurs={erreurs} />
     </div>
   )
 }
 
-/** CALX23 — le sélecteur de feuille du CSV. Un `<select>` NATIF plutôt que le
-    composant `Select` (Radix) de `ui/` : les menus Radix portalés sont
-    invisibles dans jsdom hors d'un vrai navigateur (piège catalogué), et ce
-    choix n'a aucun besoin de portail. */
-function SelecteurFeuilleCsv({ valeur, onChange }) {
-  return (
-    <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-      Feuille
-      <select
-        className="rounded border border-input bg-card px-2 py-1 text-xs text-foreground"
-        value={valeur}
-        onChange={(evenement) => onChange(evenement.target.value)}
-        data-testid="cal-doc-feuille-csv"
-      >
-        {FEUILLES_CSV.map((feuille) => (
-          <option key={feuille} value={feuille}>{feuille}</option>
-        ))}
-      </select>
-    </label>
-  )
-}
-
-/** CALX24 — le résultat d'une composition RÉUSSIE : le lien du document
-    déposé (nom rendu par le serveur) et CHAQUE signalement affiché « en
-    toutes lettres », jamais résumé. Un dossier sans signalement n'affiche
-    aucune liste vide. Le lien vise `/ged` (aucune route de détail par
-    document n'existe encore côté GED) — jamais un import `apps.ged` ici : ce
-    module ne parle qu'à `composerPackTechnique`, une action DÉJÀ posée par le
-    serveur. */
-function ResultatPack({ resultat }) {
-  if (!resultat) return null
-  return (
-    <div className="mt-2 space-y-1" data-testid="cal-doc-pack-resultat">
-      <p className="text-xs text-foreground">
-        Document déposé :{' '}
-        <Link to="/ged" className="font-medium text-primary-text underline">
-          {resultat.nom || `Dossier technique #${resultat.document}`}
-        </Link>
-      </p>
-      {resultat.signalements?.length > 0 && (
-        <ul
-          className="space-y-0.5 text-xs text-muted-foreground"
-          data-testid="cal-doc-pack-signalements"
-        >
-          {resultat.signalements.map((signalement) => (
-            <li key={signalement}>{signalement}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
 /** CALX28 — l'export/import du document de conception. INDÉPENDANT de
-    l'inventaire des sorties (`export-layout/`/`import-layout/` n'y figurent
-    pas) : deux boutons toujours visibles, jamais gouvernés par `disponible`.
-    Un déclencheur `<input type="file">` masqué + `ref.click()` — le patron
-    déjà en usage ailleurs dans le dépôt (`EntitesPage.jsx`), jamais un second
-    widget d'upload inventé ici. */
+    l'inventaire des documents : deux boutons toujours visibles, jamais
+    gouvernés par `disponible`. Un déclencheur `<input type="file">` masqué +
+    `ref.click()` — le patron déjà en usage ailleurs dans le dépôt
+    (`EntitesPage.jsx`), jamais un second widget d'upload inventé ici. */
 function SectionConception({
   enCours, erreurs, confirmation, onExporter, onImporter,
 }) {
@@ -301,66 +325,135 @@ function SectionConception({
   )
 }
 
-export default function PanneauDocuments({ calepinageId }) {
+/** Libellés FRANÇAIS des genres d'image déposables (`GENRES_IMAGE`,
+    `services/images_document.py`) — un genre HORS de cette table (ne
+    devrait jamais arriver, l'énumération serveur est FERMÉE) s'affiche tel
+    quel plutôt que de faire planter la liste. */
+const LIBELLE_GENRE_IMAGE = {
+  ombrage: 'Carte de chaleur (ombrage)',
+  sankey: 'Diagramme de pertes',
+  plan3d: 'Rendu 3D',
+}
+
+/** CALX302/CALX320 — les images PRODUITES PAR LE NAVIGATEUR jointes au
+    calepinage. Aucun rasteriseur SVG côté serveur (même limite que
+    `sorties/planche_png`, CAL175) : la carte de chaleur d'ombrage est rendue
+    par l'atelier 3D (`builderApi.renderImageHd(2)`) — sans `builderApi`
+    (panneau ouvert hors de la scène 3D), SEUL ce bouton le dit et se
+    désactive ; le diagramme de pertes, lui, vient du SVG autonome SERVEUR
+    (`diagrammePertesSvg`, CALX308) rastérisé ICI — il ne dépend d'AUCUN
+    outil 3D et reste donc toujours actif. Le genre et l'horodatage du
+    DERNIER dépôt réussi de CETTE session s'affichent sous les boutons ; la
+    liste `images[]` (persistée, CALX291) s'affiche EN PLUS, en dessous —
+    « images jointes visibles » (CALX320). */
+function SectionImages({
+  builderApi, enCours, erreurs, deposeLe, images,
+  onDeposerCarteDeChaleur, onDeposerDiagrammePertes,
+}) {
+  return (
+    <div className="rounded-md border border-border/60 p-3" data-testid="cal-doc-images">
+      <p className="text-sm font-medium text-foreground">Images de l’atelier</p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Button
+          size="sm"
+          variant="outline"
+          loading={enCours === 'ombrage'}
+          disabled={!builderApi}
+          onClick={onDeposerCarteDeChaleur}
+          data-testid="cal-doc-bouton-joindre-ombrage"
+        >
+          Joindre la carte de chaleur
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          loading={enCours === 'sankey'}
+          onClick={onDeposerDiagrammePertes}
+          data-testid="cal-doc-bouton-joindre-pertes"
+        >
+          Joindre le diagramme de pertes
+        </Button>
+      </div>
+      {!builderApi && (
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="cal-doc-images-outil-absent">
+          Outil 3D non ouvert — ouvrez la conception pour joindre une carte de chaleur.
+        </p>
+      )}
+      {deposeLe?.genre === 'ombrage' && (
+        <p role="status" className="mt-2 text-xs text-foreground" data-testid="cal-doc-images-confirmation">
+          Carte de chaleur jointe ({deposeLe.deposeLe}).
+        </p>
+      )}
+      {deposeLe?.genre === 'sankey' && (
+        <p role="status" className="mt-2 text-xs text-foreground" data-testid="cal-doc-images-confirmation-pertes">
+          Diagramme de pertes joint ({deposeLe.deposeLe}).
+        </p>
+      )}
+      <ErreursSortie erreurs={erreurs} />
+      {images?.length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs text-muted-foreground" data-testid="cal-doc-images-jointes">
+          {images.map((img) => (
+            <li key={`${img.genre}-${img.attachment}`} data-testid={`cal-doc-image-${img.genre}-${img.attachment}`}>
+              {LIBELLE_GENRE_IMAGE[img.genre] || img.genre} — {formatDateTime(img.depose_le)}
+              {' — '}
+              <a
+                href={hrefAttachment(img.attachment)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary-text underline"
+              >
+                Voir
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+export default function PanneauDocuments({ calepinageId, builderApi = null }) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
   const { data, loading, error } = useResource(
-    () => calepinageApi.calepinages.sorties(id), id,
+    () => calepinageApi.calepinages.documents(id), id,
     { select: (r) => r.data, errorMessage: 'Inventaire des documents indisponible.' },
   )
 
   // `code` en téléchargement -> vrai. `code` -> `[{champ,message}]` en refus.
   const [enCours, setEnCours] = useState(null)
   const [erreurs, setErreurs] = useState({})
-  // CALX23 — la feuille CSV choisie, réamorcée à la première des trois servies.
-  const [feuilleCsv, setFeuilleCsv] = useState(FEUILLES_CSV[0])
-  // CALX24 — le dernier résultat de composition du pack technique (ou `null`).
-  const [resultatPack, setResultatPack] = useState(null)
   // CALX28 — export/import du document de conception : 'export' | 'import' |
   // null, sa liste d'erreurs (`{champ,message}`, `champ` = chemin JSON du
   // premier défaut) et une confirmation de succès.
   const [enCoursConception, setEnCoursConception] = useState(null)
   const [erreurConception, setErreurConception] = useState(null)
   const [confirmationConception, setConfirmationConception] = useState(null)
+  // CALX302/CALX320 — dépôt d'image : 'ombrage' | 'sankey' | null pendant
+  // l'appel, ses erreurs (`{champ,message}`) et le dernier dépôt RÉUSSI de
+  // cette session (`{genre, deposeLe}`).
+  const [enCoursImage, setEnCoursImage] = useState(null)
+  const [erreursImage, setErreursImage] = useState(null)
+  const [derniereImageDeposee, setDerniereImageDeposee] = useState(null)
 
   const parCode = useMemo(() => {
     const carte = new Map()
-    for (const entree of data?.sorties || []) carte.set(entree.code, entree)
+    for (const entree of data?.documents || []) carte.set(entree.code, entree)
     return carte
   }, [data])
 
-  async function telecharger(code, params) {
+  async function telecharger(code) {
     const entree = parCode.get(code)
     if (!entree) return
     setErreurs((precedent) => ({ ...precedent, [code]: null }))
     setEnCours(code)
     try {
-      const reponse = await calepinageApi.calepinages.telechargerSortie(entree.endpoint, params)
-      downloadBlob(reponse.data, filenameFromResponse(reponse, entree.code))
+      const reponse = await calepinageApi.calepinages.telechargerDocument(entree.endpoint)
+      downloadBlob(reponse.data, filenameFromResponse(reponse, code))
     } catch (erreur) {
       const details = await erreurDeTelechargement(erreur)
       setErreurs((precedent) => ({ ...precedent, [code]: details }))
-    } finally {
-      setEnCours(null)
-    }
-  }
-
-  // CALX24 — POST, jamais un téléchargement : succès -> `resultatPack`
-  // (document déposé + signalements) ; échec -> le MÊME régime d'erreur
-  // générique que tous les autres boutons (sous CETTE carte).
-  async function composerPack() {
-    const entree = parCode.get('pack_technique')
-    if (!entree) return
-    setErreurs((precedent) => ({ ...precedent, pack_technique: null }))
-    setResultatPack(null)
-    setEnCours('pack_technique')
-    try {
-      const reponse = await calepinageApi.calepinages.composerPackTechnique(id)
-      setResultatPack(reponse.data)
-    } catch (erreur) {
-      const details = await erreurDeTelechargement(erreur)
-      setErreurs((precedent) => ({ ...precedent, pack_technique: details }))
     } finally {
       setEnCours(null)
     }
@@ -419,64 +512,74 @@ export default function PanneauDocuments({ calepinageId }) {
     }
   }
 
+  // CALX302 — joint la carte de chaleur ACTIVE de l'atelier 3D. Jamais
+  // d'exception non attrapée : `deposerCarteDeChaleur` rend toujours
+  // `{ok, motif, erreurs?}`, régime IDENTIQUE aux autres boutons du panneau.
+  async function joindreCarteDeChaleur() {
+    setErreursImage(null)
+    setEnCoursImage('ombrage')
+    try {
+      const resultat = await deposerCarteDeChaleur(id, builderApi)
+      if (resultat.ok) {
+        setDerniereImageDeposee({ genre: resultat.genre, deposeLe: resultat.deposeLe })
+      } else {
+        setErreursImage(resultat.erreurs || [{ champ: '', message: resultat.motif }])
+      }
+    } finally {
+      setEnCoursImage(null)
+    }
+  }
+
+  // CALX320 — joint le diagramme de pertes (SVG serveur rastérisé ICI). MÊME
+  // régime que `joindreCarteDeChaleur` ci-dessus — `deposerDiagrammeDePertes`
+  // rend toujours `{ok, motif, erreurs?}`, jamais une exception non attrapée.
+  async function joindreDiagrammeDePertes() {
+    setErreursImage(null)
+    setEnCoursImage('sankey')
+    try {
+      const resultat = await deposerDiagrammeDePertes(id)
+      if (resultat.ok) {
+        setDerniereImageDeposee({ genre: resultat.genre, deposeLe: resultat.deposeLe })
+      } else {
+        setErreursImage(resultat.erreurs || [{ champ: '', message: resultat.motif }])
+      }
+    } finally {
+      setEnCoursImage(null)
+    }
+  }
+
   if (loading) return <Spinner />
   if (error) {
     return <p className="text-sm text-destructive" data-testid="cal-doc-erreur">{error}</p>
   }
 
-  const entrees = CODES_GERES.map((code) => parCode.get(code)).filter(Boolean)
+  const documents = data?.documents || []
 
   return (
     <Card className="flex flex-col gap-3 p-4" data-testid="cal-doc-panneau">
       <h2 className="text-base font-semibold">Documents</h2>
-      {entrees.length === 0 && (
+      {data?.layout_hash && (
+        <p className="text-xs text-muted-foreground" data-testid="cal-doc-empreinte">
+          Empreinte de la conception : <code>{data.layout_hash.slice(0, 12)}</code>
+          {data.version_moteur ? ` · moteur ${data.version_moteur}` : ''}
+        </p>
+      )}
+      {documents.length === 0 && (
         <p className="text-sm text-muted-foreground" data-testid="cal-doc-vide">
           Aucun document disponible pour l’instant.
         </p>
       )}
-      {entrees.map((entree) => {
-        // CALX23/CALX24 — deux codes s'écartent du téléchargement générique
-        // (un sélecteur de feuille, une composition POST) : le dispatch reste
-        // ICI, jamais dans `CarteSortie` elle-même (qui ne connaît AUCUN code
-        // par son nom).
-        if (entree.code === 'tableur_csv') {
-          return (
-            <CarteSortie
-              key={entree.code}
-              entree={entree}
-              enCours={enCours === entree.code}
-              onTelecharger={() => telecharger(entree.code, { feuille: feuilleCsv })}
-              erreurs={erreurs[entree.code]}
-              description={DESCRIPTIONS[entree.code]}
-              enfant={<SelecteurFeuilleCsv valeur={feuilleCsv} onChange={setFeuilleCsv} />}
-            />
-          )
-        }
-        if (entree.code === 'pack_technique') {
-          return (
-            <CarteSortie
-              key={entree.code}
-              entree={entree}
-              enCours={enCours === entree.code}
-              onTelecharger={composerPack}
-              erreurs={erreurs[entree.code]}
-              libelleBouton="Composer le pack technique"
-              enfant={<ResultatPack resultat={resultatPack} />}
-            />
-          )
-        }
-        return (
-          <CarteSortie
-            key={entree.code}
-            entree={entree}
-            enCours={enCours === entree.code}
-            onTelecharger={() => telecharger(entree.code)}
-            erreurs={erreurs[entree.code]}
-            description={DESCRIPTIONS[entree.code]}
-          />
-        )
-      })}
-      {/* CALX28 — HORS inventaire (aucune sortie ne le déclare) : toujours
+      {documents.map((entree) => (
+        <CarteDocument
+          key={entree.code}
+          entree={entree}
+          calepinageId={id}
+          enCours={enCours === entree.code}
+          onTelecharger={() => telecharger(entree.code)}
+          erreurs={erreurs[entree.code]}
+        />
+      ))}
+      {/* CALX28 — HORS inventaire (aucun document ne le déclare) : toujours
           visible, jamais gouverné par `disponible`. */}
       <SectionConception
         enCours={enCoursConception}
@@ -484,6 +587,17 @@ export default function PanneauDocuments({ calepinageId }) {
         confirmation={confirmationConception}
         onExporter={exporterConception}
         onImporter={importerConception}
+      />
+      {/* CALX302/CALX320 — HORS inventaire, comme `SectionConception`
+          ci-dessus. */}
+      <SectionImages
+        builderApi={builderApi}
+        enCours={enCoursImage}
+        erreurs={erreursImage}
+        deposeLe={derniereImageDeposee}
+        images={data?.images}
+        onDeposerCarteDeChaleur={joindreCarteDeChaleur}
+        onDeposerDiagrammePertes={joindreDiagrammeDePertes}
       />
     </Card>
   )

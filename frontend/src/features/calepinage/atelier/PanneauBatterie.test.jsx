@@ -9,7 +9,7 @@
    chiffre — seulement le motif du serveur — et la simulation périmée
    (CALX70) affiche le même bandeau de péremption que les autres panneaux. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
 
@@ -146,6 +146,68 @@ describe('PanneauBatterie (CALX14)', () => {
     expect(screen.getByTestId('calx14-non-simule')).toBeInTheDocument()
     expect(screen.getByTestId('calx14-relancer-bouton')).toBeInTheDocument()
     expect(screen.queryByTestId('calx14-batterie')).toBeNull()
+  })
+
+  /* CALX271 — « Comparer des capacités du stock » : la liste ORDONNÉE et son
+     critère écrit en toutes lettres, lus EXACTEMENT dans
+     `calepinage_simulation.json` (`batterie.capacites_candidates`), jamais
+     un classement refait ici, jamais un prix. */
+  it('CALX271 : le bouton déplie la liste ordonnée et son critère, motivation déclarée présélectionnée', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    rendre()
+
+    const bouton = await screen.findByTestId('calx271-comparer')
+    expect(bouton).toBeEnabled()
+    expect(screen.queryByTestId('calx271-liste')).toBeNull()
+    fireEvent.click(bouton)
+
+    const contrat = exempleContrat('calepinage', 'calepinage_simulation')
+      .batterie.capacites_candidates
+    const autoconso = contrat.par_motivation.autoconso
+    const liste = screen.getByTestId('calx271-liste')
+    expect(within(liste).getByTestId('calx271-motivation-declaree'))
+      .toHaveTextContent('Autoconsommation')
+    expect(within(liste).getByTestId('calx271-critere')).toHaveTextContent(autoconso.critere)
+    const lignes = within(liste).getAllByTestId('calx271-candidate')
+    expect(lignes).toHaveLength(autoconso.candidates.length)
+    // L'ORDRE est celui du serveur : la première ligne est son rang 1.
+    expect(lignes[0]).toHaveTextContent(autoconso.candidates[0].libelle)
+    expect(lignes[1]).toHaveTextContent(autoconso.candidates[1].libelle)
+    // Aucun montant n'est affiché : ni « MAD », ni « prix ».
+    expect(liste.textContent).not.toMatch(/\bMAD\b|prix/i)
+  })
+
+  it('CALX271 : changer de motivation change le critère ; une motivation incalculable affiche SON motif', async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donneesSimulees() })
+    rendre()
+
+    fireEvent.click(await screen.findByTestId('calx271-comparer'))
+    const contrat = exempleContrat('calepinage', 'calepinage_simulation')
+      .batterie.capacites_candidates
+
+    fireEvent.click(screen.getByTestId('calx271-motivation-couverture'))
+    expect(screen.getByTestId('calx271-critere'))
+      .toHaveTextContent(contrat.par_motivation.couverture.critere)
+
+    fireEvent.click(screen.getByTestId('calx271-motivation-pointe'))
+    expect(screen.getByTestId('calx271-motivation-motif'))
+      .toHaveTextContent(contrat.par_motivation.pointe.motif_absence)
+    expect(screen.queryByTestId('calx271-candidates')).toBeNull()
+  })
+
+  it('CALX271 : sans capacités au stock, le bouton est inactif et le motif est lisible', async () => {
+    const donnees = donneesSimulees()
+    const vide = exempleContrat('calepinage', 'calepinage_simulation', 'exemple_vide')
+      .batterie.capacites_candidates
+    donnees.batterie = { ...donnees.batterie, capacites_candidates: vide }
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: donnees })
+    rendre()
+
+    const bouton = await screen.findByTestId('calx271-comparer')
+    expect(bouton).toBeDisabled()
+    expect(screen.getByTestId('calx271-motif')).toHaveTextContent(vide.motif_absence)
+    fireEvent.click(bouton)
+    expect(screen.queryByTestId('calx271-liste')).toBeNull()
   })
 
   it('erreur réseau : message français, aucune valeur inventée', async () => {

@@ -159,6 +159,64 @@ runs:
     # fichiers du repertoire de donnees, ce qui affranchit des parallelismes de
     # `pg_restore` de cette limite.
     # -----------------------------------------------------------------------
+    # -----------------------------------------------------------------------
+    # FIXD (CI #714, 24/09/2026) — UNE SEULE BASE DE FUSEAUX DANS LE JOB.
+    #
+    # Le Maroc est a UTC+0 depuis le 20/09/2026 (decret 2.26.530). Python le
+    # sait : `PYTHONTZPATH=""` (image CI) + `tzdata==2026.4` epingle. Mais DEUX
+    # autres horloges du job lisaient encore /usr/share/zoneinfo de Debian
+    # bookworm (2026b, SANS le decret, donc UTC+1) :
+    #   * la glibc — `date.today()`, `datetime.now()`, `time.localtime()`
+    #     (Django pose TZ=Africa/Casablanca puis `time.tzset()`) ;
+    #   * le Postgres LOCAL demarre a l'etape suivante (paquet PGDG, construit
+    #     `--with-system-tzdata`) — tous les `__date`, `Trunc*`, `Extract*`.
+    #     C'est l'avertissement `core.W_TZ_MAROC_POSTGRES_PERIMEE` des logs.
+    # Entre 23:00 et 00:00 UTC, ces deux-la disaient J+1 pendant que
+    # `timezone.localdate()` disait J : run 35933182629 (23:24 UTC), 82 echecs
+    # de « jours » dans les 8 shards (idempotence « une fois par jour », J+5,
+    # purge a 90 jours, jours de retard 44 au lieu de 45...) ; le run
+    # 35925086607 (21:53 UTC, hors fenetre) n'en avait AUCUN.
+    # On recopie donc CHAQUE fuseau du paquet epingle par-dessus celui de
+    # Debian, AVANT que Postgres ne demarre et qu'un processus Python ne lise
+    # l'heure : les trois horloges lisent alors la meme base.
+    - name: Aligner la base de fuseaux systeme sur le paquet tzdata epingle
+      if: ${{ inputs.prebuilt-image == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import shutil
+        import zoneinfo
+        from pathlib import Path
+
+        import tzdata
+
+        source = Path(tzdata.__file__).parent / 'zoneinfo'
+        cible = Path('/usr/share/zoneinfo')
+        copies = 0
+        for cle in sorted(zoneinfo.available_timezones()):
+            fichier = source / cle
+            if not fichier.is_file():
+                continue
+            dest = cible / cle
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            # unlink d'abord : ne jamais ecrire A TRAVERS un lien de Debian.
+            if dest.is_symlink() or dest.exists():
+                dest.unlink()
+            shutil.copyfile(fichier, dest)
+            dest.chmod(0o644)
+            copies += 1
+        print(f'{copies} fuseaux alignes sur tzdata {tzdata.IANA_VERSION} '
+              f'(paquet pip epingle).')
+        PY
+        # PREUVE, cote glibc : le lendemain de la bascule, midi UTC = +0000.
+        DECALAGE="$(TZ=Africa/Casablanca date -d '2026-09-21T12:00:00Z' +%z)"
+        echo "glibc : Africa/Casablanca le 21/09/2026 a 12:00 UTC = ${DECALAGE}"
+        if [ "$DECALAGE" != '+0000' ]; then
+          echo "ECHEC : la glibc place encore Casablanca a ${DECALAGE} (attendu +0000)."
+          echo "date.today() et timezone.localdate() divergeraient chaque nuit entre 23 h et minuit UTC."
+          exit 1
+        fi
     - name: Demarrer Postgres dans le conteneur (image CI)
       if: ${{ inputs.prebuilt-image == 'true' }}
       shell: bash

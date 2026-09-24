@@ -208,3 +208,170 @@ class TariffSettings(models.Model):
         # Bornes finies d'abord (croissant), palier ouvert (None) en dernier.
         tiers.sort(key=lambda t: (t['max_kwh'] is None, t['max_kwh'] or 0))
         return tiers
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # LOT 5 (CALX274 →) — réglages tarifaires SAISIS, ajoutés EN FIN de classe
+    # (les numéros de ligne des ``get_or_create`` ci-dessus restent ceux de la
+    # base ``docs/get-or-create-audit.md``). Toute la validation vit dans
+    # ``apps.parametres.tariff.erreurs_reglages_tarif`` (pure, testable sans
+    # base) ; ``clean`` ne fait que la relayer en nommant le champ fautif.
+    # ═════════════════════════════════════════════════════════════════════════
+
+    # ── CALX274 — tranches horaires (time-of-use) SAISIES par la société ──
+    # Les quatre champs sont VIDES par défaut : aucune grille horaire n'est
+    # supposée. Tant que la grille, sa source ET sa date ne sont pas saisies,
+    # ``apps.parametres.selectors.tou_pour`` rend ``None`` et toute économie
+    # horaire est OMISE avec son motif (jamais les anciens 1,45 / 1,15 / 0,85
+    # « à confirmer » de ``apps/ventes/solar_design.py``).
+    tou_heures = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Tranche de chaque heure (00 h → 23 h)',
+        help_text="24 libellés de tranche, un par heure de la journée "
+                  "(ex. « creuse », « pleine », « pointe »), tels que votre "
+                  "facture ou votre contrat les nomme.")
+    tou_tarifs = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Tarif de chaque tranche (MAD/kWh)',
+        help_text="Objet {tranche: MAD/kWh} : un tarif par libellé employé "
+                  "dans les tranches horaires.")
+    tou_source = models.TextField(
+        blank=True, default='',
+        verbose_name='Source des tarifs horaires',
+        help_text="Obligatoire dès qu'une grille est saisie : facture, contrat "
+                  "ou barème officiel d'où viennent ces valeurs.")
+    tou_date_source = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de la source des tarifs horaires')
+
+    # ── CALX276 — mécanisme de compensation du surplus, TYPÉ et SAISI ──
+    # Vide par défaut : le surplus n'est pas valorisé (``tariff.
+    # MOTIF_MECANISME_NON_SAISI``). Le tarif de rachat reste
+    # ``surplus_prix_kwh_ttc`` — 0 (son défaut) = non saisi, jamais supposé.
+    # Les clés sont celles de ``apps.parametres.tariff.MECANISMES_COMPENSATION``
+    # (un test verrouille l'égalité).
+    MECANISMES_COMPENSATION_CHOICES = [
+        ('injection_totale', 'Injection totale (toute la production vendue)'),
+        ('surplus', 'Surplus (autoconsommation + vente du surplus)'),
+        ('net_metering_report', 'Net-metering avec report de crédit'),
+    ]
+    mecanisme_compensation = models.CharField(
+        max_length=24, blank=True, default='',
+        choices=MECANISMES_COMPENSATION_CHOICES,
+        verbose_name='Mécanisme de compensation du surplus',
+        help_text="Vide = le surplus injecté n'est pas valorisé. À choisir "
+                  "selon votre contrat de raccordement.")
+    report_periode = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Période de report du crédit (mois)',
+        help_text="Net-metering avec report : pendant combien de mois un "
+                  "crédit d'énergie reste reportable.")
+    plafond_annuel_kwh = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond annuel d’énergie compensée (kWh)')
+    ratio_compensation = models.DecimalField(
+        max_digits=5, decimal_places=4, null=True, blank=True,
+        verbose_name='Ratio de compensation (0 à 1)',
+        help_text="1 = un kWh injecté compense un kWh soutiré.")
+
+    # ── CALX277 — structure de la grille (sociétés hors Maroc comprises) ──
+    # ``tranches`` (défaut) = le barème à paliers ci-dessus, facture
+    # INCHANGÉE. ``prix_unique`` / ``deux_postes`` exigent LEURS prix saisis
+    # (refus nommant le champ manquant). Clés = ``tariff.STRUCTURES_TARIF``.
+    STRUCTURES_TARIF_CHOICES = [
+        ('tranches', 'Tranches de consommation (barème à paliers)'),
+        ('prix_unique', 'Prix unique du kWh'),
+        ('deux_postes', 'Deux postes horaires (heures hautes / basses)'),
+    ]
+    structure_tarif = models.CharField(
+        max_length=12, default='tranches', choices=STRUCTURES_TARIF_CHOICES,
+        verbose_name='Structure du tarif')
+    pays_tarif = models.CharField(
+        max_length=2, blank=True, default='',
+        verbose_name='Pays du tarif (code ISO à deux lettres)')
+    prix_unique_kwh = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Prix unique du kWh')
+    poste_haut = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Prix du kWh en heures hautes')
+    poste_bas = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Prix du kWh en heures basses')
+
+    # ── CALX278 — taxes séparées des prix ──
+    # VRAI (défaut) = aujourd'hui : les prix saisis sont TTC, facture
+    # inchangée. FAUX = prix HT, les ``taxes`` saisies (chacune AVEC sa
+    # source) s'appliquent et la facture publie HT / taxes / TTC.
+    prix_incluent_taxes = models.BooleanField(
+        default=True,
+        verbose_name='Les prix saisis incluent les taxes',
+        help_text="Décocher si vos prix sont hors taxes : les taxes "
+                  "saisies ci-dessous seront alors appliquées.")
+    taxes = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Taxes de la facture',
+        help_text="Liste [{libelle, taux_pct, assiette (energie|total), "
+                  "source}] — chaque taxe porte sa source.")
+    charge_minimale_mad_jour = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge minimale (par jour)',
+        help_text="Montant minimal facturé par jour, dans la même base que "
+                  "les prix (TTC ou HT).")
+
+    # ── CALX279 — indexation annuelle du tarif, SAISIE et sourcée ──
+    # Vide par défaut : toute projection est à tarif CONSTANT (0 %, décision
+    # fondateur QRES54) avec la mention « aucune indexation saisie » —
+    # jamais les 6 %/an d'avant. Un taux sans source est refusé.
+    indexation_tarif_pct_an = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        verbose_name='Indexation annuelle du tarif (%/an)')
+    indexation_source = models.TextField(
+        blank=True, default='',
+        verbose_name="Source de l'indexation",
+        help_text="Obligatoire dès qu'un taux est saisi (historique des "
+                  "tarifs publiés, contrat, étude).")
+
+    # ── CALX284 — fiscalité et amortissement, SAISIS et sourcés ──
+    # Vides par défaut (mode ``aucun``) : sans saisie, aucun impôt n'est porté
+    # au flux et le flux APRÈS impôt reprend le flux avant impôt
+    # (``apps.ventes.economie.flux_apres_impot``). Aucun taux d'impôt, aucune
+    # durée, aucun coefficient n'est supposé : tout se saisit avec sa
+    # ``fiscalite_source`` (texte de loi, avis fiscal). Les clés de mode sont
+    # celles de ``apps.parametres.tariff.AMORTISSEMENT_MODES`` (un test
+    # verrouille l'égalité).
+    AMORTISSEMENT_MODES_CHOICES = [
+        ('aucun', 'Aucun amortissement'),
+        ('lineaire', 'Linéaire'),
+        ('degressif', 'Dégressif'),
+    ]
+    taux_imposition_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name="Taux d'imposition des résultats (%)",
+        help_text="Taux marginal appliqué au résultat imposable du projet. "
+                  "Vide = aucun impôt porté au flux.")
+    amortissement_mode = models.CharField(
+        max_length=10, default='aucun', choices=AMORTISSEMENT_MODES_CHOICES,
+        verbose_name="Mode d'amortissement")
+    amortissement_duree_ans = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name="Durée d'amortissement (ans)")
+    amortissement_coefficient = models.DecimalField(
+        max_digits=5, decimal_places=3, null=True, blank=True,
+        verbose_name='Coefficient dégressif',
+        help_text="Obligatoire en mode dégressif : taux dégressif = "
+                  "coefficient ÷ durée.")
+    fiscalite_source = models.TextField(
+        blank=True, default='',
+        verbose_name='Source de la fiscalité',
+        help_text="Obligatoire dès qu'un taux d'imposition ou un "
+                  "amortissement est saisi (texte de loi, avis fiscal).")
+
+    def clean(self):
+        """Refuse un réglage tarifaire incohérent en NOMMANT le champ fautif."""
+        from django.core.exceptions import ValidationError
+
+        from apps.parametres.tariff import erreurs_reglages_tarif
+        super().clean()
+        erreurs = erreurs_reglages_tarif(self)
+        if erreurs:
+            raise ValidationError(erreurs)

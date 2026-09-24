@@ -17,6 +17,7 @@ Run :
     DB_NAME=erp_ventes python manage.py test \
         apps.ventes.tests.test_pv83_shims_electrique -v 2
 """
+from functools import partial
 import math
 
 from django.test import SimpleTestCase
@@ -27,6 +28,14 @@ from core.electrique import concevoir
 from core.electrique.chaines import concevoir_chaines, fenetre_admissible
 from core.electrique.nomenclature import nomenclature_dict
 from core.electrique.schema import rendre_schema
+
+# CALX286 — ``solar_design`` ne suppose PLUS les températures de
+# dimensionnement : ces tests de PHYSIQUE passent explicitement celles
+# d'avant (−5 / 70 °C), exactement comme l'appelant historique
+# ``apps/ventes/compatibilites.py`` (D12).
+_TEMPERATURES = {'cold_temp_c': sd.DEFAULT_COLD_TEMP_C,
+                 'hot_temp_c': sd.DEFAULT_HOT_TEMP_C}
+_string_design = partial(sd.string_design, **_TEMPERATURES)
 
 MODULE = {"vmp": 34, "voc": 41, "puissance_w": 550}
 ONDULEUR = {"v_min": 90, "v_max": 1000, "v_mppt_min": 120,
@@ -45,7 +54,7 @@ class StringDesignEstUnShimTest(SimpleTestCase):
     """La physique publiée par ``string_design`` EST celle du noyau."""
 
     def test_tensions_unitaires_viennent_du_noyau(self):
-        res = sd.string_design(24, module=MODULE, inverter=ONDULEUR)
+        res = _string_design(24, module=MODULE, inverter=ONDULEUR)
         fenetre = fenetre_admissible(
             _entree(24, MODULE, ONDULEUR).module,
             _entree(24, MODULE, ONDULEUR).onduleur,
@@ -61,7 +70,7 @@ class StringDesignEstUnShimTest(SimpleTestCase):
     def test_decoupe_identique_a_celle_du_noyau(self):
         for n in (6, 12, 16, 18, 20, 24, 30, 36):
             with self.subTest(n=n):
-                res = sd.string_design(n, module=MODULE, inverter=ONDULEUR)
+                res = _string_design(n, module=MODULE, inverter=ONDULEUR)
                 noyau = concevoir_chaines(_entree(n, MODULE, ONDULEUR))
                 repartition = noyau.repartitions[0]
                 self.assertEqual(res["panels_per_string"],
@@ -91,7 +100,7 @@ class StringDesignEstUnShimTest(SimpleTestCase):
         self.assertLess(sd._voltage_at_temp(41.0, -0.27, 70.0), 41.0)
 
     def test_charge_utile_historique_intacte(self):
-        res = sd.string_design(24, module=MODULE, inverter=ONDULEUR)
+        res = _string_design(24, module=MODULE, inverter=ONDULEUR)
         self.assertEqual(
             set(res),
             {"n_panels", "n_mppt", "strings", "panels_per_string",
@@ -105,12 +114,12 @@ class StringDesignEstUnShimTest(SimpleTestCase):
     def test_dc_kw_compte_tous_les_panneaux(self):
         # Divergence ASSUMÉE : le noyau ne compte que la puissance mise en
         # chaîne, l'historique compte tous les panneaux (réserve comprise).
-        res = sd.string_design(23, module=MODULE, inverter=ONDULEUR)
+        res = _string_design(23, module=MODULE, inverter=ONDULEUR)
         self.assertAlmostEqual(res["dc_kw"], round(23 * 550 / 1000.0, 3), 3)
 
     def test_repli_non_homogene_compte_au_plafond(self):
         # Fenêtre étroite : aucune découpe égale → repli historique au plafond.
-        res = sd.string_design(
+        res = _string_design(
             23, module=MODULE,
             inverter={**ONDULEUR, "v_mppt_max": 400, "n_mppt": 1})
         if res["strings"] * res["panels_per_string"] != 23:
@@ -120,7 +129,7 @@ class StringDesignEstUnShimTest(SimpleTestCase):
             self.assertTrue(any("non homogène" in w for w in res["warnings"]))
 
     def test_jamais_de_prix_dans_la_sortie(self):
-        res = sd.string_design(24, module=MODULE, inverter=ONDULEUR)
+        res = _string_design(24, module=MODULE, inverter=ONDULEUR)
         blob = repr(res).lower()
         for interdit in ("prix", "marge", "prix_achat"):
             self.assertNotIn(interdit, blob)

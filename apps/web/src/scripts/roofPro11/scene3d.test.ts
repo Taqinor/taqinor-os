@@ -94,6 +94,92 @@ describe('CAL56 — generateRoofShapePans', () => {
   });
 });
 
+// ═══════════ CALX96 — préréts EN L / EN T (contour concave) ═══════════
+/** Contour EN L (6 sommets, même convention que `rectRing` : anneau ouvert) : un rectangle
+ *  plein widthM × depthM dont le coin NORD-EST est amputé d'une encoche
+ *  notchWidthM × notchDepthM — le coin réflexe est le sommet intérieur de l'encoche. */
+function lShapeRing(widthM: number, depthM: number, notchWidthM: number, notchDepthM: number, lng0 = -7.6, lat0 = 33.5): LngLat[] {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  const at = (xM: number, yM: number): LngLat => [lng0 + xM / mPerDegLng, lat0 + yM / mPerDegLat];
+  const xNotch = widthM - notchWidthM;
+  const yNotch = depthM - notchDepthM;
+  return [at(0, 0), at(widthM, 0), at(widthM, yNotch), at(xNotch, yNotch), at(xNotch, depthM), at(0, depthM)];
+}
+
+/** Contour EN T (8 sommets) : une barre pleine barWidthM × barDepthM posée SUR un montant
+ *  (stem) stemWidthM × stemDepthM centré sous elle — DEUX sommets réflexes, un de chaque côté
+ *  du montant. */
+function tShapeRing(barWidthM: number, barDepthM: number, stemWidthM: number, stemDepthM: number, lng0 = -7.6, lat0 = 33.5): LngLat[] {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((lat0 * Math.PI) / 180);
+  const at = (xM: number, yM: number): LngLat => [lng0 + xM / mPerDegLng, lat0 + yM / mPerDegLat];
+  const stemX0 = (barWidthM - stemWidthM) / 2;
+  const stemX1 = stemX0 + stemWidthM;
+  return [
+    at(stemX0, 0),
+    at(stemX1, 0),
+    at(stemX1, stemDepthM),
+    at(barWidthM, stemDepthM),
+    at(barWidthM, stemDepthM + barDepthM),
+    at(0, stemDepthM + barDepthM),
+    at(0, stemDepthM),
+    at(stemX0, stemDepthM),
+  ];
+}
+
+describe('CALX96 — generateRoofShapePans (l_gable/t_gable, contour concave)', () => {
+  it('L à 6 sommets : la somme des aires des pans égale l’aire du contour à 10⁻⁶ près', () => {
+    const ring = lShapeRing(10, 10, 4, 4);
+    const pans = generateRoofShapePans(ring, 'l_gable');
+    const total = geodesicAreaM2(ring);
+    expect(sumAreaM2(pans) / total).toBeCloseTo(1, 6);
+  });
+
+  it('L à 6 sommets : 2 ailes (2 axes de faîtière) → 4 pans, tous d’aire positive', () => {
+    const ring = lShapeRing(10, 10, 4, 4);
+    const pans = generateRoofShapePans(ring, 'l_gable');
+    expect(pans).toHaveLength(4);
+    for (const p of pans) expect(geodesicAreaM2(p.vertices)).toBeGreaterThan(0);
+  });
+
+  it('L asymétrique (encoche décentrée) : aire conservée quelle que soit la position du coin', () => {
+    const ring = lShapeRing(14, 9, 6, 5);
+    const pans = generateRoofShapePans(ring, 'l_gable');
+    expect(sumAreaM2(pans) / geodesicAreaM2(ring)).toBeCloseTo(1, 6);
+  });
+
+  it('T à 8 sommets : 3 ailes (3 axes de faîtière) → 6 pans, aire conservée', () => {
+    const ring = tShapeRing(12, 4, 4, 6);
+    const pans = generateRoofShapePans(ring, 't_gable');
+    expect(pans).toHaveLength(6);
+    expect(sumAreaM2(pans) / geodesicAreaM2(ring)).toBeCloseTo(1, 6);
+  });
+
+  it('un contour CONVEXE soumis à l_gable est refusé en nommant la raison (jamais un découpage faux)', () => {
+    const ring = rectRing(10, 6);
+    expect(() => generateRoofShapePans(ring, 'l_gable')).toThrow(/concave|convexe/i);
+  });
+
+  it('un contour CONVEXE soumis à t_gable est refusé en nommant la raison', () => {
+    const ring = rectRing(10, 6);
+    expect(() => generateRoofShapePans(ring, 't_gable')).toThrow(/concave|convexe/i);
+  });
+
+  it('buildAreasFromShape (zones.ts) traduit l_gable SANS changement — roofType pitched pour chaque pan', () => {
+    const ring = lShapeRing(10, 10, 4, 4);
+    const pans = generateRoofShapePans(ring, 'l_gable');
+    let n = 0;
+    const areas = buildAreasFromShape(pans, 'l_gable', 28, () => `wing${n++}`);
+    expect(areas).toHaveLength(pans.length);
+    expect(new Set(areas.map((a) => a.id)).size).toBe(pans.length);
+    for (const a of areas) {
+      expect(a.roofType).toBe('pitched');
+      expect(a.pitchDeg).toBe(28);
+    }
+  });
+});
+
 describe('CAL56 — buildAreasFromShape (zones.ts)', () => {
   it("traduit chaque pan en AreaRecord — 'flat' → roofType plat, sinon pente saisie inchangée", () => {
     const ring = rectRing(8, 6);

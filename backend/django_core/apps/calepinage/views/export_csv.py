@@ -104,25 +104,50 @@ def document_exportable(calepinage):
 
 @extend_schema(
     responses={200: OpenApiTypes.BINARY},
-    parameters=[OpenApiParameter(
-        name='quoi', type=OpenApiTypes.STR, required=False,
-        description="Export demandé : horaire (défaut), mensuel ou ombrage.")],
+    parameters=[
+        OpenApiParameter(
+            name='quoi', type=OpenApiTypes.STR, required=False,
+            description="Export demandé : horaire (défaut), mensuel ou "
+                        'ombrage.'),
+        OpenApiParameter(
+            name='colonnes', type=OpenApiTypes.STR, required=False,
+            description='CALX313, export horaire SEULEMENT — liste de '
+                        "colonnes séparées par des virgules (sous-ensemble "
+                        'de `COLONNES_HORAIRE`) ; omis = les sept colonnes '
+                        "historiques (comportement d'avant CALX313, "
+                        'inchangé). Colonne inconnue -> 400, nommée.'),
+        OpenApiParameter(
+            name='pas', type=OpenApiTypes.STR, required=False,
+            description="CALX313, export horaire SEULEMENT — 'horaire' "
+                        "(défaut) ou '15min' (REFUSÉ : la série 15 minutes "
+                        "n'est pas encore produite, jamais une "
+                        'interpolation).'),
+    ],
 )
 @action(detail=True, methods=['get'], url_path='export-csv',
         permission_classes=[PeutVoirCalepinage])
 def export_csv_simulation(self, request, pk=None):
     """CAL144 — ``GET /calepinages/<pk>/export-csv/?quoi=horaire``.
 
+    CALX313 — ``colonnes`` (CSV de noms de colonnes) et ``pas`` s'ajoutent,
+    tous deux ADDITIFS et propres à l'export ``horaire`` : un appel sans eux
+    sort EXACTEMENT ce qu'il sortait avant.
+
     * **200** — le fichier CSV (``;`` + décimale ``,`` + BOM, ouvrable tel
       quel dans Excel), précédé de son en-tête de provenance ;
-    * **400** — série, agrégat mensuel ou matrice d'ombrage indisponible, ou
-      export inconnu : le motif français et le champ fautif sont rendus.
+    * **400** — série, agrégat mensuel ou matrice d'ombrage indisponible,
+      export inconnu, colonne inconnue, ou pas de temps indisponible : le
+      motif français et le champ fautif sont rendus.
     """
     calepinage = self.get_object()
     quoi = (request.query_params.get('quoi') or 'horaire').strip().lower()
+    colonnes_brutes = request.query_params.get('colonnes')
+    colonnes = ([nom.strip() for nom in colonnes_brutes.split(',')
+                if nom.strip()] if colonnes_brutes else None)
+    pas = (request.query_params.get('pas') or 'horaire').strip().lower()
     try:
         texte = construire_csv(document_exportable(calepinage),
-                               quoi=quoi)
+                               quoi=quoi, colonnes=colonnes, pas=pas)
     except ExportImpossible as erreur:
         return Response({erreur.champ or 'export': [erreur.motif],
                          'exports_disponibles': list(EXPORTS)},

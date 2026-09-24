@@ -73,3 +73,6 @@ __all__ = [
     'ParametresGammesView',
     'PlanCommissionViewSet',
 ]
+# CALX288 — rattache l'action ``economie`` au ``DevisViewSet`` (import DERNIER,
+# exécuté avant ``router.register`` puisque ``urls.py`` importe ce paquet).
+from . import economie as _economie_action  # noqa: F401,E402
