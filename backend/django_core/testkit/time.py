@@ -20,7 +20,15 @@ Faker: seed it explicitly wherever random-but-realistic data matters
 ``faker.Faker().seed_instance(1234)``) — never rely on Faker's own random
 seed, which changes every run.
 """
+import freezegun
 from freezegun import freeze_time
+
+# CAD101 (24/09/2026) — un test gele qui televerse REELLEMENT vers MinIO
+# signait ses requetes S3 avec l'instant gele : « RequestTimeTooSkewed »
+# DETERMINISTE des que |horloge reelle - gel| > 15 min. La signature S3 est
+# une horloge de TRANSPORT, pas une horloge METIER : botocore/boto3 restent
+# sur l'horloge reelle, quel que soit le gel pose par un test.
+freezegun.configure(extend_ignore_list=['botocore', 'boto3'])
 
 
 def frozen(when):

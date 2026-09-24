@@ -11,12 +11,13 @@ from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.crm import services, stages
+from apps.crm import horaires, services, stages
 from apps.crm.models import Lead, LeadActivity, MotifPerte, RelanceEtape
 from apps.parametres.models import CompanyProfile
 
@@ -122,9 +123,11 @@ class LocataireApiTests(TestCase):
                          avant)
 
     def test_proprietaire_inconnu_clot_perdu_locataire(self):
+        maintenant = timezone.now().astimezone(horaires.CASABLANCA)
         touche = RelanceEtape.objects.create(
             company=self.company, lead=self.locataire, cadence='contact',
-            ordre=2, canal=RelanceEtape.Canal.APPEL, libelle='Appel 2')
+            ordre=2, canal=RelanceEtape.Canal.APPEL, libelle='Appel 2',
+            due_at=maintenant, due_date=maintenant.date())
         resp = self.api.post(self._url(),
                              CONTRAT['corps_proprietaire_inconnu'],
                              format='json')

@@ -8,7 +8,7 @@ import { MemoryRouter } from 'react-router-dom'
    que « Annuler » (retour arrière 24h) ne concerne QUE la touche que
    Meryem vient de traiter dans la session en cours (`justeTraitees`).
    Charge utile = l'exemple COMMITTÉ (`relance_etape_v2.json`, PACT10). */
-import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const PREMIERE = ETAPES[0]
