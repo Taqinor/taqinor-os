@@ -9,6 +9,7 @@ import {
   describe, it, expect, vi, beforeEach, afterEach,
 } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import { exempleContrat } from '../../../../test/fixtures/contractSamples'
 
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
@@ -39,6 +40,16 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
+// VISCAD6-B (E4, fondateur 24/09/2026) — le lien « Ouvrir le retour » (vers
+// `/visites/:id`) exige le contexte Router (`react-router-dom` `<Link>`,
+// invariant "useHref() may be used only in the context of a <Router>") : TOUS
+// les rendus de la frise en ont désormais besoin, pas seulement celui qui
+// affiche un retour disponible — un `<MemoryRouter>` neutre ne change rien
+// aux assertions existantes.
+function renderFrise(props = {}) {
+  return render(<CadenceFrise leadId={1489} {...props} />, { wrapper: MemoryRouter })
+}
+
 describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
   it('une visite se positionne CHRONOLOGIQUEMENT parmi les touches (jamais après, même si servie après)', async () => {
     crmApi.getLeadVisites.mockResolvedValue({
@@ -52,7 +63,7 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
         }],
       },
     })
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     // Attend les DEUX chargements (touches ET visites — deux effets
     // indépendants) avant de lire l'ordre final, jamais une lecture qui
     // devancerait le second fetch.
@@ -75,7 +86,7 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
         }],
       },
     })
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     expect(await screen.findByText('En cours')).toBeInTheDocument()
   })
 
@@ -89,12 +100,15 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
         }],
       },
     })
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     expect(await screen.findByText(/Retour terrain disponible/)).toBeInTheDocument()
     expect(screen.getByText(/Toiture terrasse, aucune ombre\./)).toBeInTheDocument()
+    // VISCAD6-B (E4, fondateur 24/09/2026) — le texte n'est plus inerte : un
+    // lien ouvre l'écran Visites (même route que `VisiteTab.jsx`).
+    expect(screen.getByRole('link', { name: 'Ouvrir le retour' })).toHaveAttribute('href', '/visites/92')
   })
 
-  it('une visite SANS retour_disponible ne montre AUCUNE mention "retour terrain"', async () => {
+  it('une visite SANS retour_disponible ne montre AUCUNE mention "retour terrain" ni le lien "Ouvrir le retour"', async () => {
     crmApi.getLeadVisites.mockResolvedValue({
       data: {
         visites: [{
@@ -103,14 +117,15 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
         }],
       },
     })
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     await screen.findByText(/Visite technique/)
     expect(screen.queryByText(/Retour terrain disponible/)).toBeNull()
+    expect(screen.queryByRole('link', { name: 'Ouvrir le retour' })).not.toBeInTheDocument()
   })
 
   it('échec du chargement des visites : la frise des touches reste INCHANGÉE (aucun plantage, jamais un message d\'erreur pour les visites)', async () => {
     crmApi.getLeadVisites.mockRejectedValue(new Error('boom'))
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     expect(await screen.findByText(ETAPES[0].libelle)).toBeInTheDocument()
     expect(screen.getByText(ETAPES[1].libelle)).toBeInTheDocument()
     expect(screen.getAllByTestId('cadence-frise-etape')).toHaveLength(2)
@@ -126,7 +141,7 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
     // TypeError.
     const original = crmApi.getLeadVisites
     delete crmApi.getLeadVisites
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     expect(await screen.findByText(ETAPES[0].libelle)).toBeInTheDocument()
     expect(screen.getAllByTestId('cadence-frise-etape')).toHaveLength(2)
     crmApi.getLeadVisites = original
@@ -145,7 +160,7 @@ describe('VISCAD1 CadenceFrise — visites mêlées à la frise', () => {
         }],
       },
     })
-    render(<CadenceFrise leadId={1489} />)
+    renderFrise()
     await waitFor(() => expect(screen.getAllByTestId('cadence-frise-etape')).toHaveLength(2))
     // Repliée par défaut : ni la ligne visite, ni son texte ne sont visibles
     // avant d'ouvrir l'historique.

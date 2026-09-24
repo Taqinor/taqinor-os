@@ -23,7 +23,6 @@
     "etape_planifier_visite": "Aucune relance du protocole n’est posée : une étape « Planifier la visite technique convenue » la remplace, pour aujourd’hui (sauf si une visite est déjà calée).",
     "etape_message_creneau": "Prochaine étape : un message pour convenir d’un créneau d’appel.",
     "etape_dernier_appel": "Prochaine étape, demain : un dernier appel avant de chiffrer.",
-    "visite_froid_si_seule": "Aucune touche n’est ajoutée pour cette étape ; si c’était la dernière relance ouverte du suivi de proposition, le dossier part au Froid avec ses réveils.",
     "suite_si_plus_rien_ouvert": "Aucune touche n’est ajoutée pour cette étape ; si plus aucune relance n’est ouverte, le suivi de proposition reprend s’il n’est pas allé au bout, sinon une étape de suite est posée.",
     "prochaine_relance_a_la_date": "La prochaine relance ouverte du dossier est déplacée à la date choisie.",
     "etiquette_decision": "L’étiquette « Décision à plusieurs » est posée (le rendez-vous « dimanche famille » rejoint le plan s’il n’est pas encore passé).",
