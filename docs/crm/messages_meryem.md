@@ -534,3 +534,62 @@ exclusions dont **aucune ne couvre le solaire** (texte ONSSA, extrait mot pour m
 
 Ce qui n'a PAS changé : le devis, ses conditions de paiement affichées, la signature à distance, et le parcours du
 client qui signe en ligne.
+
+## Audit — les deux surfaces de la cadence jamais ouvertes (CAD86, note datée du 24/09/2026)
+
+L'audit L3 du 21/09/2026 avait déclaré deux surfaces NON auditées après ses deux rondes : le **canal e-mail** de la
+cadence et l'**ergonomie mobile réellement mesurée**. Elles ont été ouvertes le 24/09/2026 (lecture du code et des
+journaux de CI, aucune hypothèse) ; voici ce qu'elles font, et les défauts trouvés.
+
+**Surface 1 — une touche e-mail : ce qu'elle rend, ce qu'elle envoie.**
+
+- **Un seul barreau e-mail existe dans tout le référentiel** : le barreau 3 (J+10, « Relance e-mail ») de la cadence
+  `generique` (`apps/parametres/models_relance.py`, `CADENCE_RELANCE_DEFAUT`). Cette cadence est historique — « plus
+  jamais démarrée » depuis CAD143 — et aucun des gabarits actifs (contact, après devis, réveil, deuxième affaire)
+  n'a de barreau e-mail. **Aujourd'hui, aucun lead ne reçoit de touche e-mail neuve** ; seuls d'anciens leads encore
+  en cadence générique peuvent en porter une.
+- **Rien n'est jamais ENVOYÉ.** Le serveur rend un texte, il n'envoie pas (décision D5, `message_pour_etape`) : aucun
+  appel SendGrid, `send_mail` ni client réseau dans le moteur de relance — la garde MRY13 le vérifie. La clé
+  SendGrid ne change donc rien pour la cadence : une touche e-mail est un geste MANUEL, comme un WhatsApp.
+- **Ce qu'elle REND : un texte vide.** Le barreau e-mail n'a pas de clé de gabarit : le rendu est une chaîne vide, et
+  le panneau « Texte de l'e-mail » de la ligne affiche « — » avec le bouton « Copier » désactivé.
+- **L'adresse e-mail du client n'atteint jamais la touche.** Le contrat de la file (`relance_etape_v2`) sert le
+  téléphone et le WhatsApp du lead, jamais son e-mail ; le bouton « E-mail » de la ligne ouvre le texte en place,
+  sans destinataire ni lien `mailto:`.
+- **Aucune garde « sans adresse e-mail ».** Appeler et WhatsApp disent pourquoi ils sont indisponibles quand le numéro
+  manque ; le bouton « E-mail » n'est jamais désactivé pour une adresse absente, et le moteur ne convertit jamais une
+  touche e-mail en appel (il le dit : « l'e-mail ne dépend d'aucun numéro »).
+
+Défauts : LATENTS (le barreau n'est plus posé sur un plan neuf), mais réels pour tout lead encore en cadence générique
+et pour toute future cadence qui réintroduirait un barreau e-mail. **Tâche à ouvrir** (voir plus bas).
+
+**Surface 2 — l'ergonomie mobile, réellement mesurée ?**
+
+- **Ce que CAD85 mesure** : l'absence de DÉBORDEMENT HORIZONTAL sur `/crm/cockpit`, `/crm/relances` et la fiche lead,
+  en mobile (iPhone Chromium et WebKit) et en tablette (iPad paysage) — `frontend/e2e/mobile.spec.js` (E16) et
+  `frontend/e2e/tablet.spec.js` (VX68). Rien d'autre : aucune mesure de taille de cible tactile, aucune vérification
+  que les boutons Appeler / WhatsApp / Fait / Sauter d'une ligne de relance ne sont pas masqués par le chrome fixe (ces
+  contrôles existent, mais visent d'autres écrans).
+- **Où ça tourne** : le gate par merge (`ci.yml`) ne joue que `mobile.spec.js` en WebKit ; les projets `mobile`
+  (Chromium iPhone) et `tablet` ne tournent QUE dans la vérification nocturne complète (`release-verify.yml`).
+- **Le résultat, lu** : la dernière exécution où la matrice complète a réellement tourné date du **11/09/2026** —
+  E16 (mobile et WebKit) et VX68 (tablette) y sont **verts** ; le seul échec mobile de ce run (MB6, page Leads) est
+  sans rapport avec les écrans de relance. **Depuis le 12/09/2026, toutes les exécutions nocturnes échouent AVANT
+  Playwright** (au 23/09 : l'image `minio/minio` refusée au `docker pull` — « pull access denied »), la matrice
+  mobile/tablette n'est donc plus mesurée du tout.
+
+Défauts : la mesure existe mais n'est plus jouée (infrastructure de la vérification nocturne), et elle ne mesure
+qu'une dimension sur les écrans de relance. **Tâches à ouvrir** ci-dessous.
+
+**Tâches à ouvrir (une par défaut — à reporter au plan).**
+
+1. *Canal e-mail de la cadence* : décider et appliquer UNE conduite pour la touche e-mail — soit la retirer du
+   référentiel historique (la cadence générique n'est plus démarrée), soit la rendre opérante : texte validé (clé de
+   gabarit), adresse du lead servie à la touche (masquée sans droit PII, comme le téléphone), ouverture `mailto:`, et
+   garde « sans adresse e-mail » (bouton expliqué, touche convertie en appel comme le WhatsApp sans numéro).
+2. *Vérification nocturne cassée* : réparer `release-verify.yml` (image MinIO refusée au pull depuis le 12/09/2026)
+   pour que la matrice mobile/tablette tourne à nouveau, et rendre son échec visible (aucun signal n'a alerté pendant
+   douze nuits).
+3. *Mesure mobile des écrans de relance* : ajouter aux specs CAD85 la vérification que les gestes d'une ligne de
+   relance (Appeler, WhatsApp, Fait, Sauter, Reporter) restent visibles et non masqués sur `/crm/cockpit` et
+   `/crm/relances` en mobile — la seule mesure actuelle (débordement horizontal) ne dit rien de leur usage au pouce.
