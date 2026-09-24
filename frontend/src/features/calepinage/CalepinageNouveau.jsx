@@ -113,6 +113,22 @@ function contexteDuLead(lead) {
   return { source: null }
 }
 
+/* Le bandeau d'erreur (règle fondateur 08/09) focus le champ fautif par son
+   id `cal-nouveau-<champ>`. Cet id porte DIRECTEMENT le contrôle focusable
+   pour la plupart des champs, mais `cal-nouveau-lead` (contrat e2e,
+   `e2e/calepinage-onglets.spec.js` + `calepinage-parcours.spec.js`) le porte
+   sur un DIV enveloppant le Combobox — `.locator('#cal-nouveau-lead')
+   .getByRole('combobox')` cherche un DESCENDANT, jamais l'élément lui-même.
+   On tombe donc sur le premier contrôle focusable, direct ou descendant. */
+function focusChamp(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+  const cible = el.matches('button, input, select, textarea, [tabindex]')
+    ? el
+    : el.querySelector('button, input, select, textarea, [tabindex]')
+  cible?.focus()
+}
+
 function LigneContexte({ libelle, valeur }) {
   return (
     <div className="flex gap-2 text-sm">
@@ -270,7 +286,7 @@ export default function CalepinageNouveau() {
                   key={champ}
                   type="button"
                   className="block underline underline-offset-2"
-                  onClick={() => document.getElementById(`cal-nouveau-${champ}`)?.focus()}
+                  onClick={() => focusChamp(`cal-nouveau-${champ}`)}
                 >
                   {`Corriger le champ « ${CHAMPS[champ] || champ} »`}
                 </button>
@@ -289,15 +305,22 @@ export default function CalepinageNouveau() {
 
           <TabsContent value="lead" className="space-y-3 pt-3">
             <div className="space-y-1">
-              <Label htmlFor="cal-nouveau-lead">Lead</Label>
-              <Combobox
-                id="cal-nouveau-lead"
-                value={leadId}
-                onChange={choisirLead}
-                onSearch={chercherLeads}
-                invalid={Boolean(erreurs.lead)}
-                placeholder="Rechercher un lead…"
-              />
+              <Label htmlFor="cal-nouveau-lead-champ">Lead</Label>
+              {/* CONTRAT E2E — l'id `cal-nouveau-lead` vit sur ce DIV, pas sur
+                  le Combobox : `.locator('#cal-nouveau-lead').getByRole(
+                  'combobox')` (calepinage-onglets.spec.js,
+                  calepinage-parcours.spec.js) cherche un DESCENDANT portant
+                  le rôle, jamais l'élément qui porte l'id lui-même. */}
+              <div id="cal-nouveau-lead">
+                <Combobox
+                  id="cal-nouveau-lead-champ"
+                  value={leadId}
+                  onChange={choisirLead}
+                  onSearch={chercherLeads}
+                  invalid={Boolean(erreurs.lead)}
+                  placeholder="Rechercher un lead…"
+                />
+              </div>
               {erreurs.lead ? (
                 <p className="text-sm text-destructive" data-testid="erreur-lead">{erreurs.lead}</p>
               ) : null}
