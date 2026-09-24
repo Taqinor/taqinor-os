@@ -52,6 +52,7 @@ class _Base(TestCase):
         gel = frozen(MERCREDI)
         gel.start()
         self.addCleanup(gel.stop)
+        self.gel = gel
         self.company = Company.objects.create(nom='CAD101 Solaire',
                                               slug=self.slug)
         CompanyProfile.objects.get_or_create(company=self.company)
@@ -108,7 +109,16 @@ class PieceRecueTests(_Base):
     def test_le_document_est_attache_a_la_ligne_de_la_touche(self):
         fichier = SimpleUploadedFile('facture.png', _FAUX_PNG,
                                      content_type='image/png')
-        resp = self._piece(type_piece='facture', fichier=fichier)
+        # Le VRAI téléversement MinIO signe ses requêtes S3 avec l'horloge du
+        # processus : sous gel, botocore signe à MERCREDI (prouvé — l'ignore
+        # freezegun ne couvre pas ce chemin) et MinIO refuse en
+        # RequestTimeTooSkewed dès que |réel − gel| > 15 min → 500. Ce test
+        # n'affirme aucune date : le geste s'exécute à l'horloge réelle.
+        self.gel.stop()
+        try:
+            resp = self._piece(type_piece='facture', fichier=fichier)
+        finally:
+            self.gel.start()
         self.assertEqual(resp.status_code, 200, resp.data)
         piece = Attachment.objects.get(company=self.company,
                                        object_id=self.lead.pk)
