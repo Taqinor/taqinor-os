@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useEffect, useRef } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { ErrorBoundary, Spinner, Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui'
 import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
@@ -42,6 +42,23 @@ import { PARAM_ONGLET, groupesOnglets, resoudreOnglet } from './onglets'
    aucun panneau par son nom. Absente (le rail monté hors de la scène 3D),
    elle vaut `null` : le panneau le DIT au lieu d'échouer en silence — jamais
    une pose armée dans le vide.
+
+   CALX392 — PILOTABLE AU CLAVIER, SELON LE PATRON ARIA DES ONGLETS
+   (https://www.w3.org/WAI/ARIA/apg/patterns/tabs/). Radix pose déjà la
+   sémantique : `role="tablist"` + `aria-orientation`, un `role="tab"` par
+   onglet avec `aria-selected`/`aria-controls`, le panneau en `role="tabpanel"`
+   avec `aria-labelledby`, un SEUL onglet tabulable à la fois (tabindex
+   mobile), Flèches qui BOUCLENT, Début/Fin. Deux décisions sont prises ICI :
+     - activation MANUELLE : les flèches déplacent le focus sans ouvrir de
+       panneau (chaque onglet charge ses données — les ouvrir tous en
+       parcourant le rail serait une rafale de requêtes que personne n'a
+       demandées) ; Entrée ou Espace OUVRE l'onglet focalisé ;
+     - à l'ouverture par l'utilisateur, le focus PART SUR LE PANNEAU, pour que
+       la touche Tab suivante entre dans son contenu ; Maj+Tab revient à
+       l'onglet ouvert. Un `?onglet=` présent au chargement n'arrache JAMAIS
+       le focus (seule une ouverture demandée le déplace).
+   Les intertitres de groupe restent hors du chemin du clavier
+   (`aria-hidden`), et leur conteneur n'a aucun rôle (`role="none"`).
    ========================================================================== */
 
 /** Le bandeau d'erreur d'un panneau : il NOMME l'onglet qui n'a pas pu s'ouvrir. */
@@ -64,11 +81,29 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
   const [parametres, setParametres] = useSearchParams()
   const actif = resoudreOnglet(parametres.get(PARAM_ONGLET))
   const groupes = groupesOnglets()
+  const cleActive = actif?.cle ?? null
+
+  // CALX392 — le panneau à focaliser, et SI une ouverture le demande.
+  const panneauRef = useRef(null)
+  const focusApresOuverture = useRef(false)
+
+  useEffect(() => {
+    if (!focusApresOuverture.current) return
+    focusApresOuverture.current = false
+    panneauRef.current?.focus()
+  }, [cleActive])
 
   /* Un changement d'onglet n'écrase pas les autres paramètres de l'URL : le
      calepinage peut en porter d'autres (filtre, variante) qu'on n'a pas à
      connaître ici. */
   const ouvrir = (cle) => {
+    if (cle === cleActive) {
+      // Rouvrir l'onglet déjà ouvert (Entrée sur lui) : rien à écrire dans
+      // l'URL, le focus part simplement sur son panneau.
+      panneauRef.current?.focus()
+      return
+    }
+    focusApresOuverture.current = true
     const suivants = new URLSearchParams(parametres)
     suivants.set(PARAM_ONGLET, cle)
     setParametres(suivants)
@@ -78,8 +113,10 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
 
   return (
     <Tabs
-      value={actif?.cle ?? ''}
+      value={cleActive ?? ''}
       onValueChange={ouvrir}
+      activationMode="manual"
+      orientation="horizontal"
       className="mt-5"
       data-testid="cal-rail-onglets"
     >
@@ -88,7 +125,7 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
         className="flex w-full flex-wrap gap-x-1 gap-y-1.5"
       >
         {groupes.map(({ groupe, onglets }) => (
-          <span key={groupe} className="flex flex-wrap items-center gap-1">
+          <span key={groupe} role="none" className="flex flex-wrap items-center gap-1">
             {/* L'intertitre du groupe : un repère visuel, jamais un élément
                 interactif (il resterait sur le chemin du clavier pour rien). */}
             <span className="tech-label px-1 text-lune-faint" aria-hidden="true">{groupe}</span>
@@ -106,7 +143,7 @@ export default function Rail({ calepinageId: idPropose = null, builderApi = null
       </TabsList>
 
       {actif && Composant && (
-        <TabsContent value={actif.cle} data-testid="cal-onglet-panneau">
+        <TabsContent ref={panneauRef} value={actif.cle} data-testid="cal-onglet-panneau">
           <ErrorBoundary
             key={actif.cle}
             fallback={<EchecOnglet libelle={actif.libelle} />}
