@@ -54,13 +54,18 @@ SUFFIXE_SUGGESTION = 'Suggestion'
 COLLECTIONS = ('zones', 'buildings')
 
 #: Les emplacements CONNUS : ``(collection, clé) -> (champ de valeur, libellé,
-#: source)``. Une clé ``…Suggestion`` inconnue est tenue quand même (règle
-#: générique) et nommée par sa propre clé.
+#: source, message)``. Une clé ``…Suggestion`` inconnue est tenue quand même
+#: (règle générique) et nommée par sa propre clé. Les messages sont ceux du
+#: contrat CALX334 (``refus_suggestions_en_attente``).
 EMPLACEMENTS = {
     ('zones', 'pitchSuggestion'): (
-        'pitchDeg', 'Pente du pan', 'LiDAR IGN'),
+        'pitchDeg', 'Pente du pan', 'LiDAR IGN',
+        "Pente suggérée par le LiDAR IGN, jamais acceptée : acceptez-la ou "
+        "saisissez-la avant d'approuver."),
     ('buildings', 'hauteurSuggestion'): (
-        'hauteurM', 'Hauteur du bâtiment', 'OpenStreetMap'),
+        'hauteurM', 'Hauteur du bâtiment', 'OpenStreetMap',
+        "Hauteur proposée par OpenStreetMap, jamais acceptée : acceptez-la "
+        "ou saisissez-la avant d'approuver."),
 }
 
 __all__ = [
@@ -81,6 +86,15 @@ class ApprobationRefusee(ValueError):
         self.champ = champ
         self.en_attente = list(en_attente or [])
 
+    def corps(self):
+        """Le corps 400 du contrat CALX334 : UN message par champ fautif —
+        chaque suggestion en attente sous SON chemin (``buildings[0].hauteurM``),
+        sinon le champ refusé (``decision``, ``motif``)."""
+        if self.en_attente:
+            return {ligne['champ']: ligne['message']
+                    for ligne in self.en_attente}
+        return {self.champ or 'approbation': str(self)}
+
 
 def _libelle_objet(objet, collection):
     nom = str(objet.get('label') or objet.get('id') or '').strip()
@@ -91,10 +105,11 @@ def _libelle_objet(objet, collection):
 def _suggestions_en_attente(roof_layout):
     """Les valeurs d'origine AUTOMATIQUE encore en attente d'un humain.
 
-    Lecture PURE du document. Returns ``[{champ, libelle, source, cle}]`` —
-    ``champ`` écrit ``<collection>[<id>].<champ de valeur>`` pour que l'écran
-    désigne LE champ à accepter (règle fondateur du 08/09/2026). Liste vide =
-    rien n'attend : la conception peut être approuvée.
+    Lecture PURE du document. Returns ``[{champ, libelle, source, cle,
+    message}]`` — ``champ`` écrit ``<collection>[<rang>].<champ de valeur>``
+    (rang dans la liste du document, forme du contrat CALX334) pour que
+    l'écran désigne LE champ à accepter (règle fondateur du 08/09/2026).
+    Liste vide = rien n'attend : la conception peut être approuvée.
     """
     document = roof_layout if isinstance(roof_layout, dict) else {}
     en_attente = []
@@ -102,10 +117,9 @@ def _suggestions_en_attente(roof_layout):
         objets = document.get(collection)
         if not isinstance(objets, list):
             continue
-        for rang, objet in enumerate(objets, start=1):
+        for rang, objet in enumerate(objets):
             if not isinstance(objet, dict):
                 continue
-            ident = str(objet.get('id') or rang)
             for cle in sorted(objet):
                 if not (isinstance(cle, str)
                         and cle.endswith(SUFFIXE_SUGGESTION)):
@@ -115,15 +129,20 @@ def _suggestions_en_attente(roof_layout):
                     continue
                 if suggestion.get('status') in STATUTS_DECIDES:
                     continue
-                champ_valeur, libelle, source = EMPLACEMENTS.get(
-                    (collection, cle), (cle, cle, ''))
+                champ_valeur, libelle, source, message = EMPLACEMENTS.get(
+                    (collection, cle), (
+                        cle, cle, '',
+                        f"Valeur « {cle} » d'origine automatique, jamais "
+                        "acceptée : acceptez-la ou saisissez-la avant "
+                        "d'approuver."))
                 source = str(suggestion.get('source') or source or '').strip()
                 en_attente.append({
-                    'champ': f'{collection}[{ident}].{champ_valeur}',
+                    'champ': f'{collection}[{rang}].{champ_valeur}',
                     'libelle': (f'{libelle} — '
                                 f'{_libelle_objet(objet, collection)}'),
                     'source': source,
                     'cle': cle,
+                    'message': message,
                 })
     return en_attente
 
@@ -169,7 +188,7 @@ def etat_approbation(calepinage):
         'decide_par': (_decideur(calepinage, decision.get('decide_par_id'))
                        if etat else None),
         'decide_le': decision.get('decide_le') if etat else None,
-        'motif': (decision.get('motif') or '') if etat else '',
+        'motif': (decision.get('motif') or '') if etat else None,
         'exigee': approbation_exigee(getattr(calepinage, 'company', None)),
     }
 
@@ -184,14 +203,14 @@ def _valider(decision, motif, roof_layout):
     """Les trois refus, dans l'ordre où un relecteur les corrigerait."""
     if decision not in DECISIONS:
         raise ApprobationRefusee(
-            "« Décision » attend « approuve » ou « refuse » "
-            f"(reçu : « {decision if decision is not None else ''} »).",
-            champ='decision')
+            "Décision inconnue : "
+            f"« {decision if decision is not None else ''} ». Décisions "
+            f"admises : {', '.join(DECISIONS)}.", champ='decision')
     motif = motif.strip() if isinstance(motif, str) else ''
     if decision == REFUSE and not motif:
         raise ApprobationRefusee(
-            "Un refus s'accompagne de son motif : renseignez « Motif » pour "
-            "que le concepteur sache quoi reprendre.", champ='motif')
+            "Un refus d'approbation exige un motif : dites ce qui est à "
+            "reprendre.", champ='motif')
     if decision == APPROUVE:
         en_attente = _suggestions_en_attente(roof_layout)
         if en_attente:

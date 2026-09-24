@@ -11,9 +11,10 @@ UNE SEULE FORME D'URL (CAL233) : ``@action`` du viewset pivot, servie sous
   ``calepinage_approuver`` : un porteur de ``calepinage_gerer`` SEUL reçoit
   403 — c'est tout l'objet du second regard.
 
-Un refus métier est un 400 qui NOMME son champ (``decision``, ``motif``, ou le
-champ du document dont la suggestion automatique attend un humain, avec la
-liste complète sous ``en_attente``) — la règle fondateur du 08/09/2026.
+Un refus métier est un 400 qui NOMME son champ (``decision``, ``motif``, ou —
+un message par champ — chaque valeur du document dont la suggestion
+automatique attend un humain, sous son chemin ``buildings[0].hauteurM``) : la
+forme ``refus_*`` du contrat, et la règle fondateur du 08/09/2026.
 
 La société vient TOUJOURS du serveur : ``get_object()`` est borné par le
 queryset du viewset, donc un calepinage d'une autre société est INTROUVABLE
@@ -46,10 +47,7 @@ def approbation(self, request, pk=None):
         etat = decider(calepinage, decision=corps.get('decision'),
                        motif=corps.get('motif') or '', user=request.user)
     except ApprobationRefusee as refus:
-        reponse = {refus.champ or 'approbation': str(refus)}
-        if refus.en_attente:
-            reponse['en_attente'] = refus.en_attente
-        return Response(reponse, status=status.HTTP_400_BAD_REQUEST)
+        return Response(refus.corps(), status=status.HTTP_400_BAD_REQUEST)
     return Response(etat)
 
 

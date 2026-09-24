@@ -12,7 +12,8 @@ Ce qui est prouvé ici :
   motif en nommant ``motif`` — et RIEN n'est écrit ;
 * une conception qui porte une hauteur OpenStreetMap (``hauteurSuggestion``)
   ou une pente LiDAR (``pitchSuggestion``) NON acceptée n'est pas
-  approuvable : le refus nomme le champ, et la liste complète est servie ;
+  approuvable : le refus nomme CHAQUE champ en attente sous son chemin
+  (``buildings[0].hauteurM``), un message par champ — forme du contrat ;
   la même conception, suggestions acceptées (ou refusées par un humain),
   s'approuve ;
 * en HTTP : ``GET`` pour un lecteur, ``POST`` 403 pour un porteur de
@@ -142,11 +143,13 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
     def test_pente_lidar_et_hauteur_osm_en_attente(self):
         en_attente = service._suggestions_en_attente(conception())
         champs = [ligne['champ'] for ligne in en_attente]
-        self.assertEqual(champs, ['zones[z1].pitchDeg',
-                                  'buildings[bat-1].hauteurM'])
+        # Le RANG dans la liste du document — la forme du contrat CALX334.
+        self.assertEqual(champs, ['zones[0].pitchDeg',
+                                  'buildings[0].hauteurM'])
         osm = en_attente[1]
         self.assertEqual(osm['source'], 'openstreetmap')
         self.assertIn('Villa', osm['libelle'])
+        self.assertIn('OpenStreetMap', osm['message'])
 
     def test_suggestions_decidees_ne_bloquent_plus(self):
         document = conception(pente='refusee', hauteur='validee')
@@ -165,15 +168,15 @@ class SuggestionsEnAttenteTest(SimpleTestCase):
         self.assertEqual(
             [ligne['champ']
              for ligne in service._suggestions_en_attente(document)],
-            ['zones[z1].pitchDeg'])
+            ['zones[0].pitchDeg'])
 
     def test_source_automatique_inconnue_tenue_par_sa_cle(self):
-        document = {'buildings': [{
+        document = {'buildings': [{'id': 'b1'}, {
             'id': 'b2', 'azimutSuggestion': {'status': 'suggeree'}}]}
         self.assertEqual(
             [ligne['champ']
              for ligne in service._suggestions_en_attente(document)],
-            ['buildings[b2].azimutSuggestion'])
+            ['buildings[1].azimutSuggestion'])
 
 
 class DecisionRefuseeSansEcritureTest(SimpleTestCase):
@@ -190,21 +193,24 @@ class DecisionRefuseeSansEcritureTest(SimpleTestCase):
     def test_decision_inconnue(self):
         refus = self._decider(faux_calepinage(), decision='valide')
         self.assertEqual(refus.champ, 'decision')
-        self.assertIn('Décision', str(refus))
+        self.assertIn('Décision inconnue', str(refus))
+        self.assertEqual(list(refus.corps()), ['decision'])
 
     def test_refus_sans_motif(self):
         refus = self._decider(faux_calepinage(), decision='refuse',
                               motif='   ')
         self.assertEqual(refus.champ, 'motif')
-        self.assertIn('Motif', str(refus))
+        self.assertIn('exige un motif', str(refus))
+        self.assertEqual(list(refus.corps()), ['motif'])
 
     def test_hauteur_osm_non_acceptee(self):
         document = conception(pente='validee')
         refus = self._decider(faux_calepinage(document), decision='approuve')
-        self.assertEqual(refus.champ, 'buildings[bat-1].hauteurM')
-        self.assertIn('buildings[bat-1].hauteurM', str(refus))
-        self.assertEqual([ligne['champ'] for ligne in refus.en_attente],
-                         ['buildings[bat-1].hauteurM'])
+        self.assertEqual(refus.champ, 'buildings[0].hauteurM')
+        self.assertIn('buildings[0].hauteurM', str(refus))
+        self.assertEqual(list(refus.corps()), ['buildings[0].hauteurM'])
+        self.assertIn('OpenStreetMap',
+                      refus.corps()['buildings[0].hauteurM'])
 
     def test_un_refus_humain_n_attend_pas_les_suggestions(self):
         """Refuser une conception reste possible avec des suggestions."""
@@ -233,20 +239,64 @@ class FormeDeLaReponseTest(SimpleTestCase):
     def test_personne_n_a_decide(self):
         etat = self._etat(faux_calepinage())
         self.assertEqual(etat, {'etat': None, 'decide_par': None,
-                                'decide_le': None, 'motif': '',
+                                'decide_le': None, 'motif': None,
                                 'exigee': False})
 
     def test_etat_illisible_publie_comme_non_decide(self):
         etat = self._etat(faux_calepinage(approbation={'etat': 'peut-etre'}))
         self.assertIsNone(etat['etat'])
 
-    def test_les_cles_du_contrat_committe(self):
+
+class ContratCommitteTest(SimpleTestCase):
+    """Le contrat CALX334 (``calepinage_approbation.json``) EST ce que le
+    service rend — l'état vide à l'identique, et chaque refus à la clé et au
+    message près. Posé par la lane contrats du même lot : sans lui sur la
+    branche, ces cas s'effacent en le DISANT (il est là au fold)."""
+
+    def setUp(self):
         if not CONTRAT.exists():
             self.skipTest('contrat CALX334 absent de cette branche — la '
                           'lane contrats le livre au fold.')
-        exemple = json.loads(CONTRAT.read_text(encoding='utf-8'))['exemple']
-        self.assertEqual(sorted(self._etat(faux_calepinage())),
-                         sorted(exemple))
+        self.contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
+
+    def _refus(self, calepinage, **kwargs):
+        with mock.patch.object(calepinage, 'save', create=True):
+            with self.assertRaises(service.ApprobationRefusee) as refus:
+                service.decider(calepinage, maintenant=MAINTENANT, **kwargs)
+        return refus.exception.corps()
+
+    def test_l_etat_vide_est_l_exemple_vide(self):
+        with mock.patch.object(service, 'approbation_exigee',
+                               return_value=False):
+            etat = service.etat_approbation(faux_calepinage())
+        self.assertEqual(etat, self.contrat['exemple_vide'])
+
+    def test_les_cles_de_l_exemple(self):
+        with mock.patch.object(service, 'approbation_exigee',
+                               return_value=True):
+            etat = service.etat_approbation(faux_calepinage())
+        self.assertEqual(sorted(etat), sorted(self.contrat['exemple']))
+
+    def test_le_code_de_decision_est_celui_du_contrat(self):
+        self.assertEqual(self.contrat['code_permission_decider'],
+                         CAL_APPROUVER)
+
+    def test_decision_inconnue(self):
+        self.assertEqual(self._refus(faux_calepinage(), decision='valide'),
+                         self.contrat['refus_decision_inconnue'])
+
+    def test_refus_sans_motif(self):
+        self.assertEqual(self._refus(faux_calepinage(), decision='refuse'),
+                         self.contrat['refus_refus_sans_motif'])
+
+    def test_suggestions_en_attente(self):
+        """Hauteur OSM du bâtiment 0 et pente LiDAR du pan 1 en attente."""
+        document = conception(hauteur='suggeree', pente='validee')
+        document['zones'].append(copy.deepcopy(document['zones'][0]))
+        document['zones'][1]['pitchSuggestion']['status'] = 'suggeree'
+        self.assertEqual(
+            self._refus(faux_calepinage(document), decision='approuve'),
+            self.contrat['refus_suggestions_en_attente'])
 
 
 # ── HTTP — exige l'ORM (la CI est la gate de ces classes) ─────────────────
@@ -350,10 +400,10 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         reponse = self.api.post(url_approbation(self.calepinage.pk),
                                 {'decision': 'approuve'}, format='json')
         self.assertEqual(reponse.status_code, 400)
-        self.assertIn('buildings[bat-1].hauteurM', reponse.data)
-        self.assertEqual(
-            [ligne['champ'] for ligne in reponse.data['en_attente']],
-            ['buildings[bat-1].hauteurM'])
+        # Un message par champ fautif, sous son chemin — forme du contrat.
+        self.assertEqual(list(reponse.data), ['buildings[0].hauteurM'])
+        self.calepinage.refresh_from_db()
+        self.assertIsNone(self.calepinage.approbation)
 
     def test_meme_conception_suggestions_acceptees_s_approuve(self):
         document = conception(pente='validee')
