@@ -1,0 +1,25 @@
+# Base de reference de check_contrats_calepinage_deux_moities.py — DETTE
+# HISTORIQUE, RIEN D'AUTRE (CALX385).
+#
+# Chaque ligne est le nom d'un `contract_samples/*.json` du module calepinage
+# qu'AUCUN fichier de frontend/src/** ni apps/web/src/** ne cite par son nom
+# de fichier — la moitié CLIENTE du contrat n'existe pas (encore, ou jamais).
+# Cette liste gele l'etat du jour : la garde empeche la RECIDIVE (un
+# echantillon NEUF n'a jamais droit au passif), elle ne repare pas le passif
+# — chaque ligne drainee est un echantillon qui a enfin gagne sa moitie
+# cliente, ou ete retire du depot.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - citer l'echantillon cote client puis `python
+#     scripts/check_contrats_calepinage_deux_moities.py --write-baseline`
+#     retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# Format : `<nom_de_fichier.json>  # <raison datee>`.
+calepinage_incertitude.json  # sans moitié cliente au 23/09/2026 (CALX385)
+calepinage_meteo.json  # sans moitié cliente au 23/09/2026 (CALX385)
+calepinage_sld.json  # sans moitié cliente au 23/09/2026 (CALX385)
+electrique_cheminements.json  # sans moitié cliente au 23/09/2026 (CALX385)
+lead_layout_public.json  # sans moitié cliente au 23/09/2026 (CALX385)
+rapport_etude.json  # sans moitié cliente au 23/09/2026 (CALX385)
