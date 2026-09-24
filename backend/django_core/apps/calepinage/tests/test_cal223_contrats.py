@@ -359,8 +359,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # SORTI.
     # CALX334 — ``GET/POST calepinages/<pk>/approbation/`` arrive avec CALX347.
     'calepinage_approbation.json': 'CALX347',
-    # CALX337 — ``GET/POST calepinages/<pk>/pose-reelle/`` arrive avec CALX366.
-    'calepinage_asbuilt_ecarts.json': 'CALX366',
+    # CALX366 a livré ``GET/POST calepinages/<pk>/pose-reelle/``
+    # (``views/asbuilt.py``) : ``calepinage_asbuilt_ecarts.json`` en est SORTI.
     # CALX359 a livré ``GET calepinages/<pk>/bom-fixation/``
     # (``views/fixation.py``) : ``calepinage_fixation_bom.json`` en est SORTI.
 }

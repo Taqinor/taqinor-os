@@ -128,6 +128,9 @@ from . import fixation as _fixation_action  # noqa: F401
 # CALX364 — même patron : rattache ``releve-visite`` (GET/POST la reprise de la
 # visite technique validée, contrat CALX336, services/reprise_visite.py).
 from . import reprise_visite as _reprise_visite_action  # noqa: F401
+# CALX366 — même patron : rattache ``pose-reelle`` (GET/POST la pose réelle et
+# ses écarts, contrat CALX337, services/asbuilt.py).
+from . import asbuilt as _asbuilt_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -163,6 +166,7 @@ MODULES_RATTACHES = (
     'approbation',  # CALX347
     'fixation',  # CALX359
     'reprise_visite',  # CALX364
+    'asbuilt',  # CALX366
 )
 
 __all__ = ['MODULES_RATTACHES']

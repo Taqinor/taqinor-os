@@ -32,6 +32,7 @@ __all__ = [
     'journaliser_lien_appel_offre', 'journaliser_layout',
     'journaliser_variante_retenue', 'journaliser_restauration',
     'journaliser_verrou', 'journaliser_document_produit', 'noter',
+    'journaliser_pose_reelle', 'journaliser_version_pose',
 ]
 
 
@@ -239,3 +240,28 @@ def noter(calepinage, texte, *, user=None):
     if not corps:
         return None
     return _ecrire(calepinage, 'NOTE', user=user, body=corps)
+
+
+def journaliser_pose_reelle(calepinage, *, pan, ancien=None, nouveau=None,
+                            ecarts_position='', user=None):
+    """CALX366 — une saisie de pose réelle : ancien → nouveau compte posé.
+
+    ``ancien`` vaut ``None`` pour une PREMIÈRE saisie du pan : le journal
+    écrit alors une valeur vide, jamais « 0 » (personne n'avait compté). Le
+    texte libre des écarts de position voyage dans le corps de l'entrée.
+    """
+    return _ecrire(calepinage, 'MODIFICATION', user=user,
+                   field='pose_reelle',
+                   field_label=f'Pose réelle — {pan}',
+                   old_value='' if ancien is None else str(ancien),
+                   new_value='' if nouveau is None else str(nouveau),
+                   body=(ecarts_position or '').strip())
+
+
+def journaliser_version_pose(calepinage, *, version=None, user=None):
+    """CALX366 — la version gelée depuis les écarts de pose réelle, par son
+    LIBELLÉ (qui nomme les pans en écart), jamais par son seul identifiant."""
+    return _ecrire(calepinage, 'MODIFICATION', user=user, field='version',
+                   field_label='Version depuis la pose réelle', old_value='',
+                   new_value=getattr(version, 'libelle', '') or str(
+                       getattr(version, 'pk', '') or ''))
