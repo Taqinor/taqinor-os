@@ -82,6 +82,8 @@ export const ONGLETS = [
   { cle: 'economie', libelle: 'Économie', groupe: 'Résultats', ordre: 260, composant: lazy(() => import('../economie/PanneauEconomie')) }, // CALX289
 
   { cle: 'projet', libelle: 'Projet', groupe: 'Dossiers', ordre: 270, composant: lazy(() => import('./Projet')) }, // CALX371
+
+  { cle: 'diff-versions', libelle: 'Comparer les versions', groupe: 'Dossiers', ordre: 185, composant: lazy(() => import('./DiffVersions')) }, // CALX346
 ]
 
 /**

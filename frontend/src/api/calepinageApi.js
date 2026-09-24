@@ -476,6 +476,14 @@ const calepinageApi = {
       api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob' }),
     importerProjet: (corps) =>
       api.post('/calepinage/calepinages/import-projet/', corps),
+
+    // CALX346 — le différentiel champ par champ entre deux versions (contrat
+    // `contract_samples/calepinage_versions_diff.json`, CALX333 ; porte
+    // `views/versions_diff.py`, CALX345). Sans `contreId`, la DROITE est
+    // l'ÉTAT COURANT du calepinage (`id: null`) — jamais une seconde route.
+    versionsDiff: (id, versionId, contreId) =>
+      api.get(`${pivot(id)}versions/${versionId}/diff/`,
+        { params: contreId ? { contre: contreId } : {} }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
