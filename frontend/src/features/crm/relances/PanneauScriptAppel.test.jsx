@@ -4,12 +4,19 @@
 // `relance_etape_message.json` (le script rendu) — jamais un objet retapé à
 // la main.
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
-import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractSamples'
+import {
+  exempleContrat, fichierContrat, reponseContrat,
+} from '../../../test/fixtures/contractSamples'
+import fieldLabels from '../workspace/fieldLabels'
 import RelanceEtapeRow from './RelanceEtapeRow'
 import PanneauScriptAppel from './PanneauScriptAppel'
+import * as guidance from './appelGuidance'
 import {
   BANDEAU_PROFIL_SUPPOSE, MENTION_D7, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
+  ORDRE_APPEL_1, QUESTIONS_DU_RAPPEL, scriptTouche,
 } from './appelGuidance'
 
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
@@ -216,5 +223,104 @@ describe('CAD152 — sur la fiche : le panneau déplié, l’accroche servie par
     const bandeau = await screen.findByTestId('bandeau-profil-suppose')
     fireEvent.click(within(bandeau).getByRole('button', { name: OCCUPATION.choix[2].libelle }))
     await waitFor(() => expect(onLeadEcrit).toHaveBeenCalledWith({ id: PANNEAU.lead_id, score: 51 }))
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════════
+// CAD153 — T9 : les tests qui FIGENT le script guidé (moitié écran ; la moitié
+// serveur est `apps/crm/tests_cad153_script_guide.py`).
+// ════════════════════════════════════════════════════════════════════════════
+
+// `docs/crm/messages_meryem.md`, localisé depuis la racine du dépôt que la
+// fixture de contrat sait déjà trouver (…/backend/django_core/apps/crm/…).
+// C'est une DOC (la source des textes), jamais du code source.
+const RACINE = join(fichierContrat('crm', 'panneau_appel'), '..', '..', '..', '..', '..', '..')
+const MESSAGES = readFileSync(join(RACINE, 'docs', 'crm', 'messages_meryem.md'), 'utf8')
+  .replace(/\r\n/g, '\n').split('\n')
+
+/** Les lignes `CLE : texte` de la section « Panneau d'appel — consignes
+ *  d'écran » du fichier source. */
+function consignesDEcran() {
+  const debut = MESSAGES.findIndex((l) => l.startsWith('## Panneau d\'appel — consignes d\'écran'))
+  expect(debut, 'section des consignes du panneau absente de messages_meryem.md').toBeGreaterThanOrEqual(0)
+  const out = {}
+  for (const ligne of MESSAGES.slice(debut + 1)) {
+    if (ligne.startsWith('#')) break
+    const trouve = /^([A-Z][A-Z0-9_]*) : (.*)$/.exec(ligne)
+    if (trouve) out[trouve[1]] = trouve[2].trim()
+  }
+  return out
+}
+
+//: Les consignes d'écran livrées par CAD152 (les tâches suivantes en ajoutent :
+//: la section les porte toutes, la garde les compare toutes).
+const CONSIGNES_CAD152 = [
+  'MENTION_D7', 'BANDEAU_PROFIL_SUPPOSE', 'EXPLICATION_PROFIL_SUPPOSE',
+  'CONSIGNE_ISSUE', 'ISSUE_VERROUILLEE', 'AUCUNE_QUESTION',
+]
+
+//: Les cinq touches d'appel qui n'avaient AUCUN script (Appel 4, Appel 6,
+//: suivis J2/J7/J11) — la moitié serveur prouve leur `template_cle`.
+const CINQ_TOUCHES = [
+  ['contact', 'repondeur'], ['contact', 'appel_dernier'],
+  ['apres_devis', 'appel_suivi_j2'], ['apres_devis', 'appel_suivi_j7'],
+  ['apres_devis', 'appel_suivi_j11'],
+]
+
+describe('CAD153 — les textes du panneau sont ceux du fichier source', () => {
+  it('chaque consigne d’écran est re-dérivée de messages_meryem.md, mot pour mot', () => {
+    const source = consignesDEcran()
+    for (const cle of CONSIGNES_CAD152) expect(source, cle).toHaveProperty(cle)
+    for (const [cle, texte] of Object.entries(source)) {
+      expect(guidance[cle], `${cle} absent de appelGuidance.js`).toBe(texte)
+    }
+  })
+
+  it('aucune consigne d’écran ne porte un chiffre ni un crochet', () => {
+    for (const [cle, texte] of Object.entries(consignesDEcran())) {
+      expect(texte, cle).not.toMatch(/[0-9٠-٩۰-۹]/)
+      expect(texte, cle).not.toMatch(/[[\]]/)
+    }
+  })
+})
+
+describe('CAD153 — chaque touche d’appel a son script, sur la ligne', () => {
+  it('les cinq touches sans script d’avant CAD67/CAD98 affichent leur titre et leur texte', async () => {
+    crmApi.getPanneauAppel.mockResolvedValue({ data: PANNEAU })
+    crmApi.getRelanceEtapeMessage.mockResolvedValue(reponseContrat('crm', 'relance_etape_message'))
+    for (const [cadence, cle] of CINQ_TOUCHES) {
+      const titre = scriptTouche(cle)?.titre
+      expect(titre, cle).toBeTruthy()
+      const { unmount } = ligne({ ...ETAPE_APPEL, cadence, template_cle: cle })
+      fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+      expect(await screen.findByText(titre)).toBeInTheDocument()
+      expect(await screen.findByTestId('texte-touche-contenu')).toHaveTextContent(MESSAGE.message)
+      unmount()
+    }
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+  })
+})
+
+describe('CAD153 — tout champ que le panneau écrit est déclaré à l’écran (fieldLabels)', () => {
+  it('chaque colonne des étapes de l’appel et du rappel a son libellé', () => {
+    const champs = [...ORDRE_APPEL_1, ...QUESTIONS_DU_RAPPEL].flatMap((e) => e.champs)
+    expect(champs.length).toBeGreaterThan(0)
+    for (const champ of champs) {
+      expect(fieldLabels[champ], `${champ} absent de fieldLabels.js`).toBeTruthy()
+      expect(fieldLabels[champ].label.trim().length, champ).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('CAD153 — une question déjà répondue n’est JAMAIS reposée', () => {
+  it('même si le serveur la servait encore, une colonne présente en prefill ne s’affiche pas', async () => {
+    // Incohérence simulée À PARTIR du contrat : la présence est à la fois
+    // « à poser » et « déjà sur la fiche » — le prefill gagne toujours.
+    armer({ panneau: { ...PANNEAU, prefill: { ...PANNEAU.prefill, occupation_jour: 'present' } } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    expect(await screen.findByTestId('mention-d7')).toBeInTheDocument()
+    expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('question-appel-occupation_jour')).not.toBeInTheDocument()
   })
 })

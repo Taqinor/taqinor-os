@@ -46,8 +46,11 @@ test('CAD161 — un lead agricole est refusé PROPREMENT : message explicite, ja
   assert.equal(g.livre, false)
   assert.equal(g.segment, 'agricole')
   assert.ok(g.message.trim().length > 0)
-  assert.match(g.message, /résidentiel/)
-  assert.match(g.message, /« Agricole »/)
+  // CAD153 — `includes`, pas une assertion regex : ce fichier lit aussi
+  // `messages_meryem.md` (une DOC, pas du code source), et la garde
+  // `check_tests_source_regex.py` refuse l'association lecture + regex.
+  assert.ok(g.message.includes('résidentiel'), g.message)
+  assert.ok(g.message.includes('« Agricole »'), g.message)
   assert.equal(g.questions, undefined, 'aucun script résidentiel déguisé')
 })
 
@@ -55,7 +58,7 @@ test('CAD161 — industriel et commercial sont refusés avec le libellé servi',
   for (const [segment, segment_libelle] of [['industriel', 'Industriel'], ['commercial', 'Commercial']]) {
     const g = guidanceAppel({ ...exemple(), segment, segment_libelle })
     assert.equal(g.livre, false, segment)
-    assert.match(g.message, new RegExp(`« ${segment_libelle} »`))
+    assert.ok(g.message.includes(`« ${segment_libelle} »`), g.message)
   }
 })
 

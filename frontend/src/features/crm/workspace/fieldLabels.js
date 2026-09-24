@@ -165,6 +165,48 @@ const fieldLabels = {
     label: 'Carburant consommé (litres/mois)', section: 'pompage',
     inputId: 'lf-carburant-litres-mois', pending: 'PanneauScriptAppel (CAD152/153)',
   },
+
+  // CAD153 — la garde « tout champ écrit par le panneau d'appel, et tout
+  // champ neuf du script guidé, a son entrée ». Deux familles, même règle
+  // `pending` que ci-dessus (libellé = `verbose_name` serveur) :
+  //   · les deux colonnes ANCIENNES que le panneau écrit sans qu'aucun
+  //     `<FormField htmlFor>` ne les porte (la case « été différent » de
+  //     SectionEnergie n'a pas d'id ; le statut d'occupation n'est affiché
+  //     qu'en lecture dans SectionDivers) ;
+  //   · la VAGUE 2 (CAD154) : six colonnes posées au serveur dont la moitié
+  //     écran n'avait jamais été déclarée (le même geste que CAD174).
+  ete_differente: {
+    label: 'L’été est différent de l’hiver ?', section: 'energie',
+    inputId: 'lf-ete-differente', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  ownership: {
+    label: "Statut d'occupation", section: 'toiture',
+    inputId: 'lf-ownership', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  nb_personnes_foyer: {
+    label: 'Nombre de personnes au foyer', section: 'equipements',
+    inputId: 'lf-nb-personnes-foyer', pending: 'vague 2 (CAD154)',
+  },
+  budget_client_mad: {
+    label: 'Budget annoncé par le client (MAD)', section: 'pipeline',
+    inputId: 'lf-budget-client-mad', pending: 'vague 2 (CAD154)',
+  },
+  frein_principal: {
+    label: 'Frein principal', section: 'pipeline',
+    inputId: 'lf-frein-principal', pending: 'vague 2 (CAD154)',
+  },
+  declencheur: {
+    label: 'Ce qui a accroché', section: 'pipeline',
+    inputId: 'lf-declencheur', pending: 'vague 2 (CAD154)',
+  },
+  compteur_puissance_kva: {
+    label: 'Puissance souscrite du compteur (kVA)', section: 'energie',
+    inputId: 'lf-compteur-puissance-kva', pending: 'vague 2 (CAD154)',
+  },
+  chauffage_electrique_hiver: {
+    label: 'Chauffage électrique en hiver', section: 'equipements',
+    inputId: 'lf-chauffage-electrique-hiver', pending: 'vague 2 (CAD154)',
+  },
 }
 
 export default fieldLabels
