@@ -193,9 +193,20 @@ class PublicCalepinageViewSet(PublicReadOnlyViewSet):
         return getattr(getattr(requete, 'auth', None), 'company', None)
 
     @extend_schema(responses={200: PublicCalepinageResultatSerializer})
-    @action(detail=True, methods=['get'], url_path='resultat')
+    @action(detail=True, methods=['get'], url_path='resultat',
+            permission_classes=[HasApiScope])
     def resultat(self, request, pk=None):
         """CALX369 — ``GET calepinages/<pk>/resultat/`` : la simulation servie.
+
+        ``permission_classes=[HasApiScope]`` est déclaré EXPLICITEMENT sur
+        cette ``@action`` (fix CI #716, cliquet ``core.tests.
+        test_action_permissions``) : c'est le MÊME garde que celui déjà
+        appliqué par défaut à toute la classe (``PublicReadOnlyViewSet.
+        permission_classes``), sur le MÊME ``required_scope`` (``read:
+        calepinages``) — aucun ``AllowAny`` inventé, comportement inchangé.
+        Le scanner statique (YRBAC4) ne crédite une ``@action`` que si elle
+        porte sa propre garde OU si son viewset expose un ``get_permissions``
+        ; sans cette déclaration explicite, l'action apparaissait en dette.
 
         Sous-ressource en LECTURE SEULE, sous le scope EXISTANT
         ``read:calepinages`` (aucune nouvelle famille d'URL). Elle publie ce
