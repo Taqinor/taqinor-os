@@ -705,6 +705,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # Ce qu'il n'ouvre PAS : le verrou du lead perdu (vérifié AVANT, comme pour
     # ``undo``) et les actions en MASSE (voir la garde funnel plus bas).
     confirme_recul = serializers.BooleanField(write_only=True, required=False)
+    # CAD158 (décision fondateur du 21/09/2026, Q24) — combien de mois couvre
+    # la facture DÉCLARÉE dans ce même corps (`mensuelle` | `bimestrielle`).
+    # Jamais stocké (aucun champ « périodicité ») : le montant est ramené au
+    # mois dans `validate`, et c'est lui qu'on enregistre et qu'on relit.
+    facture_periodicite = serializers.CharField(
+        write_only=True, required=False, allow_blank=True)
 
     @staticmethod
     def _canonical_phone(value):
@@ -939,6 +945,24 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # Ordre fondateur 2026-08-01 : confirmation humaine d'un recul. Jamais
         # persisté non plus (champ hors modèle) — retiré ici comme ``undo``.
         confirme_recul = bool(attrs.pop('confirme_recul', False))
+        # CAD158 — une facture déclarée sur DEUX mois est ramenée au mois
+        # AVANT d'être enregistrée (le moteur lit un montant mensuel). Refus
+        # qui NOMME le champ : période inconnue, ou période sans montant.
+        periodicite = (attrs.pop('facture_periodicite', '') or '').strip()
+        if periodicite:
+            from .services import facture_au_mois, refus_periodicite_facture
+            refus = refus_periodicite_facture(periodicite)
+            if refus:
+                raise serializers.ValidationError(
+                    {'facture_periodicite': [refus]})
+            montants = [champ for champ in ('facture_hiver', 'facture_ete')
+                        if attrs.get(champ) is not None]
+            if not montants:
+                raise serializers.ValidationError({'facture_periodicite': [
+                    '« Période de la facture » : indiquez le montant de la '
+                    'facture dans la même saisie.']})
+            for champ in montants:
+                attrs[champ] = facture_au_mois(attrs[champ], periodicite)
         # MRY22 — MOTIF DE PERTE OBLIGATOIRE. « Perdu sans raison » est la
         # ligne qui ne sert à personne : elle sort le lead du pipeline sans
         # rien apprendre, et le KPI « perdus avec motif » (MRY21) ne peut plus

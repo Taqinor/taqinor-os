@@ -58,6 +58,10 @@ const fieldLabels = {
   // ── Profil énergétique (energie) ──────────────────────────────────────
   facture_hiver: { label: 'Facture mensuelle (MAD/mois)', section: 'energie', inputId: 'lf-facture-hiver' },
   facture_ete: { label: 'Facture Été (MAD/mois)', section: 'energie', inputId: 'lf-facture-ete' },
+  // CAD158 — la période de la facture (jamais stockée : le montant est
+  // ramené au mois) ; clé = celle du refus serveur, contrat
+  // `lead_facture_periodicite`.
+  facture_periodicite: { label: 'La facture couvre', section: 'energie', inputId: 'lf-facture-periode' },
   conso_mensuelle_kwh: { label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
   tranche_onee: { label: 'Tarif / tranche ONEE', section: 'energie', inputId: 'lf-tranche-onee' },
   raccordement: { label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },

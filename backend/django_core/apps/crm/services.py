@@ -11872,3 +11872,37 @@ def marquer_lead_perdu_junk(lead, user, motif):
     activity.log_changes(avant, lead, user)
     arreter_cadence(lead, user=user, motif=motif)
     return True
+
+
+# ── CAD158 — « votre facture, c'est pour un mois ou pour deux ? » ───────────
+#
+# Le moteur (`apps/ventes/etude_horaire.py`, inversion au barème) lit
+# `facture_hiver` comme un montant MENSUEL : un client qui donne le montant de
+# sa facture BIMESTRIELLE faussait tout l'aval (niveau de facture, économie).
+# Décision fondateur du 21/09/2026 (Q24) : le montant est ramené au mois AU
+# MOMENT DE LA SAISIE, et aucun champ « périodicité » n'est stocké.
+
+def refus_periodicite_facture(periodicite):
+    """CAD158 — le message (FR, qui NOMME le champ) si ``periodicite`` n'est
+    pas une période connue, sinon ``None``."""
+    if periodicite in Lead.PERIODICITES_FACTURE:
+        return None
+    choix = ' ou '.join(f'« {cle} »' for cle in Lead.PERIODICITES_FACTURE)
+    return (f'« Période de la facture » : {choix} attendu '
+            f'(reçu « {periodicite} »).')
+
+
+def facture_au_mois(montant, periodicite):
+    """CAD158 — le montant MENSUEL d'une facture déclarée sur ``periodicite``
+    (``mensuelle`` : inchangé ; ``bimestrielle`` : divisé par deux), arrondi
+    au centime selon la convention monétaire (moitié vers le haut).
+
+    ``None`` reste ``None`` : aucun montant n'est jamais inventé."""
+    from decimal import Decimal
+
+    from core.money import quantize_mad
+
+    if montant is None or montant == '':
+        return None
+    mois = Lead.PERIODICITES_FACTURE[periodicite]
+    return quantize_mad(Decimal(str(montant)) / Decimal(mois))

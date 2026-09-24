@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { FormField, Input } from '../../../../ui'
-import { getField } from '../draftCore'
+import { factureAuMois, getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
 // CAD157 — les mentions « ce que le chiffre ne compte pas » : UNE source de
 // texte (le script d'appel guidé), partagée par la fiche et le panneau.
@@ -72,18 +73,56 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const eteDifferente = !!getField(state, 'ete_differente')
   const regularisation = !!getField(state, 'regularisation_8221')
+  // CAD158 — « elle couvre un mois ou deux mois ? » : sur deux mois, la
+  // commerciale tape le montant de la FACTURE et c'est le montant MENSUEL
+  // (÷ 2) qui part au serveur — et qui s'affiche, pour qu'elle voie ce qui
+  // est enregistré. Rien n'est stocké sur la période (décision Q24).
+  // Le choix vaut pour CE lead seulement : naviguer vers un autre lead le
+  // remet à « 1 mois » (état keyé par `leadId`, sans effet de bord).
+  const [saisiePeriode, setSaisiePeriode] = useState({ leadId: state.leadId, periodicite: 'mensuelle', montants: {} })
+  const memeLead = saisiePeriode.leadId === state.leadId
+  const periodicite = memeLead ? saisiePeriode.periodicite : 'mensuelle'
+  const montantsFacture = memeLead ? saisiePeriode.montants : {}
+  const setPeriodicite = (p) => setSaisiePeriode({ leadId: state.leadId, periodicite: p, montants: {} })
+  const setMontantsFacture = (maj) => setSaisiePeriode((s) => ({
+    leadId: state.leadId,
+    periodicite: s.leadId === state.leadId ? s.periodicite : 'mensuelle',
+    montants: maj(s.leadId === state.leadId ? s.montants : {}),
+  }))
+  const bimestrielle = periodicite === 'bimestrielle'
+  const valeurFacture = (champ) => (bimestrielle ? (montantsFacture[champ] ?? '') : v(champ))
+  const saisirFacture = (champ, brut) => {
+    if (!bimestrielle) { setField(champ, brut); return }
+    setMontantsFacture((m) => ({ ...m, [champ]: brut }))
+    setField(champ, factureAuMois(brut, periodicite))
+  }
+  const indiceMensuel = (champ) => (bimestrielle && v(champ) !== ''
+    ? `Enregistré au mois : ${v(champ)} MAD/mois`
+    : undefined)
   return (
     <>
       <div className="form-row">
         <FormField
-          label={eteDifferente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
+          label={bimestrielle
+            ? `${eteDifferente ? 'Facture Hiver' : 'Facture'} — montant pour 2 mois (MAD)`
+            : (eteDifferente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)')}
           htmlFor="lf-facture-hiver"
           error={errors.facture_hiver}
+          hint={indiceMensuel('facture_hiver')}
         >
           <Input
             id="lf-facture-hiver" type="number" step="any" placeholder="ex: 650" invalid={!!errors.facture_hiver}
-            value={v('facture_hiver')} onChange={(e) => setField('facture_hiver', e.target.value)}
+            value={valeurFacture('facture_hiver')} onChange={(e) => saisirFacture('facture_hiver', e.target.value)}
           />
+        </FormField>
+        <FormField label="La facture couvre" htmlFor="lf-facture-periode" error={errors.facture_periodicite}>
+          <select
+            id="lf-facture-periode" className="form-select" value={periodicite}
+            onChange={(e) => setPeriodicite(e.target.value)}
+          >
+            <option value="mensuelle">1 mois</option>
+            <option value="bimestrielle">2 mois (montant ramené au mois)</option>
+          </select>
         </FormField>
         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
           <label className="pdf-toggle">
@@ -95,10 +134,13 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
           </label>
         </div>
         {eteDifferente && (
-          <FormField label="Facture Été (MAD/mois)" htmlFor="lf-facture-ete" error={errors.facture_ete}>
+          <FormField
+            label={bimestrielle ? 'Facture Été — montant pour 2 mois (MAD)' : 'Facture Été (MAD/mois)'}
+            htmlFor="lf-facture-ete" error={errors.facture_ete} hint={indiceMensuel('facture_ete')}
+          >
             <Input
               id="lf-facture-ete" type="number" step="any" placeholder="ex: 420" invalid={!!errors.facture_ete}
-              value={v('facture_ete')} onChange={(e) => setField('facture_ete', e.target.value)}
+              value={valeurFacture('facture_ete')} onChange={(e) => saisirFacture('facture_ete', e.target.value)}
             />
           </FormField>
         )}

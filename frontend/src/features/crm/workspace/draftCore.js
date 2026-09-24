@@ -583,6 +583,25 @@ export function etatChampSite(state, champ) {
   return { provenance, aConfirmer }
 }
 
+// ── CAD158 — la facture est enregistrée AU MOIS ──────────────────────────────
+// Décision fondateur du 21/09/2026 (Q24) : une facture bimestrielle est
+// ramenée au mois AU MOMENT DE LA SAISIE, aucun champ « périodicité » n'est
+// stocké. Miroir EXACT de `crm.Lead.PERIODICITES_FACTURE` et de
+// `apps/crm/services.facture_au_mois` (arrondi au centime, moitié vers le
+// haut) — les deux côtés affirment le même exemple, contrat
+// `lead_facture_periodicite.json`.
+export const PERIODICITES_FACTURE = { mensuelle: 1, bimestrielle: 2 }
+
+/** Montant MENSUEL (chaîne à 2 décimales) d'une facture déclarée sur
+ *  `periodicite` ; '' pour une saisie vide ou illisible (rien n'est inventé). */
+export function factureAuMois(montant, periodicite) {
+  if (montant === '' || montant === null || montant === undefined) return ''
+  const n = Number(String(montant).replace(',', '.'))
+  const mois = PERIODICITES_FACTURE[periodicite]
+  if (!Number.isFinite(n) || !mois) return ''
+  return (Math.round((n * 100) / mois) / 100).toFixed(2)
+}
+
 // Une valeur « vide » au sens de cette section : '' / null / undefined / []
 // / {} ne comptent jamais comme une réponse — RÈGLE DURE, jamais de « 0 » par
 // défaut ni de placeholder pour ce qui n'a pas été répondu. Exportée : sert

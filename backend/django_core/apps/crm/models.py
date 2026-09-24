@@ -657,8 +657,20 @@ class Lead(SoftDeleteModel):
 
     # Facture électrique du lead (MAD/mois). Si l'été ne diffère pas de
     # l'hiver, facture_hiver vaut pour les deux (ete_differente = False).
+    # CAD158 (décision fondateur du 21/09/2026, Q24) — le moteur lit un
+    # montant MENSUEL : une facture BIMESTRIELLE est ramenée au mois AU
+    # MOMENT DE LA SAISIE (`PERIODICITES_FACTURE`, `services.facture_au_mois`),
+    # et AUCUN champ « périodicité » n'est stocké. La question vit ICI, dans le
+    # `help_text` (« chaque champ EST le script d'appel »).
     facture_hiver = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True)
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Question à l'appel : « Votre facture d'électricité, elle "
+                  'est de combien ? Elle couvre un mois ou deux mois ? » — le '
+                  'montant ENREGISTRÉ est toujours MENSUEL : une facture de '
+                  'deux mois est divisée par deux à la saisie.')
+    #: CAD158 — combien de mois couvre la facture déclarée. Un montant
+    #: bimestriel est ramené au mois à la saisie ; jamais stocké tel quel.
+    PERIODICITES_FACTURE = {'mensuelle': 1, 'bimestrielle': 2}
     facture_ete = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     ete_differente = models.BooleanField(default=False)

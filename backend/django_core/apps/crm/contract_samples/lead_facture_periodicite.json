@@ -1,0 +1,27 @@
+{
+  "endpoint": "PATCH /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD158 (PACT10, décision fondateur du 21/09/2026, Q24) — « Votre facture, c'est pour un mois ou pour deux ? ». Le moteur lit `facture_hiver` comme un montant MENSUEL (`apps/ventes/etude_horaire.py`, inversion au barème) : un montant bimestriel faussait le niveau de facture ET l'économie. Le montant est ramené au mois AU MOMENT DE LA SAISIE, et AUCUN champ « périodicité » n'est stocké : `facture_periodicite` (`mensuelle` | `bimestrielle`) voyage avec le montant dans le MÊME corps, n'est jamais renvoyé, et c'est le montant MENSUEL qui est enregistré et relu — l'écran l'affiche pour que la commerciale voie ce qui est enregistré. S'applique à `facture_hiver` et à `facture_ete` présents dans le corps. Refus 400 AVANT toute écriture, qui NOMME le champ `facture_periodicite` (période inconnue, ou période sans montant). La question elle-même est le `help_text` de `facture_hiver`. Le document décrit le CORPS envoyé et le champ relu ; la réponse complète est celle du sérialiseur de lead (`forme_serveur: partielle`).",
+  "corps": {
+    "facture_hiver": "1300",
+    "facture_periodicite": "bimestrielle"
+  },
+  "exemple": {
+    "id": 1490,
+    "facture_hiver": "650.00"
+  },
+  "exemple_erreur_periodicite": {
+    "facture_periodicite": [
+      "« Période de la facture » : « mensuelle » ou « bimestrielle » attendu (reçu « trimestrielle »)."
+    ]
+  },
+  "exemple_erreur_sans_montant": {
+    "facture_periodicite": [
+      "« Période de la facture » : indiquez le montant de la facture dans la même saisie."
+    ]
+  },
+  "notes": {
+    "arrondi": "Au centime, moitié vers le haut (`core.money.quantize_mad`) : 1 301 MAD sur deux mois → 650,50 MAD/mois.",
+    "mensuelle": "`mensuelle` (ou l'absence du champ) laisse le montant inchangé : comportement historique."
+  }
+}
