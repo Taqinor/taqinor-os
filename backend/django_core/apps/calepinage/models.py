@@ -125,6 +125,16 @@ class Calepinage(TenantModel):
     #: existante ne change de comportement en le recevant.
     pertes = models.JSONField('Postes de pertes', default=list, blank=True)
 
+    #: CALX347 — LA DÉCISION D'APPROBATION (second regard interne), dans SON
+    #: champ : jamais dans ``resultat``, qui appartient au moteur et qu'une
+    #: simulation réécrit. Forme ``{etat, decide_par_id, decide_le, motif}``
+    #: avec ``etat`` parmi ``approuve``/``refuse`` ; ``None`` = personne n'a
+    #: encore décidé (l'état de TOUT calepinage existant : la migration
+    #: ``0013`` est additive, aucune ligne n'est réécrite). Seul
+    #: ``services/approbation.py::decider`` l'écrit.
+    approbation = models.JSONField('Approbation', null=True, blank=True,
+                                   default=None)
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
