@@ -93,12 +93,19 @@ class PeriodiciteApiTests(TestCase):
     def test_la_periode_sans_montant_est_refusee_en_nommant_le_champ(self):
         resp = self._patch({'facture_periodicite': 'bimestrielle'})
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.data, CONTRAT['exemple_erreur_sans_montant'])
+        # YAPIC3 (core.exceptions.taqinor_exception_handler) ajoute
+        # TOUJOURS une enveloppe `error` additive sur ce endpoint standard
+        # (raise DRFValidationError, pas une Response construite à la main) :
+        # on compare le champ métier du contrat, pas le dict entier — même
+        # patron que tests_mry22_motif_obligatoire.py pour ce même endpoint.
+        self.assertEqual(resp.data['facture_periodicite'],
+                         CONTRAT['exemple_erreur_sans_montant']['facture_periodicite'])
 
     def test_une_periode_inconnue_ne_touche_rien(self):
         resp = self._patch({'facture_hiver': '900',
                             'facture_periodicite': 'trimestrielle'})
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.data, CONTRAT['exemple_erreur_periodicite'])
+        self.assertEqual(resp.data['facture_periodicite'],
+                         CONTRAT['exemple_erreur_periodicite']['facture_periodicite'])
         self.lead.refresh_from_db()
         self.assertIsNone(self.lead.facture_hiver)
