@@ -491,6 +491,16 @@ const calepinageApi = {
     // société est appliqué, ou `refus` dit pourquoi (catalogue vide,
     // plusieurs systèmes actifs sans choix).
     bomFixation: (id, params) => api.get(`${pivot(id)}bom-fixation/`, { params }),
+
+    // CALX362 — le CATALOGUE des zones de vent/neige SAISIES par la société
+    // (réglages CALX361, contrat `parametres_calepinage.json`, section
+    // `lestage.zones`) : le panneau « Masse & lestage » le lit pour lister
+    // les zones au CHOIX à côté de celle retenue par le calepinage
+    // (`masseLestage`), et lier vers les réglages quand aucune zone n'est
+    // saisie. MÊME lecture que `parametres.get()` (CAL45) — AUCUNE seconde
+    // porte HTTP : exposée ici pour rester dans le groupe que le panneau
+    // consomme déjà.
+    zonesLestage: () => api.get('/calepinage/parametres/'),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

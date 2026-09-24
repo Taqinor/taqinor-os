@@ -4,7 +4,7 @@
    appeler sans monter le panneau. Les sortir dans un `.js` voisin séparerait
    la règle de son unique lecteur ; même dérogation que `PlanImporteCalage.jsx`
    et `module.config.jsx` du même module. */
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber } from '../../../lib/format'
@@ -35,7 +35,27 @@ import { Card, Spinner } from '../../../ui'
      par module est SAISI ; il ne l'est nulle part aujourd'hui, donc la ligne
      est omise en nommant ce champ — l'inventer reviendrait à publier une
      charge de fixation fausse sur une toiture réelle.
+
+   CALX362 — LES ZONES DE VENT ET DE NEIGE PAR SITE (CALX361). Quand la
+   société a saisi des zones, la réponse porte une clé de plus,
+   `lestage.zone` (`calepinage_masse_lestage.json`, variante `exemple_zone`) :
+   la zone RETENUE pour CE calepinage, son origine (désignée par le document,
+   ou zone par défaut) et ses sources. SANS zones saisies, cette clé est
+   ABSENTE et ce bloc ne s'affiche PAS — ÉQUIVALENCE STRICTE (D12), aucun
+   écran neuf pour une société qui n'a rien réglé. Le CATALOGUE des zones de
+   la société (réglages CALX361, contrat `parametres_calepinage.json`) est lu
+   à PART (`calepinageApi.calepinages.zonesLestage`, même porte que
+   `parametres.get()`) pour lister les zones au choix à côté de celle
+   retenue — jamais une seconde lecture bloquante : elle n'est demandée
+   qu'une fois une zone retenue constatée. Chaque ligne calculée gagne aussi
+   sa PROPRE mention de source (`ligne.mention`, colonne « Source ») ; une
+   zone non résolue, ou l'état entièrement vide (`lestage.calculable ===
+   false`), affiche un lien vers les réglages — jamais un bouton qui ne mène
+   nulle part.
    ========================================================================== */
+
+/** L'écran de réglages du module (zones de lestage incluses, CALX361). */
+const CHEMIN_REGLAGES = '/calepinage/reglages'
 
 /** La clé du paramètre société qui porterait le nombre de points de fixation.
     Elle n'est servie par AUCUN réglage à ce jour : c'est précisément ce que la
@@ -223,7 +243,12 @@ function LigneFeuille({ ligne, parametres }) {
   return (
     <li className="border-t border-border py-2" data-testid={`calx17-ligne-${ligne.code}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-sm font-medium">{ligne.libelle}</span>
+        <span className="flex items-baseline gap-2">
+          <span className="font-mono text-xs text-muted-foreground" data-testid={`calx362-code-${ligne.code}`}>
+            {ligne.code}
+          </span>
+          <span className="text-sm font-medium">{ligne.libelle}</span>
+        </span>
         <span className="text-sm" data-testid={`calx17-valeur-${ligne.code}`}>
           {omise ? 'ligne omise' : mesure(ligne.valeur, ligne.unite)}
         </span>
@@ -248,12 +273,94 @@ function LigneFeuille({ ligne, parametres }) {
           )
         })}
       </ul>
+      {/* CALX362 — colonne « Source » : la mention SERVEUR de CETTE ligne
+          (« paramètres saisis par <société>, référence <texte> » en mode
+          zone, CALX361) — vide (donc omise) pour une feuille sans zone, où
+          la mention globale sous le tableau suffit déjà. */}
+      {!omise && ligne.mention ? (
+        <p className="mt-1 text-xs text-muted-foreground" data-testid={`calx362-source-${ligne.code}`}>
+          Source : {ligne.mention}
+        </p>
+      ) : null}
       {omise && (
         <p className="mt-1 text-xs text-destructive" data-testid={`calx17-manque-${ligne.code}`}>
           {ligne.mention || `Champs manquants : ${manquants.join(', ')}.`}
         </p>
       )}
     </li>
+  )
+}
+
+/** CALX362 — l'origine de la zone, en clair : jamais le mot-clé brut. */
+function libelleOrigine(origine) {
+  if (origine === 'document') return 'désignée par ce calepinage'
+  if (origine === 'defaut') return 'zone par défaut de la société'
+  return 'non désignée'
+}
+
+/**
+ * CALX362 — LE CHOIX DE LA ZONE (CALX361) : la zone RETENUE pour ce
+ * calepinage, à côté du CATALOGUE des zones de la société (chacune de son
+ * origine et de ses sources), et un lien vers les réglages quand la zone
+ * n'est pas résolue. ÉQUIVALENCE (D12) : sans `zone` (aucune zone saisie
+ * par la société), ce bloc ne rend RIEN — pas même une carte vide.
+ */
+function BlocZone({ zone, zonesCatalogue }) {
+  if (!zone) return null
+  const catalogue = Array.isArray(zonesCatalogue) ? zonesCatalogue : []
+  const nonResolue = !zone.code
+
+  return (
+    <Card className="p-4" data-testid="calx362-zone">
+      <h3 className="text-sm font-semibold">Choix de la zone</h3>
+      {nonResolue ? (
+        <p className="mt-2 text-sm text-muted-foreground" data-testid="calx362-zone-absente">
+          Aucune zone n’est retenue pour ce calepinage.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm" data-testid="calx362-zone-retenue">
+          Zone retenue : <strong>{zone.libelle || zone.code}</strong>
+          {zone.commune_ou_region ? ` (${zone.commune_ou_region})` : ''}
+          {` — ${libelleOrigine(zone.origine)}`}
+        </p>
+      )}
+      {Array.isArray(zone.sources) && zone.sources.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="calx362-zone-sources">
+          Source : {zone.sources.join(' ; ')}
+        </p>
+      )}
+      {catalogue.length > 0 && (
+        <ul className="mt-3 space-y-1" data-testid="calx362-zone-catalogue">
+          {catalogue.map((z) => (
+            <li
+              key={z.code}
+              data-testid={`calx362-zone-catalogue-${z.code}`}
+              className={z.code === zone.code
+                ? 'text-sm font-medium'
+                : 'text-sm text-muted-foreground'}
+            >
+              {z.libelle || z.code}
+              {z.commune_ou_region ? ` — ${z.commune_ou_region}` : ''}
+              {z.code === zone.code ? ' (retenue)' : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      {zone.motif ? (
+        <>
+          <p className="mt-1 text-xs text-destructive" data-testid="calx362-zone-motif">
+            {zone.motif}
+          </p>
+          <Link
+            to={CHEMIN_REGLAGES}
+            className="mt-1 inline-block text-xs underline"
+            data-testid="calx362-lien-reglages-zone"
+          >
+            Aller aux réglages de lestage →
+          </Link>
+        </>
+      ) : null}
+    </Card>
   )
 }
 
@@ -290,6 +397,20 @@ export default function PanneauMasseLestage({ calepinageId: idPropose = null }) 
     },
   )
 
+  // CALX362 — le CATALOGUE des zones de la société, demandé UNIQUEMENT une
+  // fois une zone retenue constatée (jamais pour une société sans zones,
+  // équivalence D12) : aucun second appel bloquant, le bloc « Choix de la
+  // zone » s'affiche déjà sans lui et l'enrichit dès qu'il arrive.
+  const zoneRetenue = data?.lestage?.zone ?? null
+  const { data: reglagesLestage } = useResource(
+    () => calepinageApi.calepinages.zonesLestage(),
+    zoneRetenue ? `${calepinageId}-zone-${zoneRetenue.code || 'aucune'}` : null,
+    {
+      select: (reponse) => reponse?.data?.lestage ?? null,
+      enabled: Boolean(zoneRetenue),
+    },
+  )
+
   if (loading) return <Spinner />
   if (error) {
     return (
@@ -305,12 +426,22 @@ export default function PanneauMasseLestage({ calepinageId: idPropose = null }) 
   return (
     <div className="space-y-4" data-testid="calx17-panneau">
       <BlocMasse masse={data.masse ?? {}} />
+      <BlocZone zone={zoneRetenue} zonesCatalogue={reglagesLestage?.zones} />
       <BlocFixation charge={chargeParPointDeFixation(data)} />
       <Card className="p-4" data-testid="calx17-feuille">
         <h3 className="text-sm font-semibold">Feuille de lestage</h3>
         <p className="mt-1 text-xs text-muted-foreground" data-testid="calx17-mention">
           {lestage.mention}
         </p>
+        {lestage.calculable === false && (
+          <Link
+            to={CHEMIN_REGLAGES}
+            className="mt-1 inline-block text-xs underline"
+            data-testid="calx362-lien-reglages-vide"
+          >
+            Aller aux réglages de lestage →
+          </Link>
+        )}
         <ul className="mt-2">
           {lignes.map((ligne) => (
             <LigneFeuille key={ligne.code} ligne={ligne} parametres={parametres} />
