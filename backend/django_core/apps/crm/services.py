@@ -2635,10 +2635,14 @@ def _nom_affiche_marque(lead):
 def _civilite_et_prenom(lead, langue):
     """``(civilite, prenom)`` de la salutation d'un message client.
 
-    Civilité (décision fondateur 07/09/2026) : on s'adresse à une personne
-    qu'on ne connaît pas encore avec « M. » / « السي » devant le prénom —
-    l'usage marocain respectueux — jamais le prénom nu. Une civilité connue
-    sur le lead (champ futur) prime ; « Mme » se rend « لالة » en darija.
+    CAD65 (audit L3 du 21/09/2026) — la civilité vient de la DONNÉE
+    ``Lead.civilite`` (M./Mme, saisie au premier contact), jamais d'un défaut
+    codé en dur : le « M. » posé d'office le 07/09/2026 faisait écrire
+    « Bonjour M. » à une cliente sur tous les messages. Rendu : « M. » /
+    « Mme » en français, « السي » / « لالة » en darija. Civilité INCONNUE ⇒
+    chaîne VIDE ⇒ salutation NEUTRE (le prénom seul), jamais un genre supposé
+    — ``_placer_civilite`` retire alors le placeholder et son espace, sans
+    faire sauter la phrase d'accueil.
 
     Sans prénom (formulaire Meta au nom seul, société), le NOM prend sa place
     dans la salutation plutôt que de faire SAUTER toute la phrase d'accueil.
@@ -2650,12 +2654,27 @@ def _civilite_et_prenom(lead, langue):
     """
     civilite = (getattr(lead, 'civilite', '') or '').strip()
     if langue == 'darija':
-        civilite = {'': 'السي', 'M.': 'السي', 'Mme': 'لالة'}.get(
-            civilite, civilite)
-    else:
-        civilite = civilite or 'M.'
+        civilite = _CIVILITE_DARIJA.get(civilite, '')
+    elif civilite not in _CIVILITES_CONNUES:
+        civilite = ''
     prenom = (lead.prenom or '').strip() or (lead.nom or '').strip()
     return civilite, prenom
+
+
+#: CAD65 — les civilités du lead (``Lead.Civilite``) et leur rendu darija.
+_CIVILITES_CONNUES = ('M.', 'Mme')
+_CIVILITE_DARIJA = {'M.': 'السي', 'Mme': 'لالة'}
+
+
+def _placer_civilite(corps, civilite):
+    """CAD65 — ``{civilite}`` est FACULTATIF : sans valeur, on retire le
+    placeholder ET son espace (« Bonjour {civilite} {prenom} » → « Bonjour
+    {prenom} »), au lieu de le compter manquant — ce qui ferait OMETTRE
+    toute la phrase d'accueil (MRY13) — ou de laisser un double espace."""
+    if civilite or '{civilite}' not in (corps or ''):
+        return corps
+    return (corps.replace('{civilite} ', '').replace(' {civilite}', '')
+            .replace('{civilite}', ''))
 
 
 #: VISITE-CADENCE — les clés de gabarit que le rendu « message de visite »
@@ -2713,6 +2732,8 @@ def message_visite_pour_lead(lead, cle, *, user=None, masquer_numero=False):
         corps = MessageTemplate.get_corps(lead.company, cle, langue) or ''
         # CAD126 — variante de SEGMENT par exception (pompage / B2B).
         corps = _corps_pour_segment(corps, cle, lead, langue)
+        # CAD65 — civilité inconnue : salutation neutre, jamais omise.
+        corps = _placer_civilite(corps, civilite)
         manquants = [c for c in _PLACEHOLDERS_RENDUS
                      if '{' + c + '}' in corps
                      and not str(contexte.get(c, '')).strip()]
@@ -2930,8 +2951,8 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
         lead.company, cle_rendue, langue) if cle_rendue else ''
     # CAD64 — le texte n'existe pas dans la langue demandée : c'est la version
     # FRANÇAISE qui part, et on le DIT. Le texte est alors rendu comme un
-    # texte français (civilité « M. », variante de segment), jamais un
-    # « السي » collé dans une phrase française.
+    # texte français (civilité « M. »/« Mme » — CAD65 —, variante de
+    # segment), jamais un « السي » collé dans une phrase française.
     repli_langue = texte_en_repli_de_langue(lead.company, cle_rendue, langue)
     langue_texte = 'fr' if repli_langue else langue
     # CAD126 — variante de SEGMENT par exception : « sur votre toit » ne part
@@ -2941,6 +2962,8 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
     corps = _corps_pour_segment(corps, cle_rendue, lead, langue_texte)
 
     civilite, prenom = _civilite_et_prenom(lead, langue_texte)
+    # CAD65 — civilité inconnue : salutation neutre, jamais omise.
+    corps = _placer_civilite(corps, civilite)
     contexte = {
         'civilite': civilite,
         'nom': (lead.nom or '').strip(),
@@ -3701,7 +3724,8 @@ def callback_sla_hours(company) -> int:
 # Champs scalaires recopiés sur le survivant SEULEMENT s'il les a vides
 # (« on garde la valeur la plus complète », jamais d'écrasement).
 _MERGE_FILL_FIELDS = [
-    'prenom', 'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
+    'prenom', 'civilite',  # CAD65 — la civilité saisie survit à la fusion
+    'societe', 'email', 'telephone', 'whatsapp', 'adresse', 'ville',
     'langue_preferee', 'gps_lat', 'gps_lng',
     'facture_hiver', 'facture_ete', 'ete_differente',
     'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',

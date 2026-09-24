@@ -257,6 +257,12 @@ function RelanceCadenceControls({ leadId, onChanged }) {
 // Langue préférée du contact — pré-sélectionne la langue du message WhatsApp.
 const LANGUES_PREFEREES = { fr: 'Français', darija: 'Darija' }
 
+// CAD65 — civilité du client (FACULTATIVE) : elle décide de la salutation de
+// tous les messages (« Bonjour Mme Salma » / « لالة »). Vide = salutation
+// NEUTRE (le prénom seul), jamais un « M. » supposé.
+// source-choix: crm.Lead.civilite
+const CIVILITES = { 'M.': 'M.', Mme: 'Mme' }
+
 // CAD150 — préférence de contact du CLIENT (vide = non renseignée).
 // source-choix: crm.Lead.contact_preference
 const CONTACT_PREFERENCES = { whatsapp_only: 'WhatsApp uniquement', phone_ok: 'Rappel téléphonique OK' }
@@ -435,6 +441,20 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
             value={v('canal')} onChange={(e) => setField('canal', e.target.value)}
           >
             {enumOptions(canalLabels)}
+          </select>
+        </FormField>
+        {/* CAD65 — la civilité est une DONNÉE, plus un « M. » codé en dur
+            dans les textes : saisie au premier contact, facultative. */}
+        <FormField
+          label="Civilité" htmlFor="lf-civilite" error={errors.civilite}
+          hint="Facultative — vide : « Bonjour [prénom] », jamais un genre supposé."
+        >
+          <select
+            id="lf-civilite" className={errors.civilite ? 'form-select is-invalid' : 'form-select'}
+            aria-invalid={errors.civilite ? true : undefined}
+            value={v('civilite')} onChange={(e) => setField('civilite', e.target.value)}
+          >
+            {enumOptions(CIVILITES)}
           </select>
         </FormField>
         <FormField label="Langue préférée" htmlFor="lf-langue-preferee" error={errors.langue_preferee}>

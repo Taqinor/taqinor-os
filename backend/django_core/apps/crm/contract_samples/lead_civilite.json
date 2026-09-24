@@ -1,0 +1,27 @@
+{
+  "endpoint": "PATCH /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD65 (PACT10) — « Bonjour M. » était codé en dur : 17 textes FR et 12 darija de la cadence (davantage depuis) portaient « M. {prenom} » / « السي {prenom} », et NI le lead NI le client ne portaient de civilité — une cliente recevait « M. » sur tous les messages. Les deux moitiés, sinon rien : (a) `Lead.civilite`, champ FACULTATIF (M./Mme), saisi au premier contact dans le Suivi commercial ; (b) le placeholder `{civilite}` dans tous les textes de la cadence. Rendu : « M. » / « Mme » en français, « السي » / « لالة » en darija ; civilité INCONNUE ⇒ salutation NEUTRE (le prénom seul), jamais un genre supposé — `{civilite}` est le seul placeholder facultatif : vide, il disparaît avec son espace au lieu de faire omettre la phrase d'accueil. Le document décrit le CORPS envoyé par la fiche, la clé relue de la réponse (sérialiseur de lead complet : `forme_serveur: partielle`), les valeurs permises (`choix`, lues sur `Lead.Civilite`) et le début des salutations rendues pour la touche d'identité (`salutations`).",
+  "corps": {
+    "civilite": "Mme"
+  },
+  "exemple": {
+    "id": 1490,
+    "civilite": "Mme"
+  },
+  "choix": {
+    "M.": "M.",
+    "Mme": "Mme"
+  },
+  "salutations": [
+    {"civilite": null, "langue": "fr", "debut": "Bonjour Salma, "},
+    {"civilite": "Mme", "langue": "fr", "debut": "Bonjour Mme Salma, "},
+    {"civilite": null, "langue": "darija", "debut": "السلام عليكم Salma، "},
+    {"civilite": "Mme", "langue": "darija", "debut": "السلام عليكم لالة Salma، "}
+  ],
+  "notes": {
+    "vide": "L'écran envoie `null` pour « non renseignée » (même convention que `langue_preferee`) : la salutation redevient neutre.",
+    "refus": "Une valeur hors `choix` est refusée (400) sous la clé `civilite` — l'erreur s'affiche sous le champ « Civilité ».",
+    "historique": "Le changement est journalisé au chatter (« Civilité : — → Mme ») comme la langue préférée."
+  }
+}

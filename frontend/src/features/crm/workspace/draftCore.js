@@ -23,6 +23,8 @@ export const TRACKED_KEYS = [
   'ville', 'gps_lat', 'gps_lng',
   // Suivi commercial
   'stage', 'owner', 'canal', 'contact_preference', 'priorite', 'langue_preferee',
+  // CAD65 — la civilité (facultative) décide de la salutation des messages.
+  'civilite',
   'tags', 'motif_perte', 'perdu', 'relance_date', 'type_installation',
   'montant_estime', 'date_cloture_prevue',
   // Énergie
@@ -182,7 +184,7 @@ export const SECTION_FIELDS = {
   // rejoignent le pipeline (questions de qualification commerciale, comme
   // priorité/tags), jamais l'énergie (elles ne chiffrent rien).
   pipeline: ['owner', 'canal', 'contact_preference', 'priorite',
-    'langue_preferee', 'tags', 'motif_perte', 'relance_date',
+    'langue_preferee', 'civilite', 'tags', 'motif_perte', 'relance_date',
     'type_installation', 'montant_estime', 'date_cloture_prevue',
     'objectif_projet', 'decideur', 'devis_concurrents',
     // CAD144 — le second interlocuteur (saisie libre, aucune automatisation).
@@ -327,6 +329,8 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     canal: DEFAULT_CANAL,
     contact_preference: '',
     priorite: 'normale', langue_preferee: '', tags: '', motif_perte: '',
+    // CAD65 — civilité inconnue à la création (⇒ null serveur, salutation neutre).
+    civilite: '',
     perdu: false, relance_date: '', type_installation: '',
     montant_estime: '', date_cloture_prevue: '',
     facture_hiver: '', facture_ete: '', ete_differente: false,

@@ -60,6 +60,9 @@ TRACKED_FIELDS = {
     # laissait aucune trace de POURQUOI un message est parti dans une langue
     # donnée.
     'langue_preferee': 'Langue préférée',
+    # CAD65 — la civilité décide de la salutation de TOUS les messages
+    # client : même raison que la langue, un changement laisse sa trace.
+    'civilite': 'Civilité',
     # LW27 — champs de pilotage réel absents jusque-là de l'allowlist (~36
     # champs) : forecast pondéré (montant_estime/date_cloture_prevue),
     # qualification site QK1 (distributeur/roof_age/ownership/
@@ -143,6 +146,8 @@ _CHOICE_FIELDS = {
     'equip_clim_creneau', 'equip_piscine_creneau',
     # NTI18N49 — langue préférée (FR/Darija).
     'langue_preferee',
+    # CAD65 — civilité (M./Mme).
+    'civilite',
     # CAD149 — six des huit champs de la vague 1 sont des choices
     # (pompage_heures_jour et carburant_litres_mois sont des grandeurs).
     'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
