@@ -53,7 +53,7 @@ describe('CAD51 — relancer une cadence plus prioritaire exige une confirmation
     expect(panneau.textContent).toContain(CONTRAT.exemple.detail)
     // La cadence arrêtée est nommée sur le bouton même de la confirmation.
     const libelle = CONTRAT.exemple.remplacement.cadences_arretees_libelles[0]
-    expect(screen.getByTestId('cad51-arreter-et-relancer').textContent).toContain(libelle)
+    expect(screen.getByTestId('lf-relance-confirmer').textContent).toContain(libelle)
     expect(toast.success).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
   })
@@ -63,7 +63,7 @@ describe('CAD51 — relancer une cadence plus prioritaire exige une confirmation
     crmApi.initialiserRelance.mockImplementationOnce(() => refus(409, CONTRAT.exemple))
     renderSection()
     await user.click(screen.getByTestId('lf-relance-cadence'))
-    expect(await screen.findByTestId('cad51-arreter-et-relancer')).toBeDisabled()
+    expect(await screen.findByTestId('lf-relance-confirmer')).toBeDisabled()
     expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(1)
   })
 
@@ -76,7 +76,7 @@ describe('CAD51 — relancer une cadence plus prioritaire exige une confirmation
 
     await user.click(screen.getByTestId('lf-relance-cadence'))
     await user.type(await screen.findByTestId('lf-remplacement-motif'), CONTRAT.corps_confirme.motif)
-    await user.click(screen.getByTestId('cad51-arreter-et-relancer'))
+    await user.click(screen.getByTestId('lf-relance-confirmer'))
 
     await waitFor(() => expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(2))
     const [lead, corps, config] = crmApi.initialiserRelance.mock.calls[1]
@@ -84,7 +84,7 @@ describe('CAD51 — relancer une cadence plus prioritaire exige une confirmation
     expect(corps).toEqual(CONTRAT.corps_confirme)
     expect(config).toEqual({ suppressErrorToast: true })
     await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
-    expect(screen.queryByTestId('cad51-confirmer-remplacement')).toBeNull()
+    expect(screen.queryByTestId('lf-relance-confirmation')).toBeNull()
   })
 
   it('un 400 « motif obligatoire » s’affiche SOUS le champ motif, le panneau reste', async () => {
@@ -96,7 +96,7 @@ describe('CAD51 — relancer une cadence plus prioritaire exige une confirmation
 
     await user.click(screen.getByTestId('lf-relance-cadence'))
     await user.type(await screen.findByTestId('lf-remplacement-motif'), 'x')
-    await user.click(screen.getByTestId('cad51-arreter-et-relancer'))
+    await user.click(screen.getByTestId('lf-relance-confirmer'))
 
     const erreur = await screen.findByText(CONTRAT.exemple_erreur_motif.erreurs.motif[0])
     expect(erreur.closest('[role="alert"]')).not.toBeNull()
@@ -111,11 +111,11 @@ describe('CAD51 — relancer une cadence plus prioritaire exige une confirmation
     crmApi.initialiserRelance.mockImplementationOnce(() => refus(409, CONTRAT.exemple))
     renderSection()
     await user.click(screen.getByTestId('lf-relance-cadence'))
-    const panneau = await screen.findByTestId('cad51-confirmer-remplacement')
+    const panneau = await screen.findByTestId('lf-relance-confirmation')
     await user.click(
       [...panneau.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Annuler'),
     )
-    expect(screen.queryByTestId('cad51-confirmer-remplacement')).toBeNull()
+    expect(screen.queryByTestId('lf-relance-confirmation')).toBeNull()
     expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(1)
   })
 })

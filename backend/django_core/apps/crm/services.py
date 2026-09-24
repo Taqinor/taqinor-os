@@ -1076,6 +1076,40 @@ def message_remplacement_cadence(apercu):
             "Confirmez, avec un motif d'arrêt.")
 
 
+#: CAD55 — les deux phrases qui préviennent AVANT le lancement d'un suivi
+#: « après devis » depuis la fiche (jamais découvert touche par touche).
+MESSAGE_RELANCE_SANS_DEVIS = (
+    'Aucun devis envoyé sur ce lead — les messages ne pourront pas citer la '
+    'proposition.')
+MESSAGE_RELANCE_PLUSIEURS_DEVIS = (
+    'Plusieurs devis envoyés sur ce lead : lequel ce suivi doit-il citer ?')
+
+
+def devis_envoyes_pour_relance(lead):
+    """CAD55 — les devis ENVOYÉS du lead, toujours en attente de réponse, le
+    PLUS RÉCENT d'abord : ceux qu'un suivi « après devis » peut citer.
+
+    Même ensemble que ``ventes.selectors.dernier_devis_envoye_par_lead``
+    (statut ``envoye``, ``date_envoi`` renseignée) — dont le premier élément
+    est donc le « dernier devis envoyé ». Lecture via le sélecteur de ventes
+    (frontière M3), jamais ``ventes.models``."""
+    from apps.ventes.selectors import devis_envoyes_en_attente
+    return list(
+        devis_envoyes_en_attente(lead.company)
+        .filter(lead_id=lead.pk).order_by('-date_envoi', '-id'))
+
+
+def choix_devis_relance(devis_liste):
+    """CAD55 — la ligne de choix « lequel ? » : ``[{id, reference,
+    date_envoi}]`` (date LOCALE Casablanca, AAAA-MM-JJ). Aucun montant."""
+    from . import horaires
+    return [
+        {'id': d.pk, 'reference': d.reference or '',
+         'date_envoi': (timezone.localtime(d.date_envoi, horaires.CASABLANCA)
+                        .date().isoformat() if d.date_envoi else None)}
+        for d in devis_liste]
+
+
 def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                              devis=None, exiger_confirmation=False,
                              motif_remplacement=''):

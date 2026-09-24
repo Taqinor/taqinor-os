@@ -1684,6 +1684,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         et le nombre de touches ouvertes perdues (``remplacement``) ; avec la
         confirmation, ``motif`` est OBLIGATOIRE (400 qui nomme le champ,
         comme « Arrêter la cadence ») et l'arrêt est tracé sous ce motif.
+
+        CAD55 — « Après devis » depuis la fiche rattache le devis ENVOYÉ du
+        lead à TOUTES les touches (et pose sa validité) : un seul → rattaché
+        d'office ; plusieurs → 409 ``devis_a_choisir`` (le plus récent
+        proposé), la réponse revient en ``devis`` ; aucun → 409
+        ``sans_devis`` qui le dit AVANT le lancement, ``sans_devis_confirme:
+        true`` lance quand même. Les questions en attente partent ENSEMBLE
+        dans un seul 409.
         Forme : ``contract_samples/lead_relance_initialiser.json``."""
         from apps.parametres.models_relance import Cadence
 
@@ -1698,34 +1706,72 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (CadenceActiveConflit,
+        from .services import (MESSAGE_RELANCE_PLUSIEURS_DEVIS,
+                               MESSAGE_RELANCE_SANS_DEVIS,
+                               CadenceActiveConflit,
                                CadenceRemplacementAConfirmer,
                                apercu_remplacement_cadence,
+                               choix_devis_relance,
+                               devis_envoyes_pour_relance,
                                initialiser_plan_relance,
                                message_remplacement_cadence)
-        confirme = request.data.get('confirmer_remplacement') in (
-            True, 'true', 'True', '1', 1)
+        oui = (True, 'true', 'True', '1', 1)
+        confirme = request.data.get('confirmer_remplacement') in oui
         motif = str(request.data.get('motif') or '').strip()
+        questions, erreurs, messages = {}, {}, []
+        # CAD55 — le devis que le suivi « après devis » citera. Un plan
+        # après-devis déjà OUVERT est renvoyé tel quel (idempotence MRY5,
+        # inchangée) : aucune question, et jamais un second plan à côté.
+        devis = None
+        if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
+                cadence=Cadence.APRES_DEVIS,
+                statut=RelanceEtape.Statut.A_FAIRE).exists():
+            envoyes = devis_envoyes_pour_relance(lead)
+            devis_id = request.data.get('devis')
+            if devis_id not in (None, ''):
+                devis = next(
+                    (d for d in envoyes if str(d.pk) == str(devis_id)), None)
+                if devis is None:
+                    return Response(
+                        {'detail': "Ce devis n'est pas un devis envoyé de ce "
+                                   'lead, en attente de réponse.',
+                         'erreurs': {'devis': [
+                             "Ce devis n'est pas un devis envoyé de ce lead, "
+                             'en attente de réponse.']}},
+                        status=status.HTTP_400_BAD_REQUEST)
+            elif len(envoyes) == 1:
+                devis = envoyes[0]
+            elif len(envoyes) > 1:
+                questions['devis_a_choisir'] = {
+                    'choix': choix_devis_relance(envoyes),
+                    'propose': envoyes[0].pk}
+                erreurs['devis'] = [MESSAGE_RELANCE_PLUSIEURS_DEVIS]
+            elif request.data.get('sans_devis_confirme') not in oui:
+                questions['sans_devis'] = True
+                erreurs['devis'] = [MESSAGE_RELANCE_SANS_DEVIS]
         # CAD51 — ce que ce démarrage ARRÊTERAIT, lu sans rien écrire.
-        apercu = apercu_remplacement_cadence(lead, cadence)
-        if apercu is not None:
-            message = message_remplacement_cadence(apercu)
-            if not confirme:
-                return Response(
-                    {'detail': message,
-                     'erreurs': {'confirmer_remplacement': [message]},
-                     'remplacement': apercu},
-                    status=status.HTTP_409_CONFLICT)
-            if not motif:
-                return Response(
-                    {'detail': "Le motif d'arrêt est obligatoire.",
-                     'erreurs': {'motif': [
-                         "Le motif d'arrêt est obligatoire : " + message]},
-                     'remplacement': apercu},
-                    status=status.HTTP_400_BAD_REQUEST)
+        apercu = apercu_remplacement_cadence(lead, cadence, devis=devis)
+        message = message_remplacement_cadence(apercu) if apercu else ''
+        if apercu is not None and not confirme:
+            questions['remplacement'] = apercu
+            erreurs['confirmer_remplacement'] = [message]
+            messages.append(message)
+        messages.extend(erreurs.get('devis', []))
+        if questions:
+            return Response(
+                {'detail': ' '.join(messages), 'erreurs': erreurs,
+                 **questions},
+                status=status.HTTP_409_CONFLICT)
+        if apercu is not None and not motif:
+            return Response(
+                {'detail': "Le motif d'arrêt est obligatoire.",
+                 'erreurs': {'motif': [
+                     "Le motif d'arrêt est obligatoire : " + message]},
+                 'remplacement': apercu},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
             etapes = initialiser_plan_relance(
-                lead, request.user, cadence=cadence,
+                lead, request.user, cadence=cadence, devis=devis,
                 exiger_confirmation=True,
                 motif_remplacement=motif if apercu is not None else '')
         except CadenceRemplacementAConfirmer as exc:
