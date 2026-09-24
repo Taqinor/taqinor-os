@@ -31,12 +31,45 @@ existante qui passe à retenue. Une variante CRÉÉE déjà retenue est une copi
 a été fait ailleurs, et un duplicata ne re-notifie donc pas l'intégration.
 ``creer_variante(retenir=True)`` reste couvert : il crée à faux puis bascule
 par le service, ce qui EST la transition.
+
+CALX368 — ``calepinage.simule`` : UNE SIMULATION VIENT D'ABOUTIR
+-----------------------------------------------------------------
+Le service d'orchestration (``apps.calepinage.services.simulation``, le seul
+chemin qui lance une simulation) émet ``core.events.calepinage_simule`` APRÈS
+avoir fusionné le résultat dans ``Calepinage.resultat`` — jamais pour un « déjà
+calculé », un refus ou un calcul à blanc. Ce module s'y abonne et livre le
+webhook ``calepinage.simule``. Le modèle émetteur est résolu PAR LE REGISTRE
+(il sert de ``sender``) : toujours aucun import ``apps.calepinage`` ->
+``apps.publicapi``, et une installation sans le module calepinage ne branche
+rien du tout.
+
+La charge utile (:func:`charge_utile_simulation`) reprend UNIQUEMENT des clés
+déjà publiées par ``PublicCalepinageSerializer`` (CAL214), plus ``p50_kwh`` et
+``performance_ratio`` lus du résultat RÉELLEMENT calculé
+(``production.total`` du contrat ``calepinage_simulation.json``) — ``null``
+tant que rien n'est calculé, jamais ``0``. Ni géométrie, ni coût.
+
+POURQUOI UN POST SIGNÉ, ET PAS LE GET D'AURORA
+-----------------------------------------------
+Aurora livre ses webhooks en requêtes GET sans corps : selon sa propre
+checklist d'intégration CRM
+(https://help.aurorasolar.com/hc/en-us/articles/17426531448083-CRM-Checklist-for-Aurora-API-Integrations),
+« the UUIDs and values are included in the query string of the URL
+template ». Nous ne le suivons PAS : une valeur portée par la chaîne de
+requête finit dans les journaux d'accès, les proxys et les historiques de
+tous les intermédiaires ; il n'y a aucun corps à signer, donc rien ne prouve
+au receveur que les valeurs n'ont pas été altérées ni rejouées. La livraison
+passe donc par le socle existant (``delivery.dispatch_event`` →
+``tasks.deliver_webhook`` → ``delivery._send``) : un POST JSON dont le corps
+est signé HMAC-SHA256 avec son horodatage (``X-Taqinor-Signature-V2:
+t=<epoch>,v1=<hex>`` et ``X-Taqinor-Timestamp``), l'URL de l'abonné restant
+EXACTEMENT celle qu'il a déclarée — aucune valeur n'y est ajoutée.
 """
 import logging
 
 from django.db.models.signals import post_save, pre_save
 
-from .constants import EVENT_CALEPINAGE_VALIDE
+from .constants import EVENT_CALEPINAGE_SIMULE, EVENT_CALEPINAGE_VALIDE
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +154,95 @@ def _entier(valeur):
     return int(nombre) if nombre is not None else None
 
 
+# ── CALX368 — calepinage.simule ─────────────────────────────────────────────
+
+#: Les clés de la charge utile ``calepinage.simule``. Toutes, sauf les deux
+#: dernières, sont des champs DÉJÀ publiés par ``PublicCalepinageSerializer``
+#: (``apps/publicapi/public_serializers.py``) ; les deux dernières sont lues
+#: dans ``resultat['production']['total']``. ``liens`` n'y est pas : un lien
+#: présigné d'une heure n'a rien à faire dans un message qui peut être rejoué
+#: plus tard, et le calculer ferait appeler le stockage depuis un signal.
+CLES_CHARGE_SIMULE = (
+    'id', 'titre', 'statut', 'lead_id', 'client_id', 'devis_id',
+    'appel_offre_id', 'layout_hash', 'version_moteur', 'kwc', 'modules',
+    'p50_kwh', 'performance_ratio',
+)
+
+
+def _calepinage_model():
+    """Le modèle ÉMETTEUR, par le REGISTRE — ``None`` sans le module."""
+    from django.apps import apps as django_apps
+    try:
+        return django_apps.get_model('calepinage', 'Calepinage')
+    except LookupError:
+        return None
+
+
+def _total_de_production(resultat):
+    """``resultat['production']['total']``, TOUJOURS un dict."""
+    production = resultat.get('production')
+    total = production.get('total') if isinstance(production, dict) else None
+    return total if isinstance(total, dict) else {}
+
+
+def charge_utile_simulation(calepinage):
+    """La charge utile de ``calepinage.simule`` — testée clé par clé.
+
+    ``kwc``/``modules`` sont lus EXACTEMENT comme ``PublicCalepinageSerializer``
+    les lit (clés ``kwc``/``total_modules`` du résultat du moteur) ;
+    ``p50_kwh``/``performance_ratio`` viennent de ``production.total`` écrit
+    par la simulation. Tout ce qui n'est pas un nombre réel vaut ``None``.
+    """
+    resultat = getattr(calepinage, 'resultat', None)
+    resultat = resultat if isinstance(resultat, dict) else {}
+    total = _total_de_production(resultat)
+    return {
+        'id': getattr(calepinage, 'pk', None),
+        'titre': getattr(calepinage, 'titre', '') or '',
+        'statut': getattr(calepinage, 'statut', '') or '',
+        'lead_id': getattr(calepinage, 'lead_id', None),
+        'client_id': getattr(calepinage, 'client_id', None),
+        'devis_id': getattr(calepinage, 'devis_id', None),
+        'appel_offre_id': getattr(calepinage, 'appel_offre_id', None),
+        'layout_hash': getattr(calepinage, 'layout_hash', '') or '',
+        'version_moteur': getattr(calepinage, 'version_moteur', '') or '',
+        'kwc': _nombre(resultat.get('kwc')),
+        'modules': _entier(resultat.get('total_modules')),
+        'p50_kwh': _nombre(total.get('p50_kwh')),
+        'performance_ratio': _nombre(total.get('performance_ratio')),
+    }
+
+
+def calepinage_simule_recu(sender, calepinage=None, company_id=None,
+                           **kwargs):
+    """Abonné de ``core.events.calepinage_simule`` : livre le webhook."""
+    if calepinage is None:
+        return
+    company_id = company_id or getattr(calepinage, 'company_id', None)
+    if not company_id:
+        return
+    from . import delivery
+    try:
+        delivery.dispatch_event(company_id, EVENT_CALEPINAGE_SIMULE,
+                                charge_utile_simulation(calepinage))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.exception('%s: dispatch webhook échoué (calepinage %s)',
+                         EVENT_CALEPINAGE_SIMULE,
+                         getattr(calepinage, 'pk', None))
+
+
+def connecter_simulation():
+    """Branche ``calepinage.simule`` — rien si le module est absent."""
+    modele = _calepinage_model()
+    if modele is None:
+        return False
+    from core import events
+    events.calepinage_simule.connect(
+        calepinage_simule_recu, sender=modele,
+        dispatch_uid='publicapi_calepinage_simule')
+    return True
+
+
 def connect():
     """Branche le récepteur calepinage. Appelé depuis ``PublicApiConfig.ready()``."""
     modele = _variante_model()
@@ -130,3 +252,5 @@ def connect():
                      dispatch_uid='publicapi_calepinage_variante_pre')
     post_save.connect(variante_post_save, sender=modele,
                       dispatch_uid='publicapi_calepinage_valide')
+    # CALX368 — la simulation aboutie, sur le bus `core.events`.
+    connecter_simulation()

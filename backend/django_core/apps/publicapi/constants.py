@@ -164,6 +164,14 @@ EVENT_RECORD_RESTORED = 'record_restored'
 # `apps.calepinage` -> `apps.publicapi`. Charge utile sans géométrie brute ni
 # coût interne (mêmes limites que la ressource publique CAL214).
 EVENT_CALEPINAGE_VALIDE = 'calepinage.valide'
+# CALX368 — calepinage SIMULÉ : une simulation vient d'aboutir et son résultat
+# est enregistré. Émis par `apps/publicapi/calepinage_event_receivers.py`, qui
+# écoute le signal `core.events.calepinage_simule` posé par le service
+# d'orchestration (`apps.calepinage.services.simulation`) — jamais un import
+# direct `apps.calepinage` -> `apps.publicapi`. Charge utile : les clés de
+# `PublicCalepinageSerializer` plus `p50_kwh`/`performance_ratio`, sans
+# géométrie ni coût.
+EVENT_CALEPINAGE_SIMULE = 'calepinage.simule'
 # NTI18N43 — bascule de langue (document d'un client, ou défaut de la société),
 # consommée depuis `core.events.langue_changed` par
 # `apps/publicapi/i18n_event_receivers.py` (jamais un import direct
@@ -199,6 +207,7 @@ EVENT_CHOICES = [
     (EVENT_SAVED_VIEW_SHARED, 'Vue partagée à l\'équipe'),
     (EVENT_RECORD_RESTORED, 'Élément restauré depuis la corbeille'),
     (EVENT_CALEPINAGE_VALIDE, 'Calepinage — variante retenue'),
+    (EVENT_CALEPINAGE_SIMULE, 'Calepinage — simulation aboutie'),
     (EVENT_LANGUE_CHANGED, 'Langue changée (client ou société)'),
     (EVENT_INCIDENT_OPENED, 'Incident — ouvert'),
     (EVENT_INCIDENT_RESOLVED, 'Incident — résolu'),
