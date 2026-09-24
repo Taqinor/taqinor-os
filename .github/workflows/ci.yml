@@ -1549,9 +1549,22 @@ jobs:
           # interne d'un fichier est inchange), donc les trois groupes tournent
           # de front. Mesure avant (run 35601218482) : lane 1 = fumee 1+2+devis
           # 102 s, lane 2 = fumee 3 + health + mobile-safari 122 s.
+          # CALX386 (lot 8, 23/09/2026) — le parcours calepinage COMPLET
+          # (atelier → simulation → électrique → documents → devis → retour
+          # CRM) ne tournait QUE dans release-verify.yml (nightly/manuel),
+          # jamais sur une PR — la seule spec calepinage jouée en PR restait
+          # la fumée générique. Temps NON MESURÉ (aucune infra e2e disponible
+          # dans la lane qui a écrit cette extension — mesurer au premier run
+          # réel et reporter ici, comme le veut la note WOW-CI RONDE 5
+          # ci-dessus) : le fichier mute ses propres leads (comme il l'a
+          # toujours fait), donc l'ajouter à CETTE invocation `--workers 3`
+          # suit le même principe que les fichiers de fumée (fichiers
+          # indépendants distribués entre workers, ordre interne d'un
+          # fichier inchangé).
           if [ "${{ matrix.shard }}" = "1" ]; then
             npx playwright test --project=chromium --workers 3 \
-              fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js fumee-ecrans-3.spec.js
+              fumee-ecrans-1.spec.js fumee-ecrans-2.spec.js fumee-ecrans-3.spec.js \
+              calepinage-parcours.spec.js
           else
             # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
             # régressions qui n'apparaissent que sur Safari (VX48 window.open
