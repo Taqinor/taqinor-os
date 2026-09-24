@@ -6156,8 +6156,19 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
         #    suite et son ancre (mécanique existante, jamais une seconde).
         deplacee = None
         if plan is not None and glisse_a is not None:
+            # Les gestes du RENDEZ-VOUS de visite (confirmer la veille,
+            # débriefer le lendemain) partagent la cadence du plan mais sont
+            # ancrés sur la DATE DE VISITE : le glissement de la suite du plan
+            # ne doit jamais les emporter. Ils sont remis à leur date.
+            visites = list(lead.relance_etapes
+                           .filter(statut=RelanceEtape.Statut.A_FAIRE,
+                                   libelle__in=tuple(_LIBELLES_VISITE))
+                           .values_list('pk', 'due_at', 'due_date'))
             deplacee = reporter_prochaine_touche(
                 lead, user, glisse_a, etape=plan, journaliser=False)
+            for pk, due_at, due_date in visites:
+                RelanceEtape.objects.filter(pk=pk).update(
+                    due_at=due_at, due_date=due_date)
 
         # 5. LA touche signal.
         etape = RelanceEtape.objects.create(
