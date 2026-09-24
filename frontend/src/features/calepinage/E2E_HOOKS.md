@@ -478,6 +478,34 @@ retiré plus un hook ajouté.
 | `cal-versions-rappel` | versions rappel. |
 | `cal-versions-restaurer` | versions restaurer. |
 
+## PoseReelle (`atelier/PoseReelle.jsx`) — CALX367
+
+| Hook | Sémantique |
+|---|---|
+| `cal-pose-bandeau` | pose réelle — bandeau de refus qui nomme le pan et le champ. |
+| `cal-pose-champ-releve_le` | pose réelle — champ date du relevé (saisie). |
+| `cal-pose-chargement` | pose réelle — lecture en cours. |
+| `cal-pose-creer-version` | pose réelle — bouton « Créer une version depuis les écarts ». |
+| `cal-pose-ecart` | pose réelle — écart servi pour un pan (vide sans saisie, jamais 0). |
+| `cal-pose-enregistrer` | pose réelle — bouton d'enregistrement d'un pan. |
+| `cal-pose-erreur-creer_version` | pose réelle — refus de version, sous le bouton. |
+| `cal-pose-erreur-detail` | pose réelle — refus générique du serveur. |
+| `cal-pose-erreur-lecture` | pose réelle — message d'erreur de lecture. |
+| `cal-pose-erreur-modules` | pose réelle — refus `modules_poses` sous le champ du pan. |
+| `cal-pose-erreur-pan` | pose réelle — refus `pan` sous la cellule du pan. |
+| `cal-pose-erreur-releve_le` | pose réelle — refus `releve_le` sous la date. |
+| `cal-pose-grille` | pose réelle — grille de saisie des pans. |
+| `cal-pose-ligne` | pose réelle — ligne d'un pan. |
+| `cal-pose-mention` | pose réelle — mention du serveur pour un pan (motif d'un vide). |
+| `cal-pose-message` | pose réelle — message de réussite. |
+| `cal-pose-modules` | pose réelle — champ modules posés d'un pan. |
+| `cal-pose-position` | pose réelle — texte libre des écarts de position d'un pan. |
+| `cal-pose-prevu` | pose réelle — modules prévus d'un pan. |
+| `cal-pose-reelle` | pose réelle — panneau de l'onglet. |
+| `cal-pose-source` | pose réelle — source du prévu et totaux. |
+| `cal-pose-version` | pose réelle — dernière version née des écarts. |
+| `cal-pose-vide` | pose réelle — aucun pan prévu. |
+
 ## Rail (`atelier/Rail.jsx`)
 
 | Hook | Sémantique |
@@ -486,6 +514,27 @@ retiré plus un hook ajouté.
 | `cal-onglet-erreur` | onglet message d'erreur. |
 | `cal-onglet-panneau` | onglet panneau. |
 | `cal-rail-onglets` | rail onglets. |
+
+## RepriseVisite (`atelier/RepriseVisite.jsx`) — CALX365
+
+| Hook | Sémantique |
+|---|---|
+| `cal-reprise-bandeau` | reprise de visite — bandeau date et auteur de la reprise. |
+| `cal-reprise-bouton` | reprise de visite — bouton « Reprendre dans ce calepinage ». |
+| `cal-reprise-chargement` | reprise de visite — lecture en cours. |
+| `cal-reprise-erreur` | reprise de visite — refus du serveur sous le bouton, par champ. |
+| `cal-reprise-erreur-lecture` | reprise de visite — message d'erreur de lecture. |
+| `cal-reprise-mesure` | reprise de visite — une mesure telle que saisie. |
+| `cal-reprise-mesures` | reprise de visite — liste des mesures. |
+| `cal-reprise-mesures-vide` | reprise de visite — aucune mesure saisie. |
+| `cal-reprise-photo` | reprise de visite — une photo retenue. |
+| `cal-reprise-photos` | reprise de visite — liste des photos retenues. |
+| `cal-reprise-photos-vide` | reprise de visite — aucune photo retenue. |
+| `cal-reprise-raison` | reprise de visite — raison du bouton désactivé. |
+| `cal-reprise-refus-bandeau` | reprise de visite — bandeau qui nomme le champ refusé. |
+| `cal-reprise-vide` | reprise de visite — état vide, motif du serveur tel quel. |
+| `cal-reprise-visite` | reprise de visite — panneau de l'onglet. |
+| `cal-reprise-visite-entete` | reprise de visite — numéro et validation de la visite. |
 
 ## RetourAtelier (`atelier/RetourAtelier.jsx`)
 
