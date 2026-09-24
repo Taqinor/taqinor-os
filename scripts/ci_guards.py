@@ -249,6 +249,17 @@ GARDES = {
         ('Test the constants-provenance checker itself (CALX384)',
          'python -m unittest scripts.tests.test_check_calepinage_provenance_constantes -v',
          '.'),
+        # CALX385 (lot 8, 23/09/2026) — check_api_shapes.py s'abstient EXPRES
+        # de la question « ce contrat a-t-il un consommateur cote client ? »
+        # (principe anti-faux-positif) : un contrat a moitie morte peut donc
+        # vivre indefiniment sans qu'aucune garde ne le remarque — exactement
+        # l'incident du 03/08/2026 que PACT10 devait fermer.
+        ('Check contrats calepinage deux moitiés (aucun contrat à une seule moitié, CALX385)',
+         'python scripts/check_contrats_calepinage_deux_moities.py',
+         '.'),
+        ('Test the two-halves-contract checker itself (CALX385)',
+         'python -m unittest scripts.tests.test_check_contrats_calepinage_deux_moities -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
