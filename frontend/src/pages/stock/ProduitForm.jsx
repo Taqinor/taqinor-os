@@ -41,7 +41,68 @@ import {
   plageBatterieAbsenteChamps,
   manquantesOnduleurLocal, typeFicheBackend, ficheFieldsVides,
   champsFicheDepuisServeur, champsFichePourType,
+  // CALX355 — nouveaux champs de fiche (courbes point par point, chimie,
+  // bloc optimiseur) : toute la logique reste PURE, testée par
+  // pvondFicheTechnique.test.mjs (node --test).
+  typeFicheFormulaire, COURBES_FICHE, CHOIX_CHIMIE_BATTERIE, ligneCourbeVide,
+  erreursCourbesPourType, messageRefusFiche, LIBELLES_FICHE,
 } from './pvondFicheTechnique.js'
+
+/* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
+   point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
+   la cellule fautive (jamais un « courbe invalide » global). Les valeurs
+   restent des chaînes pendant la frappe (jamais arrondies ni rejetées) ; la
+   conversion et le contrôle vivent dans `validerCourbe` (logique pure). */
+function EditeurCourbeFiche({ cle, lignes, erreurs, onCellule, onAjouter, onRetirer }) {
+  const spec = COURBES_FICHE[cle]
+  return (
+    <div className="sm:col-span-2 flex flex-col gap-2 border-t border-border pt-3"
+         data-testid={`pf-courbe-${cle}`}>
+      <Label>{spec.libelle}</Label>
+      <p className="text-xs text-muted-foreground">{spec.aide}</p>
+      {lignes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Aucun point — courbe non publiée : le champ reste vide.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {lignes.map((ligne, i) => (
+            <div key={i} className="flex flex-wrap items-start gap-2">
+              {spec.colonnes.map((col) => {
+                const err = erreurs?.[i]?.[col.cle]
+                const idErreur = `pf-courbe-${cle}-${i}-${col.cle}-erreur`
+                return (
+                  <div key={col.cle} className="flex w-44 flex-col gap-1">
+                    <Input type="number" step="any" inputMode="decimal"
+                           placeholder={col.libelle}
+                           aria-label={`${col.libelle} — point ${i + 1}`}
+                           invalid={!!err}
+                           aria-describedby={err ? idErreur : undefined}
+                           value={ligne?.[col.cle] ?? ''}
+                           onChange={(e) => onCellule(i, col.cle, e.target.value)} />
+                    {err && (
+                      <p id={idErreur} role="alert" className="text-xs text-destructive">{err}</p>
+                    )}
+                  </div>
+                )
+              })}
+              <Button type="button" variant="ghost" size="icon"
+                      aria-label={`Retirer le point ${i + 1} — ${spec.libelle}`}
+                      onClick={() => onRetirer(i)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <Button type="button" variant="outline" size="sm" className="self-start"
+              aria-label={`Ajouter un point — ${spec.libelle}`}
+              onClick={onAjouter}>
+        <Plus className="h-4 w-4 mr-1" /> Ajouter un point
+      </Button>
+    </div>
+  )
+}
 
 // APX18 — photo produit : seules les images, bornées à 10 Mo — le MÊME
 // plafond que la primitive plateforme `records.storage` côté serveur, pour
@@ -504,6 +565,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // autres cas n'ont rien à charger (règle react-hooks/set-state-in-effect —
   // pas de setState synchrone dans le corps de l'effet).
   const [ficheChargee, setFicheChargee] = useState(!isEdit || !produit?.id)
+  // CALX355 — `type_fiche` de la fiche ENREGISTRÉE (une fiche déjà typée
+  // « optimiseur » garde son bloc même si le nom ne le dit pas), et drapeau
+  // « une tentative d'enregistrement a eu lieu » : les erreurs de courbe ne
+  // s'affichent qu'après elle (le rouge ne ment pas pendant la frappe —
+  // VX171), puis se recalculent en direct à chaque correction.
+  const [ficheTypeServeur, setFicheTypeServeur] = useState('')
+  const [courbesTentees, setCourbesTentees] = useState(false)
 
   useEffect(() => {
     if (!isEdit || !produit?.id) return undefined
@@ -514,6 +582,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         const liste = r.data?.results ?? r.data ?? []
         const f = liste[0] ?? null
         setFicheId(f?.id ?? null)
+        setFicheTypeServeur(f?.type_fiche ?? '')
         setFicheFields(champsFicheDepuisServeur(f))
         setFicheChargee(true)
       })
@@ -522,15 +591,41 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   }, [isEdit, produit?.id])
 
   const setFicheField = (k, v) => setFicheFields((f) => ({ ...f, [k]: v }))
+  // CALX355 — courbes : ajout / modification / suppression LIGNE PAR LIGNE.
+  const setCelluleCourbe = (cle, i, col, v) => setFicheFields((f) => ({
+    ...f,
+    [cle]: (f[cle] ?? []).map((ligne, idx) => (idx === i ? { ...ligne, [col]: v } : ligne)),
+  }))
+  const ajouterLigneCourbe = (cle) => setFicheFields((f) => ({
+    ...f, [cle]: [...(f[cle] ?? []), ligneCourbeVide(cle)],
+  }))
+  const retirerLigneCourbe = (cle, i) => setFicheFields((f) => ({
+    ...f, [cle]: (f[cle] ?? []).filter((_, idx) => idx !== i),
+  }))
 
   // Type détecté depuis le NOM tapé — même classification que le générateur
   // de devis (`classifyProduct`, solar.js), jamais réimplémentée ici.
-  const ficheType = classifyProduct(fields.nom)
+  // CALX355 — repli « optimiseur » UNIQUEMENT quand `classifyProduct` ne
+  // classe pas le produit (`typeFicheFormulaire`, pvondFicheTechnique.js).
+  const ficheType = typeFicheFormulaire({
+    typeClient: classifyProduct(fields.nom), nom: fields.nom, typeFicheServeur: ficheTypeServeur,
+  })
   const estOnduleurHybride = ficheType === 'onduleur_hybride'
   const estOnduleurReseau = ficheType === 'onduleur_reseau'
   const estOnduleur = estOnduleurHybride || estOnduleurReseau
   const estPanneauFiche = ficheType === 'panneau'
   const estBatterieFiche = ficheType === 'batterie'
+  const estOptimiseurFiche = ficheType === 'optimiseur'
+  // CALX355 — erreurs de courbe du type courant, recalculées en direct.
+  const erreursCourbes = erreursCourbesPourType(typeFicheBackend(ficheType), ficheFields)
+  const propsCourbe = (cle) => ({
+    cle,
+    lignes: ficheFields[cle] ?? [],
+    erreurs: courbesTentees ? erreursCourbes.parCourbe[cle] : undefined,
+    onCellule: (i, col, v) => setCelluleCourbe(cle, i, col, v),
+    onAjouter: () => ajouterLigneCourbe(cle),
+    onRetirer: (i) => retirerLigneCourbe(cle, i),
+  })
   // STKCAT20 (@after STKCAT11) — la catégorie TAPÉE dans le formulaire décide
   // en premier (`typeOfProduit`, même contrat que le sélecteur de structures
   // du devis) ; `isPompe(fields.nom)` reste un REPLI pour le catalogue pas
@@ -540,6 +635,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const categorieChoisie = categories.find(c => String(c.id) === String(fields.categorie_id))
   const estPompeFiche = typeOfProduit({ categorie: categorieChoisie }) === 'pompe' || isPompe(fields.nom)
   const afficherFicheTechnique = estOnduleur || estPanneauFiche || estBatterieFiche || estPompeFiche
+    || estOptimiseurFiche
 
   // Plage de tension batterie : éditable ici UNIQUEMENT pour un onduleur
   // HYBRIDE (règle fondateur 18/08) — un onduleur réseau n'en porte jamais.
@@ -649,7 +745,12 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
     if (skuDuplicate)
       e.sku = `SKU déjà utilisé par « ${skuDuplicate.nom} »`
     setErrors(e)
-    return Object.keys(e).length === 0
+    // CALX355 — une courbe fautive bloque TOUT l'enregistrement (rien n'est
+    // écrit, ni le produit ni la fiche) : l'erreur s'affiche sous la cellule
+    // fautive et le bandeau la nomme. Jamais une courbe tronquée en silence.
+    const courbesOk = !erreursCourbes.bandeau
+    if (!courbesOk) setCourbesTentees(true)
+    return Object.keys(e).length === 0 && courbesOk
   }
 
   const handleSubmit = async (e) => {
@@ -741,8 +842,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         // c'est le DÉFAUT du booléen (non nul par contrat), pas une saisie —
         // sans ce filtre, un formulaire vierge sans fiche existante créait
         // une fiche vide à chaque enregistrement (rouge CI vitest 19/08).
+        // CALX355 — idem pour un choix vide ('' : la chimie non renseignée),
+        // qui n'est pas une saisie non plus.
         const aDesDonnees = Object.entries(payloadFiche).some(
-          ([k, v]) => v !== null && !(k === 'ond_bat_aucune' && v === false))
+          ([k, v]) => v !== null && v !== '' && !(k === 'ond_bat_aucune' && v === false))
         if (aDesDonnees || ficheId) {
           try {
             if (ficheId) {
@@ -759,8 +862,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               })
               setFicheId(resFiche.data?.id ?? null)
             }
-          } catch {
-            toast.error('Produit enregistré, mais la fiche technique n\'a pas pu être enregistrée.')
+          } catch (errFiche) {
+            // CALX355 — le refus serveur NOMME le champ fautif (libellé
+            // d'écran) au lieu d'un échec muet.
+            const raison = messageRefusFiche(errFiche?.response?.data)
+            toast.error(raison
+              ? `Produit enregistré, mais la fiche technique a été refusée — ${raison}`
+              : 'Produit enregistré, mais la fiche technique n\'a pas pu être enregistrée.')
           }
         }
       }
@@ -782,6 +890,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
         // celle du précédent serait ré-écrite dessus).
         setFicheId(null)
         setFicheFields(ficheFieldsVides())
+        setFicheTypeServeur('')
+        setCourbesTentees(false)
         nomRef.current?.focus()
       } else {
         onClose()
@@ -1281,6 +1391,28 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                       </p>
                     </div>
                   )}
+
+                  {/* CALX355 — bloc « rendement onduleur » : le rendement
+                      européen ci-dessus est une MOYENNE pondérée ; l'étape
+                      « onduleur » de la chaîne de pertes lit d'abord la
+                      courbe, puis ces valeurs publiées. Tous optionnels —
+                      vides = non publiés, jamais envoyés à 0. */}
+                  <p className="sm:col-span-2 border-t border-border pt-3 text-xs uppercase tracking-wide text-muted-foreground">
+                    Rendement onduleur
+                  </p>
+                  <FormField label="Rendement maximal (%)" htmlFor="pf-ft-rendmax"
+                             hint="Optionnel — « peak efficiency » publié.">
+                    <Input id="pf-ft-rendmax" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.ond_rendement_max_pct}
+                           onChange={e => setFicheField('ond_rendement_max_pct', e.target.value)} />
+                  </FormField>
+                  <FormField label="Rendement CEC (%)" htmlFor="pf-ft-rendcec"
+                             hint="Optionnel — rendement pondéré CEC publié.">
+                    <Input id="pf-ft-rendcec" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.ond_rendement_cec_pct}
+                           onChange={e => setFicheField('ond_rendement_cec_pct', e.target.value)} />
+                  </FormField>
+                  <EditeurCourbeFiche {...propsCourbe('ond_courbe_rendement')} />
                 </>
               )}
 
@@ -1338,6 +1470,35 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                            value={ficheFields.largeur_mm}
                            onChange={e => setFicheField('largeur_mm', e.target.value)} />
                   </FormField>
+                  {/* CALX355 — NOCT (CAL111), bifacialité (CAL112), tolérance
+                      de puissance et courbe à faible éclairement (CALX60) :
+                      en base, lus par la chaîne de pertes, jamais saisissables
+                      jusqu'ici. Tous optionnels — vides = non publiés. */}
+                  <FormField label="NOCT — température nominale de fonctionnement (°C)" htmlFor="pf-ft-noct"
+                             hint="Optionnel — condition 800 W/m², 20 °C, 1 m/s.">
+                    <Input id="pf-ft-noct" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.noct_c}
+                           onChange={e => setFicheField('noct_c', e.target.value)} />
+                  </FormField>
+                  <FormField label="Facteur de bifacialité (%)" htmlFor="pf-ft-bifa"
+                             hint="Optionnel — vide = non publié : aucun gain face arrière calculé.">
+                    <Input id="pf-ft-bifa" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.bifacialite_pct}
+                           onChange={e => setFicheField('bifacialite_pct', e.target.value)} />
+                  </FormField>
+                  <FormField label="Tolérance de puissance — borne basse (%)" htmlFor="pf-ft-tolmin"
+                             hint="Ex. 0 pour un tri « 0/+3 % », −3 pour « ±3 % ».">
+                    <Input id="pf-ft-tolmin" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.tolerance_pmax_min_pct}
+                           onChange={e => setFicheField('tolerance_pmax_min_pct', e.target.value)} />
+                  </FormField>
+                  <FormField label="Tolérance de puissance — borne haute (%)" htmlFor="pf-ft-tolmax"
+                             hint="Ex. 3 pour un tri « 0/+3 % ».">
+                    <Input id="pf-ft-tolmax" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.tolerance_pmax_max_pct}
+                           onChange={e => setFicheField('tolerance_pmax_max_pct', e.target.value)} />
+                  </FormField>
+                  <EditeurCourbeFiche {...propsCourbe('rendement_par_irradiance')} />
                   <p className="sm:col-span-2 text-xs text-muted-foreground">
                     Garantie produit/performance : champs « Texte de garantie » et
                     « Garantie production (mois) » ci-dessus.
@@ -1377,6 +1538,73 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                            value={ficheFields.bat_max_modules_par_banc}
                            onChange={e => setFicheField('bat_max_modules_par_banc', e.target.value)} />
                   </FormField>
+                  {/* CALX355 — C-rate, plage de température et chimie
+                      (CALX60) : se SAISISSENT, ne se déduisent jamais des kW
+                      ci-dessus. Tous optionnels — vides = non publiés. */}
+                  <FormField label="C-rate de charge (C)" htmlFor="pf-ft-ccharge"
+                             hint="Optionnel — ex. 0,5 C. Jamais déduit des kW saisis.">
+                    <Input id="pf-ft-ccharge" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.bat_c_rate_charge}
+                           onChange={e => setFicheField('bat_c_rate_charge', e.target.value)} />
+                  </FormField>
+                  <FormField label="C-rate de décharge (C)" htmlFor="pf-ft-cdecharge"
+                             hint="Optionnel — ex. 1 C. Jamais déduit des kW saisis.">
+                    <Input id="pf-ft-cdecharge" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.bat_c_rate_decharge}
+                           onChange={e => setFicheField('bat_c_rate_decharge', e.target.value)} />
+                  </FormField>
+                  <FormField label="Température de fonctionnement mini (°C)" htmlFor="pf-ft-tmin">
+                    <Input id="pf-ft-tmin" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.bat_temp_min_c}
+                           onChange={e => setFicheField('bat_temp_min_c', e.target.value)} />
+                  </FormField>
+                  <FormField label="Température de fonctionnement maxi (°C)" htmlFor="pf-ft-tmax">
+                    <Input id="pf-ft-tmax" type="number" step="any" inputMode="decimal"
+                           value={ficheFields.bat_temp_max_c}
+                           onChange={e => setFicheField('bat_temp_max_c', e.target.value)} />
+                  </FormField>
+                  <FormField label="Chimie de cellule" htmlFor="pf-ft-chimie">
+                    <Select
+                      value={ficheFields.bat_chimie || '__none'}
+                      onValueChange={v => setFicheField('bat_chimie', v === '__none' ? '' : v)}
+                    >
+                      <SelectTrigger id="pf-ft-chimie"><SelectValue placeholder="— Non renseignée —" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Non renseignée —</SelectItem>
+                        {CHOIX_CHIMIE_BATTERIE.map(([valeur, libelle]) => (
+                          <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                </>
+              )}
+
+              {/* CALX355 — la SORTIE de l'optimiseur / du micro-onduleur
+                  (CALX60) : ce qui décide du câblage. Un micro-onduleur
+                  remplit les champs « Micro-onduleur — … » (sortie
+                  alternative), un optimiseur les champs « Optimiseur — … »
+                  (sortie continue) ; aucun n'est déduit de l'autre. */}
+              {estOptimiseurFiche && (
+                <>
+                  <p className="sm:col-span-2 text-xs text-muted-foreground">
+                    Remplissez les champs de VOTRE composant : « Micro-onduleur — … » pour
+                    une sortie alternative, « Optimiseur — … » pour une sortie continue.
+                    Laissez vides ceux qui ne s&apos;appliquent pas.
+                  </p>
+                  {/* Libellés = LIBELLES_FICHE, mot pour mot ceux du visualiseur. */}
+                  {[
+                    'opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',
+                    'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v',
+                    'opt_v_out_min', 'opt_v_out_max', 'opt_i_out_max_a',
+                    'opt_pmax_out_w', 'opt_modules_max_par_chaine',
+                  ].map((cle) => (
+                    <FormField key={cle} label={LIBELLES_FICHE[cle]} htmlFor={`pf-ft-${cle}`}>
+                      <Input id={`pf-ft-${cle}`} type="number" step="any" inputMode="decimal"
+                             value={ficheFields[cle]}
+                             onChange={e => setFicheField(cle, e.target.value)} />
+                    </FormField>
+                  ))}
                 </>
               )}
 
@@ -1471,6 +1699,14 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           {errors.submit && (
             <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {errors.submit}
+            </div>
+          )}
+          {/* CALX355 — le bandeau NOMME la cellule de courbe fautive (courbe,
+              point, colonne) ; il disparaît dès qu'elle est corrigée. */}
+          {courbesTentees && erreursCourbes.bandeau && (
+            <div role="alert" data-testid="pf-courbes-bandeau"
+                 className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              Non enregistré — {erreursCourbes.bandeau}
             </div>
           )}
 

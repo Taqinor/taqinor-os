@@ -13,6 +13,10 @@ import {
   typeFicheBackend, ficheFieldsVides, champsFicheDepuisServeur,
   champsFichePourType,
   LIBELLES_FICHE, VALEUR_ABSENTE, valeurFicheAffichee, groupeFicheAffichage,
+  // CALX355
+  CHOIX_CHIMIE_BATTERIE, COURBES_FICHE, ligneCourbeVide, lignesCourbeDepuisServeur,
+  validerCourbe, erreursCourbesPourType, estOptimiseurNom, typeFicheFormulaire,
+  messageRefusFiche,
 } from './pvondFicheTechnique.js'
 
 // ── Plage de tension batterie — lecture (miroir de plage_batterie_onduleur,
@@ -297,8 +301,11 @@ test('champsFichePourType ne garde que les champs du type, en nombres', () => {
     // PVOND-H — nouveaux champs numériques du bloc onduleur.
     ond_v_demarrage_v: null, ond_isc_max_mppt_a: null,
     ond_bat_v_min: null, ond_bat_v_max: null,
+    // CALX355 — bloc « rendement onduleur » : vides → null, courbe → null.
+    ond_rendement_max_pct: null, ond_rendement_cec_pct: null,
     // Champ booléen du bloc onduleur : converti en `false`, jamais `null`.
     ond_bat_aucune: false,
+    ond_courbe_rendement: null,
   })
   // pmax_wc n'appartient pas au bloc onduleur : jamais dans ce payload.
   assert.ok(!('pmax_wc' in payload))
@@ -322,6 +329,10 @@ test('champsFichePourType(panneau) garde puissance, électrique complet et dimen
     pmax_wc: 710, voc_v: 48.3, isc_a: 18.59, vmp_v: 40.4, imp_a: 17.59,
     temp_coeff_voc_pct_c: -0.25, temp_coeff_pmax_pct_c: -0.29,
     longueur_mm: 2384, largeur_mm: 1303,
+    // CALX355 — non saisis : `null`, jamais 0 ; courbe absente : `null`.
+    noct_c: null, bifacialite_pct: null,
+    tolerance_pmax_min_pct: null, tolerance_pmax_max_pct: null,
+    rendement_par_irradiance: null,
   })
 })
 
@@ -332,7 +343,10 @@ test('champsFichePourType(batterie) garde capacité/tension/DoD/max-modules', ()
       bat_max_modules_par_banc: '200',
     }),
     { bat_kwh_nominal: 5.12, bat_kwh_usable: 4.6, bat_v_nominal: 51.2, bat_dod_pct: 90,
-      bat_max_modules_par_banc: 200 })
+      bat_max_modules_par_banc: 200,
+      // CALX355 — non saisis : `null` ; la chimie (CharField) part à ''.
+      bat_c_rate_charge: null, bat_c_rate_decharge: null,
+      bat_temp_min_c: null, bat_temp_max_c: null, bat_chimie: '' })
 })
 
 // BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now keep it
@@ -361,7 +375,7 @@ test('une valeur non numérique devient null plutôt que NaN', () => {
 // Le visualiseur produit (ProduitDetail) lit ces fonctions ; elles garantissent
 // qu'un champ VIDE se voit comme un trou, jamais comme une valeur.
 
-test('groupeFicheAffichage(onduleur) : les 12 variables, dans l’ordre du formulaire', () => {
+test('groupeFicheAffichage(onduleur) : les 15 variables, dans l’ordre du formulaire', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   assert.equal(groupe.type, 'onduleur')
   assert.equal(groupe.titre, 'Onduleur')
@@ -370,6 +384,8 @@ test('groupeFicheAffichage(onduleur) : les 12 variables, dans l’ordre du formu
     'ond_mppt_v_max', 'ond_v_max_abs', 'ond_i_max_mppt_a',
     'ond_rendement_euro_pct', 'ond_v_demarrage_v', 'ond_isc_max_mppt_a',
     'ond_bat_v_min', 'ond_bat_v_max',
+    // CALX355 — bloc « rendement onduleur ».
+    'ond_rendement_max_pct', 'ond_rendement_cec_pct', 'ond_courbe_rendement',
   ])
   // Les trois variables que le fondateur a nommées sont bien SÉPARÉES.
   const parCle = Object.fromEntries(groupe.lignes.map((l) => [l.cle, l]))
@@ -382,7 +398,7 @@ test('groupeFicheAffichage(onduleur) : les 12 variables, dans l’ordre du formu
 test('un champ non renseigné affiche « à renseigner », JAMAIS un défaut ni un zéro', () => {
   const groupe = groupeFicheAffichage({ type_fiche: 'onduleur', ond_n_mppt: 2 })
   const vides = groupe.lignes.filter((l) => l.absente)
-  assert.equal(vides.length, 11)
+  assert.equal(vides.length, 14)
   for (const ligne of vides) assert.equal(ligne.valeur, VALEUR_ABSENTE)
   // La règle « never invent numbers » à l'écran : aucune valeur de repli.
   assert.equal(valeurFicheAffichee('ond_v_max_abs', { type_fiche: 'onduleur' }),
@@ -420,7 +436,10 @@ test('groupeFicheAffichage(module/batterie) : leurs propres blocs', () => {
   assert.deepEqual(mod.lignes.map((l) => l.cle), [
     'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
     'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
-    'longueur_mm', 'largeur_mm'])
+    'longueur_mm', 'largeur_mm',
+    // CALX355
+    'noct_c', 'bifacialite_pct', 'tolerance_pmax_min_pct',
+    'tolerance_pmax_max_pct', 'rendement_par_irradiance'])
 
   const bat = groupeFicheAffichage({ type_fiche: 'batterie', bat_v_nominal: '51.2' })
   assert.equal(bat.titre, 'Batterie')
@@ -437,11 +456,202 @@ test('produit sans fiche (ou type inconnu) → rien à afficher, jamais un bloc 
 test('tout champ éditable du formulaire porte un libellé d’affichage', () => {
   // Sans ça, le visualiseur montrerait une clé technique (`ond_v_max_abs`) là
   // où le formulaire montre « Tension DC maximale (V) ».
-  for (const type of ['onduleur', 'module', 'batterie']) {
+  for (const type of ['onduleur', 'module', 'batterie', 'optimiseur']) {
     for (const ligne of groupeFicheAffichage({ type_fiche: type }).lignes) {
       assert.equal(typeof LIBELLES_FICHE[ligne.cle], 'string',
                    `libellé manquant pour ${ligne.cle}`)
       assert.notEqual(ligne.libelle, ligne.cle)
     }
   }
+})
+
+// ── CALX355 — les nouveaux champs de fiche, saisissables ───────────────────
+// Parité PV*SOL (dialogue de création par champ, modèle de charge partielle
+// inclus). Règle absolue : un champ VIDE reste vide — jamais envoyé à 0.
+
+test('CALX355 — un champ vide n’est JAMAIS envoyé à 0 (tous les blocs)', () => {
+  const blocs = {
+    onduleur_reseau: ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
+    panneau: ['noct_c', 'bifacialite_pct', 'tolerance_pmax_min_pct', 'tolerance_pmax_max_pct'],
+    batterie: ['bat_c_rate_charge', 'bat_c_rate_decharge', 'bat_temp_min_c', 'bat_temp_max_c'],
+    optimiseur: ['opt_ac_kw', 'opt_ac_tension_v', 'opt_ac_i_max_a',
+      'opt_ac_unites_max_par_branche', 'opt_v_out_nominal_v', 'opt_v_out_min',
+      'opt_v_out_max', 'opt_i_out_max_a', 'opt_pmax_out_w', 'opt_modules_max_par_chaine'],
+  }
+  for (const [type, cles] of Object.entries(blocs)) {
+    const vides = Object.fromEntries(cles.map((c) => [c, '']))
+    const payload = champsFichePourType(type, vides)
+    for (const cle of cles) {
+      assert.equal(payload[cle], null, `${type}.${cle} vide doit partir à null`)
+      assert.notEqual(payload[cle], 0)
+    }
+  }
+})
+
+test('CALX355 — les champs saisis partent en nombres (négatifs admis : tolérance, température)', () => {
+  const mod = champsFichePourType('panneau', {
+    noct_c: '43', bifacialite_pct: '80', tolerance_pmax_min_pct: '-3', tolerance_pmax_max_pct: '3',
+  })
+  assert.equal(mod.noct_c, 43)
+  assert.equal(mod.bifacialite_pct, 80)
+  assert.equal(mod.tolerance_pmax_min_pct, -3)
+  assert.equal(mod.tolerance_pmax_max_pct, 3)
+  const bat = champsFichePourType('batterie', {
+    bat_c_rate_charge: '0.5', bat_c_rate_decharge: '1', bat_temp_min_c: '-10',
+    bat_temp_max_c: '50', bat_chimie: 'lfp',
+  })
+  assert.deepEqual(
+    [bat.bat_c_rate_charge, bat.bat_c_rate_decharge, bat.bat_temp_min_c, bat.bat_temp_max_c, bat.bat_chimie],
+    [0.5, 1, -10, 50, 'lfp'])
+  const ond = champsFichePourType('onduleur_hybride', {
+    ond_rendement_max_pct: '98.4', ond_rendement_cec_pct: '97.5',
+  })
+  assert.equal(ond.ond_rendement_max_pct, 98.4)
+  assert.equal(ond.ond_rendement_cec_pct, 97.5)
+})
+
+test('CALX355 — la chimie : vide → \'\' (jamais null), valeurs = miroir du backend', () => {
+  assert.equal(champsFichePourType('batterie', { bat_chimie: '' }).bat_chimie, '')
+  assert.equal(champsFichePourType('batterie', {}).bat_chimie, '')
+  assert.deepEqual(CHOIX_CHIMIE_BATTERIE.map(([v]) => v), [
+    'lfp', 'nmc', 'nca', 'lmo', 'lto', 'plomb_ouvert', 'plomb_agm', 'plomb_gel', 'autre'])
+  assert.equal(valeurFicheAffichee('bat_chimie', { bat_chimie: 'lfp' }), 'LFP (lithium fer phosphate)')
+  assert.equal(valeurFicheAffichee('bat_chimie', { bat_chimie: '' }), VALEUR_ABSENTE)
+})
+
+test('CALX355 — le bloc optimiseur n’appartient qu’au type optimiseur', () => {
+  const payload = champsFichePourType('optimiseur', { opt_ac_kw: '0.365', ond_ac_kw: '10' })
+  assert.equal(payload.opt_ac_kw, 0.365)
+  assert.ok(!('ond_ac_kw' in payload))
+  assert.equal(typeFicheBackend('optimiseur'), 'optimiseur')
+  const groupe = groupeFicheAffichage({ type_fiche: 'optimiseur', opt_ac_kw: '0.365' })
+  assert.equal(groupe.titre, 'Optimiseur / micro-onduleur')
+  assert.equal(groupe.lignes[0].valeur, '0.365')
+})
+
+test('CALX355 — l’optimiseur se reconnaît quand classifyProduct ne dit rien, jamais par-dessus lui', () => {
+  assert.equal(estOptimiseurNom('Optimiseur SolarEdge S440'), true)
+  assert.equal(estOptimiseurNom('Micro-onduleur Hoymiles HMS-800'), true)
+  assert.equal(estOptimiseurNom('Micro onduleur APsystems'), true)
+  assert.equal(estOptimiseurNom('Tigo optimizer TS4'), true)
+  assert.equal(estOptimiseurNom('Onduleur hybride Deye 8kW'), false)
+  assert.equal(estOptimiseurNom(''), false)
+  // Un produit déjà classé garde SA famille (source unique du générateur).
+  assert.equal(typeFicheFormulaire({ typeClient: 'onduleur_reseau', nom: 'Micro-onduleur réseau X' }),
+               'onduleur_reseau')
+  assert.equal(typeFicheFormulaire({ typeClient: null, nom: 'Micro-onduleur Hoymiles' }), 'optimiseur')
+  // Une fiche déjà typée « optimiseur » garde son bloc, quel que soit le nom.
+  assert.equal(typeFicheFormulaire({ typeClient: null, nom: 'Article 42', typeFicheServeur: 'optimiseur' }),
+               'optimiseur')
+  assert.equal(typeFicheFormulaire({ typeClient: null, nom: 'Vis inox M8' }), null)
+})
+
+test('CALX355 — état vide : choix à \'\', courbes sans aucune ligne', () => {
+  const vide = ficheFieldsVides()
+  assert.equal(vide.bat_chimie, '')
+  assert.deepEqual(vide.rendement_par_irradiance, [])
+  assert.deepEqual(vide.ond_courbe_rendement, [])
+  assert.equal(vide.noct_c, '')
+  assert.equal(vide.opt_ac_kw, '')
+})
+
+test('CALX355 — courbe : aller-retour serveur → lignes → points identique', () => {
+  const serveur = [
+    { w_m2: 200, rendement_relatif_pct: 96.5 },
+    { w_m2: 400, rendement_relatif_pct: 98.8 },
+    { w_m2: 1000, rendement_relatif_pct: 100 },
+  ]
+  const etat = champsFicheDepuisServeur({ type_fiche: 'module', rendement_par_irradiance: serveur })
+  assert.deepEqual(etat.rendement_par_irradiance[0], { w_m2: '200', rendement_relatif_pct: '96.5' })
+  assert.deepEqual(champsFichePourType('panneau', etat).rendement_par_irradiance, serveur)
+  assert.deepEqual(lignesCourbeDepuisServeur('rendement_par_irradiance', null), [])
+})
+
+test('CALX355 — courbe sans aucune ligne (ou lignes vierges) → null, jamais []', () => {
+  assert.equal(validerCourbe('rendement_par_irradiance', []).points, null)
+  const vierges = [ligneCourbeVide('rendement_par_irradiance'), ligneCourbeVide('rendement_par_irradiance')]
+  const r = validerCourbe('rendement_par_irradiance', vierges)
+  assert.equal(r.points, null)
+  assert.deepEqual(r.erreurs, [null, null])
+})
+
+test('CALX355 — chaque ligne nomme son erreur sous la cellule fautive', () => {
+  const r = validerCourbe('rendement_par_irradiance', [
+    { w_m2: '200', rendement_relatif_pct: '96' },
+    { w_m2: '400', rendement_relatif_pct: '' },       // cellule requise vide
+    { w_m2: 'abc', rendement_relatif_pct: '99' },     // pas un nombre
+    { w_m2: '150', rendement_relatif_pct: '97' },     // abscisse qui recule
+  ])
+  assert.equal(r.erreurs[0], null)
+  assert.deepEqual(Object.keys(r.erreurs[1]), ['rendement_relatif_pct'])
+  assert.match(r.erreurs[1].rendement_relatif_pct, /Valeur requise/)
+  assert.deepEqual(Object.keys(r.erreurs[2]), ['w_m2'])
+  assert.match(r.erreurs[2].w_m2, /Nombre attendu/)
+  assert.deepEqual(Object.keys(r.erreurs[3]), ['w_m2'])
+  assert.match(r.erreurs[3].w_m2, /Doit dépasser 200 \(point 1\)/)
+  // Seules les lignes correctes deviennent des points.
+  assert.deepEqual(r.points, [{ w_m2: 200, rendement_relatif_pct: 96 }])
+})
+
+test('CALX355 — abscisse répétée refusée, virgule décimale normalisée', () => {
+  const r = validerCourbe('rendement_par_irradiance', [
+    { w_m2: '200', rendement_relatif_pct: '96,5' },
+    { w_m2: '200', rendement_relatif_pct: '97' },
+  ])
+  assert.equal(r.erreurs[0], null)
+  assert.match(r.erreurs[1].w_m2, /ne se répète pas/)
+  assert.deepEqual(r.points, [{ w_m2: 200, rendement_relatif_pct: 96.5 }])
+})
+
+test('CALX355 — onduleur : une courbe PAR tension, croissance exigée dans chaque série', () => {
+  const r = validerCourbe('ond_courbe_rendement', [
+    { charge_pct: '10', rendement_pct: '95', tension_v: '360' },
+    { charge_pct: '50', rendement_pct: '98', tension_v: '360' },
+    { charge_pct: '10', rendement_pct: '94', tension_v: '600' },  // nouvelle série : OK
+    { charge_pct: '30', rendement_pct: '97', tension_v: '' },     // tension facultative
+  ])
+  assert.deepEqual(r.erreurs, [null, null, null, null])
+  assert.deepEqual(r.points[3], { charge_pct: 30, rendement_pct: 97 })
+  assert.ok(!('tension_v' in r.points[3]))
+  const recul = validerCourbe('ond_courbe_rendement', [
+    { charge_pct: '50', rendement_pct: '98', tension_v: '360' },
+    { charge_pct: '20', rendement_pct: '96', tension_v: '360' },
+  ])
+  assert.match(recul.erreurs[1].charge_pct, /Doit dépasser 50 \(point 1\)/)
+})
+
+test('CALX355 — le bandeau nomme la courbe, le point et la colonne fautifs', () => {
+  const { parCourbe, bandeau } = erreursCourbesPourType('module', {
+    rendement_par_irradiance: [
+      { w_m2: '200', rendement_relatif_pct: '96' },
+      { w_m2: '', rendement_relatif_pct: '97' },
+    ],
+  })
+  assert.ok(parCourbe.rendement_par_irradiance)
+  assert.match(bandeau, /Courbe rendement \/ irradiance/)
+  assert.match(bandeau, /point 2/)
+  assert.match(bandeau, /Irradiance \(W\/m²\)/)
+  // Aucune erreur → rien à signaler.
+  assert.deepEqual(erreursCourbesPourType('module', { rendement_par_irradiance: [] }),
+                   { parCourbe: {}, bandeau: null })
+  assert.deepEqual(erreursCourbesPourType('batterie', {}), { parCourbe: {}, bandeau: null })
+})
+
+test('CALX355 — une courbe s’affiche par son nombre de points', () => {
+  assert.equal(valeurFicheAffichee('rendement_par_irradiance',
+    { rendement_par_irradiance: [{ w_m2: 200, rendement_relatif_pct: 96 }] }), '1 point')
+  assert.equal(valeurFicheAffichee('ond_courbe_rendement',
+    { ond_courbe_rendement: [{}, {}] }), '2 points')
+  assert.equal(valeurFicheAffichee('ond_courbe_rendement', { ond_courbe_rendement: [] }), VALEUR_ABSENTE)
+  assert.equal(valeurFicheAffichee('ond_courbe_rendement', {}), VALEUR_ABSENTE)
+  assert.equal(COURBES_FICHE.ond_courbe_rendement.colonnes.at(-1).requise, false)
+})
+
+test('CALX355 — le refus serveur nomme le champ par son libellé d’écran', () => {
+  assert.equal(
+    messageRefusFiche({ bat_c_rate_charge: ['Assurez-vous que cette valeur est supérieure ou égale à 0.01.'] }),
+    '« C-rate de charge (C) » : Assurez-vous que cette valeur est supérieure ou égale à 0.01.')
+  assert.equal(messageRefusFiche({ detail: 'Refusé.' }), 'Refusé.')
+  assert.equal(messageRefusFiche(null), null)
+  assert.equal(messageRefusFiche({}), null)
 })
