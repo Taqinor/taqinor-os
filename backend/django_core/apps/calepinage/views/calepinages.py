@@ -53,8 +53,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from .. import selectors
 from ..models import Calepinage
 from ..permissions import (
-    CAL_GERER, CAL_VOIR, PeutApprouverCalepinage, PeutGererCalepinage,
-    PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
+    CAL_APPROUVER, CAL_GERER, CAL_VOIR, PeutApprouverCalepinage,
+    PeutGererCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
 from ..serializers import CalepinageSerializer, CalepinageVarianteSerializer
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
@@ -177,7 +177,26 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     ordering_fields = ['created_at', 'updated_at', 'statut', 'titre']
 
     read_permission = CAL_VOIR
-    write_permission = CAL_GERER
+
+    #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
+    #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
+    #: relecteur qui n'a QUE le code d'approbation doit pouvoir décider. Le
+    #: défaut ``ScopedPermission`` (lu ci-dessous côté écriture) appliquerait
+    #: sinon ``calepinage_gerer`` à TOUTE ``@action`` — y compris celle-ci — en
+    #: CUMUL avec la garde déclarée par l'action (jamais en substitution,
+    #: cf. ``get_permissions`` plus bas) : sans cette exception, un relecteur
+    #: sans ``calepinage_gerer`` échouerait le volet ``ScopedPermission`` alors
+    #: même que ``PeutLireOuApprouverCalepinage`` (l'action) l'autorise — 403
+    #: au lieu de 200. Patron identique à ``apps.visites.views.
+    #: VisiteTerrainViewSet.write_permission`` (VTA10) : une PROPRIÉTÉ, pas un
+    #: ``get_permissions()`` réécrit, pour qu'aucune garde déclarée sur une
+    #: ``@action`` ne soit jamais écrasée en silence.
+    PERMISSIONS_ECRITURE_PAR_ACTION = {'approbation': CAL_APPROUVER}
+
+    @property
+    def write_permission(self):
+        return self.PERMISSIONS_ECRITURE_PAR_ACTION.get(
+            getattr(self, 'action', None), CAL_GERER)
 
     def get_permissions(self):
         """``ScopedPermission`` TOUJOURS, + la garde déclarée par l'action.
