@@ -228,6 +228,16 @@ GARDES = {
         ('Test the calepinage-actions-consumed checker itself (CALX381)',
          'python -m unittest scripts.tests.test_check_calepinage_actions_consommees -v',
          '.'),
+        # CALX383 (lot 8, 23/09/2026) — le registre atelier/onglets.js (CALX1)
+        # n'obligeait mecaniquement aucun onglet a porter un test ; mesure :
+        # 5 des 27 onglets (panneaux « Site » anterieurs a CALX1) n'en ont
+        # aucun, passif gele dans onglets_calepinage_sans_test_allow.txt.
+        ('Check onglets calepinage testés (un onglet du rail arrive avec son test, CALX383)',
+         'python scripts/check_onglets_calepinage_testes.py',
+         '.'),
+        ('Test the onglets-tested checker itself (CALX383)',
+         'python -m unittest scripts.tests.test_check_onglets_calepinage_testes -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',

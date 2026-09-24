@@ -1,0 +1,21 @@
+# Base de reference de check_onglets_calepinage_testes.py — DETTE HISTORIQUE,
+# RIEN D'AUTRE (CALX383).
+#
+# Chaque ligne est la `cle` d'un onglet du registre `atelier/onglets.js` dont
+# le composant RESOLU n'a PAS de `*.test.jsx` a cote de lui. Cette liste gele
+# l'etat du jour : la garde empeche la RECIDIVE (aucun onglet NEUF sans test),
+# elle ne repare pas le passif — chaque ligne drainee est un onglet qui a enfin
+# recu son test.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - poser le test puis `python scripts/check_onglets_calepinage_testes.py
+#     --write-baseline` retire sa ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Ajouter une dette exige
+#     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
+#
+# Format : `<cle>  # <raison datee>`.
+course-soleil  # sans test au 23/09/2026 (CALX383)
+horizon  # sans test au 23/09/2026 (CALX383)
+ombriere  # sans test au 23/09/2026 (CALX383)
+pente  # sans test au 23/09/2026 (CALX383)
+terrain  # sans test au 23/09/2026 (CALX383)
