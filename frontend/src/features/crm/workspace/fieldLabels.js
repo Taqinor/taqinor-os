@@ -194,19 +194,17 @@ const fieldLabels = {
   // CAD153 — la garde « tout champ écrit par le panneau d'appel, et tout
   // champ neuf du script guidé, a son entrée ». Deux familles, même règle
   // `pending` que ci-dessus (libellé = `verbose_name` serveur) :
-  //   · les deux colonnes ANCIENNES que le panneau écrit sans qu'aucun
+  //   · les colonnes ANCIENNES que le panneau écrit sans qu'aucun
   //     `<FormField htmlFor>` ne les porte (la case « été différent » de
-  //     SectionEnergie n'a pas d'id ; le statut d'occupation n'est affiché
-  //     qu'en lecture dans SectionDivers) ;
+  //     SectionEnergie n'a pas d'id). Le statut d'occupation (`ownership`)
+  //     n'est plus `pending` : CAD150 lui a donné son `<FormField
+  //     htmlFor="lf-ownership">` (SectionDivers, « Qualification (site ou
+  //     appel) ») — son entrée vit plus haut, section `divers` ;
   //   · la VAGUE 2 (CAD154) : six colonnes posées au serveur dont la moitié
   //     écran n'avait jamais été déclarée (le même geste que CAD174).
   ete_differente: {
     label: 'L’été est différent de l’hiver ?', section: 'energie',
     inputId: 'lf-ete-differente', pending: 'PanneauScriptAppel (CAD152/153)',
-  },
-  ownership: {
-    label: "Statut d'occupation", section: 'toiture',
-    inputId: 'lf-ownership', pending: 'PanneauScriptAppel (CAD152/153)',
   },
   nb_personnes_foyer: {
     label: 'Nombre de personnes au foyer', section: 'equipements',

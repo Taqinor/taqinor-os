@@ -164,9 +164,12 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   // (`getRelanceEtapesLead`, même appel que `CadenceFrise`) : une cadence est
   // « active » tant qu'au moins une étape reste `a_faire`. Recalculé après
   // chaque geste de cadence (mêmes jetons que la frise/le journal).
-  const [cadenceActive, setCadenceActive] = useState(false)
+  const [cadenceLue, setCadenceActive] = useState(false)
+  // Sans fiche (création), aucune cadence : dérivé au rendu plutôt qu'un
+  // setState synchrone dans l'effet (règle react-hooks/set-state-in-effect).
+  const cadenceActive = state.leadId != null && cadenceLue
   useEffect(() => {
-    if (state.leadId == null) { setCadenceActive(false); return undefined }
+    if (state.leadId == null) return undefined
     let actif = true
     crmApi.getRelanceEtapesLead(state.leadId)
       .then((r) => {
