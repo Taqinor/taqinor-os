@@ -383,7 +383,14 @@ class AllerRetourEnBaseTest(BaseApiCalepinage):
         client = Client.objects.create(company=vide, nom='Client arrivée')
         resume = importer_projet(document, vide, client_id=client.pk)
         copie = Calepinage.objects.get(pk=resume['calepinage'])
-        self.assertIsNone(copie.resultat)
+        # Le verdict électrique rejoué APRÈS l'enregistrement de la
+        # conception (CAL128, ``rejouer_apres_layout``) est calculé ICI ; rien
+        # du résultat venu du fichier n'entre dans le calepinage importé.
+        stocke = copie.resultat or {}
+        for bloc in ('production', 'cascade', 'pose', 'simulation', 'meteo'):
+            self.assertNotIn(bloc, stocke)
+        self.assertNotIn(RESULTAT['exemple']['hash_entree'],
+                         json.dumps(stocke))
         self.assertIn('resultat', [i['bloc'] for i in resume['ignores']])
 
     def test_un_client_d_une_autre_societe_est_introuvable(self):
