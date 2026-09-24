@@ -540,6 +540,36 @@ export const ALL_HOOKS = [
   'cal-filtre-etiquettes-ouvrir',
   // atelier/Rail.jsx
   'cal-rail-lexique',
+  // atelier/DiffVersions.jsx
+  'cal-diff-versions',
+  'cal-diff-versions-droite',
+  'cal-diff-versions-erreur',
+  'cal-diff-versions-erreur-liste',
+  'cal-diff-versions-gauche',
+  'cal-diff-versions-lien-versions',
+  'cal-diff-versions-ligne',
+  'cal-diff-versions-rappel',
+  'cal-diff-versions-tableau',
+  // atelier/Projet.jsx
+  'cal-projet',
+  'cal-projet-annuler',
+  'cal-projet-apercu',
+  'cal-projet-apercu-ignores',
+  'cal-projet-apercu-modules',
+  'cal-projet-apercu-postes',
+  'cal-projet-apercu-repris',
+  'cal-projet-apercu-variantes',
+  'cal-projet-choisir',
+  'cal-projet-confirmer',
+  'cal-projet-erreur',
+  'cal-projet-export',
+  'cal-projet-export-erreur',
+  'cal-projet-fichier',
+  'cal-projet-import',
+  'cal-projet-import-rattachement',
+  'cal-projet-rappel',
+  'cal-projet-resultat',
+  'cal-projet-telecharger',
 ]
 
 function readDoc() {

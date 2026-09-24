@@ -24,20 +24,36 @@ import { fileURLToPath } from 'node:url'
    futur réordonnancement du job), il devient un VRAI gate. Le garde STATIQUE
    ci-dessous (aucun `dist/` requis) reste, lui, TOUJOURS actif.
 
-   LA BORNE EST MESURÉE, PAS DEVINÉE : `npx vite build` (2026-09-20) donne
-   22.91 Ko gzip pour les dix chunks lazy du module (`CalepinageList`,
-   `CalepinageNouveau`, `VariantesCompare`, `FichesIncompletes`,
-   `PompagePanel`, `PlanImporteCalage`, `PhotoSiteCalage`, `SaisiePente`,
-   `SchemaUnifilairePanel`, `Bibliotheque`, plus `BadgePerime`) — le budget
-   ci-dessous (30 Ko) laisse une marge raisonnable, RELEVÉE par palier documenté
-   le jour où un écran légitime la dépasse (même convention que
-   `check_bundle_budget.mjs`), jamais élargie « pour respirer ».
-
-   `PanneauAllees` n'a PAS son propre chunk : il est importé STATIQUEMENT par
-   `AtelierPanneaux.jsx`, lui-même importé par `pages/ventes/ToitureDesign.jsx`
-   (le builder 3D PARTAGÉ lead/devis/ao/calepinage) — il voyage donc dans le
-   chunk `ToitureDesign`, déjà hors du périmètre de ce module (c'est l'atelier
-   COMMUN, pas un écran du module) et hors du plafond `roof-tool` séparé.
+   CALX398 — RE-MESURE APRÈS LE LOT (rail + onglets de l'atelier, CALX1 et
+   suivants). `npx vite build` (2026-09-24) donne **69,96 Ko** gzip pour
+   VINGT-SEPT chunks lazy désormais suivis :
+     - LES ONZE déjà suivis (routes de `module.config.jsx`) : `CalepinageList`,
+       `CalepinageNouveau`, `VariantesCompare`, `FichesIncompletes`,
+       `PompagePanel`, `PlanImporteCalage`, `PhotoSiteCalage`, `SaisiePente`,
+       `SchemaUnifilairePanel`, `Bibliotheque`, `BadgePerime` ;
+     - SEIZE chunks NEUFS, déclarés UNIQUEMENT dans le registre
+       `atelier/onglets.js` (CALX1 et les onglets posés depuis) — AUCUN autre
+       n'a de site d'appel dans `module.config.jsx` : `PanneauDocuments`,
+       `PanneauPertes`, `PanneauReleve`, `PanneauActivite`, `PanneauVersions`,
+       `PanneauMasseLestage`, `PanneauSeries`, `PanneauBatterie`,
+       `EquipementsElectriques`, `CheminementCables`, `Raccordement`,
+       `OngletCoupeRangees`, `VerdictElectrique`, `PanneauEconomie`, `Projet`
+       (CALX371), `DiffVersions` (CALX346).
+   Les TREIZE autres onglets du registre (`pente`, `terrain`, `ombriere`,
+   `horizon`, `course-soleil`, `fiches`, `affectation`, `schema`, `pompage`,
+   `production`, `pertes`, `dossiers`, `documents`… soit `PlanImporteCalage`,
+   `SaisiePente`, `ModeTerrain`, `Ombriere`, `HorizonPanel`, `CourseSoleil`,
+   `FichesIncompletes`, `AffectationChaines`, `SchemaUnifilairePanel`,
+   `PompagePanel`, `PanneauProduction`, `DiagrammePertes`,
+   `DossiersReglementaires`) sont les TREIZE routes profondes HISTORIQUES,
+   DÉJÀ importées par `module.config.jsx` (mêmes chunks, dédupliqués par
+   Rollup — AUCUN poids neuf) : cinq d'entre elles étaient déjà suivies
+   ci-dessus, les huit autres restent HORS PÉRIMÈTRE de cette tâche (des
+   routes préexistantes, sans lien avec l'ajout du rail).
+   Le budget ci-dessous (73 Ko) est le PALIER IMMÉDIATEMENT au-dessus de la
+   mesure (~3 Ko de marge, jamais élargi « pour respirer ») — à RELEVER PAR
+   PALIER documenté le jour où un onglet légitime le dépasse, même convention
+   que `check_bundle_budget.mjs`.
    ========================================================================== */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -56,17 +72,33 @@ const DIST_ASSETS = join(FRONTEND_ROOT, 'dist', 'assets')
 const DIST_INDEX = join(FRONTEND_ROOT, 'dist', 'index.html')
 
 //: Mesuré (voir en-tête). Relevé PAR PALIER documenté, jamais élargi à vue.
-const MODULE_BUDGET_KB = 30
+const MODULE_BUDGET_KB = 73
 
 //: Les composants du module RÉELLEMENT lazy-chargés par `module.config.jsx`
 //: (préfixe de chunk = nom du fichier source, convention Vite/Rollup par
 //: défaut de ce dépôt — vérifié à chaque build).
-const CHUNKS_DU_MODULE = [
+const CHUNKS_MODULE_CONFIG = [
   'CalepinageList', 'CalepinageNouveau', 'VariantesCompare',
   'FichesIncompletes', 'PompagePanel', 'PlanImporteCalage',
   'PhotoSiteCalage', 'SaisiePente', 'SchemaUnifilairePanel', 'Bibliotheque',
   'BadgePerime',
 ]
+
+//: CALX398 — les onglets NEUFS de `atelier/onglets.js` (CALX1 et suivants) qui
+//: n'ont AUCUN site d'appel dans `module.config.jsx` : leur chunk existe
+//: UNIQUEMENT parce que le rail les charge. Un onglet qui reprend un
+//: composant DÉJÀ dans `CHUNKS_MODULE_CONFIG` (les treize routes profondes
+//: historiques) n'a PAS sa place ici — Rollup déduplique le même module, il
+//: n'ajoute aucun poids neuf.
+const CHUNKS_ATELIER_ONGLETS = [
+  'PanneauDocuments', 'PanneauPertes', 'PanneauReleve', 'PanneauActivite',
+  'PanneauVersions', 'PanneauMasseLestage', 'PanneauSeries', 'PanneauBatterie',
+  'EquipementsElectriques', 'CheminementCables', 'Raccordement',
+  'OngletCoupeRangees', 'VerdictElectrique', 'PanneauEconomie', 'Projet',
+  'DiffVersions',
+]
+
+const CHUNKS_DU_MODULE = [...CHUNKS_MODULE_CONFIG, ...CHUNKS_ATELIER_ONGLETS]
 
 function fichiersDuModule() {
   const fichiers = readdirSync(DIST_ASSETS).filter((f) => f.endsWith('.js'))
@@ -77,11 +109,11 @@ function fichiersDuModule() {
 
 // ── 1. GARDE STATIQUE (toujours actif, aucun `dist/` requis) ──────────────
 
-test('CAL224 — chaque écran du module est LAZY (jamais un import statique)', () => {
+test('CAL224 — chaque écran-route du module est LAZY (jamais un import statique)', () => {
   const config = readFileSync(
     join(FRONTEND_ROOT, 'src', 'features', 'calepinage', 'module.config.jsx'),
     'utf8')
-  for (const nom of CHUNKS_DU_MODULE) {
+  for (const nom of CHUNKS_MODULE_CONFIG) {
     if (nom === 'BadgePerime') continue // composant partagé, pas une route.
     const motif = new RegExp(
       `const ${nom} = lazy\\(\\(\\) => import\\('\\./[\\w/]*${nom}'\\)\\)`)
@@ -89,6 +121,24 @@ test('CAL224 — chaque écran du module est LAZY (jamais un import statique)', 
       `${nom} doit être importé via lazy(() => import(...)) dans `
       + 'module.config.jsx — un import statique ferait grossir le chunk '
       + 'd\u2019entrée pour un écran contextuel.')
+  }
+})
+
+// CALX398 — le garde statique COUVRE aussi les onglets NEUFS de l'atelier
+// (`atelier/onglets.js`, distinct de `module.config.jsx` ci-dessus) : un
+// onglet qui perdrait son `lazy()` grossirait le chunk d'entrée de l'atelier
+// pour un panneau que la plupart des sessions n'ouvrent jamais.
+test('CAL224 — chaque onglet NEUF de l’atelier est LAZY dans le registre `onglets.js`', () => {
+  const registre = readFileSync(
+    join(FRONTEND_ROOT, 'src', 'features', 'calepinage', 'atelier', 'onglets.js'),
+    'utf8')
+  for (const nom of CHUNKS_ATELIER_ONGLETS) {
+    const motif = new RegExp(
+      `composant: lazy\\(\\(\\) => import\\('[./\\w-]*${nom}'\\)\\)`)
+    assert.match(registre, motif,
+      `${nom} doit être déclaré \`composant: lazy(() => import(...))\` dans `
+      + 'atelier/onglets.js — un import statique grossirait le chunk du '
+      + 'rail pour un onglet que la session n\u2019a pas ouvert.')
   }
 })
 

@@ -656,5 +656,33 @@ retiré plus un hook ajouté.
 | `cal-filtre-etiquettes-option` | option du filtre étiquettes. |
 | `cal-filtre-etiquettes-ouvrir` | ouvrir le filtre étiquettes. |
 | `cal-rail-lexique` | lien lexique du rail (CALX396). |
+| `cal-diff-versions` | onglet différentiel de versions (CALX346). |
+| `cal-diff-versions-rappel` | rappel de l'usage du différentiel. |
+| `cal-diff-versions-lien-versions` | lien vers le panneau des versions. |
+| `cal-diff-versions-erreur-liste` | erreur de chargement de la liste des versions. |
+| `cal-diff-versions-gauche` | choix de la version de gauche. |
+| `cal-diff-versions-droite` | choix de la version de droite. |
+| `cal-diff-versions-erreur` | erreur du calcul du différentiel. |
+| `cal-diff-versions-tableau` | tableau des écarts entre versions. |
+| `cal-diff-versions-ligne` | ligne d'écart (suffixe = champ). |
+| `cal-projet` | onglet import/export du projet JSON (CALX371). |
+| `cal-projet-rappel` | rappel de l'usage de l'écran projet. |
+| `cal-projet-export` | carte export du projet. |
+| `cal-projet-telecharger` | télécharger le projet JSON. |
+| `cal-projet-export-erreur` | erreur de l'export projet. |
+| `cal-projet-import` | carte import du projet. |
+| `cal-projet-import-rattachement` | rappel du rattachement à l'import. |
+| `cal-projet-choisir` | choisir le fichier projet. |
+| `cal-projet-fichier` | champ fichier projet. |
+| `cal-projet-erreur` | erreur de lecture/import du projet. |
+| `cal-projet-apercu` | aperçu avant import. |
+| `cal-projet-apercu-modules` | aperçu : modules. |
+| `cal-projet-apercu-postes` | aperçu : postes de pertes. |
+| `cal-projet-apercu-variantes` | aperçu : variantes. |
+| `cal-projet-apercu-repris` | aperçu : éléments repris. |
+| `cal-projet-apercu-ignores` | aperçu : éléments ignorés. |
+| `cal-projet-confirmer` | confirmer l'import. |
+| `cal-projet-annuler` | annuler l'import. |
+| `cal-projet-resultat` | résultat de l'import. |
 
 

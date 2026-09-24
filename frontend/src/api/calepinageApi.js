@@ -518,6 +518,26 @@ const calepinageApi = {
     poseReelle: (id) => api.get(`${pivot(id)}pose-reelle/`),
     enregistrerPoseReelle: (id, corps) => api.post(`${pivot(id)}pose-reelle/`, corps),
     creerVersionPoseReelle: (id) => api.post(`${pivot(id)}pose-reelle/`, { creer_version: true }),
+
+    // CALX371 — le PROJET COMPLET en JSON : téléchargement TEL QUEL du
+    // document déjà servi (CALX312/CALX370, contrat
+    // `contract_samples/export_projet.json`) et sa réimportation (`POST
+    // calepinages/import-projet/`, contrat `calepinage_projet_json.json`,
+    // porte `views/projet_json.py`). `apercu: true` ne fait qu'afficher ce
+    // qui SERAIT écrit — le serveur n'écrit rien tant que l'écran ne
+    // renvoie pas `apercu: false` en confirmation explicite.
+    exporterProjet: (id) =>
+      api.get(`${pivot(id)}export-projet.json/`, { responseType: 'blob' }),
+    importerProjet: (corps) =>
+      api.post('/calepinage/calepinages/import-projet/', corps),
+
+    // CALX346 — le différentiel champ par champ entre deux versions (contrat
+    // `contract_samples/calepinage_versions_diff.json`, CALX333 ; porte
+    // `views/versions_diff.py`, CALX345). Sans `contreId`, la DROITE est
+    // l'ÉTAT COURANT du calepinage (`id: null`) — jamais une seconde route.
+    versionsDiff: (id, versionId, contreId) =>
+      api.get(`${pivot(id)}versions/${versionId}/diff/`,
+        { params: contreId ? { contre: contreId } : {} }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
