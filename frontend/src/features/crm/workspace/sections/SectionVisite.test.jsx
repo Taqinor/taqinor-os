@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react'
 import { initState } from '../draftCore'
 import { formatDate } from '../../../../lib/format'
+import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import SectionVisite from './SectionVisite'
 
 vi.mock('../../../../pages/crm/leads/AppointmentBooker', () => ({
@@ -111,6 +112,32 @@ describe('VISCAD5 SectionVisite', () => {
     expect(document.getElementById('lf-visite-notes').value).toBe('Toit accessible')
     fireEvent.change(document.getElementById('lf-visite-notes'), { target: { value: 'Accès confirmé' } })
     expect(setField).toHaveBeenCalledWith('visite_notes', 'Accès confirmé')
+  })
+
+  // CAD123 — [TRANCHÉ 21/09/2026] avertir, sans bloquer. Charge utile = le
+  // contrat COMMITTÉ `apps/crm/contract_samples/lead_visites.json` (PACT10),
+  // jamais un objet retapé.
+  it('CAD123 — sans devis envoyé : l’avertissement NOMME la règle et le bouton reste actif', async () => {
+    const sansDevis = documentContrat('crm', 'lead_visites').exemple_sans_devis
+    crmApi.getLeadVisites.mockResolvedValue({ data: sansDevis })
+    render(<SectionVisite state={initState({ lead: { id: 1489 }, mode: 'edit' })} {...base} />)
+    const note = await screen.findByTestId('visite-sans-devis')
+    expect(note).toHaveTextContent(sansDevis.avertissement_sans_devis)
+    expect(note).toHaveTextContent(/se propose APRÈS le devis/)
+    expect(note).toHaveTextContent(sansDevis.rappel_juridique)
+    // Avertir n'est pas bloquer : la planification s'ouvre normalement.
+    const bouton = screen.getByRole('button', { name: /Planifier la visite technique/ })
+    expect(bouton).toBeEnabled()
+    fireEvent.click(bouton)
+    expect(screen.getByTestId('planifier-modal-ouverte')).toBeInTheDocument()
+  })
+
+  it('CAD123 — un devis déjà envoyé : aucun avertissement', async () => {
+    const avecDevis = documentContrat('crm', 'lead_visites').exemple
+    crmApi.getLeadVisites.mockResolvedValue({ data: avecDevis })
+    render(<SectionVisite state={initState({ lead: { id: 1489 }, mode: 'edit' })} {...base} />)
+    expect(await screen.findByText('Brouillon')).toBeInTheDocument()
+    expect(screen.queryByTestId('visite-sans-devis')).toBeNull()
   })
 
   it('en CRÉATION (pas de leadId) : ni liste de visites, ni disclosure RDV, aucun appel réseau', () => {

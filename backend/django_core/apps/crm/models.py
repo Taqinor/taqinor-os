@@ -422,6 +422,13 @@ class Lead(SoftDeleteModel):
         FR = 'fr', 'Français'
         DARIJA = 'darija', 'Darija'
 
+    # CAD65 (audit L3 du 21/09/2026) — la civilité est une DONNÉE du lead,
+    # rendue par `{civilite}` dans les textes client (FR « M. »/« Mme »,
+    # darija « السي »/« لالة ») : plus aucun « M. » codé en dur.
+    class Civilite(models.TextChoices):
+        M = 'M.', 'M.'
+        MME = 'Mme', 'Mme'
+
     # ── QK1 — Qualification captée par le site (tous additifs, optionnels) ──
     # Distributeur d'électricité du prospect (détermine la tranche tarifaire).
     # ── CAD-M ── CAD167 — LES SRM RÉGIONALES (décision fondateur du
@@ -530,11 +537,16 @@ class Lead(SoftDeleteModel):
     # ``secours_coupures`` ABSORBE le besoin « je veux tenir pendant les
     # coupures » : c'est un objectif déclaré, pas un booléen séparé — et il
     # reste un ARGUMENT commercial, sans aucun dimensionnement de secours.
+    # CAD163 (décision fondateur du 21/09/2026, Q9) — la loi 82-21 n'est
+    # JAMAIS abordée spontanément : le libellé ne la nomme plus, et le choix ne
+    # se coche que si le client parle lui-même de revendre son surplus. La
+    # VALEUR `injection_8221` ne change pas (données, webhooks, questionnaire).
     class ObjectifProjet(models.TextChoices):
         FACTURE = 'facture', 'Baisser la facture'
         SECOURS_COUPURES = 'secours_coupures', 'Tenir pendant les coupures'
         AUTONOMIE = 'autonomie', 'Gagner en autonomie'
-        INJECTION_8221 = 'injection_8221', 'Injecter le surplus (loi 82-21)'
+        INJECTION_8221 = ('injection_8221',
+                          'Revendre le surplus (si le client en parle)')
         AUTRE = 'autre', 'Autre'
 
     # Vocabulaire REPRIS de la qualification de visite
@@ -596,6 +608,19 @@ class Lead(SoftDeleteModel):
     # Contact identity (a lead may not yet be a structured client).
     nom = models.CharField(max_length=255)
     prenom = models.CharField(max_length=255, blank=True, null=True)
+    # CAD65 (audit L3 du 21/09/2026) — « Bonjour M. » partait à une cliente :
+    # la civilité était codée en dur dans 17 textes FR et 12 darija, et NI
+    # le lead NI le client n'en portaient une. FACULTATIVE, saisie au premier
+    # contact : vide ⇒ salutation NEUTRE (le prénom seul), jamais un genre
+    # supposé. Nullable comme `langue_preferee` (l'écran envoie null pour
+    # « non renseignée »).
+    civilite = models.CharField(
+        max_length=4, choices=Civilite.choices, blank=True, null=True,
+        verbose_name='Civilité',
+        help_text="Question au premier appel, seulement en cas de doute : "
+                  "« Je vous note Monsieur ou Madame ? » — facultative : "
+                  'vide, les messages disent « Bonjour [prénom] », jamais un '
+                  'genre supposé.')
     societe = models.CharField(max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     # CAD146 (21/09/2026) — pas de fuseau horaire par lead : un numéro
@@ -605,6 +630,23 @@ class Lead(SoftDeleteModel):
     telephone = models.CharField(max_length=50, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
     ville = models.CharField(max_length=120, blank=True, null=True)
+
+    # CAD144 (audit L3 du 21/09/2026) — un achat de coopérative ou un comité
+    # industriel a PLUSIEURS interlocuteurs (co-associé, technicien d'usine).
+    # Un champ libre, visible sur la fiche, et RIEN d'autre : aucune cadence,
+    # aucun message, aucune dédup ne lit jamais ces deux colonnes — le
+    # protocole vers ce second contact reste MANUEL. Le téléphone est une PII
+    # (masqué sans `client_pii_voir`, comme le numéro principal).
+    contact_secondaire_nom = models.CharField(
+        max_length=255, blank=True, null=True,
+        verbose_name='Contact secondaire (nom)',
+        help_text='Co-associé de coopérative, technicien d’usine, membre du '
+                  'comité… Aucune relance automatique ne lui est adressée.')
+    contact_secondaire_telephone = models.CharField(
+        max_length=50, blank=True, null=True,
+        verbose_name='Contact secondaire (téléphone)',
+        help_text='Numéro du second interlocuteur — jamais utilisé par la '
+                  'cadence : le contacter reste un geste manuel.')
 
     # Client (fiche structurée) résolu depuis ce lead — rempli au premier devis
     # ou manuellement ; la résolution évite les doublons (voir services.py).
@@ -635,8 +677,20 @@ class Lead(SoftDeleteModel):
 
     # Facture électrique du lead (MAD/mois). Si l'été ne diffère pas de
     # l'hiver, facture_hiver vaut pour les deux (ete_differente = False).
+    # CAD158 (décision fondateur du 21/09/2026, Q24) — le moteur lit un
+    # montant MENSUEL : une facture BIMESTRIELLE est ramenée au mois AU
+    # MOMENT DE LA SAISIE (`PERIODICITES_FACTURE`, `services.facture_au_mois`),
+    # et AUCUN champ « périodicité » n'est stocké. La question vit ICI, dans le
+    # `help_text` (« chaque champ EST le script d'appel »).
     facture_hiver = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True)
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text="Question à l'appel : « Votre facture d'électricité, elle "
+                  'est de combien ? Elle couvre un mois ou deux mois ? » — le '
+                  'montant ENREGISTRÉ est toujours MENSUEL : une facture de '
+                  'deux mois est divisée par deux à la saisie.')
+    #: CAD158 — combien de mois couvre la facture déclarée. Un montant
+    #: bimestriel est ramené au mois à la saisie ; jamais stocké tel quel.
+    PERIODICITES_FACTURE = {'mensuelle': 1, 'bimestrielle': 2}
     facture_ete = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     ete_differente = models.BooleanField(default=False)
@@ -995,8 +1049,20 @@ class Lead(SoftDeleteModel):
     meta_form_id = models.CharField(max_length=64, blank=True, null=True)
 
     # ── QK1 — Qualification captée par le site (additifs, nullable) ──
-    # Le site collecte ces signaux au moment de la capture ; ils ne doivent
-    # jamais être re-demandés au prospect par le commercial.
+    # Le site collecte ces signaux au moment de la capture. RÈGLE (décision
+    # fondateur du 21/09/2026, CAD150/CAD159) : ces champs sont TOUJOURS
+    # ÉDITABLES par la commerciale — un lead Meta, un walk-in ou un appel
+    # entrant ne les a jamais reçus du site, et l'absence de `distributeur`
+    # supprime la courbe de la proposition. La valeur venue du site reste
+    # affichée avec sa PROVENANCE (« saisie sur le site le … »,
+    # `selectors.provenance_site`), y compris après un écrasement fait en
+    # connaissance de cause ; et la QUESTION n'est jamais reposée quand le
+    # champ est rempli — elle revient pré-remplie, « à confirmer ».
+    # (Remplace l'ancienne règle « jamais re-demandés, jamais édités ».)
+    #: CAD150/CAD159 — les champs captés par le site que la fiche rend
+    #: éditables avec leur provenance. Source unique (sélecteur, écran).
+    CHAMPS_SITE = ('distributeur', 'roof_age', 'ownership', 'project_timeline',
+                   'financing_intent', 'facility_type', 'roof_type', 'bill_kwh')
     # CAD167 — la colonne passe de 12 à 20 caractères pour porter les codes
     # SRM (`srm_beni_mellal` = 15) ; élargissement pur, aucune valeur
     # existante n'est touchée.
@@ -1253,9 +1319,11 @@ class Lead(SoftDeleteModel):
         verbose_name='Objectif du projet',
         help_text="Question à l'appel : « Qu'est-ce qui compte le plus pour "
                   'vous — baisser la facture, tenir pendant les coupures, '
-                  "gagner en autonomie, injecter le surplus ? » (vide = pas "
-                  'encore posée). « Tenir pendant les coupures » est un '
-                  'ARGUMENT : aucun dimensionnement de secours n’en découle.')
+                  "gagner en autonomie ? » (vide = pas encore posée). "
+                  '« Revendre le surplus » ne se coche QUE si le client en '
+                  'parle lui-même : ce n’est jamais proposé à l’appel. '
+                  '« Tenir pendant les coupures » est un ARGUMENT : aucun '
+                  'dimensionnement de secours n’en découle.')
     decideur = models.CharField(
         max_length=20, choices=Decideur.choices, null=True, blank=True,
         verbose_name='Qui décide',

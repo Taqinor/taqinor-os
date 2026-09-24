@@ -88,9 +88,11 @@ const crmApi = {
   // Initialise (à la demande) le plan de relance d'un lead à partir de la
   // cadence par défaut de la société — idempotent PAR CADENCE (ré-appel = pas
   // de doublon). MRY15 — `payload` optionnel `{cadence}` (contact/après
-  // devis/réveil), défaut serveur = 'contact'.
-  initialiserRelance: (leadId, payload) =>
-    api.post(`/crm/leads/${leadId}/relance/initialiser/`, payload || {}),
+  // devis/réveil), défaut serveur = 'contact'. CAD51 — `config` optionnel
+  // (`suppressErrorToast`) : le 409 « confirmation requise » n'est pas une
+  // erreur à toaster, l'écran l'affiche (contrat lead_relance_initialiser).
+  initialiserRelance: (leadId, payload, config) =>
+    api.post(`/crm/leads/${leadId}/relance/initialiser/`, payload || {}, config),
   // MRY15 — frise de la fiche lead : TOUTES les étapes du lead (tous statuts,
   // toutes cadences), tri serveur cadence puis ordre (`?lead=` de MRY5).
   getRelanceEtapesLead: (leadId) =>
@@ -124,7 +126,11 @@ const crmApi = {
     api.post(`/crm/relance-etapes/${id}/annuler/`),
   // MRY13 — message rendu côté serveur (forme `relance_etape_message`) : lu
   // AVANT ouverture de WhatsApp (aperçu), jamais un envoi.
-  getRelanceEtapeMessage: (id) => api.get(`/crm/relance-etapes/${id}/message/`),
+  // CAD-A — `cle` (facultative) : le texte de RÉPONSE convenu (`stop_contact`,
+  // `rappel_plus_tard`) rendu pour le client de cette touche, même forme.
+  getRelanceEtapeMessage: (id, cle) => (cle
+    ? api.get(`/crm/relance-etapes/${id}/message/`, { params: { cle } })
+    : api.get(`/crm/relance-etapes/${id}/message/`)),
   // MRY13 — LE CLIC qui ouvre WhatsApp : marque la touche faite côté serveur
   // (jamais d'envoi réseau — décision D5).
   whatsappRelanceEtape: (id) => api.post(`/crm/relance-etapes/${id}/whatsapp/`),
@@ -134,8 +140,11 @@ const crmApi = {
   // `marquerRelanceEtapeFait` ci-dessus) : jamais un `due_at` calculé côté
   // écran depuis le fuseau du NAVIGATEUR (incident — l'heure demandée par
   // l'agent dérivait de son fuseau local, pas de Casablanca).
-  reporterRelanceEtape: (id, { rappel_le, rappel_heure }) =>
-    api.post(`/crm/relance-etapes/${id}/reporter/`, { rappel_le, rappel_heure }),
+  // CAD26 — `mode: 'veille'` (facultatif) : « Mettre en veille jusqu'au… »
+  // au lieu du décalage historique ; absent, le corps est inchangé.
+  reporterRelanceEtape: (id, { rappel_le, rappel_heure, mode }) =>
+    api.post(`/crm/relance-etapes/${id}/reporter/`,
+      mode ? { rappel_le, rappel_heure, mode } : { rappel_le, rappel_heure }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
@@ -255,6 +264,14 @@ const crmApi = {
   // 30). Lisible par TOUS les rôles (décision transparence) — aucun gate ici.
   getKpiAdherence: (params) =>
     api.get('/crm/relance-etapes/kpi-adherence/', { params }),
+  // CAD87/CAD100 — les trois mesures maison à côté de CKP3 : taux de joint
+  // par (ordre de touche × canal × heure × jour de semaine), signatures par
+  // nombre de touches consommées, part WhatsApp-seulement/darija. Forme
+  // `mesure_cadence` (contrat committé `apps/crm/contract_samples/
+  // mesure_cadence.json`, PACT10). `?jours=` (défaut serveur 90, [1, 365]).
+  // LECTURE SEULE — aucun seuil/couleur, le jugement reste humain.
+  getMesureCadence: (params) =>
+    api.get('/crm/leads/mesure-cadence/', { params }),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),
@@ -403,6 +420,67 @@ const crmApi = {
   // `cle`: 'visite_proposition' | 'visite_confirmation'.
   getMessageVisite: (leadId, cle) =>
     api.get(`/crm/leads/${leadId}/message-visite/`, { params: { cle } }),
+  // CAD63 — le message d'une touche dans la langue CHOISIE à l'aperçu
+  // (`langue`: 'fr' | 'darija'), sans toucher la fiche ; `cle` facultative
+  // (texte de réponse, comme `getRelanceEtapeMessage`). Même forme
+  // `relance_etape_message`.
+  getRelanceEtapeMessageLangue: (id, { cle, langue } = {}) => {
+    const params = {}
+    if (cle) params.cle = cle
+    if (langue) params.langue = langue
+    return api.get(`/crm/relance-etapes/${id}/message/`, { params })
+  },
+  // CAD63 — le clic « Ouvrir WhatsApp » quand la langue a été basculée à
+  // l'aperçu : le serveur vérifie le MÊME rendu que celui qui vient d'être
+  // ouvert (jamais d'envoi — décision D5).
+  whatsappRelanceEtapeLangue: (id, langue) =>
+    api.post(`/crm/relance-etapes/${id}/whatsapp/`, langue ? { langue } : {}),
+  // CAD63 — enregistre la langue du CLIENT de cette touche (`Lead.
+  // langue_preferee`) en un geste. Réponse : la touche (`relance_etape_v2`).
+  definirLangueRelanceEtape: (id, langue) =>
+    api.post(`/crm/relance-etapes/${id}/langue/`, { langue }),
+  // CAD99 — « cadences échues à clore » (sélecteur CAD75) : LECTURE PURE.
+  // `params.jours` OBLIGATOIRE (le seuil que l'écran affiche). Forme :
+  // `contract_samples/cadences_echues.json` (PACT10).
+  getCadencesEchues: (params) =>
+    api.get('/crm/relance-etapes/cadences-echues/', { params }),
+  // CAD101 — « pièce reçue » (facture / adresse / localisation) : clôt la
+  // touche (client joint), attache le document, pose « préparer le devis ».
+  // Multipart quand un fichier est joint, JSON sinon. Forme :
+  // `contract_samples/relance_piece_recue.json` (PACT10).
+  enregistrerPieceRecue: (id, { type_piece, note, fichier } = {}) => {
+    const url = `/crm/relance-etapes/${id}/piece-recue/`
+    if (fichier) {
+      const form = new FormData()
+      form.append('type_piece', type_piece)
+      if (note) form.append('note', note)
+      form.append('fichier', fichier)
+      return api.post(url, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    }
+    return api.post(url, note ? { type_piece, note } : { type_piece })
+  },
+  // CAD111 — le message de VISITE vient d'être ouvert dans WhatsApp :
+  // journalisé « ouvert » (jamais « fait ») au chatter, en best-effort APRÈS
+  // `window.open`. `payload` : {cle, langue, etape?}. Forme :
+  // `contract_samples/lead_message_visite_ouvert.json` (PACT10).
+  journaliserMessageVisiteOuvert: (leadId, payload) =>
+    api.post(`/crm/leads/${leadId}/message-visite/ouvert/`, payload),
+  // CAD152 — le PANNEAU D'APPEL GUIDÉ d'un lead : LECTURE PURE (segment,
+  // touche en cours, script rendu, questions encore à poser, pré-remplissage,
+  // drapeaux d'équipement). Aucun effet de bord, aucun « WhatsApp ouvert ».
+  // Les réponses s'écrivent par le chemin de la fiche (`updateLead`). Forme :
+  // `contract_samples/panneau_appel.json` (CAD147, PACT10).
+  getPanneauAppel: (leadId) => api.get(`/crm/leads/${leadId}/panneau-appel/`),
+  // CAD164 — le client est LOCATAIRE : ce que l'écran PROPOSE (créer la
+  // fiche du propriétaire, ou « Perdu — Locataire ») — LECTURE PURE. Forme :
+  // `contract_samples/lead_locataire.json` (PACT10).
+  getLeadLocataire: (leadId) => api.get(`/crm/leads/${leadId}/locataire/`),
+  // CAD164 — `{proprietaire: {nom, prenom?, telephone}}` crée (ou relie, s'il
+  // est déjà connu au même numéro) la fiche du propriétaire, liée au
+  // locataire ; `{proprietaire_inconnu: true}` clôt la fiche du locataire
+  // avec le motif EXISTANT « Locataire ». Chaque refus NOMME son champ. Forme :
+  // `contract_samples/lead_locataire.json` (PACT10).
+  postLeadLocataire: (leadId, payload) => api.post(`/crm/leads/${leadId}/locataire/`, payload),
 }
 
 export default crmApi

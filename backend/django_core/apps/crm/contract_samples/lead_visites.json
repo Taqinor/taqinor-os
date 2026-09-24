@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/visites/",
-  "pourquoi": "VISITE-CADENCE (fondateur 15/09/2026) : la visite technique est une ETAPE DU SUIVI COMMERCIAL, placee APRES l'envoi du devis. L'onglet « Visites » de la fiche lead lit CETTE forme, servie par apps.visites.selectors.visites_pour_lead (frontiere M3 : le CRM n'importe jamais les modeles de l'app visites). Ordre : de la plus recente a la plus ancienne. `retour_disponible` dit s'il y a du TEXTE LIBRE a lire (notes du technicien ou commentaire de photo), jamais « il existe une visite » : une pastille qui ouvrirait sur du vide serait un mensonge d'interface.",
+  "pourquoi": "VISITE-CADENCE (fondateur 15/09/2026) : la visite technique est une ETAPE DU SUIVI COMMERCIAL, placee APRES l'envoi du devis. L'onglet « Visites » de la fiche lead lit CETTE forme, servie par apps.visites.selectors.visites_pour_lead (frontiere M3 : le CRM n'importe jamais les modeles de l'app visites). Ordre : de la plus recente a la plus ancienne. `retour_disponible` dit s'il y a du TEXTE LIBRE a lire (notes du technicien ou commentaire de photo), jamais « il existe une visite » : une pastille qui ouvrirait sur du vide serait un mensonge d'interface. CAD123 (21/09/2026, TRANCHE : avertir, sans bloquer) : `avertissement_sans_devis` et `rappel_juridique` sont deux chaines VIDES (jamais null) des qu'un devis est sorti du brouillon pour ce lead ; sinon le serveur y met la REGLE (« la visite se propose apres le devis ») et l'effet de bord juridique d'une signature au domicile (loi 31-08, CAD122). L'ecran les AFFICHE a cote du bouton « Planifier la visite technique », qui reste ACTIF : la planification n'est jamais refusee pour ce motif.",
   "exemple": {
     "visites": [
       {
@@ -23,6 +23,18 @@
         "notes": "",
         "retour_disponible": false
       }
-    ]
+    ],
+    "avertissement_sans_devis": "",
+    "rappel_juridique": ""
+  },
+  "exemple_sans_devis": {
+    "visites": [],
+    "avertissement_sans_devis": "Aucun devis n’a encore été envoyé à ce client. Règle : la visite technique se propose APRÈS le devis (c’est un outil de closing). Vous pouvez la planifier quand même — elle sera signalée « sans devis » dans le suivi.",
+    "rappel_juridique": "Si le bon de commande se signe pendant la visite, chez le client : démarchage à domicile (loi 31-08, art. 45) — cocher « signé au domicile », formulaire de rétractation remis, aucun acompte encaissé avant 7 jours (art. 49 et 50)."
+  },
+  "notes": {
+    "avertissement_sans_devis": "CAD123 — texte du SERVEUR (`services.AVERTISSEMENT_VISITE_SANS_DEVIS`), '' — jamais null — des qu'un devis est sorti du brouillon (`ventes.selectors.lead_a_un_devis`). Informatif : aucun chemin de planification ne le transforme en refus.",
+    "rappel_juridique": "CAD123 × CAD122 — l'effet de bord juridique d'un bon de commande signe PENDANT la visite, chez le client (`services.RAPPEL_JURIDIQUE_VISITE_DOMICILE`). Servi avec l'avertissement, vide sinon.",
+    "suivi": "Une visite planifiee malgre l'avertissement est VISIBLE comme telle dans le suivi : la note de planification du chatter porte « Planifiée SANS devis envoyé — exception à la règle « la visite se propose après le devis ». » (`services.MENTION_VISITE_SANS_DEVIS`)."
   }
 }

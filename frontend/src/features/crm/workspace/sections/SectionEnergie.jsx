@@ -1,6 +1,39 @@
+import { useState } from 'react'
 import { FormField, Input } from '../../../../ui'
-import { getField } from '../draftCore'
+import { factureAuMois, getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
+// CAD157 — les mentions « ce que le chiffre ne compte pas » : UNE source de
+// texte (le script d'appel guidé), partagée par la fiche et le panneau.
+import { NON_COMPTE_PLAQUE, NON_COMPTE_TRANCHE_ONEE } from '../../relances/appelGuidance'
+import { ChampSite } from './SectionDivers'
+
+// CAD157 — une valeur de grandeur réellement saisie (0 compris : c'est une
+// réponse, pas un silence ; `''`/null = rien de saisi).
+const saisi = (valeur) => valeur !== '' && valeur !== null && valeur !== undefined
+
+// CAD150 — distributeur d'électricité (capté par le site, désormais éditable).
+// Sans lui la courbe de consommation disparaît de la proposition (règle M10).
+// Les libellés historiques restent choisissables pour relire une fiche ancienne.
+// source-choix: crm.Lead.distributeur
+const DISTRIBUTEURS = {
+  srm_tanger: 'SRM Tanger-Tétouan-Al Hoceïma',
+  srm_oriental: 'SRM de l’Oriental',
+  srm_fes: 'SRM Fès-Meknès',
+  srm_rabat: 'SRM Rabat-Salé-Kénitra',
+  srm_beni_mellal: 'SRM Béni Mellal-Khénifra',
+  srm_casablanca: 'SRM Casablanca-Settat',
+  srm_marrakech: 'SRM Marrakech-Safi',
+  srm_draa: 'SRM Drâa-Tafilalet',
+  srm_souss: 'SRM Souss-Massa',
+  srm_guelmim: 'SRM Guelmim-Oued Noun',
+  srm_laayoune: 'SRM Laâyoune-Sakia El Hamra',
+  srm_dakhla: 'SRM Dakhla-Oued Ed-Dahab',
+  onee: 'ONEE (historique)',
+  lydec: 'Lydec (historique)',
+  redal: 'Redal (historique)',
+  amendis: 'Amendis (historique)',
+  autre: 'Autre (historique)',
+}
 
 // OFFGRID (ajout produit onduleur hors réseau, backend crm.Lead.Raccordement.
 // AUCUN = 'aucun') — site jamais raccordé au réseau ONEE : dérive le devis en
@@ -40,18 +73,56 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const eteDifferente = !!getField(state, 'ete_differente')
   const regularisation = !!getField(state, 'regularisation_8221')
+  // CAD158 — « elle couvre un mois ou deux mois ? » : sur deux mois, la
+  // commerciale tape le montant de la FACTURE et c'est le montant MENSUEL
+  // (÷ 2) qui part au serveur — et qui s'affiche, pour qu'elle voie ce qui
+  // est enregistré. Rien n'est stocké sur la période (décision Q24).
+  // Le choix vaut pour CE lead seulement : naviguer vers un autre lead le
+  // remet à « 1 mois » (état keyé par `leadId`, sans effet de bord).
+  const [saisiePeriode, setSaisiePeriode] = useState({ leadId: state.leadId, periodicite: 'mensuelle', montants: {} })
+  const memeLead = saisiePeriode.leadId === state.leadId
+  const periodicite = memeLead ? saisiePeriode.periodicite : 'mensuelle'
+  const montantsFacture = memeLead ? saisiePeriode.montants : {}
+  const setPeriodicite = (p) => setSaisiePeriode({ leadId: state.leadId, periodicite: p, montants: {} })
+  const setMontantsFacture = (maj) => setSaisiePeriode((s) => ({
+    leadId: state.leadId,
+    periodicite: s.leadId === state.leadId ? s.periodicite : 'mensuelle',
+    montants: maj(s.leadId === state.leadId ? s.montants : {}),
+  }))
+  const bimestrielle = periodicite === 'bimestrielle'
+  const valeurFacture = (champ) => (bimestrielle ? (montantsFacture[champ] ?? '') : v(champ))
+  const saisirFacture = (champ, brut) => {
+    if (!bimestrielle) { setField(champ, brut); return }
+    setMontantsFacture((m) => ({ ...m, [champ]: brut }))
+    setField(champ, factureAuMois(brut, periodicite))
+  }
+  const indiceMensuel = (champ) => (bimestrielle && v(champ) !== ''
+    ? `Enregistré au mois : ${v(champ)} MAD/mois`
+    : undefined)
   return (
     <>
       <div className="form-row">
         <FormField
-          label={eteDifferente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)'}
+          label={bimestrielle
+            ? `${eteDifferente ? 'Facture Hiver' : 'Facture'} — montant pour 2 mois (MAD)`
+            : (eteDifferente ? 'Facture Hiver (MAD/mois)' : 'Facture mensuelle (MAD/mois)')}
           htmlFor="lf-facture-hiver"
           error={errors.facture_hiver}
+          hint={indiceMensuel('facture_hiver')}
         >
           <Input
             id="lf-facture-hiver" type="number" step="any" placeholder="ex: 650" invalid={!!errors.facture_hiver}
-            value={v('facture_hiver')} onChange={(e) => setField('facture_hiver', e.target.value)}
+            value={valeurFacture('facture_hiver')} onChange={(e) => saisirFacture('facture_hiver', e.target.value)}
           />
+        </FormField>
+        <FormField label="La facture couvre" htmlFor="lf-facture-periode" error={errors.facture_periodicite}>
+          <select
+            id="lf-facture-periode" className="form-select" value={periodicite}
+            onChange={(e) => setPeriodicite(e.target.value)}
+          >
+            <option value="mensuelle">1 mois</option>
+            <option value="bimestrielle">2 mois (montant ramené au mois)</option>
+          </select>
         </FormField>
         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
           <label className="pdf-toggle">
@@ -63,10 +134,13 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
           </label>
         </div>
         {eteDifferente && (
-          <FormField label="Facture Été (MAD/mois)" htmlFor="lf-facture-ete" error={errors.facture_ete}>
+          <FormField
+            label={bimestrielle ? 'Facture Été — montant pour 2 mois (MAD)' : 'Facture Été (MAD/mois)'}
+            htmlFor="lf-facture-ete" error={errors.facture_ete} hint={indiceMensuel('facture_ete')}
+          >
             <Input
               id="lf-facture-ete" type="number" step="any" placeholder="ex: 420" invalid={!!errors.facture_ete}
-              value={v('facture_ete')} onChange={(e) => setField('facture_ete', e.target.value)}
+              value={valeurFacture('facture_ete')} onChange={(e) => saisirFacture('facture_ete', e.target.value)}
             />
           </FormField>
         )}
@@ -78,7 +152,11 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
             value={v('conso_mensuelle_kwh')} onChange={(e) => setField('conso_mensuelle_kwh', e.target.value)}
           />
         </FormField>
-        <FormField label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}>
+        {/* CAD157 — texte libre qu'AUCUN calcul ne lit : la fiche le dit. */}
+        <FormField
+          label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}
+          hint={NON_COMPTE_TRANCHE_ONEE}
+        >
           <Input
             id="lf-tranche-onee" invalid={!!errors.tranche_onee}
             value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
@@ -103,6 +181,34 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
             <span>Installation existante à régulariser ? (82-21)</span>
           </label>
         </div>
+      </div>
+      {/* CAD150 — captés par le site, TOUJOURS éditables : « à confirmer »
+          tant qu'une valeur du site n'a pas été reprise explicitement. */}
+      <div className="form-row">
+        <ChampSite
+          state={state} champ="distributeur" label="Distributeur d'électricité" htmlFor="lf-distributeur"
+          error={errors.distributeur}
+          renderControl={() => (
+            <select
+              id="lf-distributeur"
+              className={errors.distributeur ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.distributeur ? true : undefined}
+              value={v('distributeur')} onChange={(e) => setField('distributeur', e.target.value)}
+            >
+              {enumOptions(DISTRIBUTEURS)}
+            </select>
+          )}
+        />
+        <ChampSite
+          state={state} champ="bill_kwh" label="Consommation déclarée sur le site (kWh)" htmlFor="lf-bill-kwh"
+          error={errors.bill_kwh}
+          renderControl={() => (
+            <Input
+              id="lf-bill-kwh" type="number" step="any" invalid={!!errors.bill_kwh}
+              value={v('bill_kwh')} onChange={(e) => setField('bill_kwh', e.target.value)}
+            />
+          )}
+        />
       </div>
     </>
   )
@@ -156,6 +262,12 @@ const AUTRES_QUESTIONS_APPEL = [
   { label: "L'été est différent de l'hiver ?", section: 'energie', field: 'lf-facture-hiver' },
 ]
 
+// CAD157 — sous chaque champ de PUISSANCE d'un équipement déclaré : « pas
+// compté tant que la puissance manque ». La condition suit la règle de
+// composition du serveur (`apps/ventes/courbes_journalieres.py::_equipements`
+// — piscine : puissance de pompe ; clim : puissance OU nombre de pièces ;
+// chauffe-eau : puissance), sans rien calculer ici ; le panneau d'appel, lui,
+// lit le drapeau SERVI (`panneau_appel.equipements[].compte_dans_etude`).
 export function SectionEquipements({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const piscine = getField(state, 'equip_piscine')
@@ -192,6 +304,7 @@ export function SectionEquipements({ state, setField, errors = {} }) {
             label="Puissance de la pompe de filtration (kW)"
             htmlFor="lf-equip-piscine-kw"
             error={errors.equip_piscine_pompe_kw}
+            hint={saisi(v('equip_piscine_pompe_kw')) ? undefined : NON_COMPTE_PLAQUE}
           >
             <Input
               id="lf-equip-piscine-kw" type="number" step="any" invalid={!!errors.equip_piscine_pompe_kw}
@@ -315,6 +428,8 @@ export function SectionEquipements({ state, setField, errors = {} }) {
           <FormField
             label="Puissance totale climatisation (kW)" htmlFor="lf-equip-clim-kw"
             error={errors.equip_clim_kw}
+            hint={saisi(v('equip_clim_kw')) || saisi(v('equip_clim_pieces'))
+              ? undefined : NON_COMPTE_PLAQUE}
           >
             <Input
               id="lf-equip-clim-kw" type="number" step="any" placeholder="ex: 2.8" invalid={!!errors.equip_clim_kw}
@@ -355,6 +470,7 @@ export function SectionEquipements({ state, setField, errors = {} }) {
           <FormField
             label="Puissance chauffe-eau (kW)" htmlFor="lf-equip-chauffe-eau-kw"
             error={errors.equip_chauffe_eau_kw}
+            hint={saisi(v('equip_chauffe_eau_kw')) ? undefined : NON_COMPTE_PLAQUE}
           >
             <Input
               id="lf-equip-chauffe-eau-kw" type="number" step="any" placeholder="ex: 2.4"

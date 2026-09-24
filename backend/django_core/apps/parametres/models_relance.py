@@ -197,6 +197,15 @@ CADENCE_CONTACT_DEFAUT = [
 # les phrases de l'écran lisibles (CAD46-CAD48) couvre le besoin ressenti.
 # La question se rouvrira sur les CHIFFRES de CAD87, jamais sur une intuition.
 # Cette note existe pour qu'un futur audit ne la re-soulève pas.
+#
+# CAD98 (23/09/2026) — les trois « Appel de suivi » (ordres 2, 6 et 8 : J2,
+# J7, J11) portaient `template_cle` vide : 30 % des touches après devis ne
+# donnaient ni question ni phrase d'ouverture, alors que la cadence contact
+# en a une pour chacun de ses appels (CAD67). Chacun reçoit un script court
+# dédié (`appel_suivi_j2`/`_j7`/`_j11`). Garde-fou : aucun barreau ajouté,
+# retiré ni déplacé — seules les trois clés de gabarit changent. Comme pour
+# CAD67, ces défauts ne valent que pour les barreaux SEEDÉS après ce lot :
+# `seed_cadence` ne retouche jamais un barreau existant.
 CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 1, 'delai_jours': 1, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
@@ -205,7 +214,7 @@ CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 2, 'delai_jours': 2, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
-     'template_cle': '', 'dimanche_ok': False},
+     'template_cle': 'appel_suivi_j2', 'dimanche_ok': False},
     {'ordre': 3, 'delai_jours': 3, 'delai_minutes': 0,
      'heure_cible': datetime.time(16, 0),
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dimanche famille',
@@ -221,7 +230,7 @@ CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 6, 'delai_jours': 7, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
-     'template_cle': '', 'dimanche_ok': False},
+     'template_cle': 'appel_suivi_j7', 'dimanche_ok': False},
     {'ordre': 7, 'delai_jours': 9, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Validité de la proposition',
@@ -229,7 +238,7 @@ CADENCE_APRES_DEVIS_DEFAUT = [
     {'ordre': 8, 'delai_jours': 11, 'delai_minutes': 0,
      'heure_cible': CRENEAU_APPEL,
      'canal': CanalRelance.APPEL, 'libelle': 'Appel de suivi',
-     'template_cle': '', 'dimanche_ok': False},
+     'template_cle': 'appel_suivi_j11', 'dimanche_ok': False},
     {'ordre': 9, 'delai_jours': 13, 'delai_minutes': 0,
      'heure_cible': CRENEAU_MESSAGE,
      'canal': CanalRelance.WHATSAPP, 'libelle': 'Dernier message',

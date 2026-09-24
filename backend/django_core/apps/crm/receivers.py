@@ -38,6 +38,7 @@ from .services import (
     avancer_stage_new_vers_contacted,
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
+    est_cloture_d_etape_visite,
     est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
@@ -595,8 +596,12 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
             # touche : message répondu → l'appeler ; appel fait → préparer
             # et envoyer le devis. Le plan après-devis, lui, ne démarre qu'à
             # l'ENVOI du devis (jamais sur un brouillon).
+            # CAD2 — la clôture d'une étape de VISITE (débrief, confirmation,
+            # devis modifié) ne DÉMARRE jamais le suivi de proposition : le
+            # filet le poursuit s'il a déjà servi, sinon il pose son étape.
             assurer_prochaine_etape_apres_succes(
-                instance.lead, instance.user, canal_touche=instance.kind)
+                instance.lead, instance.user, canal_touche=instance.kind,
+                demarrer_plan=not est_cloture_d_etape_visite(instance))
         elif issue == 'refuse':
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,

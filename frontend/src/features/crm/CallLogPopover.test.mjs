@@ -27,8 +27,14 @@ test('VX87 : le popover appelle crmApi.logInteraction (ressuscite le site d\'app
 // geste, mais elle n'écrase plus en silence : l'écriture est conditionnée par
 // `ecrasera` (vrai seulement s'il n'y avait pas de relance, ou si l'utilisateur
 // a explicitement choisi « Remplacer »).
-test('VX87/EZ1 : la « prochaine action » pose relance_date via updateLead dans le MÊME geste', () => {
-  assert.match(SRC, /if \(ecrasera\) \{\s*\n\s*await crmApi\.updateLead\(leadId, \{ relance_date: dateRelance \}\)/)
+// CAD156 — l'heure convenue voyage AVEC la date dans ce même PATCH
+// (`relance_heure`, seulement si renseignée) : toujours UN seul appel
+// `crmApi.updateLead`, jamais un second round-trip pour l'heure.
+test('VX87/EZ1 : la « prochaine action » pose relance_date (et relance_heure, CAD156) via updateLead dans le MÊME geste', () => {
+  assert.match(
+    SRC,
+    /if \(ecrasera\) \{[\s\S]{0,200}?await crmApi\.updateLead\(leadId, heureRelance[\s\S]{0,120}?\{ relance_date: dateRelance, relance_heure: heureRelance \}[\s\S]{0,60}?\{ relance_date: dateRelance \}\)/,
+  )
 })
 
 test('VX87 : les 5 issues OUTCOME_LABELS (hors clé vide) sont proposées comme choix', () => {

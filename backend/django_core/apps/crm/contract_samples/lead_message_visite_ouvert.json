@@ -1,0 +1,19 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/message-visite/ouvert/",
+  "pourquoi": "CAD111 (PACT10) — le message qui PROPOSE la visite (le plus décisif du suivi) partait sans laisser aucune trace : la modale faisait `window.open(wa)` sans le moindre appel serveur, rien n'apparaissait au chatter, et le panneau « Fait » de la touche faisait ensuite cocher l'aveu FAUX « marquée faite sans avoir ouvert le message ». Ce POST jumeau de la lecture `message-visite` est appelé en best-effort APRÈS `window.open` (même patron que la touche WhatsApp) : il journalise « WhatsApp ouvert » (tentative, premier contact, AuditLog) et JAMAIS « fait » — aucune issue, aucune touche avancée. Corps : `{cle: visite_proposition|visite_confirmation, langue: fr|darija, etape?}` ; `etape` (une touche à faire de CE lead) rattache l'ouverture à la touche, que son panneau « Fait » reconnaît (préfixe RLC3). Refus 400 `{\"erreurs\": {champ: …}}` nommant `cle`, `langue` ou `etape`.",
+  "exemple": {
+    "journalise": true,
+    "cle": "visite_proposition",
+    "langue": "darija",
+    "etape": 418
+  },
+  "exemple_sans_touche": {
+    "journalise": true,
+    "cle": "visite_confirmation",
+    "langue": "fr",
+    "etape": null
+  },
+  "notes": {
+    "permissions": "`IsResponsableOrAdmin` (il ÉCRIT au chatter), listée dans `LeadViewSet.get_permissions`."
+  }
+}

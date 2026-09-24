@@ -41,15 +41,35 @@ const fieldLabels = {
   priorite: { label: 'Priorité', section: 'pipeline', inputId: 'lf-priorite' },
   canal: { label: 'Canal', section: 'pipeline', inputId: 'lf-canal' },
   langue_preferee: { label: 'Langue préférée', section: 'pipeline', inputId: 'lf-langue-preferee' },
+  // CAD65 — libellé = `verbose_name` serveur (apps/crm/models.py).
+  civilite: { label: 'Civilité', section: 'pipeline', inputId: 'lf-civilite' },
   tags: { label: 'Tags (séparés par des virgules)', section: 'pipeline', inputId: 'lf-tags' },
   motif_perte: { label: 'Motif de perte', section: 'pipeline', inputId: 'lf-motif-perte' },
+  // CAD150 — le contrôle qui manquait à `contact_preference`.
+  contact_preference: {
+    label: 'Préférence de contact', section: 'pipeline', inputId: 'lf-contact-preference',
+  },
+  // CAD144 — libellés = `verbose_name` serveur (apps/crm/models.py).
+  contact_secondaire_nom: {
+    label: 'Contact secondaire (nom)', section: 'pipeline', inputId: 'lf-contact-secondaire-nom',
+  },
+  contact_secondaire_telephone: {
+    label: 'Contact secondaire (téléphone)', section: 'pipeline', inputId: 'lf-contact-secondaire-tel',
+  },
 
   // ── Profil énergétique (energie) ──────────────────────────────────────
   facture_hiver: { label: 'Facture mensuelle (MAD/mois)', section: 'energie', inputId: 'lf-facture-hiver' },
   facture_ete: { label: 'Facture Été (MAD/mois)', section: 'energie', inputId: 'lf-facture-ete' },
+  // CAD158 — la période de la facture (jamais stockée : le montant est
+  // ramené au mois) ; clé = celle du refus serveur, contrat
+  // `lead_facture_periodicite`.
+  facture_periodicite: { label: 'La facture couvre', section: 'energie', inputId: 'lf-facture-periode' },
   conso_mensuelle_kwh: { label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
   tranche_onee: { label: 'Tarif / tranche ONEE', section: 'energie', inputId: 'lf-tranche-onee' },
   raccordement: { label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },
+  // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
+  distributeur: { label: "Distributeur d'électricité", section: 'energie', inputId: 'lf-distributeur' },
+  bill_kwh: { label: 'Consommation déclarée sur le site (kWh)', section: 'energie', inputId: 'lf-bill-kwh' },
 
   // ── Questionnaire d'appel (equipements) ───────────────────────────────
   occupation_jour: {
@@ -122,6 +142,96 @@ const fieldLabels = {
 
   // ── Compléments ────────────────────────────────────────────────────────
   note: { label: 'Note générale', section: 'divers', inputId: 'lf-note' },
+  // CAD150 — qualification captée par le site, éditable (CHAMPS_SITE).
+  ownership: { label: "Statut d'occupation", section: 'divers', inputId: 'lf-ownership' },
+  financing_intent: { label: 'Financement envisagé', section: 'divers', inputId: 'lf-financing-intent' },
+  project_timeline: { label: 'Horizon du projet', section: 'divers', inputId: 'lf-project-timeline' },
+  facility_type: { label: 'Type de site (pro)', section: 'divers', inputId: 'lf-facility-type' },
+  roof_type: { label: 'Type de toiture (site)', section: 'divers', inputId: 'lf-roof-type' },
+  roof_age: { label: 'Âge de la toiture (ans)', section: 'divers', inputId: 'lf-roof-age' },
+
+  // ── Vague 1 du script d'appel guidé (CAD149/CAD174) ───────────────────
+  // Libellé = EXACTEMENT le `verbose_name` du champ côté serveur
+  // (`apps/crm/models.py`) — garde-fou de la tâche : l'écran et le
+  // `help_text` (la question orale) doivent dire la MÊME chose. `pending`
+  // = ces champs sont saisis par `PanneauScriptAppel.jsx` (CAD152/153, hors
+  // périmètre de cette lane), pas encore par un `<FormField htmlFor>` des
+  // six sections classiques — `inputId` est le nom RÉSERVÉ que cet écran
+  // futur doit reprendre tel quel. Un champ marqué `pending` est EXEMPTÉ de
+  // la garde « pas de fantôme » de `fieldLabels.test.jsx` ; retirer `pending`
+  // dès que son `<FormField>` existe quelque part dans les six sections.
+  type_bien: {
+    label: 'Type de bien', section: 'toiture', inputId: 'lf-type-bien',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  objectif_projet: {
+    label: 'Objectif du projet', section: 'pipeline', inputId: 'lf-objectif-projet',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  decideur: {
+    label: 'Qui décide', section: 'pipeline', inputId: 'lf-decideur',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  devis_concurrents: {
+    label: 'Autres devis en cours', section: 'pipeline', inputId: 'lf-devis-concurrents',
+    pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  equip_ve_statut: {
+    label: 'Véhicule électrique — déjà là ou prévu ?', section: 'equipements',
+    inputId: 'lf-equip-ve-statut', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  pompage_heures_jour: {
+    label: 'Pompage — heures par jour', section: 'pompage',
+    inputId: 'lf-pompage-heures-jour', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  pompe_alim_actuelle: {
+    label: 'Pompe actuelle — alimentation', section: 'pompage',
+    inputId: 'lf-pompe-alim-actuelle', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  carburant_litres_mois: {
+    label: 'Carburant consommé (litres/mois)', section: 'pompage',
+    inputId: 'lf-carburant-litres-mois', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+
+  // CAD153 — la garde « tout champ écrit par le panneau d'appel, et tout
+  // champ neuf du script guidé, a son entrée ». Deux familles, même règle
+  // `pending` que ci-dessus (libellé = `verbose_name` serveur) :
+  //   · les colonnes ANCIENNES que le panneau écrit sans qu'aucun
+  //     `<FormField htmlFor>` ne les porte (la case « été différent » de
+  //     SectionEnergie n'a pas d'id). Le statut d'occupation (`ownership`)
+  //     n'est plus `pending` : CAD150 lui a donné son `<FormField
+  //     htmlFor="lf-ownership">` (SectionDivers, « Qualification (site ou
+  //     appel) ») — son entrée vit plus haut, section `divers` ;
+  //   · la VAGUE 2 (CAD154) : six colonnes posées au serveur dont la moitié
+  //     écran n'avait jamais été déclarée (le même geste que CAD174).
+  ete_differente: {
+    label: 'L’été est différent de l’hiver ?', section: 'energie',
+    inputId: 'lf-ete-differente', pending: 'PanneauScriptAppel (CAD152/153)',
+  },
+  nb_personnes_foyer: {
+    label: 'Nombre de personnes au foyer', section: 'equipements',
+    inputId: 'lf-nb-personnes-foyer', pending: 'vague 2 (CAD154)',
+  },
+  budget_client_mad: {
+    label: 'Budget annoncé par le client (MAD)', section: 'pipeline',
+    inputId: 'lf-budget-client-mad', pending: 'vague 2 (CAD154)',
+  },
+  frein_principal: {
+    label: 'Frein principal', section: 'pipeline',
+    inputId: 'lf-frein-principal', pending: 'vague 2 (CAD154)',
+  },
+  declencheur: {
+    label: 'Ce qui a accroché', section: 'pipeline',
+    inputId: 'lf-declencheur', pending: 'vague 2 (CAD154)',
+  },
+  compteur_puissance_kva: {
+    label: 'Puissance souscrite du compteur (kVA)', section: 'energie',
+    inputId: 'lf-compteur-puissance-kva', pending: 'vague 2 (CAD154)',
+  },
+  chauffage_electrique_hiver: {
+    label: 'Chauffage électrique en hiver', section: 'equipements',
+    inputId: 'lf-chauffage-electrique-hiver', pending: 'vague 2 (CAD154)',
+  },
 }
 
 export default fieldLabels

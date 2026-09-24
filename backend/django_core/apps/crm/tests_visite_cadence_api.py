@@ -17,6 +17,8 @@ Ce qui est prouvé :
   visites de son dossier même s'il n'est pas le commercial assigné.
 """
 import datetime
+import json
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -90,7 +92,12 @@ class ListeVisitesTests(VisiteApiBase):
             commercial=self.commerciale, notes='Portail bleu')
         reponse = self.api.get(self._url(self.URL))
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(list(reponse.data), ['visites'])
+        # CAD123 — EXACTEMENT les clés du contrat committé (l'avertissement
+        # « visite sans devis » et son rappel juridique compris).
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_visites.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(reponse.data), sorted(contrat['exemple']))
         ligne = reponse.data['visites'][0]
         self.assertEqual(
             sorted(ligne),
@@ -102,7 +109,7 @@ class ListeVisitesTests(VisiteApiBase):
     def test_un_lead_sans_visite_rend_une_liste_vide(self):
         reponse = self.api.get(self._url(self.URL))
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(reponse.data, {'visites': []})
+        self.assertEqual(reponse.data['visites'], [])
 
     def test_isolation_societe(self):
         VisiteTerrain.objects.create(
@@ -229,7 +236,12 @@ class MessageVisiteApiTests(VisiteApiBase):
         reponse = self.api.get(
             self._url(self.URL) + '?cle=visite_confirmation')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertEqual(sorted(reponse.data), ['corps_darija', 'corps_fr'])
+        # CAD111 — les deux corps + les liens wa.me construits par le serveur
+        # et le numéro : EXACTEMENT les clés du contrat committé.
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_message_visite.json').read_text(encoding='utf-8'))
+        self.assertEqual(set(reponse.data), set(contrat['exemple']))
         self.assertIn('mardi 22 septembre', reponse.data['corps_fr'])
 
     def test_la_proposition_ne_reclame_aucune_date(self):

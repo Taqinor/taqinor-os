@@ -21,6 +21,8 @@ import StageControl from './StageControl'
 import { STATUT_DEVIS } from './DevisTab'
 import { CANAL_LABELS, latestDevisTotal, formatMAD } from '../stages'
 import { getField } from './draftCore'
+// CAD152 — le panneau d'appel guidé : « Appeler » l'ouvre AVANT de composer.
+import PanneauScriptAppel from '../relances/PanneauScriptAppel'
 
 // LW15 — Date locale « YYYY-MM-DD » depuis l'objet Date du DatePicker (jamais
 // via toISOString → pas de décalage UTC, cf. classe de bug LW5).
@@ -51,6 +53,9 @@ const ECHANGE_KINDS = new Set(['note', 'appel', 'email'])
 // mutations passent par onAction (routé leaveGuard par le shell) — jamais de
 // navigation/patch direct ici. Les liens tel:/wa.me et l'ouverture de la fiche
 // client (nouvel onglet) n'altèrent pas le lead → hors garde de sortie.
+// CAD152 — seule exception documentée : le panneau d'appel guidé écrit une
+// réponse par le chemin de la fiche (PATCH, erreur sous le champ) puis
+// demande `onAction('refresh')`, pour que le brouillon relise le serveur.
 //
 // Extensions onAction que le shell doit câbler (au-delà du contrat existant) :
 //   'set-field' { key, value } → setField(key, value)  (responsable, relance)
@@ -253,8 +258,18 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const openWhatsApp = () => {
     if (waPhone) window.open(`https://wa.me/${waPhone}`, '_blank', 'noopener')
   }
-  const call = () => {
+  const composer = () => {
     if (callPhone) window.location.href = `tel:${callPhone}`
+  }
+  // CAD152 — les deux `tel:` du rail (lien du numéro, « Appeler » du menu)
+  // ouvrent d'abord le panneau d'appel guidé : script, questions encore à
+  // poser, écriture par le chemin de la fiche. On compose DEPUIS le panneau.
+  // Sans fiche enregistrée (création), rien à charger : on compose.
+  const [panneauAppel, setPanneauAppel] = useState(false)
+  const call = () => {
+    if (!callPhone) return
+    if (leadId) setPanneauAppel(true)
+    else composer()
   }
 
   return (
@@ -352,7 +367,14 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       {(callPhone || email || hasGps) && (
         <div className="lw-rail-contact">
           {callPhone && (
-            <a className="lw-rail-contact-link" href={`tel:${callPhone}`}>
+            <a
+              className="lw-rail-contact-link" href={`tel:${callPhone}`}
+              onClick={(e) => {
+                if (!leadId) return
+                e.preventDefault()
+                setPanneauAppel(true)
+              }}
+            >
               ☎ {callPhone}
             </a>
           )}
@@ -630,6 +652,25 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         </DropdownMenu>
       </div>
     </aside>
+
+    {/* CAD152 — le panneau d'appel guidé, portalisé hors du rail (288 px :
+        trop étroit pour un script et ses questions). Une réponse écrite
+        rafraîchit la fiche par le moteur (`onAction('refresh')`) : le
+        brouillon relit la valeur et le score recalculés par le serveur. */}
+    {panneauAppel && leadId && (
+      <Dialog open onOpenChange={(o) => { if (!o) setPanneauAppel(false) }}>
+        <DialogContent className="lw-appel-dialog" aria-describedby={undefined}>
+          <DialogTitle>Appel — {nom}</DialogTitle>
+          <PanneauScriptAppel
+            mode="fiche"
+            leadId={leadId}
+            telephone={callPhone}
+            onComposer={composer}
+            onLeadEcrit={() => onAction('refresh')}
+          />
+        </DialogContent>
+      </Dialog>
+    )}
 
     {/* Dialog de fusion des doublons (LW18) — portalisé hors du rail. */}
     {dupOpen && (

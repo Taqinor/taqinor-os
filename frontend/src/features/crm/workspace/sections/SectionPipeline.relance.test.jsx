@@ -33,6 +33,7 @@ vi.mock('../../../../ui/confirm', () => ({
 }))
 
 import crmApi from '../../../../api/crmApi'
+import { toast } from '../../../../ui/confirm'
 
 afterEach(() => {
   cleanup()
@@ -69,13 +70,12 @@ describe('SectionPipeline — « Relancer / Arrêter la cadence » (MRY15)', () 
     await user.click(screen.getByTestId('lf-relance-cadence'))
 
     expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(1)
-    expect(crmApi.initialiserRelance).toHaveBeenCalledWith(77, { cadence: 'contact' })
-    // La promesse de l'appel passe bien PAR toastPromise (jamais un
-    // toast.success manuel à côté) — avec des messages FR honnêtes.
-    await waitFor(() => expect(toastPromiseMock).toHaveBeenCalledTimes(1))
-    const [, messages] = toastPromiseMock.mock.calls[0]
-    expect(messages.success).toMatch(/relancée/i)
-    expect(messages.error).toMatch(/impossible/i)
+    // CAD51 — le 409 « confirmation requise » est affiché par l'écran, jamais
+    // toasté par le pont global : l'appel porte `suppressErrorToast`.
+    expect(crmApi.initialiserRelance).toHaveBeenCalledWith(
+      77, { cadence: 'contact' }, { suppressErrorToast: true })
+    await waitFor(() => expect(toast.success).toHaveBeenCalledTimes(1))
+    expect(toast.success.mock.calls[0][0]).toMatch(/relancée/i)
   })
 
   it('un échec serveur (403/500) sur « Relancer » ne casse pas l\'écran — le bouton redevient cliquable', async () => {
@@ -89,6 +89,9 @@ describe('SectionPipeline — « Relancer / Arrêter la cadence » (MRY15)', () 
     await waitFor(() => expect(crmApi.initialiserRelance).toHaveBeenCalledTimes(1))
     // Pas d'exception non attrapée : le bouton reste dans le DOM, redevient actif.
     await waitFor(() => expect(screen.getByTestId('lf-relance-cadence')).not.toBeDisabled())
+    // Le toast global étant coupé, l'écran dit lui-même l'échec (en français).
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    expect(toast.error.mock.calls[0][0]).toMatch(/impossible/i)
   })
 
   it('« Arrêter la cadence » exige un motif puis appelle crmApi.arreterCadence', async () => {

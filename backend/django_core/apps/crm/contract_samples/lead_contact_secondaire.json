@@ -1,0 +1,25 @@
+{
+  "endpoint": "PATCH /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD144 (PACT10) — un achat de coopérative ou un comité industriel a PLUSIEURS interlocuteurs (co-associé, technicien d'usine), et le lead n'en portait qu'un. Deux colonnes LIBRES sur la fiche — `contact_secondaire_nom`, `contact_secondaire_telephone` — éditées depuis le Suivi commercial (SectionPipeline) et servies par le sérialiseur de lead (`fields = '__all__'`). AUCUNE automatisation : aucune cadence, aucun message, aucune dédup ne lit ces colonnes — joindre ce second contact reste un geste MANUEL. Le téléphone est une PII (`LEAD_PII_FIELDS`) : `null` et non modifiable pour un rôle sans `client_pii_voir`, exactement comme le numéro principal. Le document décrit le CORPS envoyé et les champs relus ; la réponse complète est celle du sérialiseur de lead (`forme_serveur: partielle`).",
+  "corps": {
+    "contact_secondaire_nom": "Hassan Ouazzani (co-associé)",
+    "contact_secondaire_telephone": "0661223344"
+  },
+  "exemple": {
+    "id": 1490,
+    "contact_secondaire_nom": "Hassan Ouazzani (co-associé)",
+    "contact_secondaire_telephone": "0661223344",
+    "pii_masked": false
+  },
+  "exemple_pii_masquee": {
+    "id": 1490,
+    "contact_secondaire_nom": "Hassan Ouazzani (co-associé)",
+    "contact_secondaire_telephone": null,
+    "pii_masked": true
+  },
+  "notes": {
+    "vide": "Colonnes nullables : `null` tant que rien n'est saisi (l'écran envoie `null` pour un champ vidé, comme pour tout champ du lead).",
+    "aucune_cadence": "Garde testée (`tests_cad144_contact_secondaire.py`) : un lead dont le SEUL numéro est celui du contact secondaire n'a aucun numéro joignable pour la cadence (`cadence_temps.numero_joignable` → ''), ne démarre aucune prise de contact, et n'est pas retrouvé par la dédup téléphone."
+  }
+}

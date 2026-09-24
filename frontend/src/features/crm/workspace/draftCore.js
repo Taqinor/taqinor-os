@@ -23,6 +23,8 @@ export const TRACKED_KEYS = [
   'ville', 'gps_lat', 'gps_lng',
   // Suivi commercial
   'stage', 'owner', 'canal', 'contact_preference', 'priorite', 'langue_preferee',
+  // CAD65 — la civilité (facultative) décide de la salutation des messages.
+  'civilite',
   'tags', 'motif_perte', 'perdu', 'relance_date', 'type_installation',
   'montant_estime', 'date_cloture_prevue',
   // Énergie
@@ -57,6 +59,25 @@ export const TRACKED_KEYS = [
   'visite_prevue_le', 'visite_effectuee', 'visite_notes',
   // Divers
   'note', 'custom_data',
+  // CAD149/CAD174 — vague 1 du script d'appel guidé (audit L3 du
+  // 21/09/2026, huit champs CONFIRMÉS TELS QUELS par la décision fondateur
+  // du 21/09/2026, CAD160). `help_text` de chaque champ (apps/crm/models.py)
+  // EST la question orale — la question n'est PAS recopiée ici, l'écran la
+  // lit depuis fieldLabels.js. Saisis principalement par
+  // `PanneauScriptAppel.jsx` (CAD152/153, hors périmètre de cette lane) ;
+  // déclarés ici pour que le brouillon de fiche les suive quand même s'ils
+  // sont un jour édités depuis la fiche classique.
+  'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',
+  'equip_ve_statut', 'pompage_heures_jour', 'pompe_alim_actuelle',
+  'carburant_litres_mois',
+  // CAD144 — contact SECONDAIRE (coopérative, comité industriel) : champ
+  // libre du Suivi commercial, qu'aucune cadence ne lit (contrat
+  // `lead_contact_secondaire`).
+  'contact_secondaire_nom', 'contact_secondaire_telephone',
+  // CAD150/CAD159 — les champs CAPTÉS PAR LE SITE deviennent éditables
+  // (décision fondateur du 21/09/2026) : voir CHAMPS_SITE plus bas.
+  'distributeur', 'bill_kwh', 'ownership', 'financing_intent',
+  'project_timeline', 'facility_type', 'roof_type', 'roof_age',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -159,11 +180,19 @@ export function isSuggested(state, key) {
 export const SECTION_FIELDS = {
   contact: ['nom', 'prenom', 'societe', 'email', 'telephone', 'whatsapp',
     'adresse', 'ville', 'gps_lat', 'gps_lng'],
+  // CAD149/CAD174 — `objectif_projet`/`decideur`/`devis_concurrents`
+  // rejoignent le pipeline (questions de qualification commerciale, comme
+  // priorité/tags), jamais l'énergie (elles ne chiffrent rien).
   pipeline: ['owner', 'canal', 'contact_preference', 'priorite',
-    'langue_preferee', 'tags', 'motif_perte', 'relance_date',
-    'type_installation', 'montant_estime', 'date_cloture_prevue'],
+    'langue_preferee', 'civilite', 'tags', 'motif_perte', 'relance_date',
+    'type_installation', 'montant_estime', 'date_cloture_prevue',
+    'objectif_projet', 'decideur', 'devis_concurrents',
+    // CAD144 — le second interlocuteur (saisie libre, aucune automatisation).
+    'contact_secondaire_nom', 'contact_secondaire_telephone'],
   energie: ['facture_hiver', 'facture_ete', 'ete_differente',
-    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221'],
+    'conso_mensuelle_kwh', 'tranche_onee', 'raccordement', 'regularisation_8221',
+    // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
+    'distributeur', 'bill_kwh'],
   // L4 — questionnaire d'appel (occupation + équipements piscine/VE/clim/
   // chauffe-eau). Les questions déjà couvertes par d'autres sections
   // (raccordement, factures) ne sont PAS dupliquées ici — voir la référence
@@ -175,13 +204,28 @@ export const SECTION_FIELDS = {
     'equip_ve_chargeur_kw', 'equip_ve_creneau',
     'equip_clim_kw',
     'equip_piscine_heures_jour',
-    'equip_clim_creneau', 'equip_piscine_creneau'],
-  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h'],
+    'equip_clim_creneau', 'equip_piscine_creneau',
+    // CAD149/CAD174 — précise le « avez-vous OU prévoyez-vous » du véhicule
+    // électrique juste au-dessus, jamais une question à part.
+    'equip_ve_statut'],
+  // CAD149/CAD174 — `pompage_heures_jour`/`pompe_alim_actuelle`/
+  // `carburant_litres_mois` : promotions du sac `web_questionnaire` en
+  // colonnes dédiées (vocabulaire déjà émis par le site, jamais inventé ici).
+  pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois'],
+  // CAD149/CAD174 — `type_bien` REMPLACE l'idée de rendre `roof_type`
+  // posable (chemin fermé par la décision du 18/08/2026, voir
+  // WEB_QUESTIONNAIRE_STRUCTURED_FIELDS plus bas) : le type de BIEN (villa/
+  // appartement/immeuble/riad/ferme), pas le type de TOIT.
   toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
     'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
-    'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee'],
+    'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee',
+    'type_bien'],
   visite: ['visite_prevue_le', 'visite_effectuee', 'visite_notes'],
-  divers: ['note', 'custom_data'],
+  // CAD150 — la qualification captée par le site (CHAMPS_SITE hors énergie)
+  // est éditable ici, avec sa provenance.
+  divers: ['note', 'custom_data', 'ownership', 'financing_intent',
+    'project_timeline', 'facility_type', 'roof_type', 'roof_age'],
 }
 
 // La section de TRAVAIL : on n'y touche jamais automatiquement. C'est là qu'on
@@ -285,6 +329,8 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     canal: DEFAULT_CANAL,
     contact_preference: '',
     priorite: 'normale', langue_preferee: '', tags: '', motif_perte: '',
+    // CAD65 — civilité inconnue à la création (⇒ null serveur, salutation neutre).
+    civilite: '',
     perdu: false, relance_date: '', type_installation: '',
     montant_estime: '', date_cloture_prevue: '',
     facture_hiver: '', facture_ete: '', ete_differente: false,
@@ -312,6 +358,11 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     taille_souhaitee_kwc: '', batterie_souhaitee: '',
     visite_prevue_le: '', visite_effectuee: false, visite_notes: '',
     note: '', custom_data: {},
+    // CAD144 — contact secondaire : vide à la création (⇒ null serveur).
+    contact_secondaire_nom: '', contact_secondaire_telephone: '',
+    // CAD150 — champs captés par le site : vides à la création manuelle.
+    distributeur: '', bill_kwh: '', ownership: '', financing_intent: '',
+    project_timeline: '', facility_type: '', roof_type: '', roof_age: '',
   }
 }
 
@@ -503,6 +554,69 @@ export const WEB_QUESTIONNAIRE_STRUCTURED_FIELDS = [
   'whatsapp_opt_in', 'consent_timestamp', 'utm_content', 'utm_term',
   'roof_type', 'bill_kwh',
 ]
+
+// ── CAD150/CAD159 — les champs CAPTÉS PAR LE SITE, toujours éditables ────────
+// Décision fondateur du 21/09/2026 : ces champs se SAISISSENT sur la fiche
+// (un lead Meta, un walk-in ou un appel entrant ne les a jamais reçus du
+// site), mais une valeur venue du site n'est jamais écrasée SANS UN GESTE
+// EXPLICITE : elle s'affiche « à confirmer », avec sa provenance (« saisie
+// sur le site le … », servie par le serveur — `provenance_site`, contrat
+// `lead_provenance_site`), et ne devient modifiable qu'après « Modifier ».
+// Miroir de `crm.Lead.CHAMPS_SITE` (apps/crm/models.py).
+// source-choix: crm.Lead.CHAMPS_SITE
+export const CHAMPS_SITE = [
+  'distributeur', 'roof_age', 'ownership', 'project_timeline',
+  'financing_intent', 'facility_type', 'roof_type', 'bill_kwh',
+]
+
+/**
+ * etatChampSite — la provenance d'un champ capté par le site, et s'il doit
+ * s'afficher « à confirmer » (verrouillé derrière un geste explicite).
+ * Pur : lit seulement l'état du moteur.
+ *
+ * « À confirmer » = une provenance SITE existe, n'a pas été écrasée depuis
+ * par un humain, le champ porte une valeur, et rien n'est en cours de frappe.
+ * @returns {{provenance: object|null, aConfirmer: boolean}}
+ */
+export function etatChampSite(state, champ) {
+  const provenance = (state.server && state.server.provenance_site
+    && state.server.provenance_site[champ]) || null
+  const aConfirmer = !!provenance
+    && !provenance.ecrasee
+    && !isEmpty(getField(state, champ))
+    && !has(state.draft, champ)
+  return { provenance, aConfirmer }
+}
+
+/**
+ * CAD159 — [TRANCHÉ 21/09/2026] les champs du site encore à DEMANDER : ceux
+ * de `champs` qui sont VIDES. Un champ déjà renseigné (par le site ou à la
+ * main) n'y figure JAMAIS — la question n'est pas reposée, la valeur revient
+ * « à confirmer » (`etatChampSite`). Même règle que `champs_a_poser` du
+ * panneau d'appel côté serveur (`apps/crm/panneau_appel.py`). Pur.
+ */
+export function champsSiteAPoser(state, champs = CHAMPS_SITE) {
+  return champs.filter((champ) => isEmpty(getField(state, champ)))
+}
+
+// ── CAD158 — la facture est enregistrée AU MOIS ──────────────────────────────
+// Décision fondateur du 21/09/2026 (Q24) : une facture bimestrielle est
+// ramenée au mois AU MOMENT DE LA SAISIE, aucun champ « périodicité » n'est
+// stocké. Miroir EXACT de `crm.Lead.PERIODICITES_FACTURE` et de
+// `apps/crm/services.facture_au_mois` (arrondi au centime, moitié vers le
+// haut) — les deux côtés affirment le même exemple, contrat
+// `lead_facture_periodicite.json`.
+export const PERIODICITES_FACTURE = { mensuelle: 1, bimestrielle: 2 }
+
+/** Montant MENSUEL (chaîne à 2 décimales) d'une facture déclarée sur
+ *  `periodicite` ; '' pour une saisie vide ou illisible (rien n'est inventé). */
+export function factureAuMois(montant, periodicite) {
+  if (montant === '' || montant === null || montant === undefined) return ''
+  const n = Number(String(montant).replace(',', '.'))
+  const mois = PERIODICITES_FACTURE[periodicite]
+  if (!Number.isFinite(n) || !mois) return ''
+  return (Math.round((n * 100) / mois) / 100).toFixed(2)
+}
 
 // Une valeur « vide » au sens de cette section : '' / null / undefined / []
 // / {} ne comptent jamais comme une réponse — RÈGLE DURE, jamais de « 0 » par

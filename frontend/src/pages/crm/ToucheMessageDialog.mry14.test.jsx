@@ -85,4 +85,22 @@ describe('MRY14 ToucheMessageDialog', () => {
     render(<ToucheMessageDialog etape={ETAPE} open={false} onOpenChange={() => {}} />)
     expect(crmApi.getRelanceEtapeMessage).not.toHaveBeenCalled()
   })
+
+  // CAD-A — l'accusé de RÉPONSE (« stop_contact », « rappel_plus_tard ») : même
+  // forme de contrat, rendu pour le client de la touche ; la touche est DÉJÀ
+  // close, donc rien n'est journalisé comme « message ouvert ».
+  it('message_cle : charge le texte de réponse et ne marque aucune touche', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {})
+    const onOpenChange = vi.fn()
+    const etape = { ...ETAPE, message_cle: 'stop_contact' }
+    render(<ToucheMessageDialog etape={etape} open onOpenChange={onOpenChange} />)
+    await waitFor(() => expect(crmApi.getRelanceEtapeMessage)
+      .toHaveBeenCalledWith(ETAPE.id, 'stop_contact'))
+    await screen.findByText(MESSAGE.message)
+    fireEvent.click(screen.getByRole('button', { name: /Ouvrir WhatsApp/ }))
+    expect(openSpy).toHaveBeenCalledWith(MESSAGE.wa_url, '_blank', 'noopener')
+    expect(crmApi.whatsappRelanceEtape).not.toHaveBeenCalled()
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+    openSpy.mockRestore()
+  })
 })

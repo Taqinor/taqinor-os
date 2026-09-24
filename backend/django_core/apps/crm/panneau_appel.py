@@ -28,6 +28,8 @@ import datetime
 import decimal
 import logging
 
+from django.db import models
+
 from . import questionnaire
 from .models import Lead, RelanceEtape
 
@@ -63,10 +65,18 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 
 #: Mêmes questions, réservées au segment agricole : aucune section du
 #: questionnaire client ne les porte, et elles n'ont de sens que pour un lead
-#: de pompage.
+#: de pompage. CAD175 — la seconde livraison du panneau y ajoute la pompe
+#: elle-même (puissance, HMT, débit voulu : les trois entrées du générateur
+#: en mode agricole, colonnes `pompe_*` déjà existantes), en tête.
 CHAMPS_ORAUX_AGRICOLE = (
+    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
 )
+
+#: CAD175 — industriel et commercial : la puissance souscrite est une
+#: question PREMIÈRE (en résidentiel elle ne se pose qu'en dernier recours,
+#: la photo du compteur suffit). Colonne existante (vague 2, CAD154).
+CHAMPS_ORAUX_PRO = ('compteur_puissance_kva',)
 
 #: (clé de couche, libellé, booléen déclaratif du lead, grandeurs qui rendent
 #: la couche composable). La clé de couche est celle que
@@ -116,13 +126,41 @@ def _reponse_connue(lead, champ) -> bool:
     return True
 
 
+#: CAD152 — un booléen EST un vocabulaire fermé (Oui/Non) : il est servi
+#: comme tel, pour que l'écran d'appel rende deux boutons au lieu d'un champ
+#: libre où « oui » serait refusé par le serveur. L'ordre (Oui d'abord) est
+#: celui dans lequel la question se pose.
+CHOIX_BOOLEEN = (
+    {'valeur': True, 'libelle': 'Oui'},
+    {'valeur': False, 'libelle': 'Non'},
+)
+
+
 def _choix(champ):
-    """``[{valeur, libelle}]`` d'un champ à vocabulaire fermé, sinon ``None``."""
-    brut = Lead._meta.get_field(champ).choices
+    """``[{valeur, libelle}]`` d'un champ à vocabulaire fermé, sinon ``None``.
+
+    Un booléen est un vocabulaire fermé (Oui/Non, :data:`CHOIX_BOOLEEN`)."""
+    meta = Lead._meta.get_field(champ)
+    if isinstance(meta, models.BooleanField):
+        return [dict(choix) for choix in CHOIX_BOOLEEN]
+    brut = meta.choices
     if not brut:
         return None
     return [{'valeur': valeur, 'libelle': str(libelle)}
             for valeur, libelle in brut]
+
+
+def _nature(champ):
+    """CAD152 — la NATURE de la saisie : ``choix`` (vocabulaire fermé, dont
+    Oui/Non), ``nombre`` (l'écran normalise la virgule décimale avant
+    d'écrire) ou ``texte``. Lue sur le champ lui-même, jamais devinée."""
+    meta = Lead._meta.get_field(champ)
+    if isinstance(meta, models.BooleanField) or meta.choices:
+        return 'choix'
+    if isinstance(meta, (models.DecimalField, models.IntegerField,
+                         models.FloatField)):
+        return 'nombre'
+    return 'texte'
 
 
 def _question(lead, champ, section):
@@ -136,14 +174,19 @@ def _question(lead, champ, section):
         # `help_text` du modèle, jamais dans ce module.
         'question': str(meta.help_text or ''),
         'choix': _choix(champ),
+        'nature': _nature(champ),
     }
 
 
 def champs_oraux_du_segment(lead):
     """Les questions orales qui s'appliquent à CE lead, dans l'ordre."""
     champs = list(CHAMPS_ORAUX)
-    if getattr(lead, 'type_installation', None) == Lead.TypeInstallation.AGRICOLE:
+    segment = getattr(lead, 'type_installation', None)
+    if segment == Lead.TypeInstallation.AGRICOLE:
         champs += list(CHAMPS_ORAUX_AGRICOLE)
+    elif segment in (Lead.TypeInstallation.INDUSTRIEL,
+                     Lead.TypeInstallation.COMMERCIAL):
+        champs += list(CHAMPS_ORAUX_PRO)
     return tuple(champs)
 
 
@@ -286,6 +329,72 @@ def _script_servi(etape, *, request=None, user=None):
     }
 
 
+def _hhmm(heure):
+    return heure.strftime('%H:%M') if heure is not None else None
+
+
+def fenetre_du_jour_servie(lead, *, maintenant=None):
+    """CAD155 — la fenêtre d'APPEL du jour, telle que le MOTEUR l'appliquera.
+
+    Lue par ``apps.crm.horaires.fenetre_du_jour`` — l'unique autorité des
+    touches de cadence (Ramadan SAISI par la société, pause de la prière du
+    vendredi, jours ouvrés et fériés) — et jamais recopiée : sinon l'écran
+    divergerait du moteur au premier réglage. Pendant le Ramadan, la fenêtre
+    est commune à tous les canaux et AUCUN créneau du soir n'existe (décision
+    fondateur du 21/09/2026, CAD39) : l'écran n'a donc rien d'autre à
+    proposer que ce qui est servi ici.
+
+    ``None`` quand la fenêtre est illisible (best-effort : le panneau reste
+    servi, il ne dit simplement rien de l'horaire — jamais un horaire
+    supposé). Le jour est celui de Casablanca, pas celui du serveur.
+    """
+    from django.utils import timezone
+
+    from . import horaires
+
+    try:
+        instant = maintenant or timezone.now()
+        jour = instant.astimezone(horaires.CASABLANCA).date()
+        company = getattr(lead, 'company', None)
+        fenetre = horaires.fenetre_du_jour(jour, company, canal='appel')
+        ramadan = bool(horaires.est_en_ramadan(jour, company))
+    except Exception:  # noqa: BLE001 — l'horaire n'empêche jamais l'appel
+        logger.warning('CAD155: fenêtre d\'appel illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return None
+    if fenetre is None:
+        return {'date': jour.isoformat(), 'appelable': False, 'debut': None,
+                'fin': None, 'pause': None, 'ramadan': ramadan}
+    debut, fin, pause = fenetre
+    return {
+        'date': jour.isoformat(),
+        'appelable': True,
+        'debut': _hhmm(debut),
+        'fin': _hhmm(fin),
+        'pause': ({'debut': _hhmm(pause[0]), 'fin': _hhmm(pause[1])}
+                  if pause else None),
+        'ramadan': ramadan,
+    }
+
+
+def profil_suppose_servi(lead):
+    """CAD172 — le profil de journée de l'étude est-il SUPPOSÉ pour ce lead ?
+
+    LE MÊME drapeau que la proposition (``apps.ventes.courbes_journalieres``
+    ``profil_suppose_du_lead`` — même traducteur que le chemin sans devis) :
+    vrai tant que ``occupation_jour`` n'a pas de réponse. C'est lui qui fait
+    remonter la question EN TÊTE du panneau (décision Q5). Lecture de la
+    façade publique d'``apps.ventes``, jamais ses modèles ; best-effort (un
+    drapeau illisible vaut ``False`` : on ne crie jamais au loup)."""
+    try:
+        from apps.ventes.courbes_journalieres import profil_suppose_du_lead
+        return bool(profil_suppose_du_lead(lead))
+    except Exception:  # noqa: BLE001 — le panneau reste servi
+        logger.warning('CAD172: drapeau de profil illisible (lead #%s)',
+                       getattr(lead, 'pk', '?'), exc_info=True)
+        return False
+
+
 def panneau_appel(lead, *, request=None, user=None) -> dict:
     """Le panneau d'appel guidé d'UN lead — lecture seule, aucun effet de bord."""
     etape = _touche_en_cours(lead)
@@ -300,4 +409,6 @@ def panneau_appel(lead, *, request=None, user=None) -> dict:
         'champs_a_poser': questions_a_poser(lead),
         'prefill': prefill_du_panneau(lead),
         'equipements': drapeaux_equipements(lead),
+        'fenetre_du_jour': fenetre_du_jour_servie(lead),
+        'profil_suppose': profil_suppose_servi(lead),
     }

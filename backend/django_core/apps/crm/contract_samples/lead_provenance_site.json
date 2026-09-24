@@ -1,0 +1,57 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD150/CAD159 (PACT10, décision fondateur du 21/09/2026) — les champs CAPTÉS PAR LE SITE (`Lead.CHAMPS_SITE` : distributeur, âge du toit, statut d'occupation, horizon, financement, type de site, type de toiture du site, consommation déclarée) étaient figés en lecture seule, même VIDES : un lead Meta, un walk-in ou un appel entrant ne pouvait jamais les recevoir, et l'absence de `distributeur` supprimait la courbe de la proposition. Ils sont désormais TOUJOURS éditables. Pour que la valeur venue du site ne soit jamais écrasée à l'aveugle, le détail du lead sert `provenance_site` : `{champ: {valeur, le, ecrasee}}` — `valeur` est LISIBLE (libellé du choix, comme le chatter), `le` l'horodatage ISO de la saisie par le client, `ecrasee` vrai quand un humain l'a remplacée depuis. Un champ jamais saisi par le client est ABSENT (`{}` pour un lead qui n'est pas venu du site). Rien n'est stocké en plus : la provenance se relit dans `source`, `date_creation` et les lignes de modification du chatter (`selectors.provenance_site`). Servi au RETRIEVE seulement (une requête par lead), jamais dans une liste. L'écran affiche « à confirmer » tant que la valeur du site n'a pas été reprise par un geste explicite (« Modifier »), et « Saisie sur le site le … » sous le champ — y compris après écrasement. La QUESTION correspondante n'est jamais reposée quand le champ est rempli : elle n'apparaît pas dans `champs_a_poser` du panneau d'appel (`panneau_appel.json`), elle revient dans son `prefill`.",
+  "exemple": {
+    "id": 1489,
+    "source": "site_web",
+    "ownership": "proprietaire",
+    "roof_age": 12,
+    "distributeur": null,
+    "provenance_site": {
+      "ownership": {
+        "valeur": "Propriétaire",
+        "le": "2026-09-10T09:12:00+00:00",
+        "ecrasee": false
+      },
+      "roof_age": {
+        "valeur": "12",
+        "le": "2026-09-10T09:12:00+00:00",
+        "ecrasee": false
+      }
+    }
+  },
+  "exemple_ecrasee": {
+    "id": 1489,
+    "source": "site_web",
+    "ownership": "locataire",
+    "roof_age": 12,
+    "distributeur": "srm_casablanca",
+    "provenance_site": {
+      "ownership": {
+        "valeur": "Propriétaire",
+        "le": "2026-09-10T09:12:00+00:00",
+        "ecrasee": true
+      },
+      "roof_age": {
+        "valeur": "12",
+        "le": "2026-09-10T09:12:00+00:00",
+        "ecrasee": false
+      }
+    }
+  },
+  "exemple_sans_site": {
+    "id": 1512,
+    "source": "os_native",
+    "ownership": null,
+    "roof_age": null,
+    "distributeur": null,
+    "provenance_site": {}
+  },
+  "notes": {
+    "provenance_site": "`{}` — jamais null — quand aucun champ n'a été saisi par le client. Les clés possibles sont celles de `Lead.CHAMPS_SITE`.",
+    "ecrasee": "Une écriture SYSTÈME postérieure (questionnaire du client, nouvelle soumission du site) remplace la provenance et remet `ecrasee` à faux ; une écriture HUMAINE la laisse et passe `ecrasee` à vrai.",
+    "exemple_ecrasee": "La commerciale a corrigé « Propriétaire » en « Locataire » : la fiche porte la nouvelle valeur, la provenance garde l'ancienne, marquée `ecrasee` — l'écran ne la verrouille plus (« à confirmer » ne vaut que pour une valeur du site encore en place).",
+    "distributeur": "Aucune provenance pour un champ que le client n'a pas renseigné : la commerciale le saisit directement (ici `srm_casablanca`, choisi sur la fiche)."
+  }
+}

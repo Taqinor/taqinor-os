@@ -60,6 +60,9 @@ TRACKED_FIELDS = {
     # laissait aucune trace de POURQUOI un message est parti dans une langue
     # donnée.
     'langue_preferee': 'Langue préférée',
+    # CAD65 — la civilité décide de la salutation de TOUS les messages
+    # client : même raison que la langue, un changement laisse sa trace.
+    'civilite': 'Civilité',
     # LW27 — champs de pilotage réel absents jusque-là de l'allowlist (~36
     # champs) : forecast pondéré (montant_estime/date_cloture_prevue),
     # qualification site QK1 (distributeur/roof_age/ownership/
@@ -77,6 +80,12 @@ TRACKED_FIELDS = {
     'visit_window_week': 'Semaine de visite préférée',
     'roof_age': 'Âge de la toiture (ans)',
     'ownership': "Statut d'occupation",
+    # CAD150 (21/09/2026) — les deux derniers champs captés par le site
+    # deviennent éditables par la commerciale : leur écrasement laisse la
+    # trace (ancienne → nouvelle valeur), sans quoi la PROVENANCE « saisie sur
+    # le site » (`selectors.provenance_site`) se perdrait au premier geste.
+    'roof_type': 'Type de toiture (site)',
+    'bill_kwh': 'Consommation déclarée sur le site (kWh)',
     # L4 (21/08/2026) — questionnaire d'appel (présence en journée +
     # équipements électriques), voir apps/ventes/courbes_journalieres.py
     # pour leur usage dans la courbe de consommation servie.
@@ -137,6 +146,8 @@ _CHOICE_FIELDS = {
     'equip_clim_creneau', 'equip_piscine_creneau',
     # NTI18N49 — langue préférée (FR/Darija).
     'langue_preferee',
+    # CAD65 — civilité (M./Mme).
+    'civilite',
     # CAD149 — six des huit champs de la vague 1 sont des choices
     # (pompage_heures_jour et carburant_litres_mois sont des grandeurs).
     'type_bien', 'objectif_projet', 'decideur', 'devis_concurrents',

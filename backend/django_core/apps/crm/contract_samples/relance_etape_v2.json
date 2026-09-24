@@ -30,7 +30,19 @@
         "traite_par_nom": "",
         "statut_libelle": "À faire",
         "message_ouvert_le": null,
-        "canal_adapte": ""
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": ["contact_arretee", "etape_devis_demain"],
+          "non_joint": ["touche_suivante"],
+          "rappel": ["touche_suivante_a_la_date"],
+          "refuse": ["relances_arretees", "etape_decider_suite"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "plus_tard": ["veille_meme_touche"],
+          "sauter": ["touche_suivante"]
+        }
       },
       {
         "id": 418,
@@ -58,7 +70,24 @@
         "traite_par_nom": "",
         "statut_libelle": "À faire",
         "message_ouvert_le": "2026-09-05T13:04:00Z",
-        "canal_adapte": ""
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": ["touche_suivante"],
+          "visite_acceptee": ["etape_planifier_visite"],
+          "non_joint": ["touche_suivante"],
+          "rappel": ["touche_suivante_a_la_date"],
+          "refuse": ["relances_arretees", "etape_decider_suite"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "plus_tard": ["veille_meme_touche"],
+          "question_prix": ["question_prix_pause"],
+          "devis_modifie": ["etape_devis_modifie"],
+          "decision_famille": ["etiquette_decision", "touche_suivante"],
+          "decision_proprietaire": ["etiquette_decision", "touche_suivante"],
+          "sauter": ["touche_suivante"]
+        }
       }
     ]
   },
@@ -66,7 +95,311 @@
     "count": 0,
     "results": []
   },
+  "exemple_generique": {
+    "count": 2,
+    "results": [
+      {
+        "id": 440,
+        "lead": 1510,
+        "lead_nom": "Hicham Alaoui",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000440",
+        "lead_whatsapp": "+212661000440",
+        "lead_langue": "fr",
+        "lead_score": 35,
+        "lead_priorite": "normale",
+        "cadence": "generique",
+        "ordre": 1,
+        "due_date": "2026-09-23",
+        "due_at": "2026-09-23T09:00:00Z",
+        "canal": "appel",
+        "libelle": "Premier rappel",
+        "template_cle": "",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "sans_issue": ["touche_suivante"],
+          "non_joint": ["touche_suivante"],
+          "rappel": ["touche_suivante_a_la_date"],
+          "refuse": ["relances_arretees", "etape_decider_suite", "touche_suivante"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "sauter": ["touche_suivante"]
+        }
+      },
+      {
+        "id": 441,
+        "lead": 1511,
+        "lead_nom": "Nadia Berrada",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000441",
+        "lead_whatsapp": "+212661000441",
+        "lead_langue": "fr",
+        "lead_score": 30,
+        "lead_priorite": "normale",
+        "cadence": "generique",
+        "ordre": 1,
+        "due_date": "2026-09-23",
+        "due_at": "2026-09-23T09:00:00Z",
+        "canal": "appel",
+        "libelle": "Décider la suite — perdu (motif) ou relance ultérieure",
+        "template_cle": "",
+        "statut": "a_faire",
+        "note": "Posée automatiquement : aucune autre relance ouverte.",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "sans_issue": ["etape_devis_demain_sauf_suivi"],
+          "non_joint": ["etape_devis_demain_sauf_suivi"],
+          "rappel": ["etape_deplacee_a_la_date"],
+          "refuse": ["relances_arretees", "etape_decider_suite"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "sauter": ["etape_devis_demain_sauf_suivi"]
+        }
+      }
+    ]
+  },
+  "exemple_dernier_reveil": {
+    "count": 1,
+    "results": [
+      {
+        "id": 431,
+        "lead": 1502,
+        "lead_nom": "Karim Tazi",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000431",
+        "lead_whatsapp": "+212661000431",
+        "lead_langue": "fr",
+        "lead_score": 22,
+        "lead_priorite": "normale",
+        "cadence": "reveil",
+        "ordre": 2,
+        "due_date": "2026-11-05",
+        "due_at": "2026-11-05T08:30:00Z",
+        "canal": "whatsapp",
+        "libelle": "Réveil J60",
+        "template_cle": "reveil_a3",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": ["sort_du_froid", "reveils_arretes", "etape_appeler_sauf_suivi"],
+          "non_joint": ["dernier_reveil"],
+          "rappel": ["dernier_reveil_date_perdue"],
+          "refuse": ["relances_arretees", "reste_au_froid"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "plus_tard": ["veille_meme_touche"],
+          "sauter": ["dernier_reveil"]
+        }
+      }
+    ]
+  },
+  "exemple_pii_masquee": {
+    "count": 1,
+    "results": [
+      {
+        "id": 450,
+        "lead": 1520,
+        "lead_nom": "Youssef Amrani",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "",
+        "lead_whatsapp": "",
+        "lead_langue": "fr",
+        "lead_score": 51,
+        "lead_priorite": "haute",
+        "cadence": "contact",
+        "ordre": 2,
+        "due_date": "2026-09-06",
+        "due_at": "2026-09-06T09:33:00Z",
+        "canal": "appel",
+        "libelle": "Appel d'ouverture",
+        "template_cle": "appel_ouverture",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": true,
+        "suites": {
+          "joint": [
+            "contact_arretee",
+            "etape_devis_demain"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        }
+      }
+    ]
+  },
+  "exemple_whatsapp_uniquement": {
+    "count": 1,
+    "results": [
+      {
+        "id": 451,
+        "lead": 1521,
+        "lead_nom": "Samira Chraibi",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000451",
+        "lead_whatsapp": "+212661000451",
+        "lead_langue": "fr",
+        "lead_score": 44,
+        "lead_priorite": "normale",
+        "cadence": "contact",
+        "ordre": 4,
+        "due_date": "2026-09-06",
+        "due_at": "2026-09-06T09:33:00Z",
+        "canal": "whatsapp",
+        "libelle": "Appel 3 (répondeur)",
+        "template_cle": "repondeur",
+        "statut": "a_faire",
+        "note": "",
+        "overdue": false,
+        "devis": null,
+        "devis_reference": "",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "Canal adapté à la préférence du client : WhatsApp uniquement.",
+        "lead_est_junk": false,
+        "lead_contact_preference": "whatsapp_only",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": [
+            "contact_arretee",
+            "etape_devis_demain"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        }
+      }
+    ]
+  },
+  "exemple_debrief_visite": {
+    "count": 1,
+    "results": [
+      {
+        "id": 460,
+        "lead": 1530,
+        "lead_nom": "Rachid Bennani",
+        "lead_owner_nom": "meryem",
+        "lead_telephone": "+212661000460",
+        "lead_whatsapp": "+212661000460",
+        "lead_langue": "fr",
+        "lead_score": 63,
+        "lead_priorite": "haute",
+        "cadence": "apres_devis",
+        "ordre": 91,
+        "due_date": "2026-09-25",
+        "due_at": "2026-09-25T09:00:00Z",
+        "canal": "appel",
+        "libelle": "Débrief visite — rappeler le client",
+        "template_cle": "",
+        "statut": "a_faire",
+        "note": "Posée automatiquement : visite technique planifiée.",
+        "overdue": false,
+        "devis": 903,
+        "devis_reference": "DEV-2609-0042",
+        "traite_le": null,
+        "traite_par_nom": "",
+        "statut_libelle": "À faire",
+        "message_ouvert_le": null,
+        "canal_adapte": "",
+        "lead_est_junk": false,
+        "lead_contact_preference": "",
+        "lead_pii_masquee": false,
+        "suites": {
+          "joint": ["suite_si_plus_rien_ouvert"],
+          "visite_acceptee": ["etape_planifier_visite"],
+          "non_joint": ["visite_froid_si_seule"],
+          "rappel": ["prochaine_relance_a_la_date"],
+          "refuse": ["relances_arretees", "etape_decider_suite"],
+          "ne_plus_contacter": ["ne_plus_contacter"],
+          "plus_tard": ["veille_meme_touche"],
+          "question_prix": ["question_prix_etape"],
+          "devis_modifie": ["etape_devis_modifie"],
+          "decision_famille": ["etiquette_decision", "suite_si_plus_rien_ouvert"],
+          "decision_proprietaire": ["etiquette_decision", "suite_si_plus_rien_ouvert"],
+          "sauter": ["visite_froid_si_seule"]
+        }
+      }
+    ]
+  },
   "notes": {
+    "exemple_debrief_visite": "CAD2 — un AUTRE ÉTAT du serveur, même forme : l'étape « Débrief visite — rappeler le client » (VISITE-CADENCE, ordre 91 hors gabarit, cadence `apres_devis` pour vivre dans la même frise). Sa nature se lit sur son LIBELLÉ, jamais sur sa cadence : les quatre libellés de visite (« Planifier la visite technique convenue », « Confirmer la visite (veille) », « Débrief visite — rappeler le client », « Préparer le devis modifié — rappeler le client ») portent leur PROPRE jeu de questions à l'écran (« la visite a-t-elle eu lieu ? reportée ? devis à modifier ? ») — patron « libellé + note » de Répondeur/Occupé, sur les issues EXISTANTES, aucune valeur d'énumération neuve. Côté moteur : une étape de visite close ne DÉMARRE jamais le suivi de proposition (`joint` → `suite_si_plus_rien_ouvert` : il le POURSUIT s'il a déjà servi, sinon une étape de suite est posée — jamais « Le PDF s'ouvre bien ? » après une visite).",
+    "lead_contact_preference":"CAD82 — préférence de contact du CLIENT (`Lead.contact_preference` : `whatsapp_only` | `phone_ok`), chaîne VIDE — jamais null — quand rien n'est posé. La ligne l'écrit en clair (« joint par écrit seulement ») au lieu de proposer Appeler et WhatsApp à égalité (`exemple_whatsapp_uniquement`).",
+    "lead_pii_masquee": "CAD82 — booléen, jamais null : les coordonnées sont MASQUÉES pour CE demandeur (pas de `client_pii_voir`), même règle que `lead_telephone`/`lead_whatsapp`. Un numéro vide n'a donc plus UNE cause devinable mais deux causes nommées : « aucun numéro sur la fiche » (`exemple`, 2e ligne) ou « numéro masqué par vos droits » (`exemple_pii_masquee`) — la raison s'affiche sous le bouton désactivé.",
+    "post_langue": "CAD63 — `POST /api/django/crm/relance-etapes/<id>/langue/` `{langue: 'fr'|'darija'}` enregistre la langue du CLIENT de la touche (`Lead.langue_preferee`, journalisé comme une édition de la fiche) et renvoie CETTE forme, `lead_langue` à jour. Le « Fait » accepte le même champ `langue` (réponse « ne parle que darija ») : posé seulement si la touche est enregistrée. Refus 400 `{erreurs: {langue}}` nommant le champ.",
     "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
     "statut_libelle": "CKP1 — libellé français du statut, servi par le serveur (« À faire », « Fait », « Sautée », « Annulée (moteur) ») : le badge n'a plus à réinventer la table des libellés, et une annulation MOTEUR ne peut plus s'afficher comme un saut humain.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT de cadence, jamais `crm.Canal` (qui décrit la SOURCE du lead).",
@@ -74,7 +407,11 @@
     "pii": "lead_telephone / lead_whatsapp = chaîne vide (jamais null) quand la permission `client_pii_voir` manque.",
     "message_ouvert_le": "RLC3 — horodatage de l'activité « WhatsApp ouvert » de CETTE touche (le clic humain, jamais un envoi), sinon null. Servi UNIQUEMENT pour une touche de canal whatsapp/e-mail encore `a_faire` (le seul cas où le panneau « Fait » s'ouvre) : null partout ailleurs, sans requête. Le panneau « Fait » d'une touche message le rappelle et, à défaut, demande une confirmation explicite — jamais un blocage (Meryem peut avoir écrit depuis son téléphone).",
     "canal_adapte": "Chaîne FR expliquant pourquoi le canal de la touche n'est pas celui que son libellé annonce ; '' — jamais null — quand rien n'est adapté. Aujourd'hui une seule cause : la préférence « WhatsApp uniquement » du client (CAD32/CAD33).",
+    "lead_est_junk": "CAD11 — booléen, jamais null : le lead est PERDU avec un motif marqué « junk » (`MotifPerte.est_junk` : numéro invalide, spam/bot, hors zone, jamais répondu). Le drapeau vivait au niveau du lead, à trois écrans de la touche ; exposé ici, la qualité des numéros venus des publicités devient mesurable. `false` pour toute touche d'un lead non perdu (aucune requête).",
     "traite_le": "MRY30 — QUAND la touche a été traitée (`RelanceEtape.traite_le`), `null` tant qu'elle est `a_faire`. ADDITIF sur la file du jour : le même sérialiseur sert la file et l'écran « Suivi des relances » (contrat `relance_etapes_suivi`) plutôt que deux sérialiseurs qui divergeraient — les deux exemples ci-dessus sont `a_faire`, donc `null`/''.",
-    "traite_par_nom": "MRY30 — QUI l'a traitée (nom d'utilisateur), '' — jamais null — pour une touche à faire ou marquée par le système."
+    "traite_par_nom": "MRY30 — QUI l'a traitée (nom d'utilisateur), '' — jamais null — pour une touche à faire ou marquée par le système.",
+    "exemple_generique": "CAD97 — un AUTRE ÉTAT du serveur, même forme : la cadence générique. Sur un BARREAU du gabarit, « Fait — passer à la suite » programme la touche suivante À SON DÉLAI prévu (J+2/5/10/20/35 depuis le départ) ; sur une étape posée par le FILET, la suite est posée pour DEMAIN (ou reprend le suivi d'un devis envoyé). La phrase « demain » n'est plus annoncée à tort au barreau.",
+    "exemple_dernier_reveil": "CAD16 — un AUTRE ÉTAT du serveur, même forme : la DERNIÈRE touche de la cadence réveil (rang 2, J60), dossier au Froid. « Pas de réponse » y annonce la fin (`dernier_reveil`) — plus jamais un réveil suivant qui n'existe pas : la cadence réveil ne se clôture pas elle-même et le filet ne pose rien sur un dossier au Froid.",
+    "suites": "CAD17 — la SUITE de chaque réponse du panneau « Fait », DÉRIVÉE du moteur (`apps/crm/suite_touche.py`) : `{cle_de_reponse: [codes d'effet]}`. Clés : les issues (`joint`, `visite_acceptee` sur le suivi de proposition, `non_joint`, `rappel`, `refuse` ; `sans_issue` = « Fait — passer à la suite » sur la cadence générique) puis les réponses du client de `REPONSES_TOUCHE` valables sur la cadence, et enfin `sauter` (CAD47 — ce que le geste « Sauter » déclenche). Les codes dépendent du LIBELLÉ de la touche (barreau, étape de filet, geste de visite), de son RANG (la dernière ne fait naître aucune suivante) et de l'état du devis — jamais de la seule cadence. L'écran traduit chaque code en UNE phrase (`frontend/src/features/crm/relances/suite_phrases.json`) ; la garde `apps/crm/tests_cad17_parite_promesse_effet.py` rejoue chaque réponse et vérifie l'effet de chaque code. `{}` — jamais null — pour une touche déjà traitée."
   }
 }

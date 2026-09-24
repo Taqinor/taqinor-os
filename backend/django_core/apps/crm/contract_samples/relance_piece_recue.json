@@ -1,0 +1,47 @@
+{
+  "endpoint": "POST /api/django/crm/relance-etapes/<id>/piece-recue/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD101 (PACT10) — le client envoie sa FACTURE, son ADRESSE ou sa LOCALISATION (sur WhatsApp, le plus souvent) : l'événement commercial le plus important du parcours, et le seul qui ne s'enregistrait pas en un clic. Le geste « Pièce reçue » de la ligne de relance : la touche est CLOSE (issue « joint » — le client a répondu), le document est ATTACHÉ à la fiche (magasin `records.Attachment` existant, sur la ligne de chatter de la touche) et l'étape « Préparer et envoyer le devis (ou fixer un rappel) » est POSÉE — `prochaine_touche`. Sur une touche qui EST déjà « préparer le devis », la pièce est tracée et l'étape reste ouverte (la réponse la renvoie telle quelle). JAMAIS déclenché par un message ENTRANT (une note système n'arrête rien : un « merci » ne tue pas une cadence) — c'est un geste humain. La réponse a la forme d'un « Fait » : la touche (`relance_etape_v2`) + `prochaine_touche` ; `forme_serveur: partielle` parce que la vue assemble la réponse depuis le sérialiseur (forme non lisible statiquement).",
+  "exemple": {
+    "id": 418,
+    "lead": 1490,
+    "lead_nom": "Salma Idrissi",
+    "lead_owner_nom": "meryem",
+    "lead_telephone": "+212661112233",
+    "lead_whatsapp": "+212661112233",
+    "lead_langue": "fr",
+    "lead_score": 41,
+    "lead_priorite": "normale",
+    "cadence": "apres_devis",
+    "ordre": 3,
+    "due_date": "2026-09-05",
+    "due_at": "2026-09-05T13:00:00Z",
+    "canal": "whatsapp",
+    "libelle": "Preuve — installation comparable",
+    "template_cle": "j4_preuve",
+    "statut": "fait",
+    "note": "Pièce reçue — facture",
+    "overdue": true,
+    "devis": 903,
+    "devis_reference": "DEV-2609-0042",
+    "traite_le": "2026-09-05T13:20:00Z",
+    "traite_par_nom": "commerciale",
+    "statut_libelle": "Fait",
+    "message_ouvert_le": null,
+    "canal_adapte": "",
+    "lead_est_junk": false,
+    "lead_contact_preference": "",
+    "lead_pii_masquee": false,
+    "suites": {},
+    "prochaine_touche": {
+      "due_at": "2026-09-07T09:00:00Z",
+      "due_date": "2026-09-07",
+      "canal": "appel"
+    }
+  },
+  "notes": {
+    "corps": "multipart (avec fichier) ou JSON : `type_piece` (`facture` | `adresse` | `localisation`, OBLIGATOIRE), `fichier` (facultatif), `note` (facultative).",
+    "erreurs": "400 `{\"erreurs\": {champ: message}}` — `type_piece` (pièce inconnue ou absente), `etape` (touche déjà traitée), `fichier` (pièce jointe refusée par le magasin) : le message NOMME le champ.",
+    "permissions": "`IsResponsableOrAdmin` (le geste ÉCRIT)."
+  }
+}

@@ -613,10 +613,37 @@ def _sweep_workflow_step_reminders(company):
         return 0
 
 
-# ── QX31be — escalade speed-to-lead des leads chauds non contactés ───────────
-# Seuils défensifs (surchargables via settings).
-HOT_LEAD_SCORE_THRESHOLD = 70   # score ≥ ce seuil = lead « chaud »
-HOT_LEAD_UNREAD_MINUTES = 30    # notif d'arrivée non lue depuis ≥ N minutes
+# ── QX31be / CAD132 — filet speed-to-lead des leads chauds non contactés ─────
+# CAD132 (audit L3 du 21/09/2026) — le filet regardait la NOTIFICATION
+# d'arrivée, pas le lead : il exigeait un score ≥ 70 qu'un lead Meta ne peut
+# pas atteindre, un clic « tout marquer comme lu » l'éteignait sans qu'aucun
+# appel ait été passé, et son délai se comptait en minutes de PENDULE sur un
+# balayage 24 h/24 (il pouvait sonner à 3 h du matin). Il suit désormais
+# EXACTEMENT les règles de l'escalade premier-contact
+# (`apps/crm/management/commands/escalader_premier_contact.py`) : condition
+# « `first_contacted_at` NULL », minutes OUVRÉES
+# (`crm.horaires.minutes_ouvrees_entre`), toutes les sources hors miroir
+# Odoo, dossiers perdus/opposés/archivés/clos écartés. Ce qui le distingue
+# encore d'elle : il ne vise que les leads CHAUDS, et il remonte aux managers.
+#
+# Seuil de score UNIQUE : 60, le même que la file « leads chauds non
+# contactés » (`apps.crm.selectors.leads_chauds_non_contactes`) — un lead est
+# « chaud » partout ou nulle part. À recalibrer sur les scores réels de
+# production (CADM7), jamais au jugé.
+HOT_LEAD_SCORE_THRESHOLD = 60
+#: Minutes OUVRÉES sans premier contact au-delà desquelles le filet escalade.
+HOT_LEAD_MINUTES_OUVREES = 30
+#: Plafond par passage et par société — appliqué APRÈS le tri (les plus chauds,
+#: puis les plus anciens), jamais sur un ordre arbitraire de la base.
+HOT_LEAD_LOT_MAX = 500
+#: Titre de l'escalade — sert aussi de clé d'idempotence : ``HOT_LEAD_UNREAD``
+#: est également émis par l'alerte SLA Meta de l'adsengine (PUB68) sous un
+#: autre titre, qui ne doit ni éteindre ni doubler ce filet.
+HOT_LEAD_TITRE = 'Lead chaud non contacté'
+#: Canal de la première prise de contact du protocole : un MESSAGE (ouvert dès
+#: 08:30), comme le défaut de `minutes_ouvrees_entre` — la fenêtre et le
+#: décompte se lisent sur la même horloge.
+_CANAL_PREMIER_CONTACT = 'whatsapp'
 
 
 def _lead_id_from_link(link):
@@ -628,61 +655,104 @@ def _lead_id_from_link(link):
     return int(m.group(1)) if m else None
 
 
-def _sweep_hot_leads(company):
-    """QX31be — escalade les leads CHAUDS dont la notif d'arrivée
-    (``LEAD_NEW``/``LEAD_ASSIGNED``) reste NON LUE au-delà du seuil minutes.
+def _leads_deja_escalades(company):
+    """Ids des leads dont le filet a DÉJÀ sonné (une escalade par lead, comme
+    le marqueur de l'escalade premier-contact) — lus sur les notifications
+    elles-mêmes, lues ou non : leur état de lecture ne décide plus de rien."""
+    from .models import Notification
 
-    In-lane : lit les ``Notification`` (cette app) ; le score du lead est lu via
-    le sélecteur crm ``get_company_lead`` (jamais un import de modèle crm).
-    Idempotent : une escalade par notif d'origine (déduplication par link).
+    liens = Notification.objects.filter(
+        company=company, event_type=EventType.HOT_LEAD_UNREAD,
+        title=HOT_LEAD_TITRE,
+    ).values_list('link', flat=True)
+    return {i for i in (_lead_id_from_link(lien) for lien in liens) if i}
+
+
+def _sweep_hot_leads(company, now=None):
+    """QX31be / CAD132 — escalade les leads CHAUDS jamais contactés au-delà du
+    seuil de minutes OUVRÉES, aux managers ET au responsable du dossier.
+
+    * condition : ``first_contacted_at`` NULL — le LEAD, plus la notification
+      (« tout marquer comme lu » n'éteint plus rien) ;
+    * toutes les sources (Meta, CTWA, site, saisie) sauf le miroir Odoo, dont
+      les leads importés ne sont pas des demandes à rappeler ;
+    * le balayage écarte LUI-MÊME les leads perdus, « ne plus contacter »,
+      archivés et clos (clés de ``STAGES.py``) ;
+    * rien ne part hors de la fenêtre ouvrée : le décompte est en minutes
+      ouvrées ET l'instant du balayage doit lui-même être ouvré (un lead
+      arrivé à 19 h franchit le seuil la nuit, il sonne à l'ouverture) ;
+    * tri (score décroissant, puis le plus ancien) AVANT la troncature, et
+      les leads déjà escaladés sortent avant elle : jamais un lot de 500
+      saturé par des dossiers déjà signalés.
+
+    Idempotent : une escalade par lead. ``now`` fixe l'horloge (tests).
+    ``notifications`` est une app satellite, pas l'un des cinq domaines cœur :
+    elle lit ``crm.Lead`` directement, comme ``signals.py`` (import local).
     Best-effort par société."""
     from django.conf import settings
     from django.utils import timezone as tz
-    from .models import Notification
 
-    score_min = getattr(
-        settings, 'HOT_LEAD_SCORE_THRESHOLD', HOT_LEAD_SCORE_THRESHOLD)
-    minutes = getattr(
-        settings, 'HOT_LEAD_UNREAD_MINUTES', HOT_LEAD_UNREAD_MINUTES)
-    cutoff = tz.now() - timedelta(minutes=minutes)
-    posted = 0
     try:
-        from apps.crm.selectors import get_company_lead
+        from apps.crm import horaires
+        from apps.crm.models import Lead
+        from apps.crm.stages import COLD, SIGNED
     except Exception:  # pragma: no cover — crm indisponible
         return 0
 
-    unread = Notification.objects.filter(
-        company=company, read=False,
-        event_type__in=[EventType.LEAD_NEW, EventType.LEAD_ASSIGNED],
-        created_at__lte=cutoff,
-    ).select_related('recipient')[:500]
+    maintenant = now or tz.now()
+    if not horaires.est_dans_fenetre(
+            maintenant, company, canal=_CANAL_PREMIER_CONTACT):
+        return 0
+    score_min = getattr(
+        settings, 'HOT_LEAD_SCORE_THRESHOLD', HOT_LEAD_SCORE_THRESHOLD)
+    minutes = getattr(
+        settings, 'HOT_LEAD_MINUTES_OUVREES', HOT_LEAD_MINUTES_OUVREES)
 
-    for notif in unread:
-        lead_id = _lead_id_from_link(notif.link)
-        if not lead_id:
-            continue
-        lead = get_company_lead(company, lead_id)
-        score = getattr(lead, 'score', None) if lead is not None else None
-        if score is None or score < score_min:
-            continue
-        esc_link = notif.link or f'/crm/leads?lead={lead_id}'
-        # Idempotence : une escalade par lead (dédup par link du jour).
-        if _already_notified_today(
-                company, EventType.HOT_LEAD_UNREAD, esc_link):
-            continue
-        title = 'Lead chaud non contacté'
-        body = (f'Un lead à fort potentiel (score {score}) attend un premier '
-                f'contact depuis plus de {minutes} min. Contactez-le vite '
-                '(21× de chances de qualifier si < 5 min).')
-        # Escalade aux managers EN PLUS du destinataire initial.
-        for mgr in _managers(company):
-            notify(mgr, EventType.HOT_LEAD_UNREAD, title, body,
-                   link=esc_link, company=company)
-            posted += 1
-        if notif.recipient_id:
-            notify(notif.recipient, EventType.HOT_LEAD_UNREAD, title, body,
-                   link=esc_link, company=company)
-            posted += 1
+    candidats = Lead.objects.filter(
+        company=company, first_contacted_at__isnull=True,
+        perdu=False, ne_plus_contacter=False, is_archived=False,
+        score__gte=score_min,
+        # Une minute ouvrée n'est jamais plus longue qu'une minute de pendule :
+        # un lead arrivé depuis moins de `minutes` ne peut pas être en retard.
+        date_creation__lte=maintenant - timedelta(minutes=minutes),
+    ).exclude(
+        source=Lead.Source.ODOO_IMPORT_TEST,
+    ).exclude(
+        stage__in=[SIGNED, COLD],
+    ).exclude(
+        pk__in=_leads_deja_escalades(company),
+    ).select_related('owner').order_by(
+        '-score', 'date_creation', 'pk')[:HOT_LEAD_LOT_MAX]
+
+    posted = 0
+    managers = None
+    with horaires.cache_local():
+        for lead in candidats:
+            try:
+                ecoulees = horaires.minutes_ouvrees_entre(
+                    lead.date_creation, maintenant, company,
+                    canal=_CANAL_PREMIER_CONTACT)
+            except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien
+                logger.warning('sweeps: hot_leads calcul échoué (lead %s)',
+                               lead.pk, exc_info=True)
+                continue
+            if ecoulees <= minutes:
+                continue
+            if managers is None:
+                managers = _managers(company)
+            destinataires = list(managers)
+            owner = getattr(lead, 'owner', None)
+            if owner is not None and owner.pk not in {
+                    u.pk for u in destinataires}:
+                destinataires.append(owner)
+            body = (f'Un lead à fort potentiel (score {lead.score}) attend un '
+                    f'premier contact depuis {ecoulees} minute(s) ouvrée(s) '
+                    f'(seuil : {minutes}). Contactez-le vite.')
+            lien = f'/crm/leads?lead={lead.pk}'
+            for utilisateur in destinataires:
+                notify(utilisateur, EventType.HOT_LEAD_UNREAD, HOT_LEAD_TITRE,
+                       body, link=lien, company=company)
+                posted += 1
     return posted
 
 
@@ -753,13 +823,15 @@ def reveiller_snoozes():
 
 
 @shared_task(name='notifications.sweep_hot_leads')
-def sweep_hot_leads():
-    """QX31be — balayage rapide (cadence minutes) : escalade les leads chauds
-    dont la notif d'arrivée reste non lue. Best-effort par société."""
+def sweep_hot_leads(now=None):
+    """QX31be / CAD132 — balayage rapide (toutes les 15 min) : escalade les
+    leads chauds jamais contactés au-delà du seuil de minutes OUVRÉES — et
+    seulement pendant la fenêtre ouvrée de chaque société, même si le beat
+    tourne 24 h/24. Best-effort par société."""
     total = 0
     for company in _companies():
         try:
-            total += _sweep_hot_leads(company)
+            total += _sweep_hot_leads(company, now=now)
         except Exception:  # pragma: no cover
             logger.warning('sweeps: hot_leads société %s échouée',
                            getattr(company, 'pk', None), exc_info=True)
