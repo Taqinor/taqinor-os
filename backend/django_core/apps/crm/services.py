@@ -1740,8 +1740,19 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # premier « pas de réponse » du protocole aurait envoyé le lead au parking
     # étiqueté « Injoignable 6 appels » — après UN seul appel. La cadence n'est
     # épuisée que si le gabarit n'a plus rien à faire naître.
+    # QUATRIÈME condition (décision fondateur du 24/09/2026 — « et même après
+    # ça rien ne se passe ») : une étape de VISITE (planifier, confirmer,
+    # débrief, devis modifié) n'est PAS un barreau du protocole, c'est un
+    # geste posé À CÔTÉ de lui. Elle portait la cadence ``apres_devis`` et
+    # aucune touche suivante ne naît d'elle : un débrief « pas de réponse »
+    # épuisait donc la cadence et parquait le lead au FROID, étiqueté « Devis
+    # sans suite », avec réveils J30/J60 — même sans aucun devis envoyé.
+    # Jamais plus : c'est le filet ci-dessous (QJ-INVARIANT) qui prend le
+    # relais — le plan s'il est pendant, sinon « Rappeler — dernier essai
+    # avant de chiffrer » (``_FILET_SANS_REPONSE_PALIERS``), puis le devis.
     if (restantes_avant == 0 and suivante is None
-            and (outcome or '') not in _OUTCOMES_SANS_CLOTURE):
+            and (outcome or '') not in _OUTCOMES_SANS_CLOTURE
+            and (etape.libelle or '').strip() not in _LIBELLES_VISITE):
         cloturer_cadence(lead, user, etape.cadence)
     # QJ-INVARIANT (fondateur 07/09/2026, « fix this relance once and for
     # all ») — aucun geste de relance ne laisse un lead ACTIF sans prochaine
@@ -11245,6 +11256,21 @@ _ISSUES_SANS_REPONSE = ('non_joint',)
 #: créneau de MESSAGE), le dernier appel le lendemain (prochain créneau
 #: d'APPEL) — aucun horaire nouveau n'est inventé, les fenêtres de la société
 #: décident.
+#:
+#: Décision fondateur du 24/09/2026 — le DÉBRIEF de visite (sous ses deux
+#: libellés) resté sans réponse monte sur la même dernière marche : « Rappeler
+#: — dernier essai avant de chiffrer », demain. Il parquait le lead au Froid
+#: (clôture MRY11), même sans devis. Le palier n'agit que quand le filet
+#: s'exécute, c'est-à-dire quand RIEN d'autre n'est ouvert : un suivi de
+#: proposition pendant (devis envoyé, plan repris après la visite) continue
+#: seul, et un plan déjà servi est poursuivi avant tout palier (CAD1). Après
+#: ce dernier essai, l'escalier retombe sur « préparer et envoyer le devis »
+#: — jamais une boucle.
+_PALIER_DEBRIEF_SANS_REPONSE = {
+    'issues': _ISSUES_SANS_REPONSE,
+    'suite': (FILET_DERNIER_APPEL_LIBELLE,
+              RelanceEtape.Canal.APPEL, FILET_JOINT_DELAI_JOURS),
+}
 _FILET_SANS_REPONSE_PALIERS = {
     FILET_APPEL_LIBELLE: {
         'issues': _ISSUES_SANS_REPONSE,
@@ -11257,6 +11283,8 @@ _FILET_SANS_REPONSE_PALIERS = {
         'suite': (FILET_DERNIER_APPEL_LIBELLE,
                   RelanceEtape.Canal.APPEL, FILET_JOINT_DELAI_JOURS),
     },
+    VISITE_DEBRIEF_LIBELLE: _PALIER_DEBRIEF_SANS_REPONSE,
+    VISITE_DEVIS_LIBELLE: _PALIER_DEBRIEF_SANS_REPONSE,
 }
 
 

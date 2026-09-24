@@ -68,7 +68,10 @@ SUIVI_PROPOSITION_DEMARRE = 'suivi_proposition_demarre'
 ETAPE_PLANIFIER_VISITE = 'etape_planifier_visite'
 ETAPE_MESSAGE_CRENEAU = 'etape_message_creneau'
 ETAPE_DERNIER_APPEL = 'etape_dernier_appel'
-VISITE_FROID_SI_SEULE = 'visite_froid_si_seule'
+# Décision fondateur du 24/09/2026 — ``visite_froid_si_seule`` (« si c'était
+# la dernière relance ouverte, le dossier part au Froid ») n'existe plus : une
+# étape de visite sans réponse ne parque JAMAIS le lead au Froid, le filet
+# prend le relais (``SUITE_SI_PLUS_RIEN_OUVERT``).
 SUITE_SI_PLUS_RIEN_OUVERT = 'suite_si_plus_rien_ouvert'
 PROCHAINE_RELANCE_A_LA_DATE = 'prochaine_relance_a_la_date'
 ETIQUETTE_DECISION = 'etiquette_decision'
@@ -98,8 +101,7 @@ CODES = frozenset({
     ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI, ETAPE_DECIDER_SUITE,
     ETAPE_DEPLACEE_A_LA_DATE, SUIVI_PROPOSITION_DEMARRE,
     ETAPE_PLANIFIER_VISITE, ETAPE_MESSAGE_CRENEAU, ETAPE_DERNIER_APPEL,
-    VISITE_FROID_SI_SEULE, SUITE_SI_PLUS_RIEN_OUVERT,
-    PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
+    SUITE_SI_PLUS_RIEN_OUVERT, PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
@@ -354,10 +356,12 @@ def _codes_a_cote_du_plan(issue, *, visite):
     if issue == 'rappel':
         return ([PROCHAINE_RELANCE_A_LA_DATE] if visite
                 else [ETAPE_DEPLACEE_A_LA_DATE])
-    if issue in ('non_joint', '') and visite:
-        # Une étape de visite n'est pas un filet : son « pas de réponse » (ou
-        # son saut, CAD47) peut ÉPUISER la cadence après-devis (clôture MRY11).
-        return [VISITE_FROID_SI_SEULE]
+    # « pas de réponse », « Fait » sans issue ou saut (CAD47) : décision
+    # fondateur du 24/09/2026, une étape de visite n'ÉPUISE plus la cadence
+    # après-devis (plus de clôture MRY11 au Froid). Si rien d'autre n'est
+    # ouvert, le filet prend le relais : le plan s'il n'est pas allé au bout,
+    # sinon une étape de suite (le débrief sans réponse : « Rappeler — dernier
+    # essai avant de chiffrer », ``_FILET_SANS_REPONSE_PALIERS``).
     return [SUITE_SI_PLUS_RIEN_OUVERT]
 
 

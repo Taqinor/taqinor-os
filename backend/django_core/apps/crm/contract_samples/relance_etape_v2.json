@@ -393,7 +393,7 @@
         "suites": {
           "joint": ["suite_si_plus_rien_ouvert"],
           "visite_acceptee": ["etape_planifier_visite"],
-          "non_joint": ["visite_froid_si_seule"],
+          "non_joint": ["suite_si_plus_rien_ouvert"],
           "rappel": ["prochaine_relance_a_la_date"],
           "refuse": ["relances_arretees", "etape_decider_suite"],
           "ne_plus_contacter": ["ne_plus_contacter"],
@@ -402,13 +402,13 @@
           "devis_modifie": ["etape_devis_modifie"],
           "decision_famille": ["etiquette_decision", "suite_si_plus_rien_ouvert"],
           "decision_proprietaire": ["etiquette_decision", "suite_si_plus_rien_ouvert"],
-          "sauter": ["visite_froid_si_seule"]
+          "sauter": ["suite_si_plus_rien_ouvert"]
         }
       }
     ]
   },
   "notes": {
-    "exemple_debrief_visite": "CAD2 — un AUTRE ÉTAT du serveur, même forme : l'étape « Débrief visite — rappeler le client » (VISITE-CADENCE, ordre 91 hors gabarit, cadence `apres_devis` pour vivre dans la même frise). Sa nature se lit sur son LIBELLÉ, jamais sur sa cadence : les quatre libellés de visite (« Planifier la visite technique convenue », « Confirmer la visite (veille) », « Débrief visite — rappeler le client », « Préparer le devis modifié — rappeler le client ») portent leur PROPRE jeu de questions à l'écran (« la visite a-t-elle eu lieu ? reportée ? devis à modifier ? ») — patron « libellé + note » de Répondeur/Occupé, sur les issues EXISTANTES, aucune valeur d'énumération neuve. Côté moteur : une étape de visite close ne DÉMARRE jamais le suivi de proposition (`joint` → `suite_si_plus_rien_ouvert` : il le POURSUIT s'il a déjà servi, sinon une étape de suite est posée — jamais « Le PDF s'ouvre bien ? » après une visite).",
+    "exemple_debrief_visite": "CAD2 — un AUTRE ÉTAT du serveur, même forme : l'étape « Débrief visite — rappeler le client » (VISITE-CADENCE, ordre 91 hors gabarit, cadence `apres_devis` pour vivre dans la même frise). Sa nature se lit sur son LIBELLÉ, jamais sur sa cadence : les quatre libellés de visite (« Planifier la visite technique convenue », « Confirmer la visite (veille) », « Débrief visite — rappeler le client », « Préparer le devis modifié — rappeler le client ») portent leur PROPRE jeu de questions à l'écran (« la visite a-t-elle eu lieu ? reportée ? devis à modifier ? ») — patron « libellé + note » de Répondeur/Occupé, sur les issues EXISTANTES, aucune valeur d'énumération neuve. Côté moteur : une étape de visite close ne DÉMARRE jamais le suivi de proposition (`joint` → `suite_si_plus_rien_ouvert` : il le POURSUIT s'il a déjà servi, sinon une étape de suite est posée — jamais « Le PDF s'ouvre bien ? » après une visite). Décision fondateur du 24/09/2026 : `non_joint` et `sauter` n'envoient plus JAMAIS le dossier au Froid (code `visite_froid_si_seule` retiré) — même suite `suite_si_plus_rien_ouvert` ; pour le débrief, l'étape de suite est « Rappeler — dernier essai avant de chiffrer », puis « Préparer et envoyer le devis ».",
     "lead_contact_preference":"CAD82 — préférence de contact du CLIENT (`Lead.contact_preference` : `whatsapp_only` | `phone_ok`), chaîne VIDE — jamais null — quand rien n'est posé. La ligne l'écrit en clair (« joint par écrit seulement ») au lieu de proposer Appeler et WhatsApp à égalité (`exemple_whatsapp_uniquement`).",
     "lead_pii_masquee": "CAD82 — booléen, jamais null : les coordonnées sont MASQUÉES pour CE demandeur (pas de `client_pii_voir`), même règle que `lead_telephone`/`lead_whatsapp`. Un numéro vide n'a donc plus UNE cause devinable mais deux causes nommées : « aucun numéro sur la fiche » (`exemple`, 2e ligne) ou « numéro masqué par vos droits » (`exemple_pii_masquee`) — la raison s'affiche sous le bouton désactivé.",
     "post_langue": "CAD63 — `POST /api/django/crm/relance-etapes/<id>/langue/` `{langue: 'fr'|'darija'}` enregistre la langue du CLIENT de la touche (`Lead.langue_preferee`, journalisé comme une édition de la fiche) et renvoie CETTE forme, `lead_langue` à jour. Le « Fait » accepte le même champ `langue` (réponse « ne parle que darija ») : posé seulement si la touche est enregistrée. Refus 400 `{erreurs: {langue}}` nommant le champ.",
