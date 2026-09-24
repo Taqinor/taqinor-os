@@ -61,10 +61,10 @@ class ChampsSiteApiTests(TestCase):
             self.acteur = User.objects.create_user(
                 username='cad150-resp', password='x',
                 role_legacy='responsable', company=self.company)
+            # Les deux champs du site de l'exemple committé — rien d'autre.
             self.lead = Lead.objects.create(
                 company=self.company, nom='Benali', source=Lead.Source.SITE_WEB,
-                ownership='proprietaire', roof_age=12,
-                bill_kwh=Decimal('420.00'))
+                ownership='proprietaire', roof_age=12)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.acteur)}')
@@ -88,6 +88,9 @@ class ChampsSiteApiTests(TestCase):
                     ARRIVEE)
 
     def test_un_champ_du_site_est_editable_et_garde_sa_provenance(self):
+        # La consommation déclarée sur le site (posée par le webhook, sans
+        # ligne de chatter) — elle devient éditable elle aussi.
+        Lead.objects.filter(pk=self.lead.pk).update(bill_kwh=Decimal('420.00'))
         resp = self.api.patch(self._url(), {'ownership': 'locataire',
                                             'bill_kwh': '380'},
                               format='json')
