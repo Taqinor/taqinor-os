@@ -269,7 +269,9 @@ SANS_PRODUCTEUR_PUR = {
         'la société EN BASE (CALX358) — la forme (lignes non calculées à '
         '`quantite: null` + `manquant` nommé, aucune clé d’argent) est '
         'affirmée sans base par '
-        'apps/calepinage/tests/test_calx335_contrat_fixation_bom.py',
+        'apps/calepinage/tests/test_calx335_contrat_fixation_bom.py, et le '
+        'coeur PUR du producteur (_lignes_de_fixation) est rejoué contre '
+        "l'exemple par apps/calepinage/tests/test_calx359_bom_fixation.py",
 }
 
 #: Contrats posés AVANT leur route (PACT10 : le contrat d'abord, seul, sur
@@ -290,8 +292,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # même retrait que CALX297 avant elle.
     # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
     # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
-    # CALX335 — posé AVANT ``GET calepinages/<pk>/bom-fixation/`` (CALX359).
-    'calepinage_fixation_bom.json': 'CALX359',
+    # CALX359 a livré ``GET calepinages/<pk>/bom-fixation/``
+    # (``views/fixation.py``) : ``calepinage_fixation_bom.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y

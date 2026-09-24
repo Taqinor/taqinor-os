@@ -108,6 +108,9 @@ from . import documents as _documents_actions  # noqa: F401
 # CALX347 — même patron : rattache ``approbation`` (GET l'état / POST la
 # décision du second regard, contrat CALX334, services/approbation.py).
 from . import approbation as _approbation_action  # noqa: F401
+# CALX359 — même patron : rattache ``bom-fixation`` (la nomenclature de
+# fixation, contrat CALX335, services/fixation.py). Lecture PURE.
+from . import fixation as _fixation_action  # noqa: F401
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
@@ -137,6 +140,7 @@ MODULES_RATTACHES = (
     'plan_importe',  # CALX107
     'documents',  # CALX297
     'approbation',  # CALX347
+    'fixation',  # CALX359
 )
 
 __all__ = ['MODULES_RATTACHES']
