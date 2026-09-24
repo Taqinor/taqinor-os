@@ -4,7 +4,7 @@
    fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
 import { lazy } from 'react'
 import {
-  BadgeCheck, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
+  BadgeCheck, Columns3, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -195,6 +195,14 @@ const config = {
         to: '/calepinage/reglages',
         label: 'Réglages simulation',
         icon: <SlidersHorizontal size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
+        // CALX342 — la comparaison de 1 à 5 calepinages ; sans sélection,
+        // l'écran renvoie choisir dans la liste (mode « Comparer »).
+        to: '/calepinage/comparaison',
+        label: 'Comparer',
+        icon: <Columns3 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
     ],

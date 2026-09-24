@@ -143,8 +143,9 @@ function texteAppelantsReel() {
    écran l'appelle enfin, ou quand la méthode morte est supprimée du client —
    jamais en élargissant la garde. */
 export const EXCEPTIONS_SANS_APPELANT = {
-  'calepinages.sorties': "23/09/2026 — inventaire remplacé par documents() (CALX320, PanneauDocuments.jsx) ; sorties/ reste servi pour compat mais aucun écran ne le lit plus directement",
-  'calepinages.telechargerSortie': '23/09/2026 — même remplacement que sorties() ci-dessus : PanneauDocuments.jsx télécharge désormais via telechargerDocument()',
+  // 'calepinages.sorties' / 'calepinages.telechargerSortie' RETIRÉES (fold M5,
+  // 24/09/2026) : Fixation.jsx (CALX360, onglet Fixation de l'atelier) les
+  // appelle désormais toutes les deux — exceptions périmées.
   'calepinages.composerPackTechnique': "23/09/2026 — la porte HTTP existe (CALX24) mais aucun écran ne compose encore le dossier technique depuis l'atelier",
   'calepinages.variantes': "23/09/2026 — la liste des variantes se lit via le comparatif comparer() ; l'endpoint brut n'a plus de consommateur direct",
   'calepinages.releve': "23/09/2026 — le relevé se lit désormais via l'historique servi par enregistrerReleve()/PanneauReleve.jsx ; la lecture seule releve() n'a plus d'appelant direct",
