@@ -473,6 +473,14 @@ const calepinageApi = {
     // garde `create()` — la création d'aujourd'hui, inchangée.
     depuisModele: (corps) =>
       api.post('/calepinage/calepinages/depuis-modele/', corps),
+    // CALX365 — la REPRISE de la visite technique validée (contrat
+    // `contract_samples/calepinage_releve_visite.json`, CALX336 ; porte
+    // `views/reprise_visite.py`, CALX364). GET et POST rendent la MÊME
+    // forme : POST crée UN relevé de provenance `visite` (201) ou rend celui
+    // déjà repris (200, `deja_repris`) ; sans visite validée, 400 SOUS le
+    // champ `visite_id`, le motif du serveur tel quel.
+    releveVisite: (id) => api.get(`${pivot(id)}releve-visite/`),
+    reprendreVisite: (id) => api.post(`${pivot(id)}releve-visite/`),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────

@@ -80,6 +80,7 @@ export const ONGLETS = [
   { cle: 'verdict-electrique', libelle: 'Verdict électrique', groupe: 'Système', ordre: 250, composant: lazy(() => import('../electrique/VerdictElectrique')) }, // CALX249
 
   { cle: 'economie', libelle: 'Économie', groupe: 'Résultats', ordre: 260, composant: lazy(() => import('../economie/PanneauEconomie')) }, // CALX289
+  { cle: 'reprise-visite', libelle: 'Reprise de la visite', groupe: 'Site', ordre: 165, composant: lazy(() => import('./RepriseVisite')) }, // CALX365
 ]
 
 /**
