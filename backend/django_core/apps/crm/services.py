@@ -1626,7 +1626,13 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
             libelle_touche_close=(etape.libelle or ''),
             # CAD3 — l'issue voyage avec le libellé : la ceinture doit pouvoir
             # distinguer « le client a demandé un rappel » d'un arbitrage.
-            issue_touche_close=(outcome or '').strip())
+            issue_touche_close=(outcome or '').strip(),
+            # CAD2 — une étape de VISITE close (confirmer, débrief, devis
+            # modifié, planifier) ne DÉMARRE jamais le suivi de proposition :
+            # « Client joint » sur un débrief relançait tout le plan depuis
+            # « Le PDF s'ouvre bien ? ». Le poursuivre reste permis (CAD1).
+            demarrer_plan=(etape.libelle or '').strip()
+            not in _LIBELLES_VISITE)
     return etape
 
 
@@ -2137,7 +2143,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
                                          brouillon_compris=False,
                                          canal_touche=None,
                                          libelle_touche_close='',
-                                         issue_touche_close=''):
+                                         issue_touche_close='',
+                                         demarrer_plan=True):
     """QJ-INVARIANT (fondateur 07/09/2026) — un lead ACTIF ne reste JAMAIS
     sans prochaine étape : sa liste de relances ne se termine que par le
     parking Froid ou la signature.
@@ -2163,7 +2170,13 @@ def assurer_prochaine_etape_apres_succes(lead, user,
 
     No-op dès qu'une prochaine étape existe déjà, ou que le lead est signé,
     au froid (le réveil s'en charge), perdu ou archivé. Renvoie l'étape
-    posée (la première du plan) ou ``None``."""
+    posée (la première du plan) ou ``None``.
+
+    CAD2 — ``demarrer_plan=False`` : le suivi de proposition peut être
+    POURSUIVI (barreau suivant d'un plan déjà consommé, CAD1) mais JAMAIS
+    DÉMARRÉ depuis son barreau 1. C'est le cas d'une étape de VISITE close :
+    après un débrief, « Le PDF s'ouvre bien ? » serait un contresens — la
+    suite est alors l'étape générique."""
     from . import horaires
 
     if not getattr(lead, 'pk', None):
@@ -2203,7 +2216,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
             suite = materialiser_touche_suivante(consomme, user)
             if suite is not None:
                 return suite
-        else:
+        elif demarrer_plan:
             etapes = initialiser_plan_relance(
                 lead, user, cadence='apres_devis', devis=devis)
             ouvertes = [e for e in etapes
@@ -2211,6 +2224,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
             if ouvertes:
                 return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
+        # CAD2 — idem quand l'appelant interdit le DÉMARRAGE (étape de visite
+        # close) : on poursuit, on ne rejoue jamais depuis le barreau 1.
     elif brouillon_compris:
         # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP compte
         # aussi ». Aucun devis dans l'ERP, mais l'humain vient de cocher
@@ -3445,6 +3460,20 @@ def prefixe_activite_touche(etape):
     dérivé, et l'appariement se serait tu sans qu'aucune garde ne rougisse."""
     libelle = (etape.libelle or '').strip() or etape.get_canal_display()
     return f'Touche « {libelle} »'
+
+
+def est_cloture_d_etape_visite(activite):
+    """CAD2 — cette ligne de chatter est-elle la CLÔTURE d'une étape de visite
+    (planifier, confirmer, débrief, devis modifié) ?
+
+    Relue par le récepteur d'issue (MRY9), qui ne tient que l'activité : c'est
+    le PRÉFIXE écrit par ``marquer_etape_relance`` (``prefixe_activite_touche``,
+    source unique RLC2) qui dit de quelle touche elle vient — jamais un
+    littéral recopié."""
+    corps = getattr(activite, 'body', '') or ''
+    return any(
+        corps.startswith(prefixe_activite_touche(RelanceEtape(libelle=libelle)))
+        for libelle in _LIBELLES_VISITE)
 
 
 def prefixe_activite_message_ouvert(etape):
