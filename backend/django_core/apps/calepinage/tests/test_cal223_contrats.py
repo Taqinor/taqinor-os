@@ -310,9 +310,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # en est SORTI.
     # CALX343 a livré ``GET/POST/DELETE calepinages/<pk>/etiquettes/``
     # (``views/etiquettes.py``) : ``calepinage_etiquettes.json`` en est SORTI.
-    # CALX333 — ``GET calepinages/<pk>/versions/<id>/diff/`` arrive avec
-    # CALX345.
-    'calepinage_versions_diff.json': 'CALX345',
+    # CALX345 a livré ``GET calepinages/<pk>/versions/<id>/diff/``
+    # (``views/versions_diff.py``) : ``calepinage_versions_diff.json`` en est
+    # SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
@@ -389,10 +389,14 @@ class CheminDeclareTest(unittest.TestCase):
             segment = route.rstrip('/').rsplit('/', 1)[-1]
             if segment.startswith('<'):        # ``calepinages/<int:pk>/``
                 continue
+            # CALX345 — ``or f"/{segment}'"`` : une sous-route à paramètre
+            # (``url_path=r'versions/(?P<version_id>[^/.]+)/diff'``) se
+            # termine par son segment, sans ``/`` final.
             self.assertTrue(
                 f"url_path='{segment}'" in sources
                 or f"'{segment}/'" in sources
-                or f"{segment}/'" in sources,
+                or f"{segment}/'" in sources
+                or f"/{segment}'" in sources,
                 f"{chemin.name} : le chemin « {route} » n'est déclaré nulle "
                 f"part dans urls.py ni dans une @action du module "
                 f"(segment cherché : « {segment} »).")

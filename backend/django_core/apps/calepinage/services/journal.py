@@ -117,10 +117,42 @@ def journaliser_variante_retenue(calepinage, *, ancienne=None, nouvelle=None,
 
 
 def journaliser_restauration(calepinage, *, version=None, user=None):
-    """Restauration d'une version — l'événement, pas seulement son effet."""
+    """Restauration d'une version — l'événement, pas seulement son effet.
+
+    CALX345 — l'entrée porte AUSSI, dans son corps, les ÉCARTS entre l'état
+    REMPLACÉ et la version restaurée (``services/diff_versions.py``, la MÊME
+    liste fermée que ``GET versions/<id>/diff/``) : un lecteur du journal sait
+    ce que la restauration a changé sans ouvrir deux instantanés.
+    """
     return _ecrire(calepinage, 'MODIFICATION', user=user, field='version',
                    field_label='Version restaurée', old_value='',
-                   new_value=str(getattr(version, 'pk', '') or ''))
+                   new_value=str(getattr(version, 'pk', '') or ''),
+                   body=_ecarts_de_restauration(calepinage, version))
+
+
+def _ecarts_de_restauration(calepinage, version):
+    """Les écarts « état remplacé → version restaurée », en une phrase.
+
+    Appelée APRÈS l'enregistrement de la restauration : la version la plus
+    récente est la copie restaurée, celle d'AVANT elle est l'état remplacé.
+    Best-effort, comme tout le journal : ``''`` plutôt qu'un geste cassé.
+    """
+    if version is None or not getattr(calepinage, 'pk', None):
+        return ''
+    try:
+        from ..selectors import versions
+        from .diff_versions import comparer_versions, texte_des_ecarts
+
+        recentes = list(versions(calepinage)[:2])
+        if len(recentes) < 2:
+            return ''
+        remplacee = recentes[1]
+        ecarts = comparer_versions(remplacee, version)['ecarts']
+        return "Écarts avec l'état remplacé — %s" % texte_des_ecarts(ecarts)
+    except Exception:  # noqa: BLE001 — un journal ne casse jamais un geste
+        logger.exception('CALX345 : écarts de restauration non calculés '
+                         '(calepinage %s)', getattr(calepinage, 'pk', None))
+        return ''
 
 
 #: CAL207 — champ + valeurs du VERROU dans le chatter (source unique lue par
