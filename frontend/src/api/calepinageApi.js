@@ -436,6 +436,20 @@ const calepinageApi = {
     // `sorties/planche_png`, CAL175).
     diagrammePertesSvg: (id, params) =>
       api.get(`${pivot(id)}diagramme-pertes.svg/`, { responseType: 'blob', params }),
+
+    // CALX342 — le COMPARATIF de 1 à 5 calepinages DISTINCTS (contrat
+    // `contract_samples/calepinage_comparaison_projets.json`, CALX331 ; porte
+    // `views/comparaison_projets.py`, CALX341). Action de LISTE : POST parce
+    // que la liste d'identifiants voyage dans le corps — le serveur n'écrit
+    // RIEN. Plus de 5 identifiants, ou aucun : 400 SOUS le champ `ids`.
+    comparerProjets: (ids) =>
+      api.post('/calepinage/calepinages/comparer-projets/', { ids }),
+    // CALX342 — le MÊME comparatif en classeur (feuille « Comparatif ») : le
+    // calepinage `id` ouvre le tableau, `autres` complètent (5 au total).
+    // Réponse BLOB ; un refus 400 arrive lui aussi en Blob.
+    comparatifXlsx: (id, autres = []) =>
+      api.get(`${pivot(id)}comparatif.xlsx/`,
+        { responseType: 'blob', params: autres.length ? { ids: autres.join(',') } : {} }),
   },
 
   /* ── Le moteur, porte HTTP NEUTRE (CAL22/CAL23) ──────────────────────────
