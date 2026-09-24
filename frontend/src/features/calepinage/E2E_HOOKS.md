@@ -121,6 +121,7 @@ retiré plus un hook ajouté.
 
 | Hook | Sémantique |
 |---|---|
+| `cal-responsable` | vignette — responsable du calepinage, ou « Sans responsable » (CALX406). |
 | `cal-vignette` | vignette. |
 | `cal-vignette-image` | vignette image. |
 | `cal-vignette-sans-image` | vignette sans image. |
@@ -478,6 +479,34 @@ retiré plus un hook ajouté.
 | `cal-versions-rappel` | versions rappel. |
 | `cal-versions-restaurer` | versions restaurer. |
 
+## PoseReelle (`atelier/PoseReelle.jsx`) — CALX367
+
+| Hook | Sémantique |
+|---|---|
+| `cal-pose-bandeau` | pose réelle — bandeau de refus qui nomme le pan et le champ. |
+| `cal-pose-champ-releve_le` | pose réelle — champ date du relevé (saisie). |
+| `cal-pose-chargement` | pose réelle — lecture en cours. |
+| `cal-pose-creer-version` | pose réelle — bouton « Créer une version depuis les écarts ». |
+| `cal-pose-ecart` | pose réelle — écart servi pour un pan (vide sans saisie, jamais 0). |
+| `cal-pose-enregistrer` | pose réelle — bouton d'enregistrement d'un pan. |
+| `cal-pose-erreur-creer_version` | pose réelle — refus de version, sous le bouton. |
+| `cal-pose-erreur-detail` | pose réelle — refus générique du serveur. |
+| `cal-pose-erreur-lecture` | pose réelle — message d'erreur de lecture. |
+| `cal-pose-erreur-modules` | pose réelle — refus `modules_poses` sous le champ du pan. |
+| `cal-pose-erreur-pan` | pose réelle — refus `pan` sous la cellule du pan. |
+| `cal-pose-erreur-releve_le` | pose réelle — refus `releve_le` sous la date. |
+| `cal-pose-grille` | pose réelle — grille de saisie des pans. |
+| `cal-pose-ligne` | pose réelle — ligne d'un pan. |
+| `cal-pose-mention` | pose réelle — mention du serveur pour un pan (motif d'un vide). |
+| `cal-pose-message` | pose réelle — message de réussite. |
+| `cal-pose-modules` | pose réelle — champ modules posés d'un pan. |
+| `cal-pose-position` | pose réelle — texte libre des écarts de position d'un pan. |
+| `cal-pose-prevu` | pose réelle — modules prévus d'un pan. |
+| `cal-pose-reelle` | pose réelle — panneau de l'onglet. |
+| `cal-pose-source` | pose réelle — source du prévu et totaux. |
+| `cal-pose-version` | pose réelle — dernière version née des écarts. |
+| `cal-pose-vide` | pose réelle — aucun pan prévu. |
+
 ## Rail (`atelier/Rail.jsx`)
 
 | Hook | Sémantique |
@@ -486,6 +515,27 @@ retiré plus un hook ajouté.
 | `cal-onglet-erreur` | onglet message d'erreur. |
 | `cal-onglet-panneau` | onglet panneau. |
 | `cal-rail-onglets` | rail onglets. |
+
+## RepriseVisite (`atelier/RepriseVisite.jsx`) — CALX365
+
+| Hook | Sémantique |
+|---|---|
+| `cal-reprise-bandeau` | reprise de visite — bandeau date et auteur de la reprise. |
+| `cal-reprise-bouton` | reprise de visite — bouton « Reprendre dans ce calepinage ». |
+| `cal-reprise-chargement` | reprise de visite — lecture en cours. |
+| `cal-reprise-erreur` | reprise de visite — refus du serveur sous le bouton, par champ. |
+| `cal-reprise-erreur-lecture` | reprise de visite — message d'erreur de lecture. |
+| `cal-reprise-mesure` | reprise de visite — une mesure telle que saisie. |
+| `cal-reprise-mesures` | reprise de visite — liste des mesures. |
+| `cal-reprise-mesures-vide` | reprise de visite — aucune mesure saisie. |
+| `cal-reprise-photo` | reprise de visite — une photo retenue. |
+| `cal-reprise-photos` | reprise de visite — liste des photos retenues. |
+| `cal-reprise-photos-vide` | reprise de visite — aucune photo retenue. |
+| `cal-reprise-raison` | reprise de visite — raison du bouton désactivé. |
+| `cal-reprise-refus-bandeau` | reprise de visite — bandeau qui nomme le champ refusé. |
+| `cal-reprise-vide` | reprise de visite — état vide, motif du serveur tel quel. |
+| `cal-reprise-visite` | reprise de visite — panneau de l'onglet. |
+| `cal-reprise-visite-entete` | reprise de visite — numéro et validation de la visite. |
 
 ## RetourAtelier (`atelier/RetourAtelier.jsx`)
 
@@ -580,4 +630,31 @@ retiré plus un hook ajouté.
 | `cal-tapis-pic` | tapis horaire pic. |
 | `cal-tapis-tronquee` | tapis horaire tronquée. |
 | `cal-tapis-vide` | tapis horaire état vide. |
+| `cal-biblio-marquer` | bibliothèque marquer comme modèle (CALX352). |
+| `cal-biblio-marquer-bouton` | bouton marquer comme modèle. |
+| `cal-biblio-marquer-erreur` | erreur du marquage modèle. |
+| `cal-biblio-marquer-id` | identifiant saisi du modèle. |
+| `cal-barre-comparaison` | barre de sélection de la comparaison (CALX342). |
+| `cal-comparer` | bouton comparer. |
+| `cal-mode-comparer` | bascule du mode comparer. |
+| `cal-ouvrir-comparaison` | ouvrir la comparaison. |
+| `cal-nouveau-jeux-vide` | création : aucun jeu de réglages (CALX352). |
+| `cal-nouveau-modele-apercu` | création : aperçu du modèle choisi. |
+| `cal-nouveau-modeles-vide` | création : aucun modèle. |
+| `cal-comparaison` | écran comparaison de projets (CALX342). |
+| `cal-comparaison-classeur` | téléchargement du classeur comparatif. |
+| `cal-comparaison-motif` | motif d’un projet non comparable. |
+| `cal-comparaison-motif-classeur` | motif du classeur indisponible. |
+| `cal-comparaison-refus` | refus serveur de la comparaison. |
+| `cal-etiquettes` | bloc étiquettes (CALX344). |
+| `cal-etiquettes-ajouter` | ajouter une étiquette. |
+| `cal-etiquettes-choix` | choix d’étiquette. |
+| `cal-etiquettes-erreur` | erreur étiquettes. |
+| `cal-etiquettes-proposer` | proposition d’étiquette. |
+| `cal-filtre-etiquettes` | filtre par étiquettes de la liste. |
+| `cal-filtre-etiquettes-choix` | choix du filtre étiquettes. |
+| `cal-filtre-etiquettes-option` | option du filtre étiquettes. |
+| `cal-filtre-etiquettes-ouvrir` | ouvrir le filtre étiquettes. |
+| `cal-rail-lexique` | lien lexique du rail (CALX396). |
+
 

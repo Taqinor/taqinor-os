@@ -1,0 +1,23 @@
+# Base de reference de check_frontiere_calepinage.py — DETTE HISTORIQUE,
+# RIEN D'AUTRE (CALX372).
+#
+# Chaque ligne est un import de apps/calepinage/** (hors tests) vers un module
+# INTERDIT par la decision D-CALX 2 (apps.ao, apps.ged) ou par le lot 7
+# (apps.visites.models ; apps.visites.selectors est admis sans base). Mesure
+# du 24/09/2026 : 4 imports apps.ged, tous fonction-locaux, ZERO apps.ao
+# (SOLMVP15 a detache le module d'appels d'offres) et ZERO apps.visites.models.
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - retirer un import puis `python scripts/check_frontiere_calepinage.py
+#     --write-baseline` retire sa ligne ; un import simplement DEPLACE s'y
+#     re-enregistre a sa nouvelle ligne ;
+#   - `--write-baseline` REFUSE tout import NOUVEAU (plus d'imports d'un meme
+#     module dans un meme fichier que la base n'en porte). Ajouter une dette
+#     exige `--autoriser-croissance`, drapeau reserve au fondateur, visible en
+#     revue.
+#
+# Format : `<fichier>:<ligne>:<module>`.
+backend/django_core/apps/calepinage/services/pack_technique.py:224:apps.ged.services
+backend/django_core/apps/calepinage/services/pack_technique.py:351:apps.ged.services
+backend/django_core/apps/calepinage/services/reglementaire.py:604:apps.ged.services
+backend/django_core/apps/calepinage/services/terre.py:125:apps.ged.selectors

@@ -84,6 +84,8 @@ export const ONGLETS = [
   { cle: 'approbation', libelle: 'Approbation', groupe: 'Dossiers', ordre: 270, composant: lazy(() => import('./Approbation')) }, // CALX349
 
   { cle: 'fixation', libelle: 'Fixation', groupe: 'Système', ordre: 195, composant: lazy(() => import('./Fixation')) }, // CALX360
+  { cle: 'reprise-visite', libelle: 'Reprise de la visite', groupe: 'Site', ordre: 165, composant: lazy(() => import('./RepriseVisite')) }, // CALX365
+  { cle: 'pose-reelle', libelle: 'Pose réelle', groupe: 'Dossiers', ordre: 185, composant: lazy(() => import('./PoseReelle')) }, // CALX367
 ]
 
 /**

@@ -25,7 +25,8 @@ import { FiltreEtiquettes } from './Etiquettes'
    fondateur du 19/09/2026) — il lui fallait une liste à lui.
 
    LES FILTRES SONT CEUX QUE LE SERVEUR SERT VRAIMENT (CAL16) : `lead`,
-   `client`, `statut`, `depuis`, `q`. Aucun autre n'est envoyé. La leçon PV22
+   `client`, `statut`, `depuis`, `q` — plus `responsable` (CALX406, colonne
+   « Responsable »). Aucun autre n'est envoyé. La leçon PV22
    est qu'un filtre IGNORÉ par le serveur fait ouvrir le mauvais objet : une
    liste fausse qui a l'air juste est pire qu'une liste qui refuse de filtrer.
    Chaque champ ci-dessous part donc dans la requête, et le test le prouve.
@@ -61,13 +62,15 @@ const CHAMPS_TRI = [
 /* Les filtres, tels qu'ils partent au serveur. Une valeur vide n'est pas
    envoyée du tout : `?statut=` (vide) serait un filtre, pas une absence de
    filtre. */
-function paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes }) {
+function paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes, responsable }) {
   const params = {}
   if (q) params.q = q
   if (statut) params.statut = statut
   if (depuis) params.depuis = depuis
   if (lead) params.lead = lead
   if (client) params.client = client
+  // CALX406 — `?responsable=<id>`, servi par `views/calepinages.py`.
+  if (responsable) params.responsable = responsable
   if (ordering) params.ordering = ordering
   if (page && page > 1) params.page = page
   // CALX344 — `?etiquette=` : ET logique côté serveur. Les identifiants
@@ -95,6 +98,20 @@ const chercherClients = async (q) => {
     label: c.nom || c.raison_sociale || `Client ${c.id}`,
     description: c.ville || undefined,
   }))
+}
+
+/* CALX406 — LE RESPONSABLE d'une ligne, quelle que soit la forme reçue :
+   l'agrégat de détail (contrat `calepinage_detail.json`) publie
+   `responsable: {id, nom_complet}` ; le sérialiseur de liste publie
+   l'identifiant `responsable` et son `responsable_nom`. `null` = personne —
+   jamais un nom deviné. */
+function responsableDe(ligne) {
+  const brut = ligne?.responsable
+  if (brut === null || brut === undefined || brut === '') return null
+  if (typeof brut === 'object') {
+    return { id: String(brut.id), nom: brut.nom_complet || `Utilisateur ${brut.id}` }
+  }
+  return { id: String(brut), nom: ligne?.responsable_nom || `Utilisateur ${brut}` }
 }
 
 /* CALX342 — la BORNE du comparatif de calepinages : celle du serveur
@@ -166,6 +183,13 @@ export function VignetteCalepinage({ calepinage, selection = null }) {
           <div className="text-xs text-muted-foreground">
             {calepinage?.modifie_le ? `Modifié le ${formatDate(calepinage.modifie_le)}` : '—'}
           </div>
+          {/* CALX406 — la colonne « Responsable » de la liste. */}
+          <div className="truncate text-xs text-muted-foreground"
+            data-testid={`cal-responsable-${calepinage.id}`}>
+            {responsableDe(calepinage)
+              ? `Responsable : ${responsableDe(calepinage).nom}`
+              : 'Sans responsable'}
+          </div>
         </div>
       </Link>
     </Card>
@@ -181,6 +205,8 @@ export default function CalepinageList() {
   const [client, setClient] = useState(null)
   const [page, setPage] = useState(1)
   const [etiquettes, setEtiquettes] = useState([])
+  // CALX406 — l'identifiant du responsable filtré ('' = tous).
+  const [responsable, setResponsable] = useState('')
 
   // CALX32 — le tri vit dans l'URL (`?ordering=`), partageable et rechargeable
   // à l'identique — contrairement aux autres filtres ci-dessus (état local).
@@ -205,8 +231,8 @@ export default function CalepinageList() {
   }
 
   const params = useMemo(
-    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes }),
-    [q, statut, depuis, lead, client, page, ordering, etiquettes],
+    () => paramsServeur({ q, statut, depuis, lead, client, page, ordering, etiquettes, responsable }),
+    [q, statut, depuis, lead, client, page, ordering, etiquettes, responsable],
   )
 
   const { data, loading, error } = useResource(
@@ -235,11 +261,23 @@ export default function CalepinageList() {
     return [...vus.entries()]
   }, [lignes])
 
+  // CALX406 — options de RESPONSABLE : celles des lignes reçues (même
+  // discipline que le statut — aucune liste de personnes recopiée ici).
+  const optionsResponsable = useMemo(() => {
+    const vus = new Map()
+    for (const ligne of lignes) {
+      const r = responsableDe(ligne)
+      if (r && !vus.has(r.id)) vus.set(r.id, r.nom)
+    }
+    return [...vus.entries()]
+  }, [lignes])
+
   const reinitialiser = () => {
     setQ(''); setStatut(''); setDepuis(''); setLead(null); setClient(null); setPage(1)
-    setEtiquettes([])
+    setEtiquettes([]); setResponsable('')
   }
-  const filtreActif = Boolean(q || statut || depuis || lead || client || etiquettes.length)
+  const filtreActif = Boolean(q || statut || depuis || lead || client || etiquettes.length
+    || responsable)
   const surFiltre = (poser) => (valeur) => { poser(valeur); setPage(1) }
 
   // CALX32 — changer le champ ou le sens relance la requête avec `ordering=`
@@ -354,6 +392,21 @@ export default function CalepinageList() {
             onSearch={chercherClients}
             placeholder="Tous les clients"
           />
+        </div>
+
+        {/* CALX406 — la colonne « Responsable » filtre VRAIMENT (`?responsable=`). */}
+        <div className="space-y-1">
+          <Label htmlFor="cal-responsable">Responsable</Label>
+          <Select value={responsable || '__tous__'}
+            onValueChange={(v) => surFiltre(setResponsable)(v === '__tous__' ? '' : v)}>
+            <SelectTrigger id="cal-responsable"><SelectValue placeholder="Tous les responsables" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__tous__">Tous les responsables</SelectItem>
+              {optionsResponsable.map(([valeur, nom]) => (
+                <SelectItem key={valeur} value={valeur}>{nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-1">

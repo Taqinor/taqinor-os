@@ -346,9 +346,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # même retrait que CALX297 avant elle.
     # CALX312 a livré ``GET calepinages/<pk>/export-projet.json/``
     # (``views/documents.py``) : ``export_projet.json`` en est SORTI.
-    'calepinage_releve_visite.json':
-        'GET/POST calepinages/<pk>/releve-visite/ arrive avec CALX364 '
-        '(views/reprise_visite.py) — retirer cette entrée dans la même tâche',
+    # CALX364 a livré ``GET/POST calepinages/<pk>/releve-visite/``
+    # (``views/reprise_visite.py``) : ``calepinage_releve_visite.json`` en est
+    # SORTI.
     # CALX341 a livré ``POST calepinages/comparer-projets/``
     # (``views/comparaison_projets.py``) : ``calepinage_comparaison_projets.json``
     # en est SORTI.
@@ -357,10 +357,9 @@ POSES_AVANT_LEUR_ROUTE = {
     # CALX345 a livré ``GET calepinages/<pk>/versions/<id>/diff/``
     # (``views/versions_diff.py``) : ``calepinage_versions_diff.json`` en est
     # SORTI.
-    # CALX334 — ``GET/POST calepinages/<pk>/approbation/`` arrive avec CALX347.
-    'calepinage_approbation.json': 'CALX347',
-    # CALX337 — ``GET/POST calepinages/<pk>/pose-reelle/`` arrive avec CALX366.
-    'calepinage_asbuilt_ecarts.json': 'CALX366',
+    # CALX347 a livré GET/POST approbation/ : calepinage_approbation.json en est SORTI.
+    # CALX366 a livré ``GET/POST calepinages/<pk>/pose-reelle/``
+    # (``views/asbuilt.py``) : ``calepinage_asbuilt_ecarts.json`` en est SORTI.
     # CALX359 a livré ``GET calepinages/<pk>/bom-fixation/``
     # (``views/fixation.py``) : ``calepinage_fixation_bom.json`` en est SORTI.
 }

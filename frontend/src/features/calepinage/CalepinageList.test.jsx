@@ -253,3 +253,49 @@ describe('CalepinageList (CAL35)', () => {
     })
   })
 })
+
+/* CALX406 — la colonne « Responsable », lue sur le contrat committé
+   `calepinage_detail.json` (`responsable: {id, nom_complet}` ou `null`). */
+describe('CALX406 — la colonne « Responsable » de la liste', () => {
+  it('chaque vignette dit son responsable, ou qu’il n’y en a pas — jamais un nom deviné', async () => {
+    rendre()
+    await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
+    expect(screen.getByTestId(`cal-responsable-${AVEC_IMAGE.id}`))
+      .toHaveTextContent(`Responsable : ${AVEC_IMAGE.responsable.nom_complet}`)
+    expect(SANS_IMAGE.responsable).toBeNull()
+    expect(screen.getByTestId(`cal-responsable-${SANS_IMAGE.id}`))
+      .toHaveTextContent('Sans responsable')
+  })
+
+  it('la colonne « Responsable » FILTRE la liste : `?responsable=<id>` part au serveur', async () => {
+    rendre()
+    await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Responsable' }))
+    // Les options sont celles des lignes reçues — la personne du contrat.
+    fireEvent.click(await screen.findByRole('option', { name: AVEC_IMAGE.responsable.nom_complet }))
+    await waitFor(() => expect(derniersParams())
+      .toEqual({ responsable: String(AVEC_IMAGE.responsable.id) }))
+  })
+
+  it('« Tous les responsables » retire le filtre de la requête', async () => {
+    rendre()
+    await screen.findByTestId(`cal-vignette-${AVEC_IMAGE.id}`)
+    fireEvent.click(screen.getByRole('combobox', { name: 'Responsable' }))
+    fireEvent.click(await screen.findByRole('option', { name: AVEC_IMAGE.responsable.nom_complet }))
+    await waitFor(() => expect(derniersParams())
+      .toEqual({ responsable: String(AVEC_IMAGE.responsable.id) }))
+    fireEvent.click(screen.getByRole('combobox', { name: 'Responsable' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Tous les responsables' }))
+    await waitFor(() => expect(derniersParams()).toEqual({}))
+  })
+
+  it('la forme du sérialiseur de liste (identifiant + `responsable_nom`) s’affiche aussi', async () => {
+    const ligneListe = { ...SANS_IMAGE, id: 42, responsable: 7, responsable_nom: 'Concepteur d’essai' }
+    mocks.list.mockResolvedValue({
+      data: { count: 1, next: null, previous: null, results: [ligneListe] },
+    })
+    rendre()
+    expect(await screen.findByTestId('cal-responsable-42'))
+      .toHaveTextContent('Responsable : Concepteur d’essai')
+  })
+})

@@ -135,6 +135,26 @@ class Calepinage(TenantModel):
     approbation = models.JSONField('Approbation', null=True, blank=True,
                                    default=None)
 
+    #: CALX406 — À QUI la conception est CONFIÉE une fois créée (``cree_par``
+    #: dit seulement qui l'a ouverte). ``None`` par défaut — l'état de TOUT
+    #: calepinage existant (migration ``0016`` additive) — et un responsable
+    #: vide reste admis. Aucun compte n'est désigné d'office : le champ se
+    #: SAISIT (sérialiseur du viewset), jamais un prénom ni un identifiant
+    #: écrit en dur. Il porte la vue restreinte optionnelle de la société
+    #: (``presets.vue_restreinte_au_responsable``, ``views/calepinages.py``).
+    responsable = models.ForeignKey(
+        'authentication.CustomUser',
+        # PROTECT, pas SET_NULL (garde YDATA3 ``check_on_delete``) : effacer le
+        # compte viderait ce champ EN SILENCE et ferait sortir le calepinage de
+        # la vue restreinte de son responsable. Un compte qui porte des
+        # calepinages se DÉSACTIVE ; pour le supprimer, on confie d'abord ses
+        # conceptions à quelqu'un d'autre.
+        on_delete=models.PROTECT,  # on_delete: un compte responsable ne disparaît pas sous ses calepinages
+        null=True, blank=True,
+        related_name='calepinages_responsable',
+        verbose_name='Responsable',
+    )
+
     class Meta:
         verbose_name = 'Calepinage'
         verbose_name_plural = 'Calepinages'
@@ -327,6 +347,19 @@ class CalepinageVariante(TenantModel):
         return super().save(*args, **kwargs)
 
 
+class ProvenanceTerrain(models.TextChoices):
+    """CALX364 — D'OÙ VIENT une donnée de terrain du calepinage.
+
+    Partagée par ``ReleveTerrain`` et ``PhotoSite`` (migration ``0015``) :
+    un concepteur voit toujours si une cote ou une photo a été SAISIE dans le
+    module, ou REPRISE d'une visite technique validée. ``saisie`` est la
+    valeur de TOUT l'existant (D12) : rien n'est réécrit par la migration.
+    """
+
+    SAISIE = 'saisie', 'Saisie dans le calepinage'
+    VISITE = 'visite', 'Reprise de la visite technique'
+
+
 class PhotoSite(TenantModel):
     """CAL52 — une photo drone / oblique / sol du SITE, rattachée au pivot.
 
@@ -403,6 +436,15 @@ class PhotoSite(TenantModel):
         related_name='calepinage_photos_site',
         verbose_name='Ajoutée par',
     )
+    #: CALX364 — ``saisie`` (déposée dans le module, tout l'existant) ou
+    #: ``visite`` (pièce jointe d'une visite technique REPRISE, jamais copiée).
+    provenance = models.CharField('Provenance', max_length=10,
+                                  choices=ProvenanceTerrain.choices,
+                                  default=ProvenanceTerrain.SAISIE)
+    #: CALX364 — l'emplacement de checklist de la visite d'où la photo vient
+    #: (``toiture_vue_generale``…) ; vide pour une photo saisie ici.
+    slot_code = models.CharField('Emplacement de visite', max_length=80,
+                                 blank=True, default='')
 
     class Meta:
         verbose_name = 'Photo de site'
@@ -494,11 +536,38 @@ class ReleveTerrain(TenantModel):
         related_name='calepinage_releves_terrain',
         verbose_name='Relevé par',
     )
+    #: CALX364 — ``saisie`` (tout l'existant, D12) ou ``visite`` (mesures
+    #: reprises d'une visite technique validée, ``services/reprise_visite``).
+    provenance = models.CharField('Provenance', max_length=10,
+                                  choices=ProvenanceTerrain.choices,
+                                  default=ProvenanceTerrain.SAISIE)
+    #: CALX364 — la visite technique reprise : identifiant OPAQUE (jamais une
+    #: FK vers ``apps.visites``, patron ``Calepinage.lead_id``). Vide pour un
+    #: relevé saisi ici. Porte l'unicité « une reprise par visite ».
+    visite_id = models.PositiveIntegerField('Visite reprise (identifiant)',
+                                            null=True, blank=True)
+    #: CALX364 — les mesures de la visite TELLES QUE SAISIES sur le toit
+    #: (``[{code, libelle, valeur, unite}]``, forme de
+    #: ``apps.visites.selectors.releve_pour_calepinage``). Une longueur, une
+    #: pente ou une orientation ne sont PAS des chaînes de cotes : les
+    #: convertir en ``chaines`` serait inventer une géométrie (D7). Elles
+    #: restent donc à part, jamais converties ni complétées ; liste vide pour
+    #: un relevé saisi ici.
+    mesures = models.JSONField('Mesures reprises (telles que saisies)',
+                               default=list, blank=True)
 
     class Meta:
         verbose_name = 'Relevé terrain'
         verbose_name_plural = 'Relevés terrain'
         ordering = ['-releve_le', '-id']
+        constraints = [
+            # CALX364 — UNE reprise par visite et par calepinage : un second
+            # « Reprendre » ne crée rien, même lancé deux fois en parallèle.
+            models.UniqueConstraint(
+                fields=['calepinage', 'visite_id'],
+                condition=models.Q(visite_id__isnull=False),
+                name='uniq_releve_reprise_par_visite'),
+        ]
         indexes = [
             models.Index(fields=['calepinage', '-releve_le'],
                          name='cal_rel_cal_date_idx'),

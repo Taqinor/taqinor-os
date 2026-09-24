@@ -260,6 +260,16 @@ GARDES = {
         ('Test the two-halves-contract checker itself (CALX385)',
          'python -m unittest scripts.tests.test_check_contrats_calepinage_deux_moities -v',
          '.'),
+        # CALX372 (lot 7, 24/09/2026) — la frontière du module calepinage :
+        # aucun import NEUF de apps.ao / apps.ged (D-CALX 2) ni de
+        # apps.visites.models (la porte est apps.visites.selectors). Base
+        # MESURÉE : 4 imports apps.ged fonction-locaux, 0 apps.ao (SOLMVP15).
+        ('Check frontière calepinage (aucun import neuf ao/ged/visites.models, CALX372)',
+         'python scripts/check_frontiere_calepinage.py',
+         '.'),
+        ('Test the calepinage-frontier checker itself (CALX372)',
+         'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',

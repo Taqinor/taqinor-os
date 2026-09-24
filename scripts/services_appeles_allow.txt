@@ -167,7 +167,6 @@ backend/django_core/apps/calepinage/services/reglementaire.py::composer_dossier
 backend/django_core/apps/calepinage/services/reglementaire.py::composer_dossiers
 backend/django_core/apps/calepinage/services/reglementaire.py::infos_du_calepinage
 backend/django_core/apps/calepinage/services/reglementaire.py::packs_france
-backend/django_core/apps/calepinage/services/releve.py::resoudre_chaines
 backend/django_core/apps/calepinage/services/reprise_public.py::document_public_du_lead
 backend/django_core/apps/calepinage/services/reprise_public.py::latlng_vers_lnglat
 backend/django_core/apps/calepinage/services/site.py::altitude_pvgis
