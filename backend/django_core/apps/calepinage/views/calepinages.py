@@ -192,13 +192,28 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     # ── Liste : des filtres qui filtrent VRAIMENT ──────────────────────────
     def get_queryset(self):
         params = getattr(self.request, 'query_params', {}) or {}
-        return selectors.appliquer_filtres_liste(
+        lignes = selectors.appliquer_filtres_liste(
             super().get_queryset(),
             lead_id=_entier(params.get('lead'), 'lead'),
             client_id=_entier(params.get('client'), 'client'),
             statut=_statut(params.get('statut')),
             depuis=_moment(params.get('depuis')),
             q=params.get('q'))
+        # CALX343 — ``?etiquette=<id>`` (répétable, ET logique) : filtre porté
+        # par ``services/etiquettes.py`` (``records.TaggedItem``), jamais par
+        # ``selectors.py``. Absent ⇒ rien n'est filtré ; illisible ⇒ 400 qui
+        # NOMME le champ (leçon PV22).
+        valeurs = (params.getlist('etiquette')
+                   if hasattr(params, 'getlist') else [])
+        if not valeurs:
+            return lignes
+        from ..services.etiquettes import (
+            EtiquetteRefusee, filtrer_par_etiquette,
+        )
+        try:
+            return filtrer_par_etiquette(lignes, valeurs)
+        except EtiquetteRefusee as refus:
+            raise DrfValidationError({refus.champ: str(refus)})
 
     def perform_create(self, serializer):
         """Société ET auteur posés côté serveur — jamais lus du corps."""

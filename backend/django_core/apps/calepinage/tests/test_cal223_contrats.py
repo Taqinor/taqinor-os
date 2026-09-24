@@ -300,9 +300,8 @@ POSES_AVANT_LEUR_ROUTE = {
     # CALX341 a livré ``POST calepinages/comparer-projets/``
     # (``views/comparaison_projets.py``) : ``calepinage_comparaison_projets.json``
     # en est SORTI.
-    # CALX332 — ``GET/POST/DELETE calepinages/<pk>/etiquettes/`` arrive avec
-    # CALX343.
-    'calepinage_etiquettes.json': 'CALX343',
+    # CALX343 a livré ``GET/POST/DELETE calepinages/<pk>/etiquettes/``
+    # (``views/etiquettes.py``) : ``calepinage_etiquettes.json`` en est SORTI.
 }
 
 #: Les chemins qui ne sont PAS servis par ce module (aucun url_path à y
