@@ -1676,7 +1676,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         CADENCE : un second appel renvoie le plan existant sans rien dupliquer
         (voir ``services.initialiser_plan_relance``). Un lead « ne plus
         contacter » est refusé (400) : c'est une demande explicite de la
-        personne, pas un réglage à contourner."""
+        personne, pas un réglage à contourner.
+
+        CAD51 — relancer une cadence PLUS prioritaire que celle en cours
+        l'ARRÊTE : jamais en silence. Sans ``confirmer_remplacement: true``,
+        refus 409 AVANT toute écriture, qui nomme la ou les cadences arrêtées
+        et le nombre de touches ouvertes perdues (``remplacement``) ; avec la
+        confirmation, ``motif`` est OBLIGATOIRE (400 qui nomme le champ,
+        comme « Arrêter la cadence ») et l'arrêt est tracé sous ce motif.
+        Forme : ``contract_samples/lead_relance_initialiser.json``."""
         from apps.parametres.models_relance import Cadence
 
         lead = self.get_object()
@@ -1690,10 +1698,43 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import CadenceActiveConflit, initialiser_plan_relance
+        from .services import (CadenceActiveConflit,
+                               CadenceRemplacementAConfirmer,
+                               apercu_remplacement_cadence,
+                               initialiser_plan_relance,
+                               message_remplacement_cadence)
+        confirme = request.data.get('confirmer_remplacement') in (
+            True, 'true', 'True', '1', 1)
+        motif = str(request.data.get('motif') or '').strip()
+        # CAD51 — ce que ce démarrage ARRÊTERAIT, lu sans rien écrire.
+        apercu = apercu_remplacement_cadence(lead, cadence)
+        if apercu is not None:
+            message = message_remplacement_cadence(apercu)
+            if not confirme:
+                return Response(
+                    {'detail': message,
+                     'erreurs': {'confirmer_remplacement': [message]},
+                     'remplacement': apercu},
+                    status=status.HTTP_409_CONFLICT)
+            if not motif:
+                return Response(
+                    {'detail': "Le motif d'arrêt est obligatoire.",
+                     'erreurs': {'motif': [
+                         "Le motif d'arrêt est obligatoire : " + message]},
+                     'remplacement': apercu},
+                    status=status.HTTP_400_BAD_REQUEST)
         try:
             etapes = initialiser_plan_relance(
-                lead, request.user, cadence=cadence)
+                lead, request.user, cadence=cadence,
+                exiger_confirmation=True,
+                motif_remplacement=motif if apercu is not None else '')
+        except CadenceRemplacementAConfirmer as exc:
+            # Course : une cadence est apparue entre l'aperçu et l'écriture.
+            return Response(
+                {'detail': str(exc),
+                 'erreurs': {'confirmer_remplacement': [str(exc)]},
+                 'remplacement': exc.apercu},
+                status=status.HTTP_409_CONFLICT)
         except CadenceActiveConflit as exc:
             # CADX (fondateur 15/09/2026) — jamais deux cadences en
             # parallèle : le refus NOMME le champ et dit le geste à faire

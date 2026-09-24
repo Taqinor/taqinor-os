@@ -1,0 +1,48 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/relance/initialiser/",
+  "forme_serveur": "partielle",
+  "pourquoi": "CAD51 (PACT10) — « Relancer la cadence » pouvait TUER une cadence en cours, en silence et sans motif : `initialiser_plan_relance` arbitre par priorité (réveil < générique < contact = deuxième affaire < après devis) et, quand la cadence demandée est PLUS prioritaire, appelait `arreter_cadence` sans rien demander, pendant que l'écran toastait « Cadence relancée. ». Le moteur (devis envoyé, placement) garde ce remplacement silencieux — c'est voulu (CADX). Le chemin HUMAIN, lui, est refusé AVANT toute écriture tant que la personne n'a pas confirmé : 409 qui NOMME la ou les cadences qui seraient arrêtées et le nombre de touches ouvertes perdues (`remplacement`). La confirmation (`corps_confirme`) porte un `motif` OBLIGATOIRE — même règle que « Arrêter la cadence » — et l'arrêt passe par `arreter_cadence` comme un arrêt normal, sous ce motif (touches annulées + note d'historique « Cadence reveil arrêtée (2 touche(s)) : <motif> (remplacée par la cadence « Prise de contact »). »). `exemple` = le refus 409 (l'objet que ce contrat fige) ; la réponse de SUCCÈS (200) est inchangée : la LISTE des touches matérialisées, forme `relance_etape_v2.json` → `exemple.results[*]`.",
+  "corps": {
+    "cadence": "contact"
+  },
+  "corps_confirme": {
+    "cadence": "contact",
+    "confirmer_remplacement": true,
+    "motif": "Le client a rappelé — il reprend son projet"
+  },
+  "exemple": {
+    "detail": "Relancer la cadence « Prise de contact » arrête la cadence « Réveil » en cours : 2 touches ouvertes seront annulées. Confirmez, avec un motif d'arrêt.",
+    "erreurs": {
+      "confirmer_remplacement": [
+        "Relancer la cadence « Prise de contact » arrête la cadence « Réveil » en cours : 2 touches ouvertes seront annulées. Confirmez, avec un motif d'arrêt."
+      ]
+    },
+    "remplacement": {
+      "cadence": "contact",
+      "cadence_libelle": "Prise de contact",
+      "cadences_arretees": ["reveil"],
+      "cadences_arretees_libelles": ["Réveil"],
+      "touches_ouvertes": 2
+    }
+  },
+  "exemple_erreur_motif": {
+    "detail": "Le motif d'arrêt est obligatoire.",
+    "erreurs": {
+      "motif": [
+        "Le motif d'arrêt est obligatoire : Relancer la cadence « Prise de contact » arrête la cadence « Réveil » en cours : 2 touches ouvertes seront annulées. Confirmez, avec un motif d'arrêt."
+      ]
+    },
+    "remplacement": {
+      "cadence": "contact",
+      "cadence_libelle": "Prise de contact",
+      "cadences_arretees": ["reveil"],
+      "cadences_arretees_libelles": ["Réveil"],
+      "touches_ouvertes": 2
+    }
+  },
+  "notes": {
+    "statuts": "409 = confirmation requise (rien n'est écrit) ; 400 `erreurs.motif` = confirmation sans motif ; 400 `erreurs.cadence` = cadence au moins aussi prioritaire déjà active (CADX, inchangé) ; 200 = liste des touches.",
+    "note_historique": "Cadence reveil arrêtée (2 touche(s)) : Le client a rappelé — il reprend son projet (remplacée par la cadence « Prise de contact »).",
+    "moteur": "Les démarrages AUTOMATIQUES (envoi du devis, placement, filets) ne passent pas par cette vue : le remplacement y reste silencieux, motif « remplacée par la cadence « <clé> » »."
+  }
+}

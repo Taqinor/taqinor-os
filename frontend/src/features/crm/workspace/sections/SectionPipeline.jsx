@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Button, FormField, Input } from '../../../../ui'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import crmApi from '../../../../api/crmApi'
-import { toastPromise } from '../../../../ui/confirm'
+import { toast, toastPromise } from '../../../../ui/confirm'
+import { getApiError } from '../../../../lib/apiError'
 import useCanaux from '../../useCanaux'
 import { TYPE_INSTALLATION_LABELS, PRIORITE_LABELS } from '../../stages'
 import { getField, isSuggested } from '../draftCore'
@@ -33,24 +34,56 @@ function RelanceCadenceControls({ leadId, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [arretOpen, setArretOpen] = useState(false)
   const [motif, setMotif] = useState('')
+  // CAD51 — relancer une cadence PLUS prioritaire ARRÊTE celle en cours : le
+  // serveur refuse (409) tant que ce n'est pas confirmé, et renvoie ce qui
+  // serait perdu (`remplacement` : cadence(s) arrêtée(s), touches ouvertes).
+  // L'écran le dit, demande un motif (comme « Arrêter la cadence ») et ne
+  // relance qu'après. Contrat : apps/crm/contract_samples/lead_relance_initialiser.json.
+  const [remplacement, setRemplacement] = useState(null)
+  const [motifRemplacement, setMotifRemplacement] = useState('')
+  const [erreurs, setErreurs] = useState({})
 
   if (leadId == null) return null
 
-  const relancer = async () => {
+  const fermerRemplacement = () => {
+    setRemplacement(null)
+    setMotifRemplacement('')
+    setErreurs({})
+  }
+
+  const relancer = async (confirmation = null) => {
     setBusy(true)
+    setErreurs({})
+    const corps = confirmation
+      ? { cadence, confirmer_remplacement: true, motif: confirmation.motif }
+      : { cadence }
     try {
-      await toastPromise(crmApi.initialiserRelance(leadId, { cadence }), {
-        loading: 'Relance de la cadence…',
-        success: 'Cadence relancée.',
-        error: 'Relance de la cadence impossible.',
-      })
+      await crmApi.initialiserRelance(leadId, corps, { suppressErrorToast: true })
+      toast.success('Cadence relancée.')
+      fermerRemplacement()
       onChanged?.()
-    } catch {
-      // toastPromise a déjà affiché l'erreur — rien de plus à faire ici.
+    } catch (err) {
+      const data = err?.response?.data
+      if (data?.remplacement) {
+        // Le texte qui NOMME ce qui sera arrêté vient du serveur (409) ; un
+        // 400 « motif obligatoire » le garde et pointe le champ motif.
+        setRemplacement((prev) => ({
+          ...data.remplacement,
+          message: data.erreurs?.confirmer_remplacement?.[0] || prev?.message || data.detail,
+        }))
+      }
+      if (data?.erreurs) {
+        setErreurs(data.erreurs)
+      } else if (!data?.remplacement) {
+        toast.error(getApiError(err, 'Relance de la cadence impossible.').message)
+      }
     } finally {
       setBusy(false)
     }
   }
+
+  const erreurCadence = erreurs.cadence?.[0]
+  const erreurMotif = erreurs.motif?.[0]
 
   const arreter = async () => {
     const m = motif.trim()
@@ -76,14 +109,17 @@ function RelanceCadenceControls({ leadId, onChanged }) {
     <div className="mt-1.5 flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center gap-1.5">
         <select
-          className="form-select" aria-label="Cadence à relancer" value={cadence}
-          onChange={(e) => setCadence(e.target.value)} disabled={busy}
+          className={erreurCadence ? 'form-select is-invalid' : 'form-select'}
+          aria-label="Cadence à relancer" value={cadence}
+          aria-invalid={erreurCadence ? true : undefined}
+          aria-describedby={erreurCadence ? 'lf-relance-cadence-erreur' : undefined}
+          onChange={(e) => { setCadence(e.target.value); fermerRemplacement() }} disabled={busy}
         >
           {CADENCE_CHOICES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
         <Button
           type="button" size="sm" variant="outline" disabled={busy}
-          data-testid="lf-relance-cadence" onClick={relancer}
+          data-testid="lf-relance-cadence" onClick={() => relancer()}
         >
           Relancer la cadence
         </Button>
@@ -94,6 +130,46 @@ function RelanceCadenceControls({ leadId, onChanged }) {
           Arrêter la cadence
         </Button>
       </div>
+      {erreurCadence && (
+        <p id="lf-relance-cadence-erreur" role="alert" className="text-xs text-destructive">
+          {erreurCadence}
+        </p>
+      )}
+      {remplacement && (
+        <div
+          className="flex flex-col gap-1.5 rounded-md border border-warning/40 bg-warning/10 p-2"
+          data-testid="cad51-confirmer-remplacement" role="alertdialog"
+          aria-label="Confirmer l’arrêt de la cadence en cours"
+        >
+          <p className="text-xs">{remplacement.message}</p>
+          <FormField
+            label="Motif d’arrêt de la cadence en cours" required
+            htmlFor="lf-remplacement-motif" error={erreurMotif} errorKind="required"
+          >
+            <Input
+              id="lf-remplacement-motif" invalid={!!erreurMotif}
+              value={motifRemplacement}
+              onChange={(e) => setMotifRemplacement(e.target.value)}
+              data-testid="lf-remplacement-motif"
+            />
+          </FormField>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button" size="sm" variant="outline" disabled={busy}
+              onClick={fermerRemplacement}
+            >
+              Annuler
+            </Button>
+            <Button
+              type="button" size="sm" disabled={busy || !motifRemplacement.trim()}
+              data-testid="cad51-arreter-et-relancer"
+              onClick={() => relancer({ motif: motifRemplacement.trim() })}
+            >
+              Arrêter {remplacement.cadences_arretees_libelles.map((l) => `« ${l} »`).join(', ')} et relancer
+            </Button>
+          </div>
+        </div>
+      )}
       {arretOpen && (
         <div className="flex flex-wrap items-center gap-1.5">
           <Input
