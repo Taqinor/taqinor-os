@@ -320,6 +320,30 @@ pendant que le client est chaud. Deux textes seulement — la PROPOSER, puis la 
 terrain, lui, n'est pas un message client : il redescend dans l'historique du lead et déclenche le rappel du
 responsable sous 24-48 h.
 
+AMENDEMENT FONDATEUR du 24/09/2026 — « après l'appel il n'y a plus rien à faire, sauf organiser la visite, et même
+après ça rien ne se passe » : la chaîne ne s'interrompt plus.
+1. « Visite acceptée » vaut sur TOUT appel — prise de contact, réveil, étape « Préparer et envoyer le devis » — et
+   plus seulement sur le suivi de proposition : la cadence contact/réveil s'arrête comme sur « client joint », et
+   la seule suite est de CALER la date (le jour même). L'avertissement CAD123 « visite sans devis » reste dit, sans
+   bloquer ; l'ordre « devis d'abord » du 15/09 reste le chemin par défaut, plus une interdiction.
+2. Une visite planifiée SANS devis envoyé met le devis en attente de la visite : l'étape « Préparer et envoyer le
+   devis » est annulée à la planification, et le RETOUR TERRAIN la re-pose (J+1, ou au moment convenu par le
+   terrain) à la place du débrief « rappeler le client » — la vraie suite d'une visite sans devis est le devis, et
+   son envoi démarre seul le suivi de proposition (chapitre 7). Avec un devis déjà envoyé, rien ne change : débrief
+   et reprise du plan (CAD28).
+3. Une étape de visite restée sans réponse (débrief, confirmation) ne parque JAMAIS le lead au Froid : c'est le
+   filet qui reprend (« Rappeler — dernier essai avant de chiffrer » le lendemain, puis « Préparer et envoyer le
+   devis »), ou le plan après-devis qui continue s'il est pendant. Aucun texte client nouveau : ces étapes sont des
+   appels, leurs scripts existants suffisent.
+4. PARAMÉTRAGE (25/09/2026, « cette cadence doit être dans Paramètres, pour qu'une autre société ou nous puissions
+   tout y changer ») : ces deux chaînes vivent désormais dans Paramètres → CRM comme les cadences du protocole —
+   « Après l'appel (avant devis) » (`apres_contact` : préparer le devis, appeler s'il a répondu, message créneau,
+   dernier essai, rappel convenu, décider la suite) et « Visite technique » (`visite` : planifier, confirmer la
+   veille, débrief, devis modifié). Chaque barreau porte une CLÉ stable que le moteur lit à la place du libellé :
+   une société peut renommer, décaler, changer le canal ou l'heure ; un barreau pilier supprimé ou désactivé
+   retombe sur le défaut de la plateforme, un palier désactivé est sauté. Les textes clients (`visite_confirmation`)
+   restent ceux validés ici.
+
 ### visite_proposition — après l'envoi du devis, WhatsApp
 FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
 DARIJA : باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — [المستشار]

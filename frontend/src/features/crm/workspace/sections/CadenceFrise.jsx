@@ -4,6 +4,7 @@
 // au-dessus) : charge lui-même via `crmApi`, jamais un second appel réseau
 // pour les champs déjà posés sur le lead (`prochaine_touche_at` etc., MRY16).
 import { Fragment, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Check, SkipForward, Clock3, Ban, MapPin,
 } from 'lucide-react'
@@ -302,6 +303,15 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
                 {visite.retour_disponible && (
                   <span className="text-muted-foreground">
                     — Retour terrain disponible{visite.notes ? ` : ${visite.notes}` : ''}
+                    {' '}
+                    {/* VISCAD6-B (E4, fondateur 24/09/2026) — le texte était
+                        inerte : le retour terrain se LIT déjà sur l'écran
+                        Visites (`/visites/:id`, `VisiteWizardPage` — même
+                        route que `VisiteTab.jsx` dans cette même fiche lead),
+                        jamais un second écran à inventer ici. */}
+                    <Link to={`/visites/${visite.id}`} className="font-medium text-primary underline">
+                      Ouvrir le retour
+                    </Link>
                   </span>
                 )}
               </li>

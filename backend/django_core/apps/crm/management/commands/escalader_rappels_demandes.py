@@ -7,6 +7,11 @@ marqueur chatter empêche une double escalade), best-effort par lead. Distinct
 du SLA générique premier-contact — un rappel demandé a un SLA plus SERRÉ
 (``apps.crm.services.callback_sla_hours``, la moitié du SLA générique).
 
+N2 (25/09/2026) — le seuil se compte en heures OUVRÉES de la fenêtre d'appel
+(``selectors.leads_callback_sla_depasse`` → ``horaires.echeance_en_temps_ouvre``)
+et UNE seule notification part par rupture (marqueur chatter, par lead) : le
+balayage des 30 minutes ne répète jamais la même alerte.
+
     python manage.py escalader_rappels_demandes [--dry-run]
 """
 from django.core.management.base import BaseCommand
@@ -77,7 +82,9 @@ def escalader_rappels_demandes(now=None, dry_run=False):
 def _escalate(lead, seuil, now, recipients_fn):
     from apps.crm.models import LeadActivity
 
-    body = (f'{ESCALATION_MARKER} depuis plus de {seuil} h '
+    # N2 — le seuil se compte en heures OUVRÉES (fenêtre d'appel de la
+    # société, `selectors.leads_callback_sla_depasse`) : le texte le dit.
+    body = (f'{ESCALATION_MARKER} depuis plus de {seuil} h ouvrées '
             f'(rappel demandé le {lead.date_creation:%Y-%m-%d %H:%M}).')
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
@@ -91,7 +98,7 @@ def _escalate(lead, seuil, now, recipients_fn):
                 recipients, 'lead_callback_sla_breach',
                 f'☎ Rappel non actionné : {nom}',
                 body=(f'{nom} a demandé un rappel il y a plus de {seuil} h '
-                      f'sans être contacté.'),
+                      "ouvrées (heures d'appel) sans être contacté."),
                 link=f'/crm/leads?lead={lead.pk}',
                 company=lead.company,
             )

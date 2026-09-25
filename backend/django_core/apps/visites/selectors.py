@@ -424,6 +424,49 @@ def ligne_visite_pour_lead(visite):
     }
 
 
+def visites_recentes_par_lead(company, lead_ids):
+    """D2 — la visite technique la PLUS RÉCENTE de CHAQUE lead de ``lead_ids``,
+    en UNE requête (jamais une par lead : la file du jour coûtait 2 requêtes
+    PAR lead ayant une visite — mesuré 11 requêtes pour 1 lead, 21 pour 6).
+
+    Rend ``{lead_id: {'id', 'retour_disponible'}}`` — seuls les leads qui ONT
+    au moins une visite y figurent ; un lead absent de ce ``dict`` n'en a
+    aucune. Bornée par ``company`` (jamais une société lue d'une requête,
+    même discipline que ``visites_pour_lead``).
+
+    Tri IDENTIQUE à ``visites_pour_lead`` (« la plus récente d'abord ») mais
+    écrit avec ``F('date_prevue').desc(nulls_last=True)`` — PAS le
+    ``'-date_prevue'`` nu de Django : sous Postgres, un DESC nu met les NULL
+    EN TÊTE, ce qui ferait passer une visite SANS date prévue devant une
+    visite plus récente et RÉELLEMENT datée. ``-id`` départage ensuite les
+    égalités (même stabilité que ``visites_pour_lead``).
+    """
+    from django.db.models import F
+
+    from .models import VisiteTerrain
+
+    lead_ids = [lid for lid in set(lead_ids) if lid is not None]
+    if not lead_ids:
+        return {}
+    visites = (VisiteTerrain.objects
+               .filter(company=company, lead_id__in=lead_ids)
+               .select_related('commercial')
+               .prefetch_related('medias')
+               .order_by('lead_id', F('date_prevue').desc(nulls_last=True),
+                         '-id'))
+    resultat = {}
+    for visite in visites:
+        if visite.lead_id in resultat:
+            # Déjà la plus récente de ce lead (premier rang de son groupe,
+            # l'ordre ci-dessus le garantit) — les suivantes sont ignorées.
+            continue
+        ligne = ligne_visite_pour_lead(visite)
+        resultat[visite.lead_id] = {
+            'id': ligne['id'], 'retour_disponible': ligne['retour_disponible'],
+        }
+    return resultat
+
+
 def visites_pour_lead(lead):
     """Les visites techniques d'un lead, de la PLUS RÉCENTE à la plus ancienne.
 

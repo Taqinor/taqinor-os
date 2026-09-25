@@ -13,7 +13,8 @@
     "template_cle": "identite",
     "actif": true,
     "dimanche_ok": false,
-    "samedi_ok": false
+    "samedi_ok": false,
+    "cle": ""
   },
   "exemple_liste": [
     {
@@ -28,7 +29,8 @@
       "template_cle": "identite",
       "actif": true,
       "dimanche_ok": false,
-      "samedi_ok": true
+      "samedi_ok": true,
+      "cle": ""
     },
     {
       "id": 52,
@@ -42,7 +44,8 @@
       "template_cle": "appel_ouverture",
       "actif": true,
       "dimanche_ok": false,
-      "samedi_ok": false
+      "samedi_ok": false,
+      "cle": ""
     },
     {
       "id": 54,
@@ -56,7 +59,8 @@
       "template_cle": "repondeur",
       "actif": true,
       "dimanche_ok": false,
-      "samedi_ok": false
+      "samedi_ok": false,
+      "cle": ""
     },
     {
       "id": 58,
@@ -70,16 +74,172 @@
       "template_cle": "appel_dimanche",
       "actif": true,
       "dimanche_ok": true,
-      "samedi_ok": true
+      "samedi_ok": true,
+      "cle": ""
     }
   ],
   "exemple_vide": [],
   "notes": {
-    "cadence": "contact | apres_devis | reveil | generique.",
+    "cadence": "contact | apres_devis | reveil | generique | deuxieme_affaire | apres_contact | visite.",
     "canal": "appel | whatsapp | email | visite — l'enum du GABARIT, jamais `crm.Canal` (source du lead).",
     "heure_cible": "chaîne « HH:MM » ou null ; appliquée en heure locale Africa/Casablanca puis recalée sur la fenêtre d'appel (MRY8).",
     "compat": "`seed_defaults` continue de poser les 5 barreaux J+2/5/10/20/35 en cadence `generique` — inchangés, ni supprimés ni réécrits.",
     "dimanche_ok": "booleen — seule une touche marquee ainsi peut tomber un dimanche (16 h-19 h, Protocole v3).",
-    "samedi_ok": "CAD43 — booleen PAR TOUCHE, symetrique exact de `dimanche_ok`, FAUX partout par defaut (aucun gabarit ne l'active). Coche, il ouvre le samedi a CETTE touche seule, dans la fenetre ordinaire de son canal : il sert a poser le message d'identite du lead arrive le vendredi soir sans ouvrir les six appels du protocole. Le ferie et le Ramadan priment (CAD41)."
-  }
+    "samedi_ok": "CAD43 — booleen PAR TOUCHE, symetrique exact de `dimanche_ok`, FAUX partout par defaut (aucun gabarit ne l'active). Coche, il ouvre le samedi a CETTE touche seule, dans la fenetre ordinaire de son canal : il sert a poser le message d'identite du lead arrive le vendredi soir sans ouvrir les six appels du protocole. Le ferie et le Ramadan priment (CAD41).",
+    "cle": "PARAM-CADENCE (décision fondateur 25/09/2026) — clé STABLE du barreau, lue par le moteur pour les deux cadences « Après l'appel (avant devis) » (`apres_contact`) et « Visite technique » (`visite`) : c'est par elle, jamais par le libellé, que le moteur retrouve le barreau à poser — une société peut donc renommer, décaler, changer le canal ou l'heure. LECTURE SEULE dans l'API (jamais posée par l'écran) ; vide sur les barreaux du protocole et sur un barreau ajouté à la main (le moteur ne le pose jamais). Barreau supprimé ou désactivé : les étapes PILIER (devis, planifier, confirmation, debrief, devis_modifie, rappel_convenu, decider_suite) retombent sur le défaut de la plateforme ; les PALIERS optionnels (appel_apres_reponse, message_creneau, dernier_appel) sont sautés. Pour `confirmation`, `delai_jours` = jours AVANT la visite (la veille = 1) ; pour `debrief`/`devis_modifie`, jours APRÈS."
+  },
+  "exemple_apres_contact": [
+    {
+      "id": 901,
+      "cadence": "apres_contact",
+      "ordre": 1,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "devis"
+    },
+    {
+      "id": 902,
+      "cadence": "apres_contact",
+      "ordre": 2,
+      "delai_jours": 0,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Appeler le client — il a répondu au message",
+      "template_cle": "appel_apres_reponse",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "appel_apres_reponse"
+    },
+    {
+      "id": 903,
+      "cadence": "apres_contact",
+      "ordre": 3,
+      "delai_jours": 0,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "whatsapp",
+      "libelle": "Message — proposer un créneau pour l'appel",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "message_creneau"
+    },
+    {
+      "id": 904,
+      "cadence": "apres_contact",
+      "ordre": 4,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Rappeler — dernier essai avant de chiffrer",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "dernier_appel"
+    },
+    {
+      "id": 905,
+      "cadence": "apres_contact",
+      "ordre": 5,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Rappeler le client — rappel convenu",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "rappel_convenu"
+    },
+    {
+      "id": 906,
+      "cadence": "apres_contact",
+      "ordre": 6,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Décider la suite — perdu (motif) ou relance ultérieure",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "decider_suite"
+    }
+  ],
+  "exemple_visite": [
+    {
+      "id": 950,
+      "cadence": "visite",
+      "ordre": 1,
+      "delai_jours": 0,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Planifier la visite technique convenue",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "planifier"
+    },
+    {
+      "id": 951,
+      "cadence": "visite",
+      "ordre": 2,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "whatsapp",
+      "libelle": "Confirmer la visite (veille)",
+      "template_cle": "visite_confirmation",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "confirmation"
+    },
+    {
+      "id": 952,
+      "cadence": "visite",
+      "ordre": 3,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Débrief visite — rappeler le client",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "debrief"
+    },
+    {
+      "id": 953,
+      "cadence": "visite",
+      "ordre": 4,
+      "delai_jours": 1,
+      "delai_minutes": 0,
+      "heure_cible": null,
+      "canal": "appel",
+      "libelle": "Préparer le devis modifié — rappeler le client",
+      "template_cle": "",
+      "actif": true,
+      "dimanche_ok": false,
+      "samedi_ok": false,
+      "cle": "devis_modifie"
+    }
+  ]
 }

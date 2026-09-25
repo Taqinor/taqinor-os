@@ -822,6 +822,18 @@ def reveiller_snoozes():
     return total
 
 
+@shared_task(name='notifications.livrer_differees')
+def livrer_differees(now=None):
+    """N1 — livre les notifications DIFFÉRÉES arrivées à échéance (émises hors
+    de la fenêtre de travail de leur société, `services.notify`). Toutes les
+    5 minutes : une notification de nuit arrive au plus 5 minutes après
+    l'ouverture. Idempotent (réclamation atomique par ligne), best-effort."""
+    from .services import livrer_notifications_differees
+    total = livrer_notifications_differees(now=now)
+    logger.info('livrer_differees: %s notification(s) livrée(s)', total)
+    return total
+
+
 @shared_task(name='notifications.sweep_hot_leads')
 def sweep_hot_leads(now=None):
     """QX31be / CAD132 — balayage rapide (toutes les 15 min) : escalade les

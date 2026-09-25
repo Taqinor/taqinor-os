@@ -1084,6 +1084,8 @@ CELERY_TASK_ROUTES = {
     'notifications.weekly_digest': {'queue': 'scheduled'},
     'notifications.sweep_daily': {'queue': 'scheduled'},
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
+    # N1 — livraison des notifications différées hors fenêtre (toutes 5 min).
+    'notifications.livrer_differees': {'queue': 'scheduled'},
     'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
     # NTI18N37 — rappel de saisie des fêtes mobiles N+1 (novembre-décembre).
     'notifications.rappel_fetes_mobiles': {'queue': 'scheduled'},
@@ -1317,12 +1319,20 @@ VEILLE_AO_COLLECTE_ACTIVE = (
 VEILLE_AO_RETENTION_MOIS = int(
     os.environ.get('VEILLE_AO_RETENTION_MOIS', '12') or 12)
 
-# VX209 — heures calmes des notifications (mise en sourdine des canaux hors-app
-# email/WhatsApp/push hors heures ouvrées), OPT-IN, OFF par défaut : sans ceci
-# activé, aucune notification n'est jamais mise en sourdine (comportement
-# historique). Un réglage par société le remplacera à terme.
-NOTIFICATIONS_QUIET_HOURS_ENABLED = (
-    os.environ.get('NOTIFICATIONS_QUIET_HOURS_ENABLED', '0') == '1')
+# N1 — `NOTIFICATIONS_QUIET_HOURS_ENABLED` (report des notifications hors de la
+# fenêtre de travail) est défini PLUS BAS, après `TESTING` : son défaut dépend
+# du test runner.
+
+# N1 — types d'événement qui partent TOUJOURS immédiatement, même la nuit
+# (liste de clés `notifications.EventType`, séparées par des virgules). VIDE par
+# défaut : décision fondateur du 25/09/2026, toutes les notifications suivent
+# les heures de travail. L'exception future se pose ici (ou dans l'env), jamais
+# en dur dans le code. Les alertes de SÉCURITÉ n'en ont pas besoin : leurs
+# appelants passent déjà `respect_quiet_hours=False`.
+NOTIFICATIONS_TOUJOURS_IMMEDIATES = tuple(
+    cle.strip() for cle in os.environ.get(
+        'NOTIFICATIONS_TOUJOURS_IMMEDIATES', '').split(',')
+    if cle.strip())
 
 # XRH33 — public careers/recruitment page, PARKED (OFF) by default (same
 # pattern as CONTACT_FORM_ENABLED). When off, both public rh careers
@@ -1561,6 +1571,21 @@ if TESTING:
 # when no keys are provided via env, so web push works out of the box. OFF under
 # the test runner so the "unconfigured => empty endpoint => no-op" contract holds.
 VAPID_AUTOGENERATE = os.environ.get('VAPID_AUTOGENERATE', '0' if TESTING else '1') == '1'
+
+# N1 (décision fondateur du 25/09/2026) — REPORT des notifications émises hors
+# de la fenêtre de travail de leur société (fenêtre des MESSAGES de
+# `apps.crm.horaires` : jours ouvrés, fériés, Ramadan). ALLUMÉ par défaut : une
+# notification de 23 h est créée tout de suite mais livrée (cloche, e-mail,
+# WhatsApp, push) au prochain créneau ouvré, jamais sautée. '0' coupe le report
+# (urgence / débogage : tout repart à toute heure). Avant N1 (VX209/CAD120) ce
+# drapeau était OFF par défaut et, allumé, il SUPPRIMAIT les canaux hors-app
+# au lieu de les reporter.
+# SOUS LE TEST RUNNER : toujours OFF, variable d'environnement ignorée — un
+# `.env` local copié de `.env.example` ne doit jamais rendre la suite
+# dépendante de l'heure à laquelle elle tourne. Les tests du report
+# l'allument explicitement (`override_settings`).
+NOTIFICATIONS_QUIET_HOURS_ENABLED = (not TESTING) and (
+    os.environ.get('NOTIFICATIONS_QUIET_HOURS_ENABLED', '1') == '1')
 
 # NTPLT42 — résolution du budget throttle PAR TENANT (après TESTING). Env
 # TENANT_RATE_LIMIT (défaut '1200/min'). '0' ou vide → None (throttle désactivé).

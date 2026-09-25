@@ -59,6 +59,15 @@ describe('CAD143 onglet Générique en lecture', () => {
     expect(screen.getByRole('tab', { name: 'Contact' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Après devis' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Réveil' })).toBeInTheDocument()
+    // PARAM-CADENCE (décision fondateur 25/09/2026) — deux onglets de plus,
+    // réalignés ici : le compte total d'onglets passe de 4 à 6 (Contact,
+    // Après devis, Réveil, Après l'appel (avant devis), Visite technique,
+    // Générique), sans qu'aucun des quatre onglets ci-dessus ne bouge.
+    expect(screen.getByRole('tab', {
+      name: "Après l'appel (avant devis)",
+    })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Visite technique' })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(6)
   })
 
   it('bascule vers l\'onglet et lit la cadence "generique"', async () => {

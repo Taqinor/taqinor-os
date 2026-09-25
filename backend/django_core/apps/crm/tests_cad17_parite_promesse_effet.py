@@ -165,7 +165,10 @@ VARIANTES = {
     st.ETAPE_APPELER_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI: BRANCHES_SUIVI,
-    st.VISITE_FROID_SI_SEULE: ('base', 'avec_autre'),
+    # 24/09/2026 — `visite_froid_si_seule` retiré (une étape de visite ne
+    # parque plus jamais le dossier au Froid) : ses branches sont rejouées
+    # sous `suite_si_plus_rien_ouvert`, dont `seule_epuise` (plan servi
+    # jusqu'au bout : l'étape de suite du filet, jamais le Froid).
     st.SUITE_SI_PLUS_RIEN_OUVERT: ('base', 'avec_autre', 'seule_epuise'),
     st.PROCHAINE_RELANCE_A_LA_DATE: ('base', 'avec_autre'),
     st.VEILLE_MEME_TOUCHE: ('base', 'loin'),
@@ -391,15 +394,10 @@ def _rien_de_nouveau(c):
     c.vrai(not c.nouvelles().exists(), 'une touche a été ajoutée')
 
 
-def _visite_froid_si_seule(c):
-    if c.variante == 'avec_autre':
-        c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid')
-        _rien_de_nouveau(c)
-    else:
-        _derniere_froid_reveils(c)
-
-
 def _suite_si_plus_rien_ouvert(c):
+    # 24/09/2026 — dans AUCUNE branche le dossier ne part au Froid (c'était
+    # la promesse du code retiré `visite_froid_si_seule`).
+    c.vrai(c.lead.stage != stages.COLD, 'le dossier est parti au Froid')
     if c.variante == 'avec_autre':
         _rien_de_nouveau(c)
     elif c.variante == 'seule_epuise':
@@ -506,7 +504,6 @@ VERIFICATEURS = {
     st.ETAPE_PLANIFIER_VISITE: _etape_planifier_visite,
     st.ETAPE_MESSAGE_CRENEAU: _etape_message_creneau,
     st.ETAPE_DERNIER_APPEL: _etape_dernier_appel,
-    st.VISITE_FROID_SI_SEULE: _visite_froid_si_seule,
     st.SUITE_SI_PLUS_RIEN_OUVERT: _suite_si_plus_rien_ouvert,
     st.PROCHAINE_RELANCE_A_LA_DATE: _prochaine_relance_a_la_date,
     st.ETIQUETTE_DECISION: _etiquette_decision,

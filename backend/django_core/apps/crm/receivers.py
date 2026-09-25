@@ -22,6 +22,7 @@ from core.events import (
 )
 
 from . import stages
+from .cadence_config import CLE_DECIDER_SUITE
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
@@ -32,7 +33,8 @@ from .services import (
     arreter_cadence,
     arreter_cadence_du_lead_id,
     CADENCES_ARRETEES_PAR_ISSUE,
-    FILET_REFUS_LIBELLE,
+    ISSUES_CLIENT_JOINT,
+    OUTCOME_VISITE_ACCEPTEE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
     avancer_stage_new_vers_contacted,
@@ -43,6 +45,8 @@ from .services import (
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
+    phrase_notification_retour_visite,
+    poser_filet_visite_a_planifier,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -223,8 +227,10 @@ def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
         # perdu) : une étape « décider la suite » le garde dans les files —
         # sa liste de relances ne se termine que par Froid ou Signé. Jamais
         # le plan après-devis (relancer la proposition refusée).
+        # PARAM-CADENCE — l'étape « décider la suite » est une CLÉ du
+        # gabarit « Après l'appel » : la société la renomme dans Paramètres.
         assurer_prochaine_etape_apres_succes(
-            lead, user, libelle=FILET_REFUS_LIBELLE, avec_plan_devis=False)
+            lead, user, cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
@@ -532,7 +538,11 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     if est_note_de_touche_sautee(instance):
         return
     marquer_premier_contact(lead)
-    if (instance.outcome or '').strip() in ('joint', 'interesse'):
+    # Décision fondateur du 24/09/2026 (relevé du 25/09) — « visite acceptée »
+    # est une réponse CONFIRMÉE au même titre que « joint » : le client a été
+    # joint, et il a même dit oui à un rendez-vous. Un lead Nouveau qui
+    # acceptait la visite au premier appel restait Nouveau.
+    if (instance.outcome or '').strip() in ISSUES_CLIENT_JOINT:
         avancer_stage_new_vers_contacted(lead, instance.user)
         # QJ-FUNNEL (fondateur 09/09/2026) — le cran suivant du funnel, même
         # doctrine et MÊME périmètre de kinds qu'au-dessus (rien d'élargi) :
@@ -558,6 +568,10 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
       « perdu » est une décision humaine qui exige un motif (MRY22), pas un
       effet de bord d'un appel.
+    * `visite_acceptee` (décision fondateur du 24/09/2026) → arrête `contact`
+      et `reveil` exactement comme `joint` (un dormant qui accepte la visite
+      sort du Froid), mais la suite n'est pas l'étape générique : c'est
+      « Planifier la visite technique convenue », pour aujourd'hui.
 
     Seule une activité créée par un HUMAIN compte (``user`` non nul) — une
     ligne système ne décide pas d'un arrêt."""
@@ -574,7 +588,12 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
     cadences = list(CADENCES_ARRETEES_PAR_ISSUE.get(issue, ()))
     if not cadences:
         return
-    motif = 'joint' if issue in ('joint', 'interesse') else 'refus au téléphone'
+    if issue in ('joint', 'interesse'):
+        motif = 'joint'
+    elif issue == OUTCOME_VISITE_ACCEPTEE:
+        motif = 'visite acceptée'
+    else:
+        motif = 'refus au téléphone'
     try:
         arreter_cadence(instance.lead, user=instance.user, motif=motif,
                         cadences=cadences)
@@ -583,15 +602,26 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
         # disparaît jamais des files, et un REFUS téléphonique laisse une
         # étape « décider la suite » — la décision (perdu + motif, MRY22)
         # reste humaine, mais le dossier reste visible en attendant.
-        if issue in ('joint', 'interesse'):
+        if issue in ('joint', 'interesse', OUTCOME_VISITE_ACCEPTEE):
             # M1 — un client joint pendant un RÉVEIL sort du parking : COLD
             # est rangé SOUS toute étape active (rang -1), l'avance vers
             # CONTACTED est donc légitime et réactive le dossier — sans quoi
             # la garde COLD du filet le laisserait figé au Froid sans suite.
+            # 24/09/2026 — même chose pour un dormant qui ACCEPTE LA VISITE :
+            # resté au Froid, plus aucun filet ne le relèverait après elle.
             instance.lead.refresh_from_db(fields=['stage'])
             if instance.lead.stage == stages.COLD:
                 avancer_stage_lead_vers(
                     instance.lead, instance.user, stages.CONTACTED)
+        if issue == OUTCOME_VISITE_ACCEPTEE:
+            # 24/09/2026 — la seule suite utile est de CALER la visite, pour
+            # aujourd'hui (no-op si un rendez-vous est déjà calé). Posée ICI
+            # pour que l'issue saisie au journal d'appel de la fiche (aucune
+            # touche close) ait la même suite qu'au « Fait » d'une touche ;
+            # sur ce second chemin, ``marquer_etape_relance`` repasse derrière
+            # (idempotent par libellé : l'étape est déplacée, jamais doublée).
+            poser_filet_visite_a_planifier(instance.lead, instance.user)
+        elif issue in ('joint', 'interesse'):
             # RELANCE-SUITE (08/09/2026) — la suite dépend du CANAL de la
             # touche : message répondu → l'appeler ; appel fait → préparer
             # et envoyer le devis. Le plan après-devis, lui, ne démarre qu'à
@@ -605,7 +635,7 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
         elif issue == 'refuse':
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,
-                libelle=FILET_REFUS_LIBELLE, avec_plan_devis=False)
+                cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",
@@ -899,17 +929,22 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
         auteur = ''
         if user is not None:
             auteur = (user.get_full_name() or user.username or '')
-        appliquer_retour_visite(lead, user, retour, auteur=auteur,
-                                qualification=qualification)
-        _notifier_responsable_retour_visite(lead, user)
+        etape = appliquer_retour_visite(lead, user, retour, auteur=auteur,
+                                        qualification=qualification)
+        _notifier_responsable_retour_visite(lead, user, etape)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'VISITE-CADENCE : retour terrain non traité pour le lead #%s',
             lead_id, exc_info=True)
 
 
-def _notifier_responsable_retour_visite(lead, acteur):
-    """Prévient le RESPONSABLE du lead qu'il doit rappeler sous 24-48 h.
+def _notifier_responsable_retour_visite(lead, acteur, etape=None):
+    """Prévient le RESPONSABLE du lead de la suite du retour terrain.
+
+    ``etape`` : ce que ``appliquer_retour_visite`` a RENDU — le texte le lit
+    (``services.phrase_notification_retour_visite``) : « rappeler sous
+    24-48 h » après un devis parti, « préparer et envoyer le devis pour le
+    JJ/MM » sans devis (décision fondateur du 24/09/2026, relevé du 25/09).
 
     Personne d'autre : ni la direction (ce n'est pas une alerte), ni le
     commercial terrain (il vient de faire la visite). Lead sans responsable, ou
@@ -926,8 +961,7 @@ def _notifier_responsable_retour_visite(lead, acteur):
         return notify(
             destinataire, 'visite_retour_terrain',
             f'Retour de visite — {lead}',
-            body=('La visite technique est terminée. Rappeler le client sous '
-                  '24-48 h pour conclure.'),
+            body=phrase_notification_retour_visite(etape),
             link=f'/crm/leads/{lead.pk}', company=lead.company)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(

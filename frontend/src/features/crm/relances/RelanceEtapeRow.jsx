@@ -9,6 +9,7 @@ import {
 import ScoreBadge from '../ScoreBadge'
 import { PRIORITE_LABELS } from '../stages'
 import { toastInfo } from '../../../lib/toast'
+import { formatDate } from '../../../lib/format'
 import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PanneauScriptAppel from './PanneauScriptAppel'
@@ -97,6 +98,13 @@ const QUESTIONS = {
     question: 'Résultat de la touche ?',
     reponses: [
       { outcome: 'joint', label: 'Client joint' },
+      // VISCAD6-B (fondateur 24/09/2026) — « après l'appel il n'y a plus
+      // rien à faire, sauf organiser la visite » : la planification peut se
+      // caler dès la PRISE DE CONTACT, pas seulement après l'envoi du devis
+      // — issue SERVEUR existante (LeadActivity.OUTCOMES), jamais une
+      // nouvelle valeur inventée ici.
+      { outcome: 'visite_acceptee', label: 'Visite acceptée',
+        precision: 'La planification s’ouvre juste après la confirmation.' },
       { outcome: 'non_joint', label: 'Pas de réponse' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
       { outcome: 'refuse', label: 'Refus' },
@@ -114,11 +122,16 @@ const QUESTIONS = {
       // couvert par « À rappeler le… ». Aucune valeur d'énumération ajoutée
       // ni retirée côté serveur ; l'historique garde son libellé d'origine.
       { outcome: 'joint', label: 'Client joint' },
-      // VISCAD6 (fondateur 15/09/2026) — « la visite devient une étape du
-      // suivi commercial » : issue SERVEUR existante (LeadActivity.OUTCOMES,
-      // jamais une nouvelle valeur inventée ici), choisie quand le client dit
-      // oui à la visite pendant le suivi de proposition — ouvre la modale de
+      // VISCAD6 (fondateur 15/09/2026, ÉLARGI 24/09/2026) — « la visite
+      // devient une étape du suivi commercial » : issue SERVEUR existante
+      // (LeadActivity.OUTCOMES, jamais une nouvelle valeur inventée ici),
+      // choisie quand le client dit oui à la visite — ouvre la modale de
       // planification juste après confirmation (confirmerFait ci-dessous).
+      // Décision fondateur du 24/09/2026 : « après l'appel il n'y a plus
+      // rien à faire, sauf organiser la visite » — la même réponse est
+      // désormais proposée dès la prise de contact (cadence `contact`), le
+      // réveil et le filet générique (voir `contact`/`reveil`/`generique`
+      // ci-dessous), pas seulement après l'envoi du devis.
       { outcome: 'visite_acceptee', label: 'Visite acceptée',
         precision: 'La planification s’ouvre juste après la confirmation.' },
       { outcome: 'non_joint', label: 'Sans réponse' },
@@ -134,6 +147,11 @@ const QUESTIONS = {
     question: 'Où en est ce dossier ?',
     reponses: [
       { outcome: '', label: 'Fait — passer à la suite' },
+      // VISCAD6-B (fondateur 24/09/2026) — le filet générique couvre aussi
+      // bien un rappel qu'une relance sans devis : la visite peut se caler
+      // ici aussi, même issue serveur que les autres cadences.
+      { outcome: 'visite_acceptee', label: 'Visite acceptée',
+        precision: 'La planification s’ouvre juste après la confirmation.' },
       { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
       { outcome: 'refuse', label: 'Client refuse' },
     ],
@@ -148,6 +166,11 @@ QUESTIONS.reveil = {
   question: 'Résultat du réveil ?',
   reponses: [
     { outcome: 'joint', label: 'Client joint' },
+    // VISCAD6-B (fondateur 24/09/2026) — un réveil qui aboutit à un oui pour
+    // la visite se planifie tout de suite, même issue serveur que les autres
+    // cadences.
+    { outcome: 'visite_acceptee', label: 'Visite acceptée',
+      precision: 'La planification s’ouvre juste après la confirmation.' },
     { outcome: 'non_joint', label: 'Pas de réponse' },
     { outcome: 'rappel', label: 'À rappeler le…', rappel: true },
     { outcome: 'refuse', label: 'Refus' },
@@ -207,6 +230,38 @@ const QUESTIONS_VISITE = {
     ],
   },
 }
+
+// PARAM-CADENCE (E8, décision fondateur 25/09/2026) — les quatre CLÉS des
+// barreaux de la cadence `visite` (contrat `cadence_relance_v2`), reconnues
+// désormais AVANT le libellé : une société qui renomme un barreau
+// (Paramètres → CRM, E5) ne doit jamais perdre les bonnes questions. Mappe
+// chaque clé vers le jeu de questions EXISTANT de `QUESTIONS_VISITE`
+// ci-dessus — aucune question réécrite ici, seulement retrouvée par une clé
+// stable au lieu d'un libellé qui peut changer.
+const CLES_VISITE = {
+  planifier: QUESTIONS_VISITE['Planifier la visite technique convenue'],
+  confirmation: QUESTIONS_VISITE['Confirmer la visite (veille)'],
+  debrief: QUESTIONS_VISITE['Débrief visite — rappeler le client'],
+  devis_modifie: QUESTIONS_VISITE['Préparer le devis modifié — rappeler le client'],
+}
+
+// PARAM-CADENCE (E7) — mêmes quatre gestes, dérivés de `CLES_VISITE`
+// (jamais une seconde liste à tenir à jour) : `libelle` reste le REPLI pour
+// une touche sans clé (barreau du protocole, ou posée avant `cle`).
+const CLES_VISITE_TOUCHE = Object.keys(CLES_VISITE)
+
+// VISCAD6-B (fondateur 24/09/2026) — l'étape de filet « devis parti », posée
+// par le moteur après un appel « Client joint » sans devis dans l'ERP.
+// Chaînes EXACTES de `apps.crm.services.FILET_JOINT_LIBELLE` /
+// `_FILET_JOINT_LIBELLE_ANCIEN` (l'ancien libellé vit encore sur les leads
+// créés avant le renommage) — jamais recopiées en dur ailleurs dans ce
+// fichier. Aucun libellé pareil n'existe encore dans `suite_phrases.json`
+// (il n'y vit qu'inclus dans des phrases plus longues) : rien à réutiliser
+// de là.
+const LIBELLES_ETAPE_DEVIS = [
+  'Préparer et envoyer le devis (ou fixer un rappel)',
+  'Prochaine étape — envoyer le devis ou fixer un rappel',
+]
 
 // CKP4 (fondateur 2026-09-10) — un canal APPEL clôturé « Fait » exige TOUJOURS
 // une issue : Joint/Pas de réponse restent les réponses existantes ci-dessus
@@ -686,12 +741,29 @@ export default function RelanceEtapeRow({
       .catch(() => setMotifs([]))
   }
 
-  // CAD2 — la nature de la touche (LIBELLÉ) prime sur sa cadence pour choisir
-  // le jeu de questions : les quatre gestes de visite (`QUESTIONS_VISITE`)
-  // portent tous la cadence `apres_devis`, mais aucun n'est un barreau du
-  // suivi de proposition.
-  const questionsTouche = QUESTIONS_VISITE[etape.libelle]
+  // CAD2 — la nature de la touche prime sur sa cadence pour choisir le jeu
+  // de questions : les quatre gestes de visite (`QUESTIONS_VISITE`/
+  // `CLES_VISITE`) portent tous la cadence `apres_devis`, mais aucun n'est
+  // un barreau du suivi de proposition.
+  // PARAM-CADENCE (E8) — reconnue par `cle` D'ABORD (`CLES_VISITE`), le
+  // libellé restant le REPLI d'une touche sans clé : un renommage de
+  // barreau (Paramètres → CRM, E5) ne fait donc plus perdre les bonnes
+  // questions.
+  const questionsTouche = CLES_VISITE[etape.cle] ?? QUESTIONS_VISITE[etape.libelle]
     ?? QUESTIONS[etape.cadence] ?? QUESTIONS.contact
+  // VISCAD6-B — cette LIGNE est-elle l'étape de filet « devis parti » ? Sert
+  // à la fois à proposer « Créer le devis »/« Planifier la visite » à côté
+  // des boutons existants, et à reformuler l'issue « Fait » ci-dessous.
+  // PARAM-CADENCE (E8) — `cle === 'devis'` D'ABORD ; le libellé ne sert plus
+  // de repli QUE pour une touche sans clé (même renommage sans casse).
+  const estEtapeDevis = etape.cle === 'devis'
+    || (!etape.cle && LIBELLES_ETAPE_DEVIS.includes(etape.libelle))
+  // PARAM-CADENCE — cette LIGNE est-elle un des quatre gestes de visite ?
+  // `cle` d'abord (contrat `cle`), le libellé ensuite en repli (touche sans
+  // clé — barreau du protocole ou posée avant PARAM-CADENCE).
+  const estToucheVisite = etape.cle
+    ? CLES_VISITE_TOUCHE.includes(etape.cle)
+    : Boolean(QUESTIONS_VISITE[etape.libelle])
   // CKP4 — canal APPEL : Répondeur/Occupé s'ajoutent aux réponses de la
   // cadence (jamais un remplacement, voir commentaire plus haut).
   // CAD-A — les réponses du client s'ajoutent EN DERNIER (jamais à la place
@@ -701,7 +773,14 @@ export default function RelanceEtapeRow({
     ...(etape.canal === 'appel' ? APPEL_REPONSES_SUPPLEMENTAIRES : []),
     ...(REPONSES_CLIENT[etape.cadence] ?? []),
     ...REPONSES_TOUTES_CADENCES,
-  ]
+    // VISCAD6-B (fondateur 24/09/2026, CAD17 « jamais un effet caché ») —
+    // SUR CETTE ÉTAPE SEULE, « Fait » vaut « devis parti » côté serveur
+    // (`touche_envoi_devis` : le lead passe Devis envoyé, le suivi de
+    // proposition démarre) : l'étiquette le dit, jamais l'issue envoyée
+    // (`outcome` reste '', même contrat) ni une étiquette recopiée ailleurs.
+  ].map((r) => (estEtapeDevis && r.outcome === '' && !r.reponse
+    ? { ...r, label: 'Devis envoyé — passer à la suite' }
+    : r))
   const reponseChoisie = reponseIdx == null
     ? null : reponsesDisponibles[reponseIdx]
   // RLC3 — cette touche consiste-t-elle à écrire, et le message a-t-il été
@@ -926,6 +1005,35 @@ export default function RelanceEtapeRow({
           </Badge>
         )}
       </div>
+      {/* PARAM-CADENCE (E7, décision fondateur 25/09/2026) — sous le
+          libellé, la date de la visite technique du lead (`visite_prevue_le`,
+          contrat `relance_etape_v2`, servie sur TOUTE touche du lead — pas
+          seulement les quatre gestes de visite) et, quand le retour terrain
+          est saisi, un lien direct dessus (`visite_id`). Même chemin que
+          `CadenceFrise.jsx` (ancre + `navigate`, jamais `<Link>` : plusieurs
+          tests existants de cette ligne la rendent SANS Router — même repli
+          que le bouton « Créer le devis » ci-dessus). */}
+      {estToucheVisite && (etape.visite_prevue_le || (etape.visite_retour_disponible && etape.visite_id)) && (
+        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+           data-testid="visite-infos">
+          {etape.visite_prevue_le && (
+            <span>Visite prévue le {formatDate(etape.visite_prevue_le)}</span>
+          )}
+          {etape.visite_retour_disponible && etape.visite_id && (
+            <a
+              href={`/visites/${etape.visite_id}`}
+              className="font-medium text-primary underline"
+              onClick={(e) => {
+                if (!navigate) return
+                e.preventDefault()
+                navigate(`/visites/${etape.visite_id}`)
+              }}
+            >
+              Ouvrir le retour
+            </a>
+          )}
+        </p>
+      )}
       {showStatut && etape.note && (
         <p className="mt-1 text-xs text-muted-foreground">{etape.note}</p>
       )}
@@ -1016,6 +1124,36 @@ export default function RelanceEtapeRow({
           >
             <Paperclip className="size-3.5" /> Pièce reçue
           </Button>
+          {/* VISCAD6-B (fondateur 24/09/2026) — sur l'étape de filet « devis
+              parti » SEULE, deux actions RENDENT la touche actionnable au
+              lieu de la laisser en texte inerte : créer le devis tout de
+              suite (même chemin que `LeadWorkspace.jsx` — `navigate` peut
+              manquer en mode compact/frise, l'ancre `href` reste un repli
+              qui navigue vraiment), ou planifier la visite (même modale
+              PARTAGÉE que le CTA de coaching et l'issue « Visite acceptée »
+              ci-dessous, VISCAD6). */}
+          {estEtapeDevis && (
+            <Button asChild size="sm" variant="outline">
+              <a
+                href={`/ventes/devis/nouveau?lead=${encodeURIComponent(etape.lead)}`}
+                onClick={(e) => {
+                  if (!navigate) return
+                  e.preventDefault()
+                  navigate(`/ventes/devis/nouveau?lead=${encodeURIComponent(etape.lead)}`)
+                }}
+              >
+                Créer le devis
+              </a>
+            </Button>
+          )}
+          {estEtapeDevis && (
+            <Button
+              size="sm" variant="outline" disabled={busy}
+              onClick={() => setPlanifierOuvert(true)}
+            >
+              Planifier la visite
+            </Button>
+          )}
           {/* CAD44 — sur une touche À VENIR, « Fait » (et « Sauter », qui
               clôt la touche comme lui) restent verrouillés : on ne coche pas
               un geste qui n'a pas eu lieu. */}

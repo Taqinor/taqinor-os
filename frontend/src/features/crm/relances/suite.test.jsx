@@ -40,6 +40,31 @@ describe('CAD17 suite.js — traduire les codes du serveur, rien de plus', () =>
     }
   })
 
+  // VISCAD6-B (fondateur 24/09/2026) — « un débrief de visite sans réponse ne
+  // parque plus le lead au Froid » : le SERVEUR ne sert plus le code
+  // `visite_froid_si_seule` (retiré de `CODES`, `apps/crm/suite_touche.py`),
+  // remplacé par les codes EXISTANTS `etape_dernier_appel` /
+  // `suite_si_plus_rien_ouvert` — déjà traduits ci-dessus, aucune phrase à
+  // ajouter. L'écran ne porte plus la sienne. Cette moitié ÉCRAN ne peut pas
+  // lire le contrat serveur mis à jour (la lane serveur tourne en parallèle,
+  // hors périmètre de ce worktree) : le test reste donc VERT que le contrat
+  // committé serve encore l'ancien code (transition) ou non — jamais une
+  // liste de codes recopiée en dur pour comparaison stricte.
+  it('`visite_froid_si_seule` a disparu de l’écran (le serveur ne l’émet plus)', () => {
+    const connus = new Set(codesConnus())
+    expect(connus.has('visite_froid_si_seule')).toBe(false)
+    expect(phraseEffet('visite_froid_si_seule')).toBe('')
+    // Les remplaçants annoncés par la décision fondateur sont des codes
+    // EXISTANTS : rien à ajouter côté écran.
+    expect(connus.has('etape_dernier_appel')).toBe(true)
+    expect(connus.has('suite_si_plus_rien_ouvert')).toBe(true)
+  })
+
+  it('un code que l’écran ne connaît plus n’invente aucune phrase (dégradation silencieuse, jamais un mensonge)', () => {
+    const etape = { ...ETAPE_APPEL, suites: { non_joint: ['visite_froid_si_seule'] } }
+    expect(suiteAnnoncee(etape, { outcome: 'non_joint' })).toBe('')
+  })
+
   it('chaque phrase est non vide, unique, et ne contient aucun chiffre (zéro chiffre inventé)', () => {
     const phrases = Object.values(PHRASES.effets)
     expect(phrases.length).toBeGreaterThan(0)

@@ -170,6 +170,13 @@ class ContratPartageTests(_Base):
                              .read_text(encoding='utf-8'))
         self.assertEqual(set(resp.data) - {'prochaine_touche'},
                          set(contrat['exemple']['results'][0]))
-        # Plus rien d'ouvert dans le suivi de proposition : pas de « prochain
-        # message » à annoncer.
-        self.assertIsNone(resp.data['prochaine_touche'])
+        # Plus rien d'ouvert dans le suivi de proposition : la prochaine
+        # étape annoncée est celle du LEAD (toutes cadences confondues,
+        # relevé du 25/09/2026) — l'étape « Question de prix » posée pour le
+        # prochain jour ouvré, un appel.
+        pause = self.lead.relance_etapes.get(
+            libelle=QUESTION_PRIX_LIBELLE, statut=RelanceEtape.Statut.A_FAIRE)
+        self.assertEqual(resp.data['prochaine_touche']['due_date'],
+                         pause.due_date.isoformat())
+        self.assertEqual(resp.data['prochaine_touche']['canal'],
+                         RelanceEtape.Canal.APPEL)

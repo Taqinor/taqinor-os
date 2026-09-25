@@ -257,6 +257,13 @@ const crmApi = {
   // `mes_stats_relance` (contrat CKP0/PACT10). Aucun paramètre — le serveur
   // dérive le commercial de `request.user`.
   getMesStatsRelance: () => api.get('/crm/relance-etapes/mes-stats/'),
+  // PARAM-CADENCE (décision fondateur 25/09/2026) — les trois compteurs de
+  // la chaîne appel → visite → devis → suivi (« joints sans devis »,
+  // « visites à venir », « devis à préparer »), PERSONNELS (même portée que
+  // la file du jour). Forme `chaine_commerciale` (contrat committé
+  // `apps/crm/contract_samples/chaine_commerciale.json`, PACT10). Aucun
+  // paramètre — le serveur dérive le commercial de `request.user`.
+  getChaineCommerciale: () => api.get('/crm/relance-etapes/chaine-commerciale/'),
   // CKP3/CKP5 (fondateur 2026-09-10) — vue ADHÉRENCE : à-l'heure %, sautées
   // HUMAINES vs annulées MOTEUR (jamais confondues), drop-off par touche,
   // vitesse premier contact, leads sans touche due, conversion par étape.

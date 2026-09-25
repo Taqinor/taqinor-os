@@ -27,6 +27,20 @@ worker) enverrait deux fois le même digest.
 Best-effort par société et par destinataire : un échec n'interrompt jamais
 les suivants.
 
+N3 (décision fondateur du 25/09/2026 — « la notification de 8 h 30 de Meryem
+a disparu ») : le digest se TAISAIT quand aucune touche n'était due, et ce
+silence se lisait comme une panne. Désormais :
+
+  * chaque commercial qui a des leads ACTIFS le reçoit CHAQUE jour ouvré, y
+    compris « Aucune relance due aujourd'hui — N touche(s) à venir cette
+    semaine » ;
+  * les étapes de VISITE (planifier, confirmer la veille, débrief) et de
+    DEVIS (préparer et envoyer) sont comptées à part : ce sont des
+    ``RelanceEtape`` comme les autres, déjà dans le total ;
+  * aucun digest un jour NON ouvré (dimanche, férié) : la fenêtre des
+    messages de la société (``crm.horaires``) fait foi — le lundi, les
+    touches du week-end ressortent « en retard ».
+
     python manage.py notifier_relances_dues [--dry-run]
 """
 import logging
@@ -44,6 +58,98 @@ DIGEST_DOSSIERS_CITES = 3
 DIGEST_INVITATION = ('Ouvrez le Cockpit CRM pour voir vos touches du jour et '
                      'celles en retard.')
 
+#: N3 — le titre du digest quand rien n'est dû : le silence ne se lit plus
+#: comme une panne.
+DIGEST_ZERO_TITRE = "Aucune relance due aujourd'hui"
+
+#: N3 — la fenêtre qui décide si le jour est ouvré : celle des MESSAGES
+#: (le digest est un message interne, comme les notifications — N1).
+_CANAL_DIGEST = 'whatsapp'
+
+
+def _jour_ouvre(company, aujourdhui):
+    """N3 — ``aujourdhui`` est-il un jour ouvré pour la société (fenêtre des
+    messages : jours ouvrés, fériés, Ramadan) ? Best-effort : en cas de doute
+    le digest part (jamais un silence de plus)."""
+    try:
+        from apps.crm import horaires
+        return horaires.fenetre_du_jour(
+            aujourdhui, company, canal=_CANAL_DIGEST) is not None
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning('notifier_relances_dues: jour ouvré illisible '
+                       '(société %s)', getattr(company, 'pk', '?'),
+                       exc_info=True)
+        return True
+
+
+def _a_des_leads_actifs(owner, company):
+    """N3 — le commercial tient-il au moins un dossier VIVANT (ni archivé, ni
+    perdu, ni « ne plus contacter », ni clos — clés de ``STAGES.py``) ? C'est
+    ce qui lui vaut le digest même à zéro touche due."""
+    from apps.crm.models import Lead
+    from apps.crm.stages import COLD, SIGNED
+    return Lead.objects.filter(
+        company=company, owner=owner, is_archived=False, perdu=False,
+        ne_plus_contacter=False,
+    ).exclude(stage__in=[SIGNED, COLD]).exists()
+
+
+def _familles_de_cles():
+    """N3 — ``(clés de visite, clés de devis)`` : les CLÉS moteur du gabarit
+    de Paramètres (PARAM-CADENCE, 25/09/2026), jamais un libellé — une
+    société peut renommer ses étapes. Les étapes posées avant la clé sont
+    reconnues par leur libellé par défaut (``cadence_config.cle_de``). En cas
+    d'échec d'import, deux ensembles vides : le total reste juste, seule la
+    ventilation disparaît."""
+    try:
+        from apps.crm import cadence_config as cc
+        visites = frozenset({cc.CLE_PLANIFIER, cc.CLE_CONFIRMATION,
+                             cc.CLE_DEBRIEF})
+        # « Préparer le devis modifié » (débrief qui renvoie au devis) :
+        # c'est un devis à PRÉPARER, compté comme tel.
+        devis = frozenset({cc.CLE_DEVIS, cc.CLE_DEVIS_MODIFIE})
+        return visites, devis
+    except Exception:  # noqa: BLE001 — la ventilation est un bonus
+        logger.warning('notifier_relances_dues: clés de familles '
+                       'illisibles', exc_info=True)
+        return frozenset(), frozenset()
+
+
+def _compter_familles(dues):
+    """N3 — ``(nb étapes de visite, nb étapes de devis)`` parmi les touches
+    dues (``dues`` : la file DÉJÀ calculée, aucune requête métier neuve)."""
+    from apps.crm.cadence_config import cle_de
+    from apps.crm.models import RelanceEtape
+
+    visites, devis = _familles_de_cles()
+    nb_visites = nb_devis = 0
+    for cle, libelle in dues.values_list('cle', 'libelle'):
+        cle = cle_de(RelanceEtape(cle=cle or '', libelle=libelle or ''))
+        if cle in visites:
+            nb_visites += 1
+        elif cle in devis:
+            nb_devis += 1
+    return nb_visites, nb_devis
+
+
+def _ligne_familles(nb_visites, nb_devis):
+    """N3 — « Dont 2 étape(s) de visite et 1 étape(s) de devis. » (vide si
+    aucune des deux)."""
+    parties = []
+    if nb_visites:
+        parties.append(f'{nb_visites} étape(s) de visite')
+    if nb_devis:
+        parties.append(f'{nb_devis} étape(s) de devis')
+    if not parties:
+        return ''
+    return 'Dont ' + ' et '.join(parties) + '.'
+
+
+def _corps_zero(a_venir):
+    """N3 — le corps du digest quand rien n'est dû aujourd'hui."""
+    return (f"{DIGEST_ZERO_TITRE} — {a_venir} touche(s) à venir cette "
+            'semaine. ' + DIGEST_INVITATION)
+
 
 def _ligne_dossier(etape, aujourdhui):
     """CAD116 — UN dossier à ouvrir, en une ligne lisible.
@@ -60,19 +166,21 @@ def _ligne_dossier(etape, aujourdhui):
     return f'{nom} : {quoi}{retard}'
 
 
-def _corps_digest(dues, aujourdhui):
+def _corps_digest(dues, aujourdhui, familles=''):
     """CAD116 — le corps du digest : les premiers dossiers, puis l'invitation.
 
     ``dues`` est la file DÉJÀ TRIÉE (en retard d'abord, puis l'heure, puis la
     priorité et le score) : « par où commencer » est donc sa tête, jamais un
-    classement réinventé ici.
+    classement réinventé ici. N3 — ``familles`` (``_ligne_familles``) s'insère
+    avant l'invitation quand il y a des étapes de visite ou de devis.
     """
+    invitation = (f'{familles} ' if familles else '') + DIGEST_INVITATION
     premiers = list(dues[:DIGEST_DOSSIERS_CITES])
     if not premiers:
-        return DIGEST_INVITATION
+        return invitation
     lignes = [_ligne_dossier(e, aujourdhui) for e in premiers]
     return ('À ouvrir en premier — ' + ' · '.join(lignes) + '. '
-            + DIGEST_INVITATION)
+            + invitation)
 
 
 def _compter_leads_sans_responsable(company, aujourdhui):
@@ -163,6 +271,10 @@ def notifier_relances_dues(dry_run=False, today=None):
     nb_destinataires = 0
 
     for company in active_companies():
+        # N3 — pas de digest un jour NON ouvré (dimanche, férié) : l'heure du
+        # beat (08:30) reste, c'est le calendrier de la société qui décide.
+        if not _jour_ouvre(company, aujourdhui):
+            continue
         # CAD116 — les dossiers que PERSONNE ne verra (sans owner, ou owner
         # désactivé), comptés UNE fois pour la société.
         try:
@@ -194,7 +306,9 @@ def notifier_relances_dues(dry_run=False, today=None):
                     'notifier_relances_dues: comptage échoué pour %s',
                     owner.pk, exc_info=True)
                 continue
-            if not n:
+            # N3 — à zéro touche due, le digest part QUAND MÊME à qui tient
+            # des dossiers vivants : son silence se lisait comme une panne.
+            if not n and not _a_des_leads_actifs(owner, company):
                 continue
             nb_destinataires += 1
             deja = Notification.objects.filter(
@@ -207,7 +321,19 @@ def notifier_relances_dues(dry_run=False, today=None):
             if dry_run:
                 continue
             try:
-                corps = _corps_digest(dues, aujourdhui)
+                if n:
+                    titre = f"{n} relance(s) à faire aujourd'hui"
+                    corps = _corps_digest(
+                        dues, aujourdhui,
+                        _ligne_familles(*_compter_familles(dues)))
+                else:
+                    # `week` = retard + 7 prochains jours ; le retard est nul
+                    # ici (n == 0), il ne reste que les touches à venir.
+                    a_venir = relance_etapes_dues(
+                        company, owner, scope='week', owner=owner.pk,
+                        today=aujourdhui).count()
+                    titre = DIGEST_ZERO_TITRE
+                    corps = _corps_zero(a_venir)
                 # CAD116 — le responsable par défaut porte AUSSI la ligne des
                 # dossiers sans responsable : un seul message, pas deux.
                 if (orphelins and responsable_defaut is not None
@@ -215,7 +341,7 @@ def notifier_relances_dues(dry_run=False, today=None):
                     corps += ' ' + _ligne_sans_responsable(orphelins)
                 notify(
                     owner, EventType.RELANCE_DUE,
-                    title=f"{n} relance(s) à faire aujourd'hui",
+                    title=titre,
                     body=corps, link='/crm/cockpit', company=company)
             except Exception:  # noqa: BLE001 — best-effort
                 logger.warning(

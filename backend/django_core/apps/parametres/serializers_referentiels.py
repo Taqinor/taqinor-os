@@ -85,9 +85,31 @@ class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
         # MRY4 — forme `cadence_relance_v2` (contrat MRY25).
         # CAD43 — `samedi_ok` s'AJOUTE en fin de forme (contrat
         # `cadence_relance_v2`) : aucun champ retiré ni déplacé.
+        # PARAM-CADENCE (25/09/2026) — `cle` s'AJOUTE en fin de forme, en
+        # LECTURE SEULE : c'est la clé stable par laquelle le moteur retrouve
+        # un barreau des cadences `apres_contact`/`visite` ; l'écran ne la
+        # pose jamais (vide sur un barreau ajouté à la main).
         fields = ['id', 'cadence', 'ordre', 'delai_jours', 'delai_minutes',
                   'heure_cible', 'canal', 'libelle', 'template_cle',
-                  'dimanche_ok', 'actif', 'samedi_ok']
+                  'dimanche_ok', 'actif', 'samedi_ok', 'cle']
+        read_only_fields = ['cle']
+
+    def validate(self, attrs):
+        # PARAM-CADENCE — un barreau à clé moteur appartient à SA cadence : le
+        # déplacer dans une autre ferait disparaître une étape de la chaîne
+        # (le moteur le cherche dans la sienne) et en créerait une orpheline
+        # ailleurs. Le supprimer reste permis — le moteur retombe alors sur le
+        # défaut de la plateforme (pilier) ou saute la marche (palier).
+        instance = getattr(self, 'instance', None)
+        cadence = attrs.get('cadence')
+        if (instance is not None and (instance.cle or '')
+                and cadence is not None and cadence != instance.cadence):
+            raise serializers.ValidationError({'cadence': (
+                '« Cadence » : ce barreau est une étape du moteur (clé '
+                f'« {instance.cle} ») — il reste dans sa cadence. Modifiez '
+                'son libellé, son délai, son canal ou son heure, ou '
+                'désactivez-le.')})
+        return attrs
 
     def validate_libelle(self, value):
         value = (value or '').strip()

@@ -80,6 +80,8 @@
     corbeille_id:inconnu, detail:texte, id:inconnu
 - frontend/src/api/crmApi.js :: getCadencesEchues -> /api/django/crm/relance-etapes/cadences-echues
     count:nombre, jours:inconnu, results:inconnu
+- frontend/src/api/crmApi.js :: getChaineCommerciale -> /api/django/crm/relance-etapes/chaine-commerciale
+    devis_a_preparer:objet, joints_sans_devis:objet, limite:inconnu, visites_a_venir:objet
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
     ca_devis_total:texte, ca_factures_total:texte, filiales:liste, nb_devis_total:inconnu, nb_factures_total:inconnu
 - frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants
@@ -1321,8 +1323,8 @@
     champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
     statut ∈ {disponible, en_intervention, en_reparation, perdu}
 - frontend/src/api/parametresApi.js :: createCadenceRelanceEtape -> /api/django/parametres/cadence-relance  [CadenceRelanceEtapeSerializer]
-    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
-    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
+    champs: actif, cadence, canal, cle, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_contact, apres_devis, contact, deuxieme_affaire, generique, reveil, visite}
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: createConditionPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
@@ -1333,8 +1335,8 @@
 - frontend/src/api/parametresApi.js :: createUniteMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
 - frontend/src/api/parametresApi.js :: deleteCadenceRelanceEtape -> /api/django/parametres/cadence-relance/<>  [CadenceRelanceEtapeSerializer]
-    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
-    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
+    champs: actif, cadence, canal, cle, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_contact, apres_devis, contact, deuxieme_affaire, generique, reveil, visite}
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: deleteConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
@@ -1345,8 +1347,8 @@
 - frontend/src/api/parametresApi.js :: deleteUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
     champs: actif, code, id, libelle
 - frontend/src/api/parametresApi.js :: getCadenceRelance -> /api/django/parametres/cadence-relance  [CadenceRelanceEtapeSerializer]
-    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
-    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
+    champs: actif, cadence, canal, cle, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_contact, apres_devis, contact, deuxieme_affaire, generique, reveil, visite}
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: getConditionsPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
@@ -1357,8 +1359,8 @@
 - frontend/src/api/parametresApi.js :: getUnitesMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
     champs: actif, code, id, libelle
 - frontend/src/api/parametresApi.js :: updateCadenceRelanceEtape -> /api/django/parametres/cadence-relance/<>  [CadenceRelanceEtapeSerializer]
-    champs: actif, cadence, canal, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
-    cadence ∈ {apres_devis, contact, deuxieme_affaire, generique, reveil}
+    champs: actif, cadence, canal, cle, delai_jours, delai_minutes, dimanche_ok, heure_cible, id, libelle, ordre, samedi_ok, template_cle
+    cadence ∈ {apres_contact, apres_devis, contact, deuxieme_affaire, generique, reveil, visite}
     canal ∈ {appel, email, visite, whatsapp}
 - frontend/src/api/parametresApi.js :: updateConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
     champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle

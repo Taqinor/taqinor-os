@@ -42,8 +42,11 @@ EVENT_SEVERITY = {
     EventType.HOT_LEAD_UNREAD: CRITIQUE,
     EventType.LEAD_CALLBACK_SLA_BREACH: CRITIQUE,
     # MRY17 — l'objectif « rappelé en moins de 5 minutes » est dépassé :
-    # même rang que HOT_LEAD_UNREAD, et donc AUDIBLE pendant les heures
-    # calmes (un lead qui refroidit ne peut pas attendre 08:00).
+    # même rang que HOT_LEAD_UNREAD (tête de liste, liseré rouge). N1
+    # (25/09/2026) : la sévérité ne décide plus de l'HEURE d'envoi — toute
+    # notification émise hors fenêtre de travail est reportée à l'ouverture,
+    # et le délai de premier contact ne court de toute façon qu'en minutes
+    # ouvrées (`crm.horaires`).
     EventType.PREMIER_CONTACT_DEPASSE: CRITIQUE,
     EventType.SAV_TICKET_BREACHING: CRITIQUE,
     EventType.DA_SOUMISE_STALE: CRITIQUE,
