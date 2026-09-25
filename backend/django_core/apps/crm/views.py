@@ -1693,14 +1693,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         true`` lance quand même. Les questions en attente partent ENSEMBLE
         dans un seul 409.
         Forme : ``contract_samples/lead_relance_initialiser.json``."""
-        from apps.parametres.models_relance import Cadence
+        from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
 
         lead = self.get_object()
         cadence = (request.data.get('cadence') or Cadence.CONTACT)
-        if cadence not in {c for c, _ in Cadence.choices}:
+        # PARAM-CADENCE (25/09/2026) — « Après l'appel » et « Visite
+        # technique » sont les gabarits des étapes que le MOTEUR pose, jamais
+        # un plan qu'on démarre sur un lead.
+        plans = [c for c, _ in Cadence.choices if c not in CADENCES_MOTEUR]
+        if cadence not in plans:
             return Response(
                 {'cadence': 'Cadence inconnue. Choisir parmi : '
-                            + ', '.join(c for c, _ in Cadence.choices) + '.'},
+                            + ', '.join(plans) + '.'},
                 status=status.HTTP_400_BAD_REQUEST)
         if lead.ne_plus_contacter:
             return Response(

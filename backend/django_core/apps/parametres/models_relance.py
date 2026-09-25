@@ -15,7 +15,7 @@ additif, seedé au signup ET à la volée pour les sociétés déjà existantes.
 """
 import datetime
 
-from django.db import models
+from django.db import IntegrityError, models, transaction
 
 from core.models import TenantModel
 
@@ -112,6 +112,17 @@ class Cadence(models.TextChoices):
     # ce sont les DEUX PREMIÈRES du protocole validé (message d'identité,
     # puis appel d'ouverture trois minutes après), arrêtées là.
     DEUXIEME_AFFAIRE = 'deuxieme_affaire', 'Deuxième affaire (client acquis)'
+    # PARAM-CADENCE (décision fondateur du 25/09/2026 — « cette cadence doit
+    # être dans Paramètres, pour qu'une autre société ou nous puissions tout
+    # y changer »). Ces deux-là ne sont PAS des plans qu'on démarre : ce sont
+    # les GABARITS des étapes que le moteur pose lui-même après l'appel
+    # (filet) et autour de la visite technique. Le moteur retrouve chaque
+    # barreau par sa CLÉ stable (``CadenceRelanceEtape.cle``), jamais par son
+    # libellé : une société peut renommer, décaler, changer le canal ou
+    # l'heure. Les étapes posées gardent la cadence de leur frise
+    # (``generique`` pour le filet, ``apres_devis`` pour la visite).
+    APRES_CONTACT = 'apres_contact', "Après l'appel (avant devis)"
+    VISITE = 'visite', 'Visite technique'
 
 
 # ── Protocole de rappel v3 (04/09/2026) ─────────────────────────────────────
@@ -281,6 +292,108 @@ CADENCE_DEUXIEME_AFFAIRE_DEFAUT = [
     dict(CADENCE_CONTACT_DEFAUT[1], template_cle='appel_ouverture'),
 ]
 
+# ── PARAM-CADENCE (décision fondateur du 25/09/2026) ────────────────────────
+#
+# La chaîne APRÈS L'APPEL (le filet QJ-INVARIANT) et AUTOUR DE LA VISITE était
+# codée en dur dans ``apps/crm/services.py`` — libellés, délais, canaux, et le
+# moteur reconnaissait ces étapes par leur LIBELLÉ. Elle vit désormais ICI,
+# comme les cadences du protocole : deux gabarits par société, modifiables
+# dans Paramètres → CRM, et chaque barreau porte une CLÉ STABLE que le moteur
+# lit (``apps/crm/cadence_config.py``). Les libellés ci-dessous sont les
+# DÉFAUTS TAQINOR — la source unique : ``crm.services`` les réexporte sous
+# ses anciens noms (``FILET_JOINT_LIBELLE``…), il ne les redéclare pas.
+#
+# Deux familles de barreaux, et la différence compte :
+#   * PILIERS (devis, planifier, confirmation, debrief, devis_modifie,
+#     rappel_convenu, decider_suite) — la chaîne ne tient pas sans eux : un
+#     barreau supprimé ou désactivé retombe sur le défaut TAQINOR ;
+#   * PALIERS optionnels (appel_apres_reponse, message_creneau,
+#     dernier_appel) — désactivés ou supprimés, ils sont SAUTÉS : la chaîne
+#     passe directement à la marche suivante, jamais une boucle.
+#
+# Sens de ``delai_jours`` : jours APRÈS le geste qui pose l'étape (après la
+# visite pour ``debrief`` et ``devis_modifie``) ; pour ``confirmation`` seule,
+# jours AVANT la visite (la veille = 1, jamais avant aujourd'hui).
+
+CLE_DEVIS = 'devis'
+CLE_APPEL_APRES_REPONSE = 'appel_apres_reponse'
+CLE_MESSAGE_CRENEAU = 'message_creneau'
+CLE_DERNIER_APPEL = 'dernier_appel'
+CLE_RAPPEL_CONVENU = 'rappel_convenu'
+CLE_DECIDER_SUITE = 'decider_suite'
+CLE_PLANIFIER = 'planifier'
+CLE_CONFIRMATION = 'confirmation'
+CLE_DEBRIEF = 'debrief'
+CLE_DEVIS_MODIFIE = 'devis_modifie'
+
+#: Les barreaux optionnels : inactifs ou supprimés, ils sont SAUTÉS.
+CLES_PALIERS = frozenset({
+    CLE_APPEL_APRES_REPONSE, CLE_MESSAGE_CRENEAU, CLE_DERNIER_APPEL})
+
+LIBELLE_DEVIS = 'Préparer et envoyer le devis (ou fixer un rappel)'
+LIBELLE_APPEL_APRES_REPONSE = 'Appeler le client — il a répondu au message'
+LIBELLE_MESSAGE_CRENEAU = "Message — proposer un créneau pour l'appel"
+LIBELLE_DERNIER_APPEL = 'Rappeler — dernier essai avant de chiffrer'
+LIBELLE_RAPPEL_CONVENU = 'Rappeler le client — rappel convenu'
+LIBELLE_DECIDER_SUITE = 'Décider la suite — perdu (motif) ou relance ultérieure'
+LIBELLE_PLANIFIER = 'Planifier la visite technique convenue'
+LIBELLE_CONFIRMATION = 'Confirmer la visite (veille)'
+LIBELLE_DEBRIEF = 'Débrief visite — rappeler le client'
+LIBELLE_DEVIS_MODIFIE = 'Préparer le devis modifié — rappeler le client'
+
+
+def _barreau_moteur(ordre, cle, libelle, *, delai_jours, canal,
+                    template_cle=''):
+    return {'ordre': ordre, 'cle': cle, 'delai_jours': delai_jours,
+            'delai_minutes': 0, 'heure_cible': None, 'canal': canal,
+            'libelle': libelle, 'template_cle': template_cle,
+            'dimanche_ok': False}
+
+
+#: « Après l'appel (avant devis) » — contrat ``cadence_relance_v2.json``
+#: (``exemple_apres_contact``). Les délais sont ceux que le moteur appliquait
+#: en dur : le devis DEMAIN, l'appel au client qui a répondu TOUT DE SUITE
+#: (prochain créneau d'appel), le message de créneau le jour même, le dernier
+#: essai le lendemain, la décision après un refus le lendemain.
+CADENCE_APRES_CONTACT_DEFAUT = [
+    _barreau_moteur(1, CLE_DEVIS, LIBELLE_DEVIS, delai_jours=1,
+                    canal=CanalRelance.APPEL),
+    # CAD18 — le seul barreau du filet qui porte un script (le client a
+    # répondu au message d'identité avant l'appel).
+    _barreau_moteur(2, CLE_APPEL_APRES_REPONSE, LIBELLE_APPEL_APRES_REPONSE,
+                    delai_jours=0, canal=CanalRelance.APPEL,
+                    template_cle='appel_apres_reponse'),
+    _barreau_moteur(3, CLE_MESSAGE_CRENEAU, LIBELLE_MESSAGE_CRENEAU,
+                    delai_jours=0, canal=CanalRelance.WHATSAPP),
+    _barreau_moteur(4, CLE_DERNIER_APPEL, LIBELLE_DERNIER_APPEL,
+                    delai_jours=1, canal=CanalRelance.APPEL),
+    _barreau_moteur(5, CLE_RAPPEL_CONVENU, LIBELLE_RAPPEL_CONVENU,
+                    delai_jours=0, canal=CanalRelance.APPEL),
+    _barreau_moteur(6, CLE_DECIDER_SUITE, LIBELLE_DECIDER_SUITE,
+                    delai_jours=1, canal=CanalRelance.APPEL),
+]
+
+#: « Visite technique » — contrat ``cadence_relance_v2.json``
+#: (``exemple_visite``) : planifier le jour même, confirmer la VEILLE (le
+#: premier motif d'échec d'une visite est un client absent), débriefer le
+#: lendemain, préparer le devis modifié le lendemain.
+CADENCE_VISITE_DEFAUT = [
+    _barreau_moteur(1, CLE_PLANIFIER, LIBELLE_PLANIFIER, delai_jours=0,
+                    canal=CanalRelance.APPEL),
+    _barreau_moteur(2, CLE_CONFIRMATION, LIBELLE_CONFIRMATION, delai_jours=1,
+                    canal=CanalRelance.WHATSAPP,
+                    template_cle='visite_confirmation'),
+    _barreau_moteur(3, CLE_DEBRIEF, LIBELLE_DEBRIEF, delai_jours=1,
+                    canal=CanalRelance.APPEL),
+    _barreau_moteur(4, CLE_DEVIS_MODIFIE, LIBELLE_DEVIS_MODIFIE,
+                    delai_jours=1, canal=CanalRelance.APPEL),
+]
+
+#: Les deux gabarits du MOTEUR : jamais un plan qu'on démarre sur un lead
+#: (le démarrage d'une cadence les refuse), seulement la configuration des
+#: étapes qu'il pose.
+CADENCES_MOTEUR = (Cadence.APRES_CONTACT, Cadence.VISITE)
+
 #: Cadence -> gabarit par défaut. ``generique`` garde EXACTEMENT les 5
 #: barreaux historiques (aucune réécriture rétroactive).
 CADENCES_DEFAUT = {
@@ -289,7 +402,17 @@ CADENCES_DEFAUT = {
     Cadence.REVEIL: CADENCE_REVEIL_DEFAUT,
     Cadence.GENERIQUE: CADENCE_RELANCE_DEFAUT,
     Cadence.DEUXIEME_AFFAIRE: CADENCE_DEUXIEME_AFFAIRE_DEFAUT,
+    Cadence.APRES_CONTACT: CADENCE_APRES_CONTACT_DEFAUT,
+    Cadence.VISITE: CADENCE_VISITE_DEFAUT,
 }
+
+
+def barreau_par_defaut(cadence, cle):
+    """PARAM-CADENCE — le barreau TAQINOR par défaut de cette clé (une
+    COPIE du ``dict`` de ``CADENCES_DEFAUT``), ou ``None`` si la clé est
+    inconnue dans cette cadence."""
+    return next((dict(entree) for entree in CADENCES_DEFAUT.get(cadence, [])
+                 if entree.get('cle') == cle), None)
 
 
 class CadenceRelanceEtape(TenantModel):
@@ -346,6 +469,15 @@ class CadenceRelanceEtape(TenantModel):
     canal = models.CharField(max_length=20, choices=CanalRelance.choices)
     libelle = models.CharField(max_length=150)
     actif = models.BooleanField(default=True)
+    # PARAM-CADENCE (25/09/2026) — clé STABLE d'un barreau que le MOTEUR pose
+    # lui-même (cadences ``apres_contact`` et ``visite``) : c'est par elle,
+    # jamais par le libellé, qu'il retrouve le barreau. Posée par le seed,
+    # jamais par l'écran (lecture seule dans l'API). Vide sur les barreaux du
+    # protocole et sur un barreau ajouté à la main — le moteur ne pose jamais
+    # ceux-là. Unique par (société, cadence) quand elle est posée.
+    cle = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Clé moteur',
+        help_text='Clé stable lue par le moteur (jamais modifiable).')
 
     class Meta:
         verbose_name = 'Étape de cadence de relance'
@@ -371,6 +503,14 @@ class CadenceRelanceEtape(TenantModel):
             models.Index(fields=['company', 'cadence', 'actif'],
                          name='param_cad_co_cad_act_idx'),
         ]
+        constraints = [
+            # PARAM-CADENCE — UN barreau par clé moteur dans une cadence : le
+            # moteur ne doit jamais avoir à choisir entre deux « devis ».
+            models.UniqueConstraint(
+                fields=['company', 'cadence', 'cle'],
+                condition=models.Q(cle__gt=''),
+                name='param_cad_cle_uniq'),
+        ]
 
     def __str__(self):
         return (f'{self.company_id}: [{self.cadence}] J+{self.delai_jours} '
@@ -394,25 +534,64 @@ class CadenceRelanceEtape(TenantModel):
         doublon, ne retouche JAMAIS un barreau déjà personnalisé (le
         fondateur peut décaler un délai sans qu'un redéploiement l'écrase)."""
         crees = 0
+        # PARAM-CADENCE — une clé déjà présente (barreau déplacé à un autre
+        # rang par la société) n'est jamais re-seedée : la contrainte
+        # d'unicité (société, cadence, clé) l'interdirait, et le barreau de la
+        # société EST ce barreau-là.
+        cles_prises = set(cls.objects.filter(
+            company=company, cadence=cadence).exclude(cle='')
+            .values_list('cle', flat=True))
         for entry in CADENCES_DEFAUT.get(cadence, []):
-            _, created = cls.objects.get_or_create(
-                company=company, cadence=cadence, ordre=entry['ordre'],
-                defaults={
-                    'delai_jours': entry['delai_jours'],
-                    'delai_minutes': entry.get('delai_minutes', 0),
-                    'heure_cible': entry.get('heure_cible'),
-                    'template_cle': entry.get('template_cle', ''),
-                    'dimanche_ok': entry.get('dimanche_ok', False),
-                    # CAD43 — absent de tous les gabarits par défaut : le
-                    # samedi ne s'ouvre que par un geste humain.
-                    'samedi_ok': entry.get('samedi_ok', False),
-                    'canal': entry['canal'],
-                    'libelle': entry['libelle'],
-                    'actif': True,
-                })
+            cle = entry.get('cle', '')
+            if cle and cle in cles_prises:
+                continue
+            try:
+                with transaction.atomic():
+                    _, created = cls.objects.get_or_create(
+                        company=company, cadence=cadence,
+                        ordre=entry['ordre'],
+                        defaults={
+                            'delai_jours': entry['delai_jours'],
+                            'delai_minutes': entry.get('delai_minutes', 0),
+                            'heure_cible': entry.get('heure_cible'),
+                            'template_cle': entry.get('template_cle', ''),
+                            'dimanche_ok': entry.get('dimanche_ok', False),
+                            # CAD43 — absent de tous les gabarits par défaut :
+                            # le samedi ne s'ouvre que par un geste humain.
+                            'samedi_ok': entry.get('samedi_ok', False),
+                            'canal': entry['canal'],
+                            'libelle': entry['libelle'],
+                            'actif': True,
+                            'cle': cle,
+                        })
+            except IntegrityError:
+                # Seed concurrent : la clé vient d'être posée par l'autre.
+                continue
             if created:
                 crees += 1
         return crees
+
+    @classmethod
+    def barreau_par_cle(cls, company, cadence, cle, *, inactif_ok=False):
+        """PARAM-CADENCE — LE barreau de clé ``cle`` de cette cadence pour
+        ``company`` : actif (ou inactif si ``inactif_ok``), seedé à la volée
+        si la cadence n'a encore AUCUN barreau (même règle que
+        ``cadence_pour`` : jamais un défaut codé en dur côté appelant),
+        ``None`` s'il a été supprimé — ou désactivé sans ``inactif_ok``.
+
+        UNE requête dans le cas courant : les barreaux d'une cadence sont peu
+        nombreux, on les lit d'un coup."""
+        def _lignes():
+            return list(cls.objects.filter(company=company, cadence=cadence))
+
+        lignes = _lignes()
+        if not lignes:
+            cls.seed_cadence(company, cadence)
+            lignes = _lignes()
+        barreau = next((b for b in lignes if b.cle == cle), None)
+        if barreau is None or (not barreau.actif and not inactif_ok):
+            return None
+        return barreau
 
     @classmethod
     def cadence_pour(cls, company, cadence=Cadence.CONTACT):
