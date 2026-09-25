@@ -43,6 +43,6 @@
     "rappel": ["journal_sans_effet"],
     "refuse": ["relances_arretees", "journal_decider_si_rien_ouvert"],
     "interesse": ["contact_arretee", "reveils_arretes", "journal_suite_si_rien_ouvert"],
-    "visite_acceptee": ["journal_sans_effet"]
+    "visite_acceptee": ["contact_arretee", "reveils_arretes", "etape_planifier_visite"]
   }
 }
