@@ -335,6 +335,14 @@ après ça rien ne se passe » : la chaîne ne s'interrompt plus.
    filet qui reprend (« Rappeler — dernier essai avant de chiffrer » le lendemain, puis « Préparer et envoyer le
    devis »), ou le plan après-devis qui continue s'il est pendant. Aucun texte client nouveau : ces étapes sont des
    appels, leurs scripts existants suffisent.
+4. PARAMÉTRAGE (25/09/2026, « cette cadence doit être dans Paramètres, pour qu'une autre société ou nous puissions
+   tout y changer ») : ces deux chaînes vivent désormais dans Paramètres → CRM comme les cadences du protocole —
+   « Après l'appel (avant devis) » (`apres_contact` : préparer le devis, appeler s'il a répondu, message créneau,
+   dernier essai, rappel convenu, décider la suite) et « Visite technique » (`visite` : planifier, confirmer la
+   veille, débrief, devis modifié). Chaque barreau porte une CLÉ stable que le moteur lit à la place du libellé :
+   une société peut renommer, décaler, changer le canal ou l'heure ; un barreau pilier supprimé ou désactivé
+   retombe sur le défaut de la plateforme, un palier désactivé est sauté. Les textes clients (`visite_confirmation`)
+   restent ceux validés ici.
 
 ### visite_proposition — après l'envoi du devis, WhatsApp
 FR : Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — [Conseiller]
