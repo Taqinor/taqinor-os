@@ -94,30 +94,23 @@ def _a_des_leads_actifs(owner, company):
     ).exclude(stage__in=[SIGNED, COLD]).exists()
 
 
-def _familles_de_libelles():
-    """N3 — ``(libellés de visite, libellés de devis)`` : les constantes du
-    moteur de suivi (``crm.services``), jamais un second littéral. Les
-    étapes de visite portent la cadence ``apres_devis`` (ordre 90-92), celles
-    de devis la cadence ``generique`` — le LIBELLÉ est ce qui les distingue
-    sans ambiguïté. En cas d'échec d'import, deux ensembles vides : le total
-    reste juste, seule la ventilation disparaît."""
+def _familles_de_cles():
+    """N3 — ``(clés de visite, clés de devis)`` : les CLÉS moteur du gabarit
+    de Paramètres (PARAM-CADENCE, 25/09/2026), jamais un libellé — une
+    société peut renommer ses étapes. Les étapes posées avant la clé sont
+    reconnues par leur libellé par défaut (``cadence_config.cle_de``). En cas
+    d'échec d'import, deux ensembles vides : le total reste juste, seule la
+    ventilation disparaît."""
     try:
-        from apps.crm import services as crm_services
-        visites = frozenset({
-            crm_services.VISITE_FILET_LIBELLE,
-            crm_services.VISITE_CONFIRMATION_LIBELLE,
-            crm_services.VISITE_DEBRIEF_LIBELLE,
-        })
-        devis = frozenset({
-            crm_services.FILET_JOINT_LIBELLE,
-            crm_services._FILET_JOINT_LIBELLE_ANCIEN,
-            # « Préparer le devis modifié » (débrief qui renvoie au devis) :
-            # c'est un devis à PRÉPARER, compté comme tel.
-            crm_services.VISITE_DEVIS_LIBELLE,
-        })
+        from apps.crm import cadence_config as cc
+        visites = frozenset({cc.CLE_PLANIFIER, cc.CLE_CONFIRMATION,
+                             cc.CLE_DEBRIEF})
+        # « Préparer le devis modifié » (débrief qui renvoie au devis) :
+        # c'est un devis à PRÉPARER, compté comme tel.
+        devis = frozenset({cc.CLE_DEVIS, cc.CLE_DEVIS_MODIFIE})
         return visites, devis
     except Exception:  # noqa: BLE001 — la ventilation est un bonus
-        logger.warning('notifier_relances_dues: libellés de familles '
+        logger.warning('notifier_relances_dues: clés de familles '
                        'illisibles', exc_info=True)
         return frozenset(), frozenset()
 
@@ -125,13 +118,16 @@ def _familles_de_libelles():
 def _compter_familles(dues):
     """N3 — ``(nb étapes de visite, nb étapes de devis)`` parmi les touches
     dues (``dues`` : la file DÉJÀ calculée, aucune requête métier neuve)."""
-    visites, devis = _familles_de_libelles()
+    from apps.crm.cadence_config import cle_de
+    from apps.crm.models import RelanceEtape
+
+    visites, devis = _familles_de_cles()
     nb_visites = nb_devis = 0
-    for libelle in dues.values_list('libelle', flat=True):
-        libelle = (libelle or '').strip()
-        if libelle in visites:
+    for cle, libelle in dues.values_list('cle', 'libelle'):
+        cle = cle_de(RelanceEtape(cle=cle or '', libelle=libelle or ''))
+        if cle in visites:
             nb_visites += 1
-        elif libelle in devis:
+        elif cle in devis:
             nb_devis += 1
     return nb_visites, nb_devis
 

@@ -22,6 +22,7 @@ from core.events import (
 )
 
 from . import stages
+from .cadence_config import CLE_DECIDER_SUITE
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
@@ -32,7 +33,6 @@ from .services import (
     arreter_cadence,
     arreter_cadence_du_lead_id,
     CADENCES_ARRETEES_PAR_ISSUE,
-    FILET_REFUS_LIBELLE,
     ISSUES_CLIENT_JOINT,
     OUTCOME_VISITE_ACCEPTEE,
     assurer_prochaine_etape_apres_succes,
@@ -227,8 +227,10 @@ def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
         # perdu) : une étape « décider la suite » le garde dans les files —
         # sa liste de relances ne se termine que par Froid ou Signé. Jamais
         # le plan après-devis (relancer la proposition refusée).
+        # PARAM-CADENCE — l'étape « décider la suite » est une CLÉ du
+        # gabarit « Après l'appel » : la société la renomme dans Paramètres.
         assurer_prochaine_etape_apres_succes(
-            lead, user, libelle=FILET_REFUS_LIBELLE, avec_plan_devis=False)
+            lead, user, cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
@@ -633,7 +635,7 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
         elif issue == 'refuse':
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,
-                libelle=FILET_REFUS_LIBELLE, avec_plan_devis=False)
+                cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",
