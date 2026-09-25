@@ -9,6 +9,7 @@ import {
 import ScoreBadge from '../ScoreBadge'
 import { PRIORITE_LABELS } from '../stages'
 import { toastInfo } from '../../../lib/toast'
+import { formatDate } from '../../../lib/format'
 import crmApi from '../../../api/crmApi'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PanneauScriptAppel from './PanneauScriptAppel'
@@ -229,6 +230,14 @@ const QUESTIONS_VISITE = {
     ],
   },
 }
+
+// PARAM-CADENCE (décision fondateur 25/09/2026) — les quatre CLÉS des
+// barreaux de la cadence `visite` (contrat `cadence_relance_v2`) : mêmes
+// quatre gestes que `QUESTIONS_VISITE` ci-dessus, reconnus désormais par
+// `cle` d'ABORD (une société peut renommer le libellé sans perdre la
+// reconnaissance) — `libelle` reste le REPLI pour une touche sans clé
+// (barreau du protocole, ou posée avant l'introduction de `cle`).
+const CLES_VISITE_TOUCHE = ['planifier', 'confirmation', 'debrief', 'devis_modifie']
 
 // VISCAD6-B (fondateur 24/09/2026) — l'étape de filet « devis parti », posée
 // par le moteur après un appel « Client joint » sans devis dans l'ERP.
@@ -731,6 +740,12 @@ export default function RelanceEtapeRow({
   // à la fois à proposer « Créer le devis »/« Planifier la visite » à côté
   // des boutons existants, et à reformuler l'issue « Fait » ci-dessous.
   const estEtapeDevis = LIBELLES_ETAPE_DEVIS.includes(etape.libelle)
+  // PARAM-CADENCE — cette LIGNE est-elle un des quatre gestes de visite ?
+  // `cle` d'abord (contrat `cle`), le libellé ensuite en repli (touche sans
+  // clé — barreau du protocole ou posée avant PARAM-CADENCE).
+  const estToucheVisite = etape.cle
+    ? CLES_VISITE_TOUCHE.includes(etape.cle)
+    : Boolean(QUESTIONS_VISITE[etape.libelle])
   // CKP4 — canal APPEL : Répondeur/Occupé s'ajoutent aux réponses de la
   // cadence (jamais un remplacement, voir commentaire plus haut).
   // CAD-A — les réponses du client s'ajoutent EN DERNIER (jamais à la place
@@ -972,6 +987,35 @@ export default function RelanceEtapeRow({
           </Badge>
         )}
       </div>
+      {/* PARAM-CADENCE (E7, décision fondateur 25/09/2026) — sous le
+          libellé, la date de la visite technique du lead (`visite_prevue_le`,
+          contrat `relance_etape_v2`, servie sur TOUTE touche du lead — pas
+          seulement les quatre gestes de visite) et, quand le retour terrain
+          est saisi, un lien direct dessus (`visite_id`). Même chemin que
+          `CadenceFrise.jsx` (ancre + `navigate`, jamais `<Link>` : plusieurs
+          tests existants de cette ligne la rendent SANS Router — même repli
+          que le bouton « Créer le devis » ci-dessus). */}
+      {estToucheVisite && (etape.visite_prevue_le || (etape.visite_retour_disponible && etape.visite_id)) && (
+        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+           data-testid="visite-infos">
+          {etape.visite_prevue_le && (
+            <span>Visite prévue le {formatDate(etape.visite_prevue_le)}</span>
+          )}
+          {etape.visite_retour_disponible && etape.visite_id && (
+            <a
+              href={`/visites/${etape.visite_id}`}
+              className="font-medium text-primary underline"
+              onClick={(e) => {
+                if (!navigate) return
+                e.preventDefault()
+                navigate(`/visites/${etape.visite_id}`)
+              }}
+            >
+              Ouvrir le retour
+            </a>
+          )}
+        </p>
+      )}
       {showStatut && etape.note && (
         <p className="mt-1 text-xs text-muted-foreground">{etape.note}</p>
       )}
