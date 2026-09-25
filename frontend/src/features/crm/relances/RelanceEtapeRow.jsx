@@ -231,13 +231,24 @@ const QUESTIONS_VISITE = {
   },
 }
 
-// PARAM-CADENCE (décision fondateur 25/09/2026) — les quatre CLÉS des
-// barreaux de la cadence `visite` (contrat `cadence_relance_v2`) : mêmes
-// quatre gestes que `QUESTIONS_VISITE` ci-dessus, reconnus désormais par
-// `cle` d'ABORD (une société peut renommer le libellé sans perdre la
-// reconnaissance) — `libelle` reste le REPLI pour une touche sans clé
-// (barreau du protocole, ou posée avant l'introduction de `cle`).
-const CLES_VISITE_TOUCHE = ['planifier', 'confirmation', 'debrief', 'devis_modifie']
+// PARAM-CADENCE (E8, décision fondateur 25/09/2026) — les quatre CLÉS des
+// barreaux de la cadence `visite` (contrat `cadence_relance_v2`), reconnues
+// désormais AVANT le libellé : une société qui renomme un barreau
+// (Paramètres → CRM, E5) ne doit jamais perdre les bonnes questions. Mappe
+// chaque clé vers le jeu de questions EXISTANT de `QUESTIONS_VISITE`
+// ci-dessus — aucune question réécrite ici, seulement retrouvée par une clé
+// stable au lieu d'un libellé qui peut changer.
+const CLES_VISITE = {
+  planifier: QUESTIONS_VISITE['Planifier la visite technique convenue'],
+  confirmation: QUESTIONS_VISITE['Confirmer la visite (veille)'],
+  debrief: QUESTIONS_VISITE['Débrief visite — rappeler le client'],
+  devis_modifie: QUESTIONS_VISITE['Préparer le devis modifié — rappeler le client'],
+}
+
+// PARAM-CADENCE (E7) — mêmes quatre gestes, dérivés de `CLES_VISITE`
+// (jamais une seconde liste à tenir à jour) : `libelle` reste le REPLI pour
+// une touche sans clé (barreau du protocole, ou posée avant `cle`).
+const CLES_VISITE_TOUCHE = Object.keys(CLES_VISITE)
 
 // VISCAD6-B (fondateur 24/09/2026) — l'étape de filet « devis parti », posée
 // par le moteur après un appel « Client joint » sans devis dans l'ERP.
@@ -730,16 +741,23 @@ export default function RelanceEtapeRow({
       .catch(() => setMotifs([]))
   }
 
-  // CAD2 — la nature de la touche (LIBELLÉ) prime sur sa cadence pour choisir
-  // le jeu de questions : les quatre gestes de visite (`QUESTIONS_VISITE`)
-  // portent tous la cadence `apres_devis`, mais aucun n'est un barreau du
-  // suivi de proposition.
-  const questionsTouche = QUESTIONS_VISITE[etape.libelle]
+  // CAD2 — la nature de la touche prime sur sa cadence pour choisir le jeu
+  // de questions : les quatre gestes de visite (`QUESTIONS_VISITE`/
+  // `CLES_VISITE`) portent tous la cadence `apres_devis`, mais aucun n'est
+  // un barreau du suivi de proposition.
+  // PARAM-CADENCE (E8) — reconnue par `cle` D'ABORD (`CLES_VISITE`), le
+  // libellé restant le REPLI d'une touche sans clé : un renommage de
+  // barreau (Paramètres → CRM, E5) ne fait donc plus perdre les bonnes
+  // questions.
+  const questionsTouche = CLES_VISITE[etape.cle] ?? QUESTIONS_VISITE[etape.libelle]
     ?? QUESTIONS[etape.cadence] ?? QUESTIONS.contact
   // VISCAD6-B — cette LIGNE est-elle l'étape de filet « devis parti » ? Sert
   // à la fois à proposer « Créer le devis »/« Planifier la visite » à côté
   // des boutons existants, et à reformuler l'issue « Fait » ci-dessous.
-  const estEtapeDevis = LIBELLES_ETAPE_DEVIS.includes(etape.libelle)
+  // PARAM-CADENCE (E8) — `cle === 'devis'` D'ABORD ; le libellé ne sert plus
+  // de repli QUE pour une touche sans clé (même renommage sans casse).
+  const estEtapeDevis = etape.cle === 'devis'
+    || (!etape.cle && LIBELLES_ETAPE_DEVIS.includes(etape.libelle))
   // PARAM-CADENCE — cette LIGNE est-elle un des quatre gestes de visite ?
   // `cle` d'abord (contrat `cle`), le libellé ensuite en repli (touche sans
   // clé — barreau du protocole ou posée avant PARAM-CADENCE).
