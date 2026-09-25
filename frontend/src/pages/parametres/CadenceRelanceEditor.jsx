@@ -60,14 +60,10 @@ const AIDE_CADENCE_A_CLE = (
   + 'jours AVANT la visite.'
 )
 
-// PARAM-CADENCE — la clé est LECTURE SEULE dans l'API (notes.cle : « vide sur
-// les barreaux du protocole et sur un barreau ajouté à la main (le moteur ne
-// le pose jamais) ») : un barreau ajouté ici n'est donc jamais utilisé par le
-// moteur sur ces deux cadences.
-const AIDE_AJOUT_SANS_CLE = (
-  'Un barreau ajouté ici n’a pas de clé : le moteur ne le pose jamais sur cette cadence — '
-  + 'seuls les barreaux déjà en place (avec leur clé) sont utilisés pour la relance automatique.'
-)
+// D3 — un barreau ajouté à la main sur ces deux cadences n'a jamais de clé
+// (l'API le POSE désormais en refusant l'ajout, 400 nommé sur `cadence`) : le
+// bouton « Ajouter un barreau » est masqué ici (voir `avecCle` plus bas),
+// donc l'aide n'a plus à décrire un geste devenu impossible depuis l'écran.
 
 // L'enum du GABARIT de cadence, jamais `crm.Canal` (source du lead).
 //
@@ -256,15 +252,20 @@ function CadenceTable({ cadence, gabarits }) {
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           {AVERTISSEMENT_NON_RETROACTIF}
         </p>
-        <Button size="sm" variant="outline" onClick={ajouter} disabled={ajout}>
-          <Plus className="size-3.5" /> Ajouter un barreau
-        </Button>
+        {/* D3 — ces deux cadences n'acceptent plus l'ajout à la main (le
+            serveur le refuse, 400 nommé sur `cadence`) : le bouton n'a plus
+            sa place ici. */}
+        {!avecCle && (
+          <Button size="sm" variant="outline" onClick={ajouter} disabled={ajout}>
+            <Plus className="size-3.5" /> Ajouter un barreau
+          </Button>
+        )}
       </div>
       {avecCle && (
         <p className="flex items-start gap-1.5 text-xs text-muted-foreground"
            role="note" data-testid={`cadence-aide-cle-${cadence}`}>
           <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          {AIDE_CADENCE_A_CLE} {AIDE_AJOUT_SANS_CLE}
+          {AIDE_CADENCE_A_CLE}
         </p>
       )}
     </div>
@@ -294,9 +295,9 @@ function CadenceTable({ cadence, gabarits }) {
             #{row.ordre}
           </div>
           {/* PARAM-CADENCE — la clé du barreau (lecture seule : jamais posée
-              par cet écran, jamais envoyée au PATCH). Un barreau sans clé
-              (ajouté à la main) n'est jamais posé par le moteur — l'aide
-              ci-dessus le dit. */}
+              par cet écran, jamais envoyée au PATCH). « Sans clé » ne peut
+              plus venir que d'un barreau posé AVANT la clé (D3 : l'ajout à
+              la main est refusé côté serveur sur ces deux cadences). */}
           {avecCle && (
             <div className="shrink-0 pb-2">
               <Badge tone={row.cle ? 'outline' : 'neutral'}

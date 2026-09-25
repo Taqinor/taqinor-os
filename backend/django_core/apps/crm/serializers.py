@@ -343,25 +343,42 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         du lead, lue par le sélecteur de l'app visites (frontière M3 : jamais
         ``apps.visites.models``), ou ``(None, False)``.
 
-        COÛT BORNÉ : aucune requête pour un lead sans visite prévue ni
-        effectuée (le cas de presque toute la file) — une visite qui n'a ni
-        date ni retour n'a rien à ouvrir ; sinon UNE lecture par lead et par
-        réponse, en cache dans le contexte partagé du sérialiseur (liste
-        comprise) — même patron que ``get_lead_est_junk``. Best-effort : une
-        lecture en échec rend ``(None, False)``, jamais une erreur de file."""
+        D2 — COÛT BORNÉ, quel que soit le nombre de leads : aucune requête
+        pour un lead sans visite prévue ni effectuée (le cas de presque toute
+        la file) ; sinon UNE lecture EN LOT (``visites_recentes_par_lead``),
+        jamais une par lead. Sur une réponse de LISTE, ``self.parent`` est le
+        ``ListSerializer`` et son ``.instance`` porte TOUTES les touches de
+        cette page (``select_related('lead')`` côté sélecteur : lire
+        ``t.lead`` ici ne coûte rien de plus) — la première touche qui a
+        besoin d'une visite déclenche UNE lecture qui couvre tous les leads
+        candidats de la page, mise en cache dans le contexte partagé du
+        sérialiseur (même patron que ``get_lead_est_junk``). Sur un DÉTAIL
+        (``self.parent`` absent), un seul lead. Avant ce correctif : UNE
+        lecture par lead ET par réponse (mesuré 11 requêtes pour 1 lead, 21
+        pour 6). Best-effort : une lecture en échec rend ``(None, False)``,
+        jamais une erreur de file."""
         lead = obj.lead
         if not (getattr(lead, 'visite_prevue_le', None)
                 or getattr(lead, 'visite_effectuee', False)):
             return None, False
         cache = self.context.setdefault('_param_cad_visites', {})
         if lead.pk not in cache:
+            instances = getattr(self.parent, 'instance', None)
+            if instances is not None:
+                candidats = {
+                    t.lead_id for t in instances
+                    if (getattr(t.lead, 'visite_prevue_le', None)
+                        or getattr(t.lead, 'visite_effectuee', False))}
+            else:
+                candidats = {lead.pk}
             try:
-                from apps.visites.selectors import visites_pour_lead
-                lignes = visites_pour_lead(lead)
+                from apps.visites.selectors import visites_recentes_par_lead
+                lignes = visites_recentes_par_lead(lead.company, candidats)
             except Exception:  # noqa: BLE001 — jamais bloquant
-                lignes = []
-            ligne = lignes[0] if lignes else None
-            cache[lead.pk] = ((ligne['id'], bool(ligne['retour_disponible']))
+                lignes = {}
+            for lid in candidats:
+                ligne = lignes.get(lid)
+                cache[lid] = ((ligne['id'], bool(ligne['retour_disponible']))
                               if ligne else (None, False))
         return cache[lead.pk]
 

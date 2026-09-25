@@ -392,6 +392,82 @@ class DeuxSocietesTests(_Base):
         self.assertEqual(b.company_id, autre.pk)
 
 
+class SamediEtDimancheDuBarreauMoteurTests(_Base):
+    """D1 — un barreau MOTEUR (ici ``message_creneau``, palier de « Après
+    l'appel ») marqué ``samedi_ok``/``dimanche_ok`` doit tenir sa fenêtre,
+    exactement comme un barreau du protocole (`calculer_echeances_cadence`) —
+    pas retomber sur le lundi. Repro fondateur : délai 3 jours depuis
+    mercredi 23/09 tombe sur SAMEDI 26/09 (``samedi_ok=True``), jamais le
+    lundi 28/09."""
+
+    slug = 'pcad-m-d1'
+
+    def _appel_apres_reponse(self):
+        # Palier ACTIF (jamais désactivé ici) : « non_joint » escalade bien
+        # vers `message_creneau` (`_FILET_SANS_REPONSE_PALIERS`).
+        return self._touche(cadence='generique', ordre=1,
+                            libelle=services.FILET_APPEL_LIBELLE,
+                            cle='appel_apres_reponse')
+
+    def _message_creneau(self):
+        return _barreau(self.company, Cadence.APRES_CONTACT,
+                        'message_creneau')
+
+    def test_samedi_ok_tombe_le_samedi(self):
+        message = self._message_creneau()
+        message.delai_jours = 3
+        message.samedi_ok = True
+        message.save()
+
+        resp = self._fait(self._appel_apres_reponse(), outcome='non_joint')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        [etape] = self._ouvertes()
+        self.assertEqual(etape.cle, 'message_creneau')
+        self.assertEqual(etape.due_date, datetime.date(2026, 9, 26))  # samedi
+
+    def test_samedi_ok_faux_par_defaut_tombe_le_lundi(self):
+        message = self._message_creneau()
+        message.delai_jours = 3
+        message.save()
+        self.assertFalse(message.samedi_ok)
+
+        resp = self._fait(self._appel_apres_reponse(), outcome='non_joint')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        [etape] = self._ouvertes()
+        self.assertEqual(etape.due_date, datetime.date(2026, 9, 28))  # lundi
+
+    def test_dimanche_ok_tombe_le_dimanche(self):
+        message = self._message_creneau()
+        message.delai_jours = 4
+        message.dimanche_ok = True
+        message.save()
+
+        resp = self._fait(self._appel_apres_reponse(), outcome='non_joint')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        [etape] = self._ouvertes()
+        self.assertEqual(etape.due_date, datetime.date(2026, 9, 27))  # dimanche
+        # `prochain_creneau_appel` (jamais la mise en place spéciale de
+        # `calculer_echeances_cadence`) : l'heure visée (10 h) tombe avant
+        # l'ouverture de la fenêtre dominicale (16 h) → recalée à SON début.
+        locale = etape.due_at.astimezone(horaires.CASABLANCA)
+        self.assertEqual(locale.time(), datetime.time(16, 0))
+
+    def test_dimanche_ok_faux_par_defaut_tombe_le_lundi(self):
+        message = self._message_creneau()
+        message.delai_jours = 4
+        message.save()
+        self.assertFalse(message.dimanche_ok)
+
+        resp = self._fait(self._appel_apres_reponse(), outcome='non_joint')
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        [etape] = self._ouvertes()
+        self.assertEqual(etape.due_date, datetime.date(2026, 9, 28))  # lundi
+
+
 class JamaisUnPlanTests(TestCase):
     """« Après l'appel » et « Visite technique » sont les gabarits des étapes
     que le moteur pose — jamais un plan qu'on démarre sur un lead."""

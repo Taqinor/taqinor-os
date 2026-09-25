@@ -170,6 +170,33 @@ class CoutTests(_Base):
         self._touche(lead, libelle='Seconde touche')
         self.assertLessEqual(self._cout() - une, 1)
 
+    def test_plusieurs_leads_avec_visite_ne_multiplient_pas_les_requetes(self):
+        """D2 — six leads, trois AVEC une visite : passer d'UN lead à visite à
+        TROIS ne coûte AUCUNE requête de plus (lecture EN LOT dans
+        ``apps.visites.selectors.visites_recentes_par_lead``, jamais une par
+        lead — avant ce correctif, mesuré 11 requêtes pour 1 lead, 21 pour 6)."""
+        for i in range(3):
+            self._touche(self._lead(f'Sans {i}'))
+
+        premier = self._lead(
+            'Avec 0', visite_prevue_le=datetime.date(2026, 9, 28))
+        VisiteTerrain.objects.create(
+            company=self.company, lead=premier,
+            date_prevue=datetime.date(2026, 9, 28), notes='Un.')
+        self._touche(premier)
+        un_lead_avec_visite = self._cout()
+
+        for i in range(1, 3):
+            lead = self._lead(
+                f'Avec {i}', visite_prevue_le=datetime.date(2026, 9, 28))
+            VisiteTerrain.objects.create(
+                company=self.company, lead=lead,
+                date_prevue=datetime.date(2026, 9, 28), notes=f'Retour {i}.')
+            self._touche(lead)
+
+        trois_leads_avec_visite = self._cout()
+        self.assertEqual(trois_leads_avec_visite, un_lead_avec_visite)
+
 
 def _serializer_read_only():
     from apps.crm.serializers import RelanceEtapeSerializer

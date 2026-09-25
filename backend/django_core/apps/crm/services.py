@@ -2350,8 +2350,15 @@ def _echeance_configuree(lead, config, *, depuis=None, jours=None):
         vise = vise.astimezone(horaires.CASABLANCA).replace(
             hour=heure.hour, minute=heure.minute, second=0, microsecond=0)
     canal = _canal_configure(config)
+    # D1 — un barreau moteur peut porter `dimanche_ok`/`samedi_ok` (réglé
+    # depuis Paramètres, exactement comme un barreau du protocole) : sans ces
+    # deux drapeaux, `prochain_creneau_appel` recale toujours sur le lundi,
+    # même quand la société a explicitement ouvert le samedi ou le dimanche à
+    # cette étape (même règle que `calculer_echeances_cadence`).
     echeance = horaires.prochain_creneau_appel(
-        vise, lead.company, canal=canal, heure_cible=heure)
+        vise, lead.company, canal=canal, heure_cible=heure,
+        dimanche=bool(config.get('dimanche_ok')),
+        samedi=bool(config.get('samedi_ok')))
     if echeance < maintenant:
         echeance = cadence_temps.echeance_jamais_echue(
             echeance, company=lead.company, canal=canal)
@@ -2368,9 +2375,14 @@ def _jour_de_visite_configure(lead, config, jour):
     vise = datetime.datetime.combine(
         jour, heure, tzinfo=horaires.CASABLANCA) + datetime.timedelta(
             minutes=config.get('delai_minutes') or 0)
+    # D1 — même garde-fou que `_echeance_configuree` : un barreau de visite
+    # marqué `dimanche_ok`/`samedi_ok` doit tenir sa fenêtre, pas retomber sur
+    # le lundi.
     return horaires.prochain_creneau_appel(
         vise, lead.company, canal=_canal_configure(config),
-        heure_cible=config.get('heure_cible'))
+        heure_cible=config.get('heure_cible'),
+        dimanche=bool(config.get('dimanche_ok')),
+        samedi=bool(config.get('samedi_ok')))
 
 
 #: Ces trois étapes portent la cadence ``apres_devis`` (elles suivent bien la
