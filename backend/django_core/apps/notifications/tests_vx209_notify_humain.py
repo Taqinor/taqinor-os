@@ -1,9 +1,10 @@
 """VX209 — `notify()` devient humain : heures calmes, bon event de mention,
 purge, émetteurs manquants.
 
-Couvre : (a) `notify()` respecte les heures calmes pour les canaux HORS-APP
-sur un événement non-critique (l'in-app reste immédiate, et un événement
-`'critique'` part toujours) ; (c) `purge_notifications_anciennes` supprime
+Couvre : (a) `notify()` respecte les heures de travail — N1 (25/09/2026) : hors
+fenêtre, la notification est créée mais DIFFÉRÉE (aucun canal ne part la nuit,
+critique compris ; le parcours complet est dans
+`tests_n1_report_heures_ouvrees.py`) ; (c) `purge_notifications_anciennes` supprime
 les LUES > 60 j et archive les NON-LUES > 60 j ; (d) `SAV_ACTIVITE_DUE` et
 `STOCK_EXPIRATION_SOON` sont désormais réellement émis, et warranty/
 maintenance routent vers le technicien responsable quand il existe.
@@ -63,6 +64,8 @@ class NotifyQuietHoursTests(TestCase):
             whatsapp=True)
 
     def test_non_critical_at_23h_skips_offapp_channels_but_creates_inapp(self):
+        # N1 — la ligne est créée tout de suite mais DIFFÉRÉE au lendemain :
+        # aucun canal hors-app ne part à 23 h (ils partiront au réveil).
         with mock.patch(
                 'apps.notifications.services.timezone.now',
                 return_value=_aware(2026, 7, 8, 23, 0)):
@@ -73,6 +76,7 @@ class NotifyQuietHoursTests(TestCase):
                 n = notify(self.user, EventType.DIGEST, 'Récap')
         self.assertIsNotNone(n)
         self.assertEqual(Notification.objects.count(), 1)
+        self.assertIsNotNone(n.programmee_pour)
         email.assert_not_called()
         wa.assert_not_called()
 
@@ -86,16 +90,21 @@ class NotifyQuietHoursTests(TestCase):
                 notify(self.user, EventType.DIGEST, 'Récap')
         email.assert_called_once()
 
-    def test_critical_event_at_23h_still_dispatches(self):
-        # Un incident critique ne DOIT JAMAIS attendre le matin.
+    def test_critical_event_at_23h_is_deferred_too(self):
+        # N1 (décision fondateur du 25/09/2026) — « garde toutes les
+        # notifications importantes mais place-les aux heures de travail » :
+        # la sévérité n'exempte plus du report (VX209 laissait passer les
+        # critiques à toute heure). Seul `respect_quiet_hours=False` (alertes
+        # de sécurité) ou `NOTIFICATIONS_TOUJOURS_IMMEDIATES` part la nuit.
         with mock.patch(
                 'apps.notifications.services.timezone.now',
                 return_value=_aware(2026, 7, 8, 23, 0)):
             with mock.patch(
                     'apps.notifications.services._dispatch_email',
                     return_value=True) as email:
-                notify(self.user, EventType.INCIDENT_CRITICAL, 'Incident !')
-        email.assert_called_once()
+                n = notify(self.user, EventType.INCIDENT_CRITICAL, 'Incident !')
+        email.assert_not_called()
+        self.assertIsNotNone(n.programmee_pour)
 
     def test_respect_quiet_hours_false_bypasses_gating(self):
         with mock.patch(

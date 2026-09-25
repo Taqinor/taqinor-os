@@ -529,6 +529,16 @@ class Notification(models.Model):
     # supprimées. Exclue par défaut de `list()` (borné 90 j) — comportement
     # historique inchangé pour tout le monde tant que rien n'a 60 j.
     archived = models.BooleanField(default=False)
+    # N1 (décision fondateur du 25/09/2026) — « aucune notification à minuit
+    # ni à 23 h ; garde-les toutes, mais aux heures de travail ». Une
+    # notification émise HORS de la fenêtre de messages de sa société
+    # (`selectors.fenetre_notifications`) est CRÉÉE tout de suite mais porte
+    # ici l'instant où elle sera livrée ; tant que ce champ est posé elle
+    # n'apparaît nulle part (ni cloche, ni compteur, ni push/e-mail). Le
+    # balayage `notifications.livrer_differees` (toutes les 5 min) la livre à
+    # échéance puis remet le champ à NULL. NULL = notification livrée
+    # (comportement historique de toutes les lignes existantes).
+    programmee_pour = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Notification'
@@ -537,6 +547,11 @@ class Notification(models.Model):
         indexes = [
             models.Index(fields=['company', 'recipient', 'read']),
             models.Index(fields=['recipient', 'created_at']),
+            # N1 — index PARTIEL : seules les lignes en attente de livraison
+            # y entrent (quelques dizaines par nuit), jamais l'historique.
+            models.Index(
+                fields=['programmee_pour'], name='notif_programmee_pour_idx',
+                condition=models.Q(programmee_pour__isnull=False)),
         ]
 
     def __str__(self):

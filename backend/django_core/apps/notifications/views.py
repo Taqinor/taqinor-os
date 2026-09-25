@@ -49,6 +49,11 @@ class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         # Scope société (TenantMixin) PUIS destinataire courant : un utilisateur
         # ne voit jamais que ses propres notifications.
         qs = super().get_queryset().filter(recipient=self.request.user)
+        # N1 — une notification DIFFÉRÉE (émise hors de la fenêtre de travail
+        # de la société) n'existe pas encore pour son destinataire : ni liste,
+        # ni compteur, ni « tout marquer comme lu ». Elle apparaît quand le
+        # balayage `notifications.livrer_differees` remet ce champ à NULL.
+        qs = qs.filter(programmee_pour__isnull=True)
         params = self.request.query_params
         unread = params.get('unread')
         if unread in ('1', 'true', 'True'):

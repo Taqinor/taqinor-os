@@ -7,7 +7,9 @@ autorité sur trois questions :
     si ce n'est pas un jour ouvré ;
   * `prochain_creneau_appel(dt, company)` — le prochain instant appelable ;
   * `minutes_ouvrees_entre(a, b, company)` — le temps réellement disponible
-    entre deux instants (base du KPI « premier contact » de MRY19).
+    entre deux instants (base du KPI « premier contact » de MRY19) ;
+  * `echeance_en_temps_ouvre(depart, delai, company)` (N2) — son inverse :
+    QUAND un délai de SLA compté en temps ouvré arrive à échéance.
 
 DEUX OUVERTURES, PAS UNE (décision fondateur du 07/09/2026, recherche à
 l'appui). Toutes ces fonctions prennent un `canal` : un message WhatsApp ou
@@ -497,6 +499,57 @@ def minutes_ouvrees_entre(a, b, company, *, canal='whatsapp'):
                         (borne_haut - borne_bas).total_seconds() // 60)
         jour += datetime.timedelta(days=1)
     return total
+
+
+def echeance_en_temps_ouvre(depart, delai, company, canal='appel'):
+    """N2 — l'instant où ``delai`` de temps OUVRÉ s'est écoulé depuis
+    ``depart``, sur la fenêtre de ``canal`` de la société.
+
+    L'INVERSE exact de ``minutes_ouvrees_entre`` : même découpage en plages
+    (ouverture → fermeture, pause du vendredi retranchée pour les appels,
+    Ramadan, jours non ouvrés et fériés à zéro), jamais une seconde table
+    d'horaires. Un délai de SLA (« rappelé en cinq minutes », « rappel promis
+    sous douze heures ») ne court QUE pendant l'ouverture : un lead arrivé à
+    23 h a son échéance à l'ouverture du lendemain PLUS le délai, pas à
+    23 h 05 ; un rappel promis un vendredi à 18 h n'est pas en retard pendant
+    le week-end.
+
+    ``delai`` est un ``timedelta`` ; nul ou négatif, l'échéance est le premier
+    instant ouvert à partir de ``depart``. Quand le délai s'épuise PILE à une
+    fermeture, l'échéance EST cette fermeture. Entrée et sortie AWARE, dans le
+    fuseau de l'entrée. Garde-fou : sans fenêtre trouvée en ``_MAX_JOURS``
+    jours, repli sur l'échéance CALENDAIRE (``depart + delai``) — une alerte
+    n'est jamais perdue pour une configuration impossible."""
+    if depart is None:
+        return None
+    tz_entree = depart.tzinfo or datetime.timezone.utc
+    debut_local = _local(depart)
+    reste = delai if delai > datetime.timedelta(0) else datetime.timedelta(0)
+    jour = debut_local.date()
+    for _ in range(_MAX_JOURS):
+        fenetre = fenetre_du_jour(jour, company, canal=canal)
+        if fenetre is not None:
+            ouverture, fermeture, pause = fenetre
+            plages = [(ouverture, fermeture)]
+            if pause is not None:
+                plages = [(ouverture, min(fermeture, pause[0])),
+                          (max(ouverture, pause[1]), fermeture)]
+            for plage_debut, plage_fin in plages:
+                if plage_fin <= plage_debut:
+                    continue
+                borne_bas = max(_combiner(jour, plage_debut), debut_local)
+                borne_haut = _combiner(jour, plage_fin)
+                if borne_haut <= borne_bas:
+                    continue
+                disponible = borne_haut - borne_bas
+                if reste <= disponible:
+                    return (borne_bas + reste).astimezone(tz_entree)
+                reste -= disponible
+        jour += datetime.timedelta(days=1)
+    logger.warning(
+        'crm.horaires: échéance ouvrée introuvable en %s jours (société %s),'
+        ' repli calendaire', _MAX_JOURS, getattr(company, 'pk', '?'))
+    return depart + delai
 
 
 # ── CAD-I ── CAD88 ──────────────────────────────────────────────────────────

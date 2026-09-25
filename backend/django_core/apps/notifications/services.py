@@ -439,41 +439,91 @@ def notify_many(recipients, event_type, title, body='', link=None, company=None,
     return created
 
 
-def _in_quiet_hours_non_critique(event_type, company, respect_quiet_hours):
-    """VX209(a) — True si les canaux HORS-APP de `event_type` doivent être
-    tus MAINTENANT pour `company` : le flag est actif, l'événement n'est PAS
-    critique (`severity.severity_of`), et l'instant présent tombe dans la
-    fenêtre de silence (nuit ou jour férié/non-ouvré,
-    `selectors.est_hors_fenetre_silence`). L'in-app n'est JAMAIS concerné —
-    seul l'appelant de `notify()` décide d'en tenir compte pour email/
-    WhatsApp/push. Best-effort : toute erreur retombe sur `False` (ne JAMAIS
-    faire échouer une notification pour une histoire d'heures calmes)."""
+def _report_hors_fenetre(event_type, company, respect_quiet_hours,
+                         skip_email=False):
+    """N1 — l'instant où une notification émise MAINTENANT doit être livrée,
+    ou ``None`` si elle part tout de suite.
+
+    Décision fondateur du 25/09/2026 : « les notifications ne doivent pas être
+    à minuit ni à 23 h — garde toutes les notifications importantes mais
+    place-les aux heures de travail ». Hors de la fenêtre de messages de la
+    société (``selectors.fenetre_notifications`` : jours ouvrés, fériés et
+    Ramadan compris), la notification est REPORTÉE à la prochaine ouverture —
+    jamais sautée (défaut de VX209 : hors fenêtre, e-mail/WhatsApp/push
+    étaient perdus pour de bon).
+
+    Part tout de suite (``None``) :
+      * ``NOTIFICATIONS_QUIET_HOURS_ENABLED`` à 0 — interrupteur d'urgence /
+        de débogage (ALLUMÉ par défaut en production) ;
+      * ``respect_quiet_hours=False`` — l'appelant assume l'envoi à toute
+        heure (alertes de SÉCURITÉ : connexion depuis un nouvel appareil,
+        break-glass, anomalie d'identité, compte dormant désactivé) ;
+      * un type listé dans ``NOTIFICATIONS_TOUJOURS_IMMEDIATES`` (VIDE par
+        défaut — l'exception future se décide là, pas dans le code) ;
+      * ``skip_email=True`` — l'appelant gère LUI-MÊME l'e-mail de cet
+        événement : le drapeau ne survit pas au report, et le réveil
+        enverrait un e-mail déjà envoyé.
+    La sévérité n'exempte PLUS rien : un événement « critique » attend lui
+    aussi l'ouverture (décision fondateur, « aux heures de travail »).
+    Best-effort : toute erreur retombe sur ``None`` (envoi immédiat) — une
+    notification n'est jamais perdue pour une histoire d'horaires."""
     from django.conf import settings
-    # VX209 — les heures calmes sont OPT-IN (le docstring parle d'un « flag
-    # actif ») : sans activation explicite au niveau du déploiement, AUCUNE
-    # notification n'est mise en sourdine — sinon on suppprimerait en silence
-    # tous les email/WhatsApp/push hors-heures-ouvrées de TOUTES les sociétés
-    # qui n'ont jamais rien configuré (régression). Défaut False = comportement
-    # historique (toujours notifier). Un vrai réglage par société remplacera ce
-    # drapeau global plus tard.
-    # CAD120 (audit L3 du 21/09/2026) — ce drapeau n'apparaissait dans AUCUN
-    # fichier d'exemple : personne ne savait qu'il existait, et la cadence de
-    # suivi client était réglée au quart d'heure près pendant que les
-    # notifications partaient à n'importe quelle heure. Il est désormais
-    # documenté dans `.env.example` (les deux valeurs et ce que chacune
-    # implique), et `tests_cad120_heures_calmes.py` couvre les deux.
-    if not respect_quiet_hours or not getattr(
+    if not respect_quiet_hours or skip_email or not getattr(
             settings, 'NOTIFICATIONS_QUIET_HOURS_ENABLED', False):
-        return False
+        return None
+    immediates = getattr(settings, 'NOTIFICATIONS_TOUJOURS_IMMEDIATES', ())
+    if event_type in (immediates or ()):
+        return None
     try:
-        from . import severity as severity_module
-        if severity_module.severity_of(event_type) == severity_module.CRITIQUE:
-            return False
         from . import selectors as notifications_selectors
-        return notifications_selectors.est_hors_fenetre_silence(
-            timezone.now(), company)
+        fenetre = notifications_selectors.fenetre_notifications(
+            company, timezone.now())
     except Exception:  # pragma: no cover - défensif
-        return False
+        return None
+    if fenetre.ouverte:
+        return None
+    return fenetre.prochaine_ouverture
+
+
+def _diffuser_hors_app(user, company, event_type, title, body, link, prefs,
+                       instance=None, skip_email=False, approval_action=None):
+    """Diffusions HORS-APP d'une notification (e-mail, WhatsApp, push).
+
+    Partagé par ``notify()`` (envoi immédiat) et par la livraison différée
+    (N1, ``livrer_notifications_differees``) : un seul chemin de diffusion,
+    jamais deux qui dériveraient. Best-effort, chaque canal isolé."""
+    if prefs.get('email') and not skip_email:
+        email_ok = False
+        try:
+            email_ok = _dispatch_email(user, str(title), str(body or ''))
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Dispatch email notification échoué : %s', exc)
+        _audit_notify(
+            user, company, event_type, channel='email', ok=email_ok,
+            instance=instance)
+    if prefs.get('whatsapp'):
+        wa_ok = False
+        try:
+            wa_ok = _dispatch_whatsapp(user, str(title), str(body or ''))
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
+        _audit_notify(
+            user, company, event_type, channel='whatsapp', ok=wa_ok,
+            instance=instance)
+
+    # Web push (N92) : best-effort, opt-in par APPAREIL (pas seulement un
+    # toggle d'événement). NO-OP total sans clés VAPID ni abonnement — donc
+    # aucun changement de comportement tant que rien n'est configuré.
+    # NTMOB8 — en plus de l'opt-in device, la CATÉGORIE d'événement doit
+    # rester activée pour cet utilisateur (défaut True = comportement
+    # historique inchangé pour qui n'a jamais touché ce réglage).
+    if prefs.get('push'):
+        try:
+            _dispatch_webpush(
+                user, str(title), str(body or ''), link=link,
+                approval_action=approval_action)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Dispatch web push notification échoué : %s', exc)
 
 
 def notify(user, event_type, title, body='', link=None, company=None,
@@ -481,10 +531,12 @@ def notify(user, event_type, title, body='', link=None, company=None,
            approval_action=None):
     """Émet une notification pour `user` en respectant ses préférences.
 
-    - Crée la ligne in-app si le canal in-app est activé (défaut : oui) —
-      TOUJOURS immédiate, jamais différée par les heures calmes.
+    - Crée la ligne in-app si le canal in-app est activé (défaut : oui).
     - Diffuse vers email/WhatsApp/push si le canal est activé ET configuré
       (best-effort, jamais d'exception remontée).
+    - N1 — hors de la fenêtre de travail de la société, la notification est
+      créée mais DIFFÉRÉE à la prochaine ouverture (voir
+      `respect_quiet_hours` ci-dessous) : jamais sautée.
 
     `approval_action` (NTMOB7) : dict optionnel ``{'source', 'id'}`` transmis
     tel quel à ``_dispatch_webpush`` — voir sa docstring. Ne change RIEN au
@@ -505,14 +557,15 @@ def notify(user, event_type, title, body='', link=None, company=None,
     hors énumération est silencieusement ignorée (jamais une exception) ;
     vide = raison non classée, comportement historique inchangé.
 
-    `respect_quiet_hours` (VX209(a), défaut `True`) : quand l'événement n'est
-    PAS classé `'critique'` (`severity.EVENT_SEVERITY`) et que l'instant
-    présent tombe dans la fenêtre de silence de `company` (nuit stricte ou
-    jour férié/non-ouvré — `selectors.est_hors_fenetre_silence`), les canaux
-    HORS-APP (email/WhatsApp/push) sont SKIPPÉS pour cet appel — la ligne
-    in-app reste créée normalement. Un événement `'critique'` part toujours,
-    à toute heure. Passer `False` préserve le comportement historique (envoi
-    à toute heure) pour un appelant qui gère déjà sa propre fenêtre.
+    `respect_quiet_hours` (N1, défaut `True`) : hors de la fenêtre de
+    messages de `company` (nuit, jour non ouvré, férié, fenêtre du Ramadan —
+    `selectors.fenetre_notifications`), la notification est CRÉÉE mais
+    DIFFÉRÉE (`programmee_pour`) : ni la cloche, ni le compteur, ni l'e-mail,
+    ni WhatsApp, ni le push ne la voient avant la prochaine ouverture, où le
+    balayage `notifications.livrer_differees` la livre. Rien n'est jamais
+    sauté, et un événement « critique » attend lui aussi l'ouverture. Passer
+    `False` garde l'envoi immédiat à toute heure (réservé aux alertes de
+    sécurité) — voir `_report_hors_fenetre`.
     """
     if user is None or not getattr(user, 'pk', None):
         return None
@@ -533,8 +586,28 @@ def notify(user, event_type, title, body='', link=None, company=None,
     prefs = resolve_prefs(user, event_type)
     from .models import NotificationReason
     reason = reason if reason in NotificationReason.values else ''
-    quiet_now = _in_quiet_hours_non_critique(
-        event_type, company, respect_quiet_hours)
+    programmee_pour = _report_hors_fenetre(
+        event_type, company, respect_quiet_hours, skip_email=skip_email)
+
+    if programmee_pour is not None:
+        # N1 — hors fenêtre : la ligne est créée MAINTENANT (rien ne se perd)
+        # mais porte son instant de livraison. Si l'in-app est coupé pour cet
+        # événement, elle ne sert que de SUPPORT à la diffusion hors-app du
+        # réveil, puis disparaît (`_livrer_differee`).
+        hors_app = bool(prefs.get('email') or prefs.get('whatsapp')
+                        or prefs.get('push'))
+        if not (prefs.get('in_app') or hors_app):
+            return None
+        try:
+            ligne = Notification.objects.create(
+                company=company, recipient=user, event_type=event_type,
+                title=str(title)[:255], body=str(body or '')[:MAX_BODY_LEN],
+                link=str(link or '')[:512], reason=reason,
+                programmee_pour=programmee_pour)
+        except Exception as exc:  # pragma: no cover - défensif
+            logger.warning('Création notification différée échouée : %s', exc)
+            return None
+        return ligne if prefs.get('in_app') else None
 
     created = None
     if prefs.get('in_app'):
@@ -551,47 +624,87 @@ def notify(user, event_type, title, body='', link=None, company=None,
                 user, company, event_type, channel='in_app', ok=True,
                 instance=created)
 
-    if quiet_now:
-        # VX209(a) — heures calmes : in-app livré ci-dessus, canaux hors-app
-        # tus pour ce cycle (jamais de file d'attente/retry dans ce moteur —
-        # comportement identique à un opt-out ponctuel du canal).
-        return created
-
     # Diffusions hors-app : best-effort, chacune isolée.
-    if prefs.get('email') and not skip_email:
-        email_ok = False
-        try:
-            email_ok = _dispatch_email(user, str(title), str(body or ''))
-        except Exception as exc:  # pragma: no cover - défensif
-            logger.warning('Dispatch email notification échoué : %s', exc)
-        _audit_notify(
-            user, company, event_type, channel='email', ok=email_ok,
-            instance=created)
-    if prefs.get('whatsapp'):
-        wa_ok = False
-        try:
-            wa_ok = _dispatch_whatsapp(user, str(title), str(body or ''))
-        except Exception as exc:  # pragma: no cover - défensif
-            logger.warning('Dispatch WhatsApp notification échoué : %s', exc)
-        _audit_notify(
-            user, company, event_type, channel='whatsapp', ok=wa_ok,
-            instance=created)
-
-    # Web push (N92) : best-effort, opt-in par APPAREIL (pas seulement un
-    # toggle d'événement). NO-OP total sans clés VAPID ni abonnement — donc
-    # aucun changement de comportement tant que rien n'est configuré.
-    # NTMOB8 — en plus de l'opt-in device, la CATÉGORIE d'événement doit
-    # rester activée pour cet utilisateur (défaut True = comportement
-    # historique inchangé pour qui n'a jamais touché ce réglage).
-    if prefs.get('push'):
-        try:
-            _dispatch_webpush(
-                user, str(title), str(body or ''), link=link,
-                approval_action=approval_action)
-        except Exception as exc:  # pragma: no cover - défensif
-            logger.warning('Dispatch web push notification échoué : %s', exc)
-
+    _diffuser_hors_app(
+        user, company, event_type, title, body, link, prefs,
+        instance=created, skip_email=skip_email,
+        approval_action=approval_action)
     return created
+
+
+#: N1 — plafond de livraisons par passage du balayage (5 min). Une nuit
+#: ordinaire en produit quelques dizaines ; le reste part au passage suivant.
+LIVRAISON_LOT_MAX = 500
+
+
+def _livrer_differee(pk, maintenant):
+    """N1 — livre UNE notification différée arrivée à échéance.
+
+    RÉCLAMATION ATOMIQUE d'abord (``UPDATE … WHERE programmee_pour IS NOT
+    NULL``) : deux balayages concurrents ne livrent jamais la même ligne — au
+    plus une diffusion hors-app. ``created_at`` prend l'instant de livraison :
+    c'est l'heure à laquelle l'utilisateur la reçoit, et une notification
+    affichée « 23:10 » dans la cloche serait précisément la notification de
+    nuit que le fondateur a proscrite.
+
+    Les préférences sont relues AU RÉVEIL (un canal coupé dans la nuit n'est
+    pas utilisé). Si l'in-app est coupé pour cet événement, la ligne n'était
+    qu'un support : elle est supprimée après la diffusion. Un module désactivé
+    entre-temps annule la notification (même règle que ``notify``, ODX23).
+    Limite assumée : les jetons d'approbation push (NTMOB7) ne survivent pas
+    au report — le push du réveil ouvre l'application au lieu d'offrir les
+    boutons natifs « Approuver/Refuser »."""
+    reclamee = Notification.objects.filter(
+        pk=pk, programmee_pour__isnull=False,
+    ).update(programmee_pour=None, created_at=maintenant)
+    if not reclamee:
+        return False
+    ligne = (Notification.objects.select_related('recipient', 'company')
+             .filter(pk=pk).first())
+    if ligne is None:  # pragma: no cover - supprimée entre-temps
+        return False
+    user, company, event_type = ligne.recipient, ligne.company, ligne.event_type
+    from .module_gating import event_module_disabled
+    if event_module_disabled(event_type, company):
+        ligne.delete()
+        return False
+    prefs = resolve_prefs(user, event_type)
+    if not getattr(user, 'is_active', True):
+        # Compte désactivé pendant la nuit : rien ne part hors de l'app.
+        prefs = {'in_app': prefs.get('in_app')}
+    if prefs.get('in_app'):
+        _audit_notify(user, company, event_type, channel='in_app', ok=True,
+                      instance=ligne)
+    _diffuser_hors_app(
+        user, company, event_type, ligne.title, ligne.body,
+        ligne.link or None, prefs,
+        instance=ligne if prefs.get('in_app') else None)
+    if not prefs.get('in_app'):
+        ligne.delete()
+    return True
+
+
+def livrer_notifications_differees(now=None, limite=LIVRAISON_LOT_MAX):
+    """N1 — livre les notifications différées ÉCHUES (``programmee_pour <=
+    now``), les plus anciennes d'abord. Idempotent : une ligne livrée a
+    ``programmee_pour`` NULL et ne peut plus être re-sélectionnée ; rejouer le
+    balayage ne livre rien de plus. Best-effort par ligne. Renvoie le nombre
+    de notifications livrées."""
+    maintenant = now or timezone.now()
+    ids = list(
+        Notification.objects.filter(
+            programmee_pour__isnull=False, programmee_pour__lte=maintenant,
+        ).order_by('programmee_pour', 'id').values_list('pk', flat=True)[
+            :limite])
+    livrees = 0
+    for pk in ids:
+        try:
+            if _livrer_differee(pk, maintenant):
+                livrees += 1
+        except Exception:  # pragma: no cover - une ligne n'arrête pas le lot
+            logger.warning('livraison différée échouée (notification %s)',
+                           pk, exc_info=True)
+    return livrees
 
 
 # YEVNT5 — mapping canal → Action d'audit. 'in_app' n'a pas de valeur EMAIL/

@@ -118,14 +118,14 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/notifications/management/commands/seed_holidays_sn.py:73` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:63` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:75` | get_or_create | Holiday.objects | company, date, nom |
-| `backend/django_core/apps/notifications/selectors.py:149` | update_or_create | Holiday.objects | company, date, pays |
-| `backend/django_core/apps/notifications/services.py:933` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1021` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
-| `backend/django_core/apps/notifications/services.py:1071` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
-| `backend/django_core/apps/notifications/services.py:1222` | update_or_create | SnoozedItem.objects | object_id, source, user |
-| `backend/django_core/apps/notifications/views.py:141` | get_or_create | NotificationPreference.objects | event_type, user |
-| `backend/django_core/apps/notifications/views.py:225` | get_or_create | WorkingHoursConfig.objects | company |
-| `backend/django_core/apps/notifications/views.py:533` | update_or_create | PushSubscription.objects | endpoint |
+| `backend/django_core/apps/notifications/selectors.py:252` | update_or_create | Holiday.objects | company, date, pays |
+| `backend/django_core/apps/notifications/services.py:1046` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1134` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
+| `backend/django_core/apps/notifications/services.py:1184` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
+| `backend/django_core/apps/notifications/services.py:1335` | update_or_create | SnoozedItem.objects | object_id, source, user |
+| `backend/django_core/apps/notifications/views.py:146` | get_or_create | NotificationPreference.objects | event_type, user |
+| `backend/django_core/apps/notifications/views.py:230` | get_or_create | WorkingHoursConfig.objects | company |
+| `backend/django_core/apps/notifications/views.py:538` | update_or_create | PushSubscription.objects | endpoint |
 | `backend/django_core/apps/outillage/views.py:32` | get_or_create | KitOutillage.objects | company, nom |
 | `backend/django_core/apps/parametres/fetes_mobiles.py:97` | update_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/parametres/models_company.py:1012` | get_or_create | cls.objects | company |

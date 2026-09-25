@@ -13,10 +13,10 @@ Couvre :
     dépassé une seule fois (idempotent), jamais un lead sans phone_ok.
 """
 import datetime
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 
 from authentication.models import Company
 
@@ -33,17 +33,25 @@ from apps.parametres.models import CompanyProfile
 
 User = get_user_model()
 
+#: N2 — le SLA rappel se compte en heures OUVRÉES (fenêtre d'appel 09:00-20:00
+#: par défaut) : une horloge VIVANTE rendait ces tests dépendants de l'heure
+#: du run (« il y a 10 h » un lundi à 7 h = zéro heure ouvrée). Mercredi
+#: 30 septembre 2026, 19:00 à Casablanca : « il y a 10 h » = 09:00, soit
+#: 10 heures d'appel pleines.
+MAINTENANT = datetime.datetime(
+    2026, 9, 30, 19, 0, tzinfo=ZoneInfo('Africa/Casablanca'))
+
 
 def _phone_ok_lead(company, hours_ago=6, owner=None, contacted=False):
     lead = Lead.objects.create(
         company=company, nom='Prospect rappel', telephone='+212600112233',
         contact_preference=Lead.ContactPreference.PHONE_OK)
     updates = {
-        'date_creation': timezone.now() - datetime.timedelta(hours=hours_ago),
+        'date_creation': MAINTENANT - datetime.timedelta(hours=hours_ago),
         'owner': owner,
     }
     if contacted:
-        updates['first_contacted_at'] = timezone.now()
+        updates['first_contacted_at'] = MAINTENANT
     Lead.objects.filter(pk=lead.pk).update(**updates)
     lead.refresh_from_db()
     return lead
@@ -121,19 +129,19 @@ class LeadsCallbackSlaDepasseSelectorTests(TestCase):
         CompanyProfile.objects.create(company=self.company, lead_sla_hours=8)  # callback = 4h
 
     def test_uncontacted_phone_ok_past_sla_is_listed(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = _phone_ok_lead(self.company, hours_ago=10)
         qs = selectors.leads_callback_sla_depasse(self.company, now=now)
         self.assertIn(lead, list(qs))
 
     def test_contacted_lead_not_listed(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = _phone_ok_lead(self.company, hours_ago=10, contacted=True)
         qs = selectors.leads_callback_sla_depasse(self.company, now=now)
         self.assertNotIn(lead, list(qs))
 
     def test_whatsapp_only_lead_never_listed(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = Lead.objects.create(
             company=self.company, nom='WA only', telephone='+212600000001',
             contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
@@ -143,13 +151,13 @@ class LeadsCallbackSlaDepasseSelectorTests(TestCase):
         self.assertNotIn(lead, list(qs))
 
     def test_recent_within_sla_not_listed(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = _phone_ok_lead(self.company, hours_ago=1)
         qs = selectors.leads_callback_sla_depasse(self.company, now=now)
         self.assertNotIn(lead, list(qs))
 
     def test_sla_disabled_returns_empty(self):
-        now = timezone.now()
+        now = MAINTENANT
         _phone_ok_lead(self.company, hours_ago=100)
         qs = selectors.leads_callback_sla_depasse(
             self.company, now=now, seuil_heures=0)
@@ -158,7 +166,7 @@ class LeadsCallbackSlaDepasseSelectorTests(TestCase):
     def test_company_scoped(self):
         other = Company.objects.create(nom='Autre QW4', slug='qw4-autre')
         CompanyProfile.objects.create(company=other, lead_sla_hours=8)
-        now = timezone.now()
+        now = MAINTENANT
         lead_a = _phone_ok_lead(self.company, hours_ago=10)
         _phone_ok_lead(other, hours_ago=10)
         qs = selectors.leads_callback_sla_depasse(self.company, now=now)
@@ -176,7 +184,7 @@ class EscaladerRappelsDemandesCommandTests(TestCase):
             username='owner_qw4_cmd', password='x', company=self.company, role=role)
 
     def test_escalates_callback_sla_breach_once(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = _phone_ok_lead(self.company, hours_ago=10, owner=self.owner)
 
         escalated = escalader_rappels_demandes(now=now)
@@ -192,7 +200,7 @@ class EscaladerRappelsDemandesCommandTests(TestCase):
         self.assertEqual(Notification.objects.filter(recipient=self.owner).count(), 1)
 
     def test_whatsapp_only_lead_never_escalated(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = Lead.objects.create(
             company=self.company, nom='WA only', telephone='+212600000002',
             owner=self.owner, contact_preference=Lead.ContactPreference.WHATSAPP_ONLY)
@@ -202,7 +210,7 @@ class EscaladerRappelsDemandesCommandTests(TestCase):
         self.assertEqual(escalated, 0)
 
     def test_dry_run_never_writes(self):
-        now = timezone.now()
+        now = MAINTENANT
         _phone_ok_lead(self.company, hours_ago=10, owner=self.owner)
         escalated = escalader_rappels_demandes(now=now, dry_run=True)
         self.assertEqual(escalated, 1)
@@ -221,7 +229,7 @@ class QX15ContactPreferenceSetAtClockTests(TestCase):
         CompanyProfile.objects.create(company=self.company, lead_sla_hours=8)  # callback = 4h
 
     def test_old_lead_fresh_preference_not_escalated(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = Lead.objects.create(
             company=self.company, nom='Vieux lead', telephone='+212600222233',
             contact_preference=Lead.ContactPreference.PHONE_OK)
@@ -233,7 +241,7 @@ class QX15ContactPreferenceSetAtClockTests(TestCase):
         self.assertNotIn(lead, list(qs))
 
     def test_old_preference_set_at_still_escalates(self):
-        now = timezone.now()
+        now = MAINTENANT
         lead = Lead.objects.create(
             company=self.company, nom='Rappel ancien', telephone='+212600222244',
             contact_preference=Lead.ContactPreference.PHONE_OK)
@@ -246,7 +254,7 @@ class QX15ContactPreferenceSetAtClockTests(TestCase):
     def test_null_set_at_falls_back_to_date_creation(self):
         # Lead créé avant l'ajout du champ (NULL) — comportement historique
         # inchangé : mesure depuis date_creation.
-        now = timezone.now()
+        now = MAINTENANT
         lead = _phone_ok_lead(self.company, hours_ago=10)
         self.assertIsNone(lead.contact_preference_set_at)
         qs = selectors.leads_callback_sla_depasse(self.company, now=now)
