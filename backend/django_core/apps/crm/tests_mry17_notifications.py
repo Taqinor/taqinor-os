@@ -16,7 +16,6 @@ import datetime
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.test import SimpleTestCase, TestCase
-from django.utils import timezone
 
 from authentication.models import Company
 
@@ -61,6 +60,13 @@ class BeatEtRoutesTests(SimpleTestCase):
 
 class DigestRelancesTests(TestCase):
     def setUp(self):
+        # N3 — le digest ne part plus un jour NON ouvré : une horloge vivante
+        # rendait ces tests rouges le week-end, et l'idempotence lit
+        # `created_at__date`. Mardi 29/09/2026, 08:30 (l'heure du beat).
+        from testkit.time import frozen
+        gel = frozen(datetime.datetime(2026, 9, 29, 8, 30, tzinfo=CASA))
+        gel.start()
+        self.addCleanup(gel.stop)
         self.company = _company('mry17-digest')
         self.meryem = User.objects.create_user(
             username='mry17-meryem', password='x', role_legacy='responsable',
@@ -68,7 +74,7 @@ class DigestRelancesTests(TestCase):
         self.sami = User.objects.create_user(
             username='mry17-sami', password='x', role_legacy='responsable',
             company=self.company)
-        self.aujourdhui = timezone.localdate()
+        self.aujourdhui = datetime.date(2026, 9, 29)
 
     def _touche(self, owner, jours=0):
         lead = Lead.objects.create(
@@ -115,12 +121,19 @@ class DigestRelancesTests(TestCase):
             recipient=self.meryem, event_type=EventType.RELANCE_DUE)
         self.assertIn('1 relance', notif.title)
 
-    def test_aucun_digest_sans_touche_due(self):
+    def test_sans_touche_due_le_digest_part_quand_meme(self):
+        """N3 (décision fondateur du 25/09/2026) — le silence du digest se
+        lisait comme une panne (« la notification de 8 h 30 a disparu ») :
+        un commercial qui tient des dossiers vivants le reçoit chaque jour
+        ouvré, même à zéro."""
         Lead.objects.create(
             company=self.company, nom='Sans plan', owner=self.meryem)
         digests, destinataires = notifier_relances_dues(
             today=self.aujourdhui)
-        self.assertEqual((digests, destinataires), (0, 0))
+        self.assertEqual((digests, destinataires), (1, 1))
+        notif = Notification.objects.get(
+            recipient=self.meryem, event_type=EventType.RELANCE_DUE)
+        self.assertEqual(notif.title, "Aucune relance due aujourd'hui")
 
     def test_dry_run_ne_notifie_pas(self):
         self._touche(self.meryem)
