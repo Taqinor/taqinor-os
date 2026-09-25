@@ -9,7 +9,7 @@ pour qu'une autre société ou nous puissions tout y changer ». Côté GABARIT 
     ``cle='devis'``, et « Fait » sans issue vaut toujours « devis parti » ;
 (b) barreau ``dernier_appel`` désactivé : un débrief « pas de réponse »
     retombe directement sur l'étape devis (palier SAUTÉ, jamais une boucle) ;
-(c) barreau ``debrief`` supprimé : le défaut TAQINOR est posé (pilier) ;
+(c) barreau ``debrief`` supprimé : le défaut livré est posé (pilier) ;
 (d) ``confirmation.delai_jours = 2`` : la confirmation tombe à J-2 de la
     visite ;
 (e) une étape posée AVANT la clé (``cle`` vide, libellé par défaut) est
@@ -237,7 +237,7 @@ class PalierDesactiveTests(_Base):
 
 
 class PilierSupprimeTests(_Base):
-    """(c) — un pilier supprimé retombe sur le défaut TAQINOR."""
+    """(c) — un pilier supprimé retombe sur le défaut livré."""
 
     slug = 'pcad-m-c'
 

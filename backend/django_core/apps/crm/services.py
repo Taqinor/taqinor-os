@@ -2189,7 +2189,7 @@ def cloturer_cadence(lead, user, cadence):
 #: parti » exactement comme le nouveau.
 #:
 #: PARAM-CADENCE (décision fondateur du 25/09/2026) — ces libellés sont
-#: désormais les DÉFAUTS TAQINOR du gabarit « Après l'appel (avant devis) »
+#: désormais les DÉFAUTS LIVRÉS du gabarit « Après l'appel (avant devis) »
 #: de Paramètres (``apps/parametres/models_relance.py``, source unique) : une
 #: société peut les renommer. Le moteur ne compare plus JAMAIS un libellé —
 #: il reconnaît une étape par sa CLÉ (``cadence_config.est_etape``). Les noms
@@ -2271,7 +2271,7 @@ _LIBELLES_FILET = (cadence_config.libelles_par_defaut(*CLES_APRES_CONTACT)
 #      d'échec d'une visite terrain est un client absent) ;
 #   3. le technicien est reparti → RAPPELER dans les 24-48 h, quand tout est
 #      encore frais. C'est le geste que la visite existe pour provoquer.
-#: PARAM-CADENCE — défauts TAQINOR du gabarit « Visite technique » de
+#: PARAM-CADENCE — défauts livrés du gabarit « Visite technique » de
 #: Paramètres (source unique), réglables par société ; alias historiques.
 VISITE_FILET_LIBELLE = gabarit_relance.LIBELLE_PLANIFIER
 VISITE_CONFIRMATION_LIBELLE = gabarit_relance.LIBELLE_CONFIRMATION
@@ -11561,7 +11561,7 @@ def _palier_sans_reponse(touche_close, issue_touche_close, company=None):
     ``None`` si cette clôture n'en déclenche aucun.
 
     Rend ``(libelle, canal, delai_jours)`` — ceux du barreau de ``company``
-    (Paramètres), ou les défauts TAQINOR sans société. ``touche_close`` : la
+    (Paramètres), ou les défauts livrés sans société. ``touche_close`` : la
     touche close, ou son libellé (reconnu s'il est un libellé par défaut)."""
     if isinstance(touche_close, str):
         touche_close = RelanceEtape(libelle=touche_close)

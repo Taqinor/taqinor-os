@@ -57,9 +57,10 @@ Préparer et envoyer le devis »), ``etape_devis_a_la_date`` et
 (« demain »), ``etape_devis_modifie`` (libellé et « demain »),
 ``etape_planifier_visite`` (libellé et « pour aujourd'hui »),
 ``etape_decider_suite`` (libellé). Pour une société qui renomme ou décale
-ces barreaux, la phrase dit le défaut TAQINOR. Aucun code existant ne porte « à son délai réglé » (``*_A_LA_
-DATE`` veut dire « à la date CHOISIE par la commerciale ») et un code neuf
-exigerait sa phrase d'écran (garde CAD17) : la correction passe par le
+ces barreaux, la phrase dit le défaut livré. Aucun code existant ne porte
+« à son délai réglé » (``*_A_LA_DATE`` veut dire « à la date CHOISIE par la
+commerciale ») et un code neuf exigerait sa phrase d'écran (garde CAD17) :
+la correction passe par le
 contrat (servir le libellé et le délai réglés de ces clés avec la touche) et
 l'écran — hors de cette moitié serveur.
 """

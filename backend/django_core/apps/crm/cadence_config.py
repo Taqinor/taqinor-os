@@ -8,7 +8,7 @@ les deux gabarits de Paramètres (``parametres.CadenceRelanceEtape``, cadences
 ``apres_contact`` et ``visite``) :
 
 * ``etape_configuree`` — ce que la société a réglé pour une CLÉ (libellé,
-  délai, canal, heure, gabarit de message), avec repli sur le défaut TAQINOR ;
+  délai, canal, heure, gabarit de message), avec repli sur le défaut du gabarit ;
 * ``est_etape`` / ``cle_de`` / ``q_etape`` — LE prédicat qui remplace toute
   comparaison de libellé : une étape posée depuis la clé porte ``cle`` ; une
   étape posée AVANT la clé (``cle`` vide) est reconnue par son libellé par
@@ -58,7 +58,7 @@ _LIBELLES_ANCIENS = {CLE_DEVIS: (LIBELLE_DEVIS_ANCIEN,)}
 
 
 def libelles_par_defaut(*cles):
-    """Les libellés PAR DÉFAUT (TAQINOR) de ces clés, anciens libellés
+    """Les libellés PAR DÉFAUT (gabarit livré) de ces clés, anciens libellés
     compris — ceux que portent les étapes posées avant la clé."""
     libelles = set()
     for cle in cles:
@@ -121,7 +121,7 @@ def etape_configuree(company, cadence, cle):
     ``dict(cle, libelle, delai_jours, delai_minutes, heure_cible, canal,
     template_cle, actif)``, lu dans son barreau (``barreau_par_cle``, seedé à
     la volée si la cadence est vide). Barreau SUPPRIMÉ ou DÉSACTIVÉ : le
-    défaut TAQINOR de ``CADENCES_DEFAUT`` — avec ``actif=True`` pour un
+    défaut livré de ``CADENCES_DEFAUT`` — avec ``actif=True`` pour un
     PILIER (la chaîne ne tient pas sans lui) et ``actif=False`` pour un
     PALIER optionnel (l'appelant le SAUTE)."""
     barreau = CadenceRelanceEtape.barreau_par_cle(

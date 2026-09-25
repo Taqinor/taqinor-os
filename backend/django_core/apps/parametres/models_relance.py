@@ -300,13 +300,13 @@ CADENCE_DEUXIEME_AFFAIRE_DEFAUT = [
 # comme les cadences du protocole : deux gabarits par société, modifiables
 # dans Paramètres → CRM, et chaque barreau porte une CLÉ STABLE que le moteur
 # lit (``apps/crm/cadence_config.py``). Les libellés ci-dessous sont les
-# DÉFAUTS TAQINOR — la source unique : ``crm.services`` les réexporte sous
+# DÉFAUTS LIVRÉS — la source unique : ``crm.services`` les réexporte sous
 # ses anciens noms (``FILET_JOINT_LIBELLE``…), il ne les redéclare pas.
 #
 # Deux familles de barreaux, et la différence compte :
 #   * PILIERS (devis, planifier, confirmation, debrief, devis_modifie,
 #     rappel_convenu, decider_suite) — la chaîne ne tient pas sans eux : un
-#     barreau supprimé ou désactivé retombe sur le défaut TAQINOR ;
+#     barreau supprimé ou désactivé retombe sur le défaut livré ;
 #   * PALIERS optionnels (appel_apres_reponse, message_creneau,
 #     dernier_appel) — désactivés ou supprimés, ils sont SAUTÉS : la chaîne
 #     passe directement à la marche suivante, jamais une boucle.
@@ -408,7 +408,7 @@ CADENCES_DEFAUT = {
 
 
 def barreau_par_defaut(cadence, cle):
-    """PARAM-CADENCE — le barreau TAQINOR par défaut de cette clé (une
+    """PARAM-CADENCE — le barreau livré par défaut de cette clé (une
     COPIE du ``dict`` de ``CADENCES_DEFAUT``), ou ``None`` si la clé est
     inconnue dans cette cadence."""
     return next((dict(entree) for entree in CADENCES_DEFAUT.get(cadence, [])
