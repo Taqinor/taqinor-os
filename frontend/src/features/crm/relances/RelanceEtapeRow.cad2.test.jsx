@@ -25,6 +25,9 @@ vi.mock('../../../api/crmApi', () => ({
 }))
 
 const ETAPE_DEBRIEF = exempleContrat('crm', 'relance_etape_v2', 'exemple_debrief_visite').results[0]
+// PARAM-CADENCE (25/09/2026) — l'écran reconnaît une étape par sa CLÉ d'abord
+// (E8) : la ligne du contrat porte `cle: 'debrief'`, donc chaque variante ci-dessous
+// pose aussi la clé qui va avec son libellé (vide pour un barreau du protocole).
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -69,7 +72,7 @@ describe('CAD2 — « Débrief visite » pose SA question, jamais celle du suivi
 
 describe('CAD2 — les trois autres gestes de visite ont chacun leur propre question', () => {
   it('« Planifier la visite technique convenue » : caler la date, « Visite acceptée » proposé', () => {
-    const filet = { ...ETAPE_DEBRIEF, libelle: 'Planifier la visite technique convenue' }
+    const filet = { ...ETAPE_DEBRIEF, cle: 'planifier', libelle: 'Planifier la visite technique convenue' }
     ouvrirFait(filet)
     expect(screen.getByText('La date du rendez-vous a-t-elle été calée ?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Oui, la date est calée' })).toBeInTheDocument()
@@ -77,7 +80,7 @@ describe('CAD2 — les trois autres gestes de visite ont chacun leur propre ques
   })
 
   it('« Confirmer la visite (veille) » : le rendez-vous tient-il, jamais « Intéressé »', () => {
-    const confirmation = { ...ETAPE_DEBRIEF, libelle: 'Confirmer la visite (veille)', canal: 'whatsapp' }
+    const confirmation = { ...ETAPE_DEBRIEF, cle: 'confirmation', libelle: 'Confirmer la visite (veille)', canal: 'whatsapp' }
     ouvrirFait(confirmation)
     expect(screen.getByText('Le rendez-vous de demain est-il confirmé ?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirmé — le rendez-vous tient' })).toBeInTheDocument()
@@ -85,14 +88,14 @@ describe('CAD2 — les trois autres gestes de visite ont chacun leur propre ques
   })
 
   it('« Préparer le devis modifié — rappeler le client » : sa propre question', () => {
-    const devisModifie = { ...ETAPE_DEBRIEF, libelle: 'Préparer le devis modifié — rappeler le client' }
+    const devisModifie = { ...ETAPE_DEBRIEF, cle: 'devis_modifie', libelle: 'Préparer le devis modifié — rappeler le client' }
     ouvrirFait(devisModifie)
     expect(screen.getByText('Le devis modifié est prêt : le client est-il rappelé ?')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intéressé' })).not.toBeInTheDocument()
   })
 
   it('une touche du suivi de proposition ORDINAIRE (barreau) garde son jeu de questions par cadence', () => {
-    const barreau = { ...ETAPE_DEBRIEF, libelle: 'Preuve — installation comparable' }
+    const barreau = { ...ETAPE_DEBRIEF, cle: '', libelle: 'Preuve — installation comparable' }
     ouvrirFait(barreau)
     expect(screen.getByText('Réponse du client sur la proposition ?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Visite acceptée' })).toBeInTheDocument()
