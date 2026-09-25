@@ -179,6 +179,12 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     # Sans ce drapeau, le bouton « Appeler » désactivé ne pouvait pas dire sa
     # cause (règle fondateur : le champ fautif, le message exact).
     lead_pii_masquee = serializers.SerializerMethodField()
+    # PARAM-CADENCE (25/09/2026) — la visite du lead, servie sur TOUTE touche
+    # pour que la file du jour la montre à côté de « Confirmer la visite » /
+    # « Débrief visite » (contrat `relance_etape_v2`, additif).
+    visite_prevue_le = serializers.SerializerMethodField()
+    visite_id = serializers.SerializerMethodField()
+    visite_retour_disponible = serializers.SerializerMethodField()
 
     class Meta:
         model = RelanceEtape
@@ -197,10 +203,15 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             'lead_est_junk', 'suites',
             # CAD82 — additifs.
             'lead_contact_preference', 'lead_pii_masquee',
+            # PARAM-CADENCE — additifs : la clé du barreau paramétré (l'écran
+            # la lit AVANT le libellé, qu'une société peut renommer) et la
+            # visite technique du lead.
+            'cle', 'visite_prevue_le', 'visite_id',
+            'visite_retour_disponible',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
-            'libelle', 'template_cle', 'devis', 'traite_le',
+            'libelle', 'template_cle', 'devis', 'traite_le', 'cle',
         ]
 
     def get_lead_nom(self, obj) -> str:
@@ -306,12 +317,60 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         patron que ``get_lead_est_junk``."""
         if obj.statut != RelanceEtape.Statut.A_FAIRE:
             return {}
-        from .suite_touche import ordres_de_la_cadence, promesses_touche
+        from .suite_touche import (
+            lecteur_paliers_actifs, ordres_de_la_cadence, promesses_touche)
         cache = self.context.setdefault('_cad17_ordres', {})
         cle = (obj.company_id, obj.cadence)
         if cle not in cache:
             cache[cle] = ordres_de_la_cadence(obj.company_id, obj.cadence)
-        return promesses_touche(obj, ordres=cache[cle])
+        # PARAM-CADENCE — les paliers gardés par la société : UN lecteur
+        # paresseux par société et par réponse (au plus une requête).
+        paliers = self.context.setdefault('_param_cad_paliers', {})
+        if obj.company_id not in paliers:
+            paliers[obj.company_id] = lecteur_paliers_actifs(obj.company_id)
+        return promesses_touche(obj, ordres=cache[cle],
+                                est_actif=paliers[obj.company_id])
+
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_visite_prevue_le(self, obj):
+        """PARAM-CADENCE — ``Lead.visite_prevue_le`` (ISO), ``None`` sans
+        visite. Aucune requête (le lead est déjà chargé)."""
+        jour = getattr(obj.lead, 'visite_prevue_le', None)
+        return jour.isoformat() if jour else None
+
+    def _visite_du_lead(self, obj):
+        """``(id, retour_disponible)`` de la visite terrain la PLUS RÉCENTE
+        du lead, lue par le sélecteur de l'app visites (frontière M3 : jamais
+        ``apps.visites.models``), ou ``(None, False)``.
+
+        COÛT BORNÉ : aucune requête pour un lead sans visite prévue ni
+        effectuée (le cas de presque toute la file) — une visite qui n'a ni
+        date ni retour n'a rien à ouvrir ; sinon UNE lecture par lead et par
+        réponse, en cache dans le contexte partagé du sérialiseur (liste
+        comprise) — même patron que ``get_lead_est_junk``. Best-effort : une
+        lecture en échec rend ``(None, False)``, jamais une erreur de file."""
+        lead = obj.lead
+        if not (getattr(lead, 'visite_prevue_le', None)
+                or getattr(lead, 'visite_effectuee', False)):
+            return None, False
+        cache = self.context.setdefault('_param_cad_visites', {})
+        if lead.pk not in cache:
+            try:
+                from apps.visites.selectors import visites_pour_lead
+                lignes = visites_pour_lead(lead)
+            except Exception:  # noqa: BLE001 — jamais bloquant
+                lignes = []
+            ligne = lignes[0] if lignes else None
+            cache[lead.pk] = ((ligne['id'], bool(ligne['retour_disponible']))
+                              if ligne else (None, False))
+        return cache[lead.pk]
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_visite_id(self, obj):
+        return self._visite_du_lead(obj)[0]
+
+    def get_visite_retour_disponible(self, obj) -> bool:
+        return self._visite_du_lead(obj)[1]
 
     @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_message_ouvert_le(self, obj):

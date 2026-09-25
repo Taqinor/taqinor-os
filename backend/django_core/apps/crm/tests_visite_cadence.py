@@ -704,6 +704,10 @@ class RecepteurRetourVisiteTests(VisiteCadenceBase):
             statut=RelanceEtape.Statut.A_FAIRE).count(), 1)
 
     def test_notifie_le_responsable_du_lead(self):
+        # Un devis est parti : la suite est le débrief « rappeler sous
+        # 24-48 h » (sans devis, la notification dit « préparer et envoyer le
+        # devis » — ``tests_retour_visite_suite``).
+        self._devis_envoye()
         with frozen(MAINTENANT):
             self._emettre()
         notification = Notification.objects.get(
@@ -805,13 +809,16 @@ class IssueVisiteAccepteeTests(VisiteCadenceBase):
         from apps.crm import stages
 
         etape = self._touche_appel()
-        avant = self.lead.stage
+        self.assertEqual(self.lead.stage, stages.NEW)
         with frozen(MAINTENANT):
             services.marquer_etape_relance(
                 etape, self.acteur, RelanceEtape.Statut.FAIT,
                 outcome=services.OUTCOME_VISITE_ACCEPTEE)
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage, avant)
+        # Relevé du 25/09/2026 : « visite acceptée » est une réponse du client
+        # (``services.ISSUES_CLIENT_JOINT``) — le funnel avance d'UN cran
+        # (Nouveau → Contacté), jamais au Froid.
+        self.assertEqual(self.lead.stage, stages.CONTACTED)
         self.assertNotEqual(self.lead.stage, stages.COLD)
 
     def test_pas_de_filet_si_une_visite_est_deja_calee(self):

@@ -2502,6 +2502,24 @@ def lead_a_un_devis(lead):
     ).exclude(statut=Devis.Statut.BROUILLON).exists()
 
 
+def leads_ayant_recu_un_devis(company, lead_ids):
+    """Chaîne commerciale (décision fondateur du 25/09/2026) — sous-ensemble
+    de ``lead_ids`` ayant déjà REÇU une proposition : la version EN LOT de
+    ``lead_a_un_devis`` (devis sorti du brouillon : envoyé, accepté, refusé ou
+    expiré). Renvoie un ``set`` d'identifiants de leads.
+
+    Lecture cross-app pour ``apps.crm`` (les compteurs du cockpit « joints
+    sans devis » / « visites à venir sans devis ») : une requête pour N leads,
+    jamais une par lead."""
+    from .models import Devis
+    ids = list(lead_ids or [])
+    if not ids:
+        return set()
+    return set(Devis.objects.filter(
+        company=company, lead_id__in=ids,
+    ).exclude(statut=Devis.Statut.BROUILLON).values_list('lead_id', flat=True))
+
+
 def dernier_devis_relancable_du_lead(lead, brouillon_compris=False):
     """QJ-INVARIANT (fondateur 07/09/2026) — le devis le PLUS RÉCENT du lead
     encore relançable (ni refusé, ni expiré, ni accepté). ``None`` si aucun.

@@ -1693,14 +1693,18 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         true`` lance quand même. Les questions en attente partent ENSEMBLE
         dans un seul 409.
         Forme : ``contract_samples/lead_relance_initialiser.json``."""
-        from apps.parametres.models_relance import Cadence
+        from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
 
         lead = self.get_object()
         cadence = (request.data.get('cadence') or Cadence.CONTACT)
-        if cadence not in {c for c, _ in Cadence.choices}:
+        # PARAM-CADENCE (25/09/2026) — « Après l'appel » et « Visite
+        # technique » sont les gabarits des étapes que le MOTEUR pose, jamais
+        # un plan qu'on démarre sur un lead.
+        plans = [c for c, _ in Cadence.choices if c not in CADENCES_MOTEUR]
+        if cadence not in plans:
             return Response(
                 {'cadence': 'Cadence inconnue. Choisir parmi : '
-                            + ', '.join(c for c, _ in Cadence.choices) + '.'},
+                            + ', '.join(plans) + '.'},
                 status=status.HTTP_400_BAD_REQUEST)
         if lead.ne_plus_contacter:
             return Response(
@@ -3201,9 +3205,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # CAD99 — `cadences_echues` est une LECTURE PURE (le sélecteur CAD75
         # ne clôt rien, n'écrit rien) : même garde que `list`, listée ICI
         # nommément pour la même raison que `journal`.
+        # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
+        # LECTURE PURE du cockpit : même garde que `mes_stats`, listée ICI
+        # nommément pour la même raison.
         if self.action in ('list', 'message', 'suivi',
                            'kpi_adherence', 'mes_stats', 'journal',
-                           'cadences_echues'):
+                           'cadences_echues', 'chaine_commerciale'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -3464,6 +3471,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return Response(
             mes_stats_relance(request.user.company, request.user))
 
+    @extend_schema(responses=inline_serializer('CrmChaineCommerciale', {
+        'joints_sans_devis': serializers.DictField(),
+        'visites_a_venir': serializers.DictField(),
+        'devis_a_preparer': serializers.DictField(),
+        'limite': serializers.IntegerField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='chaine-commerciale',
+            permission_classes=[IsAnyRole])
+    def chaine_commerciale(self, request):
+        """Les trois compteurs de la chaîne commerciale du cockpit (forme
+        ``chaine_commerciale`` — décision fondateur du 25/09/2026) : joints
+        sans devis, visites à venir, devis à préparer, chacun avec ses
+        dossiers les plus urgents et son total. LECTURE PURE, même portée que
+        la file du jour ; jamais un classement entre commerciaux."""
+        from .selectors import chaine_commerciale
+
+        return Response(
+            chaine_commerciale(request.user, request.user.company))
+
     def _marquer(self, request, statut):
         etape = self.get_object()
         note = (request.data.get('note') or '').strip()
@@ -3614,19 +3640,23 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def _reponse_fait(self, etape):
         """La réponse d'un « Fait » : la touche (forme `relance_etape_v2`) et
-        la PROCHAINE touche programmée de sa cadence.
+        la PROCHAINE étape à faire du LEAD, toutes cadences confondues.
 
         CKP2/CKP4 — c'est elle (et jamais un calcul d'écran) qui alimente le
         message « prochain appel programmé le … ». ``prochaine_touche`` vaut
-        ``None`` quand la cadence vient de s'arrêter ou qu'aucune touche n'a
-        été matérialisée."""
+        ``None`` quand plus rien n'est ouvert sur le lead.
+
+        Relevé du 25/09/2026 (décision fondateur du 24/09) : la suite d'une
+        touche vit souvent dans une AUTRE cadence que la sienne — « visite
+        acceptée » sur un appel de prise de contact pose « Planifier la visite
+        technique convenue » (cadence du suivi), « joint » pose l'étape devis
+        (cadence générique). Lue par cadence, la réponse annonçait « rien »
+        alors qu'une étape du jour attendait. C'est désormais la MÊME lecture
+        que ``Lead.relance_date`` (``services._prochaine_touche_a_faire``)."""
+        from .services import _prochaine_touche_a_faire
+
         data = self.get_serializer(etape).data
-        suivante = (
-            RelanceEtape.objects
-            .filter(lead=etape.lead, cadence=etape.cadence,
-                    statut=RelanceEtape.Statut.A_FAIRE)
-            .order_by('due_date', 'ordre')
-            .first())
+        suivante = _prochaine_touche_a_faire(etape.lead)
         data['prochaine_touche'] = (
             {'due_at': (suivante.due_at.isoformat()
                         if suivante.due_at else None),
