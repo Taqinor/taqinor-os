@@ -3614,19 +3614,23 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def _reponse_fait(self, etape):
         """La réponse d'un « Fait » : la touche (forme `relance_etape_v2`) et
-        la PROCHAINE touche programmée de sa cadence.
+        la PROCHAINE étape à faire du LEAD, toutes cadences confondues.
 
         CKP2/CKP4 — c'est elle (et jamais un calcul d'écran) qui alimente le
         message « prochain appel programmé le … ». ``prochaine_touche`` vaut
-        ``None`` quand la cadence vient de s'arrêter ou qu'aucune touche n'a
-        été matérialisée."""
+        ``None`` quand plus rien n'est ouvert sur le lead.
+
+        Relevé du 25/09/2026 (décision fondateur du 24/09) : la suite d'une
+        touche vit souvent dans une AUTRE cadence que la sienne — « visite
+        acceptée » sur un appel de prise de contact pose « Planifier la visite
+        technique convenue » (cadence du suivi), « joint » pose l'étape devis
+        (cadence générique). Lue par cadence, la réponse annonçait « rien »
+        alors qu'une étape du jour attendait. C'est désormais la MÊME lecture
+        que ``Lead.relance_date`` (``services._prochaine_touche_a_faire``)."""
+        from .services import _prochaine_touche_a_faire
+
         data = self.get_serializer(etape).data
-        suivante = (
-            RelanceEtape.objects
-            .filter(lead=etape.lead, cadence=etape.cadence,
-                    statut=RelanceEtape.Statut.A_FAIRE)
-            .order_by('due_date', 'ordre')
-            .first())
+        suivante = _prochaine_touche_a_faire(etape.lead)
         data['prochaine_touche'] = (
             {'due_at': (suivante.due_at.isoformat()
                         if suivante.due_at else None),
