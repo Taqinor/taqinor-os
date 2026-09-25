@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2, Info, AlertTriangle } from 'lucide-react'
 import parametresApi from '../../api/parametresApi'
 import {
-  Input, Switch, Spinner, Label, Button, IconButton, FormErrorSummary,
+  Input, Switch, Spinner, Label, Button, IconButton, FormErrorSummary, Badge,
   Tabs, TabsList, TabsTrigger, TabsContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -30,7 +30,44 @@ const CADENCES = [
   { value: 'contact', label: 'Contact' },
   { value: 'apres_devis', label: 'Après devis' },
   { value: 'reveil', label: 'Réveil' },
+  // PARAM-CADENCE (décision fondateur 25/09/2026) — deux cadences À CLÉ : le
+  // moteur retrouve chacun de leurs barreaux par sa `cle` STABLE (contrat
+  // `cadence_relance_v2`, `notes.cle`), jamais par le libellé — une société
+  // peut donc renommer, décaler ou changer le canal sans rien casser côté
+  // moteur. Édition EN PLACE identique aux cadences ci-dessus ; seule
+  // différence : la clé s'affiche (lecture seule) et une aide rappelle la
+  // règle (voir `CadenceTable`, `avecCle`).
+  { value: 'apres_contact', label: "Après l'appel (avant devis)" },
+  { value: 'visite', label: 'Visite technique' },
 ]
+
+// PARAM-CADENCE — les deux cadences dont les barreaux sont retrouvés par
+// `cle` plutôt que par libellé (contrat `cadence_relance_v2`).
+const CADENCES_AVEC_CLE = new Set(['apres_contact', 'visite'])
+
+// PARAM-CADENCE — texte tiré MOT POUR MOT de `notes.cle` du contrat
+// `cadence_relance_v2` (jamais un chiffre ni une règle inventée ici) :
+// piliers (devis, planifier, confirmation, debrief, devis_modifie,
+// rappel_convenu, decider_suite) retombent sur le défaut TAQINOR si leur
+// barreau est supprimé/désactivé ; paliers (appel_apres_reponse,
+// message_creneau, dernier_appel) sont simplement sautés. Pour
+// « Confirmer la visite (veille) », `delai_jours` compte les jours AVANT la
+// visite (la veille = 1) — pas après, contrairement aux autres cadences.
+const AIDE_CADENCE_A_CLE = (
+  'Ces étapes suivent l’appel et la visite : renommer, décaler ou changer le canal est permis. '
+  + 'Un barreau à clé supprimé ou désactivé retombe sur le défaut TAQINOR pour les étapes pilier, '
+  + 'et saute le palier pour les paliers. Pour « Confirmer la visite (veille) », le délai est en '
+  + 'jours AVANT la visite.'
+)
+
+// PARAM-CADENCE — la clé est LECTURE SEULE dans l'API (notes.cle : « vide sur
+// les barreaux du protocole et sur un barreau ajouté à la main (le moteur ne
+// le pose jamais) ») : un barreau ajouté ici n'est donc jamais utilisé par le
+// moteur sur ces deux cadences.
+const AIDE_AJOUT_SANS_CLE = (
+  'Un barreau ajouté ici n’a pas de clé : le moteur ne le pose jamais sur cette cadence — '
+  + 'seuls les barreaux déjà en place (avec leur clé) sont utilisés pour la relance automatique.'
+)
 
 // L'enum du GABARIT de cadence, jamais `crm.Canal` (source du lead).
 //
@@ -209,16 +246,27 @@ function CadenceTable({ cadence, gabarits }) {
     })
   // CAD113 — la cadence est-elle devenue MUETTE (tous ses barreaux inactifs) ?
   const muette = rows.length > 0 && rows.every(r => !r.actif)
+  // PARAM-CADENCE — deux cadences dont les barreaux sont retrouvés par `cle`.
+  const avecCle = CADENCES_AVEC_CLE.has(cadence)
   const entete = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="flex items-start gap-1.5 text-xs text-muted-foreground"
-         role="note">
-        <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-        {AVERTISSEMENT_NON_RETROACTIF}
-      </p>
-      <Button size="sm" variant="outline" onClick={ajouter} disabled={ajout}>
-        <Plus className="size-3.5" /> Ajouter un barreau
-      </Button>
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground"
+           role="note">
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {AVERTISSEMENT_NON_RETROACTIF}
+        </p>
+        <Button size="sm" variant="outline" onClick={ajouter} disabled={ajout}>
+          <Plus className="size-3.5" /> Ajouter un barreau
+        </Button>
+      </div>
+      {avecCle && (
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground"
+           role="note" data-testid={`cadence-aide-cle-${cadence}`}>
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          {AIDE_CADENCE_A_CLE} {AIDE_AJOUT_SANS_CLE}
+        </p>
+      )}
     </div>
   )
   if (rows.length === 0) {
@@ -245,6 +293,18 @@ function CadenceTable({ cadence, gabarits }) {
           <div className="w-8 shrink-0 pb-2 text-sm text-muted-foreground">
             #{row.ordre}
           </div>
+          {/* PARAM-CADENCE — la clé du barreau (lecture seule : jamais posée
+              par cet écran, jamais envoyée au PATCH). Un barreau sans clé
+              (ajouté à la main) n'est jamais posé par le moteur — l'aide
+              ci-dessus le dit. */}
+          {avecCle && (
+            <div className="shrink-0 pb-2">
+              <Badge tone={row.cle ? 'outline' : 'neutral'}
+                     data-testid={`cre-cle-${row.id}`}>
+                {row.cle ? `clé : ${row.cle}` : 'sans clé'}
+              </Badge>
+            </div>
+          )}
           {/* CAD113 — le bandeau NOMME le champ fautif et y renvoie ; le
               message exact du serveur est répété sous le champ. */}
           {bandeau(row).length > 0 && (
