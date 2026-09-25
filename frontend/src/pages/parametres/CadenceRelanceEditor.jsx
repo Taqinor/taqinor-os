@@ -48,14 +48,14 @@ const CADENCES_AVEC_CLE = new Set(['apres_contact', 'visite'])
 // PARAM-CADENCE — texte tiré MOT POUR MOT de `notes.cle` du contrat
 // `cadence_relance_v2` (jamais un chiffre ni une règle inventée ici) :
 // piliers (devis, planifier, confirmation, debrief, devis_modifie,
-// rappel_convenu, decider_suite) retombent sur le défaut TAQINOR si leur
+// rappel_convenu, decider_suite) retombent sur le défaut de la plateforme si leur
 // barreau est supprimé/désactivé ; paliers (appel_apres_reponse,
 // message_creneau, dernier_appel) sont simplement sautés. Pour
 // « Confirmer la visite (veille) », `delai_jours` compte les jours AVANT la
 // visite (la veille = 1) — pas après, contrairement aux autres cadences.
 const AIDE_CADENCE_A_CLE = (
   'Ces étapes suivent l’appel et la visite : renommer, décaler ou changer le canal est permis. '
-  + 'Un barreau à clé supprimé ou désactivé retombe sur le défaut TAQINOR pour les étapes pilier, '
+  + 'Un barreau à clé supprimé ou désactivé retombe sur le défaut de la plateforme pour les étapes pilier, '
   + 'et saute le palier pour les paliers. Pour « Confirmer la visite (veille) », le délai est en '
   + 'jours AVANT la visite.'
 )

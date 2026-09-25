@@ -149,7 +149,7 @@ describe('PARAM-CADENCE — onglet « Après l\'appel (avant devis) »', () => {
     // L'aide au-dessus de la table dit la règle du contrat (`notes.cle`),
     // jamais un chiffre inventé.
     expect(screen.getByTestId('cadence-aide-cle-apres_contact')).toHaveTextContent(
-      /défaut TAQINOR/)
+      /défaut de la plateforme/)
   })
 
   it('un PATCH de libellé sur cette cadence ne porte jamais `cle`', async () => {

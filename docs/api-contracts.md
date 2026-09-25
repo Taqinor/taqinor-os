@@ -80,6 +80,8 @@
     corbeille_id:inconnu, detail:texte, id:inconnu
 - frontend/src/api/crmApi.js :: getCadencesEchues -> /api/django/crm/relance-etapes/cadences-echues
     count:nombre, jours:inconnu, results:inconnu
+- frontend/src/api/crmApi.js :: getChaineCommerciale -> /api/django/crm/relance-etapes/chaine-commerciale
+    devis_a_preparer:objet, joints_sans_devis:objet, limite:inconnu, visites_a_venir:objet
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
     ca_devis_total:texte, ca_factures_total:texte, filiales:liste, nb_devis_total:inconnu, nb_factures_total:inconnu
 - frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants

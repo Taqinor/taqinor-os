@@ -99,7 +99,7 @@ class CadenceRelanceEtapeSerializer(serializers.ModelSerializer):
         # déplacer dans une autre ferait disparaître une étape de la chaîne
         # (le moteur le cherche dans la sienne) et en créerait une orpheline
         # ailleurs. Le supprimer reste permis — le moteur retombe alors sur le
-        # défaut TAQINOR (pilier) ou saute la marche (palier).
+        # défaut de la plateforme (pilier) ou saute la marche (palier).
         instance = getattr(self, 'instance', None)
         cadence = attrs.get('cadence')
         if (instance is not None and (instance.cle or '')
