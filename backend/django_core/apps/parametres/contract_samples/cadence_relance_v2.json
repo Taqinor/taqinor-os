@@ -153,7 +153,7 @@
       "id": 905,
       "cadence": "apres_contact",
       "ordre": 5,
-      "delai_jours": 0,
+      "delai_jours": 1,
       "delai_minutes": 0,
       "heure_cible": null,
       "canal": "appel",

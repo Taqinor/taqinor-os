@@ -2343,12 +2343,25 @@ def _chaine_identite(lead, masquer):
 
 
 def _chaine_devis_partis(company, ids):
-    """Les leads de ``ids`` ayant déjà reçu un devis — lu EN LOT par le
-    sélecteur de ventes (frontière M3), jamais une requête par lead."""
+    """Les leads de ``ids`` pour lesquels UN DEVIS EST PARTI — la règle de
+    ``services.aucun_devis_parti``, en lot : un devis sorti du brouillon dans
+    l'ERP (lu par le sélecteur de ventes, frontière M3, jamais une requête par
+    lead) OU un suivi de proposition déjà démarré (barreau ``apres_devis`` hors
+    gestes de visite : la trace d'un devis parti HORS ERP, TREADMILL-1538).
+    Décision du 25/09/2026 : un client qui a reçu son devis par WhatsApp
+    depuis un téléphone n'est pas « joint sans devis »."""
     if not ids:
         return set()
     from apps.ventes.selectors import leads_ayant_recu_un_devis
-    return leads_ayant_recu_un_devis(company, ids)
+    from . import cadence_config
+    from .models import RelanceEtape
+    partis = set(leads_ayant_recu_un_devis(company, ids))
+    suivis = set(
+        RelanceEtape.objects
+        .filter(company=company, lead_id__in=list(ids), cadence='apres_devis')
+        .exclude(cadence_config.q_etape(*cadence_config.CLES_VISITE))
+        .values_list('lead_id', flat=True))
+    return partis | suivis
 
 
 def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
@@ -2365,9 +2378,10 @@ def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
       plus contacter », étape hors Signé/Froid) dont la DERNIÈRE issue saisie
       par un humain (``LeadActivity.outcome``, tous canaux) est « joint »,
       « intéressé » ou « visite acceptée » (``services.ISSUES_CLIENT_JOINT``)
-      et qui n'ont reçu AUCUN devis (sorti du brouillon — la règle de
-      ``services.visite_sans_devis``, lue en lot par
-      ``ventes.selectors.leads_ayant_recu_un_devis``). ``joint_le`` = la date
+      et pour lesquels AUCUN devis n'est parti (ni sorti du brouillon dans
+      l'ERP, ni suivi de proposition démarré — la règle de
+      ``services.aucun_devis_parti``, lue en lot par
+      ``_chaine_devis_partis``). ``joint_le`` = la date
       locale de cette issue ; ``prochaine_etape``/``prochaine_le`` = la
       prochaine étape à faire du lead, ``None`` si aucune — un TROU, rangé en
       tête, jamais masqué ;

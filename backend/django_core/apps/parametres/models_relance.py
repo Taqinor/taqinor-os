@@ -368,7 +368,7 @@ CADENCE_APRES_CONTACT_DEFAUT = [
     _barreau_moteur(4, CLE_DERNIER_APPEL, LIBELLE_DERNIER_APPEL,
                     delai_jours=1, canal=CanalRelance.APPEL),
     _barreau_moteur(5, CLE_RAPPEL_CONVENU, LIBELLE_RAPPEL_CONVENU,
-                    delai_jours=0, canal=CanalRelance.APPEL),
+                    delai_jours=1, canal=CanalRelance.APPEL),
     _barreau_moteur(6, CLE_DECIDER_SUITE, LIBELLE_DECIDER_SUITE,
                     delai_jours=1, canal=CanalRelance.APPEL),
 ]
