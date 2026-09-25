@@ -50,6 +50,14 @@ logger = logging.getLogger(__name__)
 #: ``recycler_leads_non_travailles``) : recherché avant toute nouvelle alerte.
 MARQUEUR = 'auto — objectif premier contact dépassé'
 
+#: N2 — la fenêtre sur laquelle court le délai de premier contact. Le
+#: MESSAGE (ouverture 08:30), pas l'appel (09:00) : décision fondateur du
+#: 07/09/2026 — la première prise de contact du protocole est un message, et
+#: le KPI MRY19 se compte sur la même horloge (`minutes_ouvrees_entre`, défaut
+#: `whatsapp`). Compter sur la fenêtre d'appel ferait disparaître les trente
+#: premières minutes de la journée.
+CANAL_PREMIER_CONTACT = 'whatsapp'
+
 
 class Command(BaseCommand):
     help = ("MRY17 — Escalade les leads neufs jamais touchés au-delà de "
@@ -172,7 +180,16 @@ def _alerter_le_superieur(company, escalades, palier_superieur):
 def escalader_premier_contact(dry_run=False, now=None):
     """Cœur de la commande — appelable directement (tests, tâche Celery).
 
-    Renvoie le nombre de leads escaladés sur CE passage."""
+    Renvoie le nombre de leads escaladés sur CE passage.
+
+    N2 (25/09/2026) — la décision se prend sur l'ÉCHÉANCE OUVRÉE
+    (``horaires.echeance_en_temps_ouvre``) : un lead arrivé à 10:00 est
+    escaladé à 10:05 (objectif ATTEINT sans contact), un lead arrivé à 23:00
+    à l'ouverture des messages + 5 minutes, jamais pendant la nuit. Une seule
+    escalade par lead (marqueur en note chatter) : pas de rappel toutes les
+    5 minutes."""
+    import datetime
+
     from django.utils import timezone
 
     # SCA19 — jamais `Company.objects.all()` : un tenant suspendu ne
@@ -207,51 +224,58 @@ def escalader_premier_contact(dry_run=False, now=None):
             source=Lead.Source.ODOO_IMPORT_TEST,
         ).exclude(stage__in=[SIGNED, COLD]).select_related('owner')
         escalades = []
-        for lead in candidats:
-            try:
-                ecoulees = horaires.minutes_ouvrees_entre(
-                    lead.date_creation, maintenant, company)
-            except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien
-                logger.warning(
-                    'escalader_premier_contact: calcul échoué (lead %s)',
-                    lead.pk, exc_info=True)
-                continue
-            if ecoulees <= palier:
-                # Comprend le cas « lead de nuit » : hors fenêtre, zéro
-                # minute ouvrée s'écoule — aucune escalade avant l'ouverture.
-                continue
-            if LeadActivity.objects.filter(
-                    lead=lead, kind=LeadActivity.Kind.NOTE,
-                    body__startswith=MARQUEUR).exists():
-                continue
-            nb += 1
-            if dry_run:
-                continue
-            try:
-                LeadActivity.objects.create(
-                    company=company, lead=lead, user=None,
-                    kind=LeadActivity.Kind.NOTE,
-                    body=(f'{MARQUEUR} — {ecoulees} minute(s) ouvrée(s) '
-                          f"écoulées depuis l'arrivée (objectif "
-                          f'{objectif}).'))
-                nom = (lead.nom or '').strip() or 'Nouveau prospect'
-                # CAD31 — le PREMIER palier réveille le responsable du
-                # dossier, et lui seul ; le supérieur est traité après la
-                # boucle, une fois pour toute la société.
-                responsable, superieurs = _destinataires(lead)
-                escalades.append((lead, ecoulees, superieurs))
-                notify_many(
-                    responsable,
-                    EventType.PREMIER_CONTACT_DEPASSE,
-                    title=f'{nom} attend depuis {ecoulees} min ouvrées',
-                    body=("Ce lead n'a encore reçu aucune prise de contact. "
-                          f"L'objectif de la société est de {objectif} "
-                          'minute(s) ouvrée(s).'),
-                    link=f'/crm/leads?lead={lead.pk}', company=company)
-            except Exception:  # noqa: BLE001 — best-effort
-                logger.warning(
-                    'escalader_premier_contact: escalade échouée (lead %s)',
-                    lead.pk, exc_info=True)
+        delai = datetime.timedelta(minutes=palier)
+        with horaires.cache_local():
+            for lead in candidats:
+                try:
+                    echeance = horaires.echeance_en_temps_ouvre(
+                        lead.date_creation, delai, company,
+                        canal=CANAL_PREMIER_CONTACT)
+                except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien
+                    logger.warning(
+                        'escalader_premier_contact: calcul échoué (lead %s)',
+                        lead.pk, exc_info=True)
+                    continue
+                if echeance is None or maintenant < echeance:
+                    # Comprend le cas « lead de nuit » : hors fenêtre, le
+                    # délai ne court pas — aucune escalade avant l'ouverture
+                    # PLUS l'objectif.
+                    continue
+                if LeadActivity.objects.filter(
+                        lead=lead, kind=LeadActivity.Kind.NOTE,
+                        body__startswith=MARQUEUR).exists():
+                    continue
+                nb += 1
+                if dry_run:
+                    continue
+                try:
+                    ecoulees = horaires.minutes_ouvrees_entre(
+                        lead.date_creation, maintenant, company,
+                        canal=CANAL_PREMIER_CONTACT)
+                    LeadActivity.objects.create(
+                        company=company, lead=lead, user=None,
+                        kind=LeadActivity.Kind.NOTE,
+                        body=(f'{MARQUEUR} — {ecoulees} minute(s) ouvrée(s) '
+                              f"écoulées depuis l'arrivée (objectif "
+                              f'{objectif}).'))
+                    nom = (lead.nom or '').strip() or 'Nouveau prospect'
+                    # CAD31 — le PREMIER palier réveille le responsable du
+                    # dossier, et lui seul ; le supérieur est traité après la
+                    # boucle, une fois pour toute la société.
+                    responsable, superieurs = _destinataires(lead)
+                    escalades.append((lead, ecoulees, superieurs))
+                    notify_many(
+                        responsable,
+                        EventType.PREMIER_CONTACT_DEPASSE,
+                        title=f'{nom} attend depuis {ecoulees} min ouvrées',
+                        body=("Ce lead n'a encore reçu aucune prise de "
+                              "contact. L'objectif de la société est de "
+                              f'{objectif} minute(s) ouvrée(s).'),
+                        link=f'/crm/leads?lead={lead.pk}', company=company)
+                except Exception:  # noqa: BLE001 — best-effort
+                    logger.warning(
+                        'escalader_premier_contact: escalade échouée '
+                        '(lead %s)', lead.pk, exc_info=True)
         if not dry_run:
             _alerter_le_superieur(company, escalades, palier_superieur)
     return nb

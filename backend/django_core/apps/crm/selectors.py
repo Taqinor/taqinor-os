@@ -1467,6 +1467,11 @@ def leads_sla_depasse(company, now=None, seuil_heures=None):
 
 # QW4 — Rappels demandés (contact_preference=phone_ok) non actionnés ─────────
 
+#: N2 — la fenêtre sur laquelle court le SLA d'un RAPPEL demandé : un rappel
+#: est un appel téléphonique, il ne se rattrape qu'aux heures d'appel.
+CANAL_RAPPEL_SLA = 'appel'
+
+
 def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
     """QW4 — Rappels demandés (``contact_preference=phone_ok``) non actionnés
     (``first_contacted_at`` NULL) au-delà du SLA rappel, plus serré que le SLA
@@ -1481,12 +1486,22 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
     la préférence a été POSÉE), avec repli sur ``date_creation`` pour les
     leads dont la préférence a été posée avant l'ajout de ce champ (NULL).
     Sans ce correctif, un VIEUX lead dont le rappel est demandé MAINTENANT
-    apparaissait instantanément « SLA rompu » (mesuré depuis sa création)."""
+    apparaissait instantanément « SLA rompu » (mesuré depuis sa création).
+
+    N2 (décision fondateur du 25/09/2026) — le délai se compte en TEMPS OUVRÉ
+    sur la fenêtre d'APPEL de la société (``horaires.echeance_en_temps_ouvre``,
+    canal ``appel`` : un rappel est un coup de téléphone). Un rappel promis un
+    vendredi à 18 h n'est plus « en retard » le samedi matin : ses heures ne
+    courent qu'aux heures d'appel. Le filtre calendaire est gardé en
+    PRÉ-FILTRE (une échéance ouvrée n'est jamais plus tôt que l'échéance
+    calendaire), le temps ouvré tranche ensuite. Renvoie toujours un
+    queryset."""
     from django.db.models.functions import Coalesce
     from django.db.models import F
     from django.utils import timezone as _timezone
     import datetime as _dt
 
+    from . import horaires
     from .models import Lead
     from .services import callback_sla_hours as _get_callback_sla_hours
 
@@ -1496,8 +1511,9 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
     if not seuil_heures:
         return Lead.objects.none()
 
-    cutoff = now - _dt.timedelta(hours=seuil_heures)
-    return Lead.objects.filter(
+    delai = _dt.timedelta(hours=seuil_heures)
+    cutoff = now - delai
+    candidats = Lead.objects.filter(
         company=company,
         is_archived=False,
         contact_preference=Lead.ContactPreference.PHONE_OK,
@@ -1506,7 +1522,18 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
         _sla_clock=Coalesce(F('contact_preference_set_at'), F('date_creation')),
     ).filter(
         _sla_clock__lte=cutoff,
-    ).order_by('date_creation')
+    ).values_list('pk', '_sla_clock')
+    en_retard = []
+    with horaires.cache_local():
+        for pk, horloge in candidats:
+            try:
+                echeance = horaires.echeance_en_temps_ouvre(
+                    horloge, delai, company, canal=CANAL_RAPPEL_SLA)
+            except Exception:  # noqa: BLE001 — repli calendaire, jamais muet
+                echeance = horloge + delai
+            if echeance <= now:
+                en_retard.append(pk)
+    return Lead.objects.filter(pk__in=en_retard).order_by('date_creation')
 
 
 # ── PUB68 — SLA première réponse (répondre <1 min ≈ ×4-5 conversion) ────────
