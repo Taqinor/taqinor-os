@@ -38,6 +38,30 @@ Hypothèses assumées (et documentées plutôt que cachées) :
 
 LECTURE PURE : aucune écriture, et UNE requête par (société, cadence) au plus
 (cache du sérialiseur) — jamais une par touche.
+
+PARAM-CADENCE (décision fondateur du 25/09/2026) — la chaîne après l'appel et
+autour de la visite est réglable dans Paramètres. La NATURE d'une touche et
+l'ESCALIER « ne décroche pas » se lisent donc sur la CLÉ du barreau
+(``cadence_config``), jamais sur un libellé qu'une société peut renommer ; un
+PALIER désactivé (``appel_apres_reponse``, ``message_creneau``,
+``dernier_appel``) est sauté ici exactement comme le moteur le saute (lecture
+paresseuse de ``cadence_config.cles_actives``, UNE requête par société au
+plus, jamais une écriture).
+
+LIMITE ASSUMÉE (et documentée plutôt que cachée) : les codes décrivent des
+EFFETS, mais les phrases de l'écran (``suite_phrases.json``) de plusieurs
+d'entre eux nomment une étape ou un délai PAR DÉFAUT —
+``etape_devis_demain`` et ``etape_devis_demain_sauf_suivi`` (« demain :
+Préparer et envoyer le devis »), ``etape_devis_a_la_date`` et
+``etape_devis_a_la_date_sauf_suivi`` (le libellé), ``etape_dernier_appel``
+(« demain »), ``etape_devis_modifie`` (libellé et « demain »),
+``etape_planifier_visite`` (libellé et « pour aujourd'hui »),
+``etape_decider_suite`` (libellé). Pour une société qui renomme ou décale
+ces barreaux, la phrase dit le défaut TAQINOR. Aucun code existant ne porte « à son délai réglé » (``*_A_LA_
+DATE`` veut dire « à la date CHOISIE par la commerciale ») et un code neuf
+exigerait sa phrase d'écran (garde CAD17) : la correction passe par le
+contrat (servir le libellé et le délai réglés de ces clés avec la touche) et
+l'écran — hors de cette moitié serveur.
 """
 
 # ── Les codes d'effet ────────────────────────────────────────────────────────
@@ -136,24 +160,49 @@ _CANAUX_ECRITS = ('whatsapp', 'email')
 
 
 def nature_touche(etape):
-    """La nature de ``etape`` — lue sur son LIBELLÉ, exactement comme le
-    moteur la lit (``materialiser_touche_suivante``, ``est_etape_de_filet``,
-    ``marquer_etape_relance``)."""
+    """La nature de ``etape`` — lue sur sa CLÉ (PARAM-CADENCE), exactement
+    comme le moteur la lit (``materialiser_touche_suivante``,
+    ``est_etape_de_filet``, ``marquer_etape_relance``) : une étape renommée
+    garde sa nature ; une étape posée avant la clé est reconnue par son
+    libellé par défaut."""
+    from .cadence_config import CLE_DEVIS, est_etape
     from .services import (
-        _FILET_JOINT_LIBELLE_ANCIEN, _LIBELLES_FILET, _LIBELLES_VISITE,
-        FILET_JOINT_LIBELLE, PASSATION_LIBELLE)
+        PASSATION_LIBELLE, est_etape_de_filet, est_etape_de_visite)
 
-    libelle = (etape.libelle or '').strip()
-    if libelle in _LIBELLES_VISITE:
+    if est_etape_de_visite(etape):
         return NATURE_VISITE
-    if (etape.cadence == 'generique'
-            and libelle in (FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN)):
+    if etape.cadence == 'generique' and est_etape(etape, CLE_DEVIS):
         return NATURE_ENVOI_DEVIS
-    if libelle == PASSATION_LIBELLE:
+    if (not (getattr(etape, 'cle', '') or '')
+            and (etape.libelle or '').strip() == PASSATION_LIBELLE):
         return NATURE_PASSATION
-    if libelle in _LIBELLES_FILET:
+    if est_etape_de_filet(etape):
         return NATURE_FILET
     return NATURE_BARREAU
+
+
+def lecteur_paliers_actifs(company_id, actives=None):
+    """PARAM-CADENCE — ``est_actif(cle)`` : un pilier l'est toujours, un
+    PALIER seulement si la société l'a gardé dans « Après l'appel (avant
+    devis) ». Lecture PURE et PARESSEUSE : la requête
+    (``cadence_config.cles_actives``, qui n'écrit jamais) n'a lieu qu'au
+    premier palier interrogé, une fois ; une touche sans société (touche non
+    enregistrée des gardes) lit les défauts — tout actif."""
+    etat = {'cles': actives}
+
+    def est_actif(cle):
+        from apps.parametres.models_relance import CLES_PALIERS, Cadence
+
+        from .cadence_config import cles_actives
+
+        if cle not in CLES_PALIERS:
+            return True
+        if etat['cles'] is None:
+            etat['cles'] = (cles_actives(company_id, Cadence.APRES_CONTACT)
+                            if company_id else frozenset(CLES_PALIERS))
+        return cle in etat['cles']
+
+    return est_actif
 
 
 def ordres_de_la_cadence(company_id, cadence):
@@ -216,19 +265,29 @@ def cles_de_reponse(cadence):
     return issues + reponses
 
 
-def _filet_apres_reponse(etape):
+def _appeler_apres_message(etape, est_actif):
+    """Message répondu → l'appeler, sauf si la société a désactivé ce
+    palier (PARAM-CADENCE) : le moteur pose alors le devis."""
+    from .cadence_config import CLE_APPEL_APRES_REPONSE
+
+    return (etape.canal in _CANAUX_ECRITS
+            and est_actif(CLE_APPEL_APRES_REPONSE))
+
+
+def _filet_apres_reponse(etape, est_actif):
     """L'étape que le filet pose quand un client « joint » ne laisse rien
     d'ouvert : message répondu → l'appeler ; appel fait → le devis demain."""
-    return (ETAPE_APPELER if etape.canal in _CANAUX_ECRITS
+    return (ETAPE_APPELER if _appeler_apres_message(etape, est_actif)
             else ETAPE_DEVIS_DEMAIN)
 
 
-def _filet_apres_reponse_sauf_suivi(etape):
-    return (ETAPE_APPELER_SAUF_SUIVI if etape.canal in _CANAUX_ECRITS
+def _filet_apres_reponse_sauf_suivi(etape, est_actif):
+    return (ETAPE_APPELER_SAUF_SUIVI
+            if _appeler_apres_message(etape, est_actif)
             else ETAPE_DEVIS_DEMAIN_SAUF_SUIVI)
 
 
-def _codes_barreau(etape, issue, *, derniere, au_froid):
+def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
     dernière touche)."""
     from .services import CADENCES_ARRETEES_PAR_ISSUE, OUTCOME_VISITE_ACCEPTEE
@@ -248,21 +307,22 @@ def _codes_barreau(etape, issue, *, derniere, au_froid):
     if issue in ('joint', 'interesse'):
         codes = [SORT_DU_FROID] if au_froid else []
         if cadence == 'contact':
-            return codes + [CONTACT_ARRETEE, _filet_apres_reponse(etape)]
+            return codes + [CONTACT_ARRETEE,
+                            _filet_apres_reponse(etape, est_actif)]
         if cadence == 'reveil':
             return codes + [REVEILS_ARRETES,
-                            _filet_apres_reponse_sauf_suivi(etape)]
+                            _filet_apres_reponse_sauf_suivi(etape, est_actif)]
         if cadence == 'apres_devis' and etape.devis_id:
             # Le filet du récepteur POURSUIT le plan du devis (CAD1) : la
             # touche suivante naît ; après la dernière, l'étape de suite.
-            return codes + ([_filet_apres_reponse(etape)] if derniere
-                            else [TOUCHE_SUIVANTE])
+            return codes + ([_filet_apres_reponse(etape, est_actif)]
+                            if derniere else [TOUCHE_SUIVANTE])
         # Suivi sans devis dans l'ERP, cadence générique, deuxième affaire :
         # le filet pose son étape (rien d'ouvert, aucun devis relançable) ET,
         # la cadence survivant à l'issue, la touche suivante naît aussi.
         if survit and not derniere:
             codes.append(TOUCHE_SUIVANTE)
-        return codes + [_filet_apres_reponse(etape)]
+        return codes + [_filet_apres_reponse(etape, est_actif)]
 
     if issue == OUTCOME_VISITE_ACCEPTEE:
         # 24/09/2026 — sur la prise de contact et le réveil, l'issue arrête
@@ -320,11 +380,14 @@ def _codes_envoi_devis(issue):
     return [ETAPE_DECIDER_SUITE]
 
 
-def _codes_filet(etape, issue):
-    """Une autre étape posée par le filet (hors protocole)."""
-    from .services import (
-        FILET_DERNIER_APPEL_LIBELLE, FILET_MESSAGE_CRENEAU_LIBELLE,
-        OUTCOME_VISITE_ACCEPTEE, _palier_sans_reponse)
+def _codes_filet(etape, issue, est_actif):
+    """Une autre étape posée par le filet (hors protocole).
+
+    PARAM-CADENCE — l'escalier se lit en CLÉS (``cle_de``) et saute un
+    palier désactivé, exactement comme le moteur
+    (``services.prochain_palier_sans_reponse``)."""
+    from .cadence_config import CLE_DERNIER_APPEL, CLE_MESSAGE_CRENEAU, cle_de
+    from .services import OUTCOME_VISITE_ACCEPTEE, prochain_palier_sans_reponse
 
     if issue == OUTCOME_VISITE_ACCEPTEE:
         # 24/09/2026 — la suite est de caler la visite, rien d'autre.
@@ -333,13 +396,11 @@ def _codes_filet(etape, issue):
         return [ETAPE_DEPLACEE_A_LA_DATE]
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
-    palier = _palier_sans_reponse(etape.libelle, issue)
-    if palier is not None:
-        libelle = palier[0]
-        if libelle == FILET_MESSAGE_CRENEAU_LIBELLE:
-            return [ETAPE_MESSAGE_CRENEAU]
-        if libelle == FILET_DERNIER_APPEL_LIBELLE:
-            return [ETAPE_DERNIER_APPEL]
+    palier = prochain_palier_sans_reponse(cle_de(etape), issue, est_actif)
+    if palier == CLE_MESSAGE_CRENEAU:
+        return [ETAPE_MESSAGE_CRENEAU]
+    if palier == CLE_DERNIER_APPEL:
+        return [ETAPE_DERNIER_APPEL]
     return [ETAPE_DEVIS_DEMAIN_SAUF_SUIVI]
 
 
@@ -365,7 +426,7 @@ def _codes_a_cote_du_plan(issue, *, visite):
     return [SUITE_SI_PLUS_RIEN_OUVERT]
 
 
-def _codes_sauter(etape, *, nature, derniere, au_froid):
+def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
     """CAD47 — ce que fait « Sauter » : le moteur clôt la touche SAUTÉE sans
     issue (``marquer_etape_relance``), et la suite est celle d'une touche
     close sans réponse — barreau suivant, clôture au Froid après la dernière,
@@ -374,10 +435,11 @@ def _codes_sauter(etape, *, nature, derniere, au_froid):
     if nature == NATURE_ENVOI_DEVIS:
         return [SUIVI_DEMARRE_SANS_ENVOI]
     if nature == NATURE_FILET:
-        return _codes_filet(etape, '')
+        return _codes_filet(etape, '', est_actif)
     if nature in (NATURE_VISITE, NATURE_PASSATION):
         return _codes_a_cote_du_plan('', visite=nature == NATURE_VISITE)
-    return _codes_barreau(etape, '', derniere=derniere, au_froid=au_froid)
+    return _codes_barreau(etape, '', derniere=derniere, au_froid=au_froid,
+                          est_actif=est_actif)
 
 
 def _codes_reponse_client(cle, *, nature, derniere):
@@ -406,14 +468,16 @@ def _codes_reponse_client(cle, *, nature, derniere):
     return []
 
 
-def promesses_touche(etape, *, ordres=None):
+def promesses_touche(etape, *, ordres=None, est_actif=None):
     """``{cle_de_reponse: [codes d'effet]}`` pour chaque réponse que le
     panneau « Fait » propose sur ``etape``.
 
     ``ordres`` : les barreaux actifs de sa cadence
     (``ordres_de_la_cadence``) — passé par le sérialiseur, qui les met en
-    cache par (société, cadence). Une touche déjà traitée n'a plus de suite à
-    annoncer : ``{}``."""
+    cache par (société, cadence). ``est_actif`` : le lecteur des paliers
+    gardés par la société (``lecteur_paliers_actifs``, PARAM-CADENCE) — mis
+    en cache par société de la même façon. Une touche déjà traitée n'a plus
+    de suite à annoncer : ``{}``."""
     from . import stages
     from .models import RelanceEtape
     from .services import REPONSES_TOUCHE
@@ -422,6 +486,8 @@ def promesses_touche(etape, *, ordres=None):
         return {}
     if ordres is None:
         ordres = ordres_de_la_cadence(etape.company_id, etape.cadence)
+    if est_actif is None:
+        est_actif = lecteur_paliers_actifs(etape.company_id)
     nature = nature_touche(etape)
     derniere = est_derniere_touche(etape, ordres)
     lead = getattr(etape, 'lead', None)
@@ -438,17 +504,19 @@ def promesses_touche(etape, *, ordres=None):
             if nature == NATURE_ENVOI_DEVIS:
                 codes = _codes_envoi_devis(issue)
             elif nature == NATURE_FILET:
-                codes = _codes_filet(etape, issue)
+                codes = _codes_filet(etape, issue, est_actif)
             elif nature in (NATURE_VISITE, NATURE_PASSATION):
                 codes = _codes_a_cote_du_plan(
                     issue, visite=nature == NATURE_VISITE)
             else:
                 codes = _codes_barreau(
-                    etape, issue, derniere=derniere, au_froid=au_froid)
+                    etape, issue, derniere=derniere, au_froid=au_froid,
+                    est_actif=est_actif)
         promesses[cle] = codes
     # CAD47 — le panneau « Sauter » dit lui aussi ce qu'il déclenche.
     promesses[CLE_SAUTER] = _codes_sauter(
-        etape, nature=nature, derniere=derniere, au_froid=au_froid)
+        etape, nature=nature, derniere=derniere, au_froid=au_froid,
+        est_actif=est_actif)
     return promesses
 
 

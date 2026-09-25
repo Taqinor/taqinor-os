@@ -317,12 +317,19 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
         patron que ``get_lead_est_junk``."""
         if obj.statut != RelanceEtape.Statut.A_FAIRE:
             return {}
-        from .suite_touche import ordres_de_la_cadence, promesses_touche
+        from .suite_touche import (
+            lecteur_paliers_actifs, ordres_de_la_cadence, promesses_touche)
         cache = self.context.setdefault('_cad17_ordres', {})
         cle = (obj.company_id, obj.cadence)
         if cle not in cache:
             cache[cle] = ordres_de_la_cadence(obj.company_id, obj.cadence)
-        return promesses_touche(obj, ordres=cache[cle])
+        # PARAM-CADENCE — les paliers gardés par la société : UN lecteur
+        # paresseux par société et par réponse (au plus une requête).
+        paliers = self.context.setdefault('_param_cad_paliers', {})
+        if obj.company_id not in paliers:
+            paliers[obj.company_id] = lecteur_paliers_actifs(obj.company_id)
+        return promesses_touche(obj, ordres=cache[cle],
+                                est_actif=paliers[obj.company_id])
 
     @extend_schema_field(serializers.DateField(allow_null=True))
     def get_visite_prevue_le(self, obj):
