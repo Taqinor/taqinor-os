@@ -311,3 +311,12 @@ class BeatTests(SimpleTestCase):
                 'queue'], 'scheduled')
         app.loader.import_default_modules()
         self.assertIn('notifications.livrer_differees', app.tasks)
+
+    def test_n4_les_comptes_dormants_ne_notifient_plus_a_02h20(self):
+        """N4 — seule tâche de NUIT dont la notification contourne le report
+        (alerte de sécurité, `respect_quiet_hours=False`) : déplacée dans la
+        fenêtre de travail."""
+        from erp_agentique.celery import app
+        planif = app.conf.beat_schedule[
+            'authentication-desactiver-comptes-dormants']['schedule']
+        self.assertEqual((planif.hour, planif.minute), ({8}, {50}))

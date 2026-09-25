@@ -98,6 +98,16 @@ app.conf.enable_utc = False
 #     lundi 03:25) — apps/ged/tasks.py (`migrate_attachments_to_ged`, GED7).
 #   - WIR148 : génération quotidienne de l'échéancier de loyer des baux actifs
 #     (idempotent, 02:38) — apps/immobilier/tasks.py.
+#
+# N4 (décision fondateur du 25/09/2026) — AUCUNE NOTIFICATION UTILISATEUR LA
+# NUIT. Une tâche de nuit ou « toutes les N minutes » peut tourner à toute
+# heure : ce qu'elle notifie passe par `notifications.services.notify()`, qui
+# REPORTE au prochain créneau ouvré de la société (N1 — la notification est
+# créée, puis livrée par `notifications.livrer_differees`). Seules les
+# alertes de SÉCURITÉ contournent le report (`respect_quiet_hours=False`) :
+# une tâche planifiée la nuit qui en émet est DÉPLACÉE dans la fenêtre
+# (NTSEC25, comptes dormants, 02:20 → 08:50). Une nouvelle tâche qui écrit
+# une `Notification` sans `notify()` n'est PAS couverte par le report.
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -701,11 +711,18 @@ app.conf.beat_schedule = {
         'schedule': crontab(minute='*/10'),
     },
     # NTSEC25 — désactive les comptes dormants au-delà du seuil société
-    # (balayage par société, notification Directeur préalable). Quotidien,
-    # heure creuse. No-op tant qu'aucune société n'a armé de seuil.
+    # (balayage par société, notification Directeur préalable). Quotidien.
+    # No-op tant qu'aucune société n'a armé de seuil.
+    # N4 (décision fondateur 25/09/2026, « aucune notification la nuit ») —
+    # déplacée de 02:20 à 08:50 : sa notification « Comptes dormants
+    # désactivés » part avec `respect_quiet_hours=False` (alerte de sécurité,
+    # jamais reportée par N1), elle tombait donc à 02:20 chez le Directeur.
+    # Un compte dormant l'est depuis des jours : le désactiver à 08:50 plutôt
+    # qu'à 02:20 ne change rien à la sécurité, et le Directeur est prévenu aux
+    # heures de travail.
     'authentication-desactiver-comptes-dormants': {
         'task': 'authentication.desactiver_comptes_dormants',
-        'schedule': crontab(hour=2, minute=20),
+        'schedule': crontab(hour=8, minute=50),
     },
     # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées
     # (staging/marketing uniquement). No-op tant que
