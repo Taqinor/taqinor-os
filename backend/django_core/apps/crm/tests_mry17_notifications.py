@@ -243,8 +243,9 @@ class EscaladePremierContactTests(TestCase):
 
 class SeveriteEtPreferencesTests(TestCase):
     def test_premier_contact_depasse_est_critique(self):
-        """Critique = passe les heures calmes : un lead qui refroidit ne peut
-        pas attendre 08:00."""
+        """Critique = tête de liste, liseré rouge. N1 (25/09/2026) : la
+        sévérité ne fait plus partir la notification la nuit — le délai ne
+        court qu'en temps ouvré, et tout envoi hors fenêtre est reporté."""
         from apps.notifications.severity import CRITIQUE, EVENT_SEVERITY
         self.assertEqual(
             EVENT_SEVERITY.get(EventType.PREMIER_CONTACT_DEPASSE), CRITIQUE)

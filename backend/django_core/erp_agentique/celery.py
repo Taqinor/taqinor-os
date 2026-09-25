@@ -147,6 +147,15 @@ app.conf.beat_schedule = {
         'task': 'notifications.reveiller_snoozes',
         'schedule': crontab(minute='*/30'),
     },
+    # N1 (décision fondateur 25/09/2026) — livre les notifications DIFFÉRÉES :
+    # émises hors de la fenêtre de travail de leur société, elles sont créées
+    # mais attendent le prochain créneau ouvré. Toutes les 5 min : une
+    # notification de nuit arrive au plus 5 min après l'ouverture. Sans
+    # échéance due, no-op (une requête sur un index partiel).
+    'notifications-livrer-differees': {
+        'task': 'notifications.livrer_differees',
+        'schedule': crontab(minute='*/5'),
+    },
     # VX209(c) — purge/archive quotidienne des notifications anciennes (lues
     # > 60 j supprimées, non-lues > 60 j archivées) ; heure creuse.
     'notifications-purge-anciennes': {
