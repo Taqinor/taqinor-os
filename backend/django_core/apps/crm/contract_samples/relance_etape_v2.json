@@ -35,15 +35,38 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
-          "joint": ["contact_arretee", "etape_devis_demain"],
-          "visite_acceptee": ["contact_arretee", "etape_planifier_visite"],
-          "non_joint": ["touche_suivante"],
-          "rappel": ["touche_suivante_a_la_date"],
-          "refuse": ["relances_arretees", "etape_decider_suite"],
-          "ne_plus_contacter": ["ne_plus_contacter"],
-          "plus_tard": ["veille_meme_touche"],
-          "sauter": ["touche_suivante"]
-        }
+          "joint": [
+            "contact_arretee",
+            "etape_devis_demain"
+          ],
+          "visite_acceptee": [
+            "contact_arretee",
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       },
       {
         "id": 418,
@@ -76,19 +99,50 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
-          "joint": ["touche_suivante"],
-          "visite_acceptee": ["etape_planifier_visite"],
-          "non_joint": ["touche_suivante"],
-          "rappel": ["touche_suivante_a_la_date"],
-          "refuse": ["relances_arretees", "etape_decider_suite"],
-          "ne_plus_contacter": ["ne_plus_contacter"],
-          "plus_tard": ["veille_meme_touche"],
-          "question_prix": ["question_prix_pause"],
-          "devis_modifie": ["etape_devis_modifie"],
-          "decision_famille": ["etiquette_decision", "touche_suivante"],
-          "decision_proprietaire": ["etiquette_decision", "touche_suivante"],
-          "sauter": ["touche_suivante"]
-        }
+          "joint": [
+            "touche_suivante"
+          ],
+          "visite_acceptee": [
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "question_prix": [
+            "question_prix_pause"
+          ],
+          "devis_modifie": [
+            "etape_devis_modifie"
+          ],
+          "decision_famille": [
+            "etiquette_decision",
+            "touche_suivante"
+          ],
+          "decision_proprietaire": [
+            "etiquette_decision",
+            "touche_suivante"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       }
     ]
   },
@@ -130,14 +184,34 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
-          "sans_issue": ["touche_suivante"],
-          "visite_acceptee": ["etape_planifier_visite"],
-          "non_joint": ["touche_suivante"],
-          "rappel": ["touche_suivante_a_la_date"],
-          "refuse": ["relances_arretees", "etape_decider_suite", "touche_suivante"],
-          "ne_plus_contacter": ["ne_plus_contacter"],
-          "sauter": ["touche_suivante"]
-        }
+          "sans_issue": [
+            "touche_suivante"
+          ],
+          "visite_acceptee": [
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "touche_suivante"
+          ],
+          "rappel": [
+            "touche_suivante_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite",
+            "touche_suivante"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "sauter": [
+            "touche_suivante"
+          ]
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       },
       {
         "id": 441,
@@ -170,14 +244,33 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
-          "sans_issue": ["etape_devis_demain_sauf_suivi"],
-          "visite_acceptee": ["etape_planifier_visite"],
-          "non_joint": ["etape_devis_demain_sauf_suivi"],
-          "rappel": ["etape_deplacee_a_la_date"],
-          "refuse": ["relances_arretees", "etape_decider_suite"],
-          "ne_plus_contacter": ["ne_plus_contacter"],
-          "sauter": ["etape_devis_demain_sauf_suivi"]
-        }
+          "sans_issue": [
+            "etape_devis_demain_sauf_suivi"
+          ],
+          "visite_acceptee": [
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "etape_devis_demain_sauf_suivi"
+          ],
+          "rappel": [
+            "etape_deplacee_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "sauter": [
+            "etape_devis_demain_sauf_suivi"
+          ]
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       }
     ]
   },
@@ -215,15 +308,40 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
-          "joint": ["sort_du_froid", "reveils_arretes", "etape_appeler_sauf_suivi"],
-          "visite_acceptee": ["sort_du_froid", "reveils_arretes", "etape_planifier_visite"],
-          "non_joint": ["dernier_reveil"],
-          "rappel": ["dernier_reveil_date_perdue"],
-          "refuse": ["relances_arretees", "reste_au_froid"],
-          "ne_plus_contacter": ["ne_plus_contacter"],
-          "plus_tard": ["veille_meme_touche"],
-          "sauter": ["dernier_reveil"]
-        }
+          "joint": [
+            "sort_du_froid",
+            "reveils_arretes",
+            "etape_appeler_sauf_suivi"
+          ],
+          "visite_acceptee": [
+            "sort_du_froid",
+            "reveils_arretes",
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "dernier_reveil"
+          ],
+          "rappel": [
+            "dernier_reveil_date_perdue"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "reste_au_froid"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "sauter": [
+            "dernier_reveil"
+          ]
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       }
     ]
   },
@@ -288,7 +406,11 @@
           "sauter": [
             "touche_suivante"
           ]
-        }
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       }
     ]
   },
@@ -353,7 +475,11 @@
           "sauter": [
             "touche_suivante"
           ]
-        }
+        },
+        "cle": "",
+        "visite_prevue_le": null,
+        "visite_id": null,
+        "visite_retour_disponible": false
       }
     ]
   },
@@ -391,25 +517,56 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
-          "joint": ["suite_si_plus_rien_ouvert"],
-          "visite_acceptee": ["etape_planifier_visite"],
-          "non_joint": ["suite_si_plus_rien_ouvert"],
-          "rappel": ["prochaine_relance_a_la_date"],
-          "refuse": ["relances_arretees", "etape_decider_suite"],
-          "ne_plus_contacter": ["ne_plus_contacter"],
-          "plus_tard": ["veille_meme_touche"],
-          "question_prix": ["question_prix_etape"],
-          "devis_modifie": ["etape_devis_modifie"],
-          "decision_famille": ["etiquette_decision", "suite_si_plus_rien_ouvert"],
-          "decision_proprietaire": ["etiquette_decision", "suite_si_plus_rien_ouvert"],
-          "sauter": ["suite_si_plus_rien_ouvert"]
-        }
+          "joint": [
+            "suite_si_plus_rien_ouvert"
+          ],
+          "visite_acceptee": [
+            "etape_planifier_visite"
+          ],
+          "non_joint": [
+            "suite_si_plus_rien_ouvert"
+          ],
+          "rappel": [
+            "prochaine_relance_a_la_date"
+          ],
+          "refuse": [
+            "relances_arretees",
+            "etape_decider_suite"
+          ],
+          "ne_plus_contacter": [
+            "ne_plus_contacter"
+          ],
+          "plus_tard": [
+            "veille_meme_touche"
+          ],
+          "question_prix": [
+            "question_prix_etape"
+          ],
+          "devis_modifie": [
+            "etape_devis_modifie"
+          ],
+          "decision_famille": [
+            "etiquette_decision",
+            "suite_si_plus_rien_ouvert"
+          ],
+          "decision_proprietaire": [
+            "etiquette_decision",
+            "suite_si_plus_rien_ouvert"
+          ],
+          "sauter": [
+            "suite_si_plus_rien_ouvert"
+          ]
+        },
+        "cle": "debrief",
+        "visite_prevue_le": "2026-09-23",
+        "visite_id": 77,
+        "visite_retour_disponible": true
       }
     ]
   },
   "notes": {
     "exemple_debrief_visite": "CAD2 — un AUTRE ÉTAT du serveur, même forme : l'étape « Débrief visite — rappeler le client » (VISITE-CADENCE, ordre 91 hors gabarit, cadence `apres_devis` pour vivre dans la même frise). Sa nature se lit sur son LIBELLÉ, jamais sur sa cadence : les quatre libellés de visite (« Planifier la visite technique convenue », « Confirmer la visite (veille) », « Débrief visite — rappeler le client », « Préparer le devis modifié — rappeler le client ») portent leur PROPRE jeu de questions à l'écran (« la visite a-t-elle eu lieu ? reportée ? devis à modifier ? ») — patron « libellé + note » de Répondeur/Occupé, sur les issues EXISTANTES, aucune valeur d'énumération neuve. Côté moteur : une étape de visite close ne DÉMARRE jamais le suivi de proposition (`joint` → `suite_si_plus_rien_ouvert` : il le POURSUIT s'il a déjà servi, sinon une étape de suite est posée — jamais « Le PDF s'ouvre bien ? » après une visite). Décision fondateur du 24/09/2026 : `non_joint` et `sauter` n'envoient plus JAMAIS le dossier au Froid (code `visite_froid_si_seule` retiré) — même suite `suite_si_plus_rien_ouvert` ; pour le débrief, l'étape de suite est « Rappeler — dernier essai avant de chiffrer », puis « Préparer et envoyer le devis ».",
-    "lead_contact_preference":"CAD82 — préférence de contact du CLIENT (`Lead.contact_preference` : `whatsapp_only` | `phone_ok`), chaîne VIDE — jamais null — quand rien n'est posé. La ligne l'écrit en clair (« joint par écrit seulement ») au lieu de proposer Appeler et WhatsApp à égalité (`exemple_whatsapp_uniquement`).",
+    "lead_contact_preference": "CAD82 — préférence de contact du CLIENT (`Lead.contact_preference` : `whatsapp_only` | `phone_ok`), chaîne VIDE — jamais null — quand rien n'est posé. La ligne l'écrit en clair (« joint par écrit seulement ») au lieu de proposer Appeler et WhatsApp à égalité (`exemple_whatsapp_uniquement`).",
     "lead_pii_masquee": "CAD82 — booléen, jamais null : les coordonnées sont MASQUÉES pour CE demandeur (pas de `client_pii_voir`), même règle que `lead_telephone`/`lead_whatsapp`. Un numéro vide n'a donc plus UNE cause devinable mais deux causes nommées : « aucun numéro sur la fiche » (`exemple`, 2e ligne) ou « numéro masqué par vos droits » (`exemple_pii_masquee`) — la raison s'affiche sous le bouton désactivé.",
     "post_langue": "CAD63 — `POST /api/django/crm/relance-etapes/<id>/langue/` `{langue: 'fr'|'darija'}` enregistre la langue du CLIENT de la touche (`Lead.langue_preferee`, journalisé comme une édition de la fiche) et renvoie CETTE forme, `lead_langue` à jour. Le « Fait » accepte le même champ `langue` (réponse « ne parle que darija ») : posé seulement si la touche est enregistrée. Refus 400 `{erreurs: {langue}}` nommant le champ.",
     "cadence": "contact | apres_devis | reveil | generique (enum `Cadence`, MRY4).",
@@ -424,6 +581,10 @@
     "traite_par_nom": "MRY30 — QUI l'a traitée (nom d'utilisateur), '' — jamais null — pour une touche à faire ou marquée par le système.",
     "exemple_generique": "CAD97 — un AUTRE ÉTAT du serveur, même forme : la cadence générique. Sur un BARREAU du gabarit, « Fait — passer à la suite » programme la touche suivante À SON DÉLAI prévu (J+2/5/10/20/35 depuis le départ) ; sur une étape posée par le FILET, la suite est posée pour DEMAIN (ou reprend le suivi d'un devis envoyé). La phrase « demain » n'est plus annoncée à tort au barreau.",
     "exemple_dernier_reveil": "CAD16 — un AUTRE ÉTAT du serveur, même forme : la DERNIÈRE touche de la cadence réveil (rang 2, J60), dossier au Froid. « Pas de réponse » y annonce la fin (`dernier_reveil`) — plus jamais un réveil suivant qui n'existe pas : la cadence réveil ne se clôture pas elle-même et le filet ne pose rien sur un dossier au Froid.",
-    "suites": "CAD17 — la SUITE de chaque réponse du panneau « Fait », DÉRIVÉE du moteur (`apps/crm/suite_touche.py`) : `{cle_de_reponse: [codes d'effet]}`. Clés : les issues (`joint`, `visite_acceptee` — sur la prise de contact, le réveil, la cadence générique et le suivi de proposition depuis la décision fondateur du 24/09/2026 —, `non_joint`, `rappel`, `refuse` ; `sans_issue` = « Fait — passer à la suite » sur la cadence générique) puis les réponses du client de `REPONSES_TOUCHE` valables sur la cadence, et enfin `sauter` (CAD47 — ce que le geste « Sauter » déclenche). Les codes dépendent du LIBELLÉ de la touche (barreau, étape de filet, geste de visite), de son RANG (la dernière ne fait naître aucune suivante) et de l'état du devis — jamais de la seule cadence. L'écran traduit chaque code en UNE phrase (`frontend/src/features/crm/relances/suite_phrases.json`) ; la garde `apps/crm/tests_cad17_parite_promesse_effet.py` rejoue chaque réponse et vérifie l'effet de chaque code. `{}` — jamais null — pour une touche déjà traitée."
+    "suites": "CAD17 — la SUITE de chaque réponse du panneau « Fait », DÉRIVÉE du moteur (`apps/crm/suite_touche.py`) : `{cle_de_reponse: [codes d'effet]}`. Clés : les issues (`joint`, `visite_acceptee` — sur la prise de contact, le réveil, la cadence générique et le suivi de proposition depuis la décision fondateur du 24/09/2026 —, `non_joint`, `rappel`, `refuse` ; `sans_issue` = « Fait — passer à la suite » sur la cadence générique) puis les réponses du client de `REPONSES_TOUCHE` valables sur la cadence, et enfin `sauter` (CAD47 — ce que le geste « Sauter » déclenche). Les codes dépendent du LIBELLÉ de la touche (barreau, étape de filet, geste de visite), de son RANG (la dernière ne fait naître aucune suivante) et de l'état du devis — jamais de la seule cadence. L'écran traduit chaque code en UNE phrase (`frontend/src/features/crm/relances/suite_phrases.json`) ; la garde `apps/crm/tests_cad17_parite_promesse_effet.py` rejoue chaque réponse et vérifie l'effet de chaque code. `{}` — jamais null — pour une touche déjà traitée.",
+    "cle": "PARAM-CADENCE (décision fondateur 25/09/2026) — clé STABLE de l'étape quand elle est posée par le moteur depuis un barreau paramétré (cadences « Après l'appel (avant devis) » `apres_contact` : devis, appel_apres_reponse, message_creneau, dernier_appel, rappel_convenu, decider_suite ; « Visite technique » `visite` : planifier, confirmation, debrief, devis_modifie). Vide pour un barreau du protocole et pour les étapes posées avant la clé (le moteur les reconnaît encore par leur libellé par défaut). L'écran lit `cle` d'abord, le libellé ensuite — une société peut renommer.",
+    "visite_prevue_le": "Date (ISO) de la visite technique du lead (`Lead.visite_prevue_le`), servie sur TOUTE touche pour que la file du jour montre la visite à côté de « Confirmer la visite (veille) » / « Débrief visite » ; null sans visite.",
+    "visite_id": "Id de la visite terrain la plus récente du lead (apps/visites, lue par son sélecteur) ou null — permet « Ouvrir le retour » (`/visites/<id>`) depuis la file du jour.",
+    "visite_retour_disponible": "booléen — le retour terrain de cette visite est saisi (même drapeau que la frise de la fiche)."
   }
 }
