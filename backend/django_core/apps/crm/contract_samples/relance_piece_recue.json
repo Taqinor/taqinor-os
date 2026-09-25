@@ -33,6 +33,10 @@
     "lead_contact_preference": "",
     "lead_pii_masquee": false,
     "suites": {},
+    "cle": "",
+    "visite_prevue_le": null,
+    "visite_id": null,
+    "visite_retour_disponible": false,
     "prochaine_touche": {
       "due_at": "2026-09-07T09:00:00Z",
       "due_date": "2026-09-07",
@@ -42,6 +46,7 @@
   "notes": {
     "corps": "multipart (avec fichier) ou JSON : `type_piece` (`facture` | `adresse` | `localisation`, OBLIGATOIRE), `fichier` (facultatif), `note` (facultative).",
     "erreurs": "400 `{\"erreurs\": {champ: message}}` — `type_piece` (pièce inconnue ou absente), `etape` (touche déjà traitée), `fichier` (pièce jointe refusée par le magasin) : le message NOMME le champ.",
-    "permissions": "`IsResponsableOrAdmin` (le geste ÉCRIT)."
+    "permissions": "`IsResponsableOrAdmin` (le geste ÉCRIT).",
+    "param_cadence": "PARAM-CADENCE (25/09/2026) — les quatre champs ADDITIFS de `relance_etape_v2` (`cle`, `visite_prevue_le`, `visite_id`, `visite_retour_disponible`) sont servis ici aussi : la réponse EST la touche (forme `relance_etape_v2`) plus `prochaine_touche`."
   }
 }
