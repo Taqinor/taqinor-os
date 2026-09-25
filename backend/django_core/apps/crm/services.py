@@ -1360,10 +1360,15 @@ _OUTCOMES_ARRET_CADENCE = frozenset({'joint', 'interesse', 'refuse'})
 
 #: VISITE-CADENCE (fondateur 15/09/2026) — « le client accepte la visite ».
 #: C'est une issue de SUCCÈS d'un genre nouveau : le client n'a ni signé ni
-#: refusé, il a dit oui à un RENDEZ-VOUS. La cadence ne s'arrête donc PAS
-#: (la proposition reste à relancer si la visite tombe à l'eau), mais poser
-#: le geste générique suivant du protocole serait absurde : la seule chose à
-#: faire est de CALER la visite. Le filet ci-dessous s'en charge.
+#: refusé, il a dit oui à un RENDEZ-VOUS. Le suivi de PROPOSITION ne
+#: s'arrête donc PAS (la proposition reste à relancer si la visite tombe à
+#: l'eau), mais poser le geste générique suivant du protocole serait absurde :
+#: la seule chose à faire est de CALER la visite. Le filet ci-dessous s'en
+#: charge.
+#: Décision fondateur du 24/09/2026 — l'issue vaut sur TOUTE touche, prise de
+#: contact et réveil compris : un client qui accepte la visite a atteint le
+#: but de la prise de contact, exactement comme « joint » — ces deux cadences
+#: s'arrêtent (``CADENCES_ARRETEES_PAR_ISSUE``, bas de fichier).
 OUTCOME_VISITE_ACCEPTEE = 'visite_acceptee'
 
 #: CKP2 × VISITE-CADENCE — les issues qui ne font naître AUCUNE touche
@@ -1735,8 +1740,19 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # premier « pas de réponse » du protocole aurait envoyé le lead au parking
     # étiqueté « Injoignable 6 appels » — après UN seul appel. La cadence n'est
     # épuisée que si le gabarit n'a plus rien à faire naître.
+    # QUATRIÈME condition (décision fondateur du 24/09/2026 — « et même après
+    # ça rien ne se passe ») : une étape de VISITE (planifier, confirmer,
+    # débrief, devis modifié) n'est PAS un barreau du protocole, c'est un
+    # geste posé À CÔTÉ de lui. Elle portait la cadence ``apres_devis`` et
+    # aucune touche suivante ne naît d'elle : un débrief « pas de réponse »
+    # épuisait donc la cadence et parquait le lead au FROID, étiqueté « Devis
+    # sans suite », avec réveils J30/J60 — même sans aucun devis envoyé.
+    # Jamais plus : c'est le filet ci-dessous (QJ-INVARIANT) qui prend le
+    # relais — le plan s'il est pendant, sinon « Rappeler — dernier essai
+    # avant de chiffrer » (``_FILET_SANS_REPONSE_PALIERS``), puis le devis.
     if (restantes_avant == 0 and suivante is None
-            and (outcome or '') not in _OUTCOMES_SANS_CLOTURE):
+            and (outcome or '') not in _OUTCOMES_SANS_CLOTURE
+            and (etape.libelle or '').strip() not in _LIBELLES_VISITE):
         cloturer_cadence(lead, user, etape.cadence)
     # QJ-INVARIANT (fondateur 07/09/2026, « fix this relance once and for
     # all ») — aucun geste de relance ne laisse un lead ACTIF sans prochaine
@@ -6358,7 +6374,9 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
         return None
 
 
-def poser_etape_preparer_devis(lead, *, origine, user=None):
+def poser_etape_preparer_devis(lead, *, origine, user=None,
+                               jours=FILET_JOINT_DELAI_JOURS,
+                               journaliser=True):
     """CAD136 — une pièce qui permet de CHIFFRER (la photo de la facture) pose
     la tâche de PRODUCTION « Préparer et envoyer le devis (ou fixer un
     rappel) » — jamais une relance (nuance du round 2) : tout est là pour
@@ -6369,7 +6387,16 @@ def poser_etape_preparer_devis(lead, *, origine, user=None):
     « préparer le devis » déjà ouverte n'est ni doublée ni DÉPLACÉE (elle a
     peut-être été datée à la main). Garde 4 de CAD130 : rien sur un lead ne
     plus contacter, perdu, archivé ou signé. Best-effort : ne lève jamais.
-    Renvoie l'étape (posée ou déjà ouverte), ou ``None``."""
+    Renvoie l'étape (posée ou déjà ouverte), ou ``None``.
+
+    Retour de visite SANS devis (décision fondateur du 24/09/2026) — deux
+    réglages, et rien d'autre :
+
+    * ``jours`` : le délai quand le terrain a convenu d'un moment DEVANT le
+      client (« cette semaine » = trois jours, ``_plan_du_debrief``) ; par
+      défaut, celui du filet (demain) ;
+    * ``journaliser=False`` : l'appelant écrit lui-même la suite dans SA note
+      (la note du retour terrain), jamais une seconde ligne de chatter."""
     from . import horaires
 
     if getattr(lead, 'pk', None) is None or refus_touche_signal(lead):
@@ -6384,10 +6411,11 @@ def poser_etape_preparer_devis(lead, *, origine, user=None):
             return ouverte
         etape = _poser_etape_de_filet(
             lead, libelle=FILET_JOINT_LIBELLE, canal=RelanceEtape.Canal.APPEL,
-            vise=timezone.now() + datetime.timedelta(
-                days=FILET_JOINT_DELAI_JOURS),
+            vise=timezone.now() + datetime.timedelta(days=jours),
             note=f'Posée : {origine}.')
         _recaler_file(lead, user)
+        if not journaliser:
+            return etape
         quand = etape.due_at.astimezone(horaires.CASABLANCA)
         # Note SYSTÈME (``user=None``) : poser une tâche n'est pas un contact.
         LeadActivity.objects.create(
@@ -9520,13 +9548,22 @@ def poser_filet_visite_a_planifier(lead, user, *, devis_id=None):
     Une étape d'APPEL due AUJOURD'HUI — pas demain : un accord de principe se
     transforme en rendez-vous dans la foulée, sinon il refroidit. No-op si un
     rendez-vous est déjà calé (le client avait déjà sa date) ou si le lead
-    n'est plus relançable. Renvoie l'étape posée, ou ``None``."""
+    n'est plus relançable. Renvoie l'étape posée, ou ``None``.
+
+    Appelée deux fois pour UNE issue « visite acceptée » saisie sur une touche
+    (décision fondateur du 24/09/2026) : par le récepteur d'issue MRY9, qui ne
+    connaît pas la touche, puis par ``marquer_etape_relance``, qui la connaît.
+    L'étape est UNE (idempotente par libellé) ; le devis de la touche lui est
+    rattaché s'il lui manquait."""
     if not _lead_relancable(lead) or _visite_a_venir(lead):
         return None
     etape = _poser_etape_visite(
         lead, libelle=VISITE_FILET_LIBELLE, canal=RelanceEtape.Canal.APPEL,
         ordre=VISITE_ORDRE_FILET, quand=aujourd_hui_local(),
         devis_id=devis_id)
+    if devis_id is not None and etape.devis_id is None:
+        etape.devis_id = devis_id
+        etape.save(update_fields=['devis'])
     _recaler_file(lead, user)
     return etape
 
@@ -9596,6 +9633,38 @@ def visite_sans_devis(lead):
         return False
 
 
+#: Décision fondateur du 24/09/2026 — la note des étapes « préparer et
+#: envoyer le devis » mises EN ATTENTE par une visite planifiée sans devis.
+NOTE_DEVIS_APRES_VISITE = ('visite planifiée : le devis se prépare après la '
+                           'visite')
+#: … et la phrase ajoutée, dans ce cas, à la note de planification.
+MENTION_DEVIS_APRES_VISITE = (
+    f'Étape « {FILET_JOINT_LIBELLE} » mise en attente : le devis se prépare '
+    'après la visite.')
+#: La note d'un débrief annulé au retour terrain sans devis.
+NOTE_RETOUR_SANS_DEVIS = 'retour terrain sans devis : préparer le devis'
+
+
+def _suivi_de_proposition_existe(lead):
+    """Un suivi de proposition a-t-il déjà existé pour ce lead (un barreau
+    ``apres_devis`` du protocole, quel que soit son statut — hors gestes de
+    visite) ? C'est la trace d'un devis parti HORS ERP : cocher « préparer et
+    envoyer le devis » démarre le suivi sans objet devis (TREADMILL-1538)."""
+    return (lead.relance_etapes.filter(cadence='apres_devis')
+            .exclude(libelle__in=tuple(_LIBELLES_VISITE)).exists())
+
+
+def aucun_devis_parti(lead):
+    """Décision fondateur du 24/09/2026 — AUCUN devis n'est encore parti vers
+    ce client : ni devis sorti du brouillon dans l'ERP (``visite_sans_devis``,
+    CAD123), ni suivi de proposition démarré sur un devis envoyé hors ERP.
+
+    C'est le cas d'une visite qui PRÉCÈDE le devis : le devis se prépare
+    APRÈS elle, et c'est lui — pas un débrief « rappeler le client » — que la
+    visite doit faire naître."""
+    return visite_sans_devis(lead) and not _suivi_de_proposition_existe(lead)
+
+
 def avertissement_visite(lead):
     """CAD123 — ``{'avertissement_sans_devis', 'rappel_juridique'}`` pour
     l'écran qui planifie une visite : les deux textes quand aucun devis n'est
@@ -9624,15 +9693,19 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
        décalées alors qu'aucune n'était pendante serait faux) ;
     4. les DEUX gestes du rendez-vous — confirmer la veille, débriefer le
        lendemain. Le filet « planifier la visite convenue », s'il traînait, est
-       ANNULÉ : lui seul, et parce qu'il a rempli son office.
+       ANNULÉ : lui seul, et parce qu'il a rempli son office ;
+    5. décision fondateur du 24/09/2026 — SANS devis parti
+       (``aucun_devis_parti``), l'étape « préparer et envoyer le devis »
+       restée ouverte est ANNULÉE (le devis se prépare APRÈS la visite, le
+       retour terrain la re-pose) et la note de l'étape 3 le dit.
 
     RE-PLANIFICATION : les deux étapes encore ouvertes sont DÉPLACÉES, jamais
     dupliquées (``_poser_etape_visite`` est idempotente par libellé) — « on
     décale à jeudi » ne doit pas laisser la confirmation de mardi dans la file
     — et le plan glisse d'un delta ADDITIONNEL depuis la nouvelle date.
 
-    ``STAGES.py`` n'est pas touché, et AUCUNE étape du plan n'est annulée.
-    Renvoie les étapes posées/déplacées."""
+    ``STAGES.py`` n'est pas touché, et AUCUNE étape du plan après-devis n'est
+    annulée. Renvoie les étapes posées/déplacées."""
     champs = []
     if lead.visite_prevue_le != date_prevue:
         lead.visite_prevue_le = date_prevue
@@ -9644,6 +9717,25 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     # Le décalage AVANT la note : c'est lui qui décide de la dernière phrase.
     decalee = (suspendre_plan_jusqu_apres_visite(lead, user, date_prevue)
                if relancable else None)
+    sans_devis = visite_sans_devis(lead)
+    # Décision fondateur du 24/09/2026 — une visite planifiée SANS devis met
+    # le devis EN ATTENTE d'elle : l'étape « préparer et envoyer le devis »
+    # restée ouverte (filet « client joint », datée de demain) est ANNULÉE —
+    # statut moteur CKP1, comme le filet « planifier la visite » plus bas.
+    # Laissée là, elle restait orpheline dans la file ; et cochée « Fait »
+    # sans issue, elle valait « devis parti » (QJ-FUNNEL) alors qu'aucun
+    # devis n'était fait. C'est le retour terrain qui la re-posera
+    # (``appliquer_retour_visite``). Idempotent : une re-planification ne
+    # trouve plus rien à annuler, et la note n'en dit rien.
+    devis_en_attente = 0
+    if (relancable and sans_devis
+            and not _suivi_de_proposition_existe(lead)):
+        devis_en_attente = lead.relance_etapes.filter(
+            libelle__in=(FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN),
+            statut=RelanceEtape.Statut.A_FAIRE).update(
+                statut=RelanceEtape.Statut.ANNULEE,
+                note=NOTE_DEVIS_APRES_VISITE, traite_par=None,
+                traite_le=timezone.now())
 
     quand = date_prevue.strftime('%d/%m/%Y')
     corps = f'Visite technique planifiée le {quand}'
@@ -9651,10 +9743,12 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
               else ' — pas encore assignée.')
     if decalee is not None:
         corps += ' Relances décalées après la visite.'
-    if visite_sans_devis(lead):
+    if sans_devis:
         # CAD123 — la visite posée avant tout devis est VISIBLE comme telle
         # dans le suivi : on a averti, on n'a pas bloqué, on le dit.
         corps += f' {MENTION_VISITE_SANS_DEVIS}'
+    if devis_en_attente:
+        corps += f' {MENTION_DEVIS_APRES_VISITE}'
     # Note SYSTÈME (``user=None``) : PLANIFIER n'est pas AVOIR contacté le
     # lead — même motif que ``arreter_cadence`` / ``initialiser_plan_relance``
     # (garde QJ7, qui traiterait sinon cette note comme un premier contact).
@@ -9833,12 +9927,45 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
        sur la date prévue de la visite (``reprendre_plan_apres_retour_visite``),
        et jamais tirée en avant.
 
+    VISITE SANS DEVIS (décision fondateur du 24/09/2026 — « et même après ça
+    rien ne se passe »). Quand aucun devis n'est parti (``aucun_devis_parti``)
+    et que le terrain ne dit pas « devis à modifier / à refaire », la suite du
+    retour n'est PAS un débrief « rappeler le client » — il n'y a encore rien
+    à conclure — mais la tâche de PRODUCTION « Préparer et envoyer le devis
+    (ou fixer un rappel) » (``poser_etape_preparer_devis``) : demain, ou au
+    moment que le terrain a convenu devant le client. Le débrief posé à la
+    planification est ANNULÉ (statut moteur), et la note du retour — elle
+    seule, jamais une seconde — dit la suite et sa date. Renvoie alors
+    l'étape devis.
+
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
+    corps = composer_note_retour_visite(retour, auteur=auteur,
+                                        qualification=qualification)
+    libelle, jours, rappel_choisi = _plan_du_debrief(qualification)
+    if (libelle == VISITE_DEBRIEF_LIBELLE and _lead_relancable(lead)
+            and aucun_devis_parti(lead)):
+        etape = poser_etape_preparer_devis(
+            lead, origine='retour de visite technique', user=user,
+            jours=jours if rappel_choisi else FILET_JOINT_DELAI_JOURS,
+            journaliser=False)
+        if etape is not None:
+            debrief = _debrief_ouvert(lead)
+            if debrief is not None:
+                RelanceEtape.objects.filter(pk=debrief.pk).update(
+                    statut=RelanceEtape.Statut.ANNULEE,
+                    note=NOTE_RETOUR_SANS_DEVIS, traite_par=None,
+                    traite_le=timezone.now())
+            corps += ('\nSuite : préparer et envoyer le devis (pour le '
+                      f'{etape.due_date:%d/%m/%Y}).')
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE, body=corps)
+            ecrire_retour_lead_visite(lead, '')
+            _recaler_file(lead, user)
+            return etape
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=None,
-        kind=LeadActivity.Kind.NOTE,
-        body=composer_note_retour_visite(retour, auteur=auteur,
-                                         qualification=qualification))
+        kind=LeadActivity.Kind.NOTE, body=corps)
     ecrire_retour_lead_visite(lead, '')
 
     if not _lead_relancable(lead):
@@ -9853,7 +9980,6 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
         logger.warning(
             'CAD28: reprise du plan non recalée sur le retour (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)
-    libelle, jours, rappel_choisi = _plan_du_debrief(qualification)
     vise = aujourd_hui_local() + datetime.timedelta(days=jours)
     existante = _debrief_ouvert(lead)
     if existante is not None and existante.libelle != libelle:
@@ -11004,10 +11130,18 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
 #:   continue : un client joint reste à relancer sur son devis.
 #: * ``refuse`` → tout s'arrête, y compris la proposition refusée. Le lead
 #:   n'est PAS marqué perdu pour autant (MRY22 : décision humaine, avec motif).
+#: * ``visite_acceptee`` (décision fondateur du 24/09/2026) → exactement comme
+#:   ``joint`` : le client qui accepte la visite a atteint le but de la prise
+#:   de contact, et un dormant qui l'accepte n'a plus à être réveillé. Le
+#:   suivi de proposition continue (il se décale autour du rendez-vous,
+#:   ``suspendre_plan_jusqu_apres_visite``). La suite n'est pas l'étape
+#:   générique du filet mais « Planifier la visite technique convenue »
+#:   (``poser_filet_visite_a_planifier``).
 CADENCES_ARRETEES_PAR_ISSUE = {
     'joint': ('contact', 'reveil'),
     'interesse': ('contact', 'reveil'),
     'refuse': ('contact', 'apres_devis', 'reveil'),
+    OUTCOME_VISITE_ACCEPTEE: ('contact', 'reveil'),
 }
 
 
@@ -11122,6 +11256,21 @@ _ISSUES_SANS_REPONSE = ('non_joint',)
 #: créneau de MESSAGE), le dernier appel le lendemain (prochain créneau
 #: d'APPEL) — aucun horaire nouveau n'est inventé, les fenêtres de la société
 #: décident.
+#:
+#: Décision fondateur du 24/09/2026 — le DÉBRIEF de visite (sous ses deux
+#: libellés) resté sans réponse monte sur la même dernière marche : « Rappeler
+#: — dernier essai avant de chiffrer », demain. Il parquait le lead au Froid
+#: (clôture MRY11), même sans devis. Le palier n'agit que quand le filet
+#: s'exécute, c'est-à-dire quand RIEN d'autre n'est ouvert : un suivi de
+#: proposition pendant (devis envoyé, plan repris après la visite) continue
+#: seul, et un plan déjà servi est poursuivi avant tout palier (CAD1). Après
+#: ce dernier essai, l'escalier retombe sur « préparer et envoyer le devis »
+#: — jamais une boucle.
+_PALIER_DEBRIEF_SANS_REPONSE = {
+    'issues': _ISSUES_SANS_REPONSE,
+    'suite': (FILET_DERNIER_APPEL_LIBELLE,
+              RelanceEtape.Canal.APPEL, FILET_JOINT_DELAI_JOURS),
+}
 _FILET_SANS_REPONSE_PALIERS = {
     FILET_APPEL_LIBELLE: {
         'issues': _ISSUES_SANS_REPONSE,
@@ -11134,6 +11283,8 @@ _FILET_SANS_REPONSE_PALIERS = {
         'suite': (FILET_DERNIER_APPEL_LIBELLE,
                   RelanceEtape.Canal.APPEL, FILET_JOINT_DELAI_JOURS),
     },
+    VISITE_DEBRIEF_LIBELLE: _PALIER_DEBRIEF_SANS_REPONSE,
+    VISITE_DEVIS_LIBELLE: _PALIER_DEBRIEF_SANS_REPONSE,
 }
 
 

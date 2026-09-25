@@ -68,7 +68,10 @@ SUIVI_PROPOSITION_DEMARRE = 'suivi_proposition_demarre'
 ETAPE_PLANIFIER_VISITE = 'etape_planifier_visite'
 ETAPE_MESSAGE_CRENEAU = 'etape_message_creneau'
 ETAPE_DERNIER_APPEL = 'etape_dernier_appel'
-VISITE_FROID_SI_SEULE = 'visite_froid_si_seule'
+# Décision fondateur du 24/09/2026 — ``visite_froid_si_seule`` (« si c'était
+# la dernière relance ouverte, le dossier part au Froid ») n'existe plus : une
+# étape de visite sans réponse ne parque JAMAIS le lead au Froid, le filet
+# prend le relais (``SUITE_SI_PLUS_RIEN_OUVERT``).
 SUITE_SI_PLUS_RIEN_OUVERT = 'suite_si_plus_rien_ouvert'
 PROCHAINE_RELANCE_A_LA_DATE = 'prochaine_relance_a_la_date'
 ETIQUETTE_DECISION = 'etiquette_decision'
@@ -98,8 +101,7 @@ CODES = frozenset({
     ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI, ETAPE_DECIDER_SUITE,
     ETAPE_DEPLACEE_A_LA_DATE, SUIVI_PROPOSITION_DEMARRE,
     ETAPE_PLANIFIER_VISITE, ETAPE_MESSAGE_CRENEAU, ETAPE_DERNIER_APPEL,
-    VISITE_FROID_SI_SEULE, SUITE_SI_PLUS_RIEN_OUVERT,
-    PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
+    SUITE_SI_PLUS_RIEN_OUVERT, PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
@@ -192,12 +194,18 @@ def cles_de_reponse(cadence):
     """Les réponses que le panneau « Fait » propose sur une touche de
     ``cadence`` : les ISSUES (``LeadActivity.OUTCOMES``) puis les RÉPONSES DU
     CLIENT (``REPONSES_TOUCHE``, bornées à leurs cadences comme le serveur les
-    borne — ``refus_reponse_touche``)."""
+    borne — ``refus_reponse_touche``).
+
+    « Visite acceptée » : décision fondateur du 24/09/2026 — elle vaut sur la
+    prise de contact, le réveil et les étapes du filet (cadence générique),
+    plus seulement sur le suivi de proposition. La deuxième affaire ne la
+    propose pas (hors du périmètre de la décision)."""
     from .services import OUTCOME_VISITE_ACCEPTEE, REPONSES_TOUCHE
 
     if cadence == 'generique':
-        issues = [CLE_SANS_ISSUE, 'non_joint', 'rappel', 'refuse']
-    elif cadence == 'apres_devis':
+        issues = [CLE_SANS_ISSUE, OUTCOME_VISITE_ACCEPTEE, 'non_joint',
+                  'rappel', 'refuse']
+    elif cadence in ('apres_devis', 'contact', 'reveil'):
         issues = ['joint', OUTCOME_VISITE_ACCEPTEE, 'non_joint', 'rappel',
                   'refuse']
     else:
@@ -257,7 +265,16 @@ def _codes_barreau(etape, issue, *, derniere, au_froid):
         return codes + [_filet_apres_reponse(etape)]
 
     if issue == OUTCOME_VISITE_ACCEPTEE:
-        return [ETAPE_PLANIFIER_VISITE]
+        # 24/09/2026 — sur la prise de contact et le réveil, l'issue arrête
+        # la cadence exactement comme « joint » (même table, récepteur MRY9,
+        # qui sort aussi un dormant du Froid) ; partout, la seule suite est
+        # l'étape « Planifier la visite technique convenue ».
+        codes = [SORT_DU_FROID] if au_froid else []
+        if cadence == 'contact' and not survit:
+            codes.append(CONTACT_ARRETEE)
+        if cadence == 'reveil' and not survit:
+            codes.append(REVEILS_ARRETES)
+        return codes + [ETAPE_PLANIFIER_VISITE]
 
     if issue == 'rappel':
         if not derniere:
@@ -285,8 +302,15 @@ def _codes_barreau(etape, issue, *, derniere, au_froid):
 
 def _codes_envoi_devis(issue):
     """« Préparer et envoyer le devis (ou fixer un rappel) »."""
+    from .services import OUTCOME_VISITE_ACCEPTEE
+
     if issue == '':
         return [SUIVI_PROPOSITION_DEMARRE]
+    if issue == OUTCOME_VISITE_ACCEPTEE:
+        # 24/09/2026 — une ISSUE est saisie : l'étape n'est PAS lue comme
+        # « devis parti » (seule la clôture SANS issue l'est). Le devis se
+        # préparera après la visite, au retour terrain.
+        return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
         return [ETAPE_DEPLACEE_A_LA_DATE]
     if issue == 'refuse':
@@ -300,8 +324,11 @@ def _codes_filet(etape, issue):
     """Une autre étape posée par le filet (hors protocole)."""
     from .services import (
         FILET_DERNIER_APPEL_LIBELLE, FILET_MESSAGE_CRENEAU_LIBELLE,
-        _palier_sans_reponse)
+        OUTCOME_VISITE_ACCEPTEE, _palier_sans_reponse)
 
+    if issue == OUTCOME_VISITE_ACCEPTEE:
+        # 24/09/2026 — la suite est de caler la visite, rien d'autre.
+        return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
         return [ETAPE_DEPLACEE_A_LA_DATE]
     if issue == 'refuse':
@@ -329,10 +356,12 @@ def _codes_a_cote_du_plan(issue, *, visite):
     if issue == 'rappel':
         return ([PROCHAINE_RELANCE_A_LA_DATE] if visite
                 else [ETAPE_DEPLACEE_A_LA_DATE])
-    if issue in ('non_joint', '') and visite:
-        # Une étape de visite n'est pas un filet : son « pas de réponse » (ou
-        # son saut, CAD47) peut ÉPUISER la cadence après-devis (clôture MRY11).
-        return [VISITE_FROID_SI_SEULE]
+    # « pas de réponse », « Fait » sans issue ou saut (CAD47) : décision
+    # fondateur du 24/09/2026, une étape de visite n'ÉPUISE plus la cadence
+    # après-devis (plus de clôture MRY11 au Froid). Si rien d'autre n'est
+    # ouvert, le filet prend le relais : le plan s'il n'est pas allé au bout,
+    # sinon une étape de suite (le débrief sans réponse : « Rappeler — dernier
+    # essai avant de chiffrer », ``_FILET_SANS_REPONSE_PALIERS``).
     return [SUITE_SI_PLUS_RIEN_OUVERT]
 
 
@@ -437,7 +466,7 @@ def promesses_journal():
     ``journal``) : la garde CAD17 exige qu'elle soit ÉGALE à ce calcul et
     rejoue chaque issue par l'API réelle."""
     from .models import LeadActivity
-    from .services import CADENCES_ARRETEES_PAR_ISSUE
+    from .services import CADENCES_ARRETEES_PAR_ISSUE, OUTCOME_VISITE_ACCEPTEE
 
     promesses = {}
     for issue, _libelle in LeadActivity.OUTCOMES:
@@ -446,6 +475,15 @@ def promesses_journal():
         arretees = CADENCES_ARRETEES_PAR_ISSUE.get(issue, ())
         if not arretees:
             promesses[issue] = [JOURNAL_SANS_EFFET]
+        elif issue == OUTCOME_VISITE_ACCEPTEE:
+            # 24/09/2026 — la visite acceptée arrête la prise de contact et
+            # les réveils (comme « joint ») ; sa suite n'est pas l'étape
+            # générique mais « Planifier la visite technique convenue », que
+            # le récepteur pose aussi depuis le journal d'appel.
+            promesses[issue] = [
+                code for cadence, code in (('contact', CONTACT_ARRETEE),
+                                           ('reveil', REVEILS_ARRETES))
+                if cadence in arretees] + [ETAPE_PLANIFIER_VISITE]
         elif 'apres_devis' in arretees:
             promesses[issue] = [RELANCES_ARRETEES,
                                 JOURNAL_DECIDER_SI_RIEN_OUVERT]
