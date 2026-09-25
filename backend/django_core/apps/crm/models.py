@@ -1738,6 +1738,17 @@ class RelanceEtape(TenantModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='relance_etapes_traitees')
     traite_le = models.DateTimeField(null=True, blank=True)
+    # PARAM-CADENCE (décision fondateur du 25/09/2026) — la clé STABLE du
+    # barreau paramétré dont le moteur a tiré cette étape (cadences
+    # « Après l'appel (avant devis) » et « Visite technique » de Paramètres,
+    # ``parametres.CadenceRelanceEtape.cle``). C'est par elle, jamais par le
+    # libellé, que le moteur reconnaît désormais l'étape : une société peut
+    # renommer « Préparer et envoyer le devis ». VIDE pour un barreau du
+    # protocole, et pour les étapes posées avant la clé — celles-là restent
+    # reconnues par leur libellé par défaut (``crm.cadence_config.est_etape``),
+    # sans migration de données.
+    cle = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Clé moteur')
 
     class Meta:
         verbose_name = 'Étape de relance'
