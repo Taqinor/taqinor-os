@@ -1371,6 +1371,14 @@ _OUTCOMES_ARRET_CADENCE = frozenset({'joint', 'interesse', 'refuse'})
 #: s'arrêtent (``CADENCES_ARRETEES_PAR_ISSUE``, bas de fichier).
 OUTCOME_VISITE_ACCEPTEE = 'visite_acceptee'
 
+#: Les issues qui disent « le client a été JOINT » — il a répondu, jusqu'à
+#: accepter un rendez-vous. Ce sont elles qui font avancer le funnel (QJ7 :
+#: Nouveau → Contacté ; QJ-FUNNEL : Devis envoyé → Relance) et qui confirment
+#: une réponse pour l'annulation d'une touche (RLC1). Décision fondateur du
+#: 24/09/2026, relevée au 25/09 : « visite acceptée » en fait partie — un
+#: lead Nouveau qui acceptait la visite dès le premier appel restait Nouveau.
+ISSUES_CLIENT_JOINT = ('joint', 'interesse', OUTCOME_VISITE_ACCEPTEE)
+
 #: CKP2 × VISITE-CADENCE — les issues qui ne font naître AUCUNE touche
 #: générique suivante. Les trois premières parce que la cadence s'arrête
 #: (récepteur MRY9) ; « visite acceptée » parce que la suite n'est pas un
@@ -1823,7 +1831,7 @@ _ANNULATION_FENETRE_EFFETS = datetime.timedelta(minutes=2)
 #: porte une, l'avance d'étape est confirmée par ailleurs et l'annulation de
 #: CETTE touche ne la défait pas (règle fondateur : « annulée si aucune autre
 #: réponse ne l'a confirmée »).
-_OUTCOMES_REPONSE_CONFIRMEE = ('joint', 'interesse')
+_OUTCOMES_REPONSE_CONFIRMEE = ISSUES_CLIENT_JOINT
 
 
 class AnnulationToucheRefusee(Exception):

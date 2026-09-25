@@ -33,6 +33,7 @@ from .services import (
     arreter_cadence_du_lead_id,
     CADENCES_ARRETEES_PAR_ISSUE,
     FILET_REFUS_LIBELLE,
+    ISSUES_CLIENT_JOINT,
     OUTCOME_VISITE_ACCEPTEE,
     assurer_prochaine_etape_apres_succes,
     avancer_stage_lead_vers,
@@ -534,7 +535,11 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     if est_note_de_touche_sautee(instance):
         return
     marquer_premier_contact(lead)
-    if (instance.outcome or '').strip() in ('joint', 'interesse'):
+    # Décision fondateur du 24/09/2026 (relevé du 25/09) — « visite acceptée »
+    # est une réponse CONFIRMÉE au même titre que « joint » : le client a été
+    # joint, et il a même dit oui à un rendez-vous. Un lead Nouveau qui
+    # acceptait la visite au premier appel restait Nouveau.
+    if (instance.outcome or '').strip() in ISSUES_CLIENT_JOINT:
         avancer_stage_new_vers_contacted(lead, instance.user)
         # QJ-FUNNEL (fondateur 09/09/2026) — le cran suivant du funnel, même
         # doctrine et MÊME périmètre de kinds qu'au-dessus (rien d'élargi) :
