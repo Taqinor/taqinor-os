@@ -9651,6 +9651,32 @@ MENTION_DEVIS_APRES_VISITE = (
     'après la visite.')
 #: La note d'un débrief annulé au retour terrain sans devis.
 NOTE_RETOUR_SANS_DEVIS = 'retour terrain sans devis : préparer le devis'
+#: Relevé du 25/09/2026 — la note de l'étape « Confirmer la visite (veille) »
+#: encore ouverte quand le retour terrain arrive : la visite a eu lieu, il n'y
+#: a plus rien à confirmer (même geste que le filet « planifier la visite »,
+#: annulé à la planification).
+NOTE_CONFIRMATION_VISITE_FAITE = 'visite effectuée'
+
+#: La notification « Retour de visite » du responsable — la suite par défaut
+#: (débrief : un devis est parti, il reste à conclure).
+NOTIF_RETOUR_VISITE_RAPPELER = ('La visite technique est terminée. Rappeler '
+                                'le client sous 24-48 h pour conclure.')
+
+
+def phrase_notification_retour_visite(etape):
+    """Le corps de la notification « Retour de visite », lu sur l'étape que
+    ``appliquer_retour_visite`` vient de RENDRE — jamais deviné.
+
+    Relevé du 25/09/2026 (décision fondateur du 24/09) : sans devis parti, la
+    suite du retour est « Préparer et envoyer le devis », pas un rappel « pour
+    conclure » ; la notification disait pourtant toujours « rappeler sous
+    24-48 h ». Elle dit désormais la suite posée et sa date."""
+    if (etape is not None and getattr(etape, 'due_date', None) is not None
+            and (etape.libelle or '').strip()
+            in (FILET_JOINT_LIBELLE, _FILET_JOINT_LIBELLE_ANCIEN)):
+        return ('La visite technique est terminée. Suite : préparer et '
+                f'envoyer le devis pour le {etape.due_date:%d/%m}.')
+    return NOTIF_RETOUR_VISITE_RAPPELER
 
 
 def _suivi_de_proposition_existe(lead):
@@ -9949,6 +9975,16 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     ``STAGES.py`` n'est pas touché. Renvoie l'étape de débrief, ou ``None``."""
     corps = composer_note_retour_visite(retour, auteur=auteur,
                                         qualification=qualification)
+    # Relevé du 25/09/2026 — la visite a EU LIEU : une « Confirmer la visite
+    # (veille) » encore ouverte (retour saisi avant que la confirmation soit
+    # cochée) n'a plus d'objet. Annulée par le moteur (CKP1, jamais « sautée
+    # par un humain »), comme le filet « planifier » l'est à la planification.
+    lead.relance_etapes.filter(
+        libelle=VISITE_CONFIRMATION_LIBELLE,
+        statut=RelanceEtape.Statut.A_FAIRE).update(
+            statut=RelanceEtape.Statut.ANNULEE,
+            note=NOTE_CONFIRMATION_VISITE_FAITE, traite_par=None,
+            traite_le=timezone.now())
     libelle, jours, rappel_choisi = _plan_du_debrief(qualification)
     if (libelle == VISITE_DEBRIEF_LIBELLE and _lead_relancable(lead)
             and aucun_devis_parti(lead)):

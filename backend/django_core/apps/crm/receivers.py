@@ -45,6 +45,7 @@ from .services import (
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
+    phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
     signaler_mismatch_signe_sur_refus,
 )
@@ -926,17 +927,22 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
         auteur = ''
         if user is not None:
             auteur = (user.get_full_name() or user.username or '')
-        appliquer_retour_visite(lead, user, retour, auteur=auteur,
-                                qualification=qualification)
-        _notifier_responsable_retour_visite(lead, user)
+        etape = appliquer_retour_visite(lead, user, retour, auteur=auteur,
+                                        qualification=qualification)
+        _notifier_responsable_retour_visite(lead, user, etape)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
             'VISITE-CADENCE : retour terrain non traité pour le lead #%s',
             lead_id, exc_info=True)
 
 
-def _notifier_responsable_retour_visite(lead, acteur):
-    """Prévient le RESPONSABLE du lead qu'il doit rappeler sous 24-48 h.
+def _notifier_responsable_retour_visite(lead, acteur, etape=None):
+    """Prévient le RESPONSABLE du lead de la suite du retour terrain.
+
+    ``etape`` : ce que ``appliquer_retour_visite`` a RENDU — le texte le lit
+    (``services.phrase_notification_retour_visite``) : « rappeler sous
+    24-48 h » après un devis parti, « préparer et envoyer le devis pour le
+    JJ/MM » sans devis (décision fondateur du 24/09/2026, relevé du 25/09).
 
     Personne d'autre : ni la direction (ce n'est pas une alerte), ni le
     commercial terrain (il vient de faire la visite). Lead sans responsable, ou
@@ -953,8 +959,7 @@ def _notifier_responsable_retour_visite(lead, acteur):
         return notify(
             destinataire, 'visite_retour_terrain',
             f'Retour de visite — {lead}',
-            body=('La visite technique est terminée. Rappeler le client sous '
-                  '24-48 h pour conclure.'),
+            body=phrase_notification_retour_visite(etape),
             link=f'/crm/leads/{lead.pk}', company=lead.company)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         logger.warning(
