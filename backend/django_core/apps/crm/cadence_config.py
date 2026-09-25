@@ -112,6 +112,13 @@ def _depuis_barreau(barreau):
         'heure_cible': barreau.heure_cible,
         'canal': barreau.canal,
         'template_cle': barreau.template_cle or '',
+        # D1 — ces deux drapeaux étaient LUS sur le barreau (l'écran les
+        # enregistre bien) mais jamais RENDUS ici : une société qui cochait
+        # « Samedi » sur un barreau moteur (message_creneau…) le voyait
+        # ignoré, exactement comme le protocole le fait pour les siens
+        # (`calculer_echeances_cadence`).
+        'dimanche_ok': bool(barreau.dimanche_ok),
+        'samedi_ok': bool(barreau.samedi_ok),
     }
 
 
@@ -119,11 +126,11 @@ def etape_configuree(company, cadence, cle):
     """Ce que ``company`` a réglé pour l'étape ``cle`` de ``cadence``.
 
     ``dict(cle, libelle, delai_jours, delai_minutes, heure_cible, canal,
-    template_cle, actif)``, lu dans son barreau (``barreau_par_cle``, seedé à
-    la volée si la cadence est vide). Barreau SUPPRIMÉ ou DÉSACTIVÉ : le
-    défaut livré de ``CADENCES_DEFAUT`` — avec ``actif=True`` pour un
-    PILIER (la chaîne ne tient pas sans lui) et ``actif=False`` pour un
-    PALIER optionnel (l'appelant le SAUTE)."""
+    template_cle, dimanche_ok, samedi_ok, actif)``, lu dans son barreau
+    (``barreau_par_cle``, seedé à la volée si la cadence est vide). Barreau
+    SUPPRIMÉ ou DÉSACTIVÉ : le défaut livré de ``CADENCES_DEFAUT`` — avec
+    ``actif=True`` pour un PILIER (la chaîne ne tient pas sans lui) et
+    ``actif=False`` pour un PALIER optionnel (l'appelant le SAUTE)."""
     barreau = CadenceRelanceEtape.barreau_par_cle(
         company, cadence, cle, inactif_ok=True)
     if barreau is not None and barreau.actif:
@@ -138,6 +145,8 @@ def etape_configuree(company, cadence, cle):
             'heure_cible': defaut.get('heure_cible'),
             'canal': defaut.get('canal', 'appel'),
             'template_cle': defaut.get('template_cle', ''),
+            'dimanche_ok': defaut.get('dimanche_ok', False),
+            'samedi_ok': defaut.get('samedi_ok', False),
             'actif': cle not in CLES_PALIERS,
         }
     config['cle'] = cle

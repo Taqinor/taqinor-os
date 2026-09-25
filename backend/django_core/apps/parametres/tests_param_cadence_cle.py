@@ -269,8 +269,10 @@ class ApiTests(TestCase):
         self.assertEqual(debrief.cle, 'debrief')
 
     def test_un_ajout_a_la_main_n_a_pas_de_cle(self):
+        # D3 — une cadence NON MOTEUR (``contact``, un plan qu'on démarre) :
+        # l'ajout à la main reste permis, sans clé.
         resp = self.api.post(CADENCE_URL, {
-            'cadence': 'visite', 'delai_jours': 3, 'canal': 'appel',
+            'cadence': 'contact', 'delai_jours': 3, 'canal': 'appel',
             'libelle': 'Rappel maison', 'cle': 'debrief'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['cle'], '')
@@ -296,3 +298,59 @@ class ApiTests(TestCase):
         self.assertEqual(resp.status_code, 204)
         self.assertIsNone(CadenceRelanceEtape.barreau_par_cle(
             self.company, Cadence.VISITE, 'debrief', inactif_ok=True))
+
+
+class AjoutRefuseSurCadenceMoteurTests(TestCase):
+    """D3 — un barreau SANS clé sur ``apres_contact``/``visite`` est refusé
+    (le moteur l'ignorait, documenté en commentaire seulement) ; POSTER sur
+    une cadence moteur encore VIDE empêchait aussi le seed à la volée (le
+    POST créait la première ligne AVANT toute lecture — ``get_queryset``
+    ne seede plus jamais une cadence qui n'est plus vide)."""
+
+    def setUp(self):
+        self.company = _company('pcad-api-d3')
+        self.admin = User.objects.create_user(
+            username='pcad-admin-d3', password='pw', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+
+    def _rows(self, resp):
+        return (resp.data['results']
+                if isinstance(resp.data, dict) and 'results' in resp.data
+                else resp.data)
+
+    def test_apres_contact_refuse_l_ajout_a_la_main(self):
+        resp = self.api.post(CADENCE_URL, {
+            'cadence': 'apres_contact', 'delai_jours': 1, 'canal': 'appel',
+            'libelle': 'Rappel maison'}, format='json')
+
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('cadence', resp.data)
+        self.assertEqual(str(resp.data['cadence']), (
+            'Les barreaux de cette cadence sont fixés par leur clé ; '
+            'modifiez-les, ne les ajoutez pas.'))
+        self.assertFalse(CadenceRelanceEtape.objects.filter(
+            company=self.company, cadence=Cadence.APRES_CONTACT).exists())
+
+    def test_visite_refuse_l_ajout_a_la_main(self):
+        resp = self.api.post(CADENCE_URL, {
+            'cadence': 'visite', 'delai_jours': 3, 'canal': 'appel',
+            'libelle': 'Rappel maison'}, format='json')
+
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('cadence', resp.data)
+
+    def test_le_refus_n_empeche_pas_le_seed_au_prochain_get(self):
+        """Le POST refusé n'a rien créé : la cadence reste VIDE, et la
+        première LECTURE la seede toujours normalement (6 barreaux)."""
+        self.api.post(CADENCE_URL, {
+            'cadence': 'apres_contact', 'delai_jours': 1, 'canal': 'appel',
+            'libelle': 'Rappel maison'}, format='json')
+
+        resp = self.api.get(CADENCE_URL, {'cadence': 'apres_contact'})
+
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(self._rows(resp)),
+                         len(CADENCE_APRES_CONTACT_DEFAUT))

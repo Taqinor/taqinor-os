@@ -152,6 +152,13 @@ describe('PARAM-CADENCE — onglet « Après l\'appel (avant devis) »', () => {
       /défaut de la plateforme/)
   })
 
+  it('D3 — n’affiche pas le bouton « Ajouter un barreau » (l’ajout à la main est refusé)', async () => {
+    await ouvrirOnglet()
+    await screen.findByDisplayValue(DEVIS.libelle)
+    expect(screen.queryByRole('button', { name: /Ajouter un barreau/i }))
+      .not.toBeInTheDocument()
+  })
+
   it('un PATCH de libellé sur cette cadence ne porte jamais `cle`', async () => {
     await ouvrirOnglet()
     const input = await screen.findByLabelText('Libellé', {
@@ -167,5 +174,20 @@ describe('PARAM-CADENCE — onglet « Après l\'appel (avant devis) »', () => {
         DEVIS.id, { libelle: 'Préparer le devis — renommé' }))
     const [, payload] = parametresApi.updateCadenceRelanceEtape.mock.calls.at(-1)
     expect(payload).not.toHaveProperty('cle')
+  })
+})
+
+// D3 — même garde-fou sur le second onglet à clé.
+describe('PARAM-CADENCE — onglet « Visite technique » (D3)', () => {
+  it('n’affiche pas non plus le bouton « Ajouter un barreau »', async () => {
+    await renderEditor()
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('tab', { name: 'Visite technique' }))
+    await waitFor(() =>
+      expect(parametresApi.getCadenceRelance).toHaveBeenCalledWith('visite'))
+    await screen.findByText('Aucune étape pour cette cadence.')
+    expect(screen.queryByRole('button', { name: /Ajouter un barreau/i }))
+      .not.toBeInTheDocument()
   })
 })

@@ -20,7 +20,7 @@ from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
-from .models_relance import Cadence, CadenceRelanceEtape
+from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 from .serializers_referentiels import (
@@ -154,12 +154,28 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
         Rien de rétroactif : le gabarit est copié barreau par barreau à
         l'initialisation d'un plan (``initialiser_plan_relance``), donc un
         barreau ajouté ici n'entre que dans les plans à NAÎTRE.
+
+        D3 — un POST sur une cadence MOTEUR (``apres_contact``/``visite``)
+        est REFUSÉ : ces deux gabarits n'ont que les barreaux à CLÉ que le
+        seed pose (``CadenceRelanceEtape.cle``), et le moteur ne lit QUE ces
+        clés (``apps.crm.cadence_config``) — un barreau ajouté à la main y
+        serait invisible pour lui, jusqu'ici documenté en commentaire
+        seulement (``models_relance.py``). Pire : sur une cadence moteur
+        encore VIDE, ce POST arrivait AVANT toute lecture (qui seede à la
+        volée, ``get_queryset``) et empêchait le seed — tous les paliers
+        sautés. Modifier un barreau existant reste permis (``update``) ; le
+        supprimer aussi (le moteur retombe alors sur son défaut livré ou
+        saute le palier).
         """
         from django.db.models import Max
 
         company = self.request.user.company
         cadence = (serializer.validated_data.get('cadence')
                    or Cadence.CONTACT)
+        if cadence in CADENCES_MOTEUR:
+            raise ValidationError({'cadence': (
+                'Les barreaux de cette cadence sont fixés par leur clé ; '
+                'modifiez-les, ne les ajoutez pas.')})
         deja = CadenceRelanceEtape.objects.filter(
             company=company, cadence=cadence)
         ordre = serializer.validated_data.get('ordre')

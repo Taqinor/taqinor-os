@@ -343,11 +343,18 @@ LIBELLE_DEVIS_MODIFIE = 'Préparer le devis modifié — rappeler le client'
 
 
 def _barreau_moteur(ordre, cle, libelle, *, delai_jours, canal,
-                    template_cle=''):
+                    template_cle='', dimanche_ok=False, samedi_ok=False):
+    # D1 — symétrique des gabarits du protocole (`CADENCE_CONTACT_DEFAUT`…) :
+    # ces deux drapeaux étaient absents d'ici (seul `dimanche_ok`, figé à
+    # `False`, existait), alors que `seed_cadence` les lit déjà tous les deux
+    # (`entry.get('dimanche_ok'/'samedi_ok', False)`) et que le modèle porte
+    # les deux colonnes. Défauts INCHANGÉS (`False`) tant qu'aucun appel ne
+    # les force — le samedi/dimanche ne s'ouvre que par un geste humain,
+    # depuis Paramètres.
     return {'ordre': ordre, 'cle': cle, 'delai_jours': delai_jours,
             'delai_minutes': 0, 'heure_cible': None, 'canal': canal,
             'libelle': libelle, 'template_cle': template_cle,
-            'dimanche_ok': False}
+            'dimanche_ok': dimanche_ok, 'samedi_ok': samedi_ok}
 
 
 #: « Après l'appel (avant devis) » — contrat ``cadence_relance_v2.json``
