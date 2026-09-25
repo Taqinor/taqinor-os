@@ -2315,6 +2315,208 @@ def mes_stats_relance(company, user):
     }
 
 
+# ── Chaîne commerciale — les trois compteurs du cockpit ──────────────────────
+#
+# Décision fondateur du 25/09/2026 (« regarde aussi le cockpit, que tout soit
+# bien fait maintenant que la cadence est bien faite ») : la chaîne appel →
+# visite → devis → suivi de proposition a trois états intermédiaires que le
+# cockpit ne montrait nulle part. Forme : contrat
+# ``contract_samples/chaine_commerciale.json``.
+
+#: La limite servie (fixe) : l'écran dit « et N autres » sans la deviner.
+CHAINE_COMMERCIALE_LIMITE = 5
+
+
+def _chaine_bloc(lignes, limite):
+    return {'total': len(lignes), 'leads': lignes[:limite]}
+
+
+def _chaine_identite(lead, masquer):
+    """Identité d'un dossier de la chaîne — téléphone masqué comme la file
+    du jour (``lead_pii_masquee``)."""
+    return {
+        'id': lead.pk,
+        'nom': lead.nom or '',
+        'prenom': lead.prenom or '',
+        'telephone': '' if masquer else (lead.telephone or ''),
+    }
+
+
+def _chaine_devis_partis(company, ids):
+    """Les leads de ``ids`` ayant déjà reçu un devis — lu EN LOT par le
+    sélecteur de ventes (frontière M3), jamais une requête par lead."""
+    if not ids:
+        return set()
+    from apps.ventes.selectors import leads_ayant_recu_un_devis
+    return leads_ayant_recu_un_devis(company, ids)
+
+
+def chaine_commerciale(user, company, *, limite=CHAINE_COMMERCIALE_LIMITE):
+    """Les trois compteurs PERSONNELS de la chaîne commerciale (forme
+    ``chaine_commerciale``), chacun avec ses ``limite`` dossiers les plus
+    urgents et son ``total`` exact — jamais un classement entre commerciaux.
+
+    Même portée que la file du jour (``relance_etapes_dues`` :
+    ``scope_queryset`` par responsable, transparence CKP5 — le manager voit la
+    même chose), mêmes téléphones masqués (``lead_pii_masquee``). Aucun
+    chiffre calculé côté écran : comptes et dates viennent d'ici.
+
+    * ``joints_sans_devis`` — leads ACTIFS (ni perdu, ni archivé, ni « ne
+      plus contacter », étape hors Signé/Froid) dont la DERNIÈRE issue saisie
+      par un humain (``LeadActivity.outcome``, tous canaux) est « joint »,
+      « intéressé » ou « visite acceptée » (``services.ISSUES_CLIENT_JOINT``)
+      et qui n'ont reçu AUCUN devis (sorti du brouillon — la règle de
+      ``services.visite_sans_devis``, lue en lot par
+      ``ventes.selectors.leads_ayant_recu_un_devis``). ``joint_le`` = la date
+      locale de cette issue ; ``prochaine_etape``/``prochaine_le`` = la
+      prochaine étape à faire du lead, ``None`` si aucune — un TROU, rangé en
+      tête, jamais masqué ;
+    * ``visites_a_venir`` — leads actifs dont ``visite_prevue_le`` est
+      aujourd'hui ou plus tard et ``visite_effectuee`` faux ; ``sans_devis``
+      dit si la visite précède le devis (CAD123) ; ``assignee`` = le
+      commercial de la visite (``visites.selectors``, lu pour les seuls
+      dossiers servis) ;
+    * ``devis_a_preparer`` — les étapes « Préparer et envoyer le devis »
+      encore à faire (par leur CLÉ ``devis``, PARAM-CADENCE — une société
+      peut la renommer), une ligne par lead ; ``apres_visite`` =
+      ``Lead.visite_effectuee``.
+
+    Tri : en retard d'abord, puis échéance croissante (visites : date
+    croissante). Coût : une requête par compteur, une pour les prochaines
+    étapes, une par lot de devis — jamais une par lead (sauf l'assigné des
+    ``limite`` visites servies)."""
+    from django.db.models import F, OuterRef, Subquery
+
+    from authentication.scoping import scope_queryset
+    from core.dates import aujourd_hui_local
+
+    from . import horaires, stages
+    from .cadence_config import CLE_DEVIS, q_etape
+    from .models import Lead, LeadActivity, RelanceEtape
+    from .serializers import pii_masquee_pour
+    from .services import ISSUES_CLIENT_JOINT
+
+    today = aujourd_hui_local()
+    masquer = pii_masquee_pour(user)
+    visibles = scope_queryset(
+        Lead.objects.filter(company=company), user, ['owner'])
+    actifs = visibles.filter(perdu=False, is_archived=False,
+                             ne_plus_contacter=False)
+
+    # ── 1. Joints sans devis ────────────────────────────────────────────────
+    derniere_issue = (LeadActivity.objects
+                      .filter(lead=OuterRef('pk'), user__isnull=False)
+                      .exclude(outcome='')
+                      .order_by('-created_at', '-pk'))
+    joints = list(
+        actifs.exclude(stage__in=[stages.SIGNED, stages.COLD])
+        .annotate(
+            derniere_issue=Subquery(derniere_issue.values('outcome')[:1]),
+            derniere_issue_le=Subquery(
+                derniere_issue.values('created_at')[:1]))
+        .filter(derniere_issue__in=ISSUES_CLIENT_JOINT)
+        .only('id', 'nom', 'prenom', 'telephone'))
+    partis = _chaine_devis_partis(company, [lead.pk for lead in joints])
+    joints = [lead for lead in joints if lead.pk not in partis]
+    prochaines = {}
+    if joints:
+        for lead_id, libelle, due_date in (
+                RelanceEtape.objects
+                .filter(company=company, statut=RelanceEtape.Statut.A_FAIRE,
+                        lead_id__in=[lead.pk for lead in joints])
+                .order_by('lead_id', F('due_at').asc(nulls_last=True),
+                          'due_date', 'ordre')
+                .values_list('lead_id', 'libelle', 'due_date')):
+            prochaines.setdefault(lead_id, (libelle, due_date))
+    lignes_joints = []
+    for lead in joints:
+        libelle, prochaine_le = prochaines.get(lead.pk, ('', None))
+        joint_le = lead.derniere_issue_le
+        ligne = _chaine_identite(lead, masquer)
+        ligne.update({
+            'joint_le': (joint_le.astimezone(horaires.CASABLANCA).date()
+                         .isoformat() if joint_le else None),
+            'prochaine_etape': ((libelle or '').strip() or None
+                                if prochaine_le is not None else None),
+            'prochaine_le': (prochaine_le.isoformat()
+                             if prochaine_le is not None else None),
+            'en_retard': bool(prochaine_le is not None
+                              and prochaine_le < today),
+        })
+        lignes_joints.append(ligne)
+    # Un trou (aucune prochaine étape) d'abord, puis le retard, puis la date.
+    lignes_joints.sort(key=lambda ligne: (
+        ligne['prochaine_le'] is not None, not ligne['en_retard'],
+        ligne['prochaine_le'] or '', ligne['id']))
+
+    # ── 2. Visites à venir ──────────────────────────────────────────────────
+    visites = list(
+        actifs.filter(visite_prevue_le__gte=today, visite_effectuee=False)
+        .order_by('visite_prevue_le', 'pk')
+        .only('id', 'nom', 'prenom', 'telephone', 'visite_prevue_le',
+              'company_id'))
+    avec_devis = _chaine_devis_partis(company,
+                                      [lead.pk for lead in visites])
+    lignes_visites = []
+    for rang, lead in enumerate(visites):
+        ligne = _chaine_identite(lead, masquer)
+        ligne.update({
+            'visite_prevue_le': lead.visite_prevue_le.isoformat(),
+            'assignee': (_assigne_de_la_visite(lead)
+                         if rang < limite else ''),
+            'sans_devis': lead.pk not in avec_devis,
+        })
+        lignes_visites.append(ligne)
+
+    # ── 3. Devis à préparer ─────────────────────────────────────────────────
+    etapes = (RelanceEtape.objects
+              .filter(q_etape(CLE_DEVIS), company=company,
+                      statut=RelanceEtape.Statut.A_FAIRE,
+                      lead_id__in=visibles.filter(is_archived=False)
+                      .values('id'))
+              .select_related('lead')
+              .order_by('due_date', F('due_at').asc(nulls_last=True), 'pk'))
+    lignes_devis, vus = [], set()
+    for etape in etapes:
+        if etape.lead_id in vus:
+            continue
+        vus.add(etape.lead_id)
+        ligne = _chaine_identite(etape.lead, masquer)
+        ligne.update({
+            'prochaine_le': etape.due_date.isoformat(),
+            'en_retard': etape.due_date < today,
+            'apres_visite': bool(etape.lead.visite_effectuee),
+        })
+        lignes_devis.append(ligne)
+    lignes_devis.sort(key=lambda ligne: (
+        not ligne['en_retard'], ligne['prochaine_le'], ligne['id']))
+
+    return {
+        'joints_sans_devis': _chaine_bloc(lignes_joints, limite),
+        'visites_a_venir': _chaine_bloc(lignes_visites, limite),
+        'devis_a_preparer': _chaine_bloc(lignes_devis, limite),
+        'limite': limite,
+    }
+
+
+def _assigne_de_la_visite(lead):
+    """Le commercial de la visite À VENIR la plus proche du lead (sélecteur
+    de l'app visites — jamais ses modèles), ``''`` s'il n'y en a pas.
+    Best-effort : une lecture en échec rend ``''``."""
+    try:
+        from apps.visites.selectors import visites_pour_lead
+
+        jour = lead.visite_prevue_le.isoformat()
+        lignes = [ligne for ligne in visites_pour_lead(lead)
+                  if (ligne.get('date_prevue') or '') >= jour]
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        return ''
+    if not lignes:
+        return ''
+    lignes.sort(key=lambda ligne: (ligne['date_prevue'], ligne['id']))
+    return lignes[0].get('commercial_nom') or ''
+
+
 #: Profondeur maximale de la remontée de la série : au-delà, la « série » ne
 #: dit plus rien d'actionnable et la requête coûterait plus qu'elle ne vaut.
 SERIE_JOURS_MAX = 60

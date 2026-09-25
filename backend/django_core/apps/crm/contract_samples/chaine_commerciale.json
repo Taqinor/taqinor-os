@@ -1,5 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/relance-etapes/chaine-commerciale/",
+  "forme_serveur": "complete",
   "pourquoi": "Décision fondateur du 25/09/2026 (« regarde aussi le cockpit, que tout soit bien fait maintenant que la cadence est bien faite ») : la chaîne appel → visite → devis → suivi de proposition a trois états intermédiaires que le cockpit ne montrait nulle part. Trois compteurs PERSONNELS (même portée que la file du jour : `scope_queryset` par owner, transparence CKP5 — le manager voit la même chose), chacun avec ses dossiers les plus urgents (au plus `limite` = 5, total à part), jamais un classement entre commerciaux. Aucun chiffre calculé côté écran : le serveur sert les comptes et les dates. Source de vérité à construire : apps/crm/selectors.py::chaine_commerciale (lecture des devis par apps/ventes/selectors.py, des visites par apps/visites/selectors.py — jamais leurs modèles).",
   "exemple": {
     "joints_sans_devis": {

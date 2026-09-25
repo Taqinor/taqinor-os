@@ -3205,9 +3205,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # CAD99 — `cadences_echues` est une LECTURE PURE (le sélecteur CAD75
         # ne clôt rien, n'écrit rien) : même garde que `list`, listée ICI
         # nommément pour la même raison que `journal`.
+        # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
+        # LECTURE PURE du cockpit : même garde que `mes_stats`, listée ICI
+        # nommément pour la même raison.
         if self.action in ('list', 'message', 'suivi',
                            'kpi_adherence', 'mes_stats', 'journal',
-                           'cadences_echues'):
+                           'cadences_echues', 'chaine_commerciale'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -3467,6 +3470,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         return Response(
             mes_stats_relance(request.user.company, request.user))
+
+    @extend_schema(responses=inline_serializer('CrmChaineCommerciale', {
+        'joints_sans_devis': serializers.DictField(),
+        'visites_a_venir': serializers.DictField(),
+        'devis_a_preparer': serializers.DictField(),
+        'limite': serializers.IntegerField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='chaine-commerciale',
+            permission_classes=[IsAnyRole])
+    def chaine_commerciale(self, request):
+        """Les trois compteurs de la chaîne commerciale du cockpit (forme
+        ``chaine_commerciale`` — décision fondateur du 25/09/2026) : joints
+        sans devis, visites à venir, devis à préparer, chacun avec ses
+        dossiers les plus urgents et son total. LECTURE PURE, même portée que
+        la file du jour ; jamais un classement entre commerciaux."""
+        from .selectors import chaine_commerciale
+
+        return Response(
+            chaine_commerciale(request.user, request.user.company))
 
     def _marquer(self, request, statut):
         etape = self.get_object()
