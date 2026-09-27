@@ -618,3 +618,8 @@ unmapped_ok:
   - FE-ZSAL
   - FE-ZSAV
   - FE-ZSTK
+  # QAH — Tester « comme un humain » avant la mise sur le marché (Groupe QAH de
+  # PLAN.md, recherche L2 du 27/09/2026) : skill explorateur + oracles (invariants,
+  # balayage tenant, fuzz API, mutation, Sentry, brief humain) ; aucun prérequis de
+  # vague plateforme, lanes file-disjointes.
+  - QAH
