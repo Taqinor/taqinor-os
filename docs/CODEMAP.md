@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 346cde23593cc85cfa0c6af0c8f1f292a81c658abf61fdadbbf6ffb1cbeccfce
-Plan fingerprint: 8a5b8a1e45785410ad4a0154dae4bdd55bd00ea0865413599a24ad7419a41b35
+Plan fingerprint: 188c96106775266570043a4c61c01ae6312a4a1f985aabb3d83e97f9ca8bc5e6
 
 
 
@@ -1103,7 +1103,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (49)**
+**Open — to build (59)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
@@ -1119,6 +1119,16 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
+- `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
+- `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
+- `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
+- `QAH4` — Balayage d'isolation multi-tenant sur TOUTES les routes du routeur (IDOR/BOLA)
+- `QAH5` — Mutation nightly : passer à mutmut 3, étendre la portée aux filtres tenant et à la…
+- `QAH6` — Schemathesis dans `release-verify` à partir du schéma drf-spectacular
+- `QAH7` — Marcheur aléatoire gremlins.js sur chaque écran (matrice e2e complète)
+- `QAH8` — Sentry armé pour le pilote : SDK React installé, session replay masqué, tag société des…
+- `QAH9` — Brief de bug bash pour 1-2 testeurs humains francophones (chartes par rôle, gabarit de…
+- `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
