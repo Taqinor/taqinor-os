@@ -39,6 +39,48 @@ def _lead_apercu(lead):
     return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
 
 
+class _CalepinageListSerializer(serializers.ListSerializer):
+    """CALX407 — la PAGE précharge tous ses leads en UNE requête.
+
+    Le cache mémo posé par ``CalepinageSerializer._lead_de_la_societe`` (sur
+    ``self``, le ``child``) suffit déjà quand plusieurs lignes de la page
+    PARTAGENT un même lead — le cas mesuré par CALX390. Il ne suffit PAS
+    quand la page porte ``N`` calepinages sur ``N`` leads DIFFÉRENTS (le cas
+    réel) : sans préchargement, chaque lead reste une première lecture, donc
+    ``N`` requêtes (plus ``N`` de plus pour le repli ``.owner``).
+
+    ``ListSerializer.to_representation`` (DRF) délègue à ``self.child`` —
+    CE MÊME enfant pour toute la page — donc on résout ICI, AVANT de laisser
+    DRF itérer, la liste ENTIÈRE des ``lead_id`` distincts de la page via
+    ``apps.crm.selectors.get_company_leads_by_ids`` (UNE requête,
+    ``select_related('owner')`` inclus), et on SEED le dict mémo du child
+    avec le résultat. L'itération ligne-par-ligne
+    (``CalepinageSerializer._lead_de_la_societe``) ne trouve plus alors que
+    des cache-hits, jamais une lecture de plus — le comportement PAR LIGNE
+    (garde même-société, repli ``responsable``) reste rigoureusement
+    identique, seule la SOURCE du lead change (déjà en mémoire, jamais un
+    second calcul).
+    """
+
+    def to_representation(self, data):
+        lignes = list(data.all() if hasattr(data, 'all') else data)
+        request = self.child.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            ids = {lid for lid in
+                   (getattr(ligne, 'lead_id', None) for ligne in lignes)
+                   if lid}
+            if ids:
+                from apps.crm.selectors import get_company_leads_by_ids
+
+                cache = self.child.__dict__.setdefault(
+                    '_calx407_cache_leads', {})
+                for lead_id, lead in get_company_leads_by_ids(
+                        company, ids).items():
+                    cache[(company.pk, lead_id)] = lead
+        return [self.child.to_representation(ligne) for ligne in lignes]
+
+
 class CalepinageSerializer(SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """Le calepinage en liste et en écriture (le DÉTAIL agrégé est CAL17).
@@ -70,6 +112,10 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Calepinage
+        #: CALX407 — la LISTE (``many=True``) précharge tous ses leads en
+        #: une requête (voir ``_CalepinageListSerializer``) ; le détail et
+        #: l'écriture (``many=False``) ne passent jamais par cette classe.
+        list_serializer_class = _CalepinageListSerializer
         fields = [
             'id', 'titre', 'statut', 'statut_libelle',
             'lead', 'client', 'devis', 'appel_offre',
