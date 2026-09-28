@@ -19,7 +19,7 @@
 // agent pour repasser ce test au vert) : `node frontend/scripts/solar_corpus.mjs`
 // puis relire le diff des deux fichiers.
 //
-// Run : `npm run test:unit -- src/features/ventes/solar.corpus.test.js`
+// Run : `npm run test:unit -- src/features/ventes/solar.corpus.test.jsx`
 import { describe, test, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'

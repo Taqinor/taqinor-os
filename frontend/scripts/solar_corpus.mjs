@@ -304,7 +304,7 @@ function genCorpus(n) {
 }
 
 // ── CE QUE `solar.js` CALCULE sur une entrée — LE contrat (voir l'en-tête) ───
-// Exportée pour que `solar.corpus.test.js` réutilise EXACTEMENT cette
+// Exportée pour que `solar.corpus.test.jsx` réutilise EXACTEMENT cette
 // composition (aucune réimplémentation dupliquée du côté test).
 export function computeExpectedForEntry(entry) {
   const classifications = entry.lines.map((l) => ({
