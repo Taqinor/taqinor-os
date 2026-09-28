@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 346cde23593cc85cfa0c6af0c8f1f292a81c658abf61fdadbbf6ffb1cbeccfce
-Plan fingerprint: 188c96106775266570043a4c61c01ae6312a4a1f985aabb3d83e97f9ca8bc5e6
+Plan fingerprint: be0355a2a60407dfc4ca24f4e2d2bb44b091d8ec2dd8c2cdd4f7b027382573b1
 
 
 
@@ -1103,7 +1103,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (59)**
+**Open — to build (60)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
@@ -1129,6 +1129,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QAH8` — Sentry armé pour le pilote : SDK React installé, session replay masqué, tag société des…
 - `QAH9` — Brief de bug bash pour 1-2 testeurs humains francophones (chartes par rôle, gabarit de…
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
+- `QAH11` — Commande « setup nightly QA » : script idempotent `scripts/setup-nightly-qa.ps1` +…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
