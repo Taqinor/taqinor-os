@@ -116,11 +116,16 @@ class TestStampDateRealiseeUnit(TestCase):
         self.user = User.objects.create_user(
             username='err_qah_date_unit', password='x', role_legacy='responsable',
             company=self.company)
+        # Unit-teste `_stamp_date_realisee` directement : `installation` reste
+        # une FK obligatoire (NOT NULL) sur `Intervention`, donc même un test
+        # 100 % ORM a besoin d'un chantier minimal pour s'y accrocher.
+        self.installation = Installation.objects.create(
+            company=self.company, reference='ERRQAH-DATE-UNIT')
 
     def _interv(self, **kwargs):
         return Intervention.objects.create(
-            company=self.company, type_intervention='controle',
-            created_by=self.user, **kwargs)
+            company=self.company, installation=self.installation,
+            type_intervention='controle', created_by=self.user, **kwargs)
 
     def test_compte_rendu_alone_never_stamps(self):
         interv = self._interv(
