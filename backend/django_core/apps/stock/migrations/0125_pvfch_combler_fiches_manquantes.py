@@ -63,22 +63,8 @@ def soigner_fiches_manquantes(apps, schema_editor):
 
     Produit = apps.get_model('stock', 'Produit')
     FicheTechnique = apps.get_model('stock', 'FicheTechnique')
-    # QAH (28/09/2026) — `FICHES_TECHNIQUES` est le dictionnaire VIVANT du
-    # seeder : il porte aussi les champs ajoutés APRÈS cette migration (ex.
-    # `ond_bat_max_charge_kw`, migration 0130). Sur une base qui rejoue 0125
-    # avec des produits déjà présents, `getattr`/`create` levaient alors
-    # AttributeError/TypeError et bloquaient tout `migrate`. On ne garde que
-    # les champs connus de l'état HISTORIQUE ; les suivants sont comblés par
-    # leurs propres migrations/le seeder.
-    champs_historiques = {
-        f.name for f in FicheTechnique._meta.get_fields()
-    }
 
-    for sku, valeurs_seeder in FICHES_TECHNIQUES.items():
-        valeurs = {
-            champ: valeur for champ, valeur in valeurs_seeder.items()
-            if champ in champs_historiques
-        }
+    for sku, valeurs in FICHES_TECHNIQUES.items():
         for produit in Produit.objects.filter(sku=sku).iterator():
             fiche = FicheTechnique.objects.filter(produit=produit).first()
             if fiche is None:
