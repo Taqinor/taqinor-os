@@ -13,9 +13,13 @@ factory_boy==3.3.1
 # YTEST15 — deterministic time/random discipline (testkit/time.py)
 freezegun==1.5.1
 
-# YTEST9 — mutation testing on high-risk modules (nightly, non-blocking —
-# see .github/workflows/mutation.yml + setup.cfg [mutmut])
-mutmut==2.4.4
+# YTEST9/QAH5 — mutation testing on high-risk modules (nightly, non-blocking —
+# see .github/workflows/mutation.yml + setup.cfg [mutmut]). 3.x dropped the
+# 2.x `runner=<shell command>` config entirely: mutmut now drives pytest
+# in-process (forked workers) with NO way to point it at `manage.py test` —
+# see the QAH5 caveat in docs/TESTING.md's Mutation section before expecting
+# a populated score.
+mutmut==3.8.0
 
 # YOPSB12 — N+1 query detector in dev only (guarded import in
 # erp_agentique/settings/dev.py; never installed by CI/prod requirements.txt).

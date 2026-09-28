@@ -181,19 +181,75 @@ main.** Exemple d'usage : `core/tests/test_testkit.py`.
 La couverture (% de lignes exécutées) ne dit rien de la QUALITÉ des
 assertions — un test peut exécuter une ligne sans jamais vérifier son
 résultat. `mutmut` (dép DEV, `setup.cfg [mutmut]`) mute volontairement un
-petit périmètre à haut risque — `apps/ventes/quote_engine/builder.py`,
-`apps/ventes/utils/references.py`, `apps/roles/models.py` — et vérifie que la
-suite existante tue chaque mutant. Lancé UNIQUEMENT par
-`.github/workflows/mutation.yml` (nightly + bouton, `continue-on-error`,
-jamais un gate par-commit — le coût est O(mutants × suite complète)).
+petit périmètre à haut risque et vérifie que la suite existante tue chaque
+mutant. Lancé UNIQUEMENT par `.github/workflows/mutation.yml` (nightly +
+bouton, `continue-on-error`, jamais un gate par-commit — le coût est
+O(mutants × suite complète)).
 
-**Triage d'un mutant survivant** (rapport `mutmut results` / artefact CI) :
+**Périmètre (QAH5, `setup.cfg [mutmut]`)** : `apps/ventes/quote_engine/builder.py`,
+`apps/ventes/utils/references.py`, `apps/roles/models.py` (héritage YTEST9) ;
+plus, depuis QAH5, la CHAÎNE D'ARGENT ventes — `apps/ventes/domain/argent.py`
+(la façade dont délèguent `Devis.total_ht`/`total_tva`/`total_ttc`) et
+`apps/facturation/totaux.py` (`TotauxDocumentMixin`, le SEUL propriétaire de
+la chaîne HT → remise globale → TVA → TTC partagé par `Facture`/`Avoir`
+(`apps/facturation/models.py`) et `NoteDebit` (`apps/ventes/models.py`),
+AUD105-107) — et les MIXINS/PERMISSIONS DE SCOPING SOCIÉTÉ —
+`core/mixins.py` (`TenantMixin`, `SameCompanyFKSerializerMixin`) et
+`core/permissions.py` (`ScopedPermission`, `WriteScopedPermissionMixin`),
+la base ARC2/ARC55 dont hérite `CompanyScopedModelViewSet`.
+
+**QAH5 — mutmut 2.4.4 → 3.8.0, et pourquoi le score ci-dessous est vide.**
+Vérifié en lisant le code source du paquet 3.8.0 installé (aucune exécution
+possible en local : mutmut 3 refuse de tourner nativement sous Windows,
+`mutmut/__main__.py` sort avec « please use WSL » avant même `--help`) :
+
+* **La clé `runner=<commande shell>` de mutmut 2.x a disparu.** Le
+  `Config` de `mutmut/configuration.py` n'a plus aucun champ `runner` — rien
+  ne la lit. Mutmut 3 pilote `pytest` DIRECTEMENT, en process (workers
+  forkés), via `pytest_add_cli_args`/`pytest_add_cli_args_test_selection`.
+  Il n'existe plus aucun moyen de le brancher sur `manage.py test`.
+* **`paths_to_mutate`/`tests_dir` sont dépréciées** (alias encore lus, avec
+  un `warnings.warn`) pour `source_paths`/`pytest_add_cli_args_test_selection`
+  — `setup.cfg` garde les anciens noms pour rester un diff lisible de la
+  portée YTEST9.
+* **`mutmut run` n'a plus de flag `--CI`** (seul `--max-children` et une
+  liste optionnelle de noms de mutants sur la ligne de commande) ; le
+  workflow a été corrigé (`mutmut run`, sans `--CI`).
+* **`mutmut junitxml` n'existe plus.** Remplacé par `mutmut results --all`
+  (texte, tous les mutants) et `mutmut export-cicd-stats` (JSON global dans
+  `mutants/mutmut-cicd-stats.json`) — le workflow écrit désormais un tableau
+  par module dans le job summary (script Python inline sur les internals
+  `mutmut.stats`/`mutmut.mutation.data`, défensif si le format interne
+  change) en plus de l'artefact `mutation-report`.
+* **Le vrai problème, non contournable dans ce lot** : les `TestCase` Django
+  de ce dépôt ont besoin de `django.setup()` + d'une base de test migrée
+  AVANT que pytest puisse seulement importer un modèle
+  (`AppRegistryNotReady` sinon) — c'est `manage.py test` (`DiscoverRunner`)
+  ou le plugin `pytest-django` qui fournissent ça, et NI L'UN NI L'AUTRE
+  n'est câblé ici : `pytest-django` est une dépendance neuve hors du
+  périmètre fichiers de QAH5 (`requirements-dev.txt` s'y limite au seul
+  bump de version mutmut) et aucun `conftest.py` n'est dans ce lot non plus.
+  **Donc `mutmut run` en nightly va très probablement échouer à exécuter le
+  moindre test réel** — `continue-on-error` fait que ça ne bloque rien, mais
+  le score restera vide/en erreur tant que ce pont pytest-django n'est pas
+  posé (chantier séparé, pas QAH5).
+
+**Baseline** : à remplir par la première exécution nocturne (artefact
+`mutation-report` / job summary de `.github/workflows/mutation.yml`) — voir
+la mise en garde ci-dessus avant d'interpréter un score vide comme un « 0 %
+de mutants tués » (ça veut dire « pas exécuté », pas « exécuté et raté »).
+
+**Triage d'un mutant survivant** (rapport `mutmut results --all` / artefact
+CI, une fois le pont pytest-django posé) :
 * Assertion manquante → ajouter un test qui aurait tué ce mutant.
 * Mutant sémantiquement équivalent (le mutant produit le même comportement
   observable, ex. `<` → `<=` sur une borne jamais atteinte) → whitelister
   explicitement dans `setup.cfg` avec un commentaire justifiant pourquoi.
-Lancer localement sur un seul module : `mutmut run --paths-to-mutate
-apps/ventes/utils/references.py`.
+
+Lancer localement (une fois le pont pytest-django posé) : éditer
+temporairement `paths_to_mutate`/`only_mutate` dans `setup.cfg` pour ne
+garder qu'un seul fichier, puis `mutmut run` — il n'y a plus de flag CLI
+`--paths-to-mutate` en 3.x (toute la config vit dans `setup.cfg`).
 
 ## Test de charge (k6) — le gate est le percentile, jamais la moyenne
 
