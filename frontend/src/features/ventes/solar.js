@@ -1461,7 +1461,35 @@ function _retirerAccessoiresHuawei(rows) {
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
-export function optionTotalsTTC(lines, discountPct) {
+// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — miroir de
+// `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
+// qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
+// panier filtré ET règle QF9 appliquée).
+export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
+
+// Miroir de `familles_des_lignes` + `familles_servables` + la condition
+// « alternative déclarée » de `deux_options_depuis_paniers` (utils/options.py) :
+// le scénario déclaré ne suffit pas, l'ÉQUIPEMENT doit servir les deux
+// paniers (onduleur réseau d'un côté ; hybride avec batterie ou réseau, ou
+// autonome avec batterie, de l'autre). Seules les lignes produit non
+// optionnelles de quantité > 0 comptent, comme au noyau.
+export function alternativeDeclareeServable(lines, scenario) {
+  if (!SCENARIOS_ALTERNATIVE.includes(scenario)) return false
+  const d = (lines || [])
+    .filter(l => (parseFloat(l?.quantite) || 0) > 0 && !l?.optionnelle
+      && l?.typeLigne !== 'section' && l?.typeLigne !== 'note')
+    .map(l => l.designation)
+  const hasReseau = d.some(isReseauInverter)
+  const hasHybride = d.some(isHybridInverter)
+  const hasOffgrid = d.some(isOffgridInverter)
+  const hasBatterie = d.some(isBattery)
+  const avecOk = (hasHybride && (hasBatterie || hasReseau)) || (hasOffgrid && hasBatterie)
+  return hasReseau && avecOk
+}
+
+// `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
+// comportement historique inchangé (QF9 réservée aux lignes variantées).
+export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
   // F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, plus de
   // second filtre mot-clé sur elle (voir `appartientAuPanierSans/Avec` :
@@ -1477,7 +1505,14 @@ export function optionTotalsTTC(lines, discountPct) {
   // scénario « Les deux ». Un devis SANS aucune ligne variantée (mono-
   // composition, y compris l'artefact « deux onduleurs non déclarés ») garde
   // TOUTES ses lignes, comportement historique strictement inchangé.
-  if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')) {
+  // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — …ET sur un devis dont le
+  // SCÉNARIO déclare l'alternative (miroir de `deux_options_declarees` :
+  // `alternative_declaree or variantes`). Sans cette branche, un devis « Les
+  // deux » à lignes non variantées affichait l'option AVEC avec le Smart
+  // Meter + la clé Wi-Fi Huawei que le noyau et le PDF retirent (3 000 MAD
+  // d'écart mesurés entre le formulaire et le devis persisté).
+  if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+      || alternativeDeclareeServable(lines, scenario)) {
     linesSans = _retirerAccessoiresHuawei(linesSans)
     linesAvec = _retirerAccessoiresHuawei(linesAvec)
   }
