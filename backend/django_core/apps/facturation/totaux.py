@@ -44,6 +44,20 @@ class TotauxDocumentMixin:
         canonique : ils SONT le total, tel quel."""
         return self.montant_ht is not None
 
+    @property
+    def _remise_globale_active(self):
+        """QX1 — vrai si une remise globale s'applique aux totaux (jamais sur
+        un document figé, et seulement si ``remise_globale`` > 0).
+
+        Conservé pour la compatibilité de l'API du mixin (consommateurs et
+        tests qui l'épinglent par son nom). Il NE PILOTE PLUS le choix de
+        chaîne : depuis ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI, tout document
+        non figé passe par le noyau canonique, remise nulle incluse."""
+        from decimal import Decimal
+        if self._figee:
+            return False
+        return (getattr(self, 'remise_globale', None) or Decimal('0')) > 0
+
     def _canonique(self):
         """La chaîne canonique QX1 sur les lignes de CE document.
 
@@ -81,9 +95,16 @@ class TotauxDocumentMixin:
         TOUJOURS le noyau canonique (``_canonique``) : la TVA se calcule sur
         le HT NET déjà arrondi au centime, remise globale ou non (ERR-QAH-
         VENTES-FACTURE-HT-NON-ARRONDI)."""
-        if self.montant_tva is not None:
+        if self.montant_tva is not None or self._figee:
+            # Document figé : chemin historique, au bit près. ``montant_ht``
+            # peut être posé SANS ``montant_tva`` (facture de relance/tranche
+            # créée sans lignes) : la TVA se ventile alors sur les lignes
+            # (``frozen=None``) comme avant — jamais via le noyau canonique,
+            # qui ignorerait ``montant_ht`` et rendrait un document à 0.
             from apps.ventes.selectors import tva_buckets
-            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
+            frozen = None
+            if self.montant_tva is not None:
+                frozen = (self.taux_tva, self.total_ht, self.montant_tva)
             return tva_buckets(
                 self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
         return self._canonique()['tva_par_taux']
@@ -99,6 +120,12 @@ class TotauxDocumentMixin:
     def total_ttc(self):
         if self.montant_ttc is not None:
             return self.montant_ttc
+        if self._figee:
+            # ``montant_ht`` figé sans ``montant_ttc`` : le TTC se DÉRIVE du
+            # HT figé (chemin historique). Le noyau canonique ne lit que les
+            # lignes et rendrait 0 pour un document figé sans lignes — une
+            # facture de 1 000 HT deviendrait « soldée ».
+            return self.total_ht + self.total_tva
         return self._canonique()['ttc']
 
     @property
