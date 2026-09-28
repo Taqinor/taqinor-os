@@ -467,29 +467,50 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
 
   const selectedProduit = produits.find(p => String(p.id) === String(fields.produit))
 
+  // ERR-QAH-STOCK-MOUVEMENT-QUANTITE-DECIMALE-TRONQUEE — `MouvementStock.
+  // quantite` est un `IntegerField` (stock compté en unités, jamais en
+  // fractions) : `parseInt('7.5')` tronquait ça en SILENCE à `7` (dans
+  // l'aperçu ET dans l'envoi), sans jamais le dire. `Number()` garde la
+  // valeur RÉELLE tapée — `Number.isInteger` décide ensuite si elle est
+  // exploitable ; jamais un arrondi/tronquage muet.
+  const quantiteSaisie = fields.quantite.trim() === ''
+    ? null
+    : Number(fields.quantite)
+  const quantiteEstEntiere =
+    quantiteSaisie !== null && Number.isFinite(quantiteSaisie)
+    && Number.isInteger(quantiteSaisie)
+
   const previewApres = useMemo(() => {
-    if (!selectedProduit) return null
-    const qte = parseInt(fields.quantite) || 0
+    if (!selectedProduit || !quantiteEstEntiere) return null
+    const qte = quantiteSaisie
     if (fields.type_mouvement === 'entree')     return selectedProduit.quantite_stock + qte
     if (fields.type_mouvement === 'sortie')     return selectedProduit.quantite_stock - qte
     if (fields.type_mouvement === 'ajustement') return qte
     return null
-  }, [selectedProduit, fields.quantite, fields.type_mouvement])
+  }, [selectedProduit, quantiteEstEntiere, quantiteSaisie, fields.type_mouvement])
 
   const validate = () => {
     const e = {}
     if (!fields.produit)                          e.produit  = 'Produit requis'
-    // Pour un ajustement, la quantité saisie EST le nouveau stock : 0 doit être
-    // accepté (remettre un produit à zéro). Entrée/Sortie restent strictement > 0.
-    const qte = parseInt(fields.quantite)
-    if (fields.type_mouvement === 'ajustement') {
-      if (!(Number.isInteger(qte) && qte >= 0))   e.quantite = 'Quantité invalide (≥ 0)'
-    } else if (!(qte > 0)) {
-      e.quantite = 'Quantité invalide (> 0)'
-    }
-    if (fields.type_mouvement === 'sortie' && selectedProduit) {
-      if (parseInt(fields.quantite) > selectedProduit.quantite_stock)
-        e.quantite = `Stock insuffisant (disponible : ${selectedProduit.quantite_stock})`
+    // ERR-QAH-STOCK-MOUVEMENT-QUANTITE-DECIMALE-TRONQUEE — une quantité
+    // fractionnaire (ex. 7.5) est refusée EXPLICITEMENT, en nommant le champ
+    // et la raison, plutôt que tronquée en silence vers l'entier inférieur.
+    if (fields.quantite.trim() !== '' && Number.isFinite(quantiteSaisie)
+        && !quantiteEstEntiere) {
+      e.quantite = 'Quantité invalide : unité non fractionnable (nombre entier requis).'
+    } else {
+      // Pour un ajustement, la quantité saisie EST le nouveau stock : 0 doit être
+      // accepté (remettre un produit à zéro). Entrée/Sortie restent strictement > 0.
+      const qte = quantiteSaisie
+      if (fields.type_mouvement === 'ajustement') {
+        if (!(Number.isInteger(qte) && qte >= 0))   e.quantite = 'Quantité invalide (≥ 0)'
+      } else if (!(qte > 0)) {
+        e.quantite = 'Quantité invalide (> 0)'
+      }
+      if (fields.type_mouvement === 'sortie' && selectedProduit && qte != null) {
+        if (qte > selectedProduit.quantite_stock)
+          e.quantite = `Stock insuffisant (disponible : ${selectedProduit.quantite_stock})`
+      }
     }
     setErrors(e)
     return Object.keys(e).length === 0
@@ -503,7 +524,7 @@ function MouvementForm({ produits, initialProduit = '', onClose, onSaved }) {
       await dispatch(createMouvement({
         produit:        parseInt(fields.produit),
         type_mouvement: fields.type_mouvement,
-        quantite:       parseInt(fields.quantite),
+        quantite:       quantiteSaisie,
         reference:      fields.reference.trim() || null,
         note:           fields.note.trim()      || null,
       })).unwrap()
