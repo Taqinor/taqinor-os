@@ -817,7 +817,7 @@ function DevisRow({ d, ctx }) {
               variant="outline"
               loading={statutActionId === d.id}
               onClick={() => handleEnvoyer(d)}
-              title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
+              title="Envoyer par WhatsApp (message + lien de proposition) — le devis passe « Envoyé » quand vous ouvrez WhatsApp"
             >
               <Send /> Envoyer
             </Button>
@@ -3043,8 +3043,10 @@ export default function DevisList() {
           </div>
       </ResponsiveDialog>
 
-      {/* QG8 — Aperçu du message WhatsApp avant ouverture (le devis est déjà
-          marqué « envoyé » côté serveur ; on ouvre wa.me au clic). */}
+      {/* QG8 — Aperçu du message WhatsApp avant ouverture. L'aperçu est une
+          LECTURE (whatsapp-preview) : le devis n'est marqué « Envoyé » qu'au
+          clic « Ouvrir WhatsApp » (action whatsapp). ERR-QAH-VENTES-ENVOYE-
+          FAUX-STATUT — le texte ne prétend jamais un statut non encore posé. */}
       <Dialog open={!!waTarget} onOpenChange={(o) => { if (!o) closeWaModal() }}>
         <DialogContent>
           <DialogHeader>
@@ -3056,7 +3058,7 @@ export default function DevisList() {
             <p className="text-sm text-muted-foreground">
               {relanceMode
                 ? 'Vérifiez le message de rappel ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.'
-                : 'Le devis est marqué « Envoyé ». Vérifiez le message ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.'}
+                : 'Vérifiez le message ci-dessous puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer. Le devis passera « Envoyé » quand vous ouvrirez WhatsApp ; fermer cette fenêtre le laisse en brouillon.'}
             </p>
             <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap">
               {relanceMode
