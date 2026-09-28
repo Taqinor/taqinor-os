@@ -175,14 +175,14 @@ export default function PiecesJointesPage() {
             <tbody>
               {items.map((a) => (
                 <tr key={a.id} data-testid="piece-jointe-row">
-                  <td>
+                  <td data-label="Fichier">
                     <a href={a.url} target="_blank" rel="noreferrer">{a.filename}</a>
                   </td>
-                  <td>{a.mime || '—'}</td>
-                  <td>{tailleLisible(a.size)}</td>
-                  <td>{a.phase || '—'}</td>
-                  <td>{a.uploaded_by_nom || '—'}</td>
-                  <td>{formatDateTime(a.created_at)}</td>
+                  <td data-label="Type">{a.mime || '—'}</td>
+                  <td data-label="Taille">{tailleLisible(a.size)}</td>
+                  <td data-label="Phase">{a.phase || '—'}</td>
+                  <td data-label="Déposé par">{a.uploaded_by_nom || '—'}</td>
+                  <td data-label="Le">{formatDateTime(a.created_at)}</td>
                 </tr>
               ))}
             </tbody>

@@ -197,6 +197,14 @@ GARDES = {
         ('Test the frontend-test lane split itself (WOW-CI4 — completude du decoupage)',
          'python -m unittest scripts.tests.test_ci_frontend_shard -v',
          '.'),
+        ('Check frontend test-runner coverage (ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES — '
+         'aucun *.test.* sous frontend/src ramasse par ZERO lanceur)',
+         'python scripts/check_frontend_test_runner_coverage.py',
+         '.'),
+        ('Test the frontend test-runner coverage checker itself '
+         '(ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES)',
+         'python -m unittest scripts.tests.test_check_frontend_test_runner_coverage -v',
+         '.'),
         ('Test the ci.yml changes filter itself (AUD826 — scripts/ est une surface backend)',
          'python -m unittest scripts.tests.test_ci_changes_filter -v',
          '.'),

@@ -251,20 +251,20 @@ export default function PlansCommissionPage() {
           <tbody>
             {plans.map((p) => (
               <tr key={p.id} data-testid="plan-commission-row">
-                <td>{p.owner_nom || 'Défaut société'}</td>
-                <td>{p.base_display || BASE_LABEL[p.base] || p.base}</td>
-                <td>
+                <td data-label="Commercial">{p.owner_nom || 'Défaut société'}</td>
+                <td data-label="Base">{p.base_display || BASE_LABEL[p.base] || p.base}</td>
+                <td data-label="Barème">
                   {p.base === 'par_kwc'
                     ? `${p.montant_par_kwc ?? '—'} MAD/kWc`
                     : `${p.taux_pct ?? '—'} %`}
                 </td>
-                <td>{(p.paliers ?? []).length || '—'}</td>
-                <td>
+                <td data-label="Paliers">{(p.paliers ?? []).length || '—'}</td>
+                <td data-label="Actif">
                   <Badge tone={p.actif ? 'success' : 'neutral'}>
                     {p.actif ? 'Actif' : 'Inactif'}
                   </Badge>
                 </td>
-                <td className="flex flex-wrap gap-1.5">
+                <td data-label="Actions" className="flex flex-wrap gap-1.5">
                   <Button type="button" size="sm" variant="outline"
                           disabled={busy} onClick={() => basculerActif(p)}>
                     {p.actif ? 'Désactiver' : 'Réactiver'}

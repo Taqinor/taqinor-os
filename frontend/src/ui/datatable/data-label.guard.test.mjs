@@ -5,9 +5,15 @@
 // mobile (bug FactureList/RelancesPage corrigé par VX50). Ce test statique
 // (fs + regex, ZÉRO dépendance) échoue si un tel fichier réapparaît.
 //
-// Runnable en Node pur : `node --test src/ui/datatable/data-label.guard.test.js`
-// (extension .js, exclue du glob vitest `src/**/*.test.jsx` — voir
-// vitest.config.js — donc jamais double-exécuté).
+// Runnable en Node pur : `node --test src/ui/datatable/data-label.guard.test.mjs`
+// — ramassé par le job CI `node --test "src/**/*.test.mjs"` (frontend-static,
+// .github/workflows/ci.yml). Extension .mjs délibérée (ERR-QAH-CI-TESTS-JS-
+// JAMAIS-EXECUTES, 28/09/2026) : ce fichier était en `.js` et n'était donc
+// ramassé NULLE PART (ni par ce glob node:test, ni par le glob vitest, limité
+// à `*.test.jsx`) — jamais exécuté depuis sa création (VX50). Le renommer en
+// `.mjs` le fait matcher le glob node:test EXISTANT sans toucher au workflow ;
+// exclu du glob vitest `src/**/*.test.{jsx,js}` (voir vitest.config.js) —
+// jamais double-exécuté.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
