@@ -27,7 +27,6 @@ identifiant ``ERR-QAH-VENTES-<SLUG>`` dans sa docstring — jamais un test
 assoupli ni une correction du code de production dans cette tâche (QAH2 ne
 touche que des tests + ``requirements-dev.txt``).
 """
-import unittest
 from decimal import Decimal
 
 from django.test import SimpleTestCase, tag
@@ -285,8 +284,7 @@ class MoneyChainPureInvariants(SimpleTestCase):
         self.assertEqual(totaux_devis.tva, doc_facture.total_tva)
         self.assertEqual(totaux_devis.ttc, doc_facture.total_ttc)
 
-    # ── ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI ────────────────────────────────
-    @unittest.expectedFailure
+    # ── ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI (CORRIGÉ) ──────────────────────
     @PUR
     @example(
         specs=[(Decimal('1.00'), Decimal('450.00'), Decimal('91.19'),
@@ -295,17 +293,17 @@ class MoneyChainPureInvariants(SimpleTestCase):
     @given(specs=lignes_specs_st, taux_fallback=taux_st)
     def test_facture_total_ht_arrondi_sans_remise_globale_ERR_QAH_VENTES_FACTURE_HT_NON_ARRONDI(  # noqa: E501
             self, specs, taux_fallback):
-        """DIVERGENCE RÉELLE — ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI.
+        """CORRIGÉ — ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI.
 
-        Reproduite localement (SimpleTestCase, aucune base), DEUX symptômes
-        du même défaut — ``TotauxDocumentMixin`` (Facture/Avoir/NoteDebit,
-        ``apps/facturation/totaux.py``) SANS remise globale active (le cas
-        COURANT : la majorité des factures n'en portent pas) ne route PAS
-        par le noyau canonique ``selectors._canonical_totaux`` que
-        ``Devis.total_ht``/``total_tva`` consultent TOUJOURS, remise nulle
-        incluse :
+        Était une divergence réelle (reproduite localement, SimpleTestCase,
+        aucune base), DEUX symptômes du même défaut : ``TotauxDocumentMixin``
+        (Facture/Avoir/NoteDebit, ``apps/facturation/totaux.py``) SANS remise
+        globale active (le cas COURANT : la majorité des factures n'en
+        portent pas) ne routait PAS par le noyau canonique
+        ``selectors._canonical_totaux`` que ``Devis.total_ht``/``total_tva``
+        consultent TOUJOURS, remise nulle incluse :
 
-        1. ``total_ht`` retombe sur ``sum(ligne.total_ht for ligne in
+        1. ``total_ht`` retombait sur ``sum(ligne.total_ht for ligne in
            self.lignes.all())`` — une somme BRUTE, JAMAIS quantifiée au
            centime (``LigneFacture.total_ht`` ne s'arrondit pas non plus :
            ``quantite*prix_unitaire*(1-remise/100)`` porte autant de
@@ -315,7 +313,7 @@ class MoneyChainPureInvariants(SimpleTestCase):
            Decimal('20.00100000')`` au lieu de ``20.00`` (``total_ttc ==
            24.00100000`` au lieu de ``24.00``).
 
-        2. ``tva_par_taux``/``total_tva`` retombent sur ``tva_buckets``, qui
+        2. ``tva_par_taux``/``total_tva`` retombaient sur ``tva_buckets``, qui
            calcule la TVA sur la base BRUTE (``base = sum(li.total_ht)``,
            puis ``q(base*taux/100)``) alors que le noyau canonique arrondit
            la base AVANT d'appliquer le taux (``ht_net = q(ht_brut -
@@ -330,12 +328,14 @@ class MoneyChainPureInvariants(SimpleTestCase):
            ``base=39.645`` (non arrondi) puis ``montant=q(39.645*10/100)
            =3.96`` — UN CENTIME d'écart, reproductible et déterministe.
 
-        Un seul remède couvrirait les deux : faire toujours passer
-        ``TotauxDocumentMixin`` par ``selectors._canonical_totaux``, même
-        remise globale nulle — mais cette tâche (QAH2) n'écrit QUE des
-        tests + ``requirements-dev.txt`` ; la propriété reste
-        ``expectedFailure`` (jamais un test assoupli, jamais une correction
-        de code de production ici)."""
+        LE REMÈDE (posé) : ``TotauxDocumentMixin.total_ht``/``tva_par_taux``/
+        ``total_ttc``/``totaux_affichage`` passent désormais TOUJOURS par
+        ``selectors._canonical_totaux`` pour un document non figé — remise
+        globale nulle incluse — exactement le chemin que ``Devis`` emprunte
+        déjà. Seul un document à montants FIGÉS (tranche d'échéancier,
+        ``montant_ht``/``montant_tva``/``montant_ttc`` posés) échappe encore
+        au noyau : ces montants SONT le total, tel quel — ``tva_buckets``
+        reste utilisé UNIQUEMENT pour son panier ``frozen``."""
         lignes_devis = _lignes_devis(specs)
         result = _canonical_totaux(
             lignes_devis, remise_globale_pct=Decimal('0'),

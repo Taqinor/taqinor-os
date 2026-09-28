@@ -20,6 +20,54 @@ JAMAIS sur ``crm.Lead`` :
   ``journaliser_visite`` ci-dessous, qui délègue au ``services.py`` du CRM en
   import paresseux — le journal d'un lead appartient au lead.
 """
+import re
+import unicodedata
+
+# ERR-QAH-VISITES-COUVERTURE-ENUM-SANS-AFFORDANCE — mots vides qu'on retire
+# d'une saisie libre AVANT de retenter la correspondance (« Bon état » →
+# « bon », « État moyen » → « moyen »). Volontairement COURT : ce n'est pas un
+# vocabulaire, juste le bruit que « libellé + état » ajoute autour du code.
+_MOTS_VIDES_CHOIX = frozenset({'etat', 'de', 'du', 'la', 'le', 'les'})
+
+
+def _jetons_normalises(texte):
+    """Découpe ``texte`` en jetons minuscules SANS accents ni ponctuation.
+
+    Règle fondateur « normaliser plutôt que refuser quand l'intention est
+    claire » (08/09/2026) : un technicien qui tape « Tuile », « Bon état » ou
+    « Tôle » exprime une intention limpide — le refuser sans lui dire quoi
+    taper (avant cette correction, les deux champs étaient des champs texte
+    libres SANS liste ni placeholder) est le bug lui-même.
+    """
+    sans_accents = unicodedata.normalize('NFKD', str(texte))
+    sans_accents = ''.join(c for c in sans_accents if not unicodedata.combining(c))
+    return [t for t in re.split(r'[^a-z0-9]+', sans_accents.lower()) if t]
+
+
+def normaliser_choix(brute, choix):
+    """Fait correspondre une saisie libre à UN code de ``choix``, ou ``None``.
+
+    Toujours un MATCH EXPLICITE (jamais un « au plus proche ») : jetons
+    normalisés strictement égaux à un code connu (« bac acier » ↔
+    « bac_acier »), puis la même comparaison après avoir retiré les mots
+    vides ``_MOTS_VIDES_CHOIX`` (« bon état » → « bon »). Une valeur qui ne
+    matche toujours pas reste refusée — avec le message qui NOMME le champ
+    (règle fondateur), jamais une normalisation silencieuse qui devinerait.
+    """
+    jetons = _jetons_normalises(brute)
+    if not jetons:
+        return None
+    jetons_par_code = {code: _jetons_normalises(code) for code in choix}
+    if jetons in jetons_par_code.values():
+        for code, cle in jetons_par_code.items():
+            if cle == jetons:
+                return code
+    filtres = [t for t in jetons if t not in _MOTS_VIDES_CHOIX]
+    if filtres and filtres != jetons:
+        for code, cle in jetons_par_code.items():
+            if cle == filtres:
+                return code
+    return None
 
 
 def _notifier_commercial_visite(visite, event_type, titre, corps):
@@ -414,11 +462,17 @@ def valeur_mesure(declaration, brute):
         return None, f"« {declaration['libelle']} » attend oui ou non."
     if nature == checklist.CHOIX:
         texte = str(brute).strip()
-        if texte not in declaration['choix']:
-            options = ', '.join(declaration['choix'])
-            return None, (f"« {declaration['libelle']} » : valeur inconnue "
-                          f'« {texte} ». Choix possibles : {options}.')
-        return texte, None
+        # ERR-QAH-VISITES-COUVERTURE-ENUM-SANS-AFFORDANCE — un code interne
+        # déjà exact passe direct ; sinon on normalise (« Tuile » → tuile,
+        # « Bon état » → bon…) avant de refuser.
+        if texte in declaration['choix']:
+            return texte, None
+        candidat = normaliser_choix(texte, declaration['choix'])
+        if candidat is not None:
+            return candidat, None
+        options = ', '.join(declaration['choix'])
+        return None, (f"« {declaration['libelle']} » : valeur inconnue "
+                      f'« {texte} ». Choix possibles : {options}.')
     return str(brute), None
 
 

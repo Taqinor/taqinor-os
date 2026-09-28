@@ -430,6 +430,28 @@ describe('CAD152 — les tel: du rail ouvrent le panneau d’appel AVANT de comp
   })
 })
 
+describe('ERR-QAH-CRM-CHATTER-STAGE-CHANGE-MISSING — refresh après changement d’étape', () => {
+  let onAction
+  beforeEach(() => { onAction = vi.fn(() => Promise.resolve()) })
+
+  // Le PATCH d'étape (`crmApi.updateLead`) répond avec le sérialiseur
+  // d'ÉCRITURE, qui n'embarque PAS `chatter_recent` (LW30 : réservé au
+  // RETRIEVE) — SET_SERVER remplace `state.server` tel quel côté moteur,
+  // vidant l'historique affiché (« Historique » + « Historique en un coup
+  // d'œil ») jusqu'au rechargement, alors que le serveur a bien écrit
+  // l'entrée « Étape : … ». La fiche doit donc rafraîchir la vérité serveur
+  // (onAction('refresh'), même geste que CAD152) juste après le changement
+  // d'étape — SANS quoi l'historique déjà affiché reste perdu jusqu'à F5.
+  it('changer l’étape depuis le menu du rail enchaîne onAction(refresh) après onAction(change-stage)', async () => {
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    fireEvent.keyDown(screen.getByTitle("Changer l'étape du lead"), { key: 'Enter' })
+    const items = await screen.findAllByTitle(/^Passer à/)
+    fireEvent.click(items[0])
+    expect(onAction).toHaveBeenCalledWith('change-stage', expect.any(String))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+})
+
 describe('PUB53 — badge « Vient de la pub » (traçabilité retour lead Meta → ad)', () => {
   let onAction
   beforeEach(() => {
