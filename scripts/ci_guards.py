@@ -270,6 +270,13 @@ GARDES = {
         ('Test the calepinage-frontier checker itself (CALX372)',
          'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
          '.'),
+        # QAH11 (28/09/2026) — les scripts de la QA de nuit ne tournent pas en
+        # CI (Docker Desktop + planificateur Windows + claude -p) : on verrouille
+        # leurs garde-fous dans le TEXTE (jamais --force, jamais d'URL prod,
+        # kill switch lu avant tout, schtasks /Create /F).
+        ('Test des garde-fous des scripts de QA de nuit (QAH11)',
+         'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
