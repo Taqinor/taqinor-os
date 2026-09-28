@@ -2,7 +2,7 @@
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 7dc38215fee5e2864c613fd53e2e4a5d5fd85517180a57b727e1161c21458f46
-Plan fingerprint: bcbe1e2eb111ee9c6241ac1361747971e931f87cb25af3aa338cf12c713a69ee
+Plan fingerprint: b9c6efd93a21714ecf22dba3d06908ab3e449407bdacc00ce3592e72ff4b8bf6
 
 
 
@@ -550,7 +550,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (569)**
+**Done (568)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -728,7 +728,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD174` — La moitié écran de la migration : un champ qui n'est pas déclaré à la fiche est…
 - `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
 - `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
-- `CAD177` — La vérification mobile nocturne des écrans de relance ne tourne plus depuis le 12/09
 - `CAD178` — Aucune mesure mobile des gestes de relance
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
@@ -1122,9 +1121,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (48)**
+**Open — to build (49)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
+- `CAD177` — (28/09/2026, PR #722 : 3 causes corrigées — image MinIO, test fastapi faux, aucune…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
