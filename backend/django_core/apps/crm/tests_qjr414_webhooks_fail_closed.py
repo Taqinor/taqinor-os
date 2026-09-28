@@ -193,8 +193,8 @@ class DocumentationEtAvertissementsTests(TestCase):
     def test_les_deux_variables_sont_dans_env_example(self):
         from pathlib import Path
 
-        # …/backend/django_core/apps/crm/tests/<ce fichier> → racine du dépôt.
-        racine = Path(__file__).resolve().parents[5]
+        # …/backend/django_core/apps/crm/<ce fichier> → racine du dépôt.
+        racine = Path(__file__).resolve().parents[4]
         contenu = (racine / '.env.example').read_text(encoding='utf-8')
         for variable in ('META_LEAD_ADS_APP_SECRET',
                          'WHATSAPP_BSP_APP_SECRET'):
