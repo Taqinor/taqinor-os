@@ -12,16 +12,20 @@
 # Filtre étroit (cadence + ordre + canal + template_cle vide) : ne touche
 # JAMAIS un barreau déjà personnalisé par une société (un `template_cle` non
 # vide n'est jamais écrasé). Peu de lignes concernées (au plus une par
-# société) — pas de découpage par lots nécessaire (contrairement au backfill
-# de masse de 0081).
+# société) ; parcours ligne à ligne en `.iterator()` plutôt qu'un `.update()`
+# global (garde YOPSB4 `check_safe_migrations` : jamais de mise à jour de
+# masse non découpée).
 from django.db import migrations
 
 
 def poser_la_cle(apps, schema_editor):
     Etape = apps.get_model('parametres', 'CadenceRelanceEtape')
-    Etape.objects.filter(
+    barreaux = Etape.objects.filter(
         cadence='generique', ordre=3, canal='email', template_cle='',
-    ).update(template_cle='relance_email_j10')
+    )
+    for etape in barreaux.iterator():
+        etape.template_cle = 'relance_email_j10'
+        etape.save(update_fields=['template_cle'])
 
 
 def noop(apps, schema_editor):

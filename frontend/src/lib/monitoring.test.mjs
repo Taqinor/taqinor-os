@@ -54,7 +54,7 @@ test('captureException() tolère une erreur non-Error (jamais de crash du report
   assert.equal(eventId, null)
 })
 
-// QAH8 — bindCompany() (miroir de core.monitoring.bind_company côté Django).
+// QAH8 — bindCompany(), pendant React de core.monitoring.bind_company (Django).
 test('bindCompany() sans DSN/SDK chargé ne lève jamais (no-op, valeur seulement mémorisée)', () => {
   assert.doesNotThrow(() => bindCompany(42))
 })

@@ -45,7 +45,7 @@ import { initVitals } from './lib/vitals'
 // gérées hors du rendu React (event handlers, `.then()`, outbox…).
 import { installGlobalErrors } from './lib/globalErrors'
 // QAH8 — Sentry armé AU DÉMARRAGE (no-op total sans VITE_SENTRY_DSN) + tag
-// `company` qui suit l'utilisateur connecté, miroir de core.monitoring.
+// `company` qui suit l'utilisateur connecté, comme core.monitoring côté Django.
 import { initMonitoring, suivreSocieteDuStore } from './lib/monitoring'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
