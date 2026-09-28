@@ -213,7 +213,18 @@ jobs:
         env:
           VITE_E2E: '1'
         run: npm run build
-      - name: Start Django + run FULL e2e matrix (desktop + mobile)
+      # QAH7 — le projet dédié `monkey` (frontend/playwright.config.js) tourne
+      # ICI : `--grep-invert @visual` ne filtre que le tag visuel, donc TOUS
+      # les projets non filtrés (dont `monkey`) s'exécutent faute de
+      # `--project` explicite. `monkey.spec.js` (marcheur aléatoire
+      # gremlins.js, un test par module MVP) n'apparaît JAMAIS dans le shard
+      # par-merge de ci.yml (qui liste ses fichiers explicitement) — cette
+      # matrice complète est le SEUL endroit où il tourne. Ajoute ~15 min au
+      # budget par défaut (19 modules x 4 s/écran, voir DUREE_PAR_ECRAN_MS) ;
+      # surchargeable via `MONKEY_MS_PAR_ECRAN` sur ce job si besoin. Sécurité
+      # : boutons destructifs/d'envoi neutralisés par sélecteur dans le spec
+      # lui-même, jamais une écriture vers un service externe.
+      - name: Start Django + run FULL e2e matrix (desktop + mobile + monkey)
         working-directory: backend/django_core
         run: |
           gunicorn erp_agentique.wsgi:application \
