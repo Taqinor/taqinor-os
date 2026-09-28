@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -12,8 +12,10 @@ const H = vi.hoisted(() => ({
   getTimeline: vi.fn(() => Promise.resolve({
     data: [{ evenement: 'creation', message: 'Document créé', utilisateur: 'reda', created_at: '2026-07-18T09:00:00Z' }],
   })),
+  // ERR-QAH-GED-DETAILS-CRASH-PERMISSIONS — le backend réel renvoie
+  // `{"lignes":[…]}` (ni tableau, ni paginé), pas un tableau brut.
   getPermissionsEffectives: vi.fn(() => Promise.resolve({
-    data: [{ type: 'utilisateur', id: 5, label: 'Sami', niveau: 'lecture', source: 'heritage_dossier' }],
+    data: { lignes: [{ type: 'utilisateur', id: 5, label: 'Sami', niveau: 'lecture', source: 'heritage_dossier' }] },
   })),
   exportCsv: vi.fn(() => Promise.resolve({ data: 'csv,content' })),
   toggleFavori: vi.fn(() => Promise.resolve({ data: { favori: true } })),
@@ -110,6 +112,25 @@ describe('WIR70 GedDocumentInsights', () => {
     await waitFor(() => expect(H.createAcl).toHaveBeenCalledWith({
       document: 42, utilisateur: 6, niveau: 'lecture', herite: true,
     }))
+  })
+
+  it('ERR-QAH-GED-DETAILS-CRASH-PERMISSIONS — {"lignes":[…]} ne fait jamais planter le panneau', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await waitFor(() => expect(H.getPermissionsEffectives).toHaveBeenCalledWith(42))
+    await user.click(screen.getByRole('tab', { name: /Accès/ }))
+    // Rendu correct des lignes ACL issues de `{lignes:[…]}`, pas de crash.
+    expect(await screen.findByText('Sami')).toBeInTheDocument()
+    expect(within(screen.getByTestId('ged-acl')).getByText('lecture')).toBeInTheDocument()
+    expect(screen.queryByText(/Une erreur est survenue/)).not.toBeInTheDocument()
+  })
+
+  it('tolère un objet non-tableau (repli défensif) sans planter', async () => {
+    H.getPermissionsEffectives.mockResolvedValueOnce({ data: { inattendu: true } })
+    renderPanel()
+    await waitFor(() => expect(H.getPermissionsEffectives).toHaveBeenCalledWith(42))
+    await userEvent.setup().click(screen.getByRole('tab', { name: /Accès/ }))
+    expect(await screen.findByText("Aucune règle d'accès")).toBeInTheDocument()
   })
 
   it('XGED15 — onglet Notes affiche le chatter générique (@mentions) du document', async () => {
