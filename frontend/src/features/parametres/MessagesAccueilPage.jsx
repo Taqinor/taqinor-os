@@ -122,10 +122,17 @@ export default function MessagesAccueilPage() {
     }
   }
 
+  // ERR-QAH-PARAMETRES-OBJECT-OBJECT-ERREUR — `erreurs` est la réponse 400
+  // DRF brute : `error` est l'ENVELOPPE technique posée par le middleware
+  // d'erreurs (objet `{code, …}`), jamais un champ du formulaire — l'itérer
+  // affichait « error : [object Object] ». On ne garde que les clés dont la
+  // valeur est un message de champ exploitable (chaîne, ou liste de chaînes).
+  const CLES_HORS_CHAMP = new Set(['error', 'detail', 'non_field_errors'])
   const bandeauErreurs = Object.entries(erreurs)
-    .filter(([, v]) => v)
+    .filter(([champ, v]) => v && !CLES_HORS_CHAMP.has(champ)
+      && (typeof v === 'string' || (Array.isArray(v) && typeof v[0] === 'string')))
     .map(([champ, msgs]) => {
-      const msg = Array.isArray(msgs) ? msgs[0] : String(msgs)
+      const msg = Array.isArray(msgs) ? msgs[0] : msgs
       const libelle = FIELD_LABELS[champ] ?? champ
       return { field: `msgacc-${champ.replace(/_/g, '-')}`, message: `${libelle} : ${msg}` }
     })
