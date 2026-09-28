@@ -277,6 +277,15 @@ GARDES = {
         ('Test des garde-fous des scripts de QA de nuit (QAH11)',
          'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
          '.'),
+        # CAD177 (28/09/2026) — `release-verify.yml` a echoue chaque nuit
+        # pendant 12 nuits sans qu'aucun signal n'alerte. Le job
+        # `alert-on-repeated-failure` de ce workflow appelle
+        # `scripts/nightly_alert_gate.py` pour decider s'il doit ouvrir une
+        # issue GitHub ; cette garde ne teste QUE la decision pure (aucun
+        # docker/GH API requis).
+        ('Test the nightly alert-gate decision (CAD177)',
+         'python -m unittest scripts.tests.test_nightly_alert_gate -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
