@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------------------
+# QA-Explorer configuration (QAH1)
+# ---------------------------------------------------------------------------
+# Read at the VERY START of every pass by .claude/skills/qa-explorer/SKILL.md
+# (the "test the demo ERP like a human, judged by hard oracles" fleet) AND by
+# scripts/nightly-qa.ps1 before it touches git, docker or claude.
+# Operator guide: docs/qa-explorer.md — nightly setup: docs/nightly-qa.md
+#
+# KILL SWITCH. Set `enabled: false` and commit (or edit the local checkout) to
+# stop the explorer: the nightly runner exits without pulling, building or
+# launching anything, and the skill itself prints
+# `QA_EXPLORER: DISABLED (config flag off)` and makes NO change, NO commit,
+# NO merge. The Windows task `TAQINOR nightly QA` is the other off-switch
+# (`schtasks /Change /TN "TAQINOR nightly QA" /DISABLE`) — either off stops it.
+enabled: true
+
+# FIRING TIME is NOT set here. It lives on the Windows scheduled task created
+# by scripts/setup-nightly-qa.ps1 (re-run it with -Time HH:MM to change it).
+# This value is a human note only and has no effect on when anything fires.
+schedule_note: "daily 23:00 Africa/Casablanca — Windows task 'TAQINOR nightly QA' (scripts/setup-nightly-qa.ps1)"
+
+# The ONLY target. Must be the local docker stack (nginx on :80). The skill
+# refuses any host other than localhost / 127.0.0.1 — never production.
+base_url: "http://localhost"
+
+# MVP modules explored, one sonnet explorer sub-agent each, in this order.
+# Keys map to the missions of STEP 4 of the skill (remove a key to skip it).
+modules:
+  - crm          # /crm, /crm/leads, /crm/cockpit
+  - visites      # /visites, /visites/planifier
+  - calepinage   # /calepinage, /calepinage/nouveau
+  - ventes       # /ventes/devis/nouveau, /ventes/devis, /ventes/bons-commande, /ventes/factures
+  - stock        # /stock, /stock/mouvements
+  - chantiers    # /chantiers, /interventions, /planification (feature dir: installations)
+  - sav          # /sav/cockpit, /sav, /equipements (après-vente)
+  - ged          # /ged
+  - portail      # /portail/administration (+ /portail/client/* with a local portal test account)
+  - parametres   # /parametres
+
+# Wall-clock budget for the WHOLE pass (explore + confirm + file). The
+# explorers share it; the nightly runner kills the claude process at
+# max_minutes + 30 as a last-resort watchdog.
+max_minutes: 240
+
+# Maximum explorer sub-agents running AT THE SAME TIME. Default 1: every
+# sub-agent of a session shares the session's ONE Playwright MCP browser, so
+# two explorers at once would steal each other's tab. Raising it requires one
+# extra isolated Playwright server per extra explorer in .mcp.json (recipe in
+# docs/qa-explorer.md, "Parallélisme").
+max_agents: 1
+
+# Optional second-model cross-check before filing (Passmark pattern): when
+# true, a fresh `opus` agent re-judges every JUDGED (grid) finding from its
+# evidence alone; a disagreement drops it. Hard-oracle findings never need it.
+cross_check: false
+
+# Keep one pass bounded; the rest carry to the next night (idempotent).
+max_findings_per_run: 25
