@@ -584,6 +584,26 @@ after is extra detail.
 Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no WEB_PLAN2.md), then commit
 on `dev` and self-merge to `main`. Confirm in one line which file you appended to.
 
+### "setup nightly QA" (founder, 2026-09-28)
+Configures THE MACHINE WHERE IT IS TYPED as a nightly QA box — nothing else: no plan drain, no
+merge, no deploy. Run `powershell -File scripts/setup-nightly-qa.ps1` (built by QAH11; until it
+exists, do the same steps by hand from `docs/nightly-qa.md` and say so): prerequisites check
+(Docker Desktop, Node, git, Claude Code logged in — a missing one is reported with the action to
+take, never installed silently), repo on `main` and pulled, `.env` from `.env.example` if missing,
+`docker compose up -d --build`, `seed_demo` if the demo company is empty, a reminder to approve
+Playwright MCP + Chrome DevTools MCP in `/mcp`, then the Windows scheduled task `TAQINOR nightly QA`
+— daily at **23:00 local time (Africa/Casablanca)** by default. `setup nightly QA at 08:00` passes
+`-Time 08:00` (NOT recommended: the pass shares the Claude usage window, CPU/RAM and the test-DB
+single-writer lock with Reda's daytime sessions); `setup nightly QA with error-autopilot` adds
+`-WithErrorAutopilot` (registers the noon error-autopilot on this machine too). Each night the task
+pulls `main`, brings the stack up, reads the kill switch `docs/qa-explorer.config.yml` FIRST, runs
+the `qa-explorer` skill headless (`claude -p`, Claude subscription — no API key), logs to
+`logs/nightly-qa/`, and lets the skill file its `ERR-QAH-*` findings in `docs/ERROR_PLAN.md`
+(docs-only self-merge, like error-autopilot). Idempotent: re-typing it updates the task, never
+duplicates it. It never touches the GitHub nightly crons (`release-verify` 03:00 UTC and `mutation`
+03:30 UTC run on GitHub runners, not on any of Reda's machines). Report in five lines: what was
+verified, what was created, what is still manual.
+
 ### "clean the plans"
 Structural plan-file housekeeping (founder rewrite 2026-08-04). This command **NEVER builds, edits,
 or implements any task** and makes **no code changes** of any kind. For **PENDING work** the old
