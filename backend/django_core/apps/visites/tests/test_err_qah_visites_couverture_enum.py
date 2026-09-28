@@ -55,29 +55,35 @@ class VisitesCouvertureEnumTests(TestCase):
             {'categorie': categorie, 'valeurs': valeurs}, format='json')
 
     # ── OBSERVÉ avant correction : 400 sur une saisie humaine limpide ───────
+    # `mesures/` renvoie l'AGRÉGAT complet (`selectors.contexte_visite_terrain`) :
+    # `resp.data['mesures']` est gardé par CATÉGORIE
+    # (`{'toiture': {'type_couverture': ..., ...}, ...}`), jamais un dict plat
+    # des champs — voir `apps.visites.selectors._visite_mesures`.
     def test_type_de_couverture_tuile_normalise_et_accepte(self):
         resp = self.patch_mesures('toiture', {'type_couverture': 'Tuile'})
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(
-            resp.data['mesures']['type_couverture'], 'tuile')
+            resp.data['mesures']['toiture']['type_couverture'], 'tuile')
 
     def test_etat_de_la_couverture_bon_etat_normalise_et_accepte(self):
         resp = self.patch_mesures('toiture', {'etat_couverture': 'Bon état'})
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['mesures']['etat_couverture'], 'bon')
+        self.assertEqual(
+            resp.data['mesures']['toiture']['etat_couverture'], 'bon')
 
     def test_les_deux_champs_ensemble_valeurs_accentuees_avec_espaces(self):
         resp = self.patch_mesures('toiture', {
             'type_couverture': 'Tôle', 'etat_couverture': 'État moyen',
         })
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['mesures']['type_couverture'], 'tole')
-        self.assertEqual(resp.data['mesures']['etat_couverture'], 'moyen')
+        self.assertEqual(resp.data['mesures']['toiture']['type_couverture'], 'tole')
+        self.assertEqual(resp.data['mesures']['toiture']['etat_couverture'], 'moyen')
 
     def test_bac_acier_en_deux_mots_normalise(self):
         resp = self.patch_mesures('toiture', {'type_couverture': 'bac acier'})
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['mesures']['type_couverture'], 'bac_acier')
+        self.assertEqual(
+            resp.data['mesures']['toiture']['type_couverture'], 'bac_acier')
 
     # ── une valeur VRAIMENT inconnue reste refusée, en nommant le champ ─────
     def test_valeur_inconnue_reste_refusee_en_nommant_le_champ(self):
