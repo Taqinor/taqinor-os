@@ -3,12 +3,14 @@
 // identiques. Le champ Email reste <Input name="email" type="email"> (contrat
 // e2e : input[name="email"]). La couleur d'accent (donnée utilisateur) pilote
 // encore les aperçus de couleur via styles en ligne.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSelector } from 'react-redux'
 import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   uploadLogo, deleteLogo,
   uploadSignature, deleteSignature,
 } from '../../features/parametres/store/parametresSlice'
+import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { Card, CardContent, Input, Textarea } from '../../ui'
 import { Ic, SectionTitle, Field, UploadZone } from './peComponents'
 import { mediaUrl } from './peConstants'
@@ -39,6 +41,21 @@ function idHint(field, value) {
 export default function SocieteSection({ accent, profile, form, set, uploading, dispatch }) {
   // L772 — bloc « Champs hérités (France) » (SIRET / TVA intra) replié par défaut.
   const [showLegacyFr, setShowLegacyFr] = useState(false)
+
+  // ERR-QAH-PARAMETRES-CHAMP-ERREUR-GENERIQUE — une erreur 400 du serveur
+  // (ex. Téléphone > 30 caractères) doit s'afficher SOUS le champ fautif, pas
+  // seulement dans le bandeau générique de ParametresEntreprise.jsx (règle
+  // fondateur « erreurs → le champ fautif »). `ParametresEntreprise.jsx` ne
+  // fait pas suivre l'erreur de sauvegarde par prop (elle sert son propre
+  // bandeau) : on la lit directement dans le store, via le même mapping DRF
+  // que les autres formulaires (`useServerFieldErrors`).
+  const saveError = useSelector((s) => s.parametres.error)
+  const { errors: fieldErrors, setFromResponse, clearField } = useServerFieldErrors()
+  useEffect(() => {
+    if (saveError) setFromResponse(saveError)
+  }, [saveError, setFromResponse])
+  const setTelephone = (e) => { clearField('telephone'); set(e) }
+
   return (
     <>
       {/* NTDMO7/10 — contrôles Démo (sociétés démo seules) : mode présentation
@@ -122,7 +139,17 @@ export default function SocieteSection({ accent, profile, form, set, uploading, 
                   <Input id="pe-email" name="email" type="email" value={form.email} onChange={set} placeholder="contact@entreprise.ma"/>
                 </Field>
                 <Field label="Téléphone" htmlFor="pe-telephone">
-                  <Input id="pe-telephone" name="telephone" value={form.telephone} onChange={set} placeholder="+212 6 XX XX XX XX"/>
+                  <Input
+                    id="pe-telephone" name="telephone" value={form.telephone} onChange={setTelephone}
+                    invalid={!!fieldErrors.telephone}
+                    aria-describedby={fieldErrors.telephone ? 'pe-telephone-error' : undefined}
+                    placeholder="+212 6 XX XX XX XX"
+                  />
+                  {fieldErrors.telephone && (
+                    <p id="pe-telephone-error" role="alert" className="text-[11px] text-destructive">
+                      {fieldErrors.telephone}
+                    </p>
+                  )}
                 </Field>
               </div>
             </CardContent>
