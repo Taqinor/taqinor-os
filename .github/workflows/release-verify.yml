@@ -644,6 +644,12 @@ jobs:
       issues: write
     steps:
       - uses: actions/checkout@v4
+      # Job non conteneurisé (ubuntu-latest nu) : `python` n'est pas garanti
+      # présent/aliasé sans cette étape — même règle que
+      # `.github/workflows/dependency-audit.yml`.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Le run nocturne PRECEDENT (deja termine) etait-il vert ?
         id: prev
         env:
