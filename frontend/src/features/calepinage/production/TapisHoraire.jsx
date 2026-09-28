@@ -236,7 +236,9 @@ function journeesTypes(points, cle) {
     })
 }
 
-export default function TapisHoraire({ calepinageId, serie: serieProposee }) {
+export default function TapisHoraire({
+  calepinageId, serie: serieProposee, geometriePresente = true,
+}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -263,11 +265,30 @@ export default function TapisHoraire({ calepinageId, serie: serieProposee }) {
   const charger = useCallback(() => {
     if (fournie || !id || idDejaTente.current === id) return Promise.resolve()
     idDejaTente.current = id
+    // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — `geometriePresente`
+    // vient de `PanneauProduction.jsx`, qui le sait déjà SANS requête de
+    // plus (`pose.total_modules` de son propre `resultat()`, CAL244 : « la
+    // pose est un fait, toujours chiffrée »). Faux ⇒ la porte d'export
+    // refuserait de toute façon en 400 (« Aucune géométrie enregistrée ») —
+    // on n'ouvre donc même pas la requête, zéro appel, zéro toast, l'état
+    // vide s'affiche directement avec le MÊME motif que le refus aurait
+    // porté. Un appelant qui ne connaît pas encore cet état (le prop
+    // par défaut `true`, ex. un autre écran) garde le comportement
+    // d'aujourd'hui : la porte reste ouverte, son 400 éventuel reste géré.
+    if (!geometriePresente) {
+      // Différé sur un microtask (comme les deux branches ci-dessous) :
+      // un `setState` synchrone dans le corps d'un effet enchaîne les
+      // rendus (garde `react-hooks/set-state-in-effect`).
+      return Promise.resolve().then(() => {
+        setRefus(SANS_SERIE)
+        setEnCours(false)
+      })
+    }
     return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire'))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
       .finally(() => setEnCours(false))
-  }, [fournie, id])
+  }, [fournie, id, geometriePresente])
 
   useEffect(() => { charger() }, [charger])
 
