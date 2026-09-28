@@ -43,8 +43,9 @@ class VisitesCouvertureEnumTests(TestCase):
             company=self.company, nom='Alaoui', prenom='Sami',
             telephone='+212600000099', ville='Bouskoura')
         self.api = auth(self.commercial)
-        resp = self.api.post('/api/django/visites/visites/',
-                              {'lead': self.lead.id}, format='json')
+        resp = self.api.post(
+            '/api/django/visites/visites/',
+            {'lead': self.lead.id}, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.visite_id = resp.data['id']
 
@@ -92,8 +93,8 @@ class NormaliserChoixUnitTests(TestCase):
     """Le helper pur (aucune base requise) — les cas exacts de l'incident."""
 
     def test_reconnait_les_libelles_observes_par_le_qa_explorer(self):
-        choix_couverture = ['tuile', 'tole', 'bac_acier', 'beton',
-                             'fibrociment', 'autre']
+        choix_couverture = [
+            'tuile', 'tole', 'bac_acier', 'beton', 'fibrociment', 'autre']
         choix_etat = ['bon', 'moyen', 'mauvais']
         self.assertEqual(
             services.normaliser_choix('Tuile', choix_couverture), 'tuile')
