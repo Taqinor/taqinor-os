@@ -15,6 +15,8 @@ from django.test import TestCase
 from django.urls import reverse
 from drf_spectacular.generators import SchemaGenerator
 
+from core.parked import est_parquee
+
 
 class OpenAPISchemaGenerationTests(TestCase):
     """Génération du schéma en mémoire, sans passer par le client HTTP."""
@@ -32,6 +34,16 @@ class OpenAPISchemaGenerationTests(TestCase):
         self.assertGreater(len(self.schema['paths']), 0)
 
     def test_core_apps_have_at_least_one_operation(self):
+        """ERR-QAH-TESTS-RACINE (28/09/2026) — `rh` et `compta` sont
+        parquées par l'édition MVP solaire courante (`core.parked.
+        APPS_PARQUEES`) : ni l'une ni l'autre n'est incluse dans
+        `erp_agentique/urls.py`, donc le schéma ne porte plus AUCUN chemin
+        `/api/django/rh` ou `/api/django/compta` — pas une régression, l'état
+        attendu d'une app sortie (coquille de migrations, zéro url). La liste
+        d'origine (crm/ventes/stock/rh/compta) est filtrée sur le registre
+        UNIQUE des apps parquées (`core.parked.est_parquee`) plutôt que
+        rétrécie à la main, pour que ce test se corrige tout seul si
+        rh/compta reviennent un jour."""
         paths = self.schema['paths']
         core_app_prefixes = (
             '/api/django/crm',
@@ -41,6 +53,9 @@ class OpenAPISchemaGenerationTests(TestCase):
             '/api/django/compta',
         )
         for prefix in core_app_prefixes:
+            app_label = prefix.rsplit('/', 1)[-1]
+            if est_parquee(app_label):
+                continue
             matched = [p for p in paths if p.startswith(prefix)]
             self.assertTrue(
                 matched,
