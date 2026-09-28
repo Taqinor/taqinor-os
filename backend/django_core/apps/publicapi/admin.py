@@ -1,10 +1,20 @@
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import ApiKey, Webhook, WebhookDelivery
+
+# QAH4 — les trois ModelAdmin de ce fichier portent le mixin AUD185/AUD417 :
+# `ApiKeyAdmin` et `WebhookDeliveryAdmin` n'avaient AUCUN scope (la garde
+# transverse `tests/test_aud417_admin_scoping_transverse.py` le signalait,
+# mais ne tournait dans aucun shard CI). Un superutilisateur rattaché à une
+# société listait les clés d'API et les livraisons de webhooks (URL cible,
+# charge utile) de TOUTES les sociétés. Compte sans société (opérateur
+# plateforme) : vue complète, inchangée.
 
 
 @admin.register(ApiKey)
-class ApiKeyAdmin(admin.ModelAdmin):
+class ApiKeyAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('label', 'prefix', 'company', 'enabled', 'created_at',
                     'last_used_at')
     list_filter = ('enabled', 'company')
@@ -12,7 +22,7 @@ class ApiKeyAdmin(admin.ModelAdmin):
 
 
 @admin.register(Webhook)
-class WebhookAdmin(admin.ModelAdmin):
+class WebhookAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     """AUD405 — le secret HMAC ne quitte JAMAIS le serveur par l'admin.
 
     Défaut corrigé : ``secret`` figurait dans ``readonly_fields`` — or un champ
@@ -83,7 +93,7 @@ class WebhookAdmin(admin.ModelAdmin):
 
 
 @admin.register(WebhookDelivery)
-class WebhookDeliveryAdmin(admin.ModelAdmin):
+class WebhookDeliveryAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('event', 'webhook', 'status', 'response_status',
                     'created_at')
     list_filter = ('status', 'event', 'company')
