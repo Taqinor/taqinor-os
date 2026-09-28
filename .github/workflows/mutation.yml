@@ -110,9 +110,12 @@ jobs:
           print()
 
           try:
-              from mutmut.utils.file_utils import walk_mutatable_files
               from mutmut.mutation.data import SourceFileMutationData
-              from mutmut.stats import collect_stat
+              try:  # mutmut 3.8 layout
+                  from mutmut.utils.file_utils import walk_mutatable_files
+                  from mutmut.stats import collect_stat
+              except ImportError:  # mutmut 3.7 (pinned) : both live in __main__
+                  from mutmut.__main__ import walk_mutatable_files, collect_stat
           except Exception as exc:  # pragma: no cover - defensive, mutmut internals moved
               print(f"_Could not load mutmut's internal stats API ({exc}) — see the "
                     "`mutation-report` artifact for raw output._")

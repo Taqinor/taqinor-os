@@ -198,6 +198,8 @@ AUD105-107) — et les MIXINS/PERMISSIONS DE SCOPING SOCIÉTÉ —
 `core/permissions.py` (`ScopedPermission`, `WriteScopedPermissionMixin`),
 la base ARC2/ARC55 dont hérite `CompanyScopedModelViewSet`.
 
+*(28/09/2026, PR #722 : épinglé finalement sur **mutmut 3.7.0** — la 3.8.0 exige click ≥ 8.4.2, incompatible avec pyHanko 0.28.0 (click < 8.2) ; `process_isolation=forkserver` n'existant qu'en 3.8, il est retiré au profit de `--reuse-db`. Les constats ci-dessous sur le lecteur de config restent vrais en 3.7.0, vérifié.)*
+
 **QAH5 — mutmut 2.4.4 → 3.8.0 : le VRAI constat de départ était pire que
 « la config a changé ».** Un run CI réel de l'ANCIENNE config (mutmut 2.4.4,
 `gh run view 36309232413 --log`) prouve que ce job n'a **jamais exécuté un

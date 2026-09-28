@@ -67,7 +67,9 @@ HOW TO RUN verbatim, only the drain file changes). One-line starter:
 
 Move any task here with a `[BLOCKED: <reason>]` tag when fixing it would require a
 destructive migration, a new external dependency, an auth/cost policy change, or a
-conflict with a non-negotiable rule. (none yet)
+conflict with a non-negotiable rule.
+
+- [ ] ERR-QAH-MINIO-IMAGE-INTROUVABLE — [GATED: décision fondateur — changer l'image de stockage des pièces jointes en prod] **L'image MinIO de `docker-compose.yml` (`minio/minio:RELEASE.2025-01-20T14-49-07Z`, reprise telle quelle par la prod) ne se télécharge PLUS nulle part** (constaté le 28/09/2026 en montant le lot QAH, PR #722) : Docker Hub `minio/minio` → « pull access denied », `quay.io/minio/minio` → 401, `dl.min.io` → 410 sur toutes les archives. Les machines qui l'ont en cache (serveur de prod, poste de Reda) tournent ; mais toute machine NEUVE échoue au `docker compose up` — la seconde machine de nuit QA (commande « setup nightly QA », QAH11), un serveur réinstallé, un poste de développeur. Le `docker image prune -f` de `deploy-prod.ps1` ne touche que les images orphelines (sans danger aujourd'hui). Pont déjà posé pour la CI (image `.github/ci-image/Dockerfile`) : l'archive GELÉE `bitnamilegacy/minio:2025.1.20-debian-12-r0`, même commit serveur vérifié. À trancher : (a) basculer le compose sur cette archive Bitnami gelée (attention : autre utilisateur 1001, autre dossier de données `/bitnami/minio/data`, autres variables — migration du volume à prévoir) ; (b) construire MinIO depuis ses sources (AGPL) dans une image maison ; (c) passer à un autre stockage compatible S3. Recommandation : (b) ou (c) pour la durée, (a) seulement comme pont court. Sévérité : haute pour toute nouvelle machine, nulle pour la prod actuelle. Confiance : haute (trois registres testés le 28/09). Files: docker-compose.yml, docker-compose.prod.yml, .github/ci-image/Dockerfile. (DECISION) (@lane: infra/minio) (@model:opus)
 
 ---
 
@@ -79,7 +81,7 @@ into the BUILD QUEUE above (a run that finds nothing verified appends nothing
 and makes no commit). Fixing those items stays the job of `work on error plan`.
 
 - *(intake log started 2026-06-21 — daily autopilot now files verified items here.)*
-- 2026-09-28 — lot QAH (plan run, pas l'autopilot) : 4 constats vérifiés déposés (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER, ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI, ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES, ERR-QAH-TESTS-RACINE).
+- 2026-09-28 — lot QAH (plan run, pas l'autopilot) : 5 constats vérifiés déposés (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER, ERR-QAH-VENTES-FACTURE-HT-NON-ARRONDI, ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES, ERR-QAH-TESTS-RACINE ; ERR-QAH-MINIO-IMAGE-INTROUVABLE en GATED).
 
 ---
 
