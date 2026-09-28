@@ -27,23 +27,127 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Suite Django COMPLÈTE (inclut pdf/slow) ────────────────────────────────
-  backend-full:
+  # ---------------------------------------------------------------------------
+  # CAD177 (28/09/2026) — IMAGE CI PRE-CONSTRUITE, REPRISE A L'IDENTIQUE DE
+  # ci.yml (job `ci-image-check`).
+  #
+  # `docker run minio/minio:latest` (ancien chemin non-conteneurise de
+  # `backend-env`) echouait CHAQUE nuit depuis le 12/09/2026 :
+  #   "docker: Error response from daemon: pull access denied for minio/minio,
+  #    repository does not exist or may require 'docker login': denied"
+  # constate identique sur les 5 derniers runs nightly (36308120730,
+  # 36229704409, 36113984137, 35974170731, 35836805834) dans `backend-full` ET
+  # `e2e-full`, a la meme etape "Start MinIO + create buckets". Docker Hub ne
+  # sert plus les images `minio/minio` gratuitement ; `.github/ci-image/
+  # Dockerfile` porte deja la parade (WOW-CI ronde 5, 20/08/2026) : les
+  # binaires MinIO sont copies depuis `quay.io/minio/minio:
+  # RELEASE.2025-01-20T14-49-07Z` (registre toujours accessible sans
+  # authentification) et lances SANS docker par `backend-env`
+  # (`prebuilt-image: true`) — exactement le meme mecanisme que docker-compose.yml.
+  # `backend-full`/`e2e-full` tournent donc desormais DANS cette image
+  # conteneurisee, comme ci.yml le fait deja pour ses lanes backend/e2e.
+  #
+  # Ce job est une COPIE du `ci-image-check` de ci.yml — a dessein : la source
+  # unique des etiquettes (`.github/ci-image/tag.sh`) est deja concue pour
+  # etre appelee par plusieurs workflows (cf. son en-tete), donc les deux
+  # copies tombent TOUJOURS d'accord au caractere pres sur l'etiquette
+  # d'image, et ce workflow independant n'a pas besoin d'attendre qu'un run de
+  # `ci.yml` ait publie l'image au prealable — s'il la trouve absente sur
+  # GHCR, il la construit lui-meme (chemin lent, ~8-12 min, ne se produit que
+  # si aucun push recent sur `main` ne l'a deja fait). Aucun repli silencieux :
+  # un pull qui echoue fait echouer la lane franchement, comme dans ci.yml.
+  # ---------------------------------------------------------------------------
+  ci-image-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente — chemin rapide : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE — construction en ligne : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Resume
+        run: |
+          echo "ci-backend = ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     = ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"
+
+  # ── Suite Django COMPLÈTE (inclut pdf/slow) ────────────────────────────────
+  # CAD177 — conteneurisee dans l'image CI (comme ci.yml) : MinIO tourne par
+  # son binaire natif au lieu de `docker run minio/minio:latest`, dont le pull
+  # est refuse depuis le 12/09/2026 (cf. l'en-tete de `ci-image-check`).
+  backend-full:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        # Un job `container:` lance ses scripts avec `sh` (dash) par defaut —
+        # meme regle que les jobs conteneurises de ci.yml.
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # Le service `postgres` a disparu d'ici : `backend-env` demarre un
+      # serveur LOCAL dans le conteneur du job (memes reglages que ci.yml —
+      # voir son etape "Demarrer Postgres dans le conteneur"). `redis` reste
+      # un service Actions, mais s'atteint desormais par son NOM (`redis`) et
+      # non plus `localhost`, une fois le job conteneurise.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -57,7 +161,7 @@ jobs:
       DB_PASSWORD: ci_password
       DB_HOST: localhost
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
@@ -66,36 +170,26 @@ jobs:
       MINIO_BUCKET_UPLOADS: erp-uploads
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
-          cache: 'pip'   # WOW4
-          cache-dependency-path: backend/django_core/requirements.txt
-      # WOW7 — shared WeasyPrint + pip (prod requirements.txt) + MinIO setup.
-      # WOW8 — restore the cached pre-migrated test DB (skips the ~35-min
-      # migration replay); the test run below adds --keepdb to reuse it.
+      # Python 3.11 + les DEUX requirements (dont weasyprint) sont deja dans
+      # l'image CI — plus de `setup-python` ni de `pip install -r
+      # requirements.txt` ici (memes suppressions que les jobs conteneurises
+      # de ci.yml). `requirements-dev.txt` commence par `-r requirements.txt`
+      # (voir son en-tete) : c'est donc toujours le sur-ensemble qui rend les
+      # PDF sur la meme pile que la prod, comme avant.
       - uses: ./.github/actions/backend-env
         with:
-          requirements: requirements.txt
           testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
       - name: Run FULL Django test suite (incl. pdf/slow) + coverage
         working-directory: backend/django_core
         # WOW3 — la couverture vit ICI (nightly/manuel), plus dans le gate
         # par-merge : on paie l'instrumentation là où la latence est sans enjeu.
+        # CAD177 — factory_boy/Faker/freezegun ne sont PLUS installes ici : les
+        # trois sont dans `requirements-dev.txt`, deja bakes dans l'image CI
+        # (`prebuilt-image: true` ci-dessus). Seul `coverage` reste a
+        # installer (aucun des deux requirements ne le porte).
         run: |
           pip install coverage
-          # 2026-08-14 — ce job installe les deps PROD (`requirements.txt`) pour
-          # rendre les PDF sur la MEME pile qu'en production, mais la suite de
-          # tests, elle, a besoin de trois outils dev-only. Sans eux le job ne
-          # « échoue » pas franchement : des DIZAINES de modules de test ne se
-          # CHARGENT tout simplement pas (`unittest.loader._FailedTest`,
-          # `ModuleNotFoundError: No module named 'factory'/'faker'/'freezegun'`)
-          # — tout apps/cpq, apps/accessreview, l'audit sécurité… Ce job était
-          # rouge chaque nuit depuis ≥ le 07/08/2026 pour cette seule raison.
-          # Versions ÉPINGLÉES sur `requirements-dev.txt` ; jamais ajoutées à
-          # `requirements.txt` (même précédent que le `pip install Faker` du job
-          # e2e-full ci-dessous).
-          pip install factory_boy==3.3.1 Faker==40.28.1 freezegun==1.5.1
           coverage run manage.py test apps authentication core -v 2 --keepdb
           coverage report
 
@@ -123,22 +217,29 @@ jobs:
         run: npm run test:unit
 
   # ── Matrice e2e COMPLÈTE + régression visuelle (bootstrap, non bloquante) ──
+  # CAD177 — conteneurisée dans l'image CI `ci-e2e` (comme ci.yml, job
+  # `e2e-shard`) : chromium ET webkit sont déjà bakés, et MinIO tourne par son
+  # binaire natif au lieu de `docker run minio/minio:latest` + `minio/mc:latest`
+  # (les DEUX pulls sont refusés depuis le 12/09/2026, cf. l'en-tête de
+  # `ci-image-check`).
   e2e-full:
+    needs: ci-image-check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_DB: erp_db
-          POSTGRES_USER: erp_user
-          POSTGRES_PASSWORD: ci_password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U erp_user"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+      # Même raison que `backend-full` : `postgres` disparait (serveur local
+      # dans le conteneur, via `backend-env`), `redis` reste un service mais
+      # s'atteint par son NOM (`redis`), plus par `localhost`.
       redis:
         image: redis:7.4-alpine
         ports:
@@ -152,8 +253,14 @@ jobs:
       DB_PASSWORD: ci_password
       DB_HOST: localhost
       DB_PORT: '5432'
-      REDIS_HOST: localhost
+      REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # Emplacement des navigateurs bakés dans l'image `ci-e2e` (chromium ET
+      # webkit, VX68) — doit rester identique à l'ENV PLAYWRIGHT_BROWSERS_PATH
+      # de `.github/ci-image/Dockerfile.e2e`, sinon Playwright les chercherait
+      # dans `~/.cache/ms-playwright`, ne les trouverait pas, et les
+      # retéléchargerait — l'image ne servirait à rien.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       MINIO_ENDPOINT: localhost:9000
       MINIO_ROOT_USER: erp_admin
       MINIO_ROOT_PASSWORD: erp_minio_password
@@ -166,21 +273,22 @@ jobs:
       TENANT_RATE_LIMIT: '0'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'   # MUST match prod (python:3.11.x) — the full PDF/golden suite must run on the same Python that generates client PDFs.
+      # Python 3.11 + les navigateurs Playwright sont déjà dans l'image
+      # `ci-e2e` — plus de `setup-python` ici (même suppression que `e2e-shard`
+      # dans ci.yml). Node reste (cache npm, sans lequel `npm ci` serait
+      # beaucoup plus lent).
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # WOW7 — shared WeasyPrint + pip (prod requirements.txt) + MinIO setup.
+      # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
       # WOW8 — restore the cached pre-migrated dump into erp_db (the migrate
       # step below becomes a fast no-op; the demo seeds still run fresh).
       - uses: ./.github/actions/backend-env
         with:
-          requirements: requirements.txt
           testdb-cache-into: erp_db
+          prebuilt-image: 'true'
       - name: Migrate + seed throwaway demo data
         working-directory: backend/django_core
         run: |
@@ -194,10 +302,11 @@ jobs:
           # SOLMVP (21/09/2026) — plus de seed_ao_demo : app AO en coquille.
           # NTDMO37/38 — fixture de `demo-first-login.spec.js`/
           # `demo-reset-isolation.spec.js` (auto-découvertes par le
-          # `--grep-invert @visual` ci-dessous, comme tout spec). `Faker` est
-          # dev-only (requirements-dev.txt) et ce job installe les deps PROD
-          # (requirements.txt) : installé ici, SEULEMENT pour cette étape de
-          # fixture — jamais ajouté à requirements.txt.
+          # `--grep-invert @visual` ci-dessous, comme tout spec). CAD177 :
+          # `Faker` est déjà dans `requirements-dev.txt`, bakée dans l'image
+          # par `prebuilt-image` ci-dessus ; ce `pip install` explicite reste
+          # inoffensif (déjà satisfait) et documente la dépendance de cette
+          # étape.
           pip install Faker==40.28.1
           python manage.py seed_demo_company
       - name: Install frontend dependencies
@@ -205,9 +314,12 @@ jobs:
         run: npm ci
       - name: Install Playwright browsers (chromium + webkit)
         working-directory: frontend
-        # VX68 — WebKit requis pour les projets `mobile-safari` (Safari réel) et
-        # `tablet` (iPad WebKit) inclus dans la matrice complète ci-dessous.
-        run: npx playwright install --with-deps chromium webkit
+        # CAD177 — chromium ET webkit sont déjà bakés dans l'image `ci-e2e`
+        # (VX68) : plus de `--with-deps` (dépaquetage apt inutile) — même
+        # changement que `e2e-shard` dans ci.yml. L'appel reste, sans
+        # `--with-deps` : idempotent si les binaires sont déjà là, il échoue
+        # franchement s'ils manquaient.
+        run: npx playwright install chromium webkit
       - name: Build frontend (no service worker for E2E)
         working-directory: frontend
         env:
@@ -343,3 +455,96 @@ jobs:
       - name: Run FastAPI test suite (NL→SQL security / JWT / OCR / margin guard)
         working-directory: backend/fastapi_ia
         run: python -m unittest discover -s tests -v
+
+  # ---------------------------------------------------------------------------
+  # CAD177 (28/09/2026) — ALERTE SI LE NOCTURNE ECHOUE/SAUTE 2 NUITS DE SUITE.
+  #
+  # `release-verify` a echoue chaque nuit du 12/09 au 27/09/2026 (MinIO, cf.
+  # `ci-image-check`) et AUCUN signal n'a alerte pendant DOUZE nuits — c'est le
+  # constat exact que ce job ferme. Il ne tourne QUE sur le declenchement
+  # `schedule` (jamais un `workflow_dispatch` manuel du fondateur, qui ne dit
+  # rien de la sante du cron), a la fin de chaque run nocturne.
+  #
+  # DECISION (isolee et testee en hote — scripts/nightly_alert_gate.py) :
+  # alerter ssi CE run n'est pas entierement vert ET que le run nocturne
+  # PRECEDENT (deja termine) ne l'etait pas non plus. Le run COURANT n'apparait
+  # jamais dans `gh run list --status completed` tant que CE job n'a pas fini —
+  # la requete ne peut donc renvoyer QUE le run nocturne precedent, jamais
+  # celui-ci (pas de course avec sa propre conclusion pas encore ecrite).
+  #
+  # Meme patron « opens-or-updates » que `.github/workflows/dependency-audit.yml`
+  # (seul autre workflow du depot a ouvrir des issues) : une issue labellisee
+  # `nightly-alert` est creee ou commentee, jamais dupliquee. Le job ECHOUE
+  # aussi FRANCHEMENT dans ce cas (rouge visible dans l'onglet Actions), pour
+  # qu'un oeil qui ne lit pas les issues voie quand meme le signal.
+  # ---------------------------------------------------------------------------
+  alert-on-repeated-failure:
+    if: ${{ always() && github.event_name == 'schedule' }}
+    needs: [ci-image-check, backend-full, frontend-full, e2e-full, web-full, fastapi-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Le run nocturne PRECEDENT (deja termine) etait-il vert ?
+        id: prev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CONCLUSION=$(gh run list --repo "${{ github.repository }}" \
+            --workflow release-verify.yml --event schedule --status completed \
+            --limit 1 --json conclusion --jq '.[0].conclusion // empty')
+          echo "Run nocturne precedent (deja termine) : ${CONCLUSION:-aucun historique}"
+          echo "conclusion=${CONCLUSION}" >> "$GITHUB_OUTPUT"
+      - name: Decider s'il faut alerter (scripts/nightly_alert_gate.py)
+        id: decision
+        run: |
+          set -euo pipefail
+          ALERTE=$(python scripts/nightly_alert_gate.py \
+            --job-result "${{ needs.ci-image-check.result }}" \
+            --job-result "${{ needs.backend-full.result }}" \
+            --job-result "${{ needs.frontend-full.result }}" \
+            --job-result "${{ needs.e2e-full.result }}" \
+            --job-result "${{ needs.web-full.result }}" \
+            --job-result "${{ needs.fastapi-tests.result }}" \
+            --previous-conclusion "${{ steps.prev.outputs.conclusion }}")
+          echo "Alerter ? $ALERTE"
+          echo "alerte=$ALERTE" >> "$GITHUB_OUTPUT"
+      - name: Ouvrir/mettre à jour l'issue d'alerte (2 nuits rouges de suite)
+        if: ${{ steps.decision.outputs.alerte == 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '[release-verify] Le nocturne échoue depuis 2 nuits ou plus';
+            const body = [
+              '`release-verify.yml` (vérification nightly, palier 3) n\'a produit',
+              'aucun run VERT lors des 2 dernières exécutions planifiées (`schedule`).',
+              '',
+              `Run qui a déclenché cette alerte : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              `Historique : ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/release-verify.yml`,
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'nightly-alert',
+            });
+            const dup = existing.data.find(i => i.title === title);
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: dup.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['nightly-alert'],
+              });
+            }
+      - name: Échouer franchement (2 nuits rouges de suite)
+        if: ${{ steps.decision.outputs.alerte == 'true' }}
+        run: |
+          echo "::error::release-verify a échoué (ou sauté) les 2 dernières nuits de suite — voir l'issue nightly-alert."
+          exit 1

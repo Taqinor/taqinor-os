@@ -270,6 +270,15 @@ GARDES = {
         ('Test the calepinage-frontier checker itself (CALX372)',
          'python -m unittest scripts.tests.test_check_frontiere_calepinage -v',
          '.'),
+        # CAD177 (28/09/2026) — `release-verify.yml` a echoue chaque nuit
+        # pendant 12 nuits sans qu'aucun signal n'alerte. Le job
+        # `alert-on-repeated-failure` de ce workflow appelle
+        # `scripts/nightly_alert_gate.py` pour decider s'il doit ouvrir une
+        # issue GitHub ; cette garde ne teste QUE la decision pure (aucun
+        # docker/GH API requis).
+        ('Test the nightly alert-gate decision (CAD177)',
+         'python -m unittest scripts.tests.test_nightly_alert_gate -v',
+         '.'),
     ],
     'backend-lint-fast': [
         ('Byte-compile on prod Python (catches 3.11-only SyntaxErrors, incl. in flake8-noqa files)',
