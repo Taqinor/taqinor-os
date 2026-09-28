@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
-Generated from commit `dev-qa-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
+Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 0f446b0d1892a89b49ae0cfa3428a3ca7d3694c2a5232f3529d44822c80d39fd
-Plan fingerprint: b9c6efd93a21714ecf22dba3d06908ab3e449407bdacc00ce3592e72ff4b8bf6
+Plan fingerprint: 63f25266927515cb3caff2f60d3607659833e5bb5a6e6bd6f332937ceefe4a07
 
 
 
@@ -550,7 +550,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (568)**
+**Done (569)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -729,6 +729,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
 - `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
 - `CAD178` — Aucune mesure mobile des gestes de relance
+- `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
 - `QAH4` — Balayage d'isolation multi-tenant sur TOUTES les routes du routeur (IDOR/BOLA)
@@ -1121,7 +1122,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (49)**
+**Open — to build (48)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD177` — (28/09/2026, PR #722 : 3 causes corrigées — image MinIO, test fastapi faux, aucune…
@@ -1135,7 +1136,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM8` — Relever quatre valeurs d'environnement en production
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
-- `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
