@@ -254,3 +254,32 @@ describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai', () =>
     expect(exportCsv).toHaveBeenNthCalledWith(2, 10, 'horaire')
   })
 })
+
+describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — geometriePresente', () => {
+  it("geometriePresente={false} : aucun appel d'export, l'état vide "
+    + "s'affiche directement", async () => {
+    rendre({ geometriePresente: false })
+
+    const vide = await screen.findByTestId('cal-tapis-vide')
+    expect(vide).toHaveTextContent('Lancer la simulation')
+    expect(exportCsv).not.toHaveBeenCalled()
+  })
+
+  it('geometriePresente={true} : un seul appel, comme avant', async () => {
+    exportCsv.mockRejectedValue(refusServeur('points', MOTIF_SANS_SERIE))
+    rendre({ geometriePresente: true })
+
+    await screen.findByTestId('cal-tapis-vide')
+    expect(exportCsv).toHaveBeenCalledTimes(1)
+    expect(exportCsv).toHaveBeenCalledWith(9, 'horaire')
+  })
+
+  it('prop absente (autre appelant) : comportement d’aujourd’hui, la porte '
+    + 'reste ouverte', async () => {
+    exportCsv.mockRejectedValue(refusServeur('points', MOTIF_SANS_SERIE))
+    rendre()
+
+    await screen.findByTestId('cal-tapis-vide')
+    expect(exportCsv).toHaveBeenCalledTimes(1)
+  })
+})

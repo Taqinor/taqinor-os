@@ -202,3 +202,40 @@ describe('PanneauProduction — refus actionnable (CALX48)', () => {
     expect(screen.queryByTestId('cal236-non-simule')).toBeNull()
   })
 })
+
+/* ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — le panneau sait déjà, SANS
+   requête de plus, si une géométrie est posée (`pose.total_modules` de son
+   propre `resultat()`, CAL244 : « la pose est un fait, toujours chiffrée »)
+   et le passe à `TapisHoraire` (`geometriePresente`) pour qu'il n'ouvre même
+   pas la porte d'export quand elle refuserait de toute façon en 400. */
+describe('PanneauProduction — geometriePresente (ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION)', () => {
+  const sansGeometrie = () => ({
+    ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide'),
+    pose: {
+      ...exempleContrat('calepinage', 'calepinage_resultat', 'exemple_vide').pose,
+      total_modules: 0,
+      kwc: 0,
+      pans: [],
+    },
+  })
+
+  it("aucune géométrie posée : TapisHoraire ne demande pas l'export", async () => {
+    calepinageApi.calepinages.resultat.mockResolvedValue({ data: sansGeometrie() })
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    // `TapisHoraire` affiche son propre état vide, SANS avoir rien demandé.
+    expect(await screen.findByTestId('cal-tapis-vide')).toBeInTheDocument()
+    expect(calepinageApi.calepinages.exportCsv).not.toHaveBeenCalled()
+  })
+
+  it('une géométrie posée (les fixtures ordinaires) : le comportement '
+    + "d'aujourd'hui est inchangé — la porte d'export reste ouverte", async () => {
+    servir('exemple_vide')
+    rendre()
+
+    await screen.findByTestId('cal236-panneau')
+    await screen.findByTestId('cal-tapis-vide')
+    expect(calepinageApi.calepinages.exportCsv).toHaveBeenCalledTimes(1)
+  })
+})
