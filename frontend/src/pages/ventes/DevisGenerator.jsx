@@ -446,7 +446,9 @@ export default function DevisGenerator({
     setSucces({
       id: devisId,
       reference: devisData?.reference ?? editDevis?.reference ?? '',
-      total: devisData?.total_ttc ?? null,
+      // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le total d'AFFICHAGE
+      // canonique (celui de la liste et du PDF), pas une somme de lignes.
+      total: devisData?.total_affiche ?? devisData?.total_ttc ?? null,
     })
   }
   const cancel = () => {
@@ -1028,9 +1030,13 @@ export default function DevisGenerator({
   const avecRec = recommended === 'Avec batterie'
 
   // ── Totaux + simulation, recalculés en direct ──
+  // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le SCÉNARIO déclaré entre dans
+  // le calcul : c'est lui qui, au noyau, fait d'un devis à deux onduleurs un
+  // devis à deux options (panier filtré + règle QF9). Sans lui, le formulaire
+  // chiffrait l'option AVEC avec les accessoires Huawei que le serveur retire.
   const totals = useMemo(
-    () => optionTotalsTTC(lines, discountPct),
-    [lines, discountPct],
+    () => optionTotalsTTC(lines, discountPct, { scenario }),
+    [lines, discountPct, scenario],
   )
 
   // ── QJRREM (fondateur 07/09/2026) — remise par ligne, écran de création ──
@@ -3350,8 +3356,16 @@ export default function DevisGenerator({
         // sauvegarde. Lead prioritaire : le client est résolu côté serveur.
         if (leadId) payload.lead = parseInt(leadId)
         else payload.client = parseInt(clientId)
+        // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les CHOIX de l'écran
+        // (scénario, option recommandée, ×N) partent AVEC la création : ils
+        // décident de l'option que suit l'argent, donc du total que renvoie le
+        // serveur. Envoyés seulement après (PATCH `etude-params` ci-dessous),
+        // la réponse de création totalisait TOUTES les lignes — les deux
+        // onduleurs compris — et l'écran « Devis enregistré » affichait un prix
+        // qu'aucun document ne porte. Le PATCH qui suit reste inchangé (il
+        // repose les mêmes choix + les entrées réelles, sans bouger le total).
         const { data } = await ventesApi.createDevisAtomic({
-          ...payload, lignes: lignesPayload,
+          ...payload, etude_params: choixEcran(), lignes: lignesPayload,
         })
         devisId = data.id
         devisCree = data
