@@ -515,7 +515,12 @@ function StatutBadge({ etape }) {
 // serveur ne filtre pas par canal), lu à la demande, par une LECTURE pure :
 // aucun POST `/whatsapp/`, donc aucun faux « WhatsApp ouvert » qui horodaterait
 // un premier contact (MRY19). « Copier » pour le coller où il faut.
-function TexteDeTouche({ etape, titre, ouvert, onBasculer }) {
+// CAD176 — `destinataire` (contrat `relance_etape_v2`, `lead_email`) : avant,
+// le panneau rendait un texte SANS dire à quelle adresse il s'adresse — le
+// bouton « E-mail » ouvrait le texte sans destinataire ni lien `mailto:`.
+// Chaîne vide masquée (`client_pii_voir`) ou fiche sans adresse : même
+// distinction que le téléphone (CAD82), affichée en clair plutôt qu'omise.
+function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
   const [etat, setEtat] = useState({ chargement: false, rendu: null, erreur: false })
 
   // Lu à CHAQUE ouverture (un GET bon marché, toujours le texte du moment) —
@@ -565,6 +570,11 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer }) {
       </button>
       {ouvert && (
         <div className="mt-1.5 flex flex-col gap-1.5">
+          {destinataire !== undefined && (
+            <p className="text-xs text-muted-foreground" data-testid="texte-touche-destinataire">
+              Destinataire : {destinataire || 'aucune adresse e-mail sur la fiche'}
+            </p>
+          )}
           {etat.chargement && <p className="text-xs text-muted-foreground">Chargement du texte…</p>}
           {etat.erreur && (
             <p className="text-xs text-muted-foreground">Texte indisponible pour le moment.</p>
@@ -1081,6 +1091,7 @@ export default function RelanceEtapeRow({
           titre="Texte de l’e-mail"
           ouvert={texteOuvert}
           onBasculer={() => setTexteOuvert((v) => !v)}
+          destinataire={etape.lead_email}
         />
       )}
       {!readOnly && panel === '' && (
