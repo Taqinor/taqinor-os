@@ -1182,4 +1182,3 @@ Things this map could not fully verify from source — do not over-trust:
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
 - `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
-
