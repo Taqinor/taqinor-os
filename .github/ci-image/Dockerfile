@@ -133,7 +133,16 @@ RUN set -eux; \
 # qui embarque `minio` ET `mc` sous /usr/bin (Dockerfile.release l.61-62 de
 # cette release ; binaires Go statiques, aucune lib a installer). Registre :
 # quay.io (200 sans authentification le 21/09/2026, pas de quota anonyme).
-COPY --from=quay.io/minio/minio:RELEASE.2025-01-20T14-49-07Z /usr/bin/minio /usr/bin/mc /usr/local/bin/
+# 28/09/2026 (CAD177/QAH, PR #722) : quay.io repond desormais 401 sur cette
+# image ET Docker Hub `minio/minio` n'existe plus (« pull access denied ») —
+# toute PR touchant un requirements (reconstruction de cette image) etait
+# bloquee. Source de remplacement : l'archive gelee Bitnami
+# `bitnamilegacy/minio:2025.1.20-debian-12-r0`, verifiee en local le
+# 28/09/2026 : MEME commit serveur (`minio version DEVELOPMENT.2025-01-20T14-
+# 49-07Z`, commit-id 827004cd) et `mc` 2025-01-17T23-25-50Z, binaires Go
+# statiques sous /opt/bitnami. Image GELEE (plus aucune mise a jour Bitnami) :
+# c'est un pont, pas une source durable — voir ERR-QAH-MINIO-IMAGE-INTROUVABLE.
+COPY --from=bitnamilegacy/minio:2025.1.20-debian-12-r0 /opt/bitnami/minio/bin/minio /opt/bitnami/minio-client/bin/mc /usr/local/bin/
 RUN set -eux; \
     chmod +x /usr/local/bin/minio /usr/local/bin/mc; \
     minio --version; mc --version

@@ -199,10 +199,10 @@ class QueryConfirmLoopTests(unittest.TestCase):
         self.assertEqual(prop["inputs"], {"id": 9})
         self.assertTrue(prop["confirm_token"])
 
-        captured = {}
+        calls = []
 
         def fake_call(ctx, path, method="POST", payload=None):
-            captured["path"] = path
+            calls.append(path)
             return {"ok": True, "status": 200, "data": {"pdf": "ok"}}
 
         with mock.patch.object(_at, "fetch_catalogue", lambda c: _FULL_CATALOGUE), \
@@ -213,8 +213,15 @@ class QueryConfirmLoopTests(unittest.TestCase):
         cbody = c.json()
         self.assertTrue(cbody["ok"])
         self.assertEqual(cbody["action_key"], "ventes.devis.proposal_pdf")
-        self.assertEqual(captured["path"],
-                         "/api/django/ventes/devis/9/proposal/")
+        # CAD177 — AUDV27 a ajoute un DEUXIEME appel a `_django_call` dans
+        # `confirm_proposal` : apres l'action reelle, `_log_confirmed_action`
+        # journalise la confirmation vers `/api/django/agent/logs/confirmer/`.
+        # Un `captured["path"]` unique ecrasait le premier appel par le second
+        # (la journalisation), faisant echouer ce test chaque nuit depuis
+        # l'ajout d'AUDV27 sans rapport avec MinIO. On verifie desormais les
+        # DEUX appels reels plutot que le seul dernier.
+        self.assertIn("/api/django/ventes/devis/9/proposal/", calls)
+        self.assertIn("/api/django/agent/logs/confirmer/", calls)
 
     def test_internal_query_surfaces_result(self):
         async def fake_query(question, user_id=None, company_id=None,

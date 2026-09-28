@@ -44,12 +44,17 @@ import { initVitals } from './lib/vitals'
 // VX206 — socle local d'observabilité : promesses rejetées / erreurs non
 // gérées hors du rendu React (event handlers, `.then()`, outbox…).
 import { installGlobalErrors } from './lib/globalErrors'
+// QAH8 — Sentry armé AU DÉMARRAGE (no-op total sans VITE_SENTRY_DSN) + tag
+// `company` qui suit l'utilisateur connecté, comme core.monitoring côté Django.
+import { initMonitoring, suivreSocieteDuStore } from './lib/monitoring'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
 // pour les écrans existants (couleurs en dur, aucun `dark:` utilisé).
 initTheme()
 initVitals()
 installGlobalErrors()
+initMonitoring().catch(() => {})
+suivreSocieteDuStore(store)
 
 // VX189(d) — avertisseur DEV-ONLY des Long Animation Frames (jank thread
 // principal). `import()` DYNAMIQUE derrière `import.meta.env.DEV` (jamais un

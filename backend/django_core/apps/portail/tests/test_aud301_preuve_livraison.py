@@ -172,7 +172,13 @@ class PreuveLivraisonPortailTests(TestCase):
         r = self.api.get(
             f'/api/django/portail/mes-livraisons/{self.liv_a.id}/preuve/')
         self.assertNotIn('cout_transport', str(r.data))
-        self.assertNotIn('500', str(r.data))
+        # L'horodatage est exclu de la recherche de sous-chaîne : ses
+        # microsecondes contenaient « 500 » (run 36384938368, `…881500`) —
+        # faux rouge, bug-class #18. Le coût ne peut fuiter QUE par un champ.
+        sans_horodatage = {
+            cle: valeur for cle, valeur in r.data.items()
+            if cle != 'horodatage'}
+        self.assertNotIn('500', str(sans_horodatage))
 
     def test_sans_photo_le_lien_photo_est_nul(self):
         r = self.api.get(

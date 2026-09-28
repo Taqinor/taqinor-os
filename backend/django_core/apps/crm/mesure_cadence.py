@@ -21,8 +21,19 @@ les observe.
 Multi-tenant : toute lecture est bornée par ``company``, et la vue qui
 l'expose passe ``request.user.company`` — jamais un identifiant reçu du
 client.
+
+CAD178 (audit CAD86, 24/09/2026) — cette mesure était 100 % DESKTOP : les
+quatre écrans de cadence n'avaient aucune trace d'usage mobile.
+``famille_appareil``/``enregistrer_geste_appareil``/``gestes_par_appareil``
+ajoutent une QUATRIÈME question, comptée séparément (jamais mélangée aux
+trois ci-dessus) : combien de gestes clés (Fait, Reporter, Appeler, WhatsApp)
+partent de chaque famille d'appareil ? Compteur JOURNALIER agrégé
+(``crm.GesteRelanceAppareil``), écrit en BEST-EFFORT depuis les vues — jamais
+un événement par clic conservé indéfiniment, jamais l'IP ni le User-Agent brut.
 """
 import datetime
+import logging
+import re
 
 #: Les issues qui valent « on a eu le client au bout du fil ». Reprises à
 #: l'identique de ``kpi_cadences`` (``selectors.py``) et de la définition de
@@ -248,8 +259,86 @@ def part_contact_et_langue(company, *, jours=JOURS_MESURE_DEFAUT):
     }
 
 
+#: CAD178 — classification GROSSIÈRE d'un User-Agent HTTP en famille
+#: d'appareil, SANS dépendance externe (aucune bibliothèque de parsing tierce
+#: à ajouter pour trois catégories). L'ordre compte : une tablette Android se
+#: reconnaît d'abord à l'ABSENCE du jeton « Mobile » alors qu'elle contient
+#: « Android » — testée AVANT le motif mobile générique.
+_RE_TABLETTE = re.compile(
+    r'iPad|Tablet|Nexus 7|Nexus 9|Nexus 10|SM-T|Kindle|Silk', re.IGNORECASE)
+_RE_MOBILE = re.compile(
+    r'Mobi|Android|iPhone|iPod|Windows Phone|BlackBerry', re.IGNORECASE)
+
+
+def famille_appareil(user_agent):
+    """CAD178 — ``'mobile' | 'tablette' | 'ordinateur' | 'inconnu'``.
+
+    Répond à la seule question de CAD86 (« a-t-on une trace d'usage mobile
+    sur les écrans de cadence ? »), pas à l'identification d'un modèle
+    d'appareil : trois familles suffisent, une quatrième valeur neutre
+    couvre l'absence de User-Agent (jamais un défaut « ordinateur » inventé)."""
+    from .models import GesteRelanceAppareil
+
+    ua = (user_agent or '').strip()
+    if not ua:
+        return GesteRelanceAppareil.FamilleAppareil.INCONNU
+    if _RE_TABLETTE.search(ua):
+        return GesteRelanceAppareil.FamilleAppareil.TABLETTE
+    if _RE_MOBILE.search(ua):
+        return GesteRelanceAppareil.FamilleAppareil.MOBILE
+    return GesteRelanceAppareil.FamilleAppareil.ORDINATEUR
+
+
+def enregistrer_geste_appareil(company, geste, user_agent):
+    """CAD178 — incrémente le compteur du jour (Casablanca) pour
+    ``(company, geste, famille_appareil)``. BEST-EFFORT, appelée depuis les
+    vues APRÈS le geste métier : une erreur ici (société absente, colonne
+    inconnue…) ne doit JAMAIS faire échouer la requête qui l'appelle."""
+    from django.db.models import F
+    from django.utils import timezone
+
+    from . import horaires
+    from .models import GesteRelanceAppareil
+
+    try:
+        jour = timezone.now().astimezone(horaires.CASABLANCA).date()
+        famille = famille_appareil(user_agent)
+        ligne, cree = GesteRelanceAppareil.objects.get_or_create(
+            company=company, geste=geste, famille_appareil=famille,
+            jour=jour, defaults={'total': 1})
+        if not cree:
+            GesteRelanceAppareil.objects.filter(pk=ligne.pk).update(
+                total=F('total') + 1)
+    except Exception:  # noqa: BLE001 — mesure best-effort, jamais bloquante
+        logging.getLogger(__name__).warning(
+            'CAD178: comptage du geste « %s » non enregistré', geste,
+            exc_info=True)
+
+
+def gestes_par_appareil(company, *, jours=JOURS_MESURE_DEFAUT):
+    """CAD178 — ``[{geste, famille_appareil, total}]`` sur la fenêtre, triés
+    comme ``taux_joint_par_creneau`` (lisible, jamais un ordre aléatoire de
+    base). Liste VIDE tant qu'aucun geste n'a encore été compté — jamais une
+    ligne à zéro inventée pour une combinaison qui n'existe pas."""
+    from django.db.models import Sum
+    from django.utils import timezone
+
+    from .models import GesteRelanceAppareil
+
+    depuis = (timezone.now() - datetime.timedelta(days=int(jours))).date()
+    lignes = (GesteRelanceAppareil.objects
+              .filter(company=company, jour__gte=depuis)
+              .values('geste', 'famille_appareil')
+              .annotate(total=Sum('total'))
+              .order_by('geste', 'famille_appareil'))
+    return [{'geste': ligne['geste'],
+             'famille_appareil': ligne['famille_appareil'],
+             'total': ligne['total']} for ligne in lignes]
+
+
 def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
-    """Les trois mesures de CAD87, en une seule lecture (forme du contrat).
+    """Les mesures de CAD87 (+ CAD178), en une seule lecture (forme du
+    contrat).
 
     ``source_issue`` dit d'où vient l'issue de chaque touche — ``colonne``
     quand CAD118 est en place, ``appariement_2min`` tant qu'il faut la
@@ -266,4 +355,6 @@ def mesure_cadence(company, *, jours=JOURS_MESURE_DEFAUT):
         'signatures_par_touches_consommees': signatures_par_touches_consommees(
             company, jours=jours),
         'part_contact_et_langue': part_contact_et_langue(company, jours=jours),
+        # CAD178 — additif : les 4 gestes clés, par famille d'appareil.
+        'gestes_par_appareil': gestes_par_appareil(company, jours=jours),
     }

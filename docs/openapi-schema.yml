@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4712, operations: 7502, components: 2139}
+counts: {paths: 4714, operations: 7504, components: 2139}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1075,6 +1075,7 @@ operations:
 - get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
 - get /api/django/crm/relance-etapes/suivi/ -> django_crm_relance_etapes_suivi_retrieve
 - post /api/django/crm/relance-etapes/{id}/annuler/ -> django_crm_relance_etapes_annuler_create
+- post /api/django/crm/relance-etapes/{id}/appel-compose/ -> django_crm_relance_etapes_appel_compose_create
 - post /api/django/crm/relance-etapes/{id}/fait/ -> django_crm_relance_etapes_fait_create
 - post /api/django/crm/relance-etapes/{id}/langue/ -> django_crm_relance_etapes_langue_create
 - get /api/django/crm/relance-etapes/{id}/message/ -> django_crm_relance_etapes_message_retrieve
@@ -4864,6 +4865,7 @@ operations:
 - get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
 - get /api/v1/crm/relance-etapes/suivi/ -> v1_crm_relance_etapes_suivi_retrieve
 - post /api/v1/crm/relance-etapes/{id}/annuler/ -> v1_crm_relance_etapes_annuler_create
+- post /api/v1/crm/relance-etapes/{id}/appel-compose/ -> v1_crm_relance_etapes_appel_compose_create
 - post /api/v1/crm/relance-etapes/{id}/fait/ -> v1_crm_relance_etapes_fait_create
 - post /api/v1/crm/relance-etapes/{id}/langue/ -> v1_crm_relance_etapes_langue_create
 - get /api/v1/crm/relance-etapes/{id}/message/ -> v1_crm_relance_etapes_message_retrieve

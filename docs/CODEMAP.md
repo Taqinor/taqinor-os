@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-solmvp` on 2026-09-21, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 346cde23593cc85cfa0c6af0c8f1f292a81c658abf61fdadbbf6ffb1cbeccfce
-Plan fingerprint: be0355a2a60407dfc4ca24f4e2d2bb44b091d8ec2dd8c2cdd4f7b027382573b1
+Structure fingerprint: 7dc38215fee5e2864c613fd53e2e4a5d5fd85517180a57b727e1161c21458f46
+Plan fingerprint: bcbe1e2eb111ee9c6241ac1361747971e931f87cb25af3aa338cf12c713a69ee
 
 
 
@@ -149,6 +149,10 @@ taqinor-os/
 |    check_parked_apps.py             SOLMVP guard: nothing may reference a parked label (SOLMVP53)
 |    parquer_app.py / parquer_miroir.py  shell an app / refresh backend/parked from the archive
 |    plan_lanes.py, plan_progress.py, split_plan.py   plan-run machinery
+|    setup-nightly-qa.ps1 / nightly-qa.ps1   QAH11 « setup nightly QA » : tâche Windows 23:00 → skill qa-explorer
+|    nightly_alert_gate.py            CAD177 : alerte si release-verify rougit/saute 2 nuits
++- .claude/skills/                error-autopilot (constats statiques) + qa-explorer (QAH1 : flotte « testeur
+|                                 humain » Playwright/DevTools MCP, oracles durs → ERR-QAH-* ; docs/qa-explorer.md)
 +- apps/web/                      Marketing website (Astro, Cloudflare Workers) — separate scope
 +- docs/                          PLAN*.md, this CODEMAP.md, parked-modules.md, module-playbook.md,
 |                                 quote-engine-swap-map.md, BUILD_ORDER.yml, done_task.md
@@ -321,6 +325,9 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **Groupe CAD — cadence de suivi client, vague 1 (21/09/2026, 106/184 tâches ; vague 2 = 68 tâches dépendant des racines CAD22/35/75/83/87/88/93/149, CADM1-9 manuelles)** : modules neufs `apps/crm/cadence_temps.py` (naissance/report des touches, un appel et un message par jour, WhatsApp seul, fixe), `cadence_absence.py` + `PeriodeAbsence` (absences déclarées), `cadence_reveil_saison.py` (réveil saisonnier), `mesure_cadence.py` (KPI touche × heure × jour × canal, `GET crm/leads/mesure-cadence/`), `signaux.py` (comportement/fraîcheur du score), `panneau_appel.py` (`GET crm/leads/<id>/panneau-appel/`, contrat `panneau_appel.json`), `srm_regions.py` (12 SRM), `signup_hooks.py` (crm + notifications : fêtes mobiles, dossiers 82-21/FDA), `dsr_provider.py` (politique d'anonymisation) ; champs du script d'appel vagues 1+2 avec leur question en `help_text` (migrations crm 0104-0109), `RelanceEtape.outcome`, `Lead.date_creation_origine` ; `apps/parametres` : `models_messages.py` (darija 27/27, `{marque}`, porte de sortie, mentions loi 31-08), `models_relance.py` (`samedi_ok`, créneaux par type, cadence « deuxième affaire », Ramadan 09-15), `models_company.py` (lien Google, paliers d'escalade), `models_realisations.py` (lien vidéo) — migrations parametres 0097-0102 ; `apps/ventes` : signature au domicile (migration 0118), `courbes_journalieres.py`/`etude_horaire.py` (correctifs de courbe, recharge nocturne, VE), `quote_engine/pricing.py::_resolve_tranches` (tout distributeur nommé) ; frontend `pages/parametres/CadenceRelanceEditor.jsx` (ajout/suppression de barreau, samedi/dimanche, onglet Générique, erreurs sous le champ, `lib/feriesMaroc.js`), `components/ChatterTimeline.jsx` (6 issues), `relances/RelanceEtapeRow.jsx`, e2e mobile/tablet (`/crm/cockpit`, `/crm/relances`). **Vague 2 (24/09/2026, 69 tâches)** : réponses par table unique (`suite_touche.py`, contrat `suites`), panneau d'appel guidé (`PanneauScriptAppel.jsx`, `appelGuidance.js`, `panneau_appel.py` + fenetre_du_jour Ramadan), signaux→touche (`poser_touche_signal`), locataire (`GET/POST leads/<id>/locataire/`), civilité en donnée (migration 0113), langues (bascule `?langue=`, `POST langue/`, repli publié), cadences échues (`GET relance-etapes/cadences-echues/`), pièce reçue, heure promise, contacts secondaires (0111), périodicité facture (0112), file Action requise ouverte au rôle qui relance (ventes selectors + module.config), engagement re-branché sur `devis_ouverts_ratio_client`.
 
 - **PARAM-CADENCE + chaîne commerciale (décision fondateur 25/09/2026)** : la chaîne après l'appel et autour de la visite passe dans Paramètres — cadences `apres_contact` (« Après l'appel (avant devis) », 6 barreaux) et `visite` (« Visite technique », 4 barreaux) de `parametres.CadenceRelanceEtape`, clé stable `CadenceRelanceEtape.cle` (lecture seule, unique par société+cadence, migration parametres 0109) et `RelanceEtape.cle` (migration crm 0114) ; `apps/crm/cadence_config.py` (`etape_configuree` avec repli sur les défauts, `est_etape`/`cle_de`/`q_etape` — reconnaissance par clé, `cles_actives`) lu par tout le moteur (`services.py`, `suite_touche.py`) ; `RelanceEtapeSerializer` + `cle`, `visite_prevue_le`, `visite_id`, `visite_retour_disponible` ; `GET crm/relance-etapes/chaine-commerciale/` (`selectors.chaine_commerciale`, contrat `chaine_commerciale.json`, devis en lot par `ventes.selectors.leads_ayant_recu_un_devis`).
+
+- **CAD176/CAD178 (28/09/2026)** : la touche e-mail générique J+10 porte la clé `relance_email_j10` (gabarit ✎, migration parametres 0110) et le contrat `relance_etape_v2` sert `lead_email` (masqué comme le téléphone) ; `crm.GesteRelanceAppareil` (migration crm 0115, compteur journalier société × geste Fait/Reporter/Appeler/WhatsApp × famille d'appareil, aucun User-Agent brut stocké) alimenté par `fait`/`reporter`/`whatsapp` et la nouvelle action `POST crm/relance-etapes/<id>/appel-compose/`, servi en `gestes_par_appareil` par `mesure_cadence` (troisième tableau de `RelancesSuiviPage`).
+- **QAH (28/09/2026) — tester « comme un humain »** : `tests/test_tenant_sweep.py` + `testkit/tenant_sweep.py` (balayage IDOR/BOLA de ~390 viewsets, cliquets `EXCLUSIONS`/`FUITES_CONNUES`, opt-in `ci_shard.TOP_LEVEL_MODULES`) ; invariants Hypothesis `apps/ventes/tests/test_invariants_{money,documents}.py` ; différentiel `solar.js` ↔ serveur `apps/ventes/tests/test_solar_differential.py` + corpus figé `fixtures/solar_corpus*.json` (`frontend/scripts/solar_corpus.mjs`).
 
 ### calepinage — Groupe CALX (lots 1 « rendre visible et opérant », 3 « simulation sourcée » et 4 « électrique pro », 21/09/2026 ; complète la ligne du tableau ci-dessus)  *( `/api/django/calepinage/` )*
 - **Forme d'URL unique (CAL233)** : l'objet métier est servi sous `calepinages/<pk>/…` (sous-ressources en `@action` du routeur DRF, `SimpleRouter`), les réglages société sous `parametres/…`, et le moteur — un calcul SANS état — sous `moteur/calculer|pose|resultat/<job_id>/`. `tests/test_structure_urls.py` refuse toute quatrième famille.
@@ -543,7 +550,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (557)**
+**Done (569)**
 
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
@@ -720,6 +727,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `CAD173` — [TRANCHÉ 21/09/2026 — lot des 13 réglages du calcul et du contenu.]
 - `CAD174` — La moitié écran de la migration : un champ qui n'est pas déclaré à la fiche est…
 - `CAD175` — Seconde livraison du panneau d'appel : agricole (pompage) et industriel
+- `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
+- `CAD177` — La vérification mobile nocturne des écrans de relance ne tourne plus depuis le 12/09
+- `CAD178` — Aucune mesure mobile des gestes de relance
+- `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
+- `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
+- `QAH4` — Balayage d'isolation multi-tenant sur TOUTES les routes du routeur (IDOR/BOLA)
+- `QAH5` — Mutation nightly : passer à mutmut 3, étendre la portée aux filtres tenant et à la…
+- `QAH6` — Schemathesis dans `release-verify` à partir du schéma drf-spectacular
+- `QAH7` — Marcheur aléatoire gremlins.js sur chaque écran (matrice e2e complète)
+- `QAH8` — Sentry armé pour le pilote : SDK React installé, session replay masqué, tag société des…
+- `QAH9` — Brief de bug bash pour 1-2 testeurs humains francophones (chartes par rôle, gabarit de…
+- `QAH11` — Commande « setup nightly QA » : script idempotent `scripts/setup-nightly-qa.ps1` +…
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
 - `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
@@ -1103,12 +1122,9 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (60)**
+**Open — to build (48)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
-- `CAD176` — La touche e-mail rend un texte vide et l'adresse du client n'atteint jamais la file
-- `CAD177` — La vérification mobile nocturne des écrans de relance ne tourne plus depuis le 12/09
-- `CAD178` — Aucune mesure mobile des gestes de relance
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
@@ -1120,16 +1136,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
-- `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
-- `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
-- `QAH4` — Balayage d'isolation multi-tenant sur TOUTES les routes du routeur (IDOR/BOLA)
-- `QAH5` — Mutation nightly : passer à mutmut 3, étendre la portée aux filtres tenant et à la…
-- `QAH6` — Schemathesis dans `release-verify` à partir du schéma drf-spectacular
-- `QAH7` — Marcheur aléatoire gremlins.js sur chaque écran (matrice e2e complète)
-- `QAH8` — Sentry armé pour le pilote : SDK React installé, session replay masqué, tag société des…
-- `QAH9` — Brief de bug bash pour 1-2 testeurs humains francophones (chartes par rôle, gabarit de…
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
-- `QAH11` — Commande « setup nightly QA » : script idempotent `scripts/setup-nightly-qa.ps1` +…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable

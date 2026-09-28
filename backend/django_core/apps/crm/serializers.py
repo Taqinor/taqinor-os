@@ -127,6 +127,10 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     lead_owner_nom = serializers.SerializerMethodField()
     lead_telephone = serializers.SerializerMethodField()
     lead_whatsapp = serializers.SerializerMethodField()
+    # CAD176 — MÊME masquage PII que `lead_telephone`/`lead_whatsapp` : sans
+    # cette adresse, le seul barreau e-mail de la cadence (CAD86) ne pouvait
+    # jamais dire à QUI le texte rendu s'adresse.
+    lead_email = serializers.SerializerMethodField()
     lead_langue = serializers.SerializerMethodField()
     lead_score = serializers.SerializerMethodField()
     lead_priorite = serializers.SerializerMethodField()
@@ -208,6 +212,9 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             # visite technique du lead.
             'cle', 'visite_prevue_le', 'visite_id',
             'visite_retour_disponible',
+            # CAD176 — additif : l'adresse e-mail du lead, pour le seul
+            # barreau e-mail de la cadence.
+            'lead_email',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
@@ -232,6 +239,11 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
     def get_lead_whatsapp(self, obj) -> str:
         return '' if self._pii_masquee() else (obj.lead.whatsapp or '')
+
+    def get_lead_email(self, obj) -> str:
+        """CAD176 — MÊME règle que ``get_lead_telephone`` : chaîne vide pour
+        un rôle sans ``client_pii_voir``, comme pour une fiche sans adresse."""
+        return '' if self._pii_masquee() else (obj.lead.email or '')
 
     def get_lead_langue(self, obj) -> str:
         return obj.lead.langue_preferee or 'fr'

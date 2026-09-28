@@ -181,19 +181,136 @@ main.** Exemple d'usage : `core/tests/test_testkit.py`.
 La couverture (% de lignes exécutées) ne dit rien de la QUALITÉ des
 assertions — un test peut exécuter une ligne sans jamais vérifier son
 résultat. `mutmut` (dép DEV, `setup.cfg [mutmut]`) mute volontairement un
-petit périmètre à haut risque — `apps/ventes/quote_engine/builder.py`,
-`apps/ventes/utils/references.py`, `apps/roles/models.py` — et vérifie que la
-suite existante tue chaque mutant. Lancé UNIQUEMENT par
-`.github/workflows/mutation.yml` (nightly + bouton, `continue-on-error`,
-jamais un gate par-commit — le coût est O(mutants × suite complète)).
+petit périmètre à haut risque et vérifie que la suite existante tue chaque
+mutant. Lancé UNIQUEMENT par `.github/workflows/mutation.yml` (nightly +
+bouton, `continue-on-error`, jamais un gate par-commit — le coût est
+O(mutants × suite complète)).
 
-**Triage d'un mutant survivant** (rapport `mutmut results` / artefact CI) :
+**Périmètre (QAH5, `setup.cfg [mutmut]`)** : `apps/ventes/quote_engine/builder.py`,
+`apps/ventes/utils/references.py`, `apps/roles/models.py` (héritage YTEST9) ;
+plus, depuis QAH5, la CHAÎNE D'ARGENT ventes — `apps/ventes/domain/argent.py`
+(la façade dont délèguent `Devis.total_ht`/`total_tva`/`total_ttc`) et
+`apps/facturation/totaux.py` (`TotauxDocumentMixin`, le SEUL propriétaire de
+la chaîne HT → remise globale → TVA → TTC partagé par `Facture`/`Avoir`
+(`apps/facturation/models.py`) et `NoteDebit` (`apps/ventes/models.py`),
+AUD105-107) — et les MIXINS/PERMISSIONS DE SCOPING SOCIÉTÉ —
+`core/mixins.py` (`TenantMixin`, `SameCompanyFKSerializerMixin`) et
+`core/permissions.py` (`ScopedPermission`, `WriteScopedPermissionMixin`),
+la base ARC2/ARC55 dont hérite `CompanyScopedModelViewSet`.
+
+*(28/09/2026, PR #722 : épinglé finalement sur **mutmut 3.7.0** — la 3.8.0 exige click ≥ 8.4.2, incompatible avec pyHanko 0.28.0 (click < 8.2) ; `process_isolation=forkserver` n'existant qu'en 3.8, il est retiré au profit de `--reuse-db`. Les constats ci-dessous sur le lecteur de config restent vrais en 3.7.0, vérifié.)*
+
+**QAH5 — mutmut 2.4.4 → 3.8.0 : le VRAI constat de départ était pire que
+« la config a changé ».** Un run CI réel de l'ANCIENNE config (mutmut 2.4.4,
+`gh run view 36309232413 --log`) prouve que ce job n'a **jamais exécuté un
+seul mutant** : `mutmut run --CI` s'arrêtait en 0,4 s avec
+`Error: You must specify a list of paths to mutate.`, avalé en silence par le
+`|| true` du workflow — d'où un job « vert » en ~1,5 min qui ne testait rien.
+Cause racine, reproduite avec le code source de mutmut 2.4.4 : `setup.cfg`
+écrivait `paths_to_mutate` en continuation multi-ligne AVEC UNE VIRGULE en
+fin de ligne (`apps/.../builder.py,\n    apps/.../references.py,`) —
+ConfigParser joint les lignes de continuation par un VRAI `\n`, donc chaque
+chemin découpé sur la virgule gardait un `\n` COLLÉ EN TÊTE
+(`'\napps/.../builder.py'`) ; `Path('\napps/...').exists()` teste un premier
+segment bogué (`"\napps"`, pas `"apps"`) et échoue TOUJOURS, donc mutmut ne
+voyait plus aucun chemin valide. mutmut 3.8.0 aurait fait la MÊME erreur
+autrement : son lecteur de config découpe la même valeur sur `\n` au lieu de
+la virgule, ce qui aurait laissé une VIRGULE COLLÉE EN FIN de chaque chemin
+sauf le dernier (`'apps/.../builder.py,'`) — silencieusement 0 fichier
+trouvé, sans la moindre erreur cette fois. **Le seul format sûr pour les deux
+lecteurs : un chemin par ligne, jamais de virgule** — c'est celui posé
+maintenant dans `setup.cfg [mutmut]`.
+
+**QAH5 (approfondi) — le pont pytest-django est maintenant posé et VÉRIFIÉ
+localement (autant que possible sans Postgres).** `requirements-dev.txt`
+gagne `pytest==9.0.3` + `pytest-django==4.14.0` ; `setup.cfg` gagne une
+section `[tool:pytest]` (`DJANGO_SETTINGS_MODULE`, les motifs de fichiers de
+test RÉELS de ce dépôt, `--no-migrations`, l'exclusion `pdf`/`slow`) :
+
+* **Vérifié avec le vrai lecteur de config de mutmut 3.8.0** (import direct
+  de `mutmut.configuration._load_config()` contre ce `setup.cfg`, pas une
+  ré-implémentation) : les 7 chemins de `paths_to_mutate` et les 13 fichiers
+  de `tests_dir` ressortent PROPRES, sans virgule parasite, `process_isolation`
+  vaut bien `forkserver`.
+* **Vérifié avec un vrai `pytest`, sans AUCUN flag manuel** (tout vient de
+  l'ini) : les deux modules `SimpleTestCase` de ce périmètre
+  (`test_qjr122_totaux_additifs.py`, `test_action_permissions.py`) tournent
+  **pour de vrai, en vert** — 11 tests + 6 sous-tests passés, zéro base de
+  données nécessaire. La collecte (`--collect-only`, aucun accès DB requis)
+  réussit sur les 13 fichiers ciblés : **364/429 tests collectés** (65
+  déselectionnés par `pdf`/`slow` — proportion cohérente avec l'ancien
+  `--exclude-tag`).
+* **`python_files` était nécessaire, pas cosmétique** : par défaut pytest ne
+  voit que `test_*.py`/`*_test.py`, qui NE matche PAS `tests.py` (un des
+  fichiers ciblés, `apps/roles/tests.py`) — preuve : `pytest apps/roles/`
+  sans ce réglage collecte 0 test ; avec, 108 (tout le dossier — d'où
+  `tests_dir` listant des FICHIERS précis, jamais un dossier, pour rester
+  bornée à ce que QAH5 vise réellement).
+* **WeasyPrint cassait la collecte de 2 des 13 fichiers**
+  (`test_aud106_avoir_remise.py`, `test_aud107_note_debit_remise.py` —
+  `import apps.ventes.utils.pdf` en tête de fichier) : `OSError: cannot load
+  library 'libgobject-2.0-0'` — WeasyPrint fait un `dlopen()` de
+  pango/gobject AU CHARGEMENT du module, et `mutation.yml` n'installait
+  aucun paquet système (contrairement à `.github/actions/backend-env`, que
+  `ci.yml` utilise ailleurs). Le workflow installe maintenant les 4 mêmes
+  paquets apt (`libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
+  fonts-dejavu-core`) — vérifié en LOCAL avec un stub `weasyprint` jetable
+  hors dépôt sur `PYTHONPATH` (ce poste Windows n'a pas ces bibliothèques
+  natives), l'apt réel reste à prouver par la CI.
+* **`process_isolation=forkserver`, pas le défaut `fork`** : le défaut forke
+  chaque worker depuis le process principal de mutmut APRÈS qu'il ait « fait
+  tourner la suite pour collecter les stats » (docstring de
+  `mutmut/configuration.py`) — pour nos tests basés sur `TestCase`, ça
+  suppose une connexion Postgres/psycopg2 déjà ouverte dans ce process AVANT
+  chaque fork, et une socket forkée en plein usage est une source connue de
+  corruption silencieuse (psycopg2 n'est pas fork-safe). `forkserver` force
+  au contraire un process DÉDIÉ qui ne fait QUE de la collecte
+  (`forkserver_warmup=collect`, le défaut) — jamais de vraie connexion DB —
+  avant de forker les workers, qui ouvrent chacun leur PROPRE connexion
+  après coup. Raisonné depuis le code source de mutmut, pas prouvé contre un
+  vrai Postgres (aucun disponible dans ce lot sandboxé).
+* **Ce qui reste STRICTEMENT vérifiable seulement en CI** : la création
+  réelle de la base de test par `pytest-django` (`--no-migrations`) contre
+  un VRAI Postgres — vérifié que les migrations RunPython des apps
+  concernées (`apps/roles/migrations/0004_vta4_...py`,
+  `0005_calx347_...py`) ne sont lues par AUCUN des tests ciblés (ils
+  construisent leurs propres fixtures dans `setUp`/`setUpTestData`), mais
+  « pas de dépendance trouvée dans le code » n'est pas « prouvé vert » ; et
+  l'exécution réelle des 353 tests restants (basés sur `TestCase`, donc
+  base de données) que ce poste ne peut pas lancer (pas de docker, pas de
+  base de test ici).
+* **`mutmut run` n'a plus de flag `--CI`** (seul `--max-children` et une
+  liste optionnelle de noms de mutants sur la ligne de commande) ; le
+  workflow appelle maintenant `mutmut run --max-children 2` (concurrence
+  modeste, périmètre volontairement petit).
+* **`mutmut junitxml` n'existe plus.** Remplacé par `mutmut results --all`
+  (texte, tous les mutants) et `mutmut export-cicd-stats` (JSON global dans
+  `mutants/mutmut-cicd-stats.json`) — le workflow écrit un tableau par
+  module dans le job summary (script Python inline sur les internals
+  `mutmut.stats`/`mutmut.mutation.data`, défensif si le format interne
+  change) en plus de l'artefact `mutation-report`.
+
+**Baseline** : à remplir par la première exécution nocturne réussie (artefact
+`mutation-report` / job summary de `.github/workflows/mutation.yml`) — le
+pont existe et est vérifié autant que possible sans Postgres, mais le
+premier vrai chiffre ne peut venir que de la CI (base réelle, 13 fichiers,
+~360 tests par mutant). Une table vide dans le job summary après ce lot
+signale maintenant un VRAI problème (à diagnostiquer dans le log de l'étape
+`mutmut run`), plus « pont manquant, normal ».
+
+**Triage d'un mutant survivant** (rapport `mutmut results --all` / artefact
+CI) :
 * Assertion manquante → ajouter un test qui aurait tué ce mutant.
 * Mutant sémantiquement équivalent (le mutant produit le même comportement
   observable, ex. `<` → `<=` sur une borne jamais atteinte) → whitelister
   explicitement dans `setup.cfg` avec un commentaire justifiant pourquoi.
-Lancer localement sur un seul module : `mutmut run --paths-to-mutate
-apps/ventes/utils/references.py`.
+
+Lancer localement (contre une vraie base Postgres) : éditer temporairement
+`paths_to_mutate`/`only_mutate` dans `setup.cfg` pour ne garder qu'un seul
+fichier, puis `mutmut run` — il n'y a plus de flag CLI `--paths-to-mutate`
+en 3.x (toute la config vit dans `setup.cfg`). Pour vérifier juste le pont
+pytest (sans mutmut, sans base pour les modules `SimpleTestCase`) :
+`cd backend/django_core && python -m pytest apps/ventes/tests/test_qjr122_totaux_additifs.py core/tests/test_action_permissions.py`.
 
 ## Test de charge (k6) — le gate est le percentile, jamais la moyenne
 
@@ -259,3 +376,118 @@ un test de régression qui l'aurait attrapé n'est pas terminé.
   à étoffer au palier 1/2 quand le code correspondant atterrit.
 * Régression visuelle : commiter les baselines générées par `release-verify` pour
   activer la comparaison pixel.
+
+## Palier 4 — production (Sentry) — QAH8
+
+Le palier 3 vérifie le code avant qu'il parte ; ce palier 4 est le SEUL qui
+observe le comportement RÉEL en production, une fois le pilote armé.
+
+* **Armement** — `@sentry/react` est en dépendance (`frontend/package.json`,
+  QAH8) et `frontend/src/lib/monitoring.js` reste un NO-OP TOTAL sans
+  `VITE_SENTRY_DSN` (zéro octet, zéro appel — voir `frontend/src/lib/
+  monitoring.test.mjs`). Armer le pilote : renseigner `VITE_SENTRY_DSN` (+
+  `VITE_SENTRY_ENVIRONMENT`) dans `.env` (voir `.env.example`) et
+  `SENTRY_DSN` côté Django (`core/monitoring.py`), puis rebuild — c'est un
+  flag BUILD-TIME côté frontend (`docker compose up -d --build frontend`,
+  transmis en build arg par `docker-compose.yml`).
+* **Session replay** — échantillonnage bas (10 % des sessions, 100 % sur
+  erreur) avec masquage de TOUT texte/toute saisie par défaut (`maskAllText`,
+  `maskAllInputs`, `blockAllMedia`) : jamais une donnée client (devis, leads,
+  factures) dans une capture.
+* **Tag `company`** — chaque évènement (backend et frontend) porte le tag
+  `company` (`core.monitoring.bind_company` côté Django, `bindCompany` côté
+  React dans `monitoring.js`), pour filtrer le bruit d'une société pilote sans
+  voir celui des autres.
+* **Triage quotidien (15 min)** — chaque matin pendant le pilote : ouvrir le
+  projet Sentry, filtrer par `company`, et pour chaque erreur NOUVELLE
+  (jamais vue la veille) : (1) lire la pile + le replay associé si présent ;
+  (2) décider — bug réel (→ ligne dans `docs/ERROR_PLAN.md`, jamais réparé à
+  la volée sans test de régression, voir la règle permanente ci-dessus) ou
+  bruit (navigateur/extension du client, réseau) → ignorer/muter dans Sentry ;
+  (3) si un même type d'erreur revient sur PLUSIEURS sociétés, la prioriser
+  (un défaut transverse touche tout le pilote, pas une seule société).
+* **Limites du gratuit** — le tier Sentry gratuit plafonne le volume mensuel
+  d'évènements et de replays ; l'échantillonnage bas (10 %) est calibré pour
+  rester dedans avec un pilote à quelques sociétés. Un dépassement de quota
+  fait taire Sentry silencieusement (jamais une panne applicative) — à
+  surveiller dans le tableau de bord du projet, pas dans les tests.
+## Fuzz API (Schemathesis) — QAH6
+
+Job `api-fuzz` de `release-verify.yml` (palier 3, nightly + `workflow_dispatch`,
+**non bloquant** — `continue-on-error: true`, ne garde jamais `main`). Recherche
+L2 du 27/09/2026 (GROUPE QAH) : un agent LLM explore bien et juge mal — les
+**oracles durs** portent le jugement. [Schemathesis](https://schemathesis.readthedocs.io/)
+lit le schéma OpenAPI drf-spectacular déjà validé en CI (YAPIC6,
+`GET /api/schema/`, voir `erp_agentique/urls.py`) et génère des requêtes
+positives **et négatives** contre chaque opération documentée, avec `--checks
+all` (5xx/`not_a_server_error`, conformité de réponse/`response_schema_
+conformance`, données négatives/`negative_data_rejection`, en-têtes/
+`response_headers_conformance`+`missing_required_header`, etc.) et les 4 phases
+(`examples,coverage,fuzzing,stateful` — la phase `stateful` exploite les
+`links` OpenAPI quand le schéma en déclare).
+
+**Auth.** `/api/schema/` est derrière `IsAuthenticated`
+(`SPECTACULAR_SETTINGS['SERVE_PERMISSIONS']`) : le job obtient un JWT
+`demo_admin` (identifiants seedés en dur par `seed_demo` —
+`demo_admin` / `Demo@2026!`, jamais un compte de prod) via
+`POST /api/django/token/`, puis le passe en `-H "Authorization: Bearer …"` à
+`schemathesis run` — Schemathesis l'applique À LA FOIS à la récupération du
+schéma et à chaque requête de test (vérifié en local contre un faux schéma
+protégé avant d'écrire ce job).
+
+**Exclusions (destructif / envois externes réels)** — `--exclude-path-regex`,
+documentées et vérifiées contre le code (jamais une supposition) :
+
+| Surface exclue | Pourquoi |
+|---|---|
+| `adsengine/` | Moteur Meta Ads/Instagram de l'ERP : publication réelle, réponse/suppression/masquage de commentaires Instagram, connexions Meta — surface entière exclue (trop large/connectée à l'API Graph pour un tri fiable opération par opération). |
+| `/contact/` | Formulaire de contact public → e-mail SendGrid (parqué par défaut — voir CLAUDE.md « Public contact form »). |
+| `statuspage/public/(abonner\|confirmer\|desabonner)/` | Abonnement au statut public → e-mail de confirmation (`apps/statuspage/views.py::_envoyer_email_confirmation`). |
+| `automation/approvals/<id>/approve/` | Approuver une approbation **relance réellement** l'action différée (`engine.run_approved`), qui peut envoyer e-mail/SMS/WhatsApp selon la règle configurée. `reject` et `simuler` (dry-run explicite) restent fuzzables. |
+
+Sans clés API réelles dans l'environnement CI (`SENDGRID_API_KEY`, identifiants
+Meta — voir CLAUDE.md « Key-gated features »), ces intégrations échouent déjà
+gracieusement ; l'exclusion reste utile en défense en profondeur ET pour la
+qualité du signal (un 5xx dû à une clé absente n'est pas un vrai bug d'API).
+Cette liste est un point de départ documenté, pas un audit exhaustif — l'élargir
+au fil des faux positifs constatés dans le rapport.
+
+**Résultat.** Rapport JUnit + JSON uploadé en artefact (`schemathesis-report`,
+14 jours). Chaque échec **reproductible** devient une tâche `ERR*` dans
+`docs/ERROR_PLAN.md` — jamais un gate (règle du groupe QAH : « canonisation
+d'oracle interdite », on ne rend jamais un test vert en l'alignant sur un bug).
+
+**Recette locale (docker) :**
+```bash
+# 1. Monter la pile (db/redis/minio + Django + seed_demo) — même script que
+#    la piste e2e ci-dessus :
+bash scripts/e2e-local.sh up
+
+# 2. Installer schemathesis (déjà dans requirements-dev.txt) :
+cd backend/django_core && pip install -r requirements-dev.txt && cd ../..
+
+# 3. Obtenir un JWT demo_admin :
+ACCESS=$(curl -sf -X POST http://127.0.0.1:8000/api/django/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "demo_admin", "password": "Demo@2026!"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['access'])")
+
+# 4. Lancer le fuzz (mêmes flags que le job nightly ; réduire --max-time pour
+#    un aller-retour rapide en local) :
+schemathesis run \
+  --url http://127.0.0.1:8000 \
+  -H "Authorization: Bearer ${ACCESS}" \
+  --checks all \
+  --phases examples,coverage,fuzzing,stateful \
+  --mode all \
+  --max-time 120 \
+  --exclude-path-regex '(adsengine/|/contact/|statuspage/public/(abonner|confirmer|desabonner)/|automation/approvals/[0-9]+/approve/)' \
+  http://127.0.0.1:8000/api/schema/
+
+# 5. Arrêter :
+bash scripts/e2e-local.sh stop
+```
+
+DEP : `schemathesis==4.28.0` (v4 — CLI restructurée vs v3, vérifiée contre
+`schemathesis run --help` avant de choisir les flags ci-dessus) dans
+`backend/django_core/requirements-dev.txt`, jamais dans l'image de production.

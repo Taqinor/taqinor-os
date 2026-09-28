@@ -14,6 +14,11 @@ __pycache__/
 *.pyo
 *.pyd
 
+# QAH6 — cache local d'exemples de schemathesis (créé dans le CWD par `schemathesis
+# run`, docs/TESTING.md « Fuzz API (Schemathesis) — QAH6 »), jamais commité.
+.schemathesis/
+schemathesis-report/
+
 # ── Couverture (généré par coverage.py / vitest) ──────────────
 .coverage
 .coverage.*
