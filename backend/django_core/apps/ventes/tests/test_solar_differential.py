@@ -120,16 +120,12 @@ KNOWN_DIVERGENCES = {
     'ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER': {
         'axe': 'total_ttc',
         'ecart_max_attendu_mad': Decimal('0.01'),
-        'ids': frozenset({
-            'QAH3-0001', 'QAH3-0002', 'QAH3-0009', 'QAH3-0010', 'QAH3-0015',
-            'QAH3-0021', 'QAH3-0022', 'QAH3-0026', 'QAH3-0033', 'QAH3-0057',
-            'QAH3-0063', 'QAH3-0072', 'QAH3-0073', 'QAH3-0075', 'QAH3-0078',
-            'QAH3-0080', 'QAH3-0082', 'QAH3-0093', 'QAH3-0100', 'QAH3-0106',
-            'QAH3-0115', 'QAH3-0119', 'QAH3-0121', 'QAH3-0128', 'QAH3-0132',
-            'QAH3-0143', 'QAH3-0151', 'QAH3-0154', 'QAH3-0159', 'QAH3-0168',
-            'QAH3-0176', 'QAH3-0178', 'QAH3-0182', 'QAH3-0192', 'QAH3-0194',
-            'QAH3-0197',
-        }),
+        # ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER CORRIGÉ (28/09/2026) : l'écran
+        # applique désormais la chaîne canonique (`solar.js
+        # totauxCanoniquesTtc`). Les 36 ids mesurés par QAH3 (QAH3-0001 …
+        # QAH3-0197) ne divergent plus : l'ensemble attendu est VIDE. Ne
+        # jamais le ré-élargir sans décision humaine.
+        'ids': frozenset(),
     },
 }
 
