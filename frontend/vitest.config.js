@@ -14,7 +14,12 @@ const stub = (rel) => fileURLToPath(new URL(rel, import.meta.url))
 
 /* Couche « tests de composants / UX » (RTL + axe), distincte des tests de logique
    pure exécutés par `node --test` (fichiers *.test.mjs). On limite donc Vitest aux
-   fichiers *.test.jsx pour éviter tout double-passage avec node:test. */
+   fichiers *.test.jsx et *.test.js pour éviter tout double-passage avec node:test
+   (ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES, 28/09/2026 — élargi de *.test.jsx à
+   *.test.{jsx,js} : 12 fichiers *.test.js sous src/ n'étaient ramassés par AUCUN
+   lanceur ; le seul fichier *.test.js réellement écrit pour node:test
+   (ui/datatable/data-label.guard.test.js) a été renommé en .mjs pour rester
+   exclu d'ici et rejoindre le glob node:test existant sans y toucher). */
 export default defineConfig({
   // `roofBuilderTsPlugin` : transpile les `.ts` du builder sans découverte de tsconfig
   // (le job CI vitest n'a pas `apps/web/node_modules`, donc pas `astro/tsconfigs/strict`).
@@ -50,7 +55,7 @@ export default defineConfig({
     // sous-chaîne — un chemin préfixe d'un autre embarquerait des fichiers en trop.
     include: process.env.VITEST_INCLUDE
       ? process.env.VITEST_INCLUDE.split(',').map((s) => s.trim()).filter(Boolean)
-      : ['src/**/*.test.jsx'],
+      : ['src/**/*.test.jsx', 'src/**/*.test.js'],
     setupFiles: ['./src/test/setup.js'],
     css: false,
     // Certains écrans lancent au montage un `api.methode().then(...)` dans un

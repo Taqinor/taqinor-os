@@ -30,7 +30,8 @@ class DiscoveryTests(unittest.TestCase):
         """
         with open(fs.VITEST_CONFIG, encoding="utf-8") as fh:
             config = fh.read()
-        self.assertIn(fs.INCLUDE_PATTERN, config)
+        for pattern in fs.INCLUDE_PATTERNS:
+            self.assertIn(pattern, config)
         # And the config must still honour the lane variable, or every lane would
         # silently run the FULL suite (3x the work, and a green that means nothing).
         self.assertIn("VITEST_INCLUDE", config)
@@ -44,11 +45,20 @@ class DiscoveryTests(unittest.TestCase):
         import glob
         expected = {
             os.path.relpath(p, fs.FRONTEND).replace(os.sep, "/")
-            for p in glob.glob(os.path.join(fs.FRONTEND, "src", "**", "*.test.jsx"),
+            for suffix in ("jsx", "js")
+            for p in glob.glob(os.path.join(fs.FRONTEND, "src", "**", f"*.test.{suffix}"),
                                recursive=True)
         }
         self.assertEqual(set(fs.discover_files()), expected)
         self.assertGreater(len(expected), 500, "suite anormalement petite")
+
+    def test_discovery_never_picks_up_the_node_test_layer(self):
+        """`.test.mjs` files (node:test, run by the separate frontend-static job)
+        must never be discovered here — that would double-run them under Vitest,
+        where a bare `import test from 'node:test'` does not integrate with the
+        Vitest runner and would silently stop asserting anything."""
+        for rel in fs.discover_files():
+            self.assertFalse(rel.endswith(".test.mjs"), rel)
 
 
 class SplitCompletenessTests(unittest.TestCase):
@@ -102,7 +112,7 @@ class BalanceTests(unittest.TestCase):
             # falling back to a per-case estimate. Same bug class the backend
             # table hit on 19/08.
             self.assertGreater(value, 0, key)
-            self.assertTrue(key.endswith(".test.jsx"), key)
+            self.assertTrue(key.endswith((".test.jsx", ".test.js")), key)
 
     def test_lanes_are_duration_balanced_not_file_count_balanced(self):
         """The regression this whole script exists to prevent.
@@ -223,6 +233,7 @@ class TimingParserTests(unittest.TestCase):
         "2026-08-19T01:56:00.0Z  ✓ src/pages/ui/UIShowcase.test.jsx (31 tests) 20163ms",
         "2026-08-19T01:56:01.0Z  ✓ src/lib/apps/useInstalledApps.test.jsx (22 tests) 30ms",
         "2026-08-19T01:56:02.0Z  ✓ src/x/Slow.test.jsx (2 tests) 1.5s",
+        "2026-09-28T01:56:02.5Z  ✓ src/lib/voice.test.js (5 tests) 12ms",
         "2026-08-19T01:56:03.0Z not a result line at all",
     ]
 
@@ -231,6 +242,7 @@ class TimingParserTests(unittest.TestCase):
         self.assertAlmostEqual(got["src/pages/ui/UIShowcase.test.jsx"], 20.163, places=3)
         self.assertAlmostEqual(got["src/lib/apps/useInstalledApps.test.jsx"], 0.03, places=3)
         self.assertAlmostEqual(got["src/x/Slow.test.jsx"], 1.5, places=3)
+        self.assertAlmostEqual(got["src/lib/voice.test.js"], 0.012, places=3)
 
     def test_noise_is_ignored(self):
         self.assertEqual(fs.parse_log_durations(["", "random text"]), {})

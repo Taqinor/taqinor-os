@@ -58,10 +58,14 @@ TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_vitest_timings.json")
 RAW_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts", "ci_vitest_timings_raw.json")
 
 # Must stay identical to `test.include` in frontend/vitest.config.js. The guard
-# test asserts the pattern still appears there, so the two cannot drift apart.
-INCLUDE_SUFFIX = ".test.jsx"
+# test asserts both patterns still appear there, so the two cannot drift apart.
+# ERR-QAH-CI-TESTS-JS-JAMAIS-EXECUTES (28/09/2026) — widened from `.test.jsx`
+# alone to also discover `.test.js` (12 vitest-style files under src/ were
+# ramassé by NO runner). `.test.mjs` files (the node:test layer) never match
+# either suffix, so they stay out of this discovery on purpose.
+INCLUDE_SUFFIXES = (".test.jsx", ".test.js")
 INCLUDE_ROOT = "src"
-INCLUDE_PATTERN = "src/**/*.test.jsx"
+INCLUDE_PATTERNS = ("src/**/*.test.jsx", "src/**/*.test.js")
 
 SKIP_DIRS = {"node_modules", "__pycache__", ".git", "dist", "build", "coverage"}
 
@@ -74,7 +78,7 @@ _CASE_RE = re.compile(r"^\s*(?:it|test)\s*(?:\.\w+)?\s*\(", re.MULTILINE)
 # Vitest default reporter, one line per file. Duration is ms or s, and the line
 # may carry extra segments (skipped counts, a leading tick/cross).
 _VITEST_FILE_RE = re.compile(
-    r"(src/[\w./-]*?\.test\.jsx)\s*\((?:\d+)\s+tests?[^)]*\)\s*(?:\d+\s*tests?\s*)?"
+    r"(src/[\w./-]*?\.test\.jsx?)\s*\((?:\d+)\s+tests?[^)]*\)\s*(?:\d+\s*tests?\s*)?"
     r"(?:\|[^0-9]*\d+\s*\w+\s*)?(\d+(?:\.\d+)?)\s*(ms|s)\b"
 )
 _TS_PREFIX = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z\s?")
@@ -96,7 +100,7 @@ def _discover_cached(frontend: str) -> tuple:
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
         for name in sorted(filenames):
-            if name.endswith(INCLUDE_SUFFIX):
+            if name.endswith(INCLUDE_SUFFIXES):
                 rel = os.path.relpath(os.path.join(dirpath, name), frontend)
                 found.append(rel.replace(os.sep, "/"))
     return tuple(sorted(found))
