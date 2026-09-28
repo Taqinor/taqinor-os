@@ -11,8 +11,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   optionTotalsTTC, appartientAuPanierSans, appartientAuPanierAvec,
-  isAnyInverter, isSmartMeter, isWifiDongle,
+  isAnyInverter, isSmartMeter, isWifiDongle, totauxCanoniquesTtc,
 } from './solar.js'
+
+// ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — un panier se chiffre par la chaîne
+// canonique du noyau (HT persisté → TVA), jamais par Σ TTC saisis.
+const canon = (...rows) => totauxCanoniquesTtc(rows, 0)
 
 // ── Mirror indépendant de QF9 (le NOYAU, pas la production) ─────────────────
 function estAccessoireHuawei(d) {
@@ -32,8 +36,7 @@ function totalAttenduPourPanier(lignesDuPanier) {
   const rows = panierSertHuawei(lignesDuPanier)
     ? lignesDuPanier
     : lignesDuPanier.filter(l => !estAccessoireHuawei(l?.designation))
-  return rows.reduce(
-    (s, l) => s + (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0), 0)
+  return totauxCanoniquesTtc(rows, 0)
 }
 
 // Devis résidentiel canonique « Les deux » : réseau Huawei ('sans'), hybride
@@ -63,9 +66,10 @@ test('optionTotalsTTC : QF9 — chaque option rend le total que le noyau rend po
   assert.equal(totalAvecBrut, attenduAvec)
   // Le panier « avec » (Deye, pas Huawei) ne compte NI le Smart Meter NI la
   // clé Wi-Fi : sans ce correctif il les comptait (28000+17000+17*1400+3000).
-  assert.equal(totalAvecBrut, 28000 + 17000 + 17 * 1400)
+  const L = DEVIS_CANONIQUE
+  assert.equal(totalAvecBrut, canon(L[1], L[2], L[4]))
   // Le panier « sans » (Huawei) les garde, lui, intégralement.
-  assert.equal(totalSansBrut, 20000 + 10 * 1400 + 1800 + 1200)
+  assert.equal(totalSansBrut, canon(L[0], L[3], L[5], L[6]))
 })
 
 test('optionTotalsTTC : QF9 — panier « sans » à onduleur Huawei, inchangé (F14/QJR300 non régressés)', () => {
@@ -80,8 +84,8 @@ test('optionTotalsTTC : QF9 — panier « sans » à onduleur Huawei, inchangé 
   const { totalSans, totalAvec } = optionTotalsTTC(lignes, 0)
   // Non-régression QJR300 (déjà verrouillée par solar.deuxOptimiseurs.test.mjs) :
   // aucune ligne Huawei-only ici, la répartition reste celle d'avant.
-  assert.equal(totalSans, 20000 + 10 * 1400 + 1000)
-  assert.equal(totalAvec, 28000 + 17000 + 17 * 1400 + 1000)
+  assert.equal(totalSans, canon(lignes[0], lignes[3], lignes[5]))
+  assert.equal(totalAvec, canon(lignes[1], lignes[2], lignes[4], lignes[5]))
 })
 
 // ── Arrondi au centime, jamais au dirham entier, jamais conditionnel ────────
@@ -94,8 +98,10 @@ test('optionTotalsTTC : l’arrondi au centime ne dépend plus de la présence d
   assert.equal(sansRemise.totalSans, 1000.5)
   // Avec remise : AVANT ce correctif, `Math.round(1000.5 × 0.9)` rendait 900
   // (l'entier), perdant les 0,45 MAD qui restent dans la liste/le PDF/la
-  // facture (au centime). Le correctif garde ces 0,45 MAD : 900,45.
-  assert.equal(avecRemise.totalSans, 900.45)
+  // facture (au centime). ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER : la valeur
+  // est celle de la chaîne canonique (HT 833,75 ; remise 83,38 ; HT net
+  // 750,37 ; TVA 150,07) → 900,44, le chiffre facturé.
+  assert.equal(avecRemise.totalSans, 900.44)
 })
 
 test('optionTotalsTTC : un devis mono-option (aucune remise) reste inchangé à l’octet', () => {
@@ -105,7 +111,7 @@ test('optionTotalsTTC : un devis mono-option (aucune remise) reste inchangé à 
     { designation: 'Smart Meter', quantite: 1, prix_unit_ttc: 1800 },
   ]
   const { totalSans, totalSansBrut } = optionTotalsTTC(lignes, 0)
-  assert.equal(totalSansBrut, 20000 + 14 * 1400 + 1800)
+  assert.equal(totalSansBrut, canon(...lignes))
   assert.equal(totalSans, totalSansBrut)
 })
 
@@ -127,6 +133,6 @@ test('optionTotalsTTC : sans aucune ligne variantée, QF9 ne s’applique pas (c
   // Aucune alternative déclarée : le panier « avec » (mots-clés seuls)
   // continue de compter Smart Meter + Wifi Dongle, exactement comme avant ce
   // correctif — QF9 (QJR300) ne joue que sur un vrai devis à deux options.
-  assert.equal(totalSansBrut, 20000 + 14 * 1400 + 1800 + 1200)
-  assert.equal(totalAvecBrut, 28000 + 17000 + 14 * 1400 + 1800 + 1200)
+  assert.equal(totalSansBrut, canon(lignes[0], lignes[3], lignes[4], lignes[5]))
+  assert.equal(totalAvecBrut, canon(lignes[1], lignes[2], lignes[3], lignes[4], lignes[5]))
 })

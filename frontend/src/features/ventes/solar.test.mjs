@@ -13,6 +13,7 @@ import {
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
+  totauxCanoniquesTtc, appartientAuPanierSans, appartientAuPanierAvec,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
   ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
@@ -135,7 +136,10 @@ test('factures saisies librement : utilisées telles quelles dans la simulation'
 test('remise saisie librement (ex. 12.5 %) : appliquée exactement', () => {
   const lines = [{ designation: 'Transport', quantite: '1', prix_unit_ttc: '1000' }]
   const { totalSans } = optionTotalsTTC(lines, '12.5')
-  assert.equal(totalSans, 875) // 1000 × (1 − 0.125), arrondi simulateur
+  // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — chaîne canonique du noyau : HT
+  // persisté 833,33 ; remise 104,17 ; HT net 729,16 ; TVA 145,83 → 874,99
+  // (le chiffre facturé ; l'ancien « 1000 × 0,875 = 875 » ne l'était pas).
+  assert.equal(totalSans, 874.99)
 })
 
 test('sélecteur produits : groupé selon les catégories du catalogue simulateur', () => {
@@ -364,9 +368,17 @@ test('auto-fill 14 panneaux × 710 W : équipements et prix identiques au simula
 
   // Totaux par option, exactement comme updateTotals du simulateur
   // (recalés L-FORFAIT : −1 312,50 de forfaits vs l'ancienne règle par blocs)
+  // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — les PRIX saisis restent ceux du
+  // simulateur (Σ TTC des paniers inchangée) ; le TOTAL affiché est celui que
+  // le noyau facture sur ces mêmes lignes (chaîne canonique HT → TVA).
+  const sommeTtc = (rs) => rs.reduce((s, r) => s + r.quantite * r.prix_unit_ttc, 0)
+  assert.equal(sommeTtc(rows.filter(appartientAuPanierSans)), 63727.5)
+  assert.equal(sommeTtc(rows.filter(appartientAuPanierAvec)), 101727.5)
   const totals = optionTotalsTTC(rows, 0)
-  assert.equal(totals.totalSansBrut, 63727.5)
-  assert.equal(totals.totalAvecBrut, 101727.5)
+  assert.equal(totals.totalSansBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierSans), 0))
+  assert.equal(totals.totalAvecBrut, totauxCanoniquesTtc(rows.filter(appartientAuPanierAvec), 0))
+  assert.ok(Math.abs(totals.totalSansBrut - 63727.5) < 1)
+  assert.ok(Math.abs(totals.totalAvecBrut - 101727.5) < 1)
 })
 
 test('auto-fill 24 panneaux × 710 W : batterie homogène 3×5 kWh (jamais 10+5), structures alu', () => {
@@ -1749,15 +1761,17 @@ test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0' })
   assert.equal(r.mode, 'multiplicateur')
   assert.equal(r.nombreProprietes, 3)
-  assert.equal(r.totalUnitaireSans, 34000)
-  assert.equal(r.totalMultiSans, 102000) // 34000 × 3
+  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 34 000,04.
+  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 0))
+  assert.equal(r.totalMultiSans, Math.round(r.totalUnitaireSans * 3)) // ≈ 34000 × 3
 })
 
 test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
   const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
   // unitaire remisé = round(34000 × 0.9) = 30600 ; ×2 = 61200
-  assert.equal(r.totalUnitaireSans, 30600)
+  // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 30 600,04.
+  assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 10))
   assert.equal(r.totalMultiSans, 61200)
 })
 
