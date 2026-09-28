@@ -25,8 +25,29 @@ export const MESURES_SCHEMA = {
         { value: 'ouest', label: 'Ouest' }, { value: 'nord-ouest', label: 'Nord-Ouest' },
       ],
     },
-    { key: 'type_couverture', label: 'Type de couverture', unite: '', type: 'text' },
-    { key: 'etat_couverture', label: 'État de la couverture', unite: '', type: 'text' },
+    // ERR-QAH-VISITES-COUVERTURE-ENUM-SANS-AFFORDANCE — ces deux champs
+    // n'acceptaient QUE les codes serveur (`apps/visites/visite_checklist.py`)
+    // tout en s'affichant comme des textes libres sans liste ni placeholder :
+    // un technicien qui tapait « Tuile »/« Bon état » recevait un 400 sans
+    // jamais voir les valeurs permises. Même patron que « Orientation »
+    // ci-dessus — les `value` sont les codes EXACTS du serveur (le backend
+    // normalise en plus la casse/les accents/« état », donc une vieille
+    // réponse hors-liste reste acceptée si elle matche).
+    {
+      key: 'type_couverture', label: 'Type de couverture', unite: '', type: 'select',
+      options: [
+        { value: 'tuile', label: 'Tuile' }, { value: 'tole', label: 'Tôle' },
+        { value: 'bac_acier', label: 'Bac acier' }, { value: 'beton', label: 'Béton' },
+        { value: 'fibrociment', label: 'Fibrociment' }, { value: 'autre', label: 'Autre' },
+      ],
+    },
+    {
+      key: 'etat_couverture', label: 'État de la couverture', unite: '', type: 'select',
+      options: [
+        { value: 'bon', label: 'Bon' }, { value: 'moyen', label: 'Moyen' },
+        { value: 'mauvais', label: 'Mauvais' },
+      ],
+    },
     { key: 'obstacles_notes', label: 'Obstacles / ombrages (notes)', unite: '', type: 'text' },
   ],
   tableau: [
