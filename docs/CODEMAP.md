@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 0f446b0d1892a89b49ae0cfa3428a3ca7d3694c2a5232f3529d44822c80d39fd
-Plan fingerprint: 63f25266927515cb3caff2f60d3607659833e5bb5a6e6bd6f332937ceefe4a07
+Plan fingerprint: 75355ef3797f077f668b2085a1224f5b8a4e3602fd10fd38c2030cce1a5247de
 
 
 
@@ -1122,7 +1122,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (48)**
+**Open — to build (49)**
 
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD177` — (28/09/2026, PR #722 : 3 causes corrigées — image MinIO, test fastapi faux, aucune…
@@ -1137,6 +1137,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
+- `QAH12` — étendre `seed_demo` pour les deux angles morts du qa-explorer du 28/09 : un compte…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
@@ -1182,4 +1183,3 @@ Things this map could not fully verify from source — do not over-trust:
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
 - `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
-
