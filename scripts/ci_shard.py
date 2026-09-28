@@ -85,6 +85,16 @@ CLASS_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts",
 # Roots Django is asked to test: every package under apps/, plus the two
 # foundation packages that live at the django_core root.
 TOP_LEVEL = ("authentication", "core")
+# QAH4 (28/09/2026) — le paquet racine `tests/` de django_core N'EST PAS une
+# racine de decouverte, et ce n'est pas un oubli a « corriger » en l'ajoutant a
+# TOP_LEVEL : ses modules historiques n'ont JAMAIS tourne en CI et ont derive
+# (mesure locale du 28/09 : 7 echecs sur les modules sans base — cliquets
+# YAPIC2/YAPIC11 perimes, garde AUD417 qui a de vrais admins publicapi non
+# scopes a lui montrer — plus `test_schema` qui exige des apps parquees). Les
+# ouvrir d'un coup rendrait le gate rouge pour des raisons etrangeres au lot.
+# Un module de `tests/` rejoint donc le decoupage UNIQUEMENT s'il est liste ici,
+# explicitement ; les autres reviendront un par un, une fois remis au vert.
+TOP_LEVEL_MODULES = ("tests.test_tenant_sweep",)
 # Directories that never carry runnable tests.
 SKIP_DIRS = {"__pycache__", "migrations", "node_modules", ".git"}
 
@@ -208,6 +218,10 @@ def _discover(repo_root: str) -> list[str]:
             top_dir = os.path.join(django_root, top)
             if os.path.isdir(top_dir):
                 units += [_dotted(p) for p in _walk_tests(top_dir)]
+        for label in TOP_LEVEL_MODULES:
+            if os.path.isfile(os.path.join(django_root,
+                                           *label.split(".")) + ".py"):
+                units.append(label)
         return sorted(set(units))
     finally:
         DJANGO_ROOT = previous
