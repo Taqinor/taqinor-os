@@ -40,9 +40,36 @@ class MarqueSerializer(serializers.ModelSerializer):
 
 
 class CategorieSerializer(serializers.ModelSerializer):
+    # ERR-QAH-STOCK-CATEGORIE-CREATION-400-COMPANY — `company` doit être
+    # LECTURE SEULE et force-assigné côté serveur (TenantMixin.perform_create,
+    # jamais accepté du corps — règle multi-tenant CLAUDE.md). Sans
+    # `read_only_fields`, `fields = '__all__'` + `unique_together =
+    # [('company', 'nom')]` faisaient dériver un `UniqueTogetherValidator` DRF
+    # qui force `company` `required=True` → 400 « Ce champ est obligatoire »
+    # à la création (le frontend, à raison, ne l'envoie pas). Le validateur
+    # auto est désactivé (`validators = []`) car, une fois `company`
+    # read_only, il vérifierait l'unicité du nom SANS le scope société
+    # (queryset non filtré sur `company`, car le champ n'est plus dans
+    # `attrs` avant `perform_create`) — `validate()` ci-dessous refait le
+    # contrôle, scopé.
     class Meta:
         model = Categorie
         fields = '__all__'
+        read_only_fields = ['company']
+        validators = []
+
+    def validate(self, attrs):
+        nom = attrs.get('nom', getattr(self.instance, 'nom', None))
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if nom and company is not None:
+            qs = Categorie.objects.filter(company=company, nom=nom)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'nom': 'Une catégorie de ce nom existe déjà.'})
+        return attrs
 
 
 class ContactFournisseurSerializer(serializers.ModelSerializer):
