@@ -38,7 +38,11 @@ jobs:
     # tests per mutant re-run) but mutation testing is O(mutants x test run)
     # — a sensible ceiling so a runaway mutant count/hang doesn't tie up a
     # runner all night instead of failing loud enough to notice.
-    timeout-minutes: 45
+    # 28/09/2026 (PR #722) : 45 -> 200. Mesuré au premier vrai run : la
+    # seule génération des mutants prend ~9 min ; la passe complète est
+    # bornée DANS l'étape mutmut (`timeout 170m`) pour que l'export et le
+    # résumé tournent toujours, même sur une nuit longue.
+    timeout-minutes: 200
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -81,6 +85,20 @@ jobs:
       - name: Install dependencies (incl. mutmut 3 + the pytest-django bridge)
         working-directory: backend/django_core
         run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Create the Postgres extensions in template1 (pytest --no-migrations)
+        # 28/09/2026 (PR #722) — `--no-migrations` crée les tables depuis les
+        # modèles SANS jouer les migrations qui posent les extensions : le
+        # premier run a échoué sur `type "vector" does not exist`. Les créer
+        # dans template1 (l'utilisateur du service est superuser) fait hériter
+        # la base de test `test_erp_db`. Liste = les extensions que posent les
+        # migrations du dépôt (VectorExtension, BtreeGistExtension, RunSQL
+        # unaccent / pg_trgm). Reproduit en local dans l'image CI : 48 tests OK.
+        env:
+          PGPASSWORD: ci_password
+        run: >-
+          psql -h localhost -U erp_user -d template1 -v ON_ERROR_STOP=1 -c
+          "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS btree_gist;
+          CREATE EXTENSION IF NOT EXISTS unaccent; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
       - name: Run mutmut on high-risk modules
         working-directory: backend/django_core
         run: |
@@ -89,7 +107,9 @@ jobs:
           # modest concurrency for a small, bounded scope on a shared runner
           # (mutmut forks a worker per mutant batch). `|| true`:
           # informational, never fails the step even on a real red mutant.
-          mutmut run --max-children 2 || true
+          # `timeout 170m` : borne interne (voir timeout-minutes du job) pour
+          # que les étapes d'export/résumé suivantes tournent toujours.
+          timeout 170m mutmut run --max-children 4 || true
       - name: Export mutation results (per-mutant text + CI/CD JSON stats)
         working-directory: backend/django_core
         run: |
