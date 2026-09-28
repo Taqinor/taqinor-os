@@ -1509,6 +1509,7 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
 // `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
 // qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
 // panier filtré ET règle QF9 appliquée).
+// source-choix: ventes.utils.options.SCENARIOS_ALTERNATIVE
 export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
 
 // Miroir de `familles_des_lignes` + `familles_servables` + la condition
