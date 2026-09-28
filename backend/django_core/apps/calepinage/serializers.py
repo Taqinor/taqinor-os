@@ -28,16 +28,6 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .models import Calepinage, CalepinageVariante
 
 
-def _lead_de_la_societe(company, lead_id):
-    """CALX407 — le lead rattaché, borné société, ou ``None``. UNE requête,
-    partagée par ``lead`` et le repli de ``responsable`` (jamais deux)."""
-    if not lead_id or company is None:
-        return None
-    from apps.crm.selectors import get_company_lead
-
-    return get_company_lead(company, lead_id)
-
-
 def _lead_apercu(lead):
     """``{id, nom, ville}`` du lead déjà résolu, ou ``None`` — même forme que
     ``views/calepinages.py::_lead`` (le détail)."""
@@ -157,6 +147,35 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             pass
         return memo
 
+    def _lead_de_la_societe(self, company, lead_id):
+        """CALX407 — le lead rattaché, borné société, ou ``None``.
+
+        BUDGET (CALX390) — mémorisé UNE fois PAR LEAD et PAR SÉRIALISEUR :
+        ``ListSerializer.to_representation`` appelle ``self.child`` (CE MÊME
+        sérialiseur) pour CHAQUE ligne de la page — jamais une instance par
+        ligne — donc un dict tenu sur ``self`` survit toute la liste. Un lead
+        rattaché à PLUSIEURS calepinages de la page (le cas courant : un même
+        prospect, plusieurs études) ne le relit qu'une fois, et l'accès
+        ``.owner`` (repli ``responsable``, plus bas) n'est payé qu'à la
+        PREMIÈRE lecture de ce lead — Django mémorise ensuite la relation sur
+        l'objet ``Lead`` réutilisé du cache, jamais une requête de plus pour
+        les lignes suivantes du même lead. Sans ce cache, chaque ligne
+        relisait son lead PUIS son responsable : deux requêtes de plus par
+        ligne (30 requêtes à 10 lignes, 60 à 25 — le N+1 d'ERR-QAH-CALEPINAGE-
+        LISTE-SANS-RATTACHEMENT, réintroduit par ce même correctif).
+        """
+        if not lead_id or company is None:
+            return None
+        cache = self.__dict__.setdefault('_calx407_cache_leads', {})
+        cle = (company.pk, lead_id)
+        if cle in cache:
+            return cache[cle]
+        from apps.crm.selectors import get_company_lead
+
+        lead = get_company_lead(company, lead_id)
+        cache[cle] = lead
+        return lead
+
     def to_representation(self, instance):
         """CALX407 — la LISTE (et la bibliothèque des modèles) publient le
         MÊME nom et le MÊME rattachement que le détail agrégé
@@ -173,21 +192,21 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
           rattachement » faute du nom. Rendu en ``{id, nom, ville}``, comme
           le détail — jamais un second calcul : lu via
           ``apps.crm.selectors.get_company_lead`` (cross-app, jamais le
-          modèle).
+          modèle), et mémorisé par lead — voir ``_lead_de_la_societe``
+          (budget CALX390).
         * ``responsable``/``responsable_nom`` — MÊME bug : une étude SANS
           responsable SAISI (``Calepinage.responsable`` vide) retombait sur
           ``null`` alors que le détail sait retomber sur le responsable du
           lead rattaché (CALX406, ``views/calepinages.py::_responsable``).
           Le CHAMP saisi garde la priorité (inchangé, aucune requête de plus
-          quand il est posé) ; SEUL le repli manquant est ajouté ici, avec
-          UNE requête par ligne au plus — la même que celle déjà payée pour
-          ``lead`` (le lead est relu une fois, jamais deux).
+          quand il est posé) ; SEUL le repli manquant est ajouté ici, sur le
+          lead déjà résolu (mémorisé) ci-dessus.
         """
         data = super().to_representation(instance)
         data['nom'] = str(instance)
         company = getattr(instance, 'company', None)
         lead_id = getattr(instance, 'lead_id', None)
-        lead = _lead_de_la_societe(company, lead_id)
+        lead = self._lead_de_la_societe(company, lead_id)
         data['lead'] = _lead_apercu(lead)
         if data.get('responsable') is None and lead is not None:
             proprietaire = getattr(lead, 'owner', None)
