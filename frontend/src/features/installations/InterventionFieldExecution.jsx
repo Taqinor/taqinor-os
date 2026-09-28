@@ -107,7 +107,12 @@ export function PreparationPanel({ intervention, onChanged }) {
           materiel: (p.materiel ?? []).map((l) => l.id === ligne.id ? { ...l, charge } : l),
         }))
         toast.success(QUEUED_MSG)
-      } else { setPrep(r.data) }
+      // ERR-QAH-CHANTIERS-PREPARATION-MATERIEL-DISAPPEARS — `withOfflineFallback`
+      // enveloppe la réponse en ligne dans `{ queued, data }` où `data` est la
+      // réponse AXIOS BRUTE (pas encore désenveloppée) : il faut lire `r.data.data`
+      // (le corps JSON) et non `r.data` (l'objet AxiosResponse), sinon `prep` perd
+      // `materiel`/`outils`/`completion` et l'écran se vide.
+      } else { setPrep(r.data.data) }
       onChanged?.()
     } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }
@@ -123,7 +128,9 @@ export function PreparationPanel({ intervention, onChanged }) {
           outils: (p.outils ?? []).map((l) => l.id === ligne.id ? { ...l, coche } : l),
         }))
         toast.success(QUEUED_MSG)
-      } else { setPrep(r.data) }
+      // ERR-QAH-CHANTIERS-PREPARATION-MATERIEL-DISAPPEARS — même correctif que
+      // `toggleMateriel` ci-dessus : `r.data.data`, pas `r.data`.
+      } else { setPrep(r.data.data) }
       onChanged?.()
     } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }

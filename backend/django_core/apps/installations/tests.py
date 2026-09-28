@@ -220,9 +220,11 @@ class TestStatusAndMES(TestCase):
         # L'ajout est tracé dans le chatter du chantier
         self.assertTrue(InstallationActivity.objects.filter(
             installation=self.inst, body__icontains='Intervention ajoutée').exists())
-        # Un compte rendu rempli sans date_realisee la tamponne côté serveur.
+        # ERR-QAH-CHANTIERS-INTERVENTION-DATE-REALISEE-AUTO — un compte rendu
+        # rempli seul ne tamponne PLUS date_realisee (l'intervention reste
+        # planifiée tant qu'elle n'est pas Terminée/Validée).
         interv = Intervention.objects.get(installation=self.inst)
-        self.assertIsNotNone(interv.date_realisee)
+        self.assertIsNone(interv.date_realisee)
 
     def test_intervention_edit_and_delete_log_chantier_chatter(self):
         created = self.api.post('/api/django/installations/interventions/', {
@@ -237,8 +239,9 @@ class TestStatusAndMES(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(InstallationActivity.objects.filter(
             installation=self.inst, body__icontains='Intervention modifiée').exists())
-        # Le compte rendu tamponne aussi la date réalisée.
-        self.assertIsNotNone(Intervention.objects.get(pk=iv_id).date_realisee)
+        # ERR-QAH-CHANTIERS-INTERVENTION-DATE-REALISEE-AUTO — le compte rendu
+        # seul ne tamponne plus la date réalisée (statut toujours a_preparer).
+        self.assertIsNone(Intervention.objects.get(pk=iv_id).date_realisee)
         # Suppression → note au chatter du chantier
         r = self.api.delete(
             f'/api/django/installations/interventions/{iv_id}/')
