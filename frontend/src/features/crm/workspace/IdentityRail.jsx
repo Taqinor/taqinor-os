@@ -326,10 +326,22 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       </header>
 
       {/* Étape + pourrissement (LW16) — le changement passe par le moteur
-          (onAction('change-stage')) ; SIGNED ouvre la signature. */}
+          (onAction('change-stage')) ; SIGNED ouvre la signature.
+          ERR-QAH-CRM-CHATTER-STAGE-CHANGE-MISSING (28/09/2026) — le PATCH
+          d'étape répond avec le sérialiseur d'ÉCRITURE (sans
+          `chatter_recent`, LW30 ne l'embarque qu'au RETRIEVE) : SET_SERVER
+          remplace `state.server` tel quel, donc « Historique » et « Historique
+          en un coup d'œil » (qui retombent tous deux sur `chatter_recent`
+          quand `historique` top-level est encore vide) se vident jusqu'au
+          rechargement — alors que le serveur a bien écrit l'entrée « Étape :
+          … ». On enchaîne un onAction('refresh') (GET détail complet, même
+          geste que CAD152 après une réponse du panneau d'appel) pour
+          rapporter `chatter_recent` À JOUR, jalon d'étape inclus. */}
       <StageControl
         state={state}
-        onChangeStage={(key) => onAction('change-stage', key)}
+        onChangeStage={(key) => {
+          Promise.resolve(onAction('change-stage', key)).then(() => onAction('refresh'))
+        }}
         onSigne={() => onAction('signe')}
       />
 
