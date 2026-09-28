@@ -259,3 +259,84 @@ un test de régression qui l'aurait attrapé n'est pas terminé.
   à étoffer au palier 1/2 quand le code correspondant atterrit.
 * Régression visuelle : commiter les baselines générées par `release-verify` pour
   activer la comparaison pixel.
+
+## Fuzz API (Schemathesis) — QAH6
+
+Job `api-fuzz` de `release-verify.yml` (palier 3, nightly + `workflow_dispatch`,
+**non bloquant** — `continue-on-error: true`, ne garde jamais `main`). Recherche
+L2 du 27/09/2026 (GROUPE QAH) : un agent LLM explore bien et juge mal — les
+**oracles durs** portent le jugement. [Schemathesis](https://schemathesis.readthedocs.io/)
+lit le schéma OpenAPI drf-spectacular déjà validé en CI (YAPIC6,
+`GET /api/schema/`, voir `erp_agentique/urls.py`) et génère des requêtes
+positives **et négatives** contre chaque opération documentée, avec `--checks
+all` (5xx/`not_a_server_error`, conformité de réponse/`response_schema_
+conformance`, données négatives/`negative_data_rejection`, en-têtes/
+`response_headers_conformance`+`missing_required_header`, etc.) et les 4 phases
+(`examples,coverage,fuzzing,stateful` — la phase `stateful` exploite les
+`links` OpenAPI quand le schéma en déclare).
+
+**Auth.** `/api/schema/` est derrière `IsAuthenticated`
+(`SPECTACULAR_SETTINGS['SERVE_PERMISSIONS']`) : le job obtient un JWT
+`demo_admin` (identifiants seedés en dur par `seed_demo` —
+`demo_admin` / `Demo@2026!`, jamais un compte de prod) via
+`POST /api/django/token/`, puis le passe en `-H "Authorization: Bearer …"` à
+`schemathesis run` — Schemathesis l'applique À LA FOIS à la récupération du
+schéma et à chaque requête de test (vérifié en local contre un faux schéma
+protégé avant d'écrire ce job).
+
+**Exclusions (destructif / envois externes réels)** — `--exclude-path-regex`,
+documentées et vérifiées contre le code (jamais une supposition) :
+
+| Surface exclue | Pourquoi |
+|---|---|
+| `adsengine/` | Moteur Meta Ads/Instagram de l'ERP : publication réelle, réponse/suppression/masquage de commentaires Instagram, connexions Meta — surface entière exclue (trop large/connectée à l'API Graph pour un tri fiable opération par opération). |
+| `/contact/` | Formulaire de contact public → e-mail SendGrid (parqué par défaut — voir CLAUDE.md « Public contact form »). |
+| `statuspage/public/(abonner\|confirmer\|desabonner)/` | Abonnement au statut public → e-mail de confirmation (`apps/statuspage/views.py::_envoyer_email_confirmation`). |
+| `automation/approvals/<id>/approve/` | Approuver une approbation **relance réellement** l'action différée (`engine.run_approved`), qui peut envoyer e-mail/SMS/WhatsApp selon la règle configurée. `reject` et `simuler` (dry-run explicite) restent fuzzables. |
+
+Sans clés API réelles dans l'environnement CI (`SENDGRID_API_KEY`, identifiants
+Meta — voir CLAUDE.md « Key-gated features »), ces intégrations échouent déjà
+gracieusement ; l'exclusion reste utile en défense en profondeur ET pour la
+qualité du signal (un 5xx dû à une clé absente n'est pas un vrai bug d'API).
+Cette liste est un point de départ documenté, pas un audit exhaustif — l'élargir
+au fil des faux positifs constatés dans le rapport.
+
+**Résultat.** Rapport JUnit + JSON uploadé en artefact (`schemathesis-report`,
+14 jours). Chaque échec **reproductible** devient une tâche `ERR*` dans
+`docs/ERROR_PLAN.md` — jamais un gate (règle du groupe QAH : « canonisation
+d'oracle interdite », on ne rend jamais un test vert en l'alignant sur un bug).
+
+**Recette locale (docker) :**
+```bash
+# 1. Monter la pile (db/redis/minio + Django + seed_demo) — même script que
+#    la piste e2e ci-dessus :
+bash scripts/e2e-local.sh up
+
+# 2. Installer schemathesis (déjà dans requirements-dev.txt) :
+cd backend/django_core && pip install -r requirements-dev.txt && cd ../..
+
+# 3. Obtenir un JWT demo_admin :
+ACCESS=$(curl -sf -X POST http://127.0.0.1:8000/api/django/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "demo_admin", "password": "Demo@2026!"}' \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['access'])")
+
+# 4. Lancer le fuzz (mêmes flags que le job nightly ; réduire --max-time pour
+#    un aller-retour rapide en local) :
+schemathesis run \
+  --url http://127.0.0.1:8000 \
+  -H "Authorization: Bearer ${ACCESS}" \
+  --checks all \
+  --phases examples,coverage,fuzzing,stateful \
+  --mode all \
+  --max-time 120 \
+  --exclude-path-regex '(adsengine/|/contact/|statuspage/public/(abonner|confirmer|desabonner)/|automation/approvals/[0-9]+/approve/)' \
+  http://127.0.0.1:8000/api/schema/
+
+# 5. Arrêter :
+bash scripts/e2e-local.sh stop
+```
+
+DEP : `schemathesis==4.28.0` (v4 — CLI restructurée vs v3, vérifiée contre
+`schemathesis run --help` avant de choisir les flags ci-dessus) dans
+`backend/django_core/requirements-dev.txt`, jamais dans l'image de production.

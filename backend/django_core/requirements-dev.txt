@@ -35,3 +35,9 @@ locust==2.31.8
 # fr_FR). Dev/CI/staging uniquement (mesures de charge + démos gros volume),
 # JAMAIS dans l'image prod. NOTE : nouvelle dépendance de développement.
 Faker==40.28.1
+
+# QAH6 — fuzzing property-based du schéma OpenAPI (job `api-fuzz`, nightly +
+# dispatch, non bloquant). Dev/CI uniquement, JAMAIS dans l'image prod. NOTE :
+# nouvelle dépendance de développement. Épinglé sur la v4 (CLI restructurée vs
+# v3 — voir la section « Fuzz API (Schemathesis) — QAH6 » de docs/TESTING.md).
+schemathesis==4.28.0

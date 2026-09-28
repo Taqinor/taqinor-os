@@ -457,6 +457,161 @@ jobs:
         run: python -m unittest discover -s tests -v
 
   # ---------------------------------------------------------------------------
+  # QAH6 (28/09/2026) — FUZZING PROPERTY-BASED DU SCHEMA OPENAPI (Schemathesis).
+  #
+  # Recherche L2 du 27/09/2026 (GROUPE QAH) : un agent LLM explore bien et juge
+  # MAL (GUI Testing Arena, GUITester) — les ORACLES DURS doivent porter le
+  # jugement. Schemathesis EST un oracle dur pour l'API : il lit le schema
+  # drf-spectacular DEJA validé en CI (YAPIC6, job `backend-openapi`) et genere
+  # des requetes (positives ET négatives) contre CHAQUE opération documentée,
+  # verifiant 5xx/conformite de reponse/en-tetes — sans jugement humain a
+  # simuler. Non-bloquant (`continue-on-error`), palier 3 (nightly + dispatch,
+  # comme tout ce fichier) : c'est un DECOUVREUR, jamais un gate.
+  #
+  # Conteneurise dans l'image CI (`ci-backend`, pas besoin des navigateurs
+  # `ci-e2e`) — meme raison que `backend-full`/`e2e-full` : MinIO par binaire
+  # natif, jamais `docker run minio/minio` (CAD177). Setup DB/demo repris tel
+  # quel du job `e2e-full` (migrate + seed_demo + seed_catalogue).
+  #
+  # EXCLUSIONS (destructif / envois externes REELS) — documentees ici, jamais
+  # dans une invention : verifie contre le code, pas une supposition.
+  #   - `adsengine/` : moteur Meta Ads/Instagram de l'ERP (PUBLICATION reelle,
+  #     reponse/suppression/masquage de commentaires Instagram, connexions
+  #     Meta) — surface entiere exclue, trop large et trop connectee a l'API
+  #     Graph pour un tri operation-par-operation fiable ici.
+  #   - `/contact/` : formulaire de contact public -> e-mail SendGrid (parqué
+  #     par defaut, mais exclu par principe — PLAN.md « Public contact form »).
+  #   - `statuspage/public/(abonner|confirmer|desabonner)/` : abonnement au
+  #     statut public -> e-mail de confirmation (`apps/statuspage/views.py`
+  #     `_envoyer_email_confirmation`).
+  #   - `automation/approvals/<id>/approve/` : approuver une approbation
+  #     RELANCE reellement l'action differee (`engine.run_approved`) — laquelle
+  #     peut envoyer e-mail/SMS/WhatsApp selon la regle configuree. `reject` et
+  #     `simuler` (dry-run explicite, « rien n'est ecrit ni envoye ») restent
+  #     fuzzables.
+  #   NOTE — sans clés API réelles dans l'environnement CI (SENDGRID_API_KEY,
+  #   identifiants Meta), ces intégrations échouent déjà gracieusement (voir
+  #   CLAUDE.md « Key-gated features ») ; l'exclusion reste utile en défense en
+  #   profondeur ET pour la qualité du signal (un 5xx dû à une clé absente
+  #   n'est pas un vrai bug d'API).
+  #
+  # Chaque échec REPRODUCTIBLE devient une tâche ERR dans docs/ERROR_PLAN.md —
+  # jamais un gate (règle explicite du groupe QAH, « canonisation d'oracle
+  # interdite » : on ne rend jamais un test vert en l'alignant sur un bug).
+  # Recette locale (docker) : docs/TESTING.md, section « Fuzz API
+  # (Schemathesis) — QAH6 ».
+  # ---------------------------------------------------------------------------
+  api-fuzz:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      # Meme garde que `e2e-full`/`e2e-shard` : sans elle, les centaines de
+      # requetes de Schemathesis contre la meme societe demo epuisent le
+      # budget 1200/min et font pleuvoir des 429 (bruit, pas un vrai bug).
+      TENANT_RATE_LIMIT: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+      - name: Migrate + seed throwaway demo data (repris de e2e-full)
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+      - name: Démarrer Django (gunicorn)
+        working-directory: backend/django_core
+        run: |
+          gunicorn erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+              echo "Django prêt (HTTP $code)"; break
+            fi
+            echo "Attente Django ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+      - name: Obtenir un JWT demo_admin
+        id: jwt
+        run: |
+          set -euo pipefail
+          # Identifiants seedés en dur par `seed_demo` (authentication/
+          # management/commands/seed_demo.py) — jamais un compte de prod.
+          RESPONSE=$(curl -sf -X POST http://127.0.0.1:8000/api/django/token/ \
+            -H "Content-Type: application/json" \
+            -d '{"username": "demo_admin", "password": "Demo@2026!"}')
+          ACCESS=$(python -c "import json,sys; print(json.load(sys.stdin)['access'])" <<< "$RESPONSE")
+          # Le jeton ne va JAMAIS dans les logs (masqué) ni dans un output lu
+          # par un autre job — consommé dans CE job, à l'étape suivante.
+          echo "::add-mask::$ACCESS"
+          echo "access=$ACCESS" >> "$GITHUB_OUTPUT"
+      - name: schemathesis run (fuzzing + stateful contre api/schema/)
+        working-directory: backend/django_core
+        env:
+          ACCESS_TOKEN: ${{ steps.jwt.outputs.access }}
+        run: |
+          set -euo pipefail
+          schemathesis run \
+            --url http://127.0.0.1:8000 \
+            -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+            --checks all \
+            --phases examples,coverage,fuzzing,stateful \
+            --mode all \
+            --max-time 1800 \
+            --exclude-path-regex '(adsengine/|/contact/|statuspage/public/(abonner|confirmer|desabonner)/|automation/approvals/[0-9]+/approve/)' \
+            --report junit,json \
+            --report-dir ../../schemathesis-report \
+            http://127.0.0.1:8000/api/schema/ \
+            2>&1 | tee ../../schemathesis-output.log
+      - name: Upload le rapport Schemathesis
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-report
+          path: |
+            schemathesis-report/
+            schemathesis-output.log
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
   # CAD177 (28/09/2026) — ALERTE SI LE NOCTURNE ECHOUE/SAUTE 2 NUITS DE SUITE.
   #
   # `release-verify` a echoue chaque nuit du 12/09 au 27/09/2026 (MinIO, cf.
