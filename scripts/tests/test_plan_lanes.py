@@ -829,6 +829,20 @@ class MarqueurGateEnTeteDeLabelTests(unittest.TestCase):
         self.assertEqual(pl.count_malformed(chemin), 0)
         self.assertEqual(pl.parse_tasks(chemin), [])
 
+    def test_section_manuel_prefixee_d_un_groupe_hors_file(self):
+        # Forme réelle PLAN.md « ### CAD — MANUEL (Reda / Meryem, pas du
+        # code) » : ses tâches CADM étaient émises buildables (2026-09-28).
+        chemin = Path(tempfile.mkdtemp()) / "PLAN.md"
+        chemin.write_text(
+            "## BUILD QUEUE\n\n### CAD — MANUEL (Reda / Meryem, pas du code)\n"
+            "- [ ] CADM901 — **Relecture darija.** (@lane: apps/parametres)\n"
+            "### Lot 7 — WORKFLOW (CALX901 ; CALX902 en GATED) — merge M5\n"
+            "- [ ] CALX901 — **Tâche vivante.** (@lane: apps/calepinage)\n",
+            encoding="utf-8")
+        self.addCleanup(lambda: chemin.unlink(missing_ok=True))
+        self.assertEqual([t["id"] for t in pl.parse_tasks(chemin)],
+                         ["CALX901"])
+
     def test_citation_d_un_marqueur_en_milieu_de_texte_reste_buildable(self):
         # Forme VX198 : la tâche cite un marqueur dans son corps — vivante.
         gates = self._gates(

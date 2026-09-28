@@ -154,8 +154,16 @@ _TASK_HEADER_RE = re.compile(
 _RAW_CHECKLIST_RE = re.compile(r"^\s*- \[")
 
 # Sections whose tasks are never auto-built (kept out of the schedule entirely).
+# An optional ``<PREFIXE> — `` before the keyword covers group-scoped headers
+# such as ``### CAD — MANUEL (Reda / Meryem, pas du code)`` (French MANUEL
+# too): on 2026-09-28 those 9 CADM founder chores were emitted as buildable
+# lanes. The keyword must still OPEN the title — a header merely citing
+# « en GATED » mid-title (``### Lot 7 — … CALX373-375 en GATED) …``) stays a
+# live queue.
 _NON_QUEUE_SECTION = re.compile(
-    r"^#{1,3}\s+(GATED|MANUAL|DONE LOG|ALREADY LIVE)\b", re.IGNORECASE
+    r"^#{1,3}\s+(?:[A-Z0-9-]+\s+—\s+)?"
+    r"(GATED|MANUAL|MANUEL|DONE LOG|ALREADY LIVE)\b",
+    re.IGNORECASE,
 )
 
 # Category keywords kept ONLY as informational labels. Per the founder standing
