@@ -154,4 +154,4 @@ passe, même vide). Les passes sans constat ne laissent de trace que dans
 
 | Date | Modules couverts | Constats déposés | Écartés (non reproduits / déjà connus) | Coût (tokens / estimation) |
 | --- | --- | --- | --- | --- |
-| _en attente — première passe réelle_ | _à remplir par la première passe nocturne (QAH11) : aucune passe réelle n'a encore tourné — le skill a été livré sans stack docker ni serveurs MCP approuvés_ | — | — | — |
+| 2026-09-28 | crm, visites, calepinage, ventes, stock, chantiers, sav, ged, portail, parametres (12 explorateurs sonnet, passes « en profondeur » ; portail côté client et SAV tickets/équipements non atteignables sur la démo) | 16 (4 Critical, 1 High, 9 Medium, 2 Low) — ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION … ERR-QAH-GED-UPLOAD-TXT-SILENT-REJECT | 3 (1 non reproduit, 2 à regarder par un humain) | ≈3,2 M tokens sous-agents (12 explorateurs sonnet ≈2,64 M + 2 rejoueurs opus ≈0,52 M + 1 éclaireur) + orchestrateur Fable ; ~3 h de mur |
