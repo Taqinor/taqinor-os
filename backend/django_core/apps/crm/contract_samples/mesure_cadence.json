@@ -1,6 +1,6 @@
 {
   "endpoint": "GET /api/django/crm/leads/mesure-cadence/?jours=90",
-  "pourquoi": "CAD87 (audit L3 du 21/09/2026, section CAD-I) — CKP3 dit OÙ les dossiers décrochent, mais rien ne répondait à « à quelle HEURE et quel JOUR joint-on le plus ? », « combien de touches consommées avant une signature ? » et « quelle part des leads demande WhatsApp uniquement ou la darija ? ». Ces trois mesures maison sont le prérequis pour trancher le samedi, la soirée de Ramadan et la densité du protocole sur des faits plutôt que sur des repères occidentaux non transposables (CAD89 consigne pourquoi ces repères ne valent pas). Publier la forme AVANT l'écran (CAD100) évite qu'un tableau lise `taux_joint` là où le serveur sert `taux_joint_pct`. Trois règles portées par ce contrat. (1) LECTURE SEULE, bornée à `request.user.company` — jamais un identifiant de société reçu du client. (2) `null` dès qu'un DÉNOMINATEUR est 0, jamais un 0 % qui se lirait comme un échec là où il n'y a rien à mesurer. (3) `source_issue` dit comment l'issue de chaque touche a été retrouvée : `colonne` quand `RelanceEtape.outcome` existe (CAD118), `appariement_2min` tant qu'il faut la rapprocher de la ligne de chatter écrite par la même requête — un chiffre dont on ignore la fabrication n'est pas un chiffre. Aucun seuil et aucune couleur côté serveur : des valeurs, le jugement reste humain.",
+  "pourquoi": "CAD87 (audit L3 du 21/09/2026, section CAD-I) — CKP3 dit OÙ les dossiers décrochent, mais rien ne répondait à « à quelle HEURE et quel JOUR joint-on le plus ? », « combien de touches consommées avant une signature ? » et « quelle part des leads demande WhatsApp uniquement ou la darija ? ». Ces trois mesures maison sont le prérequis pour trancher le samedi, la soirée de Ramadan et la densité du protocole sur des faits plutôt que sur des repères occidentaux non transposables (CAD89 consigne pourquoi ces repères ne valent pas). Publier la forme AVANT l'écran (CAD100) évite qu'un tableau lise `taux_joint` là où le serveur sert `taux_joint_pct`. Trois règles portées par ce contrat. (1) LECTURE SEULE, bornée à `request.user.company` — jamais un identifiant de société reçu du client. (2) `null` dès qu'un DÉNOMINATEUR est 0, jamais un 0 % qui se lirait comme un échec là où il n'y a rien à mesurer. (3) `source_issue` dit comment l'issue de chaque touche a été retrouvée : `colonne` quand `RelanceEtape.outcome` existe (CAD118), `appariement_2min` tant qu'il faut la rapprocher de la ligne de chatter écrite par la même requête — un chiffre dont on ignore la fabrication n'est pas un chiffre. Aucun seuil et aucune couleur côté serveur : des valeurs, le jugement reste humain. CAD178 (audit CAD86, 24/09/2026) — additif `gestes_par_appareil` : cette mesure était 100 % DESKTOP, aucun des 4 écrans de cadence n'avait de trace d'usage mobile. Compteur JOURNALIER agrégé (`crm.GesteRelanceAppareil`), jamais un événement par clic ni l'IP/le User-Agent brut.",
   "exemple": {
     "jours": 90,
     "source_issue": "colonne",
@@ -40,7 +40,44 @@
       "whatsapp_only_pct": 15.0,
       "darija": 35,
       "darija_pct": 25.0
-    }
+    },
+    "gestes_par_appareil": [
+      {
+        "geste": "appeler",
+        "famille_appareil": "mobile",
+        "total": 18
+      },
+      {
+        "geste": "appeler",
+        "famille_appareil": "ordinateur",
+        "total": 6
+      },
+      {
+        "geste": "fait",
+        "famille_appareil": "mobile",
+        "total": 24
+      },
+      {
+        "geste": "fait",
+        "famille_appareil": "ordinateur",
+        "total": 31
+      },
+      {
+        "geste": "reporter",
+        "famille_appareil": "mobile",
+        "total": 5
+      },
+      {
+        "geste": "whatsapp",
+        "famille_appareil": "mobile",
+        "total": 40
+      },
+      {
+        "geste": "whatsapp",
+        "famille_appareil": "tablette",
+        "total": 2
+      }
+    ]
   },
   "exemple_vide": {
     "jours": 90,
@@ -53,13 +90,15 @@
       "whatsapp_only_pct": null,
       "darija": 0,
       "darija_pct": null
-    }
+    },
+    "gestes_par_appareil": []
   },
   "notes": {
     "jours": "profondeur demandée, bornée par la vue à [1, 365] ; défaut 90 — un agrégat croisé (touche × heure × jour × canal) sur 30 jours n'a presque aucune case peuplée.",
     "source_issue": "`colonne` = lue sur `RelanceEtape.outcome` (CAD118) ; `appariement_2min` = repli, la ligne de chatter écrite par la MÊME requête que la clôture (même lead, même auteur, moins de deux minutes).",
     "taux_joint_par_creneau": "une ligne par (ordre de touche × canal × heure locale de clôture × jour de semaine, 0 = lundi). Dénominateur = les touches CLOSES PAR UN HUMAIN (fait + sautée) ; une annulation moteur n'a jamais été tentée par personne. Numérateur = issue `joint` ou `interesse`, exactement la définition de `kpi_cadences` — deux KPI qui compteraient « joint » autrement seraient impossibles à confronter.",
     "signatures_par_touches_consommees": "distribution, pas une moyenne : `touches` = nombre de touches closes par un humain AVANT le passage d'étape vers SIGNED (lu dans `LeadActivity`, `field='stage'` — jamais une liste d'étapes littérale, STAGES.py fait foi).",
-    "part_contact_et_langue": "leads créés sur la période, miroir Odoo et archivés écartés : `contact_preference = whatsapp_only` (QW3, la question posée au client) et `langue_preferee = darija`."
+    "part_contact_et_langue": "leads créés sur la période, miroir Odoo et archivés écartés : `contact_preference = whatsapp_only` (QW3, la question posée au client) et `langue_preferee = darija`.",
+    "gestes_par_appareil": "CAD178 — une ligne par (geste × famille d'appareil) COMPTÉE sur la fenêtre ; `geste` ∈ `fait|reporter|appeler|whatsapp` (les 4 gestes clés des écrans de cadence), `famille_appareil` ∈ `mobile|tablette|ordinateur|inconnu` (classification GROSSIÈRE dérivée du User-Agent HTTP, `mesure_cadence.famille_appareil` — jamais l'IP ni le User-Agent brut, jamais un modèle d'appareil identifié). Liste VIDE tant qu'aucun geste n'a encore été compté — jamais une ligne à zéro inventée pour une combinaison qui n'existe pas encore. Compteur JOURNALIER agrégé (`crm.GesteRelanceAppareil`), écrit en BEST-EFFORT depuis les vues : un échec de comptage n'a jamais fait échouer le geste métier qu'il mesure."
   }
 }

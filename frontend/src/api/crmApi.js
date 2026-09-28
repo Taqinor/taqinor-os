@@ -134,6 +134,12 @@ const crmApi = {
   // MRY13 — LE CLIC qui ouvre WhatsApp : marque la touche faite côté serveur
   // (jamais d'envoi réseau — décision D5).
   whatsappRelanceEtape: (id) => api.post(`/crm/relance-etapes/${id}/whatsapp/`),
+  // CAD178 — LE CLIC qui compose l'appel (`tel:`) : n'écrit rien sur la
+  // touche ni sur le lead, compte seulement le geste par famille d'appareil
+  // pour `mesure_cadence`. Best-effort côté écran (jamais bloquant pour
+  // l'appel — voir `RelanceEtapeRow.appeler`).
+  appelerRelanceEtape: (id) =>
+    api.post(`/crm/relance-etapes/${id}/appel-compose/`),
   // MRY10 — reporte cette touche (et décale les suivantes du même delta).
   // F1 (2026-09) — forme SÛRE `{rappel_le, rappel_heure}` ancrée Casablanca
   // CÔTÉ SERVEUR (`RelanceEtapeViewSet.reporter` → `_parse_rappel`, comme

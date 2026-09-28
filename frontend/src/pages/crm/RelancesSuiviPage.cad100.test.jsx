@@ -57,7 +57,11 @@ describe('RelancesSuiviPage — CAD100 (KPI touche × heure × jour × canal)', 
     const panneau = await screen.findByTestId('mesure-cadence-panel')
     const premierCreneau = MESURE.taux_joint_par_creneau[0]
     expect(within(panneau).getByText(`${premierCreneau.taux_joint_pct} %`)).toBeInTheDocument()
-    expect(within(panneau).getByText('WhatsApp')).toBeInTheDocument()
+    // Scopé à CE tableau (CAD178 ajoute un troisième tableau qui porte AUSSI
+    // le libellé « WhatsApp », sur son geste plutôt que sur un canal — une
+    // recherche non scopée sur tout le panneau serait ambiguë).
+    const tableauCreneaux = within(panneau).getByTestId('mesure-taux-joint')
+    expect(within(tableauCreneaux).getByText('WhatsApp')).toBeInTheDocument()
     // index 1 (touches=5, signatures=3) : « 3 » n'entre en collision avec
     // AUCUNE autre cellule exacte du panneau (contrairement à « 1 », qui est
     // aussi l'ordre de la première touche) — getByText exige l'unicité.
@@ -91,5 +95,29 @@ describe('RelancesSuiviPage — CAD100 (KPI touche × heure × jour × canal)', 
       screen.getByText(/Mesure de la cadence indisponible/),
     ).toBeInTheDocument())
     crmApi.getMesureCadence = original
+  })
+})
+
+describe('RelancesSuiviPage — CAD178 (gestes clés par famille d\'appareil)', () => {
+  it('rend le troisième tableau, tel quel, à partir de la réponse serveur', async () => {
+    mount()
+    const panneau = await screen.findByTestId('mesure-cadence-panel')
+    const tableau = within(panneau).getByTestId('mesure-gestes-appareil')
+    const premiereLigne = MESURE.gestes_par_appareil[0]
+    expect(within(tableau).getByText(String(premiereLigne.total))).toBeInTheDocument()
+    // « WhatsApp » y figure aussi (comme geste, pas comme canal) — la colonne
+    // « Appareil » qui manquait sur les 4 écrans de cadence (constat CAD86).
+    expect(within(tableau).getAllByText('Mobile').length).toBeGreaterThan(0)
+    expect(within(tableau).getByText('Tablette')).toBeInTheDocument()
+  })
+
+  it('aucun geste compté rend « — », jamais une ligne à zéro fabriquée', async () => {
+    crmApi.getMesureCadence.mockResolvedValue({
+      data: { ...MESURE, gestes_par_appareil: [] },
+    })
+    mount()
+    const panneau = await screen.findByTestId('mesure-cadence-panel')
+    expect(screen.queryByTestId('mesure-gestes-appareil')).not.toBeInTheDocument()
+    expect(within(panneau).getAllByText('—').length).toBeGreaterThan(0)
   })
 })

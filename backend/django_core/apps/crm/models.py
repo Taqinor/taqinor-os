@@ -1768,6 +1768,58 @@ class RelanceEtape(TenantModel):
                 f'({self.get_statut_display()})')
 
 
+class GesteRelanceAppareil(TenantModel):
+    """CAD178 (audit CAD86, 24/09/2026) — compteur des GESTES CLÉS de la
+    cadence de relance (Fait, Reporter, Appeler, WhatsApp), PAR FAMILLE
+    D'APPAREIL. Avant : la seule mesure d'usage (CAD87/CAD100) ne distinguait
+    aucun appareil — aucune des quatre écrans de cadence n'avait la moindre
+    trace d'usage mobile.
+
+    Compteur JOURNALIER agrégé (jamais un événement par clic conservé
+    indéfiniment, jamais l'IP ni le User-Agent brut) : la famille d'appareil
+    est une classification GROSSIÈRE dérivée du User-Agent HTTP de la requête
+    (``mesure_cadence.famille_appareil``), jamais stockée telle quelle. Écrit
+    en BEST-EFFORT depuis les vues (``mesure_cadence.enregistrer_geste_appareil``) —
+    un échec de comptage n'a jamais fait échouer le geste métier qu'il mesure.
+    """
+
+    class Geste(models.TextChoices):
+        FAIT = 'fait', 'Fait'
+        REPORTER = 'reporter', 'Reporter'
+        APPELER = 'appeler', 'Appeler'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+
+    class FamilleAppareil(models.TextChoices):
+        MOBILE = 'mobile', 'Mobile'
+        TABLETTE = 'tablette', 'Tablette'
+        ORDINATEUR = 'ordinateur', 'Ordinateur'
+        INCONNU = 'inconnu', 'Inconnu'
+
+    geste = models.CharField(max_length=20, choices=Geste.choices)
+    famille_appareil = models.CharField(
+        max_length=20, choices=FamilleAppareil.choices)
+    jour = models.DateField(verbose_name='Jour (Casablanca)')
+    total = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Geste de relance par appareil'
+        verbose_name_plural = 'Gestes de relance par appareil'
+        ordering = ['-jour', 'geste', 'famille_appareil']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'geste', 'famille_appareil', 'jour'],
+                name='crm_geste_appareil_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'jour'],
+                         name='crm_geste_appareil_jour_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.company_id}: {self.geste}/{self.famille_appareil} '
+                f'{self.jour} = {self.total}')
+
+
 class LeadTag(models.Model):
     """Étiquette de lead gérée (Paramètres → CRM). Le champ Lead.tags reste un
     texte libre ; cette liste sert de suggestions + couleurs. Additif."""

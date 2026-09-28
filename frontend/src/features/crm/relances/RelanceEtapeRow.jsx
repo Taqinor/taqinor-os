@@ -714,9 +714,15 @@ export default function RelanceEtapeRow({
 
   // CAD80 — « Appeler » : le brouillon est écrit AVANT de céder la main au
   // téléphone (la page peut être déchargée dans la foulée).
+  // CAD178 — compteur BEST-EFFORT du geste, par famille d'appareil : lancé
+  // AVANT `tel:` (best-effort — la page peut se décharger dans la foulée),
+  // jamais attendu, jamais bloquant pour l'appel lui-même.
   const appeler = () => {
     if (!etape.lead_telephone) return
     if (panel === 'fait' && note.trim()) ecrireBrouillon(etape.id, { note })
+    if (typeof crmApi.appelerRelanceEtape === 'function') {
+      crmApi.appelerRelanceEtape(etape.id).catch(() => {})
+    }
     window.location.href = `tel:${etape.lead_telephone}`
   }
 

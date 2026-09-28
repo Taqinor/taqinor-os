@@ -2275,17 +2275,23 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         'signatures_par_touches_consommees': serializers.ListField(
             child=serializers.DictField()),
         'part_contact_et_langue': serializers.DictField(),
+        # CAD178 — additif : les 4 gestes clés, par famille d'appareil.
+        'gestes_par_appareil': serializers.ListField(
+            child=serializers.DictField()),
     }))
     @action(detail=False, methods=['get'], url_path='mesure-cadence',
             permission_classes=[IsAnyRole])
     def mesure_cadence(self, request):
-        """Forme `mesure_cadence` (CAD87). ``?jours=`` (90, borné [1, 365]).
+        """Forme `mesure_cadence` (CAD87/CAD178). ``?jours=`` (90, borné
+        [1, 365]).
 
-        LECTURE SEULE, bornée à `request.user.company`. Trois mesures et rien
+        LECTURE SEULE, bornée à `request.user.company`. Quatre mesures et rien
         d'autre : taux de joint par (touche × heure × jour × canal),
         signatures par nombre de touches consommées, part de « WhatsApp
-        uniquement » et de darija. Aucun seuil, aucune couleur — le jugement
-        reste humain, et `null` dès qu'un dénominateur est 0."""
+        uniquement » et de darija, et (CAD178) les gestes clés (Fait,
+        Reporter, Appeler, WhatsApp) par famille d'appareil. Aucun seuil,
+        aucune couleur — le jugement reste humain, et `null`/liste vide dès
+        qu'un dénominateur est 0 ou qu'aucun geste n'a encore été compté."""
         from .mesure_cadence import JOURS_MESURE_DEFAUT
         from .mesure_cadence import mesure_cadence as _mesure
         try:
@@ -3770,6 +3776,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             definir_langue_preferee(self.get_object().lead, request.user,
                                     langue)
             resultat.data['lead_langue'] = langue
+        if resultat.status_code < 400:
+            # CAD178 — compteur BEST-EFFORT du geste « Fait », par famille
+            # d'appareil (jamais bloquant, jamais compté sur un refus 400).
+            from .mesure_cadence import enregistrer_geste_appareil
+            enregistrer_geste_appareil(
+                request.user.company, 'fait',
+                request.META.get('HTTP_USER_AGENT', ''))
         return resultat
 
     @action(detail=True, methods=['post'])
@@ -3890,8 +3903,30 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             logger.warning(
                 'MRY13: AuditLog non écrit (étape #%s)', etape.pk,
                 exc_info=True)
+        # CAD178 — compteur BEST-EFFORT du geste « WhatsApp », par famille
+        # d'appareil.
+        from .mesure_cadence import enregistrer_geste_appareil
+        enregistrer_geste_appareil(
+            etape.company, 'whatsapp', request.META.get('HTTP_USER_AGENT', ''))
         rendu['etape'] = self.get_serializer(etape).data
         return Response(rendu)
+
+    @action(detail=True, methods=['post'], url_path='appel-compose')
+    def appel_compose(self, request, pk=None):
+        """CAD178 — compteur BEST-EFFORT du geste « Appeler ».
+
+        Jusqu'ici, ce bouton cède la main au téléphone (``tel:``, CAD80) sans
+        JAMAIS toucher le serveur — CAD86 note qu'aucun des 4 écrans de
+        cadence n'a de trace d'usage mobile. Cette action n'écrit RIEN sur la
+        touche ni sur le lead, ne journalise aucune activité chatter : elle
+        compte seulement le geste, par famille d'appareil, pour
+        `mesure_cadence`. Toujours 204, même si le comptage échoue en
+        interne (mesure best-effort, jamais bloquante pour l'appel)."""
+        etape = self.get_object()
+        from .mesure_cadence import enregistrer_geste_appareil
+        enregistrer_geste_appareil(
+            etape.company, 'appeler', request.META.get('HTTP_USER_AGENT', ''))
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'])
     def langue(self, request, pk=None):
@@ -4018,6 +4053,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             champ = 'due_at' if brut else 'rappel_le'
             return Response({'erreurs': {champ: refus}},
                             status=status.HTTP_400_BAD_REQUEST)
+        # CAD178 — compteur BEST-EFFORT du geste « Reporter », par famille
+        # d'appareil (les deux modes, decaler ET veille, comptent).
+        from .mesure_cadence import enregistrer_geste_appareil
+        enregistrer_geste_appareil(
+            etape.company, 'reporter', request.META.get('HTTP_USER_AGENT', ''))
         if mode == 'veille':
             from .services import mettre_en_veille
             reprise = mettre_en_veille(
