@@ -29,6 +29,21 @@ import { formatDate } from '../../lib/format'
    voit » après chaque ajout/retrait.
    ========================================================================== */
 
+// ERR-QAH-GED-DETAILS-CRASH-PERMISSIONS — le backend renvoie trois formes
+// différentes selon l'endpoint : un tableau brut (`timeline/`), une page DRF
+// `{count,results}` (`acls/?document=`), ou un objet dédié `{"lignes":[…]}`
+// (`permissions-effectives/`, ni tableau ni paginé). `setAcl(r.data?.results
+// ?? r.data ?? [])` posait donc `r.data` (l'OBJET `{lignes:[…]}`) tel quel →
+// `acl.map` explosait (`TypeError: i.map is not a function`), plantant toute
+// la page via l'error boundary. `toArray` normalise les trois formes et
+// retombe TOUJOURS sur un tableau — jamais un objet ne peut atteindre `.map`.
+const toArray = (data) => {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.lignes)) return data.lignes
+  if (data && Array.isArray(data.results)) return data.results
+  return []
+}
+
 const NIVEAU_OPTIONS = [
   { value: 'lecture', label: 'Lecture' },
   { value: 'ecriture', label: 'Écriture' },
@@ -50,22 +65,22 @@ export default function GedDocumentInsights({ document, onClose }) {
   const reloadAcl = () => {
     if (!document) return
     gedApi.getPermissionsEffectives(document.id)
-      .then((r) => setAcl(r.data?.results ?? r.data ?? []))
+      .then((r) => setAcl(toArray(r.data)))
       .catch(() => setAcl([]))
     gedApi.getAcls({ document: document.id })
-      .then((r) => setEntries(r.data?.results ?? r.data ?? []))
+      .then((r) => setEntries(toArray(r.data)))
       .catch(() => setEntries([]))
   }
 
   useEffect(() => {
     if (!document) return
     gedApi.getTimeline(document.id)
-      .then((r) => setTimeline(r.data?.results ?? r.data ?? []))
+      .then((r) => setTimeline(toArray(r.data)))
       .catch(() => setTimeline([]))
     reloadAcl()
-    gedApi.getUsers().then((r) => setUsers(r.data?.results ?? r.data ?? []))
+    gedApi.getUsers().then((r) => setUsers(toArray(r.data)))
       .catch(() => setUsers([]))
-    rolesApi.getRoles().then((r) => setRoles(r.data?.results ?? r.data ?? []))
+    rolesApi.getRoles().then((r) => setRoles(toArray(r.data)))
       .catch(() => setRoles([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document])
