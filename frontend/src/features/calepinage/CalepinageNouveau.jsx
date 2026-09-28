@@ -256,7 +256,11 @@ export default function CalepinageNouveau() {
         res = await calepinageApi.calepinages.depuisModele(corps)
       } else {
         const corps = { [champCible]: cibleId }
-        if (nom.trim()) corps.nom = nom.trim()
+        // ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU — le champ RÉEL du modèle
+        // (et du sérialiseur) est `titre` : `nom` n'existe pas en écriture,
+        // le serveur l'ignorait donc en silence (201 avec `titre: ''`).
+        // Même clé que la branche « depuis un modèle » ci-dessus.
+        if (nom.trim()) corps.titre = nom.trim()
         res = await calepinageApi.calepinages.create(corps)
       }
       const id = res?.data?.id

@@ -136,6 +136,19 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
             pass
         return memo
 
+    def to_representation(self, instance):
+        """CALX407 — ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU : la LISTE (et la
+        bibliothèque des modèles) publient le MÊME nom que le détail agrégé
+        (``views/calepinages.py::detail_calepinage``). Le champ SAISI est
+        ``titre`` — la LISTE ne rendait que lui, sous SA propre clé
+        ``titre`` ; l'écran (atelier ET liste) lit ``nom``, exactement le
+        même calcul que le détail (``_texte(titre) or str(calepinage)``,
+        ici ``str(instance)`` — ``Calepinage.__str__`` fait le même repli).
+        """
+        data = super().to_representation(instance)
+        data['nom'] = str(instance)
+        return data
+
     def validate(self, attrs):
         """Lead XOR client, et un lead qui existe VRAIMENT dans la société."""
         attrs = super().validate(attrs)
