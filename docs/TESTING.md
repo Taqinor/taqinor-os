@@ -259,3 +259,38 @@ un test de régression qui l'aurait attrapé n'est pas terminé.
   à étoffer au palier 1/2 quand le code correspondant atterrit.
 * Régression visuelle : commiter les baselines générées par `release-verify` pour
   activer la comparaison pixel.
+
+## Palier 4 — production (Sentry) — QAH8
+
+Le palier 3 vérifie le code avant qu'il parte ; ce palier 4 est le SEUL qui
+observe le comportement RÉEL en production, une fois le pilote armé.
+
+* **Armement** — `@sentry/react` est en dépendance (`frontend/package.json`,
+  QAH8) et `frontend/src/lib/monitoring.js` reste un NO-OP TOTAL sans
+  `VITE_SENTRY_DSN` (zéro octet, zéro appel — voir `frontend/src/lib/
+  monitoring.test.mjs`). Armer le pilote : renseigner `VITE_SENTRY_DSN` (+
+  `VITE_SENTRY_ENVIRONMENT`) dans `.env` (voir `.env.example`) et
+  `SENTRY_DSN` côté Django (`core/monitoring.py`), puis rebuild — c'est un
+  flag BUILD-TIME côté frontend (`docker compose up -d --build frontend`,
+  transmis en build arg par `docker-compose.yml`).
+* **Session replay** — échantillonnage bas (10 % des sessions, 100 % sur
+  erreur) avec masquage de TOUT texte/toute saisie par défaut (`maskAllText`,
+  `maskAllInputs`, `blockAllMedia`) : jamais une donnée client (devis, leads,
+  factures) dans une capture.
+* **Tag `company`** — chaque évènement (backend et frontend) porte le tag
+  `company` (`core.monitoring.bind_company` côté Django, `bindCompany` côté
+  React dans `monitoring.js`), pour filtrer le bruit d'une société pilote sans
+  voir celui des autres.
+* **Triage quotidien (15 min)** — chaque matin pendant le pilote : ouvrir le
+  projet Sentry, filtrer par `company`, et pour chaque erreur NOUVELLE
+  (jamais vue la veille) : (1) lire la pile + le replay associé si présent ;
+  (2) décider — bug réel (→ ligne dans `docs/ERROR_PLAN.md`, jamais réparé à
+  la volée sans test de régression, voir la règle permanente ci-dessus) ou
+  bruit (navigateur/extension du client, réseau) → ignorer/muter dans Sentry ;
+  (3) si un même type d'erreur revient sur PLUSIEURS sociétés, la prioriser
+  (un défaut transverse touche tout le pilote, pas une seule société).
+* **Limites du gratuit** — le tier Sentry gratuit plafonne le volume mensuel
+  d'évènements et de replays ; l'échantillonnage bas (10 %) est calibré pour
+  rester dedans avec un pilote à quelques sociétés. Un dépassement de quota
+  fait taire Sentry silencieusement (jamais une panne applicative) — à
+  surveiller dans le tableau de bord du projet, pas dans les tests.

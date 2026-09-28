@@ -44,9 +44,26 @@ export default defineConfig({
 
     // 2) Desktop flows, pre-authenticated via the saved storage state.
     //    (login.spec.js opts back out to an empty state to test the UI cold.)
+    //    QAH7 — monkey.spec.js is carved out into its own project below (like
+    //    mobile.spec.js) so `npx playwright test` (all projects, e2e-full's
+    //    path) never runs it TWICE.
     {
       name: 'chromium',
-      testIgnore: /(auth\.setup|mobile\.spec)\.js/,
+      testIgnore: /(auth\.setup|mobile\.spec|monkey\.spec)\.js/,
+      dependencies: ['setup'],
+      use: { ...devices['Desktop Chrome'], storageState: AUTH_FILE },
+    },
+
+    // QAH7 — marcheur aléatoire gremlins.js (matrice e2e complète). JAMAIS
+    // référencé par le job `e2e-shard` de ci.yml (qui liste ses fichiers de
+    // spec explicitement — voir cette invocation), donc exclu de fait du
+    // shard par-merge sans aucun `--grep-invert` ; inclus par `e2e-full` de
+    // release-verify.yml (`npx playwright test --grep-invert @visual`, qui
+    // tourne TOUS les projets faute de `--project`). Un budget par écran très
+    // supérieur au smoke (voir monkey.spec.js) — jamais dans le chemin rapide.
+    {
+      name: 'monkey',
+      testMatch: /monkey\.spec\.js/,
       dependencies: ['setup'],
       use: { ...devices['Desktop Chrome'], storageState: AUTH_FILE },
     },

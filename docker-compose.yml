@@ -256,6 +256,11 @@ services:
         # ODY30 — kill-switch coquille "apps" (défaut ON = 1). OFF (0) = repli
         # legacy, smoke d'urgence uniquement ; retrait planifié en ODY33.
         VITE_APPS_SHELL: ${VITE_APPS_SHELL:-1}
+        # QAH8 — Sentry frontend, gardé par DSN (voir .env.example). Vide par
+        # défaut = monitoring désactivé, aucun octet envoyé. Build arg (Vite
+        # l'inline) : le poser exige `docker compose up -d --build frontend`.
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-}
     expose:
       - "80"
     depends_on:

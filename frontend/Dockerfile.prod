@@ -19,10 +19,17 @@ ARG VITE_CONTACT_FORM_ENABLED=0
 # changer sa valeur exige un rebuild d'image (docker compose build frontend).
 # OFF (0) = repli legacy, smoke d'urgence uniquement ; retrait planifie ODY33.
 ARG VITE_APPS_SHELL=1
+# QAH8 — Sentry frontend, garde par DSN (voir .env.example). Vide par defaut
+# = monitoring desactive (frontend/src/lib/monitoring.js reste un no-op tant
+# qu'aucun DSN n'est present dans le bundle).
+ARG VITE_SENTRY_DSN=
+ARG VITE_SENTRY_ENVIRONMENT=
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_IA_API_URL=$VITE_IA_API_URL
 ENV VITE_CONTACT_FORM_ENABLED=$VITE_CONTACT_FORM_ENABLED
 ENV VITE_APPS_SHELL=$VITE_APPS_SHELL
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+ENV VITE_SENTRY_ENVIRONMENT=$VITE_SENTRY_ENVIRONMENT
 
 RUN npm run build
 

@@ -7,7 +7,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { sentryDsn, isMonitoringEnabled, initMonitoring, captureException } from './monitoring.js'
+import { sentryDsn, isMonitoringEnabled, initMonitoring, captureException, bindCompany } from './monitoring.js'
 
 test('sans DSN (import.meta.env absent en plain Node) : sentryDsn() vide, monitoring désactivé', () => {
   assert.equal(sentryDsn(), '')
@@ -26,5 +26,20 @@ test('sans DSN : captureException() ne lève jamais et renvoie null (aucun envoi
 
 test('captureException() tolère une erreur non-Error (jamais de crash du reporting lui-même)', async () => {
   const eventId = await captureException('juste une chaîne')
+  assert.equal(eventId, null)
+})
+
+// QAH8 — bindCompany() (miroir de core.monitoring.bind_company côté Django).
+test('bindCompany() sans DSN/SDK chargé ne lève jamais (no-op, valeur seulement mémorisée)', () => {
+  assert.doesNotThrow(() => bindCompany(42))
+})
+
+test('bindCompany() tolère null (effacement du tag, ex. déconnexion)', () => {
+  assert.doesNotThrow(() => bindCompany(null))
+})
+
+test('bindCompany() puis captureException() sans DSN : toujours no-op total', async () => {
+  bindCompany(7)
+  const eventId = await captureException(new Error('test'))
   assert.equal(eventId, null)
 })
