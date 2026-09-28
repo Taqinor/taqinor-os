@@ -9,15 +9,21 @@ name: mutation (nightly, non-blocking)
 # Surviving-mutant triage: docs/TESTING.md (Mutation section).
 #
 # QAH5 — mutmut 3.x dropped the 2.x `runner=<shell command>` config entirely:
-# it now drives `pytest` directly, in-process, and this repo has no
-# pytest-django bridge (no conftest.py calling `django.setup()`, no test-DB
-# fixture) — `manage.py test`'s own DiscoverRunner is what created/migrated
-# the test DB before, and mutmut 3 never calls it. Until that bridge is
-# built (out of QAH5's scope — see setup.cfg [mutmut] and docs/TESTING.md),
-# `mutmut run` below is EXPECTED to fail to execute any real test and the
-# summary/artifact will show empty or errored data. `continue-on-error`
-# below means that blocks nothing; do not read an empty score as "0% caught
-# mutants" — it means "did not run", not "ran and failed".
+# it now drives `pytest` directly, in-process. QAH5 (deepened) built the
+# missing pytest-django bridge: `pytest`/`pytest-django` in requirements-dev,
+# `[tool:pytest]` in setup.cfg (DJANGO_SETTINGS_MODULE, this repo's real test
+# file patterns, `--no-migrations`). Two of the targeted test files import
+# `apps.ventes.utils.pdf`, which imports WeasyPrint, which `dlopen`s
+# `libgobject`/`libpango` at import time — missing on a bare `ubuntu-latest`
+# runner (confirmed: `mutmut run` crashed on exactly that `OSError` before
+# the apt step below was added) — same packages `.github/actions/backend-env`
+# installs for every other backend job. No Redis/MinIO here: the targeted
+# scope only touches storage/MinIO inside `@tag('pdf')` tests, which
+# setup.cfg's `addopts` already deselects. `continue-on-error` below means
+# none of this blocks a merge either way; do not read an empty score as "0%
+# caught mutants" — it means "did not run", not "ran and failed". Root cause
+# of why this job silently ran ZERO mutants for a long time before QAH5:
+# setup.cfg's own history comment + docs/TESTING.md's Mutation section.
 on:
   workflow_dispatch: {}
   schedule:
@@ -28,6 +34,11 @@ jobs:
     runs-on: ubuntu-latest
     # Informational only — a low/regressed score never blocks a merge.
     continue-on-error: true
+    # Bounded (QAH5 deepened): the targeted scope is small (7 files, ~360
+    # tests per mutant re-run) but mutation testing is O(mutants x test run)
+    # — a sensible ceiling so a runaway mutant count/hang doesn't tie up a
+    # runner all night instead of failing loud enough to notice.
+    timeout-minutes: 45
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -56,16 +67,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install dependencies (incl. mutmut 3)
+      - name: Install WeasyPrint system dependencies
+        # QAH5 (deepened) — same packages as `.github/actions/backend-env`
+        # (WOW7): two of the targeted test files import a module that
+        # imports weasyprint, and weasyprint dlopen()s these at import time.
+        # No apt cache here (unlike backend-env) — this job runs once a
+        # night, not once per PR lane, so the ~10s apt-get isn't worth the
+        # cache-key plumbing.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b fonts-dejavu-core
+      - name: Install dependencies (incl. mutmut 3 + the pytest-django bridge)
         working-directory: backend/django_core
         run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Run mutmut on high-risk modules
         working-directory: backend/django_core
         run: |
           # mutmut 3's `run` has no `--CI` flag any more (see the top-of-file
-          # note) — plain `run` is the whole command. `|| true`: informational,
-          # never fails the step even if the pytest bridge above is missing.
-          mutmut run || true
+          # note) — plain `run` is the whole command. `--max-children 2`:
+          # modest concurrency for a small, bounded scope on a shared runner
+          # (mutmut forks a worker per mutant batch). `|| true`:
+          # informational, never fails the step even on a real red mutant.
+          mutmut run --max-children 2 || true
       - name: Export mutation results (per-mutant text + CI/CD JSON stats)
         working-directory: backend/django_core
         run: |
@@ -114,12 +138,14 @@ jobs:
               rows.append((str(path), stat.killed, stat.survived, stat.total, score))
 
           if not rows:
-              print("_No mutation data recorded this run — this is expected while "
-                    "the pytest/Django bridge described at the top of "
-                    "`.github/workflows/mutation.yml` is missing: `mutmut run` had no "
-                    "working test runner to execute, so no mutant was ever tried. "
-                    "à remplir par la première exécution nocturne une fois ce pont "
-                    "posé (voir `docs/TESTING.md`, section Mutation)._")
+              print("_No mutation data recorded this run. QAH5 built the pytest/Django "
+                    "bridge (see the top-of-file note and setup.cfg's `[tool:pytest]`), "
+                    "so an empty table here now means something genuinely went wrong "
+                    "(collection error, DB setup failure, a changed dependency) rather "
+                    "than the expected state — check the raw `mutmut run` step's log "
+                    "and the `mutation-report` artifact. à remplir par la première "
+                    "exécution nocturne réussie (voir `docs/TESTING.md`, section "
+                    "Mutation, for the baseline once one lands)._")
               raise SystemExit(0)
 
           print("| Module | Killed | Survived | Total | Score |")

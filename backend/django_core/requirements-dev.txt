@@ -16,10 +16,19 @@ freezegun==1.5.1
 # YTEST9/QAH5 — mutation testing on high-risk modules (nightly, non-blocking —
 # see .github/workflows/mutation.yml + setup.cfg [mutmut]). 3.x dropped the
 # 2.x `runner=<shell command>` config entirely: mutmut now drives pytest
-# in-process (forked workers) with NO way to point it at `manage.py test` —
-# see the QAH5 caveat in docs/TESTING.md's Mutation section before expecting
-# a populated score.
+# in-process (forked workers), which is what the two lines right below this
+# one are for — see setup.cfg's `[tool:pytest]` section for the bridge and
+# docs/TESTING.md's Mutation section for what's proven vs still CI-only.
 mutmut==3.8.0
+
+# QAH5 (deepened) — the pytest bridge mutmut 3 needs to actually run this
+# repo's Django TestCases (pytest alone can't: no django.setup(), no test
+# DB). pytest itself would already be pulled in transitively by mutmut>=3
+# (it requires pytest>=6.2.5) — pinned explicitly here for a reproducible,
+# named version. pytest-django wires DJANGO_SETTINGS_MODULE + builds/tears
+# down the test database; configured in setup.cfg's `[tool:pytest]`.
+pytest==9.0.3
+pytest-django==4.14.0
 
 # YOPSB12 — N+1 query detector in dev only (guarded import in
 # erp_agentique/settings/dev.py; never installed by CI/prod requirements.txt).

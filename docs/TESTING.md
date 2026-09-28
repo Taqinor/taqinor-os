@@ -198,58 +198,117 @@ AUD105-107) — et les MIXINS/PERMISSIONS DE SCOPING SOCIÉTÉ —
 `core/permissions.py` (`ScopedPermission`, `WriteScopedPermissionMixin`),
 la base ARC2/ARC55 dont hérite `CompanyScopedModelViewSet`.
 
-**QAH5 — mutmut 2.4.4 → 3.8.0, et pourquoi le score ci-dessous est vide.**
-Vérifié en lisant le code source du paquet 3.8.0 installé (aucune exécution
-possible en local : mutmut 3 refuse de tourner nativement sous Windows,
-`mutmut/__main__.py` sort avec « please use WSL » avant même `--help`) :
+**QAH5 — mutmut 2.4.4 → 3.8.0 : le VRAI constat de départ était pire que
+« la config a changé ».** Un run CI réel de l'ANCIENNE config (mutmut 2.4.4,
+`gh run view 36309232413 --log`) prouve que ce job n'a **jamais exécuté un
+seul mutant** : `mutmut run --CI` s'arrêtait en 0,4 s avec
+`Error: You must specify a list of paths to mutate.`, avalé en silence par le
+`|| true` du workflow — d'où un job « vert » en ~1,5 min qui ne testait rien.
+Cause racine, reproduite avec le code source de mutmut 2.4.4 : `setup.cfg`
+écrivait `paths_to_mutate` en continuation multi-ligne AVEC UNE VIRGULE en
+fin de ligne (`apps/.../builder.py,\n    apps/.../references.py,`) —
+ConfigParser joint les lignes de continuation par un VRAI `\n`, donc chaque
+chemin découpé sur la virgule gardait un `\n` COLLÉ EN TÊTE
+(`'\napps/.../builder.py'`) ; `Path('\napps/...').exists()` teste un premier
+segment bogué (`"\napps"`, pas `"apps"`) et échoue TOUJOURS, donc mutmut ne
+voyait plus aucun chemin valide. mutmut 3.8.0 aurait fait la MÊME erreur
+autrement : son lecteur de config découpe la même valeur sur `\n` au lieu de
+la virgule, ce qui aurait laissé une VIRGULE COLLÉE EN FIN de chaque chemin
+sauf le dernier (`'apps/.../builder.py,'`) — silencieusement 0 fichier
+trouvé, sans la moindre erreur cette fois. **Le seul format sûr pour les deux
+lecteurs : un chemin par ligne, jamais de virgule** — c'est celui posé
+maintenant dans `setup.cfg [mutmut]`.
 
-* **La clé `runner=<commande shell>` de mutmut 2.x a disparu.** Le
-  `Config` de `mutmut/configuration.py` n'a plus aucun champ `runner` — rien
-  ne la lit. Mutmut 3 pilote `pytest` DIRECTEMENT, en process (workers
-  forkés), via `pytest_add_cli_args`/`pytest_add_cli_args_test_selection`.
-  Il n'existe plus aucun moyen de le brancher sur `manage.py test`.
-* **`paths_to_mutate`/`tests_dir` sont dépréciées** (alias encore lus, avec
-  un `warnings.warn`) pour `source_paths`/`pytest_add_cli_args_test_selection`
-  — `setup.cfg` garde les anciens noms pour rester un diff lisible de la
-  portée YTEST9.
+**QAH5 (approfondi) — le pont pytest-django est maintenant posé et VÉRIFIÉ
+localement (autant que possible sans Postgres).** `requirements-dev.txt`
+gagne `pytest==9.0.3` + `pytest-django==4.14.0` ; `setup.cfg` gagne une
+section `[tool:pytest]` (`DJANGO_SETTINGS_MODULE`, les motifs de fichiers de
+test RÉELS de ce dépôt, `--no-migrations`, l'exclusion `pdf`/`slow`) :
+
+* **Vérifié avec le vrai lecteur de config de mutmut 3.8.0** (import direct
+  de `mutmut.configuration._load_config()` contre ce `setup.cfg`, pas une
+  ré-implémentation) : les 7 chemins de `paths_to_mutate` et les 13 fichiers
+  de `tests_dir` ressortent PROPRES, sans virgule parasite, `process_isolation`
+  vaut bien `forkserver`.
+* **Vérifié avec un vrai `pytest`, sans AUCUN flag manuel** (tout vient de
+  l'ini) : les deux modules `SimpleTestCase` de ce périmètre
+  (`test_qjr122_totaux_additifs.py`, `test_action_permissions.py`) tournent
+  **pour de vrai, en vert** — 11 tests + 6 sous-tests passés, zéro base de
+  données nécessaire. La collecte (`--collect-only`, aucun accès DB requis)
+  réussit sur les 13 fichiers ciblés : **364/429 tests collectés** (65
+  déselectionnés par `pdf`/`slow` — proportion cohérente avec l'ancien
+  `--exclude-tag`).
+* **`python_files` était nécessaire, pas cosmétique** : par défaut pytest ne
+  voit que `test_*.py`/`*_test.py`, qui NE matche PAS `tests.py` (un des
+  fichiers ciblés, `apps/roles/tests.py`) — preuve : `pytest apps/roles/`
+  sans ce réglage collecte 0 test ; avec, 108 (tout le dossier — d'où
+  `tests_dir` listant des FICHIERS précis, jamais un dossier, pour rester
+  bornée à ce que QAH5 vise réellement).
+* **WeasyPrint cassait la collecte de 2 des 13 fichiers**
+  (`test_aud106_avoir_remise.py`, `test_aud107_note_debit_remise.py` —
+  `import apps.ventes.utils.pdf` en tête de fichier) : `OSError: cannot load
+  library 'libgobject-2.0-0'` — WeasyPrint fait un `dlopen()` de
+  pango/gobject AU CHARGEMENT du module, et `mutation.yml` n'installait
+  aucun paquet système (contrairement à `.github/actions/backend-env`, que
+  `ci.yml` utilise ailleurs). Le workflow installe maintenant les 4 mêmes
+  paquets apt (`libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
+  fonts-dejavu-core`) — vérifié en LOCAL avec un stub `weasyprint` jetable
+  hors dépôt sur `PYTHONPATH` (ce poste Windows n'a pas ces bibliothèques
+  natives), l'apt réel reste à prouver par la CI.
+* **`process_isolation=forkserver`, pas le défaut `fork`** : le défaut forke
+  chaque worker depuis le process principal de mutmut APRÈS qu'il ait « fait
+  tourner la suite pour collecter les stats » (docstring de
+  `mutmut/configuration.py`) — pour nos tests basés sur `TestCase`, ça
+  suppose une connexion Postgres/psycopg2 déjà ouverte dans ce process AVANT
+  chaque fork, et une socket forkée en plein usage est une source connue de
+  corruption silencieuse (psycopg2 n'est pas fork-safe). `forkserver` force
+  au contraire un process DÉDIÉ qui ne fait QUE de la collecte
+  (`forkserver_warmup=collect`, le défaut) — jamais de vraie connexion DB —
+  avant de forker les workers, qui ouvrent chacun leur PROPRE connexion
+  après coup. Raisonné depuis le code source de mutmut, pas prouvé contre un
+  vrai Postgres (aucun disponible dans ce lot sandboxé).
+* **Ce qui reste STRICTEMENT vérifiable seulement en CI** : la création
+  réelle de la base de test par `pytest-django` (`--no-migrations`) contre
+  un VRAI Postgres — vérifié que les migrations RunPython des apps
+  concernées (`apps/roles/migrations/0004_vta4_...py`,
+  `0005_calx347_...py`) ne sont lues par AUCUN des tests ciblés (ils
+  construisent leurs propres fixtures dans `setUp`/`setUpTestData`), mais
+  « pas de dépendance trouvée dans le code » n'est pas « prouvé vert » ; et
+  l'exécution réelle des 353 tests restants (basés sur `TestCase`, donc
+  base de données) que ce poste ne peut pas lancer (pas de docker, pas de
+  base de test ici).
 * **`mutmut run` n'a plus de flag `--CI`** (seul `--max-children` et une
   liste optionnelle de noms de mutants sur la ligne de commande) ; le
-  workflow a été corrigé (`mutmut run`, sans `--CI`).
+  workflow appelle maintenant `mutmut run --max-children 2` (concurrence
+  modeste, périmètre volontairement petit).
 * **`mutmut junitxml` n'existe plus.** Remplacé par `mutmut results --all`
   (texte, tous les mutants) et `mutmut export-cicd-stats` (JSON global dans
-  `mutants/mutmut-cicd-stats.json`) — le workflow écrit désormais un tableau
-  par module dans le job summary (script Python inline sur les internals
+  `mutants/mutmut-cicd-stats.json`) — le workflow écrit un tableau par
+  module dans le job summary (script Python inline sur les internals
   `mutmut.stats`/`mutmut.mutation.data`, défensif si le format interne
   change) en plus de l'artefact `mutation-report`.
-* **Le vrai problème, non contournable dans ce lot** : les `TestCase` Django
-  de ce dépôt ont besoin de `django.setup()` + d'une base de test migrée
-  AVANT que pytest puisse seulement importer un modèle
-  (`AppRegistryNotReady` sinon) — c'est `manage.py test` (`DiscoverRunner`)
-  ou le plugin `pytest-django` qui fournissent ça, et NI L'UN NI L'AUTRE
-  n'est câblé ici : `pytest-django` est une dépendance neuve hors du
-  périmètre fichiers de QAH5 (`requirements-dev.txt` s'y limite au seul
-  bump de version mutmut) et aucun `conftest.py` n'est dans ce lot non plus.
-  **Donc `mutmut run` en nightly va très probablement échouer à exécuter le
-  moindre test réel** — `continue-on-error` fait que ça ne bloque rien, mais
-  le score restera vide/en erreur tant que ce pont pytest-django n'est pas
-  posé (chantier séparé, pas QAH5).
 
-**Baseline** : à remplir par la première exécution nocturne (artefact
-`mutation-report` / job summary de `.github/workflows/mutation.yml`) — voir
-la mise en garde ci-dessus avant d'interpréter un score vide comme un « 0 %
-de mutants tués » (ça veut dire « pas exécuté », pas « exécuté et raté »).
+**Baseline** : à remplir par la première exécution nocturne réussie (artefact
+`mutation-report` / job summary de `.github/workflows/mutation.yml`) — le
+pont existe et est vérifié autant que possible sans Postgres, mais le
+premier vrai chiffre ne peut venir que de la CI (base réelle, 13 fichiers,
+~360 tests par mutant). Une table vide dans le job summary après ce lot
+signale maintenant un VRAI problème (à diagnostiquer dans le log de l'étape
+`mutmut run`), plus « pont manquant, normal ».
 
 **Triage d'un mutant survivant** (rapport `mutmut results --all` / artefact
-CI, une fois le pont pytest-django posé) :
+CI) :
 * Assertion manquante → ajouter un test qui aurait tué ce mutant.
 * Mutant sémantiquement équivalent (le mutant produit le même comportement
   observable, ex. `<` → `<=` sur une borne jamais atteinte) → whitelister
   explicitement dans `setup.cfg` avec un commentaire justifiant pourquoi.
 
-Lancer localement (une fois le pont pytest-django posé) : éditer
-temporairement `paths_to_mutate`/`only_mutate` dans `setup.cfg` pour ne
-garder qu'un seul fichier, puis `mutmut run` — il n'y a plus de flag CLI
-`--paths-to-mutate` en 3.x (toute la config vit dans `setup.cfg`).
+Lancer localement (contre une vraie base Postgres) : éditer temporairement
+`paths_to_mutate`/`only_mutate` dans `setup.cfg` pour ne garder qu'un seul
+fichier, puis `mutmut run` — il n'y a plus de flag CLI `--paths-to-mutate`
+en 3.x (toute la config vit dans `setup.cfg`). Pour vérifier juste le pont
+pytest (sans mutmut, sans base pour les modules `SimpleTestCase`) :
+`cd backend/django_core && python -m pytest apps/ventes/tests/test_qjr122_totaux_additifs.py core/tests/test_action_permissions.py`.
 
 ## Test de charge (k6) — le gate est le percentile, jamais la moyenne
 
