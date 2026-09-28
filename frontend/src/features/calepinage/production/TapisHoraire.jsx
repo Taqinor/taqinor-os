@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+} from 'react'
 import { useParams } from 'react-router-dom'
 import {
   CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
@@ -246,9 +248,21 @@ export default function TapisHoraire({ calepinageId, serie: serieProposee }) {
   const [enCours, setEnCours] = useState(!fournie)
   const [cleGrandeur, setCleGrandeur] = useState(GRANDEURS[0].cle)
   const [moisChoisi, setMoisChoisi] = useState(null)
+  // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai PAR étude.
+  // L'onglet « Production » ouvrait la porte d'export (CALX6/CAL144) et
+  // laissait son refus 400 (aucune géométrie enregistrée) déclencher le
+  // bandeau d'erreur GLOBAL (bridge L53, `api/axios.js`) — DEUX FOIS,
+  // React StrictMode (dev) rejouant l'effet une seconde fois sur le même
+  // montage. La garde ci-dessous rend cette seconde tentative un no-op :
+  // au plus UNE requête par étude, donc au plus UN toast — jamais deux —
+  // et l'écran continue d'afficher l'état vide qui NOMME le motif du
+  // serveur (comportement déjà correct, inchangé) plutôt qu'un second
+  // passage muet.
+  const idDejaTente = useRef(null)
 
   const charger = useCallback(() => {
-    if (fournie || !id) return Promise.resolve()
+    if (fournie || !id || idDejaTente.current === id) return Promise.resolve()
+    idDejaTente.current = id
     return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire'))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
