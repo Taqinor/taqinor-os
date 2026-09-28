@@ -110,6 +110,16 @@ const CANAL_LABELS_MESURE = {
 const JOURS_SEMAINE_LABELS = [
   'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche',
 ]
+// CAD178 (constat CAD86 : les 4 écrans de cadence n'avaient aucune trace
+// d'usage mobile) — libellés FR des deux dimensions du troisième tableau,
+// mêmes clés que le serveur (`mesure_cadence.gestes_par_appareil`).
+const GESTE_LABELS_MESURE = {
+  fait: 'Fait', reporter: 'Reporter', appeler: 'Appeler', whatsapp: 'WhatsApp',
+}
+const APPAREIL_LABELS_MESURE = {
+  mobile: 'Mobile', tablette: 'Tablette', ordinateur: 'Ordinateur',
+  inconnu: 'Inconnu',
+}
 
 /** CAD100 — les deux tableaux produits par CAD87 (`mesure_cadence`), en
  *  LECTURE SEULE : taux de joint par (touche × canal × heure × jour de
@@ -152,6 +162,8 @@ function MesureCadencePanel() {
 
   const creneaux = donnees.taux_joint_par_creneau ?? []
   const distribution = donnees.signatures_par_touches_consommees ?? []
+  // CAD178 — additif : les 4 gestes clés, par famille d'appareil.
+  const gestesAppareil = donnees.gestes_par_appareil ?? []
 
   return (
     <Card className="mt-3" data-testid="mesure-cadence-panel">
@@ -164,7 +176,7 @@ function MesureCadencePanel() {
             <p className="text-xs text-muted-foreground">—</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-xs" data-testid="mesure-taux-joint">
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-1 pr-2">Touche</th>
@@ -215,6 +227,40 @@ function MesureCadencePanel() {
                   <tr key={d.touches} className="border-b border-border/50">
                     <td className="py-1 pr-2">{d.touches}</td>
                     <td className="py-1 text-right tabular-nums">{d.signatures}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+        {/* CAD178 (constat CAD86, 24/09/2026) — troisième mesure, JAMAIS
+            mélangée aux deux ci-dessus : les 4 gestes clés de la cadence
+            (Fait, Reporter, Appeler, WhatsApp), par famille d'appareil.
+            Colonne « Appareil » manquante jusqu'ici sur tout l'écran. */}
+        <section>
+          <h3 className="mb-1.5 text-sm font-semibold">Gestes clés par famille d'appareil</h3>
+          {gestesAppareil.length === 0 ? (
+            <p className="text-xs text-muted-foreground">—</p>
+          ) : (
+            <table className="w-full text-xs" data-testid="mesure-gestes-appareil">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground">
+                  <th className="py-1 pr-2">Geste</th>
+                  <th className="py-1 pr-2">Appareil</th>
+                  <th className="py-1 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gestesAppareil.map((g) => (
+                  <tr
+                    key={`${g.geste}-${g.famille_appareil}`}
+                    className="border-b border-border/50"
+                  >
+                    <td className="py-1 pr-2">{GESTE_LABELS_MESURE[g.geste] ?? g.geste}</td>
+                    <td className="py-1 pr-2">
+                      {APPAREIL_LABELS_MESURE[g.famille_appareil] ?? g.famille_appareil}
+                    </td>
+                    <td className="py-1 text-right tabular-nums">{g.total}</td>
                   </tr>
                 ))}
               </tbody>

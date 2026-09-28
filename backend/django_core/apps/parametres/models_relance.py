@@ -35,8 +35,12 @@ CADENCE_RELANCE_DEFAUT = [
      'libelle': 'Premier rappel'},
     {'ordre': 2, 'delai_jours': 5, 'canal': CanalRelance.WHATSAPP,
      'libelle': 'Relance WhatsApp'},
+    # CAD176 (audit CAD86, note du 24/09/2026) — seul barreau e-mail de tout
+    # le référentiel : sans clé de gabarit, `message_pour_etape` rendait une
+    # chaîne vide (panneau « — », bouton Copier désactivé). `template_cle`
+    # posé, comme les autres barreaux qui en portent un.
     {'ordre': 3, 'delai_jours': 10, 'canal': CanalRelance.EMAIL,
-     'libelle': 'Relance e-mail'},
+     'libelle': 'Relance e-mail', 'template_cle': 'relance_email_j10'},
     {'ordre': 4, 'delai_jours': 20, 'canal': CanalRelance.APPEL,
      'libelle': "Point d'étape"},
     # CAD58 (décision fondateur du 21/09/2026) — le canal VISITE est RETIRÉ de

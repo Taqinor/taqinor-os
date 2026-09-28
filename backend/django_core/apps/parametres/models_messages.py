@@ -562,6 +562,11 @@ class MessageTemplate(models.Model):
         DEUXIEME_AFFAIRE = (
             'deuxieme_affaire',
             "Identité — client déjà signé qui revient")
+        # CAD176 (24/09/2026) — le seul barreau E-MAIL de la cadence
+        # `generique` (historique, J+10) : sans clé, aucun texte ne se rendait.
+        RELANCE_EMAIL_J10 = (
+            'relance_email_j10',
+            "Relance — e-mail générique (J10)")
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -794,4 +799,23 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'debrief_visite':
         "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien chez vous : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
+})
+
+# ── CAD176 (24/09/2026) — LE SEUL BARREAU E-MAIL DE LA CADENCE GÉNÉRIQUE ────
+#
+# Audit CAD86 (note du 24/09/2026, docs/crm/messages_meryem.md) : le barreau
+# 3 (J+10, canal e-mail) de la cadence `generique` (historique, « plus jamais
+# démarrée » depuis CAD143) n'avait AUCUNE clé de gabarit — `message_pour_etape`
+# rendait une chaîne vide, le panneau « Texte de l'e-mail » affichait « — » et
+# le bouton Copier restait désactivé. Seuls d'anciens leads encore en cadence
+# générique portent ce barreau ; aucun lead neuf n'y entre.
+# Texte NEUTRE : deux touches (appel J+2, WhatsApp J+5) ont déjà eu lieu sans
+# réponse, celle-ci est la troisième tentative, par écrit. Zéro chiffre, zéro
+# prénom codé en dur ({conseiller}/{marque} résolus côté serveur).
+# ✎ Texte à valider par le fondateur ; pas de variante darija dédiée (retombe
+# sur le FR via `MessageTemplate.get_corps`, comme toute clé sans défaut
+# darija).
+MESSAGE_TEMPLATE_DEFAULTS.update({
+    'relance_email_j10':
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous ai contacté récemment au sujet de votre demande solaire, sans succès pour l'instant. Si le projet vous intéresse toujours, répondez simplement à cet e-mail ou appelez-moi : je reste à votre disposition.",
 })
