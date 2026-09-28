@@ -44,7 +44,7 @@ from apps.crm.roof_detect import (
 #: L'échantillon partagé vit dans le module consommateur (calepinage) : il est
 #: LU ici par son chemin, jamais importé — aucune frontière inter-apps n'est
 #: franchie.
-ECHANTILLON = (pathlib.Path(__file__).resolve().parents[2]
+ECHANTILLON = (pathlib.Path(__file__).resolve().parents[1]
                / 'calepinage' / 'contract_samples'
                / 'calepinage_empreinte_osm.json')
 

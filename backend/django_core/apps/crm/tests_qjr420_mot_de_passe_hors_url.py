@@ -123,8 +123,8 @@ class AucuneLectureDeSecretEnQueryTests(TestCase):
     def test_l_ecran_envoie_le_mot_de_passe_en_corps_de_post(self):
         """Second test du `Done`, moitié écran : ``PublicSalleVentePage.jsx``
         ne met plus le secret dans ``params``."""
-        # …/backend/django_core/apps/crm/tests/<ce fichier> → racine du dépôt.
-        racine = Path(__file__).resolve().parents[5]
+        # …/backend/django_core/apps/crm/<ce fichier> → racine du dépôt.
+        racine = Path(__file__).resolve().parents[4]
         ecran = (racine / 'frontend' / 'src' / 'pages' / 'crm'
                  / 'salle-vente' / 'PublicSalleVentePage.jsx')
         source = ecran.read_text(encoding='utf-8')
