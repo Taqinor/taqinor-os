@@ -28,6 +28,27 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .models import Calepinage, CalepinageVariante
 
 
+def _lead_de_la_societe(company, lead_id):
+    """CALX407 — le lead rattaché, borné société, ou ``None``. UNE requête,
+    partagée par ``lead`` et le repli de ``responsable`` (jamais deux)."""
+    if not lead_id or company is None:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    return get_company_lead(company, lead_id)
+
+
+def _lead_apercu(lead):
+    """``{id, nom, ville}`` du lead déjà résolu, ou ``None`` — même forme que
+    ``views/calepinages.py::_lead`` (le détail)."""
+    if lead is None:
+        return None
+    nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
+                               getattr(lead, 'prenom', '') or ''] if p).strip()
+    ville = (getattr(lead, 'ville', '') or '').strip() or None
+    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
+
+
 class CalepinageSerializer(SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """Le calepinage en liste et en écriture (le DÉTAIL agrégé est CAL17).
@@ -135,6 +156,48 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         except AttributeError:  # objet figé (essais) : pas de mémo, rien de faux
             pass
         return memo
+
+    def to_representation(self, instance):
+        """CALX407 — la LISTE (et la bibliothèque des modèles) publient le
+        MÊME nom et le MÊME rattachement que le détail agrégé
+        (``views/calepinages.py::detail_calepinage``) : la lecture ne change
+        pas, seule la REPRÉSENTATION est complétée après coup.
+
+        * ``nom`` — ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU : le champ SAISI
+          est ``titre`` — la liste ne rendait que lui, sous sa propre clé ;
+          l'écran (atelier ET liste) lit ``nom``, exactement le même calcul
+          que le détail (``_texte(titre) or str(calepinage)``, ici
+          ``str(instance)`` — ``Calepinage.__str__`` fait le même repli).
+        * ``lead`` — ERR-QAH-CALEPINAGE-LISTE-SANS-RATTACHEMENT : la liste ne
+          publiait que l'identifiant OPAQUE ; l'écran affichait « Sans
+          rattachement » faute du nom. Rendu en ``{id, nom, ville}``, comme
+          le détail — jamais un second calcul : lu via
+          ``apps.crm.selectors.get_company_lead`` (cross-app, jamais le
+          modèle).
+        * ``responsable``/``responsable_nom`` — MÊME bug : une étude SANS
+          responsable SAISI (``Calepinage.responsable`` vide) retombait sur
+          ``null`` alors que le détail sait retomber sur le responsable du
+          lead rattaché (CALX406, ``views/calepinages.py::_responsable``).
+          Le CHAMP saisi garde la priorité (inchangé, aucune requête de plus
+          quand il est posé) ; SEUL le repli manquant est ajouté ici, avec
+          UNE requête par ligne au plus — la même que celle déjà payée pour
+          ``lead`` (le lead est relu une fois, jamais deux).
+        """
+        data = super().to_representation(instance)
+        data['nom'] = str(instance)
+        company = getattr(instance, 'company', None)
+        lead_id = getattr(instance, 'lead_id', None)
+        lead = _lead_de_la_societe(company, lead_id)
+        data['lead'] = _lead_apercu(lead)
+        if data.get('responsable') is None and lead is not None:
+            proprietaire = getattr(lead, 'owner', None)
+            if proprietaire is not None:
+                nom = (getattr(proprietaire, 'get_full_name', lambda: '')()
+                       or '').strip()
+                data['responsable'] = proprietaire.pk
+                data['responsable_nom'] = (
+                    nom or getattr(proprietaire, 'username', ''))
+        return data
 
     def validate(self, attrs):
         """Lead XOR client, et un lead qui existe VRAIMENT dans la société."""

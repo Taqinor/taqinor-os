@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 
@@ -212,5 +213,44 @@ describe('CALX64 — le contrat committé', () => {
 
   it('l’état « jamais simulé » du contrat porte une série VIDE', () => {
     expect(CONTRAT.exemple_vide.serie_horaire.points).toEqual([])
+  })
+})
+
+describe('ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai', () => {
+  it('React StrictMode (dev) — qui rejoue le même effet une seconde fois '
+    + 'sur le même montage — ne déclenche PAS une seconde requête, donc pas '
+    + 'un second refus ni un second toast', async () => {
+    exportCsv.mockRejectedValue(refusServeur(
+      'roof_layout', 'Aucune géométrie enregistrée pour ce calepinage.'))
+
+    render(
+      <StrictMode>
+        <MemoryRouter><TapisHoraire calepinageId={9} /></MemoryRouter>
+      </StrictMode>,
+    )
+
+    const vide = await screen.findByTestId('cal-tapis-vide')
+    expect(vide).toHaveTextContent('Lancer la simulation')
+    // AVANT le correctif : StrictMode rejouait `charger()` une seconde fois
+    // sur ce MÊME montage (aucun ``cleanup`` entre les deux passages), donc
+    // une seconde requête ET un second toast d'erreur (bridge L53) pour un
+    // geste que personne n'a demandé. Une seule tentative par étude, même
+    // sous StrictMode.
+    expect(exportCsv).toHaveBeenCalledTimes(1)
+  })
+
+  it('un id différent redéclenche bien une nouvelle tentative', async () => {
+    exportCsv.mockRejectedValue(refusServeur('points', MOTIF_SANS_SERIE))
+    const { rerender } = render(
+      <MemoryRouter><TapisHoraire calepinageId={9} /></MemoryRouter>,
+    )
+    await screen.findByTestId('cal-tapis-vide')
+    expect(exportCsv).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <MemoryRouter><TapisHoraire calepinageId={10} /></MemoryRouter>,
+    )
+    await waitFor(() => expect(exportCsv).toHaveBeenCalledTimes(2))
+    expect(exportCsv).toHaveBeenNthCalledWith(2, 10, 'horaire')
   })
 })
