@@ -148,6 +148,10 @@ repo yet, the rule still applies to any future integration.
   identically on screen and the one-page PDF. Never print m³/jour for curve-less pumps (omit
   the card). Pompage compositions contain NO inverter and NO battery; auto-fill never quotes a
   price-less product (all guarded by tests).
+- **Shared Claude memory.** Durable facts (founder decisions, standing approvals, open incidents)
+  live in `docs/claude-memory/` so every machine and Claude account gets them after `git pull`;
+  update them there by PR, never with secrets. Index:
+  @docs/claude-memory/MEMORY.md
 
 ## Workflow
 
