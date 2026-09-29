@@ -210,14 +210,34 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         ligne (30 requêtes à 10 lignes, 60 à 25 — le N+1 d'ERR-QAH-CALEPINAGE-
         LISTE-SANS-RATTACHEMENT, réintroduit par ce même correctif).
         """
+        # ``company`` : l'objet Company OU son identifiant (``company_id``).
+        # La liste passe l'IDENTIFIANT lu sur la ligne (``instance.company_id``,
+        # jamais ``instance.company`` : la FK n'est pas jointe par le queryset
+        # de liste et coûtait UNE requête PAR LIGNE — le +1/ligne mesuré par
+        # CALX390 : 21 requêtes à 10 lignes, 36 à 25).
         if not lead_id or company is None:
             return None
+        company_id = getattr(company, 'pk', company)
         cache = self.__dict__.setdefault('_calx407_cache_leads', {})
-        cle = (company.pk, lead_id)
+        cle = (company_id, lead_id)
         if cle in cache:
             return cache[cle]
         from apps.crm.selectors import get_company_lead
 
+        if not hasattr(company, 'pk'):
+            # Chemin RARE (détail hors liste, ou lead absent du préchargement) :
+            # on résout l'objet société une fois, depuis la requête si c'est
+            # la même, sinon par lecture.
+            request = self.context.get('request')
+            candidate = getattr(getattr(request, 'user', None), 'company', None)
+            if candidate is not None and candidate.pk == company_id:
+                company = candidate
+            else:
+                from authentication.models import Company
+                company = Company.objects.filter(pk=company_id).first()
+                if company is None:
+                    cache[cle] = None
+                    return None
         lead = get_company_lead(company, lead_id)
         cache[cle] = lead
         return lead
@@ -250,9 +270,9 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         """
         data = super().to_representation(instance)
         data['nom'] = str(instance)
-        company = getattr(instance, 'company', None)
+        company_id = getattr(instance, 'company_id', None)
         lead_id = getattr(instance, 'lead_id', None)
-        lead = self._lead_de_la_societe(company, lead_id)
+        lead = self._lead_de_la_societe(company_id, lead_id)
         data['lead'] = _lead_apercu(lead)
         if data.get('responsable') is None and lead is not None:
             proprietaire = getattr(lead, 'owner', None)
