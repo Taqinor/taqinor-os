@@ -109,6 +109,8 @@ import {
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
   // sur-vend jusqu'au plafond du balayage.
   consoAnnuelleDepuisFactures,
+  // COUV-HOR — une conso stockée qui descend des factures n'est pas une saisie.
+  consoDescendDesFactures,
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
@@ -594,6 +596,14 @@ export default function DevisGenerator({
   const [realBillMode, setRealBillMode] = useState('mad') // 'mad' | 'kwh'
   const [realBillMad, setRealBillMad] = useState('')
   const [realBillKwh, setRealBillKwh] = useState('')
+  // COUV-HOR (29/09/2026) — ce que le VENDEUR a lui-même saisi, distingué de
+  // ce que `?edit=` a réaffiché. Une facture/kWh tapée reste souveraine ; un
+  // distributeur jamais choisi (le défaut 'onee' ci-dessus) n'est jamais
+  // estampillé sur une conso que l'écran n'a pas calculée à son barème.
+  const [realBillSaisi, setRealBillSaisi] = useState(false)
+  const [distributeurChoisi, setDistributeurChoisi] = useState(false)
+  // La conso STOCKÉE du devis rouvert : { valeur, descendDesFactures, factures }.
+  const consoStockee = useRef(null)
 
   // VX237 — les handlers de collage nettoyé (onHiverPaste/onEtePaste/
   // onRealBillPaste) sont déclarés plus bas, APRÈS `syncBillEstimator` qu'ils
@@ -812,6 +822,7 @@ export default function DevisGenerator({
   const draftSnapshot = useMemo(() => ({
     leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
@@ -825,6 +836,7 @@ export default function DevisGenerator({
   }), [
     leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
+    realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
     multiMode, nombreProprietes, villaGroups, modeInstallation, consoMensuelle,
     categorieCommerciale, commercialAnswers, injectionEnabled,
@@ -885,6 +897,8 @@ export default function DevisGenerator({
     if (d.realBillMode != null) setRealBillMode(d.realBillMode)
     if (d.realBillMad != null) setRealBillMad(d.realBillMad)
     if (d.realBillKwh != null) setRealBillKwh(d.realBillKwh)
+    if (d.realBillSaisi != null) setRealBillSaisi(!!d.realBillSaisi)
+    if (d.distributeurChoisi != null) setDistributeurChoisi(!!d.distributeurChoisi)
     // QJR99 — les champs du reducer se restaurent par dispatch. `REOUVERTURE`
     // pose le compte de panneaux SANS le marquer « touché » (comportement
     // historique : un brouillon restauré n'est pas une frappe) ; `SAISI panelW`
@@ -1987,8 +2001,23 @@ export default function DevisGenerator({
       // QF4 — round-trip du distributeur + de la consommation annuelle réelle
       // (ré-affichée en kWh/mois : le mode « MAD » ne peut pas se reconstruire
       // sans le tarif exact du moment, donc on revient toujours en kWh).
-      if (e.distributeur) setDistributeur(String(e.distributeur))
-      if (e.conso_annuelle) {
+      if (e.distributeur) {
+        setDistributeur(String(e.distributeur))
+        setDistributeurChoisi(true)   // déjà sur le devis : le réécrire est un no-op
+      }
+      // COUV-HOR — une conso qui DESCEND des factures stockées n'est pas une
+      // saisie : elle n'est plus réaffichée en kWh tapés (elle gagnait alors
+      // sur les factures à l'enregistrement) — l'écran la re-dérive.
+      const factures = Array.isArray(e.factures_mensuelles_reelles)
+        && e.factures_mensuelles_reelles.length === 12
+        ? e.factures_mensuelles_reelles : null
+      consoStockee.current = e.conso_annuelle > 0 ? {
+        valeur: Number(e.conso_annuelle),
+        factures,
+        descendDesFactures: consoDescendDesFactures(
+          e.conso_annuelle, factures, e.distributeur),
+      } : null
+      if (consoStockee.current && !consoStockee.current.descendDesFactures) {
         setRealBillMode('kwh')
         setRealBillKwh(String(Math.round(e.conso_annuelle / 12)))
       }
@@ -2144,8 +2173,14 @@ export default function DevisGenerator({
     (clean) => { setFHiver(clean); syncBillEstimator(clean, fEte) })
   const onEtePaste = usePasteClean(parsePastedAmount,
     (clean) => { setFEte(clean); syncBillEstimator(fHiver, clean) })
+  // COUV-HOR — les gestes du VENDEUR sur la carte factures (frappe, collage,
+  // choix du distributeur) ; `?edit=` et le brouillon passent par les setters
+  // bruts et ne comptent donc jamais comme une saisie.
+  const saisirRealBillMad = (v) => { setRealBillMad(v); setRealBillSaisi(true) }
+  const saisirRealBillKwh = (v) => { setRealBillKwh(v); setRealBillSaisi(true) }
+  const choisirDistributeur = (v) => { setDistributeur(v); setDistributeurChoisi(true) }
   const onRealBillPaste = usePasteClean(parsePastedAmount,
-    (clean) => (realBillMode === 'mad' ? setRealBillMad(clean) : setRealBillKwh(clean)))
+    (clean) => (realBillMode === 'mad' ? saisirRealBillMad(clean) : saisirRealBillKwh(clean)))
 
   const handleEstimerMois = () => {
     const hiver = parseFloat(fHiver) || 0
@@ -3146,16 +3181,36 @@ export default function DevisGenerator({
     // puis la dérivation depuis les 12 factures (kwhFromBill au barème réel du
     // distributeur choisi — même patron que `autoQuote.js`, jamais un chiffre
     // supposé).
+    //
+    // COUV-HOR (29/09/2026) — une facture/kWh TAPÉE dans cette session reste
+    // souveraine ; une conso STOCKÉE qui était une saisie repart telle quelle
+    // (exacte, sans la dérive ×12 de l'aller-retour kWh/mois) ; sinon les
+    // factures (celles de l'écran, à défaut celles du devis) sont RE-DÉRIVÉES
+    // au barème — jamais la valeur réaffichée par `?edit=` réécrite à
+    // l'identique (DEV-202609-0113 : 198 000 MAD ÷ 1,20 = 165 000 kWh revenait
+    // à chaque enregistrement, étiqueté 'onee').
+    const stockee = consoStockee.current
     let conso = consoDejaConnue ?? null
-    if (conso == null && consoAnnuelleReelle > 0) conso = consoAnnuelleReelle
-    if (conso == null && entrees.factures_mensuelles_reelles) {
-      const derivee = Math.round(entrees.factures_mensuelles_reelles.reduce(
-        (somme, bill) => somme + (kwhFromBill(bill, distributeur).kwhMensuel || 0), 0))
-      if (derivee > 0) conso = derivee
+    let auBareme = false   // conso calculée ICI au barème de `distributeur`
+    if (conso == null && realBillSaisi && consoAnnuelleReelle > 0) {
+      conso = consoAnnuelleReelle
+      auBareme = realBillMode === 'mad'
+    }
+    if (conso == null && stockee && !stockee.descendDesFactures) conso = stockee.valeur
+    const factures = entrees.factures_mensuelles_reelles || stockee?.factures || null
+    if (conso == null && factures) {
+      const derivee = consoAnnuelleDepuisFactures(factures, distributeur)
+      if (derivee > 0) { conso = derivee; auBareme = true }
+    }
+    if (conso == null && consoAnnuelleReelle > 0) {
+      conso = consoAnnuelleReelle
+      auBareme = realBillMode === 'mad'
     }
     if (conso != null) {
       entrees.conso_annuelle = conso
-      entrees.distributeur = distributeur
+      // Jamais un distributeur que personne n'a choisi sur une conso que
+      // l'écran n'a pas calculée à son barème.
+      if (auBareme || distributeurChoisi) entrees.distributeur = distributeur
     } else if (distributeur && distributeur !== 'onee') {
       entrees.distributeur = distributeur
     }
@@ -3638,8 +3693,9 @@ export default function DevisGenerator({
     marche: modeInstallation,
     fHiver, setFHiver, fEte, setFEte, syncBillEstimator,
     onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
-    distributeur, setDistributeur, realBillMode, setRealBillMode,
-    realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
+    distributeur, setDistributeur: choisirDistributeur, realBillMode, setRealBillMode,
+    realBillMad, setRealBillMad: saisirRealBillMad,
+    realBillKwh, setRealBillKwh: saisirRealBillKwh,
     onRealBillPaste, consoAnnuelleReelle,
   }
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.

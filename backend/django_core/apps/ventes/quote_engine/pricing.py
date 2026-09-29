@@ -669,16 +669,15 @@ def _weighted_kwh_price(kwh_mensuel: float, tranches: list) -> float:
 def _table_tarifaire(utility: str | None, tranches_override: list | None):
     """QJR156 — LA table qui tarifera, ou ``None`` si aucune n'est connue.
 
-    Source UNIQUE de la résolution (surcharge appelant → distributeur connu →
-    rien) : le point d'appel a besoin de distinguer « aucune donnée tarifaire »
+    Source UNIQUE de la résolution (surcharge appelant → distributeur NOMMÉ,
+    grille nationale → rien sans distributeur) : le point d'appel a besoin de distinguer « aucune donnée tarifaire »
     de « une grille réelle mais pas de consommation », deux cas que le seul
     drapeau ``is_estimated`` confondrait depuis QJR156.
     """
-    if tranches_override:
-        return tranches_override
-    if utility and utility.lower() in UTILITY_TABLES:
-        return UTILITY_TABLES[utility.lower()]
-    return None
+    # CAD167 — LA résolution de ``_resolve_tranches``, jamais une copie : la
+    # copie d'ici ignorait les distributeurs nommés hors table (SRM, « autre »)
+    # et tarifait leurs économies au prix plat 1,20 MAD/kWh « estimation ».
+    return _resolve_tranches(utility, tranches_override)[0]
 
 
 def _avg_kwh_price_from_tranches(
@@ -690,7 +689,8 @@ def _avg_kwh_price_from_tranches(
 
     Priority:
       1. Caller-supplied ``tranches_override`` list.
-      2. ``utility`` name matched in UTILITY_TABLES.
+      2. ``utility`` NOMMÉ (UTILITY_TABLES, ou tout autre nom — SRM, « autre » —
+         sur la grille nationale, CAD167 via ``_resolve_tranches``).
       3. Fallback flat price (_FALLBACK_KWH_PRICE) — ``is_estimated = True``.
 
     When annual consumption is available, converts it to monthly average for the
@@ -1275,6 +1275,11 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
         "eco_avec": round(eco_avec),
         "autoconso_sans": auto_sans,
         "autoconso_avec": auto_avec,
+        # COUV-HOR (fondateur, 29/09/2026) — la couverture DU MOTEUR : son
+        # autoconsommé ÷ SA consommation, inversée des mêmes factures. La donut
+        # la lit telle quelle ; ``None`` sur un vieux bloc qui ne la porte pas.
+        "couverture_sans": _fraction_valide(annuel.get("couverture_sans")),
+        "couverture_avec": _fraction_valide(annuel.get("couverture_avec")),
         "facture_sans": _entier(annuel.get("facture_avant_mad")),
         "facture_avec_s": _entier(annuel.get("facture_apres_sans_mad")),
         "facture_avec_a": _entier(annuel.get("facture_apres_avec_mad")),
@@ -1346,7 +1351,8 @@ def calculate_savings_roi(
     Tariff resolution order (first wins):
       1. ``tarif_kwh_override`` (explicit flat price — seller sets it)
       2. ``tranches_override`` (caller-supplied schedule)
-      3. ``utility`` name → ONEE / Lydec / Redal table
+      3. ``utility`` NOMMÉ → grille nationale (ONEE/Lydec/Redal, et depuis
+         CAD167 tout autre nom : SRM, « autre ») — aucun distributeur ⇒ 4.
       4. _FALLBACK_KWH_PRICE (flat 1.20 MAD/kWh) — labelled ESTIMATION
 
     When the fallback fires, the returned dict carries ``savings_estimated=True``
@@ -1401,6 +1407,8 @@ def calculate_savings_roi(
         # une grille réelle existe mais qu'aucune consommation ne la pondère, et
         # dans ce cas-là le prix du distributeur du client vaut mieux qu'un
         # forfait maison. DC2 garde donc exactement son périmètre d'origine.
+        # CAD167/COUV-HOR — « aucune table » = AUCUN distributeur : un nom
+        # (SRM, « autre ») résout sur la grille nationale.
         _sans_table = _table_tarifaire(utility, tranches_override) is None
         if _sans_table and fallback_tarif_kwh and fallback_tarif_kwh > 0:
             prix_kwh = float(fallback_tarif_kwh)
@@ -1506,6 +1514,7 @@ def calculate_savings_roi(
     # garde alors EXACTEMENT son comportement d'avant.
     factures_avant_horaire = None
     source_consommation_horaire = None
+    couverture_sans_h = couverture_avec_h = None
     _h = _lire_etude_horaire(etude_horaire, puissance_kwc)
     if _h:
         savings_model = "horaire"
@@ -1528,6 +1537,11 @@ def calculate_savings_roi(
         eco_monthly_reel = (_h["eco_s_monthly"], _h["eco_a_monthly"])
         factures_avant_horaire = _h.get("factures_avant_monthly")
         source_consommation_horaire = _h.get("source_consommation")
+        couverture_sans_h = _h.get("couverture_sans")
+        couverture_avec_h = _h.get("couverture_avec")
+        if couverture_sans_h is not None and couverture_avec_h is not None:
+            # Même invariant que ``autoconso_avec`` ci-dessus : avec ≥ sans.
+            couverture_avec_h = max(couverture_avec_h, couverture_sans_h)
 
     # ── QX39 — retour sur investissement par CASHFLOW 25 ans (honnête) ────────
     # Le payback n'est plus un simple ratio année-1 (ni conservateur, ni
@@ -1614,6 +1628,9 @@ def calculate_savings_roi(
         # Taux SANS batterie EFFECTIVEMENT appliqué (plafonné par la conso).
         "autoconso_sans":   autoconso_sans_eff,
         "autoconso_avec":   autoconso_avec,
+        # COUV-HOR — couverture du moteur horaire ; None hors modèle 'horaire'.
+        "couverture_sans":  couverture_sans_h,
+        "couverture_avec":  couverture_avec_h,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,
         # Modèle d'économie effectivement employé, du plus fort au plus faible :

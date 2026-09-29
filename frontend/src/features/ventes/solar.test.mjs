@@ -1251,10 +1251,25 @@ test('Q7 (fondateur 20/08) — kwhFromBill : Lydec/Redal = LA grille nationale, 
   }
 })
 
-test('QF4 — kwhFromBill : sans distributeur connu → repli FALLBACK_KWH_PRICE, étiqueté estimation', () => {
-  const r = kwhFromBill(120, 'inconnu')
-  assert.equal(r.kwhMensuel, Math.round((120 / FALLBACK_KWH_PRICE) * 10) / 10)
-  assert.equal(r.estimation, true)
+test('QF4/CAD167 — kwhFromBill : SANS distributeur → repli FALLBACK_KWH_PRICE, étiqueté estimation', () => {
+  // Même règle que test_cad167 test_SANS_distributeur_le_comportement_d_avant_est_conserve.
+  for (const aucun of [undefined, null, '', '  ']) {
+    const r = kwhFromBill(120, aucun)
+    assert.equal(r.kwhMensuel, Math.round((120 / FALLBACK_KWH_PRICE) * 10) / 10)
+    assert.equal(r.estimation, true)
+  }
+})
+
+test('CAD167 — kwhFromBill : un distributeur NOMMÉ hors table (SRM, « autre ») lit la grille nationale', () => {
+  // Même règle que pricing._resolve_tranches (test_cad167 test_autre_cesse_de_casser_la_courbe) :
+  // AVANT, 'srm_casablanca' divisait la facture par 1,20 — DEV-202609-0113.
+  const onee = kwhFromBill(22000, 'onee')
+  for (const code of ['srm_casablanca', 'srm_rabat', 'autre', 'amendis', 'inconnu']) {
+    const r = kwhFromBill(22000, code)
+    assert.deepEqual(r, onee, code)
+    assert.equal(r.estimation, false, code)
+  }
+  assert.notEqual(onee.kwhMensuel, Math.round((22000 / FALLBACK_KWH_PRICE) * 10) / 10)
 })
 
 test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
@@ -1390,7 +1405,10 @@ test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre
   assert.equal(twoBillsSavings(0, 7200, 0.6, 'onee'), null) // pas de production
   assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
   assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
-  assert.equal(twoBillsSavings(6000, 7200, 0.6, 'inconnu'), null) // pas de barème
+  assert.equal(twoBillsSavings(6000, 7200, 0.6, undefined), null) // pas de barème
+  // CAD167 — un distributeur NOMMÉ (SRM) n'est plus « pas de barème » : grille nationale.
+  assert.deepEqual(twoBillsSavings(6000, 7200, 0.6, 'srm_casablanca'),
+    twoBillsSavings(6000, 7200, 0.6, 'onee'))
 })
 
 // ── QX38 — productible canonique PVGIS par ville (miroir backend) ────────────

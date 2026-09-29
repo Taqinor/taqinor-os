@@ -14,10 +14,9 @@
 // autoQuote.js ne peut pas être importé tel quel par `node --test` (import
 // relatif vers ./store/ventesSlice, dépendance à un `dispatch` Redux réel —
 // voir autoQuote.paliers.test.mjs / autoQuote.ordre.test.mjs) : ce test
-// rejoue donc EXACTEMENT la même séquence (mêmes fonctions solar.js, mêmes
-// gardes) que la branche résidentielle ajoutée à createAutoQuote, puis
-// verrouille par lecture de SOURCE que le code réel porte bien cette même
-// séquence (protection anti-dérive, même patron que autoQuote.ordre.test.mjs).
+// EXTRAIT et EXÉCUTE le vrai bloc `if (hiver > 0)` de la branche résidentielle
+// (COUV-HOR, 29/09/2026 — plus aucune copie rejouée), puis verrouille par
+// lecture de SOURCE les clés écrites (même patron que autoQuote.ordre.test.mjs).
 //
 // Run : node --test src/features/ventes/autoQuote.facturesReelles.test.mjs
 import test from 'node:test'
@@ -25,31 +24,33 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { estimerMois, kwhFromBill } from './solar.js'
+import { estimerMois, consoAnnuelleDepuisFactures } from './solar.js'
 
 const ici = dirname(fileURLToPath(import.meta.url))
 const lire = (rel) => readFileSync(join(ici, rel), 'utf-8')
 
-// Rejoue EXACTEMENT le nouveau bloc de createAutoQuote (branche résidentielle,
-// mode !== 'agricole', hors industriel/commercial) : mêmes appels, même garde,
-// mêmes clés. `mode` est fixé à 'residentiel' ici — les autres modes ne
-// passent jamais par cette branche (voir autoQuote.js : le bloc est gardé par
-// `mode === 'residentiel' && hiver > 0`).
+// COUV-HOR — exécute le bloc `if (hiver > 0) { … }` RÉEL de la branche
+// résidentielle de createAutoQuote (extrait du source, jamais une copie —
+// même patron que noticePalierKwc dans autoQuote.test.mjs) : un test qui
+// rejoue une copie reste vert quoi que devienne le vrai code.
+function extraireBlocFacturesReelles() {
+  const src = lire('./autoQuote.js')
+  const debut = src.indexOf("if (mode === 'residentiel') {")
+  assert.ok(debut > 0, 'branche résidentielle introuvable')
+  const m = src.slice(debut).match(/\n( *)if \(hiver > 0\) \{([\s\S]*?)\n\1\}/)
+  assert.ok(m, 'bloc `if (hiver > 0)` introuvable dans la branche résidentielle')
+  return new Function('lead', 'hiver', 'etudeExtra', 'estimerMois',
+    'consoAnnuelleDepuisFactures', m[2])
+}
+const blocFacturesReelles = extraireBlocFacturesReelles()
+
 function seedFacturesReellesLikeAutoQuote(lead) {
   const hiver = parseFloat(lead.facture_hiver) || 0
   if (!(hiver > 0)) return null
-  const eteReel = (lead.ete_differente && lead.facture_ete)
-    ? parseFloat(lead.facture_ete) : hiver
-  const facturesReelles = estimerMois(hiver, eteReel)
-  const distributeurLead = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
-    ? lead.distributeur : undefined
-  const consoAnnuelleReelle = Math.round(facturesReelles.reduce(
-    (somme, bill) => somme + (kwhFromBill(bill, distributeurLead).kwhMensuel || 0), 0))
-  return {
-    factures_mensuelles_reelles: facturesReelles,
-    ...(consoAnnuelleReelle > 0 ? { conso_annuelle: consoAnnuelleReelle } : {}),
-    ...(distributeurLead ? { distributeur: distributeurLead } : {}),
-  }
+  const etudeExtra = {}
+  blocFacturesReelles(lead, hiver, etudeExtra, estimerMois,
+    consoAnnuelleDepuisFactures)
+  return etudeExtra
 }
 
 test('lead SANS facture_hiver : aucune clé ajoutée (etude_params reste {scenario} seul)', () => {
@@ -76,6 +77,23 @@ test('lead avec distributeur ONEE connu : la clé distributeur est semée, tranc
   assert.deepEqual(out.factures_mensuelles_reelles, Array(12).fill(235))
   assert.equal(out.distributeur, 'onee')
   assert.equal(out.conso_annuelle, Math.round(12 * 210))
+})
+
+test('COUV-HOR — DEV-202609-0113 : sans distributeur, la conso suit le barème national, jamais factures ÷ 1,20', () => {
+  // Lead 1524 (Mohammedia) : distributeur NULL côté lead (le SRM n'est déduit
+  // de la ville que côté serveur). Avant : 198 000 MAD ÷ 1,20 = 165 000 kWh,
+  // donut « 28 % » face au « −37 % » de la même page.
+  for (const distributeur of [null, undefined, 'srm_casablanca', 'autre']) {
+    const out = seedFacturesReellesLikeAutoQuote({
+      facture_hiver: '11000', facture_ete: '22000', ete_differente: true, distributeur,
+    })
+    assert.equal(out.factures_mensuelles_reelles.reduce((a, b) => a + b, 0), 198000)
+    assert.equal(out.conso_annuelle,
+      consoAnnuelleDepuisFactures(out.factures_mensuelles_reelles, 'onee'))
+    assert.equal(out.conso_annuelle, 122007, `distributeur ${distributeur}`)
+    assert.equal('distributeur' in out, false,
+      'le libellé du distributeur n\'est jamais fabriqué')
+  }
 })
 
 test('distributeur "autre" (connu du lead mais hors barème) : jamais semé comme distributeur', () => {

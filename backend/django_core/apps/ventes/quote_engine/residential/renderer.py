@@ -165,7 +165,19 @@ def synthese_economies(data: dict) -> dict | None:
             _taux = float(_taux) if _taux is not None else None
         except (TypeError, ValueError):
             _taux = None
-        if _taux is not None and 0 < _taux <= 1:
+        # COUV-HOR (fondateur, 29/09/2026) — le moteur horaire a DÉJÀ calculé
+        # cette part (autoconsommé ÷ la conso qu'il a inversée des factures) :
+        # elle prime sur le recalcul contre une ``conso`` d'une autre source.
+        # L'étiquette « estimation » garde sa règle ci-dessus, inchangée.
+        _couv = (data.get("couverture_avec") if _avec
+                 else data.get("couverture_sans"))
+        try:
+            _couv = float(_couv) if _couv is not None else None
+        except (TypeError, ValueError):
+            _couv = None
+        if _couv is not None and 0 < _couv <= 1:
+            coverage = min(100, max(1, round(_couv * 100)))
+        elif _taux is not None and 0 < _taux <= 1:
             coverage = min(100, max(1, round(prod_kwh * _taux / conso * 100)))
         else:
             coverage = min(100, max(1, round(prod_kwh / conso * 100)))

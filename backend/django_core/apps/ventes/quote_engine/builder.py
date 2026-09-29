@@ -2042,8 +2042,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         _co_tranches = None
-    if (_co_tranches and not _tranches_override
-            and (not _utility or str(_utility).lower() == "onee")):
+    # COUV-HOR/CAD167 — Q7 : TOUT distributeur (ONEE, Lydec, Redal, SRM,
+    # « autre ») lit LA grille nationale, éditable par société. Réservée à
+    # vide/'onee', la grille société était contournée dès qu'un SRM tarifait
+    # (grille codée en dur, 1,6229 au lieu du 1,5958 de la société).
+    if _co_tranches and not _tranches_override:
         _tranches_override = _co_tranches
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
@@ -2192,11 +2195,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _roi_s = _roi_pour(puissance_kwc_sans)
         _roi_a = _roi_pour(puissance_kwc_avec)
         for _cle in ("eco_s_ann", "roi_s", "eco_s_monthly", "cashflow_sans",
-                     "net_gain_sans", "facture_avec_s", "autoconso_sans"):
+                     "net_gain_sans", "facture_avec_s", "autoconso_sans",
+                     "couverture_sans"):
             roi[_cle] = _roi_s[_cle]
         for _cle in ("eco_a_ann", "eco_a_cumul", "roi_a", "eco_a_monthly",
                      "cashflow_avec", "net_gain_avec", "facture_avec_a",
-                     "autoconso_avec"):
+                     "autoconso_avec", "couverture_avec"):
             roi[_cle] = _roi_a[_cle]
         prod_kwh_sans = _roi_s["prod_kwh"]
         prod_kwh_avec = _roi_a["prod_kwh"]
@@ -2454,9 +2458,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (loi 82-21, injection OFF —
     # rachat BT résidentiel différé par l'ANRE), base de production/dégradation.
     # Toutes les valeurs viennent de roi/etude (une source) ; dégrade proprement.
-    _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal"}
-    _util_key = (str(_utility).lower() if _utility else "")
-    _util_name = _util_labels.get(_util_key, "")
+    _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal",
+                    "amendis": "Amendis"}
+    _util_key = (str(_utility).strip().lower() if _utility else "")
+    # CAD167 — un distributeur nommé hors table tarife sur la grille nationale :
+    # sans libellé, le bloc hypothèses le disait « saisi pour ce devis ».
+    _util_name = _util_labels.get(_util_key) or (
+        "SRM" if _util_key.startswith("srm_")
+        else ("national" if _util_key else ""))
     # Q7 — plus aucun barème « approximatif » : les trois distributeurs lisent
     # la grille nationale (éditable par société). Le drapeau reste, toujours
     # faux, pour ne casser aucun consommateur de la charge utile.
@@ -3397,6 +3406,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # `financing` (F6).
         "devise": "MAD",
     }
+    # COUV-HOR (fondateur, 29/09/2026) — la donut de couverture lit la
+    # couverture du MOTEUR HORAIRE (autoconsommé ÷ la conso qu'il a inversée des
+    # factures), jamais un recalcul contre ``conso_annuelle`` : le devis auto la
+    # semait à factures ÷ 1,20 MAD/kWh (DEV-202609-0113 : 28 % imprimé, 37 %
+    # réel, à côté de « −37 % »). Seulement quand la colonne a VRAIMENT été
+    # chiffrée à l'heure ; clé ajoutée seulement si présente → l'empreinte PDF
+    # des autres devis ne bouge pas.
+    for _opt, _modele in (("sans", savings_model_sans),
+                          ("avec", savings_model_avec)):
+        _couv = roi.get(f"couverture_{_opt}")
+        if _modele == "horaire" and _couv is not None:
+            data[f"couverture_{_opt}"] = _couv
     # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
     # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est
     # ajoutée → la sortie reste strictement identique à aujourd'hui.

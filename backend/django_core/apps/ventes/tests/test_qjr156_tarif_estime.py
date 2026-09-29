@@ -70,7 +70,9 @@ class SansConsommationLePrixEstEstimeTests(SimpleTestCase):
         self.assertAlmostEqual(prix, 1.0, places=9)
 
     def test_sans_aucune_table_le_repli_honnete_est_conserve(self):
-        prix, estime = _avg_kwh_price_from_tranches(None, 'inconnu', None)
+        # CAD167/COUV-HOR — un distributeur NOMMÉ (même inconnu) lit la grille
+        # nationale : « aucune table », c'est désormais AUCUN distributeur.
+        prix, estime = _avg_kwh_price_from_tranches(None, None, None)
         self.assertTrue(estime)
         self.assertAlmostEqual(prix, _FALLBACK_KWH_PRICE, places=9)
 
@@ -110,7 +112,7 @@ class LeDocumentDitEstimationTests(SimpleTestCase):
         """DC2 garde son périmètre : sans TABLE, pas « sans consommation »."""
         sans_table = calculate_savings_roi(
             puissance_kwc=6.0, total_sans=90000, total_avec=140000,
-            utility='inconnu', fallback_tarif_kwh=1.75)
+            utility=None, fallback_tarif_kwh=1.75)   # CAD167 : sans distributeur
         self.assertAlmostEqual(sans_table['tarif_kwh'], 1.75, places=6)
         # Avec une grille réelle mais sans consommation, c'est la grille du
         # client qui parle — étiquetée, mais la sienne.
