@@ -848,6 +848,50 @@ def _etude_horaire_sans_stockage(bloc):
     return copie
 
 
+#: I7 (30/09/2026) — les clés d'``etude_params`` qui portent un bloc horaire,
+#: le PRINCIPAL d'abord. ``etude_horaire_sans`` n'existe que sur un devis dont
+#: les deux options portent des champs PV différents (L-2OPT) ; le principal
+#: décrit alors l'option AVEC (``domain.etudes.puissances_etude_horaire``).
+CLES_BLOCS_HORAIRES = ("etude_horaire", "etude_horaire_sans")
+
+
+def bloc_horaire_pour_kwc(etude, kwc):
+    """I7 — le bloc horaire RANGÉ qui décrit CETTE puissance.
+
+    Un bloc porte UNE puissance ; un devis à champs PV divergents en range
+    donc un par option. On rend celui dont le kWc est le plus proche de
+    ``kwc`` DANS la tolérance du moteur (``pricing._HORAIRE_TOLERANCE_KWC`` —
+    la même garde que celle qui refuserait le bloc ensuite, jamais un second
+    seuil). Aucun bloc ne correspond ⇒ le bloc PRINCIPAL, que
+    ``pricing._lire_etude_horaire`` refusera alors comme avant I7 : ce
+    sélecteur ne rend jamais valide un bloc périmé, il évite seulement de
+    présenter le mauvais. Fonction pure, ne lève jamais.
+    """
+    from .pricing import _HORAIRE_TOLERANCE_KWC
+    etude = etude or {}
+    principal = etude.get(CLES_BLOCS_HORAIRES[0])
+    try:
+        cible = float(kwc or 0)
+    except (TypeError, ValueError):
+        return principal
+    if cible <= 0:
+        return principal
+    meilleur, ecart_min = None, None
+    for cle in CLES_BLOCS_HORAIRES:
+        bloc = etude.get(cle)
+        if not isinstance(bloc, dict):
+            continue
+        try:
+            kwc_bloc = float(bloc.get("kwc") or 0)
+        except (TypeError, ValueError):
+            continue
+        ecart = abs(kwc_bloc - cible) / cible
+        if (kwc_bloc > 0 and ecart <= _HORAIRE_TOLERANCE_KWC
+                and (ecart_min is None or ecart < ecart_min)):
+            meilleur, ecart_min = bloc, ecart
+    return meilleur if meilleur is not None else principal
+
+
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
@@ -2110,6 +2154,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             getattr(devis, "reference", None), _client_city, exc_info=True)
         _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
+
+    def _etude_horaire_pour(kwc):
+        """I7 — le bloc horaire rangé pour ``kwc``, ramené « sans stockage »
+        sur une option « avec » servie sans batterie (BAT-DIFF)."""
+        bloc = bloc_horaire_pour_kwc(etude, kwc)
+        return (_etude_horaire_sans_stockage(bloc) if avec_batterie_differee
+                else bloc)
+
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
         utility=_utility or None,
@@ -2153,9 +2205,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``calculate_savings_roi`` garde EXACTEMENT son comportement d'avant.
         # BAT-DIFF — un bloc calculé AVANT le retrait de la batterie porterait
         # encore ses économies « avec » : on les ramène à « sans ».
-        etude_horaire=(_etude_horaire_sans_stockage(etude.get("etude_horaire"))
-                       if avec_batterie_differee
-                       else etude.get("etude_horaire")),
+        # I7 — le bloc de LA puissance chiffrée (un par option sur un devis
+        # divergent) ; ``_roi_pour`` plus bas choisit celui de chaque colonne.
+        etude_horaire=_etude_horaire_pour(puissance_kwc),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
@@ -2189,8 +2241,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             # l'appel principal est réutilisée telle quelle.
             if kwc == puissance_kwc:
                 return roi
-            return calculate_savings_roi(kwc or 0, total_sans, total_avec,
-                                         **roi_kwargs)
+            # I7 — chaque colonne lit le bloc horaire de SA puissance.
+            return calculate_savings_roi(
+                kwc or 0, total_sans, total_avec,
+                **dict(roi_kwargs, etude_horaire=_etude_horaire_pour(kwc)))
 
         _roi_s = _roi_pour(puissance_kwc_sans)
         _roi_a = _roi_pour(puissance_kwc_avec)
@@ -2214,6 +2268,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``savings_estimated=False`` pour tout le tableau. On enregistre ici
         # le modèle EFFECTIF de chaque colonne : plus aucun modèle n'est
         # déclaré au nom d'une autre colonne.
+        # I7 (30/09/2026) — chaque colonne a désormais SON bloc
+        # (``etude_horaire_sans`` pour l'option SANS) ; cette déclaration reste
+        # le filet d'un devis dont l'un des deux blocs manque encore.
         _modeles_par_option = {
             "sans": (_roi_s.get("savings_model", "estimation"),
                      bool(_roi_s.get("savings_estimated"))),

@@ -39,8 +39,15 @@ import logging
 
 logger = logging.getLogger("apps.ventes.services")
 
+#: I7 — la clé du bloc horaire de l'option SANS. Posée UNIQUEMENT sur un devis
+#: dont les deux options portent des champs PV DIFFÉRENTS (L-2OPT) ; le bloc
+#: ``etude_horaire`` décrit alors l'option AVEC. Voir
+#: :func:`puissances_etude_horaire`.
+CLE_ETUDE_HORAIRE_SANS = 'etude_horaire_sans'
 
-def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
+
+def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None,
+                             kwc_sans=None):
     """CJ2a — (re)calcule ``etude_params['etude_horaire']`` et le RANGE.
 
     Point d'entrée unique pour poser le bloc canonique sur un devis. Écrit avec
@@ -61,28 +68,45 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
     moteur est EXACTEMENT celui que l'empreinte trace (une seconde lecture
     d'horloge pourrait tomber le lendemain et estampiller une date qui n'a pas
     servi).
+
+    I7 — ``kwc_sans`` : la puissance de l'option SANS quand elle diffère de
+    celle de l'option AVEC (``kwc``). Le même moteur, les mêmes entrées lues
+    UNE fois, la même estampille, rangés sous ``etude_horaire_sans``. ``None``
+    (tout devis non divergent) ⇒ cette clé est RETIRÉE si elle traînait :
+    un bloc qui décrit une option disparue n'est jamais laissé en place.
     """
     from apps.ventes.domain.entrees import empreinte_entrees, entrees_depuis_devis
     from apps.ventes.domain.etude_schema import MOTEUR_HORAIRE, ecrire
     from apps.ventes.etude_horaire import etude_horaire_pour_devis
     try:
         entrees = entrees_depuis_devis(devis)
-        bloc = etude_horaire_pour_devis(
-            devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
-            jour_reference=(entrees.jour_reference if entrees else None))
-        if bloc is None:
-            if 'etude_horaire' not in (getattr(devis, 'etude_params', None)
-                                       or {}):
+        empreinte = (empreinte_entrees(entrees)
+                     if entrees is not None and entrees.conso_kwh_mensuelles
+                     else None)
+
+        def _calculer(puissance):
+            bloc_calcule = etude_horaire_pour_devis(
+                devis, kwc=puissance, batterie_kwh_utile=batterie_kwh_utile,
+                jour_reference=(entrees.jour_reference if entrees else None))
+            if bloc_calcule is None:
                 return None
-        else:
-            bloc = dict(bloc)
-            bloc['_empreinte_entrees'] = (
-                empreinte_entrees(entrees)
-                if entrees is not None and entrees.conso_kwh_mensuelles
-                else None)
+            bloc_calcule = dict(bloc_calcule)
+            bloc_calcule['_empreinte_entrees'] = empreinte
+            return bloc_calcule
+
+        bloc = _calculer(kwc)
+        bloc_sans = _calculer(kwc_sans) if kwc_sans else None
+        existant = getattr(devis, 'etude_params', None) or {}
+        if (bloc is None and bloc_sans is None
+                and 'etude_horaire' not in existant
+                and CLE_ETUDE_HORAIRE_SANS not in existant):
+            return None
         # QJR62 — ÉCRIVAIN UNIQUE : la fusion (et le retrait d'une clé posée à
-        # ``None``, règle Z2) vit dans ``domain.etude_schema``, plus ici.
-        ecrire(devis, proprietaire=MOTEUR_HORAIRE, etude_horaire=bloc)
+        # ``None``, règle Z2) vit dans ``domain.etude_schema``, plus ici. Les
+        # deux blocs partent dans la MÊME écriture : jamais un état où l'un
+        # décrit la nouvelle composition et l'autre l'ancienne.
+        ecrire(devis, proprietaire=MOTEUR_HORAIRE, etude_horaire=bloc,
+               **{CLE_ETUDE_HORAIRE_SANS: bloc_sans})
         return bloc
     except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
         logger.warning('etude_horaire non rafraîchie sur %s',
@@ -90,7 +114,7 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None):
         return None
 
 
-def _bloc_horaire_deja_a_jour(devis, kwc):
+def _bloc_horaire_deja_a_jour(devis, kwc, cle='etude_horaire'):
     """CJ2b — le bloc rangé sur ce devis décrit-il DÉJÀ cette composition ?
 
     RAISON D'ÊTRE : ÉVITER UN RECALCUL INUTILE DANS UN HANDLER HTTP. Un calcul
@@ -125,8 +149,12 @@ def _bloc_horaire_deja_a_jour(devis, kwc):
 
     Renvoie ``False`` au moindre doute — on préfère recalculer pour rien que
     servir un bloc qui ne décrit plus le devis.
+
+    I7 — ``cle`` : le bloc à contrôler (``etude_horaire``, ou
+    ``etude_horaire_sans`` pour l'option SANS d'un devis divergent). Mêmes
+    trois contrôles pour l'un et l'autre.
     """
-    bloc = (getattr(devis, 'etude_params', None) or {}).get('etude_horaire')
+    bloc = (getattr(devis, 'etude_params', None) or {}).get(cle)
     if not isinstance(bloc, dict) or not kwc:
         return False
     try:
@@ -152,6 +180,81 @@ def _bloc_horaire_deja_a_jour(devis, kwc):
         return False
 
 
+def puissances_etude_horaire(devis):
+    """I7 — ``(kwc du bloc principal, kwc du bloc « sans » ou None)``.
+
+    LE DÉFAUT QUE CECI FERME (audit I7, 30/09/2026). Le kWc de l'étude horaire
+    se lisait sur TOUTES les lignes produit, sans regarder
+    ``LigneDevis.variante``. Sur un devis L-2OPT dont les options portent des
+    champs PV différents (6 panneaux « sans », 8 « avec »), le bloc était
+    calculé pour 6 + 8 = 14 panneaux : une installation qu'AUCUNE option ne
+    vend. ``pricing._lire_etude_horaire`` le refusait pour les deux colonnes
+    (garde 2 %) et le devis retombait en silence sur « factures » /
+    « estimation » — 60 blocs sur 145 en prod.
+
+    LA DÉCISION : UN BLOC PAR OPTION, JAMAIS UN SEUL « AU CHOIX ». Un bloc
+    porte UNE puissance, donc ne peut servir qu'UNE colonne ; or la donut de
+    couverture lit l'option AVEC (``residential.renderer.synthese_economies``)
+    pendant que le lien public télécharge l'une OU l'autre variante (L-VAR).
+    Sur un devis divergent :
+
+    * le bloc principal décrit l'option AVEC — celle que portent les
+      scalaires legacy du document (``builder._scalaires_par_option`` : « un
+      scalaire unique doit décrire l'option que le client lit en premier »),
+      et donc la puissance de tous les lecteurs à bloc unique (courbes de la
+      page publique, régime batterie, carte « pointes », profils comparés) ;
+    * le bloc « sans » décrit l'option SANS (lignes communes + « sans ») — le
+      compte de panneaux que montre l'écran générateur
+      (``r.variante !== 'avec'``).
+
+    UNE SEULE DÉRIVATION. Le panier de chaque option est celui du noyau
+    (``etude_horaire.ligne_dans_option`` — QJR140 : commune ⇒ les deux,
+    variantée ⇒ la sienne), et la puissance / le verdict « divergents » sont
+    ceux du builder (``_scalaires_par_option``) : le bloc décrit exactement le
+    kWc que le document chiffre. Devis NON divergent (tout l'existant) : la
+    lecture d'avant, sur toutes les lignes, au bit près, et aucun second bloc.
+
+    Même filtre que ``build_quote_data`` : lignes PRODUIT non optionnelles
+    (les sections/notes n'ont pas de produit, les add-ons XSAL5 non activés ne
+    comptent pas encore dans la composition réelle).
+    """
+    from apps.ventes.etude_horaire import ligne_dans_option
+    from apps.ventes.quote_engine.builder import (
+        _scalaires_par_option, panneaux_et_watt_lu)
+    lignes = [
+        li for li in devis.lignes.select_related(
+            'produit', 'produit__fiche_technique').all()
+        if getattr(li, 'type_ligne', 'produit') == 'produit'
+        and not getattr(li, 'optionnelle', False)
+    ]
+    par_option = _scalaires_par_option(
+        [li for li in lignes if ligne_dans_option(li, 'sans')],
+        [li for li in lignes if ligne_dans_option(li, 'avec')])
+    if par_option['divergents']:
+        return par_option['kwc_avec'], par_option['kwc_sans']
+    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
+    kwc = (round(nb_panneaux * watt / 1000, 2)
+           if nb_panneaux > 0 and watt else None)
+    return kwc, None
+
+
+def _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):
+    """I7 — les DEUX blocs décrivent-ils déjà cette composition ?
+
+    Pas de puissance « sans » (devis non divergent) ⇒ à jour seulement si
+    aucun bloc « sans » ne traîne : un devis revenu à un seul champ PV doit
+    perdre le bloc de l'option disparue. Un devis rangé AVANT I7 n'a pas de
+    bloc « sans » ⇒ PÉRIMÉ, un recalcul, une fois.
+    """
+    if not _bloc_horaire_deja_a_jour(devis, kwc):
+        return False
+    if not kwc_sans:
+        return CLE_ETUDE_HORAIRE_SANS not in (
+            getattr(devis, 'etude_params', None) or {})
+    return _bloc_horaire_deja_a_jour(devis, kwc_sans,
+                                     cle=CLE_ETUDE_HORAIRE_SANS)
+
+
 def rafraichir_etude_horaire_devis(devis, *, force=False):
     """CJ2b — pose le bloc horaire canonique après une écriture SERVEUR d'un
     devis résidentiel (lignes ajoutées/modifiées/retirées, calepinage
@@ -175,11 +278,13 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
     reçoit son bloc au prochain enregistrement — aucune perte, un calcul
     seulement différé.
 
-    La puissance kWc vient EXCLUSIVEMENT de
-    ``quote_engine.builder.panneaux_et_watt_lu``, sur le MÊME filtre de lignes
-    que ``build_quote_data`` (lignes produit, non optionnelles) — jamais une
-    seconde règle de dérivation (l'incident DEV-202608-0007 est précisément né
-    de deux dérivations qui divergent). Sans panneau lisible, le rafraîchissement
+    La puissance kWc vient EXCLUSIVEMENT de :func:`puissances_etude_horaire`
+    (I7) : ``quote_engine.builder.panneaux_et_watt_lu`` sur le MÊME filtre de
+    lignes que ``build_quote_data`` (lignes produit, non optionnelles), OPTION
+    PAR OPTION quand les deux champs PV divergent — jamais une seconde règle de
+    dérivation (l'incident DEV-202608-0007 est précisément né de deux
+    dérivations qui divergent ; I7, de la somme de deux options que personne ne
+    vend). Sans panneau lisible, le rafraîchissement
     est appelé QUAND MÊME avec ``kwc=None`` : c'est ``rafraichir_etude_horaire``
     lui-même qui RETIRE alors le bloc devenu périmé plutôt que de le laisser
     décrire une installation qui n'existe plus (règle Z2 appliquée à la
@@ -207,22 +312,10 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
         mode = (getattr(devis, 'mode_installation', None) or '').strip().lower()
         if mode != 'residentiel':
             return None
-        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
-        # Même filtre que build_quote_data : lignes PRODUIT non optionnelles
-        # (les sections/notes n'ont pas de produit, les add-ons XSAL5 non
-        # activés ne comptent pas encore dans la composition réelle).
-        lignes = [
-            li for li in devis.lignes.select_related(
-                'produit', 'produit__fiche_technique').all()
-            if getattr(li, 'type_ligne', 'produit') == 'produit'
-            and not getattr(li, 'optionnelle', False)
-        ]
-        nb_panneaux, watt = panneaux_et_watt_lu(lignes)
-        kwc = (round(nb_panneaux * watt / 1000, 2)
-               if nb_panneaux > 0 and watt else None)
-        if not force and _bloc_horaire_deja_a_jour(devis, kwc):
+        kwc, kwc_sans = puissances_etude_horaire(devis)
+        if not force and _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):
             return (devis.etude_params or {}).get('etude_horaire')
-        return rafraichir_etude_horaire(devis, kwc=kwc)
+        return rafraichir_etude_horaire(devis, kwc=kwc, kwc_sans=kwc_sans)
     except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
         # jamais une sauvegarde de devis/ligne.
         logger.warning('rafraichir_etude_horaire_devis indisponible sur %s',
@@ -402,11 +495,14 @@ def rafraichir_etudes_du_devis(devis, *, force=False):
 #: Chacune est déclarée ``DERIVEE`` dans ``domain/etude_schema.SCHEMA`` (un
 #: test le vérifie : une clé renommée au schéma ne peut plus être purgée « à
 #: côté » en silence).
+#: I7 (30/09/2026) — SEPT clés depuis : le bloc horaire de l'option SANS suit
+#: le bloc ``etude_horaire``, pour la même raison.
 CLES_DERIVEES_NON_COPIEES = (
     'production_annuelle',
     'economies_annuelles',
     'payback',
     'etude_horaire',
+    CLE_ETUDE_HORAIRE_SANS,
     'dimensionnement',
     'profils_comparatifs',
 )

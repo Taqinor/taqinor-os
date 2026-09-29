@@ -1237,11 +1237,16 @@ def _annuel_frais(devis, kwc):
 
     ``{}`` quand la garde refuse : les deux taux sont alors simplement OMIS de
     la carte (règle d'omission), jamais remplacés par une estimation.
+
+    I7 — sur un devis à champs PV divergents, chaque option a SON bloc
+    (``etude_horaire_sans`` pour l'option SANS) : la carte lit celui de SA
+    puissance (``builder.bloc_horaire_pour_kwc``), puis la même garde.
     """
+    from .quote_engine.builder import bloc_horaire_pour_kwc
     from .quote_engine.pricing import _lire_etude_horaire
 
     etude_params = getattr(devis, 'etude_params', None) or {}
-    bloc = etude_params.get('etude_horaire')
+    bloc = bloc_horaire_pour_kwc(etude_params, kwc)
     if not isinstance(bloc, dict):
         return {}
     try:
