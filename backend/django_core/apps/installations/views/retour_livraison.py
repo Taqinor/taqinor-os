@@ -110,6 +110,10 @@ class RetourLivraisonLigneViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 {'retour': 'Retour inconnu pour cette société.'})
 
+    def perform_create(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
+
     def perform_update(self, serializer):
         self._check_parent(serializer)
         serializer.save()

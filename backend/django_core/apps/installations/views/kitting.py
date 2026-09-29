@@ -898,6 +898,10 @@ class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
             raise ValidationError({
                 'ordre': "Lignes verrouillées : l'ordre n'est plus planifié."})
 
+    def perform_create(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
+
     def perform_update(self, serializer):
         self._check_parent(serializer)
         serializer.save()
