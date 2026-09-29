@@ -944,6 +944,10 @@ class TestLeadPatchEcritureBornee(TestCase):
         django_request = APIRequestFactory().patch('/x/', data, format='json')
         vue = LeadViewSet()
         vue.format_kwarg = None
+        # `ViewSetMixin.initialize_request` lit `self.action_map` (posé par
+        # `as_view()` en HTTP) pour déduire `action` : on le fournit à la
+        # main, comme `as_view({'patch': 'partial_update'})` le ferait.
+        vue.action_map = {'patch': 'partial_update'}
         # CAD156 — `perform_update` lit `self.request.data` (l'heure promise de
         # rappel). En vrai, `dispatch()` enveloppe TOUJOURS la requête Django
         # brute dans un `rest_framework.request.Request` (seul porteur de
