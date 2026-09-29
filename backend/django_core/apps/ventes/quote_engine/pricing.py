@@ -1275,6 +1275,11 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
         "eco_avec": round(eco_avec),
         "autoconso_sans": auto_sans,
         "autoconso_avec": auto_avec,
+        # COUV-HOR (fondateur, 29/09/2026) — la couverture DU MOTEUR : son
+        # autoconsommé ÷ SA consommation, inversée des mêmes factures. La donut
+        # la lit telle quelle ; ``None`` sur un vieux bloc qui ne la porte pas.
+        "couverture_sans": _fraction_valide(annuel.get("couverture_sans")),
+        "couverture_avec": _fraction_valide(annuel.get("couverture_avec")),
         "facture_sans": _entier(annuel.get("facture_avant_mad")),
         "facture_avec_s": _entier(annuel.get("facture_apres_sans_mad")),
         "facture_avec_a": _entier(annuel.get("facture_apres_avec_mad")),
@@ -1506,6 +1511,7 @@ def calculate_savings_roi(
     # garde alors EXACTEMENT son comportement d'avant.
     factures_avant_horaire = None
     source_consommation_horaire = None
+    couverture_sans_h = couverture_avec_h = None
     _h = _lire_etude_horaire(etude_horaire, puissance_kwc)
     if _h:
         savings_model = "horaire"
@@ -1528,6 +1534,11 @@ def calculate_savings_roi(
         eco_monthly_reel = (_h["eco_s_monthly"], _h["eco_a_monthly"])
         factures_avant_horaire = _h.get("factures_avant_monthly")
         source_consommation_horaire = _h.get("source_consommation")
+        couverture_sans_h = _h.get("couverture_sans")
+        couverture_avec_h = _h.get("couverture_avec")
+        if couverture_sans_h is not None and couverture_avec_h is not None:
+            # Même invariant que ``autoconso_avec`` ci-dessus : avec ≥ sans.
+            couverture_avec_h = max(couverture_avec_h, couverture_sans_h)
 
     # ── QX39 — retour sur investissement par CASHFLOW 25 ans (honnête) ────────
     # Le payback n'est plus un simple ratio année-1 (ni conservateur, ni
@@ -1614,6 +1625,9 @@ def calculate_savings_roi(
         # Taux SANS batterie EFFECTIVEMENT appliqué (plafonné par la conso).
         "autoconso_sans":   autoconso_sans_eff,
         "autoconso_avec":   autoconso_avec,
+        # COUV-HOR — couverture du moteur horaire ; None hors modèle 'horaire'.
+        "couverture_sans":  couverture_sans_h,
+        "couverture_avec":  couverture_avec_h,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,
         # Modèle d'économie effectivement employé, du plus fort au plus faible :

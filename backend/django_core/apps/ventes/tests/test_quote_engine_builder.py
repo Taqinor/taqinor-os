@@ -982,6 +982,172 @@ class TestQuoteNumbersHonestyPack(TestCase):
         self.assertIn('c1-opt-price', html)
         self.assertIn('Production estimée', html)
 
+    # ── COUV-HOR (fondateur, 29/09/2026) — la donut lit le moteur horaire ──
+    # DEV-202609-0113 : « 28 % couverture » à côté de « −37 % ». Le moteur
+    # horaire avait calculé 37 % (autoconsommé ÷ SA conso, inversée des
+    # factures) ; la donut recalculait contre ``conso_annuelle`` que le devis
+    # auto semait à factures ÷ 1,20 MAD/kWh. Bloc de test : prod 9764 kWh,
+    # conso 7838 kWh, taux 0,41 / 0,64 ⇒ couverture 0,5107 / 0,7973.
+    def _bloc_horaire_avec_couverture(self, kwc=7.70, **kw):
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        bloc = bloc_horaire(kwc, **kw)
+        bloc['annuel'].update(couverture_sans=0.5107, couverture_avec=0.7973)
+        return bloc
+
+    def _etude_devis_auto_a_1_20(self, bloc):
+        """La forme exacte de DEV-202609-0113 : conso = factures ÷ 1,20."""
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import FACTURES_AVANT
+        return {**DEUX_OPTIONS, 'distributeur': 'onee',
+                'conso_annuelle': round(sum(FACTURES_AVANT) / 1.20),
+                'factures_mensuelles_reelles': list(FACTURES_AVANT),
+                'etude_horaire': bloc}
+
+    def test_couv_hor_la_donut_lit_la_couverture_du_moteur_horaire(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies)
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-COUVHOR-1',
+            etude_params=self._etude_devis_auto_a_1_20(
+                self._bloc_horaire_avec_couverture()))
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertEqual(data['couverture_avec'], 0.7973)
+        synth = synthese_economies(data)
+        # AVANT : round(9764 × 0,64 ÷ 14342 × 100) = 44.
+        self.assertEqual(synth['coverage_pct'], 80)
+        self.assertFalse(synth['coverage_estimated'])
+
+    def test_couv_hor_batterie_plus_tard_lit_la_couverture_sans(self):
+        """BAT-DIFF : l'option « avec » sans batterie chiffrée autoconsomme
+        comme « sans » — la donut ne décrit jamais un stockage absent."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies)
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 550W', '14', '1100'),
+            ('Onduleur réseau 10kW', '1', '11700'),
+            ('Onduleur hybride 10kW', '1', '24000'),
+            ('Batterie 10 kWh', '0', '25000'),
+            ('Installation', '1', '4000'),
+        ], reference='DEV-COUVHOR-2',
+            etude_params=self._etude_devis_auto_a_1_20(
+                self._bloc_horaire_avec_couverture()))
+        data = build_quote_data(devis)
+        self.assertTrue(data['avec_batterie_differee'])
+        # AVANT : round(9764 × 0,41 ÷ 14342 × 100) = 28.
+        self.assertEqual(synthese_economies(data)['coverage_pct'], 51)
+
+    def test_couv_hor_garde_l_etiquette_estimation_sans_conso_mesuree(self):
+        """Devis auto du tunnel web : une facture d'hiver, aucune conso
+        saisie — le chiffre vient du moteur, l'étiquette « estimation »
+        reste (règle QX7a inchangée)."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies)
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-COUVHOR-3',
+            etude_params={**DEUX_OPTIONS,
+                          'etude_horaire': self._bloc_horaire_avec_couverture(
+                              source_consommation='facture_hiver')})
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertIsNone(data['conso_annuelle_kwh'])
+        synth = synthese_economies(data)
+        self.assertEqual(synth['coverage_pct'], 80)
+        self.assertTrue(synth['coverage_estimated'])
+
+    def test_couv_hor_bloc_perime_ou_absent_ne_publie_rien(self):
+        """Non-régression : un bloc calculé pour une autre puissance (garde
+        anti-périmé) ou pas de bloc du tout ⇒ aucune clé ``couverture_*``
+        (empreinte PDF inchangée) et la formule historique."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies)
+        perime = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-COUVHOR-4',
+            etude_params=self._etude_devis_auto_a_1_20(
+                self._bloc_horaire_avec_couverture(kwc=9.0)))
+        data = build_quote_data(perime)
+        self.assertNotEqual(data['savings_model'], 'horaire')
+        self.assertNotIn('couverture_avec', data)
+        self.assertNotIn('couverture_sans', data)
+        conso = data['conso_annuelle_kwh']
+        self.assertEqual(
+            synthese_economies(data)['coverage_pct'],
+            min(100, max(1, round(
+                data['prod_kwh'] * data['autoconso_avec'] / conso * 100))))
+        sans_bloc = build_quote_data(self._devis(ref='DEV-COUVHOR-5'))
+        self.assertNotIn('couverture_avec', sans_bloc)
+        self.assertNotIn('couverture_sans', sans_bloc)
+
+    def test_couv_hor_vieux_bloc_sans_couverture_ne_publie_rien(self):
+        """Un bloc horaire d'AVANT la clé ``couverture_*`` : modèle horaire,
+        mais aucune clé publiée — l'empreinte PDF de ce devis ne bouge pas."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-COUVHOR-6',
+            etude_params=self._etude_devis_auto_a_1_20(bloc_horaire(7.70)))
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'horaire')
+        self.assertNotIn('couverture_avec', data)
+        self.assertNotIn('couverture_sans', data)
+
+    def test_couv_hor_mono_option_sans_batterie_lit_couverture_sans(self):
+        """QF6 : scénario « Sans batterie » ⇒ document mono-option ; la donut
+        suit l'option RÉELLEMENT chiffrée, jamais la couverture avec stockage."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.renderer import (
+            synthese_economies)
+        etude = self._etude_devis_auto_a_1_20(
+            self._bloc_horaire_avec_couverture())
+        etude['scenario'] = 'Sans batterie'
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-COUVHOR-7', etude_params=etude)
+        data = build_quote_data(devis)
+        self.assertFalse(data['avec_ok'])
+        self.assertEqual(synthese_economies(data)['coverage_pct'], 51)
+
+    def test_couv_hor_etude_saisie_garde_sa_formule(self):
+        """Une étude saisie par un humain (modèle 'etude') reste souveraine :
+        aucune couverture horaire publiée par-dessus."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        etude = self._etude_devis_auto_a_1_20(
+            self._bloc_horaire_avec_couverture())
+        etude.update(production_annuelle=9764, economies_annuelles=9000)
+        devis = make_devis(
+            self.company, self.user, self.client_obj, self.FULL_LINES,
+            reference='DEV-COUVHOR-8', etude_params=etude)
+        data = build_quote_data(devis)
+        self.assertEqual(data['savings_model'], 'etude')
+        self.assertNotIn('couverture_avec', data)
+        self.assertNotIn('couverture_sans', data)
+
+    def test_couv_hor_le_lecteur_du_bloc_remonte_la_couverture(self):
+        from apps.ventes.quote_engine.pricing import (
+            _lire_etude_horaire, calculate_savings_roi)
+        from apps.ventes.tests.test_cj2b_graphe_mensuel import bloc_horaire
+        h = _lire_etude_horaire(self._bloc_horaire_avec_couverture(5.68), 5.68)
+        self.assertEqual((h['couverture_sans'], h['couverture_avec']),
+                         (0.5107, 0.7973))
+        # Vieux bloc sans les clés : None, jamais un 0 fabriqué.
+        vieux = _lire_etude_horaire(bloc_horaire(5.68), 5.68)
+        self.assertIsNone(vieux['couverture_sans'])
+        self.assertIsNone(vieux['couverture_avec'])
+        roi = calculate_savings_roi(
+            5.68, 50000, 80000,
+            etude_horaire=self._bloc_horaire_avec_couverture(5.68))
+        self.assertEqual(roi['savings_model'], 'horaire')
+        self.assertEqual(roi['couverture_avec'], 0.7973)
+        self.assertIsNone(calculate_savings_roi(5.68, 50000, 80000)
+                          ['couverture_avec'])
+
     # ── (b) échéancier custom sans case morte ───────────────────────────────
     def test_custom_acompte_full_collapses_to_two_boxes(self):
         """Un acompte custom qui absorbe la tranche matériel → échéancier à

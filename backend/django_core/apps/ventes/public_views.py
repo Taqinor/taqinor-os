@@ -3259,7 +3259,7 @@ def proposal_data(request, token):
         if not data.get('avec_ok'):
             for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
                         'roi_a', 'cashflow_avec', 'net_gain_avec',
-                        'facture_avec_solaire_a'):
+                        'facture_avec_solaire_a', 'couverture_avec'):
                 data[cle] = None
         # …et le bloc moteur BRUT (`etude_params['etude_horaire']`, recopié
         # dans `data['etude']` par le builder) ne franchit JAMAIS la frontière
@@ -3755,7 +3755,7 @@ def _data_pour_taille_detail(devis, link):
     if not data.get('avec_ok'):
         for cle in ('eco_a_monthly', 'eco_a_ann', 'eco_a_cumul',
                     'roi_a', 'cashflow_avec', 'net_gain_avec',
-                    'facture_avec_solaire_a'):
+                    'facture_avec_solaire_a', 'couverture_avec'):
             data[cle] = None
     return data, resid
 

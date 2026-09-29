@@ -309,8 +309,10 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         // par palier a besoin de la MÊME consommation pour que son modèle
         // d'économie sature) — une seule formule, jamais deux chiffres qui
         // pourraient diverger.
+        // COUV-HOR — barème NATIONAL (Q7) même sans distributeur connu : jamais
+        // factures ÷ 1,20 MAD/kWh (DEV-202609-0113 : 165 000 kWh au lieu de 122 007).
         const consoAnnuelleReelle = consoAnnuelleDepuisFactures(
-          facturesReelles, distributeurLead)
+          facturesReelles, distributeurLead || 'onee')
         etudeExtra.factures_mensuelles_reelles = facturesReelles
         if (consoAnnuelleReelle > 0) etudeExtra.conso_annuelle = consoAnnuelleReelle
         if (distributeurLead) etudeExtra.distributeur = distributeurLead

@@ -2192,11 +2192,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _roi_s = _roi_pour(puissance_kwc_sans)
         _roi_a = _roi_pour(puissance_kwc_avec)
         for _cle in ("eco_s_ann", "roi_s", "eco_s_monthly", "cashflow_sans",
-                     "net_gain_sans", "facture_avec_s", "autoconso_sans"):
+                     "net_gain_sans", "facture_avec_s", "autoconso_sans",
+                     "couverture_sans"):
             roi[_cle] = _roi_s[_cle]
         for _cle in ("eco_a_ann", "eco_a_cumul", "roi_a", "eco_a_monthly",
                      "cashflow_avec", "net_gain_avec", "facture_avec_a",
-                     "autoconso_avec"):
+                     "autoconso_avec", "couverture_avec"):
             roi[_cle] = _roi_a[_cle]
         prod_kwh_sans = _roi_s["prod_kwh"]
         prod_kwh_avec = _roi_a["prod_kwh"]
@@ -3397,6 +3398,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # `financing` (F6).
         "devise": "MAD",
     }
+    # COUV-HOR (fondateur, 29/09/2026) — la donut de couverture lit la
+    # couverture du MOTEUR HORAIRE (autoconsommé ÷ la conso qu'il a inversée des
+    # factures), jamais un recalcul contre ``conso_annuelle`` : le devis auto la
+    # semait à factures ÷ 1,20 MAD/kWh (DEV-202609-0113 : 28 % imprimé, 37 %
+    # réel, à côté de « −37 % »). Seulement quand la colonne a VRAIMENT été
+    # chiffrée à l'heure ; clé ajoutée seulement si présente → l'empreinte PDF
+    # des autres devis ne bouge pas.
+    for _opt, _modele in (("sans", savings_model_sans),
+                          ("avec", savings_model_avec)):
+        _couv = roi.get(f"couverture_{_opt}")
+        if _modele == "horaire" and _couv is not None:
+            data[f"couverture_{_opt}"] = _couv
     # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
     # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est
     # ajoutée → la sortie reste strictement identique à aujourd'hui.
