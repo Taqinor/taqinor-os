@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: af589c52758d49278b33e6fef5ce6c1b8b5a374a9e0d433ea198e7eefcc4becf
-Plan fingerprint: 75355ef3797f077f668b2085a1224f5b8a4e3602fd10fd38c2030cce1a5247de
+Plan fingerprint: 9c829f64ddc806a2eb2a9caa22d0f3d5011885c5ef2ab1e1c864002c2138b072
 
 
 
@@ -1122,8 +1122,18 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (49)**
+**Open — to build (59)**
 
+- `ERR115` — [installations]
+- `ERR116` — [installations]
+- `ERR117` — [chantiers]
+- `ERR118` — [ci]
+- `ERR119` — [ci]
+- `ERR120` — [ventes]
+- `ERR121` — [e2e]
+- `ERR122` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
+- `ERR123` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
+- `ERR124` — [installations]
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
 - `CAD177` — (28/09/2026, PR #722 : 3 causes corrigées — image MinIO, test fastapi faux, aucune…
 - `CADM1` — Relecture darija par un locuteur natif

@@ -62,6 +62,8 @@ never block silently.
 
 ## BUILD QUEUE (fix highest-severity first)
 
+- [ ] WEBERR1 — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé, à construire au prochain « work on error plan »] **apps/web : astro 6.4.6 exposé à GHSA-26w7-cxv4-gfx2 (RCE via optimisation AVIF, critique, <7.2.8) et sharp 0.34.5 à GHSA-rgj7-g3m4-5g8c (high)** (`apps/web/package-lock.json`). Exposition réelle : faible — rien n'importe `astro:assets`, aucune config image dans `astro.config.mjs`, les trois `.avif` de `public/photos/` sont copiés tels quels, jamais optimisés. Véhicule : PR Dependabot #682 (astro 6.4.6→7.3.2 + sharp 0.35.4 + @astrojs/cloudflare 13.7→14.3 + wrangler 4.99→4.132) — CI ROUGE (web-build-test, Workers Builds). Trouvé via : autopilot 29/09. Sévérité : High. Confiance : high sur les avis. (DEP)
+- [ ] WEBERR2 — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé, à construire au prochain « work on error plan »] **apps/web : maplibre-gl 5.24.0 exposé à GHSA-jrc7-96c5-q579 (critique, corrigé en 6.4.1)** ; même analyse d'exposition que l'ERP (aucun Popup HTML alimenté par l'utilisateur). Véhicule : PR Dependabot #648 — CI ROUGE (web-build-test, Workers Builds). Trouvé via : autopilot 29/09. Sévérité : High. Confiance : high sur les avis. (DEP)
 ### Critical
 
 _(none yet — the error-autopilot appends verified items here)_
@@ -87,12 +89,14 @@ new external dependency, an auth/cost policy change, a new Cloudflare secret the
 founder hasn't set, anything touching the public lead-data flow, or a conflict
 with a non-negotiable rule. (none yet)
 
+
 ---
 
 ## AUTOPILOT INTAKE LOG (the error-autopilot appends one line per run)
 
 - *(file created 2026-06-21 — web error backlog, populated by the daily
   error-autopilot.)*
+- 2026-09-29 — error-autopilot : 0 défaut web vérifié (PII/CAPI/redirections/en-têtes/anti-abus tous conformes) ; 2 dépendances majeures WEBERR1–WEBERR2 (astro 7 + sharp/cloudflare/wrangler ; maplibre 6) déposées gatées puis DÉGATÉES le jour même par le fondateur (PR Dependabot rouges à faire passer au vert).
 
 ---
 
