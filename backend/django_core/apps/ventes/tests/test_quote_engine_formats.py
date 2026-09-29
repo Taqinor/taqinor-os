@@ -15,6 +15,7 @@ Run:
         apps.ventes.tests.test_quote_engine_formats -v 2
 """
 
+import re
 import hashlib
 from datetime import date, datetime, timezone as dt_timezone
 from decimal import Decimal
@@ -1360,8 +1361,14 @@ class TestPdfFormats4(TestPdfFormats):
         devis.save()
         for opts in ({'pdf_mode': 'onepage'}, None):
             html, _ = self._render(opts, devis=devis)
+            # 29/09/2026 — les URI `data:…;base64,…` (polices/images embarquées)
+            # sont du bruit binaire : la suite « 9876 » y est apparue par pur
+            # hasard sur main (run 36504005987) sans qu'aucun prix d'achat ne
+            # soit rendu. On ne cherche les marqueurs que dans le HTML LISIBLE.
+            lisible = re.sub(r'data:[^"\')\s]*?;base64,[A-Za-z0-9+/=]+',
+                             'data:base64-retire', html)
             for marker in ('9876', '9 876', '9\u202f876', '9&#8239;876', 'achat'):
-                self.assertNotIn(marker, html.lower())
+                self.assertNotIn(marker, lisible.lower())
 
     def test_onepage_15_rich_lines_stays_one_page_with_totals_visible(self):
         """Adaptive density: a 15-line quote with long product descriptions
