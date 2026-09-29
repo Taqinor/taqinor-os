@@ -55,4 +55,41 @@ describe('VisiteMesuresForm — VT10', () => {
     expect(screen.getByLabelText(/Longueur de la zone utile/i)).toBeDisabled()
     expect(screen.queryByRole('button', { name: /enregistrer les mesures/i })).not.toBeInTheDocument()
   })
+
+  // ERR-QAH-VISITES-COUVERTURE-ENUM-SANS-AFFORDANCE — « Type de couverture »
+  // et « État de la couverture » étaient des champs texte libres qui
+  // n'acceptaient que des codes internes (400 sur « Tuile »/« Bon état »,
+  // sans jamais montrer les valeurs permises). Ils rendent désormais des
+  // listes (role combobox, comme « Orientation »), plus jamais des textbox.
+  it('« Type de couverture » et « État de la couverture » rendent des listes, plus des champs texte libres', () => {
+    render(
+      <VisiteMesuresForm visiteId={7} categorie="toiture" libelle="Toiture" valeurs={{}} onSaved={() => {}} />,
+    )
+    expect(screen.getByLabelText('Type de couverture')).toHaveAttribute('role', 'combobox')
+    expect(screen.getByLabelText('État de la couverture')).toHaveAttribute('role', 'combobox')
+    expect(screen.queryByRole('textbox', { name: 'Type de couverture' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'État de la couverture' })).not.toBeInTheDocument()
+  })
+
+  it('« Type de couverture » propose exactement les codes serveur (Tuile, Tôle, Bac acier, Béton, Fibrociment, Autre)', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisiteMesuresForm visiteId={7} categorie="toiture" libelle="Toiture" valeurs={{}} onSaved={() => {}} />,
+    )
+    await user.click(screen.getByLabelText('Type de couverture'))
+    for (const libelle of ['Tuile', 'Tôle', 'Bac acier', 'Béton', 'Fibrociment', 'Autre']) {
+      expect(await screen.findByRole('option', { name: libelle })).toBeInTheDocument()
+    }
+  })
+
+  it('« État de la couverture » propose exactement Bon/Moyen/Mauvais', async () => {
+    const user = userEvent.setup()
+    render(
+      <VisiteMesuresForm visiteId={7} categorie="toiture" libelle="Toiture" valeurs={{}} onSaved={() => {}} />,
+    )
+    await user.click(screen.getByLabelText('État de la couverture'))
+    for (const libelle of ['Bon', 'Moyen', 'Mauvais']) {
+      expect(await screen.findByRole('option', { name: libelle })).toBeInTheDocument()
+    }
+  })
 })

@@ -25,6 +25,17 @@ vi.mock('../../ui/confirm', () => ({
     confirmDelete: () => Promise.resolve(true),
   }),
 }))
+// `@sentry/react` n'est pas installé dans cet environnement (dépendance
+// optionnelle, chargée seulement si VITE_SENTRY_DSN est configuré — voir
+// `lib/monitoring.js`) ; le stub évite l'échec de résolution au transform
+// pour la chaîne `../../ui` → `ErrorBoundary.jsx` → `lib/monitoring.js`,
+// sans rapport avec ce correctif.
+vi.mock('../../lib/monitoring', () => ({
+  isMonitoringEnabled: () => false,
+  initMonitoring: () => Promise.resolve(false),
+  captureException: () => {},
+  bindCompany: () => {},
+}))
 // MicDicteeButton se rend `null` en jsdom (pas de Web Speech) — pas besoin de
 // le mocker, mais on neutralise tout écran de rendu superflu au besoin.
 
@@ -110,6 +121,33 @@ describe('MSGACC1 — MessagesAccueilPage', () => {
       .toHaveTextContent('Le corps du message est requis.'))
     // Bandeau — nomme le champ EN FRANÇAIS, jamais la clé technique brute.
     expect(screen.getByText('Message : Le corps du message est requis.')).toBeInTheDocument()
+  })
+
+  it('ERR-QAH-PARAMETRES-OBJECT-OBJECT-ERREUR — enveloppe `error` de la 400 jamais affichée en clair', async () => {
+    // Reproduction EXACTE de la réponse observée par le qa-explorer (28/09) :
+    // sans Date/Heure, DRF renvoie l'erreur de champ ET l'enveloppe `error`
+    // (objet, ajoutée depuis le middleware d'erreurs). Le bandeau ne doit
+    // JAMAIS itérer cette clé technique.
+    notificationsApi.createMessageAccueil.mockRejectedValueOnce({
+      response: {
+        status: 400,
+        data: {
+          visible_a_partir_de: ['Ce champ est obligatoire.'],
+          error: { code: 'validation_error', message: 'Validation failed' },
+        },
+      },
+    })
+    renderPage()
+
+    await userEvent.click(screen.getByRole('combobox'))
+    await userEvent.click(await screen.findByRole('option', { name: 'reda' }))
+    await userEvent.type(screen.getByLabelText(/^Message/), 'test')
+    await userEvent.click(screen.getByRole('button', { name: 'Envoyer le message' }))
+
+    await waitFor(() => expect(screen.getByText('Date et heure : Ce champ est obligatoire.')).toBeInTheDocument())
+    // La ligne technique observée en prod ne doit plus jamais apparaître.
+    expect(screen.queryByText(/\[object Object\]/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^error\s*:/)).not.toBeInTheDocument()
   })
 
   it('liste les messages envoyés avec leur statut, supprime si non lu', async () => {

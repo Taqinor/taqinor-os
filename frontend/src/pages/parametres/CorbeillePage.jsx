@@ -265,7 +265,7 @@ export default function CorbeillePage() {
             <tbody>
               {items.map((el) => (
                 <tr key={el.id} data-testid="corbeille-row">
-                  <td>
+                  <td data-label="Sélection">
                     {!el.restaure_le && (
                       <Checkbox
                         aria-label={`Sélectionner ${el.libelle_snapshot || el.type_libelle || el.id}`}
@@ -274,13 +274,13 @@ export default function CorbeillePage() {
                       />
                     )}
                   </td>
-                  <td>{el.type_libelle || '—'}</td>
-                  <td>{el.libelle_snapshot || '—'}</td>
-                  <td>{el.supprime_par_nom || '—'}</td>
-                  <td>{formatDateTime(el.supprime_le)}</td>
-                  <td>{formatDateTime(el.expire_le)}</td>
-                  <td>{el.restaure_le ? formatDateTime(el.restaure_le) : '—'}</td>
-                  <td>
+                  <td data-label="Type">{el.type_libelle || '—'}</td>
+                  <td data-label="Libellé">{el.libelle_snapshot || '—'}</td>
+                  <td data-label="Supprimé par">{el.supprime_par_nom || '—'}</td>
+                  <td data-label="Supprimé le">{formatDateTime(el.supprime_le)}</td>
+                  <td data-label="Expire le">{formatDateTime(el.expire_le)}</td>
+                  <td data-label="Restauré le">{el.restaure_le ? formatDateTime(el.restaure_le) : '—'}</td>
+                  <td data-label="Actions">
                     {el.restaure_le ? (
                       <Badge tone="success">Restauré</Badge>
                     ) : (

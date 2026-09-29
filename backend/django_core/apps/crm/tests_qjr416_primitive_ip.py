@@ -218,8 +218,8 @@ class UneSeuleLectureDIpTests(SimpleTestCase):
         """Aucun ``…get('HTTP_X_FORWARDED_FOR')`` / ``…get('REMOTE_ADDR')`` :
         seules les MENTIONS en prose subsistent (elles expliquent le
         correctif), jamais une lecture."""
-        # …/backend/django_core/apps/crm/tests/<ce fichier> → django_core
-        racine = Path(__file__).resolve().parents[3]
+        # …/backend/django_core/apps/crm/<ce fichier> → django_core
+        racine = Path(__file__).resolve().parents[2]
         fautifs = []
         for chemin in self._SURFACES:
             arbre = ast.parse(

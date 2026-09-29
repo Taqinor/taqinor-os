@@ -460,6 +460,22 @@ def get_company_lead(company, lead_id):
     return Lead.objects.filter(pk=lead_id, company=company).first()
 
 
+def get_company_leads_by_ids(company, ids):
+    """CALX407 — le batch de ``get_company_lead`` : plusieurs leads bornés
+    société en UNE requête (``select_related('owner')`` inclus — l'appelant
+    cross-app en a besoin pour un repli « responsable », jamais un import
+    direct de ``authentication.CustomUser`` par lead). Un id hors société ou
+    inconnu est simplement ABSENT du dict rendu, jamais une erreur : à
+    l'appelant de traiter un id manquant comme il traite ``None`` côté
+    ``get_company_lead``. Lecture seule."""
+    if not ids:
+        return {}
+    from .models import Lead
+    leads = Lead.objects.filter(
+        company=company, pk__in=list(ids)).select_related('owner')
+    return {lead.pk: lead for lead in leads}
+
+
 def rechercher_leads_minimal(company, q, limit=10):
     """VTA16 — recherche de leads MINIMALE pour un consommateur cross-app.
 

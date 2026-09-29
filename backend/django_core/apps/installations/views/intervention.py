@@ -394,9 +394,9 @@ class InterventionViewSet(CompanyScopedModelViewSet):
             if mapped != interv.priorite:
                 interv.priorite = mapped
                 interv.save(update_fields=['priorite'])
-        # Auto-tampon date_realisee : un compte rendu rempli (ou un statut
-        # « Terminée »/« Validée ») sans date réalisée la pose à aujourd'hui,
-        # côté serveur (miroir de _stamp_statut_dates du chantier).
+        # Auto-tampon date_realisee : seul un statut « Terminée »/« Validée »
+        # sans date réalisée la pose à aujourd'hui, côté serveur (miroir de
+        # _stamp_statut_dates du chantier — ERR-QAH-…-DATE-REALISEE-AUTO).
         self._stamp_date_realisee(interv)
         # F3 — équipe par défaut = l'installateur du chantier quand aucune
         # équipe n'a été fournie (posé côté serveur).
@@ -515,14 +515,22 @@ class InterventionViewSet(CompanyScopedModelViewSet):
 
     @staticmethod
     def _stamp_date_realisee(interv):
-        """Pose date_realisee à aujourd'hui si elle est vide alors qu'un compte
-        rendu est renseigné OU que le statut est « Terminée »/« Validée »."""
+        """Pose date_realisee à aujourd'hui si elle est vide et que le statut
+        est « Terminée »/« Validée ».
+
+        ERR-QAH-CHANTIERS-INTERVENTION-DATE-REALISEE-AUTO — un `compte_rendu`
+        rempli ne suffit PLUS à tamponner : le mini-formulaire du chantier
+        n'offre QUE ce champ pour toute note, donc une intervention créée
+        « À préparer » avec un simple commentaire se retrouvait marquée
+        réalisée aujourd'hui alors qu'elle est encore planifiée. Seul le
+        STATUT canonique de complétion fait foi (même esprit que
+        `_stamp_statut_dates` côté chantier, qui n'horodate jamais sur du
+        contenu de champ)."""
         if interv.date_realisee is not None:
             return
-        cr = (interv.compte_rendu or '').strip()
         done = interv.statut in (
             Intervention.Statut.TERMINEE, Intervention.Statut.VALIDEE)
-        if cr or done:
+        if done:
             interv.date_realisee = timezone.localdate()
             interv.save(update_fields=['date_realisee'])
 

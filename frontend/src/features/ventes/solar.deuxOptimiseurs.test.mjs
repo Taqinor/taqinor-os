@@ -18,8 +18,13 @@ import assert from 'node:assert/strict'
 import {
   fusionnerVariantes, optionTotalsTTC, batteryKwhFromLines, computeROI,
   INVERTER_REPLACE_YEAR, optimalKwcByPayback, comptePanneauxOption,
-  batteryCapaciteInconnue,
+  batteryCapaciteInconnue, totauxCanoniquesTtc,
 } from './solar.js'
+
+// ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — un panier se chiffre par la chaîne
+// canonique du noyau (HT persisté → TVA), jamais par Σ TTC saisis : les
+// attentes ci-dessous désignent les LIGNES du panier, le chiffrage suit.
+const canon = (...rows) => totauxCanoniquesTtc(rows, 0)
 
 // ── fusionnerVariantes ────────────────────────────────────────────────────
 
@@ -127,8 +132,8 @@ test('optionTotalsTTC : lignes SANS champ `variante` — comportement historique
     { designation: 'Panneau Canadien Solar 710W', quantite: 14, prix_unit_ttc: 1400 },
   ]
   const { totalSans, totalAvec } = optionTotalsTTC(lignes, 0)
-  assert.equal(totalSans, 20000 + 14 * 1400)
-  assert.equal(totalAvec, 28000 + 17000 + 14 * 1400)
+  assert.equal(totalSans, canon(lignes[0], lignes[3]))
+  assert.equal(totalAvec, canon(lignes[1], lignes[2], lignes[3]))
 })
 
 test('optionTotalsTTC : une fusion sans/avec calcule les BONS totaux (sans double-compte, sans fuite)', () => {
@@ -143,10 +148,10 @@ test('optionTotalsTTC : une fusion sans/avec calcule les BONS totaux (sans doubl
   const { totalSans, totalAvec } = optionTotalsTTC(lignes, 0)
   // sans = réseau (commun) + panneau 'sans' (10) + transport (commun) ;
   // batterie/hybride (commun, mais mot-clé) + panneau 'avec' exclus.
-  assert.equal(totalSans, 20000 + 10 * 1400 + 1000)
+  assert.equal(totalSans, canon(lignes[0], lignes[3], lignes[5]))
   // avec = hybride + batterie (communs) + panneau 'avec' (17) + transport ;
   // réseau (mot-clé) + panneau 'sans' (variante) exclus.
-  assert.equal(totalAvec, 28000 + 17000 + 17 * 1400 + 1000)
+  assert.equal(totalAvec, canon(lignes[1], lignes[2], lignes[4], lignes[5]))
 })
 
 // F14 (26/08/2026) — la ligne DÉCLARÉE tranche SEULE, jamais un second
@@ -165,7 +170,7 @@ test('optionTotalsTTC : F14 — une batterie taguée \'sans\' reste comptée dan
     { designation: 'Panneau Canadien Solar 710W', quantite: 10, prix_unit_ttc: 1400, variante: 'sans' },
   ]
   const { totalSans, totalAvec } = optionTotalsTTC(lignes, 0)
-  assert.equal(totalSans, 20000 + 17000 + 10 * 1400)
+  assert.equal(totalSans, canon(lignes[0], lignes[1], lignes[2]))
   assert.equal(totalAvec, 0)
 })
 
@@ -350,8 +355,9 @@ test('comptePanneauxOption : même règle de variante que optionTotalsTTC', () =
     { designation: 'Panneau 710W', quantite: 20, prix_unit_ttc: 1400, taux_tva: 10, variante: 'avec' },
   ]
   const t = optionTotalsTTC(lignes, 0)
-  assert.equal(comptePanneauxOption(lignes, 'sans') * 1400, t.totalSans)
-  assert.equal(comptePanneauxOption(lignes, 'avec') * 1400, t.totalAvec)
+  const panneaux = (n) => canon({ designation: 'Panneau 710W', quantite: n, prix_unit_ttc: 1400, taux_tva: 10 })
+  assert.equal(panneaux(comptePanneauxOption(lignes, 'sans')), t.totalSans)
+  assert.equal(panneaux(comptePanneauxOption(lignes, 'avec')), t.totalAvec)
 })
 
 test('comptePanneauxOption : aucune ligne panneau (pompage, devis vide) → 0, jamais une exception', () => {

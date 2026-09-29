@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback, useEffect, useMemo, useRef, useState,
+} from 'react'
 import { useParams } from 'react-router-dom'
 import {
   CartesianGrid, Legend, Line, LineChart, Tooltip, XAxis, YAxis,
@@ -234,7 +236,9 @@ function journeesTypes(points, cle) {
     })
 }
 
-export default function TapisHoraire({ calepinageId, serie: serieProposee }) {
+export default function TapisHoraire({
+  calepinageId, serie: serieProposee, geometriePresente = true,
+}) {
   const { id: idRoute } = useParams()
   const id = calepinageId ?? idRoute
 
@@ -246,14 +250,45 @@ export default function TapisHoraire({ calepinageId, serie: serieProposee }) {
   const [enCours, setEnCours] = useState(!fournie)
   const [cleGrandeur, setCleGrandeur] = useState(GRANDEURS[0].cle)
   const [moisChoisi, setMoisChoisi] = useState(null)
+  // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — un seul essai PAR étude.
+  // L'onglet « Production » ouvrait la porte d'export (CALX6/CAL144) et
+  // laissait son refus 400 (aucune géométrie enregistrée) déclencher le
+  // bandeau d'erreur GLOBAL (bridge L53, `api/axios.js`) — DEUX FOIS,
+  // React StrictMode (dev) rejouant l'effet une seconde fois sur le même
+  // montage. La garde ci-dessous rend cette seconde tentative un no-op :
+  // au plus UNE requête par étude, donc au plus UN toast — jamais deux —
+  // et l'écran continue d'afficher l'état vide qui NOMME le motif du
+  // serveur (comportement déjà correct, inchangé) plutôt qu'un second
+  // passage muet.
+  const idDejaTente = useRef(null)
 
   const charger = useCallback(() => {
-    if (fournie || !id) return Promise.resolve()
+    if (fournie || !id || idDejaTente.current === id) return Promise.resolve()
+    idDejaTente.current = id
+    // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — `geometriePresente`
+    // vient de `PanneauProduction.jsx`, qui le sait déjà SANS requête de
+    // plus (`pose.total_modules` de son propre `resultat()`, CAL244 : « la
+    // pose est un fait, toujours chiffrée »). Faux ⇒ la porte d'export
+    // refuserait de toute façon en 400 (« Aucune géométrie enregistrée ») —
+    // on n'ouvre donc même pas la requête, zéro appel, zéro toast, l'état
+    // vide s'affiche directement avec le MÊME motif que le refus aurait
+    // porté. Un appelant qui ne connaît pas encore cet état (le prop
+    // par défaut `true`, ex. un autre écran) garde le comportement
+    // d'aujourd'hui : la porte reste ouverte, son 400 éventuel reste géré.
+    if (!geometriePresente) {
+      // Différé sur un microtask (comme les deux branches ci-dessous) :
+      // un `setState` synchrone dans le corps d'un effet enchaîne les
+      // rendus (garde `react-hooks/set-state-in-effect`).
+      return Promise.resolve().then(() => {
+        setRefus(SANS_SERIE)
+        setEnCours(false)
+      })
+    }
     return Promise.resolve(calepinageApi.calepinages.exportCsv(id, 'horaire'))
       .then(async (res) => setChargee(lireCsvHoraire(await texteDuFichier(res?.data))))
       .catch(async (erreur) => setRefus(await motifDuRefus(erreur) || SANS_SERIE))
       .finally(() => setEnCours(false))
-  }, [fournie, id])
+  }, [fournie, id, geometriePresente])
 
   useEffect(() => { charger() }, [charger])
 

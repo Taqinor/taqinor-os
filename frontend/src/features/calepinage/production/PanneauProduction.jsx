@@ -375,6 +375,14 @@ export default function PanneauProduction({ calepinageId }) {
   // CALX48 — Done : « sans poste de perte, le bouton est inactif ». `pertes`
   // (liste plate) ET `cascade.etapes` valent tous deux « rien à simuler ».
   const pertesVides = !(data?.pertes?.length) && !(data?.cascade?.etapes?.length)
+  // ERR-QAH-CALEPINAGE-EXPORT-CSV-400-PRODUCTION — `pose` est TOUJOURS
+  // chiffrée (contrat CAL244 : « la pose est un fait », jamais `null`, même
+  // non simulée/périmée) : `pose.total_modules === 0` dit sans détour qu'
+  // AUCUN panneau n'est posé sur ce document — le MÊME fait que la porte
+  // d'export refuse en 400 (`views/export_csv.py`, "Aucune géométrie
+  // enregistrée"). On le lit ici, sur la réponse `resultat()` déjà en main
+  // (AUCUNE requête de plus), pour que `TapisHoraire` ne l'ouvre même pas.
+  const geometriePresente = (data?.pose?.total_modules ?? 0) > 0
 
   return (
     <>
@@ -408,8 +416,12 @@ export default function PanneauProduction({ calepinageId }) {
     {/* CALX64 — le tapis jour × heure de la série persistée (CALX193). La
         série n'est PAS recopiée par `GET resultat/` (D-CALX 14, volume) :
         la propriété est passée pour le jour où elle y sera, et le composant
-        retombe sinon sur la porte d'export (CALX6, CAL144). */}
-    <TapisHoraire calepinageId={id} serie={data?.serie_horaire} />
+        retombe sinon sur la porte d'export (CALX6, CAL144) — SAUF quand
+        `geometriePresente` est faux (ERR-QAH-CALEPINAGE-EXPORT-CSV-400-
+        PRODUCTION) : la porte d'export refuserait de toute façon, pour un
+        geste que personne n'a demandé en ouvrant simplement l'onglet. */}
+    <TapisHoraire calepinageId={id} serie={data?.serie_horaire}
+      geometriePresente={geometriePresente} />
     </>
   )
 }

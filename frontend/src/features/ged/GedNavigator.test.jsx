@@ -365,6 +365,38 @@ describe('GedNavigator — écriture (U14)', () => {
     await waitFor(() => expect(gedApi.renameDossier).toHaveBeenCalledWith(5, 'Archives'))
   })
 
+  it('ERR-QAH-GED-RENAME-STALE-HEADER — le panneau de droite reflète le nouveau nom SANS re-clic', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    // La liste des dossiers reste volontairement PÉRIMÉE (toujours « Docs ») pour
+    // prouver que le nouveau nom vient bien de la réponse PATCH fusionnée dans
+    // `selected`, pas d'un futur rechargement de l'arbre.
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([]))
+    gedApi.renameDossier.mockResolvedValue(ok({ id: 5, nom: 'Archives', cabinet: 1, parent: null, path: '/5/' }))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+
+    // AVANT renommage : le panneau de droite affiche l'ancien nom (titre +
+    // état vide « Dossier « Docs » »).
+    expect(await screen.findByText('Dossier « Docs »')).toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Renommer/i }))
+    const dialog = await screen.findByRole('dialog')
+    const field = within(dialog).getByLabelText('Nom du dossier')
+    await userEvent.clear(field)
+    await userEvent.type(field, 'Archives')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Valider' }))
+
+    await waitFor(() => expect(gedApi.renameDossier).toHaveBeenCalledWith(5, 'Archives'))
+    // APRÈS renommage, SANS re-cliquer le dossier : titre + état vide affichent
+    // déjà le nouveau nom.
+    expect(await screen.findByText('Dossier « Archives »')).toBeInTheDocument()
+    expect(screen.queryByText('Dossier « Docs »')).not.toBeInTheDocument()
+  })
+
   it('WIR204 — télécharge un ZIP de la sélection (wrapper dédié, jamais operationsLot)', async () => {
     gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
     gedApi.getDossiers.mockResolvedValue(ok([

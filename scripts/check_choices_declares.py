@@ -615,6 +615,8 @@ REFUS = {
     # liste littérale : rien de déclarable.
     "frontend/src/lib/apps/useInstalledApps.js": [
         ("miroir des `sku`", "SANS_SOURCE")],
+    "frontend/src/features/installations/InterventionFieldExecution.materiel.test.jsx": [
+        ("InterventionPreparationSerializer", "TEST")],
     "frontend/src/features/installations/statuses.js": [
         ("recul côté UI", "COMPORTEMENT")],
     "frontend/src/features/paie/paieLogic.js": [
@@ -643,6 +645,12 @@ REFUS = {
     "frontend/src/features/ventes/module.config.jsx": [
         ("/sav/action-requise", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.js": [
+        # ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION (28/09) — deux promesses
+        # decrivent le MIROIR de fonctions (familles_servables /
+        # deux_options_declarees), un comportement ; la liste
+        # SCENARIOS_ALTERNATIVE, elle, est CONVERTIE (source-choix:).
+        ("familles_des_lignes", "COMPORTEMENT"),
+        ("miroir de `deux_options_declarees`", "COMPORTEMENT"),
         # STKCAT10 : regle d'emission du role structure portee de composition.py (comportement)
         ("miroir de `composition.py`", "COMPORTEMENT"),
         # PVOND (2026-08-18) — le commentaire decrit l'avertissement « vivier

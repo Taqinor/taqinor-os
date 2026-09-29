@@ -28,6 +28,59 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .models import Calepinage, CalepinageVariante
 
 
+def _lead_apercu(lead):
+    """``{id, nom, ville}`` du lead déjà résolu, ou ``None`` — même forme que
+    ``views/calepinages.py::_lead`` (le détail)."""
+    if lead is None:
+        return None
+    nom = ' '.join(p for p in [getattr(lead, 'nom', ''),
+                               getattr(lead, 'prenom', '') or ''] if p).strip()
+    ville = (getattr(lead, 'ville', '') or '').strip() or None
+    return {'id': lead.pk, 'nom': nom or f'Lead #{lead.pk}', 'ville': ville}
+
+
+class _CalepinageListSerializer(serializers.ListSerializer):
+    """CALX407 — la PAGE précharge tous ses leads en UNE requête.
+
+    Le cache mémo posé par ``CalepinageSerializer._lead_de_la_societe`` (sur
+    ``self``, le ``child``) suffit déjà quand plusieurs lignes de la page
+    PARTAGENT un même lead — le cas mesuré par CALX390. Il ne suffit PAS
+    quand la page porte ``N`` calepinages sur ``N`` leads DIFFÉRENTS (le cas
+    réel) : sans préchargement, chaque lead reste une première lecture, donc
+    ``N`` requêtes (plus ``N`` de plus pour le repli ``.owner``).
+
+    ``ListSerializer.to_representation`` (DRF) délègue à ``self.child`` —
+    CE MÊME enfant pour toute la page — donc on résout ICI, AVANT de laisser
+    DRF itérer, la liste ENTIÈRE des ``lead_id`` distincts de la page via
+    ``apps.crm.selectors.get_company_leads_by_ids`` (UNE requête,
+    ``select_related('owner')`` inclus), et on SEED le dict mémo du child
+    avec le résultat. L'itération ligne-par-ligne
+    (``CalepinageSerializer._lead_de_la_societe``) ne trouve plus alors que
+    des cache-hits, jamais une lecture de plus — le comportement PAR LIGNE
+    (garde même-société, repli ``responsable``) reste rigoureusement
+    identique, seule la SOURCE du lead change (déjà en mémoire, jamais un
+    second calcul).
+    """
+
+    def to_representation(self, data):
+        lignes = list(data.all() if hasattr(data, 'all') else data)
+        request = self.child.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            ids = {lid for lid in
+                   (getattr(ligne, 'lead_id', None) for ligne in lignes)
+                   if lid}
+            if ids:
+                from apps.crm.selectors import get_company_leads_by_ids
+
+                cache = self.child.__dict__.setdefault(
+                    '_calx407_cache_leads', {})
+                for lead_id, lead in get_company_leads_by_ids(
+                        company, ids).items():
+                    cache[(company.pk, lead_id)] = lead
+        return [self.child.to_representation(ligne) for ligne in lignes]
+
+
 class CalepinageSerializer(SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """Le calepinage en liste et en écriture (le DÉTAIL agrégé est CAL17).
@@ -59,6 +112,10 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     class Meta:
         model = Calepinage
+        #: CALX407 — la LISTE (``many=True``) précharge tous ses leads en
+        #: une requête (voir ``_CalepinageListSerializer``) ; le détail et
+        #: l'écriture (``many=False``) ne passent jamais par cette classe.
+        list_serializer_class = _CalepinageListSerializer
         fields = [
             'id', 'titre', 'statut', 'statut_libelle',
             'lead', 'client', 'devis', 'appel_offre',
@@ -135,6 +192,97 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
         except AttributeError:  # objet figé (essais) : pas de mémo, rien de faux
             pass
         return memo
+
+    def _lead_de_la_societe(self, company, lead_id):
+        """CALX407 — le lead rattaché, borné société, ou ``None``.
+
+        BUDGET (CALX390) — mémorisé UNE fois PAR LEAD et PAR SÉRIALISEUR :
+        ``ListSerializer.to_representation`` appelle ``self.child`` (CE MÊME
+        sérialiseur) pour CHAQUE ligne de la page — jamais une instance par
+        ligne — donc un dict tenu sur ``self`` survit toute la liste. Un lead
+        rattaché à PLUSIEURS calepinages de la page (le cas courant : un même
+        prospect, plusieurs études) ne le relit qu'une fois, et l'accès
+        ``.owner`` (repli ``responsable``, plus bas) n'est payé qu'à la
+        PREMIÈRE lecture de ce lead — Django mémorise ensuite la relation sur
+        l'objet ``Lead`` réutilisé du cache, jamais une requête de plus pour
+        les lignes suivantes du même lead. Sans ce cache, chaque ligne
+        relisait son lead PUIS son responsable : deux requêtes de plus par
+        ligne (30 requêtes à 10 lignes, 60 à 25 — le N+1 d'ERR-QAH-CALEPINAGE-
+        LISTE-SANS-RATTACHEMENT, réintroduit par ce même correctif).
+        """
+        # ``company`` : l'objet Company OU son identifiant (``company_id``).
+        # La liste passe l'IDENTIFIANT lu sur la ligne (``instance.company_id``,
+        # jamais ``instance.company`` : la FK n'est pas jointe par le queryset
+        # de liste et coûtait UNE requête PAR LIGNE — le +1/ligne mesuré par
+        # CALX390 : 21 requêtes à 10 lignes, 36 à 25).
+        if not lead_id or company is None:
+            return None
+        company_id = getattr(company, 'pk', company)
+        cache = self.__dict__.setdefault('_calx407_cache_leads', {})
+        cle = (company_id, lead_id)
+        if cle in cache:
+            return cache[cle]
+        from apps.crm.selectors import get_company_lead
+
+        if not hasattr(company, 'pk'):
+            # Chemin RARE (détail hors liste, ou lead absent du préchargement) :
+            # on résout l'objet société une fois, depuis la requête si c'est
+            # la même, sinon par lecture.
+            request = self.context.get('request')
+            candidate = getattr(getattr(request, 'user', None), 'company', None)
+            if candidate is not None and candidate.pk == company_id:
+                company = candidate
+            else:
+                from authentication.models import Company
+                company = Company.objects.filter(pk=company_id).first()
+                if company is None:
+                    cache[cle] = None
+                    return None
+        lead = get_company_lead(company, lead_id)
+        cache[cle] = lead
+        return lead
+
+    def to_representation(self, instance):
+        """CALX407 — la LISTE (et la bibliothèque des modèles) publient le
+        MÊME nom et le MÊME rattachement que le détail agrégé
+        (``views/calepinages.py::detail_calepinage``) : la lecture ne change
+        pas, seule la REPRÉSENTATION est complétée après coup.
+
+        * ``nom`` — ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU : le champ SAISI
+          est ``titre`` — la liste ne rendait que lui, sous sa propre clé ;
+          l'écran (atelier ET liste) lit ``nom``, exactement le même calcul
+          que le détail (``_texte(titre) or str(calepinage)``, ici
+          ``str(instance)`` — ``Calepinage.__str__`` fait le même repli).
+        * ``lead`` — ERR-QAH-CALEPINAGE-LISTE-SANS-RATTACHEMENT : la liste ne
+          publiait que l'identifiant OPAQUE ; l'écran affichait « Sans
+          rattachement » faute du nom. Rendu en ``{id, nom, ville}``, comme
+          le détail — jamais un second calcul : lu via
+          ``apps.crm.selectors.get_company_lead`` (cross-app, jamais le
+          modèle), et mémorisé par lead — voir ``_lead_de_la_societe``
+          (budget CALX390).
+        * ``responsable``/``responsable_nom`` — MÊME bug : une étude SANS
+          responsable SAISI (``Calepinage.responsable`` vide) retombait sur
+          ``null`` alors que le détail sait retomber sur le responsable du
+          lead rattaché (CALX406, ``views/calepinages.py::_responsable``).
+          Le CHAMP saisi garde la priorité (inchangé, aucune requête de plus
+          quand il est posé) ; SEUL le repli manquant est ajouté ici, sur le
+          lead déjà résolu (mémorisé) ci-dessus.
+        """
+        data = super().to_representation(instance)
+        data['nom'] = str(instance)
+        company_id = getattr(instance, 'company_id', None)
+        lead_id = getattr(instance, 'lead_id', None)
+        lead = self._lead_de_la_societe(company_id, lead_id)
+        data['lead'] = _lead_apercu(lead)
+        if data.get('responsable') is None and lead is not None:
+            proprietaire = getattr(lead, 'owner', None)
+            if proprietaire is not None:
+                nom = (getattr(proprietaire, 'get_full_name', lambda: '')()
+                       or '').strip()
+                data['responsable'] = proprietaire.pk
+                data['responsable_nom'] = (
+                    nom or getattr(proprietaire, 'username', ''))
+        return data
 
     def validate(self, attrs):
         """Lead XOR client, et un lead qui existe VRAIMENT dans la société."""

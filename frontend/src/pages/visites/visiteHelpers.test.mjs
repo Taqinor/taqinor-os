@@ -8,6 +8,7 @@ import assert from 'node:assert/strict'
 import {
   trierCategories, progressionPhotos, manquantsMesures, manquantsPhotos,
   whatsappUrl, mapsUrl, labelQualification, ligneQualification, QUALIFICATION_DEFAULTS,
+  MESURES_SCHEMA,
 } from './visiteHelpers.js'
 
 const CHECKLIST = [
@@ -130,4 +131,27 @@ test('ligneQualification — une ligne compacte « · »-séparée des 6 libell�
 test('ligneQualification — chaîne vide sans qualification enregistrée (jamais un texte inventé)', () => {
   assert.equal(ligneQualification(null), '')
   assert.equal(ligneQualification(undefined), '')
+})
+
+// ERR-QAH-VISITES-COUVERTURE-ENUM-SANS-AFFORDANCE (qa-explorer 28/09/2026) —
+// « Type de couverture » et « État de la couverture » étaient des champs
+// texte libres (type: 'text', aucune option) alors que le serveur
+// (apps/visites/visite_checklist.py) n'accepte que des codes fermés : un
+// technicien tapait « Tuile »/« Bon état » et se faisait refuser sans jamais
+// voir les valeurs permises. Ils doivent être des listes, comme
+// « Orientation » — mêmes codes EXACTS que le serveur (jamais un libellé
+// inventé qui divergerait du contrat).
+test('MESURES_SCHEMA.toiture — type_couverture est une liste des codes serveur', () => {
+  const champ = MESURES_SCHEMA.toiture.find((c) => c.key === 'type_couverture')
+  assert.equal(champ.type, 'select')
+  assert.deepEqual(
+    champ.options.map((o) => o.value),
+    ['tuile', 'tole', 'bac_acier', 'beton', 'fibrociment', 'autre'],
+  )
+})
+
+test('MESURES_SCHEMA.toiture — etat_couverture est une liste des codes serveur', () => {
+  const champ = MESURES_SCHEMA.toiture.find((c) => c.key === 'etat_couverture')
+  assert.equal(champ.type, 'select')
+  assert.deepEqual(champ.options.map((o) => o.value), ['bon', 'moyen', 'mauvais'])
 })

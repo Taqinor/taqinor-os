@@ -259,7 +259,18 @@ export default function GedNavigator() {
 
   // ── Handlers d'écriture (U14) — après succès on recharge depuis le serveur. ──
   const onCabinetCreated = (cab) => loadCabinets(cab.id)
-  const onFolderChanged = () => loadFolders(cabinetId)
+  // ERR-QAH-GED-RENAME-STALE-HEADER — `loadFolders` rafraîchit l'ARBRE, mais
+  // `selected` (l'objet dossier affiché dans le panneau de droite : titre +
+  // « Dossier « … » ») est une copie figée au moment du clic — il ne reçoit
+  // jamais le nouveau nom tant qu'on ne re-clique pas le dossier. `renamed`
+  // (la réponse du PATCH, cf. FolderDialog) fusionne le champ à jour dans
+  // `selected` SANS attendre le rechargement de l'arbre.
+  const onFolderChanged = (renamed) => {
+    loadFolders(cabinetId)
+    if (renamed) {
+      setSelected((s) => (s && s.id === renamed.id ? { ...s, ...renamed } : s))
+    }
+  }
   const onDocumentUploaded = () => reloadDocuments()
 
   // ── GED16 — check-out / check-in ; GED26 — mise en corbeille ──
@@ -1634,8 +1645,14 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
         await gedApi.createDossier(body)
         toast.success('Dossier créé.')
       } else if (mode === 'rename') {
-        await gedApi.renameDossier(target.id, nom.trim())
+        const r = await gedApi.renameDossier(target.id, nom.trim())
         toast.success('Dossier renommé.')
+        onClose()
+        // ERR-QAH-GED-RENAME-STALE-HEADER — transmet le dossier PATCHé pour
+        // que le panneau de droite (état `selected` dans GedNavigator) reflète
+        // le nouveau nom immédiatement, sans attendre un re-clic.
+        onChanged?.(r.data)
+        return
       } else if (mode === 'move') {
         await gedApi.moveDossier(target.id, parentId ? Number(parentId) : null)
         toast.success('Dossier déplacé.')

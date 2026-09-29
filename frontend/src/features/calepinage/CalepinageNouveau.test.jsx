@@ -212,7 +212,11 @@ describe('CalepinageNouveau (CAL36)', () => {
     await choisirDansCombobox('Lead', 'Lead d’essai')
     fireEvent.change(screen.getByLabelText(/Nom du calepinage/), { target: { value: '  Hangar 2  ' } })
     fireEvent.click(screen.getByRole('button', { name: /Créer le calepinage/ }))
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1', nom: 'Hangar 2' }))
+    // ERR-QAH-CALEPINAGE-NOM-CREATION-PERDU — le champ RÉEL (modèle ET
+    // sérialiseur) est `titre` : `nom` n'existe pas en écriture, le serveur
+    // l'ignorait donc en silence (201 avec `titre: ''`, « Calepinage #N »
+    // partout). Même clé que la branche « depuis un modèle ».
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ lead: '1', titre: 'Hangar 2' }))
   })
 
   it('le REFUS SERVEUR nommant le champ s’affiche SOUS ce champ, tel quel', async () => {

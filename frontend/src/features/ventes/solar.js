@@ -1458,11 +1458,83 @@ function _retirerAccessoiresHuawei(rows) {
   return rows.filter(l => !_estAccessoireHuawei(l?.designation))
 }
 
+// ── ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — miroir EXACT de
+// `apps/ventes/selectors.py` `_canonical_totaux` (la chaîne que le PDF, le BC
+// et la facture appliquent) sur les lignes TELLES QUE L'ÉCRAN LES PERSISTE :
+// prix unitaire HT = `htFromTtc(prix_unit_ttc, taux)` (2 décimales), quantité
+// au centième (DecimalField 2 déc.), taux de la ligne (repli 20). Arithmétique
+// ENTIÈRE (BigInt) et arrondi ROUND_HALF_UP, comme `Decimal` côté serveur —
+// jamais un flottant arrondi à la fin. Rend le TTC en MAD (2 décimales).
+function _arrondiDemiHaut(num, den) {
+  const neg = num < 0n
+  const a = neg ? -num : num
+  const r = (2n * a + den) / (2n * den)
+  return neg ? -r : r
+}
+export function totauxCanoniquesTtc(lines, discountPct = 0) {
+  const dH = BigInt(Math.round((parseFloat(discountPct) || 0) * 100)) // % × 100
+  let htBrutU = 0n // unité : 1e-4 MAD (quantité ×100 · prix HT en centimes)
+  const buckets = new Map() // taux ×100 → Σ HT (1e-4 MAD)
+  for (const l of lines || []) {
+    const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
+    const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
+    const tauxLigne = Number.isFinite(taux) ? taux : TVA_STANDARD_DEFAUT
+    const htC = BigInt(Math.round(parseFloat(htFromTtc(l?.prix_unit_ttc, l?.taux_tva ?? TVA_STANDARD_DEFAUT)) * 100))
+    const u = qH * htC
+    htBrutU += u
+    const rH = Math.round(tauxLigne * 100)
+    buckets.set(rH, (buckets.get(rH) || 0n) + u)
+  }
+  const remiseC = dH > 0n ? _arrondiDemiHaut(htBrutU * dH, 1000000n) : 0n
+  const htNetC = _arrondiDemiHaut(htBrutU - remiseC * 100n, 100n)
+  let tvaC
+  if (buckets.size <= 1) {
+    const rH = buckets.size ? [...buckets.keys()][0] : TVA_STANDARD_DEFAUT * 100
+    tvaC = _arrondiDemiHaut(htNetC * BigInt(rH), 10000n)
+  } else {
+    const rates = [...buckets.keys()].sort((a, b) => a - b)
+    const nets = new Map(rates.map(r => [r, _arrondiDemiHaut(buckets.get(r) * (10000n - dH), 1000000n)]))
+    const somme = [...nets.values()].reduce((s, v) => s + v, 0n)
+    const dernier = rates[rates.length - 1]
+    nets.set(dernier, nets.get(dernier) + (htNetC - somme))
+    tvaC = rates.reduce((s, r) => s + _arrondiDemiHaut(nets.get(r) * BigInt(r), 10000n), 0n)
+  }
+  return Number(htNetC + tvaC) / 100
+}
+
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
-export function optionTotalsTTC(lines, discountPct) {
-  const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — miroir de
+// `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
+// qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
+// panier filtré ET règle QF9 appliquée).
+// source-choix: ventes.utils.options.SCENARIOS_ALTERNATIVE
+export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
+
+// Miroir de `familles_des_lignes` + `familles_servables` + la condition
+// « alternative déclarée » de `deux_options_depuis_paniers` (utils/options.py) :
+// le scénario déclaré ne suffit pas, l'ÉQUIPEMENT doit servir les deux
+// paniers (onduleur réseau d'un côté ; hybride avec batterie ou réseau, ou
+// autonome avec batterie, de l'autre). Seules les lignes produit non
+// optionnelles de quantité > 0 comptent, comme au noyau.
+export function alternativeDeclareeServable(lines, scenario) {
+  if (!SCENARIOS_ALTERNATIVE.includes(scenario)) return false
+  const d = (lines || [])
+    .filter(l => (parseFloat(l?.quantite) || 0) > 0 && !l?.optionnelle
+      && l?.typeLigne !== 'section' && l?.typeLigne !== 'note')
+    .map(l => l.designation)
+  const hasReseau = d.some(isReseauInverter)
+  const hasHybride = d.some(isHybridInverter)
+  const hasOffgrid = d.some(isOffgridInverter)
+  const hasBatterie = d.some(isBattery)
+  const avecOk = (hasHybride && (hasBatterie || hasReseau)) || (hasOffgrid && hasBatterie)
+  return hasReseau && avecOk
+}
+
+// `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
+// comportement historique inchangé (QF9 réservée aux lignes variantées).
+export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
   // F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, plus de
   // second filtre mot-clé sur elle (voir `appartientAuPanierSans/Avec` :
   // miroir exact de builder.py `_repartir_options` et de
@@ -1477,22 +1549,30 @@ export function optionTotalsTTC(lines, discountPct) {
   // scénario « Les deux ». Un devis SANS aucune ligne variantée (mono-
   // composition, y compris l'artefact « deux onduleurs non déclarés ») garde
   // TOUTES ses lignes, comportement historique strictement inchangé.
-  if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')) {
+  // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — …ET sur un devis dont le
+  // SCÉNARIO déclare l'alternative (miroir de `deux_options_declarees` :
+  // `alternative_declaree or variantes`). Sans cette branche, un devis « Les
+  // deux » à lignes non variantées affichait l'option AVEC avec le Smart
+  // Meter + la clé Wi-Fi Huawei que le noyau et le PDF retirent (3 000 MAD
+  // d'écart mesurés entre le formulaire et le devis persisté).
+  if (lines.some(l => l?.variante === 'sans' || l?.variante === 'avec')
+      || alternativeDeclareeServable(lines, scenario)) {
     linesSans = _retirerAccessoiresHuawei(linesSans)
     linesAvec = _retirerAccessoiresHuawei(linesAvec)
   }
-  const totalSansBrut = linesSans.reduce((s, l) => s + ttc(l), 0)
-  const totalAvecBrut = linesAvec.reduce((s, l) => s + ttc(l), 0)
-
-  // QJR402 — arrondi au CENTIME, jamais au dirham entier, et JAMAIS
-  // conditionnel à la présence d'une remise (avant ce correctif, un devis
-  // remisé était arrondi à l'entier tandis qu'un devis non remisé gardait ses
-  // centimes : deux règles pour la même chaîne, jusqu'à 0,50 MAD d'écart avec
-  // la liste/le PDF/la facture, qui restent « au centime » comme le noyau —
-  // `apps/ventes/utils/options.py` `_totaux_canoniques`).
+  // ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER — LA CHAÎNE CANONIQUE DU NOYAU, plus
+  // une somme de TTC arrondis ligne à ligne remisée ensuite. Le chiffre facturé
+  // (PDF/BC/facture) est `selectors._canonical_totaux` sur les lignes
+  // PERSISTÉES (HT = `htFromTtc`, exactement ce que l'écran envoie) : HT brut →
+  // remise globale → TVA par taux → TTC, au centime. L'écran le reproduit à
+  // l'identique (`totauxCanoniquesTtc` ci-dessous) : avant, 36/200 devis du
+  // corpus figé divergeaient d'un centime. Le « brut » est la même chaîne
+  // sans remise (la valeur que le noyau facture à 0 %).
   const pct = parseFloat(discountPct) || 0
-  const totalSans = Math.round(totalSansBrut * (1 - pct / 100) * 100) / 100
-  const totalAvec = Math.round(totalAvecBrut * (1 - pct / 100) * 100) / 100
+  const totalSansBrut = totauxCanoniquesTtc(linesSans, 0)
+  const totalAvecBrut = totauxCanoniquesTtc(linesAvec, 0)
+  const totalSans = totauxCanoniquesTtc(linesSans, pct)
+  const totalAvec = totauxCanoniquesTtc(linesAvec, pct)
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 

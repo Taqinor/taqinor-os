@@ -114,9 +114,18 @@ export function useFormField() {
 
 // ── FormErrorSummary (récap en tête de formulaire) ──────────────────────────
 /* `errors` = [{ field, message }] (cf. form-utils.errorSummary). Chaque entrée
-   est un lien vers le champ (#field-id) pour accessibilité clavier. */
+   est un lien vers le champ (#field-id) pour accessibilité clavier.
+   ERR-QAH-PARAMETRES-OBJECT-OBJECT-ERREUR — un appelant qui mappe une réponse
+   DRF brute (ex. l'enveloppe `error: {code:…}` d'un middleware d'erreurs)
+   peut laisser passer un `message` qui n'est PAS une chaîne. Point PARTAGÉ
+   par tous les formulaires : on ignore silencieusement une telle entrée
+   plutôt que de rendre `[object Object]` (ou, pire, de faire planter React —
+   « Objects are not valid as a React child »). */
 export function FormErrorSummary({ errors, title = 'Veuillez corriger les erreurs suivantes', className }) {
-  if (!errors || errors.length === 0) return null
+  const safeErrors = (errors || []).filter(
+    ({ message }) => typeof message === 'string' && message.trim(),
+  )
+  if (safeErrors.length === 0) return null
   return (
     <div
       role="alert"
@@ -128,7 +137,7 @@ export function FormErrorSummary({ errors, title = 'Veuillez corriger les erreur
         {title}
       </p>
       <ul className="ml-6 list-disc space-y-0.5 text-destructive">
-        {errors.map(({ field, message }) => (
+        {safeErrors.map(({ field, message }) => (
           <li key={field}>
             <a href={`#${field}`} className="underline-offset-2 hover:underline">{message}</a>
           </li>

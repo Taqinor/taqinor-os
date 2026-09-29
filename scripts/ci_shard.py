@@ -86,15 +86,27 @@ CLASS_TIMINGS_PATH = os.path.join(REPO_ROOT, "scripts",
 # foundation packages that live at the django_core root.
 TOP_LEVEL = ("authentication", "core")
 # QAH4 (28/09/2026) — le paquet racine `tests/` de django_core N'EST PAS une
-# racine de decouverte, et ce n'est pas un oubli a « corriger » en l'ajoutant a
-# TOP_LEVEL : ses modules historiques n'ont JAMAIS tourne en CI et ont derive
-# (mesure locale du 28/09 : 7 echecs sur les modules sans base — cliquets
-# YAPIC2/YAPIC11 perimes, garde AUD417 qui a de vrais admins publicapi non
-# scopes a lui montrer — plus `test_schema` qui exige des apps parquees). Les
-# ouvrir d'un coup rendrait le gate rouge pour des raisons etrangeres au lot.
-# Un module de `tests/` rejoint donc le decoupage UNIQUEMENT s'il est liste ici,
-# explicitement ; les autres reviendront un par un, une fois remis au vert.
-TOP_LEVEL_MODULES = ("tests.test_tenant_sweep",)
+# racine de decouverte : ses modules historiques n'ont JAMAIS tourne en CI et
+# avaient derive (mesure locale du 28/09 : 7 echecs sur les modules sans base
+# — cliquets YAPIC2/YAPIC11 perimes, garde AUD417 dont le plancher et les
+# cibles paie/rh etaient faux depuis le parcage SOLMVP, plus `test_schema` qui
+# exigeait encore /api/django/rh et /api/django/compta). Un module de `tests/`
+# rejoint donc le decoupage UNIQUEMENT s'il est liste ici, explicitement ; les
+# autres reviendront un par un, une fois remis au vert.
+# ERR-QAH-TESTS-RACINE (28/09/2026) — les 4 modules ci-dessus sont remis au
+# vert (baselines YAPIC2/YAPIC11 regenerees, plancher AUD417 realiste,
+# `test_schema` filtre sur `core.parked.est_parquee`) et rejoignent le
+# decoupage. `test_api_versioning`/`test_error_envelope`/
+# `test_request_id_middleware`/`test_url_mounting` restent HORS liste : non
+# audites par ce lot (aucun echec mesure ne les visait), ils reviendront un
+# par un comme les autres, une fois verifies.
+TOP_LEVEL_MODULES = (
+    "tests.test_tenant_sweep",
+    "tests.test_api_ordering_whitelist",
+    "tests.test_api_surface_parity",
+    "tests.test_aud417_admin_scoping_transverse",
+    "tests.test_schema",
+)
 # Directories that never carry runnable tests.
 SKIP_DIRS = {"__pycache__", "migrations", "node_modules", ".git"}
 

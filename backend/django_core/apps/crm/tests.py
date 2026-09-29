@@ -306,14 +306,23 @@ class TestLeadActivity(TestCase):
         return resp.data['id']
 
     def test_creation_is_logged_with_user(self):
+        # MRY6/CAD34 — la création déclenche aussi `demarrer_cadence_contact`
+        # (`LeadViewSet.perform_create`) ; ce lead de test ne porte ni
+        # téléphone ni WhatsApp, donc la garde « sans_numero » refuse la
+        # cadence et écrit une seconde activité (note système, `user=None`,
+        # cf. `services._refus_cadence`) — un lead sans numéro ne reste
+        # jamais suivi en silence. Deux activités bien distinctes, donc :
+        # la création (l'utilisateur) et ce refus tracé (le système).
         lead_id = self._create()
         acts = self.LeadActivity.objects.filter(lead_id=lead_id)
-        self.assertEqual(acts.count(), 1)
-        act = acts.first()
-        self.assertEqual(act.kind, 'creation')
+        self.assertEqual(acts.count(), 2)
+        act = acts.get(kind='creation')
         self.assertEqual(act.user_id, self.user.id)
         self.assertIn('chatter_user', act.body)
         self.assertEqual(act.company_id, self.company.id)
+        refus = acts.get(kind='note')
+        self.assertIsNone(refus.user_id)
+        self.assertIn('non initialisée', refus.body)
 
     def test_field_changes_logged_old_to_new(self):
         lead_id = self._create(facture_hiver='600')
@@ -354,10 +363,18 @@ class TestLeadActivity(TestCase):
         kinds = [a['kind'] for a in hist.data]
         self.assertIn('note', kinds)
         self.assertIn('creation', kinds)
-        # plus récent en premier — QJ7 avance NEW→CONTACTED au premier contact,
-        # donc l'activité « modification » d'étape est la plus récente, la note juste après.
-        self.assertEqual(hist.data[0]['kind'], 'modification')
+        # RÈGLE FONDATEUR 07/09/2026 (apps/crm/receivers.py,
+        # `_avancer_stage_on_contact_activity`) — le funnel ne bouge plus sur
+        # une simple note : seule une RÉPONSE CONFIRMÉE (`outcome` « joint »/
+        # « intéressé ») avance NEW → CONTACTED. La note manuelle posée ici ne
+        # porte pas d'`outcome`, donc l'étape ne bouge pas et la note reste la
+        # plus récente ; en dessous, la note système du refus de cadence
+        # (MRY6/CAD34 — ce lead de test n'a ni téléphone ni WhatsApp), puis la
+        # création.
+        self.assertEqual(hist.data[0]['kind'], 'note')
+        self.assertEqual(hist.data[0]['body'], 'Rappelé, pas de réponse')
         self.assertEqual(hist.data[1]['kind'], 'note')
+        self.assertEqual(hist.data[2]['kind'], 'creation')
 
     def test_empty_note_rejected(self):
         lead_id = self._create()
@@ -924,11 +941,22 @@ class TestLeadPatchEcritureBornee(TestCase):
         from apps.crm.serializers import LeadSerializer
         from apps.crm.views import LeadViewSet
 
-        request = APIRequestFactory().patch('/x/', data, format='json')
-        request.user = user
+        django_request = APIRequestFactory().patch('/x/', data, format='json')
         vue = LeadViewSet()
-        vue.request = request
         vue.format_kwarg = None
+        # `ViewSetMixin.initialize_request` lit `self.action_map` (posé par
+        # `as_view()` en HTTP) pour déduire `action` : on le fournit à la
+        # main, comme `as_view({'patch': 'partial_update'})` le ferait.
+        vue.action_map = {'patch': 'partial_update'}
+        # CAD156 — `perform_update` lit `self.request.data` (l'heure promise de
+        # rappel). En vrai, `dispatch()` enveloppe TOUJOURS la requête Django
+        # brute dans un `rest_framework.request.Request` (seul porteur de
+        # `.data`) avant d'appeler la vue — `initialize_request` reproduit
+        # exactement cette étape plutôt que de passer le `WSGIRequest` brut
+        # d'`APIRequestFactory` tel quel.
+        request = vue.initialize_request(django_request)
+        request.user = user
+        vue.request = request
         serializer = LeadSerializer(
             instance, data=data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)

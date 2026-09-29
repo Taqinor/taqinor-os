@@ -49,10 +49,13 @@ endpoints:
   # un appel « à blanc »), identiques à 10 puis 25 objets, par
   # apps/calepinage/tests/test_calx390_budgets_requetes.py, qui LIT ces
   # valeurs ici (aucune recopie). Mesure du 24/09/2026 : 10 / 20 / 13.
+  # 29/09/2026 (ERR-QAH-CALEPINAGE-LISTE-SANS-RATTACHEMENT) : +1 requête O(1) —
+  # la liste précharge les leads de la page en UNE requête (lead_id est un
+  # identifiant OPAQUE, jamais une FK joignable). Mesuré 11 à 10 et à 25 lignes.
   - path: /api/django/calepinage/calepinages/
-    budget: 10
+    budget: 11
     enforced: true
-    note: "Liste des calepinages (CALX390) — layout_stale lu sur le devis lié (select_related + prefetch devis__lignes)."
+    note: "Liste des calepinages (CALX390) — layout_stale lu sur le devis lié (select_related + prefetch devis__lignes) + UN préchargement des leads de la page (CALX407)."
 
   - path: /api/django/calepinage/calepinages/<pk>/
     budget: 20

@@ -928,6 +928,26 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         head = {k: v for k, v in request.data.items() if k != 'lignes'}
         head.pop('company', None)  # jamais accepté du corps
+        # ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les CHOIX de l'écran
+        # (``scenario``, ``recommended_option``, ``nombre_proprietes``)
+        # décident de l'option que suit l'argent (``utils/options.py``
+        # ``deux_options_declarees``). Ils arrivaient APRÈS la création (PATCH
+        # ``etude-params``) : la réponse de création totalisait alors TOUTES
+        # les lignes (les deux onduleurs compris) et l'écran « Devis
+        # enregistré » annonçait un prix qu'aucun document ne porte. Ils sont
+        # désormais écrits par l'unique écrivain (``etude_schema.ecrire``)
+        # sous la MÊME transaction. Validés AVANT : un refus pointe le champ
+        # ``etude_params`` et ne crée rien. Absents ⇒ comportement d'hier.
+        from ..domain.etude_schema import ECRAN, ecrire, fusionner
+        etude_in = head.pop('etude_params', None)
+        if etude_in is not None:
+            if not isinstance(etude_in, dict):
+                raise ValidationError(
+                    {'etude_params': "Objet {clé: valeur} attendu."})
+            try:
+                fusionner({}, proprietaire=ECRAN, **etude_in)
+            except (ValueError, TypeError) as exc:
+                raise ValidationError({'etude_params': str(exc)})
         serializer = DevisWriteSerializer(data=head)
         serializer.is_valid(raise_exception=True)
 
@@ -949,6 +969,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     devis = serializer.save(
                         reference=ref, client=client,
                         created_by=request.user, company=company)
+                    if etude_in:
+                        ecrire(devis, proprietaire=ECRAN, **etude_in)
                     # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction :
                     # la composition est celle que l'écran a arrêtée, le
                     # pipeline ne la recompose pas (recomposer détruirait les

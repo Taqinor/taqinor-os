@@ -107,8 +107,16 @@ class AucunAdminNonScopeNeSubsiste(SimpleTestCase):
             f'sa justification. Concernés : {exotiques}')
 
     def test_le_perimetre_nest_pas_vide(self):
-        """Non-vacuité : la garde porte bien sur des dizaines de modèles."""
-        self.assertGreater(len(_admins_a_scoper()), 100)
+        """Non-vacuité : la garde porte bien sur un périmètre réel.
+
+        ERR-QAH-TESTS-RACINE (28/09/2026) — le plancher d'origine (> 100)
+        datait d'avant le parcage SOLMVP : ce dépôt réel n'en compte plus que
+        20 aujourd'hui (paie/rh/compta/installations… retirées de l'édition
+        courante retirent leurs ModelAdmin du registre). Le plancher est
+        abaissé à une valeur qui reste sous le compte mesuré (marge pour
+        d'éventuels futurs parcages) tout en détectant un effondrement réel
+        du registre (ex. un bug qui viderait `admin.site._registry`)."""
+        self.assertGreater(len(_admins_a_scoper()), 15)
 
 
 class LesDeuxSurfacesLesPlusSensiblesSontFiltrees(SimpleTestCase):
@@ -137,7 +145,17 @@ class LesDeuxSurfacesLesPlusSensiblesSontFiltrees(SimpleTestCase):
                     isinstance(adm, CompanyScopedAdminMixin),
                     f'{app_label}.{nom_modele} : la liste des salaires / '
                     "dossiers RH doit être bornée à la société de l'appelant.")
-        self.assertTrue(vues, 'aucune des surfaces ciblées n\'est montée.')
+        if not vues:
+            # ERR-QAH-TESTS-RACINE (28/09/2026) — paie ET rh sont toutes deux
+            # parquées par l'édition SOLMVP courante (même state que les
+            # `skipTest` des deux tests comportementaux ci-dessus, pour la
+            # même raison) : aucune des 3 cibles n'est montée, donc rien à
+            # vérifier ici. PAS un `assertTrue` qui rougirait sans rapport
+            # avec une vraie régression — le test se réactive de lui-même dès
+            # que paie ou rh revient dans l'édition.
+            self.skipTest(
+                "paie et rh sont parquées par l'édition courante (SOLMVP) — "
+                "aucune des surfaces ciblées n'est montée.")
 
     def test_le_filtre_est_reellement_applique(self):
         """Comportemental, sans base : le WHERE gagne une clause société."""
