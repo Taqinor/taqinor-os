@@ -894,6 +894,23 @@ export function consoAnnuelleDepuisFactures(factures, utility) {
   return total > 0 ? Math.round(total) : 0
 }
 
+// COUV-HOR (29/09/2026) — la consommation annuelle STOCKÉE sur un devis
+// rouvert DESCEND-ELLE de ses factures stockées (barème du distributeur,
+// barème national, ou l'ancien repli factures ÷ 1,20 MAD/kWh) ? Si oui ce
+// n'est pas une saisie : l'écran la RE-DÉRIVE des factures au lieu de la
+// réafficher comme des kWh tapés puis de la réécrire à l'identique (le
+// 165 000 kWh de DEV-202609-0113 revenait à chaque enregistrement). Tolérance
+// 12 kWh/an : la dérive ×12 de l'aller-retour kWh/mois (110 000 → 110 004).
+export function consoDescendDesFactures(conso, factures, distributeur) {
+  const c = parseFloat(conso) || 0
+  if (c <= 0 || !Array.isArray(factures) || !factures.length) return false
+  for (const d of new Set([distributeur || undefined, 'onee', undefined])) {
+    const derivee = consoAnnuelleDepuisFactures(factures, d)
+    if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
+  }
+  return false
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // QJR168 — LE BARÈME COMPLET : UNE FACTURE N'EST PAS QUE DE L'ÉNERGIE
 // ════════════════════════════════════════════════════════════════════════════
