@@ -48,6 +48,17 @@ class SeedScaleCreationTests(TestCase):
         self.assertEqual(
             Company.objects.filter(nom__startswith='[SEED_SCALE]').count(), 2)
 
+    def test_seeds_mouvement_stock(self):
+        """error-autopilot — `seed('stock.mouvement', …)` (typo : le modèle
+        est `MouvementStock`, `stock.mouvementstock`) lève un `LookupError`
+        dès que `--mouvements` > 0 ; le test existant ne l'a jamais vu passer
+        `--mouvements 0`."""
+        from apps.stock.models import MouvementStock
+        call_command('seed_scale', '--companies', '1', '--users', '0',
+                     '--leads', '0', '--devis', '0', '--lignes', '0',
+                     '--mouvements', '1', stdout=StringIO())
+        self.assertEqual(MouvementStock.objects.count(), 1)
+
     def test_missing_faker_raises(self):
         with mock.patch.dict('sys.modules', {'faker': None}):
             with self.assertRaises(CommandError):
