@@ -135,6 +135,23 @@ class UnDistributeurInconnuResoutSurLaGrilleNationale(SimpleTestCase):
         sonde = self._sonde(None)
         self.assertTrue(sonde['estimation'])
 
+    def test_le_prix_moyen_suit_la_meme_resolution(self):
+        """COUV-HOR (29/09/2026) — ``_table_tarifaire`` recopiait l'ANCIENNE
+        résolution : une SRM ou « autre » tarifait les économies au prix plat
+        1,20 MAD/kWh étiqueté « estimation ». Il lit désormais
+        ``_resolve_tranches`` — mêmes règles, y compris le repli SANS
+        distributeur, inchangé."""
+        conso = 123024   # DEV-202609-0113
+        reference = pricing._avg_kwh_price_from_tranches(conso, 'onee', None)
+        self.assertFalse(reference[1])
+        for code in list(srm_regions.SRM_PAR_REGION) + ['autre']:
+            self.assertEqual(
+                pricing._avg_kwh_price_from_tranches(conso, code, None),
+                reference, code)
+        self.assertEqual(
+            pricing._avg_kwh_price_from_tranches(conso, None, None),
+            (pricing._FALLBACK_KWH_PRICE, True))
+
     def test_une_surcharge_societe_prime_toujours(self):
         """La grille éditable par société garde la main sur tout code."""
         table = [(100, 1.0), (None, 2.0)]
@@ -212,3 +229,47 @@ class LeCheminCompletDepuisLaFiche(TestCase):
         lead_bills_for_devis(self._devis_duck(lead))
         lead.refresh_from_db()
         self.assertIsNone(lead.distributeur)
+
+
+class UnDevisEtiqueteSrmEstTarifeCommeOnee(TestCase):
+    """COUV-HOR (29/09/2026) — le distributeur est un LIBELLÉ jusqu'au
+    document : la grille ÉDITÉE par la société s'applique à un SRM comme à
+    l'ONEE (elle était réservée à vide/'onee'), et la ligne d'hypothèse ne
+    prétend plus qu'un tarif a été « saisi pour ce devis »."""
+
+    GRILLE_SOCIETE = [(100, 0.9), (200, 1.1), (None, 1.5958)]
+
+    def _data(self, distributeur, ref):
+        from unittest.mock import patch
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.quote_engine.pricing import TrancheTable
+        from apps.ventes.tests._quote_engine_common import (
+            DEUX_OPTIONS, make_client, make_company, make_devis, make_user)
+        if not hasattr(self, 'company'):
+            self.company = make_company()
+            self.user = make_user(self.company)
+            self.client_obj = make_client(self.company)
+        devis = make_devis(
+            self.company, self.user, self.client_obj, [
+                ('Panneau mono 550W', '14', '1100'),
+                ('Onduleur réseau 10kW', '1', '11700'),
+                ('Installation', '1', '4000'),
+            ], reference=ref,
+            etude_params={**DEUX_OPTIONS, 'distributeur': distributeur,
+                          'conso_annuelle': 6000})
+        with patch('apps.ventes.etude_horaire._reglages_tarifaires',
+                   return_value=(TrancheTable(self.GRILLE_SOCIETE), None)):
+            return build_quote_data(devis)
+
+    def test_meme_tarif_memes_economies_que_onee(self):
+        onee = self._data('onee', 'DEV-CAD167-ONEE')
+        srm = self._data('srm_casablanca', 'DEV-CAD167-SRM')
+        self.assertEqual(srm['tarif_kwh'], onee['tarif_kwh'])
+        self.assertEqual(srm['eco_s_ann'], onee['eco_s_ann'])
+        self.assertFalse(srm['hypotheses'].get('tranche_approximatif'))
+
+    def test_la_ligne_d_hypothese_dit_le_bareme_jamais_saisi(self):
+        h = self._data('srm_casablanca', 'DEV-CAD167-HYP')['hypotheses']
+        self.assertEqual(h['tranche_source'], 'SRM')
+        joined = ' '.join(h['items'])
+        self.assertNotIn('saisi pour ce devis', joined)

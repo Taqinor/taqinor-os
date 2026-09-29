@@ -250,8 +250,12 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
           structureProduitId: structProduitFromLead(lead),
           discountPct: discountStr || '0', kwhPrice, efficiency, besoinKwc,
           marques,
+          // COUV-HOR (fondateur, 29/09/2026) — la CONSO du balayage suit le
+          // barème national (Q7), jamais factures ÷ 1,20 MAD/kWh ; le MODÈLE
+          // d'économie (`utility`) reste celui d'avant — décision fondateur :
+          // 0 devis C&I sur 61 ne bouge (mesuré sur la prod le 29/09).
           consoAnnuelleKwh: consoAnnuelleDepuisFactures(
-            facturesBalayage, distributeurBalayage),
+            facturesBalayage, distributeurBalayage || 'onee'),
           utility: distributeurBalayage,
         })
         // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux`

@@ -765,6 +765,11 @@ function resolveTranches(utility, tranchesOverride) {
   const key = (utility || '').toLowerCase()
   // Q7 — plus aucune table approximative : approx est toujours false.
   if (key && UTILITY_TABLES[key]) return { table: UTILITY_TABLES[key], approx: false }
+  // CAD167 (miroir EXACT de pricing._resolve_tranches) — un distributeur NOMMÉ
+  // hors table (les douze SRM régionales, « autre », Amendis) lit la grille
+  // NATIONALE (Q7) au lieu de retomber sur factures ÷ 1,20 MAD/kWh. Sans
+  // distributeur du tout, le repli étiqueté reste (test_cad167 le verrouille).
+  if (String(utility ?? '').trim()) return { table: UTILITY_TABLES.onee, approx: false }
   return { table: null, approx: false }
 }
 

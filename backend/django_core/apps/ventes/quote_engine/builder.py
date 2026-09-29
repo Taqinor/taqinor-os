@@ -2042,8 +2042,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             getattr(devis, "company", None))
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         _co_tranches = None
-    if (_co_tranches and not _tranches_override
-            and (not _utility or str(_utility).lower() == "onee")):
+    # COUV-HOR/CAD167 — Q7 : TOUT distributeur (ONEE, Lydec, Redal, SRM,
+    # « autre ») lit LA grille nationale, éditable par société. Réservée à
+    # vide/'onee', la grille société était contournée dès qu'un SRM tarifait
+    # (grille codée en dur, 1,6229 au lieu du 1,5958 de la société).
+    if _co_tranches and not _tranches_override:
         _tranches_override = _co_tranches
     _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
     # Autoconsommation overrides (seller/study can refine these)
@@ -2455,9 +2458,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (loi 82-21, injection OFF —
     # rachat BT résidentiel différé par l'ANRE), base de production/dégradation.
     # Toutes les valeurs viennent de roi/etude (une source) ; dégrade proprement.
-    _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal"}
-    _util_key = (str(_utility).lower() if _utility else "")
-    _util_name = _util_labels.get(_util_key, "")
+    _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal",
+                    "amendis": "Amendis"}
+    _util_key = (str(_utility).strip().lower() if _utility else "")
+    # CAD167 — un distributeur nommé hors table tarife sur la grille nationale :
+    # sans libellé, le bloc hypothèses le disait « saisi pour ce devis ».
+    _util_name = _util_labels.get(_util_key) or (
+        "SRM" if _util_key.startswith("srm_")
+        else ("national" if _util_key else ""))
     # Q7 — plus aucun barème « approximatif » : les trois distributeurs lisent
     # la grille nationale (éditable par société). Le drapeau reste, toujours
     # faux, pour ne casser aucun consommateur de la charge utile.
