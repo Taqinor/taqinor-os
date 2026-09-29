@@ -253,7 +253,60 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING(
                 'Modèle ligne de devis introuvable — lignes ignorées.'))
-        seed('stock.mouvement', options['mouvements'])
+        if options['mouvements'] > 0:
+            # Un `MouvementStock` sans société cohérente avec son produit ne
+            # reflète pas une charge réaliste (multi-tenant rule) : la
+            # résolution FK générique de `seed()` laisse `company` à NULL
+            # (nullable sur les deux modèles), donc on garantit ICI un pool
+            # de produits RATTACHÉS À UNE SOCIÉTÉ avant de semer les
+            # mouvements, comme pour les lignes/devis (`ligne_label`
+            # ci-dessus) — mini-factory dédiée plutôt que le générique.
+            Produit = django_apps.get_model('stock', 'produit')
+            produit_company_by_pk: dict[int, int] = {}
+
+            def produit_extra(inst, seq):
+                inst.company_id = company_ids[seq % len(company_ids)]
+                # Évite la collision de l'unicité (company, nom) sans SKU
+                # d'un mot Faker répété entre deux produits de seed_scale.
+                inst.nom = f'[{tag}] Produit mouvement {seq}'
+
+            if not pools.get('stock.produit'):
+                existing_produits = list(
+                    Produit.objects.exclude(company=None)
+                    .values_list('pk', 'company_id')[:200])
+                if existing_produits:
+                    pools['stock.produit'] = [
+                        pk for pk, _ in existing_produits]
+                    produit_company_by_pk.update(dict(existing_produits))
+                else:
+                    seed('stock.produit', min(options['mouvements'], 200),
+                         extra=produit_extra)
+                    produit_company_by_pk.update(dict(
+                        Produit.objects.filter(
+                            pk__in=pools['stock.produit'])
+                        .values_list('pk', 'company_id')))
+
+            MouvementStock = django_apps.get_model('stock', 'mouvementstock')
+
+            def mouvement_extra(inst, seq):
+                # `quantite_avant`/`quantite_apres` cohérents (ENTREE, jamais
+                # négatif) plutôt que deux entiers aléatoires indépendants du
+                # générique — et société ALIGNÉE sur celle du produit choisi
+                # (jamais un mouvement orphelin d'une société inconnue).
+                inst.type_mouvement = MouvementStock.TypeMouvement.ENTREE
+                avant = random.randint(0, 500)
+                qte = random.randint(1, 50)
+                inst.quantite_avant = avant
+                inst.quantite = qte
+                inst.quantite_apres = avant + qte
+                company_id = produit_company_by_pk.get(inst.produit_id)
+                if company_id is not None:
+                    inst.company_id = company_id
+
+            seed('stock.mouvementstock', options['mouvements'],
+                 extra=mouvement_extra)
+        else:
+            seed('stock.mouvementstock', options['mouvements'])
 
         self.stdout.write(self.style.SUCCESS('seed_scale terminé.'))
 

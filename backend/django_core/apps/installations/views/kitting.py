@@ -897,6 +897,15 @@ class OrdreDemontageLigneViewSet(viewsets.ModelViewSet):
         if ordre is not None and ordre.statut != OrdreDemontage.Statut.PLANIFIE:
             raise ValidationError({
                 'ordre': "Lignes verrouillées : l'ordre n'est plus planifié."})
+        produit = serializer.validated_data.get('produit')
+        if produit is not None and getattr(
+                produit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'produit': 'Produit inconnu pour cette société.'})
+
+    def perform_create(self, serializer):
+        self._check_parent(serializer)
+        serializer.save()
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
