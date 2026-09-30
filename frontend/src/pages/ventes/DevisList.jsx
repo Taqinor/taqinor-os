@@ -47,6 +47,7 @@ import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
+import { clientProposalUrl } from '../../features/ventes/clientProposalLink'
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
 // aucune option ne contient d'onduleur — génération du PDF à options refusée
@@ -947,9 +948,8 @@ function DevisRow({ d, ctx }) {
                   Partager le PDF
                 </DropdownMenuItem>
               )}
-              {/* WR2 — Copier le lien de proposition (share_link) :
-                  surface la fonctionnalité serveur invisible, sans passer
-                  par un envoi email/WhatsApp. */}
+              {/* WR2/QJR531 — Copier le lien de proposition (share_link) :
+                  copier le lien CLIENT vaut envoi (D-QJR5-3). */}
               {(d.statut === 'brouillon' || d.statut === 'envoye') && (
                 <DropdownMenuItem
                   disabled={shareBusyId === d.id}
@@ -1925,8 +1925,7 @@ export default function DevisList() {
       const res = await ventesApi.shareLinkDevis(d.id)
       const path = res?.data?.path_interne
       if (path) {
-        const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
-        const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+        const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
         try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
         toast.success('Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).')
       } else {
@@ -1940,14 +1939,16 @@ export default function DevisList() {
   }
 
   // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
-  // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
-  // par l'envoi email/WhatsApp. Surface une fonctionnalité serveur jusqu'ici
-  // invisible côté ERP. Aucun statut ne bouge (le backend ne fait que produire
-  // le lien).
+  // devis (DevisViewSet.share_link) et le copie au presse-papier.
+  // QJR531 (D-QJR5-3) — copier le lien CLIENT = ENVOI, comme depuis la fiche
+  // lead (DevisTab.copierPageClient) : `envoi: true` → mark_devis_sent côté
+  // serveur (le devis passe « envoyé », le funnel avance), puis la liste est
+  // rechargée. « Copier l'aperçu interne » ci-dessus reste SANS envoi.
   const handleCopierLienProposition = async (d) => {
     setShareBusyId(d.id)
     try {
-      const res = await ventesApi.shareLinkDevis(d.id)
+      const res = await ventesApi.shareLinkDevis(d.id, { envoi: true })
+      dispatch(fetchDevis())
       // Le backend renvoie {token, path} (path = /proposition/<slug-client>/
       // <token>, PV84 — slug cosmétique, jamais vérifié côté serveur) — on
       // reconstruit l'URL publique complète (site public, cf. VITE_PUBLIC_SITE_URL).
@@ -1955,10 +1956,9 @@ export default function DevisList() {
       // exceptionnellement `path` : il reste une route valide côté site.
       const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
       if (path) {
-        const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
-        const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+        const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
         try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
-        toast.success('Lien de la proposition copié.')
+        toast.success('Lien copié — devis marqué envoyé.')
       } else {
         toast.error('Lien de proposition indisponible.')
       }

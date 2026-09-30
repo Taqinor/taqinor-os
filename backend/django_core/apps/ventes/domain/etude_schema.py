@@ -98,6 +98,9 @@ SCHEMA = {
                      '`utils/options.py` en tirent les lignes de l’option '
                      'vendue.', moteur=True),
     'recommended_option': _cle((str,), ECRAN, ENTREE),
+    # QJR528 — part diurne (%) du curseur industriel : entrée de l'étude I/C,
+    # persistée pour que la réouverture ne réécrive pas taux / payback.
+    'part_diurne_pct': _cle((int, float), ECRAN, ENTREE),
     'gamme': _cle((str, dict), ECRAN, ENTREE),
     'mode_installation': _cle((str,), ECRAN, ENTREE),
     'tension_raccordement': _cle((str,), ECRAN, ENTREE),

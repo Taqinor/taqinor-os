@@ -285,6 +285,25 @@ class FusionTests(SimpleTestCase):
                      factures_mensuelles_reelles='six cents')
 
 
+class PartDiurneTests(SimpleTestCase):
+    """QJR528 — la part diurne d'un devis INDUSTRIEL (curseur de l'écran) est
+    une ENTRÉE persistée : sans elle, la réouverture remettait le défaut du
+    marché et un ré-enregistrement réécrivait en silence taux / payback
+    imprimés au PDF (contrat ``etude_ecran_industriel.json``, QJR510)."""
+
+    def test_la_cle_est_declaree_entree_de_l_ecran(self):
+        self.assertIn('part_diurne_pct', S.SCHEMA)
+        self.assertEqual(S.SCHEMA['part_diurne_pct']['nature'], S.ENTREE)
+        self.assertEqual(S.SCHEMA['part_diurne_pct']['proprietaire'], S.ECRAN)
+
+    def test_la_fusion_accepte_part_diurne_pct(self):
+        bloc = S.ecrire(_DevisEnMemoire({'scenario': 'Sans batterie'}),
+                        proprietaire=S.ECRAN, part_diurne_pct=80)
+        self.assertEqual(bloc['part_diurne_pct'], 80)
+        self.assertEqual(bloc['scenario'], 'Sans batterie')
+        self.assertEqual(S.valider({'part_diurne_pct': 72.5}), [])
+
+
 class EcritureChirurgicaleTests(TestCase):
     """``update_fields=['etude_params']`` : rien d'autre ne bouge."""
 
