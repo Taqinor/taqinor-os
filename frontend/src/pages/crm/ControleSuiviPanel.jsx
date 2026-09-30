@@ -587,9 +587,10 @@ function DetailParEtape({ parType }) {
                   <th scope="col" className="py-1 pr-2 font-medium">Étape</th>
                   <th scope="col" className="px-1.5 py-1 text-right font-medium">Dues</th>
                   <th scope="col" className="px-1.5 py-1 text-right font-medium">À temps</th>
-                  <th scope="col" className="px-1.5 py-1 text-right font-medium">En retard</th>
+                  <th scope="col" className="px-1.5 py-1 text-right font-medium">Traitées en retard</th>
                   <th scope="col" className="px-1.5 py-1 text-right font-medium">Sautées</th>
-                  <th scope="col" className="py-1 pl-1.5 text-right font-medium">Encore ouvertes</th>
+                  <th scope="col" className="px-1.5 py-1 text-right font-medium">Toujours en retard</th>
+                  <th scope="col" className="py-1 pl-1.5 text-right font-medium">Reportées</th>
                 </tr>
               </thead>
               {/* Un <tbody> par type : la ligne des chiffres, puis — pleine largeur,
@@ -611,11 +612,12 @@ function DetailParEtape({ parType }) {
                       <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.a_temps)}</td>
                       <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.en_retard)}</td>
                       <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.sautees)}</td>
-                      <td className="pb-1 pl-1.5 pt-1.5 text-right tabular-nums">{nombre(ligne.ouvert)}</td>
+                      <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.ouvert)}</td>
+                      <td className="pb-1 pl-1.5 pt-1.5 text-right tabular-nums">{nombre(ligne.reportees)}</td>
                     </tr>
                     {ligne.reponses?.length > 0 && (
                       <tr>
-                        <td colSpan={6} className="pb-1.5">
+                        <td colSpan={7} className="pb-1.5">
                           <ul className="flex flex-wrap gap-1" aria-label={`Réponses — ${nom}`}>
                             {ligne.reponses.map((r) => (
                               <li key={r.cle}>
@@ -634,7 +636,7 @@ function DetailParEtape({ parType }) {
             </table>
           </div>
           <p className="text-xs text-muted-foreground">
-            En retard : traitées après leur jour. Encore ouvertes : pas encore traitées.
+            Traitées en retard : faites après leur jour ; toujours en retard : pas encore faites alors que leur jour est passé ; reportées : décalées au moins une fois.
           </p>
         </div>
       )}

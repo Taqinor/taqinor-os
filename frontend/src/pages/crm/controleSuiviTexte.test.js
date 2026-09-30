@@ -127,18 +127,36 @@ describe('phraseExceptions', () => {
 })
 
 describe('phrasePeriode et comparaisonPrecedent', () => {
-  it('la phrase de période de l\'exemple', () => {
+  it('la phrase de période de l\'exemple : traitées en retard, toujours en retard, dont N reportées', () => {
     expect(phrasePeriode(CONTROLE.verdict, CONTROLE.periode_jours)).toBe(
       'Sur 14 jours : 36 étapes sur 42 traitées à temps (86 %), '
-      + '3 rattrapées en retard, 1 sautée, 2 encore ouvertes.')
+      + '3 traitées en retard, 1 sautée, 2 toujours en retard — dont 6 reportées au moins une fois.')
   })
 
-  it('singulier partout, et « — » quand le pourcentage est null', () => {
+  it('singulier partout (sans reportée), et « — » quand le pourcentage est null', () => {
     const v = {
-      du: 1, a_temps: 1, en_retard: 1, sautees: 1, ouvert: 1, a_temps_pct: null,
+      du: 1, a_temps: 1, en_retard: 1, sautees: 1, ouvert: 1, reportees: 0, a_temps_pct: null,
     }
     expect(phrasePeriode(v, 7)).toBe(
-      'Sur 7 jours : 1 étape sur 1 traitée à temps (—), 1 rattrapée en retard, 1 sautée, 1 encore ouverte.')
+      'Sur 7 jours : 1 étape sur 1 traitée à temps (—), 1 traitée en retard, 1 sautée, 1 toujours en retard.')
+  })
+
+  it('« — dont … » seulement s\'il y a des reportées, et il s\'accorde (1 reportée, 6 reportées)', () => {
+    const base = {
+      du: 8, a_temps: 5, en_retard: 1, sautees: 0, ouvert: 2, a_temps_pct: 62.5,
+    }
+    // 0 ou non servi → aucune fin « — dont … » (jamais « 0 reportée » inventé).
+    expect(phrasePeriode({ ...base, reportees: 0 }, 14)).not.toContain('reportée')
+    expect(phrasePeriode(base, 14)).not.toContain('reportée')
+    expect(phrasePeriode({ ...base, reportees: 1 }, 14)).toBe(
+      'Sur 14 jours : 5 étapes sur 8 traitées à temps (63 %), 1 traitée en retard, 0 sautée, '
+      + '2 toujours en retard — dont 1 reportée au moins une fois.')
+    expect(phrasePeriode({ ...base, reportees: 6 }, 14)).toMatch(/ — dont 6 reportées au moins une fois\.$/)
+  })
+
+  it('l\'ancien vocabulaire (« rattrapées », « encore ouvertes ») ne revient pas', () => {
+    const phrase = phrasePeriode(CONTROLE.verdict, CONTROLE.periode_jours)
+    expect(phrase).not.toMatch(/rattrap|encore ouvert/)
   })
 
   it('rien de dû : aucune étape, aucun pourcentage', () => {
@@ -171,10 +189,10 @@ describe('libelleJour (nom accessible d\'une case)', () => {
     etat: 'vide', ...surcharge,
   })
 
-  it('les compteurs non nuls seulement, dans l\'ordre dues / à temps / rattrapées / sautées / ouvertes', () => {
+  it('les compteurs non nuls seulement, dans l\'ordre dues / à temps / traitées en retard / sautées / ouvertes', () => {
     expect(libelleJour(jour({
       du: 9, a_temps: 4, en_retard: 2, sautees: 1, ouvert: 2,
-    }))).toBe('mardi 29 septembre : 9 dues, 4 à temps, 2 rattrapées en retard, 1 sautée, 2 encore ouvertes')
+    }))).toBe('mardi 29 septembre : 9 dues, 4 à temps, 2 traitées en retard, 1 sautée, 2 encore ouvertes')
     expect(libelleJour(jour({ du: 1, ouvert: 1 }))).toBe('mardi 29 septembre : 1 due, 1 encore ouverte')
   })
 

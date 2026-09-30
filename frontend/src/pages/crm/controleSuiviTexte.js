@@ -149,17 +149,24 @@ export function phraseExceptions(exceptions, niveau) {
   return ''
 }
 
-/** « Sur 14 jours : 36 étapes sur 42 traitées à temps (86 %), 3 rattrapées en retard, … ». */
+/** « Sur 14 jours : 36 étapes sur 42 traitées à temps (86 %), 3 traitées en retard, 1 sautée,
+ *  2 toujours en retard — dont 6 reportées au moins une fois. »
+ *  `ouvert` = encore à faire ET déjà en retard (contrat `notes.verdict`) ; `reportees` est
+ *  un fait montré à côté du pourcentage, jamais retranché de lui — la fin « — dont … »
+ *  n'apparaît que s'il y en a. */
 export function phrasePeriode(verdict, periodeJours) {
   const v = verdict || {}
   const periode = `Sur ${nombre(periodeJours)} jours`
   if (!v.du) return `${periode} : aucune étape n'était due.`
   const pct = v.a_temps_pct === null || v.a_temps_pct === undefined ? '—' : formatPercent(v.a_temps_pct)
+  const reportees = Number(v.reportees) > 0
+    ? ` — dont ${nombre(v.reportees)} ${pl(v.reportees, 'reportée', 'reportées')} au moins une fois`
+    : ''
   return `${periode} : ${nombre(v.a_temps)} ${pl(v.a_temps, 'étape', 'étapes')} sur ${nombre(v.du)} `
     + `${pl(v.a_temps, 'traitée', 'traitées')} à temps (${pct}), `
-    + `${nombre(v.en_retard)} ${pl(v.en_retard, 'rattrapée', 'rattrapées')} en retard, `
+    + `${nombre(v.en_retard)} ${pl(v.en_retard, 'traitée', 'traitées')} en retard, `
     + `${nombre(v.sautees)} ${pl(v.sautees, 'sautée', 'sautées')}, `
-    + `${nombre(v.ouvert)} ${pl(v.ouvert, 'encore ouverte', 'encore ouvertes')}.`
+    + `${nombre(v.ouvert)} toujours en retard${reportees}.`
 }
 
 /** Comparaison à la période précédente ; `null` (rien à dire) si l'un des deux pourcentages est `null`. */
@@ -191,7 +198,7 @@ export function libelleJour(jour) {
   if (j.du > 0) morceaux.push(`${nombre(j.du)} ${pl(j.du, 'due', 'dues')}`)
   if (j.a_temps > 0) morceaux.push(`${nombre(j.a_temps)} à temps`)
   if (j.en_retard > 0) {
-    morceaux.push(`${nombre(j.en_retard)} ${pl(j.en_retard, 'rattrapée', 'rattrapées')} en retard`)
+    morceaux.push(`${nombre(j.en_retard)} ${pl(j.en_retard, 'traitée', 'traitées')} en retard`)
   }
   if (j.sautees > 0) morceaux.push(`${nombre(j.sautees)} ${pl(j.sautees, 'sautée', 'sautées')}`)
   if (j.ouvert > 0) morceaux.push(`${nombre(j.ouvert)} ${pl(j.ouvert, 'encore ouverte', 'encore ouvertes')}`)

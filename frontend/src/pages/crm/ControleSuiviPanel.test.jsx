@@ -147,12 +147,34 @@ describe('ControleSuiviPanel — verdict', () => {
     expect(screen.queryByTestId('controle-comparaison')).not.toBeInTheDocument()
   })
 
-  it('la phrase de période reprend les compteurs du serveur, pourcentage arrondi', async () => {
+  it('la phrase de période reprend les compteurs du serveur, pourcentage arrondi, avec les reportées', async () => {
     monter()
     await attendreVerdict()
     expect(screen.getByTestId('controle-phrase-periode')).toHaveTextContent(
       'Sur 14 jours : 36 étapes sur 42 traitées à temps (86 %), '
-      + '3 rattrapées en retard, 1 sautée, 2 encore ouvertes.')
+      + '3 traitées en retard, 1 sautée, 2 toujours en retard — dont 6 reportées au moins une fois.')
+  })
+
+  it('aucune reportée : la phrase de période s\'arrête à « toujours en retard », sans « dont »', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      verdict: verdictAvec({ reportees: 0 }),
+    }))
+    monter()
+    await attendreVerdict()
+    const phrase = screen.getByTestId('controle-phrase-periode')
+    expect(phrase).toHaveTextContent('2 toujours en retard.')
+    expect(phrase).not.toHaveTextContent('dont')
+    expect(phrase).not.toHaveTextContent('reportée')
+  })
+
+  it('une seule reportée : « dont 1 reportée au moins une fois » (singulier)', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      verdict: verdictAvec({ reportees: 1 }),
+    }))
+    monter()
+    await attendreVerdict()
+    expect(screen.getByTestId('controle-phrase-periode'))
+      .toHaveTextContent('2 toujours en retard — dont 1 reportée au moins une fois.')
   })
 
   it('compare à la période précédente : ↑ n points (85,7 % contre 78 %)', async () => {
@@ -216,7 +238,7 @@ describe('ControleSuiviPanel — frise', () => {
       name: 'mardi 29 septembre : 6 dues, 4 à temps, 2 encore ouvertes',
     })).toBeInTheDocument()
     expect(within(frise).getByRole('button', {
-      name: 'vendredi 18 septembre : 4 dues, 3 à temps, 1 rattrapée en retard',
+      name: 'vendredi 18 septembre : 4 dues, 3 à temps, 1 traitée en retard',
     })).toBeInTheDocument()
   })
 
@@ -717,18 +739,18 @@ describe('ControleSuiviPanel — détail par étape', () => {
     expect(within(detail).getByRole('table')).toBeInTheDocument()
   })
 
-  it('une ligne par type, nommée d\'après la TABLE du parcours, avec ses cinq compteurs', async () => {
+  it('une ligne par type, nommée d\'après la TABLE du parcours, avec ses six compteurs', async () => {
     monter()
     await attendreVerdict()
     fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
     const contact = screen.getByTestId('controle-type-contact_appel')
     const nom = PARCOURS.etapes.find((t) => t.id === 'contact_appel').nom
     expect(within(contact).getByRole('rowheader')).toHaveTextContent(nom)
-    // La première ligne du type porte ses cinq compteurs (dues, à temps, en
-    // retard, sautées, encore ouvertes) ; la seconde, ses réponses.
+    // La première ligne du type porte ses six compteurs (dues, à temps, traitées
+    // en retard, sautées, toujours en retard, reportées) ; la seconde, ses réponses.
     const [chiffres] = within(contact).getAllByRole('row')
     expect(within(chiffres).getAllByRole('cell').map((c) => c.textContent))
-      .toEqual(['14', '12', '1', '1', '0'])
+      .toEqual(['14', '12', '1', '1', '0', '2'])
     expect(within(contact).queryByText('Tâche')).not.toBeInTheDocument()
 
     const devis = screen.getByTestId('controle-type-devis')
@@ -736,16 +758,44 @@ describe('ControleSuiviPanel — détail par étape', () => {
       .toHaveTextContent(PARCOURS.etapes.find((t) => t.id === 'devis').nom)
     expect(within(devis).getByText('Tâche')).toBeInTheDocument()
     expect(within(within(devis).getAllByRole('row')[0]).getAllByRole('cell').map((c) => c.textContent))
-      .toEqual(['5', '3', '1', '0', '1'])
+      .toEqual(['5', '3', '1', '0', '1', '1'])
   })
 
-  it('les colonnes portent les cinq mesures du contrat, dans l\'ordre', async () => {
+  it('les colonnes portent les six mesures du contrat, dans l\'ordre', async () => {
     monter()
     await attendreVerdict()
     fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
     const entetes = within(screen.getByRole('table')).getAllByRole('columnheader')
       .map((th) => th.textContent)
-    expect(entetes).toEqual(['Étape', 'Dues', 'À temps', 'En retard', 'Sautées', 'Encore ouvertes'])
+    expect(entetes).toEqual([
+      'Étape', 'Dues', 'À temps', 'Traitées en retard', 'Sautées', 'Toujours en retard', 'Reportées',
+    ])
+  })
+
+  it('la ligne des réponses couvre les sept colonnes, et la note du tableau tient en une phrase', async () => {
+    monter()
+    await attendreVerdict()
+    fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
+    const contact = within(screen.getByTestId('controle-type-contact_appel'))
+    const reponses = contact.getAllByRole('row')[1]
+    expect(within(reponses).getAllByRole('cell')[0]).toHaveAttribute('colspan', '7')
+    const note = within(screen.getByTestId('controle-detail')).getByText(/Traitées en retard : /)
+    expect(note.textContent).toBe(
+      'Traitées en retard : faites après leur jour ; toujours en retard : pas encore faites alors que '
+      + 'leur jour est passé ; reportées : décalées au moins une fois.')
+    // Une seule phrase : un seul point, à la fin.
+    expect(note.textContent.match(/\./g)).toHaveLength(1)
+  })
+
+  it('un type sans `reportees` servi affiche « — » (jamais un 0 inventé)', async () => {
+    const { reportees: _omis, ...sansReportees } = CONTROLE.par_type[0]
+    crmApi.getControleSuivi.mockResolvedValue(variante({ par_type: [sansReportees] }))
+    monter()
+    await attendreVerdict()
+    fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
+    const contact = screen.getByTestId('controle-type-contact_appel')
+    expect(within(within(contact).getAllByRole('row')[0]).getAllByRole('cell').map((c) => c.textContent))
+      .toEqual(['14', '12', '1', '1', '0', '—'])
   })
 
   it('les réponses en pastilles portent le libellé de la table POUR CE TYPE (ordre du serveur)', async () => {
