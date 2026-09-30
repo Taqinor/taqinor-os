@@ -275,8 +275,13 @@ function Progression({ file }) {
   )
 }
 
-export default function RelancesDuJourWidget() {
+export default function RelancesDuJourWidget({ onChange } = {}) {
   const navigate = useNavigate()
+  // COCKPIT-CONTRÔLE — un geste réussi de la file change ce que dit le « Contrôle du
+  // suivi » voisin (un retard traité, un premier contact posé…) : la page le relit.
+  // `onChange` est facultatif (le widget vit aussi seul) et n'est appelé QUE sur un
+  // geste qui a réellement écrit côté serveur.
+  const signaler = () => { if (typeof onChange === 'function') onChange() }
   const [scope, setScope] = useState('all')
   const [filtre, setFiltre] = useState('tout')
   const [loading, setLoading] = useState(true)
@@ -327,9 +332,15 @@ export default function RelancesDuJourWidget() {
       // ne clôt rien, rien à annuler.
       if (action === 'fait' || action === 'sauter') {
         const etape = etapes.find((e) => e.id === id)
-        if (etape) setJusteTraitees((prev) => [...prev.filter((e) => e.id !== id), etape])
+        // Le GESTE fait est gardé avec la touche : sa ligne « Annuler » dit « Faite » ou
+        // « Sautée » — le `statut_libelle` de la copie date d'AVANT le geste (« À faire »).
+        if (etape) {
+          setJusteTraitees((prev) => [
+            ...prev.filter((e) => e.id !== id), { ...etape, gesteFait: action }])
+        }
       }
       retirer(id)
+      signaler()
       // MRY9/MRY11 — une action peut faire naître une NOUVELLE touche due
       // (report, clôture de cadence…) : refetch silencieux, jamais bloquant.
       setTimeout(() => { charger() }, 1000)
@@ -369,6 +380,7 @@ export default function RelancesDuJourWidget() {
       await crmApi.annulerRelanceEtape(id)
       setJusteTraitees((prev) => prev.filter((e) => e.id !== id))
       charger()
+      signaler()
     } catch {
       toastError('Annulation impossible pour le moment.')
     }
@@ -383,6 +395,7 @@ export default function RelancesDuJourWidget() {
     try {
       await crmApi.arreterCadence(leadId, { motif })
       charger()
+      signaler()
       return true
     } catch {
       toastError('Arrêt de la cadence impossible pour le moment.')
@@ -446,7 +459,7 @@ export default function RelancesDuJourWidget() {
                 <span>
                   <span className="font-medium">{etape.lead_nom}</span>
                   {' — '}
-                  {etape.statut_libelle || (etape.statut === 'sautee' ? 'Sautée' : 'Faite')}
+                  {etape.gesteFait === 'sauter' ? 'Sautée' : 'Faite'}
                 </span>
                 <Button type="button" size="sm" variant="outline" onClick={() => annulerTouche(etape.id)}>
                   Annuler
@@ -497,11 +510,11 @@ export default function RelancesDuJourWidget() {
                       onOuvrirMessage={setMessageEtape}
                       // CAD101 — « pièce reçue » : la touche est close et une étape
                       // « préparer le devis » est née — la file est relue.
-                      onPieceRecue={(id) => { retirer(id); charger() }}
+                      onPieceRecue={(id) => { retirer(id); charger(); signaler() }}
                       // SUIVI-BLOCAGE — une visite planifiée / déplacée / abandonnée
                       // ferme, annule ou décale des étapes : la file est relue EN
                       // PLACE (les lignes gardent leur état, `key` inchangée).
-                      onVisiteChanged={() => charger()}
+                      onVisiteChanged={() => { charger(); signaler() }}
                       // CAD152 — une réponse écrite sur la fiche depuis le panneau
                       // d'appel : le score servi a changé, la file est relue en place.
                       onLeadEcrit={() => charger()}
@@ -518,7 +531,8 @@ export default function RelancesDuJourWidget() {
         etape={messageEtape}
         open={!!messageEtape}
         onOpenChange={(o) => { if (!o) setMessageEtape(null) }}
-        onSent={() => { charger() }}
+        // Un message ouvert depuis l'ERP vaut premier contact : le contrôle est relu.
+        onSent={() => { charger(); signaler() }}
         // CAD63 — la langue du client vient d'être enregistrée depuis
         // l'aperçu : la file est relue (`lead_langue` a changé).
         onLangueEnregistree={() => { charger() }}

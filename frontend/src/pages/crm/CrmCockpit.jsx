@@ -148,6 +148,11 @@ export default function CrmCockpit() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { clients, leads } = useSelector((s) => s.crm)
+  // COCKPIT-CONTRÔLE — la file et le contrôle lisent le même suivi : quand la file
+  // vient d'écrire (étape traitée, reportée, cadence arrêtée, message ouvert…), le
+  // compteur avance et le « Contrôle du suivi » relit le serveur. Sans lui, le bandeau
+  // continuait d'annoncer un retard que la commerciale venait de traiter.
+  const [versionFile, setVersionFile] = useState(0)
 
   // VX55 — annule les requêtes en vol au démontage (même patron que
   // ClientList/LeadsPage) : une réponse tardive ne doit jamais écraser
@@ -217,7 +222,7 @@ export default function CrmCockpit() {
           « Adhérence » (CKP5) : leur contenu utile est repris par le contrôle
           (à-l'heure, retards, sautées, premier contact, dossiers sans étape). */}
       <div className="mt-4" data-testid="cockpit-controle-suivi">
-        <ControleSuiviPanel />
+        <ControleSuiviPanel rafraichir={versionFile} />
       </div>
 
       <div className="mt-4">
@@ -232,7 +237,7 @@ export default function CrmCockpit() {
       </div>
 
       <div className="mt-4" data-testid="cockpit-file">
-        <RelancesDuJourWidget />
+        <RelancesDuJourWidget onChange={() => setVersionFile((v) => v + 1)} />
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">

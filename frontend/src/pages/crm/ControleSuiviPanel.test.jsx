@@ -91,6 +91,30 @@ describe('ControleSuiviPanel — en-tête et chargement', () => {
     expect(screen.getByRole('heading', { name: /Contrôle du suivi/ })).toBeInTheDocument()
   })
 
+  it('`rafraichir` (la file voisine vient d’écrire) relit le serveur, même période, même commercial', async () => {
+    window.localStorage.setItem(CLE_DETAIL, JSON.stringify(true))
+    const bloc = (n) => (
+      <MemoryRouter>
+        <ControleSuiviPanel rafraichir={n} />
+      </MemoryRouter>
+    )
+    const { rerender } = render(bloc(0))
+    await attendreVerdict()
+    expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(1)
+    // Le serveur a changé entre-temps : un retard vient d'être traité.
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      verdict: verdictAvec({ niveau: 'ok' }),
+      exceptions: VIDE.exceptions,
+    }))
+    rerender(bloc(1))
+    await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(2))
+    expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith({ jours: 14 })
+    await waitFor(() => expect(screen.getByTestId('controle-verdict')).toHaveAttribute('data-niveau', 'ok'))
+    // Le même compteur ne relance rien.
+    rerender(bloc(1))
+    expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(2)
+  })
+
   it('affiche un squelette pendant le chargement, puis le contenu', async () => {
     let servir
     crmApi.getControleSuivi.mockReturnValue(new Promise((resolve) => { servir = resolve }))

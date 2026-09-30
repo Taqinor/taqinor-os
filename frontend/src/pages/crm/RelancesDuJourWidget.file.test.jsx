@@ -48,10 +48,10 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function mount() {
+function mount(props = {}) {
   return render(
     <MemoryRouter>
-      <RelancesDuJourWidget />
+      <RelancesDuJourWidget {...props} />
     </MemoryRouter>,
   )
 }
@@ -277,5 +277,50 @@ describe('« À faire aujourd\'hui » — le sous-bloc « leads sans cadence » 
     await attendreListe()
     expect(await screen.findByTestId('cad99-cadences-echues')).toBeInTheDocument()
     expect(screen.getByText('1 cadence échue à clore')).toBeInTheDocument()
+  })
+})
+
+describe('« À faire aujourd’hui » — la file prévient la page quand elle a écrit (le contrôle voisin se relit)', () => {
+  it('`onChange` après un geste RÉUSSI ; la ligne « Annuler » dit « Sautée », pas l’ancien « À faire »', async () => {
+    const onChange = vi.fn()
+    crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([APPEL, MESSAGE]))
+    crmApi.marquerRelanceEtapeSautee.mockResolvedValue({ data: { statut: 'sautee' } })
+    mount({ onChange })
+    await attendreListe()
+    expect(onChange).not.toHaveBeenCalled()
+    const ligne = screen.getAllByTestId('relance-etape-row')[0]
+    fireEvent.click(within(ligne).getByRole('button', { name: /Sauter/ }))
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1))
+    const annuler = await screen.findByTestId('cad50-annuler-liste')
+    expect(annuler).toHaveTextContent(`${APPEL.lead_nom} — Sautée`)
+    expect(annuler).not.toHaveTextContent('À faire')
+  })
+
+  it('un geste REFUSÉ par le serveur ne prévient pas la page', async () => {
+    const onChange = vi.fn()
+    crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([APPEL, MESSAGE]))
+    crmApi.marquerRelanceEtapeSautee.mockRejectedValue({
+      response: { status: 400, data: { erreurs: { etape: 'Cette étape est déjà traitée.' } } },
+    })
+    mount({ onChange })
+    await attendreListe()
+    const ligne = screen.getAllByTestId('relance-etape-row')[0]
+    fireEvent.click(within(ligne).getByRole('button', { name: /Sauter/ }))
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalled())
+    await screen.findByText(/déjà traitée/)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('sans `onChange` (le widget seul), un geste réussi ne casse rien', async () => {
+    crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([APPEL, MESSAGE]))
+    crmApi.marquerRelanceEtapeSautee.mockResolvedValue({ data: { statut: 'sautee' } })
+    mount()
+    await attendreListe()
+    const ligne = screen.getAllByTestId('relance-etape-row')[0]
+    fireEvent.click(within(ligne).getByRole('button', { name: /Sauter/ }))
+    fireEvent.click(within(ligne).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(filtreRadio('Tout (1)')).toBeInTheDocument())
   })
 })

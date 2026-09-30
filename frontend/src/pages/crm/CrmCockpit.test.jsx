@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import {
+  render, screen, cleanup, waitFor, within, fireEvent,
+} from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -285,5 +287,18 @@ describe('COCKPIT-CONTRÔLE passe 2 — un seul ordre de page pour tous les rôl
     expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(1)
     expect(crmApi.getControleSuivi).toHaveBeenCalledWith({ jours: 14 })
     expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'all' })
+  })
+
+  it('un geste réussi dans la file fait RELIRE le contrôle (le bandeau ne reste pas sur un retard déjà traité)', async () => {
+    vi.spyOn(crmApi, 'marquerRelanceEtapeSautee').mockResolvedValue({ data: { statut: 'sautee' } })
+    await monterEtAttendre('responsable')
+    expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(1)
+    const sautable = screen.getAllByTestId('relance-etape-row')
+      .find((ligne) => within(ligne).queryByRole('button', { name: /Sauter/ }))
+    fireEvent.click(within(sautable).getByRole('button', { name: /Sauter/ }))
+    fireEvent.click(within(sautable).getByRole('button', { name: 'Confirmer' }))
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalled())
+    await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(2))
+    expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith({ jours: 14 })
   })
 })

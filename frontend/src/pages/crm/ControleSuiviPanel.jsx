@@ -336,7 +336,9 @@ function ListeDuJour({
   )
 }
 
-function Frise({ donnees, ownerId, navigate }) {
+function Frise({
+  donnees, ownerId, navigate, rafraichir,
+}) {
   const jours = donnees.jours ?? []
   const [ouvert, setOuvert] = useState(null)
   const [tabIdx, setTabIdx] = useState(null)
@@ -418,7 +420,8 @@ function Frise({ donnees, ownerId, navigate }) {
       </ul>
       {ouvert && (
         <ListeDuJour
-          key={`${ouvert}|${ownerId ?? ''}`}
+          // La liste ouverte d'un jour se relit avec le bloc (`rafraichir`).
+          key={`${ouvert}|${ownerId ?? ''}|${rafraichir ?? 0}`}
           id={idListe} date={ouvert} ownerId={ownerId} navigate={navigate}
           onFermer={() => setOuvert(null)}
         />
@@ -765,7 +768,10 @@ function SqueletteDetail() {
   )
 }
 
-export default function ControleSuiviPanel() {
+/** `rafraichir` : un compteur que la page incrémente quand la file voisine vient d'écrire
+ *  (une étape traitée, reportée, une cadence arrêtée…) — le bloc relit alors le serveur,
+ *  sans changer ni la période ni le commercial choisis. */
+export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
   const navigate = useNavigate()
   const [jours, setJours] = useState(PERIODE_DEFAUT)
   // `null` = toute l'équipe ; sinon l'identifiant du commercial servi par le
@@ -783,7 +789,7 @@ export default function ControleSuiviPanel() {
   // Une requête = une CLÉ (période, commercial, tentative) : « en chargement »
   // se DÉDUIT de l'écart entre la clé demandée et celle du dernier résultat,
   // sans setState synchrone dans l'effet.
-  const cle = `${jours}|${ownerId ?? ''}|${tentative}`
+  const cle = `${jours}|${ownerId ?? ''}|${tentative}|${rafraichir}`
   useEffect(() => {
     let active = true
     const params = { jours }
@@ -903,6 +909,7 @@ export default function ControleSuiviPanel() {
                 <Frise
                   key={`${jours}|${ownerId ?? ''}`}
                   donnees={donnees} ownerId={ownerId} navigate={navigate}
+                  rafraichir={rafraichir}
                 />
                 <Exceptions exceptions={donnees.exceptions} seuils={donnees.seuils} navigate={navigate} />
                 <DetailParEtape parType={donnees.par_type} />
