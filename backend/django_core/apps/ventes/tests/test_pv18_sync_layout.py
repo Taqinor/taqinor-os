@@ -125,19 +125,37 @@ class TestSyncLayout(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
 
-    def test_envoye_409_revision_possible(self):
+    def test_envoye_se_resynchronise_sur_place(self):
+        """QJR557 (D-QJR5-5) — réécrit (PV21 épinglait le 409) : un envoyé
+        se corrige SUR PLACE par le calepinage, statut « envoyé » intouché,
+        tracé « corrigé après envoi : calepinage »."""
+        from apps.ventes.models import DevisActivity
         devis = self._devis(statut=Devis.Statut.ENVOYE, panneaux=12)
         resp = self._post(devis, layout(panels=16))
-        self.assertEqual(resp.status_code, 409)
-        self.assertTrue(resp.data['revision_possible'])
-        self.assertIn('Réviser', resp.data['detail'])
-        # Aucune écriture : ni ligne, ni layout, ni statut.
+        self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(
             int(devis.lignes.get(designation='Panneau Jinko 550W').quantite),
-            12)
+            16)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
-        self.assertIsNone(devis.roof_layout)
+        self.assertIsNotNone(devis.roof_layout)
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=devis, field='correction_apres_envoi').exists())
+
+    def test_envoye_batterie_negociee_survit(self):
+        """QJR557 + QJR556 — sur un envoyé, une batterie négociée survit à
+        un layout qui n'en veut pas."""
+        devis = self._devis(statut=Devis.Statut.ENVOYE, panneaux=12)
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('15000'),
+            prix_manuel=True, ordre=3)
+        resp = self._post(devis, layout(panels=12, scenario='reseau'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(devis.lignes.filter(
+            designation='Batterie Dyness 5 kWh').exists())
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
     def test_documents_clos_409_revision_possible(self):
         """QJR516 (scission, D-QJR5-2) — un accepté / refusé / expiré est

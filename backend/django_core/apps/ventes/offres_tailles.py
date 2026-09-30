@@ -1651,9 +1651,12 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
     * **Recommandé seulement.** Éco et Max gardent leur sémantique
       d'exploration ; les appliquer au devis ferait disparaître la comparaison
       que le client est justement en train de lire.
-    * **Le statut est LU, jamais écrit** (règle #4) : la garde est celle de
-      ``sync_devis_from_layout``, pas une copie — brouillon seul, « envoyé »
-      renvoyé vers « Réviser », accepté/refusé/expiré refusé net.
+    * **Le statut est LU, jamais écrit** (règle #4) : la garde est le
+      prédicat unique ``domain/modifiabilite`` (geste TAILLE) — brouillon et,
+      depuis QJR557 (D-QJR5-5), ENVOYÉ corrigé SUR PLACE (instantané avant,
+      chatter « corrigé après envoi : taille d'offre », marqueur
+      ``resync_apres_envoi``, même lien, statut « envoyé ») ;
+      accepté/refusé/expiré refusés avec ``revision_possible`` (« Réviser »).
     * **Une ligne NÉGOCIÉE n'est jamais réécrite en silence.** Une substitution
       de matériel re-tarife la ligne ; si celle-ci porte un prix ou une remise
       qui ne sont plus ceux du catalogue (``_est_au_prix_catalogue``), le geste
@@ -1681,11 +1684,22 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
     """
     from django.db import transaction
 
+    from apps.ventes.domain.modifiabilite import (
+        TAILLE, debut_de_geste_devis, fin_de_geste_devis, verdict)
     from apps.ventes.domain.pipeline import (
         MODE_RECONCILIER, ORIGINE_RESYNCHRONISATION, IntentionDevis, appliquer)
     from apps.ventes.models import DevisActivity
     from apps.ventes.services import (
         SyncLayoutError, extract_roof_config, rafraichir_etudes_du_devis)
+
+    # QJR557 — la garde de statut du GESTE TAILLE, lue AVANT tout calcul
+    # (règle #4 : lue, jamais écrite). Même refus 400 que la resynchro qui
+    # suit (``ApplicationImpossible`` + ``revision_possible``).
+    garde = verdict(devis, TAILLE)
+    if not garde['modifiable']:
+        raise ApplicationImpossible(
+            garde['raison_non_modifiable'] + '.',
+            revision_possible=garde['revision_possible'])
 
     if cle != 'recommande':
         raise ApplicationImpossible(
@@ -1739,6 +1753,10 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
     equipements = config.get('equipements') or {}
 
     with transaction.atomic():
+        # QJR557 — sur un ENVOYÉ, l'état vu par le client est capturé AVANT la
+        # première écriture du geste entier (resynchro + modules + matériel) ;
+        # no-op (None) sur un brouillon.
+        avant_geste = debut_de_geste_devis(devis, utilisateur)
         try:
             # ── QJR97 (M5, bascule 5/5a) — LE MODE « RÉCONCILIER » ───────────
             # Ce chemin appelait ``sync_devis_from_layout``, l'autre porte du
@@ -1792,6 +1810,12 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
         # redevient sa REPRISE (``_carte_du_devis``) plutôt qu'une dérivation
         # moteur portant un badge « Ajusté » que plus rien ne distingue.
         regenerer_taille(devis, 'recommande')
+
+        # QJR557 — la trace « corrigé après envoi : taille d'offre » (un seul
+        # point, ``fin_de_geste_devis`` : SEULEMENT si un contenu visible a
+        # changé ; marqueur ``resync_apres_envoi`` ; statut jamais écrit).
+        fin_de_geste_devis(devis, utilisateur, avant=avant_geste,
+                           objet='taille')
 
     logger.info(
         'TAILLES: « Recommandé » appliquée au devis %s (%s → %s panneaux, '

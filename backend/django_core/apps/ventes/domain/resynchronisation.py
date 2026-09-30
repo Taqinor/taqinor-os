@@ -334,7 +334,10 @@ def reconcilier(devis, intention):
 
         # ── Garde de statut : LECTURE du statut, jamais une écriture ──
         # QJR516 — le prédicat UNIQUE (domain/modifiabilite, geste
-        # CALEPINAGE : brouillon seul jusqu'à QJR557). Textes CONSERVÉS ;
+        # CALEPINAGE). QJR557 (D-QJR5-5) — un ENVOYÉ se resynchronise SUR
+        # PLACE (le refus PV21 « Créez une révision » tombe) ; la trace
+        # « corrigé après envoi : calepinage » est posée par le pipeline
+        # (``fin_de_geste_devis``). Textes des refus restants CONSERVÉS ;
         # ``revision_possible`` vient du prédicat (un accepté/refusé/expiré
         # est révisable, D-QJR5-2 ; un devis remplacé ne l'est pas).
         from apps.ventes.domain.modifiabilite import CALEPINAGE, verdict
@@ -342,11 +345,6 @@ def reconcilier(devis, intention):
         if not v['modifiable']:
             if not verrou.is_active:
                 detail = v['raison_non_modifiable'] + '.'
-            elif verrou.statut == Devis.Statut.ENVOYE:
-                detail = (
-                    'Devis « Envoyé » : le client a déjà cette version sous '
-                    'les yeux. Créez une révision (« Réviser ») pour en '
-                    'changer le calepinage.')
             else:
                 detail = (
                     'Devis « %s » : son calepinage est figé, ce document est '
