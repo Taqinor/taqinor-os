@@ -845,6 +845,8 @@ def html_fiche(table: dict, etape: dict) -> str:
             pastilles += '<span class="pastille">date à saisir</span>'
         if r.get('motif_perte'):
             pastilles += '<span class="pastille">motif à choisir</span>'
+        if r.get('motif_refus'):
+            pastilles += '<span class="pastille">motif de refus, facultatif</span>'
         if r.get('geste'):
             pastilles += '<span class="pastille">ouvre la planification</span>'
         lignes.append(f'<tr><td><strong>{esc(r["label"])}</strong>{pastilles}</td>'
