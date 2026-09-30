@@ -244,3 +244,141 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
         nouveau = renouveler_devis(self.devis, user=self.user)
         self.assertEqual(nouveau.lignes.get().prix_unitaire,
                          Decimal('1100.00'))
+
+
+# ── QJR517 — le mode « villas » survit à l'écrivain unique ─────────────────
+
+class Qjr517GroupesVillasPersistes(_BaseSites):
+    """``remplacer_lignes`` (derrière /devis/atomic/ ET replace-lines)
+    persiste ``groupe_index`` / ``groupe_label`` : le multi-villa mode B n'est
+    plus perdu dès la création."""
+
+    slug = 'qjr517-villas'
+
+    def setUp(self):
+        super().setUp()
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _lignes_villas(self):
+        return [
+            {'produit': self.produit.id, 'quantite': '8',
+             'prix_unitaire': '1000', 'groupe_index': 1,
+             'groupe_label': 'Villa A'},
+            {'produit': self.produit.id, 'quantite': '6',
+             'prix_unitaire': '1000', 'groupe_index': 2,
+             'groupe_label': 'Villa B'},
+        ]
+
+    def _groupes_servis(self, devis_id):
+        r = self.api.get(f'/api/django/ventes/devis/{devis_id}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        return sorted((li['groupe_index'], li['groupe_label'])
+                      for li in r.data['lignes'])
+
+    def test_atomic_persiste_les_groupes(self):
+        r = self.api.post('/api/django/ventes/devis/atomic/', {
+            'client': self.client_crm.id, 'statut': 'brouillon',
+            'taux_tva': '20', 'lignes': self._lignes_villas(),
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(self._groupes_servis(r.data['id']),
+                         [(1, 'Villa A'), (2, 'Villa B')])
+
+    def test_replace_lines_persiste_les_groupes(self):
+        r = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/replace-lines/',
+            {'lignes': self._lignes_villas()}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(self._groupes_servis(self.devis.id),
+                         [(1, 'Villa A'), (2, 'Villa B')])
+
+    def test_groupe_invalide_retombe_sur_mono_systeme(self):
+        from apps.ventes.domain.lignes import remplacer_lignes
+        remplacer_lignes(self.devis, [
+            {'produit': self.produit.id, 'quantite': '1',
+             'prix_unitaire': '1000', 'groupe_index': -1,
+             'groupe_label': 'X' * 200},
+            {'produit': self.produit.id, 'quantite': '1',
+             'prix_unitaire': '1000', 'groupe_index': 'abc'},
+        ], self.company)
+        lignes = list(self.devis.lignes.order_by('ordre'))
+        self.assertIsNone(lignes[0].groupe_index)
+        self.assertEqual(len(lignes[0].groupe_label), 80)
+        self.assertIsNone(lignes[1].groupe_index)
+        self.assertEqual(lignes[1].groupe_label, '')
+
+
+class Qjr517PariteChampsLigne(_BaseSites):
+    """Chaque champ de ``CHAMPS_LIGNE`` moins les exclusions DÉCLARÉES
+    survit à ``remplacer_lignes`` — un champ ajouté demain et oublié par
+    l'écrivain rougit ici."""
+
+    slug = 'qjr517-parite'
+
+    def test_chaque_champ_survit_au_remplacement(self):
+        from apps.ventes.domain.lignes import (
+            EXCLUSIONS_REMPLACEMENT, remplacer_lignes)
+        self.assertEqual(set(EXCLUSIONS_REMPLACEMENT),
+                         {'produit_id', 'lot', 'lot_id'})
+        corps = {
+            'produit': self.produit.id,
+            'designation': 'Panneau parité',
+            'quantite': '7',
+            'prix_unitaire': '955.50',
+            'remise': '5',
+            'taux_tva': '10',
+            'type_ligne': 'produit',
+            'ordre': 4,
+            'variante': 'avec',
+            'role_devis': 'panneau',
+            'groupe_index': 3,
+            'groupe_label': 'Villa C',
+            'optionnelle': True,
+            'quantite_manuelle': True,
+            'prix_manuel': True,
+        }
+        attendus = set(CHAMPS_LIGNE) - set(EXCLUSIONS_REMPLACEMENT)
+        self.assertEqual(
+            attendus - set(corps), set(),
+            'le corps de parité doit couvrir chaque champ non exclu')
+        remplacer_lignes(self.devis, [corps], self.company)
+        ligne = self.devis.lignes.get()
+        valeurs = {
+            'produit': ligne.produit_id,
+            'designation': ligne.designation,
+            'quantite': ligne.quantite,
+            'prix_unitaire': ligne.prix_unitaire,
+            'remise': ligne.remise,
+            'taux_tva': ligne.taux_tva,
+            'type_ligne': ligne.type_ligne,
+            'ordre': ligne.ordre,
+            'variante': ligne.variante,
+            'role_devis': ligne.role_devis,
+            'groupe_index': ligne.groupe_index,
+            'groupe_label': ligne.groupe_label,
+            'optionnelle': ligne.optionnelle,
+            'quantite_manuelle': ligne.quantite_manuelle,
+            'prix_manuel': ligne.prix_manuel,
+        }
+        self.assertEqual(set(valeurs), attendus)
+        self.assertEqual(valeurs, {
+            'produit': self.produit.id,
+            'designation': 'Panneau parité',
+            'quantite': Decimal('7'),
+            'prix_unitaire': Decimal('955.50'),
+            'remise': Decimal('5'),
+            'taux_tva': Decimal('10'),
+            'type_ligne': 'produit',
+            'ordre': 4,
+            'variante': 'avec',
+            'role_devis': 'panneau',
+            'groupe_index': 3,
+            'groupe_label': 'Villa C',
+            'optionnelle': True,
+            'quantite_manuelle': True,
+            'prix_manuel': True,
+        })
