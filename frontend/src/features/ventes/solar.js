@@ -1697,6 +1697,7 @@ export function fusionnerVariantes(lignesSans, lignesAvec) {
 //       `multi_villa_totaux` (selectors.py) mais en TTC (écran) plutôt qu'en
 //       HT→TVA→TTC (backend, qui reste la source AUTORITAIRE au moment du PDF).
 // Retourne null quand aucun des deux modes n'est utilisé (aperçu inchangé).
+const _foisN = (ttc, n) => (Math.round((Number(ttc) || 0) * 100) * n) / 100
 export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct } = {}) {
   const n = parseInt(nombreProprietes, 10)
   if (Number.isFinite(n) && n > 1) {
@@ -1705,7 +1706,11 @@ export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct }
       mode: 'multiplicateur',
       nombreProprietes: n,
       totalUnitaireSans: totalSans, totalUnitaireAvec: totalAvec,
-      totalMultiSans: Math.round(totalSans * n), totalMultiAvec: Math.round(totalAvec * n),
+      // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N AU CENTIME, comme le backend
+      // (`selectors.totaux_multi_proprietes` / `builder._scale_tot`) : ce
+      // total est désormais celui facturé. Unitaire en centimes entiers × N
+      // (jamais un flottant arrondi au dirham).
+      totalMultiSans: _foisN(totalSans, n), totalMultiAvec: _foisN(totalAvec, n),
       totalUnitaireSansBrut: totalSansBrut, totalUnitaireAvecBrut: totalAvecBrut,
     }
   }

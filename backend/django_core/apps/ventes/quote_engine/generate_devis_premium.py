@@ -2523,6 +2523,11 @@ def page3():
             _pay_total = TOTAL_SANS
         else:
             _pay_total = TOTAL_AVEC
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'échéancier
+        # facturé part du total ×N (décision fondateur 30/09/2026) ; les cases
+        # de paiement imprimées le suivent, au centime comme ``_scale_tot``.
+        if NB_PROPRIETES and NB_PROPRIETES > 1:
+            _pay_total = round(_pay_total * NB_PROPRIETES, 2)
 
         # ERR120 — la répartition vit dans une aide PURE (testée seule) : le
         # reliquat part de ``int(round(total))``, la MÊME règle que ``fmt`` qui

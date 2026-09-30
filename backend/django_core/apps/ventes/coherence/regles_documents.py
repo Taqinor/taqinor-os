@@ -83,7 +83,10 @@ def totaux_devis(r, devis, ctx):
     comptées (``LigneDevis.compte_dans_totaux``)."""
     from apps.ventes.domain.argent import Vue, totaux
     from apps.ventes.utils.options import deux_options_declarees
-    t = totaux(devis, vue=Vue.NET)
+    # ERR-QAC-MULTIVILLA-TOTAL-XN — l'arithmétique se vérifie sur UNE villa
+    # (les lignes en décrivent une) ; le ×N n'est qu'une multiplication
+    # entière exacte de chaque étage (``selectors.totaux_multi_proprietes``).
+    t = totaux(devis, vue=Vue.NET, unitaire=True)
     d = {'ht_brut': t.ht_brut, 'remise': t.remise, 'ht_net': t.ht_net,
          'tva': t.tva, 'ttc': t.ttc, 'tva_par_taux': list(t.tva_par_taux)}
     ecarts = ecarts_chaine(d, remise_pct=devis.remise_globale)
@@ -128,6 +131,13 @@ def totaux_imprimes(r, devis, ctx):
                        f"{e['recalcule']}.",
                 valeurs=dict(e, totaux=cle_tot), attendu=e['recalcule'],
                 cle={'totaux': cle_tot, 'etage': e['etage']}))
+    # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis ×N villas imprime AUSSI ses
+    # totaux ×N (``totaux_multi``) : c'est l'un d'eux que l'ERP facture.
+    multi = data.get('totaux_multi')
+    if isinstance(multi, dict):
+        for cle_opt, tot in multi.items():
+            if isinstance(tot, dict) and tot.get('ttc') is not None:
+                ttcs[f'totaux_multi_{cle_opt}'] = _f(tot.get('ttc'))
     if ttcs:
         modele = _f(devis.total_ttc)
         if not any(abs(modele - v) <= TOLERANCES['centime']

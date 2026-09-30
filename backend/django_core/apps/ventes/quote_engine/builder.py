@@ -1854,8 +1854,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.ventes.domain.argent import Vue as _Vue
         from apps.ventes.domain.argent import totaux as _totaux_noyau
 
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — le document se compose sur UNE villa
+        # (``unitaire=True``) : le bloc QJ29 plus bas pose lui-même les totaux
+        # ×N (``_scale_tot``). Sans ce drapeau, le noyau — qui facture
+        # désormais le ×N — serait multiplié une seconde fois ici.
         vue = _totaux_noyau(devis, vue=_Vue.AFFICHAGE,
-                            lignes=[_LigneArgentPdf(r, tva_pct) for r in rows])
+                            lignes=[_LigneArgentPdf(r, tva_pct) for r in rows],
+                            unitaire=True)
         tva_par_taux = [
             {"taux": float(e["taux"]), "montant": float(e["montant"]),
              "ht_net": float(e["base"])}
@@ -3860,7 +3865,14 @@ def display_totals(devis) -> dict:
     au document au dirham près. Repli sûr sur le total stocké."""
     try:
         data = build_quote_data(devis, {"pdf_mode": "onepage"})
-        return {"total": data["display_total"], "nb_options": data["nb_options"]}
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — la liste, le Kanban, la salle de vente
+        # et la page publique des gammes affichent le total ×N que le
+        # document imprime et que l'ERP facture (décision fondateur
+        # 30/09/2026) — jamais le total d'une seule villa.
+        total = data.get("display_total_multi")
+        if total is None:
+            total = data["display_total"]
+        return {"total": total, "nb_options": data["nb_options"]}
     except Exception:  # noqa: BLE001 — une liste ne doit jamais casser
         logger.exception("display_totals: moteur en échec (devis %s)",
                          getattr(devis, "reference", "?"))

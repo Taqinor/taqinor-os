@@ -479,8 +479,11 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
         try:
             from .quote_engine.builder import build_quote_data
             data = build_quote_data(obj, {'pdf_mode': 'onepage'})
-            ts = data.get('totaux_sans') or {}
-            ta = data.get('totaux_avec') or {}
+            # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas : la comparaison montre
+            # les totaux ×N, ceux du total affiché et facturé.
+            multi = data.get('totaux_multi') or {}
+            ts = multi.get('sans') or data.get('totaux_sans') or {}
+            ta = multi.get('avec') or data.get('totaux_avec') or {}
             return {
                 'nb_options': 2,
                 'sans': {

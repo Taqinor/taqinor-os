@@ -376,12 +376,21 @@ def option_lines(devis, option=None):
 def _totaux_canoniques(devis, lignes) -> dict:
     """Totaux canoniques d'une liste de lignes de CE devis — le cœur partagé
     d'``option_totaux`` et du repli sans moteur (``totaux_affichage_repli``) :
-    HT brut → remise globale → TVA par taux → TTC, au centime."""
-    from apps.ventes.selectors import _canonical_totaux
-    can = _canonical_totaux(
+    HT brut → remise globale → TVA par taux → TTC, au centime.
+
+    ERR-QAC-MULTIVILLA-TOTAL-XN (décision fondateur 30/09/2026) — un devis
+    « ×N villas identiques » (``etude_params['nombre_proprietes']``) est
+    FACTURÉ au total ×N que le document imprime : les lignes décrivent UNE
+    villa, la chaîne est mise à l'échelle ×N ici, exactement comme le moteur
+    PDF. Échéancier, solde, acompte public, BC, pro-forma, CA et commission
+    héritent de ce seul point. N=1 → inchangé."""
+    from apps.ventes.selectors import (
+        _canonical_totaux, nombre_proprietes, totaux_multi_proprietes,
+    )
+    can = totaux_multi_proprietes(_canonical_totaux(
         lignes,
         remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
-        fallback_taux=devis.taux_tva)
+        fallback_taux=devis.taux_tva), nombre_proprietes(devis))
     return {
         'ht': can['ht_net'], 'tva': can['tva'], 'ttc': can['ttc'],
         'ht_brut': can['ht_brut'], 'remise': can['remise'],

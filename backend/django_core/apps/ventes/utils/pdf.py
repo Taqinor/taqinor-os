@@ -556,6 +556,10 @@ def generate_bon_commande_pdf(bc_id):
         context['total_ttc'] = totaux['ttc']         # TTC net
         context['remise_montant'] = totaux.get('remise', Decimal('0'))
         context['remise_globale'] = bc.devis.remise_globale or Decimal('0')
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — totaux ×N, lignes d'une villa : le
+        # gabarit l'annonce pour que le document s'additionne.
+        from apps.ventes.selectors import nombre_proprietes
+        context['nombre_proprietes'] = nombre_proprietes(bc.devis)
     else:
         context['lignes'] = []
         context['total_ht_brut'] = Decimal('0')
@@ -641,6 +645,9 @@ def generate_proforma_pdf(devis, reference):
     context['reference'] = reference
     context['lignes'] = lignes
     context['totaux'] = totaux
+    # ERR-QAC-MULTIVILLA-TOTAL-XN — totaux ×N, lignes d'une villa (annoncé).
+    from apps.ventes.selectors import nombre_proprietes
+    context['nombre_proprietes'] = nombre_proprietes(devis)
     html = _render_html('proforma.html', context)
     return _html_to_pdf(html)
 

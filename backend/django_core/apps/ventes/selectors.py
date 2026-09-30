@@ -835,9 +835,62 @@ def nombre_proprietes(devis) -> int:
     mono-système inchangé."""
     try:
         n = int((devis.etude_params or {}).get('nombre_proprietes', 1) or 1)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, AttributeError):
         n = 1
     return max(1, n)
+
+
+def totaux_multi_proprietes(totaux, n):
+    """ERR-QAC-MULTIVILLA-TOTAL-XN — met un dict de totaux canoniques (sortie
+    de :func:`_canonical_totaux`) à l'échelle ×N villas identiques.
+
+    DÉCISION FONDATEUR (30/09/2026, « ×N everywhere ») : la facturation suit le
+    total ×N IMPRIMÉ. Le document multiplie le total d'UNE villa (lignes =
+    une villa) par N, étage par étage (``builder._scale_tot``) ; on fait
+    EXACTEMENT la même chose ici, en Decimal : chaque étage au centime × un
+    entier reste au centime, donc ``ht_net + tva == ttc`` tient toujours et le
+    ×N de l'ERP est au centime celui du PDF. N=1 → le dict est rendu tel quel
+    (chemin mono-système inchangé au bit près).
+    """
+    if n <= 1 or not isinstance(totaux, dict):
+        return totaux
+    out = dict(totaux)
+    for k in ('ht_brut', 'remise', 'ht_net', 'tva', 'ttc'):
+        if out.get(k) is not None:
+            out[k] = out[k] * n
+    if isinstance(out.get('tva_par_taux'), list):
+        paniers = []
+        for b in out['tva_par_taux']:
+            b = dict(b)
+            for k in ('montant', 'ht_net', 'base_ht'):
+                if b.get(k) is not None:
+                    b[k] = b[k] * n
+            paniers.append(b)
+        out['tva_par_taux'] = paniers
+    return out
+
+
+def puissance_kwc_projet(devis):
+    """ERR-QAC-MULTIVILLA-TOTAL-XN — le kWc du PROJET entier.
+
+    ``etude_params['puissance_kwc']`` reste le cache de
+    ``domain.scenario.puissance_kwc_du_devis`` : il est DÉRIVÉ DES LIGNES, qui
+    décrivent UNE villa, et le moteur en tire la production d'une villa (qu'il
+    multiplie ensuite par N lui-même — le multiplier dans la clé doublerait
+    l'échelle). La puissance du projet, celle qui s'apparie au total ×N
+    (``prix_par_kwc`` = TTC(×N) ÷ kWc total), est donc kWc × N, lue ICI.
+    ``None`` quand aucun kWc lisible (pompage, devis sans étude).
+    """
+    from decimal import Decimal, InvalidOperation
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    kwc = etude.get('puissance_kwc')
+    try:
+        kwc_val = Decimal(str(kwc)) if kwc else Decimal('0')
+    except (InvalidOperation, TypeError, ValueError):
+        kwc_val = Decimal('0')
+    if kwc_val <= 0:
+        return None
+    return kwc_val * nombre_proprietes(devis)
 
 
 # ── XFAC15 — score comportement de paiement (agrège FG365) ────────────────

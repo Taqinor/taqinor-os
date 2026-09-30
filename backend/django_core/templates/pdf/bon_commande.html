@@ -136,6 +136,12 @@
     </tbody>
   </table>
 
+  {# ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : lignes d'UNE villa,
+     totaux ×N (le total imprimé sur le devis et facturé). #}
+  {% if nombre_proprietes and nombre_proprietes > 1 %}
+  <div class="note-block"><strong>&times;&nbsp;{{ nombre_proprietes }} propriétés identiques :</strong> quantités indiquées pour une propriété ; totaux pour {{ nombre_proprietes }} propriétés.</div>
+  {% endif %}
+
   {% if bc.note %}
   <div class="note-block"><strong>Note :</strong> {{ bc.note }}</div>
   {% endif %}
