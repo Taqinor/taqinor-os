@@ -1,5 +1,5 @@
-"""Instantané ANONYMISÉ d'une société — cœur partagé de ``export_anonymise`` /
-``import_anonymise`` (QA de nuit sur des données réalistes).
+"""Instantané ANONYMISÉ d'une société — cœur partagé de ``qa_export_anonymise`` /
+``qa_import_anonymise`` (QA de nuit sur des données réalistes).
 
 POURQUOI. Le qa-explorer ne testait que ``seed_demo`` (5 devis nus, 3 leads à un
 nom) : les branches où vivent les vrais bugs (factures d'électricité,

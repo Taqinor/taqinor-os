@@ -17,7 +17,7 @@ AUCUNE notification pendant l'import : les lignes sont insérées par
 
 Run :
   docker compose cp var/anon/latest.anon.json.gz django_core:/tmp/latest.anon.json.gz
-  docker compose exec -T django_core python manage.py import_anonymise --in /tmp/latest.anon.json.gz
+  docker compose exec -T django_core python manage.py qa_import_anonymise --in /tmp/latest.anon.json.gz
   (ou --in - avec le fichier sur stdin)
 
 Login : anon_admin / Anon@2026!   (administrateur — DEV uniquement)
@@ -51,7 +51,7 @@ class Command(BaseCommand):
         # ERR88 — même garde que seed_demo : compte à mot de passe connu.
         if not settings.DEBUG:
             raise CommandError(
-                "import_anonymise est refusé hors DEBUG : il crée le compte "
+                "qa_import_anonymise est refusé hors DEBUG : il crée le compte "
                 "anon_admin à mot de passe connu. Réservé à la stack locale.")
         slug = options['company_slug']
         if 'anon' not in slug.lower():
@@ -83,7 +83,7 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING(
                     f'  ignorées {label}: {detail}'))
             self.stdout.write(f'Login : {ANON_USERNAME} (mot de passe dans '
-                              'import_anonymise.py — DEV seulement).')
+                              'qa_import_anonymise.py — DEV seulement).')
 
     def _reset_company(self, slug):
         from authentication.models import Company, CustomUser

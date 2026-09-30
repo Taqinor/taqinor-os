@@ -27,7 +27,7 @@ base_url: "http://localhost"
 # login demo_admin — rien ne change tant qu'aucun instantané n'existe.
 # `anon` = copie ANONYMISÉE de la prod (identités brouillées ; montants, profils
 # énergie, études, lignes, statuts gardés) chargée dans la société locale
-# `taqinor-anon` par `manage.py import_anonymise`, login anon_admin. Si le
+# `taqinor-anon` par `manage.py qa_import_anonymise`, login anon_admin. Si le
 # fichier `anon_snapshot` est absent, la passe retombe sur `demo` et le dit.
 # Produire l'instantané : docs/qa-explorer.md « Données réalistes anonymisées ».
 dataset: demo

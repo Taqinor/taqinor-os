@@ -29,18 +29,24 @@ const CREATION_DEVIS = /\/api\/django\/ventes\/devis\/(auto\/)?$/
 
 // Écarts RÉELS connus sur CE parcours (lead + facture → Devis automatique →
 // Édition complète), chacun avec sa tâche ERR ouverte dans docs/ERROR_PLAN.md.
-// Cette liste NE PEUT QUE RÉTRÉCIR : une identité listée qui ne diverge plus
+// ECARTS_CONNUS NE PEUT QUE RÉTRÉCIR : une identité listée qui ne diverge plus
 // fait échouer la spec (« retirez-la ») ; on n'en ajoute une qu'avec un repro
 // et une tâche ERR-*. Toute AUTRE identité reste comparée strictement — ne
 // jamais élargir une tolérance pour faire passer un écart.
-const ECARTS_CONNUS = new Set([
-  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — l'éditeur affiche l'étude
-  // horaire RECALCULÉE en direct (écran 6 813 kWh, 2 742 / 5 932 MAD/an) alors
-  // que le devis enregistré — donc le PDF et la proposition — est chiffré sur
-  // le repli productible × kWc (6 543 kWh, 4 580 / 10 064 MAD/an).
+// ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — l'éditeur affiche l'étude
+// horaire RECALCULÉE en direct (écran 6 813 kWh, 2 742 / 5 932 MAD/an, stable
+// d'un run à l'autre) alors que le devis enregistré — donc le PDF et la
+// proposition — porte d'AUTRES chiffres, qui VARIENT sur une saisie identique :
+// run 36656394445 = 6 543 kWh, 4 580 / 10 064 MAD/an ; run 36658107506 =
+// production égale à l'écran, 5 158 / 7 822 MAD/an. Ces identités sont donc
+// TOLÉRÉES DANS LES DEUX SENS (un écart présent ou absent ne fait pas échouer) —
+// sinon la spec serait instable. Les retirer quand l'ERR est corrigée.
+const ECARTS_INTERMITTENTS = new Set([
   'production_annuelle_kwh',
   'economie_annuelle@sans',
   'economie_annuelle@avec',
+])
+const ECARTS_CONNUS = new Set([
   // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT (économie différente) +
   // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN (écran = coût ÷ économie, document =
   // cumul du cashflow 25 ans QX39) : 13,43 / 8,95 ans contre 8,2 / 5,5.
@@ -55,11 +61,12 @@ const ECARTS_CONNUS = new Set([
 ])
 const identiteEcart = (msg) => msg.split(' : ')[0]
 
-/** Écarts NOUVEAUX (hors liste) + identités connues qui ne divergent PLUS. */
+/** Écarts NOUVEAUX (hors listes) + identités connues (stables) qui ne divergent PLUS. */
 function ecartsHorsConnus(surfaces) {
   const ecarts = comparer(surfaces)
   const vus = new Set(ecarts.map(identiteEcart))
-  const nouveaux = ecarts.filter((e) => !ECARTS_CONNUS.has(identiteEcart(e)))
+  const nouveaux = ecarts.filter((e) => !ECARTS_CONNUS.has(identiteEcart(e))
+    && !ECARTS_INTERMITTENTS.has(identiteEcart(e)))
   const perimes = [...ECARTS_CONNUS].filter((id) => !vus.has(id)).map((id) => `${id} : écart `
     + 'connu qui ne se reproduit plus — retirez-le de ECARTS_CONNUS (la liste ne fait que rétrécir)')
   return [...nouveaux, ...perimes]

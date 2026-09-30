@@ -1,4 +1,4 @@
-"""export_anonymise → import_anonymise : instantané anonymisé pour la QA de nuit.
+"""qa_export_anonymise → qa_import_anonymise : instantané anonymisé pour la QA de nuit.
 
 Ce qui est verrouillé ici :
 * aller-retour : nombres, études, lignes, statuts IDENTIQUES ;
@@ -101,12 +101,12 @@ class AnonymiseRoundTripTest(TestCase):
 
     # ── helpers ──────────────────────────────────────────────────────────
     def _export(self):
-        call_command('export_anonymise', company=SOURCE_SLUG,
+        call_command('qa_export_anonymise', company=SOURCE_SLUG,
                      out=str(self.snapshot), verbosity=0)
         return gzip.decompress(self.snapshot.read_bytes())
 
     def _import(self):
-        call_command('import_anonymise', src=str(self.snapshot),
+        call_command('qa_import_anonymise', src=str(self.snapshot),
                      company_slug=TARGET_SLUG, verbosity=0)
         return Company.objects.get(slug=TARGET_SLUG)
 
@@ -247,7 +247,7 @@ class AnonymiseRoundTripTest(TestCase):
     def test_import_refuses_non_anon_slug(self):
         self._export()
         with self.assertRaises(CommandError):
-            call_command('import_anonymise', src=str(self.snapshot),
+            call_command('qa_import_anonymise', src=str(self.snapshot),
                          company_slug=SOURCE_SLUG, verbosity=0)
         self.assertTrue(Company.objects.filter(slug=SOURCE_SLUG).exists())
 
@@ -257,7 +257,7 @@ class AnonymiseGuardsTest(TestCase):
     @override_settings(DEBUG=False)
     def test_import_refused_outside_debug(self):
         with self.assertRaises(CommandError):
-            call_command('import_anonymise', src='nimporte.anon.json.gz',
+            call_command('qa_import_anonymise', src='nimporte.anon.json.gz',
                          verbosity=0)
         self.assertFalse(Company.objects.filter(slug='taqinor-anon').exists())
 

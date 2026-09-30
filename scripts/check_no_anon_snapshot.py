@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Garde CI : aucun instantané anonymisé de production n'est suivi par git.
 
-`manage.py export_anonymise` produit un fichier CONFIDENTIEL (montants réels,
+`manage.py qa_export_anonymise` produit un fichier CONFIDENTIEL (montants réels,
 prix d'achat, études) qui ne doit JAMAIS entrer dans le dépôt : `.gitignore`
 ignore `var/anon/` et `*.anon.json.gz`, mais un `git add -f` passerait outre.
 Cette garde échoue si `git ls-files` liste un tel fichier.

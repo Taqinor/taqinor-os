@@ -25,7 +25,7 @@ centime, chaîne d'états devis → BC → facture, référence unique…), jama
 | `.mcp.json` | Déclare les deux serveurs navigateur : **Playwright MCP** (`@playwright/mcp@0.0.82`) et **Chrome DevTools MCP** (`chrome-devtools-mcp@1.10.1`), versions épinglées, licence Apache-2.0, gratuits. L'entrée `serena` existante est inchangée. |
 | `scripts/setup-nightly-qa.ps1`, `scripts/nightly-qa.ps1`, `docs/nightly-qa.md` | La nuit locale à 23:00 (QAH11) : préparation de la machine et lanceur quotidien. |
 | `docs/qa-explorer/captures/<date>/` | Captures d'écran des constats déposés (JPEG, une par constat). |
-| `manage.py export_anonymise` / `import_anonymise` (`authentication/anonymise.py`) | Jeu de données réaliste anonymisé (`dataset: anon`) — voir « Données réalistes anonymisées ». |
+| `manage.py qa_export_anonymise` / `qa_import_anonymise` (`authentication/anonymise.py`) | Jeu de données réaliste anonymisé (`dataset: anon`) — voir « Données réalistes anonymisées ». |
 | `manage.py audit_coherence` | Oracle dur n°10 : contrôles de cohérence déterministes des documents, lancés par l'orchestrateur après les missions ventes et crm (ignoré tant que la commande n'existe pas). |
 
 ## Comment une passe se déroule
@@ -103,7 +103,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_c
   python manage.py shell -c "from authentication.models import Company; print(list(Company.objects.values_list('slug', flat=True)))"
 mkdir -p /root/taqinor-anon && chmod 700 /root/taqinor-anon
 C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
-$C exec -T django_core python manage.py export_anonymise --company <slug> --out /tmp/latest.anon.json.gz
+$C exec -T django_core python manage.py qa_export_anonymise --company <slug> --out /tmp/latest.anon.json.gz
 # options : --since 2026-01-01 (documents créés depuis) --limit 300 (N plus récents par type)
 $C cp django_core:/tmp/latest.anon.json.gz /root/taqinor-anon/latest.anon.json.gz
 $C exec -T django_core rm -f /tmp/latest.anon.json.gz
@@ -128,11 +128,11 @@ que le dernier import. À la main (stack locale, `DJANGO_DEBUG=True`) :
 
 ```bash
 docker compose cp var/anon/latest.anon.json.gz django_core:/tmp/latest.anon.json.gz
-docker compose exec -T django_core python manage.py import_anonymise --in /tmp/latest.anon.json.gz
+docker compose exec -T django_core python manage.py qa_import_anonymise --in /tmp/latest.anon.json.gz
 docker compose exec -T django_core rm -f /tmp/latest.anon.json.gz
 ```
 
-`import_anonymise` refuse hors `DEBUG`, ne touche **que** la société
+`qa_import_anonymise` refuse hors `DEBUG`, ne touche **que** la société
 `taqinor-anon` (vidée puis rechargée à chaque import — idempotent), remappe toutes
 les clés, et crée le compte `anon_admin` (mot de passe dans le fichier de la
 commande, local seulement). Il insère les lignes sans `save()` ni signal : aucune

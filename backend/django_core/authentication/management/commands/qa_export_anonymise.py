@@ -19,8 +19,8 @@ ailleurs, les anciens instantanés sont supprimés. Aucune valeur n'est
 imprimée : seulement des comptes.
 
 Run (sur le serveur, voir docs/qa-explorer.md « Données réalistes anonymisées ») :
-  python manage.py export_anonymise --company <slug> --out - > latest.anon.json.gz
-  python manage.py export_anonymise --company <slug> --out /tmp/x.anon.json.gz \
+  python manage.py qa_export_anonymise --company <slug> --out - > latest.anon.json.gz
+  python manage.py qa_export_anonymise --company <slug> --out /tmp/x.anon.json.gz \
       [--since 2026-01-01] [--limit 200]
 """
 import datetime
@@ -94,7 +94,7 @@ class Command(BaseCommand):
         size = anonymise.write_snapshot(payload, out, sys.stdout.buffer
                                         if out == '-' else None)
         total = sum(payload['counts'].values())
-        self._log(f'export_anonymise : {total} lignes, {size} octets '
+        self._log(f'qa_export_anonymise : {total} lignes, {size} octets '
                   '(CONFIDENTIEL — jamais commité, jamais transmis).')
         for label, n in payload['counts'].items():
             self._log(f'  {label}: {n}')

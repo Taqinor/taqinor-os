@@ -6,7 +6,7 @@ description: >-
   chantiers, sav, ged, portail, parametres), each with a PERSONA and a plain-French
   MISSION, drives the LOCAL demo ERP (docker stack seeded by seed_demo, login
   demo_admin — or, with `dataset: anon`, an anonymised copy of production loaded
-  by import_anonymise, login anon_admin) through Playwright MCP, while HARD
+  by qa_import_anonymise, login anon_admin) through Playwright MCP, while HARD
   ORACLES judge — any 4xx/5xx, console.error / pageerror / unhandled rejection,
   empty list right after a create, failing /proposal PDF, prix_achat visible,
   audit_coherence violations — and the LLM only judges
@@ -116,11 +116,11 @@ saying why and end without writing anything.
      `python -c "import os,sys; s=os.path.getmtime(sys.argv[1]); m=sys.argv[2]; print('IMPORT' if not os.path.exists(m) or s > float(open(m).read().strip() or 0) else 'FRESH')" <anon_snapshot> logs/nightly-qa/anon-last-import.txt`.
      Import = three commands, never anything else:
      `docker compose cp <anon_snapshot> django_core:/tmp/latest.anon.json.gz`,
-     `docker compose exec -T django_core python manage.py import_anonymise --in /tmp/latest.anon.json.gz`,
+     `docker compose exec -T django_core python manage.py qa_import_anonymise --in /tmp/latest.anon.json.gz`,
      `docker compose exec -T django_core rm -f /tmp/latest.anon.json.gz`
      (always run the `rm`, even after a failure). The command is DEBUG-only and
      only ever wipes/reloads `taqinor-anon`. If it refuses → STOP with
-     `QA_EXPLORER: BLOCKED (import_anonymise refused — DJANGO_DEBUG is not True in the local .env)`.
+     `QA_EXPLORER: BLOCKED (qa_import_anonymise refused — DJANGO_DEBUG is not True in the local .env)`.
      On success write the snapshot's mtime into the marker:
      `python -c "import os,sys; open(sys.argv[2],'w').write(str(os.path.getmtime(sys.argv[1])))" <anon_snapshot> logs/nightly-qa/anon-last-import.txt`.
    - **Confidentiality.** The snapshot and everything read from `taqinor-anon`
@@ -128,13 +128,13 @@ saying why and end without writing anything.
      identities are fake). Never copy the file anywhere else, never open it,
      never paste its content or absolute amounts read from it into a report, an
      ERR entry, a commit or a capture name. The skill NEVER runs
-     `export_anonymise` and never touches the server.
+     `qa_export_anonymise` and never touches the server.
 10. **Credentials — never invent them, never print them.** With `dataset: demo`
     the explorer login is `demo_admin`; its password is the literal passed to
     `admin.set_password(...)` in `seed_demo.py` (the same pair is `ADMIN` in
     `frontend/e2e/helpers.js`). With `dataset: anon` it is `anon_admin`, password
     = the `ANON_PASSWORD` literal of
-    `backend/django_core/authentication/management/commands/import_anonymise.py`.
+    `backend/django_core/authentication/management/commands/qa_import_anonymise.py`.
     Read it from there and hand it to the explorers in their brief only. It must
     never appear in the report, in an ERR entry, in a capture file name or in a
     commit. There is no seeded client-portal account: see the `portail` mission.
@@ -418,7 +418,7 @@ line), inserted in `docs/ERROR_PLAN.md` under `## BUILD QUEUE` (replace the
 `_(vide — …)_` placeholder line if it is still there), ordered Critical → Low:
 
 ```
-- [ ] ERR-QAH-VENTES-DEVIS-TTC-ARRONDI — [ventes] <titre> : <symptôme / impact>. REPRO : 1) se connecter (demo_admin, stack locale seed_demo — ou anon_admin, jeu anonymisé import_anonymise) ; 2) … ; 3) …. ATTENDU : … ; OBSERVÉ : … (preuve : `POST /api/django/ventes/devis/ → 500`, console « … »). CAPTURE : `docs/qa-explorer/captures/<YYYY-MM-DD>/VENTES-DEVIS-TTC-ARRONDI.jpg`. SÉVÉRITÉ : High. CONFIANCE : high (oracle dur n°1, rejoué dans un navigateur indépendant). found via: qa-explorer <YYYY-MM-DD>, persona comptable méfiante. Files: <owning files from CODEMAP §4 — the endpoint's app views/serializers/services + the screen's `frontend/src/features/<x>/` file>. (ROUTINE, @model:sonnet)
+- [ ] ERR-QAH-VENTES-DEVIS-TTC-ARRONDI — [ventes] <titre> : <symptôme / impact>. REPRO : 1) se connecter (demo_admin, stack locale seed_demo — ou anon_admin, jeu anonymisé qa_import_anonymise) ; 2) … ; 3) …. ATTENDU : … ; OBSERVÉ : … (preuve : `POST /api/django/ventes/devis/ → 500`, console « … »). CAPTURE : `docs/qa-explorer/captures/<YYYY-MM-DD>/VENTES-DEVIS-TTC-ARRONDI.jpg`. SÉVÉRITÉ : High. CONFIANCE : high (oracle dur n°1, rejoué dans un navigateur indépendant). found via: qa-explorer <YYYY-MM-DD>, persona comptable méfiante. Files: <owning files from CODEMAP §4 — the endpoint's app views/serializers/services + the screen's `frontend/src/features/<x>/` file>. (ROUTINE, @model:sonnet)
 ```
 
 - An item whose fix obviously needs a founder decision (new paid dependency,
@@ -513,7 +513,7 @@ Delete the pass marker. Then print, each on its own line:
 - The anonymised snapshot (`var/anon/`, `*.anon.json.gz`) is CONFIDENTIAL: never
   committed, never copied outside the local docker stack, never opened or quoted;
   no absolute amount from `taqinor-anon` in any committed text or capture. The
-  skill never runs `export_anonymise` and never touches the server.
+  skill never runs `qa_export_anonymise` and never touches the server.
 - No outbound message to a real person (e-mail, WhatsApp, SMS), no Meta action,
   no external link followed.
 - Never align a test or an oracle with the current behaviour to make it green;
