@@ -70,7 +70,7 @@ function makeStore() {
 // Un brouillon déjà enregistré : le panneau « Surcharges (registre) »
 // n'existe QUE sur un devis avec editDevis?.id (QJR215).
 const DEVIS_ROUVERT = {
-  id: 7, reference: 'DEV-2026-09-0007', statut: 'brouillon',
+  id: 7, reference: 'DEV-2026-09-0007', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
   mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
   lignes: [],
 }

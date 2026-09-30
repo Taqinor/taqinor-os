@@ -102,7 +102,7 @@ beforeEach(() => {
   crmApi.getLead.mockResolvedValue({ data: LEAD })
   ventesApi.getDevisById.mockResolvedValue({
     data: {
-      id: 42, reference: 'DEV-202609-0042', statut: 'brouillon', lead: 7, client: 9,
+      id: 42, reference: 'DEV-202609-0042', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, lead: 7, client: 9,
       mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: { scenario: 'Sans batterie', factures_mensuelles_reelles: FACTURES },
       lignes: [

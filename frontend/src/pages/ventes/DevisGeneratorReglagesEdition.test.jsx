@@ -87,7 +87,7 @@ beforeEach(() => {
   })
   ventesApi.getDevisById.mockResolvedValue({
     data: {
-      id: 510, reference: 'DEV-202609-0510', statut: 'brouillon', client: 9,
+      id: 510, reference: 'DEV-202609-0510', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, client: 9,
       mode_installation: 'industriel', taux_tva: '20.00', remise_globale: '0',
       prix_cible_kwc: '8500.00',
       etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000 },

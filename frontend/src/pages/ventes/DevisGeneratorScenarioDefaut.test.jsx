@@ -131,7 +131,7 @@ describe('un scénario DÉJÀ choisi n’est jamais réécrit par le défaut', (
   it('brouillon rouvert « Avec batterie » : le choix survit à la réouverture', async () => {
     ventesApi.getDevisById.mockResolvedValue({
       data: {
-        id: 7, reference: 'DEV-2026-08-0007', statut: 'brouillon',
+        id: 7, reference: 'DEV-2026-08-0007', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
         mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
         lignes: [],
         etude_params: { scenario: 'Avec batterie', recommended_choice: 'Avec batterie' },
@@ -145,7 +145,7 @@ describe('un scénario DÉJÀ choisi n’est jamais réécrit par le défaut', (
   it('QJR524 — « Sans batterie » recommandé (recommended_option) revient tel quel, pas « Auto »', async () => {
     ventesApi.getDevisById.mockResolvedValue({
       data: {
-        id: 637, reference: 'DEV-2026-09-0637', statut: 'brouillon',
+        id: 637, reference: 'DEV-2026-09-0637', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
         mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
         lignes: [],
         etude_params: { scenario: 'Les deux (Sans + Avec)', recommended_option: 'Sans batterie' },
@@ -160,7 +160,7 @@ describe('un scénario DÉJÀ choisi n’est jamais réécrit par le défaut', (
   it('brouillon industriel « Les deux » : le défaut du mode ne l’écrase pas', async () => {
     ventesApi.getDevisById.mockResolvedValue({
       data: {
-        id: 8, reference: 'DEV-2026-08-0008', statut: 'brouillon',
+        id: 8, reference: 'DEV-2026-08-0008', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
         mode_installation: 'industriel', taux_tva: '20.00', remise_globale: '0',
         lignes: [],
         etude_params: { scenario: 'Les deux (Sans + Avec)' },
