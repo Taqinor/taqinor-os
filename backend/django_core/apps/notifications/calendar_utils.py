@@ -1,6 +1,6 @@
 """FG5 — Utilitaires de calendrier ouvré, par société.
 
-Quatre helpers publics :
+Cinq helpers publics :
   - is_jour_ouvre(date, company)         → bool
   - prochain_jour_ouvre(date, company)   → date (premier jour ouvré ≥ date)
   - ajouter_jours_ouvres(date, n, company) → date après n jours ouvrés
@@ -9,6 +9,9 @@ Quatre helpers publics :
     ``notifications.models`` en dehors de ce module) pour alimenter un
     décompte de jours avec les fêtes MOBILES (Aïd, Mawlid…) saisies dans
     `Holiday`.
+  - jours_ouvres_entre(company, debut, fin) → set des `date` OUVRÉES de la
+    fenêtre (COCKPIT-CONTRÔLE) — ``is_jour_ouvre`` en lot, requêtes bornées
+    par le nombre d'ANNÉES couvertes, jamais par le nombre de jours.
 
 Un « jour ouvré » = un jour de la semaine marqué comme ouvré dans la
 `WorkingHoursConfig` de la société ET non présent dans sa table `Holiday`
@@ -138,6 +141,30 @@ def is_jour_ouvre(d: datetime.date, company) -> bool:
     working_days = _load_working_days(company)
     holidays = _load_holidays_for_year(company, d.year)
     return _is_working_day_raw(d, working_days, holidays)
+
+
+def jours_ouvres_entre(
+        company, date_debut: datetime.date,
+        date_fin: datetime.date) -> set[datetime.date]:
+    """COCKPIT-CONTRÔLE (30/09/2026) — l'ENSEMBLE des jours ouvrés de
+    ``company`` dans ``[date_debut, date_fin]`` (inclusif) : la version EN LOT
+    de ``is_jour_ouvre``, même règle (bitmask de la société + fériés fixes et
+    mobiles), en une requête de réglage et une requête de fériés par année
+    couverte — jamais deux requêtes PAR JOUR, quel que soit l'écart. Bornes
+    absentes ou inversées : ensemble vide."""
+    if date_debut is None or date_fin is None or date_debut > date_fin:
+        return set()
+    working_days = _load_working_days(company)
+    holidays = _Feries()
+    for year in range(date_debut.year, date_fin.year + 1):
+        holidays |= _load_holidays_for_year(company, year)
+    ouvres = set()
+    jour = date_debut
+    while jour <= date_fin:
+        if _is_working_day_raw(jour, working_days, holidays):
+            ouvres.add(jour)
+        jour += datetime.timedelta(days=1)
+    return ouvres
 
 
 def prochain_jour_ouvre(d: datetime.date, company) -> datetime.date:

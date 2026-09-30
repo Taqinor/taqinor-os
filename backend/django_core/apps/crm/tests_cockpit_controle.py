@@ -16,6 +16,11 @@ premier : ``contract_samples/controle_suivi.json`` — ses ``pourquoi`` et
     n'y est pas —, premier contact hors délai), triées, plafonnées à 10 ;
   * les absences déclarées excusent ; les annulations du moteur sortent du
     dénominateur ; la période précédente se mesure pareil ;
+  * contrat v2 : le retard (et l'attente d'une tâche) se compte en jours
+    OUVRÉS — week-ends, fériés du calendrier et absences déclarées ne
+    comptent pas ; à 0 une étape ouverte n'est pas jugée (case « en
+    cours ») ; ``reportees`` et ``nb_reports`` sont montrés ; le nombre de
+    requêtes ne grandit pas avec le volume ;
   * le détail par type suit l'ordre de la table ; la médiane (jamais la
     moyenne) ; trois résultats lus par les sélecteurs de visites et ventes ;
   * la portée de visibilité et ``owner`` bornent tout ; ``jours`` hors
@@ -31,7 +36,9 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -44,6 +51,8 @@ from apps.crm import horaires, services, stages
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DEVIS
 from apps.crm.models import Client, Lead, PeriodeAbsence, RelanceEtape
+from apps.notifications.calendar_utils import jours_ouvres_entre
+from apps.notifications.models import Holiday
 from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
 from apps.ventes.models import Devis
@@ -81,6 +90,22 @@ def _a(jour, heure=10, minute=0):
                                      tzinfo=CASA)
 
 
+def _lun_ven(debut, fin):
+    """Les jours ouvrés du calendrier par défaut d'une société (lundi à
+    vendredi, aucun férié) — ``jours_ouvres_entre`` sans base."""
+    jours = set()
+    jour = debut
+    while jour <= fin:
+        if jour.weekday() < 5:
+            jours.add(jour)
+        jour += datetime.timedelta(days=1)
+    return jours
+
+
+#: Les jours ouvrés des tests purs : un mois de lundis à vendredis.
+OUVRES = _lun_ven(_jour(-40), _jour(0))
+
+
 class TableEtParametresTests(SimpleTestCase):
     """Sans base : l'ordre de la table, les refus de ``jours``, les états."""
 
@@ -109,22 +134,29 @@ class TableEtParametresTests(SimpleTestCase):
             base.update(valeurs)
             return base
 
-        self.assertEqual(cs._etat_du_jour(case(), False), cs.ETAT_VIDE)
-        self.assertEqual(cs._etat_du_jour(case(du=2, a_temps=2), False),
+        # Second argument : le nombre d'étapes ouvertes EN RETARD de ce jour
+        # (contrat v2, `notes.jours.etat`).
+        self.assertEqual(cs._etat_du_jour(case(), 0), cs.ETAT_VIDE)
+        self.assertEqual(cs._etat_du_jour(case(du=2, a_temps=2), 0),
                          cs.ETAT_VERT)
         self.assertEqual(
-            cs._etat_du_jour(case(du=2, a_temps=1, en_retard=1), False),
+            cs._etat_du_jour(case(du=2, a_temps=1, en_retard=1), 0),
             cs.ETAT_ORANGE)
         self.assertEqual(
-            cs._etat_du_jour(case(du=2, a_temps=1, sautees=1), False),
+            cs._etat_du_jour(case(du=2, a_temps=1, sautees=1), 0),
             cs.ETAT_ORANGE)
         self.assertEqual(
-            cs._etat_du_jour(case(du=2, a_temps=1, ouvert=1), False),
+            cs._etat_du_jour(case(du=2, a_temps=1, ouvert=1), 1),
             cs.ETAT_ROUGE)
+        # Ouvertes, aucune encore en retard (aujourd'hui, ou la veille d'un
+        # week-end, d'un férié, d'une absence) : en cours.
         self.assertEqual(
-            cs._etat_du_jour(case(du=2, a_temps=1, ouvert=1), True),
+            cs._etat_du_jour(case(du=2, a_temps=1, ouvert=1), 0),
             cs.ETAT_EN_COURS)
-        self.assertEqual(cs._etat_du_jour(case(du=1, a_temps=1), True),
+        self.assertEqual(
+            cs._etat_du_jour(case(du=3, en_retard=1, ouvert=2), 0),
+            cs.ETAT_EN_COURS)
+        self.assertEqual(cs._etat_du_jour(case(du=1, a_temps=1), 0),
                          cs.ETAT_VERT)
 
 
@@ -133,11 +165,13 @@ class MesurePureTests(SimpleTestCase):
     par type sont des calculs PURS sur des étapes déjà lues."""
 
     def _etape(self, jour, statut=A_FAIRE, fait=None, outcome='',
-               cadence='contact', cle='', libelle='Appel', lead_id=1):
+               cadence='contact', cle='', libelle='Appel', lead_id=1,
+               nb_reports=0):
         return RelanceEtape(
             lead_id=lead_id, cadence=cadence, canal='appel', cle=cle,
             libelle=libelle, statut=statut, due_date=jour, due_at=_a(jour),
-            traite_le=_a(fait, 11) if fait else None, outcome=outcome)
+            traite_le=_a(fait, 11) if fait else None, outcome=outcome,
+            nb_reports=nb_reports)
 
     def test_verdict_cases_et_detail_par_type(self):
         etapes = [
@@ -149,16 +183,21 @@ class MesurePureTests(SimpleTestCase):
             self._etape(_jour(-4), FAIT, fait=_jour(-4), cadence='generique',
                         cle=CLE_DEVIS),
         ]
-        cases, verdict, par_type = cs._mesure_de_la_periode(
-            etapes, AUJOURDHUI, cadence_absence.CouvertureAbsences(), {1: 7})
+        cases, en_retard_du_jour, verdict, par_type = (
+            cs._mesure_de_la_periode(
+                etapes, AUJOURDHUI, cadence_absence.CouvertureAbsences(),
+                {1: 7}, OUVRES))
         self.assertEqual(verdict, {'du': 5, 'a_temps': 2, 'en_retard': 1,
-                                   'sautees': 1, 'ouvert': 1})
+                                   'sautees': 1, 'ouvert': 1,
+                                   'reportees': 0})
+        # La case du jour compte l'étape ouverte non jugée.
         self.assertEqual(cases[_jour(0)], {'du': 1, 'a_temps': 0,
                                            'en_retard': 0, 'sautees': 0,
                                            'ouvert': 1})
-        self.assertEqual(cs._etat_du_jour(cases[_jour(0)], True),
+        self.assertEqual(en_retard_du_jour, {_jour(-1): 1})
+        self.assertEqual(cs._etat_du_jour(cases[_jour(0)], 0),
                          cs.ETAT_EN_COURS)
-        self.assertEqual(cs._etat_du_jour(cases[_jour(-1)], False),
+        self.assertEqual(cs._etat_du_jour(cases[_jour(-1)], 1),
                          cs.ETAT_ROUGE)
         lignes = cs._lignes_par_type(par_type)
         self.assertEqual([ligne['type_etape'] for ligne in lignes],
@@ -166,29 +205,66 @@ class MesurePureTests(SimpleTestCase):
         contact, devis = lignes
         self.assertEqual(
             (contact['du'], contact['a_temps'], contact['en_retard'],
-             contact['sautees'], contact['ouvert']), (4, 1, 1, 1, 1))
+             contact['sautees'], contact['ouvert'], contact['reportees']),
+            (4, 1, 1, 1, 1, 0))
         self.assertEqual(contact['reponses'],
                          [{'cle': 'non_joint', 'n': 1},
                           {'cle': 'sans_issue', 'n': 1}])
         self.assertIs(devis['est_tache'], True)
         self.assertEqual(devis['reponses'], [{'cle': 'sans_issue', 'n': 1}])
 
+    def test_reportees_parmi_les_seules_etapes_jugees(self):
+        """``reportees`` = les étapes JUGÉES repoussées au moins une fois ; une
+        étape du jour (non jugée) reportée n'y est pas, et le pourcentage ne
+        la retranche jamais."""
+        etapes = [
+            self._etape(_jour(-9), FAIT, fait=_jour(-9), nb_reports=1),
+            self._etape(_jour(-2), nb_reports=3),        # ouverte, en retard
+            self._etape(_jour(-8), FAIT, fait=_jour(-7)),
+            self._etape(_jour(0), nb_reports=1),         # du jour : non jugée
+        ]
+        _cases, _jours, verdict, par_type = cs._mesure_de_la_periode(
+            etapes, AUJOURDHUI, cadence_absence.CouvertureAbsences(),
+            {1: 7}, OUVRES)
+        self.assertEqual((verdict['du'], verdict['reportees']), (3, 2))
+        [contact] = cs._lignes_par_type(par_type)
+        self.assertEqual((contact['du'], contact['reportees']), (3, 2))
+
     def test_une_absence_du_responsable_excuse_un_retard(self):
         absences = cadence_absence.CouvertureAbsences([PeriodeAbsence(
             utilisateur_id=7, date_debut=_jour(-6), date_fin=_jour(-5))])
         etape = self._etape(_jour(-6), FAIT, fait=_jour(-4))
-        self.assertEqual(cs._juger(etape, absences, {1: 7}), cs.A_TEMPS)
-        self.assertEqual(cs._juger(etape, absences, {1: 8}), cs.EN_RETARD)
+        self.assertEqual(
+            cs._juger(etape, AUJOURDHUI, absences, {1: 7}, OUVRES),
+            cs.A_TEMPS)
+        self.assertEqual(
+            cs._juger(etape, AUJOURDHUI, absences, {1: 8}, OUVRES),
+            cs.EN_RETARD)
+
+    def test_une_etape_ouverte_n_est_jugee_qu_apres_un_jour_compte(self):
+        vendredi = _jour(-5)
+        self.assertEqual(vendredi.weekday(), 4)
+        etape = self._etape(vendredi)
+        personne = cadence_absence.CouvertureAbsences()
+        for lu_le, attendu in ((vendredi, None), (_jour(-4), None),
+                               (_jour(-3), None), (_jour(-2), cs.OUVERT)):
+            with self.subTest(lu_le=lu_le):
+                self.assertEqual(
+                    cs._juger(etape, lu_le, personne, {1: 7}, OUVRES),
+                    attendu)
 
     def test_la_periode_precedente(self):
         etapes = [self._etape(_jour(-15), FAIT, fait=_jour(-15)),
                   self._etape(_jour(-16), FAIT, fait=_jour(-14)),
-                  self._etape(_jour(-20))]
+                  self._etape(_jour(-20)),
+                  self._etape(_jour(0))]                 # non jugée
         self.assertEqual(
-            cs._a_temps_pct(etapes, cadence_absence.CouvertureAbsences(),
-                            {1: 7}), 33.3)
+            cs._a_temps_pct(etapes, AUJOURDHUI,
+                            cadence_absence.CouvertureAbsences(), {1: 7},
+                            OUVRES), 33.3)
         self.assertIsNone(cs._a_temps_pct(
-            [], cadence_absence.CouvertureAbsences(), {}))
+            [], AUJOURDHUI, cadence_absence.CouvertureAbsences(), {},
+            OUVRES))
 
     def test_une_liste_filtree_sur_owner_et_plafonnee(self):
         lignes = [(7, {'n': rang}) for rang in range(12)] + [(8, {'n': 99})]
@@ -197,6 +273,52 @@ class MesurePureTests(SimpleTestCase):
         self.assertEqual(len(tout['lignes']), cs.LIGNES_MAX)
         self.assertEqual(cs._liste(lignes, 8),
                          {'total': 1, 'lignes': [{'n': 99}]})
+
+
+class JoursComptesTests(SimpleTestCase):
+    """Sans base : LA règle du retard (contrat v2, ``notes.retard``) — un
+    jour compté est un jour OUVRÉ que n'excuse aucune absence déclarée du
+    responsable (ni fermeture de la société), strictement après l'échéance,
+    aujourd'hui compris."""
+
+    PERSONNE = cadence_absence.CouvertureAbsences()
+
+    def _compte(self, apres, jusqu_a, *, owner=7, ouvres=OUVRES,
+                absences=PERSONNE):
+        return cs._jours_comptes(apres, jusqu_a, owner, ouvres, absences)
+
+    def test_le_week_end_ne_compte_pas(self):
+        vendredi = _jour(-5)
+        self.assertEqual(vendredi.weekday(), 4)
+        for lu_le, attendu in ((_jour(-6), 0), (vendredi, 0), (_jour(-4), 0),
+                               (_jour(-3), 0), (_jour(-2), 1), (_jour(-1), 2),
+                               (_jour(0), 3)):
+            with self.subTest(lu_le=lu_le):
+                self.assertEqual(self._compte(vendredi, lu_le), attendu)
+
+    def test_une_absence_declaree_retient_ses_jours(self):
+        absences = cadence_absence.CouvertureAbsences([PeriodeAbsence(
+            utilisateur_id=7, date_debut=_jour(-2), date_fin=_jour(-1))])
+        lundi = _jour(-2)
+        self.assertEqual(
+            self._compte(lundi, _jour(-1), absences=absences), 0)
+        self.assertEqual(
+            self._compte(lundi, _jour(0), absences=absences), 1)
+        # L'absence d'un autre n'excuse personne.
+        self.assertEqual(
+            self._compte(lundi, _jour(0), owner=8, absences=absences), 2)
+
+    def test_une_fermeture_de_la_societe_retient_ses_jours(self):
+        fermeture = cadence_absence.CouvertureAbsences([PeriodeAbsence(
+            utilisateur_id=None, date_debut=_jour(-1), date_fin=_jour(-1))])
+        self.assertEqual(
+            self._compte(_jour(-2), _jour(0), absences=fermeture), 1)
+
+    def test_un_ferie_ne_compte_pas(self):
+        sans_lundi = OUVRES - {_jour(-2)}
+        self.assertEqual(self._compte(_jour(-5), _jour(-1)), 2)
+        self.assertEqual(
+            self._compte(_jour(-5), _jour(-1), ouvres=sans_lundi), 1)
 
 
 class _Base(TestCase):
@@ -464,17 +586,24 @@ class VerdictCompteursTests(_Base):
             self._controle()['verdict']['precedent_a_temps_pct'])
 
     def test_une_absence_declaree_excuse(self):
+        """Une étape CLOSE échue un jour d'absence est excusée. Contrat v2
+        (``notes.retard``) : une étape OUVERTE échue pendant l'absence n'est
+        plus effacée — elle devient en retard au premier jour compté après le
+        retour (échue vendredi 25 : lundi 28, mardi 29, mercredi 30 → 3)."""
         lead = self._lead()
         self._suivi(lead)
         PeriodeAbsence.objects.create(
             company=self.company, utilisateur=self.acteur,
             date_debut=_jour(-6), date_fin=_jour(-5))
         self._fait(lead, _jour(-6), le=_jour(-4))         # excusée
-        self._etape(lead, _jour(-5))                      # ouverte, excusée
+        ouverte = self._etape(lead, _jour(-5))            # échue absente
         controle = self._controle()
         self.assertEqual(controle['verdict']['a_temps'], 1)
         self.assertEqual(controle['verdict']['en_retard'], 0)
-        self.assertEqual(controle['exceptions']['en_retard']['total'], 0)
+        self.assertEqual(controle['verdict']['ouvert'], 1)
+        [ligne] = controle['exceptions']['en_retard']['lignes']
+        self.assertEqual(ligne['etape'], ouverte.pk)
+        self.assertEqual(ligne['jours_de_retard'], 3)
 
     def test_l_absence_d_un_autre_n_excuse_personne(self):
         collegue = self._utilisateur('collegue', role_legacy='responsable')
@@ -567,7 +696,10 @@ class ExceptionsTests(_Base):
                          [tache.pk, touche.pk])
         self.assertEqual(lignes[0]['type_etape'], st.TYPE_DEVIS)
         self.assertIs(lignes[0]['est_tache'], True)
-        self.assertEqual(lignes[0]['jours_de_retard'], 5)
+        # Contrat v2 : jours OUVRÉS — échue vendredi 25, le week-end ne
+        # compte pas (lundi 28, mardi 29, mercredi 30).
+        self.assertEqual(lignes[0]['jours_de_retard'], 3)
+        self.assertEqual(lignes[1]['jours_de_retard'], 2)
         self.assertEqual(lignes[0]['lead'], lead.pk)
         self.assertEqual(lignes[0]['owner_nom'], self.acteur.username)
         self.assertEqual(lignes[0]['due_date'], _jour(-5).isoformat())
@@ -579,7 +711,10 @@ class ExceptionsTests(_Base):
         liste = self._controle()['exceptions']['en_retard']
         self.assertEqual(liste['total'], 12)
         self.assertEqual(len(liste['lignes']), cs.LIGNES_MAX)
-        self.assertEqual(liste['lignes'][0]['jours_de_retard'], 12)
+        # La plus ancienne (vendredi 18/09) : 12 jours calendaires, 8 ouvrés.
+        self.assertEqual(liste['lignes'][0]['due_date'],
+                         _jour(-12).isoformat())
+        self.assertEqual(liste['lignes'][0]['jours_de_retard'], 8)
 
     def test_une_tache_en_attente_depuis_deux_jours(self):
         lead = self._lead()
@@ -604,7 +739,9 @@ class ExceptionsTests(_Base):
             'lignes']
         self.assertEqual(ligne['etape'], tache.pk)
         self.assertEqual(ligne['due_date'], tache.due_date.isoformat())
-        self.assertEqual(ligne['ouverte_depuis_jours'], 4)
+        # Posée samedi 26 : lundi, mardi, mercredi — 3 jours OUVRÉS.
+        self.assertEqual(ligne['ouverte_depuis_jours'], 3)
+        self.assertEqual(ligne['nb_reports'], 1)
 
     def test_les_reports_d_une_etape_ouverte(self):
         lead = self._lead()
@@ -689,6 +826,220 @@ class ExceptionsTests(_Base):
             {'total': 0, 'lignes': []})
         self.assertEqual(controle['seuils']['premier_contact_heures'], 0)
         self.assertEqual(controle['premier_contact']['delai_heures'], 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5 bis. Contrat v2 — le retard en jours OUVRÉS, les reports montrés
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _lu_le(jour, heure=10):
+    """L'instant de lecture (``maintenant``) d'un autre jour que le gel."""
+    return _a(jour, heure)
+
+
+class RetardEnJoursOuvresTests(_Base):
+    """``notes.retard`` : un jour compté est un jour OUVRÉ de la société que
+    n'excuse aucune absence déclarée du responsable ; à 0, une étape ouverte
+    n'est pas jugée et sa case est « en cours »."""
+
+    def _case(self, controle, jour):
+        [case] = [case for case in controle['jours']
+                  if case['date'] == jour.isoformat()]
+        return case
+
+    def test_echeance_vendredi_lue_dimanche_lundi_mardi(self):
+        vendredi, dimanche, lundi, mardi = (
+            _jour(-5), _jour(-3), _jour(-2), _jour(-1))
+        self.assertEqual((vendredi.weekday(), dimanche.weekday()), (4, 6))
+        lead = self._lead()
+        self._suivi(lead)
+        etape = self._etape(lead, vendredi, cree_le=_a(_jour(-8)))
+
+        dim = self._controle(maintenant=_lu_le(dimanche, 12))
+        self.assertEqual(dim['exceptions']['en_retard']['total'], 0)
+        self.assertEqual((dim['verdict']['du'], dim['verdict']['ouvert']),
+                         (0, 0))                          # non jugée
+        self.assertIsNone(dim['verdict']['a_temps_pct'])
+        self.assertEqual(dim['verdict']['niveau'], cs.NIVEAU_OK)
+        case = self._case(dim, vendredi)
+        self.assertEqual((case['du'], case['ouvert'], case['etat']),
+                         (1, 1, cs.ETAT_EN_COURS))
+        self.assertEqual(dim['par_type'], [])
+
+        lun = self._controle(maintenant=_lu_le(lundi))
+        [ligne] = lun['exceptions']['en_retard']['lignes']
+        self.assertEqual((ligne['etape'], ligne['jours_de_retard']),
+                         (etape.pk, 1))
+        self.assertEqual(ligne['due_date'], vendredi.isoformat())
+        self.assertEqual(lun['verdict']['niveau'], cs.NIVEAU_ATTENTION)
+        self.assertEqual((lun['verdict']['du'], lun['verdict']['ouvert']),
+                         (1, 1))
+        self.assertEqual(self._case(lun, vendredi)['etat'], cs.ETAT_ROUGE)
+
+        mar = self._controle(maintenant=_lu_le(mardi))
+        [ligne] = mar['exceptions']['en_retard']['lignes']
+        self.assertEqual(ligne['jours_de_retard'], 2)
+        self.assertEqual(mar['verdict']['niveau'], cs.NIVEAU_ALERTE)
+
+    def test_une_absence_declaree_retient_les_jours_de_retard(self):
+        lundi, mardi = _jour(-2), _jour(-1)
+        PeriodeAbsence.objects.create(
+            company=self.company, utilisateur=self.acteur,
+            date_debut=lundi, date_fin=mardi)
+        lead = self._lead()
+        self._suivi(lead)
+        self._etape(lead, lundi, cree_le=_a(_jour(-5)))
+
+        mar = self._controle(maintenant=_lu_le(mardi))
+        self.assertEqual(mar['exceptions']['en_retard']['total'], 0)
+        self.assertEqual(mar['verdict']['du'], 0)
+        self.assertEqual(self._case(mar, lundi)['etat'], cs.ETAT_EN_COURS)
+
+        mer = self._controle()                            # mercredi 30
+        [ligne] = mer['exceptions']['en_retard']['lignes']
+        self.assertEqual(ligne['jours_de_retard'], 1)
+        self.assertEqual(mer['verdict']['niveau'], cs.NIVEAU_ATTENTION)
+        self.assertEqual(self._case(mer, lundi)['etat'], cs.ETAT_ROUGE)
+
+    def test_un_ferie_du_calendrier_ne_compte_pas(self):
+        vendredi, lundi, mardi = _jour(-5), _jour(-2), _jour(-1)
+        Holiday.objects.create(company=self.company, date=lundi,
+                               nom='Férié du contrôle',
+                               recurrent_annuel=False)
+        lead = self._lead()
+        self._suivi(lead)
+        self._etape(lead, vendredi, cree_le=_a(_jour(-8)))
+        controle = self._controle(maintenant=_lu_le(mardi))
+        [ligne] = controle['exceptions']['en_retard']['lignes']
+        self.assertEqual(ligne['jours_de_retard'], 1)      # mardi seulement
+        self.assertEqual(controle['verdict']['niveau'], cs.NIVEAU_ATTENTION)
+        self.assertIs(self._case(controle, lundi)['ouvre'], False)
+        self.assertIs(self._case(controle, mardi)['ouvre'], True)
+
+    def test_jours_ouvres_entre_lit_le_calendrier_en_lot(self):
+        vendredi, lundi, mardi = _jour(-5), _jour(-2), _jour(-1)
+        self.assertEqual(jours_ouvres_entre(self.company, vendredi, mardi),
+                         {vendredi, lundi, mardi})
+        Holiday.objects.create(company=self.company, date=lundi,
+                               nom='Férié du contrôle',
+                               recurrent_annuel=False)
+        self.assertEqual(jours_ouvres_entre(self.company, vendredi, mardi),
+                         {vendredi, mardi})
+        self.assertEqual(jours_ouvres_entre(self.company, mardi, lundi),
+                         set())
+
+    def test_une_tache_posee_vendredi_attend_depuis_mardi(self):
+        vendredi, lundi, mardi = _jour(-5), _jour(-2), _jour(-1)
+        lead = self._lead()
+        tache = self._devis(lead, _jour(3), cree_le=_a(vendredi))
+        lun = self._controle(maintenant=_lu_le(lundi))
+        self.assertEqual(lun['exceptions']['taches_en_attente'],
+                         {'total': 0, 'lignes': []})     # 1 jour ouvré
+        mar = self._controle(maintenant=_lu_le(mardi))
+        [ligne] = mar['exceptions']['taches_en_attente']['lignes']
+        self.assertEqual((ligne['etape'], ligne['ouverte_depuis_jours']),
+                         (tache.pk, 2))
+        self.assertEqual(mar['verdict']['niveau'], cs.NIVEAU_ATTENTION)
+
+
+class ReportsMontresTests(_Base):
+    """``verdict.reportees`` et ``par_type[].reportees`` (parmi les étapes
+    JUGÉES), et ``nb_reports`` sur toute ligne d'étape des exceptions."""
+
+    def test_reportees_au_verdict_et_par_type(self):
+        lead = self._lead()
+        self._suivi(lead)
+        # À temps et reportée ; en retard ; ouverte en retard et reportée ;
+        # du jour, reportée mais NON jugée ; une tâche reportée, à temps.
+        self._fait(lead, _jour(-9), nb_reports=1)
+        self._fait(lead, _jour(-8), le=_jour(-7))
+        self._etape(lead, _jour(-2), nb_reports=2)
+        self._etape(lead, _jour(0), heure=15, nb_reports=1)
+        self._devis(lead, _jour(-4), statut=FAIT, fait_le=_a(_jour(-4)),
+                    nb_reports=1)
+        controle = self._controle()
+        verdict = controle['verdict']
+        self.assertEqual(
+            {cle: verdict[cle] for cle in ('du', 'a_temps', 'en_retard',
+                                           'sautees', 'ouvert', 'reportees')},
+            {'du': 4, 'a_temps': 2, 'en_retard': 1, 'sautees': 0,
+             'ouvert': 1, 'reportees': 3})
+        # Montrée à côté du pourcentage, jamais retranchée de lui.
+        self.assertEqual(verdict['a_temps_pct'], 50.0)
+        par_type = {ligne['type_etape']: ligne
+                    for ligne in controle['par_type']}
+        self.assertEqual(
+            (par_type[st.TYPE_CONTACT_APPEL]['du'],
+             par_type[st.TYPE_CONTACT_APPEL]['reportees']), (3, 2))
+        self.assertEqual(
+            (par_type[st.TYPE_DEVIS]['du'],
+             par_type[st.TYPE_DEVIS]['reportees']), (1, 1))
+
+    def test_nb_reports_sur_les_lignes_d_etape(self):
+        lead = self._lead()
+        repoussee = self._etape(lead, _jour(-2), nb_reports=3)
+        jamais = self._etape(lead, _jour(-1))
+        tache = self._devis(lead, _jour(2), cree_le=_a(_jour(-5)),
+                            nb_reports=1)
+        exceptions = self._controle()['exceptions']
+        self.assertEqual(
+            [(ligne['etape'], ligne['nb_reports'])
+             for ligne in exceptions['en_retard']['lignes']],
+            [(repoussee.pk, 3), (jamais.pk, 0)])
+        [ligne] = exceptions['taches_en_attente']['lignes']
+        self.assertEqual((ligne['etape'], ligne['nb_reports']), (tache.pk, 1))
+        [ligne] = exceptions['reports']['lignes']
+        self.assertEqual((ligne['etape'], ligne['nb_reports']),
+                         (repoussee.pk, 3))
+
+
+class VolumeTests(_Base):
+    """Contrat v2 : jours ouvrés, fériés et absences sont lus EN LOT — le
+    nombre de requêtes de ``controle_suivi`` ne grandit ni avec le nombre
+    d'étapes, ni avec le nombre de dossiers."""
+
+    def _dossier(self):
+        """Un dossier qui peuple TOUT : période d'avant, à temps, en retard,
+        ouverte en retard, du jour, tâche en attente, reportée deux fois — et
+        un dossier sorti du suivi, et un premier contact hors délai."""
+        lead = self._lead()
+        self._fait(lead, _jour(-16))
+        self._fait(lead, _jour(-9), outcome='joint')
+        self._fait(lead, _jour(-8), le=_jour(-7))
+        self._etape(lead, _jour(-5), nb_reports=1)
+        self._etape(lead, _jour(0), heure=15)
+        self._devis(lead, _jour(3), cree_le=_a(_jour(-5)))
+        self._etape(lead, _jour(4), nb_reports=2)
+        sorti = self._lead()
+        self._fait(sorti, _jour(-6))
+        self._lead(stage=stages.NEW, cree_le=_a(_jour(-6)))
+
+    def _mesure(self):
+        with CaptureQueriesContext(connection) as requetes:
+            controle = self._controle()
+        return len(requetes.captured_queries), controle
+
+    def test_le_nombre_de_requetes_ne_grandit_pas_avec_le_volume(self):
+        PeriodeAbsence.objects.create(
+            company=self.company, utilisateur=self.acteur,
+            date_debut=_jour(-12), date_fin=_jour(-11))
+        Holiday.objects.create(company=self.company, date=_jour(-13),
+                               nom='Férié du volume', recurrent_annuel=False)
+        for _rang in range(2):
+            self._dossier()
+        self._controle()                    # caches de processus déjà chauds
+        avec_deux, controle = self._mesure()
+        self.assertEqual(controle['exceptions']['en_retard']['total'], 2)
+        for _rang in range(10):
+            self._dossier()
+        avec_douze, controle = self._mesure()
+        self.assertEqual(
+            {nom: liste['total']
+             for nom, liste in controle['exceptions'].items()},
+            {'en_retard': 12, 'taches_en_attente': 12, 'reports': 12,
+             'sans_prochaine_etape': 12, 'premier_contact_hors_delai': 12})
+        self.assertEqual(controle['verdict']['du'], 12 * 4)
+        self.assertEqual(avec_douze, avec_deux)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

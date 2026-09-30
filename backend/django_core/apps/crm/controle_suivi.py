@@ -27,10 +27,21 @@ Règles de jugement d'une étape due un jour donné (son échéance COURANTE) :
 retard CAD22, ou échue un jour d'ABSENCE déclarée de son responsable CAD35 —
 ``selectors._a_lheure_ou_excusee``, réutilisé, jamais recopié) ; « en
 retard » = close après ; « sautée » = sautée (``sautee`` est exclusivement
-humain, CKP1) ; « ouvert » = encore à faire. Les annulations du MOTEUR
-(``annulee``) sortent du dénominateur. Une étape d'aujourd'hui encore ouverte
-n'est pas jugée (la journée n'est pas finie) : elle colore la case du jour
-« en cours » sans entrer au verdict.
+humain, CKP1). Les annulations du MOTEUR (``annulee``) sortent du
+dénominateur.
+
+LE RETARD SE COMPTE EN JOURS OUVRÉS (contrat v2, ``notes.retard``) : un JOUR
+COMPTÉ est un jour ouvré de la société (``notifications.calendar_utils``)
+que n'excuse aucune absence déclarée du responsable du lead
+(``cadence_absence``, fermetures de société comprises) — ``_jours_comptes``,
+LA fonction, écrite une fois. Une étape OUVERTE n'est « en retard » (jugée
+« ouvert ») qu'à partir d'un jour compté après son échéance ; à 0 (du jour,
+ou échue la veille d'un week-end, d'un férié ou d'une absence) elle n'est PAS
+jugée : ni au verdict, ni au détail par type, ni aux exceptions — seule la
+case de son jour la compte (« en cours »). L'ancienneté d'une TÂCHE se compte
+de la même façon depuis sa pose. Les jours ouvrés sont lus EN LOT
+(``calendar_utils.jours_ouvres_entre``) : le nombre de requêtes ne dépend ni
+du nombre d'étapes, ni du nombre de dossiers.
 
 Transparence (décision fondateur CKP3) : aucune garde de rôle — seule la
 portée de visibilité (``scope_queryset`` via le lead) borne la lecture, et
@@ -144,8 +155,25 @@ def _horodatage(instant):
     return serializers.DateTimeField().to_representation(instant)
 
 
-def _juger(etape, absences, proprietaire):
-    """Le jugement d'une étape due (voir l'en-tête du module)."""
+def _jours_comptes(apres, jusqu_a, owner_id, ouvres, absences):
+    """LA règle du retard (contrat v2, ``notes.retard``) : le nombre de
+    JOURS COMPTÉS ``d`` avec ``apres < d <= jusqu_a`` — un jour ouvré de la
+    société (``ouvres``, lu en lot) que n'excuse aucune absence déclarée de
+    ``owner_id`` (ni fermeture de la société). Pur : aucune requête."""
+    compte = 0
+    jour = apres + datetime.timedelta(days=1)
+    while jour <= jusqu_a:
+        if jour in ouvres and not absences.couvre(owner_id, jour):
+            compte += 1
+        jour += datetime.timedelta(days=1)
+    return compte
+
+
+def _juger(etape, today, absences, proprietaire, ouvres):
+    """Le jugement d'une étape due (voir l'en-tête du module) : ``A_TEMPS``,
+    ``EN_RETARD``, ``SAUTEES``, ``OUVERT`` (ouverte ET en retard d'au moins
+    un jour compté), ou ``None`` — une étape ouverte pas encore en retard
+    n'est pas jugée."""
     from .models import RelanceEtape
     from .selectors import _a_lheure_ou_excusee
 
@@ -154,19 +182,25 @@ def _juger(etape, absences, proprietaire):
                 else EN_RETARD)
     if etape.statut == RelanceEtape.Statut.SAUTEE:
         return SAUTEES
-    return OUVERT
+    if _jours_comptes(etape.due_date, today, proprietaire.get(etape.lead_id),
+                      ouvres, absences) >= 1:
+        return OUVERT
+    return None
 
 
 def _compteurs():
     return {'du': 0, A_TEMPS: 0, EN_RETARD: 0, SAUTEES: 0, OUVERT: 0}
 
 
-def _etat_du_jour(case, aujourdhui):
-    """``jours.etat`` (contrat, ``notes.jours.etat``)."""
+def _etat_du_jour(case, ouvertes_en_retard):
+    """``jours.etat`` (contrat, ``notes.jours.etat``) : ``rouge`` s'il reste
+    une étape ouverte EN RETARD de ce jour-là, ``en_cours`` s'il en reste
+    d'ouvertes dont aucune n'est encore en retard (aujourd'hui, ou un jour
+    passé sans jour compté depuis)."""
     if not case['du']:
         return ETAT_VIDE
     if case[OUVERT]:
-        return ETAT_EN_COURS if aujourdhui else ETAT_ROUGE
+        return ETAT_ROUGE if ouvertes_en_retard else ETAT_EN_COURS
     if case[EN_RETARD] or case[SAUTEES]:
         return ETAT_ORANGE
     return ETAT_VERT
@@ -187,6 +221,8 @@ def _ligne_etape(etape, extra):
         'est_tache': est_tache(etape),
         'canal': etape.canal,
         'due_date': etape.due_date.isoformat(),
+        # Contrat v2 — toute ligne d'étape porte ses reports humains.
+        'nb_reports': etape.nb_reports,
     }
     ligne.update(extra)
     return ligne
@@ -202,33 +238,52 @@ def _liste(lignes, owner):
 
 # ── Les exceptions de l'instant (toute la portée ; ``owner`` filtre après) ──
 
-def _en_retard(etapes_en_retard, today, absences):
+def _en_retard(etapes_echues, today, absences, ouvres):
+    """Étapes ouvertes (touches ET tâches) en retard d'au moins UN jour
+    compté ; ``jours_de_retard`` = ce nombre de jours OUVRÉS. Une étape échue
+    pendant une absence devient en retard au premier jour compté après le
+    retour — l'absence n'efface plus le retard, elle en retient les jours."""
     lignes = []
-    for etape in etapes_en_retard:
-        if absences.couvre(etape.lead.owner_id, etape.due_date):
-            continue                              # absence déclarée : excusée
+    for etape in etapes_echues:
+        retard = _jours_comptes(etape.due_date, today, etape.lead.owner_id,
+                                ouvres, absences)
+        if retard < 1:
+            continue                    # aucun jour compté : pas en retard
         lignes.append((etape.lead.owner_id, _ligne_etape(
-            etape, {'jours_de_retard': (today - etape.due_date).days})))
+            etape, {'jours_de_retard': retard})))
     return lignes
 
 
-def _taches_en_attente(company, portee_ids, today):
-    """TÂCHES ouvertes posées depuis ``TACHE_ATTENTE_JOURS`` jours ou plus,
-    quelle que soit leur échéance : un report ne les en sort pas."""
+def _taches_ouvertes_anciennes(company, portee_ids, today):
+    """Les TÂCHES ouvertes posées au plus tard l'avant-veille, par date de
+    pose croissante — le pré-filtre SQL de ``taches_en_attente`` (un jour
+    compté n'est jamais plus qu'un jour calendaire)."""
     from .models import RelanceEtape
     from .suite_touche import q_tache
 
     seuil = _debut_du_jour(
         today - datetime.timedelta(days=TACHE_ATTENTE_JOURS - 1))
-    etapes = (RelanceEtape.objects
-              .filter(company=company, statut=RelanceEtape.Statut.A_FAIRE,
-                      lead_id__in=portee_ids, created_at__lt=seuil)
-              .filter(q_tache())
-              .select_related('lead', 'lead__owner')
-              .order_by('created_at', 'pk'))
-    return [(etape.lead.owner_id, _ligne_etape(etape, {
-        'ouverte_depuis_jours': (today - _jour_local(etape.created_at)).days,
-    })) for etape in etapes]
+    return list(RelanceEtape.objects
+                .filter(company=company, statut=RelanceEtape.Statut.A_FAIRE,
+                        lead_id__in=portee_ids, created_at__lt=seuil)
+                .filter(q_tache())
+                .select_related('lead', 'lead__owner')
+                .order_by('created_at', 'pk'))
+
+
+def _taches_en_attente(taches, today, absences, ouvres):
+    """TÂCHES ouvertes posées depuis ``TACHE_ATTENTE_JOURS`` jours OUVRÉS ou
+    plus (comptés comme le retard), quelle que soit leur échéance : un
+    report ne les en sort pas."""
+    lignes = []
+    for etape in taches:
+        attente = _jours_comptes(_jour_local(etape.created_at), today,
+                                 etape.lead.owner_id, ouvres, absences)
+        if attente < TACHE_ATTENTE_JOURS:
+            continue
+        lignes.append((etape.lead.owner_id, _ligne_etape(
+            etape, {'ouverte_depuis_jours': attente})))
+    return lignes
 
 
 def _reports(company, portee_ids):
@@ -341,42 +396,64 @@ def _premier_contact_hors_delai(company, portee_ids, maintenant, sla):
 
 # ── La mesure de la période ──────────────────────────────────────────────────
 
-def _mesure_de_la_periode(etapes, today, absences, proprietaire):
-    """``(cases_par_jour, verdict, par_type)`` sur les étapes dues de la
-    période (déjà filtrées sur ``owner``, annulations exclues)."""
+def _mesure_de_la_periode(etapes, today, absences, proprietaire, ouvres):
+    """``(cases_par_jour, ouvertes_en_retard_par_jour, verdict, par_type)``
+    sur les étapes dues de la période (déjà filtrées sur ``owner``,
+    annulations exclues).
+
+    Une case compte TOUTES les étapes de son jour (jugées ou non) ; le
+    verdict et le détail par type ne comptent que les étapes JUGÉES, et
+    ``reportees`` = celles d'entre elles repoussées au moins une fois par un
+    geste humain (``nb_reports`` ≥ 1) — un fait montré à côté du
+    pourcentage, jamais retranché de lui."""
+    from .models import RelanceEtape
     from .suite_touche import type_etape_connu
 
     cases = {}
-    verdict = _compteurs()
+    en_retard_du_jour = {}
+    verdict = dict(_compteurs(), reportees=0)
     par_type = {}
     for etape in etapes:
-        jugement = _juger(etape, absences, proprietaire)
+        jugement = _juger(etape, today, absences, proprietaire, ouvres)
         case = cases.setdefault(etape.due_date, _compteurs())
         case['du'] += 1
+        if jugement is None:
+            # Ouverte, pas encore en retard : la case la compte, le
+            # jugement non (contrat v2, `notes.retard`).
+            if etape.statut == RelanceEtape.Statut.A_FAIRE:
+                case[OUVERT] += 1
+            continue
         case[jugement] += 1
-        if jugement == OUVERT and etape.due_date == today:
-            continue                     # la journée n'est pas finie
+        if jugement == OUVERT:
+            en_retard_du_jour[etape.due_date] = (
+                en_retard_du_jour.get(etape.due_date, 0) + 1)
+        reportee = (etape.nb_reports or 0) >= 1
         verdict['du'] += 1
         verdict[jugement] += 1
+        verdict['reportees'] += reportee
         ligne = par_type.setdefault(type_etape_connu(etape), {
-            'compteurs': _compteurs(), 'reponses': {}})
+            'compteurs': dict(_compteurs(), reportees=0), 'reponses': {}})
         ligne['compteurs']['du'] += 1
         ligne['compteurs'][jugement] += 1
+        ligne['compteurs']['reportees'] += reportee
         if jugement in (A_TEMPS, EN_RETARD):
             cle = (etape.outcome or '').strip() or 'sans_issue'
             ligne['reponses'][cle] = ligne['reponses'].get(cle, 0) + 1
-    return cases, verdict, par_type
+    return cases, en_retard_du_jour, verdict, par_type
 
 
-def _a_temps_pct(etapes, absences, proprietaire):
-    """La même mesure qu'au verdict, sur une période ENTIÈREMENT passée."""
-    jugements = [_juger(e, absences, proprietaire) for e in etapes]
+def _a_temps_pct(etapes, today, absences, proprietaire, ouvres):
+    """La même mesure qu'au verdict (même jugement, mêmes étapes non jugées
+    écartées), sur la période précédente."""
+    jugements = [j for j in (_juger(e, today, absences, proprietaire, ouvres)
+                             for e in etapes) if j is not None]
     return _pct(sum(1 for j in jugements if j == A_TEMPS), len(jugements))
 
 
 def _lignes_par_type(par_type):
     """``par_type`` dans l'ORDRE de la table du parcours ; un type sans étape
-    due n'est pas servi ; ``reponses`` par effectif décroissant."""
+    JUGÉE n'est pas servi ; ``reportees`` comme au verdict ; ``reponses`` par
+    effectif décroissant."""
     from .suite_touche import TYPES_ORDONNES, TYPES_TACHE
 
     lignes = []
@@ -393,6 +470,7 @@ def _lignes_par_type(par_type):
             EN_RETARD: compteurs[EN_RETARD],
             SAUTEES: compteurs[SAUTEES],
             OUVERT: compteurs[OUVERT],
+            'reportees': compteurs['reportees'],
             'reponses': [
                 {'cle': cle, 'n': n} for cle, n in sorted(
                     bloc['reponses'].items(),
@@ -482,6 +560,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
     celui d'Africa/Casablanca."""
     from django.utils import timezone
 
+    from apps.notifications.calendar_utils import jours_ouvres_entre
     from authentication.scoping import scope_queryset
     from core.dates import aujourd_hui_local
 
@@ -512,22 +591,27 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             .exclude(statut=RelanceEtape.Statut.ANNULEE)
             .only('id', 'lead', 'statut', 'due_date', 'due_at',
                   'traite_le', 'created_at', 'cadence_depart', 'cle',
-                  'libelle', 'cadence', 'canal', 'outcome'))
-        etapes_en_retard = list(
+                  'libelle', 'cadence', 'canal', 'outcome', 'nb_reports'))
+        etapes_echues = list(
             RelanceEtape.objects
             .filter(company=company, statut=RelanceEtape.Statut.A_FAIRE,
                     lead_id__in=portee_ids, due_date__lt=today)
             .select_related('lead', 'lead__owner')
             .order_by('due_date', 'due_at', 'pk'))
-        # CAD35 — les absences déclarées, chargées UNE fois sur la fenêtre
-        # que les chiffres couvrent réellement (jamais une durée inventée).
-        absences = cadence_absence.couverture(
-            company,
-            min([debut_precedent] + [e.due_date for e in etapes_en_retard]),
-            today)
+        taches_anciennes = _taches_ouvertes_anciennes(
+            company, portee_ids, today)
+        # CAD35 + calendrier de la société — chargés UNE fois, EN LOT, sur la
+        # fenêtre que les chiffres couvrent réellement : la plus ancienne des
+        # deux périodes, la plus ancienne échéance en retard, la plus
+        # ancienne tâche ouverte (jamais une durée inventée).
+        borne = min([debut_precedent]
+                    + [e.due_date for e in etapes_echues]
+                    + [_jour_local(t.created_at) for t in taches_anciennes])
+        absences = cadence_absence.couverture(company, borne, today)
+        ouvres = jours_ouvres_entre(company, borne, today)
 
-        en_retard = _en_retard(etapes_en_retard, today, absences)
-        taches = _taches_en_attente(company, portee_ids, today)
+        en_retard = _en_retard(etapes_echues, today, absences, ouvres)
+        taches = _taches_en_attente(taches_anciennes, today, absences, ouvres)
         reports = _reports(company, portee_ids)
         sans_etape = _sans_prochaine_etape(company, portee, today)
         hors_delai = _premier_contact_hors_delai(
@@ -538,8 +622,8 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         precedente = [e for e in dues if e.due_date < debut
                       and (owner is None
                            or proprietaire.get(e.lead_id) == owner)]
-        cases, verdict, par_type = _mesure_de_la_periode(
-            periode, today, absences, proprietaire)
+        cases, en_retard_du_jour, verdict, par_type = _mesure_de_la_periode(
+            periode, today, absences, proprietaire, ouvres)
 
         exceptions = {
             'en_retard': _liste(en_retard, owner),
@@ -566,8 +650,8 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
 
         # Une case par jour calendaire, du plus ancien à aujourd'hui (« pas
         # encore de données » quand le verdict est vide : aucune case, comme
-        # `exemple_vide`). `ouvre` : le calendrier de la société
-        # (`notifications.calendar_utils`, mémorisé par `horaires`).
+        # `exemple_vide`). `ouvre` : le calendrier de la société, lu en lot
+        # (`notifications.calendar_utils.jours_ouvres_entre`).
         frise = []
         if niveau != NIVEAU_VIDE:
             for decalage in range(jours):
@@ -575,19 +659,21 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
                 case = cases.get(jour, _compteurs())
                 frise.append({
                     'date': jour.isoformat(),
-                    'ouvre': bool(horaires._jour_ouvre(jour, company)),
+                    'ouvre': jour in ouvres,
                     'aujourdhui': jour == today,
                     'du': case['du'],
                     A_TEMPS: case[A_TEMPS],
                     EN_RETARD: case[EN_RETARD],
                     SAUTEES: case[SAUTEES],
                     OUVERT: case[OUVERT],
-                    'etat': _etat_du_jour(case, jour == today),
+                    'etat': _etat_du_jour(
+                        case, en_retard_du_jour.get(jour, 0)),
                 })
 
         premier_contact = _premier_contact(
             portee, owner, debut, maintenant, sla, company)
-        precedent_pct = _a_temps_pct(precedente, absences, proprietaire)
+        precedent_pct = _a_temps_pct(precedente, today, absences,
+                                     proprietaire, ouvres)
 
     concernes = {proprietaire.get(e.lead_id) for e in dues
                  if e.due_date >= debut}
@@ -611,6 +697,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             'en_retard': verdict[EN_RETARD],
             'sautees': verdict[SAUTEES],
             'ouvert': verdict[OUVERT],
+            'reportees': verdict['reportees'],
             'a_temps_pct': _pct(verdict[A_TEMPS], verdict['du']),
             'precedent_a_temps_pct': precedent_pct,
         },
