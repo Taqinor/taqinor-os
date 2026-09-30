@@ -136,6 +136,10 @@ LEAD_PERDU = 'lead_perdu'
 # annulé, les gestes de visite retirés ; le suivi continue sans visite
 # (``suite_si_plus_rien_ouvert`` le dit).
 VISITE_ABANDONNEE = 'visite_abandonnee'
+# SUIVI E10 (30/09/2026) — un créneau CONVENU devient un APPEL : l'étape
+# « Rappeler le client — rappel convenu » est posée à la date et à l'heure
+# convenues (et, E17, sur le dernier réveil).
+ETAPE_RAPPEL_CONVENU_A_LA_DATE = 'etape_rappel_convenu_a_la_date'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -152,7 +156,7 @@ CODES = frozenset({
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
-    LEAD_PERDU, VISITE_ABANDONNEE,
+    LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -559,6 +563,11 @@ def _codes_filet(etape, issue, est_actif):
         # 24/09/2026 — la suite est de caler la visite, rien d'autre.
         return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
+        # SUIVI E10 — sur « proposer un créneau », le créneau convenu devient
+        # l'appel « rappel convenu » ; partout ailleurs (CAD3), l'étape est
+        # déplacée à la date.
+        if cle_de(etape) == CLE_MESSAGE_CRENEAU:
+            return [ETAPE_RAPPEL_CONVENU_A_LA_DATE]
         return [ETAPE_DEPLACEE_A_LA_DATE]
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]

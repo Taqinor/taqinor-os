@@ -3692,9 +3692,24 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             if refus:
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
+        from .cadence_config import CLE_MESSAGE_CRENEAU
         from .services import (est_etape_de_filet, est_etape_de_visite,
                                marquer_etape_relance,
-                               reporter_prochaine_touche)
+                               reporter_prochaine_touche,
+                               repondre_rappel_convenu)
+        # SUIVI E10 (30/09/2026) — « Créneau convenu le… » sur l'étape
+        # « Message — proposer un créneau pour l'appel » : le créneau convenu
+        # devient un APPEL. L'étape message est close et « Rappeler le
+        # client — rappel convenu » est posée à la date ET à l'heure
+        # convenues (avant, l'étape message était déplacée telle quelle).
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None
+                and est_etape(etape, CLE_MESSAGE_CRENEAU)):
+            etape, rappel = repondre_rappel_convenu(
+                etape, request.user, quand, note=note, body=body)
+            data = self.get_serializer(etape).data
+            data['prochaine_touche'] = _prochaine_touche_publique(rappel)
+            return Response(data)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
         # la consomme pas. L'écran promet « L'étape est déplacée à la date
         # choisie » ; la clore rendait la main au filet, qui posait une AUTRE

@@ -12401,7 +12401,7 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
 # ── CAD-A ── CAD7 — « Question de prix — veut négocier » ────────────────────
 
 def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
-                          vise=None, jours=None):
+                          vise=None, jours=None, a_la_date=None):
     """Pose UNE étape de FILET (cadence ``generique``, hors protocole) au
     prochain créneau de son canal — ou DÉPLACE celle encore ouverte : jamais
     deux fois la même étape dans la file.
@@ -12410,12 +12410,24 @@ def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
     libellé, canal, délai (``jours`` l'impose quand l'appelant le connaît),
     heure et gabarit de message viennent du barreau de la société, et
     l'étape ouverte se retrouve par sa CLÉ. Sans clé (question de prix, hors
-    gabarit) : ``libelle``/``canal``/``vise`` tels quels."""
-    from . import horaires
+    gabarit) : ``libelle``/``canal``/``vise`` tels quels.
+
+    SUIVI E10 — ``a_la_date`` (un instant AWARE, convenu DEVANT le client) :
+    l'étape de clé ``cle`` est posée à CET instant, recalé sur la fenêtre de
+    son canal (jamais née déjà échue), au lieu du délai du barreau."""
+    from . import cadence_temps, horaires
 
     if cle:
         config = cadence_config.config_cle(lead.company, cle)
-        quand = _echeance_configuree(lead, config, jours=jours)
+        if a_la_date is not None:
+            canal_config = _canal_configure(config)
+            quand = horaires.prochain_creneau_appel(
+                a_la_date, lead.company, canal=canal_config)
+            if quand < timezone.now():
+                quand = cadence_temps.echeance_jamais_echue(
+                    quand, company=lead.company, canal=canal_config)
+        else:
+            quand = _echeance_configuree(lead, config, jours=jours)
         libelle = config['libelle']
         canal = _canal_configure(config)
         template_cle = config['template_cle']
@@ -12605,6 +12617,52 @@ def repondre_visite_abandonnee(etape, user, *, note='', body=''):
         issue_touche_close=spec['outcome'], demarrer_plan=False)
     _recaler_file(lead, user)
     return etape
+
+
+# ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────
+
+def repondre_rappel_convenu(etape, user, quand, *, note='', body='',
+                            sortir_du_froid=False):
+    """SUIVI E10 / E17 (30/09/2026) — le client a convenu d'un moment pour
+    être APPELÉ : la touche est close (FAIT, issue « à rappeler »), et
+    l'étape « Rappeler le client — rappel convenu » (clé ``rappel_convenu``,
+    un appel) est posée À LA DATE ET À L'HEURE convenues, recalées sur la
+    fenêtre d'appel de la société.
+
+    Deux touches y mènent :
+
+    * « Message — proposer un créneau pour l'appel » (E10) : l'étape message
+      était déplacée telle quelle, et « rappel convenu » restait
+      inatteignable depuis l'écran ;
+    * le DERNIER réveil (E17) : la date choisie n'était reportée sur rien.
+      Avec ``sortir_du_froid``, un dossier au Froid en sort d'abord
+      (→ Contacté) : un client qui fixe une date de rappel est réactivé.
+
+    Aucune autre suite (``suite=False``) ; UNE note système dit l'étape posée.
+    Renvoie ``(touche close, étape « rappel convenu »)``."""
+    from . import horaires
+
+    lead = etape.lead
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note, outcome='rappel',
+        body=body, suite=False)
+    if sortir_du_froid:
+        lead.refresh_from_db(fields=['stage'])
+        if lead.stage == stages.COLD:
+            avancer_stage_lead_vers(lead, user, stages.CONTACTED)
+    rappel = _poser_etape_de_filet(
+        lead, cle=CLE_RAPPEL_CONVENU, a_la_date=quand,
+        note='Posée : créneau d’appel convenu avec le client.')
+    _recaler_file(lead, user)
+    quand_local = rappel.due_at.astimezone(horaires.CASABLANCA)
+    quand_lisible = quand_local.strftime('%d/%m/%Y à %H:%M')
+    # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Créneau convenu avec le client : étape « {rappel.libelle} » '
+              f'posée pour le {quand_lisible}.'))
+    return etape, rappel
 
 
 # ── CAD-A ── CAD101 — « pièce reçue » : le geste pour l'enregistrer ─────────

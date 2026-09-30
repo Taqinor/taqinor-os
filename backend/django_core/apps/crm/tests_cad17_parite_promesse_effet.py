@@ -438,6 +438,19 @@ def _lead_perdu(c):
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
 
 
+def _etape_rappel_convenu_a_la_date(c):
+    # SUIVI E10/E17 — la touche est close, et l'APPEL « rappel convenu » est
+    # posé à la date ET à l'heure convenues.
+    c.vrai(c.etape.statut == FAIT, 'la touche n’est pas close')
+    rappels = c.ouvertes(libelle=FILET_RAPPEL_LIBELLE, due_date=DATE_CHOISIE,
+                         canal=APPEL)
+    c.vrai(rappels.exists(),
+           'aucun « rappel convenu » à la date choisie')
+    c.vrai(any(r.due_at.astimezone(horaires.CASABLANCA)
+               .strftime('%H:%M') == HEURE_CHOISIE for r in rappels),
+           'le « rappel convenu » n’est pas à l’heure convenue')
+
+
 def _visite_abandonnee(c):
     # SUIVI E4 — plus aucun geste de visite ouvert, plus de date de visite
     # sur la fiche ; la touche est close « joint » (la proposition vit).
@@ -541,6 +554,7 @@ VERIFICATEURS = {
     st.JOURNAL_SANS_EFFET: _journal_sans_effet,
     st.LEAD_PERDU: _lead_perdu,
     st.VISITE_ABANDONNEE: _visite_abandonnee,
+    st.ETAPE_RAPPEL_CONVENU_A_LA_DATE: _etape_rappel_convenu_a_la_date,
 }
 
 
