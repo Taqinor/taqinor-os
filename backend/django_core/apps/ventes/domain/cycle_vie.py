@@ -1691,8 +1691,10 @@ def renouveler_devis(devis, *, user=None):
     copie figée), lié au devis source par ``devis_origine`` (racine de chaîne)
     et portant ``numero_renouvellement`` = source + 1.
 
-    DISTINCT de ``reviser`` (T10) : celui-ci corrige un devis non encore
-    accepté et supersède l'original ; ``renouveler`` laisse le devis source
+    DISTINCT de ``reviser`` (T10) : celui-ci crée la V+1 d'un devis envoyé,
+    accepté, refusé ou expiré (D-QJR5-2 — un accepté se révise, son chantier
+    et son contrat passent à la V2, QJR559) et supersède l'original ;
+    ``renouveler`` laisse le devis source
     strictement intact (statut, chaîne BC/Facture, historique).
 
     Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.

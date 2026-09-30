@@ -2078,7 +2078,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         reprenant les lignes actuelles aux PRIX CATALOGUE COURANTS, lié à son
         devis d'origine (``devis_origine``) et numéroté
         (``numero_renouvellement``). Le devis source reste intact — distinct de
-        ``reviser`` (qui corrige un devis non encore accepté)."""
+        ``reviser`` (qui crée la V+1 d'un devis envoyé, accepté, refusé ou
+        expiré — D-QJR5-2 ; un accepté révisé garde son chantier, QJR559)."""
         from ..services import renouveler_devis
         nouveau = renouveler_devis(self.get_object(), user=request.user)
         return Response(
