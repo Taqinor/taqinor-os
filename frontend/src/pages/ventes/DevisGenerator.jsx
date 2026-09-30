@@ -1951,6 +1951,9 @@ export default function DevisGenerator({
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
       if (d.note) setNote(d.note)
+      // QJR527 — le prix cible DU DEVIS gagne, vide compris (sinon chaque
+      // enregistrement en édition l'effaçait : le payload envoie `null`).
+      setPrixCible(d.prix_cible_kwc != null ? String(parseFloat(d.prix_cible_kwc)) : '')
       // QJR523 — mappeur UNIQUE (lignesEcran.js) : ordre serveur, prix TTC au
       // centime, option / type / variante / verrous manuels (QJR65, QJR218),
       // groupes villa et rôle stocké — tous relus ici.
@@ -2116,15 +2119,18 @@ export default function DevisGenerator({
   // FEATURE 10 : en CRÉATION uniquement, la date de validité par défaut suit
   // « validité du devis » (jours) et les heures de pompage suivent « heures de
   // pompage/jour ». Les champs restent librement éditables (rien n'est imposé).
-  // En édition (?edit=ID), c'est le devis lui-même qui prime — on ne touche à
-  // rien ici.
+  // QJR527 — en édition (?edit=ID), le devis prime sur la date de validité,
+  // les heures de pompage et le prix cible (relu par le mappeur) ; mais la
+  // LOGIQUE société (tarif kWh, rendement, TVA, productible, remise max) est
+  // chargée dans les DEUX modes — sinon l'étude I/C était re-persistée au
+  // tarif par défaut du code et imprimée.
   const settingsLoaded = useRef(false)
   useEffect(() => {
-    if (editId || settingsLoaded.current) return
+    if (settingsLoaded.current) return
     settingsLoaded.current = true
     parametresApi.getProfile().then(({ data }) => {
       const jours = parseInt(data?.quote_validity_days, 10)
-      if (Number.isFinite(jours) && jours > 0) {
+      if (!editId && Number.isFinite(jours) && jours > 0) {
         const d = new Date()
         d.setDate(d.getDate() + jours)
         const iso = `${d.getFullYear()}-${String(d.getMonth() + 1)
@@ -2132,7 +2138,7 @@ export default function DevisGenerator({
         setDateValidite(prev => prev || iso)
       }
       const heures = parseFloat(data?.agricole_pump_hours)
-      if (Number.isFinite(heures) && heures > 0) {
+      if (!editId && Number.isFinite(heures) && heures > 0) {
         setPompeHeures(String(heures))
       }
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
@@ -2158,7 +2164,7 @@ export default function DevisGenerator({
         productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
-      if (Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
+      if (!editId && Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
       const rmax = parseFloat(data?.remise_max_pct)
       if (Number.isFinite(rmax) && rmax > 0) setRemiseMax(String(rmax))
     }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
