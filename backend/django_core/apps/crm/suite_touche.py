@@ -342,6 +342,22 @@ TYPES_TACHE = frozenset({
 })
 
 
+def type_etape_connu(etape):
+    """COCKPIT-CONTRÔLE — ``type_etape`` tel que la touche le SERT (contrat
+    ``relance_etape_v2``) : l'identifiant d'un type de la table du parcours,
+    ``''`` si la table ne le connaît pas (jamais un type inventé). Pur."""
+    type_id = type_etape(etape)
+    return type_id if type_id in REPONSES_PAR_TYPE else ''
+
+
+def est_tache(etape):
+    """COCKPIT-CONTRÔLE — l'étape est-elle une TÂCHE de la table (``tache:
+    true`` : préparer le devis, décider la suite, question de prix, planifier
+    la visite, devis modifié) ? Traitable dès maintenant, jamais « sautée ».
+    Pur."""
+    return type_etape(etape) in TYPES_TACHE
+
+
 def nature_touche(etape):
     """La nature de ``etape`` — lue sur sa CLÉ (PARAM-CADENCE), exactement
     comme le moteur la lit (``materialiser_touche_suivante``,
