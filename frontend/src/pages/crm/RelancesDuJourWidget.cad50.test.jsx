@@ -16,7 +16,6 @@ const PREMIERE = ETAPES[0]
 vi.mock('../../api/crmApi', () => ({
   default: {
     getRelanceEtapesDues: vi.fn(),
-    getKpiAdherence: vi.fn(() => Promise.resolve({ data: { leads_sans_touche: [] } })),
     marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
     marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
     reporterRelanceEtape: vi.fn(),

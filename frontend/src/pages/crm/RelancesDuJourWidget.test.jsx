@@ -175,12 +175,12 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmer' })).not.toBeDisabled())
   })
 
-  it('affiche un état vide qui nomme le démarrage automatique des cadences', async () => {
+  it('affiche un état vide qui dit que tout est traité et nomme le démarrage automatique des cadences', async () => {
     crmApi.getRelanceEtapesDues.mockResolvedValue(
       reponseContrat('crm', 'relance_etape_v2', 'exemple_vide'))
     mount()
-    await waitFor(() => expect(screen.getByText(/Aucune touche due/)).toBeInTheDocument())
-    expect(screen.getByText(/les cadences démarrent seules à l'arrivée d'un lead/))
+    await waitFor(() => expect(screen.getByText('Tout est traité pour maintenant.')).toBeInTheDocument())
+    expect(screen.getByText(/Les cadences démarrent seules à l'arrivée d'un lead/))
       .toBeInTheDocument()
   })
 
