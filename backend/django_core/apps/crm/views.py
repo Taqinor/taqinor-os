@@ -3730,14 +3730,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # devient un APPEL. L'étape message est close et « Rappeler le
         # client — rappel convenu » est posée à la date ET à l'heure
         # convenues (avant, l'étape message était déplacée telle quelle).
+        # SUIVI I7 (30/09/2026) — sur les trois branches ci-dessous comme
+        # partout : ``prochaine_touche`` est TOUJOURS la plus proche touche
+        # OUVERTE du lead (``_reponse_fait``), jamais l'étape que la branche
+        # vient de poser ou de déplacer — une autre touche peut tomber avant.
         if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
                 and quand is not None
                 and est_etape(etape, CLE_MESSAGE_CRENEAU)):
-            etape, rappel = repondre_rappel_convenu(
+            etape, _rappel = repondre_rappel_convenu(
                 etape, request.user, quand, note=note, body=body)
-            data = self.get_serializer(etape).data
-            data['prochaine_touche'] = _prochaine_touche_publique(rappel)
-            return Response(data)
+            return self._reponse_fait(etape)
         # SUIVI E17 (30/09/2026) — « À rappeler le… » sur le DERNIER réveil :
         # aucun réveil suivant ne pouvait porter la date, elle était perdue
         # (le dossier restait au Froid sans rien). Le dossier sort du Froid et
@@ -3745,12 +3747,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # l'heure choisies.
         if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
                 and quand is not None and est_dernier_reveil(etape)):
-            etape, rappel = repondre_rappel_convenu(
+            etape, _rappel = repondre_rappel_convenu(
                 etape, request.user, quand, note=note, body=body,
                 sortir_du_froid=True)
-            data = self.get_serializer(etape).data
-            data['prochaine_touche'] = _prochaine_touche_publique(rappel)
-            return Response(data)
+            return self._reponse_fait(etape)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
         # la consomme pas. L'écran promet « L'étape est déplacée à la date
         # choisie » ; la clore rendait la main au filet, qui posait une AUTRE
@@ -3776,9 +3776,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 if note:
                     etape.note = note
                     etape.save(update_fields=['note'])
-                data = self.get_serializer(etape).data
-                data['prochaine_touche'] = _prochaine_touche_publique(etape)
-                return Response(data)
+                # SUIVI I7 — la plus proche touche ouverte du lead, pas
+                # forcément l'étape déplacée.
+                return self._reponse_fait(etape)
         # CAD11 — un lead qu'on marque perdu n'a pas de suite : ni barreau
         # suivant, ni clôture au froid avec réveils (``suite=False``).
         etape = marquer_etape_relance(
@@ -4162,13 +4162,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 content_type=ContentType.objects.get(
                     app_label='crm', model='lead'),
                 object_id=etape.lead_id, uploaded_by=request.user, **meta)
-        etape, etape_devis = enregistrer_piece_recue(
+        etape, _etape_devis = enregistrer_piece_recue(
             etape, request.user, type_piece=type_piece,
             attachment=attachment,
             note=(request.data.get('note') or '').strip())
-        data = self.get_serializer(etape).data
-        data['prochaine_touche'] = _prochaine_touche_publique(etape_devis)
-        return Response(data)
+        # SUIVI I7 — ``prochaine_touche`` = la plus proche touche OUVERTE du
+        # lead (d'ordinaire l'étape « préparer le devis » posée ici).
+        return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])
     def reporter(self, request, pk=None):

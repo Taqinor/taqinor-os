@@ -10,7 +10,7 @@ commerciale retrouvait un MESSAGE à envoyer, et l'étape « Rappeler le client
 message est CLOSE (FAIT, issue « à rappeler ») et l'appel « rappel convenu »
 est posé à la date ET à l'heure convenues, recalées sur la fenêtre d'appel.
 Code d'effet ``etape_rappel_convenu_a_la_date`` ; ``prochaine_touche`` =
-cette étape.
+la plus proche touche ouverte du lead (SUIVI I7) — ici cette étape.
 
 Horloge FIXE : mercredi 23/09/2026, 10 h à Casablanca ; créneau convenu le
 lundi 28/09.

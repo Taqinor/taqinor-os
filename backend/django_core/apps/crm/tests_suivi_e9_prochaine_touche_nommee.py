@@ -152,3 +152,57 @@ class ReponsesNommentLEtapeTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['prochaine_touche']['cle'], CLE_DEVIS)
         self.assertEqual(set(resp.data['prochaine_touche']), CHAMPS)
+
+
+class LaPlusProcheToucheTests(_Base):
+    """SUIVI I7 (écart confirmé par le vérificateur) — ``prochaine_touche``
+    est TOUJOURS la plus proche touche OUVERTE du lead, jamais l'étape qu'une
+    branche vient de déplacer ou de poser : ici « Le PDF s'ouvre bien ? »
+    tombe DEMAIN, avant la date choisie (lundi 28/09)."""
+
+    def setUp(self):
+        super().setUp()
+        demain = GEL + datetime.timedelta(days=1)
+        gabarit = next(e for e in CADENCES_DEFAUT['apres_devis']
+                       if e['ordre'] == 1)
+        self.proche = self._touche(
+            cadence='apres_devis', ordre=1, canal=gabarit['canal'],
+            libelle=gabarit['libelle'], due_at=demain,
+            due_date=demain.date(), cadence_depart=GEL)
+
+    def _rappel(self, etape):
+        resp = self.api.post(
+            f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
+            {'outcome': 'rappel', 'rappel_le': '2026-09-28',
+             'rappel_heure': '11:00'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return resp
+
+    def _assert_la_plus_proche(self, resp):
+        prochaine = resp.data['prochaine_touche']
+        self.assertEqual(prochaine['due_date'],
+                         self.proche.due_date.isoformat())
+        self.assertEqual(prochaine['libelle'], self.proche.libelle)
+        self.assertEqual(prochaine['cle'], '')
+
+    def test_etape_de_filet_deplacee_plus_loin(self):
+        passation = self._touche(cadence='generique',
+                                 ordre=services.PASSATION_ORDRE,
+                                 canal=RelanceEtape.Canal.WHATSAPP,
+                                 libelle=services.PASSATION_LIBELLE)
+        resp = self._rappel(passation)
+        passation.refresh_from_db()
+        self.assertEqual(passation.statut, A_FAIRE)
+        self.assertEqual(passation.due_date, datetime.date(2026, 9, 28))
+        self._assert_la_plus_proche(resp)
+
+    def test_rappel_convenu_pose_plus_loin(self):
+        creneau = self._touche(cadence='generique', ordre=1,
+                               canal=RelanceEtape.Canal.WHATSAPP,
+                               cle='message_creneau',
+                               libelle=services.FILET_MESSAGE_CRENEAU_LIBELLE)
+        resp = self._rappel(creneau)
+        self.assertTrue(self.lead.relance_etapes.filter(
+            cle='rappel_convenu', statut=A_FAIRE,
+            due_date=datetime.date(2026, 9, 28)).exists())
+        self._assert_la_plus_proche(resp)
