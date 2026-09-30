@@ -130,8 +130,10 @@ class PriseDeContactTests(_Base):
         # Le chatter le dit : la touche porte l'issue, l'arrêt a son motif.
         self.assertTrue(lead.activites.filter(
             outcome=VISITE, user=self.acteur).exists())
+        # SUIVI E14 (30/09/2026) — la deuxième affaire est arrêtée elle aussi
+        # (même liste que « client joint »), et la note la nomme.
         self.assertTrue(lead.activites.filter(
-            body__startswith='Cadence contact, reveil arrêtée',
+            body__startswith='Cadence contact, reveil, deuxieme_affaire arrêtée',
             body__contains='visite acceptée').exists())
         lead.refresh_from_db()
         self.assertNotEqual(lead.stage, stages.COLD)

@@ -281,7 +281,7 @@ class ParcoursCompletsTests(ParcoursBase):
     def _etapes_de_cle(self, lead, *cles):
         return [e for e in self.ouvertes(lead) if cle_de(e) in cles]
 
-    def _instant(self, jour, heure):
+    def _moment(self, jour, heure):
         return datetime.datetime.combine(jour, heure, tzinfo=horaires.CASABLANCA)
 
     def test_a_message_appel_devis_envoye_depuis_l_erp_puis_accepte(self):
@@ -331,7 +331,7 @@ class ParcoursCompletsTests(ParcoursBase):
         self.jouer(lead, confirmation, 'joint')
         debrief.refresh_from_db()
         self.assertEqual(debrief.statut, A_FAIRE, self.msg('le débrief attend la visite', lead))
-        self.avancer_a(self._instant(date, datetime.time(16, 0)))
+        self.avancer_a(self._moment(date, datetime.time(16, 0)))
         self.retour_de_visite(lead)
         etape_devis = self.unique(lead, 'devis')
         self.assertEqual(etape_devis.due_date, self.demain())
@@ -362,7 +362,7 @@ class ParcoursCompletsTests(ParcoursBase):
             self.assertEqual(etape.statut, A_FAIRE,
                              self.msg(f'« {etape.libelle} » ne doit pas disparaître', lead))
         self.jouer(lead, confirmation, 'joint')
-        self.avancer_a(self._instant(date, datetime.time(16, 0)))
+        self.avancer_a(self._moment(date, datetime.time(16, 0)))
         self.retour_de_visite(lead)
         debrief.refresh_from_db()
         self.assertEqual(debrief.statut, A_FAIRE, self.msg('le débrief reste à faire', lead))
