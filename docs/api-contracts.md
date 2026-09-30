@@ -107,9 +107,9 @@
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessageLangue -> /api/django/crm/relance-etapes/<>/message
     crochets:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesDues -> /api/django/crm/relance-etapes
-    count:nombre, results:inconnu
+    count:nombre, file:objet, results:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapesLead -> /api/django/crm/relance-etapes
-    count:nombre, results:inconnu
+    count:nombre, file:objet, results:inconnu
 - frontend/src/api/crmApi.js :: getRelances -> /api/django/crm/leads/relances
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach

@@ -3329,8 +3329,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         la FRISE de la fiche lead, qui doit montrer le passé autant que le
         futur — `scope` est alors ignoré. La visibilité reste garantie par
         ``get_queryset`` : un lead hors portée renvoie une liste vide, jamais
-        un 403 qui confirmerait son existence."""
+        un 403 qui confirmerait son existence.
+
+        COCKPIT-CONTRÔLE (30/09/2026) — ``?scope=all`` est la file du cockpit
+        (« maintenant » : échéances du jour et en retard PLUS les tâches
+        ouvertes), et la réponse porte alors le bloc ``file`` (compteurs
+        ``maintenant`` / ``demain`` / ``semaine`` / ``traitees_aujourdhui``,
+        ``selectors.file_du_cockpit``) — servi SEULEMENT quand ``scope`` est
+        demandé, dans la même portée (et le même ``owner``) que la liste."""
         lead_id = request.query_params.get('lead')
+        owner = request.query_params.get('owner')
         if lead_id:
             qs = (self.get_queryset().filter(lead_id=lead_id)
                   .select_related('lead', 'lead__owner', 'devis')
@@ -3338,11 +3346,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         else:
             from .selectors import relance_etapes_dues
             scope = request.query_params.get('scope', 'today')
-            owner = request.query_params.get('owner')
             qs = relance_etapes_dues(
                 request.user.company, request.user, scope=scope, owner=owner)
         serializer = self.get_serializer(qs, many=True)
-        return Response({'count': qs.count(), 'results': serializer.data})
+        payload = {'count': qs.count(), 'results': serializer.data}
+        if not lead_id and 'scope' in request.query_params:
+            from .selectors import file_du_cockpit
+            payload['file'] = file_du_cockpit(
+                request.user.company, request.user, owner=owner)
+        return Response(payload)
 
     @action(detail=False, methods=['get'], url_path='suivi',
             permission_classes=[IsAnyRole])

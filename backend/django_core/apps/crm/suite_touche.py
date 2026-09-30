@@ -354,8 +354,25 @@ def est_tache(etape):
     """COCKPIT-CONTRÔLE — l'étape est-elle une TÂCHE de la table (``tache:
     true`` : préparer le devis, décider la suite, question de prix, planifier
     la visite, devis modifié) ? Traitable dès maintenant, jamais « sautée ».
-    Pur."""
+    Pur — le même prédicat en requête est ``q_tache``."""
     return type_etape(etape) in TYPES_TACHE
+
+
+def q_tache():
+    """COCKPIT-CONTRÔLE — ``est_tache`` en REQUÊTE : LA définition SQL d'une
+    tâche, la seule (la file du cockpit, le contrôle du suivi). Exactement
+    ce que ``type_etape`` reconnaît, dans le même ordre : les CLÉS moteur des
+    tâches, leurs libellés PAR DÉFAUT d'avant la clé (``cadence_config.
+    q_etape``), puis le libellé de la question de prix (hors gabarit, sans
+    clé). Garde : ``tests_cockpit_file`` la confronte à ``type_etape`` sur
+    chaque type de la table du parcours."""
+    from django.db.models import Q
+
+    from .cadence_config import q_etape
+    from .services import QUESTION_PRIX_LIBELLE
+
+    cles = tuple(sorted(TYPES_TACHE & _TYPES_PAR_CLE))
+    return q_etape(*cles) | Q(cle='', libelle=QUESTION_PRIX_LIBELLE)
 
 
 def nature_touche(etape):
