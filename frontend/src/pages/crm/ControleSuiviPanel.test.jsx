@@ -556,7 +556,7 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     expect(within(ligne).getByText('Tâche')).toBeInTheDocument()
   })
 
-  it('« Premier contact hors délai » : « attend depuis N h » (décimale française)', async () => {
+  it('« Premier contact hors délai » : « attend depuis N h » sous 48 h (décimale française)', async () => {
     monter()
     await attendreVerdict()
     const ligne = within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne')
@@ -564,6 +564,38 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       .toHaveAttribute('href', '/crm/leads?lead=1511')
     expect(ligne).toHaveTextContent('attend depuis 27,5 h')
     expect(ligne).toHaveTextContent('Responsable : commerciale')
+  })
+
+  it('« Premier contact hors délai » : à partir de 48 h, « attend depuis 4 jours ouvrés » (99,1 h, arrondi vers le bas)', async () => {
+    const ligneServie = CONTROLE.exceptions.premier_contact_hors_delai.lignes[0]
+    const avecAttente = (heures) => variante({
+      exceptions: {
+        ...CONTROLE.exceptions,
+        premier_contact_hors_delai: {
+          total: 1, lignes: [{ ...ligneServie, attend_depuis_heures: heures }],
+        },
+      },
+    })
+    crmApi.getControleSuivi.mockResolvedValue(avecAttente(99.1))
+    const { unmount } = monter()
+    await attendreVerdict()
+    const ligne = within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne')
+    expect(ligne).toHaveTextContent('attend depuis 4 jours ouvrés')
+    expect(ligne).not.toHaveTextContent('99')
+    expect(ligne.textContent).not.toMatch(/\d\s*h\b/)
+    unmount()
+    // La frontière : 47,9 h reste en heures, 48 h passe en jours ouvrés.
+    crmApi.getControleSuivi.mockResolvedValue(avecAttente(47.9))
+    const second = monter()
+    await attendreVerdict()
+    expect(within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne'))
+      .toHaveTextContent('attend depuis 47,9 h')
+    second.unmount()
+    crmApi.getControleSuivi.mockResolvedValue(avecAttente(48))
+    monter()
+    await attendreVerdict()
+    expect(within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne'))
+      .toHaveTextContent('attend depuis 2 jours ouvrés')
   })
 
   describe('« Dossiers sans prochaine étape » (ligne fixée par exemple_alerte)', () => {
@@ -958,13 +990,25 @@ describe('ControleSuiviPanel — détail par étape', () => {
 })
 
 describe('ControleSuiviPanel — premier contact et résultats', () => {
-  it('premier contact : « 8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h »', async () => {
+  it('premier contact : « 8 sur 9 contactés dans le délai (24 h) · délai médian 42 min (heures ouvrées) · plus longue attente : 27,5 h »', async () => {
     monter()
     await attendreVerdict()
     const carte = screen.getByTestId('controle-premier-contact')
     expect(carte).toHaveTextContent('Premier contact')
     expect(carte).toHaveTextContent(
-      '8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h')
+      '8 sur 9 contactés dans le délai (24 h) · délai médian 42 min (heures ouvrées) · plus longue attente : 27,5 h')
+  })
+
+  it('premier contact : une attente de 48 h et plus se dit en jours ouvrés entiers', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      premier_contact: {
+        nouveaux: 23, dans_le_delai: 19, delai_heures: 24, mediane_minutes: 71, plus_longue_attente_heures: 99.1,
+      },
+    }))
+    monter()
+    await attendreVerdict()
+    expect(screen.getByTestId('controle-premier-contact')).toHaveTextContent(
+      '19 sur 23 contactés dans le délai (24 h) · délai médian 1 h 11 (heures ouvrées) · plus longue attente : 4 jours ouvrés')
   })
 
   it('résultats : « 3 visites planifiées · 4 devis envoyés · 1 devis accepté »', async () => {
@@ -994,7 +1038,7 @@ describe('ControleSuiviPanel — premier contact et résultats', () => {
     monter()
     await attendreVerdict()
     expect(screen.getByTestId('controle-premier-contact')).toHaveTextContent(
-      '8 sur 9 dans le délai (24 h) · médiane — · aucun lead en attente')
+      '8 sur 9 contactés dans le délai (24 h) · délai médian — · aucun lead en attente')
   })
 })
 

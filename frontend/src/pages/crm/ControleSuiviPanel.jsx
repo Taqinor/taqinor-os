@@ -43,9 +43,9 @@ import { safeGet, safeSet } from '../../lib/safeStorage'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
-  comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, joursOuvres, libelleJour,
-  libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseAnnulees, phraseExceptions,
-  phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
+  comparaisonPrecedent, decimal, dureeAttente, heureCasa, jjmm, jourCourt, jourLong, joursOuvres,
+  libelleJour, libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseAnnulees,
+  phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
 } from './controleSuiviTexte'
 
 const PERIODES = [
@@ -493,8 +493,9 @@ const LISTES = [
         : `Premier contact hors délai (${decimal(heures)} h)`
     },
     tone: 'danger',
+    // Attente sur l'horloge du délai : « 27,5 h » sous 48 h, sinon « 4 jours ouvrés ».
     detail: (l) => (l.attend_depuis_heures == null ? ''
-      : `attend depuis ${decimal(l.attend_depuis_heures)} h`),
+      : `attend depuis ${dureeAttente(l.attend_depuis_heures)}`),
   },
 ]
 

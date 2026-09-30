@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours'
 import {
-  LIBELLES_ISSUE, comparaisonPrecedent, decimal, duree, familleType, heureCasa, jjmm, jourCourt,
+  LIBELLES_ISSUE, comparaisonPrecedent, decimal, duree, dureeAttente, familleType, heureCasa, jjmm, jourCourt,
   jourLong, joursOuvres, libelleJour, libelleReponse, nomType, noteJoursOuvres, numeroJour,
   phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
   phraseResultats, pl, typeDeLaTable, typeEstTache,
@@ -357,17 +357,53 @@ describe('LIBELLES_ISSUE — le repli unique', () => {
   })
 })
 
+describe('dureeAttente (attente d\'un lead jamais contacté, sur l\'horloge du délai)', () => {
+  it('sous 48 h : en heures, décimale française', () => {
+    expect(dureeAttente(27.5)).toBe('27,5 h')
+    expect(dureeAttente(24)).toBe('24 h')
+    expect(dureeAttente(0)).toBe('0 h')
+    expect(dureeAttente(47.9)).toBe('47,9 h')
+  })
+
+  it('à partir de 48 h : en jours ouvrés ENTIERS, arrondis vers le bas', () => {
+    expect(dureeAttente(48)).toBe('2 jours ouvrés')
+    expect(dureeAttente(71.9)).toBe('2 jours ouvrés')
+    expect(dureeAttente(72)).toBe('3 jours ouvrés')
+    expect(dureeAttente(99.1)).toBe('4 jours ouvrés')
+    expect(dureeAttente(120)).toBe('5 jours ouvrés')
+  })
+
+  it('absente → « — » (jamais un 0 inventé), y compris une chaîne non numérique', () => {
+    expect(dureeAttente(null)).toBe('—')
+    expect(dureeAttente(undefined)).toBe('—')
+    expect(dureeAttente('n/a')).toBe('—')
+  })
+})
+
 describe('phrasePremierContact et phraseResultats', () => {
-  it('reprend l\'exemple : dans le délai, médiane, plus longue attente', () => {
+  it('reprend l\'exemple : contactés dans le délai, délai médian (heures ouvrées), plus longue attente', () => {
     expect(phrasePremierContact(CONTROLE.premier_contact)).toBe(
-      '8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h')
+      '8 sur 9 contactés dans le délai (24 h) · délai médian 42 min (heures ouvrées) · plus longue attente : 27,5 h')
+  })
+
+  it('une attente de 48 h et plus se dit en jours ouvrés entiers : « 19 sur 23 … 1 h 11 … 4 jours ouvrés »', () => {
+    expect(phrasePremierContact({
+      nouveaux: 23, dans_le_delai: 19, delai_heures: 24, mediane_minutes: 71, plus_longue_attente_heures: 99.1,
+    })).toBe(
+      '19 sur 23 contactés dans le délai (24 h) · délai médian 1 h 11 (heures ouvrées) · plus longue attente : 4 jours ouvrés')
+  })
+
+  it('accord : « 1 sur 1 contacté » au singulier', () => {
+    expect(phrasePremierContact({
+      nouveaux: 1, dans_le_delai: 1, delai_heures: 24, mediane_minutes: 5, plus_longue_attente_heures: null,
+    })).toBe('1 sur 1 contacté dans le délai (24 h) · délai médian 5 min (heures ouvrées) · aucun lead en attente')
   })
 
   it('aucun nouveau lead / aucun lead en attente / médiane inconnue', () => {
     expect(phrasePremierContact(VIDE.premier_contact)).toBe('Aucun nouveau lead sur la période.')
     expect(phrasePremierContact({
       ...CONTROLE.premier_contact, mediane_minutes: null, plus_longue_attente_heures: null,
-    })).toBe('8 sur 9 dans le délai (24 h) · médiane — · aucun lead en attente')
+    })).toBe('8 sur 9 contactés dans le délai (24 h) · délai médian — · aucun lead en attente')
   })
 
   it('résultats : accord au pluriel / singulier', () => {

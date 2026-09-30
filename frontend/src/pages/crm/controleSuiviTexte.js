@@ -272,15 +272,30 @@ export function libelleReponse(typeId, cle) {
 }
 
 // ── Premier contact et résultats ───────────────────────────────────────────
-/** « 8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h ». */
+/** L'attente d'un lead jamais contacté, sur l'horloge du DÉLAI (contrat `notes.exceptions` :
+ *  heures d'horloge, jours non ouvrés retirés — un lead créé il y a six jours vaut ~99 h).
+ *  UN seul format : sous 48 h, en heures (« 27,5 h ») ; à partir de 48 h, en jours ouvrés
+ *  ENTIERS, arrondis vers le bas (99,1 h → « 4 jours ouvrés »). `null` → « — ». */
+export function dureeAttente(heures) {
+  if (heures === null || heures === undefined || Number.isNaN(Number(heures))) return '—'
+  const h = Number(heures)
+  if (h < 48) return `${decimal(h)} h`
+  return joursOuvres(Math.floor(h / 24))
+}
+
+/** « 19 sur 23 contactés dans le délai (24 h) · délai médian 1 h 11 (heures ouvrées) ·
+ *  plus longue attente : 4 jours ouvrés » — ou « … · aucun lead en attente ». */
 export function phrasePremierContact(pc) {
   const p = pc || {}
   if (!p.nouveaux) return 'Aucun nouveau lead sur la période.'
+  const mediane = p.mediane_minutes === null || p.mediane_minutes === undefined
+    ? 'délai médian —'
+    : `délai médian ${duree(p.mediane_minutes)} (heures ouvrées)`
   const attente = p.plus_longue_attente_heures === null || p.plus_longue_attente_heures === undefined
     ? 'aucun lead en attente'
-    : `plus longue attente ${decimal(p.plus_longue_attente_heures)} h`
-  return `${nombre(p.dans_le_delai)} sur ${nombre(p.nouveaux)} dans le délai (${decimal(p.delai_heures)} h)`
-    + ` · médiane ${duree(p.mediane_minutes)} · ${attente}`
+    : `plus longue attente : ${dureeAttente(p.plus_longue_attente_heures)}`
+  return `${nombre(p.dans_le_delai)} sur ${nombre(p.nouveaux)} ${pl(p.nouveaux, 'contacté', 'contactés')}`
+    + ` dans le délai (${decimal(p.delai_heures)} h) · ${mediane} · ${attente}`
 }
 
 /** « 3 visites planifiées · 4 devis envoyés · 1 devis accepté ». */
