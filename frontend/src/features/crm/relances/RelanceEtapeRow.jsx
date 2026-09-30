@@ -72,16 +72,10 @@ const LANGUE_LABELS = {
   darija: 'Darija',
 }
 
-const CADENCE_LABELS = {
-  contact: 'Contact',
-  apres_devis: 'Après devis',
-  reveil: 'Réveil',
-  generique: 'Générique',
-  // CAD128 — la cadence courte d'un client acquis qui revient : son badge
-  // affichait la clé brute.
-  deuxieme_affaire: 'Deuxième affaire',
-}
-
+// COCKPIT-CONTRÔLE F3 — le badge de tête dit la FAMILLE du type d'étape lue
+// dans la table du parcours (`typeEtape(etape).famille` : « Prise de contact »,
+// « Visite technique »…), plus la cadence STOCKÉE (« Générique » pour une tâche
+// devis posée par le filet). Seule la teinte reste celle de la cadence stockée.
 const CADENCE_TONE = {
   contact: 'info',
   apres_devis: 'primary',
@@ -173,6 +167,17 @@ function heureDue(etape) {
   if (t <= Date.now()) return 'maintenant'
   return new Intl.DateTimeFormat('fr-FR', {
     hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Casablanca',
+  }).format(t)
+}
+
+/** Instant ISO → « JJ/MM » à l'heure de Casablanca (l'échéance d'ORIGINE d'une
+    étape reportée, `due_initial_at`). `null` si absent/invalide. */
+function jourMoisCasablanca(iso) {
+  if (!iso) return null
+  const t = new Date(iso).getTime()
+  if (Number.isNaN(t)) return null
+  return new Intl.DateTimeFormat('fr-FR', {
+    day: '2-digit', month: '2-digit', timeZone: 'Africa/Casablanca',
   }).format(t)
 }
 
@@ -880,9 +885,31 @@ export default function RelanceEtapeRow({
         </div>
       )}
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-        <Badge tone={CADENCE_TONE[etape.cadence] ?? 'neutral'}>
-          {CADENCE_LABELS[etape.cadence] ?? etape.cadence}
+        <Badge tone={CADENCE_TONE[etape.cadence] ?? 'neutral'} data-testid="badge-famille">
+          {type.famille}
         </Badge>
+        {/* COCKPIT-CONTRÔLE F3 — une TÂCHE (préparer le devis, décider la suite,
+            planifier la visite…) se dit : elle ne s'appelle pas, ne se saute
+            pas, se traite dès maintenant. `estTache(type)` lit la table. */}
+        {estTacheLibre && (
+          <Badge
+            tone="primary" data-testid="badge-tache"
+            title="Tâche : à traiter dès maintenant, jamais sautée"
+          >
+            Tâche
+          </Badge>
+        )}
+        {/* COCKPIT-CONTRÔLE F3 — un report ne fait plus disparaître un retard en
+            silence : `nb_reports` et l'échéance d'ORIGINE viennent du serveur. */}
+        {etape.nb_reports >= 1 && (
+          <Badge
+            tone="warning" data-testid="badge-reportee"
+            title={jourMoisCasablanca(etape.due_initial_at)
+              ? `Prévue à l'origine le ${jourMoisCasablanca(etape.due_initial_at)}` : undefined}
+          >
+            {`Reportée ${etape.nb_reports}×`}
+          </Badge>
+        )}
         {etape.overdue ? (
           <Badge tone="danger">En retard{heure ? ` · ${heure}` : ''}</Badge>
         ) : (

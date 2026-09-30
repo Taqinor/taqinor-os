@@ -14,7 +14,9 @@ import { MemoryRouter } from 'react-router-dom'
    03/08/2026 (test vert, écran mort). Si le serveur change de forme,
    l'exemple change et ce test casse tout seul. */
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
+import { PARCOURS } from '../../features/crm/relances/parcours'
 
+const famille = (typeId) => PARCOURS.etapes.find((t) => t.id === typeId).famille
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const PREMIERE = ETAPES[0]
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
@@ -73,9 +75,10 @@ describe('RelancesDuJourWidget (MRY14)', () => {
     mount()
     await waitFor(() => expect(screen.getByText(PREMIERE.lead_nom)).toBeInTheDocument())
     expect(screen.getByText(ETAPES[1].lead_nom)).toBeInTheDocument()
-    // Badge cadence (PREMIERE = contact, ETAPES[1] = apres_devis).
-    expect(screen.getByText('Contact')).toBeInTheDocument()
-    expect(screen.getByText('Après devis')).toBeInTheDocument()
+    // COCKPIT-CONTRÔLE F3 — le badge de tête dit la FAMILLE du type lue dans
+    // la table du parcours (PREMIERE = contact_appel, ETAPES[1] = suivi_message).
+    expect(screen.getByText(famille('contact_appel'))).toBeInTheDocument()
+    expect(screen.getByText(famille('suivi_message'))).toBeInTheDocument()
     // Badge canal.
     expect(screen.getAllByText('Appel').length).toBeGreaterThan(0)
     expect(screen.getAllByText('WhatsApp').length).toBeGreaterThan(0)
