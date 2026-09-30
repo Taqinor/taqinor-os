@@ -125,6 +125,10 @@ JOURNAL_SANS_EFFET = 'journal_sans_effet'
 # SUIVI E7 (30/09/2026) — `suivi_demarre_sans_envoi` (CAD47 : « sauter
 # l'étape devis vaut devis parti ») n'existe plus : une étape devis SAUTÉE ne
 # démarre plus aucun suivi, le filet pose « Décider la suite ».
+# SUIVI E2 (30/09/2026) — « Perdu — clore le dossier » sur « Décider la
+# suite » : le lead passe perdu avec son motif, tout s'arrête, rien n'est
+# posé.
+LEAD_PERDU = 'lead_perdu'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -141,6 +145,7 @@ CODES = frozenset({
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
+    LEAD_PERDU,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -264,7 +269,7 @@ REPONSES_PAR_TYPE = {
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
         'ne_plus_contacter'),
     TYPE_DECIDER_SUITE: (
-        'rappel', 'sans_issue', 'ne_plus_contacter'),
+        'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),
     TYPE_SUIVI_APPEL: (
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
         'plus_tard', 'question_prix', 'devis_modifie', 'decision_famille',
@@ -605,11 +610,13 @@ def _codes_reponse_client(cle, *, nature, derniere):
     """Les RÉPONSES DU CLIENT (``REPONSES_TOUCHE``, CAD-A)."""
     from .services import (
         REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-        REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PLUS_TARD,
-        REPONSE_QUESTION_PRIX)
+        REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU,
+        REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX)
 
     if cle == REPONSE_NE_PLUS_CONTACTER:
         return [NE_PLUS_CONTACTER]
+    if cle == REPONSE_PERDU:
+        return [LEAD_PERDU]
     if cle == REPONSE_PLUS_TARD:
         return [VEILLE_MEME_TOUCHE]
     a_cote = nature in (NATURE_VISITE, NATURE_PASSATION)

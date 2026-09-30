@@ -129,6 +129,12 @@ MESSAGE_ISSUE_APPEL_OBLIGATOIRE = (
 MESSAGE_ETAPE_DEJA_TRAITEE = (
     'Cette étape est déjà traitée — rechargez la liste.')
 
+#: SUIVI E2 (30/09/2026) — « refus » n'est pas une réponse de « Décider la
+#: suite » : c'est la décision elle-même qui se prend ici.
+MESSAGE_REFUS_SUR_DECIDER_SUITE = (
+    '« Décider la suite » : choisissez « Perdu — clore le dossier » (avec '
+    'son motif) ou une relance ultérieure.')
+
 
 def _prochaine_touche_publique(etape):
     """SUIVI E9 (30/09/2026) — la forme PUBLIQUE de l'étape qu'un « Fait »
@@ -3579,6 +3585,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'outcome': 'Issue inconnue.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # SUIVI E2 (30/09/2026) — « refus » sur « Décider la suite » re-posait
+        # la même étape à l'infini (le filet du récepteur MRY9 ne connaît pas
+        # la clé de la touche close : la ceinture anti-tapis-roulant ne
+        # jouait pas). La décision se prend par « Perdu » (avec son motif) ou
+        # par une relance ultérieure.
+        from .cadence_config import CLE_DECIDER_SUITE, est_etape
+        if outcome == 'refuse' and est_etape(etape, CLE_DECIDER_SUITE):
+            return Response(
+                {'erreurs': {'outcome': MESSAGE_REFUS_SUR_DECIDER_SUITE}},
+                status=status.HTTP_400_BAD_REQUEST)
         # CAD10 — le motif de refus, FACULTATIF : seulement avec l'issue
         # « refus », seulement un motif de la liste paramétrée, et journalisé
         # sur la ligne de chatter de la touche (jamais sur `motif_perte` :
@@ -3745,11 +3761,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         réponse et dit où elle vaut."""
         from .services import (
             REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER,
-            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_reponse_touche,
-            repondre_decision_a_plusieurs, repondre_devis_modifie,
-            repondre_ne_plus_contacter, repondre_plus_tard,
-            repondre_question_prix, reponse_touche)
+            REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU,
+            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_motif_perte,
+            refus_reponse_touche, repondre_decision_a_plusieurs,
+            repondre_devis_modifie, repondre_ne_plus_contacter,
+            repondre_perdu, repondre_plus_tard, repondre_question_prix,
+            reponse_touche)
 
         etape = self.get_object()
         refus = refus_reponse_touche(etape, reponse)
@@ -3759,6 +3776,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         spec = reponse_touche(reponse)
         note = (request.data.get('note') or '').strip()
         body = (request.data.get('body') or '').strip()
+        # SUIVI E2 — « Perdu » exige un motif ACTIF de la société : absent ou
+        # hors liste, le refus NOMME le champ, avant toute écriture.
+        motif_perte = None
+        if spec.get('motif_perte_requis'):
+            motif_perte, refus = refus_motif_perte(
+                etape.company, request.data.get('motif_perte'))
+            if refus:
+                return Response({'erreurs': {'motif_perte': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         # La date convenue avec le client (« Rappeler le »), quand la réponse
         # en exige une — même lecture, mêmes refus nommés que « À rappeler
         # le… » (format, puis CAD27 : jamais dans le passé).
@@ -3799,6 +3825,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                          REPONSE_DECISION_PROPRIETAIRE):
             etape = repondre_decision_a_plusieurs(
                 etape, request.user, reponse, note=note, body=body)
+        elif reponse == REPONSE_PERDU:
+            etape = repondre_perdu(
+                etape, request.user, motif_perte, note=note, body=body)
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])

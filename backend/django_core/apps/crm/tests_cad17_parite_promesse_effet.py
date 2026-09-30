@@ -51,7 +51,7 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
-from apps.crm.models import Client, Lead, RelanceEtape
+from apps.crm.models import Client, Lead, MotifPerte, RelanceEtape
 from apps.crm.services import (
     _LIBELLES_FILET, _LIBELLES_VISITE, FILET_APPEL_LIBELLE,
     FILET_DERNIER_APPEL_LIBELLE, FILET_JOINT_LIBELLE,
@@ -77,6 +77,8 @@ DATE_CHOISIE = datetime.date(2026, 9, 28)
 HEURE_CHOISIE = '11:00'
 #: « Plus tard » au-delà d'un mois (bascule en réveil daté) — un lundi.
 DATE_LOINTAINE = datetime.date(2026, 11, 9)
+#: SUIVI E2 — le motif ACTIF de la société choisi pour « Perdu ».
+MOTIF_PERTE = 'Prix trop élevé'
 
 RACINE = Path(__file__).resolve().parents[4]
 TABLE_ECRAN = json.loads(
@@ -432,6 +434,13 @@ def _ne_plus_contacter(c):
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
 
 
+def _lead_perdu(c):
+    # SUIVI E2 — perdu avec SON motif, plus rien d'ouvert, rien de posé.
+    c.vrai(c.lead.perdu, 'le lead n’est pas perdu')
+    c.vrai(c.lead.motif_perte == MOTIF_PERTE, 'le motif de perte manque')
+    c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
+
+
 def _veille_meme_touche(c):
     if c.variante == 'loin':
         c.vrai(c.etape.statut == RelanceEtape.Statut.ANNULEE,
@@ -524,6 +533,7 @@ VERIFICATEURS = {
     st.JOURNAL_SUITE_SI_RIEN_OUVERT: _journal_suite_si_rien_ouvert,
     st.JOURNAL_DECIDER_SI_RIEN_OUVERT: _journal_decider_si_rien_ouvert,
     st.JOURNAL_SANS_EFFET: _journal_sans_effet,
+    st.LEAD_PERDU: _lead_perdu,
 }
 
 
@@ -667,6 +677,8 @@ class PariteBase(TestCase):
         # usage) — la lecture des barreaux actifs lit donc la vraie table.
         for cadence in CADENCES_DEFAUT:
             CadenceRelanceEtape.cadence_pour(self.company, cadence)
+        # SUIVI E2 — la liste des motifs de perte de la société (Paramètres).
+        MotifPerte.objects.create(company=self.company, nom=MOTIF_PERTE)
 
     # ── fabrique ──
 
@@ -791,6 +803,10 @@ class PariteBase(TestCase):
         if cle == 'plus_tard':
             corps['rappel_le'] = (DATE_LOINTAINE if variante == 'loin'
                                   else DATE_CHOISIE).isoformat()
+        if cle == 'perdu':
+            # SUIVI E2 — le motif est OBLIGATOIRE (écrit en minuscules : la
+            # comparaison est sans casse, le lead porte le libellé exact).
+            corps['motif_perte'] = MOTIF_PERTE.lower()
         return self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/', corps,
             format='json')

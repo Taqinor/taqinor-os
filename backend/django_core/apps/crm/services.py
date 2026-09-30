@@ -11904,6 +11904,9 @@ REPONSE_DEVIS_MODIFIE = 'devis_modifie'
 #: CAD9 — « Décision à plusieurs », en deux nuances que la note distingue.
 REPONSE_DECISION_FAMILLE = 'decision_famille'
 REPONSE_DECISION_PROPRIETAIRE = 'decision_proprietaire'
+#: SUIVI E2 (30/09/2026) — « Perdu — clore le dossier », la décision prise
+#: sur l'étape « Décider la suite » (et seulement là).
+REPONSE_PERDU = 'perdu'
 #: L'étiquette posée — la forme AFFICHÉE de l'étiquette standard (seedée par
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
@@ -11987,6 +11990,19 @@ REPONSES_TOUCHE = {
                  'interlocuteur à changer)'),
         'cadences': ('apres_devis',),
         'message': None,
+    },
+    # SUIVI E2 (30/09/2026) — la décision « perdu » se prend sur l'étape
+    # « Décider la suite » (reconnue par sa CLÉ), avec un motif ACTIF de la
+    # société, OBLIGATOIRE (``motif_perte``). L'issue dérivée est « refus » :
+    # le client a dit non, et la décision de clore est humaine (MRY22).
+    REPONSE_PERDU: {
+        'libelle': 'Perdu — clore le dossier',
+        'outcome': 'refuse',
+        'note': 'Perdu',
+        'cadences': _TOUTES_CADENCES,
+        'cles': (CLE_DECIDER_SUITE,),
+        'message': None,
+        'motif_perte_requis': True,
     },
 }
 
@@ -12610,13 +12626,19 @@ def motif_junk_valide(company, nom):
             .values_list('nom', flat=True).first())
 
 
-def marquer_lead_perdu_junk(lead, user, motif):
-    """CAD11 — le lead passe PERDU avec le motif junk ``motif`` (déjà
-    validé), journalisé comme la fiche le ferait (lignes « modification »
-    ancien → nouveau), et TOUTES ses touches ouvertes sont arrêtées sous ce
-    motif — la même conséquence que la bascule « perdu » de la fiche
-    (``LeadViewSet.perform_update``, MRY9). Idempotente : un lead déjà perdu
-    n'est pas réécrit. Renvoie ``True`` si le lead vient de passer perdu."""
+def marquer_lead_perdu(lead, user, motif, *, exclure=None):
+    """SUIVI E2 (30/09/2026) — LE geste « le lead passe PERDU » depuis une
+    touche : ``motif`` (déjà validé) posé sur ``Lead.motif_perte``,
+    journalisé comme la fiche le ferait (lignes « modification » ancien →
+    nouveau), et TOUTES ses touches ouvertes sont arrêtées sous ce motif —
+    la même conséquence que la bascule « perdu » de la fiche
+    (``LeadViewSet.perform_update``, MRY9). ``exclure`` (une touche) la
+    laisse ouverte : l'appelant la clôt lui-même avec son issue (même patron
+    que « Ne plus me contacter »).
+
+    Idempotente : un lead déjà perdu n'est pas réécrit. Renvoie ``True`` si
+    le lead vient de passer perdu. Généralise ``marquer_lead_perdu_junk``
+    (CAD11), qui en reste un alias mince."""
     import copy
 
     if lead.perdu:
@@ -12626,8 +12648,60 @@ def marquer_lead_perdu_junk(lead, user, motif):
     lead.motif_perte = motif
     lead.save(update_fields=['perdu', 'motif_perte'])
     activity.log_changes(avant, lead, user)
-    arreter_cadence(lead, user=user, motif=motif)
+    arreter_cadence(lead, user=user, motif=motif, exclure=exclure)
     return True
+
+
+def marquer_lead_perdu_junk(lead, user, motif):
+    """CAD11 — le lead passe PERDU avec le motif junk ``motif`` (déjà
+    validé) : alias mince de ``marquer_lead_perdu`` (SUIVI E2)."""
+    return marquer_lead_perdu(lead, user, motif)
+
+
+def refus_motif_perte(company, motif):
+    """SUIVI E2 — ``(motif exact, None)`` si ``motif`` est un motif de perte
+    ACTIF de la société (comparaison sans casse — ``motif_refus_valide``),
+    sinon ``(None, message)`` : le message NOMME le champ « Motif de perte »,
+    qu'il soit absent ou hors liste (règle fondateur du 08/09/2026)."""
+    brut = str(motif or '').strip()
+    libelle = REPONSES_TOUCHE[REPONSE_PERDU]['libelle']
+    if not brut:
+        return None, (f'« Motif de perte » : obligatoire pour « {libelle} » — '
+                      'choisissez le motif dans la liste.')
+    nom = motif_refus_valide(company, brut)
+    if nom is None:
+        return None, (f'« Motif de perte » : « {brut} » n’est pas un motif '
+                      'de la liste (Paramètres → CRM).')
+    return nom, None
+
+
+def repondre_perdu(etape, user, motif, *, note='', body=''):
+    """SUIVI E2 — « Perdu — clore le dossier » sur l'étape « Décider la
+    suite ». Dans cet ordre :
+
+      1. le lead passe PERDU avec ``motif`` (déjà validé,
+         ``refus_motif_perte``) et toutes ses AUTRES touches ouvertes sont
+         arrêtées (``marquer_lead_perdu``, la touche exclue) — AVANT la
+         clôture, pour que le filet du récepteur « refus » (MRY9) trouve un
+         lead perdu et ne pose aucune étape ;
+      2. la touche est close : FAIT, issue « refus », note typée « Perdu —
+         <motif> » suivie de la note libre, sans aucune suite
+         (``suite=False``) ;
+      3. ceinture : plus rien ne reste ouvert (idempotent).
+
+    Aucune étape n'est posée ensuite : le lead sort des files, il reste
+    rouvrable depuis sa fiche (CAD107). Renvoie la touche close."""
+    lead = etape.lead
+    marquer_lead_perdu(lead, user, motif, exclure=etape)
+    note_typee = f'{REPONSES_TOUCHE[REPONSE_PERDU]["note"]} — {motif}'
+    if (note or '').strip():
+        note_typee = f'{note_typee} — {note.strip()}'
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note_typee,
+        outcome=REPONSES_TOUCHE[REPONSE_PERDU]['outcome'], body=body,
+        suite=False)
+    arreter_cadence(lead, user=user, motif=motif)
+    return etape
 
 
 # ── CAD158 — « votre facture, c'est pour un mois ou pour deux ? » ───────────

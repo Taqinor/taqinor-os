@@ -248,6 +248,9 @@
         "lead_contact_preference": "",
         "lead_pii_masquee": false,
         "suites": {
+          "perdu": [
+            "lead_perdu"
+          ],
           "rappel": [
             "etape_deplacee_a_la_date"
           ],
