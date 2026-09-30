@@ -229,11 +229,15 @@ export default defineConfig({
   // Rollup suit les imports relatifs par chemin de fichier). La source du builder
   // n'est JAMAIS éditée — uniquement importée.
   resolve: {
-    alias: {
-      '@roofbuilder': resolvePath(WEB_SRC, 'scripts/roof-tool-pro11.ts'),
-      '@roofpro': resolvePath(WEB_SRC, 'scripts/roofPro11'),
-      '@rooflib': resolvePath(WEB_SRC, 'lib'),
-    },
+    alias: [
+      // ERR122 — maplibre-gl 6 n'a plus d'export par défaut ; le builder
+      // (apps/web, non édité ici) fait `import maplibregl from 'maplibre-gl'`.
+      // Spécifieur EXACT seulement (regex) : les sous-chemins CSS restent tels quels.
+      { find: /^maplibre-gl$/, replacement: resolvePath(__dir, 'src/lib/maplibreDefault.js') },
+      { find: '@roofbuilder', replacement: resolvePath(WEB_SRC, 'scripts/roof-tool-pro11.ts') },
+      { find: '@roofpro', replacement: resolvePath(WEB_SRC, 'scripts/roofPro11') },
+      { find: '@rooflib', replacement: resolvePath(WEB_SRC, 'lib') },
+    ],
   },
   server: {
     host: true,

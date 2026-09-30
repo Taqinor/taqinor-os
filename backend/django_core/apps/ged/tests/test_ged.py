@@ -972,6 +972,33 @@ class DocumentTagTaxonomyTests(GedBase):
         tag = DocumentTag.objects.get(id=resp.data['id'])
         self.assertEqual(tag.company_id, self.co_a.id)
 
+    def test_create_tag_sans_slug_genere_slug(self):
+        """ERR-QAH-GED-TAG-CREATION-SLUG — le formulaire n'envoie pas de slug."""
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/tags/', {
+            'nom': 'Contrats signés', 'parent': None,
+            'couleur': '#2563eb', 'description': ''}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['slug'], 'contrats-signes')
+        # Même nom → slug suffixé, jamais d'erreur d'unicité.
+        resp2 = api.post('/api/django/ged/tags/', {'nom': 'Contrats signés'},
+                         format='json')
+        self.assertEqual(resp2.status_code, 201, resp2.data)
+        self.assertEqual(resp2.data['slug'], 'contrats-signes-2')
+        # Le même slug reste libre dans une autre société.
+        resp3 = auth(self.admin_b).post(
+            '/api/django/ged/tags/', {'nom': 'Contrats signés'}, format='json')
+        self.assertEqual(resp3.status_code, 201, resp3.data)
+        self.assertEqual(resp3.data['slug'], 'contrats-signes')
+
+    def test_create_tag_slug_explicite_en_double_refuse(self):
+        DocumentTag.objects.create(
+            company=self.co_a, nom='Juridique', slug='juridique')
+        resp = auth(self.admin_a).post('/api/django/ged/tags/', {
+            'nom': 'Autre', 'slug': 'juridique'}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('slug', resp.data)
+
     def test_hierarchy_and_chemin(self):
         racine = DocumentTag.objects.create(
             company=self.co_a, nom='Juridique', slug='juridique')

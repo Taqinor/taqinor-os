@@ -458,9 +458,13 @@ def build_pages(ctx) -> list:
     # ligne. Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
     _pr_s, _pr_a = d.get("prod_kwh_sans"), d.get("prod_kwh_avec")
     if _divergent and _pr_s and _pr_a and _pr_s != _pr_a:
+        # ERR123 — WeasyPrint ≥ 70 mesure la colonne flex un poil plus
+        # étroite qu'en 62.3 : l'étiquette passait à la ligne. On la déclare
+        # insécable (la colonne flex:1 prend alors sa largeur min-content).
         spec_prod = (f'<span style="font-size:13pt;">{fmt(_pr_s)} · '
                      f'{fmt(_pr_a)}</span>',
-                     "kWh / an produits (sans · avec)")
+                     '<span style="white-space:nowrap;">'
+                     'kWh / an produits (sans · avec)</span>')
     else:
         spec_prod = (fmt(d["prod_kwh"]), "kWh / an produits")
     # QJR17 (d) — une vignette sans donnée n'existe pas (``None`` ci-dessus).

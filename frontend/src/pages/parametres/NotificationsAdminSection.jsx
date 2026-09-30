@@ -20,6 +20,21 @@ import { SectionTitle } from './peComponents'
 
 const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
+/* ERR-QAH-PARAMETRES-NOTIFICATIONS-WORKING-DAYS — l'API rend `working_days`
+   en ENTIER masque de bits (bit 0 = Lundi … bit 6 = Dimanche, ex. 31 = lun→ven,
+   cf. WorkingHoursConfig / calendar_utils.py) ; l'écran manipule une LISTE
+   d'indices. On convertit à la frontière (chargement ↔ enregistrement) ;
+   une liste reçue telle quelle reste tolérée. */
+function masqueVersJours(v) {
+  if (Array.isArray(v)) return [...v].sort((a, b) => a - b)
+  const m = Number(v) || 0
+  return JOURS.map((_, i) => i).filter((i) => (m & (1 << i)) !== 0)
+}
+function joursVersMasque(jours) {
+  return (jours || []).reduce((m, i) => m | (1 << i), 0)
+}
+const versEcran = (data) => ({ ...data, working_days: masqueVersJours(data?.working_days) })
+
 const ROLES = [
   { value: 'admin', label: 'Admin' },
   { value: 'responsable', label: 'Responsable' },
@@ -116,7 +131,7 @@ function CalendrierPanel() {
     setLoading(true)
     Promise.all([notificationsApi.getWorkingHours(), notificationsApi.getHolidays()])
       .then(([w, h]) => {
-        setWh(w.data)
+        setWh(versEcran(w.data))
         setHolidays(Array.isArray(h.data) ? h.data : (h.data?.results ?? []))
       })
       .catch(() => toast.error('Chargement du calendrier impossible.'))
@@ -134,9 +149,9 @@ function CalendrierPanel() {
     setSaving(true)
     try {
       const r = await notificationsApi.saveWorkingHours({
-        working_days: wh.working_days, hours_per_day: wh.hours_per_day,
+        working_days: joursVersMasque(wh.working_days), hours_per_day: wh.hours_per_day,
       })
-      setWh(r.data)
+      setWh(versEcran(r.data))
       toast.success('Calendrier ouvré enregistré.')
     } catch { toast.error('Enregistrement impossible (réservé admin ?).') }
     finally { setSaving(false) }
