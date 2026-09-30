@@ -36,10 +36,17 @@ const CONSIGNE_SANS_DATE = 'La date est connue : planifiez-la ici, la réponse '
   + '« Date pas encore fixée » enregistre la réponse et pose l’étape '
   + '« Planifier la visite technique convenue » pour aujourd’hui.'
 
+// Un libellé FR par champ que le serveur peut refuser : le bandeau ne montre
+// JAMAIS la clé technique brute (« etape : … »). SUIVI-REFUS : `etape` (la
+// touche qui demande la planification, SUIVI E18 — « Étape de relance inconnue
+// sur ce lead ») n'avait pas de libellé ; les trois clés des exemples d'erreur
+// du contrat `lead_visite_planifier.json` (`date_prevue`, `commercial`,
+// `etape`) sont couvertes, garde dans `PlanifierVisiteModal.test.jsx`.
 const FIELD_LABELS = {
   date_prevue: 'Date prévue',
   commercial: 'Commercial assigné',
   notes: 'Note',
+  etape: 'Étape',
 }
 
 // F1 — date du jour ancrée Casablanca (jamais le fuseau du navigateur),

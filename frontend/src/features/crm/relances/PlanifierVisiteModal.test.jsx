@@ -11,6 +11,7 @@ import {
 import {
   render, screen, cleanup, fireEvent, waitFor,
 } from '@testing-library/react'
+import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 
 vi.mock('../../../api/crmApi', () => ({
   default: {
@@ -126,6 +127,52 @@ describe('VISCAD3 PlanifierVisiteModal', () => {
       .toHaveTextContent('Cette date est déjà passée.'))
     // Bandeau — nomme le champ EN FRANÇAIS, jamais la clé technique brute.
     expect(screen.getByText('Date prévue : Cette date est déjà passée.')).toBeInTheDocument()
+  })
+
+  // SUIVI-REFUS — `etape` (la touche qui demande la planification, SUIVI E18)
+  // n'avait pas de libellé : le bandeau affichait « etape : Étape de relance
+  // inconnue… ». La charge utile vient de l'exemple COMMITTÉ du contrat.
+  it('erreur 400 sur `etape` (contrat) : le bandeau la nomme « Étape », jamais la clé brute', async () => {
+    const refus = exempleContrat('crm', 'lead_visite_planifier', 'exemple_erreur_etape')
+    crmApi.planifierVisiteLead.mockRejectedValue({ response: { status: 400, data: refus } })
+    monter({ etapeId: 412 })
+    fireEvent.change(screen.getByLabelText(/Date prévue/), { target: { value: '2026-09-20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Planifier la visite' }))
+    expect(await screen.findByText(`Étape : ${refus.etape[0]}`)).toBeInTheDocument()
+    // La touche est bien celle qui est envoyée au serveur.
+    expect(crmApi.planifierVisiteLead).toHaveBeenCalledWith(
+      1489, { date_prevue: '2026-09-20', etape: 412 })
+    expect(screen.queryByText(/^etape\s*:/)).not.toBeInTheDocument()
+  })
+
+  // Garde pilotée par le CONTRAT : chaque champ d'un `exemple_erreur_*` de
+  // `lead_visite_planifier.json` (date_prevue, commercial, etape… et tout champ
+  // ajouté demain) doit avoir un libellé FR dans le bandeau.
+  const VARIANTES_ERREUR = Object.keys(documentContrat('crm', 'lead_visite_planifier'))
+    .filter((cle) => cle.startsWith('exemple_erreur_'))
+
+  it('le contrat porte bien ses exemples d’erreur (la garde ci-dessous n’est pas vide)', () => {
+    expect(VARIANTES_ERREUR).toEqual(expect.arrayContaining([
+      'exemple_erreur_date_passee', 'exemple_erreur_commercial', 'exemple_erreur_etape',
+    ]))
+  })
+
+  it.each(VARIANTES_ERREUR)('contrat %s : chaque champ refusé est nommé en français dans le bandeau', async (variante) => {
+    const refus = exempleContrat('crm', 'lead_visite_planifier', variante)
+    crmApi.planifierVisiteLead.mockRejectedValue({ response: { status: 400, data: refus } })
+    monter()
+    fireEvent.change(screen.getByLabelText(/Date prévue/), { target: { value: '2026-09-20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Planifier la visite' }))
+    await waitFor(() => expect(screen.getAllByRole('link').length).toBeGreaterThan(0))
+    const entrees = screen.getAllByRole('link').map((lien) => lien.textContent)
+    expect(entrees).toHaveLength(Object.keys(refus).length)
+    for (const [champ, messages] of Object.entries(refus)) {
+      const entree = entrees.find((texte) => texte.endsWith(messages[0]))
+      expect(entree, `entrée du bandeau pour « ${champ} »`).toBeDefined()
+      // « Libellé FR : message exact » — jamais « champ_technique : message ».
+      expect(entree.startsWith(`${champ} :`)).toBe(false)
+      expect(entree).toMatch(/^[A-ZÉÈÀ][^:]* : /)
+    }
   })
 
   it('erreur inattendue (réseau/500) : une phrase claire, jamais « Non enregistré »', async () => {

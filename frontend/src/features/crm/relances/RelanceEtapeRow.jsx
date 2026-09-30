@@ -651,7 +651,18 @@ export default function RelanceEtapeRow({
     if (erreurs?.motif_perte) setErreurMotif(erreurs.motif_perte)
     // CAD63 — la langue refusée s'affiche SOUS sa case.
     if (erreurs?.langue) setErreurLangue(erreurs.langue)
-    if (!erreurs || !Object.keys(erreurs).length) setErreurOutcome(messageRefus(err))
+    // SUIVI-REFUS — Fait, Sauter et Reporter passent ici, et le parent ne
+    // double plus un refus NOMMÉ par un toast : ce refus ne doit donc JAMAIS
+    // rester muet. Une clé que l'écran ne range sous aucun champ (le `mode`
+    // d'un report, une clé future du serveur) montre son premier message sous
+    // le geste ; sans message du tout, la phrase claire du statut HTTP.
+    const rangee = champ || erreurs?.rappel_le || erreurs?.motif_refus
+      || erreurs?.perdu_junk || erreurs?.motif_perte || erreurs?.langue
+    if (!rangee) {
+      const premier = erreurs
+        ? Object.values(erreurs).flat().find((m) => typeof m === 'string' && m) : null
+      setErreurOutcome(premier || messageRefus(err))
+    }
   }
 
   // CKP4 — `onFait` renvoie une promesse (widget/frise/suivi) : succès →
@@ -783,6 +794,13 @@ export default function RelanceEtapeRow({
     const payload = { rappel_le: reportDate, rappel_heure: reportHeure || '09:00' }
     const enVeille = modeReport === 'veille'
     if (enVeille) payload.mode = 'veille'
+    // SUIVI-REFUS (incident du double clic sur « Reporter », SUIVI E8) : le
+    // serveur répond 400 `erreurs.etape` (touche déjà traitée) — le parent
+    // relance l'erreur, le panneau RESTE ouvert et le message exact s'affiche
+    // sous le geste, comme pour « Fait ». Avant, l'erreur était avalée : le
+    // panneau se refermait « comme réussi » et un toast générique passait seul.
+    // Un nouvel envoi efface d'abord le refus du précédent.
+    setErreurOutcome(''); setErreurRappel('')
     Promise.resolve(onReporter(etape.id, payload)).then((data) => {
       // SUIVI-BLOCAGE — le panneau se referme : sur la fiche, la ligne reste
       // montée après un report (la touche est déplacée, pas retirée) et
@@ -794,7 +812,16 @@ export default function RelanceEtapeRow({
       toastInfo(data.cadence === 'reveil' && etape.cadence !== 'reveil'
         ? 'Plus d’un mois d’attente : la cadence est arrêtée et un réveil est daté.'
         : 'Dossier en veille : la cadence reprendra à cette même touche.')
-    })
+    }).catch(afficherRefus)
+  }
+
+  // SUIVI-REFUS — « Sauter » suit le même chemin que « Fait » et « Reporter » :
+  // succès → panneau refermé (la touche est close, le parent retire ou relit la
+  // ligne) ; refus → panneau ouvert, note conservée, message exact du serveur
+  // SOUS le geste (`erreur-outcome`), jamais un toast générique seul.
+  const confirmerSauter = () => {
+    setErreurOutcome('')
+    Promise.resolve(onSauter(etape.id, note)).then(() => fermer()).catch(afficherRefus)
   }
 
   // CAD101 — « pièce reçue » : un geste humain, envoyé tel quel au serveur
@@ -956,7 +983,10 @@ export default function RelanceEtapeRow({
           onBasculer={() => setPanneauAppelOuvert((v) => !v)}
           telephone={etape.lead_telephone}
           onComposer={appeler}
-          onSaisirIssue={() => setPanel('fait')}
+          // SUIVI-REFUS — ce raccourci ouvre « Fait » SANS passer par `fermer` :
+          // le refus d'un « Sauter » / « Reporter » resté à l'écran ne doit pas
+          // se retrouver sous une autre question.
+          onSaisirIssue={() => { setErreurOutcome(''); setErreurRappel(''); setPanel('fait') }}
           issueEnAvance={enAvance}
           onLeadEcrit={() => (onLeadEcrit ?? onVisiteChanged)?.(etape.id)}
         />
@@ -1102,11 +1132,19 @@ export default function RelanceEtapeRow({
           <p className="text-xs text-muted-foreground" data-testid="suite-sauter">
             {suiteDuSaut(etape)}
           </p>
+          {/* SUIVI-REFUS — ce que le serveur a refusé (touche déjà traitée,
+              rôle, réseau…), SOUS le geste et en clair : le même `erreur-outcome`
+              que le panneau « Fait » (un seul panneau est ouvert à la fois). */}
+          {erreurOutcome && (
+            <p className="text-xs text-danger" role="alert" data-testid="erreur-outcome">
+              {erreurOutcome}
+            </p>
+          )}
           <div className="flex justify-end gap-1.5">
             <Button size="sm" variant="outline" disabled={busy} onClick={fermer}>
               Annuler
             </Button>
-            <Button size="sm" disabled={busy} onClick={() => onSauter(etape.id, note)}>
+            <Button size="sm" disabled={busy} onClick={confirmerSauter}>
               Confirmer
             </Button>
           </div>
@@ -1472,8 +1510,9 @@ export default function RelanceEtapeRow({
             <div className="flex flex-col gap-1">
               <Label className="text-xs" htmlFor={`report-date-${etape.id}`}>Reporter au</Label>
               <Input id={`report-date-${etape.id}`} type="date" className="w-40"
-                     min={aujourdhui} aria-invalid={reportPasse}
-                     value={reportDate} onChange={(e) => setReportDate(e.target.value)} />
+                     min={aujourdhui} aria-invalid={reportPasse || Boolean(erreurRappel)}
+                     value={reportDate}
+                     onChange={(e) => { setReportDate(e.target.value); setErreurRappel('') }} />
             </div>
             <div className="flex flex-col gap-1">
               <Label className="text-xs" htmlFor={`report-heure-${etape.id}`}>Heure</Label>
@@ -1491,9 +1530,21 @@ export default function RelanceEtapeRow({
               {GLISSEMENT_DU_PLAN}
             </p>
           )}
-          {reportPasse && (
+          {/* SUIVI-REFUS — la date refusée par le serveur (400
+              `erreurs.rappel_le`, message qui nomme « Reporter au ») s'affiche
+              dans le MÊME emplacement que le refus d'écran, sous son champ. */}
+          {(reportPasse || erreurRappel) && (
             <p className="text-xs text-danger" role="alert" data-testid="erreur-report-date">
-              « Reporter au » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.
+              {reportPasse
+                ? '« Reporter au » : cette date est déjà passée — choisissez aujourd’hui ou une date à venir.'
+                : erreurRappel}
+            </p>
+          )}
+          {/* SUIVI-REFUS — les autres refus (touche déjà traitée, rôle,
+              réseau…) : sous le geste, le même `erreur-outcome` que « Fait ». */}
+          {erreurOutcome && (
+            <p className="text-xs text-danger" role="alert" data-testid="erreur-outcome">
+              {erreurOutcome}
             </p>
           )}
           <div className="flex justify-end gap-1.5">

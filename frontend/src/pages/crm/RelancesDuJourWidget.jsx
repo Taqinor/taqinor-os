@@ -277,14 +277,23 @@ export default function RelancesDuJourWidget() {
       // `{erreurs: {outcome}}` : ce champ s'affiche SOUS le contrôle
       // (`RelanceEtapeRow`, promesse rejetée ci-dessous), jamais un toast
       // générique qui masquerait le champ fautif.
-      const champOutcome = action === 'fait' && err?.response?.status === 400
-        ? err?.response?.data?.erreurs?.outcome : null
+      // SUIVI-REFUS — cette règle vaut désormais pour les TROIS gestes (Fait,
+      // Sauter, Reporter) et pour tout refus NOMMÉ par le serveur : 400
+      // `erreurs` ou `detail` (dont « Cette étape est déjà traitée », SUIVI E8 —
+      // le double clic sur « Reporter » fermait le panneau comme réussi) et 403
+      // rôle. La ligne l'affiche sous le geste (`afficherRefus`) et le panneau
+      // reste ouvert : l'erreur est relancée, jamais avalée.
+      const statut = err?.response?.status
+      const donnees = err?.response?.data
+      const refusNomme = statut === 403 || (statut === 400
+        && (Object.keys(donnees?.erreurs ?? {}).length > 0
+          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
       // F2 — l'échec n'est plus MUET : la ligne reste (retirer() jamais
       // appelé ici) et redevient cliquable (busyId remis à null ci-dessous),
-      // mais l'agent doit être PRÉVENU que son geste n'a rien fait.
-      if (!champOutcome) toastError('Action impossible pour le moment.')
-      if (action === 'fait') throw err
-      return undefined
+      // mais l'agent doit être PRÉVENU que son geste n'a rien fait : réseau,
+      // 5xx et réponse sans message restent signalés par le toast.
+      if (!refusNomme) toastError('Action impossible pour le moment.')
+      throw err
     } finally {
       setBusyId(null)
     }
