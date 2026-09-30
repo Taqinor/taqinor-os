@@ -10,7 +10,6 @@ Pages 2-3 : v4 premium dark design
 Usage : python generate_devis_premium.py
 """
 import base64, html, io, re, subprocess, sys, tempfile, threading
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 # NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
@@ -30,6 +29,13 @@ try:
     from .figures import ancre as _ancre_figure
 except ImportError:  # exécution directe du moteur depuis son dossier
     from figures import ancre as _ancre_figure
+
+# QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
+# paquets premium ; même double chemin d'import.
+try:
+    from .montants import fmt_centimes, fmt_centimes_mad
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from montants import fmt_centimes, fmt_centimes_mad
 
 
 def _render_pdf_weasyprint(html_string, out_path):
@@ -1376,27 +1382,9 @@ def make_chart_monthly():
     return b64(buf)
 
 # ── Equipment rows ────────────────────────────────────────────────────────────
-def _fmt2(v):
-    """Montant au CENTIME \u00e0 la fran\u00e7aise : 1\u202f166,67.
-
-    QJR122 \u2014 l'arrondi est align\u00e9 sur la cha\u00eene canonique
-    (``selectors._canonical_totaux`` quantifie en ``ROUND_HALF_UP`` au
-    centime) : le formatage flottant de Python arrondit en mode BANQUIER,
-    de sorte que le M\u00caME devis pouvait afficher deux nombres diff\u00e9rents
-    entre le PDF et l'\u00e9ch\u00e9ancier / ``option_totaux``. On repasse par
-    ``Decimal(str(v))`` \u2014 la repr\u00e9sentation d\u00e9cimale courte, celle que la
-    cha\u00eene canonique aurait produite \u2014 avant de quantifier.
-    """
-    try:
-        d = Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError, TypeError):
-        return str(v)
-    return f"{d:,.2f}".replace(",", "\u202f").replace(".", ",")
-
-
-def _fmt2_mad(v):
-    """``_fmt2`` suffix\u00e9 \u00ab MAD \u00bb \u2014 le format des lignes de total."""
-    return _fmt2(v) + "\u00a0MAD"
+# QJR613 — formateur au centime partagé (``quote_engine/montants.py``).
+_fmt2 = fmt_centimes
+_fmt2_mad = fmt_centimes_mad
 
 
 def _item_pu_ht(it):
