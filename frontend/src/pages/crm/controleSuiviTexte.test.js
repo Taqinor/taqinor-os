@@ -4,8 +4,8 @@ import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours
 import {
   LIBELLES_ISSUE, comparaisonPrecedent, decimal, duree, familleType, heureCasa, jjmm, jourCourt,
   jourLong, joursOuvres, libelleJour, libelleReponse, nomType, noteJoursOuvres, numeroJour,
-  phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
-  typeDeLaTable, typeEstTache,
+  phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
+  phraseResultats, pl, typeDeLaTable, typeEstTache,
 } from './controleSuiviTexte'
 
 /* COCKPIT-CONTRÔLE — les phrases du bloc « Contrôle du suivi », en fonctions
@@ -202,6 +202,14 @@ describe('libelleJour (nom accessible d\'une case)', () => {
       .toBe('mardi 29 septembre (jour non ouvré) : rien de dû')
     expect(libelleJour(jour({ aujourdhui: true, du: 2, ouvert: 2 })))
       .toBe('mardi 29 septembre (aujourd\'hui) : 2 dues, 2 encore ouvertes')
+  })
+})
+
+describe('phraseAnnulees (étapes retirées du plan par le moteur)', () => {
+  it('accordée : 1 étape annulée, 3 étapes annulées — toujours « hors compte »', () => {
+    expect(phraseAnnulees(1)).toBe('1 étape annulée par le moteur — hors compte')
+    expect(phraseAnnulees(2)).toBe('2 étapes annulées par le moteur — hors compte')
+    expect(phraseAnnulees(12)).toBe('12 étapes annulées par le moteur — hors compte')
   })
 })
 

@@ -30,6 +30,12 @@ export const joursOuvres = (n) => `${nombre(n)} ${pl(n, 'jour ouvré', 'jours ou
 /** « reportée 2 fois » : les reports humains de CETTE étape (`nb_reports`, servi). */
 export const phraseReportee = (n) => `reportée ${nombre(n)} fois`
 
+/** « 1 étape annulée par le moteur — hors compte » : la liste d'un jour de la frise n'a
+ *  pas de ligne pour une touche retirée du plan par le MOTEUR (cadence arrêtée parce que
+ *  le client a répondu) — ni due ni manquée ; cette phrase dit seulement combien. */
+export const phraseAnnulees = (n) =>
+  `${nombre(n)} ${pl(n, 'étape annulée', 'étapes annulées')} par le moteur — hors compte`
+
 /** La note du bas de « À traiter en priorité » : le seuil d'alerte SERVI, en jours
  *  ouvrés, puis — dès qu'une liste de retard ou d'attente est affichée — ce qui ne
  *  compte pas. `null` s'il n'y a rien à dire. */

@@ -33,8 +33,8 @@ import { cn } from '../../lib/cn'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
   comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, joursOuvres, libelleJour,
-  libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseExceptions, phrasePeriode,
-  phrasePremierContact, phraseReportee, phraseResultats, pl,
+  libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseAnnulees, phraseExceptions,
+  phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
 } from './controleSuiviTexte'
 
 const PERIODES = [
@@ -243,6 +243,12 @@ function ListeDuJour({
   }, [date, ownerId, tentative])
 
   const chargement = resultat.tentative !== tentative
+  // Une touche `annulee` a été retirée du plan par le MOTEUR (le client a répondu) :
+  // ni due ni manquée. Elle n'a pas de ligne ici — la liste compte alors autant de
+  // lignes que le `du` de la case — mais une phrase discrète dit combien ont été
+  // mises de côté (les lignes écartées, comme « total − lignes » ailleurs).
+  const lignes = resultat.lignes.filter((etape) => etape.statut !== 'annulee')
+  const annulees = resultat.lignes.length - lignes.length
   return (
     <div
       id={id} role="region" aria-label={`Étapes du ${jourLong(date)}`}
@@ -264,33 +270,42 @@ function ListeDuJour({
             Réessayer
           </Button>
         </div>
-      ) : resultat.lignes.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Aucune étape n&apos;était due ce jour-là.</p>
       ) : (
-        <ul className="flex flex-col gap-1.5">
-          {resultat.lignes.map((etape) => {
-            const traitee = etape.statut === 'fait' || etape.statut === 'sautee'
-            const heure = heureCasa(traitee ? etape.traite_le : etape.due_at)
-            return (
-              <li
-                key={etape.id} data-testid="controle-jour-ligne"
-                className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border/60 px-2 py-1.5 text-sm"
-              >
-                <LienLead leadId={etape.lead} nom={etape.lead_nom} navigate={navigate} />
-                <span className="text-muted-foreground">{etape.libelle}</span>
-                <StatutBadgeJour etape={etape} />
-                {heure && (
-                  <span className="text-xs text-muted-foreground">
-                    {traitee ? `traitée à ${heure}` : `prévue à ${heure}`}
-                  </span>
-                )}
-                {traitee && etape.traite_par_nom && (
-                  <span className="text-xs text-muted-foreground">par {etape.traite_par_nom}</span>
-                )}
-              </li>
-            )
-          })}
-        </ul>
+        <>
+          {lignes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune étape n&apos;était due ce jour-là.</p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {lignes.map((etape) => {
+                const traitee = etape.statut === 'fait' || etape.statut === 'sautee'
+                const heure = heureCasa(traitee ? etape.traite_le : etape.due_at)
+                return (
+                  <li
+                    key={etape.id} data-testid="controle-jour-ligne"
+                    className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border/60 px-2 py-1.5 text-sm"
+                  >
+                    <LienLead leadId={etape.lead} nom={etape.lead_nom} navigate={navigate} />
+                    <span className="text-muted-foreground">{etape.libelle}</span>
+                    <StatutBadgeJour etape={etape} />
+                    {heure && (
+                      <span className="text-xs text-muted-foreground">
+                        {traitee ? `traitée à ${heure}` : `prévue à ${heure}`}
+                      </span>
+                    )}
+                    {traitee && etape.traite_par_nom && (
+                      <span className="text-xs text-muted-foreground">par {etape.traite_par_nom}</span>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {annulees > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground" data-testid="controle-jour-annulees">
+              {phraseAnnulees(annulees)}
+            </p>
+          )}
+        </>
       )}
     </div>
   )

@@ -367,6 +367,59 @@ describe('ControleSuiviPanel — frise', () => {
     expect(await screen.findByText('Aucune étape n\'était due ce jour-là.')).toBeInTheDocument()
   })
 
+  describe('étapes « annulée » (retirées du plan par le moteur)', () => {
+    // Le même exemple du contrat, auquel on ajoute des touches `annulee` : la liste
+    // du jour n'en montre AUCUNE ligne (autant de lignes que le `du` de la case) et
+    // dit en une phrase discrète combien ont été mises de côté.
+    const annulee = (id) => ({
+      ...SUIVI.results[0], id, statut: 'annulee', statut_libelle: 'Annulée (moteur)',
+      libelle: `Touche retirée ${id}`, traite_le: null, traite_par_nom: '',
+    })
+    const servir = (results) => crmApi.getRelanceEtapesSuivi
+      .mockResolvedValue({ data: { ...SUIVI, count: results.length, results } })
+    const ouvrirLeJour = async () => {
+      monter()
+      await attendreVerdict()
+      fireEvent.click(screen.getByTestId('controle-jour-2026-09-29'))
+      return screen.findByTestId('controle-jour-liste')
+    }
+
+    it('aucune ligne pour une annulée ; une phrase discrète dit combien (singulier)', async () => {
+      servir([...SUIVI.results, annulee(900)])
+      const liste = await ouvrirLeJour()
+      const lignes = await within(liste).findAllByTestId('controle-jour-ligne')
+      expect(lignes).toHaveLength(SUIVI.results.length)
+      expect(liste).not.toHaveTextContent('Touche retirée 900')
+      expect(liste).not.toHaveTextContent('Annulée (moteur)')
+      expect(within(liste).getByTestId('controle-jour-annulees'))
+        .toHaveTextContent('1 étape annulée par le moteur — hors compte')
+    })
+
+    it('plusieurs annulées : accord au pluriel, toujours aucune ligne pour elles', async () => {
+      servir([annulee(901), ...SUIVI.results, annulee(902)])
+      const liste = await ouvrirLeJour()
+      expect(await within(liste).findAllByTestId('controle-jour-ligne')).toHaveLength(SUIVI.results.length)
+      expect(within(liste).getByTestId('controle-jour-annulees'))
+        .toHaveTextContent('2 étapes annulées par le moteur — hors compte')
+    })
+
+    it('rien que des annulées : « aucune étape n\'était due » + la phrase discrète', async () => {
+      servir([annulee(903)])
+      const liste = await ouvrirLeJour()
+      expect(await within(liste).findByText('Aucune étape n\'était due ce jour-là.')).toBeInTheDocument()
+      expect(within(liste).queryByTestId('controle-jour-ligne')).not.toBeInTheDocument()
+      expect(within(liste).getByTestId('controle-jour-annulees'))
+        .toHaveTextContent('1 étape annulée par le moteur — hors compte')
+    })
+
+    it('aucune annulée : pas de phrase (jamais « 0 étape annulée »)', async () => {
+      const liste = await ouvrirLeJour()
+      await within(liste).findAllByTestId('controle-jour-ligne')
+      expect(within(liste).queryByTestId('controle-jour-annulees')).not.toBeInTheDocument()
+      expect(liste).not.toHaveTextContent('annulée')
+    })
+  })
+
   it('liste du jour indisponible : message + Réessayer', async () => {
     crmApi.getRelanceEtapesSuivi.mockRejectedValueOnce(new Error('boom'))
     monter()
