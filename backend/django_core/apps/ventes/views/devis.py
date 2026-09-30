@@ -1570,6 +1570,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         etat = 'envoyé' if ok else "échec d'envoi"
         _chatter_note(devis, f"Email du devis {reference} — {etat} (à {dest}).", request.user)
 
+        # QJR519 — un email en ÉCHEC ne marque JAMAIS le devis envoyé (ni
+        # date_envoi, ni devis_sent → funnel, ni cadence) : 502 explicite,
+        # EmailLog ECHEC et note chatter ci-dessus conservés.
+        if not ok:
+            devis.refresh_from_db(fields=['statut'])
+            return Response({
+                'detail': f'Échec envoi email : {err}',
+                'log_id': log.id,
+                'email_statut': log.statut,
+                'devis_statut': devis.statut,
+            }, status=status.HTTP_502_BAD_GATEWAY)
+
         # Marque le devis « envoyé » via le seul chemin autorisé (règle #4).
         # Idempotent : un devis déjà envoyé/accepté/refusé n'est pas régressé.
         mark_devis_sent(devis=devis, user=request.user)

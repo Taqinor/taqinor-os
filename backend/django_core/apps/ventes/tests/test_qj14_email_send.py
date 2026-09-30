@@ -219,3 +219,43 @@ class TestEnvoyerEmailTerminalStatus(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'refuse',
                          'refusé devis must not be regressed to envoyé')
+
+
+@override_settings(EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+class TestEnvoyerEmailEchecNeMarquePas(TestCase):
+    """QJR519 — un email en ÉCHEC ne marque plus le devis envoyé : 502, devis
+    brouillon, date_envoi None, stage du lead inchangé, EmailLog ECHEC."""
+
+    def setUp(self):
+        from apps.crm import stages
+        from apps.crm.models import Lead
+        self.company = make_company('qj14-echec')
+        self.user = make_user(self.company, 'u_qj14e')
+        self.api = make_api(self.user)
+        self.client_obj = make_client(self.company, 'echec@test.ma')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='Echec',
+            telephone='+212600005190', stage=stages.CONTACTED)
+        self.stage_initial = self.lead.stage
+
+    def test_echec_smtp_ne_marque_pas_envoye(self):
+        from unittest import mock
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'brouillon', 'DEV-QJ14-E1')
+        devis.lead = self.lead
+        devis.save(update_fields=['lead'])
+        with mock.patch('apps.ventes.email_service._send',
+                        return_value=(False, 'boom')):
+            resp = self.api.post(url(devis.id), {}, format='json')
+        self.assertEqual(resp.status_code, 502, resp.data)
+        self.assertIn('boom', resp.data['detail'])
+        self.assertEqual(resp.data['email_statut'], EmailLog.Statut.ECHEC)
+        self.assertEqual(resp.data['devis_statut'], 'brouillon')
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'brouillon')
+        self.assertIsNone(devis.date_envoi)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, self.stage_initial)
+        log = EmailLog.objects.get(devis=devis)
+        self.assertEqual(log.statut, EmailLog.Statut.ECHEC)
+        self.assertEqual(log.erreur, 'boom')
