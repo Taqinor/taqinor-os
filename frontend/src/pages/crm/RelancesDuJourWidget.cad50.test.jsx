@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
    du lead. Ce cockpit ne sert que des touches `a_faire` (jamais fait/
    sautée) : « Arrêter la cadence » se pose donc sur chaque ligne, tandis
    que « Annuler » (retour arrière 24h) ne concerne QUE la touche que
-   Meryem vient de traiter dans la session en cours (`justeTraitees`).
+   la commerciale vient de traiter dans la session en cours (`justeTraitees`).
    Charge utile = l'exemple COMMITTÉ (`relance_etape_v2.json`, PACT10). */
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
@@ -16,7 +16,6 @@ const PREMIERE = ETAPES[0]
 vi.mock('../../api/crmApi', () => ({
   default: {
     getRelanceEtapesDues: vi.fn(),
-    getKpiAdherence: vi.fn(() => Promise.resolve({ data: { leads_sans_touche: [] } })),
     marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
     marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
     reporterRelanceEtape: vi.fn(),

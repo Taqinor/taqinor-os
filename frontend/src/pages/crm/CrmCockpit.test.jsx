@@ -1,11 +1,12 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import CrmCockpit from './CrmCockpit'
 
 /* ODY15 — rendu smoke du cockpit CRM (ModuleHero + actions rapides + KPI).
@@ -43,7 +44,7 @@ vi.mock('./dashboard/PortfolioWidget', () => ({
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function makeStore({ clients = [], leads = [] } = {}) {
+function makeStore({ clients = [], leads = [], role = 'admin' } = {}) {
   return configureStore({
     reducer: {
       crm: (state = { clients, leads, loading: false, error: null }) => state,
@@ -51,10 +52,11 @@ function makeStore({ clients = [], leads = [] } = {}) {
       // `KpiRelancesPanel`) se gate au rôle via
       // `useIsAdminOrResponsable` (`useHasPermission.js`, lit `state.auth.role`
       // directement) : sans cette tranche minimale, ce smoke test plantait au
-      // montage (`Cannot read properties of undefined`). `admin` — la carte
-      // reste inerte tant qu'on ne clique pas « Aperçu » (aucun appel réseau
-      // dans ces trois tests).
-      auth: (state = { role: 'admin' }) => state,
+      // montage (`Cannot read properties of undefined`). `admin` par défaut — la
+      // carte reste inerte tant qu'on ne clique pas « Aperçu » (aucun appel
+      // réseau dans ces trois tests). COCKPIT-CONTRÔLE F4 : le rôle est
+      // paramétrable, l'ORDRE des deux blocs du haut en dépend.
+      auth: (state = { role }) => state,
     },
   })
 }
@@ -152,5 +154,96 @@ describe('PARAM-CADENCE — panneau « Où en est la chaîne » (E6)', () => {
     await waitFor(() => expect(crmApi.getChaineCommerciale).toHaveBeenCalled())
     expect(screen.queryByTestId('chaine-commerciale-panel')).not.toBeInTheDocument()
     expect(screen.queryByText('Où en est la chaîne')).not.toBeInTheDocument()
+  })
+})
+
+// COCKPIT-CONTRÔLE F4 (fondateur, 30/09/2026) — « Contrôle du suivi » et « Ma
+// journée » sont les DEUX premiers blocs sous l'en-tête, pleine largeur, dans
+// l'ordre du rôle ; l'ancienne vue « Adhérence » et les tuiles perso CKP4 ont
+// quitté la page. Charges utiles = les exemples COMMITTÉS du contrat (PACT10).
+describe('COCKPIT-CONTRÔLE F4 — ordre des blocs selon le rôle', () => {
+  beforeEach(() => {
+    vi.spyOn(crmApi, 'getControleSuivi').mockResolvedValue(reponseContrat('crm', 'controle_suivi'))
+    vi.spyOn(crmApi, 'getRelanceEtapesDues').mockResolvedValue(reponseContrat('crm', 'relance_etape_v2'))
+    vi.spyOn(crmApi, 'getChaineCommerciale').mockResolvedValue(reponseContrat('crm', 'chaine_commerciale'))
+    // Espion SANS remplacement sur le client HTTP : on relève les routes que le
+    // cockpit demande vraiment (les autres widgets, eux, gardent leur appel réel).
+    vi.spyOn(api, 'get')
+  })
+  afterEach(() => { vi.restoreAllMocks() })
+
+  /** Vrai si `a` précède `b` dans l'ordre du document. */
+  const precede = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+  async function monterEtAttendre(role) {
+    mount({ role })
+    // Les deux blocs ont chargé leurs données (ils ne sont plus des squelettes).
+    await screen.findByTestId('controle-verdict')
+    await screen.findAllByTestId('relance-etape-row')
+    await screen.findByTestId('chaine-commerciale-panel')
+    return {
+      controle: screen.getByTestId('cockpit-controle-suivi'),
+      journee: screen.getByTestId('cockpit-ma-journee'),
+      insights: screen.getByTestId('crm-insights-stub'),
+      chaine: screen.getByTestId('chaine-commerciale-panel'),
+      dormants: screen.getByTestId('dormant-accounts-stub'),
+    }
+  }
+
+  it.each(['admin', 'responsable'])('%s : « Contrôle du suivi » PUIS « Ma journée »', async (role) => {
+    const { controle, journee } = await monterEtAttendre(role)
+    expect(precede(controle, journee)).toBe(true)
+  })
+
+  it('un autre rôle (commercial) : « Ma journée » PUIS « Contrôle du suivi » — jamais caché', async () => {
+    const { controle, journee } = await monterEtAttendre('normal')
+    expect(precede(journee, controle)).toBe(true)
+    expect(controle).toBeInTheDocument()
+    expect(within(controle).getByTestId('controle-suivi-panel')).toBeInTheDocument()
+  })
+
+  it.each(['admin', 'normal'])('%s : les deux blocs sont sous l\'en-tête et AU-DESSUS du reste de la page', async (role) => {
+    const {
+      controle, journee, insights, chaine, dormants,
+    } = await monterEtAttendre(role)
+    const entete = screen.getByRole('heading', { name: 'CRM' })
+    ;[controle, journee].forEach((bloc) => {
+      expect(precede(entete, bloc)).toBe(true)
+      ;[insights, chaine, dormants].forEach((reste) => expect(precede(bloc, reste)).toBe(true))
+    })
+  })
+
+  it('pleine largeur : aucun des deux blocs n\'est dans la grille à deux colonnes', async () => {
+    const { controle, journee } = await monterEtAttendre('admin')
+    expect(controle.closest('.md\\:grid-cols-2')).toBeNull()
+    expect(journee.closest('.md\\:grid-cols-2')).toBeNull()
+    // Le reste de la page (comptes dormants…) reste, lui, dans la grille du bas.
+    expect(screen.getByTestId('dormant-accounts-stub').closest('.md\\:grid-cols-2')).not.toBeNull()
+  })
+
+  it('l\'ancienne vue « Adhérence » et les tuiles perso CKP4 ont quitté la page (les deux rôles)', async () => {
+    for (const role of ['admin', 'normal']) {
+      const { unmount } = mount({ role })
+      // Un rôle après l'autre, par construction.
+      await screen.findByTestId('controle-verdict')
+      expect(screen.queryByTestId('adherence-relances-panel')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('mes-stats-relance-tuiles')).not.toBeInTheDocument()
+      unmount()
+    }
+    // Le code mort a suivi : plus aucune méthode cliente pour ces deux routes
+    // serveur (`kpi-adherence/`, `mes-stats/` — les routes restent côté serveur)…
+    expect(crmApi.getKpiAdherence).toBeUndefined()
+    expect(crmApi.getMesStatsRelance).toBeUndefined()
+    // … et le cockpit n'en demande aucune (l'espion a bien vu passer d'autres routes).
+    const routes = api.get.mock.calls.map(([url]) => String(url))
+    expect(routes.length).toBeGreaterThan(0)
+    expect(routes.filter((url) => /kpi-adherence|mes-stats/.test(url))).toEqual([])
+  })
+
+  it('le contrôle et la file lisent chacun leur route, une fois', async () => {
+    await monterEtAttendre('admin')
+    expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(1)
+    expect(crmApi.getControleSuivi).toHaveBeenCalledWith({ jours: 14 })
+    expect(crmApi.getRelanceEtapesDues).toHaveBeenCalledWith({ scope: 'all' })
   })
 })
