@@ -146,8 +146,8 @@ class ManquantesTests(TestCase):
         lead = lead_complet(self.company, facture_ete=None)
         pre = quest.prefill(lead, ['gps', 'energie'])
         self.assertEqual(set(pre), set(
-            quest.CHAMPS_PAR_SECTION['gps']
-            + quest.CHAMPS_PAR_SECTION['energie']))
+            quest.colonnes_ecrites('gps')
+            + quest.colonnes_ecrites('energie')))
         # Une valeur absente vaut null — JAMAIS un défaut forfaitaire.
         self.assertIsNone(pre['facture_ete'])
         self.assertEqual(pre['facture_hiver'], 3500.0)
@@ -452,7 +452,7 @@ class PublicQuestionnaireTests(TestCase):
         self.assertEqual(sorted(data['champs']), sorted(data['sections']))
         for section, colonnes in data['champs'].items():
             self.assertLessEqual(
-                set(colonnes), set(quest.CHAMPS_PAR_SECTION[section]))
+                set(colonnes), set(quest.colonnes_ecrites(section)))
 
     def test_jeton_inconnu_404_a_corps_constant(self):
         res = self._get('jeton-qui-nexiste-pas')
@@ -576,6 +576,128 @@ class PublicQuestionnaireTests(TestCase):
 
 
 # ── Jeton interne : aperçu MUET ──────────────────────────────────────────
+
+class ColonnesEcritesTests(TestCase):
+    """QJR596 — le questionnaire public ne promet que les colonnes que la
+    page sait poser ; les questions orales restent au panneau d'appel."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor QJR596', slug='taqinor-qjr596')
+
+    def _lien(self, lead, **questions):
+        base = {cle: False for cle in quest.SECTIONS}
+        base.update(questions)
+        return QuestionnaireLien.objects.create(
+            company=self.company, lead=lead, questions=base)
+
+    def test_le_get_public_ne_sert_plus_les_colonnes_orales(self):
+        lead = lead_complet(self.company, type_bien='villa')
+        lien = self._lien(lead, energie=True, toiture=True)
+        res = self.client.get(PUBLIC.format(lien.token))
+        self.assertEqual(res.status_code, 200, res.content)
+        data = res.json()
+        for colonnes in data['champs'].values():
+            self.assertNotIn('type_bien', colonnes)
+            self.assertNotIn('tranche_onee', colonnes)
+        self.assertNotIn('type_bien', data['prefill'])
+        self.assertNotIn('tranche_onee', data['prefill'])
+        self.assertIn('conso_mensuelle_kwh', data['champs']['energie'])
+
+    def test_le_post_n_ecrit_pas_une_colonne_orale(self):
+        lead = lead_complet(self.company, tranche_onee='T3')
+        lien = self._lien(lead, energie=True)
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'energie', 'reponses': {
+                'tranche_onee': 'T5', 'facture_hiver': 4000}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.tranche_onee, 'T3')
+        self.assertEqual(float(lead.facture_hiver), 4000.0)
+
+    def test_colonnes_ecrites_du_contrat_egale_la_fonction(self):
+        import os
+        chemin = os.path.join(
+            os.path.dirname(__file__), 'contract_samples',
+            'questionnaire_lead.json')
+        with open(chemin, encoding='utf-8') as f:
+            contrat = json.load(f)
+        attendu = {s: list(quest.colonnes_ecrites(s))
+                   for s in contrat['colonnes_ecrites']}
+        self.assertEqual(contrat['colonnes_ecrites'], attendu)
+
+    def test_le_panneau_d_appel_pose_toujours_type_bien(self):
+        from apps.crm import panneau_appel
+        champs = [q['champ'] for q in panneau_appel.questions_a_poser(
+            Lead(nom='Prospect'))]
+        self.assertIn('type_bien', champs)
+        self.assertIn('type_bien', quest.CHAMPS_PAR_SECTION['toiture'])
+        self.assertIn('type_bien', quest.CHAMPS_ORAUX_SEULEMENT)
+
+
+class PrefillVuTests(TestCase):
+    """QJR597 — une réponse restée au pré-remplissage n'écrase pas une valeur
+    corrigée par l'équipe depuis l'ouverture du lien."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor QJR597', slug='taqinor-qjr597')
+        self.lead = lead_complet(self.company, facture_hiver=900)
+        base = {cle: False for cle in quest.SECTIONS}
+        base.update({'energie': True, 'gps': True})
+        self.lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=self.lead, questions=base)
+
+    def _post(self, body):
+        return self.client.post(
+            PUBLIC.format(self.lien.token), data=json.dumps(body),
+            content_type='application/json')
+
+    def test_reponse_inchangee_ne_l_emporte_pas_sur_la_correction(self):
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=1100)
+        res = self._post({'section': 'energie',
+                          'reponses': {'facture_hiver': 900},
+                          'prefill_vu': {'facture_hiver': 900}})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()['ignorees'], ['facture_hiver'])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.facture_hiver), 1100.0)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__contains='non appliquée').exists())
+
+    def test_correction_volontaire_du_client_passe(self):
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=1100)
+        res = self._post({'section': 'energie',
+                          'reponses': {'facture_hiver': 1000},
+                          'prefill_vu': {'facture_hiver': 900}})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()['ignorees'], [])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.facture_hiver), 1000.0)
+
+    def test_sans_prefill_vu_comportement_inchange(self):
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=1100)
+        res = self._post({'section': 'energie',
+                          'reponses': {'facture_hiver': 900}})
+        self.assertEqual(res.json()['ignorees'], [])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.facture_hiver), 900.0)
+
+    def test_meme_garde_sur_le_gps(self):
+        Lead.objects.filter(pk=self.lead.pk).update(
+            gps_lat=34.0, gps_lng=-6.8)
+        res = self._post({'section': 'gps',
+                          'reponses': {'gps_lat': 33.5, 'gps_lng': -7.6},
+                          'prefill_vu': {'gps_lat': 33.5, 'gps_lng': -7.6}})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(sorted(res.json()['ignorees']),
+                         ['gps_lat', 'gps_lng'])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.gps_lat), 34.0)
+        self.assertEqual(float(self.lead.gps_lng), -6.8)
+
 
 class ApercuInterneTests(TestCase):
     def setUp(self):

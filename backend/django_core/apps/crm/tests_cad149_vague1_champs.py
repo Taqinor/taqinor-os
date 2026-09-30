@@ -172,6 +172,11 @@ class LesSixEndroitsSuivent(SimpleTestCase):
                       questionnaire.CHAMPS_PAR_SECTION['equipements'])
         for nom in ('decideur', 'devis_concurrents'):
             self.assertNotIn(nom, toutes, nom)
+        # QJR596 — annoncées au panneau d'appel, mais PAS posées par écrit.
+        for nom in ('type_bien', 'objectif_projet', 'equip_ve_statut'):
+            self.assertIn(nom, questionnaire.CHAMPS_ORAUX_SEULEMENT, nom)
+            self.assertNotIn(nom, [c for s in questionnaire.SECTIONS
+                                   for c in questionnaire.colonnes_ecrites(s)])
 
     def test_6bis_toute_colonne_de_section_est_un_vrai_champ_du_lead(self):
         concrets = {f.name for f in Lead._meta.get_fields()
