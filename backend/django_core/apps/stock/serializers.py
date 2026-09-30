@@ -64,6 +64,7 @@ class CategorieSerializer(serializers.ModelSerializer):
         read_only_fields = ['company']
         validators = []
 
+    @extend_schema_field(serializers.IntegerField())
     def get_nb_produits(self, obj):
         annotated = getattr(obj, 'nb_produits_annot', None)
         if annotated is not None:

@@ -1053,6 +1053,7 @@ class FactureSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_montant_du(self, obj):
         from decimal import Decimal
         if obj.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):

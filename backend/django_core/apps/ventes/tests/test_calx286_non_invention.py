@@ -588,7 +588,9 @@ class AppelantsInchangesTest(SimpleTestCase):
 
     def test_moteur_de_devis_cashflow(self):
         from apps.ventes.quote_engine import pricing
-        self.assertEqual(
-            pricing.compute_cashflow_payback(80000.0, 12000.0,
-                                             inverter_replace_cost=None),
-            AVANT['cashflow'])
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS ajoute le drapeau
+        # `jamais_rembourse` : le reste du résultat est inchangé à l'octet.
+        res = pricing.compute_cashflow_payback(80000.0, 12000.0,
+                                               inverter_replace_cost=None)
+        self.assertIs(res.pop('jamais_rembourse'), False)
+        self.assertEqual(res, AVANT['cashflow'])
