@@ -291,6 +291,11 @@ GARDES = {
         ('Test des garde-fous des scripts de QA de nuit (QAH11)',
          'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
          '.'),
+        # Instantanés anonymisés de prod (export_anonymise) : CONFIDENTIELS,
+        # ignorés par .gitignore — cette garde refuse un `git add -f`.
+        ('Check aucun instantané anonymisé suivi par git (var/anon, *.anon.json.gz)',
+         'python scripts/check_no_anon_snapshot.py',
+         '.'),
         # CAD177 (28/09/2026) — `release-verify.yml` a echoue chaque nuit
         # pendant 12 nuits sans qu'aucun signal n'alerte. Le job
         # `alert-on-repeated-failure` de ce workflow appelle
