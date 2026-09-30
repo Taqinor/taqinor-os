@@ -37,10 +37,11 @@ const REGISTRY_SECTIONS = [
 
 function htmlForIdsIn(source) {
   const ids = new Set()
-  const re = /htmlFor="([\w-]+)"/g
+  // QJR593 — StructureSelector porte son id en prop (pas de htmlFor externe).
+  const re = /htmlFor="([\w-]+)"|<StructureSelector\s+id="([\w-]+)"/g
   let m = re.exec(source)
   while (m) {
-    ids.add(m[1])
+    ids.add(m[1] || m[2])
     m = re.exec(source)
   }
   return ids

@@ -14,6 +14,7 @@ import ArbreHistorique from './ArbreHistorique'
 // RLC2 — le journal « ce qui s'est passé » du PLAN DE RELANCE (avec la cause de
 // chaque ligne) + l'état courant en une phrase. Lecture serveur dédiée.
 import JournalRelance from './JournalRelance'
+import { enumOptions } from './enumOptions'
 
 // Les trois cadences nommées du gabarit (MRY4) — jamais un libellé inventé.
 const CADENCE_CHOICES = [
@@ -266,11 +267,6 @@ const CIVILITES = { 'M.': 'M.', Mme: 'Mme' }
 // CAD150 — préférence de contact du CLIENT (vide = non renseignée).
 // source-choix: crm.Lead.contact_preference
 const CONTACT_PREFERENCES = { whatsapp_only: 'WhatsApp uniquement', phone_ok: 'Rappel téléphonique OK' }
-
-const enumOptions = (labels) => [
-  <option key="" value="">—</option>,
-  ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
-]
 
 // LW11 — Suivi commercial SANS le select d'étape (remplacé par StageControl
 // LW16, rail identité). Port 1:1 des autres champs pipeline + verrous perdu/motif.

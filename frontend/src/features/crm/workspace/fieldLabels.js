@@ -134,6 +134,7 @@ const fieldLabels = {
   ombrage: { label: 'Ombrage', section: 'toiture', inputId: 'lf-ombrage' },
   ombrage_notes: { label: 'Notes ombrage', section: 'toiture', inputId: 'lf-ombrage-notes' },
   structure_pref: { label: 'Structure', section: 'toiture', inputId: 'lf-structure' },
+  structure_produit: { label: 'Structure', section: 'toiture', inputId: 'lf-structure-produit' },
   nb_etages: { label: 'Étages / hauteur', section: 'toiture', inputId: 'lf-nb-etages' },
 
   // ── Visite technique ───────────────────────────────────────────────────

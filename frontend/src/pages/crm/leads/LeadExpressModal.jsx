@@ -17,7 +17,8 @@ import { useState, useEffect, useId, useRef } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import useCanaux from '../../../features/crm/useCanaux'
-import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../../hooks/usePasteClean'
+import { usePasteClean, parsePastedPhone } from '../../../hooks/usePasteClean'
+import useCardPaste from '../../../features/crm/workspace/useCardPaste'
 import PhoneHint from '../../../components/PhoneHint'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -65,17 +66,11 @@ export default function LeadExpressModal({ onClose, onSaved }) {
   const [scanUnavailable, setScanUnavailable] = useState(false)
   // VX237 — carte de visite collée dans « Nom » : jamais répartie
   // silencieusement, un bandeau propose « Répartir » sur confirmation.
-  const [cardPaste, setCardPaste] = useState(null)
-  const onNomPaste = (e) => {
-    const card = parsePasteCard(e.clipboardData?.getData('text'))
-    if (card) setCardPaste(card)
-  }
-  const applyCardPaste = () => {
-    if (!cardPaste) return
-    setNom(cardPaste.nom)
-    setTelephone(cardPaste.telephone)
-    setCardPaste(null)
-  }
+  const { cardPaste, onNomPaste, applyCardPaste, annuler: annulerCardPaste } = useCardPaste(
+    ({ nom, telephone }) => {
+      setNom(nom)
+      setTelephone(telephone)
+    })
   const onTelephonePaste = usePasteClean(parsePastedPhone, setTelephone)
 
   const { options: canauxOptions, loaded: canauxLoaded } = useCanaux()
@@ -240,7 +235,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
               <Button type="button" variant="outline" size="sm" onClick={applyCardPaste}>
                 Répartir
               </Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setCardPaste(null)}>
+              <Button type="button" variant="ghost" size="sm" onClick={annulerCardPaste}>
                 Ignorer
               </Button>
             </div>

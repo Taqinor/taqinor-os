@@ -20,6 +20,7 @@ TRACKED_FIELDS = {
     'whatsapp': 'WhatsApp',
     'adresse': 'Adresse',
     'ville': 'Ville',
+    'ville_reference': 'Ville de rattachement',
     'canal': 'Canal',
     'priorite': 'Priorité',
     'tags': 'Tags',
