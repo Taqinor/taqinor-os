@@ -1178,6 +1178,21 @@ def _map_payload_to_fields(data: dict) -> dict:
         pompe_alim = questionnaire.pop('pompe_actuelle', None)
         if pompe_alim is not None:
             fields['pompe_alim_actuelle'] = pompe_alim
+        # QJR595 — client pro : puissance souscrite et surface de toiture
+        # promues vers leurs colonnes (remplissage seulement, jamais
+        # d'écrasement). 99999.99 = max de compteur_puissance_kva
+        # (max_digits=7) ; au-delà la valeur reste dans la bag. Jamais
+        # surface_m2 (peut être au sol).
+        puissance_kva = questionnaire.get('puissance_kva')
+        if (puissance_kva is not None
+                and 'compteur_puissance_kva' not in fields
+                and 0 <= puissance_kva <= 99999.99):
+            fields['compteur_puissance_kva'] = questionnaire.pop('puissance_kva')
+        surface_toit = questionnaire.get('surface_toiture_m2')
+        if (surface_toit is not None
+                and fields.get('surface_toiture_m2') is None):
+            fields['surface_toiture_m2'] = questionnaire.pop(
+                'surface_toiture_m2')
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(
