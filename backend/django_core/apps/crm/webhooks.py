@@ -751,6 +751,27 @@ def _ville_corrigee(brut):
     return corriger_ville(texte)
 
 
+def _clean_email(value):
+    """QJR594 — e-mail d'entrée : invalide → None (jamais d'erreur)."""
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+    texte = str(value or '').strip()[:254]
+    if not texte:
+        return None
+    try:
+        validate_email(texte)
+    except ValidationError:
+        return None
+    return texte
+
+
+def _telephone_canonique(value):
+    """QJR594 — téléphone d'entrée au format canonique de l'équipe
+    ('212XXXXXXXXX') ; un numéro étranger reste intact."""
+    from .serializers import LeadSerializer
+    return LeadSerializer._canonical_phone(value) or value
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -766,8 +787,9 @@ def _map_payload_to_fields(data: dict) -> dict:
     utm = data.get('utm') or {}
     fields = {
         'nom': str(data.get('fullName') or '').strip()[:255] or 'Lead site web',
-        'telephone': str(data.get('phoneE164') or data.get('phone') or '').strip()[:50],
-        'email': str(data.get('email') or '').strip()[:254] or None,
+        'telephone': _telephone_canonique(
+            str(data.get('phoneE164') or data.get('phone') or '').strip()[:50]),
+        'email': _clean_email(data.get('email')),
         # VREF — auto-correction à l'entrée (même résolveur que le formulaire
         # et la sync Odoo) : graphie connue/raccourci unique/faute sûre →
         # nom canonique ; ambigu/inconnu → texte conservé tel quel.
