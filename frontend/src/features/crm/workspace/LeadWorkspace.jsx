@@ -839,15 +839,19 @@ export default function LeadWorkspace({
           ContextRail (câblage lane 4, inchangé). */}
       {mode === 'edit' && isMobile && (
         <div className="lw-thumbbar" role="toolbar" aria-label="Actions rapides">
-          <a
+          {/* SUIVI-BLOCAGE (30/09/2026) — plus un `tel:` nu : le bouton ouvre la
+              MÊME fenêtre d'appel que le rail (script, questions, issue) via
+              l'événement `lw:open-appel` que IdentityRail écoute ; on compose
+              depuis la fenêtre. Sans numéro, rien ne s'ouvre (le rail le dit). */}
+          <button
+            type="button"
             className="lw-thumbbar-btn"
-            href={callPhone ? `tel:${callPhone}` : undefined}
-            aria-disabled={!callPhone}
-            onClick={(e) => { if (!callPhone) e.preventDefault() }}
+            disabled={!callPhone}
+            onClick={() => window.dispatchEvent(new CustomEvent('lw:open-appel', { detail: { leadId } }))}
           >
             <span aria-hidden="true">☎</span>
             <span>Appeler</span>
-          </a>
+          </button>
           <button
             type="button"
             className="lw-thumbbar-btn"

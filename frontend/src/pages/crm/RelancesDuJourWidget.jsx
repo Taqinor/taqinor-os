@@ -417,6 +417,13 @@ export default function RelancesDuJourWidget() {
                   // CAD101 — « pièce reçue » : la touche est close et une étape
                   // « préparer le devis » est née — la file est relue.
                   onPieceRecue={(id) => { retirer(id); charger() }}
+                  // SUIVI-BLOCAGE — une visite planifiée / déplacée / abandonnée
+                  // ferme, annule ou décale des étapes : la file est relue EN
+                  // PLACE (les lignes gardent leur état, `key` inchangée).
+                  onVisiteChanged={() => charger()}
+                  // CAD152 — une réponse écrite sur la fiche depuis le panneau
+                  // d'appel : le score servi a changé, la file est relue en place.
+                  onLeadEcrit={() => charger()}
                 />
                 <ArreterCadenceControl leadId={etape.lead} onArreter={arreterCadenceLead} />
               </Fragment>

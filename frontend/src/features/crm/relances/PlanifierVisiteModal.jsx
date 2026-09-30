@@ -28,6 +28,14 @@ import crmApi from '../../../api/crmApi'
 import { toastSuccess } from '../../../lib/toast'
 import MicDicteeButton from '../../../components/MicDicteeButton'
 
+// SUIVI-BLOCAGE — ce que fait chacun des deux boutons quand la modale vient
+// de la réponse « Visite acceptée » : dit AVANT le clic (règle CAD17, jamais
+// un effet caché).
+const CONSIGNE_SANS_DATE = 'La date est connue : planifiez-la ici, la réponse '
+  + '« Visite acceptée » est enregistrée dans la foulée. Pas encore de date : '
+  + '« Date pas encore fixée » enregistre la réponse et pose l’étape '
+  + '« Planifier la visite technique convenue » pour aujourd’hui.'
+
 const FIELD_LABELS = {
   date_prevue: 'Date prévue',
   commercial: 'Commercial assigné',
@@ -41,7 +49,25 @@ function aujourdhuiCasablanca() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date())
 }
 
-export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPlanifie }) {
+export default function PlanifierVisiteModal({
+  leadId, open, onOpenChange, onPlanifie,
+  // SUIVI-BLOCAGE (30/09/2026) — ouverte par la réponse « Visite acceptée »
+  // d'une touche, la modale s'ouvre AVANT tout enregistrement : le client a
+  // dit oui, mais la date n'est pas toujours connue à cet instant. Ce second
+  // bouton enregistre la réponse sans date (le serveur pose alors l'étape
+  // « Planifier la visite technique convenue », pour aujourd'hui). Absent
+  // partout ailleurs (CTA de coaching, fiche, étape « planifier » elle-même).
+  onSansDate,
+  // SUIVI-PARCOURS — la TOUCHE qui a demandé la planification (`etape` du
+  // corps) : le serveur la clôt lui-même, en une seule requête, avec sa
+  // réponse « Visite acceptée » et la note tapée (`note_etape`). Jamais un
+  // second aller-retour « Fait » depuis l'écran, qui pouvait échouer après
+  // une visite déjà créée. `replanifier` : déplacer la visite EXISTANTE du
+  // lead (« reportée ») au lieu d'en créer une seconde.
+  etapeId,
+  noteEtape,
+  replanifier = false,
+}) {
   const [date, setDate] = useState('')
   const [commercial, setCommercial] = useState('')
   const [notes, setNotes] = useState('')
@@ -88,10 +114,17 @@ export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPla
     const payload = { date_prevue: date }
     if (commercial) payload.commercial = Number(commercial)
     if (notes.trim()) payload.notes = notes.trim()
+    if (etapeId != null) payload.etape = etapeId
+    if (etapeId != null && noteEtape) payload.note_etape = noteEtape
+    if (replanifier) payload.replanifier = true
     try {
       const res = await crmApi.planifierVisiteLead(leadId, payload)
-      toastSuccess('Visite planifiée — relances décalées après la visite')
-      onPlanifie?.(res?.data?.visite)
+      toastSuccess(replanifier
+        ? 'Visite déplacée — ses étapes suivent la nouvelle date'
+        : 'Visite planifiée — relances décalées après la visite')
+      // Le parent reçoit TOUTE la réponse (`{visite, prochaine_touche}`) :
+      // c'est elle qui dit l'étape suivante, jamais un calcul d'écran.
+      onPlanifie?.(res?.data)
       onOpenChange(false)
     } catch (err) {
       const data = err?.response?.data
@@ -121,7 +154,7 @@ export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPla
     <Dialog open={open} onOpenChange={(o) => { if (!o) fermer() }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Planifier la visite technique</DialogTitle>
+          <DialogTitle>{replanifier ? 'Déplacer la visite technique' : 'Planifier la visite technique'}</DialogTitle>
           <DialogDescription>
             Crée une visite dans le module Visites — les relances en attente
             sont décalées après la visite (jamais annulées, jamais
@@ -168,10 +201,23 @@ export default function PlanifierVisiteModal({ leadId, open, onOpenChange, onPla
           {erreurGenerale && (
             <p role="alert" className="text-sm text-destructive">{erreurGenerale}</p>
           )}
+          {onSansDate && (
+            <p className="text-xs text-muted-foreground" data-testid="pv-consigne-sans-date">
+              {CONSIGNE_SANS_DATE}
+            </p>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={saving} onClick={fermer}>
               Annuler
             </Button>
+            {onSansDate && (
+              <Button
+                type="button" variant="outline" disabled={saving}
+                onClick={() => { onSansDate(); onOpenChange(false) }}
+              >
+                Date pas encore fixée
+              </Button>
+            )}
             <Button type="submit" disabled={saving || !date} loading={saving}>
               Planifier la visite
             </Button>

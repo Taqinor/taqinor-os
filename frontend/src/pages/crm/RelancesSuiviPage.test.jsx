@@ -110,14 +110,28 @@ describe('RelancesSuiviPage (MRY31)', () => {
   it('« Demain » appelle l\'API avec les bornes de demain (Africa/Casablanca)', async () => {
     mount()
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalled())
-    activerOnglet('Demain')
     const today = casaISO(new Date())
     const demain = decalerJours(today, 1)
+    // Une touche du protocole datée de DEMAIN, à faire (l'exemple committé
+    // date d'un autre jour : il serait filtré hors de l'onglet).
+    crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+      data: {
+        results: [{ ...ETAPES[0], id: 778, due_date: demain, statut: 'a_faire', overdue: false }],
+        resume: { a_faire: 1, en_retard: 0, fait: 0, sautee: 0, annulee: 0 },
+      },
+    })
+    activerOnglet('Demain')
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledWith(
       expect.objectContaining({ date_debut: demain, date_fin: demain }),
     ))
-    // Les lignes « Demain » se lisent seulement (MRY32) : aucun bouton Fait.
+    // CAD44 puis SUIVI-BLOCAGE (30/09/2026) — les lignes « Demain » ne se
+    // lisent plus seulement : même règle que le cockpit (CADX). Sur une touche
+    // du protocole à venir : Appeler / WhatsApp / Reporter ouverts, « Fait »
+    // caché jusqu'à l'échéance (ou jusqu'au geste réellement fait).
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /Appeler/ }).length).toBeGreaterThan(0))
+    expect(screen.queryAllByRole('button', { name: /Reporter/ }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+    expect(screen.getAllByTestId('touche-en-avance').length).toBeGreaterThan(0)
   })
 
   it('le filtre Responsable est masqué au rôle normal', async () => {

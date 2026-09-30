@@ -228,11 +228,26 @@ describe('CAD44 RelanceEtapeRow — agir en avance', () => {
 
   it('le coaching « Proposer la visite » reste proposé sur une touche après-devis à venir', () => {
     render(
-      <RelanceEtapeRow etape={ETAPE_APRES_DEVIS} onFait={noop} onSauter={noop} onReporter={noop}
-        onOuvrirMessage={noop} enAvance />,
+      <RelanceEtapeRow etape={{ ...ETAPE_APRES_DEVIS, message_ouvert_le: null }}
+        onFait={noop} onSauter={noop} onReporter={noop} onOuvrirMessage={noop} enAvance />,
     )
     expect(screen.getByTestId('panneau-proposer-visite')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+  })
+
+  // SUIVI-BLOCAGE (30/09/2026) — le verrou protège un geste NON fait : un
+  // message déjà ouvert depuis l'ERP (trace serveur RLC3) sur une touche à
+  // venir A eu lieu — « Fait » s'ouvre, avec la mention « traitée en avance ».
+  it('touche message à venir MAIS déjà ouverte depuis l’ERP : « Fait » disponible', () => {
+    expect(ETAPE_APRES_DEVIS.message_ouvert_le).toBeTruthy()
+    render(
+      <RelanceEtapeRow etape={ETAPE_APRES_DEVIS} onFait={noop} onSauter={noop} onReporter={noop}
+        onOuvrirMessage={noop} enAvance />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+    expect(screen.getByTestId('reponse-en-avance')).toHaveTextContent(/traitée en avance/)
+    // « Sauter » reste verrouillé : on ne saute pas une touche à venir.
+    expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
   })
 })
 
@@ -297,8 +312,11 @@ describe('CAD97 RelanceEtapeRow — « Fait — passer à la suite » sur la gé
   })
 
   it('étape de filet → la suite est posée « demain »', () => {
+    // SUIVI-PARCOURS — l'exemple `exemple_generique.results[1]` est l'étape
+    // « Décider la suite » : sa réponse « passer à la suite » s'appelle
+    // « Le client revient — reprendre » (table du parcours), même issue vide.
     ouvrirFait(FILET)
-    fireEvent.click(screen.getByRole('button', { name: 'Fait — passer à la suite' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Le client revient — reprendre' }))
     const suite = screen.getByTestId('suite-reponse')
     expect(suite).toHaveTextContent(/demain/)
     expect(suite).not.toHaveTextContent(/à son délai/)
@@ -361,11 +379,14 @@ describe('CAD12 RelanceEtapeRow — le client accepte', () => {
 describe('CAD4 RelanceEtapeRow — un seul mot pour « je l’ai eu »', () => {
   const ETAPE_REVEIL = { ...ETAPE_APPEL, cadence: 'reveil', ordre: 1, libelle: 'Réveil J30' }
 
+  // SUIVI-PARCOURS (30/09/2026) — sur une touche MESSAGE (l'exemple du suivi
+  // de proposition est un WhatsApp), le mot est « Le client a répondu » :
+  // même issue serveur `joint`, la suite dit alors « l'appeler ».
   it.each([
-    ['prise de contact', ETAPE_APPEL],
-    ['suivi de proposition', ETAPE_APRES_DEVIS],
-    ['réveil', ETAPE_REVEIL],
-  ])('%s : « Client joint » envoie l’issue `joint`, aucune seconde étiquette', async (_nom, etape) => {
+    ['prise de contact', ETAPE_APPEL, 'Client joint'],
+    ['suivi de proposition', ETAPE_APRES_DEVIS, 'Le client a répondu'],
+    ['réveil', ETAPE_REVEIL, 'Client joint'],
+  ])('%s : « Client joint » envoie l’issue `joint`, aucune seconde étiquette', async (_nom, etape, libelle) => {
     const onFait = vi.fn(() => Promise.resolve({}))
     render(
       <RelanceEtapeRow etape={etape} onFait={onFait} onSauter={noop} onReporter={noop}
@@ -375,7 +396,7 @@ describe('CAD4 RelanceEtapeRow — un seul mot pour « je l’ai eu »', () => {
     // L'ancienne seconde étiquette (écrite en motif : le mot lui-même ne doit
     // plus apparaître dans ce dossier, hors historique).
     expect(screen.queryByRole('button', { name: /^Int.ress.$/ })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    fireEvent.click(screen.getByRole('button', { name: libelle }))
     // Touche message du suivi : la confirmation « sans ouverture » n'est pas
     // demandée (message ouvert dans le contrat) — le geste part directement.
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))

@@ -27,6 +27,10 @@ vi.mock('../../../api/crmApi', () => ({
     // CAD152 — le panneau d'appel guidé (réponse = l'exemple COMMITTÉ).
     getPanneauAppel: vi.fn(),
     updateLead: vi.fn(),
+    // SUIVI-BLOCAGE — la fenêtre d'appel embarque la frise (touches du lead) :
+    // aucune touche ouverte ici → le script seul, comme avant.
+    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+    getLeadVisites: vi.fn(() => Promise.resolve({ data: { visites: [] } })),
   },
 }))
 vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))

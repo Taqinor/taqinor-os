@@ -23,6 +23,11 @@ import { CANAL_LABELS, latestDevisTotal, formatMAD } from '../stages'
 import { getField } from './draftCore'
 // CAD152 — le panneau d'appel guidé : « Appeler » l'ouvre AVANT de composer.
 import PanneauScriptAppel from '../relances/PanneauScriptAppel'
+// SUIVI-BLOCAGE (30/09/2026) — la fenêtre « Appeler » montre la LIGNE de la
+// prochaine touche (script, questions, puis l'issue et ses boutons), la même
+// que la frise du « Suivi commercial » : avant, elle n'avait AUCUN moyen de
+// saisir l'issue de l'appel.
+import CadenceFrise from './sections/CadenceFrise'
 
 // LW15 — Date locale « YYYY-MM-DD » depuis l'objet Date du DatePicker (jamais
 // via toISOString → pas de décalage UTC, cf. classe de bug LW5).
@@ -266,11 +271,22 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   // poser, écriture par le chemin de la fiche. On compose DEPUIS le panneau.
   // Sans fiche enregistrée (création), rien à charger : on compose.
   const [panneauAppel, setPanneauAppel] = useState(false)
+  // SUIVI-BLOCAGE — les touches actionnables du lead, lues par la frise
+  // embarquée : `null` tant qu'on ne sait pas, `[]` quand aucune étape n'est
+  // ouverte (le script s'affiche seul et l'issue se note via « Journaliser »).
+  const [touchesAppel, setTouchesAppel] = useState(null)
+  const [friseAppelToken, setFriseAppelToken] = useState(0)
   const call = () => {
     if (!callPhone) return
-    if (leadId) setPanneauAppel(true)
-    else composer()
+    if (leadId) { setTouchesAppel(null); setPanneauAppel(true) } else composer()
   }
+  // SUIVI-BLOCAGE — la barre-pouce mobile (LeadWorkspace, `lw:open-appel`)
+  // ouvre cette même fenêtre au lieu d'un `tel:` nu qui sautait le script.
+  useEffect(() => {
+    const ouvrir = () => { if (callPhone && leadId) { setTouchesAppel(null); setPanneauAppel(true) } }
+    window.addEventListener('lw:open-appel', ouvrir)
+    return () => window.removeEventListener('lw:open-appel', ouvrir)
+  }, [callPhone, leadId])
 
   return (
     <>
@@ -673,13 +689,36 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       <Dialog open onOpenChange={(o) => { if (!o) setPanneauAppel(false) }}>
         <DialogContent className="lw-appel-dialog" aria-describedby={undefined}>
           <DialogTitle>Appel — {nom}</DialogTitle>
-          <PanneauScriptAppel
-            mode="fiche"
-            leadId={leadId}
-            telephone={callPhone}
-            onComposer={composer}
-            onLeadEcrit={() => onAction('refresh')}
-          />
+          {/* La ligne de la prochaine touche, panneau d'appel ouvert : mêmes
+              boutons que la frise (Appeler, Fait, Reporter…) — l'issue se
+              saisit ICI, sans quitter la fenêtre. Chaque geste rafraîchit la
+              fiche (`onAction('refresh')`) et la frise embarquée. */}
+          <div className="flex flex-col gap-1" data-testid="lw-appel-touches">
+            <CadenceFrise
+              leadId={leadId}
+              reloadToken={friseAppelToken}
+              seulementActionnable
+              appelOuvert
+              onEtapes={setTouchesAppel}
+              onChanged={() => { setFriseAppelToken((k) => k + 1); onAction('refresh') }}
+            />
+          </div>
+          {touchesAppel && touchesAppel.length === 0 && (
+            <>
+              <p className="text-xs text-muted-foreground" data-testid="lw-appel-sans-touche">
+                Aucune étape de suivi ouverte sur ce lead : le script reste lisible ci-dessous ;
+                notez l’issue de l’appel dans l’historique (« Journaliser ») ou relancez la cadence
+                depuis « Suivi commercial ».
+              </p>
+              <PanneauScriptAppel
+                mode="fiche"
+                leadId={leadId}
+                telephone={callPhone}
+                onComposer={composer}
+                onLeadEcrit={() => onAction('refresh')}
+              />
+            </>
+          )}
         </DialogContent>
       </Dialog>
     )}

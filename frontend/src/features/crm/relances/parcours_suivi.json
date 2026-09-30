@@ -90,7 +90,7 @@
     },
     {
       "id": "sauter", "label": "Sauter",
-      "effet": "La touche est notée « sautée » et la touche suivante du protocole est programmée, comme après un « pas de réponse ». Absent des trois tâches (devis, planifier la visite, décider la suite), qui ont chacune leurs réponses."
+      "effet": "La touche est notée « sautée » et la touche suivante du protocole est programmée, comme après un « pas de réponse ». Absent des tâches (préparer le devis, devis modifié, planifier la visite, décider la suite, question de prix), qui ont chacune leurs réponses."
     },
     {
       "id": "annuler", "label": "Annuler (24 h)",

@@ -17,6 +17,7 @@ import {
 } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import RelanceEtapeRow from './RelanceEtapeRow'
+import { PARCOURS } from './parcours'
 
 const ETAPE_CONTACT = exempleContrat('crm', 'relance_etape_v2').results[0]
 const [ETAPE_GENERIQUE] = exempleContrat('crm', 'relance_etape_v2', 'exemple_generique').results
@@ -63,9 +64,13 @@ describe('VISCAD6-B — « Visite acceptée » proposée dès la prise de contac
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    // SUIVI-BLOCAGE (30/09/2026) — la modale s'ouvre AVANT tout envoi ;
+    // « Date pas encore fixée » envoie l'issue serveur exacte.
+    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    expect(onFait).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_CONTACT.id, { outcome: 'visite_acceptee' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
   })
 })
 
@@ -94,9 +99,13 @@ describe('VISCAD6-B — « Visite acceptée » proposée sur le filet génériqu
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    // SUIVI-BLOCAGE (30/09/2026) — la modale s'ouvre AVANT tout envoi ;
+    // « Date pas encore fixée » envoie l'issue serveur exacte.
+    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    expect(onFait).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_GENERIQUE.id, { outcome: 'visite_acceptee' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
   })
 })
 
@@ -113,9 +122,13 @@ describe('VISCAD6-B — « Visite acceptée » proposée sur le réveil', () => 
     expect(screen.getByRole('button', { name: 'Visite acceptée' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+    // SUIVI-BLOCAGE (30/09/2026) — la modale s'ouvre AVANT tout envoi ;
+    // « Date pas encore fixée » envoie l'issue serveur exacte.
+    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    expect(onFait).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       etapeReveil.id, { outcome: 'visite_acceptee' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
   })
 })
 
@@ -132,7 +145,12 @@ describe('VISCAD6-B — « Visite acceptée » proposée sur le réveil', () => 
 // cadence, plus « Plus tard » et « Ne plus me contacter » (réponses du
 // CLIENT, ajoutées EN DERNIER — CAD-A, jamais un remplacement).
 describe('VISCAD6-B — réalignement du compte de réponses (contact, 24/09/2026)', () => {
-  it('une touche `contact` (canal whatsapp) porte exactement les 5 réponses de cadence + les 2 réponses client', () => {
+  // SUIVI-PARCOURS (30/09/2026) — le compte et les libellés viennent de la
+  // TABLE du parcours (`contact_message`) : « Le client a répondu », « Client
+  // joint au téléphone » (vous avez appelé à la place), « Visite acceptée »,
+  // « Pas de réponse », « À rappeler le… », « Plus tard », « Refus », « Ne
+  // plus me contacter » — jamais Répondeur/Occupé (réservés au canal appel).
+  it('une touche `contact` (canal whatsapp) porte exactement les réponses de la table', () => {
     const etapeWhatsapp = { ...ETAPE_CONTACT, canal: 'whatsapp' }
     render(
       <RelanceEtapeRow
@@ -140,12 +158,15 @@ describe('VISCAD6-B — réalignement du compte de réponses (contact, 24/09/202
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    const panneau = screen.getByRole('group', { name: 'Résultat de la touche ?' })
-    const labels = ['Client joint', 'Visite acceptée', 'Pas de réponse', 'À rappeler le…', 'Refus',
-      'Plus tard — pas maintenant', 'Ne plus me contacter']
+    const type = PARCOURS.etapes.find((e) => e.id === 'contact_message')
+    const panneau = screen.getByRole('group', { name: type.question })
+    const labels = type.reponses.map((r) => ({ ...PARCOURS.modeles[r.modele], ...r }).label)
+    expect(labels).toContain('Le client a répondu')
+    expect(labels).toContain('Client joint au téléphone')
     for (const label of labels) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
+    expect(screen.queryByRole('button', { name: 'Répondeur' })).not.toBeInTheDocument()
     expect(panneau.querySelectorAll('button')).toHaveLength(labels.length)
   })
 })

@@ -96,8 +96,11 @@ describe('VISCAD3 PlanifierVisiteModal', () => {
     }))
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith(
       'Visite planifiée — relances décalées après la visite'))
+    // SUIVI-PARCOURS — le parent reçoit TOUTE la réponse serveur
+    // (`{visite, prochaine_touche}`), jamais la seule visite : c'est elle qui
+    // annonce l'étape suivante.
     await waitFor(() => expect(onPlanifie).toHaveBeenCalledWith(
-      { id: 55, statut: 'brouillon', statut_libelle: 'Planifiée' }))
+      { visite: { id: 55, statut: 'brouillon', statut_libelle: 'Planifiée' } }))
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
   })
 

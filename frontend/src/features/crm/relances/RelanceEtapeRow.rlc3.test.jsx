@@ -45,7 +45,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     expect(screen.getByTestId('confirmer-sans-ouverture')).toBeInTheDocument()
     // Une issue choisie NE suffit pas : la question reste posée.
-    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Le client a répondu' }))
     expect(screen.getByRole('button', { name: 'Confirmer' })).toBeDisabled()
   })
 
@@ -53,7 +53,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     const onFait = vi.fn(() => Promise.resolve({}))
     monter({ ...ETAPE_MESSAGE, message_ouvert_le: null }, onFait)
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Le client a répondu' }))
     // CAD63 — le panneau porte aussi la case « ne parle que darija » : on
     // coche CELLE de la confirmation RLC3, désignée par son conteneur.
     fireEvent.click(within(screen.getByTestId('confirmer-sans-ouverture')).getByRole('checkbox'))
@@ -72,7 +72,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     const onFait = vi.fn(() => Promise.resolve({}))
     monter(ETAPE_MESSAGE, onFait)
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Le client a répondu' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
     await waitFor(() => expect(onFait).toHaveBeenCalledWith(
       ETAPE_MESSAGE.id, { outcome: 'joint' }))
@@ -83,6 +83,7 @@ describe('RLC3 — rappel « message ouvert ? » sur une touche message', () => 
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
     expect(screen.queryByTestId('rappel-message-ouvert')).toBeNull()
     expect(screen.queryByTestId('confirmer-sans-ouverture')).toBeNull()
+    // Sur un APPEL, le mot reste « Client joint » (table du parcours).
     fireEvent.click(screen.getByRole('button', { name: 'Client joint' }))
     expect(screen.getByRole('button', { name: 'Confirmer' })).not.toBeDisabled()
   })

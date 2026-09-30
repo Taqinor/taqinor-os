@@ -441,8 +441,13 @@ export const EXPLICATION_PROFIL_SUPPOSE = "La présence en journée n'a pas "
 export const CONSIGNE_ISSUE = "L'issue se saisit avec les réponses de la "
   + 'touche (« Fait ») : client joint, pas de réponse, répondeur, à '
   + 'rappeler, refus.'
-export const ISSUE_VERROUILLEE = 'Touche à venir : l’issue se saisira à son '
-  + 'échéance (« Fait » verrouillé).'
+// SUIVI-BLOCAGE (30/09/2026) — remplace `ISSUE_VERROUILLEE` (« l'issue se
+// saisira à son échéance ») : l'issue d'un appel passé en avance se saisit
+// tout de suite, et le serveur la date d'aujourd'hui (CAD44, « traitée en
+// avance » — jamais une faute d'adhérence).
+export const ISSUE_EN_AVANCE = 'Touche à venir : si vous venez d’appeler, '
+  + 'saisissez l’issue maintenant — elle est enregistrée à la date '
+  + 'd’aujourd’hui (« traitée en avance ») et le reste du suivi garde ses dates.'
 export const AUCUNE_QUESTION = 'Rien à demander sur cet appel : tout ce que '
   + 'le script pose est déjà sur la fiche.'
 
