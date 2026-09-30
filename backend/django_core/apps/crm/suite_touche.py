@@ -500,12 +500,18 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
                                 etape, est_actif, canal)]
         if cadence == 'apres_devis':
             # Le filet du récepteur POURSUIT le plan (CAD1) : la touche
-            # suivante naît ; après la dernière, l'étape de suite. SUIVI E6
-            # (30/09/2026) — avec OU SANS devis dans l'ERP : un suivi sans
-            # devis (parti hors ERP) est poursuivi depuis son dernier barreau
-            # consommé, il ne pose plus l'étape devis à côté du suivant.
-            return codes + ([_filet_apres_reponse(etape, est_actif, canal)]
-                            if derniere else [TOUCHE_SUIVANTE])
+            # suivante naît. SUIVI E6 (30/09/2026) — avec OU SANS devis dans
+            # l'ERP : un suivi sans devis (parti hors ERP) est poursuivi
+            # depuis son dernier barreau consommé, il ne pose plus l'étape
+            # devis à côté du suivant.
+            # SUIVI E22 (décision fondateur du 30/09/2026) — après la
+            # DERNIÈRE touche, jamais « Préparer et envoyer le devis » (il est
+            # déjà parti) ni « l'appeler » : le récepteur pose « Décider la
+            # suite », pour demain (``services.est_derniere_touche_du_suivi``,
+            # même critère de rang que ``derniere``). Le canal réel (SUIVI
+            # E16) n'y change rien.
+            return codes + ([ETAPE_DECIDER_SUITE] if derniere
+                            else [TOUCHE_SUIVANTE])
         # Cadence générique (historique) : le filet pose son étape (rien
         # d'ouvert, aucun devis relançable) ET, la cadence survivant à
         # l'issue, la touche suivante naît aussi.

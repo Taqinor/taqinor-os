@@ -311,8 +311,9 @@
       "reponses": [
         {
           "modele": "joint",
-          "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée à son délai prévu.",
-          "suite": { "type": "barreau_suivant" }
+          "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée à son délai prévu. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain (le devis est déjà parti : aucune étape devis).",
+          "suite": { "type": "barreau_suivant" },
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }]
         },
         {
           "modele": "visite",
@@ -349,8 +350,8 @@
       "question": "Le message est parti — le client a-t-il répondu ?",
       "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
       "reponses": [
-        { "modele": "a_repondu", "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée.", "suite": { "type": "barreau_suivant" } },
-        { "modele": "joint_telephone", "effet": "Client eu au téléphone : même suite, l’historique garde un appel abouti.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "a_repondu", "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain (le devis est déjà parti : aucune étape devis).", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
+        { "modele": "joint_telephone", "effet": "Client eu au téléphone : même suite, l’historique garde un appel abouti. Sur la dernière touche du suivi : « Décider la suite » est posée pour demain.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } }] },
         { "modele": "visite", "effet": "Planification (les relances en attente sont décalées après la visite), ou étape « Planifier la visite ».", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
         { "modele": "sans_reponse", "effet": "La touche suivante du suivi est programmée. Après la dernière : Froid + réveils.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
         { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" } },

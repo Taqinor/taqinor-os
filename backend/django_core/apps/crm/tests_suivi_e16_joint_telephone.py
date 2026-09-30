@@ -116,8 +116,11 @@ class PromessesTests(SimpleTestCase):
         self.assertEqual(milieu[JOINT_TELEPHONE], [st.TOUCHE_SUIVANTE])
         fin = _promesses(_touche('apres_devis', derniere, WHATSAPP,
                                  stage=stages.QUOTE_SENT, devis=True))
-        self.assertEqual(fin['joint'], [st.ETAPE_APPELER])
-        self.assertEqual(fin[JOINT_TELEPHONE], [st.ETAPE_DEVIS_DEMAIN])
+        # SUIVI E22 (30/09/2026) — sur la DERNIÈRE touche du suivi, « Client
+        # joint » (message répondu ou au téléphone) pose « Décider la suite »,
+        # jamais « l'appeler » ni l'étape devis d'un devis déjà parti.
+        self.assertEqual(fin['joint'], [st.ETAPE_DECIDER_SUITE])
+        self.assertEqual(fin[JOINT_TELEPHONE], [st.ETAPE_DECIDER_SUITE])
 
     def test_reveil_sort_du_froid_et_reprend(self):
         promesses = _promesses(_touche('reveil', 2, WHATSAPP,

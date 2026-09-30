@@ -1704,9 +1704,17 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
                                  LeadActivity.Kind.NOTE)
             if statut == RelanceEtape.Statut.FAIT
             else LeadActivity.Kind.NOTE)
-    LeadActivity.objects.create(
+    ligne = LeadActivity(
         company=etape.company, lead=etape.lead, user=user,
         kind=kind, body=corps, outcome=(outcome or ''))
+    # SUIVI E22 (30/09/2026) — la touche close VOYAGE avec sa ligne de
+    # chatter (attribut TRANSITOIRE, jamais une colonne) : le récepteur
+    # d'issue MRY9, qui ne tient que l'activité, sait ainsi QUELLE touche
+    # vient d'aboutir (``touche_close_de``) — sur la DERNIÈRE touche du
+    # suivi de proposition, il pose « Décider la suite », jamais l'étape
+    # devis d'un devis déjà parti.
+    setattr(ligne, _ATTRIBUT_TOUCHE_CLOSE, etape)
+    ligne.save(force_insert=True)
 
     lead = etape.lead
     # RELANCE-SUITE (08/09/2026) — LA détection « devis parti » : la touche
@@ -3865,6 +3873,21 @@ def prefixe_activite_touche(etape):
     dérivé, et l'appariement se serait tu sans qu'aucune garde ne rougisse."""
     libelle = (etape.libelle or '').strip() or etape.get_canal_display()
     return f'Touche « {libelle} »'
+
+
+#: SUIVI E22 — l'attribut TRANSITOIRE (jamais une colonne) par lequel la
+#: ligne de chatter d'une touche close porte LA touche jusqu'aux récepteurs
+#: de ``post_save`` (MRY9). Une seule source : écrit par
+#: ``marquer_etape_relance``, relu par ``touche_close_de``.
+_ATTRIBUT_TOUCHE_CLOSE = '_touche_close'
+
+
+def touche_close_de(activite):
+    """SUIVI E22 — la touche dont ``activite`` est la ligne de CLÔTURE, telle
+    que ``marquer_etape_relance`` vient de l'écrire ; ``None`` pour toute
+    autre ligne (journal d'appel de la fiche, note, ligne relue en base) —
+    le récepteur retombe alors sur son comportement ordinaire."""
+    return getattr(activite, _ATTRIBUT_TOUCHE_CLOSE, None)
 
 
 def est_cloture_d_etape_visite(activite):
@@ -12836,6 +12859,44 @@ def repondre_planifier_sans_reponse(etape, user, *, note='', body=''):
             demarrer_plan=False)
     _recaler_file(lead, user)
     return etape, nouvelle
+
+
+# ── SUIVI E22 — la DERNIÈRE touche d'un protocole ──────────────────────────
+
+def _est_dernier_barreau(etape, cadence):
+    """SUIVI E22 (30/09/2026) — ``etape`` est-elle le DERNIER barreau du
+    protocole ``cadence``, celui après lequel aucune touche suivante ne naît
+    (``materialiser_touche_suivante``) ?
+
+    MÊME critère que la promesse servie à l'écran : un BARREAU
+    (``suite_touche.nature_touche`` — jamais une étape de visite ou de
+    filet, qui porte la cadence sans être du protocole) et
+    ``suite_touche.est_derniere_touche`` sur les barreaux ACTIFS de la
+    société (le plus grand rang, ou une touche dont le rang n'est plus un
+    barreau actif). Lecture pure (une requête, aucune écriture) ; une touche
+    absente (``None``) n'est la dernière de rien."""
+    if etape is None or etape.cadence != cadence:
+        return False
+    from .suite_touche import (
+        NATURE_BARREAU, est_derniere_touche, nature_touche,
+        ordres_de_la_cadence)
+
+    return (nature_touche(etape) == NATURE_BARREAU
+            and est_derniere_touche(
+                etape, ordres_de_la_cadence(etape.company_id, cadence)))
+
+
+def est_derniere_touche_du_suivi(etape):
+    """SUIVI E22 (décision fondateur du 30/09/2026) — ``etape`` est-elle la
+    DERNIÈRE touche du SUIVI DE PROPOSITION (cadence ``apres_devis``) ?
+
+    Relue par le récepteur d'issue MRY9 sur la touche close
+    (``touche_close_de``) : un client JOINT sur elle (appel abouti, message
+    répondu, client joint au téléphone) ne fait plus poser « Préparer et
+    envoyer le devis » — le devis est déjà parti — mais « Décider la suite »,
+    pour demain. Sur toute autre touche du suivi, rien ne change : le
+    barreau suivant naît."""
+    return _est_dernier_barreau(etape, 'apres_devis')
 
 
 # ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────

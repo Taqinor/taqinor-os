@@ -363,6 +363,12 @@ def _etape_devis_a_la_date(c):
 def _etape_decider_suite(c):
     c.vrai(c.ouvertes(libelle=FILET_REFUS_LIBELLE).exists(),
            'aucune étape « décider la suite »')
+    # SUIVI E22 — « Décider la suite » EST la suite : jamais « Préparer et
+    # envoyer le devis » ni « Appeler le client » posée à côté (sur la
+    # dernière touche du suivi de proposition, le devis est déjà parti).
+    c.vrai(not c.nouvelles(libelle__in=(FILET_JOINT_LIBELLE,
+                                        FILET_APPEL_LIBELLE)).exists(),
+           'une étape « préparer le devis » ou « appeler » est posée à côté')
 
 
 def _etape_deplacee_a_la_date(c):
