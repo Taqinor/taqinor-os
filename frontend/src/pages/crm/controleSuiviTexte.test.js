@@ -3,8 +3,9 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours'
 import {
   LIBELLES_ISSUE, comparaisonPrecedent, decimal, duree, familleType, heureCasa, jjmm, jourCourt,
-  jourLong, libelleJour, libelleReponse, nomType, numeroJour, phraseExceptions, phrasePeriode,
-  phrasePremierContact, phraseResultats, pl, typeDeLaTable, typeEstTache,
+  jourLong, joursOuvres, libelleJour, libelleReponse, nomType, noteJoursOuvres, numeroJour,
+  phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
+  typeDeLaTable, typeEstTache,
 } from './controleSuiviTexte'
 
 /* COCKPIT-CONTRÔLE — les phrases du bloc « Contrôle du suivi », en fonctions
@@ -57,10 +58,48 @@ describe('accords et formats', () => {
   })
 })
 
+describe('jours ouvrés (contrat notes.retard) : le retard et l\'attente le disent, avec les nombres servis', () => {
+  it('joursOuvres : accord au singulier pour 0 et 1, pluriel dès 2', () => {
+    expect([0, 1, 2, 4, 12].map(joursOuvres)).toEqual([
+      '0 jour ouvré', '1 jour ouvré', '2 jours ouvrés', '4 jours ouvrés', '12 jours ouvrés',
+    ])
+  })
+
+  it('phraseReportee : « reportée N fois » (fois est invariable)', () => {
+    expect(phraseReportee(1)).toBe('reportée 1 fois')
+    expect(phraseReportee(2)).toBe('reportée 2 fois')
+    expect(phraseReportee(7)).toBe('reportée 7 fois')
+  })
+
+  it('noteJoursOuvres : le seuil d\'alerte servi, puis la règle dès qu\'une liste de retard ou d\'attente est là', () => {
+    expect(noteJoursOuvres({ alerteJours: 2, listesRetard: true })).toBe(
+      'Alerte dès 2 jours ouvrés de retard. Week-ends, jours fériés et absences déclarées ne comptent pas.')
+    expect(noteJoursOuvres({ alerteJours: 1, listesRetard: true })).toBe(
+      'Alerte dès 1 jour ouvré de retard. Week-ends, jours fériés et absences déclarées ne comptent pas.')
+    // Aucune liste de retard ou d'attente : le seuil seul, sans la règle.
+    expect(noteJoursOuvres({ alerteJours: 2, listesRetard: false })).toBe('Alerte dès 2 jours ouvrés de retard.')
+    // Seuil non servi : la règle seule — jamais un nombre inventé.
+    expect(noteJoursOuvres({ alerteJours: null, listesRetard: true })).toBe(
+      'Week-ends, jours fériés et absences déclarées ne comptent pas.')
+    expect(noteJoursOuvres({ listesRetard: true })).not.toMatch(/\d/)
+    // Rien à dire.
+    expect(noteJoursOuvres({ alerteJours: null, listesRetard: false })).toBe(null)
+  })
+
+  it('la phrase du bandeau dit l\'ancienneté des tâches en jours ouvrés (l\'exemple : 4)', () => {
+    expect(CONTROLE.exceptions.taches_en_attente.lignes[0].ouverte_depuis_jours).toBe(4)
+    expect(phraseExceptions(CONTROLE.exceptions, 'attention')).toContain('1 tâche en attente depuis 4 jours ouvrés')
+    expect(phraseExceptions({
+      ...VIDE.exceptions,
+      taches_en_attente: { total: 1, lignes: [{ ouverte_depuis_jours: 1 }] },
+    }, 'attention')).toBe('1 tâche en attente depuis 1 jour ouvré.')
+  })
+})
+
 describe('phraseExceptions', () => {
   it('reprend les cinq listes de l\'exemple, retards d\'abord', () => {
     expect(phraseExceptions(CONTROLE.exceptions, 'attention')).toBe(
-      '2 étapes en retard, 1 tâche en attente depuis 4 jours, '
+      '2 étapes en retard, 1 tâche en attente depuis 4 jours ouvrés, '
       + '1 étape reportée plusieurs fois, 1 premier contact hors délai.')
   })
 
@@ -75,7 +114,7 @@ describe('phraseExceptions', () => {
       premier_contact_hors_delai: { total: 4, lignes: [] },
     }
     expect(phraseExceptions(exceptions, 'alerte')).toBe(
-      '1 étape en retard, 3 tâches en attente (la plus ancienne depuis 6 jours), '
+      '1 étape en retard, 3 tâches en attente (la plus ancienne depuis 6 jours ouvrés), '
       + '2 dossiers sans prochaine étape, 4 premiers contacts hors délai.')
   })
 

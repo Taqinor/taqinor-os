@@ -21,6 +21,29 @@ export const pl = (n, un, plusieurs) => (Number(n) >= 2 ? plusieurs : un)
 /** Entier lisible ; `null` → « — » (jamais un 0 inventé). */
 export const nombre = (n) => formatNumber(n)
 
+/** « 1 jour ouvré », « 4 jours ouvrés » : le retard et l'attente se comptent en
+ *  JOURS OUVRÉS (contrat `notes.retard` : week-ends, jours fériés de la société et
+ *  absences déclarées du responsable ne comptent pas). Le nombre est celui du
+ *  serveur ; seul l'accord est fait ici. */
+export const joursOuvres = (n) => `${nombre(n)} ${pl(n, 'jour ouvré', 'jours ouvrés')}`
+
+/** « reportée 2 fois » : les reports humains de CETTE étape (`nb_reports`, servi). */
+export const phraseReportee = (n) => `reportée ${nombre(n)} fois`
+
+/** La note du bas de « À traiter en priorité » : le seuil d'alerte SERVI, en jours
+ *  ouvrés, puis — dès qu'une liste de retard ou d'attente est affichée — ce qui ne
+ *  compte pas. `null` s'il n'y a rien à dire. */
+export function noteJoursOuvres({ alerteJours, listesRetard }) {
+  const phrases = []
+  if (alerteJours !== null && alerteJours !== undefined) {
+    phrases.push(`Alerte dès ${joursOuvres(alerteJours)} de retard.`)
+  }
+  if (listesRetard) {
+    phrases.push('Week-ends, jours fériés et absences déclarées ne comptent pas.')
+  }
+  return phrases.length > 0 ? phrases.join(' ') : null
+}
+
 const FORMAT_DECIMAL = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 })
 
 /** 27.5 → « 27,5 » ; 24 → « 24 » ; `null` → « — ». */
@@ -94,11 +117,12 @@ export function phraseExceptions(exceptions, niveau) {
   const taches = total('taches_en_attente')
   if (taches > 0) {
     // Les lignes sont triées par ancienneté décroissante (contrat) : la première
-    // est la plus ancienne — on lit son ancienneté, on ne la calcule pas.
+    // est la plus ancienne — on lit son ancienneté (en JOURS OUVRÉS, contrat
+    // `notes.retard`), on ne la calcule pas.
     const jours = ex.taches_en_attente?.lignes?.[0]?.ouverte_depuis_jours
     let phrase = `${nombre(taches)} ${pl(taches, 'tâche', 'tâches')} en attente`
     if (jours !== undefined && jours !== null) {
-      const depuis = `depuis ${nombre(jours)} ${pl(jours, 'jour', 'jours')}`
+      const depuis = `depuis ${joursOuvres(jours)}`
       phrase += taches > 1 ? ` (la plus ancienne ${depuis})` : ` ${depuis}`
     }
     parts.push(phrase)

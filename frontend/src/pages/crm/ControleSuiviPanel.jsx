@@ -32,9 +32,9 @@ import {
 import { cn } from '../../lib/cn'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
-  comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, libelleJour,
-  libelleReponse, nomType, nombre, numeroJour, phraseExceptions, phrasePeriode,
-  phrasePremierContact, phraseResultats, pl,
+  comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, joursOuvres, libelleJour,
+  libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseExceptions, phrasePeriode,
+  phrasePremierContact, phraseReportee, phraseResultats, pl,
 } from './controleSuiviTexte'
 
 const PERIODES = [
@@ -77,8 +77,11 @@ const niveauInconnu = (niveau) => ({
 const ETATS_JOUR = {
   vert: { glyphe: '●', texte: 'text-success', mot: 'tout traité le jour même' },
   orange: { glyphe: '◆', texte: 'text-warning-text', mot: 'traité en retard ou sauté' },
-  rouge: { glyphe: '▲', texte: 'text-destructive', mot: 'il en reste d\'ouvert' },
-  en_cours: { glyphe: '◔', texte: 'text-info', mot: 'journée en cours' },
+  // Le retard se compte en JOURS OUVRÉS (contrat `notes.retard`) : « rouge » = il reste
+  // une étape ouverte ET en retard ; « en cours » = il en reste, mais aucune n'est
+  // encore en retard (aujourd'hui, ou un jour passé sans jour ouvré depuis).
+  rouge: { glyphe: '▲', texte: 'text-destructive', mot: 'il en reste en retard' },
+  en_cours: { glyphe: '◔', texte: 'text-info', mot: 'encore dans les temps' },
   vide: { glyphe: '–', texte: 'text-muted-foreground', mot: 'rien de dû' },
 }
 const ORDRE_LEGENDE = ['vert', 'orange', 'rouge', 'en_cours', 'vide']
@@ -398,19 +401,23 @@ const LISTES = [
     cle: 'en_retard',
     titre: () => 'En retard',
     tone: 'danger',
+    reportee: true,
+    // `jours_de_retard` = JOURS OUVRÉS (≥ 1), jamais des jours calendaires.
     detail: (l) => (l.jours_de_retard == null ? ''
-      : `depuis ${nombre(l.jours_de_retard)} ${pl(l.jours_de_retard, 'jour', 'jours')}`),
+      : `en retard de ${joursOuvres(l.jours_de_retard)}`),
   },
   {
     cle: 'taches_en_attente',
     titre: (seuils) => {
       const jours = seuil(seuils, 'tache_attente_jours')
       return jours === null ? 'Tâches en attente'
-        : `Tâches en attente depuis ${nombre(jours)} ${pl(jours, 'jour', 'jours')} ou plus`
+        : `Tâches en attente depuis ${joursOuvres(jours)} ou plus`
     },
     tone: 'warning',
+    reportee: true,
+    // `ouverte_depuis_jours` = JOURS OUVRÉS depuis la pose.
     detail: (l) => (l.ouverte_depuis_jours == null ? ''
-      : `posée il y a ${nombre(l.ouverte_depuis_jours)} ${pl(l.ouverte_depuis_jours, 'jour', 'jours')}`),
+      : `posée il y a ${joursOuvres(l.ouverte_depuis_jours)}`),
   },
   {
     cle: 'reports',
@@ -456,6 +463,7 @@ function LigneException({ liste, ligne, navigate }) {
   const meta = [
     type && type !== ligne.libelle ? type : '',
     liste.detail(ligne),
+    liste.reportee && ligne.nb_reports >= 1 ? phraseReportee(ligne.nb_reports) : '',
     ligne.owner_nom ? `Responsable : ${ligne.owner_nom}` : '',
   ].filter(Boolean).join(' · ')
   return (
@@ -520,7 +528,10 @@ function Exceptions({ exceptions, seuils, navigate }) {
   // un clic de l'utilisateur prend le pas sur ce défaut.
   const [surcharge, setSurcharge] = useState({})
   const presentes = LISTES.filter((l) => (exceptions?.[l.cle]?.total ?? 0) > 0)
-  const alerteJours = seuil(seuils, 'retard_alerte_jours')
+  const note = noteJoursOuvres({
+    alerteJours: seuil(seuils, 'retard_alerte_jours'),
+    listesRetard: presentes.some((l) => l.cle === 'en_retard' || l.cle === 'taches_en_attente'),
+  })
   return (
     <section data-testid="controle-exceptions" className="flex flex-col gap-1.5">
       <h4 className="text-sm font-semibold">À traiter en priorité</h4>
@@ -540,11 +551,10 @@ function Exceptions({ exceptions, seuils, navigate }) {
         ))
       )}
       {/* Les seuils des trois autres listes sont dans leurs titres ; celui de
-          l'alerte n'a pas de liste à lui : il se lit ici. */}
-      {alerteJours !== null && presentes.length > 0 && (
-        <p className="text-xs text-muted-foreground" data-testid="controle-seuils">
-          {`Alerte dès ${nombre(alerteJours)} ${pl(alerteJours, 'jour', 'jours')} de retard.`}
-        </p>
+          l'alerte n'a pas de liste à lui : il se lit ici, avec la règle du retard
+          (jours OUVRÉS) dès qu'une liste de retard ou d'attente est affichée. */}
+      {note && presentes.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="controle-seuils">{note}</p>
       )}
     </section>
   )
