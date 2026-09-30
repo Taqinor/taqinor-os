@@ -24,6 +24,12 @@ Ce module verrouille trois choses :
 Un code sans effet correspondant — le cinquième mensonge d'écran — casse ce
 test au prochain drain.
 
+SUIVI-PARCOURS 30/09/2026 — les réponses servies suivent la TABLE du parcours
+TYPE d'étape par TYPE d'étape (``suite_touche.cles_de_reponse(etape)``) : la
+grille couvre donc chaque type de la table (les étapes « dernier essai »,
+« rappel convenu » et « planifier la visite » y entrent), et l'exemple
+committé est comparé au moteur sur TOUS ses états.
+
 Temps gelé : mercredi 23/09/2026, 10 h à Casablanca (jour ouvré, fenêtre
 d'appel ouverte ; « demain » est le jeudi 24/09, la date de rappel choisie le
 lundi 28/09 à 11 h).
@@ -49,11 +55,12 @@ from apps.crm.models import Client, Lead, RelanceEtape
 from apps.crm.services import (
     _LIBELLES_FILET, _LIBELLES_VISITE, FILET_APPEL_LIBELLE,
     FILET_DERNIER_APPEL_LIBELLE, FILET_JOINT_LIBELLE,
-    FILET_MESSAGE_CRENEAU_LIBELLE, FILET_REFUS_LIBELLE, PASSATION_LIBELLE,
-    PASSATION_ORDRE, QUESTION_PRIX_LIBELLE, REPONSES_TOUCHE,
-    TAG_DECISION_A_PLUSIEURS, VISITE_CONFIRMATION_LIBELLE,
+    FILET_MESSAGE_CRENEAU_LIBELLE, FILET_RAPPEL_LIBELLE, FILET_REFUS_LIBELLE,
+    PASSATION_LIBELLE, PASSATION_ORDRE, QUESTION_PRIX_LIBELLE,
+    REPONSES_TOUCHE, TAG_DECISION_A_PLUSIEURS, VISITE_CONFIRMATION_LIBELLE,
     VISITE_DEBRIEF_LIBELLE, VISITE_DEVIS_LIBELLE, VISITE_FILET_LIBELLE,
-    VISITE_ORDRE_CONFIRMATION, VISITE_ORDRE_DEBRIEF, _lead_porte_tag)
+    VISITE_ORDRE_CONFIRMATION, VISITE_ORDRE_DEBRIEF, VISITE_ORDRE_FILET,
+    _lead_porte_tag)
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 from apps.ventes.models import Devis
@@ -134,6 +141,11 @@ SCENARIOS = (
     Scenario('visite_debrief', 'apres_devis', VISITE_ORDRE_DEBRIEF, APPEL,
              VISITE_DEBRIEF_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
              famille=A_COTE),
+    # SUIVI-PARCOURS — « Planifier la visite technique convenue », une TÂCHE
+    # de la table (aucun « Sauter »).
+    Scenario('visite_planifier', 'apres_devis', VISITE_ORDRE_FILET, APPEL,
+             VISITE_FILET_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
+             famille=A_COTE),
     # Réveils (2 barreaux, posés ensemble) : au Froid, et hors Froid (veille
     # de plus d'un mois basculée en réveil daté, CAD26).
     Scenario('reveil_appel', 'reveil', 1, APPEL, stage=stages.COLD),
@@ -146,6 +158,12 @@ SCENARIOS = (
     Scenario('filet_appeler', 'generique', 1, APPEL, FILET_APPEL_LIBELLE),
     Scenario('filet_creneau', 'generique', 1, WHATSAPP,
              FILET_MESSAGE_CRENEAU_LIBELLE),
+    # SUIVI-PARCOURS — les deux derniers types d'étape « après l'appel » de
+    # la table.
+    Scenario('filet_dernier_appel', 'generique', 1, APPEL,
+             FILET_DERNIER_APPEL_LIBELLE),
+    Scenario('filet_rappel_convenu', 'generique', 1, APPEL,
+             FILET_RAPPEL_LIBELLE),
     Scenario('filet_decider', 'generique', 1, APPEL, FILET_REFUS_LIBELLE),
     Scenario('filet_question_prix', 'generique', 1, APPEL,
              QUESTION_PRIX_LIBELLE, stage=stages.QUOTE_SENT),
@@ -180,9 +198,10 @@ VARIANTES = {
 
 
 def _cles_servies(scenario):
-    """Les clés que le serveur annonce : les réponses du panneau « Fait »,
-    puis le geste « Sauter » (CAD47)."""
-    return st.cles_de_reponse(scenario.cadence) + [st.CLE_SAUTER]
+    """Les clés que le serveur annonce : les réponses de la table du parcours
+    pour le TYPE de la touche, puis le geste « Sauter » (CAD47) quand l'étape
+    le propose (SUIVI-PARCOURS)."""
+    return st.cles_de_reponse(_etape_non_enregistree(scenario))
 
 
 def _ordres_defaut(cadence):
@@ -556,11 +575,14 @@ class VocabulaireTests(SimpleTestCase):
 
 # ── 2. Le contrat committé est ce que le moteur annonce ─────────────────────
 
-#: Les touches committées dans le contrat : l'exemple principal ET l'état
-#: « dernier réveil » (CAD16), que l'écran importe tous deux.
-TOUCHES_DU_CONTRAT = (CONTRAT['exemple']['results']
-                      + CONTRAT['exemple_generique']['results']
-                      + CONTRAT['exemple_dernier_reveil']['results'])
+#: Les touches committées dans le contrat — SUIVI-PARCOURS 30/09/2026 : TOUS
+#: ses états (l'exemple principal, la générique, le dernier réveil de CAD16,
+#: le débrief de visite, la « WhatsApp uniquement »…), que l'écran importe :
+#: leurs ``suites`` sont régénérées depuis le moteur, jamais écrites à la main.
+TOUCHES_DU_CONTRAT = tuple(
+    resultat for etat in CONTRAT.values()
+    if isinstance(etat, dict) and isinstance(etat.get('results'), list)
+    for resultat in etat['results'])
 
 
 def _stage_du_contrat(resultat):
@@ -826,7 +848,8 @@ class PariteVisiteTests(PariteBase):
     slug = 'cad17-visite'
 
     def test_gestes_de_visite(self):
-        self._garder('visite_confirmation', 'visite_debrief')
+        self._garder('visite_confirmation', 'visite_debrief',
+                     'visite_planifier')
 
 
 class PariteReveilTests(PariteBase):
@@ -843,6 +866,7 @@ class PariteGeneriqueTests(PariteBase):
     def test_cadence_generique_et_filets(self):
         self._garder('generique_barreau', 'generique_dernier',
                      'filet_envoi_devis', 'filet_appeler', 'filet_creneau',
+                     'filet_dernier_appel', 'filet_rappel_convenu',
                      'filet_decider', 'filet_question_prix',
                      'filet_passation')
 

@@ -11854,10 +11854,19 @@ _TOUTES_CADENCES = None
 #: Les trois cadences NOMMÉES du protocole (MRY4) — pas les étapes de filet
 #: (``generique``), dont « À rappeler le… » REPORTE déjà l'étape (CAD3).
 _CADENCES_PROTOCOLE = ('contact', 'apres_devis', 'reveil')
+#: SUIVI-PARCOURS (30/09/2026) — la table du parcours range la deuxième
+#: affaire (CAD128, la prise de contact d'un client acquis) sous les mêmes
+#: types d'étape que la prise de contact : ses touches sont des touches du
+#: PROTOCOLE et reçoivent les mêmes réponses.
+_CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE = (
+    _CADENCES_PROTOCOLE + ('deuxieme_affaire',))
 
 #: Table UNIQUE des réponses de touche. ``outcome`` est toujours une valeur
 #: de ``LeadActivity.OUTCOMES`` ; ``cadences`` borne où la réponse a un sens ;
 #: ``message`` nomme le texte d'accusé proposé à l'envoi (jamais envoyé seul).
+#: SUIVI-PARCOURS — deux bornes optionnelles de plus, appliquées par
+#: ``refus_reponse_touche`` : ``cles`` (les CLÉS d'étape moteur où la réponse
+#: vaut — ``cadence_config.cle_de``, jamais un libellé) et ``canaux``.
 REPONSES_TOUCHE = {
     REPONSE_NE_PLUS_CONTACTER: {
         'libelle': 'Ne plus me contacter',
@@ -11870,7 +11879,10 @@ REPONSES_TOUCHE = {
         'libelle': 'Plus tard — pas maintenant',
         'outcome': 'rappel',
         'note': 'Plus tard — pas maintenant',
-        'cadences': _CADENCES_PROTOCOLE,
+        # Protocole seulement (jamais une étape de filet ni de visite) — la
+        # deuxième affaire comprise, que la table range avec la prise de
+        # contact (SUIVI-PARCOURS).
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
         'message': 'rappel_plus_tard',
         # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
         'date_requise': True,
@@ -11940,15 +11952,36 @@ def refus_reponse_touche(etape, cle):
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return ('Cette touche est déjà traitée : la réponse du client se '
                 'saisit sur une touche encore à faire.')
+    libelle = spec['libelle']
     cadences = spec.get('cadences')
     if cadences is not None and etape.cadence not in cadences:
-        libelle = spec['libelle']
         if tuple(cadences) == ('apres_devis',):
             return (f'« {libelle} » ne vaut que sur une touche du suivi de '
                     'proposition (après envoi du devis).')
         return (f'« {libelle} » ne vaut pas sur une touche de la cadence '
                 f'« {etape.cadence} ».')
+    # SUIVI-PARCOURS (30/09/2026) — une réponse peut ne valoir que sur
+    # certaines ÉTAPES (reconnues par leur CLÉ, jamais leur libellé) ou sur
+    # certains CANAUX : le message nomme la réponse et dit où elle vaut.
+    cles = spec.get('cles')
+    if cles is not None and cle_de(etape) not in cles:
+        etapes = ' ou '.join(
+            f'« {_libelle_par_defaut_de_la_cle(c)} »' for c in cles)
+        return f'« {libelle} » ne vaut que sur l’étape {etapes}.'
+    canaux = spec.get('canaux')
+    if canaux is not None and etape.canal not in canaux:
+        noms = ' ou '.join(RelanceEtape.Canal(c).label for c in canaux)
+        return (f'« {libelle} » ne vaut que sur une touche écrite ({noms}) : '
+                'sur un appel, choisissez « Client joint ».')
     return None
+
+
+def _libelle_par_defaut_de_la_cle(cle):
+    """Le libellé PAR DÉFAUT (gabarit livré) de l'étape moteur ``cle`` —
+    pour NOMMER une étape dans un refus, sans requête."""
+    defaut = gabarit_relance.barreau_par_defaut(
+        cadence_config.CADENCE_DE_LA_CLE.get(cle), cle)
+    return (defaut or {}).get('libelle') or cle
 
 
 def _note_reponse(spec, note=''):
