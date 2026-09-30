@@ -91,6 +91,19 @@ pompage, C&I) n'y sont jamais exercées. On peut donc donner à l'explorateur un
 énergie, études, lignes, statuts gardés. Tant qu'aucun instantané n'existe,
 `dataset: demo` (le défaut) ne change rien.
 
+**Voie recommandée (vérifiée le 30/09/2026) — en une commande, AUCUN fichier sur
+le serveur** : l'export est streamé par SSH directement dans `var/anon/` (les
+avertissements Django partent sur stderr, le fichier reste intact). La société
+réelle de Taqinor a le slug historique `taqinor-demo` (ce sont bien les données
+de production).
+
+```bash
+mkdir -p var/anon
+ssh -i ~/.ssh/taqinor_hetzner root@178.105.192.116 'docker exec erp-agentique-django_core-1 python manage.py qa_export_anonymise --company taqinor-demo --out -' > var/anon/latest.anon.json.gz
+```
+
+Variante en trois temps (fichier temporaire sur le serveur) :
+
 **1. Produire l'instantané sur le serveur (lecture seule).** La commande lit dans
 une transaction annulée (déclarée `READ ONLY` sous PostgreSQL) et n'écrit rien en
 base ; elle refuse d'écrire le fichier dans le code source.
@@ -109,9 +122,7 @@ $C cp django_core:/tmp/latest.anon.json.gz /root/taqinor-anon/latest.anon.json.g
 $C exec -T django_core rm -f /tmp/latest.anon.json.gz
 ```
 
-(`/tmp` du conteneur : hors du code monté dans `/app`, que la commande refuse.
-`--out -` écrit sur stdout, mais un message de journalisation au démarrage
-corromprait le fichier — préférer `/tmp` + `cp`.)
+(`/tmp` du conteneur : hors du code monté dans `/app`, que la commande refuse.)
 
 **2. Le rapatrier puis l'effacer du serveur** (depuis la racine du dépôt, en
 local) :
@@ -132,6 +143,9 @@ docker compose exec -T django_core python manage.py qa_import_anonymise --in /tm
 docker compose exec -T django_core rm -f /tmp/latest.anon.json.gz
 ```
 
+(Sous Git Bash sur Windows, préfixer ces commandes par `MSYS_NO_PATHCONV=1`,
+sinon `/tmp/...` est réécrit en chemin Windows avant d'arriver à Docker.)
+
 `qa_import_anonymise` refuse hors `DEBUG`, ne touche **que** la société
 `taqinor-anon` (vidée puis rechargée à chaque import — idempotent), remappe toutes
 les clés, et crée le compte `anon_admin` (mot de passe dans le fichier de la
@@ -143,7 +157,7 @@ notification, aucun e-mail, aucun webhook, aucun chatter, aucun `devis_accepted`
 
 | Gardé tel quel | Brouillé (faux stable par valeur) | Supprimé |
 | --- | --- | --- |
-| nombres (montants, `prix_achat`, kWc, factures hiver/été, conso…), booléens, dates, statuts et toutes les énumérations (distributeur, type d'installation…), références de documents, désignations de lignes, fiche catalogue (nom, marque, description, garantie, `courbe_pompe`), ville, tranche ONEE | noms, prénoms, sociétés, e-mails, téléphones/WhatsApp, adresses, CIN/ICE/RC/IF/RIB, notes et tout texte libre ; dans les JSON (études, questionnaires) : clés d'identité, e-mails, téléphones, textes longs | fichiers, photos, signatures, jetons (portail, liens publics), UUID, chemins PDF, coordonnées précises du toit ; GPS arrondi à 0,1° (~11 km) ; tous les utilisateurs remplacés par `anon_admin` ; chatter non exporté |
+| nombres (montants, `prix_achat`, kWc, factures hiver/été, conso…), booléens, dates, statuts et toutes les énumérations (distributeur, type d'installation…), références de documents, désignations de lignes, fiche catalogue (nom, marque, description, garantie, `courbe_pompe`), ville, tranche ONEE ; réglages de PRIX de la société (`parametres.TariffSettings` entier, 17 champs de `CompanyProfile` en liste blanche : TVA, tarif ONEE, productible, seuils…) pour que la copie chiffre comme la prod | noms, prénoms, sociétés, e-mails, téléphones/WhatsApp, adresses, CIN/ICE/RC/IF/RIB, notes et tout texte libre ; dans les JSON (études, questionnaires) : clés d'identité, e-mails, téléphones, textes longs | fichiers, photos, signatures, jetons (portail, liens publics), UUID, chemins PDF, coordonnées précises du toit ; GPS arrondi à 0,1° (~11 km) ; tous les utilisateurs remplacés par `anon_admin` ; chatter non exporté |
 
 **Fail-closed** : un champ texte que personne n'a classé (ajouté demain) est
 brouillé par défaut, un type de champ inconnu est vidé (test

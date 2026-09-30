@@ -8,12 +8,18 @@ effacement d'une société réelle). Idempotent : un ré-import VIDE cette soci�
 (ORM uniquement, ``reset_demo_company._delete_cascading``) puis la recharge.
 Toutes les clés primaires/étrangères sont remappées ; les références gardées
 restent uniques (société neuve ; une valeur unique GLOBALE qui entrerait en
-collision est préfixée).
+collision est préfixée). Les réglages de prix (Tarification & ROI, repères de
+prix du profil) sont écrits sur les lignes que la société cible possède déjà,
+liste blanche de champs — son identité anonyme et sa sécurité ne bougent pas.
 
 AUCUNE notification pendant l'import : les lignes sont insérées par
 ``bulk_create`` (ni ``save()`` ni signaux pre/post_save → ni chatter, ni
 ``notify()``, ni e-mail, ni webhook, ni événement de domaine ``devis_accepted``,
 émis uniquement par les vues/services). Détail : ``authentication/anonymise.py``.
+
+Une ligne que la base refuse est IGNORÉE (savepoint) et comptée par NOM DE
+CONTRAINTE (ex. ``IntegrityError[uniq_lead_external_ref]=80`` ; repli : la classe
+de l'exception), jamais par sa valeur — un nom de contrainte est du schéma.
 
 Run :
   docker compose cp var/anon/latest.anon.json.gz django_core:/tmp/latest.anon.json.gz
@@ -79,7 +85,11 @@ class Command(BaseCommand):
             for label, n in created.items():
                 self.stdout.write(f'  {label}: {n}')
             for label, reasons in skipped.items():
-                detail = ', '.join(f'{k}={v}' for k, v in reasons.items())
+                # Par NOM DE CONTRAINTE de base (repli : classe d'exception),
+                # les plus fréquentes d'abord — jamais une valeur.
+                detail = ', '.join(
+                    f'{k}={v}' for k, v in sorted(
+                        reasons.items(), key=lambda kv: (-kv[1], kv[0])))
                 self.stdout.write(self.style.WARNING(
                     f'  ignorées {label}: {detail}'))
             self.stdout.write(f'Login : {ANON_USERNAME} (mot de passe dans '
