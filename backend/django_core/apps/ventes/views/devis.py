@@ -4,6 +4,7 @@ from django.db import transaction  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
 from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
+from rest_framework import serializers
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from drf_spectacular.utils import extend_schema  # noqa: F401
@@ -163,6 +164,39 @@ def _reponse_non_modifiable(devis, geste, message_statut=None):
         {'detail': detail, 'statut': devis.statut,
          'revision_possible': v['revision_possible']},
         status=status.HTTP_409_CONFLICT)
+
+
+class _LotCreationSerializer(serializers.Serializer):
+    """QJR648 — le corps de ``POST /devis/<id>/lots/`` : ``nom_lot`` requis,
+    ``adresse_site`` facultative, ``ordre`` entier ≥ 0 facultatif, ``lignes``
+    liste d'entiers facultative. Une entrée invalide répond 400, jamais 500."""
+
+    nom_lot = serializers.CharField(
+        max_length=150, required=False, allow_blank=True, allow_null=True,
+        error_messages={'max_length': 'Nom de lot trop long (150 max).'})
+    adresse_site = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True)
+    ordre = serializers.IntegerField(
+        min_value=0, required=False, allow_null=True,
+        error_messages={'invalid': 'Ordre : entier positif attendu.',
+                        'min_value': 'Ordre : entier positif attendu.'})
+    lignes = serializers.ListField(
+        child=serializers.IntegerField(
+            error_messages={'invalid': 'Lignes : identifiants entiers '
+                                       'attendus.'}),
+        required=False, allow_null=True)
+
+    def validate_nom_lot(self, valeur):
+        nom = (valeur or '').strip()
+        if not nom:
+            raise serializers.ValidationError('Nom de lot requis.')
+        return nom
+
+    def validate(self, attrs):
+        if not (attrs.get('nom_lot') or '').strip():
+            raise serializers.ValidationError(
+                {'nom_lot': 'Nom de lot requis.'})
+        return attrs
 
 
 class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
@@ -2048,20 +2082,27 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # QJR516 — rattacher des lignes à un lot est une édition de LIGNES.
             if _refus_modifiabilite(devis, 'LIGNES'):
                 return _reponse_non_modifiable(devis, 'LIGNES')
-            nom = (request.data.get('nom_lot') or '').strip()
-            if not nom:
-                raise ValidationError({'nom_lot': 'Nom de lot requis.'})
+            # QJR648 — l'entrée est VALIDÉE avant toute écriture (un « ordre »
+            # ou des « lignes » non numériques répondaient 500) et la création
+            # + le rattachement tiennent dans UNE transaction : jamais de lot
+            # orphelin qu'un nouvel essai refuserait comme « déjà existant ».
+            entree = _LotCreationSerializer(data=request.data)
+            entree.is_valid(raise_exception=True)
+            donnees = entree.validated_data
+            nom = donnees['nom_lot']
             if devis.lots.filter(nom_lot=nom).exists():
                 raise ValidationError(
                     {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
-            lot = LotDevis.objects.create(
-                company=devis.company, devis=devis, nom_lot=nom,
-                adresse_site=(request.data.get('adresse_site') or '').strip(),
-                ordre=int(request.data.get('ordre') or 0))
-            ids = request.data.get('lignes') or []
-            if ids:
-                # Jamais une ligne d'un autre devis (donc d'une autre société).
-                devis.lignes.filter(id__in=ids).update(lot=lot)
+            with transaction.atomic():
+                lot = LotDevis.objects.create(
+                    company=devis.company, devis=devis, nom_lot=nom,
+                    adresse_site=(donnees.get('adresse_site') or '').strip(),
+                    ordre=donnees.get('ordre') or 0)
+                ids = donnees.get('lignes') or []
+                if ids:
+                    # Jamais une ligne d'un autre devis (donc d'une autre
+                    # société).
+                    devis.lignes.filter(id__in=ids).update(lot=lot)
         resultat = lots_totaux(devis)
         if resultat is None:
             resultat = {'lots': [], 'hors_lot': None,
