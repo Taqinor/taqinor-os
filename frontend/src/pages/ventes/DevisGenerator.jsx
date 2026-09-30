@@ -124,7 +124,8 @@ import {
   // ordre »), appliquée par autoFillLines via ordreLignes.
   deriveRoleOrderFromLines,
 } from '../../features/ventes/solar'
-import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
+import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
+import { peutEditerDevis } from '../../features/ventes/devisStatuts'
 // CJ2b — aperçu du moteur horaire résidentiel (PVGIS réel × consommation
 // réelle du client, mois par mois) : source UNIQUE des chiffres d'économie à
 // l'écran, à la place du miroir local `computeROI` dès que le serveur a
@@ -1907,14 +1908,19 @@ export default function DevisGenerator({
     if (!editId || editLoaded.current) return
     editLoaded.current = true
     ventesApi.getDevisById(editId).then(({ data: d }) => {
-      if (d.statut !== 'brouillon') {
+      // QJR532 (D-QJR5-1) — le refus vient du SERVEUR (`modifiable`, QJR516),
+      // plus d'une garde « statut !== brouillon » : un envoyé se corrige sur
+      // place ; un accepté / remplacé dit pourquoi (raison_non_modifiable).
+      if (!peutEditerDevis(d)) {
         // APX17 — plus de popup du système : un toast d'erreur français,
         // dans le seul Toaster de l'app.
-        toast.error('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
+        toast.error(d.raison_non_modifiable
+          || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
         cancel()
         return
       }
       setEditDevis({ id: d.id, reference: d.reference,
+                     statut: d.statut, date_envoi: d.date_envoi ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -3817,6 +3823,17 @@ export default function DevisGenerator({
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {editDevis?.statut === 'envoye' && (
+          <div
+            data-testid="devis-envoye-banner"
+            role="status"
+            className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            Devis envoyé{editDevis.date_envoi ? ` le ${formatDate(editDevis.date_envoi)}` : ''} :
+            vos corrections seront visibles sur le lien de la proposition ; un PDF déjà envoyé
+            par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
+          </div>
+        )}
         {restored && (
           <div
             data-testid="draft-restore-banner"

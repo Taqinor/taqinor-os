@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, within, act, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 
 // J141 — la liste des devis ne doit toucher aucun réseau pendant le test : on
@@ -106,6 +106,7 @@ import { toast } from '../../ui'
 // uniquement — aucune assertion n'est modifiée.
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { formatMAD } from '../../lib/format'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 // NTI18N12 — bascule de locale réelle pour le bloc de tests « calendrier
 // hégirien » en fin de fichier (I18nProvider n'est PAS monté ailleurs dans
 // ce fichier : useI18n() y retombe sur son repli hors-provider, locale='fr').
@@ -1184,5 +1185,62 @@ describe('DevisList — calendrier hégirien (NTI18N12)', () => {
   it("n'affiche PAS l'hégirien en français même si la préférence est active", () => {
     renderWithLocale('fr', true)
     expect(screen.queryByText(/Ramadan/)).not.toBeInTheDocument()
+  })
+})
+
+// QJR532 (D-QJR5-1) — un devis ENVOYÉ s'ouvre en Édition complète depuis la
+// liste et le Kanban ; un accepté dit pourquoi il est figé. Les droits viennent
+// du SERVEUR (`modifiable`, exemples COMMITTÉS du contrat devis_modifiabilite).
+describe("DevisList — QJR532 : « Éditer » d'un envoyé (liste + Kanban)", () => {
+  function Sonde() {
+    const l = useLocation()
+    return <div data-testid="sonde">{l.pathname}{l.search}</div>
+  }
+  function ligne(variante, extra = {}) {
+    return {
+      ...exempleContrat('ventes', 'devis_modifiabilite', variante),
+      client_nom: 'ACME', date_creation: '2026-07-01', total_ttc: 20000,
+      nb_options: 1, version: 1, ...extra,
+    }
+  }
+  function rendre(devis) {
+    return render(
+      <Provider store={makeStore({ devis })}>
+        <MemoryRouter initialEntries={['/ventes/devis']}>
+          <ThemeProvider><DevisList /><Sonde /></ThemeProvider>
+        </MemoryRouter>
+      </Provider>,
+    )
+  }
+
+  it('envoyé : « Éditer » actif et navigue vers ?edit=<id>', async () => {
+    const user = userEvent.setup()
+    rendre([ligne('exemple_envoye')])
+    const row = screen.getByText('DEV-202609-0012').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    const item = screen.getByRole('menuitem', { name: /Éditer/ })
+    expect(item).not.toHaveAttribute('aria-disabled', 'true')
+    await user.click(item)
+    expect(screen.getByTestId('sonde').textContent).toBe('/ventes/devis/nouveau?edit=413')
+  })
+
+  it('accepté : « Éditer » désactivé', async () => {
+    const user = userEvent.setup()
+    rendre([ligne('exemple_accepte')])
+    const row = screen.getByText('DEV-202609-0013').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    expect(screen.getByRole('menuitem', { name: /Éditer/ })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('Kanban : carte envoyé → navigation ; carte acceptée → toast de la raison, pas de navigation', async () => {
+    const user = userEvent.setup()
+    const errSpy = vi.spyOn(toast, 'error')
+    rendre([ligne('exemple_envoye'), ligne('exemple_accepte')])
+    await user.click(screen.getByRole('button', { name: /Board/ }))
+    await user.click(screen.getByText('DEV-202609-0013').closest('button'))
+    expect(errSpy).toHaveBeenCalledWith('Devis accepté : révisez-le')
+    expect(screen.getByTestId('sonde').textContent).toBe('/ventes/devis')
+    await user.click(screen.getByText('DEV-202609-0012').closest('button'))
+    expect(screen.getByTestId('sonde').textContent).toBe('/ventes/devis/nouveau?edit=413')
   })
 })
