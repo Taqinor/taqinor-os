@@ -1119,15 +1119,27 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     new_lead.pk, exc_info=True)
         # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
         # d'étape est déjà couvert par le receiver `lead_stage_changed`.
-        from .services import arreter_cadence
+        # SUIVI E21 (30/09/2026) — et le rendez-vous de visite EN ATTENTE
+        # s'annule avec elles (best-effort, note au chatter quand un
+        # rendez-vous est réellement annulé) : le technicien ne se déplace
+        # pas chez un client perdu ou qui ne veut plus être contacté.
+        from .services import (
+            CAUSE_RDV_NE_PLUS_CONTACTER, annuler_rendez_vous_sur_arret,
+            arreter_cadence, cause_rdv_perdu)
         try:
             if not old.perdu and new_lead.perdu:
                 arreter_cadence(
                     new_lead, user=self.request.user,
                     motif=(new_lead.motif_perte or 'lead perdu'))
+                annuler_rendez_vous_sur_arret(
+                    new_lead, self.request.user,
+                    cause=cause_rdv_perdu(new_lead.motif_perte))
             if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
                 arreter_cadence(new_lead, user=self.request.user,
                                 motif='ne plus contacter')
+                annuler_rendez_vous_sur_arret(
+                    new_lead, self.request.user,
+                    cause=CAUSE_RDV_NE_PLUS_CONTACTER)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',

@@ -26,7 +26,9 @@ from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    CAUSE_RDV_REFUS,
     annuler_etapes_moteur_ouvertes,
+    annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
     ecrire_retour_lead_visite,
@@ -648,6 +650,12 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
                 canal_touche=None if visite else instance.kind,
                 demarrer_plan=not visite)
         elif issue == 'refuse':
+            # SUIVI E21 (30/09/2026) — le refus arrête les relances ET le
+            # rendez-vous de visite en attente : le technicien ne se déplace
+            # pas chez un client qui vient de refuser (best-effort, note au
+            # chatter quand un rendez-vous est réellement annulé).
+            annuler_rendez_vous_sur_arret(
+                instance.lead, instance.user, cause=CAUSE_RDV_REFUS)
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,
                 cle=CLE_DECIDER_SUITE, avec_plan_devis=False)

@@ -10155,6 +10155,59 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
     return annules
 
 
+#: SUIVI E21 — les causes écrites (visite, message au technicien, chatter)
+#: quand un arrêt de tout le suivi annule aussi le rendez-vous.
+CAUSE_RDV_REFUS = 'le client a refusé'
+CAUSE_RDV_NE_PLUS_CONTACTER = 'le client ne veut plus être contacté'
+
+
+def cause_rdv_perdu(motif=''):
+    """SUIVI E21 — la cause d'annulation d'un rendez-vous quand le lead
+    passe PERDU (avec son motif s'il en a un)."""
+    motif = str(motif or '').strip()
+    return f'dossier perdu ({motif})' if motif else 'dossier perdu'
+
+
+def annuler_rendez_vous_sur_arret(lead, user, *, cause):
+    """SUIVI E21 (30/09/2026) — quand TOUT s'arrête (« Refus », « Perdu »,
+    « Ne plus me contacter »), le rendez-vous de visite EN ATTENTE s'annule
+    aussi.
+
+    Avant, les relances s'arrêtaient mais la visite planifiée restait dans le
+    module Visites : le technicien se serait déplacé chez un client qui venait
+    de refuser. Même porte que E4 (``annuler_rendez_vous_du_lead``), avec
+    ``vider_date_passee=False`` : une visite PASSÉE reste sur la fiche, c'est
+    de l'historique. UNE note système le dit — seulement quand un rendez-vous
+    a RÉELLEMENT été annulé (idempotent : un second arrêt ne trouve plus rien
+    et n'écrit rien).
+
+    BEST-EFFORT : ne lève jamais — l'arrêt qui l'a demandé est déjà acté.
+    Renvoie le nombre de rendez-vous annulés dans le module visites."""
+    try:
+        if getattr(lead, 'pk', None):
+            lead.refresh_from_db(fields=['visite_prevue_le'])
+        jour = lead.visite_prevue_le
+        annules = annuler_rendez_vous_du_lead(
+            lead, user, motif=cause, vider_date_passee=False)
+        date_retiree = jour is not None and lead.visite_prevue_le is None
+        if annules or date_retiree:
+            quand = f' du {jour:%d/%m/%Y}' if date_retiree else ''
+            prevenu = ' (le technicien est prévenu)' if annules else ''
+            # Note SYSTÈME (``user=None``) : dire ce que le moteur a fait
+            # n'est pas un contact (garde QJ7).
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f'Rendez-vous de visite{quand} annulé{prevenu} : '
+                      f'{cause}.'))
+        return annules
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'SUIVI E21 : rendez-vous non annulé à l’arrêt (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
+        return 0
+
+
 #: Longueur maximale de la note de retour terrain posée au chatter. Un
 #: technicien consciencieux peut écrire beaucoup ; l'historique d'un lead doit
 #: rester lisible. Le texte intégral reste sur la visite, jamais perdu.
@@ -12292,6 +12345,10 @@ def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
     tracer_opposition_registre(lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
     arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER,
                     exclure=etape)
+    # SUIVI E21 — le rendez-vous de visite en attente s'annule aussi (AVANT la
+    # clôture : le récepteur « refus » qui la suit ne trouve plus rien).
+    annuler_rendez_vous_sur_arret(lead, user,
+                                  cause=CAUSE_RDV_NE_PLUS_CONTACTER)
     etape = marquer_etape_relance(
         etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
         outcome=spec['outcome'], body=body, suite=False)
@@ -13003,6 +13060,8 @@ def marquer_lead_perdu(lead, user, motif, *, exclure=None):
     lead.save(update_fields=['perdu', 'motif_perte'])
     activity.log_changes(avant, lead, user)
     arreter_cadence(lead, user=user, motif=motif, exclure=exclure)
+    # SUIVI E21 — le rendez-vous de visite en attente s'annule aussi.
+    annuler_rendez_vous_sur_arret(lead, user, cause=cause_rdv_perdu(motif))
     return True
 
 
