@@ -87,6 +87,17 @@ def reponses(etape):
     return [{**modeles[r['modele']], **r} for r in etape['reponses']]
 
 
+def reponses_appel(etape):
+    """Les réponses d'APPEL d'une étape (``reponses_appel`` : Répondeur, Occupé, Numéro
+    invalide, A bloqué), chacune FUSIONNÉE avec son modèle. Une entrée est un identifiant
+    de modèle ou un objet ``{modele, effet, suite…}`` — l'étape générique décrit les
+    siennes (critique du 30/09/2026 : elles manquaient au guide et à la garde)."""
+    modeles = table()['modeles']
+    entrees = [e if isinstance(e, dict) else {'modele': e}
+               for e in etape.get('reponses_appel', ())]
+    return [{**modeles[e['modele']], **e} for e in entrees]
+
+
 def reponse_de(type_id, modele):
     """La réponse fusionnée ``modele`` de l'étape ``type_id`` (le modèle est unique par étape —
     la garde de table le vérifie)."""
@@ -244,8 +255,7 @@ def cles_attendues(type_id, canal):
     etape = etapes_de_la_table()[type_id]
     cles = [cle_de_reponse(r) for r in reponses(etape)]
     if canal == RelanceEtape.Canal.APPEL:
-        modeles = table()['modeles']
-        cles += [cle_de_reponse(modeles[m]) for m in etape.get('reponses_appel', ())]
+        cles += [cle_de_reponse(r) for r in reponses_appel(etape)]
     vues = []
     for cle in cles:
         if cle is not None and cle not in vues:
@@ -263,6 +273,8 @@ class Cas:
     reponse: dict
     contexte: str
     suite: dict
+    #: Une réponse d'APPEL seulement (``reponses_appel``) : la touche amenée doit en être un.
+    appel_seulement: bool = False
 
     @property
     def nom(self):
@@ -282,6 +294,14 @@ def cas_de_la_famille(famille):
                 cas.append(Cas(etape['id'], reponse, 'sans_date', reponse['suite_sans_date']))
             for variante in reponse.get('variantes', ()):
                 cas.append(Cas(etape['id'], reponse, variante['contexte'], variante['suite']))
+        # Les réponses d'APPEL décrites par la table (suite connue) : jouées aussi.
+        for reponse in reponses_appel(etape):
+            if 'suite' not in reponse:
+                continue
+            cas.append(Cas(etape['id'], reponse, 'base', reponse['suite'], True))
+            for variante in reponse.get('variantes', ()):
+                cas.append(Cas(etape['id'], reponse, variante['contexte'], variante['suite'],
+                               True))
     return cas
 
 
@@ -436,6 +456,12 @@ class ParcoursBase(TestCase):
         """I1 — un refus porte ``erreurs`` : au moins un champ, chacun avec un message."""
         donnees = resp.data if isinstance(resp.data, dict) else {}
         erreurs = donnees.get('erreurs')
+        if erreurs is None and donnees:
+            # `visites/planifier/` nomme le champ SANS enveloppe (`{champ: [message]}`,
+            # contrat `lead_visite_planifier.json`) : la règle « le refus nomme le champ »
+            # est tenue, c'est cette forme-là qu'on lit.
+            erreurs = {champ: message for champ, message in donnees.items()
+                       if champ != 'detail'}
         self.assertIsInstance(erreurs, dict, self.msg(
             f'I1 — refus HTTP {resp.status_code} sans « erreurs » : {resp.data}'))
         self.assertTrue(erreurs, self.msg(f'I1 — « erreurs » vide : {resp.data}'))
@@ -959,6 +985,9 @@ class ParcoursBase(TestCase):
         invariants."""
         self.preparer_gabarits(cas.type_id, cas.contexte)
         lead, etape = self.amener(cas.type_id)
+        if cas.appel_seulement:
+            self.assertEqual(etape.canal, RelanceEtape.Canal.APPEL, self.msg(
+                f'{cas.nom} : une réponse d’appel sur une touche « {etape.canal} »', lead))
         avant = self.photo(lead, etape)
         reponse = cas.reponse
         resp, envoye = self.repondre(

@@ -11,6 +11,13 @@ La source de vérité est la table ``frontend/src/features/crm/relances/parcours
 clôt la touche, ``prochaine_touche`` nommée, refus 400 d'une touche déjà traitée…) : ce
 fichier est écrit contre ELLE, jamais affaibli pour coller au code du moment.
 
+COMMENT LA RELANCER. La CI la joue à chaque merge (job ``backend-tests``). En local, sur un
+poste avec docker : ``powershell -File scripts/test-backend.ps1 -Modules
+"apps.crm.tests_parcours_suivi"`` (les tests sans base seuls : ``manage.py test
+apps.crm.tests_parcours_suivi.TableParcoursTests``). Un échec imprime le CHEMIN complet du
+cas (lead → étape → réponse → …) pour le rejouer à la main. La marche au hasard est
+rejouable (graine fixe) ; ``PARCOURS_GRAINE=<entier>`` dans l'environnement en tire une autre.
+
 Quatre étages :
 
 1. ``TableParcoursTests`` — la table est saine (``SimpleTestCase``, sans base) ;
@@ -31,6 +38,7 @@ Horloge gelée : mercredi 30/09/2026, 10 h à Casablanca ; elle n'avance que par
 ``frozen(...)`` imbriqués.
 """
 import datetime
+import os
 import random
 
 from django.test import SimpleTestCase
@@ -42,7 +50,7 @@ from apps.crm.parcours_suivi_outils import (
     CADENCE_DU_TYPE, CHEMINS, CHEMINS_SPECIAUX, CLES_RENDEZ_VOUS, CONTEXTES_VARIANTE,
     ETATS_FIN, FAMILLES, GESTES_PLANIFICATION, JOURS, MOTIF_COMMERCIAL, ORDRE_AMENE,
     REPONSES_SPEC, TYPES_SUIVI, ParcoursBase, cas_de_la_famille, etapes_de_la_table,
-    reponse_de, reponses, table, type_de)
+    reponse_de, reponses, reponses_appel, table, type_de)
 from apps.parametres import models_relance
 from apps.parametres.models_relance import (
     CADENCES_DEFAUT, CLE_CONFIRMATION, CLE_DEBRIEF, CLE_DEVIS, CLE_PLANIFIER, Cadence)
@@ -71,6 +79,12 @@ class TableParcoursTests(SimpleTestCase):
                 for variante in reponse.get('variantes', ()):
                     yield (etape, reponse, f'variante {variante.get("contexte")}',
                            variante.get('suite'))
+            for reponse in reponses_appel(etape):
+                if 'suite' in reponse:
+                    yield etape, reponse, 'suite (appel)', reponse['suite']
+                    for variante in reponse.get('variantes', ()):
+                        yield (etape, reponse, f'variante {variante.get("contexte")}',
+                               variante.get('suite'))
 
     def test_chaque_reponse_reference_un_modele_et_porte_effet_et_suite(self):
         modeles = table()['modeles']
@@ -148,9 +162,13 @@ class TableParcoursTests(SimpleTestCase):
                         self.assertIn(reponse['geste'], GESTES_PLANIFICATION)
                     self.assertTrue({'reponse', 'outcome', 'geste'} & set(reponse),
                                     'la réponse n’envoie rien')
-            for modele in etape.get('reponses_appel', ()):
+            for entree in etape.get('reponses_appel', ()):
+                modele = entree['modele'] if isinstance(entree, dict) else entree
                 with self.subTest(etape=etape['id'], reponse_appel=modele):
                     self.assertIn(modele, table()['modeles'])
+                    if isinstance(entree, dict):
+                        self.assertTrue((entree.get('effet') or '').strip(), 'effet vide')
+                        self.assertIsInstance(entree.get('suite'), dict, 'suite absente')
 
     def test_chaque_type_a_une_reconnaissance_exploitable_sans_chevauchement(self):
         canaux = {valeur for valeur, _libelle in RelanceEtape.Canal.choices}
@@ -553,7 +571,8 @@ class ParcoursAleatoiresTests(ParcoursBase):
     a la sienne (imprimée), et tout échec imprime le chemin complet."""
 
     slug = 'parcours-hasard'
-    GRAINE = 20260930
+    #: Graine FIXE (rejouable) ; ``PARCOURS_GRAINE`` dans l'environnement en tire une autre.
+    GRAINE = int(os.environ.get('PARCOURS_GRAINE', '20260930'))
     NB_LEADS = 40
     NB_GESTES = 30
 

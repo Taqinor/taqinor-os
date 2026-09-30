@@ -307,7 +307,7 @@
       "exemples": ["Appel de suivi (J+2, J+7, J+11)"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["appel"] },
       "question": "Réponse du client sur la proposition ?",
-      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.",
+      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
       "reponses": [
         {
           "modele": "joint",
@@ -347,7 +347,7 @@
       "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Preuve — chantier comparable", "Garanties fabricants", "Validité de la proposition", "Dernier message", "Mise en pause"],
       "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["whatsapp", "email"] },
       "question": "Le message est parti — le client a-t-il répondu ?",
-      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.",
+      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP ? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.",
       "reponses": [
         { "modele": "a_repondu", "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée.", "suite": { "type": "barreau_suivant" } },
         { "modele": "joint_telephone", "effet": "Client eu au téléphone : même suite, l’historique garde un appel abouti.", "suite": { "type": "barreau_suivant" } },
@@ -422,7 +422,7 @@
         { "modele": "occupe", "effet": "Comme « Sans réponse » ; la note « Occupé » est gardée.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
         { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "replanifier", "label": "La visite n’a pas eu lieu — nouvelle date", "effet": "La planification s’ouvre : la visite est déplacée, la confirmation et le débrief suivent.", "suite": { "type": "visite_planifiee" } },
-        { "modele": "visite_abandonnee", "label": "La visite n’aura pas lieu", "effet": "Le rendez-vous est annulé ; le suivi continue sans visite.", "suite": { "type": "reprise" } },
+        { "modele": "visite_abandonnee", "label": "La visite n’aura pas lieu", "effet": "La visite n’a pas eu lieu : le rendez-vous passé garde sa date dans l’historique, les étapes de la visite sont retirées et le suivi continue sans visite.", "suite": { "type": "reprise" } },
         { "modele": "question_prix", "effet": "Étape « Question de prix — préparer l’appel du fondateur » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
         { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
         { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
@@ -497,7 +497,22 @@
         { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
       ],
-      "reponses_appel": ["repondeur", "occupe", "numero_invalide", "bloque"]
+      "reponses_appel": [
+        { "modele": "repondeur", "effet": "Comme « Fait — passer à la suite » ; la note « Répondeur » est gardée dans l’historique.", "suite": { "type": "reprise" } },
+        { "modele": "occupe", "effet": "Comme « Fait — passer à la suite » ; la note « Occupé » est gardée dans l’historique.", "suite": { "type": "reprise" } },
+        {
+          "modele": "numero_invalide",
+          "effet": "Comme « Fait — passer à la suite », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.",
+          "suite": { "type": "reprise" },
+          "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }]
+        },
+        {
+          "modele": "bloque",
+          "effet": "Comme « Fait — passer à la suite », avec la note « A bloqué / signalé ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.",
+          "suite": { "type": "reprise" },
+          "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }]
+        }
+      ]
     }
   ],
   "evenements": [

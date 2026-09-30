@@ -5,7 +5,7 @@
 <title>Guide — Le suivi commercial&nbsp;: étapes, réponses et suites</title>
 <meta name="generator" content="scripts/generer_guide_suivi.py">
 <meta name="table-version" content="1.0">
-<meta name="table-sha256" content="bbd079a47789f2c2bf902e606ddedb85ef625d7dfc2ef86e4bc3f79527e4b5b7">
+<meta name="table-sha256" content="9f04eeafb9658be8dddb74662b3ac6574df510cc77a1ce8c813218d52c7726df">
 <!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer `python scripts/generer_guide_suivi.py` après tout changement de la table du parcours. -->
 <style>
 @page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
@@ -397,7 +397,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <h4>Appel de suivi de la proposition</h4>
 <p class="exemples">Exemples : Appel de suivi (J+2, J+7, J+11)</p>
 <p class="question"><span class="q">Question posée</span> — Réponse du client sur la proposition&nbsp;?</p>
-<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé et toutes les relances s’arrêtent.</p>
+<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP&nbsp;? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.</p>
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
@@ -423,7 +423,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <h4>Message de suivi de la proposition</h4>
 <p class="exemples">Exemples : Le PDF s’ouvre bien&nbsp;? · Dimanche famille · Preuve — chantier comparable · Garanties fabricants · Validité de la proposition · Dernier message · Mise en pause</p>
 <p class="question"><span class="q">Question posée</span> — Le message est parti — le client a-t-il répondu&nbsp;?</p>
-<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé et toutes les relances s’arrêtent.</p>
+<p class="aide">Le client accepte&nbsp;? Marque le devis ACCEPTÉ (Ventes → Devis)&nbsp;: le dossier passe en Signé et toutes les relances s’arrêtent. Devis parti hors ERP&nbsp;? Créez-le d’abord dans Ventes → Devis, puis marquez-le accepté.</p>
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
@@ -500,7 +500,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
 <tr><td><strong>La visite n’a pas eu lieu — nouvelle date</strong><span class="pastille">ouvre la planification</span></td><td>La planification s’ouvre&nbsp;: la visite est déplacée, la confirmation et le débrief suivent.</td></tr>
-<tr><td><strong>La visite n’aura pas lieu</strong></td><td>Le rendez-vous est annulé&nbsp;; le suivi continue sans visite.</td></tr>
+<tr><td><strong>La visite n’aura pas lieu</strong></td><td>La visite n’a pas eu lieu&nbsp;: le rendez-vous passé garde sa date dans l’historique, les étapes de la visite sont retirées et le suivi continue sans visite.</td></tr>
 <tr><td><strong>Question de prix — veut négocier</strong></td><td>Étape <span class="ecran">«&nbsp;Question de prix — préparer l’appel du fondateur&nbsp;»</span> pour demain.</td></tr>
 <tr><td><strong>Demande un devis modifié</strong></td><td>Étape <span class="ecran">«&nbsp;Préparer le devis modifié — rappeler le client&nbsp;»</span> pour demain.</td></tr>
 <tr><td><strong>Décision à plusieurs — en famille</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span>&nbsp;; le suivi reprend ou l’étape devis est posée.</td></tr>
@@ -574,12 +574,15 @@ table.touches td:nth-child(3) { width: 17%; }
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Fait — passer à la suite</strong></td><td>Sur un barreau de l’ancien plan&nbsp;: la touche suivante est programmée à son délai. Sur une étape posée par l’ERP&nbsp;: un suivi de proposition pendant reprend, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
+<tr><td><strong>Répondeur</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée dans l’historique.</td></tr>
+<tr><td><strong>Occupé</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée dans l’historique.</td></tr>
+<tr><td><strong>Numéro invalide</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;Numéro invalide&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
+<tr><td><strong>A bloqué / signalé</strong><span class="pastille">sur un appel</span></td><td>Comme <span class="ecran">«&nbsp;Fait — passer à la suite&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;A bloqué / signalé&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification, ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span> si la date n’est pas fixée.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie (sur un barreau de l’ancien plan&nbsp;: la touche suivante est programmée à cette date).</td></tr>
 <tr><td><strong>Client refuse</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
-<p class="note">Sur une étape d’appel, 4 réponses s’ajoutent : Répondeur · Occupé · Numéro invalide · A bloqué / signalé.</p>
 </div>
 </section>
 <section class="bloc">
@@ -624,6 +627,6 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td>Le guide de la visite technique</td><td>Même dossier&nbsp;: <span class="ecran">«&nbsp;Guide — La visite technique dans le suivi commercial&nbsp;»</span></td></tr>
 </table>
 </section>
-<p class="pied">Version 1.0 — 30/09/2026 — généré depuis la table du parcours ; chaque ligne est rejouée automatiquement à chaque mise à jour de l’ERP.</p>
+<p class="pied">Version 1.0 — 30/09/2026 — généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à chaque mise à jour de l’ERP.</p>
 </body>
 </html>

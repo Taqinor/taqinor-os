@@ -839,7 +839,26 @@ def html_fiche(table: dict, etape: dict) -> str:
         tete.append(f'<p class="aide">{esc_ecran(adapter(etape["aide"]))}</p>')
     tete.append('</div>')
     lignes = tete + ['<table>', '<tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>']
-    for r in reponses_resolues(table, etape):
+    # Les réponses d'APPEL décrites par la table (étape générique) : des lignes à part
+    # entière, insérées après la première réponse comme à l'écran ; celles sans effet
+    # restent une simple mention.
+    lignes_appel, sans_effet = [], []
+    for entree in etape.get('reponses_appel', ()):
+        entree = entree if isinstance(entree, dict) else {'modele': entree}
+        modele = table['modeles'].get(entree['modele'])
+        if not modele:
+            continue
+        r = {**modele, **entree}
+        if r.get('effet'):
+            lignes_appel.append(
+                f'<tr><td><strong>{esc(r["label"])}</strong>'
+                '<span class="pastille">sur un appel</span></td>'
+                f'<td>{esc_ecran(adapter(r["effet"]))}</td></tr>')
+        else:
+            sans_effet.append(r['label'])
+    for rang, r in enumerate(reponses_resolues(table, etape)):
+        if rang == 1:
+            lignes.extend(lignes_appel)
         pastilles = ''
         if r.get('date'):
             pastilles += '<span class="pastille">date à saisir</span>'
@@ -851,11 +870,12 @@ def html_fiche(table: dict, etape: dict) -> str:
             pastilles += '<span class="pastille">ouvre la planification</span>'
         lignes.append(f'<tr><td><strong>{esc(r["label"])}</strong>{pastilles}</td>'
                       f'<td>{esc_ecran(adapter(r["effet"]))}</td></tr>')
+    if len(lignes_appel) and len(reponses_resolues(table, etape)) < 2:
+        lignes.extend(lignes_appel)
     lignes.append('</table>')
-    if etape.get('reponses_appel'):
-        libelles = [table['modeles'][m]['label'] for m in etape['reponses_appel'] if m in table['modeles']]
-        liste = ' · '.join(libelles)
-        lignes.append(f'<p class="note">Sur une étape d’appel, {len(libelles)} réponses s’ajoutent : '
+    if sans_effet:
+        liste = ' · '.join(sans_effet)
+        lignes.append(f'<p class="note">Sur une étape d’appel, {len(sans_effet)} réponses s’ajoutent : '
                       f'{esc(liste)}.</p>')
     lignes.append('</div>')
     return '\n'.join(lignes)
@@ -943,7 +963,7 @@ def html_ou_trouver() -> str:
 
 def html_pied(table: dict) -> str:
     return ('<p class="pied">Version ' + esc(table['version']) + ' \u2014 ' + date_fr(table['maj'])
-            + ' \u2014 généré depuis la table du parcours ; chaque ligne est rejouée automatiquement à '
+            + ' \u2014 généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à '
             'chaque mise à jour de l\u2019ERP.</p>')
 
 

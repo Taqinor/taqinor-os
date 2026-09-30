@@ -64,7 +64,10 @@ export function reponseComplete(entree) {
 export function reponsesDeLEtape(type, etape) {
   const reponses = (type.reponses || []).map(reponseComplete)
   if (type.reponses_appel && familleCanal(etape?.canal) === 'appel') {
-    const extras = type.reponses_appel.map((id) => reponseComplete({ modele: id }))
+    // Une entrée est un identifiant de modèle ou un objet `{ modele, effet, suite… }`
+    // (l'étape générique décrit ses réponses d'appel : guide + garde les lisent).
+    const extras = type.reponses_appel.map((entree) => reponseComplete(
+      typeof entree === 'string' ? { modele: entree } : entree))
     // Insérées après la première réponse (« Fait — passer à la suite »),
     // comme les précisions d'appel l'étaient avant : jamais en tête.
     reponses.splice(1, 0, ...extras)

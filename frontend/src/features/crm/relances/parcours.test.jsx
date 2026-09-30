@@ -2,7 +2,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
-  PARCOURS, typeEtape, reponsesDeLEtape, estTache, estTacheSansAppel, familleCanal,
+  PARCOURS, typeEtape, reponsesDeLEtape, reponseComplete, estTache, estTacheSansAppel,
+  familleCanal,
 } from './parcours'
 import RelanceEtapeRow from './RelanceEtapeRow'
 
@@ -70,6 +71,15 @@ describe('parcours.js — la table est saine', () => {
         const envois = ['outcome', 'reponse'].filter((k) => r[k] !== undefined)
         expect(envois.length === 1 || (envois.length === 0 && Boolean(r.geste)),
           `${type.id}/${entree.modele} envoi`).toBe(true)
+      }
+      // Les réponses d'APPEL (id ou objet) : un modèle connu ; décrites → une suite légendée.
+      for (const entree of type.reponses_appel || []) {
+        const r = reponseComplete(typeof entree === 'string' ? { modele: entree } : entree)
+        expect(PARCOURS.modeles, `${type.id}/appel/${r.id}`).toHaveProperty(r.id)
+        if (typeof entree !== 'string') {
+          expect(r.effet, `${type.id}/appel/${r.id}`).toBeTruthy()
+          expect(PARCOURS.legende_suite, `${type.id}/appel/${r.id}`).toHaveProperty(r.suite.type)
+        }
       }
     }
   })
