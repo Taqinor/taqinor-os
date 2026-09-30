@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 12eb56fc10279e0afd26d89986131186e3dab206a6d88e97ce5372b042300c98
-Plan fingerprint: 9c829f64ddc806a2eb2a9caa22d0f3d5011885c5ef2ab1e1c864002c2138b072
+Structure fingerprint: 84d9138bb79dbdb9dd4cad89489edc46b50105acb2ca1bd6e502044d8e37a8d3
+Plan fingerprint: 28bd0ff5b426daabe9e5ea78497b2af524ee0b654c8d995d439818bc516f62d9
 
 
 
@@ -550,8 +550,18 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (569)**
+**Done (580)**
 
+- `ERR115` — [installations]
+- `ERR116` — [installations]
+- `ERR117` — [chantiers]
+- `ERR118` — [ci]
+- `ERR119` — [ci]
+- `ERR120` — [ventes]
+- `ERR121` — [e2e]
+- `ERR122` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
+- `ERR123` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
+- `ERR124` — [installations]
 - `CAD1` — [TEST ROUGE D'ABORD] « Intéressé » après devis ne doit plus redémarrer le plan à la…
 - `CAD2` — Les trois étapes de VISITE posent la question du suivi de proposition
 - `CAD3` — « À rappeler le… » sur une étape de filet la transforme en « Décider la suite — perdu…
@@ -739,6 +749,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `QAH8` — Sentry armé pour le pilote : SDK React installé, session replay masqué, tag société des…
 - `QAH9` — Brief de bug bash pour 1-2 testeurs humains francophones (chartes par rôle, gabarit de…
 - `QAH11` — Commande « setup nightly QA » : script idempotent `scripts/setup-nightly-qa.ps1` +…
+- `QAH12` — étendre `seed_demo` pour les deux angles morts du qa-explorer du 28/09 : un compte…
 - `SOLMVP1` — Archive + registre unique
 - `SOLMVP2` — Outil `scripts/parquer_app.py` + `manage.py parquer_app <label>`
 - `SOLMVP3` — Fin du mécanisme d'édition (un seul produit)
@@ -1122,20 +1133,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `CALX405` — Poser un châssis incliné sous un seuil de pente saisi par la société
 - `CALX406` — Nommer le responsable d'un calepinage et n'ouvrir à chacun que les siens
 
-**Open — to build (59)**
+**Open — to build (48)**
 
-- `ERR115` — [installations]
-- `ERR116` — [installations]
-- `ERR117` — [chantiers]
-- `ERR118` — [ci]
-- `ERR119` — [ci]
-- `ERR120` — [ventes]
-- `ERR121` — [e2e]
-- `ERR122` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
-- `ERR123` — [DÉGATÉ 29/09/2026 — décision fondateur (question interactive) : bump majeur autorisé…
-- `ERR124` — [installations]
 - `AUD504` — [GATED: coût prestataire — décision fondateur] Intégration signature QUALIFIÉE DGSSI en…
-- `CAD177` — (28/09/2026, PR #722 : 3 causes corrigées — image MinIO, test fastapi faux, aucune…
+- `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CADM1` — Relecture darija par un locuteur natif
 - `CADM2` — Déclaration CNDP du fichier prospects CRM + récépissé
 - `CADM3` — Question à un juriste : loi 31-08, démarchage à domicile
@@ -1147,7 +1148,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CADM9` — Re-vérifier neuf affirmations de marché avant tout usage client
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]…
-- `QAH12` — étendre `seed_demo` pour les deux angles morts du qa-explorer du 28/09 : un compte…
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
 - `CALX131` — Ouvrir l'atelier à une imagerie oblique ou LiDAR payante à la requête
 - `CALX199` — Trancher l'achat d'une source météo bancable
