@@ -122,6 +122,13 @@ MESSAGE_ISSUE_APPEL_OBLIGATOIRE = (
     "Issue de l'appel obligatoire : Client joint, Pas de réponse, "
     'À rappeler le… ou Refus. C\'est elle qui programme le prochain geste.')
 
+#: SUIVI E8 (30/09/2026) — « Fait », « Sauter » et « Reporter » sur une
+#: touche DÉJÀ traitée (deux onglets, double clic, liste périmée) rejouaient
+#: toute la suite du moteur sur une touche close. Refus nommé, sous le champ
+#: ``etape`` (même esprit que ``refus_reponse_touche`` / ``refus_piece_recue``).
+MESSAGE_ETAPE_DEJA_TRAITEE = (
+    'Cette étape est déjà traitée — rechargez la liste.')
+
 
 @contextmanager
 def _save_borne_aux_champs(instance, champs):
@@ -3502,6 +3509,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def _marquer(self, request, statut):
         etape = self.get_object()
+        if etape.statut != RelanceEtape.Statut.A_FAIRE:
+            # SUIVI E8 — jamais un second « Fait » sur une touche close.
+            return Response(
+                {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
         note = (request.data.get('note') or '').strip()
         outcome = (request.data.get('outcome') or '').strip()
         body = (request.data.get('body') or '').strip()
@@ -4034,6 +4046,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     'jusqu’au…).')}},
                 status=status.HTTP_400_BAD_REQUEST)
         etape = self.get_object()
+        if etape.statut != RelanceEtape.Statut.A_FAIRE:
+            # SUIVI E8 — reporter une touche close déplaçait tout le reste
+            # du plan (et son ancre) depuis une touche qui n'est plus la
+            # prochaine.
+            return Response(
+                {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
         brut = (request.data.get('due_at') or '').strip()
         quand = None
         if brut:
