@@ -84,6 +84,8 @@ import {
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
   tauxTvaOf, controlerFacturesSaisies, ttcExactFromHt,
+  paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
+  appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
@@ -1387,14 +1389,34 @@ export default function DevisGenerator({
   const apercuEcoAvec = etudeHoraireAnnuelAvec
     ? (batterieInvendableServeur ? null : etudeHoraireAnnuelAvec.economie_avec_mad)
     : roiPourAvec?.eco_annuelle_avec
+  // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN — branche serveur : le payback du
+  // MOTEUR (cashflow 25 ans QX39, `paybackMoteurHoraire`) sur l'économie
+  // servie, jamais une division coût ÷ économie. Un cumul qui ne croise jamais
+  // zéro s'affiche « Non rentabilisé sur 25 ans », jamais « 25 ans ».
+  const paybackServeurSans = etudeHoraireSourceServeur
+    ? paybackMoteurHoraire(totals.totalSans, apercuEcoSans, {
+        annuel: etudeHoraireAnnuel,
+        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierSans)),
+      })
+    : null
+  const paybackServeurAvec = etudeHoraireAnnuelAvec
+    ? paybackMoteurHoraire(totals.totalAvec, apercuEcoAvec, {
+        annuel: etudeHoraireAnnuelAvec,
+        rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
+        stockage: batteryKwhFromLines(lines) > 0,
+        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierAvec)),
+      })
+    : null
   const apercuPaybackSans = etudeHoraireSourceServeur
-    ? (totals.totalSans > 0 && apercuEcoSans > 0
-        ? Math.round((totals.totalSans / apercuEcoSans) * 100) / 100 : null)
+    ? (paybackServeurSans?.paybackYears ?? null)
     : roi?.payback_sans
   const apercuPaybackAvec = etudeHoraireAnnuelAvec
-    ? (totals.totalAvec > 0 && apercuEcoAvec > 0
-        ? Math.round((totals.totalAvec / apercuEcoAvec) * 100) / 100 : null)
+    ? (paybackServeurAvec?.paybackYears ?? null)
     : roiPourAvec?.payback_avec
+  const apercuPaybackSansJamais = etudeHoraireSourceServeur
+    ? !!paybackServeurSans?.jamaisRembourse : !!roi?.payback_sans_jamais
+  const apercuPaybackAvecJamais = etudeHoraireAnnuelAvec
+    ? !!paybackServeurAvec?.jamaisRembourse : !!roiPourAvec?.payback_avec_jamais
 
   // QJR35 — au montage (roi tourne dès dKwp>0 && dMonthly.some(v=>v>0), vrai
   // avec DEFAULT_MONTHLY_BILLS), les cartes Économies/ROI peuvent afficher un
@@ -4833,7 +4855,8 @@ export default function DevisGenerator({
                                      figure="economie_annuelle" figureOption="sans" />
                       <CarteMetrique label="ROI"
                                      valeur={signerEcoOuRoi(
-                                       apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
+                                       apercuPaybackSansJamais ? 'Non rentabilisé sur 25 ans'
+                                         : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
                                      unit="retour sur invest." accent
                                      figure="payback_ans" figureOption="sans" />
                       {/* QJR426 — le coût est celui, certain, des lignes du
@@ -4870,7 +4893,8 @@ export default function DevisGenerator({
                                          figure="economie_annuelle" figureOption="avec" />
                           <CarteMetrique label="ROI"
                                          valeur={signerEcoOuRoi(
-                                           apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
+                                           apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
+                                             : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
                                          unit="retour sur invest." accent
                                          figure="payback_ans" figureOption="avec" />
                           <CarteMetrique label="Coût"

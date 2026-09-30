@@ -386,6 +386,9 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   // Q1 — prix TTC RÉEL de l'onduleur de cette option, retranché à
   // INVERTER_REPLACE_YEAR. `null`/0 ⇒ aucune provision.
   inverterReplaceCost = null,
+  // QJR137 (miroir `pricing`) — rendement aller-retour PROUVÉ par la fiche
+  // batterie quand le moteur horaire le publie, sinon l'hypothèse de référence.
+  batteryRoundtrip = BATTERY_ROUNDTRIP,
 } = {}) {
   const inv = parseFloat(investment) || 0
   const base = parseFloat(economieAnnee1) || 0
@@ -395,13 +398,15 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   // Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
   // part réellement stockée puis restituée. `batteryShare=null` → forfait
   // historique (0,90 sur tout) ; `0` → aucune perte ; `1` → identique au forfait.
+  const rt = (parseFloat(batteryRoundtrip) > 0 && parseFloat(batteryRoundtrip) <= 1)
+    ? parseFloat(batteryRoundtrip) : BATTERY_ROUNDTRIP
   let battFactor = 1
   if (battery) {
     if (batteryShare === null || batteryShare === undefined) {
-      battFactor = BATTERY_ROUNDTRIP
+      battFactor = rt
     } else {
       const part = Math.max(0, Math.min(1, parseFloat(batteryShare) || 0))
-      battFactor = 1 - (1 - BATTERY_ROUNDTRIP) * part
+      battFactor = 1 - (1 - rt) * part
     }
   }
   const invCost = parseFloat(inverterReplaceCost) || 0
@@ -432,6 +437,38 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   const jamaisRembourse = payback === null
   if (jamaisRembourse) payback = CASHFLOW_YEARS
   return { paybackYears: payback, cumulative, netGain: Math.round(cumul), years: CASHFLOW_YEARS, jamaisRembourse }
+}
+
+// ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN — le payback de l'écran quand l'étude
+// horaire SERVEUR a répondu : la formule du MOTEUR (`pricing.calculate_savings_roi`
+// → `compute_cashflow_payback`, cashflow 25 ans QX39 : dégradation, rendement
+// batterie sur la seule part stockée, remplacement onduleur au prix réel),
+// appliquée à l'économie servie par le serveur — jamais `coût ÷ économie`
+// (écran 13,43 / 8,95 ans contre 8,2 / 5,5 au document).
+// `annuel` = `etude.annuel` du serveur (taux d'autoconsommation, production,
+// consommation) : la part batterie se dérive comme dans `pricing` (plafond
+// sans ≤ conso/production, plancher avec ≥ sans). Rend
+// `{ paybackYears, jamaisRembourse }`, ou `null` sans coût ni économie.
+export function paybackMoteurHoraire(total, ecoAnnuelle, {
+  annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
+} = {}) {
+  const t = parseFloat(total) || 0
+  const eco = parseFloat(ecoAnnuelle) || 0
+  if (!(t > 0) || !(eco > 0)) return null
+  let part = 0
+  if (stockage && annuel) {
+    const prod = parseFloat(annuel.production_kwh) || 0
+    const conso = parseFloat(annuel.consommation_kwh) || 0
+    let sansEff = parseFloat(annuel.taux_autoconso_sans) || 0
+    if (conso > 0 && prod > 0) sansEff = Math.min(sansEff, conso / prod)
+    const avecEff = Math.max(parseFloat(annuel.taux_autoconso_avec) || 0, sansEff)
+    part = avecEff > 0 ? Math.max(0, avecEff - sansEff) / avecEff : 0
+  }
+  const cf = computeCashflowPayback(t, eco, {
+    battery: !!stockage, batteryShare: part, inverterReplaceCost,
+    batteryRoundtrip: rendementBatterie ?? BATTERY_ROUNDTRIP,
+  })
+  return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse }
 }
 
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
