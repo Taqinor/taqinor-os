@@ -19,6 +19,8 @@ vi.mock('../../../../api/crmApi', () => ({
     getRelanceEtapesLead: vi.fn(),
     getLeadVisites: vi.fn(() => Promise.resolve({ data: { visites: [] } })),
     marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
+    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
+    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: { statut: 'a_faire' } })),
     getRelanceEtapeMessage: vi.fn(() => Promise.resolve({ data: { message: 'Bonjour', langue: 'fr' } })),
     getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
     planifierVisiteLead: vi.fn(() => Promise.resolve({ data: { visite: { id: 1 }, prochaine_touche: null } })),
@@ -30,6 +32,7 @@ vi.mock('../../../../lib/toast', () => ({
 }))
 
 import crmApi from '../../../../api/crmApi'
+import { toastError } from '../../../../lib/toast'
 import CadenceFrise from './CadenceFrise'
 
 const jour = (decalage) => new Intl.DateTimeFormat('en-CA', {
@@ -134,5 +137,93 @@ describe('SUIVI-BLOCAGE — frise de la fiche', () => {
     render(<Fiche seulementActionnable appelOuvert onEtapes={onEtapes} />)
     await waitFor(() => expect(onEtapes).toHaveBeenCalledWith([]))
     expect(screen.queryByText(/Aucune cadence/)).not.toBeInTheDocument()
+  })
+})
+
+/* SUIVI-REFUS (30/09/2026) — la frise de la fiche relançait déjà l'erreur de
+   « Fait » à la ligne, mais avalait celle de « Sauter » et « Reporter » : sur
+   un double clic (400 `erreurs.etape`, SUIVI E8) le panneau se refermait comme
+   réussi et un toast générique passait seul. Comme « Fait » : le panneau reste
+   ouvert, le message exact du serveur est sous le geste, la frise n'est PAS
+   relue sur un refus (`onChanged` ne suit qu'un succès). */
+const DEJA_TRAITEE = 'Cette étape est déjà traitée — rechargez la liste.'
+const refus = (status, data) => ({ response: { status, data } })
+const refus400 = (erreurs) => refus(400, { erreurs })
+
+describe('SUIVI-REFUS — frise de la fiche : Sauter / Reporter refusés', () => {
+  const ouverte = () => ({ ...APPEL, statut: 'a_faire', due_date: jour(0), overdue: false })
+
+  async function monterFrise() {
+    crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { results: [ouverte()] } })
+    render(<Fiche />)
+    await waitFor(() => expect(screen.getByTestId('relance-etape-row')).toBeInTheDocument())
+  }
+  const confirmer = () => fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+  function ouvrirReporter() {
+    fireEvent.click(screen.getByRole('button', { name: /Reporter/ }))
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: jour(1) } })
+  }
+
+  it('« Reporter » refusé (400 erreurs.etape) : panneau ouvert, message exact, frise non relue, aucun toast générique', async () => {
+    crmApi.reporterRelanceEtape.mockRejectedValueOnce(refus400({ etape: DEJA_TRAITEE }))
+    await monterFrise()
+    ouvrirReporter()
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
+    expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
+      APPEL.id, { rappel_le: jour(1), rappel_heure: '09:00' })
+    expect(screen.getByLabelText('Reporter au')).toHaveValue(jour(1))
+    expect(toastError).not.toHaveBeenCalled()
+    expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmer' })).not.toBeDisabled())
+  })
+
+  it('« Sauter » refusé (400 erreurs.etape) : panneau ouvert, message exact, frise non relue, aucun toast générique', async () => {
+    crmApi.marquerRelanceEtapeSautee.mockRejectedValueOnce(refus400({ etape: DEJA_TRAITEE }))
+    await monterFrise()
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
+    expect(screen.getByTestId('suite-sauter')).toBeInTheDocument()
+    expect(toastError).not.toHaveBeenCalled()
+    expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1)
+  })
+
+  it('« Sauter » : un échec RÉSEAU garde son toast (F2) ET la phrase claire sous le geste', async () => {
+    crmApi.marquerRelanceEtapeSautee.mockRejectedValueOnce(new Error('Network Error'))
+    await monterFrise()
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent('Pas de connexion au serveur')
+    expect(toastError).toHaveBeenCalledWith('Action impossible pour le moment.')
+  })
+
+  it('succès « Reporter » inchangé : la frise est relue, le panneau se referme (la ligne reste montée)', async () => {
+    await monterFrise()
+    ouvrirReporter()
+    // Le serveur déplace la MÊME touche à demain : la frise la relit ouverte.
+    crmApi.getRelanceEtapesLead.mockResolvedValue({
+      data: { results: [{ ...ouverte(), due_date: jour(1) }] },
+    })
+    confirmer()
+    await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalled())
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByLabelText('Reporter au')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /Reporter/ })).toBeInTheDocument()
+    expect(screen.queryByTestId('erreur-outcome')).not.toBeInTheDocument()
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('succès « Sauter » inchangé : la frise est relue, la touche sautée n’est plus actionnable', async () => {
+    await monterFrise()
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+    crmApi.getRelanceEtapesLead.mockResolvedValue({
+      data: { results: [{ ...ouverte(), statut: 'sautee', traite_le: new Date().toISOString() }] },
+    })
+    confirmer()
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalledWith(APPEL.id, ''))
+    await waitFor(() => expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByTestId('relance-etape-row')).not.toBeInTheDocument())
+    expect(toastError).not.toHaveBeenCalled()
   })
 })

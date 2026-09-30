@@ -201,11 +201,18 @@ export default function CadenceFrise({
     } catch (err) {
       // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
       // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
-      const champOutcome = action === 'fait' && err?.response?.status === 400
-        ? err?.response?.data?.erreurs?.outcome : null
-      if (!champOutcome) toastError('Action impossible pour le moment.')
-      if (action === 'fait') throw err
-      return undefined
+      // SUIVI-REFUS — idem pour Sauter et Reporter, et pour tout refus NOMMÉ
+      // (400 `erreurs`/`detail`, 403 rôle) : l'erreur est relancée à la ligne,
+      // qui l'affiche sous le geste ; le toast ne reste que pour réseau/5xx.
+      // Sur un refus, la frise n'est PAS relue (`onChanged` n'est appelé
+      // qu'après un succès) : la ligne garde son panneau ouvert.
+      const statut = err?.response?.status
+      const donnees = err?.response?.data
+      const refusNomme = statut === 403 || (statut === 400
+        && (Object.keys(donnees?.erreurs ?? {}).length > 0
+          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
+      if (!refusNomme) toastError('Action impossible pour le moment.')
+      throw err
     } finally {
       setBusyId(null)
     }
