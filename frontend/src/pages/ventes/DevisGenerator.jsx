@@ -83,7 +83,7 @@ import {
   // par l'avertissement de vente et par l'étude commerciale.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
-  tauxTvaOf, controlerFacturesSaisies,
+  tauxTvaOf, controlerFacturesSaisies, ttcExactFromHt,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
@@ -1920,7 +1920,10 @@ export default function DevisGenerator({
           produit: String(l.produit ?? ''),
           designation: l.designation,
           quantite: String(parseFloat(l.quantite) || 0),
-          prix_unit_ttc: String(ttcFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
+          // ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — prix PERSISTÉ : TTC au
+          // centime, jamais arrondi au dirham (sinon rouvrir change le total
+          // et ré-enregistrer modifie les prix en silence).
+          prix_unit_ttc: String(ttcExactFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
           taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
           // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
           optionnelle: !!l.optionnelle,

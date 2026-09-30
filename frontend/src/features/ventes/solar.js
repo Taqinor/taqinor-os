@@ -1400,6 +1400,17 @@ export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
   return Math.round((parseFloat(prixVenteHt) || 0) * factor)
 }
 
+// ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — TTC unitaire AU CENTIME d'un prix HT
+// DÉJÀ PERSISTÉ (réouverture `?edit=`). `ttcFromHt` arrondit au dirham — juste
+// pour un prix catalogue, faux pour un prix enregistré : l'erreur (≤ 0,5 MAD
+// par unité) était multipliée par la quantité (36 828 à l'écran contre
+// 36 873,11 au devis) puis PERSISTÉE au ré-enregistrement. Au centime,
+// `htFromTtc` retrouve exactement le HT d'origine (erreur < 0,005 ÷ (1 + t)).
+export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
+  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
+  return Math.round((parseFloat(prixHt) || 0) * factor * 100) / 100
+}
+
 // Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
 // DC7 — `Produit.tva` est la source AUTORITAIRE par ligne ; on la prend telle
 // quelle quand elle est renseignée. DC6 — le repli n'est plus 20 en dur : il
