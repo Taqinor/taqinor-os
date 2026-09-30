@@ -16,6 +16,7 @@ import { formatDateTime } from '../../../lib/format'
 import { Plus, KeyRound, Link2, RefreshCw } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
+import { fetchAllPages } from '../../../utils/fetchAllPages'
 import {
   Button, Card, EmptyState, Skeleton, Switch, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
@@ -43,8 +44,13 @@ export default function ComptesPortailAdmin() {
   }
 
   useEffect(() => { fetchComptes() }, [])
+  // ERR-QAH-PORTAIL-CLIENTS-TRONQUES-50 — la liste ne lisait que la PAGE 1
+  // (50 clients sur 139) : tous les autres — dont ceux qui ont des factures —
+  // ne pouvaient pas recevoir d'accès. On lit TOUTES les pages (`next` suivi).
   useEffect(() => {
-    crmApi.getClients().then((r) => setClients(r.data?.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data))
+      .then((data) => setClients(Array.isArray(data) ? data : (data?.results ?? [])))
+      .catch(() => {})
   }, [])
 
   const creer = async () => {
