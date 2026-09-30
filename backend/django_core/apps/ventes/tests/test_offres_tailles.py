@@ -1792,7 +1792,8 @@ class AppliquerAuDevisTests(_Base):
         with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
             with self.assertRaises(ot.ApplicationImpossible) as capture:
                 ot.appliquer_au_devis(devis, 'recommande')
-        self.assertFalse(capture.exception.revision_possible)
+        # QJR516 (D-QJR5-2) — un accepté est CLOS mais RÉVISABLE.
+        self.assertTrue(capture.exception.revision_possible)
         devis.refresh_from_db()
         self.assertEqual(self._panneaux(devis), 14)
         self.assertEqual(devis.statut, 'accepte')

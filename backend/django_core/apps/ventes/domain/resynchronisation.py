@@ -330,17 +330,26 @@ def reconcilier(devis, intention):
             (verrou.etude_params or {}).get('scenario') == SCENARIO_LES_DEUX)
 
         # ── Garde de statut : LECTURE du statut, jamais une écriture ──
-        if verrou.statut == Devis.Statut.ENVOYE:
+        # QJR516 — le prédicat UNIQUE (domain/modifiabilite, geste
+        # CALEPINAGE : brouillon seul jusqu'à QJR557). Textes CONSERVÉS ;
+        # ``revision_possible`` vient du prédicat (un accepté/refusé/expiré
+        # est révisable, D-QJR5-2 ; un devis remplacé ne l'est pas).
+        from apps.ventes.domain.modifiabilite import CALEPINAGE, verdict
+        v = verdict(verrou, CALEPINAGE)
+        if not v['modifiable']:
+            if not verrou.is_active:
+                detail = v['raison_non_modifiable'] + '.'
+            elif verrou.statut == Devis.Statut.ENVOYE:
+                detail = (
+                    'Devis « Envoyé » : le client a déjà cette version sous '
+                    'les yeux. Créez une révision (« Réviser ») pour en '
+                    'changer le calepinage.')
+            else:
+                detail = (
+                    'Devis « %s » : son calepinage est figé, ce document est '
+                    'clos.' % verrou.get_statut_display())
             raise SyncLayoutError(
-                'Devis « Envoyé » : le client a déjà cette version sous les '
-                'yeux. Créez une révision (« Réviser ») pour en changer le '
-                'calepinage.',
-                revision_possible=True)
-        if verrou.statut != Devis.Statut.BROUILLON:
-            raise SyncLayoutError(
-                'Devis « %s » : son calepinage est figé, ce document est '
-                'clos.' % verrou.get_statut_display(),
-                revision_possible=False)
+                detail, revision_possible=v['revision_possible'])
 
         lignes = _lignes_produit(verrou)
         lignes_panneau = [li for li in lignes

@@ -187,10 +187,12 @@ class GoldenDevisMono(_BaseResync):
         self.assertIsNone(devis.roof_layout)
 
     def test_golden_la_garde_de_statut_refuse_avant_toute_ecriture(self):
+        # QJR516 (D-QJR5-2) — accepté / refusé / expiré : clos mais
+        # RÉVISABLES (le prédicat unique domain/modifiabilite).
         for statut, revision in ((Devis.Statut.ENVOYE, True),
-                                 (Devis.Statut.ACCEPTE, False),
-                                 (Devis.Statut.REFUSE, False),
-                                 (Devis.Statut.EXPIRE, False)):
+                                 (Devis.Statut.ACCEPTE, True),
+                                 (Devis.Statut.REFUSE, True),
+                                 (Devis.Statut.EXPIRE, True)):
             with self.subTest(statut=statut):
                 devis = self._devis(statut=statut)
                 self._ligne(devis, PANNEAU, 12, ordre=1)

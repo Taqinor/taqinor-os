@@ -78,7 +78,7 @@ def activate_optional_line(*, devis, ligne_id, user=None):
     figé) / renvoie None si la ligne est introuvable ou n'est pas optionnelle.
     """
     from django.db import transaction
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import LigneDevis
     from apps.ventes import activity
 
     with transaction.atomic():
@@ -90,10 +90,11 @@ def activate_optional_line(*, devis, ligne_id, user=None):
         except LigneDevis.DoesNotExist:
             return None
 
-        # Devis figé (accepté/refusé/expiré) : les options ne sont plus
-        # activables (le contenu est verrouillé — règle #4).
-        if ligne.devis.statut not in (
-                Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+        # Devis figé (accepté/refusé/expiré) ou remplacé : les options ne
+        # sont plus activables (le contenu est verrouillé — règle #4).
+        # QJR516 — le prédicat UNIQUE (geste OPTIONS), message CONSERVÉ.
+        from apps.ventes.domain.modifiabilite import OPTIONS, est_modifiable
+        if not est_modifiable(ligne.devis, OPTIONS):
             raise AcceptError(
                 'Ce devis est figé — ses options ne sont plus modifiables.',
                 conflict=True)
@@ -1272,6 +1273,20 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 return devis
             raise AcceptError('Ce devis est déjà accepté.', conflict=True)
 
+        # QJR520 — une version REMPLACÉE (révisée, archivée) ne se signe plus :
+        # sans cette garde, signer le lien public de v1 après « Réviser »
+        # acceptait v1 ET effondrait v2 (sa « sœur ») en REFUSE — plus aucune
+        # version active, aucun BC. Rien n'est écrit (règle #4).
+        if not devis.is_active:
+            successeur = (Devis.objects.filter(pk=devis.superseded_by_id)
+                          .values_list('reference', flat=True).first()
+                          if devis.superseded_by_id else None)
+            if successeur:
+                message = f'Cette proposition a été remplacée par {successeur}.'
+            else:
+                message = "Cette proposition n'est plus active."
+            raise AcceptError(message, conflict=True)
+
         # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
         if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
             raise AcceptError(
@@ -1602,18 +1617,26 @@ def configuration_devis_contenu(devis):
     }
 
 
-def capturer_configuration_devis(devis, *, user=None):
+def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     """NTCPQ20 — Enregistre un instantané de configuration si le devis est
     BROUILLON et que la configuration a RÉELLEMENT changé.
 
     No-op (renvoie ``None``) hors brouillon ou quand le contenu est identique
     au dernier instantané — un simple re-save ne pollue pas l'historique.
-    Ne lève jamais : l'historique ne doit jamais bloquer une écriture."""
+    Ne lève jamais : l'historique ne doit jamais bloquer une écriture.
+
+    QJR518 — ``avant_correction=True`` capture AUSSI un devis ENVOYÉ :
+    appelé AVANT la première écriture d'une correction après envoi
+    (``domain/modifiabilite.debut_de_geste_devis``), l'instantané conserve
+    l'état que le client a vu. Le signal de ligne (post_save) ne le passe
+    jamais : un envoyé n'est pas historisé ligne par ligne."""
     from apps.ventes.models import ConfigurationDevisSnapshot, Devis
 
     if devis is None or devis.pk is None:
         return None
-    if devis.statut != Devis.Statut.BROUILLON:
+    statuts = ((Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+               if avant_correction else (Devis.Statut.BROUILLON,))
+    if devis.statut not in statuts:
         return None
     try:
         contenu = configuration_devis_contenu(devis)
@@ -1776,6 +1799,62 @@ def renouveler_devis(devis, *, user=None):
         f'Renouvelé par le devis {nouveau.reference} '
         f'(renouvellement n° {nouveau.numero_renouvellement}).')
     return nouveau
+
+
+class RevisionError(Exception):
+    """QJR521 — une révision refusée (déjà remplacé, brouillon) → 409."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def reviser_devis(devis, *, user=None):
+    """QJR521 — « Réviser » : LE service de domaine qui crée la V+1.
+
+    Une seule V+1, jamais de fourche, jamais de réactivation :
+      * ``transaction.atomic`` + relecture ``select_for_update(of=('self',))``
+        — un double clic ou un second vendeur attend le premier, puis lit
+        ``is_active=False`` et reçoit 409 « Déjà remplacé par <ref> » ;
+      * BROUILLON → 409 « Un brouillon se modifie directement » ; envoyé,
+        accepté, refusé, expiré sont révisables (D-QJR5-2) ;
+      * ``cloner_devis`` PUIS ``is_active`` / ``superseded_by`` DANS la même
+        transaction : un incident entre les deux ne laisse plus v1 active à
+        côté d'un brouillon v2 orphelin ;
+      * chatter v1 « Remplacé par <ref v2> (révision) » et v2 « Révision de
+        <ref v1> ».
+    Le statut de v1 n'est JAMAIS écrit (règle #4) — seuls ``is_active`` et
+    ``superseded_by`` bougent. Renvoie la nouvelle version."""
+    from django.db import transaction
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from apps.ventes.domain.creation import cloner_devis
+
+    with transaction.atomic():
+        old = (Devis.objects.select_for_update(of=('self',))
+               .get(pk=devis.pk))
+        if not old.is_active:
+            ref = (Devis.objects.filter(pk=old.superseded_by_id)
+                   .values_list('reference', flat=True).first()
+                   if old.superseded_by_id else None)
+            raise RevisionError(
+                f'Déjà remplacé par {ref}.' if ref
+                else 'Ce devis est archivé : il ne se révise plus.')
+        if old.statut == Devis.Statut.BROUILLON:
+            raise RevisionError(
+                'Un brouillon se modifie directement (pas de révision).')
+        nd = cloner_devis(
+            old, user=user, note=old.note,
+            version=old.version + 1,
+            version_parent=old.version_parent or old)
+        old.is_active = False
+        old.superseded_by = nd
+        old.save(update_fields=['is_active', 'superseded_by'])
+        activity.log_devis_note(
+            old, user, f'Remplacé par {nd.reference} (révision).')
+        activity.log_devis_note(
+            nd, user, f'Révision de {old.reference}.')
+    return nd
 
 
 def mark_devis_sent(*, devis, user=None):

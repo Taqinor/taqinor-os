@@ -131,6 +131,11 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
             .order_by('devis_id', 'id'))
 
         touches = {}
+        # QJR518 — l'état vu par le client de chaque devis ENVOYÉ est capturé
+        # AVANT sa première ligne réécrite (no-op pour un brouillon).
+        from apps.ventes.domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avants = {}
         for ligne in lignes:
             champs_ecrits = []
             conservee = False
@@ -157,6 +162,9 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                     conservee = True
 
             if champs_ecrits:
+                if ligne.devis_id not in avants:
+                    avants[ligne.devis_id] = debut_de_geste_devis(
+                        ligne.devis, user)
                 ligne.save(update_fields=champs_ecrits)
                 resultat['lignes_modifiees'] += 1
                 touches.setdefault(ligne.devis_id, ligne.devis)
@@ -175,14 +183,13 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # à chaque passage — c'est un « depuis quand », pas un journal) et la
         # charge utile publique l'expose sous ``resync_apres_envoi``.
         # ``update_fields`` EXCLUT ``statut`` : rien ne peut partir d'ici (#4).
-        from django.utils import timezone
-        horodatage = timezone.now().isoformat()
-        from apps.ventes.domain.etude_schema import CALEPINAGE, ecrire
+        # QJR518 — le marqueur, le chatter « corrigé après envoi » et le
+        # reflet lead passent par LE point unique de trace
+        # (``consigner_correction_apres_envoi``, via ``fin_de_geste_devis``) :
+        # plus d'écriture directe du marqueur ici.
         for devis in touches.values():
-            if devis.statut == Devis.Statut.ENVOYE:
-                # QJR62 — ÉCRIVAIN UNIQUE (fusion, jamais un remplacement).
-                ecrire(devis, proprietaire=CALEPINAGE,
-                       resync_apres_envoi={'date': horodatage})
+            fin_de_geste_devis(devis, user, avant=avants.get(devis.pk),
+                               objet='catalogue')
             log_devis_resynchronisation(
                 devis, produit=produit, modifications=modifications, user=user)
         resultat['devis_touches'] = len(touches)

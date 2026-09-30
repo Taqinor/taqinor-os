@@ -1363,6 +1363,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         if lecture_map is None:
             from apps.ventes.selectors import share_link_lecture_map
             lecture_map = share_link_lecture_map([d.id for d in rows])
+        # QJR516 (contrat QJR500 ``lead_devis_ligne.json``) — chaque ligne
+        # porte le verdict de modifiabilité du devis (modifiable,
+        # raison_non_modifiable, revision_possible) + is_active, servis par
+        # `apps.ventes.selectors.devis_modifiabilite` — la MÊME règle que le
+        # détail du devis, jamais recopiée ici.
+        from apps.ventes.selectors import devis_modifiabilite
         return [
             {
                 'id': d.id,
@@ -1374,6 +1380,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 'chantier': chantiers.get(d.id),
                 'share_link': niveau_map.get(d.id),
                 'lecture': lecture_map.get(d.id),
+                **devis_modifiabilite(d),
             }
             for d in rows
         ]

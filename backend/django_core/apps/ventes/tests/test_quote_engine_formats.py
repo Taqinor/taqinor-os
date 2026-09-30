@@ -2309,6 +2309,54 @@ class TestPageCalepinage(TestCase):
         self.assertNotIn('_embed_calepinage_planche',
                          clean_pdf_options({'_embed_calepinage_planche': True}))
 
+    # ── QJR522 — une planche PÉRIMÉE n'est plus imprimée ────────────────
+    def _poser_layout_devis(self, panneaux):
+        self.devis.roof_layout = {'result': {'panels': panneaux}}
+        self.devis.save(update_fields=['roof_layout'])
+
+    def test_qjr522_planche_perimee_apres_correction_omise(self):
+        """Calepinage à 14 panneaux (les lignes aussi), puis la ligne
+        panneau passe à 16 (correction) : la planche n'est plus rendue ni
+        comptée, et l'équipe en est avertie."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._creer_calepinage()
+        self._poser_layout_devis(14)
+        html, avant = self._render(self._options())
+        self.assertIn('>Calepinage</div>', html)
+
+        self.devis.lignes.filter(designation='Panneau mono 550W').update(
+            quantite='16')
+        data = build_quote_data(self.devis, self._options())
+        self.assertTrue(data['layout_stale'])
+        self.assertNotIn('calepinage_svg', data)
+        self.assertNotIn('include_calepinage', data)
+        self.assertIn(
+            'planche de calepinage antérieure à la dernière correction',
+            data.get('avertissements_internes') or [])
+        html, apres = self._render(self._options())
+        self.assertNotIn('>Calepinage</div>', html)
+        self.assertNotIn('calepinage_svg', html)
+        # Ni rendue ni comptée : exactement une page de moins.
+        self.assertEqual(len(apres.pages), len(avant.pages) - 1)
+
+    def test_qjr522_planche_a_jour_octet_identique(self):
+        """Layout qui concorde avec les lignes : la planche reste, au
+        caractère près identique à celle d'un devis sans layout stocké."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._creer_calepinage()
+        sans_layout = build_quote_data(self.devis, self._options())
+        self._poser_layout_devis(14)
+        avec_layout = build_quote_data(self.devis, self._options())
+        self.assertFalse(avec_layout['layout_stale'])
+        self.assertTrue(avec_layout['calepinage_svg'])
+        self.assertEqual(avec_layout['calepinage_svg'],
+                         sans_layout['calepinage_svg'])
+        self.assertNotIn(
+            'planche de calepinage antérieure à la dernière correction',
+            avec_layout.get('avertissements_internes') or [])
+
     # ── CAL183 — la whitelist d'options ──────────────────────────────────
     def test_cal183_l_option_est_whitelistee_en_tri_etat(self):
         """La whitelist est la SEULE porte autorisée côté client : sans elle

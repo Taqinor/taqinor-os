@@ -53,6 +53,20 @@ def log_devis_resynchronisation(devis, *, produit, modifications, user=None):
     )
 
 
+def log_devis_correction_apres_envoi(devis, user, resume):
+    """QJR518 (D-QJR5-1) — chatter du devis : un devis ENVOYÉ a été corrigé
+    sur place (même référence, même lien public, statut inchangé). ``resume``
+    NOMME ce qui a changé (lignes, en-tête, note, option recommandée).
+    Posée seulement quand un contenu VISIBLE du client a réellement changé."""
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='correction_apres_envoi', field_label='Corrigé après envoi',
+        new_value=resume,
+        body=f'Corrigé après envoi — {resume}.',
+    )
+
+
 def log_devis_credit_hold_override(devis, user, motif):
     """XFAC28 — chatter du devis : un responsable/admin a débloqué un client
     en hold crédit dur pour laisser passer cette action (accepter/facturer)."""

@@ -3453,8 +3453,9 @@ export default function DevisGenerator({
   const persisterDevis = async () => {
     setSaving(true)
     try {
+      // QJR515 — `statut` n'est JAMAIS dans le PATCH d'édition (un envoyé ne
+      // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
       const payload = {
-        statut: 'brouillon',
         date_validite: dateValidite || null,
         taux_tva: tauxTva,
         remise_globale: discountPct || '0',
@@ -3488,6 +3489,7 @@ export default function DevisGenerator({
         // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
         // de brouillon orphelin/partiel si la connexion est coupée en cours de
         // sauvegarde. Lead prioritaire : le client est résolu côté serveur.
+        payload.statut = 'brouillon'
         if (leadId) payload.lead = parseInt(leadId)
         else payload.client = parseInt(clientId)
         // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les CHOIX de l'écran

@@ -6041,6 +6041,18 @@ def noter_devis_envoye(devis_reference: str, lead) -> None:
         body=f"Devis {devis_reference} envoyé par email")
 
 
+def noter_devis_corrige(devis_reference: str, lead, resume: str = '') -> None:
+    """QJR518 — reflet sur le chatter du LEAD d'une correction après envoi
+    d'un devis (même patron que ``noter_devis_envoye`` : appelé par
+    ``apps.ventes``, jamais d'import des models crm depuis ventes ; note
+    système, best-effort — l'appelant catche toute exception)."""
+    detail = f' ({resume})' if resume else ''
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Devis {devis_reference} corrigé après envoi{detail}")
+
+
 def noter_touche_marketing(lead, message, *, ordre=0, cout=None):
     """XMKT16 — Consigne un événement marketing significatif (envoi/ouverture/
     clic de campagne, étape de séquence exécutée, réponse WhatsApp entrante)

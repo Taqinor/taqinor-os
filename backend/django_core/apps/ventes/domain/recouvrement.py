@@ -518,8 +518,10 @@ def send_devis_followup_nudges():
     today = _today()
 
     # Only look at envoye devis with a known send date.
+    # QJR520 — une version remplacée (is_active=False) n'est jamais relancée.
     candidates = Devis.objects.filter(
         statut=Devis.Statut.ENVOYE,
+        is_active=True,
         date_envoi__isnull=False,
     ).select_related('client', 'company', 'created_by').prefetch_related(
         'nudge_logs',
@@ -706,8 +708,10 @@ def expire_stale_devis():
     funnel_cold = 0
 
     # Candidats : devis envoyés uniquement (jamais accepte/refuse/expire).
+    # QJR520 — une version remplacée n'expire pas (elle n'est plus en jeu).
     candidates = Devis.objects.filter(
         statut=Devis.Statut.ENVOYE,
+        is_active=True,
     ).select_related('lead', 'lead__company')
 
     for devis in candidates:
