@@ -1381,6 +1381,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 'share_link': niveau_map.get(d.id),
                 'lecture': lecture_map.get(d.id),
                 **devis_modifiabilite(d),
+                # QJR535 (contrat ``lead_devis_ligne.json``) — `version` et
+                # `superseded_by` (id du remplaçant) : attributs de
+                # l'instance déjà chargée (aucun import de ventes.models). La
+                # carte d'une V1 remplacée s'affiche « Remplacé par … » côté
+                # cockpit au lieu de rester vivante et renvoyable.
+                'version': d.version,
+                'superseded_by': d.superseded_by_id,
             }
             for d in rows
         ]

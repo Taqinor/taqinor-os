@@ -1155,6 +1155,17 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('CHT-5'))
   })
 
+  it('QJR535 — carte remplacée : badge « Remplacé par … », plus d\'« Envoyer au client »', () => {
+    const lignes = exempleContrat('crm', 'lead_devis_ligne').devis
+    const [courante, remplacee] = lignes
+    renderTab({ state: leadState({ devis: [courante, remplacee] }) })
+    expect(screen.getByTestId(`devis-remplace-${remplacee.id}`).textContent)
+      .toBe(`Remplacé par ${courante.reference}`)
+    expect(screen.queryByTestId(`devis-remplace-${courante.id}`)).toBeNull()
+    // une seule carte vivante → un seul « Envoyer au client »
+    expect(screen.getAllByRole('button', { name: /Envoyer au client/ })).toHaveLength(1)
+  })
+
   it('devis remplacé → ni Modifier ni Réviser', () => {
     renderTab({ state: leadState({ devis: [carte('exemple_remplace')] }) })
     expect(screen.queryByRole('button', { name: /^Modifier$/ })).toBeNull()

@@ -684,6 +684,18 @@ export default function DevisTab({
                   {d.reference}
                 </button>
                 <StatusPill status={d.statut} label={STATUT_DEVIS[d.statut] ?? d.statut} />
+                {/* QJR535 — une version remplacée n'est plus vivante : badge
+                    « Remplacé par <référence> » (résolue dans la même liste),
+                    plus d'« Envoyer au client » (la V1 obsolète ne se renvoie
+                    pas). */}
+                {d.is_active === false && (
+                  <span className="lw-context-devis-niveau-badge" data-testid={`devis-remplace-${d.id}`}>
+                    {(() => {
+                      const ref = devisList.find((x) => x.id === d.superseded_by)?.reference
+                      return ref ? `Remplacé par ${ref}` : 'Version remplacée'
+                    })()}
+                  </span>
+                )}
               </div>
               <div className="lw-context-devis-card-body">
                 <span className="num">{formatMAD(d.total_ttc, { decimals: 0 })}</span>
@@ -721,12 +733,14 @@ export default function DevisTab({
                   L'aperçu interne reste hors dialogue : il ne touche jamais le
                   ShareLink public, ce n'est pas un envoi. */}
               <div className="lw-context-devis-links">
-                <Button
-                  type="button" size="sm" variant="default"
-                  onClick={() => setEnvoiOuvert(d.id)}
-                >
-                  <Send size={14} aria-hidden="true" /> Envoyer au client
-                </Button>
+                {d.is_active !== false && (
+                  <Button
+                    type="button" size="sm" variant="default"
+                    onClick={() => setEnvoiOuvert(d.id)}
+                  >
+                    <Send size={14} aria-hidden="true" /> Envoyer au client
+                  </Button>
+                )}
                 <Button
                   type="button" size="sm" variant="outline"
                   title="Ouvre le PDF client sans notifier le lead ni marquer le devis consulté (chemin interne /proposal — ne touche jamais le ShareLink public)"
