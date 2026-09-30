@@ -12728,14 +12728,26 @@ def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     n'est pas encore dépassé, jamais inventé s'il l'est.
 
     La note distingue « en famille » (un DÉLAI) de « le propriétaire décide »
-    (un INTERLOCUTEUR à changer). Renvoie la touche close."""
+    (un INTERLOCUTEUR à changer). Renvoie la touche close.
+
+    SUIVI E25 (30/09/2026, même règle que la décision fondateur E22) — sur la
+    DERNIÈRE touche du suivi de proposition, aucune touche ne suit : le filet
+    posait « Préparer et envoyer le devis » alors que le devis est déjà
+    parti. L'étiquette est posée comme partout, la touche est close sans
+    autre suite, puis « Décider la suite » est posée pour demain (même pose
+    qu'après un client joint sur cette touche, E22)."""
     lead = etape.lead
     spec = REPONSES_TOUCHE[cle]
     if not _lead_porte_tag(lead, _TAG_DECISION_A_PLUSIEURS):
         poser_tag_lead(lead, user, TAG_DECISION_A_PLUSIEURS)
-    return marquer_etape_relance(
+    derniere = est_derniere_touche_du_suivi(etape)
+    etape = marquer_etape_relance(
         etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
-        outcome=spec['outcome'], body=body)
+        outcome=spec['outcome'], body=body, suite=not derniere)
+    if derniere:
+        assurer_prochaine_etape_apres_succes(
+            lead, user, cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
+    return etape
 
 
 # ── SUIVI E4 — « Ne veut plus de visite » : la VISITE s'arrête, pas le suivi ─

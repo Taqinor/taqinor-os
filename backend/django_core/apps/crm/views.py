@@ -3711,6 +3711,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
         from .services import (est_derniere_touche_de_contact,
+                               est_derniere_touche_du_suivi,
                                est_dernier_reveil, est_etape_de_filet,
                                est_etape_de_visite, marquer_etape_relance,
                                repondre_planifier_sans_reponse,
@@ -3762,9 +3763,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # SUIVI E24 — la « deuxième affaire » (un client acquis qui revient,
         # rangée par la table sous les mêmes types) suit la même règle
         # (``est_derniere_touche_de_contact`` lit les deux cadences).
+        # SUIVI E25 — la DERNIÈRE touche du suivi de proposition aussi : plus
+        # jamais « Préparer et envoyer le devis » (déjà parti) à la date.
         if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
                 and quand is not None
-                and est_derniere_touche_de_contact(etape)):
+                and (est_derniere_touche_de_contact(etape)
+                     or est_derniere_touche_du_suivi(etape))):
             etape, _rappel = repondre_rappel_convenu(
                 etape, request.user, quand, note=note, body=body)
             return self._reponse_fait(etape)

@@ -135,11 +135,13 @@ class TableTests(SimpleTestCase):
                 self.assertIn('Décider la suite', reponse['effet'])
 
     def test_la_garde_de_parcours_joue_les_trois_cas(self):
+        # SUIVI E25 — « Décision à plusieurs » porte la même variante : on
+        # vérifie que les trois réponses « client joint » en font partie.
         cas = {(c.type_id, c.reponse['modele'])
                for c in cas_de_la_famille(FAMILLE_SUIVI)
                if c.contexte == 'derniere_touche'
                and c.suite == VARIANTE['suite']}
-        self.assertEqual(cas, set(REPONSES_JOINTES))
+        self.assertLessEqual(set(REPONSES_JOINTES), cas)
 
 
 class LectureDuRangTests(SimpleTestCase):
