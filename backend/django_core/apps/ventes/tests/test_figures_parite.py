@@ -57,7 +57,16 @@ _seq = itertools.count(1)
 #: ``(cas, identité)`` des écarts réels connus — NE PEUT QUE RÉTRÉCIR.
 #: Format d'une entrée : ``("residentiel_deux_options", "total_ttc@avec")``
 #: suivi d'un commentaire (repro + tâche ERR-* ouverte).
-KNOWN_MISMATCHES: set[tuple[str, str]] = set()
+KNOWN_MISMATCHES: set[tuple[str, str]] = {
+    # ERR-QAH-FIG-KPI-ECO-RESEAU-SEUL — devis RÉSEAU SEUL : la vignette KPI
+    # « Économie calculée » de la couverture (residential/cover.py, kpi_eco_html)
+    # imprime TOUJOURS ``eco_a_ann`` (économie de l'option AVEC batterie) alors
+    # que la carte unique « Sans batterie », le −N % et la proposition publique
+    # décrivent l'option SANS (``eco_s_ann``) : même page 1, deux économies
+    # (11 890 vs 8 393 MAD/an). Le marqueur (option de la synthèse) est juste,
+    # c'est la VALEUR qui est fausse.
+    ("residentiel_reseau_seul", "economie_annuelle@sans"),
+}
 
 
 # ── Compositions (calquées sur test_quote_engine_snapshot / test_pv86) ───────
