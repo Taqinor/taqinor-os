@@ -64,10 +64,17 @@ def build(ctx):
     ht_net = _num(tot.get("ht_net"))
     tva = _num(tot.get("tva"))
     ttc = _num(tot.get("ttc")) or d.get("_invest_ttc") or 0
+    # QA-FIGURES — chaque montant est formaté UNE fois : le texte imprimé et
+    # son ancre ``data-figure`` sont la même chaîne.
+    _f_remise = fmt(round(remise))
     remise_row = (
-        f'<tr><td>Remise{ancre("remise", fmt(round(remise)))}</td>'
-        f'<td class="c2-tr">- {fmt(round(remise))} MAD</td></tr>'
+        f'<tr><td>Remise{ancre("remise", _f_remise)}</td>'
+        f'<td class="c2-tr">- {_f_remise} MAD</td></tr>'
         if remise > 0 else "")
+    _f_ht_brut = fmt(round(ht_brut))
+    _f_ht_net = fmt(round(ht_net))
+    _f_tva = fmt(round(tva))
+    _f_ttc = fmt(round(ttc))
 
     # QX50 — ligne injection 82-21 (rendue SEULEMENT si l'étude la porte, avec
     # sa mention obligatoire ; jamais affichée sans la mention).
@@ -145,11 +152,11 @@ def build(ctx):
     <div class="c2-tot-sp"></div>
     <div class="c2-tot-box">
       <table class="c2-tot-tbl">
-        <tr><td>Sous-total HT{ancre("sous_total_ht", fmt(round(ht_brut)))}</td><td>{fmt(round(ht_brut))} MAD</td></tr>
+        <tr><td>Sous-total HT{ancre("sous_total_ht", _f_ht_brut)}</td><td>{_f_ht_brut} MAD</td></tr>
         {remise_row}
-        <tr><td>Total HT{ancre("total_ht", fmt(round(ht_net)))}</td><td>{fmt(round(ht_net))} MAD</td></tr>
-        <tr><td>TVA{ancre("tva", fmt(round(tva)))}</td><td>{fmt(round(tva))} MAD</td></tr>
-        <tr class="c2-tot-ttc"><td>Total TTC{ancre("total_ttc", fmt(round(ttc)))}</td><td>{fmt(round(ttc))} MAD</td></tr>
+        <tr><td>Total HT{ancre("total_ht", _f_ht_net)}</td><td>{_f_ht_net} MAD</td></tr>
+        <tr><td>TVA{ancre("tva", _f_tva)}</td><td>{_f_tva} MAD</td></tr>
+        <tr class="c2-tot-ttc"><td>Total TTC{ancre("total_ttc", _f_ttc)}</td><td>{_f_ttc} MAD</td></tr>
       </table>
     </div>
   </div>

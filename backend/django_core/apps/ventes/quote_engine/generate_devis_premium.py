@@ -3851,9 +3851,10 @@ def page_onepage(items, tronquees=0):
                  + (" (estimation)" if SAVINGS_ESTIMATED else ""),
                  _ancre_figure("economie_annuelle", fnum(_eco_branche),
                                ONEPAGE_BRANCHE)))
+        _pkwc_txt = fnum(round(total / KWC))
         _sum_cells.append(
-            ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc",
-             _ancre_figure("prix_kwc", fnum(round(total / KWC)), _op_opt)))
+            ("Prix par kWc", f"{_pkwc_txt} MAD/kWc",
+             _ancre_figure("prix_kwc", _pkwc_txt, _op_opt)))
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
         # adaptative de cette page ne dépend que du nombre de LIGNES produit
