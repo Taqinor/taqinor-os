@@ -207,20 +207,29 @@ def puissances_etude_horaire(devis):
       compte de panneaux que montre l'écran générateur
       (``r.variante !== 'avec'``).
 
-    UNE SEULE DÉRIVATION. Le panier de chaque option est celui du noyau
-    (``etude_horaire.ligne_dans_option`` — QJR140 : commune ⇒ les deux,
-    variantée ⇒ la sienne), et la puissance / le verdict « divergents » sont
-    ceux du builder (``_scalaires_par_option``) : le bloc décrit exactement le
-    kWc que le document chiffre. Devis NON divergent (tout l'existant) : la
+    UNE SEULE DÉRIVATION : CELLE DU BUILDER. Pour un panneau, son panier est
+    celui de ``builder._repartir_options`` — la variante LUE par
+    ``_variante_de_ligne`` (normalisée : « Sans », « AVEC » et toute valeur
+    inconnue sont lues comme lui les lit), commune ⇒ les deux paniers,
+    variantée ⇒ la sienne ; la puissance et le verdict « divergents » sont
+    ceux de ``_scalaires_par_option``. Le bloc décrit donc exactement le kWc
+    que le document chiffre. Devis NON divergent (tout l'existant) : la
     lecture d'avant, sur toutes les lignes, au bit près, et aucun second bloc.
 
     Même filtre que ``build_quote_data`` : lignes PRODUIT non optionnelles
     (les sections/notes n'ont pas de produit, les add-ons XSAL5 non activés ne
     comptent pas encore dans la composition réelle).
+
+    LIMITE ASSUMÉE (revue I7) : un devis mono-option « Z1 » (onduleur hybride
+    ou autonome SANS batterie) qui porterait malgré tout des panneaux
+    variantés est chiffré par le builder sur la SOMME des deux paniers — le
+    « compte de personne » que sa propre doctrine L-2OPT refuse. Ce bloc n'est
+    pas aligné sur ce chiffre-là : il ne légitime pas une puissance qu'aucune
+    option ne vend (aucun devis de prod dans ce cas au 30/09/2026 sur 77 devis
+    variantés). Le défaut est côté builder, pas ici.
     """
-    from apps.ventes.etude_horaire import ligne_dans_option
     from apps.ventes.quote_engine.builder import (
-        _scalaires_par_option, panneaux_et_watt_lu)
+        _scalaires_par_option, _variante_de_ligne, panneaux_et_watt_lu)
     lignes = [
         li for li in devis.lignes.select_related(
             'produit', 'produit__fiche_technique').all()
@@ -228,8 +237,8 @@ def puissances_etude_horaire(devis):
         and not getattr(li, 'optionnelle', False)
     ]
     par_option = _scalaires_par_option(
-        [li for li in lignes if ligne_dans_option(li, 'sans')],
-        [li for li in lignes if ligne_dans_option(li, 'avec')])
+        [li for li in lignes if _variante_de_ligne(li) in ('', 'sans')],
+        [li for li in lignes if _variante_de_ligne(li) in ('', 'avec')])
     if par_option['divergents']:
         return par_option['kwc_avec'], par_option['kwc_sans']
     nb_panneaux, watt = panneaux_et_watt_lu(lignes)
@@ -241,18 +250,24 @@ def puissances_etude_horaire(devis):
 def _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):
     """I7 — les DEUX blocs décrivent-ils déjà cette composition ?
 
-    Pas de puissance « sans » (devis non divergent) ⇒ à jour seulement si
-    aucun bloc « sans » ne traîne : un devis revenu à un seul champ PV doit
-    perdre le bloc de l'option disparue. Un devis rangé AVANT I7 n'a pas de
-    bloc « sans » ⇒ PÉRIMÉ, un recalcul, une fois.
+    Une puissance ABSENTE (pas de divergence pour le bloc « sans », ou des
+    panneaux sans wattage lisible) ⇒ à jour seulement si AUCUN bloc ne traîne
+    sous cette clé : un bloc qui ne décrit plus aucune puissance du devis doit
+    partir (règle Z2), et à l'inverse l'absence d'un bloc impossible à
+    calculer n'est pas une raison de relancer le moteur à chaque sauvegarde
+    (revue I7 : une option AVEC aux panneaux illisibles le relançait sans
+    fin). Un devis rangé AVANT I7 n'a pas de bloc « sans » ⇒ PÉRIMÉ, un
+    recalcul, une fois.
     """
-    if not _bloc_horaire_deja_a_jour(devis, kwc):
-        return False
-    if not kwc_sans:
-        return CLE_ETUDE_HORAIRE_SANS not in (
-            getattr(devis, 'etude_params', None) or {})
-    return _bloc_horaire_deja_a_jour(devis, kwc_sans,
-                                     cle=CLE_ETUDE_HORAIRE_SANS)
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    for puissance, cle in ((kwc, 'etude_horaire'),
+                           (kwc_sans, CLE_ETUDE_HORAIRE_SANS)):
+        if not puissance:
+            if cle in etude_params:
+                return False
+        elif not _bloc_horaire_deja_a_jour(devis, puissance, cle=cle):
+            return False
+    return True
 
 
 def rafraichir_etude_horaire_devis(devis, *, force=False):

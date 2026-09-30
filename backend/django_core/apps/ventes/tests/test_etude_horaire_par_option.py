@@ -31,7 +31,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client, Lead
@@ -127,6 +127,24 @@ class BlocParOptionTests(_Base):
             bloc_sans['_empreinte_entrees'],
             devis.etude_params['etude_horaire']['_empreinte_entrees'])
 
+    def test_une_variante_mal_casse_est_lue_comme_le_builder_la_lit(self):
+        """``variante`` n'a aucune contrainte en base : une valeur « Sans » /
+        « AVEC » (import, ``.update()``) est normalisée par le builder
+        (``_variante_de_ligne``). Le rafraîchisseur lit la MÊME chose — sinon
+        ces panneaux sortiraient des deux paniers et le bloc décrirait
+        encore une puissance que le document ne chiffre pas."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._devis('i7-casse')
+        devis.lignes.filter(variante='sans').update(variante=' Sans ')
+        devis.lignes.filter(variante='avec').update(variante='AVEC')
+        devis = self._rafraichir(Devis.objects.get(pk=devis.pk), force=True)
+        data = build_quote_data(devis)
+        self.assertEqual(
+            (devis.etude_params['etude_horaire']['kwc'],
+             devis.etude_params['etude_horaire_sans']['kwc']),
+            (data['puissance_kwc_avec'], data['puissance_kwc_sans']))
+        self.assertEqual(data['savings_model_sans'], 'horaire')
+
     def test_un_devis_non_divergent_garde_un_seul_bloc_sur_toutes_ses_lignes(
             self):
         """Tout l'existant : 14 panneaux communs ⇒ 9,94 kWc, et aucune clé
@@ -149,11 +167,29 @@ class BlocParOptionTests(_Base):
 
     def test_deux_blocs_a_jour_ne_relancent_aucun_calcul(self):
         """La garde anti-recalcul (CJ2b) couvre les DEUX blocs : rien n'a
-        bougé ⇒ aucun passage du moteur horaire dans le handler HTTP."""
+        bougé ⇒ aucun passage du moteur horaire dans le handler HTTP.
+
+        (Un ``side_effect=AssertionError`` serait AVALÉ par le ``try/except``
+        du rafraîchisseur — la preuve passe donc par ``assert_not_called``.)
+        """
+        from apps.ventes.domain.etudes import _blocs_horaires_deja_a_jour
         devis = self._rafraichir(self._devis('i7-stable'), force=True)
-        with mock.patch('apps.ventes.etude_horaire.etude_horaire_pour_devis',
-                        side_effect=AssertionError('recalcul inutile')):
+        self.assertTrue(_blocs_horaires_deja_a_jour(devis, KWC_AVEC, KWC_SANS))
+        with mock.patch(
+                'apps.ventes.etude_horaire.etude_horaire_pour_devis') as moteur:
             rafraichir_etude_horaire_devis(devis)
+        moteur.assert_not_called()
+
+    def test_un_bloc_sans_orphelin_est_retire_meme_principal_frais(self):
+        """Le devis redevient mono-champ SANS changer de puissance AVEC
+        (8 panneaux communs = 5,68 kWc) : le bloc principal est frais, mais le
+        bloc « sans » décrit une option disparue — il doit partir."""
+        devis = self._rafraichir(self._devis('i7-orphelin'), force=True)
+        devis.lignes.filter(variante='sans').delete()
+        devis.lignes.filter(variante='avec').update(variante='')
+        devis = self._rafraichir(Devis.objects.get(pk=devis.pk))
+        self.assertNotIn('etude_horaire_sans', devis.etude_params)
+        self.assertEqual(devis.etude_params['etude_horaire']['kwc'], KWC_AVEC)
 
     def test_un_bloc_sans_manquant_est_recalcule(self):
         """Un devis rangé AVANT I7 n'a pas de bloc « sans » : il n'est pas à
@@ -168,15 +204,46 @@ class BlocParOptionTests(_Base):
 
     def test_le_rafraichissement_ne_touche_ni_statut_ni_lignes_ni_totaux(self):
         """Règle #4 : ``update_fields=['etude_params']`` et rien d'autre."""
+        from apps.ventes.utils.options import option_totaux
+
         def _etat(d):
-            return (d.statut, d.remise_globale, list(d.lignes.order_by('pk')
-                    .values_list('pk', 'quantite', 'prix_unitaire',
-                                 'variante')))
+            return (d.statut, d.remise_globale, option_totaux(d),
+                    list(d.lignes.order_by('pk').values_list(
+                        'pk', 'quantite', 'prix_unitaire', 'variante')))
 
         devis = self._devis('i7-regle4')
         avant = _etat(devis)
         devis = self._rafraichir(devis, force=True)
         self.assertEqual(_etat(devis), avant)
+
+
+class FraicheurSansPuissanceTests(SimpleTestCase):
+    """Revue I7 (F2) — une puissance ILLISIBLE (panneaux sans wattage lu) ne
+    doit pas relancer le moteur horaire à CHAQUE sauvegarde de ligne."""
+
+    def _frais(self, etude_params, kwc, kwc_sans):
+        from apps.ventes.domain import etudes
+        devis = mock.Mock(etude_params=etude_params)
+        # Seul le bloc d'une puissance CONNUE peut être comparé ; on isole ici
+        # la décision « puissance absente » (aucune base, aucun moteur).
+        with mock.patch.object(etudes, '_bloc_horaire_deja_a_jour',
+                               side_effect=lambda d, k, cle='etude_horaire':
+                               bool(k)):
+            return etudes._blocs_horaires_deja_a_jour(devis, kwc, kwc_sans)
+
+    def test_option_avec_illisible_ne_boucle_pas(self):
+        """kWc AVEC illisible, kWc SANS lu et son bloc frais : rien à faire."""
+        self.assertTrue(self._frais(
+            {'etude_horaire_sans': {'kwc': KWC_SANS}}, None, KWC_SANS))
+
+    def test_aucune_puissance_et_aucun_bloc_rien_a_faire(self):
+        self.assertTrue(self._frais({}, None, None))
+
+    def test_un_bloc_sans_puissance_qui_le_justifie_est_perime(self):
+        """Règle Z2 : un bloc qui ne décrit plus aucune puissance du devis
+        doit être retiré — donc « pas à jour »."""
+        self.assertFalse(self._frais(
+            {'etude_horaire': {'kwc': KWC_AVEC}}, None, None))
 
 
 class LesDeuxColonnesAlHeureTests(_Base):
@@ -266,7 +333,10 @@ class FrontieresTests(_Base):
         resp = APIClient().get(
             f'/api/django/public/proposal/{link.token}/data/')
         self.assertEqual(resp.status_code, 200)
-        etude = (resp.json().get('quote') or {}).get('etude') or {}
+        quote = resp.json().get('quote') or {}
+        # Sans ce contrôle, un bloc « etude » absent rendrait le test vide.
+        self.assertIsInstance(quote.get('etude'), dict)
+        etude = quote['etude']
         self.assertNotIn('etude_horaire', etude)
         self.assertNotIn('etude_horaire_sans', etude)
 
