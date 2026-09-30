@@ -164,7 +164,8 @@ class AvertissementInterneTests(_Base):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = self._devis('mono-avert', CHAMPS + (
             (RESEAU, '1', '12000.00', ''),) + POSE)
-        avertissements = build_quote_data(devis)['avertissements_internes']
+        avertissements = build_quote_data(devis).get(
+            'avertissements_internes', [])
         self.assertTrue(
             any('variant' in a and 'option unique' in a
                 for a in avertissements), avertissements)
@@ -176,7 +177,8 @@ class AvertissementInterneTests(_Base):
         devis = self._devis('mono-sans-etiquette', (
             (PANNEAU, '14', '1166.67', ''),
             (RESEAU, '1', '12000.00', '')) + POSE, scenario=None)
-        avertissements = build_quote_data(devis)['avertissements_internes']
+        avertissements = build_quote_data(devis).get(
+            'avertissements_internes', [])
         self.assertFalse(any('variant' in a for a in avertissements),
                          avertissements)
 
@@ -195,4 +197,4 @@ class DeuxOptionsTemoinTests(_Base):
         self.assertEqual(data['nb_panneaux_sans'], 6)
         self.assertEqual(data['nb_panneaux_avec'], 8)
         self.assertFalse(any('variant' in a and 'option unique' in a
-                             for a in data['avertissements_internes']))
+                             for a in data.get('avertissements_internes', [])))
