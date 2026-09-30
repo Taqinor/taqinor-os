@@ -83,7 +83,7 @@ import {
   // par l'avertissement de vente et par l'étude commerciale.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
-  tauxTvaOf,
+  tauxTvaOf, controlerFacturesSaisies,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
@@ -417,6 +417,10 @@ export default function DevisGenerator({
   // Avertissements NON bloquants (n'empêchent jamais l'enregistrement) —
   // distincts de `errors` qui, eux, bloquent la sauvegarde.
   const [warnings, setWarnings] = useState({})
+  // ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — signature de la série de
+  // factures dont l'écart avec la facture d'hiver du lead a déjà été
+  // CONFIRMÉ par le vendeur (second clic sur Enregistrer).
+  const facturesEcartConfirme = useRef(null)
   // Chargement des référentiels (leads/clients/produits) : on distingue
   // « en cours » (selects affichent « Chargement… ») de « échec réseau »
   // (bannière rouge explicite plutôt qu'un select vide silencieux).
@@ -3074,6 +3078,31 @@ export default function DevisGenerator({
         }
       }
     }
+    // ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — les 12 factures partent comme
+    // « réelles » (`entreesReellesEcran`) : une facture sous les lignes fixes
+    // du compteur est REFUSÉE (le serveur la refuserait aussi, après
+    // l'enregistrement des lignes) ; un écart avec la facture d'hiver du lead
+    // se fait CONFIRMER une fois (second clic), jamais corrigé en silence.
+    if (facturesSaisies) {
+      const ctl = controlerFacturesSaisies(monthly, {
+        factureHiverLead: selectedLead?.facture_hiver,
+      })
+      if (ctl.sousPlancher.length) {
+        e.factures = `Facture(s) mensuelle(s) inférieure(s) aux lignes fixes du `
+          + `compteur (${ctl.plancher.toFixed(2)} MAD TTC/mois) — mois `
+          + `${ctl.sousPlancher.join(', ')}. Une facture réelle ne peut pas être `
+          + 'aussi basse : corrigez la saisie (hiver/été ou détail mensuel).'
+      } else if (ctl.ecartLead) {
+        const signature = monthly.map(v => Number(v) || 0).join('|')
+          + `#${ctl.ecartLead.lead}`
+        if (facturesEcartConfirme.current !== signature) {
+          facturesEcartConfirme.current = signature
+          e.factures = `La facture d'hiver enregistrée (${Math.round(ctl.ecartLead.serie)} MAD) `
+            + `s'écarte de celle du lead (${Math.round(ctl.ecartLead.lead)} MAD). `
+            + 'Vérifiez la saisie, puis cliquez à nouveau pour confirmer.'
+        }
+      }
+    }
     // Avertissement NON bloquant : le lead choisi est perdu et/ou archivé.
     // On le signale avant l'enregistrement sans jamais l'empêcher.
     const w = {}
@@ -5094,9 +5123,9 @@ export default function DevisGenerator({
         )}
         {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
             clic silencieux sans effet. */}
-        {(errors.submit || errors.lines || errors.client || errors.conso) && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {errors.submit || errors.lines || errors.client || errors.conso}
+        {(errors.submit || errors.lines || errors.client || errors.conso || errors.factures) && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="erreur-enregistrement">
+            {errors.submit || errors.lines || errors.client || errors.conso || errors.factures}
           </div>
         )}
 

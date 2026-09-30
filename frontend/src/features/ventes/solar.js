@@ -967,6 +967,31 @@ export function chargesFixesTtc() {
     + CHARGE_ENTRETIEN_BRANCHEMENT_HT * (1 + TVA_LIGNES_FIXES)
 }
 
+// ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — contrôle des 12 factures que
+// l'écran s'apprête à enregistrer comme « réelles ». DEV-202609-0108 est parti
+// au client avec `estimerMois(1, 1600)` (hiver 1 MAD/mois, sous les lignes
+// fixes du compteur) alors que son lead disait 3 000 MAD d'hiver.
+//   · `sousPlancher` : mois (1-12) dont la facture est > 0 mais sous
+//     `chargesFixesTtc()` — impossible pour une vraie facture (le serveur,
+//     `domain/etude_schema.py`, refuse la même série) ;
+//   · `ecartLead` : la facture de janvier (le mois d'HIVER de `estimerMois`)
+//     s'écarte de plus de 25 % de la facture d'hiver du lead ⇒
+//     `{ serie, lead }`, à faire CONFIRMER, jamais corrigé en silence.
+export const ECART_FACTURE_LEAD_MAX = 0.25
+export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
+  const plancher = chargesFixesTtc()
+  const serie = Array.isArray(factures) ? factures.map(v => Number(v) || 0) : []
+  const sousPlancher = []
+  serie.forEach((v, i) => { if (v > 0 && v < plancher) sousPlancher.push(i + 1) })
+  const lead = Number(factureHiverLead) || 0
+  let ecartLead = null
+  if (lead > 0 && serie.length === 12 && serie[0] > 0
+      && Math.abs(serie[0] - lead) / lead > ECART_FACTURE_LEAD_MAX) {
+    ecartLead = { serie: serie[0], lead }
+  }
+  return { plancher, sousPlancher, ecartLead }
+}
+
 // TPPAN TTC due sur une période de `jours` jours consommant `kwhMensuel`.
 // Jumeau de bareme.tppan_mad : empilement progressif sur la TOTALITÉ de la
 // consommation, bornes proratisées, plafonné. Monotone non décroissante.
