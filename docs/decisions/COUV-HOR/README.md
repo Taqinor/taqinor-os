@@ -97,6 +97,8 @@ Les 23 autres devis envoyés corrigés ne changent que la donut.
 
 ## 6. Audit QA — peut-on détecter ce type d'erreur automatiquement ? OUI.
 
+Rapport intégral (inventaires, 30 incidents, toutes les règles et recommandations, critique) : [audit-qa-complet.md](audit-qa-complet.md).
+
 **Constat.** Toute la QA actuelle (≈100 gardes `scripts/check_*.py`, 134 contrats, snapshots
 PDF, explorateur QA, error-autopilot, Sentry) vérifie des **déclarations** (code contre code,
 clés, types, chemins d'écriture) ou des **plantages**. Un chiffre faux mais plausible n'en
