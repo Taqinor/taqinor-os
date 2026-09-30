@@ -2786,6 +2786,10 @@ from .models_regulatory import (  # noqa: E402,F401
 # models_releve.py ; ré-exporté ici pour la découverte Django).
 from .models_releve import ReleveImportSession  # noqa: E402,F401
 
+# QA-COHERENCE — mémoire des violations de l'auditeur nocturne (modèle déporté
+# dans models_coherence.py ; ré-exporté ici pour la découverte Django).
+from .models_coherence import ViolationCoherence  # noqa: E402,F401
+
 # FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
 # models_commissioning.py).
 from .models_commissioning import (  # noqa: E402,F401
