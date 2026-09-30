@@ -442,6 +442,49 @@ describe('ControleSuiviPanel — frise', () => {
     })
   })
 
+  describe('badge d\'une étape encore à faire (le retard se lit sur la case, pas sur la ligne)', () => {
+    // `overdue` est CALENDAIRE ; le retard du bloc se compte en jours OUVRÉS : une ligne
+    // « à faire » porte toujours le badge neutre « À faire » (contrat `relance_etapes_suivi`).
+    const AFAIRE = SUIVI.results.find((e) => e.statut === 'a_faire')
+    const ouvrirAvec = async (lignes) => {
+      crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+        data: { ...SUIVI, count: lignes.length, results: lignes },
+      })
+      monter()
+      await attendreVerdict()
+      fireEvent.click(screen.getByTestId('controle-jour-2026-09-29'))
+      return within(await screen.findByTestId('controle-jour-liste')).findAllByTestId('controle-jour-ligne')
+    }
+
+    it('à faire, non en retard : « À faire »', async () => {
+      const [ligne] = await ouvrirAvec([{ ...AFAIRE, overdue: false }])
+      expect(ligne).toHaveTextContent('À faire')
+      expect(ligne).not.toHaveTextContent('En retard')
+    })
+
+    it('à faire, `overdue` vrai (calendaire) : TOUJOURS « À faire » — jamais « En retard »', async () => {
+      const [ligne] = await ouvrirAvec([{ ...AFAIRE, overdue: true }])
+      expect(ligne).toHaveTextContent('À faire')
+      expect(ligne).not.toHaveTextContent('En retard')
+      expect(ligne).toHaveTextContent('prévue à 08:33')
+    })
+
+    it('un libellé de statut « En retard » servi pour une étape à faire n\'y change rien', async () => {
+      const [ligne] = await ouvrirAvec([{ ...AFAIRE, overdue: true, statut_libelle: 'En retard' }])
+      expect(ligne).toHaveTextContent('À faire')
+      expect(ligne).not.toHaveTextContent('En retard')
+    })
+
+    it('les autres statuts gardent leur badge (Fait, Sautée)', async () => {
+      const fait = SUIVI.results.find((e) => e.statut === 'fait')
+      const lignes = await ouvrirAvec([
+        fait, { ...fait, id: 700, statut: 'sautee', statut_libelle: 'Sautée' },
+      ])
+      expect(lignes[0]).toHaveTextContent('Fait')
+      expect(lignes[1]).toHaveTextContent('Sautée')
+    })
+  })
+
   it('liste du jour indisponible : message + Réessayer', async () => {
     crmApi.getRelanceEtapesSuivi.mockRejectedValueOnce(new Error('boom'))
     monter()

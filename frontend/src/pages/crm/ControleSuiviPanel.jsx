@@ -234,11 +234,10 @@ function Comparaison({ verdict }) {
 
 // ── Frise ──────────────────────────────────────────────────────────────────
 function StatutBadgeJour({ etape }) {
-  if (etape.statut === 'a_faire') {
-    return etape.overdue
-      ? <Badge tone="danger">En retard</Badge>
-      : <Badge tone="outline">{etape.statut_libelle || 'À faire'}</Badge>
-  }
+  // Une étape encore à faire est « À faire » — jamais « En retard » : `etape.overdue` est
+  // CALENDAIRE, alors que le retard de ce bloc se compte en jours OUVRÉS ; c'est la CASE
+  // de la frise (▲ ou ◔) qui dit si le jour est en retard, pas un badge par ligne.
+  if (etape.statut === 'a_faire') return <Badge tone="outline">À faire</Badge>
   if (etape.statut === 'fait') return <Badge tone="success">{etape.statut_libelle || 'Fait'}</Badge>
   if (etape.statut === 'sautee') return <Badge tone="neutral">{etape.statut_libelle || 'Sautée'}</Badge>
   return <Badge tone="outline">{etape.statut_libelle || etape.statut}</Badge>
