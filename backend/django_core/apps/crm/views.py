@@ -1083,6 +1083,15 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 and ('ville_reference' not in vd
                      or vd['ville_reference'] == old.ville_reference)):
             vd['ville_reference'] = ''
+        # QJR584 — le WhatsApp qui n'était qu'une copie du téléphone suit la
+        # correction du téléphone ; un WhatsApp distinct n'est jamais touché.
+        if 'telephone' in vd and 'whatsapp' not in vd:
+            from .services import normalize_phone
+            if (old.whatsapp and normalize_phone(old.whatsapp)
+                    == normalize_phone(old.telephone)
+                    and normalize_phone(vd['telephone'])
+                    != normalize_phone(old.telephone)):
+                vd['whatsapp'] = vd['telephone']
         ecrits = set(vd.keys())
         if self.request.user.company_id:
             ecrits.add('company')  # forcée côté serveur (TenantMixin)
