@@ -2705,6 +2705,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 devis = registre_overrides.relire_verrouille(devis)
                 registre_overrides.ecrire_colonne(
                     devis, registre_overrides.regenerer(devis, chemin))
+            self._rafraichir_etudes_apres_surcharge(devis)
             fin_de_geste_devis(devis, request.user, avant=avant_geste,
                                objet='surcharges')
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
@@ -2725,9 +2726,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        self._rafraichir_etudes_apres_surcharge(devis)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,
                            objet='surcharges')
         return Response(self._overrides_reponse(devis))
+
+    @staticmethod
+    def _rafraichir_etudes_apres_surcharge(devis):
+        """QJR564 — une surcharge posée ou régénérée (``etude.jour_reference``,
+        ``taille.nb_panneaux``, ``taille.panel_watt``…) nourrit le moteur ; les
+        études STOCKÉES (lues telles quelles par ``/proposal``) sont donc
+        relancées APRÈS la transaction. Inconditionnel : les empreintes
+        QJR43/QJR44 court-circuitent une étude dont les entrées n'ont pas
+        bougé — aucune liste de chemins tenue à la main ici. Best-effort : une
+        étude en échec n'annule jamais une surcharge enregistrée."""
+        from ..services import rafraichir_etudes_du_devis
+        try:
+            rafraichir_etudes_du_devis(devis)
+        except Exception:  # noqa: BLE001
+            pass
 
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
             permission_classes=[IsResponsableOrAdmin])
