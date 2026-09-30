@@ -278,3 +278,33 @@ class LieuDitEndpointTests(_Base):
         self.assertAlmostEqual(resp.data['position']['lng'], -2.373, places=2)
         self.assertEqual(resp.data['proches'][0]['ville'], 'Madagh')
         self.assertFalse(resp.data['gps_hors_zone'])
+
+
+class CorrigerVilleEffaceRattachementTests(_Base):
+    slug = 'vref-qjr583'
+
+    def test_corriger_ville_efface_le_rattachement(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Q583', owner=self.user,
+            ville='Douar X', ville_reference='Settat')
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.pk}/',
+            {'ville': 'Berrechid'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville_reference, '')
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, field='ville_reference',
+            field_label='Ville de rattachement').exists())
+
+    def test_ville_et_rattachement_ensemble_gardent_la_valeur_envoyee(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Q583b', owner=self.user,
+            ville='Douar X', ville_reference='Settat')
+        resp = self.api.patch(
+            f'/api/django/crm/leads/{lead.pk}/',
+            {'ville': 'Douar Y', 'ville_reference': 'Kénitra'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.ville_reference, 'Kénitra')

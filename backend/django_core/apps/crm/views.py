@@ -1073,7 +1073,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # sur des champs DISJOINTS (le commercial change la ville pendant que
         # l'assistante corrige le nom) se révertaient l'un l'autre — le second
         # save réécrivait TOUTES les colonnes depuis sa copie périmée.
-        ecrits = set(serializer.validated_data.keys())
+        vd = serializer.validated_data
+        # QJR583 — corriger la ville efface la ville de rattachement devenue
+        # périmée (sinon l'ancienne ville continue de piloter productible,
+        # PDF, transport). Une ville de rattachement envoyée avec la nouvelle
+        # ville est gardée telle quelle.
+        if ('ville' in vd and (vd['ville'] or '') != (old.ville or '')
+                and old.ville_reference
+                and ('ville_reference' not in vd
+                     or vd['ville_reference'] == old.ville_reference)):
+            vd['ville_reference'] = ''
+        ecrits = set(vd.keys())
         if self.request.user.company_id:
             ecrits.add('company')  # forcée côté serveur (TenantMixin)
         ecrits.add('updated_by')
