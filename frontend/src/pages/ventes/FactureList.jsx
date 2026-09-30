@@ -175,9 +175,17 @@ const isPartiallyPaid = f =>
 // suivi la modale de paiement dans le composant partagé PaiementDialog.jsx.
 
 const today = new Date().toISOString().slice(0, 10)
+// ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture au STATUT « en_retard »
+// (même sans échéance) est affichée « En retard » : elle doit aussi tomber dans
+// l'onglet « En retard » (sinon 4 lignes « En retard » et un onglet vide).
 const isOverdue = f =>
   f.is_overdue ||
+  f.statut === 'en_retard' ||
   (f.statut === 'emise' && f.date_echeance && f.date_echeance < today)
+
+// ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — « Reste à encaisser » ne compte que
+// les factures VIVANTES : ni brouillon (pas encore émise), ni annulée, ni payée.
+const STATUTS_HORS_ENCAISSEMENT = ['brouillon', 'annulee', 'payee']
 
 // Prochaine action contextuelle (next-best-action) : clé de l'action mise en
 // avant selon statut/montant dû/retard. Une brouillon → Émettre ; une émise en
@@ -1101,7 +1109,8 @@ export default function FactureList() {
   // réseau). Répond au manque : le cockpit montre « Encaissé ce mois » mais
   // jamais le dû de l'onglet « Partiellement payées » sous les yeux.
   const resteAEncaisserOnglet = useMemo(
-    () => filtered.reduce((s, f) => s + (toNumber(f.montant_du) || 0), 0),
+    () => filtered.reduce((s, f) => (STATUTS_HORS_ENCAISSEMENT.includes(f.statut)
+      ? s : s + (toNumber(f.montant_du) || 0)), 0),
     [filtered])
 
   const counts = useMemo(() => ({

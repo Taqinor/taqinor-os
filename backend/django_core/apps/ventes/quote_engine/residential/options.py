@@ -458,9 +458,13 @@ def build_pages(ctx) -> list:
     # ligne. Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
     _pr_s, _pr_a = d.get("prod_kwh_sans"), d.get("prod_kwh_avec")
     if _divergent and _pr_s and _pr_a and _pr_s != _pr_a:
+        # ERR123 — WeasyPrint ≥ 70 mesure la colonne flex un poil plus
+        # étroite qu'en 62.3 : l'étiquette passait à la ligne. On la déclare
+        # insécable (la colonne flex:1 prend alors sa largeur min-content).
         spec_prod = (f'<span style="font-size:13pt;">{fmt(_pr_s)} · '
                      f'{fmt(_pr_a)}</span>',
-                     "kWh / an produits (sans · avec)")
+                     '<span style="white-space:nowrap;">'
+                     'kWh / an produits (sans · avec)</span>')
     else:
         spec_prod = (fmt(d["prod_kwh"]), "kWh / an produits")
     # QJR17 (d) — une vignette sans donnée n'existe pas (``None`` ci-dessus).
@@ -586,14 +590,37 @@ def build_pages(ctx) -> list:
     def _yrs(v):
         return f"{v:g}".replace(".", ",") if v else "—"
     roi_s, roi_a = d.get("roi_s"), d.get("roi_a")
+    # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option dont le cumul 25 ans
+    # ne croise jamais zéro n'imprime aucun nombre d'années.
+    _jamais_s = bool(d.get("roi_s_jamais"))
+    _jamais_a = bool(d.get("roi_a_jamais"))
+    _NON_RENTABLE = "Non rentabilisé sur 25 ans"
+
+    def _roi_txt(v, jamais):
+        return "non rentabilisé" if jamais else f"{_yrs(v)} ans"
     # QX5 — deux options → fourchette de ROI ; mono-option → le ROI de l'option
     # réelle seul (jamais une fourchette entre une option et un fantôme).
-    if deux_options and roi_s and roi_a:
+    _roi_jamais_affiche = False
+    if deux_options and roi_s and roi_a and (_jamais_s or _jamais_a):
+        if _jamais_s and _jamais_a:
+            roi_range = _NON_RENTABLE
+            _roi_jamais_affiche = True
+        else:
+            roi_range = (f"{_roi_txt(roi_s, _jamais_s)} / "
+                         f"{_roi_txt(roi_a, _jamais_a)}")
+    elif deux_options and roi_s and roi_a:
         lo, hi = sorted((roi_s, roi_a))
         roi_range = f"{_yrs(lo)} – {_yrs(hi)} ans"
     else:
         _roi_one = (roi_a if avec_ok else roi_s)
-        roi_range = f"{_yrs(_roi_one)} ans" if _roi_one else "—"
+        _jamais_one = _jamais_a if avec_ok else _jamais_s
+        if _roi_one and _jamais_one:
+            roi_range = _NON_RENTABLE
+            _roi_jamais_affiche = True
+        else:
+            roi_range = f"{_yrs(_roi_one)} ans" if _roi_one else "—"
+    _roi_sous_titre = ("au tarif actuel" if _roi_jamais_affiche
+                       else "l'installation se rembourse")
     # QX5 — gain net 25 ans + libellé calés sur l'option réellement présente
     # (jamais « option avec batterie » sur un devis sans batterie).
     if deux_options or avec_ok:
@@ -612,6 +639,12 @@ def build_pages(ctx) -> list:
     else:
         gain25 = max(0, round(_eco_ref * 23.56 - _tot_ref))
     gain25 = round(gain25 / 1000) * 1000
+    # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — l'option de référence ne se
+    # rembourse jamais : son « gain net » n'est pas « ≈ 0 MAD » (plancher),
+    # c'est une perte — la carte le dit au lieu d'imprimer un zéro.
+    _gain_jamais = bool(_jamais_a if (deux_options or avec_ok) else _jamais_s)
+    _gain_v_html = ("Non rentabilisé" if _gain_jamais
+                    else f"≈ {fmt(gain25)} <small>MAD</small>")
     # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net
     # tangible ; calculé, jamais inventé (gain net / investissement).
     gain_mult = (round(gain25 / _tot_ref, 1) if _tot_ref and gain25 > 0
@@ -671,8 +704,10 @@ def build_pages(ctx) -> list:
             cmp_rows.append((f"Économies{_mot} / an",
                              f'{fmt(_eco_s)} MAD', f'{fmt(_eco_a)} MAD'))
         if not masquer_eco and roi_s and roi_a:
-            cmp_rows.append(("Retour sur investissement",
-                             f'{_yrs(roi_s)} ans', f'{_yrs(roi_a)} ans'))
+            cmp_rows.append((
+                "Retour sur investissement",
+                _NON_RENTABLE if _jamais_s else f'{_yrs(roi_s)} ans',
+                _NON_RENTABLE if _jamais_a else f'{_yrs(roi_a)} ans'))
 
     def _cmp_table(rows):
         _crows = "".join(
@@ -1219,11 +1254,11 @@ def build_pages(ctx) -> list:
         <div class="p2-side-stat">
           <span class="p2-stat-k">Retour sur investissement</span>
           <span class="p2-stat-v">{roi_range}</span>
-          <span class="p2-stat-s">l'installation se rembourse</span>
+          <span class="p2-stat-s">{_roi_sous_titre}</span>
         </div>
         <div class="p2-side-stat p2-side-gain">
           <span class="p2-stat-k">Gain net sur 25 ans</span>
-          <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
+          <span class="p2-stat-v">{_gain_v_html}</span>
           <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
         </div>{_perf_stat_html()}"""
     # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
@@ -1249,7 +1284,7 @@ def build_pages(ctx) -> list:
         <div class="p2-side-stat">
           <span class="p2-stat-k">Retour sur investissement</span>
           <span class="p2-stat-v">{roi_range}</span>
-          <span class="p2-stat-s">l'installation se rembourse</span>
+          <span class="p2-stat-s">{_roi_sous_titre}</span>
         </div>{_perf_stat_html()}"""
 
     def _fin_html(xl=False):

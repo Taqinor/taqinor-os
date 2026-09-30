@@ -585,10 +585,14 @@ jobs:
           set -euo pipefail
           # Identifiants seedés en dur par `seed_demo` (authentication/
           # management/commands/seed_demo.py) — jamais un compte de prod.
-          RESPONSE=$(curl -sf -X POST http://127.0.0.1:8000/api/django/token/ \
+          # ERR118 — `CustomTokenObtainPairView` pose le JWT dans le cookie
+          # httpOnly `access_token` (corps de réponse vide) : on le lit du
+          # cookie-jar ; `CookieJWTAuthentication` accepte aussi le Bearer.
+          curl -sf -c cookies.txt -X POST http://127.0.0.1:8000/api/django/token/ \
             -H "Content-Type: application/json" \
-            -d '{"username": "demo_admin", "password": "Demo@2026!"}')
-          ACCESS=$(python -c "import json,sys; print(json.load(sys.stdin)['access'])" <<< "$RESPONSE")
+            -d '{"username": "demo_admin", "password": "Demo@2026!"}' > /dev/null
+          ACCESS=$(python -c "import http.cookiejar as c; j=c.MozillaCookieJar('cookies.txt'); j.load(ignore_discard=True, ignore_expires=True); t=[x.value for x in j if x.name=='access_token']; assert t, 'cookie access_token absent'; print(t[0])")
+          rm -f cookies.txt
           # Le jeton ne va JAMAIS dans les logs (masqué) ni dans un output lu
           # par un autre job — consommé dans CE job, à l'étape suivante.
           echo "::add-mask::$ACCESS"

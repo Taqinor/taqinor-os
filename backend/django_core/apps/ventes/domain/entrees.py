@@ -34,7 +34,11 @@ logger = logging.getLogger(__name__)
 #: seul levier pour invalider un cache après un changement de RÈGLE (une
 #: silhouette d'occupation retouchée, une couche d'équipement corrigée) que
 #: les entrées elles-mêmes ne reflètent pas.
-VERSION_MOTEUR_ENTREES = 'qjr43-1'
+#: ERR-QAC-CONSO-KWH-SAISI-DEUX-DERIVATIONS (30/09/2026) — 'qjr43-2' : la
+#: consommation des entrées est enfin résolue comme celle du bloc horaire (kWh
+#: déclaré du lead + barème société) ; tous les blocs rangés sous l'ancienne
+#: règle (dont DEV-202609-0082/-0085, déclarés « frais » à tort) se périment.
+VERSION_MOTEUR_ENTREES = 'qjr43-2'
 
 #: Précision retenue pour la localisation : 4 décimales ≈ 11 m. Au-delà, deux
 #: relevés GPS du MÊME toit produiraient deux empreintes et feraient recalculer
@@ -115,6 +119,19 @@ def _reglages_tarifaires_de(company):
     """
     from apps.ventes.etude_horaire import _reglages_tarifaires
     return _reglages_tarifaires(company)
+
+
+def _kwh_declare(valeur):
+    """Le kWh mensuel déclaré d'une fiche (``crm.Lead.conso_mensuelle_kwh``),
+    ou ``None`` — même lecture que ``crm.selectors.conso_mensuelle_kwh_pour_devis``
+    (vide, illisible ou ≤ 0 ⇒ ``None``, jamais un chiffre fabriqué)."""
+    if valeur in (None, ''):
+        return None
+    try:
+        valeur = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return valeur if valeur > 0 else None
 
 
 def jour_reference_par_defaut():
@@ -256,19 +273,23 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         return None
     jour = jour_reference or jour_reference_du_devis(devis)
 
-    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
+    from apps.crm.selectors import site_location_for_devis
     from apps.ventes.courbes_journalieres import (
         equipements_du_devis, occupation_du_devis)
-    from apps.ventes.etude_horaire import profil_depuis_factures
+    from apps.ventes.etude_horaire import profil_conso_du_devis
 
-    bills = lead_bills_for_devis(devis) or {}
     etude_params = getattr(devis, 'etude_params', None) or {}
-    conso, source_conso, _detail = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+    # ERR-QAC-CONSO-KWH-SAISI-DEUX-DERIVATIONS — la MÊME résolution que le bloc
+    # horaire (``etude_horaire.profil_conso_du_devis`` : kWh déclaré du lead
+    # CAD166 + barème de la SOCIÉTÉ). Avant, ce chemin omettait les deux : le
+    # dimensionnement lisait les 12 factures au barème national pendant que le
+    # bloc chiffrait le kWh déclaré, et l'empreinte (calculée d'ici) ne voyait
+    # jamais ce kWh — un kWh effacé ne périmait donc aucun bloc. Le barème
+    # société est lu AVANT la conso, y compris sur le chemin de garde : une
+    # lecture de réglages de plus, le prix d'une seule vérité.
+    tranches, charges_fixes = _reglages_tarifaires_de(company)
+    conso, source_conso, _detail = profil_conso_du_devis(
+        devis, tranches=tranches, charges_fixes_mad=charges_fixes)
 
     if not conso or not contexte:
         return EntreesMoteur(
@@ -284,7 +305,6 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     # s'applique.
     occupation, _source_occ = occupation_du_devis(
         devis, {'mode_installation': mode})
-    tranches, charges_fixes = _reglages_tarifaires_de(company)
     return EntreesMoteur(
         company=company, mode=mode, etude_params=etude_params,
         conso_kwh_mensuelles=conso, source_conso=source_conso,
@@ -331,10 +351,19 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         composer_equipements, occupation_du_lead)
     from apps.ventes.etude_horaire import profil_depuis_factures
 
+    # ERR-QAC-CONSO-KWH-SAISI-DEUX-DERIVATIONS — mêmes arguments que le chemin
+    # devis (``etude_horaire.profil_conso_du_devis``) : le kWh mensuel DÉCLARÉ
+    # de la fiche (CAD166, priorité « 1 bis ») et le barème de la SOCIÉTÉ. Sans
+    # eux, le lead et le devis qui en découle se dimensionnaient sur deux
+    # consommations différentes.
+    tranches, charges_fixes = _reglages_tarifaires_de(company)
     conso, source_conso, _detail = profil_depuis_factures(
         facture_hiver_mad=getattr(lead, 'facture_hiver', None),
         facture_ete_mad=getattr(lead, 'facture_ete', None),
-        ete_differente=getattr(lead, 'ete_differente', False))
+        ete_differente=getattr(lead, 'ete_differente', False),
+        conso_kwh_mensuelle_unique=_kwh_declare(
+            getattr(lead, 'conso_mensuelle_kwh', None)),
+        tranches=tranches, charges_fixes_mad=charges_fixes)
 
     if not conso or not contexte:
         return EntreesMoteur(
@@ -343,7 +372,6 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
             jour_reference=jour)
 
     occupation, _source_occ = occupation_du_lead(lead)
-    tranches, charges_fixes = _reglages_tarifaires_de(company)
     return EntreesMoteur(
         company=company, mode='residentiel', etude_params={},
         conso_kwh_mensuelles=conso, source_conso=source_conso,

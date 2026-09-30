@@ -115,6 +115,7 @@ vi.mock('@roofpro/scene3d', () => ({
 const {
   default: ModeTerrain, pasMesure, tauxOccupation, empriseTablesM2,
   contourTerrain, demandeMoteur, documentTerrain, planVue2D,
+  AXE_AUTO, motifChampVide, motifRefus,
 } = await import('../ModeTerrain')
 const { formatCote } = await import('../plan2d')
 
@@ -459,5 +460,72 @@ describe('CAL89 — la route est déclarée dans le module', () => {
     expect(route).toBeTruthy()
     expect(route.component).toBeTruthy()
     expect(route.roles).toContain('normal')
+  })
+})
+
+/* ── ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD ──────────────────────────────────── */
+
+describe('ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — l’axe n’est plus codé en dur', () => {
+  it('la demande envoie `AUTO` (le serveur dérive l’axe), jamais NORD_SUD figé', () => {
+    for (const modulesParTable of ['1', '2', '12']) {
+      const d = demandeMoteur({ ...SAISIE, modulesParTable })
+      expect(d.parametres.axe_rangee).toBe(AXE_AUTO)
+      expect(d.surfaces[0].axe_rangee).toBe(AXE_AUTO)
+    }
+  })
+
+  it('un plan à 0 module est DIT, jamais affiché comme un optimum silencieux', () => {
+    expect(motifChampVide({ plans: [{ modules: 0, tables: [] }] })).toMatch(/aucune table ne tient/i)
+    expect(motifChampVide(REPONSE)).toBeNull()
+    expect(motifChampVide(null)).toBeNull()
+  })
+
+  it('le motif français du 400 moteur (`demande`/`calepinage`) est affiché', () => {
+    expect(motifRefus({ demande: ['Axe refusé.'] })).toBe('Axe refusé.')
+    expect(motifRefus({ calepinage: ['Incohérent.'], controle: 'x' })).toBe('Incohérent.')
+    expect(motifRefus({ detail: 'Non.' })).toBe('Non.')
+    expect(motifRefus(undefined)).toBeNull()
+  })
+
+  it('l’écran affiche le message quand le moteur ne pose aucun module', async () => {
+    pose.mockResolvedValue({ data: { ...REPONSE, plans: [{ ...REPONSE.plans[0], modules: 0, tables: [], rangees: [] }] } })
+    monter()
+    await waitFor(() => expect(layout).toHaveBeenCalled())
+    remplir({ ...SAISIE, modulesParTable: '12' })
+    fireEvent.click(screen.getByTestId('cal-terrain-calculer'))
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-message').textContent).toMatch(/aucune table ne tient/i)
+    })
+  })
+})
+
+/* ── ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE ───────────────────────────── */
+
+describe('ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module survit au rechargement', () => {
+  it('la surface persistée porte les dimensions, la puissance et les modules par table', () => {
+    const s = documentTerrain(SAISIE, REPONSE)
+    expect(s.moduleLongM).toBe(2.278)
+    expect(s.moduleCourtM).toBe(1.134)
+    expect(s.moduleWc).toBe(720)
+    expect(s.modulesParTable).toBe(2)
+  })
+
+  it('une saisie module absente est persistée `null`, jamais 0', () => {
+    const s = documentTerrain({ ...SAISIE, puissanceWc: '', modulesParTable: '' }, REPONSE)
+    expect(s.moduleWc).toBeNull()
+    expect(s.modulesParTable).toBeNull()
+  })
+
+  it('RECHARGE : les quatre champs module reviennent remplis', async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [documentTerrain(SAISIE, REPONSE)] } },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-moduleLongM').value).toBe('2.278')
+    })
+    expect(screen.getByTestId('cal-terrain-moduleCourtM').value).toBe('1.134')
+    expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+    expect(screen.getByTestId('cal-terrain-modulesParTable').value).toBe('2')
   })
 })

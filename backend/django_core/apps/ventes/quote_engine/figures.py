@@ -493,9 +493,14 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
     # Chaîne SANS option : celle du une-page « liste libre » et des documents
     # C&I, qui impriment ``totaux_all`` (le devis entier).
     _totaux(c, quote.get("totaux_all"), None)
-    c.mettre("total_affiche", ot.get("display_total")
-             if ot.get("display_total") is not None
-             else quote.get("display_total"))
+    # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis ×N villas affiche (liste) et
+    # facture le total ×N que le document imprime : c'est LUI le total affiché.
+    if quote.get("display_total_multi") is not None:
+        c.mettre("total_affiche", quote.get("display_total_multi"))
+    else:
+        c.mettre("total_affiche", ot.get("display_total")
+                 if ot.get("display_total") is not None
+                 else quote.get("display_total"))
 
     kwc_div = _divergent(quote, "puissance_kwc")
     if not kwc_div:

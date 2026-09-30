@@ -153,3 +153,38 @@ class TestStampDateRealiseeUnit(TestCase):
         InterventionViewSet._stamp_date_realisee(interv)
         interv.refresh_from_db()
         self.assertEqual(interv.date_realisee, existing)
+
+
+class TestServiceStampDateRealiseeCompteRendu(TestCase):
+    """ERR-QAH-CHANTIERS-DATE-REALISEE-COMPTE-RENDU — le jumeau côté SERVICE
+    (`services._stamp_date_realisee_intervention`, appelé par
+    `changer_statut_intervention`) ne tamponne plus sur un simple compte rendu."""
+
+    def setUp(self):
+        self.company = make_company(slug='err-qah-date-co-svc', nom='ErrQah Svc')
+        self.user = User.objects.create_user(
+            username='err_qah_date_svc', password='x', role_legacy='responsable',
+            company=self.company)
+        self.installation = Installation.objects.create(
+            company=self.company, reference='ERRQAH-DATE-SVC')
+
+    def _interv(self, **kwargs):
+        return Intervention.objects.create(
+            company=self.company, installation=self.installation,
+            type_intervention='pose', created_by=self.user, **kwargs)
+
+    def test_compte_rendu_on_prete_never_stamps(self):
+        from apps.installations.services import _stamp_date_realisee_intervention
+        interv = self._interv(
+            compte_rendu='test', statut=Intervention.Statut.PRETE,
+            date_prevue=timezone.localdate() + timedelta(days=1))
+        _stamp_date_realisee_intervention(interv)
+        interv.refresh_from_db()
+        self.assertIsNone(interv.date_realisee)
+
+    def test_terminee_still_stamps(self):
+        from apps.installations.services import _stamp_date_realisee_intervention
+        interv = self._interv(statut=Intervention.Statut.TERMINEE)
+        _stamp_date_realisee_intervention(interv)
+        interv.refresh_from_db()
+        self.assertEqual(interv.date_realisee, timezone.localdate())

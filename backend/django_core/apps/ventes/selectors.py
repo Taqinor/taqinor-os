@@ -721,7 +721,12 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
 
     ht_brut = sum((D(str(li.total_ht)) for li in lignes), D('0'))
     remise = q(ht_brut * disc / D('100')) if disc > 0 else D('0')
-    ht_net = q(ht_brut - remise)
+    # ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — un HT brut à demi-centime
+    # (0,005) et une remise de 100 % arrondie AU-DESSUS (0,01) donnaient un HT
+    # net de q(-0,005) = -0,01, donc un TTC négatif : le HT net est borné à 0
+    # (une remise ne rend jamais un document négatif). Aucun effet ailleurs :
+    # hors ce cas limite, ``ht_brut - remise`` est toujours ≥ 0.
+    ht_net = max(q(ht_brut - remise), D('0.00'))
 
     buckets = {}
     for li in lignes:
@@ -824,15 +829,37 @@ def multi_villa_totaux(devis):
     return {'groupes': groupes, 'grand_total': grand_total}
 
 
-def nombre_proprietes(devis) -> int:
-    """QJ29 (A) — multiplicateur ×N villas identiques stocké dans
-    ``etude_params['nombre_proprietes']`` (défaut 1, jamais < 1). N=1 = chemin
-    mono-système inchangé."""
-    try:
-        n = int((devis.etude_params or {}).get('nombre_proprietes', 1) or 1)
-    except (TypeError, ValueError):
-        n = 1
-    return max(1, n)
+from .multivilla import nombre_proprietes, puissance_kwc_projet  # noqa: E402,F401 — ré-export
+
+
+def totaux_multi_proprietes(totaux, n):
+    """ERR-QAC-MULTIVILLA-TOTAL-XN — met un dict de totaux canoniques (sortie
+    de :func:`_canonical_totaux`) à l'échelle ×N villas identiques.
+
+    DÉCISION FONDATEUR (30/09/2026, « ×N everywhere ») : la facturation suit le
+    total ×N IMPRIMÉ. Le document multiplie le total d'UNE villa (lignes =
+    une villa) par N, étage par étage (``builder._scale_tot``) ; on fait
+    EXACTEMENT la même chose ici, en Decimal : chaque étage au centime × un
+    entier reste au centime, donc ``ht_net + tva == ttc`` tient toujours et le
+    ×N de l'ERP est au centime celui du PDF. N=1 → le dict est rendu tel quel
+    (chemin mono-système inchangé au bit près).
+    """
+    if n <= 1 or not isinstance(totaux, dict):
+        return totaux
+    out = dict(totaux)
+    for k in ('ht_brut', 'remise', 'ht_net', 'tva', 'ttc'):
+        if out.get(k) is not None:
+            out[k] = out[k] * n
+    if isinstance(out.get('tva_par_taux'), list):
+        paniers = []
+        for b in out['tva_par_taux']:
+            b = dict(b)
+            for k in ('montant', 'ht_net', 'base_ht'):
+                if b.get(k) is not None:
+                    b[k] = b[k] * n
+            paniers.append(b)
+        out['tva_par_taux'] = paniers
+    return out
 
 
 # ── XFAC15 — score comportement de paiement (agrège FG365) ────────────────
@@ -3386,8 +3413,12 @@ def kpis_factures(qs):
     # le seul endroit qui sait ce que « reste dû » veut dire (avoirs, notes de
     # débit, retenues subies, abandon de créance). Le queryset est borné aux
     # factures VIVANTES et porte le préfetch complet (AUD158/AUD159).
+    # ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture PAYÉE est soldée pour
+    # l'écran (Dû 0, hors « Total dû ») même si un marquage sec a laissé un
+    # reste théorique : elle sort de l'encours comme annulées et brouillons.
     ouvertes = (qs.exclude(statut__in=[Facture.Statut.ANNULEE,
-                                       Facture.Statut.BROUILLON])
+                                       Facture.Statut.BROUILLON,
+                                       Facture.Statut.PAYEE])
                   .prefetch_related('lignes', 'paiements', 'avoirs',
                                     'notes_debit', 'retenues_subies',
                                     'affectations_paiement__paiement'))
@@ -3402,7 +3433,10 @@ def kpis_factures(qs):
             continue
         nb_impayees += 1
         total_du += du
-        if facture.jours_retard > 0:
+        # Une facture au statut « En retard » compte même sans échéance : la
+        # tuile doit dire ce que les lignes affichent (ERR-QAH-VENTES-…-KPI).
+        if (facture.jours_retard > 0
+                or facture.statut == Facture.Statut.EN_RETARD):
             nb_en_retard += 1
             total_en_retard += du
         elif (facture.date_echeance

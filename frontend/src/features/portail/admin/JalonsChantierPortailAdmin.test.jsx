@@ -71,4 +71,21 @@ describe('JalonsChantierPortailAdmin — PACT100', () => {
     await waitFor(() => expect(screen.getAllByText('Réception').length).toBeGreaterThan(0))
     expect(screen.queryByRole('button', { name: /Marquer atteint/ })).not.toBeInTheDocument()
   })
+
+  it("ERR-QAH-PORTAIL-JALON-ERREUR-TOAST — l'erreur 400 sur « Ordre » s'affiche sous le champ", async () => {
+    portailApi.admin.jalonsChantier.liste.mockResolvedValue({ data: [] })
+    installationsApi.getInstallations.mockResolvedValue({
+      data: [{ id: 8, client_nom: 'Ferme Bennani' }],
+    })
+    portailApi.admin.jalonsChantier.creer.mockRejectedValue({
+      response: { data: { ordre: ['Un nombre entier valide est requis.'] } },
+    })
+    const user = userEvent.setup()
+    renderPage(<JalonsChantierPortailAdmin />)
+    await user.click(await screen.findByRole('combobox', { name: 'Chantier' }))
+    await user.click(await screen.findByRole('option', { name: '#8 — Ferme Bennani' }))
+    await user.type(screen.getByLabelText('Jalon'), 'Livraison')
+    await user.click(screen.getAllByRole('button', { name: /Créer le jalon/ })[0])
+    expect(await screen.findByText('Un nombre entier valide est requis.')).toBeInTheDocument()
+  })
 })

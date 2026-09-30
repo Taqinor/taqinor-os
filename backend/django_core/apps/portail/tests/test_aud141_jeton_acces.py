@@ -116,7 +116,9 @@ class JetonAccesPortailTests(TestCase):
                                 {}, format='json')
         self.assertEqual(res.status_code, 200, res.content)
         self.assertEqual(res.data['token_acces'], self.compte.token_acces)
-        self.assertIn(self.compte.token_acces, res.data['lien'])
+        # ERR-QAH-PORTAIL-LIEN-ACCES-404 — le lien vise la route vivante.
+        self.assertTrue(res.data['lien'].endswith('/portail/client'))
+        self.assertNotIn('portail-contrats', res.data['lien'])
         # Journalisé — mais JAMAIS le jeton lui-même.
         trace = '\n'.join(journal.output)
         self.assertIn('lien-acces', trace)

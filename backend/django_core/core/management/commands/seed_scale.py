@@ -253,9 +253,48 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.WARNING(
                 'Modèle ligne de devis introuvable — lignes ignorées.'))
-        seed('stock.mouvement', options['mouvements'])
+        self._seed_mouvements_stock(
+            options['mouvements'], company_ids, seed, pools, _bulk, django_apps)
 
         self.stdout.write(self.style.SUCCESS('seed_scale terminé.'))
+
+    @staticmethod
+    def _seed_mouvements_stock(count, company_ids, seed, pools, _bulk,
+                               django_apps):
+        """ERR119 — mouvements de stock : le modèle est ``stock.MouvementStock``
+        (et non ``stock.mouvement``). Fabrique dédiée : produits rattachés à
+        une société, ENTREE avec quantités avant/quantité/après cohérentes et
+        ``company`` copiée du produit (le chemin générique la laissait NULL)."""
+        if count <= 0:
+            return
+        Produit = django_apps.get_model('stock', 'Produit')
+        Mouvement = django_apps.get_model('stock', 'MouvementStock')
+        produits = list(Produit.objects.filter(
+            company_id__in=company_ids).values_list('pk', 'company_id')[:200])
+        if not produits:
+            seed('stock.produit', min(count, 50))
+            orphelins = list(Produit.objects.filter(
+                pk__in=pools.get('stock.produit', []), company__isnull=True
+            ).values_list('pk', flat=True))
+            for pk in orphelins:
+                Produit.objects.filter(pk=pk).update(
+                    company_id=random.choice(company_ids))
+            produits = list(Produit.objects.filter(
+                company_id__in=company_ids
+            ).values_list('pk', 'company_id')[:200])
+        if not produits:
+            return
+        buf = []
+        for i in range(count):
+            pk, co = random.choice(produits)
+            avant = random.randint(0, 100)
+            qte = random.randint(1, 20)
+            buf.append(Mouvement(
+                company_id=co, produit_id=pk,
+                type_mouvement=Mouvement.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=avant,
+                quantite_apres=avant + qte, reference=f'SEED-MV-{i}'))
+        _bulk(Mouvement, buf, 'stock.mouvementstock')
 
     @staticmethod
     def _find_child(app_label, parent_model, django_apps):

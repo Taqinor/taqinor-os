@@ -20,7 +20,7 @@ import {
   KWC_STEP, MAD_PAR_PALIER, estimerKwcDepuisFacture, arrondirAuPasKwc,
   optimalKwcByPayback, autoFillLines, optionTotalsTTC, computeROI,
   batteryKwhFromLines, HORIZON_MARGINAL_PV,
-  consoAnnuelleDepuisFactures, kwhFromBill,
+  consoAnnuelleDepuisFactures, kwhFromBill, kwhDepuisFactureMad,
 } from './solar.js'
 
 const ht = (ttc) => (ttc / 1.2).toFixed(2)
@@ -203,6 +203,19 @@ test('catalogue vide : repli sur le besoin arrondi au palier, jamais un chiffre 
 // jumeau de bareme.py côté serveur. La taille retenue (25 kWc) et le meilleur
 // payback (15 kWc) ne bougent pas ; seuls les MONTANTS et les deux pas
 // marginaux (4,44 → 4,04 et 7,28 → 6,53) sont re-mesurés.
+//
+// RECALAGE ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE (30/09/2026) — la conso du
+// client est désormais l'inverse de la facture COMPLÈTE (lignes fixes + TPPAN
+// retirées, comme le serveur) : 16 835 kWh/an au lieu de 17 870. Paliers
+// re-mesurés (mêmes totaux) :
+//   kwc  éco/an   payback  paybackMarginal
+//   15   20 694    4,1     ← meilleur payback (choix PUR)
+//   20   27 158    4,1     4,12  ≤ H(10) → ADMIS ← taille retenue
+//   25   28 521    4,6     13,69 > H(10) → REFUSÉ
+//   30…40 28 521          l'économie SATURE dès 25 kWc
+// La doctrine est intacte : l'ascension dépasse le meilleur payback (15 → 20)
+// et s'arrête D'ELLE-MÊME bien avant le plafond de 40 ; seul le palier
+// retenu (25 → 20) suit une conso plus basse.
 const besoinAscension = 40
 // Consommation réelle du client, dérivée de SES factures par le barème (QF1)
 // — exactement ce que les deux appelants réels passent désormais.
@@ -216,11 +229,16 @@ const scenarioAscension = {
 }
 
 test('GARDE DE SATURATION — la consommation réelle du scénario est bien DÉRIVÉE des factures, jamais posée', () => {
-  assert.equal(CONSO_ASCENSION, 17870)
-  // Elle vaut exactement la somme des 12 factures inversées par le barème.
+  assert.equal(CONSO_ASCENSION, 16835)
+  // Elle vaut exactement la somme des 12 factures inversées par le barème
+  // COMPLET (ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE).
   const aLaMain = Math.round(FACTURES.reduce(
-    (s, b) => s + kwhFromBill(b, UTILITY_ASCENSION).kwhMensuel, 0))
+    (s, b) => s + kwhDepuisFactureMad(b), 0))
   assert.equal(CONSO_ASCENSION, aLaMain)
+  // …et plus la somme énergie seule d'avant (le 17 870 kWh du miroir faux).
+  const energieSeule = Math.round(FACTURES.reduce(
+    (s, b) => s + kwhFromBill(b, UTILITY_ASCENSION).kwhMensuel, 0))
+  assert.equal(energieSeule, 17870)
 })
 
 // Rejoue le choix PUR PAYBACK de l'ancienne règle (18/08, avant toute
@@ -240,21 +258,27 @@ test('DOCTRINE HORIZON FIXE 25/08 (a) — un pas ascendant admissible fait grimp
   const res = optimalKwcByPayback(scenarioAscension)
   const ancien = ancienChoixPurPayback(res.paliers)
   // La doctrine fait bien QUELQUE CHOSE : la taille retenue dépasse le palier
-  // au meilleur payback (15 → 25 kWc, mesuré, jamais posé a priori).
+  // au meilleur payback (15 → 20 kWc, mesuré, jamais posé a priori — voir le
+  // RECALAGE ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE en tête de bloc).
   assert.equal(ancien.kwc, 15, 'le palier au meilleur payback doit être 15 kWc pour ce scénario')
-  assert.equal(res.kwcOptimal, 25, 'taille mesurée sous horizon fixe = 10 ans, avec consommation réelle')
+  assert.equal(res.kwcOptimal, 20, 'taille mesurée sous horizon fixe = 10 ans, avec consommation réelle')
   assert.ok(res.kwcOptimal > ancien.kwc)
   assert.equal(res.ascensionDesactivee, null, 'l\'ascension doit bien avoir eu lieu ici')
 
   // Chaque pas de l'ascension a bien été jugé admissible sous l'horizon FIXE
-  // (H ne dépend plus de meilleur.payback).
-  for (const kwc of [20, 25]) {
+  // (H ne dépend plus de meilleur.payback)…
+  for (const kwc of [20]) {
     const palier = res.paliers.find(p => p.kwc === kwc)
     assert.ok(Number.isFinite(palier.paybackMarginal), `palier ${kwc} : paybackMarginal manquant`)
     assert.ok(palier.paybackMarginal <= HORIZON_MARGINAL_PV + 1e-9,
       `pas marginal ${palier.paybackMarginal} (palier ${kwc}) doit être ≤ H (${HORIZON_MARGINAL_PV})`)
     assert.equal(palier.admissibleMarginal, true)
   }
+  // …et le pas suivant (20 → 25, 13,7 ans) est REFUSÉ : c'est lui qui arrête
+  // l'ascension, avant même la saturation.
+  const palier25 = res.paliers.find(p => p.kwc === 25)
+  assert.ok(palier25.paybackMarginal > HORIZON_MARGINAL_PV)
+  assert.equal(palier25.admissibleMarginal, false)
 
   // LE POINT DU FINDING — l'ascension S'ARRÊTE, et elle s'arrête AVANT le
   // plafond du balayage. Au-delà de 25 kWc l'économie SATURE (le client ne
@@ -262,10 +286,13 @@ test('DOCTRINE HORIZON FIXE 25/08 (a) — un pas ascendant admissible fait grimp
   // jamais se rembourser : `paybackMarginal` est nul (Δéconomie = 0).
   assert.ok(res.kwcOptimal < besoinAscension,
     `la taille retenue (${res.kwcOptimal}) doit rester SOUS le plafond du balayage (${besoinAscension}) — sinon c'est le plafond qui décide, pas la règle`)
+  // (Depuis le recalage conso-facture-totale, l'ascension s'arrête à 25 : le
+  // pas 25 → 30 n'est même plus évalué — `== null` couvre « nul » comme
+  // « jamais calculé ».)
   const palier30 = res.paliers.find(p => p.kwc === 30)
-  assert.equal(palier30.paybackMarginal, null,
+  assert.ok(palier30.paybackMarginal == null,
     'au-delà de la saturation, le pas marginal n\'achète aucune économie')
-  assert.equal(palier30.admissibleMarginal, false)
+  assert.notEqual(palier30.admissibleMarginal, true)
   // L'économie est bien PLAFONNÉE (identique de 25 à 40 kWc) : c'est la
   // saturation elle-même, la propriété sans laquelle la règle sur-vend.
   const eco = (k) => res.paliers.find(p => p.kwc === k).economieAnnuelle
@@ -364,9 +391,13 @@ test('DOCTRINE HORIZON FIXE 25/08 (c) — horizonMarginal = meilleur_payback rej
   //   pas 15→20 = (111 721,25 − 85 057,50)/(27 343 − 20 737) = 4,04  ≤ 4,1 → ADMIS
   //   pas 20→25 = (130 385,00 − 111 721,25)/(30 201 − 27 343) = 6,53  > 4,1 → REFUSÉ
   // ⇒ relatif-zéro s'arrête à 20 kWc, le choix PUR payback reste 15 kWc.
+  // RECALAGE ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE (30/09/2026) — conso de la
+  // facture COMPLÈTE (16 835 kWh/an) : le pas 15→20 vaut 4,12 > 4,1 → REFUSÉ,
+  // relatif-zéro retombe donc sur le choix PUR payback (15 kWc), pendant que
+  // l'horizon fixe (10 ans) grimpe à 20 — la divergence reste démontrée.
   assert.equal(ancien.kwc, 15, 'le palier au meilleur payback reste 15 kWc')
-  assert.equal(resRelatifZero.kwcOptimal, 20,
-    'relatif-zéro admet le pas 15→20 (4,04 ≤ 4,1) puis refuse 20→25 (6,53 > 4,1)')
+  assert.equal(resRelatifZero.kwcOptimal, 15,
+    'relatif-zéro refuse le pas 15→20 (4,12 > 4,1)')
   // Le critère est bien PLUS STRICT que l'horizon fixe : il ne peut jamais
   // retenir une taille plus grande que celui-ci (4,1 ≤ H = 10 ans).
   assert.ok(resRelatifZero.kwcOptimal <= resDefaut.kwcOptimal)

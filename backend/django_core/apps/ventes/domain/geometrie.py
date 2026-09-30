@@ -23,6 +23,7 @@ précis (``assertLogs('apps.ventes.services')``). Un déplacement pur ne change
 pas le nom sous lequel une ligne de journal est émise.
 """
 import logging
+import math
 from collections import namedtuple
 
 logger = logging.getLogger("apps.ventes.services")
@@ -286,6 +287,54 @@ LectureLayout = namedtuple(
     'LectureLayout', 'compte watt watt_declare kwc scenario toiture')
 
 
+def _nombre_fini(valeur):
+    """``float`` fini et positif, ou ``None`` — jamais une valeur supposée."""
+    try:
+        v = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) and v > 0 else None
+
+
+def compte_surfaces_de_pose(layout):
+    """ERR-QAH-CALEPINAGE-SOL-DEVIS-422 — ``(modules, kwc)`` des SURFACES DE POSE.
+
+    Un champ au sol / une ombrière (CAL89/CAL91) vit sous ``poseSurfaces[]``,
+    son compte POSÉ sous ``engine.modules`` (recopié du moteur, jamais
+    recalculé). Le lecteur unique ne regardait que ``result`` et les pans de
+    toiture : un champ de 340 modules enregistré rendait 0 et « Générer le
+    devis » tombait en 422 « Aucun panneau détecté ».
+
+    ``kwc`` n'est rendu que s'il est MESURABLE pour TOUTES les surfaces
+    comptées (``moduleWc`` saisi, persisté par l'écran) ; sinon ``0.0`` — le
+    wattage retombe alors sur la chaîne habituelle, jamais sur une puissance
+    inventée ici.
+    """
+    surfaces = (layout or {}).get('poseSurfaces') if isinstance(
+        layout, dict) else None
+    if not isinstance(surfaces, list):
+        return 0, 0.0
+    modules = 0
+    kwc = 0.0
+    kwc_complet = True
+    for surface in surfaces:
+        if not isinstance(surface, dict):
+            continue
+        moteur = surface.get('engine')
+        n = _nombre_fini((moteur or {}).get('modules')) if isinstance(
+            moteur, dict) else None
+        if n is None:
+            continue
+        n = int(round(n))
+        modules += n
+        watt = _nombre_fini(surface.get('moduleWc'))
+        if watt is None:
+            kwc_complet = False
+        else:
+            kwc += n * watt / 1000.0
+    return modules, (round(kwc, 3) if kwc_complet and modules else 0.0)
+
+
 def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
     """QJR165 — L'UNIQUE lecture d'un layout 3D : compte, watt, kWc, scénario.
 
@@ -319,15 +368,24 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
         toiture = extract_roof_config(layout) or {}
     result = dict(layout.get('result') or {})
 
+    # ERR-QAH-CALEPINAGE-SOL-DEVIS-422 — dernier repli MESURÉ : les modules
+    # que le moteur a POSÉS sur les surfaces de pose (sol / ombrière). Ne
+    # s'applique que quand ni ``result`` ni les pans n'annoncent de compte :
+    # une conception toiture garde sa lecture au bit près.
+    pose_modules, pose_kwc = 0, 0.0
     if compte is None:
         compte = int(result.get('panels') or result.get('count') or 0)
         if compte <= 0 and toiture.get('nb_panneaux'):
             compte = int(toiture['nb_panneaux'])
+        if compte <= 0:
+            pose_modules, pose_kwc = compte_surfaces_de_pose(layout)
+            compte = pose_modules
     else:
         compte = int(compte or 0)
 
     if kwc is None:
-        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+        kwc = float(result.get('kwc') or toiture.get('kwc') or pose_kwc
+                    or 0.0)
     else:
         kwc = float(kwc or 0.0)
 

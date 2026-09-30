@@ -1469,6 +1469,14 @@ test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
   assert.equal(computeCashflowPayback(50000, 0).paybackYears, null)
 })
 
+test('ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — drapeau jamaisRembourse (miroir de pricing)', () => {
+  const jamais = computeCashflowPayback(269065, 3000)
+  assert.equal(jamais.jamaisRembourse, true)
+  assert.ok(jamais.cumulative[jamais.cumulative.length - 1] < 0)
+  assert.equal(computeCashflowPayback(50000, 10000).jamaisRembourse, false)
+  assert.equal(computeCashflowPayback(0, 10000).jamaisRembourse, false)
+})
+
 test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
   const no = computeCashflowPayback(50000, 10000)
   const bat = computeCashflowPayback(50000, 10000, { battery: true })
@@ -1781,16 +1789,17 @@ test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
   assert.equal(r.nombreProprietes, 3)
   // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 34 000,04.
   assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 0))
-  assert.equal(r.totalMultiSans, Math.round(r.totalUnitaireSans * 3)) // ≈ 34000 × 3
+  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME (miroir backend) : 34 000,04 × 3.
+  assert.equal(r.totalMultiSans, 102000.12)
 })
 
 test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
   const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
   const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
-  // unitaire remisé = round(34000 × 0.9) = 30600 ; ×2 = 61200
   // Chaîne canonique (ERR-QAH-SOLAR-TOTALS-ROUNDING-ORDER) : 30 600,04.
   assert.equal(r.totalUnitaireSans, totauxCanoniquesTtc(lines, 10))
-  assert.equal(r.totalMultiSans, 61200)
+  // ERR-QAC-MULTIVILLA-TOTAL-XN — ×N au CENTIME : 30 600,04 × 2.
+  assert.equal(r.totalMultiSans, 61200.08)
 })
 
 test('QJ31 mode B — groupes villas : sous-total par villa + total général', () => {

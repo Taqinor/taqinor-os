@@ -26,7 +26,7 @@ import assert from 'node:assert/strict'
 import {
   ONEE_TRANCHES, FALLBACK_KWH_PRICE,
   monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
-  factureMad, tppanMad, twoBillsSavings, computeROI, computeCashflowPayback,
+  kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings, computeROI, computeCashflowPayback,
   computeEtudeIndustrielle, productibleForCity, PRODUCTIBLE_NET_FACTOR,
   panneauxPourKwc, estimerKwcDepuisFacture, optimalKwcByPayback,
   totauxCanoniquesTtc, ttcFromHt, htFromTtc,
@@ -41,31 +41,14 @@ import { forAll, premierNonFini } from './proprietes.aleatoire.js'
 // exige que chacune échoue toujours ; une violation corrigée DOIT être retirée.
 // Chaque entrée a son propre test `verifier(id, …)` ci-dessous.
 export const KNOWN_VIOLATIONS = {
-  'ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE': {
-    resume: 'consoAnnuelleDepuisFactures inverse une facture TOTALE avec le '
-      + 'barème ÉNERGIE SEULE (kwhFromBill), alors que factureMad/twoBillsSavings '
-      + 'retarifent avec lignes fixes + TPPAN : re-tarifer la consommation '
-      + 'dérivée ne redonne PAS les factures saisies (I9 de l\'audit COUV-HOR).',
-    exemple: 'factures = 12 × 500 MAD, distributeur « onee » → '
-      + 'twoBillsSavings(…).factureSans ≠ 6 000',
-  },
-  'ERR-QAH-PROP-JS-KWH-HORS-PLAGE': {
-    resume: 'kwhFromBill ne porte PAS la garde QJR158(e) du miroir Python : une '
-      + 'facture qu\'aucune consommation ≤ 1e6 kWh/mois ne produit rend ~1e6 kWh '
-      + '(la borne de boucle) présentés comme un résultat exact '
-      + '(estimation:false).',
-    exemple: 'kwhFromBill(5_000_000, \'onee\') → ≈ 1 000 000 kWh, estimation:false',
-  },
+  // (ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE corrigée : consoAnnuelleDepuisFactures
+  // inverse la facture COMPLÈTE — kwhDepuisFactureMad, jumeau de
+  // bareme.kwh_depuis_facture_mad — test « re-tarifer la conso » ci-dessous.)
+  // (ERR-QAH-PROP-JS-KWH-HORS-PLAGE corrigée : kwhFromBill porte la garde
+  // QJR158(e) — hors plage ⇒ 0 kWh, estimation:true — test ci-dessous.)
 }
-// (suite) — chaîne monétaire.
-KNOWN_VIOLATIONS['ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF'] = {
-  resume: 'totauxCanoniquesTtc (miroir de selectors._canonical_totaux) rend un '
-    + 'TTC NÉGATIF (−0,01 MAD) à remise 100 % dès que le HT brut porte un '
-    + 'demi-centime : la remise est arrondie AU-DESSUS du HT brut, le HT net '
-    + 'devient −0,005 → −0,01.',
-  exemple: 'lignes [{quantite:0.5, taux_tva:0, prix_unit_ttc:9.71}, '
-    + '{quantite:1, taux_tva:14, prix_unit_ttc:21170.47}] remise 100 % → −0,01',
-}
+// (ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF corrigée : HT net borné à 0 dans
+// totauxCanoniquesTtc, comme selectors._canonical_totaux — test ci-dessous.)
 const CONNUE = (id) => Object.prototype.hasOwnProperty.call(KNOWN_VIOLATIONS, id)
 
 // `verifier` : propriété attendue VRAIE, sauf si son id est dans
@@ -257,7 +240,7 @@ test('aller-retour énergie-seule : facture → kWh → facture redonne la factu
   })
 })
 
-test('KNOWN_VIOLATION ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la conso dérivée des factures redonne ces factures (tolérance 2 %)', () => {
+test('ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la conso dérivée des factures redonne ces factures (tolérance 2 %)', () => {
   // Une facture SAISIE est un TOTAL (énergie + lignes fixes + TPPAN). La conso
   // dérivée puis re-tarifiée par le MÊME modèle que l'écran affiche
   // (twoBillsSavings → factureMad) devrait redonner ~ ces factures.
@@ -273,13 +256,24 @@ test('KNOWN_VIOLATION ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la con
       if (!r) return 'twoBillsSavings a rendu null'
       const attendu = montant * 12
       const ecart = Math.abs(r.factureSans - attendu) / attendu
-      return ecart <= 0.02 ? null
+      if (ecart <= 0.02) return null
+      // LES « TROUS » DU BARÈME SÉLECTIF (bareme.kwh_depuis_facture_mad, même
+      // règle côté serveur) : au-delà de 150 kWh la facture SAUTE aux bornes
+      // de tranche, aucune conso ne produit un montant tombé dans le saut ; il
+      // est résolu à la BORNE BASSE (côté prudent). Seul cas admis : le
+      // montant tombe DANS un saut (la facture de la conso retenue est en
+      // dessous de 2 % et celle du 0,1 kWh suivant le dépasse) ET la
+      // re-tarification reste en dessous des factures saisies.
+      const k = kwhDepuisFactureMad(montant)
+      const trou = factureMad(k, ONEE_TRANCHES).totalMad < montant * 0.98
+        && factureMad(k + 0.1, ONEE_TRANCHES).totalMad > montant
+      return (trou && r.factureSans <= attendu) ? null
         : `Σ factures saisies ${attendu} MAD vs facture_sans re-tarifée ${r.factureSans} (${(ecart * 100).toFixed(1)} %)`
     },
   })
 })
 
-test('KNOWN_VIOLATION ERR-QAH-PROP-JS-KWH-HORS-PLAGE — facture hors plage inversable ⇒ estimation, jamais la borne de boucle', () => {
+test('ERR-QAH-PROP-JS-KWH-HORS-PLAGE (corrigée) —facture hors plage inversable ⇒ estimation, jamais la borne de boucle', () => {
   verifier('ERR-QAH-PROP-JS-KWH-HORS-PLAGE', 'facture hors plage ⇒ estimation', {
     seed: 206, runs: 80,
     gen: (g) => ({ bill: g.logFloat(2e6, 5e7), utility: g.pick(NOMME) }),
@@ -619,8 +613,12 @@ test('totaux TTC : remise ↑ (jusqu à 99,99 %) ⇒ total TTC jamais plus haut 
   })
 })
 
-test('KNOWN_VIOLATION ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF — remise 100 % ⇒ total TTC exactement 0, jamais négatif', () => {
-  verifier('ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF', 'remise 100 % ⇒ TTC = 0', {
+test('ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF (corrigée) — remise 100 % ⇒ total TTC exactement 0, jamais négatif', () => {
+  assert.equal(totauxCanoniquesTtc([
+    { quantite: 0.5, taux_tva: 0, prix_unit_ttc: 9.71 },
+    { quantite: 1, taux_tva: 14, prix_unit_ttc: 21170.47 },
+  ], 100), 0)
+  verifier('', 'remise 100 % ⇒ TTC = 0', {
     seed: 604, runs: RUNS,
     gen: (g) => ({ lignes: genLignes(g) }),
     verifie: ({ lignes }) => {

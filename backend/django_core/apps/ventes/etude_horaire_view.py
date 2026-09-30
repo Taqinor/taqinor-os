@@ -135,28 +135,39 @@ def _profil_depuis_corps(corps):
     return conso, source, detail, occupation, equipements
 
 
-def _profil_depuis_devis(devis, corps):
-    """Profil de consommation lu sur un devis et son lead (sélecteurs CRM)."""
-    from apps.crm.selectors import lead_bills_for_devis
+def _profil_depuis_devis(devis, corps, *, tranches=None,
+                         charges_fixes_mad=None):
+    """Profil de consommation lu sur un devis et son lead (sélecteurs CRM).
 
+    ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — LA MÊME RÉSOLUTION QUE LE BLOC
+    DU DEVIS : :func:`etude_horaire.profil_conso_du_devis` (kWh mensuel DÉCLARÉ
+    du lead, CAD166, et barème de la SOCIÉTÉ). L'aperçu appelait
+    ``profil_depuis_factures`` sans l'un ni l'autre : l'« Édition complète »
+    montrait une étude à la même production mais à d'AUTRES économies que le
+    document (écran 2 742 / 5 932 MAD/an, devis 5 158 / 7 822)."""
     from .courbes_journalieres import equipements_du_devis, occupation_du_devis
-    from .etude_horaire import profil_depuis_factures
+    from .etude_horaire import profil_conso_du_devis
 
-    bills = lead_bills_for_devis(devis) or {}
-    etude_params = getattr(devis, 'etude_params', None) or {}
-    conso, source, detail = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
+    conso, source, detail = profil_conso_du_devis(
+        devis, tranches=tranches, charges_fixes_mad=charges_fixes_mad)
 
-    occupation, _source_occ = occupation_du_devis(devis, corps)
+    # CI #752 (figures-parite : couverture écran 28 % contre 47,51 % à la
+    # proposition) — MÊME OCCUPATION que le bloc du devis. L'écran n'envoie pas
+    # ``mode_installation`` : sans lui, ``_occupation`` retombait sur le défaut
+    # NON résidentiel ``absence_jour`` pendant que le bloc
+    # (``etude_horaire._etude_horaire_pour_devis``) lit le mode sur le devis
+    # et applique le défaut fondateur ``presence_jour``. Même contexte ici :
+    # le mode du devis quand le corps ne le fournit pas, jamais écrasé.
+    contexte = dict(corps)
+    if not contexte.get('mode_installation'):
+        contexte['mode_installation'] = getattr(devis, 'mode_installation', None)
+    occupation, _source_occ = occupation_du_devis(devis, contexte)
     equipements = equipements_du_devis(devis)
     return conso, source, detail, occupation, equipements
 
 
-def _profil_depuis_lead(lead, corps):
+def _profil_depuis_lead(lead, corps, *, tranches=None,
+                        charges_fixes_mad=None):
     """L-QA1 (24/08/2026) FIX1 — profil de consommation lu directement sur un
     LEAD SANS DEVIS PERSISTÉ (écran générateur, avant tout enregistrement).
 
@@ -167,19 +178,25 @@ def _profil_depuis_lead(lead, corps):
     le commercial ne voyait jamais l'effet réel de ces réponses avant
     l'enregistrement. Mêmes fonctions EXACTES que le chemin devis (via le
     duck-type :class:`_DevisDepuisLead`), aucune règle dupliquée."""
-    from apps.crm.selectors import lead_bills_for_devis
+    from apps.crm.selectors import (
+        conso_mensuelle_kwh_pour_devis, lead_bills_for_devis)
 
     from .courbes_journalieres import equipements_du_devis, occupation_du_devis
     from .etude_horaire import profil_depuis_factures
 
     devis_duck = _DevisDepuisLead(lead)
     bills = lead_bills_for_devis(devis_duck) or {}
+    # ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — mêmes arguments que
+    # ``etude_horaire.profil_conso_du_devis`` (kWh déclaré du lead + barème
+    # société) : le devis que ce lead deviendra est chiffré ainsi.
     conso, source, detail = profil_depuis_factures(
         facture_hiver_mad=bills.get('facture_hiver'),
         facture_ete_mad=bills.get('facture_ete'),
         ete_differente=bills.get('ete_differente'),
         factures_mensuelles_mad=corps.get('factures_mensuelles'),
-        conso_kwh_mensuelles=corps.get('conso_kwh_mensuelles'))
+        conso_kwh_mensuelles=corps.get('conso_kwh_mensuelles'),
+        conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis_duck),
+        tranches=tranches, charges_fixes_mad=charges_fixes_mad)
 
     occupation, _source_occ = occupation_du_devis(devis_duck, corps)
     equipements = equipements_du_devis(devis_duck)
@@ -337,14 +354,26 @@ def etude_horaire_preview(request):
                 'Lead introuvable dans votre société — profil lu depuis le '
                 'corps de la requête.')
 
+    from .etude_horaire import _reglages_tarifaires, calculer_etude_horaire
+
     if devis is not None:
-        conso, source, detail, occupation, equipements = _profil_depuis_devis(
-            devis, corps)
         company = getattr(devis, 'company', None) or company
     elif lead is not None:
-        conso, source, detail, occupation, equipements = _profil_depuis_lead(
-            lead, corps)
         company = getattr(lead, 'company', None) or company
+    # QJR46 — UN SEUL barème pour toute cette réponse : l'étude d'une taille et
+    # le tableau de dimensionnement servis côte à côte ne peuvent pas valoriser
+    # le kWh différemment (l'étude lisait la surcharge de la société via
+    # ``etude_horaire_pour_devis`` ailleurs, le tableau la grille nationale).
+    # ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — et l'inversion facture → kWh
+    # du profil lit CE MÊME barème, comme le bloc du devis enregistré.
+    tranches, charges_fixes = _reglages_tarifaires(company)
+
+    if devis is not None:
+        conso, source, detail, occupation, equipements = _profil_depuis_devis(
+            devis, corps, tranches=tranches, charges_fixes_mad=charges_fixes)
+    elif lead is not None:
+        conso, source, detail, occupation, equipements = _profil_depuis_lead(
+            lead, corps, tranches=tranches, charges_fixes_mad=charges_fixes)
     else:
         conso, source, detail, occupation, equipements = _profil_depuis_corps(
             corps)
@@ -373,14 +402,6 @@ def etude_horaire_preview(request):
         return Response(_reponse(
             None, None, conso, source, detail, occupation, equipements,
             avertissements))
-
-    from .etude_horaire import _reglages_tarifaires, calculer_etude_horaire
-
-    # QJR46 — UN SEUL barème pour toute cette réponse : l'étude d'une taille et
-    # le tableau de dimensionnement servis côte à côte ne peuvent pas valoriser
-    # le kWh différemment (l'étude lisait la surcharge de la société via
-    # ``etude_horaire_pour_devis`` ailleurs, le tableau la grille nationale).
-    tranches, charges_fixes = _reglages_tarifaires(company)
 
     etude = None
     kwc = _num(corps.get('kwc'))

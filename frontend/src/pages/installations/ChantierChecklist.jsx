@@ -81,8 +81,9 @@ export default function ChantierChecklist({
         setItems((prev) => prev.map((it) => it.cle === item.cle ? { ...it, fait } : it))
         toast.success('Hors ligne — coché, synchro au retour du réseau.')
       } else {
-        setItems(r.data.items ?? [])
-        setCompletion(r.data.completion)
+        // ERR117 — `withOfflineFallback` renvoie {queued, data:<réponse axios BRUTE>}.
+        setItems(r.data.data?.items ?? [])
+        setCompletion(r.data.data?.completion)
       }
       setSerie((prev) => ({ ...prev, [item.cle]: undefined }))
       onChanged?.()

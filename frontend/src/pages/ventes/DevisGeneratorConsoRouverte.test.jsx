@@ -137,7 +137,9 @@ beforeEach(() => {
 
 describe('COUV-HOR — la conso annuelle d\'un devis rouvert', () => {
   it('DEV-202609-0113 : la conso ÷ 1,20 des factures est RE-DÉRIVÉE au barème, jamais réécrite', async () => {
-    expect(CONSO_BAREME).toBe(122007)
+    // ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — barème COMPLET (lignes fixes +
+    // TPPAN retirées), le chiffre du serveur : 120 972 (122 007 énergie seule).
+    expect(CONSO_BAREME).toBe(120972)
     ventesApi.getDevisById.mockResolvedValue(devisRouvert({
       scenario: 'Sans batterie',
       conso_annuelle: 165000,               // 198 000 ÷ 1,20

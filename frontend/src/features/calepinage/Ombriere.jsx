@@ -11,6 +11,7 @@ import RetourAtelier from './atelier/RetourAtelier'
 import calepinageApi from '../../api/calepinageApi'
 import {
   nombre, pasMesure, tauxOccupation, contourTerrain, demandeMoteur, planVue2D,
+  motifChampVide, motifRefus,
 } from './ModeTerrain'
 import { formatCote, milieu } from './plan2d'
 import { formatNumber } from '../../lib/format'
@@ -302,11 +303,12 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
       .then((res) => {
         setEnCours(false)
         setReponse(res?.data ?? null)
+        setMessage(motifChampVide(res?.data))
       })
       .catch((e) => {
         setEnCours(false)
         setReponse(null)
-        setMessage(e?.response?.data?.detail
+        setMessage(motifRefus(e?.response?.data)
           || 'Le moteur n’a pas pu poser cette ombrière.')
       })
   }

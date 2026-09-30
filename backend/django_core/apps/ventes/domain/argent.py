@@ -151,7 +151,7 @@ def _entrees_tva(paniers):
 # changement d'UN mot. Le mot a été changé ; plus personne ne l'appelait.
 
 
-def _totaux_canoniques(devis, lignes, option):
+def _totaux_canoniques(devis, lignes, option, *, unitaire=False):
     """La chaîne CANONIQUE — celle d'``utils.options.option_totaux``, au
     centime, avec la remise globale et le filtre d'option.
 
@@ -162,7 +162,9 @@ def _totaux_canoniques(devis, lignes, option):
     porte donc aucune copie — c'est ce qui garantit que le total imprimé et le
     total du noyau décrivent le même panier.
     """
-    from apps.ventes.selectors import _canonical_totaux
+    from apps.ventes.selectors import (
+        _canonical_totaux, nombre_proprietes, totaux_multi_proprietes,
+    )
     from apps.ventes.utils.options import (
         filter_lines_for_option, has_two_options,
     )
@@ -173,6 +175,13 @@ def _totaux_canoniques(devis, lignes, option):
         lignes,
         remise_globale_pct=getattr(devis, 'remise_globale', 0) or 0,
         fallback_taux=devis.taux_tva)
+    # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'argent du devis
+    # est le total ×N imprimé (décision fondateur 30/09/2026). ``unitaire``
+    # n'est demandé QUE par le moteur PDF, qui compose le document d'UNE villa
+    # puis pose lui-même ses totaux ×N (``builder._scale_tot``) : sans ce
+    # drapeau, il les multiplierait deux fois.
+    if not unitaire:
+        noyau = totaux_multi_proprietes(noyau, nombre_proprietes(devis))
     return Totaux(
         ht_brut=noyau['ht_brut'], remise=noyau['remise'],
         ht_net=noyau['ht_net'], tva_par_taux=_entrees_tva(noyau['tva_par_taux']),
@@ -183,7 +192,7 @@ def _totaux_canoniques(devis, lignes, option):
 
 
 def totaux(devis, *, vue: Vue, option: Optional[str] = None,
-           lignes=None) -> Totaux:
+           lignes=None, unitaire: bool = False) -> Totaux:
     """L'argent de ``devis`` dans la vue DEMANDÉE — l'unique porte.
 
     ``vue`` est OBLIGATOIRE et NOMMÉ : un appelant doit dire quelle question il
@@ -212,6 +221,12 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
       les a déjà découpées. Le laisser re-résoudre l'option lui ferait poser
       une question à laquelle il vient de répondre.
 
+    ``unitaire`` — ERR-QAC-MULTIVILLA-TOTAL-XN. Par défaut l'argent d'un devis
+    « ×N villas identiques » est le total ×N (``etude_params
+    ['nombre_proprietes']``, décision fondateur 30/09/2026). ``unitaire=True``
+    rend le total d'UNE villa : réservé au moteur PDF, qui met à l'échelle
+    lui-même (sinon ×N²), et aux contrôles d'arithmétique unitaire.
+
     LECTURE PURE : n'écrit rien, ne change aucun statut, ne porte aucun
     ``prix_achat`` ni aucune marge (règle #4).
     """
@@ -221,7 +236,8 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
             % (vue,))
 
     if lignes is not None:
-        return _totaux_canoniques(devis, list(lignes), option=None)
+        return _totaux_canoniques(devis, list(lignes), option=None,
+                                  unitaire=unitaire)
     if not option:
         from apps.ventes.utils.options import option_effective
         option = option_effective(devis)
@@ -234,7 +250,7 @@ def totaux(devis, *, vue: Vue, option: Optional[str] = None,
     return _totaux_canoniques(
         devis,
         _lignes_du_devis(devis, lignes, avec_produit=bool(option)),
-        option)
+        option, unitaire=unitaire)
 
 
 # ── QJRREM — LA REMISE GLOBALE, LIGNE PAR LIGNE ─────────────────────────────

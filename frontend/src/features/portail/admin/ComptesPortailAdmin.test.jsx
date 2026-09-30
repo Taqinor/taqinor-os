@@ -111,3 +111,25 @@ describe('ComptesPortailAdmin — PACT96', () => {
     await waitFor(() => expect(portailApi.admin.comptes.provisionnerAcces).toHaveBeenCalledWith(7))
   })
 })
+
+describe('ERR-QAH-PORTAIL-CLIENTS-TRONQUES-50 — tous les clients sont proposés', () => {
+  it('suit la pagination : les clients au-delà de la page 1 sont sélectionnables', async () => {
+    portailApi.admin.comptes.liste.mockResolvedValue({ data: [] })
+    const page = (n, ids) => ({
+      data: {
+        count: 3,
+        next: n === 1 ? '/crm/clients/?page=2' : null,
+        results: ids.map((id) => ({ id, nom: `Client ${id}` })),
+      },
+    })
+    crmApi.getClients.mockImplementation((params) => Promise.resolve(
+      params?.page === 2 ? page(2, [3]) : page(1, [1, 2]),
+    ))
+    renderPage(<ComptesPortailAdmin />)
+    await waitFor(() => expect(crmApi.getClients).toHaveBeenCalledWith({ page: 2 }))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('combobox', { name: 'Client' }))
+    expect(await screen.findByRole('option', { name: 'Client 3' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Client 1' })).toBeInTheDocument()
+  })
+})

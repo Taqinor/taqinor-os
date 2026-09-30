@@ -767,17 +767,23 @@ def consolider_factures(*, company, devis_ids, user, created_by=None):
 
         facture = create_numbered(Facture, company, 'facture', _create)
 
+        from ..selectors import nombre_proprietes
         for d in devis_qs:
             sous_total = Decimal('0')
+            # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas identiques »
+            # se facture au total ×N (décision fondateur 30/09/2026), comme la
+            # facture de BC : chaque quantité ×N. N=1 → inchangé.
+            n_prop = nombre_proprietes(d)
             for ligne in d.lignes.all():
                 LigneFacture.objects.create(
                     facture=facture, produit=ligne.produit,
                     designation=f'{d.reference} — {ligne.designation}',
-                    quantite=ligne.quantite, prix_unitaire=ligne.prix_unitaire,
+                    quantite=ligne.quantite * n_prop,
+                    prix_unitaire=ligne.prix_unitaire,
                     remise=ligne.remise, taux_tva=ligne.taux_tva,
                     source_devis=d,
                 )
-                sous_total += ligne.total_ht
+                sous_total += ligne.total_ht * n_prop
             FactureSource.objects.create(
                 company=company, facture=facture, devis=d,
                 sous_total_ht=sous_total,

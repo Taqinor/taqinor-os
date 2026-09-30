@@ -18,6 +18,12 @@
 //
 // Détection de fonctionnalité : si `getUserMedia` manque, un repli français
 // invite à utiliser le choix de fichier ; jamais de plantage.
+//
+// ERR-QAH-VISITES-PHOTOS-CAMERA-BLOQUEE — ce « choix de fichier » n'existait
+// PAS : quand la caméra est refusée/indisponible (Permissions-Policy, refus
+// utilisateur, navigateur sans getUserMedia), le composant rend désormais un
+// VRAI `<input type=file accept=image/* capture=environment>` (appareil photo
+// natif du mobile ou galerie) qui alimente le MÊME `onCapture(file, geo)`.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, RefreshCw, Check, X, ImagePlus } from 'lucide-react'
 import { Button } from '../../ui'
@@ -52,6 +58,32 @@ function captureGeoBestEffort() {
       { enableHighAccuracy: false, timeout: 4000, maximumAge: 30000 },
     )
   })
+}
+
+// Repli fichier (appareil photo natif / galerie) : chaque fichier choisi part
+// dans le même `onCapture(file, geo)` que la capture en direct.
+function FileFallback({ onFiles, multiple }) {
+  const inputRef = useRef(null)
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground">
+      <ImagePlus className="size-4" aria-hidden="true" />
+      Choisir une photo
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        multiple={multiple}
+        className="sr-only"
+        data-testid="camera-file-fallback"
+        onChange={(e) => {
+          const files = Array.from(e.target.files || [])
+          if (inputRef.current) inputRef.current.value = ''
+          if (files.length) onFiles(files)
+        }}
+      />
+    </label>
+  )
 }
 
 const ERR = {
@@ -169,6 +201,18 @@ export default function CameraCapture({
     onClose?.()
   }, [multiple, nextFilename, onCapture, onClose, shots.length, start])
 
+  // ERR-QAH-VISITES-PHOTOS-CAMERA-BLOQUEE — photos choisies via le repli
+  // fichier : même contrat que la capture en direct (géoloc best-effort, un
+  // `onCapture` par photo) ; en mode simple on ferme après la première.
+  const fromFiles = useCallback(async (files) => {
+    for (const file of files) {
+      const geo = await captureGeoBestEffort()
+      onCapture?.(file, geo)
+    }
+    hapticTap()
+    if (!multiple) onClose?.()
+  }, [multiple, onCapture, onClose])
+
   // Libère les URLs objet des miniatures de la pellicule (mode `multiple`).
   const releaseShots = useCallback(() => {
     setShots((prev) => {
@@ -208,6 +252,7 @@ export default function CameraCapture({
           La prise de photo en direct n’est pas prise en charge sur cet appareil /
           ce navigateur. Utilisez le choix de fichier.
         </span>
+        <FileFallback onFiles={fromFiles} multiple={multiple} />
         {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Fermer</Button>}
       </div>
     )
@@ -247,12 +292,15 @@ export default function CameraCapture({
       )}
 
       {error ? (
-        <div role="alert"
-          className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-[12px] text-destructive">
-          <span>{ERR[error] || 'Caméra indisponible.'}</span>
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={start}>
-            Réessayer
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div role="alert"
+            className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-[12px] text-destructive">
+            <span>{ERR[error] || 'Caméra indisponible.'}</span>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={start}>
+              Réessayer
+            </Button>
+          </div>
+          <FileFallback onFiles={fromFiles} multiple={multiple} />
         </div>
       ) : preview ? (
         <div className="flex items-center gap-2">

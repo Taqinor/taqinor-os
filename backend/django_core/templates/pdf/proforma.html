@@ -123,6 +123,12 @@
     </tbody>
   </table>
 
+  {# ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : lignes d'UNE villa,
+     totaux ×N (le total imprimé sur le devis et facturé). #}
+  {% if nombre_proprietes and nombre_proprietes > 1 %}
+  <p><strong>&times;&nbsp;{{ nombre_proprietes }} propriétés identiques :</strong> quantités indiquées pour une propriété ; totaux pour {{ nombre_proprietes }} propriétés.</p>
+  {% endif %}
+
   {# QJR19 — LA MÊME CHAÎNE D'ARGENT QUE LE PDF CLIENT, visible ligne à ligne :
      Sous-total HT → Remise → Total HT → TVA → Total TTC. Aucun total n'est
      calculé ici ; `totaux` vient de utils.options.option_totaux. #}

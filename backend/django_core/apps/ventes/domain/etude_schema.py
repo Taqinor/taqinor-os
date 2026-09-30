@@ -311,6 +311,36 @@ def valider(etude_params):
                 '« %s » : type %s inattendu (attendu : %s).'
                 % (cle, type(valeur).__name__,
                    ' ou '.join(t.__name__ for t in regle['type'])))
+            continue
+        if cle == 'factures_mensuelles_reelles':
+            reproches.extend(_reproches_factures(valeur))
+    return reproches
+
+
+def _reproches_factures(factures):
+    """ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — une facture mensuelle RÉELLE
+    ne peut pas valoir moins que ses deux lignes fixes (location du compteur +
+    entretien du branchement, ``bareme.charges_fixes_ttc`` : 39,94 MAD TTC/mois
+    en 2026), dues même à zéro kWh.
+
+    DEV-202609-0108 est parti au client avec une série dont l'hiver valait
+    1 MAD/mois (``estimerMois(1, 1600)``) : l'économie, la facture actuelle et
+    le retour en découlaient. Zéro reste admis (mois sans relevé) ; le
+    contrôle de TYPE des éléments n'est pas l'objet de cette garde.
+    """
+    from apps.ventes.quote_engine import bareme
+    plancher = bareme.charges_fixes_ttc()
+    fautifs = [i + 1 for i, v in enumerate(factures)
+               if isinstance(v, (int, float)) and not isinstance(v, bool)
+               and 0 < v < plancher]
+    reproches = []
+    if fautifs:
+        reproches.append(
+            '« factures_mensuelles_reelles » : facture mensuelle inférieure '
+            'aux lignes fixes du compteur (%.2f MAD TTC/mois) au(x) mois %s — '
+            'une facture réelle ne peut pas être aussi basse. Corrigez la '
+            'saisie (0 si le mois est inconnu).'
+            % (plancher, ', '.join(map(str, fautifs))))
     return reproches
 
 

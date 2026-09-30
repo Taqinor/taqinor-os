@@ -49,8 +49,11 @@ test('QJR39 — le fetch des réglages société lit productible_kwh_kwc et le p
 
 test('QJR39 — quoteLogic.productible alimente déjà productibleForCity (ROI + ROI avec) : le point de lecture existant profite du correctif sans autre changement', () => {
   const occurrences = DG.match(/productibleForCity\(\s*\n\s*selectedLead\?\.ville \|\| '', quoteLogic\.productible\)/g) || []
+  // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le 3ᵉ site (balayage
+  // `optimalKwcByPayback`) lit la ville du lead APPLIQUÉ : il est EXÉCUTÉ par
+  // DevisGeneratorBalayageProductible.test.jsx, plus compté ici.
   assert.equal(occurrences.length, 2,
-    'productibleForCity(ville, quoteLogic.productible) doit rester appelé aux 2 sites existants (roi + roiAvec)')
+    'productibleForCity(ville, quoteLogic.productible) doit rester appelé aux 2 sites (roi + roiAvec)')
 })
 
 test('QJR39 — rejoué avec le VRAI productibleForCity(solar.js) : société avec surcharge → productible de la société ; société sans surcharge (absente ou 1600 pile) → comportement inchangé (PVGIS ville)', () => {

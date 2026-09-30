@@ -399,6 +399,28 @@ export function initState({
   }
 }
 
+// ── ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — clés du GET détail seulement ─────
+// Le PATCH (autosave d'un champ : « Relance le », responsable…) répond avec le
+// sérialiseur d'ÉCRITURE, qui n'embarque NI `chatter_recent` NI `devis[]`
+// (LW30 : RETRIEVE seulement). Remplacer `server` tel quel VIDAIT donc le
+// panneau « Historique » (« Aucune activité pour le moment. ») jusqu'au
+// rechargement. Une clé ABSENTE de la réponse est conservée ; une clé
+// PRÉSENTE (même vide) fait foi — le serveur reste la seule vérité.
+export const CLES_EMBARQUEES_RETRIEVE = ['chatter_recent', 'devis']
+
+export function fusionnerServeur(server, res) {
+  if (!res) return server
+  if (!server || typeof server !== 'object') return res
+  let fusion = res
+  for (const cle of CLES_EMBARQUEES_RETRIEVE) {
+    if (!(cle in res) && cle in server) {
+      if (fusion === res) fusion = { ...res }
+      fusion[cle] = server[cle]
+    }
+  }
+  return fusion
+}
+
 // ── applyFlushSuccess — la garde de navigation + « typed-during-flight » ─────
 // Extrait pour être testable directement. `res` = lead renvoyé par le PATCH.
 export function applyFlushSuccess(state, res) {
@@ -418,7 +440,7 @@ export function applyFlushSuccess(state, res) {
   }
   return {
     ...state,
-    server: res || state.server,
+    server: fusionnerServeur(state.server, res),
     draft,
     inflight: null,
     saveState: 'saved',
@@ -485,7 +507,7 @@ export function reducer(state, action) {
     case 'SET_SERVER': {
       const { res } = action
       if (res && res.id != null && state.leadId != null && res.id !== state.leadId) return state
-      return { ...state, server: res || state.server }
+      return { ...state, server: fusionnerServeur(state.server, res) }
     }
 
     case 'SET_STALE':

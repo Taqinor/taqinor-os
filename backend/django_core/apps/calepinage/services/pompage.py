@@ -24,6 +24,8 @@ sélecteurs) construisent les entrées depuis ``apps.stock.selectors`` et
 """
 from __future__ import annotations
 
+import re
+
 #: Tensions standard du catalogue pompage (CLAUDE.md « Pompage sizing »).
 TENSION_MONO_V = 220
 TENSION_TRI_V = 380
@@ -359,12 +361,24 @@ def tension_produit(produit):
         val = _flottant(tension)
         if val:
             return int(val)
-    nom = (produit.get('nom') or '').lower()
-    if '220' in nom and 'v' in nom:
+    nom = produit.get('nom') or ''
+    if _RE_TENSION_MONO.search(nom):
         return TENSION_MONO_V
-    if '380' in nom and 'v' in nom:
+    if _RE_TENSION_TRI.search(nom):
         return TENSION_TRI_V
     return None
+
+
+# ERR-QAH-DIFF-POMPAGE-TENSION-NOM-2200W — UNE règle stricte, jumelle de
+# ``solar.js tensionOf`` : le NOMBRE ISOLÉ 220/380 immédiatement suivi de
+# « V » (« 220V », « 220 V », « 220Vac », « 380 volts »). L'ancienne lecture
+# (« 220 » n'importe où ET un « v » n'importe où) lisait 220 V dans
+# « Variateur VEICHI … 2200W » : l'écran et le calepinage retenaient alors une
+# pompe/un variateur DIFFÉRENT.
+_RE_TENSION_MONO = re.compile(r'(?<![\d.,])220\s*v(?:olts?|ac)?(?![a-z0-9])',
+                              re.IGNORECASE)
+_RE_TENSION_TRI = re.compile(r'(?<![\d.,])380\s*v(?:olts?|ac)?(?![a-z0-9])',
+                             re.IGNORECASE)
 
 
 def _tension_alim(alim):

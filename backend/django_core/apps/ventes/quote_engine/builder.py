@@ -1854,8 +1854,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.ventes.domain.argent import Vue as _Vue
         from apps.ventes.domain.argent import totaux as _totaux_noyau
 
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — le document se compose sur UNE villa
+        # (``unitaire=True``) : le bloc QJ29 plus bas pose lui-même les totaux
+        # ×N (``_scale_tot``). Sans ce drapeau, le noyau — qui facture
+        # désormais le ×N — serait multiplié une seconde fois ici.
         vue = _totaux_noyau(devis, vue=_Vue.AFFICHAGE,
-                            lignes=[_LigneArgentPdf(r, tva_pct) for r in rows])
+                            lignes=[_LigneArgentPdf(r, tva_pct) for r in rows],
+                            unitaire=True)
         tva_par_taux = [
             {"taux": float(e["taux"]), "montant": float(e["montant"]),
              "ht_net": float(e["base"])}
@@ -2281,6 +2286,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                      "cashflow_avec", "net_gain_avec", "facture_avec_a",
                      "autoconso_avec", "couverture_avec"):
             roi[_cle] = _roi_a[_cle]
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — le drapeau suit SA colonne.
+        roi["roi_s_jamais"] = bool(_roi_s.get("roi_s_jamais"))
+        roi["roi_a_jamais"] = bool(_roi_a.get("roi_a_jamais"))
         prod_kwh_sans = _roi_s["prod_kwh"]
         prod_kwh_avec = _roi_a["prod_kwh"]
         # ── QJR28 — DEUX COLONNES, DEUX MOTEURS : LE DOCUMENT LE DIT ────────
@@ -2328,6 +2336,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             roi["eco_a_cumul"] = eco
             roi["roi_s"] = round(_ref_total / eco, 1) if eco > 0 else 0.0
             roi["roi_a"] = roi["roi_s"]
+            # Payback LINÉAIRE d'une étude saisie : toujours un vrai nombre.
+            roi["roi_s_jamais"] = roi["roi_a_jamais"] = False
             _sf = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
                    0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
             roi["eco_s_monthly"] = [round(eco * f) for f in _sf]
@@ -2783,6 +2793,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if factures_mensuelles is None and roi.get("factures_avant_monthly"):
         factures_mensuelles = list(roi["factures_avant_monthly"])
         factures_source = "etude_horaire"
+
+    # ── ERR-QAC-GRAPHE-MENSUEL-CLE-SOLAIRE — LE GRAPHE = LA CARTE ────────────
+    # Hors modèle « horaire », ``pricing`` répartit l'économie annuelle par la
+    # clé solaire FIXE sans regarder les factures ; le graphe mensuel plancher
+    # ensuite chaque mois à sa facture, donc l'économie que la clé attribuait
+    # au-delà de la facture des mois d'été disparaissait du graphe, du « X →
+    # Y MAD/an » et du −N % — mais restait dans la carte option (``eco_*_ann``).
+    # Deux économies annuelles sur la même page. Quand les douze factures sont
+    # connues, la série est re-répartie par la MÊME clé PLAFONNÉE à la facture
+    # de chaque mois (helper pur ``pricing.repartir_economie_plafonnee``) :
+    # Σ des douze mois = économie de la carte, aucun mois > sa facture.
+    # ``eco_*_ann``, payback et cashflow ne bougent pas (ils ne lisent pas la
+    # série). Le modèle « horaire » garde ses douze mois RÉELLEMENT calculés.
+    if factures_mensuelles is not None:
+        from .pricing import repartir_economie_plafonnee
+        for _modele_opt, _cle_ann, _cle_mois in (
+                (savings_model_sans, "eco_s_ann", "eco_s_monthly"),
+                (savings_model_avec, "eco_a_ann", "eco_a_monthly")):
+            if _modele_opt == "horaire":
+                continue
+            _serie = repartir_economie_plafonnee(
+                roi.get(_cle_ann), factures_mensuelles)
+            if _serie is not None:
+                roi[_cle_mois] = _serie
 
     # ÉTIQUETAGE (motif Z2). La série est ancrée dans une facture réelle, mais
     # sa VARIATION d'un mois à l'autre n'est mesurée que lorsque le client a
@@ -3274,6 +3308,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "eco_a_cumul": roi["eco_a_cumul"],
         "roi_s": roi["roi_s"],
         "roi_a": roi["roi_a"],
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — vrai quand le cumul 25 ans
+        # ne croise jamais zéro : les gabarits impriment « Non rentabilisé sur
+        # 25 ans », jamais « Rentabilisé en 25 ans ».
+        "roi_s_jamais": bool(roi.get("roi_s_jamais")),
+        "roi_a_jamais": bool(roi.get("roi_a_jamais")),
         "eco_s_monthly": roi["eco_s_monthly"],
         "eco_a_monthly": roi["eco_a_monthly"],
         # QX39 — cumul du cashflow 25 ans (dégradation/escalade/batterie/onduleur)
@@ -3826,7 +3865,14 @@ def display_totals(devis) -> dict:
     au document au dirham près. Repli sûr sur le total stocké."""
     try:
         data = build_quote_data(devis, {"pdf_mode": "onepage"})
-        return {"total": data["display_total"], "nb_options": data["nb_options"]}
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — la liste, le Kanban, la salle de vente
+        # et la page publique des gammes affichent le total ×N que le
+        # document imprime et que l'ERP facture (décision fondateur
+        # 30/09/2026) — jamais le total d'une seule villa.
+        total = data.get("display_total_multi")
+        if total is None:
+            total = data["display_total"]
+        return {"total": total, "nb_options": data["nb_options"]}
     except Exception:  # noqa: BLE001 — une liste ne doit jamais casser
         logger.exception("display_totals: moteur en échec (devis %s)",
                          getattr(devis, "reference", "?"))

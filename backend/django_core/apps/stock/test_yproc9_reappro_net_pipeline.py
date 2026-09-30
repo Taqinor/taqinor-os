@@ -50,7 +50,8 @@ class TestNettingPipeline(Yproc9Base):
         self.assertEqual(len(besoins), 1)
         self.assertEqual(besoins[0]['produit_id'], self.produit.id)
         self.assertEqual(besoins[0]['en_commande'], 0)
-        self.assertEqual(besoins[0]['quantite_suggere'], 30)
+        # cible 30 − disponible 5 (ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE).
+        self.assertEqual(besoins[0]['quantite_suggere'], 25)
 
     def test_bcf_envoye_couvrant_le_manque_exclut_le_produit(self):
         bc = BonCommandeFournisseur.objects.create(
@@ -73,11 +74,10 @@ class TestNettingPipeline(Yproc9Base):
             prix_achat_unitaire=Decimal('20'))
         besoins = produits_a_reapprovisionner(self.company)
         self.assertEqual(len(besoins), 1)
-        # Seul le PIPELINE (en_commande) nette la cible (comportement FG54
-        # préservé : `quantite_suggere` == cible pleine hors pipeline, jamais
-        # réduite par le disponible courant) : cible 30 - en_commande 10 = 20.
+        # ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — la cible est nettée du
+        # disponible ET du pipeline : cible 30 − disponible 5 − en_commande 10.
         self.assertEqual(besoins[0]['en_commande'], 10)
-        self.assertEqual(besoins[0]['quantite_suggere'], 20)
+        self.assertEqual(besoins[0]['quantite_suggere'], 15)
 
     def test_bcf_annule_ou_recu_nignore_pas_dans_en_commande(self):
         bc_annule = BonCommandeFournisseur.objects.create(
@@ -119,10 +119,9 @@ class TestFusionBcfReappro(Yproc9Base):
             statut=BonCommandeFournisseur.Statut.BROUILLON).count()
         self.assertEqual(nb_brouillons, 1)
 
-        # YPROC9 nette la cible UNIQUEMENT contre le pipeline déjà en commande
-        # (`en_commande`, jamais le disponible courant — comportement FG54
-        # préservé, `quantite_suggere` == cible pleine hors pipeline). Le
-        # premier appel couvre donc intégralement `self.produit` (en_commande
+        # La cible est nettée du disponible ET du pipeline déjà en commande
+        # (YPROC9 + ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE). Le premier appel
+        # couvre donc intégralement `self.produit` (disponible + en_commande
         # == cible) : un second appel sur le MÊME produit ne resuggérerait
         # rien. On déclenche le second besoin avec un AUTRE produit sous
         # seuil chez le même fournisseur, pour vérifier la fusion dans le

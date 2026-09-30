@@ -309,6 +309,9 @@ ECO_S_ANN    = QUOTE_INPUT["eco_s_ann"]
 ECO_A_ANN    = QUOTE_INPUT["eco_a_ann"]
 ROI_S        = QUOTE_INPUT["roi_s"]
 ROI_A        = QUOTE_INPUT["roi_a"]
+# ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — cumul 25 ans jamais positif.
+ROI_S_JAMAIS = False
+ROI_A_JAMAIS = False
 INST_TYPE    = QUOTE_INPUT["inst_type"]
 SANS_ITEMS   = _Q["sans_items"]
 AVEC_ITEMS   = _Q["avec_items"]
@@ -956,6 +959,41 @@ def fmt(v):
         return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
     except Exception:
         return str(v)
+
+def _repartir_paiement(pay_total, pay_a, pay_s, custom_acompte=None):
+    """ERR120 — Acompte / Matériel / Solde d'un Devis Final, qui SOMMENT au
+    Total TTC AFFICHÉ.
+
+    Le total affiché passe par ``fmt`` (``int(round(...))``, arrondi bancaire
+    Python compris) : le reliquat part donc de ``total_mad = int(round(
+    pay_total))``, jamais d'une troncature ``int(pay_total)`` qui perdait 1 MAD
+    dès que les centimes valaient ≥ 0,50. Le reliquat va à « Matériel » (chemin
+    à trois cases) ou au « Solde » (chemin à deux cases, ``solde2``).
+
+    ``custom_acompte`` (``None`` = acompte au pourcentage ``pay_a``) est borné
+    dans ``[0, total - solde]`` (ERR76). Les trois pourcentages somment à 100
+    (QJR145 c). Fonction PURE : aucun statut, aucune écriture (règle #4).
+    """
+    total_mad = int(round(float(pay_total)))
+    if custom_acompte is not None:
+        acompte = int(custom_acompte)
+    else:
+        acompte = round(pay_total * pay_a / 100 / 1000) * 1000
+    solde = round(pay_total * pay_s / 100 / 1000) * 1000
+    acompte = max(0, min(acompte, total_mad - solde))
+    materiel = total_mad - acompte - solde
+    pct_a = round(acompte / pay_total * 100) if pay_total else 0
+    pct_s = round(solde / pay_total * 100) if pay_total else 0
+    pct_m = (100 - pct_a - pct_s) if pay_total else 0
+    solde2 = total_mad - acompte
+    pct_s2 = round(solde2 / pay_total * 100) if pay_total else 0
+    return {
+        'total_mad': total_mad, 'acompte': int(acompte),
+        'materiel': int(materiel), 'solde': int(solde),
+        'pct_a': pct_a, 'pct_m': pct_m, 'pct_s': pct_s,
+        'solde2': int(solde2), 'pct_s2': pct_s2,
+    }
+
 
 def fnum(v):
     """Format number with French thin-space thousands separator."""
@@ -1768,12 +1806,16 @@ def page1():
             '<div style="display:inline-block;align-self:flex-start;'
             'background:#e8f5e9;color:#2e7d32;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
-            f'margin-bottom:7px;">{SVG_CHART}Retour en {ROI_S} ans</div>')
+            f'margin-bottom:7px;">{SVG_CHART}'
+            + ('Non rentabilisé sur 25 ans' if ROI_S_JAMAIS
+               else f'Retour en {ROI_S} ans') + '</div>')
         _roi_pill_a = (
             '<div style="display:inline-block;align-self:flex-start;'
             'background:#1a1a2e;color:white;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
-            f'margin-bottom:7px;">{SVG_CHART2}Retour en {ROI_A} ans</div>')
+            f'margin-bottom:7px;">{SVG_CHART2}'
+            + ('Non rentabilisé sur 25 ans' if ROI_A_JAMAIS
+               else f'Retour en {ROI_A} ans') + '</div>')
         _mt_src = (
             f'<div style="font-size:6pt;color:{CG4};margin-top:3px;'
             f'line-height:1.3;">{TARIF_MT_MENTION}</div>'
@@ -1867,9 +1909,9 @@ def page1():
     # QA-FIGURES — une carte MASQUÉE (``display:none`` selon le scénario) ne
     # porte aucun marqueur : seul ce que le client VOIT est comparé.
     _fig_eco = not (MASQUER_ECONOMIES or PUISSANCE_INCONNUE)
-    for _vis, _opt, _tt, _kw, _roi, _eco in (
-            (not _s1, "sans", ts, _kwc_s, ROI_S, esa_mad),
-            (not _s2, "avec", ta, _kwc_a, ROI_A, eaa_mad)):
+    for _vis, _opt, _tt, _kw, _roi, _eco, _jamais in (
+            (not _s1, "sans", ts, _kwc_s, ROI_S, esa_mad, ROI_S_JAMAIS),
+            (not _s2, "avec", ta, _kwc_a, ROI_A, eaa_mad, ROI_A_JAMAIS)):
         if not _vis:
             continue
         _anc = _ancre_figure("total_ttc", _tt, _opt)
@@ -1878,7 +1920,10 @@ def page1():
                 "prix_kwc", fmt((TOTAL_SANS if _opt == "sans" else TOTAL_AVEC)
                                 / _kw), _opt)
         if _fig_eco:
-            _anc += (_ancre_figure("payback_ans", _roi, _opt)
+            # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — aucun marqueur de
+            # payback quand l'option ne se rembourse jamais (rien n'est imprimé).
+            _anc += ((_ancre_figure("payback_ans", _roi, _opt)
+                      if not _jamais else "")
                      + _ancre_figure("economie_annuelle", _eco, _opt))
         if _opt == "sans":
             _ts_price += _anc
@@ -2478,24 +2523,22 @@ def page3():
             _pay_total = TOTAL_SANS
         else:
             _pay_total = TOTAL_AVEC
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'échéancier
+        # facturé part du total ×N (décision fondateur 30/09/2026) ; les cases
+        # de paiement imprimées le suivent, au centime comme ``_scale_tot``.
+        if NB_PROPRIETES and NB_PROPRIETES > 1:
+            _pay_total = round(_pay_total * NB_PROPRIETES, 2)
 
-        if PAYMENT_MODE == "custom" and CUSTOM_ACOMPTE is not None:
-            _acompte = int(CUSTOM_ACOMPTE)
-        else:
-            _acompte = round(_pay_total * PAY_A / 100 / 1000) * 1000
-        _solde = round(_pay_total * PAY_S / 100 / 1000) * 1000
-        # ERR76 — clamp the acompte into [0, total - solde] so a user-supplied
-        # custom acompte can never yield a negative "Matériel" or exceed 100 %.
-        _acompte = max(0, min(_acompte, int(_pay_total) - _solde))
-        _materiel = int(_pay_total - _acompte - _solde)
-
-        # QJR145 (c) — LES TROIS POURCENTAGES SOMMENT À 100. Arrondis
-        # indépendamment, ils affichaient 99 % ou 101 % et contredisaient la
-        # puce CGV juste au-dessus. Le reliquat va à la tranche « Matériel »,
-        # exactement comme le MONTANT (``_materiel`` est déjà le reste).
-        _pct_a = round(_acompte / _pay_total * 100) if _pay_total else 0
-        _pct_s = round(_solde / _pay_total * 100) if _pay_total else 0
-        _pct_m = (100 - _pct_a - _pct_s) if _pay_total else 0
+        # ERR120 — la répartition vit dans une aide PURE (testée seule) : le
+        # reliquat part de ``int(round(total))``, la MÊME règle que ``fmt`` qui
+        # affiche le Total TTC — sinon 51 232,80 s'affichait 51 233 et les
+        # cases sommaient 51 232. Rendu seul : aucun statut touché (règle #4).
+        _rep = _repartir_paiement(
+            _pay_total, PAY_A, PAY_S,
+            CUSTOM_ACOMPTE if PAYMENT_MODE == "custom" else None)
+        _acompte, _materiel, _solde = (
+            _rep['acompte'], _rep['materiel'], _rep['solde'])
+        _pct_a, _pct_m, _pct_s = _rep['pct_a'], _rep['pct_m'], _rep['pct_s']
 
         def _pay_box(pct, montant, label):
             # QJR145 (b) — ``fmt`` suffixe DÉJÀ « MAD » : les trois cases
@@ -2520,8 +2563,7 @@ def page3():
                       + _pay_box(_pct_m, _materiel, _mt_l)
                       + _pay_box(_pct_s, _solde, _sd_l))
         else:
-            _solde2 = int(_pay_total) - _acompte  # reliquat exact -> somme 100 %
-            _pct_s2 = round(_solde2 / _pay_total * 100) if _pay_total else 0
+            _solde2, _pct_s2 = _rep['solde2'], _rep['pct_s2']  # reliquat exact
             _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
                       + _pay_box(_pct_s2, _solde2, 'Solde · À la livraison'))
 
@@ -4373,6 +4415,7 @@ def apply_quote_data(data: dict) -> None:
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
     global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
+    global ROI_S_JAMAIS, ROI_A_JAMAIS
     global SANS_ITEMS, AVEC_ITEMS, ECO_S_M, ECO_A_M, CUMUL_S, CUMUL_A
     global FACTURES_M
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
@@ -4447,6 +4490,8 @@ def apply_quote_data(data: dict) -> None:
     ECO_A_ANN    = int(data["eco_a_ann"])
     ROI_S        = float(data["roi_s"])
     ROI_A        = float(data["roi_a"])
+    ROI_S_JAMAIS = bool(data.get("roi_s_jamais"))
+    ROI_A_JAMAIS = bool(data.get("roi_a_jamais"))
     INST_TYPE    = data["inst_type"]
     SCENARIO     = data.get("scenario", "Les deux (Sans + Avec)")
     RECOMMENDED  = data.get("recommended", "Avec batterie")

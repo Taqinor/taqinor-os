@@ -36,6 +36,17 @@ test('CAL107 : tracer un toit, poser un obstacle et déplacer un panneau au DOIG
   const name = await createLead(page, { nom: uniq('Tactile CAL107'), facture: 650, ville: 'Casablanca' })
   const leadId = await leadIdByName(page, name)
 
+  // ERR121 — sans clé MapTiler (CI comme local) `ToitureDesign.boot()` avorte
+  // (« Carte indisponible ») : `#rp9-map` reste un simple conteneur sans canvas
+  // ni gestionnaire, « Terminer » reste désactivé au clic souris comme au
+  // toucher. Ce n'est PAS un défaut tactile : même garde `test.skip` que
+  // `calepinage-parcours.spec.js`, la vérité venant du SERVEUR.
+  const cfgRes = await page.request.get('/api/django/ventes/roof-config/')
+  const cfg = cfgRes.ok() ? await cfgRes.json() : {}
+  test.skip(!(cfg?.available && cfg?.maptilerKey),
+    'carte indisponible sur cet environnement (aucune clé MapTiler publiée par le '
+    + 'serveur) : le constructeur ne boote pas — parité tactile CAL107 non rejouable ici')
+
   await page.goto(`/devis-design/${leadId}`)
   const map = page.locator('#rp9-map')
   await expect(map).toBeVisible({ timeout: 20_000 })

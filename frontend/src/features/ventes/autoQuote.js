@@ -25,6 +25,10 @@ import {
   // dérivation partagée : elle alimente à la fois le balayage de
   // dimensionnement (sans elle, l'économie ne sature pas) et
   // `etude_params.conso_annuelle` envoyée au serveur.
+  // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le balayage chiffre la production
+  // au productible de la VILLE (comme l'aperçu et le PDF), jamais au repli
+  // historique GHI × 0,8 de `computeROI` (≈ −18 % contre le document).
+  productibleForCity,
   consoAnnuelleDepuisFactures,
 } from './solar'
 
@@ -257,6 +261,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
           consoAnnuelleKwh: consoAnnuelleDepuisFactures(
             facturesBalayage, distributeurBalayage || 'onee'),
           utility: distributeurBalayage,
+          productible: productibleForCity(lead.ville || '', quoteLogic?.productible),
         })
         // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux`
         // (panneaux/900 MAD, supprimé du backend le même jour). `panels`

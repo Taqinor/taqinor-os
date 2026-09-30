@@ -246,6 +246,10 @@ _AFTER_RE = re.compile(r"@after:\s*(?P<ids>[A-Z0-9,\s-]+)", re.IGNORECASE)
 _GATE_TOKEN_RE = re.compile(r"\b(ROUTINE|SCHEMA|ARCH|DECISION|AUTH|COST|GALLERY)\b")
 _DEP_TOKEN_RE = re.compile(r"DEP:\s*([A-Za-z0-9_-]+)")
 _TASK_ID_RE = re.compile(r"([A-Z]{1,6}\d{1,4})")
+# Slug-style ids (``ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF``) used by the
+# error-autopilot / qa-explorer: an ``@after:`` on one of them must resolve too,
+# or PACT11 can never be satisfied for those tasks.
+_SLUG_ID_RE = re.compile(r"\b([A-Z]{2,}(?:-[A-Z0-9]+){2,})\b")
 
 # Known backend app names (so a dotted ``records.Attachment`` resolves cleanly).
 KNOWN_APPS = {
@@ -764,7 +768,12 @@ def _deps(label: str) -> set[str]:
     """Explicit dependency task-ids (@after:… and resolvable DEP:…ID)."""
     out: set[str] = set()
     for chunk in _AFTER_RE.findall(label):
-        out.update(_TASK_ID_RE.findall(chunk.upper()))
+        chunk = chunk.upper()
+        slugs = _SLUG_ID_RE.findall(chunk)
+        out.update(slugs)
+        for slug in slugs:
+            chunk = chunk.replace(slug, " ")
+        out.update(_TASK_ID_RE.findall(chunk))
     for dep in _DEP_TOKEN_RE.findall(label):
         out.update(_TASK_ID_RE.findall(dep))
     return out

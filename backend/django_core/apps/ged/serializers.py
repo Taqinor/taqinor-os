@@ -29,6 +29,11 @@ class DocumentTagSerializer(serializers.ModelSerializer):
         source='parent.nom', read_only=True, default=None)
     chemin = serializers.SerializerMethodField()
     document_count = serializers.SerializerMethodField()
+    # ERR-QAH-GED-TAG-CREATION-SLUG — le formulaire « Nouveau tag » n'envoie
+    # que le nom : le slug est FACULTATIF et, absent, dérivé du nom côté
+    # serveur (unique par société, suffixe -2, -3… en cas de collision).
+    slug = serializers.SlugField(
+        max_length=110, required=False, allow_blank=True)
 
     class Meta:
         model = DocumentTag
@@ -56,7 +61,34 @@ class DocumentTagSerializer(serializers.ModelSerializer):
             services.validate_tag_parent(self.instance, parent)
         except ValueError as exc:
             raise serializers.ValidationError({'parent': str(exc)})
+        company_id = (request.user.company_id if request is not None
+                      else getattr(self.instance, 'company_id', None))
+        slug = attrs.get('slug')
+        if slug:
+            existe = DocumentTag.objects.filter(company_id=company_id, slug=slug)
+            if self.instance is not None:
+                existe = existe.exclude(pk=self.instance.pk)
+            if existe.exists():
+                raise serializers.ValidationError(
+                    {'slug': 'Un tag porte déjà cet identifiant.'})
+        elif self.instance is None or 'slug' in attrs:
+            nom = attrs.get('nom', getattr(self.instance, 'nom', ''))
+            attrs['slug'] = self._slug_unique(company_id, nom)
         return attrs
+
+    def _slug_unique(self, company_id, nom):
+        from django.utils.text import slugify
+        base = (slugify(nom or '') or 'tag')[:100]
+        pris = DocumentTag.objects.filter(company_id=company_id)
+        if self.instance is not None:
+            pris = pris.exclude(pk=self.instance.pk)
+        pris = set(pris.filter(slug__startswith=base)
+                   .values_list('slug', flat=True))
+        slug, n = base, 2
+        while slug in pris:
+            slug = f'{base}-{n}'
+            n += 1
+        return slug
 
 
 class DocumentTagAssignmentSerializer(serializers.ModelSerializer):

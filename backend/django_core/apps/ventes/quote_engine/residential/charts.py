@@ -366,9 +366,13 @@ def build_all(data: dict) -> dict:
         avec_ok=bool(data.get("avec_ok", True)),
         # BAT-DIFF — légende de la courbe « avec » = libellé du builder.
         libelle_avec=data.get("libelle_avec") or "Avec batterie")
+    # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option jamais remboursée
+    # sur 25 ans n'a PAS de point de rentabilité : son ROI part à ``None``
+    # (aucun point, aucune étiquette « rentabilisé en 25 ans »).
     _pb_args = (data["total_sans"], data["total_avec"],
                 data["eco_s_ann"], data["eco_a_ann"],
-                data["roi_s"], data["roi_a"])
+                None if data.get("roi_s_jamais") else data["roi_s"],
+                None if data.get("roi_a_jamais") else data["roi_a"])
     return {
         # CJ2b — la SÉRIE d'économies chiffrée revient sur le graphe mensuel.
         # ``eco_mensuelles`` est l'écart réellement dessiné, publié par

@@ -395,6 +395,10 @@ def i6_economies(r, devis, ctx):
         k_cf = f'cashflow_{opt}'
         croise = (None if modele == 'etude'
                   else croisement_zero(data.get(k_cf), tot))
+        if croise == 'jamais' and data.get(f'{k_roi}_jamais'):
+            # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — le document porte le
+            # drapeau : il imprime « Non rentabilisé sur 25 ans », rien à dire.
+            continue
         if croise == 'jamais':
             fin = round(num(data[k_cf][-1]))
             out.append(r.violation(

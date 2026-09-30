@@ -270,6 +270,66 @@ def _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):
     return True
 
 
+def blocs_horaires_perimes(devis):
+    """ERR-QAC-I7-BLOCS-PERIMES-REPARATION — les blocs horaires RANGÉS dont la
+    PUISSANCE ne décrit plus le devis : ``[(clé, kWc du bloc, kWc attendu)]``.
+
+    Le correctif de code I7 empêche d'en fabriquer de nouveaux ; il ne répare
+    pas les blocs déjà stockés (59 devis en prod au 30/09/2026, calculés sur la
+    somme des deux options). Ce prédicat est celui de la commande
+    ``rafraichir_blocs_horaires`` : il ne regarde QUE le kWc (la garde de
+    fraîcheur du moteur, ``pricing._HORAIRE_TOLERANCE_KWC``) — pas
+    l'empreinte des entrées, qui marquerait périmé tout bloc antérieur à une
+    montée de ``VERSION_MOTEUR_ENTREES`` et ferait d'une réparation ciblée un
+    recalcul de toute la base.
+
+    * ``etude_horaire`` présent et kWc à plus de 2 % de l'option qu'il décrit
+      (l'option AVEC d'un devis divergent, sinon le devis) ⇒ périmé ;
+    * ``etude_horaire_sans`` présent mais aucune option SANS distincte, ou
+      kWc hors tolérance ⇒ périmé ;
+    * devis divergent dont le bloc principal est présent mais le bloc
+      « sans » ABSENT ⇒ périmé (kWc du bloc ``None``) : rangé avant I7.
+
+    Un bloc ABSENT n'est jamais « périmé » ici : il n'est pas lu, rien à
+    réparer. Lecture seule, ne lève pas (``[]`` au moindre doute).
+    """
+    try:
+        from apps.ventes.quote_engine.pricing import _HORAIRE_TOLERANCE_KWC
+        etude_params = getattr(devis, 'etude_params', None) or {}
+        principal = etude_params.get('etude_horaire')
+        if not isinstance(principal, dict):
+            return []
+        kwc, kwc_sans = puissances_etude_horaire(devis)
+        perimes = []
+
+        def _ecart(bloc, attendu):
+            try:
+                kwc_bloc = float(bloc.get('kwc') or 0)
+            except (TypeError, ValueError):
+                kwc_bloc = 0.0
+            if not attendu or kwc_bloc <= 0:
+                return kwc_bloc or None, True
+            return kwc_bloc, (abs(kwc_bloc - float(attendu)) / float(attendu)
+                              > _HORAIRE_TOLERANCE_KWC)
+
+        kwc_bloc, perime = _ecart(principal, kwc)
+        if perime and kwc:
+            perimes.append(('etude_horaire', kwc_bloc, kwc))
+        sans = etude_params.get(CLE_ETUDE_HORAIRE_SANS)
+        if isinstance(sans, dict):
+            kwc_bloc_sans, perime_sans = _ecart(sans, kwc_sans)
+            if perime_sans:
+                perimes.append((CLE_ETUDE_HORAIRE_SANS, kwc_bloc_sans,
+                                kwc_sans))
+        elif kwc_sans:
+            perimes.append((CLE_ETUDE_HORAIRE_SANS, None, kwc_sans))
+        return perimes
+    except Exception:  # noqa: BLE001 — lecture de diagnostic, jamais bloquante
+        logger.warning('blocs_horaires_perimes indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return []
+
+
 def rafraichir_etude_horaire_devis(devis, *, force=False):
     """CJ2b — pose le bloc horaire canonique après une écriture SERVEUR d'un
     devis résidentiel (lignes ajoutées/modifiées/retirées, calepinage
