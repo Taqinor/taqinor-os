@@ -884,10 +884,15 @@ export function monthlyBillFromKwh(kwhMensuel, tranches) {
 // donc un montant tombé dans un trou est résolu à la BORNE BASSE du saut
 // (210 kWh) : jamais une conso que le barème ne peut produire, et toujours le
 // côté prudent (moins de kWh ⇒ système plus petit, économies plus petites).
+// ERR-QAH-DIFF-KWH-HORS-PLAGE — HORS PLAGE ⇒ `null`, JAMAIS LA BORNE (miroir
+// de la garde QJR158 (e) de `pricing._kwh_from_bill_bisect`) : une facture
+// qu'aucune consommation ≤ 1e6 kWh/mois ne produit faisait converger la
+// dichotomie vers ce plafond (≈ 1 024 000 kWh « exacts »).
 function kwhFromBillBisect(bill, tranches) {
   let lo = 0
   let hi = 1000
   while (monthlyBillFromKwh(hi, tranches) < bill && hi < 1e6) hi *= 2
+  if (monthlyBillFromKwh(hi, tranches) < bill) return null
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2
     if (monthlyBillFromKwh(mid, tranches) < bill) lo = mid
@@ -907,8 +912,12 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
     return { kwhMensuel: Math.round((bill / FALLBACK_KWH_PRICE) * 10) / 10, approximatif: true, estimation: true }
   }
   if (selectiveRule(table)) {
+    const kwh = kwhFromBillBisect(bill, table)
+    // ERR-QAH-DIFF-KWH-HORS-PLAGE — même sortie que le serveur : 0 kWh,
+    // étiqueté estimation, jamais la borne de boucle présentée comme exacte.
+    if (kwh === null) return { kwhMensuel: 0, approximatif: approx, estimation: true }
     return {
-      kwhMensuel: Math.round(kwhFromBillBisect(bill, table) * 10) / 10,
+      kwhMensuel: Math.round(kwh * 10) / 10,
       approximatif: approx,
       estimation: false,
     }

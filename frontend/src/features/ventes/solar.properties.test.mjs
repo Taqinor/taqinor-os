@@ -44,13 +44,8 @@ export const KNOWN_VIOLATIONS = {
   // (ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE corrigée : consoAnnuelleDepuisFactures
   // inverse la facture COMPLÈTE — kwhDepuisFactureMad, jumeau de
   // bareme.kwh_depuis_facture_mad — test « re-tarifer la conso » ci-dessous.)
-  'ERR-QAH-PROP-JS-KWH-HORS-PLAGE': {
-    resume: 'kwhFromBill ne porte PAS la garde QJR158(e) du miroir Python : une '
-      + 'facture qu\'aucune consommation ≤ 1e6 kWh/mois ne produit rend ~1e6 kWh '
-      + '(la borne de boucle) présentés comme un résultat exact '
-      + '(estimation:false).',
-    exemple: 'kwhFromBill(5_000_000, \'onee\') → ≈ 1 000 000 kWh, estimation:false',
-  },
+  // (ERR-QAH-PROP-JS-KWH-HORS-PLAGE corrigée : kwhFromBill porte la garde
+  // QJR158(e) — hors plage ⇒ 0 kWh, estimation:true — test ci-dessous.)
 }
 // (ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF corrigée : HT net borné à 0 dans
 // totauxCanoniquesTtc, comme selectors._canonical_totaux — test ci-dessous.)
@@ -278,7 +273,7 @@ test('ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la conso dérivée des
   })
 })
 
-test('KNOWN_VIOLATION ERR-QAH-PROP-JS-KWH-HORS-PLAGE — facture hors plage inversable ⇒ estimation, jamais la borne de boucle', () => {
+test('ERR-QAH-PROP-JS-KWH-HORS-PLAGE (corrigée) —facture hors plage inversable ⇒ estimation, jamais la borne de boucle', () => {
   verifier('ERR-QAH-PROP-JS-KWH-HORS-PLAGE', 'facture hors plage ⇒ estimation', {
     seed: 206, runs: 80,
     gen: (g) => ({ bill: g.logFloat(2e6, 5e7), utility: g.pick(NOMME) }),

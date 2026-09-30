@@ -2248,23 +2248,23 @@
   {
    "id": "QAHP-0346",
    "axe": "bill_to_kwh",
-   "kwh": 1024000,
+   "kwh": 0,
    "approximatif": false,
-   "estimation": false
+   "estimation": true
   },
   {
    "id": "QAHP-0347",
    "axe": "bill_to_kwh",
-   "kwh": 1024000,
+   "kwh": 0,
    "approximatif": false,
-   "estimation": false
+   "estimation": true
   },
   {
    "id": "QAHP-0348",
    "axe": "bill_to_kwh",
-   "kwh": 1024000,
+   "kwh": 0,
    "approximatif": false,
-   "estimation": false
+   "estimation": true
   },
   {
    "id": "QAHP-0349",

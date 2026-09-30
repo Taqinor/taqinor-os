@@ -1,22 +1,6 @@
 {
  "genere_par": "mesure UNIQUE par un script independant de test_solar_differential_calculs.py (28-30/09/2026, QAH-PROP). NE JAMAIS recalculer au chargement, NE JAMAIS elargir sans decision humaine : la liste ne peut que RETRECIR (le test rougit dans les deux sens).",
  "divergences": {
-  "ERR-QAH-DIFF-KWH-HORS-PLAGE": {
-   "resume": "kwhFromBill (solar.js) n'a pas la garde QJR158(e) de pricing.kwh_from_bill : une facture qu'aucune consommation <= 1e6 kWh/mois ne produit rend ~1 024 000 kWh (la borne de boucle) avec estimation:false, alors que Python rend 0 kWh, estimation:true.",
-   "exemple": "kwhFromBill(2000000, 'onee') -> {kwhMensuel: 1024000, estimation: false} ; kwh_from_bill(2000000, 'onee') -> {kwh_mensuel: 0.0, estimation: True}",
-   "constats": {
-    "bill_to_kwh.estimation": [
-     "QAHP-0346",
-     "QAHP-0347",
-     "QAHP-0348"
-    ],
-    "bill_to_kwh.kwh": [
-     "QAHP-0346",
-     "QAHP-0347",
-     "QAHP-0348"
-    ]
-   }
-  },
   "ERR-QAH-DIFF-POMPAGE-TENSION-NOM-2200W": {
    "resume": "pompage.tension_produit (Python) lit une tension quand le nom contient '220'/'380' ET un 'v' quelconque (« Variateur VEICHI ... 2200W » -> 220 V) ; solar.js tensionOf/selectVariateurVeichi exigent « 220 V »/« 380 V » (regex 220\\s*v) : sur une fiche sans tension_v dont le nom porte une puissance en W, ecran et module Calepinage choisissent une pompe/un variateur DIFFERENT.",
    "exemple": "variateur {nom: 'Variateur VEICHI SVF3 2.2kW 2200W', tension_v: null}, alim mono : ecran -> aucun variateur (tension inconnue) ; Python -> ce variateur (tension 220)",
