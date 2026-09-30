@@ -872,15 +872,17 @@ class RefusTests(_Base):
     def test_jours_hors_periode_400(self):
         resp = self.api.get(URL, {'jours': '15'})
         self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertEqual(resp.data, {'erreurs': {'jours': cs.MESSAGE_JOURS}})
+        # L'enveloppe machine `error` (YAPIC3, `core.exceptions`) s'ajoute à
+        # toute erreur levée : `erreurs` est la clé du contrat.
+        self.assertEqual(resp.data['erreurs'], {'jours': cs.MESSAGE_JOURS})
 
     def test_owner_inconnu_400(self):
         for brut in ('999999', 'abc'):
             with self.subTest(owner=brut):
                 resp = self.api.get(URL, {'owner': brut})
                 self.assertEqual(resp.status_code, 400, resp.data)
-                self.assertEqual(resp.data,
-                                 {'erreurs': {'owner': cs.MESSAGE_OWNER}})
+                self.assertEqual(resp.data['erreurs'],
+                                 {'owner': cs.MESSAGE_OWNER})
 
     def test_owner_et_jours_valides(self):
         resp = self.api.get(URL, {'jours': '7', 'owner': self.acteur.pk})
