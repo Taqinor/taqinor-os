@@ -82,8 +82,8 @@ import {
   // rendent ; `tarifMtDisponible` et `commercialDayShare` restent ici, appelés
   // par l'avertissement de vente et par l'étude commerciale.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
-  tauxTvaOf, controlerFacturesSaisies, ttcExactFromHt,
+  formatMoney, estimerMois, computeROI, ttcFromHt,
+  tauxTvaOf, controlerFacturesSaisies,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
@@ -158,6 +158,8 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // SIGNÉE (`moteur`/`apercu`) au lieu d'un `value=` littéral : `CarteMetrique`
 // reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
 import { moteur, apercu } from '../../features/ventes/quote/valeur'
+// QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
+import { lignesServeurVersEcran, lignesEcranVersPayload } from '../../features/ventes/quote/lignesEcran'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -306,6 +308,10 @@ const withKeys = (rows) => rows.map(r => ({
   // deux optimiseurs résidentiels divergent, préservée au rechargement d'un
   // brouillon/devis (VX62, réouverture ?edit=).
   variante: r.variante ?? '',
+  // QJR523 — rôle STOCKÉ de la ligne (`role_devis`) : conservé comme
+  // `prixManuel`, sinon `remplacer_lignes` re-devine le rôle et écrase celui
+  // posé par la composition (ex. 'onduleur_offgrid').
+  role_devis: r.role_devis ?? '',
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -1943,45 +1949,10 @@ export default function DevisGenerator({
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
       if (d.note) setNote(d.note)
-      const rows = (d.lignes ?? [])
-        .slice()
-        // XSAL14 — respecte l'ordre serveur (ordre, id) pour intercaler les
-        // sections/notes au bon endroit à la réouverture d'un brouillon.
-        .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
-        .map(l => ({
-          produit: String(l.produit ?? ''),
-          designation: l.designation,
-          quantite: String(parseFloat(l.quantite) || 0),
-          // ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — prix PERSISTÉ : TTC au
-          // centime, jamais arrondi au dirham (sinon rouvrir change le total
-          // et ré-enregistrer modifie les prix en silence).
-          prix_unit_ttc: String(ttcExactFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
-          taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
-          // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
-          optionnelle: !!l.optionnelle,
-          // XSAL14 — préserve le type de ligne (produit / section / note).
-          typeLigne: l.type_ligne ?? 'produit',
-          // L-2OPT — préserve le tag de variante posé par le serveur (champ
-          // pas encore accepté par TOUS les backends — `?? ''` en repli,
-          // comportement historique inchangé tant qu'il est absent).
-          variante: l.variante ?? '',
-          // QJR65 / décision fondateur D12 — LE PRIX TAPÉ À LA MAIN SURVIT À
-          // `?edit=`. Ce mappeur ne rendait PAS `prixManuel` : le drapeau
-          // revenait `undefined → false`, et l'effet listes-de-prix
-          // ([clientId, lines.length]) relançait `refreshTarif` sur CHAQUE
-          // ligne au montage — le tarif catalogue écrasait en silence le prix
-          // négocié que le vendeur avait tapé ET enregistré. `prix_manuel` est
-          // servi par la ligne (QJR59, `LigneDevisSerializer` `__all__`) ; la
-          // garde vit, elle, dans `refreshTarif` (`!l.prixManuel`). Champ
-          // absent d'un backend plus ancien ⇒ `false`, comportement historique
-          // strictement inchangé.
-          prixManuel: !!l.prix_manuel,
-          // QJR218 — même trou, même correctif : `quantite_manuelle` est déjà
-          // round-trippé par le backend (`domain/lignes`) mais ce mappeur ne
-          // le relisait pas, donc `?edit=` ne restaurait JAMAIS le verrou de
-          // quantité (revenait `undefined → false` via `withKeys`).
-          quantiteManuelle: !!l.quantite_manuelle,
-        }))
+      // QJR523 — mappeur UNIQUE (lignesEcran.js) : ordre serveur, prix TTC au
+      // centime, option / type / variante / verrous manuels (QJR65, QJR218),
+      // groupes villa et rôle stocké — tous relus ici.
+      const rows = lignesServeurVersEcran(d.lignes ?? [], d.taux_tva)
       setLines(withKeys(rows))
       linesInitialized.current = true
       // L-2OPT — le nombre de panneaux affiché reste celui de la branche
@@ -2342,6 +2313,9 @@ export default function DevisGenerator({
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
             prixManuel: false,
+            // QJR523 — le rôle stocké était celui de l'ANCIEN produit : le
+            // serveur le re-déduit du nouveau.
+            role_devis: '',
           }
         : l
     ))
@@ -2541,17 +2515,9 @@ export default function DevisGenerator({
     const lignes = Array.isArray(data) ? data
       : (data?.lignes || data?.results || [])
     if (!Array.isArray(lignes) || !lignes.length) return
-    const rows = lignes.map(l => ({
-      produit: l.produit ?? l.produit_id ?? '',
-      designation: l.designation ?? '',
-      quantite: l.quantite ?? 1,
-      // le modèle stocke le HT ; l'écran travaille en TTC (au taux de la ligne).
-      prix_unit_ttc: ttcFromHt(l.prix_unitaire ?? l.prix_unit_ht ?? 0, l.taux_tva ?? 20),
-      taux_tva: l.taux_tva ?? 20,
-      groupeIndex: l.groupe_index ?? null,
-      groupeLabel: l.groupe_label ?? '',
-    }))
-    setLines(withKeys(rows))
+    // QJR523 — même mappeur que la réouverture `?edit=` (HT → TTC au taux de
+    // la ligne, tous les champs portés).
+    setLines(withKeys(lignesServeurVersEcran(lignes)))
   }
 
   // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
@@ -3441,52 +3407,11 @@ export default function DevisGenerator({
       // (intitulé non vide). L'ordre visuel est conservé (ordre = index) pour
       // intercaler les intertitres au bon endroit. Une ligne section/note ne
       // porte ni produit ni prix.
-      const isStructure = (l) => l.typeLigne === 'section' || l.typeLigne === 'note'
-      const keptLines = lines.filter(l => isStructure(l)
-        ? !!(l.designation || '').trim()
-        : (l.produit && parseFloat(l.quantite) > 0))
-      const lignesPayload = keptLines.map((l, idx) => {
-        if (isStructure(l)) {
-          return {
-            type_ligne: l.typeLigne,
-            ordre: idx,
-            designation: l.designation,
-          }
-        }
-        return {
-          produit: parseInt(l.produit),
-          designation: l.designation,
-          quantite: l.quantite,
-          prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
-          remise: '0',
-          taux_tva: String(l.taux_tva ?? 20),
-          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
-          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
-          // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
-          optionnelle: !!l.optionnelle,
-          // XSAL14 — type produit (défaut) + position d'affichage.
-          type_ligne: 'produit',
-          ordre: idx,
-          // L-2OPT (fondateur 24/08) — '' commun | 'sans' | 'avec', posée par
-          // `fusionnerVariantes` quand les deux optimiseurs résidentiels
-          // divergent. Envoyée systématiquement (le champ absent d'un ancien
-          // backend est simplement ignoré par le serializer — jamais bloquant).
-          variante: l.variante || '',
-          // QJR65 / décision fondateur D12 — le PRIX est une entrée commerciale
-          // PERSISTANTE : le marqueur part avec la ligne (`prix_manuel`, accepté
-          // par `_replace_lines_atomic`, QJR59/QJR60) pour que la réouverture en
-          // `?edit=` le repose et qu'aucun rafraîchissement tarifaire ne
-          // réécrive le prix négocié. Sans lui, le marqueur serait remis à
-          // `False` à CHAQUE enregistrement — le trou que D12 referme.
-          prix_manuel: !!l.prixManuel,
-          // QJR218 — même patron que `prix_manuel` juste au-dessus : sans ce
-          // marqueur, `replace-lignes` défaute `quantite_manuelle` à False à
-          // CHAQUE enregistrement — une ligne verrouillée en quantité (posée
-          // côté serveur, ex. une resynchronisation) perd son verrou au
-          // prochain enregistrement du vendeur.
-          quantite_manuelle: !!l.quantiteManuelle,
-        }
-      })
+      // QJR523 — payload construit par le mappeur UNIQUE (lignesEcran.js) :
+      // prix HT dérivé du TTC au taux DE LA LIGNE, groupe villa en mode
+      // « villas », option / type / ordre / variante / verrous manuels
+      // (QJR65 / D12, QJR218) et rôle stocké.
+      const lignesPayload = lignesEcranVersPayload(lines, { multiMode })
 
       let devisId
       let devisCree = null
