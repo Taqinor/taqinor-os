@@ -83,3 +83,24 @@ class ApercuMemeConsoQueLeDevisTests(TestCase):
         vues = self._kwargs_vus({'lead': self.lead.pk, 'kwc': 4.26})
         self.assertEqual(vues['source_conso'], 'kwh_mensuel_saisi')
         self.assertEqual(list(vues['conso_kwh_mensuelles']), [300.0] * 12)
+
+    def test_chemin_devis_lit_l_occupation_du_bloc(self):
+        """CI #752 — l'écran n'envoie pas ``mode_installation`` : l'aperçu
+        d'un devis RÉSIDENTIEL applique quand même le défaut fondateur
+        ``presence_jour`` que le bloc du devis applique (mode lu sur le
+        devis), jamais le défaut non résidentiel ``absence_jour``
+        (couverture écran 28 % contre 47,51 % à la proposition)."""
+        from apps.ventes.courbes_journalieres import (
+            OCCUPATION_PRESENCE, occupation_du_devis)
+        attendu, _src = occupation_du_devis(
+            self.devis, {'mode_installation': self.devis.mode_installation})
+        self.assertEqual(attendu, OCCUPATION_PRESENCE)
+        vues = self._kwargs_vus({'devis': self.devis.pk, 'kwc': 4.26})
+        self.assertEqual(vues['occupation'], attendu)
+        # Un mode FOURNI par l'appelant n'est jamais écrasé.
+        vues = self._kwargs_vus({'devis': self.devis.pk, 'kwc': 4.26,
+                                 'mode_installation': 'industriel'})
+        self.assertEqual(
+            vues['occupation'],
+            occupation_du_devis(self.devis,
+                                {'mode_installation': 'industriel'})[0])

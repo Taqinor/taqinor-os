@@ -151,7 +151,17 @@ def _profil_depuis_devis(devis, corps, *, tranches=None,
     conso, source, detail = profil_conso_du_devis(
         devis, tranches=tranches, charges_fixes_mad=charges_fixes_mad)
 
-    occupation, _source_occ = occupation_du_devis(devis, corps)
+    # CI #752 (figures-parite : couverture écran 28 % contre 47,51 % à la
+    # proposition) — MÊME OCCUPATION que le bloc du devis. L'écran n'envoie pas
+    # ``mode_installation`` : sans lui, ``_occupation`` retombait sur le défaut
+    # NON résidentiel ``absence_jour`` pendant que le bloc
+    # (``etude_horaire._etude_horaire_pour_devis``) lit le mode sur le devis
+    # et applique le défaut fondateur ``presence_jour``. Même contexte ici :
+    # le mode du devis quand le corps ne le fournit pas, jamais écrasé.
+    contexte = dict(corps)
+    if not contexte.get('mode_installation'):
+        contexte['mode_installation'] = getattr(devis, 'mode_installation', None)
+    occupation, _source_occ = occupation_du_devis(devis, contexte)
     equipements = equipements_du_devis(devis)
     return conso, source, detail, occupation, equipements
 
