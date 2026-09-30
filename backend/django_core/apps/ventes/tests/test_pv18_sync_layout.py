@@ -235,14 +235,17 @@ class TestSyncLayout(TestCase):
 
     def test_l_onduleur_redevient_reseau_quand_la_batterie_sort(self):
         """Sens inverse : un devis hybride sans batterie ne rendrait AUCUNE
-        option (le moteur refuse alors le PDF à options)."""
+        option (le moteur refuse alors le PDF à options).
+
+        QJR556 — la batterie est AU PRIX CATALOGUE : seule une batterie non
+        négociée peut sortir (une batterie négociée est conservée)."""
         devis = self._devis(panneaux=12)
         devis.lignes.filter(designation__icontains='réseau').update(
             produit=self.onduleur_hybride,
             designation='Onduleur hybride Deye 5kW')
         devis.lignes.create(
             produit=self.batterie, designation='Batterie Dyness 5 kWh',
-            quantite=Decimal('1'), prix_unitaire=Decimal('16000'), ordre=3)
+            quantite=Decimal('1'), prix_unitaire=Decimal('17000'), ordre=3)
 
         resp = self._post(devis, layout(panels=12, scenario='reseau'))
         self.assertEqual(resp.status_code, 200)
@@ -269,15 +272,66 @@ class TestSyncLayout(TestCase):
         self.assertEqual(devis.etude_params['scenario'], 'Sans batterie')
 
     def test_batterie_retiree_quand_le_scenario_n_en_veut_plus(self):
+        """QJR556 — réécrit avec une batterie AU PRIX CATALOGUE (17000, sans
+        remise, sans marqueur) : c'est la seule qui sort en silence."""
         devis = self._devis(panneaux=12)
         devis.lignes.create(
             produit=self.batterie, designation='Batterie Dyness 5 kWh',
-            quantite=Decimal('1'), prix_unitaire=Decimal('16000'), ordre=3)
+            quantite=Decimal('1'), prix_unitaire=Decimal('17000'), ordre=3)
         resp = self._post(devis, layout(panels=12, scenario='reseau'))
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(resp.data['batterie'])
         self.assertFalse(
             devis.lignes.filter(designation__icontains='Batterie').exists())
+
+    def test_batterie_negociee_conservee_avec_avertissement(self):
+        """QJR556 — une batterie ``prix_manuel`` SOUS le catalogue n'est
+        jamais supprimée en silence par un layout « reseau » : elle reste, un
+        avertissement FR le dit, et elle ne compte pas comme modifiée."""
+        devis = self._devis(panneaux=12)
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('15000'),
+            prix_manuel=True, ordre=3)
+        resp = self._post(devis, layout(panels=12, scenario='reseau'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        batterie = devis.lignes.get(designation='Batterie Dyness 5 kWh')
+        self.assertEqual(batterie.prix_unitaire, Decimal('15000.00'))
+        self.assertTrue(any('Batterie Dyness 5 kWh' in a and 'CONSERV' in a
+                            for a in resp.data['avertissements']),
+                        resp.data['avertissements'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+
+    def test_batterie_a_quantite_figee_conservee(self):
+        """QJR556 — ``quantite_manuelle`` protège aussi la batterie."""
+        devis = self._devis(panneaux=12)
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('2'), prix_unitaire=Decimal('17000'),
+            quantite_manuelle=True, ordre=3)
+        resp = self._post(devis, layout(panels=12, scenario='reseau'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(devis.lignes.filter(
+            designation='Batterie Dyness 5 kWh').exists())
+
+    def test_devis_mono_layout_les_deux_garde_la_batterie(self):
+        """QJR556 — le vocabulaire ``'les_deux'`` (émis par le serveur et
+        renvoyé par ToitureDesign) est lu par ``scenario_du_layout`` : il
+        VEUT une batterie. Avant, la lecture recopiée l'ignorait et un devis
+        mono perdait sa batterie au prix catalogue."""
+        devis = self._devis(panneaux=12)
+        devis.lignes.filter(designation__icontains='réseau').update(
+            produit=self.onduleur_hybride,
+            designation='Onduleur hybride Deye 5kW')
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Dyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('17000'), ordre=3)
+        resp = self._post(devis, layout(panels=12, scenario='les_deux'))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp.data['batterie'])
+        self.assertTrue(devis.lignes.filter(
+            designation='Batterie Dyness 5 kWh').exists())
 
     def test_batterie_deja_presente_n_est_pas_dupliquee(self):
         devis = self._devis(panneaux=12)

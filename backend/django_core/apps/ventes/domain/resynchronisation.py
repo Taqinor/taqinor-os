@@ -296,9 +296,12 @@ def reconcilier(devis, intention):
     cible_panneaux = _cible_panneaux_du_layout(layout, toiture)
     watt = _watt_du_layout(layout, toiture, cible_panneaux)
 
-    scenario_brut = (layout.get('scenario') or '').lower()
-    veut_batterie = ('batterie' in scenario_brut or 'hybride' in scenario_brut
-                     or bool(layout.get('battery')))
+    # QJR556 — le scénario du layout est lu par son PROPRIÉTAIRE UNIQUE
+    # (``geometrie.scenario_du_layout``), plus par une copie qui ignorait
+    # ``'les_deux'`` (vocabulaire émis par le serveur et renvoyé par
+    # ToitureDesign) : un layout « les deux » VEUT une batterie.
+    veut_batterie = scenario_du_layout(layout) in (
+        COMPOSITION_AVEC, COMPOSITION_LES_DEUX)
 
     with transaction.atomic():
         verrou = (Devis.objects.select_for_update()
@@ -767,10 +770,27 @@ def reconcilier(devis, intention):
             # L-2OPT — sur un devis « Les deux », la batterie EST l'option
             # « avec » : un calepinage qui n'en veut pas décrit l'option
             # « sans », il ne retire pas l'autre du document.
+            #
+            # QJR556 — même garde que PVHEAL (l'onduleur intrus) : une
+            # batterie NÉGOCIÉE (``prix_negocie`` via ``_est_au_prix_catalogue``
+            # — prix_manuel, remise, prix ≠ catalogue, pas de prix) ou à
+            # QUANTITÉ FIGÉE (D12) n'est jamais supprimée en silence ; elle
+            # reste, l'écran le dit, et elle ne compte pas comme modifiée.
+            batteries_conservees = []
             for ligne in lignes_batterie:
+                if (not _est_au_prix_catalogue(ligne)
+                        or _quantite_verrouillee(ligne)):
+                    batteries_conservees.append(ligne)
+                    avertissements.append(
+                        'Le calepinage ne prévoit plus de batterie, mais '
+                        '« %s » porte un prix ou une quantité saisis à la '
+                        'main : elle a été CONSERVÉE — retirez-la à la main '
+                        's\'il n\'a rien à y faire.'
+                        % (ligne.designation or 'ligne sans désignation'))
+                    continue
                 ligne.delete()
-            lignes_modifiees += len(lignes_batterie)
-            a_batterie = False
+                lignes_modifiees += 1
+            a_batterie = bool(batteries_conservees)
 
         # ── L'ONDULEUR DOIT S'ACCORDER AU SCÉNARIO (batterie fantôme) ──
         #
@@ -1172,6 +1192,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402,F401
     _watt_du_layout,
     extract_roof_config,
     layout_hash,
+    scenario_du_layout,
 )
 from apps.ventes.domain.lignes import (  # noqa: E402,F401
     _classe_ligne,
@@ -1184,6 +1205,8 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
 from apps.ventes.domain.pipeline import (  # noqa: E402,F401
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,
