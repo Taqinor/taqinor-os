@@ -173,6 +173,33 @@ class DevisEnvoyeAvecVisiteOuverteTests(_Base):
                                         devis=ancien).exists())
         self._aucun_refus_deja_en_cours()
 
+    def test_relance_date_ne_pointe_jamais_sur_l_etape_annulee(self):
+        """SUIVI I6 (écart confirmé sur E1) — l'étape « devis modifié »
+        annulée à l'envoi était la plus proche (aujourd'hui) : ``relance_date``
+        suit la plus proche touche RESTANTE, jamais la date d'une étape
+        annulée."""
+        self.lead.stage = stages.QUOTE_SENT
+        self.lead.save(update_fields=['stage'])
+        modifie = self._touche(cadence='apres_devis',
+                               ordre=services.VISITE_ORDRE_DEBRIEF,
+                               canal=RelanceEtape.Canal.APPEL,
+                               cle=CLE_DEVIS_MODIFIE,
+                               libelle=services.VISITE_DEVIS_LIBELLE)
+        services._recaler_file(self.lead, self.acteur)
+        self.lead.refresh_from_db(fields=['relance_date'])
+        self.assertEqual(self.lead.relance_date, GEL.date())
+
+        nouveau = self._devis()
+        self._envoyer(nouveau)
+
+        modifie.refresh_from_db()
+        self.assertEqual(modifie.statut, ANNULEE)
+        barreau = self._barreau_1_ouvert(nouveau)
+        proche = services._prochaine_touche_a_faire(self.lead)
+        self.assertEqual(proche.pk, barreau.pk)
+        self.lead.refresh_from_db(fields=['relance_date'])
+        self.assertEqual(self.lead.relance_date, proche.due_date)
+
     def test_un_vrai_suivi_en_cours_bloque_toujours_une_seconde_serie(self):
         """Témoin : la garde « une seule série après devis » tient pour un
         vrai BARREAU d'un autre devis (MRY7 inchangé)."""

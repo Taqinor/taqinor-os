@@ -26,6 +26,7 @@ from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    _recaler_file,
     CAUSE_RDV_REFUS,
     annuler_etapes_moteur_ouvertes,
     annuler_rendez_vous_sur_arret,
@@ -167,8 +168,14 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                         cadences=['contact', 'generique'])
         # SUIVI E1 (30/09/2026) — l'étape « Préparer le devis modifié »
         # encore ouverte a rempli son office : le devis modifié part.
-        annuler_etapes_moteur_ouvertes(lead, CLE_DEVIS_MODIFIE,
-                                       note='devis envoyé')
+        if annuler_etapes_moteur_ouvertes(lead, CLE_DEVIS_MODIFIE,
+                                          note='devis envoyé'):
+            # SUIVI I6 — l'annulation passe par un ``update()`` : sans
+            # recalage, ``relance_date`` pointait encore sur l'étape annulée
+            # quand elle était la plus proche (``initialiser_plan_relance``
+            # ne l'avance que si elle est plus TARDIVE que sa première
+            # touche).
+            _recaler_file(lead, user)
         # SUIVI E1 — seuls les BARREAUX du protocole après-devis sont « un
         # suivi en cours » : une étape de VISITE ouverte (planifier,
         # confirmer, débrief — cadence `apres_devis`, devis souvent NULL, donc
