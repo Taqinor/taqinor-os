@@ -2539,6 +2539,11 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST)
         replanifier = request.data.get('replanifier') in (
             True, 'true', 'True', '1', 1)
+        # COCKPIT-CONTRÔLE B8 — l'échéance que la touche avait au moment où on
+        # la TRAITE, lue AVANT la planification : celle-ci décale le suivi
+        # pendant (donc cette touche) jusqu'après la visite.
+        echeance_avant = (None if etape is None else
+                          (etape.due_at, etape.due_date, etape.due_initial_at))
 
         visite, erreurs = planifier_visite(
             lead, request.user, date_prevue, commercial=commercial,
@@ -2548,7 +2553,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if etape is not None:
             clore_etape_apres_planification(
                 etape, request.user,
-                note=(request.data.get('note_etape') or ''))
+                note=(request.data.get('note_etape') or ''),
+                echeance_avant=echeance_avant)
         return Response({'visite': ligne_visite_pour_lead(visite),
                          'prochaine_touche': _prochaine_touche_publique(
                              _prochaine_touche_a_faire(lead))},

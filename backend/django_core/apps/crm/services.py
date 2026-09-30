@@ -10227,7 +10227,8 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     return etapes
 
 
-def clore_etape_apres_planification(etape, user, *, note=''):
+def clore_etape_apres_planification(etape, user, *, note='',
+                                    echeance_avant=None):
     """SUIVI E18 (30/09/2026) — la planification d'une visite CLÔT la touche
     qui l'a demandée (l'écran n'envoie plus jamais « Fait visite acceptée »
     AVANT d'avoir planifié).
@@ -10246,11 +10247,27 @@ def clore_etape_apres_planification(etape, user, *, note=''):
       devis mise en attente de la visite) → elle reste annulée.
 
     Dans les deux derniers cas, la note éventuelle part dans UNE ligne de
-    chatter. Renvoie la touche (relue)."""
+    chatter. Renvoie la touche (relue).
+
+    COCKPIT-CONTRÔLE B8 — UNE ÉTAPE CLOSE GARDE L'ÉCHÉANCE QU'ELLE AVAIT
+    QUAND ON L'A TRAITÉE. La planification vient de décaler le suivi pendant
+    — cette touche comprise — jusqu'après la visite
+    (``suspendre_plan_jusqu_apres_visite``, un déplacement du MOTEUR) ; close
+    telle quelle, la touche se lisait due APRÈS la visite, « traitée en
+    avance », et le contrôle du suivi la jugeait sur un jour à venir.
+    ``echeance_avant`` = ``(due_at, due_date, due_initial_at)`` lus par
+    l'appelant AVANT la planification : quand CETTE fonction clôt la touche,
+    ces trois colonnes — et elles seules (UPDATE borné) — sont rétablies,
+    juste avant la clôture (la ligne de chatter dit ainsi la vraie
+    échéance). Ni ``cadence_depart``, ni la suite du plan (décalée après la
+    visite), ni la naissance d'une touche ne changent : « visite acceptée »
+    n'en fait naître aucune (``issue_fait_naitre_la_suite``)."""
     etape.refresh_from_db()
     note = str(note or '').strip()
     if (etape.statut == RelanceEtape.Statut.A_FAIRE
             and not est_etape(etape, CLE_CONFIRMATION, CLE_DEBRIEF)):
+        if echeance_avant is not None:
+            _retablir_echeance_traitee(etape, echeance_avant)
         return marquer_etape_relance(
             etape, user, RelanceEtape.Statut.FAIT, note=note,
             outcome=OUTCOME_VISITE_ACCEPTEE)
@@ -10260,6 +10277,18 @@ def clore_etape_apres_planification(etape, user, *, note=''):
             etape.lead, user,
             f'Visite planifiée depuis l’étape « {libelle} » — note : {note}')
     return etape
+
+
+def _retablir_echeance_traitee(etape, echeance):
+    """COCKPIT-CONTRÔLE B8 — rétablit ``(due_at, due_date, due_initial_at)``
+    sur ``etape`` : un UPDATE borné à ces trois colonnes (jamais un ``save``
+    complet qui réécrirait le reste), puis l'instance en mémoire suit."""
+    due_at, due_date, due_initial_at = echeance
+    RelanceEtape.objects.filter(pk=etape.pk).update(
+        due_at=due_at, due_date=due_date, due_initial_at=due_initial_at)
+    etape.due_at = due_at
+    etape.due_date = due_date
+    etape.due_initial_at = due_initial_at
 
 
 def annuler_rendez_vous_du_lead(lead, user, *, motif='',
