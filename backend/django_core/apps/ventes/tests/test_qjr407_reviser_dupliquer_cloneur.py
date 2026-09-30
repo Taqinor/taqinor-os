@@ -161,3 +161,59 @@ class NonRegressionDuCheminDejaCorrect(_Base):
         self.assertTrue(copie.note.startswith('[Copie de '))
         self.assertEqual(Decimal(str(copie.total_ttc)),
                          Decimal(str(self.source.total_ttc)))
+
+
+class RevisionGardeLeTravailManuel(_Base):
+    """QJR558 — une RÉVISION garde la conception toiture 3D, le registre D12,
+    les tailles explorées et le rendu toiture ; ``date_validite`` n'est jamais
+    copiée. ROUGE AVANT : ``cloner_devis`` n'en portait aucun — la toiture
+    était à redessiner après « Réviser »."""
+
+    LAYOUT = {'panneaux': [{'x': 1, 'y': 2}], 'orientation': 'sud'}
+    OVERRIDES = {'taille.nb_panneaux': {'valeur': 14, 'origine': 'ecran'}}
+    OFFRES = {'eco': {'nb_panneaux': 10}, 'max': {'nb_panneaux': 18}}
+
+    def setUp(self):
+        super().setUp()
+        import datetime
+        Devis.objects.filter(pk=self.source.pk).update(
+            roof_layout=self.LAYOUT, layout_hash='a' * 64,
+            roof_image='roofs/qjr558.png', overrides=self.OVERRIDES,
+            offres_tailles_config=self.OFFRES,
+            date_validite=datetime.date(2026, 10, 31),
+            statut=Devis.Statut.ENVOYE)
+        self.source.refresh_from_db()
+
+    def test_reviser_porte_le_travail_manuel_sans_aliasing(self):
+        from apps.ventes.domain.cycle_vie import reviser_devis
+        v2 = reviser_devis(self.source, user=self.user)
+        v2.refresh_from_db()
+        self.assertEqual(v2.roof_layout, self.LAYOUT)
+        self.assertEqual(v2.layout_hash, 'a' * 64)
+        self.assertEqual(v2.roof_image, 'roofs/qjr558.png')
+        self.assertEqual(v2.overrides, self.OVERRIDES)
+        self.assertEqual(v2.offres_tailles_config, self.OFFRES)
+        self.assertIsNone(v2.date_validite)
+
+    def test_les_copies_ne_sont_pas_aliasees(self):
+        from apps.ventes.domain.creation import cloner_devis
+        copie = cloner_devis(self.source, user=self.user, revision=True)
+        self.assertIsNot(copie.roof_layout, self.source.roof_layout)
+        self.assertIsNot(copie.overrides, self.source.overrides)
+        self.assertIsNot(copie.offres_tailles_config,
+                         self.source.offres_tailles_config)
+        copie.overrides['taille.nb_panneaux']['valeur'] = 99
+        copie.roof_layout['orientation'] = 'est'
+        self.assertEqual(
+            self.source.overrides['taille.nb_panneaux']['valeur'], 14)
+        self.assertEqual(self.source.roof_layout['orientation'], 'sud')
+
+    def test_dupliquer_ne_les_porte_toujours_pas(self):
+        from apps.ventes.domain.creation import dupliquer_devis
+        copie = dupliquer_devis(self.source, user=self.user)
+        copie.refresh_from_db()
+        self.assertIsNone(copie.roof_layout)
+        self.assertFalse(copie.overrides)
+        self.assertIsNone(copie.offres_tailles_config)
+        self.assertFalse(copie.roof_image)
+        self.assertIsNone(copie.date_validite)

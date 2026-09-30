@@ -1843,10 +1843,12 @@ def reviser_devis(devis, *, user=None):
         if old.statut == Devis.Statut.BROUILLON:
             raise RevisionError(
                 'Un brouillon se modifie directement (pas de révision).')
+        # QJR558 — ``revision=True`` : la V+1 garde le travail manuel
+        # (toiture 3D, registre D12, tailles explorées, rendu toiture).
         nd = cloner_devis(
             old, user=user, note=old.note,
             version=old.version + 1,
-            version_parent=old.version_parent or old)
+            version_parent=old.version_parent or old, revision=True)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])
