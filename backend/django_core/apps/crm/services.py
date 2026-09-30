@@ -11652,6 +11652,14 @@ _FILET_SANS_REPONSE_PALIERS = {
         'issues': _ISSUES_SANS_REPONSE + ('',),
         'suite': CLE_DERNIER_APPEL,
     },
+    # SUIVI E11 (30/09/2026) — le RAPPEL CONVENU (le client avait fixé
+    # lui-même le moment) resté sans réponse : on ne chiffre pas encore, on
+    # tente un dernier essai demain. Palier désactivé : sauté, comme les
+    # autres (le devis).
+    CLE_RAPPEL_CONVENU: {
+        'issues': _ISSUES_SANS_REPONSE,
+        'suite': CLE_DERNIER_APPEL,
+    },
     CLE_DEBRIEF: _PALIER_DEBRIEF_SANS_REPONSE,
     CLE_DEVIS_MODIFIE: _PALIER_DEBRIEF_SANS_REPONSE,
 }
