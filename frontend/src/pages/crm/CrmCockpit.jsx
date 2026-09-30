@@ -8,7 +8,6 @@ import { Badge, Button } from '../../ui'
 import { useT } from '../../i18n'
 import { fetchClients, fetchLeads } from '../../features/crm/store/crmSlice'
 import { formatDate, formatNumber } from '../../lib/format'
-import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import crmApi from '../../api/crmApi'
 import CrmInsightsPanel from './leads/CrmInsightsPanel'
 import DormantAccountsWidget from './DormantAccountsWidget'
@@ -149,12 +148,6 @@ export default function CrmCockpit() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { clients, leads } = useSelector((s) => s.crm)
-  // CKP5 (fondateur 2026-09-10) puis COCKPIT-CONTRÔLE F4 (30/09/2026) — sert
-  // UNIQUEMENT à ordonner les deux blocs du haut (« Contrôle du suivi » en
-  // premier pour un responsable/admin, « Ma journée » en premier pour les
-  // autres), JAMAIS à en cacher un : transparence totale, la commerciale voit
-  // exactement ce que voit le responsable.
-  const isResponsableOuAdmin = useIsAdminOrResponsable()
 
   // VX55 — annule les requêtes en vol au démontage (même patron que
   // ClientList/LeadsPage) : une réponse tardive ne doit jamais écraser
@@ -214,43 +207,32 @@ export default function CrmCockpit() {
         )}
       />
 
-      {/* COCKPIT-CONTRÔLE F4 (fondateur, 30/09/2026) — DEUX blocs pleine largeur
-          juste sous l'en-tête, dans l'ordre du rôle : le responsable lit
-          d'abord « Contrôle du suivi » (a-t-on fait ce qui devait l'être ?),
-          puis « Ma journée » ; la commerciale traite d'abord « Ma journée »,
-          puis retrouve le même contrôle (mêmes chiffres, transparence
-          CKP3/CKP5). Ils remplacent les tuiles perso CKP4 et le panneau
+      {/* COCKPIT-CONTRÔLE passe 2 (fondateur, 30/09/2026) — UNE seule page, le MÊME
+          ordre pour tous les rôles (aucune branche par rôle : la commerciale voit
+          exactement ce que voit le responsable, transparence CKP3/CKP5) :
+          « Contrôle du suivi » (repliable, replié par défaut : le bandeau du
+          verdict se lit d'un coup d'œil) juste sous l'en-tête, puis les insights,
+          la chaîne commerciale, la file « À faire aujourd'hui » et la grille.
+          Le contrôle et la file remplacent les tuiles perso CKP4 et le panneau
           « Adhérence » (CKP5) : leur contenu utile est repris par le contrôle
           (à-l'heure, retards, sautées, premier contact, dossiers sans étape). */}
-      {isResponsableOuAdmin ? (
-        <>
-          <div className="mt-4" data-testid="cockpit-controle-suivi">
-            <ControleSuiviPanel />
-          </div>
-          <div className="mt-4" data-testid="cockpit-ma-journee">
-            <RelancesDuJourWidget />
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="mt-4" data-testid="cockpit-ma-journee">
-            <RelancesDuJourWidget />
-          </div>
-          <div className="mt-4" data-testid="cockpit-controle-suivi">
-            <ControleSuiviPanel />
-          </div>
-        </>
-      )}
+      <div className="mt-4" data-testid="cockpit-controle-suivi">
+        <ControleSuiviPanel />
+      </div>
 
       <div className="mt-4">
         <CrmInsightsPanel />
       </div>
 
       {/* PARAM-CADENCE (décision fondateur 25/09/2026) — les trois
-          compteurs de la chaîne appel → visite → devis → suivi, sous les deux
-          blocs du haut. */}
+          compteurs de la chaîne appel → visite → devis → suivi, sous les
+          insights et avant la file du jour. */}
       <div className="mt-4">
         <ChaineCommercialePanel navigate={navigate} />
+      </div>
+
+      <div className="mt-4" data-testid="cockpit-file">
+        <RelancesDuJourWidget />
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">

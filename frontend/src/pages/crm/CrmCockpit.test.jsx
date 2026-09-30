@@ -42,7 +42,8 @@ vi.mock('./dashboard/PortfolioWidget', () => ({
   default: () => <div data-testid="portfolio-widget-stub" />,
 }))
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+// La préférence « détail du contrôle déplié » du navigateur ne doit pas fuir d'un test à l'autre.
+afterEach(() => { cleanup(); vi.clearAllMocks(); window.localStorage.clear() })
 
 function makeStore({ clients = [], leads = [], role = 'admin' } = {}) {
   return configureStore({
@@ -54,8 +55,9 @@ function makeStore({ clients = [], leads = [], role = 'admin' } = {}) {
       // directement) : sans cette tranche minimale, ce smoke test plantait au
       // montage (`Cannot read properties of undefined`). `admin` par défaut — la
       // carte reste inerte tant qu'on ne clique pas « Aperçu » (aucun appel
-      // réseau dans ces trois tests). COCKPIT-CONTRÔLE F4 : le rôle est
-      // paramétrable, l'ORDRE des deux blocs du haut en dépend.
+      // réseau dans ces trois tests). COCKPIT-CONTRÔLE : le rôle est
+      // paramétrable — la carte de placement et l'aide du contrôle en dépendent,
+      // l'ORDRE de la page, jamais.
       auth: (state = { role }) => state,
     },
   })
@@ -157,11 +159,12 @@ describe('PARAM-CADENCE — panneau « Où en est la chaîne » (E6)', () => {
   })
 })
 
-// COCKPIT-CONTRÔLE F4 (fondateur, 30/09/2026) — « Contrôle du suivi » et « Ma
-// journée » sont les DEUX premiers blocs sous l'en-tête, pleine largeur, dans
-// l'ordre du rôle ; l'ancienne vue « Adhérence » et les tuiles perso CKP4 ont
-// quitté la page. Charges utiles = les exemples COMMITTÉS du contrat (PACT10).
-describe('COCKPIT-CONTRÔLE F4 — ordre des blocs selon le rôle', () => {
+// COCKPIT-CONTRÔLE passe 2 (fondateur, 30/09/2026) — UNE seule page, le MÊME ordre
+// pour tous les rôles (aucune branche par rôle) : en-tête, « Contrôle du suivi »
+// (repliable), insights, chaîne commerciale, la file du jour, puis la grille ;
+// l'ancienne vue « Adhérence » et les tuiles perso CKP4 ont quitté la page.
+// Charges utiles = les exemples COMMITTÉS du contrat (PACT10).
+describe('COCKPIT-CONTRÔLE passe 2 — un seul ordre de page pour tous les rôles', () => {
   beforeEach(() => {
     vi.spyOn(crmApi, 'getControleSuivi').mockResolvedValue(reponseContrat('crm', 'controle_suivi'))
     vi.spyOn(crmApi, 'getRelanceEtapesDues').mockResolvedValue(reponseContrat('crm', 'relance_etape_v2'))
@@ -183,40 +186,66 @@ describe('COCKPIT-CONTRÔLE F4 — ordre des blocs selon le rôle', () => {
     await screen.findByTestId('chaine-commerciale-panel')
     return {
       controle: screen.getByTestId('cockpit-controle-suivi'),
-      journee: screen.getByTestId('cockpit-ma-journee'),
+      file: screen.getByTestId('cockpit-file'),
       insights: screen.getByTestId('crm-insights-stub'),
       chaine: screen.getByTestId('chaine-commerciale-panel'),
       dormants: screen.getByTestId('dormant-accounts-stub'),
     }
   }
 
-  it.each(['admin', 'responsable'])('%s : « Contrôle du suivi » PUIS « Ma journée »', async (role) => {
-    const { controle, journee } = await monterEtAttendre(role)
-    expect(precede(controle, journee)).toBe(true)
+  // Les blocs de la page, par leur hook DOM, dans l'ordre où on les rencontre.
+  const BLOCS = [
+    'crm-cockpit-stats', 'cockpit-controle-suivi', 'crm-insights-stub', 'chaine-commerciale-panel',
+    'cockpit-file', 'kpi-relances-panel', 'placement-anciens-leads-card', 'dormant-accounts-stub',
+    'portfolio-widget-stub',
+  ]
+  const ordreDuDocument = () => [...document.querySelectorAll('[data-testid]')]
+    .map((el) => el.getAttribute('data-testid'))
+    .filter((id) => BLOCS.includes(id))
+
+  it.each(['admin', 'responsable', 'normal'])(
+    '%s : le MÊME ordre — en-tête, contrôle, insights, chaîne, file, puis la grille',
+    async (role) => {
+      await monterEtAttendre(role)
+      expect(ordreDuDocument()).toEqual([
+        'crm-cockpit-stats', 'cockpit-controle-suivi', 'crm-insights-stub', 'chaine-commerciale-panel',
+        'cockpit-file', 'kpi-relances-panel',
+        // La carte de placement se gate elle-même aux rôles responsable / admin
+        // (MRY33) : c'est la SEULE différence entre les rôles.
+        ...(role === 'normal' ? [] : ['placement-anciens-leads-card']),
+        'dormant-accounts-stub', 'portfolio-widget-stub',
+      ])
+    },
+  )
+
+  it('le contrôle est là pour tous les rôles — jamais caché —, replié par défaut : le bandeau, pas la frise', async () => {
+    for (const role of ['admin', 'responsable', 'normal']) {
+      const { unmount } = mount({ role })
+      await screen.findByTestId('controle-verdict')
+      expect(within(screen.getByTestId('cockpit-controle-suivi')).getByTestId('controle-suivi-panel'))
+        .toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Voir le détail' })).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByTestId('controle-frise')).not.toBeInTheDocument()
+      unmount()
+    }
   })
 
-  it('un autre rôle (commercial) : « Ma journée » PUIS « Contrôle du suivi » — jamais caché', async () => {
-    const { controle, journee } = await monterEtAttendre('normal')
-    expect(precede(journee, controle)).toBe(true)
-    expect(controle).toBeInTheDocument()
-    expect(within(controle).getByTestId('controle-suivi-panel')).toBeInTheDocument()
-  })
-
-  it.each(['admin', 'normal'])('%s : les deux blocs sont sous l\'en-tête et AU-DESSUS du reste de la page', async (role) => {
+  it.each(['admin', 'normal'])('%s : le contrôle est sous l\'en-tête et AU-DESSUS du reste de la page', async (role) => {
     const {
-      controle, journee, insights, chaine, dormants,
+      controle, file, insights, chaine, dormants,
     } = await monterEtAttendre(role)
     const entete = screen.getByRole('heading', { name: 'CRM' })
-    ;[controle, journee].forEach((bloc) => {
-      expect(precede(entete, bloc)).toBe(true)
-      ;[insights, chaine, dormants].forEach((reste) => expect(precede(bloc, reste)).toBe(true))
-    })
+    expect(precede(entete, controle)).toBe(true)
+    ;[insights, chaine, file, dormants].forEach((reste) => expect(precede(controle, reste)).toBe(true))
+    // La file du jour vient APRÈS la chaîne commerciale et AVANT la grille.
+    expect(precede(chaine, file)).toBe(true)
+    expect(precede(file, dormants)).toBe(true)
   })
 
-  it('pleine largeur : aucun des deux blocs n\'est dans la grille à deux colonnes', async () => {
-    const { controle, journee } = await monterEtAttendre('admin')
+  it('pleine largeur : ni le contrôle ni la file ne sont dans la grille à deux colonnes', async () => {
+    const { controle, file } = await monterEtAttendre('admin')
     expect(controle.closest('.md\\:grid-cols-2')).toBeNull()
-    expect(journee.closest('.md\\:grid-cols-2')).toBeNull()
+    expect(file.closest('.md\\:grid-cols-2')).toBeNull()
     // Le reste de la page (comptes dormants…) reste, lui, dans la grille du bas.
     expect(screen.getByTestId('dormant-accounts-stub').closest('.md\\:grid-cols-2')).not.toBeNull()
   })
