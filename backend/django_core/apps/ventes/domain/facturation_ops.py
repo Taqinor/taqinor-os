@@ -611,36 +611,65 @@ def ajouter_lignes_frais_refactures(*, facture, lignes, user=None):
     if not lignes:
         return []
     produit = _produit_frais_refactures(facture.company)
+    # ERR-QAC-FACTURE-RECALCUL-REMISE — état « figé » lu AVANT l'ajout : une
+    # facture d'échéancier porte des montants figés sans lignes produit, que le
+    # recalcul depuis les seules lignes écraserait.
+    figee = facture.montant_ht is not None
+    frais_ht = Decimal('0')
+    frais_tva = Decimal('0')
     creees = []
     for ligne in lignes:
+        montant_ht = Decimal(ligne.get('montant_ht') or 0)
+        taux = ligne.get('taux_tva')
         creees.append(LigneFacture.objects.create(
             facture=facture,
             produit=produit,
             designation=ligne.get('designation', '') or _PRODUIT_FRAIS_REFACTURES_NOM,
             quantite=Decimal('1'),
-            prix_unitaire=Decimal(ligne.get('montant_ht') or 0),
-            taux_tva=ligne.get('taux_tva'),
+            prix_unitaire=montant_ht,
+            taux_tva=taux,
         ))
-    _recalculer_totaux_facture(facture)
+        frais_ht += montant_ht
+        frais_tva += montant_ht * Decimal(
+            taux if taux is not None else (facture.taux_tva or 0)
+        ) / Decimal('100')
+    _recalculer_totaux_facture(
+        facture, frais_figes=(frais_ht, frais_tva) if figee else None)
     return creees
 
 
-def _recalculer_totaux_facture(facture):
-    """Recalcule les totaux HT/TVA/TTC d'une facture depuis ses lignes.
+def _recalculer_totaux_facture(facture, *, frais_figes=None):
+    """Recalcule les totaux HT/TVA/TTC d'une facture.
 
-    Réutilisé par XACC28 après ajout de lignes de frais refacturés — même
-    logique de sommation que les autres chemins de création de ligne (taux
-    TVA par ligne si renseigné, sinon le taux global de la facture)."""
-    total_ht = Decimal('0')
-    total_tva = Decimal('0')
-    for ligne in facture.lignes.all():
-        ht_ligne = ligne.total_ht
-        taux = ligne.taux_tva if ligne.taux_tva is not None else facture.taux_tva
-        total_ht += ht_ligne
-        total_tva += (ht_ligne * Decimal(taux or 0) / Decimal('100'))
-    facture.montant_ht = total_ht.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    facture.montant_tva = total_tva.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-    facture.montant_ttc = facture.montant_ht + facture.montant_tva
+    Réutilisé par XACC28 après ajout de lignes de frais refacturés.
+
+    ERR-QAC-FACTURE-RECALCUL-REMISE :
+      * facture NON figée → LA chaîne canonique (``TotauxDocumentMixin``,
+        remise globale incluse) sur ses lignes — plus de re-somme brute qui
+        ignorait ``remise_globale`` ;
+      * facture figée (tranche d'échéancier) → ``frais_figes=(ht, tva)`` est
+        AJOUTÉ aux montants figés au lieu de les remplacer par la somme des
+        seules lignes de frais. Sans ``frais_figes``, une facture figée est
+        laissée telle quelle."""
+    q = Decimal('0.01')
+    if facture.montant_ht is not None:
+        if not frais_figes:
+            return facture
+        ht_ajout, tva_ajout = frais_figes
+        tva_base = facture.montant_tva
+        if tva_base is None:
+            tva_base = (facture.montant_ht * Decimal(facture.taux_tva or 0)
+                        / Decimal('100'))
+        facture.montant_ht = (facture.montant_ht + ht_ajout).quantize(
+            q, rounding=ROUND_HALF_UP)
+        facture.montant_tva = (tva_base + tva_ajout).quantize(
+            q, rounding=ROUND_HALF_UP)
+        facture.montant_ttc = facture.montant_ht + facture.montant_tva
+    else:
+        totaux = facture.totaux_affichage
+        facture.montant_ht = totaux['ht_net']
+        facture.montant_ttc = totaux['ttc']
+        facture.montant_tva = facture.montant_ttc - facture.montant_ht
     facture.save(update_fields=['montant_ht', 'montant_tva', 'montant_ttc'])
     return facture
 
