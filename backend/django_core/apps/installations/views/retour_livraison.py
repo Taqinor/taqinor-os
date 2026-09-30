@@ -109,6 +109,13 @@ class RetourLivraisonLigneViewSet(viewsets.ModelViewSet):
         if retour is not None and retour.livraison.company_id != cid:
             raise ValidationError(
                 {'retour': 'Retour inconnu pour cette société.'})
+        # ERR124 — le produit doit aussi appartenir à la société (sinon la
+        # validation du retour créditerait le stock d'une autre société).
+        produit = serializer.validated_data.get('produit')
+        if produit is not None and getattr(
+                produit, 'company_id', None) != cid:
+            raise ValidationError(
+                {'produit': 'Produit inconnu pour cette société.'})
 
     def perform_create(self, serializer):
         # ERR115 — la création doit aussi borner le retour parent à la
