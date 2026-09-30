@@ -1585,9 +1585,33 @@ def _monitoring_vendu():
     return False
 
 
+def _struct_row_legacy(s, colspan):
+    """QJR619 — ligne de STRUCTURE (section = intertitre pleine largeur, note =
+    ligne en italique), sans prix — même rendu que le une-page (XSAL14)."""
+    txt = s.get("texte", "") or ""
+    if s.get("type") == "note":
+        return (f'<tr><td colspan="{colspan}" style="font-style:italic;'
+                f'color:{CG4};padding:3px 6px;">{txt}</td></tr>')
+    return (f'<tr><td colspan="{colspan}" style="background:{CG1};'
+            f'font-weight:800;color:{CN};text-transform:uppercase;'
+            f'letter-spacing:.5px;padding:3px 6px;border-top:1px solid {CA};">'
+            f'{txt}</td></tr>')
+
+
 def equip_rows(items, totaux, hi_bat=False, ancres=None):
     rows = ""
-    for i, it in enumerate(items):
+    # QJR619 — sections / notes intercalées à leur ``ordre`` (QJR617) ; sans
+    # structure, la boucle d'hier à l'identique.
+    if LIGNES_STRUCTURE:
+        _seq = sequence_affichage(items, LIGNES_STRUCTURE)
+    else:
+        _seq = [("item", it) for it in items]
+    i = -1
+    for _kind, it in _seq:
+        if _kind == "struct":
+            rows += _struct_row_legacy(it, 7)
+            continue
+        i += 1
         des = it["designation"]; qty = it["quantite"]
         pu_ht = _item_pu_ht(it)
         mar = (it.get("marque") or "").strip()
@@ -2150,6 +2174,11 @@ def page2(sans_items, img_roi, img_mon):
         max_rows = len(sans_items)
     else:
         max_rows = max(len(sans_items), len(AVEC_ITEMS))
+    # QJR619 — les lignes de structure et le bloc d'options occupent aussi
+    # des rangées : elles entrent dans la mise à l'échelle (0 sans elles).
+    max_rows += len(LIGNES_STRUCTURE or [])
+    if OPTIONS_PROPOSEES:
+        max_rows += 1 + len(OPTIONS_PROPOSEES)
     scale = 1.0 if max_rows <= 11 else max(0.62, 11.0 / max_rows)
     if scale < 1.0:
         tbl_font = f"{6.5 * scale:.2f}pt"
@@ -2208,6 +2237,26 @@ def page2(sans_items, img_roi, img_mon):
     _nr = _note_remise_par_ligne()
     _note_remise_p2 = f" &#183; {_nr}" if _nr else ""
 
+    # QJR619 — « Options proposées (non incluses dans le total) » : le SEUL
+    # ``total_ttc`` du builder (supplément canonique, QJR616). Sans option ⇒
+    # '' collé au bloc suivant (octet-identique).
+    _options_p2 = ""
+    if OPTIONS_PROPOSEES:
+        _orows = ""
+        for _o in OPTIONS_PROPOSEES:
+            _oq = float(_o.get("quantite", 0) or 0)
+            _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
+            _orows += (
+                f'<tr><td class="tl">{_o.get("designation", "")}</td>'
+                f'<td class="tc">{_oq_s}</td>'
+                f'<td class="tr">{_fmt2(float(_o.get("total_ttc", 0) or 0))}'
+                f'&#160;MAD TTC</td></tr>')
+        _options_p2 = (
+            f'<div style="margin-top:5px;font-size:6.5pt;font-weight:800;'
+            f'color:{CA};text-transform:uppercase;letter-spacing:.6px;">'
+            f'Options propos&#233;es (non incluses dans le total)</div>'
+            f'<table class="eq" style="border:1px dashed {CA};">{_orows}</table>')
+
     return f"""
 <div class="page">
   {tbl_css}
@@ -2245,7 +2294,7 @@ def page2(sans_items, img_roi, img_mon):
         </table>
       </div>
 
-    </div>
+    </div>{_options_p2}
     <div style="margin-top:4px;font-size:6pt;color:{CG4};font-style:italic;">
       * {TVA_NOTE}{_note_remise_p2}
     </div>

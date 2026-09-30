@@ -12,6 +12,7 @@ from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
+from ..sequence import sequence_affichage
 
 
 def _num(v, default=0.0):
@@ -46,8 +47,23 @@ def build(ctx):
     f_sans = fonts["sans"]
 
     items = [it for it in (d.get("all_items") or []) if _num(it.get("quantite")) > 0]
+    # QJR619 — sections et notes intercalées à leur ``ordre`` par la MÊME
+    # fonction pure que le une-page (QJR617). Sans structure ⇒ items tels quels.
+    _structure = d.get("lignes_structure") or []
+    seq = (sequence_affichage(items, _structure) if _structure
+           else [("item", it) for it in items])
     rows = ""
-    for it in items:
+    for kind, it in seq:
+        if kind == "struct":
+            txt = it.get("texte", "") or ""
+            if it.get("type") == "note":
+                rows += (f'<tr><td class="c2-d" colspan="5" '
+                         f'style="font-style:italic;color:{muted};">{txt}</td></tr>')
+            else:
+                rows += (f'<tr><td class="c2-d" colspan="5" '
+                         f'style="font-weight:700;color:{navy};text-transform:uppercase;'
+                         f'letter-spacing:.5px;background:{wash};">{txt}</td></tr>')
+            continue
         qte = _num(it.get("quantite"))
         # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité : la
         # colonne s'additionne au « Sous-total HT » ; aucun calcul TTC par ligne.
@@ -94,6 +110,23 @@ def build(ctx):
             'surplus injecté (loi 82-21, net des frais réseau, plafond 20 % de la '
             'production). <span class="c2-inj-m">Tarif ANRE 03/2026-02/2027, '
             'plafond en révision.</span></div>')
+
+    # QJR619 — « Options proposées (non incluses) » : le SEUL ``total_ttc`` du
+    # builder (supplément canonique, QJR616), aucun recalcul. Sans option ⇒ ''.
+    options_html = ""
+    _opts = d.get("options_proposees") or []
+    if _opts:
+        _orows = ""
+        for _o in _opts:
+            _oq = _num(_o.get("quantite"))
+            _oq_txt = f"{_oq:g}× " if _oq and _oq != 1 else ""
+            _orows += (
+                f'<tr><td class="c2-d">{_oq_txt}{_o.get("designation", "")}</td>'
+                f'<td class="c2-t">{fmt_mad(_num(_o.get("total_ttc")))} MAD TTC</td></tr>')
+        options_html = (
+            '<div style="margin-top:12px;"><div class="c2-kicker">Options propos&eacute;es '
+            '(non incluses dans le total)</div>'
+            f'<table class="c2-tbl">{_orows}</table></div>')
 
     block = categories.category_block(d.get("com_category"), d.get("etude"), C, fmt)
 
@@ -168,7 +201,7 @@ def build(ctx):
     </div>
   </div>
 
-  {injection_html}
+  {options_html}{injection_html}
   {block}
 </div>
 """
