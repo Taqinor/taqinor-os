@@ -152,8 +152,13 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
                          "ajoutez-la sur l'autre devis."})
 
     def perform_create(self, serializer):
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
         self._check_tenant(serializer)
         self._check_devis_not_frozen(serializer.validated_data.get('devis'))
+        # QJR518 — état vu par le client capturé AVANT (envoyé seulement).
+        avant_geste = debut_de_geste_devis(
+            serializer.validated_data.get('devis'), self.request.user)
         serializer.save()
         # CJ2b / L-1V — une ligne AJOUTÉE peut changer la puissance kWc
         # résidentielle : les QUATRE études du devis (bloc horaire,
@@ -166,24 +171,37 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(serializer.instance.devis)
         rafraichir_etudes_du_devis(serializer.instance.devis)
+        fin_de_geste_devis(serializer.instance.devis, self.request.user,
+                           avant=avant_geste, objet='ligne')
 
     def perform_update(self, serializer):
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
         self._check_tenant(serializer)
         self._check_devis_inchange(serializer)
         self._check_devis_not_frozen(serializer.instance.devis)
+        avant_geste = debut_de_geste_devis(
+            serializer.instance.devis, self.request.user)
         serializer.save()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
         from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(serializer.instance.devis)
         rafraichir_etudes_du_devis(serializer.instance.devis)
+        fin_de_geste_devis(serializer.instance.devis, self.request.user,
+                           avant=avant_geste, objet='ligne')
 
     def perform_destroy(self, instance):
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
         self._check_devis_not_frozen(instance.devis)
         devis = instance.devis
+        avant_geste = debut_de_geste_devis(devis, self.request.user)
         instance.delete()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
         from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(devis)
         rafraichir_etudes_du_devis(devis)
+        fin_de_geste_devis(devis, self.request.user, avant=avant_geste,
+                           objet='ligne')

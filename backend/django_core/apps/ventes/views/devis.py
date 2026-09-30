@@ -1090,9 +1090,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             with transaction.atomic():
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
                 # qu'hier : un échec préserve les lignes d'origine.
+                # QJR518 — ``user`` : l'auteur d'une correction après envoi
+                # (chatter + instantané), jamais lu du corps.
                 appliquer(devis, IntentionDevis(
                     origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
-                    company=devis.company, composition=lignes_in))
+                    company=devis.company, user=request.user,
+                    composition=lignes_in))
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -2679,6 +2682,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         deux surcharges survivent.
         """
         from ..domain import overrides as registre_overrides
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
         from ..serializers import OverridesSerializer
 
         devis = self.get_object()
@@ -2698,10 +2703,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 return Response(
                     {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
                     status=status.HTTP_400_BAD_REQUEST)
+            avant_geste = debut_de_geste_devis(devis, request.user)
             with transaction.atomic():
                 devis = registre_overrides.relire_verrouille(devis)
                 registre_overrides.ecrire_colonne(
                     devis, registre_overrides.regenerer(devis, chemin))
+            fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                               objet='surcharges')
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
             # valeur du moteur (avant, il en disparaissait : « retour à
             # l'automatique » se soldait par un trou).
@@ -2710,6 +2718,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        avant_geste = debut_de_geste_devis(devis, request.user)
         try:
             with transaction.atomic():
                 devis = registre_overrides.relire_verrouille(devis)
@@ -2719,6 +2728,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='surcharges')
         return Response(self._overrides_reponse(devis))
 
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
@@ -2774,6 +2785,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
                            'est attendu.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # QJR518 — l'option recommandée est IMPRIMÉE : sur un envoyé, sa
+        # correction est tracée (instantané avant, trace après).
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avant_geste = debut_de_geste_devis(devis, request.user)
         try:
             bloc = ecrire(devis, proprietaire=ECRAN, **corps)
         except ValueError as exc:
@@ -2793,6 +2809,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 rafraichir_etudes_du_devis(devis)
             except Exception:  # noqa: BLE001
                 pass
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='étude')
         # La réponse reste LE BLOC FUSIONNÉ — ce que l'appelant vient de poser,
         # plus ce qui était déjà là. Délibéré : c'est le contrat de cet endpoint
         # (`contract_samples`), et y injecter les blocs dérivés fraîchement
@@ -2977,6 +2995,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'remise_globale', serializer.instance.remise_globale)
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
+        # QJR518 — état vu par le client capturé AVANT l'écriture (ENVOYÉ
+        # seulement) ; trace posée en fin de geste si l'en-tête ou la note
+        # visibles ont changé.
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avant_geste = debut_de_geste_devis(
+            serializer.instance, self.request.user)
         super().perform_update(serializer)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
@@ -3017,6 +3042,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         appliquer(serializer.instance, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
             company=company, force_etudes=True))
+        fin_de_geste_devis(serializer.instance, self.request.user,
+                           avant=avant_geste, objet='en-tête')
 
     @action(
         detail=True,

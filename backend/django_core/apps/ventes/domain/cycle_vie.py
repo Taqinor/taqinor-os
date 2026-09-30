@@ -1617,18 +1617,26 @@ def configuration_devis_contenu(devis):
     }
 
 
-def capturer_configuration_devis(devis, *, user=None):
+def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     """NTCPQ20 — Enregistre un instantané de configuration si le devis est
     BROUILLON et que la configuration a RÉELLEMENT changé.
 
     No-op (renvoie ``None``) hors brouillon ou quand le contenu est identique
     au dernier instantané — un simple re-save ne pollue pas l'historique.
-    Ne lève jamais : l'historique ne doit jamais bloquer une écriture."""
+    Ne lève jamais : l'historique ne doit jamais bloquer une écriture.
+
+    QJR518 — ``avant_correction=True`` capture AUSSI un devis ENVOYÉ :
+    appelé AVANT la première écriture d'une correction après envoi
+    (``domain/modifiabilite.debut_de_geste_devis``), l'instantané conserve
+    l'état que le client a vu. Le signal de ligne (post_save) ne le passe
+    jamais : un envoyé n'est pas historisé ligne par ligne."""
     from apps.ventes.models import ConfigurationDevisSnapshot, Devis
 
     if devis is None or devis.pk is None:
         return None
-    if devis.statut != Devis.Statut.BROUILLON:
+    statuts = ((Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+               if avant_correction else (Devis.Statut.BROUILLON,))
+    if devis.statut not in statuts:
         return None
     try:
         contenu = configuration_devis_contenu(devis)
