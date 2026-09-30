@@ -122,6 +122,43 @@ MESSAGE_ISSUE_APPEL_OBLIGATOIRE = (
     "Issue de l'appel obligatoire : Client joint, Pas de réponse, "
     'À rappeler le… ou Refus. C\'est elle qui programme le prochain geste.')
 
+#: SUIVI E8 (30/09/2026) — « Fait », « Sauter » et « Reporter » sur une
+#: touche DÉJÀ traitée (deux onglets, double clic, liste périmée) rejouaient
+#: toute la suite du moteur sur une touche close. Refus nommé, sous le champ
+#: ``etape`` (même esprit que ``refus_reponse_touche`` / ``refus_piece_recue``).
+MESSAGE_ETAPE_DEJA_TRAITEE = (
+    'Cette étape est déjà traitée — rechargez la liste.')
+
+#: SUIVI E2 (30/09/2026) — « refus » n'est pas une réponse de « Décider la
+#: suite » : c'est la décision elle-même qui se prend ici.
+MESSAGE_REFUS_SUR_DECIDER_SUITE = (
+    '« Décider la suite » : choisissez « Perdu — clore le dossier » (avec '
+    'son motif) ou une relance ultérieure.')
+
+
+def _prochaine_touche_publique(etape):
+    """SUIVI E9 (30/09/2026) — la forme PUBLIQUE de l'étape qu'un « Fait »
+    annonce (``prochaine_touche`` des réponses de ``fait``, du report d'une
+    étape de filet et de ``piece-recue``), ou ``None``.
+
+    Elle ne portait que ``{due_at, due_date, canal}`` : l'écran annonçait
+    « Prochain appel programmé » pour « Préparer et envoyer le devis ». Elle
+    NOMME désormais l'étape (ADDITIF) : ``libelle`` (celui de l'étape, tel que
+    la société l'a réglé) et ``cle`` (``cadence_config.cle_de`` : la clé
+    moteur, retrouvée aussi pour une étape posée avant la clé ; ``''`` pour un
+    barreau du protocole). Fonction PURE, aucune requête."""
+    if etape is None:
+        return None
+    from .cadence_config import cle_de
+
+    return {
+        'due_at': etape.due_at.isoformat() if etape.due_at else None,
+        'due_date': etape.due_date.isoformat() if etape.due_date else None,
+        'canal': etape.canal,
+        'libelle': etape.libelle or '',
+        'cle': cle_de(etape),
+    }
+
 
 @contextmanager
 def _save_borne_aux_champs(instance, champs):
@@ -1082,15 +1119,27 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                     new_lead.pk, exc_info=True)
         # MRY9 (c)(d) — deux bascules ARRÊTENT les relances. Le passage
         # d'étape est déjà couvert par le receiver `lead_stage_changed`.
-        from .services import arreter_cadence
+        # SUIVI E21 (30/09/2026) — et le rendez-vous de visite EN ATTENTE
+        # s'annule avec elles (best-effort, note au chatter quand un
+        # rendez-vous est réellement annulé) : le technicien ne se déplace
+        # pas chez un client perdu ou qui ne veut plus être contacté.
+        from .services import (
+            CAUSE_RDV_NE_PLUS_CONTACTER, annuler_rendez_vous_sur_arret,
+            arreter_cadence, cause_rdv_perdu)
         try:
             if not old.perdu and new_lead.perdu:
                 arreter_cadence(
                     new_lead, user=self.request.user,
                     motif=(new_lead.motif_perte or 'lead perdu'))
+                annuler_rendez_vous_sur_arret(
+                    new_lead, self.request.user,
+                    cause=cause_rdv_perdu(new_lead.motif_perte))
             if not old.ne_plus_contacter and new_lead.ne_plus_contacter:
                 arreter_cadence(new_lead, user=self.request.user,
                                 motif='ne plus contacter')
+                annuler_rendez_vous_sur_arret(
+                    new_lead, self.request.user,
+                    cause=CAUSE_RDV_NE_PLUS_CONTACTER)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',
@@ -1726,10 +1775,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # CAD55 — le devis que le suivi « après devis » citera. Un plan
         # après-devis déjà OUVERT est renvoyé tel quel (idempotence MRY5,
         # inchangée) : aucune question, et jamais un second plan à côté.
+        # SUIVI E1 (30/09/2026) — un plan ouvert = un BARREAU du protocole :
+        # une étape de visite ouverte (même cadence) ne l'est pas.
+        from .services import q_visite
         devis = None
         if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
                 cadence=Cadence.APRES_DEVIS,
-                statut=RelanceEtape.Statut.A_FAIRE).exists():
+                statut=RelanceEtape.Statut.A_FAIRE,
+        ).exclude(q_visite()).exists():
             envoyes = devis_envoyes_pour_relance(lead)
             devis_id = request.data.get('devis')
             if devis_id not in (None, ''):
@@ -2409,25 +2462,36 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     @extend_schema(responses=inline_serializer('CrmLeadVisitePlanifiee', {
         'visite': serializers.DictField(),
+        'prochaine_touche': serializers.DictField(allow_null=True),
     }))
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):
         """POSE un rendez-vous de visite technique sur ce lead.
 
-        Corps : ``{date_prevue: 'AAAA-MM-JJ', commercial?: <id>, notes?}``.
-        Chaque refus NOMME son champ (règle fondateur 08/09/2026) : jamais un
-        « non enregistré » générique.
+        Corps : ``{date_prevue: 'AAAA-MM-JJ', commercial?: <id>, notes?,
+        replanifier?, etape?, note_etape?}``. Chaque refus NOMME son champ
+        (règle fondateur 08/09/2026) : jamais un « non enregistré » générique.
 
         L'écriture elle-même vit dans ``apps.visites.services.planifier_visite``
         — la visite appartient à cette app, le CRM ne fait que la lui demander.
         Les effets de bord (cadence recalée, chatter, notification à l'assigné)
         naissent de l'événement ``visite_planifiee``, pas d'ici.
+
+        SUIVI E18 (30/09/2026) — la planification CLÔT la touche qui l'a
+        demandée : ``etape`` (une touche de CE lead) et ``note_etape`` ; après
+        la planification réussie, la touche encore à faire est close
+        « visite acceptée » (``services.clore_etape_apres_planification``).
+        ``replanifier`` DÉPLACE le rendez-vous en attente (SUIVI E5). La
+        réponse porte aussi ``prochaine_touche`` (forme E9, ou ``null``).
         """
         from django.utils.dateparse import parse_date
 
         from apps.visites.selectors import ligne_visite_pour_lead
         from apps.visites.services import planifier_visite
+
+        from .services import (
+            _prochaine_touche_a_faire, clore_etape_apres_planification)
 
         lead = self.get_object()
         brut = (request.data.get('date_prevue') or '').strip()
@@ -2454,12 +2518,33 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                     'société.']},
                     status=status.HTTP_400_BAD_REQUEST)
 
+        # SUIVI E18 — la touche qui a demandé la planification : une touche
+        # de CE lead (donc de la société de l'appelant, ``get_object`` étant
+        # borné), vérifiée AVANT toute écriture.
+        etape = None
+        brut_etape = request.data.get('etape')
+        if brut_etape not in (None, '', 0):
+            if str(brut_etape).isdigit():
+                etape = lead.relance_etapes.filter(pk=int(brut_etape)).first()
+            if etape is None:
+                return Response(
+                    {'etape': ['Étape de relance inconnue sur ce lead.']},
+                    status=status.HTTP_400_BAD_REQUEST)
+        replanifier = request.data.get('replanifier') in (
+            True, 'true', 'True', '1', 1)
+
         visite, erreurs = planifier_visite(
             lead, request.user, date_prevue, commercial=commercial,
-            notes=(request.data.get('notes') or ''))
+            notes=(request.data.get('notes') or ''), replanifier=replanifier)
         if erreurs:
             return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'visite': ligne_visite_pour_lead(visite)},
+        if etape is not None:
+            clore_etape_apres_planification(
+                etape, request.user,
+                note=(request.data.get('note_etape') or ''))
+        return Response({'visite': ligne_visite_pour_lead(visite),
+                         'prochaine_touche': _prochaine_touche_publique(
+                             _prochaine_touche_a_faire(lead))},
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=inline_serializer('CrmLeadLocataire', {
@@ -3498,6 +3583,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
     def _marquer(self, request, statut):
         etape = self.get_object()
+        if etape.statut != RelanceEtape.Statut.A_FAIRE:
+            # SUIVI E8 — jamais un second « Fait » sur une touche close.
+            return Response(
+                {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
         note = (request.data.get('note') or '').strip()
         outcome = (request.data.get('outcome') or '').strip()
         body = (request.data.get('body') or '').strip()
@@ -3506,6 +3596,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 k for k, _ in _LeadActivity.OUTCOMES}:
             return Response(
                 {'outcome': 'Issue inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # SUIVI E2 (30/09/2026) — « refus » sur « Décider la suite » re-posait
+        # la même étape à l'infini (le filet du récepteur MRY9 ne connaît pas
+        # la clé de la touche close : la ceinture anti-tapis-roulant ne
+        # jouait pas). La décision se prend par « Perdu » (avec son motif) ou
+        # par une relance ultérieure.
+        from .cadence_config import CLE_DECIDER_SUITE, est_etape
+        if outcome == 'refuse' and est_etape(etape, CLE_DECIDER_SUITE):
+            return Response(
+                {'erreurs': {'outcome': MESSAGE_REFUS_SUR_DECIDER_SUITE}},
                 status=status.HTTP_400_BAD_REQUEST)
         # CAD10 — le motif de refus, FACULTATIF : seulement avec l'issue
         # « refus », seulement un motif de la liste paramétrée, et journalisé
@@ -3579,10 +3679,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # eu lieu, exiger « Joint / Non joint » demanderait l'issue d'un appel
         # qui n'existe pas. L'issue reste obligatoire sur un appel réellement
         # passé — c'est elle qui alimente l'adhérence CKP3.
+        # SUIVI E13 (30/09/2026) — EXCEPTION « Préparer le devis modifié » :
+        # c'est une TÂCHE (comme l'étape devis), son « Fait » sans issue vaut
+        # « devis modifié envoyé ».
+        from .cadence_config import CLE_DEVIS_MODIFIE
         if (statut == RelanceEtape.Statut.FAIT
                 and etape.canal == RelanceEtape.Canal.APPEL
                 and etape.cadence != 'generique'
                 and not outcome
+                and not est_etape(etape, CLE_DEVIS_MODIFIE)
                 and not _message_ouvert_sur_touche(etape)):
             return Response(
                 {'erreurs': {'outcome': MESSAGE_ISSUE_APPEL_OBLIGATOIRE}},
@@ -3604,8 +3709,69 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             if refus:
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (est_etape_de_filet, marquer_etape_relance,
-                               reporter_prochaine_touche)
+        from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
+        from .services import (est_derniere_touche_de_contact,
+                               est_derniere_touche_du_suivi,
+                               est_dernier_reveil, est_etape_de_filet,
+                               est_etape_de_visite, marquer_etape_relance,
+                               repondre_planifier_sans_reponse,
+                               reporter_prochaine_touche,
+                               repondre_rappel_convenu)
+        # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse :
+        # l'appel compte et l'étape est REPOSÉE pour demain — jamais
+        # « Préparer et envoyer le devis » (le client a accepté la visite).
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'non_joint'
+                and motif_junk is None and est_etape(etape, CLE_PLANIFIER)):
+            etape, _nouvelle = repondre_planifier_sans_reponse(
+                etape, request.user, note=note, body=body)
+            if quand is not None:
+                reporter_prochaine_touche(etape.lead, request.user, quand)
+            return self._reponse_fait(etape)
+        # SUIVI E10 (30/09/2026) — « Créneau convenu le… » sur l'étape
+        # « Message — proposer un créneau pour l'appel » : le créneau convenu
+        # devient un APPEL. L'étape message est close et « Rappeler le
+        # client — rappel convenu » est posée à la date ET à l'heure
+        # convenues (avant, l'étape message était déplacée telle quelle).
+        # SUIVI I7 (30/09/2026) — sur les trois branches ci-dessous comme
+        # partout : ``prochaine_touche`` est TOUJOURS la plus proche touche
+        # OUVERTE du lead (``_reponse_fait``), jamais l'étape que la branche
+        # vient de poser ou de déplacer — une autre touche peut tomber avant.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None
+                and est_etape(etape, CLE_MESSAGE_CRENEAU)):
+            etape, _rappel = repondre_rappel_convenu(
+                etape, request.user, quand, note=note, body=body)
+            return self._reponse_fait(etape)
+        # SUIVI E17 (30/09/2026) — « À rappeler le… » sur le DERNIER réveil :
+        # aucun réveil suivant ne pouvait porter la date, elle était perdue
+        # (le dossier restait au Froid sans rien). Le dossier sort du Froid et
+        # « Rappeler le client — rappel convenu » est posée à la date et à
+        # l'heure choisies.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None and est_dernier_reveil(etape)):
+            etape, _rappel = repondre_rappel_convenu(
+                etape, request.user, quand, note=note, body=body,
+                sortir_du_froid=True)
+            return self._reponse_fait(etape)
+        # SUIVI E23 (décision fondateur du 30/09/2026) — « À rappeler le… »
+        # sur la DERNIÈRE touche de la prise de contact (appel ou message) :
+        # aucune touche suivante ne peut porter la date, et le filet posait
+        # « Préparer et envoyer le devis » à la date choisie. La touche est
+        # close « à rappeler » et l'APPEL « Rappeler le client — rappel
+        # convenu » est posé à la date ET à l'heure convenues, recalées sur
+        # la fenêtre d'appel ; le dossier garde son étape.
+        # SUIVI E24 — la « deuxième affaire » (un client acquis qui revient,
+        # rangée par la table sous les mêmes types) suit la même règle
+        # (``est_derniere_touche_de_contact`` lit les deux cadences).
+        # SUIVI E25 — la DERNIÈRE touche du suivi de proposition aussi : plus
+        # jamais « Préparer et envoyer le devis » (déjà parti) à la date.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None
+                and (est_derniere_touche_de_contact(etape)
+                     or est_derniere_touche_du_suivi(etape))):
+            etape, _rappel = repondre_rappel_convenu(
+                etape, request.user, quand, note=note, body=body)
+            return self._reponse_fait(etape)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
         # la consomme pas. L'écran promet « L'étape est déplacée à la date
         # choisie » ; la clore rendait la main au filet, qui posait une AUTRE
@@ -3615,8 +3781,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # semaine prochaine » n'a rien arbitré. Même chemin que le bouton
         # « Reporter » (action `reporter` plus bas) : la touche garde son
         # identité, sa cadence et son libellé.
+        # SUIVI E3 (30/09/2026) — même branche pour une étape de VISITE
+        # (planifier, débrief, devis modifié) : close, elle laissait le filet
+        # poser « Préparer et envoyer le devis » à sa place, et c'était CETTE
+        # étape-là qui était déplacée — la visite à planifier ou le débrief
+        # disparaissait de la file.
         if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
-                and quand is not None and est_etape_de_filet(etape)):
+                and quand is not None
+                and (est_etape_de_filet(etape)
+                     or est_etape_de_visite(etape))):
             reportee = reporter_prochaine_touche(
                 etape.lead, request.user, quand, etape=etape)
             if reportee is not None:
@@ -3624,14 +3797,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 if note:
                     etape.note = note
                     etape.save(update_fields=['note'])
-                data = self.get_serializer(etape).data
-                data['prochaine_touche'] = {
-                    'due_at': (etape.due_at.isoformat()
-                               if etape.due_at else None),
-                    'due_date': etape.due_date.isoformat(),
-                    'canal': etape.canal,
-                }
-                return Response(data)
+                # SUIVI I7 — la plus proche touche ouverte du lead, pas
+                # forcément l'étape déplacée.
+                return self._reponse_fait(etape)
         # CAD11 — un lead qu'on marque perdu n'a pas de suite : ni barreau
         # suivant, ni clôture au froid avec réveils (``suite=False``).
         etape = marquer_etape_relance(
@@ -3658,17 +3826,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         technique convenue » (cadence du suivi), « joint » pose l'étape devis
         (cadence générique). Lue par cadence, la réponse annonçait « rien »
         alors qu'une étape du jour attendait. C'est désormais la MÊME lecture
-        que ``Lead.relance_date`` (``services._prochaine_touche_a_faire``)."""
+        que ``Lead.relance_date`` (``services._prochaine_touche_a_faire``).
+
+        SUIVI E9 — elle NOMME l'étape (``libelle``, ``cle``) :
+        ``_prochaine_touche_publique``."""
         from .services import _prochaine_touche_a_faire
 
         data = self.get_serializer(etape).data
-        suivante = _prochaine_touche_a_faire(etape.lead)
-        data['prochaine_touche'] = (
-            {'due_at': (suivante.due_at.isoformat()
-                        if suivante.due_at else None),
-             'due_date': suivante.due_date.isoformat(),
-             'canal': suivante.canal}
-            if suivante is not None else None)
+        data['prochaine_touche'] = _prochaine_touche_publique(
+            _prochaine_touche_a_faire(etape.lead))
         return Response(data)
 
     def _repondre(self, request, reponse):
@@ -3680,13 +3846,22 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         réponse et dit où elle vaut."""
         from .services import (
             REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-            REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER,
-            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_reponse_touche,
+            REPONSE_DEVIS_MODIFIE, REPONSE_JOINT_TELEPHONE,
+            REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU, REPONSE_PLUS_TARD,
+            REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE,
+            refus_motif_perte, refus_reponse_touche,
             repondre_decision_a_plusieurs, repondre_devis_modifie,
-            repondre_ne_plus_contacter, repondre_plus_tard,
-            repondre_question_prix, reponse_touche)
+            repondre_joint_telephone, repondre_ne_plus_contacter,
+            repondre_perdu, repondre_plus_tard, repondre_question_prix,
+            repondre_visite_abandonnee, reponse_touche)
 
         etape = self.get_object()
+        if etape.statut != RelanceEtape.Statut.A_FAIRE:
+            # SUIVI E8 — « déjà traitée » PRIME sur tout autre refus, sous le
+            # même champ que pour « Fait » / « Sauter » / « Reporter ».
+            return Response(
+                {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
         refus = refus_reponse_touche(etape, reponse)
         if refus:
             return Response({'erreurs': {'reponse': refus}},
@@ -3694,6 +3869,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         spec = reponse_touche(reponse)
         note = (request.data.get('note') or '').strip()
         body = (request.data.get('body') or '').strip()
+        # SUIVI E2 — « Perdu » exige un motif ACTIF de la société : absent ou
+        # hors liste, le refus NOMME le champ, avant toute écriture.
+        motif_perte = None
+        if spec.get('motif_perte_requis'):
+            motif_perte, refus = refus_motif_perte(
+                etape.company, request.data.get('motif_perte'))
+            if refus:
+                return Response({'erreurs': {'motif_perte': refus}},
+                                status=status.HTTP_400_BAD_REQUEST)
         # La date convenue avec le client (« Rappeler le »), quand la réponse
         # en exige une — même lecture, mêmes refus nommés que « À rappeler
         # le… » (format, puis CAD27 : jamais dans le passé).
@@ -3734,6 +3918,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                          REPONSE_DECISION_PROPRIETAIRE):
             etape = repondre_decision_a_plusieurs(
                 etape, request.user, reponse, note=note, body=body)
+        elif reponse == REPONSE_PERDU:
+            etape = repondre_perdu(
+                etape, request.user, motif_perte, note=note, body=body)
+        elif reponse == REPONSE_VISITE_ABANDONNEE:
+            etape = repondre_visite_abandonnee(
+                etape, request.user, note=note, body=body)
+        elif reponse == REPONSE_JOINT_TELEPHONE:
+            # SUIVI E16 — un APPEL abouti sur une touche message.
+            etape = repondre_joint_telephone(
+                etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])
@@ -3995,18 +4189,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 content_type=ContentType.objects.get(
                     app_label='crm', model='lead'),
                 object_id=etape.lead_id, uploaded_by=request.user, **meta)
-        etape, etape_devis = enregistrer_piece_recue(
+        etape, _etape_devis = enregistrer_piece_recue(
             etape, request.user, type_piece=type_piece,
             attachment=attachment,
             note=(request.data.get('note') or '').strip())
-        data = self.get_serializer(etape).data
-        data['prochaine_touche'] = (
-            {'due_at': (etape_devis.due_at.isoformat()
-                        if etape_devis.due_at else None),
-             'due_date': etape_devis.due_date.isoformat(),
-             'canal': etape_devis.canal}
-            if etape_devis is not None else None)
-        return Response(data)
+        # SUIVI I7 — ``prochaine_touche`` = la plus proche touche OUVERTE du
+        # lead (d'ordinaire l'étape « préparer le devis » posée ici).
+        return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])
     def reporter(self, request, pk=None):
@@ -4030,6 +4219,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     'jusqu’au…).')}},
                 status=status.HTTP_400_BAD_REQUEST)
         etape = self.get_object()
+        if etape.statut != RelanceEtape.Statut.A_FAIRE:
+            # SUIVI E8 — reporter une touche close déplaçait tout le reste
+            # du plan (et son ancre) depuis une touche qui n'est plus la
+            # prochaine.
+            return Response(
+                {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
         brut = (request.data.get('due_at') or '').strip()
         quand = None
         if brut:

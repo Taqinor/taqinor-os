@@ -7,11 +7,24 @@ envoyée à Meryem ET au fondateur à chaque nouvelle version — automatiquemen
 au déploiement, sans jamais un geste manuel du fondateur.
 
 Source des fichiers : ``docs/meryem/manifest.json`` (une LISTE d'entrées
-``{fichier, titre, version, description}``) + les PDF eux-mêmes, tous à côté
-du manifeste (``MERYEM_DOCS_DIR``, voir plus bas). ``version``/``description``
-viennent du manifeste ; c'est le SHA-256 du contenu du fichier qui décide si
-une NOUVELLE VERSION doit être créée — jamais l'étiquette de version, qui
-n'est qu'informative.
+``{fichier, titre, version, description}``, plus deux champs OPTIONNELS
+``cabinet`` et ``dossier`` — voir « Destination » ci-dessous) + les PDF
+eux-mêmes, tous à côté du manifeste (``MERYEM_DOCS_DIR``, voir plus bas).
+``version``/``description`` viennent du manifeste ; c'est le SHA-256 du
+contenu du fichier qui décide si une NOUVELLE VERSION doit être créée —
+jamais l'étiquette de version, qui n'est qu'informative.
+
+Destination (30/09/2026) — deux cas, décidés PAR ENTRÉE :
+  * sans ``cabinet`` ni ``dossier`` : comportement historique, inchangé
+    (« Documents internes » -> « Commercial » -> « Guides de Meryem ») ;
+  * avec les DEUX : dossier RACINE ``dossier`` du cabinet ``cabinet`` (ex.
+    « Documentation » -> « Guides », là où ``seed_guide_visite`` dépose déjà le
+    guide de la visite). Un document déjà présent dans ce dossier — retrouvé
+    par son nom, c'est-à-dire le ``titre`` du manifeste — reçoit une NOUVELLE
+    VERSION au lieu d'un doublon. Un seul des deux champs = l'entrée échoue
+    (les autres entrées sont traitées quand même).
+Les ACL de lecture et la notification valent pour chaque dossier de
+destination, avec le même code.
 
 Idempotent :
   * Cabinet « Documents internes » -> Dossier « Commercial » -> Dossier
@@ -20,13 +33,15 @@ Idempotent :
     niveaux — mêmes helpers que ``migrate_attachments_to_ged`` — puis un
     troisième niveau posé avec le même patron filter+create, jamais
     ``get_or_create`` : ``Folder`` ne porte aucune contrainte unique sur
-    (company, cabinet, parent, nom)) ;
+    (company, cabinet, parent, nom)) ; la destination ``cabinet``/``dossier``
+    d'une entrée passe par ces mêmes deux helpers (dossier racine) ;
   * le fichier est stocké via ``apps.records.storage.store_attachment``
     (EXACTEMENT le même pipeline MinIO que ``televerser``/
     ``deposer_photos_assemblees`` — jamais un second chemin de stockage),
     avec ``company=`` posé (SCA42 : clé préfixée par société) ;
-  * ACL de lecture (``AclGed``, ``herite=True``) posée une fois sur le dossier
-    « Guides de Meryem » pour chaque rôle de la société dont le palier hérité
+  * ACL de lecture (``AclGed``, ``herite=True``) posée une fois sur chaque
+    dossier de destination (« Guides de Meryem », ou le dossier ``dossier`` du
+    manifeste) pour chaque rôle de la société dont le palier hérité
     n'est PAS admin (Commercial, Commercial responsable, Technicien…) — les
     rôles admin (Directeur/Administrateur) n'ont besoin d'aucune entrée : ils
     ont déjà l'accès implicite ``is_admin_role`` dans
@@ -151,6 +166,42 @@ def _find_dossier_meryem(company):
         company=company, cabinet__nom=CABINET_NOM, nom=DOSSIER_MERYEM_NOM,
         parent__nom=DOSSIER_RACINE_NOM, parent__parent__isnull=True,
     ).first()
+
+
+def _find_dossier_racine(company, cabinet_nom, dossier_nom):
+    """Dossier RACINE ``dossier_nom`` du cabinet ``cabinet_nom``, ou None s'il
+    n'existe pas encore (lecture seule — sert au dry-run comme au run réel)."""
+    return Folder.objects.filter(
+        company=company, cabinet__nom=cabinet_nom, nom=dossier_nom,
+        parent__isnull=True,
+    ).first()
+
+
+def _ensure_dossier_racine(company, cabinet_nom, dossier_nom):
+    """Cabinet ``cabinet_nom`` -> dossier racine ``dossier_nom`` (créés au
+    besoin, idempotent) — les deux helpers du service GED, rien de plus."""
+    cabinet = services.ensure_cabinet(company, cabinet_nom)
+    return services.ensure_root_folder(
+        company, cabinet=cabinet, nom=dossier_nom)
+
+
+def _destination(entry):
+    """Où publier une entrée du manifeste.
+
+    ``None`` = la destination historique (« Documents internes » ->
+    « Commercial » -> « Guides de Meryem »). Sinon ``(cabinet, dossier)`` : le
+    dossier racine ``dossier`` du cabinet ``cabinet``. Les deux champs vont
+    ensemble : un seul des deux est une entrée mal formée (``ValueError``,
+    traitée par entrée comme les autres échecs)."""
+    cabinet = str((entry or {}).get('cabinet') or '').strip()
+    dossier = str((entry or {}).get('dossier') or '').strip()
+    if not cabinet and not dossier:
+        return None
+    if not cabinet or not dossier:
+        raise ValueError(
+            'entrée de manifeste incomplète : « cabinet » et « dossier » '
+            'vont ensemble (ou aucun des deux).')
+    return cabinet, dossier
 
 
 def _ensure_dossier_meryem(company):
@@ -279,16 +330,27 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
         _log('Manifeste vide — rien à publier.')
         return counters, erreurs
 
-    dossier = None
-    recipients = []
-    if dry_run:
-        dossier = _find_dossier_meryem(company)
-    else:
-        dossier = _ensure_dossier_meryem(company)
-        acl_crees = _ensure_acl_lecture(dossier, company)
-        if acl_crees:
-            _log(f'ACL de lecture posée sur {acl_crees} rôle(s).')
-        recipients = _notification_recipients(company)
+    recipients = [] if dry_run else _notification_recipients(company)
+    dossiers = {}  # destination -> dossier, résolu une seule fois chacune
+
+    def _dossier_de(destination):
+        """Le dossier de destination : créé au besoin, avec ses ACL de
+        lecture, hors dry-run ; simplement cherché (donc None s'il n'existe
+        pas encore) en dry-run."""
+        if destination in dossiers:
+            return dossiers[destination]
+        if dry_run:
+            trouve = (_find_dossier_meryem(company) if destination is None
+                      else _find_dossier_racine(company, *destination))
+        else:
+            trouve = (_ensure_dossier_meryem(company) if destination is None
+                      else _ensure_dossier_racine(company, *destination))
+            acl_crees = _ensure_acl_lecture(trouve, company)
+            if acl_crees:
+                _log(f'ACL de lecture posée sur {acl_crees} rôle(s) '
+                     f'({trouve.nom}).')
+        dossiers[destination] = trouve
+        return trouve
 
     for entry in manifest:
         fichier = (entry or {}).get('fichier') or ''
@@ -299,12 +361,14 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
             if not fichier or not titre:
                 raise ValueError(
                     'entrée de manifeste incomplète (fichier/titre requis).')
+            destination = _destination(entry)
             chemin = MERYEM_DOCS_DIR / fichier
             if not chemin.is_file():
                 raise ValueError(f'fichier introuvable : {chemin}.')
             contenu = chemin.read_bytes()
             checksum = services.compute_checksum(contenu)
 
+            dossier = _dossier_de(destination)
             document = (Document.objects.filter(
                 company=company, folder=dossier, nom=titre).first()
                 if dossier else None)
@@ -361,9 +425,10 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
 
 
 class Command(BaseCommand):
-    help = ('Publie le Guide de Meryem, le Protocole de rappel et la carte '
-            'one-page dans la GED (versionné, ACL de lecture, notification '
-            'à chaque nouvelle version).')
+    help = ('Publie les documents internes du manifeste (Guide de Meryem, '
+            'Protocole de rappel, carte one-page, guides du suivi commercial) '
+            'dans la GED (versionné, ACL de lecture, notification à chaque '
+            'nouvelle version).')
 
     def add_arguments(self, parser):
         parser.add_argument(

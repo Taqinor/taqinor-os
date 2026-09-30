@@ -36,7 +36,7 @@ import {
   guidanceAppel, texteQuestion, decouperQuestion, scriptTouche,
   normaliserSaisie, messageErreurServeur, fenetreAppel,
   mentionEquipementNonCompte, MENTION_D7, BANDEAU_PROFIL_SUPPOSE,
-  EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
+  EXPLICATION_PROFIL_SUPPOSE, CONSIGNE_ISSUE, ISSUE_EN_AVANCE,
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
 } from './appelGuidance'
@@ -124,7 +124,12 @@ export default function PanneauScriptAppel({
   telephone = '',
   onComposer,
   onSaisirIssue,
-  issueVerrouillee = false,
+  // SUIVI-BLOCAGE (30/09/2026) — la touche de la ligne est datée d'un jour À
+  // VENIR. L'issue n'est PLUS verrouillée pour autant : un appel passé en
+  // avance a bien eu lieu, et ne pas pouvoir dire ce qui s'y est dit bloquait
+  // tout le suivi jusqu'à l'échéance. Le drapeau ne sert plus qu'à DIRE que
+  // la réponse sera datée d'aujourd'hui (« traitée en avance », CAD44).
+  issueEnAvance = false,
   onLeadEcrit,
 }) {
   const actif = mode === 'fiche' || ouvert
@@ -441,8 +446,7 @@ export default function PanneauScriptAppel({
           <div className="flex flex-wrap justify-end gap-1.5">
             {onSaisirIssue && (
               <Button
-                type="button" size="sm" variant="outline"
-                disabled={issueVerrouillee} onClick={onSaisirIssue}
+                type="button" size="sm" variant="outline" onClick={onSaisirIssue}
               >
                 Saisir l’issue de l’appel
               </Button>
@@ -455,7 +459,7 @@ export default function PanneauScriptAppel({
           </div>
           {onSaisirIssue && (
             <p className="text-right" data-testid="consigne-issue">
-              {issueVerrouillee ? ISSUE_VERROUILLEE : CONSIGNE_ISSUE}
+              {issueEnAvance ? ISSUE_EN_AVANCE : CONSIGNE_ISSUE}
             </p>
           )}
         </div>

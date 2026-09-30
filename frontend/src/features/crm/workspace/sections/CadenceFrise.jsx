@@ -21,6 +21,7 @@ const CADENCE_LABELS = {
   apres_devis: 'Après devis',
   reveil: 'Réveil',
   generique: 'Générique',
+  deuxieme_affaire: 'Deuxième affaire',
 }
 
 const CANAL_LABELS = {
@@ -93,7 +94,22 @@ function annulable(etape) {
  *   (`refData.onRelanceChanged`, `LeadWorkspace.jsx`) — une touche « Fait »
  *   peut avancer l'étape/les tags du lead (règles d'arrêt MRY9).
  */
-export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
+/**
+ * SUIVI-BLOCAGE (30/09/2026) — deux props de plus pour la fenêtre « Appeler »
+ * de la fiche lead (`IdentityRail`), qui n'avait aucun bouton pour saisir
+ * l'issue de l'appel :
+ *   - `seulementActionnable` : ne rend QUE la ou les lignes actionnables (la
+ *     prochaine touche à faire, les touches en retard), avec leurs boutons —
+ *     jamais l'historique ni le dépliant des touches passées ;
+ *   - `appelOuvert` : ces lignes se montent avec leur panneau d'appel ouvert ;
+ *   - `onEtapes(actionnables)` : appelé après chaque lecture avec les touches
+ *     actionnables (vide = aucune étape ouverte : l'appelant montre alors le
+ *     script seul et renvoie vers « Journaliser »).
+ */
+export default function CadenceFrise({
+  leadId, reloadToken = 0, onChanged,
+  seulementActionnable = false, appelOuvert = false, onEtapes,
+}) {
   const [loading, setLoading] = useState(true)
   // Décision fondateur du 24/09/2026 — le panneau d'appel doit rester ouvert
   // d'une réponse à l'autre. Chaque réponse enregistrée rafraîchit la fiche
@@ -127,12 +143,32 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
     if (!leadId) return undefined
     let active = true
     queueMicrotask(() => { if (active) { setLoading(true); setErreur(false) } })
-    crmApi.getRelanceEtapesLead(leadId)
+    // Garde défensive (même motif que `getLeadVisites` ci-dessous) : des
+    // suites existantes mockent `crmApi` sans `getRelanceEtapesLead`.
+    const requete = typeof crmApi.getRelanceEtapesLead === 'function'
+      ? crmApi.getRelanceEtapesLead(leadId)
+      : Promise.reject(new Error('getRelanceEtapesLead indisponible'))
+    requete
       .then((r) => { if (active) { setEtapes(r.data?.results ?? []); setLeadLu(leadId) } })
-      .catch(() => { if (active) setErreur(true) })
+      .catch(() => { if (active) { setErreur(true); setLeadLu(leadId); setEtapes([]) } })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [leadId, reloadToken])
+
+  // SUIVI-BLOCAGE — l'appelant (fenêtre « Appeler » de la fiche) apprend s'il
+  // reste une touche actionnable, après CHAQUE lecture (jamais un setState ici).
+  useEffect(() => {
+    if (!onEtapes || leadLu !== leadId) return
+    const aujourdhuiLu = aujourdhuiCasablanca()
+    const ouvertes = etapes.filter((e) => e.statut === 'a_faire')
+    const prochaine = ouvertes
+      .filter((e) => !e.overdue)
+      .sort((a, b) => (a.due_at ? new Date(a.due_at).getTime() : Infinity)
+        - (b.due_at ? new Date(b.due_at).getTime() : Infinity))[0] ?? null
+    onEtapes(ouvertes.filter((e) => e.overdue || (prochaine && e.id === prochaine.id))
+      .map((e) => ({ ...e, enAvance: Boolean(e.due_date) && e.due_date > aujourdhuiLu })))
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `onEtapes` est une fonction du parent recréée à chaque rendu ; la lecture ne dépend que des touches lues.
+  }, [etapes, leadLu, leadId])
 
   useEffect(() => {
     if (!leadId) return undefined
@@ -165,11 +201,18 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
     } catch (err) {
       // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
       // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
-      const champOutcome = action === 'fait' && err?.response?.status === 400
-        ? err?.response?.data?.erreurs?.outcome : null
-      if (!champOutcome) toastError('Action impossible pour le moment.')
-      if (action === 'fait') throw err
-      return undefined
+      // SUIVI-REFUS — idem pour Sauter et Reporter, et pour tout refus NOMMÉ
+      // (400 `erreurs`/`detail`, 403 rôle) : l'erreur est relancée à la ligne,
+      // qui l'affiche sous le geste ; le toast ne reste que pour réseau/5xx.
+      // Sur un refus, la frise n'est PAS relue (`onChanged` n'est appelé
+      // qu'après un succès) : la ligne garde son panneau ouvert.
+      const statut = err?.response?.status
+      const donnees = err?.response?.data
+      const refusNomme = statut === 403 || (statut === 400
+        && (Object.keys(donnees?.erreurs ?? {}).length > 0
+          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
+      if (!refusNomme) toastError('Action impossible pour le moment.')
+      throw err
     } finally {
       setBusyId(null)
     }
@@ -199,9 +242,11 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   if (!leadId) return null
   if (loading && leadLu !== leadId) return <Spinner className="size-3.5" />
   if (erreur) {
+    if (seulementActionnable) return null
     return <p className="text-xs text-muted-foreground">Frise de cadence indisponible pour le moment.</p>
   }
   if (etapes.length === 0) {
+    if (seulementActionnable) return null
     return <p className="text-xs text-muted-foreground">Aucune cadence sur ce lead pour l'instant.</p>
   }
 
@@ -257,13 +302,15 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
   // compteur du dépliant ne compte donc que ce qui est réellement masqué.
   const annulableItem = (it) => it.kind === 'etape' && annulable(it.data)
   const passees = items.filter((it) => it.passee && !annulableItem(it))
-  const visibles = montrerPassees
-    ? items
-    : items.filter((it) => !it.passee || annulableItem(it))
+  const estActionnable = (it) => it.kind === 'etape' && it.data.statut === 'a_faire'
+    && (it.data.id === prochaineId || it.data.overdue)
+  const visibles = seulementActionnable
+    ? items.filter(estActionnable)
+    : (montrerPassees ? items : items.filter((it) => !it.passee || annulableItem(it)))
 
   return (
     <>
-      {passees.length > 0 && (
+      {!seulementActionnable && passees.length > 0 && (
         <button
           type="button"
           className="text-xs text-muted-foreground underline underline-offset-2"
@@ -388,11 +435,13 @@ export default function CadenceFrise({ leadId, reloadToken = 0, onChanged }) {
                 <RelanceEtapeRow
                   etape={etape} busyId={busyId} compact
                   enAvance={Boolean(etape.due_date) && etape.due_date > aujourdhui}
+                  panneauAppelInitial={appelOuvert}
                   onFait={(id, payload) => traiter(id, 'fait', payload)}
                   onSauter={(id, note) => traiter(id, 'sauter', note)}
                   onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
                   onOuvrirMessage={setMessageEtape}
                   onVisiteChanged={onChanged}
+                  onPieceRecue={onChanged}
                 />
               )}
             </Fragment>

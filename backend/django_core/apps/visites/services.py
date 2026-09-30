@@ -252,7 +252,102 @@ def enregistrer_qualification(visite, valeurs):
     return visite, {}
 
 
-def planifier_visite(lead, user, date_prevue, commercial=None, notes=''):
+def visite_en_attente(lead):
+    """SUIVI E5 — LE rendez-vous encore EN ATTENTE du lead : une visite au
+    statut BROUILLON, jamais commencée (ni départ ni arrivée pointés), avec
+    une date prévue — la plus récente. ``None`` s'il n'y en a aucune.
+
+    La société est celle du LEAD (jamais d'un corps de requête)."""
+    from .models import VisiteTerrain
+
+    return (VisiteTerrain.objects
+            .filter(company_id=lead.company_id, lead=lead,
+                    statut=VisiteTerrain.Statut.BROUILLON,
+                    en_route_le__isnull=True, arrivee_le__isnull=True,
+                    date_prevue__isnull=False)
+            .order_by('-date_prevue', '-id').first())
+
+
+def _deplacer_visite(visite, user, date_prevue, commercial, notes):
+    """SUIVI E5 — DÉPLACE le rendez-vous existant (jamais une seconde
+    visite) : nouvelle date, nouvel assigné s'il est fourni, notes
+    complétées (une ligne dit d'où la visite a été déplacée). L'assigné est
+    prévenu quand l'assigné OU la date change (primitive VTA7 existante), et
+    ``visite_planifiee`` est publié : le CRM recale confirmation et débrief."""
+    ancienne_date = visite.date_prevue
+    champs = []
+    if ancienne_date != date_prevue:
+        visite.date_prevue = date_prevue
+        champs.append('date_prevue')
+    if commercial is not None and visite.commercial_id != commercial.pk:
+        visite.commercial = commercial
+        champs.append('commercial')
+    lignes = []
+    if 'date_prevue' in champs and ancienne_date is not None:
+        lignes.append(f'Rendez-vous du {ancienne_date:%d/%m/%Y} déplacé au '
+                      f'{date_prevue:%d/%m/%Y}.')
+    if (notes or '').strip():
+        lignes.append(notes.strip())
+    if lignes:
+        existantes = (visite.notes or '').strip()
+        visite.notes = '\n'.join(([existantes] if existantes else []) + lignes)
+        champs.append('notes')
+    if champs:
+        visite.save(update_fields=champs)
+    if 'commercial' in champs or 'date_prevue' in champs:
+        notifier_assignation(visite, acteur=user)
+    emettre_visite_planifiee(visite, user)
+    return visite
+
+
+def annuler_rendez_vous(lead, user, motif=''):
+    """SUIVI E4 (30/09/2026) — le client ne veut plus de la visite (ou le
+    dossier s'arrête) : ses rendez-vous EN ATTENTE sont ANNULÉS.
+
+    C'est la porte que le CRM appelle (frontière M3 : il n'importe jamais
+    ``apps.visites.models``). Sont visées les visites du lead au statut
+    BROUILLON, jamais commencées (ni départ ni arrivée pointés), à date prévue
+    non passée. Pour chacune : ``date_prevue`` vidée, UNE ligne ajoutée aux
+    notes (« Rendez-vous du JJ/MM/AAAA annulé à la demande du client. » — ou,
+    avec un ``motif``, « Rendez-vous du JJ/MM/AAAA annulé — <motif>. »), et
+    l'assigné prévenu par la primitive de notification EXISTANTE (clé
+    ``visite_terrain_assignee`` : c'est le canal de SA journée ; aucun nouveau
+    type d'événement — le registre est fermé). AUCUNE suppression de ligne —
+    la visite reste consultable.
+
+    Renvoie le nombre de rendez-vous annulés."""
+    from core.dates import aujourd_hui_local
+
+    from .models import VisiteTerrain
+
+    visites = list(VisiteTerrain.objects.filter(
+        company_id=lead.company_id, lead=lead,
+        statut=VisiteTerrain.Statut.BROUILLON,
+        en_route_le__isnull=True, arrivee_le__isnull=True,
+        date_prevue__gte=aujourd_hui_local()))
+    precision = (motif or '').strip().rstrip('.')
+    for visite in visites:
+        jour = f'{visite.date_prevue:%d/%m/%Y}'
+        raison = (f'— {precision}.' if precision
+                  else 'à la demande du client.')
+        ligne = f'Rendez-vous du {jour} annulé {raison}'
+        existantes = (visite.notes or '').strip()
+        visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
+        visite.date_prevue = None
+        visite.save(update_fields=['date_prevue', 'notes'])
+        if visite.commercial_id is not None and (
+                user is None
+                or visite.commercial_id != getattr(user, 'id', None)):
+            _notifier_commercial_visite(
+                visite, 'visite_terrain_assignee',
+                'Visite technique annulée',
+                f'Le rendez-vous du {jour} chez « {visite.lead} » est '
+                f'annulé {raison}')
+    return len(visites)
+
+
+def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
+                     replanifier=False):
     """VISITE-CADENCE — POSE un rendez-vous de visite technique sur un lead.
 
     C'est la porte que le CRM appelle depuis la fiche lead (frontière M3 : il
@@ -278,6 +373,11 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes=''):
     BROUILLON (le terrain le fera passer « en cours » à sa première
     contribution). L'assigné est prévenu par la primitive existante (VTA7) et
     l'événement ``visite_planifiee`` laisse le CRM recaler son suivi.
+
+    SUIVI E5 (30/09/2026) — ``replanifier=True`` : « la visite est reportée
+    à une autre date » DÉPLACE le rendez-vous en attente du lead
+    (``visite_en_attente``) au lieu d'en créer un second ; mêmes gardes. S'il
+    n'y en a aucun, la visite est créée comme d'habitude.
     """
     from django.utils import timezone
 
@@ -298,6 +398,12 @@ def planifier_visite(lead, user, date_prevue, commercial=None, notes=''):
                 'compte est désactivé).']
     if erreurs:
         return None, erreurs
+
+    if replanifier:
+        en_attente = visite_en_attente(lead)
+        if en_attente is not None:
+            return (_deplacer_visite(en_attente, user, date_prevue,
+                                     commercial, notes), {})
 
     visite = VisiteTerrain.objects.create(
         company=lead.company, lead=lead, commercial=commercial,

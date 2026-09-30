@@ -4,20 +4,29 @@ cabinet/dossier/ACL idempotents, versionnage par SHA-256, notification des
 destinataires (responsable des leads + admins/directeurs), ``--dry-run``,
 ``--force``, et la résolution de société ambiguë.
 
+Destination par entrée (30/09/2026) : une entrée du manifeste peut porter
+``cabinet`` + ``dossier`` (dossier RACINE du cabinet, ex. « Documentation » ->
+« Guides » où vit déjà le guide de la visite) ; sans eux, le comportement
+historique (« Documents internes » -> « Commercial » -> « Guides de Meryem »)
+est inchangé. Les classes ``DestinationPersonnaliseeTests`` (base de données,
+jouées par la CI) et ``DestinationDeLEntreeTests`` (sans base) la couvrent.
+
 Aucun mock de stockage : comme le reste de la suite GED (``test_ged.py``,
 ``test_xged12_photos_assemblees.py``…), le fichier passe par le VRAI pipeline
 ``records.storage.store_attachment`` contre le service MinIO de test (CI)."""
 import json
 import tempfile
+from io import StringIO
 from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
+from apps.ged import services
 from apps.ged.management.commands import publier_documents_meryem as cmd
 from apps.ged.models import AclGed, Cabinet, Document, DocumentVersion, Folder
 from apps.notifications.models import Notification
@@ -223,6 +232,214 @@ class PremierRunTests(PublicationMeryemTestsBase):
         self.assertFalse(
             Document.objects.filter(
                 folder=dossier, nom='Protocole de rappel').exists())
+
+
+DOC_SUIVI = {
+    'fichier': 'suivi.pdf',
+    'titre': 'Guide — Le suivi commercial : étapes, réponses et suites',
+    'version': '1.0',
+    'description': 'Les étapes du suivi, leurs réponses et ce qui suit.',
+    'cabinet': 'Documentation', 'dossier': 'Guides',
+}
+# Le guide de la visite existe déjà en production dans Documentation/Guides
+# (déposé par ``seed_guide_visite``) : son titre est EXACTEMENT le nom du
+# document, pour que la publication lui ajoute une version au lieu d'un doublon.
+DOC_VISITE = {
+    'fichier': 'visite.pdf',
+    'titre': services.GUIDE_VISITE_NOM,
+    'version': '2.0',
+    'description': 'La visite technique dans le suivi commercial.',
+    'cabinet': services.GUIDE_VISITE_CABINET,
+    'dossier': services.GUIDE_VISITE_DOSSIER,
+}
+
+
+class DestinationDeLEntreeTests(SimpleTestCase):
+    """``_destination`` : la règle pure qui choisit le dossier d'une entrée."""
+
+    def test_sans_cabinet_ni_dossier_c_est_la_destination_historique(self):
+        self.assertIsNone(cmd._destination({'fichier': 'a.pdf', 'titre': 'A'}))
+        self.assertIsNone(cmd._destination({'cabinet': '', 'dossier': '  '}))
+        self.assertIsNone(cmd._destination(None))
+
+    def test_cabinet_et_dossier_donnent_la_destination(self):
+        self.assertEqual(
+            cmd._destination({'cabinet': ' Documentation ', 'dossier': 'Guides'}),
+            ('Documentation', 'Guides'))
+
+    def test_un_seul_des_deux_champs_est_refuse(self):
+        for entree in ({'cabinet': 'Documentation'}, {'dossier': 'Guides'}):
+            with self.assertRaises(ValueError) as ctx:
+                cmd._destination(entree)
+            self.assertIn('cabinet', str(ctx.exception))
+            self.assertIn('dossier', str(ctx.exception))
+
+
+class DestinationPersonnaliseeTests(PublicationMeryemTestsBase):
+    """Entrées à ``cabinet`` + ``dossier`` : dépôt dans le dossier racine du
+    cabinet, ACL et notification comme pour « Guides de Meryem »."""
+
+    def _guides(self):
+        return Folder.objects.get(
+            company=self.company, cabinet__nom='Documentation', nom='Guides',
+            parent__isnull=True)
+
+    def _deposer_guide_visite_existant(self, contenu):
+        """Reproduit l'état de production : le guide de la visite déjà
+        déposé par ``seed_guide_visite`` (v1) dans Documentation/Guides."""
+        document, _created = services.deposit_document(
+            company=self.company, nom=DOC_VISITE['titre'],
+            source_type=services.GUIDE_VISITE_SOURCE_TYPE,
+            source_id=services.GUIDE_VISITE_SOURCE_ID,
+            file_key='attachments/guide-visite-existant.pdf',
+            filename='guide-visite-existant.pdf', size=len(contenu),
+            mime='application/pdf', checksum=services.compute_checksum(contenu),
+            cabinet_nom=services.GUIDE_VISITE_CABINET,
+            folder_nom=services.GUIDE_VISITE_DOSSIER)
+        return document
+
+    def test_depose_dans_le_dossier_racine_du_cabinet_indique(self):
+        self._ecrire_manifeste([DOC_SUIVI], {'suivi.pdf': b'%PDF-1.4 suivi v1'})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        cabinet = Cabinet.objects.get(company=self.company, nom='Documentation')
+        guides = self._guides()
+        self.assertEqual(guides.cabinet_id, cabinet.pk)
+        document = Document.objects.get(folder=guides, nom=DOC_SUIVI['titre'])
+        self.assertEqual(document.description, DOC_SUIVI['description'])
+        self.assertEqual(document.versions.count(), 1)
+        # Aucune entrée ne va dans l'ancienne destination : elle n'est pas créée.
+        self.assertFalse(Cabinet.objects.filter(
+            company=self.company, nom=cmd.CABINET_NOM).exists())
+
+    def test_acl_de_lecture_et_notification_valent_pour_ce_dossier(self):
+        self._ecrire_manifeste([DOC_SUIVI], {'suivi.pdf': b'%PDF-1.4 suivi v1'})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        guides = self._guides()
+        self.assertTrue(AclGed.objects.filter(
+            folder=guides, role=self.role_commercial, niveau='lecture',
+            herite=True).exists())
+        self.assertFalse(AclGed.objects.filter(
+            folder=guides, role=self.role_directeur).exists())
+        self.assertFalse(AclGed.objects.filter(
+            folder=guides, role=self.role_portail).exists())
+        notifs = Notification.objects.filter(company=self.company)
+        self.assertEqual(notifs.count(), 2)
+        self.assertEqual(
+            {n.recipient_id for n in notifs},
+            {self.sales_rep.pk, self.admin.pk})
+        self.assertTrue(all(n.link == '/ged' for n in notifs))
+        self.assertTrue(all(
+            n.title.startswith('Nouveau document : ') and DOC_SUIVI['titre'] in n.title
+            for n in notifs))
+
+    def test_nouvelle_version_d_un_document_deja_present_par_nom(self):
+        ancien = b'%PDF-1.4 ancienne version du guide de la visite'
+        existant = self._deposer_guide_visite_existant(ancien)
+        notifs_avant = Notification.objects.count()
+        self._ecrire_manifeste([DOC_VISITE], {'visite.pdf': b'%PDF-1.4 visite v2'})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        documents = Document.objects.filter(
+            company=self.company, nom=DOC_VISITE['titre'])
+        self.assertEqual(documents.count(), 1)  # jamais de doublon
+        self.assertEqual(documents.get().pk, existant.pk)
+        self.assertEqual(
+            sorted(existant.versions.values_list('version', flat=True)), [1, 2])
+        self.assertEqual(Notification.objects.count(), notifs_avant + 2)
+
+    def test_meme_contenu_que_la_version_existante_ne_cree_rien(self):
+        # Installation neuve : la fixture déposée par ``seed_guide_visite`` et
+        # le PDF de ``docs/meryem/`` sont le même fichier.
+        contenu = b'%PDF-1.4 visite identique'
+        existant = self._deposer_guide_visite_existant(contenu)
+        notifs_avant = Notification.objects.count()
+        self._ecrire_manifeste([DOC_VISITE], {'visite.pdf': contenu})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        self.assertEqual(existant.versions.count(), 1)
+        self.assertEqual(Notification.objects.count(), notifs_avant)
+
+    def test_deuxieme_run_ne_republie_rien(self):
+        self._ecrire_manifeste([DOC_SUIVI], {'suivi.pdf': b'%PDF-1.4 suivi v1'})
+        call_command('publier_documents_meryem', company=self.company.slug)
+        versions_avant = DocumentVersion.objects.count()
+        notifs_avant = Notification.objects.count()
+        acl_avant = AclGed.objects.count()
+        dossiers_avant = Folder.objects.count()
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        self.assertEqual(DocumentVersion.objects.count(), versions_avant)
+        self.assertEqual(Notification.objects.count(), notifs_avant)
+        self.assertEqual(AclGed.objects.count(), acl_avant)
+        self.assertEqual(Folder.objects.count(), dossiers_avant)
+
+    def test_entree_sans_cabinet_reste_dans_guides_de_meryem(self):
+        # Un manifeste mixte : l'entrée historique ne bouge pas, l'autre va
+        # dans Documentation/Guides.
+        self._ecrire_manifeste(
+            [MANIFEST[0], DOC_SUIVI],
+            {'guide.pdf': _CONTENUS_V1['guide.pdf'], 'suivi.pdf': b'%PDF-1.4 suivi v1'})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        historique = self._dossier()
+        guides = self._guides()
+        self.assertNotEqual(historique.pk, guides.pk)
+        self.assertTrue(Document.objects.filter(
+            folder=historique, nom='Guide de Meryem').exists())
+        self.assertFalse(Document.objects.filter(
+            folder=historique, nom=DOC_SUIVI['titre']).exists())
+        self.assertTrue(Document.objects.filter(
+            folder=guides, nom=DOC_SUIVI['titre']).exists())
+        self.assertFalse(Document.objects.filter(
+            folder=guides, nom='Guide de Meryem').exists())
+        # Deux documents x deux destinataires.
+        self.assertEqual(Notification.objects.filter(company=self.company).count(), 4)
+
+    def test_cabinet_sans_dossier_fait_echouer_cette_entree_seulement(self):
+        incomplete = {k: v for k, v in DOC_SUIVI.items() if k != 'dossier'}
+        self._ecrire_manifeste(
+            [incomplete, MANIFEST[0]],
+            {'guide.pdf': _CONTENUS_V1['guide.pdf'], 'suivi.pdf': b'%PDF-1.4 suivi v1'})
+
+        with self.assertRaises(SystemExit) as ctx:
+            call_command('publier_documents_meryem', company=self.company.slug)
+        self.assertEqual(ctx.exception.code, 1)
+
+        self.assertFalse(Document.objects.filter(nom=DOC_SUIVI['titre']).exists())
+        self.assertFalse(Cabinet.objects.filter(
+            company=self.company, nom='Documentation').exists())
+        self.assertTrue(Document.objects.filter(
+            folder=self._dossier(), nom='Guide de Meryem').exists())
+
+    def test_dry_run_annonce_sans_rien_ecrire(self):
+        existant = self._deposer_guide_visite_existant(b'%PDF-1.4 ancienne version')
+        self._ecrire_manifeste(
+            [DOC_SUIVI, DOC_VISITE],
+            {'suivi.pdf': b'%PDF-1.4 suivi v1', 'visite.pdf': b'%PDF-1.4 visite v2'})
+        avant = (Document.objects.count(), DocumentVersion.objects.count(),
+                 Folder.objects.count(), Cabinet.objects.count(),
+                 AclGed.objects.count(), Notification.objects.count())
+        sortie = StringIO()
+
+        call_command('publier_documents_meryem', company=self.company.slug,
+                     dry_run=True, stdout=sortie)
+
+        apres = (Document.objects.count(), DocumentVersion.objects.count(),
+                 Folder.objects.count(), Cabinet.objects.count(),
+                 AclGed.objects.count(), Notification.objects.count())
+        self.assertEqual(apres, avant)
+        self.assertEqual(existant.versions.count(), 1)
+        texte = sortie.getvalue()
+        self.assertIn('nouveau document', texte)  # le guide du suivi
+        self.assertIn('nouvelle version', texte)  # le guide de la visite
 
 
 class SocieteAmbigueTests(TestCase):

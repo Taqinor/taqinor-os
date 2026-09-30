@@ -130,8 +130,10 @@ class PriseDeContactTests(_Base):
         # Le chatter le dit : la touche porte l'issue, l'arrêt a son motif.
         self.assertTrue(lead.activites.filter(
             outcome=VISITE, user=self.acteur).exists())
+        # SUIVI E14 (30/09/2026) — la deuxième affaire est arrêtée elle aussi
+        # (même liste que « client joint »), et la note la nomme.
         self.assertTrue(lead.activites.filter(
-            body__startswith='Cadence contact, reveil arrêtée',
+            body__startswith='Cadence contact, reveil, deuxieme_affaire arrêtée',
             body__contains='visite acceptée').exists())
         lead.refresh_from_db()
         self.assertNotEqual(lead.stage, stages.COLD)
@@ -246,11 +248,15 @@ class PromessesTests(SimpleTestCase):
         ordres = frozenset(e['ordre'] for e in CADENCES_DEFAUT[cadence])
         return st.promesses_touche(etape, ordres=ordres)
 
-    def test_proposee_partout_sauf_deuxieme_affaire(self):
-        for cadence in ('contact', 'reveil', 'generique', 'apres_devis'):
+    def test_proposee_partout_deuxieme_affaire_comprise(self):
+        """SUIVI-PARCOURS 30/09/2026 — la table du parcours range la deuxième
+        affaire (la prise de contact d'un client acquis) sous les mêmes types
+        d'étape que la prise de contact : « Visite acceptée » y est proposée
+        aussi (elle était écartée « hors du périmètre » le 24/09)."""
+        for cadence in ('contact', 'reveil', 'generique', 'apres_devis',
+                        'deuxieme_affaire'):
             with self.subTest(cadence=cadence):
                 self.assertIn(VISITE, st.cles_de_reponse(cadence))
-        self.assertNotIn(VISITE, st.cles_de_reponse('deuxieme_affaire'))
 
     def test_prise_de_contact(self):
         self.assertEqual(

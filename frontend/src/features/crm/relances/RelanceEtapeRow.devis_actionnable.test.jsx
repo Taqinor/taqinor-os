@@ -53,7 +53,10 @@ describe.each([
     // Les boutons EXISTANTS restent tous là (jamais un remplacement).
     expect(screen.getByRole('button', { name: /Appeler/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Fait$/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Sauter/ })).toBeInTheDocument()
+    // SUIVI-PARCOURS (30/09/2026) — une TÂCHE ne se « saute » pas : ses
+    // réponses couvrent tous les cas (devis envoyé, visite d'abord, à
+    // rappeler, client refuse, ne plus contacter).
+    expect(screen.queryByRole('button', { name: /Sauter/ })).not.toBeInTheDocument()
   })
 
   it('« Créer le devis » navigue vers /ventes/devis/nouveau?lead=<id> (même chemin que LeadWorkspace.jsx:959)', () => {
