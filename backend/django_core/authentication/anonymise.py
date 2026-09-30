@@ -27,6 +27,11 @@ Le brouillage est DÉTERMINISTE PAR VALEUR au sein d'un export (HMAC-SHA256 avec
 un sel aléatoire de 32 octets tiré à chaque export et JAMAIS écrit) : le même
 nom de client donne le même faux nom partout (le dédoublonnage et les
 regroupements survivent), mais rien ne permet de remonter à la valeur source.
+Il est aussi INJECTIF par genre (identifiants, e-mails, téléphones, noms,
+sociétés…) : deux valeurs réelles différentes ne partagent JAMAIS un faux dans
+un même export — sans quoi un index unique de la base rejetterait des lignes à
+l'import (``uniq_lead_external_ref`` : 80 leads sur 1 022 perdus le 30/09/2026,
+identifiants Odoo de 3 chiffres). Voir ``Scrambler``.
 
 Les modèles de domaine sont atteints par ``django.apps.apps.get_model`` (aucun
 import statique d'un modèle de domaine : ``authentication`` reste une app de
@@ -287,68 +292,230 @@ _SOCIETES = [
     'Menara', 'Kasbah',
 ]
 _ALNUM = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+_LETTERS = 24  # lettres d'un faux « ident » : _ALNUM[:24] (sans I ni O)
+
+# Genres dont le faux vient d'un RÉSERVOIR FINI par construction (24 prénoms,
+# ~2 000 adresses) : deux valeurs différentes y partagent forcément un faux —
+# c'est voulu (deux personnes s'appellent « Adam », deux clients habitent « 12
+# rue des Roses ») et aucune contrainte d'unicité ne porte sur ces champs.
+_POOL_KINDS = frozenset({'prenom', 'adresse'})
+
+# Taille de l'espace des faux d'un genre à largeur 0, et facteur d'agrandissement
+# par caractère ajouté. Sert à mesurer le remplissage (élargir passé 50 %).
+_SPACE = {
+    'email': (16 ** 12, 16),
+    'phone': (10 ** 8, 10),
+    'nom': (len(_NOMS) * 32 ** 3, 32),
+    'societe': (len(_SOCIETES) * 32 ** 3, 32),
+    'url': (16 ** 10, 16),
+    'texte': (16 ** 8, 16),
+    'generic': (16 ** 10, 16),
+}
+
+
+def _mask(text):
+    """Forme d'une chaîne : chiffre → « D », lettre → « L », le reste tel quel."""
+    return ''.join('D' if c.isdigit() else ('L' if c.isalpha() else c)
+                   for c in text)
+
+
+def _mask_capacity(mask):
+    """Nombre de faux « ident » différents que peut produire cette forme."""
+    capacity = 1
+    for c in mask:
+        if c == 'D':
+            capacity *= 10
+        elif c == 'L':
+            capacity *= _LETTERS
+    return capacity
 
 
 class Scrambler:
-    """HMAC-SHA256(sel, genre, valeur normalisée) → faux stable par valeur.
+    """HMAC-SHA256(sel, genre, valeur normalisée) → faux stable par valeur ET
+    INJECTIF par genre.
 
     Le sel (32 octets aléatoires) vit en mémoire le temps d'un export et n'est
     jamais écrit : deux exports donnent des faux différents, et aucun ne se
-    ré-identifie par dictionnaire."""
+    ré-identifie par dictionnaire.
+
+    DÉTERMINISME — un mémo ``(genre, valeur, longueur max)`` → faux : la même
+    valeur réelle redonne toujours le même faux dans un export, quel que soit
+    l'ordre dans lequel on la rencontre.
+
+    INJECTIVITÉ (défaut du 30/09/2026 sur les données réelles) — le faux d'un
+    identifiant Odoo de 3 chiffres tenait dans 10³ possibilités : 426 valeurs
+    réelles donnaient ~84 collisions, donc 80 leads sur 1 022 rejetés par
+    l'index unique ``uniq_lead_external_ref`` à l'import. Chaque genre tient
+    donc un registre ``faux → valeur``. Sur collision, le candidat suivant est
+    tiré de façon DÉTERMINISTE (HMAC de la valeur + un compteur). Quand
+    l'espace d'une forme est rempli à plus de 50 %, on ÉLARGIT d'un caractère
+    (le format est gardé tant que c'est possible). Deux valeurs réelles
+    différentes ne partagent jamais un faux, et un faux n'est jamais égal à sa
+    valeur source. Exceptions assumées : ``prenom`` et ``adresse`` (réservoirs
+    finis, voir ``_POOL_KINDS``), et un champ dont ``max_length`` est si court
+    que l'espace tronqué est épuisé — le repli (faux du premier tirage) est
+    alors COMPTÉ dans ``exhausted`` (jamais une valeur), pour que l'appelant
+    le dise.
+
+    Équivalence de deux valeurs = leur forme normalisée : casse et espaces
+    ignorés (``nom``, ``email``…), 9 derniers chiffres pour un téléphone
+    (+212 6… ≡ 06… ≡ 6…). Un IDENTIFIANT (``ident``) reste sensible à la casse
+    et aux espaces, comme l'index unique qui le porte."""
+
+    _PROBES = 64        # tirages par largeur avant d'élargir (garde-fou)
+    _MAX_WIDEN = 16     # caractères ajoutables au plus
 
     def __init__(self, salt=None):
         self._salt = salt or secrets.token_bytes(32)
+        self._memo = {}      # (genre, identité, longueur max) -> faux
+        self._owner = {}     # genre -> {faux: identité}
+        self._used = {}      # (genre, espace) -> nombre de faux attribués
+        self._choice = {}    # (genre, identité) -> (largeur, compteur) retenus
+        self.widened = {}    # genre -> faux élargis (format non gardé)
+        self.exhausted = {}  # genre -> faux NON uniques faute de place
 
-    def _digest(self, kind, value):
-        norm = str(value).strip().lower()
+    @staticmethod
+    def _identity(kind, value):
+        raw = str(value)
+        if kind == 'ident':
+            return raw
+        norm = raw.strip().lower()
         if kind == 'phone':
-            norm = re.sub(r'\D', '', norm)[-9:]  # +212 6… ≡ 06… ≡ 6…
-        return hmac.new(self._salt, f'{kind}\x00{norm}'.encode('utf-8'),
+            digits = re.sub(r'\D', '', norm)
+            return digits[-9:] or norm  # sans chiffre : la valeur elle-même
+        return norm
+
+    def _digest(self, kind, identity, counter=0):
+        tail = '' if counter == 0 else f'\x00{counter}'
+        return hmac.new(self._salt, f'{kind}\x00{identity}{tail}'.encode('utf-8'),
                         hashlib.sha256).digest()
 
     def _code(self, dig, n, offset=0):
         return ''.join(_ALNUM[b % len(_ALNUM)] for b in dig[offset:offset + n])
+
+    @staticmethod
+    def _ident(dig, src, width):
+        """Format préservé (lettre→lettre, chiffre→chiffre, ponctuation gardée),
+        longueur gardée ; ``width`` caractères de PLUS, de la classe du dernier
+        caractère alphanumérique, pour agrandir un espace trop rempli."""
+        tail = '0'
+        for ch in reversed(src):
+            if ch.isdigit():
+                break
+            if ch.isalpha():
+                tail = 'A'
+                break
+        chars = []
+        for i in range(len(src) + width):
+            b = dig[i % len(dig)] + i
+            ch = src[i] if i < len(src) else tail
+            if ch.isdigit():
+                chars.append(str(b % 10))
+            elif ch.isalpha():
+                chars.append(_ALNUM[b % _LETTERS])
+            else:
+                chars.append(ch)
+        return ''.join(chars)
+
+    def _build(self, kind, dig, value, width):
+        """Le faux d'un tirage, avant troncature à ``max_length``."""
+        n = int.from_bytes(dig, 'big')
+        if kind == 'email':
+            return f'anon-{dig.hex()[:12 + width]}@anon.invalid'
+        if kind == 'phone':
+            k = 8 + width
+            return '+2126' + str(n % 10 ** k).zfill(k)
+        if kind == 'nom':
+            return f'{_NOMS[n % len(_NOMS)]}-{self._code(dig, 3 + width, 8)}'
+        if kind == 'prenom':
+            return _PRENOMS[n % len(_PRENOMS)]
+        if kind == 'societe':
+            return (f'Société {_SOCIETES[n % len(_SOCIETES)]} '
+                    f'{self._code(dig, 3 + width, 8)}')
+        if kind == 'adresse':
+            return f'{(n % 199) + 1} rue {_RUES[(n // 199) % len(_RUES)]}'
+        if kind == 'url':
+            return f'https://anon.invalid/{dig.hex()[:10 + width]}'
+        if kind == 'ident':
+            return self._ident(dig, str(value), width)
+        if kind == 'texte':
+            return f'Texte anonymisé {dig.hex()[:8 + width]}'
+        return f'anon-{dig.hex()[:10 + width]}'
+
+    @staticmethod
+    def _space(kind, cand, width):
+        """(clé, taille) de l'espace de faux où tombe ``cand`` : sert à mesurer
+        son remplissage. « ident » : un espace par FORME (chiffres/lettres)."""
+        if kind == 'ident':
+            mask = _mask(cand)
+            return (kind, mask), _mask_capacity(mask)
+        base, growth = _SPACE.get(kind, _SPACE['generic'])
+        return (kind, width), base * growth ** width
+
+    def _pick(self, kind, identity, value, max_length):
+        owners = self._owner.setdefault(kind, {})
+        src = str(value)
+
+        def take(cand, space):
+            """Le faux ``cand`` (tronqué) s'il est libre ou déjà à cette valeur."""
+            final = cand[:max_length] if max_length else cand
+            holder = owners.get(final)
+            if final == src or (holder is not None and holder != identity):
+                return None
+            if holder is None:
+                owners[final] = identity
+                self._used[space] = self._used.get(space, 0) + 1
+            return final
+
+        def draw(width, counter):
+            return self._build(kind, self._digest(kind, identity, counter),
+                               value, width)
+
+        prior = self._choice.get((kind, identity))
+        if prior is not None:
+            # Déjà tiré pour une AUTRE longueur max : on rejoue LE MÊME tirage
+            # (même faux quand il tient dans les deux champs), sans regarder le
+            # remplissage d'aujourd'hui — sinon le faux dépendrait du champ.
+            width, counter = prior
+            space, _ = self._space(kind, draw(width, 0), width)
+            final = take(draw(width, counter), space)
+            if final is not None:
+                return final
+        for width in range(self._MAX_WIDEN + 1):
+            first = draw(width, 0)
+            space, capacity = self._space(kind, first, width)
+            if self._used.get(space, 0) * 2 >= capacity and \
+                    width < self._MAX_WIDEN:
+                continue  # espace rempli à plus de moitié : on élargit
+            for counter in range(self._PROBES):
+                final = take(first if counter == 0 else draw(width, counter),
+                             space)
+                if final is None:
+                    continue
+                self._choice.setdefault((kind, identity), (width, counter))
+                if width:
+                    self.widened[kind] = self.widened.get(kind, 0) + 1
+                return final
+        # Espace épuisé (champ trop court pour l'unicité) : repli déterministe,
+        # signalé — jamais un plantage de l'export ni une valeur imprimée.
+        self.exhausted[kind] = self.exhausted.get(kind, 0) + 1
+        out = draw(0, 0)
+        return out[:max_length] if max_length else out
 
     def fake(self, kind, value, max_length=None):
         if value is None:
             return None
         if isinstance(value, str) and value.strip() == '':
             return value
-        dig = self._digest(kind, value)
-        n = int.from_bytes(dig[:8], 'big')
-        if kind == 'email':
-            out = f'anon-{dig[:6].hex()}@anon.invalid'
-        elif kind == 'phone':
-            out = '+2126' + str(n % 10 ** 8).zfill(8)
-        elif kind == 'nom':
-            out = f'{_NOMS[n % len(_NOMS)]}-{self._code(dig, 3, 8)}'
-        elif kind == 'prenom':
-            out = _PRENOMS[n % len(_PRENOMS)]
-        elif kind == 'societe':
-            out = f'Société {_SOCIETES[n % len(_SOCIETES)]} {self._code(dig, 3, 8)}'
-        elif kind == 'adresse':
-            out = f'{(n % 199) + 1} rue {_RUES[(n // 199) % len(_RUES)]}'
-        elif kind == 'url':
-            out = f'https://anon.invalid/{dig[:5].hex()}'
-        elif kind == 'ident':
-            # Format préservé (lettre→lettre, chiffre→chiffre), longueur gardée.
-            src = str(value)
-            chars = []
-            for i, ch in enumerate(src):
-                b = dig[i % len(dig)] + i
-                if ch.isdigit():
-                    chars.append(str(b % 10))
-                elif ch.isalpha():
-                    chars.append(_ALNUM[b % 24])
-                else:
-                    chars.append(ch)
-            out = ''.join(chars)
-        elif kind == 'texte':
-            out = f'Texte anonymisé {dig[:4].hex()}'
-        else:
-            out = f'anon-{dig[:5].hex()}'
-        if max_length:
-            out = out[:max_length]
+        identity = self._identity(kind, value)
+        if kind in _POOL_KINDS:
+            out = self._build(kind, self._digest(kind, identity), value, 0)
+            return out[:max_length] if max_length else out
+        key = (kind, identity, max_length)
+        out = self._memo.get(key)
+        if out is None:
+            out = self._memo[key] = self._pick(kind, identity, value,
+                                               max_length)
         return out
 
     # JSON : nombres gardés, chaînes « énumération » courtes gardées ; tout le

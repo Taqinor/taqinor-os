@@ -6,7 +6,10 @@ Ce qui est verrouillé ici :
   source n'apparaît dans les octets du fichier exporté ;
 * intégrité des FK après import (tout pointe dans la société cible) ;
 * les autres sociétés ne bougent pas ; ré-import idempotent ;
-* garde DEBUG ; fail-closed : un champ texte inconnu est brouillé par défaut.
+* garde DEBUG ; fail-closed : un champ texte inconnu est brouillé par défaut ;
+* 400 leads Odoo à identifiants distincts de 3 chiffres : 0 ignoré, index unique
+  respecté, même valeur → même faux (défaut du 30/09/2026 sur les données
+  réelles). Les tests SANS base du brouilleur : ``test_anonymise_unicite.py``.
 """
 import gzip
 import itertools
@@ -14,6 +17,7 @@ import shutil
 import tempfile
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from pathlib import Path
 
 from django.conf import settings
@@ -317,3 +321,74 @@ class AnonymiseGuardsTest(TestCase):
         self.assertEqual(a.fake('phone', '+212 6 61 11 22 33'),
                          a.fake('phone', '0661112233'))
         self.assertNotEqual(a.fake('email', 'x@y.ma'), b.fake('email', 'x@y.ma'))
+
+
+@override_settings(DEBUG=True)
+class AnonymiseUniqueIdentifiersTest(TestCase):
+    """Défaut du 30/09/2026 sur les vraies données : 80 leads sur 1 022 rejetés à
+    l'import par ``uniq_lead_external_ref`` — deux identifiants Odoo DIFFÉRENTS de
+    3 chiffres recevaient le même faux (le faux gardait la longueur : 10³
+    possibilités pour 426 valeurs)."""
+
+    SOURCE_SLUG = 'anon-ids-source'
+    TARGET_SLUG = 'taqinor-anon-ids'
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.crm.models import Lead
+
+        cls.source = Company.objects.create(
+            slug=cls.SOURCE_SLUG, nom='Source identifiants')
+        cls.real_ids = [str(100 + i) for i in range(400)]
+        leads = [
+            Lead(company=cls.source, nom=f'Prospect {i}',
+                 source=Lead.Source.ODOO_IMPORT_TEST,
+                 external_system='odoo', external_id=ext)
+            for i, ext in enumerate(cls.real_ids)]
+        # Le MÊME identifiant réel sous un AUTRE système : l'index unique
+        # (société, système, identifiant) l'autorise, et son faux doit être le
+        # MÊME que celui du lead Odoo (déterminisme par valeur).
+        leads.append(Lead(
+            company=cls.source, nom='Prospect méta',
+            source=Lead.Source.META_LEAD_ADS, external_system='meta',
+            external_id=cls.real_ids[0]))
+        Lead.objects.bulk_create(leads)
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='anon-ids-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        self.snapshot = self.tmp / 'ids.anon.json.gz'
+
+    def _round_trip(self):
+        call_command('qa_export_anonymise', company=self.SOURCE_SLUG,
+                     out=str(self.snapshot), verbosity=0)
+        out = StringIO()
+        call_command('qa_import_anonymise', src=str(self.snapshot),
+                     company_slug=self.TARGET_SLUG, verbosity=1, stdout=out)
+        return Company.objects.get(slug=self.TARGET_SLUG), out.getvalue()
+
+    def test_400_odoo_leads_round_trip_with_nothing_skipped(self):
+        from apps.crm.models import Lead
+        target, report = self._round_trip()
+        self.assertNotIn('ignorées', report)
+        leads = list(Lead.all_objects.filter(company=target).order_by('pk'))
+        self.assertEqual(len(leads), 401)
+        odoo = [ld for ld in leads if ld.external_system == 'odoo']
+        self.assertEqual(len(odoo), 400)
+        fakes = [ld.external_id for ld in odoo]
+        self.assertEqual(len(set(fakes)), 400)  # l'index unique est respecté
+        # Format gardé tant que l'espace n'est pas rempli à plus de moitié.
+        self.assertTrue(all(len(x) == 3 and x.isdigit() for x in fakes))
+        # Un faux n'est jamais l'identifiant réel (l'ordre des pk est celui de
+        # l'export, donc celui de la source).
+        for real, lead in zip(self.real_ids, odoo):
+            self.assertNotEqual(lead.external_id, real)
+
+    def test_same_real_identifier_maps_to_the_same_fake(self):
+        from apps.crm.models import Lead
+        target, _report = self._round_trip()
+        leads = list(Lead.all_objects.filter(company=target).order_by('pk'))
+        odoo = [ld for ld in leads if ld.external_system == 'odoo']
+        meta = [ld for ld in leads if ld.external_system == 'meta']
+        self.assertEqual(len(meta), 1)
+        self.assertEqual(meta[0].external_id, odoo[0].external_id)

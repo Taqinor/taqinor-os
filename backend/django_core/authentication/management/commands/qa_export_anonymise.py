@@ -13,6 +13,10 @@ lignes, avoirs + lignes, paiements, chantiers + interventions. Politique champ
 par champ : ``authentication/anonymise.py`` (KEEP / SCRAMBLE / SCRUB / GPS /
 DROP, fail-closed — un champ texte inconnu est brouillé).
 
+Deux valeurs réelles différentes ne partagent jamais un faux (identifiants,
+e-mails, téléphones, noms… : sinon un index unique rejette des lignes à
+l'import) ; la même valeur redonne toujours le même faux.
+
 Le fichier reste CONFIDENTIEL (montants réels, prix d'achat) : jamais commité
 (``var/anon/`` et ``*.anon.json.gz`` sont ignorés par git), jamais envoyé
 ailleurs, les anciens instantanés sont supprimés. Aucune valeur n'est
@@ -83,11 +87,13 @@ class Command(BaseCommand):
 
         outer_atomic = connection.in_atomic_block
         payload = None
+        scrambler = anonymise.Scrambler()
         with transaction.atomic():
             if connection.vendor == 'postgresql' and not outer_atomic:
                 with connection.cursor() as cur:
                     cur.execute('SET TRANSACTION READ ONLY')
-            payload = anonymise.build_export(company, since=since, limit=limit)
+            payload = anonymise.build_export(company, since=since, limit=limit,
+                                             scrambler=scrambler)
             # Lecture seule : on annule TOUJOURS, même si rien n'a été écrit.
             transaction.set_rollback(True)
 
@@ -98,3 +104,9 @@ class Command(BaseCommand):
                   '(CONFIDENTIEL — jamais commité, jamais transmis).')
         for label, n in payload['counts'].items():
             self._log(f'  {label}: {n}')
+        # Un faux ne partage jamais sa valeur avec une autre, sauf dans un champ
+        # trop court pour l'unicité : on le DIT (comptes par genre, jamais une
+        # valeur) — l'import les rapportera par nom de contrainte.
+        for kind, n in sorted(scrambler.exhausted.items()):
+            self._log(f'  ATTENTION : {n} faux « {kind} » non uniques (champ '
+                      "trop court pour garantir l'unicité).")
