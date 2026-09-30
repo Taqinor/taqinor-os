@@ -327,6 +327,13 @@ describe('buildSectionReponses', () => {
     expect(buildSectionReponses('gps', { gps_lat: 48.85, gps_lng: 2.35 })).toEqual({});
   });
 
+  it('énergie (QJR632) : conso_mensuelle_kwh gardée, nettoyée comme facture_hiver', () => {
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '1200' })).toEqual({ conso_mensuelle_kwh: 1200 });
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '1200.5' })).toEqual({ conso_mensuelle_kwh: 1200.5 });
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '-3' })).toEqual({});
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '' })).toEqual({});
+  });
+
   it("énergie : facture_ete seulement si ete_differente='oui', raccordement en liste fermée", () => {
     expect(
       buildSectionReponses('energie', {
@@ -432,6 +439,17 @@ describe('buildQuestionnairePostBody', () => {
     const body = buildQuestionnairePostBody('contact', { ville: 'Fès' }, 'data:image/jpeg;base64,AAAA');
     expect(body).toEqual({ section: 'contact', reponses: { ville: 'Fès' } });
     expect(body.photo).toBeUndefined();
+  });
+
+  it('QJR633 : prefill_vu = sous-ensemble du prefill limité à la section', () => {
+    const body = buildQuestionnairePostBody('energie', { facture_hiver: '900' }, null, 'id', {
+      facture_hiver: 900,
+      gps_lat: 1,
+    });
+    expect(body.prefill_vu).toEqual({ facture_hiver: 900 });
+    const photo = 'data:image/jpeg;base64,' + 'A'.repeat(1000);
+    expect(buildQuestionnairePostBody('photo_facture', {}, photo, 'id', { facture_hiver: 900 })).not.toHaveProperty('prefill_vu');
+    expect(buildQuestionnairePostBody('energie', { facture_hiver: '900' })).not.toHaveProperty('prefill_vu');
   });
 
   it('section photo_* : reponses vide, photo reprise si valide', () => {

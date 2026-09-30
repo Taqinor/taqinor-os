@@ -420,6 +420,8 @@ export function buildSectionReponses(
     case 'energie': {
       const factureHiver = cleanPositiveNumber(raw.facture_hiver, 1_000_000);
       if (factureHiver != null) out.facture_hiver = factureHiver;
+      const consoKwh = cleanPositiveNumber(raw.conso_mensuelle_kwh, 1_000_000);
+      if (consoKwh != null) out.conso_mensuelle_kwh = consoKwh;
       const eteDifferente = cleanOuiNon(raw.ete_differente);
       if (eteDifferente !== undefined) {
         out.ete_differente = eteDifferente;
@@ -490,7 +492,22 @@ export interface QuestionnairePostBody {
    *  lib/visite.ts `appareilId`) : présente uniquement quand fournie par
    *  l'appelant, jamais fabriquée ici. */
   appareil_id?: string;
+  /** QJR633 — pré-remplissage affiché (contrat QJR512), limité à la section. */
+  prefill_vu?: Record<string, unknown>;
 }
+
+/** Colonnes écrites par section (miroir de `colonnes_ecrites`, contrat QJR512). */
+const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly string[]>> = {
+  contact: ['email', 'adresse', 'ville'],
+  gps: ['gps_lat', 'gps_lng'],
+  energie: ['facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh', 'raccordement'],
+  toiture: ['type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'],
+  occupation: ['occupation_jour'],
+  equipements: [
+    'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',
+    'equip_clim', 'equip_clim_pieces', 'equip_chauffe_eau_electrique',
+  ],
+};
 
 /**
  * Construit le corps POST complet d'une section. `photoDataUrl` n'est repris
@@ -504,12 +521,23 @@ export function buildQuestionnairePostBody(
   raw: Record<string, unknown>,
   photoDataUrl?: string | null,
   appareilId?: string,
+  prefillVu?: Record<string, unknown> | null,
 ): QuestionnairePostBody {
   const body: QuestionnairePostBody = { section, reponses: buildSectionReponses(section, raw) };
   if (isPhotoSection(section) && isValidPhotoDataUrl(photoDataUrl)) {
     body.photo = photoDataUrl;
   }
   if (appareilId) body.appareil_id = appareilId;
+  // QJR633 — ce que le client a VU pré-rempli (sous-ensemble du prefill du GET
+  // limité aux colonnes de la section, tel que reçu) : le serveur distingue
+  // « confirmé » de « modifié ». Jamais pour une section photo.
+  if (prefillVu && !isPhotoSection(section)) {
+    const vu: Record<string, unknown> = {};
+    for (const col of SECTION_COLONNES_ECRITES[section] ?? []) {
+      if (Object.prototype.hasOwnProperty.call(prefillVu, col)) vu[col] = prefillVu[col];
+    }
+    if (Object.keys(vu).length > 0) body.prefill_vu = vu;
+  }
   return body;
 }
 
