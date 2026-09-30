@@ -141,7 +141,8 @@ LEAD_PERDU = 'lead_perdu'
 VISITE_ABANDONNEE = 'visite_abandonnee'
 # SUIVI E10 (30/09/2026) — un créneau CONVENU devient un APPEL : l'étape
 # « Rappeler le client — rappel convenu » est posée à la date et à l'heure
-# convenues (et, E17, sur le dernier réveil).
+# convenues (et, E17, sur le dernier réveil ; E23/E24, sur la dernière touche
+# d'une prise de contact, deuxième affaire comprise).
 ETAPE_RAPPEL_CONVENU_A_LA_DATE = 'etape_rappel_convenu_a_la_date'
 # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse : l'étape est
 # reposée pour demain.
@@ -500,12 +501,18 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
                                 etape, est_actif, canal)]
         if cadence == 'apres_devis':
             # Le filet du récepteur POURSUIT le plan (CAD1) : la touche
-            # suivante naît ; après la dernière, l'étape de suite. SUIVI E6
-            # (30/09/2026) — avec OU SANS devis dans l'ERP : un suivi sans
-            # devis (parti hors ERP) est poursuivi depuis son dernier barreau
-            # consommé, il ne pose plus l'étape devis à côté du suivant.
-            return codes + ([_filet_apres_reponse(etape, est_actif, canal)]
-                            if derniere else [TOUCHE_SUIVANTE])
+            # suivante naît. SUIVI E6 (30/09/2026) — avec OU SANS devis dans
+            # l'ERP : un suivi sans devis (parti hors ERP) est poursuivi
+            # depuis son dernier barreau consommé, il ne pose plus l'étape
+            # devis à côté du suivant.
+            # SUIVI E22 (décision fondateur du 30/09/2026) — après la
+            # DERNIÈRE touche, jamais « Préparer et envoyer le devis » (il est
+            # déjà parti) ni « l'appeler » : le récepteur pose « Décider la
+            # suite », pour demain (``services.est_derniere_touche_du_suivi``,
+            # même critère de rang que ``derniere``). Le canal réel (SUIVI
+            # E16) n'y change rien.
+            return codes + ([ETAPE_DECIDER_SUITE] if derniere
+                            else [TOUCHE_SUIVANTE])
         # Cadence générique (historique) : le filet pose son étape (rien
         # d'ouvert, aucun devis relançable) ET, la cadence survivant à
         # l'issue, la touche suivante naît aussi.
@@ -536,6 +543,18 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
             # critère de rang que ``derniere``).
             return (([SORT_DU_FROID] if au_froid else [])
                     + [ETAPE_RAPPEL_CONVENU_A_LA_DATE])
+        if (cadence in _CADENCES_PRISE_DE_CONTACT
+                or cadence == 'apres_devis'):
+            # SUIVI E23 (décision fondateur du 30/09/2026) — la DERNIÈRE
+            # touche de la prise de contact : plus « Préparer et envoyer le
+            # devis » à la date choisie, l'appel « Rappeler le client —
+            # rappel convenu » à la date et à l'heure convenues
+            # (``services.est_derniere_touche_de_contact``, même critère de
+            # rang que ``derniere``). SUIVI E24 — la deuxième affaire aussi.
+            # SUIVI E25 — et la dernière touche du suivi de proposition
+            # (``services.est_derniere_touche_du_suivi``) : le devis est déjà
+            # parti.
+            return [ETAPE_RAPPEL_CONVENU_A_LA_DATE]
         return [ETAPE_DEVIS_A_LA_DATE]
 
     # « pas de réponse » (et ses précisions Répondeur/Occupé/numéro invalide),
@@ -689,8 +708,13 @@ def _codes_reponse_client(cle, *, nature, derniere):
         # mécanique ordinaire de la touche.
         if a_cote:
             return [ETIQUETTE_DECISION, SUITE_SI_PLUS_RIEN_OUVERT]
+        # SUIVI E25 (30/09/2026) — sur la DERNIÈRE touche du suivi de
+        # proposition (la seule cadence où la réponse est servie), jamais
+        # « Préparer et envoyer le devis » (déjà parti) : l'étiquette, puis
+        # « Décider la suite » pour demain
+        # (``services.repondre_decision_a_plusieurs``).
         return [ETIQUETTE_DECISION,
-                ETAPE_DEVIS_DEMAIN if derniere else TOUCHE_SUIVANTE]
+                ETAPE_DECIDER_SUITE if derniere else TOUCHE_SUIVANTE]
     return []
 
 

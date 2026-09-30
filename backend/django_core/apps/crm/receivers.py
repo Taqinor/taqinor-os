@@ -45,6 +45,7 @@ from .services import (
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
     est_cloture_d_etape_visite,
+    est_derniere_touche_du_suivi,
     est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
@@ -53,6 +54,7 @@ from .services import (
     poser_filet_visite_a_planifier,
     q_visite,
     signaler_mismatch_signe_sur_refus,
+    touche_close_de,
 )
 
 logger = logging.getLogger(__name__)
@@ -583,6 +585,9 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
       08/09/2026) : la suite posée par le filet suit le CANAL de la touche —
       message répondu → « appeler le client » ; appel fait → « préparer et
       envoyer le devis » ; le plan après-devis attend l'ENVOI du devis.
+      SUIVI E22 (30/09/2026) — sur la DERNIÈRE touche du suivi de
+      proposition (lue sur la touche close, ``touche_close_de``) : « décider
+      la suite », pour demain, jamais l'étape devis d'un devis déjà parti.
     * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
       « perdu » est une décision humaine qui exige un motif (MRY22), pas un
       effet de bord d'un appel.
@@ -651,11 +656,22 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
             # message » : une confirmation de visite close par WhatsApp ne
             # fait pas poser « Appeler le client — il a répondu au message »
             # (le canal de la touche ne décide pas de sa suite).
-            visite = est_cloture_d_etape_visite(instance)
-            assurer_prochaine_etape_apres_succes(
-                instance.lead, instance.user,
-                canal_touche=None if visite else instance.kind,
-                demarrer_plan=not visite)
+            if est_derniere_touche_du_suivi(touche_close_de(instance)):
+                # SUIVI E22 (décision fondateur du 30/09/2026) — client joint
+                # sur la DERNIÈRE touche du suivi de proposition : le devis
+                # est déjà parti, « Préparer et envoyer le devis » (ou
+                # « l'appeler ») n'a plus de sens. « Décider la suite » est
+                # posée pour demain, comme après un refus — sans plan devis ;
+                # le dossier garde son étape (« Relance »).
+                assurer_prochaine_etape_apres_succes(
+                    instance.lead, instance.user,
+                    cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
+            else:
+                visite = est_cloture_d_etape_visite(instance)
+                assurer_prochaine_etape_apres_succes(
+                    instance.lead, instance.user,
+                    canal_touche=None if visite else instance.kind,
+                    demarrer_plan=not visite)
         elif issue == 'refuse':
             # SUIVI E21 (30/09/2026) — le refus arrête les relances ET le
             # rendez-vous de visite en attente : le technicien ne se déplace

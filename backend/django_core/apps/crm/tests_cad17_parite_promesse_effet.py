@@ -363,6 +363,12 @@ def _etape_devis_a_la_date(c):
 def _etape_decider_suite(c):
     c.vrai(c.ouvertes(libelle=FILET_REFUS_LIBELLE).exists(),
            'aucune étape « décider la suite »')
+    # SUIVI E22 — « Décider la suite » EST la suite : jamais « Préparer et
+    # envoyer le devis » ni « Appeler le client » posée à côté (sur la
+    # dernière touche du suivi de proposition, le devis est déjà parti).
+    c.vrai(not c.nouvelles(libelle__in=(FILET_JOINT_LIBELLE,
+                                        FILET_APPEL_LIBELLE)).exists(),
+           'une étape « préparer le devis » ou « appeler » est posée à côté')
 
 
 def _etape_deplacee_a_la_date(c):
@@ -442,6 +448,11 @@ def _etape_rappel_convenu_a_la_date(c):
     c.vrai(any(r.due_at.astimezone(horaires.CASABLANCA)
                .strftime('%H:%M') == HEURE_CHOISIE for r in rappels),
            'le « rappel convenu » n’est pas à l’heure convenue')
+    # SUIVI E23 — close « à rappeler », et le rappel REMPLACE l'étape devis
+    # (dernière touche de la prise de contact) : jamais les deux.
+    c.vrai(c.etape.outcome == 'rappel', 'la touche n’est pas close « à rappeler »')
+    c.vrai(not c.nouvelles(libelle=FILET_JOINT_LIBELLE).exists(),
+           'une étape « préparer et envoyer le devis » est posée à côté')
 
 
 def _etape_planifier_demain(c):

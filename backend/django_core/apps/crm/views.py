@@ -3710,7 +3710,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import (est_dernier_reveil, est_etape_de_filet,
+        from .services import (est_derniere_touche_de_contact,
+                               est_derniere_touche_du_suivi,
+                               est_dernier_reveil, est_etape_de_filet,
                                est_etape_de_visite, marquer_etape_relance,
                                repondre_planifier_sans_reponse,
                                reporter_prochaine_touche,
@@ -3750,6 +3752,25 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, _rappel = repondre_rappel_convenu(
                 etape, request.user, quand, note=note, body=body,
                 sortir_du_froid=True)
+            return self._reponse_fait(etape)
+        # SUIVI E23 (décision fondateur du 30/09/2026) — « À rappeler le… »
+        # sur la DERNIÈRE touche de la prise de contact (appel ou message) :
+        # aucune touche suivante ne peut porter la date, et le filet posait
+        # « Préparer et envoyer le devis » à la date choisie. La touche est
+        # close « à rappeler » et l'APPEL « Rappeler le client — rappel
+        # convenu » est posé à la date ET à l'heure convenues, recalées sur
+        # la fenêtre d'appel ; le dossier garde son étape.
+        # SUIVI E24 — la « deuxième affaire » (un client acquis qui revient,
+        # rangée par la table sous les mêmes types) suit la même règle
+        # (``est_derniere_touche_de_contact`` lit les deux cadences).
+        # SUIVI E25 — la DERNIÈRE touche du suivi de proposition aussi : plus
+        # jamais « Préparer et envoyer le devis » (déjà parti) à la date.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None
+                and (est_derniere_touche_de_contact(etape)
+                     or est_derniere_touche_du_suivi(etape))):
+            etape, _rappel = repondre_rappel_convenu(
+                etape, request.user, quand, note=note, body=body)
             return self._reponse_fait(etape)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
         # la consomme pas. L'écran promet « L'étape est déplacée à la date
