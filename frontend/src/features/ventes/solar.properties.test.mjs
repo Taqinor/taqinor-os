@@ -57,15 +57,8 @@ export const KNOWN_VIOLATIONS = {
     exemple: 'kwhFromBill(5_000_000, \'onee\') → ≈ 1 000 000 kWh, estimation:false',
   },
 }
-// (suite) — chaîne monétaire.
-KNOWN_VIOLATIONS['ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF'] = {
-  resume: 'totauxCanoniquesTtc (miroir de selectors._canonical_totaux) rend un '
-    + 'TTC NÉGATIF (−0,01 MAD) à remise 100 % dès que le HT brut porte un '
-    + 'demi-centime : la remise est arrondie AU-DESSUS du HT brut, le HT net '
-    + 'devient −0,005 → −0,01.',
-  exemple: 'lignes [{quantite:0.5, taux_tva:0, prix_unit_ttc:9.71}, '
-    + '{quantite:1, taux_tva:14, prix_unit_ttc:21170.47}] remise 100 % → −0,01',
-}
+// (ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF corrigée : HT net borné à 0 dans
+// totauxCanoniquesTtc, comme selectors._canonical_totaux — test ci-dessous.)
 const CONNUE = (id) => Object.prototype.hasOwnProperty.call(KNOWN_VIOLATIONS, id)
 
 // `verifier` : propriété attendue VRAIE, sauf si son id est dans
@@ -619,8 +612,12 @@ test('totaux TTC : remise ↑ (jusqu à 99,99 %) ⇒ total TTC jamais plus haut 
   })
 })
 
-test('KNOWN_VIOLATION ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF — remise 100 % ⇒ total TTC exactement 0, jamais négatif', () => {
-  verifier('ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF', 'remise 100 % ⇒ TTC = 0', {
+test('ERR-QAH-PROP-JS-TOTAUX-REMISE-100-NEGATIF (corrigée) — remise 100 % ⇒ total TTC exactement 0, jamais négatif', () => {
+  assert.equal(totauxCanoniquesTtc([
+    { quantite: 0.5, taux_tva: 0, prix_unit_ttc: 9.71 },
+    { quantite: 1, taux_tva: 14, prix_unit_ttc: 21170.47 },
+  ], 100), 0)
+  verifier('', 'remise 100 % ⇒ TTC = 0', {
     seed: 604, runs: RUNS,
     gen: (g) => ({ lignes: genLignes(g) }),
     verifie: ({ lignes }) => {

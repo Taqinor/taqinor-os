@@ -1508,7 +1508,11 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
     buckets.set(rH, (buckets.get(rH) || 0n) + u)
   }
   const remiseC = dH > 0n ? _arrondiDemiHaut(htBrutU * dH, 1000000n) : 0n
-  const htNetC = _arrondiDemiHaut(htBrutU - remiseC * 100n, 100n)
+  // ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — HT net borné à 0 (miroir de
+  // `_canonical_totaux`) : à remise 100 %, un HT brut à demi-centime donnait
+  // une remise arrondie au-dessus et un TTC de −0,01.
+  const htNetBrutC = _arrondiDemiHaut(htBrutU - remiseC * 100n, 100n)
+  const htNetC = htNetBrutC < 0n ? 0n : htNetBrutC
   let tvaC
   if (buckets.size <= 1) {
     const rH = buckets.size ? [...buckets.keys()][0] : TVA_STANDARD_DEFAUT * 100
