@@ -3260,3 +3260,43 @@ def besoin_stockage_avec_recharge_ve(besoin_kwh, equipements,
         f"vendue ({tailles[-1]} kWh) : au-delà du catalogue, on ne compose "
         "pas une batterie sur mesure.")
     return sortie
+
+
+# ── QJR612 — LE PLANCHER RÉELLEMENT APPLIQUÉ AU CHOIX DU STOCKAGE ────────────
+#
+# DÉCISION FONDATEUR (30/09/2026, verbatim) : « add more panels so battery is
+# always charged. and btw this is a rule that exists already for batteries in
+# general in my ERP ». Le plancher ci-dessous RELÈVE la batterie retenue ; la
+# règle « batteries toujours pleines » (``se_remplit_tous_les_jours``, déjà
+# appliquée par ``dimensionnement.balayer_tailles``) fait alors monter le champ
+# jusqu'à ce que cette batterie se remplisse chaque jour — jamais une banque
+# qui dort.
+
+
+def equipements_sans_recharge_ve_nocturne(equipements):
+    """Les couches du lead SANS la couche véhicule NOCTURNE — la base du
+    plancher, pour ne jamais compter deux fois la recharge.
+
+    Une recharge de jour ou de soirée n'est pas la couche nocturne : les
+    couches sont alors rendues telles quelles. ``None`` reste ``None``."""
+    if equipements is None:
+        return None
+    if _couche_ve_nocturne(equipements) is None:
+        return equipements
+    return {cle: couche for cle, couche in equipements.items() if cle != 've'}
+
+
+def plancher_batterie_recharge_ve(besoin_base_kwh, equipements,
+                                  tailles_offre_kwh):
+    """Le PLANCHER de stockage imposé par la recharge VE nocturne, ou ``None``.
+
+    ``None`` quand aucune recharge nocturne n'est déclarée : rien ne change
+    alors, à l'octet près. Sinon, la sortie de
+    :func:`besoin_stockage_avec_recharge_ve` — ``besoin_base_kwh`` doit être le
+    besoin du même lead SANS la couche VE nocturne
+    (:func:`equipements_sans_recharge_ve_nocturne`), ``tailles_offre_kwh`` les
+    capacités RÉELLEMENT composées (jamais inventées)."""
+    if recharge_ve_nocturne_kwh_jour(equipements) <= 0:
+        return None
+    return besoin_stockage_avec_recharge_ve(
+        besoin_base_kwh, equipements, tailles_offre_kwh)

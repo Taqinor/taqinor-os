@@ -996,9 +996,12 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire,
         calculer_etude_horaire,
+        equipements_sans_recharge_ve_nocturne,
+        plancher_batterie_recharge_ve,
         # L-DECH — SOURCE UNIQUE : l'étude d'un devis et ce balayage lisent la
         # MÊME lecture de fiches, jamais deux implémentations parallèles.
         puissances_batterie_des_lignes,
+        recharge_ve_nocturne_kwh_jour,
     )
     from apps.ventes.services import (
         carte_marques_composition,
@@ -1053,6 +1056,26 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         # comparer deux Ramadans.
         'jour_reference': jour_reference,
     }
+
+    # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :
+    # « add more panels so battery is always charged »). Une recharge VE
+    # NOCTURNE impose un PLANCHER au stockage retenu : base = l'optimum du même
+    # lead SANS la couche VE nocturne (pas de double compte) + la recharge.
+    # Le plancher ne fait que RETIRER des candidats sous lui : la règle
+    # « batteries toujours pleines » ci-dessous reste le seul juge du
+    # remplissage, si bien qu'une banque relevée n'existe qu'aux tailles de
+    # champ qui la remplissent — la grille champ × stockage
+    # (``choisir_recommandation_avec``) TIRE alors les panneaux nécessaires.
+    # Sans recharge nocturne : ``None``, rien ne change à l'octet près.
+    etude_kwargs_sans_ve = None
+    if recharge_ve_nocturne_kwh_jour(equipements) > 0:
+        etude_kwargs_sans_ve = dict(
+            etude_kwargs,
+            equipements=equipements_sans_recharge_ve_nocturne(equipements))
+    # REPLI (jamais silencieux) : si AUCUNE taille balayée ne remplit le
+    # plancher, on retient à chaque taille la PLUS GRANDE banque qui s'y remplit
+    # encore, marquée ``plafonne`` — jamais une batterie qui ne se charge pas.
+    etat_plancher = {'repli': False, 'candidats_vus': False}
 
     def _composer(panneaux, kwc, avec_batterie, cible_kwh, journal):
         """Une composition catalogue, ou ``None`` — jamais une exception."""
@@ -1138,10 +1161,15 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         stockage = None
         stockage_tronque = False
         avert_stockage = []
+        plancher_ve = None
         if sonde_batterie is not None and not bloquants_avec:
             (paliers, palier_refuse, stockage, stockage_tronque,
-             avert_stockage) = _balayer_stockage_de_la_taille(
+             avert_stockage, plancher_ve) = _balayer_stockage_de_la_taille(
                 panneaux, kwc, capacites_vivier, eco_sans)
+        if etude_kwargs_sans_ve is not None and plancher_ve is None:
+            # Stockage non évalué à cette taille : le plancher reste NOMMÉ,
+            # sans aucune taille inventée.
+            plancher_ve = plancher_batterie_recharge_ve(0.0, equipements, ())
 
         meilleur = _meilleur_palier(paliers)
         batterie_disponible = meilleur is not None
@@ -1156,7 +1184,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
 
         residuel_retenu = (meilleur['residuel_kwh_mois'] if batterie_disponible
                            else residuel_sans)
-        return {
+        ligne = {
             'panneaux': panneaux,
             'panel_watt': round(panel_watt, 1),
             'kwc': round(kwc, 3),
@@ -1218,13 +1246,19 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             'lignes_sans': vue_sans.get('lignes', []),
             'lignes_avec': (meilleur['lignes'] if batterie_disponible else []),
         }
+        if plancher_ve is not None:
+            # QJR612 — clé ADDITIVE, posée seulement sur un lead à recharge
+            # VE nocturne : un lead sans VE garde la forme d'hier à l'octet.
+            ligne['plancher_recharge_ve'] = plancher_ve
+        return ligne
 
     def _balayer_stockage_de_la_taille(panneaux, kwc, capacites_vivier,
                                        eco_sans):
-        """(paliers retenus, palier refusé, bloc moteur, tronqué, avertissements)."""
+        """(paliers retenus, palier refusé, bloc moteur, tronqué,
+        avertissements, plancher VE nocturne ou ``None``)."""
         cibles = paliers_stockage_candidats(capacites_vivier)
         if not cibles:
-            return [], None, None, False, []
+            return [], None, None, False, [], None
 
         # Chaque cible NOMINALE du catalogue est COMPOSÉE pour de vrai : c'est
         # la composition qui dit le prix ET la capacité UTILE réellement
@@ -1262,15 +1296,83 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                 'charge_kw': puissances['charge_kw'],
             }
         if not compositions:
-            return [], None, None, False, []
+            return [], None, None, False, [], None
 
         energie = balayer_stockage_horaire(
             kwc=kwc, capacites_kwh=compositions,
             puissances_par_capacite=bornes_par_capacite, **etude_kwargs)
         if energie is None:
-            return [], None, None, False, []
-        par_capacite = {p['capacite_kwh']: p for p in energie['paliers']}
+            return [], None, None, False, [], None
 
+        # QJR612 — le plancher VE nocturne de CETTE taille (``None`` sans
+        # recharge nocturne : chemin d'hier, inchangé).
+        plancher = None
+        seuil = 0.0
+        if etude_kwargs_sans_ve is not None:
+            plancher = _plancher_ve_de_la_taille(
+                kwc, compositions, vues, bornes_par_capacite)
+            seuil = _num((plancher or {}).get('taille_retenue_kwh'))
+
+        retenus, refuse, tronque = _retenir_paliers(
+            energie, compositions, vues, eco_sans, seuil)
+
+        if plancher is not None:
+            candidats = retenus
+            if candidats:
+                etat_plancher['candidats_vus'] = True
+            retenus = [p for p in candidats
+                       if p['capacite_kwh'] + TOLERANCE_CAPACITE_KWH >= seuil]
+            if etat_plancher['repli'] and candidats:
+                # REPLI : aucune taille du balayage ne remplit le plancher —
+                # la PLUS GRANDE banque qui se remplit encore ici, nommée.
+                plus_grande = max(candidats, key=lambda p: p['capacite_kwh'])
+                retenus = [plus_grande]
+                plancher = dict(plancher, plafonne=True, motif=(
+                    'plancher de %s kWh (recharge VE nocturne comprise) '
+                    'qu\'aucune taille de champ balayée ne remplit chaque '
+                    'jour : on retient la plus grande banque qui se remplit '
+                    'encore (%s kWh) — jamais une batterie qui ne se charge '
+                    'pas.' % (_kwh_txt(seuil),
+                              _kwh_txt(plus_grande['capacite_kwh']))))
+
+        avertissements = []
+        if tronque:
+            avertissements.append(
+                'Balayage du stockage tronqué à %d paliers à %d panneaux : le '
+                'plafond physique (%.1f kWh) autorise davantage — augmenter '
+                'MAX_PALIERS_STOCKAGE pour voir la suite.'
+                % (MAX_PALIERS_STOCKAGE, panneaux,
+                   _num(energie['plafond_stockage_kwh'])))
+        return retenus, refuse, energie, tronque, avertissements, plancher
+
+    def _plancher_ve_de_la_taille(kwc, compositions, vues, bornes):
+        """Le plancher VE nocturne à CE champ : base = l'optimum (meilleur
+        payback, batteries toujours pleines) du même lead SANS la couche VE
+        nocturne, sur les MÊMES compositions réelles — puis + la recharge."""
+        base = 0.0
+        etude_nv = calculer_etude_horaire(
+            kwc=kwc, batterie_kwh_utile=0, source_conso=source_conso,
+            **etude_kwargs_sans_ve)
+        energie_nv = balayer_stockage_horaire(
+            kwc=kwc, capacites_kwh=compositions,
+            puissances_par_capacite=bornes, **etude_kwargs_sans_ve)
+        if etude_nv is not None and energie_nv is not None:
+            retenus_nv, _refuse, _tronque = _retenir_paliers(
+                energie_nv, compositions, vues,
+                etude_nv['annuel']['economie_sans_mad'], 0.0)
+            meilleur_nv = _meilleur_palier(retenus_nv)
+            if meilleur_nv is not None:
+                base = _num(meilleur_nv['capacite_kwh'])
+        return plancher_batterie_recharge_ve(base, equipements, compositions)
+
+    def _retenir_paliers(energie, compositions, vues, eco_sans, seuil):
+        """(paliers retenus, palier refusé, tronqué) — la règle « batteries
+        toujours pleines » appliquée palier par palier.
+
+        ``seuil`` (QJR612) : sous le plancher VE nocturne, la coupe à marginal
+        nul ne s'applique pas encore — on monte jusqu'au plancher, TANT QUE la
+        banque se remplit. ``0.0`` ⇒ comportement d'hier."""
+        par_capacite = {p['capacite_kwh']: p for p in energie['paliers']}
         retenus = []
         refuse = None
         precedente = eco_sans
@@ -1304,20 +1406,14 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             retenus.append(palier)
             # COUPE À MARGINAL NUL : le palier qui n'apporte plus un dirham est
             # GARDÉ (il PROUVE le retournement, comme le panneau de marge de
-            # ``bornes_candidates``), mais on n'explore pas au-delà.
-            if palier['economie_marginale_mad'] <= 0:
+            # ``bornes_candidates``), mais on n'explore pas au-delà — sauf sous
+            # le plancher VE nocturne (QJR612), qu'on doit encore atteindre.
+            if (palier['economie_marginale_mad'] <= 0
+                    and palier['capacite_kwh'] + TOLERANCE_CAPACITE_KWH
+                    >= seuil):
                 break
             precedente = brut['economie_mad']
-
-        avertissements = []
-        if tronque:
-            avertissements.append(
-                'Balayage du stockage tronqué à %d paliers à %d panneaux : le '
-                'plafond physique (%.1f kWh) autorise davantage — augmenter '
-                'MAX_PALIERS_STOCKAGE pour voir la suite.'
-                % (MAX_PALIERS_STOCKAGE, panneaux,
-                   _num(energie['plafond_stockage_kwh'])))
-        return retenus, refuse, energie, tronque, avertissements
+        return retenus, refuse, tronque
 
     def _palier_rendu(cible, capacite, vue, brut, economie_precedente):
         cout = _num(vue.get('cout_ttc'))
@@ -1374,6 +1470,20 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             'consommation probablement aberrante',
             MAX_PANNEAUX_BALAYAGE, borne_max)
 
+    tableau = _construire_tableau(evaluer, debut, fin, plafond_atteint)
+    if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
+            and not any(ligne.get('balayage_stockage') for ligne in tableau)):
+        # QJR612 — REPLI : le plancher VE nocturne n'est rempli à AUCUNE taille
+        # balayée. Plutôt que de perdre toute option batterie, chaque taille
+        # retient la plus grande banque qui s'y remplit encore (``plafonne``).
+        etat_plancher['repli'] = True
+        cache.clear()
+        tableau = _construire_tableau(evaluer, debut, fin, plafond_atteint)
+    return tableau
+
+
+def _construire_tableau(evaluer, debut, fin, plafond_atteint):
+    """Les lignes du balayage, de ``debut`` à ``fin`` panneaux inclus."""
     tableau = []
     for panneaux in range(debut, fin + 1):
         ligne = evaluer(panneaux)
