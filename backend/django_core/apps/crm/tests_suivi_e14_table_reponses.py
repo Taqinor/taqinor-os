@@ -63,7 +63,9 @@ def _cles_de_la_table(etape_table, canal):
     cles = []
     reponses = list(etape_table['reponses'])
     if canal not in _CANAUX_ECRITS:
-        reponses += [{'modele': m}
+        # Une entrée de `reponses_appel` est un identifiant de modèle ou un
+        # objet `{modele, effet, suite…}` (l'étape générique décrit les siennes).
+        reponses += [m if isinstance(m, dict) else {'modele': m}
                      for m in etape_table.get('reponses_appel', ())]
     for reponse in reponses:
         cle = _cle_de_la_reponse(reponse)

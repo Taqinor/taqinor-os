@@ -341,6 +341,18 @@ class ParcoursBase(TestCase):
         for cadence in CADENCES_DEFAUT:
             CadenceRelanceEtape.cadence_pour(cls.company, cadence)
 
+    def __getstate__(self):
+        """Django ``--parallel`` pickle un SOUS-TEST en échec avec son instance de test
+        (``RemoteTestResult.addSubTest``) : le client d'API (fermetures de middleware) et
+        la pile d'horloges gelées ne se picklent pas — sans ceci, le premier sous-test
+        rouge faisait planter le lanceur (« Can't pickle local object … inner », CI du
+        30/09/2026) au lieu d'imprimer le chemin du cas. Copie allégée, l'instance vivante
+        garde tout."""
+        etat = self.__dict__.copy()
+        for cle in ('api', '_pile', '_cleanups', '_outcome'):
+            etat.pop(cle, None)
+        return etat
+
     def setUp(self):
         super().setUp()
         gel = frozen(GEL)
@@ -627,6 +639,30 @@ class ParcoursBase(TestCase):
         self._journal(f'[{self.aujourdhui():%d/%m}] devis {devis.reference} envoyé depuis l’ERP')
         self.verifier_invariants(lead)
         return devis
+
+    def rappel_demande(self, lead):
+        """« Rappelez-moi jeudi » noté depuis la fiche (``POST leads/<id>/log-interaction/``,
+        MRY10) : la touche générique d'APPEL « Rappeler le client (il l'a demandé) » est
+        posée à la date convenue — le chemin réel vers une étape générique qui est un
+        appel (la passation, elle, est un message)."""
+        quand = self.jour_ouvre(2)
+        self.appel('post', f'/api/django/crm/leads/{lead.pk}/log-interaction/', {
+            'kind': 'appel', 'outcome': 'rappel', 'rappel_le': quand.isoformat(),
+            'rappel_heure': HEURE_CONVENUE})
+        self._journal(f'[{self.aujourdhui():%d/%m}] appel journalisé depuis la fiche, rappel '
+                      f'demandé le {quand:%d/%m/%Y}')
+        self.verifier_invariants(lead)
+
+    def amener_generique_appel(self):
+        """``(lead, touche)`` : un lead en suivi de proposition avec une touche générique
+        d'APPEL ouverte (rappel demandé) — pour les réponses d'appel de l'étape générique."""
+        lead, _suivi = self.amener('suivi_message')
+        self.rappel_demande(lead)
+        appels = [e for e in self.du_type(lead, 'generique')
+                  if e.canal == RelanceEtape.Canal.APPEL]
+        self.assertEqual(len(appels), 1, self.msg(
+            'une (et une seule) touche générique d’APPEL ouverte attendue', lead))
+        return lead, appels[0]
 
     def reattribuer(self, lead):
         """« Réattribuer » (action en masse ``reassign`` de l'API) : le dossier change de
@@ -984,10 +1020,12 @@ class ParcoursBase(TestCase):
         """Lead neuf → ``amener`` → la réponse du cas → HTTP 2xx → ``verifier_suite`` →
         invariants."""
         self.preparer_gabarits(cas.type_id, cas.contexte)
-        lead, etape = self.amener(cas.type_id)
         if cas.appel_seulement:
-            self.assertEqual(etape.canal, RelanceEtape.Canal.APPEL, self.msg(
-                f'{cas.nom} : une réponse d’appel sur une touche « {etape.canal} »', lead))
+            # Répondeur, Occupé… ne se proposent que sur un APPEL : la passation
+            # (chemin ordinaire de « generique ») est un message.
+            lead, etape = self.amener_generique_appel()
+        else:
+            lead, etape = self.amener(cas.type_id)
         avant = self.photo(lead, etape)
         reponse = cas.reponse
         resp, envoye = self.repondre(
