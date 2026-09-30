@@ -80,7 +80,7 @@ describe('questionnaire/[token].astro — pagination par ÉCRAN', () => {
     expect(src).toContain('const sectionsDeLEcran = activeSectionIds();');
     expect(src).toContain('for (const section of sectionsDeLEcran) {');
     // T-WEB : appareil_id reste joint au corps, à l'identique.
-    expect(src).toContain('buildQuestionnairePostBody(section, raw, photo, appareilId());');
+    expect(src).toContain('buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);');
   });
 
   it('une section n’est marquée répondue que si quelque chose est PARTI', () => {

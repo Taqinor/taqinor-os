@@ -1020,7 +1020,7 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
       }
       const raw = collectSectionRaw(section);
       const photo = isPhotoSection(section) ? photoDataUrls[section] ?? null : null;
-      const body = buildQuestionnairePostBody(section, raw, photo, appareilId());
+      const body = buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);
       if (isEmptyPostBody(body)) return { ok: true, envoye: false };
 
       try {
