@@ -7,14 +7,15 @@
 generate_devis_premium.py  FINAL
 Page 1 : white-background v1 layout
 Pages 2-3 : v4 premium dark design
-Usage : python generate_devis_premium.py
+Rendu seul : ``generate_premium_pdf(data, out_path)`` / ``render_html_for(data)``
+(QJR629 — plus de devis démo embarqué ni d'exécution en script).
 """
 import base64, html, io, re, subprocess, sys, tempfile, threading
 from pathlib import Path
 
 # NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
 # pures : ni Django, ni ``apps``, ni I/O — ce moteur vendoré reste donc
-# démarrable hors Django, et exécutable directement comme ``__main__`` (d'où le
+# démarrable hors Django, et importable directement depuis son dossier (d'où le
 # double chemin d'import : paquet d'abord, module voisin ensuite).
 try:
     from . import i18n_labels
@@ -192,142 +193,41 @@ CGR = "#16A34A"
 _CA_DEFAULT = CA
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# QUOTE_INPUT — seule section à modifier pour changer un devis
+# QJR629 — DÉFAUTS INERTES des globales du rendu. Le devis démo embarqué
+# (QUOTE_INPUT : coordonnées réelles du fondateur) et sa seconde formule de
+# prix par blocs (calculate_quote, exécutée à l'import) sont SUPPRIMÉS : chaque
+# rendu passe par ``apply_quote_data``, qui réécrit toutes ces globales.
 # ═══════════════════════════════════════════════════════════════════════════════
-QUOTE_INPUT = {
-    "ref":              "412",
-    "date":             "28/02/2026",
-    "client_name":      "Reda Kasri",
-    "client_addr":      "5 Rue Ennoussour RDC",
-    "client_phone":     "0661850410",
-    "inst_type":        "R\u00e9sidentielle",
-    "puissance_kwc":    10.65,
-    "nb_panneaux":      15,
-    "watt_par_panneau": 710,
-    "city":             "Casablanca",
-    "prod_kwh":         13190,
-    "eco_s_ann":        15828,   # \u00e9conomies/an affich\u00e9es \u2014 Option 1
-    "eco_a_ann":        25232,   # \u00e9conomies/an affich\u00e9es \u2014 Option 2 (KPI)
-    "eco_a_cumul":      19478,   # taux r\u00e9el pour courbe ROI cumulatif
-    "roi_s":            3.3,
-    "roi_a":            5.5,
-    "eco_s_monthly":    [850, 980,1320,1560,1820,1850,1840,1610,1390,1120, 830, 760],
-    "eco_a_monthly":    [1380,1590,2140,2220,2470,2640,2650,2510,2280,1890,1380,1230],
-    # Batteries incluses dans l'Option 2
-    "battery_option": [
-        {"designation": "Batterie 5\u202fkWh",  "marque": "Deye", "quantite": 1, "prix_unit_ttc": 16000},
-        {"designation": "Batterie 10\u202fkWh", "marque": "Deye", "quantite": 1, "prix_unit_ttc": 27000},
-    ],
-    # Overrides — None = formule bloc automatique
-    "overrides": {
-        "onduleur_reseau":   15000,
-        "smart_meter":       1800,
-        "wifi_dongle":       1200,
-        "prix_panneau":      1100,
-        "onduleur_hybride":  29000,
-        "structures_unit":   450,
-        "installation":      4000,   # override formule: (blocks+1)\u00d72400
-        "tableau":           2000,   # override formule: blocks\u00d71500
-        "accessoires":       None,   # None \u2192 blocks\u00d71000 = 2000
-        "transport":         1000,
-    },
-}
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PRICING ENGINE
-# ═══════════════════════════════════════════════════════════════════════════════
-def calculate_quote(q):
-    """Block-based pricing engine. blocks = max(1, round(kwc/5))."""
-    kwc    = q["puissance_kwc"]
-    nb_pan = q["nb_panneaux"]
-    ovr    = q.get("overrides", {})
-
-    blocks = max(1, round(kwc / 5))
-
-    def ov(key, default):
-        v = ovr.get(key)
-        return v if v is not None else default
-
-    installation     = ov("installation",     (blocks + 1) * 2400)
-    accessoires      = ov("accessoires",      blocks * 1000)
-    tableau          = ov("tableau",          blocks * 1500)
-    transport        = ov("transport",        1000)
-    structures_unit  = ov("structures_unit",  450)
-    onduleur_reseau  = ov("onduleur_reseau",  14000)
-    smart_meter      = ov("smart_meter",      1500)
-    wifi_dongle      = ov("wifi_dongle",      0)
-    prix_panneau     = ov("prix_panneau",     1100)
-    onduleur_hybride = ov("onduleur_hybride", 29000)
-
-    sans_items = [
-        {"designation": "Onduleur r\u00e9seau",              "marque": "Huawei",         "quantite": 1,      "prix_unit_ttc": onduleur_reseau},
-        {"designation": "Smart Meter",                       "marque": "Huawei",         "quantite": 1,      "prix_unit_ttc": smart_meter},
-        {"designation": "Wifi Dongle",                       "marque": "Huawei",         "quantite": 1,      "prix_unit_ttc": wifi_dongle},
-        {"designation": "Panneaux",                          "marque": "Canadian Solar", "quantite": nb_pan, "prix_unit_ttc": prix_panneau},
-        {"designation": "Structures acier",                  "marque": "",               "quantite": nb_pan, "prix_unit_ttc": structures_unit},
-        {"designation": "Socles",                            "marque": "",               "quantite": 30,     "prix_unit_ttc": 80},
-        {"designation": "Accessoires",                       "marque": "",               "quantite": 1,      "prix_unit_ttc": accessoires},
-        {"designation": "Tableau De Protection AC/DC",       "marque": "",               "quantite": 1,      "prix_unit_ttc": tableau},
-        {"designation": "Installation",                      "marque": "",               "quantite": 1,      "prix_unit_ttc": installation},
-        {"designation": "Transport",                         "marque": "",               "quantite": 1,      "prix_unit_ttc": transport},
-    ]
-
-    avec_base = [
-        {"designation": "Onduleur hybride",                  "marque": "Deye",           "quantite": 1,      "prix_unit_ttc": onduleur_hybride},
-        {"designation": "Panneaux",                          "marque": "Canadian Solar", "quantite": nb_pan, "prix_unit_ttc": prix_panneau},
-    ]
-    batteries = list(q.get("battery_option", []))
-    avec_tail = [
-        {"designation": "Structures acier",                  "marque": "",               "quantite": nb_pan, "prix_unit_ttc": structures_unit},
-        {"designation": "Socles",                            "marque": "",               "quantite": 30,     "prix_unit_ttc": 80},
-        {"designation": "Accessoires",                       "marque": "",               "quantite": 1,      "prix_unit_ttc": accessoires},
-        {"designation": "Tableau De Protection AC/DC",       "marque": "",               "quantite": 1,      "prix_unit_ttc": tableau},
-        {"designation": "Installation",                      "marque": "",               "quantite": 1,      "prix_unit_ttc": installation},
-        {"designation": "Transport",                         "marque": "",               "quantite": 1,      "prix_unit_ttc": transport},
-    ]
-    avec_items = avec_base + batteries + avec_tail
-
-    total_sans = sum(it["quantite"] * it["prix_unit_ttc"] for it in sans_items)
-    total_avec = sum(it["quantite"] * it["prix_unit_ttc"] for it in avec_items)
-
-    return {
-        "sans_items": sans_items, "avec_items": avec_items,
-        "total_sans": total_sans, "total_avec": total_avec,
-        "blocks": blocks,
-    }
-
-# ── Run pricing engine ────────────────────────────────────────────────────────
-_Q = calculate_quote(QUOTE_INPUT)
-
-CLIENT_NAME  = QUOTE_INPUT["client_name"]
-CLIENT_ADDR  = QUOTE_INPUT["client_addr"]
-CLIENT_PHONE = QUOTE_INPUT["client_phone"]
-CLIENT_ICE   = QUOTE_INPUT.get("client_ice", "")
+CLIENT_NAME  = ""
+CLIENT_ADDR  = ""
+CLIENT_PHONE = ""
+CLIENT_ICE   = ""
 # L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
 # public niveau standard (jamais le PDF interne). None par défaut → les
 # footers restent byte-identiques à avant L-NIV (mêmes tests de page-count).
 WATERMARK_STANDARD = None
-REF          = QUOTE_INPUT["ref"]
-DATE_STR     = QUOTE_INPUT["date"]
-KWC          = QUOTE_INPUT["puissance_kwc"]
-NB_PAN       = QUOTE_INPUT["nb_panneaux"]
-WP           = QUOTE_INPUT["watt_par_panneau"]
-PROD_KWH     = QUOTE_INPUT["prod_kwh"]
-TOTAL_SANS        = _Q["total_sans"]
-TOTAL_AVEC        = _Q["total_avec"]
+REF          = ""
+DATE_STR     = ""
+KWC          = 0.0
+NB_PAN       = 0
+WP           = 0
+PROD_KWH     = 0
+TOTAL_SANS        = 0.0
+TOTAL_AVEC        = 0.0
 DISCOUNT_PCT      = 0.0
-TOTAL_SANS_BEFORE = _Q["total_sans"]
-TOTAL_AVEC_BEFORE = _Q["total_avec"]
-ECO_S_ANN    = QUOTE_INPUT["eco_s_ann"]
-ECO_A_ANN    = QUOTE_INPUT["eco_a_ann"]
-ROI_S        = QUOTE_INPUT["roi_s"]
-ROI_A        = QUOTE_INPUT["roi_a"]
+TOTAL_SANS_BEFORE = 0.0
+TOTAL_AVEC_BEFORE = 0.0
+ECO_S_ANN    = 0
+ECO_A_ANN    = 0
+ROI_S        = 0.0
+ROI_A        = 0.0
 # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — cumul 25 ans jamais positif.
 ROI_S_JAMAIS = False
 ROI_A_JAMAIS = False
-INST_TYPE    = QUOTE_INPUT["inst_type"]
-SANS_ITEMS   = _Q["sans_items"]
-AVEC_ITEMS   = _Q["avec_items"]
+INST_TYPE    = ""
+SANS_ITEMS   = []
+AVEC_ITEMS   = []
 # XSAL14/XSAL5 \u2014 lignes de structure (sections/notes) + options propos\u00e9es.
 # D\u00e9faut vide \u2192 un devis sans structure/option est rendu strictement comme avant.
 LIGNES_STRUCTURE = []
@@ -357,17 +257,17 @@ PROD_KWH_AVEC = 0
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
-ECO_S_M    = QUOTE_INPUT["eco_s_monthly"]
-ECO_A_M    = QUOTE_INPUT["eco_a_monthly"]
+ECO_S_M    = [0] * 12
+ECO_A_M    = [0] * 12
 # M1 (audit 19/08/2026) — factures mensuelles RÉELLES, ou RIEN. L'ancien défaut
 # reconstruisait une facture depuis les économies (÷ 0,65) : une mine, parce
 # qu'il reprenait la main dès que le builder cessait d'en fournir une. Liste
 # vide ⇒ `make_chart_monthly` n'imprime aucune barre et aucune légende ONEE.
-FACTURES_M = list(QUOTE_INPUT.get("factures_mensuelles") or [])
+FACTURES_M = []
 
 YEARS   = list(range(26))
 CUMUL_S = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
-CUMUL_A = [-TOTAL_AVEC + QUOTE_INPUT["eco_a_cumul"] * y for y in YEARS]
+CUMUL_A = [-TOTAL_AVEC + ECO_A_ANN * y for y in YEARS]
 # QJR125 — la série tracée est-elle le cashflow RÉEL du devis (dégradation,
 # rendement batterie, provision onduleur) ou le repli « économie plate » ? Le
 # repli est faux de +14,5 % / +36,6 % sur le gain final (M5) : on ne le TRACE
@@ -1129,16 +1029,6 @@ def logo_html(h="36px"):
         return f'<img src="data:image/png;base64,{b64_data}" alt="TAQINOR" style="height:{h};width:auto;object-fit:contain;">'
     return (f'<span style="font-size:15pt;font-weight:900;letter-spacing:1px;color:white;">'
             f'TAQIN<span style="color:{CA};">&#9728;</span>R</span>')
-
-def logo_badge_p1():
-    """Navy badge for page 1 white header."""
-    p = ASSET_DIR / "logo.png"
-    if p.exists():
-        return f'<img src="{b64(p)}" alt="TAQINOR" style="height:44px;object-fit:contain;">'
-    return f'''<div style="background:{CN};border-radius:8px;padding:7px 14px;display:inline-flex;flex-direction:column;align-items:flex-start;">
-      <div style="font-size:14pt;font-weight:900;color:white;letter-spacing:1px;line-height:1.1;">TAQIN<span style="color:{CA};">&#9728;</span>R</div>
-      <div style="font-size:5pt;letter-spacing:2.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-top:1px;">TAQA&#183;INNOVATION&#183;NOR</div>
-    </div>'''
 
 def _logo_dark_b64():
     """Return base64 PNG of logo.png with white bg removed and dark pixels → white."""
@@ -3049,7 +2939,7 @@ def _decrit(config_optimum, config_vendue):
 
     POURQUOI UN JUMEAU, ET PAS UN IMPORT. Ce module est le moteur VENDORÉ : il
     n'importe RIEN de ``apps`` (voir ses imports — ``base64``, ``matplotlib``,
-    et c'est tout) et il s'exécute aussi comme ``__main__``. Lui faire importer
+    et c'est tout) et il reste importable hors paquet. Lui faire importer
     ``apps.ventes.dimensionnement`` — qui cite ``apps.ventes.services`` — le
     rendrait indémarrable hors Django. Le jumeau est donc assumé, et il est
     ÉPINGLÉ : ``apps/ventes/tests/test_qjr_optimum_publie.py`` fait passer la
@@ -4327,47 +4217,6 @@ def _boites_texte_onepage(page):
     return out
 
 
-# ── Generate PDF ──────────────────────────────────────────────────────────────
-def generate():
-    ref = QUOTE_INPUT["ref"]
-    print(f"[1/3] Building HTML for devis {ref}...")
-    sys.stdout.buffer.write(
-        f"  blocks={_Q['blocks']} | TOTAL_SANS={fmt(TOTAL_SANS)} | TOTAL_AVEC={fmt(TOTAL_AVEC)}\n"
-        .encode("utf-8", errors="replace"))
-    sys.stdout.buffer.flush()
-    html = build_html()
-
-    out_dir = BASE_DIR / "devis_client"
-    out_dir.mkdir(exist_ok=True)
-    import re as _re
-    _safe_c = _re.sub(r"[^A-Za-z0-9]", "_", QUOTE_INPUT.get("client_name", "Client"))
-    _kwc_str = f"{QUOTE_INPUT['puissance_kwc']:g}kWc"
-    if SCENARIO == "Les deux (Sans + Avec)":
-        _scen_str = "Hybride+Injection"
-    elif SCENARIO == "Avec batterie":
-        _scen_str = "Hybride"
-    else:
-        _scen_str = "Injection"
-    out = out_dir / f"TAQINOR_Devis_{ref}_{_safe_c}_{_kwc_str}_{_scen_str}.pdf"
-
-    print("[2/3] Writing temp HTML...")
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False,
-                                     mode="w", encoding="utf-8") as tf:
-        tf.write(html)
-        tmp = tf.name
-
-    print("[3/3] Rendering with WeasyPrint...")
-    _render_pdf_weasyprint(html, str(out))
-    Path(tmp).unlink(missing_ok=True)
-
-    kb = out.stat().st_size // 1024
-    # QJR163 (c) \u2014 le VRAI nombre de pages, pas un \u00ab 3 \u00bb cod\u00e9 : ``PAGES_TOTAL``
-    # est d\u00e9j\u00e0 calcul\u00e9 par ``apply_quote_data`` (3 + \u00e9tude + annexe).
-    msg = (f"\n\u2705 Saved: {out.name} | Pages: {PAGES_TOTAL} | {kb} KB\n")
-    sys.stdout.buffer.write(msg.encode("utf-8", errors="replace"))
-    sys.stdout.buffer.flush()
-    return str(out)
-
 # ── Public API for web app ────────────────────────────────────────────────────
 def generate_premium_pdf(data: dict, out_path) -> str:
     """Generate premium PDF from a dynamic data dict; returns str(out_path).
@@ -4809,9 +4658,3 @@ def _render_premium_pdf(data: dict, out_path) -> str:
 
     return str(out_path)
 
-
-if __name__ == "__main__":
-    try:
-        generate()
-    except Exception:
-        import traceback; traceback.print_exc(); sys.exit(1)
