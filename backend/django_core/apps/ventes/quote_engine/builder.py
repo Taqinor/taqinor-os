@@ -848,6 +848,50 @@ def _etude_horaire_sans_stockage(bloc):
     return copie
 
 
+#: I7 (30/09/2026) — les clés d'``etude_params`` qui portent un bloc horaire,
+#: le PRINCIPAL d'abord. ``etude_horaire_sans`` n'existe que sur un devis dont
+#: les deux options portent des champs PV différents (L-2OPT) ; le principal
+#: décrit alors l'option AVEC (``domain.etudes.puissances_etude_horaire``).
+CLES_BLOCS_HORAIRES = ("etude_horaire", "etude_horaire_sans")
+
+
+def bloc_horaire_pour_kwc(etude, kwc):
+    """I7 — le bloc horaire RANGÉ qui décrit CETTE puissance.
+
+    Un bloc porte UNE puissance ; un devis à champs PV divergents en range
+    donc un par option. On rend celui dont le kWc est le plus proche de
+    ``kwc`` DANS la tolérance du moteur (``pricing._HORAIRE_TOLERANCE_KWC`` —
+    la même garde que celle qui refuserait le bloc ensuite, jamais un second
+    seuil). Aucun bloc ne correspond ⇒ le bloc PRINCIPAL, que
+    ``pricing._lire_etude_horaire`` refusera alors comme avant I7 : ce
+    sélecteur ne rend jamais valide un bloc périmé, il évite seulement de
+    présenter le mauvais. Fonction pure, ne lève jamais.
+    """
+    from .pricing import _HORAIRE_TOLERANCE_KWC
+    etude = etude or {}
+    principal = etude.get(CLES_BLOCS_HORAIRES[0])
+    try:
+        cible = float(kwc or 0)
+    except (TypeError, ValueError):
+        return principal
+    if cible <= 0:
+        return principal
+    meilleur, ecart_min = None, None
+    for cle in CLES_BLOCS_HORAIRES:
+        bloc = etude.get(cle)
+        if not isinstance(bloc, dict):
+            continue
+        try:
+            kwc_bloc = float(bloc.get("kwc") or 0)
+        except (TypeError, ValueError):
+            continue
+        ecart = abs(kwc_bloc - cible) / cible
+        if (kwc_bloc > 0 and ecart <= _HORAIRE_TOLERANCE_KWC
+                and (ecart_min is None or ecart < ecart_min)):
+            meilleur, ecart_min = bloc, ecart
+    return meilleur if meilleur is not None else principal
+
+
 # Whitelisted PDF format options (mirroring the simulator's payload). The
 # defaults reproduce today's premium 3-page output exactly.
 DEFAULT_PDF_OPTIONS = {
@@ -1508,7 +1552,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # condition sous laquelle son filtre d'option s'applique.
     _deux_options_structurel = deux_options
 
-    if sans_ok and avec_ok and not deux_options:
+    # ── MONO-OPTION À LIGNES VARIANTÉES (30/09/2026) — MÊME REMÈDE QUE PV86 ──
+    # ``LigneDevis.variante`` n'a de sens que sur un devis à DEUX options. Un
+    # devis redevenu mono-option qui garde ses étiquettes (le vendeur retire
+    # l'onduleur réseau, ou l'onduleur de l'option « avec » passe en ligne
+    # optionnelle) est rendu par le noyau comme un devis mono-option ordinaire :
+    # ``utils.options.option_effective`` rend '' et ``option_lines`` facture
+    # TOUTES ses lignes. Ici, le panier de l'option servie était filtré par
+    # variante : les lignes étiquetées de l'AUTRE option disparaissaient du
+    # document tout en restant facturées — deux prix pour la même vente
+    # (DEV-202609-0006 : 23 766 MAD TTC au PDF, 86 269,87 à l'ERP). QJR300 / D12
+    # tranchent la direction : le PDF s'aligne sur le noyau, les lignes du
+    # vendeur sont souveraines. Ce devis prend donc la présentation de
+    # l'artefact PV86 — toutes ses lignes, étiquette suivant la batterie réelle —
+    # et le vendeur est averti (en INTERNE) qu'il doit assainir ses lignes.
+    # Z1 (hybride seul) rendait déjà toutes les lignes : ce chemin y est un
+    # no-op. Un devis SANS ligne variantée ne passe jamais ici.
+    _mono_a_lignes_variantees = bool(_variantes_declarees and not deux_options)
+    if _mono_a_lignes_variantees:
+        avertissements_internes.append(
+            "lignes variantées (« sans »/« avec ») sur un devis à option "
+            "unique — toutes les lignes sont chiffrées ensemble, comme le "
+            "noyau les facture ; composition à vérifier")
+
+    _artefact_deux_onduleurs = bool(sans_ok and avec_ok and not deux_options)
+    if _artefact_deux_onduleurs or _mono_a_lignes_variantees:
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
         # est TOUTES les lignes du devis — donc dont le total EST le total du
         # devis, à l'écran comme au PDF. Les deux paniers portent la même
@@ -1525,9 +1593,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avec_lignes = list(lignes)
         sans_ok = not _batterie_reelle
         avec_ok = bool(_batterie_reelle)
-        avertissements_internes.append(
-            "deux onduleurs non optionnels — devis à assainir par "
-            "resynchronisation")
+        if _artefact_deux_onduleurs:
+            avertissements_internes.append(
+                "deux onduleurs non optionnels — devis à assainir par "
+                "resynchronisation")
 
     # ── QJR300 — QF9 S'APPLIQUE ICI, ET SEULEMENT DANS LE CAS DEUX-OPTIONS ───
     # ``deux_options`` est ici la valeur « VRAIES options » (avant tout
@@ -2110,6 +2179,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             getattr(devis, "reference", None), _client_city, exc_info=True)
         _productible = _co_productible
     _onee_tarif = _tariff.get("onee_tarif_kwh") or None
+
+    def _etude_horaire_pour(kwc):
+        """I7 — le bloc horaire rangé pour ``kwc``, ramené « sans stockage »
+        sur une option « avec » servie sans batterie (BAT-DIFF)."""
+        bloc = bloc_horaire_pour_kwc(etude, kwc)
+        return (_etude_horaire_sans_stockage(bloc) if avec_batterie_differee
+                else bloc)
+
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
         utility=_utility or None,
@@ -2153,9 +2230,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``calculate_savings_roi`` garde EXACTEMENT son comportement d'avant.
         # BAT-DIFF — un bloc calculé AVANT le retrait de la batterie porterait
         # encore ses économies « avec » : on les ramène à « sans ».
-        etude_horaire=(_etude_horaire_sans_stockage(etude.get("etude_horaire"))
-                       if avec_batterie_differee
-                       else etude.get("etude_horaire")),
+        # I7 — le bloc de LA puissance chiffrée (un par option sur un devis
+        # divergent) ; ``_roi_pour`` plus bas choisit celui de chaque colonne.
+        etude_horaire=_etude_horaire_pour(puissance_kwc),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le
@@ -2189,8 +2266,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             # l'appel principal est réutilisée telle quelle.
             if kwc == puissance_kwc:
                 return roi
-            return calculate_savings_roi(kwc or 0, total_sans, total_avec,
-                                         **roi_kwargs)
+            # I7 — chaque colonne lit le bloc horaire de SA puissance.
+            return calculate_savings_roi(
+                kwc or 0, total_sans, total_avec,
+                **dict(roi_kwargs, etude_horaire=_etude_horaire_pour(kwc)))
 
         _roi_s = _roi_pour(puissance_kwc_sans)
         _roi_a = _roi_pour(puissance_kwc_avec)
@@ -2214,6 +2293,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``savings_estimated=False`` pour tout le tableau. On enregistre ici
         # le modèle EFFECTIF de chaque colonne : plus aucun modèle n'est
         # déclaré au nom d'une autre colonne.
+        # I7 (30/09/2026) — chaque colonne a désormais SON bloc
+        # (``etude_horaire_sans`` pour l'option SANS) ; cette déclaration reste
+        # le filet d'un devis dont l'un des deux blocs manque encore.
         _modeles_par_option = {
             "sans": (_roi_s.get("savings_model", "estimation"),
                      bool(_roi_s.get("savings_estimated"))),

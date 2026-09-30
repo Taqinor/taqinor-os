@@ -3270,7 +3270,11 @@ def proposal_data(request, token):
         # `devis.etude_params`.)
         etude_publique = data.get('etude')
         if isinstance(etude_publique, dict):
-            etude_publique.pop('etude_horaire', None)
+            # I7 — les DEUX blocs bruts (``etude_horaire_sans`` porte l'option
+            # SANS d'un devis à champs PV divergents) : même règle.
+            from .quote_engine.builder import CLES_BLOCS_HORAIRES
+            for _cle_bloc in CLES_BLOCS_HORAIRES:
+                etude_publique.pop(_cle_bloc, None)
         # COURBES (21/08/2026) — série de consommation calculée UNE fois : elle
         # est republiée telle quelle ET sert de NIVEAU réel au graphe journalier.
         _conso_mensuelle = _monthly_consumption(devis)

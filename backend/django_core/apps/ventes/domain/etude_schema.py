@@ -152,6 +152,11 @@ SCHEMA = {
 
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
+    'etude_horaire_sans': _cle((dict,), MOTEUR_HORAIRE, DERIVEE,
+                               'I7 — le bloc horaire de l’option SANS, posé '
+                               'SEULEMENT quand les deux options portent des '
+                               'champs PV différents (L-2OPT) ; '
+                               '`etude_horaire` décrit alors l’option AVEC.'),
     'dimensionnement': _cle((dict,), MOTEUR_DIMENSIONNEMENT, DERIVEE),
     'profils_comparatifs': _cle((dict,), MOTEUR_PROFILS, DERIVEE),
     'simulation': _cle((dict,), MOTEUR_SIMULATION, DERIVEE),
