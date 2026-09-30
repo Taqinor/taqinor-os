@@ -30,6 +30,7 @@ import {
   Segmented, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton,
 } from '../../ui'
 import { cn } from '../../lib/cn'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
   comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, joursOuvres, libelleJour,
@@ -458,6 +459,10 @@ const LISTES = [
       if (l.depuis_jours === 0) return "sans étape depuis aujourd'hui"
       return `sans étape depuis ${nombre(l.depuis_jours)} ${pl(l.depuis_jours, 'jour', 'jours')}`
     },
+    // Sous la liste, pour le responsable / l'admin SEULEMENT : la carte qui sait
+    // remettre ces dossiers dans une cadence ne s'affiche que pour eux (elle se gate
+    // elle-même), une commerciale ne verrait qu'un renvoi vers rien.
+    aideResponsable: 'Pour les remettre dans une cadence : carte « Anciens leads à placer », plus bas.',
   },
   {
     cle: 'premier_contact_hors_delai',
@@ -495,7 +500,7 @@ function LigneException({ liste, ligne, navigate }) {
 }
 
 function BlocException({
-  liste, bloc, seuils, ouvert, onBasculer, navigate,
+  liste, bloc, seuils, ouvert, onBasculer, navigate, aide = null,
 }) {
   const id = useId()
   const lignes = bloc.lignes ?? []
@@ -524,6 +529,9 @@ function BlocException({
               />
             ))}
           </ul>
+          {aide && (
+            <p className="text-xs text-muted-foreground" data-testid={`controle-aide-${liste.cle}`}>{aide}</p>
+          )}
           {reste > 0 && (
             <p className="text-xs text-muted-foreground" data-testid={`controle-reste-${liste.cle}`}>
               <Link to="/crm/relances" className="font-medium text-primary-text underline-offset-2 hover:underline">
@@ -542,6 +550,7 @@ function Exceptions({ exceptions, seuils, navigate }) {
   // Ouverture par défaut : ouverte quand il y a des dossiers, masquée à 0 ;
   // un clic de l'utilisateur prend le pas sur ce défaut.
   const [surcharge, setSurcharge] = useState({})
+  const estResponsable = useIsAdminOrResponsable()
   const presentes = LISTES.filter((l) => (exceptions?.[l.cle]?.total ?? 0) > 0)
   const note = noteJoursOuvres({
     alerteJours: seuil(seuils, 'retard_alerte_jours'),
@@ -560,6 +569,7 @@ function Exceptions({ exceptions, seuils, navigate }) {
           <BlocException
             key={liste.cle} liste={liste} bloc={exceptions[liste.cle]} seuils={seuils}
             navigate={navigate}
+            aide={estResponsable ? (liste.aideResponsable ?? null) : null}
             ouvert={surcharge[liste.cle] ?? true}
             onBasculer={() => setSurcharge((s) => ({ ...s, [liste.cle]: !(s[liste.cle] ?? true) }))}
           />

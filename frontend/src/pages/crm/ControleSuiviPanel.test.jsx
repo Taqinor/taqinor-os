@@ -35,10 +35,18 @@ vi.mock('../../api/crmApi', () => ({
   },
 }))
 
+// « Anciens leads à placer » : l'aide sous « Dossiers sans prochaine étape » ne se montre
+// qu'au responsable / à l'admin (le hook lit le rôle dans le store Redux).
+const estResponsable = vi.fn(() => true)
+vi.mock('../../hooks/useHasPermission', () => ({
+  useIsAdminOrResponsable: () => estResponsable(),
+}))
+
 import crmApi from '../../api/crmApi'
 import ControleSuiviPanel from './ControleSuiviPanel'
 
 beforeEach(() => {
+  estResponsable.mockReturnValue(true)
   crmApi.getControleSuivi.mockResolvedValue(reponseContrat('crm', 'controle_suivi'))
   crmApi.getRelanceEtapesSuivi.mockResolvedValue(reponseContrat('crm', 'relance_etapes_suivi'))
 })
@@ -636,6 +644,38 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       const verdict = await attendreVerdict()
       expect(verdict).toHaveAttribute('data-niveau', 'alerte')
       expect(verdict).toHaveTextContent('1 dossier sans prochaine étape')
+    })
+
+    it('responsable / admin : une aide sous la liste renvoie à la carte « Anciens leads à placer »', async () => {
+      estResponsable.mockReturnValue(true)
+      crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+      monter()
+      await attendreVerdict()
+      const aide = within(bloc('sans_prochaine_etape')).getByTestId('controle-aide-sans_prochaine_etape')
+      expect(aide).toHaveTextContent(
+        'Pour les remettre dans une cadence : carte « Anciens leads à placer », plus bas.')
+      // Sous la liste des dossiers, jamais avant elle.
+      const liste = within(bloc('sans_prochaine_etape')).getByRole('list')
+      expect(liste.compareDocumentPosition(aide) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
+    it('un rôle « normal » (commerciale) ne voit PAS cette aide : la carte visée ne lui est pas montrée', async () => {
+      estResponsable.mockReturnValue(false)
+      crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+      monter()
+      await attendreVerdict()
+      expect(bloc('sans_prochaine_etape')).toBeInTheDocument()
+      expect(screen.queryByTestId('controle-aide-sans_prochaine_etape')).not.toBeInTheDocument()
+      expect(screen.getByTestId('controle-suivi-panel')).not.toHaveTextContent('Anciens leads à placer')
+    })
+
+    it('cette aide n\'est que pour cette liste (pas sous « En retard » ni les autres)', async () => {
+      estResponsable.mockReturnValue(true)
+      crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+      monter()
+      await attendreVerdict()
+      expect(screen.getAllByText(/Anciens leads à placer/)).toHaveLength(1)
+      expect(within(bloc('en_retard')).queryByText(/Anciens leads à placer/)).not.toBeInTheDocument()
     })
   })
 
