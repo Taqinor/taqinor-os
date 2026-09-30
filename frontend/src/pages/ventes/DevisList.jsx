@@ -96,6 +96,7 @@ import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { peutEditerDevis, chantierEnCours } from '../../features/ventes/devisStatuts'
+import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -1079,18 +1080,12 @@ function DevisRow({ d, ctx }) {
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
                 <DropdownMenuItem onSelect={() => {
-                  // VX216(a) — « Réviser » est le chemin d'édition réel d'un
-                  // devis accepté : avertit AVANT si un chantier en cours
-                  // (nomenclature gelée) est lié, pour éviter un écart
-                  // devis↔chantier découvert seul par l'installateur.
-                  if (chantierEnCours(d.chantier)) {
-                    toast.warning(
-                      `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
-                    )
-                  }
-                  ventesApi.reviserDevis(d.id)
-                    .then(() => dispatch(fetchDevis()))
-                    .catch(() => {})
+                  // QJR533 — UN seul geste (features/ventes/reviserDevis) :
+                  // avertit si chantier en cours (VX216(a)), dit le résultat,
+                  // ouvre la V2 en Édition complète.
+                  reviserEtOuvrir({
+                    devis: d, navigate, onApres: () => dispatch(fetchDevis()),
+                  })
                 }}>
                   Réviser (nouvelle version)
                 </DropdownMenuItem>
