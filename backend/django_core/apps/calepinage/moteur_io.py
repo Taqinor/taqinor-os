@@ -27,6 +27,7 @@ __all__ = [
     'EntreeInvalide', 'NATURE_VERS_TYPE_MOTEUR', 'PROVENANCE_VERS_MOTEUR',
     'MODE_POSE_IMPOSE', 'TIROIRS', 'CHAMPS_RIVES_VERS_CONTRAT',
     'affectations_du_document', 'parametres_vers_document',
+    'AXE_AUTO', 'deriver_axe_rangee',
     'rangees_imposees_du_preset',
     'resultat_vers_json', 'preuve_vers_json',
     'marges_vers_json', 'tiroirs_vers_json', 'tiroirs_vides',
@@ -88,6 +89,86 @@ def _f(valeur, defaut=None):
 
 def _contour(points):
     return [[_f(p[0], 0.0), _f(p[1], 0.0)] for p in (points or [])]
+
+
+# ─────────────────────────────────────────────────────── axe des rangées
+#: ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — valeur d'``axe_rangee`` qui DEMANDE au
+#: serveur de dériver l'axe. L'écran terrain/ombrière envoyait toujours
+#: ``NORD_SUD`` : un module par table orienté SUD (le cas courant) était alors
+#: refusé « inconstructible » (400) alors que l'axe est IMPOSÉ par le kit et
+#: l'azimut. Le front ne recopie pas la règle : il envoie ``AUTO`` et c'est
+#: ``core.calepinage.orientation.axe_rangee_impose`` — la seule source — qui
+#: tranche ici.
+AXE_AUTO = 'AUTO'
+
+
+class _KitAxe:
+    """Le seul attribut que ``axe_rangee_impose`` lit d'un kit."""
+
+    __slots__ = ('modules_par_table',)
+
+    def __init__(self, modules_par_table):
+        self.modules_par_table = modules_par_table
+
+
+def deriver_axe_rangee(document):
+    """Remplace ``axe_rangee: "AUTO"`` par l'axe IMPOSÉ par les kits.
+
+    Rend le document inchangé quand aucun ``AUTO`` n'y figure (un axe
+    explicite reste contrôlé — et refusé s'il est faux — par le moteur).
+    Sinon, rend une COPIE où ``parametres.axe_rangee`` et chaque surface en
+    ``AUTO`` (ou sans axe) portent l'axe dérivé de chaque kit utilisé et de
+    l'azimut de chaque surface. Des kits/surfaces imposant deux axes
+    différents sont REFUSÉS (``EntreeInvalide``), jamais arbitrés.
+    """
+    if not isinstance(document, dict):
+        return document
+    params = document.get('parametres')
+    surfaces = document.get('surfaces')
+    if not isinstance(params, dict):
+        return document
+    surfaces = surfaces if isinstance(surfaces, list) else []
+    auto = params.get('axe_rangee') == AXE_AUTO or any(
+        isinstance(s, dict) and s.get('axe_rangee') == AXE_AUTO
+        for s in surfaces)
+    if not auto:
+        return document
+
+    from core.calepinage.orientation import axe_rangee_impose
+
+    codes = params.get('kits')
+    kits = [k for k in (document.get('kits') or []) if isinstance(k, dict)
+            and (not codes or k.get('code') in codes)]
+    if not kits:
+        raise EntreeInvalide(
+            "Axe des rangées « AUTO » : aucun kit à partir duquel le dériver.")
+    azimuts = [s.get('azimut_deg', 180.0) for s in surfaces
+               if isinstance(s, dict)] or [180.0]
+    axes = set()
+    try:
+        for kit in kits:
+            modele = _KitAxe(int(kit.get('modules_par_table', 1)))
+            for azimut in azimuts:
+                axes.add(axe_rangee_impose(
+                    modele, 180.0 if azimut is None else float(azimut)).value)
+    except (TypeError, ValueError) as erreur:
+        raise EntreeInvalide(
+            "Axe des rangées « AUTO » : kit ou azimut illisible (%s)."
+            % erreur) from erreur
+    if len(axes) > 1:
+        raise EntreeInvalide(
+            "Axe des rangées « AUTO » : les kits et orientations de ce relevé "
+            "imposent deux axes différents (%s) — calepinez-les séparément."
+            % ', '.join(sorted(axes)))
+    axe = axes.pop()
+    copie = dict(document)
+    copie['parametres'] = dict(params, axe_rangee=axe)
+    copie['surfaces'] = [
+        dict(s, axe_rangee=axe)
+        if isinstance(s, dict) and s.get('axe_rangee') in (None, AXE_AUTO)
+        else s
+        for s in surfaces]
+    return copie
 
 
 # ─────────────────────────────────────────────────────── paramètres

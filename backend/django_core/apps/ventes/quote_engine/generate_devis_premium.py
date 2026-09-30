@@ -957,6 +957,41 @@ def fmt(v):
     except Exception:
         return str(v)
 
+def _repartir_paiement(pay_total, pay_a, pay_s, custom_acompte=None):
+    """ERR120 — Acompte / Matériel / Solde d'un Devis Final, qui SOMMENT au
+    Total TTC AFFICHÉ.
+
+    Le total affiché passe par ``fmt`` (``int(round(...))``, arrondi bancaire
+    Python compris) : le reliquat part donc de ``total_mad = int(round(
+    pay_total))``, jamais d'une troncature ``int(pay_total)`` qui perdait 1 MAD
+    dès que les centimes valaient ≥ 0,50. Le reliquat va à « Matériel » (chemin
+    à trois cases) ou au « Solde » (chemin à deux cases, ``solde2``).
+
+    ``custom_acompte`` (``None`` = acompte au pourcentage ``pay_a``) est borné
+    dans ``[0, total - solde]`` (ERR76). Les trois pourcentages somment à 100
+    (QJR145 c). Fonction PURE : aucun statut, aucune écriture (règle #4).
+    """
+    total_mad = int(round(float(pay_total)))
+    if custom_acompte is not None:
+        acompte = int(custom_acompte)
+    else:
+        acompte = round(pay_total * pay_a / 100 / 1000) * 1000
+    solde = round(pay_total * pay_s / 100 / 1000) * 1000
+    acompte = max(0, min(acompte, total_mad - solde))
+    materiel = total_mad - acompte - solde
+    pct_a = round(acompte / pay_total * 100) if pay_total else 0
+    pct_s = round(solde / pay_total * 100) if pay_total else 0
+    pct_m = (100 - pct_a - pct_s) if pay_total else 0
+    solde2 = total_mad - acompte
+    pct_s2 = round(solde2 / pay_total * 100) if pay_total else 0
+    return {
+        'total_mad': total_mad, 'acompte': int(acompte),
+        'materiel': int(materiel), 'solde': int(solde),
+        'pct_a': pct_a, 'pct_m': pct_m, 'pct_s': pct_s,
+        'solde2': int(solde2), 'pct_s2': pct_s2,
+    }
+
+
 def fnum(v):
     """Format number with French thin-space thousands separator."""
     try:
@@ -2479,23 +2514,16 @@ def page3():
         else:
             _pay_total = TOTAL_AVEC
 
-        if PAYMENT_MODE == "custom" and CUSTOM_ACOMPTE is not None:
-            _acompte = int(CUSTOM_ACOMPTE)
-        else:
-            _acompte = round(_pay_total * PAY_A / 100 / 1000) * 1000
-        _solde = round(_pay_total * PAY_S / 100 / 1000) * 1000
-        # ERR76 — clamp the acompte into [0, total - solde] so a user-supplied
-        # custom acompte can never yield a negative "Matériel" or exceed 100 %.
-        _acompte = max(0, min(_acompte, int(_pay_total) - _solde))
-        _materiel = int(_pay_total - _acompte - _solde)
-
-        # QJR145 (c) — LES TROIS POURCENTAGES SOMMENT À 100. Arrondis
-        # indépendamment, ils affichaient 99 % ou 101 % et contredisaient la
-        # puce CGV juste au-dessus. Le reliquat va à la tranche « Matériel »,
-        # exactement comme le MONTANT (``_materiel`` est déjà le reste).
-        _pct_a = round(_acompte / _pay_total * 100) if _pay_total else 0
-        _pct_s = round(_solde / _pay_total * 100) if _pay_total else 0
-        _pct_m = (100 - _pct_a - _pct_s) if _pay_total else 0
+        # ERR120 — la répartition vit dans une aide PURE (testée seule) : le
+        # reliquat part de ``int(round(total))``, la MÊME règle que ``fmt`` qui
+        # affiche le Total TTC — sinon 51 232,80 s'affichait 51 233 et les
+        # cases sommaient 51 232. Rendu seul : aucun statut touché (règle #4).
+        _rep = _repartir_paiement(
+            _pay_total, PAY_A, PAY_S,
+            CUSTOM_ACOMPTE if PAYMENT_MODE == "custom" else None)
+        _acompte, _materiel, _solde = (
+            _rep['acompte'], _rep['materiel'], _rep['solde'])
+        _pct_a, _pct_m, _pct_s = _rep['pct_a'], _rep['pct_m'], _rep['pct_s']
 
         def _pay_box(pct, montant, label):
             # QJR145 (b) — ``fmt`` suffixe DÉJÀ « MAD » : les trois cases
@@ -2520,8 +2548,7 @@ def page3():
                       + _pay_box(_pct_m, _materiel, _mt_l)
                       + _pay_box(_pct_s, _solde, _sd_l))
         else:
-            _solde2 = int(_pay_total) - _acompte  # reliquat exact -> somme 100 %
-            _pct_s2 = round(_solde2 / _pay_total * 100) if _pay_total else 0
+            _solde2, _pct_s2 = _rep['solde2'], _rep['pct_s2']  # reliquat exact
             _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
                       + _pay_box(_pct_s2, _solde2, 'Solde · À la livraison'))
 

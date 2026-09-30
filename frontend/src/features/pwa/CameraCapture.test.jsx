@@ -121,3 +121,53 @@ describe('CameraCapture — NTMOB11 (mode multiple + géoloc)', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
+
+// ERR-QAH-VISITES-PHOTOS-CAMERA-BLOQUEE — caméra bloquée (Permissions-Policy /
+// refus) : l'écran promettait « Utilisez le choix de fichier » sans AUCUN
+// input fichier → 0/5 photos, visite impossible à clôturer.
+describe('CameraCapture — repli choix de fichier quand la caméra est bloquée', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    installCameraMocks()
+  })
+  afterEach(() => {
+    cleanup()
+    delete navigator.geolocation
+  })
+
+  it('getUserMedia refusé → un input fichier image existe et alimente onCapture', async () => {
+    navigator.mediaDevices.getUserMedia = vi.fn(() => Promise.reject(
+      Object.assign(new Error('camera is not allowed in this document'), { name: 'NotAllowedError' }),
+    ))
+    installGeolocation('error')
+    const onCapture = vi.fn()
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    render(<CameraCapture onCapture={onCapture} onClose={onClose} multiple />)
+
+    const input = await screen.findByTestId('camera-file-fallback', {}, { timeout: 5000 })
+    expect(input).toHaveAttribute('type', 'file')
+    expect(input).toHaveAttribute('accept', 'image/*')
+    const photo = new File(['x'], 'toiture.jpg', { type: 'image/jpeg' })
+    await user.upload(input, photo)
+
+    await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(1))
+    expect(onCapture.mock.calls[0][0]).toBe(photo)
+    expect(onCapture.mock.calls[0][1]).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('navigateur sans getUserMedia → input fichier présent (mode simple : ferme après la photo)', async () => {
+    delete navigator.mediaDevices
+    installGeolocation('error')
+    const onCapture = vi.fn()
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    render(<CameraCapture onCapture={onCapture} onClose={onClose} />)
+
+    const input = screen.getByTestId('camera-file-fallback')
+    await user.upload(input, new File(['x'], 'a.jpg', { type: 'image/jpeg' }))
+    await waitFor(() => expect(onCapture).toHaveBeenCalledTimes(1))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})

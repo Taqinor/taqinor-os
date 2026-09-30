@@ -97,6 +97,18 @@ class PortePoseTest(BaseApiCalepinage):
         self.assertIn('demande', reponse.data)
         self.assertIn('Surface absente.', str(reponse.data['demande']))
 
+    def test_axe_auto_est_derive_avant_le_moteur(self):
+        """ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — ``AUTO`` n'atteint jamais le
+        moteur : la porte le remplace par l'axe IMPOSÉ par le kit."""
+        from .test_axe_rangee_auto import _demande
+
+        reponse = self._appeler(self.api, {'demande': _demande(1, 180)})
+
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        document = self.porte.call_args.args[0]
+        self.assertEqual(document['parametres']['axe_rangee'], 'EST_OUEST')
+        self.assertEqual(document['surfaces'][0]['axe_rangee'], 'EST_OUEST')
+
     def test_sans_calepinage_gerer_403(self):
         reponse = self._appeler(self.api_sans, {'demande': CONTRAT['demande']})
 

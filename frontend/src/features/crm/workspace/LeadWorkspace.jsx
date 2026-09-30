@@ -241,6 +241,15 @@ export default function LeadWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server
   }, [mode, leadId, refreshHistorique])
 
+  // ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — un autosave RÉUSSI (« Relance le »,
+  // responsable, tout champ suivi) écrit côté serveur une entrée de chatter
+  // (ancien → nouveau) que ni la réponse du PATCH ni `chatter_recent` (figé à
+  // l'ouverture) ne portent : on relit l'historique pour AJOUTER ces lignes
+  // aux anciennes, sans attendre un rechargement de la page.
+  useEffect(() => {
+    if (mode === 'edit' && saveState === 'saved') refreshHistorique()
+  }, [mode, saveState, refreshHistorique])
+
   // ── Satellites (dialogues) ────────────────────────────────────────────────
   const [devisPanel, setDevisPanel] = useState(null)
   const [panelDevisId, setPanelDevisId] = useState(null)
