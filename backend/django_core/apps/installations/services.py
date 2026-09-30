@@ -3400,18 +3400,20 @@ def changer_statut_intervention(intervention, nouveau_statut, user):
 
 
 def _stamp_date_realisee_intervention(interv):
-    """Pose `date_realisee` à aujourd'hui si elle est vide alors qu'un compte
-    rendu est renseigné OU que le statut est « Terminée »/« Validée ».
-    AUD317 — miroir de `_stamp_statut_dates` du chantier, côté service."""
+    """Pose `date_realisee` à aujourd'hui si elle est vide et que le statut est
+    « Terminée »/« Validée ».
+    AUD317 — miroir de `_stamp_statut_dates` du chantier, côté service.
+    ERR-QAH-CHANTIERS-DATE-REALISEE-COMPTE-RENDU — un `compte_rendu` rempli ne
+    tamponne PLUS (aligné sur `InterventionViewSet._stamp_date_realisee`) :
+    seul le statut de complétion fait foi."""
     from django.utils import timezone
     from .models_intervention import Intervention as _Intervention
 
     if interv.date_realisee is not None:
         return
-    cr = (interv.compte_rendu or '').strip()
     done = interv.statut in (
         _Intervention.Statut.TERMINEE, _Intervention.Statut.VALIDEE)
-    if cr or done:
+    if done:
         interv.date_realisee = timezone.localdate()
         interv.save(update_fields=['date_realisee'])
 

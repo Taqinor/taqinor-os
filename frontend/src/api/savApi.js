@@ -135,6 +135,8 @@ const savApi = {
   addTicketActivite: (id, body) => api.post(`/sav/tickets/${id}/activites/`, body),
   cocherTicketActivite: (id, activiteId) =>
     api.post(`/sav/tickets/${id}/activites/${activiteId}/cocher/`),
+  // ERR-QAH-SAV-WORKSHEET-PROBE-404 — drapeau société lu AVANT de sonder la worksheet.
+  getSlaSettings: () => api.get('/sav/sla-settings/'),
   // ZMFG6 — feuille de maintenance (worksheet) remplie sur le ticket.
   getTicketWorksheet: (id) => api.get(`/sav/tickets/${id}/worksheet/`),
   creerTicketWorksheet: (id, modeleId) =>

@@ -26,6 +26,8 @@ export default function JalonsChantierPortailAdmin() {
   const [busyId, setBusyId] = useState(null)
   const [form, setForm] = useState({ chantier: '', libelle: '', ordre: '0' })
 
+  const [fieldErrors, setFieldErrors] = useState({})
+
   const fetchJalons = () => portailApi.admin.jalonsChantier.liste()
     .then((r) => setRows(r.data?.results ?? r.data ?? []))
     .catch(() => setLoadError(true))
@@ -46,6 +48,7 @@ export default function JalonsChantierPortailAdmin() {
 
   const creer = async () => {
     if (!form.chantier || !form.libelle.trim()) return
+    setFieldErrors({})
     try {
       await portailApi.admin.jalonsChantier.creer({
         chantier_id: form.chantier, libelle: form.libelle.trim(), ordre: Number(form.ordre) || 0,
@@ -54,7 +57,23 @@ export default function JalonsChantierPortailAdmin() {
       toast.success('Jalon créé')
       load()
     } catch (e) {
-      toast.error(e?.response?.data?.detail ?? 'Création impossible.')
+      // ERR-QAH-PORTAIL-JALON-ERREUR-TOAST — un 400 DRF `{champ: [raison]}` doit
+      // s'afficher SOUS le champ concerné, pas dans un simple toast.
+      const data = e?.response?.data
+      const champ = (k) => {
+        const v = data?.[k]
+        return Array.isArray(v) ? String(v[0]) : (typeof v === 'string' ? v : '')
+      }
+      const errs = {
+        chantier: champ('chantier_id') || champ('chantier'),
+        libelle: champ('libelle'),
+        ordre: champ('ordre'),
+      }
+      if (errs.chantier || errs.libelle || errs.ordre) {
+        setFieldErrors(errs)
+      } else {
+        toast.error(data?.detail ?? 'Création impossible.')
+      }
     }
   }
 
@@ -109,7 +128,7 @@ export default function JalonsChantierPortailAdmin() {
       <Card className="p-4">
         <Form onSubmit={(e) => { e.preventDefault(); creer() }}
               className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[2fr_2fr_1fr_auto]">
-          <FormField label="Chantier">
+          <FormField label="Chantier" error={fieldErrors.chantier}>
             <Select value={form.chantier ? String(form.chantier) : '__none'}
                     onValueChange={(v) => setForm((f) => ({ ...f, chantier: v === '__none' ? '' : v }))}>
               <SelectTrigger aria-label="Chantier"><SelectValue placeholder="— Chantier —" /></SelectTrigger>
@@ -121,11 +140,11 @@ export default function JalonsChantierPortailAdmin() {
               </SelectContent>
             </Select>
           </FormField>
-          <FormField label="Jalon">
+          <FormField label="Jalon" error={fieldErrors.libelle}>
             <Input aria-label="Jalon" value={form.libelle}
                    onChange={(e) => setForm((f) => ({ ...f, libelle: e.target.value }))} />
           </FormField>
-          <FormField label="Ordre">
+          <FormField label="Ordre" error={fieldErrors.ordre}>
             <NumberInput aria-label="Ordre" value={form.ordre}
                          onChange={(e) => setForm((f) => ({ ...f, ordre: e.target.value }))} />
           </FormField>

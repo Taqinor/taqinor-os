@@ -124,13 +124,17 @@ const FIELD_LABELS_FR = {
   detail: 'Erreur', non_field_errors: 'Erreur', body: 'Note', motif: 'Motif',
   produit: 'Produit', quantite: 'Quantité',
 }
-function frError(err, fallback = 'Action impossible.') {
+export function frError(err, fallback = 'Action impossible.') {
   if (!err) return fallback
   const data = err?.response?.data ?? err
   if (typeof data === 'string') return data
   if (data && typeof data === 'object') {
     const parts = []
     for (const [field, raison] of Object.entries(data)) {
+      // ERR-QAH-SAV-ERREUR-OBJECT-OBJECT — `error` est l'ENVELOPPE technique du
+      // middleware d'erreurs (objet), jamais un champ : on ne l'itère pas.
+      if (field === 'error') continue
+      if (raison && typeof raison === 'object' && !Array.isArray(raison)) continue
       const label = FIELD_LABELS_FR[field] ?? field
       const txt = Array.isArray(raison) ? raison.join(' ') : String(raison)
       parts.push(field === 'detail' || field === 'non_field_errors'
