@@ -1,0 +1,72 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_cv'],['pompe_hmt_m'],['pompe_debit_m3h']] en agricole). Note : industriel/commercial -> createAutoQuote (JS) seul ; POST /devis/auto/ refuse ces marchés (creation.py:929-935).",
+  "exemple": {
+    "devis_auto": {
+      "pret": false,
+      "manquants": [
+        "Consommation mensuelle (kWh) ou facture"
+      ],
+      "manquants_detail": [
+        {
+          "champ": "conso_mensuelle_kwh",
+          "label": "Consommation mensuelle (kWh) ou facture"
+        }
+      ],
+      "requis": [
+        [
+          "conso_mensuelle_kwh",
+          "bill_kwh"
+        ]
+      ]
+    }
+  },
+  "exemple_agricole": {
+    "devis_auto": {
+      "pret": false,
+      "manquants": [
+        "Puissance de la pompe (CV)",
+        "HMT (m)",
+        "Débit (m³/h)"
+      ],
+      "manquants_detail": [
+        {
+          "champ": "pompe_cv",
+          "label": "Puissance de la pompe (CV)"
+        },
+        {
+          "champ": "pompe_hmt_m",
+          "label": "HMT (m)"
+        },
+        {
+          "champ": "pompe_debit_m3h",
+          "label": "Débit (m³/h)"
+        }
+      ],
+      "requis": [
+        [
+          "pompe_cv"
+        ],
+        [
+          "pompe_hmt_m"
+        ],
+        [
+          "pompe_debit_m3h"
+        ]
+      ]
+    }
+  },
+  "exemple_pret": {
+    "devis_auto": {
+      "pret": true,
+      "manquants": [],
+      "manquants_detail": [],
+      "requis": [
+        [
+          "facture_hiver"
+        ]
+      ]
+    }
+  }
+}

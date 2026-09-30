@@ -1,0 +1,26 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<id>/replace-lines/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR503 (M0 QJR5) — verrou OPTIMISTE d'édition. Champ OPTIONNEL `expected_updated_at` (ISO tel que servi par GET) accepté par POST replace-lines/ (corps {lignes, entete?, etude_params?, expected_updated_at?}), PATCH etude-params/, POST offres-tailles/appliquer|regenerer/, PATCH overrides/ et PATCH devis/{id}/ (autres clients). Si le devis a été modifié depuis : 409 {code: 'devis_modifie', detail FR, updated_at, updated_by_nom}. Toute réponse 2xx de ces écritures porte `updated_at`. apply-preset n'y figure pas (supprimé par QJR546). Sans `expected_updated_at`, comportement historique inchangé.",
+  "ecritures_concernees": [
+    "POST /ventes/devis/<id>/replace-lines/",
+    "PATCH /ventes/devis/<id>/etude-params/",
+    "POST /ventes/devis/<id>/offres-tailles/appliquer/",
+    "POST /ventes/devis/<id>/offres-tailles/regenerer/",
+    "PATCH /ventes/devis/<id>/overrides/",
+    "PATCH /ventes/devis/<id>/"
+  ],
+  "corps": {
+    "lignes": [],
+    "expected_updated_at": "2026-09-30T08:41:12.345678+00:00"
+  },
+  "exemple": {
+    "updated_at": "2026-09-30T08:55:03.120000+00:00"
+  },
+  "exemple_409": {
+    "code": "devis_modifie",
+    "detail": "Ce devis a été modifié par un autre utilisateur depuis votre ouverture. Rechargez avant d'enregistrer.",
+    "updated_at": "2026-09-30T08:50:41.000000+00:00",
+    "updated_by_nom": "Sami Alaoui"
+  }
+}

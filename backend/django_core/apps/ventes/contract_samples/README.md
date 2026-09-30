@@ -73,3 +73,20 @@ deux moitiés qui l'implémentent n'existent : `devis_overrides.json` et
 `devis_totaux.json` décrivent le futur registre de surcharges d'un devis et sa
 future vue argent unique — aucun consommateur dans leur commit, la garde ne
 rougit pas tant que la route n'existe pas.
+
+## QJR5 — M0 contrats posés SEULS (30/09/2026)
+
+Échantillons ajoutés par QJR500–QJR514 (chacun : `endpoint`, `pourquoi`, `exemple`) — aucun consommateur dans leur commit :
+
+| Fichier | Endpoint / ce qu'il apparie |
+| --- | --- |
+| `devis_modifiabilite.json` | GET devis (liste + détail) : `modifiable`, `raison_non_modifiable`, `revision_possible` (QJR500) |
+| `devis_verrou_edition.json` | `expected_updated_at` optionnel + 409 `devis_modifie` + `updated_at` en 2xx (QJR503) |
+| `devis_replace_lines_entete.json` | POST replace-lines avec `entete` (+ `echeancier`) et `etude_params` en une transaction (QJR504) |
+| `devis_reappliquer_lead.json` | POST reappliquer-lead / acquitter-derive (QJR505) |
+| `devis_preset.json` | GET presets : modèle de devis complet (QJR508) |
+| `etude_ecran_industriel.json` | PATCH etude-params : bloc ECRAN industriel/commercial (QJR510) |
+| `devis_historique_configuration.json` | GET historique-configuration : versions, différences (QJR513) |
+| `proposal_data.json` (à étendre) | `remplace_par`, `note_client` (QJR501) — ajoutés au contrat PAR QJR536, en même temps que le serveur (contrat gardé `complete`) |
+| `devis_overrides.json` (étendu) | `notes.chemins_non_lus`, `notes.non_lu` (QJR507) |
+| `devis_composition.json` (étendu) | corps : `lead` remplace `ville` (QJR511) |

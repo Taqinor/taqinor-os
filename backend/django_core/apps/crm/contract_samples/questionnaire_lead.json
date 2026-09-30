@@ -18,7 +18,6 @@
         "facture_ete",
         "ete_differente",
         "conso_mensuelle_kwh",
-        "tranche_onee",
         "raccordement"
       ]
     },
@@ -89,7 +88,8 @@
         "ete_differente": true,
         "facture_ete": 4200
       },
-      "photo": "data:image/jpeg;base64,… (sections photo_* uniquement)"
+      "photo": "data:image/jpeg;base64,… (sections photo_* uniquement)",
+      "prefill_vu": {"facture_hiver": 3500, "ete_differente": false}
     },
     "reponse": {
       "ok": true,
@@ -97,17 +97,29 @@
         "facture_hiver",
         "ete_differente",
         "facture_ete"
-      ]
+      ],
+      "ignorees": []
     },
     "notes": {
       "progressif": "Une section à la fois. Le client peut fermer la page et revenir : les sections déjà envoyées reviennent dans `repondu`.",
       "jamais_ecraser": "Une valeur DÉJÀ renseignée sur le lead n'est jamais écrasée par du vide. Une section n'écrit QUE ses propres champs — une réponse « contact » (adresse/ville) ne touche donc JAMAIS le GPS.",
       "photo": "Sections photo_* : `photo` en base64 ou data-URL, mêmes gardes que la capture du site (magic-bytes, 10 Mo, MinIO). `enregistrees` vaut alors [\"photo\"].",
       "section_inconnue_ou_inactive": "400.",
-      "jeton_interne": "403 — un aperçu ne doit rien écrire."
+      "jeton_interne": "403 — un aperçu ne doit rien écrire.",
+      "prefill_vu": "QJR512 — `prefill_vu` (corps, facultatif) : sous-ensemble du prefill servi par le GET, mêmes clés (ce que le client a VU à l’ouverture).",
+      "ignorees": "QJR512 — `ignorees` (réponse) : clés reçues mais non écrites (vide par défaut)."
     }
   },
 
+  "colonnes_ecrites": {
+    "contact": ["email", "adresse", "ville"],
+    "gps": ["gps_lat", "gps_lng"],
+    "energie": ["facture_hiver", "facture_ete", "ete_differente", "conso_mensuelle_kwh", "raccordement"],
+    "toiture": ["type_toiture", "surface_toiture_m2", "roof_age", "ownership"],
+    "occupation": ["occupation_jour"],
+    "equipements": ["equip_piscine", "equip_piscine_pompe_kw", "equip_piscine_heures_jour", "equip_piscine_creneau", "equip_voiture_electrique", "equip_ve_km_semaine", "equip_ve_chargeur_kw", "equip_ve_creneau", "equip_clim", "equip_clim_pieces", "equip_clim_kw", "equip_clim_creneau", "equip_chauffe_eau_electrique", "equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"]
+  },
+  "colonnes_ecrites_note": "QJR512 — `colonnes_ecrites` {section: [colonnes]} : les colonnes que chaque section écrit réellement ; liste fixée par QJR596. `energie` porte conso_mensuelle_kwh et n’écrit plus tranche_onee.",
   "champs_par_section": {
     "contact": ["email", "adresse", "ville"],
     "gps": ["gps_lat", "gps_lng"],

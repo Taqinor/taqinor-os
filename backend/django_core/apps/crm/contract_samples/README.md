@@ -55,3 +55,15 @@ aujourd'hui (`consent`, `eventId`, `website_url`), plus une lue par la vue sans
 colonne d'accueil (`idempotencyKey`). Une omission silencieuse est exactement
 le mode de panne que ce dossier existe pour fermer : une clé qui survit à toute
 la chaîne web et se perd sans trace à l'arrivée.
+
+## QJR5 — M0 contrats posés SEULS (30/09/2026)
+
+| Fichier | Ce qu'il apparie |
+| --- | --- |
+| `lead_devis_ligne.json` | un élément de `devis[]` du GET lead : les clés existantes + modifiabilité, `is_active`, `version`, `superseded_by`, `corrige_le` (QJR500) |
+| `whatsapp_devis_apercu.json` | POST whatsapp-devis-apercu : aperçu multi-devis sans aucun effet (QJR502) |
+| `lead_ville_effective.json` | `ville`, `ville_reference`, `ville_effective` (QJR506) |
+| `lead_client_ecart.json` | `client_ecart` + POST synchroniser-client (QJR506) |
+| `lead_provenance_fields.json` | les champs de provenance du lead après QJR587 (QJR506) |
+| `devis_auto_pret.json` | bloc `devis_auto` structuré : `manquants_detail`, `requis` (QJR509) |
+| `questionnaire_lead.json` (étendu) | `colonnes_ecrites`, `prefill_vu`, `ignorees` (QJR512) |

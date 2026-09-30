@@ -1,0 +1,23 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/synchroniser-client/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR506 (M0 QJR5) — écart entre le lead et la fiche client liée. Le GET lead porte {client, client_nom, client_ecart: [nom|prenom|email|telephone|adresse]} ; POST …/synchroniser-client/ -> 200 {client_ecart, champs_mis_a_jour} | 400 {detail}.",
+  "exemple_get_lead": {
+    "client": 88,
+    "client_nom": "Amina Bennani",
+    "client_ecart": [
+      "email",
+      "telephone"
+    ]
+  },
+  "exemple": {
+    "client_ecart": [],
+    "champs_mis_a_jour": [
+      "email",
+      "telephone"
+    ]
+  },
+  "exemple_400": {
+    "detail": "Ce lead n'est lié à aucune fiche client."
+  }
+}
