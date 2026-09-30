@@ -7,6 +7,9 @@ whose markup is emitted by ``categories.category_block``). RULE #4 : jamais de
 prix_achat/marge — on ne rend que designation/quantité/PU TTC/Total TTC.
 """
 from . import categories
+# QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
+# (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
+from ..figures import ancre
 
 
 def _num(v, default=0.0):
@@ -62,7 +65,8 @@ def build(ctx):
     tva = _num(tot.get("tva"))
     ttc = _num(tot.get("ttc")) or d.get("_invest_ttc") or 0
     remise_row = (
-        f'<tr><td>Remise</td><td class="c2-tr">- {fmt(round(remise))} MAD</td></tr>'
+        f'<tr><td>Remise{ancre("remise", fmt(round(remise)))}</td>'
+        f'<td class="c2-tr">- {fmt(round(remise))} MAD</td></tr>'
         if remise > 0 else "")
 
     # QX50 — ligne injection 82-21 (rendue SEULEMENT si l'étude la porte, avec
@@ -141,11 +145,11 @@ def build(ctx):
     <div class="c2-tot-sp"></div>
     <div class="c2-tot-box">
       <table class="c2-tot-tbl">
-        <tr><td>Sous-total HT</td><td>{fmt(round(ht_brut))} MAD</td></tr>
+        <tr><td>Sous-total HT{ancre("sous_total_ht", fmt(round(ht_brut)))}</td><td>{fmt(round(ht_brut))} MAD</td></tr>
         {remise_row}
-        <tr><td>Total HT</td><td>{fmt(round(ht_net))} MAD</td></tr>
-        <tr><td>TVA</td><td>{fmt(round(tva))} MAD</td></tr>
-        <tr class="c2-tot-ttc"><td>Total TTC</td><td>{fmt(round(ttc))} MAD</td></tr>
+        <tr><td>Total HT{ancre("total_ht", fmt(round(ht_net)))}</td><td>{fmt(round(ht_net))} MAD</td></tr>
+        <tr><td>TVA{ancre("tva", fmt(round(tva)))}</td><td>{fmt(round(tva))} MAD</td></tr>
+        <tr class="c2-tot-ttc"><td>Total TTC{ancre("total_ttc", fmt(round(ttc)))}</td><td>{fmt(round(ttc))} MAD</td></tr>
       </table>
     </div>
   </div>
