@@ -36,6 +36,59 @@ export const phraseReportee = (n) => `reportée ${nombre(n)} fois`
 export const phraseAnnulees = (n) =>
   `${nombre(n)} ${pl(n, 'étape annulée', 'étapes annulées')} par le moteur — hors compte`
 
+/** Un seuil SERVI par le serveur (`seuils.*`) ou `null` : un libellé ne dit jamais
+ *  un nombre que le serveur n'a pas servi, ni un nombre écrit dans le code. */
+export const seuil = (seuils, cle) => (Number.isFinite(seuils?.[cle]) ? seuils[cle] : null)
+
+/** Les mots des niveaux du verdict — UNE source, lue par le bandeau et par « Comment
+ *  lire ce bloc » : ils ne peuvent pas diverger. */
+export const MOTS_NIVEAU = {
+  ok: 'Tout est à jour',
+  attention: 'À surveiller',
+  alerte: 'Action requise',
+  vide: 'Pas encore de données',
+}
+
+/** « Comment lire ce bloc » : les sept lignes, dans l'ordre. `terme` = le mot défini
+ *  (`null` pour une phrase entière). Les seuils viennent de `seuils` (servis) : jamais un
+ *  nombre écrit ici, et une ligne dont un seuil manque n'est pas affichée. */
+export function lignesLecture(seuils) {
+  const alerte = seuil(seuils, 'retard_alerte_jours')
+  const attente = seuil(seuils, 'tache_attente_jours')
+  const reports = seuil(seuils, 'reports_min')
+  const lignes = [
+    { cle: 'a_temps', terme: 'À temps', texte: 'traitée au plus tard le jour de son échéance.' },
+    { cle: 'en_retard', terme: 'Traitée en retard', texte: 'traitée après le jour de son échéance.' },
+    { cle: 'sautee', terme: 'Sautée', texte: 'passée volontairement (« Sauter »).' },
+    {
+      cle: 'ouvert',
+      terme: 'Toujours en retard',
+      texte: 'pas encore traitée, au moins un jour ouvré après son échéance.',
+    },
+    {
+      cle: 'reportee',
+      terme: 'Reportée',
+      texte: "échéance repoussée par la commerciale (« Reporter », « Mettre en veille ») — l'échéance d'origine reste affichée.",
+    },
+    {
+      cle: 'jours_non_comptes',
+      terme: null,
+      texte: 'Week-ends, jours fériés et absences déclarées ne comptent pas dans les retards ; '
+        + 'les étapes annulées par le moteur (client joint, devis accepté…) ne comptent ni pour ni contre.',
+    },
+  ]
+  if (alerte !== null && attente !== null && reports !== null) {
+    lignes.push({
+      cle: 'niveaux',
+      terme: null,
+      texte: `« ${MOTS_NIVEAU.alerte} » : un retard de ${joursOuvres(alerte)} ou plus, un dossier sans `
+        + `prochaine étape ou un premier contact hors délai. « ${MOTS_NIVEAU.attention} » : un retard, `
+        + `une tâche en attente depuis ${joursOuvres(attente)}, ou une étape reportée ${nombre(reports)} fois.`,
+    })
+  }
+  return lignes
+}
+
 /** La note du bas de « À traiter en priorité » : le seuil d'alerte SERVI, en jours
  *  ouvrés, puis — dès qu'une liste de retard ou d'attente est affichée — ce qui ne
  *  compte pas. `null` s'il n'y a rien à dire. */
@@ -272,15 +325,30 @@ export function libelleReponse(typeId, cle) {
 }
 
 // ── Premier contact et résultats ───────────────────────────────────────────
-/** « 8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h ». */
+/** L'attente d'un lead jamais contacté, sur l'horloge du DÉLAI (contrat `notes.exceptions` :
+ *  heures d'horloge, jours non ouvrés retirés — un lead créé il y a six jours vaut ~99 h).
+ *  UN seul format : sous 48 h, en heures (« 27,5 h ») ; à partir de 48 h, en jours ouvrés
+ *  ENTIERS, arrondis vers le bas (99,1 h → « 4 jours ouvrés »). `null` → « — ». */
+export function dureeAttente(heures) {
+  if (heures === null || heures === undefined || Number.isNaN(Number(heures))) return '—'
+  const h = Number(heures)
+  if (h < 48) return `${decimal(h)} h`
+  return joursOuvres(Math.floor(h / 24))
+}
+
+/** « 19 sur 23 contactés dans le délai (24 h) · délai médian 1 h 11 (heures ouvrées) ·
+ *  plus longue attente : 4 jours ouvrés » — ou « … · aucun lead en attente ». */
 export function phrasePremierContact(pc) {
   const p = pc || {}
   if (!p.nouveaux) return 'Aucun nouveau lead sur la période.'
+  const mediane = p.mediane_minutes === null || p.mediane_minutes === undefined
+    ? 'délai médian —'
+    : `délai médian ${duree(p.mediane_minutes)} (heures ouvrées)`
   const attente = p.plus_longue_attente_heures === null || p.plus_longue_attente_heures === undefined
     ? 'aucun lead en attente'
-    : `plus longue attente ${decimal(p.plus_longue_attente_heures)} h`
-  return `${nombre(p.dans_le_delai)} sur ${nombre(p.nouveaux)} dans le délai (${decimal(p.delai_heures)} h)`
-    + ` · médiane ${duree(p.mediane_minutes)} · ${attente}`
+    : `plus longue attente : ${dureeAttente(p.plus_longue_attente_heures)}`
+  return `${nombre(p.dans_le_delai)} sur ${nombre(p.nouveaux)} ${pl(p.nouveaux, 'contacté', 'contactés')}`
+    + ` dans le délai (${decimal(p.delai_heures)} h) · ${mediane} · ${attente}`
 }
 
 /** « 3 visites planifiées · 4 devis envoyés · 1 devis accepté ». */

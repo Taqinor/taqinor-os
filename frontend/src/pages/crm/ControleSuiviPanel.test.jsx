@@ -50,14 +50,28 @@ beforeEach(() => {
   crmApi.getControleSuivi.mockResolvedValue(reponseContrat('crm', 'controle_suivi'))
   crmApi.getRelanceEtapesSuivi.mockResolvedValue(reponseContrat('crm', 'relance_etapes_suivi'))
 })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); window.localStorage.clear() })
 
-function monter() {
+// La préférence « détail déplié » du navigateur (clé posée par le composant).
+const CLE_DETAIL = 'crm.cockpit.controle.detail'
+
+/** Le rendu seul, sans toucher à la préférence : un montage de plus dans le MÊME navigateur. */
+function rendre() {
   return render(
     <MemoryRouter>
       <ControleSuiviPanel />
     </MemoryRouter>,
   )
+}
+
+/** Monte le bloc. Le détail est REPLIÉ par défaut (préférence absente), mais presque
+ *  tous les tests lisent son contenu : ils le montent déplié, comme un utilisateur qui
+ *  l'a déjà ouvert une fois (préférence mémorisée). `{ detail: null }` = première visite
+ *  (aucune préférence) ; `{ detail: false }` = replié explicitement. */
+function monter({ detail = true } = {}) {
+  if (detail === null) window.localStorage.removeItem(CLE_DETAIL)
+  else window.localStorage.setItem(CLE_DETAIL, JSON.stringify(detail))
+  return rendre()
 }
 
 /** Le même exemple de contrat, dont on remplace des blocs entiers. */
@@ -428,6 +442,49 @@ describe('ControleSuiviPanel — frise', () => {
     })
   })
 
+  describe('badge d\'une étape encore à faire (le retard se lit sur la case, pas sur la ligne)', () => {
+    // `overdue` est CALENDAIRE ; le retard du bloc se compte en jours OUVRÉS : une ligne
+    // « à faire » porte toujours le badge neutre « À faire » (contrat `relance_etapes_suivi`).
+    const AFAIRE = SUIVI.results.find((e) => e.statut === 'a_faire')
+    const ouvrirAvec = async (lignes) => {
+      crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+        data: { ...SUIVI, count: lignes.length, results: lignes },
+      })
+      monter()
+      await attendreVerdict()
+      fireEvent.click(screen.getByTestId('controle-jour-2026-09-29'))
+      return within(await screen.findByTestId('controle-jour-liste')).findAllByTestId('controle-jour-ligne')
+    }
+
+    it('à faire, non en retard : « À faire »', async () => {
+      const [ligne] = await ouvrirAvec([{ ...AFAIRE, overdue: false }])
+      expect(ligne).toHaveTextContent('À faire')
+      expect(ligne).not.toHaveTextContent('En retard')
+    })
+
+    it('à faire, `overdue` vrai (calendaire) : TOUJOURS « À faire » — jamais « En retard »', async () => {
+      const [ligne] = await ouvrirAvec([{ ...AFAIRE, overdue: true }])
+      expect(ligne).toHaveTextContent('À faire')
+      expect(ligne).not.toHaveTextContent('En retard')
+      expect(ligne).toHaveTextContent('prévue à 08:33')
+    })
+
+    it('un libellé de statut « En retard » servi pour une étape à faire n\'y change rien', async () => {
+      const [ligne] = await ouvrirAvec([{ ...AFAIRE, overdue: true, statut_libelle: 'En retard' }])
+      expect(ligne).toHaveTextContent('À faire')
+      expect(ligne).not.toHaveTextContent('En retard')
+    })
+
+    it('les autres statuts gardent leur badge (Fait, Sautée)', async () => {
+      const fait = SUIVI.results.find((e) => e.statut === 'fait')
+      const lignes = await ouvrirAvec([
+        fait, { ...fait, id: 700, statut: 'sautee', statut_libelle: 'Sautée' },
+      ])
+      expect(lignes[0]).toHaveTextContent('Fait')
+      expect(lignes[1]).toHaveTextContent('Sautée')
+    })
+  })
+
   it('liste du jour indisponible : message + Réessayer', async () => {
     crmApi.getRelanceEtapesSuivi.mockRejectedValueOnce(new Error('boom'))
     monter()
@@ -542,7 +599,7 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     expect(within(ligne).getByText('Tâche')).toBeInTheDocument()
   })
 
-  it('« Premier contact hors délai » : « attend depuis N h » (décimale française)', async () => {
+  it('« Premier contact hors délai » : « attend depuis N h » sous 48 h (décimale française)', async () => {
     monter()
     await attendreVerdict()
     const ligne = within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne')
@@ -550,6 +607,38 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       .toHaveAttribute('href', '/crm/leads?lead=1511')
     expect(ligne).toHaveTextContent('attend depuis 27,5 h')
     expect(ligne).toHaveTextContent('Responsable : commerciale')
+  })
+
+  it('« Premier contact hors délai » : à partir de 48 h, « attend depuis 4 jours ouvrés » (99,1 h, arrondi vers le bas)', async () => {
+    const ligneServie = CONTROLE.exceptions.premier_contact_hors_delai.lignes[0]
+    const avecAttente = (heures) => variante({
+      exceptions: {
+        ...CONTROLE.exceptions,
+        premier_contact_hors_delai: {
+          total: 1, lignes: [{ ...ligneServie, attend_depuis_heures: heures }],
+        },
+      },
+    })
+    crmApi.getControleSuivi.mockResolvedValue(avecAttente(99.1))
+    const { unmount } = monter()
+    await attendreVerdict()
+    const ligne = within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne')
+    expect(ligne).toHaveTextContent('attend depuis 4 jours ouvrés')
+    expect(ligne).not.toHaveTextContent('99')
+    expect(ligne.textContent).not.toMatch(/\d\s*h\b/)
+    unmount()
+    // La frontière : 47,9 h reste en heures, 48 h passe en jours ouvrés.
+    crmApi.getControleSuivi.mockResolvedValue(avecAttente(47.9))
+    const second = monter()
+    await attendreVerdict()
+    expect(within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne'))
+      .toHaveTextContent('attend depuis 47,9 h')
+    second.unmount()
+    crmApi.getControleSuivi.mockResolvedValue(avecAttente(48))
+    monter()
+    await attendreVerdict()
+    expect(within(bloc('premier_contact_hors_delai')).getByTestId('controle-exception-ligne'))
+      .toHaveTextContent('attend depuis 2 jours ouvrés')
   })
 
   describe('« Dossiers sans prochaine étape » (ligne fixée par exemple_alerte)', () => {
@@ -944,13 +1033,25 @@ describe('ControleSuiviPanel — détail par étape', () => {
 })
 
 describe('ControleSuiviPanel — premier contact et résultats', () => {
-  it('premier contact : « 8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h »', async () => {
+  it('premier contact : « 8 sur 9 contactés dans le délai (24 h) · délai médian 42 min (heures ouvrées) · plus longue attente : 27,5 h »', async () => {
     monter()
     await attendreVerdict()
     const carte = screen.getByTestId('controle-premier-contact')
     expect(carte).toHaveTextContent('Premier contact')
     expect(carte).toHaveTextContent(
-      '8 sur 9 dans le délai (24 h) · médiane 42 min · plus longue attente 27,5 h')
+      '8 sur 9 contactés dans le délai (24 h) · délai médian 42 min (heures ouvrées) · plus longue attente : 27,5 h')
+  })
+
+  it('premier contact : une attente de 48 h et plus se dit en jours ouvrés entiers', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      premier_contact: {
+        nouveaux: 23, dans_le_delai: 19, delai_heures: 24, mediane_minutes: 71, plus_longue_attente_heures: 99.1,
+      },
+    }))
+    monter()
+    await attendreVerdict()
+    expect(screen.getByTestId('controle-premier-contact')).toHaveTextContent(
+      '19 sur 23 contactés dans le délai (24 h) · délai médian 1 h 11 (heures ouvrées) · plus longue attente : 4 jours ouvrés')
   })
 
   it('résultats : « 3 visites planifiées · 4 devis envoyés · 1 devis accepté »', async () => {
@@ -980,7 +1081,7 @@ describe('ControleSuiviPanel — premier contact et résultats', () => {
     monter()
     await attendreVerdict()
     expect(screen.getByTestId('controle-premier-contact')).toHaveTextContent(
-      '8 sur 9 dans le délai (24 h) · médiane — · aucun lead en attente')
+      '8 sur 9 contactés dans le délai (24 h) · délai médian — · aucun lead en attente')
   })
 })
 
@@ -1071,5 +1172,323 @@ describe('ControleSuiviPanel — sélecteurs', () => {
     const alerte = await screen.findByTestId('controle-erreur-owner')
     expect(alerte).toHaveTextContent(message)
     expect(screen.getByRole('combobox', { name: 'Commercial' })).toBeInTheDocument()
+  })
+})
+
+describe('ControleSuiviPanel — détail repliable (replié par défaut, mémorisé par navigateur)', () => {
+  // Tout ce qui est DERRIÈRE le bouton : sélecteurs, comparaison, frise, listes
+  // d'exceptions, détail par étape, premier contact, résultats.
+  const DU_DETAIL = [
+    'controle-selecteurs', 'controle-comparaison', 'controle-frise', 'controle-exceptions',
+    'controle-detail', 'controle-premier-contact', 'controle-resultats',
+  ]
+  const bouton = (nom) => screen.getByRole('button', { name: nom })
+
+  it('première visite : replié — le titre, le bandeau du verdict, la phrase de la période et le bouton seulement', async () => {
+    monter({ detail: null })
+    const verdict = await attendreVerdict()
+    expect(screen.getByRole('heading', { name: /Contrôle du suivi/ })).toBeInTheDocument()
+    expect(verdict).toHaveAttribute('data-niveau', 'attention')
+    expect(verdict).toHaveTextContent('À surveiller')
+    expect(screen.getByTestId('controle-phrase-periode'))
+      .toHaveTextContent('Sur 14 jours : 36 étapes sur 42 traitées à temps (86 %)')
+    expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+    for (const id of DU_DETAIL) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+    expect(screen.queryByRole('radiogroup', { name: 'Période' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('controle-detail-corps')).not.toBeInTheDocument()
+  })
+
+  it('la requête part au montage même replié (période par défaut), et déplier ne la relance pas', async () => {
+    monter({ detail: null })
+    await attendreVerdict()
+    expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(1)
+    expect(crmApi.getControleSuivi).toHaveBeenCalledWith({ jours: 14 })
+    expect(crmApi.getRelanceEtapesSuivi).not.toHaveBeenCalled()
+    fireEvent.click(bouton('Voir le détail'))
+    fireEvent.click(bouton('Masquer le détail'))
+    expect(crmApi.getControleSuivi).toHaveBeenCalledTimes(1)
+  })
+
+  it('« Voir le détail » déplie (aria-expanded, aria-controls), « Masquer le détail » replie', async () => {
+    monter({ detail: null })
+    await attendreVerdict()
+    fireEvent.click(bouton('Voir le détail'))
+    const masquer = bouton('Masquer le détail')
+    expect(masquer).toHaveAttribute('aria-expanded', 'true')
+    const corps = screen.getByTestId('controle-detail-corps')
+    expect(corps.id).not.toBe('')
+    expect(masquer.getAttribute('aria-controls')).toBe(corps.id)
+    for (const id of DU_DETAIL) expect(within(corps).getByTestId(id)).toBeInTheDocument()
+    // Le bandeau reste AU-DESSUS du bouton : il n'est pas dans le détail.
+    expect(within(corps).queryByTestId('controle-verdict')).not.toBeInTheDocument()
+    expect(within(corps).queryByTestId('controle-phrase-periode')).not.toBeInTheDocument()
+    expect(screen.getByTestId('controle-verdict')).toBeInTheDocument()
+
+    fireEvent.click(masquer)
+    expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+    for (const id of DU_DETAIL) expect(screen.queryByTestId(id)).not.toBeInTheDocument()
+    expect(screen.getByTestId('controle-verdict')).toBeInTheDocument()
+  })
+
+  it('le bouton se manœuvre au clavier (Entrée)', async () => {
+    const user = userEvent.setup()
+    monter({ detail: null })
+    await attendreVerdict()
+    bouton('Voir le détail').focus()
+    await user.keyboard('{Enter}')
+    expect(bouton('Masquer le détail')).toHaveAttribute('aria-expanded', 'true')
+    await user.keyboard('{Enter}')
+    expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('mémorisé par navigateur : déplié une fois, il reste déplié au montage suivant', async () => {
+    const { unmount } = monter({ detail: null })
+    await attendreVerdict()
+    fireEvent.click(bouton('Voir le détail'))
+    expect(window.localStorage.getItem(CLE_DETAIL)).toBe('true')
+    unmount()
+    rendre()
+    await attendreVerdict()
+    expect(bouton('Masquer le détail')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByTestId('controle-frise')).toBeInTheDocument()
+  })
+
+  it('replié à nouveau : le choix inverse est mémorisé lui aussi', async () => {
+    const { unmount } = monter({ detail: true })
+    await attendreVerdict()
+    fireEvent.click(bouton('Masquer le détail'))
+    expect(window.localStorage.getItem(CLE_DETAIL)).toBe('false')
+    unmount()
+    rendre()
+    await attendreVerdict()
+    expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('controle-frise')).not.toBeInTheDocument()
+  })
+
+  it('jamais par rôle : une seule clé, même comportement pour un responsable et pour une commerciale', async () => {
+    for (const responsable of [true, false]) {
+      estResponsable.mockReturnValue(responsable)
+      window.localStorage.clear()
+      const { unmount } = monter({ detail: null })
+      await attendreVerdict()
+      expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(bouton('Voir le détail'))
+      expect(bouton('Masquer le détail')).toHaveAttribute('aria-expanded', 'true')
+      expect(window.localStorage).toHaveLength(1)
+      expect(window.localStorage.key(0)).toBe(CLE_DETAIL)
+      unmount()
+    }
+  })
+
+  it('préférence illisible ou inattendue : replié (le défaut), jamais une erreur', async () => {
+    for (const brut of ['pas du json', '"oui"', '1', 'null']) {
+      window.localStorage.setItem(CLE_DETAIL, brut)
+      const { unmount } = rendre()
+      await attendreVerdict()
+      expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+      unmount()
+    }
+  })
+
+  it('stockage indisponible : replié, et le bouton fonctionne quand même (sans mémoire)', async () => {
+    const lecture = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('refusé') })
+    const ecriture = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('refusé') })
+    try {
+      rendre()
+      await attendreVerdict()
+      expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+      fireEvent.click(bouton('Voir le détail'))
+      expect(bouton('Masquer le détail')).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getByTestId('controle-frise')).toBeInTheDocument()
+      // Le stockage a bien été SOLLICITÉ (et a refusé) : le test n'est pas à vide.
+      expect(lecture).toHaveBeenCalledWith(CLE_DETAIL)
+      expect(ecriture).toHaveBeenCalled()
+    } finally {
+      lecture.mockRestore()
+      ecriture.mockRestore()
+    }
+  })
+
+  it('un refus 400 qui nomme un champ déplie le détail pour montrer le message sous ce champ', async () => {
+    const message = '« jours » doit valoir 7, 14 ou 30.'
+    crmApi.getControleSuivi.mockRejectedValueOnce({
+      response: { status: 400, data: { erreurs: { jours: message } } },
+    })
+    monter({ detail: null })
+    const alerte = await screen.findByTestId('controle-erreur-jours')
+    expect(alerte).toHaveTextContent(message)
+    expect(alerte).toHaveAttribute('role', 'alert')
+    expect(bouton('Masquer le détail')).toHaveAttribute('aria-expanded', 'true')
+    expect(within(screen.getByTestId('controle-detail-corps')).getByRole('radiogroup', { name: 'Période' }))
+      .toBeInTheDocument()
+    // Ouverture forcée par l'erreur, pas un choix : rien n'est mémorisé.
+    expect(window.localStorage.getItem(CLE_DETAIL)).toBeNull()
+  })
+
+  it('serveur indisponible, détail replié : le message et « Réessayer » restent visibles', async () => {
+    crmApi.getControleSuivi.mockRejectedValueOnce(new Error('boom'))
+    monter({ detail: null })
+    expect(await screen.findByTestId('controle-panne')).toHaveTextContent('Indisponible pour le moment.')
+    expect(bouton('Voir le détail')).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Réessayer' }))
+    await attendreVerdict()
+    expect(screen.queryByTestId('controle-panne')).not.toBeInTheDocument()
+  })
+
+  it('premier chargement : le squelette du bandeau seul quand replié, avec celui du détail quand déplié', async () => {
+    crmApi.getControleSuivi.mockReturnValue(new Promise(() => {}))
+    const replie = monter({ detail: null })
+    expect(screen.getByTestId('controle-squelette')).toBeInTheDocument()
+    expect(screen.queryByTestId('controle-squelette-detail')).not.toBeInTheDocument()
+    expect(bouton('Voir le détail')).toBeInTheDocument()
+    replie.unmount()
+
+    monter({ detail: true })
+    expect(screen.getByTestId('controle-squelette')).toBeInTheDocument()
+    expect(screen.getByTestId('controle-squelette-detail')).toBeInTheDocument()
+    // Les sélecteurs sont déjà là pendant le chargement.
+    expect(screen.getByRole('radiogroup', { name: 'Période' })).toBeInTheDocument()
+  })
+
+  it('un commercial choisi reste dit près du titre quand le détail (donc le sélecteur) est replié', async () => {
+    const user = userEvent.setup()
+    monter({ detail: true })
+    await attendreVerdict()
+    expect(screen.queryByTestId('controle-commercial-actif')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: 'Commercial' }))
+    await user.click(await screen.findByRole('option', { name: CONTROLE.commerciaux[0].nom }))
+    await waitFor(() => expect(crmApi.getControleSuivi).toHaveBeenLastCalledWith(
+      { jours: 14, owner: CONTROLE.commerciaux[0].id }))
+    fireEvent.click(bouton('Masquer le détail'))
+    expect(screen.getByTestId('controle-commercial-actif'))
+      .toHaveTextContent(`Commercial : ${CONTROLE.commerciaux[0].nom}`)
+    // Le filtre survit au repli : redéplié, le sélecteur le montre encore.
+    fireEvent.click(bouton('Voir le détail'))
+    expect(screen.getByRole('combobox', { name: 'Commercial' }))
+      .toHaveTextContent(CONTROLE.commerciaux[0].nom)
+    // « Toute l'équipe » : plus de mention.
+    await user.click(screen.getByRole('combobox', { name: 'Commercial' }))
+    await user.click(await screen.findByRole('option', { name: 'Toute l\'équipe' }))
+    await waitFor(() => expect(screen.queryByTestId('controle-commercial-actif')).not.toBeInTheDocument())
+  })
+})
+
+describe('ControleSuiviPanel — « Comment lire ce bloc »', () => {
+  const ouvrir = () => screen.getByRole('button', { name: 'Comment lire ce bloc' })
+  /** Les lignes du dépliant, une fois ouvert (texte complet de chaque `li`). */
+  const lignes = () => {
+    const liste = document.getElementById(ouvrir().getAttribute('aria-controls'))
+    return within(liste).getAllByRole('listitem').map((li) => li.textContent)
+  }
+  const avecSeuils = (seuils) => variante({ seuils })
+
+  it('fermé par défaut (aria-expanded), au BAS du détail — après les résultats', async () => {
+    monter()
+    await attendreVerdict()
+    expect(ouvrir()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('controle-lecture-a_temps')).not.toBeInTheDocument()
+    const section = screen.getByTestId('controle-comment-lire')
+    expect(within(screen.getByTestId('controle-detail-corps')).getByTestId('controle-comment-lire'))
+      .toBe(section)
+    for (const id of ['controle-frise', 'controle-exceptions', 'controle-detail', 'controle-premier-contact', 'controle-resultats']) {
+      expect(screen.getByTestId(id).compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .toBeTruthy()
+    }
+  })
+
+  it('détail replié : pas de dépliant (il vit dans le détail)', async () => {
+    monter({ detail: null })
+    await attendreVerdict()
+    expect(screen.queryByTestId('controle-comment-lire')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Comment lire ce bloc' })).not.toBeInTheDocument()
+  })
+
+  it('ouvert : sept lignes courtes, dans l\'ordre, les seuils de l\'exemple dans la dernière', async () => {
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(ouvrir()).toHaveAttribute('aria-expanded', 'true')
+    // Les seuils de l'exemple du contrat : 2 jours d'alerte, 2 d'attente, 2 reports.
+    expect(CONTROLE.seuils).toMatchObject({ retard_alerte_jours: 2, tache_attente_jours: 2, reports_min: 2 })
+    expect(lignes()).toEqual([
+      'À temps : traitée au plus tard le jour de son échéance.',
+      'Traitée en retard : traitée après le jour de son échéance.',
+      'Sautée : passée volontairement (« Sauter »).',
+      'Toujours en retard : pas encore traitée, au moins un jour ouvré après son échéance.',
+      'Reportée : échéance repoussée par la commerciale (« Reporter », « Mettre en veille ») — l\'échéance d\'origine reste affichée.',
+      'Week-ends, jours fériés et absences déclarées ne comptent pas dans les retards ; '
+        + 'les étapes annulées par le moteur (client joint, devis accepté…) ne comptent ni pour ni contre.',
+      '« Action requise » : un retard de 2 jours ouvrés ou plus, un dossier sans prochaine étape ou un premier contact hors délai. '
+        + '« À surveiller » : un retard, une tâche en attente depuis 2 jours ouvrés, ou une étape reportée 2 fois.',
+    ])
+    fireEvent.click(ouvrir())
+    expect(ouvrir()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('controle-lecture-a_temps')).not.toBeInTheDocument()
+  })
+
+  it('les seuils sont LUS dans `seuils` : un autre serveur, d\'autres nombres (et l\'accord)', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+      ...CONTROLE.seuils, retard_alerte_jours: 5, tache_attente_jours: 3, reports_min: 4,
+    }))
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    const dernier = lignes()[6]
+    expect(dernier).toContain('un retard de 5 jours ouvrés ou plus')
+    expect(dernier).toContain('une tâche en attente depuis 3 jours ouvrés')
+    expect(dernier).toContain('une étape reportée 4 fois')
+    expect(dernier).not.toMatch(/\b2\b/)
+  })
+
+  it('« 1 jour ouvré » au singulier', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+      ...CONTROLE.seuils, retard_alerte_jours: 1, tache_attente_jours: 1,
+    }))
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(lignes()[6]).toContain('un retard de 1 jour ouvré ou plus')
+    expect(lignes()[6]).toContain('une tâche en attente depuis 1 jour ouvré,')
+  })
+
+  it('un seuil qui manque : la ligne qui le cite n\'est pas affichée (les six autres restent)', async () => {
+    for (const manquant of ['retard_alerte_jours', 'tache_attente_jours', 'reports_min']) {
+      const { [manquant]: _omis, ...seuils } = CONTROLE.seuils
+      crmApi.getControleSuivi.mockResolvedValue(avecSeuils(seuils))
+      const { unmount } = monter()
+      await attendreVerdict()
+      fireEvent.click(ouvrir())
+      const textes = lignes()
+      expect(textes, manquant).toHaveLength(6)
+      expect(textes.join(' ')).not.toContain('Action requise')
+      unmount()
+    }
+  })
+
+  it('aucun bloc `seuils` : six lignes, aucun nombre écrit à la place', async () => {
+    const { seuils: _omis, ...sansSeuils } = CONTROLE
+    crmApi.getControleSuivi.mockResolvedValue({ data: sansSeuils })
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(lignes()).toHaveLength(6)
+    expect(lignes().join(' ')).not.toMatch(/\d/)
+  })
+
+  it('les mots des niveaux sont ceux du bandeau (une seule source)', async () => {
+    // Niveau « attention » (exemple) puis « alerte » (exemple_alerte) : le mot affiché dans
+    // le bandeau figure aussi, à l'identique, dans la dernière ligne du dépliant.
+    monter()
+    const attention = await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(attention).toHaveTextContent('À surveiller')
+    expect(lignes()[6]).toContain('« À surveiller »')
+    cleanup()
+    crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+    monter()
+    const alerte = await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(alerte).toHaveTextContent('Action requise')
+    expect(lignes()[6]).toContain('« Action requise »')
   })
 })

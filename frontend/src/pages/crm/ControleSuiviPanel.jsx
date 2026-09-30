@@ -3,9 +3,18 @@
 // du cockpit CRM : UNE lecture répond à « ce qui devait être fait l'a-t-il été ? ».
 //
 // Deux lecteurs, un même écran (décision de transparence CKP3/CKP5) : la
-// commerciale traite sa journée dans « Ma journée », le responsable lit ici, en
-// quelques secondes, ce qui a été fait, tardé ou oublié. Aucune garde de rôle :
-// seule la portée serveur (`scope_queryset` via le lead) borne la lecture.
+// commerciale traite sa journée dans « À faire aujourd'hui », le responsable lit ici, en
+// quelques secondes, ce qui a été fait, tardé ou oublié. Même bloc pour tous les
+// rôles : seule la portée serveur (`scope_queryset` via le lead) borne la lecture ;
+// une seule ligne d'aide (sous « Dossiers sans prochaine étape ») est réservée au
+// responsable / à l'admin, car la carte qu'elle vise ne s'affiche que pour eux.
+//
+// REPLIABLE, replié par défaut : le titre, le BANDEAU du verdict, la phrase de la
+// période et le bouton « Voir le détail » se lisent toujours ; les sélecteurs, la
+// comparaison, la frise, les listes d'exceptions, le détail par étape, le premier
+// contact et les résultats sont derrière ce bouton. Le choix (déplié / replié) est
+// mémorisé PAR NAVIGATEUR (`CLE_DETAIL`), jamais par rôle ; la requête part au
+// montage dans les deux états.
 //
 // Ce que la recherche (Outreach, HubSpot, Close, Pipedrive, Gong, Zoho, noCRM,
 // Odoo ; NN/g) a établi, et qui est appliqué ici :
@@ -23,19 +32,21 @@
 // dans la table du parcours (`parcours_suivi.json`).
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ChevronDown, ChevronRight, ClipboardCheck } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp, ClipboardCheck } from 'lucide-react'
 import crmApi from '../../api/crmApi'
 import {
   Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle,
   Segmented, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton,
 } from '../../ui'
 import { cn } from '../../lib/cn'
+import { safeGet, safeSet } from '../../lib/safeStorage'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
-  comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, joursOuvres, libelleJour,
-  libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseAnnulees, phraseExceptions,
-  phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
+  MOTS_NIVEAU, comparaisonPrecedent, decimal, dureeAttente, heureCasa, jjmm, jourCourt, jourLong,
+  joursOuvres, libelleJour, libelleReponse, lignesLecture, nomType, nombre, noteJoursOuvres,
+  numeroJour, phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
+  phraseResultats, pl, seuil,
 } from './controleSuiviTexte'
 
 const PERIODES = [
@@ -45,25 +56,31 @@ const PERIODES = [
 ]
 const PERIODE_DEFAUT = 14
 
+// Le détail (sélecteurs, frise, listes…) est REPLIÉ par défaut ; le choix de
+// l'utilisateur est mémorisé PAR NAVIGATEUR (jamais par rôle), avec l'aide
+// défensive du dépôt (`lib/safeStorage`) : un stockage indisponible = replié.
+const CLE_DETAIL = 'crm.cockpit.controle.detail'
+const lireDetailOuvert = () => safeGet(CLE_DETAIL) === true
+
 // Le VERDICT : forme + couleur + mot (jamais la couleur seule). Le mot et la
 // forme portent le sens ; la teinte ne fait que l'appuyer.
 const NIVEAUX = {
   ok: {
-    glyphe: '●', mot: 'Tout est à jour',
+    glyphe: '●', mot: MOTS_NIVEAU.ok,
     bande: 'border-success/40 bg-success/10', texte: 'text-success',
   },
   attention: {
-    glyphe: '◆', mot: 'À surveiller',
+    glyphe: '◆', mot: MOTS_NIVEAU.attention,
     bande: 'border-warning/50 bg-warning/10', texte: 'text-warning-text',
   },
   // « Action requise » et non « En retard » : le niveau peut venir d'un dossier
   // sans prochaine étape ou d'un premier contact hors délai, pas d'un retard.
   alerte: {
-    glyphe: '▲', mot: 'Action requise',
+    glyphe: '▲', mot: MOTS_NIVEAU.alerte,
     bande: 'border-destructive/40 bg-destructive/10', texte: 'text-destructive',
   },
   vide: {
-    glyphe: '–', mot: 'Pas encore de données',
+    glyphe: '–', mot: MOTS_NIVEAU.vide,
     bande: 'border-border bg-muted/50', texte: 'text-muted-foreground',
   },
 }
@@ -169,12 +186,11 @@ function Selecteurs({
   )
 }
 
-// ── Verdict ────────────────────────────────────────────────────────────────
-function Verdict({ donnees }) {
+// ── Bandeau : le verdict et la phrase de la période (toujours visibles) ─────
+function Bandeau({ donnees }) {
   const { verdict, exceptions, periode_jours: periode } = donnees
   const niveau = NIVEAUX[verdict?.niveau] ?? niveauInconnu(verdict?.niveau)
   const phrase = phraseExceptions(exceptions, verdict?.niveau)
-  const comparaison = comparaisonPrecedent(verdict)
   return (
     <div className="flex flex-col gap-1.5">
       <div
@@ -193,30 +209,35 @@ function Verdict({ donnees }) {
       <p className="text-sm text-muted-foreground" data-testid="controle-phrase-periode">
         {phrasePeriode(verdict, periode)}
       </p>
-      {comparaison && (
-        <p
-          className={cn(
-            'text-xs font-medium',
-            comparaison.sens === 'hausse' && 'text-success',
-            comparaison.sens === 'baisse' && 'text-destructive',
-            comparaison.sens === 'stable' && 'text-muted-foreground',
-          )}
-          data-testid="controle-comparaison"
-        >
-          {comparaison.texte}
-        </p>
-      )}
     </div>
+  )
+}
+
+/** ↑ / ↓ / → face à la période précédente : dans le détail, pas dans le bandeau. */
+function Comparaison({ verdict }) {
+  const comparaison = comparaisonPrecedent(verdict)
+  if (!comparaison) return null
+  return (
+    <p
+      className={cn(
+        'text-xs font-medium',
+        comparaison.sens === 'hausse' && 'text-success',
+        comparaison.sens === 'baisse' && 'text-destructive',
+        comparaison.sens === 'stable' && 'text-muted-foreground',
+      )}
+      data-testid="controle-comparaison"
+    >
+      {comparaison.texte}
+    </p>
   )
 }
 
 // ── Frise ──────────────────────────────────────────────────────────────────
 function StatutBadgeJour({ etape }) {
-  if (etape.statut === 'a_faire') {
-    return etape.overdue
-      ? <Badge tone="danger">En retard</Badge>
-      : <Badge tone="outline">{etape.statut_libelle || 'À faire'}</Badge>
-  }
+  // Une étape encore à faire est « À faire » — jamais « En retard » : `etape.overdue` est
+  // CALENDAIRE, alors que le retard de ce bloc se compte en jours OUVRÉS ; c'est la CASE
+  // de la frise (▲ ou ◔) qui dit si le jour est en retard, pas un badge par ligne.
+  if (etape.statut === 'a_faire') return <Badge tone="outline">À faire</Badge>
   if (etape.statut === 'fait') return <Badge tone="success">{etape.statut_libelle || 'Fait'}</Badge>
   if (etape.statut === 'sautee') return <Badge tone="neutral">{etape.statut_libelle || 'Sautée'}</Badge>
   return <Badge tone="outline">{etape.statut_libelle || etape.statut}</Badge>
@@ -404,10 +425,6 @@ function Frise({ donnees, ownerId, navigate }) {
 }
 
 // ── Exceptions : « À traiter en priorité » ─────────────────────────────────
-/** Un seuil SERVI par le serveur (`seuils.*`) ou `null` : un libellé ne dit jamais
- *  un nombre que le serveur n'a pas servi, ni un nombre écrit dans le code. */
-const seuil = (seuils, cle) => (Number.isFinite(seuils?.[cle]) ? seuils[cle] : null)
-
 // Ordre = celui du contrat. `titre(seuils)` dit CE que la liste contient, avec les
 // seuils servis (`seuils.tache_attente_jours`, `reports_min`, `premier_contact_heures`) ;
 // `detail` dit ce qui rend la ligne exceptionnelle, avec les nombres servis par le
@@ -472,8 +489,9 @@ const LISTES = [
         : `Premier contact hors délai (${decimal(heures)} h)`
     },
     tone: 'danger',
+    // Attente sur l'horloge du délai : « 27,5 h » sous 48 h, sinon « 4 jours ouvrés ».
     detail: (l) => (l.attend_depuis_heures == null ? ''
-      : `attend depuis ${decimal(l.attend_depuis_heures)} h`),
+      : `attend depuis ${dureeAttente(l.attend_depuis_heures)}`),
   },
 ]
 
@@ -685,12 +703,55 @@ function PremierContactEtResultats({ donnees }) {
   )
 }
 
+// ── Comment lire ce bloc ───────────────────────────────────────────────────
+/** Un dépliant discret, fermé par défaut, en bas du détail : ce que veulent dire les mots
+ *  du bloc. Les phrases (et les seuils SERVIS qu'elles citent) viennent de `lignesLecture`. */
+function CommentLire({ seuils }) {
+  const [ouvert, setOuvert] = useState(false)
+  const id = useId()
+  const lignes = lignesLecture(seuils)
+  return (
+    <section data-testid="controle-comment-lire">
+      <h4 className="text-xs font-medium text-muted-foreground">
+        <button
+          type="button" aria-expanded={ouvert} aria-controls={id} onClick={() => setOuvert((o) => !o)}
+          className="focus-ring flex items-center gap-1.5 rounded-md py-1 text-left hover:text-foreground"
+        >
+          {ouvert
+            ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
+            : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
+          Comment lire ce bloc
+        </button>
+      </h4>
+      {ouvert && (
+        <ul id={id} className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+          {lignes.map((ligne) => (
+            <li key={ligne.cle} data-testid={`controle-lecture-${ligne.cle}`}>
+              {ligne.terme && <span className="font-medium text-foreground">{ligne.terme} : </span>}
+              {ligne.texte}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+/** Le bandeau qui arrive : le verdict et la phrase de la période (même hauteur). */
 function Squelette() {
   return (
     <div className="flex flex-col gap-3" aria-busy="true" data-testid="controle-squelette">
       <span className="sr-only" role="status">Chargement du contrôle du suivi…</span>
       <Skeleton className="h-12 w-full" />
       <Skeleton className="h-4 w-2/3" />
+    </div>
+  )
+}
+
+/** Le détail qui arrive (frise et listes) — seulement quand le détail est déplié. */
+function SqueletteDetail() {
+  return (
+    <div className="flex flex-col gap-3" aria-hidden="true" data-testid="controle-squelette-detail">
       <div className="grid grid-cols-7 gap-1">
         {Array.from({ length: 14 }).map((unused, i) => <Skeleton key={i} className="h-14" />)}
       </div>
@@ -710,6 +771,9 @@ export default function ControleSuiviPanel() {
   const [resultat, setResultat] = useState({
     cle: null, donnees: null, erreurs: null, panne: false,
   })
+  // Replié par défaut ; la préférence du navigateur (`CLE_DETAIL`) la rouvre.
+  const [detailOuvert, setDetailOuvert] = useState(lireDetailOuvert)
+  const idDetail = useId()
 
   // Une requête = une CLÉ (période, commercial, tentative) : « en chargement »
   // se DÉDUIT de l'écart entre la clé demandée et celle du dernier résultat,
@@ -737,6 +801,10 @@ export default function ControleSuiviPanel() {
         setResultat({
           cle, donnees: null, erreurs: nomme ? erreurs : null, panne: !nomme,
         })
+        // Les sélecteurs vivent dans le détail : un refus qui NOMME un champ le
+        // déplie pour montrer le message sous ce champ (sans toucher à la préférence
+        // mémorisée — c'est une ouverture forcée, pas un choix).
+        if (nomme) setDetailOuvert(true)
       })
     return () => { active = false }
   }, [cle, jours, ownerId])
@@ -746,6 +814,16 @@ export default function ControleSuiviPanel() {
 
   const changerPeriode = (v) => { setJours(v) }
   const changerCommercial = (v) => { setOwnerId(v) }
+  const basculerDetail = () => {
+    const suivant = !detailOuvert
+    setDetailOuvert(suivant)
+    safeSet(CLE_DETAIL, suivant)
+  }
+  // Le détail (donc les sélecteurs) peut être replié alors qu'un commercial est
+  // choisi : le bandeau ne doit jamais passer pour celui de toute l'équipe.
+  const commercialActif = ownerId === null
+    ? null
+    : (commerciaux.find((c) => c.id === ownerId)?.nom ?? null)
 
   return (
     <Card data-testid="controle-suivi-panel">
@@ -759,14 +837,17 @@ export default function ControleSuiviPanel() {
               Ce qui devait être fait l&apos;a-t-il été ? Mêmes chiffres pour tous les rôles.
             </CardDescription>
           </div>
-          <Selecteurs
-            jours={jours} onJours={changerPeriode}
-            ownerId={ownerId} onOwner={changerCommercial}
-            commerciaux={commerciaux} erreurs={chargement ? null : erreurs}
-          />
+          {commercialActif && (
+            <Badge tone="outline" data-testid="controle-commercial-actif">
+              Commercial : {commercialActif}
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {/* TOUJOURS visibles, détail replié ou non : le bandeau du verdict et la
+            phrase de la période (ou leur squelette / l'indisponibilité), puis le
+            bouton qui déplie le reste. */}
         {chargement && !donnees ? (
           <Squelette />
         ) : !chargement && panne ? (
@@ -778,22 +859,56 @@ export default function ControleSuiviPanel() {
           </div>
         ) : donnees ? (
           <div
-            className={cn('flex flex-col gap-4 transition-opacity', chargement && 'opacity-60')}
+            className={cn('transition-opacity', chargement && 'opacity-60')}
             aria-busy={chargement || undefined}
           >
-            <Verdict donnees={donnees} />
-            {/* La clé suit la DEMANDE (période, commercial), pas la réponse : changer
-                de période ou de commercial referme aussitôt la liste d'un jour,
-                sans attendre le serveur (dont les dates peuvent avoir changé). */}
-            <Frise
-              key={`${jours}|${ownerId ?? ''}`}
-              donnees={donnees} ownerId={ownerId} navigate={navigate}
-            />
-            <Exceptions exceptions={donnees.exceptions} seuils={donnees.seuils} navigate={navigate} />
-            <DetailParEtape parType={donnees.par_type} />
-            <PremierContactEtResultats donnees={donnees} />
+            <Bandeau donnees={donnees} />
           </div>
         ) : null}
+
+        <div>
+          <Button
+            type="button" size="sm" variant="outline" preventDoubleClick={false}
+            aria-expanded={detailOuvert} aria-controls={idDetail} onClick={basculerDetail}
+            data-testid="controle-bascule-detail"
+          >
+            {detailOuvert
+              ? <ChevronUp aria-hidden="true" />
+              : <ChevronDown aria-hidden="true" />}
+            {detailOuvert ? 'Masquer le détail' : 'Voir le détail'}
+          </Button>
+        </div>
+
+        {detailOuvert && (
+          <div id={idDetail} className="flex flex-col gap-4" data-testid="controle-detail-corps">
+            <Selecteurs
+              jours={jours} onJours={changerPeriode}
+              ownerId={ownerId} onOwner={changerCommercial}
+              commerciaux={commerciaux} erreurs={chargement ? null : erreurs}
+            />
+            {donnees ? (
+              <div
+                className={cn('flex flex-col gap-4 transition-opacity', chargement && 'opacity-60')}
+                aria-busy={chargement || undefined}
+              >
+                <Comparaison verdict={donnees.verdict} />
+                {/* La clé suit la DEMANDE (période, commercial), pas la réponse : changer
+                    de période ou de commercial referme aussitôt la liste d'un jour,
+                    sans attendre le serveur (dont les dates peuvent avoir changé). */}
+                <Frise
+                  key={`${jours}|${ownerId ?? ''}`}
+                  donnees={donnees} ownerId={ownerId} navigate={navigate}
+                />
+                <Exceptions exceptions={donnees.exceptions} seuils={donnees.seuils} navigate={navigate} />
+                <DetailParEtape parType={donnees.par_type} />
+                <PremierContactEtResultats donnees={donnees} />
+                <CommentLire seuils={donnees.seuils} />
+              </div>
+            ) : chargement ? (
+              <SqueletteDetail />
+            ) : null}
+          </div>
+        )}
       </CardContent>
     </Card>
   )
