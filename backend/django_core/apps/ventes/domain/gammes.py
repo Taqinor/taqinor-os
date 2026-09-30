@@ -18,6 +18,8 @@ NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
 """
 import logging
 
+from django.db import transaction
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -197,13 +199,19 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
         holder['obj'] = obj
         return obj
 
-    create_numbered(Devis, company, 'devis', _save)
-    soeur = holder['obj']
+    # QJR562 — numéro + lignes en UNE transaction (le risque S5-4 que
+    # cloner_devis a fermé) : un incident au clonage ne laisse jamais une
+    # sœur BROUILLON sans lignes, visible et chiffrable à zéro. Les études
+    # restent HORS transaction (calcul lourd, jamais bloquant).
+    with transaction.atomic():
+        create_numbered(Devis, company, 'devis', _save)
+        soeur = holder['obj']
 
-    # QJR116 — même cloneur unique que le duplicata et le renouvellement
-    # (``domain/lignes.cloner_lignes``) : la sœur est une COPIE CONFORME, et
-    # ce qu'« à l'identique » recouvre n'est plus retapé à trois endroits.
-    cloner_lignes(devis, soeur)
+        # QJR116 — même cloneur unique que le duplicata et le renouvellement
+        # (``domain/lignes.cloner_lignes``) : la sœur est une COPIE CONFORME,
+        # et ce qu'« à l'identique » recouvre n'est plus retapé à trois
+        # endroits.
+        cloner_lignes(devis, soeur)
     # QJR117 — les études de la SŒUR sont recalculées sur SES lignes (force :
     # le dimensionnement se court-circuite sinon sur empreinte concordante).
     rafraichir_etudes_du_devis(soeur, force=True)
