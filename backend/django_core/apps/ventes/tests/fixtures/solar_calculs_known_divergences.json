@@ -1,0 +1,206 @@
+{
+ "genere_par": "mesure UNIQUE par un script independant de test_solar_differential_calculs.py (28-30/09/2026, QAH-PROP). NE JAMAIS recalculer au chargement, NE JAMAIS elargir sans decision humaine : la liste ne peut que RETRECIR (le test rougit dans les deux sens).",
+ "divergences": {
+  "ERR-QAH-DIFF-KWH-HORS-PLAGE": {
+   "resume": "kwhFromBill (solar.js) n'a pas la garde QJR158(e) de pricing.kwh_from_bill : une facture qu'aucune consommation <= 1e6 kWh/mois ne produit rend ~1 024 000 kWh (la borne de boucle) avec estimation:false, alors que Python rend 0 kWh, estimation:true.",
+   "exemple": "kwhFromBill(2000000, 'onee') -> {kwhMensuel: 1024000, estimation: false} ; kwh_from_bill(2000000, 'onee') -> {kwh_mensuel: 0.0, estimation: True}",
+   "constats": {
+    "bill_to_kwh.estimation": [
+     "QAHP-0346",
+     "QAHP-0347",
+     "QAHP-0348"
+    ],
+    "bill_to_kwh.kwh": [
+     "QAHP-0346",
+     "QAHP-0347",
+     "QAHP-0348"
+    ]
+   }
+  },
+  "ERR-QAH-DIFF-CONSO-FACTURES-BAREME-COMPLET": {
+   "resume": "consoAnnuelleDepuisFactures (ecran) inverse chaque facture avec le bareme ENERGIE SEULE (kwhFromBill, ou le prix plat 1,20 sans distributeur) alors que le serveur inverse la facture TOTALE (etude_horaire.serie_kwh_depuis_mad : lignes fixes + TPPAN retirees) : la conso stockee par l'ecran est jusqu'a ~40 % trop haute sur les petites factures (I9 de l'audit COUV-HOR).",
+   "exemple": "factures [0,0,0,0,580,0,0,0,0,0,0,0], distributeur '' -> ecran 483 kWh/an, serveur 351 kWh/an",
+   "constats": {
+    "conso_annuelle_serveur.conso": [
+     "QAHP-0441",
+     "QAHP-0442",
+     "QAHP-0445",
+     "QAHP-0446",
+     "QAHP-0447",
+     "QAHP-0448",
+     "QAHP-0449",
+     "QAHP-0451",
+     "QAHP-0452",
+     "QAHP-0453",
+     "QAHP-0456",
+     "QAHP-0459",
+     "QAHP-0463",
+     "QAHP-0464",
+     "QAHP-0465",
+     "QAHP-0466",
+     "QAHP-0467",
+     "QAHP-0468",
+     "QAHP-0470",
+     "QAHP-0471",
+     "QAHP-0472",
+     "QAHP-0473",
+     "QAHP-0474",
+     "QAHP-0475",
+     "QAHP-0478",
+     "QAHP-0479",
+     "QAHP-0481",
+     "QAHP-0482",
+     "QAHP-0483",
+     "QAHP-0484",
+     "QAHP-0485",
+     "QAHP-0486",
+     "QAHP-0490",
+     "QAHP-0491",
+     "QAHP-0492",
+     "QAHP-0493",
+     "QAHP-0494",
+     "QAHP-0495",
+     "QAHP-0496",
+     "QAHP-0497",
+     "QAHP-0498",
+     "QAHP-0499",
+     "QAHP-0501",
+     "QAHP-0502",
+     "QAHP-0503",
+     "QAHP-0505",
+     "QAHP-0506",
+     "QAHP-0507",
+     "QAHP-0508",
+     "QAHP-0509",
+     "QAHP-0511",
+     "QAHP-0512",
+     "QAHP-0513",
+     "QAHP-0514",
+     "QAHP-0515",
+     "QAHP-0517",
+     "QAHP-0518"
+    ]
+   }
+  },
+  "ERR-QAH-DIFF-POMPAGE-TENSION-NOM-2200W": {
+   "resume": "pompage.tension_produit (Python) lit une tension quand le nom contient '220'/'380' ET un 'v' quelconque (« Variateur VEICHI ... 2200W » -> 220 V) ; solar.js tensionOf/selectVariateurVeichi exigent « 220 V »/« 380 V » (regex 220\\s*v) : sur une fiche sans tension_v dont le nom porte une puissance en W, ecran et module Calepinage choisissent une pompe/un variateur DIFFERENT.",
+   "exemple": "variateur {nom: 'Variateur VEICHI SVF3 2.2kW 2200W', tension_v: null}, alim mono : ecran -> aucun variateur (tension inconnue) ; Python -> ce variateur (tension 220)",
+   "constats": {
+    "pompe_select.debit_hmt": [
+     "QAHP-0976",
+     "QAHP-0978",
+     "QAHP-0982",
+     "QAHP-0983",
+     "QAHP-0984",
+     "QAHP-0987",
+     "QAHP-0993",
+     "QAHP-0999",
+     "QAHP-1000",
+     "QAHP-1003",
+     "QAHP-1007",
+     "QAHP-1009",
+     "QAHP-1012",
+     "QAHP-1013"
+    ],
+    "pompe_select.ecart_phase": [
+     "QAHP-0984",
+     "QAHP-0999",
+     "QAHP-1003",
+     "QAHP-1009",
+     "QAHP-1013"
+    ],
+    "pompe_select.kw": [
+     "QAHP-0976",
+     "QAHP-0978",
+     "QAHP-0982",
+     "QAHP-0983",
+     "QAHP-0984",
+     "QAHP-0987",
+     "QAHP-0993",
+     "QAHP-0999",
+     "QAHP-1000",
+     "QAHP-1003",
+     "QAHP-1007",
+     "QAHP-1009",
+     "QAHP-1012",
+     "QAHP-1013"
+    ],
+    "pompe_select.pompe_id": [
+     "QAHP-0976",
+     "QAHP-0978",
+     "QAHP-0982",
+     "QAHP-0983",
+     "QAHP-0984",
+     "QAHP-0987",
+     "QAHP-0993",
+     "QAHP-0999",
+     "QAHP-1000",
+     "QAHP-1003",
+     "QAHP-1007",
+     "QAHP-1009",
+     "QAHP-1012",
+     "QAHP-1013"
+    ],
+    "pompe_variateur.insuffisant": [
+     "QAHP-0936",
+     "QAHP-0953",
+     "QAHP-0962"
+    ],
+    "pompe_variateur.variateur_id": [
+     "QAHP-0934",
+     "QAHP-0940",
+     "QAHP-0942",
+     "QAHP-0948",
+     "QAHP-0950",
+     "QAHP-0951",
+     "QAHP-0953",
+     "QAHP-0957",
+     "QAHP-0958",
+     "QAHP-0959",
+     "QAHP-0961",
+     "QAHP-0962",
+     "QAHP-0963",
+     "QAHP-0967",
+     "QAHP-0970",
+     "QAHP-0971",
+     "QAHP-0972",
+     "QAHP-0973"
+    ]
+   }
+  },
+  "ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT": {
+   "resume": "computeROI sans `productible` retombe sur GHI mensuel x 0,8 (~1 256 kWh/kWc) alors que calculate_savings_roi retombe sur le productible par defaut 1 651 x 0,93 (~1 536 kWh/kWc) : production differente pour les memes entrees quand le productible n'est pas passe. Les appelants reels passent le productible (QX38) : chemin de repli, portee a confirmer.",
+   "exemple": "computeROI({kwp: 22.56, productible: undefined, ...}).production_annuelle_kwh = 28340.4 ; calculate_savings_roi(22.56, ...)['prod_kwh'] = 34648",
+   "constats": {
+    "roi.production": [
+     "QAHP-0624",
+     "QAHP-0636",
+     "QAHP-0638",
+     "QAHP-0643",
+     "QAHP-0646",
+     "QAHP-0653",
+     "QAHP-0656",
+     "QAHP-0660",
+     "QAHP-0663",
+     "QAHP-0664",
+     "QAHP-0672",
+     "QAHP-0674",
+     "QAHP-0680",
+     "QAHP-0683",
+     "QAHP-0687",
+     "QAHP-0689",
+     "QAHP-0703",
+     "QAHP-0705",
+     "QAHP-0712",
+     "QAHP-0713",
+     "QAHP-0720",
+     "QAHP-0721",
+     "QAHP-0723",
+     "QAHP-0731",
+     "QAHP-0732",
+     "QAHP-0741"
+    ]
+   }
+  }
+ }
+}
