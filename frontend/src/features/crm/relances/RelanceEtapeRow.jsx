@@ -889,8 +889,8 @@ export default function RelanceEtapeRow({
           {type.famille}
         </Badge>
         {/* COCKPIT-CONTRÔLE F3 — une TÂCHE (préparer le devis, décider la suite,
-            planifier la visite…) se dit : elle ne s'appelle pas, ne se saute
-            pas, se traite dès maintenant. `estTache(type)` lit la table. */}
+            planifier la visite…) se dit : elle se traite dès maintenant, quelle
+            que soit sa date, et ne se saute jamais. `estTache(type)` lit la table. */}
         {estTacheLibre && (
           <Badge
             tone="primary" data-testid="badge-tache"
