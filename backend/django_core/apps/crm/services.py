@@ -12627,6 +12627,45 @@ def repondre_visite_abandonnee(etape, user, *, note='', body=''):
     return etape
 
 
+# ── SUIVI E12 — « Planifier la visite » sans réponse : on réessaie demain ──
+
+def repondre_planifier_sans_reponse(etape, user, *, note='', body=''):
+    """SUIVI E12 (30/09/2026) — l'appel pour caler la date de la visite n'a
+    pas abouti. Le client a ACCEPTÉ la visite : on réessaie, jamais « Préparer
+    et envoyer le devis » à la place.
+
+    L'appel compte (touche close FAIT, issue « non joint », sans autre
+    suite) et une NOUVELLE étape « Planifier la visite technique convenue »
+    est posée pour DEMAIN (même devis rattaché). Si un rendez-vous a été calé
+    entre-temps, ou que le lead n'est plus relançable, le filet ordinaire
+    décide (jamais un lead actif sans suite). Renvoie ``(touche close,
+    nouvelle étape ou None)``."""
+    lead = etape.lead
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note,
+        outcome='non_joint', body=body, suite=False)
+    nouvelle = None
+    if _lead_relancable(lead) and not _visite_a_venir(lead):
+        nouvelle = _poser_etape_visite(
+            lead, cle=CLE_PLANIFIER, ordre=VISITE_ORDRE_FILET,
+            quand=aujourd_hui_local() + datetime.timedelta(days=1),
+            devis_id=etape.devis_id)
+        # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Pas de réponse pour caler la visite : étape « '
+                  f'{nouvelle.libelle} » reposée pour le '
+                  f'{nouvelle.due_date:%d/%m/%Y}.'))
+    else:
+        assurer_prochaine_etape_apres_succes(
+            lead, user, libelle_touche_close=(etape.libelle or ''),
+            cle_touche_close=cle_de(etape), issue_touche_close='non_joint',
+            demarrer_plan=False)
+    _recaler_file(lead, user)
+    return etape, nouvelle
+
+
 # ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────
 
 def repondre_rappel_convenu(etape, user, quand, *, note='', body='',

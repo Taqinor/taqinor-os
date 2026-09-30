@@ -451,6 +451,17 @@ def _etape_rappel_convenu_a_la_date(c):
            'le « rappel convenu » n’est pas à l’heure convenue')
 
 
+def _etape_planifier_demain(c):
+    # SUIVI E12 — l'appel compte, une NOUVELLE « planifier » est posée pour
+    # demain ; jamais « préparer et envoyer le devis » à sa place.
+    c.vrai(c.etape.statut == FAIT and c.etape.outcome == 'non_joint',
+           'l’appel n’est pas noté « non joint »')
+    c.vrai(c.nouvelles(libelle=VISITE_FILET_LIBELLE, due_date=DEMAIN)
+           .exists(), 'aucune « planifier la visite » demain')
+    c.vrai(not c.ouvertes(libelle=FILET_JOINT_LIBELLE).exists(),
+           'une étape « préparer le devis » a été posée')
+
+
 def _visite_abandonnee(c):
     # SUIVI E4 — plus aucun geste de visite ouvert, plus de date de visite
     # sur la fiche ; la touche est close « joint » (la proposition vit).
@@ -555,6 +566,7 @@ VERIFICATEURS = {
     st.LEAD_PERDU: _lead_perdu,
     st.VISITE_ABANDONNEE: _visite_abandonnee,
     st.ETAPE_RAPPEL_CONVENU_A_LA_DATE: _etape_rappel_convenu_a_la_date,
+    st.ETAPE_PLANIFIER_DEMAIN: _etape_planifier_demain,
 }
 
 

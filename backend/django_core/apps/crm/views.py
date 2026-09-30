@@ -3692,11 +3692,22 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             if refus:
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
-        from .cadence_config import CLE_MESSAGE_CRENEAU
+        from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
         from .services import (est_etape_de_filet, est_etape_de_visite,
                                marquer_etape_relance,
+                               repondre_planifier_sans_reponse,
                                reporter_prochaine_touche,
                                repondre_rappel_convenu)
+        # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse :
+        # l'appel compte et l'étape est REPOSÉE pour demain — jamais
+        # « Préparer et envoyer le devis » (le client a accepté la visite).
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'non_joint'
+                and motif_junk is None and est_etape(etape, CLE_PLANIFIER)):
+            etape, _nouvelle = repondre_planifier_sans_reponse(
+                etape, request.user, note=note, body=body)
+            if quand is not None:
+                reporter_prochaine_touche(etape.lead, request.user, quand)
+            return self._reponse_fait(etape)
         # SUIVI E10 (30/09/2026) — « Créneau convenu le… » sur l'étape
         # « Message — proposer un créneau pour l'appel » : le créneau convenu
         # devient un APPEL. L'étape message est close et « Rappeler le

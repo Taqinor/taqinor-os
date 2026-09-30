@@ -140,6 +140,9 @@ VISITE_ABANDONNEE = 'visite_abandonnee'
 # « Rappeler le client — rappel convenu » est posée à la date et à l'heure
 # convenues (et, E17, sur le dernier réveil).
 ETAPE_RAPPEL_CONVENU_A_LA_DATE = 'etape_rappel_convenu_a_la_date'
+# SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse : l'étape est
+# reposée pour demain.
+ETAPE_PLANIFIER_DEMAIN = 'etape_planifier_demain'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -157,6 +160,7 @@ CODES = frozenset({
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
     LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
+    ETAPE_PLANIFIER_DEMAIN,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -585,14 +589,20 @@ def _codes_filet(etape, issue, est_actif):
     return [ETAPE_DEVIS_DEMAIN_SAUF_SUIVI]
 
 
-def _codes_a_cote_du_plan(issue, *, visite):
+def _codes_a_cote_du_plan(issue, *, visite, cle=''):
     """Une touche posée À CÔTÉ du plan en cours (geste de visite, passation) :
     ce qu'elle déclenche dépend de ce qui reste OUVERT à côté d'elle — d'où
-    des phrases conditionnelles, vérifiées dans chacune de leurs branches."""
+    des phrases conditionnelles, vérifiées dans chacune de leurs branches.
+    ``cle`` : la clé moteur de la touche (``cadence_config.cle_de``)."""
+    from .cadence_config import CLE_PLANIFIER
     from .services import OUTCOME_VISITE_ACCEPTEE
 
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
+    if issue == 'non_joint' and cle == CLE_PLANIFIER:
+        # SUIVI E12 — le client a accepté la visite : on réessaie de caler
+        # la date demain, jamais le devis à la place.
+        return [ETAPE_PLANIFIER_DEMAIN]
     if issue == OUTCOME_VISITE_ACCEPTEE:
         return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
@@ -672,6 +682,7 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     en cache par société de la même façon. Une touche déjà traitée n'a plus
     de suite à annoncer : ``{}``."""
     from . import stages
+    from .cadence_config import cle_de
     from .models import RelanceEtape
     from .services import REPONSES_TOUCHE
 
@@ -705,7 +716,8 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
                 codes = _codes_filet(etape, issue, est_actif)
             elif nature in (NATURE_VISITE, NATURE_PASSATION):
                 codes = _codes_a_cote_du_plan(
-                    issue, visite=nature == NATURE_VISITE)
+                    issue, visite=nature == NATURE_VISITE,
+                    cle=cle_de(etape))
             else:
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid,

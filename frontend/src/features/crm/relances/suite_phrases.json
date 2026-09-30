@@ -35,7 +35,8 @@
     "journal_sans_effet": "Journalisé seulement : aucune relance n’est ajoutée, déplacée ni arrêtée. Pour faire avancer le plan de relance, traitez la touche du jour.",
     "lead_perdu": "Le lead passe « Perdu » avec le motif choisi : toutes ses relances s’arrêtent et aucune autre étape n’est posée. Il reste rouvrable depuis sa fiche.",
     "visite_abandonnee": "La visite est abandonnée : le rendez-vous prévu est annulé (le technicien est prévenu) et les étapes de la visite sont retirées.",
-    "etape_rappel_convenu_a_la_date": "Cette touche est close : l’étape « Rappeler le client — rappel convenu » (un appel) est posée à la date et à l’heure convenues."
+    "etape_rappel_convenu_a_la_date": "Cette touche est close : l’étape « Rappeler le client — rappel convenu » (un appel) est posée à la date et à l’heure convenues.",
+    "etape_planifier_demain": "L’appel est noté sans réponse et l’étape « Planifier la visite technique convenue » est reposée pour demain : le client a accepté la visite, on réessaie."
   },
   "_doc_journal": "CAD15 — les effets d'une ISSUE journalisée depuis la fiche (journal d'appel) : aucune touche n'est close, seuls les récepteurs MRY9 réagissent. Table ÉGALE à apps/crm/suite_touche.py::promesses_journal() (garde CAD17), rejouée par l'API réelle.",
   "journal": {
