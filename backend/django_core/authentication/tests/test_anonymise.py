@@ -86,7 +86,7 @@ class AnonymiseRoundTripTest(TestCase):
         devis = Devis.objects.create(
             company=cls.source, reference='DEV-ANON-T0001', client=client,
             lead=lead, statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'),
-            remise_globale=Decimal('150.00'),
+            remise_globale=Decimal('7.50'),
             date_validite=timezone.now().date() + timedelta(days=30),
             etude_params=cls.etude)
         LigneDevis.objects.create(
