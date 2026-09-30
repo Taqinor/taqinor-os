@@ -800,9 +800,12 @@ def public_document(request, token):
             # nomenclature à l'écran et la livrait intégralement en PDF, par le
             # même jeton. Il applique désormais EXACTEMENT le même gating que
             # ``proposal_pdf`` (même fonction, aucune seconde décision).
-            key = generate_premium_devis_pdf(
-                link.devis_id, _opts_pdf_public(link), persist=False)
-            pdf_bytes = download_pdf(key)
+            # QJR670 — un devis ACCEPTÉ sert son exemplaire SIGNÉ figé.
+            pdf_bytes = _octets_pdf_signe(link.devis)
+            if pdf_bytes is None:
+                key = generate_premium_devis_pdf(
+                    link.devis_id, _opts_pdf_public(link), persist=False)
+                pdf_bytes = download_pdf(key)
             # QD2 — nom cohérent (société _ type _ client _ référence).
             devis = link.devis
             filename = document_filename(
@@ -3899,6 +3902,34 @@ def proposal_taille_detail(request, token, cle):
     return _noindex(Response(detail))
 
 
+def _octets_pdf_signe(devis):
+    """QJR670 — l'exemplaire SIGNÉ figé d'un devis ACCEPTÉ, sinon ``None``.
+
+    D-QJR5-2 : un accepté est verrouillé ; le client qui re-télécharge son
+    devis doit récupérer le document qu'il a SIGNÉ (``DevisSignature
+    .signed_pdf_key``, écrit à l'acceptation), pas un re-rendu du jour qui
+    suivrait une évolution du moteur, d'une fiche produit ou de la société.
+    ``None`` (envoyé, accepté sans clé, stockage indisponible) ⇒ l'appelant
+    re-rend comme avant. Lecture seule : aucun statut écrit (règle #4).
+    """
+    if devis is None or getattr(devis, 'statut', None) != 'accepte':
+        return None
+    try:
+        sig = devis.signature
+    except Exception:  # noqa: BLE001 — pas de signature liée
+        return None
+    cle = getattr(sig, 'signed_pdf_key', None) or None
+    if not cle:
+        return None
+    try:
+        return download_pdf(cle)
+    except Exception:  # noqa: BLE001 — stockage indisponible → re-rendu
+        logger.warning(
+            'QJR670: exemplaire signé illisible (devis %s, clé %s) — re-rendu',
+            getattr(devis, 'reference', '?'), cle)
+        return None
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -3948,11 +3979,17 @@ def proposal_pdf(request, token):
         # requête whitelisté côté moteur. Ce qu'il a coché pour SIGNER ne
         # restreint plus son téléchargement : il peut toujours récupérer le
         # devis COMPLET. Aucun statut n'est touché.
-        key = generate_premium_devis_pdf(
-            link.devis_id,
-            _opts_pdf_public(link, (request.GET.get('variante') or '').strip()),
-            persist=False)
-        pdf_bytes = download_pdf(key)
+        #
+        # QJR670 — un devis ACCEPTÉ sert son exemplaire SIGNÉ figé ; la
+        # variante demandée ne s'applique qu'au re-rendu.
+        pdf_bytes = _octets_pdf_signe(link.devis)
+        if pdf_bytes is None:
+            key = generate_premium_devis_pdf(
+                link.devis_id,
+                _opts_pdf_public(
+                    link, (request.GET.get('variante') or '').strip()),
+                persist=False)
+            pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
         return _noindex(Response(
