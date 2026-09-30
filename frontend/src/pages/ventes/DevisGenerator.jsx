@@ -1988,10 +1988,16 @@ export default function DevisGenerator({
       }
       // (le scénario du devis est repris par la transition `REOUVERTURE`
       // ci-dessus, avec son drapeau « déjà choisi ».)
-      if (['Auto', 'Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
-        .includes(e.recommended_choice)) {
-        setRecommendedChoice(e.recommended_choice)
-      }
+      // QJR524 — l'option recommandée ENREGISTRÉE revient telle quelle :
+      // `recommended_option` (seule clé du schéma, écrite par `choixEcran`,
+      // lue par le PDF) d'abord, repli sur la clé legacy `recommended_choice`.
+      // Un devis enregistré en « Auto » revient avec la valeur effective figée
+      // (ce que le client a vu) — un ré-enregistrement sans retouche ne la
+      // bascule plus. Le registre D12 n'est PAS lu ici (il gagne au rendu).
+      const recoStockee = [e.recommended_option, e.recommended_choice].find(v =>
+        ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC].includes(v))
+      if (recoStockee) setRecommendedChoice(recoStockee)
+      else if (e.recommended_choice === 'Auto') setRecommendedChoice('Auto')
       // QJ31 / QJR66 — round-trip du ×N villas identiques. Le mode multi-villa
       // ne se restaurait QUE depuis le brouillon local (localStorage) : rouvrir
       // un devis ×4 par `?edit=` le ramenait à 1 à l'écran. Devenu bloquant

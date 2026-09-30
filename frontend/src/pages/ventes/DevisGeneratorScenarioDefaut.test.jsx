@@ -142,6 +142,21 @@ describe('un scénario DÉJÀ choisi n’est jamais réécrit par le défaut', (
     expect(document.getElementById('gen-reco')?.textContent).toContain('Avec batterie')
   })
 
+  it('QJR524 — « Sans batterie » recommandé (recommended_option) revient tel quel, pas « Auto »', async () => {
+    ventesApi.getDevisById.mockResolvedValue({
+      data: {
+        id: 637, reference: 'DEV-2026-09-0637', statut: 'brouillon',
+        mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
+        lignes: [],
+        etude_params: { scenario: 'Les deux (Sans + Avec)', recommended_option: 'Sans batterie' },
+      },
+    })
+    renderGenerator({ route: '/ventes/devis/nouveau?edit=637' })
+    await waitFor(() =>
+      expect(document.getElementById('gen-reco')?.textContent).toContain('Sans batterie'))
+    expect(document.getElementById('gen-reco')?.textContent).not.toContain('Auto')
+  })
+
   it('brouillon industriel « Les deux » : le défaut du mode ne l’écrase pas', async () => {
     ventesApi.getDevisById.mockResolvedValue({
       data: {

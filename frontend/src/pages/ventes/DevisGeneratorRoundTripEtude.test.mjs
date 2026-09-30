@@ -237,3 +237,14 @@ test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entré
   assert.match(bloc, /\{ \.\.\.choixEcran\(\), \.\.\.entreesReellesEcran\(null\) \}/)
   assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
 })
+
+test('QJR524 — PROPRIÉTÉ INVERSE : chaque clé de CHOIX_ECRITS est relue par `?edit=`', () => {
+  // Rouvrir puis ré-enregistrer SANS retouche ne doit jamais changer un choix :
+  // une clé écrite mais jamais relue repart à son défaut (« Auto » → valeur
+  // effective recalculée) et bascule le document du client en silence.
+  assert.ok(CHOIX_ECRITS.size >= 3, [...CHOIX_ECRITS].join(','))
+  const nonRelues = [...CHOIX_ECRITS].filter(cle => !CLES_RELUES.has(cle))
+  assert.deepEqual(nonRelues, [],
+    'choix écrits à l\'enregistrement mais jamais relus à la réouverture : '
+    + nonRelues.join(', '))
+})
