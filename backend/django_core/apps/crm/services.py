@@ -1288,10 +1288,12 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
         a_creer.append((rang, gabarit, echeance))
         if reactive and echeance >= maintenant:
             break
+    # COCKPIT-CONTRÔLE — ``due_initial_at`` posée ICI : un ``bulk_create`` ne
+    # passe pas par ``RelanceEtape.save``, qui la pose pour tout le reste.
     etapes = [
         RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
-            ordre=gabarit.ordre, due_at=echeance,
+            ordre=gabarit.ordre, due_at=echeance, due_initial_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
             canal=_canal_effectif(gabarit), libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
@@ -1541,7 +1543,7 @@ def materialiser_touche_suivante(etape_close, user=None):
             canal=_canal_effectif(gabarit))
         etape = RelanceEtape(
             company=lead.company, lead=lead, cadence=cadence,
-            ordre=gabarit.ordre, due_at=echeance,
+            ordre=gabarit.ordre, due_at=echeance, due_initial_at=echeance,
             due_date=echeance.astimezone(horaires.CASABLANCA).date(),
             canal=_canal_effectif(gabarit), libelle=gabarit.libelle,
             template_cle=getattr(gabarit, 'template_cle', '') or '',
@@ -1611,6 +1613,41 @@ def est_note_de_touche_sautee(activite):
     if getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
         return False
     return MENTION_TOUCHE_SAUTEE in (getattr(activite, 'body', '') or '')
+
+
+# ── COCKPIT-CONTRÔLE B4 — un REPORT n'est pas un premier contact ────────────
+#
+# Même trou que CAD131, par une autre porte : « Reporter » (et « Mettre en
+# veille ») écrit une NOTE signée par la commerciale — « Rappel demandé le … —
+# touche « … » reportée. » — et le récepteur QJ7 la prenait pour une
+# tentative : reporter la toute première touche d'un lead neuf horodatait
+# ``first_contacted_at`` et ÉTEIGNAIT l'escalade, sans que personne ait parlé
+# au client. Les textes sont hissés en CONSTANTES, utilisées pour ÉCRIRE les
+# notes (``reporter_prochaine_touche``, ``_veille_simple``,
+# ``_basculer_veille_en_reveil``) et pour les RECONNAÎTRE — jamais un texte
+# deviné ailleurs.
+PREFIXE_NOTE_REPORT = 'Rappel demandé le '
+FIN_NOTE_REPORT = ' reportée.'
+PREFIXE_NOTE_VEILLE = 'Mise en veille '
+
+
+def est_note_de_report(activite):
+    """COCKPIT-CONTRÔLE B4 — cette ligne de chatter est-elle la note d'un
+    REPORT de touche ou d'une MISE EN VEILLE ?
+
+    Un report déplace le PLAN, rien ne sort vers le client : cette note ne
+    pose pas ``first_contacted_at`` (même patron que
+    ``est_note_de_touche_sautee``). Une note ordinaire de la commerciale, et
+    la ligne TYPÉE d'une réponse « Plus tard » (un vrai échange, issue « à
+    rappeler »), restent des contacts."""
+    if activite is None:
+        return False
+    if getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
+        return False
+    corps = getattr(activite, 'body', '') or ''
+    return ((corps.startswith(PREFIXE_NOTE_REPORT)
+             and corps.endswith(FIN_NOTE_REPORT))
+            or corps.startswith(PREFIXE_NOTE_VEILLE))
 
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
@@ -3554,8 +3591,56 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         return []
 
 
+def deplacer_echeance_etape(etape, quand, *, report_humain=False):
+    """COCKPIT-CONTRÔLE (30/09/2026) — LE geste qui déplace l'échéance d'une
+    étape OUVERTE, avec la règle de ses deux traces écrite UNE fois
+    (``RelanceEtape.due_initial_at`` / ``nb_reports``) :
+
+    * ``report_humain=True`` — un HUMAIN repousse CETTE étape (« Reporter »,
+      « Mettre en veille », « À rappeler le… » / « Plus tard » qui la garde,
+      rappel demandé au journal d'appel) : ``nb_reports`` + 1 (incrément
+      ATOMIQUE, ``F()``) et l'échéance d'origine NE BOUGE PAS — c'est tout
+      l'intérêt de la garder : un retard ne disparaît plus en silence ;
+    * sinon — le MOTEUR déplace l'étape (ricochet d'un report sur la suite du
+      plan, relances décalées autour d'une visite, recalage d'une
+      confirmation ou d'un débrief sur la nouvelle date de visite, filet
+      déplacé, redatage d'un suivi) : l'origine suit l'échéance du MÊME
+      écart, rien n'est compté. Une étape sans origine connue prend la
+      nouvelle échéance.
+
+    ``quand`` est un datetime AWARE ; ``due_date`` reste sa date LOCALE
+    Casablanca (MRY5). Écriture bornée aux colonnes en jeu
+    (``save(update_fields=…)``). Rend l'étape, ``nb_reports`` relu."""
+    from django.db.models import F
+
+    from . import horaires
+
+    ancien = etape.due_at
+    origine = etape.due_initial_at
+    etape.due_at = quand
+    etape.due_date = quand.astimezone(horaires.CASABLANCA).date()
+    champs = ['due_at', 'due_date']
+    if report_humain:
+        if origine is None and ancien is not None:
+            # Une étape née sans trace d'origine garde au moins l'échéance
+            # qu'on lui retire (défensif : la création et la reprise 0116 la
+            # posent partout).
+            etape.due_initial_at = ancien
+            champs.append('due_initial_at')
+        etape.nb_reports = F('nb_reports') + 1
+        champs.append('nb_reports')
+    else:
+        etape.due_initial_at = (quand if origine is None or ancien is None
+                                else origine + (quand - ancien))
+        champs.append('due_initial_at')
+    etape.save(update_fields=champs)
+    if report_humain:
+        etape.refresh_from_db(fields=['nb_reports'])
+    return etape
+
+
 def reporter_prochaine_touche(lead, user, quand, *, etape=None,
-                              journaliser=True):
+                              journaliser=True, compter_report=True):
     """MRY10 — « Rappelez-moi jeudi » : décale une touche ET sa suite.
 
     Décaler la SEULE touche du jour serait faux : les suivantes se
@@ -3585,6 +3670,19 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
     suspension pour visite technique — écrire « rappel demandé » là où le
     client n'a rien demandé serait un mensonge dans l'historique, et deux
     notes pour un seul geste rendraient le chatter illisible.
+
+    COCKPIT-CONTRÔLE (30/09/2026) — ``compter_report`` (défaut ``True``) :
+    un geste HUMAIN qui repousse CETTE touche (« Reporter », « Mettre en
+    veille », « À rappeler le… » qui garde l'étape, rappel demandé au
+    journal d'appel, date de relance saisie sur la fiche) incrémente son
+    ``nb_reports`` et lui laisse son échéance d'origine. Les déplacements
+    décidés par le MOTEUR — touche du plan glissée derrière une touche
+    signal, relances décalées autour d'une visite, rappel demandé par le
+    CLIENT, placement de la touche qu'une réponse vient de faire naître —
+    passent ``False`` : rien n'est compté et l'origine suit l'échéance. Les
+    touches SUIVANTES décalées par ricochet ne sont jamais comptées (elles
+    n'ont pas été repoussées une à une) : leur origine glisse du même écart
+    (``deplacer_echeance_etape``).
     """
     from . import horaires
 
@@ -3601,9 +3699,7 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
 
     ancien = cible.due_at
     delta = (nouveau - ancien) if ancien else None
-    cible.due_at = nouveau
-    cible.due_date = nouveau.astimezone(horaires.CASABLANCA).date()
-    cible.save(update_fields=['due_at', 'due_date'])
+    deplacer_echeance_etape(cible, nouveau, report_humain=compter_report)
 
     if delta:
         # CAD22 — le jeu des touches à décaler est CHRONOLOGIQUE, pas
@@ -3624,11 +3720,9 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
             Q(ordre__gt=cible.ordre) | Q(due_at__gte=ancien)
         ).exclude(pk=cible.pk)
         for suivante in suivantes:
-            decalee = suivante.due_at + delta
-            suivante.due_at = decalee
-            suivante.due_date = decalee.astimezone(
-                horaires.CASABLANCA).date()
-            suivante.save(update_fields=['due_at', 'due_date'])
+            # Ricochet : jamais un report compté, l'origine glisse du même
+            # écart (COCKPIT-CONTRÔLE).
+            deplacer_echeance_etape(suivante, suivante.due_at + delta)
         # CKP2 — l'ANCRE des touches encore ouvertes glisse du même delta,
         # sans quoi le prochain barreau naîtrait à sa date d'origine (voir la
         # docstring). EN UNE REQUÊTE, avec ``F()`` : c'est un incrément pur
@@ -3648,14 +3742,17 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
             cible.refresh_from_db(fields=['cadence_depart'])
 
     if journaliser:
+        # COCKPIT-CONTRÔLE B4 — texte bâti sur les constantes que
+        # ``est_note_de_report`` reconnaît : cette note ne pose pas le
+        # premier contact.
         quand_local = nouveau.astimezone(horaires.CASABLANCA)
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
-            body=('Rappel demandé le '
-                  f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
-                  f'{(cible.libelle or cible.get_canal_display())} »'
-                  ' reportée.'))
+            body=(PREFIXE_NOTE_REPORT
+                  + f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
+                  + f'{(cible.libelle or cible.get_canal_display())} »'
+                  + FIN_NOTE_REPORT))
 
     prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
@@ -6601,15 +6698,21 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
             # débriefer le lendemain) partagent la cadence du plan mais sont
             # ancrés sur la DATE DE VISITE : le glissement de la suite du plan
             # ne doit jamais les emporter. Ils sont remis à leur date.
+            # COCKPIT-CONTRÔLE — un glissement décidé par le MOTEUR : aucun
+            # report compté (``compter_report=False``), et les gestes de
+            # visite retrouvent AUSSI leur échéance d'origine.
             visites = list(lead.relance_etapes
                            .filter(q_visite(),
                                    statut=RelanceEtape.Statut.A_FAIRE)
-                           .values_list('pk', 'due_at', 'due_date'))
+                           .values_list('pk', 'due_at', 'due_date',
+                                        'due_initial_at'))
             deplacee = reporter_prochaine_touche(
-                lead, user, glisse_a, etape=plan, journaliser=False)
-            for pk, due_at, due_date in visites:
+                lead, user, glisse_a, etape=plan, journaliser=False,
+                compter_report=False)
+            for pk, due_at, due_date, due_initial_at in visites:
                 RelanceEtape.objects.filter(pk=pk).update(
-                    due_at=due_at, due_date=due_date)
+                    due_at=due_at, due_date=due_date,
+                    due_initial_at=due_initial_at)
 
         # 5. LA touche signal.
         etape = RelanceEtape.objects.create(
@@ -9724,9 +9827,11 @@ def suspendre_plan_jusqu_apres_visite(lead, user, date_prevue):
         reprise, datetime.time(9, 0), tzinfo=horaires.CASABLANCA)
     # ``journaliser=False`` : l'appelant écrit UNE note qui dit la vraie
     # raison (« Relances décalées après la visite »), et « Rappel demandé »
-    # serait faux — le client n'a rien demandé.
+    # serait faux — le client n'a rien demandé. COCKPIT-CONTRÔLE : un
+    # décalage du MOTEUR, jamais un report compté à la commerciale.
     return reporter_prochaine_touche(
-        lead, user, quand, etape=cible, journaliser=False)
+        lead, user, quand, etape=cible, journaliser=False,
+        compter_report=False)
 
 
 # ── CAD-B ── CAD28 ──────────────────────────────────────────────────────────
@@ -9800,10 +9905,9 @@ def _poser_etape_visite(lead, *, cle, ordre, quand, devis_id=None,
     echeance = _jour_de_visite_configure(lead, config, quand)
     etape = _etape_visite_ouverte(lead, cle)
     if etape is not None:
-        etape.due_at = echeance
-        etape.due_date = echeance.astimezone(horaires.CASABLANCA).date()
-        etape.save(update_fields=['due_at', 'due_date'])
-        return etape
+        # COCKPIT-CONTRÔLE — recalage sur la nouvelle date de visite : un
+        # déplacement du MOTEUR (l'origine suit, rien n'est compté).
+        return deplacer_echeance_etape(etape, echeance)
     return RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence=VISITE_CADENCE, ordre=ordre,
         canal=_canal_configure(config), libelle=config['libelle'], cle=cle,
@@ -10123,7 +10227,8 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     return etapes
 
 
-def clore_etape_apres_planification(etape, user, *, note=''):
+def clore_etape_apres_planification(etape, user, *, note='',
+                                    echeance_avant=None):
     """SUIVI E18 (30/09/2026) — la planification d'une visite CLÔT la touche
     qui l'a demandée (l'écran n'envoie plus jamais « Fait visite acceptée »
     AVANT d'avoir planifié).
@@ -10142,11 +10247,27 @@ def clore_etape_apres_planification(etape, user, *, note=''):
       devis mise en attente de la visite) → elle reste annulée.
 
     Dans les deux derniers cas, la note éventuelle part dans UNE ligne de
-    chatter. Renvoie la touche (relue)."""
+    chatter. Renvoie la touche (relue).
+
+    COCKPIT-CONTRÔLE B8 — UNE ÉTAPE CLOSE GARDE L'ÉCHÉANCE QU'ELLE AVAIT
+    QUAND ON L'A TRAITÉE. La planification vient de décaler le suivi pendant
+    — cette touche comprise — jusqu'après la visite
+    (``suspendre_plan_jusqu_apres_visite``, un déplacement du MOTEUR) ; close
+    telle quelle, la touche se lisait due APRÈS la visite, « traitée en
+    avance », et le contrôle du suivi la jugeait sur un jour à venir.
+    ``echeance_avant`` = ``(due_at, due_date, due_initial_at)`` lus par
+    l'appelant AVANT la planification : quand CETTE fonction clôt la touche,
+    ces trois colonnes — et elles seules (UPDATE borné) — sont rétablies,
+    juste avant la clôture (la ligne de chatter dit ainsi la vraie
+    échéance). Ni ``cadence_depart``, ni la suite du plan (décalée après la
+    visite), ni la naissance d'une touche ne changent : « visite acceptée »
+    n'en fait naître aucune (``issue_fait_naitre_la_suite``)."""
     etape.refresh_from_db()
     note = str(note or '').strip()
     if (etape.statut == RelanceEtape.Statut.A_FAIRE
             and not est_etape(etape, CLE_CONFIRMATION, CLE_DEBRIEF)):
+        if echeance_avant is not None:
+            _retablir_echeance_traitee(etape, echeance_avant)
         return marquer_etape_relance(
             etape, user, RelanceEtape.Statut.FAIT, note=note,
             outcome=OUTCOME_VISITE_ACCEPTEE)
@@ -10156,6 +10277,18 @@ def clore_etape_apres_planification(etape, user, *, note=''):
             etape.lead, user,
             f'Visite planifiée depuis l’étape « {libelle} » — note : {note}')
     return etape
+
+
+def _retablir_echeance_traitee(etape, echeance):
+    """COCKPIT-CONTRÔLE B8 — rétablit ``(due_at, due_date, due_initial_at)``
+    sur ``etape`` : un UPDATE borné à ces trois colonnes (jamais un ``save``
+    complet qui réécrirait le reste), puis l'instance en mémoire suit."""
+    due_at, due_date, due_initial_at = echeance
+    RelanceEtape.objects.filter(pk=etape.pk).update(
+        due_at=due_at, due_date=due_date, due_initial_at=due_initial_at)
+    etape.due_at = due_at
+    etape.due_date = due_date
+    etape.due_initial_at = due_initial_at
 
 
 def annuler_rendez_vous_du_lead(lead, user, *, motif='',
@@ -10837,10 +10970,9 @@ def redater_cadence_apres_devis(lead, user, *, devis=None, depart=None,
 
     decalees = 0
     for etape in list(ouvertes.filter(due_at__isnull=False)):
-        quand = etape.due_at + delta
-        etape.due_at = quand
-        etape.due_date = quand.astimezone(horaires.CASABLANCA).date()
-        etape.save(update_fields=['due_at', 'due_date'])
+        # COCKPIT-CONTRÔLE — le suivi REPART du jour 1 de la nouvelle
+        # proposition : son origine glisse avec lui, ce n'est pas un report.
+        deplacer_echeance_etape(etape, etape.due_at + delta)
         decalees += 1
     # CKP2 — l'ancre des touches encore ouvertes glisse du même delta, sinon
     # le prochain barreau naîtrait à sa date d'origine (incrément pur, une
@@ -11550,11 +11682,11 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
 
         # 1. Une touche « rappel demandé » déjà ouverte est DÉPLACÉE, jamais
         #    dupliquée : deux clics ne font pas deux lignes dans la file.
+        #    COCKPIT-CONTRÔLE : une demande du CLIENT, jamais un report
+        #    compté à la commerciale — l'origine suit l'échéance.
         deja = _touche_rappel_demande_ouverte(lead)
         if deja is not None:
-            deja.due_at = echeance
-            deja.due_date = echeance.astimezone(horaires.CASABLANCA).date()
-            deja.save(update_fields=['due_at', 'due_date'])
+            deplacer_echeance_etape(deja, echeance)
             _recaler_file(lead, user)
             return deja
 
@@ -11563,7 +11695,8 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
         ouverte = _prochaine_touche_a_faire(lead)
         if ouverte is not None:
             deplacee = reporter_prochaine_touche(
-                lead, user, echeance, etape=ouverte, journaliser=False)
+                lead, user, echeance, etape=ouverte, journaliser=False,
+                compter_report=False)
             if deplacee is not None:
                 # Python 3.11 (prod/CI) refuse une expression MULTI-LIGNE dans
                 # une f-string : le libellé est composé AVANT.
@@ -11901,10 +12034,8 @@ def _poser_etape_passation(lead):
                        statut=RelanceEtape.Statut.A_FAIRE)
                .order_by('due_date', 'pk').first())
     if ouverte is not None:
-        ouverte.due_at = echeance
-        ouverte.due_date = echeance.astimezone(horaires.CASABLANCA).date()
-        ouverte.save(update_fields=['due_at', 'due_date'])
-        return ouverte
+        # COCKPIT-CONTRÔLE — déplacée par le MOTEUR : rien n'est compté.
+        return deplacer_echeance_etape(ouverte, echeance)
     return RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique',
         ordre=PASSATION_ORDRE, canal=RelanceEtape.Canal.WHATSAPP,
@@ -12467,7 +12598,8 @@ def _veille_simple(lead, user, cible, quand, *, journaliser=True):
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
-            body=(f'Mise en veille jusqu’au {deplacee.due_date:%d/%m/%Y} à '
+            body=(PREFIXE_NOTE_VEILLE
+                  + f'jusqu’au {deplacee.due_date:%d/%m/%Y} à '
                   'la demande du client — la cadence reprendra à la touche '
                   f'« {libelle} », aucune touche ne part d’ici là.'))
     return deplacee
@@ -12516,7 +12648,8 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
-            body=(f'Mise en veille demandée jusqu’au {jour:%d/%m/%Y} : plus '
+            body=(PREFIXE_NOTE_VEILLE
+                  + f'demandée jusqu’au {jour:%d/%m/%Y} : plus '
                   f'd’un mois d’attente, la cadence « {cible.cadence} » est '
                   f'arrêtée et {suite}.'))
     return reveil
@@ -12618,10 +12751,9 @@ def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
     ouverte = (ouvertes.filter(statut=RelanceEtape.Statut.A_FAIRE)
                .order_by('due_date', 'pk').first())
     if ouverte is not None:
-        ouverte.due_at = quand
-        ouverte.due_date = quand.astimezone(horaires.CASABLANCA).date()
-        ouverte.save(update_fields=['due_at', 'due_date'])
-        return ouverte
+        # COCKPIT-CONTRÔLE — un filet DÉPLACÉ par le moteur : l'origine suit
+        # l'échéance, aucun report n'est compté.
+        return deplacer_echeance_etape(ouverte, quand)
     return RelanceEtape.objects.create(
         company=lead.company, lead=lead, cadence='generique', ordre=1,
         canal=canal, libelle=libelle, cle=cle, template_cle=template_cle,

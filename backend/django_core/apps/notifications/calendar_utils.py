@@ -1,6 +1,6 @@
 """FG5 — Utilitaires de calendrier ouvré, par société.
 
-Quatre helpers publics :
+Cinq helpers publics :
   - is_jour_ouvre(date, company)         → bool
   - prochain_jour_ouvre(date, company)   → date (premier jour ouvré ≥ date)
   - ajouter_jours_ouvres(date, n, company) → date après n jours ouvrés
@@ -9,6 +9,9 @@ Quatre helpers publics :
     ``notifications.models`` en dehors de ce module) pour alimenter un
     décompte de jours avec les fêtes MOBILES (Aïd, Mawlid…) saisies dans
     `Holiday`.
+  - jours_ouvres_entre(company, debut, fin) → set des `date` OUVRÉES de la
+    fenêtre (COCKPIT-CONTRÔLE) — ``is_jour_ouvre`` en lot, deux requêtes
+    quel que soit l'écart, jamais une par jour.
 
 Un « jour ouvré » = un jour de la semaine marqué comme ouvré dans la
 `WorkingHoursConfig` de la société ET non présent dans sa table `Holiday`
@@ -138,6 +141,46 @@ def is_jour_ouvre(d: datetime.date, company) -> bool:
     working_days = _load_working_days(company)
     holidays = _load_holidays_for_year(company, d.year)
     return _is_working_day_raw(d, working_days, holidays)
+
+
+def _load_all_holidays(company) -> _Feries:
+    """Tous les fériés de la société en UNE requête : récurrents par (mois,
+    jour), non récurrents par date complète — l'union exacte, pour tester
+    une date, de ``_load_holidays_for_year`` sur toutes les années."""
+    try:
+        from .models import Holiday
+        feries = _Feries()
+        for h in Holiday.objects.filter(company=company):
+            if h.recurrent_annuel:
+                feries.recurrents.add((h.date.month, h.date.day))
+            else:
+                feries.dates.add(h.date)
+        return feries
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('calendar_utils: chargement Holiday échoué : %s', exc)
+        return _Feries()
+
+
+def jours_ouvres_entre(
+        company, date_debut: datetime.date,
+        date_fin: datetime.date) -> set[datetime.date]:
+    """COCKPIT-CONTRÔLE (30/09/2026) — l'ENSEMBLE des jours ouvrés de
+    ``company`` dans ``[date_debut, date_fin]`` (inclusif) : la version EN LOT
+    de ``is_jour_ouvre``, même règle (bitmask de la société + fériés fixes et
+    mobiles), en DEUX requêtes (réglage, fériés) quel que soit l'écart —
+    jamais une requête par jour ni par année. Bornes absentes ou inversées :
+    ensemble vide."""
+    if date_debut is None or date_fin is None or date_debut > date_fin:
+        return set()
+    working_days = _load_working_days(company)
+    holidays = _load_all_holidays(company)
+    ouvres = set()
+    jour = date_debut
+    while jour <= date_fin:
+        if _is_working_day_raw(jour, working_days, holidays):
+            ouvres.add(jour)
+        jour += datetime.timedelta(days=1)
+    return ouvres
 
 
 def prochain_jour_ouvre(d: datetime.date, company) -> datetime.date:

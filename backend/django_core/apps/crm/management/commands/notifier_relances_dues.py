@@ -294,9 +294,10 @@ def notifier_relances_dues(dry_run=False, today=None):
             leads_assignes__isnull=False).distinct()
         for owner in proprietaires:
             try:
-                # `scope='all'` = dues aujourd'hui + en retard : c'est
-                # exactement ce que le panneau affiche, jamais un compte qui
-                # oublierait les touches en souffrance.
+                # `scope='all'` = dues aujourd'hui + en retard + les TÂCHES
+                # ouvertes (possibles dès maintenant, COCKPIT-CONTRÔLE) :
+                # c'est exactement ce que le panneau affiche, jamais un
+                # compte qui oublierait les touches en souffrance.
                 dues = relance_etapes_dues(
                     company, owner, scope='all', owner=owner.pk,
                     today=aujourdhui)
@@ -327,8 +328,8 @@ def notifier_relances_dues(dry_run=False, today=None):
                         dues, aujourdhui,
                         _ligne_familles(*_compter_familles(dues)))
                 else:
-                    # `week` = retard + 7 prochains jours ; le retard est nul
-                    # ici (n == 0), il ne reste que les touches à venir.
+                    # `week` = les 7 prochains jours HORS « maintenant »
+                    # (COCKPIT-CONTRÔLE) : exactement les touches à venir.
                     a_venir = relance_etapes_dues(
                         company, owner, scope='week', owner=owner.pk,
                         today=aujourdhui).count()

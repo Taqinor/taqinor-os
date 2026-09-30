@@ -265,10 +265,6 @@ const crmApi = {
   getKpiPremierContact: (params) =>
     api.get('/crm/leads/kpi-premier-contact/', { params }),
   getKpiCadences: (params) => api.get('/crm/leads/kpi-cadences/', { params }),
-  // CKP3/CKP4 — les tuiles PERSO du commercial (jamais comparatives). Forme
-  // `mes_stats_relance` (contrat CKP0/PACT10). Aucun paramètre — le serveur
-  // dérive le commercial de `request.user`.
-  getMesStatsRelance: () => api.get('/crm/relance-etapes/mes-stats/'),
   // PARAM-CADENCE (décision fondateur 25/09/2026) — les trois compteurs de
   // la chaîne appel → visite → devis → suivi (« joints sans devis »,
   // « visites à venir », « devis à préparer »), PERSONNELS (même portée que
@@ -276,13 +272,15 @@ const crmApi = {
   // `apps/crm/contract_samples/chaine_commerciale.json`, PACT10). Aucun
   // paramètre — le serveur dérive le commercial de `request.user`.
   getChaineCommerciale: () => api.get('/crm/relance-etapes/chaine-commerciale/'),
-  // CKP3/CKP5 (fondateur 2026-09-10) — vue ADHÉRENCE : à-l'heure %, sautées
-  // HUMAINES vs annulées MOTEUR (jamais confondues), drop-off par touche,
-  // vitesse premier contact, leads sans touche due, conversion par étape.
-  // Forme `kpi_adherence` (contrat CKP0/PACT10). `?jours=` (défaut serveur
-  // 30). Lisible par TOUS les rôles (décision transparence) — aucun gate ici.
-  getKpiAdherence: (params) =>
-    api.get('/crm/relance-etapes/kpi-adherence/', { params }),
+  // COCKPIT-CONTRÔLE (fondateur, 30/09/2026) — le bloc « Contrôle du suivi » :
+  // verdict, frise d'un jour par case, exceptions de l'instant, détail par type
+  // d'étape, premier contact, résultats. `params` : `jours` ∈ {7, 14, 30}
+  // (défaut serveur 14) + `owner` (identifiant d'un responsable de lead,
+  // facultatif — sans lui, toute la portée). Forme `controle_suivi` (contrat
+  // committé `apps/crm/contract_samples/controle_suivi.json`, PACT10). Lisible
+  // par TOUS les rôles (transparence) ; 400 `{erreurs: {jours|owner}}`.
+  getControleSuivi: (params) =>
+    api.get('/crm/relance-etapes/controle/', { params }),
   // CAD87/CAD100 — les trois mesures maison à côté de CKP3 : taux de joint
   // par (ordre de touche × canal × heure × jour de semaine), signatures par
   // nombre de touches consommées, part WhatsApp-seulement/darija. Forme

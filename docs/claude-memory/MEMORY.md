@@ -13,3 +13,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Set up missing tools](setup-missing-tools.md) — founder rule: install/configure missing prerequisites (docker, keys, deps) instead of reporting a blocker
 - [Demo accounts on prod](demo-accounts-prod-incident.md) — seeded demo_admin/demo_resp (public password) were active on prod; deactivated 30/09; demo docs still in real company
 - [Suivi commercial : table du parcours](suivi-commercial-table-parcours.md) — 30/09/2026 : UNE table (parcours_suivi.json) tient écran + garde de test + guide PDF GED ; verrou CAD44 précisé (tâches jamais verrouillées) ; planification avant enregistrement
+- [Cockpit : contrôle du suivi](cockpit-controle-suivi.md) — 30/09/2026 : règles de mesure dans le contrat `controle_suivi.json` (retard en jours ouvrés, reports comptés, pas de note unique, même page pour tous) ; garde scénario + oracle indépendant
