@@ -325,7 +325,8 @@
             "dernier_reveil"
           ],
           "rappel": [
-            "dernier_reveil_date_perdue"
+            "sort_du_froid",
+            "etape_rappel_convenu_a_la_date"
           ],
           "plus_tard": [
             "veille_meme_touche"

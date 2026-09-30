@@ -189,7 +189,8 @@ BRANCHES_SUIVI = ('base', 'devis_ouvert', 'devis_epuise')
 VARIANTES = {
     st.ETAPE_APPELER_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: BRANCHES_SUIVI,
-    st.ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI: BRANCHES_SUIVI,
+    # SUIVI E17 — `etape_devis_a_la_date_sauf_suivi` retiré : le dernier
+    # réveil pose l'appel « rappel convenu » à la date choisie.
     # 24/09/2026 — `visite_froid_si_seule` retiré (une étape de visite ne
     # parque plus jamais le dossier au Froid) : ses branches sont rejouées
     # sous `suite_si_plus_rien_ouvert`, dont `seule_epuise` (plan servi
@@ -294,12 +295,6 @@ def _dernier_reveil(c):
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
 
 
-def _dernier_reveil_date_perdue(c):
-    _dernier_reveil(c)
-    c.vrai(c.donnees.get('prochaine_touche') is None,
-           'une prochaine touche est annoncée')
-
-
 def _reste_au_froid(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est plus au Froid')
 
@@ -363,15 +358,6 @@ def _etape_devis_a_la_date(c):
     c.vrai(c.ouvertes(libelle=FILET_JOINT_LIBELLE,
                       due_date=DATE_CHOISIE).exists(),
            'aucune étape « préparer et envoyer le devis » à la date choisie')
-
-
-def _etape_devis_a_la_date_sauf_suivi(c):
-    if c.variante == 'devis_ouvert':
-        c.vrai(c.barreaux(c.ouvertes(cadence='apres_devis',
-                                     due_date=DATE_CHOISIE)).exists(),
-               'le suivi repris n’est pas à la date choisie')
-    else:
-        _etape_devis_a_la_date(c)
 
 
 def _etape_decider_suite(c):
@@ -542,7 +528,6 @@ VERIFICATEURS = {
     st.TOUCHE_SUIVANTE_A_LA_DATE: _touche_suivante_a_la_date,
     st.DERNIERE_FROID_REVEILS: _derniere_froid_reveils,
     st.DERNIER_REVEIL: _dernier_reveil,
-    st.DERNIER_REVEIL_DATE_PERDUE: _dernier_reveil_date_perdue,
     st.RESTE_AU_FROID: _reste_au_froid,
     st.SORT_DU_FROID: _sort_du_froid,
     st.CONTACT_ARRETEE: _contact_arretee,
@@ -553,7 +538,6 @@ VERIFICATEURS = {
     st.ETAPE_APPELER_SAUF_SUIVI: _etape_appeler_sauf_suivi,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: _etape_devis_demain_sauf_suivi,
     st.ETAPE_DEVIS_A_LA_DATE: _etape_devis_a_la_date,
-    st.ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI: _etape_devis_a_la_date_sauf_suivi,
     st.ETAPE_DECIDER_SUITE: _etape_decider_suite,
     st.ETAPE_DEPLACEE_A_LA_DATE: _etape_deplacee_a_la_date,
     st.SUIVI_PROPOSITION_DEMARRE: _suivi_proposition_demarre,

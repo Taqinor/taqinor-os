@@ -3698,8 +3698,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_config import CLE_MESSAGE_CRENEAU, CLE_PLANIFIER
-        from .services import (est_etape_de_filet, est_etape_de_visite,
-                               marquer_etape_relance,
+        from .services import (est_dernier_reveil, est_etape_de_filet,
+                               est_etape_de_visite, marquer_etape_relance,
                                repondre_planifier_sans_reponse,
                                reporter_prochaine_touche,
                                repondre_rappel_convenu)
@@ -3723,6 +3723,19 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                 and est_etape(etape, CLE_MESSAGE_CRENEAU)):
             etape, rappel = repondre_rappel_convenu(
                 etape, request.user, quand, note=note, body=body)
+            data = self.get_serializer(etape).data
+            data['prochaine_touche'] = _prochaine_touche_publique(rappel)
+            return Response(data)
+        # SUIVI E17 (30/09/2026) — « À rappeler le… » sur le DERNIER réveil :
+        # aucun réveil suivant ne pouvait porter la date, elle était perdue
+        # (le dossier restait au Froid sans rien). Le dossier sort du Froid et
+        # « Rappeler le client — rappel convenu » est posée à la date et à
+        # l'heure choisies.
+        if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
+                and quand is not None and est_dernier_reveil(etape)):
+            etape, rappel = repondre_rappel_convenu(
+                etape, request.user, quand, note=note, body=body,
+                sortir_du_froid=True)
             data = self.get_serializer(etape).data
             data['prochaine_touche'] = _prochaine_touche_publique(rappel)
             return Response(data)

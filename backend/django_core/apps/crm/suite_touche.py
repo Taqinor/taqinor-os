@@ -52,8 +52,8 @@ LIMITE ASSUMÉE (et documentée plutôt que cachée) : les codes décrivent des
 EFFETS, mais les phrases de l'écran (``suite_phrases.json``) de plusieurs
 d'entre eux nomment une étape ou un délai PAR DÉFAUT —
 ``etape_devis_demain`` et ``etape_devis_demain_sauf_suivi`` (« demain :
-Préparer et envoyer le devis »), ``etape_devis_a_la_date`` et
-``etape_devis_a_la_date_sauf_suivi`` (le libellé), ``etape_dernier_appel``
+Préparer et envoyer le devis »), ``etape_devis_a_la_date`` (le libellé),
+``etape_dernier_appel``
 (« demain »), ``etape_devis_modifie`` (libellé et « demain »),
 ``etape_planifier_visite`` (libellé et « pour aujourd'hui »),
 ``etape_decider_suite`` (libellé). Pour une société qui renomme ou décale
@@ -86,7 +86,11 @@ TOUCHE_SUIVANTE = 'touche_suivante'
 TOUCHE_SUIVANTE_A_LA_DATE = 'touche_suivante_a_la_date'
 DERNIERE_FROID_REVEILS = 'derniere_froid_reveils'
 DERNIER_REVEIL = 'dernier_reveil'
-DERNIER_REVEIL_DATE_PERDUE = 'dernier_reveil_date_perdue'
+# SUIVI E17 (30/09/2026) — `dernier_reveil_date_perdue` (« À rappeler le… »
+# sur le dernier réveil ne reportait la date sur rien) et
+# `etape_devis_a_la_date_sauf_suivi` (même geste hors Froid) n'existent plus :
+# le dernier réveil pose l'appel « rappel convenu » à la date choisie
+# (``etape_rappel_convenu_a_la_date``).
 RESTE_AU_FROID = 'reste_au_froid'
 SORT_DU_FROID = 'sort_du_froid'
 CONTACT_ARRETEE = 'contact_arretee'
@@ -97,7 +101,6 @@ ETAPE_DEVIS_DEMAIN = 'etape_devis_demain'
 ETAPE_APPELER_SAUF_SUIVI = 'etape_appeler_sauf_suivi'
 ETAPE_DEVIS_DEMAIN_SAUF_SUIVI = 'etape_devis_demain_sauf_suivi'
 ETAPE_DEVIS_A_LA_DATE = 'etape_devis_a_la_date'
-ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI = 'etape_devis_a_la_date_sauf_suivi'
 ETAPE_DECIDER_SUITE = 'etape_decider_suite'
 ETAPE_DEPLACEE_A_LA_DATE = 'etape_deplacee_a_la_date'
 SUIVI_PROPOSITION_DEMARRE = 'suivi_proposition_demarre'
@@ -148,11 +151,11 @@ ETAPE_PLANIFIER_DEMAIN = 'etape_planifier_demain'
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
 CODES = frozenset({
     TOUCHE_SUIVANTE, TOUCHE_SUIVANTE_A_LA_DATE, DERNIERE_FROID_REVEILS,
-    DERNIER_REVEIL, DERNIER_REVEIL_DATE_PERDUE, RESTE_AU_FROID,
+    DERNIER_REVEIL, RESTE_AU_FROID,
     SORT_DU_FROID, CONTACT_ARRETEE, REVEILS_ARRETES, RELANCES_ARRETEES,
     ETAPE_APPELER, ETAPE_DEVIS_DEMAIN, ETAPE_APPELER_SAUF_SUIVI,
     ETAPE_DEVIS_DEMAIN_SAUF_SUIVI, ETAPE_DEVIS_A_LA_DATE,
-    ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI, ETAPE_DECIDER_SUITE,
+    ETAPE_DECIDER_SUITE,
     ETAPE_DEPLACEE_A_LA_DATE, SUIVI_PROPOSITION_DEMARRE,
     ETAPE_PLANIFIER_VISITE, ETAPE_MESSAGE_CRENEAU, ETAPE_DERNIER_APPEL,
     SUITE_SI_PLUS_RIEN_OUVERT, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
@@ -526,8 +529,13 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
         if not derniere:
             return [TOUCHE_SUIVANTE_A_LA_DATE]
         if cadence == 'reveil':
-            return ([DERNIER_REVEIL_DATE_PERDUE] if au_froid
-                    else [ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI])
+            # SUIVI E17 (30/09/2026) — le DERNIER réveil : la date n'est plus
+            # perdue. Le dossier sort du Froid (s'il y est) et l'appel
+            # « Rappeler le client — rappel convenu » est posé à la date et
+            # à l'heure choisies (``services.est_dernier_reveil``, même
+            # critère de rang que ``derniere``).
+            return (([SORT_DU_FROID] if au_froid else [])
+                    + [ETAPE_RAPPEL_CONVENU_A_LA_DATE])
         return [ETAPE_DEVIS_A_LA_DATE]
 
     # « pas de réponse » (et ses précisions Répondeur/Occupé/numéro invalide),

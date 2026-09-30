@@ -12744,6 +12744,24 @@ def repondre_planifier_sans_reponse(etape, user, *, note='', body=''):
 
 # ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────
 
+def est_dernier_reveil(etape):
+    """SUIVI E17 (30/09/2026) — ``etape`` est-elle la DERNIÈRE touche de la
+    cadence réveil, celle après laquelle aucun réveil suivant ne peut porter
+    la date d'un « À rappeler le… » ?
+
+    MÊME critère que la promesse servie à l'écran
+    (``suite_touche.est_derniere_touche`` sur les barreaux ACTIFS de la
+    société — le plus grand rang, ou une touche hors gabarit comme un réveil
+    saisonnier) : ce que l'écran annonce et ce que le moteur fait ne peuvent
+    pas diverger. Lecture pure (une requête, aucune écriture)."""
+    if etape.cadence != 'reveil':
+        return False
+    from .suite_touche import est_derniere_touche, ordres_de_la_cadence
+
+    return est_derniere_touche(
+        etape, ordres_de_la_cadence(etape.company_id, 'reveil'))
+
+
 def repondre_rappel_convenu(etape, user, quand, *, note='', body='',
                             sortir_du_froid=False):
     """SUIVI E10 / E17 (30/09/2026) — le client a convenu d'un moment pour
@@ -12759,7 +12777,9 @@ def repondre_rappel_convenu(etape, user, quand, *, note='', body='',
       inatteignable depuis l'écran ;
     * le DERNIER réveil (E17) : la date choisie n'était reportée sur rien.
       Avec ``sortir_du_froid``, un dossier au Froid en sort d'abord
-      (→ Contacté) : un client qui fixe une date de rappel est réactivé.
+      (→ Contacté) : un client qui fixe une date de rappel est réactivé — et
+      un réveil resté ouvert (réveil saisonnier, barreau réordonné) s'arrête
+      avec lui : le rendez-vous convenu le remplace.
 
     Aucune autre suite (``suite=False``) ; UNE note système dit l'étape posée.
     Renvoie ``(touche close, étape « rappel convenu »)``."""
@@ -12770,6 +12790,8 @@ def repondre_rappel_convenu(etape, user, quand, *, note='', body='',
         etape, user, RelanceEtape.Statut.FAIT, note=note, outcome='rappel',
         body=body, suite=False)
     if sortir_du_froid:
+        arreter_cadence(lead, user=user, cadences=['reveil'],
+                        motif='rappel convenu avec le client')
         lead.refresh_from_db(fields=['stage'])
         if lead.stage == stages.COLD:
             avancer_stage_lead_vers(lead, user, stages.CONTACTED)
