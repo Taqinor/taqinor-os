@@ -1,0 +1,50 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR500 (M0 du Groupe QJR5 ; D-QJR5-1, D-QJR5-2) — UN SEUL échantillon pour la ligne devis du lead (il remplace les deux échantillons jumeaux prévus). Chaque élément de `devis[]` du GET lead garde ses clés actuelles (id, reference, statut, total_ttc, date_creation, option_acceptee, chantier{id,reference,statut}, share_link, lecture ; crm/serializers.py:1366-1377) et GAGNE : `modifiable`, `raison_non_modifiable`, `revision_possible` (mêmes règles que ventes/devis_modifiabilite.json) + `is_active`, `version`, `superseded_by` (id|null), `corrige_le` (ISO|null — date de etude_params.resync_apres_envoi, jamais updated_at). Additif : aucune clé existante retirée.",
+  "notes": {
+    "corrige_le": "null tant que le devis n'a pas été corrigé après envoi.",
+    "superseded_by": "id du devis remplaçant, null si le devis est la version courante.",
+    "regles": "Mêmes règles que apps/ventes/contract_samples/devis_modifiabilite.json."
+  },
+  "exemple": {
+    "devis": [
+      {
+        "id": 413,
+        "reference": "DEV-202609-0012",
+        "statut": "envoye",
+        "total_ttc": "48500.00",
+        "date_creation": "2026-09-28T10:12:00+00:00",
+        "option_acceptee": null,
+        "chantier": null,
+        "share_link": "confiance",
+        "lecture": null,
+        "modifiable": true,
+        "raison_non_modifiable": "",
+        "revision_possible": true,
+        "is_active": true,
+        "version": 2,
+        "superseded_by": null,
+        "corrige_le": "2026-09-29T14:05:00+00:00"
+      },
+      {
+        "id": 411,
+        "reference": "DEV-202609-0011",
+        "statut": "envoye",
+        "total_ttc": "47200.00",
+        "date_creation": "2026-09-25T09:00:00+00:00",
+        "option_acceptee": null,
+        "chantier": null,
+        "share_link": null,
+        "lecture": null,
+        "modifiable": false,
+        "raison_non_modifiable": "Remplacé par DEV-202609-0012",
+        "revision_possible": false,
+        "is_active": false,
+        "version": 1,
+        "superseded_by": 413,
+        "corrige_le": null
+      }
+    ]
+  }
+}

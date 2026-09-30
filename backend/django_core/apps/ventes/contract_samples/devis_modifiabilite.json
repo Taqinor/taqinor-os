@@ -1,0 +1,74 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR500 (M0 du Groupe QJR5, audit L3 du 30/09/2026 ; D-QJR5-1, D-QJR5-2) — contrat posé SEUL et EN PREMIER (PACT10). GET /api/django/ventes/devis/ et /devis/<id>/ (MÊME sérialiseur, views/devis.py:229-232) gagnent trois clés ADDITIVES que l'écran lit au lieu de redériver la règle : `modifiable` (bool), `raison_non_modifiable` (str FR, '' si modifiable), `revision_possible` (bool). Règle : modifiable = is_active ET statut dans {brouillon, envoye} (D-QJR5-1) ; revision_possible = is_active ET statut != brouillon (D-QJR5-2 ; alignée sur DevisList.jsx:1093 et resynchronisation.py:333-338 — le brouillon d'origine disait false pour envoyé/refusé/expiré, corrigé par la critique : un refusé ou expiré est révisable). Ce fichier ne décrit que les CLÉS AJOUTÉES (+ celles qui les déterminent) ; le reste du détail de devis est inchangé. Un exemple par cas.",
+  "notes": {
+    "regle_modifiable": "is_active ET statut dans {brouillon, envoye} (D-QJR5-1).",
+    "regle_revision_possible": "is_active ET statut != brouillon (D-QJR5-2). Un devis remplacé (is_active false) n'est NI modifiable NI révisable : on révise sa remplaçante.",
+    "raison_non_modifiable": "Toujours une chaîne (jamais null) : '' quand modifiable.",
+    "additif": "Trois clés ajoutées ; aucune clé existante n'est retirée ni renommée."
+  },
+  "exemple": {
+    "id": 412,
+    "reference": "DEV-202609-0011",
+    "statut": "brouillon",
+    "is_active": true,
+    "modifiable": true,
+    "raison_non_modifiable": "",
+    "revision_possible": false
+  },
+  "exemple_brouillon": {
+    "id": 412,
+    "reference": "DEV-202609-0011",
+    "statut": "brouillon",
+    "is_active": true,
+    "modifiable": true,
+    "raison_non_modifiable": "",
+    "revision_possible": false
+  },
+  "exemple_envoye": {
+    "id": 413,
+    "reference": "DEV-202609-0012",
+    "statut": "envoye",
+    "is_active": true,
+    "modifiable": true,
+    "raison_non_modifiable": "",
+    "revision_possible": true
+  },
+  "exemple_accepte": {
+    "id": 414,
+    "reference": "DEV-202609-0013",
+    "statut": "accepte",
+    "is_active": true,
+    "modifiable": false,
+    "raison_non_modifiable": "Devis accepté : révisez-le",
+    "revision_possible": true
+  },
+  "exemple_refuse": {
+    "id": 415,
+    "reference": "DEV-202609-0014",
+    "statut": "refuse",
+    "is_active": true,
+    "modifiable": false,
+    "raison_non_modifiable": "Révisez-le (nouvelle version)",
+    "revision_possible": true
+  },
+  "exemple_expire": {
+    "id": 416,
+    "reference": "DEV-202609-0015",
+    "statut": "expire",
+    "is_active": true,
+    "modifiable": false,
+    "raison_non_modifiable": "Révisez-le (nouvelle version)",
+    "revision_possible": true
+  },
+  "exemple_remplace": {
+    "id": 411,
+    "reference": "DEV-202609-0011",
+    "statut": "envoye",
+    "is_active": false,
+    "modifiable": false,
+    "raison_non_modifiable": "Remplacé par DEV-202609-0012",
+    "revision_possible": false
+  }
+}

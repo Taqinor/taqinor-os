@@ -1,0 +1,80 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<id>/replace-lines/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR504 (M0 QJR5 ; D-QJR5-10) — enregistrer une édition en UNE transaction : lignes + en-tête + échéancier + étude. `entete` optionnel {date_validite, taux_tva, remise_globale, note, mode_installation, prix_cible_kwc, echeancier} ; `echeancier` (D-QJR5-10) a la forme validée par serializers.validate_echeancier (liste de {libelle, type, pct_or_montant}, unité pct|montant QJR21) ; `etude_params` optionnel (clés ECRAN) ; `statut` dans entete est IGNORÉ. Réponses : 200 DevisSerializer (updated_at, modifiable…), 400 {detail}|{etude_params}, 409 {detail, statut, revision_possible}.",
+  "corps": {
+    "lignes": [
+      {
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": "8.00",
+        "prix_unitaire": "1450.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 0,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false
+      },
+      {
+        "produit": 62,
+        "designation": "Batterie Dyness 10 kWh",
+        "quantite": "1.00",
+        "prix_unitaire": "30000.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "type_ligne": "produit",
+        "ordre": 1,
+        "variante": "avec",
+        "optionnelle": false,
+        "prix_manuel": true,
+        "quantite_manuelle": true
+      }
+    ],
+    "entete": {
+      "date_validite": "2026-10-30",
+      "taux_tva": "20.00",
+      "remise_globale": "0.00",
+      "note": "Notes internes",
+      "mode_installation": "residentiel",
+      "prix_cible_kwc": null,
+      "echeancier": [
+        {
+          "libelle": "Acompte",
+          "type": "acompte",
+          "pct_or_montant": 40
+        },
+        {
+          "libelle": "Solde",
+          "type": "solde",
+          "pct_or_montant": 60
+        }
+      ]
+    },
+    "etude_params": {
+      "scenario": "Les deux (Sans + Avec)",
+      "recommended_option": "avec"
+    },
+    "expected_updated_at": "2026-09-30T08:41:12.345678+00:00"
+  },
+  "exemple": {
+    "id": 413,
+    "reference": "DEV-202609-0012",
+    "statut": "envoye",
+    "is_active": true,
+    "modifiable": true,
+    "raison_non_modifiable": "",
+    "revision_possible": true,
+    "updated_at": "2026-09-30T08:55:03.120000+00:00"
+  },
+  "exemple_400": {
+    "detail": "Échéancier invalide : la somme des tranches doit faire 100 %."
+  },
+  "exemple_409": {
+    "detail": "Devis figé — révisez-le (reviser) pour le modifier.",
+    "statut": "accepte",
+    "revision_possible": true
+  }
+}

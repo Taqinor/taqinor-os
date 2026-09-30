@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/portail/mes-devis/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR514 (M0 QJR5) — la liste « mes devis » du portail client dit quand le document a été corrigé. Aucun contrat portail-devis n'existait. La vue rend {results: [...]} ; un élément = les clés actuelles de devis_du_client_portail (ventes/selectors.py:1938-1960) + `mis_a_jour_le` (ISO|null) = date de etude_params.resync_apres_envoi, JAMAIS updated_at. Brouillons exclus ; jamais prix_achat.",
+  "exemple": {
+    "results": [
+      {
+        "id": 413,
+        "reference": "DEV-202609-0012",
+        "statut": "envoye",
+        "statut_display": "Envoyé",
+        "date_creation": "2026-09-28T10:12:00+00:00",
+        "date_validite": "2026-10-28",
+        "total_ttc": "48500.00",
+        "accepte": false,
+        "mis_a_jour_le": "2026-09-29T14:05:00+00:00"
+      },
+      {
+        "id": 400,
+        "reference": "DEV-202609-0003",
+        "statut": "accepte",
+        "statut_display": "Accepté",
+        "date_creation": "2026-09-01T08:00:00+00:00",
+        "date_validite": "2026-10-01",
+        "total_ttc": "36000.00",
+        "accepte": true,
+        "mis_a_jour_le": null
+      }
+    ]
+  }
+}

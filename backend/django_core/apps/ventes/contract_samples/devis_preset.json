@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/ventes/presets/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR508 (M0 QJR5) — modèle de devis COMPLET. Un élément de la liste porte {id, nom, mode_installation, taux_tva, remise_globale, lignes_snapshot: [...], etude_params_snapshot: null}. `lignes_snapshot` reprend les CHAMPS_CLONES de ventes/domain/lignes.py (jamais prix_achat). Clés absentes tolérées (anciens modèles).",
+  "exemple": {
+    "id": 5,
+    "nom": "Résidentiel 5,68 kWc avec batterie",
+    "mode_installation": "residentiel",
+    "taux_tva": "20.00",
+    "remise_globale": "0.00",
+    "lignes_snapshot": [
+      {
+        "produit_id": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": "8.00",
+        "prix_unitaire": "1450.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "variante": "",
+        "optionnelle": false,
+        "type_ligne": "produit",
+        "ordre": 0,
+        "prix_manuel": false,
+        "quantite_manuelle": false
+      }
+    ],
+    "etude_params_snapshot": null
+  },
+  "notes": {
+    "anciens_modeles": "Un modèle antérieur peut omettre des clés (ordre, prix_manuel, quantite_manuelle…) : le consommateur tolère l'absence."
+  }
+}

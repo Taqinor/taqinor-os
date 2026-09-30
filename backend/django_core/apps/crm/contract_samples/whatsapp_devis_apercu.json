@@ -1,0 +1,51 @@
+{
+  "endpoint": "POST /api/django/crm/leads/<id>/whatsapp-devis-apercu/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR502 (M0 QJR5) — aperçu du message WhatsApp multi-devis du lead, SANS AUCUN EFFET : même forme que whatsapp-devis, mais sans mark_devis_sent, sans AuditLog, sans note de chatter. Corps {devis_ids: [int], langue: 'fr'|'darija'}. 400 {detail} = garde de remise T17 (QJR539).",
+  "corps": {
+    "devis_ids": [
+      413,
+      414
+    ],
+    "langue": "fr"
+  },
+  "exemple": {
+    "wa_url": "https://wa.me/212612345678?text=Bonjour%20Amina",
+    "phone": "212612345678",
+    "message": "Bonjour Amina, voici vos devis Taqinor : DEV-202609-0012, DEV-202609-0013.",
+    "links": [
+      {
+        "devis_id": 413,
+        "reference": "DEV-202609-0012",
+        "token": "tok_a1b2c3",
+        "url": "https://taqinor.ma/proposition/amina/tok_a1b2c3"
+      },
+      {
+        "devis_id": 414,
+        "reference": "DEV-202609-0013",
+        "token": "tok_d4e5f6",
+        "url": "https://taqinor.ma/proposition/amina/tok_d4e5f6"
+      }
+    ]
+  },
+  "exemple_sans_telephone": {
+    "wa_url": null,
+    "phone": "",
+    "message": "Bonjour Amina, voici votre devis Taqinor : DEV-202609-0012.",
+    "links": [
+      {
+        "devis_id": 413,
+        "reference": "DEV-202609-0012",
+        "token": "tok_a1b2c3",
+        "url": "https://taqinor.ma/proposition/amina/tok_a1b2c3"
+      }
+    ]
+  },
+  "exemple_400": {
+    "detail": "Remise supérieure au plafond autorisé : validation requise."
+  },
+  "notes": {
+    "aucun_effet": "Ni mark_devis_sent, ni AuditLog, ni note : un aperçu ne change aucun statut (règle #4).",
+    "wa_url": "null si le lead n'a aucun téléphone exploitable."
+  }
+}

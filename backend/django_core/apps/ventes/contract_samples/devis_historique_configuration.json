@@ -1,0 +1,82 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<id>/historique-configuration/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR513 (M0 QJR5 ; D-QJR5-7) — historique de configuration d'un devis : versions, différences, restauration. « Revenir à cette version » n'a PAS d'endpoint propre : il rejoue replace-lines avec entete + etude_params (contrat devis_replace_lines_entete.json, QJR504). Forme du diff : QJR551. Jamais prix_achat ni marge.",
+  "exemple": {
+    "snapshots": [
+      {
+        "id": 91,
+        "date": "2026-09-30T08:41:12+00:00",
+        "auteur": "Sami Alaoui",
+        "nb_lignes": 12,
+        "contenu": {
+          "lignes": [
+            {
+              "produit": 12,
+              "designation": "Panneau Canadien Solar 710W",
+              "quantite": "8.00",
+              "prix_unitaire": "1450.00",
+              "remise": "0.00",
+              "taux_tva": "20.00",
+              "variante": "",
+              "optionnelle": false,
+              "type_ligne": "produit",
+              "ordre": 0,
+              "prix_manuel": false,
+              "quantite_manuelle": false
+            }
+          ],
+          "remise_globale": "0.00",
+          "echeancier": [
+            {
+              "libelle": "Acompte",
+              "type": "acompte",
+              "pct_or_montant": 40
+            },
+            {
+              "libelle": "Solde",
+              "type": "solde",
+              "pct_or_montant": 60
+            }
+          ],
+          "etude": {
+            "scenario": "Les deux (Sans + Avec)"
+          },
+          "totaux": {
+            "ht_net": "40416.67",
+            "ttc": "48500.00"
+          }
+        }
+      }
+    ]
+  },
+  "exemple_avec_diff": {
+    "snapshots": [],
+    "diff": {
+      "ajoutees": [
+        {
+          "cle": "role:batterie",
+          "designation": "Batterie Dyness 10 kWh"
+        }
+      ],
+      "retirees": [],
+      "modifiees": [
+        {
+          "cle": "role:panneau",
+          "champs": {
+            "quantite": [
+              "8.00",
+              "10.00"
+            ]
+          }
+        }
+      ],
+      "parametres": {
+        "remise_globale": [
+          "0.00",
+          "500.00"
+        ]
+      }
+    }
+  }
+}

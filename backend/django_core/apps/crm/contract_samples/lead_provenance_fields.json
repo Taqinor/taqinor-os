@@ -1,0 +1,31 @@
+{
+  "endpoint": "GET /api/django/crm/leads/<id>/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR506 (M0 QJR5) — la liste des champs de provenance du lead APRÈS QJR587 (un seul échantillon pour QJR587 et QJR656).",
+  "exemple": {
+    "champs": [
+      "facture_hiver",
+      "facture_ete",
+      "ete_differente",
+      "bill_kwh",
+      "conso_mensuelle_kwh",
+      "type_toiture",
+      "surface_toiture_m2",
+      "orientation",
+      "inclinaison_deg",
+      "gps_lat",
+      "gps_lng",
+      "taille_souhaitee_kwc",
+      "batterie_souhaitee",
+      "raccordement",
+      "structure_pref",
+      "structure_produit",
+      "pompe_cv",
+      "pompe_hmt_m",
+      "pompe_debit_m3h",
+      "type_installation",
+      "ville",
+      "ville_reference"
+    ]
+  }
+}

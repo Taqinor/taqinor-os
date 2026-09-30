@@ -2,6 +2,8 @@
   "endpoint": "GET /api/django/ventes/devis/<int:pk>/overrides/",
   "pourquoi": "QJR1 (M0, audit L3 du 29/08/2026, décision fondateur D12) — PACT10 pour le futur registre unique de surcharges d'un devis (`Devis.overrides`, migration QJR58 — n'existe pas encore sur `main`, ce commit ne pose que le contrat). L'audit a trouvé QUATRE mécanismes de surcharge incompatibles (le mécanisme `saisie_manuelle` noms-seuls, des attributs epars sur `etude_params`, des recalculs silencieux à chaque lecture, et rien du tout pour d'autres champs) qui ne s'accordent jamais sur ce qui a été tapé par le vendeur vs ce que le moteur aurait calculé. Ce contrat est le porteur partagé (front QJR88 `overrides.js`, backend QJR58/QJR59+) : la forme part SEULE avant que les deux moitiés ne l'implémentent, exactement la discipline PACT10 de ce dossier. PATCH sur la MÊME route accepte un sous-ensemble de `overrides` (fusion, jamais un remplacement intégral — voir `notes.fusion`) et renvoie la MÊME forme que ce GET, à jour.",
   "notes": {
+    "chemins_non_lus": ["taille.batterie_nb_modules", "taille.batterie_module_kwh", "profil.occupation", "profil.factures_mensuelles_reelles", "profil.conso_annuelle", "profil.equipements.<clef>", "tarif.distributeur", "tarif.tranches", "tarif.charges_fixes_mad", "mode_installation", "structure", "tension", "pompe_alim"],
+    "non_lu": "QJR507 (D-QJR5-8) — marqueur `non_lu` sur une entrée d'`effectif` : présent et true SEULEMENT pour un chemin de `chemins_non_lus` (le moteur ne le lit pas), jamais false (une entrée lue n'a pas le marqueur : voir `scenario`). QJR573 ramène ensuite `chemins_non_lus` à [] dans son propre commit.",
     "chemins_autorises": [
       "taille.nb_panneaux", "taille.panel_watt", "taille.kwc",
       "taille.batterie_nb_modules", "taille.batterie_module_kwh",
@@ -78,7 +80,7 @@
       "taille.nb_panneaux": {"auto": 12, "manuel": 14, "effectif": 14, "source": "manuel"},
       "taille.kwc": {"auto": 8.52, "manuel": null, "effectif": 8.52, "source": "auto"},
       "scenario": {"auto": "Sans batterie", "manuel": "Les deux (Sans + Avec)", "effectif": "Les deux (Sans + Avec)", "source": "manuel"},
-      "tarif.distributeur": {"auto": null, "manuel": "ONEE", "effectif": "ONEE", "source": "import", "non_derivable": true},
+      "tarif.distributeur": {"auto": null, "manuel": "ONEE", "effectif": "ONEE", "source": "import", "non_derivable": true, "non_lu": true},
       "profil.factures_mensuelles_reelles": {"auto": null, "manuel": [640, 610, 590, 520, 480, 610, 720, 700, 590, 540, 560, 630], "effectif": [640, 610, 590, 520, 480, 610, 720, 700, 590, 540, 560, 630], "source": "import", "non_derivable": true},
       "profil.equipements.piscine": {"auto": {"presente": false}, "manuel": {"presente": true, "puissance_kw": 1.5, "mois_actifs": [6, 7, 8, 9]}, "effectif": {"presente": true, "puissance_kw": 1.5, "mois_actifs": [6, 7, 8, 9]}, "source": "manuel"}
     },

@@ -1,8 +1,11 @@
 {
   "endpoint": "GET /api/django/public/proposal/<token>/data/",
-  "forme_serveur": "complete",
+  "forme_serveur": "partielle",
   "pourquoi": "QJR3 (M0, audit L3 du 29/08/2026) — `apps/ventes/public_views.py::proposal_data` (~lignes 2343-2906) est un dict ASSEMBLÉ À LA MAIN, sans sérialiseur et sans forme déclarée (un commentaire à ~2961-2967 reconnaît que le générateur DRF ne sait pas l'introspecter). CE CONTRAT NE LE CONVERTIT PAS en sérialiseur DRF — chantier séparé, bien plus gros — il POSE la carte clé → nature de ce qu'il renvoie RÉELLEMENT aujourd'hui, dérivée d'une lecture du code (pas d'une exécution), pour que le test de forme QJR7 (M1, PAS dans ce commit) puisse vérifier le serveur contre cette carte au lieu que chaque consommateur (la page publique `apps/web`, les tests) invente sa propre hypothèse — l'incident PACT10 du 03/08/2026, rejoué. M0 reste docs-only : aucun test, aucun code de production dans ce commit.",
   "notes": {
+    "remplace_par": "QJR501 (D-QJR5-6) — `remplace_par` : null tant que le devis n'est pas remplacé ; sinon {reference, url}. `url` = '/proposition/<slug>/<token>' du successeur ENVOYÉ avec lien valide, null si le successeur est encore brouillon (jamais servi au client). Les deux cas sont les exemples `exemple_remplace_par_envoye` / `exemple_remplace_par_brouillon` (fragments : seule la clé ajoutée est décrite). Le web (apps/web/src/lib/proposition.ts, [...token].astro) lit, public_views émet.",
+    "note_client": "QJR501 (D-QJR5-6) — `note_client` : texte CLIENT des Notes du devis ('' si vide). L'élément de `variants` garde sa forme {id, reference, version, total_ttc, note} : la note y est un texte client.",
+    "forme_serveur_provisoire": "QJR501 (PACT10, contrat SEUL) — `forme_serveur` passe TEMPORAIREMENT de `complete` à `partielle` : `remplace_par` et `note_client` sont posés dans l'exemple AVANT que public_views ne les émette (la garde compare dans les deux sens et rougirait). La tâche qui les fait émettre DOIT remettre `complete`.",
     "structure_de_la_reponse": "46 clés TOUJOURS présentes (littéral `payload = {...}`, public_views.py:2531-2710, plus `niveau_masque` posée juste avant le retour à la ligne 2897) + 20 clés ADDITIVES conditionnées par section/donnée disponible (posées une à une par `if X is not None: payload['clef'] = X`, lignes 2716-2892 — jamais un `null` explicite : la clé est ABSENTE tout court quand rien n'est calculable ou que la case du dialogue d'envoi correspondante est décochée). Les deux niveaux de partage (`standard`/`confiance`, champ `niveau`) servent le MÊME jeu de clés — la dégradation `standard` simplifie le CONTENU de `quote`/`sld_svg`/`conception_electrique` (agrégation en un kit, calibres retirés) et le documente dans `niveau_masque`, elle ne retire AUCUNE clé de la carte ci-dessous. Seules les cases du dialogue d'envoi (`ShareLink.sections`) retirent des clés — additivement, indépendamment du niveau.",
     "cles_additives_15_a_17": "Les ~18-20 clés additives (le nombre exact dépend de la façon dont on compte `dimensionnement_options`/`production_par_option`, toujours posées ENSEMBLE par le même bloc `if`) : `bankable`, `courbes_journalieres`, `economies_mensuelles`, `tranche_tarifaire`, `batterie_regime`, `balayage_stockage`, `profils_comparatifs`, `economies_periodes`, `estimation_conso`, `jours_types`, `dimensionnement_options`, `production_par_option`, `paliers_batterie`, `couverture_batterie`, `offres_tailles`, `calepinage_options`, `parametres_site`, `acompte`, `date_validite`, `conditions`.",
     "portee_de_quote": "`quote` republie PRESQUE tout le dict interne du moteur (`build_quote_data`, moins les clés confidentielles/internes retirées par `_sans_cles_internes`/`_strip_confidential_deep`/`_sans_internes_bancables` — jamais de `prix_achat`/`marge`, règle #4). Sa forme INTERNE (des dizaines de clés : `sans_items`/`avec_items`, la chaîne HT→TVA→TTC, les séries de cashflow…) est HORS PÉRIMÈTRE de ce contrat — c'est l'objet interne du moteur, documenté par d'autres contrats existants (`apps/ventes/contract_samples/devis_composition.json` pour la forme d'une ligne, `devis_totaux.json` pour la chaîne argent) : ce fichier-ci documente la carte du dict `proposal_data` qui EMBALLE `quote`, pas `quote` lui-même.",
@@ -15,6 +18,8 @@
     "preview_v3_conditions_avant_signature": "PREVIEW-V3 (16/09/2026) — cinq clés ajoutées pour que le client sache AVANT de signer ce qu'il ne découvrait qu'après (ou seulement dans le PDF). ADDITIVES (absentes si incalculables, jamais `null`) : `acompte` = la PREMIÈRE tranche réelle de l'échéancier (`apps.ventes.utils.echeancier.next_tranche` — LE même helper `_acompte_publique` qu'utilise désormais le payload de succès post-signature, donc deux chiffres ne peuvent plus diverger ; jamais `deposit.compute_deposit()`) — clé ABSENTE (jamais `null`, jamais `\"0.00\"`) dès que la tranche vaut zéro — il porte `option` (l'option sur laquelle l'ERP a calculé `ttc`, `options.option_effective`, `\"\"` quand le devis n'en distingue aucune) et `montants` (le montant de cette même tranche pour CHAQUE option servable, calculé par le MÊME `next_tranche`, donc le même arrondi au centime) : la page lit la case COCHÉE au lieu de deviner l'option, et aucun `libelle` n'est servi (il ne l'était jamais lu), `date_validite` = l'échéance réelle en ISO (`apps.ventes.utils.expiry.date_expiration`, jusqu'ici calculée mais jamais exposée — DOC art. 65-4 §2), `conditions` = les puces « Conditions générales du devis » du PDF en texte, substituées depuis LE même littéral (`quote_engine.generate_devis_premium.DEFAULT_DOC_TEXTS['cgv_bullets']`) puis dé-échappées. DE BASE (toujours présentes, donc 46 et non 44) : `paiement_moyens` = constante `[\"virement\", \"cheque\"]` — jamais « espèces » (art. 193 CGI : au-delà de 20 000 MAD l'amende de 6 % est pour LE VENDEUR) et JAMAIS le RIB avant signature ; `confirmation_email` = bool disant si `domain.cycle_vie._send_acceptance_emails` écrira vraiment à CE client (`if dest:` sur `devis.client.email`) **ET** si le backend d'e-mail configuré envoie vraiment (PREVIEW-V3-FIX, audit C6 : `EMAIL_BACKEND` vaut *console* par défaut dans ce projet — sans `EMAIL_BACKEND=anymail…` + clé, `send_mail` ne lève pas et le service journalise « envoyé » alors que rien ne part ; *console* et *dummy* rendent donc `false`) — la page ne promet l'accusé de réception que quand il partira (loi 31-08 art. 32)."
   },
   "exemple": {
+    "remplace_par": null,
+    "note_client": "",
     "niveau": "confiance",
     "apercu_interne": false,
     "reference": "DEV-2026-000412",
@@ -228,6 +233,8 @@
     "detail": null
   },
   "exemple_standard": {
+    "remplace_par": null,
+    "note_client": "",
     "niveau": "standard",
     "apercu_interne": false,
     "reference": "DEV-2026-000412",
@@ -300,6 +307,8 @@
     "confirmation_email": true
   },
   "exemple_sections_masquees": {
+    "remplace_par": null,
+    "note_client": "",
     "niveau": "confiance",
     "apercu_interne": false,
     "reference": "DEV-2026-000412",
@@ -346,5 +355,11 @@
     "niveau_masque": [],
     "paiement_moyens": ["virement", "cheque"],
     "confirmation_email": false
+  },
+  "exemple_remplace_par_envoye": {
+    "remplace_par": {"reference": "DEV-202609-0012", "url": "/proposition/<slug>/<token>"}
+  },
+  "exemple_remplace_par_brouillon": {
+    "remplace_par": {"reference": "DEV-202609-0012", "url": null}
   }
 }

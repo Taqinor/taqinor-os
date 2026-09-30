@@ -1,0 +1,40 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<id>/reappliquer-lead/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR505 (M0 QJR5) — dérive lead -> devis : « reprendre » (POST …/devis/<id>/reappliquer-lead/) ou « garder » (POST …/devis/<id>/acquitter-derive/). Corps vide dans les deux cas. 200 {devis: <détail avec lead_valeurs_modifiees: []>, champs_repris: [str], corrige_apres_envoi: bool, avertissements: [str]} ; 400 {detail: « Devis figé — révisez-le (reviser) pour le modifier. », code: 'devis_fige'} pour accepté / refusé / expiré.",
+  "endpoints_equivalents": [
+    "POST /api/django/ventes/devis/<id>/reappliquer-lead/",
+    "POST /api/django/ventes/devis/<id>/acquitter-derive/"
+  ],
+  "exemple": {
+    "devis": {
+      "id": 413,
+      "reference": "DEV-202609-0012",
+      "statut": "envoye",
+      "lead_valeurs_modifiees": [],
+      "updated_at": "2026-09-30T09:02:00+00:00"
+    },
+    "champs_repris": [
+      "facture_hiver",
+      "taille_souhaitee_kwc"
+    ],
+    "corrige_apres_envoi": true,
+    "avertissements": []
+  },
+  "exemple_garder": {
+    "devis": {
+      "id": 413,
+      "reference": "DEV-202609-0012",
+      "statut": "envoye",
+      "lead_valeurs_modifiees": [],
+      "updated_at": "2026-09-30T09:02:00+00:00"
+    },
+    "champs_repris": [],
+    "corrige_apres_envoi": false,
+    "avertissements": []
+  },
+  "exemple_400": {
+    "detail": "Devis figé — révisez-le (reviser) pour le modifier.",
+    "code": "devis_fige"
+  }
+}
