@@ -318,13 +318,15 @@ class ScopesDuesTests(_Base):
     def test_demain_ne_rend_que_demain(self):
         self.assertEqual(self._ids('tomorrow'), {self.demain.pk})
 
-    def test_la_semaine_inclut_le_retard(self):
-        """Une touche oubliée lundi doit rester sous les yeux toute la
-        semaine, sinon elle disparaît quand elle devient urgente."""
+    def test_la_semaine_ne_reprend_pas_maintenant(self):
+        """COCKPIT-CONTRÔLE (30/09/2026) — réaligné : ``week`` était « retard
+        + 7 jours » et DOUBLAIT le segment « maintenant » du cockpit (le
+        retard et le jour y sont déjà, sous les yeux, en tête de file). Il
+        rend désormais les 7 prochains jours HORS « maintenant » — demain
+        compris, jamais au-delà de J+7."""
         self.assertEqual(
-            self._ids('week'),
-            {self.hier.pk, self.aujourdhui.pk, self.demain.pk,
-             self.dans_six_jours.pk})
+            self._ids('week'), {self.demain.pk, self.dans_six_jours.pk})
+        self.assertFalse(self._ids('week') & self._ids('all'))
 
     def test_les_trois_scopes_historiques_sont_inchanges(self):
         self.assertEqual(self._ids('today'), {self.aujourdhui.pk})
