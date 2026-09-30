@@ -1358,7 +1358,12 @@ export function trackForwardLeadOutcome(delivered: boolean, reason?: string): { 
 export interface ForwardLeadOptions {
   /** true → transmettre aussi les leads `qualified: false`. Défaut : false. */
   includeUnqualified?: boolean;
+  /** Attente entre deux tentatives (injectable pour les tests). */
+  sleepFn?: (ms: number) => Promise<void>;
 }
+
+/** QJR631 — délais avant les tentatives 2 et 3 (total < ~30 s de waitUntil). */
+const FORWARD_RETRY_DELAYS_MS = [1000, 3000];
 
 /**
  * Transfert CRM (LEAD_WEBHOOK_URL). Tolère l'absence de configuration et les
@@ -1400,14 +1405,33 @@ export async function forwardLead(
     };
     const secret = env.LEAD_WEBHOOK_SECRET?.trim();
     if (secret) headers['x-webhook-secret'] = secret;
-    const res = await fetchFn(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(record),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return { delivered: false, reason: `webhook-status-${res.status}` };
-    return { delivered: true };
+    // QJR631 — clé d'idempotence garantie (sur une COPIE) : un réessai après un
+    // délai dépassé déjà traité par le CRM ne crée pas de doublon.
+    const payload: LeadRecord = record.idempotencyKey
+      ? record
+      : { ...record, idempotencyKey: crypto.randomUUID() };
+    const body = JSON.stringify(payload);
+    const sleep = opts.sleepFn ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const maxAttempts = FORWARD_RETRY_DELAYS_MS.length + 1;
+    let reason = 'webhook-error-unknown';
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (attempt > 0) await sleep(FORWARD_RETRY_DELAYS_MS[attempt - 1]);
+      try {
+        const res = await fetchFn(url, {
+          method: 'POST',
+          headers,
+          body,
+          signal: AbortSignal.timeout(8000),
+        });
+        if (res.ok) return { delivered: true };
+        reason = `webhook-status-${res.status}`;
+        // Réessai seulement sur 5xx / 429 ; jamais sur 4xx (400 / 401 / 403…).
+        if (!(res.status >= 500 || res.status === 429)) break;
+      } catch (e) {
+        reason = `webhook-error-${e instanceof Error ? e.name : 'unknown'}`;
+      }
+    }
+    return { delivered: false, reason };
   } catch (e) {
     return { delivered: false, reason: `webhook-error-${e instanceof Error ? e.name : 'unknown'}` };
   }
