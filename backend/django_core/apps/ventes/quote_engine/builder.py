@@ -3725,11 +3725,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # service ``activate_optional_line`` (self-service proposition) : la ligne
     # devient alors normale et entre dans les totaux/documents avals.
     if option_lignes:
+        # QJR616 — le prix imprimé d'une option est le SUPPLÉMENT CANONIQUE
+        # qu'elle ajoute au devis : argent.totaux(comptées + [option]) −
+        # argent.totaux(comptées), remise globale comprise, dans la vue de
+        # l'option effective (filter_lines_for_option). Avant, on imprimait
+        # P.U. TTC × qté SANS la remise globale : une fois activée
+        # (activate_optional_line), l'option coûtait moins que le prix annoncé.
+        from apps.ventes.domain.argent import Vue as _VueOpt
+        from apps.ventes.domain.argent import totaux as _totaux_opt
+        from apps.ventes.utils.options import (
+            filter_lines_for_option as _filtrer_opt,
+        )
+        from apps.ventes.utils.options import option_effective as _option_eff
+        _opt_eff = _option_eff(devis)
+        _comptees = (_filtrer_opt(lignes, _opt_eff) if _opt_eff
+                     else list(lignes))
+        _base_opt = _totaux_opt(devis, vue=_VueOpt.AFFICHAGE,
+                                lignes=_comptees)
         _opts = []
         for li in option_lignes:
             it = _line_to_item(li, taux_tva)
             it.pop("_produit_nom", None)
             qte = float(li.quantite or 0)
+            _avec_opt = _totaux_opt(
+                devis, vue=_VueOpt.AFFICHAGE,
+                lignes=_comptees + [_LigneArgentPdf(it, taux_tva)])
             _opts.append({
                 "id": li.id,
                 "designation": it["designation"],
@@ -3738,8 +3758,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 "taux_tva": it["taux_tva"],
                 "prix_unit_ht": it["prix_unit_ht"],
                 "prix_unit_ttc": it["prix_unit_ttc"],
-                "total_ht": round(it["prix_unit_ht"] * qte, 2),
-                "total_ttc": round(it["prix_unit_ttc"] * qte, 2),
+                "total_ht": float(round(
+                    _avec_opt.ht_net - _base_opt.ht_net, 2)),
+                "total_ttc": float(round(
+                    _avec_opt.ttc - _base_opt.ttc, 2)),
             })
         data["options_proposees"] = _opts
 

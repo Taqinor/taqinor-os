@@ -3950,7 +3950,6 @@ def page_onepage(items, tronquees=0):
         _opt_rows = ""
         for _o in OPTIONS_PROPOSEES:
             _oq = float(_o.get("quantite", 0) or 0)
-            _ottc = float(_o.get("prix_unit_ttc", 0) or 0) * _oq
             _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
             _obadge = badge(_o.get("marque", "")) if _o.get("marque") else ""
             _opt_rows += (
@@ -3959,7 +3958,9 @@ def page_onepage(items, tronquees=0):
                 f'{_o.get("designation", "")} {_obadge}</td>'
                 f'<td style="padding:4px 10px;text-align:center;color:{CG7};">{_oq_s}</td>'
                 f'<td style="padding:4px 10px;text-align:right;color:{CN};font-weight:600;">'
-                f'{fmt(round(_ottc))}</td>'
+                # QJR616 — le supplément canonique du builder (remise globale
+                # comprise), plus un P.U. × qté recalculé ici.
+                f'{fmt(round(float(_o.get("total_ttc", 0) or 0)))}</td>'
                 f'</tr>')
         options_html = (
             f'<div style="padding:8px 24px 0;">'
