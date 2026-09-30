@@ -130,6 +130,30 @@ MESSAGE_ETAPE_DEJA_TRAITEE = (
     'Cette étape est déjà traitée — rechargez la liste.')
 
 
+def _prochaine_touche_publique(etape):
+    """SUIVI E9 (30/09/2026) — la forme PUBLIQUE de l'étape qu'un « Fait »
+    annonce (``prochaine_touche`` des réponses de ``fait``, du report d'une
+    étape de filet et de ``piece-recue``), ou ``None``.
+
+    Elle ne portait que ``{due_at, due_date, canal}`` : l'écran annonçait
+    « Prochain appel programmé » pour « Préparer et envoyer le devis ». Elle
+    NOMME désormais l'étape (ADDITIF) : ``libelle`` (celui de l'étape, tel que
+    la société l'a réglé) et ``cle`` (``cadence_config.cle_de`` : la clé
+    moteur, retrouvée aussi pour une étape posée avant la clé ; ``''`` pour un
+    barreau du protocole). Fonction PURE, aucune requête."""
+    if etape is None:
+        return None
+    from .cadence_config import cle_de
+
+    return {
+        'due_at': etape.due_at.isoformat() if etape.due_at else None,
+        'due_date': etape.due_date.isoformat() if etape.due_date else None,
+        'canal': etape.canal,
+        'libelle': etape.libelle or '',
+        'cle': cle_de(etape),
+    }
+
+
 @contextmanager
 def _save_borne_aux_champs(instance, champs):
     """CRX25 — force ``update_fields`` sur le prochain ``instance.save()``.
@@ -3641,12 +3665,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
                     etape.note = note
                     etape.save(update_fields=['note'])
                 data = self.get_serializer(etape).data
-                data['prochaine_touche'] = {
-                    'due_at': (etape.due_at.isoformat()
-                               if etape.due_at else None),
-                    'due_date': etape.due_date.isoformat(),
-                    'canal': etape.canal,
-                }
+                data['prochaine_touche'] = _prochaine_touche_publique(etape)
                 return Response(data)
         # CAD11 — un lead qu'on marque perdu n'a pas de suite : ni barreau
         # suivant, ni clôture au froid avec réveils (``suite=False``).
@@ -3674,17 +3693,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         technique convenue » (cadence du suivi), « joint » pose l'étape devis
         (cadence générique). Lue par cadence, la réponse annonçait « rien »
         alors qu'une étape du jour attendait. C'est désormais la MÊME lecture
-        que ``Lead.relance_date`` (``services._prochaine_touche_a_faire``)."""
+        que ``Lead.relance_date`` (``services._prochaine_touche_a_faire``).
+
+        SUIVI E9 — elle NOMME l'étape (``libelle``, ``cle``) :
+        ``_prochaine_touche_publique``."""
         from .services import _prochaine_touche_a_faire
 
         data = self.get_serializer(etape).data
-        suivante = _prochaine_touche_a_faire(etape.lead)
-        data['prochaine_touche'] = (
-            {'due_at': (suivante.due_at.isoformat()
-                        if suivante.due_at else None),
-             'due_date': suivante.due_date.isoformat(),
-             'canal': suivante.canal}
-            if suivante is not None else None)
+        data['prochaine_touche'] = _prochaine_touche_publique(
+            _prochaine_touche_a_faire(etape.lead))
         return Response(data)
 
     def _repondre(self, request, reponse):
@@ -4016,12 +4033,7 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             attachment=attachment,
             note=(request.data.get('note') or '').strip())
         data = self.get_serializer(etape).data
-        data['prochaine_touche'] = (
-            {'due_at': (etape_devis.due_at.isoformat()
-                        if etape_devis.due_at else None),
-             'due_date': etape_devis.due_date.isoformat(),
-             'canal': etape_devis.canal}
-            if etape_devis is not None else None)
+        data['prochaine_touche'] = _prochaine_touche_publique(etape_devis)
         return Response(data)
 
     @action(detail=True, methods=['post'])
