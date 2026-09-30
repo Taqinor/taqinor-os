@@ -223,6 +223,20 @@ TYPE_REVEIL_APPEL = 'reveil_appel'
 TYPE_REVEIL_MESSAGE = 'reveil_message'
 TYPE_GENERIQUE = 'generique'
 
+#: COCKPIT-CONTRÔLE (30/09/2026) — les types de la table, DANS L'ORDRE DE LA
+#: TABLE (miroir de ``parcours_suivi.json`` ``etapes[].id`` : le serveur ne
+#: lit jamais ce fichier d'écran à l'exécution ; la garde
+#: ``tests_cockpit_controle`` exige l'égalité). Le détail ``par_type`` du
+#: contrôle du suivi suit cet ordre.
+TYPES_ORDONNES = (
+    TYPE_CONTACT_APPEL, TYPE_CONTACT_MESSAGE, TYPE_DEVIS,
+    TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU, TYPE_DERNIER_APPEL,
+    TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE, TYPE_SUIVI_APPEL,
+    TYPE_SUIVI_MESSAGE, TYPE_QUESTION_PRIX, TYPE_PLANIFIER, TYPE_CONFIRMATION,
+    TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE, TYPE_REVEIL_APPEL, TYPE_REVEIL_MESSAGE,
+    TYPE_GENERIQUE,
+)
+
 #: Clé moteur → type (ils portent le même nom : la table le veut ainsi).
 _TYPES_PAR_CLE = frozenset({
     TYPE_DEVIS, TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU,
@@ -340,6 +354,63 @@ TYPES_TACHE = frozenset({
     TYPE_DEVIS, TYPE_DECIDER_SUITE, TYPE_QUESTION_PRIX, TYPE_PLANIFIER,
     TYPE_DEVIS_MODIFIE,
 })
+
+
+def type_etape_connu(etape):
+    """COCKPIT-CONTRÔLE — ``type_etape`` tel que la touche le SERT (contrat
+    ``relance_etape_v2``) : l'identifiant d'un type de la table du parcours,
+    ``''`` si la table ne le connaît pas (jamais un type inventé). Pur."""
+    type_id = type_etape(etape)
+    return type_id if type_id in REPONSES_PAR_TYPE else ''
+
+
+def est_tache(etape):
+    """COCKPIT-CONTRÔLE — l'étape est-elle une TÂCHE de la table (``tache:
+    true`` : préparer le devis, décider la suite, question de prix, planifier
+    la visite, devis modifié) ? Traitable dès maintenant, jamais « sautée ».
+    Pur — le même prédicat en requête est ``q_tache``."""
+    return type_etape(etape) in TYPES_TACHE
+
+
+def q_tache():
+    """COCKPIT-CONTRÔLE — ``est_tache`` en REQUÊTE : LA définition SQL d'une
+    tâche, la seule (la file du cockpit, le contrôle du suivi). Exactement
+    ce que ``type_etape`` reconnaît, dans le même ordre : les CLÉS moteur des
+    tâches, leurs libellés PAR DÉFAUT d'avant la clé (``cadence_config.
+    q_etape``), puis le libellé de la question de prix (hors gabarit, sans
+    clé). Garde : ``tests_cockpit_file`` la confronte à ``type_etape`` sur
+    chaque type de la table du parcours."""
+    from django.db.models import Q
+
+    from .cadence_config import q_etape
+    from .services import QUESTION_PRIX_LIBELLE
+
+    cles = tuple(sorted(TYPES_TACHE & _TYPES_PAR_CLE))
+    return q_etape(*cles) | Q(cle='', libelle=QUESTION_PRIX_LIBELLE)
+
+
+#: COCKPIT-CONTRÔLE B6 — les BARREAUX du protocole : les types de la prise de
+#: contact, du suivi de proposition et du réveil (``contact_*``, ``suivi_*``,
+#: ``reveil_*``). Ni tâche, ni geste de visite, ni étape de filet : ce sont les
+#: seules touches qu'une mesure « par touche » peut comparer entre elles.
+TYPES_BARREAU = frozenset(
+    type_id for paire in _TYPES_PAR_CADENCE.values() for type_id in paire)
+
+
+def q_barreau():
+    """COCKPIT-CONTRÔLE B6 — ``type_etape`` ∈ ``TYPES_BARREAU``, en REQUÊTE :
+    une cadence de protocole, sans clé moteur (ni libellé par défaut d'avant
+    la clé) et hors question de prix — exactement l'ordre de reconnaissance
+    de ``type_etape``. Garde : ``tests_cockpit_mesure_barreaux`` la confronte
+    à ``type_etape`` sur chaque type de la table."""
+    from django.db.models import Q
+
+    from .cadence_config import q_etape
+    from .services import QUESTION_PRIX_LIBELLE
+
+    return (Q(cadence__in=tuple(sorted(_TYPES_PAR_CADENCE)))
+            & ~q_etape(*sorted(_TYPES_PAR_CLE))
+            & ~Q(cle='', libelle=QUESTION_PRIX_LIBELLE))
 
 
 def nature_touche(etape):

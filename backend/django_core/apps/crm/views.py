@@ -135,6 +135,13 @@ MESSAGE_REFUS_SUR_DECIDER_SUITE = (
     '« Décider la suite » : choisissez « Perdu — clore le dossier » (avec '
     'son motif) ou une relance ultérieure.')
 
+#: COCKPIT-CONTRÔLE B4 (30/09/2026) — une TÂCHE (préparer le devis, planifier
+#: la visite, décider la suite, devis modifié, question de prix) ne se saute
+#: pas : l'écran masquait le bouton, le serveur ne gardait rien — un « Sauter »
+#: envoyé à la main effaçait une tâche du cockpit sans trace de traitement.
+MESSAGE_TACHE_NON_SAUTABLE = (
+    '« Sauter » : une tâche ne se saute pas — traitez-la ou reportez-la.')
+
 
 def _prochaine_touche_publique(etape):
     """SUIVI E9 (30/09/2026) — la forme PUBLIQUE de l'étape qu'un « Fait »
@@ -3299,9 +3306,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
         # LECTURE PURE du cockpit : même garde que `mes_stats`, listée ICI
         # nommément pour la même raison.
+        # COCKPIT-CONTRÔLE (30/09/2026) — `controle` est une LECTURE PURE du
+        # cockpit, ouverte à tous les rôles comme `kpi_adherence` (décision
+        # de transparence CKP3) : listée ICI nommément, même raison.
         if self.action in ('list', 'message', 'suivi',
                            'kpi_adherence', 'mes_stats', 'journal',
-                           'cadences_echues', 'chaine_commerciale'):
+                           'cadences_echues', 'chaine_commerciale',
+                           'controle'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -3329,8 +3340,16 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         la FRISE de la fiche lead, qui doit montrer le passé autant que le
         futur — `scope` est alors ignoré. La visibilité reste garantie par
         ``get_queryset`` : un lead hors portée renvoie une liste vide, jamais
-        un 403 qui confirmerait son existence."""
+        un 403 qui confirmerait son existence.
+
+        COCKPIT-CONTRÔLE (30/09/2026) — ``?scope=all`` est la file du cockpit
+        (« maintenant » : échéances du jour et en retard PLUS les tâches
+        ouvertes), et la réponse porte alors le bloc ``file`` (compteurs
+        ``maintenant`` / ``demain`` / ``semaine`` / ``traitees_aujourdhui``,
+        ``selectors.file_du_cockpit``) — servi SEULEMENT quand ``scope`` est
+        demandé, dans la même portée (et le même ``owner``) que la liste."""
         lead_id = request.query_params.get('lead')
+        owner = request.query_params.get('owner')
         if lead_id:
             qs = (self.get_queryset().filter(lead_id=lead_id)
                   .select_related('lead', 'lead__owner', 'devis')
@@ -3338,11 +3357,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         else:
             from .selectors import relance_etapes_dues
             scope = request.query_params.get('scope', 'today')
-            owner = request.query_params.get('owner')
             qs = relance_etapes_dues(
                 request.user.company, request.user, scope=scope, owner=owner)
         serializer = self.get_serializer(qs, many=True)
-        return Response({'count': qs.count(), 'results': serializer.data})
+        payload = {'count': qs.count(), 'results': serializer.data}
+        if not lead_id and 'scope' in request.query_params:
+            from .selectors import file_du_cockpit
+            payload['file'] = file_du_cockpit(
+                request.user.company, request.user, owner=owner)
+        return Response(payload)
 
     @action(detail=False, methods=['get'], url_path='suivi',
             permission_classes=[IsAnyRole])
@@ -3581,12 +3604,58 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         return Response(
             chaine_commerciale(request.user, request.user.company))
 
+    @extend_schema(responses=inline_serializer('CrmControleSuivi', {
+        'periode_jours': serializers.IntegerField(),
+        'owner': serializers.IntegerField(allow_null=True),
+        'commerciaux': serializers.ListField(child=serializers.DictField()),
+        'seuils': serializers.DictField(),
+        'verdict': serializers.DictField(),
+        'jours': serializers.ListField(child=serializers.DictField()),
+        'exceptions': serializers.DictField(),
+        'par_type': serializers.ListField(child=serializers.DictField()),
+        'premier_contact': serializers.DictField(),
+        'resultats': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='controle',
+            permission_classes=[IsAnyRole])
+    def controle(self, request):
+        """COCKPIT-CONTRÔLE (fondateur, 30/09/2026) — le bloc « Contrôle du
+        suivi » du cockpit (forme ``controle_suivi``) : verdict, frise d'un
+        jour par case, exceptions de l'instant, détail par type d'étape,
+        premier contact, résultats. ``?jours=7|14|30`` (14 par défaut),
+        ``?owner=<id>`` (un responsable de la portée, facultatif).
+
+        LECTURE OUVERTE À TOUS LES RÔLES (même garde que ``kpi_adherence``,
+        transparence CKP3) ; seule la portée de visibilité (``scope_queryset``
+        via le lead) borne ce qui est lu. Refus 400 ``{"erreurs": {champ:
+        message}}`` qui NOMME le champ : ``jours`` hors 7/14/30, ``owner``
+        inconnu ou hors portée — levés (``DRFValidationError``) pour que la
+        forme versionnée reste celle de la réponse."""
+        from .controle_suivi import controle_suivi, parametres_controle
+
+        jours, owner, erreurs = parametres_controle(
+            request.user.company, request.user,
+            request.query_params.get('jours'),
+            request.query_params.get('owner'))
+        if erreurs:
+            raise DRFValidationError({'erreurs': erreurs})
+        return Response(controle_suivi(
+            request.user.company, request.user, jours=jours, owner=owner))
+
     def _marquer(self, request, statut):
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
             # SUIVI E8 — jamais un second « Fait » sur une touche close.
             return Response(
                 {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
+        # COCKPIT-CONTRÔLE B4 — « Sauter » est refusé sur une TÂCHE, AVANT
+        # toute écriture (« déjà traitée » prime, SUIVI E8). La table du
+        # parcours ne le propose pas ; le serveur le tient désormais aussi.
+        from .suite_touche import est_tache
+        if statut == RelanceEtape.Statut.SAUTEE and est_tache(etape):
+            return Response(
+                {'erreurs': {'etape': MESSAGE_TACHE_NON_SAUTABLE}},
                 status=status.HTTP_400_BAD_REQUEST)
         note = (request.data.get('note') or '').strip()
         outcome = (request.data.get('outcome') or '').strip()
@@ -3725,7 +3794,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, _nouvelle = repondre_planifier_sans_reponse(
                 etape, request.user, note=note, body=body)
             if quand is not None:
-                reporter_prochaine_touche(etape.lead, request.user, quand)
+                # COCKPIT-CONTRÔLE — la date PLACE l'étape que la réponse
+                # vient de reposer : ce n'est pas un report (rien de compté).
+                reporter_prochaine_touche(etape.lead, request.user, quand,
+                                          compter_report=False)
             return self._reponse_fait(etape)
         # SUIVI E10 (30/09/2026) — « Créneau convenu le… » sur l'étape
         # « Message — proposer un créneau pour l'appel » : le créneau convenu
@@ -3809,7 +3881,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             from .services import marquer_lead_perdu_junk
             marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
-            reporter_prochaine_touche(etape.lead, request.user, quand)
+            # COCKPIT-CONTRÔLE — la touche est CLOSE ; la date place la
+            # touche qui lui succède (« touche suivante à la date ») : un
+            # placement, jamais un report compté (seul un geste qui GARDE
+            # l'étape en est un — branche CAD3/E3 plus haut, action
+            # ``reporter``).
+            reporter_prochaine_touche(etape.lead, request.user, quand,
+                                      compter_report=False)
         return self._reponse_fait(etape)
 
     def _reponse_fait(self, etape):
@@ -3986,7 +4064,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CKP2 — sauter une touche n'éteint PAS la cadence : la touche suivante
         du protocole est matérialisée, exactement comme sur un « pas de
         réponse ». Sans cela, sauter le message d'identité supprimait les dix
-        gestes qui suivent."""
+        gestes qui suivent.
+
+        COCKPIT-CONTRÔLE B4 — refusé sur une TÂCHE (400 ``{"erreurs":
+        {"etape": …}}``, rien n'est écrit) : une tâche se traite ou se
+        reporte, elle ne se saute pas."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
     @action(detail=True, methods=['post'])

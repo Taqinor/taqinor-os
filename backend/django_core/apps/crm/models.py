@@ -1749,6 +1749,29 @@ class RelanceEtape(TenantModel):
     # sans migration de données.
     cle = models.CharField(
         max_length=40, blank=True, default='', verbose_name='Clé moteur')
+    # COCKPIT-CONTRÔLE (fondateur, 30/09/2026 : « voir si la commerciale a
+    # fait tout ce qu'elle devait ») — les DEUX traces qui manquaient pour
+    # qu'un report ne fasse plus disparaître un retard en silence.
+    # ``reporter_prochaine_touche`` ÉCRASE ``due_at``/``due_date`` : sans
+    # elles, une étape repoussée trois fois se lisait comme une étape du jour.
+    #
+    # * ``due_initial_at`` — l'échéance d'ORIGINE, posée à la création
+    #   (``save`` ci-dessous ; les ``bulk_create`` la posent eux-mêmes). Un
+    #   report HUMAIN ne la réécrit jamais ; un déplacement décidé par le
+    #   MOTEUR (relances décalées autour d'une visite, recalage d'un débrief,
+    #   filet déplacé) la déplace avec l'échéance, du même écart. NULL sur une
+    #   ligne qui n'a jamais porté d'heure (d'avant MRY5) — c'est la vérité.
+    # * ``nb_reports`` — combien de fois l'échéance de CETTE étape a été
+    #   repoussée par un geste HUMAIN (« Reporter », « Mettre en veille »,
+    #   « À rappeler le… » / « Plus tard » qui garde l'étape, rappel demandé
+    #   au journal d'appel). Les déplacements du moteur ne comptent pas.
+    #
+    # Des FAITS montrés tels quels par le bloc « Contrôle du suivi »
+    # (``controle_suivi.py``), jamais une note.
+    due_initial_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Échéance d'origine")
+    nb_reports = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Reports humains')
 
     class Meta:
         verbose_name = 'Étape de relance'
@@ -1766,6 +1789,17 @@ class RelanceEtape(TenantModel):
     def __str__(self):
         return (f'{self.lead_id} — {self.cadence} #{self.ordre} '
                 f'({self.get_statut_display()})')
+
+    def save(self, *args, **kwargs):
+        # COCKPIT-CONTRÔLE — À LA CRÉATION, l'échéance d'origine est
+        # l'échéance posée : un seul endroit pour tous les ``create()`` du
+        # moteur, de la reprise et des tests. Un ``bulk_create`` ne passe pas
+        # par ici : le seul du moteur (``services.initialiser_plan_relance``)
+        # la pose lui-même.
+        if (self._state.adding and self.due_initial_at is None
+                and self.due_at is not None):
+            self.due_initial_at = self.due_at
+        super().save(*args, **kwargs)
 
 
 class GesteRelanceAppareil(TenantModel):

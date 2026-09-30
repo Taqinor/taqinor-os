@@ -118,6 +118,22 @@ class LeadActivitySerializer(serializers.ModelSerializer):
         return data
 
 
+def nom_affichable_lead(lead) -> str:
+    """Le nom affiché d'un lead dans la file (« Nom Prénom ») — ``lead_nom``
+    de ``RelanceEtapeSerializer``, partagé avec le bloc « Contrôle du suivi »
+    (``controle_suivi.py``) : une seule règle, jamais deux qui divergent."""
+    if lead is None:
+        return ''
+    return f'{lead.nom} {lead.prenom or ""}'.strip()
+
+
+def nom_affichable_responsable(user) -> str | None:
+    """Le nom affiché du RESPONSABLE d'un lead — ``lead_owner_nom`` de
+    ``RelanceEtapeSerializer`` (l'identifiant de connexion), ``None`` sans
+    responsable. Partagé avec ``controle_suivi.py`` : aucun prénom en dur."""
+    return getattr(user, 'username', None)
+
+
 class RelanceEtapeSerializer(serializers.ModelSerializer):
     """RELANCE FOUNDATION — étape du plan de relance structuré d'un lead, pour
     le panneau « Relances du jour ». Plate (jamais de sérialiseur Lead
@@ -189,6 +205,14 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
     visite_prevue_le = serializers.SerializerMethodField()
     visite_id = serializers.SerializerMethodField()
     visite_retour_disponible = serializers.SerializerMethodField()
+    # COCKPIT-CONTRÔLE (30/09/2026, contrat `relance_etape_v2`, note
+    # `cockpit_controle`) — la touche TYPÉE et ses deux traces : le type de la
+    # table du parcours (`suite_touche.type_etape`), la TÂCHE (traitable dès
+    # maintenant, jamais « sautée »), les reports humains, l'échéance
+    # d'origine et l'instant où l'étape a été posée. Additifs, sans requête.
+    type_etape = serializers.SerializerMethodField()
+    est_tache = serializers.SerializerMethodField()
+    posee_le = serializers.DateTimeField(source='created_at', read_only=True)
 
     class Meta:
         model = RelanceEtape
@@ -215,17 +239,35 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             # CAD176 — additif : l'adresse e-mail du lead, pour le seul
             # barreau e-mail de la cadence.
             'lead_email',
+            # COCKPIT-CONTRÔLE — additifs (voir plus haut).
+            'type_etape', 'est_tache', 'nb_reports', 'due_initial_at',
+            'posee_le',
         ]
         read_only_fields = [
             'id', 'lead', 'cadence', 'ordre', 'due_date', 'due_at', 'canal',
             'libelle', 'template_cle', 'devis', 'traite_le', 'cle',
+            'nb_reports', 'due_initial_at',
         ]
 
     def get_lead_nom(self, obj) -> str:
-        return f'{obj.lead.nom} {obj.lead.prenom or ""}'.strip()
+        return nom_affichable_lead(obj.lead)
 
     def get_lead_owner_nom(self, obj) -> str | None:
-        return getattr(obj.lead.owner, 'username', None)
+        return nom_affichable_responsable(obj.lead.owner)
+
+    def get_type_etape(self, obj) -> str:
+        """COCKPIT-CONTRÔLE — l'identifiant du type dans la table du parcours
+        (``suite_touche.type_etape`` : la clé moteur, puis le libellé, puis
+        cadence + canal), ``''`` si la table ne le connaît pas. Pur."""
+        from .suite_touche import type_etape_connu
+        return type_etape_connu(obj)
+
+    def get_est_tache(self, obj) -> bool:
+        """COCKPIT-CONTRÔLE — une TÂCHE de la table (préparer le devis,
+        planifier la visite, décider la suite, devis modifié, question de
+        prix) : traitable dès maintenant, jamais « sautée ». Pur."""
+        from .suite_touche import est_tache
+        return est_tache(obj)
 
     def _pii_masquee(self) -> bool:
         """MRY5 — MÊME règle que ``LeadSerializer.PII_FIELDS`` : un rôle sans

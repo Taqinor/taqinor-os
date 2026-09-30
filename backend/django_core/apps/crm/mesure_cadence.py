@@ -138,16 +138,24 @@ def taux_joint_par_creneau(company, *, jours=JOURS_MESURE_DEFAUT):
     Dénominateur : les touches closes par un HUMAIN. Numérateur : celles dont
     l'issue est « joint » ou « intéressé ». ``taux_joint_pct`` vaut ``null``
     sur un dénominateur vide.
+
+    COCKPIT-CONTRÔLE B6 (30/09/2026) — seuls les BARREAUX du protocole
+    comptent (``suite_touche.q_barreau`` : prise de contact, suivi de
+    proposition, réveil). Grouper par ``ordre`` rangeait les tâches
+    ``generique`` d'ordre 1 et les gestes de visite (ordres 90-92) dans les
+    cases des appels : « touche 1 » mélangeait un appel d'ouverture et un
+    devis à préparer. La forme ne change pas.
     """
     from django.utils import timezone
 
     from . import horaires
     from .models import RelanceEtape
+    from .suite_touche import q_barreau
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))
     touches = RelanceEtape.objects.filter(
         company=company, traite_le__gte=depuis,
-        statut__in=STATUTS_CLOS_HUMAIN)
+        statut__in=STATUTS_CLOS_HUMAIN).filter(q_barreau())
     issues = _issues_par_touche(touches, company)
 
     cases = {}
@@ -191,11 +199,16 @@ def signatures_par_touches_consommees(company, *, jours=JOURS_MESURE_DEFAUT):
     Rendu : une distribution ``[{touches, signatures}]`` triée par nombre de
     touches — pas une moyenne, qu'une queue de dossiers anciens suffirait à
     déplacer.
+
+    COCKPIT-CONTRÔLE B6 — une « touche » est un BARREAU du protocole
+    (``suite_touche.q_barreau``) : préparer le devis, planifier la visite ou
+    débriefer ne sont pas des relances, ils ne gonflent plus le compte.
     """
     from django.utils import timezone
 
     from . import stages
     from .models import LeadActivity, RelanceEtape
+    from .suite_touche import q_barreau
 
     depuis = timezone.now() - datetime.timedelta(days=int(jours))
     signatures = list(
@@ -212,6 +225,7 @@ def signatures_par_touches_consommees(company, *, jours=JOURS_MESURE_DEFAUT):
                 lead_id__in={s['lead_id'] for s in signatures},
                 statut__in=STATUTS_CLOS_HUMAIN,
                 traite_le__isnull=False)
+        .filter(q_barreau())
         .values('lead_id', 'traite_le'))
     par_lead = {}
     for close in closes:

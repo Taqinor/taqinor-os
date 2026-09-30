@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4714, operations: 7504, components: 2139}
+counts: {paths: 4716, operations: 7506, components: 2140}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1070,6 +1070,7 @@ operations:
 - get /api/django/crm/relance-etapes/ -> django_crm_relance_etapes_list
 - get /api/django/crm/relance-etapes/cadences-echues/ -> django_crm_relance_etapes_cadences_echues_retrieve
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
+- get /api/django/crm/relance-etapes/controle/ -> django_crm_relance_etapes_controle_retrieve
 - get /api/django/crm/relance-etapes/journal/ -> django_crm_relance_etapes_journal_retrieve
 - get /api/django/crm/relance-etapes/kpi-adherence/ -> django_crm_relance_etapes_kpi_adherence_retrieve
 - get /api/django/crm/relance-etapes/mes-stats/ -> django_crm_relance_etapes_mes_stats_retrieve
@@ -4860,6 +4861,7 @@ operations:
 - get /api/v1/crm/relance-etapes/ -> v1_crm_relance_etapes_list
 - get /api/v1/crm/relance-etapes/cadences-echues/ -> v1_crm_relance_etapes_cadences_echues_retrieve
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
+- get /api/v1/crm/relance-etapes/controle/ -> v1_crm_relance_etapes_controle_retrieve
 - get /api/v1/crm/relance-etapes/journal/ -> v1_crm_relance_etapes_journal_retrieve
 - get /api/v1/crm/relance-etapes/kpi-adherence/ -> v1_crm_relance_etapes_kpi_adherence_retrieve
 - get /api/v1/crm/relance-etapes/mes-stats/ -> v1_crm_relance_etapes_mes_stats_retrieve
@@ -7846,6 +7848,7 @@ components:
 - CreneauEquipementEnum
 - CrmCadencesEchues
 - CrmChaineCommerciale
+- CrmControleSuivi
 - CrmJournalRelance
 - CrmKpiAdherence
 - CrmKpiCadences
