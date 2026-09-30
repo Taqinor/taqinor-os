@@ -1579,7 +1579,10 @@ export default function DevisGenerator({
   // Mémoïsé via `sizingCacheRef` : `syncBillEstimator` tourne à chaque frappe
   // sur le champ facture, or chaque palier est chiffré avec le catalogue
   // réel (autoFillLines + ROI) — pas gratuit à rejouer si rien n'a changé.
-  const computeAutoSizing = useCallback((hiverVal, eteVal) => {
+  // `villeLead` : la ville du lead EN COURS d'application (`applyLead`) — à cet
+  // instant `selectedLead` décrit encore le rendu précédent (leadId pas encore
+  // posé) et le balayage partait au productible par défaut (CI #752).
+  const computeAutoSizing = useCallback((hiverVal, eteVal, villeLead) => {
     const hiver = parseFloat(hiverVal) || 0
     const besoinKwc = estimerKwcDepuisFacture(hiver)
     if (besoinKwc <= 0) return null
@@ -1596,7 +1599,7 @@ export default function DevisGenerator({
     // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
     // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
     const productibleBalayage = productibleForCity(
-      selectedLead?.ville || '', quoteLogic.productible)
+      (villeLead ?? selectedLead?.ville) || '', quoteLogic.productible)
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
@@ -1752,7 +1755,7 @@ export default function DevisGenerator({
       ? panneauxPourKwc(tailleKwc, panelW)
       : 0
     const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
-      ? computeAutoSizing(hiver, ete) : null
+      ? computeAutoSizing(hiver, ete, lead.ville || '') : null
     // STKCAT10 — la liste des structures RÉELLEMENT sélectionnables voyage
     // avec l'action : le reducer valide contre ELLE l'id épinglé sur le lead
     // (`lead.structure_produit`, STKCAT9) et n'applique jamais un produit
@@ -4041,7 +4044,13 @@ export default function DevisGenerator({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="gen-lead" required>Lead (point de départ)</Label>
-                <Select value={leadId ? String(leadId) : undefined} onValueChange={applyLead}>
+                {/* CI #752 — aucune option n'a la valeur '' : un '' ne vient que
+                    du <select> natif caché du Select quand la valeur posée
+                    n'est pas ENCORE dans ses options (lead d'un devis rouvert
+                    relu après coup, hors première page de `leads`). Il vidait
+                    le lead ; il est ignoré. */}
+                <Select value={leadId ? String(leadId) : undefined}
+                        onValueChange={(v) => { if (v) applyLead(v) }}>
                   <SelectTrigger id="gen-lead" invalid={!!errors.client}>
                     <SelectValue placeholder="— Sélectionner un lead —" />
                   </SelectTrigger>

@@ -46,19 +46,10 @@ const ECARTS_INTERMITTENTS = new Set([
   'economie_annuelle@sans',
   'economie_annuelle@avec',
 ])
-const ECARTS_CONNUS = new Set([
-  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT (économie différente) +
-  // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN (écran = coût ÷ économie, document =
-  // cumul du cashflow 25 ans QX39) : 13,43 / 8,95 ans contre 8,2 / 5,5.
-  'payback_ans@sans',
-  'payback_ans@avec',
-  // ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — à la réouverture (?edit=), chaque prix
-  // unitaire HT enregistré est reconverti en TTC ARRONDI AU DIRHAM
-  // (`ttcFromHt`) puis re-dérivé en HT : 36 828 / 53 102 à l'écran (rail ET
-  // cartes « Coût ») contre 36 873,11 / 53 149,26 dans le devis.
-  'total_ttc@sans',
-  'total_ttc@avec',
-])
+// Vide depuis CI #752 : payback_ans@sans/avec (formule moteur à l'écran +
+// aperçu à la même occupation que le bloc du devis) et total_ttc@sans/avec
+// (prix rouverts au centime) ne divergent plus.
+const ECARTS_CONNUS = new Set([])
 const identiteEcart = (msg) => msg.split(' : ')[0]
 
 /** Écarts NOUVEAUX (hors listes) + identités connues (stables) qui ne divergent PLUS. */
@@ -109,11 +100,19 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
   await page.getByRole('button', { name: /Édition complète/ }).click()
   await expect(page.locator('[data-figure="total_ttc"]').first()).toBeVisible({ timeout: 45_000 })
 
+  // L'écran se remplit en deux temps (lignes, puis l'étude horaire servie par
+  // l'aperçu) : tant que ses chiffres d'étude ne sont pas lus, AUCUN écart ne
+  // peut apparaître — sans cette attente, une ECARTS_CONNUS vide laissait le
+  // poll conclure sur un écran à moitié rendu (CI #752).
+  const ETUDE_ECRAN = ['production_annuelle_kwh', 'payback_ans', 'couverture_pct']
   let surfaces = null
   await expect.poll(async () => {
     const ecran = await lireFiguresPage(page)
     surfaces = { ecran, api_devis: apiDevis, proposition }
-    return ecartsHorsConnus(surfaces)
+    const cles = Object.keys(ecran)
+    const manquantes = ETUDE_ECRAN.filter((p) => !cles.some((id) => id.startsWith(p)))
+    return [...ecartsHorsConnus(surfaces),
+      ...manquantes.map((p) => `${p} : pas encore affiché à l'écran (étude non lue)`)]
   }, {
     message: 'le même chiffre diffère entre l\'écran, l\'API et la proposition publique '
       + '(hors ECARTS_CONNUS), ou un écart connu ne se reproduit plus',

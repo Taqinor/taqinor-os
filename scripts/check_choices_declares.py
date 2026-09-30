@@ -674,7 +674,15 @@ REFUS = {
         # `deux_options` / `alternative_declaree` du noyau. Le vocabulaire reel
         # ('sans'/'avec') vient de `DevisLigne.Variante` et est lu ligne a
         # ligne dans un `if`, pas rendu comme un choix a l'ecran.
-        ("deux_options`/`alternative_declaree", "COMPORTEMENT")],
+        ("deux_options`/`alternative_declaree", "COMPORTEMENT"),
+        # PR #752 (30/09/2026) — deux miroirs de FONCTIONS serveur, aucune
+        # liste de valeurs : le drapeau « jamais remboursé » de
+        # `pricing.compute_cashflow_payback` (ERR-QAC-PAYBACK-JAMAIS-
+        # REMBOURSE-25-ANS) et le plancher à 0 du HT net de
+        # `_canonical_totaux` (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF).
+        ("PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing`",
+         "COMPORTEMENT"),
+        ("REMISE-100-NEGATIF — HT net borné à 0 (miroir de", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.injection.test.mjs": [
         ("Valeurs", "TEST")],
     # QJR402 (02/09/2026) — fichier de test : il CITE la regle QF9 du noyau

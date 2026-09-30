@@ -2,11 +2,10 @@
 // ni son total ni ses prix : le TTC unitaire d'un prix PERSISTÉ est gardé au
 // centime (`ttcExactFromHt`), et `htFromTtc` retrouve le HT d'origine.
 // Run : node --test src/features/ventes/solar.editionPrixExact.test.mjs
+// Le mappeur `?edit=` est EXÉCUTÉ (QJR239, aucune lecture de source) par
+// `pages/ventes/DevisGeneratorEditionLead.test.jsx`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import {
   ttcExactFromHt, ttcFromHt, htFromTtc, totauxCanoniquesTtc,
 } from './solar.js'
@@ -38,11 +37,4 @@ test("le total rouvert égale le total du devis (l'arrondi au dirham le décalai
   assert.equal(rouvert(ttcExactFromHt), attendu)
   // Témoin : l'ancienne conversion au dirham décale le total.
   assert.notEqual(rouvert(ttcFromHt), attendu)
-})
-
-test('le mappeur ?edit= reconvertit au centime, jamais au dirham', () => {
-  const HERE = dirname(fileURLToPath(import.meta.url))
-  const SRC = readFileSync(join(HERE, '../../pages/ventes/DevisGenerator.jsx'), 'utf8')
-  assert.match(SRC, /prix_unit_ttc: String\(ttcExactFromHt\(l\.prix_unitaire \|\| 0, l\.taux_tva \?\? d\.taux_tva\)\)/)
-  assert.doesNotMatch(SRC, /ttcFromHt\(l\.prix_unitaire \|\| 0/)
 })
