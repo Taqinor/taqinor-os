@@ -3372,8 +3372,12 @@ def kpis_factures(qs):
     # le seul endroit qui sait ce que « reste dû » veut dire (avoirs, notes de
     # débit, retenues subies, abandon de créance). Le queryset est borné aux
     # factures VIVANTES et porte le préfetch complet (AUD158/AUD159).
+    # ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture PAYÉE est soldée pour
+    # l'écran (Dû 0, hors « Total dû ») même si un marquage sec a laissé un
+    # reste théorique : elle sort de l'encours comme annulées et brouillons.
     ouvertes = (qs.exclude(statut__in=[Facture.Statut.ANNULEE,
-                                       Facture.Statut.BROUILLON])
+                                       Facture.Statut.BROUILLON,
+                                       Facture.Statut.PAYEE])
                   .prefetch_related('lignes', 'paiements', 'avoirs',
                                     'notes_debit', 'retenues_subies',
                                     'affectations_paiement__paiement'))
@@ -3388,7 +3392,10 @@ def kpis_factures(qs):
             continue
         nb_impayees += 1
         total_du += du
-        if facture.jours_retard > 0:
+        # Une facture au statut « En retard » compte même sans échéance : la
+        # tuile doit dire ce que les lignes affichent (ERR-QAH-VENTES-…-KPI).
+        if (facture.jours_retard > 0
+                or facture.statut == Facture.Statut.EN_RETARD):
             nb_en_retard += 1
             total_en_retard += du
         elif (facture.date_echeance
