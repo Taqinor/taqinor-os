@@ -120,9 +120,9 @@ Généré par `python scripts/check_money_fields.py --decimal-places`. Tableau d
 | `backend/django_core/apps/ventes/models.py:1957` | PaymentLink.montant | 12 | 2 |
 | `backend/django_core/apps/ventes/models.py:2330` | DevisPreset.taux_tva | 5 | 2 |
 | `backend/django_core/apps/ventes/models.py:2334` | DevisPreset.remise_globale | 5 | 2 |
-| `backend/django_core/apps/ventes/models.py:2827` | RemiseEncaissement.montant_declare | 12 | 2 |
-| `backend/django_core/apps/ventes/models.py:3054` | LignePrixListe.prix_unitaire | 10 | 2 |
-| `backend/django_core/apps/ventes/models.py:3158` | PalierRemiseVolume.remise_pct | 5 | 2 |
+| `backend/django_core/apps/ventes/models.py:2831` | RemiseEncaissement.montant_declare | 12 | 2 |
+| `backend/django_core/apps/ventes/models.py:3058` | LignePrixListe.prix_unitaire | 10 | 2 |
+| `backend/django_core/apps/ventes/models.py:3162` | PalierRemiseVolume.remise_pct | 5 | 2 |
 | `backend/django_core/apps/ventes/models_regulatory.py:280` | SubventionDossier.montant_demande | 12 | 2 |
 | `backend/django_core/apps/ventes/models_regulatory.py:283` | SubventionDossier.montant_accorde | 12 | 2 |
 | `backend/django_core/core/models.py:1139` | MatriceApprobation.montant_min | 14 | 2 |
