@@ -520,6 +520,14 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
         if ttc and kwc:
             c.mettre("prix_kwc", ttc / kwc, opt)
 
+    # Couverture PAR OPTION calculée par le moteur horaire (fraction 0..1) :
+    # celle que l'écran du générateur affiche (« Taux de couverture (sans) »)
+    # et que le donut du PDF reprend pour son option (COUV-HOR).
+    for opt in OPTIONS:
+        v = _num(quote.get(f"couverture_{opt}"))
+        if v is not None and 0 < v <= 1:
+            c.mettre("couverture_pct", v * 100, opt)
+
     eco_opt = option_economique(quote)
     c.mettre("reduction_facture_pct", payload.get("pct_cut"), eco_opt,
              zero_ok=True)
