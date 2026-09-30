@@ -1552,7 +1552,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # condition sous laquelle son filtre d'option s'applique.
     _deux_options_structurel = deux_options
 
-    if sans_ok and avec_ok and not deux_options:
+    # ── MONO-OPTION À LIGNES VARIANTÉES (30/09/2026) — MÊME REMÈDE QUE PV86 ──
+    # ``LigneDevis.variante`` n'a de sens que sur un devis à DEUX options. Un
+    # devis redevenu mono-option qui garde ses étiquettes (le vendeur retire
+    # l'onduleur réseau, ou l'onduleur de l'option « avec » passe en ligne
+    # optionnelle) est rendu par le noyau comme un devis mono-option ordinaire :
+    # ``utils.options.option_effective`` rend '' et ``option_lines`` facture
+    # TOUTES ses lignes. Ici, le panier de l'option servie était filtré par
+    # variante : les lignes étiquetées de l'AUTRE option disparaissaient du
+    # document tout en restant facturées — deux prix pour la même vente
+    # (DEV-202609-0006 : 23 766 MAD TTC au PDF, 86 269,87 à l'ERP). QJR300 / D12
+    # tranchent la direction : le PDF s'aligne sur le noyau, les lignes du
+    # vendeur sont souveraines. Ce devis prend donc la présentation de
+    # l'artefact PV86 — toutes ses lignes, étiquette suivant la batterie réelle —
+    # et le vendeur est averti (en INTERNE) qu'il doit assainir ses lignes.
+    # Z1 (hybride seul) rendait déjà toutes les lignes : ce chemin y est un
+    # no-op. Un devis SANS ligne variantée ne passe jamais ici.
+    _mono_a_lignes_variantees = bool(_variantes_declarees and not deux_options)
+    if _mono_a_lignes_variantees:
+        avertissements_internes.append(
+            "lignes variantées (« sans »/« avec ») sur un devis à option "
+            "unique — toutes les lignes sont chiffrées ensemble, comme le "
+            "noyau les facture ; composition à vérifier")
+
+    _artefact_deux_onduleurs = bool(sans_ok and avec_ok and not deux_options)
+    if _artefact_deux_onduleurs or _mono_a_lignes_variantees:
         # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
         # est TOUTES les lignes du devis — donc dont le total EST le total du
         # devis, à l'écran comme au PDF. Les deux paniers portent la même
@@ -1569,9 +1593,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         avec_lignes = list(lignes)
         sans_ok = not _batterie_reelle
         avec_ok = bool(_batterie_reelle)
-        avertissements_internes.append(
-            "deux onduleurs non optionnels — devis à assainir par "
-            "resynchronisation")
+        if _artefact_deux_onduleurs:
+            avertissements_internes.append(
+                "deux onduleurs non optionnels — devis à assainir par "
+                "resynchronisation")
 
     # ── QJR300 — QF9 S'APPLIQUE ICI, ET SEULEMENT DANS LE CAS DEUX-OPTIONS ───
     # ``deux_options`` est ici la valeur « VRAIES options » (avant tout
