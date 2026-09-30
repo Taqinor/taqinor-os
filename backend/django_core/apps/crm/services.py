@@ -1699,9 +1699,12 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # juste en dessous (l'étape du funnel).
     # PARAM-CADENCE — reconnue par sa CLÉ (``devis``) : une société qui la
     # renomme « Faire le devis » garde « Fait » sans issue = devis parti.
-    touche_envoi_devis = (
-        etape.cadence == 'generique' and not (outcome or '')
-        and est_etape(etape, CLE_DEVIS))
+    # SUIVI E13 (30/09/2026) — « Préparer le devis modifié — rappeler le
+    # client » cochée FAITE sans issue vaut « devis parti », exactement comme
+    # l'étape devis : c'est le devis MODIFIÉ qui part.
+    touche_envoi_devis = not (outcome or '') and (
+        (etape.cadence == 'generique' and est_etape(etape, CLE_DEVIS))
+        or est_etape(etape, CLE_DEVIS_MODIFIE))
     # SUIVI E7 (30/09/2026) — « devis parti » seulement quand l'étape est
     # COCHÉE FAITE : une étape devis SAUTÉE n'a rien envoyé. Avant, le saut
     # passait `brouillon_compris` au filet et DÉMARRAIT le suivi de
@@ -1818,7 +1821,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
             # modifié, planifier) ne DÉMARRE jamais le suivi de proposition :
             # « Client joint » sur un débrief relançait tout le plan depuis
             # « Le PDF s'ouvre bien ? ». Le poursuivre reste permis (CAD1).
-            demarrer_plan=not est_etape_de_visite(etape))
+            # SUIVI E13 — sauf « devis modifié envoyé » : un devis part, son
+            # suivi démarre (ou se poursuit).
+            demarrer_plan=devis_parti or not est_etape_de_visite(etape))
     return etape
 
 

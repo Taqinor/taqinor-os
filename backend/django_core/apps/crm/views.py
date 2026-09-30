@@ -3667,10 +3667,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # eu lieu, exiger « Joint / Non joint » demanderait l'issue d'un appel
         # qui n'existe pas. L'issue reste obligatoire sur un appel réellement
         # passé — c'est elle qui alimente l'adhérence CKP3.
+        # SUIVI E13 (30/09/2026) — EXCEPTION « Préparer le devis modifié » :
+        # c'est une TÂCHE (comme l'étape devis), son « Fait » sans issue vaut
+        # « devis modifié envoyé ».
+        from .cadence_config import CLE_DEVIS_MODIFIE
         if (statut == RelanceEtape.Statut.FAIT
                 and etape.canal == RelanceEtape.Canal.APPEL
                 and etape.cadence != 'generique'
                 and not outcome
+                and not est_etape(etape, CLE_DEVIS_MODIFIE)
                 and not _message_ouvert_sur_touche(etape)):
             return Response(
                 {'erreurs': {'outcome': MESSAGE_ISSUE_APPEL_OBLIGATOIRE}},

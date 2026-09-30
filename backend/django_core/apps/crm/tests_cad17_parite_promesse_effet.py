@@ -148,6 +148,11 @@ SCENARIOS = (
     Scenario('visite_planifier', 'apres_devis', VISITE_ORDRE_FILET, APPEL,
              VISITE_FILET_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
              famille=A_COTE),
+    # SUIVI E13 — « Préparer le devis modifié », une TÂCHE : « Fait » sans
+    # issue vaut « devis modifié envoyé ».
+    Scenario('visite_devis_modifie', 'apres_devis', VISITE_ORDRE_DEBRIEF,
+             APPEL, VISITE_DEVIS_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
+             famille=A_COTE),
     # Réveils (2 barreaux, posés ensemble) : au Froid, et hors Froid (veille
     # de plus d'un mois basculée en réveil daté, CAD26).
     Scenario('reveil_appel', 'reveil', 1, APPEL, stage=stages.COLD),
@@ -898,7 +903,7 @@ class PariteVisiteTests(PariteBase):
 
     def test_gestes_de_visite(self):
         self._garder('visite_confirmation', 'visite_debrief',
-                     'visite_planifier')
+                     'visite_planifier', 'visite_devis_modifie')
 
 
 class PariteReveilTests(PariteBase):

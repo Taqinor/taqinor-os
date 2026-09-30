@@ -594,11 +594,16 @@ def _codes_a_cote_du_plan(issue, *, visite, cle=''):
     ce qu'elle déclenche dépend de ce qui reste OUVERT à côté d'elle — d'où
     des phrases conditionnelles, vérifiées dans chacune de leurs branches.
     ``cle`` : la clé moteur de la touche (``cadence_config.cle_de``)."""
-    from .cadence_config import CLE_PLANIFIER
+    from .cadence_config import CLE_DEVIS_MODIFIE, CLE_PLANIFIER
     from .services import OUTCOME_VISITE_ACCEPTEE
 
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
+    if issue == '' and cle == CLE_DEVIS_MODIFIE:
+        # SUIVI E13 — « Devis modifié envoyé » : exactement l'étape devis,
+        # le dossier passe « Devis envoyé » et son suivi démarre (ou se
+        # poursuit).
+        return [SUIVI_PROPOSITION_DEMARRE]
     if issue == 'non_joint' and cle == CLE_PLANIFIER:
         # SUIVI E12 — le client a accepté la visite : on réessaie de caler
         # la date demain, jamais le devis à la place.
