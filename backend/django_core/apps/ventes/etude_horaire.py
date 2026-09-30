@@ -77,7 +77,6 @@ from apps.parametres.pvgis_profils import (
     JOURS_PAR_MOIS,
     MOIS_PAR_SAISON,
     SAISONS,
-    moyenne_journaliere_saison,
     productible_mensuel,
     profil_production_journalier,
     vers_heure_locale,
@@ -89,6 +88,7 @@ from apps.ventes.courbes_journalieres import (
     equipements_du_devis,
     forme_consommation_detaillee,
     occupation_du_devis,
+    production_par_saison,
     profil_suppose,
     renormalisation_redistribution,
 )
@@ -1730,7 +1730,7 @@ def production_annuelle_pour_kwc(kwc, *, ville=None, lat=None, lon=None):
 
 def production_journaliere_par_saison(kwc, *, ville=None, lat=None, lon=None):
     """PACT10 (« deux optimiseurs ») — bloc production PAR SAISON pour un
-    ``kwc`` DONNÉ, MÊME FORME que ``courbes_journalieres._production`` (celle
+    ``kwc`` DONNÉ, MÊME FORME que ``courbes_journalieres.production_par_saison`` (celle
     déjà servie sous ``payload.courbes_journalieres.production``) : chaque
     saison porte ``forme`` (24 parts, heure locale, somme 1,0), ``kwh_jour``,
     ``pic_kw`` (puissance, jamais des kWh) et ses deux ``source*``.
@@ -1751,29 +1751,8 @@ def production_journaliere_par_saison(kwc, *, ville=None, lat=None, lon=None):
         mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
         if not mensuel:
             return {}
-        valeurs, source_mensuel = mensuel
-        out = {}
-        for saison in SAISONS:
-            resolu = profil_production_journalier(
-                saison=saison, lat=lat, lon=lon, ville=ville)
-            if not resolu:
-                continue
-            forme_utc, source_forme = resolu
-            forme = vers_heure_locale(forme_utc)
-            if not forme:
-                continue
-            kwh_kwc_jour = moyenne_journaliere_saison(valeurs, saison)
-            if kwh_kwc_jour is None:
-                continue
-            kwh_jour = kwh_kwc_jour * kwc_f
-            out[saison] = {
-                'forme': forme,
-                'kwh_jour': round(kwh_jour, 1),
-                'pic_kw': round(kwh_jour * max(forme), 2),
-                'source': source_forme,
-                'source_productible': source_mensuel,
-            }
-        return out
+        # QJR611 — une seule boucle : on délègue à courbes_journalieres.
+        return production_par_saison(kwc_f, mensuel, ville, lat, lon)
     except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais
         logger.warning(
             'production_journaliere_par_saison indisponible', exc_info=True)
