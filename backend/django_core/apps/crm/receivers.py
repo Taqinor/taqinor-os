@@ -206,6 +206,25 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         barreaux_ouverts = lead.relance_etapes.filter(
             cadence='apres_devis', statut='a_faire').exclude(q_visite())
         deja = barreaux_ouverts.exclude(devis_id=devis.pk).first()
+        # QJR561 — la RÉVISION envoyée reprend le suivi de la version qu'elle
+        # remplace : les barreaux ouverts des prédécesseurs (sélecteur ventes,
+        # jamais ses modèles) sont RE-POINTÉS sur ce devis, sans redater. La
+        # branche « aucune seconde série » reste pour un AUTRE devis du lead.
+        if deja is not None and deja.devis_id:
+            from apps.ventes.selectors import (
+                devis_predecesseurs_revision_ids)
+            predecesseurs = devis_predecesseurs_revision_ids(devis)
+            if deja.devis_id in predecesseurs:
+                barreaux_ouverts.filter(
+                    devis_id__in=predecesseurs).update(devis_id=devis.pk)
+                LeadActivity.objects.create(
+                    company=lead.company, lead=lead, user=user,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=('Suivi repris sur la révision '
+                          f'{getattr(devis, "reference", "") or "?"}.'))
+                deja = barreaux_ouverts.exclude(devis_id=devis.pk).first()
+                if deja is None:
+                    return
         if deja is not None:
             reference = getattr(deja.devis, 'reference', '') or '?'
             LeadActivity.objects.create(
