@@ -506,6 +506,48 @@ def _taux_libelle(taux) -> str:
     return f"{t:g}".replace(".", ",")
 
 
+def date_correction_apres_envoi(devis) -> str:
+    """QJR628 — « JJ/MM/AAAA » de la dernière correction après envoi, sinon ''.
+
+    SEULE source : ``etude_params['resync_apres_envoi']['date']`` (posée par
+    ``domain.modifiabilite.consigner_correction_apres_envoi``, QJR518). Deux
+    sources INTERDITES : ``Devis.version`` (partagé avec variantes et gammes)
+    et ``updated_at`` (auto_now — bouge à chaque sauvegarde)."""
+    import datetime as _dt
+
+    marque = (getattr(devis, "etude_params", None) or {}).get(
+        "resync_apres_envoi")
+    if not isinstance(marque, dict):
+        return ""
+    brut = marque.get("date")
+    if not brut:
+        return ""
+    try:
+        quand = _dt.datetime.fromisoformat(str(brut))
+    except (TypeError, ValueError):
+        return ""
+    if quand.tzinfo is not None:
+        from django.utils import timezone as _tz
+        quand = _tz.localtime(quand)
+    return quand.strftime("%d/%m/%Y")
+
+
+def reference_remplacee(devis) -> str:
+    """QJR628 — la référence du devis que CELUI-CI remplace (révision), sinon ''.
+
+    Relation inverse ``remplace`` de ``Devis.superseded_by`` : le prédécesseur
+    dont ``superseded_by`` pointe ce devis. Une variante de taille (même
+    ``version`` > 1, aucun prédécesseur remplacé) n'imprime rien."""
+    if getattr(devis, "pk", None) is None:
+        return ""
+    try:
+        ref = (devis.remplace.order_by("-id")
+               .values_list("reference", flat=True).first())
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        return ""
+    return ref or ""
+
+
 def tva_note_des_lignes(lignes, taux_defaut) -> str:
     """QJR626 — la mention TVA du PDF, dérivée des taux RÉELS des lignes.
 
@@ -3266,6 +3308,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     data = {
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),
+        # QJR628 — marquage de correction : « Document mis à jour le … »
+        # (correction après envoi, D-QJR5-1) et « Remplace le devis … »
+        # (révision). '' = rien à imprimer (octet-identique).
+        "mis_a_jour_le": date_correction_apres_envoi(devis),
+        "remplace_reference": reference_remplacee(devis),
         "client_name": client_name or "Client",
         # QRES39 — vraie toiture du client (pièce jointe image du devis dont
         # le nom évoque la toiture) ; '' → schéma illustratif.

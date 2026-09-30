@@ -209,6 +209,9 @@ CLIENT_ICE   = ""
 WATERMARK_STANDARD = None
 REF          = ""
 DATE_STR     = ""
+# QJR628 — « Document mis à jour le … » / « Remplace le devis … » ('' = rien).
+MIS_A_JOUR_LE = ""
+REMPLACE_REF  = ""
 KWC          = 0.0
 NB_PAN       = 0
 WP           = 0
@@ -1076,6 +1079,20 @@ def _filigrane_suffixe():
     if not WATERMARK_STANDARD:
         return ""
     return f" &nbsp;|&nbsp; {WATERMARK_STANDARD}"
+
+
+def _marques_correction_html(style):
+    """QJR628 — « Document mis à jour le … » / « Remplace le devis … » sous la
+    date d'en-tête ; '' quand le devis n'a été ni corrigé après envoi ni
+    révisé (octet-identique)."""
+    out = ""
+    if MIS_A_JOUR_LE:
+        out += (f'<div style="{style}">Document mis &#224; jour le '
+                f'{MIS_A_JOUR_LE}</div>')
+    if REMPLACE_REF:
+        out += f'<div style="{style}">Remplace le devis {REMPLACE_REF}</div>'
+    return out
+
 
 def footer_p1():
     """Page 1 footer — white background."""
@@ -2005,6 +2022,7 @@ def page1():
         <div style="font-size:7pt;color:{CG4};margin-bottom:1px;">R&#233;f&#233;rence devis</div>
         <div class="serif" style="font-size:17.5pt;font-weight:400;color:{CA};line-height:0.90;letter-spacing:-1px;">N&#176;&nbsp;{REF}</div>
         <div style="font-size:8.5pt;color:rgba(255,255,255,0.82);margin-top:5px;">{DATE_STR}</div>
+        {_marques_correction_html("font-size:7pt;color:rgba(255,255,255,0.82);margin-top:2px;")}
         <div style="margin-top:5px;display:inline-block;background:{CA};color:{CN};border-radius:5px;padding:3px 10px;font-size:6.5pt;font-weight:700;">{_doc_text("validite_badge_p1")}</div>
       </div>
 
@@ -3640,7 +3658,10 @@ def _onepage_header_html():
         f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
         f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
         f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
-        f'margin-top:2px;">{DATE_STR}</div></div>')
+        f'margin-top:2px;">{DATE_STR}</div>'
+        + _marques_correction_html(
+            'color:rgba(255,255,255,0.6);font-size:6.5pt;margin-top:1px;')
+        + '</div>')
     if not qr:
         return (
             f'<div style="background:{CN};padding:14px 24px;display:table;'
@@ -4255,6 +4276,7 @@ def apply_quote_data(data: dict) -> None:
     les données de deux devis dans un même document.
     """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
+    global MIS_A_JOUR_LE, REMPLACE_REF
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
     global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
@@ -4317,6 +4339,8 @@ def apply_quote_data(data: dict) -> None:
     CLIENT_ICE   = _esc(data.get("client_ice", ""))
     REF          = str(data["ref"])
     DATE_STR     = data["date"]
+    MIS_A_JOUR_LE = _esc(data.get("mis_a_jour_le") or "")
+    REMPLACE_REF  = _esc(data.get("remplace_reference") or "")
     # M2/M3 — puissance, compte de panneaux et watt unitaire peuvent être
     # INCONNUS (None) : ils ne sont plus jamais déduits du prix. 0 = « rien à
     # imprimer », et chaque vignette qui en dépend est omise.

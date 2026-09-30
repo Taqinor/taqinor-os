@@ -45,6 +45,10 @@ def build(ctx):
 
     ref = d["ref"]
     date = d["date"]
+    # QJR628 — correction après envoi / révision : le builder décide.
+    marques_correction = "".join(
+        f'<div class="c1c-hd">{m}</div>'
+        for m in theme.marques_correction(d))
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
     client_meta = theme.join_meta(d.get("client_addr", ""), d.get("client_city", ""),
                                   d.get("client_phone", ""))
@@ -166,6 +170,7 @@ def build(ctx):
         <div class="c1c-rl">Réf. devis</div>
         <div class="c1c-rv">{ref}</div>
         <div class="c1c-hd">{date}</div>
+        {marques_correction}
         {validity_pill}
       </div>
     </div>
