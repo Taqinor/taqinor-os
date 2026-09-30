@@ -3725,7 +3725,10 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             etape, _nouvelle = repondre_planifier_sans_reponse(
                 etape, request.user, note=note, body=body)
             if quand is not None:
-                reporter_prochaine_touche(etape.lead, request.user, quand)
+                # COCKPIT-CONTRÔLE — la date PLACE l'étape que la réponse
+                # vient de reposer : ce n'est pas un report (rien de compté).
+                reporter_prochaine_touche(etape.lead, request.user, quand,
+                                          compter_report=False)
             return self._reponse_fait(etape)
         # SUIVI E10 (30/09/2026) — « Créneau convenu le… » sur l'étape
         # « Message — proposer un créneau pour l'appel » : le créneau convenu
@@ -3809,7 +3812,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             from .services import marquer_lead_perdu_junk
             marquer_lead_perdu_junk(etape.lead, request.user, motif_junk)
         if quand is not None:
-            reporter_prochaine_touche(etape.lead, request.user, quand)
+            # COCKPIT-CONTRÔLE — la touche est CLOSE ; la date place la
+            # touche qui lui succède (« touche suivante à la date ») : un
+            # placement, jamais un report compté (seul un geste qui GARDE
+            # l'étape en est un — branche CAD3/E3 plus haut, action
+            # ``reporter``).
+            reporter_prochaine_touche(etape.lead, request.user, quand,
+                                      compter_report=False)
         return self._reponse_fait(etape)
 
     def _reponse_fait(self, etape):
