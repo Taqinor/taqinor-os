@@ -1792,6 +1792,62 @@ def renouveler_devis(devis, *, user=None):
     return nouveau
 
 
+class RevisionError(Exception):
+    """QJR521 — une révision refusée (déjà remplacé, brouillon) → 409."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def reviser_devis(devis, *, user=None):
+    """QJR521 — « Réviser » : LE service de domaine qui crée la V+1.
+
+    Une seule V+1, jamais de fourche, jamais de réactivation :
+      * ``transaction.atomic`` + relecture ``select_for_update(of=('self',))``
+        — un double clic ou un second vendeur attend le premier, puis lit
+        ``is_active=False`` et reçoit 409 « Déjà remplacé par <ref> » ;
+      * BROUILLON → 409 « Un brouillon se modifie directement » ; envoyé,
+        accepté, refusé, expiré sont révisables (D-QJR5-2) ;
+      * ``cloner_devis`` PUIS ``is_active`` / ``superseded_by`` DANS la même
+        transaction : un incident entre les deux ne laisse plus v1 active à
+        côté d'un brouillon v2 orphelin ;
+      * chatter v1 « Remplacé par <ref v2> (révision) » et v2 « Révision de
+        <ref v1> ».
+    Le statut de v1 n'est JAMAIS écrit (règle #4) — seuls ``is_active`` et
+    ``superseded_by`` bougent. Renvoie la nouvelle version."""
+    from django.db import transaction
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from apps.ventes.domain.creation import cloner_devis
+
+    with transaction.atomic():
+        old = (Devis.objects.select_for_update(of=('self',))
+               .get(pk=devis.pk))
+        if not old.is_active:
+            ref = (Devis.objects.filter(pk=old.superseded_by_id)
+                   .values_list('reference', flat=True).first()
+                   if old.superseded_by_id else None)
+            raise RevisionError(
+                f'Déjà remplacé par {ref}.' if ref
+                else 'Ce devis est archivé : il ne se révise plus.')
+        if old.statut == Devis.Statut.BROUILLON:
+            raise RevisionError(
+                'Un brouillon se modifie directement (pas de révision).')
+        nd = cloner_devis(
+            old, user=user, note=old.note,
+            version=old.version + 1,
+            version_parent=old.version_parent or old)
+        old.is_active = False
+        old.superseded_by = nd
+        old.save(update_fields=['is_active', 'superseded_by'])
+        activity.log_devis_note(
+            old, user, f'Remplacé par {nd.reference} (révision).')
+        activity.log_devis_note(
+            nd, user, f'Révision de {old.reference}.')
+    return nd
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 

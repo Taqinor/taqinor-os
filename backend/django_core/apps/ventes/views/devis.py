@@ -1953,27 +1953,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         clone les lignes et repart en brouillon ; l'ancienne devient inactive et
         pointe vers sa remplaçante (lecture seule côté UI). Les liens lead/client
         et le schéma de numérotation sont préservés. Additif, sans perte."""
+        # QJR521 — le corps inline (cloner_devis puis save HORS transaction :
+        # fourche au double clic, v1 active à côté d'un brouillon orphelin)
+        # est remplacé par LE service de domaine verrouillé. QJR407 (cloneur
+        # unique, sept champs, lignes QJR224/QJR84) vit dans ``cloner_devis``,
+        # appelé par ``reviser_devis``.
+        from ..domain.cycle_vie import RevisionError, reviser_devis
         old = self.get_object()
-        # ── QJR407 (S5-1 / S5-2 / S5-4) — LE CLONEUR DU DOMAINE ─────────────
-        # Cette vue réimplémentait ``Devis.objects.create(...)`` et OMETTAIT
-        # les sept champs que le cloneur porte depuis QJR146(a) : ``devise``,
-        # ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
-        # ``entite``, ``custom_data``. Une révision perdait donc l'échéancier
-        # NÉGOCIÉ et l'acompte du devis d'origine. Elle assignait en outre
-        # ``etude_params`` PAR RÉFÉRENCE (aliasing, S5-2) et créait le devis
-        # HORS transaction avant de cloner ses lignes (S5-4). La
-        # réimplémentation est SUPPRIMÉE (règle permanente 2) ; le clonage des
-        # LIGNES reste celui de QJR224 (``cloner_lignes``, appelé par le
-        # cloneur) — QJR84 compris : une RÉVISION repart du devis TEL QU'IL
-        # EST, marqueurs de saisie manuelle (D12) compris.
-        from ..domain.creation import cloner_devis
-        nd = cloner_devis(
-            old, user=request.user, note=old.note,
-            version=old.version + 1,
-            version_parent=old.version_parent or old)
-        old.is_active = False
-        old.superseded_by = nd
-        old.save(update_fields=['is_active', 'superseded_by'])
+        try:
+            nd = reviser_devis(old, user=request.user)
+        except RevisionError as exc:
+            return Response({'detail': exc.message},
+                            status=status.HTTP_409_CONFLICT)
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -2904,6 +2895,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # « superseded », is_active=False) — la voie de modification reste
         # `reviser` (clone en V+1 éditable), jamais un PATCH direct.
         instance = serializer.instance
+        # QJR521 — ``is_active`` RESTE écrivable (désactivation seule,
+        # test_ydocf2) mais un devis remplacé ou archivé ne se RÉACTIVE
+        # jamais (False → True) : ce serait une seconde version active.
+        if (instance.is_active is False
+                and serializer.validated_data.get('is_active') is True):
+            raise ValidationError({
+                'is_active': 'Un devis remplacé ou archivé ne se réactive '
+                             'pas.'})
         FROZEN = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE, Devis.Statut.EXPIRE}
         if instance.statut in FROZEN:
             nouveau_is_active = serializer.validated_data.get(
