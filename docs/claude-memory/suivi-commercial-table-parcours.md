@@ -25,6 +25,13 @@ a PDF in my documentation module… test all the steps or make a testing script 
   visite » est posée ; Annuler → rien n'est envoyé.
 - Une touche traitée s'annule pendant 24 h (`ANNULATION_TOUCHE_HEURES`) ; « Perdu » est toujours un choix
   humain avec motif, jamais un effet de bord.
+- **Quatre décisions fondateur du 30/09/2026 (tranchées, ne jamais re-demander)** : (1) dernière touche du
+  suivi de proposition + client joint (ou « décision à plusieurs ») → « Décider la suite » le lendemain,
+  jamais l'étape devis ; (2) dernière touche de la prise de contact (et de la deuxième affaire, et du suivi)
+  + « À rappeler le… » → « Rappeler le client — rappel convenu » à la date et à l'heure convenues ; (3) réveil
+  + « Refus » → le dossier reste au Froid ; (4) **deuxième affaire** (client déjà signé qui revient) : dernière
+  relance sans réponse → Froid + réveils, comme la prise de contact, étiquette « Deuxième affaire sans
+  réponse » (`tests_suivi_e26_deuxieme_affaire_froid.py`).
 
 Pourquoi ici : trois surfaces (écran, test, guide) qui divergeaient ont bloqué Meryem après le script
 d'appel ; la table unique est le contrat qui les tient ensemble.
