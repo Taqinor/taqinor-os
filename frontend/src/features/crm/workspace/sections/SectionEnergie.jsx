@@ -6,6 +6,7 @@ import { jumpToField } from '../jumpToField'
 // texte (le script d'appel guidé), partagée par la fiche et le panneau.
 import { NON_COMPTE_PLAQUE, NON_COMPTE_TRANCHE_ONEE } from '../../relances/appelGuidance'
 import { ChampSite } from './SectionDivers'
+import { enumOptions } from './enumOptions'
 
 // CAD157 — une valeur de grandeur réellement saisie (0 compris : c'est une
 // réponse, pas un silence ; `''`/null = rien de saisi).
@@ -59,11 +60,6 @@ const OCCUPATION_JOUR = {
   absent: 'Absent en journée',
   partiel: 'Présence partielle (télétravail/mi-temps)',
 }
-
-const enumOptions = (labels) => [
-  <option key="" value="">—</option>,
-  ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
-]
 
 // LW11 — Profil énergétique : facture hiver/été (la saisie facture inline
 // devient le champ normal — l'autosauvegarde rend le raccourci redondant,
