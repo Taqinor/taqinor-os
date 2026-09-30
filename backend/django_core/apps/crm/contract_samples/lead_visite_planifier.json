@@ -1,6 +1,6 @@
 {
   "endpoint": "POST /api/django/crm/leads/<id>/visites/planifier/",
-  "pourquoi": "VISITE-CADENCE : POSER le rendez-vous depuis la fiche lead (la visite se propose apres l'envoi du devis, comme outil de closing). Corps : {date_prevue: 'AAAA-MM-JJ', commercial?: <id utilisateur>, notes?: <texte>}. Reponse 201 portant la MEME ligne que l'onglet « Visites » — l'ecran n'a donc aucune forme a reconstituer apres l'appel. Les effets de bord (cadence apres-devis suspendue, deux gestes du rendez-vous poses, chatter, notification a l'assigne) naissent de l'evenement `visite_planifiee`, jamais de la reponse.",
+  "pourquoi": "VISITE-CADENCE : POSER le rendez-vous depuis la fiche lead (la visite se propose apres l'envoi du devis, comme outil de closing). Corps : {date_prevue: 'AAAA-MM-JJ', commercial?: <id utilisateur>, notes?: <texte>, replanifier?: <bool>, etape?: <id RelanceEtape de CE lead>, note_etape?: <texte>}. Reponse 201 portant la MEME ligne que l'onglet « Visites » — l'ecran n'a donc aucune forme a reconstituer apres l'appel — et `prochaine_touche` (SUIVI E18, 30/09/2026 : la prochaine etape a faire du lead, forme E9 {due_at, due_date, canal, libelle, cle}, ou null). Les effets de bord (cadence apres-devis suspendue, deux gestes du rendez-vous poses, chatter, notification a l'assigne) naissent de l'evenement `visite_planifiee`.",
   "exemple": {
     "visite": {
       "id": 13,
@@ -11,6 +11,13 @@
       "commercial_nom": "Youssef Alami",
       "notes": "Portail bleu, sonner chez le gardien.",
       "retour_disponible": false
+    },
+    "prochaine_touche": {
+      "due_at": "2026-09-23T08:00:00Z",
+      "due_date": "2026-09-23",
+      "canal": "whatsapp",
+      "libelle": "Confirmer la visite (veille)",
+      "cle": "confirmation"
     }
   },
   "exemple_erreur_date_passee": {
@@ -22,5 +29,15 @@
     "commercial": [
       "Utilisateur inconnu dans votre société."
     ]
+  },
+  "exemple_erreur_etape": {
+    "etape": [
+      "Étape de relance inconnue sur ce lead."
+    ]
+  },
+  "notes": {
+    "replanifier": "SUIVI E5 — `replanifier: true` DEPLACE le rendez-vous EN ATTENTE du lead (brouillon, jamais commence, date — le plus recent) au lieu d'en creer un second : date, assigne s'il est fourni, notes completees ; l'assigne est prevenu, `visite_planifiee` est publie (la confirmation et le debrief suivent). Aucun rendez-vous en attente : la visite est creee.",
+    "etape": "SUIVI E18 — la touche qui a DEMANDE la planification (une RelanceEtape de CE lead ; sinon 400 `etape` qui le nomme, avant toute ecriture). Apres la planification reussie : encore a faire, elle est close « visite acceptee » avec `note_etape` ; « Confirmer la visite » et « Debrief visite » ouvertes SUIVENT le rendez-vous et restent ouvertes ; deja annulee par la planification (« Planifier la visite », etape devis mise en attente de la visite), elle reste annulee — la note eventuelle part alors dans une ligne de chatter.",
+    "prochaine_touche": "Forme `_prochaine_touche_publique` (SUIVI E9) de la prochaine etape A FAIRE du lead, toutes cadences confondues — ici « Confirmer la visite (veille) » ; null quand plus rien n'est ouvert."
   }
 }

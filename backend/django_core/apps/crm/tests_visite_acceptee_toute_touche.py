@@ -246,11 +246,15 @@ class PromessesTests(SimpleTestCase):
         ordres = frozenset(e['ordre'] for e in CADENCES_DEFAUT[cadence])
         return st.promesses_touche(etape, ordres=ordres)
 
-    def test_proposee_partout_sauf_deuxieme_affaire(self):
-        for cadence in ('contact', 'reveil', 'generique', 'apres_devis'):
+    def test_proposee_partout_deuxieme_affaire_comprise(self):
+        """SUIVI-PARCOURS 30/09/2026 — la table du parcours range la deuxième
+        affaire (la prise de contact d'un client acquis) sous les mêmes types
+        d'étape que la prise de contact : « Visite acceptée » y est proposée
+        aussi (elle était écartée « hors du périmètre » le 24/09)."""
+        for cadence in ('contact', 'reveil', 'generique', 'apres_devis',
+                        'deuxieme_affaire'):
             with self.subTest(cadence=cadence):
                 self.assertIn(VISITE, st.cles_de_reponse(cadence))
-        self.assertNotIn(VISITE, st.cles_de_reponse('deuxieme_affaire'))
 
     def test_prise_de_contact(self):
         self.assertEqual(

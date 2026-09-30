@@ -1050,7 +1050,10 @@ def apercu_remplacement_cadence(lead, cadence, *, devis=None):
             or getattr(lead, 'is_archived', False)):
         return None
     ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
-    meme = ouvertes.filter(cadence=cadence)
+    # SUIVI E1 — même lecture que l'idempotence de `initialiser_plan_relance` :
+    # une étape de VISITE (cadence `apres_devis`, hors protocole) n'est pas un
+    # plan ouvert de cette cadence.
+    meme = ouvertes.filter(cadence=cadence).exclude(q_visite())
     if cadence == 'apres_devis' and devis is not None:
         meme = meme.filter(devis=devis)
     if meme.exists():
@@ -1213,8 +1216,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # l'ENVOI RÉEL du devis restait muet (« déjà créé » → rien d'ouvert) et
     # le filet se re-posait à l'infini. Répare AUSSI « Arrêter la cadence »
     # puis « Relancer » (recette du 08/09), qui butait sur le même mur.
+    # SUIVI E1 (30/09/2026) — seuls les BARREAUX du protocole sont un plan
+    # ouvert : les gestes de VISITE (planifier, confirmer, débrief, devis
+    # modifié) portent la cadence `apres_devis` sans en être. Les compter
+    # rendait l'étape de visite comme « plan déjà en cours » et aucun suivi
+    # de proposition ne démarrait.
     ouvertes_deja = list(
         deja.filter(statut=RelanceEtape.Statut.A_FAIRE)
+        .exclude(q_visite())
         .order_by('ordre', 'due_date'))
     if ouvertes_deja:
         return ouvertes_deja
@@ -1297,8 +1306,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     if cadence == 'reveil':
         _adapter_gabarits_reveil(lead, etapes)
     RelanceEtape.objects.bulk_create(etapes)
+    # SUIVI E1 — les barreaux de CETTE cadence, jamais les gestes de visite
+    # qui partagent sa cadence.
     resultats = list(
-        lead.relance_etapes.filter(cadence=cadence)
+        lead.relance_etapes.filter(cadence=cadence).exclude(q_visite())
         .order_by('ordre', 'due_date'))
     if devis is not None:
         resultats = [e for e in resultats if e.devis_id == devis.pk]
@@ -1603,7 +1614,7 @@ def est_note_de_touche_sautee(activite):
 
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
-                          body='', suite=True):
+                          body='', suite=True, canal_reel=None):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
     silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
@@ -1621,7 +1632,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     de prix » ou « Devis modifié » posent LEUR étape). Ni barreau suivant, ni
     clôture au froid, ni filet d'invariant : ces trois automatismes
     choisiraient une suite contraire à ce que le client vient de dire. La
-    trace (touche close, ligne de chatter, issue) reste identique."""
+    trace (touche close, ligne de chatter, issue) reste identique.
+
+    SUIVI E16 (30/09/2026) — ``canal_reel`` : le canal par lequel la touche
+    a RÉELLEMENT été faite quand il diffère du canal prévu (« Client joint au
+    téléphone » sur une touche message). La ligne de chatter est alors typée
+    selon ce canal réel (un APPEL abouti) : c'est elle que lisent le
+    récepteur d'issue (MRY9 — la suite d'un appel abouti, jamais « il a
+    répondu au message ») et le compteur de tentatives."""
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
@@ -1654,11 +1672,19 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
 
     verbe = ('faite' if statut == RelanceEtape.Statut.FAIT
              else VERBE_TOUCHE_SAUTEE)
+    # SUIVI E16 — le canal RÉEL, quand la touche n'a pas été faite par le
+    # canal prévu (le préfixe RLC2, seul relu ailleurs, ne change pas).
+    canal_reel = (canal_reel or '').strip() or None
+    if canal_reel == etape.canal:
+        canal_reel = None
+    canal_affiche = (f'{RelanceEtape.Canal(canal_reel).label} au lieu de '
+                     f'{etape.get_canal_display()}' if canal_reel
+                     else etape.get_canal_display())
     # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
     # est un RANG dans la cadence et non plus un délai en jours (la touche 2
     # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
     corps = (f'{prefixe_activite_touche(etape)} '
-             f'({etape.get_canal_display()}, cadence '
+             f'({canal_affiche}, cadence '
              f'{etape.cadence}) marquée {verbe}.')
     # CAD44 — une touche faite AVANT son échéance le dit dans le journal (sa
     # date réelle est `traite_le`) ; ce n'est pas une faute d'adhérence.
@@ -1673,7 +1699,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # MRY10 — UNE SEULE ligne de chatter par touche, TYPÉE selon le canal
     # (jamais une note libre en plus d'une activité) : c'est elle que compte
     # le compteur de tentatives et que lisent les règles d'arrêt (MRY9).
-    kind = (_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE)
+    # SUIVI E16 — typée selon le canal RÉEL quand il diffère du prévu.
+    kind = (_CANAL_VERS_KIND.get(canal_reel or etape.canal,
+                                 LeadActivity.Kind.NOTE)
             if statut == RelanceEtape.Statut.FAIT
             else LeadActivity.Kind.NOTE)
     LeadActivity.objects.create(
@@ -1688,14 +1716,24 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # juste en dessous (l'étape du funnel).
     # PARAM-CADENCE — reconnue par sa CLÉ (``devis``) : une société qui la
     # renomme « Faire le devis » garde « Fait » sans issue = devis parti.
-    touche_envoi_devis = (
-        etape.cadence == 'generique' and not (outcome or '')
-        and est_etape(etape, CLE_DEVIS))
+    # SUIVI E13 (30/09/2026) — « Préparer le devis modifié — rappeler le
+    # client » cochée FAITE sans issue vaut « devis parti », exactement comme
+    # l'étape devis : c'est le devis MODIFIÉ qui part.
+    touche_envoi_devis = not (outcome or '') and (
+        (etape.cadence == 'generique' and est_etape(etape, CLE_DEVIS))
+        or est_etape(etape, CLE_DEVIS_MODIFIE))
+    # SUIVI E7 (30/09/2026) — « devis parti » seulement quand l'étape est
+    # COCHÉE FAITE : une étape devis SAUTÉE n'a rien envoyé. Avant, le saut
+    # passait `brouillon_compris` au filet et DÉMARRAIT le suivi de
+    # proposition sans qu'aucun devis ne soit parti ; désormais le filet
+    # applique sa ceinture (on ne re-pose jamais la touche close) et pose
+    # « Décider la suite ».
+    devis_parti = touche_envoi_devis and statut == RelanceEtape.Statut.FAIT
     # QJ-FUNNEL (fondateur 09/09/2026 — « when I do Fait for quote sent, it
     # should be at quote sent ») — cocher FAIT la touche d'envoi place le
     # lead à « Devis envoyé » sur-le-champ, quel que soit le reste du plan
     # (une touche SAUTÉE ne vaut jamais un envoi).
-    if statut == RelanceEtape.Statut.FAIT and touche_envoi_devis:
+    if devis_parti:
         avancer_stage_devis_envoye_sur_touche(lead, user)
     # CKP2 — LA CADENCE RÉACTIVE : la touche suivante du protocole naît ICI,
     # de l'issue qu'on vient de saisir, et nulle part ailleurs.
@@ -1785,9 +1823,10 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         # démarre le suivi de proposition sur un devis resté brouillon (cas
         # AR). Toute autre touche laissée sans suite reçoit une étape
         # générique — le suivi de proposition, lui, démarre à l'ENVOI.
-        # (Détection hissée en tête de fonction — `touche_envoi_devis`.)
+        # (Détection hissée en tête de fonction — `devis_parti`, SUIVI E7 :
+        # une étape devis SAUTÉE ne vaut jamais « devis parti ».)
         assurer_prochaine_etape_apres_succes(
-            lead, user, brouillon_compris=touche_envoi_devis,
+            lead, user, brouillon_compris=devis_parti,
             libelle_touche_close=(etape.libelle or ''),
             # PARAM-CADENCE — la CLÉ de la touche close voyage avec elle : la
             # ceinture et l'escalier la lisent, jamais le libellé.
@@ -1799,7 +1838,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
             # modifié, planifier) ne DÉMARRE jamais le suivi de proposition :
             # « Client joint » sur un débrief relançait tout le plan depuis
             # « Le PDF s'ouvre bien ? ». Le poursuivre reste permis (CAD1).
-            demarrer_plan=not est_etape_de_visite(etape))
+            # SUIVI E13 — sauf « devis modifié envoyé » : un devis part, son
+            # suivi démarre (ou se poursuit).
+            demarrer_plan=devis_parti or not est_etape_de_visite(etape))
     return etape
 
 
@@ -2130,6 +2171,10 @@ _CLOTURE_PLAFOND = {
     'apres_devis': stages.FOLLOW_UP,
 }
 
+#: SUIVI E19 — le motif écrit sur une étape de filet annulée parce que le
+#: dossier part au parking Froid (``cloturer_cadence``).
+MOTIF_PARQUE_AU_FROID = 'dossier parqué au Froid'
+
 
 def cloturer_cadence(lead, user, cadence):
     """MRY11 — Fin de cadence : dormance COLD, étiquette, réveils J30/J60.
@@ -2170,6 +2215,16 @@ def cloturer_cadence(lead, user, cadence):
         tag = _CLOTURE_TAGS.get(cadence)
         if tag:
             poser_tag_lead(lead, user, tag)
+        # SUIVI E19 (30/09/2026) — une étape de FILET encore ouverte (cadence
+        # ``generique`` : « Appeler le client », « Question de prix »,
+        # « Rappeler le client (il l'a demandé) »…) BLOQUAIT les réveils :
+        # ``initialiser_plan_relance`` levait ``CadenceActiveConflit`` (une
+        # seule cadence à la fois, CADX), avalé plus bas — et le lead restait
+        # au Froid SANS aucun réveil. Le dossier est parqué : ces étapes
+        # n'ont plus d'objet, elles sont annulées (statut moteur, motif
+        # tracé) AVANT de poser les réveils.
+        arreter_cadence(lead, user=user, motif=MOTIF_PARQUE_AU_FROID,
+                        cadences=['generique'])
         initialiser_plan_relance(
             lead, user, cadence='reveil', depart=timezone.now())
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
@@ -2321,6 +2376,20 @@ def q_etape_moteur():
     """Toute étape posée par le moteur À CÔTÉ du protocole (filet ou
     visite) — jamais un barreau de gabarit de plan."""
     return q_filet() | q_visite()
+
+
+def annuler_etapes_moteur_ouvertes(lead, *cles, note):
+    """SUIVI-PARCOURS — ANNULE (statut moteur CKP1 : ``traite_par`` NULL, le
+    motif dans ``note``) les étapes moteur encore ouvertes de ces CLÉS —
+    reconnues par la clé, ou le libellé par défaut d'une étape posée avant
+    la clé (``q_etape``). Une étape qui a rempli son office n'est jamais
+    « sautée par un humain ». Renvoie le nombre d'étapes annulées."""
+    if not cles:
+        return 0
+    return lead.relance_etapes.filter(
+        q_etape(*cles), statut=RelanceEtape.Statut.A_FAIRE,
+    ).update(statut=RelanceEtape.Statut.ANNULEE, note=(note or '')[:500],
+             traite_par=None, traite_le=timezone.now())
 
 
 def _canal_configure(config):
@@ -2495,6 +2564,12 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         if consomme is not None:
             suite = materialiser_touche_suivante(consomme, user)
             if suite is not None:
+                # SUIVI I6 (30/09/2026) — ``materialiser_touche_suivante`` ne
+                # touche ni ``Lead.relance_date`` ni le Calendrier : l'appelant
+                # (``marquer_etape_relance``) les avait recalés AVANT ce filet,
+                # sur « plus rien d'ouvert ». Sans ce recalage, la touche
+                # reprise était ouverte et ``relance_date`` restait vide.
+                _recaler_file(lead, user)
                 return suite
         elif demarrer_plan:
             etapes = initialiser_plan_relance(
@@ -2502,24 +2577,46 @@ def assurer_prochaine_etape_apres_succes(lead, user,
             ouvertes = [e for e in etapes
                         if e.statut == RelanceEtape.Statut.A_FAIRE]
             if ouvertes:
+                _recaler_file(lead, user)
                 return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
         # CAD2 — idem quand l'appelant interdit le DÉMARRAGE (étape de visite
         # close) : on poursuit, on ne rejoue jamais depuis le barreau 1.
-    elif brouillon_compris:
-        # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP compte
-        # aussi ». Aucun devis dans l'ERP, mais l'humain vient de cocher
-        # « préparer et envoyer le devis » : le suivi de proposition démarre
-        # SANS objet devis (les gabarits vivent très bien sans lui — MRY13
-        # omet toute phrase sans valeur réelle), plutôt que de re-poser le
-        # même filet à l'infini.
-        etapes = initialiser_plan_relance(
-            lead, user, cadence='apres_devis', depart=timezone.now(),
-            devis=None)
-        ouvertes = [e for e in etapes
-                    if e.statut == RelanceEtape.Statut.A_FAIRE]
-        if ouvertes:
-            return ouvertes[0]
+    elif avec_plan_devis:
+        # SUIVI E6 (30/09/2026) — aucun devis relançable dans l'ERP, mais un
+        # suivi de proposition a DÉJÀ servi (devis parti hors ERP,
+        # TREADMILL-1538) : on le POURSUIT depuis son dernier barreau
+        # consommé, exactement comme CAD1 le fait pour un devis de l'ERP.
+        # Sans cela, « Client joint » sur un barreau sans devis posait
+        # « Préparer et envoyer le devis » À CÔTÉ du barreau suivant (deux
+        # touches ouvertes), et clore « Question de prix » re-posait l'étape
+        # devis au lieu de reprendre le suivi. Plan épuisé : l'étape
+        # générique ci-dessous.
+        consomme = (dernier_barreau_consomme(lead, 'apres_devis', None)
+                    if _suivi_de_proposition_existe(lead) else None)
+        if consomme is not None:
+            suite = materialiser_touche_suivante(consomme, user)
+            if suite is not None:
+                # SUIVI I6 — même recalage que la reprise CAD1 ci-dessus.
+                _recaler_file(lead, user)
+                return suite
+        elif brouillon_compris:
+            # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP
+            # compte aussi ». Aucun devis dans l'ERP, mais l'humain vient de
+            # cocher « préparer et envoyer le devis » : le suivi de
+            # proposition démarre SANS objet devis (les gabarits vivent très
+            # bien sans lui — MRY13 omet toute phrase sans valeur réelle),
+            # plutôt que de re-poser le même filet à l'infini. SUIVI E6 —
+            # seulement si AUCUN barreau n'a été consommé : sinon le suivi
+            # est poursuivi (ci-dessus), jamais rejoué depuis le barreau 1.
+            etapes = initialiser_plan_relance(
+                lead, user, cadence='apres_devis', depart=timezone.now(),
+                devis=None)
+            ouvertes = [e for e in etapes
+                        if e.statut == RelanceEtape.Statut.A_FAIRE]
+            if ouvertes:
+                _recaler_file(lead, user)
+                return ouvertes[0]
     # PARAM-CADENCE — l'étape à poser est une CLÉ (défaut : le devis).
     cle = (cle or (cle_de(RelanceEtape(libelle=libelle)) if libelle else '')
            or CLE_DEVIS)
@@ -10003,6 +10100,124 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     return etapes
 
 
+def clore_etape_apres_planification(etape, user, *, note=''):
+    """SUIVI E18 (30/09/2026) — la planification d'une visite CLÔT la touche
+    qui l'a demandée (l'écran n'envoie plus jamais « Fait visite acceptée »
+    AVANT d'avoir planifié).
+
+    Appelée APRÈS la planification réussie (``visite_planifiee`` a déjà recalé
+    le suivi) :
+
+    * la touche est encore À FAIRE → close « visite acceptée » avec
+      ``note`` (``marquer_etape_relance``) : la prise de contact s'arrête, le
+      funnel avance, et le filet « planifier la visite » ne pose rien — un
+      rendez-vous est calé ;
+    * EXCEPTION : « Confirmer la visite » et « Débrief visite » encore
+      ouvertes SUIVENT le rendez-vous (re-planification : la planification
+      vient de les recaler) — elles restent ouvertes ;
+    * la planification l'a déjà annulée (« Planifier la visite », ou l'étape
+      devis mise en attente de la visite) → elle reste annulée.
+
+    Dans les deux derniers cas, la note éventuelle part dans UNE ligne de
+    chatter. Renvoie la touche (relue)."""
+    etape.refresh_from_db()
+    note = str(note or '').strip()
+    if (etape.statut == RelanceEtape.Statut.A_FAIRE
+            and not est_etape(etape, CLE_CONFIRMATION, CLE_DEBRIEF)):
+        return marquer_etape_relance(
+            etape, user, RelanceEtape.Statut.FAIT, note=note,
+            outcome=OUTCOME_VISITE_ACCEPTEE)
+    if note:
+        libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+        activity.log_note(
+            etape.lead, user,
+            f'Visite planifiée depuis l’étape « {libelle} » — note : {note}')
+    return etape
+
+
+def annuler_rendez_vous_du_lead(lead, user, *, motif='',
+                                vider_date_passee=True):
+    """SUIVI E4/E21 (30/09/2026) — le rendez-vous de visite EN ATTENTE du
+    lead est annulé : côté visites par LEUR service
+    (``apps.visites.services.annuler_rendez_vous`` — frontière M3, jamais
+    ``visites.models``), côté fiche ``Lead.visite_prevue_le`` est vidé.
+
+    BEST-EFFORT : un module visites en échec ne bloque jamais le geste
+    commercial qui a demandé l'annulation (il est déjà acté). Avec
+    ``vider_date_passee=False``, une date de visite PASSÉE (la visite a eu
+    lieu, ou non) reste sur la fiche : seul un rendez-vous à venir est une
+    promesse faite au technicien. Renvoie le nombre de rendez-vous annulés
+    dans le module visites."""
+    annules = 0
+    try:
+        from apps.visites.services import annuler_rendez_vous
+
+        annules = annuler_rendez_vous(lead, user, motif=motif)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'SUIVI E21 : rendez-vous de visite non annulé (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
+    jour = getattr(lead, 'visite_prevue_le', None)
+    if jour is not None and (vider_date_passee
+                             or jour >= aujourd_hui_local()):
+        lead.visite_prevue_le = None
+        lead.save(update_fields=['visite_prevue_le'])
+    return annules
+
+
+#: SUIVI E21 — les causes écrites (visite, message au technicien, chatter)
+#: quand un arrêt de tout le suivi annule aussi le rendez-vous.
+CAUSE_RDV_REFUS = 'le client a refusé'
+CAUSE_RDV_NE_PLUS_CONTACTER = 'le client ne veut plus être contacté'
+
+
+def cause_rdv_perdu(motif=''):
+    """SUIVI E21 — la cause d'annulation d'un rendez-vous quand le lead
+    passe PERDU (avec son motif s'il en a un)."""
+    motif = str(motif or '').strip()
+    return f'dossier perdu ({motif})' if motif else 'dossier perdu'
+
+
+def annuler_rendez_vous_sur_arret(lead, user, *, cause):
+    """SUIVI E21 (30/09/2026) — quand TOUT s'arrête (« Refus », « Perdu »,
+    « Ne plus me contacter »), le rendez-vous de visite EN ATTENTE s'annule
+    aussi.
+
+    Avant, les relances s'arrêtaient mais la visite planifiée restait dans le
+    module Visites : le technicien se serait déplacé chez un client qui venait
+    de refuser. Même porte que E4 (``annuler_rendez_vous_du_lead``), avec
+    ``vider_date_passee=False`` : une visite PASSÉE reste sur la fiche, c'est
+    de l'historique. UNE note système le dit — seulement quand un rendez-vous
+    a RÉELLEMENT été annulé (idempotent : un second arrêt ne trouve plus rien
+    et n'écrit rien).
+
+    BEST-EFFORT : ne lève jamais — l'arrêt qui l'a demandé est déjà acté.
+    Renvoie le nombre de rendez-vous annulés dans le module visites."""
+    try:
+        if getattr(lead, 'pk', None):
+            lead.refresh_from_db(fields=['visite_prevue_le'])
+        jour = lead.visite_prevue_le
+        annules = annuler_rendez_vous_du_lead(
+            lead, user, motif=cause, vider_date_passee=False)
+        date_retiree = jour is not None and lead.visite_prevue_le is None
+        if annules or date_retiree:
+            quand = f' du {jour:%d/%m/%Y}' if date_retiree else ''
+            prevenu = ' (le technicien est prévenu)' if annules else ''
+            # Note SYSTÈME (``user=None``) : dire ce que le moteur a fait
+            # n'est pas un contact (garde QJ7).
+            LeadActivity.objects.create(
+                company=lead.company, lead=lead, user=None,
+                kind=LeadActivity.Kind.NOTE,
+                body=(f'Rendez-vous de visite{quand} annulé{prevenu} : '
+                      f'{cause}.'))
+        return annules
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'SUIVI E21 : rendez-vous non annulé à l’arrêt (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
+        return 0
+
+
 #: Longueur maximale de la note de retour terrain posée au chatter. Un
 #: technicien consciencieux peut écrire beaucoup ; l'historique d'un lead doit
 #: rester lisible. Le texte intégral reste sur la visite, jamais perdu.
@@ -11377,11 +11592,15 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
 #:   ``suspendre_plan_jusqu_apres_visite``). La suite n'est pas l'étape
 #:   générique du filet mais « Planifier la visite technique convenue »
 #:   (``poser_filet_visite_a_planifier``).
+#: * SUIVI E15 (30/09/2026) — la DEUXIÈME AFFAIRE (CAD128, la prise de
+#:   contact d'un client acquis) s'arrête exactement comme la prise de
+#:   contact : « joint » posait l'étape de filet ET faisait naître le
+#:   barreau 2 (deux touches ouvertes pour un client déjà joint).
 CADENCES_ARRETEES_PAR_ISSUE = {
-    'joint': ('contact', 'reveil'),
-    'interesse': ('contact', 'reveil'),
-    'refuse': ('contact', 'apres_devis', 'reveil'),
-    OUTCOME_VISITE_ACCEPTEE: ('contact', 'reveil'),
+    'joint': ('contact', 'reveil', 'deuxieme_affaire'),
+    'interesse': ('contact', 'reveil', 'deuxieme_affaire'),
+    'refuse': ('contact', 'apres_devis', 'reveil', 'deuxieme_affaire'),
+    OUTCOME_VISITE_ACCEPTEE: ('contact', 'reveil', 'deuxieme_affaire'),
 }
 
 
@@ -11534,6 +11753,14 @@ _FILET_SANS_REPONSE_PALIERS = {
     CLE_MESSAGE_CRENEAU: {
         # Une touche ÉCRITE se clôt sans issue : l'écran n'en propose pas.
         'issues': _ISSUES_SANS_REPONSE + ('',),
+        'suite': CLE_DERNIER_APPEL,
+    },
+    # SUIVI E11 (30/09/2026) — le RAPPEL CONVENU (le client avait fixé
+    # lui-même le moment) resté sans réponse : on ne chiffre pas encore, on
+    # tente un dernier essai demain. Palier désactivé : sauté, comme les
+    # autres (le devis).
+    CLE_RAPPEL_CONVENU: {
+        'issues': _ISSUES_SANS_REPONSE,
         'suite': CLE_DERNIER_APPEL,
     },
     CLE_DEBRIEF: _PALIER_DEBRIEF_SANS_REPONSE,
@@ -11836,6 +12063,16 @@ REPONSE_DEVIS_MODIFIE = 'devis_modifie'
 #: CAD9 — « Décision à plusieurs », en deux nuances que la note distingue.
 REPONSE_DECISION_FAMILLE = 'decision_famille'
 REPONSE_DECISION_PROPRIETAIRE = 'decision_proprietaire'
+#: SUIVI E2 (30/09/2026) — « Perdu — clore le dossier », la décision prise
+#: sur l'étape « Décider la suite » (et seulement là).
+REPONSE_PERDU = 'perdu'
+#: SUIVI E4 (30/09/2026) — « Ne veut plus de visite » / « Annule le
+#: rendez-vous » : la VISITE est abandonnée, pas la proposition.
+REPONSE_VISITE_ABANDONNEE = 'visite_abandonnee'
+#: SUIVI E16 (30/09/2026) — « Client joint au téléphone » sur une touche
+#: MESSAGE : la commerciale a appelé au lieu d'écrire, et le client a
+#: décroché.
+REPONSE_JOINT_TELEPHONE = 'joint_telephone'
 #: L'étiquette posée — la forme AFFICHÉE de l'étiquette standard (seedée par
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
@@ -11846,10 +12083,19 @@ _TOUTES_CADENCES = None
 #: Les trois cadences NOMMÉES du protocole (MRY4) — pas les étapes de filet
 #: (``generique``), dont « À rappeler le… » REPORTE déjà l'étape (CAD3).
 _CADENCES_PROTOCOLE = ('contact', 'apres_devis', 'reveil')
+#: SUIVI-PARCOURS (30/09/2026) — la table du parcours range la deuxième
+#: affaire (CAD128, la prise de contact d'un client acquis) sous les mêmes
+#: types d'étape que la prise de contact : ses touches sont des touches du
+#: PROTOCOLE et reçoivent les mêmes réponses.
+_CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE = (
+    _CADENCES_PROTOCOLE + ('deuxieme_affaire',))
 
 #: Table UNIQUE des réponses de touche. ``outcome`` est toujours une valeur
 #: de ``LeadActivity.OUTCOMES`` ; ``cadences`` borne où la réponse a un sens ;
 #: ``message`` nomme le texte d'accusé proposé à l'envoi (jamais envoyé seul).
+#: SUIVI-PARCOURS — deux bornes optionnelles de plus, appliquées par
+#: ``refus_reponse_touche`` : ``cles`` (les CLÉS d'étape moteur où la réponse
+#: vaut — ``cadence_config.cle_de``, jamais un libellé) et ``canaux``.
 REPONSES_TOUCHE = {
     REPONSE_NE_PLUS_CONTACTER: {
         'libelle': 'Ne plus me contacter',
@@ -11862,7 +12108,10 @@ REPONSES_TOUCHE = {
         'libelle': 'Plus tard — pas maintenant',
         'outcome': 'rappel',
         'note': 'Plus tard — pas maintenant',
-        'cadences': _CADENCES_PROTOCOLE,
+        # Protocole seulement (jamais une étape de filet ni de visite) — la
+        # deuxième affaire comprise, que la table range avec la prise de
+        # contact (SUIVI-PARCOURS).
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
         'message': 'rappel_plus_tard',
         # La date convenue avec le client est OBLIGATOIRE (« Rappeler le »).
         'date_requise': True,
@@ -11908,6 +12157,47 @@ REPONSES_TOUCHE = {
         'cadences': ('apres_devis',),
         'message': None,
     },
+    # SUIVI E2 (30/09/2026) — la décision « perdu » se prend sur l'étape
+    # « Décider la suite » (reconnue par sa CLÉ), avec un motif ACTIF de la
+    # société, OBLIGATOIRE (``motif_perte``). L'issue dérivée est « refus » :
+    # le client a dit non, et la décision de clore est humaine (MRY22).
+    REPONSE_PERDU: {
+        'libelle': 'Perdu — clore le dossier',
+        'outcome': 'refuse',
+        'note': 'Perdu',
+        'cadences': _TOUTES_CADENCES,
+        'cles': (CLE_DECIDER_SUITE,),
+        'message': None,
+        'motif_perte_requis': True,
+    },
+    # SUIVI E4 (30/09/2026) — refuser ou annuler la VISITE n'est pas refuser
+    # la PROPOSITION : « refus » tuait tout le suivi. Issue « joint » (le
+    # client a parlé), sur les trois gestes du rendez-vous seulement (jamais
+    # « Préparer le devis modifié »).
+    REPONSE_VISITE_ABANDONNEE: {
+        'libelle': 'Ne veut plus de visite',
+        'outcome': 'joint',
+        'note': 'Visite abandonnée — le client ne veut plus de visite',
+        'cadences': _TOUTES_CADENCES,
+        'cles': (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF),
+        'message': None,
+    },
+    # SUIVI E16 (30/09/2026) — la touche prévoyait un MESSAGE, la commerciale
+    # a APPELÉ et le client a décroché. Issue « joint », mais la ligne de
+    # chatter est un APPEL (``canal_reel``) : la suite est celle d'un appel
+    # abouti (prise de contact / réveil : l'étape devis ; suivi de
+    # proposition : le barreau suivant), jamais « Appeler le client — il a
+    # répondu au message ». Sur les touches ÉCRITES du protocole seulement
+    # (``barreaux_seulement`` : jamais un geste de visite, qui a sa clé).
+    REPONSE_JOINT_TELEPHONE: {
+        'libelle': 'Client joint au téléphone',
+        'outcome': 'joint',
+        'note': 'Client joint au téléphone',
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
+        'canaux': (RelanceEtape.Canal.WHATSAPP, RelanceEtape.Canal.EMAIL),
+        'barreaux_seulement': True,
+        'message': None,
+    },
 }
 
 #: Les textes de RÉPONSE qu'une touche peut proposer à l'envoi — le seul
@@ -11932,15 +12222,41 @@ def refus_reponse_touche(etape, cle):
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return ('Cette touche est déjà traitée : la réponse du client se '
                 'saisit sur une touche encore à faire.')
+    libelle = spec['libelle']
     cadences = spec.get('cadences')
     if cadences is not None and etape.cadence not in cadences:
-        libelle = spec['libelle']
         if tuple(cadences) == ('apres_devis',):
             return (f'« {libelle} » ne vaut que sur une touche du suivi de '
                     'proposition (après envoi du devis).')
         return (f'« {libelle} » ne vaut pas sur une touche de la cadence '
                 f'« {etape.cadence} ».')
+    # SUIVI-PARCOURS (30/09/2026) — une réponse peut ne valoir que sur
+    # certaines ÉTAPES (reconnues par leur CLÉ, jamais leur libellé) ou sur
+    # certains CANAUX : le message nomme la réponse et dit où elle vaut.
+    cles = spec.get('cles')
+    if cles is not None and cle_de(etape) not in cles:
+        etapes = ' ou '.join(
+            f'« {_libelle_par_defaut_de_la_cle(c)} »' for c in cles)
+        return f'« {libelle} » ne vaut que sur l’étape {etapes}.'
+    canaux = spec.get('canaux')
+    if canaux is not None and etape.canal not in canaux:
+        noms = ' ou '.join(RelanceEtape.Canal(c).label for c in canaux)
+        return (f'« {libelle} » ne vaut que sur une touche écrite ({noms}) : '
+                'sur un appel, choisissez « Client joint ».')
+    # SUIVI E16 — une réponse réservée aux touches du PROTOCOLE : une étape
+    # posée par le moteur (geste de visite, étape de filet) a sa CLÉ.
+    if spec.get('barreaux_seulement') and cle_de(etape):
+        return (f'« {libelle} » ne vaut que sur une touche du protocole '
+                '(prise de contact, suivi de proposition, réveil).')
     return None
+
+
+def _libelle_par_defaut_de_la_cle(cle):
+    """Le libellé PAR DÉFAUT (gabarit livré) de l'étape moteur ``cle`` —
+    pour NOMMER une étape dans un refus, sans requête."""
+    defaut = gabarit_relance.barreau_par_defaut(
+        cadence_config.CADENCE_DE_LA_CLE.get(cle), cle)
+    return (defaut or {}).get('libelle') or cle
 
 
 def _note_reponse(spec, note=''):
@@ -12039,6 +12355,10 @@ def repondre_ne_plus_contacter(etape, user, *, note='', body=''):
     tracer_opposition_registre(lead, source=CONSENT_SOURCE_OPPOSITION_TOUCHE)
     arreter_cadence(lead, user=user, motif=MOTIF_NE_PLUS_CONTACTER,
                     exclure=etape)
+    # SUIVI E21 — le rendez-vous de visite en attente s'annule aussi (AVANT la
+    # clôture : le récepteur « refus » qui la suit ne trouve plus rien).
+    annuler_rendez_vous_sur_arret(lead, user,
+                                  cause=CAUSE_RDV_NE_PLUS_CONTACTER)
     etape = marquer_etape_relance(
         etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
         outcome=spec['outcome'], body=body, suite=False)
@@ -12108,6 +12428,14 @@ def mettre_en_veille(lead, user, quand, *, etape=None, journaliser=True):
     if (jour - aujourd_hui_local()).days > VEILLE_BASCULE_REVEIL_JOURS:
         return _basculer_veille_en_reveil(
             lead, user, cible, quand, journaliser=journaliser)
+    return _veille_simple(lead, user, cible, quand, journaliser=journaliser)
+
+
+def _veille_simple(lead, user, cible, quand, *, journaliser=True):
+    """CAD26 — la VEILLE SIMPLE : ``cible`` n'est pas consommée, elle est
+    déplacée à la date du client avec la suite de sa cadence et son ancre
+    (``reporter_prochaine_touche``) ; la reprise se fait au MÊME barreau.
+    Renvoie la touche déplacée, ou ``None``."""
     deplacee = reporter_prochaine_touche(
         lead, user, quand, etape=cible, journaliser=False)
     if deplacee is not None and journaliser:
@@ -12129,20 +12457,27 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
     La première touche du gabarit « réveil » tombe SUR la date du client :
     l'ancre est rétrodatée de son délai (même méthode que le placement MRY30,
     ``calculer_echeances_cadence`` garde l'ancre d'un réveil telle quelle).
-    Rend la première touche du réveil, ou ``None`` (société sans gabarit
-    réveil, lead qu'on ne relance plus)."""
+    Rend la première touche du réveil, ou ``None`` (lead qu'on ne relance
+    plus).
+
+    SUIVI E20 (30/09/2026) — une société SANS barreau « réveil » actif
+    (Paramètres) : la cadence était arrêtée AVANT de le découvrir, et le lead
+    actif restait à ZÉRO touche. On regarde d'abord : sans réveil possible,
+    rien n'est arrêté — la veille SIMPLE s'applique (la touche est déplacée
+    à la date du client, ``_veille_simple``)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
 
     jour = quand.astimezone(horaires.CASABLANCA).date()
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, 'reveil')
+    if not gabarits:
+        return _veille_simple(lead, user, cible, quand,
+                              journaliser=journaliser)
     arreter_cadence(
         lead, user=user,
         motif=(f'mise en veille jusqu’au {jour:%d/%m/%Y} — plus d’un mois '
                'd’attente : bascule en réveil daté'))
-    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, 'reveil')
-    if not gabarits:
-        return None
     premier = min(gabarits, key=lambda g: g.ordre)
     depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
     try:
@@ -12221,7 +12556,7 @@ def repondre_plus_tard(etape, user, quand, *, note='', body=''):
 # ── CAD-A ── CAD7 — « Question de prix — veut négocier » ────────────────────
 
 def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
-                          vise=None, jours=None):
+                          vise=None, jours=None, a_la_date=None):
     """Pose UNE étape de FILET (cadence ``generique``, hors protocole) au
     prochain créneau de son canal — ou DÉPLACE celle encore ouverte : jamais
     deux fois la même étape dans la file.
@@ -12230,12 +12565,24 @@ def _poser_etape_de_filet(lead, *, note, cle='', libelle='', canal=None,
     libellé, canal, délai (``jours`` l'impose quand l'appelant le connaît),
     heure et gabarit de message viennent du barreau de la société, et
     l'étape ouverte se retrouve par sa CLÉ. Sans clé (question de prix, hors
-    gabarit) : ``libelle``/``canal``/``vise`` tels quels."""
-    from . import horaires
+    gabarit) : ``libelle``/``canal``/``vise`` tels quels.
+
+    SUIVI E10 — ``a_la_date`` (un instant AWARE, convenu DEVANT le client) :
+    l'étape de clé ``cle`` est posée à CET instant, recalé sur la fenêtre de
+    son canal (jamais née déjà échue), au lieu du délai du barreau."""
+    from . import cadence_temps, horaires
 
     if cle:
         config = cadence_config.config_cle(lead.company, cle)
-        quand = _echeance_configuree(lead, config, jours=jours)
+        if a_la_date is not None:
+            canal_config = _canal_configure(config)
+            quand = horaires.prochain_creneau_appel(
+                a_la_date, lead.company, canal=canal_config)
+            if quand < timezone.now():
+                quand = cadence_temps.echeance_jamais_echue(
+                    quand, company=lead.company, canal=canal_config)
+        else:
+            quand = _echeance_configuree(lead, config, jours=jours)
         libelle = config['libelle']
         canal = _canal_configure(config)
         template_cle = config['template_cle']
@@ -12366,6 +12713,197 @@ def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     return marquer_etape_relance(
         etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
         outcome=spec['outcome'], body=body)
+
+
+# ── SUIVI E4 — « Ne veut plus de visite » : la VISITE s'arrête, pas le suivi ─
+
+#: La note des gestes de visite retirés quand la visite est abandonnée.
+NOTE_VISITE_ABANDONNEE = 'visite abandonnée'
+
+
+def repondre_visite_abandonnee(etape, user, *, note='', body=''):
+    """SUIVI E4 (30/09/2026) — le client ne veut plus de la visite (étape
+    « Planifier la visite », « Confirmer la visite » ou « Débrief visite »).
+
+    Avant, « Ne veut plus de visite » / « Annule le rendez-vous » envoyaient
+    « refus » : TOUT le suivi mourait, proposition comprise. Ici, dans
+    l'ordre :
+
+      1. la touche est close : FAIT, issue « joint » (le client a parlé),
+         note typée + note libre, sans aucune suite (``suite=False``) ;
+      2. le rendez-vous éventuel est ANNULÉ côté visites (le technicien est
+         prévenu) et ``Lead.visite_prevue_le`` vidé
+         (``annuler_rendez_vous_du_lead``) ;
+      3. les AUTRES gestes de visite ouverts (planifier, confirmer, débrief —
+         jamais « Préparer le devis modifié ») sont annulés (statut moteur) ;
+      4. UNE note système dit ce qui s'est passé ;
+      5. le filet d'invariant, sans jamais DÉMARRER le suivi de proposition :
+         un suivi pendant continue seul, sinon « Préparer et envoyer le
+         devis » est posée.
+
+    Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_VISITE_ABANDONNEE]
+    jour = lead.visite_prevue_le
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    annules = annuler_rendez_vous_du_lead(lead, user)
+    retirees = annuler_etapes_moteur_ouvertes(
+        lead, CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF,
+        note=NOTE_VISITE_ABANDONNEE)
+    morceaux = ['Visite abandonnée à la demande du client']
+    if annules and jour is not None:
+        morceaux.append(f'rendez-vous du {jour:%d/%m/%Y} annulé (le '
+                        'technicien est prévenu)')
+    elif annules:
+        morceaux.append('rendez-vous annulé (le technicien est prévenu)')
+    if retirees:
+        morceaux.append(f'{retirees} étape(s) de visite retirée(s)')
+    # Note SYSTÈME (``user=None``) : dire ce que le moteur a fait n'est pas
+    # un contact (garde QJ7).
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=' — '.join(morceaux) + ' : le suivi continue sans visite.')
+    assurer_prochaine_etape_apres_succes(
+        lead, user, libelle_touche_close=(etape.libelle or ''),
+        cle_touche_close=cle_de(etape),
+        issue_touche_close=spec['outcome'], demarrer_plan=False)
+    _recaler_file(lead, user)
+    return etape
+
+
+# ── SUIVI E16 — « Client joint au téléphone » sur une touche MESSAGE ────────
+
+def repondre_joint_telephone(etape, user, *, note='', body=''):
+    """SUIVI E16 (30/09/2026) — la touche prévoyait un message (WhatsApp,
+    e-mail), la commerciale a APPELÉ et le client a décroché.
+
+    Avant, la seule réponse était « Le client a répondu » (issue « joint »
+    sur une ligne de chatter WhatsApp) : le récepteur MRY9 lisait un MESSAGE
+    répondu et posait « Appeler le client — il a répondu au message » — un
+    second appel pour un client qu'on venait d'avoir au téléphone.
+
+    Ici, la touche est close « joint » par la machinerie ORDINAIRE
+    (``marquer_etape_relance``, suite comprise), mais avec le canal RÉEL :
+    la ligne de chatter est un APPEL abouti. La suite est donc celle d'un
+    appel : prise de contact (et deuxième affaire) arrêtée → « Préparer et
+    envoyer le devis » ; réveil → le dossier sort du Froid, un suivi pendant
+    reprend, sinon l'étape devis ; suivi de proposition → le barreau
+    suivant. Renvoie la touche close."""
+    spec = REPONSES_TOUCHE[REPONSE_JOINT_TELEPHONE]
+    return marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body,
+        canal_reel=RelanceEtape.Canal.APPEL)
+
+
+# ── SUIVI E12 — « Planifier la visite » sans réponse : on réessaie demain ──
+
+def repondre_planifier_sans_reponse(etape, user, *, note='', body=''):
+    """SUIVI E12 (30/09/2026) — l'appel pour caler la date de la visite n'a
+    pas abouti. Le client a ACCEPTÉ la visite : on réessaie, jamais « Préparer
+    et envoyer le devis » à la place.
+
+    L'appel compte (touche close FAIT, issue « non joint », sans autre
+    suite) et une NOUVELLE étape « Planifier la visite technique convenue »
+    est posée pour DEMAIN (même devis rattaché). Si un rendez-vous a été calé
+    entre-temps, ou que le lead n'est plus relançable, le filet ordinaire
+    décide (jamais un lead actif sans suite). Renvoie ``(touche close,
+    nouvelle étape ou None)``."""
+    lead = etape.lead
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note,
+        outcome='non_joint', body=body, suite=False)
+    nouvelle = None
+    if _lead_relancable(lead) and not _visite_a_venir(lead):
+        nouvelle = _poser_etape_visite(
+            lead, cle=CLE_PLANIFIER, ordre=VISITE_ORDRE_FILET,
+            quand=aujourd_hui_local() + datetime.timedelta(days=1),
+            devis_id=etape.devis_id)
+        # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(f'Pas de réponse pour caler la visite : étape « '
+                  f'{nouvelle.libelle} » reposée pour le '
+                  f'{nouvelle.due_date:%d/%m/%Y}.'))
+    else:
+        assurer_prochaine_etape_apres_succes(
+            lead, user, libelle_touche_close=(etape.libelle or ''),
+            cle_touche_close=cle_de(etape), issue_touche_close='non_joint',
+            demarrer_plan=False)
+    _recaler_file(lead, user)
+    return etape, nouvelle
+
+
+# ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────
+
+def est_dernier_reveil(etape):
+    """SUIVI E17 (30/09/2026) — ``etape`` est-elle la DERNIÈRE touche de la
+    cadence réveil, celle après laquelle aucun réveil suivant ne peut porter
+    la date d'un « À rappeler le… » ?
+
+    MÊME critère que la promesse servie à l'écran
+    (``suite_touche.est_derniere_touche`` sur les barreaux ACTIFS de la
+    société — le plus grand rang, ou une touche hors gabarit comme un réveil
+    saisonnier) : ce que l'écran annonce et ce que le moteur fait ne peuvent
+    pas diverger. Lecture pure (une requête, aucune écriture)."""
+    if etape.cadence != 'reveil':
+        return False
+    from .suite_touche import est_derniere_touche, ordres_de_la_cadence
+
+    return est_derniere_touche(
+        etape, ordres_de_la_cadence(etape.company_id, 'reveil'))
+
+
+def repondre_rappel_convenu(etape, user, quand, *, note='', body='',
+                            sortir_du_froid=False):
+    """SUIVI E10 / E17 (30/09/2026) — le client a convenu d'un moment pour
+    être APPELÉ : la touche est close (FAIT, issue « à rappeler »), et
+    l'étape « Rappeler le client — rappel convenu » (clé ``rappel_convenu``,
+    un appel) est posée À LA DATE ET À L'HEURE convenues, recalées sur la
+    fenêtre d'appel de la société.
+
+    Deux touches y mènent :
+
+    * « Message — proposer un créneau pour l'appel » (E10) : l'étape message
+      était déplacée telle quelle, et « rappel convenu » restait
+      inatteignable depuis l'écran ;
+    * le DERNIER réveil (E17) : la date choisie n'était reportée sur rien.
+      Avec ``sortir_du_froid``, un dossier au Froid en sort d'abord
+      (→ Contacté) : un client qui fixe une date de rappel est réactivé — et
+      un réveil resté ouvert (réveil saisonnier, barreau réordonné) s'arrête
+      avec lui : le rendez-vous convenu le remplace.
+
+    Aucune autre suite (``suite=False``) ; UNE note système dit l'étape posée.
+    Renvoie ``(touche close, étape « rappel convenu »)``."""
+    from . import horaires
+
+    lead = etape.lead
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note, outcome='rappel',
+        body=body, suite=False)
+    if sortir_du_froid:
+        arreter_cadence(lead, user=user, cadences=['reveil'],
+                        motif='rappel convenu avec le client')
+        lead.refresh_from_db(fields=['stage'])
+        if lead.stage == stages.COLD:
+            avancer_stage_lead_vers(lead, user, stages.CONTACTED)
+    rappel = _poser_etape_de_filet(
+        lead, cle=CLE_RAPPEL_CONVENU, a_la_date=quand,
+        note='Posée : créneau d’appel convenu avec le client.')
+    _recaler_file(lead, user)
+    quand_local = rappel.due_at.astimezone(horaires.CASABLANCA)
+    quand_lisible = quand_local.strftime('%d/%m/%Y à %H:%M')
+    # Note SYSTÈME (``user=None``) : poser une étape n'est pas un contact.
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=(f'Créneau convenu avec le client : étape « {rappel.libelle} » '
+              f'posée pour le {quand_lisible}.'))
+    return etape, rappel
 
 
 # ── CAD-A ── CAD101 — « pièce reçue » : le geste pour l'enregistrer ─────────
@@ -12509,13 +13047,19 @@ def motif_junk_valide(company, nom):
             .values_list('nom', flat=True).first())
 
 
-def marquer_lead_perdu_junk(lead, user, motif):
-    """CAD11 — le lead passe PERDU avec le motif junk ``motif`` (déjà
-    validé), journalisé comme la fiche le ferait (lignes « modification »
-    ancien → nouveau), et TOUTES ses touches ouvertes sont arrêtées sous ce
-    motif — la même conséquence que la bascule « perdu » de la fiche
-    (``LeadViewSet.perform_update``, MRY9). Idempotente : un lead déjà perdu
-    n'est pas réécrit. Renvoie ``True`` si le lead vient de passer perdu."""
+def marquer_lead_perdu(lead, user, motif, *, exclure=None):
+    """SUIVI E2 (30/09/2026) — LE geste « le lead passe PERDU » depuis une
+    touche : ``motif`` (déjà validé) posé sur ``Lead.motif_perte``,
+    journalisé comme la fiche le ferait (lignes « modification » ancien →
+    nouveau), et TOUTES ses touches ouvertes sont arrêtées sous ce motif —
+    la même conséquence que la bascule « perdu » de la fiche
+    (``LeadViewSet.perform_update``, MRY9). ``exclure`` (une touche) la
+    laisse ouverte : l'appelant la clôt lui-même avec son issue (même patron
+    que « Ne plus me contacter »).
+
+    Idempotente : un lead déjà perdu n'est pas réécrit. Renvoie ``True`` si
+    le lead vient de passer perdu. Généralise ``marquer_lead_perdu_junk``
+    (CAD11), qui en reste un alias mince."""
     import copy
 
     if lead.perdu:
@@ -12525,8 +13069,62 @@ def marquer_lead_perdu_junk(lead, user, motif):
     lead.motif_perte = motif
     lead.save(update_fields=['perdu', 'motif_perte'])
     activity.log_changes(avant, lead, user)
-    arreter_cadence(lead, user=user, motif=motif)
+    arreter_cadence(lead, user=user, motif=motif, exclure=exclure)
+    # SUIVI E21 — le rendez-vous de visite en attente s'annule aussi.
+    annuler_rendez_vous_sur_arret(lead, user, cause=cause_rdv_perdu(motif))
     return True
+
+
+def marquer_lead_perdu_junk(lead, user, motif):
+    """CAD11 — le lead passe PERDU avec le motif junk ``motif`` (déjà
+    validé) : alias mince de ``marquer_lead_perdu`` (SUIVI E2)."""
+    return marquer_lead_perdu(lead, user, motif)
+
+
+def refus_motif_perte(company, motif):
+    """SUIVI E2 — ``(motif exact, None)`` si ``motif`` est un motif de perte
+    ACTIF de la société (comparaison sans casse — ``motif_refus_valide``),
+    sinon ``(None, message)`` : le message NOMME le champ « Motif de perte »,
+    qu'il soit absent ou hors liste (règle fondateur du 08/09/2026)."""
+    brut = str(motif or '').strip()
+    libelle = REPONSES_TOUCHE[REPONSE_PERDU]['libelle']
+    if not brut:
+        return None, (f'« Motif de perte » : obligatoire pour « {libelle} » — '
+                      'choisissez le motif dans la liste.')
+    nom = motif_refus_valide(company, brut)
+    if nom is None:
+        return None, (f'« Motif de perte » : « {brut} » n’est pas un motif '
+                      'de la liste (Paramètres → CRM).')
+    return nom, None
+
+
+def repondre_perdu(etape, user, motif, *, note='', body=''):
+    """SUIVI E2 — « Perdu — clore le dossier » sur l'étape « Décider la
+    suite ». Dans cet ordre :
+
+      1. le lead passe PERDU avec ``motif`` (déjà validé,
+         ``refus_motif_perte``) et toutes ses AUTRES touches ouvertes sont
+         arrêtées (``marquer_lead_perdu``, la touche exclue) — AVANT la
+         clôture, pour que le filet du récepteur « refus » (MRY9) trouve un
+         lead perdu et ne pose aucune étape ;
+      2. la touche est close : FAIT, issue « refus », note typée « Perdu —
+         <motif> » suivie de la note libre, sans aucune suite
+         (``suite=False``) ;
+      3. ceinture : plus rien ne reste ouvert (idempotent).
+
+    Aucune étape n'est posée ensuite : le lead sort des files, il reste
+    rouvrable depuis sa fiche (CAD107). Renvoie la touche close."""
+    lead = etape.lead
+    marquer_lead_perdu(lead, user, motif, exclure=etape)
+    note_typee = f'{REPONSES_TOUCHE[REPONSE_PERDU]["note"]} — {motif}'
+    if (note or '').strip():
+        note_typee = f'{note_typee} — {note.strip()}'
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=note_typee,
+        outcome=REPONSES_TOUCHE[REPONSE_PERDU]['outcome'], body=body,
+        suite=False)
+    arreter_cadence(lead, user=user, motif=motif)
+    return etape
 
 
 # ── CAD158 — « votre facture, c'est pour un mois ou pour deux ? » ───────────

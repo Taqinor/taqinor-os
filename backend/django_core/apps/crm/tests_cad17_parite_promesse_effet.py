@@ -24,6 +24,12 @@ Ce module verrouille trois choses :
 Un code sans effet correspondant — le cinquième mensonge d'écran — casse ce
 test au prochain drain.
 
+SUIVI-PARCOURS 30/09/2026 — les réponses servies suivent la TABLE du parcours
+TYPE d'étape par TYPE d'étape (``suite_touche.cles_de_reponse(etape)``) : la
+grille couvre donc chaque type de la table (les étapes « dernier essai »,
+« rappel convenu » et « planifier la visite » y entrent), et l'exemple
+committé est comparé au moteur sur TOUS ses états.
+
 Temps gelé : mercredi 23/09/2026, 10 h à Casablanca (jour ouvré, fenêtre
 d'appel ouverte ; « demain » est le jeudi 24/09, la date de rappel choisie le
 lundi 28/09 à 11 h).
@@ -45,15 +51,16 @@ from testkit.time import frozen
 
 from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
-from apps.crm.models import Client, Lead, RelanceEtape
+from apps.crm.models import Client, Lead, MotifPerte, RelanceEtape
 from apps.crm.services import (
     _LIBELLES_FILET, _LIBELLES_VISITE, FILET_APPEL_LIBELLE,
     FILET_DERNIER_APPEL_LIBELLE, FILET_JOINT_LIBELLE,
-    FILET_MESSAGE_CRENEAU_LIBELLE, FILET_REFUS_LIBELLE, PASSATION_LIBELLE,
-    PASSATION_ORDRE, QUESTION_PRIX_LIBELLE, REPONSES_TOUCHE,
-    TAG_DECISION_A_PLUSIEURS, VISITE_CONFIRMATION_LIBELLE,
+    FILET_MESSAGE_CRENEAU_LIBELLE, FILET_RAPPEL_LIBELLE, FILET_REFUS_LIBELLE,
+    PASSATION_LIBELLE, PASSATION_ORDRE, QUESTION_PRIX_LIBELLE,
+    REPONSES_TOUCHE, TAG_DECISION_A_PLUSIEURS, VISITE_CONFIRMATION_LIBELLE,
     VISITE_DEBRIEF_LIBELLE, VISITE_DEVIS_LIBELLE, VISITE_FILET_LIBELLE,
-    VISITE_ORDRE_CONFIRMATION, VISITE_ORDRE_DEBRIEF, _lead_porte_tag)
+    VISITE_ORDRE_CONFIRMATION, VISITE_ORDRE_DEBRIEF, VISITE_ORDRE_FILET,
+    _lead_porte_tag, q_visite)
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 from apps.ventes.models import Devis
@@ -70,6 +77,8 @@ DATE_CHOISIE = datetime.date(2026, 9, 28)
 HEURE_CHOISIE = '11:00'
 #: « Plus tard » au-delà d'un mois (bascule en réveil daté) — un lundi.
 DATE_LOINTAINE = datetime.date(2026, 11, 9)
+#: SUIVI E2 — le motif ACTIF de la société choisi pour « Perdu ».
+MOTIF_PERTE = 'Prix trop élevé'
 
 RACINE = Path(__file__).resolve().parents[4]
 TABLE_ECRAN = json.loads(
@@ -134,6 +143,16 @@ SCENARIOS = (
     Scenario('visite_debrief', 'apres_devis', VISITE_ORDRE_DEBRIEF, APPEL,
              VISITE_DEBRIEF_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
              famille=A_COTE),
+    # SUIVI-PARCOURS — « Planifier la visite technique convenue », une TÂCHE
+    # de la table (aucun « Sauter »).
+    Scenario('visite_planifier', 'apres_devis', VISITE_ORDRE_FILET, APPEL,
+             VISITE_FILET_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
+             famille=A_COTE),
+    # SUIVI E13 — « Préparer le devis modifié », une TÂCHE : « Fait » sans
+    # issue vaut « devis modifié envoyé ».
+    Scenario('visite_devis_modifie', 'apres_devis', VISITE_ORDRE_DEBRIEF,
+             APPEL, VISITE_DEVIS_LIBELLE, devis=True, stage=stages.QUOTE_SENT,
+             famille=A_COTE),
     # Réveils (2 barreaux, posés ensemble) : au Froid, et hors Froid (veille
     # de plus d'un mois basculée en réveil daté, CAD26).
     Scenario('reveil_appel', 'reveil', 1, APPEL, stage=stages.COLD),
@@ -146,6 +165,12 @@ SCENARIOS = (
     Scenario('filet_appeler', 'generique', 1, APPEL, FILET_APPEL_LIBELLE),
     Scenario('filet_creneau', 'generique', 1, WHATSAPP,
              FILET_MESSAGE_CRENEAU_LIBELLE),
+    # SUIVI-PARCOURS — les deux derniers types d'étape « après l'appel » de
+    # la table.
+    Scenario('filet_dernier_appel', 'generique', 1, APPEL,
+             FILET_DERNIER_APPEL_LIBELLE),
+    Scenario('filet_rappel_convenu', 'generique', 1, APPEL,
+             FILET_RAPPEL_LIBELLE),
     Scenario('filet_decider', 'generique', 1, APPEL, FILET_REFUS_LIBELLE),
     Scenario('filet_question_prix', 'generique', 1, APPEL,
              QUESTION_PRIX_LIBELLE, stage=stages.QUOTE_SENT),
@@ -164,13 +189,16 @@ BRANCHES_SUIVI = ('base', 'devis_ouvert', 'devis_epuise')
 VARIANTES = {
     st.ETAPE_APPELER_SAUF_SUIVI: BRANCHES_SUIVI,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: BRANCHES_SUIVI,
-    st.ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI: BRANCHES_SUIVI,
+    # SUIVI E17 — `etape_devis_a_la_date_sauf_suivi` retiré : le dernier
+    # réveil pose l'appel « rappel convenu » à la date choisie.
     # 24/09/2026 — `visite_froid_si_seule` retiré (une étape de visite ne
     # parque plus jamais le dossier au Froid) : ses branches sont rejouées
     # sous `suite_si_plus_rien_ouvert`, dont `seule_epuise` (plan servi
     # jusqu'au bout : l'étape de suite du filet, jamais le Froid).
     st.SUITE_SI_PLUS_RIEN_OUVERT: ('base', 'avec_autre', 'seule_epuise'),
-    st.PROCHAINE_RELANCE_A_LA_DATE: ('base', 'avec_autre'),
+    # SUIVI E4 — la visite abandonnée se vérifie dans chaque branche de ce
+    # qui reste ouvert à côté d'elle.
+    st.VISITE_ABANDONNEE: ('base', 'avec_autre', 'seule_epuise'),
     st.VEILLE_MEME_TOUCHE: ('base', 'loin'),
     # CAD15 — le journal d'appel : la suite dépend de ce qui reste ouvert et
     # de l'étape du dossier (Froid ou non).
@@ -180,9 +208,10 @@ VARIANTES = {
 
 
 def _cles_servies(scenario):
-    """Les clés que le serveur annonce : les réponses du panneau « Fait »,
-    puis le geste « Sauter » (CAD47)."""
-    return st.cles_de_reponse(scenario.cadence) + [st.CLE_SAUTER]
+    """Les clés que le serveur annonce : les réponses de la table du parcours
+    pour le TYPE de la touche, puis le geste « Sauter » (CAD47) quand l'étape
+    le propose (SUIVI-PARCOURS)."""
+    return st.cles_de_reponse(_etape_non_enregistree(scenario))
 
 
 def _ordres_defaut(cadence):
@@ -222,8 +251,8 @@ class Constat:
     avant: frozenset          # les touches ouvertes AVANT, hors la touche
     donnees: dict             # la réponse de l'API
 
-    def ouvertes(self, **filtres):
-        return self.lead.relance_etapes.filter(statut=A_FAIRE, **filtres)
+    def ouvertes(self, *q, **filtres):
+        return self.lead.relance_etapes.filter(*q, statut=A_FAIRE, **filtres)
 
     def nouvelles(self, **filtres):
         qs = self.ouvertes(**filtres).exclude(pk__in=self.avant)
@@ -266,12 +295,6 @@ def _dernier_reveil(c):
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
 
 
-def _dernier_reveil_date_perdue(c):
-    _dernier_reveil(c)
-    c.vrai(c.donnees.get('prochaine_touche') is None,
-           'une prochaine touche est annoncée')
-
-
 def _reste_au_froid(c):
     c.vrai(c.lead.stage == stages.COLD, 'le dossier n’est plus au Froid')
 
@@ -281,8 +304,10 @@ def _sort_du_froid(c):
 
 
 def _contact_arretee(c):
-    c.vrai(not c.ouvertes(cadence='contact').exists(),
-           'la prise de contact continue')
+    # SUIVI E15 — la deuxième affaire est la prise de contact d'un client
+    # acquis : elle s'arrête de la même façon.
+    c.vrai(not c.ouvertes(cadence__in=('contact', 'deuxieme_affaire'))
+           .exists(), 'la prise de contact continue')
 
 
 def _reveils_arretes(c):
@@ -291,9 +316,9 @@ def _reveils_arretes(c):
 
 
 def _relances_arretees(c):
-    c.vrai(not c.ouvertes(
-        cadence__in=('contact', 'apres_devis', 'reveil')).exists(),
-        'une relance de contact, de proposition ou de réveil continue')
+    arretees = ('contact', 'apres_devis', 'reveil', 'deuxieme_affaire')
+    c.vrai(not c.ouvertes(cadence__in=arretees).exists(),
+           'une relance de contact, de proposition ou de réveil continue')
 
 
 def _etape_appeler(c):
@@ -335,15 +360,6 @@ def _etape_devis_a_la_date(c):
            'aucune étape « préparer et envoyer le devis » à la date choisie')
 
 
-def _etape_devis_a_la_date_sauf_suivi(c):
-    if c.variante == 'devis_ouvert':
-        c.vrai(c.barreaux(c.ouvertes(cadence='apres_devis',
-                                     due_date=DATE_CHOISIE)).exists(),
-               'le suivi repris n’est pas à la date choisie')
-    else:
-        _etape_devis_a_la_date(c)
-
-
 def _etape_decider_suite(c):
     c.vrai(c.ouvertes(libelle=FILET_REFUS_LIBELLE).exists(),
            'aucune étape « décider la suite »')
@@ -360,15 +376,6 @@ def _suivi_proposition_demarre(c):
            'le suivi de proposition n’a pas démarré')
     c.vrai(c.lead.stage == stages.QUOTE_SENT,
            'le dossier n’est pas « Devis envoyé »')
-
-
-def _suivi_demarre_sans_envoi(c):
-    # CAD47 — sauter « préparer et envoyer le devis » : le moteur démarre le
-    # suivi de proposition, SANS toucher l'étape du dossier.
-    c.vrai(c.ouvertes(cadence='apres_devis').exists(),
-           'le suivi de proposition n’a pas démarré')
-    c.vrai(c.lead.stage == c.scenario.stage,
-           'l’étape du dossier a bougé')
 
 
 def _etape_planifier_visite(c):
@@ -407,11 +414,6 @@ def _suite_si_plus_rien_ouvert(c):
         _suivi_repris(c)
 
 
-def _prochaine_relance_a_la_date(c):
-    c.vrai(c.ouvertes(due_date=DATE_CHOISIE).exists(),
-           'aucune relance à la date choisie')
-
-
 def _etiquette_decision(c):
     c.vrai(_lead_porte_tag(c.lead, TAG_DECISION_A_PLUSIEURS),
            'l’étiquette « Décision à plusieurs » manque')
@@ -420,6 +422,47 @@ def _etiquette_decision(c):
 def _ne_plus_contacter(c):
     c.vrai(c.lead.ne_plus_contacter, 'la case « ne plus contacter » manque')
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
+
+
+def _lead_perdu(c):
+    # SUIVI E2 — perdu avec SON motif, plus rien d'ouvert, rien de posé.
+    c.vrai(c.lead.perdu, 'le lead n’est pas perdu')
+    c.vrai(c.lead.motif_perte == MOTIF_PERTE, 'le motif de perte manque')
+    c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
+
+
+def _etape_rappel_convenu_a_la_date(c):
+    # SUIVI E10/E17 — la touche est close, et l'APPEL « rappel convenu » est
+    # posé à la date ET à l'heure convenues.
+    c.vrai(c.etape.statut == FAIT, 'la touche n’est pas close')
+    rappels = c.ouvertes(libelle=FILET_RAPPEL_LIBELLE, due_date=DATE_CHOISIE,
+                         canal=APPEL)
+    c.vrai(rappels.exists(),
+           'aucun « rappel convenu » à la date choisie')
+    c.vrai(any(r.due_at.astimezone(horaires.CASABLANCA)
+               .strftime('%H:%M') == HEURE_CHOISIE for r in rappels),
+           'le « rappel convenu » n’est pas à l’heure convenue')
+
+
+def _etape_planifier_demain(c):
+    # SUIVI E12 — l'appel compte, une NOUVELLE « planifier » est posée pour
+    # demain ; jamais « préparer et envoyer le devis » à sa place.
+    c.vrai(c.etape.statut == FAIT and c.etape.outcome == 'non_joint',
+           'l’appel n’est pas noté « non joint »')
+    c.vrai(c.nouvelles(libelle=VISITE_FILET_LIBELLE, due_date=DEMAIN)
+           .exists(), 'aucune « planifier la visite » demain')
+    c.vrai(not c.ouvertes(libelle=FILET_JOINT_LIBELLE).exists(),
+           'une étape « préparer le devis » a été posée')
+
+
+def _visite_abandonnee(c):
+    # SUIVI E4 — plus aucun geste de visite ouvert, plus de date de visite
+    # sur la fiche ; la touche est close « joint » (la proposition vit).
+    c.vrai(not c.ouvertes(q_visite()).exists(),
+           'un geste de visite reste ouvert')
+    c.vrai(c.lead.visite_prevue_le is None, 'la date de visite reste')
+    c.vrai(c.etape.statut == FAIT and c.etape.outcome == 'joint',
+           'la touche n’est pas close « joint »')
 
 
 def _veille_meme_touche(c):
@@ -485,7 +528,6 @@ VERIFICATEURS = {
     st.TOUCHE_SUIVANTE_A_LA_DATE: _touche_suivante_a_la_date,
     st.DERNIERE_FROID_REVEILS: _derniere_froid_reveils,
     st.DERNIER_REVEIL: _dernier_reveil,
-    st.DERNIER_REVEIL_DATE_PERDUE: _dernier_reveil_date_perdue,
     st.RESTE_AU_FROID: _reste_au_froid,
     st.SORT_DU_FROID: _sort_du_froid,
     st.CONTACT_ARRETEE: _contact_arretee,
@@ -496,16 +538,13 @@ VERIFICATEURS = {
     st.ETAPE_APPELER_SAUF_SUIVI: _etape_appeler_sauf_suivi,
     st.ETAPE_DEVIS_DEMAIN_SAUF_SUIVI: _etape_devis_demain_sauf_suivi,
     st.ETAPE_DEVIS_A_LA_DATE: _etape_devis_a_la_date,
-    st.ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI: _etape_devis_a_la_date_sauf_suivi,
     st.ETAPE_DECIDER_SUITE: _etape_decider_suite,
     st.ETAPE_DEPLACEE_A_LA_DATE: _etape_deplacee_a_la_date,
     st.SUIVI_PROPOSITION_DEMARRE: _suivi_proposition_demarre,
-    st.SUIVI_DEMARRE_SANS_ENVOI: _suivi_demarre_sans_envoi,
     st.ETAPE_PLANIFIER_VISITE: _etape_planifier_visite,
     st.ETAPE_MESSAGE_CRENEAU: _etape_message_creneau,
     st.ETAPE_DERNIER_APPEL: _etape_dernier_appel,
     st.SUITE_SI_PLUS_RIEN_OUVERT: _suite_si_plus_rien_ouvert,
-    st.PROCHAINE_RELANCE_A_LA_DATE: _prochaine_relance_a_la_date,
     st.ETIQUETTE_DECISION: _etiquette_decision,
     st.NE_PLUS_CONTACTER: _ne_plus_contacter,
     st.VEILLE_MEME_TOUCHE: _veille_meme_touche,
@@ -515,6 +554,10 @@ VERIFICATEURS = {
     st.JOURNAL_SUITE_SI_RIEN_OUVERT: _journal_suite_si_rien_ouvert,
     st.JOURNAL_DECIDER_SI_RIEN_OUVERT: _journal_decider_si_rien_ouvert,
     st.JOURNAL_SANS_EFFET: _journal_sans_effet,
+    st.LEAD_PERDU: _lead_perdu,
+    st.VISITE_ABANDONNEE: _visite_abandonnee,
+    st.ETAPE_RAPPEL_CONVENU_A_LA_DATE: _etape_rappel_convenu_a_la_date,
+    st.ETAPE_PLANIFIER_DEMAIN: _etape_planifier_demain,
 }
 
 
@@ -566,11 +609,14 @@ class VocabulaireTests(SimpleTestCase):
 
 # ── 2. Le contrat committé est ce que le moteur annonce ─────────────────────
 
-#: Les touches committées dans le contrat : l'exemple principal ET l'état
-#: « dernier réveil » (CAD16), que l'écran importe tous deux.
-TOUCHES_DU_CONTRAT = (CONTRAT['exemple']['results']
-                      + CONTRAT['exemple_generique']['results']
-                      + CONTRAT['exemple_dernier_reveil']['results'])
+#: Les touches committées dans le contrat — SUIVI-PARCOURS 30/09/2026 : TOUS
+#: ses états (l'exemple principal, la générique, le dernier réveil de CAD16,
+#: le débrief de visite, la « WhatsApp uniquement »…), que l'écran importe :
+#: leurs ``suites`` sont régénérées depuis le moteur, jamais écrites à la main.
+TOUCHES_DU_CONTRAT = tuple(
+    resultat for etat in CONTRAT.values()
+    if isinstance(etat, dict) and isinstance(etat.get('results'), list)
+    for resultat in etat['results'])
 
 
 def _stage_du_contrat(resultat):
@@ -655,6 +701,8 @@ class PariteBase(TestCase):
         # usage) — la lecture des barreaux actifs lit donc la vraie table.
         for cadence in CADENCES_DEFAUT:
             CadenceRelanceEtape.cadence_pour(self.company, cadence)
+        # SUIVI E2 — la liste des motifs de perte de la société (Paramètres).
+        MotifPerte.objects.create(company=self.company, nom=MOTIF_PERTE)
 
     # ── fabrique ──
 
@@ -779,6 +827,10 @@ class PariteBase(TestCase):
         if cle == 'plus_tard':
             corps['rappel_le'] = (DATE_LOINTAINE if variante == 'loin'
                                   else DATE_CHOISIE).isoformat()
+        if cle == 'perdu':
+            # SUIVI E2 — le motif est OBLIGATOIRE (écrit en minuscules : la
+            # comparaison est sans casse, le lead porte le libellé exact).
+            corps['motif_perte'] = MOTIF_PERTE.lower()
         return self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/', corps,
             format='json')
@@ -836,7 +888,8 @@ class PariteVisiteTests(PariteBase):
     slug = 'cad17-visite'
 
     def test_gestes_de_visite(self):
-        self._garder('visite_confirmation', 'visite_debrief')
+        self._garder('visite_confirmation', 'visite_debrief',
+                     'visite_planifier', 'visite_devis_modifie')
 
 
 class PariteReveilTests(PariteBase):
@@ -853,6 +906,7 @@ class PariteGeneriqueTests(PariteBase):
     def test_cadence_generique_et_filets(self):
         self._garder('generique_barreau', 'generique_dernier',
                      'filet_envoi_devis', 'filet_appeler', 'filet_creneau',
+                     'filet_dernier_appel', 'filet_rappel_convenu',
                      'filet_decider', 'filet_question_prix',
                      'filet_passation')
 

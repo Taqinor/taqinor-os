@@ -1,7 +1,7 @@
 {
   "endpoint": "POST /api/django/crm/relance-etapes/<id>/piece-recue/",
   "forme_serveur": "partielle",
-  "pourquoi": "CAD101 (PACT10) — le client envoie sa FACTURE, son ADRESSE ou sa LOCALISATION (sur WhatsApp, le plus souvent) : l'événement commercial le plus important du parcours, et le seul qui ne s'enregistrait pas en un clic. Le geste « Pièce reçue » de la ligne de relance : la touche est CLOSE (issue « joint » — le client a répondu), le document est ATTACHÉ à la fiche (magasin `records.Attachment` existant, sur la ligne de chatter de la touche) et l'étape « Préparer et envoyer le devis (ou fixer un rappel) » est POSÉE — `prochaine_touche`. Sur une touche qui EST déjà « préparer le devis », la pièce est tracée et l'étape reste ouverte (la réponse la renvoie telle quelle). JAMAIS déclenché par un message ENTRANT (une note système n'arrête rien : un « merci » ne tue pas une cadence) — c'est un geste humain. La réponse a la forme d'un « Fait » : la touche (`relance_etape_v2`) + `prochaine_touche` ; `forme_serveur: partielle` parce que la vue assemble la réponse depuis le sérialiseur (forme non lisible statiquement).",
+  "pourquoi": "CAD101 (PACT10) — le client envoie sa FACTURE, son ADRESSE ou sa LOCALISATION (sur WhatsApp, le plus souvent) : l'événement commercial le plus important du parcours, et le seul qui ne s'enregistrait pas en un clic. Le geste « Pièce reçue » de la ligne de relance : la touche est CLOSE (issue « joint » — le client a répondu), le document est ATTACHÉ à la fiche (magasin `records.Attachment` existant, sur la ligne de chatter de la touche) et l'étape « Préparer et envoyer le devis (ou fixer un rappel) » est POSÉE — d'ordinaire la `prochaine_touche` (SUIVI I7 : toujours la plus proche touche OUVERTE du lead). Sur une touche qui EST déjà « préparer le devis », la pièce est tracée et l'étape reste ouverte (la réponse la renvoie telle quelle). JAMAIS déclenché par un message ENTRANT (une note système n'arrête rien : un « merci » ne tue pas une cadence) — c'est un geste humain. La réponse a la forme d'un « Fait » : la touche (`relance_etape_v2`) + `prochaine_touche` ; `forme_serveur: partielle` parce que la vue assemble la réponse depuis le sérialiseur (forme non lisible statiquement).",
   "exemple": {
     "id": 418,
     "lead": 1490,
@@ -41,13 +41,16 @@
     "prochaine_touche": {
       "due_at": "2026-09-07T09:00:00Z",
       "due_date": "2026-09-07",
-      "canal": "appel"
+      "canal": "appel",
+      "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
+      "cle": "devis"
     }
   },
   "notes": {
     "corps": "multipart (avec fichier) ou JSON : `type_piece` (`facture` | `adresse` | `localisation`, OBLIGATOIRE), `fichier` (facultatif), `note` (facultative).",
     "erreurs": "400 `{\"erreurs\": {champ: message}}` — `type_piece` (pièce inconnue ou absente), `etape` (touche déjà traitée), `fichier` (pièce jointe refusée par le magasin) : le message NOMME le champ.",
     "permissions": "`IsResponsableOrAdmin` (le geste ÉCRIT).",
-    "param_cadence": "PARAM-CADENCE (25/09/2026) — les quatre champs ADDITIFS de `relance_etape_v2` (`cle`, `visite_prevue_le`, `visite_id`, `visite_retour_disponible`) sont servis ici aussi : la réponse EST la touche (forme `relance_etape_v2`) plus `prochaine_touche`."
+    "param_cadence": "PARAM-CADENCE (25/09/2026) — les quatre champs ADDITIFS de `relance_etape_v2` (`cle`, `visite_prevue_le`, `visite_id`, `visite_retour_disponible`) sont servis ici aussi : la réponse EST la touche (forme `relance_etape_v2`) plus `prochaine_touche`.",
+    "prochaine_touche": "SUIVI E9 (30/09/2026) — `prochaine_touche` NOMME l'étape annoncée (ADDITIF) : `libelle` (celui de l'étape, tel que la société l'a réglé dans Paramètres) et `cle` (clé moteur de l'étape — `devis`, `appel_apres_reponse`, `planifier`… —, retrouvée aussi pour une étape posée avant la clé ; '' pour un barreau du protocole). Même forme dans les réponses de `fait` / `sauter` (contrat `relance_etape_v2` + `prochaine_touche`) : l'écran n'annonce plus « prochain appel » pour une étape de préparation du devis. `null` quand plus rien n'est ouvert."
   }
 }

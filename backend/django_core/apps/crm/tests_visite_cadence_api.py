@@ -147,7 +147,13 @@ class PlanifierVisiteApiTests(VisiteApiBase):
                  'commercial': self.commerciale.id,
                  'notes': 'Portail bleu'}, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
-        self.assertEqual(list(reponse.data), ['visite'])
+        # SUIVI-PARCOURS 30/09/2026 (SUIVI E18) — la réponse porte aussi la
+        # prochaine étape à faire du lead (forme E9), comme le « Fait » :
+        # EXACTEMENT les clés du contrat committé.
+        contrat = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_visite_planifier.json').read_text(encoding='utf-8'))
+        self.assertEqual(sorted(reponse.data), sorted(contrat['exemple']))
         ligne = reponse.data['visite']
         self.assertEqual(
             sorted(ligne),
