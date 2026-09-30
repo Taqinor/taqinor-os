@@ -53,7 +53,7 @@ export const TRACKED_KEYS = [
   'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
   // Toiture & site
   'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
-  'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref',
+  'ombrage', 'ombrage_notes', 'nb_etages', 'structure_pref', 'structure_produit',
   'taille_souhaitee_kwc', 'batterie_souhaitee',
   // Visite
   'visite_prevue_le', 'visite_effectuee', 'visite_notes',
@@ -219,8 +219,8 @@ export const SECTION_FIELDS = {
   // appartement/immeuble/riad/ferme), pas le type de TOIT.
   toiture: ['type_toiture', 'surface_toiture_m2', 'orientation',
     'inclinaison_deg', 'ombrage', 'ombrage_notes', 'nb_etages',
-    'structure_pref', 'taille_souhaitee_kwc', 'batterie_souhaitee',
-    'type_bien'],
+    'structure_pref', 'structure_produit', 'taille_souhaitee_kwc',
+    'batterie_souhaitee', 'type_bien'],
   visite: ['visite_prevue_le', 'visite_effectuee', 'visite_notes'],
   // CAD150 — la qualification captée par le site (CHAMPS_SITE hors énergie)
   // est éditable ici, avec sa provenance.
@@ -354,7 +354,7 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     equip_clim_creneau: '', equip_piscine_creneau: '',
     pompe_cv: '', pompe_hmt_m: '', pompe_debit_m3h: '',
     type_toiture: '', surface_toiture_m2: '', orientation: '', inclinaison_deg: '',
-    ombrage: '', ombrage_notes: '', nb_etages: '', structure_pref: '',
+    ombrage: '', ombrage_notes: '', nb_etages: '', structure_pref: '', structure_produit: null,
     taille_souhaitee_kwc: '', batterie_souhaitee: '',
     visite_prevue_le: '', visite_effectuee: false, visite_notes: '',
     note: '', custom_data: {},
