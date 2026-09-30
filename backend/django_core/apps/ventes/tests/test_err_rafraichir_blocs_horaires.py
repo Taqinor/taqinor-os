@@ -64,7 +64,7 @@ class RafraichirBlocsHorairesTests(_Base):
     def test_appliquer_repare_par_option_sans_toucher_au_statut(self):
         devis = self._devis_perime('i7r-app', statut='envoye')
         total_avant = devis.total_ttc
-        sortie = self._lancer('--appliquer')
+        sortie = self._lancer('--appliquer', '--refs', devis.reference)
         self.assertIn('APPLIQUÉ', sortie)
         frais = Devis.objects.get(pk=devis.pk)
         self.assertEqual(frais.statut, 'envoye')
@@ -75,6 +75,13 @@ class RafraichirBlocsHorairesTests(_Base):
         self.assertEqual(blocs_horaires_perimes(frais), [])
         # Idempotente : une seconde passe ne trouve plus rien.
         self.assertIn('0 devis', self._lancer('--appliquer'))
+
+    def test_appliquer_sans_refs_n_ecrit_pas_un_devis_envoye(self):
+        envoye = self._devis_perime('i7r-noref', statut='envoye')
+        avant = Devis.objects.get(pk=envoye.pk).etude_params
+        sortie = self._lancer('--appliquer')
+        self.assertIn('NON écrit', sortie)
+        self.assertEqual(Devis.objects.get(pk=envoye.pk).etude_params, avant)
 
     def test_devis_envoyes_listes_a_part(self):
         envoye = self._devis_perime('i7r-env', statut='envoye')

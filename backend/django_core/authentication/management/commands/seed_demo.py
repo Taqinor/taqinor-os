@@ -334,6 +334,9 @@ class Command(BaseCommand):
                 },
             )
 
+        # QAH12 — la base NEUVE reçoit aussi le compte portail + SAV démo.
+        self._seed_portail_et_sav(company)
+
         self.stdout.write(self.style.SUCCESS(
             '\nDemo data seeded for "TAQINOR Démo".\n'
             'Logins:  demo_admin / Demo@2026!   (administrateur)\n'

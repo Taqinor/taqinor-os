@@ -137,6 +137,11 @@ class Command(BaseCommand):
                 continue
             avant_kwc = _kwc_blocs(devis)
             avant = _chiffres(devis)
+            # Critique 30/09 — un devis ENVOYÉ/ACCEPTÉ n'est jamais écrit sans
+            # être NOMMÉ dans --refs (accord fondateur sur son diff d'abord,
+            # mémoire reconfirm-client-visible-repairs) : sinon dry-run.
+            ecrire = appliquer and (devis.statut not in STATUTS_CLIENT
+                                    or devis.reference in references)
             try:
                 with transaction.atomic():
                     verrou = (Devis.objects.select_for_update()
@@ -145,7 +150,7 @@ class Command(BaseCommand):
                     frais = Devis.objects.get(pk=devis.pk)
                     apres_kwc = _kwc_blocs(frais)
                     apres = _chiffres(frais)
-                    if not appliquer:
+                    if not ecrire:
                         raise _Annuler
             except _Annuler:
                 pass
@@ -164,9 +169,12 @@ class Command(BaseCommand):
             self.stdout.write(
                 '\nDEVIS ENVOYÉS/ACCEPTÉS (chiffres imprimés modifiés — accord '
                 'EXPLICITE du fondateur requis avant application en '
-                'production) : %d' % len(client_visibles))
+                'production ; avec --appliquer, seuls ceux NOMMÉS dans --refs '
+                'sont écrits) : %d' % len(client_visibles))
             for ref, statut in client_visibles:
-                self.stdout.write('  - %s (%s)' % (ref, statut))
+                ecrit = appliquer and ref in references
+                self.stdout.write('  - %s (%s)%s' % (
+                    ref, statut, '' if ecrit else ' — NON écrit'))
         self.stdout.write(
             '%s : %d devis %s, %d dont le client a le document, %d échec(s).'
             % ('APPLIQUÉ' if appliquer else "DRY-RUN (rien n'a été écrit)",

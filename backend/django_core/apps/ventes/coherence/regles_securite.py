@@ -18,10 +18,10 @@ from django.contrib.auth import get_user_model
 from .registre import GRAVITE_CRITIQUE, PORTEE_SOCIETE, regle
 
 # Comptes créés avec un mot de passe LITTÉRAL par une commande du dépôt :
-# seed_demo (demo_admin, demo_resp), seed_demo_company (demo_admin_full,
-# demo_resp_full), qa_import_anonymise (anon_admin). Toute nouvelle commande
-# de seed qui crée un compte à mot de passe connu l'ajoute ici.
-COMPTES_SEED = ('demo_admin', 'demo_resp', 'demo_admin_full',
+# seed_demo (demo_admin, demo_resp, demo_portail), seed_demo_company
+# (demo_admin_full, demo_resp_full), qa_import_anonymise (anon_admin). Toute
+# nouvelle commande de seed qui crée un compte à mot de passe connu l'ajoute ici.
+COMPTES_SEED = ('demo_admin', 'demo_resp', 'demo_portail', 'demo_admin_full',
                 'demo_resp_full', 'anon_admin')
 
 

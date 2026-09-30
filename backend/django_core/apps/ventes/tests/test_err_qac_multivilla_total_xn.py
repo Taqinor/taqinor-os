@@ -207,3 +207,23 @@ class TestMultiVillaBout(TestCase):
         # TTC ×3 ÷ kWc ×3 = le même prix au kWc (jamais gonflé ×N).
         self.assertIsNotNone(un.prix_par_kwc)
         self.assertEqual(trois.prix_par_kwc, un.prix_par_kwc)
+
+    def test_facture_consolidee_suit_le_x3(self):
+        """Critique 30/09 — la facture consolidée (``consolider_factures``)
+        reprend elle aussi chaque quantité ×N, comme la facture de BC."""
+        from apps.ventes.domain.encaissements import consolider_factures
+        from apps.ventes.models import Devis, FactureSource
+        un = self._devis({'scenario': 'Sans batterie'}, 'DEV-XN-C1')
+        trois = self._devis({'scenario': 'Sans batterie',
+                             'nombre_proprietes': 3}, 'DEV-XN-C3')
+        Devis.objects.filter(pk__in=[un.pk, trois.pk]).update(
+            statut=Devis.Statut.ACCEPTE)
+        facture = consolider_factures(
+            company=self.company, devis_ids=[un.pk, trois.pk],
+            user=self.user, created_by=self.user)
+        sources = {s.devis_id: s.sous_total_ht
+                   for s in FactureSource.objects.filter(facture=facture)}
+        self.assertEqual(sources[trois.pk], sources[un.pk] * 3)
+        qtes = sorted(lf.quantite for lf in facture.lignes.filter(
+            source_devis=trois))
+        self.assertEqual(qtes, [Decimal('3'), Decimal('30')])
