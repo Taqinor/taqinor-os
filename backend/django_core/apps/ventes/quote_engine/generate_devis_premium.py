@@ -37,6 +37,13 @@ try:
 except ImportError:  # exécution directe du moteur depuis son dossier
     from montants import fmt_centimes, fmt_centimes_mad
 
+# QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
+# fonction pure partagée ; même double chemin d'import.
+try:
+    from .sequence import sequence_affichage
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from sequence import sequence_affichage
+
 
 def _render_pdf_weasyprint(html_string, out_path):
     """Render HTML to PDF using WeasyPrint (no browser needed)."""
@@ -3922,10 +3929,8 @@ def page_onepage(items, tronquees=0):
     # XSAL14 — intercale les lignes de section/note (rendu seul, hors totaux)
     # dans la liste, ordonnées par ``ordre`` (stable) puis par l'ordre d'origine.
     # Absentes → séquence STRICTEMENT identique à avant (byte-identique).
-    _seq = [("item", it, it.get("ordre", 0) or 0) for it in visible]
-    for _s in (LIGNES_STRUCTURE or []):
-        _seq.append(("struct", _s, _s.get("ordre", 0) or 0))
-    _seq.sort(key=lambda t: t[2])  # tri STABLE : conserve l'ordre d'origine
+    # QJR617 — UNE fonction pure partagée (``quote_engine/sequence.py``).
+    _seq = sequence_affichage(visible, LIGNES_STRUCTURE)
     n_items = len(visible) + len(LIGNES_STRUCTURE or [])
     if n_items <= 8:
         max_desc, desc_pt, pad_px, show_gar = 4, 6.5, 6, True
@@ -3936,7 +3941,7 @@ def page_onepage(items, tronquees=0):
 
     rows_html = ""
     row_idx = 0
-    for _kind, _obj, _ in _seq:
+    for _kind, _obj in _seq:
         if _kind == "struct":
             # XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte), sur
             # toute la largeur, sans prix (jamais comptée dans les totaux).
