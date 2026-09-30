@@ -86,10 +86,10 @@
     ca_devis_total:texte, ca_factures_total:texte, filiales:liste, nb_devis_total:inconnu, nb_factures_total:inconnu
 - frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants
     count:nombre, results:inconnu, seuil:inconnu
+- frontend/src/api/crmApi.js :: getControleSuivi -> /api/django/crm/relance-etapes/controle
+    commerciaux:inconnu, exceptions:inconnu, jours:inconnu, owner:inconnu, par_type:inconnu, periode_jours:inconnu, premier_contact:inconnu, resultats:objet, seuils:objet, verdict:objet
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques
     equipes:inconnu
-- frontend/src/api/crmApi.js :: getKpiAdherence -> /api/django/crm/relance-etapes/kpi-adherence
-    a_lheure_pct:inconnu, absences_declarees:inconnu, annulees_moteur:nombre, conversion_par_stage:inconnu, leads_sans_touche:inconnu, par_etape:inconnu, periode_jours:inconnu, sautees_humaines:nombre, tendance_a_lheure:inconnu, touches_en_retard_ouvertes:nombre, touches_faites:nombre, vitesse_premier_contact:inconnu
 - frontend/src/api/crmApi.js :: getLeadJalonsDevis -> /api/django/crm/leads/<>/jalons-devis
     results:inconnu
 - frontend/src/api/crmApi.js :: getLeadPhotoToit -> /api/django/crm/leads/<>/photo-toit
@@ -98,8 +98,6 @@
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
 - frontend/src/api/crmApi.js :: getLeadVisites -> /api/django/crm/leads/<>/visites
     avertissement_sans_devis:inconnu, rappel_juridique:inconnu, visites:inconnu
-- frontend/src/api/crmApi.js :: getMesStatsRelance -> /api/django/crm/relance-etapes/mes-stats
-    a_faire_maintenant:inconnu, a_lheure_7j_pct:inconnu, cadences_completees_14j:inconnu, en_retard:inconnu, serie_jours_sans_retard:inconnu
 - frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelanceEtapeMessage -> /api/django/crm/relance-etapes/<>/message
