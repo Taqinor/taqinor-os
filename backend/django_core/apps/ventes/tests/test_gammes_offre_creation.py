@@ -81,3 +81,24 @@ class TestCreerVarianteGamme(GammeBase):
                               make_client_obj(autre), 'DEV-GAM-X')
         resp = self.api.post(url_gamme(etranger.id), {}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+
+class TestCreerVarianteGammeAtomique(GammeBase):
+    """QJR562 — create_numbered + cloner_lignes forment UNE transaction :
+    un incident au clonage ne laisse jamais une sœur BROUILLON sans lignes."""
+
+    def test_echec_du_clonage_ne_laisse_aucun_devis_orphelin(self):
+        from unittest import mock
+
+        from apps.ventes.services import creer_variante_gamme
+
+        source = make_devis(self.company, self.user, self.client_obj,
+                            'DEV-GAM-ATOM')
+        add_ligne(source, self.panneau, qty='10')
+        avant = Devis.objects.filter(company=self.company).count()
+        with mock.patch('apps.ventes.domain.lignes.cloner_lignes',
+                        side_effect=RuntimeError('incident de clonage')):
+            with self.assertRaises(RuntimeError):
+                creer_variante_gamme(source, 'Premium', user=self.user)
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), avant)
