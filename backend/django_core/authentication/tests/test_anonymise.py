@@ -13,9 +13,10 @@ Ce qui est verrouillé ici :
 """
 import gzip
 import itertools
+import json
 import shutil
 import tempfile
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
@@ -49,6 +50,90 @@ ID_LEAD = {
     'whatsapp': '+212 6 62 33 44 56', 'adresse': '3 douar Ouled Qsiba',
     'note': 'Rappeler Mme Xaverbrahim après 18h au 0662334455',
 }
+
+# Réglages de PRIX de la société SOURCE, volontairement différents des défauts
+# codés (défaut du 30/09/2026 : l'export ne les portait pas, la société cible
+# tarifait avec les barèmes PAR DÉFAUT et les chiffres dérivaient de la prod).
+PROFILE_PRICING = {
+    'tva_standard': Decimal('18.00'), 'tva_panneaux': Decimal('12.00'),
+    'onee_tarif_kwh': Decimal('1.911'), 'productible_kwh_kwc': Decimal('1725.0'),
+    'rendement_global': Decimal('0.790'),
+    'prix_cible_kwc_defaut': Decimal('9500.00'),
+    'remise_max_pct': Decimal('12.50'),
+    'discount_approval_threshold': Decimal('8.00'),
+    'agricole_pump_hours': Decimal('6.5'),
+    'agricole_prix_bonbonne': Decimal('55.00'),
+    'agricole_cout_reel_bonbonne': Decimal('131.00'),
+    'quote_validity_days': 45, 'variante_pct': Decimal('15.00'),
+    'devise_defaut': 'MAD',
+    'seuil_regime_declaration_kwc': Decimal('12'),
+    'seuil_regime_anre_kwc': Decimal('900'),
+    'payment_terms': {'residentiel': {'acompte': 40, 'materiel': 50, 'solde': 10}},
+}
+# Identité / coordonnées / sécurité du profil SOURCE : ne doivent JAMAIS sortir.
+PROFILE_IDENTITY = {
+    'nom': 'Zaghlouloune Énergies SARL',
+    'adresse': '88 boulevard Zaghloul, Casablanca',
+    'email': 'direction@zaghlouloune-source.ma',
+    'telephone': '+212 5 22 99 88 11', 'ice': '999888777666555',
+    'rib': '230 780 0001234567890123 45', 'banque': 'Banque Zaghloul',
+    'siret': 'SIRET-ZAGH-01', 'login_banner_text': 'Bandeau privé Zaghloul',
+    'password_min_length': 3,
+}
+# Tarification & ROI de la société SOURCE. Deux prix sont des CHAÎNES à 9
+# chiffres (« 118.123456 », tarif hors Maroc) : un brouilleur de JSON les
+# prendrait pour un téléphone et rendrait le barème illisible.
+TARIFF = {
+    'residential_tiers': [
+        {'max_kwh': 100, 'prix_kwh_ttc': '0.951234'},
+        {'max_kwh': 150, 'prix_kwh_ttc': '1.101234'},
+        {'max_kwh': 210, 'prix_kwh_ttc': '1.111234'},
+        {'max_kwh': 310, 'prix_kwh_ttc': '1.211234'},
+        {'max_kwh': 510, 'prix_kwh_ttc': '118.123456'},
+        {'max_kwh': None, 'prix_kwh_ttc': '1.711234'},
+    ],
+    'tolerance_kwh': 12, 'selective_threshold_kwh': 140,
+    'redevance_compteur_mad_mois': Decimal('47.35'),
+    'force_motrice_prix_kwh_ttc': Decimal('0.8800'),
+    'surplus_injecte_compense': True,
+    'surplus_prix_kwh_ttc': Decimal('0.4200'),
+    'autoconsommation_pct_defaut': Decimal('64.00'),
+    'pertes_systeme_pct': Decimal('17.50'), 'pvgis_actif': False,
+    'productible_manuel_kwh_kwc': Decimal('1725.0'),
+    'inclinaison_defaut_deg': 25, 'azimut_defaut_deg': -10, 'version': 7,
+    'tou_heures': ['creuse'] * 6 + ['pleine'] * 12 + ['pointe'] * 4
+    + ['pleine'] * 2,
+    'tou_tarifs': {'creuse': 0.85, 'pleine': '1.150000', 'pointe': '118.123456'},
+    'tou_source': 'Contrat ONEE 2026-07 n° 9988776655 (source privée)',
+    'tou_date_source': date(2026, 7, 1),
+    'mecanisme_compensation': 'surplus', 'report_periode': 12,
+    'plafond_annuel_kwh': Decimal('15000.00'),
+    'ratio_compensation': Decimal('0.8000'), 'structure_tarif': 'tranches',
+    'pays_tarif': 'MA', 'prix_unique_kwh': Decimal('1.234567'),
+    'poste_haut': Decimal('1.500000'), 'poste_bas': Decimal('0.700000'),
+    'prix_incluent_taxes': False,
+    'taxes': [{'libelle': 'TPPAN', 'taux_pct': '20.000000',
+               'assiette': 'energie', 'source': 'Loi de finances 2026'}],
+    'charge_minimale_mad_jour': Decimal('3.50'),
+    'indexation_tarif_pct_an': Decimal('2.500'),
+    'indexation_source': 'Historique des tarifs publiés 9988776655',
+    'taux_imposition_pct': Decimal('31.00'), 'amortissement_mode': 'lineaire',
+    'amortissement_duree_ans': 10,
+    'amortissement_coefficient': Decimal('1.750'),
+    'fiscalite_source': 'Avis fiscal 2026 référence 5544332211',
+}
+# Champs TEXTE LIBRE de la tarification : brouillés (non vides), jamais gardés.
+TARIFF_FREE_TEXT = ('tou_source', 'indexation_source', 'fiscalite_source')
+
+
+def _tarif_lu_par_le_moteur(company):
+    """Ce que le moteur de devis ET les règles d'audit lisent comme tarif de la
+    société (``etude_horaire._reglages_tarifaires`` : tranches + charges fixes)."""
+    from apps.ventes.etude_horaire import _reglages_tarifaires
+    tranches, charges_fixes = _reglages_tarifaires(company)
+    return (None if tranches is None else list(tranches),
+            getattr(tranches, 'selective_threshold', None),
+            getattr(tranches, 'boundary_tolerance', None), charges_fixes)
 
 
 def _other_company():
@@ -98,6 +183,17 @@ class AnonymiseRoundTripTest(TestCase):
             devis=devis, produit=produit, designation='Onduleur hybride 5kW',
             quantite=Decimal('2'), prix_unitaire=Decimal('11500.00'),
             remise=Decimal('0'))
+
+        # Réglages de prix PERSONNALISÉS de la société source (profil +
+        # tarification), et de quoi vérifier qu'aucune identité du profil ne sort.
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+        profile = CompanyProfile.get(company=cls.source)
+        for name, value in {**PROFILE_PRICING, **PROFILE_IDENTITY}.items():
+            setattr(profile, name, value)
+        profile.save()
+        TariffSettings.objects.update_or_create(
+            company=cls.source, defaults=TARIFF)
 
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix='anon-test-'))
@@ -256,6 +352,95 @@ class AnonymiseRoundTripTest(TestCase):
                          company_slug=SOURCE_SLUG, verbosity=0)
         self.assertTrue(Company.objects.filter(slug=SOURCE_SLUG).exists())
 
+    # ── réglages de prix de la société (défaut du 30/09/2026) ────────────────
+    def test_pricing_configuration_round_trips(self):
+        """Une société source au tarif PERSONNALISÉ → après export/import, le code
+        de tarification lit les MÊMES valeurs pour la société cible (avant : la
+        cible tarifait avec les défauts, et les règles d'audit dérivaient)."""
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+        from apps.parametres.selectors import (
+            residential_tranches_for, tariff_for)
+        raw = self._export()
+        target = self._import()
+
+        lu_source = _tarif_lu_par_le_moteur(self.source)
+        self.assertIsNotNone(lu_source[0])  # le fixture est un vrai barème société
+        self.assertEqual(lu_source[3], 47.35)
+        self.assertEqual(_tarif_lu_par_le_moteur(target), lu_source)
+        self.assertEqual(residential_tranches_for(target),
+                         residential_tranches_for(self.source))
+        self.assertEqual(tariff_for(target), tariff_for(self.source))
+        self.assertEqual(tariff_for(target)['onee_tarif_kwh'], 1.911)
+
+        src_profile = CompanyProfile.objects.get(company=self.source)
+        dst_profile = CompanyProfile.objects.get(company=target)
+        for name in anonymise.PRICING_PROFILE_FIELDS:
+            self.assertEqual(getattr(dst_profile, name),
+                             getattr(src_profile, name), name)
+        src_tariff = TariffSettings.objects.get(company=self.source)
+        dst_tariff = TariffSettings.objects.get(company=target)
+        for f in TariffSettings._meta.concrete_fields:
+            if f.name in ('id', 'company', 'date_modification') or \
+                    f.name in TARIFF_FREE_TEXT:
+                continue
+            self.assertEqual(getattr(dst_tariff, f.attname),
+                             getattr(src_tariff, f.attname), f.name)
+        # Prix en CHAÎNES à 9 chiffres : gardés tels quels (jamais un faux tel.).
+        self.assertEqual(dst_tariff.residential_tiers, TARIFF['residential_tiers'])
+        self.assertEqual(dst_tariff.tou_tarifs, TARIFF['tou_tarifs'])
+        self.assertEqual(dst_tariff.taxes, TARIFF['taxes'])
+        # Texte libre (source d'un tarif) : brouillé, mais PAS vidé — une grille
+        # sans source serait refusée par les règles de saisie.
+        for name in TARIFF_FREE_TEXT:
+            self.assertTrue(getattr(dst_tariff, name), name)
+            self.assertNotEqual(getattr(dst_tariff, name),
+                                getattr(src_tariff, name), name)
+        self.assertNotIn(b'9988776655', raw)
+        self.assertNotIn(b'5544332211', raw)
+
+    def test_company_profile_identity_and_security_never_leave(self):
+        from apps.parametres.models import CompanyProfile
+        raw = self._export()
+        for name, value in PROFILE_IDENTITY.items():
+            if isinstance(value, str) and len(value) >= 4:
+                self.assertNotIn(value.encode('utf-8'), raw, name)
+        payload = json.loads(raw)
+        blocks = {b['label']: b for b in payload['models']}
+        rows = blocks['parametres.CompanyProfile']['rows']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(set(rows[0]['f']), set(anonymise.PRICING_PROFILE_FIELDS))
+        target = self._import()
+        profile = CompanyProfile.objects.get(company=target)
+        # La société cible garde SON identité anonyme et sa politique par défaut.
+        self.assertEqual((profile.nom, profile.email),
+                         ('TAQINOR Anonymisé (QA)', 'anon@taqinor.local'))
+        self.assertEqual(
+            profile.password_min_length,
+            CompanyProfile._meta.get_field('password_min_length').get_default())
+        for name in ('ice', 'rib', 'banque', 'telephone', 'siret'):
+            self.assertNotEqual(getattr(profile, name),
+                                PROFILE_IDENTITY[name], name)
+
+    def test_pricing_settings_import_is_idempotent_and_scoped(self):
+        from apps.parametres.models import CompanyProfile
+        from apps.parametres.models_tariff import TariffSettings
+        before = (list(TariffSettings.objects.filter(
+            company=self.other).values()),
+            list(CompanyProfile.objects.filter(company=self.other).values()))
+        self._export()
+        self._import()
+        second = self._import()  # la société cible est vidée puis rechargée
+        self.assertEqual(
+            TariffSettings.objects.filter(company__slug=TARGET_SLUG).count(), 1)
+        self.assertEqual(
+            CompanyProfile.objects.filter(company__slug=TARGET_SLUG).count(), 1)
+        self.assertEqual(TariffSettings.objects.get(company=second).version, 7)
+        self.assertEqual(
+            (list(TariffSettings.objects.filter(company=self.other).values()),
+             list(CompanyProfile.objects.filter(company=self.other).values())),
+            before)
+
 
 class AnonymiseGuardsTest(TestCase):
 
@@ -322,6 +507,47 @@ class AnonymiseGuardsTest(TestCase):
         self.assertEqual(a.fake('phone', '+212 6 61 11 22 33'),
                          a.fake('phone', '0661112233'))
         self.assertNotEqual(a.fake('email', 'x@y.ma'), b.fake('email', 'x@y.ma'))
+
+    def test_pricing_profile_export_is_a_whitelist(self):
+        """Le profil société porte l'identité légale, le RIB, la sécurité… : on
+        n'en exporte QUE les repères de prix, listés un par un."""
+        label = 'parametres.CompanyProfile'
+        model = anonymise.model_for(label)
+        names = {f.name for f in model._meta.concrete_fields}
+        # Une faute de frappe dans la liste ferait disparaître un réglage en
+        # silence : chaque nom doit être un vrai champ du profil.
+        self.assertEqual(anonymise.PRICING_PROFILE_FIELDS - names, set())
+        exported = anonymise.exported_fields(label, model)
+        self.assertEqual({f.name for f in exported},
+                         set(anonymise.PRICING_PROFILE_FIELDS))
+        for f in exported:
+            # Nombres/énumérations gardés, JSON de barème nettoyé : jamais vidé.
+            self.assertIn(anonymise.classify(label, f),
+                          (anonymise.KEEP, anonymise.SCRUB), f.name)
+        for never in ('nom', 'adresse', 'email', 'telephone', 'siret',
+                      'tva_intra', 'ice', 'identifiant_fiscal', 'rc', 'patente',
+                      'cnss', 'rib', 'banque', 'site_web', 'logo_key',
+                      'signature_key', 'responsable_defaut_leads',
+                      'default_installer', 'password_min_length',
+                      'lockout_max_attempts', 'login_banner_text',
+                      'conditions_generales', 'instructions_paiement'):
+            self.assertNotIn(never, {f.name for f in exported}, never)
+
+    def test_tariff_settings_export_drops_nothing_and_scrambles_only_sources(self):
+        label = 'parametres.TariffSettings'
+        model = anonymise.model_for(label)
+        verdicts = {f.name: anonymise.classify(label, f)
+                    for f in anonymise.exported_fields(label, model)
+                    if not f.is_relation}
+        # Aucun champ de tarification n'est vidé en silence (un champ numérique
+        # dont le nom ressemblerait à une identité le serait), et un nouveau
+        # champ JSON (SCRUB par défaut) oblige à décider s'il se garde tel quel.
+        self.assertNotIn(anonymise.DROP, verdicts.values(), verdicts)
+        self.assertNotIn(anonymise.SCRUB, verdicts.values(), verdicts)
+        self.assertEqual(
+            {n for n, v in verdicts.items() if v == anonymise.SCRAMBLE},
+            set(TARIFF_FREE_TEXT))
+        self.assertEqual(set(TARIFF) - set(verdicts), set())  # fixture complet
 
 
 @override_settings(DEBUG=True)

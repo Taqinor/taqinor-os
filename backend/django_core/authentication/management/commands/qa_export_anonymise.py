@@ -5,7 +5,11 @@ transaction ANNULÉE à la fin (et, sur PostgreSQL hors transaction englobante,
 déclarée ``READ ONLY`` — toute écriture accidentelle échouerait). Rien n'est
 jamais sauvegardé.
 
-Graphe exporté (une société, FK cohérentes) : catégories, fournisseurs,
+Graphe exporté (une société, FK cohérentes) : réglages de PRIX de la société
+(Tarification & ROI en entier + repères de prix du profil — TVA, tarif ONEE,
+productible, remises… — jamais son identité, son RIB ni sa sécurité : sans eux
+la société cible tarife avec les barèmes par défaut et les chiffres dérivent de
+la production), catégories, fournisseurs,
 produits (catalogue, ``courbe_pompe``, ``prix_achat`` compris — usage interne
 du générateur), clients, leads (profil énergie, factures, distributeur, toit,
 relevé), devis + lignes + ``etude_params``, bons de commande, factures +

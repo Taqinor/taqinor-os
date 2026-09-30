@@ -8,7 +8,9 @@ effacement d'une société réelle). Idempotent : un ré-import VIDE cette soci�
 (ORM uniquement, ``reset_demo_company._delete_cascading``) puis la recharge.
 Toutes les clés primaires/étrangères sont remappées ; les références gardées
 restent uniques (société neuve ; une valeur unique GLOBALE qui entrerait en
-collision est préfixée).
+collision est préfixée). Les réglages de prix (Tarification & ROI, repères de
+prix du profil) sont écrits sur les lignes que la société cible possède déjà,
+liste blanche de champs — son identité anonyme et sa sécurité ne bougent pas.
 
 AUCUNE notification pendant l'import : les lignes sont insérées par
 ``bulk_create`` (ni ``save()`` ni signaux pre/post_save → ni chatter, ni

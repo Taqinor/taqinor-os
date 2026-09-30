@@ -5,8 +5,10 @@ POURQUOI. Le qa-explorer ne testait que ``seed_demo`` (5 devis nus, 3 leads à u
 nom) : les branches où vivent les vrais bugs (factures d'électricité,
 distributeurs, études, options, pompage, C&I) n'étaient jamais exercées. On
 exporte donc un graphe COHÉRENT d'une société réelle — montants, profils
-énergétiques, études, lignes, statuts CONSERVÉS — avec toutes les identités
-brouillées, puis on le recharge dans une société locale ``taqinor-anon``.
+énergétiques, études, lignes, statuts, et les RÉGLAGES DE PRIX de la société
+(barème, TVA, tarifs : sans eux la cible tarife aux défauts et les chiffres
+dérivent) CONSERVÉS — avec toutes les identités brouillées, puis on le recharge
+dans une société locale ``taqinor-anon``.
 
 LA RÈGLE QUI GOUVERNE TOUT : **fail-closed**. Chaque champ passe par
 ``classify()`` :
@@ -68,8 +70,14 @@ DROP = 'drop'
 
 # ── Graphe exporté (ordre = ordre de création à l'import) ─────────────────
 # (label, genre) — 'catalogue' : toute la société ; 'document' : filtrable par
-# --since/--limit ; 'child:<champ>' : suit son parent (lignes).
+# --since/--limit ; 'child:<champ>' : suit son parent (lignes) ; 'settings' :
+# RÉGLAGES de la société (une seule ligne, OneToOne) — la société cible en a
+# déjà une à l'import : on y écrit les champs exportés par ``update()``.
 EXPORT_ORDER = [
+    # Réglages de prix : sans eux, la société cible tarife avec les barèmes PAR
+    # DÉFAUT et les chiffres dérivent de la production (factures, couverture).
+    ('parametres.CompanyProfile', 'settings'),
+    ('parametres.TariffSettings', 'settings'),
     ('stock.Categorie', 'catalogue'),
     ('stock.Fournisseur', 'catalogue'),
     ('stock.Produit', 'catalogue'),
@@ -87,12 +95,32 @@ EXPORT_ORDER = [
     ('installations.Intervention', 'document'),
 ]
 
+# Repères de PRIX du profil société que lisent le moteur de devis et les règles
+# d'audit (``parametres.selectors.tariff_for`` : tarif ONEE de repli, productible,
+# rendement ; ``ventes.utils.company_settings`` : TVA ; validité, échéancier,
+# variantes, remises, régime loi 82-21, pompage). LISTE BLANCHE : le reste du
+# profil — identité légale, coordonnées, RIB, clés de fichiers, responsables,
+# sécurité (mots de passe, sessions), jetons — n'est JAMAIS exporté (jamais
+# écrit non plus à l'import : la société cible garde son identité anonyme), et
+# un champ ajouté demain au profil n'est pas exporté tant que personne ne l'a
+# listé ici (fail-closed). Nombres, booléens et JSON de barème seulement.
+PRICING_PROFILE_FIELDS = frozenset({
+    'tva_standard', 'tva_panneaux', 'onee_tarif_kwh', 'productible_kwh_kwc',
+    'rendement_global', 'prix_cible_kwc_defaut', 'remise_max_pct',
+    'discount_approval_threshold', 'agricole_pump_hours',
+    'agricole_prix_bonbonne', 'agricole_cout_reel_bonbonne',
+    'quote_validity_days', 'payment_terms', 'variante_pct', 'devise_defaut',
+    'seuil_regime_declaration_kwc', 'seuil_regime_anre_kwc',
+})
+
 # ── Politique EXPLICITE par modèle (le reste suit les règles par défaut) ──
 # 'keep' : champs texte SANS donnée personnelle, nécessaires au comportement
 #          (référence, désignation de ligne — la séparation d'options du PDF en
 #          dépend —, fiche catalogue, ville niveau commune, tranche ONEE…).
+#          Un champ JSON nommé ici est exporté TEL QUEL.
 # 'drop' : champs à vider même si la règle par défaut les garderait.
 # 'gps'  : coordonnées décimales à arrondir.
+# 'only' : LISTE BLANCHE — seuls ces champs sont exportés (et écrits à l'import).
 MODEL_POLICY = {
     'stock.Categorie': {'keep': {'nom', 'description'}},
     'stock.Fournisseur': {'keep': {'devise_defaut', 'incoterm'}},
@@ -130,6 +158,26 @@ MODEL_POLICY = {
     },
     'installations.Intervention': {
         'drop': {'signature_client', 'lien_client_token', 'lien_rapport_token'},
+    },
+    # Réglages de prix de la société (voir PRICING_PROFILE_FIELDS).
+    'parametres.CompanyProfile': {
+        'only': PRICING_PROFILE_FIELDS,
+        'keep': {'devise_defaut'},
+    },
+    # Tarification & ROI : tout le singleton (barème, tolérance, charges fixes,
+    # force motrice, surplus, hypothèses ROI/productible, grille horaire,
+    # compensation, structure du tarif, taxes, indexation, fiscalité). Nombres,
+    # booléens, dates et énumérations sont gardés par type ; les trois champs
+    # « source » (texte libre : facture, contrat…) restent BROUILLÉS par défaut
+    # — non vides quand ils l'étaient, c'est tout ce que les règles exigent.
+    # Les JSON de barème sont gardés TELS QUELS : ce sont des nombres, des prix
+    # en CHAÎNES (« 1.622856 ») et des libellés de tranche, et le brouilleur de
+    # JSON prendrait un prix à 8 chiffres ou plus (« 118.000000 », tarif hors
+    # Maroc) pour un téléphone — il le remplacerait par un faux numéro, et le
+    # barème deviendrait illisible (repli silencieux sur les défauts).
+    'parametres.TariffSettings': {
+        'keep': {'pays_tarif', 'residential_tiers', 'tou_heures', 'tou_tarifs',
+                 'taxes'},
     },
 }
 
@@ -207,6 +255,18 @@ def concrete_fields(model):
     """Champs concrets à sérialiser (hors pk, hors M2M, hors inverses)."""
     return [f for f in model._meta.concrete_fields
             if not f.primary_key and not getattr(f, 'generated', False)]
+
+
+def exported_fields(label, model):
+    """Champs que l'export LIT pour ce modèle : tous, sauf quand
+    ``MODEL_POLICY[label]['only']`` pose une LISTE BLANCHE (réglages de la
+    société : seulement les prix, jamais l'identité ni la sécurité). Un champ
+    ajouté demain n'est donc PAS exporté tant que personne ne l'a listé."""
+    only = MODEL_POLICY.get(label, {}).get('only')
+    fields = concrete_fields(model)
+    if only is None:
+        return fields
+    return [f for f in fields if f.name in only]
 
 
 def classify(label, field):
@@ -755,7 +815,7 @@ def build_export(company, since=None, limit=None, scrambler=None):
     labels = {label for label, _, _ in specs}
     out_models, counts = [], {}
     for label, _kind, model in specs:
-        fields = concrete_fields(model)
+        fields = exported_fields(label, model)
         rows = []
         qs = model._base_manager.filter(pk__in=sel[label]).order_by('pk')
         for obj in qs.iterator():
@@ -850,6 +910,26 @@ def skip_reason(exc):
     return name
 
 
+def _update_settings_row(model, company_fields, company, kwargs):
+    """Réglages de la société (genre ``settings``) : la société cible en a déjà
+    UNE ligne (``CompanyProfile`` posé par ``qa_import_anonymise``, contrainte
+    OneToOne sur ``company``) — on y écrit les SEULS champs exportés, par
+    ``update()`` (aucun signal), sans toucher au reste : la société cible garde
+    son identité anonyme. Retourne le pk mis à jour, ou ``None`` s'il n'y a pas
+    encore de ligne (l'appelant la crée)."""
+    if not company_fields:
+        return None
+    link = company_fields[0].attname
+    pk = model._base_manager.filter(**{link: company.pk}).values_list(
+        'pk', flat=True).first()
+    if pk is None:
+        return None
+    changes = {k: v for k, v in kwargs.items() if k != link}
+    if changes:
+        model._base_manager.filter(pk=pk).update(**changes)
+    return pk
+
+
 def import_payload(payload, company, admin):
     """Recrée le graphe dans ``company``. Retourne (créés, ignorés).
 
@@ -857,15 +937,18 @@ def import_payload(payload, company, admin):
     pre/post_save — donc ni chatter, ni ``notify()``, ni e-mail, ni webhook, ni
     événement de domaine comme ``devis_accepted``, qui ne sont émis que par des
     appels explicites des vues/services), les dates ``auto_now*`` sont
-    rétablies par ``QuerySet.update()`` (sans signal non plus). Une ligne
-    invalide est ignorée DANS un savepoint et comptée par NOM DE CONTRAINTE de
-    base (``skip_reason`` ; repli : classe d'exception) — jamais son contenu
-    imprimé."""
+    rétablies par ``QuerySet.update()`` (sans signal non plus). Les RÉGLAGES de
+    la société (genre ``settings`` : profil de prix, tarification) mettent à
+    jour la ligne que la société cible possède déjà, ``update()`` aussi. Une
+    ligne invalide est ignorée DANS un savepoint et comptée par NOM DE
+    CONTRAINTE de base (``skip_reason`` ; repli : classe d'exception) — jamais
+    son contenu imprimé."""
     from django.core.exceptions import ValidationError
     from django.db import DataError, IntegrityError, transaction
 
     created, skipped = {}, {}
     idmap = {}
+    kinds = dict(EXPORT_ORDER)
     file_pks = {b['label']: {r['pk'] for r in b['rows']}
                 for b in payload.get('models', [])}
     deferred = []
@@ -886,11 +969,16 @@ def import_payload(payload, company, admin):
         auto_fields = [f for f in fields.values()
                        if getattr(f, 'auto_now', False)
                        or getattr(f, 'auto_now_add', False)]
+        settings_kind = kinds.get(label) == 'settings'
+        # Liste blanche aussi À L'IMPORT : un fichier trafiqué ou plus ancien ne
+        # peut jamais écrire autre chose que les champs prévus.
+        only = MODEL_POLICY.get(label, {}).get('only')
         for row in block['rows']:
             kwargs, defer, ok = {}, [], True
             for name, value in row['f'].items():
                 f = fields.get(name)
-                if f is None or _is_company_fk(f):
+                if f is None or _is_company_fk(f) or (
+                        only is not None and name not in only):
                     continue  # champ disparu du schéma local : ignoré
                 if f.is_relation:
                     new = None
@@ -918,20 +1006,27 @@ def import_payload(payload, company, admin):
             _fix_unique(model, fields.values(), kwargs)
             try:
                 with transaction.atomic():
-                    obj = model(**kwargs)
-                    model._base_manager.bulk_create([obj])
-                    autos = {f.attname: kwargs[f.attname] for f in auto_fields
-                             if kwargs.get(f.attname) is not None}
-                    if autos:
-                        model._base_manager.filter(pk=obj.pk).update(**autos)
+                    new_pk = (_update_settings_row(
+                        model, company_fields, company, kwargs)
+                        if settings_kind else None)
+                    if new_pk is None:
+                        obj = model(**kwargs)
+                        model._base_manager.bulk_create([obj])
+                        autos = {f.attname: kwargs[f.attname]
+                                 for f in auto_fields
+                                 if kwargs.get(f.attname) is not None}
+                        if autos:
+                            model._base_manager.filter(
+                                pk=obj.pk).update(**autos)
+                        new_pk = obj.pk
             except (IntegrityError, DataError, ValidationError, ValueError,
                     TypeError) as exc:
                 _skip(label, skip_reason(exc))
                 continue
-            idmap[label][row['pk']] = obj.pk
+            idmap[label][row['pk']] = new_pk
             created[label] = created.get(label, 0) + 1
             for attname, target, src_pk in defer:
-                deferred.append((model, obj.pk, attname, target, src_pk))
+                deferred.append((model, new_pk, attname, target, src_pk))
 
     for model, pk, attname, target, src_pk in deferred:
         new = idmap.get(target, {}).get(src_pk)
