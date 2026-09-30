@@ -45,7 +45,7 @@ PHRASES = json.loads(
 #: Réponses de la table que le moteur ne sert PAS ENCORE : chacune arrive
 #: avec sa tâche (E2 « Perdu », E4 « Ne veut plus de visite », E16 « Client
 #: joint au téléphone ») et quitte cet ensemble dans le même commit.
-CLES_A_VENIR = frozenset({'visite_abandonnee', 'joint_telephone'})
+CLES_A_VENIR = frozenset({'joint_telephone'})
 
 _CANAUX_ECRITS = ('whatsapp', 'email')
 _ISSUES = {cle for cle, _ in LeadActivity.OUTCOMES if cle}

@@ -524,6 +524,10 @@
           "rappel": [
             "etape_deplacee_a_la_date"
           ],
+          "visite_abandonnee": [
+            "visite_abandonnee",
+            "suite_si_plus_rien_ouvert"
+          ],
           "question_prix": [
             "question_prix_etape"
           ],

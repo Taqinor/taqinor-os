@@ -3770,11 +3770,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         from .services import (
             REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
             REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU,
-            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, refus_motif_perte,
+            REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX,
+            REPONSE_VISITE_ABANDONNEE, refus_motif_perte,
             refus_reponse_touche, repondre_decision_a_plusieurs,
             repondre_devis_modifie, repondre_ne_plus_contacter,
             repondre_perdu, repondre_plus_tard, repondre_question_prix,
-            reponse_touche)
+            repondre_visite_abandonnee, reponse_touche)
 
         etape = self.get_object()
         refus = refus_reponse_touche(etape, reponse)
@@ -3836,6 +3837,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         elif reponse == REPONSE_PERDU:
             etape = repondre_perdu(
                 etape, request.user, motif_perte, note=note, body=body)
+        elif reponse == REPONSE_VISITE_ABANDONNEE:
+            etape = repondre_visite_abandonnee(
+                etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 
     @action(detail=True, methods=['post'])

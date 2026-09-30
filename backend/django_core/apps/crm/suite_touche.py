@@ -132,6 +132,10 @@ JOURNAL_SANS_EFFET = 'journal_sans_effet'
 # suite » : le lead passe perdu avec son motif, tout s'arrête, rien n'est
 # posé.
 LEAD_PERDU = 'lead_perdu'
+# SUIVI E4 (30/09/2026) — « Ne veut plus de visite » : le rendez-vous est
+# annulé, les gestes de visite retirés ; le suivi continue sans visite
+# (``suite_si_plus_rien_ouvert`` le dit).
+VISITE_ABANDONNEE = 'visite_abandonnee'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -148,7 +152,7 @@ CODES = frozenset({
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
-    LEAD_PERDU,
+    LEAD_PERDU, VISITE_ABANDONNEE,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -284,11 +288,13 @@ REPONSES_PAR_TYPE = {
     TYPE_QUESTION_PRIX: (
         'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
     TYPE_PLANIFIER: (
-        'rappel', 'non_joint', 'refuse', 'ne_plus_contacter'),
+        'rappel', 'non_joint', 'visite_abandonnee', 'refuse',
+        'ne_plus_contacter'),
     TYPE_CONFIRMATION: (
-        'joint', 'non_joint', 'refuse', 'ne_plus_contacter'),
+        'joint', 'non_joint', 'visite_abandonnee', 'refuse',
+        'ne_plus_contacter'),
     TYPE_DEBRIEF: (
-        'joint', 'non_joint', 'rappel', 'question_prix',
+        'joint', 'non_joint', 'rappel', 'visite_abandonnee', 'question_prix',
         'devis_modifie', 'decision_famille', 'decision_proprietaire',
         'refuse', 'ne_plus_contacter'),
     TYPE_DEVIS_MODIFIE: (
@@ -616,12 +622,14 @@ def _codes_reponse_client(cle, *, nature, derniere):
     from .services import (
         REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
         REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU,
-        REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX)
+        REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE)
 
     if cle == REPONSE_NE_PLUS_CONTACTER:
         return [NE_PLUS_CONTACTER]
     if cle == REPONSE_PERDU:
         return [LEAD_PERDU]
+    if cle == REPONSE_VISITE_ABANDONNEE:
+        return [VISITE_ABANDONNEE, SUITE_SI_PLUS_RIEN_OUVERT]
     if cle == REPONSE_PLUS_TARD:
         return [VEILLE_MEME_TOUCHE]
     a_cote = nature in (NATURE_VISITE, NATURE_PASSATION)

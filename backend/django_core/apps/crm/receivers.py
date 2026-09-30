@@ -638,9 +638,15 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
             # CAD2 — la clôture d'une étape de VISITE (débrief, confirmation,
             # devis modifié) ne DÉMARRE jamais le suivi de proposition : le
             # filet le poursuit s'il a déjà servi, sinon il pose son étape.
+            # SUIVI E4 (30/09/2026) — et elle n'est jamais « il a répondu au
+            # message » : une confirmation de visite close par WhatsApp ne
+            # fait pas poser « Appeler le client — il a répondu au message »
+            # (le canal de la touche ne décide pas de sa suite).
+            visite = est_cloture_d_etape_visite(instance)
             assurer_prochaine_etape_apres_succes(
-                instance.lead, instance.user, canal_touche=instance.kind,
-                demarrer_plan=not est_cloture_d_etape_visite(instance))
+                instance.lead, instance.user,
+                canal_touche=None if visite else instance.kind,
+                demarrer_plan=not visite)
         elif issue == 'refuse':
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,

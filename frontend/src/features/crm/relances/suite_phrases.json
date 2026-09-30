@@ -33,7 +33,8 @@
     "journal_suite_si_rien_ouvert": "Si plus aucune relance n’est ouverte, une étape de suite est posée (le suivi d’un devis envoyé reprend s’il n’est pas allé au bout), et un dossier au Froid en sort.",
     "journal_decider_si_rien_ouvert": "Si plus aucune relance n’est ouverte et que le dossier n’est pas au Froid, une étape « Décider la suite » (perdu ou relance ultérieure) est posée — marquer perdu reste votre décision.",
     "journal_sans_effet": "Journalisé seulement : aucune relance n’est ajoutée, déplacée ni arrêtée. Pour faire avancer le plan de relance, traitez la touche du jour.",
-    "lead_perdu": "Le lead passe « Perdu » avec le motif choisi : toutes ses relances s’arrêtent et aucune autre étape n’est posée. Il reste rouvrable depuis sa fiche."
+    "lead_perdu": "Le lead passe « Perdu » avec le motif choisi : toutes ses relances s’arrêtent et aucune autre étape n’est posée. Il reste rouvrable depuis sa fiche.",
+    "visite_abandonnee": "La visite est abandonnée : le rendez-vous prévu est annulé (le technicien est prévenu) et les étapes de la visite sont retirées."
   },
   "_doc_journal": "CAD15 — les effets d'une ISSUE journalisée depuis la fiche (journal d'appel) : aucune touche n'est close, seuls les récepteurs MRY9 réagissent. Table ÉGALE à apps/crm/suite_touche.py::promesses_journal() (garde CAD17), rejouée par l'API réelle.",
   "journal": {

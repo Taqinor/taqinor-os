@@ -10071,6 +10071,36 @@ def clore_etape_apres_planification(etape, user, *, note=''):
     return etape
 
 
+def annuler_rendez_vous_du_lead(lead, user, *, motif='',
+                                vider_date_passee=True):
+    """SUIVI E4/E21 (30/09/2026) — le rendez-vous de visite EN ATTENTE du
+    lead est annulé : côté visites par LEUR service
+    (``apps.visites.services.annuler_rendez_vous`` — frontière M3, jamais
+    ``visites.models``), côté fiche ``Lead.visite_prevue_le`` est vidé.
+
+    BEST-EFFORT : un module visites en échec ne bloque jamais le geste
+    commercial qui a demandé l'annulation (il est déjà acté). Avec
+    ``vider_date_passee=False``, une date de visite PASSÉE (la visite a eu
+    lieu, ou non) reste sur la fiche : seul un rendez-vous à venir est une
+    promesse faite au technicien. Renvoie le nombre de rendez-vous annulés
+    dans le module visites."""
+    annules = 0
+    try:
+        from apps.visites.services import annuler_rendez_vous
+
+        annules = annuler_rendez_vous(lead, user, motif=motif)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'SUIVI E21 : rendez-vous de visite non annulé (lead #%s)',
+            getattr(lead, 'pk', '?'), exc_info=True)
+    jour = getattr(lead, 'visite_prevue_le', None)
+    if jour is not None and (vider_date_passee
+                             or jour >= aujourd_hui_local()):
+        lead.visite_prevue_le = None
+        lead.save(update_fields=['visite_prevue_le'])
+    return annules
+
+
 #: Longueur maximale de la note de retour terrain posée au chatter. Un
 #: technicien consciencieux peut écrire beaucoup ; l'historique d'un lead doit
 #: rester lisible. Le texte intégral reste sur la visite, jamais perdu.
@@ -11907,6 +11937,9 @@ REPONSE_DECISION_PROPRIETAIRE = 'decision_proprietaire'
 #: SUIVI E2 (30/09/2026) — « Perdu — clore le dossier », la décision prise
 #: sur l'étape « Décider la suite » (et seulement là).
 REPONSE_PERDU = 'perdu'
+#: SUIVI E4 (30/09/2026) — « Ne veut plus de visite » / « Annule le
+#: rendez-vous » : la VISITE est abandonnée, pas la proposition.
+REPONSE_VISITE_ABANDONNEE = 'visite_abandonnee'
 #: L'étiquette posée — la forme AFFICHÉE de l'étiquette standard (seedée par
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
@@ -12003,6 +12036,18 @@ REPONSES_TOUCHE = {
         'cles': (CLE_DECIDER_SUITE,),
         'message': None,
         'motif_perte_requis': True,
+    },
+    # SUIVI E4 (30/09/2026) — refuser ou annuler la VISITE n'est pas refuser
+    # la PROPOSITION : « refus » tuait tout le suivi. Issue « joint » (le
+    # client a parlé), sur les trois gestes du rendez-vous seulement (jamais
+    # « Préparer le devis modifié »).
+    REPONSE_VISITE_ABANDONNEE: {
+        'libelle': 'Ne veut plus de visite',
+        'outcome': 'joint',
+        'note': 'Visite abandonnée — le client ne veut plus de visite',
+        'cadences': _TOUTES_CADENCES,
+        'cles': (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF),
+        'message': None,
     },
 }
 
@@ -12483,6 +12528,65 @@ def repondre_decision_a_plusieurs(etape, user, cle, *, note='', body=''):
     return marquer_etape_relance(
         etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
         outcome=spec['outcome'], body=body)
+
+
+# ── SUIVI E4 — « Ne veut plus de visite » : la VISITE s'arrête, pas le suivi ─
+
+#: La note des gestes de visite retirés quand la visite est abandonnée.
+NOTE_VISITE_ABANDONNEE = 'visite abandonnée'
+
+
+def repondre_visite_abandonnee(etape, user, *, note='', body=''):
+    """SUIVI E4 (30/09/2026) — le client ne veut plus de la visite (étape
+    « Planifier la visite », « Confirmer la visite » ou « Débrief visite »).
+
+    Avant, « Ne veut plus de visite » / « Annule le rendez-vous » envoyaient
+    « refus » : TOUT le suivi mourait, proposition comprise. Ici, dans
+    l'ordre :
+
+      1. la touche est close : FAIT, issue « joint » (le client a parlé),
+         note typée + note libre, sans aucune suite (``suite=False``) ;
+      2. le rendez-vous éventuel est ANNULÉ côté visites (le technicien est
+         prévenu) et ``Lead.visite_prevue_le`` vidé
+         (``annuler_rendez_vous_du_lead``) ;
+      3. les AUTRES gestes de visite ouverts (planifier, confirmer, débrief —
+         jamais « Préparer le devis modifié ») sont annulés (statut moteur) ;
+      4. UNE note système dit ce qui s'est passé ;
+      5. le filet d'invariant, sans jamais DÉMARRER le suivi de proposition :
+         un suivi pendant continue seul, sinon « Préparer et envoyer le
+         devis » est posée.
+
+    Renvoie la touche close."""
+    lead = etape.lead
+    spec = REPONSES_TOUCHE[REPONSE_VISITE_ABANDONNEE]
+    jour = lead.visite_prevue_le
+    etape = marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body, suite=False)
+    annules = annuler_rendez_vous_du_lead(lead, user)
+    retirees = annuler_etapes_moteur_ouvertes(
+        lead, CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF,
+        note=NOTE_VISITE_ABANDONNEE)
+    morceaux = ['Visite abandonnée à la demande du client']
+    if annules and jour is not None:
+        morceaux.append(f'rendez-vous du {jour:%d/%m/%Y} annulé (le '
+                        'technicien est prévenu)')
+    elif annules:
+        morceaux.append('rendez-vous annulé (le technicien est prévenu)')
+    if retirees:
+        morceaux.append(f'{retirees} étape(s) de visite retirée(s)')
+    # Note SYSTÈME (``user=None``) : dire ce que le moteur a fait n'est pas
+    # un contact (garde QJ7).
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=' — '.join(morceaux) + ' : le suivi continue sans visite.')
+    assurer_prochaine_etape_apres_succes(
+        lead, user, libelle_touche_close=(etape.libelle or ''),
+        cle_touche_close=cle_de(etape),
+        issue_touche_close=spec['outcome'], demarrer_plan=False)
+    _recaler_file(lead, user)
+    return etape
 
 
 # ── CAD-A ── CAD101 — « pièce reçue » : le geste pour l'enregistrer ─────────

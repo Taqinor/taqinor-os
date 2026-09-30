@@ -60,7 +60,7 @@ from apps.crm.services import (
     REPONSES_TOUCHE, TAG_DECISION_A_PLUSIEURS, VISITE_CONFIRMATION_LIBELLE,
     VISITE_DEBRIEF_LIBELLE, VISITE_DEVIS_LIBELLE, VISITE_FILET_LIBELLE,
     VISITE_ORDRE_CONFIRMATION, VISITE_ORDRE_DEBRIEF, VISITE_ORDRE_FILET,
-    _lead_porte_tag)
+    _lead_porte_tag, q_visite)
 from apps.parametres.models import CompanyProfile
 from apps.parametres.models_relance import CADENCES_DEFAUT, CadenceRelanceEtape
 from apps.ventes.models import Devis
@@ -190,6 +190,9 @@ VARIANTES = {
     # sous `suite_si_plus_rien_ouvert`, dont `seule_epuise` (plan servi
     # jusqu'au bout : l'étape de suite du filet, jamais le Froid).
     st.SUITE_SI_PLUS_RIEN_OUVERT: ('base', 'avec_autre', 'seule_epuise'),
+    # SUIVI E4 — la visite abandonnée se vérifie dans chaque branche de ce
+    # qui reste ouvert à côté d'elle.
+    st.VISITE_ABANDONNEE: ('base', 'avec_autre', 'seule_epuise'),
     st.VEILLE_MEME_TOUCHE: ('base', 'loin'),
     # CAD15 — le journal d'appel : la suite dépend de ce qui reste ouvert et
     # de l'étape du dossier (Froid ou non).
@@ -242,8 +245,8 @@ class Constat:
     avant: frozenset          # les touches ouvertes AVANT, hors la touche
     donnees: dict             # la réponse de l'API
 
-    def ouvertes(self, **filtres):
-        return self.lead.relance_etapes.filter(statut=A_FAIRE, **filtres)
+    def ouvertes(self, *q, **filtres):
+        return self.lead.relance_etapes.filter(*q, statut=A_FAIRE, **filtres)
 
     def nouvelles(self, **filtres):
         qs = self.ouvertes(**filtres).exclude(pk__in=self.avant)
@@ -435,6 +438,16 @@ def _lead_perdu(c):
     c.vrai(not c.ouvertes().exists(), 'une relance reste programmée')
 
 
+def _visite_abandonnee(c):
+    # SUIVI E4 — plus aucun geste de visite ouvert, plus de date de visite
+    # sur la fiche ; la touche est close « joint » (la proposition vit).
+    c.vrai(not c.ouvertes(q_visite()).exists(),
+           'un geste de visite reste ouvert')
+    c.vrai(c.lead.visite_prevue_le is None, 'la date de visite reste')
+    c.vrai(c.etape.statut == FAIT and c.etape.outcome == 'joint',
+           'la touche n’est pas close « joint »')
+
+
 def _veille_meme_touche(c):
     if c.variante == 'loin':
         c.vrai(c.etape.statut == RelanceEtape.Statut.ANNULEE,
@@ -527,6 +540,7 @@ VERIFICATEURS = {
     st.JOURNAL_DECIDER_SI_RIEN_OUVERT: _journal_decider_si_rien_ouvert,
     st.JOURNAL_SANS_EFFET: _journal_sans_effet,
     st.LEAD_PERDU: _lead_perdu,
+    st.VISITE_ABANDONNEE: _visite_abandonnee,
 }
 
 

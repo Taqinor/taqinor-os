@@ -300,6 +300,52 @@ def _deplacer_visite(visite, user, date_prevue, commercial, notes):
     return visite
 
 
+def annuler_rendez_vous(lead, user, motif=''):
+    """SUIVI E4 (30/09/2026) — le client ne veut plus de la visite (ou le
+    dossier s'arrête) : ses rendez-vous EN ATTENTE sont ANNULÉS.
+
+    C'est la porte que le CRM appelle (frontière M3 : il n'importe jamais
+    ``apps.visites.models``). Sont visées les visites du lead au statut
+    BROUILLON, jamais commencées (ni départ ni arrivée pointés), à date prévue
+    non passée. Pour chacune : ``date_prevue`` vidée, UNE ligne ajoutée aux
+    notes (« Rendez-vous du JJ/MM/AAAA annulé à la demande du client. » — ou,
+    avec un ``motif``, « Rendez-vous du JJ/MM/AAAA annulé — <motif>. »), et
+    l'assigné prévenu par la primitive de notification EXISTANTE (clé
+    ``visite_terrain_assignee`` : c'est le canal de SA journée ; aucun nouveau
+    type d'événement — le registre est fermé). AUCUNE suppression de ligne —
+    la visite reste consultable.
+
+    Renvoie le nombre de rendez-vous annulés."""
+    from core.dates import aujourd_hui_local
+
+    from .models import VisiteTerrain
+
+    visites = list(VisiteTerrain.objects.filter(
+        company_id=lead.company_id, lead=lead,
+        statut=VisiteTerrain.Statut.BROUILLON,
+        en_route_le__isnull=True, arrivee_le__isnull=True,
+        date_prevue__gte=aujourd_hui_local()))
+    precision = (motif or '').strip().rstrip('.')
+    for visite in visites:
+        jour = f'{visite.date_prevue:%d/%m/%Y}'
+        raison = (f'— {precision}.' if precision
+                  else 'à la demande du client.')
+        ligne = f'Rendez-vous du {jour} annulé {raison}'
+        existantes = (visite.notes or '').strip()
+        visite.notes = f'{existantes}\n{ligne}' if existantes else ligne
+        visite.date_prevue = None
+        visite.save(update_fields=['date_prevue', 'notes'])
+        if visite.commercial_id is not None and (
+                user is None
+                or visite.commercial_id != getattr(user, 'id', None)):
+            _notifier_commercial_visite(
+                visite, 'visite_terrain_assignee',
+                'Visite technique annulée',
+                f'Le rendez-vous du {jour} chez « {visite.lead} » est '
+                f'annulé {raison}')
+    return len(visites)
+
+
 def planifier_visite(lead, user, date_prevue, commercial=None, notes='',
                      replanifier=False):
     """VISITE-CADENCE — POSE un rendez-vous de visite technique sur un lead.
