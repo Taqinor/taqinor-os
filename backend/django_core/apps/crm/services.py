@@ -12361,6 +12361,14 @@ def mettre_en_veille(lead, user, quand, *, etape=None, journaliser=True):
     if (jour - aujourd_hui_local()).days > VEILLE_BASCULE_REVEIL_JOURS:
         return _basculer_veille_en_reveil(
             lead, user, cible, quand, journaliser=journaliser)
+    return _veille_simple(lead, user, cible, quand, journaliser=journaliser)
+
+
+def _veille_simple(lead, user, cible, quand, *, journaliser=True):
+    """CAD26 — la VEILLE SIMPLE : ``cible`` n'est pas consommée, elle est
+    déplacée à la date du client avec la suite de sa cadence et son ancre
+    (``reporter_prochaine_touche``) ; la reprise se fait au MÊME barreau.
+    Renvoie la touche déplacée, ou ``None``."""
     deplacee = reporter_prochaine_touche(
         lead, user, quand, etape=cible, journaliser=False)
     if deplacee is not None and journaliser:
@@ -12382,20 +12390,27 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
     La première touche du gabarit « réveil » tombe SUR la date du client :
     l'ancre est rétrodatée de son délai (même méthode que le placement MRY30,
     ``calculer_echeances_cadence`` garde l'ancre d'un réveil telle quelle).
-    Rend la première touche du réveil, ou ``None`` (société sans gabarit
-    réveil, lead qu'on ne relance plus)."""
+    Rend la première touche du réveil, ou ``None`` (lead qu'on ne relance
+    plus).
+
+    SUIVI E20 (30/09/2026) — une société SANS barreau « réveil » actif
+    (Paramètres) : la cadence était arrêtée AVANT de le découvrir, et le lead
+    actif restait à ZÉRO touche. On regarde d'abord : sans réveil possible,
+    rien n'est arrêté — la veille SIMPLE s'applique (la touche est déplacée
+    à la date du client, ``_veille_simple``)."""
     from apps.parametres.models_relance import CadenceRelanceEtape
 
     from . import horaires
 
     jour = quand.astimezone(horaires.CASABLANCA).date()
+    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, 'reveil')
+    if not gabarits:
+        return _veille_simple(lead, user, cible, quand,
+                              journaliser=journaliser)
     arreter_cadence(
         lead, user=user,
         motif=(f'mise en veille jusqu’au {jour:%d/%m/%Y} — plus d’un mois '
                'd’attente : bascule en réveil daté'))
-    gabarits = CadenceRelanceEtape.cadence_pour(lead.company, 'reveil')
-    if not gabarits:
-        return None
     premier = min(gabarits, key=lambda g: g.ordre)
     depart = quand - datetime.timedelta(days=premier.delai_jours or 0)
     try:
