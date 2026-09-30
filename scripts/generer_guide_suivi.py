@@ -696,7 +696,7 @@ REGLES = (
     'Un dossier actif a toujours une prochaine étape.',
     'Avant de confirmer, l\u2019écran te dit ce que la réponse va déclencher.',
     'Un geste réellement fait se note toujours, même s\u2019il est fait en avance sur sa date.',
-    'Les tâches (préparer le devis, planifier la visite, décider la suite) se traitent dès '
+    'Les tâches (par exemple préparer le devis, planifier la visite, décider la suite) se traitent dès '
     'maintenant : inutile d\u2019attendre leur date.',
     'Rien ne part tout seul vers le client : c\u2019est toujours ton clic.',
     '\u00ab Perdu \u00bb est ta décision, avec son motif \u2014 jamais un effet de bord.',
