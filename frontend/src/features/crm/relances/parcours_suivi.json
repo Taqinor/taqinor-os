@@ -1,0 +1,513 @@
+{
+  "_doc": "SUIVI-PARCOURS (30/09/2026) — LA TABLE UNIQUE du suivi commercial : pour chaque ÉTAPE, sa question, ses réponses, ce que chaque réponse ENVOIE au serveur, ce qui SE PASSE ENSUITE et ce qui est seulement STOCKÉ. Trois lecteurs, une seule source : (1) l'écran (`RelanceEtapeRow.jsx` y lit question et réponses — plus aucune liste écrite à la main par cadence) ; (2) la garde de parcours (`backend/django_core/apps/crm/tests_parcours_suivi.py` rejoue chaque réponse par l'API réelle et vérifie `suite`) ; (3) le guide PDF publié dans la GED (`docs/meryem/`, généré par `scripts/generer_guide_suivi.py`). Modifier une réponse ici sans que le moteur suive casse la garde ; modifier le moteur sans cette table aussi. Les PHRASES affichées sous une réponse choisie restent celles du serveur (`etape.suites` → `suite_phrases.json`, garde CAD17) : `effet` est le texte du GUIDE.",
+  "version": "1.0",
+  "maj": "2026-09-30",
+  "legende_suite": {
+    "etape": "Une étape de clé `cle` est ouverte ensuite (`jour` : aujourdhui | demain | date_choisie).",
+    "barreau_suivant": "La touche suivante du même protocole est ouverte (à son délai prévu, ou `jour: date_choisie`).",
+    "meme_etape": "La même étape reste ouverte, déplacée à la date choisie.",
+    "suivi_proposition": "Le suivi de proposition (après devis) est ouvert : il démarre, ou il reprend là où il en était.",
+    "reprise": "Si un suivi de proposition est pendant il reprend ; sinon l'étape « Préparer et envoyer le devis » est posée.",
+    "reprise_ou": "Si un suivi de proposition est pendant il reprend ; sinon l'étape de clé `cle` est posée.",
+    "visite_planifiee": "La visite est planifiée : « Confirmer la visite (veille) » et « Débrief visite » sont ouvertes.",
+    "inchange": "La réponse est STOCKÉE ; les autres étapes ouvertes ne bougent pas.",
+    "fin": "Plus aucune étape ouverte : `etat` = froid | perdu | ne_plus_contacter."
+  },
+  "modeles": {
+    "joint": { "label": "Client joint", "outcome": "joint" },
+    "a_repondu": { "label": "Le client a répondu", "outcome": "joint" },
+    "joint_telephone": {
+      "label": "Client joint au téléphone", "reponse": "joint_telephone",
+      "precision": "Vous l’avez eu par téléphone, pas par message : la suite est celle d’un appel abouti."
+    },
+    "visite": {
+      "label": "Visite acceptée", "outcome": "visite_acceptee", "geste": "planification",
+      "precision": "La planification s’ouvre avant tout enregistrement : saisissez la date, ou dites qu’elle n’est pas encore fixée."
+    },
+    "pas_de_reponse": { "label": "Pas de réponse", "outcome": "non_joint" },
+    "sans_reponse": { "label": "Sans réponse", "outcome": "non_joint" },
+    "repondeur": { "label": "Répondeur", "outcome": "non_joint", "note": "Répondeur" },
+    "occupe": { "label": "Occupé", "outcome": "non_joint", "note": "Occupé" },
+    "numero_invalide": {
+      "label": "Numéro invalide", "outcome": "non_joint", "note": "Numéro invalide", "junk": "Numéro invalide",
+      "precision": "La touche est close « non joint » avec la note « Numéro invalide ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic."
+    },
+    "bloque": {
+      "label": "A bloqué / signalé", "outcome": "non_joint", "note": "A bloqué / signalé", "junk": "Jamais répondu",
+      "precision": "La touche est close « non joint » avec la note « A bloqué / signalé ». Cochez ci-dessous pour marquer le lead perdu (motif junk) en un clic."
+    },
+    "rappel": { "label": "À rappeler le…", "outcome": "rappel", "date": true },
+    "plus_tard": {
+      "label": "Plus tard — pas maintenant", "reponse": "plus_tard", "date": true, "message": "rappel_plus_tard",
+      "precision": "Le message « je vous rappelle [jour] à [heure] » vous est proposé juste après — complétez les crochets avant de l’envoyer."
+    },
+    "refus": { "label": "Refus", "outcome": "refuse", "motif_refus": true },
+    "ne_plus_contacter": {
+      "label": "Ne plus me contacter", "reponse": "ne_plus_contacter", "message": "stop_contact",
+      "precision": "L’accusé « je ne vous rappellerai plus » vous est proposé juste après."
+    },
+    "question_prix": {
+      "label": "Question de prix — veut négocier", "reponse": "question_prix",
+      "precision": "Aucune offre n’est envoyée avant la décision du fondateur."
+    },
+    "devis_modifie": { "label": "Demande un devis modifié", "reponse": "devis_modifie" },
+    "decision_famille": { "label": "Décision à plusieurs — en famille", "reponse": "decision_famille" },
+    "decision_proprietaire": {
+      "label": "Décision à plusieurs — le propriétaire", "reponse": "decision_proprietaire",
+      "precision": "La note dit qu’il faut joindre le propriétaire."
+    },
+    "fait": { "label": "Fait — passer à la suite", "outcome": "" },
+    "perdu": {
+      "label": "Perdu — clore le dossier", "reponse": "perdu", "motif_perte": true,
+      "precision": "Choisissez le motif : le lead passe Perdu et toutes ses relances s’arrêtent."
+    },
+    "visite_abandonnee": { "label": "Ne veut plus de visite", "reponse": "visite_abandonnee" },
+    "date_calee": {
+      "label": "Oui, la date est calée", "geste": "planification_seule",
+      "precision": "La planification s’ouvre : c’est la date saisie qui clôt cette étape."
+    },
+    "replanifier": {
+      "label": "Reportée à une autre date", "geste": "replanification",
+      "precision": "La planification s’ouvre : la visite existante est déplacée, ses étapes suivent."
+    }
+  },
+  "gestes": [
+    {
+      "id": "appeler", "label": "Appeler",
+      "effet": "Ouvre le script d’appel et les questions à poser, puis « Composer le numéro ». Rien n’est enregistré tant que l’issue n’est pas saisie. Chaque réponse aux questions est écrite sur la fiche du lead (et le score est recalculé)."
+    },
+    {
+      "id": "whatsapp", "label": "WhatsApp / E-mail",
+      "effet": "Ouvre l’aperçu du message prêt. « Ouvrir WhatsApp » note « message ouvert » dans l’historique ; la touche reste à faire jusqu’à la réponse « Fait »."
+    },
+    {
+      "id": "reporter", "label": "Reporter",
+      "effet": "« Décaler ce rappel » : l’étape et tout le reste du suivi glissent du même nombre de jours. « Mettre en veille jusqu’au… » : le suivi se tait jusqu’à la date et reprend à cette même étape (au-delà d’un mois : réveil daté)."
+    },
+    {
+      "id": "piece_recue", "label": "Pièce reçue",
+      "effet": "Le client a envoyé sa facture, son adresse ou sa localisation : la touche est close « client joint », le document est joint à la fiche et l’étape « Préparer et envoyer le devis » est posée."
+    },
+    {
+      "id": "sauter", "label": "Sauter",
+      "effet": "La touche est notée « sautée » et la touche suivante du protocole est programmée, comme après un « pas de réponse ». Absent des trois tâches (devis, planifier la visite, décider la suite), qui ont chacune leurs réponses."
+    },
+    {
+      "id": "annuler", "label": "Annuler (24 h)",
+      "effet": "Une touche cochée par erreur redevient à faire, et ce que sa réponse avait déclenché est défait — pendant 24 heures, tant que rien d’irréversible n’a suivi."
+    }
+  ],
+  "etapes": [
+    {
+      "id": "contact_appel",
+      "famille": "Prise de contact",
+      "nom": "Appel de prise de contact",
+      "exemples": ["Appel d’ouverture", "Appel 2 (répondeur)", "Appel 3", "Appel 4 (répondeur)", "Appel 5 (dimanche)", "Appel 6 (dernier)"],
+      "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["appel"] },
+      "question": "Résultat de l’appel ?",
+      "reponses": [
+        {
+          "modele": "joint",
+          "effet": "La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Préparer et envoyer le devis » — pour demain, et possible dès maintenant.",
+          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }
+        },
+        {
+          "modele": "visite",
+          "effet": "La fenêtre de planification s’ouvre. Date saisie : la visite est créée, « Confirmer la visite (veille) » et « Débrief visite » sont posées. Date pas encore fixée : l’étape « Planifier la visite technique convenue » est posée pour aujourd’hui. Dans les deux cas la prise de contact s’arrête et le dossier passe « Contacté ».",
+          "suite": { "type": "visite_planifiee" },
+          "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" }
+        },
+        {
+          "modele": "pas_de_reponse",
+          "effet": "La touche suivante du protocole est programmée. Après la dernière touche : le dossier part au Froid (étiquette « Injoignable ») et ses réveils J30 / J60 sont programmés.",
+          "suite": { "type": "barreau_suivant" },
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
+        },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée dans l’historique.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée dans l’historique.", "suite": { "type": "barreau_suivant" } },
+        {
+          "modele": "numero_invalide",
+          "effet": "Comme « Pas de réponse », avec la note « Numéro invalide ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.",
+          "suite": { "type": "barreau_suivant" },
+          "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }]
+        },
+        {
+          "modele": "bloque",
+          "effet": "Comme « Pas de réponse », avec la note « A bloqué / signalé ». Case cochée : le lead passe Perdu (motif junk) et tout s’arrête.",
+          "suite": { "type": "barreau_suivant" },
+          "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }]
+        },
+        {
+          "modele": "rappel",
+          "effet": "La touche suivante du protocole est programmée à la date choisie, et le reste du suivi glisse du même nombre de jours.",
+          "suite": { "type": "barreau_suivant", "jour": "date_choisie" }
+        },
+        {
+          "modele": "plus_tard",
+          "effet": "Le dossier se met en veille : cette même touche revient à la date convenue, rien ne part d’ici là. Au-delà d’un mois : le suivi s’arrête et un réveil est daté.",
+          "suite": { "type": "meme_etape", "jour": "date_choisie" }
+        },
+        {
+          "modele": "refus",
+          "effet": "Toutes les relances s’arrêtent. Étape suivante : « Décider la suite » (perdu avec son motif, ou relance ultérieure) — possible dès maintenant. Le lead n’est pas marqué perdu tout seul.",
+          "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" }
+        },
+        {
+          "modele": "ne_plus_contacter",
+          "effet": "Le lead passe « Ne plus contacter » : toutes ses relances s’arrêtent et aucune ne pourra redémarrer. L’opposition est inscrite au registre.",
+          "suite": { "type": "fin", "etat": "ne_plus_contacter" }
+        }
+      ]
+    },
+    {
+      "id": "contact_message",
+      "famille": "Prise de contact",
+      "nom": "Message de prise de contact",
+      "exemples": ["Message d’identité", "WhatsApp de valeur", "Vocal", "« Je classe ? »", "Clôture"],
+      "reconnaissance": { "cadences": ["contact", "deuxieme_affaire"], "canaux": ["whatsapp", "email"] },
+      "question": "Le message est parti — le client a-t-il répondu ?",
+      "reponses": [
+        {
+          "modele": "a_repondu",
+          "effet": "La prise de contact s’arrête. Le dossier passe « Contacté ». Étape suivante : « Appeler le client — il a répondu au message », au prochain créneau d’appel.",
+          "suite": { "type": "etape", "cle": "appel_apres_reponse", "jour": "aujourdhui" }
+        },
+        {
+          "modele": "joint_telephone",
+          "effet": "Vous avez appelé au lieu d’écrire et le client a décroché : même suite qu’un appel abouti — « Préparer et envoyer le devis », pour demain et possible dès maintenant.",
+          "suite": { "type": "etape", "cle": "devis", "jour": "demain" }
+        },
+        {
+          "modele": "visite",
+          "effet": "Comme sur un appel : planification, ou étape « Planifier la visite technique convenue » si la date n’est pas fixée.",
+          "suite": { "type": "visite_planifiee" },
+          "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" }
+        },
+        {
+          "modele": "pas_de_reponse",
+          "effet": "La touche suivante du protocole est programmée. Après la dernière (« Clôture ») : le dossier part au Froid et ses réveils sont programmés.",
+          "suite": { "type": "barreau_suivant" },
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
+        },
+        { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" } },
+        { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "devis",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Préparer et envoyer le devis",
+      "tache": true,
+      "reconnaissance": { "cles": ["devis"], "libelles": ["Préparer et envoyer le devis (ou fixer un rappel)", "Prochaine étape — envoyer le devis ou fixer un rappel"] },
+      "question": "Où en est le devis ?",
+      "actions": ["creer_devis", "planifier_visite"],
+      "reponses": [
+        {
+          "modele": "fait", "label": "Devis envoyé — passer à la suite",
+          "effet": "Le dossier passe « Devis envoyé » et le suivi de proposition démarre (première touche : « Le PDF s’ouvre bien ? », le lendemain). Un devis parti hors ERP compte aussi. Si le devis est envoyé DEPUIS l’ERP, tout ceci se fait tout seul et cette étape se ferme d’elle-même.",
+          "suite": { "type": "suivi_proposition" }
+        },
+        {
+          "modele": "visite", "label": "Visite d’abord",
+          "effet": "La planification s’ouvre. Visite planifiée : le devis est mis en attente de la visite (cette étape est retirée, le retour de visite la reposera) ; « Confirmer la visite » et « Débrief visite » sont posées. Date pas encore fixée : « Planifier la visite technique convenue » est posée pour aujourd’hui.",
+          "suite": { "type": "visite_planifiee" },
+          "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" }
+        },
+        { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "appel_apres_reponse",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Appeler le client — il a répondu au message",
+      "reconnaissance": { "cles": ["appel_apres_reponse"] },
+      "question": "Résultat de l’appel ?",
+      "reponses": [
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "pas_de_reponse", "effet": "Étape suivante : « Message — proposer un créneau pour l’appel », aujourd’hui.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "etape", "cle": "message_creneau", "jour": "aujourdhui" } },
+        { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "message_creneau",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Message — proposer un créneau pour l’appel",
+      "reconnaissance": { "cles": ["message_creneau"] },
+      "question": "Le message est parti — le client a-t-il répondu ?",
+      "reponses": [
+        { "modele": "fait", "label": "Message envoyé — pas encore de réponse", "effet": "Étape suivante : « Rappeler — dernier essai avant de chiffrer », demain.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "rappel", "label": "Créneau convenu le…", "effet": "Cette étape est close et l’étape « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } },
+        { "modele": "a_repondu", "effet": "Étape suivante : « Appeler le client — il a répondu au message », au prochain créneau d’appel.", "suite": { "type": "etape", "cle": "appel_apres_reponse", "jour": "aujourdhui" } },
+        { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "dernier_appel",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Rappeler — dernier essai avant de chiffrer",
+      "reconnaissance": { "cles": ["dernier_appel"] },
+      "question": "Résultat de l’appel ?",
+      "reponses": [
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "pas_de_reponse", "effet": "On chiffre quand même : « Préparer et envoyer le devis » est posée pour demain (« Pas de réponse » reste dans l’historique).", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "rappel_convenu",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Rappeler le client — rappel convenu",
+      "reconnaissance": { "cles": ["rappel_convenu"] },
+      "question": "Résultat de l’appel ?",
+      "reponses": [
+        { "modele": "joint", "effet": "Étape suivante : « Préparer et envoyer le devis », pour demain et possible dès maintenant.", "suite": { "type": "etape", "cle": "devis", "jour": "demain" } },
+        { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "pas_de_reponse", "effet": "Étape suivante : « Rappeler — dernier essai avant de chiffrer », demain.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; la note « Occupé » est gardée.", "suite": { "type": "etape", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la nouvelle date.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "decider_suite",
+      "famille": "Après l’appel (avant devis)",
+      "nom": "Décider la suite",
+      "tache": true,
+      "reconnaissance": { "cles": ["decider_suite"], "libelles": ["Décider la suite — perdu (motif) ou relance ultérieure"] },
+      "question": "Que décidez-vous pour ce dossier ?",
+      "reponses": [
+        { "modele": "perdu", "effet": "Le lead passe Perdu avec le motif choisi : toutes ses relances s’arrêtent, il sort des files. Il reste rouvrable depuis sa fiche.", "suite": { "type": "fin", "etat": "perdu" } },
+        { "modele": "rappel", "label": "Relancer plus tard — le…", "effet": "L’étape reste ouverte, déplacée à la date choisie : vous redéciderez ce jour-là.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "fait", "label": "Le client revient — reprendre", "effet": "Si un suivi de proposition n’était pas allé au bout, il reprend ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "suivi_appel",
+      "famille": "Suivi de proposition (après devis)",
+      "nom": "Appel de suivi de la proposition",
+      "exemples": ["Appel de suivi (J+2, J+7, J+11)"],
+      "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["appel"] },
+      "question": "Réponse du client sur la proposition ?",
+      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.",
+      "reponses": [
+        {
+          "modele": "joint",
+          "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée à son délai prévu.",
+          "suite": { "type": "barreau_suivant" }
+        },
+        {
+          "modele": "visite",
+          "effet": "Planification. Visite planifiée : les relances en attente sont décalées après la visite (jamais annulées), « Confirmer la visite » et « Débrief visite » sont posées. Date pas encore fixée : étape « Planifier la visite ».",
+          "suite": { "type": "visite_planifiee" },
+          "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" }
+        },
+        {
+          "modele": "sans_reponse",
+          "effet": "La touche suivante du suivi est programmée. Après la dernière : le dossier part au Froid (« Devis sans suite ») et ses réveils sont programmés.",
+          "suite": { "type": "barreau_suivant" },
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
+        },
+        { "modele": "repondeur", "effet": "Comme « Sans réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "occupe", "effet": "Comme « Sans réponse » ; la note « Occupé » est gardée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "numero_invalide", "effet": "Comme « Sans réponse », note « Numéro invalide ». Case cochée : lead Perdu (junk).", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
+        { "modele": "bloque", "effet": "Comme « Sans réponse », note « A bloqué / signalé ». Case cochée : lead Perdu (junk).", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "perdu_junk", "suite": { "type": "fin", "etat": "perdu" } }] },
+        { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" } },
+        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "question_prix", "effet": "Le suivi se met en pause : étape « Question de prix — préparer l’appel du fondateur » pour demain ; aucun message ne part tant qu’elle n’est pas traitée.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
+        { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain ; le suivi de l’ancien devis se tait.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
+        { "modele": "decision_famille", "effet": "L’étiquette « Décision à plusieurs » est posée (le « dimanche famille » rejoint le plan) ; la touche suivante est programmée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "decision_proprietaire", "effet": "L’étiquette « Décision à plusieurs » est posée, la note dit qu’il faut joindre le propriétaire ; la touche suivante est programmée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "suivi_message",
+      "famille": "Suivi de proposition (après devis)",
+      "nom": "Message de suivi de la proposition",
+      "exemples": ["Le PDF s’ouvre bien ?", "Dimanche famille", "Preuve — chantier comparable", "Garanties fabricants", "Validité de la proposition", "Dernier message", "Mise en pause"],
+      "reconnaissance": { "cadences": ["apres_devis"], "canaux": ["whatsapp", "email"] },
+      "question": "Le message est parti — le client a-t-il répondu ?",
+      "aide": "Le client accepte ? Marquez le devis ACCEPTÉ (Ventes → Devis) : le dossier passe en Signé et toutes les relances s’arrêtent.",
+      "reponses": [
+        { "modele": "a_repondu", "effet": "Le dossier passe « Relance ». Le suivi continue : sa touche suivante est programmée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "joint_telephone", "effet": "Vous l’avez eu au téléphone : même suite, l’historique garde un appel abouti.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "visite", "effet": "Planification (les relances en attente sont décalées après la visite), ou étape « Planifier la visite ».", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "sans_reponse", "effet": "La touche suivante du suivi est programmée. Après la dernière : Froid + réveils.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
+        { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" } },
+        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "question_prix", "effet": "Pause : étape « Question de prix » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
+        { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
+        { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; touche suivante programmée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "decision_proprietaire", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; touche suivante programmée.", "suite": { "type": "barreau_suivant" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "question_prix",
+      "famille": "Suivi de proposition (après devis)",
+      "nom": "Question de prix — préparer l’appel du fondateur",
+      "tache": true,
+      "reconnaissance": { "libelles": ["Question de prix — préparer l’appel du fondateur (aucune offre avant sa décision)"] },
+      "question": "La décision sur le prix est-elle prise ?",
+      "reponses": [
+        { "modele": "fait", "label": "Décision prise — reprendre le suivi", "effet": "Le suivi de proposition reprend à sa touche suivante (jamais depuis le début).", "suite": { "type": "suivi_proposition" } },
+        { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "planifier",
+      "famille": "Visite technique",
+      "nom": "Planifier la visite technique convenue",
+      "tache": true,
+      "reconnaissance": { "cles": ["planifier"], "libelles": ["Planifier la visite technique convenue"] },
+      "question": "La date du rendez-vous a-t-elle été calée ?",
+      "actions": ["planifier_visite"],
+      "reponses": [
+        { "modele": "date_calee", "effet": "La planification s’ouvre. Une fois la date saisie : la visite est créée, cette étape se ferme, « Confirmer la visite (veille) » et « Débrief visite » sont posées. Sans date saisie, rien ne change.", "suite": { "type": "visite_planifiee" } },
+        { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "sans_reponse", "effet": "L’appel est noté sans réponse et l’étape est reposée pour demain.", "suite": { "type": "etape", "cle": "planifier", "jour": "demain" } },
+        { "modele": "visite_abandonnee", "effet": "La visite est abandonnée, le suivi continue sans elle : le suivi de proposition reprend s’il était pendant, sinon « Préparer et envoyer le devis » est posée.", "suite": { "type": "reprise" } },
+        { "modele": "refus", "label": "Ne veut plus du projet", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "confirmation",
+      "famille": "Visite technique",
+      "nom": "Confirmer la visite (veille)",
+      "reconnaissance": { "cles": ["confirmation"], "libelles": ["Confirmer la visite (veille)"] },
+      "question": "Le rendez-vous est-il confirmé ?",
+      "reponses": [
+        { "modele": "joint", "label": "Confirmé — le rendez-vous tient", "effet": "La confirmation est gardée dans l’historique. Rien d’autre ne bouge : le « Débrief visite » attend le lendemain de la visite.", "suite": { "type": "inchange" } },
+        { "modele": "sans_reponse", "effet": "« Sans réponse » est gardé dans l’historique. La visite reste prévue et le « Débrief visite » attend.", "suite": { "type": "inchange" } },
+        { "modele": "replanifier", "effet": "La planification s’ouvre : la visite existante est déplacée à la nouvelle date, la confirmation et le débrief suivent. Cette étape reste ouverte, à la veille de la nouvelle date.", "suite": { "type": "visite_planifiee" } },
+        { "modele": "visite_abandonnee", "label": "Annule le rendez-vous", "effet": "Le rendez-vous est annulé (le technicien est prévenu), la confirmation et le débrief sont retirés. Le suivi continue sans visite : le suivi de proposition reprend s’il était pendant, sinon « Préparer et envoyer le devis » est posée.", "suite": { "type": "reprise" } },
+        { "modele": "refus", "label": "Ne veut plus du projet", "effet": "Toutes les relances s’arrêtent, le rendez-vous est annulé ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "debrief",
+      "famille": "Visite technique",
+      "nom": "Débrief visite — rappeler le client",
+      "reconnaissance": { "cles": ["debrief"], "libelles": ["Débrief visite — rappeler le client"] },
+      "question": "La visite a eu lieu — le client est-il joint ?",
+      "reponses": [
+        { "modele": "joint", "label": "Oui, client joint après la visite", "effet": "Le suivi de proposition reprend à sa touche suivante s’il était pendant ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "sans_reponse", "effet": "Si un suivi de proposition est pendant, il continue ; sinon étape « Rappeler — dernier essai avant de chiffrer », demain. Jamais au Froid.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "repondeur", "effet": "Comme « Sans réponse » ; la note « Répondeur » est gardée.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "occupe", "effet": "Comme « Sans réponse » ; la note « Occupé » est gardée.", "suite": { "type": "reprise_ou", "cle": "dernier_appel", "jour": "demain" } },
+        { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "replanifier", "label": "La visite n’a pas eu lieu — nouvelle date", "effet": "La planification s’ouvre : la visite est déplacée, la confirmation et le débrief suivent.", "suite": { "type": "visite_planifiee" } },
+        { "modele": "visite_abandonnee", "label": "La visite n’aura pas lieu", "effet": "Le rendez-vous est annulé ; le suivi continue sans visite.", "suite": { "type": "reprise" } },
+        { "modele": "question_prix", "effet": "Étape « Question de prix — préparer l’appel du fondateur » pour demain.", "suite": { "type": "etape", "id_etape": "question_prix", "jour": "demain" } },
+        { "modele": "devis_modifie", "effet": "Étape « Préparer le devis modifié — rappeler le client » pour demain.", "suite": { "type": "etape", "cle": "devis_modifie", "jour": "demain" } },
+        { "modele": "decision_famille", "effet": "Étiquette « Décision à plusieurs » ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
+        { "modele": "decision_proprietaire", "effet": "Étiquette « Décision à plusieurs » (propriétaire à joindre) ; le suivi reprend ou l’étape devis est posée.", "suite": { "type": "reprise" } },
+        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "devis_modifie",
+      "famille": "Visite technique",
+      "nom": "Préparer le devis modifié — rappeler le client",
+      "tache": true,
+      "reconnaissance": { "cles": ["devis_modifie"], "libelles": ["Préparer le devis modifié — rappeler le client"] },
+      "question": "Où en est le devis modifié ?",
+      "actions": ["creer_devis"],
+      "reponses": [
+        { "modele": "fait", "label": "Devis modifié envoyé — passer à la suite", "effet": "Le dossier passe « Devis envoyé » et le suivi de proposition démarre pour ce devis. Envoyé DEPUIS l’ERP, tout ceci se fait tout seul et cette étape se ferme d’elle-même.", "suite": { "type": "suivi_proposition" } },
+        { "modele": "rappel", "label": "Pas encore — à rappeler le…", "effet": "L’étape reste ouverte, déplacée à la date choisie.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "label": "Refuse la proposition", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "reveil_appel",
+      "famille": "Réveil (dossier au Froid)",
+      "nom": "Appel de réveil",
+      "exemples": ["Réveil J30"],
+      "reconnaissance": { "cadences": ["reveil"], "canaux": ["appel"] },
+      "question": "Résultat du réveil ?",
+      "reponses": [
+        { "modele": "joint", "effet": "Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "visite", "effet": "Le dossier sort du Froid ; planification, ou étape « Planifier la visite ».", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "pas_de_reponse", "effet": "Le dossier reste au Froid ; le réveil suivant garde sa date. Après le dernier réveil : plus aucune relance.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
+        { "modele": "repondeur", "effet": "Comme « Pas de réponse » ; note « Répondeur ».", "suite": { "type": "barreau_suivant" } },
+        { "modele": "occupe", "effet": "Comme « Pas de réponse » ; note « Occupé ».", "suite": { "type": "barreau_suivant" } },
+        { "modele": "rappel", "effet": "Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil : le dossier sort du Froid et « Rappeler le client — rappel convenu » est posée à cette date.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
+        { "modele": "plus_tard", "effet": "Veille : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "effet": "Les réveils s’arrêtent ; le dossier reste au Froid, sans autre relance.", "suite": { "type": "fin", "etat": "froid" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "reveil_message",
+      "famille": "Réveil (dossier au Froid)",
+      "nom": "Message de réveil",
+      "exemples": ["Réveil J60"],
+      "reconnaissance": { "cadences": ["reveil"], "canaux": ["whatsapp", "email"] },
+      "question": "Le message est parti — le client a-t-il répondu ?",
+      "reponses": [
+        { "modele": "a_repondu", "effet": "Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend ; sinon « Appeler le client — il a répondu au message » est posée.", "suite": { "type": "reprise_ou", "cle": "appel_apres_reponse", "jour": "aujourdhui" } },
+        { "modele": "joint_telephone", "effet": "Vous l’avez eu au téléphone : le dossier sort du Froid ; un suivi pas allé au bout reprend, sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "visite", "effet": "Le dossier sort du Froid ; planification, ou étape « Planifier la visite ».", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "pas_de_reponse", "effet": "Le dossier reste au Froid. Après le dernier réveil : plus aucune relance.", "suite": { "type": "barreau_suivant" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }] },
+        { "modele": "rappel", "effet": "Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil : le dossier sort du Froid et « Rappeler le client — rappel convenu » est posée à cette date.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
+        { "modele": "plus_tard", "effet": "Veille : ce même réveil revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "effet": "Les réveils s’arrêtent ; le dossier reste au Froid.", "suite": { "type": "fin", "etat": "froid" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ]
+    },
+    {
+      "id": "generique",
+      "famille": "Autres étapes",
+      "nom": "Étape générique (ancien plan J+2…J+35, passation, rappel demandé, signal)",
+      "exemples": ["Passation — prévenir le client du changement de conseiller", "Rappeler le client (il l’a demandé)", "Premier rappel", "Relance WhatsApp"],
+      "reconnaissance": { "cadences": ["generique"] },
+      "question": "Où en est ce dossier ?",
+      "reponses": [
+        { "modele": "fait", "effet": "Sur un barreau de l’ancien plan : la touche suivante est programmée à son délai. Sur une étape posée par le moteur : un suivi de proposition pendant reprend, sinon « Préparer et envoyer le devis » est posée pour demain.", "suite": { "type": "reprise" } },
+        { "modele": "visite", "effet": "Planification, ou étape « Planifier la visite » si la date n’est pas fixée.", "suite": { "type": "visite_planifiee" }, "suite_sans_date": { "type": "etape", "cle": "planifier", "jour": "aujourdhui" } },
+        { "modele": "rappel", "effet": "L’étape reste ouverte, déplacée à la date choisie (sur un barreau de l’ancien plan : la touche suivante est programmée à cette date).", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
+        { "modele": "refus", "label": "Client refuse", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
+        { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
+      ],
+      "reponses_appel": ["repondeur", "occupe", "numero_invalide", "bloque"]
+    }
+  ],
+  "evenements": [
+    { "id": "lead_cree", "quand": "Un lead arrive (site, Meta, saisie) avec un numéro", "effet": "La prise de contact démarre seule : « Message d’identité » puis « Appel d’ouverture »." },
+    { "id": "devis_envoye", "quand": "Un devis est envoyé depuis l’ERP", "effet": "Le dossier passe « Devis envoyé ». La prise de contact et les étapes « avant devis » se ferment ; le suivi de proposition démarre, daté de l’envoi — même si une étape de visite est encore ouverte." },
+    { "id": "devis_accepte", "quand": "Le devis est marqué accepté (Ventes → Devis)", "effet": "Le dossier passe « Signé » : toutes les relances s’arrêtent." },
+    { "id": "devis_refuse", "quand": "Le devis est marqué refusé", "effet": "Le suivi de proposition s’arrête ; étape « Décider la suite »." },
+    { "id": "visite_planifiee", "quand": "Une visite est planifiée (ou déplacée)", "effet": "Les relances en attente sont décalées à deux jours après la visite ; « Confirmer la visite (veille) » et « Débrief visite » sont posées. Sans devis envoyé : « Préparer et envoyer le devis » est mise en attente de la visite." },
+    { "id": "retour_visite", "quand": "Le technicien saisit son retour de visite", "effet": "Le retour descend dans l’historique du lead. Sans devis envoyé : « Préparer et envoyer le devis » est posée (demain). Avec un devis : le débrief est calé sur le retour, et devient « Préparer le devis modifié » si le terrain le demande." },
+    { "id": "lead_perdu", "quand": "Le lead est marqué perdu (fiche ou « Décider la suite »)", "effet": "Toutes les relances s’arrêtent." },
+    { "id": "lead_rouvert", "quand": "Un lead perdu est rouvert", "effet": "Une cadence de reprise est posée." }
+  ]
+}
