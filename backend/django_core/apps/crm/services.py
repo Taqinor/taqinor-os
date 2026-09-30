@@ -1615,6 +1615,41 @@ def est_note_de_touche_sautee(activite):
     return MENTION_TOUCHE_SAUTEE in (getattr(activite, 'body', '') or '')
 
 
+# ── COCKPIT-CONTRÔLE B4 — un REPORT n'est pas un premier contact ────────────
+#
+# Même trou que CAD131, par une autre porte : « Reporter » (et « Mettre en
+# veille ») écrit une NOTE signée par la commerciale — « Rappel demandé le … —
+# touche « … » reportée. » — et le récepteur QJ7 la prenait pour une
+# tentative : reporter la toute première touche d'un lead neuf horodatait
+# ``first_contacted_at`` et ÉTEIGNAIT l'escalade, sans que personne ait parlé
+# au client. Les textes sont hissés en CONSTANTES, utilisées pour ÉCRIRE les
+# notes (``reporter_prochaine_touche``, ``_veille_simple``,
+# ``_basculer_veille_en_reveil``) et pour les RECONNAÎTRE — jamais un texte
+# deviné ailleurs.
+PREFIXE_NOTE_REPORT = 'Rappel demandé le '
+FIN_NOTE_REPORT = ' reportée.'
+PREFIXE_NOTE_VEILLE = 'Mise en veille '
+
+
+def est_note_de_report(activite):
+    """COCKPIT-CONTRÔLE B4 — cette ligne de chatter est-elle la note d'un
+    REPORT de touche ou d'une MISE EN VEILLE ?
+
+    Un report déplace le PLAN, rien ne sort vers le client : cette note ne
+    pose pas ``first_contacted_at`` (même patron que
+    ``est_note_de_touche_sautee``). Une note ordinaire de la commerciale, et
+    la ligne TYPÉE d'une réponse « Plus tard » (un vrai échange, issue « à
+    rappeler »), restent des contacts."""
+    if activite is None:
+        return False
+    if getattr(activite, 'kind', None) != LeadActivity.Kind.NOTE:
+        return False
+    corps = getattr(activite, 'body', '') or ''
+    return ((corps.startswith(PREFIXE_NOTE_REPORT)
+             and corps.endswith(FIN_NOTE_REPORT))
+            or corps.startswith(PREFIXE_NOTE_VEILLE))
+
+
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
                           body='', suite=True, canal_reel=None):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
@@ -3707,14 +3742,17 @@ def reporter_prochaine_touche(lead, user, quand, *, etape=None,
             cible.refresh_from_db(fields=['cadence_depart'])
 
     if journaliser:
+        # COCKPIT-CONTRÔLE B4 — texte bâti sur les constantes que
+        # ``est_note_de_report`` reconnaît : cette note ne pose pas le
+        # premier contact.
         quand_local = nouveau.astimezone(horaires.CASABLANCA)
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
-            body=('Rappel demandé le '
-                  f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
-                  f'{(cible.libelle or cible.get_canal_display())} »'
-                  ' reportée.'))
+            body=(PREFIXE_NOTE_REPORT
+                  + f'{quand_local:%d/%m/%Y à %H:%M} — touche « '
+                  + f'{(cible.libelle or cible.get_canal_display())} »'
+                  + FIN_NOTE_REPORT))
 
     prochaine = _prochaine_touche_a_faire(lead)
     lead.relance_date = prochaine.due_date if prochaine else None
@@ -12531,7 +12569,8 @@ def _veille_simple(lead, user, cible, quand, *, journaliser=True):
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
-            body=(f'Mise en veille jusqu’au {deplacee.due_date:%d/%m/%Y} à '
+            body=(PREFIXE_NOTE_VEILLE
+                  + f'jusqu’au {deplacee.due_date:%d/%m/%Y} à '
                   'la demande du client — la cadence reprendra à la touche '
                   f'« {libelle} », aucune touche ne part d’ici là.'))
     return deplacee
@@ -12580,7 +12619,8 @@ def _basculer_veille_en_reveil(lead, user, cible, quand, *, journaliser=True):
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=user,
             kind=LeadActivity.Kind.NOTE,
-            body=(f'Mise en veille demandée jusqu’au {jour:%d/%m/%Y} : plus '
+            body=(PREFIXE_NOTE_VEILLE
+                  + f'demandée jusqu’au {jour:%d/%m/%Y} : plus '
                   f'd’un mois d’attente, la cadence « {cible.cadence} » est '
                   f'arrêtée et {suite}.'))
     return reveil

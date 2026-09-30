@@ -135,6 +135,13 @@ MESSAGE_REFUS_SUR_DECIDER_SUITE = (
     '« Décider la suite » : choisissez « Perdu — clore le dossier » (avec '
     'son motif) ou une relance ultérieure.')
 
+#: COCKPIT-CONTRÔLE B4 (30/09/2026) — une TÂCHE (préparer le devis, planifier
+#: la visite, décider la suite, devis modifié, question de prix) ne se saute
+#: pas : l'écran masquait le bouton, le serveur ne gardait rien — un « Sauter »
+#: envoyé à la main effaçait une tâche du cockpit sans trace de traitement.
+MESSAGE_TACHE_NON_SAUTABLE = (
+    '« Sauter » : une tâche ne se saute pas — traitez-la ou reportez-la.')
+
 
 def _prochaine_touche_publique(etape):
     """SUIVI E9 (30/09/2026) — la forme PUBLIQUE de l'étape qu'un « Fait »
@@ -3600,6 +3607,14 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             return Response(
                 {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
                 status=status.HTTP_400_BAD_REQUEST)
+        # COCKPIT-CONTRÔLE B4 — « Sauter » est refusé sur une TÂCHE, AVANT
+        # toute écriture (« déjà traitée » prime, SUIVI E8). La table du
+        # parcours ne le propose pas ; le serveur le tient désormais aussi.
+        from .suite_touche import est_tache
+        if statut == RelanceEtape.Statut.SAUTEE and est_tache(etape):
+            return Response(
+                {'erreurs': {'etape': MESSAGE_TACHE_NON_SAUTABLE}},
+                status=status.HTTP_400_BAD_REQUEST)
         note = (request.data.get('note') or '').strip()
         outcome = (request.data.get('outcome') or '').strip()
         body = (request.data.get('body') or '').strip()
@@ -4007,7 +4022,11 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         CKP2 — sauter une touche n'éteint PAS la cadence : la touche suivante
         du protocole est matérialisée, exactement comme sur un « pas de
         réponse ». Sans cela, sauter le message d'identité supprimait les dix
-        gestes qui suivent."""
+        gestes qui suivent.
+
+        COCKPIT-CONTRÔLE B4 — refusé sur une TÂCHE (400 ``{"erreurs":
+        {"etape": …}}``, rien n'est écrit) : une tâche se traite ou se
+        reporte, elle ne se saute pas."""
         return self._marquer(request, RelanceEtape.Statut.SAUTEE)
 
     @action(detail=True, methods=['post'])

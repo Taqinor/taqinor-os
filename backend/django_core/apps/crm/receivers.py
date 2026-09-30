@@ -46,6 +46,7 @@ from .services import (
     avancer_stage_pour_devis,
     est_cloture_d_etape_visite,
     est_derniere_touche_du_suivi,
+    est_note_de_report,
     est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
@@ -555,7 +556,11 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
     # touche satisfaisait donc la promesse « rappelé en moins de N minutes »
     # ET éteignait l'escalade, qui n'agit que sur les leads SANS horodatage.
     # La reconnaissance vit dans `services` — là où la note est ÉCRITE.
-    if est_note_de_touche_sautee(instance):
+    # COCKPIT-CONTRÔLE B4 (30/09/2026) — même trou, autre porte : la note
+    # d'un REPORT (« Rappel demandé le … reportée. ») ou d'une MISE EN VEILLE
+    # n'est pas une tentative non plus — reporter la première touche d'un
+    # lead neuf ne l'horodate plus et n'éteint plus l'escalade.
+    if est_note_de_touche_sautee(instance) or est_note_de_report(instance):
         return
     marquer_premier_contact(lead)
     # Décision fondateur du 24/09/2026 (relevé du 25/09) — « visite acceptée »
