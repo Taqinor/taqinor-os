@@ -200,3 +200,30 @@ class SeedDemoSavStockNTDMO5Test(TestCase):
         from apps.sav.models import PieceConsommee
         self.assertTrue(
             PieceConsommee.objects.filter(company=self.company).exists())
+
+
+@override_settings(DEBUG=True)
+class SeedDemoPortailSavQAH12Test(TestCase):
+    """QAH12 — `seed_demo` sème un compte portail client + tickets SAV."""
+
+    def test_portail_account_and_sav_seeded_idempotent(self):
+        from apps.portail.models import ComptePortailClient
+        from apps.sav.models import Equipement, Ticket
+        call_command('seed_demo', verbosity=0)
+        company = Company.objects.get(slug='taqinor-demo')
+        user = CustomUser.objects.get(username='demo_portail')
+        self.assertEqual(user.portee, CustomUser.PORTEE_PORTAIL_CLIENT)
+        self.assertEqual(user.company_id, company.id)
+        self.assertTrue(user.check_password('Portail@2026!'))
+        self.assertTrue(ComptePortailClient.objects.filter(
+            company=company, client_id=user.portail_client_id).exists())
+        self.assertEqual(Ticket.objects.filter(company=company).count(), 3)
+        self.assertEqual(
+            Equipement.objects.filter(company=company).count(), 2)
+        # Idempotent : 2e passage, aucun doublon.
+        call_command('seed_demo', verbosity=0)
+        self.assertEqual(
+            CustomUser.objects.filter(username='demo_portail').count(), 1)
+        self.assertEqual(Ticket.objects.filter(company=company).count(), 3)
+        self.assertEqual(
+            Equipement.objects.filter(company=company).count(), 2)

@@ -54,6 +54,18 @@ class TestLeadProvenance(TestCase):
         self.assertIn('orientation', changed)
         self.assertNotIn('facture_ete', changed)
 
+    def test_conso_mensuelle_kwh_est_estampillee_et_detectee(self):
+        # ERR-QAC-PROVENANCE-CONSO-KWH — le champ pilote l'étude horaire.
+        self.lead.conso_mensuelle_kwh = Decimal('400')
+        self.lead.save(update_fields=['conso_mensuelle_kwh'])
+        stamp = selectors.lead_provenance_stamp(self.lead)
+        self.assertIn('conso_mensuelle_kwh', stamp['valeurs'])
+        self.lead.conso_mensuelle_kwh = Decimal('650')
+        self.lead.save(update_fields=['conso_mensuelle_kwh'])
+        self.assertIn(
+            'conso_mensuelle_kwh',
+            selectors.lead_values_changed_since(stamp, company=self.company))
+
     def test_empty_stamp_no_false_alert(self):
         self.assertEqual(selectors.lead_values_changed_since(None), [])
         self.assertEqual(selectors.lead_values_changed_since({}), [])

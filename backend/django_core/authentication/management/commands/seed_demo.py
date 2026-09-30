@@ -16,6 +16,9 @@ Creates:
   - 1 bon de commande confirmé (depuis le devis accepté) + 1 en attente
   - 2 factures (1 émise, 1 payée)
   - Mouvements de stock d'entrée initiale
+  - QAH12 : 1 compte portail client (demo_portail / Portail@2026!, portée
+             portail_client, rattaché au 1er client démo — identifiants en dur,
+             jamais envoyés), 2 équipements et 3 tickets SAV
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -64,6 +67,9 @@ class Command(BaseCommand):
             defaults={'nom': 'TAQINOR Démo'},
         )
         if not created and company.produits.exists():
+            # QAH12 — les bases déjà semées reçoivent aussi le portail + SAV
+            # (idempotent : rien n'est recréé s'ils existent).
+            self._seed_portail_et_sav(company)
             self.stdout.write(self.style.WARNING(
                 'Demo company already seeded — nothing to do.'
             ))
@@ -333,3 +339,76 @@ class Command(BaseCommand):
             'Logins:  demo_admin / Demo@2026!   (administrateur)\n'
             '         demo_resp  / Demo@2026!   (responsable)'
         ))
+
+    # QAH12 — mot de passe EN DUR du compte portail démo (comme demo_admin) :
+    # jamais envoyé à l'extérieur (aucun e-mail, on n'appelle pas le service
+    # de provisionnement du portail).
+    PORTAIL_USERNAME = 'demo_portail'
+    PORTAIL_PASSWORD = 'Portail@2026!'
+
+    def _seed_portail_et_sav(self, company):
+        """Compte portail client + équipements/tickets SAV démo. Idempotent."""
+        import secrets
+
+        from apps.crm.models import Client
+        from apps.portail.models import ComptePortailClient
+        from apps.roles.models import (
+            PORTAIL_CLIENT_PERMISSIONS, ROLE_PORTAIL_CLIENT, Role,
+        )
+        from apps.sav.models import Equipement, Ticket
+        from apps.stock.models import Produit
+        from authentication.models import CustomUser
+
+        clients = list(Client.objects.filter(company=company).order_by('id')[:2])
+        if not clients:
+            return
+        client = clients[0]
+
+        # ── Compte portail client (portée portail_client) ──────────────
+        ComptePortailClient.objects.get_or_create(
+            company=company, client=client,
+            defaults={'token_acces': secrets.token_urlsafe(32)})
+        if not CustomUser.objects.filter(
+                username=self.PORTAIL_USERNAME).exists():
+            role, _ = Role.objects.get_or_create(
+                company=company, nom=ROLE_PORTAIL_CLIENT,
+                defaults={'permissions': list(PORTAIL_CLIENT_PERMISSIONS),
+                          'est_systeme': True})
+            user = CustomUser(
+                username=self.PORTAIL_USERNAME,
+                email='demo_portail@taqinor.local',
+                company=company, role=role,
+                portee=CustomUser.PORTEE_PORTAIL_CLIENT,
+                portail_client_id=client.id,
+                is_staff=False, is_superuser=False)
+            user.set_password(self.PORTAIL_PASSWORD)
+            user.save()
+
+        # ── SAV : équipements + tickets ────────────────────────────────
+        produit = (Produit.objects.filter(company=company, sku='OND-5KH')
+                   .first() or Produit.objects.filter(company=company).first())
+        if produit is None:
+            return
+        today = timezone.now().date()
+        equipements = []
+        for serie in ('DEMO-SN-0001', 'DEMO-SN-0002'):
+            eq = Equipement.objects.filter(
+                company=company, numero_serie=serie).first()
+            if eq is None:
+                eq = Equipement.objects.create(
+                    company=company, produit=produit, numero_serie=serie,
+                    client_vente=client, date_pose=today - timedelta(days=90))
+            equipements.append(eq)
+        for ref, statut, prio, desc, eq in [
+            ('TCK-DEMO-0001', Ticket.Statut.NOUVEAU, Ticket.Priorite.HAUTE,
+             "Onduleur : code d'erreur affiché.", equipements[0]),
+            ('TCK-DEMO-0002', Ticket.Statut.EN_COURS, Ticket.Priorite.NORMALE,
+             'Production inférieure aux prévisions.', equipements[1]),
+            ('TCK-DEMO-0003', Ticket.Statut.CLOTURE, Ticket.Priorite.BASSE,
+             'Nettoyage des panneaux effectué.', None),
+        ]:
+            Ticket.objects.get_or_create(
+                company=company, reference=ref,
+                defaults={'client': client, 'equipement': eq,
+                          'statut': statut, 'priorite': prio,
+                          'description': desc, 'date_ouverture': today})

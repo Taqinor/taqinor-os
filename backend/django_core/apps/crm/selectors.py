@@ -1195,6 +1195,9 @@ LEAD_PROVENANCE_FIELDS = (
     'facture_hiver', 'facture_ete', 'ete_differente', 'bill_kwh',
     'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
     'gps_lat', 'gps_lng',
+    # ERR-QAC-PROVENANCE-CONSO-KWH — depuis CAD166 la conso mensuelle PILOTE
+    # l'étude horaire (recopiée dans `etude_params`) : une dérive doit se voir.
+    'conso_mensuelle_kwh',
 )
 
 
@@ -1309,7 +1312,6 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         ('ombrage_notes',
          "note de terrain en TEXTE LIBRE : aucun chiffre d'étude n'en "
          "dérive, il n'y a rien à comparer."),
-        ('conso_mensuelle_kwh', _RAISON_TRANCHE),
         ('tranche_onee', _RAISON_TRANCHE),
     ]
 )
