@@ -11,7 +11,11 @@ add_header X-Frame-Options "SAMEORIGIN" always;
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-XSS-Protection "1; mode=block" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-add_header Permissions-Policy "geolocation=(), microphone=(), camera=()" always;
+# ERR-QAH-VISITES-PHOTOS-CAMERA-BLOQUEE : la visite technique (photos
+# obligatoires via getUserMedia, geomarquage, dictee au micro) a besoin de ces
+# trois fonctions sur NOTRE origine ; `()` les interdisait partout, meme en
+# self -> visite impossible a cloturer. On autorise self, jamais les tiers.
+add_header Permissions-Policy "geolocation=(self), microphone=(self), camera=(self)" always;
 # Carte toiture 3D (page ERP /devis-design) : maplibre charge les tuiles
 # satellite Mapbox/MapTiler + le géocodage MapTiler, et tourne dans un
 # web worker (blob:). Sans ces sources, la carte reste vide dans l'ERP.
