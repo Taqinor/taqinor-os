@@ -44,6 +44,7 @@ import io
 import json
 import re
 import secrets
+import uuid
 from pathlib import Path
 
 from django.apps import apps as django_apps
@@ -198,7 +199,8 @@ def _is_user_fk(field):
 
 def concrete_fields(model):
     """Champs concrets à sérialiser (hors pk, hors M2M, hors inverses)."""
-    return [f for f in model._meta.concrete_fields if not f.primary_key]
+    return [f for f in model._meta.concrete_fields
+            if not f.primary_key and not getattr(f, 'generated', False)]
 
 
 def classify(label, field):
@@ -406,6 +408,8 @@ def _jsonable(value):
         return value.isoformat()
     if isinstance(value, _dt.timedelta):
         return value.total_seconds()
+    if isinstance(value, uuid.UUID):
+        return str(value)
     return value
 
 
