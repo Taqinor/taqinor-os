@@ -83,7 +83,9 @@ import {
   // par l'avertissement de vente et par l'étude commerciale.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
-  tauxTvaOf,
+  tauxTvaOf, controlerFacturesSaisies, ttcExactFromHt,
+  paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
+  appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
@@ -417,6 +419,10 @@ export default function DevisGenerator({
   // Avertissements NON bloquants (n'empêchent jamais l'enregistrement) —
   // distincts de `errors` qui, eux, bloquent la sauvegarde.
   const [warnings, setWarnings] = useState({})
+  // ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — signature de la série de
+  // factures dont l'écart avec la facture d'hiver du lead a déjà été
+  // CONFIRMÉ par le vendeur (second clic sur Enregistrer).
+  const facturesEcartConfirme = useRef(null)
   // Chargement des référentiels (leads/clients/produits) : on distingue
   // « en cours » (selects affichent « Chargement… ») de « échec réseau »
   // (bannière rouge explicite plutôt qu'un select vide silencieux).
@@ -1383,14 +1389,34 @@ export default function DevisGenerator({
   const apercuEcoAvec = etudeHoraireAnnuelAvec
     ? (batterieInvendableServeur ? null : etudeHoraireAnnuelAvec.economie_avec_mad)
     : roiPourAvec?.eco_annuelle_avec
+  // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN — branche serveur : le payback du
+  // MOTEUR (cashflow 25 ans QX39, `paybackMoteurHoraire`) sur l'économie
+  // servie, jamais une division coût ÷ économie. Un cumul qui ne croise jamais
+  // zéro s'affiche « Non rentabilisé sur 25 ans », jamais « 25 ans ».
+  const paybackServeurSans = etudeHoraireSourceServeur
+    ? paybackMoteurHoraire(totals.totalSans, apercuEcoSans, {
+        annuel: etudeHoraireAnnuel,
+        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierSans)),
+      })
+    : null
+  const paybackServeurAvec = etudeHoraireAnnuelAvec
+    ? paybackMoteurHoraire(totals.totalAvec, apercuEcoAvec, {
+        annuel: etudeHoraireAnnuelAvec,
+        rendementBatterie: etudeHoraireDonneesPourAvec?.etude?.rendement_batterie ?? null,
+        stockage: batteryKwhFromLines(lines) > 0,
+        inverterReplaceCost: inverterCostFromLines(lines.filter(appartientAuPanierAvec)),
+      })
+    : null
   const apercuPaybackSans = etudeHoraireSourceServeur
-    ? (totals.totalSans > 0 && apercuEcoSans > 0
-        ? Math.round((totals.totalSans / apercuEcoSans) * 100) / 100 : null)
+    ? (paybackServeurSans?.paybackYears ?? null)
     : roi?.payback_sans
   const apercuPaybackAvec = etudeHoraireAnnuelAvec
-    ? (totals.totalAvec > 0 && apercuEcoAvec > 0
-        ? Math.round((totals.totalAvec / apercuEcoAvec) * 100) / 100 : null)
+    ? (paybackServeurAvec?.paybackYears ?? null)
     : roiPourAvec?.payback_avec
+  const apercuPaybackSansJamais = etudeHoraireSourceServeur
+    ? !!paybackServeurSans?.jamaisRembourse : !!roi?.payback_sans_jamais
+  const apercuPaybackAvecJamais = etudeHoraireAnnuelAvec
+    ? !!paybackServeurAvec?.jamaisRembourse : !!roiPourAvec?.payback_avec_jamais
 
   // QJR35 — au montage (roi tourne dès dKwp>0 && dMonthly.some(v=>v>0), vrai
   // avec DEFAULT_MONTHLY_BILLS), les cartes Économies/ROI peuvent afficher un
@@ -1566,6 +1592,11 @@ export default function DevisGenerator({
     // kWh (et qui valorise l'économie par tranche). Il entre donc dans la clé
     // de cache au même titre que la marque épinglée.
     const distributeurBalayage = distributeur
+    // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — même productible que l'aperçu
+    // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
+    // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
+    const productibleBalayage = productibleForCity(
+      selectedLead?.ville || '', quoteLogic.productible)
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
@@ -1574,7 +1605,7 @@ export default function DevisGenerator({
     const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
       structureProduitId ?? '',
       discountPct, produits.length, JSON.stringify(marquesActives),
-      distributeurBalayage, consoAnnuelleReelle ?? ''].join('|')
+      distributeurBalayage, consoAnnuelleReelle ?? '', productibleBalayage].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
     const factures = estimerMois(hiver, eteEff)
     // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
@@ -1597,6 +1628,7 @@ export default function DevisGenerator({
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
       consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
+      productible: productibleBalayage,
     })
     // QJR102 — LE SECOND BALAYAGE (celui de l'axe stockage, exposé jadis sous
     // la clé imbriquée du même nom) EST SUPPRIMÉ : il était RÉSIDENTIEL-ONLY
@@ -1617,7 +1649,8 @@ export default function DevisGenerator({
     sizingCacheRef.current = { key, result }
     return result
   }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
-    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle])
+    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle,
+    selectedLead?.ville])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1916,7 +1949,10 @@ export default function DevisGenerator({
           produit: String(l.produit ?? ''),
           designation: l.designation,
           quantite: String(parseFloat(l.quantite) || 0),
-          prix_unit_ttc: String(ttcFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
+          // ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — prix PERSISTÉ : TTC au
+          // centime, jamais arrondi au dirham (sinon rouvrir change le total
+          // et ré-enregistrer modifie les prix en silence).
+          prix_unit_ttc: String(ttcExactFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
           taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
           // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
           optionnelle: !!l.optionnelle,
@@ -3071,6 +3107,31 @@ export default function DevisGenerator({
           e.lines = `Un devis solaire doit contenir au moins ${manque}. `
             + 'Utilisez « Auto-remplir » ou ajoutez ces lignes, ou cochez '
             + '« Composition libre ».'
+        }
+      }
+    }
+    // ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — les 12 factures partent comme
+    // « réelles » (`entreesReellesEcran`) : une facture sous les lignes fixes
+    // du compteur est REFUSÉE (le serveur la refuserait aussi, après
+    // l'enregistrement des lignes) ; un écart avec la facture d'hiver du lead
+    // se fait CONFIRMER une fois (second clic), jamais corrigé en silence.
+    if (facturesSaisies) {
+      const ctl = controlerFacturesSaisies(monthly, {
+        factureHiverLead: selectedLead?.facture_hiver,
+      })
+      if (ctl.sousPlancher.length) {
+        e.factures = `Facture(s) mensuelle(s) inférieure(s) aux lignes fixes du `
+          + `compteur (${ctl.plancher.toFixed(2)} MAD TTC/mois) — mois `
+          + `${ctl.sousPlancher.join(', ')}. Une facture réelle ne peut pas être `
+          + 'aussi basse : corrigez la saisie (hiver/été ou détail mensuel).'
+      } else if (ctl.ecartLead) {
+        const signature = monthly.map(v => Number(v) || 0).join('|')
+          + `#${ctl.ecartLead.lead}`
+        if (facturesEcartConfirme.current !== signature) {
+          facturesEcartConfirme.current = signature
+          e.factures = `La facture d'hiver enregistrée (${Math.round(ctl.ecartLead.serie)} MAD) `
+            + `s'écarte de celle du lead (${Math.round(ctl.ecartLead.lead)} MAD). `
+            + 'Vérifiez la saisie, puis cliquez à nouveau pour confirmer.'
         }
       }
     }
@@ -4801,7 +4862,8 @@ export default function DevisGenerator({
                                      figure="economie_annuelle" figureOption="sans" />
                       <CarteMetrique label="ROI"
                                      valeur={signerEcoOuRoi(
-                                       apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
+                                       apercuPaybackSansJamais ? 'Non rentabilisé sur 25 ans'
+                                         : apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
                                      unit="retour sur invest." accent
                                      figure="payback_ans" figureOption="sans" />
                       {/* QJR426 — le coût est celui, certain, des lignes du
@@ -4838,7 +4900,8 @@ export default function DevisGenerator({
                                          figure="economie_annuelle" figureOption="avec" />
                           <CarteMetrique label="ROI"
                                          valeur={signerEcoOuRoi(
-                                           apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
+                                           apercuPaybackAvecJamais ? 'Non rentabilisé sur 25 ans'
+                                             : apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
                                          unit="retour sur invest." accent
                                          figure="payback_ans" figureOption="avec" />
                           <CarteMetrique label="Coût"
@@ -5094,9 +5157,9 @@ export default function DevisGenerator({
         )}
         {/* Toute raison de blocage est VISIBLE à côté du bouton — jamais de
             clic silencieux sans effet. */}
-        {(errors.submit || errors.lines || errors.client || errors.conso) && (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {errors.submit || errors.lines || errors.client || errors.conso}
+        {(errors.submit || errors.lines || errors.client || errors.conso || errors.factures) && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="erreur-enregistrement">
+            {errors.submit || errors.lines || errors.client || errors.conso || errors.factures}
           </div>
         )}
 

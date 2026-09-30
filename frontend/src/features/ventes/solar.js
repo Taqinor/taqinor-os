@@ -386,6 +386,9 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   // Q1 — prix TTC RÉEL de l'onduleur de cette option, retranché à
   // INVERTER_REPLACE_YEAR. `null`/0 ⇒ aucune provision.
   inverterReplaceCost = null,
+  // QJR137 (miroir `pricing`) — rendement aller-retour PROUVÉ par la fiche
+  // batterie quand le moteur horaire le publie, sinon l'hypothèse de référence.
+  batteryRoundtrip = BATTERY_ROUNDTRIP,
 } = {}) {
   const inv = parseFloat(investment) || 0
   const base = parseFloat(economieAnnee1) || 0
@@ -395,13 +398,15 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   // Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
   // part réellement stockée puis restituée. `batteryShare=null` → forfait
   // historique (0,90 sur tout) ; `0` → aucune perte ; `1` → identique au forfait.
+  const rt = (parseFloat(batteryRoundtrip) > 0 && parseFloat(batteryRoundtrip) <= 1)
+    ? parseFloat(batteryRoundtrip) : BATTERY_ROUNDTRIP
   let battFactor = 1
   if (battery) {
     if (batteryShare === null || batteryShare === undefined) {
-      battFactor = BATTERY_ROUNDTRIP
+      battFactor = rt
     } else {
       const part = Math.max(0, Math.min(1, parseFloat(batteryShare) || 0))
-      battFactor = 1 - (1 - BATTERY_ROUNDTRIP) * part
+      battFactor = 1 - (1 - rt) * part
     }
   }
   const invCost = parseFloat(inverterReplaceCost) || 0
@@ -432,6 +437,38 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   const jamaisRembourse = payback === null
   if (jamaisRembourse) payback = CASHFLOW_YEARS
   return { paybackYears: payback, cumulative, netGain: Math.round(cumul), years: CASHFLOW_YEARS, jamaisRembourse }
+}
+
+// ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN — le payback de l'écran quand l'étude
+// horaire SERVEUR a répondu : la formule du MOTEUR (`pricing.calculate_savings_roi`
+// → `compute_cashflow_payback`, cashflow 25 ans QX39 : dégradation, rendement
+// batterie sur la seule part stockée, remplacement onduleur au prix réel),
+// appliquée à l'économie servie par le serveur — jamais `coût ÷ économie`
+// (écran 13,43 / 8,95 ans contre 8,2 / 5,5 au document).
+// `annuel` = `etude.annuel` du serveur (taux d'autoconsommation, production,
+// consommation) : la part batterie se dérive comme dans `pricing` (plafond
+// sans ≤ conso/production, plancher avec ≥ sans). Rend
+// `{ paybackYears, jamaisRembourse }`, ou `null` sans coût ni économie.
+export function paybackMoteurHoraire(total, ecoAnnuelle, {
+  annuel = null, rendementBatterie = null, stockage = false, inverterReplaceCost = null,
+} = {}) {
+  const t = parseFloat(total) || 0
+  const eco = parseFloat(ecoAnnuelle) || 0
+  if (!(t > 0) || !(eco > 0)) return null
+  let part = 0
+  if (stockage && annuel) {
+    const prod = parseFloat(annuel.production_kwh) || 0
+    const conso = parseFloat(annuel.consommation_kwh) || 0
+    let sansEff = parseFloat(annuel.taux_autoconso_sans) || 0
+    if (conso > 0 && prod > 0) sansEff = Math.min(sansEff, conso / prod)
+    const avecEff = Math.max(parseFloat(annuel.taux_autoconso_avec) || 0, sansEff)
+    part = avecEff > 0 ? Math.max(0, avecEff - sansEff) / avecEff : 0
+  }
+  const cf = computeCashflowPayback(t, eco, {
+    battery: !!stockage, batteryShare: part, inverterReplaceCost,
+    batteryRoundtrip: rendementBatterie ?? BATTERY_ROUNDTRIP,
+  })
+  return { paybackYears: cf.paybackYears, jamaisRembourse: !!cf.jamaisRembourse }
 }
 
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
@@ -847,10 +884,15 @@ export function monthlyBillFromKwh(kwhMensuel, tranches) {
 // donc un montant tombé dans un trou est résolu à la BORNE BASSE du saut
 // (210 kWh) : jamais une conso que le barème ne peut produire, et toujours le
 // côté prudent (moins de kWh ⇒ système plus petit, économies plus petites).
+// ERR-QAH-DIFF-KWH-HORS-PLAGE — HORS PLAGE ⇒ `null`, JAMAIS LA BORNE (miroir
+// de la garde QJR158 (e) de `pricing._kwh_from_bill_bisect`) : une facture
+// qu'aucune consommation ≤ 1e6 kWh/mois ne produit faisait converger la
+// dichotomie vers ce plafond (≈ 1 024 000 kWh « exacts »).
 function kwhFromBillBisect(bill, tranches) {
   let lo = 0
   let hi = 1000
   while (monthlyBillFromKwh(hi, tranches) < bill && hi < 1e6) hi *= 2
+  if (monthlyBillFromKwh(hi, tranches) < bill) return null
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2
     if (monthlyBillFromKwh(mid, tranches) < bill) lo = mid
@@ -870,8 +912,12 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
     return { kwhMensuel: Math.round((bill / FALLBACK_KWH_PRICE) * 10) / 10, approximatif: true, estimation: true }
   }
   if (selectiveRule(table)) {
+    const kwh = kwhFromBillBisect(bill, table)
+    // ERR-QAH-DIFF-KWH-HORS-PLAGE — même sortie que le serveur : 0 kWh,
+    // étiqueté estimation, jamais la borne de boucle présentée comme exacte.
+    if (kwh === null) return { kwhMensuel: 0, approximatif: approx, estimation: true }
     return {
-      kwhMensuel: Math.round(kwhFromBillBisect(bill, table) * 10) / 10,
+      kwhMensuel: Math.round(kwh * 10) / 10,
       approximatif: approx,
       estimation: false,
     }
@@ -890,16 +936,57 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
   return { kwhMensuel: Math.round(kwh * 10) / 10, approximatif: approx, estimation: false }
 }
 
-// Consommation annuelle (kWh/an) DÉRIVÉE des 12 factures mensuelles du client,
-// par inversion du barème par tranche du distributeur (`kwhFromBill`, QF1).
-// Rien n'est inventé : la seule entrée est la facture réelle, la seule table
-// est le barème publié. Extraite ici pour qu'il n'existe qu'UNE dérivation —
-// `autoQuote.js` la posait déjà mot pour mot dans `etude_params.conso_annuelle`,
-// et le dimensionnement en a maintenant besoin AVANT le balayage (sans elle,
-// le modèle d'économie ne sature pas et l'ascension marginale sur-vend).
-// 0 quand aucune facture exploitable — l'appelant OMET, il n'invente pas.
-export function consoAnnuelleDepuisFactures(factures, utility) {
+// ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — MAD/mois → kWh/mois : l'INVERSE de
+// la facture COMPLÈTE (`factureMad` : énergie + lignes fixes + TPPAN), jumeau
+// EXACT de `bareme.kwh_depuis_facture_mad` (dichotomie sur le total, mois de
+// 30 jours). Un montant qui ne couvre pas les lignes fixes ⇒ 0 kWh ; un montant
+// hors plage inversable (au-delà de 1e6 kWh/mois) ⇒ `null` (QJR142 e), jamais
+// la borne de boucle.
+const PLAFOND_DICHOTOMIE_KWH = 1e6
+export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
+  jours = TPPAN_JOURS_REFERENCE) {
+  const montant = parseFloat(totalMad) || 0
+  if (montant <= 0) return 0
+  const total = (k) => factureMad(k, tranches, jours).totalMad
+  if (montant <= total(0)) return 0
+  let bas = 0
+  let haut = 1000
+  while (total(haut) < montant && haut < PLAFOND_DICHOTOMIE_KWH) haut *= 2
+  if (total(haut) < montant) return null
+  for (let i = 0; i < 60; i++) {
+    const milieu = (bas + haut) / 2
+    if (total(milieu) < montant) bas = milieu
+    else haut = milieu
+  }
+  return Math.round(((bas + haut) / 2) * 10) / 10
+}
+
+// Consommation annuelle (kWh/an) DÉRIVÉE des factures mensuelles du client.
+// ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — une facture SAISIE est un TOTAL :
+// elle s'inverse avec le barème COMPLET (`kwhDepuisFactureMad`), exactement
+// comme le serveur (`etude_horaire.serie_kwh_depuis_mad`, grille NATIONALE —
+// tous les distributeurs la lisent, Q7/CAD167), et plus avec l'énergie seule
+// (`kwhFromBill`) ni le prix plat 1,20 sans distributeur : l'écran stockait
+// jusqu'à ~40 % de kWh en trop sur les petites factures (I9 de COUV-HOR).
+// `utility` n'est plus lu (gardé pour la signature des appelants) ;
+// `tranchesOverride` = grille vendeur. Un mois non inversable ⇒ 0 (le serveur
+// omet toute la série). 0 quand aucune facture exploitable — l'appelant OMET.
+export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride) {
   if (!Array.isArray(factures) || !factures.length) return 0
+  const table = tranchesOverride && tranchesOverride.length ? tranchesOverride : ONEE_TRANCHES
+  let total = 0
+  for (const bill of factures) {
+    const kwh = kwhDepuisFactureMad(bill, table)
+    if (kwh === null) return 0
+    total += kwh
+  }
+  return total > 0 ? Math.round(total) : 0
+}
+
+// L'ANCIENNE dérivation (énergie seule, `kwhFromBill`) — gardée UNIQUEMENT pour
+// reconnaître une conso STOCKÉE avant le correctif comme « descendue des
+// factures » (`consoDescendDesFactures`), jamais pour en calculer une nouvelle.
+function consoAnnuelleEnergieSeule(factures, utility) {
   const total = factures.reduce(
     (somme, bill) => somme + (kwhFromBill(bill, utility).kwhMensuel || 0), 0)
   return total > 0 ? Math.round(total) : 0
@@ -915,9 +1002,11 @@ export function consoAnnuelleDepuisFactures(factures, utility) {
 export function consoDescendDesFactures(conso, factures, distributeur) {
   const c = parseFloat(conso) || 0
   if (c <= 0 || !Array.isArray(factures) || !factures.length) return false
+  const derivee = consoAnnuelleDepuisFactures(factures)
+  if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
   for (const d of new Set([distributeur || undefined, 'onee', undefined])) {
-    const derivee = consoAnnuelleDepuisFactures(factures, d)
-    if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
+    const ancienne = consoAnnuelleEnergieSeule(factures, d)
+    if (ancienne > 0 && Math.abs(c - ancienne) <= 12) return true
   }
   return false
 }
@@ -965,6 +1054,31 @@ const TPPAN_EXONERATION_KWH_MOIS = 50
 export function chargesFixesTtc() {
   return CHARGE_LOCATION_COMPTEUR_HT * (1 + TVA_LIGNES_FIXES)
     + CHARGE_ENTRETIEN_BRANCHEMENT_HT * (1 + TVA_LIGNES_FIXES)
+}
+
+// ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — contrôle des 12 factures que
+// l'écran s'apprête à enregistrer comme « réelles ». DEV-202609-0108 est parti
+// au client avec `estimerMois(1, 1600)` (hiver 1 MAD/mois, sous les lignes
+// fixes du compteur) alors que son lead disait 3 000 MAD d'hiver.
+//   · `sousPlancher` : mois (1-12) dont la facture est > 0 mais sous
+//     `chargesFixesTtc()` — impossible pour une vraie facture (le serveur,
+//     `domain/etude_schema.py`, refuse la même série) ;
+//   · `ecartLead` : la facture de janvier (le mois d'HIVER de `estimerMois`)
+//     s'écarte de plus de 25 % de la facture d'hiver du lead ⇒
+//     `{ serie, lead }`, à faire CONFIRMER, jamais corrigé en silence.
+export const ECART_FACTURE_LEAD_MAX = 0.25
+export function controlerFacturesSaisies(factures, { factureHiverLead } = {}) {
+  const plancher = chargesFixesTtc()
+  const serie = Array.isArray(factures) ? factures.map(v => Number(v) || 0) : []
+  const sousPlancher = []
+  serie.forEach((v, i) => { if (v > 0 && v < plancher) sousPlancher.push(i + 1) })
+  const lead = Number(factureHiverLead) || 0
+  let ecartLead = null
+  if (lead > 0 && serie.length === 12 && serie[0] > 0
+      && Math.abs(serie[0] - lead) / lead > ECART_FACTURE_LEAD_MAX) {
+    ecartLead = { serie: serie[0], lead }
+  }
+  return { plancher, sousPlancher, ecartLead }
 }
 
 // TPPAN TTC due sur une période de `jours` jours consommant `kwhMensuel`.
@@ -1373,6 +1487,17 @@ export function classifyProduct(nom) {
 export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
   const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
   return Math.round((parseFloat(prixVenteHt) || 0) * factor)
+}
+
+// ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — TTC unitaire AU CENTIME d'un prix HT
+// DÉJÀ PERSISTÉ (réouverture `?edit=`). `ttcFromHt` arrondit au dirham — juste
+// pour un prix catalogue, faux pour un prix enregistré : l'erreur (≤ 0,5 MAD
+// par unité) était multipliée par la quantité (36 828 à l'écran contre
+// 36 873,11 au devis) puis PERSISTÉE au ré-enregistrement. Au centime,
+// `htFromTtc` retrouve exactement le HT d'origine (erreur < 0,005 ÷ (1 + t)).
+export function ttcExactFromHt(prixHt, tauxTva = TVA_STANDARD_DEFAUT) {
+  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
+  return Math.round((parseFloat(prixHt) || 0) * factor * 100) / 100
 }
 
 // Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
@@ -2990,11 +3115,17 @@ const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
 
 // QX40 — tension d'un produit (pompe/variateur) : champ tension_v prioritaire,
 // sinon lecture « 220V »/« 380V » dans le nom, sinon null (inconnu).
+// ERR-QAH-DIFF-POMPAGE-TENSION-NOM-2200W — UNE règle stricte, jumelle de
+// `calepinage.services.pompage.tension_produit` : le NOMBRE ISOLÉ 220/380
+// immédiatement suivi de « V » (« 220V », « 220 V », « 220Vac », « 380 volts »),
+// jamais « 1220V » ni un « 2200W » (que le Python lisait 220 V).
+const RE_TENSION_MONO = /(?<![\d.,])220\s*v(?:olts?|ac)?(?![a-z0-9])/i
+const RE_TENSION_TRI = /(?<![\d.,])380\s*v(?:olts?|ac)?(?![a-z0-9])/i
 export function tensionOf(p) {
   if (p && p.tension_v) return Number(p.tension_v)
   const nom = (p && p.nom) || ''
-  if (/220\s*v/i.test(nom)) return 220
-  if (/380\s*v/i.test(nom)) return 380
+  if (RE_TENSION_MONO.test(nom)) return 220
+  if (RE_TENSION_TRI.test(nom)) return 380
   return null
 }
 

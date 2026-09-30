@@ -76,7 +76,11 @@ test('lead avec distributeur ONEE connu : la clé distributeur est semée, tranc
   })
   assert.deepEqual(out.factures_mensuelles_reelles, Array(12).fill(235))
   assert.equal(out.distributeur, 'onee')
-  assert.equal(out.conso_annuelle, Math.round(12 * 210))
+  // ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — 235 MAD est une facture TOTALE :
+  // lignes fixes + TPPAN retirées, elle vaut 161,2 kWh/mois (le serveur,
+  // `bareme.kwh_depuis_facture_mad`, rend le même chiffre), plus les 210 kWh
+  // de l'inversion énergie seule.
+  assert.equal(out.conso_annuelle, 1934)
 })
 
 test('COUV-HOR — DEV-202609-0113 : sans distributeur, la conso suit le barème national, jamais factures ÷ 1,20', () => {
@@ -90,7 +94,10 @@ test('COUV-HOR — DEV-202609-0113 : sans distributeur, la conso suit le barème
     assert.equal(out.factures_mensuelles_reelles.reduce((a, b) => a + b, 0), 198000)
     assert.equal(out.conso_annuelle,
       consoAnnuelleDepuisFactures(out.factures_mensuelles_reelles, 'onee'))
-    assert.equal(out.conso_annuelle, 122007, `distributeur ${distributeur}`)
+    // ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — inverse de la facture COMPLÈTE :
+    // 120 972 kWh/an, le chiffre de `etude_horaire.serie_kwh_depuis_mad`
+    // (122 007 avec l'ancienne inversion énergie seule).
+    assert.equal(out.conso_annuelle, 120972, `distributeur ${distributeur}`)
     assert.equal('distributeur' in out, false,
       'le libellé du distributeur n\'est jamais fabriqué')
   }
