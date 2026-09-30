@@ -2157,7 +2157,11 @@ export default function DevisGenerator({
     const leadParam = embedded
       ? (leadIdProp != null ? String(leadIdProp) : '')
       : searchParams.get('lead')
-    if (!leadParam || autoRan.current) return
+    // QJR525 — en ÉDITION (Édition complète embarquée depuis la fiche lead),
+    // le devis rouvert prime : le mappeur `?edit=` pose déjà le lead, et
+    // `applyLead` réécrirait les 12 factures réelles stockées par une
+    // estimation hiver/été sans aucun geste du vendeur.
+    if (!leadParam || autoRan.current || editId) return
     if (!leads.length || !produits.length) return
     autoRan.current = true
     const lead = leads.find(l => String(l.id) === leadParam)
