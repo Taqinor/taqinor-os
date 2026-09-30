@@ -3004,31 +3004,11 @@ def _conditions_publiques(data, devis=None):
              if isinstance(_surcharges, dict) else None)
             or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
         terms = (data or {}).get('payment_terms') or {}
-        # Défauts : la société (comportement d'hier, à l'octet).
-        slots = {'acompte': terms.get('acompte', 30),
-                 'materiel': terms.get('materiel', 60),
-                 'solde': terms.get('solde', 10)}
-        if devis is not None:
-            try:
-                from .utils.echeancier import pourcentages_echeancier
-                tranches = pourcentages_echeancier(devis)
-            except Exception:  # noqa: BLE001 — best-effort, société en repli
-                tranches = []
-            if tranches:
-                if len(tranches) == 3:
-                    # Forme canonique (acompte / matériel / solde), nommée ou
-                    # simplement positionnelle : les trois puces suivent.
-                    for cle, tr in zip(('acompte', 'materiel', 'solde'),
-                                       tranches):
-                        slots[cle] = tr['pct']
-                else:
-                    par_cle = {t['key']: t['pct'] for t in tranches}
-                    for cle in ('acompte', 'materiel', 'solde'):
-                        if cle in par_cle:
-                            slots[cle] = par_cle[cle]
-                    # La PREMIÈRE tranche EST l'acompte, quel que soit son
-                    # nom : c'est celle que `next_tranche` sert au client.
-                    slots['acompte'] = tranches[0]['pct']
+        # QJR622 — la correspondance « échéancier du devis → acompte /
+        # matériel / solde » vit dans ``utils.echeancier`` (UNE fois, le PDF
+        # la lit aussi) ; ``devis`` absent ⇒ la société seule, à l'octet.
+        from .utils.echeancier import termes_paiement_devis
+        slots = termes_paiement_devis(devis, terms)
         acompte = _pct_lisible(slots['acompte'])
         materiel = _pct_lisible(slots['materiel'])
         solde = _pct_lisible(slots['solde'])

@@ -249,6 +249,48 @@ def pourcentages_echeancier(devis, lignes=None) -> list:
     return out
 
 
+def termes_paiement_devis(devis, termes_defaut, lignes=None) -> dict:
+    """QJR622 — L'échéancier DU DEVIS rabattu sur les trois créneaux
+    ``{acompte, materiel, solde}`` que les conditions imprimées nomment.
+
+    DÉPLACÉ tel quel de ``public_views._conditions_publiques`` (sortie
+    octet-identique) pour que la page publique et le PDF (QJR623) lisent UNE
+    correspondance :
+
+    * défauts = ``termes_defaut`` (les ``payment_terms`` de la SOCIÉTÉ,
+      30 / 60 / 10 quand une clé manque) ;
+    * 3 tranches → positionnelles (acompte, matériel, solde), nommées ou non ;
+    * sinon → par clé, et la PREMIÈRE tranche EST l'acompte (celle que
+      ``next_tranche`` sert au client) ;
+    * ``devis`` absent, échéancier vide ou en erreur → la société seule.
+    """
+    termes = termes_defaut or {}
+    slots = {'acompte': termes.get('acompte', 30),
+             'materiel': termes.get('materiel', 60),
+             'solde': termes.get('solde', 10)}
+    if devis is None:
+        return slots
+    try:
+        tranches = pourcentages_echeancier(devis, lignes=lignes)
+    except Exception:  # noqa: BLE001 — best-effort, société en repli
+        tranches = []
+    if not tranches:
+        return slots
+    if len(tranches) == 3:
+        # Forme canonique (acompte / matériel / solde), nommée ou simplement
+        # positionnelle : les trois créneaux suivent.
+        for cle, tr in zip(('acompte', 'materiel', 'solde'), tranches):
+            slots[cle] = tr['pct']
+    else:
+        par_cle = {t['key']: t['pct'] for t in tranches}
+        for cle in ('acompte', 'materiel', 'solde'):
+            if cle in par_cle:
+                slots[cle] = par_cle[cle]
+        # La PREMIÈRE tranche EST l'acompte, quel que soit son nom.
+        slots['acompte'] = tranches[0]['pct']
+    return slots
+
+
 def schedule_for_devis(devis):
     """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
 
