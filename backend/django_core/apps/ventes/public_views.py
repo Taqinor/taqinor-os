@@ -3110,6 +3110,44 @@ def _confirmation_email_publique(devis):
         return False
 
 
+def _remplace_par_public(devis):
+    """QJR536 — la version qui REMPLACE ce devis, telle que la page publique
+    peut la montrer : ``None`` si le devis n'a pas été remplacé, sinon
+    ``{'reference', 'url'}``.
+
+    Suit la chaîne ``superseded_by`` jusqu'à la DERNIÈRE version de la MÊME
+    société (jamais une autre société ; une boucle est coupée). ``url`` = le
+    chemin public du successeur SEULEMENT s'il n'est pas brouillon et porte un
+    ``ShareLink`` déjà valide — aucun lien n'est créé ici (lecture pure) ;
+    sinon ``None`` (on dit « remplacée par … » sans servir un brouillon)."""
+    from .models import Devis
+    from .utils.client_links import chemin_proposition
+
+    courant = devis
+    vus = {devis.pk}
+    while courant.superseded_by_id and courant.superseded_by_id not in vus:
+        suivant = (Devis.objects
+                   .filter(pk=courant.superseded_by_id,
+                           company_id=devis.company_id)
+                   .select_related('client', 'lead')
+                   .first())
+        if suivant is None:
+            break
+        vus.add(suivant.pk)
+        courant = suivant
+    if courant.pk == devis.pk:
+        return None
+    url = None
+    if courant.statut != Devis.Statut.BROUILLON:
+        lien = (ShareLink.objects
+                .filter(devis=courant, expires_at__gt=timezone.now())
+                .order_by('-expires_at')
+                .first())
+        if lien is not None:
+            url = chemin_proposition(courant, lien.token)
+    return {'reference': courant.reference, 'url': url}
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -3318,6 +3356,17 @@ def proposal_data(request, token):
             'date': data['date'],
             'client_name': data['client_name'],
             'statut': devis.statut,
+            # QJR536 (contrat QJR501) — ``null`` tant que CE devis n'est pas
+            # remplacé ; sinon ``{reference, url}`` de la version EN VIGUEUR
+            # (dernière de la chaîne ``superseded_by``, même société). ``url``
+            # n'est servie que si cette version a été ENVOYÉE et porte un lien
+            # valide — un brouillon n'est jamais montré au client. Le jeton
+            # de v1 ne sert JAMAIS le contenu de v2 : c'est un lien, pas une
+            # redirection ; le statut n'est pas touché (règle #4).
+            'remplace_par': _remplace_par_public(devis),
+            # QJR536 (D-QJR5-6) — le champ Notes du devis est un texte CLIENT
+            # ('' si vide).
+            'note_client': (devis.note or '').strip(),
             # LA PLOMBERIE INTERNE NE FRANCHIT PAS LA FRONTIÈRE. ``data`` porte
             # des clés de travail préfixées ``_`` (``_company_id``,
             # ``_produit_nom``…) que le builder pose pour ses propres besoins ;

@@ -62,6 +62,7 @@ import {
   defaultSelectedOption,
   isAccepted,
   resolveOfferState,
+  resolveRemplacement,
   isOfferDead,
   proposalEndpoint,
   proposalPdfEndpoint,
@@ -500,6 +501,10 @@ const resyncDate = ok ? resyncApresEnvoi(data!) : null;
 // inventée) : pilote la suppression du formulaire de signature + du CTA collant
 // pour toute offre qui n'est plus signable.
 const offerState = ok ? resolveOfferState(data!) : 'live';
+// QJR536 — version REMPLACÉE : « remplacée par <référence> » + lien vers la
+// version en vigueur quand elle a été envoyée (jamais une redirection, jamais
+// le contenu de la nouvelle version sous ce jeton).
+const remplacement = ok ? resolveRemplacement(data!) : null;
 
 const roofImg = data?.roof_image_url ?? null;
 const clientName = data?.client_name || q?.client_name || 'Client';
@@ -6247,7 +6252,37 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           <!-- ── WJ82 · États explicites d'une offre morte (refusée/expirée/retirée) —
                masque le formulaire de signature et affiche un message localisé
                clair à la place, jamais un formulaire signable sur une offre morte. -->
-          {offerState !== 'live' && offerState !== 'accepted' && (
+          {remplacement && (
+            <div id="sign-remplacee" class="result-fade">
+              <p class="fig text-xl text-alert-300" data-i18n
+                data-fr={`Cette proposition a été remplacée par ${remplacement.reference}`}
+                data-en={`This proposal has been replaced by ${remplacement.reference}`}
+                data-ar={`تم استبدال هذا العرض بالعرض ${remplacement.reference}`}>
+                {`Cette proposition a été remplacée par ${remplacement.reference}`}
+              </p>
+              {remplacement.url ? (
+                <a
+                  href={remplacement.url}
+                  class="btn-pill mt-5 inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                  data-i18n
+                  data-fr="Voir la proposition en vigueur"
+                  data-en="View the current proposal"
+                  data-ar="عرض العرض الساري"
+                >
+                  Voir la proposition en vigueur
+                </a>
+              ) : (
+                <p class="v2-body mt-2" data-i18n
+                  data-fr="Votre conseiller Taqinor vous enverra la nouvelle version."
+                  data-en="Your Taqinor advisor will send you the new version."
+                  data-ar="سيرسل لكم مستشاركم في تاقينور النسخة الجديدة.">
+                  Votre conseiller Taqinor vous enverra la nouvelle version.
+                </p>
+              )}
+            </div>
+          )}
+          {!remplacement && offerState !== 'live' && offerState !== 'accepted' && (
             <div id="sign-dead-offer" class="result-fade">
               <p class="fig text-xl text-alert-300" data-i18n
                 data-fr={offerState === 'expired' ? 'Offre échue' : 'Devis non disponible à la signature'}
