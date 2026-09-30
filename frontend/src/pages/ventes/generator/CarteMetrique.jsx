@@ -19,17 +19,20 @@
 // partagent au lieu d'en recopier le balisage — aucun double chemin.
 import { unwrap } from '../../../features/ventes/quote/valeur'
 
-// QA-FIGURES — marqueur `data-figure` (vocabulaire unique :
-// backend/django_core/apps/ventes/quote_engine/figures.py, FIGURE_KEYS) posé
-// sur l'élément qui IMPRIME le chiffre, pour que la parité écran / PDF / page
-// publique / API se vérifie sans sélecteur fragile (frontend/e2e/
-// figures-parite.spec.js). Aucun marqueur sur un texte sans chiffre (« N/A »,
+// QA-FIGURES — ancre `data-figure` (vocabulaire unique :
+// backend/django_core/apps/ventes/quote_engine/figures.py, FIGURE_KEYS) posée
+// DANS la valeur, masquée, portant le MÊME texte (`data-figure-value`), pour
+// que la parité écran / PDF / page publique / API se vérifie sans sélecteur
+// fragile (frontend/e2e/figures-parite.spec.js) — même forme que les ancres
+// du PDF, et le balisage épinglé de la valeur (`gen-metric-value` puis
+// `{contenu}`) reste intact. Aucune ancre sur un texte sans chiffre (« N/A »,
 // motif) : ce n'est pas un chiffre.
-function attributsFigure(figure, option, contenu) {
-  if (!figure || typeof contenu !== 'string' || !/\d/.test(contenu)) return {}
-  return option
-    ? { 'data-figure': figure, 'data-figure-option': option }
-    : { 'data-figure': figure }
+function AncreFigure({ figure, option, contenu }) {
+  if (!figure || typeof contenu !== 'string' || !/\d/.test(contenu)) return null
+  return (
+    <span data-figure={figure} data-figure-option={option || undefined}
+          data-figure-value={contenu} hidden />
+  )
 }
 
 /** En-tête de carte du générateur (style design system, repose sur Card). */
@@ -89,8 +92,7 @@ export default function CarteMetrique({
           {motif}
         </div>
       ) : (
-        <div className="gen-metric-value"
-             {...attributsFigure(figure, figureOption, contenu)}>
+        <div className="gen-metric-value">
           {contenu}
           {/* QJR35 — la carte lit une économie/payback dérivé LOCALEMENT
               (miroir `roi`, jamais serveur) sans facture réelle saisie ni
@@ -102,6 +104,7 @@ export default function CarteMetrique({
               {puce}
             </span>
           )}
+          <AncreFigure figure={figure} option={figureOption} contenu={contenu} />
         </div>
       )}
       <div className="gen-metric-unit">{unit}</div>
