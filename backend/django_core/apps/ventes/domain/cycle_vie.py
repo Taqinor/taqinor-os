@@ -1559,10 +1559,12 @@ def contexte_clauses_devis(devis):
 
     from apps.ventes.domain.argent import Vue, totaux as totaux_argent
 
-    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    # ERR-QAC-MULTIVILLA-TOTAL-XN — ``montant`` est le total ×N d'un devis
+    # « N villas identiques » : le kWc du même contexte est celui du PROJET.
+    from apps.ventes.selectors import puissance_kwc_projet
     try:
-        kwc = float(etude.get('puissance_kwc') or 0)
-    except (TypeError, ValueError):
+        kwc = float(puissance_kwc_projet(devis) or 0)
+    except (TypeError, ValueError, InvalidOperation):
         kwc = 0.0
     try:
         vue = totaux_argent(devis, vue=Vue.NET)

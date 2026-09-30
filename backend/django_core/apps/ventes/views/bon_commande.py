@@ -544,12 +544,18 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 if g:
                     facture.remise_globale = g
                     facture.save(update_fields=['remise_globale'])
+                # ERR-QAC-MULTIVILLA-TOTAL-XN — un devis « ×N villas
+                # identiques » porte les lignes d'UNE villa et se facture au
+                # total ×N (décision fondateur 30/09/2026) : la facture de BC
+                # reprend donc chaque quantité ×N. N=1 → inchangé.
+                from ..selectors import nombre_proprietes
+                n_prop = nombre_proprietes(bc.devis)
                 for ligne in option_lines(bc.devis):
                     LigneFacture.objects.create(
                         facture=facture,
                         produit=ligne.produit,
                         designation=ligne.designation,
-                        quantite=ligne.quantite,
+                        quantite=ligne.quantite * n_prop,
                         prix_unitaire=ligne.prix_unitaire,
                         remise=ligne.remise,
                         # Reporte le taux TVA de la ligne de devis (10/20),

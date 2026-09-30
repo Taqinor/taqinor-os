@@ -438,9 +438,13 @@ class Devis(models.Model):
         super().save(*args, **kwargs)
         if self.prix_par_kwc is not None:
             return  # déjà gelée — jamais recalculée.
-        kwc = (self.etude_params or {}).get('puissance_kwc')
+        # ERR-QAC-MULTIVILLA-TOTAL-XN — ``total_ttc`` est le total ×N d'un
+        # devis « N villas identiques » (décision fondateur 30/09/2026) : le
+        # kWc qui s'y apparie est celui du PROJET (kWc d'une villa × N), sinon
+        # le prix au kWc serait gonflé ×N.
+        from .selectors import puissance_kwc_projet
         try:
-            kwc_val = Decimal(str(kwc)) if kwc else Decimal('0')
+            kwc_val = puissance_kwc_projet(self) or Decimal('0')
         except (InvalidOperation, TypeError, ValueError):
             kwc_val = Decimal('0')
         if kwc_val <= 0:
