@@ -163,3 +163,23 @@ describe('DevisLineRow (STKCAT24) — typeFilter du picker : rôle stocké prior
     expect(produitPickerRenderSpy).toHaveBeenCalledWith('10', 'onduleur_reseau')
   })
 })
+
+describe('DevisLineRow — QJR529 : remise de ligne stockée visible (lecture seule)', () => {
+  it('affiche « remise ligne 10 % » quand la ligne porte une remise > 0', () => {
+    render(
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps({ line: { ...baseLine, remise: '10' } })} />,
+      )}</tbody></table>,
+    )
+    expect(screen.getByText(/remise ligne 10\s?%/)).toBeInTheDocument()
+  })
+
+  it('aucun badge sans remise (ou remise nulle)', () => {
+    render(
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps({ line: { ...baseLine, remise: '0' } })} />,
+      )}</tbody></table>,
+    )
+    expect(screen.queryByText(/remise ligne/)).toBeNull()
+  })
+})

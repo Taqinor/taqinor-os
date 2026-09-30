@@ -10,7 +10,9 @@
 //
 // Champs portés dans les DEUX sens : produit, designation, quantite, prix
 // (HT serveur ⇄ TTC écran), taux_tva, optionnelle, type_ligne, ordre, variante,
-// prix_manuel, quantite_manuelle, groupe_index / groupe_label, role_devis.
+// prix_manuel, quantite_manuelle, groupe_index / groupe_label, role_devis,
+// remise (QJR529 — la remise PAR LIGNE stockée, '0' par défaut : l'envoyer à
+// '0' en dur faisait monter le total client en silence au 1er enregistrement).
 //
 // Module PUR (aucun React, aucun import.meta) : exécuté par `node --test`.
 import { ttcExactFromHt, htFromTtc } from '../solar.js'
@@ -41,6 +43,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         // ré-enregistrer modifie les prix en silence).
         prix_unit_ttc: String(ttcExactFromHt(l.prix_unitaire ?? l.prix_unit_ht ?? 0, taux)),
         taux_tva: String(taux),
+        remise: String(parseFloat(l.remise) || 0),
         optionnelle: !!l.optionnelle,
         typeLigne: l.type_ligne ?? 'produit',
         variante: l.variante ?? '',
@@ -77,7 +80,7 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       designation: l.designation,
       quantite: l.quantite,
       prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
-      remise: '0',
+      remise: String(parseFloat(l.remise) || 0),
       taux_tva: String(l.taux_tva ?? 20),
       groupe_index: villas ? (l.groupeIndex ?? null) : null,
       groupe_label: villas ? (l.groupeLabel || '') : '',

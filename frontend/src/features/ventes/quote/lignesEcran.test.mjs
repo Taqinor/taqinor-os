@@ -99,3 +99,17 @@ test('garde de source : plus de mappeur inline dans DevisGenerator.jsx', () => {
     'payload de lignes inline : passer par lignesEcranVersPayload')
   assert.ok(src.includes('lignesServeurVersEcran(') && src.includes('lignesEcranVersPayload('))
 })
+
+test('QJR529 — la remise de ligne stockée survit à l’aller-retour (défaut « 0 »)', () => {
+  const ecran = lignesServeurVersEcran([
+    { id: 1, produit: 3, designation: 'Panneau 550W', quantite: '2',
+      prix_unitaire: '1000.00', taux_tva: '10.00', remise: '10.00' },
+    { id: 2, produit: 4, designation: 'Onduleur réseau', quantite: '1',
+      prix_unitaire: '5000.00', taux_tva: '20.00' },
+  ], 20)
+  assert.equal(ecran[0].remise, '10')
+  assert.equal(ecran[1].remise, '0')
+  const payload = lignesEcranVersPayload(ecran)
+  assert.equal(payload[0].remise, '10')
+  assert.equal(payload[1].remise, '0')
+})

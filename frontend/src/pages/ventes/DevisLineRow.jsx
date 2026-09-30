@@ -182,6 +182,14 @@ function DevisLineRowImpl({
             Option avec batterie
           </span>
         )}
+        {/* QJR529 — remise PAR LIGNE stockée (modèle, Copilote, API) :
+            lecture seule, comptée dans les totaux ; aucune nouvelle saisie. */}
+        {parseFloat(l.remise) > 0 && (
+          <span className="mt-0.5 ml-1 inline-block rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                title="Remise propre à cette ligne, déjà comptée dans les totaux">
+            remise ligne {String(parseFloat(l.remise)).replace('.', ',')} %
+          </span>
+        )}
       </td>
       <td data-label="Produit (stock)">
         <ProduitPicker

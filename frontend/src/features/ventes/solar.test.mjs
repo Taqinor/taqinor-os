@@ -2178,3 +2178,21 @@ test('STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable 
   // …et la pergola est bien la ligne structure, à sa quantité.
   assert.equal(avec.filter((r) => String(r.produit) === String(PERGOLA.id)).length, 1)
 })
+
+// QJR529 — la remise PAR LIGNE stockée (LigneDevis.remise) compte dans le
+// miroir des totaux canoniques, comme `total_ht` = q × pu × (1 − remise/100)
+// côté serveur : sinon l'écran ≠ le PDF.
+test('QJR529 — totauxCanoniquesTtc applique la remise de ligne', () => {
+  assert.equal(totauxCanoniquesTtc(
+    [{ quantite: '1', prix_unit_ttc: '1200', taux_tva: 20, remise: '10' }], 0), 1080)
+  // Remise absente / nulle : strictement inchangé.
+  assert.equal(totauxCanoniquesTtc(
+    [{ quantite: '1', prix_unit_ttc: '1200', taux_tva: 20 }], 0), 1200)
+  // Taux mixtes + remise globale : la remise de ligne s'applique AVANT.
+  // HT : 2 × 1000 × 0,5 = 1000 (10 %) + 1000 (20 %) → brut 2000, remise
+  // globale 10 % → 1800 ; TVA 900 × 10 % + 900 × 20 % = 270 → 2070.
+  assert.equal(totauxCanoniquesTtc([
+    { quantite: '2', prix_unit_ttc: '1100', taux_tva: 10, remise: '50' },
+    { quantite: '1', prix_unit_ttc: '1200', taux_tva: 20 },
+  ], 10), 2070)
+})
