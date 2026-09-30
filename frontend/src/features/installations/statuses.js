@@ -366,7 +366,10 @@ export function filterInstallations(items, filters) {
   const f = { ...EMPTY_FILTERS, ...(filters ?? {}) }
   const q = f.q.trim().toLowerCase()
   return (items ?? []).filter((it) => {
-    if (f.statut && it.statut !== f.statut) return false
+    // ERR-QAH-CHANTIERS-PUCES-VS-LISTE — on filtre sur le statut CANONIQUE, comme
+    // funnelSummary compte : un « mise_en_service » tombe sous « Réceptionné »,
+    // un « a_planifier » sous « Signé » (compteur de puce = liste filtrée).
+    if (f.statut && canonicalStatus(it.statut) !== canonicalStatus(f.statut)) return false
     if (f.type_installation && it.type_installation !== f.type_installation) return false
     if (f.technicien && (it.technicien_nom ?? '') !== f.technicien) return false
     if (f.regime && (it.regime_8221 ?? '') !== f.regime) return false

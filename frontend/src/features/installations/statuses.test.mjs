@@ -70,6 +70,31 @@ test('filterInstallations : recherche + drapeau annulé', () => {
   assert.equal(filterInstallations(rows, EMPTY_FILTERS).length, 2)
 })
 
+// ERR-QAH-CHANTIERS-PUCES-VS-LISTE — la puce compte le statut canonique : le
+// filtre doit donc retenir exactement les mêmes chantiers (hérités compris).
+test('filterInstallations : filtre statut canonique = compteur funnelSummary', () => {
+  const rows = [
+    { id: 1, statut: 'mise_en_service', annule: false },
+    { id: 2, statut: 'receptionne', annule: false },
+    { id: 3, statut: 'a_planifier', annule: false },
+    { id: 4, statut: 'signe', annule: false },
+    { id: 5, statut: 'planifie', annule: false },
+  ]
+  const synth = funnelSummary(rows)
+  for (const r of synth.rows) {
+    const listed = filterInstallations(rows, { ...EMPTY_FILTERS, statut: r.key })
+    assert.equal(listed.length, r.count, `puce ${r.key}`)
+  }
+  assert.deepEqual(
+    filterInstallations(rows, { ...EMPTY_FILTERS, statut: 'receptionne' }).map((r) => r.id),
+    [1, 2],
+  )
+  assert.deepEqual(
+    filterInstallations(rows, { ...EMPTY_FILTERS, statut: 'signe' }).map((r) => r.id),
+    [3, 4],
+  )
+})
+
 // ── N58 — couche de configuration des libellés/ordre (purement affichage) ──
 test('applyStatutConfig surcharge libellé & ordre sans toucher aux clés', () => {
   // Défaut avant config.
