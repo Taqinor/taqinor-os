@@ -43,6 +43,9 @@ from .serializers import (
 
 #: AUD141 — journal des RÉVÉLATIONS et rotations de jeton portail (qui, quand,
 #: sur quel compte). Le jeton lui-même n'est JAMAIS journalisé.
+# Route front vivante de l'espace client (frontend/src/router/index.jsx).
+LIEN_ESPACE_CLIENT = '/portail/client'
+
 logger = logging.getLogger('portail.acces')
 
 
@@ -185,8 +188,10 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
             compte.id, compte.client_id, compte.company_id, request.user.id)
         return Response({
             'token_acces': compte.token_acces,
-            'lien': request.build_absolute_uri(
-                f'/portail-contrats/{compte.token_acces}'),
+            # ERR-QAH-PORTAIL-LIEN-ACCES-404 — `/portail-contrats/<jeton>`
+            # (module contrats parqué) renvoyait 404 : le lien pointe vers
+            # l'espace client VIVANT (`/portail/client`, route du routeur).
+            'lien': request.build_absolute_uri(LIEN_ESPACE_CLIENT),
             'detail': ("Lien d'accès révélé — cette demande est journalisée."),
         })
 
