@@ -283,6 +283,15 @@ const crmApi = {
   // 30). Lisible par TOUS les rôles (décision transparence) — aucun gate ici.
   getKpiAdherence: (params) =>
     api.get('/crm/relance-etapes/kpi-adherence/', { params }),
+  // COCKPIT-CONTRÔLE (fondateur, 30/09/2026) — le bloc « Contrôle du suivi » :
+  // verdict, frise d'un jour par case, exceptions de l'instant, détail par type
+  // d'étape, premier contact, résultats. `params` : `jours` ∈ {7, 14, 30}
+  // (défaut serveur 14) + `owner` (identifiant d'un responsable de lead,
+  // facultatif — sans lui, toute la portée). Forme `controle_suivi` (contrat
+  // committé `apps/crm/contract_samples/controle_suivi.json`, PACT10). Lisible
+  // par TOUS les rôles (transparence) ; 400 `{erreurs: {jours|owner}}`.
+  getControleSuivi: (params) =>
+    api.get('/crm/relance-etapes/controle/', { params }),
   // CAD87/CAD100 — les trois mesures maison à côté de CKP3 : taux de joint
   // par (ordre de touche × canal × heure × jour de semaine), signatures par
   // nombre de touches consommées, part WhatsApp-seulement/darija. Forme
