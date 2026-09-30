@@ -9,7 +9,10 @@ autorité sur trois questions :
   * `minutes_ouvrees_entre(a, b, company)` — le temps réellement disponible
     entre deux instants (base du KPI « premier contact » de MRY19) ;
   * `echeance_en_temps_ouvre(depart, delai, company)` (N2) — son inverse :
-    QUAND un délai de SLA compté en temps ouvré arrive à échéance.
+    QUAND un délai de SLA compté en temps ouvré arrive à échéance ;
+  * `minutes_jours_ouvres_entre(a, b, company)` (COCKPIT-CONTRÔLE B9) —
+    l'horloge du DÉLAI de premier contact : le temps d'horloge, jours non
+    ouvrés de la société retirés en entier.
 
 DEUX OUVERTURES, PAS UNE (décision fondateur du 07/09/2026, recherche à
 l'appui). Toutes ces fonctions prennent un `canal` : un message WhatsApp ou
@@ -577,6 +580,48 @@ def minutes_calendaires_entre(a, b):
     if b <= a:
         return 0
     return int((b - a).total_seconds() // 60)
+
+
+def minutes_jours_ouvres_entre(a, b, company, *, ouvres=None):
+    """COCKPIT-CONTRÔLE B9 — minutes d'HORLOGE écoulées entre ``a`` et ``b``
+    (0 si ``b <= a``), en retirant EN ENTIER tout ce qui tombe un jour NON
+    ouvré de la société (jour local Casablanca : week-end, férié du
+    calendrier ``notifications.calendar_utils``).
+
+    L'horloge du DÉLAI de premier contact (contrat ``controle_suivi``) :
+    lundi 10:00 → mardi 10:00 = 24 h ; vendredi 18:00 → lundi 18:00 = 24 h
+    (samedi et dimanche retirés) ; vendredi 18:00 → dimanche 12:00 = 6 h.
+    Ni fenêtre d'appel ni ABSENCE personnelle : un lead neuf d'une
+    commerciale absente doit être repris par quelqu'un. Distincte de
+    ``minutes_ouvrees_entre`` (fenêtres d'ouverture — le KPI « rappelé en
+    moins de 5 min ouvrées ») et de ``minutes_calendaires_entre`` (le temps
+    du client), qu'elle ne remplace jamais.
+
+    ``ouvres`` : l'ensemble des jours ouvrés déjà lu EN LOT
+    (``calendar_utils.jours_ouvres_entre``) ; il DOIT couvrir les jours de
+    ``a`` à ``b`` — un jour absent de l'ensemble compte comme non ouvré.
+    Absent, il est lu ici, une fois (jamais une requête par jour)."""
+    if a is None or b is None:
+        return 0
+    debut = _local(a)
+    fin = _local(b)
+    if fin <= debut:
+        return 0
+    if ouvres is None:
+        from apps.notifications.calendar_utils import jours_ouvres_entre
+        ouvres = jours_ouvres_entre(company, debut.date(), fin.date())
+    secondes = 0.0
+    jour = debut.date()
+    while jour <= fin.date():
+        if jour in ouvres:
+            borne_bas = max(_combiner(jour, datetime.time(0, 0)), debut)
+            borne_haut = min(
+                _combiner(jour + datetime.timedelta(days=1),
+                          datetime.time(0, 0)), fin)
+            if borne_haut > borne_bas:
+                secondes += (borne_haut - borne_bas).total_seconds()
+        jour += datetime.timedelta(days=1)
+    return int(secondes // 60)
 
 
 # ── CAD146 (audit L3 cadence, 21/09/2026) — diaspora et fuseau horaire ───────

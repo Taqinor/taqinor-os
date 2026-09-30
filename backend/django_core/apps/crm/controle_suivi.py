@@ -43,6 +43,14 @@ de la même façon depuis sa pose. Les jours ouvrés sont lus EN LOT
 (``calendar_utils.jours_ouvres_entre``) : le nombre de requêtes ne dépend ni
 du nombre d'étapes, ni du nombre de dossiers.
 
+LE DÉLAI DE PREMIER CONTACT (B9, ``notes.exceptions`` et
+``notes.premier_contact``) a UNE horloge : les heures d'HORLOGE, jours non
+ouvrés de la société retirés en entier (``horaires.
+minutes_jours_ouvres_entre``) — un lead du lundi 10 h, délai 24 h, est hors
+délai le mardi 10 h, comme sur la tuile « SLA premier contact » voisine ;
+celui du vendredi 18 h, le lundi 18 h. Les absences personnelles n'y
+retirent rien. Seule la médiane de VITESSE reste en minutes OUVRÉES.
+
 Transparence (décision fondateur CKP3) : aucune garde de rôle — seule la
 portée de visibilité (``scope_queryset`` via le lead) borne la lecture, et
 ``owner`` restreint à un responsable. Multi-société : tout est borné par
@@ -360,28 +368,41 @@ def _sans_prochaine_etape(company, portee, today):
     return lignes
 
 
-def _premier_contact_hors_delai(company, portee_ids, maintenant, sla):
-    """Leads « Nouveau » jamais contactés au-delà du délai de la société : la
-    règle de ``sla-breach`` (``selectors.leads_sla_depasse``, 0 = désactivé
-    → liste vide), tranchée en HEURES OUVRÉES — le filtre calendaire n'est
-    qu'un pré-filtre (une échéance ouvrée n'est jamais plus tôt). Le miroir
-    Odoo, les leads perdus et « ne plus contacter » n'attendent personne."""
+def _candidats_premier_contact(company, portee_ids, maintenant, sla):
+    """Le PRÉ-FILTRE de ``premier_contact_hors_delai`` : la règle de
+    ``sla-breach`` (``selectors.leads_sla_depasse`` — heures calendaires,
+    0 = désactivé → liste vide), le plus ancien d'abord. L'horloge du délai
+    retire des jours, elle n'en ajoute jamais : aucun lead hors délai n'est
+    perdu par ce pré-filtre. Le miroir Odoo, les leads perdus et « ne plus
+    contacter » n'attendent personne."""
     if not sla:
         return []
-    from . import horaires
     from .models import Lead
     from .selectors import leads_sla_depasse
+
+    return list(leads_sla_depasse(company, now=maintenant, seuil_heures=sla)
+                .filter(id__in=portee_ids, perdu=False,
+                        ne_plus_contacter=False)
+                .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
+                .select_related('owner')
+                .order_by('date_creation', 'pk'))
+
+
+def _premier_contact_hors_delai(candidats, company, maintenant, sla, ouvres):
+    """Leads « Nouveau » jamais contactés dont l'ATTENTE atteint le délai de
+    la société (contrat, ``notes.exceptions``) — l'attente en heures
+    d'HORLOGE, jours NON ouvrés retirés (``horaires.
+    minutes_jours_ouvres_entre``, B9) : un lead du vendredi 18 h, délai
+    24 h, est hors délai lundi 18 h. Les absences personnelles ne retirent
+    rien : un lead neuf doit être repris. ``attend_depuis_heures`` = cette
+    attente."""
+    from . import horaires
     from .serializers import nom_affichable_lead, nom_affichable_responsable
 
-    candidats = (leads_sla_depasse(company, now=maintenant, seuil_heures=sla)
-                 .filter(id__in=portee_ids, perdu=False,
-                         ne_plus_contacter=False)
-                 .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
-                 .select_related('owner'))
     lignes = []
     for lead in candidats:
-        minutes = horaires.minutes_ouvrees_entre(
-            lead.date_creation, maintenant, company)
+        minutes = horaires.minutes_jours_ouvres_entre(
+            lead.date_creation, maintenant, company, ouvres=ouvres)
         if minutes < sla * 60:
             continue
         lignes.append((lead.owner_id, {
@@ -479,10 +500,16 @@ def _lignes_par_type(par_type):
     return lignes
 
 
-def _premier_contact(portee, owner, debut, maintenant, sla, company):
-    """Leads CRÉÉS sur la période (hors miroir Odoo) : délai création →
-    premier contact en minutes OUVRÉES, médiane (jamais la moyenne), et la
-    plus longue attente d'un lead « Nouveau » encore jamais contacté."""
+def _premier_contact(portee, owner, debut, maintenant, sla, company, ouvres):
+    """Leads CRÉÉS sur la période (hors miroir Odoo). Deux horloges, chacune
+    à sa place (contrat, ``notes.premier_contact``) :
+
+    * le DÉLAI (``dans_le_delai``, ``plus_longue_attente_heures``) : la
+      même horloge que l'exception — heures d'horloge, jours non ouvrés
+      retirés (``horaires.minutes_jours_ouvres_entre``, B9) ;
+    * la VITESSE (``mediane_minutes``) : minutes OUVRÉES
+      (``horaires.minutes_ouvrees_entre``) — le KPI « rappelé en moins de
+      5 min ouvrées » ; la médiane, jamais la moyenne."""
     from . import horaires, stages
     from .models import Lead
     from .selectors import _mediane
@@ -493,6 +520,7 @@ def _premier_contact(portee, owner, debut, maintenant, sla, company):
         leads = leads.filter(owner_id=owner)
     nouveaux = 0
     delais = []
+    dans_le_delai = 0
     attentes = []
     for lead in leads.only('id', 'date_creation', 'first_contacted_at',
                            'stage', 'perdu', 'ne_plus_contacter'):
@@ -500,14 +528,17 @@ def _premier_contact(portee, owner, debut, maintenant, sla, company):
         if lead.first_contacted_at is not None:
             delais.append(horaires.minutes_ouvrees_entre(
                 lead.date_creation, lead.first_contacted_at, company))
+            if sla and horaires.minutes_jours_ouvres_entre(
+                    lead.date_creation, lead.first_contacted_at, company,
+                    ouvres=ouvres) < sla * 60:
+                dans_le_delai += 1
         elif (lead.stage == stages.NEW and not lead.perdu
               and not lead.ne_plus_contacter):
-            attentes.append(horaires.minutes_ouvrees_entre(
-                lead.date_creation, maintenant, company))
+            attentes.append(horaires.minutes_jours_ouvres_entre(
+                lead.date_creation, maintenant, company, ouvres=ouvres))
     return {
         'nouveaux': nouveaux,
-        'dans_le_delai': (sum(1 for minutes in delais if minutes < sla * 60)
-                          if sla else 0),
+        'dans_le_delai': dans_le_delai,
         'mediane_minutes': _mediane(delais),
         'delai_heures': sla,
         'plus_longue_attente_heures': (round(max(attentes) / 60.0, 1)
@@ -600,13 +631,17 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             .order_by('due_date', 'due_at', 'pk'))
         taches_anciennes = _taches_ouvertes_anciennes(
             company, portee_ids, today)
+        candidats = _candidats_premier_contact(
+            company, portee_ids, maintenant, sla)
         # CAD35 + calendrier de la société — chargés UNE fois, EN LOT, sur la
         # fenêtre que les chiffres couvrent réellement : la plus ancienne des
         # deux périodes, la plus ancienne échéance en retard, la plus
-        # ancienne tâche ouverte (jamais une durée inventée).
+        # ancienne tâche ouverte, le plus ancien lead qui attend son premier
+        # contact (jamais une durée inventée).
         borne = min([debut_precedent]
                     + [e.due_date for e in etapes_echues]
-                    + [_jour_local(t.created_at) for t in taches_anciennes])
+                    + [_jour_local(t.created_at) for t in taches_anciennes]
+                    + [_jour_local(lead.date_creation) for lead in candidats])
         absences = cadence_absence.couverture(company, borne, today)
         ouvres = jours_ouvres_entre(company, borne, today)
 
@@ -615,7 +650,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         reports = _reports(company, portee_ids)
         sans_etape = _sans_prochaine_etape(company, portee, today)
         hors_delai = _premier_contact_hors_delai(
-            company, portee_ids, maintenant, sla)
+            candidats, company, maintenant, sla, ouvres)
 
         periode = [e for e in dues if e.due_date >= debut
                    and (owner is None or proprietaire.get(e.lead_id) == owner)]
@@ -671,7 +706,7 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
                 })
 
         premier_contact = _premier_contact(
-            portee, owner, debut, maintenant, sla, company)
+            portee, owner, debut, maintenant, sla, company, ouvres)
         precedent_pct = _a_temps_pct(precedente, today, absences,
                                      proprietaire, ouvres)
 

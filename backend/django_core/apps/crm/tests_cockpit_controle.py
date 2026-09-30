@@ -321,6 +321,43 @@ class JoursComptesTests(SimpleTestCase):
             self._compte(_jour(-5), _jour(-1), ouvres=sans_lundi), 1)
 
 
+class HorlogeDuDelaiTests(SimpleTestCase):
+    """Sans base : l'horloge du DÉLAI de premier contact (B9) — le temps
+    d'horloge, jours non ouvrés de la société retirés EN ENTIER
+    (``horaires.minutes_jours_ouvres_entre``)."""
+
+    def _heures(self, a, b, ouvres=OUVRES):
+        return horaires.minutes_jours_ouvres_entre(
+            a, b, None, ouvres=ouvres) / 60
+
+    def test_lundi_10h_mardi_10h_vingt_quatre_heures(self):
+        lundi, mardi = _jour(-2), _jour(-1)
+        self.assertEqual(lundi.weekday(), 0)
+        self.assertEqual(self._heures(_a(lundi), _a(mardi)), 24)
+
+    def test_vendredi_18h_lundi_18h_le_week_end_retire(self):
+        vendredi, lundi = _jour(-5), _jour(-2)
+        self.assertEqual(
+            self._heures(_a(vendredi, 18), _a(lundi, 18)), 24)
+
+    def test_vendredi_18h_dimanche_12h_six_heures(self):
+        vendredi, dimanche = _jour(-5), _jour(-3)
+        self.assertEqual(
+            self._heures(_a(vendredi, 18), _a(dimanche, 12)), 6)
+
+    def test_un_ferie_au_milieu_est_retire_en_entier(self):
+        lundi, mardi, mercredi = _jour(-2), _jour(-1), _jour(0)
+        self.assertEqual(self._heures(_a(lundi), _a(mercredi)), 48)
+        self.assertEqual(
+            self._heures(_a(lundi), _a(mercredi), ouvres=OUVRES - {mardi}),
+            24)
+
+    def test_rien_avant_le_depart(self):
+        self.assertEqual(self._heures(_a(_jour(0)), _a(_jour(-1))), 0)
+        self.assertEqual(
+            horaires.minutes_jours_ouvres_entre(None, GEL, None), 0)
+
+
 class _Base(TestCase):
 
     def setUp(self):
@@ -808,11 +845,9 @@ class ExceptionsTests(_Base):
         self.assertEqual(liste['total'], 1)
         [ligne] = liste['lignes']
         self.assertEqual(ligne['lead'], attend.pk)
-        minutes = horaires.minutes_ouvrees_entre(
-            attend.date_creation, GEL, self.company)
-        self.assertGreaterEqual(minutes, 24 * 60)
-        self.assertEqual(ligne['attend_depuis_heures'],
-                         round(minutes / 60.0, 1))
+        # B9 — heures d'HORLOGE, week-end retiré : jeudi 24 10 h → mercredi
+        # 30 10 h = 14 + 24 (ven.) + 24 (lun.) + 24 (mar.) + 10 = 96 h.
+        self.assertEqual(ligne['attend_depuis_heures'], 96.0)
         self.assertTrue(ligne['cree_le'].startswith(
             _jour(-6).isoformat()))
 
@@ -1095,14 +1130,75 @@ class PremierContactTests(_Base):
     def test_hors_delai_et_plus_longue_attente(self):
         cree = _a(_jour(-6), 10)                          # jeudi 24/09
         self._lead(cree_le=cree, first_contacted_at=_a(_jour(-1), 10))
-        attend = self._lead(stage=stages.NEW, cree_le=_a(_jour(-2), 10))
+        self._lead(stage=stages.NEW, cree_le=_a(_jour(-2), 10))
         bloc = self._controle()['premier_contact']
         self.assertEqual(bloc['nouveaux'], 2)
         self.assertEqual(bloc['dans_le_delai'], 0)
-        minutes = horaires.minutes_ouvrees_entre(
-            attend.date_creation, GEL, self.company)
-        self.assertEqual(bloc['plus_longue_attente_heures'],
-                         round(minutes / 60.0, 1))
+        # B9 — l'horloge du délai : lundi 28 10 h → mercredi 30 10 h = 48 h.
+        self.assertEqual(bloc['plus_longue_attente_heures'], 48.0)
+
+
+class DelaiDePremierContactTests(_Base):
+    """B9 — ``premier_contact_hors_delai`` et ``dans_le_delai`` sur L'horloge
+    du délai (heures d'horloge, jours non ouvrés retirés ; délai 24 h) ; la
+    médiane de vitesse reste en minutes OUVRÉES."""
+
+    def _hors_delai(self, **kw):
+        return self._controle(**kw)['exceptions'][
+            'premier_contact_hors_delai']
+
+    def test_hors_delai_a_vingt_quatre_heures_pile_un_jour_ouvre(self):
+        pile = self._lead(stage=stages.NEW, cree_le=_a(_jour(-1)))
+        self._lead(stage=stages.NEW, cree_le=_a(_jour(-1), 10, 1))
+        liste = self._hors_delai()                        # mercredi 10 h
+        self.assertEqual([ligne['lead'] for ligne in liste['lignes']],
+                         [pile.pk])
+        self.assertEqual(liste['lignes'][0]['attend_depuis_heures'], 24.0)
+
+    def test_le_lead_du_vendredi_soir_attend_jusqu_au_lundi_soir(self):
+        vendredi, dimanche, lundi = _jour(-5), _jour(-3), _jour(-2)
+        lead = self._lead(stage=stages.NEW, cree_le=_a(vendredi, 18))
+        self.assertEqual(self._hors_delai(maintenant=_lu_le(dimanche, 12)),
+                         {'total': 0, 'lignes': []})     # 6 h
+        self.assertEqual(
+            self._hors_delai(maintenant=_a(lundi, 17, 59))['total'], 0)
+        [ligne] = self._hors_delai(maintenant=_lu_le(lundi, 18))['lignes']
+        self.assertEqual((ligne['lead'], ligne['attend_depuis_heures']),
+                         (lead.pk, 24.0))
+
+    def test_un_ferie_est_retire_du_delai(self):
+        lundi, mardi = _jour(-2), _jour(-1)
+        Holiday.objects.create(company=self.company, date=mardi,
+                               nom='Férié du délai', recurrent_annuel=False)
+        self._lead(stage=stages.NEW, cree_le=_a(lundi))
+        [ligne] = self._hors_delai()['lignes']
+        self.assertEqual(ligne['attend_depuis_heures'], 24.0)
+
+    def test_une_absence_personnelle_ne_retire_rien(self):
+        PeriodeAbsence.objects.create(
+            company=self.company, utilisateur=self.acteur,
+            date_debut=_jour(-1), date_fin=_jour(0))
+        lead = self._lead(stage=stages.NEW, cree_le=_a(_jour(-1)))
+        [ligne] = self._hors_delai()['lignes']
+        self.assertEqual((ligne['lead'], ligne['attend_depuis_heures']),
+                         (lead.pk, 24.0))
+
+    def test_dans_le_delai_sur_la_meme_horloge(self):
+        vendredi_soir, lundi = _a(_jour(-5), 18), _jour(-2)
+        self._lead(cree_le=vendredi_soir,
+                   first_contacted_at=_a(lundi, 17))      # 23 h : à temps
+        self._lead(cree_le=vendredi_soir,
+                   first_contacted_at=_a(lundi, 19))      # 25 h : hors délai
+        bloc = self._controle()['premier_contact']
+        self.assertEqual((bloc['nouveaux'], bloc['dans_le_delai']), (2, 1))
+
+    def test_la_mediane_de_vitesse_reste_en_minutes_ouvrees(self):
+        cree, contacte = _a(_jour(-5), 18), _a(_jour(-2), 17)
+        self._lead(cree_le=cree, first_contacted_at=contacte)
+        bloc = self._controle()['premier_contact']
+        ouvrees = horaires.minutes_ouvrees_entre(cree, contacte, self.company)
+        self.assertEqual(bloc['mediane_minutes'], ouvrees)
+        self.assertNotEqual(ouvrees, 23 * 60)             # pas l'horloge B9
 
 
 class ResultatsTests(_Base):
