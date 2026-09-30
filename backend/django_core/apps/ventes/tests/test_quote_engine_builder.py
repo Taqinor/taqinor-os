@@ -1868,3 +1868,47 @@ class TestPanelWattFromFicheTechnique(TestCase):
         self.assertEqual(data['watt_par_panneau'], 545)
         _, doc_one = _render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc_one.pages), 1)
+
+
+class TestQjr626MentionTvaDesLignes(TestCase):
+    """QJR626 — la mention TVA décrit les taux RÉELLEMENT portés par les
+    lignes (EN DIRECT : DEV-202609-0011 disait « 10% panneaux » sous un
+    tableau à 20 % sur le panneau)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _note(self, lignes, ref):
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, lignes,
+                           reference=ref)
+        return build_quote_data(devis)['tva_note']
+
+    def test_tout_a_20_panneau_compris_jamais_10(self):
+        note = self._note([
+            ('Panneau mono 550W', '10', '1500', '20'),
+            ('Onduleur réseau 5kW', '1', '9000', '20'),
+        ], 'DEV-QJR626-A')
+        self.assertNotIn('10%', note)
+        self.assertNotIn('10 %', note)
+        self.assertIn('20 %', note)
+        self.assertIn("l'ensemble", note)
+
+    def test_panneaux_a_10_reste_a_20_garde_le_texte_10_20(self):
+        note = self._note([
+            ('Panneau mono 550W', '10', '1500', '10'),
+            ('Onduleur réseau 5kW', '1', '9000', '20'),
+        ], 'DEV-QJR626-B')
+        self.assertIn('10% panneaux photovolta', note)
+        self.assertIn('20% autres', note)
+
+    def test_taux_melanges_hors_regle_ligne_par_ligne(self):
+        note = self._note([
+            ('Panneau mono 550W', '10', '1500', '20'),
+            ('Onduleur réseau 5kW', '1', '9000', '10'),
+        ], 'DEV-QJR626-C')
+        self.assertIn('ligne par ligne', note)
+        self.assertIn('10 % / 20 %', note)
+        self.assertNotIn('panneaux photovolta', note)

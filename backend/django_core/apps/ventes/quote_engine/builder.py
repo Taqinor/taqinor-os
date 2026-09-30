@@ -498,6 +498,49 @@ def _item_marque(it) -> str:
                         it.get("_produit_nom", ""))
 
 
+def _taux_libelle(taux) -> str:
+    """``20`` → ``'20'`` ; ``5.5`` → ``'5,5'`` (virgule française)."""
+    t = float(taux)
+    if t == int(t):
+        return str(int(t))
+    return f"{t:g}".replace(".", ",")
+
+
+def tva_note_des_lignes(lignes, taux_defaut) -> str:
+    """QJR626 — la mention TVA du PDF, dérivée des taux RÉELS des lignes.
+
+    * un seul taux ``r`` (ou aucune ligne : taux du devis) →
+      « TVA r % appliquée sur l'ensemble des équipements et travaux. » ;
+    * {10, 20} avec TOUTES les lignes à 10 % classées panneau (même
+      classifieur que le builder) et tout le reste à 20 % → le texte 10 / 20 ;
+    * sinon → « TVA appliquée ligne par ligne : a % / b % — taux indiqué dans
+      le tableau », avec les SEULS taux présents sur les lignes.
+
+    Une ligne sans taux propre (devis historique) porte le taux du devis.
+    Lecture pure : aucun statut écrit (règle #4).
+    """
+    par_taux = {}
+    for li in lignes:
+        taux = getattr(li, "taux_tva", None)
+        if taux is None:
+            taux = taux_defaut
+        taux = float(taux)
+        produit_nom = getattr(getattr(li, "produit", None), "nom", "") or ""
+        par_taux.setdefault(taux, []).append(
+            _is_panel(getattr(li, "designation", "") or "", produit_nom))
+    if len(par_taux) <= 1:
+        taux = next(iter(par_taux)) if par_taux else float(taux_defaut)
+        return (f"TVA {_taux_libelle(taux)} % appliquée sur l'ensemble des "
+                f"équipements et travaux.")
+    if (set(par_taux) == {10.0, 20.0}
+            and all(par_taux[10.0]) and not any(par_taux[20.0])):
+        return ("TVA : 10% panneaux photovoltaïques · "
+                "20% autres équipements et prestations")
+    taux_txt = " / ".join(f"{_taux_libelle(t)} %" for t in sorted(par_taux))
+    return (f"TVA appliquée ligne par ligne : {taux_txt} — taux indiqué "
+            f"dans le tableau")
+
+
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     """Convert an OS LigneDevis (HT prices) into a premium item dict.
 
@@ -3215,15 +3258,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         seller = {"nom": "", "telephone": ""}
 
-    tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
-    # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
-    # historiques : l'ancien texte au taux global, rendu inchangé.
-    if per_line_tva:
-        tva_note = ("TVA : 10% panneaux photovoltaïques · "
-                    "20% autres équipements et prestations")
-    else:
-        tva_note = f"TVA {tva_label} % appliquée sur l'ensemble des équipements et travaux."
+    # QJR626 — il décrit les taux RÉELLEMENT portés par les lignes comptées
+    # (le builder décide, les gabarits impriment) : plus de texte 10/20 figé
+    # qui contredisait un tableau à 20 % partout.
+    tva_note = tva_note_des_lignes(lignes, tva_pct)
     data = {
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),
