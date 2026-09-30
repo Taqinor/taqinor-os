@@ -13,7 +13,9 @@ Run:
 import re
 from decimal import Decimal
 
-from django.test import SimpleTestCase, tag
+from unittest.mock import patch
+
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.quote_engine.commercial import render, renderer, sample_data
 
@@ -30,6 +32,14 @@ class TestCommercialSelection(SimpleTestCase):
 
     def test_onepage_commercial_falls_back(self):
         self.assertFalse(renderer.is_commercial(_Devis("commercial"), {"pdf_mode": "onepage"}))
+
+    def test_include_etude_goes_to_legacy(self):
+        """QJR621 — la demande « avec l'étude » n'est pas servie par le
+        renderer commercial (qui n'a pas de page d'étude)."""
+        self.assertFalse(renderer.is_commercial(
+            _Devis("commercial"), {"pdf_mode": "full", "include_etude": 1}))
+        self.assertTrue(renderer.is_commercial(
+            _Devis("commercial"), {"pdf_mode": "full", "include_etude": 0}))
 
     def test_other_modes_not_commercial(self):
         self.assertFalse(renderer.is_commercial(_Devis("residentiel"), {"pdf_mode": "full"}))
@@ -173,3 +183,61 @@ class TestQjr615LignesEnHT(SimpleTestCase):
         p2 = self._page2()
         taux = re.findall(r'<td class="c2-v">([^<]*)</td>', p2)
         self.assertEqual([re.sub(r"\D", "", t) for t in taux], ["10", "20"])
+
+
+@tag('pdf')  # rendu PDF réel (WeasyPrint) — lourd → palier release-verify
+class TestQjr621CommercialAvecEtude(TestCase):
+    """QJR621 — un devis commercial demandé « avec l'étude » sort en 4 pages
+    avec la page d'étude (moteur legacy), au lieu des 3 pages premium sans
+    étude ; sans ``include_etude``, le rendu commercial premium est inchangé."""
+
+    LIGNES = [
+        ('Onduleur réseau Huawei 50kW', '1', '42000'),
+        ('Panneau mono 710W', '70', '1150'),
+        ('Structures acier', '70', '400'),
+        ('Installation', '1', '30000'),
+    ]
+    ETUDE = {
+        'kwc': 49.7, 'production_annuelle': 79520, 'conso_annuelle': 120000,
+        'taux_autoconso': 92, 'taux_couverture': 61,
+        'economies_annuelles': 98000, 'payback': 3.4, 'prix_kwc': 6100,
+        'prod_mensuelle': [6627] * 12, 'conso_mensuelle': [10000] * 12,
+    }
+
+    def setUp(self):
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj, self.LIGNES,
+            reference='DEV-QJR621-COM', etude_params=dict(self.ETUDE))
+        self.devis.mode_installation = 'commercial'
+        self.devis.save(update_fields=['mode_installation'])
+
+    def _pages(self, pdf_options):
+        import fitz
+        from apps.ventes.quote_engine import builder
+
+        with patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket'), \
+                patch('apps.ventes.utils.pdf._upload_pdf') as up:
+            builder.generate_premium_devis_pdf(self.devis.id,
+                                               pdf_options=pdf_options)
+        up.assert_called_once()
+        pdf = up.call_args[0][0]
+        self.assertEqual(pdf[:4], b'%PDF')
+        doc = fitz.open(stream=pdf, filetype='pdf')
+        return [page.get_text() for page in doc]
+
+    def test_avec_etude_quatre_pages_et_page_d_etude(self):
+        pages = self._pages({'pdf_mode': 'full', 'include_etude': 1})
+        self.assertEqual(len(pages), 4)
+        self.assertTrue(any('Taux de couverture' in p for p in pages),
+                        "page d'étude absente")
+
+    def test_sans_etude_rendu_commercial_premium_inchange(self):
+        self.assertTrue(renderer.is_commercial(self.devis, {'pdf_mode': 'full'}))
+        pages = self._pages({'pdf_mode': 'full'})
+        self.assertEqual(len(pages), 3)
+        self.assertFalse(any('Taux de couverture' in p for p in pages))
