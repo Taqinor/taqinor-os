@@ -475,14 +475,17 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
         if cadence == 'reveil':
             return codes + [REVEILS_ARRETES,
                             _filet_apres_reponse_sauf_suivi(etape, est_actif)]
-        if cadence == 'apres_devis' and etape.devis_id:
-            # Le filet du récepteur POURSUIT le plan du devis (CAD1) : la
-            # touche suivante naît ; après la dernière, l'étape de suite.
+        if cadence == 'apres_devis':
+            # Le filet du récepteur POURSUIT le plan (CAD1) : la touche
+            # suivante naît ; après la dernière, l'étape de suite. SUIVI E6
+            # (30/09/2026) — avec OU SANS devis dans l'ERP : un suivi sans
+            # devis (parti hors ERP) est poursuivi depuis son dernier barreau
+            # consommé, il ne pose plus l'étape devis à côté du suivant.
             return codes + ([_filet_apres_reponse(etape, est_actif)]
                             if derniere else [TOUCHE_SUIVANTE])
-        # Suivi sans devis dans l'ERP, cadence générique, deuxième affaire :
-        # le filet pose son étape (rien d'ouvert, aucun devis relançable) ET,
-        # la cadence survivant à l'issue, la touche suivante naît aussi.
+        # Cadence générique, deuxième affaire : le filet pose son étape (rien
+        # d'ouvert, aucun devis relançable) ET, la cadence survivant à
+        # l'issue, la touche suivante naît aussi.
         if survit and not derniere:
             codes.append(TOUCHE_SUIVANTE)
         return codes + [_filet_apres_reponse(etape, est_actif)]

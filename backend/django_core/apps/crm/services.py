@@ -2539,20 +2539,38 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
         # CAD2 — idem quand l'appelant interdit le DÉMARRAGE (étape de visite
         # close) : on poursuit, on ne rejoue jamais depuis le barreau 1.
-    elif brouillon_compris:
-        # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP compte
-        # aussi ». Aucun devis dans l'ERP, mais l'humain vient de cocher
-        # « préparer et envoyer le devis » : le suivi de proposition démarre
-        # SANS objet devis (les gabarits vivent très bien sans lui — MRY13
-        # omet toute phrase sans valeur réelle), plutôt que de re-poser le
-        # même filet à l'infini.
-        etapes = initialiser_plan_relance(
-            lead, user, cadence='apres_devis', depart=timezone.now(),
-            devis=None)
-        ouvertes = [e for e in etapes
-                    if e.statut == RelanceEtape.Statut.A_FAIRE]
-        if ouvertes:
-            return ouvertes[0]
+    elif avec_plan_devis:
+        # SUIVI E6 (30/09/2026) — aucun devis relançable dans l'ERP, mais un
+        # suivi de proposition a DÉJÀ servi (devis parti hors ERP,
+        # TREADMILL-1538) : on le POURSUIT depuis son dernier barreau
+        # consommé, exactement comme CAD1 le fait pour un devis de l'ERP.
+        # Sans cela, « Client joint » sur un barreau sans devis posait
+        # « Préparer et envoyer le devis » À CÔTÉ du barreau suivant (deux
+        # touches ouvertes), et clore « Question de prix » re-posait l'étape
+        # devis au lieu de reprendre le suivi. Plan épuisé : l'étape
+        # générique ci-dessous.
+        consomme = (dernier_barreau_consomme(lead, 'apres_devis', None)
+                    if _suivi_de_proposition_existe(lead) else None)
+        if consomme is not None:
+            suite = materialiser_touche_suivante(consomme, user)
+            if suite is not None:
+                return suite
+        elif brouillon_compris:
+            # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP
+            # compte aussi ». Aucun devis dans l'ERP, mais l'humain vient de
+            # cocher « préparer et envoyer le devis » : le suivi de
+            # proposition démarre SANS objet devis (les gabarits vivent très
+            # bien sans lui — MRY13 omet toute phrase sans valeur réelle),
+            # plutôt que de re-poser le même filet à l'infini. SUIVI E6 —
+            # seulement si AUCUN barreau n'a été consommé : sinon le suivi
+            # est poursuivi (ci-dessus), jamais rejoué depuis le barreau 1.
+            etapes = initialiser_plan_relance(
+                lead, user, cadence='apres_devis', depart=timezone.now(),
+                devis=None)
+            ouvertes = [e for e in etapes
+                        if e.statut == RelanceEtape.Statut.A_FAIRE]
+            if ouvertes:
+                return ouvertes[0]
     # PARAM-CADENCE — l'étape à poser est une CLÉ (défaut : le devis).
     cle = (cle or (cle_de(RelanceEtape(libelle=libelle)) if libelle else '')
            or CLE_DEVIS)
