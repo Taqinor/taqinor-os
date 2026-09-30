@@ -24,7 +24,8 @@ Ce fichier recalcule chaque entrée avec la fonction Python RÉELLE jumelle :
   tranche_bill         monthlyBillFromKwh <-> pricing._monthly_bill_from_kwh
   bill_to_kwh          kwhFromBill        <-> pricing.kwh_from_bill
   facture_detail       factureMad/tppanMad <-> bareme.facture_mad/tppan_mad
-  conso_annuelle       consoAnnuelleDepuisFactures <-> Σ kwh_from_bill
+  conso_annuelle       consoAnnuelleDepuisFactures <-> Σ bareme.
+                       kwh_depuis_facture_mad (facture complète)
                        ET <-> etude_horaire.serie_kwh_depuis_mad (axe
                        ``conso_annuelle_serveur``, l'inversion que le
                        serveur applique RÉELLEMENT)
@@ -114,12 +115,19 @@ def _py_facture_detail(e):
 
 
 def _py_conso_annuelle(e):
-    """Jumeau DÉCLARÉ de l'écran : somme des kWh/mois de ``kwh_from_bill``
-    (inversion énergie seule), arrondie à l'entier."""
+    """Jumeau DÉCLARÉ de l'écran : somme des kWh/mois de
+    ``bareme.kwh_depuis_facture_mad`` (inversion de la facture COMPLÈTE —
+    ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE, l'inversion du serveur mois par
+    mois), arrondie à l'entier ; un mois non inversable ⇒ 0 (le serveur omet
+    toute la série). Vaut aussi pour une série qui n'a pas douze mois."""
     if not e['factures']:
         return {'conso': 0}
-    total = sum(kwh_from_bill(b, e['utility'])['kwh_mensuel'] or 0
-                for b in e['factures'])
+    total = 0
+    for b in e['factures']:
+        kwh = bareme.kwh_depuis_facture_mad(b)['kwh_mensuel']
+        if kwh is None:
+            return {'conso': 0}
+        total += kwh
     return {'conso': _jsround(total) if total > 0 else 0}
 
 

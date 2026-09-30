@@ -927,16 +927,57 @@ export function kwhFromBill(billMad, utility, tranchesOverride) {
   return { kwhMensuel: Math.round(kwh * 10) / 10, approximatif: approx, estimation: false }
 }
 
-// Consommation annuelle (kWh/an) DÉRIVÉE des 12 factures mensuelles du client,
-// par inversion du barème par tranche du distributeur (`kwhFromBill`, QF1).
-// Rien n'est inventé : la seule entrée est la facture réelle, la seule table
-// est le barème publié. Extraite ici pour qu'il n'existe qu'UNE dérivation —
-// `autoQuote.js` la posait déjà mot pour mot dans `etude_params.conso_annuelle`,
-// et le dimensionnement en a maintenant besoin AVANT le balayage (sans elle,
-// le modèle d'économie ne sature pas et l'ascension marginale sur-vend).
-// 0 quand aucune facture exploitable — l'appelant OMET, il n'invente pas.
-export function consoAnnuelleDepuisFactures(factures, utility) {
+// ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — MAD/mois → kWh/mois : l'INVERSE de
+// la facture COMPLÈTE (`factureMad` : énergie + lignes fixes + TPPAN), jumeau
+// EXACT de `bareme.kwh_depuis_facture_mad` (dichotomie sur le total, mois de
+// 30 jours). Un montant qui ne couvre pas les lignes fixes ⇒ 0 kWh ; un montant
+// hors plage inversable (au-delà de 1e6 kWh/mois) ⇒ `null` (QJR142 e), jamais
+// la borne de boucle.
+const PLAFOND_DICHOTOMIE_KWH = 1e6
+export function kwhDepuisFactureMad(totalMad, tranches = ONEE_TRANCHES,
+  jours = TPPAN_JOURS_REFERENCE) {
+  const montant = parseFloat(totalMad) || 0
+  if (montant <= 0) return 0
+  const total = (k) => factureMad(k, tranches, jours).totalMad
+  if (montant <= total(0)) return 0
+  let bas = 0
+  let haut = 1000
+  while (total(haut) < montant && haut < PLAFOND_DICHOTOMIE_KWH) haut *= 2
+  if (total(haut) < montant) return null
+  for (let i = 0; i < 60; i++) {
+    const milieu = (bas + haut) / 2
+    if (total(milieu) < montant) bas = milieu
+    else haut = milieu
+  }
+  return Math.round(((bas + haut) / 2) * 10) / 10
+}
+
+// Consommation annuelle (kWh/an) DÉRIVÉE des factures mensuelles du client.
+// ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — une facture SAISIE est un TOTAL :
+// elle s'inverse avec le barème COMPLET (`kwhDepuisFactureMad`), exactement
+// comme le serveur (`etude_horaire.serie_kwh_depuis_mad`, grille NATIONALE —
+// tous les distributeurs la lisent, Q7/CAD167), et plus avec l'énergie seule
+// (`kwhFromBill`) ni le prix plat 1,20 sans distributeur : l'écran stockait
+// jusqu'à ~40 % de kWh en trop sur les petites factures (I9 de COUV-HOR).
+// `utility` n'est plus lu (gardé pour la signature des appelants) ;
+// `tranchesOverride` = grille vendeur. Un mois non inversable ⇒ 0 (le serveur
+// omet toute la série). 0 quand aucune facture exploitable — l'appelant OMET.
+export function consoAnnuelleDepuisFactures(factures, utility, tranchesOverride) {
   if (!Array.isArray(factures) || !factures.length) return 0
+  const table = tranchesOverride && tranchesOverride.length ? tranchesOverride : ONEE_TRANCHES
+  let total = 0
+  for (const bill of factures) {
+    const kwh = kwhDepuisFactureMad(bill, table)
+    if (kwh === null) return 0
+    total += kwh
+  }
+  return total > 0 ? Math.round(total) : 0
+}
+
+// L'ANCIENNE dérivation (énergie seule, `kwhFromBill`) — gardée UNIQUEMENT pour
+// reconnaître une conso STOCKÉE avant le correctif comme « descendue des
+// factures » (`consoDescendDesFactures`), jamais pour en calculer une nouvelle.
+function consoAnnuelleEnergieSeule(factures, utility) {
   const total = factures.reduce(
     (somme, bill) => somme + (kwhFromBill(bill, utility).kwhMensuel || 0), 0)
   return total > 0 ? Math.round(total) : 0
@@ -952,9 +993,11 @@ export function consoAnnuelleDepuisFactures(factures, utility) {
 export function consoDescendDesFactures(conso, factures, distributeur) {
   const c = parseFloat(conso) || 0
   if (c <= 0 || !Array.isArray(factures) || !factures.length) return false
+  const derivee = consoAnnuelleDepuisFactures(factures)
+  if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
   for (const d of new Set([distributeur || undefined, 'onee', undefined])) {
-    const derivee = consoAnnuelleDepuisFactures(factures, d)
-    if (derivee > 0 && Math.abs(c - derivee) <= 12) return true
+    const ancienne = consoAnnuelleEnergieSeule(factures, d)
+    if (ancienne > 0 && Math.abs(c - ancienne) <= 12) return true
   }
   return false
 }

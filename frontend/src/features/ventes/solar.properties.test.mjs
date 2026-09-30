@@ -26,7 +26,7 @@ import assert from 'node:assert/strict'
 import {
   ONEE_TRANCHES, FALLBACK_KWH_PRICE,
   monthlyBillFromKwh, kwhFromBill, consoAnnuelleDepuisFactures,
-  factureMad, tppanMad, twoBillsSavings, computeROI, computeCashflowPayback,
+  kwhDepuisFactureMad, factureMad, tppanMad, twoBillsSavings, computeROI, computeCashflowPayback,
   computeEtudeIndustrielle, productibleForCity, PRODUCTIBLE_NET_FACTOR,
   panneauxPourKwc, estimerKwcDepuisFacture, optimalKwcByPayback,
   totauxCanoniquesTtc, ttcFromHt, htFromTtc,
@@ -41,14 +41,9 @@ import { forAll, premierNonFini } from './proprietes.aleatoire.js'
 // exige que chacune échoue toujours ; une violation corrigée DOIT être retirée.
 // Chaque entrée a son propre test `verifier(id, …)` ci-dessous.
 export const KNOWN_VIOLATIONS = {
-  'ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE': {
-    resume: 'consoAnnuelleDepuisFactures inverse une facture TOTALE avec le '
-      + 'barème ÉNERGIE SEULE (kwhFromBill), alors que factureMad/twoBillsSavings '
-      + 'retarifent avec lignes fixes + TPPAN : re-tarifer la consommation '
-      + 'dérivée ne redonne PAS les factures saisies (I9 de l\'audit COUV-HOR).',
-    exemple: 'factures = 12 × 500 MAD, distributeur « onee » → '
-      + 'twoBillsSavings(…).factureSans ≠ 6 000',
-  },
+  // (ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE corrigée : consoAnnuelleDepuisFactures
+  // inverse la facture COMPLÈTE — kwhDepuisFactureMad, jumeau de
+  // bareme.kwh_depuis_facture_mad — test « re-tarifer la conso » ci-dessous.)
   'ERR-QAH-PROP-JS-KWH-HORS-PLAGE': {
     resume: 'kwhFromBill ne porte PAS la garde QJR158(e) du miroir Python : une '
       + 'facture qu\'aucune consommation ≤ 1e6 kWh/mois ne produit rend ~1e6 kWh '
@@ -250,7 +245,7 @@ test('aller-retour énergie-seule : facture → kWh → facture redonne la factu
   })
 })
 
-test('KNOWN_VIOLATION ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la conso dérivée des factures redonne ces factures (tolérance 2 %)', () => {
+test('ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la conso dérivée des factures redonne ces factures (tolérance 2 %)', () => {
   // Une facture SAISIE est un TOTAL (énergie + lignes fixes + TPPAN). La conso
   // dérivée puis re-tarifiée par le MÊME modèle que l'écran affiche
   // (twoBillsSavings → factureMad) devrait redonner ~ ces factures.
@@ -266,7 +261,18 @@ test('KNOWN_VIOLATION ERR-QAH-PROP-JS-CONSO-FACTURE-TOTALE — re-tarifer la con
       if (!r) return 'twoBillsSavings a rendu null'
       const attendu = montant * 12
       const ecart = Math.abs(r.factureSans - attendu) / attendu
-      return ecart <= 0.02 ? null
+      if (ecart <= 0.02) return null
+      // LES « TROUS » DU BARÈME SÉLECTIF (bareme.kwh_depuis_facture_mad, même
+      // règle côté serveur) : au-delà de 150 kWh la facture SAUTE aux bornes
+      // de tranche, aucune conso ne produit un montant tombé dans le saut ; il
+      // est résolu à la BORNE BASSE (côté prudent). Seul cas admis : le
+      // montant tombe DANS un saut (la facture de la conso retenue est en
+      // dessous de 2 % et celle du 0,1 kWh suivant le dépasse) ET la
+      // re-tarification reste en dessous des factures saisies.
+      const k = kwhDepuisFactureMad(montant)
+      const trou = factureMad(k, ONEE_TRANCHES).totalMad < montant * 0.98
+        && factureMad(k + 0.1, ONEE_TRANCHES).totalMad > montant
+      return (trou && r.factureSans <= attendu) ? null
         : `Σ factures saisies ${attendu} MAD vs facture_sans re-tarifée ${r.factureSans} (${(ecart * 100).toFixed(1)} %)`
     },
   })
