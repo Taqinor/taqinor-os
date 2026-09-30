@@ -356,6 +356,41 @@ class TestReglesEtude(_Base):
         self.assertEqual(cas, {'eco_sup_facture', 'retour'})
         self.assertEqual(self.run_rule('ETU_I6_ECONOMIES', propre), [])
 
+    # Courbe cumulée 25 ans qui croise zéro à 13,4 ans (an 13 : −4 000,
+    # an 14 : +6 000), alors que prix ÷ économie = 10 ans (×1,34).
+    _COURBE_13_4 = ([-92000, -84000, -76000, -68000, -60000, -52000, -44000,
+                     -36000, -28000, -20000, -12000, -9000, -4000, 6000]
+                    + [16000 + 10000 * i for i in range(11)])
+
+    def _devis_i6_courbe(self, roi, courbe):
+        devis = self.devis(mode_installation='industriel',
+                           etude_params={'puissance_kwc': 5})
+        self.ctx.injecter_donnees(devis, {
+            'avec_ok': True, 'eco_a_ann': 10000, 'roi_a': roi,
+            'total_avec': 100000, 'cashflow_avec': courbe,
+            'savings_method': {'facture_actuelle': 20000}})
+        return devis
+
+    def test_i6_retour_egal_au_croisement_de_la_courbe(self):
+        # Prod 30/09/2026 (DEV-202609-0108) : 15,4 ans légitimes pour 11,45
+        # ans prix ÷ économie — plus de faux positif.
+        devis = self._devis_i6_courbe(13.4, self._COURBE_13_4)
+        self.assertEqual(self.run_rule('ETU_I6_ECONOMIES', devis), [])
+
+    def test_i6_retour_different_du_croisement(self):
+        devis = self._devis_i6_courbe(12.0, self._COURBE_13_4)
+        out = self.run_rule('ETU_I6_ECONOMIES', devis)
+        self.assertEqual([v.cle['cas'] for v in out], ['retour'])
+        self.assertEqual(out[0].valeurs['croisement_courbe'], 13.4)
+
+    def test_i6_jamais_rembourse(self):
+        # « Rentabilisé en 25 ans » imprimé sur une courbe qui finit < 0.
+        courbe = [-100000 + 2000 * an for an in range(1, 26)]
+        devis = self._devis_i6_courbe(25.0, courbe)
+        out = self.run_rule('ETU_I6_ECONOMIES', devis)
+        self.assertEqual([v.cle['cas'] for v in out], ['jamais_rembourse'])
+        self.assertEqual(out[0].valeurs['cumul_final'], -50000)
+
     def test_document_numerique(self):
         tire = self.devis(mode_installation='industriel')
         propre = self.devis(mode_installation='industriel')

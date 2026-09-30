@@ -325,16 +325,36 @@ def i5_facture_actuelle(r, devis, ctx):
 
 
 # ── I6 — économies, retour sur investissement ──────────────────────────────
+def croisement_zero(cumul, investissement):
+    """QX39 — année (interpolée, 1 déc.) où le cumul 25 ans IMPRIMÉ devient
+    >= 0 : la définition de ``pricing.compute_cashflow_payback``. ``'jamais'``
+    si la courbe finit sous zéro ; ``None`` si la série manque/est illisible."""
+    if not isinstance(cumul, (list, tuple)) or not cumul:
+        return None
+    prec = -investissement
+    for annee, valeur in enumerate(cumul, start=1):
+        v = num(valeur)
+        if v is None:
+            return None
+        if v >= 0:
+            pas = v - prec
+            return round((annee - 1) + ((0 - prec) / pas if pas else 0.0), 1)
+        prec = v
+    return 'jamais'
+
+
 @regle('ETU_I6_ECONOMIES',
        "Économie annuelle nulle/négative ou supérieure à la facture, ou "
-       "retour sur investissement incohérent avec prix ÷ économie",
+       "retour imprimé ≠ croisement de la courbe 25 ans imprimée",
        gravite=GRAVITE_AVERTISSEMENT, portee=PORTEE_DEVIS, besoin_rendu=True)
 def i6_economies(r, devis, ctx):
-    """On ne peut pas économiser plus que ce qu'on paie, ni afficher un
-    retour qui ne ressemble pas à prix ÷ économie (tolérance 30 % : la courbe
-    25 ans intègre dégradation, escalade et remplacements). Le plafond de 25
-    ans du retour masque un système qui ne se rembourse jamais (audit :
-    DEV-202609-0082, 25 ans imprimés pour 865 ans réels)."""
+    """On ne peut pas économiser plus que ce qu'on paie. Le retour imprimé EST
+    le croisement de la courbe cumulée 25 ans imprimée (QX39 : dégradation,
+    onduleur an 12, rendement batterie) — prix ÷ économie n'en est qu'un
+    plancher (prod 30/09/2026 : DEV-202609-0108, 15,4 ans légitimes pour
+    11,45 simples). Une courbe qui ne croise jamais zéro alors que le document
+    imprime « rentabilisé en 25 ans » est signalée (DEV-202609-0082/-0085/
+    -0060). Sans série (étude saisie) : repli sur prix ÷ économie ± 30 %."""
     if not _ep(devis):
         return []
     data = ctx.donnees_devis(devis)
@@ -369,7 +389,35 @@ def i6_economies(r, devis, ctx):
                 attendu=f'<= {round(fa)}',
                 cle={'option': opt, 'cas': 'eco_sup_facture'}))
         roi, tot = num(data.get(k_roi)), num(data.get(k_tot))
-        if roi and tot:
+        if not (roi and tot):
+            continue
+        modele = data.get(f'savings_model_{opt}')
+        k_cf = f'cashflow_{opt}'
+        croise = (None if modele == 'etude'
+                  else croisement_zero(data.get(k_cf), tot))
+        if croise == 'jamais':
+            fin = round(num(data[k_cf][-1]))
+            out.append(r.violation(
+                devis, f"Option {opt} : « rentabilisé en {roi} ans » imprimé "
+                       f"alors que le cumul 25 ans finit à {fin} MAD (jamais "
+                       "remboursé).",
+                valeurs={'option': opt, 'retour_imprime': roi,
+                         'cumul_final': fin,
+                         'prix_sur_economie': round(tot / eco, 2),
+                         'modele': modele},
+                attendu='non rentabilisé sur 25 ans',
+                cle={'option': opt, 'cas': 'jamais_rembourse'}))
+        elif croise is not None:
+            if abs(roi - croise) > TOL['I6_payback_ans']:
+                out.append(r.violation(
+                    devis, f"Option {opt} : retour imprimé {roi} ans ≠ "
+                           f"croisement de la courbe 25 ans ({croise} ans).",
+                    valeurs={'option': opt, 'retour_imprime': roi,
+                             'croisement_courbe': croise,
+                             'prix_sur_economie': round(tot / eco, 2),
+                             'modele': modele},
+                    attendu=croise, cle={'option': opt, 'cas': 'retour'}))
+        else:
             simple = tot / eco
             ratio = roi / simple
             if abs(ratio - 1) > TOL['I6_payback_ratio']:
@@ -378,8 +426,7 @@ def i6_economies(r, devis, ctx):
                            f"÷ économie = {simple:.2f} ans (×{ratio:.2f}).",
                     valeurs={'option': opt, 'retour_imprime': roi,
                              'prix_sur_economie': round(simple, 2),
-                             'ratio': round(ratio, 2),
-                             'modele': data.get(f'savings_model_{opt}')},
+                             'ratio': round(ratio, 2), 'modele': modele},
                     attendu=round(simple, 2),
                     cle={'option': opt, 'cas': 'retour'}))
     return out

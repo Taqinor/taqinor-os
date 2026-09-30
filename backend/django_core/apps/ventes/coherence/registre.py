@@ -69,6 +69,7 @@ TOLERANCES = {
     'I4_prix_plat': 1.20,           # prix de repli (MAD/kWh) signé par le bug
     'I5_ratio': 0.10,               # facture actuelle imprimée / factures réelles
     'I6_payback_ratio': 0.30,       # retour imprimé vs prix / économie annuelle
+    'I6_payback_ans': 0.15,         # retour imprimé vs croisement courbe 25 ans
     'I6_eco_vs_facture': 1.001,     # économie annuelle ≤ facture actuelle
     'I7_kwc_ratio': 0.02,           # kWc du bloc horaire vs kWc du devis
     'I10_ratio': 0.03,              # total graphe mensuel vs carte option
