@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
-import { PARCOURS } from '../../features/crm/relances/parcours'
+import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours'
 import {
-  comparaisonPrecedent, decimal, duree, familleType, heureCasa, jjmm, jourCourt, jourLong,
-  libelleJour, libelleReponse, nomType, numeroJour, phraseExceptions, phrasePeriode,
+  LIBELLES_ISSUE, comparaisonPrecedent, decimal, duree, familleType, heureCasa, jjmm, jourCourt,
+  jourLong, libelleJour, libelleReponse, nomType, numeroJour, phraseExceptions, phrasePeriode,
   phrasePremierContact, phraseResultats, pl, typeDeLaTable, typeEstTache,
 } from './controleSuiviTexte'
 
@@ -166,21 +166,129 @@ describe('lecture de la table du parcours', () => {
     expect(typeEstTache('type_inconnu')).toBe(false)
   })
 
-  it('libelleReponse : première réponse dont l\'issue ou la réponse vaut la clé', () => {
+})
+
+/* Les réponses que la table propose sur une étape d'APPEL (`reponses` +
+   `reponses_appel`, même normalisation que l'écran) et qui portent une clé. */
+const porteuses = (typeId, cle) => reponsesDeLEtape(typeDeLaTable(typeId), { canal: 'appel' })
+  .filter((r) => r.outcome === cle || r.reponse === cle)
+
+describe('libelleReponse — une réponse qui porte SEULE la clé dit son libellé de la table', () => {
+  it('outcome, `reponse` (et non outcome), libellé propre au type', () => {
     // outcome
+    expect(porteuses('contact_appel', 'joint')).toHaveLength(1)
     expect(libelleReponse('contact_appel', 'joint')).toBe('Client joint')
-    expect(libelleReponse('contact_appel', 'non_joint')).toBe('Pas de réponse')
     // `reponse` (et non outcome)
+    expect(porteuses('contact_appel', 'plus_tard')).toHaveLength(1)
     expect(libelleReponse('contact_appel', 'plus_tard')).toBe('Plus tard — pas maintenant')
-    // libellé propre au type
+    // libellé PROPRE au type, différent du générique (« À rappeler »)
+    expect(porteuses('devis', 'rappel')).toHaveLength(1)
     expect(libelleReponse('devis', 'rappel')).toBe('Pas encore — à rappeler le…')
+    expect(libelleReponse('contact_appel', 'rappel')).toBe('À rappeler le…')
   })
 
-  it('libelleReponse : sans_issue → « Fait », clé inconnue → la clé', () => {
+  it('sans_issue → « Fait », même sur un type que la table ne connaît pas', () => {
     expect(libelleReponse('devis', 'sans_issue')).toBe('Fait')
     expect(libelleReponse('type_inconnu', 'sans_issue')).toBe('Fait')
+  })
+})
+
+describe('libelleReponse — une clé PARTAGÉE par plusieurs réponses dit le libellé générique de l\'issue', () => {
+  it('generique : `non_joint` est portée par quatre réponses d\'appel, la première est « Répondeur » (trompeur)', () => {
+    // La prémisse, lue dans la table : `reponses_appel` de `generique` (objets
+    // `{ modele, effet, suite… }`) porte `non_joint` quatre fois.
+    const partagees = porteuses('generique', 'non_joint')
+    expect(partagees.map((r) => r.label)).toEqual(['Répondeur', 'Occupé', 'Numéro invalide', 'A bloqué / signalé'])
+    // … le libellé lisible est donc le générique, pas celui de la première.
+    expect(libelleReponse('generique', 'non_joint')).toBe('Pas de réponse')
+    expect(libelleReponse('generique', 'non_joint')).not.toBe(partagees[0].label)
+  })
+
+  it('les types d\'appel dont `non_joint` est partagée disent « Pas de réponse » (même quand la première est « Sans réponse »)', () => {
+    ;['contact_appel', 'appel_apres_reponse', 'dernier_appel', 'rappel_convenu',
+      'suivi_appel', 'debrief', 'reveil_appel'].forEach((typeId) => {
+      expect(porteuses(typeId, 'non_joint').length).toBeGreaterThan(1)
+      expect(libelleReponse(typeId, 'non_joint')).toBe('Pas de réponse')
+    })
+  })
+
+  it('un type de MESSAGE où une seule réponse porte `non_joint` garde SON libellé (« Sans réponse »)', () => {
+    expect(porteuses('suivi_message', 'non_joint')).toHaveLength(1)
+    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Sans réponse')
+    expect(libelleReponse('suivi_message', 'non_joint')).not.toBe(LIBELLES_ISSUE.non_joint)
+  })
+
+  it('accepte dans `reponses_appel` des identifiants de modèle (chaînes) comme des objets', () => {
+    const type = typeDeLaTable('suivi_message')
+    expect(type.reponses_appel).toBeUndefined()
+    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Sans réponse')
+    type.reponses_appel = ['repondeur', 'occupe'] // identifiants de modèle, sans objet
+    try {
+      // Trois réponses partagent maintenant `non_joint` : le générique l'emporte.
+      expect(porteuses('suivi_message', 'non_joint')).toHaveLength(3)
+      expect(libelleReponse('suivi_message', 'non_joint')).toBe('Pas de réponse')
+    } finally {
+      delete type.reponses_appel
+    }
+    expect(libelleReponse('suivi_message', 'non_joint')).toBe('Sans réponse')
+  })
+
+  it('propriété sur TOUTE la table : clé partagée → générique (ou 1er libellé sans générique), clé seule → son libellé', () => {
+    PARCOURS.etapes.forEach((type) => {
+      const reponses = reponsesDeLEtape(type, { canal: 'appel' })
+      const cles = new Set(reponses.flatMap((r) => [r.outcome, r.reponse]).filter(Boolean))
+      cles.forEach((cle) => {
+        const portees = reponses.filter((r) => r.outcome === cle || r.reponse === cle)
+        const attendu = portees.length === 1
+          ? portees[0].label
+          : (LIBELLES_ISSUE[cle] ?? portees[0].label)
+        expect(libelleReponse(type.id, cle), `${type.id} / ${cle}`).toBe(attendu)
+      })
+    })
+  })
+})
+
+describe('libelleReponse — clé absente du type : repli générique, sinon la clé', () => {
+  it('une issue connue mais que le type ne porte pas, ou un type inconnu, dit le générique', () => {
+    expect(porteuses('devis', 'non_joint')).toHaveLength(0)
+    expect(libelleReponse('devis', 'non_joint')).toBe('Pas de réponse')
+    expect(libelleReponse('type_inconnu', 'joint')).toBe('Client joint')
+    expect(libelleReponse(undefined, 'refuse')).toBe('Refus')
+  })
+
+  it('une clé que personne ne connaît s\'affiche telle quelle', () => {
     expect(libelleReponse('contact_appel', 'rien_de_connu')).toBe('rien_de_connu')
-    expect(libelleReponse('type_inconnu', 'joint')).toBe('joint')
+    expect(libelleReponse('type_inconnu', 'rien_de_connu')).toBe('rien_de_connu')
+  })
+})
+
+describe('LIBELLES_ISSUE — le repli unique', () => {
+  it('les six issues, avec les libellés attendus', () => {
+    expect(LIBELLES_ISSUE).toEqual({
+      non_joint: 'Pas de réponse',
+      joint: 'Client joint',
+      rappel: 'À rappeler',
+      refuse: 'Refus',
+      visite_acceptee: 'Visite acceptée',
+      sans_issue: 'Fait',
+    })
+  })
+
+  it('reste rattaché à la table du parcours : un libellé qui y change fait rougir ce test', () => {
+    const m = PARCOURS.modeles
+    expect(LIBELLES_ISSUE.non_joint).toBe(m.pas_de_reponse.label)
+    expect(LIBELLES_ISSUE.joint).toBe(m.joint.label)
+    expect(LIBELLES_ISSUE.refuse).toBe(m.refus.label)
+    expect(LIBELLES_ISSUE.visite_acceptee).toBe(m.visite.label)
+    // « À rappeler le… » dans la table (le champ date suit) ; le repli n'en garde que le verbe.
+    expect(m.rappel.label.startsWith(LIBELLES_ISSUE.rappel)).toBe(true)
+    // « Fait — passer à la suite » dans la table.
+    expect(m.fait.label.startsWith(LIBELLES_ISSUE.sans_issue)).toBe(true)
+  })
+
+  it('chaque issue de la table a son repli (aucune ne tombe sur la clé brute)', () => {
+    const issues = new Set(Object.values(PARCOURS.modeles).map((m) => m.outcome).filter(Boolean))
+    issues.forEach((issue) => expect(LIBELLES_ISSUE[issue], issue).toBeTruthy())
   })
 })
 

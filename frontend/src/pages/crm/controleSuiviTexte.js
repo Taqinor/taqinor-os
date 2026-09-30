@@ -12,7 +12,7 @@
 // Les libellés des TYPES d'étape et des réponses sont LUS DANS LA TABLE du
 // parcours (`parcours_suivi.json`, via `parcours.js`) : le tableau « Détail par
 // étape » n'a aucun nom d'étape écrit à la main.
-import { PARCOURS, reponseComplete } from '../../features/crm/relances/parcours'
+import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours'
 import { formatNumber, formatPercent } from '../../lib/format'
 
 /** Français : 0 et 1 restent au singulier (« 0 étape », « 1 étape »). */
@@ -195,16 +195,43 @@ export const familleType = (id) => TYPES.get(id)?.famille ?? ''
 /** Une TÂCHE selon la table (préparer le devis, décider la suite…). */
 export const typeEstTache = (id) => Boolean(TYPES.get(id)?.tache)
 
-/** Le libellé d'une réponse servie : celui de la table pour ce type (première
- *  réponse dont l'`outcome` ou la `reponse` vaut la clé) ; `sans_issue` →
- *  « Fait » ; clé inconnue → la clé telle quelle. */
+/** REPLI UNIQUE : le libellé GÉNÉRIQUE de chaque issue enregistrée par le
+ *  serveur (`par_type[].reponses[].cle`). Il sert quand la clé ne désigne pas UNE
+ *  réponse du type — plusieurs réponses la partagent (`non_joint` est portée par
+ *  « Pas de réponse », « Répondeur », « Occupé », « Numéro invalide »… : aucun de
+ *  ces libellés ne dit ce que compte le chiffre) ou aucune ne la porte. Les
+ *  libellés sont ceux de la table (`parcours_suivi.json`, modèles `pas_de_reponse`,
+ *  `joint`, `rappel`, `refus`, `visite`, `fait`) ; un test les y rattache. */
+export const LIBELLES_ISSUE = {
+  non_joint: 'Pas de réponse',
+  joint: 'Client joint',
+  rappel: 'À rappeler',
+  refuse: 'Refus',
+  visite_acceptee: 'Visite acceptée',
+  sans_issue: 'Fait',
+}
+
+/** Le libellé d'une réponse servie (`cle` = l'issue enregistrée) :
+ *   · `sans_issue` (un « Fait — passer à la suite ») → « Fait » ;
+ *   · UNE seule réponse du type porte cette clé (son `outcome` ou sa `reponse`) →
+ *     SON libellé dans la table (« Pas encore — à rappeler le… » pour le devis) ;
+ *   · plusieurs la partagent → le libellé générique de l'issue (`LIBELLES_ISSUE`),
+ *     jamais celui de la première (« Répondeur » pour `non_joint`) ;
+ *   · aucune ne la porte → le libellé générique s'il existe, sinon la clé telle quelle.
+ *  Les réponses du type sont celles que l'écran propose sur une étape d'APPEL
+ *  (`reponsesDeLEtape` de parcours.js) : `reponses` + `reponses_appel` (objets
+ *  `{ modele, effet, suite… }` ou identifiants de modèle), même normalisation. */
 export function libelleReponse(typeId, cle) {
-  if (cle === 'sans_issue') return 'Fait'
+  if (cle === 'sans_issue') return LIBELLES_ISSUE.sans_issue
   const type = TYPES.get(typeId)
-  const trouvee = (type?.reponses ?? [])
-    .map(reponseComplete)
-    .find((r) => r.outcome === cle || r.reponse === cle)
-  return trouvee?.label ?? cle
+  const candidates = type
+    ? reponsesDeLEtape(type, { canal: 'appel' })
+      .filter((r) => r.outcome === cle || r.reponse === cle)
+    : []
+  const generique = LIBELLES_ISSUE[cle]
+  if (candidates.length === 1) return candidates[0].label ?? generique ?? cle
+  if (candidates.length > 1) return generique ?? candidates[0].label ?? cle
+  return generique ?? cle
 }
 
 // ── Premier contact et résultats ───────────────────────────────────────────

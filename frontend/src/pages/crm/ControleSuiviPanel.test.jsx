@@ -653,6 +653,21 @@ describe('ControleSuiviPanel — détail par étape', () => {
       .toBeInTheDocument()
   })
 
+  it('une clé partagée par plusieurs réponses du type (non_joint sur « generique ») dit « Pas de réponse », jamais « Répondeur »', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      par_type: [{
+        type_etape: 'generique', est_tache: false, du: 6, a_temps: 5, en_retard: 1, sautees: 0, ouvert: 0,
+        reponses: [{ cle: 'non_joint', n: 5 }, { cle: 'joint', n: 1 }],
+      }],
+    }))
+    monter()
+    await attendreVerdict()
+    fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
+    const pastilles = within(screen.getByTestId('controle-type-generique')).getAllByRole('listitem')
+    expect(pastilles.map((li) => li.textContent)).toEqual(['Pas de réponse 5', 'Client joint 1'])
+    expect(screen.getByTestId('controle-detail')).not.toHaveTextContent('Répondeur')
+  })
+
   it('aucun type servi : pas de section détail', async () => {
     crmApi.getControleSuivi.mockResolvedValue({ data: VIDE })
     monter()
