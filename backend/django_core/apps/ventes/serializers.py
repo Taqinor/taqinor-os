@@ -780,6 +780,17 @@ class DevisWriteSerializer(EcheancierValidationMixin,
             raise serializers.ValidationError(
                 'Statut réservé à une action dédiée (« accepter » / '
                 '« refuser ») — jamais un PATCH direct du corps.')
+        # QJR515 (D-QJR5-1) — un devis ENVOYÉ se corrige SUR PLACE : il ne
+        # repasse jamais en brouillon (aucune action « remettre en
+        # brouillon »). Seul le passage ENVOYE → BROUILLON est refusé ;
+        # BROUILLON → ENVOYE reste écrivable jusqu'à QJR541.
+        instance = getattr(self, 'instance', None)
+        if (instance is not None
+                and getattr(instance, 'statut', None) == Devis.Statut.ENVOYE
+                and value == Devis.Statut.BROUILLON):
+            raise serializers.ValidationError(
+                'Un devis envoyé se corrige sur place, il ne repasse jamais '
+                'en brouillon.')
         return value
 
 
