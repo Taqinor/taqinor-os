@@ -1691,11 +1691,18 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     touche_envoi_devis = (
         etape.cadence == 'generique' and not (outcome or '')
         and est_etape(etape, CLE_DEVIS))
+    # SUIVI E7 (30/09/2026) — « devis parti » seulement quand l'étape est
+    # COCHÉE FAITE : une étape devis SAUTÉE n'a rien envoyé. Avant, le saut
+    # passait `brouillon_compris` au filet et DÉMARRAIT le suivi de
+    # proposition sans qu'aucun devis ne soit parti ; désormais le filet
+    # applique sa ceinture (on ne re-pose jamais la touche close) et pose
+    # « Décider la suite ».
+    devis_parti = touche_envoi_devis and statut == RelanceEtape.Statut.FAIT
     # QJ-FUNNEL (fondateur 09/09/2026 — « when I do Fait for quote sent, it
     # should be at quote sent ») — cocher FAIT la touche d'envoi place le
     # lead à « Devis envoyé » sur-le-champ, quel que soit le reste du plan
     # (une touche SAUTÉE ne vaut jamais un envoi).
-    if statut == RelanceEtape.Statut.FAIT and touche_envoi_devis:
+    if devis_parti:
         avancer_stage_devis_envoye_sur_touche(lead, user)
     # CKP2 — LA CADENCE RÉACTIVE : la touche suivante du protocole naît ICI,
     # de l'issue qu'on vient de saisir, et nulle part ailleurs.
@@ -1785,9 +1792,10 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         # démarre le suivi de proposition sur un devis resté brouillon (cas
         # AR). Toute autre touche laissée sans suite reçoit une étape
         # générique — le suivi de proposition, lui, démarre à l'ENVOI.
-        # (Détection hissée en tête de fonction — `touche_envoi_devis`.)
+        # (Détection hissée en tête de fonction — `devis_parti`, SUIVI E7 :
+        # une étape devis SAUTÉE ne vaut jamais « devis parti ».)
         assurer_prochaine_etape_apres_succes(
-            lead, user, brouillon_compris=touche_envoi_devis,
+            lead, user, brouillon_compris=devis_parti,
             libelle_touche_close=(etape.libelle or ''),
             # PARAM-CADENCE — la CLÉ de la touche close voyage avec elle : la
             # ceinture et l'escalier la lisent, jamais le libellé.

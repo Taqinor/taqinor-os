@@ -362,15 +362,6 @@ def _suivi_proposition_demarre(c):
            'le dossier n’est pas « Devis envoyé »')
 
 
-def _suivi_demarre_sans_envoi(c):
-    # CAD47 — sauter « préparer et envoyer le devis » : le moteur démarre le
-    # suivi de proposition, SANS toucher l'étape du dossier.
-    c.vrai(c.ouvertes(cadence='apres_devis').exists(),
-           'le suivi de proposition n’a pas démarré')
-    c.vrai(c.lead.stage == c.scenario.stage,
-           'l’étape du dossier a bougé')
-
-
 def _etape_planifier_visite(c):
     c.vrai(c.ouvertes(libelle=VISITE_FILET_LIBELLE,
                       due_date=AUJOURDHUI).exists(),
@@ -500,7 +491,6 @@ VERIFICATEURS = {
     st.ETAPE_DECIDER_SUITE: _etape_decider_suite,
     st.ETAPE_DEPLACEE_A_LA_DATE: _etape_deplacee_a_la_date,
     st.SUIVI_PROPOSITION_DEMARRE: _suivi_proposition_demarre,
-    st.SUIVI_DEMARRE_SANS_ENVOI: _suivi_demarre_sans_envoi,
     st.ETAPE_PLANIFIER_VISITE: _etape_planifier_visite,
     st.ETAPE_MESSAGE_CRENEAU: _etape_message_creneau,
     st.ETAPE_DERNIER_APPEL: _etape_dernier_appel,

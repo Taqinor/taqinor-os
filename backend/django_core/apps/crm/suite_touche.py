@@ -111,9 +111,9 @@ ETAPE_DEVIS_MODIFIE = 'etape_devis_modifie'
 JOURNAL_SUITE_SI_RIEN_OUVERT = 'journal_suite_si_rien_ouvert'
 JOURNAL_DECIDER_SI_RIEN_OUVERT = 'journal_decider_si_rien_ouvert'
 JOURNAL_SANS_EFFET = 'journal_sans_effet'
-# CAD47 — sauter l'étape « préparer et envoyer le devis » : le moteur la lit
-# comme « devis parti » (RELANCE-SUITE) et démarre le suivi de proposition.
-SUIVI_DEMARRE_SANS_ENVOI = 'suivi_demarre_sans_envoi'
+# SUIVI E7 (30/09/2026) — `suivi_demarre_sans_envoi` (CAD47 : « sauter
+# l'étape devis vaut devis parti ») n'existe plus : une étape devis SAUTÉE ne
+# démarre plus aucun suivi, le filet pose « Décider la suite ».
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
@@ -130,7 +130,6 @@ CODES = frozenset({
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
-    SUIVI_DEMARRE_SANS_ENVOI,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -431,10 +430,14 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
     """CAD47 — ce que fait « Sauter » : le moteur clôt la touche SAUTÉE sans
     issue (``marquer_etape_relance``), et la suite est celle d'une touche
     close sans réponse — barreau suivant, clôture au Froid après la dernière,
-    filet sinon. Une exception, et elle se DIT : sauter l'étape « préparer et
-    envoyer le devis » vaut « devis parti » pour le moteur."""
+    filet sinon.
+
+    SUIVI E7 (30/09/2026) — sauter l'étape « préparer et envoyer le devis »
+    ne vaut PLUS « devis parti » : rien n'a été envoyé. La ceinture
+    anti-tapis-roulant du filet refuse de re-poser la touche close et pose
+    « Décider la suite »."""
     if nature == NATURE_ENVOI_DEVIS:
-        return [SUIVI_DEMARRE_SANS_ENVOI]
+        return [ETAPE_DECIDER_SUITE]
     if nature == NATURE_FILET:
         return _codes_filet(etape, '', est_actif)
     if nature in (NATURE_VISITE, NATURE_PASSATION):
