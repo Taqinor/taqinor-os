@@ -613,10 +613,20 @@ def build(ctx):
             f'<div class="c1-opt-eco">Économie{eco_mot} ≈ <b>{fmt(eco)} '
             'MAD/an</b></div>' + ancre("economie_annuelle", fmt(eco), opt)
             if (eco and not masquer_eco) else "")
-        roi_html = (
-            f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
-            f'{_yrs(roi_v)} ans</div>' + ancre("payback_ans", _yrs(roi_v), opt)
-            if not masquer_eco else "")
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — un cumul 25 ans qui ne
+        # croise jamais zéro n'est pas « Rentabilisé en 25 ans » : la carte le
+        # DIT, sans nombre d'années ni marqueur de payback.
+        _jamais = bool(d.get(f"roi_{'a' if opt == 'avec' else 's'}_jamais"))
+        if masquer_eco:
+            roi_html = ""
+        elif _jamais:
+            roi_html = (f'<div class="c1-roi">{_roi_svg(green)}Non rentabilisé '
+                        'sur 25 ans</div>')
+        else:
+            roi_html = (
+                f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
+                f'{_yrs(roi_v)} ans</div>'
+                + ancre("payback_ans", _yrs(roi_v), opt))
         return (
             f'<div class="{cls}">'
             f'<div class="c1-opt-head"><div>'
@@ -761,8 +771,13 @@ def build(ctx):
         eco_kpi_label = ("Économie calculée"
                          if d.get("savings_model") == "horaire"
                          else "Économie estimée")
+        # ERR-QAH-FIG-KPI-ECO-RESEAU-SEUL — la vignette lit l'économie de
+        # l'option que décrit la synthèse (``eco_option``, même règle que
+        # ``_avec`` de ``synthese_economies``) : sur un devis réseau seul, c'est
+        # ``eco_s_ann`` — jamais l'économie d'une batterie non proposée.
+        _eco_kpi = d.get("eco_s_ann") if _eco_opt == "sans" else eco_a_ann
         kpi_eco_html = f"""      <div class="c1-kpi">
-        <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>{ancre("economie_annuelle", fmt(eco_a_ann), _eco_opt)}
+        <div class="c1-kpi-v">{fmt(_eco_kpi)}<span class="c1-u">&nbsp;MAD/an</span></div>{ancre("economie_annuelle", fmt(_eco_kpi), _eco_opt)}
         <div class="c1-kpi-l">{eco_kpi_label}</div>
       </div>
 """

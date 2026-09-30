@@ -390,7 +390,7 @@ export function computeCashflowPayback(investment, economieAnnee1, {
   const inv = parseFloat(investment) || 0
   const base = parseFloat(economieAnnee1) || 0
   if (base <= 0 || inv <= 0) {
-    return { paybackYears: null, cumulative: [], netGain: 0, years: CASHFLOW_YEARS }
+    return { paybackYears: null, cumulative: [], netGain: 0, years: CASHFLOW_YEARS, jamaisRembourse: false }
   }
   // Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
   // part réellement stockée puis restituée. `batteryShare=null` → forfait
@@ -427,8 +427,11 @@ export function computeCashflowPayback(investment, economieAnnee1, {
       payback = Math.round(((y - 1) + frac) * 10) / 10
     }
   }
-  if (payback === null) payback = CASHFLOW_YEARS
-  return { paybackYears: payback, cumulative, netGain: Math.round(cumul), years: CASHFLOW_YEARS }
+  // ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — miroir de `pricing` : la
+  // sentinelle numérique reste (comparaisons), le drapeau pilote l'affichage.
+  const jamaisRembourse = payback === null
+  if (jamaisRembourse) payback = CASHFLOW_YEARS
+  return { paybackYears: payback, cumulative, netGain: Math.round(cumul), years: CASHFLOW_YEARS, jamaisRembourse }
 }
 
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
@@ -639,6 +642,9 @@ export function computeROI({
     eco_avec_monthly: ecoAvecMonthly,
     payback_sans: paybackSans,
     payback_avec: paybackAvec,
+    // ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — mêmes drapeaux que le PDF.
+    payback_sans_jamais: paybackSans !== null && !!cfSans.jamaisRembourse,
+    payback_avec_jamais: paybackAvec !== null && !!cfAvec.jamaisRembourse,
     // QX39 — cumul cashflow 25 ans + gain net (mêmes clés que le PDF).
     cashflow_sans: cfSans.cumulative,
     cashflow_avec: cfAvec.cumulative,
@@ -1508,7 +1514,11 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
     buckets.set(rH, (buckets.get(rH) || 0n) + u)
   }
   const remiseC = dH > 0n ? _arrondiDemiHaut(htBrutU * dH, 1000000n) : 0n
-  const htNetC = _arrondiDemiHaut(htBrutU - remiseC * 100n, 100n)
+  // ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — HT net borné à 0 (miroir de
+  // `_canonical_totaux`) : à remise 100 %, un HT brut à demi-centime donnait
+  // une remise arrondie au-dessus et un TTC de −0,01.
+  const htNetBrutC = _arrondiDemiHaut(htBrutU - remiseC * 100n, 100n)
+  const htNetC = htNetBrutC < 0n ? 0n : htNetBrutC
   let tvaC
   if (buckets.size <= 1) {
     const rH = buckets.size ? [...buckets.keys()][0] : TVA_STANDARD_DEFAUT * 100

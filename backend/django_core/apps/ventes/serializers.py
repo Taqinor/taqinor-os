@@ -1004,7 +1004,10 @@ class FactureSerializer(serializers.ModelSerializer):
     total_tva = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     total_ttc = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     montant_paye = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
-    montant_du = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    # ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — reste dû AFFICHÉ : 0 pour une
+    # facture payée ou annulée (plus de « Dû » ni d'« Encaisser » sur une ligne
+    # soldée), sinon ``Facture.montant_du``. Même règle que ``kpis_factures``.
+    montant_du = serializers.SerializerMethodField()
     avoirs_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     avoirs = serializers.SerializerMethodField()
     client_nom = serializers.CharField(source='client.nom', read_only=True)
@@ -1047,11 +1050,21 @@ class FactureSerializer(serializers.ModelSerializer):
         read_only_fields = ['reference', 'created_by', 'fichier_pdf', 'date_emission',
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
+    def get_montant_du(self, obj):
+        from decimal import Decimal
+        if obj.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+            return '0.00'
+        return str(Decimal(obj.montant_du).quantize(Decimal('0.01')))
+
     def get_is_overdue(self, obj):
         # S'appuie sur jours_retard du modèle (échéance dépassée + reste dû,
         # hors payée/annulée) — cohérent avec FactureList, Relances et la
-        # balance âgée, et couvre aussi le statut « En retard ».
-        return obj.jours_retard > 0
+        # balance âgée. ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER : une facture au
+        # STATUT « En retard » (même sans échéance) l'est aussi tant qu'un reste
+        # est dû — l'onglet « En retard » et la tuile KPI la voient.
+        if obj.jours_retard > 0:
+            return True
+        return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
 class FactureWriteSerializer(serializers.ModelSerializer):

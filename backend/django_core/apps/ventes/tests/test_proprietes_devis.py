@@ -67,21 +67,9 @@ def _totaux(specs, remise):
 
 # ── VIOLATIONS RÉELLES CONNUES — jamais un test assoupli ─────────────────────
 # id -> {resume, exemple, strategie, viole}. Retirer l'entrée quand corrigée.
-KNOWN_VIOLATIONS = {
-    'ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF': {
-        'resume': (
-            "selectors._canonical_totaux (la chaîne que facturent PDF/BC/facture) "
-            "rend un HT net et un TTC NÉGATIFS (-0,01 MAD) à remise 100 % dès que "
-            "le HT brut porte un demi-centime : la remise est arrondie AU-DESSUS "
-            "du HT brut (ROUND_HALF_UP), donc ht_net = q(-0,005) = -0,01. Même "
-            "défaut, à l'identique, dans solar.js totauxCanoniquesTtc (miroir)."),
-        'exemple': (
-            "lignes [(quantite=0.50, prix=0.01, taux=20)] remise 100 -> "
-            "ht_brut q(0.005)=0.01, remise 0.01, ht_net -0.01, ttc -0.01"),
-        'strategie': lignes_st,
-        'viole': lambda specs: _totaux(specs, '100')['ttc'] != 0,
-    },
-}
+# (ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF corrigée : HT net borné à 0 dans
+# selectors._canonical_totaux — voir ``test_remise_100_ttc_exactement_zero``.)
+KNOWN_VIOLATIONS = {}
 
 
 class ChaineCanoniqueProprietes(SimpleTestCase):
@@ -220,12 +208,18 @@ class ViolationsConnuesTest(SimpleTestCase):
                         "RETIRER l'entrée de KNOWN_VIOLATIONS (elle ne peut que "
                         'rétrécir).')
 
-    def test_exemple_minimal_documente_est_bien_une_violation(self):
+    def test_remise_100_exemple_minimal_ttc_zero(self):
+        """ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — l'exemple réduit par
+        Hypothesis (0,50 × 0,01, TVA 20 %, remise 100 %) rendait -0,01."""
         specs = [(Decimal('0.50'), Decimal('0.01'), Decimal('20'))]
         t = _totaux(specs, '100')
-        # Les valeurs RÉELLES (violantes) : HT net et TTC négatifs. Si ce test
-        # échoue parce que le TTC vaut 0 : la violation est corrigée — retirer
-        # l'entrée de KNOWN_VIOLATIONS (le test précédent le dira aussi).
-        self.assertEqual((t['ht_brut'], t['remise'], t['ht_net'], t['ttc']),
-                         (Decimal('0.01'), Decimal('0.01'), Decimal('-0.01'), Decimal('-0.01')),
-                         'exemple documenté à revoir')
+        self.assertEqual((t['ht_net'], t['tva'], t['ttc']),
+                         (Decimal('0.00'), Decimal('0.00'), Decimal('0.00')))
+
+    @PUR
+    @given(specs=lignes_st)
+    def test_remise_100_ttc_exactement_zero(self, specs):
+        t = _totaux(specs, '100')
+        self.assertEqual(t['ttc'], 0)
+        self.assertEqual(t['ht_net'], 0)
+        self.assertEqual(t['ttc'], t['ht_net'] + t['tva'])

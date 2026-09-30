@@ -352,14 +352,21 @@ def next_tranche(devis, lignes=None, option=None):
         montant = Decimal(str(valeur))
         frac = montant / total_ttc if total_ttc > 0 else Decimal('0')
         ht = _q(total_ht * frac)
-        tva = _q(total_tva * frac)
         ttc = _q(montant) if total_ttc > 0 else Decimal('0.00')
+        # ERR-QAH-VENTES-ACOMPTE-TTC-CENTIME — la TVA est le COMPLÉMENT
+        # (TTC − HT), jamais un troisième arrondi séparé : le document
+        # s'additionne toujours au centime (HT + TVA = TTC).
+        tva = ttc - ht
         pourcentage = _q(frac * 100)
     else:
         frac = Decimal(str(valeur)) / Decimal('100')
         ht = _q(total_ht * frac)
-        tva = _q(total_tva * frac)
         ttc = _q(total_ttc * frac)
+        # ERR-QAH-VENTES-ACOMPTE-TTC-CENTIME — FAC-202606-0003 (acompte 30 %,
+        # taux mixte 17,15 %) : trois arrondis séparés donnaient HT + TVA =
+        # TTC − 0,01. Le TTC annoncé (acompte des conditions/e-mails) reste
+        # celui d'hier ; la TVA en devient le complément exact.
+        tva = ttc - ht
 
     return {
         'key': key,

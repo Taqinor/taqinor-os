@@ -129,6 +129,37 @@ class TestFacturesKpis(TestCase):
                          bientot.montant_du)
         self.assertEqual(Decimal(resp.data['total_du']), Decimal('36000'))
 
+    def test_payee_non_soldee_hors_encours_et_du_zero(self):
+        """ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — une facture « Payée » (marquage
+        sec, aucun paiement) n'entre plus dans « Total dû » et affiche Dû 0."""
+        aujourdhui = timezone.localdate()
+        payee = self._facture(echeance=aujourdhui - timedelta(days=5),
+                              statut=Facture.Statut.PAYEE)
+        self._facture(echeance=aujourdhui + timedelta(days=60))
+        resp = self.api.get('/api/django/ventes/factures/kpis/')
+        self.assertEqual(resp.data['nb_impayees'], 1)
+        self.assertEqual(Decimal(resp.data['total_du']), Decimal('12000'))
+        self.assertEqual(resp.data['nb_en_retard'], 0)
+        liste = self.api.get('/api/django/ventes/factures/')
+        rows = (liste.data['results'] if isinstance(liste.data, dict)
+                else liste.data)
+        ligne = next(r for r in rows if r['id'] == payee.id)
+        self.assertEqual(Decimal(ligne['montant_du']), Decimal('0'))
+        self.assertFalse(ligne['is_overdue'])
+
+    def test_statut_en_retard_sans_echeance_compte_en_retard(self):
+        """ERR-QAH-VENTES-FACTURES-KPI-ENCAISSER — la tuile « En retard » compte
+        les lignes affichées « En retard », même sans date d'échéance."""
+        f = self._facture(echeance=None, statut=Facture.Statut.EN_RETARD)
+        resp = self.api.get('/api/django/ventes/factures/kpis/')
+        self.assertEqual(resp.data['nb_en_retard'], 1)
+        self.assertEqual(Decimal(resp.data['total_en_retard']), f.montant_du)
+        liste = self.api.get('/api/django/ventes/factures/')
+        rows = (liste.data['results'] if isinstance(liste.data, dict)
+                else liste.data)
+        ligne = next(r for r in rows if r['id'] == f.id)
+        self.assertTrue(ligne['is_overdue'])
+
     def test_borne_a_la_societe(self):
         """Le sélecteur agrège le queryset DÉJÀ scopé du viewset."""
         autre = Company.objects.create(

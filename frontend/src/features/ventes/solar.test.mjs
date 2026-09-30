@@ -1469,6 +1469,14 @@ test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
   assert.equal(computeCashflowPayback(50000, 0).paybackYears, null)
 })
 
+test('ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — drapeau jamaisRembourse (miroir de pricing)', () => {
+  const jamais = computeCashflowPayback(269065, 3000)
+  assert.equal(jamais.jamaisRembourse, true)
+  assert.ok(jamais.cumulative[jamais.cumulative.length - 1] < 0)
+  assert.equal(computeCashflowPayback(50000, 10000).jamaisRembourse, false)
+  assert.equal(computeCashflowPayback(0, 10000).jamaisRembourse, false)
+})
+
 test('QX39 — batterie (rendement aller-retour) allonge le payback', () => {
   const no = computeCashflowPayback(50000, 10000)
   const bat = computeCashflowPayback(50000, 10000, { battery: true })

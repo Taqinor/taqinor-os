@@ -401,6 +401,10 @@ export default function DevisGenerator({
 
   const [clients, setClients] = useState([])
   const [leads, setLeads] = useState([])
+  // ERR-QAH-VENTES-EDITION-PERD-LEAD — le lead du devis rouvert (`?edit=`),
+  // relu par son id : la liste `leads` n'est que la PREMIÈRE page paginée, un
+  // lead plus ancien n'y figurait pas et le sélecteur repartait vide.
+  const [leadDuDevis, setLeadDuDevis] = useState(null)
   const [produits, setProduits] = useState([])
   // STKCAT10 — LES STRUCTURES RÉELLEMENT SÉLECTIONNABLES de la société (non
   // archivées, chiffrées, de catégorie typée « structure »). Une seule et même
@@ -1152,7 +1156,10 @@ export default function DevisGenerator({
 
   // Lead prioritaire résolu tôt : le calcul ROI ci-dessous lit sa ville
   // (productible par ville) — doit être déclaré avant le useMemo (pas de TDZ).
-  const selectedLead = leads.find(l => String(l.id) === String(leadId))
+  const leadsListe = (leadDuDevis
+    && !leads.some(l => String(l.id) === String(leadDuDevis.id)))
+    ? [leadDuDevis, ...leads] : leads
+  const selectedLead = leadsListe.find(l => String(l.id) === String(leadId))
 
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
@@ -1870,8 +1877,26 @@ export default function DevisGenerator({
       if (d.mode_installation && d.mode_installation !== modeInstallation) {
         onInstTypeChange(INST_TYPE_PAR_MODE[d.mode_installation] ?? 'Résidentielle')
       }
-      if (d.lead) setLeadId(String(d.lead))
-      else if (d.client) setClientId(String(d.client))
+      if (d.lead) {
+        setLeadId(String(d.lead))
+        // ERR-QAH-VENTES-EDITION-PERD-LEAD — relit le lead par son id (il peut
+        // manquer de la première page de `leads`) et repose ses factures
+        // hiver/été à l'écran, SANS redimensionner (setters bruts : aucune
+        // frappe vendeur, aucun `syncBillEstimator`). Une valeur déjà présente
+        // (brouillon local restauré) n'est jamais écrasée.
+        // `Promise.resolve().then` : une panne de cette relecture (réseau,
+        // API absente) reste ISOLÉE — elle ne doit jamais faire échouer le
+        // chargement du devis lui-même.
+        Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
+          if (!lead || lead.id == null) return
+          setLeadDuDevis(lead)
+          if (parseFloat(lead.facture_hiver) > 0) {
+            setFHiver(prev => prev || String(lead.facture_hiver))
+            setFEte(prev => prev || (lead.ete_differente && lead.facture_ete
+              ? String(lead.facture_ete) : ''))
+          }
+        }).catch(() => {})
+      } else if (d.client) setClientId(String(d.client))
       // DC11 / QJR106 — le verdict de dérive du serveur, posé À LA LECTURE du
       // brouillon (`?edit=`). Backend plus ancien / devis sans estampille ⇒
       // champ absent ou `null` ⇒ liste vide ⇒ aucune bannière : comportement
@@ -2011,6 +2036,10 @@ export default function DevisGenerator({
       const factures = Array.isArray(e.factures_mensuelles_reelles)
         && e.factures_mensuelles_reelles.length === 12
         ? e.factures_mensuelles_reelles : null
+      // ERR-QAH-VENTES-EDITION-PERD-LEAD — les 12 factures RÉELLES du devis
+      // remplacent la grille d'exemple (500/450/400…) : rouvrir ne doit plus
+      // montrer — ni renvoyer à l'enregistrement — d'autres factures.
+      if (factures) setMonthly(factures.map(v => Number(v) || 0))
       consoStockee.current = e.conso_annuelle > 0 ? {
         valeur: Number(e.conso_annuelle),
         factures,
@@ -3956,7 +3985,7 @@ export default function DevisGenerator({
                     <SelectValue placeholder="— Sélectionner un lead —" />
                   </SelectTrigger>
                   <SelectContent>
-                    {leads.map(l => (
+                    {leadsListe.map(l => (
                       <SelectItem key={l.id} value={String(l.id)}>
                         {l.nom}{l.prenom ? ` ${l.prenom}` : ''}
                         {l.societe ? ` (${l.societe})` : ''}
