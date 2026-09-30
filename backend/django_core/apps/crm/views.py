@@ -1726,10 +1726,14 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # CAD55 — le devis que le suivi « après devis » citera. Un plan
         # après-devis déjà OUVERT est renvoyé tel quel (idempotence MRY5,
         # inchangée) : aucune question, et jamais un second plan à côté.
+        # SUIVI E1 (30/09/2026) — un plan ouvert = un BARREAU du protocole :
+        # une étape de visite ouverte (même cadence) ne l'est pas.
+        from .services import q_visite
         devis = None
         if cadence == Cadence.APRES_DEVIS and not lead.relance_etapes.filter(
                 cadence=Cadence.APRES_DEVIS,
-                statut=RelanceEtape.Statut.A_FAIRE).exists():
+                statut=RelanceEtape.Statut.A_FAIRE,
+        ).exclude(q_visite()).exists():
             envoyes = devis_envoyes_pour_relance(lead)
             devis_id = request.data.get('devis')
             if devis_id not in (None, ''):

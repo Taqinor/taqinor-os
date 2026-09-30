@@ -22,10 +22,11 @@ from core.events import (
 )
 
 from . import stages
-from .cadence_config import CLE_DECIDER_SUITE
+from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    annuler_etapes_moteur_ouvertes,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
     ecrire_retour_lead_visite,
@@ -47,6 +48,7 @@ from .services import (
     marquer_premier_contact,
     phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
+    q_visite,
     signaler_mismatch_signe_sur_refus,
 )
 
@@ -161,9 +163,18 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         # sans objet : le plan après-devis prend la suite.
         arreter_cadence(lead, user=user, motif='devis envoyé',
                         cadences=['contact', 'generique'])
-        deja = lead.relance_etapes.filter(
-            cadence='apres_devis', statut='a_faire').exclude(
-                devis_id=devis.pk).first()
+        # SUIVI E1 (30/09/2026) — l'étape « Préparer le devis modifié »
+        # encore ouverte a rempli son office : le devis modifié part.
+        annuler_etapes_moteur_ouvertes(lead, CLE_DEVIS_MODIFIE,
+                                       note='devis envoyé')
+        # SUIVI E1 — seuls les BARREAUX du protocole après-devis sont « un
+        # suivi en cours » : une étape de VISITE ouverte (planifier,
+        # confirmer, débrief — cadence `apres_devis`, devis souvent NULL, donc
+        # jamais écartée par `.exclude(devis_id=…)`) bloquait le démarrage du
+        # suivi de proposition, et le devis partait sans aucune relance.
+        barreaux_ouverts = lead.relance_etapes.filter(
+            cadence='apres_devis', statut='a_faire').exclude(q_visite())
+        deja = barreaux_ouverts.exclude(devis_id=devis.pk).first()
         if deja is not None:
             reference = getattr(deja.devis, 'reference', '') or '?'
             LeadActivity.objects.create(
@@ -177,9 +188,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         # PREMIER envoi et le client recevrait « je classe ? » deux jours
         # après sa nouvelle proposition. On PROPOSE de repartir du jour 1 —
         # on ne redate rien tout seul (choix par défaut : ne rien changer).
-        if lead.relance_etapes.filter(
-                cadence='apres_devis', statut='a_faire',
-                devis_id=devis.pk).exists():
+        if barreaux_ouverts.filter(devis_id=devis.pk).exists():
             from .services import proposer_redatage_apres_devis
             proposer_redatage_apres_devis(lead, user, devis)
             return

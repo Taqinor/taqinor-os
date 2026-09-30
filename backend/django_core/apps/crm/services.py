@@ -1050,7 +1050,10 @@ def apercu_remplacement_cadence(lead, cadence, *, devis=None):
             or getattr(lead, 'is_archived', False)):
         return None
     ouvertes = lead.relance_etapes.filter(statut=RelanceEtape.Statut.A_FAIRE)
-    meme = ouvertes.filter(cadence=cadence)
+    # SUIVI E1 — même lecture que l'idempotence de `initialiser_plan_relance` :
+    # une étape de VISITE (cadence `apres_devis`, hors protocole) n'est pas un
+    # plan ouvert de cette cadence.
+    meme = ouvertes.filter(cadence=cadence).exclude(q_visite())
     if cadence == 'apres_devis' and devis is not None:
         meme = meme.filter(devis=devis)
     if meme.exists():
@@ -1213,8 +1216,14 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     # l'ENVOI RÉEL du devis restait muet (« déjà créé » → rien d'ouvert) et
     # le filet se re-posait à l'infini. Répare AUSSI « Arrêter la cadence »
     # puis « Relancer » (recette du 08/09), qui butait sur le même mur.
+    # SUIVI E1 (30/09/2026) — seuls les BARREAUX du protocole sont un plan
+    # ouvert : les gestes de VISITE (planifier, confirmer, débrief, devis
+    # modifié) portent la cadence `apres_devis` sans en être. Les compter
+    # rendait l'étape de visite comme « plan déjà en cours » et aucun suivi
+    # de proposition ne démarrait.
     ouvertes_deja = list(
         deja.filter(statut=RelanceEtape.Statut.A_FAIRE)
+        .exclude(q_visite())
         .order_by('ordre', 'due_date'))
     if ouvertes_deja:
         return ouvertes_deja
@@ -1297,8 +1306,10 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
     if cadence == 'reveil':
         _adapter_gabarits_reveil(lead, etapes)
     RelanceEtape.objects.bulk_create(etapes)
+    # SUIVI E1 — les barreaux de CETTE cadence, jamais les gestes de visite
+    # qui partagent sa cadence.
     resultats = list(
-        lead.relance_etapes.filter(cadence=cadence)
+        lead.relance_etapes.filter(cadence=cadence).exclude(q_visite())
         .order_by('ordre', 'due_date'))
     if devis is not None:
         resultats = [e for e in resultats if e.devis_id == devis.pk]
@@ -2329,6 +2340,20 @@ def q_etape_moteur():
     """Toute étape posée par le moteur À CÔTÉ du protocole (filet ou
     visite) — jamais un barreau de gabarit de plan."""
     return q_filet() | q_visite()
+
+
+def annuler_etapes_moteur_ouvertes(lead, *cles, note):
+    """SUIVI-PARCOURS — ANNULE (statut moteur CKP1 : ``traite_par`` NULL, le
+    motif dans ``note``) les étapes moteur encore ouvertes de ces CLÉS —
+    reconnues par la clé, ou le libellé par défaut d'une étape posée avant
+    la clé (``q_etape``). Une étape qui a rempli son office n'est jamais
+    « sautée par un humain ». Renvoie le nombre d'étapes annulées."""
+    if not cles:
+        return 0
+    return lead.relance_etapes.filter(
+        q_etape(*cles), statut=RelanceEtape.Statut.A_FAIRE,
+    ).update(statut=RelanceEtape.Statut.ANNULEE, note=(note or '')[:500],
+             traite_par=None, traite_le=timezone.now())
 
 
 def _canal_configure(config):
