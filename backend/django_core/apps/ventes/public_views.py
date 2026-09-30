@@ -1500,6 +1500,10 @@ def _variant_summaries(devis) -> list:
                 models.Q(pk=root) | models.Q(version_parent_id=root)
             )
             .exclude(pk=devis.pk)   # exclude self — self is the main payload
+            # QJR537 — un BROUILLON n'est JAMAIS montré au client (même règle
+            # que ``selectors.devis_du_client_portail``) : après une révision,
+            # la page de v1 exposait la v2 EN COURS de correction et son total.
+            .exclude(statut=DevisModel.Statut.BROUILLON)
             .order_by('version', 'id')
             # ``etude_params`` est chargé ici (et non différé) : le filtre de
             # gamme ci-dessous le lit sur chaque sœur — le différer coûterait
