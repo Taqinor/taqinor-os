@@ -3692,7 +3692,8 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             if refus:
                 return Response({'erreurs': {'rappel_le': refus}},
                                 status=status.HTTP_400_BAD_REQUEST)
-        from .services import (est_etape_de_filet, marquer_etape_relance,
+        from .services import (est_etape_de_filet, est_etape_de_visite,
+                               marquer_etape_relance,
                                reporter_prochaine_touche)
         # CAD3 — « À rappeler le… » sur une étape de FILET la REPORTE, elle ne
         # la consomme pas. L'écran promet « L'étape est déplacée à la date
@@ -3703,8 +3704,15 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # semaine prochaine » n'a rien arbitré. Même chemin que le bouton
         # « Reporter » (action `reporter` plus bas) : la touche garde son
         # identité, sa cadence et son libellé.
+        # SUIVI E3 (30/09/2026) — même branche pour une étape de VISITE
+        # (planifier, débrief, devis modifié) : close, elle laissait le filet
+        # poser « Préparer et envoyer le devis » à sa place, et c'était CETTE
+        # étape-là qui était déplacée — la visite à planifier ou le débrief
+        # disparaissait de la file.
         if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
-                and quand is not None and est_etape_de_filet(etape)):
+                and quand is not None
+                and (est_etape_de_filet(etape)
+                     or est_etape_de_visite(etape))):
             reportee = reporter_prochaine_touche(
                 etape.lead, request.user, quand, etape=etape)
             if reportee is not None:

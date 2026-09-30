@@ -190,7 +190,6 @@ VARIANTES = {
     # sous `suite_si_plus_rien_ouvert`, dont `seule_epuise` (plan servi
     # jusqu'au bout : l'étape de suite du filet, jamais le Froid).
     st.SUITE_SI_PLUS_RIEN_OUVERT: ('base', 'avec_autre', 'seule_epuise'),
-    st.PROCHAINE_RELANCE_A_LA_DATE: ('base', 'avec_autre'),
     st.VEILLE_MEME_TOUCHE: ('base', 'loin'),
     # CAD15 — le journal d'appel : la suite dépend de ce qui reste ouvert et
     # de l'étape du dossier (Froid ou non).
@@ -419,11 +418,6 @@ def _suite_si_plus_rien_ouvert(c):
         _suivi_repris(c)
 
 
-def _prochaine_relance_a_la_date(c):
-    c.vrai(c.ouvertes(due_date=DATE_CHOISIE).exists(),
-           'aucune relance à la date choisie')
-
-
 def _etiquette_decision(c):
     c.vrai(_lead_porte_tag(c.lead, TAG_DECISION_A_PLUSIEURS),
            'l’étiquette « Décision à plusieurs » manque')
@@ -523,7 +517,6 @@ VERIFICATEURS = {
     st.ETAPE_MESSAGE_CRENEAU: _etape_message_creneau,
     st.ETAPE_DERNIER_APPEL: _etape_dernier_appel,
     st.SUITE_SI_PLUS_RIEN_OUVERT: _suite_si_plus_rien_ouvert,
-    st.PROCHAINE_RELANCE_A_LA_DATE: _prochaine_relance_a_la_date,
     st.ETIQUETTE_DECISION: _etiquette_decision,
     st.NE_PLUS_CONTACTER: _ne_plus_contacter,
     st.VEILLE_MEME_TOUCHE: _veille_meme_touche,

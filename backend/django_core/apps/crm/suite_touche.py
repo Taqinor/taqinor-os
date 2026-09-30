@@ -109,7 +109,10 @@ ETAPE_DERNIER_APPEL = 'etape_dernier_appel'
 # étape de visite sans réponse ne parque JAMAIS le lead au Froid, le filet
 # prend le relais (``SUITE_SI_PLUS_RIEN_OUVERT``).
 SUITE_SI_PLUS_RIEN_OUVERT = 'suite_si_plus_rien_ouvert'
-PROCHAINE_RELANCE_A_LA_DATE = 'prochaine_relance_a_la_date'
+# SUIVI E3 (30/09/2026) — `prochaine_relance_a_la_date` (« À rappeler le… »
+# sur une étape de visite déplaçait la prochaine relance ouverte, pas elle)
+# n'existe plus : l'étape de visite est déplacée elle-même
+# (``etape_deplacee_a_la_date``).
 ETIQUETTE_DECISION = 'etiquette_decision'
 NE_PLUS_CONTACTER = 'ne_plus_contacter'
 VEILLE_MEME_TOUCHE = 'veille_meme_touche'
@@ -141,7 +144,7 @@ CODES = frozenset({
     ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI, ETAPE_DECIDER_SUITE,
     ETAPE_DEPLACEE_A_LA_DATE, SUIVI_PROPOSITION_DEMARRE,
     ETAPE_PLANIFIER_VISITE, ETAPE_MESSAGE_CRENEAU, ETAPE_DERNIER_APPEL,
-    SUITE_SI_PLUS_RIEN_OUVERT, PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
+    SUITE_SI_PLUS_RIEN_OUVERT, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
@@ -575,8 +578,10 @@ def _codes_a_cote_du_plan(issue, *, visite):
     if issue == OUTCOME_VISITE_ACCEPTEE:
         return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
-        return ([PROCHAINE_RELANCE_A_LA_DATE] if visite
-                else [ETAPE_DEPLACEE_A_LA_DATE])
+        # SUIVI E3 (30/09/2026) — « À rappeler le… » sur une étape de VISITE
+        # la DÉPLACE à la date, comme une étape de filet (CAD3) : la visite à
+        # planifier ou le débrief ne disparaît plus au profit du filet.
+        return [ETAPE_DEPLACEE_A_LA_DATE]
     # « pas de réponse », « Fait » sans issue ou saut (CAD47) : décision
     # fondateur du 24/09/2026, une étape de visite n'ÉPUISE plus la cadence
     # après-devis (plus de clôture MRY11 au Froid). Si rien d'autre n'est
