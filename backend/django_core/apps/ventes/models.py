@@ -442,7 +442,7 @@ class Devis(models.Model):
         # devis « N villas identiques » (décision fondateur 30/09/2026) : le
         # kWc qui s'y apparie est celui du PROJET (kWc d'une villa × N), sinon
         # le prix au kWc serait gonflé ×N.
-        from .selectors import puissance_kwc_projet
+        from .multivilla import puissance_kwc_projet
         try:
             kwc_val = puissance_kwc_projet(self) or Decimal('0')
         except (InvalidOperation, TypeError, ValueError):

@@ -173,3 +173,10 @@ backend/django_core/apps/ventes/domain/recouvrement.py::_s2::aae10985181f | AUD1
 # --- backend/django_core/apps/ventes/domain/resynchronisation.py
 backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#1 | round(total_panneaux * watt / 1000.0, 3) -- derivation de PUISSANCE kWc = panneaux x Wc, pas un montant.
 backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::9fb8f2d7d278 | ERR120 (30/09/2026) — total affiché arrondi au dirham, MÊME règle que fmt ; rendu PDF seul (règle #4)
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::24abb0b7c93f | ERR120 — case Acompte (k MAD) du Devis Final, affichage ; ex-page3 déplacé dans l'aide pure
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::b764d8f56ead | ERR120 — case Solde (k MAD) du Devis Final, affichage ; ex-page3 déplacé dans l'aide pure
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::902d129345e7 | ERR120 — pourcentage affiché de l'acompte (somme 100), affichage
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::ef3d91e1582a | ERR120 — pourcentage affiché du solde, affichage
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::0ebbb3916cfe | ERR120 — pourcentage affiché du solde (chemin deux cases), affichage
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::4607e45338ff | ERR-QAC-MULTIVILLA-TOTAL-XN (30/09/2026) — total ×N des cases de paiement (Devis Final), affichage ; même arrondi que le total imprimé

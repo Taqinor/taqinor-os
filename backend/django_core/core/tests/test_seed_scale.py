@@ -59,7 +59,8 @@ class SeedScaleCreationTests(TestCase):
 class SeedScaleMouvementTests(TestCase):
     def test_seeds_mouvement_stock(self):
         """ERR119 — ``--mouvements 1`` ne doit plus lever LookupError."""
-        from apps.stock.models import MouvementStock
+        from django.apps import apps as django_apps
+        MouvementStock = django_apps.get_model('stock', 'MouvementStock')
         call_command('seed_scale', '--companies', '1', '--users', '0',
                      '--leads', '0', '--devis', '0', '--lignes', '0',
                      '--mouvements', '1', stdout=StringIO())

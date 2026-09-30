@@ -17,6 +17,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { paybackMoteurHoraire } from '../../features/ventes/solar'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -60,11 +61,9 @@ const ONDULEUR = {
 const TOTAL_SANS = 21360
 const ONDULEUR_TTC = 10800
 
-const ANNUEL = {
-  production_kwh: 6813, consommation_kwh: 6120,
-  taux_autoconso_sans: 0.45, taux_autoconso_avec: 0.45,
-  couverture_sans: 0.5, couverture_avec: 0.5,
-}
+// Contrat committé (PACT10) : l'aperçu horaire servi par le serveur.
+const CONTRAT = exempleContrat('ventes', 'etude_horaire')
+const ANNUEL = CONTRAT.etude.annuel
 
 function devisRouvert() {
   return {
@@ -143,13 +142,11 @@ beforeEach(() => {
 function repondreAvecEconomie(eco) {
   ventesApi.postEtudeHorairePreview.mockResolvedValue({
     data: {
+      ...CONTRAT,
       etude: {
+        ...CONTRAT.etude,
         annuel: { ...ANNUEL, economie_sans_mad: eco, economie_avec_mad: eco },
-        mois: [],
       },
-      dimensionnement: null,
-      consommation: { source: 'factures_mensuelles_reelles' },
-      avertissements: [],
     },
   })
 }
