@@ -30,9 +30,12 @@ Deux formes, un même lecteur (``extract_figures``) :
   l'élément qui imprime le nombre, avec le MÊME texte formaté en
   ``data-figure-value`` (``ancre()``). Raison : des dizaines de tests épinglent
   le HTML exact des gabarits (``<div class="c1-kpi-v">5,68``) ; une ancre
-  voisine ne modifie AUCUNE chaîne existante, et ``hidden`` la retire du rendu
-  (WeasyPrint applique ``[hidden]{display:none}``) — zéro changement visuel,
+  voisine ne modifie AUCUNE chaîne existante, et ``style="display:none"``
+  (+ ``hidden``) la retire du rendu — le style EN LIGNE l'emporte sur toute
+  feuille des gabarits, aucune boîte n'est créée : zéro changement visuel,
   zéro changement de pagination (règle #4 : le moteur ne fait que RENDRE).
+  Aucun gabarit n'utilise de sélecteur d'adjacence (``+``, ``~``) ni de
+  ``:nth-child`` sur les parents où les ancres sont posées (vérifié).
   Le donut de couverture est une IMAGE : l'ancre est la seule façon de dire
   son chiffre.
 
@@ -180,10 +183,14 @@ def ancre(cle: str, texte, option: str | None = None, taux=None) -> str:
     ``texte`` est la chaîne DÉJÀ formatée que le gabarit imprime (avec ou sans
     unité : seul le premier nombre est lu). Ne lève jamais : un rendu client
     ne doit pas casser pour un marqueur — la clé inconnue est refusée par le
-    test de garde, pas en production.
+    test de garde, pas en production. Un texte SANS nombre (« — ») n'est pas
+    un chiffre : aucune ancre.
     """
     texte = _html.unescape(str(texte))
-    return f"<span{attrs(cle, option, taux, texte)} hidden></span>"
+    if normaliser(texte)[0] is None:
+        return ""
+    return (f"<span{attrs(cle, option, taux, texte)} "
+            f"style=\"display:none\" hidden></span>")
 
 
 # ── Lecture des nombres à la française ───────────────────────────────────────
@@ -459,6 +466,12 @@ def option_economique(quote: dict) -> str:
 
 
 def _divergent(quote: dict, cle: str) -> bool:
+    """Miroir des gardes de ``cover.build`` : deux valeurs PAR OPTION ne sont
+    imprimées que sur un document à deux options dont les champs PV divergent
+    (``panneaux_divergents``) et dont les deux valeurs existent et diffèrent."""
+    if not (quote.get("panneaux_divergents")
+            and quote.get("deux_options", True)):
+        return False
     s, a = _num(quote.get(f"{cle}_sans")), _num(quote.get(f"{cle}_avec"))
     return s is not None and a is not None and s > 0 and a > 0 and s != a
 
