@@ -238,6 +238,12 @@ test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entré
   assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
 })
 
+test('QJR528 — `part_diurne_pct` (industriel) est écrite, déclarée et relue', () => {
+  assert.ok(CLES_IC.has('part_diurne_pct'), 'l\'écran n\'écrit pas part_diurne_pct')
+  assert.ok(CLES_SCHEMA.has('part_diurne_pct'), 'le schéma ne déclare pas part_diurne_pct')
+  assert.ok(CLES_RELUES.has('part_diurne_pct'), 'le mappeur ne relit pas part_diurne_pct')
+})
+
 test('QJR526 — les 12 factures réelles du devis rouvert sont reposées à l\'écran (setMonthly), pas les défauts', () => {
   const bloc = blocMappeur()
   assert.ok(CLES_RELUES.has('factures_mensuelles_reelles'))

@@ -2032,6 +2032,12 @@ export default function DevisGenerator({
       if (e.tension_raccordement === 'mt') {
         dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
       }
+      // QJR528 — la part diurne INDUSTRIELLE enregistrée, relue APRÈS
+      // `onInstTypeChange` (qui a reposé le défaut du marché plus haut).
+      if (d.mode_installation === 'industriel' && e.part_diurne_pct != null
+          && Number.isFinite(Number(e.part_diurne_pct))) {
+        setDayUsage(String(Number(e.part_diurne_pct)))
+      }
       if (e.repartition_mt && typeof e.repartition_mt === 'object') {
         setRepartitionMt({
           pointe: e.repartition_mt.pointe != null ? String(e.repartition_mt.pointe) : '',
@@ -3335,6 +3341,11 @@ export default function DevisGenerator({
         payback: nombre(etude.payback),
         injection_kwh_an: nombre(etude.injection_kwh_an),
         injection_dh_an: nombre(etude.injection_dh_an),
+        // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
+        // relue par `?edit=`, sinon la réouverture remettait le défaut et
+        // réécrivait taux / payback. Commercial : dérivée de la catégorie
+        // (`commercialDayShare`), rien à écrire.
+        part_diurne_pct: modeInstallation === 'industriel' ? nombre(dayUsage) : undefined,
         // QXMT — raccordement du site + répartition horaire : le mappeur
         // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
         // devis MT rouvert repartait silencieusement au barème BT. On stocke
