@@ -655,6 +655,37 @@ def cloner_lignes(source, cible, *, prix_unitaire=None, remplacements=None):
 # joué.
 
 
+def prix_negocie(ligne, *, prix_reference):
+    """QJR555 — LA définition unique du « prix négocié » d'une ligne.
+
+    Une ligne est négociée (donc jamais recalée ni supprimée en silence) si :
+
+    * ``prix_manuel`` est posé (D12 — le prix tapé est souverain, même quand
+      il coïncide avec le prix catalogue) ;
+    * OU elle porte une remise de ligne non nulle ;
+    * OU il n'y a pas de prix de référence (pas de produit, pas de prix) —
+      on ne peut rien prouver, le doute profite à la ligne ;
+    * OU son prix unitaire diffère du prix de référence.
+
+    ``prix_reference`` est le prix catalogue contre lequel on juge : le prix
+    catalogue COURANT pour la composition, l'ANCIEN prix pour le recalage
+    catalogue (``catalogue_events``). Fonction pure : n'écrit rien.
+    """
+    if getattr(ligne, 'prix_manuel', False):
+        return True
+    if prix_reference is None:
+        return True
+    try:
+        if Decimal(str(getattr(ligne, 'remise', None) or 0)) != Decimal('0'):
+            return True
+        actuel = getattr(ligne, 'prix_unitaire', None)
+        if actuel is None:
+            return True
+        return Decimal(str(actuel)) != Decimal(str(prix_reference))
+    except (TypeError, ValueError, ArithmeticError):
+        return True
+
+
 def avertissement_forfait_verrouille(designation, nb_panneaux, attendu):
     """Le message FR d'un forfait au barème que ``prix_manuel`` protège."""
     return ('« %s » : prix saisi à la main — il n\'a PAS été re-tarifé sur '
