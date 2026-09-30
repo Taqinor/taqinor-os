@@ -109,6 +109,15 @@ class ToucheDejaTraiteeTests(_Base):
         etape.refresh_from_db()
         self.assertEqual(etape.due_at, avant)
 
+    def test_une_reponse_sur_une_touche_faite_est_refusee_sous_etape(self):
+        """« Déjà traitée » PRIME aussi sur une RÉPONSE de touche (corps
+        ``reponse``) : même champ ``etape``, et rien n'est écrit."""
+        etape = self._touche_faite()
+        self._refus(self._post(etape, 'fait',
+                               {'reponse': 'ne_plus_contacter'}))
+        self.lead.refresh_from_db()
+        self.assertFalse(self.lead.ne_plus_contacter)
+
     def test_une_touche_annulee_par_le_moteur_est_refusee_aussi(self):
         etape = self._touche()
         etape.statut = RelanceEtape.Statut.ANNULEE

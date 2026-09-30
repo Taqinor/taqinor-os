@@ -3835,6 +3835,12 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
             repondre_visite_abandonnee, reponse_touche)
 
         etape = self.get_object()
+        if etape.statut != RelanceEtape.Statut.A_FAIRE:
+            # SUIVI E8 — « déjà traitée » PRIME sur tout autre refus, sous le
+            # même champ que pour « Fait » / « Sauter » / « Reporter ».
+            return Response(
+                {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
+                status=status.HTTP_400_BAD_REQUEST)
         refus = refus_reponse_touche(etape, reponse)
         if refus:
             return Response({'erreurs': {'reponse': refus}},
