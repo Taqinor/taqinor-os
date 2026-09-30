@@ -25,6 +25,8 @@ centime, chaîne d'états devis → BC → facture, référence unique…), jama
 | `.mcp.json` | Déclare les deux serveurs navigateur : **Playwright MCP** (`@playwright/mcp@0.0.82`) et **Chrome DevTools MCP** (`chrome-devtools-mcp@1.10.1`), versions épinglées, licence Apache-2.0, gratuits. L'entrée `serena` existante est inchangée. |
 | `scripts/setup-nightly-qa.ps1`, `scripts/nightly-qa.ps1`, `docs/nightly-qa.md` | La nuit locale à 23:00 (QAH11) : préparation de la machine et lanceur quotidien. |
 | `docs/qa-explorer/captures/<date>/` | Captures d'écran des constats déposés (JPEG, une par constat). |
+| `manage.py export_anonymise` / `import_anonymise` (`authentication/anonymise.py`) | Jeu de données réaliste anonymisé (`dataset: anon`) — voir « Données réalistes anonymisées ». |
+| `manage.py audit_coherence` | Oracle dur n°10 : contrôles de cohérence déterministes des documents, lancés par l'orchestrateur après les missions ventes et crm (ignoré tant que la commande n'existe pas). |
 
 ## Comment une passe se déroule
 
@@ -79,6 +81,84 @@ l'extérieur, il couvre le côté administration et signale le côté client com
 défini dans ce fichier, le même que `ADMIN` dans `frontend/e2e/helpers.js`). La
 seconde société démo (`taqinor-demo-full`, `seed_demo_company`) sert de témoin
 d'isolation : ses noms de clients ne doivent JAMAIS apparaître sous `demo_admin`.
+
+## Données réalistes anonymisées (`dataset: anon`)
+
+`seed_demo` ne contient que 5 devis nus et 3 leads réduits à un nom : les branches
+où vivent les vrais bugs (factures d'électricité, distributeurs, études, options,
+pompage, C&I) n'y sont jamais exercées. On peut donc donner à l'explorateur une
+**copie anonymisée de la prod** : identités brouillées ; montants, profils
+énergie, études, lignes, statuts gardés. Tant qu'aucun instantané n'existe,
+`dataset: demo` (le défaut) ne change rien.
+
+**1. Produire l'instantané sur le serveur (lecture seule).** La commande lit dans
+une transaction annulée (déclarée `READ ONLY` sous PostgreSQL) et n'écrit rien en
+base ; elle refuse d'écrire le fichier dans le code source.
+
+```bash
+ssh -i ~/.ssh/taqinor_hetzner root@178.105.192.116
+cd /opt/taqinor-os
+# slug de la société (une fois) :
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec -T django_core \
+  python manage.py shell -c "from authentication.models import Company; print(list(Company.objects.values_list('slug', flat=True)))"
+mkdir -p /root/taqinor-anon && chmod 700 /root/taqinor-anon
+C="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+$C exec -T django_core python manage.py export_anonymise --company <slug> --out /tmp/latest.anon.json.gz
+# options : --since 2026-01-01 (documents créés depuis) --limit 300 (N plus récents par type)
+$C cp django_core:/tmp/latest.anon.json.gz /root/taqinor-anon/latest.anon.json.gz
+$C exec -T django_core rm -f /tmp/latest.anon.json.gz
+```
+
+(`/tmp` du conteneur : hors du code monté dans `/app`, que la commande refuse.
+`--out -` écrit sur stdout, mais un message de journalisation au démarrage
+corromprait le fichier — préférer `/tmp` + `cp`.)
+
+**2. Le rapatrier puis l'effacer du serveur** (depuis la racine du dépôt, en
+local) :
+
+```bash
+mkdir -p var/anon
+scp -i ~/.ssh/taqinor_hetzner root@178.105.192.116:/root/taqinor-anon/latest.anon.json.gz var/anon/latest.anon.json.gz
+ssh -i ~/.ssh/taqinor_hetzner root@178.105.192.116 rm -f /root/taqinor-anon/latest.anon.json.gz
+```
+
+**3. L'importer** — automatique : avec `dataset: anon` dans
+`docs/qa-explorer.config.yml`, la passe importe l'instantané s'il est plus récent
+que le dernier import. À la main (stack locale, `DJANGO_DEBUG=True`) :
+
+```bash
+docker compose cp var/anon/latest.anon.json.gz django_core:/tmp/latest.anon.json.gz
+docker compose exec -T django_core python manage.py import_anonymise --in /tmp/latest.anon.json.gz
+docker compose exec -T django_core rm -f /tmp/latest.anon.json.gz
+```
+
+`import_anonymise` refuse hors `DEBUG`, ne touche **que** la société
+`taqinor-anon` (vidée puis rechargée à chaque import — idempotent), remappe toutes
+les clés, et crée le compte `anon_admin` (mot de passe dans le fichier de la
+commande, local seulement). Il insère les lignes sans `save()` ni signal : aucune
+notification, aucun e-mail, aucun webhook, aucun chatter, aucun `devis_accepted`.
+
+**Ce qui est gardé / brouillé / supprimé** (politique complète :
+`backend/django_core/authentication/anonymise.py`) :
+
+| Gardé tel quel | Brouillé (faux stable par valeur) | Supprimé |
+| --- | --- | --- |
+| nombres (montants, `prix_achat`, kWc, factures hiver/été, conso…), booléens, dates, statuts et toutes les énumérations (distributeur, type d'installation…), références de documents, désignations de lignes, fiche catalogue (nom, marque, description, garantie, `courbe_pompe`), ville, tranche ONEE | noms, prénoms, sociétés, e-mails, téléphones/WhatsApp, adresses, CIN/ICE/RC/IF/RIB, notes et tout texte libre ; dans les JSON (études, questionnaires) : clés d'identité, e-mails, téléphones, textes longs | fichiers, photos, signatures, jetons (portail, liens publics), UUID, chemins PDF, coordonnées précises du toit ; GPS arrondi à 0,1° (~11 km) ; tous les utilisateurs remplacés par `anon_admin` ; chatter non exporté |
+
+**Fail-closed** : un champ texte que personne n'a classé (ajouté demain) est
+brouillé par défaut, un type de champ inconnu est vidé (test
+`authentication/tests/test_anonymise.py`). Le brouillage est déterministe au sein
+d'un export (même nom → même faux : le dédoublonnage survit) avec un sel aléatoire
+jamais écrit — deux exports ne se recoupent pas.
+
+**Confidentialité — non négociable.** L'instantané contient de vrais montants et
+de vrais prix d'achat : il ne vit que dans `var/anon/` (ignoré par git, comme tout
+`*.anon.json.gz` ; la garde CI `scripts/check_no_anon_snapshot.py` refuse un
+`git add -f`), n'est **jamais commité, jamais envoyé ailleurs** (ni e-mail, ni
+cloud, ni ticket), et on **supprime les anciens instantanés** (on n'en garde qu'un,
+`latest`). En jeu `anon`, la passe ne commite aucune capture d'écran et ses lignes
+`ERR-QAH-*` ne citent aucun montant absolu, seulement la règle, la référence et
+l'écart.
 
 ## Les serveurs navigateur (`.mcp.json`)
 
