@@ -19,11 +19,12 @@ from datetime import timedelta
 from decimal import Decimal
 from io import StringIO
 from pathlib import Path
+from types import SimpleNamespace
 
 from django.conf import settings
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import models
+from django.db import connection, models
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -392,3 +393,52 @@ class AnonymiseUniqueIdentifiersTest(TestCase):
         meta = [ld for ld in leads if ld.external_system == 'meta']
         self.assertEqual(len(meta), 1)
         self.assertEqual(meta[0].external_id, odoo[0].external_id)
+
+
+@override_settings(DEBUG=True)
+class AnonymiseSkipReportTest(TestCase):
+    """L'import rapportait ``ignorées crm.Lead: IntegrityError=80`` : impossible de
+    savoir POURQUOI. Il nomme désormais la contrainte de base (PostgreSQL :
+    ``diag.constraint_name``), sans jamais imprimer une valeur."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix='anon-skip-'))
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    @staticmethod
+    def _payload():
+        """Deux leads Odoo au MÊME identifiant réel : le second viole l'index
+        unique ``uniq_lead_external_ref``."""
+        def lead(pk, nom):
+            return {'pk': pk, 'f': {
+                'nom': nom, 'source': 'os_native',
+                'external_system': 'odoo', 'external_id': '777'}}
+        return {'format': anonymise.FORMAT, 'models': [
+            {'label': 'crm.Lead',
+             'rows': [lead(1, 'Premier'), lead(2, 'Second')]}]}
+
+    @staticmethod
+    def _expected_key():
+        # Le nom de contrainte vient de PostgreSQL ; une autre base ne le donne
+        # pas : repli sur la classe de l'exception.
+        if connection.vendor == 'postgresql':
+            return 'IntegrityError[uniq_lead_external_ref]'
+        return 'IntegrityError'
+
+    def test_skipped_rows_are_counted_per_constraint_name(self):
+        company = Company.objects.create(slug='anon-skip-report', nom='Rapport')
+        created, skipped = anonymise.import_payload(
+            self._payload(), company, SimpleNamespace(pk=None))
+        self.assertEqual(created, {'crm.Lead': 1})
+        self.assertEqual(skipped, {'crm.Lead': {self._expected_key(): 1}})
+
+    def test_command_prints_the_constraint_name_and_never_a_value(self):
+        snapshot = self.tmp / 'skip.anon.json.gz'
+        anonymise.write_snapshot(self._payload(), str(snapshot), None)
+        out = StringIO()
+        call_command('qa_import_anonymise', src=str(snapshot),
+                     company_slug='taqinor-anon-skip', verbosity=1, stdout=out)
+        text = out.getvalue()
+        self.assertIn('ignorées crm.Lead', text)
+        self.assertIn(f'{self._expected_key()}=1', text)
+        self.assertNotIn('777', text)  # la valeur du doublon n'est jamais dite

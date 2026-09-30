@@ -12,11 +12,14 @@ PostgreSQL) :
 * le format est gardé tant que l'espace n'est pas rempli à plus de moitié, puis
   on élargit d'un caractère ; un faux n'est jamais égal à sa valeur source ;
 * un champ trop court pour l'unicité ne fait jamais planter l'export : le repli
-  est COMPTÉ (jamais une valeur).
+  est COMPTÉ (jamais une valeur) ;
+* une ligne que la base refuse à l'import est rapportée par NOM DE CONTRAINTE
+  (``skip_reason``), jamais par sa valeur.
 
 Les tests de base (aller-retour de ~400 leads Odoo, rapport des lignes
 ignorées, réglages tarifaires) vivent dans ``test_anonymise.py``.
 """
+from django.db import DataError, IntegrityError
 from django.test import SimpleTestCase
 
 from authentication import anonymise
@@ -160,3 +163,67 @@ class ScramblerInjectiveTest(SimpleTestCase):
                     for i in range(100, 600))
         # 500 identifiants sur 10³ faux : hasard seul, jamais une correspondance.
         self.assertLess(agree, 25)
+
+
+class _Diag:
+    """Ce que psycopg expose dans ``exc.diag`` (schéma, jamais une valeur)."""
+
+    def __init__(self, constraint_name=None, column_name=None):
+        self.constraint_name = constraint_name
+        self.column_name = column_name
+
+
+class _DriverError(Exception):
+    """Le pilote (psycopg2/psycopg) : ``diag`` + un message qui CITE la valeur."""
+
+    def __init__(self, message, diag):
+        super().__init__(message)
+        self.diag = diag
+
+
+def _django_error(exc_class, cause):
+    """Une exception Django enchaînée comme le fait ``DatabaseErrorWrapper``."""
+    try:
+        raise exc_class('détail privé') from cause
+    except exc_class as exc:
+        return exc
+
+
+class SkipReasonTest(SimpleTestCase):
+    """Le rapport d'import ne disait que ``IntegrityError=80`` : on ne savait pas
+    POURQUOI 80 leads sautaient. Il nomme désormais la contrainte de base."""
+
+    def test_constraint_name_is_reported_when_the_driver_gives_it(self):
+        cause = _DriverError('Key (external_id)=(777) already exists.',
+                             _Diag(constraint_name='uniq_lead_external_ref'))
+        key = anonymise.skip_reason(_django_error(IntegrityError, cause))
+        self.assertEqual(key, 'IntegrityError[uniq_lead_external_ref]')
+        # Le message du pilote cite la valeur : il n'est JAMAIS lu.
+        self.assertNotIn('777', key)
+        self.assertNotIn('already exists', key)
+
+    def test_rows_are_grouped_per_constraint_not_per_class(self):
+        unique = _DriverError('x', _Diag(constraint_name='crx24_client_email_unique_ci'))
+        other = _DriverError('x', _Diag(constraint_name='uniq_lead_external_ref'))
+        keys = {anonymise.skip_reason(_django_error(IntegrityError, c))
+                for c in (unique, other, unique)}
+        self.assertEqual(keys, {'IntegrityError[crx24_client_email_unique_ci]',
+                                'IntegrityError[uniq_lead_external_ref]'})
+
+    def test_not_null_violation_names_its_column(self):
+        cause = _DriverError('null value in column "phone"',
+                             _Diag(column_name='phone'))
+        self.assertEqual(
+            anonymise.skip_reason(_django_error(IntegrityError, cause)),
+            'IntegrityError[colonne phone]')
+
+    def test_falls_back_to_the_class_name_without_driver_information(self):
+        bare = _DriverError('too long', _Diag())
+        self.assertEqual(anonymise.skip_reason(_django_error(DataError, bare)),
+                         'DataError')
+        self.assertEqual(anonymise.skip_reason(IntegrityError('x')),
+                         'IntegrityError')  # aucune exception d'origine
+        self.assertEqual(anonymise.skip_reason(ValueError('valeur privée')),
+                         'ValueError')
+        no_diag = _django_error(IntegrityError, RuntimeError('autre pilote'))
+        self.assertEqual(anonymise.skip_reason(no_diag), 'IntegrityError')

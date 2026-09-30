@@ -36,7 +36,8 @@ identifiants Odoo de 3 chiffres). Voir ``Scrambler``.
 Les modèles de domaine sont atteints par ``django.apps.apps.get_model`` (aucun
 import statique d'un modèle de domaine : ``authentication`` reste une app de
 fondation, import-linter vert). Aucune valeur réelle n'est JAMAIS imprimée ni
-journalisée — seulement des comptes et des noms de classes d'exception.
+journalisée — seulement des comptes, des noms de classes d'exception et des
+noms de contraintes de base (du schéma, pas des données ; ``skip_reason``).
 """
 from __future__ import annotations
 
@@ -828,6 +829,27 @@ def _fix_unique(model, fields, kwargs):
                 f'A{secrets.token_hex(3)}-{value}')[:f.max_length or 255]
 
 
+def skip_reason(exc):
+    """Clé de regroupement d'une ligne IGNORÉE à l'import — jamais son contenu.
+
+    PostgreSQL (psycopg2 comme psycopg) nomme la CONTRAINTE violée dans
+    ``exc.__cause__.diag.constraint_name`` : un nom de contrainte est du schéma,
+    pas une donnée personnelle — alors que le message (« Key (external_id)=(123)
+    already exists ») cite, lui, la valeur : il n'est donc JAMAIS lu. Une
+    violation NOT NULL n'a pas de contrainte nommée mais nomme sa COLONNE. Sans
+    pilote qui les donne (autre base, ``ValidationError``…) : la classe de
+    l'exception, comme avant."""
+    name = type(exc).__name__
+    diag = getattr(getattr(exc, '__cause__', None), 'diag', None)
+    constraint = getattr(diag, 'constraint_name', None)
+    if constraint:
+        return f'{name}[{constraint}]'
+    column = getattr(diag, 'column_name', None)
+    if column:
+        return f'{name}[colonne {column}]'
+    return name
+
+
 def import_payload(payload, company, admin):
     """Recrée le graphe dans ``company``. Retourne (créés, ignorés).
 
@@ -836,8 +858,9 @@ def import_payload(payload, company, admin):
     événement de domaine comme ``devis_accepted``, qui ne sont émis que par des
     appels explicites des vues/services), les dates ``auto_now*`` sont
     rétablies par ``QuerySet.update()`` (sans signal non plus). Une ligne
-    invalide est ignorée DANS un savepoint et comptée par classe d'exception —
-    jamais son contenu imprimé."""
+    invalide est ignorée DANS un savepoint et comptée par NOM DE CONTRAINTE de
+    base (``skip_reason`` ; repli : classe d'exception) — jamais son contenu
+    imprimé."""
     from django.core.exceptions import ValidationError
     from django.db import DataError, IntegrityError, transaction
 
@@ -903,7 +926,7 @@ def import_payload(payload, company, admin):
                         model._base_manager.filter(pk=obj.pk).update(**autos)
             except (IntegrityError, DataError, ValidationError, ValueError,
                     TypeError) as exc:
-                _skip(label, type(exc).__name__)
+                _skip(label, skip_reason(exc))
                 continue
             idmap[label][row['pk']] = obj.pk
             created[label] = created.get(label, 0) + 1

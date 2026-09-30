@@ -15,6 +15,10 @@ AUCUNE notification pendant l'import : les lignes sont insérées par
 ``notify()``, ni e-mail, ni webhook, ni événement de domaine ``devis_accepted``,
 émis uniquement par les vues/services). Détail : ``authentication/anonymise.py``.
 
+Une ligne que la base refuse est IGNORÉE (savepoint) et comptée par NOM DE
+CONTRAINTE (ex. ``IntegrityError[uniq_lead_external_ref]=80`` ; repli : la classe
+de l'exception), jamais par sa valeur — un nom de contrainte est du schéma.
+
 Run :
   docker compose cp var/anon/latest.anon.json.gz django_core:/tmp/latest.anon.json.gz
   docker compose exec -T django_core python manage.py qa_import_anonymise --in /tmp/latest.anon.json.gz
@@ -79,7 +83,11 @@ class Command(BaseCommand):
             for label, n in created.items():
                 self.stdout.write(f'  {label}: {n}')
             for label, reasons in skipped.items():
-                detail = ', '.join(f'{k}={v}' for k, v in reasons.items())
+                # Par NOM DE CONTRAINTE de base (repli : classe d'exception),
+                # les plus fréquentes d'abord — jamais une valeur.
+                detail = ', '.join(
+                    f'{k}={v}' for k, v in sorted(
+                        reasons.items(), key=lambda kv: (-kv[1], kv[0])))
                 self.stdout.write(self.style.WARNING(
                     f'  ignorées {label}: {detail}'))
             self.stdout.write(f'Login : {ANON_USERNAME} (mot de passe dans '
