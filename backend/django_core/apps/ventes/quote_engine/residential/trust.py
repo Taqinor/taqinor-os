@@ -316,14 +316,16 @@ def build(ctx) -> str:
         # ambigu à 22 000 MAD d'écart). Bandeau pleine largeur sous l'en-tête,
         # pastille « recommandé » (même langage visuel que la page 1).
         _ts, _ta = d.get("total_sans"), d.get("total_avec")
+        # QJR614 — prix TTC des options au centime.
+        fmt_mad = ctx.get("fmt_mad") or theme.fmt
         accord_opt_html = ("Offre valable jusqu'au " + _valid_until
                            if _valid_until else "")
         accord_pick_html = (
             '<div class="p3-accord-pick">Cochez votre option :'
             f'<span class="p3-box"></span> Sans batterie — '
-            f'<b>{theme.fmt(_ts)} MAD TTC</b>'
+            f'<b>{fmt_mad(_ts)} MAD TTC</b>'
             f'<span class="p3-box"></span> {_libelle_avec} — '
-            f'<b>{theme.fmt(_ta)} MAD TTC</b>'
+            f'<b>{fmt_mad(_ta)} MAD TTC</b>'
             '<span class="p3-reco-mini">recommandé</span></div>')
     else:
         accord_opt_html = (_libelle_avec if _avec_ok else "Sans batterie")

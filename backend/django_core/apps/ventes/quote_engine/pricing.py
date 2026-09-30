@@ -597,47 +597,6 @@ def kwh_from_bill(bill_mad, utility=None, tranches_override=None, *,
             "estimation": False, "label": "approximatif" if approx else ""}
 
 
-def annual_bill_from_kwh(monthly_kwh, utility=None, tranches_override=None) -> dict:
-    """QF1 — Facture annuelle TTC (MAD) d'une consommation mensuelle, valorisée
-    au barème du distributeur (ONEE sélectif, Lydec/Redal progressifs — voir
-    ``_monthly_bill_from_kwh``). Fonction pure.
-
-    Returns dict:
-        bill_mensuel  float — facture mensuelle TTC (MAD).
-        bill_annuel   float — facture annuelle TTC (MAD) = mensuelle × 12.
-        approximatif  bool  — QJR158 (e) : False sur tout chemin qui a une
-                              table (plus aucune table estimée depuis Q7) ;
-                              True sur le seul repli SANS table, où il
-                              coïncide avec ``estimation``.
-        estimation    bool  — True quand aucune table n'est disponible (repli
-                              plat) ou consommation vide : chiffre étiqueté
-                              « estimation », jamais présenté comme précis.
-        label         str   — même convention que ``kwh_from_bill``.
-    """
-    try:
-        kwh = float(monthly_kwh or 0)
-    except (TypeError, ValueError):
-        kwh = 0.0
-    if kwh <= 0:
-        return {"bill_mensuel": 0.0, "bill_annuel": 0.0,
-                "approximatif": False, "estimation": True,
-                "label": ESTIMATION_LABEL}
-
-    table, approx = _resolve_tranches(utility, tranches_override)
-    if table is None:
-        mensuel = kwh * _FALLBACK_KWH_PRICE
-        return {"bill_mensuel": round(mensuel, 2),
-                "bill_annuel": round(mensuel * 12, 2),
-                "approximatif": True, "estimation": True,
-                "label": ESTIMATION_LABEL}
-
-    mensuel = _monthly_bill_from_kwh(kwh, table)
-    return {"bill_mensuel": round(mensuel, 2),
-            "bill_annuel": round(mensuel * 12, 2),
-            "approximatif": approx, "estimation": False,
-            "label": "approximatif" if approx else ""}
-
-
 def _weighted_kwh_price(kwh_mensuel: float, tranches: list) -> float:
     """Prix EFFECTIF du kWh (MAD/kWh) pour une consommation mensuelle donnée :
     la facture du mois divisée par ses kWh — une seule source de vérité, celle

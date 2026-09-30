@@ -8,6 +8,7 @@ from pathlib import Path
 from . import theme
 from . import charts as charts_mod
 from . import cover, options, trust
+from .. import montants
 
 # QRES62 — joints élastiques : marqueurs inertes posés par les gabarits de
 # page ; le second passage de rendu les remplace par des espaceurs
@@ -26,6 +27,10 @@ def build_ctx(data: dict, compact_p3: bool = False) -> dict:
         "d": data,
         "C": theme.C,
         "fmt": theme.fmt,
+        # QJR614 — montants dérivés du prix (P.U., total de ligne, chaîne de
+        # totaux, prix TTC) au CENTIME, ROUND_HALF_UP ; ``fmt`` (entier)
+        # reste pour kWh, CO2, panneaux, économies estimées.
+        "fmt_mad": montants.fmt_centimes,
         "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
                   "sans": theme.FONT_SANS},
         "logo_dark": theme.logo_dark_b64(),

@@ -1,8 +1,9 @@
 """QF1 — Reverse-tranche bill↔kWh helpers (quote_engine/pricing.py).
 
 Pure-function tests (no DB): ``kwh_from_bill`` inverts the progressive
-ONEE/Lydec/Redal tranche schedule and ``annual_bill_from_kwh`` values a
-consumption per tranche. Both round-trip within tolerance on all three
+ONEE/Lydec/Redal tranche schedule and ``_monthly_bill_from_kwh`` values a
+consumption per tranche (QJR629 — ``annual_bill_from_kwh``, only ever called by
+tests, was removed; its properties now pin ``_monthly_bill_from_kwh``). Both round-trip within tolerance on all three
 utilities; the private-distributor tables (Lydec/Redal) carry the
 « approximatif » flag; no-utility / zero-bill degrades to a labelled estimate.
 
@@ -16,8 +17,8 @@ from apps.ventes.quote_engine.pricing import (
     ESTIMATION_LABEL,
     ONEE_TRANCHES,
     _FALLBACK_KWH_PRICE,
+    _monthly_bill_from_kwh,
     _weighted_kwh_price,
-    annual_bill_from_kwh,
     kwh_from_bill,
 )
 
@@ -49,8 +50,9 @@ class TestKwhFromBill(SimpleTestCase):
         ONEE, Lydec and Redal, across all tranche regimes."""
         for utility in ("onee", "lydec", "redal"):
             for kwh in (30, 100, 180, 350, 700):
-                bill = annual_bill_from_kwh(kwh, utility=utility)
-                back = kwh_from_bill(bill["bill_mensuel"], utility=utility)
+                # Q7 — les trois distributeurs lisent la grille nationale.
+                bill = _monthly_bill_from_kwh(kwh, ONEE_TRANCHES)
+                back = kwh_from_bill(bill, utility=utility)
                 self.assertAlmostEqual(
                     back["kwh_mensuel"], kwh, delta=0.5,
                     msg=f"round-trip failed for {utility} @ {kwh} kWh")
@@ -99,49 +101,21 @@ class TestKwhFromBill(SimpleTestCase):
         self.assertFalse(out["estimation"])
 
 
-class TestAnnualBillFromKwh(SimpleTestCase):
-    """annual_bill_from_kwh values consumption per progressive tranche."""
+class TestMonthlyBillFromKwh(SimpleTestCase):
+    """``_monthly_bill_from_kwh`` values consumption per tranche (QJR629 —
+    reprend les propriétés de feu ``annual_bill_from_kwh``)."""
 
     def test_matches_weighted_price_model(self):
-        # Q7 — même table pour les trois distributeurs.
-        for utility, table in (("onee", ONEE_TRANCHES),
-                               ("lydec", ONEE_TRANCHES),
-                               ("redal", ONEE_TRANCHES)):
-            out = annual_bill_from_kwh(250, utility=utility)
-            expected = _weighted_kwh_price(250, table) * 250
-            self.assertAlmostEqual(out["bill_mensuel"], round(expected, 2),
-                                   places=2)
-            self.assertAlmostEqual(out["bill_annuel"],
-                                   round(expected * 12, 2), places=2)
+        out = _monthly_bill_from_kwh(250, ONEE_TRANCHES)
+        expected = _weighted_kwh_price(250, ONEE_TRANCHES) * 250
+        self.assertAlmostEqual(out, expected, places=6)
 
     def test_progressive_higher_consumption_higher_marginal_price(self):
         """The per-kWh average grows with consumption (progressive schedule)."""
-        low = annual_bill_from_kwh(80, utility="onee")
-        high = annual_bill_from_kwh(600, utility="onee")
-        self.assertGreater(high["bill_mensuel"] / 600,
-                           low["bill_mensuel"] / 80)
+        low = _monthly_bill_from_kwh(80, ONEE_TRANCHES)
+        high = _monthly_bill_from_kwh(600, ONEE_TRANCHES)
+        self.assertGreater(high / 600, low / 80)
 
-    def test_aucun_distributeur_n_est_approximatif(self):
-        """Q7 — les trois distributeurs lisent la grille nationale : plus aucun
-        calcul ne porte le drapeau « approximatif », et tous rendent la MÊME
-        facture pour la même consommation."""
-        ref = annual_bill_from_kwh(300, utility="onee")
-        for utility in ("lydec", "redal"):
-            out = annual_bill_from_kwh(300, utility=utility)
-            self.assertFalse(out["approximatif"], utility)
-            self.assertFalse(out["estimation"], utility)
-            self.assertAlmostEqual(out["bill_mensuel"], ref["bill_mensuel"],
-                                   places=2, msg=utility)
-
-    def test_no_utility_labelled_estimate_flat_fallback(self):
-        out = annual_bill_from_kwh(200)
-        self.assertTrue(out["estimation"])
-        self.assertEqual(out["label"], ESTIMATION_LABEL)
-        self.assertAlmostEqual(out["bill_mensuel"],
-                               round(200 * _FALLBACK_KWH_PRICE, 2), places=2)
-
-    def test_zero_kwh_labelled_estimate_zero_bill(self):
-        out = annual_bill_from_kwh(0, utility="onee")
-        self.assertEqual(out["bill_annuel"], 0.0)
-        self.assertTrue(out["estimation"])
-        self.assertEqual(out["label"], ESTIMATION_LABEL)
+    def test_zero_kwh_zero_bill(self):
+        self.assertEqual(_monthly_bill_from_kwh(0, ONEE_TRANCHES), 0.0)
+        self.assertEqual(_monthly_bill_from_kwh(None, ONEE_TRANCHES), 0.0)

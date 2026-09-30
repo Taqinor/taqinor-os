@@ -168,6 +168,37 @@ class TestBuilderStructureBlock(TestCase):
         self.assertNotIn('lignes_structure', data)
 
 
+class TestSequenceAffichage(SimpleTestCase):
+    """QJR617 — l'intercalage sections / notes ↔ produits est UNE fonction
+    pure (``quote_engine/sequence.py``), réutilisée par tous les gabarits."""
+
+    def test_intercale_par_ordre(self):
+        from apps.ventes.quote_engine.sequence import sequence_affichage
+        a = {'designation': 'A', 'ordre': 0}
+        b = {'designation': 'B', 'ordre': 2}
+        sec = {'type': 'section', 'texte': 'Toiture', 'ordre': 1}
+        self.assertEqual(sequence_affichage([a, b], [sec]),
+                         [('item', a), ('struct', sec), ('item', b)])
+
+    def test_sans_structure_sequence_identique(self):
+        from apps.ventes.quote_engine.sequence import sequence_affichage
+        items = [{'designation': 'X', 'ordre': 5},
+                 {'designation': 'Y'}, {'designation': 'Z', 'ordre': None}]
+        attendu = [('item', it) for it in sorted(
+            items, key=lambda it: it.get('ordre', 0) or 0)]
+        self.assertEqual(sequence_affichage(items, []), attendu)
+        self.assertEqual(sequence_affichage(items, None), attendu)
+        # Tous à ordre 0 : l'ordre d'origine est conservé (tri stable).
+        plats = [{'designation': c} for c in 'PQR']
+        self.assertEqual(sequence_affichage(plats, []),
+                         [('item', it) for it in plats])
+
+    def test_le_une_page_utilise_la_fonction_partagee(self):
+        from apps.ventes.quote_engine import generate_devis_premium as moteur
+        from apps.ventes.quote_engine import sequence
+        self.assertIs(moteur.sequence_affichage, sequence.sequence_affichage)
+
+
 class TestSerializerValidation(SimpleTestCase):
     def test_section_neutralizes_produit_and_price(self):
         from apps.ventes.serializers import LigneDevisSerializer

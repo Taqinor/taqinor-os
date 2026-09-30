@@ -27,6 +27,8 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # QJR614 — le prix TTC des cartes d'option s'imprime au centime.
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
     logo_dark = ctx["logo_dark"]
     charts = ctx["charts"]
@@ -632,8 +634,8 @@ def build(ctx):
             f'<div class="c1-opt-head"><div>'
             f'<div class="c1-opt-k">{kicker}</div>'
             f'<div class="c1-opt-name">{name}</div></div>{pill}</div>'
-            f'<div class="c1-opt-price">{fmt(price)}<span class="c1-u">&nbsp;MAD</span></div>'
-            f'{ancre("total_ttc", fmt(price), opt)}'
+            f'<div class="c1-opt-price">{fmt_mad(price)}<span class="c1-u">&nbsp;MAD</span></div>'
+            f'{ancre("total_ttc", fmt_mad(price), opt)}'
             f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
             f'{ancre("prix_kwc", pkwc, opt) if pkwc != "—" else ""}'
             f'{roi_html}'

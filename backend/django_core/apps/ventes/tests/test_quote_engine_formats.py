@@ -2128,11 +2128,11 @@ class QJR163FinitionsTests(SimpleTestCase):
 
     # (c) ------------------------------------------------------------------
     def test_c_le_message_console_lit_le_vrai_nombre_de_pages(self):
-        import inspect
+        # QJR629 — le script de démo ``generate()`` (et son message console
+        # « Pages: … ») est SUPPRIMÉ : plus aucun nombre de pages codé en dur
+        # ne peut y renaître.
         from apps.ventes.quote_engine import generate_devis_premium as G
-        src = inspect.getsource(G.generate)
-        self.assertNotIn('Pages: 3 ', src)
-        self.assertIn('Pages: {PAGES_TOTAL}', src)
+        self.assertFalse(hasattr(G, 'generate'))
 
     # (d) ------------------------------------------------------------------
     def test_d_l_absence_de_verrou_est_documentee(self):

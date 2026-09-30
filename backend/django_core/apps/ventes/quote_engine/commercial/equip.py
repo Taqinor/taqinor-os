@@ -4,7 +4,9 @@
 ``build(ctx) -> str`` returns the INNER HTML of one A4 page (no wrapper/footer).
 CSS tables only. Classes prefixed ``c2-`` (+ ``c2b-`` for the category block CSS,
 whose markup is emitted by ``categories.category_block``). RULE #4 : jamais de
-prix_achat/marge — on ne rend que designation/quantité/PU TTC/Total TTC.
+prix_achat/marge — on ne rend que designation/quantité/P.U. HT/TVA %/Total HT.
+QJR615 — les lignes sont en HT (prix_unit_ht, remise de ligne déjà incluse par le
+builder) : la somme des Total HT imprimés est le « Sous-total HT » de la chaîne.
 """
 from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
@@ -24,6 +26,8 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # QJR614 — prix, totaux de ligne et chaîne de totaux au centime.
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
 
     navy = C["navy"]
@@ -45,18 +49,21 @@ def build(ctx):
     rows = ""
     for it in items:
         qte = _num(it.get("quantite"))
-        pu_ttc = _num(it.get("prix_unit_ttc"))
-        if pu_ttc <= 0:  # repli : dérive du HT si le TTC manque
-            pu_ttc = _num(it.get("prix_unit_ht")) * (1 + _num(it.get("taux_tva"), 20) / 100)
-        total = round(pu_ttc * qte)
+        # QJR615 — P.U. HT (déjà remisé ligne par le builder) × quantité : la
+        # colonne s'additionne au « Sous-total HT » ; aucun calcul TTC par ligne.
+        pu_ht = _num(it.get("prix_unit_ht"))
+        total = pu_ht * qte
+        taux = _num(it.get("taux_tva"))
+        taux_txt = f"{taux:g}\u202f%"
         marque = (it.get("marque") or "").strip()
         desig = it.get("designation") or ""
         m = f'<span class="c2-mq">{marque}</span>' if marque else ""
         rows += (
             f'<tr><td class="c2-d">{desig}{m}</td>'
             f'<td class="c2-q">{qte:g}</td>'
-            f'<td class="c2-p">{fmt(round(pu_ttc))}</td>'
-            f'<td class="c2-t">{fmt(total)}</td></tr>')
+            f'<td class="c2-p">{fmt_mad(pu_ht)}</td>'
+            f'<td class="c2-v">{taux_txt}</td>'
+            f'<td class="c2-t">{fmt_mad(total)}</td></tr>')
 
     tot = d.get("totaux_all") or {}
     ht_brut = _num(tot.get("ht_brut"))
@@ -66,15 +73,15 @@ def build(ctx):
     ttc = _num(tot.get("ttc")) or d.get("_invest_ttc") or 0
     # QA-FIGURES — chaque montant est formaté UNE fois : le texte imprimé et
     # son ancre ``data-figure`` sont la même chaîne.
-    _f_remise = fmt(round(remise))
+    _f_remise = fmt_mad(remise)
     remise_row = (
         f'<tr><td>Remise{ancre("remise", _f_remise)}</td>'
         f'<td class="c2-tr">- {_f_remise} MAD</td></tr>'
         if remise > 0 else "")
-    _f_ht_brut = fmt(round(ht_brut))
-    _f_ht_net = fmt(round(ht_net))
-    _f_tva = fmt(round(tva))
-    _f_ttc = fmt(round(ttc))
+    _f_ht_brut = fmt_mad(ht_brut)
+    _f_ht_net = fmt_mad(ht_net)
+    _f_tva = fmt_mad(tva)
+    _f_ttc = fmt_mad(ttc)
 
     # QX50 — ligne injection 82-21 (rendue SEULEMENT si l'étude la porte, avec
     # sa mention obligatoire ; jamais affichée sans la mention).
@@ -105,7 +112,7 @@ def build(ctx):
 .c2-tbl td{{padding:6px 8px;border-bottom:1px solid {line_soft};vertical-align:top;}}
 .c2-d{{color:{ink};}}
 .c2-mq{{display:block;font-size:7pt;color:{muted_2};margin-top:1px;}}
-.c2-q,.c2-p,.c2-t{{text-align:right;white-space:nowrap;}}
+.c2-q,.c2-p,.c2-v,.c2-t{{text-align:right;white-space:nowrap;}}
 .c2-t{{font-weight:700;color:{navy};}}
 .c2-tot{{margin-top:10px;display:table;width:100%;}}
 .c2-tot-sp{{display:table-cell;width:55%;}}
@@ -144,7 +151,7 @@ def build(ctx):
   <div class="c2-sec">Équipements &amp; investissement</div>
 
   <table class="c2-tbl">
-    <tr><th>Désignation</th><th class="c2-rr">Qté</th><th class="c2-rr">P.U. TTC</th><th class="c2-rr">Total TTC</th></tr>
+    <tr><th>Désignation</th><th class="c2-rr">Qté</th><th class="c2-rr">P.U. HT</th><th class="c2-rr">TVA %</th><th class="c2-rr">Total HT</th></tr>
     {rows}
   </table>
 

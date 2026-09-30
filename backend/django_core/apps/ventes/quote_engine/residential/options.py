@@ -352,6 +352,9 @@ def build_pages(ctx) -> list:
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # QJR614 — tout montant dérivé du prix s'imprime au centime (la chaîne
+    # Sous-total HT → Remise → Total HT → TVA → Total TTC s'additionne).
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
     charts = ctx["charts"]
     links = d.get("links", {})
@@ -477,9 +480,9 @@ def build_pages(ctx) -> list:
 
     produits_link = links.get("produits", d.get("site_url", "taqinor.ma"))
 
-    rows_html = "".join(_row(it, fmt, produits_link) for it in shared)
-    delta_sans_html = _delta_lines(delta_sans, fmt, produits_link)
-    delta_avec_html = _delta_lines(delta_avec, fmt, produits_link)
+    rows_html = "".join(_row(it, fmt_mad, produits_link) for it in shared)
+    delta_sans_html = _delta_lines(delta_sans, fmt_mad, produits_link)
+    delta_avec_html = _delta_lines(delta_avec, fmt_mad, produits_link)
 
     # QX5 — le bloc « ce que chaque option ajoute » n'existe QUE pour un vrai
     # devis à deux options ; mono-option → aucun découpage delta.
@@ -515,9 +518,9 @@ def build_pages(ctx) -> list:
     if deux_options:
         totals_html = (
             _totals_chain("Option 1 — Sans batterie", C["navy"],
-                          d["totaux_sans"], fmt, C, option="sans")
+                          d["totaux_sans"], fmt_mad, C, option="sans")
             + _totals_chain(f"Option 2 — {libelle_avec}", C["gold"],
-                            d["totaux_avec"], fmt, C, recommended=True,
+                            d["totaux_avec"], fmt_mad, C, recommended=True,
                             option="avec"))
         # L-2OPTPDF — dès qu'une ligne appariée entre dans le tableau, celui-ci
         # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
@@ -531,7 +534,7 @@ def build_pages(ctx) -> list:
         _lbl = (f"Total — {libelle_avec}" if avec_ok
                 else "Total — Sans batterie")
         _acc = C["gold"] if avec_ok else C["navy"]
-        totals_html = _totals_chain(_lbl, _acc, _tot, fmt, C,
+        totals_html = _totals_chain(_lbl, _acc, _tot, fmt_mad, C,
                                     option="avec" if avec_ok else "sans")
         equipement_lbl = "Votre équipement"
 
@@ -558,7 +561,7 @@ def build_pages(ctx) -> list:
     _nprop = d.get("nombre_proprietes")
     if _nprop and _nprop > 1:
         _dtm = d.get("display_total_multi")
-        _tot_txt = (f' — total pour {_nprop} propriétés : {fmt(_dtm)} MAD'
+        _tot_txt = (f' — total pour {_nprop} propriétés : {fmt_mad(_dtm)} MAD'
                     if _dtm else "")
         multi_html += (
             f'<div class="p2-multi-n">&times;&nbsp;{_nprop} propriétés '
@@ -570,13 +573,13 @@ def build_pages(ctx) -> list:
             t = g.get("totaux") or {}
             _vrows += (
                 f'<tr><td>{g.get("label", "")}</td>'
-                f'<td class="p2-r">{fmt(t.get("ht_net", 0))}</td>'
-                f'<td class="p2-r p2-tot">{fmt(t.get("ttc", 0))} MAD</td></tr>')
+                f'<td class="p2-r">{fmt_mad(t.get("ht_net", 0))}</td>'
+                f'<td class="p2-r p2-tot">{fmt_mad(t.get("ttc", 0))} MAD</td></tr>')
         _gt = _mv.get("grand_total") or {}
         _vrows += (
             f'<tr class="p2-multi-gt"><td>Total général</td>'
-            f'<td class="p2-r">{fmt(_gt.get("ht_net", 0))}</td>'
-            f'<td class="p2-r">{fmt(_gt.get("ttc", 0))} MAD</td></tr>')
+            f'<td class="p2-r">{fmt_mad(_gt.get("ht_net", 0))}</td>'
+            f'<td class="p2-r">{fmt_mad(_gt.get("ttc", 0))} MAD</td></tr>')
         multi_html += (
             '<div class="p2-multi-lbl">Détail par propriété</div>'
             '<table class="p2-multi"><thead><tr>'
@@ -683,8 +686,8 @@ def build_pages(ctx) -> list:
             cmp_rows.append(("Batteries", "—", f'{_num(_bat_kwh)} kWh'))
         _ts, _ta = d.get("totaux_sans") or {}, d.get("totaux_avec") or {}
         if _ts.get("ttc") and _ta.get("ttc"):
-            cmp_rows.append(("Prix TTC", f'{fmt(_ts["ttc"])} MAD',
-                             f'{fmt(_ta["ttc"])} MAD'))
+            cmp_rows.append(("Prix TTC", f'{fmt_mad(_ts["ttc"])} MAD',
+                             f'{fmt_mad(_ta["ttc"])} MAD'))
         _eco_s, _eco_a = d.get("eco_s_ann"), d.get("eco_a_ann")
         if not masquer_eco and _eco_s and _eco_a:
             # QJR210 — CE TABLEAU N'EXISTE QUE SUR UN DEVIS DIVERGENT, celui-là
@@ -1192,7 +1195,7 @@ def build_pages(ctx) -> list:
         f'<div class="p2-specs">{spec_html}</div></div>')
 
     def _table_html(items, label):
-        rows = "".join(_entry_row(e, fmt, produits_link) for e in items)
+        rows = "".join(_entry_row(e, fmt_mad, produits_link) for e in items)
         # L-2OPTPDF — la légende n'apparaît QUE sur une page qui porte
         # réellement une ligne à deux valeurs, et TIENT SUR LA LIGNE du
         # libellé : elle ne coûte pas un millimètre de hauteur.

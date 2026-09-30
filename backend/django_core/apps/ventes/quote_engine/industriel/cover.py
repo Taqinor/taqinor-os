@@ -69,6 +69,20 @@ def build(ctx):
     couverture = d.get("ind_couverture")
     economies = d.get("ind_economies")
     invest = d.get("_invest_ttc") or 0
+    # QJR614 — l'investissement TTC s'imprime au centime : on relit le
+    # montant NON arrondi (même source que ``renderer._augment`` :
+    # display_total, sinon totaux_all.ttc), ``_invest_ttc`` en repli.
+    fmt_mad = ctx.get("fmt_mad") or fmt
+    invest_centimes = invest
+    for _src in (d.get("display_total"),
+                 (d.get("totaux_all") or {}).get("ttc")):
+        try:
+            _v = float(_src)
+        except (TypeError, ValueError):
+            continue
+        if _v > 0:
+            invest_centimes = _v
+            break
 
     # QJR119 — les factures manquantes ne se REMBOURRENT PLUS de zéros.
     # ``builder`` pose ``factures_mensuelles = None`` sur tout dossier chiffré
@@ -255,7 +269,7 @@ def build(ctx):
 
     <div class="i1-inv">
       <div class="i1-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="i1-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt(invest))}
+      <div class="i1-inv-v">{fmt_mad(invest_centimes)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest_centimes))}
     </div>
   </div>
 </div>
