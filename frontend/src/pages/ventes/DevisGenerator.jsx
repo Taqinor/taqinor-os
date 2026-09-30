@@ -2027,6 +2027,24 @@ export default function DevisGenerator({
         setMultiMode('multiplier')
         setNombreProprietes(String(nProprietes))
       }
+      // QJR530 — round-trip du mode « villas » : une ligne qui porte un
+      // `groupe_index` (persisté par remplacer_lignes, QJR517) rouvre le
+      // devis en mode villas avec ses groupes (paires distinctes index/label,
+      // triées ; index 0 = « Équipement commun », sans label stocké). Sans
+      // lui, ouvrir puis enregistrer SANS retouche envoyait groupe_index null
+      // et dégroupait tout.
+      if (rows.some(r => r.groupeIndex != null)) {
+        const groupes = new Map([[0, 'Équipement commun']])
+        for (const r of rows) {
+          const idx = Number(r.groupeIndex)
+          if (r.groupeIndex == null || !Number.isFinite(idx) || groupes.has(idx)) continue
+          groupes.set(idx, r.groupeLabel || `Villa ${idx}`)
+        }
+        setVillaGroups([...groupes.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([index, label]) => ({ index, label })))
+        setMultiMode('villas')
+      }
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
       // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
