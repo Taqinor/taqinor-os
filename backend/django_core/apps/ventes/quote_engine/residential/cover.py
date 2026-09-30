@@ -771,8 +771,13 @@ def build(ctx):
         eco_kpi_label = ("Économie calculée"
                          if d.get("savings_model") == "horaire"
                          else "Économie estimée")
+        # ERR-QAH-FIG-KPI-ECO-RESEAU-SEUL — la vignette lit l'économie de
+        # l'option que décrit la synthèse (``eco_option``, même règle que
+        # ``_avec`` de ``synthese_economies``) : sur un devis réseau seul, c'est
+        # ``eco_s_ann`` — jamais l'économie d'une batterie non proposée.
+        _eco_kpi = d.get("eco_s_ann") if _eco_opt == "sans" else eco_a_ann
         kpi_eco_html = f"""      <div class="c1-kpi">
-        <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>{ancre("economie_annuelle", fmt(eco_a_ann), _eco_opt)}
+        <div class="c1-kpi-v">{fmt(_eco_kpi)}<span class="c1-u">&nbsp;MAD/an</span></div>{ancre("economie_annuelle", fmt(_eco_kpi), _eco_opt)}
         <div class="c1-kpi-l">{eco_kpi_label}</div>
       </div>
 """
