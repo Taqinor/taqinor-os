@@ -728,9 +728,17 @@ function DevisRow({ d, ctx }) {
         {d.nb_options === 2
          && d.comparaison_options?.sans?.ttc != null
          && d.comparaison_options?.avec?.ttc != null
-          ? `${formatMAD(d.comparaison_options.sans.ttc)} / ${formatMAD(d.comparaison_options.avec.ttc)}`
+          ? (
+            // QA-FIGURES — `data-figure` (clés : apps/ventes/quote_engine/
+            // figures.py) : parité liste / PDF / page publique / API.
+            <>
+              <span data-figure="total_ttc" data-figure-option="sans">{formatMAD(d.comparaison_options.sans.ttc)}</span>
+              {' / '}
+              <span data-figure="total_ttc" data-figure-option="avec">{formatMAD(d.comparaison_options.avec.ttc)}</span>
+            </>
+          )
           : ((d.total_affiche ?? d.total_ttc) != null
-              ? formatMAD(d.total_affiche ?? d.total_ttc)
+              ? <span data-figure="total_affiche">{formatMAD(d.total_affiche ?? d.total_ttc)}</span>
               : '—')}
         {d.nb_options === 2 && (
           <Badge tone="warning" className="ml-1.5"

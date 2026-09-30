@@ -19,6 +19,19 @@
 // partagent au lieu d'en recopier le balisage — aucun double chemin.
 import { unwrap } from '../../../features/ventes/quote/valeur'
 
+// QA-FIGURES — marqueur `data-figure` (vocabulaire unique :
+// backend/django_core/apps/ventes/quote_engine/figures.py, FIGURE_KEYS) posé
+// sur l'élément qui IMPRIME le chiffre, pour que la parité écran / PDF / page
+// publique / API se vérifie sans sélecteur fragile (frontend/e2e/
+// figures-parite.spec.js). Aucun marqueur sur un texte sans chiffre (« N/A »,
+// motif) : ce n'est pas un chiffre.
+function attributsFigure(figure, option, contenu) {
+  if (!figure || typeof contenu !== 'string' || !/\d/.test(contenu)) return {}
+  return option
+    ? { 'data-figure': figure, 'data-figure-option': option }
+    : { 'data-figure': figure }
+}
+
 /** En-tête de carte du générateur (style design system, repose sur Card). */
 export function GenCardHeader({ icon: Icon, title, children }) {
   return (
@@ -47,6 +60,7 @@ export function GenCardHeader({ icon: Icon, title, children }) {
 export default function CarteMetrique({
   label, value, unit, recommended, accent, badge,
   valeur = null, formatValeur = (v) => v,
+  figure = null, figureOption = null,
 }) {
   let contenu = value
   let puce = badge
@@ -75,7 +89,8 @@ export default function CarteMetrique({
           {motif}
         </div>
       ) : (
-        <div className="gen-metric-value">
+        <div className="gen-metric-value"
+             {...attributsFigure(figure, figureOption, contenu)}>
           {contenu}
           {/* QJR35 — la carte lit une économie/payback dérivé LOCALEMENT
               (miroir `roi`, jamais serveur) sans facture réelle saisie ni
