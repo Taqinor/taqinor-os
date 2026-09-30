@@ -364,11 +364,15 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     monter()
     await attendreVerdict()
     expect(screen.getByRole('heading', { name: 'À traiter en priorité' })).toBeInTheDocument()
+    // Les seuils de l'exemple du contrat : 2 jours d'attente, 2 reports, 24 h.
+    expect(CONTROLE.seuils).toMatchObject({
+      tache_attente_jours: 2, reports_min: 2, premier_contact_heures: 24,
+    })
     const attendu = {
       en_retard: ['En retard', '2'],
-      taches_en_attente: ['Tâches en attente', '1'],
-      reports: ['Reportées plusieurs fois', '1'],
-      premier_contact_hors_delai: ['Premier contact hors délai', '1'],
+      taches_en_attente: ['Tâches en attente depuis 2 jours ou plus', '1'],
+      reports: ['Reportées 2 fois ou plus', '1'],
+      premier_contact_hors_delai: ['Premier contact hors délai (24 h)', '1'],
     }
     Object.entries(attendu).forEach(([cle, [titre, total]]) => {
       const entete = within(bloc(cle)).getByRole('button', { expanded: true })
@@ -571,12 +575,75 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     expect(screen.queryByTestId('controle-seuils')).not.toBeInTheDocument()
   })
 
-  it('rappelle les seuils servis par le serveur', async () => {
+  it('dit le seuil d\'alerte servi par le serveur (les trois autres sont dans les titres)', async () => {
     monter()
     await attendreVerdict()
-    expect(screen.getByTestId('controle-seuils')).toHaveTextContent(
-      'alerte dès 2 jours de retard · tâche signalée dès 2 jours d\'attente · '
-      + 'report signalé dès 2 reports · premier contact attendu sous 24 h')
+    expect(CONTROLE.seuils.retard_alerte_jours).toBe(2)
+    expect(screen.getByTestId('controle-seuils')).toHaveTextContent('Alerte dès 2 jours de retard.')
+  })
+
+  describe('seuils lisibles : les libellés suivent les seuils SERVIS, jamais un nombre écrit dans le code', () => {
+    /** L'exemple du contrat dont on ne change QUE les seuils. */
+    const avecSeuils = (seuils) => variante({ seuils })
+
+    it('un seuil modifié change les titres et la note d\'alerte', async () => {
+      crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+        retard_alerte_jours: 5, tache_attente_jours: 7, reports_min: 4, premier_contact_heures: 48,
+      }))
+      monter()
+      await attendreVerdict()
+      const titreDe = (cle) => within(bloc(cle)).getByRole('button', { expanded: true })
+      expect(titreDe('taches_en_attente')).toHaveTextContent('Tâches en attente depuis 7 jours ou plus')
+      expect(titreDe('reports')).toHaveTextContent('Reportées 4 fois ou plus')
+      expect(titreDe('premier_contact_hors_delai')).toHaveTextContent('Premier contact hors délai (48 h)')
+      expect(titreDe('en_retard')).toHaveTextContent('En retard')
+      expect(screen.getByTestId('controle-seuils')).toHaveTextContent('Alerte dès 5 jours de retard.')
+      // Aucun des nombres de l'exemple ne survit dans les libellés.
+      const section = screen.getByTestId('controle-exceptions')
+      expect(section).not.toHaveTextContent('depuis 2 jours ou plus')
+      expect(section).not.toHaveTextContent('2 fois ou plus')
+      expect(section).not.toHaveTextContent('(24 h)')
+      expect(section).not.toHaveTextContent('Alerte dès 2 jours')
+    })
+
+    it('les accords suivent le seuil : « 1 jour ou plus », heures décimales', async () => {
+      crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+        retard_alerte_jours: 1, tache_attente_jours: 1, reports_min: 1, premier_contact_heures: 1.5,
+      }))
+      monter()
+      await attendreVerdict()
+      const section = screen.getByTestId('controle-exceptions')
+      expect(section).toHaveTextContent('Tâches en attente depuis 1 jour ou plus')
+      expect(section).not.toHaveTextContent('1 jours')
+      expect(section).toHaveTextContent('Reportées 1 fois ou plus')
+      expect(section).toHaveTextContent('Premier contact hors délai (1,5 h)')
+      expect(screen.getByTestId('controle-seuils')).toHaveTextContent('Alerte dès 1 jour de retard.')
+    })
+
+    it('sans bloc `seuils` : titres génériques, aucun nombre inventé, pas de note', async () => {
+      const sansSeuils = { ...CONTROLE }
+      delete sansSeuils.seuils
+      crmApi.getControleSuivi.mockResolvedValue({ data: sansSeuils })
+      monter()
+      await attendreVerdict()
+      const titreDe = (cle) => within(bloc(cle)).getByRole('button', { expanded: true })
+      expect(titreDe('taches_en_attente')).toHaveTextContent(/^Tâches en attente\s*1$/)
+      expect(titreDe('reports')).toHaveTextContent(/^Reportées plusieurs fois\s*1$/)
+      expect(titreDe('premier_contact_hors_delai')).toHaveTextContent(/^Premier contact hors délai\s*1$/)
+      expect(screen.queryByTestId('controle-seuils')).not.toBeInTheDocument()
+    })
+
+    it('un seuil manquant ne rend générique que SA liste', async () => {
+      crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+        retard_alerte_jours: 2, tache_attente_jours: 9, premier_contact_heures: 12,
+      }))
+      monter()
+      await attendreVerdict()
+      const titreDe = (cle) => within(bloc(cle)).getByRole('button', { expanded: true })
+      expect(titreDe('taches_en_attente')).toHaveTextContent('Tâches en attente depuis 9 jours ou plus')
+      expect(titreDe('reports')).toHaveTextContent(/^Reportées plusieurs fois\s*1$/)
+      expect(titreDe('premier_contact_hors_delai')).toHaveTextContent('Premier contact hors délai (12 h)')
+    })
   })
 })
 

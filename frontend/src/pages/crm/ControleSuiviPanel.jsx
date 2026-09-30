@@ -383,33 +383,46 @@ function Frise({ donnees, ownerId, navigate }) {
 }
 
 // ── Exceptions : « À traiter en priorité » ─────────────────────────────────
-// Ordre = celui du contrat. `detail` dit CE qui rend la ligne exceptionnelle,
-// avec les nombres servis par le serveur (jamais recalculés ici).
+/** Un seuil SERVI par le serveur (`seuils.*`) ou `null` : un libellé ne dit jamais
+ *  un nombre que le serveur n'a pas servi, ni un nombre écrit dans le code. */
+const seuil = (seuils, cle) => (Number.isFinite(seuils?.[cle]) ? seuils[cle] : null)
+
+// Ordre = celui du contrat. `titre(seuils)` dit CE que la liste contient, avec les
+// seuils servis (`seuils.tache_attente_jours`, `reports_min`, `premier_contact_heures`) ;
+// `detail` dit ce qui rend la ligne exceptionnelle, avec les nombres servis par le
+// serveur (jamais recalculés ici).
 const LISTES = [
   {
     cle: 'en_retard',
-    titre: 'En retard',
+    titre: () => 'En retard',
     tone: 'danger',
     detail: (l) => (l.jours_de_retard == null ? ''
       : `depuis ${nombre(l.jours_de_retard)} ${pl(l.jours_de_retard, 'jour', 'jours')}`),
   },
   {
     cle: 'taches_en_attente',
-    titre: 'Tâches en attente',
+    titre: (seuils) => {
+      const jours = seuil(seuils, 'tache_attente_jours')
+      return jours === null ? 'Tâches en attente'
+        : `Tâches en attente depuis ${nombre(jours)} ${pl(jours, 'jour', 'jours')} ou plus`
+    },
     tone: 'warning',
     detail: (l) => (l.ouverte_depuis_jours == null ? ''
       : `posée il y a ${nombre(l.ouverte_depuis_jours)} ${pl(l.ouverte_depuis_jours, 'jour', 'jours')}`),
   },
   {
     cle: 'reports',
-    titre: 'Reportées plusieurs fois',
+    titre: (seuils) => {
+      const fois = seuil(seuils, 'reports_min')
+      return fois === null ? 'Reportées plusieurs fois' : `Reportées ${nombre(fois)} fois ou plus`
+    },
     tone: 'warning',
     detail: (l) => (l.nb_reports == null ? ''
       : `${nombre(l.nb_reports)} ${pl(l.nb_reports, 'report', 'reports')} — prévue à l'origine le ${jjmm(l.due_initial)}`),
   },
   {
     cle: 'sans_prochaine_etape',
-    titre: 'Dossiers sans prochaine étape',
+    titre: () => 'Dossiers sans prochaine étape',
     tone: 'danger',
     // Ligne du contrat (`exemple_alerte`) : `stage` est une clé de STAGES.py,
     // dite avec le libellé FR des constantes du frontend (`features/crm/stages`,
@@ -424,7 +437,11 @@ const LISTES = [
   },
   {
     cle: 'premier_contact_hors_delai',
-    titre: 'Premier contact hors délai',
+    titre: (seuils) => {
+      const heures = seuil(seuils, 'premier_contact_heures')
+      return heures === null ? 'Premier contact hors délai'
+        : `Premier contact hors délai (${decimal(heures)} h)`
+    },
     tone: 'danger',
     detail: (l) => (l.attend_depuis_heures == null ? ''
       : `attend depuis ${decimal(l.attend_depuis_heures)} h`),
@@ -453,7 +470,7 @@ function LigneException({ liste, ligne, navigate }) {
 }
 
 function BlocException({
-  liste, bloc, ouvert, onBasculer, navigate,
+  liste, bloc, seuils, ouvert, onBasculer, navigate,
 }) {
   const id = useId()
   const lignes = bloc.lignes ?? []
@@ -468,7 +485,7 @@ function BlocException({
           {ouvert
             ? <ChevronDown className="size-4 shrink-0" aria-hidden="true" />
             : <ChevronRight className="size-4 shrink-0" aria-hidden="true" />}
-          <span>{liste.titre}</span>
+          <span>{liste.titre(seuils)}</span>
           <Badge tone={liste.tone} data-testid={`controle-total-${liste.cle}`}>{nombre(bloc.total)}</Badge>
         </button>
       </h5>
@@ -501,6 +518,7 @@ function Exceptions({ exceptions, seuils, navigate }) {
   // un clic de l'utilisateur prend le pas sur ce défaut.
   const [surcharge, setSurcharge] = useState({})
   const presentes = LISTES.filter((l) => (exceptions?.[l.cle]?.total ?? 0) > 0)
+  const alerteJours = seuil(seuils, 'retard_alerte_jours')
   return (
     <section data-testid="controle-exceptions" className="flex flex-col gap-1.5">
       <h4 className="text-sm font-semibold">À traiter en priorité</h4>
@@ -512,18 +530,18 @@ function Exceptions({ exceptions, seuils, navigate }) {
       ) : (
         presentes.map((liste) => (
           <BlocException
-            key={liste.cle} liste={liste} bloc={exceptions[liste.cle]} navigate={navigate}
+            key={liste.cle} liste={liste} bloc={exceptions[liste.cle]} seuils={seuils}
+            navigate={navigate}
             ouvert={surcharge[liste.cle] ?? true}
             onBasculer={() => setSurcharge((s) => ({ ...s, [liste.cle]: !(s[liste.cle] ?? true) }))}
           />
         ))
       )}
-      {seuils && presentes.length > 0 && (
+      {/* Les seuils des trois autres listes sont dans leurs titres ; celui de
+          l'alerte n'a pas de liste à lui : il se lit ici. */}
+      {alerteJours !== null && presentes.length > 0 && (
         <p className="text-xs text-muted-foreground" data-testid="controle-seuils">
-          {`Seuils : alerte dès ${nombre(seuils.retard_alerte_jours)} ${pl(seuils.retard_alerte_jours, 'jour', 'jours')} de retard`
-            + ` · tâche signalée dès ${nombre(seuils.tache_attente_jours)} ${pl(seuils.tache_attente_jours, 'jour', 'jours')} d'attente`
-            + ` · report signalé dès ${nombre(seuils.reports_min)} reports`
-            + ` · premier contact attendu sous ${decimal(seuils.premier_contact_heures)} h.`}
+          {`Alerte dès ${nombre(alerteJours)} ${pl(alerteJours, 'jour', 'jours')} de retard.`}
         </p>
       )}
     </section>
