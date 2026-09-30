@@ -188,11 +188,14 @@ describe('CAD16 RelanceEtapeRow — le dernier réveil annonce la fin', () => {
     expect(suite).not.toHaveTextContent(/touche suivante est programmée/)
   })
 
-  it('« À rappeler le… » sur le dernier réveil dit que la date ne sera reportée nulle part', () => {
+  // SUIVI E17 (30/09/2026) — la date choisie sur le dernier réveil n'est plus perdue : la
+  // touche est close et « Rappeler le client — rappel convenu » est posée à cette date.
+  it('« À rappeler le… » sur le dernier réveil annonce le rappel convenu posé à la date', () => {
     ouvrirFait(DERNIER_REVEIL)
     fireEvent.click(screen.getByRole('button', { name: 'À rappeler le…' }))
+    expect(screen.getByTestId('suite-reponse')).toHaveTextContent(/rappel convenu/)
     expect(screen.getByTestId('suite-reponse'))
-      .toHaveTextContent(/n’est reportée sur aucune relance/)
+      .not.toHaveTextContent(/n’est reportée sur aucune relance/)
   })
 })
 

@@ -5,7 +5,7 @@
 <title>Guide — Le suivi commercial&nbsp;: étapes, réponses et suites</title>
 <meta name="generator" content="scripts/generer_guide_suivi.py">
 <meta name="table-version" content="1.0">
-<meta name="table-sha256" content="bb428959727580023a7a26a715ed7c4d92380df81ec75a7a32015057ff78c8b8">
+<meta name="table-sha256" content="bbd079a47789f2c2bf902e606ddedb85ef625d7dfc2ef86e4bc3f79527e4b5b7">
 <!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer `python scripts/generer_guide_suivi.py` après tout changement de la table du parcours. -->
 <style>
 @page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
@@ -271,7 +271,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>A bloqué / signalé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;A bloqué / signalé&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante du protocole est programmée à la date choisie, et le reste du suivi glisse du même nombre de jours.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Le dossier se met en veille&nbsp;: cette même touche revient à la date convenue, rien ne part d’ici là. Au-delà d’un mois&nbsp;: le suivi s’arrête et un réveil est daté.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Toutes les relances s’arrêtent. Étape suivante&nbsp;: <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> (perdu avec son motif, ou relance ultérieure) — possible dès maintenant. Le lead n’est pas marqué perdu tout seul.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent. Étape suivante&nbsp;: <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> (perdu avec son motif, ou relance ultérieure) — possible dès maintenant. Le lead n’est pas marqué perdu tout seul.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Le lead passe <span class="ecran">«&nbsp;Ne plus contacter&nbsp;»</span>&nbsp;: toutes ses relances s’arrêtent et aucune ne pourra redémarrer. L’opposition est inscrite au registre.</td></tr>
 </table>
 </div>
@@ -284,12 +284,12 @@ table.touches td:nth-child(3) { width: 17%; }
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Le client a répondu</strong></td><td>La prise de contact s’arrête. Le dossier passe <span class="ecran">«&nbsp;Contacté&nbsp;»</span>. Étape suivante&nbsp;: <span class="ecran">«&nbsp;Appeler le client — il a répondu au message&nbsp;»</span>, au prochain créneau d’appel.</td></tr>
-<tr><td><strong>Client joint au téléphone</strong></td><td>Tu as appelé au lieu d’écrire et le client a décroché&nbsp;: même suite qu’un appel abouti — <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span>, pour demain et possible dès maintenant.</td></tr>
+<tr><td><strong>Client joint au téléphone</strong></td><td>Appel passé au lieu du message, et le client a décroché&nbsp;: même suite qu’un appel abouti — <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span>, pour demain et possible dès maintenant.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Comme sur un appel&nbsp;: planification, ou étape <span class="ecran">«&nbsp;Planifier la visite technique convenue&nbsp;»</span> si la date n’est pas fixée.</td></tr>
 <tr><td><strong>Pas de réponse</strong></td><td>La touche suivante du protocole est programmée. Après la dernière (<span class="ecran">«&nbsp;Clôture&nbsp;»</span>)&nbsp;: le dossier part au Froid et ses réveils sont programmés.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -306,7 +306,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Devis envoyé — passer à la suite</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Devis envoyé&nbsp;»</span> et le suivi de proposition démarre (première touche&nbsp;: <span class="ecran">«&nbsp;Le PDF s’ouvre bien&nbsp;?&nbsp;»</span>, le lendemain). Un devis parti hors ERP compte aussi. Si le devis est envoyé DEPUIS l’ERP, tout ceci se fait tout seul et cette étape se ferme d’elle-même.</td></tr>
 <tr><td><strong>Visite d’abord</strong><span class="pastille">ouvre la planification</span></td><td>La planification s’ouvre. Visite planifiée&nbsp;: le devis est mis en attente de la visite (cette étape est retirée, le retour de visite la reposera)&nbsp;; <span class="ecran">«&nbsp;Confirmer la visite&nbsp;»</span> et <span class="ecran">«&nbsp;Débrief visite&nbsp;»</span> sont posées. Date pas encore fixée&nbsp;: <span class="ecran">«&nbsp;Planifier la visite technique convenue&nbsp;»</span> est posée pour aujourd’hui.</td></tr>
 <tr><td><strong>Pas encore — à rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
-<tr><td><strong>Client refuse</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Client refuse</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -323,7 +323,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Répondeur</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -338,7 +338,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Créneau convenu le…</strong><span class="pastille">date à saisir</span></td><td>Cette étape est close et l’étape <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à la date et à l’heure convenues.</td></tr>
 <tr><td><strong>Le client a répondu</strong></td><td>Étape suivante&nbsp;: <span class="ecran">«&nbsp;Appeler le client — il a répondu au message&nbsp;»</span>, au prochain créneau d’appel.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification, ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span> si la date n’est pas fixée.</td></tr>
-<tr><td><strong>Client refuse</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Client refuse</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -355,7 +355,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Répondeur</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -372,7 +372,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Répondeur</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la nouvelle date.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -384,7 +384,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Perdu — clore le dossier</strong><span class="pastille">motif à choisir</span></td><td>Le lead passe Perdu avec le motif choisi&nbsp;: toutes ses relances s’arrêtent, il sort des files. Il reste rouvrable depuis sa fiche.</td></tr>
-<tr><td><strong>Relancer plus tard — le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie&nbsp;: tu redécideras ce jour-là.</td></tr>
+<tr><td><strong>Relancer plus tard — le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie&nbsp;: la décision se reprend ce jour-là.</td></tr>
 <tr><td><strong>Le client revient — reprendre</strong></td><td>Si un suivi de proposition n’était pas allé au bout, il reprend&nbsp;; sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
@@ -409,7 +409,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Numéro invalide</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>, note <span class="ecran">«&nbsp;Numéro invalide&nbsp;»</span>. Case cochée&nbsp;: lead Perdu (junk).</td></tr>
 <tr><td><strong>A bloqué / signalé</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>, note <span class="ecran">«&nbsp;A bloqué / signalé&nbsp;»</span>. Case cochée&nbsp;: lead Perdu (junk).</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant.</td></tr>
-<tr><td><strong>Refuse la proposition</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refuse la proposition</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
 <tr><td><strong>Question de prix — veut négocier</strong></td><td>Le suivi se met en pause&nbsp;: étape <span class="ecran">«&nbsp;Question de prix — préparer l’appel du fondateur&nbsp;»</span> pour demain&nbsp;; aucun message ne part tant qu’elle n’est pas traitée.</td></tr>
 <tr><td><strong>Demande un devis modifié</strong></td><td>Étape <span class="ecran">«&nbsp;Préparer le devis modifié — rappeler le client&nbsp;»</span> pour demain&nbsp;; le suivi de l’ancien devis se tait.</td></tr>
@@ -428,11 +428,11 @@ table.touches td:nth-child(3) { width: 17%; }
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Le client a répondu</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Relance&nbsp;»</span>. Le suivi continue&nbsp;: sa touche suivante est programmée.</td></tr>
-<tr><td><strong>Client joint au téléphone</strong></td><td>Tu l’as eu au téléphone&nbsp;: même suite, l’historique garde un appel abouti.</td></tr>
+<tr><td><strong>Client joint au téléphone</strong></td><td>Client eu au téléphone&nbsp;: même suite, l’historique garde un appel abouti.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification (les relances en attente sont décalées après la visite), ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Sans réponse</strong></td><td>La touche suivante du suivi est programmée. Après la dernière&nbsp;: Froid + réveils.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie.</td></tr>
-<tr><td><strong>Refuse la proposition</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refuse la proposition</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
 <tr><td><strong>Question de prix — veut négocier</strong></td><td>Pause&nbsp;: étape <span class="ecran">«&nbsp;Question de prix&nbsp;»</span> pour demain.</td></tr>
 <tr><td><strong>Demande un devis modifié</strong></td><td>Étape <span class="ecran">«&nbsp;Préparer le devis modifié&nbsp;»</span> pour demain.</td></tr>
@@ -450,7 +450,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Décision prise — reprendre le suivi</strong></td><td>Le suivi de proposition reprend à sa touche suivante (jamais depuis le début).</td></tr>
 <tr><td><strong>Pas encore — à rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
-<tr><td><strong>Client refuse</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Client refuse</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -468,7 +468,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Pas encore — à rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
 <tr><td><strong>Sans réponse</strong></td><td>L’appel est noté sans réponse et l’étape est reposée pour demain.</td></tr>
 <tr><td><strong>Ne veut plus de visite</strong></td><td>La visite est abandonnée, le suivi continue sans elle&nbsp;: le suivi de proposition reprend s’il était pendant, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée.</td></tr>
-<tr><td><strong>Ne veut plus du projet</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Ne veut plus du projet</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -483,7 +483,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Sans réponse</strong></td><td><span class="ecran">«&nbsp;Sans réponse&nbsp;»</span> est gardé dans l’historique. La visite reste prévue et le <span class="ecran">«&nbsp;Débrief visite&nbsp;»</span> attend.</td></tr>
 <tr><td><strong>Reportée à une autre date</strong><span class="pastille">ouvre la planification</span></td><td>La planification s’ouvre&nbsp;: la visite existante est déplacée à la nouvelle date, la confirmation et le débrief suivent. Cette étape reste ouverte, à la veille de la nouvelle date.</td></tr>
 <tr><td><strong>Annule le rendez-vous</strong></td><td>Le rendez-vous est annulé (le technicien est prévenu), la confirmation et le débrief sont retirés. Le suivi continue sans visite&nbsp;: le suivi de proposition reprend s’il était pendant, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée.</td></tr>
-<tr><td><strong>Ne veut plus du projet</strong></td><td>Toutes les relances s’arrêtent, le rendez-vous est annulé&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Ne veut plus du projet</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent, le rendez-vous est annulé&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -505,7 +505,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Demande un devis modifié</strong></td><td>Étape <span class="ecran">«&nbsp;Préparer le devis modifié — rappeler le client&nbsp;»</span> pour demain.</td></tr>
 <tr><td><strong>Décision à plusieurs — en famille</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span>&nbsp;; le suivi reprend ou l’étape devis est posée.</td></tr>
 <tr><td><strong>Décision à plusieurs — le propriétaire</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> (propriétaire à joindre)&nbsp;; le suivi reprend ou l’étape devis est posée.</td></tr>
-<tr><td><strong>Refuse la proposition</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refuse la proposition</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -518,7 +518,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Devis modifié envoyé — passer à la suite</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Devis envoyé&nbsp;»</span> et le suivi de proposition démarre pour ce devis. Envoyé DEPUIS l’ERP, tout ceci se fait tout seul et cette étape se ferme d’elle-même.</td></tr>
 <tr><td><strong>Pas encore — à rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie.</td></tr>
-<tr><td><strong>Refuse la proposition</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Refuse la proposition</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -540,7 +540,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; note <span class="ecran">«&nbsp;Occupé&nbsp;»</span>.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil&nbsp;: le dossier sort du Froid et <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à cette date.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: ce même réveil revient à la date convenue.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Les réveils s’arrêtent&nbsp;; le dossier reste au Froid, sans autre relance.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Les réveils s’arrêtent&nbsp;; le dossier reste au Froid, sans autre relance.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -553,12 +553,12 @@ table.touches td:nth-child(3) { width: 17%; }
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
 <tr><td><strong>Le client a répondu</strong></td><td>Le dossier sort du Froid, les réveils restants sont annulés. Un suivi de proposition pas allé au bout reprend&nbsp;; sinon <span class="ecran">«&nbsp;Appeler le client — il a répondu au message&nbsp;»</span> est posée.</td></tr>
-<tr><td><strong>Client joint au téléphone</strong></td><td>Tu l’as eu au téléphone&nbsp;: le dossier sort du Froid&nbsp;; un suivi pas allé au bout reprend, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
+<tr><td><strong>Client joint au téléphone</strong></td><td>Client eu au téléphone&nbsp;: le dossier sort du Froid&nbsp;; un suivi pas allé au bout reprend, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Le dossier sort du Froid&nbsp;; planification, ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Pas de réponse</strong></td><td>Le dossier reste au Froid. Après le dernier réveil&nbsp;: plus aucune relance.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>Le réveil suivant est déplacé à la date choisie. Sur le dernier réveil&nbsp;: le dossier sort du Froid et <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à cette date.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: ce même réveil revient à la date convenue.</td></tr>
-<tr><td><strong>Refus</strong></td><td>Les réveils s’arrêtent&nbsp;; le dossier reste au Froid.</td></tr>
+<tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Les réveils s’arrêtent&nbsp;; le dossier reste au Froid.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -576,7 +576,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Fait — passer à la suite</strong></td><td>Sur un barreau de l’ancien plan&nbsp;: la touche suivante est programmée à son délai. Sur une étape posée par l’ERP&nbsp;: un suivi de proposition pendant reprend, sinon <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span> est posée pour demain.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification, ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span> si la date n’est pas fixée.</td></tr>
 <tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>L’étape reste ouverte, déplacée à la date choisie (sur un barreau de l’ancien plan&nbsp;: la touche suivante est programmée à cette date).</td></tr>
-<tr><td><strong>Client refuse</strong></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
+<tr><td><strong>Client refuse</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 <p class="note">Sur une étape d’appel, 4 réponses s’ajoutent : Répondeur · Occupé · Numéro invalide · A bloqué / signalé.</p>
