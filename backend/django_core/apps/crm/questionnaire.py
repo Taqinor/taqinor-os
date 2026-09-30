@@ -305,6 +305,11 @@ def valider_questions(brut) -> dict:
     return out
 
 
+#: Types « pro » dont le kWh mensuel du site est repris (QJR592).
+_TYPES_PRO = (Lead.TypeInstallation.INDUSTRIEL,
+              Lead.TypeInstallation.COMMERCIAL)
+
+
 def prefill(lead, sections) -> dict:
     """Valeurs ACTUELLES du lead pour les champs des sections actives.
 
@@ -316,6 +321,13 @@ def prefill(lead, sections) -> dict:
     for section in sections:
         for cle in CHAMPS_PAR_SECTION.get(section, ()):
             valeur = getattr(lead, cle, None)
+            # QJR592 — un lead PRO (industriel / commercial) a déjà donné son
+            # kWh mensuel sur le site : il est rangé dans `bill_kwh` seulement.
+            # On le PROPOSE (à confirmer) au lieu de le redemander ; jamais en
+            # résidentiel (estimation possible) et aucune écriture serveur.
+            if (cle == 'conso_mensuelle_kwh' and _vide(valeur)
+                    and lead.type_installation in _TYPES_PRO):
+                valeur = getattr(lead, 'bill_kwh', None)
             if isinstance(valeur, Decimal):
                 valeur = float(valeur)
             elif isinstance(valeur, str) and not valeur.strip():
