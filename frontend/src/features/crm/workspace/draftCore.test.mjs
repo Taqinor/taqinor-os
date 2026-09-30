@@ -190,3 +190,23 @@ test('CAD174 — les huit champs CAD149 sont dans TRACKED_KEYS et dans une SECTI
     assert.equal(sections.length, 1, `${champ} doit être dans EXACTEMENT une section (trouvé : ${sections})`)
   }
 })
+
+// ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — la réponse du PATCH (sérialiseur
+// d'écriture) n'embarque pas `chatter_recent` : il ne doit PAS être effacé.
+test('applyFlushSuccess — chatter_recent/devis absents de la réponse PATCH sont conservés', () => {
+  const s = editState({
+    server: { id: 7, nom: 'Karim', chatter_recent: [{ id: 1 }], devis: [{ id: 3 }] },
+    inflight: { relance_date: '2026-10-15T09:00' },
+    draft: { relance_date: '2026-10-15T09:00' },
+  })
+  const next = applyFlushSuccess(s, { id: 7, nom: 'Karim', relance_date: '2026-10-15T09:00:00Z' })
+  assert.deepEqual(next.server.chatter_recent, [{ id: 1 }])
+  assert.deepEqual(next.server.devis, [{ id: 3 }])
+  assert.equal(next.server.relance_date, '2026-10-15T09:00:00Z')
+})
+
+test('SET_SERVER — une clé embarquée PRÉSENTE dans la réponse fait foi (même vide)', () => {
+  const s = editState({ server: { id: 7, chatter_recent: [{ id: 1 }] } })
+  assert.deepEqual(reducer(s, { type: 'SET_SERVER', res: { id: 7, chatter_recent: [] } }).server.chatter_recent, [])
+  assert.deepEqual(reducer(s, { type: 'SET_SERVER', res: { id: 7, stage: 'CONTACTED' } }).server.chatter_recent, [{ id: 1 }])
+})
