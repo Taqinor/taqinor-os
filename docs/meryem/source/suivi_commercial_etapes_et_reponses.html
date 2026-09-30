@@ -5,7 +5,7 @@
 <title>Guide — Le suivi commercial&nbsp;: étapes, réponses et suites</title>
 <meta name="generator" content="scripts/generer_guide_suivi.py">
 <meta name="table-version" content="1.0">
-<meta name="table-sha256" content="9f04eeafb9658be8dddb74662b3ac6574df510cc77a1ce8c813218d52c7726df">
+<meta name="table-sha256" content="0ba10ae0f317a9965256543fd5869a5da9c45b3a6621cc8f1f47e36af666c9a3">
 <!-- Fichier GÉNÉRÉ : ne pas modifier à la main. Relancer `python scripts/generer_guide_suivi.py` après tout changement de la table du parcours. -->
 <style>
 @page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
@@ -269,7 +269,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée dans l’historique.</td></tr>
 <tr><td><strong>Numéro invalide</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;Numéro invalide&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
 <tr><td><strong>A bloqué / signalé</strong></td><td>Comme <span class="ecran">«&nbsp;Pas de réponse&nbsp;»</span>, avec la note <span class="ecran">«&nbsp;A bloqué / signalé&nbsp;»</span>. Case cochée&nbsp;: le lead passe Perdu (motif junk) et tout s’arrête.</td></tr>
-<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante du protocole est programmée à la date choisie, et le reste du suivi glisse du même nombre de jours.</td></tr>
+<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante du protocole est programmée à la date choisie, et le reste du suivi glisse du même nombre de jours. Sur la dernière touche&nbsp;: <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à la date et à l’heure convenues.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Le dossier se met en veille&nbsp;: cette même touche revient à la date convenue, rien ne part d’ici là. Au-delà d’un mois&nbsp;: le suivi s’arrête et un réveil est daté.</td></tr>
 <tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent. Étape suivante&nbsp;: <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> (perdu avec son motif, ou relance ultérieure) — possible dès maintenant. Le lead n’est pas marqué perdu tout seul.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Le lead passe <span class="ecran">«&nbsp;Ne plus contacter&nbsp;»</span>&nbsp;: toutes ses relances s’arrêtent et aucune ne pourra redémarrer. L’opposition est inscrite au registre.</td></tr>
@@ -287,7 +287,7 @@ table.touches td:nth-child(3) { width: 17%; }
 <tr><td><strong>Client joint au téléphone</strong></td><td>Appel passé au lieu du message, et le client a décroché&nbsp;: même suite qu’un appel abouti — <span class="ecran">«&nbsp;Préparer et envoyer le devis&nbsp;»</span>, pour demain et possible dès maintenant.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Comme sur un appel&nbsp;: planification, ou étape <span class="ecran">«&nbsp;Planifier la visite technique convenue&nbsp;»</span> si la date n’est pas fixée.</td></tr>
 <tr><td><strong>Pas de réponse</strong></td><td>La touche suivante du protocole est programmée. Après la dernière (<span class="ecran">«&nbsp;Clôture&nbsp;»</span>)&nbsp;: le dossier part au Froid et ses réveils sont programmés.</td></tr>
-<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant.</td></tr>
+<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant. Sur la dernière touche&nbsp;: <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à la date et à l’heure convenues.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
 <tr><td><strong>Refus</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
@@ -401,20 +401,20 @@ table.touches td:nth-child(3) { width: 17%; }
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
-<tr><td><strong>Client joint</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Relance&nbsp;»</span>. Le suivi continue&nbsp;: sa touche suivante est programmée à son délai prévu.</td></tr>
+<tr><td><strong>Client joint</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Relance&nbsp;»</span>. Le suivi continue&nbsp;: sa touche suivante est programmée à son délai prévu. Sur la dernière touche du suivi&nbsp;: <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> est posée pour demain (le devis est déjà parti&nbsp;: aucune étape devis).</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification. Visite planifiée&nbsp;: les relances en attente sont décalées après la visite (jamais annulées), <span class="ecran">«&nbsp;Confirmer la visite&nbsp;»</span> et <span class="ecran">«&nbsp;Débrief visite&nbsp;»</span> sont posées. Date pas encore fixée&nbsp;: étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Sans réponse</strong></td><td>La touche suivante du suivi est programmée. Après la dernière&nbsp;: le dossier part au Froid (<span class="ecran">«&nbsp;Devis sans suite&nbsp;»</span>) et ses réveils sont programmés.</td></tr>
 <tr><td><strong>Répondeur</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Répondeur&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>Occupé</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>&nbsp;; la note <span class="ecran">«&nbsp;Occupé&nbsp;»</span> est gardée.</td></tr>
 <tr><td><strong>Numéro invalide</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>, note <span class="ecran">«&nbsp;Numéro invalide&nbsp;»</span>. Case cochée&nbsp;: lead Perdu (junk).</td></tr>
 <tr><td><strong>A bloqué / signalé</strong></td><td>Comme <span class="ecran">«&nbsp;Sans réponse&nbsp;»</span>, note <span class="ecran">«&nbsp;A bloqué / signalé&nbsp;»</span>. Case cochée&nbsp;: lead Perdu (junk).</td></tr>
-<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant.</td></tr>
+<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie&nbsp;; le reste du suivi glisse d’autant. Sur la dernière touche du suivi&nbsp;: <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à la date et à l’heure convenues.</td></tr>
 <tr><td><strong>Refuse la proposition</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
 <tr><td><strong>Question de prix — veut négocier</strong></td><td>Le suivi se met en pause&nbsp;: étape <span class="ecran">«&nbsp;Question de prix — préparer l’appel du fondateur&nbsp;»</span> pour demain&nbsp;; aucun message ne part tant qu’elle n’est pas traitée.</td></tr>
 <tr><td><strong>Demande un devis modifié</strong></td><td>Étape <span class="ecran">«&nbsp;Préparer le devis modifié — rappeler le client&nbsp;»</span> pour demain&nbsp;; le suivi de l’ancien devis se tait.</td></tr>
-<tr><td><strong>Décision à plusieurs — en famille</strong></td><td>L’étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> est posée (le <span class="ecran">«&nbsp;dimanche famille&nbsp;»</span> rejoint le plan)&nbsp;; la touche suivante est programmée.</td></tr>
-<tr><td><strong>Décision à plusieurs — le propriétaire</strong></td><td>L’étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> est posée, la note dit qu’il faut joindre le propriétaire&nbsp;; la touche suivante est programmée.</td></tr>
+<tr><td><strong>Décision à plusieurs — en famille</strong></td><td>L’étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> est posée (le <span class="ecran">«&nbsp;dimanche famille&nbsp;»</span> rejoint le plan)&nbsp;; la touche suivante est programmée. Sur la dernière touche du suivi&nbsp;: l’étiquette est posée, puis <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> pour demain (aucune étape devis).</td></tr>
+<tr><td><strong>Décision à plusieurs — le propriétaire</strong></td><td>L’étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> est posée, la note dit qu’il faut joindre le propriétaire&nbsp;; la touche suivante est programmée. Sur la dernière touche du suivi&nbsp;: l’étiquette est posée, puis <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> pour demain (aucune étape devis).</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
@@ -427,17 +427,17 @@ table.touches td:nth-child(3) { width: 17%; }
 </div>
 <table>
 <tr><th>Ta réponse</th><th>Ce qui se passe ensuite</th></tr>
-<tr><td><strong>Le client a répondu</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Relance&nbsp;»</span>. Le suivi continue&nbsp;: sa touche suivante est programmée.</td></tr>
-<tr><td><strong>Client joint au téléphone</strong></td><td>Client eu au téléphone&nbsp;: même suite, l’historique garde un appel abouti.</td></tr>
+<tr><td><strong>Le client a répondu</strong></td><td>Le dossier passe <span class="ecran">«&nbsp;Relance&nbsp;»</span>. Le suivi continue&nbsp;: sa touche suivante est programmée. Sur la dernière touche du suivi&nbsp;: <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> est posée pour demain (le devis est déjà parti&nbsp;: aucune étape devis).</td></tr>
+<tr><td><strong>Client joint au téléphone</strong></td><td>Client eu au téléphone&nbsp;: même suite, l’historique garde un appel abouti. Sur la dernière touche du suivi&nbsp;: <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> est posée pour demain.</td></tr>
 <tr><td><strong>Visite acceptée</strong><span class="pastille">ouvre la planification</span></td><td>Planification (les relances en attente sont décalées après la visite), ou étape <span class="ecran">«&nbsp;Planifier la visite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Sans réponse</strong></td><td>La touche suivante du suivi est programmée. Après la dernière&nbsp;: Froid + réveils.</td></tr>
-<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie.</td></tr>
+<tr><td><strong>À rappeler le…</strong><span class="pastille">date à saisir</span></td><td>La touche suivante est programmée à la date choisie. Sur la dernière touche du suivi&nbsp;: <span class="ecran">«&nbsp;Rappeler le client — rappel convenu&nbsp;»</span> est posée à la date et à l’heure convenues.</td></tr>
 <tr><td><strong>Refuse la proposition</strong><span class="pastille">motif de refus, facultatif</span></td><td>Toutes les relances s’arrêtent&nbsp;; étape <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span>.</td></tr>
 <tr><td><strong>Plus tard — pas maintenant</strong><span class="pastille">date à saisir</span></td><td>Veille&nbsp;: cette même touche revient à la date convenue.</td></tr>
 <tr><td><strong>Question de prix — veut négocier</strong></td><td>Pause&nbsp;: étape <span class="ecran">«&nbsp;Question de prix&nbsp;»</span> pour demain.</td></tr>
 <tr><td><strong>Demande un devis modifié</strong></td><td>Étape <span class="ecran">«&nbsp;Préparer le devis modifié&nbsp;»</span> pour demain.</td></tr>
-<tr><td><strong>Décision à plusieurs — en famille</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span>&nbsp;; touche suivante programmée.</td></tr>
-<tr><td><strong>Décision à plusieurs — le propriétaire</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> (propriétaire à joindre)&nbsp;; touche suivante programmée.</td></tr>
+<tr><td><strong>Décision à plusieurs — en famille</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span>&nbsp;; touche suivante programmée. Sur la dernière touche du suivi&nbsp;: l’étiquette, puis <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> pour demain.</td></tr>
+<tr><td><strong>Décision à plusieurs — le propriétaire</strong></td><td>Étiquette <span class="ecran">«&nbsp;Décision à plusieurs&nbsp;»</span> (propriétaire à joindre)&nbsp;; touche suivante programmée. Sur la dernière touche du suivi&nbsp;: l’étiquette, puis <span class="ecran">«&nbsp;Décider la suite&nbsp;»</span> pour demain.</td></tr>
 <tr><td><strong>Ne plus me contacter</strong></td><td>Tout s’arrête définitivement.</td></tr>
 </table>
 </div>
