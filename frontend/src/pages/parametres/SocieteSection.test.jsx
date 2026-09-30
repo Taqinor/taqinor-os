@@ -82,7 +82,7 @@ describe('ERR-QAH-PARAMETRES-CHAMP-ERREUR-GENERIQUE — Téléphone', () => {
 describe('ERR-QAH-PARAMETRES-EMAIL-ERREUR-HORS-CHAMP — Email', () => {
   afterEach(cleanup)
 
-  it('erreur 400 DRF sur email : le champ est marqué invalide et le message s'affiche dessous', () => {
+  it("erreur 400 DRF sur email : le champ est marqué invalide et le message s'affiche dessous", () => {
     renderSection({ saveError: { email: ['Saisissez une adresse e-mail valide.'] } })
     const input = screen.getByPlaceholderText('contact@entreprise.ma')
     expect(input).toHaveAttribute('aria-invalid', 'true')

@@ -124,6 +124,7 @@ const FIELD_LABELS_FR = {
   detail: 'Erreur', non_field_errors: 'Erreur', body: 'Note', motif: 'Motif',
   produit: 'Produit', quantite: 'Quantité',
 }
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable)
 export function frError(err, fallback = 'Action impossible.') {
   if (!err) return fallback
   const data = err?.response?.data ?? err
