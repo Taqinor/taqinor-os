@@ -3110,11 +3110,17 @@ const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
 
 // QX40 — tension d'un produit (pompe/variateur) : champ tension_v prioritaire,
 // sinon lecture « 220V »/« 380V » dans le nom, sinon null (inconnu).
+// ERR-QAH-DIFF-POMPAGE-TENSION-NOM-2200W — UNE règle stricte, jumelle de
+// `calepinage.services.pompage.tension_produit` : le NOMBRE ISOLÉ 220/380
+// immédiatement suivi de « V » (« 220V », « 220 V », « 220Vac », « 380 volts »),
+// jamais « 1220V » ni un « 2200W » (que le Python lisait 220 V).
+const RE_TENSION_MONO = /(?<![\d.,])220\s*v(?:olts?|ac)?(?![a-z0-9])/i
+const RE_TENSION_TRI = /(?<![\d.,])380\s*v(?:olts?|ac)?(?![a-z0-9])/i
 export function tensionOf(p) {
   if (p && p.tension_v) return Number(p.tension_v)
   const nom = (p && p.nom) || ''
-  if (/220\s*v/i.test(nom)) return 220
-  if (/380\s*v/i.test(nom)) return 380
+  if (RE_TENSION_MONO.test(nom)) return 220
+  if (RE_TENSION_TRI.test(nom)) return 380
   return null
 }
 
