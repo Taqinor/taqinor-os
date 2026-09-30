@@ -30,6 +30,7 @@ import {
   Segmented, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton,
 } from '../../ui'
 import { cn } from '../../lib/cn'
+import { STAGE_LABELS } from '../../features/crm/stages'
 import {
   comparaisonPrecedent, decimal, heureCasa, jjmm, jourCourt, jourLong, libelleJour,
   libelleReponse, nomType, nombre, numeroJour, phraseExceptions, phrasePeriode,
@@ -410,7 +411,16 @@ const LISTES = [
     cle: 'sans_prochaine_etape',
     titre: 'Dossiers sans prochaine étape',
     tone: 'danger',
-    detail: () => '',
+    // Ligne du contrat (`exemple_alerte`) : `stage` est une clé de STAGES.py,
+    // dite avec le libellé FR des constantes du frontend (`features/crm/stages`,
+    // miroir strict de STAGES.py) — jamais une liste écrite ici ; une clé que
+    // ces constantes ne connaissent pas s'affiche telle quelle.
+    etiquette: (l) => (l.stage ? (STAGE_LABELS[l.stage] ?? l.stage) : ''),
+    detail: (l) => {
+      if (l.depuis_jours == null) return ''
+      if (l.depuis_jours === 0) return "sans étape depuis aujourd'hui"
+      return `sans étape depuis ${nombre(l.depuis_jours)} ${pl(l.depuis_jours, 'jour', 'jours')}`
+    },
   },
   {
     cle: 'premier_contact_hors_delai',
@@ -423,6 +433,7 @@ const LISTES = [
 
 function LigneException({ liste, ligne, navigate }) {
   const type = ligne.type_etape ? nomType(ligne.type_etape) : ''
+  const etiquette = liste.etiquette ? liste.etiquette(ligne) : ''
   const meta = [
     type && type !== ligne.libelle ? type : '',
     liste.detail(ligne),
@@ -433,6 +444,7 @@ function LigneException({ liste, ligne, navigate }) {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <LienLead leadId={ligne.lead} nom={ligne.lead_nom} navigate={navigate} />
         {ligne.libelle && <span>{ligne.libelle}</span>}
+        {etiquette && <Badge tone="outline" data-testid="controle-ligne-etiquette">{etiquette}</Badge>}
         {ligne.est_tache && liste.cle !== 'taches_en_attente' && <Badge tone="primary">Tâche</Badge>}
       </div>
       {meta && <p className="mt-0.5 text-xs text-muted-foreground">{meta}</p>}

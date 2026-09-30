@@ -13,9 +13,13 @@ import { MemoryRouter } from 'react-router-dom'
    et ces tests cassent tout seuls. */
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import { PARCOURS } from '../../features/crm/relances/parcours'
+import { STAGE_LABELS } from '../../features/crm/stages'
 
 const CONTROLE = exempleContrat('crm', 'controle_suivi')
 const VIDE = exempleContrat('crm', 'controle_suivi', 'exemple_vide')
+// `exemple_alerte` : le serveur en niveau « alerte », avec la ligne d'un dossier
+// sans prochaine étape (stage, derniere_etape_le, depuis_jours).
+const ALERTE = exempleContrat('crm', 'controle_suivi', 'exemple_alerte')
 const SUIVI = exempleContrat('crm', 'relance_etapes_suivi')
 
 const naviguer = vi.fn()
@@ -101,13 +105,17 @@ describe('ControleSuiviPanel — verdict', () => {
       + '1 étape reportée plusieurs fois, 1 premier contact hors délai.')
   })
 
-  it('« alerte » : ▲ rouge, « En retard »', async () => {
-    crmApi.getControleSuivi.mockResolvedValue(variante({ verdict: verdictAvec({ niveau: 'alerte' }) }))
+  it('« alerte » (exemple_alerte du contrat) : ▲ rouge, « En retard », les cinq listes dans la phrase', async () => {
+    crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
     monter()
     const verdict = await attendreVerdict()
     expect(verdict).toHaveAttribute('data-niveau', 'alerte')
     expect(verdict).toHaveTextContent('▲')
     expect(verdict).toHaveTextContent('En retard')
+    // Le dossier sorti du suivi entre dans la phrase, à sa place (avant le premier contact).
+    expect(verdict).toHaveTextContent(
+      '2 étapes en retard, 1 tâche en attente depuis 4 jours, 1 étape reportée plusieurs fois, '
+      + '1 dossier sans prochaine étape, 1 premier contact hors délai.')
   })
 
   it('« ok » : ● vert, « Tout est à jour » — la phrase dit que rien n\'est en retard', async () => {
@@ -422,24 +430,99 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     expect(ligne).toHaveTextContent('Responsable : commerciale')
   })
 
-  it('« Dossiers sans prochaine étape » : la liste s\'ouvre quand le serveur en sert', async () => {
-    crmApi.getControleSuivi.mockResolvedValue(variante({
-      exceptions: {
-        ...CONTROLE.exceptions,
-        sans_prochaine_etape: {
-          total: 1,
-          lignes: [{ lead: 1600, lead_nom: 'Dossier Sans Suite', owner_nom: 'commerciale' }],
+  describe('« Dossiers sans prochaine étape » (ligne fixée par exemple_alerte)', () => {
+    const LIGNE = ALERTE.exceptions.sans_prochaine_etape.lignes[0]
+
+    /** L'exemple d'alerte dont on ne change que la ligne du dossier sans étape. */
+    const avecLigne = (surcharge) => ({
+      data: {
+        ...ALERTE,
+        exceptions: {
+          ...ALERTE.exceptions,
+          sans_prochaine_etape: { total: 1, lignes: [{ ...LIGNE, ...surcharge }] },
         },
       },
-    }))
-    monter()
-    await attendreVerdict()
-    const ligne = within(bloc('sans_prochaine_etape')).getByTestId('controle-exception-ligne')
-    expect(within(ligne).getByRole('link', { name: 'Dossier Sans Suite' }))
-      .toHaveAttribute('href', '/crm/leads?lead=1600')
-    expect(ligne).toHaveTextContent('Responsable : commerciale')
-    expect(screen.getByTestId('controle-verdict'))
-      .toHaveTextContent('1 dossier sans prochaine étape')
+    })
+
+    it('la liste s\'ouvre avec la ligne du contrat : nom (lien fiche), étape du pipeline en français, ancienneté, responsable', async () => {
+      crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+      monter()
+      await attendreVerdict()
+      expect(screen.getByTestId('controle-total-sans_prochaine_etape')).toHaveTextContent('1')
+      const ligne = within(bloc('sans_prochaine_etape')).getByTestId('controle-exception-ligne')
+      expect(within(ligne).getByRole('link', { name: LIGNE.lead_nom }))
+        .toHaveAttribute('href', `/crm/leads?lead=${LIGNE.lead}`)
+      // `stage` est une clé de STAGES.py : la ligne dit le libellé FR des
+      // constantes du frontend, jamais la clé.
+      expect(STAGE_LABELS[LIGNE.stage]).toBeTruthy()
+      expect(within(ligne).getByTestId('controle-ligne-etiquette')).toHaveTextContent(STAGE_LABELS[LIGNE.stage])
+      expect(ligne).not.toHaveTextContent(LIGNE.stage)
+      expect(ligne).toHaveTextContent(`sans étape depuis ${LIGNE.depuis_jours} jours`)
+      expect(ligne).toHaveTextContent(`Responsable : ${LIGNE.owner_nom}`)
+    })
+
+    it('chaque clé de STAGES.py servie se dit avec son libellé français', async () => {
+      // Une clé après l'autre, par construction : la liste vient des constantes.
+      for (const [stage, libelle] of Object.entries(STAGE_LABELS)) {
+        crmApi.getControleSuivi.mockResolvedValue(avecLigne({ stage }))
+        const rendu = monter()
+        await attendreVerdict()
+        expect(within(bloc('sans_prochaine_etape')).getByTestId('controle-ligne-etiquette'))
+          .toHaveTextContent(libelle)
+        rendu.unmount()
+      }
+    })
+
+    it('une clé que les constantes du frontend ne connaissent pas s\'affiche telle quelle', async () => {
+      crmApi.getControleSuivi.mockResolvedValue(avecLigne({ stage: 'ETAPE_INCONNUE' }))
+      monter()
+      await attendreVerdict()
+      expect(within(bloc('sans_prochaine_etape')).getByTestId('controle-ligne-etiquette'))
+        .toHaveTextContent('ETAPE_INCONNUE')
+    })
+
+    it('l\'ancienneté s\'accorde : « depuis 1 jour », « depuis aujourd\'hui »', async () => {
+      crmApi.getControleSuivi.mockResolvedValue(avecLigne({ depuis_jours: 1 }))
+      const { unmount } = monter()
+      await attendreVerdict()
+      expect(bloc('sans_prochaine_etape')).toHaveTextContent('sans étape depuis 1 jour')
+      expect(bloc('sans_prochaine_etape')).not.toHaveTextContent('depuis 1 jours')
+      unmount()
+      crmApi.getControleSuivi.mockResolvedValue(avecLigne({ depuis_jours: 0 }))
+      monter()
+      await attendreVerdict()
+      expect(bloc('sans_prochaine_etape')).toHaveTextContent('sans étape depuis aujourd\'hui')
+    })
+
+    it('une ligne sans `stage` ni `depuis_jours` (serveur plus ancien) reste lisible : nom et responsable', async () => {
+      crmApi.getControleSuivi.mockResolvedValue({
+        data: {
+          ...ALERTE,
+          exceptions: {
+            ...ALERTE.exceptions,
+            sans_prochaine_etape: {
+              total: 1,
+              lignes: [{ lead: LIGNE.lead, lead_nom: LIGNE.lead_nom, owner_nom: LIGNE.owner_nom }],
+            },
+          },
+        },
+      })
+      monter()
+      await attendreVerdict()
+      const ligne = within(bloc('sans_prochaine_etape')).getByTestId('controle-exception-ligne')
+      expect(within(ligne).getByRole('link', { name: LIGNE.lead_nom })).toBeInTheDocument()
+      expect(within(ligne).queryByTestId('controle-ligne-etiquette')).not.toBeInTheDocument()
+      expect(ligne).toHaveTextContent(`Responsable : ${LIGNE.owner_nom}`)
+      expect(ligne).not.toHaveTextContent('sans étape depuis')
+    })
+
+    it('le verdict « alerte » de l\'exemple compte ce dossier dans sa phrase', async () => {
+      crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+      monter()
+      const verdict = await attendreVerdict()
+      expect(verdict).toHaveAttribute('data-niveau', 'alerte')
+      expect(verdict).toHaveTextContent('1 dossier sans prochaine étape')
+    })
   })
 
   it('« et N autres » quand le total dépasse les lignes servies, avec un lien vers /crm/relances', async () => {
