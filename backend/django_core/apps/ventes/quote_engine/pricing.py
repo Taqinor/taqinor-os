@@ -1299,6 +1299,85 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
     }
 
 
+# Clé solaire saisonnière FIXE (somme = 1,000) : forme d'une économie annuelle
+# répartie sur douze mois quand aucun moteur n'a calculé les mois un par un.
+CLE_SOLAIRE_MENSUELLE = (0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
+                         0.116, 0.101, 0.087, 0.070, 0.052, 0.048)
+
+
+def repartir_economie_plafonnee(economie_annuelle, factures_mensuelles,
+                                cle=CLE_SOLAIRE_MENSUELLE):
+    """ERR-QAC-GRAPHE-MENSUEL-CLE-SOLAIRE — répartit une économie ANNUELLE sur
+    douze mois par la clé solaire ``cle``, PLAFONNÉE à la facture de chaque
+    mois, le reliquat au prorata de la marge restante des autres mois.
+
+    Hors modèle « horaire », la clé fixe attribuait en juin/juillet jusqu'à
+    1,39 mois moyen d'économie : dès que l'économie annuelle approche la
+    facture annuelle, les mois d'été dépassaient LEUR facture, le graphe (qui
+    plancher chaque mois à la facture) perdait ce débordement, et la page 1
+    imprimait une économie annuelle 3 à 12 % sous celle de la carte option.
+    Ici : Σ des douze valeurs = ``round(economie_annuelle)`` (tant que la
+    somme des factures le permet) et AUCUN mois ne dépasse sa facture.
+
+    Fonction PURE (aucune base, aucun effet) ; rend ``None`` quand les douze
+    factures ne sont pas exploitables (l'appelant garde alors la clé seule).
+    """
+    try:
+        factures = [float(v) for v in (factures_mensuelles or [])]
+        eco = float(economie_annuelle or 0)
+    except (TypeError, ValueError):
+        return None
+    if len(factures) != 12 or len(cle) != 12 or any(f < 0 for f in factures):
+        return None
+    if eco <= 0:
+        return [0] * 12
+    plafonds = [max(0, int(f)) for f in factures]   # entiers : jamais > facture
+    cible = min(int(round(eco)), sum(plafonds))
+    valeurs = [0.0] * 12
+    reste = float(cible)
+    ouverts = [i for i in range(12) if plafonds[i] > 0]
+    poids = [float(cle[i]) for i in range(12)]
+    # Passe 1 : la clé solaire, plafonnée ; passes suivantes : le reliquat au
+    # prorata de la MARGE restante (facture − déjà attribué) des mois ouverts.
+    premier = True
+    for _ in range(24):
+        if reste <= 1e-9 or not ouverts:
+            break
+        if premier:
+            base = {i: poids[i] for i in ouverts}
+            premier = False
+        else:
+            base = {i: plafonds[i] - valeurs[i] for i in ouverts}
+        total = sum(base.values())
+        if total <= 0:
+            break
+        attribue = 0.0
+        for i in ouverts:
+            part = min(reste * base[i] / total, plafonds[i] - valeurs[i])
+            valeurs[i] += part
+            attribue += part
+        reste -= attribue
+        ouverts = [i for i in ouverts if plafonds[i] - valeurs[i] > 1e-9]
+    # Arrondi entier à somme exacte (plus forts restes), sans dépasser le
+    # plafond entier d'aucun mois.
+    entiers = [min(int(v), plafonds[i]) for i, v in enumerate(valeurs)]
+    manque = cible - sum(entiers)
+    ordre = sorted(range(12), key=lambda i: valeurs[i] - int(valeurs[i]),
+                   reverse=True)
+    while manque > 0:
+        progres = False
+        for i in ordre:
+            if manque <= 0:
+                break
+            if entiers[i] < plafonds[i]:
+                entiers[i] += 1
+                manque -= 1
+                progres = True
+        if not progres:
+            break
+    return entiers
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -1609,8 +1688,7 @@ def calculate_savings_roi(
     if eco_monthly_reel:
         eco_s_monthly, eco_a_monthly = eco_monthly_reel
     else:
-        _SF = [0.053, 0.062, 0.083, 0.098, 0.114, 0.116,
-               0.116, 0.101, 0.087, 0.070, 0.052, 0.048]
+        _SF = CLE_SOLAIRE_MENSUELLE
         eco_s_monthly = [round(economie_opt1 * f) for f in _SF]
         eco_a_monthly = [round(economie_opt2 * f) for f in _SF]
 

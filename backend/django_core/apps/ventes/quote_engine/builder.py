@@ -2784,6 +2784,30 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         factures_mensuelles = list(roi["factures_avant_monthly"])
         factures_source = "etude_horaire"
 
+    # ── ERR-QAC-GRAPHE-MENSUEL-CLE-SOLAIRE — LE GRAPHE = LA CARTE ────────────
+    # Hors modèle « horaire », ``pricing`` répartit l'économie annuelle par la
+    # clé solaire FIXE sans regarder les factures ; le graphe mensuel plancher
+    # ensuite chaque mois à sa facture, donc l'économie que la clé attribuait
+    # au-delà de la facture des mois d'été disparaissait du graphe, du « X →
+    # Y MAD/an » et du −N % — mais restait dans la carte option (``eco_*_ann``).
+    # Deux économies annuelles sur la même page. Quand les douze factures sont
+    # connues, la série est re-répartie par la MÊME clé PLAFONNÉE à la facture
+    # de chaque mois (helper pur ``pricing.repartir_economie_plafonnee``) :
+    # Σ des douze mois = économie de la carte, aucun mois > sa facture.
+    # ``eco_*_ann``, payback et cashflow ne bougent pas (ils ne lisent pas la
+    # série). Le modèle « horaire » garde ses douze mois RÉELLEMENT calculés.
+    if factures_mensuelles is not None:
+        from .pricing import repartir_economie_plafonnee
+        for _modele_opt, _cle_ann, _cle_mois in (
+                (savings_model_sans, "eco_s_ann", "eco_s_monthly"),
+                (savings_model_avec, "eco_a_ann", "eco_a_monthly")):
+            if _modele_opt == "horaire":
+                continue
+            _serie = repartir_economie_plafonnee(
+                roi.get(_cle_ann), factures_mensuelles)
+            if _serie is not None:
+                roi[_cle_mois] = _serie
+
     # ÉTIQUETAGE (motif Z2). La série est ancrée dans une facture réelle, mais
     # sa VARIATION d'un mois à l'autre n'est mesurée que lorsque le client a
     # donné douze points (douze factures) ou douze relevés kWh. Avec une seule
