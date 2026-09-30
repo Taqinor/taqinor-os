@@ -22,6 +22,15 @@ try:
 except ImportError:  # exécution directe du moteur depuis son dossier
     import i18n_labels
 
+# QA-FIGURES — ancres ``data-figure`` masquées posées À CÔTÉ de chaque chiffre
+# client (jamais dedans : aucune chaîne existante ne change ; ``hidden`` =
+# aucun rendu, aucune pagination touchée). Module pur, même double chemin
+# d'import que ``i18n_labels``. Voir ``quote_engine/figures.py``.
+try:
+    from .figures import ancre as _ancre_figure
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from figures import ancre as _ancre_figure
+
 
 def _render_pdf_weasyprint(html_string, out_path):
     """Render HTML to PDF using WeasyPrint (no browser needed)."""
@@ -1458,11 +1467,16 @@ def _desc_lines_html(it, max_lines, font_pt):
         for ln in lines)
 
 
-def _totals_block_rows(totaux, colspan):
+def _totals_block_rows(totaux, colspan, ancres=None):
     """Sous-total HT \u2192 Remise visible \u2192 Total HT \u2192 TVA \u2192 Total TTC.
 
     Renders the CANONICAL totals computed once by the builder \u2014 every page
     shows these exact figures (never re-derived, no rounding drift).
+
+    QA-FIGURES — ``ancres`` : ``None`` → aucun marqueur (bloc masqué ou
+    appelant hors document) ; ``"sans"``/``"avec"`` → marqueurs de cette
+    option ; ``""`` → marqueurs du document entier. L'ancre vit dans la
+    cellule VIDE de tête de ligne : les cellules libellé/montant sont intactes.
     """
     total_ht = totaux["ht_brut"]
     remise = totaux["remise"]
@@ -1470,37 +1484,41 @@ def _totals_block_rows(totaux, colspan):
     tva = totaux["tva"]
     ttc = totaux["ttc"]
 
-    def row(label, value, navy=False, neg=False):
+    def row(label, value, navy=False, neg=False, fig=None, taux=None):
         color = CA if navy else (CGR if neg else CG7)
         bg = f"background:{CN};" if navy else f"background:{CG1};"
         weight = 800 if navy else 600
-        return (f'<tr style="{bg}"><td></td>'
+        _a = ("" if (ancres is None or fig is None)
+              else _ancre_figure(fig, value, ancres, taux))
+        return (f'<tr style="{bg}"><td>{_a}</td>'
                 f'<td colspan="{colspan}" style="text-align:right;color:{color};'
                 f'font-weight:{weight};padding:3px 5px;">{label}</td>'
                 f'<td style="text-align:right;color:{color};font-weight:{weight};'
                 f'padding:3px 5px;white-space:nowrap;">{value}</td></tr>')
 
-    rows = row("Sous-total HT", _fmt2(total_ht))
+    rows = row("Sous-total HT", _fmt2(total_ht), fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
         pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
-        rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True)
-        rows += row("Total HT", _fmt2(net_ht))
+        rows += row(f"Remise ({pct}\u202f%)", "\u2212" + _fmt2(remise), neg=True,
+                    fig="remise")
+        rows += row("Total HT", _fmt2(net_ht), fig="total_ht")
     # TVA \u00e9clat\u00e9e par taux (r\u00e9forme 10/20) \u2014 une ligne par taux pr\u00e9sent ;
     # un seul taux (devis historiques) \u2192 exactement l'ancienne ligne unique.
     buckets = totaux.get("tva_par_taux") or []
     if len(buckets) > 1:
         for b in buckets:
             r = int(b["taux"]) if b["taux"] == int(b["taux"]) else b["taux"]
-            rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]))
+            rows += row(f"TVA ({r}\u202f%)", _fmt2(b["montant"]),
+                        fig="tva_taux", taux=b["taux"])
     else:
         rate = buckets[0]["taux"] if buckets else TVA_PCT
         tva_pct = int(rate) if rate == int(rate) else rate
-        rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva))
+        rows += row(f"TVA ({tva_pct}\u202f%)", _fmt2(tva), fig="tva")
     # QJR122 — le Total TTC s'imprime AU CENTIME, comme les lignes au-dessus.
     # ``fmt`` arrondissait à l'unité : la chaîne affichée n'additionnait pas
     # (52 655,42 + 10 531,08 s'imprimait « 63 186 MAD »), et c'est ce montant
     # qui sert de base à l'échéancier de la page 3.
-    rows += row("Total TTC", _fmt2_mad(ttc), navy=True)
+    rows += row("Total TTC", _fmt2_mad(ttc), navy=True, fig="total_ttc")
     return rows
 
 
@@ -1627,7 +1645,7 @@ def _monitoring_vendu():
     return False
 
 
-def equip_rows(items, totaux, hi_bat=False):
+def equip_rows(items, totaux, hi_bat=False, ancres=None):
     rows = ""
     for i, it in enumerate(items):
         des = it["designation"]; qty = it["quantite"]
@@ -1673,7 +1691,7 @@ def equip_rows(items, totaux, hi_bat=False):
                  f'<td class="tr">{pu_ht_s}</td>'
                  f'<td class="tc" style="font-size:5.5pt;">{taux_s}</td>'
                  f'<td class="tr">{tot_ht_s}</td></tr>')
-    rows += _totals_block_rows(totaux, colspan=5)
+    rows += _totals_block_rows(totaux, colspan=5, ancres=ancres)
     return rows
 
 # ── Global CSS ────────────────────────────────────────────────────────────────
@@ -1846,6 +1864,26 @@ def page1():
     _kwc_a = KWC_AVEC if (PANNEAUX_DIVERGENTS and KWC_AVEC > 0) else KWC
     _pkwc_s = f' &#183; soit {fmt(TOTAL_SANS / _kwc_s)}/kWc' if _kwc_s > 0 else ''
     _pkwc_a = f' &#183; soit {fmt(TOTAL_AVEC / _kwc_a)}/kWc' if _kwc_a > 0 else ''
+    # QA-FIGURES — une carte MASQUÉE (``display:none`` selon le scénario) ne
+    # porte aucun marqueur : seul ce que le client VOIT est comparé.
+    _fig_eco = not (MASQUER_ECONOMIES or PUISSANCE_INCONNUE)
+    for _vis, _opt, _tt, _kw, _roi, _eco in (
+            (not _s1, "sans", ts, _kwc_s, ROI_S, esa_mad),
+            (not _s2, "avec", ta, _kwc_a, ROI_A, eaa_mad)):
+        if not _vis:
+            continue
+        _anc = _ancre_figure("total_ttc", _tt, _opt)
+        if _kw > 0:
+            _anc += _ancre_figure(
+                "prix_kwc", fmt((TOTAL_SANS if _opt == "sans" else TOTAL_AVEC)
+                                / _kw), _opt)
+        if _fig_eco:
+            _anc += (_ancre_figure("payback_ans", _roi, _opt)
+                     + _ancre_figure("economie_annuelle", _eco, _opt))
+        if _opt == "sans":
+            _ts_price += _anc
+        else:
+            _ta_price += _anc
     # Puces générées depuis l'équipement RÉEL de chaque option (jamais de
     # texte boilerplate qui contredirait la liste d'équipements).
     _sb_lis = "".join(f"<li>{SVG_CHECK}{b}</li>" for b in SANS_BULLETS) or \
@@ -1877,6 +1915,11 @@ def page1():
                         f'&nbsp;&#8211;&nbsp;{eaa_mad}</span>')
             _eco_size = "13pt"
             _eco_sub = f"selon option choisie{_est}"
+        # QA-FIGURES — l'ancre suit EXACTEMENT les montants imprimés.
+        if SCENARIO != 'Avec batterie':
+            _eco_val += _ancre_figure("economie_annuelle", esa_mad, "sans")
+        if SCENARIO != 'Sans batterie':
+            _eco_val += _ancre_figure("economie_annuelle", eaa_mad, "avec")
 
     # ── M2 — VIGNETTES CONDITIONNELLES (audit adversarial du 19/08/2026) ──────
     # La rangée imprimait « {KWC} kWc », « {NB_PAN} panneaux × {WP} W »,
@@ -1913,10 +1956,17 @@ def page1():
             _kpi_kwc_pt = '14pt'
             _pan_line = (f'{NB_PAN_SANS} &#183; {NB_PAN_AVEC} panneaux '
                          f'(sans &#183; avec)')
+        if _kpi_kwc_pt == '14pt':
+            _fig_kwc = (_ancre_figure("puissance_kwc", kwc_fr(KWC_SANS), "sans")
+                        + _ancre_figure("puissance_kwc", kwc_fr(KWC_AVEC),
+                                        "avec"))
+        else:
+            _fig_kwc = _ancre_figure("puissance_kwc", kwc_fr(KWC))
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
             f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Puissance Install&#233;e</div>'
             f'<div class="serif" style="font-size:{_kpi_kwc_pt};color:{CN};line-height:1.05;">{_kpi_kwc}</div>'
+            + _fig_kwc
             + (f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_pan_line}</div>'
                if _pan_line else '')
             + '</div>')
@@ -1932,6 +1982,7 @@ def page1():
         # Devis non divergent (tout l'existant) ⇒ HTML byte-identique.
         _kpi_prod = f'{pk}&nbsp;kWh'
         _kpi_prod_pt = '19pt'
+        _fig_prod = _ancre_figure("production_annuelle_kwh", pk)
         _prod_sub = '&#233;nergie propre / an'
         if (PANNEAUX_DIVERGENTS and _both and PROD_KWH_SANS > 0
                 and PROD_KWH_AVEC > 0 and PROD_KWH_SANS != PROD_KWH_AVEC):
@@ -1940,10 +1991,14 @@ def page1():
             _kpi_prod = f'{_pk_s}&#160;&#183;&#160;{_pk_a}&nbsp;kWh'
             _kpi_prod_pt = '13pt'
             _prod_sub = '&#233;nergie propre / an (sans &#183; avec)'
+            _fig_prod = (
+                _ancre_figure("production_annuelle_kwh", _pk_s, "sans")
+                + _ancre_figure("production_annuelle_kwh", _pk_a, "avec"))
         _kpi_cards.append(
             f'<div style="flex:1;min-width:0;margin-right:9px;border:1px solid {CG2};border-left:4px solid {CA};border-radius:6px;padding:14px 12px;background:white;">'
             f'<div style="font-size:4.5pt;letter-spacing:1.5px;color:{CG4};font-weight:400;text-transform:uppercase;margin-bottom:4px;">Production Annuelle</div>'
             f'<div class="serif" style="font-size:{_kpi_prod_pt};color:{CN};line-height:1.05;">{_kpi_prod}</div>'
+            + _fig_prod +
             f'<div style="font-size:6.5pt;color:{CG4};margin-top:3px;">{_prod_sub}</div>'
             '</div>')
     if not PUISSANCE_INCONNUE:
@@ -2129,8 +2184,10 @@ def page1():
 
 # ── PAGE 2 — equipment tables + charts ───────────────────────────────────────
 def page2(sans_items, img_roi, img_mon):
-    sr = equip_rows(sans_items, TOTAUX_SANS, hi_bat=False)
-    ar = equip_rows(AVEC_ITEMS, TOTAUX_AVEC, hi_bat=True)
+    sr = equip_rows(sans_items, TOTAUX_SANS, hi_bat=False,
+                    ancres=None if SCENARIO == 'Avec batterie' else "sans")
+    ar = equip_rows(AVEC_ITEMS, TOTAUX_AVEC, hi_bat=True,
+                    ancres=None if SCENARIO == 'Sans batterie' else "avec")
 
     # Scenario visibility
     _p2_s1 = 'display:none;' if SCENARIO == 'Avec batterie' else ''
@@ -3105,38 +3162,45 @@ def page_etude():
     img = (make_chart_etude(prod_m, conso_m)
            if len(prod_m) == 12 and len(conso_m) == 12 else "")
 
-    def card(label, value, accent=False):
+    def card(label, value, accent=False, fig=None):
         border = f"border-left:4px solid {CA};" if accent else f"border-left:4px solid {CG2};"
+        _a = _ancre_figure(fig, value) if fig else ""
         return (f'<div style="flex:1;min-width:150px;border:1px solid {CG2};{border}'
                 f'border-radius:6px;padding:10px 12px;background:white;">'
                 f'<div style="font-size:5.5pt;letter-spacing:1.2px;color:{CG4};'
                 f'text-transform:uppercase;margin-bottom:3px;">{label}</div>'
-                f'<div class="serif" style="font-size:14pt;color:{CN};">{value}</div></div>')
+                f'<div class="serif" style="font-size:14pt;color:{CN};">{value}</div>{_a}</div>')
 
-    def _card_if(label, key, suffix="", accent=False):
+    def _card_if(label, key, suffix="", accent=False, fig=None):
         """Card rendered ONLY when the value exists \u2014 a figure that cannot be
         computed is omitted entirely, never printed as a dash or a default."""
         v = e.get(key)
         if v in (None, ""):
             return ""
-        return card(label, f"{v}{suffix}", accent=accent)
+        return card(label, f"{v}{suffix}", accent=accent, fig=fig)
 
     # Sans consommation r\u00e9elle, les taux n'ont pas de sens : on les omet
     # (jamais d'\u00ab Autoconsommation 100 % \u00bb fabriqu\u00e9e).
     has_conso = e.get("conso_annuelle") not in (None, "", 0)
     cards1 = (
-        card("Puissance cr\u00eate", f"{kwc_fr(KWC)}\u00a0kWc", accent=True)
-        + _card_if("Production annuelle", "production_annuelle", "\u00a0kWh")
+        card("Puissance cr\u00eate", f"{kwc_fr(KWC)}\u00a0kWc", accent=True,
+             fig="puissance_kwc")
+        + _card_if("Production annuelle", "production_annuelle", "\u00a0kWh",
+                   fig="production_annuelle_kwh")
         + _card_if("Consommation annuelle", "conso_annuelle", "\u00a0kWh")
         + _card_if("Prix par kWc", "prix_kwc", "\u00a0MAD")
     )
     cards2 = (
-        (_card_if("Taux d'autoconsommation", "taux_autoconso", "\u00a0%", accent=True)
+        (_card_if("Taux d'autoconsommation", "taux_autoconso", "\u00a0%", accent=True,
+                  fig="autoconsommation_pct")
          if has_conso else "")
-        + (_card_if("Taux de couverture", "taux_couverture", "\u00a0%", accent=True)
+        + (_card_if("Taux de couverture", "taux_couverture", "\u00a0%", accent=True,
+                    fig="couverture_pct")
            if has_conso else "")
-        + _card_if("\u00c9conomies annuelles", "economies_annuelles", "\u00a0MAD")
-        + _card_if("Retour sur investissement", "payback", "\u00a0ans")
+        + _card_if("\u00c9conomies annuelles", "economies_annuelles", "\u00a0MAD",
+                   fig="economie_annuelle")
+        + _card_if("Retour sur investissement", "payback", "\u00a0ans",
+                   fig="payback_ans")
     )
     _rates_note = (
         "* Taux d'autoconsommation : part de la production solaire "
@@ -3708,6 +3772,16 @@ def page_onepage(items, tronquees=0):
     net_ht = totaux["ht_net"]
     tva_amt = totaux["tva"]
     total = totaux["ttc"]
+    # QA-FIGURES — l'option que chiffre ce une-page : ``ONEPAGE_BRANCHE`` quand
+    # ses totaux SONT ceux de cette option ; sinon (liste libre, pompage) la
+    # chaîne décrit le devis entier (``totaux_all``) → marqueurs sans option.
+    _tot_branche = {"sans": TOTAUX_SANS, "avec": TOTAUX_AVEC}.get(
+        ONEPAGE_BRANCHE) or {}
+    try:
+        _meme = abs(float(_tot_branche.get("ttc")) - float(total)) < 0.005
+    except (TypeError, ValueError):
+        _meme = False
+    _op_opt = ONEPAGE_BRANCHE if _meme else ""
 
     # ── Bloc résumé système (style devis concurrent) ──
     if ETUDE.get("pompe_cv"):
@@ -3721,7 +3795,9 @@ def page_onepage(items, tronquees=0):
             f"{ETUDE.get('pompe_cv')} CV ({_pkw} kW)" if _pkw
             else f"{ETUDE.get('pompe_cv')} CV"))
         if ETUDE.get("hmt_m"):
-            _sum_cells.append(("HMT", f"{ETUDE.get('hmt_m')} m"))
+            _sum_cells.append(("HMT", f"{ETUDE.get('hmt_m')} m",
+                               _ancre_figure("pompe_hmt_m",
+                                             ETUDE.get('hmt_m'))))
         def _fdec(v):
             # entier sans décimale, sinon une décimale à la française (30,5)
             try:
@@ -3733,7 +3809,8 @@ def page_onepage(items, tronquees=0):
         if _dq and ETUDE.get("hmt_m"):
             _sum_cells.append(
                 (f"D&#233;bit &#224; {ETUDE.get('hmt_m')} m",
-                 f"{_fdec(_dq)} m&#179;/h"))
+                 f"{_fdec(_dq)} m&#179;/h",
+                 _ancre_figure("pompe_debit_m3h", _fdec(_dq))))
         elif ETUDE.get("debit_m3j"):  # anciens devis (saisie manuelle)
             _sum_cells.append(
                 ("D&#233;bit estim&#233;", f"{ETUDE.get('debit_m3j')} m&#179;/jour"))
@@ -3742,13 +3819,17 @@ def page_onepage(items, tronquees=0):
         if _m3j and _hrs:
             _sum_cells.append(
                 (f"Eau / jour (sur {_fdec(_hrs)} h de pompage)",
-                 f"&#8776; {fnum(_m3j)} m&#179;"))
+                 f"&#8776; {fnum(_m3j)} m&#179;",
+                 _ancre_figure("pompe_volume_m3_jour", fnum(_m3j))))
         if KWC > 0:
-            _sum_cells.append(("Champ PV", f"{kwc_fr(KWC)} kWc"))
+            _sum_cells.append(("Champ PV", f"{kwc_fr(KWC)} kWc",
+                               _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
         _sum_cells = [
-            ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc"),
-            ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an"),
+            ("Puissance cr&#234;te", f"{kwc_fr(KWC)} kWc",
+             _ancre_figure("puissance_kwc", kwc_fr(KWC))),
+            ("Production annuelle", f"{fnum(PROD_KWH)} kWh/an",
+             _ancre_figure("production_annuelle_kwh", fnum(PROD_KWH))),
         ]
         # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
         # la vignette « Économie annuelle » est OMISE. La valeur disponible
@@ -3767,9 +3848,12 @@ def page_onepage(items, tronquees=0):
             _sum_cells.append(
                 ("&#201;conomie annuelle",
                  f"{fnum(_eco_branche)} MAD/an"
-                 + (" (estimation)" if SAVINGS_ESTIMATED else "")))
+                 + (" (estimation)" if SAVINGS_ESTIMATED else ""),
+                 _ancre_figure("economie_annuelle", fnum(_eco_branche),
+                               ONEPAGE_BRANCHE)))
         _sum_cells.append(
-            ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc"))
+            ("Prix par kWc", f"{fnum(round(total / KWC))} MAD/kWc",
+             _ancre_figure("prix_kwc", fnum(round(total / KWC)), _op_opt)))
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
         # adaptative de cette page ne dépend que du nombre de LIGNES produit
@@ -3792,8 +3876,8 @@ def page_onepage(items, tronquees=0):
             f'<div style="font-size:5.5pt;font-weight:700;color:{CG4};'
             f'text-transform:uppercase;letter-spacing:.8px;">{label}</div>'
             f'<div style="font-size:9pt;font-weight:800;color:{CN};margin-top:2px;">{val}</div>'
-            f'</div>'
-            for label, val in _sum_cells)
+            f'{"".join(_fig)}</div>'
+            for label, val, *_fig in _sum_cells)
         summary_html = (
             f'<div style="display:flex;background:{CAL};border-bottom:2px solid {CA};'
             f'padding:8px 24px;">{cells}</div>')
@@ -3884,17 +3968,18 @@ def page_onepage(items, tronquees=0):
             f'd&#233;tail complet sur le devis multi-pages.</td></tr>')
 
     # ── Bloc totaux : Sous-total HT → Remise visible → Total HT → TVA → TTC ──
-    def _tot_line(label, value, navy=False, neg=False):
+    def _tot_line(label, value, navy=False, neg=False, fig=None, taux=None):
         color = CGR if neg else (CN if not navy else CN)
         size = "13pt" if navy else "8.5pt"
         weight = 800 if navy else 600
+        _a = _ancre_figure(fig, value, _op_opt, taux) if fig else ""
         return (
             f'<div style="margin-top:2px;">'
             f'<span style="font-size:8pt;font-weight:700;color:{CG4 if not navy else CN};'
             f'text-transform:uppercase;letter-spacing:.5px;margin-right:18px;">{label}</span>'
             f'<span style="display:inline-block;min-width:110px;text-align:right;'
             f'font-size:{size};font-weight:{weight};color:{color};white-space:nowrap;">{value}</span>'
-            f'</div>')
+            f'{_a}</div>')
 
     # NTI18N5 — SEULS LES MOTS changent avec la langue : chaque montant reste
     # produit par `_fmt2` et la ponctuation des pourcentages (espace fine
@@ -3903,13 +3988,15 @@ def page_onepage(items, tronquees=0):
     # `_L(...)` : écrit en dur, il laissait « Sous-total HT » dans le document
     # anglais et arabe (un littéral français voyage dans le HTML livré, même
     # invisible à l'impression). Aucun libellé de ce bloc ne s'écrit en dur.
-    totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD")
+    totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
+                            fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
         _pct = int(DISCOUNT_PCT) if DISCOUNT_PCT == int(DISCOUNT_PCT) else DISCOUNT_PCT
         totals_html += _tot_line(
             f"{_L('remise')} ({_pct}&#8201;%)",
-            "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True)
-        totals_html += _tot_line(_L("total_ht"), _fmt2(net_ht) + "&nbsp;MAD")
+            "&#8722;" + _fmt2(remise) + "&nbsp;MAD", neg=True, fig="remise")
+        totals_html += _tot_line(_L("total_ht"), _fmt2(net_ht) + "&nbsp;MAD",
+                                 fig="total_ht")
     # TVA éclatée par taux présent (réforme 10/20) ; un seul taux → ligne
     # unique identique aux devis historiques.
     _buckets = totaux.get("tva_par_taux") or []
@@ -3917,15 +4004,17 @@ def page_onepage(items, tronquees=0):
         for _b in _buckets:
             _r = int(_b["taux"]) if _b["taux"] == int(_b["taux"]) else _b["taux"]
             totals_html += _tot_line(
-                f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD")
+                f"{_L('tva')} ({_r}&#8201;%)", _fmt2(_b["montant"]) + "&nbsp;MAD",
+                fig="tva_taux", taux=_b["taux"])
     else:
         _rate = _buckets[0]["taux"] if _buckets else TVA_PCT
         _tva_pct = int(_rate) if _rate == int(_rate) else _rate
         totals_html += _tot_line(f"{_L('tva')} ({_tva_pct}&#8201;%)",
-                                 _fmt2(tva_amt) + "&nbsp;MAD")
+                                 _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
     # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
-    totals_html += _tot_line(_L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True)
+    totals_html += _tot_line(_L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True,
+                             fig="total_ttc")
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
