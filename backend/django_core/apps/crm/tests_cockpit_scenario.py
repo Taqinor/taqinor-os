@@ -377,6 +377,7 @@ class ControleDuSuiviScenarioTests(ParcoursBase):
         with self.subTest('reportée deux fois'):
             reports = self.lignes(servi, 'reports')
             self.assertEqual(set(reports), {d['reportee'].pk})
+            self.assertEqual(servi['exceptions']['reports']['plusieurs_fois'], 1)
             ligne = reports[d['reportee'].pk]
             self.assertEqual(ligne['nb_reports'], 2)
             self.assertEqual(ligne['due_initial'], self.J(5).isoformat())

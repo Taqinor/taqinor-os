@@ -128,6 +128,19 @@ describe('phraseExceptions', () => {
       + '2 dossiers sans prochaine étape, 4 premiers contacts hors délai.')
   })
 
+  it('étapes reportées : deux comptes — « plusieurs fois » (servi) et « une fois » (total − plusieurs fois)', () => {
+    const avec = (reports) => phraseExceptions({ ...VIDE.exceptions, reports }, 'ok')
+    // Reportées une seule fois : dites, sans « plusieurs fois ».
+    expect(avec({ total: 2, plusieurs_fois: 0, lignes: [] })).toBe('2 étapes reportées une fois.')
+    expect(avec({ total: 1, plusieurs_fois: 0, lignes: [] })).toBe('1 étape reportée une fois.')
+    // Les deux à la fois : plusieurs fois d'abord.
+    expect(avec({ total: 5, plusieurs_fois: 2, lignes: [] }))
+      .toBe('2 étapes reportées plusieurs fois, 3 étapes reportées une fois.')
+    expect(avec({ total: 3, plusieurs_fois: 3, lignes: [] })).toBe('3 étapes reportées plusieurs fois.')
+    // Ancien serveur (pas de `plusieurs_fois`) : sa liste ne portait que des « plusieurs fois ».
+    expect(avec({ total: 2, lignes: [] })).toBe('2 étapes reportées plusieurs fois.')
+  })
+
   it('aucune exception : une phrase selon le niveau, jamais une liste vide inventée', () => {
     expect(phraseExceptions(VIDE.exceptions, 'ok')).toBe('Rien n\'est en retard ni en attente.')
     expect(phraseExceptions(VIDE.exceptions, 'vide')).toBe('Aucune étape n\'était due sur cette période.')

@@ -536,15 +536,34 @@ class VerdictNiveauTests(_Base):
 
     def test_attention_une_etape_reportee_deux_fois(self):
         self._etape(self._lead(), _jour(3), nb_reports=2)
-        self.assertEqual(self._controle()['verdict']['niveau'],
-                         cs.NIVEAU_ATTENTION)
+        controle = self._controle()
+        self.assertEqual(controle['verdict']['niveau'], cs.NIVEAU_ATTENTION)
+        self.assertEqual(
+            (controle['exceptions']['reports']['total'],
+             controle['exceptions']['reports']['plusieurs_fois']), (1, 1))
 
-    def test_un_seul_report_ne_leve_rien(self):
+    def test_un_seul_report_est_liste_sans_lever_le_niveau(self):
+        """Dès le PREMIER report l'étape est dans la liste (une étape en
+        retard qu'on reporte ne disparaît pas) ; le niveau, lui, ne bouge
+        qu'à ``reports_min`` reports (``plusieurs_fois``)."""
         lead = self._lead()
         self._fait(lead, _jour(-3))
-        self._etape(lead, _jour(3), nb_reports=1)
-        self.assertEqual(self._controle()['verdict']['niveau'],
-                         cs.NIVEAU_OK)
+        reportee = self._etape(lead, _jour(3), nb_reports=1)
+        controle = self._controle()
+        self.assertEqual(controle['verdict']['niveau'], cs.NIVEAU_OK)
+        liste = controle['exceptions']['reports']
+        self.assertEqual((liste['total'], liste['plusieurs_fois']), (1, 0))
+        self.assertEqual(
+            [(ligne['etape'], ligne['nb_reports']) for ligne in liste['lignes']],
+            [(reportee.pk, 1)])
+
+    def test_un_report_seul_sans_rien_de_du_n_est_pas_vide(self):
+        """« vide » = rien de dû ET aucune liste d'exceptions non vide : une
+        étape reportée (même une fois) suffit à ne pas dire « pas de données »."""
+        self._etape(self._lead(), _jour(3), nb_reports=1)
+        controle = self._controle()
+        self.assertEqual(controle['verdict']['niveau'], cs.NIVEAU_OK)
+        self.assertEqual(len(controle['jours']), 14)
 
     def test_alerte_un_dossier_sorti_du_suivi(self):
         self._fait(self._lead(), _jour(-3))
@@ -789,7 +808,7 @@ class ExceptionsTests(_Base):
                 lead, self.acteur, _a(_jour(jours), 11), etape=etape)
         close = self._fait(lead, _jour(-2), nb_reports=3)
         liste = self._controle()['exceptions']['reports']
-        self.assertEqual(liste['total'], 1)
+        self.assertEqual((liste['total'], liste['plusieurs_fois']), (1, 1))
         [ligne] = liste['lignes']
         self.assertEqual(ligne['etape'], etape.pk)
         self.assertNotEqual(ligne['etape'], close.pk)
@@ -1023,9 +1042,13 @@ class ReportsMontresTests(_Base):
             [(repoussee.pk, 3), (jamais.pk, 0)])
         [ligne] = exceptions['taches_en_attente']['lignes']
         self.assertEqual((ligne['etape'], ligne['nb_reports']), (tache.pk, 1))
-        [ligne] = exceptions['reports']['lignes']
-        self.assertEqual((ligne['etape'], ligne['nb_reports']),
-                         (repoussee.pk, 3))
+        # Toutes les étapes reportées, l'origine la plus ancienne d'abord —
+        # la tâche reportée UNE fois y est aussi (elle ne lève pas le niveau).
+        self.assertEqual(
+            [(ligne['etape'], ligne['nb_reports'])
+             for ligne in exceptions['reports']['lignes']],
+            [(repoussee.pk, 3), (tache.pk, 1)])
+        self.assertEqual(exceptions['reports']['plusieurs_fois'], 1)
 
 
 class VolumeTests(_Base):
@@ -1035,7 +1058,8 @@ class VolumeTests(_Base):
 
     def _dossier(self):
         """Un dossier qui peuple TOUT : période d'avant, à temps, en retard,
-        ouverte en retard, du jour, tâche en attente, reportée deux fois — et
+        ouverte en retard (reportée une fois), du jour, tâche en attente,
+        reportée deux fois — et
         un dossier sorti du suivi, et un premier contact hors délai."""
         lead = self._lead()
         self._fait(lead, _jour(-16))
@@ -1071,7 +1095,7 @@ class VolumeTests(_Base):
         self.assertEqual(
             {nom: liste['total']
              for nom, liste in controle['exceptions'].items()},
-            {'en_retard': 12, 'taches_en_attente': 12, 'reports': 12,
+            {'en_retard': 12, 'taches_en_attente': 12, 'reports': 24,
              'sans_prochaine_etape': 12, 'premier_contact_hors_delai': 12})
         self.assertEqual(controle['verdict']['du'], 12 * 4)
         self.assertEqual(avec_douze, avec_deux)

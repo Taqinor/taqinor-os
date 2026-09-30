@@ -544,7 +544,8 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     const attendu = {
       en_retard: ['En retard', '2'],
       taches_en_attente: ['Tâches en attente depuis 2 jours ouvrés ou plus', '1'],
-      reports: ['Reportées 2 fois ou plus', '1'],
+      // La liste des reportées les montre TOUTES (dès le premier report) : pas de seuil au titre.
+      reports: ['Reportées', '1'],
       premier_contact_hors_delai: ['Premier contact hors délai (24 h)', '1'],
     }
     Object.entries(attendu).forEach(([cle, [titre, total]]) => {
@@ -608,7 +609,7 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     expect(ligne).toHaveTextContent('en retard de 1 jour ouvré · reportée 1 fois · Responsable : commerciale')
   })
 
-  it('la liste « Reportées plusieurs fois » garde SA phrase (pas de « reportée N fois » en double)', async () => {
+  it('la liste « Reportées » garde SA phrase (pas de « reportée N fois » en double)', async () => {
     monter()
     await attendreVerdict()
     const ligne = within(bloc('reports')).getByTestId('controle-exception-ligne')
@@ -616,11 +617,11 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
     expect(ligne).not.toHaveTextContent('reportée 2 fois')
   })
 
-  it('« Reportées plusieurs fois » : « N reports — prévue à l\'origine le JJ/MM »', async () => {
+  it('« Reportées » : « N reports — prévue à l\'origine le JJ/MM, reportée au JJ/MM »', async () => {
     monter()
     await attendreVerdict()
     const ligne = within(bloc('reports')).getByTestId('controle-exception-ligne')
-    expect(ligne).toHaveTextContent('2 reports — prévue à l\'origine le 27/09')
+    expect(ligne).toHaveTextContent('2 reports — prévue à l\'origine le 27/09, reportée au 02/10')
     // Une TÂCHE dans une autre liste que « Tâches en attente » porte sa pastille.
     expect(within(ligne).getByText('Tâche')).toBeInTheDocument()
   })
@@ -876,7 +877,8 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       await attendreVerdict()
       const titreDe = (cle) => within(bloc(cle)).getByRole('button', { expanded: true })
       expect(titreDe('taches_en_attente')).toHaveTextContent('Tâches en attente depuis 7 jours ouvrés ou plus')
-      expect(titreDe('reports')).toHaveTextContent('Reportées 4 fois ou plus')
+      // Le seuil des reports ne porte plus sur la liste (elle les montre toutes) mais sur le niveau.
+      expect(titreDe('reports')).toHaveTextContent(/^Reportées\s*1$/)
       expect(titreDe('premier_contact_hors_delai')).toHaveTextContent('Premier contact hors délai (48 h)')
       expect(titreDe('en_retard')).toHaveTextContent('En retard')
       expect(screen.getByTestId('controle-seuils')).toHaveTextContent('Alerte dès 5 jours ouvrés de retard.')
@@ -898,7 +900,7 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       expect(section).toHaveTextContent('Tâches en attente depuis 1 jour ouvré ou plus')
       expect(section).not.toHaveTextContent('1 jours')
       expect(section).not.toHaveTextContent('1 jour ouvrés')
-      expect(section).toHaveTextContent('Reportées 1 fois ou plus')
+      expect(section).not.toHaveTextContent('fois ou plus')
       expect(section).toHaveTextContent('Premier contact hors délai (1,5 h)')
       expect(screen.getByTestId('controle-seuils')).toHaveTextContent('Alerte dès 1 jour ouvré de retard.')
     })
@@ -911,7 +913,7 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       await attendreVerdict()
       const titreDe = (cle) => within(bloc(cle)).getByRole('button', { expanded: true })
       expect(titreDe('taches_en_attente')).toHaveTextContent(/^Tâches en attente\s*1$/)
-      expect(titreDe('reports')).toHaveTextContent(/^Reportées plusieurs fois\s*1$/)
+      expect(titreDe('reports')).toHaveTextContent(/^Reportées\s*1$/)
       expect(titreDe('premier_contact_hors_delai')).toHaveTextContent(/^Premier contact hors délai\s*1$/)
       // Seuil d'alerte non servi : pas de « Alerte dès … » ; la règle, elle, ne porte aucun nombre.
       const note = screen.getByTestId('controle-seuils')
@@ -928,7 +930,7 @@ describe('ControleSuiviPanel — « À traiter en priorité »', () => {
       await attendreVerdict()
       const titreDe = (cle) => within(bloc(cle)).getByRole('button', { expanded: true })
       expect(titreDe('taches_en_attente')).toHaveTextContent('Tâches en attente depuis 9 jours ouvrés ou plus')
-      expect(titreDe('reports')).toHaveTextContent(/^Reportées plusieurs fois\s*1$/)
+      expect(titreDe('reports')).toHaveTextContent(/^Reportées\s*1$/)
       expect(titreDe('premier_contact_hors_delai')).toHaveTextContent('Premier contact hors délai (12 h)')
     })
   })
@@ -1520,5 +1522,24 @@ describe('ControleSuiviPanel — « Comment lire ce bloc »', () => {
     fireEvent.click(ouvrir())
     expect(alerte).toHaveTextContent('Action requise')
     expect(lignes()[6]).toContain('« Action requise »')
+  })
+})
+
+describe('ControleSuiviPanel — une étape reportée une seule fois est LISTÉE sans lever le niveau', () => {
+  it('niveau « ok » + « 1 étape reportée une fois » au bandeau, et sa ligne dans « Reportées »', async () => {
+    const ligne = { ...CONTROLE.exceptions.reports.lignes[0], nb_reports: 1 }
+    crmApi.getControleSuivi.mockResolvedValue(variante({
+      verdict: verdictAvec({ niveau: 'ok' }),
+      exceptions: { ...VIDE.exceptions, reports: { total: 1, plusieurs_fois: 0, lignes: [ligne] } },
+    }))
+    monter()
+    const verdict = await attendreVerdict()
+    expect(verdict).toHaveAttribute('data-niveau', 'ok')
+    expect(verdict).toHaveTextContent('Tout est à jour')
+    expect(verdict).toHaveTextContent('1 étape reportée une fois.')
+    const bloc = screen.getByTestId('controle-exception-reports')
+    expect(within(bloc).getByRole('button', { expanded: true })).toHaveTextContent(/^Reportées\s*1$/)
+    expect(within(bloc).getByTestId('controle-exception-ligne'))
+      .toHaveTextContent('1 report — prévue à l\'origine le 27/09, reportée au 02/10')
   })
 })

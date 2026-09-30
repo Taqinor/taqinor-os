@@ -244,6 +244,21 @@ def _liste(lignes, owner):
     return {'total': len(retenues), 'lignes': retenues[:LIGNES_MAX]}
 
 
+def _liste_reports(lignes, owner):
+    """``{total, plusieurs_fois, lignes}`` de la liste des étapes reportées :
+    ``total`` = toutes (dès le premier report), ``plusieurs_fois`` = celles
+    qui l'ont été ``REPORTS_MIN`` fois ou plus — c'est ce compte-là qui fait
+    passer le verdict à « attention », un report unique est seulement listé."""
+    retenues = [ligne for proprietaire, ligne in lignes
+                if owner is None or proprietaire == owner]
+    return {
+        'total': len(retenues),
+        'plusieurs_fois': sum(
+            1 for ligne in retenues if ligne['nb_reports'] >= REPORTS_MIN),
+        'lignes': retenues[:LIGNES_MAX],
+    }
+
+
 # ── Les exceptions de l'instant (toute la portée ; ``owner`` filtre après) ──
 
 def _en_retard(etapes_echues, today, absences, ouvres):
@@ -295,8 +310,11 @@ def _taches_en_attente(taches, today, absences, ouvres):
 
 
 def _reports(company, portee_ids):
-    """Étapes OUVERTES repoussées ``REPORTS_MIN`` fois ou plus par un geste
-    humain, la plus ancienne origine d'abord."""
+    """Étapes OUVERTES dont l'échéance a été repoussée AU MOINS UNE FOIS par
+    un geste humain, la plus ancienne origine d'abord — toutes, dès le premier
+    report : une étape en retard qu'on reporte quitte ``en_retard``, elle ne
+    disparaît pas. Le NIVEAU, lui, ne bouge qu'à ``REPORTS_MIN`` reports
+    (``plusieurs_fois``, compté dans ``controle_suivi``)."""
     from django.db.models import F
     from django.db.models.functions import Coalesce
 
@@ -304,7 +322,7 @@ def _reports(company, portee_ids):
 
     etapes = (RelanceEtape.objects
               .filter(company=company, statut=RelanceEtape.Statut.A_FAIRE,
-                      lead_id__in=portee_ids, nb_reports__gte=REPORTS_MIN)
+                      lead_id__in=portee_ids, nb_reports__gte=1)
               .select_related('lead', 'lead__owner')
               .order_by(Coalesce('due_initial_at', 'due_at').asc(
                   nulls_last=True), F('due_date').asc(), 'pk'))
@@ -663,7 +681,10 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
         exceptions = {
             'en_retard': _liste(en_retard, owner),
             'taches_en_attente': _liste(taches, owner),
-            'reports': _liste(reports, owner),
+            # Toutes les étapes reportées sont listées ; `plusieurs_fois` dit
+            # combien l'ont été `REPORTS_MIN` fois ou plus (sur TOUTE la liste
+            # du commercial lu, pas sur les seules lignes servies).
+            'reports': _liste_reports(reports, owner),
             'sans_prochaine_etape': _liste(sans_etape, owner),
             'premier_contact_hors_delai': _liste(hors_delai, owner),
         }
@@ -676,9 +697,10 @@ def controle_suivi(company, user, *, jours=JOURS_DEFAUT, owner=None,
             niveau = NIVEAU_ALERTE
         elif (exceptions['en_retard']['total']
               or exceptions['taches_en_attente']['total']
-              or exceptions['reports']['total']):
+              or exceptions['reports']['plusieurs_fois']):
             niveau = NIVEAU_ATTENTION
-        elif not any(case['du'] for case in cases.values()):
+        elif (not any(case['du'] for case in cases.values())
+              and not exceptions['reports']['total']):
             niveau = NIVEAU_VIDE
         else:
             niveau = NIVEAU_OK

@@ -198,7 +198,8 @@ class Oracle:
             (etape.pk, etape.lead_id, etape.nb_reports,
              _local(etape.due_initial_at).isoformat()
              if etape.due_initial_at else None)
-            for etape in ouvertes if etape.nb_reports >= REPORTS_MIN)
+            for etape in ouvertes if etape.nb_reports >= 1)
+        plusieurs_fois = sum(1 for _e, _l, nb, _o in reports if nb >= REPORTS_MIN)
 
         sans_etape = self._sans_prochaine_etape(owner)
         sla = self._delai_premier_contact()
@@ -228,9 +229,9 @@ class Oracle:
         if (any(retard >= RETARD_ALERTE_JOURS for _e, _l, retard in en_retard)
                 or sans_etape or hors_delai):
             niveau = 'alerte'
-        elif en_retard or taches or reports:
+        elif en_retard or taches or plusieurs_fois:
             niveau = 'attention'
-        elif not any(case['du'] for case in cases.values()):
+        elif not any(case['du'] for case in cases.values()) and not reports:
             niveau = 'vide'
         else:
             niveau = 'ok'
@@ -279,6 +280,7 @@ class Oracle:
             'en_retard': en_retard,
             'taches_en_attente': taches,
             'reports': reports,
+            'reports_plusieurs_fois': plusieurs_fois,
             'sans_prochaine_etape': sans_etape,
             'premier_contact_hors_delai': [(pk, heures)
                                            for _cree, pk, heures in hors_delai],
@@ -378,7 +380,7 @@ class Oracle:
                 continue
             proprietaire = self.proprio.get(etape.lead_id)
             if (self.jours_comptes(etape.due_date, proprietaire) >= 1
-                    or etape.nb_reports >= REPORTS_MIN
+                    or etape.nb_reports >= 1
                     or (type_de(etape) in self.taches and self.jours_comptes(
                         _local(etape.created_at), proprietaire)
                         >= TACHE_ATTENTE_JOURS)):
@@ -425,6 +427,8 @@ def ecarts(attendu, servi):
                  lignes(cle, champs))
     verifier('exceptions.reports.total', len(attendu['reports']),
              exceptions['reports']['total'])
+    verifier('exceptions.reports.plusieurs_fois', attendu['reports_plusieurs_fois'],
+             exceptions['reports'].get('plusieurs_fois'))
     if len(attendu['reports']) <= LIGNES_MAX:
         verifier('exceptions.reports.lignes', attendu['reports'], sorted(lignes(
             'reports', ('etape', 'lead', 'nb_reports', 'due_initial'))))

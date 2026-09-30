@@ -460,13 +460,13 @@ const LISTES = [
   },
   {
     cle: 'reports',
-    titre: (seuils) => {
-      const fois = seuil(seuils, 'reports_min')
-      return fois === null ? 'Reportées plusieurs fois' : `Reportées ${nombre(fois)} fois ou plus`
-    },
+    // TOUTES les étapes ouvertes dont l'échéance a été repoussée, dès le premier report
+    // (contrat) : une étape en retard qu'on reporte quitte « En retard », elle arrive ici.
+    // Le seuil `reports_min` ne porte plus sur la liste mais sur le NIVEAU (« Comment lire »).
+    titre: () => 'Reportées',
     tone: 'warning',
     detail: (l) => (l.nb_reports == null ? ''
-      : `${nombre(l.nb_reports)} ${pl(l.nb_reports, 'report', 'reports')} — prévue à l'origine le ${jjmm(l.due_initial)}`),
+      : `${nombre(l.nb_reports)} ${pl(l.nb_reports, 'report', 'reports')} — prévue à l'origine le ${jjmm(l.due_initial)}, reportée au ${jjmm(l.due_date)}`),
   },
   {
     cle: 'sans_prochaine_etape',

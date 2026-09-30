@@ -4,10 +4,10 @@
 // Règle du bloc : tout chiffre affiché vient du serveur (contrat committé
 // `apps/crm/contract_samples/controle_suivi.json`). Rien n'est recompté ici :
 // on ARRONDIT, on ACCORDE (singulier/pluriel) et on ÉCRIT EN FRANÇAIS ce que le
-// serveur a servi. Deux seules opérations sur deux nombres servis, toutes deux
-// demandées par l'ordre fondateur : l'écart de points entre le pourcentage de
-// la période et celui de la précédente, et le « et N autres » (`total` moins
-// les lignes servies).
+// serveur a servi. Trois seules opérations, chacune sur deux nombres servis :
+// l'écart de points entre le pourcentage de
+// la période et celui de la précédente, le « et N autres » (`total` moins
+// les lignes servies) et les étapes « reportées une fois » (`total` moins `plusieurs_fois`).
 //
 // Les libellés des TYPES d'étape et des réponses sont LUS DANS LA TABLE du
 // parcours (`parcours_suivi.json`, via `parcours.js`) : le tableau « Détail par
@@ -203,9 +203,20 @@ export function phraseExceptions(exceptions, niveau) {
     parts.push(phrase)
   }
 
-  const reports = total('reports')
-  if (reports > 0) {
-    parts.push(`${nombre(reports)} ${pl(reports, 'étape reportée', 'étapes reportées')} plusieurs fois`)
+  // Toutes les étapes reportées sont dites (dès le premier report), en deux comptes : celles
+  // qui l'ont été PLUSIEURS fois (`plusieurs_fois`, servi — elles font passer le niveau à
+  // « À surveiller ») et les autres, reportées une fois (`total` − `plusieurs_fois` : une
+  // simple différence de deux nombres servis). Un serveur qui ne sert pas `plusieurs_fois`
+  // (ancien contrat : la liste n'avait QUE des étapes reportées plusieurs fois) les dit toutes ainsi.
+  const reportees = total('reports')
+  const plusieurs = ex.reports?.plusieurs_fois === undefined
+    ? reportees : (Number(ex.reports.plusieurs_fois) || 0)
+  const uneFois = Math.max(0, reportees - plusieurs)
+  if (plusieurs > 0) {
+    parts.push(`${nombre(plusieurs)} ${pl(plusieurs, 'étape reportée', 'étapes reportées')} plusieurs fois`)
+  }
+  if (uneFois > 0) {
+    parts.push(`${nombre(uneFois)} ${pl(uneFois, 'étape reportée', 'étapes reportées')} une fois`)
   }
 
   const sans = total('sans_prochaine_etape')
