@@ -10,6 +10,9 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qx46_commercial_quote -v 2
 """
+import re
+from decimal import Decimal
+
 from django.test import SimpleTestCase, tag
 
 from apps.ventes.quote_engine.commercial import render, renderer, sample_data
@@ -121,3 +124,52 @@ class TestCommercialPageCount(SimpleTestCase):
             self.assertTrue(pdf[:4] == b"%PDF")
             doc = HTML(string=render.build_html(data)).render()
             self.assertEqual(len(doc.pages), 3, f"{cat} not 3 pages")
+
+
+class TestQjr615LignesEnHT(SimpleTestCase):
+    """QJR615 — la page équipements imprime P.U. HT / Total HT par ligne, et la
+    somme des Total HT imprimés est le Sous-total HT imprimé, au centime."""
+
+    def _page2(self):
+        data = sample_data.build("hotel")
+        data["all_items"] = [
+            {"designation": "Panneau Jinko 710W", "marque": "Jinko",
+             "quantite": 3, "prix_unit_ht": 1150.37, "prix_unit_ttc": 1265.41,
+             "taux_tva": 10},
+            {"designation": "Onduleur Huawei 100kW", "marque": "Huawei",
+             "quantite": 1, "prix_unit_ht": 60000.20, "prix_unit_ttc": 72000.24,
+             "taux_tva": 20},
+        ]
+        ht = Decimal("3451.11") + Decimal("60000.20")
+        tva = Decimal("345.11") + Decimal("12000.04")
+        data["totaux_all"] = {"ht_brut": float(ht), "remise": 0,
+                              "ht_net": float(ht), "tva": float(tva),
+                              "ttc": float(ht + tva)}
+        data["display_total"] = float(ht + tva)
+        html = render.build_html(renderer._augment(data))
+        return html.split('class="page"')[2]
+
+    @staticmethod
+    def _dec(txt):
+        return Decimal(re.sub(r"[^0-9,]", "", txt).replace(",", "."))
+
+    def test_en_tetes_ht(self):
+        p2 = self._page2()
+        self.assertIn("P.U. HT", p2)
+        self.assertIn("Total HT", p2)
+        self.assertNotIn("P.U. TTC", p2)
+
+    def test_somme_des_lignes_egale_sous_total_ht(self):
+        p2 = self._page2()
+        totaux = re.findall(r'<td class="c2-t">([^<]*)</td>', p2)
+        self.assertEqual(len(totaux), 2, totaux)
+        m = re.search(r'Sous-total HT<span[^>]*></span></td><td[^>]*>'
+                      r'([^<]*) MAD</td>', p2)
+        self.assertIsNotNone(m)
+        self.assertEqual(sum(self._dec(t) for t in totaux), self._dec(m.group(1)))
+        self.assertEqual(self._dec(m.group(1)), Decimal("63451.31"))
+
+    def test_taux_de_tva_par_ligne(self):
+        p2 = self._page2()
+        taux = re.findall(r'<td class="c2-v">([^<]*)</td>', p2)
+        self.assertEqual([re.sub(r"\D", "", t) for t in taux], ["10", "20"])
