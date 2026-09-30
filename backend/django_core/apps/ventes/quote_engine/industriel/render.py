@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..residential import theme
 from . import cover, finance, trust
+from .. import montants
 
 
 def build_ctx(data: dict) -> dict:
@@ -15,6 +16,10 @@ def build_ctx(data: dict) -> dict:
         "d": data,
         "C": theme.C,
         "fmt": theme.fmt,
+        # QJR614 — montants dérivés du prix (P.U., total de ligne, chaîne de
+        # totaux, prix TTC) au CENTIME, ROUND_HALF_UP ; ``fmt`` (entier)
+        # reste pour kWh, CO2, panneaux, économies estimées.
+        "fmt_mad": montants.fmt_centimes,
         "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
                   "sans": theme.FONT_SANS},
         "logo_dark": theme.logo_dark_b64(),

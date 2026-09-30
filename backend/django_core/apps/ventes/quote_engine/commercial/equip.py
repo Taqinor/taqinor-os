@@ -24,6 +24,8 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # QJR614 — prix, totaux de ligne et chaîne de totaux au centime.
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
 
     navy = C["navy"]
@@ -48,15 +50,15 @@ def build(ctx):
         pu_ttc = _num(it.get("prix_unit_ttc"))
         if pu_ttc <= 0:  # repli : dérive du HT si le TTC manque
             pu_ttc = _num(it.get("prix_unit_ht")) * (1 + _num(it.get("taux_tva"), 20) / 100)
-        total = round(pu_ttc * qte)
+        total = pu_ttc * qte
         marque = (it.get("marque") or "").strip()
         desig = it.get("designation") or ""
         m = f'<span class="c2-mq">{marque}</span>' if marque else ""
         rows += (
             f'<tr><td class="c2-d">{desig}{m}</td>'
             f'<td class="c2-q">{qte:g}</td>'
-            f'<td class="c2-p">{fmt(round(pu_ttc))}</td>'
-            f'<td class="c2-t">{fmt(total)}</td></tr>')
+            f'<td class="c2-p">{fmt_mad(pu_ttc)}</td>'
+            f'<td class="c2-t">{fmt_mad(total)}</td></tr>')
 
     tot = d.get("totaux_all") or {}
     ht_brut = _num(tot.get("ht_brut"))
@@ -66,15 +68,15 @@ def build(ctx):
     ttc = _num(tot.get("ttc")) or d.get("_invest_ttc") or 0
     # QA-FIGURES — chaque montant est formaté UNE fois : le texte imprimé et
     # son ancre ``data-figure`` sont la même chaîne.
-    _f_remise = fmt(round(remise))
+    _f_remise = fmt_mad(remise)
     remise_row = (
         f'<tr><td>Remise{ancre("remise", _f_remise)}</td>'
         f'<td class="c2-tr">- {_f_remise} MAD</td></tr>'
         if remise > 0 else "")
-    _f_ht_brut = fmt(round(ht_brut))
-    _f_ht_net = fmt(round(ht_net))
-    _f_tva = fmt(round(tva))
-    _f_ttc = fmt(round(ttc))
+    _f_ht_brut = fmt_mad(ht_brut)
+    _f_ht_net = fmt_mad(ht_net)
+    _f_tva = fmt_mad(tva)
+    _f_ttc = fmt_mad(ttc)
 
     # QX50 — ligne injection 82-21 (rendue SEULEMENT si l'étude la porte, avec
     # sa mention obligatoire ; jamais affichée sans la mention).

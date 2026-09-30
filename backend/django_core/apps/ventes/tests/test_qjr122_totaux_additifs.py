@@ -161,3 +161,100 @@ class TestUnePageMemeChaine(SimpleTestCase):
                     or label.startswith("Remise")):
                 calcul += _montant(valeur)
         self.assertEqual(calcul, _montant(lignes["Total TTC"]))
+
+
+# ── QJR614 — les PDF premium résidentiel / commercial / industriel ─────────
+# Le ``fmt`` du thème premium arrondissait à l'ENTIER (arrondi banquier) :
+# 1 000,40 HT + 200,40 TVA s'imprimaient « 1 000 » + « 200 » sous un Total
+# TTC « 1 201 » — la chaîne imprimée ne s'additionnait pas. Tous les montants
+# dérivés du prix passent désormais par ``montants.fmt_centimes``.
+
+NNBSP = "\u202f"
+_TOT_1200_80 = {"ht_brut": 1000.40, "remise": 0, "ht_net": 1000.40,
+                "tva": 200.40, "ttc": 1200.80,
+                "tva_par_taux": [{"taux": 20, "montant": 200.40}]}
+
+
+def _dec(txt):
+    """« 1 000,40 » (espaces fines) -> Decimal."""
+    return Decimal(re.sub(r"[^0-9,]", "", txt).replace(",", "."))
+
+
+class TestResidentielPremiumAuCentime(SimpleTestCase):
+    """PDF premium résidentiel : chaîne additive au centime."""
+
+    def _html(self):
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        data = sample_data.build("deux")
+        data["totaux_sans"] = dict(_TOT_1200_80)
+        data["totaux_avec"] = dict(_TOT_1200_80)
+        return render.build_html(renderer._augment(data))
+
+    def test_le_ctx_porte_le_formateur_au_centime(self):
+        from apps.ventes.quote_engine import montants
+        from apps.ventes.quote_engine.residential import (
+            render, renderer, sample_data)
+        ctx = render.build_ctx(renderer._augment(sample_data.build("deux")))
+        self.assertIs(ctx["fmt_mad"], montants.fmt_centimes)
+        self.assertEqual(ctx["fmt_mad"](63187.50), f"63{NNBSP}187,50")
+
+    def test_la_chaine_imprimee_s_additionne(self):
+        html = self._html()
+        sous_total = re.findall(
+            r'<span>Sous-total HT</span><span>([^<]*)</span>', html)
+        tva = re.findall(
+            r'<span>TVA 20%</span><span>([^<]*)</span>', html)
+        ttc = re.findall(
+            r'<span class="p2-grand-v">([^<]*) <small>MAD</small>', html)
+        self.assertTrue(sous_total and tva and ttc, "chaîne introuvable")
+        self.assertEqual(sous_total[0], f"1{NNBSP}000,40")
+        self.assertEqual(tva[0], "200,40")
+        self.assertEqual(ttc[0], f"1{NNBSP}200,80")
+        self.assertEqual(_dec(sous_total[0]) + _dec(tva[0]), _dec(ttc[0]))
+
+
+class TestCommercialPremiumAuCentime(SimpleTestCase):
+    """PDF premium commercial : chaîne additive au centime."""
+
+    def _html(self):
+        from apps.ventes.quote_engine.commercial import (
+            render, renderer, sample_data)
+        data = sample_data.build("hotel")
+        data["totaux_all"] = {k: v for k, v in _TOT_1200_80.items()
+                              if k != "tva_par_taux"}
+        data["display_total"] = 1200.80
+        return render.build_html(renderer._augment(data))
+
+    def test_le_ctx_porte_le_formateur_au_centime(self):
+        from apps.ventes.quote_engine import montants
+        from apps.ventes.quote_engine.commercial import render, sample_data
+        ctx = render.build_ctx(sample_data.build("hotel"))
+        self.assertIs(ctx["fmt_mad"], montants.fmt_centimes)
+
+    def test_la_chaine_imprimee_s_additionne(self):
+        html = self._html()
+
+        def _ligne(label):
+            m = re.search(re.escape(label) + r'<span[^>]*></span></td>'
+                          r'<td[^>]*>([^<]*) MAD</td>', html)
+            self.assertIsNotNone(m, label)
+            return m.group(1)
+
+        ht = _ligne("Sous-total HT")
+        tva = _ligne("TVA")
+        ttc = _ligne("Total TTC")
+        self.assertEqual(ht, f"1{NNBSP}000,40")
+        self.assertEqual(tva, "200,40")
+        self.assertEqual(ttc, f"1{NNBSP}200,80")
+        self.assertEqual(_dec(ht) + _dec(tva), _dec(ttc))
+
+
+class TestIndustrielPremiumAuCentime(SimpleTestCase):
+    """PDF premium industriel : investissement TTC au centime."""
+
+    def test_le_ctx_porte_le_formateur_au_centime(self):
+        from apps.ventes.quote_engine import montants
+        from apps.ventes.quote_engine.industriel import render
+        ctx = render.build_ctx({})
+        self.assertIs(ctx["fmt_mad"], montants.fmt_centimes)
