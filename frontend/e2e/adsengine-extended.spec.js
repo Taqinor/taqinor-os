@@ -100,16 +100,23 @@ test.describe('ADSDEEP64 : console Publicité étendue (mocks ciblés, ADSENGINT
         creative_spec: { title: 'Nouveau', body: 'Nouveau texte frais, accroche revue.' },
       },
     }
-    let approved = false
+    // WIR208 : la carte ne quitte la boîte qu'au statut `appliquee` — le mock
+    // suit donc `status` (en_attente -> approuvee -> appliquee).
+    let status = 'en_attente'
     await page.route('**/api/django/adsengine/actions/**', async (route) => {
       const req = route.request()
       const pathname = pathnameOf(req.url())
       if (req.method() === 'POST' && pathname.endsWith('/actions/21/approve/')) {
-        approved = true
-        return route.fulfill({ json: { ...EDIT_ACTION, status: 'approuvee' } })
+        status = 'approuvee'
+        return route.fulfill({ json: { ...EDIT_ACTION, status } })
+      }
+      if (req.method() === 'POST' && pathname.endsWith('/actions/21/apply/')) {
+        status = 'appliquee'
+        return route.fulfill({ json: { ...EDIT_ACTION, status } })
       }
       if (req.method() === 'GET' && pathname.endsWith('/adsengine/actions/')) {
-        return route.fulfill({ json: approved ? [] : [EDIT_ACTION] })
+        return route.fulfill({
+          json: status === 'appliquee' ? [] : [{ ...EDIT_ACTION, status }] })
       }
       return route.continue()
     })
@@ -129,8 +136,12 @@ test.describe('ADSDEEP64 : console Publicité étendue (mocks ciblés, ADSENGINT
     await expect(page.getByTestId('ae-edit-copy-before')).toContainText('Ancien texte fatigué')
     await expect(page.getByTestId('ae-edit-copy-after')).toContainText('Nouveau texte frais')
 
-    // Approuver bout-en-bout (mocké) -> quitte la boîte.
+    // Approuver bout-en-bout (mocké) -> la carte reste avec « Appliquer » ...
     await page.getByTestId('ae-approve-21').click()
+    await expect(page.getByTestId('ae-apply-21')).toBeVisible()
+    await expect(page.getByTestId('ae-action-card')).toHaveCount(1)
+    // ... puis quitte la boîte une fois appliquée.
+    await page.getByTestId('ae-apply-21').click()
     await expect(page.getByTestId('ae-action-card')).toHaveCount(0)
   })
 

@@ -231,7 +231,7 @@ test.describe('CALX47 — ouvrir le module Calepinage depuis la fiche du lead', 
 
     // Le message du SERVEUR, précédé du geste qu'il concerne.
     await expect(page.getByText(/Module Calepinage/)).toBeVisible()
-    await expect(page.getByText(/Lead introuvable/)).toBeVisible()
+    await expect(page.getByRole('alert').filter({ hasText: /Lead introuvable/ })).toBeVisible()
     await expect(page).not.toHaveURL(/\/calepinage\//)
   })
 })

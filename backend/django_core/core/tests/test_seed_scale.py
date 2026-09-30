@@ -53,3 +53,19 @@ class SeedScaleCreationTests(TestCase):
             with self.assertRaises(CommandError):
                 call_command('seed_scale', '--companies', '1',
                              stdout=StringIO())
+
+
+@override_settings(DEBUG=True)
+class SeedScaleMouvementTests(TestCase):
+    def test_seeds_mouvement_stock(self):
+        """ERR119 — ``--mouvements 1`` ne doit plus lever LookupError."""
+        from apps.stock.models import MouvementStock
+        call_command('seed_scale', '--companies', '1', '--users', '0',
+                     '--leads', '0', '--devis', '0', '--lignes', '0',
+                     '--mouvements', '1', stdout=StringIO())
+        mv = MouvementStock.objects.filter(reference__startswith='SEED-MV-')
+        self.assertEqual(mv.count(), 1)
+        m = mv.first()
+        self.assertIsNotNone(m.company_id)
+        self.assertEqual(m.company_id, m.produit.company_id)
+        self.assertEqual(m.quantite_apres, m.quantite_avant + m.quantite)
