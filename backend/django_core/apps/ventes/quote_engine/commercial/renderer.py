@@ -97,7 +97,8 @@ def _augment(data: dict) -> dict:
         eco = _num(d.get("eco_s_ann"))
     d["com_economies"] = round(eco) if eco else None
     pb = _num(etude.get("payback"))
-    if pb is None and not masque:
+    if pb is None and not masque and not d.get("roi_s_jamais"):
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — jamais remboursé ⇒ None.
         pb = _num(d.get("roi_s"))
     # QJR145 (g) — ``com_payback`` est CONSERVÉ bien qu'aucun gabarit ne
     # l'imprime : sa nullité EST le contrat vérifié des gardes QXMT/QJR119

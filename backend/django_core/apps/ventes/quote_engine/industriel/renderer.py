@@ -108,7 +108,9 @@ def _augment(data: dict) -> dict:
         eco = _num(d.get("eco_s_ann"))
     d["ind_economies"] = round(eco) if eco else None
     pb = _num(etude.get("payback"))
-    if pb is None and not masque:
+    if pb is None and not masque and not d.get("roi_s_jamais"):
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option jamais
+        # remboursée sur 25 ans n'a pas de payback : ``None`` ⇒ carte omise.
         pb = _num(d.get("roi_s"))
     # ``pricing.compute_totals`` pose ``roi_opt* = 0.0`` comme SENTINELLE
     # « pas de payback » quand l'économie est nulle : la reprendre imprimait

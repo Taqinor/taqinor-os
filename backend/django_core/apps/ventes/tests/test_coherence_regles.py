@@ -391,6 +391,18 @@ class TestReglesEtude(_Base):
         self.assertEqual([v.cle['cas'] for v in out], ['jamais_rembourse'])
         self.assertEqual(out[0].valeurs['cumul_final'], -50000)
 
+    def test_i6_jamais_rembourse_dit_par_le_document(self):
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — le document porte le
+        # drapeau et imprime « Non rentabilisé sur 25 ans » : rien à signaler.
+        courbe = [-100000 + 2000 * an for an in range(1, 26)]
+        devis = self._devis_i6_courbe(25.0, courbe)
+        self.ctx.injecter_donnees(devis, {
+            'avec_ok': True, 'eco_a_ann': 10000, 'roi_a': 25.0,
+            'roi_a_jamais': True, 'total_avec': 100000,
+            'cashflow_avec': courbe,
+            'savings_method': {'facture_actuelle': 20000}})
+        self.assertEqual(self.run_rule('ETU_I6_ECONOMIES', devis), [])
+
     def test_document_numerique(self):
         tire = self.devis(mode_installation='industriel')
         propre = self.devis(mode_installation='industriel')

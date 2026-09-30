@@ -948,7 +948,7 @@ def compute_cashflow_payback(
     if base <= 0 or inv <= 0:
         return {
             "payback_years": 0.0, "cashflow": [], "cumulative": [],
-            "net_gain": 0.0, "years": years,
+            "net_gain": 0.0, "years": years, "jamais_rembourse": False,
         }
 
     # Z5 — facteur batterie EFFECTIF : la perte aller-retour ne frappe que la
@@ -990,14 +990,22 @@ def compute_cashflow_payback(
             frac = (0 - prev_cumul) / span if span else 0.0
             payback = round((y - 1) + frac, 1)
 
-    if payback is None:
-        payback = float(years)  # jamais rentabilisé sur l'horizon
+    # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — un cumul qui ne croise JAMAIS
+    # zéro n'est pas « rentabilisé en 25 ans ». ``payback_years`` garde la
+    # sentinelle numérique ``years`` (les appelants qui COMPARENT des paybacks
+    # la classent ainsi en dernier), mais le drapeau ``jamais_rembourse`` est
+    # le contrat de RENDU : aucun gabarit n'imprime plus ce nombre d'années ni
+    # ne dessine de point de rentabilité quand il est vrai.
+    jamais = payback is None
+    if jamais:
+        payback = float(years)
     return {
         "payback_years": payback,
         "cashflow": cashflow,
         "cumulative": cumulative,
         "net_gain": round(cumul),
         "years": years,
+        "jamais_rembourse": jamais,
     }
 
 
@@ -1677,6 +1685,9 @@ def calculate_savings_roi(
         inverter_replace_cost=inverter_cost_avec, **_cf_params)
     roi_opt1 = cf_s["payback_years"] if economie_opt1 > 0 else 0.0
     roi_opt2 = cf_a["payback_years"] if economie_opt2 > 0 else 0.0
+    # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — drapeau de rendu par option.
+    roi_s_jamais = bool(economie_opt1 > 0 and cf_s.get("jamais_rembourse"))
+    roi_a_jamais = bool(economie_opt2 > 0 and cf_a.get("jamais_rembourse"))
 
     # Répartition mensuelle saisonnière.
     # CJ2a — quand le moteur horaire a calculé, les douze valeurs sont les
@@ -1699,6 +1710,8 @@ def calculate_savings_roi(
         "eco_a_cumul":      economie_opt2,   # même taux utilisé pour la courbe ROI
         "roi_s":            roi_opt1,
         "roi_a":            roi_opt2,
+        "roi_s_jamais":     roi_s_jamais,
+        "roi_a_jamais":     roi_a_jamais,
         "eco_s_monthly":    eco_s_monthly,
         "eco_a_monthly":    eco_a_monthly,
         # Metadata for honest rendering

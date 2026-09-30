@@ -309,6 +309,9 @@ ECO_S_ANN    = QUOTE_INPUT["eco_s_ann"]
 ECO_A_ANN    = QUOTE_INPUT["eco_a_ann"]
 ROI_S        = QUOTE_INPUT["roi_s"]
 ROI_A        = QUOTE_INPUT["roi_a"]
+# ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — cumul 25 ans jamais positif.
+ROI_S_JAMAIS = False
+ROI_A_JAMAIS = False
 INST_TYPE    = QUOTE_INPUT["inst_type"]
 SANS_ITEMS   = _Q["sans_items"]
 AVEC_ITEMS   = _Q["avec_items"]
@@ -1768,12 +1771,16 @@ def page1():
             '<div style="display:inline-block;align-self:flex-start;'
             'background:#e8f5e9;color:#2e7d32;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
-            f'margin-bottom:7px;">{SVG_CHART}Retour en {ROI_S} ans</div>')
+            f'margin-bottom:7px;">{SVG_CHART}'
+            + ('Non rentabilisé sur 25 ans' if ROI_S_JAMAIS
+               else f'Retour en {ROI_S} ans') + '</div>')
         _roi_pill_a = (
             '<div style="display:inline-block;align-self:flex-start;'
             'background:#1a1a2e;color:white;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
-            f'margin-bottom:7px;">{SVG_CHART2}Retour en {ROI_A} ans</div>')
+            f'margin-bottom:7px;">{SVG_CHART2}'
+            + ('Non rentabilisé sur 25 ans' if ROI_A_JAMAIS
+               else f'Retour en {ROI_A} ans') + '</div>')
         _mt_src = (
             f'<div style="font-size:6pt;color:{CG4};margin-top:3px;'
             f'line-height:1.3;">{TARIF_MT_MENTION}</div>'
@@ -1867,9 +1874,9 @@ def page1():
     # QA-FIGURES — une carte MASQUÉE (``display:none`` selon le scénario) ne
     # porte aucun marqueur : seul ce que le client VOIT est comparé.
     _fig_eco = not (MASQUER_ECONOMIES or PUISSANCE_INCONNUE)
-    for _vis, _opt, _tt, _kw, _roi, _eco in (
-            (not _s1, "sans", ts, _kwc_s, ROI_S, esa_mad),
-            (not _s2, "avec", ta, _kwc_a, ROI_A, eaa_mad)):
+    for _vis, _opt, _tt, _kw, _roi, _eco, _jamais in (
+            (not _s1, "sans", ts, _kwc_s, ROI_S, esa_mad, ROI_S_JAMAIS),
+            (not _s2, "avec", ta, _kwc_a, ROI_A, eaa_mad, ROI_A_JAMAIS)):
         if not _vis:
             continue
         _anc = _ancre_figure("total_ttc", _tt, _opt)
@@ -1878,7 +1885,10 @@ def page1():
                 "prix_kwc", fmt((TOTAL_SANS if _opt == "sans" else TOTAL_AVEC)
                                 / _kw), _opt)
         if _fig_eco:
-            _anc += (_ancre_figure("payback_ans", _roi, _opt)
+            # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — aucun marqueur de
+            # payback quand l'option ne se rembourse jamais (rien n'est imprimé).
+            _anc += ((_ancre_figure("payback_ans", _roi, _opt)
+                      if not _jamais else "")
                      + _ancre_figure("economie_annuelle", _eco, _opt))
         if _opt == "sans":
             _ts_price += _anc
@@ -4373,6 +4383,7 @@ def apply_quote_data(data: dict) -> None:
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
     global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
+    global ROI_S_JAMAIS, ROI_A_JAMAIS
     global SANS_ITEMS, AVEC_ITEMS, ECO_S_M, ECO_A_M, CUMUL_S, CUMUL_A
     global FACTURES_M
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
@@ -4447,6 +4458,8 @@ def apply_quote_data(data: dict) -> None:
     ECO_A_ANN    = int(data["eco_a_ann"])
     ROI_S        = float(data["roi_s"])
     ROI_A        = float(data["roi_a"])
+    ROI_S_JAMAIS = bool(data.get("roi_s_jamais"))
+    ROI_A_JAMAIS = bool(data.get("roi_a_jamais"))
     INST_TYPE    = data["inst_type"]
     SCENARIO     = data.get("scenario", "Les deux (Sans + Avec)")
     RECOMMENDED  = data.get("recommended", "Avec batterie")

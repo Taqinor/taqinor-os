@@ -613,10 +613,20 @@ def build(ctx):
             f'<div class="c1-opt-eco">Économie{eco_mot} ≈ <b>{fmt(eco)} '
             'MAD/an</b></div>' + ancre("economie_annuelle", fmt(eco), opt)
             if (eco and not masquer_eco) else "")
-        roi_html = (
-            f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
-            f'{_yrs(roi_v)} ans</div>' + ancre("payback_ans", _yrs(roi_v), opt)
-            if not masquer_eco else "")
+        # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — un cumul 25 ans qui ne
+        # croise jamais zéro n'est pas « Rentabilisé en 25 ans » : la carte le
+        # DIT, sans nombre d'années ni marqueur de payback.
+        _jamais = bool(d.get(f"roi_{'a' if opt == 'avec' else 's'}_jamais"))
+        if masquer_eco:
+            roi_html = ""
+        elif _jamais:
+            roi_html = (f'<div class="c1-roi">{_roi_svg(green)}Non rentabilisé '
+                        'sur 25 ans</div>')
+        else:
+            roi_html = (
+                f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
+                f'{_yrs(roi_v)} ans</div>'
+                + ancre("payback_ans", _yrs(roi_v), opt))
         return (
             f'<div class="{cls}">'
             f'<div class="c1-opt-head"><div>'
