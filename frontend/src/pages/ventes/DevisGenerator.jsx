@@ -1592,6 +1592,11 @@ export default function DevisGenerator({
     // kWh (et qui valorise l'économie par tranche). Il entre donc dans la clé
     // de cache au même titre que la marque épinglée.
     const distributeurBalayage = distributeur
+    // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — même productible que l'aperçu
+    // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
+    // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
+    const productibleBalayage = productibleForCity(
+      selectedLead?.ville || '', quoteLogic.productible)
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
@@ -1600,7 +1605,7 @@ export default function DevisGenerator({
     const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
       structureProduitId ?? '',
       discountPct, produits.length, JSON.stringify(marquesActives),
-      distributeurBalayage, consoAnnuelleReelle ?? ''].join('|')
+      distributeurBalayage, consoAnnuelleReelle ?? '', productibleBalayage].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
     const factures = estimerMois(hiver, eteEff)
     // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
@@ -1623,6 +1628,7 @@ export default function DevisGenerator({
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
       consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
+      productible: productibleBalayage,
     })
     // QJR102 — LE SECOND BALAYAGE (celui de l'axe stockage, exposé jadis sous
     // la clé imbriquée du même nom) EST SUPPRIMÉ : il était RÉSIDENTIEL-ONLY
@@ -1643,7 +1649,8 @@ export default function DevisGenerator({
     sizingCacheRef.current = { key, result }
     return result
   }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
-    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle])
+    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle,
+    selectedLead?.ville])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
