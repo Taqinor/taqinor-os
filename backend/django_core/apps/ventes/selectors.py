@@ -2502,6 +2502,25 @@ def lead_a_un_devis(lead):
     ).exclude(statut=Devis.Statut.BROUILLON).exists()
 
 
+def resultats_devis_periode(company, lead_ids, *, depuis, depuis_jour):
+    """COCKPIT-CONTRÔLE (30/09/2026) — deux RÉSULTATS du bloc « Contrôle du
+    suivi » du CRM, sur les leads ``lead_ids`` (itérable ou sous-requête
+    d'identifiants) : les devis passés « envoyé » depuis ``depuis`` (instant
+    aware, sur ``date_envoi`` — posée une fois au passage brouillon → envoyé)
+    et les devis passés « accepté » depuis ``depuis_jour`` (sur
+    ``date_acceptation``, une date). Lecture cross-app pour ``apps.crm``
+    (frontière M3), bornée par ``company``. Deux COUNT.
+
+    Rend ``{'envoyes': int, 'acceptes': int}``."""
+    from .models import Devis
+
+    base = Devis.objects.filter(company=company, lead_id__in=lead_ids)
+    return {
+        'envoyes': base.filter(date_envoi__gte=depuis).count(),
+        'acceptes': base.filter(date_acceptation__gte=depuis_jour).count(),
+    }
+
+
 def leads_ayant_recu_un_devis(company, lead_ids):
     """Chaîne commerciale (décision fondateur du 25/09/2026) — sous-ensemble
     de ``lead_ids`` ayant déjà REÇU une proposition : la version EN LOT de

@@ -467,6 +467,23 @@ def visites_recentes_par_lead(company, lead_ids):
     return resultat
 
 
+def nombre_visites_planifiees(company, lead_ids, *, depuis):
+    """COCKPIT-CONTRÔLE (30/09/2026) — combien de visites techniques ont été
+    PLANIFIÉES depuis ``depuis`` (instant aware) sur les leads ``lead_ids``
+    (un itérable ou une sous-requête d'identifiants), pour le bloc
+    « Contrôle du suivi » du CRM — un RÉSULTAT lu à côté de l'effort.
+
+    Planifiée = créée sur la période avec une date prévue encore posée : un
+    rendez-vous annulé (``annuler_rendez_vous`` vide ``date_prevue``, SUIVI
+    E4) ne compte pas. Bornée par ``company`` ; lecture cross-app pour
+    ``apps.crm`` (frontière M3 : il n'importe jamais ces modèles). UN COUNT."""
+    from .models import VisiteTerrain
+
+    return VisiteTerrain.objects.filter(
+        company=company, lead_id__in=lead_ids, created_at__gte=depuis,
+        date_prevue__isnull=False).count()
+
+
 def visites_pour_lead(lead):
     """Les visites techniques d'un lead, de la PLUS RÉCENTE à la plus ancienne.
 

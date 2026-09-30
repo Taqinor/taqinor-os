@@ -3306,9 +3306,13 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # Chaîne commerciale (25/09/2026) — `chaine_commerciale` est une
         # LECTURE PURE du cockpit : même garde que `mes_stats`, listée ICI
         # nommément pour la même raison.
+        # COCKPIT-CONTRÔLE (30/09/2026) — `controle` est une LECTURE PURE du
+        # cockpit, ouverte à tous les rôles comme `kpi_adherence` (décision
+        # de transparence CKP3) : listée ICI nommément, même raison.
         if self.action in ('list', 'message', 'suivi',
                            'kpi_adherence', 'mes_stats', 'journal',
-                           'cadences_echues', 'chaine_commerciale'):
+                           'cadences_echues', 'chaine_commerciale',
+                           'controle'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -3599,6 +3603,44 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
 
         return Response(
             chaine_commerciale(request.user, request.user.company))
+
+    @extend_schema(responses=inline_serializer('CrmControleSuivi', {
+        'periode_jours': serializers.IntegerField(),
+        'owner': serializers.IntegerField(allow_null=True),
+        'commerciaux': serializers.ListField(child=serializers.DictField()),
+        'seuils': serializers.DictField(),
+        'verdict': serializers.DictField(),
+        'jours': serializers.ListField(child=serializers.DictField()),
+        'exceptions': serializers.DictField(),
+        'par_type': serializers.ListField(child=serializers.DictField()),
+        'premier_contact': serializers.DictField(),
+        'resultats': serializers.DictField(),
+    }))
+    @action(detail=False, methods=['get'], url_path='controle',
+            permission_classes=[IsAnyRole])
+    def controle(self, request):
+        """COCKPIT-CONTRÔLE (fondateur, 30/09/2026) — le bloc « Contrôle du
+        suivi » du cockpit (forme ``controle_suivi``) : verdict, frise d'un
+        jour par case, exceptions de l'instant, détail par type d'étape,
+        premier contact, résultats. ``?jours=7|14|30`` (14 par défaut),
+        ``?owner=<id>`` (un responsable de la portée, facultatif).
+
+        LECTURE OUVERTE À TOUS LES RÔLES (même garde que ``kpi_adherence``,
+        transparence CKP3) ; seule la portée de visibilité (``scope_queryset``
+        via le lead) borne ce qui est lu. Refus 400 ``{"erreurs": {champ:
+        message}}`` qui NOMME le champ : ``jours`` hors 7/14/30, ``owner``
+        inconnu ou hors portée — levés (``DRFValidationError``) pour que la
+        forme versionnée reste celle de la réponse."""
+        from .controle_suivi import controle_suivi, parametres_controle
+
+        jours, owner, erreurs = parametres_controle(
+            request.user.company, request.user,
+            request.query_params.get('jours'),
+            request.query_params.get('owner'))
+        if erreurs:
+            raise DRFValidationError({'erreurs': erreurs})
+        return Response(controle_suivi(
+            request.user.company, request.user, jours=jours, owner=owner))
 
     def _marquer(self, request, statut):
         etape = self.get_object()

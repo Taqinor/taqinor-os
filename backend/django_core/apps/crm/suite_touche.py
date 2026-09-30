@@ -223,6 +223,20 @@ TYPE_REVEIL_APPEL = 'reveil_appel'
 TYPE_REVEIL_MESSAGE = 'reveil_message'
 TYPE_GENERIQUE = 'generique'
 
+#: COCKPIT-CONTRÔLE (30/09/2026) — les types de la table, DANS L'ORDRE DE LA
+#: TABLE (miroir de ``parcours_suivi.json`` ``etapes[].id`` : le serveur ne
+#: lit jamais ce fichier d'écran à l'exécution ; la garde
+#: ``tests_cockpit_controle`` exige l'égalité). Le détail ``par_type`` du
+#: contrôle du suivi suit cet ordre.
+TYPES_ORDONNES = (
+    TYPE_CONTACT_APPEL, TYPE_CONTACT_MESSAGE, TYPE_DEVIS,
+    TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU, TYPE_DERNIER_APPEL,
+    TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE, TYPE_SUIVI_APPEL,
+    TYPE_SUIVI_MESSAGE, TYPE_QUESTION_PRIX, TYPE_PLANIFIER, TYPE_CONFIRMATION,
+    TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE, TYPE_REVEIL_APPEL, TYPE_REVEIL_MESSAGE,
+    TYPE_GENERIQUE,
+)
+
 #: Clé moteur → type (ils portent le même nom : la table le veut ainsi).
 _TYPES_PAR_CLE = frozenset({
     TYPE_DEVIS, TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU,
