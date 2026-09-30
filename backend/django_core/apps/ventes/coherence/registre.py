@@ -61,10 +61,15 @@ TOLERANCES = {
     # ── Règles « chiffres de l'étude » (portées du prototype COUV-HOR) ──
     'I2_plafond_pts': 1,            # −N % ≤ couverture + 1 pt (tranche haute)
     'I2_plancher_marge_pts': 2,     # −N % ≥ couverture × (1 − part fixe) − 2
+    # Couverture ET −N % sont imprimés en ENTIERS : leur écart réel diffère de
+    # l'écart imprimé d'au plus 1 pt. Sans cette marge, 11 devis de prod
+    # (30/09/2026, −67 % pour 70 %…) sortaient de 0,1-0,4 pt : faux positifs.
+    'I2_arrondi_imprime_pts': 1,
     'I4_kwh': 12,                   # conso == Σ factures / 1,20 (± 12 kWh)
     'I4_prix_plat': 1.20,           # prix de repli (MAD/kWh) signé par le bug
     'I5_ratio': 0.10,               # facture actuelle imprimée / factures réelles
     'I6_payback_ratio': 0.30,       # retour imprimé vs prix / économie annuelle
+    'I6_payback_ans': 0.15,         # retour imprimé vs croisement courbe 25 ans
     'I6_eco_vs_facture': 1.001,     # économie annuelle ≤ facture actuelle
     'I7_kwc_ratio': 0.02,           # kWc du bloc horaire vs kWc du devis
     'I10_ratio': 0.03,              # total graphe mensuel vs carte option
@@ -161,4 +166,5 @@ def regles_selectionnees(ids=None):
 
 def charger_regles():
     """Importe les modules de règles (l'import les enregistre)."""
-    from . import regles_documents, regles_etude, regles_crm  # noqa: F401
+    from . import (regles_documents, regles_etude, regles_crm,  # noqa: F401
+                   regles_securite)

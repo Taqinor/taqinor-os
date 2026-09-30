@@ -10,7 +10,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.crm import stages
@@ -317,6 +317,16 @@ class TestReglesEtude(_Base):
             self.assertEqual(
                 self.run_rule('ETU_I2_REDUCTION_VS_COUVERTURE', devis), [])
 
+    def test_i2_arrondi_des_entiers_imprimes_tolere(self):
+        # Prod, 30/09/2026 : −67 % imprimé pour 70 % de couverture, part fixe
+        # ≈ 0,011 → sans la marge d'arrondi, borne basse 67,23 : faux positif.
+        devis = self._devis_i2()
+        page1 = {'coverage_pct': 70, 'pct_cut': 67, 'annual_before': 43636}
+        with mock.patch.object(regles_etude, 'couche_imprimee',
+                               return_value=page1):
+            self.assertEqual(
+                self.run_rule('ETU_I2_REDUCTION_VS_COUVERTURE', devis), [])
+
     def test_i5_facture_actuelle(self):
         ep = {'factures_mensuelles_reelles': [1000] * 12}
         tire = self.devis(mode_installation='industriel', etude_params=ep)
@@ -345,6 +355,41 @@ class TestReglesEtude(_Base):
         cas = {v.cle['cas'] for v in self.run_rule('ETU_I6_ECONOMIES', tire)}
         self.assertEqual(cas, {'eco_sup_facture', 'retour'})
         self.assertEqual(self.run_rule('ETU_I6_ECONOMIES', propre), [])
+
+    # Courbe cumulée 25 ans qui croise zéro à 13,4 ans (an 13 : −4 000,
+    # an 14 : +6 000), alors que prix ÷ économie = 10 ans (×1,34).
+    _COURBE_13_4 = ([-92000, -84000, -76000, -68000, -60000, -52000, -44000,
+                     -36000, -28000, -20000, -12000, -9000, -4000, 6000]
+                    + [16000 + 10000 * i for i in range(11)])
+
+    def _devis_i6_courbe(self, roi, courbe):
+        devis = self.devis(mode_installation='industriel',
+                           etude_params={'puissance_kwc': 5})
+        self.ctx.injecter_donnees(devis, {
+            'avec_ok': True, 'eco_a_ann': 10000, 'roi_a': roi,
+            'total_avec': 100000, 'cashflow_avec': courbe,
+            'savings_method': {'facture_actuelle': 20000}})
+        return devis
+
+    def test_i6_retour_egal_au_croisement_de_la_courbe(self):
+        # Prod 30/09/2026 (DEV-202609-0108) : 15,4 ans légitimes pour 11,45
+        # ans prix ÷ économie — plus de faux positif.
+        devis = self._devis_i6_courbe(13.4, self._COURBE_13_4)
+        self.assertEqual(self.run_rule('ETU_I6_ECONOMIES', devis), [])
+
+    def test_i6_retour_different_du_croisement(self):
+        devis = self._devis_i6_courbe(12.0, self._COURBE_13_4)
+        out = self.run_rule('ETU_I6_ECONOMIES', devis)
+        self.assertEqual([v.cle['cas'] for v in out], ['retour'])
+        self.assertEqual(out[0].valeurs['croisement_courbe'], 13.4)
+
+    def test_i6_jamais_rembourse(self):
+        # « Rentabilisé en 25 ans » imprimé sur une courbe qui finit < 0.
+        courbe = [-100000 + 2000 * an for an in range(1, 26)]
+        devis = self._devis_i6_courbe(25.0, courbe)
+        out = self.run_rule('ETU_I6_ECONOMIES', devis)
+        self.assertEqual([v.cle['cas'] for v in out], ['jamais_rembourse'])
+        self.assertEqual(out[0].valeurs['cumul_final'], -50000)
 
     def test_document_numerique(self):
         tire = self.devis(mode_installation='industriel')
@@ -416,3 +461,31 @@ class TestRegleCrm(_Base):
         self.assertEqual([v.object_id for v in out], [fantome.pk])
         self.assertEqual(out[0].object_type, 'lead')
         self.assertEqual(out[0].company_id, self.company.pk)
+
+
+# ── Sécurité ────────────────────────────────────────────────────────────────
+class TestRegleSecurite(_Base):
+    def _compte(self, username, *, company=None, actif=True):
+        return User.objects.create_user(
+            username=username, password='x', role_legacy='responsable',
+            company=company or self.company, is_active=actif)
+
+    @override_settings(DEBUG=False)
+    def test_compte_demo_actif_signale_en_production(self):
+        actif = self._compte('demo_admin')
+        self._compte('demo_resp', actif=False)
+        self._compte(f'vrai_{_n()}')
+        autre = Company.objects.create(nom='Autre Co',
+                                       slug=f'coh-sec-{_n()}')
+        self._compte('demo_admin_full', company=autre)
+        out = self.run_rule('SEC_COMPTE_DEMO_ACTIF', self.company)
+        self.assertEqual([v.object_id for v in out], [actif.pk])
+        self.assertEqual(out[0].object_type, 'utilisateur')
+        self.assertEqual(out[0].reference, 'demo_admin')
+        self.assertEqual(out[0].company_id, self.company.pk)
+
+    @override_settings(DEBUG=True)
+    def test_muet_en_developpement(self):
+        self._compte('demo_admin')
+        self.assertEqual(
+            self.run_rule('SEC_COMPTE_DEMO_ACTIF', self.company), [])

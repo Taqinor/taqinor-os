@@ -4,6 +4,7 @@
 * ``regles_documents``  — chaîne des totaux, liens, statuts, dates, lignes ;
 * ``regles_etude``      — chiffres de l'étude (portage du prototype COUV-HOR) ;
 * ``regles_crm``        — cohérence funnel ↔ devis (via ``crm.selectors``) ;
+* ``regles_securite``   — comptes de démo à mot de passe publié actifs en prod ;
 * ``moteur``            — ``run_audit`` (calcul annulé, persistance à part).
 
 Point d'entrée : ``python manage.py audit_coherence`` et la tâche beat
