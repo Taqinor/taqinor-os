@@ -1455,6 +1455,17 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'QJ9: _persist_attribution échoué pour devis %s : %s',
                 getattr(devis, 'reference', '?'), exc)
 
+        # QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
+        # passent à la V2, seul l'écart est régularisé. Point de sauvegarde :
+        # un incident ici n'annule jamais la signature du client (journalisé).
+        try:
+            with transaction.atomic():
+                rattacher_aval_financier_revision(devis, user=user)
+        except Exception:  # noqa: BLE001 — best-effort, journalisé
+            logger.exception(
+                'QJR560 : aval financier de révision non rattaché (devis %s)',
+                getattr(devis, 'reference', '?'))
+
         # YDOCF3 + M6 — l'effondrement des sœurs ET la publication de
         # l'événement, sous le verrou du groupe pris plus haut.
         _effondrer_soeurs_et_publier(
@@ -1859,6 +1870,163 @@ def reviser_devis(devis, *, user=None):
         activity.log_devis_note(
             nd, user, f'Révision de {old.reference}.')
     return nd
+
+
+def rattacher_aval_financier_revision(devis, *, user=None):
+    """QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : l'aval FINANCIER
+    de la version remplacée passe à la V2, seul l'écart est régularisé.
+
+    Appelée à l'acceptation de ``devis`` (sous la transaction d'``accept_devis``)
+    quand un prédécesseur de révision (``selectors.
+    devis_predecesseurs_revision_ids``) est ACCEPTÉ. Aucun statut inventé, la
+    chaîne BC / Facture reste 1:1 (règle #4) :
+
+    1. le BC non annulé de la V1 est RATTACHÉ à la V2 (``BonCommande.devis`` est
+       OneToOne : un BC « complémentaire » est impossible sans migration — le BC
+       garde ses lignes d'origine ; question fondateur consignée au DONE LOG),
+       et les factures (``Facture.devis``) et ``FactureSource`` de la V1 aussi :
+       les documents émis restent valables ;
+    2. l'écart TTC est régularisé AU CENTIME, jamais un montant inventé :
+       tant qu'il reste une tranche d'échéancier à facturer sur la V2 (et
+       qu'aucune facture de BC ne solde la vente), la tranche finale le porte
+       déjà (solde = total V2 − déjà facturé) — une note le dit ; si la vente
+       est entièrement facturée, reste > 0 → facture COMPLÉMENTAIRE brouillon
+       (rattachée à la V2), reste < 0 → AVOIR sur la dernière facture.
+
+    La commission apporteur encore À_PAYER est recalculée par ``crm`` sur
+    l'option acceptée de la V2 (``crm/receivers.py``, même événement).
+
+    Rend un dict ``{bc, factures, sources, ecart_ttc, document}`` ou ``None``
+    quand aucun prédécesseur accepté n'existe."""
+    from decimal import Decimal
+
+    from apps.ventes import activity
+    from apps.ventes.models import (
+        Avoir, BonCommande, Devis, Facture, FactureSource)
+    from apps.ventes.selectors import devis_predecesseurs_revision_ids
+    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.echeancier import (
+        blended_tva_pct, factures_actives, next_tranche)
+    from apps.ventes.utils.options import option_totaux
+
+    preds = devis_predecesseurs_revision_ids(devis)
+    if not preds:
+        return None
+    acceptes = list(Devis.objects.filter(
+        pk__in=preds, company_id=devis.company_id,
+        statut=Devis.Statut.ACCEPTE))
+    if not acceptes:
+        return None
+    acceptes.sort(key=lambda d: preds.index(d.pk))  # le plus proche d'abord
+    precedent = acceptes[0]
+    ids = [d.pk for d in acceptes]
+
+    # (1) BC — un seul non annulé, rattaché à la V2 si elle n'en a pas.
+    bc = None
+    if not BonCommande.objects.filter(devis=devis).exists():
+        bc = (BonCommande.objects.filter(devis_id__in=ids)
+              .exclude(statut=BonCommande.Statut.ANNULE)
+              .order_by('-pk').first())
+        if bc is not None:
+            ancien = bc.devis.reference if bc.devis_id else '?'
+            bc.devis = devis
+            bc.save(update_fields=['devis'])
+            activity.log_devis_note(
+                devis, user,
+                f'Bon de commande {bc.reference} repris de {ancien} '
+                f'(révision acceptée) — document émis inchangé.')
+    # (1) Factures d'échéancier et sources de facture consolidée.
+    factures = list(Facture.objects.filter(devis_id__in=ids)
+                    .values_list('reference', flat=True))
+    Facture.objects.filter(devis_id__in=ids).update(devis=devis)
+    sources = 0
+    for src in FactureSource.objects.filter(devis_id__in=ids):
+        if FactureSource.objects.filter(
+                facture_id=src.facture_id, devis=devis).exists():
+            continue
+        src.devis = devis
+        src.save(update_fields=['devis'])
+        sources += 1
+    if factures:
+        activity.log_devis_note(
+            devis, user,
+            'Factures reprises de la version remplacée (révision) : '
+            + ', '.join(factures) + '.')
+
+    # (2) L'écart, au centime.
+    ecart = (Decimal(str(option_totaux(devis)['ttc']))
+             - Decimal(str(option_totaux(precedent)['ttc'])))
+    # Relecture sur une instance FRAÎCHE (celle de l'appelant garde ses caches).
+    devis = Devis.objects.select_related('client', 'lead', 'company').get(
+        pk=devis.pk)
+    actives = {f.pk: f for f in factures_actives(devis)}
+    from apps.ventes.selectors import factures_via_bon_commande
+    via_bc = {f.pk: f for f in factures_via_bon_commande(devis)}
+    actives.update(via_bc)
+    document = None
+    if not actives:
+        # Rien de facturé : l'échéancier de la V2 facturera la V2.
+        return {'bc': bc, 'factures': factures, 'sources': sources,
+                'ecart_ttc': ecart, 'document': None}
+    facture_ttc = sum((Decimal(str(f.total_ttc)) for f in actives.values()),
+                      Decimal('0'))
+    avoirs_ttc = sum((Decimal(str(f.avoirs_total)) for f in actives.values()),
+                     Decimal('0'))
+    reste = (Decimal(str(option_totaux(devis)['ttc']))
+             - facture_ttc + avoirs_ttc).quantize(Decimal('0.01'))
+    encore_une_tranche = (not via_bc) and next_tranche(devis) is not None
+    if reste == 0 or (encore_une_tranche and reste > 0):
+        activity.log_devis_note(
+            devis, user,
+            f'Écart de révision {ecart:.2f} MAD TTC porté par la suite de '
+            f"l'échéancier (reste à facturer {reste:.2f} MAD).")
+        return {'bc': bc, 'factures': factures, 'sources': sources,
+                'ecart_ttc': ecart, 'document': None}
+
+    taux = blended_tva_pct(devis)
+    montant_ttc = abs(reste)
+    montant_ht = (montant_ttc / (1 + taux / 100)).quantize(Decimal('0.01'))
+    montant_tva = montant_ttc - montant_ht
+    company = devis.company
+    if reste > 0:
+        def _facture(ref):
+            return Facture.objects.create(
+                company=company, reference=ref, devis=devis,
+                client=devis.client, lead=devis.lead,
+                statut=Facture.Statut.BROUILLON,
+                type_facture=Facture.TypeFacture.COMPLETE,
+                libelle=(f'Complément révision {devis.reference} '
+                         f'(remplace {precedent.reference})')[:255],
+                montant_ht=montant_ht, montant_tva=montant_tva,
+                montant_ttc=montant_ttc, taux_tva=taux, created_by=user)
+        document = create_numbered(Facture, company, 'facture', _facture)
+        activity.log_devis_note(
+            devis, user,
+            f'Facture complémentaire {document.reference} (brouillon) : '
+            f'{montant_ttc:.2f} MAD TTC — écart de révision.')
+    else:
+        # La facture qui peut le plus porter l'avoir (plafond AUD126 : jamais
+        # au-delà du reste créditable) ; à reste égal, la plus récente.
+        cible = max(actives.values(), key=lambda f: (
+            Decimal(str(f.total_ttc)) - Decimal(str(f.avoirs_total)), f.pk))
+
+        def _avoir(ref):
+            return Avoir.objects.create(
+                company=company, reference=ref, facture=cible,
+                client=cible.client, statut=Avoir.Statut.EMISE,
+                motif=(f'Révision {devis.reference} (remplace '
+                       f'{precedent.reference}) — écart de révision.'),
+                taux_tva=taux, montant_ht=montant_ht,
+                montant_tva=montant_tva, montant_ttc=montant_ttc,
+                created_by=user)
+        document = create_numbered(Avoir, company, 'avoir', _avoir)
+        activity.log_facture_avoir(cible, user, document)
+        activity.log_devis_note(
+            devis, user,
+            f'Avoir {document.reference} : {montant_ttc:.2f} MAD TTC sur '
+            f'{cible.reference} — écart de révision.')
+    return {'bc': bc, 'factures': factures, 'sources': sources,
+            'ecart_ttc': ecart, 'document': document}
 
 
 def mark_devis_sent(*, devis, user=None):

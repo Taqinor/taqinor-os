@@ -119,8 +119,22 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
             .filter(lead_id=devis.lead_id, statut=DealEnregistre.Statut.APPROUVE)
             .select_related('apporteur')
             .first())
+    recalcul_revision = False
     if deal is None:
-        return
+        # QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : la commission
+        # encore À_PAYER (calculée sur la V1) est RECALCULÉE sur l'option
+        # acceptée de la V2 ; jamais une commission déjà payée.
+        from apps.ventes.selectors import devis_predecesseurs_revision_ids
+        if not devis_predecesseurs_revision_ids(devis):
+            return
+        deal = (DealEnregistre.objects
+                .filter(lead_id=devis.lead_id,
+                        statut=DealEnregistre.Statut.A_PAYER)
+                .select_related('apporteur')
+                .first())
+        if deal is None:
+            return
+        recalcul_revision = True
     taux = deal.apporteur.taux_commission_pct
     if not taux:
         return
@@ -133,6 +147,11 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     deal.montant_commission_du = montant
     deal.statut = DealEnregistre.Statut.A_PAYER
     deal.save(update_fields=['montant_commission_du', 'statut'])
+    if recalcul_revision:
+        # QJR560 — un recalcul sur révision n'est PAS une nouvelle commission
+        # due : aucun second ``deal_commission_due`` (le consommateur compta
+        # compterait deux commissions pour une seule vente).
+        return
 
     deal_commission_due.send(
         sender='crm.receivers', company=devis.company, deal_id=deal.pk,
