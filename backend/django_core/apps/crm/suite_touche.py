@@ -632,15 +632,18 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
     # ou « Fait — passer à la suite » sur la cadence générique.
     if not derniere:
         return [TOUCHE_SUIVANTE] + ([RESTE_AU_FROID] if au_froid else [])
-    if cadence in ('contact', 'apres_devis'):
+    if cadence in ('contact', 'apres_devis', 'deuxieme_affaire'):
         # MRY11 — la cadence s'épuise sans réponse : parking Froid + réveils.
+        # SUIVI E26 (décision fondateur du 30/09/2026) — la deuxième affaire
+        # aussi : c'est la prise de contact d'un client acquis, elle finit
+        # comme elle (``services._CLOTURE_PLAFOND``).
         return [DERNIERE_FROID_REVEILS]
     if cadence == 'reveil':
         # La cadence réveil ne se clôture jamais elle-même, et le filet ne
         # pose rien sur un dossier au Froid (CAD16).
         return ([DERNIER_REVEIL] if au_froid
                 else [ETAPE_DEVIS_DEMAIN_SAUF_SUIVI])
-    # Générique, deuxième affaire : aucune clôture, le filet pose sa suite.
+    # Générique : aucune clôture, le filet pose sa suite.
     return [ETAPE_DEVIS_DEMAIN]
 
 

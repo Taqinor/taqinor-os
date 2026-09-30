@@ -2993,6 +2993,11 @@ _DEFAULT_TAGS = [
     # deux précédentes (arriver sans couleur ni libellé dans Paramètres → CRM
     # ferait croire à une saisie libre).
     'Jamais chiffré',
+    # SUIVI E26 (30/09/2026) — l'étiquette de clôture de la cadence courte
+    # « deuxième affaire » (`services._CLOTURE_TAG_DEUXIEME_AFFAIRE`), seedée
+    # comme les autres étiquettes de clôture ; un test garde les deux libellés
+    # identiques.
+    'Deuxième affaire sans réponse',
 ]
 
 

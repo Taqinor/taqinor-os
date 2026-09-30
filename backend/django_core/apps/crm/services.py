@@ -2201,9 +2201,15 @@ _OUTCOMES_SANS_CLOTURE = frozenset({'joint', 'interesse', 'rappel', 'refuse',
 #: (plus cinq WhatsApp) — l'étiquette affichée à Meryem doit dire ce que la
 #: cadence a réellement fait. Migration 0093 pour l'existant.
 _CLOTURE_TAG_INJOIGNABLE = 'Injoignable 6 appels'
+#: SUIVI E26 (décision fondateur du 30/09/2026) — la cadence COURTE « deuxième
+#: affaire » (CAD128, un message et un appel) s'épuise comme la prise de
+#: contact : parking Froid + réveils. Son étiquette dit ce que CETTE cadence a
+#: réellement fait — jamais « 6 appels », elle n'en compte qu'un.
+_CLOTURE_TAG_DEUXIEME_AFFAIRE = 'Deuxième affaire sans réponse'
 _CLOTURE_TAGS = {
     'contact': _CLOTURE_TAG_INJOIGNABLE,
     'apres_devis': 'Devis sans suite',
+    'deuxieme_affaire': _CLOTURE_TAG_DEUXIEME_AFFAIRE,
 }
 
 #: MRY11 — étape la plus AVANCÉE qu'une cadence puisse encore parquer.
@@ -2214,6 +2220,12 @@ _CLOTURE_TAGS = {
 _CLOTURE_PLAFOND = {
     'contact': stages.CONTACTED,
     'apres_devis': stages.FOLLOW_UP,
+    # SUIVI E26 — la deuxième affaire est la prise de contact d'un client
+    # acquis qui revient (une fiche NEUVE) : même plafond que ``contact``.
+    # Avant, sa dernière touche sans réponse posait « Préparer et envoyer le
+    # devis » le lendemain — un chiffrage réclamé pour quelqu'un que personne
+    # n'avait eu au téléphone, alors que le guide annonçait le Froid.
+    'deuxieme_affaire': stages.CONTACTED,
 }
 
 #: SUIVI E19 — le motif écrit sur une étape de filet annulée parce que le
