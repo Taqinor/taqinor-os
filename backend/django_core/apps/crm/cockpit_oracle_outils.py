@@ -10,7 +10,7 @@ indépendantes de la même règle : un écart est une erreur de l'une des deux, 
 le contrat.
 
 Ce qui est LU tel quel (ce sont des DONNÉES d'entrée de la règle, pas la règle) : le calendrier
-de la société (``is_jour_ouvre``), les minutes ouvrées (``horaires.minutes_ouvrees_entre``), le
+de la société (``is_jour_ouvre``), les minutes ouvrées de la médiane (``horaires.minutes_ouvrees_entre``), le
 délai de premier contact de la société (``lead_sla_hours``), les absences déclarées
 (``PeriodeAbsence``) et la table du parcours (``parcours_suivi.json``, par ``type_de``).
 
@@ -92,6 +92,21 @@ class Oracle:
                 compte += 1
             jour += datetime.timedelta(days=1)
         return compte
+
+    def minutes_d_attente(self, debut, fin):
+        """L'horloge du DÉLAI de premier contact (contrat, ``notes.exceptions``) : les
+        minutes d'horloge de ``debut`` à ``fin``, jours NON ouvrés retirés."""
+        total, jour = 0.0, _local(debut)
+        while jour <= _local(fin):
+            if self.ouvre(jour):
+                minuit = datetime.datetime.combine(
+                    jour, datetime.time(0, 0), tzinfo=CASA)
+                lendemain = datetime.datetime.combine(
+                    jour + datetime.timedelta(days=1), datetime.time(0, 0), tzinfo=CASA)
+                ecoule = (min(fin, lendemain) - max(debut, minuit)).total_seconds()
+                total += max(0.0, ecoule) / 60.0
+            jour += datetime.timedelta(days=1)
+        return total
 
     def juger(self, etape):
         """``a_temps`` | ``en_retard`` | ``sautees`` | ``ouvert`` | ``None`` (pas encore
@@ -197,14 +212,18 @@ class Oracle:
             debut, datetime.time(0, 0), tzinfo=CASA)
         nouveaux = [lead for lead in self.leads.values()
                     if lead.date_creation >= debut_instant and du_lead(lead)]
+        contactes = [lead for lead in nouveaux if lead.first_contacted_at is not None]
+        # La médiane : minutes OUVRÉES (le KPI voisin) ; le délai : son horloge à lui.
         delais = [horaires.minutes_ouvrees_entre(
             lead.date_creation, lead.first_contacted_at, self.company)
-            for lead in nouveaux if lead.first_contacted_at is not None]
-        attentes = [horaires.minutes_ouvrees_entre(
-            lead.date_creation, self.maintenant, self.company)
-            for lead in nouveaux
-            if lead.first_contacted_at is None and lead.stage == stages.NEW
-            and not lead.perdu and not lead.ne_plus_contacter]
+            for lead in contactes]
+        dans_le_delai = sum(
+            1 for lead in contactes if self.minutes_d_attente(
+                lead.date_creation, lead.first_contacted_at) < sla * 60) if sla else 0
+        attentes = [self.minutes_d_attente(lead.date_creation, self.maintenant)
+                    for lead in nouveaux
+                    if lead.first_contacted_at is None and lead.stage == stages.NEW
+                    and not lead.perdu and not lead.ne_plus_contacter]
 
         if (any(retard >= RETARD_ALERTE_JOURS for _e, _l, retard in en_retard)
                 or sans_etape or hors_delai):
@@ -272,8 +291,7 @@ class Oracle:
                 if type_id in par_type and par_type[type_id]['du']],
             'premier_contact': {
                 'nouveaux': len(nouveaux),
-                'dans_le_delai': (sum(1 for m in delais if m < sla * 60)
-                                  if sla else 0),
+                'dans_le_delai': dans_le_delai,
                 'mediane_minutes': (round(statistics.median(delais))
                                     if delais else None),
                 'delai_heures': sla,
@@ -323,8 +341,7 @@ class Oracle:
                     and (owner is None or lead.owner_id == owner)
                     and lead.source != Lead.Source.ODOO_IMPORT_TEST
                     and lead.date_creation <= limite):
-                minutes = horaires.minutes_ouvrees_entre(
-                    lead.date_creation, self.maintenant, self.company)
+                minutes = self.minutes_d_attente(lead.date_creation, self.maintenant)
                 if minutes >= sla * 60:
                     trouves.append(
                         (lead.date_creation, pk, round(minutes / 60.0, 1)))
