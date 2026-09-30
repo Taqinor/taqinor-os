@@ -3555,7 +3555,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ``generate_premium_devis_pdf`` pose ce drapeau serveur (jamais whitelisté
     # par ``clean_pdf_options`` : un corps client ne peut pas l'allumer).
     # Sans drapeau, la clé ``roof_render`` n'existe pas et AUCUN octet n'est lu.
-    if roof_image and (pdf_options or {}).get("_embed_roof_render"):
+    # QJR522 — un calepinage PÉRIMÉ (``layout_stale`` : son nombre de
+    # panneaux ne correspond plus aux lignes, typiquement après une
+    # correction du devis envoyé) n'est plus IMPRIMÉ : ni l'affiche ni la
+    # planche cotée ne partent avec l'ancien nombre de panneaux. Rendu SEUL
+    # (règle #4) : la page est omise comme une planche absente, et l'équipe
+    # le lit dans ``avertissements_internes``. La page web garde son propre
+    # avertissement (``layout_stale`` de la charge utile, inchangé).
+    _veut_affiche = bool(roof_image
+                         and (pdf_options or {}).get("_embed_roof_render"))
+    _veut_planche = bool(
+        opts['include_calepinage'] is not False
+        and (pdf_options or {}).get("_embed_calepinage_planche"))
+    if layout_stale and (_veut_affiche or _veut_planche):
+        avertissements_internes.append(
+            "planche de calepinage antérieure à la dernière correction")
+    if _veut_affiche and not layout_stale:
         data["roof_render"] = _roof_render_data_uri(devis)
     # PV46/PVSLD — annexe technique : les clés ne sont ajoutées QUE si le devis
     # porte une conception électrique (PV41). Sans étude, aucune clé nouvelle →
@@ -3593,8 +3608,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ``None`` (AUTO) et sous ``True`` on demande la planche, et son absence
     # dégrade gracieusement — exactement comme l'étude et l'annexe : la page
     # n'est ni rendue ni comptée, jamais rendue blanche.
-    if (opts['include_calepinage'] is not False
-            and (pdf_options or {}).get("_embed_calepinage_planche")):
+    if _veut_planche and not layout_stale:
         _planche_svg, _planche_empreinte = _planche_calepinage(devis)
         if _planche_svg:
             data["include_calepinage"] = True
