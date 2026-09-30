@@ -3972,6 +3972,16 @@ def echapper_textes_client(data: dict) -> dict:
                  if isinstance(it, dict) else it)
                 for it in _rows
             ]
+    # QJR618 — les lignes de STRUCTURE (sections / notes tapées par le
+    # vendeur) sont désormais imprimées par les gabarits premium : leur texte
+    # est échappé ici comme une désignation.
+    _struct = sortie.get("lignes_structure")
+    if isinstance(_struct, list):
+        sortie["lignes_structure"] = [
+            ({**s, "texte": _e(s.get("texte"))}
+             if isinstance(s, dict) and s.get("texte") is not None else s)
+            for s in _struct
+        ]
     # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
     # elles n'étaient échappées par aucun des deux moteurs.
     for _cle in ("sans_bullets", "avec_bullets"):
