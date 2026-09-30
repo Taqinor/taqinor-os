@@ -646,24 +646,26 @@ class ParcoursBase(TestCase):
         self.verifier_invariants(lead)
         return devis
 
-    def rappel_demande(self, lead):
-        """« Rappelez-moi jeudi » noté depuis la fiche (``POST leads/<id>/log-interaction/``,
-        MRY10) : la touche générique d'APPEL « Rappeler le client (il l'a demandé) » est
-        posée à la date convenue — le chemin réel vers une étape générique qui est un
-        appel (la passation, elle, est un message)."""
-        quand = self.jour_ouvre(2)
-        self.appel('post', f'/api/django/crm/leads/{lead.pk}/log-interaction/', {
-            'kind': 'appel', 'outcome': 'rappel', 'rappel_le': quand.isoformat(),
-            'rappel_heure': HEURE_CONVENUE})
-        self._journal(f'[{self.aujourdhui():%d/%m}] appel journalisé depuis la fiche, rappel '
-                      f'demandé le {quand:%d/%m/%Y}')
+    def signal_proposition_rouverte(self, lead):
+        """Le client a ROUVERT sa proposition (signal CAD130, observé par la tâche planifiée
+        `apps.ventes.scheduled` qui appelle ce même service) : la touche générique d'APPEL
+        « Proposition rouverte — appeler » est posée dans la file, à côté du suivi — le
+        chemin réel vers une étape générique qui est un appel (la passation est un message ;
+        un rappel demandé pendant un plan en cours DÉPLACE la touche suivante, il n'en pose
+        pas)."""
+        from apps.crm.services import SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal
+
+        touche = poser_touche_signal(lead, SIGNAL_PROPOSITION_ROUVERTE, user=self.acteur)
+        self.assertIsNotNone(touche, self.msg('le signal « proposition rouverte » n’a rien posé', lead))
+        self._journal(f'[{self.aujourdhui():%d/%m}] proposition rouverte par le client (signal)')
         self.verifier_invariants(lead)
 
     def amener_generique_appel(self):
         """``(lead, touche)`` : un lead en suivi de proposition avec une touche générique
-        d'APPEL ouverte (rappel demandé) — pour les réponses d'appel de l'étape générique."""
+        d'APPEL ouverte (proposition rouverte) — pour les réponses d'appel de l'étape
+        générique (Répondeur, Occupé, Numéro invalide, A bloqué)."""
         lead, _suivi = self.amener('suivi_message')
-        self.rappel_demande(lead)
+        self.signal_proposition_rouverte(lead)
         appels = [e for e in self.du_type(lead, 'generique')
                   if e.canal == RelanceEtape.Canal.APPEL]
         self.assertEqual(len(appels), 1, self.msg(
