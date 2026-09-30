@@ -105,13 +105,16 @@ describe('ControleSuiviPanel — verdict', () => {
       + '1 étape reportée plusieurs fois, 1 premier contact hors délai.')
   })
 
-  it('« alerte » (exemple_alerte du contrat) : ▲ rouge, « En retard », les cinq listes dans la phrase', async () => {
+  it('« alerte » (exemple_alerte du contrat) : ▲ rouge, « Action requise », les cinq listes dans la phrase', async () => {
     crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
     monter()
     const verdict = await attendreVerdict()
     expect(verdict).toHaveAttribute('data-niveau', 'alerte')
     expect(verdict).toHaveTextContent('▲')
-    expect(verdict).toHaveTextContent('En retard')
+    // Le mot du niveau n'est plus « En retard » : le niveau peut venir d'un dossier
+    // sans prochaine étape ou d'un premier contact hors délai. Les autres mots restent.
+    expect(verdict).toHaveTextContent('Action requise')
+    expect(verdict.querySelector('span')).toHaveTextContent(/^▲Action requise$/)
     // Le dossier sorti du suivi entre dans la phrase, à sa place (avant le premier contact).
     expect(verdict).toHaveTextContent(
       '2 étapes en retard, 1 tâche en attente depuis 4 jours, 1 étape reportée plusieurs fois, '

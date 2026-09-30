@@ -55,8 +55,10 @@ const NIVEAUX = {
     glyphe: '◆', mot: 'À surveiller',
     bande: 'border-warning/50 bg-warning/10', texte: 'text-warning-text',
   },
+  // « Action requise » et non « En retard » : le niveau peut venir d'un dossier
+  // sans prochaine étape ou d'un premier contact hors délai, pas d'un retard.
   alerte: {
-    glyphe: '▲', mot: 'En retard',
+    glyphe: '▲', mot: 'Action requise',
     bande: 'border-destructive/40 bg-destructive/10', texte: 'text-destructive',
   },
   vide: {
