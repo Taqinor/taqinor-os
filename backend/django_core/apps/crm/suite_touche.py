@@ -271,7 +271,7 @@ REPONSES_PAR_TYPE = {
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
         'refuse', 'ne_plus_contacter'),
     TYPE_CONTACT_MESSAGE: (
-        'joint', 'visite_acceptee', 'non_joint', 'rappel',
+        'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'refuse', 'ne_plus_contacter'),
     TYPE_DEVIS: (
         'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
@@ -295,7 +295,7 @@ REPONSES_PAR_TYPE = {
         'plus_tard', 'question_prix', 'devis_modifie', 'decision_famille',
         'decision_proprietaire', 'ne_plus_contacter'),
     TYPE_SUIVI_MESSAGE: (
-        'joint', 'visite_acceptee', 'non_joint', 'rappel',
+        'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'refuse', 'plus_tard', 'question_prix', 'devis_modifie',
         'decision_famille', 'decision_proprietaire', 'ne_plus_contacter'),
     TYPE_QUESTION_PRIX: (
@@ -316,7 +316,7 @@ REPONSES_PAR_TYPE = {
         'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
         'refuse', 'ne_plus_contacter'),
     TYPE_REVEIL_MESSAGE: (
-        'joint', 'visite_acceptee', 'non_joint', 'rappel',
+        'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
         'plus_tard', 'refuse', 'ne_plus_contacter'),
     TYPE_GENERIQUE: (
         'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
@@ -441,31 +441,35 @@ def cles_de_reponse(etape):
     return cles
 
 
-def _appeler_apres_message(etape, est_actif):
+def _appeler_apres_message(etape, est_actif, canal=None):
     """Message répondu → l'appeler, sauf si la société a désactivé ce
-    palier (PARAM-CADENCE) : le moteur pose alors le devis."""
+    palier (PARAM-CADENCE) : le moteur pose alors le devis. ``canal`` : le
+    canal RÉEL de la touche quand il diffère du prévu (SUIVI E16 — « Client
+    joint au téléphone » sur une touche message est un APPEL abouti)."""
     from .cadence_config import CLE_APPEL_APRES_REPONSE
 
-    return (etape.canal in _CANAUX_ECRITS
+    return ((canal or etape.canal) in _CANAUX_ECRITS
             and est_actif(CLE_APPEL_APRES_REPONSE))
 
 
-def _filet_apres_reponse(etape, est_actif):
+def _filet_apres_reponse(etape, est_actif, canal=None):
     """L'étape que le filet pose quand un client « joint » ne laisse rien
     d'ouvert : message répondu → l'appeler ; appel fait → le devis demain."""
-    return (ETAPE_APPELER if _appeler_apres_message(etape, est_actif)
+    return (ETAPE_APPELER if _appeler_apres_message(etape, est_actif, canal)
             else ETAPE_DEVIS_DEMAIN)
 
 
-def _filet_apres_reponse_sauf_suivi(etape, est_actif):
+def _filet_apres_reponse_sauf_suivi(etape, est_actif, canal=None):
     return (ETAPE_APPELER_SAUF_SUIVI
-            if _appeler_apres_message(etape, est_actif)
+            if _appeler_apres_message(etape, est_actif, canal)
             else ETAPE_DEVIS_DEMAIN_SAUF_SUIVI)
 
 
-def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
+def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
+                   canal=None):
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
-    dernière touche)."""
+    dernière touche). ``canal`` : le canal RÉEL (SUIVI E16), qui décide de
+    la suite d'un client joint à la place du canal prévu."""
     from .services import CADENCES_ARRETEES_PAR_ISSUE, OUTCOME_VISITE_ACCEPTEE
 
     cadence = etape.cadence
@@ -486,24 +490,25 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
             # SUIVI E15 — la deuxième affaire s'arrête comme la prise de
             # contact : l'étape de filet, jamais le barreau 2 en plus.
             return codes + [CONTACT_ARRETEE,
-                            _filet_apres_reponse(etape, est_actif)]
+                            _filet_apres_reponse(etape, est_actif, canal)]
         if cadence == 'reveil':
             return codes + [REVEILS_ARRETES,
-                            _filet_apres_reponse_sauf_suivi(etape, est_actif)]
+                            _filet_apres_reponse_sauf_suivi(
+                                etape, est_actif, canal)]
         if cadence == 'apres_devis':
             # Le filet du récepteur POURSUIT le plan (CAD1) : la touche
             # suivante naît ; après la dernière, l'étape de suite. SUIVI E6
             # (30/09/2026) — avec OU SANS devis dans l'ERP : un suivi sans
             # devis (parti hors ERP) est poursuivi depuis son dernier barreau
             # consommé, il ne pose plus l'étape devis à côté du suivant.
-            return codes + ([_filet_apres_reponse(etape, est_actif)]
+            return codes + ([_filet_apres_reponse(etape, est_actif, canal)]
                             if derniere else [TOUCHE_SUIVANTE])
         # Cadence générique (historique) : le filet pose son étape (rien
         # d'ouvert, aucun devis relançable) ET, la cadence survivant à
         # l'issue, la touche suivante naît aussi.
         if survit and not derniere:
             codes.append(TOUCHE_SUIVANTE)
-        return codes + [_filet_apres_reponse(etape, est_actif)]
+        return codes + [_filet_apres_reponse(etape, est_actif, canal)]
 
     if issue == OUTCOME_VISITE_ACCEPTEE:
         # 24/09/2026 — sur la prise de contact et le réveil, l'issue arrête
@@ -696,7 +701,7 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     from . import stages
     from .cadence_config import cle_de
     from .models import RelanceEtape
-    from .services import REPONSES_TOUCHE
+    from .services import REPONSE_JOINT_TELEPHONE, REPONSES_TOUCHE
 
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return {}
@@ -717,6 +722,13 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
             codes = _codes_sauter(
                 etape, nature=nature, derniere=derniere, au_froid=au_froid,
                 est_actif=est_actif)
+        elif cle == REPONSE_JOINT_TELEPHONE:
+            # SUIVI E16 — « Client joint au téléphone » : l'issue « joint »
+            # d'un APPEL abouti sur ce barreau (canal réel), jamais celle
+            # d'un message répondu.
+            codes = _codes_barreau(
+                etape, 'joint', derniere=derniere, au_froid=au_froid,
+                est_actif=est_actif, canal=RelanceEtape.Canal.APPEL)
         elif cle in REPONSES_TOUCHE:
             codes = _codes_reponse_client(
                 cle, nature=nature, derniere=derniere)

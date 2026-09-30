@@ -42,11 +42,6 @@ TABLE = json.loads(
 PHRASES = json.loads(
     (RELANCES / 'suite_phrases.json').read_text(encoding='utf-8'))['effets']
 
-#: Réponses de la table que le moteur ne sert PAS ENCORE : chacune arrive
-#: avec sa tâche (E2 « Perdu », E4 « Ne veut plus de visite », E16 « Client
-#: joint au téléphone ») et quitte cet ensemble dans le même commit.
-CLES_A_VENIR = frozenset({'joint_telephone'})
-
 _CANAUX_ECRITS = ('whatsapp', 'email')
 _ISSUES = {cle for cle, _ in LeadActivity.OUTCOMES if cle}
 
@@ -76,7 +71,7 @@ def _cles_de_la_table(etape_table, canal):
             cles.append(cle)
     if not etape_table.get('tache'):
         cles.append(st.CLE_SAUTER)
-    return [cle for cle in cles if cle not in CLES_A_VENIR]
+    return cles
 
 
 def _ordres(cadence):

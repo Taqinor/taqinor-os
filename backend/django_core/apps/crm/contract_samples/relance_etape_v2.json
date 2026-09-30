@@ -104,6 +104,9 @@
           "joint": [
             "touche_suivante"
           ],
+          "joint_telephone": [
+            "touche_suivante"
+          ],
           "visite_acceptee": [
             "etape_planifier_visite"
           ],
@@ -308,6 +311,11 @@
             "reveils_arretes",
             "etape_appeler_sauf_suivi"
           ],
+          "joint_telephone": [
+            "sort_du_froid",
+            "reveils_arretes",
+            "etape_devis_demain_sauf_suivi"
+          ],
           "visite_acceptee": [
             "sort_du_froid",
             "reveils_arretes",
@@ -448,6 +456,10 @@
           "joint": [
             "contact_arretee",
             "etape_appeler"
+          ],
+          "joint_telephone": [
+            "contact_arretee",
+            "etape_devis_demain"
           ],
           "visite_acceptee": [
             "contact_arretee",

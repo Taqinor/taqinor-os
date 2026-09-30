@@ -1614,7 +1614,7 @@ def est_note_de_touche_sautee(activite):
 
 
 def marquer_etape_relance(etape, user, statut, note='', outcome='',
-                          body='', suite=True):
+                          body='', suite=True, canal_reel=None):
     """Marque une ``RelanceEtape`` ``fait`` ou ``sautee`` (jamais un retour
     silencieux en arrière) : trace l'acteur/l'horodatage, journalise dans le
     chatter du lead, puis fait AVANCER ``Lead.relance_date`` vers la
@@ -1632,7 +1632,14 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     de prix » ou « Devis modifié » posent LEUR étape). Ni barreau suivant, ni
     clôture au froid, ni filet d'invariant : ces trois automatismes
     choisiraient une suite contraire à ce que le client vient de dire. La
-    trace (touche close, ligne de chatter, issue) reste identique."""
+    trace (touche close, ligne de chatter, issue) reste identique.
+
+    SUIVI E16 (30/09/2026) — ``canal_reel`` : le canal par lequel la touche
+    a RÉELLEMENT été faite quand il diffère du canal prévu (« Client joint au
+    téléphone » sur une touche message). La ligne de chatter est alors typée
+    selon ce canal réel (un APPEL abouti) : c'est elle que lisent le
+    récepteur d'issue (MRY9 — la suite d'un appel abouti, jamais « il a
+    répondu au message ») et le compteur de tentatives."""
     if statut not in (RelanceEtape.Statut.FAIT, RelanceEtape.Statut.SAUTEE):
         raise ValueError("Statut de relance invalide (fait ou sautee attendu).")
 
@@ -1665,11 +1672,19 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
 
     verbe = ('faite' if statut == RelanceEtape.Statut.FAIT
              else VERBE_TOUCHE_SAUTEE)
+    # SUIVI E16 — le canal RÉEL, quand la touche n'a pas été faite par le
+    # canal prévu (le préfixe RLC2, seul relu ailleurs, ne change pas).
+    canal_reel = (canal_reel or '').strip() or None
+    if canal_reel == etape.canal:
+        canal_reel = None
+    canal_affiche = (f'{RelanceEtape.Canal(canal_reel).label} au lieu de '
+                     f'{etape.get_canal_display()}' if canal_reel
+                     else etape.get_canal_display())
     # MRY5 — le corps disait « Relance J+{ordre} », faux depuis que `ordre`
     # est un RANG dans la cadence et non plus un délai en jours (la touche 2
     # de la prise de contact tombe à J0 + 3 minutes, pas à J+2).
     corps = (f'{prefixe_activite_touche(etape)} '
-             f'({etape.get_canal_display()}, cadence '
+             f'({canal_affiche}, cadence '
              f'{etape.cadence}) marquée {verbe}.')
     # CAD44 — une touche faite AVANT son échéance le dit dans le journal (sa
     # date réelle est `traite_le`) ; ce n'est pas une faute d'adhérence.
@@ -1684,7 +1699,9 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
     # MRY10 — UNE SEULE ligne de chatter par touche, TYPÉE selon le canal
     # (jamais une note libre en plus d'une activité) : c'est elle que compte
     # le compteur de tentatives et que lisent les règles d'arrêt (MRY9).
-    kind = (_CANAL_VERS_KIND.get(etape.canal, LeadActivity.Kind.NOTE)
+    # SUIVI E16 — typée selon le canal RÉEL quand il diffère du prévu.
+    kind = (_CANAL_VERS_KIND.get(canal_reel or etape.canal,
+                                 LeadActivity.Kind.NOTE)
             if statut == RelanceEtape.Statut.FAIT
             else LeadActivity.Kind.NOTE)
     LeadActivity.objects.create(
@@ -11975,6 +11992,10 @@ REPONSE_PERDU = 'perdu'
 #: SUIVI E4 (30/09/2026) — « Ne veut plus de visite » / « Annule le
 #: rendez-vous » : la VISITE est abandonnée, pas la proposition.
 REPONSE_VISITE_ABANDONNEE = 'visite_abandonnee'
+#: SUIVI E16 (30/09/2026) — « Client joint au téléphone » sur une touche
+#: MESSAGE : la commerciale a appelé au lieu d'écrire, et le client a
+#: décroché.
+REPONSE_JOINT_TELEPHONE = 'joint_telephone'
 #: L'étiquette posée — la forme AFFICHÉE de l'étiquette standard (seedée par
 #: ``views.seed_tags``) ; la comparaison, elle, ignore casse et accents
 #: (``_lead_porte_tag`` avec ``_TAG_DECISION_A_PLUSIEURS``).
@@ -12084,6 +12105,22 @@ REPONSES_TOUCHE = {
         'cles': (CLE_PLANIFIER, CLE_CONFIRMATION, CLE_DEBRIEF),
         'message': None,
     },
+    # SUIVI E16 (30/09/2026) — la touche prévoyait un MESSAGE, la commerciale
+    # a APPELÉ et le client a décroché. Issue « joint », mais la ligne de
+    # chatter est un APPEL (``canal_reel``) : la suite est celle d'un appel
+    # abouti (prise de contact / réveil : l'étape devis ; suivi de
+    # proposition : le barreau suivant), jamais « Appeler le client — il a
+    # répondu au message ». Sur les touches ÉCRITES du protocole seulement
+    # (``barreaux_seulement`` : jamais un geste de visite, qui a sa clé).
+    REPONSE_JOINT_TELEPHONE: {
+        'libelle': 'Client joint au téléphone',
+        'outcome': 'joint',
+        'note': 'Client joint au téléphone',
+        'cadences': _CADENCES_PROTOCOLE_ET_DEUXIEME_AFFAIRE,
+        'canaux': (RelanceEtape.Canal.WHATSAPP, RelanceEtape.Canal.EMAIL),
+        'barreaux_seulement': True,
+        'message': None,
+    },
 }
 
 #: Les textes de RÉPONSE qu'une touche peut proposer à l'envoi — le seul
@@ -12129,6 +12166,11 @@ def refus_reponse_touche(etape, cle):
         noms = ' ou '.join(RelanceEtape.Canal(c).label for c in canaux)
         return (f'« {libelle} » ne vaut que sur une touche écrite ({noms}) : '
                 'sur un appel, choisissez « Client joint ».')
+    # SUIVI E16 — une réponse réservée aux touches du PROTOCOLE : une étape
+    # posée par le moteur (geste de visite, étape de filet) a sa CLÉ.
+    if spec.get('barreaux_seulement') and cle_de(etape):
+        return (f'« {libelle} » ne vaut que sur une touche du protocole '
+                '(prise de contact, suivi de proposition, réveil).')
     return None
 
 
@@ -12634,6 +12676,31 @@ def repondre_visite_abandonnee(etape, user, *, note='', body=''):
         issue_touche_close=spec['outcome'], demarrer_plan=False)
     _recaler_file(lead, user)
     return etape
+
+
+# ── SUIVI E16 — « Client joint au téléphone » sur une touche MESSAGE ────────
+
+def repondre_joint_telephone(etape, user, *, note='', body=''):
+    """SUIVI E16 (30/09/2026) — la touche prévoyait un message (WhatsApp,
+    e-mail), la commerciale a APPELÉ et le client a décroché.
+
+    Avant, la seule réponse était « Le client a répondu » (issue « joint »
+    sur une ligne de chatter WhatsApp) : le récepteur MRY9 lisait un MESSAGE
+    répondu et posait « Appeler le client — il a répondu au message » — un
+    second appel pour un client qu'on venait d'avoir au téléphone.
+
+    Ici, la touche est close « joint » par la machinerie ORDINAIRE
+    (``marquer_etape_relance``, suite comprise), mais avec le canal RÉEL :
+    la ligne de chatter est un APPEL abouti. La suite est donc celle d'un
+    appel : prise de contact (et deuxième affaire) arrêtée → « Préparer et
+    envoyer le devis » ; réveil → le dossier sort du Froid, un suivi pendant
+    reprend, sinon l'étape devis ; suivi de proposition → le barreau
+    suivant. Renvoie la touche close."""
+    spec = REPONSES_TOUCHE[REPONSE_JOINT_TELEPHONE]
+    return marquer_etape_relance(
+        etape, user, RelanceEtape.Statut.FAIT, note=_note_reponse(spec, note),
+        outcome=spec['outcome'], body=body,
+        canal_reel=RelanceEtape.Canal.APPEL)
 
 
 # ── SUIVI E12 — « Planifier la visite » sans réponse : on réessaie demain ──
