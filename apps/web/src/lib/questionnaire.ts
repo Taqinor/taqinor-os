@@ -420,6 +420,8 @@ export function buildSectionReponses(
     case 'energie': {
       const factureHiver = cleanPositiveNumber(raw.facture_hiver, 1_000_000);
       if (factureHiver != null) out.facture_hiver = factureHiver;
+      const consoKwh = cleanPositiveNumber(raw.conso_mensuelle_kwh, 1_000_000);
+      if (consoKwh != null) out.conso_mensuelle_kwh = consoKwh;
       const eteDifferente = cleanOuiNon(raw.ete_differente);
       if (eteDifferente !== undefined) {
         out.ete_differente = eteDifferente;

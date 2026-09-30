@@ -340,6 +340,16 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
                                 class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
                             </div>
                           )}
+                          {demande('energie', 'conso_mensuelle_kwh') && (
+                            <div>
+                              <label for="q-conso-kwh" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Monthly consumption (kWh), if it appears on your bill" data-ar="الاستهلاك الشهري (كيلوواط ساعة)، إن ظهر في فاتورتك">
+                                Consommation mensuelle (kWh), si elle figure sur votre facture
+                              </label>
+                              <input id="q-conso-kwh" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('conso_mensuelle_kwh')}
+                                class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
+                            </div>
+                          )}
                           {demande('energie', 'ete_differente') && (
                             <>
                               <fieldset class="border-0 p-0">
@@ -963,6 +973,7 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
         case 'energie':
           return {
             facture_hiver: numOrUndef('q-facture-hiver'),
+            conso_mensuelle_kwh: numOrUndef('q-conso-kwh'),
             ete_differente: radioValue('q-ete-differente'),
             facture_ete: numOrUndef('q-facture-ete'),
             raccordement: fieldVal('q-raccordement') || undefined,

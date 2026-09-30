@@ -327,6 +327,13 @@ describe('buildSectionReponses', () => {
     expect(buildSectionReponses('gps', { gps_lat: 48.85, gps_lng: 2.35 })).toEqual({});
   });
 
+  it('énergie (QJR632) : conso_mensuelle_kwh gardée, nettoyée comme facture_hiver', () => {
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '1200' })).toEqual({ conso_mensuelle_kwh: 1200 });
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '1200.5' })).toEqual({ conso_mensuelle_kwh: 1200.5 });
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '-3' })).toEqual({});
+    expect(buildSectionReponses('energie', { conso_mensuelle_kwh: '' })).toEqual({});
+  });
+
   it("énergie : facture_ete seulement si ete_differente='oui', raccordement en liste fermée", () => {
     expect(
       buildSectionReponses('energie', {
