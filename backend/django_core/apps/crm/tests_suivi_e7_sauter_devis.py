@@ -30,7 +30,8 @@ from apps.crm import horaires, stages
 from apps.crm import suite_touche as st
 from apps.crm.cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS, q_etape
 from apps.crm.models import Client, Lead, RelanceEtape
-from apps.crm.services import FILET_JOINT_LIBELLE
+from apps.crm.services import FILET_JOINT_LIBELLE, marquer_etape_relance
+from apps.crm.views import MESSAGE_TACHE_NON_SAUTABLE
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 
@@ -112,16 +113,23 @@ class _Base(TestCase):
 
 
 class SauterEtapeDevisTests(_Base):
+    """COCKPIT-CONTRÔLE B4 (30/09/2026) — réaligné : l'action ``sauter/``
+    REFUSE désormais une TÂCHE (400, rien n'est écrit — voir
+    ``tests_cockpit_gardes``). La règle du MOTEUR que SUIVI E7 garde — une
+    étape devis close SAUTÉE ne vaut jamais « devis parti » — reste vraie et
+    reste testée, au niveau du service (``marquer_etape_relance``), la seule
+    porte qui peut encore clore une tâche « sautée »."""
+
+    def _sauter(self, etape):
+        return marquer_etape_relance(
+            etape, self.acteur, RelanceEtape.Statut.SAUTEE)
 
     def test_sauter_ne_demarre_aucun_suivi_et_pose_decider_la_suite(self):
         # Cas AR : un devis BROUILLON existe dans l'ERP — c'est lui que
         # « devis parti » aurait fait suivre.
         self._devis_brouillon()
         etape = self._etape_devis()
-        resp = self.api.post(
-            f'/api/django/crm/relance-etapes/{etape.pk}/sauter/',
-            {'note': ''}, format='json')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self._sauter(etape)
         etape.refresh_from_db()
         self.assertEqual(etape.statut, RelanceEtape.Statut.SAUTEE)
         self.assertFalse(
@@ -135,14 +143,24 @@ class SauterEtapeDevisTests(_Base):
 
     def test_sauter_sans_aucun_devis_pose_aussi_decider_la_suite(self):
         etape = self._etape_devis()
-        resp = self.api.post(
-            f'/api/django/crm/relance-etapes/{etape.pk}/sauter/',
-            {'note': ''}, format='json')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self._sauter(etape)
         self.assertFalse(
             self.lead.relance_etapes.filter(cadence='apres_devis').exists())
         [ouverte] = list(self._ouvertes())
         self.assertEqual(ouverte.cle, CLE_DECIDER_SUITE)
+
+    def test_l_action_sauter_refuse_l_etape_devis(self):
+        etape = self._etape_devis()
+        resp = self.api.post(
+            f'/api/django/crm/relance-etapes/{etape.pk}/sauter/',
+            {'note': ''}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['erreurs']['etape'],
+                         MESSAGE_TACHE_NON_SAUTABLE)
+        etape.refresh_from_db()
+        self.assertEqual(etape.statut, A_FAIRE)
+        self.assertFalse(
+            self.lead.relance_etapes.exclude(pk=etape.pk).exists())
 
 
 class FaitEtapeDevisTemoinTests(_Base):

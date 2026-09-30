@@ -3066,16 +3066,27 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
 
     MRY30 — deux scopes S'AJOUTENT, sans rien changer aux trois précédents :
     ``tomorrow`` (échéance DEMAIN, ce que la file du jour ne montre jamais —
-    Meryem prépare sa journée la veille) et ``week`` (retard + les 7 prochains
-    jours). ``week`` INCLUT le retard : une touche oubliée lundi doit rester
-    sous les yeux toute la semaine, sinon elle disparaît exactement au moment
-    où elle devient urgente.
+    Meryem prépare sa journée la veille) et ``week``.
+
+    COCKPIT-CONTRÔLE (fondateur, 30/09/2026) — la file du cockpit SUIT LA
+    CADENCE : une TÂCHE (préparer le devis, planifier la visite, décider la
+    suite, devis modifié, question de prix) est « possible dès maintenant »,
+    quelle que soit son échéance. ``all`` (« maintenant ») = les échéances
+    d'aujourd'hui et en retard PLUS les tâches ouvertes à toute date ;
+    ``tomorrow`` et ``week`` n'en reprennent AUCUNE — jamais un doublon entre
+    segments. ``week`` = les 7 prochains jours HORS « maintenant » (demain
+    compris) : le retard n'y est plus, il est déjà sous les yeux dans
+    « maintenant » (avant : « retard + 7 jours », qui le doublait). La
+    reconnaissance SQL d'une tâche est ``suite_touche.q_tache`` — la seule.
     """
     import datetime as _dt
+
+    from django.db.models import Q
 
     from core.dates import aujourd_hui_local
     from authentication.scoping import scope_queryset
     from .models import Lead, RelanceEtape
+    from .suite_touche import q_tache
 
     today = today or aujourd_hui_local()
     qs = RelanceEtape.objects.filter(
@@ -3085,11 +3096,14 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
     if scope == 'overdue':
         qs = qs.filter(due_date__lt=today)
     elif scope == 'all':
-        qs = qs.filter(due_date__lte=today)
+        qs = qs.filter(Q(due_date__lte=today) | q_tache())
     elif scope == 'tomorrow':
-        qs = qs.filter(due_date=today + _dt.timedelta(days=1))
+        qs = qs.filter(due_date=today + _dt.timedelta(days=1)).exclude(
+            q_tache())
     elif scope == 'week':
-        qs = qs.filter(due_date__lte=today + _dt.timedelta(days=7))
+        qs = qs.filter(due_date__gt=today,
+                       due_date__lte=today + _dt.timedelta(days=7)).exclude(
+            q_tache())
     else:  # today
         qs = qs.filter(due_date=today)
 
@@ -3101,12 +3115,56 @@ def relance_etapes_dues(company, user, *, scope='today', owner=None, today=None)
 
     if owner:
         qs = qs.filter(lead__owner_id=owner)
-    # MRY5 — tri à la MINUTE : `due_at` d'abord, les lignes d'avant MRY5 (sans
-    # heure) EN DERNIER. Sans `nulls_last`, Postgres les remonterait en tête
-    # de la file de Meryem alors qu'elles n'ont pas d'heure connue.
-    # CAD83 — le départage à heure ÉGALE passe par `trier_file_du_jour`
-    # (priorité puis score), sans jamais précéder l'heure cible.
+    # MRY5 — tri à la MINUTE, les lignes d'avant MRY5 (sans heure) EN DERNIER
+    # de leur journée. CAD83 — le départage à heure ÉGALE passe par
+    # `trier_file_du_jour` (priorité puis score), sans jamais précéder
+    # l'heure cible. COCKPIT-CONTRÔLE — le jour D'ABORD : en retard (la plus
+    # ancienne d'abord), puis aujourd'hui à l'heure, puis les tâches à venir.
     return trier_file_du_jour(qs)
+
+
+def file_du_cockpit(company, user, *, owner=None, today=None):
+    """COCKPIT-CONTRÔLE (30/09/2026) — le bloc ``file`` de la liste des
+    touches (contrat ``relance_etape_v2``, note ``cockpit_controle``), servi
+    quand ``scope`` est demandé : combien de touches dans chaque segment de
+    la file du cockpit, dans la MÊME portée que la liste (société, portée de
+    visibilité via le lead, leads archivés exclus, ``owner`` en plus).
+
+    ``maintenant`` / ``demain`` / ``semaine`` sont LES MÊMES requêtes que la
+    liste (``relance_etapes_dues``, scopes ``all`` / ``tomorrow`` /
+    ``week``) : un segment ne peut pas compter autrement que la liste qu'il
+    ouvre. ``traitees_aujourdhui`` = les étapes closes « fait » aujourd'hui
+    (jour Africa/Casablanca) — un « fait » est toujours un geste humain
+    (CKP1 : le moteur n'écrit que ``annulee``). Quatre requêtes COUNT."""
+    import datetime as _dt
+
+    from core.dates import aujourd_hui_local
+    from authentication.scoping import scope_queryset
+    from . import horaires
+    from .models import Lead, RelanceEtape
+
+    today = today or aujourd_hui_local()
+    debut = _dt.datetime.combine(today, _dt.time(0, 0),
+                                 tzinfo=horaires.CASABLANCA)
+    faites = RelanceEtape.objects.filter(
+        company=company, statut=RelanceEtape.Statut.FAIT,
+        lead__is_archived=False,
+        traite_le__gte=debut, traite_le__lt=debut + _dt.timedelta(days=1),
+        lead_id__in=scope_queryset(
+            Lead.objects.filter(company=company), user,
+            ['owner']).values('id'))
+    if owner:
+        faites = faites.filter(lead__owner_id=owner)
+    return {
+        'maintenant': relance_etapes_dues(
+            company, user, scope='all', owner=owner, today=today).count(),
+        'demain': relance_etapes_dues(
+            company, user, scope='tomorrow', owner=owner,
+            today=today).count(),
+        'semaine': relance_etapes_dues(
+            company, user, scope='week', owner=owner, today=today).count(),
+        'traitees_aujourdhui': faites.count(),
+    }
 
 
 #: MRY30 — le statut VIRTUEL du suivi : « en retard » n'existe pas en base
@@ -5572,10 +5630,14 @@ def trier_file_du_jour(qs):
 
     L'ordre est un ordre d'AFFICHAGE, en DÉPARTAGE seulement :
 
-    1. ``due_at`` croissant, les touches sans heure en dernier — inchangé
-       depuis MRY5. Comme ``due_at`` porte la date, les touches en retard
-       passent d'elles-mêmes devant celles du jour.
-    2. ``due_date`` croissant — départage les touches sans heure connue.
+    1. ``due_date`` croissant — le JOUR d'abord (COCKPIT-CONTRÔLE,
+       30/09/2026) : en retard, la plus ancienne en tête, puis aujourd'hui,
+       puis les TÂCHES à venir (possibles dès maintenant) par échéance. Avant,
+       ``due_at`` passait en premier, si bien qu'une touche en retard SANS
+       heure (d'avant MRY5) tombait derrière les tâches à venir.
+    2. ``due_at`` croissant, les touches sans heure en dernier DE LEUR
+       JOURNÉE — l'ordre à la minute de MRY5, inchangé à jour égal
+       (``due_date`` est la date locale de ``due_at``).
     3. **priorité** (haute → normale → basse), puis **score** décroissant
        (les touches sans score en dernier) : ils n'interviennent qu'à heure
        STRICTEMENT égale, donc jamais avant une ``heure_cible``. Un rendez-vous
@@ -5600,8 +5662,8 @@ def trier_file_du_jour(qs):
             output_field=IntegerField(),
         ),
     ).order_by(
-        F('due_at').asc(nulls_last=True),
         'due_date',
+        F('due_at').asc(nulls_last=True),
         'cad83_priorite_rang',
         F('lead__score').desc(nulls_last=True),
         'ordre',
