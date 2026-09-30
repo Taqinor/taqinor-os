@@ -88,6 +88,12 @@ CHAMPS_PAR_SECTION = {
 CHAMPS_ORAUX_SEULEMENT = frozenset({
     'tranche_onee', 'objectif_projet', 'type_bien', 'nb_personnes_foyer',
     'chauffage_electrique_hiver', 'equip_ve_statut',
+    # Détails d'équipements (kW / créneau / heures) : aucun contrôle dans
+    # la page publique (0 occurrence dans [token].astro / questionnaire.ts).
+    'equip_piscine_heures_jour', 'equip_piscine_creneau',
+    'equip_ve_chargeur_kw', 'equip_ve_creneau',
+    'equip_clim_kw', 'equip_clim_creneau',
+    'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
 })
 
 
