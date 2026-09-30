@@ -292,8 +292,9 @@ class Oracle:
             'premier_contact': {
                 'nouveaux': len(nouveaux),
                 'dans_le_delai': dans_le_delai,
-                'mediane_minutes': (round(statistics.median(delais))
-                                    if delais else None),
+                # La médiane EXACTE : le contrat sert un entier sans dire son arrondi
+                # (``ecarts`` accepte l'entier voisin).
+                'mediane_minutes': statistics.median(delais) if delais else None,
                 'delai_heures': sla,
                 'plus_longue_attente_heures': (
                     round(max(attentes) / 60.0, 1) if attentes else None),
@@ -446,8 +447,13 @@ def ecarts(attendu, servi):
                 verifier(f'par_type[{ligne["type_etape"]}].{cle}', valeur,
                          servie.get(cle))
     for cle, valeur in attendu['premier_contact'].items():
-        verifier(f'premier_contact.{cle}', valeur,
-                 servi['premier_contact'].get(cle))
+        servie = servi['premier_contact'].get(cle)
+        if cle == 'mediane_minutes' and valeur is not None and servie is not None:
+            # Un entier à moins d'une minute de la médiane exacte (troncature ou arrondi).
+            if abs(servie - valeur) >= 1:
+                trouves.append(f'premier_contact.{cle} : attendu ~{valeur!r} — servi {servie!r}')
+            continue
+        verifier(f'premier_contact.{cle}', valeur, servie)
     for cle, valeur in attendu['resultats'].items():
         verifier(f'resultats.{cle}', valeur, servi['resultats'].get(cle))
     verifier('commerciaux', attendu['commerciaux'],
