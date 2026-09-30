@@ -6,7 +6,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { exempleContrat, reponseContrat } from '../../../../test/fixtures/contractSamples'
 import { formatDate } from '../../../../lib/format'
+import { PARCOURS } from '../../relances/parcours'
 
+const famille = (typeId) => PARCOURS.etapes.find((t) => t.id === typeId).famille
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 
 // MRY32 — la frise fait désormais elle-même Fait/Sauter/Reporter/WhatsApp
@@ -82,7 +84,7 @@ describe('MRY15 CadenceFrise', () => {
 
 /* MRY32 — la frise agit directement sur la prochaine touche à faire et sur
    toute touche en retard (Appeler/WhatsApp/Fait/Sauter/Reporter, mode
-   compact du composant partagé `RelanceEtapeRow.jsx`) : Meryem fait la
+   compact du composant partagé `RelanceEtapeRow.jsx`) : la commerciale fait la
    touche SANS quitter la fiche. Jeu de données DÉDIÉ (dérivé par spread du
    contrat committé, jamais retapé à la main) pour isoler « prochaine à faire »
    vs « déjà faite », ce que l'exemple par défaut (deux étapes À FAIRE) ne
@@ -146,11 +148,12 @@ describe('MRY32 — actions directement depuis la frise', () => {
     // repère donc par « Reporter ».
     const boutonsReporter = screen.getAllByRole('button', { name: 'Reporter' })
     expect(boutonsReporter).toHaveLength(1)
-    // La ligne d'action compacte porte le badge de SA cadence : c'est bien
-    // la touche « contact » la plus proche qui est actionnable, jamais
-    // l'après-devis suivant.
-    expect(boutonsReporter[0].closest('li')).toHaveTextContent('Contact')
-    expect(boutonsReporter[0].closest('li')).not.toHaveTextContent('Après devis')
+    // La ligne d'action compacte porte le badge de SA famille (COCKPIT-
+    // CONTRÔLE F3 : le type lu dans la table du parcours, plus la cadence
+    // stockée) : c'est bien la touche « contact » la plus proche qui est
+    // actionnable, jamais l'après-devis suivant.
+    expect(boutonsReporter[0].closest('li')).toHaveTextContent(famille('contact_appel'))
+    expect(boutonsReporter[0].closest('li')).not.toHaveTextContent(famille('suivi_appel'))
   })
 
   // CAD44 (TRANCHÉ 21/09/2026, MRY32 rouverte) — la frise applique la MÊME

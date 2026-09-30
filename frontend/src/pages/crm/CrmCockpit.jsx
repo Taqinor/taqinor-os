@@ -14,8 +14,7 @@ import CrmInsightsPanel from './leads/CrmInsightsPanel'
 import DormantAccountsWidget from './DormantAccountsWidget'
 import PortfolioWidget from './dashboard/PortfolioWidget'
 import RelancesDuJourWidget from './RelancesDuJourWidget'
-import MesStatsRelanceTiles from './MesStatsRelanceTiles'
-import AdherenceRelancesPanel from './AdherenceRelancesPanel'
+import ControleSuiviPanel from './ControleSuiviPanel'
 import KpiRelancesPanel from './KpiRelancesPanel'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
 
@@ -150,9 +149,11 @@ export default function CrmCockpit() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const { clients, leads } = useSelector((s) => s.crm)
-  // CKP5 (fondateur 2026-09-10) — sert UNIQUEMENT à ordonner les blocs (la
-  // vue adhérence est mise en avant admin/responsable), JAMAIS à en cacher
-  // un : transparence totale, les deux voient les mêmes chiffres.
+  // CKP5 (fondateur 2026-09-10) puis COCKPIT-CONTRÔLE F4 (30/09/2026) — sert
+  // UNIQUEMENT à ordonner les deux blocs du haut (« Contrôle du suivi » en
+  // premier pour un responsable/admin, « Ma journée » en premier pour les
+  // autres), JAMAIS à en cacher un : transparence totale, la commerciale voit
+  // exactement ce que voit le responsable.
   const isResponsableOuAdmin = useIsAdminOrResponsable()
 
   // VX55 — annule les requêtes en vol au démontage (même patron que
@@ -213,40 +214,44 @@ export default function CrmCockpit() {
         )}
       />
 
-      <div className="mt-2">
+      {/* COCKPIT-CONTRÔLE F4 (fondateur, 30/09/2026) — DEUX blocs pleine largeur
+          juste sous l'en-tête, dans l'ordre du rôle : le responsable lit
+          d'abord « Contrôle du suivi » (a-t-on fait ce qui devait l'être ?),
+          puis « Ma journée » ; la commerciale traite d'abord « Ma journée »,
+          puis retrouve le même contrôle (mêmes chiffres, transparence
+          CKP3/CKP5). Ils remplacent les tuiles perso CKP4 et le panneau
+          « Adhérence » (CKP5) : leur contenu utile est repris par le contrôle
+          (à-l'heure, retards, sautées, premier contact, dossiers sans étape). */}
+      {isResponsableOuAdmin ? (
+        <>
+          <div className="mt-4" data-testid="cockpit-controle-suivi">
+            <ControleSuiviPanel />
+          </div>
+          <div className="mt-4" data-testid="cockpit-ma-journee">
+            <RelancesDuJourWidget />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mt-4" data-testid="cockpit-ma-journee">
+            <RelancesDuJourWidget />
+          </div>
+          <div className="mt-4" data-testid="cockpit-controle-suivi">
+            <ControleSuiviPanel />
+          </div>
+        </>
+      )}
+
+      <div className="mt-4">
         <CrmInsightsPanel />
       </div>
 
-      {/* CKP4 — tuiles PERSO (jamais comparatives) : à faire maintenant / mon
-          à-l'heure 7 j / série sans retard. Visibles à TOUS les rôles. */}
-      <div className="mt-4">
-        <MesStatsRelanceTiles />
-      </div>
-
       {/* PARAM-CADENCE (décision fondateur 25/09/2026) — les trois
-          compteurs de la chaîne AU-DESSUS de la file du jour : avant même
-          d'ouvrir la file, savoir où en est chaque dossier de la chaîne
-          appel → visite → devis. */}
+          compteurs de la chaîne appel → visite → devis → suivi, sous les deux
+          blocs du haut. */}
       <div className="mt-4">
         <ChaineCommercialePanel navigate={navigate} />
       </div>
-
-      {/* CKP4 — LA FILE d'abord, EN TÊTE et pleine largeur, pour TOUS les
-          rôles (« moi et Meryem on voit la même chose ») : c'est l'écran
-          opérationnel du jour, jamais relégué à une colonne parmi d'autres. */}
-      <div className="mt-4">
-        <RelancesDuJourWidget />
-      </div>
-
-      {/* CKP5 — vue ADHÉRENCE (stratégique) : visible par TOUS les rôles
-          (décision transparence, jamais cachée) ; mise en avant PLEINE
-          LARGEUR juste après la file pour admin/responsable — un rôle normal
-          la retrouve plus bas, dans la grille, jamais masquée. */}
-      {isResponsableOuAdmin && (
-        <div className="mt-4">
-          <AdherenceRelancesPanel />
-        </div>
-      )}
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <KpiRelancesPanel />
@@ -256,7 +261,6 @@ export default function CrmCockpit() {
         <PlacementAnciensLeadsCard />
         <DormantAccountsWidget />
         <PortfolioWidget />
-        {!isResponsableOuAdmin && <AdherenceRelancesPanel />}
       </div>
     </div>
   )

@@ -1,14 +1,19 @@
-import { Fragment, useEffect, useState } from 'react'
+import {
+  Fragment, useEffect, useMemo, useState,
+} from 'react'
 import { CalendarClock } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import crmApi from '../../api/crmApi'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent, Spinner, Segmented,
-  Button, Input,
+  Button, Input, Progress,
 } from '../../ui'
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
+import { familleCanal } from '../../features/crm/relances/parcours'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { toastError } from '../../lib/toast'
+import { formatNumber } from '../../lib/format'
+import { pl } from './controleSuiviTexte'
 
 /* ============================================================================
    RELANCE FOUNDATION / MRY14 — panneau « Relances du jour » v2 (plan de
@@ -26,7 +31,7 @@ import { toastError } from '../../lib/toast'
    avec l'écran « Suivi des relances » et la frise de la fiche lead (MRY32).
    Ce widget l'importe tel quel — comportement/markup INCHANGÉS.
 
-   MRY32 — sélecteur « Aujourd'hui + retard | Demain | 7 jours » (scopes
+   MRY32 — sélecteur « Maintenant | Demain | 7 jours » (scopes
    `all`/`tomorrow`/`week` de MRY30). CAD44 (TRANCHÉ 21/09/2026, MRY32
    rouverte) : une ligne dont l'échéance tombe APRÈS aujourd'hui n'est plus en
    lecture seule — Appeler, WhatsApp et Reporter y sont actionnables (agir en
@@ -34,13 +39,25 @@ import { toastError } from '../../lib/toast'
    coche jamais une touche qui n'a pas encore eu lieu. La frise de la fiche
    applique la MÊME règle.
 
-   CAD117 — « X leads sans cadence » : le seul filet existant était le
-   panneau Adhérence (`AdherenceRelancesPanel.jsx`, section « Leads sans
-   touche due »), invisible tant qu'on n'ouvre pas cet écran-là. Le compteur
-   ci-dessous lit le MÊME sélecteur serveur (`kpi_adherence.leads_sans_touche`,
-   `GET relance-etapes/kpi-adherence/`) — jamais recompté ici — et ouvre la
-   même liste en lecture seule, à côté des relances du jour. Aucun démarrage
-   de cadence en masse depuis ce compteur (garde-fou de la tâche).
+   COCKPIT-CONTRÔLE F2 (fondateur, 30/09/2026) — « Ma journée » : la file
+   suit la cadence.
+     · UNE file « Maintenant » : les relances dues aujourd'hui ou en retard ET
+       les TÂCHES ouvertes (préparer le devis, décider la suite…) quelle que
+       soit leur date — le serveur les y met (`file.maintenant`). Le sélecteur
+       porte les compteurs du bloc `file` du contrat `relance_etape_v2`
+       (Maintenant / Demain / 7 jours), jamais recomptés ici ;
+     · filtres d'un clic Tout / Appels / Messages / Tâches, avec leur compteur —
+       le SEUL calcul écran de ce widget, sur la liste chargée (`est_tache`,
+       sinon canal appel ou message) ;
+     · une ligne de progression sobre (`file.traitees_aujourdhui`,
+       `file.maintenant`) ; rien quand les deux valent 0 ;
+     · l'aide n'annonce plus « dues aujourd'hui ou en retard » pour les trois
+       segments, et l'état vide est utile (« Voir demain (n) ») ;
+     · le sous-bloc « N leads sans cadence » (CAD117) a disparu, avec l'appel
+       `getKpiAdherence` (méthode retirée de `crmApi.js`) qui ne servait qu'à lui : il mélangeait « jamais placé »
+       et « sorti du suivi » — l'exception « Dossiers sans prochaine étape » du
+       Contrôle du suivi (`ControleSuiviPanel.jsx`) le remplace. « Cadences
+       échues à clore » reste.
 
    CAD50 — « Annuler »/« Arrêter » n'existaient que sur la fiche du lead.
    « Arrêter la cadence » (`crmApi.arreterCadence`, motif obligatoire — même
@@ -50,17 +67,50 @@ import { toastError } from '../../lib/toast'
    `crmApi.annulerRelanceEtape`) n'a en revanche RIEN à annuler dans la liste
    ci-dessous par construction : le serveur ne sert ici que des étapes encore
    `a_faire` (`crm.selectors.relance_etapes_dues`), jamais fait/sautée. La
-   touche que Meryem vient de traiter DANS CETTE session est donc suivie à
+   touche que la commerciale vient de traiter DANS CETTE session est donc suivie à
    part (`justeTraitees`, peuplée par `traiter()` sur Fait/Sauter, retirée au
    clic « Annuler ») — c'est elle, et seulement elle, qui porte « Annuler »
    ici.
    ========================================================================== */
 
+// Chaque segment lit SON compteur dans le bloc `file` du serveur (`cle`).
 const SCOPES = [
-  { value: 'all', label: "Aujourd'hui + retard" },
-  { value: 'tomorrow', label: 'Demain' },
-  { value: 'week', label: '7 jours' },
+  { value: 'all', label: 'Maintenant', cle: 'maintenant' },
+  { value: 'tomorrow', label: 'Demain', cle: 'demain' },
+  { value: 'week', label: '7 jours', cle: 'semaine' },
 ]
+
+// L'aide dit CE que montre le segment choisi — plus jamais « dues aujourd'hui
+// ou en retard » pour les trois.
+const AIDE_SCOPE = {
+  all: "Relances dues aujourd'hui ou en retard, et tâches à traiter dès maintenant.",
+  tomorrow: 'Relances prévues demain.',
+  week: 'Relances prévues dans les 7 prochains jours.',
+}
+
+// État vide par segment : dit ce que « rien » veut dire.
+const VIDE_SCOPE = {
+  all: 'Tout est traité pour maintenant.',
+  tomorrow: 'Rien de prévu pour demain.',
+  week: 'Rien de prévu dans les 7 prochains jours.',
+}
+
+// Filtres d'un clic. `libelleVide` : ce que dit la liste quand le filtre est
+// choisi et que rien n'y correspond.
+const FILTRES = [
+  { value: 'tout', label: 'Tout' },
+  { value: 'appels', label: 'Appels', libelleVide: 'Aucun appel dans cette liste.' },
+  { value: 'messages', label: 'Messages', libelleVide: 'Aucun message dans cette liste.' },
+  { value: 'taches', label: 'Tâches', libelleVide: 'Aucune tâche dans cette liste.' },
+]
+
+/** La catégorie d'une touche pour les filtres : une TÂCHE d'abord (`est_tache`,
+ *  servi par le serveur), sinon le canal — WhatsApp et e-mail sont des
+ *  messages, tout le reste un appel. */
+function categorie(etape) {
+  if (etape.est_tache) return 'taches'
+  return familleCanal(etape.canal) === 'message' ? 'messages' : 'appels'
+}
 
 // Casablanca EXPLICITE (jamais le fuseau du navigateur) — même trick que
 // `RelancesSuiviPage.jsx`/`LeadCard.jsx` (`en-CA` -> AAAA-MM-JJ, comparable
@@ -203,43 +253,53 @@ function CadencesEchues({ navigate }) {
   )
 }
 
+/** La progression du jour, sobre : deux nombres du serveur et une barre fine.
+ *  Rien quand les deux valent 0. La barre est un simple dessin de la part
+ *  « traitées » sur (traitées + restantes) — aucun pourcentage n'est écrit. */
+function Progression({ file }) {
+  const traitees = Number(file?.traitees_aujourdhui) || 0
+  const restantes = Number(file?.maintenant) || 0
+  if (traitees === 0 && restantes === 0) return null
+  const part = Math.round((traitees / (traitees + restantes)) * 100)
+  return (
+    <div className="mb-3" data-testid="ma-journee-progression">
+      <p className="text-xs text-muted-foreground">
+        {formatNumber(traitees)} {pl(traitees, 'traitée', 'traitées')} aujourd&apos;hui
+        {' · '}
+        {formatNumber(restantes)} {pl(restantes, 'restante', 'restantes')}
+      </p>
+      <Progress value={part} className="mt-1 h-1" aria-label="Avancement de la journée" />
+    </div>
+  )
+}
+
 export default function RelancesDuJourWidget() {
   const navigate = useNavigate()
   const [scope, setScope] = useState('all')
+  const [filtre, setFiltre] = useState('tout')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [etapes, setEtapes] = useState([])
+  // Le bloc `file` du contrat (compteurs Maintenant / Demain / 7 jours +
+  // traitées aujourd'hui). Gardé d'un chargement à l'autre : un serveur qui ne
+  // le sert pas (ou pas encore) laisse simplement les libellés sans compteur.
+  const [file, setFile] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [messageEtape, setMessageEtape] = useState(null)
-  // CAD117 — indépendant du scope ci-dessus (« sans cadence » n'a pas de
-  // notion d'échéance) : une seule lecture au montage, repliée par défaut.
-  const [sansCadence, setSansCadence] = useState([])
-  const [sansCadenceOuvert, setSansCadenceOuvert] = useState(false)
   // CAD50 — étapes traitées (Fait/Sauter) DANS CETTE session, offertes au
   // retour arrière (`annulerRelanceEtape`, fenêtre serveur 24h — voir la note
   // d'en-tête). Purement local : le serveur ne renvoie plus ces étapes une
   // fois traitées (`relance_etapes_dues` ne sert que du `a_faire`).
   const [justeTraitees, setJusteTraitees] = useState([])
 
-  useEffect(() => {
-    let active = true
-    // Garde défensive (même motif que `JournalRelance.jsx getJournalRelance`) :
-    // les suites existantes mockent `crmApi` avec un sous-ensemble de méthodes
-    // qui ne connaît pas encore `getKpiAdherence` — le compteur doit alors se
-    // taire exactement comme sur une panne réseau, jamais lever une TypeError.
-    const requete = typeof crmApi.getKpiAdherence === 'function'
-      ? crmApi.getKpiAdherence({ jours: 30 })
-      : Promise.reject(new Error('getKpiAdherence indisponible'))
-    requete
-      .then((r) => { if (active) setSansCadence(r.data?.leads_sans_touche ?? []) })
-      .catch(() => { if (active) setSansCadence([]) })
-    return () => { active = false }
-  }, [])
-
   const charger = () => {
     let active = true
     crmApi.getRelanceEtapesDues({ scope })
-      .then((r) => { if (active) setEtapes(r.data?.results ?? []) })
+      .then((r) => {
+        if (!active) return
+        setEtapes(r.data?.results ?? [])
+        if (r.data?.file) setFile(r.data.file)
+      })
       .catch(() => { if (active) setError(true) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -328,59 +388,48 @@ export default function RelancesDuJourWidget() {
     }
   }
 
+  // Sélecteur : le compteur du segment vient du bloc `file`, jamais recompté.
+  const optionsScope = SCOPES.map(({ value, label, cle }) => ({
+    value,
+    label: file && Number.isFinite(file[cle]) ? `${label} (${formatNumber(file[cle])})` : label,
+  }))
+
+  // Filtres : compteurs calculés sur la liste CHARGÉE (seul calcul écran).
+  const compteurs = useMemo(() => {
+    const c = { tout: etapes.length, appels: 0, messages: 0, taches: 0 }
+    etapes.forEach((e) => { c[categorie(e)] += 1 })
+    return c
+  }, [etapes])
+  const optionsFiltres = FILTRES.map(({ value, label }) => ({
+    value, label: `${label} (${formatNumber(compteurs[value])})`,
+  }))
+  const visibles = filtre === 'tout' ? etapes : etapes.filter((e) => categorie(e) === filtre)
+  const filtreCourant = FILTRES.find((f) => f.value === filtre)
+
   return (
     <Card data-testid="relances-du-jour-widget">
       <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4" /> Relances du jour
+            <CalendarClock className="h-4 w-4" /> Ma journée
           </CardTitle>
-          <CardDescription>
-            Étapes de plan de relance dues aujourd&apos;hui ou en retard.
-          </CardDescription>
+          <CardDescription>{AIDE_SCOPE[scope]}</CardDescription>
         </div>
         {/* MRY31 — porte vers l'écran « Suivi des relances » (tous jours,
             tous statuts, filtre Responsable) — ce widget reste volontairement
-            limité à aujourd'hui + retard. */}
+            limité à la file d'action. */}
         <Link to="/crm/relances" className="shrink-0 text-xs font-medium text-primary hover:underline">
           Voir le suivi
         </Link>
       </CardHeader>
       <CardContent>
         <Segmented
-          className="mb-3" size="sm" options={SCOPES} value={scope} onChange={setScope}
+          className="mb-3 max-w-full flex-wrap" size="sm" aria-label="Période de la file"
+          options={optionsScope} value={scope} onChange={setScope}
         />
-        {/* CAD117 — lecture seule : ouvre/replie la liste, ne démarre jamais
-            rien. Absent quand `sansCadence` est vide (rien à signaler). */}
-        {sansCadence.length > 0 && (
-          <div className="mb-3" data-testid="cad117-sans-cadence">
-            <button
-              type="button"
-              className="text-xs font-medium text-primary hover:underline"
-              onClick={() => setSansCadenceOuvert((o) => !o)}
-            >
-              {sansCadence.length} lead{sansCadence.length > 1 ? 's' : ''} sans cadence
-            </button>
-            {sansCadenceOuvert && (
-              <ul className="mt-1.5 flex flex-col gap-1">
-                {sansCadence.map((lead) => (
-                  <li key={lead.lead_id}>
-                    <button
-                      type="button"
-                      className="w-full rounded-md border border-border p-1.5 text-left text-xs hover:bg-muted"
-                      onClick={() => navigate(`/crm/leads?lead=${lead.lead_id}`)}
-                    >
-                      <span className="font-medium">{lead.nom}</span>
-                      {lead.ville ? ` · ${lead.ville}` : ''}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+        <Progression file={file} />
         {/* CAD99 — les cadences échues que personne n'a closes (CAD75),
-            en lecture seule, à côté du compteur « sans cadence ». */}
+            en lecture seule. */}
         <CadencesEchues navigate={navigate} />
         {/* CAD50 — retour arrière : les touches traitées DANS CETTE session
             (Fait/Sauter), fenêtre serveur 24h. Disparaît dès qu'annulée OU
@@ -409,35 +458,58 @@ export default function RelancesDuJourWidget() {
         ) : error ? (
           <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
         ) : etapes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Aucune touche due — les cadences démarrent seules à l&apos;arrivée d&apos;un lead.
-          </p>
+          <div className="flex flex-col items-start gap-2" data-testid="ma-journee-vide">
+            <p className="text-sm text-foreground">{VIDE_SCOPE[scope]}</p>
+            {scope === 'all' && (
+              <p className="text-xs text-muted-foreground">
+                Les cadences démarrent seules à l&apos;arrivée d&apos;un lead.
+              </p>
+            )}
+            {/* État vide UTILE : la suite de la journée est un clic, avec son compteur. */}
+            {scope === 'all' && file?.demain > 0 && (
+              <Button type="button" size="sm" variant="outline" onClick={() => setScope('tomorrow')}>
+                Voir demain ({formatNumber(file.demain)})
+              </Button>
+            )}
+          </div>
         ) : (
-          <ul className="space-y-2">
-            {etapes.map((etape) => (
-              <Fragment key={etape.id}>
-                <RelanceEtapeRow
-                  etape={etape} busyId={busyId} navigate={navigate}
-                  enAvance={etape.due_date > todayCasa()}
-                  onFait={(id, payload) => traiter(id, 'fait', payload)}
-                  onSauter={(id, note) => traiter(id, 'sauter', note)}
-                  onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
-                  onOuvrirMessage={setMessageEtape}
-                  // CAD101 — « pièce reçue » : la touche est close et une étape
-                  // « préparer le devis » est née — la file est relue.
-                  onPieceRecue={(id) => { retirer(id); charger() }}
-                  // SUIVI-BLOCAGE — une visite planifiée / déplacée / abandonnée
-                  // ferme, annule ou décale des étapes : la file est relue EN
-                  // PLACE (les lignes gardent leur état, `key` inchangée).
-                  onVisiteChanged={() => charger()}
-                  // CAD152 — une réponse écrite sur la fiche depuis le panneau
-                  // d'appel : le score servi a changé, la file est relue en place.
-                  onLeadEcrit={() => charger()}
-                />
-                <ArreterCadenceControl leadId={etape.lead} onArreter={arreterCadenceLead} />
-              </Fragment>
-            ))}
-          </ul>
+          <>
+            <Segmented
+              className="mb-3 max-w-full flex-wrap" size="sm" aria-label="Filtrer par type"
+              options={optionsFiltres} value={filtre} onChange={setFiltre}
+            />
+            {visibles.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="ma-journee-filtre-vide">
+                {filtreCourant?.libelleVide}
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {visibles.map((etape) => (
+                  <Fragment key={etape.id}>
+                    <RelanceEtapeRow
+                      etape={etape} busyId={busyId} navigate={navigate}
+                      enAvance={etape.due_date > todayCasa()}
+                      onFait={(id, payload) => traiter(id, 'fait', payload)}
+                      onSauter={(id, note) => traiter(id, 'sauter', note)}
+                      onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
+                      onOuvrirMessage={setMessageEtape}
+                      // CAD101 — « pièce reçue » : la touche est close et une étape
+                      // « préparer le devis » est née — la file est relue.
+                      onPieceRecue={(id) => { retirer(id); charger() }}
+                      // SUIVI-BLOCAGE — une visite planifiée / déplacée / abandonnée
+                      // ferme, annule ou décale des étapes : la file est relue EN
+                      // PLACE (les lignes gardent leur état, `key` inchangée).
+                      onVisiteChanged={() => charger()}
+                      // CAD152 — une réponse écrite sur la fiche depuis le panneau
+                      // d'appel : le score servi a changé, la file est relue en place.
+                      onLeadEcrit={() => charger()}
+                    />
+                    <ArreterCadenceControl leadId={etape.lead} onArreter={arreterCadenceLead} />
+                  </Fragment>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </CardContent>
       <ToucheMessageDialog
