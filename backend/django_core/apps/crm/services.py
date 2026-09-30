@@ -12861,10 +12861,10 @@ def repondre_planifier_sans_reponse(etape, user, *, note='', body=''):
     return etape, nouvelle
 
 
-# ── SUIVI E22 — la DERNIÈRE touche d'un protocole ──────────────────────────
+# ── SUIVI E22 / E23 — la DERNIÈRE touche d'un protocole ────────────────────
 
 def _est_dernier_barreau(etape, cadence):
-    """SUIVI E22 (30/09/2026) — ``etape`` est-elle le DERNIER barreau du
+    """SUIVI E22 / E23 (30/09/2026) — ``etape`` est-elle le DERNIER barreau du
     protocole ``cadence``, celui après lequel aucune touche suivante ne naît
     (``materialiser_touche_suivante``) ?
 
@@ -12897,6 +12897,19 @@ def est_derniere_touche_du_suivi(etape):
     pour demain. Sur toute autre touche du suivi, rien ne change : le
     barreau suivant naît."""
     return _est_dernier_barreau(etape, 'apres_devis')
+
+
+def est_derniere_touche_de_contact(etape):
+    """SUIVI E23 (décision fondateur du 30/09/2026) — ``etape`` est-elle la
+    DERNIÈRE touche de la PRISE DE CONTACT (cadence ``contact``) ?
+
+    Lue par la vue « Fait » : « À rappeler le… » sur elle ne pose plus
+    « Préparer et envoyer le devis » à la date choisie (aucune touche
+    suivante ne pouvait porter la date) mais l'APPEL « Rappeler le client —
+    rappel convenu », à la date et à l'heure convenues
+    (``repondre_rappel_convenu``, E10/E17). Sur toute autre touche de la
+    prise de contact, rien ne change : la touche suivante est datée."""
+    return _est_dernier_barreau(etape, 'contact')
 
 
 # ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────

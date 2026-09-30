@@ -448,6 +448,11 @@ def _etape_rappel_convenu_a_la_date(c):
     c.vrai(any(r.due_at.astimezone(horaires.CASABLANCA)
                .strftime('%H:%M') == HEURE_CHOISIE for r in rappels),
            'le « rappel convenu » n’est pas à l’heure convenue')
+    # SUIVI E23 — close « à rappeler », et le rappel REMPLACE l'étape devis
+    # (dernière touche de la prise de contact) : jamais les deux.
+    c.vrai(c.etape.outcome == 'rappel', 'la touche n’est pas close « à rappeler »')
+    c.vrai(not c.nouvelles(libelle=FILET_JOINT_LIBELLE).exists(),
+           'une étape « préparer et envoyer le devis » est posée à côté')
 
 
 def _etape_planifier_demain(c):

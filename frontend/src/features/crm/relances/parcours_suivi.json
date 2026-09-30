@@ -139,8 +139,9 @@
         },
         {
           "modele": "rappel",
-          "effet": "La touche suivante du protocole est programmée à la date choisie, et le reste du suivi glisse du même nombre de jours.",
-          "suite": { "type": "barreau_suivant", "jour": "date_choisie" }
+          "effet": "La touche suivante du protocole est programmée à la date choisie, et le reste du suivi glisse du même nombre de jours. Sur la dernière touche : « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.",
+          "suite": { "type": "barreau_suivant", "jour": "date_choisie" },
+          "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }]
         },
         {
           "modele": "plus_tard",
@@ -189,7 +190,7 @@
           "suite": { "type": "barreau_suivant" },
           "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "fin", "etat": "froid" } }]
         },
-        { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" } },
+        { "modele": "rappel", "effet": "La touche suivante est programmée à la date choisie ; le reste du suivi glisse d’autant. Sur la dernière touche : « Rappeler le client — rappel convenu » est posée à la date et à l’heure convenues.", "suite": { "type": "barreau_suivant", "jour": "date_choisie" }, "variantes": [{ "contexte": "derniere_touche", "suite": { "type": "etape", "cle": "rappel_convenu", "jour": "date_choisie" } }] },
         { "modele": "plus_tard", "effet": "Veille : cette même touche revient à la date convenue.", "suite": { "type": "meme_etape", "jour": "date_choisie" } },
         { "modele": "refus", "effet": "Toutes les relances s’arrêtent ; étape « Décider la suite ».", "suite": { "type": "etape", "cle": "decider_suite", "jour": "demain" } },
         { "modele": "ne_plus_contacter", "effet": "Tout s’arrête définitivement.", "suite": { "type": "fin", "etat": "ne_plus_contacter" } }
