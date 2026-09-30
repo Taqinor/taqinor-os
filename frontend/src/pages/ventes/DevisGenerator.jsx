@@ -160,6 +160,8 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 import { moteur, apercu } from '../../features/ventes/quote/valeur'
 // QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
 import { lignesServeurVersEcran, lignesEcranVersPayload } from '../../features/ventes/quote/lignesEcran'
+// QJR526 — wattage / structure / hors-réseau / composition libre relus des lignes.
+import { deriverReouverture } from '../../features/ventes/quote/reouverture'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -1962,6 +1964,7 @@ export default function DevisGenerator({
         .filter(r => /panneau/i.test(r.designation) && r.variante !== 'avec')
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
       const e = d.etude_params || {}
+      const reouv = deriverReouverture(rows, { mode: d.mode_installation })
       // ORDRE FONDATEUR (24/08) — round-trip du MARCHÉ, du COMPTE DE PANNEAUX
       // et du SCÉNARIO déjà choisis sur ce devis (etude_params.scenario, posé
       // par `buildEtudeParamsChoice` à l'enregistrement). Sans lui, rouvrir un
@@ -1977,8 +1980,18 @@ export default function DevisGenerator({
           mode_installation: d.mode_installation,
           panneaux,
           scenario: e.scenario,
+          // QJR526 — wattage + structure re-dérivés des LIGNES du devis
+          // (sinon 710 W / acier par défaut : 10 × 550 W revenait à 7,1 kWc).
+          panel_watt: reouv.panelW,
+          structure: reouv.structure,
+          structureProduitId: reouv.structureProduitId,
         },
       })
+      // QJR526 — hors-réseau et « Composition libre » relus des lignes : un
+      // choix DÉJÀ fait (drapeau hors-réseau fermé, comme le brouillon local).
+      setHorsReseau(reouv.horsReseau)
+      setHorsReseauTouched(true)
+      setAccessoiresOnly(reouv.accessoiresOnly)
       // PVMRQ — round-trip de la gamme du devis (`etude_params.gamme.nom`,
       // posée par `services.creer_variante_gamme`/`gamme_nom`) : résout la
       // carte de marques Essentielle/Premium à réappliquer aux

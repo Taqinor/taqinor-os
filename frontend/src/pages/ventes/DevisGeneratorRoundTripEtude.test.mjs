@@ -238,6 +238,14 @@ test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entré
   assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
 })
 
+test('QJR526 — les 12 factures réelles du devis rouvert sont reposées à l\'écran (setMonthly), pas les défauts', () => {
+  const bloc = blocMappeur()
+  assert.ok(CLES_RELUES.has('factures_mensuelles_reelles'))
+  // Seulement une série COMPLÈTE de 12 valeurs ; sinon les défauts restent.
+  assert.match(bloc, /e\.factures_mensuelles_reelles\.length === 12/)
+  assert.match(bloc, /if \(factures\) setMonthly\(factures\.map\(/)
+})
+
 test('QJR524 — PROPRIÉTÉ INVERSE : chaque clé de CHOIX_ECRITS est relue par `?edit=`', () => {
   // Rouvrir puis ré-enregistrer SANS retouche ne doit jamais changer un choix :
   // une clé écrite mais jamais relue repart à son défaut (« Auto » → valeur

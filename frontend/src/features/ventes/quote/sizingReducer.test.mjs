@@ -352,6 +352,30 @@ test('REOUVERTURE : mode et scénario du devis ferment leurs drapeaux', () => {
   assert.equal(s.touche.nbPanneaux, false)     // relire les lignes n’est pas une saisie
 })
 
+test('QJR526 — REOUVERTURE : le wattage du devis est posé AVANT le compte (5,5 kWc, pas 7,1)', () => {
+  const s = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE', devis: { panneaux: 10, panel_watt: 550 },
+  })
+  assert.equal(s.panelW, '550')
+  assert.equal(s.kwcCible, '5.5')
+  assert.equal(s.touche.nbPanneaux, false)
+})
+
+test('QJR526 — REOUVERTURE : structure et produit de structure du devis ferment touche.structure', () => {
+  const s = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { panneaux: 10, structure: 'aluminium', structureProduitId: '77' },
+  })
+  assert.equal(s.structure, 'aluminium')
+  assert.equal(s.structureProduitId, '77')
+  assert.equal(s.touche.structure, true)
+  // Rien de lisible : le défaut reste, drapeau ouvert.
+  const t = sizingReducer(ETAT_INITIAL, { type: 'REOUVERTURE', devis: { panneaux: 10 } })
+  assert.equal(t.structure, 'acier')
+  assert.equal(t.panelW, '710')
+  assert.equal(t.touche.structure, false)
+})
+
 test('REOUVERTURE : un scénario hors contrat du moteur PDF est IGNORÉ', () => {
   const s = sizingReducer(ETAT_INITIAL, {
     type: 'REOUVERTURE', devis: { scenario: 'Avec panneaux magiques' },
