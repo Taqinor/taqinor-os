@@ -10036,6 +10036,41 @@ def appliquer_visite_planifiee(lead, user, date_prevue, commercial_nom=''):
     return etapes
 
 
+def clore_etape_apres_planification(etape, user, *, note=''):
+    """SUIVI E18 (30/09/2026) — la planification d'une visite CLÔT la touche
+    qui l'a demandée (l'écran n'envoie plus jamais « Fait visite acceptée »
+    AVANT d'avoir planifié).
+
+    Appelée APRÈS la planification réussie (``visite_planifiee`` a déjà recalé
+    le suivi) :
+
+    * la touche est encore À FAIRE → close « visite acceptée » avec
+      ``note`` (``marquer_etape_relance``) : la prise de contact s'arrête, le
+      funnel avance, et le filet « planifier la visite » ne pose rien — un
+      rendez-vous est calé ;
+    * EXCEPTION : « Confirmer la visite » et « Débrief visite » encore
+      ouvertes SUIVENT le rendez-vous (re-planification : la planification
+      vient de les recaler) — elles restent ouvertes ;
+    * la planification l'a déjà annulée (« Planifier la visite », ou l'étape
+      devis mise en attente de la visite) → elle reste annulée.
+
+    Dans les deux derniers cas, la note éventuelle part dans UNE ligne de
+    chatter. Renvoie la touche (relue)."""
+    etape.refresh_from_db()
+    note = str(note or '').strip()
+    if (etape.statut == RelanceEtape.Statut.A_FAIRE
+            and not est_etape(etape, CLE_CONFIRMATION, CLE_DEBRIEF)):
+        return marquer_etape_relance(
+            etape, user, RelanceEtape.Statut.FAIT, note=note,
+            outcome=OUTCOME_VISITE_ACCEPTEE)
+    if note:
+        libelle = (etape.libelle or '').strip() or etape.get_canal_display()
+        activity.log_note(
+            etape.lead, user,
+            f'Visite planifiée depuis l’étape « {libelle} » — note : {note}')
+    return etape
+
+
 #: Longueur maximale de la note de retour terrain posée au chatter. Un
 #: technicien consciencieux peut écrire beaucoup ; l'historique d'un lead doit
 #: rester lisible. Le texte intégral reste sur la visite, jamais perdu.

@@ -2444,25 +2444,36 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
 
     @extend_schema(responses=inline_serializer('CrmLeadVisitePlanifiee', {
         'visite': serializers.DictField(),
+        'prochaine_touche': serializers.DictField(allow_null=True),
     }))
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):
         """POSE un rendez-vous de visite technique sur ce lead.
 
-        Corps : ``{date_prevue: 'AAAA-MM-JJ', commercial?: <id>, notes?}``.
-        Chaque refus NOMME son champ (règle fondateur 08/09/2026) : jamais un
-        « non enregistré » générique.
+        Corps : ``{date_prevue: 'AAAA-MM-JJ', commercial?: <id>, notes?,
+        replanifier?, etape?, note_etape?}``. Chaque refus NOMME son champ
+        (règle fondateur 08/09/2026) : jamais un « non enregistré » générique.
 
         L'écriture elle-même vit dans ``apps.visites.services.planifier_visite``
         — la visite appartient à cette app, le CRM ne fait que la lui demander.
         Les effets de bord (cadence recalée, chatter, notification à l'assigné)
         naissent de l'événement ``visite_planifiee``, pas d'ici.
+
+        SUIVI E18 (30/09/2026) — la planification CLÔT la touche qui l'a
+        demandée : ``etape`` (une touche de CE lead) et ``note_etape`` ; après
+        la planification réussie, la touche encore à faire est close
+        « visite acceptée » (``services.clore_etape_apres_planification``).
+        ``replanifier`` DÉPLACE le rendez-vous en attente (SUIVI E5). La
+        réponse porte aussi ``prochaine_touche`` (forme E9, ou ``null``).
         """
         from django.utils.dateparse import parse_date
 
         from apps.visites.selectors import ligne_visite_pour_lead
         from apps.visites.services import planifier_visite
+
+        from .services import (
+            _prochaine_touche_a_faire, clore_etape_apres_planification)
 
         lead = self.get_object()
         brut = (request.data.get('date_prevue') or '').strip()
@@ -2489,12 +2500,33 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                     'société.']},
                     status=status.HTTP_400_BAD_REQUEST)
 
+        # SUIVI E18 — la touche qui a demandé la planification : une touche
+        # de CE lead (donc de la société de l'appelant, ``get_object`` étant
+        # borné), vérifiée AVANT toute écriture.
+        etape = None
+        brut_etape = request.data.get('etape')
+        if brut_etape not in (None, '', 0):
+            if str(brut_etape).isdigit():
+                etape = lead.relance_etapes.filter(pk=int(brut_etape)).first()
+            if etape is None:
+                return Response(
+                    {'etape': ['Étape de relance inconnue sur ce lead.']},
+                    status=status.HTTP_400_BAD_REQUEST)
+        replanifier = request.data.get('replanifier') in (
+            True, 'true', 'True', '1', 1)
+
         visite, erreurs = planifier_visite(
             lead, request.user, date_prevue, commercial=commercial,
-            notes=(request.data.get('notes') or ''))
+            notes=(request.data.get('notes') or ''), replanifier=replanifier)
         if erreurs:
             return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'visite': ligne_visite_pour_lead(visite)},
+        if etape is not None:
+            clore_etape_apres_planification(
+                etape, request.user,
+                note=(request.data.get('note_etape') or ''))
+        return Response({'visite': ligne_visite_pour_lead(visite),
+                         'prochaine_touche': _prochaine_touche_publique(
+                             _prochaine_touche_a_faire(lead))},
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(responses=inline_serializer('CrmLeadLocataire', {
