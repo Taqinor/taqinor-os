@@ -5,8 +5,14 @@
     "periode_jours": 14,
     "owner": 7,
     "commerciaux": [
-      { "id": 7, "nom": "commerciale" },
-      { "id": 3, "nom": "responsable" }
+      {
+        "id": 7,
+        "nom": "commerciale"
+      },
+      {
+        "id": 3,
+        "nom": "responsable"
+      }
     ],
     "seuils": {
       "retard_alerte_jours": 2,
@@ -25,29 +31,113 @@
       "precedent_a_temps_pct": 78.0
     },
     "jours": [
-      { "date": "2026-09-17", "ouvre": true, "aujourdhui": false, "du": 5, "a_temps": 5, "en_retard": 0, "sautees": 0, "ouvert": 0, "etat": "vert" },
-      { "date": "2026-09-18", "ouvre": true, "aujourdhui": false, "du": 4, "a_temps": 3, "en_retard": 1, "sautees": 0, "ouvert": 0, "etat": "orange" },
-      { "date": "2026-09-20", "ouvre": false, "aujourdhui": false, "du": 0, "a_temps": 0, "en_retard": 0, "sautees": 0, "ouvert": 0, "etat": "vide" },
-      { "date": "2026-09-29", "ouvre": true, "aujourdhui": false, "du": 6, "a_temps": 4, "en_retard": 0, "sautees": 0, "ouvert": 2, "etat": "rouge" },
-      { "date": "2026-09-30", "ouvre": true, "aujourdhui": true, "du": 7, "a_temps": 3, "en_retard": 0, "sautees": 0, "ouvert": 4, "etat": "en_cours" }
+      {
+        "date": "2026-09-17",
+        "ouvre": true,
+        "aujourdhui": false,
+        "du": 5,
+        "a_temps": 5,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 0,
+        "etat": "vert"
+      },
+      {
+        "date": "2026-09-18",
+        "ouvre": true,
+        "aujourdhui": false,
+        "du": 4,
+        "a_temps": 3,
+        "en_retard": 1,
+        "sautees": 0,
+        "ouvert": 0,
+        "etat": "orange"
+      },
+      {
+        "date": "2026-09-20",
+        "ouvre": false,
+        "aujourdhui": false,
+        "du": 0,
+        "a_temps": 0,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 0,
+        "etat": "vide"
+      },
+      {
+        "date": "2026-09-29",
+        "ouvre": true,
+        "aujourdhui": false,
+        "du": 6,
+        "a_temps": 4,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 2,
+        "etat": "rouge"
+      },
+      {
+        "date": "2026-09-30",
+        "ouvre": true,
+        "aujourdhui": true,
+        "du": 7,
+        "a_temps": 3,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 4,
+        "etat": "en_cours"
+      }
     ],
     "exceptions": {
       "en_retard": {
         "total": 2,
         "lignes": [
-          { "etape": 418, "lead": 1490, "lead_nom": "Salma Idrissi", "owner_nom": "commerciale", "libelle": "Appel de suivi", "type_etape": "suivi_appel", "est_tache": false, "canal": "appel", "due_date": "2026-09-29", "jours_de_retard": 1 }
+          {
+            "etape": 418,
+            "lead": 1490,
+            "lead_nom": "Salma Idrissi",
+            "owner_nom": "commerciale",
+            "libelle": "Appel de suivi",
+            "type_etape": "suivi_appel",
+            "est_tache": false,
+            "canal": "appel",
+            "due_date": "2026-09-29",
+            "jours_de_retard": 1
+          }
         ]
       },
       "taches_en_attente": {
         "total": 1,
         "lignes": [
-          { "etape": 431, "lead": 1502, "lead_nom": "Youssef Bennani", "owner_nom": "commerciale", "libelle": "Préparer et envoyer le devis (ou fixer un rappel)", "type_etape": "devis", "est_tache": true, "canal": "appel", "due_date": "2026-10-02", "ouverte_depuis_jours": 4 }
+          {
+            "etape": 431,
+            "lead": 1502,
+            "lead_nom": "Youssef Bennani",
+            "owner_nom": "commerciale",
+            "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
+            "type_etape": "devis",
+            "est_tache": true,
+            "canal": "appel",
+            "due_date": "2026-10-02",
+            "ouverte_depuis_jours": 4
+          }
         ]
       },
       "reports": {
         "total": 1,
         "lignes": [
-          { "etape": 431, "lead": 1502, "lead_nom": "Youssef Bennani", "owner_nom": "commerciale", "libelle": "Préparer et envoyer le devis (ou fixer un rappel)", "type_etape": "devis", "est_tache": true, "canal": "appel", "due_date": "2026-10-02", "due_initial": "2026-09-27", "nb_reports": 2 }
+          {
+            "etape": 431,
+            "lead": 1502,
+            "lead_nom": "Youssef Bennani",
+            "owner_nom": "commerciale",
+            "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
+            "type_etape": "devis",
+            "est_tache": true,
+            "canal": "appel",
+            "due_date": "2026-10-02",
+            "due_initial": "2026-09-27",
+            "nb_reports": 2
+          }
         ]
       },
       "sans_prochaine_etape": {
@@ -57,20 +147,58 @@
       "premier_contact_hors_delai": {
         "total": 1,
         "lignes": [
-          { "lead": 1511, "lead_nom": "Karim El Fassi", "owner_nom": "commerciale", "cree_le": "2026-09-28T16:12:00Z", "attend_depuis_heures": 27.5 }
+          {
+            "lead": 1511,
+            "lead_nom": "Karim El Fassi",
+            "owner_nom": "commerciale",
+            "cree_le": "2026-09-28T16:12:00Z",
+            "attend_depuis_heures": 27.5
+          }
         ]
       }
     },
     "par_type": [
       {
-        "type_etape": "contact_appel", "est_tache": false,
-        "du": 14, "a_temps": 12, "en_retard": 1, "sautees": 1, "ouvert": 0,
-        "reponses": [ { "cle": "non_joint", "n": 8 }, { "cle": "joint", "n": 4 }, { "cle": "rappel", "n": 1 } ]
+        "type_etape": "contact_appel",
+        "est_tache": false,
+        "du": 14,
+        "a_temps": 12,
+        "en_retard": 1,
+        "sautees": 1,
+        "ouvert": 0,
+        "reponses": [
+          {
+            "cle": "non_joint",
+            "n": 8
+          },
+          {
+            "cle": "joint",
+            "n": 4
+          },
+          {
+            "cle": "rappel",
+            "n": 1
+          }
+        ]
       },
       {
-        "type_etape": "devis", "est_tache": true,
-        "du": 5, "a_temps": 3, "en_retard": 1, "sautees": 0, "ouvert": 1,
-        "reponses": [ { "cle": "sans_issue", "n": 3 }, { "cle": "rappel", "n": 1 } ]
+        "type_etape": "devis",
+        "est_tache": true,
+        "du": 5,
+        "a_temps": 3,
+        "en_retard": 1,
+        "sautees": 0,
+        "ouvert": 1,
+        "reponses": [
+          {
+            "cle": "sans_issue",
+            "n": 3
+          },
+          {
+            "cle": "rappel",
+            "n": 1
+          }
+        ]
       }
     ],
     "premier_contact": {
@@ -108,11 +236,26 @@
     },
     "jours": [],
     "exceptions": {
-      "en_retard": { "total": 0, "lignes": [] },
-      "taches_en_attente": { "total": 0, "lignes": [] },
-      "reports": { "total": 0, "lignes": [] },
-      "sans_prochaine_etape": { "total": 0, "lignes": [] },
-      "premier_contact_hors_delai": { "total": 0, "lignes": [] }
+      "en_retard": {
+        "total": 0,
+        "lignes": []
+      },
+      "taches_en_attente": {
+        "total": 0,
+        "lignes": []
+      },
+      "reports": {
+        "total": 0,
+        "lignes": []
+      },
+      "sans_prochaine_etape": {
+        "total": 0,
+        "lignes": []
+      },
+      "premier_contact_hors_delai": {
+        "total": 0,
+        "lignes": []
+      }
     },
     "par_type": [],
     "premier_contact": {
@@ -128,10 +271,232 @@
       "devis_acceptes": 0
     }
   },
+  "exemple_alerte": {
+    "periode_jours": 14,
+    "owner": 7,
+    "commerciaux": [
+      {
+        "id": 7,
+        "nom": "commerciale"
+      },
+      {
+        "id": 3,
+        "nom": "responsable"
+      }
+    ],
+    "seuils": {
+      "retard_alerte_jours": 2,
+      "tache_attente_jours": 2,
+      "reports_min": 2,
+      "premier_contact_heures": 24
+    },
+    "verdict": {
+      "niveau": "alerte",
+      "du": 42,
+      "a_temps": 36,
+      "en_retard": 3,
+      "sautees": 1,
+      "ouvert": 2,
+      "a_temps_pct": 85.7,
+      "precedent_a_temps_pct": 78.0
+    },
+    "jours": [
+      {
+        "date": "2026-09-17",
+        "ouvre": true,
+        "aujourdhui": false,
+        "du": 5,
+        "a_temps": 5,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 0,
+        "etat": "vert"
+      },
+      {
+        "date": "2026-09-18",
+        "ouvre": true,
+        "aujourdhui": false,
+        "du": 4,
+        "a_temps": 3,
+        "en_retard": 1,
+        "sautees": 0,
+        "ouvert": 0,
+        "etat": "orange"
+      },
+      {
+        "date": "2026-09-20",
+        "ouvre": false,
+        "aujourdhui": false,
+        "du": 0,
+        "a_temps": 0,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 0,
+        "etat": "vide"
+      },
+      {
+        "date": "2026-09-29",
+        "ouvre": true,
+        "aujourdhui": false,
+        "du": 6,
+        "a_temps": 4,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 2,
+        "etat": "rouge"
+      },
+      {
+        "date": "2026-09-30",
+        "ouvre": true,
+        "aujourdhui": true,
+        "du": 7,
+        "a_temps": 3,
+        "en_retard": 0,
+        "sautees": 0,
+        "ouvert": 4,
+        "etat": "en_cours"
+      }
+    ],
+    "exceptions": {
+      "en_retard": {
+        "total": 2,
+        "lignes": [
+          {
+            "etape": 418,
+            "lead": 1490,
+            "lead_nom": "Salma Idrissi",
+            "owner_nom": "commerciale",
+            "libelle": "Appel de suivi",
+            "type_etape": "suivi_appel",
+            "est_tache": false,
+            "canal": "appel",
+            "due_date": "2026-09-29",
+            "jours_de_retard": 1
+          }
+        ]
+      },
+      "taches_en_attente": {
+        "total": 1,
+        "lignes": [
+          {
+            "etape": 431,
+            "lead": 1502,
+            "lead_nom": "Youssef Bennani",
+            "owner_nom": "commerciale",
+            "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
+            "type_etape": "devis",
+            "est_tache": true,
+            "canal": "appel",
+            "due_date": "2026-10-02",
+            "ouverte_depuis_jours": 4
+          }
+        ]
+      },
+      "reports": {
+        "total": 1,
+        "lignes": [
+          {
+            "etape": 431,
+            "lead": 1502,
+            "lead_nom": "Youssef Bennani",
+            "owner_nom": "commerciale",
+            "libelle": "Préparer et envoyer le devis (ou fixer un rappel)",
+            "type_etape": "devis",
+            "est_tache": true,
+            "canal": "appel",
+            "due_date": "2026-10-02",
+            "due_initial": "2026-09-27",
+            "nb_reports": 2
+          }
+        ]
+      },
+      "sans_prochaine_etape": {
+        "total": 1,
+        "lignes": [
+          {
+            "lead": 1498,
+            "lead_nom": "Hind Alaoui",
+            "owner_nom": "commerciale",
+            "stage": "CONTACTED",
+            "derniere_etape_le": "2026-09-26",
+            "depuis_jours": 4
+          }
+        ]
+      },
+      "premier_contact_hors_delai": {
+        "total": 1,
+        "lignes": [
+          {
+            "lead": 1511,
+            "lead_nom": "Karim El Fassi",
+            "owner_nom": "commerciale",
+            "cree_le": "2026-09-28T16:12:00Z",
+            "attend_depuis_heures": 27.5
+          }
+        ]
+      }
+    },
+    "par_type": [
+      {
+        "type_etape": "contact_appel",
+        "est_tache": false,
+        "du": 14,
+        "a_temps": 12,
+        "en_retard": 1,
+        "sautees": 1,
+        "ouvert": 0,
+        "reponses": [
+          {
+            "cle": "non_joint",
+            "n": 8
+          },
+          {
+            "cle": "joint",
+            "n": 4
+          },
+          {
+            "cle": "rappel",
+            "n": 1
+          }
+        ]
+      },
+      {
+        "type_etape": "devis",
+        "est_tache": true,
+        "du": 5,
+        "a_temps": 3,
+        "en_retard": 1,
+        "sautees": 0,
+        "ouvert": 1,
+        "reponses": [
+          {
+            "cle": "sans_issue",
+            "n": 3
+          },
+          {
+            "cle": "rappel",
+            "n": 1
+          }
+        ]
+      }
+    ],
+    "premier_contact": {
+      "nouveaux": 9,
+      "dans_le_delai": 8,
+      "mediane_minutes": 42,
+      "delai_heures": 24,
+      "plus_longue_attente_heures": 27.5
+    },
+    "resultats": {
+      "visites_planifiees": 3,
+      "devis_envoyes": 4,
+      "devis_acceptes": 1
+    }
+  },
   "notes": {
     "verdict.niveau": "`alerte` : au moins une étape ouverte en retard de `seuils.retard_alerte_jours` jours ou plus, OU un dossier actif sorti du suivi (`sans_prochaine_etape`), OU un premier contact hors délai en attente. `attention` : au moins une étape en retard, OU une tâche en attente depuis `seuils.tache_attente_jours` jours ou plus, OU une étape ouverte reportée `seuils.reports_min` fois ou plus. `ok` : rien de tout cela. `vide` : rien de dû sur la période et aucune exception (« pas encore de données »). Le niveau se lit sur l'état ACTUEL (les exceptions), jamais sur le seul pourcentage.",
     "jours.etat": "`vert` : tout ce qui était dû ce jour-là a été traité ce jour-là. `orange` : plus rien d'ouvert, mais au moins une étape traitée en retard ou sautée. `rouge` : il reste au moins une étape ouverte de ce jour-là. `en_cours` : aujourd'hui, il reste des étapes ouvertes (la journée n'est pas finie). `vide` : rien n'était dû (dont les jours non ouvrés). Une case = le jour d'ÉCHÉANCE courante de l'étape.",
-    "exceptions": "État de l'INSTANT, indépendant de `jours` ; chaque liste est triée par ancienneté décroissante et plafonnée à 10 lignes (`total` dit le vrai nombre). `en_retard` : étapes ouvertes (touches ET tâches) d'échéance passée, absences excusées. `taches_en_attente` : TÂCHES ouvertes posées depuis `seuils.tache_attente_jours` jours ou plus, quelle que soit leur échéance (un report ne les en sort pas). `reports` : étapes OUVERTES dont l'échéance a été repoussée par un geste humain `seuils.reports_min` fois ou plus (`due_initial` = échéance d'origine). `sans_prochaine_etape` : dossiers actifs (ni archivés, ni perdus, ni « ne plus contacter », ni Signé, ni Froid) qui ont DÉJÀ eu une étape et n'en ont plus aucune d'ouverte — les anciens leads jamais placés restent l'affaire de la carte « Anciens leads à placer ». `premier_contact_hors_delai` : leads « Nouveau » jamais contactés au-delà du délai de la société (`lead_sla_hours`, heures ouvrées).",
+    "exceptions": "État de l'INSTANT, indépendant de `jours` ; chaque liste est triée par ancienneté décroissante et plafonnée à 10 lignes (`total` dit le vrai nombre). `en_retard` : étapes ouvertes (touches ET tâches) d'échéance passée, absences excusées. `taches_en_attente` : TÂCHES ouvertes posées depuis `seuils.tache_attente_jours` jours ou plus, quelle que soit leur échéance (un report ne les en sort pas). `reports` : étapes OUVERTES dont l'échéance a été repoussée par un geste humain `seuils.reports_min` fois ou plus (`due_initial` = échéance d'origine). `sans_prochaine_etape` : dossiers actifs (ni archivés, ni perdus, ni « ne plus contacter », ni Signé, ni Froid) qui ont DÉJÀ eu une étape et n'en ont plus aucune d'ouverte — les anciens leads jamais placés restent l'affaire de la carte « Anciens leads à placer ». `premier_contact_hors_delai` : leads « Nouveau » jamais contactés au-delà du délai de la société (`lead_sla_hours`, heures ouvrées). Ligne de `sans_prochaine_etape` (voir `exemple_alerte`) : `stage` = clé de `STAGES.py`, `derniere_etape_le` = jour de clôture de sa dernière étape, `depuis_jours` = jours calendaires écoulés depuis.",
     "par_type": "Sur la période ; l'ordre des lignes est celui de la table du parcours ; un type sans aucune étape due n'est pas servi. `reponses` : ce qui a été répondu sur les étapes closes « fait » — clé = l'issue enregistrée (`joint`, `non_joint`, `rappel`, `refuse`, `visite_acceptee`…), `sans_issue` pour un « Fait — passer à la suite » ; triées par effectif décroissant.",
     "premier_contact": "Leads CRÉÉS sur la période : `dans_le_delai` = premier contact humain posé avant le délai (heures ouvrées) ; `mediane_minutes` = médiane du délai création → premier contact (jamais la moyenne : week-ends et fériés la faussent) ; `plus_longue_attente_heures` = le lead encore jamais contacté qui attend depuis le plus longtemps, `null` s'il n'y en a pas.",
     "resultats": "Sur la période et la même portée : visites techniques planifiées, devis passés « envoyé », devis passés « accepté » — trois résultats à lire À CÔTÉ de l'effort, jamais un classement.",
