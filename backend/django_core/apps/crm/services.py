@@ -11498,11 +11498,15 @@ def poser_touche_rappel_demande(lead, *, user=None, quand=None):
 #:   ``suspendre_plan_jusqu_apres_visite``). La suite n'est pas l'étape
 #:   générique du filet mais « Planifier la visite technique convenue »
 #:   (``poser_filet_visite_a_planifier``).
+#: * SUIVI E15 (30/09/2026) — la DEUXIÈME AFFAIRE (CAD128, la prise de
+#:   contact d'un client acquis) s'arrête exactement comme la prise de
+#:   contact : « joint » posait l'étape de filet ET faisait naître le
+#:   barreau 2 (deux touches ouvertes pour un client déjà joint).
 CADENCES_ARRETEES_PAR_ISSUE = {
-    'joint': ('contact', 'reveil'),
-    'interesse': ('contact', 'reveil'),
-    'refuse': ('contact', 'apres_devis', 'reveil'),
-    OUTCOME_VISITE_ACCEPTEE: ('contact', 'reveil'),
+    'joint': ('contact', 'reveil', 'deuxieme_affaire'),
+    'interesse': ('contact', 'reveil', 'deuxieme_affaire'),
+    'refuse': ('contact', 'apres_devis', 'reveil', 'deuxieme_affaire'),
+    OUTCOME_VISITE_ACCEPTEE: ('contact', 'reveil', 'deuxieme_affaire'),
 }
 
 

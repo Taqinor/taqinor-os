@@ -309,8 +309,10 @@ def _sort_du_froid(c):
 
 
 def _contact_arretee(c):
-    c.vrai(not c.ouvertes(cadence='contact').exists(),
-           'la prise de contact continue')
+    # SUIVI E15 — la deuxième affaire est la prise de contact d'un client
+    # acquis : elle s'arrête de la même façon.
+    c.vrai(not c.ouvertes(cadence__in=('contact', 'deuxieme_affaire'))
+           .exists(), 'la prise de contact continue')
 
 
 def _reveils_arretes(c):
@@ -319,9 +321,9 @@ def _reveils_arretes(c):
 
 
 def _relances_arretees(c):
-    c.vrai(not c.ouvertes(
-        cadence__in=('contact', 'apres_devis', 'reveil')).exists(),
-        'une relance de contact, de proposition ou de réveil continue')
+    arretees = ('contact', 'apres_devis', 'reveil', 'deuxieme_affaire')
+    c.vrai(not c.ouvertes(cadence__in=arretees).exists(),
+           'une relance de contact, de proposition ou de réveil continue')
 
 
 def _etape_appeler(c):

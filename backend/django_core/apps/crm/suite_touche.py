@@ -189,6 +189,11 @@ CLE_SAUTER = 'sauter'
 #: préparer le devis (appel fait) — RELANCE-SUITE.
 _CANAUX_ECRITS = ('whatsapp', 'email')
 
+#: SUIVI E15 — les deux PRISES DE CONTACT : celle d'un prospect et celle d'un
+#: client déjà acquis (« deuxième affaire », CAD128). Mêmes arrêts, même code
+#: « la prise de contact s'arrête ».
+_CADENCES_PRISE_DE_CONTACT = ('contact', 'deuxieme_affaire')
+
 # ── SUIVI-PARCOURS — le TYPE d'une étape, lu comme la table le lit ──────────
 #
 # Les identifiants sont ceux de la table (`etapes[].id`). Les dix étapes que
@@ -477,7 +482,9 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
 
     if issue in ('joint', 'interesse'):
         codes = [SORT_DU_FROID] if au_froid else []
-        if cadence == 'contact':
+        if cadence in _CADENCES_PRISE_DE_CONTACT:
+            # SUIVI E15 — la deuxième affaire s'arrête comme la prise de
+            # contact : l'étape de filet, jamais le barreau 2 en plus.
             return codes + [CONTACT_ARRETEE,
                             _filet_apres_reponse(etape, est_actif)]
         if cadence == 'reveil':
@@ -491,7 +498,7 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
             # consommé, il ne pose plus l'étape devis à côté du suivant.
             return codes + ([_filet_apres_reponse(etape, est_actif)]
                             if derniere else [TOUCHE_SUIVANTE])
-        # Cadence générique, deuxième affaire : le filet pose son étape (rien
+        # Cadence générique (historique) : le filet pose son étape (rien
         # d'ouvert, aucun devis relançable) ET, la cadence survivant à
         # l'issue, la touche suivante naît aussi.
         if survit and not derniere:
@@ -504,7 +511,7 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
         # qui sort aussi un dormant du Froid) ; partout, la seule suite est
         # l'étape « Planifier la visite technique convenue ».
         codes = [SORT_DU_FROID] if au_froid else []
-        if cadence == 'contact' and not survit:
+        if cadence in _CADENCES_PRISE_DE_CONTACT and not survit:
             codes.append(CONTACT_ARRETEE)
         if cadence == 'reveil' and not survit:
             codes.append(REVEILS_ARRETES)
