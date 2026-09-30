@@ -128,10 +128,28 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         générés depuis le contenu figé. `reviser` (clone en V+1) reste la
         voie de modification."""
         from rest_framework.exceptions import ValidationError
-        FROZEN = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE, Devis.Statut.EXPIRE}
-        if devis is not None and devis.statut in FROZEN:
+        # QJR516 — le prédicat UNIQUE (domain/modifiabilite, geste LIGNES) ;
+        # 400 {'devis'} et son texte CONSERVÉS pour un devis clos ; un devis
+        # remplacé/archivé reçoit la raison du prédicat.
+        from ..domain.modifiabilite import LIGNES, verdict
+        if devis is None:
+            return
+        v = verdict(devis, LIGNES)
+        if not v['modifiable']:
+            raise ValidationError({'devis': (
+                'Devis figé — révisez-le (reviser) pour le modifier.'
+                if devis.is_active else v['raison_non_modifiable'])})
+
+    def _check_devis_inchange(self, serializer):
+        """QJR516 — une ligne ne CHANGE jamais de devis : ``PATCH {devis}``
+        déplaçait une ligne d'un devis vers un autre (serializer
+        ``__all__``), hors de toute garde du devis d'arrivée."""
+        from rest_framework.exceptions import ValidationError
+        cible = serializer.validated_data.get('devis')
+        if cible is not None and cible.pk != serializer.instance.devis_id:
             raise ValidationError({
-                'devis': 'Devis figé — révisez-le (reviser) pour le modifier.'})
+                'devis': "Une ligne ne change pas de devis : supprimez-la et "
+                         "ajoutez-la sur l'autre devis."})
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -151,6 +169,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        self._check_devis_inchange(serializer)
         self._check_devis_not_frozen(serializer.instance.devis)
         serializer.save()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne

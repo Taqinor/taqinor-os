@@ -139,6 +139,32 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+def _refus_modifiabilite(devis, geste):
+    """QJR516 — la garde d'édition UNIQUE des vues : ``True`` si le geste
+    est REFUSÉ sur ce devis (prédicat ``domain/modifiabilite``). L'appelant
+    répond alors ``_reponse_non_modifiable`` (409). Lit le statut, ne
+    l'écrit jamais (règle #4)."""
+    from ..domain.modifiabilite import est_modifiable
+    return not est_modifiable(devis, geste)
+
+
+def _reponse_non_modifiable(devis, geste, message_statut=None):
+    """QJR516 — la réponse 409 ``{detail, statut, revision_possible}`` d'un
+    geste refusé. ``message_statut`` (avec ``%s`` = statut affiché) conserve
+    le texte historique d'une garde existante pour un devis ACTIF ; un devis
+    remplacé ou archivé reçoit la raison du prédicat."""
+    from ..domain.modifiabilite import verdict
+    v = verdict(devis, geste)
+    if message_statut and devis.is_active:
+        detail = message_statut % devis.get_statut_display()
+    else:
+        detail = v['raison_non_modifiable']
+    return Response(
+        {'detail': detail, 'statut': devis.statut,
+         'revision_possible': v['revision_possible']},
+        status=status.HTTP_409_CONFLICT)
+
+
 class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
@@ -881,14 +907,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..services import ajouter_lignes_boq_electrique
 
         devis = self.get_object()  # borné société par get_queryset
-        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
-        if devis.statut not in _MODIFIABLES:
-            return Response(
-                {'detail': (
-                    'Devis « %s » : on ne peut plus y ajouter de lignes. '
-                    'Utilisez « Réviser » pour en créer une nouvelle version.'
-                    % devis.get_statut_display())},
-                status=status.HTTP_409_CONFLICT)
+        # QJR516 — le prédicat UNIQUE (domain/modifiabilite, geste BOQ) ;
+        # texte et code 409 {'detail'} CONSERVÉS.
+        if _refus_modifiabilite(devis, 'BOQ'):
+            return _reponse_non_modifiable(
+                devis, 'BOQ',
+                'Devis « %s » : on ne peut plus y ajouter de lignes. '
+                'Utilisez « Réviser » pour en créer une nouvelle version.')
         design = getattr(devis, 'electrical_design', None)
         if not isinstance(design, dict) or not design.get('bom'):
             return Response(
@@ -1038,14 +1063,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         jamais le statut — elle le LIT (règle #4)."""
         from django.db import transaction
         devis = self.get_object()  # borné société par get_queryset
-        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
-        if devis.statut not in _MODIFIABLES:
-            return Response(
-                {'detail': (
-                    'Devis « %s » : ses lignes ne peuvent plus être '
-                    'remplacées. Utilisez « Réviser » pour en créer une '
-                    'nouvelle version.' % devis.get_statut_display())},
-                status=status.HTTP_409_CONFLICT)
+        # QJR516 — le prédicat UNIQUE (geste LIGNES) ; texte et code 409
+        # {'detail'} CONSERVÉS.
+        if _refus_modifiabilite(devis, 'LIGNES'):
+            return _reponse_non_modifiable(
+                devis, 'LIGNES',
+                'Devis « %s » : ses lignes ne peuvent plus être '
+                'remplacées. Utilisez « Réviser » pour en créer une '
+                'nouvelle version.')
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -2020,6 +2045,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..selectors import lots_totaux
         devis = self.get_object()
         if request.method == 'POST':
+            # QJR516 — rattacher des lignes à un lot est une édition de LIGNES.
+            if _refus_modifiabilite(devis, 'LIGNES'):
+                return _reponse_non_modifiable(devis, 'LIGNES')
             nom = (request.data.get('nom_lot') or '').strip()
             if not nom:
                 raise ValidationError({'nom_lot': 'Nom de lot requis.'})
@@ -2656,6 +2684,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         if request.method == 'GET':
             return Response(self._overrides_reponse(devis))
+        # QJR516 — PATCH et DELETE gardés (geste ETUDE).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
 
         if request.method == 'DELETE':
             chemin = request.query_params.get('chemin') or ''
@@ -2733,6 +2764,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'etude_params': devis.etude_params or {}})
+        # QJR516 — PATCH gardé (geste ETUDE).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
 
         corps = request.data
         if not isinstance(corps, dict) or not corps:
@@ -2786,6 +2820,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..serializers import OffreTailleEcritureSerializer
 
         devis = self.get_object()
+        # QJR516 — geste ETUDE (configuration d'exploration).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         serializer = OffreTailleEcritureSerializer(
             data=request.data, context={'company': devis.company})
         serializer.is_valid(raise_exception=True)
@@ -2808,6 +2845,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..serializers import OffreTailleRegenerationSerializer
 
         devis = self.get_object()
+        # QJR516 — geste ETUDE.
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         regenerer_taille(devis, serializer.validated_data['cle'])
@@ -2903,8 +2943,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             raise ValidationError({
                 'is_active': 'Un devis remplacé ou archivé ne se réactive '
                              'pas.'})
-        FROZEN = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE, Devis.Statut.EXPIRE}
-        if instance.statut in FROZEN:
+        # QJR516 — le prédicat UNIQUE (geste ENTETE) ; 400 {'statut'} et
+        # l'exception « désactivation seule » CONSERVÉS.
+        from ..domain.modifiabilite import ENTETE, verdict
+        if not verdict(instance, ENTETE)['modifiable']:
             nouveau_is_active = serializer.validated_data.get(
                 'is_active', instance.is_active)
             only_deactivation = (
@@ -3152,6 +3194,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'roof_layout': devis.roof_layout})
+        # QJR516 — POST gardé (geste ETUDE : le layout brut, pas la
+        # resynchronisation des lignes, qui reste CALEPINAGE).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         # POST — le corps entier est le layout (on accepte aussi un wrapper
         # {"roof_layout": …} pour rester souple côté front).
         payload = request.data
@@ -3183,6 +3229,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..utils.pdf import upload_roof_image, roof_image_signed_url
         from ..quote_engine.builder import _ensure_pdf_bucket
 
+        # QJR516 — garde (geste ETUDE) AVANT l'upload MinIO : un devis
+        # accepté ne reçoit plus de rendu, et aucun objet n'est écrit.
+        devis_garde = self.get_object()
+        if _refus_modifiabilite(devis_garde, 'ETUDE'):
+            return _reponse_non_modifiable(devis_garde, 'ETUDE')
         upload = request.FILES.get('image') or request.FILES.get('file')
         if upload is None:
             return Response(

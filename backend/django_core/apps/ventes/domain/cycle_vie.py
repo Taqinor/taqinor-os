@@ -78,7 +78,7 @@ def activate_optional_line(*, devis, ligne_id, user=None):
     figé) / renvoie None si la ligne est introuvable ou n'est pas optionnelle.
     """
     from django.db import transaction
-    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.models import LigneDevis
     from apps.ventes import activity
 
     with transaction.atomic():
@@ -90,10 +90,11 @@ def activate_optional_line(*, devis, ligne_id, user=None):
         except LigneDevis.DoesNotExist:
             return None
 
-        # Devis figé (accepté/refusé/expiré) : les options ne sont plus
-        # activables (le contenu est verrouillé — règle #4).
-        if ligne.devis.statut not in (
-                Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+        # Devis figé (accepté/refusé/expiré) ou remplacé : les options ne
+        # sont plus activables (le contenu est verrouillé — règle #4).
+        # QJR516 — le prédicat UNIQUE (geste OPTIONS), message CONSERVÉ.
+        from apps.ventes.domain.modifiabilite import OPTIONS, est_modifiable
+        if not est_modifiable(ligne.devis, OPTIONS):
             raise AcceptError(
                 'Ce devis est figé — ses options ne sont plus modifiables.',
                 conflict=True)

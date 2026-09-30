@@ -139,11 +139,32 @@ class TestSyncLayout(TestCase):
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
         self.assertIsNone(devis.roof_layout)
 
-    def test_documents_clos_409_sans_revision(self):
+    def test_documents_clos_409_revision_possible(self):
+        """QJR516 (scission, D-QJR5-2) — un accepté / refusé / expiré est
+        CLOS (409, rien n'est écrit) mais RÉVISABLE : ``revision_possible``
+        vient du prédicat unique ``domain/modifiabilite``."""
         for statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
                        Devis.Statut.EXPIRE):
             with self.subTest(statut=statut):
                 devis = self._devis(statut=statut, panneaux=12)
+                resp = self._post(devis, layout(panels=16))
+                self.assertEqual(resp.status_code, 409)
+                self.assertTrue(resp.data['revision_possible'])
+                self.assertIn('clos', resp.data['detail'])
+                self.assertEqual(
+                    int(devis.lignes.get(
+                        designation='Panneau Jinko 550W').quantite), 12)
+                devis.refresh_from_db()
+                self.assertEqual(devis.statut, statut)
+
+    def test_version_remplacee_409_sans_revision(self):
+        """QJR516 (scission) — un devis REMPLACÉ (inactif) n'est ni
+        modifiable ni révisable : on révise sa remplaçante."""
+        for statut in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE,
+                       Devis.Statut.ACCEPTE):
+            with self.subTest(statut=statut):
+                devis = self._devis(statut=statut, panneaux=12)
+                Devis.objects.filter(pk=devis.pk).update(is_active=False)
                 resp = self._post(devis, layout(panels=16))
                 self.assertEqual(resp.status_code, 409)
                 self.assertFalse(resp.data['revision_possible'])
