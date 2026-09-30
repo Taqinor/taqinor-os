@@ -144,6 +144,9 @@ class OuChaqueQuestionSePose(SimpleTestCase):
         occupation = questionnaire.CHAMPS_PAR_SECTION['occupation']
         self.assertIn('nb_personnes_foyer', occupation)
         self.assertIn('chauffage_electrique_hiver', occupation)
+        # QJR596 — le panneau d'appel les pose ; la page publique, non.
+        self.assertEqual(questionnaire.colonnes_ecrites('occupation'),
+                         ('occupation_jour',))
 
     def test_budget_frein_declencheur_restent_HORS_du_questionnaire(self):
         """Décision fondateur (Q21) : budget, délai, décideur et concurrents

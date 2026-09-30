@@ -146,8 +146,8 @@ class ManquantesTests(TestCase):
         lead = lead_complet(self.company, facture_ete=None)
         pre = quest.prefill(lead, ['gps', 'energie'])
         self.assertEqual(set(pre), set(
-            quest.CHAMPS_PAR_SECTION['gps']
-            + quest.CHAMPS_PAR_SECTION['energie']))
+            quest.colonnes_ecrites('gps')
+            + quest.colonnes_ecrites('energie')))
         # Une valeur absente vaut null — JAMAIS un défaut forfaitaire.
         self.assertIsNone(pre['facture_ete'])
         self.assertEqual(pre['facture_hiver'], 3500.0)
@@ -452,7 +452,7 @@ class PublicQuestionnaireTests(TestCase):
         self.assertEqual(sorted(data['champs']), sorted(data['sections']))
         for section, colonnes in data['champs'].items():
             self.assertLessEqual(
-                set(colonnes), set(quest.CHAMPS_PAR_SECTION[section]))
+                set(colonnes), set(quest.colonnes_ecrites(section)))
 
     def test_jeton_inconnu_404_a_corps_constant(self):
         res = self._get('jeton-qui-nexiste-pas')
@@ -576,6 +576,66 @@ class PublicQuestionnaireTests(TestCase):
 
 
 # ── Jeton interne : aperçu MUET ──────────────────────────────────────────
+
+class ColonnesEcritesTests(TestCase):
+    """QJR596 — le questionnaire public ne promet que les colonnes que la
+    page sait poser ; les questions orales restent au panneau d'appel."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor QJR596', slug='taqinor-qjr596')
+
+    def _lien(self, lead, **questions):
+        base = {cle: False for cle in quest.SECTIONS}
+        base.update(questions)
+        return QuestionnaireLien.objects.create(
+            company=self.company, lead=lead, questions=base)
+
+    def test_le_get_public_ne_sert_plus_les_colonnes_orales(self):
+        lead = lead_complet(self.company, type_bien='villa')
+        lien = self._lien(lead, energie=True, toiture=True)
+        res = self.client.get(PUBLIC.format(lien.token))
+        self.assertEqual(res.status_code, 200, res.content)
+        data = res.json()
+        for colonnes in data['champs'].values():
+            self.assertNotIn('type_bien', colonnes)
+            self.assertNotIn('tranche_onee', colonnes)
+        self.assertNotIn('type_bien', data['prefill'])
+        self.assertNotIn('tranche_onee', data['prefill'])
+        self.assertIn('conso_mensuelle_kwh', data['champs']['energie'])
+
+    def test_le_post_n_ecrit_pas_une_colonne_orale(self):
+        lead = lead_complet(self.company, tranche_onee='T3')
+        lien = self._lien(lead, energie=True)
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'energie', 'reponses': {
+                'tranche_onee': 'T5', 'facture_hiver': 4000}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.tranche_onee, 'T3')
+        self.assertEqual(float(lead.facture_hiver), 4000.0)
+
+    def test_colonnes_ecrites_du_contrat_egale_la_fonction(self):
+        import os
+        chemin = os.path.join(
+            os.path.dirname(__file__), 'contract_samples',
+            'questionnaire_lead.json')
+        with open(chemin, encoding='utf-8') as f:
+            contrat = json.load(f)
+        attendu = {s: list(quest.colonnes_ecrites(s))
+                   for s in contrat['colonnes_ecrites']}
+        self.assertEqual(contrat['colonnes_ecrites'], attendu)
+
+    def test_le_panneau_d_appel_pose_toujours_type_bien(self):
+        from apps.crm import panneau_appel
+        champs = [q['champ'] for q in panneau_appel.questions_a_poser(
+            Lead(nom='Prospect'))]
+        self.assertIn('type_bien', champs)
+        self.assertIn('type_bien', quest.CHAMPS_PAR_SECTION['toiture'])
+        self.assertIn('type_bien', quest.CHAMPS_ORAUX_SEULEMENT)
+
 
 class ApercuInterneTests(TestCase):
     def setUp(self):

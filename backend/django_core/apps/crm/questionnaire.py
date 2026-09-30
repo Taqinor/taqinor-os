@@ -79,6 +79,25 @@ CHAMPS_PAR_SECTION = {
     'photo_tableau': (),
 }
 
+#: QJR596 — colonnes que CHAMPS_PAR_SECTION annonce mais que la page publique
+#: ne pose JAMAIS (aucun contrôle dans [token].astro / lib/questionnaire.ts) :
+#: elles ne se répondent qu'à l'ORAL, au panneau d'appel (qui lit toujours
+#: CHAMPS_PAR_SECTION en entier). `conso_mensuelle_kwh` reste ÉCRITE (QJR632
+#: lui donne un contrôle). Contrat : `colonnes_ecrites` de
+#: questionnaire_lead.json.
+CHAMPS_ORAUX_SEULEMENT = frozenset({
+    'tranche_onee', 'objectif_projet', 'type_bien', 'nb_personnes_foyer',
+    'chauffage_electrique_hiver', 'equip_ve_statut',
+})
+
+
+def colonnes_ecrites(section) -> tuple:
+    """Colonnes qu'une section du questionnaire PUBLIC sert, pré-remplit et
+    écrit : CHAMPS_PAR_SECTION moins ce qui ne se pose qu'à l'oral."""
+    return tuple(cle for cle in CHAMPS_PAR_SECTION.get(section, ())
+                 if cle not in CHAMPS_ORAUX_SEULEMENT)
+
+
 #: Libellé français d'une section (chatter + écran commercial).
 LIBELLE_SECTION = {
     'contact': 'coordonnées',
@@ -262,7 +281,7 @@ def champs_a_poser(lead, sections) -> dict:
     veut PAS dire « rien à demander » (la réponse y est une pièce jointe) —
     d'où :func:`sections_a_servir`, seul endroit qui tranche ce cas."""
     return {
-        section: [cle for cle in CHAMPS_PAR_SECTION.get(section, ())
+        section: [cle for cle in colonnes_ecrites(section)
                   if not (_vide(getattr(lead, cle, None))
                           and _couverte_ailleurs(lead, cle))]
         for section in sections
@@ -319,7 +338,7 @@ def prefill(lead, sections) -> dict:
 
     out = {}
     for section in sections:
-        for cle in CHAMPS_PAR_SECTION.get(section, ()):
+        for cle in colonnes_ecrites(section):
             valeur = getattr(lead, cle, None)
             # QJR592 — un lead PRO (industriel / commercial) a déjà donné son
             # kWh mensuel sur le site : il est rangé dans `bill_kwh` seulement.
@@ -458,7 +477,7 @@ def appliquer_section(lien, section, reponses=None, photo=None):
             enregistrees.append('photo')
     else:
         champs = champs_lead_depuis_reponses(
-            reponses, CHAMPS_PAR_SECTION[section])
+            reponses, colonnes_ecrites(section))
         if champs:
             # Instantané AVANT écriture : le chatter compare l'ancien au
             # nouveau via le mécanisme existant (activity.log_changes).
