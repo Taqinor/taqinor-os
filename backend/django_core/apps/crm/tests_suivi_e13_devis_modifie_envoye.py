@@ -121,6 +121,14 @@ class DevisModifieEnvoyeTests(TestCase):
         self.assertEqual(self.modifie.statut, FAIT)
         self.assertEqual(self.modifie.outcome, '')
 
+    def _assert_relance_date_sur_la_plus_proche(self):
+        """SUIVI I6 — ``Lead.relance_date`` = la date de la plus proche
+        touche ouverte (jamais vide quand une touche l'est)."""
+        proche = services._prochaine_touche_a_faire(self.lead)
+        self.lead.refresh_from_db(fields=['relance_date'])
+        self.assertIsNotNone(proche)
+        self.assertEqual(self.lead.relance_date, proche.due_date)
+
     def test_le_devis_modifie_de_l_erp_demarre_son_suivi(self):
         nouveau = self._devis(Devis.Statut.BROUILLON)
         resp = self._fait()
@@ -130,6 +138,7 @@ class DevisModifieEnvoyeTests(TestCase):
             statut=A_FAIRE).exists())
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
+        self._assert_relance_date_sur_la_plus_proche()
 
     def test_sans_nouveau_devis_dans_l_erp_le_suivi_se_poursuit(self):
         resp = self._fait()
@@ -138,6 +147,9 @@ class DevisModifieEnvoyeTests(TestCase):
         self.assertEqual(ouverte.cadence, 'apres_devis')
         self.assertGreater(ouverte.ordre, 2)
         self.assertEqual(ouverte.devis_id, self.ancien.pk)
+        # SUIVI I6 — la touche reprise porte ``relance_date``.
+        self.lead.refresh_from_db(fields=['relance_date'])
+        self.assertEqual(self.lead.relance_date, ouverte.due_date)
 
     def test_un_lead_contacte_passe_devis_envoye(self):
         self.lead.stage = stages.CONTACTED

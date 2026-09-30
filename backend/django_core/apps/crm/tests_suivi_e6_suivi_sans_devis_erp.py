@@ -108,6 +108,12 @@ class _Base(TestCase):
     def _ouvertes(self):
         return list(self.lead.relance_etapes.filter(statut=A_FAIRE))
 
+    def _assert_relance_date(self, ouverte):
+        """SUIVI I6 — la touche reprise (ou démarrée) par le filet porte
+        ``Lead.relance_date`` : jamais vide quand une touche est ouverte."""
+        self.lead.refresh_from_db(fields=['relance_date'])
+        self.assertEqual(self.lead.relance_date, ouverte.due_date)
+
 
 class SuiviSansDevisPoursuiviTests(_Base):
 
@@ -120,6 +126,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
         self.assertIsNone(ouverte.devis_id)
         self.assertFalse(self.lead.relance_etapes.filter(
             q_etape(CLE_DEVIS)).exists())
+        self._assert_relance_date(ouverte)
 
     def test_la_question_de_prix_reprend_le_suivi(self):
         appel = self._barreau(2)
@@ -134,6 +141,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
         self.assertGreater(ouverte.ordre, 2)
         self.assertFalse(self.lead.relance_etapes.filter(
             q_etape(CLE_DEVIS)).exists())
+        self._assert_relance_date(ouverte)
 
     def test_devis_parti_poursuit_sans_rejouer_depuis_le_barreau_1(self):
         self._barreau(2, statut=FAIT)
@@ -145,6 +153,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
         self.assertGreater(ouverte.ordre, 2)
         self.assertFalse(self.lead.relance_etapes.filter(
             cadence='apres_devis', ordre=1).exists())
+        self._assert_relance_date(ouverte)
 
     def test_plan_epuise_l_etape_generique_prend_le_relais(self):
         self._barreau(10, statut=FAIT)
@@ -156,6 +165,7 @@ class SuiviSansDevisPoursuiviTests(_Base):
         self._fait(decider)
         [ouverte] = self._ouvertes()
         self.assertEqual(ouverte.cle, CLE_DEVIS)
+        self._assert_relance_date(ouverte)
 
 
 class TemoinDemarrageTests(_Base):
@@ -169,3 +179,4 @@ class TemoinDemarrageTests(_Base):
         [ouverte] = self._ouvertes()
         self.assertEqual((ouverte.cadence, ouverte.ordre), ('apres_devis', 1))
         self.assertIsNone(ouverte.devis_id)
+        self._assert_relance_date(ouverte)

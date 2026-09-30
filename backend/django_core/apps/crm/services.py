@@ -2564,6 +2564,12 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         if consomme is not None:
             suite = materialiser_touche_suivante(consomme, user)
             if suite is not None:
+                # SUIVI I6 (30/09/2026) — ``materialiser_touche_suivante`` ne
+                # touche ni ``Lead.relance_date`` ni le Calendrier : l'appelant
+                # (``marquer_etape_relance``) les avait recalés AVANT ce filet,
+                # sur « plus rien d'ouvert ». Sans ce recalage, la touche
+                # reprise était ouverte et ``relance_date`` restait vide.
+                _recaler_file(lead, user)
                 return suite
         elif demarrer_plan:
             etapes = initialiser_plan_relance(
@@ -2571,6 +2577,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
             ouvertes = [e for e in etapes
                         if e.statut == RelanceEtape.Statut.A_FAIRE]
             if ouvertes:
+                _recaler_file(lead, user)
                 return ouvertes[0]
         # Plan déjà consommé pour CE devis → l'étape générique ci-dessous.
         # CAD2 — idem quand l'appelant interdit le DÉMARRAGE (étape de visite
@@ -2590,6 +2597,8 @@ def assurer_prochaine_etape_apres_succes(lead, user,
         if consomme is not None:
             suite = materialiser_touche_suivante(consomme, user)
             if suite is not None:
+                # SUIVI I6 — même recalage que la reprise CAD1 ci-dessus.
+                _recaler_file(lead, user)
                 return suite
         elif brouillon_compris:
             # TREADMILL-1538 — cas AR intégral : « un devis parti hors ERP
@@ -2606,6 +2615,7 @@ def assurer_prochaine_etape_apres_succes(lead, user,
             ouvertes = [e for e in etapes
                         if e.statut == RelanceEtape.Statut.A_FAIRE]
             if ouvertes:
+                _recaler_file(lead, user)
                 return ouvertes[0]
     # PARAM-CADENCE — l'étape à poser est une CLÉ (défaut : le devis).
     cle = (cle or (cle_de(RelanceEtape(libelle=libelle)) if libelle else '')
