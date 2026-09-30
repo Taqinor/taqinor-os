@@ -6,6 +6,10 @@ footer (the harness paints the footer). CSS tables only (never flex — WeasyPri
 see quote_engine/RENDERING_NOTES.md). Classes prefixed ``i1-``.
 """
 
+# QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
+# (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
+from ..figures import ancre
+
 _MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
 
 
@@ -91,8 +95,10 @@ def build(ctx):
         bill_html = (
             f'<div class="i1-big">{fmt(annual_bill)}<span>&nbsp;MAD/an</span>'
             f'</div>'
+            + ancre("facture_annuelle_avant", fmt(annual_bill)) +
             f'<div class="i1-basel">Facture électrique actuelle · ≈ '
-            f'{fmt(avg_bill)} MAD/mois</div>')
+            f'{fmt(avg_bill)} MAD/mois</div>'
+            + ancre("facture_mensuelle_avant", fmt(avg_bill)))
     else:
         bars_html = ""
         bill_html = ('<div class="i1-basel">Facture électrique actuelle '
@@ -100,25 +106,27 @@ def build(ctx):
                      'la baseline se chiffre.</div>')
 
     # KPI (autoconso/couverture omis proprement si non calculés).
-    def kpi(val, unit, label):
+    def kpi(val, unit, label, fig=None):
+        _a = ancre(fig, val) if fig else ""
         return (f'<td class="i1-kpi"><div class="i1-kv">{val}'
-                f'<span class="i1-ku">{unit}</span></div>'
+                f'<span class="i1-ku">{unit}</span></div>{_a}'
                 f'<div class="i1-kl">{label}</div></td>')
 
-    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête")]
+    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
     if autoconso is not None:
         cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                            "Autoconsommation"))
+                            "Autoconsommation", "autoconsommation_pct"))
     if couverture is not None:
         cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                            "Couverture conso"))
+                            "Couverture conso", "couverture_pct"))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — la même omission couvre désormais « valeur non chiffrable »
     # (économies absentes de l'étude), pas seulement le cas MT : le garde ne
     # testait que ``ind_masquer_economies`` et laissait passer un « 0 MAD ».
     if not d.get("ind_masquer_economies") and economies is not None:
-        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an"))
+        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an",
+                            "economie_annuelle"))
     kpis = '<td class="i1-kgap"></td>'.join(cellules)
 
     # QXMT — la SOURCE du barème voyage avec le chiffre (jamais un chiffre nu),
@@ -136,7 +144,9 @@ def build(ctx):
 
     conso_line = (f"Consommation ≈ {fmt(round(conso))} kWh/an" if conso
                   else "Consommation à confirmer (facture 12 mois)")
-    prod_line = (f"Production estimée ≈ {fmt(round(prod))} kWh/an" if prod else "")
+    prod_line = (f"Production estimée ≈ {fmt(round(prod))} kWh/an"
+                 + ancre("production_annuelle_kwh", fmt(round(prod)))
+                 if prod else "")
 
     css = f"""
 <style>
@@ -245,7 +255,7 @@ def build(ctx):
 
     <div class="i1-inv">
       <div class="i1-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="i1-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>
+      <div class="i1-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt(invest))}
     </div>
   </div>
 </div>

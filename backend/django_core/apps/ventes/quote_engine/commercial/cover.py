@@ -5,6 +5,9 @@
 CSS tables only. Classes prefixed ``c1c-``.
 """
 from . import categories
+# QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
+# (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
+from ..figures import ancre
 
 
 def _kwc_str(kwc):
@@ -67,24 +70,26 @@ def build(ctx):
     couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
 
-    def kpi(val, unit, label):
+    def kpi(val, unit, label, fig=None):
+        _a = ancre(fig, val) if fig else ""
         return (f'<td class="c1c-kpi"><div class="c1c-kv">{val}'
-                f'<span class="c1c-ku">{unit}</span></div>'
+                f'<span class="c1c-ku">{unit}</span></div>{_a}'
                 f'<div class="c1c-kl">{label}</div></td>')
 
-    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête")]
+    cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
     if autoconso is not None:
         cellules.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                            "Autoconsommation"))
+                            "Autoconsommation", "autoconsommation_pct"))
     if couverture is not None:
         cellules.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                            "Couverture conso"))
+                            "Couverture conso", "couverture_pct"))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne
     # testait que le cas MT et laissait imprimer « 0 MAD — Économies / an ».
     if not d.get("com_masquer_economies") and economies is not None:
-        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an"))
+        cellules.append(kpi(fmt(economies), "&nbsp;MAD", "Économies / an",
+                            "economie_annuelle"))
     kpis = '<td class="c1c-kgap"></td>'.join(cellules)
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
@@ -190,7 +195,7 @@ def build(ctx):
     </div>
     <div class="c1c-inv">
       <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="c1c-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>
+      <div class="c1c-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt(invest))}
     </div>
   </div>
 </div>
