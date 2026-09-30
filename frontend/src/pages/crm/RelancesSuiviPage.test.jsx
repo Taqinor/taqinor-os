@@ -40,7 +40,15 @@ vi.mock('../../api/crmApi', () => ({
   },
 }))
 
+// SUIVI-REFUS — seul `toastError` est remplacé (pour prouver qu'un refus NOMMÉ
+// n'ajoute pas de toast générique) ; les autres exports du helper restent réels.
+vi.mock('../../lib/toast', async (importOriginal) => ({
+  ...(await importOriginal()),
+  toastError: vi.fn(),
+}))
+
 import crmApi from '../../api/crmApi'
+import { toastError } from '../../lib/toast'
 import RelancesSuiviPage from './RelancesSuiviPage'
 
 beforeEach(() => {
@@ -110,14 +118,28 @@ describe('RelancesSuiviPage (MRY31)', () => {
   it('« Demain » appelle l\'API avec les bornes de demain (Africa/Casablanca)', async () => {
     mount()
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalled())
-    activerOnglet('Demain')
     const today = casaISO(new Date())
     const demain = decalerJours(today, 1)
+    // Une touche du protocole datée de DEMAIN, à faire (l'exemple committé
+    // date d'un autre jour : il serait filtré hors de l'onglet).
+    crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+      data: {
+        results: [{ ...ETAPES[0], id: 778, due_date: demain, statut: 'a_faire', overdue: false }],
+        resume: { a_faire: 1, en_retard: 0, fait: 0, sautee: 0, annulee: 0 },
+      },
+    })
+    activerOnglet('Demain')
     await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledWith(
       expect.objectContaining({ date_debut: demain, date_fin: demain }),
     ))
-    // Les lignes « Demain » se lisent seulement (MRY32) : aucun bouton Fait.
+    // CAD44 puis SUIVI-BLOCAGE (30/09/2026) — les lignes « Demain » ne se
+    // lisent plus seulement : même règle que le cockpit (CADX). Sur une touche
+    // du protocole à venir : Appeler / WhatsApp / Reporter ouverts, « Fait »
+    // caché jusqu'à l'échéance (ou jusqu'au geste réellement fait).
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: /Appeler/ }).length).toBeGreaterThan(0))
+    expect(screen.queryAllByRole('button', { name: /Reporter/ }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /^Fait$/ })).not.toBeInTheDocument()
+    expect(screen.getAllByTestId('touche-en-avance').length).toBeGreaterThan(0)
   })
 
   it('le filtre Responsable est masqué au rôle normal', async () => {
@@ -165,5 +187,90 @@ describe('RelancesSuiviPage — CAD112 (deux onglets homonymes « Aujourd\'hui +
     })
     mount()
     expect(await screen.findAllByTestId('relance-etape-row')).toHaveLength(1)
+  })
+})
+
+/* SUIVI-REFUS (30/09/2026) — l'écran de suivi avalait, comme le cockpit et la
+   frise, le refus serveur de « Sauter » et « Reporter » (double clic → 400
+   `erreurs.etape`, SUIVI E8) : panneau refermé comme réussi + toast générique.
+   Comme « Fait » : panneau ouvert, message exact sous le geste, liste NON
+   relue sur un refus, aucun toast générique. */
+describe('RelancesSuiviPage — SUIVI-REFUS (Sauter / Reporter refusés)', () => {
+  const DEJA_TRAITEE = 'Cette étape est déjà traitée — rechargez la liste.'
+  const refus400 = (erreurs) => ({ response: { status: 400, data: { erreurs } } })
+
+  // Une touche À FAIRE d'aujourd'hui : actionnable (ni lecture seule, ni à venir).
+  const AUJOURDHUI = () => casaISO(new Date())
+  const touche = () => ({
+    ...ETAPES.find((e) => e.statut === 'a_faire'),
+    id: 780, due_date: AUJOURDHUI(), overdue: false, statut: 'a_faire',
+  })
+  beforeEach(() => {
+    crmApi.getRelanceEtapesSuivi.mockResolvedValue({
+      data: {
+        results: [touche()],
+        resume: { a_faire: 1, en_retard: 0, fait: 0, sautee: 0, annulee: 0 },
+      },
+    })
+  })
+
+  async function monterEtOuvrir(geste) {
+    mount()
+    expect(await screen.findAllByTestId('relance-etape-row')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: geste }))
+  }
+  const confirmer = () => fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+  const demain = () => decalerJours(AUJOURDHUI(), 1)
+
+  it('« Reporter » refusé (400 erreurs.etape) : panneau ouvert, message exact, liste non relue, aucun toast générique', async () => {
+    crmApi.reporterRelanceEtape.mockRejectedValueOnce(refus400({ etape: DEJA_TRAITEE }))
+    await monterEtOuvrir(/Reporter/)
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: demain() } })
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
+    expect(crmApi.reporterRelanceEtape).toHaveBeenCalledWith(
+      780, { rappel_le: demain(), rappel_heure: '09:00' })
+    expect(screen.getByLabelText('Reporter au')).toHaveValue(demain())
+    expect(toastError).not.toHaveBeenCalled()
+    expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Confirmer' })).not.toBeDisabled())
+  })
+
+  it('« Sauter » refusé (400 erreurs.etape) : panneau ouvert, message exact, liste non relue, aucun toast générique', async () => {
+    crmApi.marquerRelanceEtapeSautee.mockRejectedValueOnce(refus400({ etape: DEJA_TRAITEE }))
+    await monterEtOuvrir(/Sauter/)
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
+    expect(screen.getByTestId('suite-sauter')).toBeInTheDocument()
+    expect(toastError).not.toHaveBeenCalled()
+    expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(1)
+  })
+
+  it('« Reporter » : un échec RÉSEAU garde son toast (F2) ET la phrase claire sous le geste', async () => {
+    crmApi.reporterRelanceEtape.mockRejectedValueOnce(new Error('Network Error'))
+    await monterEtOuvrir(/Reporter/)
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: demain() } })
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent('Pas de connexion au serveur')
+    expect(toastError).toHaveBeenCalledWith('Action impossible pour le moment.')
+  })
+
+  it('succès « Reporter » inchangé : la liste est relue EN PLACE et le panneau se referme', async () => {
+    await monterEtOuvrir(/Reporter/)
+    fireEvent.change(screen.getByLabelText('Reporter au'), { target: { value: demain() } })
+    confirmer()
+    await waitFor(() => expect(crmApi.reporterRelanceEtape).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByLabelText('Reporter au')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('erreur-outcome')).not.toBeInTheDocument()
+    expect(toastError).not.toHaveBeenCalled()
+  })
+
+  it('succès « Sauter » inchangé : la liste est relue EN PLACE', async () => {
+    await monterEtOuvrir(/Sauter/)
+    confirmer()
+    await waitFor(() => expect(crmApi.marquerRelanceEtapeSautee).toHaveBeenCalledWith(780, ''))
+    await waitFor(() => expect(crmApi.getRelanceEtapesSuivi).toHaveBeenCalledTimes(2))
+    expect(toastError).not.toHaveBeenCalled()
   })
 })

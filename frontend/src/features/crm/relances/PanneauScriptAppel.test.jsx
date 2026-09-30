@@ -15,7 +15,7 @@ import RelanceEtapeRow from './RelanceEtapeRow'
 import PanneauScriptAppel from './PanneauScriptAppel'
 import * as guidance from './appelGuidance'
 import {
-  BANDEAU_PROFIL_SUPPOSE, MENTION_D7, CONSIGNE_ISSUE, ISSUE_VERROUILLEE,
+  BANDEAU_PROFIL_SUPPOSE, MENTION_D7, CONSIGNE_ISSUE, ISSUE_EN_AVANCE,
   ORDRE_APPEL_1, scriptTouche, RAMADAN_PAS_DE_SOIR, decouperQuestion,
 } from './appelGuidance'
 
@@ -200,12 +200,18 @@ describe('CAD152 — « Appeler » ouvre le panneau AVANT de composer', () => {
     expect(screen.getByRole('button', { name: 'Répondeur' })).toBeInTheDocument()
   })
 
-  it('touche À VENIR (CAD44) : le panneau reste ouvert, seule l’issue attend l’échéance', async () => {
+  it('touche À VENIR (CAD44, SUIVI-BLOCAGE 30/09/2026) : le panneau reste ouvert ET l’issue d’un appel passé en avance se saisit', async () => {
     armer()
     ligne(ETAPE_APPEL, { enAvance: true })
     fireEvent.click(screen.getByRole('button', { name: /^Appeler$/ }))
-    expect(await screen.findByTestId('consigne-issue')).toHaveTextContent(ISSUE_VERROUILLEE)
-    expect(screen.getByRole('button', { name: /Saisir l’issue/ })).toBeDisabled()
+    expect(await screen.findByTestId('consigne-issue')).toHaveTextContent(ISSUE_EN_AVANCE)
+    const bouton = screen.getByRole('button', { name: /Saisir l’issue/ })
+    expect(bouton).not.toBeDisabled()
+    fireEvent.click(bouton)
+    // Le panneau « Fait » s'ouvre bien sur une touche à venir, et DIT que la
+    // réponse sera datée d'aujourd'hui.
+    expect(screen.getByRole('button', { name: 'Pas de réponse' })).toBeInTheDocument()
+    expect(screen.getByTestId('reponse-en-avance')).toHaveTextContent(/traitée en avance/)
   })
 })
 
@@ -260,7 +266,7 @@ function consignesDEcran() {
 //: la section les porte toutes, la garde les compare toutes).
 const CONSIGNES_CAD152 = [
   'MENTION_D7', 'BANDEAU_PROFIL_SUPPOSE', 'EXPLICATION_PROFIL_SUPPOSE',
-  'CONSIGNE_ISSUE', 'ISSUE_VERROUILLEE', 'AUCUNE_QUESTION',
+  'CONSIGNE_ISSUE', 'ISSUE_EN_AVANCE', 'AUCUNE_QUESTION',
 ]
 
 //: Les cinq touches d'appel qui n'avaient AUCUN script (Appel 4, Appel 6,

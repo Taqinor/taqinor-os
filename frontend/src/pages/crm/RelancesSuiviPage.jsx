@@ -389,13 +389,18 @@ export default function RelancesSuiviPage() {
     ? currentUserId
     : (ownerFiltre === 'tous' ? '' : ownerFiltre)
 
-  const charger = () => {
+  // SUIVI-BLOCAGE — `enPlace` : relecture SANS spinner après un geste (Fait,
+  // Sauter, Reporter, visite…). Avant, chaque geste remplaçait toute la carte
+  // par un spinner : les lignes étaient démontées et toute fenêtre ouverte
+  // (planification de la visite) disparaissait avec elles. Le spinner ne vaut
+  // que pour un onglet ou un filtre qui change.
+  const charger = ({ enPlace = false } = {}) => {
     let active = true
     const { date_debut, date_fin } = bornesOnglet(onglet, today)
     // setState différé au prochain microtask (jamais synchrone dans l'effet) —
     // évite react-hooks/set-state-in-effect, même patron que
     // `RelancesDuJourWidget.jsx`/`KpiRelancesPanel.jsx`.
-    queueMicrotask(() => { if (active) { setLoading(true); setErreur(false) } })
+    queueMicrotask(() => { if (active) { if (!enPlace) setLoading(true); setErreur(false) } })
     const params = { date_debut, date_fin }
     if (owner) params.owner = owner
     crmApi.getRelanceEtapesSuivi(params)
@@ -416,16 +421,21 @@ export default function RelancesSuiviPage() {
       if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
       else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
       else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
-      charger()
+      charger({ enPlace: true })
       return res?.data
     } catch (err) {
       // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
       // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
-      const champOutcome = action === 'fait' && err?.response?.status === 400
-        ? err?.response?.data?.erreurs?.outcome : null
-      if (!champOutcome) toastError('Action impossible pour le moment.')
-      if (action === 'fait') throw err
-      return undefined
+      // SUIVI-REFUS — idem pour Sauter et Reporter, et pour tout refus NOMMÉ
+      // (400 `erreurs`/`detail`, 403 rôle) : l'erreur est relancée à la ligne,
+      // qui l'affiche sous le geste ; le toast ne reste que pour réseau/5xx.
+      const statut = err?.response?.status
+      const donnees = err?.response?.data
+      const refusNomme = statut === 403 || (statut === 400
+        && (Object.keys(donnees?.erreurs ?? {}).length > 0
+          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
+      if (!refusNomme) toastError('Action impossible pour le moment.')
+      throw err
     } finally {
       setBusyId(null)
     }
@@ -436,7 +446,7 @@ export default function RelancesSuiviPage() {
   const annulerTouche = async (id) => {
     try {
       await crmApi.annulerRelanceEtape(id)
-      charger()
+      charger({ enPlace: true })
     } catch {
       toastError('Annulation impossible pour le moment.')
     }
@@ -448,7 +458,7 @@ export default function RelancesSuiviPage() {
   const arreterCadenceLead = async (leadId, motif) => {
     try {
       await crmApi.arreterCadence(leadId, { motif })
-      charger()
+      charger({ enPlace: true })
       return true
     } catch {
       toastError('Arrêt de la cadence impossible pour le moment.')
@@ -456,10 +466,13 @@ export default function RelancesSuiviPage() {
     }
   }
 
-  // Seul l'onglet « Aujourd'hui + retard » est actionnable — même règle que
-  // le widget Cockpit (MRY32 : « Demain »/« 7 jours » se lisent seulement) ;
-  // une touche déjà résolue (fait/sautée) ne porte jamais d'action non plus.
-  const actionnable = onglet === 'aujourdhui'
+  // CAD44 (TRANCHÉ 21/09/2026) puis SUIVI-BLOCAGE (30/09/2026) — les onglets
+  // « Demain » et « 7 prochains jours » ne sont plus en lecture seule : la
+  // MÊME règle que le cockpit (règle CADX — deux écrans ne désignent jamais
+  // deux gestes différents pour la même touche). Une touche à venir s'appelle,
+  // s'écrit, se reporte ; ses tâches se traitent ; « Fait » attend son jour
+  // sur une touche du protocole (`enAvance`). Une touche déjà résolue
+  // (fait/sautée/annulée) ne porte jamais d'action.
 
   const groupes = useMemo(() => {
     const lignes = donnees ? visiblesPourOnglet(onglet, donnees.results, today) : []
@@ -536,11 +549,17 @@ export default function RelancesSuiviPage() {
                         <RelanceEtapeRow
                           etape={etape} busyId={busyId} navigate={navigate}
                           showStatut
-                          readOnly={!actionnable || etape.statut !== 'a_faire'}
+                          readOnly={etape.statut !== 'a_faire'}
+                          enAvance={Boolean(etape.due_date) && etape.due_date > today}
                           onFait={(id, payload) => traiter(id, 'fait', payload)}
                           onSauter={(id, note) => traiter(id, 'sauter', note)}
                           onReporter={(id, dueAt) => traiter(id, 'reporter', dueAt)}
                           onOuvrirMessage={setMessageEtape}
+                          // SUIVI-BLOCAGE — visite planifiée / déplacée / abandonnée,
+                          // pièce reçue, réponse écrite sur la fiche : relecture EN PLACE.
+                          onVisiteChanged={() => charger({ enPlace: true })}
+                          onPieceRecue={() => charger({ enPlace: true })}
+                          onLeadEcrit={() => charger({ enPlace: true })}
                         />
                         <AnnulerArreterControl
                           etape={etape} onAnnuler={annulerTouche} onArreter={arreterCadenceLead}
@@ -561,7 +580,7 @@ export default function RelancesSuiviPage() {
         etape={messageEtape}
         open={!!messageEtape}
         onOpenChange={(o) => { if (!o) setMessageEtape(null) }}
-        onSent={() => { setMessageEtape(null); charger() }}
+        onSent={() => { setMessageEtape(null); charger({ enPlace: true }) }}
       />
     </div>
   )

@@ -22,10 +22,14 @@ from core.events import (
 )
 
 from . import stages
-from .cadence_config import CLE_DECIDER_SUITE
+from .cadence_config import CLE_DECIDER_SUITE, CLE_DEVIS_MODIFIE
 from .models import Appointment, Lead, LeadActivity
 from .services import (
     _CONTACT_KINDS,
+    _recaler_file,
+    CAUSE_RDV_REFUS,
+    annuler_etapes_moteur_ouvertes,
+    annuler_rendez_vous_sur_arret,
     appliquer_retour_visite,
     appliquer_visite_planifiee,
     ecrire_retour_lead_visite,
@@ -41,13 +45,16 @@ from .services import (
     avancer_stage_sur_reponse_devis,
     avancer_stage_pour_devis,
     est_cloture_d_etape_visite,
+    est_derniere_touche_du_suivi,
     est_note_de_touche_sautee,
     generer_playbook_progress,
     initialiser_plan_relance,
     marquer_premier_contact,
     phrase_notification_retour_visite,
     poser_filet_visite_a_planifier,
+    q_visite,
     signaler_mismatch_signe_sur_refus,
+    touche_close_de,
 )
 
 logger = logging.getLogger(__name__)
@@ -161,9 +168,24 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         # sans objet : le plan après-devis prend la suite.
         arreter_cadence(lead, user=user, motif='devis envoyé',
                         cadences=['contact', 'generique'])
-        deja = lead.relance_etapes.filter(
-            cadence='apres_devis', statut='a_faire').exclude(
-                devis_id=devis.pk).first()
+        # SUIVI E1 (30/09/2026) — l'étape « Préparer le devis modifié »
+        # encore ouverte a rempli son office : le devis modifié part.
+        if annuler_etapes_moteur_ouvertes(lead, CLE_DEVIS_MODIFIE,
+                                          note='devis envoyé'):
+            # SUIVI I6 — l'annulation passe par un ``update()`` : sans
+            # recalage, ``relance_date`` pointait encore sur l'étape annulée
+            # quand elle était la plus proche (``initialiser_plan_relance``
+            # ne l'avance que si elle est plus TARDIVE que sa première
+            # touche).
+            _recaler_file(lead, user)
+        # SUIVI E1 — seuls les BARREAUX du protocole après-devis sont « un
+        # suivi en cours » : une étape de VISITE ouverte (planifier,
+        # confirmer, débrief — cadence `apres_devis`, devis souvent NULL, donc
+        # jamais écartée par `.exclude(devis_id=…)`) bloquait le démarrage du
+        # suivi de proposition, et le devis partait sans aucune relance.
+        barreaux_ouverts = lead.relance_etapes.filter(
+            cadence='apres_devis', statut='a_faire').exclude(q_visite())
+        deja = barreaux_ouverts.exclude(devis_id=devis.pk).first()
         if deja is not None:
             reference = getattr(deja.devis, 'reference', '') or '?'
             LeadActivity.objects.create(
@@ -177,9 +199,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         # PREMIER envoi et le client recevrait « je classe ? » deux jours
         # après sa nouvelle proposition. On PROPOSE de repartir du jour 1 —
         # on ne redate rien tout seul (choix par défaut : ne rien changer).
-        if lead.relance_etapes.filter(
-                cadence='apres_devis', statut='a_faire',
-                devis_id=devis.pk).exists():
+        if barreaux_ouverts.filter(devis_id=devis.pk).exists():
             from .services import proposer_redatage_apres_devis
             proposer_redatage_apres_devis(lead, user, devis)
             return
@@ -565,6 +585,9 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
       08/09/2026) : la suite posée par le filet suit le CANAL de la touche —
       message répondu → « appeler le client » ; appel fait → « préparer et
       envoyer le devis » ; le plan après-devis attend l'ENVOI du devis.
+      SUIVI E22 (30/09/2026) — sur la DERNIÈRE touche du suivi de
+      proposition (lue sur la touche close, ``touche_close_de``) : « décider
+      la suite », pour demain, jamais l'étape devis d'un devis déjà parti.
     * `refus` → arrête `contact` ET `apres_devis`, SANS marquer le lead perdu :
       « perdu » est une décision humaine qui exige un motif (MRY22), pas un
       effet de bord d'un appel.
@@ -629,10 +652,33 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
             # CAD2 — la clôture d'une étape de VISITE (débrief, confirmation,
             # devis modifié) ne DÉMARRE jamais le suivi de proposition : le
             # filet le poursuit s'il a déjà servi, sinon il pose son étape.
-            assurer_prochaine_etape_apres_succes(
-                instance.lead, instance.user, canal_touche=instance.kind,
-                demarrer_plan=not est_cloture_d_etape_visite(instance))
+            # SUIVI E4 (30/09/2026) — et elle n'est jamais « il a répondu au
+            # message » : une confirmation de visite close par WhatsApp ne
+            # fait pas poser « Appeler le client — il a répondu au message »
+            # (le canal de la touche ne décide pas de sa suite).
+            if est_derniere_touche_du_suivi(touche_close_de(instance)):
+                # SUIVI E22 (décision fondateur du 30/09/2026) — client joint
+                # sur la DERNIÈRE touche du suivi de proposition : le devis
+                # est déjà parti, « Préparer et envoyer le devis » (ou
+                # « l'appeler ») n'a plus de sens. « Décider la suite » est
+                # posée pour demain, comme après un refus — sans plan devis ;
+                # le dossier garde son étape (« Relance »).
+                assurer_prochaine_etape_apres_succes(
+                    instance.lead, instance.user,
+                    cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
+            else:
+                visite = est_cloture_d_etape_visite(instance)
+                assurer_prochaine_etape_apres_succes(
+                    instance.lead, instance.user,
+                    canal_touche=None if visite else instance.kind,
+                    demarrer_plan=not visite)
         elif issue == 'refuse':
+            # SUIVI E21 (30/09/2026) — le refus arrête les relances ET le
+            # rendez-vous de visite en attente : le technicien ne se déplace
+            # pas chez un client qui vient de refuser (best-effort, note au
+            # chatter quand un rendez-vous est réellement annulé).
+            annuler_rendez_vous_sur_arret(
+                instance.lead, instance.user, cause=CAUSE_RDV_REFUS)
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,
                 cle=CLE_DECIDER_SUITE, avec_plan_devis=False)

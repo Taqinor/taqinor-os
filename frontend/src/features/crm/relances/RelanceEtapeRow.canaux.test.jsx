@@ -208,8 +208,11 @@ describe('CAD101 — pièce reçue sur WhatsApp : le geste pour l’enregistrer'
     await waitFor(() => expect(crmApi.enregistrerPieceRecue).toHaveBeenCalledWith(
       ETAPE_WHATSAPP.id, { type_piece: 'facture', note: undefined, fichier: undefined }))
     await waitFor(() => expect(onPieceRecue).toHaveBeenCalledWith(ETAPE_WHATSAPP.id, REPONSE))
-    // La confirmation vient de LA RÉPONSE (`prochaine_touche`), jamais d'un calcul d'écran.
-    expect(toastInfo).toHaveBeenCalledWith(expect.stringMatching(/^Prochain appel programmé le /))
+    // La confirmation vient de LA RÉPONSE (`prochaine_touche`), jamais d'un calcul d'écran —
+    // et elle NOMME l'étape (SUIVI E9) : plus jamais « prochain appel » pour une étape de
+    // préparation du devis.
+    expect(toastInfo).toHaveBeenCalledWith(
+      expect.stringMatching(/^Étape suivante : « Préparer et envoyer le devis/))
   })
 
   it('un refus serveur s’affiche SOUS le panneau, avec le message exact', async () => {

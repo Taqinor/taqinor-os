@@ -52,8 +52,8 @@ LIMITE ASSUMÉE (et documentée plutôt que cachée) : les codes décrivent des
 EFFETS, mais les phrases de l'écran (``suite_phrases.json``) de plusieurs
 d'entre eux nomment une étape ou un délai PAR DÉFAUT —
 ``etape_devis_demain`` et ``etape_devis_demain_sauf_suivi`` (« demain :
-Préparer et envoyer le devis »), ``etape_devis_a_la_date`` et
-``etape_devis_a_la_date_sauf_suivi`` (le libellé), ``etape_dernier_appel``
+Préparer et envoyer le devis »), ``etape_devis_a_la_date`` (le libellé),
+``etape_dernier_appel``
 (« demain »), ``etape_devis_modifie`` (libellé et « demain »),
 ``etape_planifier_visite`` (libellé et « pour aujourd'hui »),
 ``etape_decider_suite`` (libellé). Pour une société qui renomme ou décale
@@ -63,6 +63,17 @@ commerciale ») et un code neuf exigerait sa phrase d'écran (garde CAD17) :
 la correction passe par le
 contrat (servir le libellé et le délai réglés de ces clés avec la touche) et
 l'écran — hors de cette moitié serveur.
+
+SUIVI-PARCOURS (ordre fondateur du 30/09/2026 — « make sure we have the right
+set of answers after each step »). Les réponses servies ne se lisent plus PAR
+CADENCE : elles suivent LA TABLE du parcours
+(``frontend/src/features/crm/relances/parcours_suivi.json``), TYPE d'étape par
+TYPE d'étape. ``type_etape`` reconnaît le type exactement comme la table
+(``reconnaissance`` : la CLÉ d'abord, puis le libellé, puis cadence + canal) ;
+``REPONSES_PAR_TYPE`` est le miroir des clés de réponse de la table, dans son
+ordre ; la garde ``tests_suivi_e14_table_reponses.py`` lit la table et exige
+l'égalité. Le serveur ne lit JAMAIS le fichier de l'écran à l'exécution (il
+n'existe pas dans l'image du serveur) : le miroir est ici, la garde le tient.
 """
 
 # ── Les codes d'effet ────────────────────────────────────────────────────────
@@ -75,7 +86,11 @@ TOUCHE_SUIVANTE = 'touche_suivante'
 TOUCHE_SUIVANTE_A_LA_DATE = 'touche_suivante_a_la_date'
 DERNIERE_FROID_REVEILS = 'derniere_froid_reveils'
 DERNIER_REVEIL = 'dernier_reveil'
-DERNIER_REVEIL_DATE_PERDUE = 'dernier_reveil_date_perdue'
+# SUIVI E17 (30/09/2026) — `dernier_reveil_date_perdue` (« À rappeler le… »
+# sur le dernier réveil ne reportait la date sur rien) et
+# `etape_devis_a_la_date_sauf_suivi` (même geste hors Froid) n'existent plus :
+# le dernier réveil pose l'appel « rappel convenu » à la date choisie
+# (``etape_rappel_convenu_a_la_date``).
 RESTE_AU_FROID = 'reste_au_froid'
 SORT_DU_FROID = 'sort_du_froid'
 CONTACT_ARRETEE = 'contact_arretee'
@@ -86,7 +101,6 @@ ETAPE_DEVIS_DEMAIN = 'etape_devis_demain'
 ETAPE_APPELER_SAUF_SUIVI = 'etape_appeler_sauf_suivi'
 ETAPE_DEVIS_DEMAIN_SAUF_SUIVI = 'etape_devis_demain_sauf_suivi'
 ETAPE_DEVIS_A_LA_DATE = 'etape_devis_a_la_date'
-ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI = 'etape_devis_a_la_date_sauf_suivi'
 ETAPE_DECIDER_SUITE = 'etape_decider_suite'
 ETAPE_DEPLACEE_A_LA_DATE = 'etape_deplacee_a_la_date'
 SUIVI_PROPOSITION_DEMARRE = 'suivi_proposition_demarre'
@@ -98,7 +112,10 @@ ETAPE_DERNIER_APPEL = 'etape_dernier_appel'
 # étape de visite sans réponse ne parque JAMAIS le lead au Froid, le filet
 # prend le relais (``SUITE_SI_PLUS_RIEN_OUVERT``).
 SUITE_SI_PLUS_RIEN_OUVERT = 'suite_si_plus_rien_ouvert'
-PROCHAINE_RELANCE_A_LA_DATE = 'prochaine_relance_a_la_date'
+# SUIVI E3 (30/09/2026) — `prochaine_relance_a_la_date` (« À rappeler le… »
+# sur une étape de visite déplaçait la prochaine relance ouverte, pas elle)
+# n'existe plus : l'étape de visite est déplacée elle-même
+# (``etape_deplacee_a_la_date``).
 ETIQUETTE_DECISION = 'etiquette_decision'
 NE_PLUS_CONTACTER = 'ne_plus_contacter'
 VEILLE_MEME_TOUCHE = 'veille_meme_touche'
@@ -111,26 +128,43 @@ ETAPE_DEVIS_MODIFIE = 'etape_devis_modifie'
 JOURNAL_SUITE_SI_RIEN_OUVERT = 'journal_suite_si_rien_ouvert'
 JOURNAL_DECIDER_SI_RIEN_OUVERT = 'journal_decider_si_rien_ouvert'
 JOURNAL_SANS_EFFET = 'journal_sans_effet'
-# CAD47 — sauter l'étape « préparer et envoyer le devis » : le moteur la lit
-# comme « devis parti » (RELANCE-SUITE) et démarre le suivi de proposition.
-SUIVI_DEMARRE_SANS_ENVOI = 'suivi_demarre_sans_envoi'
+# SUIVI E7 (30/09/2026) — `suivi_demarre_sans_envoi` (CAD47 : « sauter
+# l'étape devis vaut devis parti ») n'existe plus : une étape devis SAUTÉE ne
+# démarre plus aucun suivi, le filet pose « Décider la suite ».
+# SUIVI E2 (30/09/2026) — « Perdu — clore le dossier » sur « Décider la
+# suite » : le lead passe perdu avec son motif, tout s'arrête, rien n'est
+# posé.
+LEAD_PERDU = 'lead_perdu'
+# SUIVI E4 (30/09/2026) — « Ne veut plus de visite » : le rendez-vous est
+# annulé, les gestes de visite retirés ; le suivi continue sans visite
+# (``suite_si_plus_rien_ouvert`` le dit).
+VISITE_ABANDONNEE = 'visite_abandonnee'
+# SUIVI E10 (30/09/2026) — un créneau CONVENU devient un APPEL : l'étape
+# « Rappeler le client — rappel convenu » est posée à la date et à l'heure
+# convenues (et, E17, sur le dernier réveil ; E23/E24, sur la dernière touche
+# d'une prise de contact, deuxième affaire comprise).
+ETAPE_RAPPEL_CONVENU_A_LA_DATE = 'etape_rappel_convenu_a_la_date'
+# SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse : l'étape est
+# reposée pour demain.
+ETAPE_PLANIFIER_DEMAIN = 'etape_planifier_demain'
 
 #: Le vocabulaire COMPLET — la garde exige qu'il soit égal à l'ensemble des
 #: phrases de l'écran ET à l'ensemble des vérificateurs.
 CODES = frozenset({
     TOUCHE_SUIVANTE, TOUCHE_SUIVANTE_A_LA_DATE, DERNIERE_FROID_REVEILS,
-    DERNIER_REVEIL, DERNIER_REVEIL_DATE_PERDUE, RESTE_AU_FROID,
+    DERNIER_REVEIL, RESTE_AU_FROID,
     SORT_DU_FROID, CONTACT_ARRETEE, REVEILS_ARRETES, RELANCES_ARRETEES,
     ETAPE_APPELER, ETAPE_DEVIS_DEMAIN, ETAPE_APPELER_SAUF_SUIVI,
     ETAPE_DEVIS_DEMAIN_SAUF_SUIVI, ETAPE_DEVIS_A_LA_DATE,
-    ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI, ETAPE_DECIDER_SUITE,
+    ETAPE_DECIDER_SUITE,
     ETAPE_DEPLACEE_A_LA_DATE, SUIVI_PROPOSITION_DEMARRE,
     ETAPE_PLANIFIER_VISITE, ETAPE_MESSAGE_CRENEAU, ETAPE_DERNIER_APPEL,
-    SUITE_SI_PLUS_RIEN_OUVERT, PROCHAINE_RELANCE_A_LA_DATE, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
+    SUITE_SI_PLUS_RIEN_OUVERT, ETIQUETTE_DECISION, NE_PLUS_CONTACTER,
     VEILLE_MEME_TOUCHE, QUESTION_PRIX_PAUSE, QUESTION_PRIX_ETAPE,
     ETAPE_DEVIS_MODIFIE, JOURNAL_SUITE_SI_RIEN_OUVERT,
     JOURNAL_DECIDER_SI_RIEN_OUVERT, JOURNAL_SANS_EFFET,
-    SUIVI_DEMARRE_SANS_ENVOI,
+    LEAD_PERDU, VISITE_ABANDONNEE, ETAPE_RAPPEL_CONVENU_A_LA_DATE,
+    ETAPE_PLANIFIER_DEMAIN,
 })
 
 # ── La nature d'une touche ───────────────────────────────────────────────────
@@ -158,6 +192,154 @@ CLE_SAUTER = 'sauter'
 #: réponse du client, si la suite est de l'appeler (message répondu) ou de
 #: préparer le devis (appel fait) — RELANCE-SUITE.
 _CANAUX_ECRITS = ('whatsapp', 'email')
+
+#: SUIVI E15 — les deux PRISES DE CONTACT : celle d'un prospect et celle d'un
+#: client déjà acquis (« deuxième affaire », CAD128). Mêmes arrêts, même code
+#: « la prise de contact s'arrête ».
+_CADENCES_PRISE_DE_CONTACT = ('contact', 'deuxieme_affaire')
+
+# ── SUIVI-PARCOURS — le TYPE d'une étape, lu comme la table le lit ──────────
+#
+# Les identifiants sont ceux de la table (`etapes[].id`). Les dix étapes que
+# le moteur pose depuis Paramètres ont pour identifiant leur CLÉ
+# (``cadence_config``) : une étape renommée par la société garde son type.
+
+TYPE_CONTACT_APPEL = 'contact_appel'
+TYPE_CONTACT_MESSAGE = 'contact_message'
+TYPE_DEVIS = 'devis'
+TYPE_APPEL_APRES_REPONSE = 'appel_apres_reponse'
+TYPE_MESSAGE_CRENEAU = 'message_creneau'
+TYPE_DERNIER_APPEL = 'dernier_appel'
+TYPE_RAPPEL_CONVENU = 'rappel_convenu'
+TYPE_DECIDER_SUITE = 'decider_suite'
+TYPE_SUIVI_APPEL = 'suivi_appel'
+TYPE_SUIVI_MESSAGE = 'suivi_message'
+TYPE_QUESTION_PRIX = 'question_prix'
+TYPE_PLANIFIER = 'planifier'
+TYPE_CONFIRMATION = 'confirmation'
+TYPE_DEBRIEF = 'debrief'
+TYPE_DEVIS_MODIFIE = 'devis_modifie'
+TYPE_REVEIL_APPEL = 'reveil_appel'
+TYPE_REVEIL_MESSAGE = 'reveil_message'
+TYPE_GENERIQUE = 'generique'
+
+#: Clé moteur → type (ils portent le même nom : la table le veut ainsi).
+_TYPES_PAR_CLE = frozenset({
+    TYPE_DEVIS, TYPE_APPEL_APRES_REPONSE, TYPE_MESSAGE_CRENEAU,
+    TYPE_DERNIER_APPEL, TYPE_RAPPEL_CONVENU, TYPE_DECIDER_SUITE,
+    TYPE_PLANIFIER, TYPE_CONFIRMATION, TYPE_DEBRIEF, TYPE_DEVIS_MODIFIE,
+})
+
+#: Cadence de protocole → (type de l'APPEL, type du MESSAGE). La deuxième
+#: affaire EST une prise de contact (celle d'un client acquis) : la table la
+#: range sous les deux mêmes types.
+_TYPES_PAR_CADENCE = {
+    'contact': (TYPE_CONTACT_APPEL, TYPE_CONTACT_MESSAGE),
+    'deuxieme_affaire': (TYPE_CONTACT_APPEL, TYPE_CONTACT_MESSAGE),
+    'apres_devis': (TYPE_SUIVI_APPEL, TYPE_SUIVI_MESSAGE),
+    'reveil': (TYPE_REVEIL_APPEL, TYPE_REVEIL_MESSAGE),
+}
+
+
+def type_etape(etape):
+    """SUIVI-PARCOURS — l'identifiant, dans la table du parcours, du TYPE de
+    ``etape``. Fonction PURE (aucune requête), reconnaissance dans l'ordre de
+    la table : la CLÉ moteur d'abord (``cle_de`` : une étape posée avant la
+    clé est reconnue par son libellé PAR DÉFAUT), puis le libellé (la
+    question de prix, hors gabarit), puis la cadence et le canal (un canal
+    historique « visite » compte comme un appel, ``_canal_configure``).
+    Toute étape d'une autre cadence est « générique »."""
+    from .cadence_config import cle_de
+    from .services import QUESTION_PRIX_LIBELLE
+
+    cle = cle_de(etape)
+    if cle in _TYPES_PAR_CLE:
+        return cle
+    if (not (getattr(etape, 'cle', '') or '')
+            and (etape.libelle or '').strip() == QUESTION_PRIX_LIBELLE):
+        return TYPE_QUESTION_PRIX
+    paire = _TYPES_PAR_CADENCE.get(etape.cadence)
+    if paire is None:
+        return TYPE_GENERIQUE
+    return paire[1] if etape.canal in _CANAUX_ECRITS else paire[0]
+
+
+#: SUIVI-PARCOURS — les CLÉS de réponse de chaque type, dans l'ORDRE de la
+#: table (le miroir de ``parcours_suivi.json`` ; la garde E14 exige
+#: l'égalité). Clé d'une réponse = sa ``reponse`` serveur si elle en a une,
+#: sinon son issue (``''`` → ``sans_issue``) ; les gestes sans envoi (« la
+#: date est calée », « reportée à une autre date ») n'en ont pas — c'est la
+#: planification qui clôt l'étape.
+REPONSES_PAR_TYPE = {
+    TYPE_CONTACT_APPEL: (
+        'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
+        'refuse', 'ne_plus_contacter'),
+    TYPE_CONTACT_MESSAGE: (
+        'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
+        'plus_tard', 'refuse', 'ne_plus_contacter'),
+    TYPE_DEVIS: (
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_APPEL_APRES_REPONSE: (
+        'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_MESSAGE_CRENEAU: (
+        'sans_issue', 'rappel', 'joint', 'visite_acceptee', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_DERNIER_APPEL: (
+        'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_RAPPEL_CONVENU: (
+        'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_DECIDER_SUITE: (
+        'perdu', 'rappel', 'sans_issue', 'ne_plus_contacter'),
+    TYPE_SUIVI_APPEL: (
+        'joint', 'visite_acceptee', 'non_joint', 'rappel', 'refuse',
+        'plus_tard', 'question_prix', 'devis_modifie', 'decision_famille',
+        'decision_proprietaire', 'ne_plus_contacter'),
+    TYPE_SUIVI_MESSAGE: (
+        'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
+        'refuse', 'plus_tard', 'question_prix', 'devis_modifie',
+        'decision_famille', 'decision_proprietaire', 'ne_plus_contacter'),
+    TYPE_QUESTION_PRIX: (
+        'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
+    TYPE_PLANIFIER: (
+        'rappel', 'non_joint', 'visite_abandonnee', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_CONFIRMATION: (
+        'joint', 'non_joint', 'visite_abandonnee', 'refuse',
+        'ne_plus_contacter'),
+    TYPE_DEBRIEF: (
+        'joint', 'non_joint', 'rappel', 'visite_abandonnee', 'question_prix',
+        'devis_modifie', 'decision_famille', 'decision_proprietaire',
+        'refuse', 'ne_plus_contacter'),
+    TYPE_DEVIS_MODIFIE: (
+        'sans_issue', 'rappel', 'refuse', 'ne_plus_contacter'),
+    TYPE_REVEIL_APPEL: (
+        'joint', 'visite_acceptee', 'non_joint', 'rappel', 'plus_tard',
+        'refuse', 'ne_plus_contacter'),
+    TYPE_REVEIL_MESSAGE: (
+        'joint', 'joint_telephone', 'visite_acceptee', 'non_joint', 'rappel',
+        'plus_tard', 'refuse', 'ne_plus_contacter'),
+    TYPE_GENERIQUE: (
+        'sans_issue', 'visite_acceptee', 'rappel', 'refuse',
+        'ne_plus_contacter'),
+}
+
+#: Les réponses que la table ajoute sur une touche d'APPEL seulement
+#: (``reponses_appel`` : Répondeur, Occupé, Numéro invalide, A bloqué — toutes
+#: l'issue « non joint »).
+REPONSES_APPEL_PAR_TYPE = {
+    TYPE_GENERIQUE: ('non_joint',),
+}
+
+#: Les TÂCHES de la table (``tache: true``) : elles ont chacune leurs
+#: réponses, et le geste « Sauter » n'y est pas proposé.
+TYPES_TACHE = frozenset({
+    TYPE_DEVIS, TYPE_DECIDER_SUITE, TYPE_QUESTION_PRIX, TYPE_PLANIFIER,
+    TYPE_DEVIS_MODIFIE,
+})
 
 
 def nature_touche(etape):
@@ -240,57 +422,58 @@ def est_derniere_touche(etape, ordres):
     return etape.ordre == max(ordres)
 
 
-def cles_de_reponse(cadence):
-    """Les réponses que le panneau « Fait » propose sur une touche de
-    ``cadence`` : les ISSUES (``LeadActivity.OUTCOMES``) puis les RÉPONSES DU
-    CLIENT (``REPONSES_TOUCHE``, bornées à leurs cadences comme le serveur les
-    borne — ``refus_reponse_touche``).
+def cles_de_reponse(etape):
+    """SUIVI-PARCOURS — les clés des réponses que l'écran propose sur
+    ``etape``, EXACTEMENT celles de la table pour son type
+    (``REPONSES_PAR_TYPE``, dans l'ordre de la table), suivies de ``sauter``
+    quand l'étape l'autorise (jamais sur une TÂCHE : devis, planifier la
+    visite, décider la suite, devis modifié, question de prix).
 
-    « Visite acceptée » : décision fondateur du 24/09/2026 — elle vaut sur la
-    prise de contact, le réveil et les étapes du filet (cadence générique),
-    plus seulement sur le suivi de proposition. La deuxième affaire ne la
-    propose pas (hors du périmètre de la décision)."""
-    from .services import OUTCOME_VISITE_ACCEPTEE, REPONSES_TOUCHE
+    Signature TOLÉRANTE : un appelant qui passe encore une CADENCE (chaîne)
+    reçoit les clés d'une touche d'APPEL de cette cadence."""
+    if isinstance(etape, str):
+        from .models import RelanceEtape
 
-    if cadence == 'generique':
-        issues = [CLE_SANS_ISSUE, OUTCOME_VISITE_ACCEPTEE, 'non_joint',
-                  'rappel', 'refuse']
-    elif cadence in ('apres_devis', 'contact', 'reveil'):
-        issues = ['joint', OUTCOME_VISITE_ACCEPTEE, 'non_joint', 'rappel',
-                  'refuse']
-    else:
-        issues = ['joint', 'non_joint', 'rappel', 'refuse']
-    reponses = [cle for cle, spec in REPONSES_TOUCHE.items()
-                if spec.get('cadences') is None
-                or cadence in spec['cadences']]
-    return issues + reponses
+        etape = RelanceEtape(cadence=etape, canal=RelanceEtape.Canal.APPEL)
+    type_id = type_etape(etape)
+    cles = list(REPONSES_PAR_TYPE[type_id])
+    if etape.canal not in _CANAUX_ECRITS:
+        cles += [cle for cle in REPONSES_APPEL_PAR_TYPE.get(type_id, ())
+                 if cle not in cles]
+    if type_id not in TYPES_TACHE:
+        cles.append(CLE_SAUTER)
+    return cles
 
 
-def _appeler_apres_message(etape, est_actif):
+def _appeler_apres_message(etape, est_actif, canal=None):
     """Message répondu → l'appeler, sauf si la société a désactivé ce
-    palier (PARAM-CADENCE) : le moteur pose alors le devis."""
+    palier (PARAM-CADENCE) : le moteur pose alors le devis. ``canal`` : le
+    canal RÉEL de la touche quand il diffère du prévu (SUIVI E16 — « Client
+    joint au téléphone » sur une touche message est un APPEL abouti)."""
     from .cadence_config import CLE_APPEL_APRES_REPONSE
 
-    return (etape.canal in _CANAUX_ECRITS
+    return ((canal or etape.canal) in _CANAUX_ECRITS
             and est_actif(CLE_APPEL_APRES_REPONSE))
 
 
-def _filet_apres_reponse(etape, est_actif):
+def _filet_apres_reponse(etape, est_actif, canal=None):
     """L'étape que le filet pose quand un client « joint » ne laisse rien
     d'ouvert : message répondu → l'appeler ; appel fait → le devis demain."""
-    return (ETAPE_APPELER if _appeler_apres_message(etape, est_actif)
+    return (ETAPE_APPELER if _appeler_apres_message(etape, est_actif, canal)
             else ETAPE_DEVIS_DEMAIN)
 
 
-def _filet_apres_reponse_sauf_suivi(etape, est_actif):
+def _filet_apres_reponse_sauf_suivi(etape, est_actif, canal=None):
     return (ETAPE_APPELER_SAUF_SUIVI
-            if _appeler_apres_message(etape, est_actif)
+            if _appeler_apres_message(etape, est_actif, canal)
             else ETAPE_DEVIS_DEMAIN_SAUF_SUIVI)
 
 
-def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
+def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
+                   canal=None):
     """Un barreau du protocole (ou une touche hors gabarit, traitée comme une
-    dernière touche)."""
+    dernière touche). ``canal`` : le canal RÉEL (SUIVI E16), qui décide de
+    la suite d'un client joint à la place du canal prévu."""
     from .services import CADENCES_ARRETEES_PAR_ISSUE, OUTCOME_VISITE_ACCEPTEE
 
     cadence = etape.cadence
@@ -307,23 +490,35 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
 
     if issue in ('joint', 'interesse'):
         codes = [SORT_DU_FROID] if au_froid else []
-        if cadence == 'contact':
+        if cadence in _CADENCES_PRISE_DE_CONTACT:
+            # SUIVI E15 — la deuxième affaire s'arrête comme la prise de
+            # contact : l'étape de filet, jamais le barreau 2 en plus.
             return codes + [CONTACT_ARRETEE,
-                            _filet_apres_reponse(etape, est_actif)]
+                            _filet_apres_reponse(etape, est_actif, canal)]
         if cadence == 'reveil':
             return codes + [REVEILS_ARRETES,
-                            _filet_apres_reponse_sauf_suivi(etape, est_actif)]
-        if cadence == 'apres_devis' and etape.devis_id:
-            # Le filet du récepteur POURSUIT le plan du devis (CAD1) : la
-            # touche suivante naît ; après la dernière, l'étape de suite.
-            return codes + ([_filet_apres_reponse(etape, est_actif)]
-                            if derniere else [TOUCHE_SUIVANTE])
-        # Suivi sans devis dans l'ERP, cadence générique, deuxième affaire :
-        # le filet pose son étape (rien d'ouvert, aucun devis relançable) ET,
-        # la cadence survivant à l'issue, la touche suivante naît aussi.
+                            _filet_apres_reponse_sauf_suivi(
+                                etape, est_actif, canal)]
+        if cadence == 'apres_devis':
+            # Le filet du récepteur POURSUIT le plan (CAD1) : la touche
+            # suivante naît. SUIVI E6 (30/09/2026) — avec OU SANS devis dans
+            # l'ERP : un suivi sans devis (parti hors ERP) est poursuivi
+            # depuis son dernier barreau consommé, il ne pose plus l'étape
+            # devis à côté du suivant.
+            # SUIVI E22 (décision fondateur du 30/09/2026) — après la
+            # DERNIÈRE touche, jamais « Préparer et envoyer le devis » (il est
+            # déjà parti) ni « l'appeler » : le récepteur pose « Décider la
+            # suite », pour demain (``services.est_derniere_touche_du_suivi``,
+            # même critère de rang que ``derniere``). Le canal réel (SUIVI
+            # E16) n'y change rien.
+            return codes + ([ETAPE_DECIDER_SUITE] if derniere
+                            else [TOUCHE_SUIVANTE])
+        # Cadence générique (historique) : le filet pose son étape (rien
+        # d'ouvert, aucun devis relançable) ET, la cadence survivant à
+        # l'issue, la touche suivante naît aussi.
         if survit and not derniere:
             codes.append(TOUCHE_SUIVANTE)
-        return codes + [_filet_apres_reponse(etape, est_actif)]
+        return codes + [_filet_apres_reponse(etape, est_actif, canal)]
 
     if issue == OUTCOME_VISITE_ACCEPTEE:
         # 24/09/2026 — sur la prise de contact et le réveil, l'issue arrête
@@ -331,7 +526,7 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
         # qui sort aussi un dormant du Froid) ; partout, la seule suite est
         # l'étape « Planifier la visite technique convenue ».
         codes = [SORT_DU_FROID] if au_froid else []
-        if cadence == 'contact' and not survit:
+        if cadence in _CADENCES_PRISE_DE_CONTACT and not survit:
             codes.append(CONTACT_ARRETEE)
         if cadence == 'reveil' and not survit:
             codes.append(REVEILS_ARRETES)
@@ -341,8 +536,25 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif):
         if not derniere:
             return [TOUCHE_SUIVANTE_A_LA_DATE]
         if cadence == 'reveil':
-            return ([DERNIER_REVEIL_DATE_PERDUE] if au_froid
-                    else [ETAPE_DEVIS_A_LA_DATE_SAUF_SUIVI])
+            # SUIVI E17 (30/09/2026) — le DERNIER réveil : la date n'est plus
+            # perdue. Le dossier sort du Froid (s'il y est) et l'appel
+            # « Rappeler le client — rappel convenu » est posé à la date et
+            # à l'heure choisies (``services.est_dernier_reveil``, même
+            # critère de rang que ``derniere``).
+            return (([SORT_DU_FROID] if au_froid else [])
+                    + [ETAPE_RAPPEL_CONVENU_A_LA_DATE])
+        if (cadence in _CADENCES_PRISE_DE_CONTACT
+                or cadence == 'apres_devis'):
+            # SUIVI E23 (décision fondateur du 30/09/2026) — la DERNIÈRE
+            # touche de la prise de contact : plus « Préparer et envoyer le
+            # devis » à la date choisie, l'appel « Rappeler le client —
+            # rappel convenu » à la date et à l'heure convenues
+            # (``services.est_derniere_touche_de_contact``, même critère de
+            # rang que ``derniere``). SUIVI E24 — la deuxième affaire aussi.
+            # SUIVI E25 — et la dernière touche du suivi de proposition
+            # (``services.est_derniere_touche_du_suivi``) : le devis est déjà
+            # parti.
+            return [ETAPE_RAPPEL_CONVENU_A_LA_DATE]
         return [ETAPE_DEVIS_A_LA_DATE]
 
     # « pas de réponse » (et ses précisions Répondeur/Occupé/numéro invalide),
@@ -394,9 +606,20 @@ def _codes_filet(etape, issue, est_actif):
         # 24/09/2026 — la suite est de caler la visite, rien d'autre.
         return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
+        # SUIVI E10 — sur « proposer un créneau », le créneau convenu devient
+        # l'appel « rappel convenu » ; partout ailleurs (CAD3), l'étape est
+        # déplacée à la date.
+        if cle_de(etape) == CLE_MESSAGE_CRENEAU:
+            return [ETAPE_RAPPEL_CONVENU_A_LA_DATE]
         return [ETAPE_DEPLACEE_A_LA_DATE]
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
+    if issue in ('joint', 'interesse'):
+        # SUIVI-PARCOURS — « Client joint » sur une étape de filet : le
+        # récepteur MRY9 pose la suite selon le CANAL de la touche (message
+        # répondu → l'appeler ; appel abouti → le devis), sauf si le suivi
+        # d'un devis envoyé reprend.
+        return [_filet_apres_reponse_sauf_suivi(etape, est_actif)]
     palier = prochain_palier_sans_reponse(cle_de(etape), issue, est_actif)
     if palier == CLE_MESSAGE_CRENEAU:
         return [ETAPE_MESSAGE_CRENEAU]
@@ -405,19 +628,32 @@ def _codes_filet(etape, issue, est_actif):
     return [ETAPE_DEVIS_DEMAIN_SAUF_SUIVI]
 
 
-def _codes_a_cote_du_plan(issue, *, visite):
+def _codes_a_cote_du_plan(issue, *, visite, cle=''):
     """Une touche posée À CÔTÉ du plan en cours (geste de visite, passation) :
     ce qu'elle déclenche dépend de ce qui reste OUVERT à côté d'elle — d'où
-    des phrases conditionnelles, vérifiées dans chacune de leurs branches."""
+    des phrases conditionnelles, vérifiées dans chacune de leurs branches.
+    ``cle`` : la clé moteur de la touche (``cadence_config.cle_de``)."""
+    from .cadence_config import CLE_DEVIS_MODIFIE, CLE_PLANIFIER
     from .services import OUTCOME_VISITE_ACCEPTEE
 
     if issue == 'refuse':
         return [RELANCES_ARRETEES, ETAPE_DECIDER_SUITE]
+    if issue == '' and cle == CLE_DEVIS_MODIFIE:
+        # SUIVI E13 — « Devis modifié envoyé » : exactement l'étape devis,
+        # le dossier passe « Devis envoyé » et son suivi démarre (ou se
+        # poursuit).
+        return [SUIVI_PROPOSITION_DEMARRE]
+    if issue == 'non_joint' and cle == CLE_PLANIFIER:
+        # SUIVI E12 — le client a accepté la visite : on réessaie de caler
+        # la date demain, jamais le devis à la place.
+        return [ETAPE_PLANIFIER_DEMAIN]
     if issue == OUTCOME_VISITE_ACCEPTEE:
         return [ETAPE_PLANIFIER_VISITE]
     if issue == 'rappel':
-        return ([PROCHAINE_RELANCE_A_LA_DATE] if visite
-                else [ETAPE_DEPLACEE_A_LA_DATE])
+        # SUIVI E3 (30/09/2026) — « À rappeler le… » sur une étape de VISITE
+        # la DÉPLACE à la date, comme une étape de filet (CAD3) : la visite à
+        # planifier ou le débrief ne disparaît plus au profit du filet.
+        return [ETAPE_DEPLACEE_A_LA_DATE]
     # « pas de réponse », « Fait » sans issue ou saut (CAD47) : décision
     # fondateur du 24/09/2026, une étape de visite n'ÉPUISE plus la cadence
     # après-devis (plus de clôture MRY11 au Froid). Si rien d'autre n'est
@@ -431,10 +667,14 @@ def _codes_sauter(etape, *, nature, derniere, au_froid, est_actif):
     """CAD47 — ce que fait « Sauter » : le moteur clôt la touche SAUTÉE sans
     issue (``marquer_etape_relance``), et la suite est celle d'une touche
     close sans réponse — barreau suivant, clôture au Froid après la dernière,
-    filet sinon. Une exception, et elle se DIT : sauter l'étape « préparer et
-    envoyer le devis » vaut « devis parti » pour le moteur."""
+    filet sinon.
+
+    SUIVI E7 (30/09/2026) — sauter l'étape « préparer et envoyer le devis »
+    ne vaut PLUS « devis parti » : rien n'a été envoyé. La ceinture
+    anti-tapis-roulant du filet refuse de re-poser la touche close et pose
+    « Décider la suite »."""
     if nature == NATURE_ENVOI_DEVIS:
-        return [SUIVI_DEMARRE_SANS_ENVOI]
+        return [ETAPE_DECIDER_SUITE]
     if nature == NATURE_FILET:
         return _codes_filet(etape, '', est_actif)
     if nature in (NATURE_VISITE, NATURE_PASSATION):
@@ -447,11 +687,15 @@ def _codes_reponse_client(cle, *, nature, derniere):
     """Les RÉPONSES DU CLIENT (``REPONSES_TOUCHE``, CAD-A)."""
     from .services import (
         REPONSE_DECISION_FAMILLE, REPONSE_DECISION_PROPRIETAIRE,
-        REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PLUS_TARD,
-        REPONSE_QUESTION_PRIX)
+        REPONSE_DEVIS_MODIFIE, REPONSE_NE_PLUS_CONTACTER, REPONSE_PERDU,
+        REPONSE_PLUS_TARD, REPONSE_QUESTION_PRIX, REPONSE_VISITE_ABANDONNEE)
 
     if cle == REPONSE_NE_PLUS_CONTACTER:
         return [NE_PLUS_CONTACTER]
+    if cle == REPONSE_PERDU:
+        return [LEAD_PERDU]
+    if cle == REPONSE_VISITE_ABANDONNEE:
+        return [VISITE_ABANDONNEE, SUITE_SI_PLUS_RIEN_OUVERT]
     if cle == REPONSE_PLUS_TARD:
         return [VEILLE_MEME_TOUCHE]
     a_cote = nature in (NATURE_VISITE, NATURE_PASSATION)
@@ -464,14 +708,21 @@ def _codes_reponse_client(cle, *, nature, derniere):
         # mécanique ordinaire de la touche.
         if a_cote:
             return [ETIQUETTE_DECISION, SUITE_SI_PLUS_RIEN_OUVERT]
+        # SUIVI E25 (30/09/2026) — sur la DERNIÈRE touche du suivi de
+        # proposition (la seule cadence où la réponse est servie), jamais
+        # « Préparer et envoyer le devis » (déjà parti) : l'étiquette, puis
+        # « Décider la suite » pour demain
+        # (``services.repondre_decision_a_plusieurs``).
         return [ETIQUETTE_DECISION,
-                ETAPE_DEVIS_DEMAIN if derniere else TOUCHE_SUIVANTE]
+                ETAPE_DECIDER_SUITE if derniere else TOUCHE_SUIVANTE]
     return []
 
 
 def promesses_touche(etape, *, ordres=None, est_actif=None):
     """``{cle_de_reponse: [codes d'effet]}`` pour chaque réponse que le
-    panneau « Fait » propose sur ``etape``.
+    panneau « Fait » propose sur ``etape`` — les clés de ``cles_de_reponse``
+    (la table du parcours, SUIVI-PARCOURS), ``sauter`` compris quand l'étape
+    le propose.
 
     ``ordres`` : les barreaux actifs de sa cadence
     (``ordres_de_la_cadence``) — passé par le sérialiseur, qui les met en
@@ -480,8 +731,9 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
     en cache par société de la même façon. Une touche déjà traitée n'a plus
     de suite à annoncer : ``{}``."""
     from . import stages
+    from .cadence_config import cle_de
     from .models import RelanceEtape
-    from .services import REPONSES_TOUCHE
+    from .services import REPONSE_JOINT_TELEPHONE, REPONSES_TOUCHE
 
     if etape.statut != RelanceEtape.Statut.A_FAIRE:
         return {}
@@ -496,8 +748,20 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
                 and getattr(lead, 'stage', None) == stages.COLD)
 
     promesses = {}
-    for cle in cles_de_reponse(etape.cadence):
-        if cle in REPONSES_TOUCHE:
+    for cle in cles_de_reponse(etape):
+        if cle == CLE_SAUTER:
+            # CAD47 — le panneau « Sauter » dit lui aussi ce qu'il déclenche.
+            codes = _codes_sauter(
+                etape, nature=nature, derniere=derniere, au_froid=au_froid,
+                est_actif=est_actif)
+        elif cle == REPONSE_JOINT_TELEPHONE:
+            # SUIVI E16 — « Client joint au téléphone » : l'issue « joint »
+            # d'un APPEL abouti sur ce barreau (canal réel), jamais celle
+            # d'un message répondu.
+            codes = _codes_barreau(
+                etape, 'joint', derniere=derniere, au_froid=au_froid,
+                est_actif=est_actif, canal=RelanceEtape.Canal.APPEL)
+        elif cle in REPONSES_TOUCHE:
             codes = _codes_reponse_client(
                 cle, nature=nature, derniere=derniere)
         else:
@@ -508,16 +772,13 @@ def promesses_touche(etape, *, ordres=None, est_actif=None):
                 codes = _codes_filet(etape, issue, est_actif)
             elif nature in (NATURE_VISITE, NATURE_PASSATION):
                 codes = _codes_a_cote_du_plan(
-                    issue, visite=nature == NATURE_VISITE)
+                    issue, visite=nature == NATURE_VISITE,
+                    cle=cle_de(etape))
             else:
                 codes = _codes_barreau(
                     etape, issue, derniere=derniere, au_froid=au_froid,
                     est_actif=est_actif)
         promesses[cle] = codes
-    # CAD47 — le panneau « Sauter » dit lui aussi ce qu'il déclenche.
-    promesses[CLE_SAUTER] = _codes_sauter(
-        etape, nature=nature, derniere=derniere, au_froid=au_froid,
-        est_actif=est_actif)
     return promesses
 
 

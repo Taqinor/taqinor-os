@@ -452,7 +452,7 @@ MENTION_D7 : Orientation, inclinaison et ombrage servent au dossier et à la vis
 BANDEAU_PROFIL_SUPPOSE : Profil supposé, à confirmer
 EXPLICATION_PROFIL_SUPPOSE : La présence en journée n'a pas été posée : l'estimation suppose quelqu'un à la maison en journée. Posez cette question en premier.
 CONSIGNE_ISSUE : L'issue se saisit avec les réponses de la touche (« Fait ») : client joint, pas de réponse, répondeur, à rappeler, refus.
-ISSUE_VERROUILLEE : Touche à venir : l’issue se saisira à son échéance (« Fait » verrouillé).
+ISSUE_EN_AVANCE : Touche à venir : si vous venez d’appeler, saisissez l’issue maintenant — elle est enregistrée à la date d’aujourd’hui (« traitée en avance ») et le reste du suivi garde ses dates.
 AUCUNE_QUESTION : Rien à demander sur cet appel : tout ce que le script pose est déjà sur la fiche.
 CONSIGNE_CRENEAU : Si le client n'est pas disponible, proposez un rappel dans un de ces créneaux :
 RAMADAN_PAS_DE_SOIR : Ramadan : pas d'appel le soir. La journée d'appel s'arrête plus tôt — ne proposez aucun rappel après la fin de la fenêtre.

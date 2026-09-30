@@ -17,6 +17,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import RelanceEtapeRow from './RelanceEtapeRow'
+// SUIVI-PARCOURS (30/09/2026) — les questions viennent de la TABLE du
+// parcours, jamais retapées ici : si la table change, ce test suit.
+import { PARCOURS } from './parcours'
+
+const question = (id) => PARCOURS.etapes.find((e) => e.id === id).question
+const QUESTION_DEBRIEF = question('debrief')
+const QUESTION_PLANIFIER = question('planifier')
+const QUESTION_CONFIRMATION = question('confirmation')
+const QUESTION_DEVIS_MODIFIE = question('devis_modifie')
 
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn() }))
 // CAD10 — un clic sur une réponse « Refuse » charge les motifs de perte.
@@ -43,7 +52,7 @@ function ouvrirFait(etape) {
 describe('CAD2 — « Débrief visite » pose SA question, jamais celle du suivi de proposition', () => {
   it('question dédiée, « Intéressé » absent, « Visite acceptée » absent', () => {
     ouvrirFait(ETAPE_DEBRIEF)
-    expect(screen.getByText('La visite a-t-elle eu lieu ?')).toBeInTheDocument()
+    expect(screen.getByText(QUESTION_DEBRIEF)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intéressé' })).not.toBeInTheDocument()
     // « Visite acceptée » n'a de sens que sur le geste qui CALE la date
     // (« Planifier la visite technique convenue ») — jamais sur un débrief.
@@ -74,7 +83,7 @@ describe('CAD2 — les trois autres gestes de visite ont chacun leur propre ques
   it('« Planifier la visite technique convenue » : caler la date, « Visite acceptée » proposé', () => {
     const filet = { ...ETAPE_DEBRIEF, cle: 'planifier', libelle: 'Planifier la visite technique convenue' }
     ouvrirFait(filet)
-    expect(screen.getByText('La date du rendez-vous a-t-elle été calée ?')).toBeInTheDocument()
+    expect(screen.getByText(QUESTION_PLANIFIER)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Oui, la date est calée' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intéressé' })).not.toBeInTheDocument()
   })
@@ -82,7 +91,7 @@ describe('CAD2 — les trois autres gestes de visite ont chacun leur propre ques
   it('« Confirmer la visite (veille) » : le rendez-vous tient-il, jamais « Intéressé »', () => {
     const confirmation = { ...ETAPE_DEBRIEF, cle: 'confirmation', libelle: 'Confirmer la visite (veille)', canal: 'whatsapp' }
     ouvrirFait(confirmation)
-    expect(screen.getByText('Le rendez-vous de demain est-il confirmé ?')).toBeInTheDocument()
+    expect(screen.getByText(QUESTION_CONFIRMATION)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirmé — le rendez-vous tient' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intéressé' })).not.toBeInTheDocument()
   })
@@ -90,7 +99,7 @@ describe('CAD2 — les trois autres gestes de visite ont chacun leur propre ques
   it('« Préparer le devis modifié — rappeler le client » : sa propre question', () => {
     const devisModifie = { ...ETAPE_DEBRIEF, cle: 'devis_modifie', libelle: 'Préparer le devis modifié — rappeler le client' }
     ouvrirFait(devisModifie)
-    expect(screen.getByText('Le devis modifié est prêt : le client est-il rappelé ?')).toBeInTheDocument()
+    expect(screen.getByText(QUESTION_DEVIS_MODIFIE)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Intéressé' })).not.toBeInTheDocument()
   })
 

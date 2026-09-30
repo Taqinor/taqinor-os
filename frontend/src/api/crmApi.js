@@ -105,14 +105,19 @@ const crmApi = {
   // l'objet complet {note?, outcome?, body?, rappel_le?, rappel_heure?} du
   // mini-formulaire « Fait » (MRY10 : `outcome` déclenche les règles d'arrêt
   // de MRY9, `rappel_le`/`rappel_heure` reportent la touche suivante).
+  // SUIVI-BLOCAGE (30/09/2026) — `suppressErrorToast` : ces gestes sont gérés
+  // LOCALEMENT par la ligne (refus sous le champ fautif, rôle, réseau) et par
+  // ses parents ; le toast générique du pont axios (« Une erreur est
+  // survenue. ») venait EN PLUS et masquait le message exact.
   marquerRelanceEtapeFait: (id, payload) => {
     const body = typeof payload === 'string'
       ? (payload ? { note: payload } : {})
       : (payload || {})
-    return api.post(`/crm/relance-etapes/${id}/fait/`, body)
+    return api.post(`/crm/relance-etapes/${id}/fait/`, body, { suppressErrorToast: true })
   },
   marquerRelanceEtapeSautee: (id, note) =>
-    api.post(`/crm/relance-etapes/${id}/sauter/`, note ? { note } : {}),
+    api.post(`/crm/relance-etapes/${id}/sauter/`, note ? { note } : {},
+      { suppressErrorToast: true }),
   // RLC2 — le journal « ce qui s'est passé » du plan de relance d'un lead +
   // son état courant en une phrase. LECTURE PURE (le sélecteur serveur n'écrit
   // rien). Forme : `contract_samples/journal_relance.json` (PACT10).
@@ -150,7 +155,8 @@ const crmApi = {
   // au lieu du décalage historique ; absent, le corps est inchangé.
   reporterRelanceEtape: (id, { rappel_le, rappel_heure, mode }) =>
     api.post(`/crm/relance-etapes/${id}/reporter/`,
-      mode ? { rappel_le, rappel_heure, mode } : { rappel_le, rappel_heure }),
+      mode ? { rappel_le, rappel_heure, mode } : { rappel_le, rappel_heure },
+      { suppressErrorToast: true }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),
@@ -426,8 +432,13 @@ const crmApi = {
   // SectionVisite (liste réelle + CTA planifier) et le panneau de coaching
   // « Proposer la visite » (features/crm/relances/PanneauProposerVisite.jsx).
   getLeadVisites: (leadId) => api.get(`/crm/leads/${leadId}/visites/`),
+  // SUIVI-PARCOURS — `payload` porte aussi `etape` (la touche qui a demandé
+  // la planification : le serveur la clôt « visite acceptée » avec
+  // `note_etape`) et `replanifier` (déplacer la visite existante). Réponse :
+  // `{visite, prochaine_touche}` (contrat `lead_visite_planifier`). Erreurs
+  // gérées par la modale (sous le champ) — jamais le toast générique en plus.
   planifierVisiteLead: (leadId, payload) =>
-    api.post(`/crm/leads/${leadId}/visites/planifier/`, payload),
+    api.post(`/crm/leads/${leadId}/visites/planifier/`, payload, { suppressErrorToast: true }),
   // Message WhatsApp prêt (proposition/confirmation de visite) — MÊME patron
   // que `getRelanceEtapeMessage` (aperçu avant ouverture, jamais un envoi) ;
   // `cle`: 'visite_proposition' | 'visite_confirmation'.
@@ -468,9 +479,11 @@ const crmApi = {
       form.append('type_piece', type_piece)
       if (note) form.append('note', note)
       form.append('fichier', fichier)
-      return api.post(url, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      return api.post(url, form, {
+        headers: { 'Content-Type': 'multipart/form-data' }, suppressErrorToast: true,
+      })
     }
-    return api.post(url, note ? { type_piece, note } : { type_piece })
+    return api.post(url, note ? { type_piece, note } : { type_piece }, { suppressErrorToast: true })
   },
   // CAD111 — le message de VISITE vient d'être ouvert dans WhatsApp :
   // journalisé « ouvert » (jamais « fait ») au chatter, en best-effort APRÈS

@@ -196,7 +196,11 @@ class RefusNommeTests(_Base):
             statut=RelanceEtape.Statut.FAIT)
         resp = self._repondre(etape)
         self.assertEqual(resp.status_code, 400)
-        self.assertIn('reponse', resp.data['erreurs'])
+        # SUIVI E8 (30/09/2026) — le refus NOMME la touche déjà traitée
+        # (`etape`), même quand le corps porte une réponse : c'est la ligne
+        # qu'il faut recharger, pas la réponse qu'il faut changer.
+        self.assertIn('etape', resp.data['erreurs'])
+        self.assertNotIn('reponse', resp.data['erreurs'])
         self.lead.refresh_from_db()
         self.assertFalse(self.lead.ne_plus_contacter)
 

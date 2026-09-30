@@ -10,6 +10,15 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import RelanceEtapeRow from './RelanceEtapeRow'
+// SUIVI-PARCOURS (30/09/2026) — les questions viennent de la TABLE du
+// parcours, jamais retapées ici : si la table change, ce test suit.
+import { PARCOURS } from './parcours'
+
+const question = (id) => PARCOURS.etapes.find((e) => e.id === id).question
+const QUESTION_DEBRIEF = question('debrief')
+const QUESTION_PLANIFIER = question('planifier')
+const QUESTION_CONFIRMATION = question('confirmation')
+const QUESTION_DEVIS_MODIFIE = question('devis_modifie')
 
 vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
 vi.mock('../../../api/crmApi', () => ({
@@ -59,7 +68,7 @@ describe('PARAM-CADENCE — E8, la clé prime sur le libellé', () => {
     // sur la question générique de la cadence `apres_devis`.
     ligne({ ...DEBRIEF, cle: 'debrief', libelle: 'Rappeler après la visite (renommé)' })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    expect(screen.getByText('La visite a-t-elle eu lieu ?')).toBeInTheDocument()
+    expect(screen.getByText(QUESTION_DEBRIEF)).toBeInTheDocument()
     expect(screen.queryByText('Réponse du client sur la proposition ?')).not.toBeInTheDocument()
   })
 
@@ -69,6 +78,6 @@ describe('PARAM-CADENCE — E8, la clé prime sur le libellé', () => {
     // l'identique — aucune régression du comportement CAD2 existant.
     ligne({ ...DEBRIEF, cle: '' })
     fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    expect(screen.getByText('La visite a-t-elle eu lieu ?')).toBeInTheDocument()
+    expect(screen.getByText(QUESTION_DEBRIEF)).toBeInTheDocument()
   })
 })
