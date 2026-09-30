@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Check, SkipForward, Phone, MessageCircle, Clock3, ChevronDown, ChevronRight,
   Copy, Mail, Paperclip,
@@ -560,9 +560,14 @@ export default function RelanceEtapeRow({
 
   // CAD10 — lecture paresseuse des motifs, au geste (jamais dans un effet) :
   // un échec laisse simplement la liste vide — le motif est FACULTATIF.
+  // Vérification réelle du 30/09/2026 (fenêtre « Appeler », mobile) : la liste
+  // restait `[]` pendant la lecture et l'écran affichait « Aucun motif de perte
+  // n'est paramétré » avant même la réponse du serveur. `motifs` reste `null`
+  // tant que rien n'est lu ; la garde anti-double-lecture est une ref.
+  const motifsDemandes = useRef(false)
   const chargerMotifs = () => {
-    if (motifs !== null) return
-    setMotifs([])
+    if (motifsDemandes.current) return
+    motifsDemandes.current = true
     Promise.resolve()
       .then(() => crmApi.getMotifsPerte())
       .then((r) => setMotifs(
