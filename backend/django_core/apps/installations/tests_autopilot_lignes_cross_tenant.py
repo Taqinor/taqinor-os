@@ -17,7 +17,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.crm.models import Client
 from apps.stock.models import EmplacementStock, Produit
 from apps.installations.models import (
-    Installation, Livraison, RetourLivraison, RetourLivraisonLigne,
+    Installation, Kit, Livraison, OrdreDemontage, OrdreDemontageLigne,
+    RetourLivraison, RetourLivraisonLigne,
 )
 
 User = get_user_model()
@@ -96,3 +97,53 @@ class TestRetourLivraisonLigneCrossTenant(TestCase):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertTrue(
             RetourLivraisonLigne.objects.filter(retour=self.retour_a).exists())
+
+
+def make_ordre(company, statut=OrdreDemontage.Statut.PLANIFIE):
+    n = next(_seq)
+    composite = make_produit(company, nom=f'Coffret {n}', stock=5)
+    kit = Kit.objects.create(
+        company=company, nom=f'Kit {n}', produit_compose=composite)
+    return OrdreDemontage.objects.create(
+        company=company, reference=f'DSM-LCT-{n}', kit=kit, quantite=1,
+        statut=statut)
+
+
+class TestOrdreDemontageLigneCrossTenant(TestCase):
+    """ERR116 — POST d'une ligne sur l'ordre d'une autre société, ou sur un
+    ordre qui n'est plus planifié → 400."""
+
+    def setUp(self):
+        self.co_a = make_company()
+        self.co_b = make_company()
+        self.api_a = auth(make_user(self.co_a))
+        self.produit_a = make_produit(self.co_a, nom='Composant A')
+
+    def _post(self, ordre):
+        return self.api_a.post(f'{BASE}/ordre-demontage-lignes/', {
+            'ordre': ordre.id, 'produit': self.produit_a.id,
+            'designation': 'Ligne', 'quantite_recuperee': 1,
+        }, format='json')
+
+    def test_create_sur_ordre_autre_societe_refuse(self):
+        ordre_b = make_ordre(self.co_b)
+        resp = self._post(ordre_b)
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('ordre', resp.data)
+        self.assertFalse(
+            OrdreDemontageLigne.objects.filter(ordre=ordre_b).exists())
+
+    def test_create_sur_ordre_termine_refuse(self):
+        ordre = make_ordre(self.co_a, statut=OrdreDemontage.Statut.TERMINE)
+        resp = self._post(ordre)
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('ordre', resp.data)
+        self.assertFalse(
+            OrdreDemontageLigne.objects.filter(ordre=ordre).exists())
+
+    def test_create_sur_ordre_planifie_meme_societe_ok(self):
+        ordre = make_ordre(self.co_a)
+        resp = self._post(ordre)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(
+            OrdreDemontageLigne.objects.filter(ordre=ordre).exists())
