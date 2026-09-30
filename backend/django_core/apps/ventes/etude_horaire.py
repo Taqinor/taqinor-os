@@ -3033,6 +3033,45 @@ def part_non_solarisable(charges_fixes_mad=None, *,
     }
 
 
+def profil_conso_du_devis(devis, *, bills=None, tranches=None,
+                          charges_fixes_mad=None):
+    """ERR-QAC-CONSO-KWH-SAISI-DEUX-DERIVATIONS — LA consommation d'un devis,
+    résolue UNE fois, avec les MÊMES arguments partout.
+
+    Le bloc horaire (:func:`_etude_horaire_pour_devis`) passait à
+    :func:`profil_depuis_factures` le kWh mensuel DÉCLARÉ du lead (CAD166,
+    priorité « 1 bis ») et le barème de la SOCIÉTÉ, pendant que
+    ``domain.entrees.entrees_depuis_devis`` — qui nourrit le dimensionnement
+    ET l'empreinte des blocs — ne passait ni l'un ni l'autre : un devis
+    DIMENSIONNÉ sur ses 12 factures était CHIFFRÉ sur 46 kWh/mois
+    (DEV-202609-0082, économie ÷600), et le bloc faux restait « frais » pour
+    toujours puisque l'empreinte ne voyait jamais le kWh. Les deux appelants
+    passent désormais par ici.
+
+    ``bills`` : le dict de ``crm.selectors.lead_bills_for_devis`` quand
+    l'appelant l'a déjà lu (sinon lu ici). Rend
+    ``(kwh_mensuels | None, source, detail)`` — lecture pure, aucune écriture.
+    """
+    from apps.crm.selectors import (
+        conso_mensuelle_kwh_pour_devis, lead_bills_for_devis)
+    if bills is None:
+        bills = lead_bills_for_devis(devis) or {}
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    # CAD166 — les kWh DÉCLARÉS sur la fiche priment sur les dirhams inversés
+    # au barème (décision fondateur du 21/09/2026). Lecture cross-app par un
+    # sélecteur DISTINCT de ``lead_bills_for_devis`` : ce dernier n'existe que
+    # s'il y a une facture d'hiver, alors que le dossier pro visé n'a souvent
+    # QUE des kWh.
+    return profil_depuis_factures(
+        facture_hiver_mad=bills.get('facture_hiver'),
+        facture_ete_mad=bills.get('facture_ete'),
+        ete_differente=bills.get('ete_differente'),
+        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
+        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'),
+        conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis),
+        tranches=tranches, charges_fixes_mad=charges_fixes_mad)
+
+
 def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
                               occupation=None, jour_reference=None):
     """Cœur de :func:`etude_horaire_pour_devis` (exceptions gérées au-dessus)."""
@@ -3050,24 +3089,14 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     company = getattr(devis, 'company', None)
     tranches, charges_fixes = _reglages_tarifaires(company)
 
-    etude_params = getattr(devis, 'etude_params', None) or {}
-    factures_mensuelles = etude_params.get('factures_mensuelles_reelles')
-
     bills = lead_bills_for_devis(devis) or {}
-    # CAD166 — les kWh DÉCLARÉS sur la fiche arrivent enfin jusqu'ici, et
-    # priment sur les dirhams inversés au barème (décision fondateur du
-    # 21/09/2026). Lecture cross-app par un sélecteur DISTINCT de
-    # ``lead_bills_for_devis`` : ce dernier n'existe que s'il y a une facture
-    # d'hiver, alors que le dossier pro visé n'a souvent QUE des kWh.
-    from apps.crm.selectors import conso_mensuelle_kwh_pour_devis
-    conso, source_conso, detail_conso = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=factures_mensuelles,
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'),
-        conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis),
-        tranches=tranches, charges_fixes_mad=charges_fixes)
+    # ERR-QAC-CONSO-KWH-SAISI-DEUX-DERIVATIONS — LA résolution unique de la
+    # consommation d'un devis (mêmes arguments pour le bloc horaire, le
+    # dimensionnement ET l'empreinte ``domain.entrees``) : voir
+    # :func:`profil_conso_du_devis`.
+    conso, source_conso, detail_conso = profil_conso_du_devis(
+        devis, bills=bills, tranches=tranches,
+        charges_fixes_mad=charges_fixes)
     if not conso:
         return None
 
