@@ -43,9 +43,10 @@ import { safeGet, safeSet } from '../../lib/safeStorage'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
-  comparaisonPrecedent, decimal, dureeAttente, heureCasa, jjmm, jourCourt, jourLong, joursOuvres,
-  libelleJour, libelleReponse, nomType, nombre, noteJoursOuvres, numeroJour, phraseAnnulees,
-  phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee, phraseResultats, pl,
+  MOTS_NIVEAU, comparaisonPrecedent, decimal, dureeAttente, heureCasa, jjmm, jourCourt, jourLong,
+  joursOuvres, libelleJour, libelleReponse, lignesLecture, nomType, nombre, noteJoursOuvres,
+  numeroJour, phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
+  phraseResultats, pl, seuil,
 } from './controleSuiviTexte'
 
 const PERIODES = [
@@ -65,21 +66,21 @@ const lireDetailOuvert = () => safeGet(CLE_DETAIL) === true
 // forme portent le sens ; la teinte ne fait que l'appuyer.
 const NIVEAUX = {
   ok: {
-    glyphe: '●', mot: 'Tout est à jour',
+    glyphe: '●', mot: MOTS_NIVEAU.ok,
     bande: 'border-success/40 bg-success/10', texte: 'text-success',
   },
   attention: {
-    glyphe: '◆', mot: 'À surveiller',
+    glyphe: '◆', mot: MOTS_NIVEAU.attention,
     bande: 'border-warning/50 bg-warning/10', texte: 'text-warning-text',
   },
   // « Action requise » et non « En retard » : le niveau peut venir d'un dossier
   // sans prochaine étape ou d'un premier contact hors délai, pas d'un retard.
   alerte: {
-    glyphe: '▲', mot: 'Action requise',
+    glyphe: '▲', mot: MOTS_NIVEAU.alerte,
     bande: 'border-destructive/40 bg-destructive/10', texte: 'text-destructive',
   },
   vide: {
-    glyphe: '–', mot: 'Pas encore de données',
+    glyphe: '–', mot: MOTS_NIVEAU.vide,
     bande: 'border-border bg-muted/50', texte: 'text-muted-foreground',
   },
 }
@@ -425,10 +426,6 @@ function Frise({ donnees, ownerId, navigate }) {
 }
 
 // ── Exceptions : « À traiter en priorité » ─────────────────────────────────
-/** Un seuil SERVI par le serveur (`seuils.*`) ou `null` : un libellé ne dit jamais
- *  un nombre que le serveur n'a pas servi, ni un nombre écrit dans le code. */
-const seuil = (seuils, cle) => (Number.isFinite(seuils?.[cle]) ? seuils[cle] : null)
-
 // Ordre = celui du contrat. `titre(seuils)` dit CE que la liste contient, avec les
 // seuils servis (`seuils.tache_attente_jours`, `reports_min`, `premier_contact_heures`) ;
 // `detail` dit ce qui rend la ligne exceptionnelle, avec les nombres servis par le
@@ -707,6 +704,40 @@ function PremierContactEtResultats({ donnees }) {
   )
 }
 
+// ── Comment lire ce bloc ───────────────────────────────────────────────────
+/** Un dépliant discret, fermé par défaut, en bas du détail : ce que veulent dire les mots
+ *  du bloc. Les phrases (et les seuils SERVIS qu'elles citent) viennent de `lignesLecture`. */
+function CommentLire({ seuils }) {
+  const [ouvert, setOuvert] = useState(false)
+  const id = useId()
+  const lignes = lignesLecture(seuils)
+  return (
+    <section data-testid="controle-comment-lire">
+      <h4 className="text-xs font-medium text-muted-foreground">
+        <button
+          type="button" aria-expanded={ouvert} aria-controls={id} onClick={() => setOuvert((o) => !o)}
+          className="focus-ring flex items-center gap-1.5 rounded-md py-1 text-left hover:text-foreground"
+        >
+          {ouvert
+            ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
+            : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
+          Comment lire ce bloc
+        </button>
+      </h4>
+      {ouvert && (
+        <ul id={id} className="mt-1 flex flex-col gap-1 text-xs text-muted-foreground">
+          {lignes.map((ligne) => (
+            <li key={ligne.cle} data-testid={`controle-lecture-${ligne.cle}`}>
+              {ligne.terme && <span className="font-medium text-foreground">{ligne.terme} : </span>}
+              {ligne.texte}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 /** Le bandeau qui arrive : le verdict et la phrase de la période (même hauteur). */
 function Squelette() {
   return (
@@ -872,6 +903,7 @@ export default function ControleSuiviPanel() {
                 <Exceptions exceptions={donnees.exceptions} seuils={donnees.seuils} navigate={navigate} />
                 <DetailParEtape parType={donnees.par_type} />
                 <PremierContactEtResultats donnees={donnees} />
+                <CommentLire seuils={donnees.seuils} />
               </div>
             ) : chargement ? (
               <SqueletteDetail />

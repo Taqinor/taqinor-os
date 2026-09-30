@@ -1329,3 +1329,123 @@ describe('ControleSuiviPanel — détail repliable (replié par défaut, mémori
     await waitFor(() => expect(screen.queryByTestId('controle-commercial-actif')).not.toBeInTheDocument())
   })
 })
+
+describe('ControleSuiviPanel — « Comment lire ce bloc »', () => {
+  const ouvrir = () => screen.getByRole('button', { name: 'Comment lire ce bloc' })
+  /** Les lignes du dépliant, une fois ouvert (texte complet de chaque `li`). */
+  const lignes = () => {
+    const liste = document.getElementById(ouvrir().getAttribute('aria-controls'))
+    return within(liste).getAllByRole('listitem').map((li) => li.textContent)
+  }
+  const avecSeuils = (seuils) => variante({ seuils })
+
+  it('fermé par défaut (aria-expanded), au BAS du détail — après les résultats', async () => {
+    monter()
+    await attendreVerdict()
+    expect(ouvrir()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('controle-lecture-a_temps')).not.toBeInTheDocument()
+    const section = screen.getByTestId('controle-comment-lire')
+    expect(within(screen.getByTestId('controle-detail-corps')).getByTestId('controle-comment-lire'))
+      .toBe(section)
+    for (const id of ['controle-frise', 'controle-exceptions', 'controle-detail', 'controle-premier-contact', 'controle-resultats']) {
+      expect(screen.getByTestId(id).compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING)
+        .toBeTruthy()
+    }
+  })
+
+  it('détail replié : pas de dépliant (il vit dans le détail)', async () => {
+    monter({ detail: null })
+    await attendreVerdict()
+    expect(screen.queryByTestId('controle-comment-lire')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Comment lire ce bloc' })).not.toBeInTheDocument()
+  })
+
+  it('ouvert : sept lignes courtes, dans l\'ordre, les seuils de l\'exemple dans la dernière', async () => {
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(ouvrir()).toHaveAttribute('aria-expanded', 'true')
+    // Les seuils de l'exemple du contrat : 2 jours d'alerte, 2 d'attente, 2 reports.
+    expect(CONTROLE.seuils).toMatchObject({ retard_alerte_jours: 2, tache_attente_jours: 2, reports_min: 2 })
+    expect(lignes()).toEqual([
+      'À temps : traitée au plus tard le jour de son échéance.',
+      'Traitée en retard : traitée après le jour de son échéance.',
+      'Sautée : passée volontairement (« Sauter »).',
+      'Toujours en retard : pas encore traitée, au moins un jour ouvré après son échéance.',
+      'Reportée : échéance repoussée par la commerciale (« Reporter », « Mettre en veille ») — l\'échéance d\'origine reste affichée.',
+      'Week-ends, jours fériés et absences déclarées ne comptent pas dans les retards ; '
+        + 'les étapes annulées par le moteur (client joint, devis accepté…) ne comptent ni pour ni contre.',
+      '« Action requise » : un retard de 2 jours ouvrés ou plus, un dossier sans prochaine étape ou un premier contact hors délai. '
+        + '« À surveiller » : un retard, une tâche en attente depuis 2 jours ouvrés, ou une étape reportée 2 fois.',
+    ])
+    fireEvent.click(ouvrir())
+    expect(ouvrir()).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('controle-lecture-a_temps')).not.toBeInTheDocument()
+  })
+
+  it('les seuils sont LUS dans `seuils` : un autre serveur, d\'autres nombres (et l\'accord)', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+      ...CONTROLE.seuils, retard_alerte_jours: 5, tache_attente_jours: 3, reports_min: 4,
+    }))
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    const dernier = lignes()[6]
+    expect(dernier).toContain('un retard de 5 jours ouvrés ou plus')
+    expect(dernier).toContain('une tâche en attente depuis 3 jours ouvrés')
+    expect(dernier).toContain('une étape reportée 4 fois')
+    expect(dernier).not.toMatch(/\b2\b/)
+  })
+
+  it('« 1 jour ouvré » au singulier', async () => {
+    crmApi.getControleSuivi.mockResolvedValue(avecSeuils({
+      ...CONTROLE.seuils, retard_alerte_jours: 1, tache_attente_jours: 1,
+    }))
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(lignes()[6]).toContain('un retard de 1 jour ouvré ou plus')
+    expect(lignes()[6]).toContain('une tâche en attente depuis 1 jour ouvré,')
+  })
+
+  it('un seuil qui manque : la ligne qui le cite n\'est pas affichée (les six autres restent)', async () => {
+    for (const manquant of ['retard_alerte_jours', 'tache_attente_jours', 'reports_min']) {
+      const { [manquant]: _omis, ...seuils } = CONTROLE.seuils
+      crmApi.getControleSuivi.mockResolvedValue(avecSeuils(seuils))
+      const { unmount } = monter()
+      await attendreVerdict()
+      fireEvent.click(ouvrir())
+      const textes = lignes()
+      expect(textes, manquant).toHaveLength(6)
+      expect(textes.join(' ')).not.toContain('Action requise')
+      unmount()
+    }
+  })
+
+  it('aucun bloc `seuils` : six lignes, aucun nombre écrit à la place', async () => {
+    const { seuils: _omis, ...sansSeuils } = CONTROLE
+    crmApi.getControleSuivi.mockResolvedValue({ data: sansSeuils })
+    monter()
+    await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(lignes()).toHaveLength(6)
+    expect(lignes().join(' ')).not.toMatch(/\d/)
+  })
+
+  it('les mots des niveaux sont ceux du bandeau (une seule source)', async () => {
+    // Niveau « attention » (exemple) puis « alerte » (exemple_alerte) : le mot affiché dans
+    // le bandeau figure aussi, à l'identique, dans la dernière ligne du dépliant.
+    monter()
+    const attention = await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(attention).toHaveTextContent('À surveiller')
+    expect(lignes()[6]).toContain('« À surveiller »')
+    cleanup()
+    crmApi.getControleSuivi.mockResolvedValue({ data: ALERTE })
+    monter()
+    const alerte = await attendreVerdict()
+    fireEvent.click(ouvrir())
+    expect(alerte).toHaveTextContent('Action requise')
+    expect(lignes()[6]).toContain('« Action requise »')
+  })
+})

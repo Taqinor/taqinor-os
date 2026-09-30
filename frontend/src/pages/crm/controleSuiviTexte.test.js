@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours'
 import {
-  LIBELLES_ISSUE, comparaisonPrecedent, decimal, duree, dureeAttente, familleType, heureCasa, jjmm, jourCourt,
-  jourLong, joursOuvres, libelleJour, libelleReponse, nomType, noteJoursOuvres, numeroJour,
-  phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
-  phraseResultats, pl, typeDeLaTable, typeEstTache,
+  LIBELLES_ISSUE, MOTS_NIVEAU, comparaisonPrecedent, decimal, duree, dureeAttente, familleType, heureCasa,
+  jjmm, jourCourt, jourLong, joursOuvres, libelleJour, libelleReponse, lignesLecture, nomType,
+  noteJoursOuvres, numeroJour, phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact,
+  phraseReportee, phraseResultats, pl, seuil, typeDeLaTable, typeEstTache,
 } from './controleSuiviTexte'
 
 /* COCKPIT-CONTRÔLE — les phrases du bloc « Contrôle du suivi », en fonctions
@@ -202,6 +202,61 @@ describe('libelleJour (nom accessible d\'une case)', () => {
       .toBe('mardi 29 septembre (jour non ouvré) : rien de dû')
     expect(libelleJour(jour({ aujourdhui: true, du: 2, ouvert: 2 })))
       .toBe('mardi 29 septembre (aujourd\'hui) : 2 dues, 2 encore ouvertes')
+  })
+})
+
+describe('seuil et MOTS_NIVEAU', () => {
+  it('seuil : le nombre SERVI, sinon null (jamais un défaut écrit ici)', () => {
+    expect(seuil(CONTROLE.seuils, 'reports_min')).toBe(2)
+    expect(seuil({ reports_min: 0 }, 'reports_min')).toBe(0)
+    expect(seuil({}, 'reports_min')).toBe(null)
+    expect(seuil(undefined, 'reports_min')).toBe(null)
+    expect(seuil({ reports_min: 'deux' }, 'reports_min')).toBe(null)
+  })
+
+  it('MOTS_NIVEAU : les quatre mots du verdict', () => {
+    expect(MOTS_NIVEAU).toEqual({
+      ok: 'Tout est à jour',
+      attention: 'À surveiller',
+      alerte: 'Action requise',
+      vide: 'Pas encore de données',
+    })
+  })
+})
+
+describe('lignesLecture (« Comment lire ce bloc »)', () => {
+  it('sept lignes, dans l\'ordre : cinq mots définis puis deux phrases', () => {
+    const lignes = lignesLecture(CONTROLE.seuils)
+    expect(lignes.map((l) => l.cle)).toEqual([
+      'a_temps', 'en_retard', 'sautee', 'ouvert', 'reportee', 'jours_non_comptes', 'niveaux',
+    ])
+    expect(lignes.map((l) => l.terme)).toEqual([
+      'À temps', 'Traitée en retard', 'Sautée', 'Toujours en retard', 'Reportée', null, null,
+    ])
+  })
+
+  it('la dernière ligne cite les seuils SERVIS, avec l\'accord de « jour ouvré »', () => {
+    const niveaux = (seuils) => lignesLecture(seuils).find((l) => l.cle === 'niveaux').texte
+    expect(niveaux(CONTROLE.seuils)).toBe(
+      '« Action requise » : un retard de 2 jours ouvrés ou plus, un dossier sans prochaine étape '
+      + 'ou un premier contact hors délai. « À surveiller » : un retard, une tâche en attente '
+      + 'depuis 2 jours ouvrés, ou une étape reportée 2 fois.')
+    expect(niveaux({ retard_alerte_jours: 1, tache_attente_jours: 5, reports_min: 3 })).toBe(
+      '« Action requise » : un retard de 1 jour ouvré ou plus, un dossier sans prochaine étape '
+      + 'ou un premier contact hors délai. « À surveiller » : un retard, une tâche en attente '
+      + 'depuis 5 jours ouvrés, ou une étape reportée 3 fois.')
+  })
+
+  it('un seuil qui manque (ou un bloc `seuils` absent) : la dernière ligne n\'est pas affichée', () => {
+    expect(lignesLecture(CONTROLE.seuils)).toHaveLength(7)
+    expect(lignesLecture({ ...CONTROLE.seuils, reports_min: null })).toHaveLength(6)
+    expect(lignesLecture({ retard_alerte_jours: 2, tache_attente_jours: 2 })).toHaveLength(6)
+    expect(lignesLecture(undefined)).toHaveLength(6)
+    expect(lignesLecture(null).some((l) => l.cle === 'niveaux')).toBe(false)
+  })
+
+  it('les six premières lignes n\'écrivent aucun nombre', () => {
+    lignesLecture(undefined).forEach((l) => expect(l.texte, l.cle).not.toMatch(/\d/))
   })
 })
 

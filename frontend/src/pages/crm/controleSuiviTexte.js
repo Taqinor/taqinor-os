@@ -36,6 +36,59 @@ export const phraseReportee = (n) => `reportée ${nombre(n)} fois`
 export const phraseAnnulees = (n) =>
   `${nombre(n)} ${pl(n, 'étape annulée', 'étapes annulées')} par le moteur — hors compte`
 
+/** Un seuil SERVI par le serveur (`seuils.*`) ou `null` : un libellé ne dit jamais
+ *  un nombre que le serveur n'a pas servi, ni un nombre écrit dans le code. */
+export const seuil = (seuils, cle) => (Number.isFinite(seuils?.[cle]) ? seuils[cle] : null)
+
+/** Les mots des niveaux du verdict — UNE source, lue par le bandeau et par « Comment
+ *  lire ce bloc » : ils ne peuvent pas diverger. */
+export const MOTS_NIVEAU = {
+  ok: 'Tout est à jour',
+  attention: 'À surveiller',
+  alerte: 'Action requise',
+  vide: 'Pas encore de données',
+}
+
+/** « Comment lire ce bloc » : les sept lignes, dans l'ordre. `terme` = le mot défini
+ *  (`null` pour une phrase entière). Les seuils viennent de `seuils` (servis) : jamais un
+ *  nombre écrit ici, et une ligne dont un seuil manque n'est pas affichée. */
+export function lignesLecture(seuils) {
+  const alerte = seuil(seuils, 'retard_alerte_jours')
+  const attente = seuil(seuils, 'tache_attente_jours')
+  const reports = seuil(seuils, 'reports_min')
+  const lignes = [
+    { cle: 'a_temps', terme: 'À temps', texte: 'traitée au plus tard le jour de son échéance.' },
+    { cle: 'en_retard', terme: 'Traitée en retard', texte: 'traitée après le jour de son échéance.' },
+    { cle: 'sautee', terme: 'Sautée', texte: 'passée volontairement (« Sauter »).' },
+    {
+      cle: 'ouvert',
+      terme: 'Toujours en retard',
+      texte: 'pas encore traitée, au moins un jour ouvré après son échéance.',
+    },
+    {
+      cle: 'reportee',
+      terme: 'Reportée',
+      texte: "échéance repoussée par la commerciale (« Reporter », « Mettre en veille ») — l'échéance d'origine reste affichée.",
+    },
+    {
+      cle: 'jours_non_comptes',
+      terme: null,
+      texte: 'Week-ends, jours fériés et absences déclarées ne comptent pas dans les retards ; '
+        + 'les étapes annulées par le moteur (client joint, devis accepté…) ne comptent ni pour ni contre.',
+    },
+  ]
+  if (alerte !== null && attente !== null && reports !== null) {
+    lignes.push({
+      cle: 'niveaux',
+      terme: null,
+      texte: `« ${MOTS_NIVEAU.alerte} » : un retard de ${joursOuvres(alerte)} ou plus, un dossier sans `
+        + `prochaine étape ou un premier contact hors délai. « ${MOTS_NIVEAU.attention} » : un retard, `
+        + `une tâche en attente depuis ${joursOuvres(attente)}, ou une étape reportée ${nombre(reports)} fois.`,
+    })
+  }
+  return lignes
+}
+
 /** La note du bas de « À traiter en priorité » : le seuil d'alerte SERVI, en jours
  *  ouvrés, puis — dès qu'une liste de retard ou d'attente est affichée — ce qui ne
  *  compte pas. `null` s'il n'y a rien à dire. */
