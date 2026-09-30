@@ -218,6 +218,13 @@ export function documentTerrain(saisie, reponse) {
     terrainSlopeDeg: nombre(saisie.penteTerrainDeg),
     rowAzimuthDeg: nombre(saisie.rowAzimuthDeg),
     tiltDeg: nombre(saisie.tiltDeg),
+    // ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie MODULE voyageait
+    // vers le moteur mais n'était jamais persistée : à la réouverture, les
+    // quatre champs revenaient vides (et le kWc du champ restait inconnu).
+    moduleLongM: nombre(saisie.moduleLongM),
+    moduleCourtM: nombre(saisie.moduleCourtM),
+    moduleWc: nombre(saisie.puissanceWc),
+    modulesParTable: nombre(saisie.modulesParTable),
     engine: {
       modules: Number.isFinite(Number(plan?.modules)) ? Number(plan.modules) : null,
       rowPitchM: pasMesure(plan?.rangees),
@@ -393,6 +400,11 @@ const CHAMPS = [
   ['alleeM', 'Allée imposée entre rangées (m) — vide = politique du moteur'],
 ]
 
+/** Valeur persistée → texte du champ ; absente ⇒ la saisie courante reste. */
+function relu(valeur, courant) {
+  return valeur === null || valeur === undefined ? courant : String(valeur)
+}
+
 function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
 }
@@ -451,6 +463,11 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
             ? s.rowAzimuthDeg : String(sol.rowAzimuthDeg),
           tiltDeg: sol.tiltDeg === null || sol.tiltDeg === undefined
             ? s.tiltDeg : String(sol.tiltDeg),
+          // ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module revient.
+          moduleLongM: relu(sol.moduleLongM, s.moduleLongM),
+          moduleCourtM: relu(sol.moduleCourtM, s.moduleCourtM),
+          puissanceWc: relu(sol.moduleWc, s.puissanceWc),
+          modulesParTable: relu(sol.modulesParTable, s.modulesParTable),
         }))
         // Le plan RECHARGÉ est celui du moteur : on le réaffiche sans le refaire.
         setReponse({

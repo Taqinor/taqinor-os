@@ -498,3 +498,34 @@ describe('ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — l’axe n’est plus codé en 
     })
   })
 })
+
+/* ── ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE ───────────────────────────── */
+
+describe('ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — la saisie module survit au rechargement', () => {
+  it('la surface persistée porte les dimensions, la puissance et les modules par table', () => {
+    const s = documentTerrain(SAISIE, REPONSE)
+    expect(s.moduleLongM).toBe(2.278)
+    expect(s.moduleCourtM).toBe(1.134)
+    expect(s.moduleWc).toBe(720)
+    expect(s.modulesParTable).toBe(2)
+  })
+
+  it('une saisie module absente est persistée `null`, jamais 0', () => {
+    const s = documentTerrain({ ...SAISIE, puissanceWc: '', modulesParTable: '' }, REPONSE)
+    expect(s.moduleWc).toBeNull()
+    expect(s.modulesParTable).toBeNull()
+  })
+
+  it('RECHARGE : les quatre champs module reviennent remplis', async () => {
+    layout.mockResolvedValue({
+      data: { roof_layout: { zones: [], poseSurfaces: [documentTerrain(SAISIE, REPONSE)] } },
+    })
+    monter()
+    await waitFor(() => {
+      expect(screen.getByTestId('cal-terrain-moduleLongM').value).toBe('2.278')
+    })
+    expect(screen.getByTestId('cal-terrain-moduleCourtM').value).toBe('1.134')
+    expect(screen.getByTestId('cal-terrain-puissanceWc').value).toBe('720')
+    expect(screen.getByTestId('cal-terrain-modulesParTable').value).toBe('2')
+  })
+})

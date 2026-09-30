@@ -1379,6 +1379,38 @@
             "null"
           ]
         },
+        "moduleLongM": {
+          "description": "ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — module, GRAND côté (m), SAISI et envoyé au moteur (`kits[].module_long_m`). Relu tel quel à la réouverture ; `null` = non renseigné.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "moduleCourtM": {
+          "description": "ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — module, PETIT côté (m), SAISI (`kits[].module_court_m`). `null` = non renseigné.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "moduleWc": {
+          "description": "ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — puissance crête du module (Wc), SAISIE (`kits[].puissance_module_wc`). C'est elle qui rend le kWc de la surface mesurable (modules posés × Wc) ; `null` = non renseignée, jamais une puissance supposée.",
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "modulesParTable": {
+          "description": "ERR-QAH-CALEPINAGE-SOL-MODULE-NON-PERSISTE — modules par table, SAISI (`kits[].modules_par_table`). `null` = non renseigné.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
         "clearHeightM": {
           "description": "CAL91 — HAUTEUR LIBRE sous l'ombrière (m), SAISIE. `null` = non renseignée : la couverture n'est alors PAS posée à une hauteur supposée, elle reste au sol et l'écran le dit. Ne concerne pas `kind: \"sol\"`.",
           "type": [
