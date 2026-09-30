@@ -137,8 +137,14 @@ describe('SUIVI-REFUS — « Reporter » refusé par le serveur', () => {
     ouvrirReporter()
     confirmer()
     expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
-    confirmer()
-    await waitFor(() => expect(onReporter).toHaveBeenCalledTimes(2))
+    // Le 2e envoi part une fois le rendu du refus stabilisé : un clic lancé
+    // pendant ce rendu s'est perdu une fois en CI (lane vitest 4, 30/09/2026)
+    // sans jamais se reproduire en local — `waitFor` rejoue le clic tant que
+    // l'envoi n'est pas parti, ce qui reste la preuve attendue (2 envois).
+    await waitFor(() => {
+      confirmer()
+      expect(onReporter).toHaveBeenCalledTimes(2)
+    })
     await waitFor(() => expect(screen.queryByLabelText('Reporter au')).not.toBeInTheDocument())
     expect(screen.queryByTestId('erreur-outcome')).not.toBeInTheDocument()
   })

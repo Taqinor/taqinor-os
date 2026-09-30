@@ -347,10 +347,16 @@ class ParcoursBase(TestCase):
         la pile d'horloges gelées ne se picklent pas — sans ceci, le premier sous-test
         rouge faisait planter le lanceur (« Can't pickle local object … inner », CI du
         30/09/2026) au lieu d'imprimer le chemin du cas. Copie allégée, l'instance vivante
-        garde tout."""
+        garde tout. Django envoie AUSSI les instances aux processus (``--parallel`` :
+        les sous-suites sont picklées AVANT ``setUp``) : les attributs d'unittest restent
+        présents, vidés — sans quoi ``doCleanups`` plantait (« no attribute _cleanups »)."""
         etat = self.__dict__.copy()
-        for cle in ('api', '_pile', '_cleanups', '_outcome'):
+        for cle in ('api', '_pile'):
             etat.pop(cle, None)
+        if '_cleanups' in etat:
+            etat['_cleanups'] = []
+        if '_outcome' in etat:
+            etat['_outcome'] = None
         return etat
 
     def setUp(self):
