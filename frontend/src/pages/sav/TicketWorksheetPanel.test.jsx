@@ -9,6 +9,7 @@ const sav = vi.hoisted(() => ({
   creerTicketWorksheet: vi.fn(() => Promise.resolve({ data: {} })),
   updateTicketWorksheet: vi.fn(),
   getWorksheetModeles: vi.fn(() => Promise.resolve({ data: [] })),
+  getSlaSettings: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../api/savApi', () => ({ default: sav }))
 
@@ -84,5 +85,12 @@ describe('TicketWorksheetPanel (WIR119)', () => {
     await waitFor(() => expect(sav.updateTicketWorksheet).toHaveBeenCalledWith(
       1, expect.objectContaining({ valeurs: { pression: '5' }, complete: true })))
     expect(await screen.findByText('Complétée')).toBeInTheDocument()
+  })
+
+  it('ERR-QAH-SAV-WORKSHEET-PROBE-404 — fonctionnalité OFF : aucune requête worksheet', async () => {
+    sav.getSlaSettings.mockResolvedValueOnce({ data: { worksheets_maintenance_actifs: false } })
+    render(<TicketWorksheetPanel ticketId={1} />)
+    expect(await screen.findByText(/ne sont pas activées/)).toBeInTheDocument()
+    expect(sav.getTicketWorksheet).not.toHaveBeenCalled()
   })
 })

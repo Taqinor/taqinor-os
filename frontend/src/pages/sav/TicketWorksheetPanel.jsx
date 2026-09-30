@@ -84,9 +84,20 @@ export default function TicketWorksheetPanel({ ticketId }) {
       setLoading(false)
       return () => { cancelled = true }
     }
-    savApi.getTicketWorksheet(ticketId)
+    // ERR-QAH-SAV-WORKSHEET-PROBE-404 — on lit d'abord le drapeau société
+    // (`worksheets_maintenance_actifs`) : OFF → aucune requête worksheet (donc
+    // plus de 404 + erreur console à chaque ouverture de ticket). Si les
+    // réglages sont illisibles/absents, on retombe sur le comportement d'origine.
+    const settings = savApi.getSlaSettings
+      ? savApi.getSlaSettings().catch(() => null)
+      : Promise.resolve(null)
+    settings
+      .then((s) => (s?.data?.worksheets_maintenance_actifs === false
+        ? { off: true }
+        : savApi.getTicketWorksheet(ticketId)))
       .then((r) => {
         if (cancelled) return
+        if (r.off) { setFeatureOff(true); return }
         setWorksheet(r.data)
         setValeurs(r.data?.valeurs ?? {})
         loadModeles()
