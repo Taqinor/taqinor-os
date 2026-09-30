@@ -417,7 +417,8 @@ export default function CategoriesStock() {
                       </Select>
                     </td>
                     <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                      {nbProduitsParCategorie[c.id] ?? 0}
+                      {/* ERR-QAH-STOCK-CATEGORIES-COMPTE-ZERO — compteur SERVEUR d'abord. */}
+                      {c.nb_produits ?? nbProduitsParCategorie[c.id] ?? 0}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">

@@ -23,6 +23,8 @@ import { ChartTooltip } from './ChartTooltip.jsx'
      barSize     : épaisseur de barre
      name        : libellé série (infobulle)
      tooltipFormat : (value, name, entry) => string
+     allowDecimals : graduations décimales sur l'axe des valeurs (défaut false ;
+                     à activer pour des moyennes < 1, sinon la barre est écrasée)
 */
 export function BarArrondie({
   data = [],
@@ -36,6 +38,7 @@ export function BarArrondie({
   name = '',
   tooltipFormat,
   categoryWidth = 90,
+  allowDecimals = false,
   margin = { top: 4, right: 8, bottom: 0, left: 0 },
 }) {
   const color = resolveColor(tone)
@@ -45,20 +48,25 @@ export function BarArrondie({
 
   const axisTick = { fontSize: 11, fill: CHART_TOKENS.axis }
 
+  // ERR-QAH-STOCK-GRAPHES-PILOTAGE-VIDES — JAMAIS de fragment `<>` autour des
+  // axes : recharts 2 repère ses enfants via `react-is.isFragment`, et le
+  // `react-is` 18 installé ne reconnaît pas un fragment React 19 → axes
+  // ignorés, barres horizontales hors cadre (y négatif), aucun libellé.
+  // Un TABLEAU d'éléments à clés est aplati correctement.
+  const axes = horizontalBars
+    ? [
+      <XAxis key="x" type="number" allowDecimals={allowDecimals} tick={axisTick} tickLine={false} axisLine={false} />,
+      <YAxis key="y" type="category" dataKey={categoryKey} width={categoryWidth} tick={axisTick} tickLine={false} axisLine={false} />,
+    ]
+    : [
+      <XAxis key="x" dataKey={categoryKey} tick={axisTick} tickLine={false} axisLine={false} />,
+      <YAxis key="y" allowDecimals={allowDecimals} hide />,
+    ]
+
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout={layout} margin={margin}>
-        {horizontalBars ? (
-          <>
-            <XAxis type="number" allowDecimals={false} tick={axisTick} tickLine={false} axisLine={false} />
-            <YAxis type="category" dataKey={categoryKey} width={categoryWidth} tick={axisTick} tickLine={false} axisLine={false} />
-          </>
-        ) : (
-          <>
-            <XAxis dataKey={categoryKey} tick={axisTick} tickLine={false} axisLine={false} />
-            <YAxis allowDecimals={false} hide />
-          </>
-        )}
+        {axes}
         <Tooltip
           cursor={{ fill: 'var(--muted)' }}
           content={<ChartTooltip format={tooltipFormat} />}

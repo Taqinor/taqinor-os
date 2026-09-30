@@ -52,6 +52,14 @@ class CategorieViewSet(CompanyScopedModelViewSet):
     # colonne non indexée sinon possible.
     ordering_fields = ['nom', 'ordre', 'type_equipement']
 
+    def get_queryset(self):
+        # ERR-QAH-STOCK-CATEGORIES-COMPTE-ZERO — nombre de produits non
+        # archivés par catégorie, en UNE requête (pas de N+1 sur la liste).
+        from django.db.models import Q
+        return super().get_queryset().annotate(
+            nb_produits_annot=Count(
+                'produits', filter=Q(produits__is_archived=False)))
+
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]

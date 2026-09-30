@@ -2450,7 +2450,7 @@ def produits_a_reapprovisionner(company):
     Chaque item : {produit_id, nom, quantite_stock, seuil_alerte,
     quantite_suggere, disponible, en_commande, fournisseur_id,
     fournisseur_nom, prix_achat, action, kit_id}. ``quantite_suggere`` est
-    NETTE du pipeline déjà en route (0 → produit exclu du tout : ce qui
+    NETTE du disponible ET du pipeline déjà en route (0 → produit exclu du tout : ce qui
     arrive déjà suffit). ``action`` = 'assembler' (kit_id renseigné) quand le
     produit sous seuil est le ``produit_compose`` d'un kit ACTIF
     (`installations.Kit`, XMFG3) — la suggestion devient « assembler N »
@@ -2522,15 +2522,15 @@ def produits_a_reapprovisionner(company):
                 .first())
         cible = cible_effective if cible_effective else (
             (seuil_effectif or 0) * 2)
-        # FG54 (historique) — la quantité SUGGÉRÉE reste la CIBLE pleine
-        # (comportement byte-identique préservé : `quantite_suggere` ==
-        # `quantite_reappro_cible`/`seuil × 2` quand rien n'est en pipeline).
-        # YPROC9 ne déduit QUE le pipeline déjà en commande (`en_commande`) —
-        # jamais le disponible courant, qui sert uniquement à la porte
-        # d'inclusion ci-dessus — pour ne pas re-suggérer ce qui est déjà en
-        # route. Une quantité suggérée nette <= 0 exclut le produit (rien à
-        # recommander, ce qui arrive déjà suffit).
-        qte_suggere = max(cible - en_commande, 0)
+        # ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — la quantité SUGGÉRÉE est ce
+        # qu'il MANQUE pour atteindre la cible : cible − disponible (stock −
+        # réservations) − pipeline déjà en commande (YPROC9). Avant, elle
+        # valait la cible PLEINE (12 pour stock 2 / seuil 6) alors que la ligne
+        # produit disait « commander ~10 » : deux quantités pour un même
+        # produit, et un BCF auto qui sur-commandait le stock déjà présent.
+        # Une quantité nette <= 0 exclut le produit (ce qui est là + ce qui
+        # arrive suffit).
+        qte_suggere = max(cible - disponible - en_commande, 0)
         if qte_suggere <= 0:
             continue
         kit_id = kit_map.get(p.id)

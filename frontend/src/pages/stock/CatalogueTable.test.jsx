@@ -274,12 +274,27 @@ describe('APX19 — reassort en <= 2 clics', () => {
       produits: [sousSeuil()], canWrite: false, onInlineSave: null,
       onToggleSelect: null, onReapprovisionner,
     })
-    // Suggestion = 2x seuil - stock = 10 - 3 = 7.
-    const boutons = screen.getAllByLabelText(/Réapprovisionner \(commander ~7\)/)
+    // ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — meme formule que l'API
+    // a-reapprovisionner : 2x seuil - disponible - en commande = 10 - 1 - 0 = 9.
+    const boutons = screen.getAllByLabelText(/Réapprovisionner \(commander ~9\)/)
     expect(boutons.length).toBeGreaterThan(0)
     fireEvent.click(boutons[0])
     expect(onReapprovisionner).toHaveBeenCalledTimes(1)
     expect(onReapprovisionner.mock.calls[0][0].id).toBe(11)
+  })
+
+  it('la quantite suggeree deduit aussi le deja-en-commande (ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE)', () => {
+    // Cas du constat : stock 2 / seuil 6 -> API 12 - 2 = 10 ; ici 4 deja en
+    // commande -> 12 - 2 - 4 = 6, identique a quantite_suggere de l'API.
+    renderTable({
+      produits: [sousSeuil({
+        quantite_stock: 2, quantite_reservee: 0, quantite_disponible: 2,
+        seuil_alerte: 6, quantite_en_commande: 4,
+      })],
+      canWrite: false, onInlineSave: null, onToggleSelect: null,
+      onReapprovisionner: () => {},
+    })
+    expect(screen.getAllByLabelText(/Réapprovisionner \(commander ~6\)/).length).toBeGreaterThan(0)
   })
 
   it('aucun reassort propose sur un produit sain', () => {

@@ -142,7 +142,8 @@ class TestReapproHorsSaisonInchange(Xstk17Base):
             mock_now.return_value = datetime.datetime(2026, 1, 15)
             besoins = produits_a_reapprovisionner(self.company)
         item = next(b for b in besoins if b['produit_id'] == produit.id)
-        self.assertEqual(item['quantite_suggere'], 10)  # seuil × 2 (inchangé)
+        # seuil × 2 − stock (ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE)
+        self.assertEqual(item['quantite_suggere'], 8)
 
     def test_produit_seuil_zero_reste_exclu_hors_saison(self):
         Produit.objects.create(
@@ -167,7 +168,8 @@ class TestReapproEnSaison(Xstk17Base):
         item = next(
             (b for b in besoins if b['produit_id'] == produit.id), None)
         self.assertIsNotNone(item)
-        self.assertEqual(item['quantite_suggere'], 25)
+        # cible saisonnière 25 − stock 8 (ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE)
+        self.assertEqual(item['quantite_suggere'], 17)
 
     def test_profil_categorie_couvre_tous_ses_produits(self):
         p1 = Produit.objects.create(

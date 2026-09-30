@@ -177,14 +177,17 @@ class TestFG54Reappro(TestCase):
         from apps.stock.services import produits_a_reapprovisionner
         besoins = produits_a_reapprovisionner(self.company)
         item = next(b for b in besoins if b['produit_id'] == self.produit_bas.id)
-        self.assertEqual(item['quantite_suggere'], 20)
+        # ERR-QAH-STOCK-REAPPRO-QTE-INCOHERENTE — cible 20 − stock 2.
+        self.assertEqual(item['quantite_suggere'], 18)
 
     def test_quantite_suggere_default_seuil_x2(self):
-        """Sans quantite_reappro_cible, suggère seuil × 2."""
+        """Sans quantite_reappro_cible, vise seuil × 2 moins le stock présent."""
         from apps.stock.services import produits_a_reapprovisionner
         besoins = produits_a_reapprovisionner(self.company)
         item = next(b for b in besoins if b['produit_id'] == self.produit_bas.id)
-        self.assertEqual(item['quantite_suggere'], self.produit_bas.seuil_alerte * 2)
+        self.assertEqual(
+            item['quantite_suggere'],
+            self.produit_bas.seuil_alerte * 2 - self.produit_bas.quantite_stock)
 
     def test_generer_bcf_reappro_creates_bcf(self):
         r = self.client.post(

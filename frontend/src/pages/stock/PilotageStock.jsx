@@ -49,6 +49,15 @@ const fmtDateFR = (iso) => {
 
 const MAX_LIGNES = 8
 
+// ERR-QAH-STOCK-GRAPHES-PILOTAGE-VIDES — libellé d'axe COURT (la carte fait
+// ~270 px : un « nom (SKU) » complet débordait à gauche, hors du SVG, et la
+// barre restait sans libellé). Le libellé complet reste dans les mini-tables.
+const MAX_LIBELLE_AXE = 16
+const libelleAxe = (p) => {
+  const brut = String(p?.nom ?? p?.sku ?? '—')
+  return brut.length > MAX_LIBELLE_AXE ? `${brut.slice(0, MAX_LIBELLE_AXE - 1)}…` : brut
+}
+
 // Tableau compact d'un rapport (état chargement / erreur / vide gérés ici),
 // rendu sur le moteur mini-DataTable une fois les données prêtes.
 function SectionRapport({ section, columns, getRowId, emptyLabel, footer = null, ariaLabel }) {
@@ -304,7 +313,7 @@ export default function PilotageStock({ onBcfGenere }) {
     return [...rows]
       .sort((a, b) => (b.quantite_suggere ?? 0) - (a.quantite_suggere ?? 0))
       .slice(0, 5)
-      .map((p) => ({ label: p.sku ? `${p.nom} (${p.sku})` : p.nom, value: p.quantite_suggere ?? 0 }))
+      .map((p) => ({ label: libelleAxe(p), value: Number(p.quantite_suggere ?? 0) }))
   }, [reappro.data])
 
   // VX148 — top 5 consommation mensuelle moyenne (barres horizontales) :
@@ -315,7 +324,7 @@ export default function PilotageStock({ onBcfGenere }) {
     return [...rows]
       .sort((a, b) => (b.consommation_mensuelle_moy ?? 0) - (a.consommation_mensuelle_moy ?? 0))
       .slice(0, 5)
-      .map((p) => ({ label: p.sku ? `${p.nom} (${p.sku})` : p.nom, value: p.consommation_mensuelle_moy ?? 0 }))
+      .map((p) => ({ label: libelleAxe(p), value: Number(p.consommation_mensuelle_moy ?? 0) }))
   }, [previsions.data])
 
   // VX33 — donut rotation actif/ralenti/immobile : mêmes compteurs que le KPI
@@ -420,6 +429,7 @@ export default function PilotageStock({ onBcfGenere }) {
         <BarArrondie
           data={top5Reappro} categoryKey="label" dataKey="value"
           tone="warning" layout="vertical" height={200} name="Qté suggérée"
+          categoryWidth={110}
         />
       ),
     },
@@ -449,6 +459,7 @@ export default function PilotageStock({ onBcfGenere }) {
         <BarArrondie
           data={top5Previsions} categoryKey="label" dataKey="value"
           tone="info" layout="vertical" height={200} name="Conso / mois"
+          allowDecimals categoryWidth={110}
         />
       ),
     },
