@@ -2171,6 +2171,10 @@ _CLOTURE_PLAFOND = {
     'apres_devis': stages.FOLLOW_UP,
 }
 
+#: SUIVI E19 — le motif écrit sur une étape de filet annulée parce que le
+#: dossier part au parking Froid (``cloturer_cadence``).
+MOTIF_PARQUE_AU_FROID = 'dossier parqué au Froid'
+
 
 def cloturer_cadence(lead, user, cadence):
     """MRY11 — Fin de cadence : dormance COLD, étiquette, réveils J30/J60.
@@ -2211,6 +2215,16 @@ def cloturer_cadence(lead, user, cadence):
         tag = _CLOTURE_TAGS.get(cadence)
         if tag:
             poser_tag_lead(lead, user, tag)
+        # SUIVI E19 (30/09/2026) — une étape de FILET encore ouverte (cadence
+        # ``generique`` : « Appeler le client », « Question de prix »,
+        # « Rappeler le client (il l'a demandé) »…) BLOQUAIT les réveils :
+        # ``initialiser_plan_relance`` levait ``CadenceActiveConflit`` (une
+        # seule cadence à la fois, CADX), avalé plus bas — et le lead restait
+        # au Froid SANS aucun réveil. Le dossier est parqué : ces étapes
+        # n'ont plus d'objet, elles sont annulées (statut moteur, motif
+        # tracé) AVANT de poser les réveils.
+        arreter_cadence(lead, user=user, motif=MOTIF_PARQUE_AU_FROID,
+                        cadences=['generique'])
         initialiser_plan_relance(
             lead, user, cadence='reveil', depart=timezone.now())
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
