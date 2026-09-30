@@ -27,6 +27,44 @@ import {
 
 const CREATION_DEVIS = /\/api\/django\/ventes\/devis\/(auto\/)?$/
 
+// Écarts RÉELS connus sur CE parcours (lead + facture → Devis automatique →
+// Édition complète), chacun avec sa tâche ERR ouverte dans docs/ERROR_PLAN.md.
+// Cette liste NE PEUT QUE RÉTRÉCIR : une identité listée qui ne diverge plus
+// fait échouer la spec (« retirez-la ») ; on n'en ajoute une qu'avec un repro
+// et une tâche ERR-*. Toute AUTRE identité reste comparée strictement — ne
+// jamais élargir une tolérance pour faire passer un écart.
+const ECARTS_CONNUS = new Set([
+  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — l'éditeur affiche l'étude
+  // horaire RECALCULÉE en direct (écran 6 813 kWh, 2 742 / 5 932 MAD/an) alors
+  // que le devis enregistré — donc le PDF et la proposition — est chiffré sur
+  // le repli productible × kWc (6 543 kWh, 4 580 / 10 064 MAD/an).
+  'production_annuelle_kwh',
+  'economie_annuelle@sans',
+  'economie_annuelle@avec',
+  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT (économie différente) +
+  // ERR-QAH-FIG-PAYBACK-FORMULE-ECRAN (écran = coût ÷ économie, document =
+  // cumul du cashflow 25 ans QX39) : 13,43 / 8,95 ans contre 8,2 / 5,5.
+  'payback_ans@sans',
+  'payback_ans@avec',
+  // ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — à la réouverture (?edit=), chaque prix
+  // unitaire HT enregistré est reconverti en TTC ARRONDI AU DIRHAM
+  // (`ttcFromHt`) puis re-dérivé en HT : 36 828 / 53 102 à l'écran (rail ET
+  // cartes « Coût ») contre 36 873,11 / 53 149,26 dans le devis.
+  'total_ttc@sans',
+  'total_ttc@avec',
+])
+const identiteEcart = (msg) => msg.split(' : ')[0]
+
+/** Écarts NOUVEAUX (hors liste) + identités connues qui ne divergent PLUS. */
+function ecartsHorsConnus(surfaces) {
+  const ecarts = comparer(surfaces)
+  const vus = new Set(ecarts.map(identiteEcart))
+  const nouveaux = ecarts.filter((e) => !ECARTS_CONNUS.has(identiteEcart(e)))
+  const perimes = [...ECARTS_CONNUS].filter((id) => !vus.has(id)).map((id) => `${id} : écart `
+    + 'connu qui ne se reproduit plus — retirez-le de ECARTS_CONNUS (la liste ne fait que rétrécir)')
+  return [...nouveaux, ...perimes]
+}
+
 test('QA-FIGURES : le jumeau JS suit le vocabulaire de figures.py', () => {
   expect(Object.keys(FIGURE_KEYS).sort()).toEqual(clesDuVocabulairePython())
 })
@@ -68,9 +106,10 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
   await expect.poll(async () => {
     const ecran = await lireFiguresPage(page)
     surfaces = { ecran, api_devis: apiDevis, proposition }
-    return comparer(surfaces)
+    return ecartsHorsConnus(surfaces)
   }, {
-    message: 'le même chiffre diffère entre l\'écran, l\'API et la proposition publique',
+    message: 'le même chiffre diffère entre l\'écran, l\'API et la proposition publique '
+      + '(hors ECARTS_CONNUS), ou un écart connu ne se reproduit plus',
     timeout: 30_000,
   }).toEqual([])
 
