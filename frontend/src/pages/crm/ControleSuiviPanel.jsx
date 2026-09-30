@@ -626,19 +626,19 @@ function DetailParEtape({ parType }) {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th scope="col" className="py-1 pr-2 font-medium">Étape</th>
-                  <th scope="col" className="px-1.5 py-1 text-right font-medium">Dues</th>
-                  <th scope="col" className="px-1.5 py-1 text-right font-medium">À temps</th>
-                  <th scope="col" className="px-1.5 py-1 text-right font-medium">Traitées en retard</th>
-                  <th scope="col" className="px-1.5 py-1 text-right font-medium">Sautées</th>
-                  <th scope="col" className="px-1.5 py-1 text-right font-medium">Toujours en retard</th>
-                  <th scope="col" className="py-1 pl-1.5 text-right font-medium">Reportées</th>
+                <tr className="border-b border-border text-muted-foreground">
+                  <th scope="col" className="px-1 py-1 text-right font-medium sm:px-2">Dues</th>
+                  <th scope="col" className="px-1 py-1 text-right font-medium sm:px-2">À temps</th>
+                  <th scope="col" className="px-1 py-1 text-right font-medium sm:px-2">Traitées en retard</th>
+                  <th scope="col" className="px-1 py-1 text-right font-medium sm:px-2">Sautées</th>
+                  <th scope="col" className="px-1 py-1 text-right font-medium sm:px-2">Toujours en retard</th>
+                  <th scope="col" className="px-1 py-1 text-right font-medium sm:px-2">Reportées</th>
                 </tr>
               </thead>
-              {/* Un <tbody> par type : la ligne des chiffres, puis — pleine largeur,
-                  pour ne pas écraser le nom sur un téléphone — la ligne des
-                  réponses en pastilles. */}
+              {/* Un <tbody> par type : le nom de l'étape sur sa propre ligne pleine
+                  largeur (sept colonnes ne tiennent pas dans 375 px : le nom en
+                  colonne poussait le tableau à défiler de côté), puis la ligne des
+                  six chiffres, puis la ligne des réponses en pastilles. */}
               {parType.map((ligne) => {
                 const nom = nomType(ligne.type_etape) || ligne.type_etape
                 return (
@@ -646,21 +646,23 @@ function DetailParEtape({ parType }) {
                     key={ligne.type_etape} data-testid={`controle-type-${ligne.type_etape}`}
                     className="border-b border-border/50"
                   >
-                    <tr className="align-top">
-                      <th scope="row" className="pb-1 pr-2 pt-1.5 text-left font-normal">
+                    <tr>
+                      <th scope="row" colSpan={6} className="px-1 pb-0.5 pt-2 text-left font-normal sm:px-2">
                         <span className="font-medium">{nom}</span>
                         {ligne.est_tache && <Badge tone="primary" className="ml-1.5">Tâche</Badge>}
                       </th>
-                      <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.du)}</td>
-                      <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.a_temps)}</td>
-                      <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.en_retard)}</td>
-                      <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.sautees)}</td>
-                      <td className="px-1.5 pb-1 pt-1.5 text-right tabular-nums">{nombre(ligne.ouvert)}</td>
-                      <td className="pb-1 pl-1.5 pt-1.5 text-right tabular-nums">{nombre(ligne.reportees)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-1 pb-1 text-right tabular-nums sm:px-2">{nombre(ligne.du)}</td>
+                      <td className="px-1 pb-1 text-right tabular-nums sm:px-2">{nombre(ligne.a_temps)}</td>
+                      <td className="px-1 pb-1 text-right tabular-nums sm:px-2">{nombre(ligne.en_retard)}</td>
+                      <td className="px-1 pb-1 text-right tabular-nums sm:px-2">{nombre(ligne.sautees)}</td>
+                      <td className="px-1 pb-1 text-right tabular-nums sm:px-2">{nombre(ligne.ouvert)}</td>
+                      <td className="px-1 pb-1 text-right tabular-nums sm:px-2">{nombre(ligne.reportees)}</td>
                     </tr>
                     {ligne.reponses?.length > 0 && (
                       <tr>
-                        <td colSpan={7} className="pb-1.5">
+                        <td colSpan={6} className="px-1 pb-1.5 sm:px-2">
                           <ul className="flex flex-wrap gap-1" aria-label={`Réponses — ${nom}`}>
                             {ligne.reponses.map((r) => (
                               <li key={r.cle}>

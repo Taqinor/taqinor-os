@@ -928,9 +928,11 @@ describe('ControleSuiviPanel — détail par étape', () => {
     const contact = screen.getByTestId('controle-type-contact_appel')
     const nom = PARCOURS.etapes.find((t) => t.id === 'contact_appel').nom
     expect(within(contact).getByRole('rowheader')).toHaveTextContent(nom)
-    // La première ligne du type porte ses six compteurs (dues, à temps, traitées
-    // en retard, sautées, toujours en retard, reportées) ; la seconde, ses réponses.
-    const [chiffres] = within(contact).getAllByRole('row')
+    // Trois lignes par type : son nom (pleine largeur), ses six compteurs (dues, à
+    // temps, traitées en retard, sautées, toujours en retard, reportées), ses réponses.
+    const [ligneNom, chiffres] = within(contact).getAllByRole('row')
+    expect(within(ligneNom).getByRole('rowheader')).toHaveTextContent(nom)
+    expect(within(ligneNom).queryAllByRole('cell')).toHaveLength(0)
     expect(within(chiffres).getAllByRole('cell').map((c) => c.textContent))
       .toEqual(['14', '12', '1', '1', '0', '2'])
     expect(within(contact).queryByText('Tâche')).not.toBeInTheDocument()
@@ -939,7 +941,7 @@ describe('ControleSuiviPanel — détail par étape', () => {
     expect(within(devis).getByRole('rowheader'))
       .toHaveTextContent(PARCOURS.etapes.find((t) => t.id === 'devis').nom)
     expect(within(devis).getByText('Tâche')).toBeInTheDocument()
-    expect(within(within(devis).getAllByRole('row')[0]).getAllByRole('cell').map((c) => c.textContent))
+    expect(within(within(devis).getAllByRole('row')[1]).getAllByRole('cell').map((c) => c.textContent))
       .toEqual(['5', '3', '1', '0', '1', '1'])
   })
 
@@ -949,18 +951,20 @@ describe('ControleSuiviPanel — détail par étape', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
     const entetes = within(screen.getByRole('table')).getAllByRole('columnheader')
       .map((th) => th.textContent)
+    // Le nom de l'étape n'est pas une colonne : il ouvre la ligne de chaque type.
     expect(entetes).toEqual([
-      'Étape', 'Dues', 'À temps', 'Traitées en retard', 'Sautées', 'Toujours en retard', 'Reportées',
+      'Dues', 'À temps', 'Traitées en retard', 'Sautées', 'Toujours en retard', 'Reportées',
     ])
   })
 
-  it('la ligne des réponses couvre les sept colonnes, et la note du tableau tient en une phrase', async () => {
+  it('le nom et les réponses couvrent les six colonnes, et la note du tableau tient en une phrase', async () => {
     monter()
     await attendreVerdict()
     fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
     const contact = within(screen.getByTestId('controle-type-contact_appel'))
-    const reponses = contact.getAllByRole('row')[1]
-    expect(within(reponses).getAllByRole('cell')[0]).toHaveAttribute('colspan', '7')
+    expect(contact.getByRole('rowheader')).toHaveAttribute('colspan', '6')
+    const reponses = contact.getAllByRole('row')[2]
+    expect(within(reponses).getAllByRole('cell')[0]).toHaveAttribute('colspan', '6')
     const note = within(screen.getByTestId('controle-detail')).getByText(/Traitées en retard : /)
     expect(note.textContent).toBe(
       'Traitées en retard : faites après leur jour ; toujours en retard : pas encore faites alors que '
@@ -976,7 +980,7 @@ describe('ControleSuiviPanel — détail par étape', () => {
     await attendreVerdict()
     fireEvent.click(screen.getByRole('button', { name: 'Détail par étape' }))
     const contact = screen.getByTestId('controle-type-contact_appel')
-    expect(within(within(contact).getAllByRole('row')[0]).getAllByRole('cell').map((c) => c.textContent))
+    expect(within(within(contact).getAllByRole('row')[1]).getAllByRole('cell').map((c) => c.textContent))
       .toEqual(['14', '12', '1', '1', '0', '—'])
   })
 
