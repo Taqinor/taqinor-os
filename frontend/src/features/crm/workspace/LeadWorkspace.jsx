@@ -389,6 +389,9 @@ export default function LeadWorkspace({
         return setDevisPanel(intent.mode || 'auto')
       }
       case 'view-devis': setPanelDevisId(payload); return setDevisPanel('view')
+      // QJR534 — « Modifier » une carte devis : ouvre le panneau en phase
+      // `edit` SUR CE devis (existingDevisId), plus un nouveau devis.
+      case 'edit-devis': setPanelDevisId(payload); return setDevisPanel('edit')
       // LW16-wire — édition rapide du rail (responsable/relance) : un simple
       // SET_FIELD, débouncé/flushé par le moteur comme toute autre frappe.
       case 'set-field': return setField(payload.key, payload.value)
@@ -914,7 +917,7 @@ export default function LeadWorkspace({
         <LeadDevisPanel
           lead={state.server}
           mode={devisPanel}
-          existingDevisId={devisPanel === 'view' ? panelDevisId : null}
+          existingDevisId={(devisPanel === 'view' || devisPanel === 'edit') ? panelDevisId : null}
           targetKwc={devisKwc}
           onDevisChanged={draft.refreshServer}
           onClose={() => { setDevisPanel(null); setPanelDevisId(null); setDevisKwc(null); draft.refreshServer() }}

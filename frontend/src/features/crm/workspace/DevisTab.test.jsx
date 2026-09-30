@@ -3,6 +3,8 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { toast } from '../../../ui'
 import DevisTab, {
   devisTrackCurrent, devisIntent, missingFieldTarget, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
@@ -18,7 +20,7 @@ import DevisTab, {
 
 const {
   genererFacture, createFromDevis, whatsappDevis, shareLinkDevis, getOffresTaillesDevis,
-  getProduits, CATALOGUE_SUBSTITUTIONS,
+  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
   // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
@@ -54,10 +56,12 @@ const {
       data: { results: CATALOGUE_SUBSTITUTIONS, count: CATALOGUE_SUBSTITUTIONS.length, next: null },
     })),
     CATALOGUE_SUBSTITUTIONS,
+    // QJR534 — « Réviser » depuis la carte (reviserEtOuvrir → ventesApi).
+    reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis },
+  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
@@ -1097,5 +1101,63 @@ describe('QJ-VUES — compteur de lectures client sur chaque carte devis', () =>
       }),
     })
     expect(screen.getByText('Jamais ouvert par le client')).toBeInTheDocument()
+  })
+})
+
+// QJR534 (D-QJR5-1/2) — « Modifier » (brouillon/envoyé) ou « Réviser » sur la
+// carte, droits LUS du contrat serveur `devis_modifiabilite` (exemples committés).
+describe('QJR534 — cartes devis : Modifier / Réviser', () => {
+  const carte = (variante, extra = {}) => ({
+    ...exempleContrat('ventes', 'devis_modifiabilite', variante),
+    total_ttc: '15000', date_creation: '2026-01-05', chantier: null, ...extra,
+  })
+
+  it('brouillon et envoyé → « Modifier » qui émet edit-devis <id>', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({
+      state: leadState({ devis: [carte('exemple_envoye')] }),
+    })
+    await user.click(screen.getByRole('button', { name: /^Modifier$/ }))
+    expect(onAction).toHaveBeenCalledWith('edit-devis', 413)
+  })
+
+  it('brouillon : « Modifier » mais pas « Réviser »', () => {
+    renderTab({ state: leadState({ devis: [carte('exemple_brouillon')] }) })
+    expect(screen.getByRole('button', { name: /^Modifier$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Réviser/ })).toBeNull()
+  })
+
+  it('accepté actif → « Réviser », pas « Modifier » ; le clic appelle le serveur', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_accepte')] }) })
+    expect(screen.queryByRole('button', { name: /^Modifier$/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Réviser/ }))
+    await waitFor(() => expect(reviserDevis).toHaveBeenCalledWith(414))
+  })
+
+  it('chantier en cours → avertissement AVANT l\'appel serveur', async () => {
+    const user = userEvent.setup()
+    const ordre = []
+    const warn = vi.spyOn(toast, 'warning').mockImplementation(() => { ordre.push('warning') })
+    reviserDevis.mockImplementationOnce(() => {
+      ordre.push('appel')
+      return Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })
+    })
+    renderTab({
+      state: leadState({
+        devis: [carte('exemple_accepte', {
+          chantier: { id: 5, reference: 'CHT-5', statut: 'en_cours' },
+        })],
+      }),
+    })
+    await user.click(screen.getByRole('button', { name: /Réviser/ }))
+    await waitFor(() => expect(ordre).toEqual(['warning', 'appel']))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('CHT-5'))
+  })
+
+  it('devis remplacé → ni Modifier ni Réviser', () => {
+    renderTab({ state: leadState({ devis: [carte('exemple_remplace')] }) })
+    expect(screen.queryByRole('button', { name: /^Modifier$/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Réviser/ })).toBeNull()
   })
 })

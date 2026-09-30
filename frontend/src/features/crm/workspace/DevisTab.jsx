@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
-  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send, Layers3,
+  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send, Layers3, Pencil,
 } from 'lucide-react'
 import {
   Button, Checkbox, Input, StatusPill, Segmented,
@@ -28,6 +28,9 @@ import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../vente
 // 18/08 (`autoQuote.js:146-152`, palier de 5 kWc, jamais retirée) : lue ici en
 // PURE LECTURE pour prévenir le commercial, jamais pour arrondir le champ lui-même.
 import { noticePalierKwc } from '../../ventes/autoQuote'
+// QJR534 — droits lus du serveur + geste « Réviser » unique (QJR532/QJR533).
+import { peutEditerDevis, peutReviserDevis } from '../../ventes/devisStatuts'
+import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
@@ -216,6 +219,20 @@ function jumpToMissingField(label) {
   const target = missingFieldTarget(label)
   if (!target) return
   jumpToField(target)
+}
+
+// QJR534 — le bouton « Réviser » porte SON `useNavigate` (monté seulement sur
+// une carte révisable) : le reste de l'onglet n'exige aucun contexte Router.
+function BoutonReviser({ devis }) {
+  const navigate = useNavigate()
+  return (
+    <Button
+      type="button" size="sm" variant="outline"
+      onClick={() => reviserEtOuvrir({ devis, navigate })}
+    >
+      <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
+    </Button>
+  )
 }
 
 export default function DevisTab({
@@ -592,7 +609,7 @@ export default function DevisTab({
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('remise', kwcCible))}>Remise %…</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('onepage', kwcCible))}>Devis 1 page</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('premium', kwcCible))}>Devis premium</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'edit')}>Édition complète…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'edit')}>Nouveau devis sur mesure…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
@@ -717,6 +734,20 @@ export default function DevisTab({
                 >
                   <Eye size={14} aria-hidden="true" /> Aperçu interne (sans notification)
                 </Button>
+                {/* QJR534 (D-QJR5-1/2) — l'UNIQUE porteur de « Modifier » et de
+                    « Réviser » sur la carte. Droits LUS du serveur (QJR516) :
+                    brouillon/envoyé → Modifier (correction sur place) ;
+                    révisable → Réviser, pour tout rôle d'écriture, avec
+                    avertissement si un chantier est en cours. */}
+                {peutEditerDevis(d) && (
+                  <Button
+                    type="button" size="sm" variant="outline"
+                    onClick={() => onAction?.('edit-devis', d.id)}
+                  >
+                    <Pencil size={14} aria-hidden="true" /> Modifier
+                  </Button>
+                )}
+                {peutReviserDevis(d) && <BoutonReviser devis={d} />}
               </div>
               <Dialog
                 open={envoiOuvert === d.id}
