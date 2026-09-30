@@ -74,12 +74,16 @@ function VignetteProduit({ produit }) {
 const valeurVente = (rows) => rows.reduce(
   (s, p) => s + (parseFloat(p.prix_vente) || 0) * (Number(p.quantite_stock) || 0), 0)
 
-// Suggestion de réassort (alignée sur StockList) : vise 2× le seuil, jamais
-// négative. Sert au libellé « commander ~N » sur un produit en stock bas.
+// Suggestion de réassort : vise 2× le seuil, jamais négative. Sert au libellé
+// « commander ~N » sur un produit en stock bas. ERR-QAH-STOCK-REAPPRO-QTE-
+// INCOHERENTE — MÊME formule que l'API `a-reapprovisionner` (panneau
+// « Suggestions ») : cible − disponible (stock − réservé) − déjà en commande,
+// pour ne jamais afficher deux quantités différentes pour un même produit.
 const suggestionCommande = (p) => {
   const seuil = Number(p.seuil_alerte) || 0
-  const stock = Number(p.quantite_stock) || 0
-  return Math.max(seuil * 2 - stock, 0)
+  const disponible = Number(p.quantite_disponible ?? p.quantite_stock) || 0
+  const enCommande = Number(p.quantite_en_commande) || 0
+  return Math.max(seuil * 2 - disponible - enCommande, 0)
 }
 
 /* APX19 — Ton de la jauge par sévérité. La logique de sévérité elle-même
