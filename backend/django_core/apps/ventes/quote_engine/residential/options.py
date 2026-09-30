@@ -286,26 +286,40 @@ def _delta_lines(items, fmt, produits_base="taqinor.ma/produits"):
     return "".join(out)
 
 
-def _totals_chain(label, accent, tot, fmt, C, recommended=False):
-    """One compact HT→TVA→TTC chain card for a single option."""
+def _totals_chain(label, accent, tot, fmt, C, recommended=False,
+                  option=None):
+    """One compact HT→TVA→TTC chain card for a single option.
+
+    QA-FIGURES — ``option`` (« sans » / « avec ») étiquette chaque montant
+    d'une ancre ``data-figure`` masquée posée APRÈS sa ligne (aucune chaîne
+    existante ne change, aucun rendu ne bouge — ``quote_engine/figures.py``).
+    """
+    from ..figures import ancre
+    tva_rows = tot.get("tva_par_taux", [])
     rows = [
         f'<div class="p2-tl"><span>Sous-total HT</span>'
         f'<span>{fmt(tot["ht_brut"])}</span></div>'
+        + ancre("sous_total_ht", fmt(tot["ht_brut"]), option)
     ]
     if tot.get("remise", 0) and tot["remise"] > 0:
         rows.append(
             f'<div class="p2-tl p2-tl-rem"><span>Remise</span>'
             f'<span>− {fmt(tot["remise"])}</span></div>'
+            + ancre("remise", fmt(tot["remise"]), option)
         )
         rows.append(
             f'<div class="p2-tl"><span>Total HT</span>'
             f'<span>{fmt(tot["ht_net"])}</span></div>'
+            + ancre("total_ht", fmt(tot["ht_net"]), option)
         )
-    for t in tot.get("tva_par_taux", []):
+    for t in tva_rows:
         taux = int(round(t["taux"]))
         rows.append(
             f'<div class="p2-tl p2-tl-sub"><span>TVA {taux}%</span>'
             f'<span>{fmt(t["montant"])}</span></div>'
+            + ancre("tva_taux", fmt(t["montant"]), option, t["taux"])
+            + (ancre("tva", fmt(t["montant"]), option)
+               if len(tva_rows) == 1 else "")
         )
     badge = '<span class="p2-badge">Recommandé</span>' if recommended else ""
     return (
@@ -317,6 +331,7 @@ def _totals_chain(label, accent, tot, fmt, C, recommended=False):
         f'<span>Total TTC</span>'
         f'<span class="p2-grand-v">{fmt(tot["ttc"])} <small>MAD</small></span>'
         f'</div>'
+        f'{ancre("total_ttc", fmt(tot["ttc"]), option)}'
         f'</div>'
     )
 
@@ -496,9 +511,10 @@ def build_pages(ctx) -> list:
     if deux_options:
         totals_html = (
             _totals_chain("Option 1 — Sans batterie", C["navy"],
-                          d["totaux_sans"], fmt, C)
+                          d["totaux_sans"], fmt, C, option="sans")
             + _totals_chain(f"Option 2 — {libelle_avec}", C["gold"],
-                            d["totaux_avec"], fmt, C, recommended=True))
+                            d["totaux_avec"], fmt, C, recommended=True,
+                            option="avec"))
         # L-2OPTPDF — dès qu'une ligne appariée entre dans le tableau, celui-ci
         # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
         # (tout devis à deux options non divergent) le libellé historique est
@@ -511,7 +527,8 @@ def build_pages(ctx) -> list:
         _lbl = (f"Total — {libelle_avec}" if avec_ok
                 else "Total — Sans batterie")
         _acc = C["gold"] if avec_ok else C["navy"]
-        totals_html = _totals_chain(_lbl, _acc, _tot, fmt, C)
+        totals_html = _totals_chain(_lbl, _acc, _tot, fmt, C,
+                                    option="avec" if avec_ok else "sans")
         equipement_lbl = "Votre équipement"
 
     tva_note = d.get("tva_note", "")

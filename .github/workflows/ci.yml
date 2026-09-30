@@ -1587,7 +1587,7 @@ jobs:
             # avec health absorbé par le worker libre.
             npx playwright test --project=chromium devis.spec.js
             npx playwright test --project=chromium --project=mobile-safari --workers 2 \
-              health.spec.js mobile.spec.js
+              health.spec.js mobile.spec.js figures-parite.spec.js
           fi
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

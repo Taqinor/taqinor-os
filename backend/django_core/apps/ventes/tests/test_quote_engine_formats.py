@@ -1765,7 +1765,10 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
-        # Empreinte épinglée depuis l'exécution CI du 2026-09-07 (run
+        # Ré-épinglée le 2026-09-30 (PR #743, run 36656394445, shard 1) :
+        # seuls des marqueurs cachés `data-figure` (parité des chiffres, QA #2)
+        # ont été ajoutés au HTML — aucun changement visible.
+        # Avant : épinglée depuis l'exécution CI du 2026-09-07 (run
         # 34080265934, shard 3) — le HTML gelé du one-page agricole, après
         # la remise par ligne (prix catalogue barré / prix remisé dans la même
         # cellule, note sous la table — PR #627). Précédente : 2026-09-01, run
@@ -1773,7 +1776,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
         EMPREINTE_EPINGLEE = (
-            '0a965fc3614727fc2e5d07d77e3318eaf43badf332b48810223ca413566a5a67')
+            'ac456b7c7dd58e83fa5dd61adc685c625267357773d087556eadaff6dd6b5e91')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,

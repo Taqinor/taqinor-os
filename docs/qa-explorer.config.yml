@@ -23,6 +23,17 @@ schedule_note: "daily 23:00 Africa/Casablanca — Windows task 'TAQINOR nightly 
 # refuses any host other than localhost / 127.0.0.1 — never production.
 base_url: "http://localhost"
 
+# Jeu de données exploré. `demo` (défaut) = société `taqinor-demo` de seed_demo,
+# login demo_admin — rien ne change tant qu'aucun instantané n'existe.
+# `anon` = copie ANONYMISÉE de la prod (identités brouillées ; montants, profils
+# énergie, études, lignes, statuts gardés) chargée dans la société locale
+# `taqinor-anon` par `manage.py qa_import_anonymise`, login anon_admin. Si le
+# fichier `anon_snapshot` est absent, la passe retombe sur `demo` et le dit.
+# Produire l'instantané : docs/qa-explorer.md « Données réalistes anonymisées ».
+dataset: demo
+# Instantané local (CONFIDENTIEL, ignoré par git — var/anon/ et *.anon.json.gz).
+anon_snapshot: var/anon/latest.anon.json.gz
+
 # MVP modules explored, one sonnet explorer sub-agent each, in this order.
 # Keys map to the missions of STEP 4 of the skill (remove a key to skip it).
 modules:

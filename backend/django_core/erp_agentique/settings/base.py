@@ -1066,6 +1066,8 @@ CELERY_TASK_ROUTES = {
     'ventes.relance_reminders': {'queue': 'scheduled'},
     'ventes.devis_followup_nudges': {'queue': 'scheduled'},
     'ventes.releve_mensuel_reminders': {'queue': 'scheduled'},
+    # QA-COHERENCE — audit nocturne des invariants (beat 04:15).
+    'ventes.audit_coherence_nuit': {'queue': 'scheduled'},
     'crm.appointment_reminders': {'queue': 'scheduled'},
     'crm.recycler_leads_non_travailles': {'queue': 'scheduled'},
     # CRX22 — recalcul des scores de lead devenus obsoletes (beat) : voir le

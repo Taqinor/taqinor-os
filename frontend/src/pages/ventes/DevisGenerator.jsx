@@ -4726,9 +4726,14 @@ export default function DevisGenerator({
                       repli `roi` reste, comme aujourd'hui, non étiqueté) —
                       `moteur()` reproduit ce silence à l'octet, jamais un
                       nouveau badge introduit au passage. */}
+                  {/* QA-FIGURES — `figure` pose `data-figure` (clés :
+                      apps/ventes/quote_engine/figures.py) : la parité écran /
+                      PDF / page publique / API est vérifiée par
+                      e2e/figures-parite.spec.js. */}
                   <CarteMetrique label="Production annuelle"
                                  valeur={moteur(fmtNum(Math.round(apercuProductionKwh)))}
-                                 unit="kWh / an" accent />
+                                 unit="kWh / an" accent
+                                 figure="production_annuelle_kwh" />
                   {etudeHoraireSourceServeur && (
                     <>
                       {/* QJR426 — ces deux cartes ne rendent QUE dans la
@@ -4740,7 +4745,8 @@ export default function DevisGenerator({
                                      unit="part de la production consommée" />
                       <CarteMetrique label="Taux de couverture (sans)"
                                      valeur={moteur(`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`)}
-                                     unit="part de la conso couverte" />
+                                     unit="part de la conso couverte"
+                                     figure="couverture_pct" figureOption="sans" />
                     </>
                   )}
                 </div>
@@ -4762,17 +4768,20 @@ export default function DevisGenerator({
                           texte), `moteur()` n'en porte aucune. */}
                       <CarteMetrique label="Économies"
                                      valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoSans)))}
-                                     unit="MAD / an" />
+                                     unit="MAD / an"
+                                     figure="economie_annuelle" figureOption="sans" />
                       <CarteMetrique label="ROI"
                                      valeur={signerEcoOuRoi(
                                        apercuPaybackSans != null ? apercuPaybackSans + ' ans' : 'N/A')}
-                                     unit="retour sur invest." accent />
+                                     unit="retour sur invest." accent
+                                     figure="payback_ans" figureOption="sans" />
                       {/* QJR426 — le coût est celui, certain, des lignes du
                           devis (`optionTotalsTTC`) : jamais de disclaimer
                           avant, `moteur()` en garde l'absence à l'octet. */}
                       <CarteMetrique label="Coût"
                                      valeur={moteur(fmtNum(Math.round(totals.totalSans)))}
-                                     unit="MAD TTC" />
+                                     unit="MAD TTC"
+                                     figure="total_ttc" figureOption="sans" />
                     </div>
                   )}
                   {showAvec && (
@@ -4796,14 +4805,17 @@ export default function DevisGenerator({
                         <>
                           <CarteMetrique label="Économies"
                                          valeur={signerEcoOuRoi(fmtNum(Math.round(apercuEcoAvec)))}
-                                         unit="MAD / an" />
+                                         unit="MAD / an"
+                                         figure="economie_annuelle" figureOption="avec" />
                           <CarteMetrique label="ROI"
                                          valeur={signerEcoOuRoi(
                                            apercuPaybackAvec != null ? apercuPaybackAvec + ' ans' : 'N/A')}
-                                         unit="retour sur invest." accent />
+                                         unit="retour sur invest." accent
+                                         figure="payback_ans" figureOption="avec" />
                           <CarteMetrique label="Coût"
                                          valeur={moteur(fmtNum(Math.round(totals.totalAvec)))}
-                                         unit="MAD TTC" />
+                                         unit="MAD TTC"
+                                         figure="total_ttc" figureOption="avec" />
                           {/* BAT5DEF — au moins une ligne batterie n'a pas de
                               kWh lisible : la capacité utilisée par le ROI et
                               l'étude horaire est SOUS-estimée (0 kWh pour
@@ -5144,6 +5156,7 @@ export default function DevisGenerator({
             <Stat
               tone={!avecRec ? 'impact' : undefined}
               data-testid={avecRec ? 'gen-rail-total-sans' : 'gen-rail-total'}
+              data-figure="total_ttc" data-figure-option="sans"
               label="Total sans batterie · TTC"
               value={formatMoney(totals.totalSans)}
               hint={avecRec ? undefined : 'Option recommandée'}
@@ -5151,6 +5164,7 @@ export default function DevisGenerator({
             <Stat
               tone={avecRec ? 'impact' : undefined}
               data-testid={avecRec ? 'gen-rail-total' : 'gen-rail-total-avec'}
+              data-figure="total_ttc" data-figure-option="avec"
               label="Total avec batterie · TTC"
               value={formatMoney(totals.totalAvec)}
               hint={avecRec ? 'Option recommandée' : undefined}
