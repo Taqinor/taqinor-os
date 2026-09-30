@@ -48,6 +48,36 @@ import { formatNumber } from '../../lib/format'
    jour où la porte accepte `sol`, seul le `type` envoyé change ici.
    ========================================================================== */
 
+/** Axe des rangées DÉRIVÉ par le serveur (ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD). */
+export const AXE_AUTO = 'AUTO'
+
+/**
+ * ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — un plan du moteur à 0 module n'est pas
+ * un « optimum » à afficher en silence : on DIT qu'aucune table ne tient.
+ * `null` quand il y a au moins un module (ou pas de plan).
+ */
+export function motifChampVide(reponse) {
+  const plan = (reponse?.plans ?? [])[0] ?? null
+  if (!plan) return null
+  const modules = Number(plan.modules)
+  if (!Number.isFinite(modules) || modules > 0) return null
+  return 'Aucune table ne tient dans ce terrain avec cette saisie : le moteur '
+    + 'n’a posé aucun module. Réduisez le nombre de modules par table ou '
+    + 'agrandissez le terrain.'
+}
+
+/** Motif FRANÇAIS d'un refus du serveur (400 DRF `{champ: [motif]}`), ou `null`. */
+export function motifRefus(data) {
+  if (!data || typeof data !== 'object') return null
+  if (typeof data.detail === 'string') return data.detail
+  for (const cle of ['demande', 'calepinage']) {
+    const v = data[cle]
+    if (Array.isArray(v) && v.length) return String(v[0])
+    if (typeof v === 'string' && v) return v
+  }
+  return null
+}
+
 /** Une saisie numérique, ou `null` — jamais un 0 de remplacement. */
 export function nombre(brut) {
   if (brut === null || brut === undefined || brut === '') return null
@@ -117,9 +147,14 @@ export function demandeMoteur(saisie) {
   const allee = nombre(saisie.alleeM)
   if (moduleLong === null || moduleCourt === null || puissance === null) return null
 
+  // ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — l'axe des rangées n'est PAS choisi
+  // ici : il est IMPOSÉ par le kit et l'azimut (un module par table plein sud
+  // ⇒ rangées est-ouest). `AUTO` demande au serveur de le dériver avec la
+  // règle du moteur (`orientation.axe_rangee_impose`) — l'ancien `NORD_SUD`
+  // codé en dur rendait un 400 « inconstructible » au cas le plus courant.
   const parametres = {
     kits: ['terrain'],
-    axe_rangee: 'NORD_SUD',
+    axe_rangee: AXE_AUTO,
     mode_pose: 'rangees_explicites_dp',
     pas_recherche_m: 0.01,
   }
@@ -138,7 +173,7 @@ export function demandeMoteur(saisie) {
       repere: saisie.repere || 'TERRAIN',
       contour,
       trous: [],
-      axe_rangee: 'NORD_SUD',
+      axe_rangee: AXE_AUTO,
       niveau: 0,
       pente_deg: 0,
       azimut_deg: azimut === null ? 180 : azimut,
@@ -444,11 +479,12 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
       .then((res) => {
         setEnCours(false)
         setReponse(res?.data ?? null)
+        setMessage(motifChampVide(res?.data))
       })
       .catch((e) => {
         setEnCours(false)
         setReponse(null)
-        setMessage(e?.response?.data?.detail
+        setMessage(motifRefus(e?.response?.data)
           || 'Le moteur n’a pas pu poser ce champ au sol.')
       })
   }

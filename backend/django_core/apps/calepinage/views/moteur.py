@@ -324,6 +324,7 @@ class MoteurPoseView(APIView):
         }),
         responses={200: FORME_POSE})
     def post(self, request, *args, **kwargs):
+        from ..moteur_io import deriver_axe_rangee
         from ..moteur_service import (
             calepinage_json, erreurs_moteur_calepinage,
         )
@@ -356,6 +357,9 @@ class MoteurPoseView(APIView):
                 {'demande': 'Une pose se calcule toujours dans une société.'})
 
         try:
+            # ERR-QAH-CALEPINAGE-SOL-AXE-NORD-SUD — ``axe_rangee: "AUTO"`` :
+            # l'axe est DÉRIVÉ des kits par le moteur, jamais deviné à l'écran.
+            document = deriver_axe_rangee(document)
             resultat = calepinage_json(document, company=company,
                                        user=request.user, tiroirs=False,
                                        suggestions=False)
