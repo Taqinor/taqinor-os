@@ -389,6 +389,30 @@ def q_tache():
     return q_etape(*cles) | Q(cle='', libelle=QUESTION_PRIX_LIBELLE)
 
 
+#: COCKPIT-CONTRÔLE B6 — les BARREAUX du protocole : les types de la prise de
+#: contact, du suivi de proposition et du réveil (``contact_*``, ``suivi_*``,
+#: ``reveil_*``). Ni tâche, ni geste de visite, ni étape de filet : ce sont les
+#: seules touches qu'une mesure « par touche » peut comparer entre elles.
+TYPES_BARREAU = frozenset(
+    type_id for paire in _TYPES_PAR_CADENCE.values() for type_id in paire)
+
+
+def q_barreau():
+    """COCKPIT-CONTRÔLE B6 — ``type_etape`` ∈ ``TYPES_BARREAU``, en REQUÊTE :
+    une cadence de protocole, sans clé moteur (ni libellé par défaut d'avant
+    la clé) et hors question de prix — exactement l'ordre de reconnaissance
+    de ``type_etape``. Garde : ``tests_cockpit_mesure_barreaux`` la confronte
+    à ``type_etape`` sur chaque type de la table."""
+    from django.db.models import Q
+
+    from .cadence_config import q_etape
+    from .services import QUESTION_PRIX_LIBELLE
+
+    return (Q(cadence__in=tuple(sorted(_TYPES_PAR_CADENCE)))
+            & ~q_etape(*sorted(_TYPES_PAR_CLE))
+            & ~Q(cle='', libelle=QUESTION_PRIX_LIBELLE))
+
+
 def nature_touche(etape):
     """La nature de ``etape`` — lue sur sa CLÉ (PARAM-CADENCE), exactement
     comme le moteur la lit (``materialiser_touche_suivante``,
