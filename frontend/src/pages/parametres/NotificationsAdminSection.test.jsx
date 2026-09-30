@@ -14,7 +14,8 @@ const { apiMock } = vi.hoisted(() => ({
     saveRoutingRule: vi.fn(() => Promise.resolve({ data: {} })),
     deleteRoutingRule: vi.fn(() => Promise.resolve({ data: {} })),
     getWorkingHours: vi.fn(() => Promise.resolve({
-      data: { working_days: [0, 1, 2, 3, 4], hours_per_day: 8 },
+      // Contrat réel de l'API : ENTIER masque de bits (31 = lun→ven).
+      data: { working_days: 31, hours_per_day: 8 },
     })),
     saveWorkingHours: vi.fn(() => Promise.resolve({ data: {} })),
     getHolidays: vi.fn(() => Promise.resolve({ data: [] })),
@@ -93,5 +94,29 @@ describe('CAD42 — avertir avant de figer une fête lunaire', () => {
         .toHaveAttribute('aria-checked', 'true')
     })
     expect(screen.queryByTestId(AVERTISSEMENT)).toBeNull()
+  })
+})
+
+describe('ERR-QAH-PARAMETRES-NOTIFICATIONS-WORKING-DAYS — masque de bits', () => {
+  afterEach(() => { cleanup(); vi.clearAllMocks() })
+
+  it('affiche le calendrier depuis un masque entier sans planter', async () => {
+    await rendreCalendrier()
+    expect(screen.getByLabelText('Lundi')).toBeChecked()
+    expect(screen.getByLabelText('Vendredi')).toBeChecked()
+    expect(screen.getByLabelText('Samedi')).not.toBeChecked()
+    expect(screen.getByLabelText('Dimanche')).not.toBeChecked()
+  })
+
+  it('renvoie un masque entier à l’enregistrement', async () => {
+    const user = userEvent.setup()
+    apiMock.saveWorkingHours.mockImplementationOnce((data) =>
+      Promise.resolve({ data: { ...data } }))
+    await rendreCalendrier()
+    await user.click(screen.getByLabelText('Samedi'))
+    await user.click(screen.getByText('Enregistrer le calendrier'))
+    await waitFor(() => expect(apiMock.saveWorkingHours).toHaveBeenCalled())
+    expect(apiMock.saveWorkingHours.mock.calls[0][0].working_days).toBe(63)
+    await waitFor(() => expect(screen.getByLabelText('Samedi')).toBeChecked())
   })
 })
