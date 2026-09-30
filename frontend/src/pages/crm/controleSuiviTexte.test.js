@@ -3,7 +3,8 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 import { PARCOURS, reponsesDeLEtape } from '../../features/crm/relances/parcours'
 import {
   LIBELLES_ISSUE, MOTS_NIVEAU, comparaisonPrecedent, decimal, duree, dureeAttente, familleType, heureCasa,
-  jjmm, jourCourt, jourLong, joursOuvres, libelleJour, libelleReponse, lignesLecture, nomType,
+  jjmm, jourCourt, jourLong, joursOuvres, libelleJour, libelleReponse, lignesLecture, momentTraitement,
+  nomType,
   noteJoursOuvres, numeroJour, phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact,
   phraseReportee, phraseResultats, pl, seuil, typeDeLaTable, typeEstTache,
 } from './controleSuiviTexte'
@@ -55,6 +56,15 @@ describe('accords et formats', () => {
     expect(heureCasa('2026-09-07T07:32:10Z')).toBe('08:32')
     expect(heureCasa(null)).toBe(null)
     expect(heureCasa('nimporte quoi')).toBe(null)
+  })
+
+  it("momentTraitement : l'heure seule le jour même, le jour ET l'heure un autre jour", () => {
+    // Traitée le jour lu : l'heure suffit.
+    expect(momentTraitement('2026-09-07T07:32:10Z', '2026-09-07')).toBe(`traitée à ${heureCasa('2026-09-07T07:32:10Z')}`)
+    // Due le 3, traitée le 7 : sans le jour, la ligne laisserait croire à un traitement le 3.
+    expect(momentTraitement('2026-09-07T07:32:10Z', '2026-09-03')).toBe(`traitée le 07/09 à ${heureCasa('2026-09-07T07:32:10Z')}`)
+    expect(momentTraitement(null, '2026-09-07')).toBe(null)
+    expect(momentTraitement('nimporte quoi', '2026-09-07')).toBe(null)
   })
 })
 

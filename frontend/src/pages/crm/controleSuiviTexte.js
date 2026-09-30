@@ -163,6 +163,22 @@ export function heureCasa(iso) {
   return Number.isNaN(t) ? null : FORMAT_HEURE_CASA.format(t)
 }
 
+// `en-CA` rend AAAA-MM-JJ : le JOUR de Casablanca d'un instant, comparable à une
+// date de calendrier servie (`due_date`) par simple égalité de chaînes.
+const FORMAT_JOUR_CASA = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' })
+
+/** Quand une étape a été traitée, dit par rapport au JOUR lu (`jour`, AAAA-MM-JJ) :
+ *  « traitée à 12:54 » si elle l'a été ce jour-là, « traitée le 29/09 à 13:33 » si elle
+ *  l'a été un autre jour — la liste d'un jour de la frise montre les étapes DUES ce
+ *  jour-là, pas forcément traitées ce jour-là ; l'heure seule le laisserait croire.
+ *  `null` sans instant lisible. */
+export function momentTraitement(iso, jour) {
+  const heure = heureCasa(iso)
+  if (!heure) return null
+  const jourTraite = FORMAT_JOUR_CASA.format(new Date(iso).getTime())
+  return jourTraite === jour ? `traitée à ${heure}` : `traitée le ${jjmm(jourTraite)} à ${heure}`
+}
+
 // ── Verdict ────────────────────────────────────────────────────────────────
 /** UNE phrase construite depuis les cinq listes d'exceptions (les retards d'abord). */
 export function phraseExceptions(exceptions, niveau) {

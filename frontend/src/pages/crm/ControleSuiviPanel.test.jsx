@@ -326,7 +326,9 @@ describe('ControleSuiviPanel — frise', () => {
       .toHaveAttribute('href', '/crm/leads?lead=1489')
     expect(fait).toHaveTextContent('Message d\'identité')
     expect(fait).toHaveTextContent('Fait')
-    expect(fait).toHaveTextContent('traitée à 08:32')
+    // L'exemple du contrat est une touche traitée le 07/09 ; lue dans la liste du 29/09,
+    // elle dit son JOUR de traitement — l'heure seule la ferait croire traitée le 29.
+    expect(fait).toHaveTextContent('traitée le 07/09 à 08:32')
     expect(fait).toHaveTextContent(`par ${SUIVI.results[0].traite_par_nom}`)
     expect(aFaire).toHaveTextContent('Appel d\'ouverture')
     expect(aFaire).toHaveTextContent('À faire')

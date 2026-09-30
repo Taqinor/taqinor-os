@@ -44,7 +44,8 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { STAGE_LABELS } from '../../features/crm/stages'
 import {
   MOTS_NIVEAU, comparaisonPrecedent, decimal, dureeAttente, heureCasa, jjmm, jourCourt, jourLong,
-  joursOuvres, libelleJour, libelleReponse, lignesLecture, nomType, nombre, noteJoursOuvres,
+  joursOuvres, libelleJour, libelleReponse, lignesLecture, momentTraitement, nomType, nombre,
+  noteJoursOuvres,
   numeroJour, phraseAnnulees, phraseExceptions, phrasePeriode, phrasePremierContact, phraseReportee,
   phraseResultats, pl, seuil,
 } from './controleSuiviTexte'
@@ -300,7 +301,11 @@ function ListeDuJour({
             <ul className="flex flex-col gap-1.5">
               {lignes.map((etape) => {
                 const traitee = etape.statut === 'fait' || etape.statut === 'sautee'
-                const heure = heureCasa(traitee ? etape.traite_le : etape.due_at)
+                // Traitée : l'heure si c'était CE jour-là, sinon le jour ET l'heure (une
+                // étape due le 24 et traitée le 29 ne se lit pas « traitée à 13:33 »).
+                const moment = traitee
+                  ? momentTraitement(etape.traite_le, date)
+                  : (heureCasa(etape.due_at) && `prévue à ${heureCasa(etape.due_at)}`)
                 return (
                   <li
                     key={etape.id} data-testid="controle-jour-ligne"
@@ -309,10 +314,8 @@ function ListeDuJour({
                     <LienLead leadId={etape.lead} nom={etape.lead_nom} navigate={navigate} />
                     <span className="text-muted-foreground">{etape.libelle}</span>
                     <StatutBadgeJour etape={etape} />
-                    {heure && (
-                      <span className="text-xs text-muted-foreground">
-                        {traitee ? `traitée à ${heure}` : `prévue à ${heure}`}
-                      </span>
+                    {moment && (
+                      <span className="text-xs text-muted-foreground">{moment}</span>
                     )}
                     {traitee && etape.traite_par_nom && (
                       <span className="text-xs text-muted-foreground">par {etape.traite_par_nom}</span>
