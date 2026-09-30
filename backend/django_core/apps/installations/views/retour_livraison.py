@@ -110,6 +110,12 @@ class RetourLivraisonLigneViewSet(viewsets.ModelViewSet):
             raise ValidationError(
                 {'retour': 'Retour inconnu pour cette société.'})
 
+    def perform_create(self, serializer):
+        # ERR115 — la création doit aussi borner le retour parent à la
+        # société de l'appelant (sinon POST greffe une ligne chez une autre).
+        self._check_parent(serializer)
+        serializer.save()
+
     def perform_update(self, serializer):
         self._check_parent(serializer)
         serializer.save()
