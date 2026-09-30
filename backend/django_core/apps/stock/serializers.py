@@ -52,11 +52,25 @@ class CategorieSerializer(serializers.ModelSerializer):
     # (queryset non filtré sur `company`, car le champ n'est plus dans
     # `attrs` avant `perform_create`) — `validate()` ci-dessous refait le
     # contrôle, scopé.
+    # ERR-QAH-STOCK-CATEGORIES-COMPTE-ZERO — compteur LECTURE SEULE des
+    # produits NON archivés de la catégorie (l'écran affichait « 0 » partout,
+    # l'API ne renvoyant aucun comptage). Annoté en liste par la vue, sinon
+    # repli sur un count() direct (détail / création).
+    nb_produits = serializers.SerializerMethodField()
+
     class Meta:
         model = Categorie
         fields = '__all__'
         read_only_fields = ['company']
         validators = []
+
+    def get_nb_produits(self, obj):
+        annotated = getattr(obj, 'nb_produits_annot', None)
+        if annotated is not None:
+            return annotated
+        if obj.pk is None:
+            return 0
+        return obj.produits.filter(is_archived=False).count()
 
     def validate(self, attrs):
         nom = attrs.get('nom', getattr(self.instance, 'nom', None))
