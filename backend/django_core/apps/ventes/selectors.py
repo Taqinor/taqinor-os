@@ -1972,8 +1972,10 @@ def devis_du_client_portail(company, client_id, *, limit=200):
 
     if company is None or not client_id:
         return []
+    # QJR520 — une version remplacée n'est plus listée à côté de sa
+    # remplaçante (is_active=True).
     qs = (Devis.objects
-          .filter(company=company, client_id=client_id)
+          .filter(company=company, client_id=client_id, is_active=True)
           .exclude(statut=Devis.Statut.BROUILLON)
           .order_by('-date_creation')[:limit])
     return [{

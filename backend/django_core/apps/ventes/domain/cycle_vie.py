@@ -1272,6 +1272,20 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 return devis
             raise AcceptError('Ce devis est déjà accepté.', conflict=True)
 
+        # QJR520 — une version REMPLACÉE (révisée, archivée) ne se signe plus :
+        # sans cette garde, signer le lien public de v1 après « Réviser »
+        # acceptait v1 ET effondrait v2 (sa « sœur ») en REFUSE — plus aucune
+        # version active, aucun BC. Rien n'est écrit (règle #4).
+        if not devis.is_active:
+            successeur = (Devis.objects.filter(pk=devis.superseded_by_id)
+                          .values_list('reference', flat=True).first()
+                          if devis.superseded_by_id else None)
+            if successeur:
+                message = f'Cette proposition a été remplacée par {successeur}.'
+            else:
+                message = "Cette proposition n'est plus active."
+            raise AcceptError(message, conflict=True)
+
         # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
         if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
             raise AcceptError(
