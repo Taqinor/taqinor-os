@@ -230,6 +230,17 @@ describe('COCKPIT-CONTRÔLE passe 2 — un seul ordre de page pour tous les rôl
     }
   })
 
+  it('la file s\'appelle « À faire aujourd\'hui » pour tous les rôles ; « Ma journée » a quitté la page', async () => {
+    for (const role of ['admin', 'responsable', 'normal']) {
+      const { unmount } = mount({ role })
+      await screen.findAllByTestId('relance-etape-row')
+      expect(within(screen.getByTestId('cockpit-file')).getByRole('heading', { name: 'À faire aujourd\'hui' }))
+        .toBeInTheDocument()
+      expect(screen.queryByText(/Ma journée/)).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
   it.each(['admin', 'normal'])('%s : le contrôle est sous l\'en-tête et AU-DESSUS du reste de la page', async (role) => {
     const {
       controle, file, insights, chaine, dormants,

@@ -3,7 +3,7 @@
 // du cockpit CRM : UNE lecture répond à « ce qui devait être fait l'a-t-il été ? ».
 //
 // Deux lecteurs, un même écran (décision de transparence CKP3/CKP5) : la
-// commerciale traite sa journée dans « Ma journée », le responsable lit ici, en
+// commerciale traite sa journée dans « À faire aujourd'hui », le responsable lit ici, en
 // quelques secondes, ce qui a été fait, tardé ou oublié. Même bloc pour tous les
 // rôles : seule la portée serveur (`scope_queryset` via le lead) borne la lecture ;
 // une seule ligne d'aide (sous « Dossiers sans prochaine étape ») est réservée au

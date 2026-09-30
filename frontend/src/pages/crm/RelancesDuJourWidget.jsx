@@ -16,8 +16,9 @@ import { formatNumber } from '../../lib/format'
 import { pl } from './controleSuiviTexte'
 
 /* ============================================================================
-   RELANCE FOUNDATION / MRY14 — panneau « Relances du jour » v2 (plan de
-   relance structuré multi-touches, crm.RelanceEtape). Liste les étapes dues
+   RELANCE FOUNDATION / MRY14 — panneau « Relances du jour » v2, aujourd'hui
+   titré « À faire aujourd'hui » (plan de relance structuré multi-touches,
+   crm.RelanceEtape). Liste les étapes dues
    AUJOURD'HUI + EN RETARD (scope=all par défaut, mêmes règles de portée que
    le reste du CRM — voir crm.selectors.relance_etapes_dues). Trois cadences
    nommées (contact/après devis/réveil, MRY4/MRY5) : message prêt + WhatsApp
@@ -39,8 +40,9 @@ import { pl } from './controleSuiviTexte'
    coche jamais une touche qui n'a pas encore eu lieu. La frise de la fiche
    applique la MÊME règle.
 
-   COCKPIT-CONTRÔLE F2 (fondateur, 30/09/2026) — « Ma journée » : la file
-   suit la cadence.
+   COCKPIT-CONTRÔLE F2 (fondateur, 30/09/2026) — la file du jour suit la
+   cadence. Passe 2 : son titre est « À faire aujourd'hui » (« Ma journée » est
+   déjà le nom de l'app terrain) et ses hooks de test sont `file-*`.
      · UNE file « Maintenant » : les relances dues aujourd'hui ou en retard ET
        les TÂCHES ouvertes (préparer le devis, décider la suite…) quelle que
        soit leur date — le serveur les y met (`file.maintenant`). Le sélecteur
@@ -262,7 +264,7 @@ function Progression({ file }) {
   if (traitees === 0 && restantes === 0) return null
   const part = Math.round((traitees / (traitees + restantes)) * 100)
   return (
-    <div className="mb-3" data-testid="ma-journee-progression">
+    <div className="mb-3" data-testid="file-progression">
       <p className="text-xs text-muted-foreground">
         {formatNumber(traitees)} {pl(traitees, 'traitée', 'traitées')} aujourd&apos;hui
         {' · '}
@@ -411,7 +413,7 @@ export default function RelancesDuJourWidget() {
       <CardHeader className="flex-row items-start justify-between gap-2 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <CalendarClock className="h-4 w-4" /> Ma journée
+            <CalendarClock className="h-4 w-4" /> À faire aujourd&apos;hui
           </CardTitle>
           <CardDescription>{AIDE_SCOPE[scope]}</CardDescription>
         </div>
@@ -458,7 +460,7 @@ export default function RelancesDuJourWidget() {
         ) : error ? (
           <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
         ) : etapes.length === 0 ? (
-          <div className="flex flex-col items-start gap-2" data-testid="ma-journee-vide">
+          <div className="flex flex-col items-start gap-2" data-testid="file-vide">
             <p className="text-sm text-foreground">{VIDE_SCOPE[scope]}</p>
             {scope === 'all' && (
               <p className="text-xs text-muted-foreground">
@@ -479,7 +481,7 @@ export default function RelancesDuJourWidget() {
               options={optionsFiltres} value={filtre} onChange={setFiltre}
             />
             {visibles.length === 0 ? (
-              <p className="text-sm text-muted-foreground" data-testid="ma-journee-filtre-vide">
+              <p className="text-sm text-muted-foreground" data-testid="file-filtre-vide">
                 {filtreCourant?.libelleVide}
               </p>
             ) : (

@@ -4,7 +4,7 @@ import {
 } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-/* COCKPIT-CONTRÔLE F2 — « Ma journée » : la file suit la cadence. Charge utile =
+/* COCKPIT-CONTRÔLE F2 — la file du jour (« À faire aujourd'hui ») suit la cadence. Charge utile =
    les exemples COMMITTÉS de `relance_etape_v2.json` (PACT10) : la liste, son
    bloc `file` (maintenant / demain / semaine / traitées aujourd'hui) et la
    variante `exemple_generique` (qui porte une TÂCHE, `est_tache: true`). Aucun
@@ -64,12 +64,13 @@ const scopeRadio = (nom) => screen.getByRole('radio', { name: nom })
 const filtreRadio = (nom) => within(screen.getByRole('radiogroup', { name: 'Filtrer par type' }))
   .getByRole('radio', { name: nom })
 
-describe('« Ma journée » — sélecteur et compteurs du serveur', () => {
-  it('le bloc porte le titre « Ma journée » et garde son hook de test', async () => {
+describe('« À faire aujourd\'hui » — sélecteur et compteurs du serveur', () => {
+  it('le bloc porte le titre « À faire aujourd\'hui » (plus « Ma journée ») et garde son hook de test', async () => {
     mount()
     await attendreListe()
-    expect(screen.getByTestId('relances-du-jour-widget')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: /Ma journée/ })).toBeInTheDocument()
+    const widget = screen.getByTestId('relances-du-jour-widget')
+    expect(within(widget).getByRole('heading', { name: 'À faire aujourd\'hui' })).toBeInTheDocument()
+    expect(screen.queryByText(/Ma journée/)).not.toBeInTheDocument()
   })
 
   it('« Maintenant (n) · Demain (n) · 7 jours (n) » : les compteurs viennent du bloc `file`', async () => {
@@ -88,7 +89,7 @@ describe('« Ma journée » — sélecteur et compteurs du serveur', () => {
     expect(scopeRadio('Maintenant')).toBeInTheDocument()
     expect(scopeRadio('Demain')).toBeInTheDocument()
     expect(scopeRadio('7 jours')).toBeInTheDocument()
-    expect(screen.queryByTestId('ma-journee-progression')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('file-progression')).not.toBeInTheDocument()
   })
 
   it('« Demain (n) » interroge scope=tomorrow, « 7 jours (n) » scope=week ; les compteurs survivent au changement', async () => {
@@ -119,7 +120,7 @@ describe('« Ma journée » — sélecteur et compteurs du serveur', () => {
   })
 })
 
-describe('« Ma journée » — filtres Tout / Appels / Messages / Tâches', () => {
+describe('« À faire aujourd\'hui » — filtres Tout / Appels / Messages / Tâches', () => {
   it('chaque filtre porte son compteur, calculé sur la liste chargée', async () => {
     mount()
     await attendreListe()
@@ -159,7 +160,7 @@ describe('« Ma journée » — filtres Tout / Appels / Messages / Tâches', () 
     mount()
     await attendreListe()
     fireEvent.click(filtreRadio('Tâches (0)'))
-    expect(screen.getByTestId('ma-journee-filtre-vide')).toHaveTextContent('Aucune tâche dans cette liste.')
+    expect(screen.getByTestId('file-filtre-vide')).toHaveTextContent('Aucune tâche dans cette liste.')
     expect(screen.queryByTestId('relance-etape-row')).not.toBeInTheDocument()
     fireEvent.click(filtreRadio('Tout (2)'))
     expect(screen.getAllByTestId('relance-etape-row')).toHaveLength(2)
@@ -181,16 +182,16 @@ describe('« Ma journée » — filtres Tout / Appels / Messages / Tâches', () 
   it('aucun filtre quand la file est vide', async () => {
     crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([]))
     mount()
-    await screen.findByTestId('ma-journee-vide')
+    await screen.findByTestId('file-vide')
     expect(screen.queryByRole('radiogroup', { name: 'Filtrer par type' })).not.toBeInTheDocument()
   })
 })
 
-describe('« Ma journée » — progression sobre', () => {
+describe('« À faire aujourd\'hui » — progression sobre', () => {
   it('« 8 traitées aujourd\'hui · 6 restantes » + une barre fine, depuis `file`', async () => {
     mount()
     await attendreListe()
-    const progression = screen.getByTestId('ma-journee-progression')
+    const progression = screen.getByTestId('file-progression')
     expect(progression).toHaveTextContent(
       `${FILE.traitees_aujourdhui} traitées aujourd'hui · ${FILE.maintenant} restantes`)
     const barre = within(progression).getByRole('progressbar', { name: 'Avancement de la journée' })
@@ -204,7 +205,7 @@ describe('« Ma journée » — progression sobre', () => {
       [APPEL], { ...FILE, traitees_aujourdhui: 1, maintenant: 1 }))
     mount()
     await attendreListe()
-    expect(screen.getByTestId('ma-journee-progression'))
+    expect(screen.getByTestId('file-progression'))
       .toHaveTextContent('1 traitée aujourd\'hui · 1 restante')
   })
 
@@ -213,7 +214,7 @@ describe('« Ma journée » — progression sobre', () => {
       [APPEL], { ...FILE, traitees_aujourdhui: 0, maintenant: 0 }))
     mount()
     await attendreListe()
-    expect(screen.queryByTestId('ma-journee-progression')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('file-progression')).not.toBeInTheDocument()
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
@@ -222,17 +223,17 @@ describe('« Ma journée » — progression sobre', () => {
       [APPEL], { ...FILE, traitees_aujourdhui: 0, maintenant: 5 }))
     mount()
     await attendreListe()
-    const progression = screen.getByTestId('ma-journee-progression')
+    const progression = screen.getByTestId('file-progression')
     expect(progression).toHaveTextContent('0 traitée aujourd\'hui · 5 restantes')
     expect(within(progression).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0')
   })
 })
 
-describe('« Ma journée » — état vide utile', () => {
+describe('« À faire aujourd\'hui » — état vide utile', () => {
   it('« Tout est traité pour maintenant. » + « Voir demain (n) » quand demain a des touches', async () => {
     crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([]))
     mount()
-    const vide = await screen.findByTestId('ma-journee-vide')
+    const vide = await screen.findByTestId('file-vide')
     expect(vide).toHaveTextContent('Tout est traité pour maintenant.')
     const bouton = within(vide).getByRole('button', { name: `Voir demain (${FILE.demain})` })
     crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([APPEL], FILE))
@@ -245,7 +246,7 @@ describe('« Ma journée » — état vide utile', () => {
   it('pas de bouton quand rien n\'est prévu demain (`file.demain` = 0)', async () => {
     crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([], { ...FILE, demain: 0 }))
     mount()
-    const vide = await screen.findByTestId('ma-journee-vide')
+    const vide = await screen.findByTestId('file-vide')
     expect(vide).toHaveTextContent('Tout est traité pour maintenant.')
     expect(within(vide).queryByRole('button')).not.toBeInTheDocument()
   })
@@ -253,13 +254,13 @@ describe('« Ma journée » — état vide utile', () => {
   it('sans bloc `file` (ancien serveur) : le message reste, sans bouton', async () => {
     crmApi.getRelanceEtapesDues.mockResolvedValue(reponse([], null))
     mount()
-    const vide = await screen.findByTestId('ma-journee-vide')
+    const vide = await screen.findByTestId('file-vide')
     expect(vide).toHaveTextContent('Tout est traité pour maintenant.')
     expect(within(vide).queryByRole('button')).not.toBeInTheDocument()
   })
 })
 
-describe('« Ma journée » — le sous-bloc « leads sans cadence » a disparu', () => {
+describe('« À faire aujourd\'hui » — le sous-bloc « leads sans cadence » a disparu', () => {
   it('plus de compteur cliquable, et `getKpiAdherence` n\'est plus appelé', async () => {
     mount()
     await attendreListe()
