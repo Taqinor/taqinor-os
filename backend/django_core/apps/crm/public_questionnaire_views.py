@@ -159,18 +159,22 @@ def _repondre(request, lien, interne):
         return Response({'detail': 'Section manquante.'},
                         status=status.HTTP_400_BAD_REQUEST)
 
+    ignorees = []
     try:
         enregistrees = appliquer_section(
             lien, section.strip(),
             reponses=request.data.get('reponses'),
             photo=request.data.get('photo'),
+            prefill_vu=request.data.get('prefill_vu'),
+            ignorees=ignorees,
         )
     except SectionInconnue as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)
 
     _tracer_reponse(request, lien, section.strip())
-    return Response({'ok': True, 'enregistrees': enregistrees})
+    return Response({'ok': True, 'enregistrees': enregistrees,
+                     'ignorees': ignorees})
 
 
 def _tracer_reponse(request, lien, section):

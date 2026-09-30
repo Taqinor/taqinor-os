@@ -447,7 +447,38 @@ def _colonnes_a_ecrire(champs):
     return colonnes
 
 
-def appliquer_section(lien, section, reponses=None, photo=None):
+def _sans_ecrasement_equipe(lead, section, champs, prefill_vu, ignorees):
+    """QJR597 — retire de ``champs`` les réponses INCHANGÉES par rapport au
+    pré-remplissage que le client a vu, quand l'équipe a modifié la valeur
+    depuis l'ouverture du lien. Une correction VOLONTAIRE du client (valeur
+    différente de ce qu'il a vu) passe toujours. Sans ``prefill_vu``
+    exploitable, rien n'est retiré."""
+    from .webhooks import champs_lead_depuis_reponses
+
+    colonnes = colonnes_ecrites(section)
+    vu = champs_lead_depuis_reponses(prefill_vu, colonnes)
+    actuel_brut = prefill(lead, [section])
+    gardes = {}
+    for cle, valeur in champs.items():
+        if cle in vu and valeur == vu[cle]:
+            actuel = champs_lead_depuis_reponses(
+                {cle: actuel_brut.get(cle)}, (cle,)).get(cle)
+            if actuel != vu[cle]:
+                if ignorees is not None:
+                    ignorees.append(cle)
+                LeadActivity.objects.create(
+                    company=lead.company, lead=lead, user=None,
+                    kind=LeadActivity.Kind.NOTE,
+                    body=('Réponse client non appliquée : valeur modifiée '
+                          "par l'équipe depuis l'ouverture du lien "
+                          f'({cle})'))
+                continue
+        gardes[cle] = valeur
+    return gardes
+
+
+def appliquer_section(lien, section, reponses=None, photo=None,
+                      prefill_vu=None, ignorees=None):
     """Enregistre UNE section répondue par le client. Retourne la liste des
     clés réellement enregistrées (vide si rien d'exploitable).
 
@@ -456,7 +487,11 @@ def appliquer_section(lien, section, reponses=None, photo=None):
       · une valeur déjà renseignée n'est JAMAIS remplacée par du vide ;
       · l'historique du lead reçoit une note de section + une ligne
         ancienne→nouvelle valeur par champ suivi (mécanisme existant) ;
-      · la progression du client est mémorisée sur le lien (reprise).
+      · la progression du client est mémorisée sur le lien (reprise) ;
+      · QJR597 — une réponse restée au pré-remplissage VU par le client
+        (``prefill_vu``) n'écrase pas une valeur que l'équipe a corrigée
+        depuis : la clé est sautée et ajoutée à ``ignorees`` (liste
+        facultative remplie en place).
     """
     from django.utils import timezone
 
@@ -478,6 +513,9 @@ def appliquer_section(lien, section, reponses=None, photo=None):
     else:
         champs = champs_lead_depuis_reponses(
             reponses, colonnes_ecrites(section))
+        if champs and isinstance(prefill_vu, dict):
+            champs = _sans_ecrasement_equipe(
+                lead, section, champs, prefill_vu, ignorees)
         if champs:
             # Instantané AVANT écriture : le chatter compare l'ancien au
             # nouveau via le mécanisme existant (activity.log_changes).

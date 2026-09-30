@@ -637,6 +637,68 @@ class ColonnesEcritesTests(TestCase):
         self.assertIn('type_bien', quest.CHAMPS_ORAUX_SEULEMENT)
 
 
+class PrefillVuTests(TestCase):
+    """QJR597 — une réponse restée au pré-remplissage n'écrase pas une valeur
+    corrigée par l'équipe depuis l'ouverture du lien."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor QJR597', slug='taqinor-qjr597')
+        self.lead = lead_complet(self.company, facture_hiver=900)
+        base = {cle: False for cle in quest.SECTIONS}
+        base.update({'energie': True, 'gps': True})
+        self.lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=self.lead, questions=base)
+
+    def _post(self, body):
+        return self.client.post(
+            PUBLIC.format(self.lien.token), data=json.dumps(body),
+            content_type='application/json')
+
+    def test_reponse_inchangee_ne_l_emporte_pas_sur_la_correction(self):
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=1100)
+        res = self._post({'section': 'energie',
+                          'reponses': {'facture_hiver': 900},
+                          'prefill_vu': {'facture_hiver': 900}})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()['ignorees'], ['facture_hiver'])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.facture_hiver), 1100.0)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__contains='non appliquée').exists())
+
+    def test_correction_volontaire_du_client_passe(self):
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=1100)
+        res = self._post({'section': 'energie',
+                          'reponses': {'facture_hiver': 1000},
+                          'prefill_vu': {'facture_hiver': 900}})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(res.json()['ignorees'], [])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.facture_hiver), 1000.0)
+
+    def test_sans_prefill_vu_comportement_inchange(self):
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=1100)
+        res = self._post({'section': 'energie',
+                          'reponses': {'facture_hiver': 900}})
+        self.assertEqual(res.json()['ignorees'], [])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.facture_hiver), 900.0)
+
+    def test_meme_garde_sur_le_gps(self):
+        Lead.objects.filter(pk=self.lead.pk).update(
+            gps_lat=34.0, gps_lng=-6.8)
+        res = self._post({'section': 'gps',
+                          'reponses': {'gps_lat': 33.5, 'gps_lng': -7.6},
+                          'prefill_vu': {'gps_lat': 33.5, 'gps_lng': -7.6}})
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertEqual(sorted(res.json()['ignorees']),
+                         ['gps_lat', 'gps_lng'])
+        self.lead.refresh_from_db()
+        self.assertEqual(float(self.lead.gps_lat), 34.0)
+        self.assertEqual(float(self.lead.gps_lng), -6.8)
+
+
 class ApercuInterneTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
