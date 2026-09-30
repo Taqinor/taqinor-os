@@ -12899,9 +12899,19 @@ def est_derniere_touche_du_suivi(etape):
     return _est_dernier_barreau(etape, 'apres_devis')
 
 
+#: SUIVI E24 — les deux PRISES DE CONTACT : celle d'un prospect (``contact``)
+#: et celle d'un client déjà acquis qui revient (``deuxieme_affaire``, CAD128)
+#: — la table du parcours les range sous les mêmes types d'étape (même
+#: couple que ``suite_touche._CADENCES_PRISE_DE_CONTACT``, SUIVI E15).
+CADENCES_PRISE_DE_CONTACT = ('contact', CADENCE_DEUXIEME_AFFAIRE)
+
+
 def est_derniere_touche_de_contact(etape):
-    """SUIVI E23 (décision fondateur du 30/09/2026) — ``etape`` est-elle la
-    DERNIÈRE touche de la PRISE DE CONTACT (cadence ``contact``) ?
+    """SUIVI E23 / E24 (décisions fondateur du 30/09/2026) — ``etape``
+    est-elle la DERNIÈRE touche d'une PRISE DE CONTACT : celle d'un prospect
+    (cadence ``contact``, E23) ou d'un client acquis qui revient (cadence
+    ``deuxieme_affaire``, E24) — chacune lue sur les barreaux actifs de SA
+    cadence ?
 
     Lue par la vue « Fait » : « À rappeler le… » sur elle ne pose plus
     « Préparer et envoyer le devis » à la date choisie (aucune touche
@@ -12909,7 +12919,9 @@ def est_derniere_touche_de_contact(etape):
     rappel convenu », à la date et à l'heure convenues
     (``repondre_rappel_convenu``, E10/E17). Sur toute autre touche de la
     prise de contact, rien ne change : la touche suivante est datée."""
-    return _est_dernier_barreau(etape, 'contact')
+    return (etape is not None
+            and etape.cadence in CADENCES_PRISE_DE_CONTACT
+            and _est_dernier_barreau(etape, etape.cadence))
 
 
 # ── SUIVI E10 / E17 — un créneau CONVENU devient un APPEL à cette date ──────

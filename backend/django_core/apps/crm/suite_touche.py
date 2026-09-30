@@ -141,8 +141,8 @@ LEAD_PERDU = 'lead_perdu'
 VISITE_ABANDONNEE = 'visite_abandonnee'
 # SUIVI E10 (30/09/2026) — un créneau CONVENU devient un APPEL : l'étape
 # « Rappeler le client — rappel convenu » est posée à la date et à l'heure
-# convenues (et, E17, sur le dernier réveil ; E23, sur la dernière touche de
-# la prise de contact).
+# convenues (et, E17, sur le dernier réveil ; E23/E24, sur la dernière touche
+# d'une prise de contact, deuxième affaire comprise).
 ETAPE_RAPPEL_CONVENU_A_LA_DATE = 'etape_rappel_convenu_a_la_date'
 # SUIVI E12 (30/09/2026) — « Planifier la visite » sans réponse : l'étape est
 # reposée pour demain.
@@ -543,13 +543,13 @@ def _codes_barreau(etape, issue, *, derniere, au_froid, est_actif,
             # critère de rang que ``derniere``).
             return (([SORT_DU_FROID] if au_froid else [])
                     + [ETAPE_RAPPEL_CONVENU_A_LA_DATE])
-        if cadence == 'contact':
+        if cadence in _CADENCES_PRISE_DE_CONTACT:
             # SUIVI E23 (décision fondateur du 30/09/2026) — la DERNIÈRE
             # touche de la prise de contact : plus « Préparer et envoyer le
             # devis » à la date choisie, l'appel « Rappeler le client —
             # rappel convenu » à la date et à l'heure convenues
             # (``services.est_derniere_touche_de_contact``, même critère de
-            # rang que ``derniere``).
+            # rang que ``derniere``). SUIVI E24 — la deuxième affaire aussi.
             return [ETAPE_RAPPEL_CONVENU_A_LA_DATE]
         return [ETAPE_DEVIS_A_LA_DATE]
 

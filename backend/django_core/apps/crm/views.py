@@ -3759,6 +3759,9 @@ class RelanceEtapeViewSet(TenantMixin, mixins.ListModelMixin,
         # close « à rappeler » et l'APPEL « Rappeler le client — rappel
         # convenu » est posé à la date ET à l'heure convenues, recalées sur
         # la fenêtre d'appel ; le dossier garde son étape.
+        # SUIVI E24 — la « deuxième affaire » (un client acquis qui revient,
+        # rangée par la table sous les mêmes types) suit la même règle
+        # (``est_derniere_touche_de_contact`` lit les deux cadences).
         if (statut == RelanceEtape.Statut.FAIT and outcome == 'rappel'
                 and quand is not None
                 and est_derniere_touche_de_contact(etape)):
