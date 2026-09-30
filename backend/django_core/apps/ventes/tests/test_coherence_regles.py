@@ -10,7 +10,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from apps.crm import stages
@@ -317,6 +317,16 @@ class TestReglesEtude(_Base):
             self.assertEqual(
                 self.run_rule('ETU_I2_REDUCTION_VS_COUVERTURE', devis), [])
 
+    def test_i2_arrondi_des_entiers_imprimes_tolere(self):
+        # Prod, 30/09/2026 : −67 % imprimé pour 70 % de couverture, part fixe
+        # ≈ 0,011 → sans la marge d'arrondi, borne basse 67,23 : faux positif.
+        devis = self._devis_i2()
+        page1 = {'coverage_pct': 70, 'pct_cut': 67, 'annual_before': 43636}
+        with mock.patch.object(regles_etude, 'couche_imprimee',
+                               return_value=page1):
+            self.assertEqual(
+                self.run_rule('ETU_I2_REDUCTION_VS_COUVERTURE', devis), [])
+
     def test_i5_facture_actuelle(self):
         ep = {'factures_mensuelles_reelles': [1000] * 12}
         tire = self.devis(mode_installation='industriel', etude_params=ep)
@@ -416,3 +426,31 @@ class TestRegleCrm(_Base):
         self.assertEqual([v.object_id for v in out], [fantome.pk])
         self.assertEqual(out[0].object_type, 'lead')
         self.assertEqual(out[0].company_id, self.company.pk)
+
+
+# ── Sécurité ────────────────────────────────────────────────────────────────
+class TestRegleSecurite(_Base):
+    def _compte(self, username, *, company=None, actif=True):
+        return User.objects.create_user(
+            username=username, password='x', role_legacy='responsable',
+            company=company or self.company, is_active=actif)
+
+    @override_settings(DEBUG=False)
+    def test_compte_demo_actif_signale_en_production(self):
+        actif = self._compte('demo_admin')
+        self._compte('demo_resp', actif=False)
+        self._compte(f'vrai_{_n()}')
+        autre = Company.objects.create(nom='Autre Co',
+                                       slug=f'coh-sec-{_n()}')
+        self._compte('demo_admin_full', company=autre)
+        out = self.run_rule('SEC_COMPTE_DEMO_ACTIF', self.company)
+        self.assertEqual([v.object_id for v in out], [actif.pk])
+        self.assertEqual(out[0].object_type, 'utilisateur')
+        self.assertEqual(out[0].reference, 'demo_admin')
+        self.assertEqual(out[0].company_id, self.company.pk)
+
+    @override_settings(DEBUG=True)
+    def test_muet_en_developpement(self):
+        self._compte('demo_admin')
+        self.assertEqual(
+            self.run_rule('SEC_COMPTE_DEMO_ACTIF', self.company), [])

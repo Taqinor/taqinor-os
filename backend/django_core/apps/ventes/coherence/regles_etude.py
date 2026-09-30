@@ -229,8 +229,9 @@ def i7_bloc_perime(r, devis, ctx):
 def i2_reduction_vs_couverture(r, devis, ctx):
     """Quand CHAQUE mois reste dans la tranche haute même après solaire, la
     facture est linéaire en kWh : −N % ≈ couverture × (1 − part fixe). Donc
-    ``couverture × (1 − part fixe) − 2 ≤ −N % ≤ couverture + 1``. Borne
-    purement physique (aucun bloc « engine » requis pour la tenir).
+    ``couverture × (1 − part fixe) − 2 ≤ −N % ≤ couverture + 1``, élargi de
+    1 pt de chaque côté parce que les deux chiffres sont imprimés arrondis à
+    l'entier. Borne purement physique (aucun bloc « engine » requis).
     Gravité « avertissement » : la part fixe ignore le plafond TPPAN (bruit
     possible sur les grosses factures, audit §B.9)."""
     ep = _ep(devis)
@@ -266,8 +267,9 @@ def i2_reduction_vs_couverture(r, devis, ctx):
         return []
     ab = num(imprime.get('annual_before')) or 0
     part_fixe = min(0.5, 12 * tarif['fixed_mois'] / ab) if ab > 0 else 0
-    bas = cov * (1 - part_fixe) - TOL['I2_plancher_marge_pts']
-    haut = cov + TOL['I2_plafond_pts']
+    arrondi = TOL['I2_arrondi_imprime_pts']
+    bas = cov * (1 - part_fixe) - TOL['I2_plancher_marge_pts'] - arrondi
+    haut = cov + TOL['I2_plafond_pts'] + arrondi
     if bas <= cut <= haut:
         return []
     return [r.violation(

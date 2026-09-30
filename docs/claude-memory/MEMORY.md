@@ -11,3 +11,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Re-confirm client-visible repairs](reconfirm-client-visible-repairs.md) — dry-run diff before prod repairs; re-ask if sent quotes' figures change
 - [Memory shared via repo](memory-shared-via-repo.md) — durable taqinor-os facts also go to docs/claude-memory/ (PR), imported by CLAUDE.md
 - [Set up missing tools](setup-missing-tools.md) — founder rule: install/configure missing prerequisites (docker, keys, deps) instead of reporting a blocker
+- [Demo accounts on prod](demo-accounts-prod-incident.md) — seeded demo_admin/demo_resp (public password) were active on prod; deactivated 30/09; demo docs still in real company
