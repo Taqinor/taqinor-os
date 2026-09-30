@@ -24,7 +24,9 @@ vi.mock('./solar', async (importOriginal) => {
 })
 
 import { createAutoQuote } from './autoQuote'
-import { optimalKwcByPayback, consoAnnuelleDepuisFactures, estimerMois } from './solar'
+import {
+  optimalKwcByPayback, consoAnnuelleDepuisFactures, estimerMois, productibleForCity,
+} from './solar'
 
 async function argumentsDuBalayage(lead) {
   try {
@@ -64,5 +66,26 @@ describe('COUV-HOR — balayage C&I : conso au barème national, modèle inchang
     })
     expect(args.consoAnnuelleKwh).toBe(CONSO_NATIONALE)
     expect(args.utility).toBe('onee')
+  })
+})
+
+// ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le balayage du devis auto chiffre la
+// production au productible de la VILLE du lead (comme l'aperçu et le PDF),
+// jamais au repli historique GHI × 0,8 de `computeROI`.
+describe('ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — balayage du devis auto', () => {
+  it("lead d'Agadir : le balayage reçoit le productible d'Agadir", async () => {
+    expect(productibleForCity('Agadir')).not.toBe(productibleForCity(''))
+    const args = await argumentsDuBalayage({
+      id: 45, type_installation: 'commercial', facture_hiver: '4000',
+      distributeur: 'onee', ville: 'Agadir',
+    })
+    expect(args.productible).toBe(productibleForCity('Agadir'))
+  })
+
+  it('lead sans ville : le productible par défaut, jamais absent', async () => {
+    const args = await argumentsDuBalayage({
+      id: 46, type_installation: 'industriel', facture_hiver: '4000', distributeur: 'onee',
+    })
+    expect(args.productible).toBe(productibleForCity(''))
   })
 })

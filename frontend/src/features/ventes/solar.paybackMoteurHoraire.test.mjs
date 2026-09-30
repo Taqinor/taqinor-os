@@ -3,11 +3,10 @@
 // `coût ÷ économie`. Valeurs attendues calculées par
 // `pricing.compute_cashflow_payback` (Python) sur les mêmes entrées.
 // Run : node --test src/features/ventes/solar.paybackMoteurHoraire.test.mjs
+// L'affichage dans l'écran est EXÉCUTÉ (QJR239, aucune lecture de source)
+// par `pages/ventes/DevisGeneratorPaybackMoteur.test.jsx`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import { paybackMoteurHoraire } from './solar.js'
 
 test("cas e2e : 36 873,11 MAD / 4 580 MAD/an ⇒ 8,2 ans (document), pas 8,05", () => {
@@ -34,14 +33,4 @@ test('jamais remboursé sur 25 ans : drapeau, jamais un nombre à afficher', () 
 test('sans coût ou sans économie : rien', () => {
   assert.equal(paybackMoteurHoraire(0, 4580), null)
   assert.equal(paybackMoteurHoraire(36873, 0), null)
-})
-
-test("l'écran n'affiche plus coût ÷ économie en branche serveur", () => {
-  const HERE = dirname(fileURLToPath(import.meta.url))
-  const SRC = readFileSync(join(HERE, '../../pages/ventes/DevisGenerator.jsx'), 'utf8')
-  assert.doesNotMatch(SRC, /totals\.totalSans \/ apercuEcoSans/)
-  assert.doesNotMatch(SRC, /totals\.totalAvec \/ apercuEcoAvec/)
-  assert.match(SRC, /paybackMoteurHoraire\(totals\.totalSans, apercuEcoSans/)
-  assert.match(SRC, /paybackMoteurHoraire\(totals\.totalAvec, apercuEcoAvec/)
-  assert.match(SRC, /apercuPaybackSansJamais \? 'Non rentabilisé sur 25 ans'/)
 })
