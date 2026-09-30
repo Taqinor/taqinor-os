@@ -276,7 +276,7 @@ describe('ControleSuiviPanel — frise', () => {
     expect(fait).toHaveTextContent('Message d\'identité')
     expect(fait).toHaveTextContent('Fait')
     expect(fait).toHaveTextContent('traitée à 08:32')
-    expect(fait).toHaveTextContent('par meryem')
+    expect(fait).toHaveTextContent(`par ${SUIVI.results[0].traite_par_nom}`)
     expect(aFaire).toHaveTextContent('Appel d\'ouverture')
     expect(aFaire).toHaveTextContent('À faire')
     expect(aFaire).toHaveTextContent('prévue à 08:33')

@@ -479,8 +479,8 @@ export default function RelanceEtapeRow({
   // « Perdu — clore le dossier » : le motif de perte choisi (obligatoire).
   const [motifPerte, setMotifPerte] = useState('')
   // RLC3 — la confirmation explicite « marquer faite sans avoir ouvert le
-  // message ? ». Jamais un blocage : la case est TOUJOURS disponible (Meryem
-  // peut avoir écrit depuis son téléphone) — elle rend seulement le geste
+  // message ? ». Jamais un blocage : la case est TOUJOURS disponible (la
+  // commerciale peut avoir écrit depuis son téléphone) — elle rend seulement le geste
   // conscient, et le dit dans le chatter.
   const [sansOuverture, setSansOuverture] = useState(false)
   // CAD63 — la réponse « ne parle que darija », saisie AU MOMENT où le client
@@ -1222,7 +1222,7 @@ export default function RelanceEtapeRow({
           {/* RLC3 — sur une touche MESSAGE, le panneau rappelle d'abord si le
               message a été ouvert. Ouvert : on le dit, et rien n'est demandé.
               Pas ouvert : une confirmation EXPLICITE, jamais un blocage —
-              Meryem peut parfaitement avoir écrit depuis son téléphone. */}
+              La commerciale peut parfaitement avoir écrit depuis son téléphone. */}
           {toucheMessage && messageOuvertLe && (
             <p
               className="text-xs text-muted-foreground"
@@ -1554,7 +1554,7 @@ export default function RelanceEtapeRow({
           </div>
           {/* CAD46 — décaler une touche décale TOUT le plan (les touches
               suivantes et l'ancre `cadence_depart`, du même écart : garde
-              CAD17 `GlissementDuPlanTests`). Sans cette phrase, Meryem croyait
+              CAD17 `GlissementDuPlanTests`). Sans cette phrase, la commerciale croyait
               bouger un rendez-vous et découvrait des semaines plus tard que le
               dossier avait dérivé. */}
           {modeReport === 'decaler' && (

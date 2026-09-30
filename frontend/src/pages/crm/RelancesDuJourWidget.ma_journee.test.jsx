@@ -23,6 +23,9 @@ vi.mock('../../api/crmApi', () => ({
   default: {
     getRelanceEtapesDues: vi.fn(),
     getCadencesEchues: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
+    // PIÈGE : cette méthode a quitté `crmApi.js` avec le sous-bloc « leads sans
+    // cadence ». Si le widget la rappelait un jour, ce mock la verrait (et
+    // servirait un lead sans cadence, que le test « a disparu » refuse).
     getKpiAdherence: vi.fn(() => Promise.resolve({ data: { leads_sans_touche: [{ lead_id: 1, nom: 'X' }] } })),
     marquerRelanceEtapeFait: vi.fn(),
     marquerRelanceEtapeSautee: vi.fn(),

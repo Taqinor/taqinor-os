@@ -84,7 +84,7 @@ describe('MRY15 CadenceFrise', () => {
 
 /* MRY32 — la frise agit directement sur la prochaine touche à faire et sur
    toute touche en retard (Appeler/WhatsApp/Fait/Sauter/Reporter, mode
-   compact du composant partagé `RelanceEtapeRow.jsx`) : Meryem fait la
+   compact du composant partagé `RelanceEtapeRow.jsx`) : la commerciale fait la
    touche SANS quitter la fiche. Jeu de données DÉDIÉ (dérivé par spread du
    contrat committé, jamais retapé à la main) pour isoler « prochaine à faire »
    vs « déjà faite », ce que l'exemple par défaut (deux étapes À FAIRE) ne

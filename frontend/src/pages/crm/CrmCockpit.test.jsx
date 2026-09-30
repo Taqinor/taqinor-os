@@ -4,6 +4,7 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import api from '../../api/axios'
 import crmApi from '../../api/crmApi'
 import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 import CrmCockpit from './CrmCockpit'
@@ -165,8 +166,9 @@ describe('COCKPIT-CONTRÔLE F4 — ordre des blocs selon le rôle', () => {
     vi.spyOn(crmApi, 'getControleSuivi').mockResolvedValue(reponseContrat('crm', 'controle_suivi'))
     vi.spyOn(crmApi, 'getRelanceEtapesDues').mockResolvedValue(reponseContrat('crm', 'relance_etape_v2'))
     vi.spyOn(crmApi, 'getChaineCommerciale').mockResolvedValue(reponseContrat('crm', 'chaine_commerciale'))
-    vi.spyOn(crmApi, 'getKpiAdherence').mockResolvedValue({ data: {} })
-    vi.spyOn(crmApi, 'getMesStatsRelance').mockResolvedValue({ data: {} })
+    // Espion SANS remplacement sur le client HTTP : on relève les routes que le
+    // cockpit demande vraiment (les autres widgets, eux, gardent leur appel réel).
+    vi.spyOn(api, 'get')
   })
   afterEach(() => { vi.restoreAllMocks() })
 
@@ -228,9 +230,14 @@ describe('COCKPIT-CONTRÔLE F4 — ordre des blocs selon le rôle', () => {
       expect(screen.queryByTestId('mes-stats-relance-tuiles')).not.toBeInTheDocument()
       unmount()
     }
-    // Plus aucun appel à leurs routes serveur depuis le cockpit.
-    expect(crmApi.getKpiAdherence).not.toHaveBeenCalled()
-    expect(crmApi.getMesStatsRelance).not.toHaveBeenCalled()
+    // Le code mort a suivi : plus aucune méthode cliente pour ces deux routes
+    // serveur (`kpi-adherence/`, `mes-stats/` — les routes restent côté serveur)…
+    expect(crmApi.getKpiAdherence).toBeUndefined()
+    expect(crmApi.getMesStatsRelance).toBeUndefined()
+    // … et le cockpit n'en demande aucune (l'espion a bien vu passer d'autres routes).
+    const routes = api.get.mock.calls.map(([url]) => String(url))
+    expect(routes.length).toBeGreaterThan(0)
+    expect(routes.filter((url) => /kpi-adherence|mes-stats/.test(url))).toEqual([])
   })
 
   it('le contrôle et la file lisent chacun leur route, une fois', async () => {

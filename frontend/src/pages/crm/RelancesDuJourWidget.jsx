@@ -54,7 +54,7 @@ import { pl } from './controleSuiviTexte'
      · l'aide n'annonce plus « dues aujourd'hui ou en retard » pour les trois
        segments, et l'état vide est utile (« Voir demain (n) ») ;
      · le sous-bloc « N leads sans cadence » (CAD117) a disparu, avec l'appel
-       `getKpiAdherence` qui ne servait qu'à lui : il mélangeait « jamais placé »
+       `getKpiAdherence` (méthode retirée de `crmApi.js`) qui ne servait qu'à lui : il mélangeait « jamais placé »
        et « sorti du suivi » — l'exception « Dossiers sans prochaine étape » du
        Contrôle du suivi (`ControleSuiviPanel.jsx`) le remplace. « Cadences
        échues à clore » reste.
@@ -67,7 +67,7 @@ import { pl } from './controleSuiviTexte'
    `crmApi.annulerRelanceEtape`) n'a en revanche RIEN à annuler dans la liste
    ci-dessous par construction : le serveur ne sert ici que des étapes encore
    `a_faire` (`crm.selectors.relance_etapes_dues`), jamais fait/sautée. La
-   touche que Meryem vient de traiter DANS CETTE session est donc suivie à
+   touche que la commerciale vient de traiter DANS CETTE session est donc suivie à
    part (`justeTraitees`, peuplée par `traiter()` sur Fait/Sauter, retirée au
    clic « Annuler ») — c'est elle, et seulement elle, qui porte « Annuler »
    ici.
