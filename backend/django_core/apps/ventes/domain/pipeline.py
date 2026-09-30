@@ -472,7 +472,11 @@ MODES = (MODE_COMPOSER, MODE_ECRIRE, MODE_RAFRAICHIR, MODE_RECONCILIER)
 ETAPES_PAR_MODE = {
     MODE_COMPOSER: ETAPES,
     MODE_ECRIRE: ('ecrire_lignes',),
-    MODE_RAFRAICHIR: ('rafraichir_etudes',),
+    # QJR554 — le rafraîchissement remet aussi à jour les CACHES du devis
+    # (kWc depuis les lignes, marge interne) : l'Édition complète ne laisse
+    # plus ``puissance_kwc`` ni ``marge_snapshot`` périmés. PAS de second
+    # ``concevoir_electrique`` : ``rafraichir_etudes`` le couvre déjà.
+    MODE_RAFRAICHIR: ('rafraichir_etudes', 'finaliser_caches'),
     MODE_RECONCILIER: ('reconcilier',),
 }
 
@@ -994,16 +998,27 @@ def rafraichir_etudes(verrou, *, force=False):
     return rafraichir_etudes_du_devis(verrou, force=force)
 
 
+def finaliser_caches(devis):
+    """QJR554 — les deux CACHES du devis : le kWc (QJR63, depuis les LIGNES)
+    et la marge interne (QX23be, manager-only — jamais au PDF).
+
+    Partagés par ``finaliser`` (mode ``composer``) et le mode ``rafraichir``
+    (Édition complète, ``perform_update``, ``LigneDevisViewSet``). Best-effort,
+    ne touche jamais au statut (règle #4).
+    """
+    poser_puissance_kwc(devis)
+    refresh_marge_snapshot(devis)
+    return devis
+
+
 def finaliser(devis, intention):
     """Étape 8 — le kWc par son propriétaire, la marge interne, le schéma.
 
     Les trois sont BEST-EFFORT et n'annulent jamais un devis écrit :
-    ``poser_puissance_kwc`` (QJR63 — le kWc vient des LIGNES, pas du layout),
-    ``refresh_marge_snapshot`` (QX23be, manager-only) et
+    ``finaliser_caches`` (kWc QJR63 + marge QX23be) puis
     ``concevoir_electrique_du_devis`` (PV42).
     """
-    poser_puissance_kwc(devis)
-    refresh_marge_snapshot(devis)
+    finaliser_caches(devis)
     concevoir_electrique_du_devis(devis, origine=intention.origine)
     return devis
 
@@ -1214,6 +1229,9 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     else:  # MODE_RAFRAICHIR
         rafraichir_etudes(devis, force=intention.force_etudes)
         journal.append('rafraichir_etudes')
+        # QJR554 — les caches suivent les lignes réellement écrites.
+        finaliser_caches(devis)
+        journal.append('finaliser_caches')
     if avant_geste is not None:
         fin_de_geste_devis(
             devis, intention.user, avant=avant_geste,
@@ -1322,6 +1340,7 @@ __all__ = [
     'estampiller_provenance',
     'estampiller_variante',
     'finaliser',
+    'finaliser_caches',
     'intention_de_composition',
     'message_batterie_incompatible',
     'rafraichir_etudes',

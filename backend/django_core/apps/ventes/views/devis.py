@@ -1012,12 +1012,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
 
         devis = serializer.instance
-        # QX23be — fige la marge interne à la création (manager-only).
-        try:
-            from ..services import refresh_marge_snapshot
-            refresh_marge_snapshot(devis)
-        except Exception:  # noqa: BLE001
-            pass
+        # QJR554 — la marge interne (QX23be) et le kWc sont posés par le mode
+        # RAFRAICHIR du pipeline ci-dessous (``finaliser_caches``) : plus de
+        # rattrapage manuel ici.
         # L-QA1 (24/08/2026) — MÊME rafraîchissement que ``replace_lines``
         # ci-dessous : ``atomic`` EST le chemin de création du générateur
         # (devis + lignes en un seul commit) et, avant ce correctif, ne posait

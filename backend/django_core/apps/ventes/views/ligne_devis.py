@@ -60,6 +60,17 @@ def _retarifer_forfaits(devis):
         pass
 
 
+def _rafraichir(devis):
+    """QJR554 — le mode RAFRAICHIR du pipeline après une écriture de ligne :
+    les quatre études (best-effort) PUIS les caches du devis (kWc depuis les
+    lignes, marge interne) — sans lui, ``puissance_kwc`` et ``marge_snapshot``
+    restaient ceux d'avant la ligne ajoutée / modifiée / retirée."""
+    from ..domain.pipeline import (
+        MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer)
+    appliquer(devis, IntentionDevis(
+        origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=devis.company))
+
+
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
@@ -168,9 +179,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # le graphe de la page client sans toucher au schéma unifilaire, qui
         # continuait de décrire la composition d'avant. Best-effort, ne lève
         # jamais (voir ``services.rafraichir_etudes_du_devis``).
-        from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(serializer.instance.devis)
-        rafraichir_etudes_du_devis(serializer.instance.devis)
+        _rafraichir(serializer.instance.devis)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
 
@@ -185,9 +195,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         serializer.save()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
-        from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(serializer.instance.devis)
-        rafraichir_etudes_du_devis(serializer.instance.devis)
+        _rafraichir(serializer.instance.devis)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
 
@@ -200,8 +209,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         instance.delete()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
-        from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(devis)
-        rafraichir_etudes_du_devis(devis)
+        _rafraichir(devis)
         fin_de_geste_devis(devis, self.request.user, avant=avant_geste,
                            objet='ligne')
