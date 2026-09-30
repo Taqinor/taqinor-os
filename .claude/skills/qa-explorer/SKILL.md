@@ -5,9 +5,11 @@ description: >-
   sub-agent per kept MVP module (crm, visites, calepinage, ventes, stock,
   chantiers, sav, ged, portail, parametres), each with a PERSONA and a plain-French
   MISSION, drives the LOCAL demo ERP (docker stack seeded by seed_demo, login
-  demo_admin) through Playwright MCP, while HARD ORACLES judge — any 4xx/5xx,
-  console.error / pageerror / unhandled rejection, empty list right after a
-  create, failing /proposal PDF, prix_achat visible — and the LLM only judges
+  demo_admin — or, with `dataset: anon`, an anonymised copy of production loaded
+  by qa_import_anonymise, login anon_admin) through Playwright MCP, while HARD
+  ORACLES judge — any 4xx/5xx, console.error / pageerror / unhandled rejection,
+  empty list right after a create, failing /proposal PDF, prix_achat visible,
+  audit_coherence violations — and the LLM only judges
   ambiguous screens against an explicit per-module grid. Every candidate is
   replayed once in an independent Chrome DevTools MCP browser before it is
   filed as an ERR-QAH-<MODULE>-<SLUG> line in docs/ERROR_PLAN.md (error-autopilot
@@ -62,7 +64,9 @@ saying why and end without writing anything.
    merge, no browser. Print exactly `QA_EXPLORER: DISABLED (config flag off)`
    and end.
 3. Load the knobs: `base_url`, `modules`, `max_minutes`, `max_agents`,
-   `cross_check`, `max_findings_per_run`. Note the start time: the whole pass
+   `cross_check`, `max_findings_per_run`, `dataset` (`demo` | `anon`, default
+   `demo` when absent) and `anon_snapshot` (default
+   `var/anon/latest.anon.json.gz`). Note the start time: the whole pass
    (explore + confirm + file) must end within `max_minutes`.
 4. **Target guard.** `base_url` host must be `localhost` or `127.0.0.1`. Anything
    else → print `QA_EXPLORER: REFUSED (base_url is not the local stack)` and end.
@@ -100,9 +104,37 @@ saying why and end without writing anything.
    `docker compose exec -T django_core python manage.py shell -c "..."` — three
    client names of `taqinor-demo-full`: they are the **foreign markers** every
    explorer must never see (STEP 2, oracle 9).
-10. **Credentials — never invent them, never print them.** The explorer login is
-    `demo_admin`; its password is the literal passed to `admin.set_password(...)`
-    in `seed_demo.py` (the same pair is `ADMIN` in `frontend/e2e/helpers.js`).
+   **Anonymised dataset (`dataset: anon`).** The ACTIVE company is then
+   `taqinor-anon` (with `demo` it is `taqinor-demo`); the demo seeding above
+   still runs (the demo company stays the fallback). Then:
+   - `anon_snapshot` missing → print `QA_EXPLORER: NOTE (dataset anon demandé mais instantané absent — repli sur demo)`,
+     continue with `dataset: demo` and say so in the report.
+   - Otherwise import it when it is NEWER than the last import OR the company
+     `taqinor-anon` does not exist (read-only check via `manage.py shell -c`).
+     "Last import" = the mtime recorded in `logs/nightly-qa/anon-last-import.txt`
+     (gitignored); compare with
+     `python -c "import os,sys; s=os.path.getmtime(sys.argv[1]); m=sys.argv[2]; print('IMPORT' if not os.path.exists(m) or s > float(open(m).read().strip() or 0) else 'FRESH')" <anon_snapshot> logs/nightly-qa/anon-last-import.txt`.
+     Import = three commands, never anything else:
+     `docker compose cp <anon_snapshot> django_core:/tmp/latest.anon.json.gz`,
+     `docker compose exec -T django_core python manage.py qa_import_anonymise --in /tmp/latest.anon.json.gz`,
+     `docker compose exec -T django_core rm -f /tmp/latest.anon.json.gz`
+     (always run the `rm`, even after a failure). The command is DEBUG-only and
+     only ever wipes/reloads `taqinor-anon`. If it refuses → STOP with
+     `QA_EXPLORER: BLOCKED (qa_import_anonymise refused — DJANGO_DEBUG is not True in the local .env)`.
+     On success write the snapshot's mtime into the marker:
+     `python -c "import os,sys; open(sys.argv[2],'w').write(str(os.path.getmtime(sys.argv[1])))" <anon_snapshot> logs/nightly-qa/anon-last-import.txt`.
+   - **Confidentiality.** The snapshot and everything read from `taqinor-anon`
+     is CONFIDENTIAL (real amounts, real purchase prices, real études — only the
+     identities are fake). Never copy the file anywhere else, never open it,
+     never paste its content or absolute amounts read from it into a report, an
+     ERR entry, a commit or a capture name. The skill NEVER runs
+     `qa_export_anonymise` and never touches the server.
+10. **Credentials — never invent them, never print them.** With `dataset: demo`
+    the explorer login is `demo_admin`; its password is the literal passed to
+    `admin.set_password(...)` in `seed_demo.py` (the same pair is `ADMIN` in
+    `frontend/e2e/helpers.js`). With `dataset: anon` it is `anon_admin`, password
+    = the `ANON_PASSWORD` literal of
+    `backend/django_core/authentication/management/commands/qa_import_anonymise.py`.
     Read it from there and hand it to the explorers in their brief only. It must
     never appear in the report, in an ERR entry, in a capture file name or in a
     commit. There is no seeded client-portal account: see the `portail` mission.
@@ -151,6 +183,9 @@ below. Paste this grounding block verbatim into every brief:
   endpoint + status, the console text, the dialog text, the numbers read on
   screen), `retried_once: yes/no` + the retry's outcome, capture path, suspected
   severity.
+- `CREATED` — every record created: object type (devis, lead, facture…), id
+  read from the URL or the API response, reference, marker. Oracle 10 uses it
+  to attribute coherence violations to this pass.
 - `COVERAGE` — mission steps done / blocked (and by what), screens visited.
 - `ENV NOTES` — third-party failures (map tiles, fonts, external APIs without
   keys), module not activated for the demo company (`/app-non-activee`), anything
@@ -159,6 +194,8 @@ below. Paste this grounding block verbatim into every brief:
 
 ### Phase B — REPLAY (orchestrator, sequential, independent browser)
 The explorer's word is not enough (execution-bias attribution cuts both ways).
+(Oracle 10 candidates are the exception: they come from the orchestrator's own
+deterministic command and are replayed by re-running it — STEP 2, oracle 10.)
 For each candidate, **after dedupe (Phase D) drops the known ones**, replay the
 repro yourself in the **Chrome DevTools MCP** browser — a different, clean Chrome
 with no shared state: open a new page, log in at `<base_url>/login`, follow the
@@ -244,8 +281,34 @@ an ENV NOTE, never a finding.
 8. **Broken screen** — the route error boundary ("Une erreur est survenue"), a
    blank main area, or a spinner / "Chargement…" still there after 30 s.
 9. **Foreign data** — any of the foreign markers (the `taqinor-demo-full` client
-   names, STEP 0.9) visible anywhere while logged in as `demo_admin` → candidate,
-   Critical (cross-tenant leak).
+   names, STEP 0.9) visible anywhere while logged in as the explorer account
+   (`demo_admin` / `anon_admin`) → candidate, Critical (cross-tenant leak).
+10. **Document coherence (deterministic, run by the ORCHESTRATOR, no browser, no
+    LLM)** — right after the `ventes` explorer returns and right after the `crm`
+    explorer returns, run
+    `docker compose exec -T django_core python manage.py audit_coherence --company <active slug> --json --no-persist`
+    (`taqinor-demo` or `taqinor-anon`, STEP 0.9). Its stdout is ONE JSON object
+    `{"companies":[...], "checked":{...}, "violations":[{rule, severity, object_type, object_id, reference, company, message, values}], "new":[...], "rule_errors":[...], "duration_s": n}`.
+    - Candidate = every violation whose (`object_type`, `object_id`) or
+      `reference` is in an explorer's `CREATED` list or carries the pass marker
+      (`QAH<YYYYMMDD>`) — and, with `dataset: anon`, EVERY violation (real-shaped
+      documents computed by the current code are exactly what this oracle is
+      for).
+    - Replay (Phase B for this oracle) = re-run the same command; **CONFIRMED,
+      confidence high** only if the same (`rule`, `object_type`, `object_id`)
+      reappears. No browser replay is needed — the signal is deterministic.
+    - Severity = the violation's `severity` (critical/high/medium/low → STEP 5
+      levels; missing → High). `rule_errors` entries are ENV NOTES (an auditor
+      rule crashed), never filed as product defects.
+    - With `dataset: anon`, the ERR line quotes the rule, the object type, the
+      reference and the GAP (e.g. `écart 0,01`, `28 % ≠ 37 %`) — never the
+      absolute amounts of the snapshot (confidential). One ERR item per rule
+      (all its objects listed by reference), not one per object.
+    - **Command absent** (`manage.py help audit_coherence` → "Unknown command",
+      or the run exits with that message) → skip oracle 10, write
+      `oracle 10 ignoré : audit_coherence pas encore disponible` in the report.
+      Never fail the pass for it. A non-zero exit WITH valid JSON on stdout is
+      still read (violations may set the exit code).
 
 ---
 
@@ -314,7 +377,7 @@ same list share one.
 | `crm` | commercial pressé, sur ordinateur | `/crm/cockpit`, `/crm/leads`, `/crm/leads/:id`, `/crm/relances` | « Crée un lead (nom avec ton marqueur, téléphone, ville), retrouve-le dans la liste puis dans le tableau, fais-le passer d'étape en étape, ajoute une note, planifie une relance, et vérifie chaque écran. » | Stage names shown = exactly the 6 French labels of `STAGES.py` (orchestrator passes them); the chatter logs each old→new change; the relance appears in `/crm/relances`. |
 | `visites` | technicien sur mobile (`browser_resize` 390×844) | `/visites`, `/visites/planifier`, `/visites/toutes`, `/visites/:id` | « Planifie une visite technique pour ton lead ou un client démo, ouvre-la, remplis le relevé, enregistre, et vérifie qu'elle apparaît dans toutes les visites. » | Date/heure shown = date/heure entered; the visit is listed in `/visites/toutes`; usable at 390 px (no action hidden off-screen). |
 | `calepinage` | technicien bureau d'études | `/calepinage`, `/calepinage/nouveau`, `/calepinage/:id/plan`, `/calepinage/:id/production` | « Crée une étude de calepinage, pose des panneaux, vérifie la puissance et la production, parcours les onglets principaux. » | kWc = nombre de panneaux × puissance unitaire (to the displayed precision); typed numbers never snapped (G1); map-tile failures are ENV NOTES. |
-| `ventes` | comptable méfiante | `/ventes/devis/nouveau`, `/ventes/devis`, `/ventes/bons-commande`, `/ventes/factures`, `/ventes/avoirs` | « Crée un devis Résidentiel pour un client démo, vérifie chaque total au centime, ouvre le PDF, accepte-le, convertis-le en bon de commande puis en facture, et vérifie chaque écran. » | Sous-total HT → Remise → Total HT → TVA → Total TTC consistent **to the centime** on the form, the list, the BC and the facture (Total HT = Sous-total − Remise; TTC = HT + TVA); status chain brouillon → envoyé → accepté → BC → facture preserved 1:1 (no facture from a non-accepted devis through the UI); reference unique (G5); `/proposal` PDF OK (oracle 6) and free of `prix_achat` (oracle 7); the screen is 100 % TTC. |
+| `ventes` | comptable méfiante | `/ventes/devis/nouveau`, `/ventes/devis`, `/ventes/bons-commande`, `/ventes/factures`, `/ventes/avoirs` | « Prends un lead qui a ses factures d'électricité renseignées (facture hiver/été ; en jeu `anon`, choisis-en un parmi les leads existants ; en jeu `demo`, aucun n'en a : crée un lead avec ton marqueur et renseigne ses factures), crée un devis Résidentiel À PARTIR de ce lead (pas d'un client nu), vérifie que l'étude reprend ses factures, vérifie chaque total au centime, ouvre le PDF, accepte-le, convertis-le en bon de commande puis en facture, et vérifie chaque écran. » (The orchestrator then runs oracle 10.) | Sous-total HT → Remise → Total HT → TVA → Total TTC consistent **to the centime** on the form, the list, the BC and the facture (Total HT = Sous-total − Remise; TTC = HT + TVA); status chain brouillon → envoyé → accepté → BC → facture preserved 1:1 (no facture from a non-accepted devis through the UI); reference unique (G5); `/proposal` PDF OK (oracle 6) and free of `prix_achat` (oracle 7); the screen is 100 % TTC. |
 | `stock` | magasinier | `/stock`, `/stock/mouvements`, `/stock/categories` | « Crée un produit avec ton marqueur et un prix, fais une entrée de stock puis une sortie, et vérifie la quantité restante et l'historique des mouvements. » | Resulting quantity = initial + entrée − sortie; both movements listed; an under-threshold product is flagged. |
 | `chantiers` | chef de chantier sur mobile (390×844) | `/chantiers`, `/interventions`, `/planification`, `/ma-journee` | « Ouvre un chantier (depuis un devis accepté s'il en existe un), planifie une intervention, fais-la avancer d'état, et vérifie le planning et ta journée. » | State changes visible in the list and the detail; the planned intervention appears in `/planification` and `/ma-journee` on its date. |
 | `sav` | technicien SAV | `/sav/cockpit`, `/sav`, `/equipements`, `/sav/contrats` | « Crée un ticket SAV pour un client démo, qualifie-le, fais-le avancer jusqu'à la clôture, et vérifie le cockpit. » | Status transitions shown in order; the ticket appears in the cockpit counts; closing requires what the wizard says it requires. |
@@ -355,7 +418,7 @@ line), inserted in `docs/ERROR_PLAN.md` under `## BUILD QUEUE` (replace the
 `_(vide — …)_` placeholder line if it is still there), ordered Critical → Low:
 
 ```
-- [ ] ERR-QAH-VENTES-DEVIS-TTC-ARRONDI — [ventes] <titre> : <symptôme / impact>. REPRO : 1) se connecter (demo_admin, stack locale seed_demo) ; 2) … ; 3) …. ATTENDU : … ; OBSERVÉ : … (preuve : `POST /api/django/ventes/devis/ → 500`, console « … »). CAPTURE : `docs/qa-explorer/captures/<YYYY-MM-DD>/VENTES-DEVIS-TTC-ARRONDI.jpg`. SÉVÉRITÉ : High. CONFIANCE : high (oracle dur n°1, rejoué dans un navigateur indépendant). found via: qa-explorer <YYYY-MM-DD>, persona comptable méfiante. Files: <owning files from CODEMAP §4 — the endpoint's app views/serializers/services + the screen's `frontend/src/features/<x>/` file>. (ROUTINE, @model:sonnet)
+- [ ] ERR-QAH-VENTES-DEVIS-TTC-ARRONDI — [ventes] <titre> : <symptôme / impact>. REPRO : 1) se connecter (demo_admin, stack locale seed_demo — ou anon_admin, jeu anonymisé qa_import_anonymise) ; 2) … ; 3) …. ATTENDU : … ; OBSERVÉ : … (preuve : `POST /api/django/ventes/devis/ → 500`, console « … »). CAPTURE : `docs/qa-explorer/captures/<YYYY-MM-DD>/VENTES-DEVIS-TTC-ARRONDI.jpg`. SÉVÉRITÉ : High. CONFIANCE : high (oracle dur n°1, rejoué dans un navigateur indépendant). found via: qa-explorer <YYYY-MM-DD>, persona comptable méfiante. Files: <owning files from CODEMAP §4 — the endpoint's app views/serializers/services + the screen's `frontend/src/features/<x>/` file>. (ROUTINE, @model:sonnet)
 ```
 
 - An item whose fix obviously needs a founder decision (new paid dependency,
@@ -399,6 +462,9 @@ for the next night). File in a temporary worktree:
    the FILED items from the main checkout's `docs/qa-explorer/captures/<date>/`
    into the worktree, then delete every capture of that date from the main
    checkout (untracked there). Captures of dropped candidates are not committed.
+   **With `dataset: anon`, NO capture is committed** (screens show real amounts
+   and purchase prices): the ERR line says `CAPTURE : locale seulement (jeu anonymisé)`
+   and the captures are deleted from the main checkout at the end of the pass.
 3. Commit once: `QA-explorer <YYYY-MM-DD> — N constats (ERR-QAH-…)`. The changed
    files must be ONLY `docs/ERROR_PLAN.md`, `docs/CODEMAP.md`,
    `docs/qa-explorer.md` and `docs/qa-explorer/captures/**` — anything else →
@@ -418,8 +484,10 @@ for the next night). File in a temporary worktree:
 
 ## STEP 9 — Report & status
 
-Report once, in plain language (it lands in the nightly log): the modules
-explored and how far each mission got; candidates found → replayed → confirmed →
+Report once, in plain language (it lands in the nightly log): the dataset used
+(`demo` / `anon`, imported this pass or already fresh, or fallback to demo) and
+the oracle-10 outcome (violations seen / attributed / confirmed, or "ignoré");
+the modules explored and how far each mission got; candidates found → replayed → confirmed →
 filed → dropped (one-line reason tally: non reproduit / déjà connu /
 cross-check / hors budget); the exact ids filed; ENV NOTES; the cost (tool calls
 and tokens per explorer when known; the nightly log also holds the run's
@@ -442,6 +510,10 @@ Delete the pass marker. Then print, each on its own line:
   client-facing output is a Critical finding, not something to copy.
 - Credentials are read from the seed file, used in the browser only, never written
   anywhere.
+- The anonymised snapshot (`var/anon/`, `*.anon.json.gz`) is CONFIDENTIAL: never
+  committed, never copied outside the local docker stack, never opened or quoted;
+  no absolute amount from `taqinor-anon` in any committed text or capture. The
+  skill never runs `qa_export_anonymise` and never touches the server.
 - No outbound message to a real person (e-mail, WhatsApp, SMS), no Meta action,
   no external link followed.
 - Never align a test or an oracle with the current behaviour to make it green;

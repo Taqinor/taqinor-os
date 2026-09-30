@@ -10,4 +10,5 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [QA coherence auditor](qa-coherence-auditor.md) — why plausible wrong figures escape QA; read-only prod auditor prototype + rules
 - [Re-confirm client-visible repairs](reconfirm-client-visible-repairs.md) — dry-run diff before prod repairs; re-ask if sent quotes' figures change
 - [Memory shared via repo](memory-shared-via-repo.md) — durable taqinor-os facts also go to docs/claude-memory/ (PR), imported by CLAUDE.md
+- [Set up missing tools](setup-missing-tools.md) — founder rule: install/configure missing prerequisites (docker, keys, deps) instead of reporting a blocker
 - [Suivi commercial : table du parcours](suivi-commercial-table-parcours.md) — 30/09/2026 : UNE table (parcours_suivi.json) tient écran + garde de test + guide PDF GED ; verrou CAD44 précisé (tâches jamais verrouillées) ; planification avant enregistrement

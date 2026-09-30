@@ -645,3 +645,33 @@ def task_devis_automatique_depuis_lead(lead_id, company_id):
     if devis is None:
         return None
     return devis.pk
+
+
+# ── QA-COHERENCE — audit nocturne des invariants métier (04:15) ─────────────
+# LECTURE SEULE sur le métier (calcul dans une transaction annulée, voir
+# ``coherence.moteur``) ; seule la table d'audit ``ViolationCoherence`` est
+# tenue à jour. Ne notifie QUE les NOUVELLES violations, aux admins de la
+# société, via ``notify()`` — donc REPORTÉ aux heures de travail (N1/N4 :
+# aucune notification la nuit). Aucune nouvelle violation → aucune
+# notification. AUCUN RETRY : une passe ratée est rejouée la nuit suivante,
+# et l'état persistant rend la passe idempotente.
+@shared_task(name='ventes.audit_coherence_nuit')
+def audit_coherence_nuit():
+    from .coherence.moteur import run_audit
+    from .coherence.notification import notifier_nouvelles_violations
+
+    report = run_audit(persist=True)
+    notifications = notifier_nouvelles_violations(report) if report.new \
+        else 0
+    resume = {
+        'companies': len(report.companies),
+        'checked': dict(report.checked),
+        'violations': len(report.violations),
+        'new': len(report.new),
+        'resolved': report.resolved,
+        'rule_errors': len(report.rule_errors),
+        'notifications': notifications,
+        'duration_s': round(report.duration_s, 1),
+    }
+    logger.info('audit_coherence_nuit : %s', resume)
+    return resume

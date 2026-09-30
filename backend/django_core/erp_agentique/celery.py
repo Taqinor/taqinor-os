@@ -131,6 +131,15 @@ app.conf.beat_schedule = {
         'task': 'crm.recalculer_scores_obsoletes',
         'schedule': crontab(hour=4, minute=10),
     },
+    # QA-COHERENCE — audit nocturne des invariants métier (lecture seule,
+    # calcul dans une transaction annulée) : tient à jour la table
+    # ViolationCoherence et ne notifie QUE les nouvelles violations, aux
+    # admins, via `notify()` → livrées à l'ouverture des heures de travail
+    # (N4). Tâche dans apps/ventes/tasks.py (autodécouverte standard).
+    'ventes-audit-coherence-nuit': {
+        'task': 'ventes.audit_coherence_nuit',
+        'schedule': crontab(hour=4, minute=15),
+    },
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',
         'schedule': crontab(hour=7, minute=0),

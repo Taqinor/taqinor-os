@@ -19,6 +19,10 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 def build(ctx):
     from . import theme
     from .. import constants
+    # QA-FIGURES — ancres ``data-figure`` masquées posées À CÔTÉ de chaque
+    # chiffre client (jamais dedans : aucune chaîne existante ne change, aucun
+    # rendu visible ne bouge). Voir ``quote_engine/figures.py``.
+    from ..figures import ancre, option_economique
 
     d = ctx["d"]
     C = ctx["C"]
@@ -82,6 +86,8 @@ def build(ctx):
     # un ``d`` sans passer par ``renderer._augment`` ne puisse pas imprimer un
     # chiffre BT sur un dossier MT.
     masquer_eco = bool(d.get("masquer_synthese") or d.get("masquer_economies"))
+    # QA-FIGURES — l'option que décrit la synthèse −N % / donut (``eco_option``).
+    _eco_opt = option_economique(d)
     annual_before = d.get("annual_before") or 0
     annual_after = d.get("annual_after") or 0
     coverage_pct = d.get("coverage_pct") or 0
@@ -221,8 +227,11 @@ def build(ctx):
     # (« × 710 W ») n'est pas répétée ici : elle est déjà portée, par option,
     # par la bande et le tableau comparatif de la page 2.
     kpi_kwc_style = ""
+    kpi_kwc_ancres = ancre("puissance_kwc", kpi_kwc_v)
     if _divergent and deux_options and kwc_sans and kwc_avec and _nb_s and _nb_a:
         kpi_kwc_v = f"{_num_kwc(kwc_sans)} · {_num_kwc(kwc_avec)}"
+        kpi_kwc_ancres = (ancre("puissance_kwc", _num_kwc(kwc_sans), "sans")
+                          + ancre("puissance_kwc", _num_kwc(kwc_avec), "avec"))
         kpi_kwc_style = ' style="font-size:13pt;"'
         kpi_kwc_l = (f"Puissance sans · avec · {_nb_s:g} · {_nb_a:g} "
                      f"panneaux")
@@ -247,9 +256,13 @@ def build(ctx):
     kpi_prod_v = fmt(prod_kwh)
     kpi_prod_l = "Production estimée"
     kpi_prod_style = ""
+    kpi_prod_ancres = ancre("production_annuelle_kwh", kpi_prod_v)
     if (_divergent and deux_options and _prod_s and _prod_a
             and _prod_s != _prod_a):
         kpi_prod_v = f"{fmt(_prod_s)} · {fmt(_prod_a)}"
+        kpi_prod_ancres = (
+            ancre("production_annuelle_kwh", fmt(_prod_s), "sans")
+            + ancre("production_annuelle_kwh", fmt(_prod_a), "avec"))
         kpi_prod_style = ' style="font-size:12pt;"'
         kpi_prod_l = "Production estimée sans · avec"
 
@@ -598,17 +611,21 @@ def build(ctx):
                    else " estimée")
         eco_html = (
             f'<div class="c1-opt-eco">Économie{eco_mot} ≈ <b>{fmt(eco)} '
-            'MAD/an</b></div>' if (eco and not masquer_eco) else "")
+            'MAD/an</b></div>' + ancre("economie_annuelle", fmt(eco), opt)
+            if (eco and not masquer_eco) else "")
         roi_html = (
             f'<div class="c1-roi">{_roi_svg(green)}Rentabilisé en '
-            f'{_yrs(roi_v)} ans</div>' if not masquer_eco else "")
+            f'{_yrs(roi_v)} ans</div>' + ancre("payback_ans", _yrs(roi_v), opt)
+            if not masquer_eco else "")
         return (
             f'<div class="{cls}">'
             f'<div class="c1-opt-head"><div>'
             f'<div class="c1-opt-k">{kicker}</div>'
             f'<div class="c1-opt-name">{name}</div></div>{pill}</div>'
             f'<div class="c1-opt-price">{fmt(price)}<span class="c1-u">&nbsp;MAD</span></div>'
+            f'{ancre("total_ttc", fmt(price), opt)}'
             f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
+            f'{ancre("prix_kwc", pkwc, opt) if pkwc != "—" else ""}'
             f'{roi_html}'
             f'{eco_html}'
             f'<ul>{bullets(bull)}</ul>'
@@ -680,21 +697,22 @@ def build(ctx):
     else:
         hero_sub_html = (
             f'<div class="c1-sub">Votre facture d\'électricité réduite '
-            f'd\'environ {pct_cut}&nbsp;%{perf_sub}</div>')
+            f'd\'environ {pct_cut}&nbsp;%{perf_sub}</div>'
+            + ancre("reduction_facture_pct", pct_cut, _eco_opt))
         hook_html = f"""
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
     <div class="c1-hook">
       <div class="c1-hook-left">
         <div class="c1-hook-eyebrow">Ce que le solaire change pour vous</div>
         <div class="c1-bigcut">
-          <div class="c1-bigcut-n">&minus;{pct_cut}<span>%</span></div>
+          <div class="c1-bigcut-n">&minus;{pct_cut}<span>%</span></div>{ancre("reduction_facture_pct", pct_cut, _eco_opt)}
           <div class="c1-bigcut-x">
             <div class="c1-bigcut-t">sur votre facture<br>d'électricité</div>
             <div class="c1-bigcut-old">≈&nbsp;<s>{fmt(month_before)} MAD/mois</s>
-              aujourd'hui</div>
-            <div class="c1-bigcut-new">{fmt(month_after)}<span>&nbsp;MAD/mois</span></div>
+              aujourd'hui</div>{ancre("facture_mensuelle_avant", fmt(month_before))}
+            <div class="c1-bigcut-new">{fmt(month_after)}<span>&nbsp;MAD/mois</span></div>{ancre("facture_mensuelle_apres", fmt(month_after), _eco_opt)}
             <div class="c1-bigcut-m">soit <s>{fmt(annual_before)} MAD/an</s>
-              &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} MAD/an</b></div>
+              &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} MAD/an</b></div>{ancre("facture_annuelle_avant", fmt(annual_before))}{ancre("facture_annuelle_apres", fmt(annual_after), _eco_opt)}
             {opt_caption}
           </div>
         </div>
@@ -704,7 +722,7 @@ def build(ctx):
       <div class="c1-hook-right">
         <div class="c1-donut-tab"><div class="c1-donut-cell">
           <div class="c1-donut-k">Énergie solaire</div>
-          <img class="c1-donut" src="{charts['coverage']}" alt="Couverture solaire">
+          <img class="c1-donut" src="{charts['coverage']}" alt="Couverture solaire">{ancre("couverture_pct", coverage_pct, _eco_opt)}
           <div class="c1-donut-cap">de votre consommation<span>annuelle assurée par le solaire{cov_est_txt}</span></div>
         </div></div>
       </div>
@@ -744,7 +762,7 @@ def build(ctx):
                          if d.get("savings_model") == "horaire"
                          else "Économie estimée")
         kpi_eco_html = f"""      <div class="c1-kpi">
-        <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>
+        <div class="c1-kpi-v">{fmt(eco_a_ann)}<span class="c1-u">&nbsp;MAD/an</span></div>{ancre("economie_annuelle", fmt(eco_a_ann), _eco_opt)}
         <div class="c1-kpi-l">{eco_kpi_label}</div>
       </div>
 """
@@ -799,11 +817,11 @@ def build(ctx):
     <!-- KPI CHIPS ──────────────────────────────────────────────────────── -->
     <div class="c1-kpis">
       <div class="c1-kpi">
-        <div class="c1-kpi-v"{kpi_kwc_style}>{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>
+        <div class="c1-kpi-v"{kpi_kwc_style}>{kpi_kwc_v}<span class="c1-u">&nbsp;kWc</span></div>{kpi_kwc_ancres}
         <div class="c1-kpi-l">{kpi_kwc_l}</div>
       </div>
       <div class="c1-kpi">
-        <div class="c1-kpi-v"{kpi_prod_style}>{kpi_prod_v}<span class="c1-u">&nbsp;kWh/an</span></div>
+        <div class="c1-kpi-v"{kpi_prod_style}>{kpi_prod_v}<span class="c1-u">&nbsp;kWh/an</span></div>{kpi_prod_ancres}
         <div class="c1-kpi-l">{kpi_prod_l}</div>
       </div>
 {kpi_eco_html}    </div>

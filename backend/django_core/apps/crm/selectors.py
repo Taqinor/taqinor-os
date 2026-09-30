@@ -5639,3 +5639,33 @@ def conso_mensuelle_kwh_pour_devis(devis):
     except (TypeError, ValueError):
         return None
     return valeur if valeur > 0 else None
+
+
+# ── QA-COHERENCE — « signé fantôme », en LECTURE SEULE pour l'auditeur ──────
+#
+# Point d'entrée cross-app de l'auditeur de cohérence nocturne
+# (``apps/ventes/coherence``) : même définition que
+# ``services.lead_signe_sans_devis_actif`` (lead à SIGNED sans AUCUN devis au
+# statut DOCUMENT « accepté »), mais en UNE requête par société au lieu d'une
+# par lead. Exclusions assumées pour ne pas crier au loup :
+#   * lead perdu ou archivé — le funnel n'y bouge plus, rien à décider ;
+#   * lead importé d'Odoo — signé dans Odoo, il n'a en général AUCUN devis
+#     dans l'ERP ; l'absence de devis n'y est pas une incohérence.
+# L'étape vient de ``stages`` (STAGES.py, règle #2) ; le statut « accepte » est
+# celui du DOCUMENT (couche séparée), déclaré une fois dans ``services``.
+def leads_signes_sans_devis_accepte(company):
+    """Leads SIGNED (natifs, vivants, non perdus) sans devis accepté.
+
+    Renvoie une liste de dicts ``{'id', 'stage', 'source'}`` — aucune donnée
+    personnelle (le nom n'est pas lu). Scopé à ``company``."""
+    from . import stages
+    from .models import Lead
+    from .services import _DEVIS_STATUT_ACCEPTE
+    return list(
+        Lead.objects
+        .filter(company=company, stage=stages.SIGNED, perdu=False,
+                is_archived=False)
+        .exclude(source=Lead.Source.ODOO_IMPORT_TEST)
+        .exclude(devis__statut=_DEVIS_STATUT_ACCEPTE)
+        .order_by('pk')
+        .values('id', 'stage', 'source'))

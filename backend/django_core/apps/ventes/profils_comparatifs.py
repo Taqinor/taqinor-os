@@ -79,20 +79,16 @@ def _num(valeur, defaut=None):
 
 
 def _kwc_du_devis(devis):
-    """kWc LU sur les lignes du devis — même lecture que
-    ``services.rafraichir_etude_horaire_devis`` (``panneaux_et_watt_lu`` sur les
-    lignes produit non optionnelles), jamais une seconde dérivation."""
-    from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
-    lignes = [
-        li for li in devis.lignes.select_related(
-            'produit', 'produit__fiche_technique').all()
-        if getattr(li, 'type_ligne', 'produit') == 'produit'
-        and not getattr(li, 'optionnelle', False)
-    ]
-    nb_panneaux, watt = panneaux_et_watt_lu(lignes)
-    if nb_panneaux > 0 and watt:
-        return round(nb_panneaux * watt / 1000, 2)
-    return None
+    """kWc du bloc horaire PRINCIPAL — la lecture même de
+    ``services.rafraichir_etude_horaire_devis``, jamais une seconde dérivation.
+
+    I7 — elle passe par ``domain.etudes.puissances_etude_horaire`` : le profil
+    RÉEL réutilise le bloc principal rangé, les autres profils doivent donc
+    être simulés à LA MÊME puissance (l'option AVEC d'un devis à champs PV
+    divergents, toutes les lignes sinon). Recopier l'ancienne lecture « toutes
+    les lignes » ici comparerait un profil à 14 panneaux à un autre à 8."""
+    from apps.ventes.domain.etudes import puissances_etude_horaire
+    return puissances_etude_horaire(devis)[0]
 
 
 def _serie_mensuelle(bloc, cle):

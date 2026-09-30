@@ -19,6 +19,22 @@
 // partagent au lieu d'en recopier le balisage — aucun double chemin.
 import { unwrap } from '../../../features/ventes/quote/valeur'
 
+// QA-FIGURES — ancre `data-figure` (vocabulaire unique :
+// backend/django_core/apps/ventes/quote_engine/figures.py, FIGURE_KEYS) posée
+// DANS la valeur, masquée, portant le MÊME texte (`data-figure-value`), pour
+// que la parité écran / PDF / page publique / API se vérifie sans sélecteur
+// fragile (frontend/e2e/figures-parite.spec.js) — même forme que les ancres
+// du PDF, et le balisage épinglé de la valeur (`gen-metric-value` puis
+// `{contenu}`) reste intact. Aucune ancre sur un texte sans chiffre (« N/A »,
+// motif) : ce n'est pas un chiffre.
+function AncreFigure({ figure, option, contenu }) {
+  if (!figure || typeof contenu !== 'string' || !/\d/.test(contenu)) return null
+  return (
+    <span data-figure={figure} data-figure-option={option || undefined}
+          data-figure-value={contenu} hidden />
+  )
+}
+
 /** En-tête de carte du générateur (style design system, repose sur Card). */
 export function GenCardHeader({ icon: Icon, title, children }) {
   return (
@@ -47,6 +63,7 @@ export function GenCardHeader({ icon: Icon, title, children }) {
 export default function CarteMetrique({
   label, value, unit, recommended, accent, badge,
   valeur = null, formatValeur = (v) => v,
+  figure = null, figureOption = null,
 }) {
   let contenu = value
   let puce = badge
@@ -87,6 +104,7 @@ export default function CarteMetrique({
               {puce}
             </span>
           )}
+          <AncreFigure figure={figure} option={figureOption} contenu={contenu} />
         </div>
       )}
       <div className="gen-metric-unit">{unit}</div>

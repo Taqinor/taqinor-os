@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: ae5610f643ca2107c42fad00d08e5149e0a23d4658084d86d1ce52dc325c834c
+Structure fingerprint: ccf7906e3b57eff6df60a4d0a8a3438bfb444a7aeb60ac90cce9fe99b3e6956c
 Plan fingerprint: 9c829f64ddc806a2eb2a9caa22d0f3d5011885c5ef2ab1e1c864002c2138b072
 
 
@@ -223,7 +223,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `crm` | `crm/` | 43 | Leads (funnel via STAGES.py), Clients, chatter (`LeadActivity`), canaux/tags/motifs de perte, `SiteProfile`, salle de vente, forecast, parrainage, playbooks, équipes. |
 | `visites` | `visites/` | 2 | Visites techniques terrain (`VisiteTerrain`, `VisiteMedia`) — autonomous app; the field rep has no CRM access. |
 | `calepinage` | `calepinage/` | 10 | Roof design studio: `Calepinage` + variantes/versions, `ReleveTerrain`, `PhotoSite`, `PoseReelle`, `DossierReglementaire`. Holds the villa engine + kit catalogue + roof-marker helper repatriated from `ao`. |
-| `ventes` | `ventes/` | 48 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `RoofLayout`, `ShareLink`, listes de prix, mandats/remises, `quote_engine/` (rule #4). |
+| `ventes` | `ventes/` | 49 | Devis (statuts brouillon/envoye/accepte/refuse/expire), BonCommande, `RoofLayout`, `ShareLink`, listes de prix, mandats/remises, `quote_engine/` (rule #4). `coherence/` = auditeur d'invariants nocturne en lecture seule (`ViolationCoherence`, `manage.py audit_coherence`, beat `ventes.audit_coherence_nuit` 04:15). |
 | `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served. |
 | `stock` | `stock/` | 71 | Catalogue (`Produit`, `Marque`, `Categorie`, kits, `courbe_pompe`), `Fournisseur`, `MouvementStock`, emplacements/lots/inventaires, portail fournisseur. |
 | `achats` | `achats/` | 10 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur` — state-only split out of `stock` (ODX19). |

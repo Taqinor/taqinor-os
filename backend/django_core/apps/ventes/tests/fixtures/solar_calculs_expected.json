@@ -1,0 +1,8183 @@
+{
+ "pact": "PACT10",
+ "genere_par": "frontend/scripts/solar_calculs_corpus.mjs",
+ "regeneration": "UNIQUEMENT par un humain qui a tranché une divergence — jamais par un agent pour repasser un test au vert (voir l'en-tête du script).",
+ "seed": 11222303,
+ "count": 1014,
+ "entries": [
+  {
+   "id": "QAHP-0000",
+   "axe": "tranche_bill",
+   "bill": 0
+  },
+  {
+   "id": "QAHP-0001",
+   "axe": "tranche_bill",
+   "bill": 0.0916272
+  },
+  {
+   "id": "QAHP-0002",
+   "axe": "tranche_bill",
+   "bill": 0.916272
+  },
+  {
+   "id": "QAHP-0003",
+   "axe": "tranche_bill",
+   "bill": 45.8136
+  },
+  {
+   "id": "QAHP-0004",
+   "axe": "tranche_bill",
+   "bill": 45.9052272
+  },
+  {
+   "id": "QAHP-0005",
+   "axe": "tranche_bill",
+   "bill": 91.5355728
+  },
+  {
+   "id": "QAHP-0006",
+   "axe": "tranche_bill",
+   "bill": 91.6272
+  },
+  {
+   "id": "QAHP-0007",
+   "axe": "tranche_bill",
+   "bill": 91.7363388
+  },
+  {
+   "id": "QAHP-0008",
+   "axe": "tranche_bill",
+   "bill": 146.0874612
+  },
+  {
+   "id": "QAHP-0009",
+   "axe": "tranche_bill",
+   "bill": 146.1966
+  },
+  {
+   "id": "QAHP-0010",
+   "axe": "tranche_bill",
+   "bill": 163.71911387999998
+  },
+  {
+   "id": "QAHP-0011",
+   "axe": "tranche_bill",
+   "bill": 218.16846120000002
+  },
+  {
+   "id": "QAHP-0012",
+   "axe": "tranche_bill",
+   "bill": 218.2776
+  },
+  {
+   "id": "QAHP-0013",
+   "axe": "tranche_bill",
+   "bill": 229.0823412
+  },
+  {
+   "id": "QAHP-0014",
+   "axe": "tranche_bill",
+   "bill": 229.19148
+  },
+  {
+   "id": "QAHP-0015",
+   "axe": "tranche_bill",
+   "bill": 249.47021880000003
+  },
+  {
+   "id": "QAHP-0016",
+   "axe": "tranche_bill",
+   "bill": 296.84700000000004
+  },
+  {
+   "id": "QAHP-0017",
+   "axe": "tranche_bill",
+   "bill": 356.0976612
+  },
+  {
+   "id": "QAHP-0018",
+   "axe": "tranche_bill",
+   "bill": 356.2164
+  },
+  {
+   "id": "QAHP-0019",
+   "axe": "tranche_bill",
+   "bill": 367.9715412
+  },
+  {
+   "id": "QAHP-0020",
+   "axe": "tranche_bill",
+   "bill": 368.09028
+  },
+  {
+   "id": "QAHP-0021",
+   "axe": "tranche_bill",
+   "bill": 428.46641040000003
+  },
+  {
+   "id": "QAHP-0022",
+   "axe": "tranche_bill",
+   "bill": 690.7138295999999
+  },
+  {
+   "id": "QAHP-0023",
+   "axe": "tranche_bill",
+   "bill": 690.852
+  },
+  {
+   "id": "QAHP-0024",
+   "axe": "tranche_bill",
+   "bill": 704.5308696
+  },
+  {
+   "id": "QAHP-0025",
+   "axe": "tranche_bill",
+   "bill": 704.66904
+  },
+  {
+   "id": "QAHP-0026",
+   "axe": "tranche_bill",
+   "bill": 827.8188456
+  },
+  {
+   "id": "QAHP-0027",
+   "axe": "tranche_bill",
+   "bill": 1135.9992
+  },
+  {
+   "id": "QAHP-0028",
+   "axe": "tranche_bill",
+   "bill": 1622.856
+  },
+  {
+   "id": "QAHP-0029",
+   "axe": "tranche_bill",
+   "bill": 8114.280000000001
+  },
+  {
+   "id": "QAHP-0030",
+   "axe": "tranche_bill",
+   "bill": 162285.6
+  },
+  {
+   "id": "QAHP-0031",
+   "axe": "tranche_bill",
+   "bill": 1728.34164
+  },
+  {
+   "id": "QAHP-0032",
+   "axe": "tranche_bill",
+   "bill": 693.7705000000001
+  },
+  {
+   "id": "QAHP-0033",
+   "axe": "tranche_bill",
+   "bill": 269.67956256
+  },
+  {
+   "id": "QAHP-0034",
+   "axe": "tranche_bill",
+   "bill": 798.0524999999999
+  },
+  {
+   "id": "QAHP-0035",
+   "axe": "tranche_bill",
+   "bill": 6201.19243296
+  },
+  {
+   "id": "QAHP-0036",
+   "axe": "tranche_bill",
+   "bill": 5399.12831208
+  },
+  {
+   "id": "QAHP-0037",
+   "axe": "tranche_bill",
+   "bill": 289.7072
+  },
+  {
+   "id": "QAHP-0038",
+   "axe": "tranche_bill",
+   "bill": 0.85213296
+  },
+  {
+   "id": "QAHP-0039",
+   "axe": "tranche_bill",
+   "bill": 20.640048
+  },
+  {
+   "id": "QAHP-0040",
+   "axe": "tranche_bill",
+   "bill": 2.3993849999999997
+  },
+  {
+   "id": "QAHP-0041",
+   "axe": "tranche_bill",
+   "bill": 1358.4495000000002
+  },
+  {
+   "id": "QAHP-0042",
+   "axe": "tranche_bill",
+   "bill": 854.5472839200002
+  },
+  {
+   "id": "QAHP-0043",
+   "axe": "tranche_bill",
+   "bill": 44.034214
+  },
+  {
+   "id": "QAHP-0044",
+   "axe": "tranche_bill",
+   "bill": 1236.6235000000001
+  },
+  {
+   "id": "QAHP-0045",
+   "axe": "tranche_bill",
+   "bill": 40.360707
+  },
+  {
+   "id": "QAHP-0046",
+   "axe": "tranche_bill",
+   "bill": 4.49889552
+  },
+  {
+   "id": "QAHP-0047",
+   "axe": "tranche_bill",
+   "bill": 2185.987032
+  },
+  {
+   "id": "QAHP-0048",
+   "axe": "tranche_bill",
+   "bill": 13.765348999999999
+  },
+  {
+   "id": "QAHP-0049",
+   "axe": "tranche_bill",
+   "bill": 172.10279999999997
+  },
+  {
+   "id": "QAHP-0050",
+   "axe": "tranche_bill",
+   "bill": 1275.85693008
+  },
+  {
+   "id": "QAHP-0051",
+   "axe": "tranche_bill",
+   "bill": 1200.5375
+  },
+  {
+   "id": "QAHP-0052",
+   "axe": "tranche_bill",
+   "bill": 2464.2581503200004
+  },
+  {
+   "id": "QAHP-0053",
+   "axe": "tranche_bill",
+   "bill": 6.954948
+  },
+  {
+   "id": "QAHP-0054",
+   "axe": "tranche_bill",
+   "bill": 2129.8001
+  },
+  {
+   "id": "QAHP-0055",
+   "axe": "tranche_bill",
+   "bill": 892.5708000000001
+  },
+  {
+   "id": "QAHP-0056",
+   "axe": "tranche_bill",
+   "bill": 32.102784
+  },
+  {
+   "id": "QAHP-0057",
+   "axe": "tranche_bill",
+   "bill": 0.8523900000000001
+  },
+  {
+   "id": "QAHP-0058",
+   "axe": "tranche_bill",
+   "bill": 2448.9130999999998
+  },
+  {
+   "id": "QAHP-0059",
+   "axe": "tranche_bill",
+   "bill": 2.4464462399999998
+  },
+  {
+   "id": "QAHP-0060",
+   "axe": "tranche_bill",
+   "bill": 360.166264
+  },
+  {
+   "id": "QAHP-0061",
+   "axe": "tranche_bill",
+   "bill": 130.6344
+  },
+  {
+   "id": "QAHP-0062",
+   "axe": "tranche_bill",
+   "bill": 0.6339840000000001
+  },
+  {
+   "id": "QAHP-0063",
+   "axe": "tranche_bill",
+   "bill": 4584.367468
+  },
+  {
+   "id": "QAHP-0064",
+   "axe": "tranche_bill",
+   "bill": 792.1569
+  },
+  {
+   "id": "QAHP-0065",
+   "axe": "tranche_bill",
+   "bill": 746.8063
+  },
+  {
+   "id": "QAHP-0066",
+   "axe": "tranche_bill",
+   "bill": 97.722336
+  },
+  {
+   "id": "QAHP-0067",
+   "axe": "tranche_bill",
+   "bill": 4594.986935520001
+  },
+  {
+   "id": "QAHP-0068",
+   "axe": "tranche_bill",
+   "bill": 215.74557984
+  },
+  {
+   "id": "QAHP-0069",
+   "axe": "tranche_bill",
+   "bill": 2017.210008
+  },
+  {
+   "id": "QAHP-0070",
+   "axe": "tranche_bill",
+   "bill": 2356.386912
+  },
+  {
+   "id": "QAHP-0071",
+   "axe": "tranche_bill",
+   "bill": 14.55039936
+  },
+  {
+   "id": "QAHP-0072",
+   "axe": "tranche_bill",
+   "bill": 5.408424
+  },
+  {
+   "id": "QAHP-0073",
+   "axe": "tranche_bill",
+   "bill": 141.785388
+  },
+  {
+   "id": "QAHP-0074",
+   "axe": "tranche_bill",
+   "bill": 326.53170000000006
+  },
+  {
+   "id": "QAHP-0075",
+   "axe": "tranche_bill",
+   "bill": 2489.85058944
+  },
+  {
+   "id": "QAHP-0076",
+   "axe": "tranche_bill",
+   "bill": 729.6859999999999
+  },
+  {
+   "id": "QAHP-0077",
+   "axe": "tranche_bill",
+   "bill": 46.702383839999996
+  },
+  {
+   "id": "QAHP-0078",
+   "axe": "tranche_bill",
+   "bill": 6431.486442
+  },
+  {
+   "id": "QAHP-0079",
+   "axe": "tranche_bill",
+   "bill": 2022.078576
+  },
+  {
+   "id": "QAHP-0080",
+   "axe": "tranche_bill",
+   "bill": 252.83052684000003
+  },
+  {
+   "id": "QAHP-0081",
+   "axe": "tranche_bill",
+   "bill": 1.4660352
+  },
+  {
+   "id": "QAHP-0082",
+   "axe": "tranche_bill",
+   "bill": 342.89820000000003
+  },
+  {
+   "id": "QAHP-0083",
+   "axe": "tranche_bill",
+   "bill": 29.568097440000003
+  },
+  {
+   "id": "QAHP-0084",
+   "axe": "tranche_bill",
+   "bill": 934.7105000000001
+  },
+  {
+   "id": "QAHP-0085",
+   "axe": "tranche_bill",
+   "bill": 0.65055312
+  },
+  {
+   "id": "QAHP-0086",
+   "axe": "tranche_bill",
+   "bill": 0.8612956799999999
+  },
+  {
+   "id": "QAHP-0087",
+   "axe": "tranche_bill",
+   "bill": 36.539646000000005
+  },
+  {
+   "id": "QAHP-0088",
+   "axe": "tranche_bill",
+   "bill": 132.37962792000002
+  },
+  {
+   "id": "QAHP-0089",
+   "axe": "tranche_bill",
+   "bill": 1295.7179
+  },
+  {
+   "id": "QAHP-0090",
+   "axe": "tranche_bill",
+   "bill": 430.45230000000004
+  },
+  {
+   "id": "QAHP-0091",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0092",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0093",
+   "axe": "bill_to_kwh",
+   "kwh": 0.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0094",
+   "axe": "bill_to_kwh",
+   "kwh": 25,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0095",
+   "axe": "bill_to_kwh",
+   "kwh": 83.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0096",
+   "axe": "bill_to_kwh",
+   "kwh": 187.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0097",
+   "axe": "bill_to_kwh",
+   "kwh": 195.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0098",
+   "axe": "bill_to_kwh",
+   "kwh": 204.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0099",
+   "axe": "bill_to_kwh",
+   "kwh": 250,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0100",
+   "axe": "bill_to_kwh",
+   "kwh": 413.4,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0101",
+   "axe": "bill_to_kwh",
+   "kwh": 416.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0102",
+   "axe": "bill_to_kwh",
+   "kwh": 833.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0103",
+   "axe": "bill_to_kwh",
+   "kwh": 4166.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0104",
+   "axe": "bill_to_kwh",
+   "kwh": 20833.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0105",
+   "axe": "bill_to_kwh",
+   "kwh": 208333.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0106",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0107",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0108",
+   "axe": "bill_to_kwh",
+   "kwh": 0.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0109",
+   "axe": "bill_to_kwh",
+   "kwh": 25,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0110",
+   "axe": "bill_to_kwh",
+   "kwh": 83.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0111",
+   "axe": "bill_to_kwh",
+   "kwh": 187.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0112",
+   "axe": "bill_to_kwh",
+   "kwh": 195.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0113",
+   "axe": "bill_to_kwh",
+   "kwh": 204.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0114",
+   "axe": "bill_to_kwh",
+   "kwh": 250,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0115",
+   "axe": "bill_to_kwh",
+   "kwh": 413.4,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0116",
+   "axe": "bill_to_kwh",
+   "kwh": 416.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0117",
+   "axe": "bill_to_kwh",
+   "kwh": 833.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0118",
+   "axe": "bill_to_kwh",
+   "kwh": 4166.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0119",
+   "axe": "bill_to_kwh",
+   "kwh": 20833.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0120",
+   "axe": "bill_to_kwh",
+   "kwh": 208333.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0121",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0122",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0123",
+   "axe": "bill_to_kwh",
+   "kwh": 0.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0124",
+   "axe": "bill_to_kwh",
+   "kwh": 25,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0125",
+   "axe": "bill_to_kwh",
+   "kwh": 83.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0126",
+   "axe": "bill_to_kwh",
+   "kwh": 187.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0127",
+   "axe": "bill_to_kwh",
+   "kwh": 195.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0128",
+   "axe": "bill_to_kwh",
+   "kwh": 204.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0129",
+   "axe": "bill_to_kwh",
+   "kwh": 250,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0130",
+   "axe": "bill_to_kwh",
+   "kwh": 413.4,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0131",
+   "axe": "bill_to_kwh",
+   "kwh": 416.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0132",
+   "axe": "bill_to_kwh",
+   "kwh": 833.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0133",
+   "axe": "bill_to_kwh",
+   "kwh": 4166.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0134",
+   "axe": "bill_to_kwh",
+   "kwh": 20833.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0135",
+   "axe": "bill_to_kwh",
+   "kwh": 208333.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0136",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0137",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0138",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0139",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0140",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0141",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0142",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0143",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0144",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0145",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0146",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0147",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0148",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0149",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0150",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0151",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0152",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0153",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0154",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0155",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0156",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0157",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0158",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0159",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0160",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0161",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0162",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0163",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0164",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0165",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0166",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0167",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0168",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0169",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0170",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0171",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0172",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0173",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0174",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0175",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0176",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0177",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0178",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0179",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0180",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0181",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0182",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0183",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0184",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0185",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0186",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0187",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0188",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0189",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0190",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0191",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0192",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0193",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0194",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0195",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0196",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0197",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0198",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0199",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0200",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0201",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0202",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0203",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0204",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0205",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0206",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0207",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0208",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0209",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0210",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0211",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0212",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0213",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0214",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0215",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0216",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0217",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0218",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0219",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0220",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0221",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0222",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0223",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0224",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0225",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0226",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0227",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0228",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0229",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0230",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0231",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0232",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0233",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0234",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0235",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0236",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0237",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0238",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0239",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0240",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0241",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0242",
+   "axe": "bill_to_kwh",
+   "kwh": 0,
+   "approximatif": false,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0243",
+   "axe": "bill_to_kwh",
+   "kwh": 1.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0244",
+   "axe": "bill_to_kwh",
+   "kwh": 32.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0245",
+   "axe": "bill_to_kwh",
+   "kwh": 107.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0246",
+   "axe": "bill_to_kwh",
+   "kwh": 206.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0247",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0248",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0249",
+   "axe": "bill_to_kwh",
+   "kwh": 252.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0250",
+   "axe": "bill_to_kwh",
+   "kwh": 359,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0251",
+   "axe": "bill_to_kwh",
+   "kwh": 361.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0252",
+   "axe": "bill_to_kwh",
+   "kwh": 616.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0253",
+   "axe": "bill_to_kwh",
+   "kwh": 3081,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0254",
+   "axe": "bill_to_kwh",
+   "kwh": 15404.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0255",
+   "axe": "bill_to_kwh",
+   "kwh": 154049.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0256",
+   "axe": "bill_to_kwh",
+   "kwh": 354.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0257",
+   "axe": "bill_to_kwh",
+   "kwh": 3.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0258",
+   "axe": "bill_to_kwh",
+   "kwh": 4.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0259",
+   "axe": "bill_to_kwh",
+   "kwh": 9703.5,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0260",
+   "axe": "bill_to_kwh",
+   "kwh": 744.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0261",
+   "axe": "bill_to_kwh",
+   "kwh": 2305.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0262",
+   "axe": "bill_to_kwh",
+   "kwh": 22.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0263",
+   "axe": "bill_to_kwh",
+   "kwh": 6.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0264",
+   "axe": "bill_to_kwh",
+   "kwh": 24.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0265",
+   "axe": "bill_to_kwh",
+   "kwh": 118.9,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0266",
+   "axe": "bill_to_kwh",
+   "kwh": 2095.6,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0267",
+   "axe": "bill_to_kwh",
+   "kwh": 6.4,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0268",
+   "axe": "bill_to_kwh",
+   "kwh": 639.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0269",
+   "axe": "bill_to_kwh",
+   "kwh": 368.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0270",
+   "axe": "bill_to_kwh",
+   "kwh": 23.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0271",
+   "axe": "bill_to_kwh",
+   "kwh": 0.9,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0272",
+   "axe": "bill_to_kwh",
+   "kwh": 31.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0273",
+   "axe": "bill_to_kwh",
+   "kwh": 12.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0274",
+   "axe": "bill_to_kwh",
+   "kwh": 234,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0275",
+   "axe": "bill_to_kwh",
+   "kwh": 12271.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0276",
+   "axe": "bill_to_kwh",
+   "kwh": 2.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0277",
+   "axe": "bill_to_kwh",
+   "kwh": 2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0278",
+   "axe": "bill_to_kwh",
+   "kwh": 9168.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0279",
+   "axe": "bill_to_kwh",
+   "kwh": 832.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0280",
+   "axe": "bill_to_kwh",
+   "kwh": 13.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0281",
+   "axe": "bill_to_kwh",
+   "kwh": 5556.1,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0282",
+   "axe": "bill_to_kwh",
+   "kwh": 1879.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0283",
+   "axe": "bill_to_kwh",
+   "kwh": 249.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0284",
+   "axe": "bill_to_kwh",
+   "kwh": 45174.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0285",
+   "axe": "bill_to_kwh",
+   "kwh": 16933.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0286",
+   "axe": "bill_to_kwh",
+   "kwh": 217.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0287",
+   "axe": "bill_to_kwh",
+   "kwh": 2.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0288",
+   "axe": "bill_to_kwh",
+   "kwh": 2732,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0289",
+   "axe": "bill_to_kwh",
+   "kwh": 1.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0290",
+   "axe": "bill_to_kwh",
+   "kwh": 408.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0291",
+   "axe": "bill_to_kwh",
+   "kwh": 231.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0292",
+   "axe": "bill_to_kwh",
+   "kwh": 3.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0293",
+   "axe": "bill_to_kwh",
+   "kwh": 4777.2,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0294",
+   "axe": "bill_to_kwh",
+   "kwh": 4.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0295",
+   "axe": "bill_to_kwh",
+   "kwh": 4512.6,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0296",
+   "axe": "bill_to_kwh",
+   "kwh": 686.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0297",
+   "axe": "bill_to_kwh",
+   "kwh": 2493.8,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0298",
+   "axe": "bill_to_kwh",
+   "kwh": 5,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0299",
+   "axe": "bill_to_kwh",
+   "kwh": 165.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0300",
+   "axe": "bill_to_kwh",
+   "kwh": 3.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0301",
+   "axe": "bill_to_kwh",
+   "kwh": 2340,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0302",
+   "axe": "bill_to_kwh",
+   "kwh": 15751,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0303",
+   "axe": "bill_to_kwh",
+   "kwh": 498.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0304",
+   "axe": "bill_to_kwh",
+   "kwh": 1023.4,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0305",
+   "axe": "bill_to_kwh",
+   "kwh": 770.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0306",
+   "axe": "bill_to_kwh",
+   "kwh": 733.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0307",
+   "axe": "bill_to_kwh",
+   "kwh": 4729.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0308",
+   "axe": "bill_to_kwh",
+   "kwh": 70.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0309",
+   "axe": "bill_to_kwh",
+   "kwh": 2827.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0310",
+   "axe": "bill_to_kwh",
+   "kwh": 5186.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0311",
+   "axe": "bill_to_kwh",
+   "kwh": 2827.6,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0312",
+   "axe": "bill_to_kwh",
+   "kwh": 321.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0313",
+   "axe": "bill_to_kwh",
+   "kwh": 447.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0314",
+   "axe": "bill_to_kwh",
+   "kwh": 241.9,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0315",
+   "axe": "bill_to_kwh",
+   "kwh": 1,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0316",
+   "axe": "bill_to_kwh",
+   "kwh": 4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0317",
+   "axe": "bill_to_kwh",
+   "kwh": 9.4,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0318",
+   "axe": "bill_to_kwh",
+   "kwh": 1140.3,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0319",
+   "axe": "bill_to_kwh",
+   "kwh": 97.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0320",
+   "axe": "bill_to_kwh",
+   "kwh": 3329.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0321",
+   "axe": "bill_to_kwh",
+   "kwh": 153.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0322",
+   "axe": "bill_to_kwh",
+   "kwh": 210,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0323",
+   "axe": "bill_to_kwh",
+   "kwh": 9376.9,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0324",
+   "axe": "bill_to_kwh",
+   "kwh": 1.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0325",
+   "axe": "bill_to_kwh",
+   "kwh": 2.9,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0326",
+   "axe": "bill_to_kwh",
+   "kwh": 12963.6,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0327",
+   "axe": "bill_to_kwh",
+   "kwh": 2761.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0328",
+   "axe": "bill_to_kwh",
+   "kwh": 0.9,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0329",
+   "axe": "bill_to_kwh",
+   "kwh": 4.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0330",
+   "axe": "bill_to_kwh",
+   "kwh": 1.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0331",
+   "axe": "bill_to_kwh",
+   "kwh": 1.9,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0332",
+   "axe": "bill_to_kwh",
+   "kwh": 515.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0333",
+   "axe": "bill_to_kwh",
+   "kwh": 3.8,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0334",
+   "axe": "bill_to_kwh",
+   "kwh": 218.5,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0335",
+   "axe": "bill_to_kwh",
+   "kwh": 47.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0336",
+   "axe": "bill_to_kwh",
+   "kwh": 74.6,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0337",
+   "axe": "bill_to_kwh",
+   "kwh": 975.1,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0338",
+   "axe": "bill_to_kwh",
+   "kwh": 2.5,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0339",
+   "axe": "bill_to_kwh",
+   "kwh": 29.2,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0340",
+   "axe": "bill_to_kwh",
+   "kwh": 14325.4,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0341",
+   "axe": "bill_to_kwh",
+   "kwh": 4468,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0342",
+   "axe": "bill_to_kwh",
+   "kwh": 24,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0343",
+   "axe": "bill_to_kwh",
+   "kwh": 18956.3,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0344",
+   "axe": "bill_to_kwh",
+   "kwh": 1295.7,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0345",
+   "axe": "bill_to_kwh",
+   "kwh": 491.7,
+   "approximatif": true,
+   "estimation": true
+  },
+  {
+   "id": "QAHP-0346",
+   "axe": "bill_to_kwh",
+   "kwh": 1024000,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0347",
+   "axe": "bill_to_kwh",
+   "kwh": 1024000,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0348",
+   "axe": "bill_to_kwh",
+   "kwh": 1024000,
+   "approximatif": false,
+   "estimation": false
+  },
+  {
+   "id": "QAHP-0349",
+   "axe": "facture_detail",
+   "energie": 0,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 39.936,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0350",
+   "axe": "facture_detail",
+   "energie": 0.0916272,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.0276272,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0351",
+   "axe": "facture_detail",
+   "energie": 0.916272,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.852272,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0352",
+   "axe": "facture_detail",
+   "energie": 45.8136,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 85.7496,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0353",
+   "axe": "facture_detail",
+   "energie": 45.9052272,
+   "fixes": 39.936,
+   "tppan": 5.010000000000001,
+   "total": 90.8512272,
+   "tppan_seul": 5.010000000000001
+  },
+  {
+   "id": "QAHP-0354",
+   "axe": "facture_detail",
+   "energie": 91.5355728,
+   "fixes": 39.936,
+   "tppan": 9.990000000000002,
+   "total": 141.4615728,
+   "tppan_seul": 9.990000000000002
+  },
+  {
+   "id": "QAHP-0355",
+   "axe": "facture_detail",
+   "energie": 91.6272,
+   "fixes": 39.936,
+   "tppan": 10,
+   "total": 141.5632,
+   "tppan_seul": 10
+  },
+  {
+   "id": "QAHP-0356",
+   "axe": "facture_detail",
+   "energie": 91.7363388,
+   "fixes": 39.936,
+   "tppan": 10.014999999999999,
+   "total": 141.6873388,
+   "tppan_seul": 10.014999999999999
+  },
+  {
+   "id": "QAHP-0357",
+   "axe": "facture_detail",
+   "energie": 146.0874612,
+   "fixes": 39.936,
+   "tppan": 17.485,
+   "total": 203.5084612,
+   "tppan_seul": 17.485
+  },
+  {
+   "id": "QAHP-0358",
+   "axe": "facture_detail",
+   "energie": 146.1966,
+   "fixes": 39.936,
+   "tppan": 17.5,
+   "total": 203.6326,
+   "tppan_seul": 17.5
+  },
+  {
+   "id": "QAHP-0359",
+   "axe": "facture_detail",
+   "energie": 163.71911387999998,
+   "fixes": 39.936,
+   "tppan": 17.5015,
+   "total": 221.15661387999998,
+   "tppan_seul": 17.5015
+  },
+  {
+   "id": "QAHP-0360",
+   "axe": "facture_detail",
+   "energie": 218.16846120000002,
+   "fixes": 39.936,
+   "tppan": 24.985,
+   "total": 283.0894612,
+   "tppan_seul": 24.985
+  },
+  {
+   "id": "QAHP-0361",
+   "axe": "facture_detail",
+   "energie": 218.2776,
+   "fixes": 39.936,
+   "tppan": 25,
+   "total": 283.2136,
+   "tppan_seul": 25
+  },
+  {
+   "id": "QAHP-0362",
+   "axe": "facture_detail",
+   "energie": 229.0823412,
+   "fixes": 39.936,
+   "tppan": 26.98,
+   "total": 295.9983412,
+   "tppan_seul": 26.98
+  },
+  {
+   "id": "QAHP-0363",
+   "axe": "facture_detail",
+   "energie": 229.19148,
+   "fixes": 39.936,
+   "tppan": 27,
+   "total": 296.12748,
+   "tppan_seul": 27
+  },
+  {
+   "id": "QAHP-0364",
+   "axe": "facture_detail",
+   "energie": 249.47021880000003,
+   "fixes": 39.936,
+   "tppan": 27.02,
+   "total": 316.4262188,
+   "tppan_seul": 27.02
+  },
+  {
+   "id": "QAHP-0365",
+   "axe": "facture_detail",
+   "energie": 296.84700000000004,
+   "fixes": 39.936,
+   "tppan": 35,
+   "total": 371.783,
+   "tppan_seul": 35
+  },
+  {
+   "id": "QAHP-0366",
+   "axe": "facture_detail",
+   "energie": 356.0976612,
+   "fixes": 39.936,
+   "tppan": 44.98,
+   "total": 441.0136612,
+   "tppan_seul": 44.98
+  },
+  {
+   "id": "QAHP-0367",
+   "axe": "facture_detail",
+   "energie": 356.2164,
+   "fixes": 39.936,
+   "tppan": 45,
+   "total": 441.1524,
+   "tppan_seul": 45
+  },
+  {
+   "id": "QAHP-0368",
+   "axe": "facture_detail",
+   "energie": 367.9715412,
+   "fixes": 39.936,
+   "tppan": 46.98,
+   "total": 454.8875412,
+   "tppan_seul": 46.98
+  },
+  {
+   "id": "QAHP-0369",
+   "axe": "facture_detail",
+   "energie": 368.09028,
+   "fixes": 39.936,
+   "tppan": 47,
+   "total": 455.02628,
+   "tppan_seul": 47
+  },
+  {
+   "id": "QAHP-0370",
+   "axe": "facture_detail",
+   "energie": 428.46641040000003,
+   "fixes": 39.936,
+   "tppan": 47.02000000000001,
+   "total": 515.4224104,
+   "tppan_seul": 47.02000000000001
+  },
+  {
+   "id": "QAHP-0371",
+   "axe": "facture_detail",
+   "energie": 690.7138295999999,
+   "fixes": 39.936,
+   "tppan": 84.97999999999999,
+   "total": 815.6298296,
+   "tppan_seul": 84.97999999999999
+  },
+  {
+   "id": "QAHP-0372",
+   "axe": "facture_detail",
+   "energie": 690.852,
+   "fixes": 39.936,
+   "tppan": 85,
+   "total": 815.788,
+   "tppan_seul": 85
+  },
+  {
+   "id": "QAHP-0373",
+   "axe": "facture_detail",
+   "energie": 704.5308696,
+   "fixes": 39.936,
+   "tppan": 86.97999999999999,
+   "total": 831.4468696,
+   "tppan_seul": 86.97999999999999
+  },
+  {
+   "id": "QAHP-0374",
+   "axe": "facture_detail",
+   "energie": 704.66904,
+   "fixes": 39.936,
+   "tppan": 87,
+   "total": 831.60504,
+   "tppan_seul": 87
+  },
+  {
+   "id": "QAHP-0375",
+   "axe": "facture_detail",
+   "energie": 827.8188456,
+   "fixes": 39.936,
+   "tppan": 87.02000000000001,
+   "total": 954.7748456,
+   "tppan_seul": 87.02000000000001
+  },
+  {
+   "id": "QAHP-0376",
+   "axe": "facture_detail",
+   "energie": 1135.9992,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 1275.9352,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0377",
+   "axe": "facture_detail",
+   "energie": 1622.856,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 1762.792,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0378",
+   "axe": "facture_detail",
+   "energie": 8114.280000000001,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 8254.216,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0379",
+   "axe": "facture_detail",
+   "energie": 162285.6,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 162425.536,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0380",
+   "axe": "facture_detail",
+   "energie": 1.154806,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 41.090806,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0381",
+   "axe": "facture_detail",
+   "energie": 2.1807273599999997,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 42.11672736,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0382",
+   "axe": "facture_detail",
+   "energie": 272.881606,
+   "fixes": 39.936,
+   "tppan": 24.168499999999998,
+   "total": 336.98610599999995,
+   "tppan_seul": 24.168499999999998
+  },
+  {
+   "id": "QAHP-0383",
+   "axe": "facture_detail",
+   "energie": 3650.09525808,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 3790.03125808,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0384",
+   "axe": "facture_detail",
+   "energie": 32.11567,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 72.05167,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0385",
+   "axe": "facture_detail",
+   "energie": 186.601117,
+   "fixes": 39.936,
+   "tppan": 19.737833333333334,
+   "total": 246.27495033333332,
+   "tppan_seul": 19.737833333333334
+  },
+  {
+   "id": "QAHP-0386",
+   "axe": "facture_detail",
+   "energie": 20.76196,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 60.697959999999995,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0387",
+   "axe": "facture_detail",
+   "energie": 2705.358807,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 2845.294807,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0388",
+   "axe": "facture_detail",
+   "energie": 3.1336502399999997,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 43.06965024,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0389",
+   "axe": "facture_detail",
+   "energie": 2.68467696,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 42.62067696,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0390",
+   "axe": "facture_detail",
+   "energie": 3.8442399999999997,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 43.78024,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0391",
+   "axe": "facture_detail",
+   "energie": 259.544692,
+   "fixes": 39.936,
+   "tppan": 25.094333333333335,
+   "total": 324.5750253333333,
+   "tppan_seul": 25.094333333333335
+  },
+  {
+   "id": "QAHP-0392",
+   "axe": "facture_detail",
+   "energie": 5093.93401272,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 5233.87001272,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0393",
+   "axe": "facture_detail",
+   "energie": 247.14972999999998,
+   "fixes": 39.936,
+   "tppan": 20.8445,
+   "total": 307.93022999999994,
+   "tppan_seul": 20.8445
+  },
+  {
+   "id": "QAHP-0394",
+   "axe": "facture_detail",
+   "energie": 878.19229584,
+   "fixes": 39.936,
+   "tppan": 94.22800000000001,
+   "total": 1012.35629584,
+   "tppan_seul": 94.22800000000001
+  },
+  {
+   "id": "QAHP-0395",
+   "axe": "facture_detail",
+   "energie": 0.674764,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.610764,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0396",
+   "axe": "facture_detail",
+   "energie": 356.59636416,
+   "fixes": 39.936,
+   "tppan": 35.048,
+   "total": 431.58036416,
+   "tppan_seul": 35.048
+  },
+  {
+   "id": "QAHP-0397",
+   "axe": "facture_detail",
+   "energie": 798.41924,
+   "fixes": 39.936,
+   "tppan": 94.25999999999999,
+   "total": 932.61524,
+   "tppan_seul": 94.25999999999999
+  },
+  {
+   "id": "QAHP-0398",
+   "axe": "facture_detail",
+   "energie": 503.065675,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 643.001675,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0399",
+   "axe": "facture_detail",
+   "energie": 1267.927485,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 1407.8634849999999,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0400",
+   "axe": "facture_detail",
+   "energie": 550.24980096,
+   "fixes": 39.936,
+   "tppan": 64.648,
+   "total": 654.8338009600001,
+   "tppan_seul": 64.648
+  },
+  {
+   "id": "QAHP-0401",
+   "axe": "facture_detail",
+   "energie": 165.534544,
+   "fixes": 39.936,
+   "tppan": 33.108,
+   "total": 238.57854400000002,
+   "tppan_seul": 33.108
+  },
+  {
+   "id": "QAHP-0402",
+   "axe": "facture_detail",
+   "energie": 148.174592,
+   "fixes": 39.936,
+   "tppan": 12.827333333333334,
+   "total": 200.93792533333334,
+   "tppan_seul": 12.827333333333334
+  },
+  {
+   "id": "QAHP-0403",
+   "axe": "facture_detail",
+   "energie": 0.81548208,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.75148208,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0404",
+   "axe": "facture_detail",
+   "energie": 319.32594800000004,
+   "fixes": 39.936,
+   "tppan": 60.336000000000006,
+   "total": 419.59794800000003,
+   "tppan_seul": 60.336000000000006
+  },
+  {
+   "id": "QAHP-0405",
+   "axe": "facture_detail",
+   "energie": 29.60295,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 69.53895,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0406",
+   "axe": "facture_detail",
+   "energie": 0.63222768,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.56822768,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0407",
+   "axe": "facture_detail",
+   "energie": 462.525414,
+   "fixes": 39.936,
+   "tppan": 52.95,
+   "total": 555.411414,
+   "tppan_seul": 52.95
+  },
+  {
+   "id": "QAHP-0408",
+   "axe": "facture_detail",
+   "energie": 66.377724,
+   "fixes": 39.936,
+   "tppan": 11.779,
+   "total": 118.092724,
+   "tppan_seul": 11.779
+  },
+  {
+   "id": "QAHP-0409",
+   "axe": "facture_detail",
+   "energie": 2581.8827532,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 2721.8187532,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0410",
+   "axe": "facture_detail",
+   "energie": 1754.742944,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 1894.678944,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0411",
+   "axe": "facture_detail",
+   "energie": 261.43908984,
+   "fixes": 39.936,
+   "tppan": 23.027,
+   "total": 324.40208984,
+   "tppan_seul": 23.027
+  },
+  {
+   "id": "QAHP-0412",
+   "axe": "facture_detail",
+   "energie": 0.99873648,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.93473648,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0413",
+   "axe": "facture_detail",
+   "energie": 2.9499299999999997,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 42.88593,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0414",
+   "axe": "facture_detail",
+   "energie": 0.65233,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.58833,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0415",
+   "axe": "facture_detail",
+   "energie": 2004.357084,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 2144.293084,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0416",
+   "axe": "facture_detail",
+   "energie": 5.7267,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 45.6627,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0417",
+   "axe": "facture_detail",
+   "energie": 83.8847016,
+   "fixes": 39.936,
+   "tppan": 9.155,
+   "total": 132.9757016,
+   "tppan_seul": 9.155
+  },
+  {
+   "id": "QAHP-0418",
+   "axe": "facture_detail",
+   "energie": 0.810816,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.746816,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0419",
+   "axe": "facture_detail",
+   "energie": 931.0758359999999,
+   "fixes": 39.936,
+   "tppan": 92.07399999999998,
+   "total": 1063.085836,
+   "tppan_seul": 92.07399999999998
+  },
+  {
+   "id": "QAHP-0420",
+   "axe": "facture_detail",
+   "energie": 281.44657764000004,
+   "fixes": 39.936,
+   "tppan": 31.906,
+   "total": 353.28857764,
+   "tppan_seul": 31.906
+  },
+  {
+   "id": "QAHP-0421",
+   "axe": "facture_detail",
+   "energie": 113.80420416,
+   "fixes": 39.936,
+   "tppan": 12.032,
+   "total": 165.77220416,
+   "tppan_seul": 12.032
+  },
+  {
+   "id": "QAHP-0422",
+   "axe": "facture_detail",
+   "energie": 10.981317,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 50.917317,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0423",
+   "axe": "facture_detail",
+   "energie": 85.671432,
+   "fixes": 39.936,
+   "tppan": 9.35,
+   "total": 134.95743199999998,
+   "tppan_seul": 9.35
+  },
+  {
+   "id": "QAHP-0424",
+   "axe": "facture_detail",
+   "energie": 6.505531199999999,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 46.4415312,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0425",
+   "axe": "facture_detail",
+   "energie": 3.3960610000000004,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 43.332061,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0426",
+   "axe": "facture_detail",
+   "energie": 1.7477200000000002,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 41.68372,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0427",
+   "axe": "facture_detail",
+   "energie": 846.7936000000001,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 986.7296000000001,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0428",
+   "axe": "facture_detail",
+   "energie": 63.277248,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 103.213248,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0429",
+   "axe": "facture_detail",
+   "energie": 61.28943408,
+   "fixes": 39.936,
+   "tppan": 6.689,
+   "total": 107.91443408,
+   "tppan_seul": 6.689
+  },
+  {
+   "id": "QAHP-0430",
+   "axe": "facture_detail",
+   "energie": 438.66963799999996,
+   "fixes": 39.936,
+   "tppan": 53.352,
+   "total": 531.957638,
+   "tppan_seul": 53.352
+  },
+  {
+   "id": "QAHP-0431",
+   "axe": "facture_detail",
+   "energie": 5.14028592,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 45.076285920000004,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0432",
+   "axe": "facture_detail",
+   "energie": 2.2034040000000004,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 42.139404,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0433",
+   "axe": "facture_detail",
+   "energie": 14.740128,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 54.676128,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0434",
+   "axe": "facture_detail",
+   "energie": 167.10241668,
+   "fixes": 39.936,
+   "tppan": 17.966500000000003,
+   "total": 225.00491668,
+   "tppan_seul": 17.966500000000003
+  },
+  {
+   "id": "QAHP-0435",
+   "axe": "facture_detail",
+   "energie": 75.17687600000001,
+   "fixes": 39.936,
+   "tppan": 5.3340000000000005,
+   "total": 120.446876,
+   "tppan_seul": 5.3340000000000005
+  },
+  {
+   "id": "QAHP-0436",
+   "axe": "facture_detail",
+   "energie": 1.0039120000000001,
+   "fixes": 39.936,
+   "tppan": 0,
+   "total": 40.939912,
+   "tppan_seul": 0
+  },
+  {
+   "id": "QAHP-0437",
+   "axe": "facture_detail",
+   "energie": 51.57460400000001,
+   "fixes": 39.936,
+   "tppan": 6.962000000000001,
+   "total": 98.472604,
+   "tppan_seul": 6.962000000000001
+  },
+  {
+   "id": "QAHP-0438",
+   "axe": "facture_detail",
+   "energie": 336.93321888,
+   "fixes": 39.936,
+   "tppan": 42.752,
+   "total": 419.62121888,
+   "tppan_seul": 42.752
+  },
+  {
+   "id": "QAHP-0439",
+   "axe": "facture_detail",
+   "energie": 987.3954019999999,
+   "fixes": 39.936,
+   "tppan": 100,
+   "total": 1127.3314019999998,
+   "tppan_seul": 100
+  },
+  {
+   "id": "QAHP-0440",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0441",
+   "axe": "conso_annuelle",
+   "conso": 632421
+  },
+  {
+   "id": "QAHP-0442",
+   "axe": "conso_annuelle",
+   "conso": 14503
+  },
+  {
+   "id": "QAHP-0443",
+   "axe": "conso_annuelle",
+   "conso": 7410
+  },
+  {
+   "id": "QAHP-0444",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0445",
+   "axe": "conso_annuelle",
+   "conso": 483
+  },
+  {
+   "id": "QAHP-0446",
+   "axe": "conso_annuelle",
+   "conso": 104
+  },
+  {
+   "id": "QAHP-0447",
+   "axe": "conso_annuelle",
+   "conso": 12530
+  },
+  {
+   "id": "QAHP-0448",
+   "axe": "conso_annuelle",
+   "conso": 930
+  },
+  {
+   "id": "QAHP-0449",
+   "axe": "conso_annuelle",
+   "conso": 1462
+  },
+  {
+   "id": "QAHP-0450",
+   "axe": "conso_annuelle",
+   "conso": 7094
+  },
+  {
+   "id": "QAHP-0451",
+   "axe": "conso_annuelle",
+   "conso": 3692
+  },
+  {
+   "id": "QAHP-0452",
+   "axe": "conso_annuelle",
+   "conso": 659160
+  },
+  {
+   "id": "QAHP-0453",
+   "axe": "conso_annuelle",
+   "conso": 621428
+  },
+  {
+   "id": "QAHP-0454",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0455",
+   "axe": "conso_annuelle",
+   "conso": 10806
+  },
+  {
+   "id": "QAHP-0456",
+   "axe": "conso_annuelle",
+   "conso": 9819
+  },
+  {
+   "id": "QAHP-0457",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0458",
+   "axe": "conso_annuelle",
+   "conso": 6760
+  },
+  {
+   "id": "QAHP-0459",
+   "axe": "conso_annuelle",
+   "conso": 9998
+  },
+  {
+   "id": "QAHP-0460",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0461",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0462",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0463",
+   "axe": "conso_annuelle",
+   "conso": 3040
+  },
+  {
+   "id": "QAHP-0464",
+   "axe": "conso_annuelle",
+   "conso": 47647
+  },
+  {
+   "id": "QAHP-0465",
+   "axe": "conso_annuelle",
+   "conso": 9296
+  },
+  {
+   "id": "QAHP-0466",
+   "axe": "conso_annuelle",
+   "conso": 310
+  },
+  {
+   "id": "QAHP-0467",
+   "axe": "conso_annuelle",
+   "conso": 45
+  },
+  {
+   "id": "QAHP-0468",
+   "axe": "conso_annuelle",
+   "conso": 115
+  },
+  {
+   "id": "QAHP-0469",
+   "axe": "conso_annuelle",
+   "conso": 6539
+  },
+  {
+   "id": "QAHP-0470",
+   "axe": "conso_annuelle",
+   "conso": 10434
+  },
+  {
+   "id": "QAHP-0471",
+   "axe": "conso_annuelle",
+   "conso": 24381
+  },
+  {
+   "id": "QAHP-0472",
+   "axe": "conso_annuelle",
+   "conso": 3257
+  },
+  {
+   "id": "QAHP-0473",
+   "axe": "conso_annuelle",
+   "conso": 419
+  },
+  {
+   "id": "QAHP-0474",
+   "axe": "conso_annuelle",
+   "conso": 2951
+  },
+  {
+   "id": "QAHP-0475",
+   "axe": "conso_annuelle",
+   "conso": 107
+  },
+  {
+   "id": "QAHP-0476",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0477",
+   "axe": "conso_annuelle",
+   "conso": 2835
+  },
+  {
+   "id": "QAHP-0478",
+   "axe": "conso_annuelle",
+   "conso": 855784
+  },
+  {
+   "id": "QAHP-0479",
+   "axe": "conso_annuelle",
+   "conso": 1414
+  },
+  {
+   "id": "QAHP-0480",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0481",
+   "axe": "conso_annuelle",
+   "conso": 1047147
+  },
+  {
+   "id": "QAHP-0482",
+   "axe": "conso_annuelle",
+   "conso": 10145
+  },
+  {
+   "id": "QAHP-0483",
+   "axe": "conso_annuelle",
+   "conso": 2316
+  },
+  {
+   "id": "QAHP-0484",
+   "axe": "conso_annuelle",
+   "conso": 3973
+  },
+  {
+   "id": "QAHP-0485",
+   "axe": "conso_annuelle",
+   "conso": 6274
+  },
+  {
+   "id": "QAHP-0486",
+   "axe": "conso_annuelle",
+   "conso": 895096
+  },
+  {
+   "id": "QAHP-0487",
+   "axe": "conso_annuelle",
+   "conso": 8252
+  },
+  {
+   "id": "QAHP-0488",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0489",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0490",
+   "axe": "conso_annuelle",
+   "conso": 603982
+  },
+  {
+   "id": "QAHP-0491",
+   "axe": "conso_annuelle",
+   "conso": 27879
+  },
+  {
+   "id": "QAHP-0492",
+   "axe": "conso_annuelle",
+   "conso": 4921
+  },
+  {
+   "id": "QAHP-0493",
+   "axe": "conso_annuelle",
+   "conso": 2162
+  },
+  {
+   "id": "QAHP-0494",
+   "axe": "conso_annuelle",
+   "conso": 607
+  },
+  {
+   "id": "QAHP-0495",
+   "axe": "conso_annuelle",
+   "conso": 944441
+  },
+  {
+   "id": "QAHP-0496",
+   "axe": "conso_annuelle",
+   "conso": 210
+  },
+  {
+   "id": "QAHP-0497",
+   "axe": "conso_annuelle",
+   "conso": 15883
+  },
+  {
+   "id": "QAHP-0498",
+   "axe": "conso_annuelle",
+   "conso": 210
+  },
+  {
+   "id": "QAHP-0499",
+   "axe": "conso_annuelle",
+   "conso": 1019387
+  },
+  {
+   "id": "QAHP-0500",
+   "axe": "conso_annuelle",
+   "conso": 13408
+  },
+  {
+   "id": "QAHP-0501",
+   "axe": "conso_annuelle",
+   "conso": 1891
+  },
+  {
+   "id": "QAHP-0502",
+   "axe": "conso_annuelle",
+   "conso": 1800
+  },
+  {
+   "id": "QAHP-0503",
+   "axe": "conso_annuelle",
+   "conso": 957483
+  },
+  {
+   "id": "QAHP-0504",
+   "axe": "conso_annuelle",
+   "conso": 0
+  },
+  {
+   "id": "QAHP-0505",
+   "axe": "conso_annuelle",
+   "conso": 1047578
+  },
+  {
+   "id": "QAHP-0506",
+   "axe": "conso_annuelle",
+   "conso": 1435
+  },
+  {
+   "id": "QAHP-0507",
+   "axe": "conso_annuelle",
+   "conso": 996946
+  },
+  {
+   "id": "QAHP-0508",
+   "axe": "conso_annuelle",
+   "conso": 536473
+  },
+  {
+   "id": "QAHP-0509",
+   "axe": "conso_annuelle",
+   "conso": 7634
+  },
+  {
+   "id": "QAHP-0510",
+   "axe": "conso_annuelle",
+   "conso": 5055
+  },
+  {
+   "id": "QAHP-0511",
+   "axe": "conso_annuelle",
+   "conso": 639379
+  },
+  {
+   "id": "QAHP-0512",
+   "axe": "conso_annuelle",
+   "conso": 7344
+  },
+  {
+   "id": "QAHP-0513",
+   "axe": "conso_annuelle",
+   "conso": 23470
+  },
+  {
+   "id": "QAHP-0514",
+   "axe": "conso_annuelle",
+   "conso": 1710
+  },
+  {
+   "id": "QAHP-0515",
+   "axe": "conso_annuelle",
+   "conso": 2661
+  },
+  {
+   "id": "QAHP-0516",
+   "axe": "conso_annuelle",
+   "conso": 7759
+  },
+  {
+   "id": "QAHP-0517",
+   "axe": "conso_annuelle",
+   "conso": 1973
+  },
+  {
+   "id": "QAHP-0518",
+   "axe": "conso_annuelle",
+   "conso": 1263
+  },
+  {
+   "id": "QAHP-0519",
+   "axe": "conso_annuelle",
+   "conso": 3795
+  },
+  {
+   "id": "QAHP-0520",
+   "axe": "two_bills",
+   "facture_sans": 774,
+   "facture_avec": 479,
+   "economie": 295,
+   "autoconso_kwh": 320
+  },
+  {
+   "id": "QAHP-0521",
+   "axe": "two_bills",
+   "facture_sans": 206876,
+   "facture_avec": 195289,
+   "economie": 11587,
+   "autoconso_kwh": 7140
+  },
+  {
+   "id": "QAHP-0522",
+   "axe": "two_bills",
+   "facture_sans": 949,
+   "facture_avec": 553,
+   "economie": 396,
+   "autoconso_kwh": 522
+  },
+  {
+   "id": "QAHP-0523",
+   "axe": "two_bills",
+   "facture_sans": 12495,
+   "facture_avec": 479,
+   "economie": 12016,
+   "autoconso_kwh": 9533
+  },
+  {
+   "id": "QAHP-0524",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0525",
+   "axe": "two_bills",
+   "facture_sans": 1573,
+   "facture_avec": 479,
+   "economie": 1094,
+   "autoconso_kwh": 1076
+  },
+  {
+   "id": "QAHP-0526",
+   "axe": "two_bills",
+   "facture_sans": 983,
+   "facture_avec": 479,
+   "economie": 504,
+   "autoconso_kwh": 550
+  },
+  {
+   "id": "QAHP-0527",
+   "axe": "two_bills",
+   "facture_sans": 8425,
+   "facture_avec": 2907,
+   "economie": 5518,
+   "autoconso_kwh": 3042
+  },
+  {
+   "id": "QAHP-0528",
+   "axe": "two_bills",
+   "facture_sans": 194412,
+   "facture_avec": 193937,
+   "economie": 475,
+   "autoconso_kwh": 311
+  },
+  {
+   "id": "QAHP-0529",
+   "axe": "two_bills",
+   "facture_sans": 732,
+   "facture_avec": 479,
+   "economie": 253,
+   "autoconso_kwh": 276
+  },
+  {
+   "id": "QAHP-0530",
+   "axe": "two_bills",
+   "facture_sans": 9573,
+   "facture_avec": 9249,
+   "economie": 324,
+   "autoconso_kwh": 393
+  },
+  {
+   "id": "QAHP-0531",
+   "axe": "two_bills",
+   "facture_sans": 1188,
+   "facture_avec": 479,
+   "economie": 709,
+   "autoconso_kwh": 697
+  },
+  {
+   "id": "QAHP-0532",
+   "axe": "two_bills",
+   "facture_sans": 840,
+   "facture_avec": 479,
+   "economie": 361,
+   "autoconso_kwh": 394
+  },
+  {
+   "id": "QAHP-0533",
+   "axe": "two_bills",
+   "facture_sans": 28010,
+   "facture_avec": 27372,
+   "economie": 638,
+   "autoconso_kwh": 393
+  },
+  {
+   "id": "QAHP-0534",
+   "axe": "two_bills",
+   "facture_sans": 755652,
+   "facture_avec": 646424,
+   "economie": 109228,
+   "autoconso_kwh": 67306
+  },
+  {
+   "id": "QAHP-0535",
+   "axe": "two_bills",
+   "facture_sans": 27580,
+   "facture_avec": 17277,
+   "economie": 10303,
+   "autoconso_kwh": 6349
+  },
+  {
+   "id": "QAHP-0536",
+   "axe": "two_bills",
+   "facture_sans": 248946,
+   "facture_avec": 248801,
+   "economie": 145,
+   "autoconso_kwh": 89
+  },
+  {
+   "id": "QAHP-0537",
+   "axe": "two_bills",
+   "facture_sans": 149802,
+   "facture_avec": 124548,
+   "economie": 25254,
+   "autoconso_kwh": 15561
+  },
+  {
+   "id": "QAHP-0538",
+   "axe": "two_bills",
+   "facture_sans": 167170,
+   "facture_avec": 157767,
+   "economie": 9403,
+   "autoconso_kwh": 5794
+  },
+  {
+   "id": "QAHP-0539",
+   "axe": "two_bills",
+   "facture_sans": 2286,
+   "facture_avec": 479,
+   "economie": 1807,
+   "autoconso_kwh": 1673
+  },
+  {
+   "id": "QAHP-0540",
+   "axe": "two_bills",
+   "facture_sans": 8652,
+   "facture_avec": 7443,
+   "economie": 1209,
+   "autoconso_kwh": 764
+  },
+  {
+   "id": "QAHP-0541",
+   "axe": "two_bills",
+   "facture_sans": 1741,
+   "facture_avec": 479,
+   "economie": 1262,
+   "autoconso_kwh": 1234
+  },
+  {
+   "id": "QAHP-0542",
+   "axe": "two_bills",
+   "facture_sans": 87946,
+   "facture_avec": 87474,
+   "economie": 472,
+   "autoconso_kwh": 358
+  },
+  {
+   "id": "QAHP-0543",
+   "axe": "two_bills",
+   "facture_sans": 136917,
+   "facture_avec": 112410,
+   "economie": 24507,
+   "autoconso_kwh": 15101
+  },
+  {
+   "id": "QAHP-0544",
+   "axe": "two_bills",
+   "facture_sans": 731,
+   "facture_avec": 479,
+   "economie": 252,
+   "autoconso_kwh": 237
+  },
+  {
+   "id": "QAHP-0545",
+   "axe": "two_bills",
+   "facture_sans": 32401,
+   "facture_avec": 479,
+   "economie": 31922,
+   "autoconso_kwh": 24836
+  },
+  {
+   "id": "QAHP-0546",
+   "axe": "two_bills",
+   "facture_sans": 9187,
+   "facture_avec": 4124,
+   "economie": 5063,
+   "autoconso_kwh": 2862
+  },
+  {
+   "id": "QAHP-0547",
+   "axe": "two_bills",
+   "facture_sans": 7226,
+   "facture_avec": 4771,
+   "economie": 2455,
+   "autoconso_kwh": 1156
+  },
+  {
+   "id": "QAHP-0548",
+   "axe": "two_bills",
+   "facture_sans": 623472,
+   "facture_avec": 600030,
+   "economie": 23442,
+   "autoconso_kwh": 14445
+  },
+  {
+   "id": "QAHP-0549",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0550",
+   "axe": "two_bills",
+   "facture_sans": 28985,
+   "facture_avec": 479,
+   "economie": 28506,
+   "autoconso_kwh": 16826
+  },
+  {
+   "id": "QAHP-0551",
+   "axe": "two_bills",
+   "facture_sans": 22413,
+   "facture_avec": 21475,
+   "economie": 938,
+   "autoconso_kwh": 578
+  },
+  {
+   "id": "QAHP-0552",
+   "axe": "two_bills",
+   "facture_sans": 213793,
+   "facture_avec": 192476,
+   "economie": 21317,
+   "autoconso_kwh": 11141
+  },
+  {
+   "id": "QAHP-0553",
+   "axe": "two_bills",
+   "facture_sans": 95995,
+   "facture_avec": 94502,
+   "economie": 1493,
+   "autoconso_kwh": 1420
+  },
+  {
+   "id": "QAHP-0554",
+   "axe": "two_bills",
+   "facture_sans": 3894,
+   "facture_avec": 2324,
+   "economie": 1570,
+   "autoconso_kwh": 888
+  },
+  {
+   "id": "QAHP-0555",
+   "axe": "two_bills",
+   "facture_sans": 28426,
+   "facture_avec": 479,
+   "economie": 27947,
+   "autoconso_kwh": 16481
+  },
+  {
+   "id": "QAHP-0556",
+   "axe": "two_bills",
+   "facture_sans": 346804,
+   "facture_avec": 346635,
+   "economie": 169,
+   "autoconso_kwh": 104
+  },
+  {
+   "id": "QAHP-0557",
+   "axe": "two_bills",
+   "facture_sans": 1424,
+   "facture_avec": 479,
+   "economie": 945,
+   "autoconso_kwh": 930
+  },
+  {
+   "id": "QAHP-0558",
+   "axe": "two_bills",
+   "facture_sans": 23821,
+   "facture_avec": 18809,
+   "economie": 5012,
+   "autoconso_kwh": 3089
+  },
+  {
+   "id": "QAHP-0559",
+   "axe": "two_bills",
+   "facture_sans": 58035,
+   "facture_avec": 52581,
+   "economie": 5454,
+   "autoconso_kwh": 3360
+  },
+  {
+   "id": "QAHP-0560",
+   "axe": "two_bills",
+   "facture_sans": 23349,
+   "facture_avec": 16499,
+   "economie": 6850,
+   "autoconso_kwh": 4221
+  },
+  {
+   "id": "QAHP-0561",
+   "axe": "two_bills",
+   "facture_sans": 27333,
+   "facture_avec": 26978,
+   "economie": 355,
+   "autoconso_kwh": 219
+  },
+  {
+   "id": "QAHP-0562",
+   "axe": "two_bills",
+   "facture_sans": 943,
+   "facture_avec": 479,
+   "economie": 464,
+   "autoconso_kwh": 506
+  },
+  {
+   "id": "QAHP-0563",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0564",
+   "axe": "two_bills",
+   "facture_sans": 8605,
+   "facture_avec": 8549,
+   "economie": 56,
+   "autoconso_kwh": 36
+  },
+  {
+   "id": "QAHP-0565",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0566",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0567",
+   "axe": "two_bills",
+   "facture_sans": 361972,
+   "facture_avec": 361741,
+   "economie": 231,
+   "autoconso_kwh": 150
+  },
+  {
+   "id": "QAHP-0568",
+   "axe": "two_bills",
+   "facture_sans": 7205,
+   "facture_avec": 5446,
+   "economie": 1759,
+   "autoconso_kwh": 656
+  },
+  {
+   "id": "QAHP-0569",
+   "axe": "two_bills",
+   "facture_sans": 55969,
+   "facture_avec": 50320,
+   "economie": 5649,
+   "autoconso_kwh": 3481
+  },
+  {
+   "id": "QAHP-0570",
+   "axe": "two_bills",
+   "facture_sans": 9061,
+   "facture_avec": 479,
+   "economie": 8582,
+   "autoconso_kwh": 5345
+  },
+  {
+   "id": "QAHP-0571",
+   "axe": "two_bills",
+   "facture_sans": 5195,
+   "facture_avec": 4585,
+   "economie": 610,
+   "autoconso_kwh": 440
+  },
+  {
+   "id": "QAHP-0572",
+   "axe": "two_bills",
+   "facture_sans": 863,
+   "facture_avec": 479,
+   "economie": 384,
+   "autoconso_kwh": 419
+  },
+  {
+   "id": "QAHP-0573",
+   "axe": "two_bills",
+   "facture_sans": 16374,
+   "facture_avec": 14311,
+   "economie": 2063,
+   "autoconso_kwh": 1271
+  },
+  {
+   "id": "QAHP-0574",
+   "axe": "two_bills",
+   "facture_sans": 232182,
+   "facture_avec": 217906,
+   "economie": 14276,
+   "autoconso_kwh": 8797
+  },
+  {
+   "id": "QAHP-0575",
+   "axe": "two_bills",
+   "facture_sans": 4201,
+   "facture_avec": 3936,
+   "economie": 265,
+   "autoconso_kwh": 191
+  },
+  {
+   "id": "QAHP-0576",
+   "axe": "two_bills",
+   "facture_sans": 28137,
+   "facture_avec": 479,
+   "economie": 27658,
+   "autoconso_kwh": 28897
+  },
+  {
+   "id": "QAHP-0577",
+   "axe": "two_bills",
+   "facture_sans": 12711,
+   "facture_avec": 12406,
+   "economie": 305,
+   "autoconso_kwh": 167
+  },
+  {
+   "id": "QAHP-0578",
+   "axe": "two_bills",
+   "facture_sans": 304314,
+   "facture_avec": 185256,
+   "economie": 119058,
+   "autoconso_kwh": 73363
+  },
+  {
+   "id": "QAHP-0579",
+   "axe": "two_bills",
+   "facture_sans": 216029,
+   "facture_avec": 202607,
+   "economie": 13422,
+   "autoconso_kwh": 8271
+  },
+  {
+   "id": "QAHP-0580",
+   "axe": "two_bills",
+   "facture_sans": 62322,
+   "facture_avec": 35040,
+   "economie": 27282,
+   "autoconso_kwh": 14904
+  },
+  {
+   "id": "QAHP-0581",
+   "axe": "two_bills",
+   "facture_sans": 706,
+   "facture_avec": 479,
+   "economie": 227,
+   "autoconso_kwh": 247
+  },
+  {
+   "id": "QAHP-0582",
+   "axe": "two_bills",
+   "facture_sans": 5294,
+   "facture_avec": 5241,
+   "economie": 53,
+   "autoconso_kwh": 38
+  },
+  {
+   "id": "QAHP-0583",
+   "axe": "two_bills",
+   "facture_sans": 767,
+   "facture_avec": 479,
+   "economie": 288,
+   "autoconso_kwh": 314
+  },
+  {
+   "id": "QAHP-0584",
+   "axe": "two_bills",
+   "facture_sans": 961,
+   "facture_avec": 479,
+   "economie": 482,
+   "autoconso_kwh": 526
+  },
+  {
+   "id": "QAHP-0585",
+   "axe": "two_bills",
+   "facture_sans": 9908,
+   "facture_avec": 479,
+   "economie": 9429,
+   "autoconso_kwh": 6075
+  },
+  {
+   "id": "QAHP-0586",
+   "axe": "two_bills",
+   "facture_sans": 15254,
+   "facture_avec": 479,
+   "economie": 14775,
+   "autoconso_kwh": 8365
+  },
+  {
+   "id": "QAHP-0587",
+   "axe": "two_bills",
+   "facture_sans": 145051,
+   "facture_avec": 132601,
+   "economie": 12450,
+   "autoconso_kwh": 9640
+  },
+  {
+   "id": "QAHP-0588",
+   "axe": "two_bills",
+   "facture_sans": 388068,
+   "facture_avec": 349003,
+   "economie": 39065,
+   "autoconso_kwh": 24072
+  },
+  {
+   "id": "QAHP-0589",
+   "axe": "two_bills",
+   "facture_sans": 375532,
+   "facture_avec": 354983,
+   "economie": 20549,
+   "autoconso_kwh": 12662
+  },
+  {
+   "id": "QAHP-0590",
+   "axe": "two_bills",
+   "facture_sans": 842,
+   "facture_avec": 479,
+   "economie": 363,
+   "autoconso_kwh": 396
+  },
+  {
+   "id": "QAHP-0591",
+   "axe": "two_bills",
+   "facture_sans": 1598,
+   "facture_avec": 479,
+   "economie": 1119,
+   "autoconso_kwh": 806
+  },
+  {
+   "id": "QAHP-0592",
+   "axe": "two_bills",
+   "facture_sans": 1515,
+   "facture_avec": 1209,
+   "economie": 306,
+   "autoconso_kwh": 301
+  },
+  {
+   "id": "QAHP-0593",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0594",
+   "axe": "two_bills",
+   "facture_sans": 4585,
+   "facture_avec": 3259,
+   "economie": 1326,
+   "autoconso_kwh": 802
+  },
+  {
+   "id": "QAHP-0595",
+   "axe": "two_bills",
+   "facture_sans": 3758,
+   "facture_avec": 2497,
+   "economie": 1261,
+   "autoconso_kwh": 1328
+  },
+  {
+   "id": "QAHP-0596",
+   "axe": "two_bills",
+   "facture_sans": 485897,
+   "facture_avec": 484806,
+   "economie": 1091,
+   "autoconso_kwh": 672
+  },
+  {
+   "id": "QAHP-0597",
+   "axe": "two_bills",
+   "facture_sans": 7172,
+   "facture_avec": 479,
+   "economie": 6693,
+   "autoconso_kwh": 4345
+  },
+  {
+   "id": "QAHP-0598",
+   "axe": "two_bills",
+   "facture_sans": 37057,
+   "facture_avec": 36911,
+   "economie": 146,
+   "autoconso_kwh": 90
+  },
+  {
+   "id": "QAHP-0599",
+   "axe": "two_bills",
+   "facture_sans": 14071,
+   "facture_avec": 479,
+   "economie": 13592,
+   "autoconso_kwh": 7636
+  },
+  {
+   "id": "QAHP-0600",
+   "axe": "two_bills",
+   "facture_sans": 7676,
+   "facture_avec": 7630,
+   "economie": 46,
+   "autoconso_kwh": 29
+  },
+  {
+   "id": "QAHP-0601",
+   "axe": "two_bills",
+   "facture_sans": 12831,
+   "facture_avec": 11662,
+   "economie": 1169,
+   "autoconso_kwh": 641
+  },
+  {
+   "id": "QAHP-0602",
+   "axe": "two_bills",
+   "facture_sans": 280718,
+   "facture_avec": 280345,
+   "economie": 373,
+   "autoconso_kwh": 230
+  },
+  {
+   "id": "QAHP-0603",
+   "axe": "two_bills",
+   "facture_sans": 1247,
+   "facture_avec": 479,
+   "economie": 768,
+   "autoconso_kwh": 755
+  },
+  {
+   "id": "QAHP-0604",
+   "axe": "two_bills",
+   "facture_sans": 35581,
+   "facture_avec": 18901,
+   "economie": 16680,
+   "autoconso_kwh": 10278
+  },
+  {
+   "id": "QAHP-0605",
+   "axe": "two_bills",
+   "facture_sans": 7305,
+   "facture_avec": 479,
+   "economie": 6826,
+   "autoconso_kwh": 4895
+  },
+  {
+   "id": "QAHP-0606",
+   "axe": "two_bills",
+   "facture_sans": 1385,
+   "facture_avec": 479,
+   "economie": 906,
+   "autoconso_kwh": 891
+  },
+  {
+   "id": "QAHP-0607",
+   "axe": "two_bills",
+   "facture_sans": 76519,
+   "facture_avec": 75728,
+   "economie": 791,
+   "autoconso_kwh": 487
+  },
+  {
+   "id": "QAHP-0608",
+   "axe": "two_bills",
+   "facture_sans": 60461,
+   "facture_avec": 479,
+   "economie": 59982,
+   "autoconso_kwh": 36221
+  },
+  {
+   "id": "QAHP-0609",
+   "axe": "two_bills",
+   "facture_sans": 110256,
+   "facture_avec": 105857,
+   "economie": 4399,
+   "autoconso_kwh": 2711
+  },
+  {
+   "id": "QAHP-0610",
+   "axe": "two_bills",
+   "facture_sans": 9233,
+   "facture_avec": 479,
+   "economie": 8754,
+   "autoconso_kwh": 5648
+  },
+  {
+   "id": "QAHP-0611",
+   "axe": "two_bills",
+   "facture_sans": 347940,
+   "facture_avec": 346409,
+   "economie": 1531,
+   "autoconso_kwh": 759
+  },
+  {
+   "id": "QAHP-0612",
+   "axe": "two_bills",
+   "facture_sans": 115284,
+   "facture_avec": 53909,
+   "economie": 61375,
+   "autoconso_kwh": 37819
+  },
+  {
+   "id": "QAHP-0613",
+   "axe": "two_bills",
+   "facture_sans": 454577,
+   "facture_avec": 448750,
+   "economie": 5827,
+   "autoconso_kwh": 3252
+  },
+  {
+   "id": "QAHP-0614",
+   "axe": "two_bills",
+   "facture_sans": 978560,
+   "facture_avec": 768339,
+   "economie": 210221,
+   "autoconso_kwh": 78608
+  },
+  {
+   "id": "QAHP-0615",
+   "axe": "two_bills",
+   "facture_sans": 207920,
+   "facture_avec": 202523,
+   "economie": 5397,
+   "autoconso_kwh": 4140
+  },
+  {
+   "id": "QAHP-0616",
+   "axe": "two_bills",
+   "facture_sans": 1373,
+   "facture_avec": 479,
+   "economie": 894,
+   "autoconso_kwh": 798
+  },
+  {
+   "id": "QAHP-0617",
+   "axe": "two_bills",
+   "facture_sans": 2043,
+   "facture_avec": 479,
+   "economie": 1564,
+   "autoconso_kwh": 1282
+  },
+  {
+   "id": "QAHP-0618",
+   "axe": "two_bills",
+   "facture_sans": 956,
+   "facture_avec": 479,
+   "economie": 477,
+   "autoconso_kwh": 520
+  },
+  {
+   "id": "QAHP-0619",
+   "axe": "two_bills",
+   "facture_sans": 13859,
+   "facture_avec": 6826,
+   "economie": 7033,
+   "autoconso_kwh": 3870
+  },
+  {
+   "id": "QAHP-0620",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0621",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0622",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0623",
+   "axe": "two_bills",
+   "null": true
+  },
+  {
+   "id": "QAHP-0624",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 28340.4,
+   "eco_sans": 24797.86176,
+   "eco_avec": 31185.36176,
+   "payback_sans": 6.2,
+   "payback_avec": 6.6,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6287913462422656,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 432878,
+   "net_gain_avec": 521406
+  },
+  {
+   "id": "QAHP-0625",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1851.8,
+   "eco_sans": 1704,
+   "eco_avec": 2489,
+   "payback_sans": 4.9,
+   "payback_avec": 3.9,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 4524,
+   "facture_avec_sans": 2820,
+   "facture_avec_avec": 2035,
+   "net_gain_sans": 31808,
+   "net_gain_avec": 48967
+  },
+  {
+   "id": "QAHP-0626",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 5649.5,
+   "eco_sans": 5501,
+   "eco_avec": 7793,
+   "payback_sans": 6.8,
+   "payback_avec": 7.2,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 163360,
+   "facture_avec_sans": 157859,
+   "facture_avec_avec": 155567,
+   "net_gain_sans": 92667,
+   "net_gain_avec": 128201
+  },
+  {
+   "id": "QAHP-0627",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 75122.5,
+   "eco_sans": 2749,
+   "eco_avec": 2749,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.030123930087989033,
+   "autoconso_avec": 0.030123930087989033,
+   "facture_sans": 3228,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -511515,
+   "net_gain_avec": -569142
+  },
+  {
+   "id": "QAHP-0628",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 75208.8,
+   "eco_sans": 15954,
+   "eco_avec": 15954,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.12087649084551051,
+   "autoconso_avec": 0.12087649084551051,
+   "facture_sans": 16433,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -287509,
+   "net_gain_avec": -466606
+  },
+  {
+   "id": "QAHP-0629",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 12933.5,
+   "eco_sans": 12593,
+   "eco_avec": 17840,
+   "payback_sans": 6.8,
+   "payback_avec": 6.6,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 243840,
+   "facture_avec_sans": 231247,
+   "facture_avec_avec": 226000,
+   "net_gain_sans": 211810,
+   "net_gain_avec": 304869
+  },
+  {
+   "id": "QAHP-0630",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 14312,
+   "eco_sans": 12523.032558139534,
+   "eco_avec": 12523.032558139534,
+   "payback_sans": 8.9,
+   "payback_avec": 10.4,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 186294,
+   "net_gain_avec": 167815
+  },
+  {
+   "id": "QAHP-0631",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 17199.6,
+   "eco_sans": 16748,
+   "eco_avec": 23726,
+   "payback_sans": 6.4,
+   "payback_avec": 5.4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 357628,
+   "facture_avec_sans": 340880,
+   "facture_avec_avec": 333902,
+   "net_gain_sans": 288118,
+   "net_gain_avec": 431213
+  },
+  {
+   "id": "QAHP-0632",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 6788.3,
+   "eco_sans": 5939.76046511628,
+   "eco_avec": 11879.52093023256,
+   "payback_sans": 9.3,
+   "payback_avec": 5.6,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 85739,
+   "net_gain_avec": 202996
+  },
+  {
+   "id": "QAHP-0633",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 85982.1,
+   "eco_sans": 16937,
+   "eco_avec": 16937,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.11277941894815194,
+   "autoconso_avec": 0.11277941894815194,
+   "facture_sans": 17416,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -58011,
+   "net_gain_avec": -217953
+  },
+  {
+   "id": "QAHP-0634",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 13417.5,
+   "eco_sans": 786,
+   "eco_avec": 786,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.057609181696228945,
+   "autoconso_avec": 0.057609181696228945,
+   "facture_sans": 1265,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -96983,
+   "net_gain_avec": -116618
+  },
+  {
+   "id": "QAHP-0635",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 4001.7,
+   "eco_sans": 3897,
+   "eco_avec": 6495,
+   "payback_sans": 7.6,
+   "payback_avec": 6.6,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 305718,
+   "facture_avec_sans": 301821,
+   "facture_avec_avec": 299223,
+   "net_gain_sans": 62547,
+   "net_gain_avec": 106510
+  },
+  {
+   "id": "QAHP-0636",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 8517.2,
+   "eco_sans": 7452.54888,
+   "eco_avec": 14840.10948,
+   "payback_sans": 6.5,
+   "payback_avec": 4.1,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.995639862210471,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 127797,
+   "net_gain_avec": 275343
+  },
+  {
+   "id": "QAHP-0637",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 72536.5,
+   "eco_sans": 63469.43139534886,
+   "eco_avec": 63469.43139534886,
+   "payback_sans": 4.8,
+   "payback_avec": 6.9,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 1192499,
+   "net_gain_avec": 1065414
+  },
+  {
+   "id": "QAHP-0638",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1293.9,
+   "eco_sans": 1132.17188,
+   "eco_avec": 2264.34376,
+   "payback_sans": 6.2,
+   "payback_avec": 4.4,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 19714,
+   "net_gain_avec": 41213
+  },
+  {
+   "id": "QAHP-0639",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1586,
+   "eco_sans": 1387.7906976744189,
+   "eco_avec": 2775.5813953488378,
+   "payback_sans": 8.8,
+   "payback_avec": 6.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 20775,
+   "net_gain_avec": 45787
+  },
+  {
+   "id": "QAHP-0640",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 32196.7,
+   "eco_sans": 31351,
+   "eco_avec": 40449,
+   "payback_sans": 8,
+   "payback_avec": 8.4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.7741280243500948,
+   "facture_sans": 562756,
+   "facture_avec_sans": 531405,
+   "facture_avec_avec": 522307,
+   "net_gain_sans": 492111,
+   "net_gain_avec": 603682
+  },
+  {
+   "id": "QAHP-0641",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 79846.1,
+   "eco_sans": 773,
+   "eco_avec": 773,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.00951832277133482,
+   "autoconso_avec": 0.00951832277133482,
+   "facture_sans": 1252,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -506721,
+   "net_gain_avec": -574962
+  },
+  {
+   "id": "QAHP-0642",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1428.1,
+   "eco_sans": 2932,
+   "eco_avec": 3497,
+   "payback_sans": 3.1,
+   "payback_avec": 3.5,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 12219,
+   "facture_avec_sans": 9287,
+   "facture_avec_avec": 8722,
+   "net_gain_sans": 60088,
+   "net_gain_avec": 70255
+  },
+  {
+   "id": "QAHP-0643",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 8316.2,
+   "eco_sans": 4680,
+   "eco_avec": 4680,
+   "payback_sans": 16.5,
+   "payback_avec": 21.7,
+   "autoconso_sans": 0.42123617123617124,
+   "autoconso_avec": 0.42123617123617124,
+   "facture_sans": 5159,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 36080,
+   "net_gain_avec": 13831
+  },
+  {
+   "id": "QAHP-0644",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 254148.5,
+   "eco_sans": 222379.94767441862,
+   "eco_avec": 225573.69767441862,
+   "payback_sans": 5.4,
+   "payback_avec": 7.2,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5071808407938738,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 4060692,
+   "net_gain_avec": 3716213
+  },
+  {
+   "id": "QAHP-0645",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1240,
+   "eco_sans": 1207,
+   "eco_avec": 2012,
+   "payback_sans": 9.5,
+   "payback_avec": 7.1,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 501613,
+   "facture_avec_sans": 500406,
+   "facture_avec_avec": 499601,
+   "net_gain_sans": 17158,
+   "net_gain_avec": 31970
+  },
+  {
+   "id": "QAHP-0646",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 14057.1,
+   "eco_sans": 12300.00324,
+   "eco_avec": 15493.753240000002,
+   "payback_sans": 6.3,
+   "payback_avec": 5.9,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6298272015739729,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 212858,
+   "net_gain_avec": 269035
+  },
+  {
+   "id": "QAHP-0647",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 349970.1,
+   "eco_sans": 16195,
+   "eco_avec": 16195,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.026402263051118667,
+   "autoconso_avec": 0.026402263051118667,
+   "facture_sans": 16674,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -1015811,
+   "net_gain_avec": -1197460
+  },
+  {
+   "id": "QAHP-0648",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1679.2,
+   "eco_sans": 1635,
+   "eco_avec": 2724,
+   "payback_sans": 5.7,
+   "payback_avec": 4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 511392,
+   "facture_avec_sans": 509757,
+   "facture_avec_avec": 508668,
+   "net_gain_sans": 29314,
+   "net_gain_avec": 51112
+  },
+  {
+   "id": "QAHP-0649",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 16791.5,
+   "eco_sans": 14692.593023255817,
+   "eco_avec": 24281.205917276788,
+   "payback_sans": 9.6,
+   "payback_avec": 8.4,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.8263077143307471,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 207539,
+   "net_gain_avec": 358169
+  },
+  {
+   "id": "QAHP-0650",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 89399.7,
+   "eco_sans": 78224.7639534884,
+   "eco_avec": 81418.5139534884,
+   "payback_sans": 5.3,
+   "payback_avec": 5.8,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5204139318457961,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 1436180,
+   "net_gain_avec": 1442916
+  },
+  {
+   "id": "QAHP-0651",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1290.1,
+   "eco_sans": 1256,
+   "eco_avec": 2094,
+   "payback_sans": 9.3,
+   "payback_avec": 6.8,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 354516,
+   "facture_avec_sans": 353260,
+   "facture_avec_avec": 352422,
+   "net_gain_sans": 18105,
+   "net_gain_avec": 33805
+  },
+  {
+   "id": "QAHP-0652",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 4561.4,
+   "eco_sans": 1134,
+   "eco_avec": 1134,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.24468318351238763,
+   "autoconso_avec": 0.24468318351238763,
+   "facture_sans": 1613,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -843,
+   "net_gain_avec": -4701
+  },
+  {
+   "id": "QAHP-0653",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 22762.8,
+   "eco_sans": 22164,
+   "eco_avec": 31263,
+   "payback_sans": 5.8,
+   "payback_avec": 4.5,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.8462944251636427,
+   "facture_sans": 60431,
+   "facture_avec_sans": 38267,
+   "facture_avec_avec": 29168,
+   "net_gain_sans": 394687,
+   "net_gain_avec": 578673
+  },
+  {
+   "id": "QAHP-0654",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 10489.6,
+   "eco_sans": 10214,
+   "eco_avec": 14470,
+   "payback_sans": 4.9,
+   "payback_avec": 5.2,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 33078,
+   "facture_avec_sans": 22864,
+   "facture_avec_avec": 18608,
+   "net_gain_sans": 190769,
+   "net_gain_avec": 266108
+  },
+  {
+   "id": "QAHP-0655",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 15991.2,
+   "eco_sans": 700,
+   "eco_avec": 700,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.04308673628916265,
+   "autoconso_avec": 0.04308673628916265,
+   "facture_sans": 1179,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -75649,
+   "net_gain_avec": -82099
+  },
+  {
+   "id": "QAHP-0656",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 5401.8,
+   "eco_sans": 4726.542800000001,
+   "eco_avec": 9437.429400000003,
+   "payback_sans": 8.6,
+   "payback_avec": 5.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.9983438000392169,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 71256,
+   "net_gain_avec": 164315
+  },
+  {
+   "id": "QAHP-0657",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 34728.7,
+   "eco_sans": 6512,
+   "eco_avec": 6512,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.12182901897549599,
+   "autoconso_avec": 0.12182901897549599,
+   "facture_sans": 6991,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -150090,
+   "net_gain_avec": -259345
+  },
+  {
+   "id": "QAHP-0658",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 286050.7,
+   "eco_sans": 250294.36046511628,
+   "eco_avec": 256681.86046511628,
+   "payback_sans": 10.7,
+   "payback_avec": 14.8,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5127599758702718,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 3276213,
+   "net_gain_avec": 2363746
+  },
+  {
+   "id": "QAHP-0659",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 31284.5,
+   "eco_sans": 32004,
+   "eco_avec": 38031,
+   "payback_sans": 4.9,
+   "payback_avec": 4.8,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.7254275211762825,
+   "facture_sans": 38510,
+   "facture_avec_sans": 6506,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 597544,
+   "net_gain_avec": 716064
+  },
+  {
+   "id": "QAHP-0660",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1444.7,
+   "eco_sans": 1264.0754,
+   "eco_avec": 1264.0754,
+   "payback_sans": 6.6,
+   "payback_avec": 8.2,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 21508,
+   "net_gain_avec": 19606
+  },
+  {
+   "id": "QAHP-0661",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 25740.2,
+   "eco_sans": 21449,
+   "eco_avec": 21449,
+   "payback_sans": 6.5,
+   "payback_avec": 7.9,
+   "autoconso_sans": 0.4847319347319347,
+   "autoconso_avec": 0.4847319347319347,
+   "facture_sans": 21928,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 367613,
+   "net_gain_avec": 338709
+  },
+  {
+   "id": "QAHP-0662",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 8308.8,
+   "eco_sans": 8090,
+   "eco_avec": 11461,
+   "payback_sans": 4.1,
+   "payback_avec": 3.5,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 82322,
+   "facture_avec_sans": 74232,
+   "facture_avec_avec": 70861,
+   "net_gain_sans": 157813,
+   "net_gain_avec": 230669
+  },
+  {
+   "id": "QAHP-0663",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 52007.7,
+   "eco_sans": 6585.250000000002,
+   "eco_avec": 6585.25,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.07235470728688775,
+   "autoconso_avec": 0.07235470728688775,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": -244216,
+   "net_gain_avec": -324084
+  },
+  {
+   "id": "QAHP-0664",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 29081.6,
+   "eco_sans": 468,
+   "eco_avec": 468,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.017536620590055705,
+   "autoconso_avec": 0.017536620590055705,
+   "facture_sans": 947,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -238940,
+   "net_gain_avec": -298931
+  },
+  {
+   "id": "QAHP-0665",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1836.1,
+   "eco_sans": 1606.5732558139537,
+   "eco_avec": 3213.1465116279073,
+   "payback_sans": 6.9,
+   "payback_avec": 4.4,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 26893,
+   "net_gain_avec": 58653
+  },
+  {
+   "id": "QAHP-0666",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 12648.6,
+   "eco_sans": 11067.504651162792,
+   "eco_avec": 17438.364066059024,
+   "payback_sans": 5.6,
+   "payback_avec": 4.8,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.7878182397794108,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 199770,
+   "net_gain_avec": 316553
+  },
+  {
+   "id": "QAHP-0667",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1735.5,
+   "eco_sans": 1190,
+   "eco_avec": 1663,
+   "payback_sans": 8.3,
+   "payback_avec": 7.8,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.8974063400576369,
+   "facture_sans": 2142,
+   "facture_avec_sans": 952,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 18304,
+   "net_gain_avec": 25618
+  },
+  {
+   "id": "QAHP-0668",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 27921.1,
+   "eco_sans": 7702,
+   "eco_avec": 7702,
+   "payback_sans": 20.7,
+   "payback_avec": 25,
+   "autoconso_sans": 0.17846781992048996,
+   "autoconso_avec": 0.17846781992048996,
+   "facture_sans": 8181,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 29927,
+   "net_gain_avec": -9463
+  },
+  {
+   "id": "QAHP-0669",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 6430.7,
+   "eco_sans": 6262,
+   "eco_avec": 9224,
+   "payback_sans": 7.7,
+   "payback_avec": 6.7,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.8837816824755093,
+   "facture_sans": 134700,
+   "facture_avec_sans": 128438,
+   "facture_avec_avec": 125476,
+   "net_gain_sans": 99852,
+   "net_gain_avec": 151687
+  },
+  {
+   "id": "QAHP-0670",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 6481.1,
+   "eco_sans": 6332,
+   "eco_avec": 6830,
+   "payback_sans": 9.3,
+   "payback_avec": 12.8,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.6838450856349328,
+   "facture_sans": 7309,
+   "facture_avec_sans": 977,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 91544,
+   "net_gain_avec": 75378
+  },
+  {
+   "id": "QAHP-0671",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 375267.3,
+   "eco_sans": 721,
+   "eco_avec": 721,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.001889321469780183,
+   "autoconso_avec": 0.001889321469780183,
+   "facture_sans": 1200,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -1742170,
+   "net_gain_avec": -2058818
+  },
+  {
+   "id": "QAHP-0672",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 210555.7,
+   "eco_sans": 9469,
+   "eco_avec": 9469,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.028970915100970763,
+   "autoconso_avec": 0.028970915100970763,
+   "facture_sans": 9948,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -1109787,
+   "net_gain_avec": -1309713
+  },
+  {
+   "id": "QAHP-0673",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 17042.8,
+   "eco_sans": 5829,
+   "eco_avec": 5829,
+   "payback_sans": 21.1,
+   "payback_avec": 24.9,
+   "autoconso_sans": 0.22290676524086134,
+   "autoconso_avec": 0.22290676524086134,
+   "facture_sans": 6308,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 20506,
+   "net_gain_avec": 650
+  },
+  {
+   "id": "QAHP-0674",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 13391.3,
+   "eco_sans": 11717.429360000004,
+   "eco_avec": 11717.429360000004,
+   "payback_sans": 6.3,
+   "payback_avec": 8.7,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 203609,
+   "net_gain_avec": 176095
+  },
+  {
+   "id": "QAHP-0675",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 348353.3,
+   "eco_sans": 304809.1558139536,
+   "eco_avec": 304809.1558139536,
+   "payback_sans": 10.4,
+   "payback_avec": 11.9,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 4073374,
+   "net_gain_avec": 3638437
+  },
+  {
+   "id": "QAHP-0676",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 26247.1,
+   "eco_sans": 4715,
+   "eco_avec": 4715,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.1344153617556292,
+   "autoconso_avec": 0.1344153617556292,
+   "facture_sans": 5194,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -45167,
+   "net_gain_avec": -67040
+  },
+  {
+   "id": "QAHP-0677",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1586,
+   "eco_sans": 1544,
+   "eco_avec": 2187,
+   "payback_sans": 5.8,
+   "payback_avec": 5.9,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 144719,
+   "facture_avec_sans": 143175,
+   "facture_avec_avec": 142532,
+   "net_gain_sans": 27552,
+   "net_gain_avec": 38731
+  },
+  {
+   "id": "QAHP-0678",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 8493.1,
+   "eco_sans": 615,
+   "eco_avec": 615,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.07123513481690805,
+   "autoconso_avec": 0.07123513481690805,
+   "facture_sans": 1094,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -41315,
+   "net_gain_avec": -65868
+  },
+  {
+   "id": "QAHP-0679",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 76072.6,
+   "eco_sans": 31098,
+   "eco_avec": 31098,
+   "payback_sans": 19.7,
+   "payback_avec": 23.6,
+   "autoconso_sans": 0.24217527900832095,
+   "autoconso_avec": 0.24217527900832095,
+   "facture_sans": 31577,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 149022,
+   "net_gain_avec": 38153
+  },
+  {
+   "id": "QAHP-0680",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 57183.3,
+   "eco_sans": 48289,
+   "eco_avec": 48289,
+   "payback_sans": 7.5,
+   "payback_avec": 9.9,
+   "autoconso_sans": 0.5074235349666859,
+   "autoconso_avec": 0.5074235349666859,
+   "facture_sans": 48768,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 783276,
+   "net_gain_avec": 669927
+  },
+  {
+   "id": "QAHP-0681",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 13511.7,
+   "eco_sans": 2059.7499999999995,
+   "eco_avec": 2059.75,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.08710973509938331,
+   "autoconso_avec": 0.08710973509938331,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": -50594,
+   "net_gain_avec": -57532
+  },
+  {
+   "id": "QAHP-0682",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1710.5,
+   "eco_sans": 1496.722093023256,
+   "eco_avec": 1496.722093023256,
+   "payback_sans": 7.1,
+   "payback_avec": 7.4,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 24814,
+   "net_gain_avec": 24292
+  },
+  {
+   "id": "QAHP-0683",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 53728.7,
+   "eco_sans": 47012.61292000001,
+   "eco_avec": 53400.11291999999,
+   "payback_sans": 7.3,
+   "payback_avec": 8.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5679338969189973,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 771689,
+   "net_gain_avec": 813099
+  },
+  {
+   "id": "QAHP-0684",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1271.1,
+   "eco_sans": 1112.243023255814,
+   "eco_avec": 2224.486046511628,
+   "payback_sans": 6,
+   "payback_avec": 4.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 19618,
+   "net_gain_avec": 40763
+  },
+  {
+   "id": "QAHP-0685",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 12356.7,
+   "eco_sans": 6199,
+   "eco_avec": 6199,
+   "payback_sans": 15.9,
+   "payback_avec": 18.4,
+   "autoconso_sans": 0.3263737153030671,
+   "autoconso_avec": 0.3263737153030671,
+   "facture_sans": 6678,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 51154,
+   "net_gain_avec": 36924
+  },
+  {
+   "id": "QAHP-0686",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 65047.6,
+   "eco_sans": 12477,
+   "eco_avec": 12477,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.10682880334522199,
+   "autoconso_avec": 0.10682880334522199,
+   "facture_sans": 12956,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -120028,
+   "net_gain_avec": -211094
+  },
+  {
+   "id": "QAHP-0687",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 6645.4,
+   "eco_sans": 3329,
+   "eco_avec": 3329,
+   "payback_sans": 12.6,
+   "payback_avec": 17.3,
+   "autoconso_sans": 0.3805869074492099,
+   "autoconso_avec": 0.3805869074492099,
+   "facture_sans": 3808,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 37805,
+   "net_gain_avec": 23184
+  },
+  {
+   "id": "QAHP-0688",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 4960,
+   "eco_sans": 695,
+   "eco_avec": 695,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.13790322580645162,
+   "autoconso_avec": 0.13790322580645162,
+   "facture_sans": 1174,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -7037,
+   "net_gain_avec": -8910
+  },
+  {
+   "id": "QAHP-0689",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 5024.9,
+   "eco_sans": 1502,
+   "eco_avec": 1502,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.28398009950248754,
+   "autoconso_avec": 0.28398009950248754,
+   "facture_sans": 1981,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -19425,
+   "net_gain_avec": -45732
+  },
+  {
+   "id": "QAHP-0690",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 6834.4,
+   "eco_sans": 5980.116279069768,
+   "eco_avec": 9173.866279069769,
+   "payback_sans": 10.8,
+   "payback_avec": 7.8,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.7670307608547706,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 77792,
+   "net_gain_avec": 140455
+  },
+  {
+   "id": "QAHP-0691",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 13376.9,
+   "eco_sans": 11704.82209302326,
+   "eco_avec": 14898.572093023258,
+   "payback_sans": 8.6,
+   "payback_avec": 9.2,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6364288143219049,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 177222,
+   "net_gain_avec": 212427
+  },
+  {
+   "id": "QAHP-0692",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1804.7,
+   "eco_sans": 1266,
+   "eco_avec": 1680,
+   "payback_sans": 8.2,
+   "payback_avec": 8.6,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 2288,
+   "facture_avec_sans": 1022,
+   "facture_avec_avec": 608,
+   "net_gain_sans": 19613,
+   "net_gain_avec": 25383
+  },
+  {
+   "id": "QAHP-0693",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 3854.9,
+   "eco_sans": 3373.0313953488376,
+   "eco_avec": 6746.062790697675,
+   "payback_sans": 5.5,
+   "payback_avec": 3.8,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 61151,
+   "net_gain_avec": 126620
+  },
+  {
+   "id": "QAHP-0694",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 68661.4,
+   "eco_sans": 1060,
+   "eco_avec": 1060,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.015190573979406067,
+   "autoconso_avec": 0.015190573979406067,
+   "facture_sans": 1539,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -524595,
+   "net_gain_avec": -645499
+  },
+  {
+   "id": "QAHP-0695",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1522.2,
+   "eco_sans": 942,
+   "eco_avec": 1070,
+   "payback_sans": 9,
+   "payback_avec": 11.7,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.6918528252299606,
+   "facture_sans": 1549,
+   "facture_avec_sans": 607,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 13840,
+   "net_gain_avec": 12846
+  },
+  {
+   "id": "QAHP-0696",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 5351.3,
+   "eco_sans": 5210,
+   "eco_avec": 7381,
+   "payback_sans": 4.5,
+   "payback_avec": 4.4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 275880,
+   "facture_avec_sans": 270670,
+   "facture_avec_avec": 268499,
+   "net_gain_sans": 99282,
+   "net_gain_avec": 141981
+  },
+  {
+   "id": "QAHP-0697",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 25319.1,
+   "eco_sans": 6125,
+   "eco_avec": 6125,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.15743117816659427,
+   "autoconso_avec": 0.15743117816659427,
+   "facture_sans": 6604,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -16773,
+   "net_gain_avec": -39320
+  },
+  {
+   "id": "QAHP-0698",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 4660.8,
+   "eco_sans": 4538,
+   "eco_avec": 6429,
+   "payback_sans": 4.9,
+   "payback_avec": 4.4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 269306,
+   "facture_avec_sans": 264768,
+   "facture_avec_avec": 262877,
+   "net_gain_sans": 84928,
+   "net_gain_avec": 123101
+  },
+  {
+   "id": "QAHP-0699",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 258181.6,
+   "eco_sans": 4948,
+   "eco_avec": 4948,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.01431548287642051,
+   "autoconso_avec": 0.01431548287642051,
+   "facture_sans": 5427,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -926009,
+   "net_gain_avec": -1395163
+  },
+  {
+   "id": "QAHP-0700",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 29816.7,
+   "eco_sans": 29033,
+   "eco_avec": 38132,
+   "payback_sans": 7.1,
+   "payback_avec": 7.9,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.7880269644833484,
+   "facture_sans": 68812,
+   "facture_avec_sans": 39779,
+   "facture_avec_avec": 30680,
+   "net_gain_sans": 480952,
+   "net_gain_avec": 586587
+  },
+  {
+   "id": "QAHP-0701",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 291450.8,
+   "eco_sans": 86202,
+   "eco_avec": 86202,
+   "payback_sans": 22.6,
+   "payback_avec": 25,
+   "autoconso_sans": 0.1797146003959499,
+   "autoconso_avec": 0.1797146003959499,
+   "facture_sans": 86681,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 187062,
+   "net_gain_avec": -384425
+  },
+  {
+   "id": "QAHP-0702",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 7877.9,
+   "eco_sans": 7671,
+   "eco_avec": 10867,
+   "payback_sans": 4.1,
+   "payback_avec": 3.3,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 29505,
+   "facture_avec_sans": 21834,
+   "facture_avec_avec": 18638,
+   "net_gain_sans": 149853,
+   "net_gain_avec": 220203
+  },
+  {
+   "id": "QAHP-0703",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 251119.2,
+   "eco_sans": 740,
+   "eco_avec": 740,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.0028990239687160272,
+   "autoconso_avec": 0.0028990239687160272,
+   "facture_sans": 1219,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -2780370,
+   "net_gain_avec": -3395886
+  },
+  {
+   "id": "QAHP-0704",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 285300.9,
+   "eco_sans": 277801,
+   "eco_avec": 280763,
+   "payback_sans": 7.1,
+   "payback_avec": 9.7,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.6063967529030743,
+   "facture_sans": 365937,
+   "facture_avec_sans": 88136,
+   "facture_avec_avec": 85174,
+   "net_gain_sans": 4602917,
+   "net_gain_avec": 3947561
+  },
+  {
+   "id": "QAHP-0705",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 7348.9,
+   "eco_sans": 6430.2966,
+   "eco_avec": 9624.0466,
+   "payback_sans": 8,
+   "payback_avec": 6.6,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.748336134292779,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 100989,
+   "net_gain_avec": 158600
+  },
+  {
+   "id": "QAHP-0706",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 4190,
+   "eco_sans": 3688,
+   "eco_avec": 4730,
+   "payback_sans": 10.1,
+   "payback_avec": 10.3,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.8446300715990454,
+   "facture_sans": 5209,
+   "facture_avec_sans": 1521,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 50558,
+   "net_gain_avec": 63846
+  },
+  {
+   "id": "QAHP-0707",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 13423,
+   "eco_sans": 2219,
+   "eco_avec": 2219,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.13678015346792818,
+   "autoconso_avec": 0.13678015346792818,
+   "facture_sans": 2698,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -34787,
+   "net_gain_avec": -73963
+  },
+  {
+   "id": "QAHP-0708",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 15730.7,
+   "eco_sans": 15317,
+   "eco_avec": 24416,
+   "payback_sans": 7.8,
+   "payback_avec": 5.4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.956391837772551,
+   "facture_sans": 37619,
+   "facture_avec_sans": 22302,
+   "facture_avec_avec": 13203,
+   "net_gain_sans": 243024,
+   "net_gain_avec": 427682
+  },
+  {
+   "id": "QAHP-0709",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 1474.4,
+   "eco_sans": 1468,
+   "eco_avec": 2542,
+   "payback_sans": 5.8,
+   "payback_avec": 3.7,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 14045,
+   "facture_avec_sans": 12577,
+   "facture_avec_avec": 11503,
+   "net_gain_sans": 26132,
+   "net_gain_avec": 48529
+  },
+  {
+   "id": "QAHP-0710",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 260335.8,
+   "eco_sans": 8366.75,
+   "eco_avec": 8366.750000000002,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.01836474112631838,
+   "autoconso_avec": 0.01836474112631838,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": -2055063,
+   "net_gain_avec": -2212714
+  },
+  {
+   "id": "QAHP-0711",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 36613.8,
+   "eco_sans": 540,
+   "eco_avec": 540,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.016086742775987328,
+   "autoconso_avec": 0.016086742775987328,
+   "facture_sans": 1019,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -279837,
+   "net_gain_avec": -355902
+  },
+  {
+   "id": "QAHP-0712",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 53515.1,
+   "eco_sans": 15348,
+   "eco_avec": 15348,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.16290759600112117,
+   "autoconso_avec": 0.16290759600112117,
+   "facture_sans": 15827,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -181753,
+   "net_gain_avec": -230649
+  },
+  {
+   "id": "QAHP-0713",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 14182.8,
+   "eco_sans": 668,
+   "eco_avec": 668,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.04632306282168794,
+   "autoconso_avec": 0.04632306282168794,
+   "facture_sans": 1147,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -73138,
+   "net_gain_avec": -108687
+  },
+  {
+   "id": "QAHP-0714",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 33292.6,
+   "eco_sans": 29130.988372093037,
+   "eco_avec": 32324.738372093037,
+   "payback_sans": 7.7,
+   "payback_avec": 9.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.554817055281577,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 465089,
+   "net_gain_avec": 462040
+  },
+  {
+   "id": "QAHP-0715",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1274.7,
+   "eco_sans": 1115.3848837209307,
+   "eco_avec": 2230.7697674418614,
+   "payback_sans": 5.6,
+   "payback_avec": 3.6,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 1,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 20120,
+   "net_gain_avec": 42413
+  },
+  {
+   "id": "QAHP-0716",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 4237.1,
+   "eco_sans": 3707.4767441860477,
+   "eco_avec": 3707.4767441860477,
+   "payback_sans": 5.2,
+   "payback_avec": 5.8,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 68107,
+   "net_gain_avec": 66184
+  },
+  {
+   "id": "QAHP-0717",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 75516,
+   "eco_sans": 66076.47558139537,
+   "eco_avec": 66076.47558139537,
+   "payback_sans": 10.2,
+   "payback_avec": 12.9,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 897919,
+   "net_gain_avec": 726689
+  },
+  {
+   "id": "QAHP-0718",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 6185.6,
+   "eco_sans": 8015,
+   "eco_avec": 10444,
+   "payback_sans": 6.5,
+   "payback_avec": 5.8,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 12294,
+   "facture_avec_sans": 4279,
+   "facture_avec_avec": 1850,
+   "net_gain_sans": 137247,
+   "net_gain_avec": 185700
+  },
+  {
+   "id": "QAHP-0719",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 13596.7,
+   "eco_sans": 11897.151162790698,
+   "eco_avec": 15090.901162790698,
+   "payback_sans": 5.2,
+   "payback_avec": 5.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6342233092737659,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 218617,
+   "net_gain_avec": 270917
+  },
+  {
+   "id": "QAHP-0720",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 10539.7,
+   "eco_sans": 3676,
+   "eco_avec": 3676,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.26366223908918407,
+   "autoconso_avec": 0.26366223908918407,
+   "facture_sans": 4155,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -25053,
+   "net_gain_avec": -51848
+  },
+  {
+   "id": "QAHP-0721",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 55688.4,
+   "eco_sans": 54225,
+   "eco_avec": 60148,
+   "payback_sans": 10.5,
+   "payback_avec": 10.4,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.6655437437149835,
+   "facture_sans": 617474,
+   "facture_avec_sans": 563249,
+   "facture_avec_avec": 557326,
+   "net_gain_sans": 723512,
+   "net_gain_avec": 799238
+  },
+  {
+   "id": "QAHP-0722",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 93247.9,
+   "eco_sans": 15835.750000000002,
+   "eco_avec": 15835.750000000002,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.0970423538983938,
+   "autoconso_avec": 0.0970423538983938,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": -118640,
+   "net_gain_avec": -290723
+  },
+  {
+   "id": "QAHP-0723",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 6733.4,
+   "eco_sans": 5891.690559999999,
+   "eco_avec": 5891.690559999999,
+   "payback_sans": 6.2,
+   "payback_avec": 9,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 102878,
+   "net_gain_avec": 86720
+  },
+  {
+   "id": "QAHP-0724",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 28953.6,
+   "eco_sans": 25334.42441860465,
+   "eco_avec": 28528.17441860465,
+   "payback_sans": 10,
+   "payback_avec": 13.5,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5630318247462262,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 348367,
+   "net_gain_avec": 294356
+  },
+  {
+   "id": "QAHP-0725",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 26066.1,
+   "eco_sans": 25380,
+   "eco_avec": 35956,
+   "payback_sans": 4.2,
+   "payback_avec": 4.3,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 273332,
+   "facture_avec_sans": 247952,
+   "facture_avec_avec": 237376,
+   "net_gain_sans": 492860,
+   "net_gain_avec": 693693
+  },
+  {
+   "id": "QAHP-0726",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 27654.9,
+   "eco_sans": 26928,
+   "eco_avec": 38148,
+   "payback_sans": 6.9,
+   "payback_avec": 6.8,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 598788,
+   "facture_avec_sans": 571860,
+   "facture_avec_avec": 560640,
+   "net_gain_sans": 451536,
+   "net_gain_avec": 644549
+  },
+  {
+   "id": "QAHP-0727",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 13409.3,
+   "eco_sans": 13056,
+   "eco_avec": 18497,
+   "payback_sans": 6,
+   "payback_avec": 5,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 59633,
+   "facture_avec_sans": 46577,
+   "facture_avec_avec": 41136,
+   "net_gain_sans": 230398,
+   "net_gain_avec": 343907
+  },
+  {
+   "id": "QAHP-0728",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 293908.7,
+   "eco_sans": 15584,
+   "eco_avec": 15584,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.03015559237723241,
+   "autoconso_avec": 0.03015559237723241,
+   "facture_sans": 16063,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -1728959,
+   "net_gain_avec": -1833762
+  },
+  {
+   "id": "QAHP-0729",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 16038.3,
+   "eco_sans": 14033.48604651163,
+   "eco_avec": 17227.236046511633,
+   "payback_sans": 8.4,
+   "payback_avec": 8.3,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6137903294097722,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 214497,
+   "net_gain_avec": 260152
+  },
+  {
+   "id": "QAHP-0730",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 29082.3,
+   "eco_sans": 25447.034883720935,
+   "eco_avec": 31834.53488372094,
+   "payback_sans": 8.6,
+   "payback_avec": 9.7,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6255057815023909,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 385724,
+   "net_gain_avec": 439933
+  },
+  {
+   "id": "QAHP-0731",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 10778.4,
+   "eco_sans": 1536,
+   "eco_avec": 1536,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.13499721655223604,
+   "autoconso_avec": 0.13499721655223604,
+   "facture_sans": 2015,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -21520,
+   "net_gain_avec": -39408
+  },
+  {
+   "id": "QAHP-0732",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 10816.1,
+   "eco_sans": 9464.07756,
+   "eco_avec": 12657.827560000002,
+   "payback_sans": 11.1,
+   "payback_avec": 9,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.6687301260874282,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 120706,
+   "net_gain_avec": 182281
+  },
+  {
+   "id": "QAHP-0733",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 10965.7,
+   "eco_sans": 10677,
+   "eco_avec": 15126,
+   "payback_sans": 5.1,
+   "payback_avec": 4.6,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.85,
+   "facture_sans": 52914,
+   "facture_avec_sans": 42237,
+   "facture_avec_avec": 37788,
+   "net_gain_sans": 197645,
+   "net_gain_avec": 287364
+  },
+  {
+   "id": "QAHP-0734",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 16653.5,
+   "eco_sans": 1220,
+   "eco_avec": 1220,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.07205908845253108,
+   "autoconso_avec": 0.07205908845253108,
+   "facture_sans": 1699,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -70168,
+   "net_gain_avec": -79070
+  },
+  {
+   "id": "QAHP-0735",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 340279.1,
+   "eco_sans": 331334,
+   "eco_avec": 375241,
+   "payback_sans": 9.5,
+   "payback_avec": 11.3,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.6773353630403287,
+   "facture_sans": 375720,
+   "facture_avec_sans": 44386,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 4737739,
+   "net_gain_avec": 4698508
+  },
+  {
+   "id": "QAHP-0736",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 1470.7,
+   "eco_sans": 1286.8604651162796,
+   "eco_avec": 1286.8604651162796,
+   "payback_sans": 6.6,
+   "payback_avec": 9.6,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 21968,
+   "net_gain_avec": 18213
+  },
+  {
+   "id": "QAHP-0737",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 4607.4,
+   "eco_sans": 4486,
+   "eco_avec": 7447,
+   "payback_sans": 8.3,
+   "payback_avec": 7.2,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 0.9961363143043195,
+   "facture_sans": 164411,
+   "facture_avec_sans": 159925,
+   "facture_avec_avec": 156964,
+   "net_gain_sans": 69096,
+   "net_gain_avec": 117604
+  },
+  {
+   "id": "QAHP-0738",
+   "axe": "roi",
+   "modele": "estimation",
+   "production": 4354.4,
+   "eco_sans": 3810.116279069768,
+   "eco_avec": 3810.116279069768,
+   "payback_sans": 8.8,
+   "payback_avec": 12.6,
+   "autoconso_sans": 0.5,
+   "autoconso_avec": 0.5,
+   "facture_sans": null,
+   "facture_avec_sans": null,
+   "facture_avec_avec": null,
+   "net_gain_sans": 56706,
+   "net_gain_avec": 43158
+  },
+  {
+   "id": "QAHP-0739",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 8569.8,
+   "eco_sans": 5742,
+   "eco_avec": 5742,
+   "payback_sans": 9.3,
+   "payback_avec": 10.4,
+   "autoconso_sans": 0.4368728121353559,
+   "autoconso_avec": 0.4368728121353559,
+   "facture_sans": 6221,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": 82905,
+   "net_gain_avec": 77146
+  },
+  {
+   "id": "QAHP-0740",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 5129.6,
+   "eco_sans": 4995,
+   "eco_avec": 8325,
+   "payback_sans": 4.7,
+   "payback_avec": 3.2,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 63424,
+   "facture_avec_sans": 58429,
+   "facture_avec_avec": 55099,
+   "net_gain_sans": 94609,
+   "net_gain_avec": 163131
+  },
+  {
+   "id": "QAHP-0741",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 5703.3,
+   "eco_sans": 5553,
+   "eco_avec": 9255,
+   "payback_sans": 10.2,
+   "payback_avec": 9.5,
+   "autoconso_sans": 0.6,
+   "autoconso_avec": 1,
+   "facture_sans": 498922,
+   "facture_avec_sans": 493369,
+   "facture_avec_avec": 489667,
+   "net_gain_sans": 75442,
+   "net_gain_avec": 126798
+  },
+  {
+   "id": "QAHP-0742",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 17811.6,
+   "eco_sans": 4794,
+   "eco_avec": 4794,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.20126880754547496,
+   "autoconso_avec": 0.20126880754547496,
+   "facture_sans": 5273,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -30326,
+   "net_gain_avec": -37489
+  },
+  {
+   "id": "QAHP-0743",
+   "axe": "roi",
+   "modele": "factures",
+   "production": 349640.6,
+   "eco_sans": 2509,
+   "eco_avec": 2509,
+   "payback_sans": 25,
+   "payback_avec": 25,
+   "autoconso_sans": 0.005917498233902775,
+   "autoconso_avec": 0.005917498233902775,
+   "facture_sans": 2988,
+   "facture_avec_sans": 479,
+   "facture_avec_avec": 479,
+   "net_gain_sans": -1570125,
+   "net_gain_avec": -2352154
+  },
+  {
+   "id": "QAHP-0744",
+   "axe": "pompe_debit",
+   "debit": 10.6
+  },
+  {
+   "id": "QAHP-0745",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0746",
+   "axe": "pompe_debit",
+   "debit": 0.8
+  },
+  {
+   "id": "QAHP-0747",
+   "axe": "pompe_debit",
+   "debit": 15.4
+  },
+  {
+   "id": "QAHP-0748",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0749",
+   "axe": "pompe_debit",
+   "debit": 2.4
+  },
+  {
+   "id": "QAHP-0750",
+   "axe": "pompe_debit",
+   "debit": 2.2
+  },
+  {
+   "id": "QAHP-0751",
+   "axe": "pompe_debit",
+   "debit": 0.9
+  },
+  {
+   "id": "QAHP-0752",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0753",
+   "axe": "pompe_debit",
+   "debit": 1.7
+  },
+  {
+   "id": "QAHP-0754",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0755",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0756",
+   "axe": "pompe_debit",
+   "debit": 15.1
+  },
+  {
+   "id": "QAHP-0757",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0758",
+   "axe": "pompe_debit",
+   "debit": 12.2
+  },
+  {
+   "id": "QAHP-0759",
+   "axe": "pompe_debit",
+   "debit": 7
+  },
+  {
+   "id": "QAHP-0760",
+   "axe": "pompe_debit",
+   "debit": 2
+  },
+  {
+   "id": "QAHP-0761",
+   "axe": "pompe_debit",
+   "debit": 16.8
+  },
+  {
+   "id": "QAHP-0762",
+   "axe": "pompe_debit",
+   "debit": 29
+  },
+  {
+   "id": "QAHP-0763",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0764",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0765",
+   "axe": "pompe_debit",
+   "debit": 13
+  },
+  {
+   "id": "QAHP-0766",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0767",
+   "axe": "pompe_debit",
+   "debit": 11.6
+  },
+  {
+   "id": "QAHP-0768",
+   "axe": "pompe_debit",
+   "debit": 21
+  },
+  {
+   "id": "QAHP-0769",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0770",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0771",
+   "axe": "pompe_debit",
+   "debit": 26
+  },
+  {
+   "id": "QAHP-0772",
+   "axe": "pompe_debit",
+   "debit": 14
+  },
+  {
+   "id": "QAHP-0773",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0774",
+   "axe": "pompe_debit",
+   "debit": 14.4
+  },
+  {
+   "id": "QAHP-0775",
+   "axe": "pompe_debit",
+   "debit": 13
+  },
+  {
+   "id": "QAHP-0776",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0777",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0778",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0779",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0780",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0781",
+   "axe": "pompe_debit",
+   "debit": 24
+  },
+  {
+   "id": "QAHP-0782",
+   "axe": "pompe_debit",
+   "debit": 19
+  },
+  {
+   "id": "QAHP-0783",
+   "axe": "pompe_debit",
+   "debit": 14
+  },
+  {
+   "id": "QAHP-0784",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0785",
+   "axe": "pompe_debit",
+   "debit": 3.3
+  },
+  {
+   "id": "QAHP-0786",
+   "axe": "pompe_debit",
+   "debit": 2.9
+  },
+  {
+   "id": "QAHP-0787",
+   "axe": "pompe_debit",
+   "debit": 11.5
+  },
+  {
+   "id": "QAHP-0788",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0789",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0790",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0791",
+   "axe": "pompe_debit",
+   "debit": 18.2
+  },
+  {
+   "id": "QAHP-0792",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0793",
+   "axe": "pompe_debit",
+   "debit": 7
+  },
+  {
+   "id": "QAHP-0794",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0795",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0796",
+   "axe": "pompe_debit",
+   "debit": 2
+  },
+  {
+   "id": "QAHP-0797",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0798",
+   "axe": "pompe_debit",
+   "debit": 15
+  },
+  {
+   "id": "QAHP-0799",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0800",
+   "axe": "pompe_debit",
+   "debit": 14.8
+  },
+  {
+   "id": "QAHP-0801",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0802",
+   "axe": "pompe_debit",
+   "debit": 24.2
+  },
+  {
+   "id": "QAHP-0803",
+   "axe": "pompe_debit",
+   "debit": 14.8
+  },
+  {
+   "id": "QAHP-0804",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0805",
+   "axe": "pompe_debit",
+   "debit": 8.4
+  },
+  {
+   "id": "QAHP-0806",
+   "axe": "pompe_debit",
+   "debit": 27.2
+  },
+  {
+   "id": "QAHP-0807",
+   "axe": "pompe_debit",
+   "debit": 10
+  },
+  {
+   "id": "QAHP-0808",
+   "axe": "pompe_debit",
+   "debit": 26.1
+  },
+  {
+   "id": "QAHP-0809",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0810",
+   "axe": "pompe_debit",
+   "debit": 23.9
+  },
+  {
+   "id": "QAHP-0811",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0812",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0813",
+   "axe": "pompe_debit",
+   "debit": 1
+  },
+  {
+   "id": "QAHP-0814",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0815",
+   "axe": "pompe_debit",
+   "debit": 9.2
+  },
+  {
+   "id": "QAHP-0816",
+   "axe": "pompe_debit",
+   "debit": 9
+  },
+  {
+   "id": "QAHP-0817",
+   "axe": "pompe_debit",
+   "debit": 11
+  },
+  {
+   "id": "QAHP-0818",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0819",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0820",
+   "axe": "pompe_debit",
+   "debit": 4
+  },
+  {
+   "id": "QAHP-0821",
+   "axe": "pompe_debit",
+   "debit": 1.9
+  },
+  {
+   "id": "QAHP-0822",
+   "axe": "pompe_debit",
+   "debit": 0
+  },
+  {
+   "id": "QAHP-0823",
+   "axe": "pompe_debit",
+   "debit": 13.4
+  },
+  {
+   "id": "QAHP-0824",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [
+    "Pompe immergee OSP 3 220 v"
+   ],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0825",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0826",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0827",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0828",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0829",
+   "axe": "pompe_select",
+   "pompe_id": 106,
+   "kw": 3,
+   "debit_hmt": 24,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0830",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0831",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0832",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 1.1,
+   "debit_hmt": 4.5,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0833",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0834",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 3,
+   "debit_hmt": 18.7,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0835",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0836",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0837",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0838",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0839",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0840",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0841",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0842",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0843",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0844",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0845",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0846",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0847",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0848",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [
+    "Pompe immergee OSP 0 220 v"
+   ],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0849",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0850",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0851",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0852",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0853",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0854",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0855",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0856",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0857",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0858",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0859",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0860",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0861",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0862",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0863",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [
+    "Pompe de surface OSP 1"
+   ],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0864",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0865",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": true
+  },
+  {
+   "id": "QAHP-0866",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0867",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0868",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0869",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0870",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0871",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [
+    "Pompe de surface OSP 0 2200W",
+    "Pompe de surface OSP 2 220 v"
+   ],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0872",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0873",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0874",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0875",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0876",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0877",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0878",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [
+    "Pompe de surface OSP 0 1.5kW",
+    "Pompe de surface OSP 6 1.5kW"
+   ],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0879",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0880",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0881",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0882",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0883",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0884",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0885",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0886",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0887",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0888",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0889",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0890",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0891",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0892",
+   "axe": "pompe_variateur",
+   "variateur_id": 204,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0893",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0894",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0895",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0896",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0897",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0898",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0899",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0900",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0901",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0902",
+   "axe": "pompe_variateur",
+   "variateur_id": 203,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0903",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0904",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0905",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0906",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0907",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0908",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0909",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0910",
+   "axe": "pompe_variateur",
+   "variateur_id": 202,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0911",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0912",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0913",
+   "axe": "pompe_variateur",
+   "variateur_id": 204,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0914",
+   "axe": "pompe_variateur",
+   "variateur_id": 205,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0915",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0916",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0917",
+   "axe": "pompe_variateur",
+   "variateur_id": 203,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0918",
+   "axe": "pompe_variateur",
+   "variateur_id": 204,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0919",
+   "axe": "pompe_variateur",
+   "variateur_id": 202,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0920",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0921",
+   "axe": "pompe_variateur",
+   "variateur_id": 203,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0922",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0923",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0924",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0925",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0926",
+   "axe": "pompe_variateur",
+   "variateur_id": 202,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0927",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0928",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0929",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0930",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0931",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0932",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0933",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0934",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0935",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0936",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0937",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0938",
+   "axe": "pompe_variateur",
+   "variateur_id": 203,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0939",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0940",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0941",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0942",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0943",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0944",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0945",
+   "axe": "pompe_variateur",
+   "variateur_id": 202,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0946",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0947",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0948",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0949",
+   "axe": "pompe_variateur",
+   "variateur_id": 203,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0950",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0951",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0952",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0953",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0954",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0955",
+   "axe": "pompe_variateur",
+   "variateur_id": 203,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0956",
+   "axe": "pompe_variateur",
+   "variateur_id": 202,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0957",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0958",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0959",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0960",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0961",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0962",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": true
+  },
+  {
+   "id": "QAHP-0963",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0964",
+   "axe": "pompe_variateur",
+   "variateur_id": 202,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0965",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0966",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0967",
+   "axe": "pompe_variateur",
+   "variateur_id": 201,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0968",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0969",
+   "axe": "pompe_variateur",
+   "variateur_id": 200,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0970",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0971",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0972",
+   "axe": "pompe_variateur",
+   "variateur_id": 204,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0973",
+   "axe": "pompe_variateur",
+   "variateur_id": null,
+   "insuffisant": false
+  },
+  {
+   "id": "QAHP-0974",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": true
+  },
+  {
+   "id": "QAHP-0975",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 4,
+   "debit_hmt": 11,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0976",
+   "axe": "pompe_select",
+   "pompe_id": 105,
+   "kw": 2.2,
+   "debit_hmt": 6.7,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0977",
+   "axe": "pompe_select",
+   "pompe_id": 105,
+   "kw": 1.1,
+   "debit_hmt": 35,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0978",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 1.5,
+   "debit_hmt": 41,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0979",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": true
+  },
+  {
+   "id": "QAHP-0980",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 4,
+   "debit_hmt": 12.2,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0981",
+   "axe": "pompe_select",
+   "pompe_id": 104,
+   "kw": 0.75,
+   "debit_hmt": 6.8,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0982",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 0.75,
+   "debit_hmt": 22,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0983",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 3,
+   "debit_hmt": 13.6,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0984",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 0.75,
+   "debit_hmt": 17,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0985",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 2.2,
+   "debit_hmt": 7,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0986",
+   "axe": "pompe_select",
+   "pompe_id": 103,
+   "kw": 0.75,
+   "debit_hmt": 16.1,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0987",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 3,
+   "debit_hmt": 9,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0988",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 2.2,
+   "debit_hmt": 25.3,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0989",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 1.5,
+   "debit_hmt": 12.2,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0990",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 5.5,
+   "debit_hmt": 10,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0991",
+   "axe": "pompe_select",
+   "pompe_id": 103,
+   "kw": 4,
+   "debit_hmt": 25,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0992",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 7.5,
+   "debit_hmt": 14.1,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0993",
+   "axe": "pompe_select",
+   "pompe_id": 104,
+   "kw": 1.1,
+   "debit_hmt": 11,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0994",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 11,
+   "debit_hmt": 10,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0995",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 2.2,
+   "debit_hmt": 11,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0996",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": true
+  },
+  {
+   "id": "QAHP-0997",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 1.5,
+   "debit_hmt": 24,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0998",
+   "axe": "pompe_select",
+   "pompe_id": 102,
+   "kw": 0.75,
+   "debit_hmt": 11,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-0999",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 1.5,
+   "debit_hmt": 14.1,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1000",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 1.1,
+   "debit_hmt": 12,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1001",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 7.5,
+   "debit_hmt": 6,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1002",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": true
+  },
+  {
+   "id": "QAHP-1003",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 4,
+   "debit_hmt": 4.5,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1004",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": true
+  },
+  {
+   "id": "QAHP-1005",
+   "axe": "pompe_select",
+   "pompe_id": null,
+   "kw": null,
+   "debit_hmt": null,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1006",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 1.1,
+   "debit_hmt": 11,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1007",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 0.75,
+   "debit_hmt": 24,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1008",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 2.2,
+   "debit_hmt": 17,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1009",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 0.75,
+   "debit_hmt": 20.4,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1010",
+   "axe": "pompe_select",
+   "pompe_id": 101,
+   "kw": 0.75,
+   "debit_hmt": 20.6,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1011",
+   "axe": "pompe_select",
+   "pompe_id": 104,
+   "kw": 3,
+   "debit_hmt": 20,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1012",
+   "axe": "pompe_select",
+   "pompe_id": 100,
+   "kw": 0.75,
+   "debit_hmt": 6.9,
+   "sans_prix": [],
+   "ecart_phase": false
+  },
+  {
+   "id": "QAHP-1013",
+   "axe": "pompe_select",
+   "pompe_id": 103,
+   "kw": 5.5,
+   "debit_hmt": 12,
+   "sans_prix": [],
+   "ecart_phase": false
+  }
+ ]
+}

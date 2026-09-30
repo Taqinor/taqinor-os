@@ -291,6 +291,16 @@ GARDES = {
         ('Test des garde-fous des scripts de QA de nuit (QAH11)',
          'python -m unittest scripts.tests.test_nightly_qa_scripts -v',
          '.'),
+        # Instantanés anonymisés de prod (qa_export_anonymise) : CONFIDENTIELS,
+        # ignorés par .gitignore — cette garde refuse un `git add -f`.
+        ('Check aucun instantané anonymisé suivi par git (var/anon, *.anon.json.gz)',
+         'python scripts/check_no_anon_snapshot.py',
+         '.'),
+        # 30/09/2026 (PR #743) — deux apps définissaient `export_anonymise` :
+        # Django n'en exécute qu'une, l'autre est masquée sans erreur.
+        ('Check aucun nom de commande de gestion partagé entre deux apps',
+         'python scripts/check_command_collisions.py',
+         '.'),
         # CAD177 (28/09/2026) — `release-verify.yml` a echoue chaque nuit
         # pendant 12 nuits sans qu'aucun signal n'alerte. Le job
         # `alert-on-repeated-failure` de ce workflow appelle

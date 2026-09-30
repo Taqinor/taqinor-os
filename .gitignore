@@ -71,5 +71,11 @@ logs/
 !.claude/skills/**
 .serena/
 
+# Instantanés anonymisés de production (export_anonymise / import_anonymise,
+# docs/qa-explorer.md « Données réalistes anonymisées ») — CONFIDENTIELS, jamais
+# commités. Garde CI : scripts/check_no_anon_snapshot.py (stage-names).
+var/anon/
+*.anon.json.gz
+
 # Facture generator rendered outputs (PDF/HTML artifacts, never committed)
 tools/facture/out/
