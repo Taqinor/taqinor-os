@@ -250,17 +250,6 @@ export const CABLE_DC_M_PAR_PALIER = 60
 export const CABLE_TERRE_M_BASE = 25
 export const CABLE_TERRE_M_PAR_PALIER = 15
 
-/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc.
- *
- * CONSERVÉE pour compat/tests mais N'EST PLUS APPELÉE par `autoFillLines`
- * (voir `metreCableDcParPaires`, la règle du 19/08) : un palier de 5 kWc et
- * une paire de MPPT ne coïncident pas forcément (dépend de l'onduleur
- * retenu), donc ce calcul au palier peut sur/sous-estimer le métrage réel. */
-export function metreCableDc(paliers) {
-  const n = Math.max(1, Math.round(Number(paliers) || 0))
-  return n * CABLE_DC_M_PAR_PALIER
-}
-
 // ── PVCBL (fondateur 19/08/2026) — métrage câble DC PAR PAIRE de MPPT ───────
 // Bug constaté : un devis auto avait chiffré un ROULEAU de 100 m (produit au
 // conditionnement rouleau, pas au mètre) avec une quantité en MÈTRES (60) →
@@ -805,7 +794,6 @@ export const ONEE_TRANCHES = trancheTable([
 export const UTILITY_TABLES = {
   onee: ONEE_TRANCHES, lydec: ONEE_TRANCHES, redal: ONEE_TRANCHES,
 }
-export const APPROX_UTILITIES = new Set()
 
 function resolveTranches(utility, tranchesOverride) {
   if (tranchesOverride && tranchesOverride.length) return { table: tranchesOverride, approx: false }
@@ -1363,9 +1351,6 @@ export function onduleurSpecsManquantes(produit) {
   return Array.isArray(manquantes) ? manquantes : []
 }
 
-export const onduleurComplet = (produit) =>
-  onduleurSpecsManquantes(produit).length === 0
-
 // Défauts TVA (réforme : 10 % panneaux PV, 20 % le reste).
 export const TVA_PANNEAUX_DEFAUT = 10
 export const TVA_STANDARD_DEFAUT = 20
@@ -1381,21 +1366,6 @@ export function expectedTvaForDesignation(designation, tvaConfig) {
   const standard = Number(tvaConfig?.tvaStandard) > 0
     ? Number(tvaConfig.tvaStandard) : TVA_STANDARD_DEFAUT
   return isPanel(designation) ? panneaux : standard
-}
-
-// La désignation tapée correspond-elle encore au produit choisi du stock ?
-// (la frappe libre peut diverger du nom produit ; on le signale sans bloquer).
-export function designationMatchesProduct(designation, produit) {
-  if (!produit) return true
-  const d = _norm(designation)
-  const n = _norm(produit.nom)
-  if (!d || !n) return true
-  if (d === n) return true
-  // Tolérance : l'une contient l'autre, ou la classification est identique.
-  if (n.includes(d) || d.includes(n)) return true
-  const cd = classifyProduct(designation)
-  const cn = classifyProduct(produit.nom)
-  return cd != null && cd === cn
 }
 
 // ── U1 (fondateur 20/08/2026) — LE COMPTE DE PANNEAUX EST UN PLAFOND ────────
@@ -3122,28 +3092,6 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     out.injection_82_21 = true
   }
   return out
-}
-
-// ── QF7 — fusion des paramètres d'étude + choix scénario/option, TOUS modes ──
-// Fonction pure isolée pour rendre testable la garantie : `scenario` /
-// `recommended_option` sont TOUJOURS persistés dans etude_params, quel que
-// soit le mode (résidentiel/industriel/agricole) et même quand aucune étude
-// dégénérée ne peut être construite (ex. industriel kwp=0 avec des lignes
-// manuelles). `baseEtudeParams` peut être null/undefined — le résultat est
-// TOUJOURS un objet non-null qui porte au moins le choix scénario/option.
-export function buildEtudeParamsChoice(baseEtudeParams, {
-  scenario, recommendedChoice, recommendedOption, distributeur, consoAnnuelleReelle,
-}) {
-  const realBillParams = consoAnnuelleReelle > 0
-    ? { distributeur, conso_annuelle: consoAnnuelleReelle }
-    : (distributeur && distributeur !== 'onee' ? { distributeur } : {})
-  return {
-    ...(baseEtudeParams || {}),
-    ...(baseEtudeParams?.conso_annuelle ? { distributeur } : realBillParams),
-    scenario,
-    recommended_choice: recommendedChoice,
-    recommended_option: recommendedOption,
-  }
 }
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────

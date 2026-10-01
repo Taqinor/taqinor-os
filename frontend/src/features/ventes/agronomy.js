@@ -67,24 +67,6 @@ export function waterDemandFromFarm({ crop, region, surfaceHa, method } = {}) {
   }
 }
 
-// ── Débit pompe requis (m³/h) pour livrer le volume jour en N heures ──────────
-// Garde : heures de pompage strictement positives, sinon null. Arrondi 1 déc.
-export function requiredFlow(m3Day, hours) {
-  const v = _num(m3Day)
-  const h = _num(hours)
-  if (!(h > 0) || v <= 0) return null
-  return Math.round((v / h) * 10) / 10
-}
-
-// ── Calcul inverse : hectares irrigables avec un volume annuel disponible ──────
-// ha = volume annuel / consommation annuelle brute typique de la culture.
-export function hectaresIrrigable(m3Year, crop) {
-  const v = _num(m3Year)
-  const perHa = CROP_ANNUAL_M3_HA[crop] ?? CROP_ANNUAL_M3_HA_DEFAUT
-  if (!(v > 0) || !(perHa > 0)) return null
-  return Math.round((v / perHa) * 10) / 10
-}
-
 // ── Estimation du volume ANNUEL depuis le besoin de pointe ────────────────────
 // Le jour de pointe est ramené à une moyenne annuelle (peakToAvg) sur le nombre
 // de jours de pompage. peakToAvg ≈ 0.62 : à confirmer (dépend du climat et de la
@@ -240,19 +222,3 @@ export function monthlyWaterDemand({ crop, region, surfaceHa, method } = {}) {
   }
 }
 
-// ── (e) Annualisation par INTÉGRALE de la série mensuelle ──────────────────────
-// Remplace le forfait plat annualWater(0,62×300 j) sur le chemin agricole v2 :
-// somme des besoins bruts journaliers × jours du mois. m³/an à l'échelle
-// exploitation. Le forfait v1 reste le repli quand la culture/région est inconnue.
-export function annualWaterFromMonthly(monthly) {
-  if (!monthly || !Array.isArray(monthly.grossM3FarmDay)) return 0
-  const total = DAYS_IN_MONTH.reduce(
-    (s, d, m) => s + (_num(monthly.grossM3FarmDay[m]) * d), 0)
-  return Math.round(total)
-}
-
-// Volume annuel CITÉ par arbre (dattier) — la valeur MA de référence, pas un
-// calcul. Densité de plantation par défaut lue de CROP_CITED.
-export function datePalmCitedPerTree() {
-  return CROP_CITED.dattier.m3_per_tree_year
-}

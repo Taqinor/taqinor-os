@@ -24,7 +24,7 @@
 // `useEtudeHorairePreview` (Files: de cette tâche ne le touche pas) : on en
 // dérive un ÉQUIVALENT localement, même délai, sur le même flux `corps`.
 //
-// Hook AJOUTÉ TESTÉ (via sa moitié pure), IMPORTÉ PAR PERSONNE (vague M4).
+// Hook testé via sa moitié pure ; importé par `DevisGenerator.jsx`.
 import { useEffect, useRef, useState } from 'react'
 import { useEtudeHorairePreview } from '../../etudeHorairePreview'
 import { useDebouncedValue } from '../../../../lib/debounce'

@@ -1,7 +1,7 @@
 // QJR87 — LA MACHINE À ÉTATS DU DIMENSIONNEMENT (module PUR).
 // ---------------------------------------------------------------------------
-// Remplace, sur le papier d'abord (vague M4 : ajouté testé, IMPORTÉ PAR
-// PERSONNE ; la bascule est QJR99), SIX `useRef` de `DevisGenerator.jsx`
+// Remplace (bascule QJR99 : importé par `DevisGenerator.jsx`) SIX `useRef`
+// de `DevisGenerator.jsx`
 // (`modeTouched`, `structureTouched`, `tensionTouched`, `pompeAlimTouched`,
 // `nbPanneauxTouched`, `scenarioTouched` — vérifiés lignes 326-339) et les
 // chaînes de ternaires/gardes en ligne qui les lisent.

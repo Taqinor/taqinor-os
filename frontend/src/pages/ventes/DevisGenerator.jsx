@@ -2917,8 +2917,8 @@ export default function DevisGenerator({
     // plutôt que de les laisser disparaître sans explication.
     setOnduleursIncomplets(metaOnduleursIncomplets)
     recomposerLignes(generated)
-    // QJR99 — rend les lignes composées : `resoudreComposition` (moitié pure de
-    // `useComposition`) en a besoin pour NOMMER la source du repli.
+    // Rend les lignes composées à l'appelant (`composeLocalement`, qui dit
+    // seulement si une composition a été posée).
     return generated
   }
 
