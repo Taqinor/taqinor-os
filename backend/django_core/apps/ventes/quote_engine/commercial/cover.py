@@ -8,13 +8,8 @@ from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
-
-
-def _kwc_str(kwc):
-    try:
-        return f"{float(kwc):.2f}".rstrip("0").rstrip(".").replace(".", ",")
-    except (TypeError, ValueError):
-        return "—"
+# QJR651 — kwc_str et la cellule KPI : harnais premium commun.
+from .. import premium_base
 
 
 def build(ctx):
@@ -68,17 +63,16 @@ def build(ctx):
     cat_label = meta["label"]
     accroche = meta["accroche"]
 
-    kwc = _kwc_str(d.get("com_kwc"))
+    kwc = premium_base.kwc_str(d.get("com_kwc"))
     economies = d.get("com_economies")
     autoconso = d.get("com_autoconso")
     couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
 
+    # QJR651 — la cellule KPI est commune (premium_base.kpi) ; seul
+    # le préfixe de classes CSS diffère d'un marché à l'autre.
     def kpi(val, unit, label, fig=None):
-        _a = ancre(fig, val) if fig else ""
-        return (f'<td class="c1c-kpi"><div class="c1c-kv">{val}'
-                f'<span class="c1c-ku">{unit}</span></div>{_a}'
-                f'<div class="c1c-kl">{label}</div></td>')
+        return premium_base.kpi(val, unit, label, fig, prefixe="c1c")
 
     cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
     if autoconso is not None:

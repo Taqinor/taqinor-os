@@ -4,60 +4,29 @@ one A4 PDF. Driven by ``commercial.renderer``. Reuses ``residential.theme``."""
 from __future__ import annotations
 from pathlib import Path
 
-from ..residential import theme
 from . import cover, equip, trust
-from .. import montants
+from .. import premium_base
 
 
-def build_ctx(data: dict) -> dict:
-    ident = theme.company_identity(data)
-    return {
-        "d": data,
-        "C": theme.C,
-        "fmt": theme.fmt,
-        # QJR614 — montants dérivés du prix (P.U., total de ligne, chaîne de
-        # totaux, prix TTC) au CENTIME, ROUND_HALF_UP ; ``fmt`` (entier)
-        # reste pour kWh, CO2, panneaux, économies estimées.
-        "fmt_mad": montants.fmt_centimes,
-        "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
-                  "sans": theme.FONT_SANS},
-        "logo_dark": theme.logo_dark_b64(),
-        "logo_color": theme.logo_color_b64(),
-        "ident": ident,
-        "theme": theme,
-    }
-
-
-def _wrap(inner: str, n: int, data: dict, ident: dict, total: int = 3) -> str:
-    foot = (theme.page_footer(data, ident, total_pages=total)
-            .replace("{page}", str(n)))
-    return f'<div class="page">{inner}{foot}</div>'
-
-
-def build_html(data: dict) -> str:
-    """Assemble the 3-page premium commercial proposal.
+# QJR651 — contexte, enveloppe de page, assemblage HTML et rendu PDF
+# vivent dans ``quote_engine/premium_base.py`` ; ce module ne garde que
+# SA liste de pages.
+def pages(ctx: dict) -> list:
+    """Les 3 pages premium commerciales.
 
     p1 cover catégorie-aware (label + pictogramme + KPIs + accroche) · p2
     équipements + totaux + bloc catégorie · p3 confiance + étapes + signature.
     """
-    ctx = build_ctx(data)
-    ident = ctx["ident"]
-    pages = [cover.build(ctx), equip.build(ctx), trust.build(ctx)]
-    total = len(pages)
-    body = "".join(
-        _wrap(inner, n, data, ident, total)
-        for n, inner in enumerate(pages, start=1))
-    return (f"<!doctype html><html><head><meta charset='utf-8'>"
-            f"<style>{theme.base_css()}</style></head>"
-            f"<body>{body}</body></html>")
+    return [cover.build(ctx), equip.build(ctx), trust.build(ctx)]
+
+
+def build_html(data: dict) -> str:
+    return premium_base.build_html(data, pages)
 
 
 def render_pdf(out_path, data: dict | None = None) -> str:
-    from weasyprint import HTML
     if data is None:
         from . import sample_data
         data = sample_data.build()
-    html = build_html(data)
-    base = str(Path(__file__).resolve().parent)
-    HTML(string=html, base_url=f"file://{base}/").write_pdf(str(out_path))
-    return str(out_path)
+    return premium_base.render_pdf(
+        out_path, build_html(data), Path(__file__).resolve().parent)
