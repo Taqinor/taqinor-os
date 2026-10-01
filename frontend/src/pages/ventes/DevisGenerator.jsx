@@ -215,6 +215,12 @@ const MODE_OPTIONS = [
 // serveur inchangeables).
 const SAISON_LABELS = { hiver: 'Hiver', mi_saison: 'Mi-saison', ete: 'Été' }
 
+// QJR586 (contrat QJR506) — la « ville de calcul » du lead SERVIE par le
+// serveur (`ville_effective` : rattachement VREF prioritaire), la même que le
+// moteur, le PDF et le transport. Repli sur `ville` pour un lead servi sans
+// la clé (ancienne réponse) ; '' jamais null.
+const villeEffectiveLead = (lead) => (lead?.ville_effective ?? lead?.ville) || ''
+
 // ORDRE FONDATEUR (24/08) — « tous les devis sont générés par défaut avec DEUX
 // OPTIONS (sans + avec batterie), sauf si le commercial le précise sur le devis
 // modifiable ». Le vocabulaire est le contrat EXACT du moteur PDF (constantes
@@ -1280,7 +1286,7 @@ export default function DevisGenerator({
       // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
       // avec le PDF/web) ; override société si renseigné ≠ 1600.
       productible: productibleForCity(
-        selectedLead?.ville || '', quoteLogic.productible),
+        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
@@ -1308,10 +1314,13 @@ export default function DevisGenerator({
       consoAnnuelleKwh: consoAnnuelleReelle,
       utility: distributeur,
       productible: productibleForCity(
-        selectedLead?.ville || '', quoteLogic.productible),
+        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
+
+  // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
+  const villeCalculLead = villeEffectiveLead(selectedLead)
 
   // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
   // les deux optimiseurs divergent, sinon `roi` (identique par construction).
@@ -1333,7 +1342,7 @@ export default function DevisGenerator({
         fHiver,
         fEte,
         eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: selectedLead?.ville || '',
+        ville: villeCalculLead,
         raccordement: selectedLead?.raccordement || '',
         // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
         kwp: kwpLignes,
@@ -1354,7 +1363,7 @@ export default function DevisGenerator({
         fHiver,
         fEte,
         eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: selectedLead?.ville || '',
+        ville: villeCalculLead,
         raccordement: selectedLead?.raccordement || '',
         kwp: kwpAvec,
         batterieKwh: batteryKwhFromLines(lines),
@@ -1694,7 +1703,7 @@ export default function DevisGenerator({
     // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
     // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
     const productibleBalayage = productibleForCity(
-      (villeLead ?? selectedLead?.ville) || '', quoteLogic.productible)
+      (villeLead ?? villeCalculLead) || '', quoteLogic.productible)
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
@@ -1749,7 +1758,7 @@ export default function DevisGenerator({
     return result
   }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
     produits, quoteLogic, marquesActives, distributeur, distributeurChoisi,
-    categorieCommerciale, consoAnnuelleReelle, selectedLead?.ville, selectedLead?.distributeur])
+    categorieCommerciale, consoAnnuelleReelle, villeCalculLead, selectedLead?.distributeur])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1851,7 +1860,7 @@ export default function DevisGenerator({
       ? panneauxPourKwc(tailleKwc, panelW)
       : 0
     const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
-      ? computeAutoSizing(hiver, ete, lead.ville || '') : null
+      ? computeAutoSizing(hiver, ete, villeEffectiveLead(lead)) : null
     // STKCAT10 — la liste des structures RÉELLEMENT sélectionnables voyage
     // avec l'action : le reducer valide contre ELLE l'id épinglé sur le lead
     // (`lead.structure_produit`, STKCAT9) et n'applique jamais un produit
@@ -3073,7 +3082,7 @@ export default function DevisGenerator({
         // BARÈME TRANSPORT (fondateur 07/09/2026) — la ville du lead reprice
         // la ligne Transport côté serveur (barème Nouaceur) ; sans ville
         // reconnue, le serveur garde le prix catalogue, réponse inchangée.
-        if (selectedLead?.ville) body.ville = selectedLead.ville
+        if (villeCalculLead) body.ville = villeCalculLead
         // OFFGRID — champ additif optionnel (contrat backend) : absent quand
         // `horsReseau` est faux, le serveur dérive alors de
         // `lead.raccordement == 'aucun'` lui-même. Envoyé explicitement ici

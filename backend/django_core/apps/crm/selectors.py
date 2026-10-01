@@ -570,6 +570,22 @@ def lead_du_devis(devis):
         company_id, getattr(devis, 'client_id', None))
 
 
+def ville_effective(lead):
+    """QJR586 (contrat QJR506 ``lead_ville_effective.json``) — LA « ville de
+    calcul » d'un lead : la ville ERP de RATTACHEMENT (``ville_reference``,
+    choisie pour un douar hors gazetier, VREF) prime, sinon la ville tapée.
+    Chaîne nettoyée, ``''`` quand les deux sont vides — jamais ``None``.
+
+    Moteur (entrées, empreinte), PDF, transport, distributeur déduit,
+    réalisation comparable et écran la lisent tous ICI : un douar rattaché
+    sans GPS n'est plus refusé par le devis automatique alors que le PDF le
+    chiffre."""
+    if lead is None:
+        return ''
+    return ((getattr(lead, 'ville_reference', '') or '').strip()
+            or (getattr(lead, 'ville', '') or '').strip())
+
+
 def _srm_deduite(ville):
     """CAD167 — la SRM régionale de cette ville, ou ``None``. Ne lève jamais."""
     try:
@@ -606,8 +622,9 @@ def lead_bills_for_devis(devis):
         # demande plus). Ville inconnue de la table ⇒ toujours None : on
         # n'invente pas un rattachement régional. La valeur ne change aucun
         # prix — le barème est national.
+        # QJR586 — la SRM se déduit de la ville de CALCUL du lead.
         'distributeur': (lead.distributeur
-                         or _srm_deduite(getattr(lead, 'ville', None))),
+                         or _srm_deduite(ville_effective(lead) or None)),
     }
 
 
@@ -2644,7 +2661,8 @@ def site_location_for_devis(devis):
     if lead is not None:
         return {
             'site_adresse': lead.adresse,
-            'site_ville': lead.ville,
+            # QJR586 — la ville de CALCUL (rattachement VREF prioritaire).
+            'site_ville': ville_effective(lead) or None,
             'gps_lat': lead.gps_lat,
             'gps_lng': lead.gps_lng,
         }

@@ -106,6 +106,12 @@ class EntreesMoteur:
         return getattr(self, cle, defaut)
 
 
+def _ville_effective(lead):
+    """QJR586 — ``crm.selectors.ville_effective`` (import fonction-local)."""
+    from apps.crm.selectors import ville_effective
+    return ville_effective(lead)
+
+
 def _reglages_tarifaires_de(company):
     """QJR46 — ``(tranches, charges_fixes_mad)`` de la SOCIÉTÉ.
 
@@ -376,7 +382,9 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         company=company, mode='residentiel', etude_params={},
         conso_kwh_mensuelles=conso, source_conso=source_conso,
         jour_reference=jour,
-        ville=getattr(lead, 'ville', None),
+        # QJR586 — la ville de CALCUL du lead (rattachement VREF prioritaire),
+        # la même que le devis, le PDF et le transport.
+        ville=_ville_effective(lead) or None,
         lat=getattr(lead, 'gps_lat', None),
         lon=getattr(lead, 'gps_lng', None),
         occupation=occupation,
