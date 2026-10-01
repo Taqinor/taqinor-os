@@ -33,8 +33,10 @@ class WhatsappSuitTelephoneTests(TestCase):
             company=self.company, nom='WA1', owner=self.user,
             telephone='0612345678', whatsapp='+212612345678')
         self._patch(lead, {'telephone': '0698765432'})
-        self.assertEqual(lead.telephone, '0698765432')
-        self.assertEqual(lead.whatsapp, '0698765432')
+        # Le serializer stocke le téléphone au format canonique « 212… »
+        # (LeadSerializer._canonical_phone) ; le WhatsApp copie suit ce numéro.
+        self.assertEqual(lead.telephone, '212698765432')
+        self.assertEqual(lead.whatsapp, '212698765432')
 
     def test_whatsapp_distinct_reste_intact(self):
         lead = Lead.objects.create(

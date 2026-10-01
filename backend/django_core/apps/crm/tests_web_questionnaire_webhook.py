@@ -309,9 +309,12 @@ class TrousDeMappingCombles(TestCase):
             'has_generator': True,
             'groupe_kva': 400.0,
             'diesel_dh_mois': 18000.0,
-            'surface_toiture_m2': 2600.0,
             'surface_m2': 3100.0,
         })
+        # QJR595 — la surface de toiture du client pro est promue vers la
+        # colonne du lead (elle ne quitte la bag que promue) ; surface_m2
+        # (peut être au sol) reste dans la bag.
+        self.assertEqual(float(lead.surface_toiture_m2), 2600.0)
         # CAD149 — `heures_pompage` a désormais sa colonne dédiée.
         self.assertEqual(str(lead.pompage_heures_jour), '7.0')
 
