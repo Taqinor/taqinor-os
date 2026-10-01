@@ -13,6 +13,7 @@ import { billRangeBounds, isBillRangeId, qualifiesForCrm, type BillRangeId, type
 import { estimateFromBill } from './billEstimate';
 import { normalizeMoroccanPhone } from './phone';
 import { COMMERCIAL_CATEGORY_IDS } from './commercialCategories';
+import { storeDeadLetter } from '../../worker/deadLetter.mjs'; // QJR663 — lettre morte KV
 
 // ─────────────────────────────────────────────────────────────────────────
 // W317 — same-origin enforcement + honeypot, partagés par TOUS les proxies
@@ -345,6 +346,14 @@ export interface LeadEnv {
   LEAD_WEBHOOK_SECRET?: string;
   CAPI_URL?: string;
   WHATSAPP_NUMBER?: string;
+  /**
+   * QJR663 — liaison Cloudflare KV (lettre morte des leads non livrés, avec
+   * expiration). FACULTATIVE : absente → no-op + avertissement (voir
+   * worker/deadLetter.mjs).
+   */
+  LEADS_DLQ?: {
+    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>;
+  };
 }
 
 export interface ValidatedLead {
@@ -1374,7 +1383,7 @@ export async function forwardLead(
   env: LeadEnv,
   fetchFn: typeof fetch = fetch,
   opts: ForwardLeadOptions = {},
-): Promise<{ delivered: boolean; reason?: string }> {
+): Promise<{ delivered: boolean; reason?: string; deadLettered?: boolean }> {
   if (!record.qualified && !opts.includeUnqualified) {
     return { delivered: false, reason: 'below-threshold' };
   }
@@ -1431,7 +1440,9 @@ export async function forwardLead(
         reason = `webhook-error-${e instanceof Error ? e.name : 'unknown'}`;
       }
     }
-    return { delivered: false, reason };
+    // QJR663 — échec final : lettre morte KV (record COMPLET, clé = idempotencyKey).
+    const deadLettered = await storeDeadLetter(env.LEADS_DLQ, payload);
+    return deadLettered ? { delivered: false, reason, deadLettered } : { delivered: false, reason };
   } catch (e) {
     return { delivered: false, reason: `webhook-error-${e instanceof Error ? e.name : 'unknown'}` };
   }
