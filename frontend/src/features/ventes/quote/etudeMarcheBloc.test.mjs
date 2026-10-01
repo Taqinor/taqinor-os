@@ -19,7 +19,7 @@ const ECRAN = new Set([
   'profondeur_m', 'distance_m', 'region', 'crop', 'surface_ha', 'current_fuel',
   'fuel_spend_current', 'hmt_static', 'hmt_drawdown',
   'taux_autoconso', 'taux_couverture', 'payback', 'injection_kwh_an', 'injection_dh_an',
-  'repartition_mt',
+  'repartition_mt', 'etude_kwc_base',
   'chambres', 'occupation_pct', 'piscine', 'chambres_froides', 'horaires', 'cuisson',
   'surface_vente_m2', 'effectif', 'clim', 'lits', 'garde_nuit', 'internat',
   'fermeture_estivale', 'surface_m2', 'chauffe', 'four', 'cuisson_nocturne',
@@ -51,7 +51,7 @@ test('industriel : aucune clé hors ECRAN, étude brute filtrée, état fixe ide
     scenario: 'sans_batterie', recommended_option: 'sans_batterie', nombre_proprietes: null,
     conso_annuelle: 250000, distributeur: 'onee',
     taux_autoconso: 82.5, taux_couverture: 61, payback: 4.2,
-    injection_kwh_an: 12000, injection_dh_an: null,
+    injection_kwh_an: 12000, injection_dh_an: null, etude_kwc_base: 120,
     part_diurne_pct: 65,
     tension_raccordement: 'mt', repartition_mt: { pointe: 20, pleines: 50 },
   })

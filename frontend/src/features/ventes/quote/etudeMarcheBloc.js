@@ -61,6 +61,9 @@ export function projeterEtudeMarche(mode, {
       payback: nombre(e.payback),
       injection_kwh_an: nombre(e.injection_kwh_an),
       injection_dh_an: nombre(e.injection_dh_an),
+      // QJR579 (contrat QJR510) — le kWc pour lequel CES dérivées ont été
+      // calculées : base de la garde de fraîcheur (QJR625). Nul sans étude.
+      etude_kwc_base: nombre(e.kwc),
       // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
       // relue par `?edit=`, sinon la réouverture remettait le défaut et
       // réécrivait taux / payback. Commercial : dérivée de la catégorie
