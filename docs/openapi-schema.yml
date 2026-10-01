@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4716, operations: 7498, components: 2135}
+counts: {paths: 4718, operations: 7500, components: 2135}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3534,6 +3534,7 @@ operations:
 - delete /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_destroy
 - get /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_retrieve
 - patch /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_partial_update
+- post /api/django/ventes/devis/{id}/pdf-partage/ -> django_ventes_devis_pdf_partage_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/reappliquer-lead/ -> django_ventes_devis_reappliquer_lead_create
@@ -7287,6 +7288,7 @@ operations:
 - delete /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_destroy
 - get /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_retrieve
 - patch /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_partial_update
+- post /api/v1/ventes/devis/{id}/pdf-partage/ -> v1_ventes_devis_pdf_partage_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/reappliquer-lead/ -> v1_ventes_devis_reappliquer_lead_create

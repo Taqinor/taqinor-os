@@ -1,8 +1,9 @@
 """QJR103 — LE CONTRAT DE PARCOURS DU REGISTRE DE SURCHARGES.
 
 CE QUE CE MODULE TIENT, ET POURQUOI IL EST PILOTÉ PAR TABLE. Le registre
-``Devis.overrides`` (QJR57/QJR58, décision fondateur D12) déclare 19 chemins
-surchargeables. Un test écrit chemin par chemin aurait couvert ceux auxquels
+``Devis.overrides`` (QJR57/QJR58, décision fondateur D12) déclarait 19 chemins
+surchargeables ; D-QJR5-8 (QJR573) l'a réduit aux 6 chemins qu'un lecteur de
+production consulte. Un test écrit chemin par chemin aurait couvert ceux auxquels
 son auteur a pensé, et RIEN pour le vingtième ajouté six mois plus tard — le
 mode d'échec exact que l'audit L3 du 29/08/2026 a trouvé partout ailleurs dans
 ce parcours. La table :data:`COUVERTURE` ci-dessous est donc comparée à
@@ -136,6 +137,29 @@ def _lire_kwc_du_devis(ctx):
     return puissance_kwc_du_devis(ctx.devis)
 
 
+class _DevisAvecCible:
+    """Le devis relu, vu avec une cible ``taille.nb_panneaux`` en plus de
+    son registre — rien n'est écrit en base."""
+
+    def __init__(self, devis):
+        self._devis = devis
+        self.overrides = dict(overrides.registre_du_devis(devis))
+        self.overrides['taille.nb_panneaux'] = {'valeur': 10,
+                                                'origine': 'manuel'}
+
+    def __getattr__(self, nom):
+        return getattr(self._devis, nom)
+
+
+def _lire_watt_de_la_cible(ctx):
+    """QJR571 — ``taille.panel_watt`` : le wattage de la CIBLE que
+    ``pipeline.decider_taille`` reçoit du registre (``_cible_du_registre``),
+    lu dès qu'une cible en nombre de panneaux est déclarée."""
+    from apps.ventes.domain.pipeline import _cible_du_registre
+    cible = _cible_du_registre(_DevisAvecCible(ctx.recharger()))
+    return cible.panel_watt if cible is not None else None
+
+
 class Couverture:
     """La ligne de table d'UN chemin du registre.
 
@@ -162,50 +186,24 @@ class Couverture:
         self.sans_lecteur = sans_lecteur
 
 
-#: RAISON UNIQUE, vérifiée le 30/08/2026 par grep sur ``backend/django_core``
-#: (hors tests, hors le registre lui-même) : ces chemins sont DÉCLARÉS par la
-#: décision fondateur D12 et acceptés par l'endpoint, mais AUCUN consommateur
-#: ne les lit encore — les brancher est le travail des tâches qui les
-#: possèdent, pas de ce test. Le contrat de PARCOURS (l'override survit et se
-#: régénère) est prouvé pour eux comme pour les autres.
-PAS_ENCORE_LU = ('déclaré D12, aucun lecteur aval branché à ce jour — la '
-                 'survie dans le registre et le retour à l\'auto sont '
-                 'prouvés, il n\'existe pas encore de valeur rendue.')
-
 #: LA TABLE. Une ligne par chemin de ``overrides.CHAMPS_OVERRIDABLES`` —
 #: l'égalité des deux ensembles est elle-même un test (voir
-#: :class:`TableDeCouvertureTests`).
+#: :class:`TableDeCouvertureTests`). QJR573 (D-QJR5-8) : chaque chemin a un
+#: LECTEUR prouvé — les 13 chemins sans lecteur ont été retirés du registre.
 COUVERTURE = {
     'taille.nb_panneaux': Couverture(21, lecteur=_lire_kwc_du_devis,
                                      attendu='kwc_21_panneaux'),
-    'taille.panel_watt': Couverture(545, sans_lecteur=PAS_ENCORE_LU),
+    # QJR571 — le wattage de la cible du registre
+    # (``pipeline._cible_du_registre``, étape 2 ``decider_taille``).
+    'taille.panel_watt': Couverture(545, lecteur=_lire_watt_de_la_cible),
     'taille.kwc': Couverture(9.99, lecteur=_lire_kwc_quote),
-    'taille.batterie_nb_modules': Couverture(3, sans_lecteur=PAS_ENCORE_LU),
-    'taille.batterie_module_kwh': Couverture(5.12,
-                                             sans_lecteur=PAS_ENCORE_LU),
     'scenario': Couverture('Sans batterie', lecteur=_lire_scenario_quote),
     'recommended_option': Couverture('Sans batterie',
                                      lecteur=_lire_reco_quote),
-    'profil.occupation': Couverture('jour', sans_lecteur=PAS_ENCORE_LU),
-    'profil.factures_mensuelles_reelles': Couverture(
-        [1200] * 12, sans_lecteur=PAS_ENCORE_LU),
-    'profil.conso_annuelle': Couverture(9600, sans_lecteur=PAS_ENCORE_LU),
-    overrides.PREFIXE_EQUIPEMENT + '<clef>': Couverture(
-        True, clef_patch=overrides.PREFIXE_EQUIPEMENT + 'piscine',
-        sans_lecteur=PAS_ENCORE_LU),
-    'tarif.distributeur': Couverture('ONEE', sans_lecteur=PAS_ENCORE_LU),
-    'tarif.tranches': Couverture([{'jusqu_a': 100, 'prix': 0.9}],
-                                 sans_lecteur=PAS_ENCORE_LU),
-    'tarif.charges_fixes_mad': Couverture(42.5, sans_lecteur=PAS_ENCORE_LU),
-    # QJR232 — BRANCHÉ : le moteur lit enfin cette date
-    # (``domain.entrees.jour_reference_du_devis``, qui alimente
-    # ``entrees_depuis_devis`` ET ``profils_comparatifs``).
+    # QJR232 — ``domain.entrees.jour_reference_du_devis``, qui alimente
+    # ``entrees_depuis_devis`` ET ``profils_comparatifs``.
     'etude.jour_reference': Couverture('2026-03-15',
                                        lecteur=_lire_jour_reference),
-    'mode_installation': Couverture('industriel', sans_lecteur=PAS_ENCORE_LU),
-    'structure': Couverture('beton', sans_lecteur=PAS_ENCORE_LU),
-    'tension': Couverture('triphase', sans_lecteur=PAS_ENCORE_LU),
-    'pompe_alim': Couverture('solaire', sans_lecteur=PAS_ENCORE_LU),
 }
 
 
@@ -387,13 +385,13 @@ class _ParcoursBase(TestCase):
         r = self.api.patch(parcours.url, {chemin: {'valeur': valeur}},
                            format='json')
         self.assertEqual(r.status_code, 200,
-                         f'pose de « {chemin} » refusée : {r.data}')
+                         f'pose de « {chemin} » refusée : {str(r.data)}')
         return r
 
     def regenerer(self, parcours, chemin):
         r = self.api.delete(f'{parcours.url}?chemin={chemin}')
         self.assertEqual(r.status_code, 200,
-                         f'régénération de « {chemin} » refusée : {r.data}')
+                         f'régénération de « {chemin} » refusée : {str(r.data)}')
         return r
 
 
@@ -418,9 +416,20 @@ class TableDeCouvertureTests(TestCase):
             'Chemin(s) de COUVERTURE absent(s) du registre : retirer la ligne '
             'de table dans le MÊME commit que le retrait du chemin.')
 
-    def test_le_registre_couvre_les_19_chemins_de_la_decision_D12(self):
-        self.assertEqual(len(overrides.CHAMPS_OVERRIDABLES), 19)
-        self.assertEqual(len(COUVERTURE), 19)
+    def test_le_registre_couvre_les_6_chemins_lus(self):
+        """QJR573 — D12 (19 chemins) réduite par D-QJR5-8 aux chemins lus."""
+        self.assertEqual(len(overrides.CHAMPS_OVERRIDABLES), 6)
+        self.assertEqual(len(COUVERTURE), 6)
+
+    def test_chemins_autorises_egale_chemins_lus(self):
+        """QJR573 (D-QJR5-8) — aucune saisie acceptée n'est ignorée."""
+        self.assertEqual(sorted(overrides.CHAMPS_OVERRIDABLES),
+                         sorted(overrides.CHEMINS_LUS))
+
+    def test_chaque_chemin_a_un_lecteur(self):
+        for chemin, couverture in COUVERTURE.items():
+            with self.subTest(chemin=chemin):
+                self.assertIsNotNone(couverture.lecteur, chemin)
 
     def test_un_chemin_ajoute_au_registre_sans_couverture_rougit(self):
         """LE TEST NÉGATIF — la garde sait vraiment rougir."""
@@ -457,9 +466,16 @@ class TableDeCouvertureTests(TestCase):
         """
         branches = sorted(c for c, v in COUVERTURE.items()
                           if v.lecteur is not None)
-        self.assertEqual(branches, ['etude.jour_reference',
-                                    'recommended_option', 'scenario',
-                                    'taille.kwc', 'taille.nb_panneaux'])
+        self.assertEqual(branches, sorted(overrides.CHEMINS_LUS))
+
+    def test_chemins_lus_egale_les_lecteurs_de_la_table(self):
+        """QJR571 — ``overrides.CHEMINS_LUS`` (ce que la réponse déclare lu)
+        et les lecteurs de cette table sont le MÊME ensemble : un chemin
+        annoncé lu sans lecteur prouvé, ou un lecteur prouvé sur un chemin
+        annoncé ``non_lu``, fait rougir."""
+        lus_table = {c for c, v in COUVERTURE.items() if v.lecteur is not None}
+        self.assertEqual(lus_table, set(overrides.CHEMINS_LUS))
+        self.assertIn('taille.panel_watt', overrides.CHEMINS_LUS)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -595,12 +611,15 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
         'taille.nb_panneaux': 14,
         'taille.panel_watt': 710,
         'taille.kwc': 9.94,
-        'mode_installation': 'residentiel',
     }
+
+    #: QJR573 (D-QJR5-8) — ``mode_installation`` est RETIRÉ du registre
+    #: (c'est déjà une colonne du devis) : le bloc effectif ne le rend plus.
+    CHEMINS_RETIRES_ABSENTS = ('mode_installation',)
 
     def _bloc(self, reponse, chemin):
         self.assertIn(chemin, reponse.data['effectif'],
-                      f'« {chemin} » absent du bloc effectif : {reponse.data}')
+                      f'« {chemin} » absent du bloc effectif : {str(reponse.data)}')
         return reponse.data['effectif'][chemin]
 
     def test_get_porte_la_valeur_moteur_de_chaque_chemin_derivable(self):
@@ -614,6 +633,9 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
                 self.assertIsNone(bloc['manuel'])
                 self.assertEqual(bloc['source'], 'auto')
                 self.assertEqual(bloc['effectif'], attendu)
+        for chemin in self.CHEMINS_RETIRES_ABSENTS:
+            with self.subTest(chemin=chemin):
+                self.assertNotIn(chemin, reponse.data['effectif'])
 
     def test_une_surcharge_montre_les_deux_valeurs_cote_a_cote(self):
         parcours = Parcours(self)
@@ -637,14 +659,37 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
 
     def test_delete_dun_chemin_sans_derivation_le_rend_quand_meme(self):
         """Un chemin que le moteur ne sait pas dériver revient avec
-        ``auto: null`` — une omission HONNÊTE, jamais une disparition."""
+        ``auto: null`` — une omission HONNÊTE, jamais une disparition.
+
+        QJR573 — ``tarif.distributeur`` est retiré du registre ; le seul
+        chemin autorisé sans dérivateur est ``recommended_option``."""
         parcours = Parcours(self)
-        self.poser(parcours, 'tarif.distributeur', 'ONEE')
-        reponse = self.regenerer(parcours, 'tarif.distributeur')
-        bloc = self._bloc(reponse, 'tarif.distributeur')
+        self.poser(parcours, 'recommended_option', 'Sans batterie')
+        reponse = self.regenerer(parcours, 'recommended_option')
+        bloc = self._bloc(reponse, 'recommended_option')
         self.assertIsNone(bloc['auto'])
         self.assertIsNone(bloc['manuel'])
         self.assertEqual(bloc['source'], 'auto')
+
+    def test_un_chemin_retire_est_refuse_et_reste_en_lecture_seule(self):
+        """QJR573 (D-QJR5-8) — PATCH / DELETE d'un chemin retiré → 400 ; une
+        surcharge retirée déjà en base reste rendue, ``non_lu``, intacte."""
+        parcours = Parcours(self)
+        pose = self.api.patch(
+            parcours.url, {'tarif.distributeur': {'valeur': 'ONEE'}},
+            format='json')
+        self.assertEqual(pose.status_code, 400, str(pose.data))
+        self.assertIn('tarif.distributeur', pose.data)
+        legacy = {'valeur': 'ONEE', 'origine': 'manuel'}
+        Devis.objects.filter(pk=parcours.devis.pk).update(
+            overrides={'tarif.distributeur': legacy})
+        efface = self.api.delete(f'{parcours.url}?chemin=tarif.distributeur')
+        self.assertEqual(efface.status_code, 400, str(efface.data))
+        bloc = self._bloc(self.api.get(parcours.url), 'tarif.distributeur')
+        self.assertEqual(bloc['manuel'], 'ONEE')
+        self.assertIs(bloc.get('non_lu'), True)
+        self.assertEqual(parcours.recharger().overrides['tarif.distributeur'],
+                         legacy)
 
     def test_la_carte_auto_ignore_le_registre(self):
         """``auto`` est la valeur AUTOMATIQUE : une surcharge posée ne doit pas
@@ -670,11 +715,11 @@ class RegistreNonEcrasableParLEcranTests(_ParcoursBase):
 
     def test_un_patch_devis_portant_overrides_vide_ne_vide_rien(self):
         parcours = Parcours(self)
-        self.poser(parcours, 'tarif.distributeur', 'ONEE')
+        self.poser(parcours, 'recommended_option', 'Sans batterie')
         code, _admis = Parcours.etape_patch_devis(parcours)
         self.assertEqual(code, 200)
-        self.assertEqual(parcours.effectif('tarif.distributeur'),
-                         ('ONEE', 'manuel'))
+        self.assertEqual(parcours.effectif('recommended_option'),
+                         ('Sans batterie', 'manuel'))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

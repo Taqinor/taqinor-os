@@ -164,6 +164,9 @@ const ventesApi = {
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
   whatsappDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/whatsapp/`, payload),
+  // QJR659 — le PDF a été partagé par la feuille native (share résolu) : vaut
+  // envoi (garde de remise T17 + mark_devis_sent côté serveur, aucun lien minté).
+  partagePdfDevis: (id) => api.post(`/ventes/devis/${id}/pdf-partage/`, {}),
   // QX22 — aperçu LECTURE SEULE du message WhatsApp (aucune mutation de statut) :
   // peuple la modale d'aperçu ; seul le clic-through sur wa.me (whatsappDevis
   // ci-dessus) marque réellement le devis « Envoyé ».
@@ -191,6 +194,16 @@ const ventesApi = {
   getConceptionElectrique: (id) => api.get(`/ventes/devis/${id}/conception-electrique/`),
   recalculerConceptionElectrique: (id, overrides = {}) =>
     api.post(`/ventes/devis/${id}/conception-electrique/`, overrides),
+  // QJR667 (PV47) — reporte le bordereau électrique en lignes du devis, sur
+  // clic. Corps vide ; réponse : contrat partagé
+  // `apps/ventes/contract_samples/devis_boq_electrique.json`.
+  ajouterBoqElectrique: (id) => api.post(`/ventes/devis/${id}/ajouter-boq-electrique/`, {}),
+  // QJR667 (NTCPQ18) — lots multi-sites d'un devis : GET les sous-totaux par
+  // lot + total consolidé ; POST crée un lot `{nom_lot, adresse_site?,
+  // ordre?, lignes?}` et rend la même forme. Contrat partagé
+  // `apps/ventes/contract_samples/devis_lots.json`.
+  getLotsDevis: (id) => api.get(`/ventes/devis/${id}/lots/`),
+  creerLotDevis: (id, payload) => api.post(`/ventes/devis/${id}/lots/`, payload),
   // PV40/PV43 — planche « schéma unifilaire » déduite du devis : `?format=json`
   // renvoie `{params, svg}` (aperçu inline), `?format=pdf` la même planche en
   // PDF (blob, jamais un document client — rule #4).

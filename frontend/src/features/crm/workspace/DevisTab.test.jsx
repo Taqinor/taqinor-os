@@ -172,6 +172,21 @@ describe('LW21 — CTA devis automatique', () => {
     expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '3' })
   })
 
+  it('QJR599 — devis_auto pas prêt → « Nouveau devis (édition complète) » reste proposé', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({
+      state: leadState({ devis_auto: { pret: false, manquants: ['facture hiver'] } }),
+    })
+    expect(screen.queryByRole('button', { name: /Devis automatique/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Nouveau devis \(édition complète\)/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', 'edit')
+  })
+
+  it('QJR599 — devis_auto prêt → le bouton d’édition complète est là aussi, une seule fois', () => {
+    renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [] } }) })
+    expect(screen.getAllByRole('button', { name: /Nouveau devis \(édition complète\)/ })).toHaveLength(1)
+  })
+
   it('devis_auto pas prêt → liste des champs manquants cliquables (saute au champ du centre)', async () => {
     const user = userEvent.setup()
     const input = document.createElement('input')

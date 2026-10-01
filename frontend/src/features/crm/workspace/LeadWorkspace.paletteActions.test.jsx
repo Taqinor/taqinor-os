@@ -126,6 +126,18 @@ describe('LW26 — actions contextuelles ⌘K + Récents', () => {
     expect(screen.getByTestId('devis-panel')).toHaveAttribute('data-mode', 'auto')
   })
 
+  it('QJR599 — l’action « Nouveau devis (édition complète) » ouvre le panneau devis en mode edit', () => {
+    let captured = null
+    const onEvt = (e) => { captured = e.detail.actions }
+    window.addEventListener('taqinor:lead-workspace-actions', onEvt)
+    renderEdit()
+    window.removeEventListener('taqinor:lead-workspace-actions', onEvt)
+    const edition = captured.find((a) => a.id === 'lw-devis-edition')
+    expect(edition).toBeDefined()
+    act(() => { edition.run() })
+    expect(screen.getByTestId('devis-panel')).toHaveAttribute('data-mode', 'edit')
+  })
+
   it('l’action « Aller à : Toiture & site » fait défiler jusqu’à la section', () => {
     let captured = null
     const onEvt = (e) => { captured = e.detail.actions }

@@ -258,4 +258,33 @@ def poser_puissance_kwc(devis):
     except Exception:  # noqa: BLE001 — un cache raté ne casse jamais un devis
         logger.warning('puissance_kwc non posée sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
+    # QJR669 — le prix / kWc suit le kWc ET le total que ce geste vient de
+    # fixer (``ecrire`` ne re-sauve pas un etude_params inchangé : un total
+    # modifié seul passerait sinon inaperçu).
+    poser_prix_par_kwc(devis)
     return (devis.etude_params or {}).get('puissance_kwc')
+
+
+def poser_prix_par_kwc(devis):
+    """QJR669 (décision fondateur 01/10) — ``prix_par_kwc`` SUIT LE DEVIS.
+
+    La mesure BI n'est plus gelée au premier enregistrement : le propriétaire
+    du kWc la repose chaque fois qu'il repose le kWc (création, Édition
+    complète, replace-lines, correction sur place d'un envoyé — D-QJR5-1),
+    même quand ``etude_params`` n'a pas bougé (un total modifié seul).
+
+    Le calcul et l'écriture CIBLÉE de la colonne sont
+    ``Devis.rafraichir_prix_par_kwc`` (aussi appelé par ``Devis.save`` ; le
+    modèle ne peut pas importer ce module — contrat import-linter M1) : ni
+    ``updated_at`` (jeton du verrou optimiste QJR545) ni le statut ne
+    bougent (règle #4). La pose d'une surcharge
+    (``domain.overrides.ecrire_colonne``) ne passe toujours pas ici. Donnée
+    interne : jamais sur un PDF. Ne lève jamais."""
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return None
+    try:
+        return devis.rafraichir_prix_par_kwc()
+    except Exception:  # noqa: BLE001 — une mesure BI ne casse jamais un devis
+        logger.warning('prix_par_kwc non recalculé sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return getattr(devis, 'prix_par_kwc', None)

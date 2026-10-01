@@ -12,7 +12,9 @@
 // (HT serveur ⇄ TTC écran), taux_tva, optionnelle, type_ligne, ordre, variante,
 // prix_manuel, quantite_manuelle, groupe_index / groupe_label, role_devis,
 // remise (QJR529 — la remise PAR LIGNE stockée, '0' par défaut : l'envoyer à
-// '0' en dur faisait monter le total client en silence au 1er enregistrement).
+// '0' en dur faisait monter le total client en silence au 1er enregistrement),
+// lot (QJR667 — rattachement à un lot multi-sites posé par « Lots /
+// multi-sites » ; sans lui, replace-lines recréait les lignes hors lot).
 //
 // Module PUR (aucun React, aucun import.meta) : exécuté par `node --test`.
 import { ttcExactFromHt, htFromTtc } from '../solar.js'
@@ -52,6 +54,7 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         groupeIndex: l.groupe_index ?? null,
         groupeLabel: l.groupe_label ?? '',
         role_devis: l.role_devis ?? '',
+        lot: l.lot ?? null,
       }
     })
 }
@@ -93,6 +96,8 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       // Rôle STOCKÉ de la ligne : renvoyé tel quel (vide ⇒ le serveur le
       // déduit du produit, comportement historique).
       role_devis: l.role_devis || '',
+      // QJR667 — le lot de la ligne (id d'un lot de CE devis, sinon null).
+      lot: l.lot ?? null,
     }
   })
 }

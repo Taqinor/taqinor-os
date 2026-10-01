@@ -60,7 +60,8 @@ function makeStore() {
     reducer: { auth: authReducer, ventes: ventesReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role: 'normal', role_nom: 'Directeur', permissions: [],
+        // QJR574 — le panneau brut est réservé aux administrateurs.
+        user: { id: 1 }, role: 'admin', role_nom: 'Directeur', permissions: [],
         isAuthenticated: true, loading: false,
       },
     },

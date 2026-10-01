@@ -445,7 +445,9 @@ class TestChemninsDuContrat(unittest.TestCase):
         chemins = cor.load_registry_paths()
         self.assertIn("scenario", chemins)
         self.assertIn("taille.nb_panneaux", chemins)
-        self.assertIn("profil.equipements.<clef>", chemins)
+        # QJR573 (D-QJR5-8) — la liste blanche ne garde que les chemins lus.
+        self.assertIn("etude.jour_reference", chemins)
+        self.assertNotIn("profil.equipements.<clef>", chemins)
 
     def test_aucun_chemin_recopie_en_dur_dans_le_script(self):
         source = (ROOT / "scripts"

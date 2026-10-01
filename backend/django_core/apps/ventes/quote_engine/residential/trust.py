@@ -102,6 +102,107 @@ def _compact_css() -> str:
 """
 
 
+#: QJR666 — ligne de virement HISTORIQUE (Taqinor), la même que le moteur
+#: legacy (``generate_devis_premium.ENT_RIB_LINE``) : servie seulement quand
+#: aucun profil société ne porte d'identité (repli byte-identique DC1).
+_RIB_TAQINOR = ('<b>TAQINOR SOLUTION</b> · Saham Bank · '
+                'RIB 022 780 0002720029379418 74 · BIC SGMBMAMCXXX')
+
+
+def _ligne_rib(d) -> str:
+    """QJR666 — la ligne de virement du « Devis final ». RIB ou banque du
+    profil société → SA ligne (échappée) ; société identifiée SANS RIB →
+    aucune ligne (jamais le RIB d'un autre tenant) ; aucun profil → la ligne
+    historique Taqinor, comme le moteur legacy."""
+    from html import escape as _e
+    ent = d.get("entreprise") or {}
+    nom = (ent.get("nom") or "").strip()
+    rib = (ent.get("rib") or "").strip()
+    banque = (ent.get("banque") or "").strip()
+    if rib or banque:
+        bits = [f"<b>{_e(nom) if nom else 'Virement'}</b>"]
+        if banque:
+            bits.append(_e(banque))
+        if rib:
+            bits.append("RIB " + _e(rib))
+        return " · ".join(bits)
+    identite = any((ent.get(k) or "").strip() for k in (
+        "nom", "adresse", "email", "telephone", "ice", "rc",
+        "identifiant_fiscal", "patente"))
+    return "" if identite else _RIB_TAQINOR
+
+
+def _bloc_paiement(d, ctx, ident) -> str:
+    """QJR666 — « Modalités de paiement » du Devis final : cases au CENTIME
+    lues dans ``montants_tranches`` (builder), branche imprimée choisie comme
+    le moteur legacy (scénario, sinon option recommandée). Sans montants du
+    builder : aucun bloc (jamais une case inventée)."""
+    from . import theme
+    C = ctx["C"]
+    fmt_mad = ctx.get("fmt_mad") or theme.fmt
+    scenario = d.get("scenario")
+    if scenario == "Sans batterie":
+        branche = "sans"
+    elif scenario == "Avec batterie":
+        branche = "avec"
+    elif d.get("recommended") == "Sans batterie":
+        branche = "sans"
+    else:
+        branche = "avec"
+    rep = (d.get("montants_tranches") or {}).get(branche) or {}
+    if not rep:
+        return ""
+
+    def L(cle, fr):
+        return theme.libelle_doc(d, cle, fr)
+
+    def case(pct, montant, libelle):
+        return (f'<div class="p3-pay-c"><div class="p3-pay-p">{pct}%</div>'
+                f'<div class="p3-pay-m">{fmt_mad(montant)} MAD</div>'
+                f'<div class="p3-pay-l">{libelle}</div></div>')
+
+    if theme.langue_doc(d) == "fr":
+        # Les libellés du moteur legacy, mot pour mot.
+        l_ac = "Acompte · À la signature"
+        l_mt = "Matériel · Avant installation"
+        l_sd = "Solde · Après installation"
+        l_sd2 = "Solde · À la livraison"
+    else:
+        l_ac = L("acompte", "Acompte")
+        l_mt = L("a_la_reception_materiel", "")
+        l_sd = l_sd2 = L("apres_mise_en_marche", "")
+    if (rep.get("materiel") or 0) > 0:
+        cases = (case(rep.get("pct_a"), rep.get("acompte"), l_ac)
+                 + case(rep.get("pct_m"), rep.get("materiel"), l_mt)
+                 + case(rep.get("pct_s"), rep.get("solde"), l_sd))
+    else:
+        cases = (case(rep.get("pct_a"), rep.get("acompte"), l_ac)
+                 + case(rep.get("pct_s2"), rep.get("solde2"), l_sd2))
+    rib = _ligne_rib(d)
+    rib_html = (f'<div class="p3-pay-rib">Virement bancaire&nbsp;: {rib}</div>'
+                if rib else "")
+    return (
+        "<style>"
+        f".p3-pay-row {{ display:flex; gap:8px; }}"
+        f".p3-pay-c {{ flex:1; text-align:center; background:{C['paper']};"
+        f" border:1px solid {C['line']}; border-radius:10px; padding:6px 6px 5px; }}"
+        f".p3-pay-p {{ font-family:{ctx['fonts']['serif']}; font-weight:700;"
+        f" font-size:15pt; color:{C['gold']}; line-height:1; }}"
+        f".p3-pay-m {{ font-size:9.4pt; font-weight:700; color:{C['navy']};"
+        " margin-top:2px; }"
+        f".p3-pay-l {{ font-size:7.4pt; color:{C['muted']}; margin-top:2px; }}"
+        f".p3-pay-rib {{ margin-top:5px; background:{C['wash']};"
+        f" border-radius:7px; padding:4px 10px; font-size:7.4pt;"
+        f" color:{C['muted']}; }}"
+        f".p3-pay-rib b {{ color:{C['navy']}; }}"
+        "</style>"
+        '<div class="p3-block p3-pay">'
+        f'<div class="p3-h">{L("conditions_paiement", "Modalités de paiement")}</div>'
+        f'<div class="p3-pay-row">{cases}</div>'
+        f'{rib_html}'
+        '</div>')
+
+
 def build(ctx) -> str:
     from . import theme
 
@@ -272,6 +373,11 @@ def build(ctx) -> str:
         '<span class="p3-method-k">Note</span>'
         f'<span class="p3-method-v">{_note_client}</span></div>'
         if _note_client else "")
+    # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
+    from ..clauses_cgv import bloc_clauses_html
+    clauses_html = bloc_clauses_html(
+        d.get("clauses_cgv"), couleur_titre=C.get("navy", "#0f2a44"),
+        couleur_texte=C.get("ink", "#1F2937"))
 
     # ── Next steps ──────────────────────────────────────────────────────────
     # Q5 — les délais sont des réglages société et portent « (indicatif) » ;
@@ -385,6 +491,22 @@ def build(ctx) -> str:
             f' &middot; {ident.get("phone") or "+212 6 61 85 04 10"}'
             ' &middot; taqinor.ma'
         )
+
+    # ── QJR666 (décision fondateur 01/10) — « Devis final » ─────────────────
+    # Coché au dialogue PDF (``devis_final``), le document imprime les cases
+    # Acompte / Matériel / Solde AU CENTIME et la ligne de virement. Les
+    # montants viennent du builder (``montants_tranches`` =
+    # ``builder.repartition_paiement`` : la même valeur que la facture
+    # d'acompte, acompte personnalisé compris) ; ce gabarit n'en calcule
+    # aucun. Le bloc prend la place de « La preuve, en ligne » (les liens
+    # restent sur la proposition en ligne) : la page garde sa hauteur.
+    paiement_html = _bloc_paiement(d, ctx, ident) if d.get("devis_final") else ""
+    # Sans « Devis final », le bloc est rendu au caractère près comme avant.
+    preuve_html = "" if paiement_html else (
+        '<div class="p3-block">\n'
+        '    <div class="p3-h">La preuve, en ligne</div>\n'
+        f'    <div class="p3-trust">{trust_html}</div>\n'
+        '  </div>')
 
     # ERR114 — la surcharge compacte est concaténée APRÈS le style de page :
     # même spécificité, la dernière règle l'emporte. Vide par défaut.
@@ -562,13 +684,10 @@ def build(ctx) -> str:
   {values_html}
   {gar_html}
 
-  <div class="p3-block">
-    <div class="p3-h">La preuve, en ligne</div>
-    <div class="p3-trust">{trust_html}</div>
-  </div>
+  {preuve_html}{paiement_html}
 
   {cols_html}
-  {note_html}
+  {note_html}{clauses_html}
   {method_html}
 
   <div class="qj" data-w="40"></div>

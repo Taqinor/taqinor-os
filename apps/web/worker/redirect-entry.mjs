@@ -15,6 +15,7 @@ import { canonicalTarget, canonicalRedirectStatus } from './canonical.mjs';
 import { pathRedirect, trailingSlashRedirect } from './redirects.mjs';
 import { applyHtmlCacheControl } from './cache.mjs';
 import { applySecurityHeaders } from './headers.mjs';
+import { resendDeadLetters } from './deadLetter.mjs';
 
 export default {
   async fetch(request, env, ctx) {
@@ -62,5 +63,11 @@ export default {
     //    non-HTML repartent inchangés par les deux étapes.
     const response = await astro.fetch(request, env, ctx);
     return applySecurityHeaders(request, applyHtmlCacheControl(request, response));
+  },
+
+  // QJR663 — déclencheur cron (wrangler.jsonc `triggers.crons`) : renvoie à
+  // LEAD_WEBHOOK_URL les leads de la lettre morte KV (no-op sans liaison).
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(resendDeadLetters(env));
   },
 };

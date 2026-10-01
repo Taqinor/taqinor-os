@@ -3716,6 +3716,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["include_calepinage"] = True
             data["calepinage_svg"] = _planche_svg
             data["calepinage_empreinte"] = _planche_empreinte
+            # QJR666 (décision fondateur 01/10) — le gabarit résidentiel
+            # n'ajoute la planche que sur une demande EXPLICITE (jamais sous
+            # l'AUTO) : la clé n'existe que dans ce cas.
+            if opts['include_calepinage'] is True:
+                data["include_calepinage_demande"] = True
     # QJR630 — le bloc « financement » (QJ12 : taux bancaires « milieu de
     # fourchette » codés en dur) n'est plus produit : aucun rendu ne le lisait
     # et la proposition publique le retirait déjà (F6).
@@ -3889,12 +3894,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             for li in _struct
         ]
 
-    # ── NTCPQ11 — Clauses/CGV dynamiques FIGÉES à l'envoi ───────────────────
-    # LECTURE SEULE du snapshot ``Devis.clauses_appliquees`` (jamais recalculé
-    # ici : le moteur ne fait que RENDRE). Additif : la clé n'est posée que
-    # lorsqu'au moins une clause a été figée → un devis sans clause reste
-    # octet-identique. Aucun nouveau renderer (règle #4) : simple bloc de
-    # données mis à disposition des gabarits existants.
+    # ── NTCPQ11 / QJR668 — Clauses/CGV de l'affaire FIGÉES à l'envoi ───────
+    # LECTURE SEULE du snapshot ``Devis.clauses_appliquees`` (gelé à l'envoi
+    # puis re-gelé à chaque correction par ``domain/cycle_vie``, jamais
+    # recalculé ici : le moteur ne fait que RENDRE). Additif : la clé n'est
+    # posée que lorsqu'au moins une clause a été figée → un devis sans clause
+    # reste octet-identique. Imprimées par tous les gabarits
+    # (``clauses_cgv.bloc_clauses_html``).
     _clauses = getattr(devis, "clauses_appliquees", None)
     if isinstance(_clauses, list) and _clauses:
         data["clauses_cgv"] = [
@@ -4001,6 +4007,16 @@ def echapper_textes_client(data: dict) -> dict:
             ({**s, "texte": _e(s.get("texte"))}
              if isinstance(s, dict) and s.get("texte") is not None else s)
             for s in _struct
+        ]
+    # QJR668 — les clauses/CGV gelées sont du texte saisi par la société,
+    # imprimé tel quel par les gabarits maison : échappé ici comme le reste.
+    _clauses = sortie.get("clauses_cgv")
+    if isinstance(_clauses, list):
+        sortie["clauses_cgv"] = [
+            ({**c, **{k: _e(c[k]) for k in ("nom", "corps_texte")
+                      if c.get(k) is not None}}
+             if isinstance(c, dict) else c)
+            for c in _clauses
         ]
     # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
     # elles n'étaient échappées par aucun des deux moteurs.

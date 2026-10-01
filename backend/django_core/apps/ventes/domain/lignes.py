@@ -464,10 +464,10 @@ CHAMPS_LIGNE = (
     'role_devis',
     'groupe_index', 'groupe_label', 'optionnelle',
     'quantite_manuelle', 'prix_manuel',
-    # NTCPQ18 — rattachement à un LOT (site/bâtiment). Aucun chemin de
-    # création ne l'écrit aujourd'hui (le lot se pose après coup, à l'écran),
-    # mais il APPARTIENT au jeu complet : un test le vérifie contre le modèle,
-    # pour qu'aucun champ ne devienne inatteignable par l'écrivain unique.
+    # NTCPQ18 — rattachement à un LOT (site/bâtiment). QJR667 : l'écran
+    # « Lots / multi-sites » le pose (POST lots/) et ``remplacer_lignes`` le
+    # fait suivre (borné aux lots du devis) ; un test le vérifie contre le
+    # modèle, pour qu'aucun champ ne devienne inatteignable.
     'lot', 'lot_id',
 )
 
@@ -810,9 +810,12 @@ _GROUPE_LABEL_MAX = 80
 
 #: QJR517 — champs de ``CHAMPS_LIGNE`` que ``remplacer_lignes`` n'accepte
 #: PAS du corps, chacun avec sa raison : ``produit_id`` (la ligne produit
-#: passe par ``produit``, borné société/catalogue global), ``lot`` / ``lot_id``
-#: (aucun écrivain UI — le lot NTCPQ18 se pose après coup, à l'écran).
-EXCLUSIONS_REMPLACEMENT = ('produit_id', 'lot', 'lot_id')
+#: passe par ``produit``, borné société/catalogue global), ``lot_id`` (le lot
+#: passe par ``lot``, borné aux lots de CE devis).
+#: QJR667 — ``lot`` fait désormais l'aller-retour : l'écran « Lots /
+#: multi-sites » de l'Édition complète rattache des lignes à un lot, et sans
+#: lui le prochain enregistrement (qui recrée les lignes) les détachait.
+EXCLUSIONS_REMPLACEMENT = ('produit_id', 'lot_id')
 
 
 def _groupe_index_emis(valeur):
@@ -875,6 +878,15 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         raise ValueError(MSG_REMPLACEMENT_VIDE)
     _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
     _VALID_VARIANTES = {c.value for c in LigneDevis.Variante}
+    # QJR667 — un ``lot`` n'est accepté que s'il appartient à CE devis (donc
+    # à sa société) ; tout autre id (ou un id illisible) ⇒ ligne hors lot.
+    lots_du_devis = {lot.pk: lot for lot in devis.lots.all()}
+
+    def _lot_emis(valeur):
+        try:
+            return lots_du_devis.get(int(valeur))
+        except (TypeError, ValueError):
+            return None
     # STKCAT23 (bis) — vocabulaire des rôles : un rôle hors liste n'est
     # jamais écrit tel quel, creer_ligne le résout lui-même.
     from core.product_roles import ROLES_DEVIS
@@ -950,6 +962,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             optionnelle=bool(li.get('optionnelle', False)),
             type_ligne='produit', ordre=ordre, variante=variante,
             groupe_index=groupe_index, groupe_label=groupe_label,
+            lot=_lot_emis(li.get('lot')),
             **extra_role,
             # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
             # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de

@@ -7,13 +7,14 @@
  * RIEN ; il porte seulement la FORME du jeu de données que le composant
  * consomme, et le jeu réel doit venir de ce moteur.
  *
- * RÈGLE « ZÉRO CHIFFRE INVENTÉ » (CLAUDE.md) : cette lane (apps/web
- * uniquement, aucun accès au moteur Django depuis ce worktree) ne peut pas
- * appeler `jours_types_annee` elle-même. Les quatre mois ci-dessous sont donc
- * VOLONTAIREMENT `null` — aucune valeur fabriquée. Le composant qui lit ce
- * module (mon-toit.astro, section « Une journée type ») se MASQUE ENTIÈREMENT
- * tant que `hasJourTypeData()` est faux : jamais une courbe dessinée sur des
- * zéros inventés.
+ * RÈGLE « ZÉRO CHIFFRE INVENTÉ » (CLAUDE.md) : ce module ne calcule RIEN.
+ * `JOUR_TYPE_DATA` ci-dessous est RENSEIGNÉ (sortie réelle du moteur, généré
+ * le 2026-08-24 — voir son en-tête) ; `hasJourTypeData()` reste la garde : un
+ * jeu partiel ou mal formé masque la section ENTIÈREMENT (jamais une courbe
+ * dessinée sur des zéros inventés). Le rendu vit dans
+ * scripts/tunnel/jourType.ts (QJR664), appelé par les trois pages mon-toit
+ * (fr/en/ar). Le graphe montre la journée d'un foyer REPRÉSENTATIF, pas la
+ * consommation du visiteur.
  *
  * [HANDOFF] — un futur run avec accès au backend régénère ce fichier :
  *   from apps.ventes.etude_horaire import jours_types_annee
@@ -28,9 +29,8 @@
  *   #   consoKw  = jour['conso_24h']
  *   #   autoconsommeKwh = sum(min(c, p) for c, p in zip(consoKw, prodKw))
  *   #   surplusKwh = jour['prod_jour_kwh'] - autoconsommeKwh
- * Coller le résultat dans JOUR_TYPE_DATA ci-dessous et rien d'autre — la
- * fonction `hasJourTypeData()` et le composant n'ont besoin d'aucun autre
- * changement.
+ * Pour changer de profil : coller le résultat dans JOUR_TYPE_DATA
+ * ci-dessous et rien d'autre.
  */
 
 export type JourTypeMonthId = 1 | 4 | 7 | 11; // janvier / avril / juillet / novembre
@@ -52,11 +52,11 @@ export interface JourTypeMonth {
 
 export const JOUR_TYPE_MONTH_IDS: readonly JourTypeMonthId[] = [1, 4, 7, 11];
 
-export const JOUR_TYPE_MONTH_LABELS: Record<JourTypeMonthId, { fr: string; ar: string }> = {
-  1: { fr: 'Janvier', ar: 'يناير' },
-  4: { fr: 'Avril', ar: 'أبريل' },
-  7: { fr: 'Juillet', ar: 'يوليوز' },
-  11: { fr: 'Novembre', ar: 'نونبر' },
+export const JOUR_TYPE_MONTH_LABELS: Record<JourTypeMonthId, { fr: string; en: string; ar: string }> = {
+  1: { fr: 'Janvier', en: 'January', ar: 'يناير' },
+  4: { fr: 'Avril', en: 'April', ar: 'أبريل' },
+  7: { fr: 'Juillet', en: 'July', ar: 'يوليوز' },
+  11: { fr: 'Novembre', en: 'November', ar: 'نونبر' },
 };
 
 /**

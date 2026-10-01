@@ -973,6 +973,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 aria-label="توزيع شهري استرشادي للإنتاج الشمسي السنوي"></div>
               <p class="mt-doc-note">توزيع استرشادي لإنتاجكم السنوي حسب متوسط الإشعاع الشمسي الشهري في المغرب.</p>
             </div>
+            <!-- (4ter) QJR664 — « يوم نموذجي » (إنتاج مقابل استهلاك، 4 أشهر)،
+                 يُرسم بواسطة scripts/tunnel/jourType.ts. مخفي افتراضياً ويظهر
+                 فقط عند صلاحية بيانات المحرك. يوم أسرة نموذجية، لا استهلاك الزائر. -->
+            <div id="mt-jourtype-wrap" hidden class="mt-doc-section">
+              <p class="mt-doc-section-title">يوم نموذجي</p>
+              <div id="mt-jourtype-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+              <p class="mt-doc-note">يوم أسرة نموذجية (وليس استهلاككم): الإنتاج (ذهبي) مقابل الاستهلاك (أزرق، متقطع) على مدى 24 ساعة، لأربعة أشهر.</p>
+            </div>
             <!-- (4bis) bande de flux pompage (agricole) : soleil → pompe → eau -->
             <div id="mt-doc-flow" hidden class="mt-doc-section">
               <p class="mt-doc-section-title">ضخّكم في لمحة</p>
@@ -2044,6 +2052,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // recopie VERBATIM backend/django_core/apps/ventes/courbes_journalieres.py
   // SILHOUETTES_OCCUPATION (test croisé backend↔TS). Aucun poids inventé ici.
   import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../../lib/dayProfiles';
+  import { renderJourType } from '../../../scripts/tunnel/jourType';
   // QX/Lane C — TYPE seul (effacé au build : Three.js/viewerOnly ne rejoint jamais le bundle initial).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
   // WJ72 — UN SEUL style de nombre kWc, partagé avec la proposition.
@@ -2077,6 +2086,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
+  renderJourType('ar'); // QJR664 — « يوم نموذجي »
   const fallback = $('mt-fallback');
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
