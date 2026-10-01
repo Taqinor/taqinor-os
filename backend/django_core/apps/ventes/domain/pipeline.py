@@ -118,6 +118,9 @@ class IntentionComposition:
     * ``hors_reseau`` — QJR-OFFGRID, le site est ISOLÉ (aucun raccordement) :
       onduleur AUTONOME + batterie obligatoire, forme mono-option. ``False``
       (LE DÉFAUT) ⇒ composition et vérification strictement inchangées.
+    * ``ville`` — QJR604, la ville de calcul du barème transport, résolue UNE
+      fois côté serveur depuis le lead (``transport.ville_du_lead``) ; ``''``
+      (LE DÉFAUT) ou ville inconnue ⇒ prix catalogue de la ligne Transport.
     """
 
     company: object
@@ -135,6 +138,7 @@ class IntentionComposition:
     avertissements: object = None
     variante: str = ''
     hors_reseau: bool = False
+    ville: str = ''
 
 
 def composer(intention):
@@ -214,6 +218,11 @@ def composer(intention):
                                 if (avec_batterie and avec) else None),
             hors_reseau=hors_reseau,
             **commun)
+    # QJR604 — LE BARÈME TRANSPORT est appliqué ICI, pour toutes les origines,
+    # avant l'écriture des lignes (donc avant le cliché de marge et le gel du
+    # prix/kWc). Ville inconnue ⇒ prix catalogue, aucun chiffre deviné.
+    lignes = appliquer_bareme_transport(
+        lignes, getattr(intention, 'ville', '') or '')
     return estampiller_variante(lignes, intention.variante)
 
 
@@ -727,6 +736,8 @@ def intention_de_composition(intention, cible, *, avertissements=None):
         avertissements=avertissements,
         # QJR-OFFGRID — traduction PURE, comme tout le reste de cette fonction.
         hors_reseau=bool(getattr(intention, 'hors_reseau', False)),
+        # QJR604 — la ville du barème transport, lue UNE fois depuis le lead.
+        ville=ville_du_lead(intention.lead),
     )
 
 
@@ -1318,6 +1329,10 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
     refresh_marge_snapshot,
 )
 from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402,F401
+from apps.ventes.domain.transport import (  # noqa: E402
+    appliquer_bareme_transport,
+    ville_du_lead,
+)
 # QJR243 (a) — TROIS NOMS MORTS RETIRÉS D'ICI : ``SCENARIO_LES_DEUX``,
 # ``_scenario_stocke`` et ``sert_les_deux`` n'étaient utilisés NI par ce module
 # NI par personne à travers lui (grep : aucun ``from …pipeline import`` ne les

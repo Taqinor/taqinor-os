@@ -1,90 +1,70 @@
-"""Barème transport par ville — application aux lignes de devis.
+"""Barème transport par ville — application à la composition d'un devis.
 
 Le barème lui-même (ancres fondateur du 07/09/2026, formule, résolution des
 villes) vit dans ``apps.parametres.transport_bareme`` (app fondation). Ici,
-uniquement son APPLICATION aux deux formes de lignes de ce domaine :
-
-* les lignes SÉRIALISÉES du dry-run ``POST /ventes/devis/composition/``,
-  avant que l'écran ne les affiche ;
-* les ``LigneDevis`` d'un devis fraîchement créé (devis automatique /
-  tunnel), AVANT le rafraîchissement des études (le prix du transport entre
-  dans le total TTC, donc dans le prix/kWc et le payback).
+uniquement son APPLICATION, à UN seul endroit : l'étape ``composer`` du
+pipeline (``domain.pipeline.composer``), AVANT l'écriture des lignes — donc
+avant le cliché de marge et le gel du prix/kWc, et pour TOUTES les origines
+(devis automatique, calepinage 3D, dry-run de l'écran). QJR604 : les deux
+repricers d'après coup (devis sauvé, lignes sérialisées du dry-run) ont été
+supprimés.
 
 Ville inconnue (ou vide) ⇒ AUCUNE écriture : la ligne garde le prix
 catalogue — jamais un prix deviné (règle « zéro chiffre inventé »).
 
-La ligne Transport est reconnue par sa désignation (mot « transport »,
-accents ignorés) — le même mot-clé que la classification de l'écran
-(``solar.js``) et du moteur PDF (``quote_engine/builder.py``).
+La ligne Transport est reconnue par son RÔLE de composition (``transport``) ;
+le mot-clé de la désignation n'est qu'un repli historique, pour une
+composition qui ne porterait pas ses rôles.
 """
 from __future__ import annotations
 
-import unicodedata
 from decimal import Decimal
 
 from apps.parametres.transport_bareme import prix_transport_ht
 from core.money import quantize_mad
 
-
-def _sans_accents(texte):
-    txt = unicodedata.normalize('NFKD', str(texte or '').lower())
-    return ''.join(c for c in txt if not unicodedata.combining(c))
+#: Le rôle de composition de la ligne Transport (``ROLES_AUTO_COMPOSITION``).
+ROLE_TRANSPORT = 'transport'
 
 
-def est_ligne_transport(designation):
-    return 'transport' in _sans_accents(designation)
-
-
-def repricer_transport_lignes_dict(lignes, ville):
-    """Reprice la ligne Transport dans les lignes SÉRIALISÉES du dry-run
-    (``POST /ventes/devis/composition/`` — dicts ``role``/``prix_unitaire_ht``/
-    ``prix_unitaire_ttc``/``taux_tva``, contrat ``devis_composition.json``).
-    Rend le nombre de lignes modifiées ; ville inconnue ⇒ 0, rien n'est écrit.
-    """
-    if not isinstance(lignes, list):
-        return 0
-    prix = prix_transport_ht(ville)
-    if prix is None:
-        return 0
-    modifiees = 0
-    for ligne in lignes:
-        if not isinstance(ligne, dict):
-            continue
-        if (ligne.get('role') != 'transport'
-                and not est_ligne_transport(ligne.get('designation', ''))):
-            continue
-        try:
-            taux = Decimal(str(ligne.get('taux_tva') or '20'))
-        except ArithmeticError:
-            taux = Decimal('20')
-        ht = Decimal(prix)
-        ligne['prix_unitaire_ht'] = str(quantize_mad(ht))
-        ligne['prix_unitaire_ttc'] = str(quantize_mad(ht * (1 + taux / 100)))
-        modifiees += 1
-    return modifiees
-
-
-def repricer_transport_devis(devis):
-    """Reprice la (les) ligne(s) Transport d'un devis SAUVÉ au barème de la
-    ville de son lead. Rend le nombre de lignes modifiées (0 si ville
-    inconnue, pas de lead, ou pas de ligne Transport)."""
-    from apps.crm.selectors import lead_du_devis  # QJR585 — résolveur unique
-    lead = lead_du_devis(devis)
+def ville_du_lead(lead):
+    """La ville de calcul du barème, résolue UNE fois côté serveur."""
     # VREF — la ville ERP de rattachement (douar hors gazetier) prime : le
     # barème est défini sur les villes du gazetier, jamais sur un nom libre.
-    ville = (getattr(lead, 'ville_reference', '') or ''
-             or getattr(lead, 'ville', '') or '')
-    prix = prix_transport_ht(ville)
+    for champ in ('ville_reference', 'ville'):
+        valeur = getattr(lead, champ, '')
+        if isinstance(valeur, str) and valeur.strip():
+            return valeur.strip()
+    return ''
+
+
+def _est_transport(role, designation):
+    if role:
+        return role == ROLE_TRANSPORT
+    from .catalogue import _sans_accents
+    return ROLE_TRANSPORT in _sans_accents(designation)
+
+
+def appliquer_bareme_transport(lignes, ville):
+    """Rend la composition dont la ligne Transport porte le prix HT du barème
+    de ``ville``. Ville inconnue ⇒ la composition est rendue TELLE QUELLE
+    (même objet). Les métadonnées de ``CompositionLignes`` sont reportées.
+    """
+    if not lignes:
+        return lignes
+    prix = prix_transport_ht(ville) if ville else None
     if prix is None:
-        return 0
-    prix = Decimal(prix)
-    modifiees = 0
-    for ligne in devis.lignes.all():
-        if not est_ligne_transport(ligne.designation):
-            continue
-        if ligne.prix_unitaire == prix:
-            continue
-        ligne.prix_unitaire = prix
-        ligne.save(update_fields=['prix_unitaire'])
-        modifiees += 1
-    return modifiees
+        return lignes
+    prix = quantize_mad(Decimal(prix))
+    roles = list(getattr(lignes, 'roles', ()) or ())
+    nouvelles = []
+    for index, ligne in enumerate(lignes):
+        role = roles[index] if index < len(roles) else None
+        if _est_transport(role, getattr(ligne, 'designation', '')):
+            ligne = ligne._replace(prix_unitaire=prix)
+        nouvelles.append(ligne)
+    rendu = type(lignes)(nouvelles)
+    meta = getattr(lignes, '__dict__', None)
+    if meta:
+        rendu.__dict__.update(meta)
+    return rendu

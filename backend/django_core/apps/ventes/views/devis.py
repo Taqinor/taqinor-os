@@ -1174,6 +1174,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         hors_reseau = (str(_brut_hors_reseau).strip().lower()
                        in ('1', 'true', 'oui', 'yes')
                        if _brut_hors_reseau is not None else False)
+        # QJR604 — la ville du barème transport vient d'un LEAD de la société
+        # (404 sinon), résolue côté serveur ; plus jamais d'un texte libre.
+        ville = ''
+        if request.data.get('lead') not in (None, ''):
+            from apps.crm.selectors import get_company_lead
+            from ..domain.transport import ville_du_lead
+            try:
+                lead_obj = get_company_lead(
+                    company, int(request.data.get('lead')))
+            except (TypeError, ValueError):
+                lead_obj = None
+            if lead_obj is None:
+                return Response({'detail': 'Lead inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            ville = ville_du_lead(lead_obj)
         try:
             resultat = composer_devis_residentiel(
                 company=company,
@@ -1187,20 +1202,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 mppt_paires=int(mppt_paires),
                 dimensionnement_avec=dimensionnement_avec,
                 hors_reseau=hors_reseau,
+                ville=ville,
             )
         except AutoDevisError as exc:
             return Response(
                 {'detail': exc.message, 'field': exc.field},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-        # BARÈME TRANSPORT (fondateur 07/09/2026) — ``ville`` (optionnelle,
-        # texte libre : l'écran envoie celle du lead sélectionné) reprice la
-        # ligne Transport au barème Nouaceur, pour que l'aperçu écran affiche
-        # EXACTEMENT ce que la création écrira (``build_devis_auto`` applique
-        # le même barème). Ville absente/inconnue ⇒ réponse byte-identique.
-        ville = (request.data.get('ville') or '').strip()
-        if ville and isinstance(resultat, dict):
-            from ..domain.transport import repricer_transport_lignes_dict
-            repricer_transport_lignes_dict(resultat.get('lignes'), ville)
         return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='auto',

@@ -702,7 +702,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                taux_tva=Decimal('20'), mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
-                               hors_reseau=False):
+                               hors_reseau=False, ville=''):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
@@ -723,6 +723,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     l'aperçu et le devis ne parleraient pas du même kit. ``None`` (LE DÉFAUT)
     ⇒ dry-run strictement inchangé, et chaque ligne rendue porte
     ``variante: ''``.
+
+    ``ville`` (QJR604) — la ville de calcul du barème transport, résolue par
+    l'APPELANT depuis un lead de sa société (``transport.ville_du_lead``) —
+    jamais un texte libre du corps de requête. ``''`` ⇒ prix catalogue.
 
     ``hors_reseau`` (QJR-OFFGRID, fondateur 01/09/2026) — le site est ISOLÉ :
     la composition part sur l'onduleur AUTONOME + une batterie OBLIGATOIRE, en
@@ -804,6 +808,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         dimensionnement_avec=dimensionnement_avec,
         avertissements=avertissements,
         hors_reseau=hors_reseau,
+        ville=ville or '',
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
@@ -1321,12 +1326,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # aucun bloc estampillé, donc les quatre études se calculent de toute
     # façon (et la fusion ``etude_extra`` ci-dessus est déjà entrée dans
     # l'empreinte des entrées).
-    # BARÈME TRANSPORT (fondateur 07/09/2026) — la ligne Transport prend le
-    # prix de la VILLE du lead (barème Nouaceur), AVANT les études : le
-    # transport entre dans le total TTC, donc dans le prix/kWc et le payback.
-    # Ville inconnue ⇒ prix catalogue conservé, aucun chiffre deviné.
-    from .transport import repricer_transport_devis
-    repricer_transport_devis(devis)
+    # BARÈME TRANSPORT — QJR604 : appliqué par l'étape ``composer`` du
+    # pipeline (ville du lead), avant le cliché de marge et le gel du prix/kWc.
     rafraichir_etudes_du_devis(devis)
 
     logger.info(
