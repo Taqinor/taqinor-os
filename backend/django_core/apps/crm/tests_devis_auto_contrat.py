@@ -55,6 +55,19 @@ class TestDevisAutoContrat(TestCase):
         self.assertTrue(bloc['pret'])
         self.assertIn(['conso_mensuelle_kwh', 'bill_kwh'], bloc['requis'])
 
+    def test_qjr603_pro_kwh_seulement_sans_facture_reste_pret(self):
+        """QJR603 (D-QJR5-14) — le lead que le devis automatique dimensionne
+        désormais depuis ses kWh : porte serveur inchangée, rien ne manque."""
+        for type_installation, kwh in (
+                ('industriel', {'conso_mensuelle_kwh': 30000}),
+                ('industriel', {'bill_kwh': 30000}),
+                ('commercial', {'conso_mensuelle_kwh': 30000})):
+            lead = Lead.objects.create(
+                company=self.company, nom='Kwh seul',
+                type_installation=type_installation, facture_hiver=None, **kwh)
+            self.assertEqual(champs_manquants(lead), [], (type_installation, kwh))
+            self.assertTrue(self._bloc(lead)['pret'], (type_installation, kwh))
+
     def test_residentiel_facture_hiver_zero_est_manquant(self):
         lead = Lead.objects.create(
             company=self.company, nom='Maison', facture_hiver=Decimal('0'))

@@ -38,6 +38,9 @@ import {
   commercialDayShare,
   // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
   kwcPourPanneaux, PANEL_W_DEFAUT,
+  // QJR603 — facture mensuelle que le barème national associe à des kWh
+  // (inverse exact de `consoAnnuelleDepuisFactures`).
+  factureMad, ONEE_TRANCHES,
   consoAnnuelleDepuisFactures,
 } from './solar'
 // QJR576 — le vocabulaire des scénarios et le mapping lead → scénario
@@ -72,6 +75,19 @@ export function parametresBalayageCI({
     : consoAnnuelleDepuisFactures(factures, utility || 'onee')
   return { factures, dayUsagePct, consoAnnuelleKwh, utility }
 }
+
+// QJR603 (D-QJR5-14) — kWh MENSUELS d'un lead pro : `conso_mensuelle_kwh`
+// (champ éditable), sinon `bill_kwh` (tunnel du site) — la MÊME porte que le
+// serveur (`apps/crm/devis_auto.py`, groupe « l'un des » de CAD166). 0 sans
+// donnée exploitable. Un lead pro SANS facture d'hiver exploitable se
+// dimensionne par le balayage C&I existant depuis ces kWh : consommation =
+// kWh mensuels × 12, factures = celles que le barème national associe à ces
+// kWh (`factureMad`, l'inverse exact de `consoAnnuelleDepuisFactures`),
+// besoin = la règle des paliers lue sur cette facture. Aucun coefficient
+// nouveau ; un lead qui porte une facture d'hiver garde le balayage de sa
+// facture, inchangé.
+export const kwhMensuelsLeadPro = (lead) =>
+  (parseFloat(lead?.conso_mensuelle_kwh) || 0) || (parseFloat(lead?.bill_kwh) || 0)
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
 // d'autoFillLines/autoFillPompage. Défaut historique 'acier' quand non renseigné.
@@ -264,7 +280,11 @@ export async function createAutoQuote({ lead, produits, discountStr,
       // les dimensionne (`build_devis_auto` ne gère que le résidentiel), et
       // sans lui ils n'auraient plus AUCUNE taille (voir le refus explicite
       // plus bas).
-      const besoinKwc = estimerKwcDepuisFacture(hiver)
+      // QJR603 — lead pro « kWh seulement » : voir `kwhMensuelsLeadPro`.
+      const besoinFacture = estimerKwcDepuisFacture(hiver)
+      const kwhMois = besoinFacture > 0 ? 0 : kwhMensuelsLeadPro(lead)
+      const factureKwh = kwhMois > 0 ? factureMad(kwhMois, ONEE_TRANCHES).totalMad : 0
+      const besoinKwc = besoinFacture > 0 ? besoinFacture : estimerKwcDepuisFacture(factureKwh)
       if (besoinKwc > 0) {
         const eteVal = (lead.ete_differente && lead.facture_ete)
           ? parseFloat(lead.facture_ete) : hiver
@@ -279,8 +299,10 @@ export async function createAutoQuote({ lead, produits, discountStr,
         // QJR575 — MÊMES paramètres que l'Édition complète. Aucune catégorie
         // commerciale n'est lue du lead (NE PAS FAIRE) : 80 % par défaut.
         const balayage = parametresBalayageCI({
-          factures: estimerMois(hiver, eteVal), mode,
+          factures: kwhMois > 0 ? Array(12).fill(factureKwh) : estimerMois(hiver, eteVal),
+          mode,
           distributeurDeclare: lead.distributeur,
+          consoAnnuelleReelle: kwhMois > 0 ? kwhMois * 12 : undefined,
         })
         const opt = optimalKwcByPayback({
           produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
@@ -408,7 +430,8 @@ export async function createAutoQuote({ lead, produits, discountStr,
     if ((mode === 'industriel' || mode === 'commercial') && panels <= 0) {
       throw {
         detail: 'Devis auto impossible : renseignez sur le lead une facture '
-          + "d'électricité exploitable (ou la taille souhaitée en kWc), puis réessayez.",
+          + "d'électricité exploitable, la consommation mensuelle (kWh) ou la "
+          + 'taille souhaitée en kWc, puis réessayez.',
       }
     }
 
@@ -469,8 +492,11 @@ export async function createAutoQuote({ lead, produits, discountStr,
       const moisAuto = hiver > 0 ? estimerMois(hiver, ete) : []
       const avgAuto = moisAuto
         .reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+      // QJR603 — un lead « kWh seulement » porte peut-être `bill_kwh` seul :
+      // il alimente l'étude en dernier recours (jamais devant la facture).
       const conso = (parseFloat(lead.conso_mensuelle_kwh) || 0)
         || (avgAuto > 0 ? Math.round(avgAuto / kwhPrice) : 0)
+        || kwhMensuelsLeadPro(lead)
       extra.mode_installation = mode
       const _dayUsage = mode === 'commercial'
         ? DAY_USAGE_DEFAULTS['Commerciale'] : DAY_USAGE_DEFAULTS['Industrielle']
