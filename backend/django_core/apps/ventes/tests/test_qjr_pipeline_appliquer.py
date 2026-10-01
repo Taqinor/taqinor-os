@@ -357,6 +357,9 @@ CHEMINS_BASCULES = {
     # QJR97 — le chemin apply-taille demande le MÊME mode, directement : il ne
     # passe plus par la seconde porte qu'était ``sync_devis_from_layout``.
     'offres_tailles.py': 1,
+    # QJR554 — ``LigneDevisViewSet`` (ajout / modification / retrait d'une
+    # ligne) demande le mode « rafraîchir » : études + caches (kWc, marge).
+    'views/ligne_devis.py': 1,
 }
 
 
