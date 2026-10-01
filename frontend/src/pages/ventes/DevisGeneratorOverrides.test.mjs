@@ -22,14 +22,14 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 
 test('QJR215 — lecture du registre À L’OUVERTURE d’un devis existant', () => {
-  assert.match(DG, /import \{ CHEMINS_AUTORISES \} from '\.\.\/\.\.\/features\/ventes\/quote\/overrides'/)
+  assert.match(DG, /import \{\s*CHEMINS_AUTORISES,[^}]*\} from '\.\.\/\.\.\/features\/ventes\/quote\/overrides'/)
   assert.match(DG, /const chargerOverrides = \(id\) => \{/)
   assert.match(DG, /ventesApi\.lireOverrides\(id\)/)
   // Déclenché par un effet calé sur editDevis?.id (pas un bouton — l'ouverture
   // du devis suffit), jamais à la création (pas encore d'id serveur).
   assert.match(
     DG,
-    /useEffect\(\(\) => \{\s*\n\s*if \(editDevis\?\.id\) chargerOverrides\(editDevis\.id\)\s*\n\s*\}, \[editDevis\?\.id\]\)/,
+    /useEffect\(\(\) => \{\s*\n\s*if \(editDevis\?\.id\) chargerOverrides\(editDevis\.id\)\s*\n(\s*\/\/[^\n]*\n)?\s*\}, \[editDevis\?\.id\]\)/,
   )
 })
 
@@ -89,7 +89,8 @@ test('QJR215 — le panneau « Surcharges » n’existe QUE sur un devis déjà 
   const idx = DG.indexOf('data-testid="overrides-panel"')
   assert.ok(idx > -1, 'le panneau overrides est introuvable')
   const avant = DG.slice(Math.max(0, idx - 400), idx)
-  assert.match(avant, /\{editDevis\?\.id && \(/)
+  // QJR574 — et seulement pour un administrateur.
+  assert.match(avant, /\{editDevis\?\.id && estAdmin && \(/)
 })
 
 test('QJR215 — le bloc effectif montre auto/manuel/effectif CÔTE À CÔTE, et un régénérer par chemin en mode manuel', () => {

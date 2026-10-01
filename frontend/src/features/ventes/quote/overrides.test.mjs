@@ -5,8 +5,9 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  CHEMINS_AUTORISES, CHEMIN_PAR_DRAPEAU, ORIGINES,
-  cheminAutorise, cheminsRefuses, serialiser, hydrater, fusionner,
+  CHEMINS_AUTORISES, CHEMIN_PAR_DRAPEAU, ORIGINES, CHEMINS_NON_LUS,
+  cheminAutorise, cheminNonLu, cheminsRefuses, serialiser, hydrater,
+  valeursImposees, ecartsAuRegistre,
 } from './overrides.js'
 import {
   sizingReducer, ETAT_INITIAL, DRAPEAUX_TOUCHE, SCENARIO_AVEC,
@@ -22,26 +23,47 @@ test('les chemins sont RECOPIÉS À L’IDENTIQUE du contrat QJR1 (ordre compris
   assert.deepEqual([...CHEMINS_AUTORISES], CONTRAT.notes.chemins_autorises)
 })
 
+test('QJR571 — CHEMINS_NON_LUS est RECOPIÉ À L’IDENTIQUE du contrat', () => {
+  assert.deepEqual([...CHEMINS_NON_LUS], CONTRAT.notes.chemins_non_lus)
+  for (const c of CHEMINS_NON_LUS) assert.ok(CHEMINS_AUTORISES.includes(c), c)
+})
+
+test('QJR573 — plus aucun chemin non lu : la liste blanche est celle des chemins lus', () => {
+  assert.deepEqual([...CHEMINS_NON_LUS], [])
+  for (const c of CHEMINS_AUTORISES) assert.equal(cheminNonLu(c), false, c)
+  assert.equal(cheminNonLu(''), false)
+  assert.equal(cheminNonLu(null), false)
+})
+
+test('QJR573 — les chemins retirés du contrat sont refusés côté écran', () => {
+  assert.ok(CONTRAT.notes.chemins_retires.includes('mode_installation'))
+  for (const c of CONTRAT.notes.chemins_retires) {
+    assert.equal(cheminAutorise(c.replace('<clef>', 'piscine')), false, c)
+  }
+  assert.deepEqual(cheminsRefuses({ mode_installation: { valeur: 'industriel' } }),
+    ['mode_installation'])
+})
+
 test('les origines sont celles du contrat, jamais une quatrième', () => {
   assert.deepEqual([...ORIGINES], ['manuel', 'import', 'api'])
   for (const o of ORIGINES) assert.ok(CONTRAT.notes.origine_valeurs.includes(o))
   assert.throws(() => serialiser(ETAT_INITIAL, { origine: 'devinette' }), TypeError)
 })
 
-test('tout chemin d’exemple du contrat est accepté par la liste blanche', () => {
+test('tout chemin d’exemple du contrat est accepté, sauf une surcharge RETIRÉE (lecture seule)', () => {
+  const retires = CONTRAT.notes.chemins_retires
   for (const chemin of Object.keys(CONTRAT.exemple.overrides)) {
-    assert.equal(cheminAutorise(chemin), true, chemin)
+    assert.equal(cheminAutorise(chemin), !retires.includes(chemin), chemin)
   }
-  for (const chemin of Object.keys(CONTRAT.exemple.effectif)) {
-    assert.equal(cheminAutorise(chemin), true, chemin)
+  for (const [chemin, entree] of Object.entries(CONTRAT.exemple.effectif)) {
+    assert.equal(cheminAutorise(chemin), !retires.includes(chemin), chemin)
+    assert.equal(entree.non_lu === true, retires.includes(chemin), chemin)
   }
 })
 
-test('`profil.equipements.<clef>` est le SEUL motif dynamique', () => {
-  assert.equal(cheminAutorise('profil.equipements.piscine'), true)
-  assert.equal(cheminAutorise('profil.equipements.vehicule_electrique'), true)
-  assert.equal(cheminAutorise('profil.equipements.<clef>'), false) // le motif lui-même
-  assert.equal(cheminAutorise('profil.equipements.piscine.puissance_kw'), false)
+test('QJR573 — aucun motif dynamique : `profil.equipements.*` est refusé', () => {
+  assert.equal(cheminAutorise('profil.equipements.piscine'), false)
+  assert.equal(cheminAutorise('profil.equipements.<clef>'), false)
   // Aucune clé de ligne indexée par POSITION (interdit explicite du contrat).
   assert.equal(cheminAutorise('lignes[3].prix_manuel'), false)
   assert.equal(cheminAutorise('total_ttc'), false)   // champ DÉRIVÉ → 400
@@ -51,11 +73,12 @@ test('`profil.equipements.<clef>` est le SEUL motif dynamique', () => {
 
 // ── EXHAUSTIVITÉ drapeaux ↔ registre ─────────────────────────────────────────
 
-test('EXHAUSTIVITÉ : chaque drapeau « touché » du reducer a SON chemin', () => {
+test('EXHAUSTIVITÉ : chaque drapeau « touché » du reducer est DÉCLARÉ (chemin ou null)', () => {
   for (const drapeau of Object.keys(ETAT_INITIAL.touche)) {
     const def = CHEMIN_PAR_DRAPEAU[drapeau]
     assert.ok(def, `drapeau « ${drapeau} » sans chemin dans le registre`)
-    assert.equal(cheminAutorise(def.chemin), true, def.chemin)
+    // QJR573 — `null` = porté hors du registre (refusé en 400 côté serveur).
+    if (def.chemin !== null) assert.equal(cheminAutorise(def.chemin), true, def.chemin)
     assert.ok(def.champ in ETAT_INITIAL, `champ « ${def.champ}» absent de l'état`)
   }
   assert.deepEqual(Object.keys(CHEMIN_PAR_DRAPEAU).sort(), [...DRAPEAUX_TOUCHE].sort())
@@ -107,8 +130,14 @@ test('serialiser n’émet QUE les chemins réellement touchés', () => {
 
 test('serialiser n’invente aucune clé d’audit absente', () => {
   const etat = sizingReducer(ETAT_INITIAL,
+    { type: 'SAISI', champ: 'scenario', valeur: SCENARIO_AVEC })
+  assert.deepEqual(serialiser(etat), { scenario: { valeur: SCENARIO_AVEC, origine: 'manuel' } })
+})
+
+test('QJR573 — serialiser n’émet jamais un choix porté hors du registre', () => {
+  const etat = sizingReducer(ETAT_INITIAL,
     { type: 'SAISI', champ: 'tension', valeur: 'mt' })
-  assert.deepEqual(serialiser(etat), { tension: { valeur: 'mt', origine: 'manuel' } })
+  assert.deepEqual(serialiser(etat), {})
 })
 
 test('serialiser ne produit JAMAIS un chemin hors liste blanche', () => {
@@ -116,18 +145,19 @@ test('serialiser ne produit JAMAIS un chemin hors liste blanche', () => {
     ...s, touche: { ...s.touche, [d]: true },
   }), ETAT_INITIAL)
   assert.deepEqual(cheminsRefuses(serialiser(etat)), [])
-  assert.equal(Object.keys(serialiser(etat)).length, DRAPEAUX_TOUCHE.length)
+  const avecChemin = DRAPEAUX_TOUCHE.filter((d) => CHEMIN_PAR_DRAPEAU[d].chemin)
+  assert.equal(Object.keys(serialiser(etat)).length, avecChemin.length)
 })
 
 test('hydrater est l’inverse : il repose la valeur ET son drapeau', () => {
   const etat = [
     { type: 'SAISI', champ: 'nbPanneaux', valeur: '14' },
-    { type: 'SAISI', champ: 'pompeAlim', valeur: 'mono' },
+    { type: 'SAISI', champ: 'scenario', valeur: SCENARIO_AVEC },
   ].reduce(sizingReducer, ETAT_INITIAL)
   const partiel = hydrater(serialiser(etat))
   assert.equal(partiel.nbPanneaux, '14')
-  assert.equal(partiel.pompeAlim, 'mono')
-  assert.deepEqual(partiel.touche, { nbPanneaux: true, pompeAlim: true })
+  assert.equal(partiel.scenario, SCENARIO_AVEC)
+  assert.deepEqual(partiel.touche, { nbPanneaux: true, scenario: true })
   // Un état RÉHYDRATÉ ne se fait plus écraser par un pré-remplissage.
   const rejoue = sizingReducer(
     { ...ETAT_INITIAL, ...partiel, touche: { ...ETAT_INITIAL.touche, ...partiel.touche } },
@@ -143,23 +173,53 @@ test('hydrater ignore les chemins inconnus, vides ou nuls', () => {
   assert.deepEqual(hydrater({ scenario: 'Avec batterie' }), {})                 // pas signé
 })
 
-// ── PATCH = FUSION ───────────────────────────────────────────────────────────
+// ── QJR572 — valeursImposees / ecartsAuRegistre ─────────────────────────────
 
-test('PATCH est une FUSION : les autres chemins posés restent intacts', () => {
-  const registre = {
-    'tarif.distributeur': { valeur: 'ONEE', origine: 'import' },
-    'taille.nb_panneaux': { valeur: 12, origine: 'manuel' },
-  }
-  const fusionne = fusionner(registre, { 'taille.nb_panneaux': { valeur: 14, origine: 'manuel' } })
-  assert.deepEqual(fusionne['tarif.distributeur'], registre['tarif.distributeur'])
-  assert.equal(fusionne['taille.nb_panneaux'].valeur, 14)
-  assert.equal(Object.keys(fusionne).length, 2)
-  // Le registre d'origine n'est pas muté.
-  assert.equal(registre['taille.nb_panneaux'].valeur, 12)
+const REG = (entrees) => ({
+  overrides: {},
+  effectif: Object.fromEntries(Object.entries(entrees).map(([c, v]) => [c,
+    v === undefined
+      ? { auto: 'x', manuel: null, effectif: 'x', source: 'auto' }
+      : { auto: 'x', manuel: v, effectif: v, source: 'manuel' }])),
 })
 
-test('fusionner REFUSE un chemin hors liste blanche (miroir du 400 serveur)', () => {
-  assert.throws(() => fusionner({}, { total_ttc: { valeur: 42000 } }), TypeError)
-  assert.throws(() => fusionner({}, { 'lignes[3].prix_manuel': { valeur: true } }), TypeError)
-  assert.deepEqual(fusionner({}, {}), {})
+test('QJR572 — valeursImposees ne rend que les entrées surchargées', () => {
+  assert.deepEqual(valeursImposees(null), {})
+  assert.deepEqual(valeursImposees({}), {})
+  assert.deepEqual(valeursImposees(REG({ scenario: 'Sans batterie', 'taille.kwc': undefined })),
+    { scenario: 'Sans batterie' })
+})
+
+test('QJR572 — ecartsAuRegistre : registre vide → aucun écart', () => {
+  const ecran = { scenario: 'Les deux (Sans + Avec)', recommended_option: 'Auto', 'taille.nb_panneaux': '12' }
+  assert.deepEqual(ecartsAuRegistre(ecran, null), { patch: {}, regenerer: [] })
+  assert.deepEqual(ecartsAuRegistre(ecran, REG({ scenario: undefined })), { patch: {}, regenerer: [] })
+})
+
+test('QJR572 — ecartsAuRegistre : valeur identique → rien ; différente → patch', () => {
+  const reg = REG({ scenario: 'Sans batterie', 'taille.nb_panneaux': 14 })
+  assert.deepEqual(
+    ecartsAuRegistre({ scenario: 'Sans batterie', 'taille.nb_panneaux': '14' }, reg),
+    { patch: {}, regenerer: [] })
+  assert.deepEqual(
+    ecartsAuRegistre({ scenario: 'Les deux (Sans + Avec)', 'taille.nb_panneaux': '16' }, reg),
+    { patch: { scenario: { valeur: 'Les deux (Sans + Avec)' }, 'taille.nb_panneaux': { valeur: 16 } },
+      regenerer: [] })
+})
+
+test('QJR572 — ecartsAuRegistre : « Auto » sur une option imposée → retour à l’automatique', () => {
+  const reg = REG({ recommended_option: 'Sans batterie' })
+  assert.deepEqual(ecartsAuRegistre({ recommended_option: 'Auto' }, reg),
+    { patch: {}, regenerer: ['recommended_option'] })
+  assert.deepEqual(ecartsAuRegistre({ recommended_option: 'Avec batterie' }, reg),
+    { patch: { recommended_option: { valeur: 'Avec batterie' } }, regenerer: [] })
+  assert.deepEqual(ecartsAuRegistre({ recommended_option: 'Sans batterie' }, reg),
+    { patch: {}, regenerer: [] })
+})
+
+test('QJR572 — ecartsAuRegistre n’écrit jamais un chemin hors écran ni un nombre illisible', () => {
+  const reg = REG({ 'tarif.distributeur': 'ONEE', 'taille.nb_panneaux': 14 })
+  assert.deepEqual(
+    ecartsAuRegistre({ 'tarif.distributeur': 'LYDEC', 'taille.nb_panneaux': '' }, reg),
+    { patch: {}, regenerer: [] })
 })

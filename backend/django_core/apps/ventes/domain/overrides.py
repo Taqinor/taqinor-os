@@ -62,38 +62,70 @@ ORIGINES = (ORIGINE_MANUEL, ORIGINE_IMPORT, ORIGINE_API)
 #: chauffe_eau, vehicule_electrique…), jamais un index de position.
 PREFIXE_EQUIPEMENT = 'profil.equipements.'
 
-#: LISTE BLANCHE — décision fondateur D12 du 29/08/2026, recopiée À L'IDENTIQUE
-#: du contrat ``contract_samples/devis_overrides.json`` (aucun chemin ajouté ni
-#: retiré ; un test l'épingle contre le fichier). Tout PATCH sur un chemin
-#: absent est refusé en 400 : la surface est FERMÉE, il n'existe aucun
-#: ``**kwargs`` silencieux.
+#: LISTE BLANCHE — décision fondateur D12 du 29/08/2026, RÉDUITE par
+#: D-QJR5-8 (QJR573, 01/10/2026) aux SEULS chemins qu'un lecteur de production
+#: consulte : « aucune saisie acceptée n'est ignorée ». Recopiée À L'IDENTIQUE
+#: du contrat ``contract_samples/devis_overrides.json`` (un test l'épingle
+#: contre le fichier). Tout PATCH sur un chemin absent est refusé en 400 : la
+#: surface est FERMÉE, il n'existe aucun ``**kwargs`` silencieux.
 CHAMPS_OVERRIDABLES = (
     'taille.nb_panneaux',
     'taille.panel_watt',
     'taille.kwc',
-    'taille.batterie_nb_modules',
-    'taille.batterie_module_kwh',
     'scenario',
     'recommended_option',
-    'profil.occupation',
-    'profil.factures_mensuelles_reelles',
-    'profil.conso_annuelle',
-    PREFIXE_EQUIPEMENT + '<clef>',
-    'tarif.distributeur',
-    'tarif.tranches',
-    'tarif.charges_fixes_mad',
-    # QJR232 — CE CHEMIN EST ENFIN LU PAR LE MOTEUR. Il était accepté et
-    # persisté ici alors qu'AUCUN chemin moteur ne le consultait : un vendeur
-    # posait une date de référence et le dimensionnement continuait de
-    # calculer sur l'horloge du jour. Lecteur :
-    # ``domain.entrees.jour_reference_du_devis``, qui alimente
-    # ``entrees_depuis_devis`` ET ``profils_comparatifs``.
+    # QJR232 — lecteur : ``domain.entrees.jour_reference_du_devis``, qui
+    # alimente ``entrees_depuis_devis`` ET ``profils_comparatifs``.
     'etude.jour_reference',
-    'mode_installation',
-    'structure',
-    'tension',
-    'pompe_alim',
 )
+
+#: QJR573 (D-QJR5-8) — LES 13 CHEMINS D12 RETIRÉS DE LA LISTE BLANCHE, et
+#: pourquoi chacun est RETIRÉ plutôt que câblé. Un PATCH les refuse en 400
+#: (message nommant la raison) ; une surcharge DÉJÀ posée en base reste
+#: rendue par GET, en lecture seule, marquée ``non_lu`` — jamais effacée en
+#: silence.
+CHEMINS_RETIRES = {
+    'taille.batterie_nb_modules': (
+        "la banque batterie se règle sur sa LIGNE (quantité verrouillée par "
+        "le vendeur, ``quantite_manuelle``) ou par une taille d'offre ; une "
+        "cible au registre serait un second porteur du même nombre."),
+    'taille.batterie_module_kwh': (
+        "le calibre d'un module est celui du PRODUIT de la ligne batterie "
+        "(BATHOMO, ``module_batterie_du_devis``) : changer le calibre, c'est "
+        "changer d'article."),
+    'profil.occupation': (
+        "entrée du profil portée par le LEAD / ``etude_params`` et lue par "
+        "``entrees_depuis_devis`` ; un second porteur au registre divergerait."),
+    'profil.factures_mensuelles_reelles': (
+        "les factures vivent dans ``etude_params.factures_mensuelles_reelles`` "
+        "(écrites par l'écran, lues par le moteur) : un seul porteur."),
+    'profil.conso_annuelle': (
+        "la consommation vit dans ``etude_params.conso_annuelle`` / les "
+        "factures (règle fondateur 30/09 kWh tapés vs factures) : un troisième "
+        "porteur rouvrirait la double dérivation."),
+    PREFIXE_EQUIPEMENT + '<clef>': (
+        "les équipements sont portés par le profil du lead ; aucun lecteur "
+        "moteur ne lirait une surcharge par équipement."),
+    'tarif.distributeur': (
+        "le barème se lit par société et ``etude_params.distributeur`` "
+        "(écrit par l'écran) ; aucun porteur moteur par nom au registre."),
+    'tarif.tranches': (
+        "barème de la SOCIÉTÉ (paramètres) : le surcharger par devis ferait "
+        "deux barèmes pour une même facture."),
+    'tarif.charges_fixes_mad': (
+        "même raison que ``tarif.tranches`` : charge fixe du barème société."),
+    'mode_installation': (
+        "c'est déjà une colonne du devis (``Devis.mode_installation``)."),
+    'structure': (
+        "choix de composition matérialisé dans les LIGNES (article "
+        "structure) ; seule une recomposition le lit, depuis l'écran."),
+    'tension': (
+        "choix de composition matérialisé dans les LIGNES (onduleur mono / "
+        "tri) ; seule une recomposition le lit, depuis l'écran."),
+    'pompe_alim': (
+        "choix de composition agricole matérialisé dans les LIGNES ; seule une "
+        "recomposition le lit, depuis l'écran."),
+}
 
 #: Les champs que le MOTEUR calcule. Les poser ici serait poser un nombre que
 #: personne ne pourrait plus rapprocher de son calcul — refus BRUYANT (400),
@@ -118,6 +150,10 @@ CHAMPS_DERIVES = (
 _MSG_DERIVE = (
     'Champ calculé par le moteur : il ne peut pas être surchargé. Modifiez '
     'les ENTRÉES (taille, profil, tarif) et le moteur le recalculera.'
+)
+MSG_CHEMIN_RETIRE = (
+    "Chemin retiré du registre de surcharges (D-QJR5-8 : le moteur ne le "
+    "lisait pas) — modifiez la valeur à sa source : %s"
 )
 MSG_CHEMIN_INCONNU = (
     "Chemin inconnu du registre de surcharges : la liste blanche (décision "
@@ -314,18 +350,27 @@ def quantite_ligne_panneau(devis, lignes, *, avertissements=None):
 
 
 def chemin_autorise(chemin):
-    """Le chemin est-il dans la liste blanche D12 ?
+    """Le chemin est-il dans la liste blanche (D12 réduite par D-QJR5-8) ?
 
-    ``profil.equipements.<clef>`` est le SEUL motif dynamique : toute clef
-    d'équipement NON VIDE et sans point y est admise (un nom d'équipement réel),
-    jamais un index de position.
+    QJR573 — le seul motif dynamique (``profil.equipements.<clef>``) a été
+    retiré avec les autres chemins non lus : la liste est désormais FERMÉE,
+    sans motif.
     """
     if not isinstance(chemin, str) or not chemin:
         return False
-    if chemin.startswith(PREFIXE_EQUIPEMENT):
-        clef = chemin[len(PREFIXE_EQUIPEMENT):]
-        return bool(clef) and '.' not in clef and not clef.isdigit()
     return chemin in CHAMPS_OVERRIDABLES
+
+
+def raison_retrait(chemin):
+    """QJR573 — la raison du retrait d'un chemin D12, ou ``None``.
+
+    ``profil.equipements.<clef>`` couvre toute clef d'équipement.
+    """
+    if not isinstance(chemin, str) or not chemin:
+        return None
+    if chemin.startswith(PREFIXE_EQUIPEMENT):
+        return CHEMINS_RETIRES[PREFIXE_EQUIPEMENT + '<clef>']
+    return CHEMINS_RETIRES.get(chemin)
 
 
 def registre_du_devis(devis):
@@ -385,9 +430,16 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
     consommation exploitable…). Une valeur RÉELLEMENT vide, elle, arrive avec
     ``auto`` renseigné et sans marqueur — les deux états sont désormais
     distinguables.
+
+    QJR571 (D-QJR5-8) — ``non_lu: true`` sur un chemin hors de
+    :data:`CHEMINS_LUS` : accepté et stocké, mais aucun lecteur de production
+    ne le consulte (le document n'en tient pas compte). Le marqueur est ABSENT,
+    jamais ``false``, pour un chemin lu.
     """
     registre = _registre(devis)
-    chemins = list(autos or {})
+    # QJR573 — seuls les chemins de la liste blanche reçoivent une ligne
+    # « auto » ; une surcharge retirée mais déjà posée reste rendue (registre).
+    chemins = [c for c in (autos or {}) if chemin_autorise(c)]
     for chemin in list(chemins_supplementaires or ()) + list(registre):
         if chemin not in chemins:
             chemins.append(chemin)
@@ -402,6 +454,8 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
                'effectif': valeur, 'source': source}
         if auto is None:
             vue['non_derivable'] = True
+        if chemin not in CHEMINS_LUS:
+            vue['non_lu'] = True
         bloc[chemin] = vue
     return bloc
 
@@ -413,20 +467,29 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
 #: vide. QJR305 a élargi la carte à tous les chemins RÉELLEMENT dérivables (la
 #: dérivation du MOTEUR, jamais une seconde) ; ceux qui ne le sont pas sont
 #: NOMMÉS dans :data:`CHEMINS_SANS_AUTO` et portent ``non_derivable: true``.
+#: QJR573 — la partition ne couvre plus que la liste blanche réduite ;
+#: :func:`autos_du_devis` continue de dériver les chemins retirés (batterie,
+#: profil, barème, marché), que :func:`vue_effective` ne rend plus.
 CHEMINS_AVEC_AUTO = (
     'taille.nb_panneaux',
     'taille.panel_watt',
     'taille.kwc',
-    'taille.batterie_nb_modules',
-    'taille.batterie_module_kwh',
     'scenario',
-    'profil.occupation',
-    'profil.conso_annuelle',
-    PREFIXE_EQUIPEMENT + '<clef>',
-    'tarif.tranches',
-    'tarif.charges_fixes_mad',
     'etude.jour_reference',
-    'mode_installation',
+)
+
+#: QJR571 (D-QJR5-8) — LES CHEMINS QU'UN LECTEUR DE PRODUCTION CONSULTE.
+#: Tout autre chemin de la liste blanche est accepté et stocké sans effet sur
+#: le document : :func:`vue_effective` le marque ``non_lu: true``. Chaque
+#: entrée nomme son lecteur ; la table ``COUVERTURE`` de
+#: ``tests/test_contrat_override_parcours.py`` prouve le même ensemble.
+CHEMINS_LUS = (
+    'taille.nb_panneaux',      # cible_dimensionnement_du_devis → decider_taille
+    'taille.panel_watt',       # pipeline._cible_du_registre
+    'taille.kwc',              # scenario.puissance_kwc_du_devis, builder
+    'scenario',                # scenario.scenario_effectif, utils.options
+    'recommended_option',      # scenario, builder
+    'etude.jour_reference',    # entrees.jour_reference_du_devis
 )
 
 #: QJR305 — LES CHEMINS QUE LE MOTEUR NE DÉRIVE PAS, et la raison de chacun.
@@ -438,17 +501,6 @@ CHEMINS_SANS_AUTO = {
     'recommended_option': (
         "entrée d'écran (``etude_schema`` : ECRAN/ENTREE) — le moteur ne "
         "choisit pas l'option mise en avant, il l'obéit."),
-    'profil.factures_mensuelles_reelles': (
-        'entrée pure : le moteur BACK-CALCULE la consommation À PARTIR des '
-        'factures ; il ne sait pas faire le chemin inverse.'),
-    'tarif.distributeur': (
-        'aucun porteur côté moteur : le barème est lu par société '
-        '(``tarif.tranches`` / ``tarif.charges_fixes_mad``), jamais par nom '
-        'de distributeur.'),
-    'structure': 'choix de pose déclaré — aucun dérivateur serveur.',
-    'tension': 'choix de raccordement déclaré — aucun dérivateur serveur.',
-    'pompe_alim': "choix d'alimentation de pompe déclaré (agricole) — aucun "
-                  'dérivateur serveur.',
 }
 
 
@@ -642,6 +694,8 @@ def autos_du_devis(devis):
     référence). Les 6 chemins restants n'ont AUCUN dérivateur serveur : ils
     sont NOMMÉS dans :data:`CHEMINS_SANS_AUTO` et la réponse leur donne
     ``non_derivable: true`` — jamais un ``auto: null`` muet.
+    QJR573 — les chemins retirés de la liste blanche restent dérivés ici
+    (lecture pure) mais ne sont plus rendus par :func:`vue_effective`.
 
     Ne lève JAMAIS : chaque bloc est isolé, un bloc en échec retire SES clés
     et laisse les autres — un devis illisible rend une carte partielle (ou
@@ -688,7 +742,9 @@ def poser(devis, chemin, valeur, *, utilisateur=None,
     if chemin in CHAMPS_DERIVES:
         raise ValueError('%s : %s' % (chemin, _MSG_DERIVE))
     if not chemin_autorise(chemin):
-        raise ValueError('%s : %s' % (chemin, _MSG_INCONNU))
+        raison = raison_retrait(chemin)
+        raise ValueError('%s : %s' % (
+            chemin, MSG_CHEMIN_RETIRE % raison if raison else _MSG_INCONNU))
     if origine not in ORIGINES:
         raise ValueError(
             "origine « %s » inconnue : %s." % (origine, ', '.join(ORIGINES)))
@@ -846,6 +902,8 @@ def erreurs_de_chemins(data):
             erreurs[chemin] = _MSG_POSITION
         elif chemin in CHAMPS_DERIVES:
             erreurs[chemin] = _MSG_DERIVE
+        elif raison_retrait(chemin):
+            erreurs[chemin] = MSG_CHEMIN_RETIRE % raison_retrait(chemin)
         elif not chemin_autorise(chemin):
             erreurs[chemin] = _MSG_INCONNU
     return erreurs
