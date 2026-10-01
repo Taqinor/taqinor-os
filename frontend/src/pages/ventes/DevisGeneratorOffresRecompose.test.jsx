@@ -42,6 +42,9 @@ vi.mock('../../api/stockApi', () => ({
 vi.mock('../../api/parametresApi', () => ({
   default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
 }))
+// QJR540 — le bloc calepinage de l'Édition complète lit lui-même le devis
+// (getDevisById) : neutralisé ici, ce test compte les RECHARGEMENTS de l'écran.
+vi.mock('../../features/ventes/BlocCalepinageDevis', () => ({ default: () => null }))
 vi.mock('../../api/ventesApi', () => ({
   default: {
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),

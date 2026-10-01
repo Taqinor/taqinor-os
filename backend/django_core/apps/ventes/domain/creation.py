@@ -6,9 +6,11 @@ lead (dimensionnement, refus motivé, marque anti-doublon, planification), le
 brouillon issu d'un document OCR, la duplication, le devis SAV et l'upsell
 d'intervention, et les préréglages (enregistrer / appliquer).
 
-LES CHEMINS RESTENT CINQ, ET DIFFÉRENTS. Ce module les RASSEMBLE, il ne les
-unifie pas : leur convergence sur un pipeline unique est M4/M5 (QJR80-QJR85,
-puis les bascules). Ici, rien n'a changé de comportement.
+LES CHEMINS PASSENT PAR LE PIPELINE. Le calepinage (`build_devis_from_layout`)
+et le devis automatique (`build_devis_auto`) appellent `pipeline.appliquer` ;
+le dry-run appelle les mêmes étapes `verifier` / `composer` (QJR80-QJR85, puis
+les bascules M5). Les comportements ont donc changé depuis le déplacement
+QJR76 (QJR95/QJR96 notamment) : ce module n'est plus une simple copie.
 
 IMPORT AMONT DE `domain/taille` : `composer_devis_residentiel` porte
 `panel_watt=_AUTO_PANEL_WATT` comme VALEUR PAR DÉFAUT, évaluée à la
@@ -516,7 +518,9 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # tableau de protection, installation, transport…), plus le squelette
     # panneau + onduleur ± batterie d'hier : voir ``composition_residentielle``.
     # Un composant absent (ou non tarifé) du catalogue est simplement sauté.
-    kwc_composition = kwc or (nb_panneaux * float(watt or 550) / 1000.0)
+    from apps.ventes.domain.lignes import LAYOUT_WATT_REPLI
+    kwc_composition = kwc or (
+        nb_panneaux * float(watt or LAYOUT_WATT_REPLI) / 1000.0)
 
     # QJ21 / FG248 — le layout RANGÉ (avec sa géométrie par pan déjà processée)
     # et l'étude que ce chemin APPORTE, par LE MÊME lecteur que le devis
@@ -702,7 +706,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
                                taux_tva=Decimal('20'), mppt_paires=1,
                                gamme_nom_devis=None, phase=None,
                                dimensionnement_avec=None,
-                               hors_reseau=False):
+                               hors_reseau=False, ville=''):
     """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
 
     C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
@@ -723,6 +727,10 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     l'aperçu et le devis ne parleraient pas du même kit. ``None`` (LE DÉFAUT)
     ⇒ dry-run strictement inchangé, et chaque ligne rendue porte
     ``variante: ''``.
+
+    ``ville`` (QJR604) — la ville de calcul du barème transport, résolue par
+    l'APPELANT depuis un lead de sa société (``transport.ville_du_lead``) —
+    jamais un texte libre du corps de requête. ``''`` ⇒ prix catalogue.
 
     ``hors_reseau`` (QJR-OFFGRID, fondateur 01/09/2026) — le site est ISOLÉ :
     la composition part sur l'onduleur AUTONOME + une batterie OBLIGATOIRE, en
@@ -804,6 +812,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
         dimensionnement_avec=dimensionnement_avec,
         avertissements=avertissements,
         hors_reseau=hors_reseau,
+        ville=ville or '',
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
@@ -1321,12 +1330,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
     # aucun bloc estampillé, donc les quatre études se calculent de toute
     # façon (et la fusion ``etude_extra`` ci-dessus est déjà entrée dans
     # l'empreinte des entrées).
-    # BARÈME TRANSPORT (fondateur 07/09/2026) — la ligne Transport prend le
-    # prix de la VILLE du lead (barème Nouaceur), AVANT les études : le
-    # transport entre dans le total TTC, donc dans le prix/kWc et le payback.
-    # Ville inconnue ⇒ prix catalogue conservé, aucun chiffre deviné.
-    from .transport import repricer_transport_devis
-    repricer_transport_devis(devis)
+    # BARÈME TRANSPORT — QJR604 : appliqué par l'étape ``composer`` du
+    # pipeline (ville du lead), avant le cliché de marge et le gel du prix/kWc.
     rafraichir_etudes_du_devis(devis)
 
     logger.info(
@@ -1629,9 +1634,10 @@ def planifier_devis_automatique_pour_lead(lead_id, company_id):
 def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
     """QJ16 — snapshot a Devis into a company-scoped DevisPreset.
 
-    The preset captures the line configuration (designation, quantite,
-    prix_unitaire, remise, taux_tva per line, plus taux_tva and remise_globale
-    at devis level) as a JSON snapshot.  The company is ALWAYS forced from
+    The preset captures the line configuration (QJR547 — every field of
+    ``lignes.CHAMPS_CLONES`` per line, ordered like the devis, plus taux_tva
+    and remise_globale at devis level) as a JSON snapshot. The source client's
+    study (``etude_params``) is NEVER captured.  The company is ALWAYS forced from
     ``devis.company`` — never from user input.
 
     Price-less lines are excluded at save time (same guard as auto-fill): if a
@@ -1655,17 +1661,29 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
         s = str(value)
         return s.rstrip('0').rstrip('.') if '.' in s else s
 
+    # QJR547 (contrat QJR508, devis_preset.json) — chaque entrée reprend le
+    # jeu de champs du CLONEUR (``lignes.CHAMPS_CLONES``, jamais retapé ici) :
+    # variante, option, type, ordre, verrous manuels, rôle, groupe — sans quoi
+    # un modèle « Les deux » ramenait ses deux onduleurs dans la partie commune
+    # et un prix négocié n'était plus verrouillé. Triées comme le devis
+    # (ordre, id). Le produit est porté par ``produit_id`` ; le lot (propre à
+    # UN devis) n'est jamais capturé. Jamais ``prix_achat``.
+    from decimal import Decimal as _Decimal
+    from apps.ventes.domain.lignes import CHAMPS_CLONES
+
+    def _valeur(v):
+        if isinstance(v, _Decimal):
+            return _ds(v)
+        return v
+
     lignes_snapshot = []
-    for ligne in devis.lignes.select_related('produit').order_by('id'):
-        produit = ligne.produit
-        lignes_snapshot.append({
-            'produit_id': produit.pk if produit else None,
-            'designation': ligne.designation,
-            'quantite': _ds(ligne.quantite),
-            'prix_unitaire': _ds(ligne.prix_unitaire),
-            'remise': _ds(ligne.remise),
-            'taux_tva': _ds(ligne.taux_tva),
-        })
+    for ligne in devis.lignes.order_by('ordre', 'id'):
+        entree = {'produit_id': ligne.produit_id}
+        for champ in CHAMPS_CLONES:
+            if champ in ('produit', 'lot'):
+                continue
+            entree[champ] = _valeur(getattr(ligne, champ))
+        lignes_snapshot.append(entree)
 
     preset = DevisPreset.objects.create(
         company=company,
@@ -1675,7 +1693,9 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
         taux_tva=devis.taux_tva,
         remise_globale=devis.remise_globale,
         lignes_snapshot=lignes_snapshot,
-        etude_params_snapshot=dict(devis.etude_params) if devis.etude_params else None,
+        # QJR547 — l'étude du client SOURCE (factures, attribution) n'est plus
+        # jamais capturée : le champ reste (sans migration), toujours vide.
+        etude_params_snapshot=None,
         created_by=user,
     )
     logger.info(
@@ -1684,80 +1704,21 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
     return preset
 
 
-def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list:
-    """QJ16 — apply a DevisPreset to an existing (empty) Devis.
+# ── QJR563 — devise par défaut d'un devis créé ───────────────────────────────
 
-    Creates LigneDevis rows on ``devis`` from the preset snapshot.  The caller
-    is responsible for ensuring ``devis`` is brouillon and belongs to the same
-    company as the preset (enforced below — cross-company apply is refused).
-
-    ``skip_priceless=True`` (default): lines whose snapshot product no longer
-    has a sell price are skipped (same guard as auto-fill — never auto-quote a
-    price-less product).  Pass ``skip_priceless=False`` only in tests that need
-    to exercise the skipping logic.
-
-    Returns the list of created LigneDevis instances (may be empty if all lines
-    are priceless).
-
-    RULE #4: this service only builds lines — it never changes Devis.statut.
-    """
-    from apps.stock.models import Produit
-
-    if preset.company_id != devis.company_id:
-        raise ValueError(
-            "apply_preset_to_devis: preset and devis belong to different companies"
-        )
-
-    created = []
-    for snap in preset.lignes_snapshot:
-        produit_id = snap.get('produit_id')
-        produit = None
-        if produit_id:
-            try:
-                produit = Produit.objects.get(
-                    pk=produit_id, company=devis.company)
-            except Produit.DoesNotExist:
-                # Product deleted or belongs to another company — try global
-                try:
-                    produit = Produit.objects.get(
-                        pk=produit_id, company__isnull=True)
-                except Produit.DoesNotExist:
-                    produit = None
-
-        if skip_priceless and produit is not None and not _has_price(produit):
-            logger.info(
-                'QJ16 apply_preset: skipping priceless product %s ("%s")',
-                produit_id, snap.get('designation', ''))
-            continue
-
-        taux_snap = snap.get('taux_tva')
-        ligne = creer_ligne(
-            devis,
-            produit=produit,
-            designation=snap['designation'],
-            quantite=Decimal(str(snap['quantite'])),
-            prix_unitaire=Decimal(str(snap['prix_unitaire'])),
-            remise=Decimal(str(snap.get('remise', '0'))),
-            taux_tva=Decimal(str(taux_snap)) if taux_snap is not None else None,
-        )
-        created.append(ligne)
-
-    # Apply devis-level settings from preset if the devis is fresh (no lignes yet
-    # before this call means we can safely update tva and remise).
-    if created:
-        devis.taux_tva = preset.taux_tva
-        devis.remise_globale = preset.remise_globale
-        if preset.mode_installation:
-            devis.mode_installation = preset.mode_installation
-        if preset.etude_params_snapshot and not devis.etude_params:
-            devis.etude_params = dict(preset.etude_params_snapshot)
-        devis.save(update_fields=[
-            'taux_tva', 'remise_globale', 'mode_installation', 'etude_params'])
-
-    logger.info(
-        'QJ16 apply_preset: applied preset "%s" to devis %s (%d lines)',
-        preset.nom, getattr(devis, 'reference', devis.pk), len(created))
-    return created
+def devise_par_defaut(company):
+    """QJR563 — LA devise d'un devis créé sans devise explicite : celle de la
+    société (``CompanyProfile.devise_defaut``, FG52), repli ``'MAD'``. Un seul
+    helper pour ``POST /devis/`` ET ``/devis/atomic/`` (chemin réel du
+    générateur), qui ne l'appliquait pas."""
+    if company is None:
+        return 'MAD'
+    from apps.parametres.models import CompanyProfile
+    try:
+        profil = CompanyProfile.get(company=company)
+    except Exception:  # noqa: BLE001 — jamais bloquant : repli MAD
+        return 'MAD'
+    return getattr(profil, 'devise_defaut', '') or 'MAD'
 
 
 # ── XSAV3 — Devis de réparation hors garantie depuis un ticket SAV ───────────
@@ -1925,7 +1886,6 @@ from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_AVEC_BATTERIE,
     SCENARIO_LES_DEUX,
     SCENARIO_SANS_BATTERIE,
-    _scenario_stocke,
     poser_puissance_kwc,
     scenario_effectif,
 )

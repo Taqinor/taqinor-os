@@ -96,10 +96,10 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {
   // Priorité : cible ponctuelle > taille souhaitée du lead > facture d'hiver.
   assert.match(autoQuote, /const cibleKwc = parseFloat\(targetKwc\) \|\| 0/)
-  // Règle des paliers (18/08) : la cible explicite garde sa priorité mais est
-  // RAMENÉE au palier de 5 kWc — aucun devis auto hors palier.
-  assert.match(autoQuote, /const explicitKwc = cibleKwc > 0 \? cibleKwc : \(parseFloat\(lead\.taille_souhaitee_kwc\) \|\| 0\)/)
-  assert.match(autoQuote, /const tailleKwc = explicitKwc > 0 \? arrondirAuPasKwc\(explicitKwc\) : 0/)
+  // QJR602 (D-QJR5-13) : la cible explicite garde sa priorité et part TELLE
+  // QUELLE — plus d'arrondi au palier de 5 kWc (comportement exécuté dans
+  // autoQuote.tailleExplicite.test.jsx).
+  assert.match(autoQuote, /const tailleKwc = cibleKwc > 0 \? cibleKwc : \(parseFloat\(lead\.taille_souhaitee_kwc\) \|\| 0\)/)
   // Rien n'est écrit sur le lead : `taille_souhaitee_kwc` n'apparaît nulle
   // part en écriture dans le chemin du devis auto.
   assert.doesNotMatch(autoQuote, /taille_souhaitee_kwc:/)

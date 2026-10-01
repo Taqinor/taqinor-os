@@ -3242,7 +3242,9 @@ export function debitAtHmt(courbe, hmt) {
   return null
 }
 
-const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
+// QJR546 — exporté : le générateur saute (et nomme) les lignes d'un modèle
+// dont le produit n'a plus de prix, avec la MÊME garde que l'auto-remplissage.
+export const _hasPrix = (p) => (parseFloat(p.prix_vente) || 0) > 0
 
 // QX40 — tension d'un produit (pompe/variateur) : champ tension_v prioritaire,
 // sinon lecture « 220V »/« 380V » dans le nom, sinon null (inconnu).

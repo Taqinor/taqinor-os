@@ -33,22 +33,25 @@ test('l’écart entre options est affiché en MAD ET en %', () => {
 })
 
 test('les modèles sont visibles DÈS LA CRÉATION (plus de garde editDevis)', () => {
-  assert.match(gen, /<DevisPresetPanel devisId=\{editDevis\?\.id\} onApplied=\{handlePresetApplied\} \/>/)
+  // QJR5 (lot 4) — le panneau reçoit en plus `avantEnregistrement` (créer le
+  // devis avant « Enregistrer comme modèle ») : la garde tolère des props
+  // supplémentaires, l'essentiel reste un montage SANS condition editDevis.
+  assert.match(gen, /<DevisPresetPanel devisId=\{editDevis\?\.id\} onApplied=\{handlePresetApplied\}\s/)
   assert.doesNotMatch(gen, /\{editDevis && \(\s*\r?\n?\s*<DevisPresetPanel/)
   // Le panneau ne s'auto-annule plus quand l'id est absent.
   assert.doesNotMatch(panel, /if \(!devisId\) return null/)
 })
 
-test('un devis VIERGE applique le modèle localement, sans endpoint nouveau', () => {
-  // Pas d'id serveur → on lit l'instantané de lignes DÉJÀ sérialisé.
-  assert.match(panel, /if \(!devisId\) \{[\s\S]{0,400}?preset\.lignes_snapshot/)
+test('le modèle s\u2019applique localement (QJR546 : dans les deux modes), sans endpoint nouveau', () => {
+  // L'instantané de lignes DÉJÀ sérialisé est lu, jamais un apply-preset.
+  assert.match(panel, /preset\.lignes_snapshot/)
   // La section « Enregistrer » dit honnêtement qu'elle attend le devis.
   assert.match(panel, /Disponible une fois le devis créé/)
   // Aucun nouvel appel d'API n'a été introduit.
   const calls = panel.match(/ventesApi\.\w+/g) ?? []
   assert.deepEqual(
     [...new Set(calls)].sort(),
-    ['ventesApi.applyPreset', 'ventesApi.deletePreset', 'ventesApi.getPresets', 'ventesApi.savePreset'],
+    ['ventesApi.deletePreset', 'ventesApi.getPresets', 'ventesApi.savePreset'],
   )
 })
 

@@ -67,9 +67,10 @@ class TestProcessLeadToCash(TenantAPITestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
 
-        # ── 3. brouillon → envoyé (transition explicite, comme l'UI) ───────
-        resp = api.patch(f'/api/django/ventes/devis/{devis_id}/', {
-            'statut': Devis.Statut.ENVOYE,
+        # ── 3. brouillon → envoyé (QJR541 : par la VRAIE porte d'envoi, le
+        # lien de proposition marqué envoyé — jamais un PATCH du statut) ─────
+        resp = api.post(f'/api/django/ventes/devis/{devis_id}/share-link/', {
+            'envoi': True,
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()

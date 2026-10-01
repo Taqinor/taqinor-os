@@ -4,8 +4,9 @@ Endpoints :
   GET    /ventes/presets/           list des presets de la société
   DELETE /ventes/presets/{id}/      supprime un preset de la société
 
-Les actions save-preset et apply-preset vivent sur DevisViewSet
-(POST /ventes/devis/{id}/save-preset/ et /apply-preset/).
+L'action save-preset vit sur DevisViewSet (POST
+/ventes/devis/{id}/save-preset/). QJR546 — il n'y a plus d'apply-preset : un
+modèle s'applique à l'ÉCRAN du générateur, persisté par replace-lines.
 
 Multi-tenancy : company toujours forcée côté serveur ; jamais lue du corps.
 RULE #4 : ce viewset est CREATION-FREE côté preset — la création passe par

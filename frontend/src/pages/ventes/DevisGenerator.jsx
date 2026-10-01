@@ -32,7 +32,6 @@ import {
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
   // ce générateur).
-  noticePalierKwc,
 } from '../../features/ventes/autoQuote'
 import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 import crmApi from '../../api/crmApi'
@@ -67,7 +66,19 @@ import {
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
+  // QJR540 — compteurs factures / BC / chantier du devis rouvert (ex-DevisForm).
+  RelationCounters,
 } from '../../ui'
+// QJR540 — blocs issus de l'ancien modal DevisForm (supprimé) : le calepinage qui
+// pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
+// du devis (seule UI de pièces jointes devis).
+import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
+import BadgePerime from '../../features/calepinage/BadgePerime'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
+// QJR553 (D-QJR5-7) — historique des versions + « Revenir à cette version ».
+import HistoriqueConfiguration from '../../features/ventes/HistoriqueConfiguration'
+// QJR589 — bannière de dérive lead → devis à deux gestes (partagée cockpit).
+import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
 // STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
 // fondateur 16/09/2026) qui remplace le bouton acier/aluminium ; il rend
 // lui-même ce bouton en REPLI quand la société n'a aucune catégorie typée
@@ -129,6 +140,8 @@ import {
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
   // ordre »), appliquée par autoFillLines via ordreLignes.
   deriveRoleOrderFromLines,
+  // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
+  _hasPrix,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
 import { peutEditerDevis } from '../../features/ventes/devisStatuts'
@@ -203,6 +216,12 @@ const MODE_OPTIONS = [
 // serveur inchangeables).
 const SAISON_LABELS = { hiver: 'Hiver', mi_saison: 'Mi-saison', ete: 'Été' }
 
+// QJR586 (contrat QJR506) — la « ville de calcul » du lead SERVIE par le
+// serveur (`ville_effective` : rattachement VREF prioritaire), la même que le
+// moteur, le PDF et le transport. Repli sur `ville` pour un lead servi sans
+// la clé (ancienne réponse) ; '' jamais null.
+const villeEffectiveLead = (lead) => (lead?.ville_effective ?? lead?.ville) || ''
+
 // ORDRE FONDATEUR (24/08) — « tous les devis sont générés par défaut avec DEUX
 // OPTIONS (sans + avec batterie), sauf si le commercial le précise sur le devis
 // modifiable ». Le vocabulaire est le contrat EXACT du moteur PDF (constantes
@@ -221,33 +240,9 @@ const INST_TYPE_PAR_MODE = {
   agricole: 'Agricole',
 }
 
-// DC11 / QJR106 — libellés FRANÇAIS des champs du lead surveillés par
-// l'estampille de provenance (`crm.selectors.LEAD_PROVENANCE_FIELDS`). La
-// LISTE des champs reste au serveur : cette table ne fait que les NOMMER pour
-// le vendeur. Un champ inconnu d'ici s'affiche sous son nom technique plutôt
-// que de disparaître de la bannière.
-const LIBELLE_CHAMP_LEAD = {
-  facture_hiver: 'facture d’hiver',
-  facture_ete: 'facture d’été',
-  ete_differente: 'facture d’été différente',
-  bill_kwh: 'consommation facturée (kWh)',
-  type_toiture: 'type de toiture',
-  surface_toiture_m2: 'surface de toiture',
-  orientation: 'orientation',
-  inclinaison_deg: 'inclinaison',
-  gps_lat: 'latitude GPS',
-  gps_lng: 'longitude GPS',
-}
-
-/** DC11 — la phrase de la bannière, ou `null` quand rien n'a bougé. NON
- *  exportée : ce fichier n'exporte que des composants (react-refresh). */
-const messageValeursLeadModifiees = (champs) => {
-  const noms = (Array.isArray(champs) ? champs : [])
-    .filter(c => typeof c === 'string' && c)
-    .map(c => LIBELLE_CHAMP_LEAD[c] || c)
-  if (noms.length === 0) return null
-  return `Valeurs du lead modifiées depuis la reprise dans ce devis : ${noms.join(', ')}.`
-}
+// DC11 / QJR106 / QJR589 — la bannière « valeurs du lead modifiées » (libellés
+// et gestes) vit dans `features/ventes/quote/BandeauDeriveLead.jsx`, partagée
+// avec la fenêtre devis du cockpit.
 
 // QJR108 — `RIEN_A_CHIFFRER` / `valeurMoteurDim` / `paireDimensionnement`
 // vivaient ICI, non exportés (ce fichier n'exporte que des composants —
@@ -503,6 +498,16 @@ export default function DevisGenerator({
   // côté serveur (taille d'offre appliquée) : `editLoaded` retient le numéro
   // de chargement déjà servi, `rechargeEdit` en demande un nouveau.
   const editLoaded = useRef(null)
+  // QJR549 (contrat QJR503) — VERROU OPTIMISTE. `jetonRef` = `updated_at` du
+  // devis tel que l'écran le connaît : capturé au chargement `?edit=` (et à
+  // chaque rechargement), ré-armé depuis la réponse de CHAQUE écriture de cet
+  // écran (replace-lines, etude-params, tailles d'offre) — sans quoi l'écran
+  // se signalerait ses propres écritures. Envoyé en `expected_updated_at` ;
+  // un 409 `devis_modifie` affiche la bannière « Modifié par X ».
+  const jetonRef = useRef(null)
+  const forcerSansJeton = useRef(false)
+  const [conflitVerrou, setConflitVerrou] = useState(null)
+  const armerJeton = (updatedAt) => { if (updatedAt) jetonRef.current = updatedAt }
   // QJR581 — fenêtre de capture de la référence « rien n'a changé ».
   const captureReferenceJusqua = useRef(0)
   const [rechargeEdit, setRechargeEdit] = useState(0)
@@ -1258,7 +1263,7 @@ export default function DevisGenerator({
       // QX38 — productible CANONIQUE PVGIS par ville (source unique alignée
       // avec le PDF/web) ; override société si renseigné ≠ 1600.
       productible: productibleForCity(
-        selectedLead?.ville || '', quoteLogic.productible),
+        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
@@ -1286,10 +1291,13 @@ export default function DevisGenerator({
       consoAnnuelleKwh: consoAnnuelleReelle,
       utility: distributeur,
       productible: productibleForCity(
-        selectedLead?.ville || '', quoteLogic.productible),
+        (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
+
+  // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
+  const villeCalculLead = villeEffectiveLead(selectedLead)
 
   // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
   // les deux optimiseurs divergent, sinon `roi` (identique par construction).
@@ -1311,7 +1319,7 @@ export default function DevisGenerator({
         fHiver,
         fEte,
         eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: selectedLead?.ville || '',
+        ville: villeCalculLead,
         raccordement: selectedLead?.raccordement || '',
         // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
         kwp: kwpLignes,
@@ -1332,7 +1340,7 @@ export default function DevisGenerator({
         fHiver,
         fEte,
         eteDifferente: !!fEte && Number(fEte) > 0,
-        ville: selectedLead?.ville || '',
+        ville: villeCalculLead,
         raccordement: selectedLead?.raccordement || '',
         kwp: kwpAvec,
         batterieKwh: batteryKwhFromLines(lines),
@@ -1672,7 +1680,7 @@ export default function DevisGenerator({
     // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
     // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
     const productibleBalayage = productibleForCity(
-      (villeLead ?? selectedLead?.ville) || '', quoteLogic.productible)
+      (villeLead ?? villeCalculLead) || '', quoteLogic.productible)
     // PVMRQ — la marque épinglée entre dans la clé de cache : un changement de
     // réglage (ou de gamme du devis) doit rejouer le balayage des paliers.
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
@@ -1727,7 +1735,7 @@ export default function DevisGenerator({
     return result
   }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
     produits, quoteLogic, marquesActives, distributeur, distributeurChoisi,
-    categorieCommerciale, consoAnnuelleReelle, selectedLead?.ville, selectedLead?.distributeur])
+    categorieCommerciale, consoAnnuelleReelle, villeCalculLead, selectedLead?.distributeur])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1829,7 +1837,7 @@ export default function DevisGenerator({
       ? panneauxPourKwc(tailleKwc, panelW)
       : 0
     const sizingLocal = (hiver > 0 && fromTaille <= 0 && modeCible !== 'residentiel')
-      ? computeAutoSizing(hiver, ete, lead.ville || '') : null
+      ? computeAutoSizing(hiver, ete, villeEffectiveLead(lead)) : null
     // STKCAT10 — la liste des structures RÉELLEMENT sélectionnables voyage
     // avec l'action : le reducer valide contre ELLE l'id épinglé sur le lead
     // (`lead.structure_produit`, STKCAT9) et n'applique jamais un produit
@@ -1928,12 +1936,8 @@ export default function DevisGenerator({
   // On lit le lead DIRECTEMENT (l'état posé par applyLead est asynchrone).
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
-    // QJR308 — MÊME précédence que `createAutoQuote` ci-dessous (aucune cible
-    // n'est transmise depuis ce point d'entrée, donc `lead.taille_souhaitee_kwc`
-    // est la valeur réellement snappée) : l'avis s'affiche AU MOMENT où le
-    // snap a lieu, avant l'appel réseau — pas seulement avant de naviguer ici.
-    const avisPalier = noticePalierKwc(lead?.taille_souhaitee_kwc)
-    setWarnings(prev => ({ ...prev, avisPalier }))
+    // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
+    // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
     try {
       // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
       // dupliqué : un seul endroit dimensionne le devis auto. On transmet les
@@ -1984,6 +1988,8 @@ export default function DevisGenerator({
       // QJR581 — la RÉFÉRENCE « rien n'a changé » se capture sur l'état que
       // ce mappeur (et ses relectures immédiates : lead, réouverture) pose.
       captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
+      // QJR549 — le jeton de fraîcheur du devis CHARGÉ (et rechargé).
+      jetonRef.current = d.updated_at ?? null
       setEditDevis({ id: d.id, reference: d.reference,
                      statut: d.statut, date_envoi: d.date_envoi ?? null,
                      // QJR548 — verdict SERVI (QJR516), relu par les gestes
@@ -1996,6 +2002,13 @@ export default function DevisGenerator({
                      // QJR581 — version du devis : un brouillon local d'une
                      // AUTRE version n'est jamais proposé.
                      updated_at: d.updated_at ?? null,
+                     // QJR540 — relations et état du calepinage, déjà servis
+                     // par DevisSerializer : lus tels quels (zéro appel réseau).
+                     factures_liees: d.factures_liees ?? [],
+                     bon_commande_etat: d.bon_commande_etat ?? null,
+                     chantier: d.chantier ?? null,
+                     layout_stale: d.layout_stale ?? null,
+                     layout_nb_panneaux: d.layout_nb_panneaux ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -2695,17 +2708,36 @@ export default function DevisGenerator({
     }).then(ok => { if (ok) geste() })
   }
 
-  // VX18 — un modèle appliqué remplace les lignes du formulaire. La réponse
-  // apply-preset porte les lignes du devis (modèle HT) ; on les reconvertit en
-  // lignes d'écran (TTC) et on remplace via setLines(withKeys(...)). Repli sûr
-  // si la forme diffère (aucun crash, on ignore).
-  const handlePresetApplied = (data) => {
-    const lignes = Array.isArray(data) ? data
-      : (data?.lignes || data?.results || [])
-    if (!Array.isArray(lignes) || !lignes.length) return
+  // QJR546 — appliquer un modèle REMPLACE les lignes À L'ÉCRAN, en création
+  // comme en édition (plus d'apply-preset serveur qui ajoutait des lignes en
+  // base sans que l'écran les voie) : remise, TVA et marché du modèle posés,
+  // lignes au produit sans prix SAUTÉES et NOMMÉES. L'étude du client source
+  // (etude_params_snapshot) n'est JAMAIS réappliquée. L'Enregistrer suivant
+  // persiste le tout par replace-lines.
+  const handlePresetApplied = (preset) => {
+    const snapshot = Array.isArray(preset?.lignes_snapshot) ? preset.lignes_snapshot : []
+    if (!snapshot.length) return
+    const parId = new Map(produits.map(p => [String(p.id), p]))
+    const sansPrix = []
+    const retenues = snapshot.filter((l) => {
+      const id = l.produit ?? l.produit_id
+      if (id == null || id === '') return true
+      const produit = parId.get(String(id))
+      if (produit && !_hasPrix(produit)) {
+        sansPrix.push(l.designation || produit.nom || `#${id}`)
+        return false
+      }
+      return true
+    })
+    if (preset.mode_installation) appliquerMarcheEcran(preset.mode_installation, 'programme')
+    if (preset.taux_tva != null) setTauxTva(String(preset.taux_tva))
+    if (preset.remise_globale != null) setDiscountPct(String(parseFloat(preset.remise_globale) || 0))
     // QJR523 — même mappeur que la réouverture `?edit=` (HT → TTC au taux de
     // la ligne, tous les champs portés).
-    setLines(withKeys(lignesServeurVersEcran(lignes)))
+    setLines(withKeys(lignesServeurVersEcran(retenues, preset.taux_tva)))
+    if (sansPrix.length) {
+      toast.warning('Produit(s) sans prix non repris du modèle : ' + sansPrix.join(', '))
+    }
   }
 
   // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
@@ -3020,10 +3052,10 @@ export default function DevisGenerator({
             ? { structure_produit_id: Number(structureProduitId) }
             : {}),
         }
-        // BARÈME TRANSPORT (fondateur 07/09/2026) — la ville du lead reprice
-        // la ligne Transport côté serveur (barème Nouaceur) ; sans ville
-        // reconnue, le serveur garde le prix catalogue, réponse inchangée.
-        if (selectedLead?.ville) body.ville = selectedLead.ville
+        // BARÈME TRANSPORT — QJR604 : l'écran envoie l'ID du lead ; le serveur
+        // en résout la ville (lead de la société) et reprice la ligne
+        // Transport dans l'étape composer. Sans lead : prix catalogue.
+        if (selectedLead?.id) body.lead = selectedLead.id
         // OFFGRID — champ additif optionnel (contrat backend) : absent quand
         // `horsReseau` est faux, le serveur dérive alors de
         // `lead.raccordement == 'aucun'` lui-même. Envoyé explicitement ici
@@ -3504,10 +3536,13 @@ export default function DevisGenerator({
   // EXACTEMENT ce même chemin d'écriture pour le bouton « Concevoir en 3D » :
   // un seul endroit qui sait enregistrer un devis, jamais une seconde logique
   // dupliquée.
-  const persisterDevis = async () => {
+  // QJR553 — `surcharge` (optionnelle, « Revenir à cette version ») :
+  // `{ lignes, entete, etude_params }` d'un instantané rejoués par CE MÊME
+  // chemin d'écriture (replace-lines + jeton) — jamais un second chemin.
+  const persisterDevis = async (surcharge = null) => {
     setSaving(true)
     try {
-      // QJR515 — `statut` n'est JAMAIS dans le PATCH d'édition (un envoyé ne
+      // QJR515 — `statut` n'est JAMAIS dans l'en-tête d'édition (un envoyé ne
       // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
       const payload = {
         date_validite: dateValidite || null,
@@ -3532,11 +3567,23 @@ export default function DevisGenerator({
       let devisId
       let devisCree = null
       if (editDevis) {
-        // QX21 — ÉDITION ATOMIQUE : le patch du devis PUIS le remplacement des
-        // lignes en une transaction serveur. Un échec préserve les lignes
-        // existantes (jamais un devis à zéro ligne, plus de delete-puis-recrée).
-        await ventesApi.patchDevis(editDevis.id, payload)
-        await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload)
+        // QJR544 — ÉDITION ATOMIQUE : en-tête + lignes + choix d'écran en UN
+        // appel, UNE transaction serveur (replace-lines). Un échec ne change
+        // RIEN (ni en-tête, ni lignes) ; plus de PATCH d'en-tête séparé.
+        const extra = {
+          entete: surcharge?.entete ? { ...payload, ...surcharge.entete } : payload,
+          etude_params: surcharge?.etude_params ?? choixEcran(),
+        }
+        // QJR549 — le jeton part avec l'édition ; « Enregistrer quand même »
+        // (après un 409) renvoie UNE fois sans jeton.
+        if (jetonRef.current && !forcerSansJeton.current) {
+          extra.expected_updated_at = jetonRef.current
+        }
+        forcerSansJeton.current = false
+        const reponse = await ventesApi.replaceLignesDevis(
+          editDevis.id, surcharge?.lignes ?? lignesPayload, extra)
+        armerJeton(reponse?.data?.updated_at)
+        setConflitVerrou(null)
         devisId = editDevis.id
         devisCree = { reference: editDevis.reference }
       } else {
@@ -3565,10 +3612,14 @@ export default function DevisGenerator({
       // les lignes : le serveur vient d'y recalculer ses propres blocs
       // (`rafraichir_etudes_du_devis`), et cette fusion ne touche QUE les clés
       // qu'elle envoie. Résidentiel ⇒ aucun appel.
-      const etudeMarche = blocEtudeMarche()
+      // QJR553 — une version restaurée porte SA propre étude (déjà rejouée
+      // ci-dessus) : l'étude de l'écran courant ne la recouvre pas.
+      const etudeMarche = surcharge ? null : blocEtudeMarche()
       if (etudeMarche) {
         try {
-          await ventesApi.patchEtudeParams(devisId, etudeMarche)
+          const reponseEtude = await ventesApi.patchEtudeParams(devisId, etudeMarche)
+          // QJR549 — cette écriture avance aussi le jeton : ré-armé.
+          armerJeton(reponseEtude?.data?.updated_at)
         } catch (errEtude) {
           // Le devis EST enregistré : une étude refusée ne doit jamais faire
           // croire à un échec d'enregistrement (ni pousser à un second POST
@@ -3582,6 +3633,12 @@ export default function DevisGenerator({
 
       return { devisId, devisCree }
     } catch (err) {
+      // QJR549 — 409 `devis_modifie` : quelqu'un (ou le catalogue) a écrit ce
+      // devis depuis l'ouverture. Bannière NON bloquante, rien d'autre écrit.
+      if (err?.response?.status === 409 && err?.response?.data?.code === 'devis_modifie') {
+        setConflitVerrou({ par: err.response.data.updated_by_nom || '' })
+        return null
+      }
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
       const raw = err?.response?.data ?? err
       let msg
@@ -3604,6 +3661,56 @@ export default function DevisGenerator({
       return null
     } finally {
       setSaving(false)
+    }
+  }
+
+  // QJR547 — « Enregistrer comme modèle » photographie l'ÉCRAN : le devis
+  // est d'abord enregistré par le chemin unique (`persisterDevis`), sans
+  // quitter l'écran ; un échec (validation ou serveur) → aucun modèle.
+  const enregistrerAvantModele = async () => {
+    if (!validate()) return false
+    const res = await persisterDevis()
+    if (!res) return false
+    clear(); marquerEnregistre()
+    return true
+  }
+
+  // QJR553 (D-QJR5-7) — « Revenir à cette version » : l'écran est rechargé
+  // depuis le contenu de l'instantané (lignes, remise) puis enregistré par le
+  // chemin NORMAL (replace-lines avec entete + etude_params + jeton) ; sur un
+  // envoyé, c'est une correction sur place tracée (QJR518). Puis l'écran
+  // relit le devis enregistré.
+  const [versionHistorique, setVersionHistorique] = useState(0)
+  const revenirAVersion = async (snap) => {
+    const contenu = snap?.contenu || {}
+    // Le lot (propre à UN devis) ne voyage pas : l'écran ne gère pas les lots.
+    const lignesSnap = (contenu.lignes || []).map((l) => {
+      const copie = { ...l }
+      delete copie.lot
+      return copie
+    })
+    if (!lignesSnap.length) return
+    const ok = await confirm({
+      title: 'Revenir à cette version ?',
+      description: 'Le devis reprend les lignes, la remise et l\'échéancier de cette '
+        + 'version, puis il est enregistré. La version actuelle reste dans l\'historique.',
+      confirmLabel: 'Revenir à cette version',
+    })
+    if (!ok) return
+    setLines(withKeys(lignesServeurVersEcran(lignesSnap, tauxTva)))
+    if (contenu.remise_globale != null) {
+      setDiscountPct(String(parseFloat(contenu.remise_globale) || 0))
+    }
+    const entete = {}
+    if (contenu.remise_globale != null) entete.remise_globale = contenu.remise_globale
+    if (Array.isArray(contenu.echeancier)) entete.echeancier = contenu.echeancier
+    const etude = contenu.etude && Object.keys(contenu.etude).length ? contenu.etude : undefined
+    const res = await persisterDevis({ lignes: lignesSnap, entete, etude_params: etude })
+    if (res) {
+      toast.success('Version restaurée et enregistrée.')
+      clear()
+      setVersionHistorique(n => n + 1)
+      setRechargeEdit(n => n + 1)
     }
   }
 
@@ -3889,6 +3996,68 @@ export default function DevisGenerator({
             vos corrections seront visibles sur le lien de la proposition ; un PDF déjà envoyé
             par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
           </div>
+        )}
+        {/* QJR549 (ex-DevisForm VX243c) — bannière NON bloquante : le devis a
+            été enregistré ailleurs pendant cette édition (409 devis_modifie). */}
+        {conflitVerrou && (
+          <div
+            data-testid="devis-verrou-banner"
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            <span>
+              Modifié par {conflitVerrou.par || 'un autre utilisateur'}
+              {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            </span>
+            <span className="flex gap-2">
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { setConflitVerrou(null); clear(); setRechargeEdit(n => n + 1) }}
+              >
+                Revoir
+              </Button>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => {
+                  forcerSansJeton.current = true
+                  setConflitVerrou(null)
+                  handleSubmit({ preventDefault: () => {} })
+                }}
+              >
+                Enregistrer quand même
+              </Button>
+            </span>
+          </div>
+        )}
+        {/* QJR540 (ex-DevisForm VX250) — lecture PURE du statut chargé : ne
+            change jamais un statut (règle #4). */}
+        {editDevis?.statut === 'envoye' && (
+          <p
+            data-testid="devis-attente-signature"
+            role="status"
+            className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+          >
+            En attente de signature client
+          </p>
+        )}
+        {/* QJR540 (ex-DevisForm VX159/VX250) — compteurs dérivés du devis
+            déjà chargé : zéro appel réseau nouveau. */}
+        {editDevis?.id && (
+          <RelationCounters
+            counters={[
+              {
+                label: 'factures liées',
+                count: editDevis.factures_liees?.length ?? 0,
+                to: `/ventes/factures?q=${encodeURIComponent(editDevis.client_nom ?? '')}`,
+              },
+              { label: 'bon de commande', count: editDevis.bon_commande_etat ? 1 : 0 },
+              {
+                label: 'chantier',
+                count: editDevis.chantier ? 1 : 0,
+                to: editDevis.chantier ? `/chantiers?id=${editDevis.chantier.id}` : undefined,
+              },
+            ]}
+          />
         )}
         {brouillonProposable && (
           <div
@@ -4474,22 +4643,20 @@ export default function DevisGenerator({
                 </Button>
               </div>
             )}
-            {/* DC11 / QJR106 (décision fondateur D6) — même patron visuel que
-                les bandeaux d'avertissement ci-dessus. Le lead a bougé APRÈS que
-                ce devis en a repris les valeurs : on le DIT, en nommant les
-                champs, au lieu de laisser le vendeur chiffrer sur une facture
-                périmée. Verdict entièrement serveur (`lead_valeurs_modifiees`
-                du GET devis) — l'écran ne compare rien. */}
-            {messageValeursLeadModifiees(leadValeursModifiees) && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-                   data-testid="lead-valeurs-modifiees">
-                {messageValeursLeadModifiees(leadValeursModifiees)}
-                <div className="mt-1 text-xs">
-                  Vérifiez la fiche du lead avant d’envoyer : ce devis a été
-                  chiffré sur les valeurs d’origine.
-                </div>
-              </div>
-            )}
+            {/* QJR589 (contrat QJR505) — la dérive lead → devis, NOMMÉE et
+                RÉSOLUBLE : « Reprendre les valeurs du lead » / « Garder les
+                valeurs du devis ». Verdict serveur (`lead_valeurs_modifiees`)
+                — l'écran ne compare rien. Après succès, l'écran relit le devis. */}
+            <BandeauDeriveLead
+              devisId={editDevis?.id}
+              statut={editDevis?.statut}
+              champs={leadValeursModifiees}
+              onResolu={() => {
+                setLeadValeursModifiees([])
+                clear()
+                setRechargeEdit(n => n + 1)
+              }}
+            />
             {onduleursIncomplets.length > 0 && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
                 <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
@@ -5081,7 +5248,8 @@ export default function DevisGenerator({
         <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits}
                             modifiable={editDevis?.modifiable}
                             raisonNonModifiable={editDevis?.raison_non_modifiable}
-                            onDevisRecompose={rechargerDevisRecompose} />
+                            onDevisRecompose={rechargerDevisRecompose}
+                            onDevisEcrit={armerJeton} />
 
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>
@@ -5152,7 +5320,35 @@ export default function DevisGenerator({
             l'instantané de lignes du modèle (aucun endpoint nouveau) et la
             section « Enregistrer comme modèle » dit honnêtement qu'elle
             attend que le devis existe. */}
-        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied} />
+        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied}
+                          avantEnregistrement={enregistrerAvantModele} />
+
+        {/* QJR553 (D-QJR5-7) — historique des versions, avec « Revenir à
+            cette version » seulement si le devis est modifiable (QJR516). */}
+        {editDevis?.id && (
+          <HistoriqueConfiguration devisId={editDevis.id}
+                                   peutRevenir={peutEditerDevis(editDevis)}
+                                   onRevenir={revenirAVersion}
+                                   rafraichir={versionHistorique} />
+        )}
+
+        {/* QJR540 — blocs repris du modal DevisForm (supprimé) : badge
+            « calepinage périmé » (CAL188, lu de `layout_stale`), le calepinage
+            qui pilote ce devis (CAL40, silencieux sans calepinage) et les
+            pièces jointes du devis. N'existent que sur un devis enregistré. */}
+        {editDevis?.id && (
+          <Card data-testid="devis-edition-blocs">
+            <CardContent className="pt-4 space-y-3">
+              <BadgePerime layoutStale={editDevis.layout_stale}
+                layoutNbPanneaux={editDevis.layout_nb_panneaux} />
+              <BlocCalepinageDevis devisId={editDevis.id} />
+              <div>
+                <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
+                <AttachmentsPanel model="ventes.devis" id={editDevis.id} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* QJR215 — registre de surcharges (QJR214/QJR216) : lecture à
             l'ouverture (au montage de ce panneau), pose EXPLICITE d'un

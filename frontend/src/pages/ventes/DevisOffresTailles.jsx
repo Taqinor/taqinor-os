@@ -333,10 +333,15 @@ function TierCard({
  *                                          recomposition RÉUSSIE du devis
  *                                          (« Recommandé ») : l'écran recharge
  *                                          alors ses lignes depuis le serveur.
+ * @param {function}      [onDevisEcrit]   QJR549 — appelé avec `updated_at`
+ *                                          de la réponse d'une écriture du
+ *                                          devis (appliquer / régénérer) : le
+ *                                          générateur ré-arme son jeton de
+ *                                          fraîcheur (verrou optimiste).
  */
 export default function DevisOffresTailles({
   devisId, modeInstallation, produits,
-  modifiable, raisonNonModifiable, onDevisRecompose,
+  modifiable, raisonNonModifiable, onDevisRecompose, onDevisEcrit,
 }) {
   const { confirm } = useConfirmDialog()
   const actif = Boolean(devisId) && modeInstallation === 'residentiel'
@@ -441,6 +446,7 @@ export default function DevisOffresTailles({
         ({ data } = await ventesApi.appliquerOffreTailleAuDevis(devisId, cle))
       }
       setBlock(data)
+      if (typeof onDevisEcrit === 'function' && data?.updated_at) onDevisEcrit(data.updated_at)
       setPending(p => ({ ...p, [cle]: {} }))
       toast.success(offre.recommande
         ? 'Devis recomposé sur la taille « Recommandé ».'
@@ -494,6 +500,7 @@ export default function DevisOffresTailles({
     try {
       const { data } = await ventesApi.regenererOffreTaille(devisId, offre.cle)
       setBlock(data)
+      if (typeof onDevisEcrit === 'function' && data?.updated_at) onDevisEcrit(data.updated_at)
       setPending(p => ({ ...p, [offre.cle]: {} }))
       toast.success(`Taille « ${offre.titre} » régénérée depuis le moteur.`)
     } catch {

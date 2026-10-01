@@ -105,4 +105,23 @@ describe('ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — balayage du générateur', () 
       expect(args.productible).toBe(productibleForCity('Agadir'))
     }
   })
+
+  it('QJR586 — douar hors gazetier rattaché à Agadir : le balayage lit la ville de CALCUL servie', async () => {
+    crmApi.getLeads.mockResolvedValue({ data: [{
+      id: 43, nom: 'Ferme', prenom: 'Douar', type_installation: 'industriel',
+      facture_hiver: '4000', ete_differente: false,
+      ville: 'Sidi Hashass', ville_reference: 'Agadir', ville_effective: 'Agadir',
+    }] })
+    render(
+      <Provider store={makeStore()}>
+        <MemoryRouter initialEntries={['/ventes/devis/nouveau?lead=43']}>
+          <DevisGenerator />
+        </MemoryRouter>
+      </Provider>,
+    )
+    await waitFor(() => expect(optimalKwcByPayback).toHaveBeenCalled())
+    for (const [args] of optimalKwcByPayback.mock.calls) {
+      expect(args.productible).toBe(productibleForCity('Agadir'))
+    }
+  })
 })

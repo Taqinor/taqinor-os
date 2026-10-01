@@ -191,8 +191,11 @@ class TestDevisAutoEndpoint(TestCase):
 
 
 class TestAvancerStagePourDevis(TestCase):
-    """Mouvement automatique du funnel quand le statut d'un devis change,
-    via l'API ventes (perform_create / perform_update)."""
+    """Mouvement automatique du funnel quand le statut d'un devis change.
+
+    QJR541 — ``statut`` n'est plus écrivable au PATCH/POST : l'envoi passe par
+    sa porte (``mark_devis_sent`` → événement ``devis_sent`` → récepteur crm),
+    jamais par un corps brut. Un PATCH ``statut`` est IGNORÉ (200)."""
 
     def setUp(self):
         self.company = make_company()
@@ -203,8 +206,7 @@ class TestAvancerStagePourDevis(TestCase):
         self.lead = Lead.objects.create(company=self.company, nom='Funnel')
 
     def _create_devis(self, lead=None, extra=None):
-        payload = {'statut': 'brouillon', 'taux_tva': '20.00',
-                   'remise_globale': '0'}
+        payload = {'taux_tva': '20.00', 'remise_globale': '0'}
         if lead is not None:
             payload['lead'] = lead.id
         payload.update(extra or {})
@@ -219,14 +221,18 @@ class TestAvancerStagePourDevis(TestCase):
         return self.api.patch(f'/api/django/ventes/devis/{devis_id}/',
                               {'statut': statut}, format='json')
 
+    def _envoyer(self, devis_id):
+        """La VRAIE porte d'envoi (lien / courriel / WhatsApp)."""
+        from apps.ventes.services import mark_devis_sent
+        mark_devis_sent(devis=Devis.objects.get(pk=devis_id), user=self.user)
+
     def _stage_acts(self):
         return LeadActivity.objects.filter(
             lead=self.lead, kind='modification', field='stage')
 
     def test_envoye_moves_new_to_quote_sent_and_logs(self):
         devis_id, ref = self._create_devis(self.lead)
-        resp = self._patch_statut(devis_id, 'envoye')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, 'QUOTE_SENT')
         acts = self._stage_acts()
@@ -243,16 +249,15 @@ class TestAvancerStagePourDevis(TestCase):
         self.assertEqual(act.user_id, self.user.id)
         self.assertEqual(act.company_id, self.company.id)
 
-    def test_patch_statut_accepte_rejected_lead_not_advanced(self):
-        """AUD505 — un PATCH brut vers « accepte » ne fait plus rien : seul
-        POST /devis/<id>/accepter/ (accept_devis) peut faire avancer le
-        statut ET le lead. Avant le fix, ce PATCH réussissait (200) et
-        faisait passer le lead en SIGNED sans jamais appeler accept_devis
-        (pas de contrôle crédit, pas de devis_accepted, pas de Chantier)."""
+    def test_patch_statut_accepte_ignored_lead_not_advanced(self):
+        """AUD505 / QJR541 — un PATCH brut vers « accepte » ne fait rien :
+        seul POST /devis/<id>/accepter/ (accept_devis) fait avancer le statut
+        ET le lead. Depuis QJR541 le champ est en lecture seule : 200, statut
+        inchangé (plus un 400)."""
         devis_id, ref = self._create_devis(self.lead)
-        self._patch_statut(devis_id, 'envoye')
+        self._envoyer(devis_id)
         resp = self._patch_statut(devis_id, 'accepte')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 200, resp.data)
         devis = Devis.objects.get(pk=devis_id)
         self.assertEqual(devis.statut, 'envoye')
         self.lead.refresh_from_db()
@@ -261,24 +266,34 @@ class TestAvancerStagePourDevis(TestCase):
         self.assertEqual(self.lead.stage, 'QUOTE_SENT')
         self.assertEqual(self._stage_acts().count(), 1)  # seul l'envoi a loggé
 
-    def test_create_directly_envoye_moves_stage(self):
-        self._create_devis(self.lead, {'statut': 'envoye'})
+    def test_create_with_statut_envoye_stays_brouillon_stage_unmoved(self):
+        """QJR541 — un POST ``statut: envoye`` crée un BROUILLON ; le lead
+        n'avance pas (aucun envoi réel)."""
+        devis_id, _ = self._create_devis(self.lead, {'statut': 'envoye'})
+        self.assertEqual(Devis.objects.get(pk=devis_id).statut, 'brouillon')
         self.lead.refresh_from_db()
-        self.assertEqual(self.lead.stage, 'QUOTE_SENT')
-        self.assertEqual(self._stage_acts().count(), 1)
+        self.assertEqual(self.lead.stage, stages.NEW)
+        self.assertEqual(self._stage_acts().count(), 0)
 
-    def test_same_statut_patch_does_not_duplicate(self):
+    def test_patch_statut_envoye_is_ignored(self):
         devis_id, _ = self._create_devis(self.lead)
-        self._patch_statut(devis_id, 'envoye')
-        self._patch_statut(devis_id, 'envoye')  # idempotent
+        resp = self._patch_statut(devis_id, 'envoye')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(Devis.objects.get(pk=devis_id).statut, 'brouillon')
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage, stages.NEW)
+
+    def test_same_statut_send_does_not_duplicate(self):
+        devis_id, _ = self._create_devis(self.lead)
+        self._envoyer(devis_id)
+        self._envoyer(devis_id)  # idempotent
         self.assertEqual(self._stage_acts().count(), 1)
 
     def test_never_backwards_from_signed(self):
         self.lead.stage = 'SIGNED'
         self.lead.save(update_fields=['stage'])
         devis_id, _ = self._create_devis(self.lead)
-        resp = self._patch_statut(devis_id, 'envoye')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, 'SIGNED')
         self.assertEqual(self._stage_acts().count(), 0)
@@ -288,7 +303,7 @@ class TestAvancerStagePourDevis(TestCase):
         self.lead.stage = 'FOLLOW_UP'
         self.lead.save(update_fields=['stage'])
         devis_id, _ = self._create_devis(self.lead)
-        self._patch_statut(devis_id, 'envoye')
+        self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, 'FOLLOW_UP')
         self.assertEqual(self._stage_acts().count(), 0)
@@ -298,7 +313,7 @@ class TestAvancerStagePourDevis(TestCase):
         self.lead.stage = 'COLD'
         self.lead.save(update_fields=['stage'])
         devis_id, _ = self._create_devis(self.lead)
-        self._patch_statut(devis_id, 'envoye')
+        self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, 'QUOTE_SENT')
         acts = self._stage_acts()
@@ -310,7 +325,7 @@ class TestAvancerStagePourDevis(TestCase):
         self.lead.perdu = True
         self.lead.save(update_fields=['perdu'])
         devis_id, _ = self._create_devis(self.lead)
-        self._patch_statut(devis_id, 'accepte')
+        self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.NEW)
         self.assertEqual(self._stage_acts().count(), 0)
@@ -322,7 +337,7 @@ class TestAvancerStagePourDevis(TestCase):
         self.lead.perdu = False
         self.lead.save(update_fields=['motif_perte', 'perdu'])
         devis_id, _ = self._create_devis(self.lead)
-        self._patch_statut(devis_id, 'envoye')
+        self._envoyer(devis_id)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, 'QUOTE_SENT')
         self.assertEqual(self._stage_acts().count(), 1)
@@ -332,6 +347,6 @@ class TestAvancerStagePourDevis(TestCase):
         client = Client.objects.create(
             company=self.company, nom='Direct', email='direct@devisauto.com')
         devis_id, _ = self._create_devis(extra={'client': client.id})
-        resp = self._patch_statut(devis_id, 'envoye')
-        self.assertEqual(resp.status_code, 200, resp.data)
+        self._envoyer(devis_id)
+        self.assertEqual(Devis.objects.get(pk=devis_id).statut, 'envoye')
         self.assertEqual(LeadActivity.objects.count(), 0)

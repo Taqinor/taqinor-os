@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4720, operations: 7510, components: 2140}
+counts: {paths: 4722, operations: 7512, components: 2140}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3507,8 +3507,8 @@ operations:
 - patch /api/django/ventes/devis/{id}/ -> django_ventes_devis_partial_update
 - put /api/django/ventes/devis/{id}/ -> django_ventes_devis_update
 - post /api/django/ventes/devis/{id}/accepter/ -> django_ventes_devis_accepter_create
+- post /api/django/ventes/devis/{id}/acquitter-derive/ -> django_ventes_devis_acquitter_derive_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
-- post /api/django/ventes/devis/{id}/apply-preset/ -> django_ventes_devis_apply_preset_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
@@ -3543,6 +3543,7 @@ operations:
 - patch /api/django/ventes/devis/{id}/overrides/ -> django_ventes_devis_overrides_partial_update
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
+- post /api/django/ventes/devis/{id}/reappliquer-lead/ -> django_ventes_devis_reappliquer_lead_create
 - post /api/django/ventes/devis/{id}/refuser/ -> django_ventes_devis_refuser_create
 - post /api/django/ventes/devis/{id}/renouveler/ -> django_ventes_devis_renouveler_create
 - post /api/django/ventes/devis/{id}/replace-lines/ -> django_ventes_devis_replace_lines_create
@@ -7266,8 +7267,8 @@ operations:
 - patch /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_partial_update
 - put /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_update
 - post /api/v1/ventes/devis/{id}/accepter/ -> v1_ventes_devis_accepter_create
+- post /api/v1/ventes/devis/{id}/acquitter-derive/ -> v1_ventes_devis_acquitter_derive_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
-- post /api/v1/ventes/devis/{id}/apply-preset/ -> v1_ventes_devis_apply_preset_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
@@ -7302,6 +7303,7 @@ operations:
 - patch /api/v1/ventes/devis/{id}/overrides/ -> v1_ventes_devis_overrides_partial_update
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
+- post /api/v1/ventes/devis/{id}/reappliquer-lead/ -> v1_ventes_devis_reappliquer_lead_create
 - post /api/v1/ventes/devis/{id}/refuser/ -> v1_ventes_devis_refuser_create
 - post /api/v1/ventes/devis/{id}/renouveler/ -> v1_ventes_devis_renouveler_create
 - post /api/v1/ventes/devis/{id}/replace-lines/ -> v1_ventes_devis_replace_lines_create

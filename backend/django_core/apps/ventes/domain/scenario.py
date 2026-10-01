@@ -35,53 +35,31 @@ SCENARIO_AVEC_BATTERIE = 'Avec batterie'
 SCENARIO_LES_DEUX = 'Les deux (Sans + Avec)'
 
 
-def _scenario_stocke(avec_batterie):
-    """Le libellé à ranger dans ``etude_params['scenario']``.
+def scenario_servable(demande_les_deux, *, a_reseau, a_hybride, a_batterie,
+                      a_offgrid=False):
+    """QJR97 / QJR607 — LE LIBELLÉ à ranger dans ``etude_params['scenario']``.
 
-    On ne stocke « Avec batterie » que quand l'équipement peut réellement le
-    servir (onduleur hybride ET batterie) : un choix stocké que les lignes ne
-    peuvent pas honorer serait un mensonge que le moteur devrait défaire.
-    """
-    return SCENARIO_AVEC_BATTERIE if avec_batterie else SCENARIO_SANS_BATTERIE
+    Dérivé de ``utils.options.familles_servables`` — le prédicat que lit le
+    moteur PDF — et de ``deux_options_depuis_paniers`` : « Les deux » quand
+    les deux paniers sont servables ET l'alternative est demandée (BAT-DIFF
+    compris : hybride face au réseau, batterie différée, ordre du 17/09) ;
+    sinon « Avec batterie » seulement avec une batterie RÉELLE derrière un
+    onduleur hybride ou AUTONOME (site isolé) ; sinon « Sans batterie ».
 
-
-def sert_les_deux(demande_les_deux, *, a_reseau, a_hybride, a_batterie):
-    """QJR97 — LA GARDE ANTI-MENSONGE, écrite UNE fois. Forme booléenne.
-
-    « Les deux (Sans + Avec) » promet au client une COMPARAISON : l'option
-    « sans » a besoin d'un onduleur RÉSEAU, l'option « avec » d'un onduleur
-    HYBRIDE **et** d'une BATTERIE. Un document qui déclare les deux sans
-    pouvoir en servir une moitié ment — et le moteur PDF, qui lit cette
-    déclaration (PV86/QF6), rendrait une comparaison dont un côté est vide.
-
-    CE QUE CETTE FONCTION FERME. La règle vivait EN ENTIER à DEUX endroits —
-    à la création (``pipeline.ecrire_etude_params``, sur les DÉSIGNATIONS
-    composées) et à la resynchronisation (sur les LIGNES du devis) — avec deux
-    formulations différentes des mêmes conditions. Deux écritures d'une même
-    règle finissent toujours par diverger ; celle-ci décide de ce qu'un client
-    voit sur sa proposition.
-
-    ``demande_les_deux`` est la DEMANDE (le scénario voulu par ce devis-là) ;
-    les trois autres décrivent ce que la composition ou les lignes servent
-    RÉELLEMENT.
-    """
-    return bool(demande_les_deux and a_reseau and a_hybride and a_batterie)
-
-
-def scenario_servable(demande_les_deux, *, a_reseau, a_hybride, a_batterie):
-    """QJR97 — LE LIBELLÉ à ranger dans ``etude_params['scenario']``.
-
-    Jumelle de :func:`sert_les_deux` : « Les deux » quand les deux côtés sont
-    servis, sinon le libellé MONO honnête — « Avec batterie » seulement quand
-    l'équipement peut réellement le servir (onduleur hybride ET batterie).
     Fonction PURE : elle ne lit ni base ni registre. La DÉCLARATION humaine,
-    elle, prime toujours et se lit par :func:`scenario_effectif` — l'appelant
-    enveloppe donc ce résultat, comme il le faisait déjà.
+    elle, prime toujours et se lit par :func:`scenario_effectif`.
     """
-    if sert_les_deux(demande_les_deux, a_reseau=a_reseau, a_hybride=a_hybride,
-                     a_batterie=a_batterie):
+    from apps.ventes.utils.options import (
+        deux_options_depuis_paniers, familles_servables)
+    sans_ok, avec_ok = familles_servables(
+        has_reseau=a_reseau, has_hybride=a_hybride, has_offgrid=a_offgrid,
+        has_batterie=a_batterie)
+    if deux_options_depuis_paniers(sans_ok, avec_ok,
+                                   alternative_declaree=demande_les_deux):
         return SCENARIO_LES_DEUX
-    return _scenario_stocke(bool(a_batterie and a_hybride))
+    if avec_ok and a_batterie:
+        return SCENARIO_AVEC_BATTERIE
+    return SCENARIO_SANS_BATTERIE
 
 
 def scenario_effectif(devis, auto):

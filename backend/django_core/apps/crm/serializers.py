@@ -751,6 +751,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # QJR590 (contrat ``lead_client_ecart.json``) — champs d'identité où la
     # fiche Client liée diffère du lead ; lecture seule.
     client_ecart = serializers.SerializerMethodField()
+    # QJR586 (contrat ``lead_ville_effective.json``) — la ville de CALCUL,
+    # lecture seule, '' jamais null.
+    ville_effective = serializers.SerializerMethodField()
     devis = serializers.SerializerMethodField()
     owner_nom = serializers.SerializerMethodField()
     owner_poste = serializers.SerializerMethodField()
@@ -1314,6 +1317,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             return None
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip()
+
+    @extend_schema_field(serializers.CharField())
+    def get_ville_effective(self, obj):
+        from .selectors import ville_effective
+        return ville_effective(obj)
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_client_ecart(self, obj):

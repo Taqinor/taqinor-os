@@ -190,7 +190,12 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # (``consigner_correction_apres_envoi``, via ``fin_de_geste_devis``) :
         # plus d'écriture directe du marqueur ici.
         from apps.ventes.domain.cycle_vie import instantane_de_geste
+        from apps.ventes.domain.verrou_devis import toucher
         for devis in touches.values():
+            # QJR545 — la ligne est sauvée en ``update_fields`` : le jeton
+            # d'édition du devis (``updated_at``) avance explicitement, sinon
+            # un vendeur ouvert avant la resynchro l'écraserait sans le savoir.
+            toucher(devis)
             # QJR550 — UN instantané par devis resynchronisé.
             instantane_de_geste(devis, user=user)
             fin_de_geste_devis(devis, user, avant=avants.get(devis.pk),

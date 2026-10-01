@@ -957,7 +957,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     structure_type='acier', structure_produit_id=None,
                     min_panneaux=None,
                     max_panneaux=None, source_conso=None,
-                    cible_falaise_kwh_mois=None, jour_reference=None):
+                    cible_falaise_kwh_mois=None, jour_reference=None,
+                    hors_reseau=False, mppt_paires=1):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
@@ -1003,12 +1004,9 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         puissances_batterie_des_lignes,
         recharge_ve_nocturne_kwh_jour,
     )
-    from apps.ventes.services import (
-        carte_marques_composition,
-        catalogue_de_la_societe,
-        composition_residentielle,
-        ordre_lignes_societe,
-    )
+    from apps.ventes.domain.pipeline import (
+        ContexteSonde, composer_sonde, reglages_de_composition,
+        sonder_wattage)
 
     mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
     if not mensuel:
@@ -1020,30 +1018,27 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     if conso_annuelle <= 0:
         return []
 
-    # Catalogue et réglages lus UNE fois pour tout le balayage : la fonction
-    # pure ``composition_residentielle`` est ensuite appelée sans retoucher la
-    # base (un dry-run par taille × N variantes ferait sinon des centaines de
-    # requêtes identiques sur un simple aperçu).
-    catalogue = catalogue_de_la_societe(company)
-    marques = carte_marques_composition(company, gamme_nom_devis)
-    ordre = ordre_lignes_societe(company)
-
-    # Watt du panneau RÉELLEMENT retenu par le catalogue. On ne le SUPPOSE
-    # pas : on compose une fois (un panneau) en visant le wattage de référence
-    # du catalogue, puis on lit ``panel_watt_reel`` — le panneau effectivement
-    # choisi. Le jour où le catalogue change de panneau, la granularité du
-    # balayage suit toute seule.
-    from apps.ventes.services import _AUTO_PANEL_WATT
-    sonde_avert = []
-    sonde = composition_residentielle(
-        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
-        nb_panneaux=1, avec_batterie=False, structure_type=structure_type,
+    # QJR605 — Catalogue et réglages lus UNE fois pour tout le balayage, puis
+    # CHAQUE taille composée par ``pipeline.composer_sonde`` — le même
+    # constructeur que le devis (gamme, phase, MPPT, TVA, hors-réseau,
+    # structure), jamais un appel direct qui en oublierait un.
+    import dataclasses
+    sonde_ctx = ContexteSonde(
+        company=company,
+        reglages=reglages_de_composition(company, gamme_nom_devis),
+        gamme_nom_devis=gamme_nom_devis,
+        structure_type=structure_type,
         structure_produit_id=structure_produit_id,
-        taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
-        marques=marques, ordre_lignes=ordre, phase=phase)
-    panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
+        phase=phase, mppt_paires=mppt_paires or 1, taux_tva=taux_tva,
+        hors_reseau=bool(hors_reseau))
+
+    # Watt du panneau RÉELLEMENT retenu par le catalogue — LA sonde partagée
+    # avec l'échelle de paliers et les cartes de taille. Le jour où le
+    # catalogue change de panneau, la granularité du balayage suit toute seule.
+    panel_watt = _num(sonder_wattage(sonde_ctx))
     if panel_watt <= 0:
         return []
+    sonde_ctx = dataclasses.replace(sonde_ctx, panel_watt=panel_watt)
 
     etude_kwargs = {
         'conso_kwh_mensuelles': conso_kwh_mensuelles, 'ville': ville,
@@ -1080,18 +1075,9 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     def _composer(panneaux, kwc, avec_batterie, cible_kwh, journal):
         """Une composition catalogue, ou ``None`` — jamais une exception."""
         try:
-            return composition_residentielle(
-                catalogue, kwc=kwc, panel_watt=panel_watt,
-                nb_panneaux=panneaux, avec_batterie=avec_batterie,
-                structure_type=structure_type,
-                # STKCAT8 — le balayage chiffre CHAQUE taille avec la structure
-                # réellement retenue, jamais l'acier par défaut : sinon les
-                # tailles du tableau et le devis annoncent deux prix pour le
-                # même kit. ``None`` ⇒ comportement d'hier.
-                structure_produit_id=structure_produit_id,
-                taux_tva=taux_tva,
-                avertissements=journal, deux_options=False, marques=marques,
-                ordre_lignes=ordre, phase=phase, batterie_cible_kwh=cible_kwh)
+            return composer_sonde(
+                sonde_ctx, panneaux, avec_batterie=avec_batterie,
+                cible_kwh=cible_kwh, avertissements=journal)
         except Exception:  # noqa: BLE001 — une taille impossible ne stoppe rien
             logger.warning('composition impossible à %s panneaux', panneaux,
                            exc_info=True)

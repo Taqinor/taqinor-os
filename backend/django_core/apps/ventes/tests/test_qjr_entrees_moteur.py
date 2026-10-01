@@ -30,12 +30,15 @@ from apps.ventes.services import entrees_dimensionnement_du_devis
 User = get_user_model()
 
 #: Les onze champs CANONIQUES du contrat QJR42 + les deux champs de contexte du
-#: chemin devis. Ce pin rend visible tout élargissement de la forme.
+#: chemin devis + (QJR606) ``phase`` et ``gamme_nom_devis``, lues une fois
+#: par ``entrees_depuis_devis``. Ce pin rend visible tout élargissement de la
+#: forme.
 CHAMPS_ATTENDUS = (
     'company', 'mode', 'etude_params',
     'conso_kwh_mensuelles', 'source_conso',
     'ville', 'lat', 'lon', 'occupation', 'equipements',
     'tranches', 'charges_fixes_mad', 'jour_reference',
+    'phase', 'gamme_nom_devis',
 )
 
 

@@ -47,7 +47,7 @@ FIGEE = {
     'prefill_site': ANY, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': PORTAIL,
-    'ajouter_boq_electrique': RESP, 'apply_preset': RESP, 'atomic': RESP,
+    'ajouter_boq_electrique': RESP, 'atomic': RESP,
     'auto': RESP, 'composition': RESP, 'conception_electrique': RESP,
     'contacter_superieur': RESP, 'convertir_en_bc': RESP,
     'design_context': RESP, 'dupliquer': RESP, 'dupliquer_variante': RESP,
@@ -62,6 +62,9 @@ FIGEE = {
     'save_preset': RESP, 'share_link': RESP, 'simulation_status': RESP,
     'simuler': RESP, 'sync_layout': RESP, 'telecharger_pdf': RESP,
     'variantes': RESP, 'whatsapp': RESP, 'whatsapp_preview': RESP,
+    # QJR588 (lot 4 QJR5) : deux nouvelles @actions d'écriture, déclarées
+    # IsResponsableOrAdmin comme les autres écritures du devis.
+    'reappliquer_lead': RESP, 'acquitter_derive': RESP,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

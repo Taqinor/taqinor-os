@@ -175,6 +175,100 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         raise _RemiseEnvoiRefusee(erreur.message)
 
 
+def _valider_etude_ecran(etude_in):
+    """QJR544 — pré-validation des CHOIX d'écran (``etude_params`` clés
+    ECRAN) avant toute écriture, partagée par ``/atomic`` et
+    ``replace-lines`` : un refus pointe ``etude_params`` et n'écrit rien."""
+    from rest_framework.exceptions import ValidationError
+    from ..domain.etude_schema import ECRAN, fusionner
+    if etude_in is None:
+        return
+    if not isinstance(etude_in, dict):
+        raise ValidationError({'etude_params': "Objet {clé: valeur} attendu."})
+    try:
+        fusionner({}, proprietaire=ECRAN, **etude_in)
+    except (ValueError, TypeError) as exc:
+        raise ValidationError({'etude_params': str(exc)})
+
+
+def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
+    """QJR544 — les gardes d'une mise à jour d'en-tête, en UN point (PATCH
+    ``perform_update`` et ``replace-lines`` avec ``entete``) :
+
+    * QJR521 — un devis remplacé / archivé ne se réactive jamais ;
+    * QJR516 — prédicat de modifiabilité (geste ENTETE), 400 {'statut'} et
+      l'exception « désactivation seule » conservés ;
+    * ERR8 — lead / client d'une autre société refusés ;
+    * QJR539 (``t17``) — correction d'un ENVOYÉ : une remise globale ENTRANTE
+      plus profonde au-dessus du seuil n'est plus couverte par l'approbation
+      d'avant (400 {'statut'}). ``replace-lines`` passe ``t17=False`` et juge
+      APRÈS l'écriture des lignes, dans sa transaction.
+
+    Lit le statut, ne l'écrit jamais (règle #4)."""
+    from rest_framework.exceptions import ValidationError
+    if (instance.is_active is False
+            and validated_data.get('is_active') is True):
+        raise ValidationError({
+            'is_active': 'Un devis remplacé ou archivé ne se réactive pas.'})
+    from ..domain.modifiabilite import ENTETE, verdict
+    if not verdict(instance, ENTETE)['modifiable']:
+        nouveau_is_active = validated_data.get(
+            'is_active', instance.is_active)
+        only_deactivation = (
+            nouveau_is_active is False and instance.is_active is True
+            and set(validated_data.keys()) <= {'is_active'}
+        )
+        if not only_deactivation:
+            raise ValidationError({
+                'statut': 'Devis figé — révisez-le (reviser) pour le '
+                          'modifier.'})
+    company = getattr(user, 'company', None)
+    if company is not None:
+        lead = validated_data.get('lead')
+        client = validated_data.get('client')
+        if lead is not None and lead.company_id != company.id:
+            raise ValidationError({'lead': 'Lead inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+    if t17 and instance.statut == 'envoye':
+        from ..services import (
+            RemiseNonApprouvee, reverifier_remise_apres_correction)
+        from ..domain.tarification import profondeur_remise_effective
+        try:
+            reverifier_remise_apres_correction(
+                instance, user, avant=profondeur_remise_effective(instance),
+                remise_globale=validated_data.get(
+                    'remise_globale', instance.remise_globale))
+        except RemiseNonApprouvee as erreur:
+            raise ValidationError({'statut': erreur.message})
+
+
+class _DevisModifie(APIException):
+    """QJR545 — 409 ``{code: 'devis_modifie', detail, updated_at,
+    updated_by_nom}`` : le devis a bougé depuis l'ouverture (verrou
+    optimiste, contrat ``devis_verrou_edition.json``)."""
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'devis_modifie'
+
+
+def _refus_verrou(devis, request):
+    """QJR545 — ``Response`` 409 si ``expected_updated_at`` est fourni et
+    diffère du jeton en base ; ``None`` sinon (champ absent ⇒ inchangé)."""
+    from ..domain.verrou_devis import verifier_jeton
+    charge = verifier_jeton(devis, request.data)
+    if charge is None:
+        return None
+    return Response(charge, status=status.HTTP_409_CONFLICT)
+
+
+def _jeton(devis):
+    """QJR545 — le jeton d'édition à renvoyer dans une réponse 2xx."""
+    valeur = getattr(devis, 'updated_at', None)
+    # Même représentation que le GET (DateTimeField de DRF) : le jeton
+    # renvoyé est comparable, à l'octet, à celui que sert la fiche.
+    return serializers.DateTimeField().to_representation(valeur) if valeur else None
+
+
 class _LotCreationSerializer(serializers.Serializer):
     """QJR648 — le corps de ``POST /devis/<id>/lots/`` : ``nom_lot`` requis,
     ``adresse_site`` facultative, ``ordre`` entier ≥ 0 facultatif, ``lignes``
@@ -350,22 +444,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             company=company,
         )
         if 'devise' not in serializer.validated_data:
-            from apps.parametres.models import CompanyProfile
-            save_kwargs['devise'] = (
-                getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
-                or 'MAD')
+            # QJR563 — UN helper, partagé avec /devis/atomic/.
+            from ..domain.creation import devise_par_defaut
+            save_kwargs['devise'] = devise_par_defaut(company)
 
+        # QJR541 — ``statut`` n'est plus écrivable : un devis créé par POST
+        # est toujours un brouillon, le funnel n'avance que par les
+        # événements devis_sent / devis_accepted (crm/receivers.py).
         create_numbered(
             Devis, company, 'devis',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
-        )
-
-        # Mouvement automatique du funnel CRM : un devis créé directement en
-        # « envoyé »/« accepté » avance le lead (ancien statut ≡ brouillon).
-        from apps.crm.services import avancer_stage_pour_devis
-        avancer_stage_pour_devis(
-            serializer.instance, Devis.Statut.BROUILLON,
-            serializer.instance.statut, self.request.user,
         )
 
     @action(detail=False, methods=['post'], url_path='from-layout',
@@ -881,16 +969,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # désormais écrits par l'unique écrivain (``etude_schema.ecrire``)
         # sous la MÊME transaction. Validés AVANT : un refus pointe le champ
         # ``etude_params`` et ne crée rien. Absents ⇒ comportement d'hier.
-        from ..domain.etude_schema import ECRAN, ecrire, fusionner
+        from ..domain.etude_schema import ECRAN, ecrire
         etude_in = head.pop('etude_params', None)
-        if etude_in is not None:
-            if not isinstance(etude_in, dict):
-                raise ValidationError(
-                    {'etude_params': "Objet {clé: valeur} attendu."})
-            try:
-                fusionner({}, proprietaire=ECRAN, **etude_in)
-            except (ValueError, TypeError) as exc:
-                raise ValidationError({'etude_params': str(exc)})
+        _valider_etude_ecran(etude_in)
         serializer = DevisWriteSerializer(data=head)
         serializer.is_valid(raise_exception=True)
 
@@ -906,12 +987,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     {'client': 'Un client ou un lead est requis.'})
             client = resolve_client_for_lead(lead)
 
+        # QJR563 — même devise par défaut de la société que POST /devis/ ;
+        # une devise fournie dans le corps est respectée.
+        devise_kwargs = {}
+        if 'devise' not in serializer.validated_data:
+            from ..domain.creation import devise_par_defaut
+            devise_kwargs['devise'] = devise_par_defaut(company)
         try:
             with transaction.atomic():
                 def _save(ref):
                     devis = serializer.save(
                         reference=ref, client=client,
-                        created_by=request.user, company=company)
+                        created_by=request.user, company=company,
+                        **devise_kwargs)
                     if etude_in:
                         ecrire(devis, proprietaire=ECRAN, **etude_in)
                     # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction :
@@ -989,6 +1077,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 'Devis « %s » : ses lignes ne peuvent plus être '
                 'remplacées. Utilisez « Réviser » pour en créer une '
                 'nouvelle version.')
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -1004,14 +1096,46 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             from ..domain.lignes import MSG_REMPLACEMENT_VIDE
             return Response({'detail': MSG_REMPLACEMENT_VIDE},
                             status=status.HTTP_400_BAD_REQUEST)
+        # QJR544 (contrat QJR504, devis_replace_lines_entete.json) — UNE
+        # transaction pour l'édition entière : en-tête + lignes + choix
+        # d'écran. ``entete`` et ``etude_params`` sont OPTIONNELS : sans eux,
+        # comportement identique à l'octet. ``statut`` dans l'en-tête est
+        # IGNORÉ (QJR541). Tout est VALIDÉ avant la première écriture.
+        from rest_framework.exceptions import ValidationError
+        entete_in = request.data.get('entete')
+        etude_in = request.data.get('etude_params')
+        entete_ser = None
+        if entete_in is not None:
+            if not isinstance(entete_in, dict):
+                return Response({'detail': 'Champ « entete » : objet attendu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            entete = {k: v for k, v in entete_in.items()
+                      if k not in ('statut', 'company')}
+            entete_ser = DevisWriteSerializer(devis, data=entete, partial=True)
+            entete_ser.is_valid(raise_exception=True)
+            _gardes_mise_a_jour(devis, entete_ser.validated_data,
+                                request.user, t17=False)
+        _valider_etude_ecran(etude_in)
         from ..services import (
             RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective
         # QJR539 — correction d'un ENVOYÉ : profondeur de remise AVANT le geste.
         envoye = devis.statut == 'envoye'
         remise_avant = profondeur_remise_effective(devis) if envoye else None
+        geste_complet = entete_ser is not None or bool(etude_in)
         try:
             with transaction.atomic():
+                # QJR544 — avec un en-tête, la trace QJR518 encadre le geste
+                # ENTIER : UNE ligne de chatter et UN instantané par clic.
+                avant_geste = None
+                if geste_complet:
+                    from ..domain.modifiabilite import debut_de_geste_devis
+                    avant_geste = debut_de_geste_devis(devis, request.user)
+                if entete_ser is not None:
+                    entete_ser.save(updated_by=request.user)
+                if etude_in:
+                    from ..domain.etude_schema import ECRAN, ecrire
+                    ecrire(devis, proprietaire=ECRAN, **etude_in)
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
                 # qu'hier : un échec préserve les lignes d'origine.
                 # QJR518 — ``user`` : l'auteur d'une correction après envoi
@@ -1019,15 +1143,22 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 appliquer(devis, IntentionDevis(
                     origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
                     company=devis.company, user=request.user,
-                    composition=lignes_in))
+                    composition=lignes_in,
+                    tracer_correction=not geste_complet))
                 # QJR539 — remise plus profonde au-dessus du seuil sur un
                 # envoyé : la garde T17 s'applique, un refus annule le geste.
                 if envoye:
                     reverifier_remise_apres_correction(
                         devis, request.user, avant=remise_avant)
+                if avant_geste is not None:
+                    from ..domain.modifiabilite import fin_de_geste_devis
+                    fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                                       objet='lignes')
         except RemiseNonApprouvee as erreur:
             return Response({'detail': erreur.message},
                             status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError:
+            raise
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1055,9 +1186,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # implicitement : ``remplacer_lignes`` supprime la relation préchargée
         # par le queryset, ce qui vide son cache de résultats — le contrat est
         # désormais EXPLICITE plutôt que dépendant de ce détail de Django.
+        # QJR544 — un en-tête / une étude changés dans ce geste sont des
+        # grandeurs invisibles depuis les lignes : ``force_etudes`` (comme le
+        # PATCH d'en-tête). Sans eux, comportement d'hier.
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
-            company=devis.company))
+            company=devis.company, force_etudes=geste_complet))
+        # QJR545 — le jeton d'édition avance (lignes sauvées hors Devis.save)
+        # et la réponse porte celui réellement en base.
+        from ..domain.verrou_devis import toucher
+        toucher(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -1137,7 +1275,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         try:
             kwc = _nombre('kwc')
             nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
-            panel_watt = _nombre('panel_watt', Decimal('710'))
+            from ..domain.taille import _AUTO_PANEL_WATT
+            panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
             taux_tva = _nombre('taux_tva', Decimal('20'))
             mppt_paires = _nombre('mppt_paires', Decimal('1'))
             dimensionnement_avec = _dimensionnement_avec(
@@ -1174,6 +1313,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         hors_reseau = (str(_brut_hors_reseau).strip().lower()
                        in ('1', 'true', 'oui', 'yes')
                        if _brut_hors_reseau is not None else False)
+        # QJR604 — la ville du barème transport vient d'un LEAD de la société
+        # (404 sinon), résolue côté serveur ; plus jamais d'un texte libre.
+        ville = ''
+        if request.data.get('lead') not in (None, ''):
+            from apps.crm.selectors import get_company_lead
+            from ..domain.transport import ville_du_lead
+            try:
+                lead_obj = get_company_lead(
+                    company, int(request.data.get('lead')))
+            except (TypeError, ValueError):
+                lead_obj = None
+            if lead_obj is None:
+                return Response({'detail': 'Lead inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            ville = ville_du_lead(lead_obj)
         try:
             resultat = composer_devis_residentiel(
                 company=company,
@@ -1187,20 +1341,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 mppt_paires=int(mppt_paires),
                 dimensionnement_avec=dimensionnement_avec,
                 hors_reseau=hors_reseau,
+                ville=ville,
             )
         except AutoDevisError as exc:
             return Response(
                 {'detail': exc.message, 'field': exc.field},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-        # BARÈME TRANSPORT (fondateur 07/09/2026) — ``ville`` (optionnelle,
-        # texte libre : l'écran envoie celle du lead sélectionné) reprice la
-        # ligne Transport au barème Nouaceur, pour que l'aperçu écran affiche
-        # EXACTEMENT ce que la création écrira (``build_devis_auto`` applique
-        # le même barème). Ville absente/inconnue ⇒ réponse byte-identique.
-        ville = (request.data.get('ville') or '').strip()
-        if ville and isinstance(resultat, dict):
-            from ..domain.transport import repricer_transport_lignes_dict
-            repricer_transport_lignes_dict(resultat.get('lignes'), ville)
         return Response(resultat, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'], url_path='auto',
@@ -1599,44 +1745,65 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             DevisPresetSerializer(preset).data,
             status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=['post'], url_path='apply-preset',
-            permission_classes=[IsResponsableOrAdmin])
-    def apply_preset(self, request, pk=None):
-        """QJ16-wiring — Applique un preset à ce devis (brouillon uniquement).
-
-        Body :
-          - ``preset_id`` : id du DevisPreset à appliquer (obligatoire)
-
-        La company du preset DOIT correspondre à celle du devis (vérifiée
-        par ``apply_preset_to_devis`` — cross-company → 400).
-        RULE #4 : n'affecte jamais Devis.statut.
-        Retourne le décompte de lignes créées.
-        """
-        from ..services import apply_preset_to_devis
-        from ..models import DevisPreset
-        devis = self.get_object()
-        preset_id = request.data.get('preset_id')
-        if not preset_id:
-            return Response(
-                {'detail': 'preset_id est obligatoire.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            preset = DevisPreset.objects.get(
-                pk=preset_id, company=devis.company)
-        except DevisPreset.DoesNotExist:
-            return Response(
-                {'detail': 'Modèle introuvable pour cette société.'},
-                status=status.HTTP_404_NOT_FOUND)
-        try:
-            created = apply_preset_to_devis(preset, devis)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+    def _reponse_derive(self, request, devis, resultat):
+        """QJR588 — la réponse 200 du contrat QJR505."""
+        from ..domain.verrou_devis import toucher
+        devis.refresh_from_db()
+        toucher(devis)
         return Response({
-            'detail': f'{len(created)} ligne(s) ajoutée(s) depuis le modèle.',
-            'lignes_created': len(created),
-            'skipped_priceless': len(preset.lignes_snapshot) - len(created),
-        }, status=status.HTTP_200_OK)
+            'devis': DevisSerializer(devis, context={'request': request}).data,
+            'champs_repris': resultat.get('champs_repris', []),
+            'corrige_apres_envoi': bool(resultat.get('corrige_apres_envoi')),
+            'avertissements': resultat.get('avertissements', []),
+        })
+
+    @staticmethod
+    def _refus_derive_fige(devis):
+        """QJR588 — accepté / refusé / expiré / remplacé : 400
+        ``{detail, code: 'devis_fige'}`` (garde QJR516, statut LU)."""
+        from ..domain.modifiabilite import (
+            LIGNES, DevisNonModifiable, exiger_modifiable)
+        try:
+            exiger_modifiable(devis, LIGNES)
+        except DevisNonModifiable:
+            return Response(
+                {'detail': 'Devis figé — révisez-le (reviser) pour le '
+                           'modifier.', 'code': 'devis_fige'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return None
+
+    @action(detail=True, methods=['post'], url_path='reappliquer-lead',
+            permission_classes=[IsResponsableOrAdmin])
+    def reappliquer_lead(self, request, pk=None):
+        """QJR588 (contrat ``devis_reappliquer_lead.json``) — « Reprendre
+        les valeurs du lead » : études recalculées depuis le lead courant,
+        compte de panneaux réconcilié (prix négociés, lignes manuelles,
+        sections et notes intacts), estampille reposée. Brouillon et envoyé
+        sur place (envoyé : correction tracée) ; figé → 400 ``devis_fige``."""
+        from ..domain.pipeline import reappliquer_lead
+        devis = self.get_object()  # borné société
+        refus = self._refus_derive_fige(devis)
+        if refus is not None:
+            return refus
+        resultat = reappliquer_lead(devis, user=request.user,
+                                    company=request.user.company)
+        return self._reponse_derive(request, devis, resultat)
+
+    @action(detail=True, methods=['post'], url_path='acquitter-derive',
+            permission_classes=[IsResponsableOrAdmin])
+    def acquitter_derive(self, request, pk=None):
+        """QJR588 — « Garder les valeurs du devis » : l'estampille est
+        reposée sur les valeurs COURANTES du lead, rien d'autre (lignes et
+        études octet-identiques). Figé → 400 ``devis_fige``."""
+        from ..domain.pipeline import restamper_provenance
+        devis = self.get_object()
+        refus = self._refus_derive_fige(devis)
+        if refus is not None:
+            return refus
+        restamper_provenance(devis)
+        return self._reponse_derive(request, devis, {
+            'champs_repris': [], 'corrige_apres_envoi': False,
+            'avertissements': []})
 
     @action(detail=True, methods=['post'], url_path='dupliquer-variante',
             permission_classes=[IsResponsableOrAdmin])
@@ -2614,6 +2781,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # QJR516 — PATCH et DELETE gardés (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
+        from ..domain.verrou_devis import toucher
 
         if request.method == 'DELETE':
             chemin = request.query_params.get('chemin') or ''
@@ -2633,11 +2805,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             self._rafraichir_etudes_apres_surcharge(devis)
             fin_de_geste_devis(devis, request.user, avant=avant_geste,
                                objet='surcharges')
+            toucher(devis)
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
             # valeur du moteur (avant, il en disparaissait : « retour à
             # l'automatique » se soldait par un trou).
-            return Response(
-                self._overrides_reponse(devis, chemins_regeneres=(chemin,)))
+            reponse = self._overrides_reponse(
+                devis, chemins_regeneres=(chemin,))
+            reponse['updated_at'] = _jeton(devis)
+            return Response(reponse)
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2654,7 +2829,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         self._rafraichir_etudes_apres_surcharge(devis)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,
                            objet='surcharges')
-        return Response(self._overrides_reponse(devis))
+        toucher(devis)
+        reponse = self._overrides_reponse(devis)
+        reponse['updated_at'] = _jeton(devis)
+        return Response(reponse)
 
     @staticmethod
     def _rafraichir_etudes_apres_surcharge(devis):
@@ -2717,8 +2895,22 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # QJR516 — PATCH gardé (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
+        # QJR545 — verrou optimiste (jeton optionnel, retiré du corps : ce
+        # n'est pas une clé d'étude). Réponse littérale : la forme du 409
+        # reste lisible par check_api_shapes.
+        from ..domain.verrou_devis import verifier_jeton
+        charge = verifier_jeton(devis, request.data)
+        if charge is not None:
+            return Response(
+                {'code': charge['code'], 'detail': charge['detail'],
+                 'updated_at': charge['updated_at'],
+                 'updated_by_nom': charge['updated_by_nom']},
+                status=status.HTTP_409_CONFLICT)
 
         corps = request.data
+        if isinstance(corps, dict) and 'expected_updated_at' in corps:
+            corps = {k: v for k, v in corps.items()
+                     if k != 'expected_updated_at'}
         if not isinstance(corps, dict) or not corps:
             return Response(
                 {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
@@ -2755,7 +2947,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # (`contract_samples`), et y injecter les blocs dérivés fraîchement
         # recalculés en changerait la forme sans que personne les lise. Ils sont
         # en base, à leur place, pour le moteur PDF.
-        return Response({'etude_params': bloc})
+        # QJR545 — le jeton d'édition (avancé par ``ecrire``) accompagne le
+        # bloc : clé ADDITIVE, la forme ``{etude_params}`` est inchangée.
+        return Response({'etude_params': bloc, 'updated_at': _jeton(devis)})
 
     @action(detail=True, methods=['get'], url_path='offres-tailles',
             permission_classes=[IsResponsableOrAdmin])
@@ -2805,10 +2999,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # QJR516 — geste ETUDE.
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         regenerer_taille(devis, serializer.validated_data['cle'])
-        return Response(self._offres_tailles_reponse(devis))
+        from ..domain.verrou_devis import toucher
+        toucher(devis)
+        reponse = self._offres_tailles_reponse(devis)
+        reponse['updated_at'] = _jeton(devis)
+        return Response(reponse)
 
     @action(detail=True, methods=['post'],
             url_path='offres-tailles/appliquer',
@@ -2832,6 +3034,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..serializers import OffreTailleRegenerationSerializer
 
         devis = self.get_object()
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -2850,80 +3056,28 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': erreur.detail,
                  'revision_possible': bool(erreur.revision_possible)},
                 status=status.HTTP_400_BAD_REQUEST)
+        from ..domain.verrou_devis import toucher
+        toucher(devis)
         devis.refresh_from_db()
         reponse = self._offres_tailles_reponse(devis)
         reponse['applique'] = resume
+        reponse['updated_at'] = _jeton(devis)
         return Response(reponse)
 
     def perform_update(self, serializer):
-        from rest_framework.exceptions import ValidationError
-        # YDOCF2 — un devis figé (accepté/refusé/expiré) ne doit plus être
-        # librement édité : le BC/Facture/BoM chantier aval sont déjà générés
-        # depuis son contenu figé. Seule exception : le désactiver (révision
-        # « superseded », is_active=False) — la voie de modification reste
-        # `reviser` (clone en V+1 éditable), jamais un PATCH direct.
-        instance = serializer.instance
-        # QJR521 — ``is_active`` RESTE écrivable (désactivation seule,
-        # test_ydocf2) mais un devis remplacé ou archivé ne se RÉACTIVE
-        # jamais (False → True) : ce serait une seconde version active.
-        if (instance.is_active is False
-                and serializer.validated_data.get('is_active') is True):
-            raise ValidationError({
-                'is_active': 'Un devis remplacé ou archivé ne se réactive '
-                             'pas.'})
-        # QJR516 — le prédicat UNIQUE (geste ENTETE) ; 400 {'statut'} et
-        # l'exception « désactivation seule » CONSERVÉS.
-        from ..domain.modifiabilite import ENTETE, verdict
-        if not verdict(instance, ENTETE)['modifiable']:
-            nouveau_is_active = serializer.validated_data.get(
-                'is_active', instance.is_active)
-            only_deactivation = (
-                nouveau_is_active is False and instance.is_active is True
-                and set(serializer.validated_data.keys()) <= {'is_active'}
-            )
-            if not only_deactivation:
-                raise ValidationError({
-                    'statut': 'Devis figé — révisez-le (reviser) pour le '
-                              'modifier.'})
-        # ERR8 — un PATCH/PUT ne doit pas re-pointer le devis vers le client/lead
-        # d'une autre société (mass-assignment). perform_create valide déjà ces
-        # FK ; on applique la même garde à la mise à jour.
+        # YDOCF2 / QJR516 / QJR521 / ERR8 / QJR539 — les gardes d'une mise à
+        # jour d'en-tête vivent en UN point (``_gardes_mise_a_jour``), partagé
+        # avec ``replace-lines`` (QJR544). QJR541 — ``statut`` est en lecture
+        # seule : un PATCH ne fait plus passer un devis en « envoyé » ni
+        # n'avance le funnel.
+        # QJR545 — verrou optimiste (jeton optionnel, autres clients).
+        from ..domain.verrou_devis import verifier_jeton
+        charge = verifier_jeton(serializer.instance, self.request.data)
+        if charge is not None:
+            raise _DevisModifie(charge)
+        _gardes_mise_a_jour(serializer.instance, serializer.validated_data,
+                            self.request.user)
         company = self.request.user.company
-        if company is not None:
-            lead = serializer.validated_data.get('lead')
-            client = serializer.validated_data.get('client')
-            if lead is not None and lead.company_id != company.id:
-                raise ValidationError({'lead': 'Lead inconnu.'})
-            if client is not None and client.company_id != company.id:
-                raise ValidationError({'client': 'Client inconnu.'})
-        # Snapshot du statut AVANT écriture, puis mouvement automatique du
-        # funnel CRM (envoye → QUOTE_SENT, accepte → SIGNED). Import local
-        # pour éviter les cycles, comme dans perform_create.
-        ancien_statut = serializer.instance.statut
-        nouveau_statut = serializer.validated_data.get('statut', ancien_statut)
-        remise = serializer.validated_data.get(
-            'remise_globale', serializer.instance.remise_globale)
-        # QJR539 — la garde T17 de DOMAINE (``_guard_discount_approval``
-        # supprimée), 400 {'statut'} CONSERVÉ. Passage en « envoyé » : remise
-        # ENTRANTE jugée (AUD611, profondeur effective lignes + globale).
-        # Correction d'un ENVOYÉ : une remise plus profonde au-dessus du seuil
-        # n'est plus couverte par l'approbation d'avant.
-        from ..services import (
-            RemiseNonApprouvee, exiger_approbation_remise,
-            reverifier_remise_apres_correction)
-        from ..domain.tarification import profondeur_remise_effective
-        try:
-            if nouveau_statut == 'envoye' and ancien_statut != 'envoye':
-                exiger_approbation_remise(
-                    serializer.instance, self.request.user,
-                    remise_globale=remise)
-            elif ancien_statut == 'envoye':
-                reverifier_remise_apres_correction(
-                    serializer.instance, self.request.user,
-                    avant=profondeur_remise_effective(serializer.instance),
-                    remise_globale=remise)
-        except RemiseNonApprouvee as erreur:
-            raise ValidationError({'statut': erreur.message})
         # QJR518 — état vu par le client capturé AVANT l'écriture (ENVOYÉ
         # seulement) ; trace posée en fin de geste si l'en-tête ou la note
         # visibles ont changé.
@@ -2940,11 +3094,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # alimente la puce de fraîcheur. Pattern archived_by.
         serializer.instance.updated_by = self.request.user
         serializer.instance.save(update_fields=['updated_by'])
-        from apps.crm.services import avancer_stage_pour_devis
-        avancer_stage_pour_devis(
-            serializer.instance, ancien_statut,
-            serializer.instance.statut, self.request.user,
-        )
         # CJ2b — le bloc horaire canonique doit refléter le devis TEL QU'IL EST
         # APRÈS cette écriture (puissance, factures, profil ont pu changer) :
         # sans ce rafraîchissement, un devis résidentiel édité hors auto-devis
@@ -2977,6 +3126,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             company=company, force_etudes=True))
         fin_de_geste_devis(serializer.instance, self.request.user,
                            avant=avant_geste, objet='en-tête')
+        # QJR545 — les écritures de fin de geste passent en ``update_fields`` :
+        # le jeton servi par la réponse est réaligné sur la base.
+        from ..domain.verrou_devis import toucher
+        toucher(serializer.instance)
 
     @action(
         detail=True,

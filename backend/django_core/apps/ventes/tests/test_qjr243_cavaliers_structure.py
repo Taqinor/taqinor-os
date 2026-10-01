@@ -173,11 +173,12 @@ class CavalierGRecensementAvecVerdicts(SimpleTestCase):
     def _recensement(self):
         return (VENTES / 'domain' / 'lignes.py').read_text(encoding='utf-8')
 
-    def test_les_quatre_chemins_supplementaires_sont_nommes(self):
+    def test_les_chemins_supplementaires_sont_nommes(self):
+        # QJR546 — ``apply_preset_to_devis`` est supprimé (le modèle
+        # s'applique à l'écran) : il sort du recensement.
         source = self._recensement()
         for chemin in ('_completer_kit_residentiel',
                        'reconcilier',
-                       'apply_preset_to_devis',
                        'reparer_devis_deux_options'):
             with self.subTest(chemin=chemin):
                 self.assertIn(chemin, source)

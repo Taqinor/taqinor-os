@@ -43,6 +43,41 @@ class TestLeadProvenance(TestCase):
             selectors.lead_values_changed_since(stamp, company=self.company),
             [])
 
+    def test_qjr587_valeurs_pilotes_detectees(self):
+        """QJR587 (contrat QJR506) — taille, raccordement, ville de
+        rattachement et pompage sont estampillés et leur dérive se voit."""
+        import json
+        from pathlib import Path
+        contrat = json.loads((Path(__file__).resolve().parent
+                              / 'contract_samples'
+                              / 'lead_provenance_fields.json')
+                             .read_text(encoding='utf-8'))
+        self.assertEqual(set(selectors.LEAD_PROVENANCE_FIELDS),
+                         set(contrat['exemple']['champs']))
+        stamp = selectors.lead_provenance_stamp(self.lead)
+        json.dumps(stamp)  # JSON-safe, clé étrangère comprise
+        self.lead.taille_souhaitee_kwc = Decimal('6')
+        self.lead.raccordement = 'triphase'
+        self.lead.ville_reference = 'Casablanca'
+        self.lead.pompe_hmt_m = Decimal('40')
+        self.lead.save(update_fields=['taille_souhaitee_kwc', 'raccordement',
+                                      'ville_reference', 'pompe_hmt_m'])
+        changed = selectors.lead_values_changed_since(
+            stamp, company=self.company)
+        for champ in ('taille_souhaitee_kwc', 'raccordement',
+                      'ville_reference', 'pompe_hmt_m'):
+            self.assertIn(champ, changed)
+
+    def test_qjr587_ancienne_estampille_sans_les_nouvelles_cles_ne_derive_pas(self):
+        stamp = selectors.lead_provenance_stamp(self.lead)
+        for cle in ('taille_souhaitee_kwc', 'ville', 'ville_reference'):
+            stamp['valeurs'].pop(cle)
+        self.lead.ville_reference = 'Casablanca'
+        self.lead.save(update_fields=['ville_reference'])
+        self.assertEqual(
+            selectors.lead_values_changed_since(stamp, company=self.company),
+            [])
+
     def test_detects_changed_fields(self):
         stamp = selectors.lead_provenance_stamp(self.lead)
         self.lead.facture_hiver = Decimal('1500')
@@ -392,10 +427,19 @@ class TestGardeProvenanceQJR234(SimpleTestCase):
         self.assertIn('fantôme', constats[0][1])
 
     def test_une_EXCLUSION_perimee_rougit(self):
+        # QJR587 — `pompe_cv` est désormais ESTAMPILLÉ : l'exclusion témoin
+        # est `pompe_alim_actuelle` (toujours exclue, avec sa raison).
         constats = selectors.lead_provenance_omissions(
-            [c for c in self._champs() if c != 'pompe_cv'])
-        self.assertEqual([c[0] for c in constats], ['pompe_cv'])
+            [c for c in self._champs() if c != 'pompe_alim_actuelle'])
+        self.assertEqual([c[0] for c in constats], ['pompe_alim_actuelle'])
         self.assertIn('périmée', constats[0][1])
+
+    def test_qjr587_un_champ_ville_non_declare_ROUGIT(self):
+        # Le marqueur « ville » surveille la famille : un champ ville ajouté
+        # au modèle sans déclaration rougit.
+        constats = selectors.lead_provenance_omissions(
+            self._champs() + ['ville_x'])
+        self.assertEqual([c[0] for c in constats], ['ville_x'])
 
     def test_une_exclusion_DECLAREE_ne_rougit_pas(self):
         # Contrôle positif : `occupation_jour` porte bien un marqueur — il est

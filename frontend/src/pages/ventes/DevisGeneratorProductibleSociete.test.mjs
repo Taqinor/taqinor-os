@@ -48,7 +48,9 @@ test('QJR39 — le fetch des réglages société lit productible_kwh_kwc et le p
 })
 
 test('QJR39 — quoteLogic.productible alimente déjà productibleForCity (ROI + ROI avec) : le point de lecture existant profite du correctif sans autre changement', () => {
-  const occurrences = DG.match(/productibleForCity\(\s*\n\s*selectedLead\?\.ville \|\| '', quoteLogic\.productible\)/g) || []
+  // QJR586 — la ville lue est `ville_effective` (ville_reference or ville),
+  // repli sur `ville` pour un lead servi sans le champ.
+  const occurrences = DG.match(/productibleForCity\(\s*\n\s*\(selectedLead\?\.ville_effective \?\? selectedLead\?\.ville\) \|\| '', quoteLogic\.productible\)/g) || []
   // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — le 3ᵉ site (balayage
   // `optimalKwcByPayback`) lit la ville du lead APPLIQUÉ : il est EXÉCUTÉ par
   // DevisGeneratorBalayageProductible.test.jsx, plus compté ici.

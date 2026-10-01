@@ -1,9 +1,10 @@
 """QJR515 (Groupe QJR5, D-QJR5-1) — un devis ENVOYÉ ne repasse jamais en
 brouillon par un PATCH : il se corrige SUR PLACE.
 
-``DevisWriteSerializer.validate_statut`` lit ``self.instance`` et refuse le
-SEUL passage ENVOYE → BROUILLON (400 {'statut'}). BROUILLON → ENVOYE reste
-écrivable (jusqu'à QJR541) et un PATCH sans ``statut`` sur un envoyé passe.
+QJR541 — ``statut`` est en LECTURE SEULE dans ``DevisWriteSerializer`` : un
+PATCH ``statut: brouillon`` sur un envoyé est IGNORÉ (200, reste envoyé) ; un
+PATCH ``statut: envoye`` sur un brouillon aussi (reste brouillon — l'envoi a ses
+portes dédiées). Un PATCH sans ``statut`` sur un envoyé passe.
 
 PACT10 — le test AFFIRME l'exemple committé
 ``apps/ventes/contract_samples/devis_modifiabilite.json`` : un envoyé actif y
@@ -64,21 +65,19 @@ class TestDevisEnvoyeJamaisRetrograde(TestCase):
         self.assertEqual(brouillon['statut'], Devis.Statut.BROUILLON)
         self.assertTrue(brouillon['modifiable'])
 
-    def test_envoye_vers_brouillon_refuse(self):
+    def test_envoye_vers_brouillon_ignore(self):
         devis = self._devis(1, Devis.Statut.ENVOYE)
         r = self._patch(devis, {'statut': 'brouillon'})
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('statut', r.data)
-        self.assertIn('jamais en brouillon', str(r.data['statut']))
+        self.assertEqual(r.status_code, 200, r.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
-    def test_brouillon_vers_envoye_reste_ecrivable(self):
+    def test_brouillon_vers_envoye_ignore(self):
         devis = self._devis(2, Devis.Statut.BROUILLON)
         r = self._patch(devis, {'statut': 'envoye'})
         self.assertEqual(r.status_code, 200, r.data)
         devis.refresh_from_db()
-        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
 
     def test_patch_note_sur_envoye_garde_le_statut(self):
         devis = self._devis(3, Devis.Statut.ENVOYE)

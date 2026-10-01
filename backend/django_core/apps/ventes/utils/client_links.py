@@ -108,8 +108,3 @@ def url_proposition(devis, token: str = None) -> str:
 def suivi_path(token: str) -> str:
     """Chemin relatif du suivi post-signature (« /suivi/<token> », QX34)."""
     return SUIVI_PATH.format(token=token)
-
-
-def suivi_url(token: str) -> str:
-    """URL absolue du suivi post-signature."""
-    return f'{_site_url()}{suivi_path(token)}'

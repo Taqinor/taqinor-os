@@ -30,6 +30,7 @@ qui porte le corps — jamais la façade ``services.py``.
 
 NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
 """
+import dataclasses
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
@@ -118,6 +119,9 @@ class IntentionComposition:
     * ``hors_reseau`` — QJR-OFFGRID, le site est ISOLÉ (aucun raccordement) :
       onduleur AUTONOME + batterie obligatoire, forme mono-option. ``False``
       (LE DÉFAUT) ⇒ composition et vérification strictement inchangées.
+    * ``ville`` — QJR604, la ville de calcul du barème transport, résolue UNE
+      fois côté serveur depuis le lead (``transport.ville_du_lead``) ; ``''``
+      (LE DÉFAUT) ou ville inconnue ⇒ prix catalogue de la ligne Transport.
     """
 
     company: object
@@ -135,6 +139,32 @@ class IntentionComposition:
     avertissements: object = None
     variante: str = ''
     hors_reseau: bool = False
+    ville: str = ''
+    #: QJR605 — BATHOMO : le calibre de module batterie DÉJÀ vendu par le
+    #: devis (les sondes de taille). ``None`` (LE DÉFAUT) ⇒ choix économique.
+    batterie_module_kwh: object = None
+    #: QJR605 — ``ReglagesComposition`` DÉJÀ lus par ``reglages_de_composition``
+    #: pour un appelant qui compose N fois (balayages). ``None`` (LE DÉFAUT)
+    #: ⇒ lus ici, à chaque composition.
+    reglages: object = None
+
+
+@dataclass(frozen=True)
+class ReglagesComposition:
+    """QJR605 — le catalogue et les règles de gamme d'une société, LUS UNE
+    FOIS par :func:`reglages_de_composition` pour un balayage de N tailles."""
+
+    catalogue: object
+    marques: object
+    ordre_lignes: object
+
+
+def reglages_de_composition(company, gamme_nom_devis=None):
+    """Les réglages que :func:`composer` lit — la MÊME lecture, factorisée."""
+    return ReglagesComposition(
+        catalogue=catalogue_de_la_societe(company),
+        marques=carte_marques_composition(company, gamme_nom_devis),
+        ordre_lignes=ordre_lignes_societe(company))
 
 
 def composer(intention):
@@ -171,6 +201,8 @@ def composer(intention):
             if isinstance(intention.dimensionnement_avec, dict) else None)
 
     company = intention.company
+    reglages = (getattr(intention, 'reglages', None)
+                or reglages_de_composition(company, intention.gamme_nom_devis))
     commun = dict(
         panel_watt=intention.panel_watt,
         structure_type=intention.structure_type,
@@ -182,12 +214,12 @@ def composer(intention):
         avertissements=intention.avertissements,
         # U3 — les règles de gamme vivent CÔTÉ SERVEUR et sont résolues ICI :
         # marques épinglées (PVMRQ) et ordre par défaut (PVORD).
-        marques=carte_marques_composition(company, intention.gamme_nom_devis),
-        ordre_lignes=ordre_lignes_societe(company),
+        marques=reglages.marques,
+        ordre_lignes=reglages.ordre_lignes,
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,
     )
-    catalogue = catalogue_de_la_societe(company)
+    catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
     nb_panneaux = int(intention.nb_panneaux or 0)
 
@@ -213,7 +245,13 @@ def composer(intention):
             batterie_cible_kwh=(avec.get('batterie_kwh')
                                 if (avec_batterie and avec) else None),
             hors_reseau=hors_reseau,
+            batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
             **commun)
+    # QJR604 — LE BARÈME TRANSPORT est appliqué ICI, pour toutes les origines,
+    # avant l'écriture des lignes (donc avant le cliché de marge et le gel du
+    # prix/kWc). Ville inconnue ⇒ prix catalogue, aucun chiffre deviné.
+    lignes = appliquer_bareme_transport(
+        lignes, getattr(intention, 'ville', '') or '')
     return estampiller_variante(lignes, intention.variante)
 
 
@@ -256,6 +294,119 @@ def estampiller_variante(lignes, variante):
     # exactement ce cas).
     estampillees.__dict__.update(getattr(lignes, '__dict__', None) or {})
     return estampillees
+
+
+# ── QJR605 — LES SONDES DE TAILLE composent par le MÊME constructeur ─────────
+# Les cartes Éco / Recommandé / Max (``offres_tailles``), l'échelle de paliers
+# batterie (``domain/dimensionnement_devis``) et le balayage de tailles
+# (``dimensionnement.balayer_tailles``) appelaient ``composition_residentielle``
+# en direct : sans la gamme du devis, sans la phase, sans les paires MPPT,
+# sans le hors-réseau — un autre kit que celui du devis. Ils construisent
+# désormais leur intention ICI, et délèguent à :func:`composer`.
+
+
+@dataclass(frozen=True)
+class ContexteSonde:
+    """Ce qu'une sonde de taille sait du devis (ou des entrées) qu'elle
+    balaye. GELÉ ; ``reglages`` est lu UNE fois pour tout le balayage."""
+
+    company: object
+    reglages: object = None
+    panel_watt: object = None
+    gamme_nom_devis: object = None
+    structure_type: str = 'acier'
+    structure_produit_id: object = None
+    phase: object = None
+    mppt_paires: int = 1
+    taux_tva: Decimal = Decimal('20')
+    hors_reseau: bool = False
+    ville: str = ''
+
+
+def _mppt_paires_du_devis(devis):
+    """Les paires MPPT que le devis chiffre : son câble DC AU MÈTRE ÷ 60 m
+    (``metre_cable_dc_par_paires``, la règle de la composition). Sans ligne
+    lisible : le repli fondateur d'une paire."""
+    from apps.ventes.domain.catalogue import (
+        CABLE_DC_M_PAR_PALIER, _est_au_metre, _is_cable_dc)
+    metres = 0.0
+    for ligne in devis.lignes.all():
+        nom = ligne.designation or ''
+        if _is_cable_dc(nom) and _est_au_metre(nom):
+            metres += float(ligne.quantite or 0)
+    if metres <= 0:
+        return 1
+    return max(1, int(round(metres / CABLE_DC_M_PAR_PALIER)))
+
+
+def contexte_sonde_du_devis(devis, *, reglages=None):
+    """Le ``ContexteSonde`` d'un devis : gamme, structure, phase, MPPT, TVA,
+    hors-réseau et ville du barème — lus UNE fois, sur le devis et son lead."""
+    from apps.crm.selectors import lead_du_devis
+    from apps.ventes.compatibilites import est_site_isole, normaliser_phase
+    from apps.ventes.domain.composition import structure_produit_id_du_devis
+    from apps.ventes.domain.gammes import gamme_nom
+    lead = lead_du_devis(devis)
+    raccordement = getattr(lead, 'raccordement', None)
+    gamme = gamme_nom(devis) or None
+    hors_reseau = est_site_isole(raccordement) or any(
+        _is_offgrid_inverter(ligne.designation or '')
+        and float(ligne.quantite or 0) > 0
+        for ligne in devis.lignes.all())
+    taux = getattr(devis, 'taux_tva', None)
+    return ContexteSonde(
+        company=devis.company,
+        reglages=reglages or reglages_de_composition(devis.company, gamme),
+        gamme_nom_devis=gamme,
+        structure_produit_id=structure_produit_id_du_devis(devis),
+        phase=normaliser_phase(raccordement),
+        mppt_paires=_mppt_paires_du_devis(devis),
+        taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
+        hors_reseau=bool(hors_reseau),
+        ville=ville_du_lead(lead))
+
+
+def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
+                   module_kwh=None, avertissements=None):
+    """QJR605 — LA composition d'une taille sondée : l'intention du devis
+    (``contexte``) à ``nb_panneaux``, mono-option, déléguée à :func:`composer`.
+    """
+    watt = float(contexte.panel_watt or _AUTO_PANEL_WATT)
+    nb = int(nb_panneaux or 0)
+    return composer(IntentionComposition(
+        company=contexte.company,
+        kwc=nb * watt / 1000.0,
+        nb_panneaux=nb,
+        panel_watt=watt,
+        scenario=COMPOSITION_AVEC if avec_batterie else COMPOSITION_SANS,
+        structure_type=contexte.structure_type,
+        structure_produit_id=contexte.structure_produit_id,
+        taux_tva=contexte.taux_tva,
+        mppt_paires=contexte.mppt_paires,
+        phase=contexte.phase,
+        gamme_nom_devis=contexte.gamme_nom_devis,
+        dimensionnement_avec=({'batterie_kwh': cible_kwh}
+                              if (avec_batterie and cible_kwh) else None),
+        avertissements=avertissements if avertissements is not None else [],
+        hors_reseau=contexte.hors_reseau,
+        ville=contexte.ville,
+        batterie_module_kwh=module_kwh,
+        reglages=contexte.reglages))
+
+
+def sonder_wattage(contexte):
+    """LA sonde de wattage : le Wc du panneau RÉELLEMENT retenu par le
+    catalogue pour ce contexte (un panneau composé au wattage de référence),
+    ou ``0``. Le hors-réseau n'y entre pas : le panneau retenu n'en dépend
+    pas, et un catalogue sans onduleur autonome ne doit pas masquer le Wc."""
+    sonde = composer_sonde(
+        dataclasses.replace(contexte, panel_watt=_AUTO_PANEL_WATT,
+                            hors_reseau=False), 1,
+        avec_batterie=False)
+    try:
+        return float(getattr(sonde, 'panel_watt_reel', 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # ── Étape 4 — VERIFIER ───────────────────────────────────────────────────────
@@ -727,6 +878,8 @@ def intention_de_composition(intention, cible, *, avertissements=None):
         avertissements=avertissements,
         # QJR-OFFGRID — traduction PURE, comme tout le reste de cette fonction.
         hors_reseau=bool(getattr(intention, 'hors_reseau', False)),
+        # QJR604 — la ville du barème transport, lue UNE fois depuis le lead.
+        ville=ville_du_lead(intention.lead),
     )
 
 
@@ -915,7 +1068,9 @@ def ecrire_etude_params(devis, intention, composition):
         a_hybride=any(_is_hybrid_inverter(s.designation)
                       for s in (composition or ())),
         a_batterie=any(_is_battery(s.designation)
-                       for s in (composition or ())))
+                       for s in (composition or ())),
+        a_offgrid=any(_is_offgrid_inverter(s.designation)
+                      for s in (composition or ())))
 
     cles = {'scenario': scenario}
     resultat = (intention.layout or {}).get('result') or {}
@@ -982,6 +1137,108 @@ def estampiller_provenance(devis, intention):
         if lead_values_changed_since(ancienne, company=intention.company):
             return None
     return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
+
+
+def restamper_provenance(devis):
+    """QJR588 (contrat QJR505) — le SEUL écrivain autorisé à ÉCRASER une
+    estampille de provenance en dérive : il pose l'estampille des valeurs
+    COURANTES du lead (:func:`crm.selectors.lead_du_devis`). Appelé
+    uniquement par les deux gestes qui RÉSOLVENT la dérive — « reprendre les
+    valeurs du lead » et « garder celles du devis » —, jamais par un
+    enregistrement (:func:`estampiller_provenance` préserve, elle, une dérive
+    en cours). Rend le bloc écrit, ou ``None`` sans lead."""
+    from apps.crm.selectors import lead_du_devis, lead_provenance_stamp
+
+    stamp = lead_provenance_stamp(lead_du_devis(devis))
+    if stamp is None:
+        return None
+    return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
+
+
+def reappliquer_lead(devis, *, user=None, company=None):
+    """QJR588 (contrat QJR505) — « Reprendre les valeurs du lead ».
+
+    Sous UNE transaction, sur le devis VIVANT (jamais une recomposition) :
+
+    1. les études sont recalculées depuis le lead COURANT (mode RAFRAICHIR,
+       ``force_etudes``) ;
+    2. en résidentiel, le compte de panneaux est RÉCONCILIÉ (mode
+       RÉCONCILIER, ``exact``) sur la recommandation du moteur pour le lead
+       courant — la même machinerie que « appliquer une taille » : prix
+       négociés, remises, sections, notes et lignes manuelles intacts, seules
+       des quantités bougent ;
+    3. l'estampille est reposée (:func:`restamper_provenance`) ;
+    4. sur un ENVOYÉ, l'état vu par le client est capturé avant et la
+       correction est tracée en un point (« valeurs du lead reprises »).
+
+    La garde de statut est celle de l'appelant (``exiger_modifiable``) ; le
+    statut est LU, jamais écrit (règle #4). Rend ``{champs_repris,
+    corrige_apres_envoi, avertissements}``.
+    """
+    from apps.crm.selectors import lead_du_devis, lead_values_changed_since
+    from apps.ventes.domain.modifiabilite import (
+        consigner_correction_apres_envoi, debut_de_geste_devis,
+        empreinte_visible)
+
+    company = company or getattr(devis, 'company', None)
+    ancienne = (getattr(devis, 'etude_params', None) or {}).get('provenance')
+    champs = (lead_values_changed_since(ancienne, company=company)
+              if isinstance(ancienne, dict) else [])
+    lead = lead_du_devis(devis)
+    avertissements = []
+    corrige = False
+    with transaction.atomic():
+        avant = debut_de_geste_devis(devis, user)
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=company,
+            force_etudes=True))
+        if lead is not None and (getattr(devis, 'mode_installation', '')
+                                 or 'residentiel') == 'residentiel':
+            avertissements.extend(
+                _reconcilier_sur_le_lead(devis, lead, company, user))
+        devis.refresh_from_db()
+        restamper_provenance(devis)
+        if avant is not None and empreinte_visible(devis) != avant:
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='lead',
+                resume='valeurs du lead reprises')
+            corrige = True
+    return {'champs_repris': list(champs), 'corrige_apres_envoi': corrige,
+            'avertissements': avertissements}
+
+
+def _reconcilier_sur_le_lead(devis, lead, company, user):
+    """QJR588 — porte le compte de panneaux du devis à la recommandation du
+    moteur pour le lead COURANT, par le mode RÉCONCILIER (``exact``). Rend
+    les avertissements (jamais une exception pour une recommandation
+    impossible : on le DIT et le reste du geste continue)."""
+    from apps.ventes import offres_tailles
+    from apps.ventes.services import SyncLayoutError, extract_roof_config
+
+    try:
+        nb, _watt, _source, _avec = _panneaux_dimensionnement_horaire(
+            lead=lead, company=company,
+            phase=phase_client_pour_dimensionnement(lead))
+    except AutoDevisError as erreur:
+        return ['Taille non recalculée : %s' % erreur]
+    if not nb:
+        return ['Taille non recalculée : le moteur ne recommande aucun '
+                'compte de panneaux pour ce lead.']
+    if offres_tailles._compter_panneaux_du_devis(devis) == int(nb):
+        return []
+    contexte = offres_tailles._contexte(devis)
+    if contexte is None:
+        return ['Taille non recalculée : ce devis ne se dimensionne pas '
+                '(profil de consommation ou catalogue).']
+    try:
+        resultat = appliquer(devis, IntentionDevis(
+            origine=ORIGINE_RESYNCHRONISATION, company=company, user=user,
+            layout=offres_tailles._layout_de_la_taille(
+                devis, contexte, int(nb), 0, extract_roof_config),
+            exact=True, mode=MODE_RECONCILIER, tracer_correction=False))
+    except SyncLayoutError as erreur:
+        return [str(getattr(erreur, 'detail', erreur))]
+    return list((resultat.get('resynchro') or {}).get('avertissements') or ())
 
 
 def rafraichir_etudes(verrou, *, force=False):
@@ -1318,6 +1575,10 @@ from apps.ventes.domain.etudes import (  # noqa: E402,F401
     refresh_marge_snapshot,
 )
 from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402,F401
+from apps.ventes.domain.transport import (  # noqa: E402
+    appliquer_bareme_transport,
+    ville_du_lead,
+)
 # QJR243 (a) — TROIS NOMS MORTS RETIRÉS D'ICI : ``SCENARIO_LES_DEUX``,
 # ``_scenario_stocke`` et ``sert_les_deux`` n'étaient utilisés NI par ce module
 # NI par personne à travers lui (grep : aucun ``from …pipeline import`` ne les

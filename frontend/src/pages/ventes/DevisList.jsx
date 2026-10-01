@@ -16,7 +16,6 @@ import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import importApi from '../../api/importApi'
-import DevisForm from './DevisForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
   // APX12 — le langage UNIQUE des KPI d'argent.
@@ -1393,8 +1392,6 @@ export default function DevisList() {
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
-  const [showForm, setShowForm]       = useState(false)
-  const [editDevis, setEditDevis]     = useState(null)
   const [convertingId, setConvertingId] = useState(null)
   const [factureGenId, setFactureGenId] = useState(null) // devis id en cours de facturation
   const [pdfGenerating, setPdfGenerating] = useState({}) // id → true
@@ -1951,8 +1948,9 @@ export default function DevisList() {
     }
   }
 
-  // Création ET édition passent par la page générateur solaire (l'ancien
-  // modal DevisForm est conservé mais n'est plus le chemin d'édition).
+  // Création ET édition passent par la page générateur solaire (QJR540 :
+  // l'ancien modal d'édition est supprimé, ses blocs vivent dans l'Édition
+  // complète).
   const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => {
     // QJR532 — un devis figé (accepté, remplacé) dit POURQUOI au lieu de
@@ -1972,8 +1970,6 @@ export default function DevisList() {
     }
     navigate(`/ventes/devis/nouveau?edit=${d.id}`)
   }
-  const closeForm = () => { setShowForm(false); setEditDevis(null) }
-  const onSaved  = () => dispatch(fetchDevis())
 
   const [deletingId, setDeletingId] = useState(null)
   // APX17 — la confirmation de suppression passe par le dialogue maison
@@ -2734,10 +2730,6 @@ export default function DevisList() {
   return (
     <div className="page">
       {pageHeader}
-
-      {showForm && (
-        <DevisForm devis={editDevis} onClose={closeForm} onSaved={onSaved} />
-      )}
 
       {/* ── T6 — Résumé par statut (nombre + total TTC des devis chargés) ──
           APX12 — les 5 cartes étaient des `<div>` nus : elles passent au

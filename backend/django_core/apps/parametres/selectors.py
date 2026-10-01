@@ -374,9 +374,9 @@ def realisation_pour_lead(lead):
     if not lignes:
         return None
 
-    ville_lead = _ville_canonique(
-        (getattr(lead, "ville_reference", "") or "").strip()
-        or (getattr(lead, "ville", "") or "").strip())
+    # QJR586 — la ville de CALCUL du lead, en un seul point (crm).
+    from apps.crm.selectors import ville_effective
+    ville_lead = _ville_canonique(ville_effective(lead))
     if not ville_lead:
         return _repli(lignes, _puissance_du_dernier_devis(lead))
 

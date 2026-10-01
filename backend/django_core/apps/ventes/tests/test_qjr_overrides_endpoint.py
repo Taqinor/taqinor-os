@@ -141,12 +141,22 @@ class EcritureChirurgicaleTests(_OverridesBase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_updated_at_ne_bouge_pas(self):
+    def test_updated_at_n_avance_que_par_le_jeton_du_verrou(self):
+        """QJR545 — la pose d'une surcharge est un ÉCRIVAIN du devis : elle
+        avance ``updated_at`` (``verrou_devis.toucher``, un UPDATE d'une
+        colonne) et la réponse 2xx porte CE jeton, exactement celui en base.
+        Avant QJR545 ``updated_at`` ne bougeait pas — c'était l'aveuglement
+        du verrou optimiste que QJR545 corrige."""
+        from django.utils.dateparse import parse_datetime
         self.devis.refresh_from_db()
         avant = self.devis.updated_at
-        self.api.patch(self.url, {'taille.nb_panneaux': 14}, format='json')
+        r = self.api.patch(self.url, {'taille.nb_panneaux': 14},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
         self.devis.refresh_from_db()
-        self.assertEqual(self.devis.updated_at, avant)
+        self.assertGreater(self.devis.updated_at, avant)
+        self.assertEqual(self.devis.updated_at,
+                         parse_datetime(str(r.data['updated_at'])))
 
     def test_le_gel_prix_par_kwc_n_est_pas_declenche(self):
         self.devis.refresh_from_db()

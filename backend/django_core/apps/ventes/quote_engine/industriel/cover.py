@@ -9,15 +9,10 @@ see quote_engine/RENDERING_NOTES.md). Classes prefixed ``i1-``.
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
+# QJR651 — kwc_str et la cellule KPI : harnais premium commun.
+from .. import premium_base
 
 _MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"]
-
-
-def _kwc_str(kwc):
-    try:
-        return f"{float(kwc):.2f}".rstrip("0").rstrip(".").replace(".", ",")
-    except (TypeError, ValueError):
-        return "—"
 
 
 def build(ctx):
@@ -66,7 +61,7 @@ def build(ctx):
         f'<div class="i1-pill">Valable jusqu&#8217;au {_vu}</div>'
         if _vu else "")
 
-    kwc = _kwc_str(d.get("ind_kwc"))
+    kwc = premium_base.kwc_str(d.get("ind_kwc"))
     prod = d.get("ind_prod")
     conso = d.get("ind_conso")
     autoconso = d.get("ind_autoconso")
@@ -124,11 +119,10 @@ def build(ctx):
                      'la baseline se chiffre.</div>')
 
     # KPI (autoconso/couverture omis proprement si non calculés).
+    # QJR651 — la cellule KPI est commune (premium_base.kpi) ; seul
+    # le préfixe de classes CSS diffère d'un marché à l'autre.
     def kpi(val, unit, label, fig=None):
-        _a = ancre(fig, val) if fig else ""
-        return (f'<td class="i1-kpi"><div class="i1-kv">{val}'
-                f'<span class="i1-ku">{unit}</span></div>{_a}'
-                f'<div class="i1-kl">{label}</div></td>')
+        return premium_base.kpi(val, unit, label, fig, prefixe="i1")
 
     cellules = [kpi(kwc, "&nbsp;kWc", "Puissance crête", "puissance_kwc")]
     if autoconso is not None:

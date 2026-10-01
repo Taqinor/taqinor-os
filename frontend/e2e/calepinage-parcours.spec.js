@@ -469,8 +469,8 @@ test('CALX130: angles droits, sommet inséré, obstacle polygonal, cible d’opt
 // chiffrée sur des données préparées.
 //
 // LE RETOUR CRM : `BlocCalepinageDevis` (`features/ventes/BlocCalepinageDevis.jsx`,
-// CAL40) n'est monté que dans le dialogue d'ÉDITION du devis
-// (`DevisForm.jsx`), ouvert depuis `DevisList.jsx` par le menu « Plus
+// CAL40) est monté dans l'Édition complète du devis (`DevisGenerator.jsx`
+// en `?edit=`, QJR540), ouverte depuis `DevisList.jsx` par le menu « Plus
 // d'actions » → « Éditer » d'UNE ligne — jamais depuis l'espace de travail du
 // lead (`LeadWorkspace.jsx` ouvre le devis en conception 3D, un écran
 // DIFFÉRENT). La spec revient donc au lead (preuve que le geste CRM reste
@@ -577,6 +577,8 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
     await expect(ligne).toBeVisible({ timeout: 15_000 })
     await ligne.getByRole('button', { name: /Plus d.actions/ }).click()
     await page.getByRole('menuitem', { name: 'Éditer' }).click()
+    // QJR540 — « Éditer » ouvre l'Édition complète (`?edit=`), qui monte le bloc.
+    await expect(page).toHaveURL(new RegExp(`edit=${devisId}`), { timeout: 15_000 })
     // Silencieux quand le devis n'a pas (encore) de calepinage résolu côté
     // serveur (`BlocCalepinageDevis.jsx` : « jamais un bloc vide ») — mais
     // CE devis vient JUSTEMENT d'être généré PAR ce calepinage : le bloc doit

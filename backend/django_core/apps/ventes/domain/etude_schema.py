@@ -446,4 +446,8 @@ def ecrire(devis, *, proprietaire=None, **cles):
     devis.etude_params = bloc
     if getattr(devis, 'pk', None) is not None:
         devis.save(update_fields=['etude_params'])
+        # QJR545 — ``update_fields`` n'écrit pas ``updated_at`` : le jeton
+        # d'édition avance explicitement (verrou optimiste).
+        from apps.ventes.domain.verrou_devis import toucher
+        toucher(devis)
     return bloc

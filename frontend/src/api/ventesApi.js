@@ -61,9 +61,11 @@ const ventesApi = {
   // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
   // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
   // échec préserve les lignes existantes (jamais un devis à zéro ligne).
-  replaceLignesDevis: (id, lignes) =>
-    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
-  updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
+  // QJR544 (contrat QJR504) — `extra` optionnel `{ entete, etude_params }` :
+  // l'en-tête et les choix d'écran partent dans la MÊME transaction serveur
+  // que les lignes (plus de PATCH d'en-tête séparé en édition).
+  replaceLignesDevis: (id, lignes, extra = {}) =>
+    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes, ...extra }),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   // QJR62/QJR66 — PATCH **FUSIONNANT** d'`etude_params` : seules les clés
   // ENVOYÉES bougent, les autres restent intouchées bit à bit (une valeur
@@ -278,6 +280,14 @@ const ventesApi = {
   // le front ne l'appelle QUE si le rôle courant le permet (voir DevisList).
   getLectureClientDevis: (id) => api.get(`/ventes/devis/${id}/lecture-client/`),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
+  // QJR553 (contrat QJR513) — historique de CONFIGURATION (instantanés) ;
+  // `params` optionnel `{ a, b }` → le diff entre deux instantanés.
+  // QJR589 (contrat QJR505) — résoudre la dérive lead → devis : « reprendre
+  // les valeurs du lead » ou « garder celles du devis ». Corps vide.
+  reappliquerLeadDevis: (id) => api.post(`/ventes/devis/${id}/reappliquer-lead/`, {}),
+  acquitterDeriveDevis: (id) => api.post(`/ventes/devis/${id}/acquitter-derive/`, {}),
+  getHistoriqueConfigurationDevis: (id, params) =>
+    api.get(`/ventes/devis/${id}/historique-configuration/`, params ? { params } : undefined),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
   // TAILLES (fondateur 26/08/2026) — écran vendeur des trois tailles
   // Éco/Recommandé/Max (DevisOffresTailles.jsx). Contrat :
@@ -313,8 +323,6 @@ const ventesApi = {
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),
   createLigneDevis: (data) => api.post('/ventes/devis-lignes/', data),
-  updateLigneDevis: (id, data) => api.put(`/ventes/devis-lignes/${id}/`, data),
-  deleteLigneDevis: (id) => api.delete(`/ventes/devis-lignes/${id}/`),
 
   // Bons de commande
   getBonsCommande: (params) => api.get('/ventes/bons-commande/', { params }),
@@ -504,7 +512,6 @@ const ventesApi = {
   // QJ16 — Modèles de devis (presets)
   getPresets: (params) => api.get('/ventes/presets/', { params }),
   savePreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/save-preset/`, data),
-  applyPreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/apply-preset/`, data),
   deletePreset: (id) => api.delete(`/ventes/presets/${id}/`),
 
   // CALX289 — le bloc ÉCONOMIE en LECTURE SEULE d'un devis (`apps/ventes/economie.py`,

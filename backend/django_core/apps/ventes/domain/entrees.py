@@ -59,6 +59,12 @@ class EntreesMoteur:
     ``lat``, ``lon``, ``occupation``, ``equipements``, ``tranches``,
     ``charges_fixes_mad``, ``jour_reference``.
 
+    QJR606 — DEUX ENTRÉES DE COMPOSITION, lues ici une fois : ``phase`` (le
+    raccordement normalisé du lead, PVCOMPAT) et ``gamme_nom_devis`` (la gamme
+    du devis ; ``None`` sur un lead). Tous les appelants de
+    ``recommander_taille`` les transmettent. Elles n'entrent PAS dans
+    l'empreinte (aucun bloc existant n'est périmé par cet ajout).
+
     ``tranches`` / ``charges_fixes_mad`` — L'IDENTITÉ TARIFAIRE (QJR46) : la
     surcharge de barème de la SOCIÉTÉ, lue par le MÊME
     ``etude_horaire._reglages_tarifaires`` que le moteur de devis. Elles ne
@@ -87,6 +93,8 @@ class EntreesMoteur:
     tranches: object = None
     charges_fixes_mad: object = None
     jour_reference: object = None
+    phase: object = None
+    gamme_nom_devis: object = None
 
     # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
 
@@ -104,6 +112,12 @@ class EntreesMoteur:
 
     def get(self, cle, defaut=None):
         return getattr(self, cle, defaut)
+
+
+def _ville_effective(lead):
+    """QJR586 — ``crm.selectors.ville_effective`` (import fonction-local)."""
+    from apps.crm.selectors import ville_effective
+    return ville_effective(lead)
 
 
 def _reglages_tarifaires_de(company):
@@ -305,6 +319,11 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     # s'applique.
     occupation, _source_occ = occupation_du_devis(
         devis, {'mode_installation': mode})
+    # QJR606 — phase du lead et gamme du devis, les MÊMES lecteurs que la
+    # composition (``compatibilites.normaliser_phase``, ``gammes.gamme_nom``).
+    from apps.crm.selectors import lead_du_devis
+    from apps.ventes.compatibilites import normaliser_phase
+    from apps.ventes.domain.gammes import gamme_nom
     return EntreesMoteur(
         company=company, mode=mode, etude_params=etude_params,
         conso_kwh_mensuelles=conso, source_conso=source_conso,
@@ -314,7 +333,15 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         occupation=occupation,
         equipements=equipements_du_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes,
-        jour_reference=jour)
+        jour_reference=jour,
+        phase=normaliser_phase(
+            getattr(lead_du_devis(devis), 'raccordement', None)),
+        gamme_nom_devis=gamme_nom(devis) or None)
+
+
+def _phase_du_lead(lead):
+    from apps.ventes.compatibilites import normaliser_phase
+    return normaliser_phase(getattr(lead, 'raccordement', None))
 
 
 def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
@@ -376,12 +403,16 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         company=company, mode='residentiel', etude_params={},
         conso_kwh_mensuelles=conso, source_conso=source_conso,
         jour_reference=jour,
-        ville=getattr(lead, 'ville', None),
+        # QJR586 — la ville de CALCUL du lead (rattachement VREF prioritaire),
+        # la même que le devis, le PDF et le transport.
+        ville=_ville_effective(lead) or None,
         lat=getattr(lead, 'gps_lat', None),
         lon=getattr(lead, 'gps_lng', None),
         occupation=occupation,
         equipements=composer_equipements(equipements_pour_lead(lead)),
-        tranches=tranches, charges_fixes_mad=charges_fixes)
+        tranches=tranches, charges_fixes_mad=charges_fixes,
+        # QJR606 — un lead n'a pas de gamme de devis : ``None``.
+        phase=_phase_du_lead(lead))
 
 
 # ════════════════════════════════════════════════════════════════════════════

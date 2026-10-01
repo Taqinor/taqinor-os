@@ -1,11 +1,11 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR506 (M0 QJR5) — ville effective du lead. Trois clés : `ville`, `ville_reference`, `ville_effective` — chaîne, '' si `ville` et `ville_reference` sont vides, JAMAIS null.",
+  "pourquoi": "QJR506 (M0 QJR5) — ville effective du lead. Trois clés : `ville`, `ville_reference`, `ville_effective` — chaîne, '' si `ville` et `ville_reference` sont vides, JAMAIS null. Règle (QJR586) : `ville_reference or ville` — la ville de référence normalisée prime.",
   "exemple": {
     "ville": "Marrakech",
     "ville_reference": "Casablanca",
-    "ville_effective": "Marrakech"
+    "ville_effective": "Casablanca"
   },
   "exemple_vide": {
     "ville": "",
