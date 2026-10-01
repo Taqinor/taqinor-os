@@ -9,6 +9,9 @@ COPY frontend/package*.json ./
 RUN npm ci --frozen-lockfile
 # Source du builder 3D importee par l'alias Vite (../apps/web/src).
 COPY apps/web/src /build/apps/web/src
+# ERR-QJR5-DOCKERFILE-WORKER-ABSENT — apps/web/src/lib/lead.ts importe
+# ../../worker/deadLetter.mjs (QJR663) : sans ce dossier, le build echoue.
+COPY apps/web/worker /build/apps/web/worker
 COPY frontend/ ./
 
 # Variables d'environnement injectees au moment du build
