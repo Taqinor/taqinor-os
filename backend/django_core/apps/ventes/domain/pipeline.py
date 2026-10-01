@@ -1068,7 +1068,9 @@ def ecrire_etude_params(devis, intention, composition):
         a_hybride=any(_is_hybrid_inverter(s.designation)
                       for s in (composition or ())),
         a_batterie=any(_is_battery(s.designation)
-                       for s in (composition or ())))
+                       for s in (composition or ())),
+        a_offgrid=any(_is_offgrid_inverter(s.designation)
+                      for s in (composition or ())))
 
     cles = {'scenario': scenario}
     resultat = (intention.layout or {}).get('result') or {}

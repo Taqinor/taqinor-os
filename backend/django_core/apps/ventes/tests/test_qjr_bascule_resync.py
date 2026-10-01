@@ -576,10 +576,13 @@ class LaDerivationAntiMensongeEstUNIQUE(_BaseResync):
             scenario_servable(True, a_reseau=False, a_hybride=True,
                               a_batterie=True),
             SCENARIO_AVEC_BATTERIE)
+        # QJR607 — BAT-DIFF (ordre fondateur du 17/09, ``test_options``) :
+        # un hybride face au réseau sert « Les deux » même sans batterie
+        # chiffrée ; la batterie est différée, jamais inventée.
         self.assertEqual(
             scenario_servable(True, a_reseau=True, a_hybride=True,
                               a_batterie=False),
-            SCENARIO_SANS_BATTERIE)
+            SCENARIO_LES_DEUX)
         # Mono : « Avec » exige hybride ET batterie, sinon « Sans ».
         self.assertEqual(
             scenario_servable(False, a_reseau=False, a_hybride=True,

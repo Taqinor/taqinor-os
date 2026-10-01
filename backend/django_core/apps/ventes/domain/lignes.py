@@ -143,11 +143,12 @@ def option_avec_servable(devis):
 
     LECTURE PURE : n'écrit rien, ne lève pas sur un devis sans lignes.
     """
+    # QJR607 — DÉLÈGUE au prédicat du noyau (``familles_servables``, BAT-DIFF
+    # compris), lu sur le panier de CETTE option.
+    from apps.ventes.utils.options import (
+        familles_des_lignes, familles_servables)
     lignes = lignes_de_variante(_lignes_produit(devis), VARIANTE_AVEC)
-    return ((any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
-             or any(_classe_ligne(li, _is_offgrid_inverter)
-                    for li in lignes))
-            and any(_classe_ligne(li, _is_battery) for li in lignes))
+    return familles_servables(**familles_des_lignes(lignes))[1]
 
 
 def cible_depuis_lignes(devis, variante='sans'):

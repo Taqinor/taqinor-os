@@ -1926,7 +1926,6 @@ from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_AVEC_BATTERIE,
     SCENARIO_LES_DEUX,
     SCENARIO_SANS_BATTERIE,
-    _scenario_stocke,
     poser_puissance_kwc,
     scenario_effectif,
 )
