@@ -32,13 +32,13 @@
 // utile d'action — un reducer pur ne va jamais chercher un chiffre.
 import { panneauxPourKwc, kwcPourPanneaux } from '../solar.js'
 
-// Vocabulaire EXACT du moteur PDF (constantes SCENARIO_* d'apps/ventes/
-// services.py, recopiées à l'identique par `DevisGenerator.jsx:119-121`) :
-// jamais reformulé ici.
-export const SCENARIO_LES_DEUX = 'Les deux (Sans + Avec)'
-export const SCENARIO_SANS = 'Sans batterie'
-export const SCENARIO_AVEC = 'Avec batterie'
-export const SCENARIOS_VALIDES = [SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC]
+// Vocabulaire EXACT du moteur PDF : tapé UNE fois dans le module feuille
+// `scenarios.js` (ERR-QJR576), réexporté ici pour les importeurs du reducer.
+import {
+  SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC, SCENARIOS_VALIDES,
+} from './scenarios.js'
+
+export { SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC, SCENARIOS_VALIDES }
 
 /** Les quatre marchés canoniques (miroir de `autoQuote.LEAD_TYPE_TO_MODE`).
  * QJR231 — l'un des SIX sites qui énumèrent ces marchés indépendamment
