@@ -32,7 +32,6 @@ import {
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
   // ce générateur).
-  noticePalierKwc,
 } from '../../features/ventes/autoQuote'
 import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 import crmApi from '../../api/crmApi'
@@ -1937,12 +1936,8 @@ export default function DevisGenerator({
   // On lit le lead DIRECTEMENT (l'état posé par applyLead est asynchrone).
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
-    // QJR308 — MÊME précédence que `createAutoQuote` ci-dessous (aucune cible
-    // n'est transmise depuis ce point d'entrée, donc `lead.taille_souhaitee_kwc`
-    // est la valeur réellement snappée) : l'avis s'affiche AU MOMENT où le
-    // snap a lieu, avant l'appel réseau — pas seulement avant de naviguer ici.
-    const avisPalier = noticePalierKwc(lead?.taille_souhaitee_kwc)
-    setWarnings(prev => ({ ...prev, avisPalier }))
+    // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
+    // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
     try {
       // Calcul partagé avec le panneau devis inline (autoQuote.js) — jamais
       // dupliqué : un seul endroit dimensionne le devis auto. On transmet les
