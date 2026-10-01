@@ -163,6 +163,7 @@ import { moteur, apercu } from '../../features/ventes/quote/valeur'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from '../../features/ventes/quote/lignesEcran'
 // QJR526 — wattage / structure / hors-réseau / composition libre relus des lignes.
 import { deriverReouverture } from '../../features/ventes/quote/reouverture'
+import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -3338,114 +3339,38 @@ export default function DevisGenerator({
     return entrees
   }
 
-  // QXMT — la répartition horaire TELLE QUE SAISIE, ou `null` (règle Z2 : un
-  // site repassé en BT n'a plus de répartition MT, on la RETIRE au lieu de
-  // laisser traîner celle d'hier). Rien de rempli ⇒ `null` aussi : l'étude MT
-  // omet alors économies et payback plutôt que d'inventer un barème.
-  const repartitionMtSaisie = () => {
-    if (tensionRaccordement !== 'mt') return null
-    const parts = {}
-    for (const creneau of ['pointe', 'pleines', 'creuses']) {
-      const n = parseFloat(repartitionMt[creneau])
-      if (Number.isFinite(n)) parts[creneau] = n
-    }
-    return Object.keys(parts).length ? parts : null
-  }
-
-  const blocEtudeMarche = () => {
-    const nombre = (v) => {
-      const n = parseFloat(v)
-      return Number.isFinite(n) ? n : null
-    }
-    if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
-      const etude = (modeInstallation === 'industriel'
-        ? etudeIndustrielle : etudeCommerciale) || {}
-      const bloc = {
-        ...choixEcran(),
-        ...entreesReellesEcran(nombre(etude.conso_annuelle)),
-        taux_autoconso: nombre(etude.taux_autoconso),
-        taux_couverture: nombre(etude.taux_couverture),
-        payback: nombre(etude.payback),
-        injection_kwh_an: nombre(etude.injection_kwh_an),
-        injection_dh_an: nombre(etude.injection_dh_an),
-        // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
-        // relue par `?edit=`, sinon la réouverture remettait le défaut et
-        // réécrivait taux / payback. Commercial : dérivée de la catégorie
-        // (`commercialDayShare`), rien à écrire.
-        part_diurne_pct: modeInstallation === 'industriel' ? nombre(dayUsage) : undefined,
-        // QXMT — raccordement du site + répartition horaire : le mappeur
-        // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
-        // devis MT rouvert repartait silencieusement au barème BT. On stocke
-        // ce que le vendeur a TAPÉ (l'entrée), pas la répartition normalisée
-        // par l'étude : c'est la forme que le formulaire réinjecte.
-        tension_raccordement: tensionRaccordement || null,
-        repartition_mt: repartitionMtSaisie(),
-      }
-      if (modeInstallation === 'commercial') {
-        // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
-        // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
-        // IDENTIQUE à celle d'avant, jamais de `prix_achat`.
-        bloc.categorie_commerciale = categorieCommerciale || null
-        for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || [])) {
-          const brut = commercialAnswers[q.key]
-          if (brut === undefined || brut === '' || brut === null) continue
-          bloc[q.key] = q.type === 'number'
-            ? (parseFloat(brut) || 0)
-            : q.type === 'bool' ? !!brut : String(brut)
-        }
-      }
-      return bloc
-    }
-    if (modeInstallation === 'agricole') {
-      // MÊME dérivation que l'aperçu écran et que le devis auto
-      // (`buildEtudePompage`) : une seule formule, jamais deux chiffres qui
-      // pourraient diverger. Seules les clés du schéma en sortent, typées.
-      const p = pompageSel
-        ? buildEtudePompage(pompageSel, {
-            typePompe: pompeType, alim: pompeAlim,
-            hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-            profondeur: pompeProfondeur, distance: pompeDistance,
-          })
-        : {}
-      return {
-        ...choixEcran(),
-        ...entreesReellesEcran(null),
-        // DÉRIVÉES du dimensionnement (propriétaire ECRAN au schéma).
-        pompe_cv: nombre(p.pompe_cv),
-        pompe_kw: nombre(p.pompe_kw),
-        debit_hmt_m3h: nombre(p.debit_hmt_m3h),
-        m3_jour: nombre(p.m3_jour),
-        champ_kwc: nombre(p.champ_kwc),
-        // ENTRÉES du vendeur, prises à l'ÉTAT de l'écran (pas au
-        // dimensionnement) : ce sont elles que le mappeur `?edit=` réinjecte
-        // dans le formulaire, et elles existent même quand aucune pompe à
-        // courbe ne peut être retenue.
-        hmt_m: nombre(pompeHmt),
-        debit_souhaite_m3h: nombre(pompeDebit),
-        heures_pompage: nombre(pompeHeures),
-        type_pompe: pompeType || null,
-        alim: pompeAlim || null,
-        profondeur_m: nombre(pompeProfondeur),
-        distance_m: nombre(pompeDistance),
-        // Exploitation guidée (toutes optionnelles, toutes relues par `?edit=`).
-        irrigation_method: farmIrrigation || null,
-        region: farmRegion || null,
-        crop: farmCrop || null,
-        surface_ha: nombre(farmSurfaceHa),
-        current_fuel: farmFuel || null,
-        fuel_spend_current: nombre(farmFuelSpendAnnual),
-        hmt_static: nombre(farmHmtStatic),
-        hmt_drawdown: nombre(farmHmtDrawdown),
-      }
-    }
-    // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
-    // CHOIX du vendeur ni des entrées réelles qu'il vient de taper (arbitrage
-    // « zéro perte »). Objet vide ⇒ aucun appel du tout (voir
-    // `persisterDevis`) ; en pratique `choixEcran()` porte toujours au moins
-    // le scénario, sans quoi le moteur PDF totaliserait les deux options.
-    const entrees = { ...choixEcran(), ...entreesReellesEcran(null) }
-    return Object.keys(entrees).length ? entrees : null
-  }
+  // QJR542 — la projection « étude du marché → clés etude_params légales »
+  // vit dans UNE fonction pure partagée avec le devis automatique
+  // (`features/ventes/quote/etudeMarcheBloc.js`) ; ici on ne fait que lui
+  // passer l'état de l'écran. Résidentiel ⇒ `null` si rien à écrire (aucun
+  // appel, voir `persisterDevis`).
+  const blocEtudeMarche = () => projeterEtudeMarche(modeInstallation, {
+    etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
+    choix: choixEcran(),
+    entrees: entreesReellesEcran,
+    partDiurne: dayUsage,
+    tensionRaccordement,
+    repartitionMt,
+    categorie: categorieCommerciale,
+    reponses: commercialAnswers,
+    pompage: (modeInstallation === 'agricole' && pompageSel)
+      ? buildEtudePompage(pompageSel, {
+          typePompe: pompeType, alim: pompeAlim,
+          hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+          profondeur: pompeProfondeur, distance: pompeDistance,
+        })
+      : {},
+    saisiePompage: {
+      hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+      typePompe: pompeType, alim: pompeAlim,
+      profondeur: pompeProfondeur, distance: pompeDistance,
+    },
+    exploitation: {
+      irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
+      surfaceHa: farmSurfaceHa, fuel: farmFuel, fuelSpend: farmFuelSpendAnnual,
+      hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
+    },
+  })
 
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
   // comportement) : construit le payload + les lignes, écrit le devis (édition
