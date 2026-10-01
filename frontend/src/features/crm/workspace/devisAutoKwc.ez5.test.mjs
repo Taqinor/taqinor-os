@@ -106,7 +106,7 @@ test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {
 })
 
 test('la conversion kWc→panneaux est RÉUTILISÉE, pas réécrite', () => {
-  assert.match(autoQuote, /panneauxPourKwc\(tailleKwc, 710\)/)
+  assert.match(autoQuote, /panneauxPourKwc\(tailleKwc, PANEL_W_DEFAUT\)/)
   // Aucune arithmétique kWc→panneaux recopiée à la main dans autoQuote.
   assert.doesNotMatch(autoQuote, /Math\.ceil\([^)]*\*\s*1000\s*\/\s*710/)
   // U1 (fondateur 20/08/2026) — la conversion partagée est un PLAFOND : le
