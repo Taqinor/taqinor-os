@@ -47,6 +47,12 @@ class CorrectionApresEnvoi(TestCase):
             company=self.company, nom='Panneau Canadien Solar 710W',
             sku='QJR518-PV', prix_vente=Decimal('1000'),
             prix_achat=Decimal('700'), quantite_stock=100)
+        # Un devis sans onduleur n'a aucune option servable : la proposition
+        # publique (format à options) le refuse (builder, règle de sécurité).
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 5kW',
+            sku='QJR518-OND', prix_vente=Decimal('3000'),
+            prix_achat=Decimal('2000'), quantite_stock=100)
         self.n = 0
 
     def _devis(self, statut=Devis.Statut.ENVOYE):
@@ -66,19 +72,30 @@ class CorrectionApresEnvoi(TestCase):
         return DevisActivity.objects.filter(
             devis=devis, field='correction_apres_envoi')
 
-    def _replace(self, devis, prix):
+    def _ajouter_onduleur(self, devis):
+        LigneDevis.objects.create(
+            devis=devis, produit=self.onduleur,
+            designation=self.onduleur.nom, quantite=Decimal('1'),
+            prix_unitaire=Decimal('3000'), remise=Decimal('0'), ordre=1)
+
+    def _replace(self, devis, prix, avec_onduleur=False):
+        lignes = [{'produit': self.produit.id, 'quantite': '10',
+                   'prix_unitaire': prix, 'ordre': 0,
+                   'designation': self.produit.nom}]
+        if avec_onduleur:
+            lignes.append({'produit': self.onduleur.id, 'quantite': '1',
+                           'prix_unitaire': '3000', 'ordre': 1,
+                           'designation': self.onduleur.nom})
         return self.api.post(
             f'/api/django/ventes/devis/{devis.id}/replace-lines/',
-            {'lignes': [{'produit': self.produit.id, 'quantite': '10',
-                         'prix_unitaire': prix, 'ordre': 0,
-                         'designation': self.produit.nom}]},
-            format='json')
+            {'lignes': lignes}, format='json')
 
     def test_prix_change_trace_une_correction(self):
         devis = self._devis()
+        self._ajouter_onduleur(devis)
         reference = devis.reference
         lien = ShareLink.for_devis(devis)
-        r = self._replace(devis, '900')
+        r = self._replace(devis, '900', avec_onduleur=True)
         self.assertEqual(r.status_code, 200, r.content)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
@@ -90,7 +107,8 @@ class CorrectionApresEnvoi(TestCase):
             devis=devis).order_by('-date_creation', '-id').first()
         self.assertIsNotNone(snap)
         prix_snap = [li['prix_unitaire'] for li in snap.contenu['lignes']]
-        self.assertEqual([Decimal(p) for p in prix_snap], [Decimal('1000')])
+        self.assertEqual([Decimal(p) for p in prix_snap],
+                         [Decimal('1000'), Decimal('3000')])
         # « Document mis à jour le … » exposé sur la proposition publique.
         marqueur = (devis.etude_params or {}).get('resync_apres_envoi')
         self.assertIsNotNone(marqueur)

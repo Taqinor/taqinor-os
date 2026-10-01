@@ -41,6 +41,12 @@ class BandeVariantesPublique(TestCase):
             company=self.company, nom='Panneau Canadien Solar 710W',
             sku='QJR537-PV', prix_vente=Decimal('1000'),
             prix_achat=Decimal('700'), quantite_stock=100)
+        # Un devis sans onduleur n'a aucune option servable : la proposition
+        # publique (format à options) le refuse (builder, règle de sécurité).
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 5kW',
+            sku='QJR537-OND', prix_vente=Decimal('3000'),
+            prix_achat=Decimal('2000'), quantite_stock=100)
         self.n = 0
 
     def _devis(self, statut, quantite, parent=None, note=''):
@@ -54,6 +60,10 @@ class BandeVariantesPublique(TestCase):
             devis=devis, produit=self.produit, designation=self.produit.nom,
             quantite=Decimal(quantite), prix_unitaire=Decimal('1000'),
             remise=Decimal('0'))
+        LigneDevis.objects.create(
+            devis=devis, produit=self.onduleur,
+            designation=self.onduleur.nom, quantite=Decimal('1'),
+            prix_unitaire=Decimal('3000'), remise=Decimal('0'))
         return devis
 
     def test_le_brouillon_soeur_n_est_jamais_expose(self):
@@ -73,5 +83,6 @@ class BandeVariantesPublique(TestCase):
         self.assertNotIn(brouillon.reference, refs)
         corps = json.dumps(variantes, default=str)
         self.assertNotIn(brouillon.reference, corps)
-        self.assertNotIn('8400', corps)
+        # Total TTC du brouillon : (7 × 1 000 + 3 000) × 1,20 = 12 000.
+        self.assertNotIn('12000', corps)
         self.assertNotIn('En cours de correction', corps)

@@ -269,7 +269,7 @@ class TestVariantSummaries(TestCase):
         # Create a sibling manually
         sibling = Devis.objects.create(
             company=self.company, reference='DEV-QJ15-S2b',
-            client=self.client_obj, statut='brouillon',
+            client=self.client_obj, statut='envoye',  # QJR537 : jamais un brouillon
             version_parent=source, version=2, is_active=True,
             created_by=self.user)
         add_ligne(sibling, self.produit, qty='10')
@@ -286,7 +286,7 @@ class TestVariantSummaries(TestCase):
 
         sibling = Devis.objects.create(
             company=self.company, reference='DEV-QJ15-S3b',
-            client=self.client_obj, statut='brouillon',
+            client=self.client_obj, statut='envoye',  # QJR537 : jamais un brouillon
             version_parent=source, version=2, is_active=True,
             created_by=self.user)
         add_ligne(sibling, self.produit, qty='8')
@@ -302,7 +302,7 @@ class TestVariantSummaries(TestCase):
         add_ligne(source, self.produit, qty='6', pu='2200')
         sibling = Devis.objects.create(
             company=self.company, reference='DEV-QJ15-S4b',
-            client=self.client_obj, statut='brouillon',
+            client=self.client_obj, statut='envoye',  # QJR537 : jamais un brouillon
             version_parent=source, version=2, is_active=True,
             created_by=self.user)
         add_ligne(sibling, self.produit, qty='8', pu='2200')
