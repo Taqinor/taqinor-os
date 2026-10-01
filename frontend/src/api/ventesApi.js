@@ -61,8 +61,11 @@ const ventesApi = {
   // QX21 — remplacement ATOMIQUE des lignes d'un devis (édition) : les
   // anciennes lignes sont remplacées par les nouvelles en une transaction ; un
   // échec préserve les lignes existantes (jamais un devis à zéro ligne).
-  replaceLignesDevis: (id, lignes) =>
-    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
+  // QJR544 (contrat QJR504) — `extra` optionnel `{ entete, etude_params }` :
+  // l'en-tête et les choix d'écran partent dans la MÊME transaction serveur
+  // que les lignes (plus de PATCH d'en-tête séparé en édition).
+  replaceLignesDevis: (id, lignes, extra = {}) =>
+    api.post(`/ventes/devis/${id}/replace-lines/`, { lignes, ...extra }),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   // QJR62/QJR66 — PATCH **FUSIONNANT** d'`etude_params` : seules les clés
   // ENVOYÉES bougent, les autres restent intouchées bit à bit (une valeur

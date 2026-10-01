@@ -127,7 +127,7 @@ describe('QJR527 — Édition complète : réglages société chargés, prix cib
     await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled())
 
     // La cible DU DEVIS gagne (jamais effacée, jamais le défaut société 9000).
-    const payload = ventesApi.patchDevis.mock.calls.at(-1)[1]
+    const payload = ventesApi.replaceLignesDevis.mock.calls.at(-1)[2].entete
     expect(payload.prix_cible_kwc).toBe('8500')
 
     // L'étude est re-persistée au tarif kWh de la société (1,5), pas au 1,75 du code.

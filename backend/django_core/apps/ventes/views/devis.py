@@ -175,6 +175,74 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
         raise _RemiseEnvoiRefusee(erreur.message)
 
 
+def _valider_etude_ecran(etude_in):
+    """QJR544 — pré-validation des CHOIX d'écran (``etude_params`` clés
+    ECRAN) avant toute écriture, partagée par ``/atomic`` et
+    ``replace-lines`` : un refus pointe ``etude_params`` et n'écrit rien."""
+    from rest_framework.exceptions import ValidationError
+    from ..domain.etude_schema import ECRAN, fusionner
+    if etude_in is None:
+        return
+    if not isinstance(etude_in, dict):
+        raise ValidationError({'etude_params': "Objet {clé: valeur} attendu."})
+    try:
+        fusionner({}, proprietaire=ECRAN, **etude_in)
+    except (ValueError, TypeError) as exc:
+        raise ValidationError({'etude_params': str(exc)})
+
+
+def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
+    """QJR544 — les gardes d'une mise à jour d'en-tête, en UN point (PATCH
+    ``perform_update`` et ``replace-lines`` avec ``entete``) :
+
+    * QJR521 — un devis remplacé / archivé ne se réactive jamais ;
+    * QJR516 — prédicat de modifiabilité (geste ENTETE), 400 {'statut'} et
+      l'exception « désactivation seule » conservés ;
+    * ERR8 — lead / client d'une autre société refusés ;
+    * QJR539 (``t17``) — correction d'un ENVOYÉ : une remise globale ENTRANTE
+      plus profonde au-dessus du seuil n'est plus couverte par l'approbation
+      d'avant (400 {'statut'}). ``replace-lines`` passe ``t17=False`` et juge
+      APRÈS l'écriture des lignes, dans sa transaction.
+
+    Lit le statut, ne l'écrit jamais (règle #4)."""
+    from rest_framework.exceptions import ValidationError
+    if (instance.is_active is False
+            and validated_data.get('is_active') is True):
+        raise ValidationError({
+            'is_active': 'Un devis remplacé ou archivé ne se réactive pas.'})
+    from ..domain.modifiabilite import ENTETE, verdict
+    if not verdict(instance, ENTETE)['modifiable']:
+        nouveau_is_active = validated_data.get(
+            'is_active', instance.is_active)
+        only_deactivation = (
+            nouveau_is_active is False and instance.is_active is True
+            and set(validated_data.keys()) <= {'is_active'}
+        )
+        if not only_deactivation:
+            raise ValidationError({
+                'statut': 'Devis figé — révisez-le (reviser) pour le '
+                          'modifier.'})
+    company = getattr(user, 'company', None)
+    if company is not None:
+        lead = validated_data.get('lead')
+        client = validated_data.get('client')
+        if lead is not None and lead.company_id != company.id:
+            raise ValidationError({'lead': 'Lead inconnu.'})
+        if client is not None and client.company_id != company.id:
+            raise ValidationError({'client': 'Client inconnu.'})
+    if t17 and instance.statut == 'envoye':
+        from ..services import (
+            RemiseNonApprouvee, reverifier_remise_apres_correction)
+        from ..domain.tarification import profondeur_remise_effective
+        try:
+            reverifier_remise_apres_correction(
+                instance, user, avant=profondeur_remise_effective(instance),
+                remise_globale=validated_data.get(
+                    'remise_globale', instance.remise_globale))
+        except RemiseNonApprouvee as erreur:
+            raise ValidationError({'statut': erreur.message})
+
+
 class _LotCreationSerializer(serializers.Serializer):
     """QJR648 — le corps de ``POST /devis/<id>/lots/`` : ``nom_lot`` requis,
     ``adresse_site`` facultative, ``ordre`` entier ≥ 0 facultatif, ``lignes``
@@ -876,16 +944,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # désormais écrits par l'unique écrivain (``etude_schema.ecrire``)
         # sous la MÊME transaction. Validés AVANT : un refus pointe le champ
         # ``etude_params`` et ne crée rien. Absents ⇒ comportement d'hier.
-        from ..domain.etude_schema import ECRAN, ecrire, fusionner
+        from ..domain.etude_schema import ECRAN, ecrire
         etude_in = head.pop('etude_params', None)
-        if etude_in is not None:
-            if not isinstance(etude_in, dict):
-                raise ValidationError(
-                    {'etude_params': "Objet {clé: valeur} attendu."})
-            try:
-                fusionner({}, proprietaire=ECRAN, **etude_in)
-            except (ValueError, TypeError) as exc:
-                raise ValidationError({'etude_params': str(exc)})
+        _valider_etude_ecran(etude_in)
         serializer = DevisWriteSerializer(data=head)
         serializer.is_valid(raise_exception=True)
 
@@ -999,14 +1060,46 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             from ..domain.lignes import MSG_REMPLACEMENT_VIDE
             return Response({'detail': MSG_REMPLACEMENT_VIDE},
                             status=status.HTTP_400_BAD_REQUEST)
+        # QJR544 (contrat QJR504, devis_replace_lines_entete.json) — UNE
+        # transaction pour l'édition entière : en-tête + lignes + choix
+        # d'écran. ``entete`` et ``etude_params`` sont OPTIONNELS : sans eux,
+        # comportement identique à l'octet. ``statut`` dans l'en-tête est
+        # IGNORÉ (QJR541). Tout est VALIDÉ avant la première écriture.
+        from rest_framework.exceptions import ValidationError
+        entete_in = request.data.get('entete')
+        etude_in = request.data.get('etude_params')
+        entete_ser = None
+        if entete_in is not None:
+            if not isinstance(entete_in, dict):
+                return Response({'detail': 'Champ « entete » : objet attendu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            entete = {k: v for k, v in entete_in.items()
+                      if k not in ('statut', 'company')}
+            entete_ser = DevisWriteSerializer(devis, data=entete, partial=True)
+            entete_ser.is_valid(raise_exception=True)
+            _gardes_mise_a_jour(devis, entete_ser.validated_data,
+                                request.user, t17=False)
+        _valider_etude_ecran(etude_in)
         from ..services import (
             RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective
         # QJR539 — correction d'un ENVOYÉ : profondeur de remise AVANT le geste.
         envoye = devis.statut == 'envoye'
         remise_avant = profondeur_remise_effective(devis) if envoye else None
+        geste_complet = entete_ser is not None or bool(etude_in)
         try:
             with transaction.atomic():
+                # QJR544 — avec un en-tête, la trace QJR518 encadre le geste
+                # ENTIER : UNE ligne de chatter et UN instantané par clic.
+                avant_geste = None
+                if geste_complet:
+                    from ..domain.modifiabilite import debut_de_geste_devis
+                    avant_geste = debut_de_geste_devis(devis, request.user)
+                if entete_ser is not None:
+                    entete_ser.save(updated_by=request.user)
+                if etude_in:
+                    from ..domain.etude_schema import ECRAN, ecrire
+                    ecrire(devis, proprietaire=ECRAN, **etude_in)
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
                 # qu'hier : un échec préserve les lignes d'origine.
                 # QJR518 — ``user`` : l'auteur d'une correction après envoi
@@ -1014,15 +1107,22 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 appliquer(devis, IntentionDevis(
                     origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
                     company=devis.company, user=request.user,
-                    composition=lignes_in))
+                    composition=lignes_in,
+                    tracer_correction=not geste_complet))
                 # QJR539 — remise plus profonde au-dessus du seuil sur un
                 # envoyé : la garde T17 s'applique, un refus annule le geste.
                 if envoye:
                     reverifier_remise_apres_correction(
                         devis, request.user, avant=remise_avant)
+                if avant_geste is not None:
+                    from ..domain.modifiabilite import fin_de_geste_devis
+                    fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                                       objet='lignes')
         except RemiseNonApprouvee as erreur:
             return Response({'detail': erreur.message},
                             status=status.HTTP_400_BAD_REQUEST)
+        except ValidationError:
+            raise
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1050,9 +1150,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # implicitement : ``remplacer_lignes`` supprime la relation préchargée
         # par le queryset, ce qui vide son cache de résultats — le contrat est
         # désormais EXPLICITE plutôt que dépendant de ce détail de Django.
+        # QJR544 — un en-tête / une étude changés dans ce geste sont des
+        # grandeurs invisibles depuis les lignes : ``force_etudes`` (comme le
+        # PATCH d'en-tête). Sans eux, comportement d'hier.
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
-            company=devis.company))
+            company=devis.company, force_etudes=geste_complet))
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -2851,66 +2954,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(reponse)
 
     def perform_update(self, serializer):
-        from rest_framework.exceptions import ValidationError
-        # YDOCF2 — un devis figé (accepté/refusé/expiré) ne doit plus être
-        # librement édité : le BC/Facture/BoM chantier aval sont déjà générés
-        # depuis son contenu figé. Seule exception : le désactiver (révision
-        # « superseded », is_active=False) — la voie de modification reste
-        # `reviser` (clone en V+1 éditable), jamais un PATCH direct.
-        instance = serializer.instance
-        # QJR521 — ``is_active`` RESTE écrivable (désactivation seule,
-        # test_ydocf2) mais un devis remplacé ou archivé ne se RÉACTIVE
-        # jamais (False → True) : ce serait une seconde version active.
-        if (instance.is_active is False
-                and serializer.validated_data.get('is_active') is True):
-            raise ValidationError({
-                'is_active': 'Un devis remplacé ou archivé ne se réactive '
-                             'pas.'})
-        # QJR516 — le prédicat UNIQUE (geste ENTETE) ; 400 {'statut'} et
-        # l'exception « désactivation seule » CONSERVÉS.
-        from ..domain.modifiabilite import ENTETE, verdict
-        if not verdict(instance, ENTETE)['modifiable']:
-            nouveau_is_active = serializer.validated_data.get(
-                'is_active', instance.is_active)
-            only_deactivation = (
-                nouveau_is_active is False and instance.is_active is True
-                and set(serializer.validated_data.keys()) <= {'is_active'}
-            )
-            if not only_deactivation:
-                raise ValidationError({
-                    'statut': 'Devis figé — révisez-le (reviser) pour le '
-                              'modifier.'})
-        # ERR8 — un PATCH/PUT ne doit pas re-pointer le devis vers le client/lead
-        # d'une autre société (mass-assignment). perform_create valide déjà ces
-        # FK ; on applique la même garde à la mise à jour.
+        # YDOCF2 / QJR516 / QJR521 / ERR8 / QJR539 — les gardes d'une mise à
+        # jour d'en-tête vivent en UN point (``_gardes_mise_a_jour``), partagé
+        # avec ``replace-lines`` (QJR544). QJR541 — ``statut`` est en lecture
+        # seule : un PATCH ne fait plus passer un devis en « envoyé » ni
+        # n'avance le funnel.
+        _gardes_mise_a_jour(serializer.instance, serializer.validated_data,
+                            self.request.user)
         company = self.request.user.company
-        if company is not None:
-            lead = serializer.validated_data.get('lead')
-            client = serializer.validated_data.get('client')
-            if lead is not None and lead.company_id != company.id:
-                raise ValidationError({'lead': 'Lead inconnu.'})
-            if client is not None and client.company_id != company.id:
-                raise ValidationError({'client': 'Client inconnu.'})
-        # QJR541 — ``statut`` est en lecture seule : un PATCH ne fait plus
-        # passer un devis en « envoyé » (ni n'avance le funnel) ; les portes
-        # d'envoi appliquent la garde T17 avant tout effet de bord (QJR539).
-        ancien_statut = serializer.instance.statut
-        remise = serializer.validated_data.get(
-            'remise_globale', serializer.instance.remise_globale)
-        # QJR539 — correction d'un ENVOYÉ : une remise plus profonde au-dessus
-        # du seuil n'est plus couverte par l'approbation d'avant ; 400
-        # {'statut'} CONSERVÉ.
-        from ..services import (
-            RemiseNonApprouvee, reverifier_remise_apres_correction)
-        from ..domain.tarification import profondeur_remise_effective
-        try:
-            if ancien_statut == 'envoye':
-                reverifier_remise_apres_correction(
-                    serializer.instance, self.request.user,
-                    avant=profondeur_remise_effective(serializer.instance),
-                    remise_globale=remise)
-        except RemiseNonApprouvee as erreur:
-            raise ValidationError({'statut': erreur.message})
         # QJR518 — état vu par le client capturé AVANT l'écriture (ENVOYÉ
         # seulement) ; trace posée en fin de geste si l'en-tête ou la note
         # visibles ont changé.

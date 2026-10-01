@@ -3522,7 +3522,7 @@ export default function DevisGenerator({
   const persisterDevis = async () => {
     setSaving(true)
     try {
-      // QJR515 — `statut` n'est JAMAIS dans le PATCH d'édition (un envoyé ne
+      // QJR515 — `statut` n'est JAMAIS dans l'en-tête d'édition (un envoyé ne
       // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
       const payload = {
         date_validite: dateValidite || null,
@@ -3547,11 +3547,12 @@ export default function DevisGenerator({
       let devisId
       let devisCree = null
       if (editDevis) {
-        // QX21 — ÉDITION ATOMIQUE : le patch du devis PUIS le remplacement des
-        // lignes en une transaction serveur. Un échec préserve les lignes
-        // existantes (jamais un devis à zéro ligne, plus de delete-puis-recrée).
-        await ventesApi.patchDevis(editDevis.id, payload)
-        await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload)
+        // QJR544 — ÉDITION ATOMIQUE : en-tête + lignes + choix d'écran en UN
+        // appel, UNE transaction serveur (replace-lines). Un échec ne change
+        // RIEN (ni en-tête, ni lignes) ; plus de PATCH d'en-tête séparé.
+        await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload, {
+          entete: payload, etude_params: choixEcran(),
+        })
         devisId = editDevis.id
         devisCree = { reference: editDevis.reference }
       } else {
