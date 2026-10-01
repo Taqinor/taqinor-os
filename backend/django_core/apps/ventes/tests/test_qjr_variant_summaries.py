@@ -99,8 +99,11 @@ class TestVariantSummariesChaineCanonique(TestCase):
             TVA = 18 000 × 10 % + 27 000 × 20 % = 1 800 + 5 400 = 7 200
             TTC = 52 200,00
         """
+        # QJR537 — la bande publique ne montre jamais un BROUILLON : le frère
+        # est une variante ENVOYÉE (idem pour les frères des tests suivants).
         frere = self._devis(
             'DEV-QJR11-B', version_parent=source, version=2, is_active=True,
+            statut='envoye',
             remise_globale=Decimal('10'), note='Taille supérieure',
             etude_params={'scenario': 'Les deux (Sans + Avec)'})
         self._section(frere, 'Champ photovoltaïque', ordre=0)
@@ -191,7 +194,8 @@ class TestVariantSummariesChaineCanonique(TestCase):
         self._ligne(source, 'Panneau solaire 550 W', 'QJR11-SRC5', '2000',
                     qty='6', taux='20.00')
         frere = self._devis(
-            'DEV-QJR11-Fb', version_parent=source, version=2, is_active=True)
+            'DEV-QJR11-Fb', version_parent=source, version=2, is_active=True,
+            statut='envoye')
         self._ligne(frere, 'Panneau solaire 550 W', 'QJR11-FB', '2000',
                     qty='8', taux='20.00')
 
@@ -210,7 +214,8 @@ class TestVariantSummariesChaineCanonique(TestCase):
         self._ligne(source, 'Panneau solaire 550 W', 'QJR11-SRC6', '2000',
                     qty='6', taux='20.00')
         frere = self._devis(
-            'DEV-QJR11-Gb', version_parent=source, version=2, is_active=True)
+            'DEV-QJR11-Gb', version_parent=source, version=2, is_active=True,
+            statut='envoye')
         self._section(frere, 'À chiffrer', ordre=0)
 
         summaries = _variant_summaries(source)

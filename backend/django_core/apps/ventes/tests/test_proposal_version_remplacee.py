@@ -50,6 +50,12 @@ class ProposalVersionRemplacee(TestCase):
             company=self.company, nom='Panneau Canadien Solar 710W',
             sku='QJR536-PV', prix_vente=Decimal('1000'),
             prix_achat=Decimal('700'), quantite_stock=100)
+        # Un devis sans onduleur n'a aucune option servable : la proposition
+        # publique (format à options) le refuse (builder, règle de sécurité).
+        self.onduleur = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 5kW',
+            sku='QJR536-OND', prix_vente=Decimal('3000'),
+            prix_achat=Decimal('2000'), quantite_stock=100)
         self.n = 0
 
     def _devis(self, statut=Devis.Statut.ENVOYE, company=None, client=None,
@@ -64,6 +70,10 @@ class ProposalVersionRemplacee(TestCase):
             devis=devis, produit=self.produit, designation=self.produit.nom,
             quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
             remise=Decimal('0'))
+        LigneDevis.objects.create(
+            devis=devis, produit=self.onduleur,
+            designation=self.onduleur.nom, quantite=Decimal('1'),
+            prix_unitaire=Decimal('3000'), remise=Decimal('0'))
         return devis
 
     @staticmethod
