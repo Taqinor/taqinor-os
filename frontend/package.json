@@ -17,6 +17,7 @@
     "gen-pwa-icons": "python scripts/gen_pwa_icons.py",
     "check-bundle-budget": "node scripts/check_bundle_budget.mjs",
     "check-hex": "node scripts/check_hex.mjs",
+    "check-dockerfile-context": "node scripts/check_dockerfile_context.mjs",
     "gen:api-types": "openapi-typescript http://localhost:8000/api/schema/ -o src/api/types/schema.d.ts"
   },
   "dependencies": {

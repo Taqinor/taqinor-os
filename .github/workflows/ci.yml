@@ -1108,6 +1108,14 @@ jobs:
       - name: Check hex colors outside design tokens (index.css)
         working-directory: frontend
         run: npm run check-hex
+      # ERR-QJR5-DOCKERFILE-CONTEXTE-GARDE — tout import hors frontend/ atteint
+      # depuis src/ doit être couvert par un COPY de frontend/Dockerfile.prod
+      # (la CI compile sur le checkout complet, l'image non : incident 01/10).
+      - name: Check Dockerfile.prod build context covers cross-project imports
+        working-directory: frontend
+        run: |
+          node --test scripts/check_dockerfile_context.test.mjs
+          npm run check-dockerfile-context
       # YHARD7 — budget de performance du bundle SPA ERP : échoue si un chunk
       # (ou le total gzippé) dépasse son budget. Dev-only
       # (frontend/scripts/check_bundle_budget.mjs, Node stdlib pur).
