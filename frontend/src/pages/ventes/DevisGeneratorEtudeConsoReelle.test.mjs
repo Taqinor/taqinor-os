@@ -31,9 +31,11 @@ const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 test('QJR34 — consoKwhDerivee ne retombe sur avgBill que si facturesSaisies est vrai', () => {
   const idx = DG.indexOf('const consoKwhDerivee =')
   assert.ok(idx > -1, 'consoKwhDerivee introuvable')
-  const bloc = DG.slice(idx, idx + 200)
+  const bloc = DG.slice(idx, idx + 320)
+  // QJR582 — la facture réelle saisie (realBillSaisi) s'intercale AVANT la
+  // dérivation des factures ; celle-ci exige toujours facturesSaisies.
   assert.match(bloc,
-    /const consoKwhDerivee = \(parseFloat\(consoMensuelle\) \|\| 0\)\s*\n\s*\|\| \(facturesSaisies && avgBill > 0 \? Math\.round\(avgBill \/ quoteLogic\.kwhPrice\) : 0\)/,
+    /const consoKwhDerivee = \(parseFloat\(consoMensuelle\) \|\| 0\)\s*\n\s*\|\| \(realBillSaisi && consoAnnuelleReelle > 0 \? Math\.round\(consoAnnuelleReelle \/ 12\) : 0\)\s*\n\s*\|\| \(facturesSaisies && avgBill > 0 \? Math\.round\(avgBill \/ quoteLogic\.kwhPrice\) : 0\)/,
     'consoKwhDerivee doit exiger facturesSaisies avant de retomber sur avgBill')
 })
 

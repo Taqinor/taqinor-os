@@ -32,6 +32,10 @@ import { COMMERCIAL_CATEGORY_QUESTIONS } from '../../features/ventes/solar.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+// QJR542 — la projection de l'étude du marché a quitté l'écran pour UNE
+// fonction pure partagée avec le devis automatique : on la lit LÀ.
+const EMB = readFileSync(
+  join(HERE, '../../features/ventes/quote/etudeMarcheBloc.js'), 'utf8')
 const SCHEMA_PY = readFileSync(
   join(HERE, '../../../../backend/django_core/apps/ventes/domain/etude_schema.py'),
   'utf8')
@@ -81,8 +85,15 @@ const CHOIX_ECRITS = new Set(
 // `indexOf` global attraperait le mauvais bloc (et le test passerait au vert
 // sur les clés d'un autre morceau de code).
 const BLOC_MARCHE = (() => {
-  const start = DG.indexOf('const blocEtudeMarche = () => {')
-  assert.ok(start > -1, 'blocEtudeMarche introuvable')
+  const start = EMB.indexOf('export function projeterEtudeMarche(')
+  assert.ok(start > -1, 'projeterEtudeMarche introuvable')
+  return EMB.slice(start)
+})()
+
+// L'écran se contente d'appeler la projection avec SES choix et SES entrées.
+const APPEL_ECRAN = (() => {
+  const start = DG.indexOf('const blocEtudeMarche = () => projeterEtudeMarche(')
+  assert.ok(start > -1, 'blocEtudeMarche (appel de projeterEtudeMarche) introuvable')
   const end = DG.indexOf('const persisterDevis', start)
   assert.ok(end > start, 'la fin de blocEtudeMarche est introuvable')
   return DG.slice(start, end)
@@ -94,19 +105,19 @@ function clesDe(debut, fin) {
   const end = BLOC_MARCHE.indexOf(fin, start)
   assert.ok(end > start, `fin de bloc introuvable : ${fin}`)
   return new Set([...BLOC_MARCHE.slice(start, end)
-    .matchAll(/^ {8}([a-z0-9_]+): /gm)].map(m => m[1]))
+    .matchAll(/^ {6}([a-z0-9_]+): /gm)].map(m => m[1]))
 }
 
 const CLES_COMMUNES = new Set(
   [...DG.slice(DG.indexOf('const entreesReellesEcran = (consoDejaConnue) => {'),
-               DG.indexOf('const repartitionMtSaisie = () => {'))
+               DG.indexOf('const blocEtudeMarche = () =>'))
       .matchAll(/entrees\.([a-z0-9_]+) =/g)].map(m => m[1]))
 
 const CLES_IC = clesDe(
-  "if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {",
-  "if (modeInstallation === 'agricole') {")
+  "if (mode === 'industriel' || mode === 'commercial') {",
+  "if (mode === 'agricole') {")
 const CLES_AGRI = clesDe(
-  "if (modeInstallation === 'agricole') {", '// Résidentiel : le serveur')
+  "if (mode === 'agricole') {", '// Résidentiel : le serveur')
 
 // La catégorie commerciale est posée par affectation, pas en littéral.
 CLES_IC.add('categorie_commerciale')
@@ -178,9 +189,9 @@ test('INDUSTRIEL / COMMERCIAL — MT et catégorie font l\'aller-retour', () => 
     /bloc\[q\.key\] = q\.type === 'number'\s*\r?\n?\s*\? \(parseFloat\(brut\) \|\| 0\)/)
   // La répartition MT n'est envoyée QUE pour un site MT — sinon `null`, ce qui
   // la RETIRE (règle Z2 : jamais une répartition d'hier sur un devis BT).
-  const start = DG.indexOf('const repartitionMtSaisie = () => {')
+  const start = EMB.indexOf('export const repartitionMtSaisie = ')
   assert.ok(start > -1, 'repartitionMtSaisie introuvable')
-  const bloc = DG.slice(start, DG.indexOf('const blocEtudeMarche', start))
+  const bloc = EMB.slice(start, EMB.indexOf('export function projeterEtudeMarche', start))
   assert.match(bloc, /if \(tensionRaccordement !== 'mt'\) return null/)
 })
 
@@ -197,8 +208,10 @@ test('BLOQUANT FABLE — `scenario` et `recommended_option` ONT un écrivain, po
   // On compte dans le CODE, pas dans les commentaires (le bloc en PARLE).
   const codeMarche = BLOC_MARCHE.split(/\r?\n/)
     .filter(l => !/^\s*\/\//.test(l)).join('\n')
-  assert.equal((codeMarche.match(/choixEcran\(\)/g) || []).length, 3,
+  assert.equal((codeMarche.match(/\.\.\.choix,/g) || []).length, 3,
     'les quatre marchés doivent tous porter le choix de l\'écran')
+  assert.match(APPEL_ECRAN, /choix: choixEcran\(\)/)
+  assert.match(APPEL_ECRAN, /entrees: entreesReellesEcran\b/)
   // JAMAIS `null` pour CES DEUX clés : elles ne sont posées que si l'écran les
   // possède (les envoyer à null les SUPPRIMERAIT et rouvrirait le bug).
   // `nombre_proprietes` est la seule exception assumée du bloc — son propre
@@ -234,8 +247,8 @@ test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entré
   const start = BLOC_MARCHE.indexOf('// Résidentiel : le serveur est propriétaire')
   assert.ok(start > -1, 'la branche résidentielle est introuvable')
   const bloc = BLOC_MARCHE.slice(start)
-  assert.match(bloc, /\{ \.\.\.choixEcran\(\), \.\.\.entreesReellesEcran\(null\) \}/)
-  assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
+  assert.match(bloc, /\{ \.\.\.choix, \.\.\.resoudreEntrees\(entrees, null\) \}/)
+  assert.match(bloc, /Object\.keys\(res\)\.length \? res : null/)
 })
 
 test('QJR528 — `part_diurne_pct` (industriel) est écrite, déclarée et relue', () => {

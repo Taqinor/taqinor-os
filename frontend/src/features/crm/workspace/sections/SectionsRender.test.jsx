@@ -454,7 +454,7 @@ describe('ROUND 5 — bandeau « À compléter »', () => {
       stage: 'FOLLOW_UP',
       facture_hiver: null,
       relance_date: null,
-      devis_auto: { pret: false, manquants: ['facture hiver'] },
+      devis_auto: { pret: false, manquants: ['facture hiver'], manquants_detail: [{ champ: 'facture_hiver', label: 'facture hiver' }], requis: [['facture_hiver']] },
     })
     const bandeau = screen.getByLabelText('Informations à compléter')
     expect(bandeau).toBeInTheDocument()
@@ -466,7 +466,16 @@ describe('ROUND 5 — bandeau « À compléter »', () => {
     monter({
       ...LEAD_COMPLET,
       type_installation: 'agricole',
-      devis_auto: { pret: false, manquants: ['pompe (CV)', 'HMT', 'débit souhaité'] },
+      devis_auto: {
+        pret: false,
+        manquants: ['pompe (CV)', 'HMT', 'débit souhaité'],
+        manquants_detail: [
+          { champ: 'pompe_cv', label: 'pompe (CV)' },
+          { champ: 'pompe_hmt_m', label: 'HMT' },
+          { champ: 'pompe_debit_m3h', label: 'débit souhaité' },
+        ],
+        requis: [['pompe_cv'], ['pompe_hmt_m'], ['pompe_debit_m3h']],
+      },
     })
     for (const l of ['pompe (CV)', 'HMT', 'débit souhaité']) {
       expect(screen.getByRole('button', { name: `Compléter : ${l}` })).toBeInTheDocument()
@@ -477,7 +486,7 @@ describe('ROUND 5 — bandeau « À compléter »', () => {
     const { container } = monter({
       ...LEAD_COMPLET,
       facture_hiver: null,
-      devis_auto: { pret: false, manquants: ['facture hiver'] },
+      devis_auto: { pret: false, manquants: ['facture hiver'], manquants_detail: [{ champ: 'facture_hiver', label: 'facture hiver' }], requis: [['facture_hiver']] },
     })
     // « Énergie » porte un manquant : elle ne s'est donc PAS auto-repliée.
     // On la replie à la main pour vérifier que la chip la rouvre.
@@ -510,7 +519,7 @@ describe('ROUND 5 — repli automatique À L’OUVERTURE (jamais pendant la sess
     const { container } = monter({
       ...LEAD_COMPLET,
       facture_hiver: 800, // cœur complet…
-      devis_auto: { pret: false, manquants: ['facture hiver'] }, // …mais pointée
+      devis_auto: { pret: false, manquants: ['facture hiver'], manquants_detail: [{ champ: 'facture_hiver', label: 'facture hiver' }], requis: [['facture_hiver']] }, // …mais pointée
     })
     expect(tete(container, 'energie')).toHaveAttribute('aria-expanded', 'true')
   })

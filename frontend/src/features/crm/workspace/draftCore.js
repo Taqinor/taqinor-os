@@ -248,21 +248,29 @@ const SECTION_COEUR = {
   equipements: [],
 }
 
-// Miroir EXACT de apps/crm/devis_auto.py `champs_manquants` (mêmes modes,
-// même couplage été/hiver) : le cœur « énergie » dépend du marché. La règle
-// serveur reste la source unique — on la reflète, on ne la réinvente pas.
-const MODES_ETUDE = ['commercial', 'industriel']
-const MODE_AGRICOLE = 'agricole'
+// QJR601 — le cœur « énergie » n'est plus recopié d'apps/crm/devis_auto.py :
+// il est LU dans la règle servie (`devis_auto.requis`, contrat
+// devis_auto_pret.json) — des groupes « l'un des » (C&I : conso OU kWh du
+// site, CAD166). Seuls les groupes dont un champ vit dans la section énergie
+// comptent (en agricole, les champs requis sont dans « Pompage »).
+export function sectionCoeurGroupes(state, id) {
+  if (id !== 'energie') return (SECTION_COEUR[id] ?? []).map((k) => [k])
+  const champs = SECTION_FIELDS.energie
+  const requis = state?.server?.devis_auto?.requis
+  if (!Array.isArray(requis)) return []
+  return requis.filter((g) => Array.isArray(g) && g.some((k) => champs.includes(k)))
+}
 
 export function sectionCoeurKeys(state, id) {
-  if (id !== 'energie') return SECTION_COEUR[id] ?? []
-  const mode = getField(state, 'type_installation') || 'residentiel'
-  // En agricole, l'énergie ne se saisit pas ici : tout est dans « Pompage ».
-  if (mode === MODE_AGRICOLE) return []
-  if (MODES_ETUDE.includes(mode)) return ['conso_mensuelle_kwh']
-  return getField(state, 'ete_differente')
-    ? ['facture_hiver', 'facture_ete']
-    : ['facture_hiver']
+  return sectionCoeurGroupes(state, id).flat()
+}
+
+// Même sémantique du vide que le serveur (`not lead.facture_hiver`) : un
+// montant à 0 n'est PAS renseigné.
+function rempliCommeServeur(v) {
+  if (isEmpty(v)) return false
+  if (typeof v === 'boolean') return v
+  return !(isNumericLike(v) && Number(v) === 0)
 }
 
 export function sectionEstVide(state, id) {
@@ -287,9 +295,14 @@ export function sectionAutoRepliee(state, id, { porteUnManquant = false } = {}) 
   // (0 bis) une section que le bandeau montre du doigt reste OUVERTE : la
   // replier serait se contredire dans le même écran.
   if (porteUnManquant) return false
-  const coeur = sectionCoeurKeys(state, id)
+  const coeur = sectionCoeurGroupes(state, id)
   // (a) son cœur est complet — il n'y a plus rien à y faire pour l'instant.
-  if (coeur.length) return coeur.every((k) => !isEmpty(getField(state, k)))
+  // Énergie (QJR601) : chaque groupe « l'un des » servi a un champ rempli,
+  // avec le vide du serveur (0 = manquant).
+  if (coeur.length) {
+    const rempli = id === 'energie' ? rempliCommeServeur : (v) => !isEmpty(v)
+    return coeur.every((g) => g.some((k) => rempli(getField(state, k))))
+  }
   // (b) pas de cœur déclaré : elle se replie si elle est VIDE.
   return sectionEstVide(state, id)
 }

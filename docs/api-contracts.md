@@ -130,10 +130,10 @@
     detail:inconnu, doublons:inconnu, email:inconnu, nom:inconnu, prenom:inconnu, societe:inconnu, telephone:inconnu
 - frontend/src/api/crmApi.js :: searchClients -> /api/django/crm/clients/search
     results:inconnu
+- frontend/src/api/crmApi.js :: synchroniserClient -> /api/django/crm/leads/<>/synchroniser-client
+    champs_mis_a_jour:inconnu, client_ecart:inconnu, detail:texte
 - frontend/src/api/crmApi.js :: villeStatut -> /api/django/crm/leads/ville-statut
     candidats:inconnu, gps_hors_zone:inconnu, position:inconnu, proches:inconnu, statut:inconnu, ville_canonique:inconnu
-- frontend/src/api/crmApi.js :: whatsappDevis -> /api/django/crm/leads/<>/whatsapp-devis
-    detail:texte, links:inconnu, message:inconnu, phone:inconnu, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtape -> /api/django/crm/relance-etapes/<>/whatsapp
     crochets:inconnu, detail:texte, etape:inconnu, langue:inconnu, message:inconnu, phone:inconnu, placeholders_manquants:inconnu, preuve_manquante:inconnu, repli_langue:inconnu, vocal:booleen, wa_url:inconnu
 - frontend/src/api/crmApi.js :: whatsappRelanceEtapeLangue -> /api/django/crm/relance-etapes/<>/whatsapp

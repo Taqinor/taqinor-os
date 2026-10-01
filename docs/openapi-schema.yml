@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4716, operations: 7506, components: 2140}
+counts: {paths: 4720, operations: 7510, components: 2140}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -975,8 +975,10 @@ operations:
 - post /api/django/crm/leads/{id}/relance/initialiser/ -> django_crm_leads_relance_initialiser_create
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
 - get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
+- post /api/django/crm/leads/{id}/synchroniser-client/ -> django_crm_leads_synchroniser_client_create
 - get /api/django/crm/leads/{id}/visites/ -> django_crm_leads_visites_retrieve
 - post /api/django/crm/leads/{id}/visites/planifier/ -> django_crm_leads_visites_planifier_create
+- post /api/django/crm/leads/{id}/whatsapp-devis-apercu/ -> django_crm_leads_whatsapp_devis_apercu_create
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_retrieve
@@ -4766,8 +4768,10 @@ operations:
 - post /api/v1/crm/leads/{id}/relance/initialiser/ -> v1_crm_leads_relance_initialiser_create
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
 - get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
+- post /api/v1/crm/leads/{id}/synchroniser-client/ -> v1_crm_leads_synchroniser_client_create
 - get /api/v1/crm/leads/{id}/visites/ -> v1_crm_leads_visites_retrieve
 - post /api/v1/crm/leads/{id}/visites/planifier/ -> v1_crm_leads_visites_planifier_create
+- post /api/v1/crm/leads/{id}/whatsapp-devis-apercu/ -> v1_crm_leads_whatsapp_devis_apercu_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_retrieve

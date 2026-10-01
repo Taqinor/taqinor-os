@@ -237,6 +237,20 @@ function DevisLineRowImpl({
         <Input type="number" min="0" step="any" data-role="line-qty"
                className="h-[var(--control-h-sm)] ta-right" value={l.quantite}
                onChange={e => onQuantiteChange(l._key, e.target.value)} />
+        {/* QJR569 — quantité TAPÉE : verrou visible (le serveur ne la
+            réécrit plus à une resynchronisation) et réversible. */}
+        {l.quantiteManuelle && (
+          <div className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-muted-foreground">
+            <span className="rounded bg-muted px-1.5 py-0.5 font-medium"
+                  title="Quantité saisie à la main : une recomposition ne la réécrit pas">
+              Qté figée
+            </span>
+            <button type="button" className="underline hover:text-foreground"
+                    onClick={() => onSetField(l._key, 'quantiteManuelle', false)}>
+              Libérer
+            </button>
+          </div>
+        )}
       </td>
       <td data-label="Prix unit. TTC">
         <Input type="number" min="0" step="any"

@@ -1974,6 +1974,20 @@ def devis_modifiabilite(devis):
     return resultat
 
 
+def devis_envoyes_du_client(company_id, client_id):
+    """QJR590 — devis ACTIFS au statut « envoyé » d'un client (borné
+    société) : ceux dont le client a déjà reçu un exemplaire et qui reçoivent
+    une trace « corrigé après envoi » quand l'identité client est corrigée.
+    Un accepté garde son exemplaire signé figé (exclu)."""
+    from .models import Devis
+
+    if not company_id or not client_id:
+        return []
+    return list(Devis.objects.filter(
+        company_id=company_id, client_id=client_id, is_active=True,
+        statut=Devis.Statut.ENVOYE))
+
+
 def devis_du_client_portail(company, client_id, *, limit=200):
     """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
 
@@ -1999,7 +2013,20 @@ def devis_du_client_portail(company, client_id, *, limit=200):
         'date_validite': d.date_validite,
         'total_ttc': str(d.total_ttc),
         'accepte': d.statut == Devis.Statut.ACCEPTE,
+        # QJR565 (contrat portail ``mes_devis_liste.json``) — date de la
+        # dernière correction après envoi (``etude_params.resync_apres_envoi``),
+        # null sinon — JAMAIS updated_at.
+        'mis_a_jour_le': _date_correction_apres_envoi(d),
     } for d in qs]
+
+
+def _date_correction_apres_envoi(devis):
+    """QJR565 — ISO de ``etude_params.resync_apres_envoi.date`` ou ``None``."""
+    params = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    marqueur = params.get('resync_apres_envoi')
+    if isinstance(marqueur, dict):
+        return marqueur.get('date') or None
+    return None
 
 
 def devis_du_client_portail_obj(company, client_id, devis_id):

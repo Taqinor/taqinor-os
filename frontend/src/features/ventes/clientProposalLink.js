@@ -37,11 +37,7 @@ export function proposalWhatsappText(name, proposalUrl) {
   )
 }
 
-// URL wa.me — `digitsE164` doit déjà être un numéro normalisé (ex.
-// `normalizePhoneE164`, chiffres seuls avec indicatif pays — 212 marocain
-// OU étranger, sans "+"). `null` si aucun numéro exploitable (aucun lien
-// wa.me inventé sur un numéro vide).
-export function buildWaUrl(digitsE164, text) {
-  if (!digitsE164) return null
-  return `https://wa.me/${digitsE164}?text=${encodeURIComponent(text)}`
-}
+// URL wa.me — QJR635 : le constructeur UNIQUE vit dans `lib/contactLinks.js`
+// (`buildWaUrl`, avec `waHref` qui normalise un numéro saisi) ; ré-exporté
+// ici pour les appelants existants (DevisTab, QuestionnaireDialog).
+export { buildWaUrl } from '../../lib/contactLinks.js'

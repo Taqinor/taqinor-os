@@ -12,29 +12,24 @@
    seraient pires que pas de carte — et parce qu'une règle testable sans DOM
    se vérifie exhaustivement.
 
-   Les manquants du DEVIS viennent du serveur (`devis_auto.manquants`, produit
-   par apps/crm/devis_auto.py `champs_manquants`) : on ne recalcule JAMAIS la
+   Les manquants du DEVIS viennent du serveur (`devis_auto.manquants_detail`,
+   produit par apps/crm/devis_auto.py `champs_manquants_detail`) : on ne recalcule JAMAIS la
    règle ici, on ne fait que la rendre cliquable. Les clés d'étape viennent de
    stages.js (miroir STAGES.py, règle #2) — aucune clé en dur. */
 // Extensions explicites : ce module est PUR et se teste en `node --test`
 // (résolution ESM stricte) — même convention que stages.js → lib/format.js.
 import { FOLLOW_UP_STAGE, QUOTE_SENT_STAGE } from '../stages.js'
 import { getField } from './draftCore.js'
+import fieldLabels from './fieldLabels.js'
 
-// LW21 — mapping libellés backend (texte FR fixe de `champs_manquants`) → id
-// DOM du champ dans SectionsPane (`lf-*`) + sa section. Déplacé ici depuis
-// DevisTab, qui le RÉEXPORTE (aucun appelant ni test existant ne bouge).
-export const DEVIS_AUTO_FIELD_IDS = {
-  'facture hiver': { field: 'lf-facture-hiver', section: 'energie' },
-  'facture été': { field: 'lf-facture-ete', section: 'energie' },
-  'consommation mensuelle (kWh)': { field: 'lf-conso-mensuelle', section: 'energie' },
-  'pompe (CV)': { field: 'lf-pompe-cv', section: 'pompage' },
-  HMT: { field: 'lf-pompe-hmt', section: 'pompage' },
-  'débit souhaité': { field: 'lf-pompe-debit', section: 'pompage' },
-}
-
-export function missingFieldTarget(label) {
-  return DEVIS_AUTO_FIELD_IDS[label] ?? null
+// QJR601 — la cible d'une puce se résout par le NOM DU CHAMP servi
+// (`devis_auto.manquants_detail[].champ`, contrat devis_auto_pret.json) via
+// la carte unique `fieldLabels` — plus jamais par le texte du libellé (la
+// carte DEVIS_AUTO_FIELD_IDS indexée sur les libellés est supprimée :
+// renommer un libellé cassait la puce sans rien signaler).
+export function missingFieldTarget(champ) {
+  const entree = fieldLabels[champ]
+  return entree ? { field: entree.inputId, section: entree.section } : null
 }
 
 const vide = (v) => v === '' || v === null || v === undefined
@@ -59,11 +54,12 @@ export function chipsAComplete(state) {
   const chips = []
 
   // (1) Ce qui bloque le devis automatique — libellés FR tels que le serveur
-  // les écrit, pour que l'écran et l'API disent exactement la même chose.
-  for (const label of state?.server?.devis_auto?.manquants ?? []) {
-    const cible = missingFieldTarget(label)
+  // les écrit, pour que l'écran et l'API disent exactement la même chose ;
+  // cible résolue par le NOM DU CHAMP servi (QJR601).
+  for (const { champ, label } of state?.server?.devis_auto?.manquants_detail ?? []) {
+    const cible = missingFieldTarget(champ)
     chips.push({
-      id: `devis:${label}`,
+      id: `devis:${champ}`,
       label,
       section: cible?.section ?? null,
       field: cible?.field ?? null,

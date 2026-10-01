@@ -90,15 +90,12 @@ export function devisTrackCurrent(d) {
   return d?.chantier ? 'chantier' : 'accepte'
 }
 
-// LW21 — mapping libellés backend (apps/crm/devis_auto.py `champs_manquants`,
-// texte FR fixe — source unique règle serveur/UI) → id DOM du champ dans
-// SectionsPane (ids `lf-*`).
-// ROUND 5 — la carte a DÉMÉNAGÉ dans `missingFields.js` : le bandeau « À
-// compléter » du centre doit pointer EXACTEMENT les mêmes champs que cet
-// onglet, et deux cartes divergentes seraient pires que pas de carte. On la
-// réexporte ici pour que rien de ce qui l'importait de `./DevisTab` ne bouge.
+// ROUND 5 / QJR601 — la cible d'un champ manquant se résout dans
+// `missingFields.js` par le NOM DU CHAMP servi (`devis_auto.manquants_detail`)
+// via `fieldLabels` : le bandeau « À compléter » du centre et cet onglet
+// pointent EXACTEMENT les mêmes champs. Réexport conservé pour les tests.
 // eslint-disable-next-line react-refresh/only-export-components -- réexport de logique pure (testable), même motif que ChatterTimeline.OUTCOME_LABELS
-export { DEVIS_AUTO_FIELD_IDS, missingFieldTarget } from './missingFields'
+export { missingFieldTarget } from './missingFields'
 
 // ── L-SECT (fondateur 24/08/2026) — « le commercial choisit ce que le client
 // reçoit avant d'envoyer la page devis ». Les 7 sections cochables du dialogue
@@ -200,14 +197,20 @@ export function devisIntent(mode, kwcCible) {
 //   · 0 vue → lien envoyé mais jamais ouvert ;
 //   · N vues → N lectures humaines + horodatage de la dernière.
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
-export function lectureClientLabel(lecture) {
+export function lectureClientLabel(lecture, corrigeLe = null) {
   if (!lecture) return 'Pas encore envoyé au client'
   const vues = Number(lecture.nombre_vues ?? 0)
   if (!vues) return 'Jamais ouvert par le client'
   const quand = lecture.derniere_consultation
     ? ` · dernière lecture ${formatDateTime(lecture.derniere_consultation)}`
     : ''
-  return `Ouvert ${vues} fois par le client${quand}`
+  // QJR566 — une lecture ANTÉRIEURE à la correction après envoi n'a pas vu la
+  // version corrigée : on le dit au lieu d'un « lu le » trompeur.
+  const avantCorrection = corrigeLe && lecture.derniere_consultation
+    && new Date(lecture.derniere_consultation) < new Date(corrigeLe)
+    ? ` — avant la correction du ${formatDateTime(corrigeLe)}`
+    : ''
+  return `Ouvert ${vues} fois par le client${quand}${avantCorrection}`
 }
 
 // ROUND 5 — plus de saut maison : `jumpToField` DÉPLIE toujours la section
@@ -215,8 +218,8 @@ export function lectureClientLabel(lecture) {
 // un champ dans une section repliée n'est pas dans le DOM, on retombait donc
 // sur l'en-tête de section et le même clic donnait deux résultats différents
 // selon l'état de repli. Un seul chemin, partagé avec le centre.
-function jumpToMissingField(label) {
-  const target = missingFieldTarget(label)
+function jumpToMissingField(champ) {
+  const target = missingFieldTarget(champ)
   if (!target) return
   jumpToField(target)
 }
@@ -570,7 +573,8 @@ export default function DevisTab({
   const envoyerWhatsApp = () => {
     if (!waArmed(leadPhone, wa.selected.length) || !state.leadId) return
     setWaBusy(true)
-    crmApi.whatsappDevis(state.leadId, { devis_ids: wa.selected, langue: wa.langue })
+    // QJR538 — l'aperçu n'écrit RIEN : « Annuler » laisse les devis tels quels.
+    crmApi.whatsappDevisApercu(state.leadId, { devis_ids: wa.selected, langue: wa.langue })
       .then((res) => {
         onWaPreview({
           message: res.data?.message ?? '',
@@ -584,6 +588,13 @@ export default function DevisTab({
 
   const ouvrirWhatsApp = () => {
     if (wa.preview?.wa_url) window.open(wa.preview.wa_url, '_blank', 'noopener')
+    // QJR538 — seul ce geste marque les devis envoyés (commit serveur).
+    const payload = { devis_ids: wa.selected, langue: wa.langue }
+    if (state.leadId && wa.selected.length) {
+      crmApi.whatsappDevis(state.leadId, payload)
+        .then(() => onAction?.('refresh'))
+        .catch((err) => toastError(errorMessageFrom(err, 'Envoi WhatsApp non enregistré.')))
+    }
     onWaReset()
   }
 
@@ -648,12 +659,13 @@ export default function DevisTab({
         <div className="lw-context-devis-missing">
           <p className="gen-hint">Devis automatique — champs manquants :</p>
           <ul className="lw-context-missing-list">
-            {(devisAuto.manquants ?? []).map((label) => (
-              <li key={label}>
+            {/* QJR601 — la cible vient du NOM DU CHAMP servi, jamais du libellé. */}
+            {(devisAuto.manquants_detail ?? []).map(({ champ, label }) => (
+              <li key={champ}>
                 <button
                   type="button"
                   className="lw-context-missing-link"
-                  onClick={() => jumpToMissingField(label)}
+                  onClick={() => jumpToMissingField(champ)}
                 >
                   {label}
                 </button>
@@ -711,7 +723,7 @@ export default function DevisTab({
                 className={`lw-context-devis-lectures${(Number(d.lecture?.nombre_vues ?? 0) > 0) ? ' is-lu' : ''}`}
               >
                 <Eye size={13} aria-hidden="true" />
-                <span>{lectureClientLabel(d.lecture)}</span>
+                <span>{lectureClientLabel(d.lecture, d.corrige_le)}</span>
               </div>
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour

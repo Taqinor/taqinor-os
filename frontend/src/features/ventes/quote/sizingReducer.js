@@ -30,7 +30,7 @@
 // CATALOGUE ou le RÉSEAU. Le balayage local (`computeAutoSizing`) et la
 // recommandation serveur sont RÉSOLUS PAR L'APPELANT et arrivent en charge
 // utile d'action — un reducer pur ne va jamais chercher un chiffre.
-import { panneauxPourKwc } from '../solar.js'
+import { panneauxPourKwc, kwcPourPanneaux } from '../solar.js'
 
 // Vocabulaire EXACT du moteur PDF (constantes SCENARIO_* d'apps/ventes/
 // services.py, recopiées à l'identique par `DevisGenerator.jsx:119-121`) :
@@ -113,7 +113,8 @@ const nombre = (v) => {
 
 /** kWc affiché pour un compte de panneaux (miroir de `onNbPanneauxChange`). */
 const kwcDepuisPanneaux = (nbPanneaux, panelW) => {
-  const puissance = nombre(nbPanneaux) * nombre(panelW) / 1000
+  // QJR576 — LA conversion partagée (inverse de `panneauxPourKwc`).
+  const puissance = kwcPourPanneaux(nombre(nbPanneaux), nombre(panelW))
   return puissance > 0 ? String(Math.round(puissance * 100) / 100) : ''
 }
 

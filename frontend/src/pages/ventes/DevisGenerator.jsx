@@ -25,6 +25,9 @@ import {
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
   createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE,
+  // QJR575 — les paramètres du balayage C&I, construits UNE fois (partagés
+  // avec le « Devis automatique »).
+  parametresBalayageCI,
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
@@ -87,6 +90,9 @@ import {
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
+  kwcFactureDesLignes, kwcPourPanneaux,
+  // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
+  fusionnerRecomposition, lignesQuantiteFigee,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -148,7 +154,6 @@ import {
   toucheNbPanneauxPourComposition,
 } from '../../features/ventes/quote/sizingReducer'
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
-import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
 import { CHEMINS_AUTORISES } from '../../features/ventes/quote/overrides'
@@ -163,6 +168,7 @@ import { moteur, apercu } from '../../features/ventes/quote/valeur'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from '../../features/ventes/quote/lignesEcran'
 // QJR526 — wattage / structure / hors-réseau / composition libre relus des lignes.
 import { deriverReouverture } from '../../features/ventes/quote/reouverture'
+import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -177,7 +183,7 @@ import RailArgent from './generator/RailArgent'
 // transverse (chaîne d'étude horaire, roi, études par marché, validate).
 import PanneauResidentiel from './generator/PanneauResidentiel'
 import PanneauIndustriel from './generator/PanneauIndustriel'
-import PanneauCommercial from './generator/PanneauCommercial'
+import PanneauCommercial, { CATEGORIE_NON_PRECISEE } from './generator/PanneauCommercial'
 import PanneauAgricole from './generator/PanneauAgricole'
 // QJRREM (fondateur 07/09/2026) — miroir EXACT du noyau de répartition de la
 // remise globale par ligne (même module que DevisForm.jsx, l'écran d'édition
@@ -318,7 +324,16 @@ const withKeys = (rows) => rows.map(r => ({
   // QJR529 — remise PAR LIGNE stockée (%), conservée comme `prixManuel` :
   // jamais remise à '0' en silence (le total client monterait).
   remise: String(r.remise ?? '0'),
+  // QJR570 — marqueur d'ÉCRAN « ligne issue d'une composition » (jamais
+  // envoyé au serveur) : une recomposition retire une ligne composée hier et
+  // absente aujourd'hui, mais garde une ligne ajoutée à la main.
+  compose: !!r.compose,
 }))
+
+// QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=` (et
+// ses relectures immédiates : lead, réouverture) forment la RÉFÉRENCE « rien
+// n'a changé » de l'Édition complète.
+const FENETRE_REFERENCE_MS = 1500
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
 const emptyLine = () => ({
@@ -484,7 +499,13 @@ export default function DevisGenerator({
   // EN PLACE (mêmes référence et statut) au lieu d'une création.
   const editId = embedded ? editIdProp : searchParams.get('edit')
   const [editDevis, setEditDevis] = useState(null)
-  const editLoaded = useRef(false)
+  // QJR548 — le chargeur `?edit=` se relance quand le devis a été recomposé
+  // côté serveur (taille d'offre appliquée) : `editLoaded` retient le numéro
+  // de chargement déjà servi, `rechargeEdit` en demande un nouveau.
+  const editLoaded = useRef(null)
+  // QJR581 — fenêtre de capture de la référence « rien n'a changé ».
+  const captureReferenceJusqua = useRef(0)
+  const [rechargeEdit, setRechargeEdit] = useState(0)
 
   // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
   // supérieur du vendeur avec un lien vers le devis. Manuel (un bouton), et
@@ -678,21 +699,17 @@ export default function DevisGenerator({
   // chargement dédié pendant l'aller-retour réseau (le bouton porte
   // `loading={autoFillLoading}`).
   const [autoFillLoading, setAutoFillLoading] = useState(false)
-  // QJR36 — même patron que `sizingServeurMessage` : quand le dry-run serveur
-  // (`ventesApi.composerDevis`) échoue et que l'écran retombe sur
-  // `composeLocalement()`, le vendeur reçoit une composition JS que le dépôt
-  // documente lui-même comme divergente du serveur (câbles, marques épinglées,
-  // ordre des lignes, arrondi des panneaux) — SANS aucun signal jusqu'ici.
-  // Posé dans le `catch` avec la raison. QJR211 — effacé à CHAQUE succès de
-  // `handleAutoFill`, quel que soit le marché (dry-run résidentiel, pompage
-  // agricole, ou composition locale indus/commercial) et à chaque changement
-  // d'entrées qui relance le moteur avec succès : avant QJR211, seul le
-  // chemin de succès résidentiel l'effaçait, et la bannière survivait à un
-  // repli sur un autre marché en décrivant un calcul qui ne s'applique plus.
-  // Ne change PAS le comportement du repli, seulement le rend visible.
-  const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
+  // QJR577 (D-QJR5-9) — UN SEUL COMPOSEUR en résidentiel : quand le dry-run
+  // serveur (`ventesApi.composerDevis`) échoue, l'écran ne recompose PLUS en
+  // JavaScript (`composeLocalement`, moteur que le dépôt documente divergent
+  // du serveur : câbles, marques épinglées, ordre, arrondi) — les lignes ne
+  // bougent pas, l'erreur est DITE et « Réessayer » rejoue le dry-run.
+  // Effacé à chaque succès de `handleAutoFill`, quel que soit le marché.
+  // (Remplace `compositionSourceLocale` + sa bannière QJR36/QJR211, dont il
+  // ne restait plus aucun écrivain.)
+  const [compositionErreur, setCompositionErreur] = useState(null)
   // DC11 / QJR106 — même patron que `sizingServeurMessage` et
-  // `compositionSourceLocale` ci-dessus : un VERDICT DU SERVEUR, rendu tel
+  // `compositionErreur` ci-dessus : un VERDICT DU SERVEUR, rendu tel
   // quel, jamais recalculé ici. Le devis porte l'estampille des valeurs
   // énergie/toiture qu'il a REPRISES du lead ; le serveur (`apps.crm`) compare
   // avec le lead COURANT et rend la liste des champs qui ont bougé DEPUIS
@@ -747,7 +764,7 @@ export default function DevisGenerator({
   const [consoMensuelle, setConsoMensuelle] = useState('')
   // QX44 — étude commerciale par catégorie (mode commercial). categorie +
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
-  const [categorieCommerciale, setCategorieCommerciale] = useState('hotel')
+  const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
   const [commercialAnswers, setCommercialAnswers] = useState({})
   const setCommercialAnswer = (key, val) =>
     setCommercialAnswers(prev => ({ ...prev, [key]: val }))
@@ -886,15 +903,46 @@ export default function DevisGenerator({
   // `villaGroups` a des libellés PAR DÉFAUT : le signal utile est le mode
   // multi-propriétés lui-même (défaut 'none'), pas la présence de libellés.
   const villasSaisies = multiMode !== 'none'
-  const dirty = Boolean(
+  const formulaireNonVierge = Boolean(
     leadId || clientId || note || fHiver || fEte || nbPanneaux
     || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa
     || lignesSaisies || remiseSaisie || tvaModifiee || villasSaisies,
   )
+  // QJR581 — « dirty » veut dire « DIFFÉRENT de la référence » : l'état que le
+  // mappeur `?edit=` vient de poser (édition) ou le dernier enregistrement
+  // réussi. Sans référence : non-vacuité en création, jamais en édition (le
+  // devis n'est pas encore chargé). Avant, ouvrir un devis sans rien toucher
+  // écrivait un « brouillon non enregistré » et armait la garde de sortie,
+  // même après un enregistrement réussi.
+  const snapshotJson = useMemo(() => JSON.stringify(draftSnapshot), [draftSnapshot])
+  const [referenceEcran, setReferenceEcran] = useState(null)
+  useEffect(() => {
+    if (Date.now() < captureReferenceJusqua.current) {
+      setReferenceEcran(snapshotJson)
+    }
+  }, [snapshotJson])
+  const dirty = referenceEcran != null
+    ? snapshotJson !== referenceEcran
+    : (editId ? false : formulaireNonVierge)
   const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,
+    version: editId ? (editDevis?.updated_at ?? null) : undefined,
   })
   useDirtyGuard(dirty)
+  // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
+  // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
+  // d'avant QJR581 sans version) il est purgé, avec une notice.
+  const brouillonPerime = Boolean(editId && restored && editDevis
+    && restored.version !== editDevis.updated_at)
+  const brouillonProposable = Boolean(restored
+    && (!editId || (editDevis && restored.version === editDevis.updated_at)))
+  useEffect(() => {
+    if (!brouillonPerime) return
+    discard()
+    toast.info('Brouillon local ignoré : ce devis a été modifié depuis.')
+  }, [brouillonPerime, discard])
+  // Après un enregistrement réussi, l'état courant DEVIENT la référence.
+  const marquerEnregistre = () => setReferenceEcran(snapshotJson)
 
   // Restauration : réinjecte le snapshot sauvegardé dans tous les setters.
   const handleRestoreDraft = () => {
@@ -1006,10 +1054,18 @@ export default function DevisGenerator({
   useEffect(() => {
     if (linesInitialized.current || !produits.length) return
     linesInitialized.current = true
-    setLines(withKeys(defaultProductLines(produits)))
+    // QJR570 — les lignes par défaut sont une composition (pas une saisie).
+    setLines(withKeys(defaultProductLines(produits).map(r => ({ ...r, compose: true }))))
   }, [produits])
 
-  const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
+  // QJR576 — LA conversion partagée ; compte ENTIER (plancher explicite).
+  const kwp = kwcPourPanneaux(Math.floor(parseFloat(nbPanneaux) || 0), panelW)
+  // QJR568 — `kwp` reste la CIBLE (envoyée au dry-run de composition) ; le kWc
+  // réellement FACTURÉ par les lignes (celui que le PDF dérive) alimente
+  // prix/kWc, prix cible, études C&I et l'aperçu horaire. Repli sur la cible
+  // sans ligne panneau.
+  const kwpLignes = kwcFactureDesLignes(lines, panelW, kwp)
+  const panneauxLignes = comptePanneauxOption(lines, 'sans')
 
   // L-2OPT — kWc PROPRE à l'option « Avec batterie ». `kwp` ci-dessus est le
   // compte de la branche SANS (le rechargement d'un brouillon exclut
@@ -1025,7 +1081,8 @@ export default function DevisGenerator({
   const kwpAvec = (() => {
     const nSans = comptePanneauxOption(lines, 'sans')
     const nAvec = comptePanneauxOption(lines, 'avec')
-    if (nSans <= 0 || nAvec === nSans) return kwp
+    // QJR568 — non divergent : le kWc FACTURÉ des lignes (repli : la cible).
+    if (nSans <= 0 || nAvec === nSans) return kwpLignes
     return nAvec * (parseFloat(panelW) || 0) / 1000
   })()
 
@@ -1087,17 +1144,17 @@ export default function DevisGenerator({
   // mais reçoit ici le TTC de ligne (même formule que `DevisLineRow.lineTtc`,
   // cet écran restant 100 % TTC — aucune conversion HT).
   //
-  // POPULATION — DIVERGENCE DOCUMENTÉE, PAS UN OUBLI : `repartirRemiseParLigne`
-  // retient les lignes non optionnelles de type produit (`ligneCompteDansTotaux`,
-  // via les champs `optionnelle`/`typeLigne` mappés ci-dessous). Le total du
-  // rail (`optionTotalsTTC` ci-dessus) ne teste JAMAIS `optionnelle` : il
-  // répartit les lignes en DEUX paniers Sans/Avec batterie au fil des
-  // mots-clés/`variante` (`appartientAuPanierSans`/`appartientAuPanierAvec`).
-  // Sur un devis mono-composition (l'immense majorité, aucune ligne
-  // `variante`), les deux paniers réunissent exactement les mêmes lignes non
-  // optionnelles que `ligneCompteDansTotaux` : la somme des montants par
-  // ligne ci-dessous recolle donc au centime avec `totals.totalSans`/
-  // `totalAvec`. Sur un devis « Les deux » (deux options DÉCLARÉES, lignes
+  // POPULATION — `repartirRemiseParLigne` retient les lignes non optionnelles
+  // de type produit (`ligneCompteDansTotaux`, via les champs
+  // `optionnelle`/`typeLigne` mappés ci-dessous). QJR567 — le total du rail
+  // (`optionTotalsTTC` ci-dessus) filtre désormais par LA MÊME fonction avant
+  // de répartir les lignes en DEUX paniers Sans/Avec batterie au fil des
+  // mots-clés/`variante` (`appartientAuPanierSans`/`appartientAuPanierAvec`) :
+  // avant, il comptait une ligne optionnelle que le document exclut. Sur un
+  // devis mono-composition (aucune ligne `variante`), les deux paniers
+  // réunissent donc les mêmes lignes que la répartition ci-dessous (aux
+  // arrondis de chaîne près : le rail suit la chaîne canonique HT → TVA du
+  // noyau, la répartition ventile un TTC de ligne). Sur un devis « Les deux » (deux options DÉCLARÉES, lignes
   // `variante: 'sans'|'avec'`), la répartition ci-dessous porte sur TOUTES
   // les lignes non optionnelles des deux paniers réunis — elle recolle au
   // total des deux paniers ADDITIONNÉS, pas au total d'une option affichée
@@ -1136,6 +1193,7 @@ export default function DevisGenerator({
   const dLines = useDeferredValue(lines)
   const dTotals = useDeferredValue(totals)
   const dKwp = useDeferredValue(kwp)
+  const dKwpLignes = useDeferredValue(kwpLignes)
   const dKwpAvec = useDeferredValue(kwpAvec)
   const dDayUsage = useDeferredValue(dayUsage)
 
@@ -1211,7 +1269,9 @@ export default function DevisGenerator({
   // deux optimiseurs ont réellement rendu deux tailles, seuls les champs
   // « avec » de CE résultat sont lus (l'option sans garde `roi`).
   const roiAvec = useMemo(() => {
-    if (dKwpAvec === dKwp) return null
+    // QJR568 — « non divergent » se juge contre le kWc FACTURÉ des lignes
+    // (`kwpAvec` y retombe quand les options ne divergent pas).
+    if (dKwpAvec === dKwp || dKwpAvec === dKwpLignes) return null
     if (dKwpAvec <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
       kwp: dKwpAvec,
@@ -1228,7 +1288,7 @@ export default function DevisGenerator({
       productible: productibleForCity(
         selectedLead?.ville || '', quoteLogic.productible),
     })
-  }, [dKwpAvec, dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
+  }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
 
   // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
@@ -1253,7 +1313,8 @@ export default function DevisGenerator({
         eteDifferente: !!fEte && Number(fEte) > 0,
         ville: selectedLead?.ville || '',
         raccordement: selectedLead?.raccordement || '',
-        kwp,
+        // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
+        kwp: kwpLignes,
         batterieKwh: batteryKwhFromLines(lines),
       })
     : null
@@ -1263,7 +1324,7 @@ export default function DevisGenerator({
   // `null` tant que rien ne diverge ⇒ AUCUN second appel réseau et l'écran lit
   // le corps unique comme hier.
   const etudeHoraireCorpsAvec = (modeInstallation === 'residentiel'
-      && kwpAvec !== kwp)
+      && kwpAvec !== kwpLignes)
     ? construireCorpsPreview({
         modeInstallation,
         editId,
@@ -1600,13 +1661,13 @@ export default function DevisGenerator({
     if (besoinKwc <= 0) return null
     const eteVale = parseFloat(eteVal) || 0
     const eteEff = eteVale > 0 ? eteVale : hiver
-    const dayUsagePct = modeInstallation === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
-      : modeInstallation === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
-        : DAY_USAGE_DEFAULTS['Résidentielle']
-    // Distributeur du devis : c'est SON barème qui convertit les factures en
-    // kWh (et qui valorise l'économie par tranche). Il entre donc dans la clé
-    // de cache au même titre que la marque épinglée.
-    const distributeurBalayage = distributeur
+    // QJR575 — distributeur DÉCLARÉ : celui que le vendeur a choisi, sinon
+    // celui du lead, jamais le défaut d'écran 'onee' (sinon l'écran passait
+    // au modèle « factures » quand le devis automatique restait en
+    // « estimation » : deux kWc selon le bouton). Il entre dans la clé.
+    const distributeurDeclare = distributeurChoisi ? distributeur : selectedLead?.distributeur
+    const categorieBalayage = categorieCommerciale === CATEGORIE_NON_PRECISEE
+      ? null : categorieCommerciale
     // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — même productible que l'aperçu
     // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
     // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
@@ -1617,12 +1678,11 @@ export default function DevisGenerator({
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
     // le bouton acier/alu : changer de structure change le prix de chaque
     // palier, donc le palier retenu.
-    const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
-      structureProduitId ?? '',
+    const key = [hiver, eteEff, besoinKwc, modeInstallation, categorieBalayage ?? '', panelW,
+      structureType, structureProduitId ?? '',
       discountPct, produits.length, JSON.stringify(marquesActives),
-      distributeurBalayage, consoAnnuelleReelle ?? '', productibleBalayage].join('|')
+      distributeurDeclare ?? '', consoAnnuelleReelle ?? '', productibleBalayage].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
-    const factures = estimerMois(hiver, eteEff)
     // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
     // Sans elle, `computeROI` ne plafonne rien : l'économie reste linéaire en
     // kWc, chaque pas marginal se « rembourse » et l'ascension ne s'arrête
@@ -1634,15 +1694,17 @@ export default function DevisGenerator({
     // QF4) prime sur la dérivation : c'est celle que l'aperçu `roi` utilise
     // déjà, et le dimensionnement doit dimensionner le MÊME client que
     // l'aperçu. Sinon, dérivation depuis les factures du balayage.
-    const consoBalayage = (Number(consoAnnuelleReelle) > 0)
-      ? Number(consoAnnuelleReelle)
-      : consoAnnuelleDepuisFactures(factures, distributeurBalayage)
+    // QJR575 — MÊME construction que le « Devis automatique ».
+    const balayage = parametresBalayageCI({
+      factures: estimerMois(hiver, eteEff), mode: modeInstallation,
+      categorie: categorieBalayage, distributeurDeclare, consoAnnuelleReelle,
+    })
     const opt = optimalKwcByPayback({
-      produits, factures, dayUsagePct,
+      produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
       panelW, structureType, structureProduitId, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
-      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
+      consoAnnuelleKwh: balayage.consoAnnuelleKwh, utility: balayage.utility,
       productible: productibleBalayage,
     })
     // QJR102 — LE SECOND BALAYAGE (celui de l'axe stockage, exposé jadis sous
@@ -1664,8 +1726,8 @@ export default function DevisGenerator({
     sizingCacheRef.current = { key, result }
     return result
   }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
-    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle,
-    selectedLead?.ville])
+    produits, quoteLogic, marquesActives, distributeur, distributeurChoisi,
+    categorieCommerciale, consoAnnuelleReelle, selectedLead?.ville, selectedLead?.distributeur])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1905,8 +1967,8 @@ export default function DevisGenerator({
 
   // ── Édition d'un brouillon (?edit=ID) : préremplissage complet ──
   useEffect(() => {
-    if (!editId || editLoaded.current) return
-    editLoaded.current = true
+    if (!editId || editLoaded.current === rechargeEdit) return
+    editLoaded.current = rechargeEdit
     ventesApi.getDevisById(editId).then(({ data: d }) => {
       // QJR532 (D-QJR5-1) — le refus vient du SERVEUR (`modifiable`, QJR516),
       // plus d'une garde « statut !== brouillon » : un envoyé se corrige sur
@@ -1919,8 +1981,21 @@ export default function DevisGenerator({
         cancel()
         return
       }
+      // QJR581 — la RÉFÉRENCE « rien n'a changé » se capture sur l'état que
+      // ce mappeur (et ses relectures immédiates : lead, réouverture) pose.
+      captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
       setEditDevis({ id: d.id, reference: d.reference,
                      statut: d.statut, date_envoi: d.date_envoi ?? null,
+                     // QJR548 — verdict SERVI (QJR516), relu par les gestes
+                     // de l'écran qui disent AVANT le clic s'ils sont permis.
+                     modifiable: d.modifiable,
+                     raison_non_modifiable: d.raison_non_modifiable || '',
+                     // QJR580 — le lead / client DU DEVIS, lus par leurs noms
+                     // servis (jamais `leads.find` : lead hors page 1).
+                     lead_nom: d.lead_nom || '', client_nom: d.client_nom || '',
+                     // QJR581 — version du devis : un brouillon local d'une
+                     // AUTRE version n'est jamais proposé.
+                     updated_at: d.updated_at ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -2146,7 +2221,17 @@ export default function DevisGenerator({
         submit: 'Impossible de charger ce devis — il a peut-être été supprimé.',
       }))
     })
-  }, [editId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, rechargeEdit]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // QJR548 — une taille d'offre appliquée RECOMPOSE le devis côté serveur
+  // (lignes, totaux, études) : l'écran relit ce devis par LE chargeur
+  // `?edit=` ci-dessus et efface son brouillon local — sinon le prochain
+  // « Enregistrer » renverrait les anciennes lignes et annulerait la taille
+  // appliquée en silence. La confirmation est posée par DevisOffresTailles.
+  const rechargerDevisRecompose = () => {
+    clear()
+    setRechargeEdit(n => n + 1)
+  }
 
   // ── Réglages entreprise (Paramètres) → valeurs par défaut du générateur ──
   // FEATURE 10 : en CRÉATION uniquement, la date de validité par défaut suit
@@ -2317,6 +2402,10 @@ export default function DevisGenerator({
           // produit de CETTE ligne n'est pas resélectionné (onProduitChange
           // lève le verrou).
           ...(k === 'prix_unit_ttc' ? { prixManuel: true } : {}),
+          // QJR569 — même règle pour la QUANTITÉ tapée d'une ligne produit :
+          // le verrou `quantiteManuelle` (gardes D12 du serveur) est posé ICI
+          // seulement — une composition ne le pose jamais.
+          ...(k === 'quantite' && l.produit ? { quantiteManuelle: true } : {}),
         }
       : l)))
   }, [setLines])
@@ -2375,6 +2464,10 @@ export default function DevisGenerator({
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
             prixManuel: false,
+            // QJR569 — …et le verrou de quantité (nouveau produit, nouvelle main).
+            quantiteManuelle: false,
+            // QJR570 — un produit choisi à la main n'est plus une ligne composée.
+            compose: false,
             // QJR523 — le rôle stocké était celui de l'ANCIEN produit : le
             // serveur le re-déduit du nouveau.
             role_devis: '',
@@ -2569,6 +2662,39 @@ export default function DevisGenerator({
       l.groupeIndex === idx ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
   }
 
+  // QJR570 (D-QJR5-4) — LE point d'écriture des trois recompositions
+  // (composition locale, dry-run serveur, pompage) : FUSION par id produit
+  // (`fusionnerRecomposition`) — prix tapés, sections, notes, options et
+  // produits ajoutés à la main conservés d'office. Une quantité figée en
+  // conflit est GARDÉE (le vendeur l'a confirmé avant le geste) et NOMMÉE.
+  const recomposerLignes = (generated) => {
+    const { conflits } = fusionnerRecomposition(lines, generated)
+    setLines(ls => withKeys(fusionnerRecomposition(ls, generated).lignes))
+    if (conflits.length) {
+      toast.warning('Quantités figées gardées : ' + conflits.slice(0, 5)
+        .map(c => `${c.designation} ${c.figee} (recalculé : ${c.recalculee})`).join(', ')
+        + (conflits.length > 5 ? '…' : '') + '.')
+    }
+  }
+
+  // QJR570 — la seule question posée avant une recomposition : des quantités
+  // figées à la main existent (5 désignations au plus). Sans elles, AUCUNE
+  // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
+  // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
+  const avecQuantitesFigees = (geste) => {
+    const figees = lignesQuantiteFigee(lines)
+    if (!figees.length) { geste(); return }
+    const noms = figees.slice(0, 5)
+      .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
+      + (figees.length > 5 ? '…' : '')
+    confirm({
+      title: 'Garder les quantités figées ?',
+      description: `Quantités saisies à la main (${noms}) : la recomposition les GARDE. `
+        + 'Pour prendre la quantité recalculée, cliquez « Libérer » sur la ligne puis recomposez.',
+      confirmLabel: 'Recomposer en les gardant',
+    }).then(ok => { if (ok) geste() })
+  }
+
   // VX18 — un modèle appliqué remplace les lignes du formulaire. La réponse
   // apply-preset porte les lignes du devis (modèle HT) ; on les reconvertit en
   // lignes d'écran (TTC) et on remplace via setLines(withKeys(...)). Repli sûr
@@ -2738,7 +2864,7 @@ export default function DevisGenerator({
     // (même patron que « prix à renseigner ») : on les nomme avec leur motif
     // plutôt que de les laisser disparaître sans explication.
     setOnduleursIncomplets(metaOnduleursIncomplets)
-    setLines(withKeys(generated))
+    recomposerLignes(generated)
     // QJR99 — rend les lignes composées : `resoudreComposition` (moitié pure de
     // `useComposition`) en a besoin pour NOMMER la source du repli.
     return generated
@@ -2830,7 +2956,7 @@ export default function DevisGenerator({
       autofillKwc: mismatch,
       marquesManquantes: marquesMsg,
     }))
-    setLines(withKeys(generated))
+    recomposerLignes(generated)
   }
 
   const handleAutoFill = async () => {
@@ -2852,11 +2978,10 @@ export default function DevisGenerator({
         return
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
-      setLines(withKeys(generated))
-      // QJR211 — succès sur le marché agricole : la bannière « composition
-      // locale (serveur indisponible) » d'un repli résidentiel antérieur ne
-      // décrit plus rien après ce changement de marché.
-      setCompositionSourceLocale(null)
+      recomposerLignes(generated)
+      // Succès sur le marché agricole : une erreur de composition
+      // résidentielle antérieure ne décrit plus rien (QJR577).
+      setCompositionErreur(null)
       // QJR99 — le dimensionnement pompage POSE une taille calculée : la même
       // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
       // marquer le champ « touché » (ce n'est pas une frappe) et tient la
@@ -2928,31 +3053,26 @@ export default function DevisGenerator({
           }
         }
         const { data } = await ventesApi.composerDevis(body)
-        setCompositionSourceLocale(null)
+        setCompositionErreur(null)
         appliquerCompositionServeur(data)
       } catch (err) {
-        // REPLI — jamais un écran sans Auto-remplir pour une panne réseau.
-        console.error('composerDevis (dry-run) indisponible, repli local :', err)
-        // QJR36 — la raison est posée dans l'état (comme `sizingServeurMessage`
-        // pour le refus serveur) ; le vendeur reçoit désormais la bannière
-        // visible ci-dessous au lieu d'un simple console.error silencieux.
-        // QJR99 — cette raison n'est plus rédigée ici : `raisonRepli` (moitié
-        // pure de `useComposition`) la produit, ce qui la rend STRUCTURELLE —
-        // une composition locale ne peut plus s'afficher sans dire d'où elle
-        // vient ni pourquoi. Le repli lui-même est INCHANGÉ.
-        setCompositionSourceLocale(raisonRepli(err?.message || 'panne réseau/serveur'))
-        composeLocalement()
+        // QJR577 (D-QJR5-9) — PLUS de repli JavaScript : les lignes restent
+        // celles de l'écran, l'erreur du serveur est rendue telle quelle (ou
+        // une cause française générique) avec « Réessayer ».
+        const detail = err?.response?.data?.detail
+        setCompositionErreur(typeof detail === 'string' && detail
+          ? detail
+          : "Le serveur n'a pas pu composer ce devis (réseau ou serveur "
+            + 'indisponible) — les lignes n\'ont pas changé.')
       } finally {
         setAutoFillLoading(false)
       }
       return
     }
-    // QJR211 — marchés indus/commercial (aucun dry-run serveur pour eux) :
-    // un succès efface une bannière de repli résidentiel antérieure, qui ne
-    // décrirait plus qu'un calcul périmé sur ce marché. `composeLocalement()`
-    // renvoie les lignes générées en cas de succès, `undefined` sur un échec
-    // (garde-fous ci-dessus) — la bannière ne s'efface que sur un VRAI succès.
-    if (composeLocalement()) setCompositionSourceLocale(null)
+    // Marchés indus/commercial (aucun dry-run serveur pour eux, QJR113 GATED
+    // D10) : `composeLocalement()` reste LEUR composeur. Un succès efface une
+    // erreur de composition résidentielle antérieure (QJR577).
+    if (composeLocalement()) setCompositionErreur(null)
   }
 
   // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
@@ -2970,7 +3090,8 @@ export default function DevisGenerator({
   // un compteur, lui, avance toujours.
   const appliquerTailleDimensionnement = (ligne) => {
     if (!ligne || !(ligne.panneaux > 0)) return
-    dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne })
+    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
+    avecQuantitesFigees(() => dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne }))
   }
 
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ». Causes RÉELLES
@@ -3000,10 +3121,10 @@ export default function DevisGenerator({
   // L-2OPT), puis relance la composition par le chemin EXACT du bouton
   // « Auto-remplir » (`handleAutoFill` — dry-run serveur résidentiel, repli
   // local `composeLocalement` inchangé pour les autres marchés/pannes
-  // réseau) : aucune deuxième règle de composition, et donc le même
-  // remplacement intégral des lignes que l'Auto-remplir existant produit déjà
-  // aujourd'hui (il ne préserve pas plus les lignes ajoutées à la main que
-  // lui — comportement historique inchangé, pas régressé par ce bouton).
+  // réseau) : aucune deuxième règle de composition, et donc la même FUSION
+  // que l'Auto-remplir (QJR570, D-QJR5-4 : prix tapés, sections, notes,
+  // options et produits ajoutés à la main conservés ; quantités figées
+  // confirmées AVANT la transition, jamais dans handleAutoFill).
   //
   // QJR99 — F1/F2 (revue adversariale 26/08) exigeaient de DÉVERROUILLER le
   // garde-fou « touché » le temps du calcul synchrone, puis de restaurer
@@ -3066,7 +3187,8 @@ export default function DevisGenerator({
     // QUI SUIT et restauré dans le même mouvement, et `compositionSeq` avance —
     // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
     // relancer la composition (catalogue/marques/scénario ont pu changer).
-    dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu })
+    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
+    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }))
   }
   // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
   // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et
@@ -3095,7 +3217,8 @@ export default function DevisGenerator({
 
   const validate = () => {
     const e = {}
-    if (!clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
+    // QJR580 — en édition, le devis a déjà son client (lecture seule).
+    if (!editId && !clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
     // L'étude industrielle exige la consommation réelle du client
     if (modeInstallation === 'industriel' && !(consoKwhDerivee > 0)) {
       e.conso = 'Mode industriel : renseignez la consommation mensuelle (kWh) '
@@ -3338,114 +3461,39 @@ export default function DevisGenerator({
     return entrees
   }
 
-  // QXMT — la répartition horaire TELLE QUE SAISIE, ou `null` (règle Z2 : un
-  // site repassé en BT n'a plus de répartition MT, on la RETIRE au lieu de
-  // laisser traîner celle d'hier). Rien de rempli ⇒ `null` aussi : l'étude MT
-  // omet alors économies et payback plutôt que d'inventer un barème.
-  const repartitionMtSaisie = () => {
-    if (tensionRaccordement !== 'mt') return null
-    const parts = {}
-    for (const creneau of ['pointe', 'pleines', 'creuses']) {
-      const n = parseFloat(repartitionMt[creneau])
-      if (Number.isFinite(n)) parts[creneau] = n
-    }
-    return Object.keys(parts).length ? parts : null
-  }
-
-  const blocEtudeMarche = () => {
-    const nombre = (v) => {
-      const n = parseFloat(v)
-      return Number.isFinite(n) ? n : null
-    }
-    if (modeInstallation === 'industriel' || modeInstallation === 'commercial') {
-      const etude = (modeInstallation === 'industriel'
-        ? etudeIndustrielle : etudeCommerciale) || {}
-      const bloc = {
-        ...choixEcran(),
-        ...entreesReellesEcran(nombre(etude.conso_annuelle)),
-        taux_autoconso: nombre(etude.taux_autoconso),
-        taux_couverture: nombre(etude.taux_couverture),
-        payback: nombre(etude.payback),
-        injection_kwh_an: nombre(etude.injection_kwh_an),
-        injection_dh_an: nombre(etude.injection_dh_an),
-        // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
-        // relue par `?edit=`, sinon la réouverture remettait le défaut et
-        // réécrivait taux / payback. Commercial : dérivée de la catégorie
-        // (`commercialDayShare`), rien à écrire.
-        part_diurne_pct: modeInstallation === 'industriel' ? nombre(dayUsage) : undefined,
-        // QXMT — raccordement du site + répartition horaire : le mappeur
-        // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
-        // devis MT rouvert repartait silencieusement au barème BT. On stocke
-        // ce que le vendeur a TAPÉ (l'entrée), pas la répartition normalisée
-        // par l'étude : c'est la forme que le formulaire réinjecte.
-        tension_raccordement: tensionRaccordement || null,
-        repartition_mt: repartitionMtSaisie(),
-      }
-      if (modeInstallation === 'commercial') {
-        // QX44 — la catégorie ET ses réponses (clés snake_case à plat, comme
-        // le mappeur `?edit=` les relit : `e[q.key]`). Coercition de type
-        // IDENTIQUE à celle d'avant, jamais de `prix_achat`.
-        bloc.categorie_commerciale = categorieCommerciale || null
-        for (const q of (COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || [])) {
-          const brut = commercialAnswers[q.key]
-          if (brut === undefined || brut === '' || brut === null) continue
-          bloc[q.key] = q.type === 'number'
-            ? (parseFloat(brut) || 0)
-            : q.type === 'bool' ? !!brut : String(brut)
-        }
-      }
-      return bloc
-    }
-    if (modeInstallation === 'agricole') {
-      // MÊME dérivation que l'aperçu écran et que le devis auto
-      // (`buildEtudePompage`) : une seule formule, jamais deux chiffres qui
-      // pourraient diverger. Seules les clés du schéma en sortent, typées.
-      const p = pompageSel
-        ? buildEtudePompage(pompageSel, {
-            typePompe: pompeType, alim: pompeAlim,
-            hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-            profondeur: pompeProfondeur, distance: pompeDistance,
-          })
-        : {}
-      return {
-        ...choixEcran(),
-        ...entreesReellesEcran(null),
-        // DÉRIVÉES du dimensionnement (propriétaire ECRAN au schéma).
-        pompe_cv: nombre(p.pompe_cv),
-        pompe_kw: nombre(p.pompe_kw),
-        debit_hmt_m3h: nombre(p.debit_hmt_m3h),
-        m3_jour: nombre(p.m3_jour),
-        champ_kwc: nombre(p.champ_kwc),
-        // ENTRÉES du vendeur, prises à l'ÉTAT de l'écran (pas au
-        // dimensionnement) : ce sont elles que le mappeur `?edit=` réinjecte
-        // dans le formulaire, et elles existent même quand aucune pompe à
-        // courbe ne peut être retenue.
-        hmt_m: nombre(pompeHmt),
-        debit_souhaite_m3h: nombre(pompeDebit),
-        heures_pompage: nombre(pompeHeures),
-        type_pompe: pompeType || null,
-        alim: pompeAlim || null,
-        profondeur_m: nombre(pompeProfondeur),
-        distance_m: nombre(pompeDistance),
-        // Exploitation guidée (toutes optionnelles, toutes relues par `?edit=`).
-        irrigation_method: farmIrrigation || null,
-        region: farmRegion || null,
-        crop: farmCrop || null,
-        surface_ha: nombre(farmSurfaceHa),
-        current_fuel: farmFuel || null,
-        fuel_spend_current: nombre(farmFuelSpendAnnual),
-        hmt_static: nombre(farmHmtStatic),
-        hmt_drawdown: nombre(farmHmtDrawdown),
-      }
-    }
-    // Résidentiel : le serveur est propriétaire de son ÉTUDE — mais pas des
-    // CHOIX du vendeur ni des entrées réelles qu'il vient de taper (arbitrage
-    // « zéro perte »). Objet vide ⇒ aucun appel du tout (voir
-    // `persisterDevis`) ; en pratique `choixEcran()` porte toujours au moins
-    // le scénario, sans quoi le moteur PDF totaliserait les deux options.
-    const entrees = { ...choixEcran(), ...entreesReellesEcran(null) }
-    return Object.keys(entrees).length ? entrees : null
-  }
+  // QJR542 — la projection « étude du marché → clés etude_params légales »
+  // vit dans UNE fonction pure partagée avec le devis automatique
+  // (`features/ventes/quote/etudeMarcheBloc.js`) ; ici on ne fait que lui
+  // passer l'état de l'écran. Résidentiel ⇒ `null` si rien à écrire (aucun
+  // appel, voir `persisterDevis`).
+  const blocEtudeMarche = () => projeterEtudeMarche(modeInstallation, {
+    etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
+    choix: choixEcran(),
+    entrees: entreesReellesEcran,
+    partDiurne: dayUsage,
+    tensionRaccordement,
+    repartitionMt,
+    // QJR575 — la sentinelle « Non précisée » se persiste null.
+    categorie: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
+    reponses: commercialAnswers,
+    pompage: (modeInstallation === 'agricole' && pompageSel)
+      ? buildEtudePompage(pompageSel, {
+          typePompe: pompeType, alim: pompeAlim,
+          hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+          profondeur: pompeProfondeur, distance: pompeDistance,
+        })
+      : {},
+    saisiePompage: {
+      hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
+      typePompe: pompeType, alim: pompeAlim,
+      profondeur: pompeProfondeur, distance: pompeDistance,
+    },
+    exploitation: {
+      irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
+      surfaceHa: farmSurfaceHa, fuel: farmFuel, fuelSpend: farmFuelSpendAnnual,
+      hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
+    },
+  })
 
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
   // comportement) : construit le payload + les lignes, écrit le devis (édition
@@ -3563,7 +3611,7 @@ export default function DevisGenerator({
     e.preventDefault()
     if (!validate()) return
     const res = await persisterDevis()
-    if (res) { clear(); finish(res.devisId, res.devisCree) }
+    if (res) { clear(); marquerEnregistre(); finish(res.devisId, res.devisCree) }
   }
 
   // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
@@ -3582,6 +3630,7 @@ export default function DevisGenerator({
     const res = await persisterDevis()
     if (!res) return
     clear()
+    marquerEnregistre()
     navigate(`/ventes/devis/${res.devisId}/design`)
   }
 
@@ -3652,13 +3701,19 @@ export default function DevisGenerator({
   // Consommation industrielle : saisie directe, sinon dérivée des factures
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+  // QJR582 — la facture réelle « recommandée » (QF4) passe AVANT la
+  // dérivation des factures quand le champ d'étude est vide : sinon validate()
+  // bloquait un devis industriel où seule elle était remplie. La souveraineté
+  // COUV-HOR (realBillSaisi, entreesReellesEcran) reste intacte.
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
+    || (realBillSaisi && consoAnnuelleReelle > 0 ? Math.round(consoAnnuelleReelle / 12) : 0)
     || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
 
-  const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0
+  // QJR568 — les deux études C&I (persistées) au kWc FACTURÉ des lignes.
+  const etudeIndustrielle = (modeInstallation === 'industriel' && kwpLignes > 0
       && consoKwhDerivee > 0)
     ? computeEtudeIndustrielle({
-        kwp, consoMensuelleKwh: consoKwhDerivee,
+        kwp: kwpLignes, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
         injectionEnabled, ...etudeTension,
@@ -3668,10 +3723,10 @@ export default function DevisGenerator({
   // QX44 — étude COMMERCIALE : même moteur d'autoconsommation que l'industriel,
   // mais le day-share vient de l'ARCHÉTYPE de la catégorie (hôtel 55 ≠ bureau 80)
   // → à facture égale, une étude hôtel diffère d'une étude bureau.
-  const etudeCommerciale = (modeInstallation === 'commercial' && kwp > 0
+  const etudeCommerciale = (modeInstallation === 'commercial' && kwpLignes > 0
       && consoKwhDerivee > 0)
     ? computeEtudeIndustrielle({
-        kwp, consoMensuelleKwh: consoKwhDerivee,
+        kwp: kwpLignes, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: commercialDayShare(categorieCommerciale), totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
         injectionEnabled, ...etudeTension,
@@ -3708,12 +3763,13 @@ export default function DevisGenerator({
   // Volume jour livré par la pompe choisie (m³/jour) — comparé au besoin.
   const pumpM3Day = pompageSel?.m3Jour ?? null
 
-  const pkwc = prixParKwc(kpiTotal, kwp)
+  // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
+  const pkwc = prixParKwc(kpiTotal, kwpLignes)
   const buyCost = useMemo(() => computeBuyCost(lines, produits), [lines, produits])
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
   const applyPrixCible = () => {
-    const pct = discountForTarget(prixCible, kwp, kpiTotalBrut)
+    const pct = discountForTarget(prixCible, kwpLignes, kpiTotalBrut)
     if (pct == null) return
     setDiscountPct(String(Math.max(0, pct)))
   }
@@ -3834,7 +3890,7 @@ export default function DevisGenerator({
             par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
           </div>
         )}
-        {restored && (
+        {brouillonProposable && (
           <div
             data-testid="draft-restore-banner"
             className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between"
@@ -4048,6 +4104,24 @@ export default function DevisGenerator({
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
+                {editId ? (
+                  /* QJR580 — Édition complète : lead / client en LECTURE
+                     SEULE. L'enregistrement d'édition ne porte ni lead ni
+                     client : un sélecteur actif laissait croire à une
+                     réaffectation jetée, tout en ré-semant les factures du
+                     nouveau lead (applyLead) sur ce devis. Réaffecter n'est
+                     pas une correction (D-QJR5-1). */
+                  <>
+                    <Label>Lead / client du devis</Label>
+                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
+                         data-testid="gen-lead-lecture-seule">
+                      <strong>{editDevis?.lead_nom || editDevis?.client_nom || '…'}</strong>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Changer de client = créer un nouveau devis.
+                      </p>
+                    </div>
+                  </>
+                ) : (<>
                 <Label htmlFor="gen-lead" required>Lead (point de départ)</Label>
                 {/* CI #752 — aucune option n'a la valeur '' : un '' ne vient que
                     du <select> natif caché du Select quand la valeur posée
@@ -4069,6 +4143,7 @@ export default function DevisGenerator({
                     ))}
                   </SelectContent>
                 </Select>
+                </>)}
                 {errors.client && <p className="text-xs text-destructive">{errors.client}</p>}
               </div>
               <div className="grid gap-1.5">
@@ -4120,7 +4195,7 @@ export default function DevisGenerator({
               </div>
             )}
 
-            {!leadId && (
+            {!leadId && !editId && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
@@ -4232,6 +4307,15 @@ export default function DevisGenerator({
                 <Label>Puissance PV (kWp) — calculée</Label>
                 <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
               </div>
+              {/* QJR568 — les lignes et la cible divergent (quantité panneau
+                  corrigée à la main) : on le DIT, sans recomposer d'office. */}
+              {panneauxLignes > 0 && (parseInt(nbPanneaux) || 0) > 0
+                && panneauxLignes !== (parseInt(nbPanneaux) || 0) && (
+                <p className="text-xs text-warning sm:col-span-2" data-testid="gen-divergence-panneaux">
+                  Les lignes portent {formatNumber(panneauxLignes)} panneaux, la cible en
+                  vise {formatNumber(parseInt(nbPanneaux) || 0)} — recomposer ? (Auto-remplir)
+                </p>
+              )}
               {/* STKCAT10 (décision fondateur 16/09/2026) — le bouton
                   acier/aluminium est remplacé par un sélecteur ouvert sur
                   TOUTES les structures typées du catalogue (pergola, carport,
@@ -4371,30 +4455,27 @@ export default function DevisGenerator({
                 <RefreshCw /> Recalculer le dimensionnement
               </Button>
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
-                      loading={autoFillLoading} onClick={handleAutoFill}>
+                      loading={autoFillLoading} onClick={() => avecQuantitesFigees(handleAutoFill)}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
-            {/* QJR36 — même patron que le refus serveur `sizingServeurMessage`
-                ci-dessus : le dry-run serveur a échoué et l'écran a composé
-                localement (composeLocalement) — comportement de repli
-                INCHANGÉ, seule sa visibilité change (avant : console.error
-                silencieux uniquement). */}
-            {compositionSourceLocale && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-                   data-testid="composition-source-locale">
-                Composition établie localement (serveur indisponible) — les
-                quantités peuvent différer du devis serveur.
-                {/* QJR99 — la CAUSE, NOMMÉE (`raisonRepli`, moitié pure de
-                    `useComposition`) : une composition de secours ne s'affiche
-                    plus sans dire pourquoi elle a remplacé celle du serveur. */}
-                <div className="mt-1 text-xs" data-testid="composition-source-locale-raison">
-                  {compositionSourceLocale}
-                </div>
+            {/* QJR577 (D-QJR5-9) — le dry-run serveur a échoué : AUCUNE
+                composition de secours, l'erreur est dite et « Réessayer »
+                rejoue le même dry-run. */}
+            {compositionErreur && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                   data-testid="composition-erreur" role="alert">
+                <span>{compositionErreur}</span>
+                <Button type="button" size="sm" variant="outline"
+                        data-testid="composition-reessayer"
+                        loading={autoFillLoading}
+                        onClick={() => avecQuantitesFigees(handleAutoFill)}>
+                  Réessayer
+                </Button>
               </div>
             )}
             {/* DC11 / QJR106 (décision fondateur D6) — même patron visuel que
-                `composition-source-locale` ci-dessus. Le lead a bougé APRÈS que
+                les bandeaux d'avertissement ci-dessus. Le lead a bougé APRÈS que
                 ce devis en a repris les valeurs : on le DIT, en nommant les
                 champs, au lieu de laisser le vendeur chiffrer sur une facture
                 périmée. Verdict entièrement serveur (`lead_valeurs_modifiees`
@@ -4991,10 +5072,16 @@ export default function DevisGenerator({
         {/* ── Tailles Éco / Recommandé / Max (fondateur 26/08/2026) ──
             Composant autonome : se masque lui-même hors résidentiel ou sur un
             devis pas encore enregistré (editId absent — l'API a besoin d'un
-            pk réel). Ne lit/n'écrit AUCUNE ligne du devis (rule #4, couche
-            d'exploration séparée) ; `produits` réutilise le catalogue déjà
-            chargé pour « Auto-remplir » (pas de second aller-retour réseau). */}
-        <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits} />
+            pk réel). Éco / Max ne configurent que la carte d'exploration ;
+            « Recommandé » RECOMPOSE le devis côté serveur (lignes, totaux,
+            études — pipeline RECONCILIER) : `onDevisRecompose` relance alors
+            le chargeur `?edit=` (QJR548). « Appliquer » lit le verdict de
+            modifiabilité servi (QJR516). `produits` réutilise le catalogue
+            déjà chargé pour « Auto-remplir » (pas de second aller-retour). */}
+        <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits}
+                            modifiable={editDevis?.modifiable}
+                            raisonNonModifiable={editDevis?.raison_non_modifiable}
+                            onDevisRecompose={rechargerDevisRecompose} />
 
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>

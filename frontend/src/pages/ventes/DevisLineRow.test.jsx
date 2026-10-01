@@ -4,7 +4,7 @@
 // (pas de montage complet de DevisGenerator) — ProduitPicker est mocké pour
 // compter ses rendus sans tirer ses dépendances redux/permissions internes.
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import DevisLineRow from './DevisLineRow'
 
@@ -181,5 +181,29 @@ describe('DevisLineRow — QJR529 : remise de ligne stockée visible (lecture se
       )}</tbody></table>,
     )
     expect(screen.queryByText(/remise ligne/)).toBeNull()
+  })
+})
+
+// QJR569 — le verrou de quantité (posé par une frappe) est VISIBLE sur la
+// ligne et RÉVERSIBLE : « Libérer » rend la quantité au dimensionnement.
+describe('DevisLineRow — QJR569 : badge « Qté figée » + « Libérer »', () => {
+  it('rend le badge et « Libérer » appelle onSetField(key, quantiteManuelle, false)', () => {
+    const onSetField = vi.fn()
+    render(
+      <table><tbody>{wrap(
+        <DevisLineRow {...baseProps({ onSetField, line: { ...baseLine, quantiteManuelle: true } })} />,
+      )}</tbody></table>,
+    )
+    expect(screen.getByText(/Qté figée/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Libérer/ }))
+    expect(onSetField).toHaveBeenCalledWith('l1', 'quantiteManuelle', false)
+  })
+
+  it('aucun badge sans verrou', () => {
+    render(
+      <table><tbody>{wrap(<DevisLineRow {...baseProps()} />)}</tbody></table>,
+    )
+    expect(screen.queryByText(/Qté figée/)).toBeNull()
+    expect(screen.queryByRole('button', { name: /Libérer/ })).toBeNull()
   })
 })

@@ -164,11 +164,13 @@ test('devis auto : une marque épinglée absente laisserait un devis SANS pannea
   assert.equal(detail, MESSAGE_ATTENDU)
 })
 
-test('devis auto : la garde lève AVANT createDevis (aucun devis vide persisté)', () => {
+test('devis auto : la garde lève AVANT la création atomique (aucun devis vide persisté)', () => {
   const src = lire('./autoQuote.js')
   const garde = src.indexOf('rows.marquesManquantes ?? []')
   const jet = src.indexOf('Marque épinglée introuvable au stock')
-  const creation = src.indexOf('await dispatch(createDevis(')
+  // QJR543 — la création est désormais UN appel atomique (devis + lignes).
+  const creation = src.indexOf('await ventesApi.createDevisAtomic(')
+  assert.ok(creation > 0, 'createAutoQuote doit créer par ventesApi.createDevisAtomic')
   assert.ok(garde > 0, 'createAutoQuote doit relever rows.marquesManquantes')
   assert.ok(jet > garde, 'la garde doit lever le message de marque manquante')
   assert.ok(jet < creation,

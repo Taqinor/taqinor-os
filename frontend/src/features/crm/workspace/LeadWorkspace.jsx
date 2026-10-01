@@ -21,6 +21,7 @@ import { isTypingTarget } from '../../../providers/shortcuts'
 import { useFocusedRecordShortcuts, LEAD_STAGE_SHORTCUTS } from '../../../providers/focusedRecordShortcuts'
 import { pushRecentEntity } from '../../../providers/commandActions'
 import { normalizePhoneE164 } from '../../../lib/format'
+import { buildWaUrl } from '../../../lib/contactLinks'
 import { isStageMoveBackward } from '../stages'
 // ORDRE FONDATEUR 2026-08-01 — la MÊME question que sur le board (elle nomme le
 // lead et les deux étapes) : une seule formulation pour tous les gestes qui
@@ -868,7 +869,11 @@ export default function LeadWorkspace({
             type="button"
             className="lw-thumbbar-btn"
             disabled={!waPhone}
-            onClick={() => { if (waPhone) window.open(`https://wa.me/${waPhone}`, '_blank', 'noopener') }}
+            onClick={() => {
+              // QJR635 — constructeur wa.me unique (lib/contactLinks).
+              const url = buildWaUrl(waPhone)
+              if (url) window.open(url, '_blank', 'noopener')
+            }}
           >
             <span aria-hidden="true">🟢</span>
             <span>WhatsApp</span>

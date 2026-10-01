@@ -6,10 +6,11 @@
 // viennent — la bannière QJR36 (« composition locale de secours ») cesse d'être
 // un `if` qu'on peut oublier et devient une propriété du type de retour.
 //
-// Aujourd'hui le repli local de `handleAutoFill` (`DevisGenerator.jsx:2495-2520`)
-// est SILENCIEUX : quand le dry-run serveur échoue, l'écran affiche des lignes
-// composées par une AUTRE implémentation sans le dire (incident du 20/08 —
-// câbles, marques, ordre, arrondi panneaux divergeaient).
+// QJR577 (D-QJR5-9) — le générateur n'a PLUS de repli local en résidentiel :
+// un dry-run serveur en échec y rend une erreur + « Réessayer », jamais des
+// lignes composées par une autre implémentation (incident du 20/08 — câbles,
+// marques, ordre, arrondi panneaux divergeaient). `raisonRepli` ne sert plus
+// qu'à `resoudreComposition` ci-dessous (sa propre branche « après échec »).
 //
 // Module AJOUTÉ TESTÉ, IMPORTÉ PAR PERSONNE (vague M4).
 

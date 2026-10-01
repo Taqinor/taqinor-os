@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework import serializers
 from rest_framework.decorators import action
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from ..models import Devis, BonCommande
@@ -151,6 +152,27 @@ def _reponse_non_modifiable(devis, geste, message_statut=None):
         {'detail': detail, 'statut': devis.statut,
          'revision_possible': v['revision_possible']},
         status=status.HTTP_409_CONFLICT)
+
+
+class _RemiseEnvoiRefusee(APIException):
+    """QJR539 — 400 ``{detail}`` : garde de remise T17 d'un envoi."""
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_code = 'remise_non_approuvee'
+
+
+def _exiger_remise_envoi(devis, user, *, enregistrer=True):
+    """QJR539 — garde de remise T17 d'un VRAI envoi (lien client, courriel,
+    aperçu/commit WhatsApp), appelée AVANT tout effet de bord ; lève
+    ``_RemiseEnvoiRefusee`` (400 ``{detail}``). Ne juge que les devis encore
+    envoyables (brouillon, envoyé). ``enregistrer=False`` : un aperçu n'écrit
+    pas l'approbation implicite d'un admin."""
+    from ..services import RemiseNonApprouvee, exiger_approbation_remise
+    if devis.statut not in ('brouillon', 'envoye'):
+        return
+    try:
+        exiger_approbation_remise(devis, user, enregistrer=enregistrer)
+    except RemiseNonApprouvee as erreur:
+        raise _RemiseEnvoiRefusee(erreur.message)
 
 
 class _LotCreationSerializer(serializers.Serializer):
@@ -982,6 +1004,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             from ..domain.lignes import MSG_REMPLACEMENT_VIDE
             return Response({'detail': MSG_REMPLACEMENT_VIDE},
                             status=status.HTTP_400_BAD_REQUEST)
+        from ..services import (
+            RemiseNonApprouvee, reverifier_remise_apres_correction)
+        from ..domain.tarification import profondeur_remise_effective
+        # QJR539 — correction d'un ENVOYÉ : profondeur de remise AVANT le geste.
+        envoye = devis.statut == 'envoye'
+        remise_avant = profondeur_remise_effective(devis) if envoye else None
         try:
             with transaction.atomic():
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
@@ -992,6 +1020,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
                     company=devis.company, user=request.user,
                     composition=lignes_in))
+                # QJR539 — remise plus profonde au-dessus du seuil sur un
+                # envoyé : la garde T17 s'applique, un refus annule le geste.
+                if envoye:
+                    reverifier_remise_apres_correction(
+                        devis, request.user, avant=remise_avant)
+        except RemiseNonApprouvee as erreur:
+            return Response({'detail': erreur.message},
+                            status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1299,6 +1335,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         absent/false → comportement d'avant, byte-identique."""
         from ..models import ShareLink
         devis = self.get_object()
+        # QJR539 — garde T17 AVANT tout effet d'un ENVOI (gamme, mint, statut).
+        if request.data.get('envoi'):
+            _exiger_remise_envoi(devis, request.user)
         # GAMME — le mode d'envoi (« seule » / « les_deux ») accompagne le lien
         # quand le vendeur le précise ; absent du corps → mode déjà posé.
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
@@ -1394,6 +1433,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..utils.pdf import download_pdf
 
         devis = self.get_object()
+        # QJR539 — garde T17 AVANT tout effet (gamme, PDF, lien, `_send`).
+        _exiger_remise_envoi(devis, request.user)
         to_email = (request.data.get('to_email') or '').strip() or None
         sujet = (request.data.get('sujet') or '').strip() or None
         corps = (request.data.get('corps') or '').strip() or None
@@ -2245,6 +2286,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         )
 
         devis = self.get_object()
+        # QJR539 — garde T17 : l'aperçu précède un envoi, il est refusé
+        # d'emblée (sans écrire l'approbation implicite d'un admin).
+        _exiger_remise_envoi(devis, request.user, enregistrer=False)
         phone = devis_recipient_phone(devis)
         if not normalize_phone_e164(phone):
             return Response(
@@ -2296,6 +2340,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..services import mark_devis_sent
 
         devis = self.get_object()
+        # QJR539 — garde T17 AVANT tout effet (gamme, lien, statut).
+        _exiger_remise_envoi(devis, request.user)
         phone = devis_recipient_phone(devis)
         if not normalize_phone_e164(phone):
             return Response(
@@ -2809,35 +2855,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         reponse['applique'] = resume
         return Response(reponse)
 
-    def _guard_discount_approval(self, devis, ancien, nouveau, remise):
-        """T17 — bloque le passage en « envoyé » si la remise dépasse le seuil
-        société sans approbation. Seuil non renseigné = désactivé (défaut).
-        Un admin/propriétaire approuve implicitement en envoyant."""
-        from rest_framework.exceptions import ValidationError
-        if nouveau != 'envoye' or ancien == 'envoye':
-            return
-        from apps.parametres.models import CompanyProfile
-        seuil = CompanyProfile.get(devis.company).discount_approval_threshold
-        if seuil is None:
-            return
-        # AUD611 — le seuil juge la remise EFFECTIVE (globale ET remises de
-        # LIGNE combinées), pas la seule remise globale : un devis à 0 % global
-        # et 40 % de remise de ligne partait sinon au client sans approbation.
-        # `remise` reste la valeur ENTRANTE (celle du PATCH), et la profondeur
-        # calculée n'est jamais INFÉRIEURE à elle.
-        from ..domain.tarification import profondeur_remise_effective
-        remise = profondeur_remise_effective(devis, remise_globale=remise)
-        if (remise or 0) <= seuil or devis.remise_approuvee:
-            return
-        if getattr(self.request.user, 'is_admin_role', False):
-            devis.remise_approuvee = True
-            devis.remise_approuvee_par = self.request.user
-            devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
-            return
-        raise ValidationError({'statut': (
-            f'Remise de {remise} % supérieure au seuil de {seuil} % : '
-            "l'approbation d'un administrateur est requise avant l'envoi.")})
-
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError
         # YDOCF2 — un devis figé (accepté/refusé/expiré) ne doit plus être
@@ -2886,8 +2903,27 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         nouveau_statut = serializer.validated_data.get('statut', ancien_statut)
         remise = serializer.validated_data.get(
             'remise_globale', serializer.instance.remise_globale)
-        self._guard_discount_approval(
-            serializer.instance, ancien_statut, nouveau_statut, remise)
+        # QJR539 — la garde T17 de DOMAINE (``_guard_discount_approval``
+        # supprimée), 400 {'statut'} CONSERVÉ. Passage en « envoyé » : remise
+        # ENTRANTE jugée (AUD611, profondeur effective lignes + globale).
+        # Correction d'un ENVOYÉ : une remise plus profonde au-dessus du seuil
+        # n'est plus couverte par l'approbation d'avant.
+        from ..services import (
+            RemiseNonApprouvee, exiger_approbation_remise,
+            reverifier_remise_apres_correction)
+        from ..domain.tarification import profondeur_remise_effective
+        try:
+            if nouveau_statut == 'envoye' and ancien_statut != 'envoye':
+                exiger_approbation_remise(
+                    serializer.instance, self.request.user,
+                    remise_globale=remise)
+            elif ancien_statut == 'envoye':
+                reverifier_remise_apres_correction(
+                    serializer.instance, self.request.user,
+                    avant=profondeur_remise_effective(serializer.instance),
+                    remise_globale=remise)
+        except RemiseNonApprouvee as erreur:
+            raise ValidationError({'statut': erreur.message})
         # QJR518 — état vu par le client capturé AVANT l'écriture (ENVOYÉ
         # seulement) ; trace posée en fin de geste si l'en-tête ou la note
         # visibles ont changé.

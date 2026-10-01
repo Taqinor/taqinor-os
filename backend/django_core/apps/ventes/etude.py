@@ -744,7 +744,8 @@ def _daily_load_kwh_from_devis(devis):
     (aucune inversion fiable du barème ONEE progressif/sélectif sans le
     modèle tarifaire complet — mieux vaut 0 documenté qu'un prix moyen faux).
     """
-    lead = getattr(devis, 'lead', None)
+    from apps.crm.selectors import lead_du_devis  # QJR585 — résolveur unique
+    lead = lead_du_devis(devis)
     conso = getattr(lead, 'conso_mensuelle_kwh', None) if lead is not None else None
     if conso is None:
         return 0.0

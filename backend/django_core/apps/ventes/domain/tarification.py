@@ -171,3 +171,90 @@ def profondeur_remise_effective(devis, *, remise_globale=None):
     effective = ((Decimal('1') - net / brut) * Decimal('100')).quantize(
         Decimal('0.01'), rounding=ROUND_HALF_UP)
     return max(effective, globale)
+
+
+# ── QJR539 : la garde de remise T17, une seule fonction pour tous les envois ──
+class RemiseNonApprouvee(Exception):
+    """T17 — la remise effective dépasse le seuil société sans approbation.
+
+    Levée AVANT tout effet de bord d'un envoi (lien client, courriel, aperçu
+    WhatsApp, commit WhatsApp) et par le filet de ``mark_devis_sent``. Chaque
+    vue la rend en 400 avec ``message``.
+    """
+
+    def __init__(self, message, *, remise=None, seuil=None):
+        super().__init__(message)
+        self.message = message
+        self.remise = remise
+        self.seuil = seuil
+
+
+def seuil_approbation_remise(company):
+    """Seuil T17 de la société (%), ``None`` = garde désactivée (défaut)."""
+    if company is None:
+        return None
+    from apps.parametres.models import CompanyProfile
+    return CompanyProfile.get(company).discount_approval_threshold
+
+
+def exiger_approbation_remise(devis, user, *, remise_globale=None,
+                              enregistrer=True):
+    """QJR539 — T17 : refuse l'envoi d'un devis dont la remise EFFECTIVE
+    (globale + lignes, ``profondeur_remise_effective``) dépasse le seuil société
+    sans approbation.
+
+    * seuil non renseigné, remise sous le seuil ou déjà approuvée → rien ;
+    * un administrateur approuve IMPLICITEMENT : ``remise_approuvee`` /
+      ``remise_approuvee_par`` sont posés (sauf ``enregistrer=False`` — un
+      aperçu n'écrit rien) ;
+    * sinon ``RemiseNonApprouvee``.
+
+    L'approbation n'est jamais auto-attribuable : ``remise_approuvee`` est en
+    lecture seule dans le sérialiseur ; seuls ce chemin (admin) et l'action
+    ``approuver-remise`` (admin) l'écrivent.
+    """
+    seuil = seuil_approbation_remise(getattr(devis, 'company', None))
+    if seuil is None:
+        return
+    remise = profondeur_remise_effective(devis, remise_globale=remise_globale)
+    if (remise or 0) <= seuil or devis.remise_approuvee:
+        return
+    if getattr(user, 'is_admin_role', False):
+        if enregistrer:
+            devis.remise_approuvee = True
+            devis.remise_approuvee_par = user
+            devis.save(update_fields=['remise_approuvee',
+                                      'remise_approuvee_par'])
+        return
+    raise RemiseNonApprouvee(
+        f'Remise de {remise} % supérieure au seuil de {seuil} % : '
+        "l'approbation d'un administrateur est requise avant l'envoi.",
+        remise=remise, seuil=seuil)
+
+
+def reverifier_remise_apres_correction(devis, user, *, avant,
+                                       remise_globale=None):
+    """QJR539 — correction d'un devis ENVOYÉ (PATCH ou replace-lines) : si la
+    profondeur de remise APRÈS le geste (``remise_globale`` = valeur entrante
+    d'un PATCH, sinon celle de l'instance) dépasse le seuil ET a augmenté par
+    rapport à ``avant``, l'approbation précédente ne couvre plus ce devis : elle
+    repasse à False et la garde s'applique — un admin ré-approuve (lui-même
+    posé en approbateur), tout autre rôle reçoit ``RemiseNonApprouvee`` (à
+    lever AVANT l'écriture ou DANS la transaction du geste pour l'annuler).
+    Un refus ne retire PAS l'approbation en base : le geste refusé ne change
+    rien."""
+    seuil = seuil_approbation_remise(getattr(devis, 'company', None))
+    if seuil is None:
+        return
+    apres = profondeur_remise_effective(devis, remise_globale=remise_globale)
+    if apres <= seuil or apres <= Decimal(str(avant or 0)):
+        return
+    if getattr(user, 'is_admin_role', False):
+        devis.remise_approuvee = True
+        devis.remise_approuvee_par = user
+        devis.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
+        return
+    raise RemiseNonApprouvee(
+        f'Remise de {apres} % supérieure au seuil de {seuil} % : la '
+        "correction d'un devis envoyé requiert l'approbation d'un "
+        'administrateur.', remise=apres, seuil=seuil)

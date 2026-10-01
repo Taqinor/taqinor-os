@@ -487,6 +487,9 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
     permission_classes = [IsPortalClientUser]
 
     def list(self, request):
+        # QJR565 (contrat ``mes_devis_liste.json``) — chaque ligne porte
+        # ``mis_a_jour_le`` (correction après envoi, ISO|null), rendue telle
+        # quelle : le portail dit « Document mis à jour le … ».
         from apps.ventes.selectors import devis_du_client_portail
         company, client_id = _scope(request)
         return Response(

@@ -436,6 +436,11 @@ _regle_applicable = _tarification._regle_applicable
 _appliquer_regle = _tarification._appliquer_regle
 _resolve_liste_prix = _tarification._resolve_liste_prix
 prix_applicable = _tarification.prix_applicable
+# QJR539 — la garde de remise T17 unique, appelée AVANT tout envoi.
+RemiseNonApprouvee = _tarification.RemiseNonApprouvee
+exiger_approbation_remise = _tarification.exiger_approbation_remise
+reverifier_remise_apres_correction = (
+    _tarification.reverifier_remise_apres_correction)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -457,6 +462,15 @@ entrees_dimensionnement_du_devis = _etudes.entrees_dimensionnement_du_devis
 # RÉ-EXPORTS — QJR76 : garde d'envoi et courriel fournisseur → ``domain/cycle_vie.py``
 # ═════════════════════════════════════════════════════════════════════════
 log_supplier_email = _cycle_vie.log_supplier_email
+
+
+def consigner_correction_apres_envoi(devis, *, user=None, objet='',
+                                     resume=''):
+    """QJR590 — point d'entrée cross-app (``crm``) de la TRACE « corrigé après
+    envoi » (QJR518, ``domain/modifiabilite``). No-op hors ENVOYÉ."""
+    from apps.ventes.domain.modifiabilite import (
+        consigner_correction_apres_envoi as _consigner)
+    return _consigner(devis, user=user, objet=objet, resume=resume)
 
 
 # ═════════════════════════════════════════════════════════════════════════

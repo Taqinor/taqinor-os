@@ -21,7 +21,8 @@ from .models import (
     PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
     SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
-from .devis_auto import champs_manquants, message_manquants
+from .devis_auto import (
+    champs_manquants_detail, champs_requis, message_manquants)
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -747,6 +748,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
+    # QJR590 (contrat ``lead_client_ecart.json``) — champs d'identité où la
+    # fiche Client liée diffère du lead ; lecture seule.
+    client_ecart = serializers.SerializerMethodField()
     devis = serializers.SerializerMethodField()
     owner_nom = serializers.SerializerMethodField()
     owner_poste = serializers.SerializerMethodField()
@@ -887,11 +891,18 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""
-        manquants = champs_manquants(obj)
+        # QJR600 (contrat ``devis_auto_pret.json``) — la règle SERVIE
+        # structurée : ``manquants_detail`` [{champ, label}] (champ = nom du
+        # champ Lead, cible de la puce) et ``requis`` (groupes « l'un des »).
+        # ``manquants`` et ``message`` inchangés.
+        detail = champs_manquants_detail(obj)
+        manquants = [entree['label'] for entree in detail]
         return {
             'pret': not manquants,
             'manquants': manquants,
             'message': message_manquants(manquants) if manquants else None,
+            'manquants_detail': detail,
+            'requis': champs_requis(obj),
         }
 
     def get_next_activity(self, obj):
@@ -1304,6 +1315,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip()
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_client_ecart(self, obj):
+        """QJR590 — ``[nom|prenom|email|telephone|adresse]`` divergents."""
+        from .services import client_ecart
+        return client_ecart(obj)
+
     def get_devis(self, obj):
         # Devis « empilés » sur le lead, du plus récent au plus ancien.
         # A4 — on expose le chantier lié (s'il existe) et l'option acceptée pour
@@ -1388,9 +1405,25 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 # cockpit au lieu de rester vivante et renvoyable.
                 'version': d.version,
                 'superseded_by': d.superseded_by_id,
+                # QJR566 (contrat ``lead_devis_ligne.json``) — date de la
+                # dernière correction après envoi (marqueur
+                # ``etude_params.resync_apres_envoi``), lue sur l'instance
+                # déjà chargée ; null si jamais corrigé. Le cockpit dit alors
+                # « lu le X — avant la correction du Y ».
+                'corrige_le': _corrige_le(d),
             }
             for d in rows
         ]
+
+
+def _corrige_le(devis):
+    """QJR566 — ISO de ``etude_params.resync_apres_envoi.date`` ou ``None``
+    (marqueur absent, booléen hérité ou sans date)."""
+    params = getattr(devis, 'etude_params', None)
+    marqueur = params.get('resync_apres_envoi') if isinstance(params, dict) else None
+    if isinstance(marqueur, dict):
+        return marqueur.get('date') or None
+    return None
 
 
 def _tag_en_usage(company, nom):

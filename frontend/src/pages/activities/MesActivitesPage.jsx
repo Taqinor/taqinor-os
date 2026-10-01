@@ -30,6 +30,8 @@ import { Table } from '../reporting/Table'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 // VX156 — la file vide porte la voix Taqinor (moment « file vide »).
 import { voice } from '../../lib/voice'
+// QJR635 — LE constructeur wa.me partagé (normalise « 06… » → 2126…).
+import { waHref } from '../../lib/contactLinks'
 
 // QX25 — « Mes activités » est la liste d'appels du jour : chaque ligne doit
 // être prête à appeler/WhatsApper en un tap, sans ouvrir la fiche. Le
@@ -40,12 +42,6 @@ const telHref = (raw) => {
   if (!s) return null
   const cleaned = s.replace(/[^\d+]/g, '')
   return cleaned ? `tel:${cleaned}` : null
-}
-const waHref = (raw) => {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const digits = s.replace(/\D/g, '')
-  return digits ? `https://wa.me/${digits}` : null
 }
 
 // ZSAL1 — échéance par défaut de l'activité de suivi suggérée : aujourd'hui +

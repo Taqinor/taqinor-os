@@ -58,13 +58,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/mesure_cadence.py:320` | get_or_create | GesteRelanceAppareil.objects | company, famille_appareil, geste, jour |
 | `backend/django_core/apps/crm/services.py:213` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:11236` | get_or_create | Playbook.objects | company, nom |
-| `backend/django_core/apps/crm/services.py:11243` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/services.py:11245` | get_or_create | PlaybookTache.objects | etape, libelle |
-| `backend/django_core/apps/crm/views.py:3033` | get_or_create | LeadTag.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3047` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3059` | get_or_create | MotifPerte.objects | company, nom |
-| `backend/django_core/apps/crm/views.py:3116` | get_or_create | Canal.objects | cle, company |
+| `backend/django_core/apps/crm/services.py:11363` | get_or_create | Playbook.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:11370` | get_or_create | PlaybookEtape.objects | playbook, stage |
+| `backend/django_core/apps/crm/services.py:11372` | get_or_create | PlaybookTache.objects | etape, libelle |
+| `backend/django_core/apps/crm/views.py:3125` | get_or_create | LeadTag.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3139` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3151` | get_or_create | MotifPerte.objects | company, nom |
+| `backend/django_core/apps/crm/views.py:3208` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
@@ -152,8 +152,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/portail/services.py:394` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/portail/services.py:557` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
 | `backend/django_core/apps/portail/services.py:680` | get_or_create | Role.objects | company, nom |
-| `backend/django_core/apps/portail/views_client.py:572` | get_or_create | AcceptationDevisPortail.objects | company, devis |
-| `backend/django_core/apps/portail/views_client.py:675` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
+| `backend/django_core/apps/portail/views_client.py:575` | get_or_create | AcceptationDevisPortail.objects | company, devis |
+| `backend/django_core/apps/portail/views_client.py:678` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
 | `backend/django_core/apps/portail/views_externes.py:495` | update_or_create | PreferencePortail.objects | utilisateur |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/records/services.py:104` | get_or_create | Follower.objects | company, content_type, object_id, sous_type, user |

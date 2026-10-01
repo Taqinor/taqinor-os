@@ -125,12 +125,10 @@ export const STATUT_VISITE_LABEL = {
   a_refaire: 'À refaire',
 }
 
-// wa.me — même normalisation que le reste de l'app (chiffres uniquement,
-// indicatif compris) : ne construit JAMAIS d'URL sans numéro exploitable.
-export function whatsappUrl(numero) {
-  const digits = String(numero ?? '').replace(/[^\d]/g, '')
-  return digits ? `https://wa.me/${digits}` : null
-}
+// wa.me — QJR635 : ré-export du constructeur UNIQUE (`lib/contactLinks.js`
+// waHref, qui normalise « 06… » → 2126…) ; jamais d'URL sans numéro
+// exploitable.
+export { waHref as whatsappUrl } from '../../lib/contactLinks.js'
 
 export function mapsUrl(lat, lng) {
   if (lat == null || lng == null) return null

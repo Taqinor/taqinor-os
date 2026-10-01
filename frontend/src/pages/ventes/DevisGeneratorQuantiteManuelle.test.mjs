@@ -77,3 +77,37 @@ test('QJR218 — le marqueur suit la MÊME convention de nommage que prixManuel 
   assert.match(LE, /quantiteManuelle/)
   assert.match(LE, /quantite_manuelle/)
 })
+
+// QJR569 — une quantité TAPÉE pose le verrou `quantiteManuelle` : jusqu'ici le
+// drapeau n'avait AUCUN écrivain à l'écran (les gardes D12 du serveur —
+// resynchronisation._quantite_verrouillee, pipeline — étaient inatteignables
+// et une resynchro pouvait réécrire la quantité tapée). Resélectionner le
+// produit lève le verrou, comme `prixManuel` ; une composition ne le pose
+// JAMAIS.
+const CODE = DG.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n')
+
+function blocCode(debut, fin) {
+  const start = CODE.indexOf(debut)
+  assert.ok(start > -1, `introuvable : ${debut}`)
+  const end = CODE.indexOf(fin, start + debut.length)
+  assert.ok(end > start, `fin introuvable : ${fin}`)
+  return CODE.slice(start, end)
+}
+
+test('QJR569 — setLine pose quantiteManuelle sur une frappe de quantité d\'une ligne produit', () => {
+  const setLine = blocCode('const setLine = useCallback(', '}, [setLines])')
+  assert.match(setLine,
+    /\.\.\.\(k === 'quantite' && l\.produit \? \{ quantiteManuelle: true \} : \{\}\)/)
+})
+
+test('QJR569 — onProduitChange lève le verrou de quantité avec celui du prix', () => {
+  const change = blocCode('const onProduitChange = useCallback(',
+    '}, [produits, lines, refreshTarif, setLines])')
+  assert.match(change, /prixManuel: false,/)
+  assert.match(change, /quantiteManuelle: false,/)
+})
+
+test('QJR569 — aucune composition ne pose le verrou : setLine est le SEUL écrivain de quantiteManuelle: true', () => {
+  const ecrivains = CODE.match(/quantiteManuelle: true/g) || []
+  assert.equal(ecrivains.length, 1, 'quantiteManuelle: true ne doit apparaître que dans setLine')
+})
