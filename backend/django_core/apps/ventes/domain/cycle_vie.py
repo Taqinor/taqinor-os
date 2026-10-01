@@ -2136,8 +2136,9 @@ def rattacher_aval_financier_revision(devis, *, user=None):
                       Decimal('0'))
     avoirs_ttc = sum((Decimal(str(f.avoirs_total)) for f in actives.values()),
                      Decimal('0'))
-    reste = (Decimal(str(option_totaux(devis)['ttc']))
-             - facture_ttc + avoirs_ttc).quantize(Decimal('0.01'))
+    from core.money import quantize_mad
+    reste = quantize_mad(Decimal(str(option_totaux(devis)['ttc']))
+                         - facture_ttc + avoirs_ttc)
     encore_une_tranche = (not via_bc) and next_tranche(devis) is not None
     if reste == 0 or (encore_une_tranche and reste > 0):
         activity.log_devis_note(
@@ -2149,7 +2150,7 @@ def rattacher_aval_financier_revision(devis, *, user=None):
 
     taux = blended_tva_pct(devis)
     montant_ttc = abs(reste)
-    montant_ht = (montant_ttc / (1 + taux / 100)).quantize(Decimal('0.01'))
+    montant_ht = quantize_mad(montant_ttc / (1 + Decimal(str(taux)) / 100))
     montant_tva = montant_ttc - montant_ht
     company = devis.company
     if reste > 0:
