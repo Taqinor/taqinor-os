@@ -1,11 +1,12 @@
-// QJR532 (Groupe QJR5, D-QJR5-1) — un devis ENVOYÉ s'ouvre et se corrige sur
-// place dans l'Édition complète (bandeau non bloquant, enregistrement sans
-// `statut`) ; un ACCEPTÉ affiche la raison serveur (`raison_non_modifiable`) et
-// quitte l'écran. L'écran RÉEL est rendu ; le devis rouvert porte l'identité et
-// les droits de l'exemple COMMITTÉ du contrat `devis_modifiabilite.json`
-// (PACT10 — jamais un mock écrit à la main).
+// QJR549 (contrat QJR503, devis_verrou_edition.json) — l'Édition complète
+// envoie son jeton de fraîcheur (`expected_updated_at`), le RÉ-ARME après
+// chaque écriture de l'écran (ici : une taille d'offre appliquée) et, sur un
+// 409 `devis_modifie`, affiche « Modifié par X » sans rien écrire d'autre.
+// L'écran RÉEL est rendu ; seul <DevisOffresTailles> est remplacé par un
+// bouton qui signale une écriture (`onDevisEcrit`) — son comportement réseau
+// est couvert par DevisOffresTailles.test.jsx.
 //
-// Run : npx vitest run src/pages/ventes/DevisGeneratorEditEnvoye.test.jsx
+// Run : npx vitest run src/pages/ventes/DevisGeneratorVerrouEdition.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -17,8 +18,15 @@ import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
-import { toast } from '../../ui/confirm'
 
+vi.mock('./DevisOffresTailles', () => ({
+  default: ({ onDevisEcrit }) => (
+    <button type="button" data-testid="stub-ecrit-taille"
+            onClick={() => onDevisEcrit && onDevisEcrit('2026-09-30T09:15:00.000000+01:00')}>
+      Taille écrite (stub)
+    </button>
+  ),
+}))
 vi.mock('../../api/crmApi', () => ({
   default: {
     getClients: vi.fn(() => Promise.resolve({ data: [] })),
@@ -66,11 +74,15 @@ const LEAD = {
   ville: 'Mohammedia',
 }
 
+const JETON_CHARGEMENT = '2026-09-30T08:41:12.345678+01:00'
+const CONFLIT = exempleContrat('ventes', 'devis_verrou_edition', 'exemple_409')
+
 function devisRouvert(variante) {
   const contrat = exempleContrat('ventes', 'devis_modifiabilite', variante)
   return {
     data: {
       ...contrat, lead: LEAD.id, client: 9, date_envoi: '2026-09-28T10:00:00Z',
+      updated_at: JETON_CHARGEMENT,
       mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: {
         scenario: 'Sans batterie',
@@ -134,42 +146,50 @@ beforeEach(() => {
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
-describe('QJR532 — un devis envoyé se corrige sur place', () => {
-  it('envoyé : formulaire chargé, bandeau non bloquant, enregistrement SANS statut', async () => {
-    const rouvert = devisRouvert('exemple_envoye')
-    ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
-    renderEdition(rouvert.data.id)
-    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    const bandeau = await screen.findByTestId('devis-envoye-banner')
-    expect(bandeau.textContent).toMatch(/Devis envoyé le .*28/)
-    expect(bandeau.textContent).toMatch(/visibles sur le lien de la proposition/)
-    expect(bandeau.textContent).toMatch(/Le statut reste Envoyé/)
-    expect(screen.queryByText(/nouvelle version/i)).toBeNull()
-    expect(erreur).not.toHaveBeenCalled()
-    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
-    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
-    const [id, , { entete: payload }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
-    expect(id).toBe(rouvert.data.id)
-    expect(payload).not.toHaveProperty('statut')
-  })
-
-  it('brouillon : pas de bandeau « envoyé »', async () => {
+describe('QJR549 — verrou optimiste de l’Édition complète', () => {
+  it('409 devis_modifie → bannière « Modifié par … », rien d’autre écrit', async () => {
     const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
+    ventesApi.replaceLignesDevis.mockRejectedValue({ response: { status: 409, data: CONFLIT } })
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
-    expect(screen.queryByTestId('devis-envoye-banner')).toBeNull()
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    const banniere = await screen.findByTestId('devis-verrou-banner')
+    expect(banniere.textContent).toMatch(new RegExp(`Modifié par ${CONFLIT.updated_by_nom}`))
+    const [, , extra] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(extra.expected_updated_at).toBe(JETON_CHARGEMENT)
+    expect(ventesApi.patchEtudeParams).not.toHaveBeenCalled()
+    expect(ventesApi.patchDevis).not.toHaveBeenCalled()
+    expect(screen.queryByText('APRES-ENREGISTREMENT')).toBeNull()
   })
 
-  it('accepté : toast de la raison serveur, retour, aucun formulaire d\'édition', async () => {
-    const rouvert = devisRouvert('exemple_accepte')
+  it('« Enregistrer quand même » renvoie UNE fois sans jeton', async () => {
+    const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
+    ventesApi.replaceLignesDevis
+      .mockRejectedValueOnce({ response: { status: 409, data: CONFLIT } })
+      .mockResolvedValueOnce({ data: { updated_at: '2026-09-30T10:00:00+01:00' } })
     renderEdition(rouvert.data.id)
-    await waitFor(() => expect(erreur).toHaveBeenCalledWith('Devis accepté : révisez-le'))
-    await screen.findByText('APRES-ENREGISTREMENT')
-    expect(ventesApi.patchDevis).not.toHaveBeenCalled()
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await screen.findByTestId('devis-verrou-banner')
+    await userEvent.click(screen.getByRole('button', { name: /Enregistrer quand même/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalledTimes(2))
+    const [, , extra] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(extra).not.toHaveProperty('expected_updated_at')
+  })
+
+  it('après une écriture de l’écran (taille appliquée), la sauvegarde envoie le NOUVEAU jeton', async () => {
+    const rouvert = devisRouvert('exemple_brouillon')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await userEvent.click(await screen.findByTestId('stub-ecrit-taille'))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, , extra] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(extra.expected_updated_at).toBe('2026-09-30T09:15:00.000000+01:00')
+    expect(extra.expected_updated_at).not.toBe(JETON_CHARGEMENT)
   })
 })

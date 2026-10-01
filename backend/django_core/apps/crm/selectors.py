@@ -570,6 +570,22 @@ def lead_du_devis(devis):
         company_id, getattr(devis, 'client_id', None))
 
 
+def ville_effective(lead):
+    """QJR586 (contrat QJR506 ``lead_ville_effective.json``) — LA « ville de
+    calcul » d'un lead : la ville ERP de RATTACHEMENT (``ville_reference``,
+    choisie pour un douar hors gazetier, VREF) prime, sinon la ville tapée.
+    Chaîne nettoyée, ``''`` quand les deux sont vides — jamais ``None``.
+
+    Moteur (entrées, empreinte), PDF, transport, distributeur déduit,
+    réalisation comparable et écran la lisent tous ICI : un douar rattaché
+    sans GPS n'est plus refusé par le devis automatique alors que le PDF le
+    chiffre."""
+    if lead is None:
+        return ''
+    return ((getattr(lead, 'ville_reference', '') or '').strip()
+            or (getattr(lead, 'ville', '') or '').strip())
+
+
 def _srm_deduite(ville):
     """CAD167 — la SRM régionale de cette ville, ou ``None``. Ne lève jamais."""
     try:
@@ -606,8 +622,9 @@ def lead_bills_for_devis(devis):
         # demande plus). Ville inconnue de la table ⇒ toujours None : on
         # n'invente pas un rattachement régional. La valeur ne change aucun
         # prix — le barème est national.
+        # QJR586 — la SRM se déduit de la ville de CALCUL du lead.
         'distributeur': (lead.distributeur
-                         or _srm_deduite(getattr(lead, 'ville', None))),
+                         or _srm_deduite(ville_effective(lead) or None)),
     }
 
 
@@ -1210,6 +1227,16 @@ LEAD_PROVENANCE_FIELDS = (
     # ERR-QAC-PROVENANCE-CONSO-KWH — depuis CAD166 la conso mensuelle PILOTE
     # l'étude horaire (recopiée dans `etude_params`) : une dérive doit se voir.
     'conso_mensuelle_kwh',
+    # QJR587 (contrat QJR506 ``lead_provenance_fields.json``) — les valeurs du
+    # lead qui PILOTENT le devis : la taille souhaitée est SOUVERAINE, la
+    # batterie souhaitée décide le scénario, le raccordement choisit phase et
+    # onduleur, la structure dérive la ligne structure, le pompage est
+    # re-saisi par l'écran agricole, le type choisit le marché et la ville
+    # (de calcul, QJR586) le productible, le transport et le distributeur.
+    'taille_souhaitee_kwc', 'batterie_souhaitee', 'raccordement',
+    'structure_pref', 'structure_produit',
+    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'type_installation', 'ville', 'ville_reference',
 )
 
 
@@ -1232,6 +1259,8 @@ _LEAD_PROVENANCE_MARQUEURS = (
     'raccordement', 'regularisation_', 'equip_', 'occupation_jour', 'pompe_',
     'toiture', 'roof_', 'orientation', 'inclinaison', 'ombrage', 'gps_',
     'nb_etages', 'structure_', 'kwc', 'batterie', 'distributeur',
+    # QJR587 — la ville et le marché pilotent le devis : surveillés aussi.
+    'ville', 'type_installation',
 )
 
 # Les raisons, mutualisées par famille : une seule phrase à relire, et un champ
@@ -1248,26 +1277,10 @@ _RAISON_PROFIL_APPEL = (
     "le RECOPIE pas — il est lu sur le lead quand l'étude en a besoin. "
     "À déclarer le jour où l'écran générateur le re-saisit."
 )
-_RAISON_POMPAGE = (
-    "questionnaire de pompage agricole : hors du bloc énergie/toiture "
-    "RÉSIDENTIEL que le devis recopie (les valeurs de "
-    "`LEAD_PROVENANCE_FIELDS`). À déclarer le jour où l'écran agricole "
-    "re-saisit ces valeurs depuis le lead."
-)
 _RAISON_QUALIFICATION = (
     "donnée de QUALIFICATION du lead (ce que le prospect a déclaré au "
     "premier contact), pas une valeur d'étude re-saisie dans le devis : elle "
     "vit sa vie côté CRM et n'a pas de copie dans `etude_params`."
-)
-_RAISON_STRUCTURE = (
-    "CHOIX DE MATÉRIEL du lead (STKCAT9) : depuis le 16/09/2026 il DESCEND "
-    "jusqu'à la composition — `build_devis_auto` en dérive la structure du "
-    "kit — mais il n'est toujours PAS RECOPIÉ dans `Devis.etude_params`. Ce "
-    "que le devis garde de ce choix, ce sont ses LIGNES (la ligne structure "
-    "vendue, relue par `structure_produit_id_du_devis`) : c'est là que la "
-    "dérive se verrait, pas dans une estampille. L'estampiller ferait "
-    "clignoter la bannière sur une valeur dont le devis ne détient aucune "
-    "copie."
 )
 _RAISON_TRANCHE = (
     "valeur RE-DÉRIVÉE par l'étude à chaque rendu depuis la facture et la "
@@ -1284,19 +1297,9 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'equip_clim_creneau', 'equip_chauffe_eau_electrique',
         'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
     )]
-    + [(champ, _RAISON_POMPAGE) for champ in (
-        'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
-    )]
     + [(champ, _RAISON_QUALIFICATION) for champ in (
         'bill_range_bucket', 'roof_type', 'roof_age', 'distributeur',
-        'raccordement', 'batterie_souhaitee', 'taille_souhaitee_kwc',
         'nb_etages', 'regularisation_8221',
-    )]
-    # STKCAT9 — les DEUX expressions du choix de structure, avec LEUR raison
-    # (le marqueur est passé de « structure_pref » à « structure_ », donc la
-    # garde surveille désormais les deux ; une omission serait rouge).
-    + [(champ, _RAISON_STRUCTURE) for champ in (
-        'structure_pref', 'structure_produit',
     )]
     # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé : deux des huit
     # champs portent un marqueur de provenance (`equip_`, `pompe_`) et
@@ -1394,7 +1397,13 @@ def _lead_provenance_valeurs(lead):
     from decimal import Decimal
     valeurs = {}
     for f in LEAD_PROVENANCE_FIELDS:
-        v = getattr(lead, f, None)
+        # QJR587 — une clé étrangère (``structure_produit``) est estampillée
+        # par son id : JSON-safe et comparable.
+        try:
+            relation = lead._meta.get_field(f).is_relation
+        except Exception:  # noqa: BLE001 — champ absent : None des deux côtés
+            relation = False
+        v = getattr(lead, f'{f}_id', None) if relation else getattr(lead, f, None)
         valeurs[f] = str(v) if isinstance(v, Decimal) else v
     return valeurs
 
@@ -2644,7 +2653,8 @@ def site_location_for_devis(devis):
     if lead is not None:
         return {
             'site_adresse': lead.adresse,
-            'site_ville': lead.ville,
+            # QJR586 — la ville de CALCUL (rattachement VREF prioritaire).
+            'site_ville': ville_effective(lead) or None,
             'gps_lat': lead.gps_lat,
             'gps_lng': lead.gps_lng,
         }

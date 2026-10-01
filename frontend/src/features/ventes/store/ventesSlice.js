@@ -47,15 +47,6 @@ export const createDevis = createAsyncThunk('ventes/createDevis', async (data, {
   }
 })
 
-export const updateDevis = createAsyncThunk('ventes/updateDevis', async ({ id, data }, { rejectWithValue }) => {
-  try {
-    const res = await ventesApi.updateDevis(id, data)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
-
 export const genererPdfDevis = createAsyncThunk('ventes/genererPdfDevis', async (arg, { rejectWithValue }) => {
   // arg : id seul, ou { id, options } avec les options de format PDF
   const { id, options } = (arg && typeof arg === 'object') ? arg : { id: arg, options: {} }
@@ -76,38 +67,11 @@ export const convertirDevisEnBC = createAsyncThunk('ventes/convertirDevisEnBC', 
   }
 })
 
-export const patchDevis = createAsyncThunk('ventes/patchDevis', async ({ id, data }, { rejectWithValue }) => {
-  try {
-    const res = await ventesApi.patchDevis(id, data)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
-
 // ── Lignes de devis ────────────────────────────────────
 export const addLigneDevis = createAsyncThunk('ventes/addLigneDevis', async (data, { rejectWithValue }) => {
   try {
     const res = await ventesApi.createLigneDevis(data)
     return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
-
-export const updateLigneDevis = createAsyncThunk('ventes/updateLigneDevis', async ({ id, data }, { rejectWithValue }) => {
-  try {
-    const res = await ventesApi.updateLigneDevis(id, data)
-    return res.data
-  } catch (err) {
-    return rejectWithValue(err.response?.data ?? err.message)
-  }
-})
-
-export const removeLigneDevis = createAsyncThunk('ventes/removeLigneDevis', async (id, { rejectWithValue }) => {
-  try {
-    await ventesApi.deleteLigneDevis(id)
-    return id
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
   }
@@ -347,8 +311,7 @@ const ventesSlice = createSlice({
     error: null,
     pdfLoading: false,
     // VX164 — requestId (RTK) de la DERNIÈRE update/patch dispatchée, par id
-    // — une map par ressource (devis/BC/factures sont des tables distinctes).
-    devisUpdateSeq: {},
+    // — une map par ressource (BC/factures sont des tables distinctes).
     bonCommandeUpdateSeq: {},
     factureUpdateSeq: {},
   },
@@ -383,22 +346,6 @@ const ventesSlice = createSlice({
       })
       .addCase(fetchDevis.rejected, rejected)
       .addCase(createDevis.fulfilled, (state, action) => { state.devis.push(action.payload) })
-      .addCase(updateDevis.pending, (state, action) => {
-        state.devisUpdateSeq[action.meta.arg.id] = action.meta.requestId
-      })
-      .addCase(updateDevis.fulfilled, (state, action) => {
-        if (isStaleResourceUpdate(state.devisUpdateSeq, action.payload.id, action.meta.requestId)) return
-        const idx = state.devis.findIndex(d => d.id === action.payload.id)
-        if (idx !== -1) state.devis[idx] = action.payload
-      })
-      .addCase(patchDevis.pending, (state, action) => {
-        state.devisUpdateSeq[action.meta.arg.id] = action.meta.requestId
-      })
-      .addCase(patchDevis.fulfilled, (state, action) => {
-        if (isStaleResourceUpdate(state.devisUpdateSeq, action.payload.id, action.meta.requestId)) return
-        const idx = state.devis.findIndex(d => d.id === action.payload.id)
-        if (idx !== -1) state.devis[idx] = action.payload
-      })
       .addCase(convertirDevisEnBC.fulfilled, (state, action) => {
         state.bonsCommande.push(action.payload)
       })

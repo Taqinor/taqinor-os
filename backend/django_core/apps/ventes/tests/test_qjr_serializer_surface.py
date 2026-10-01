@@ -59,6 +59,13 @@ MONTH = timezone.now().strftime('%Y%m')
 CHAMPS_BRUTS = ('etude_params', 'roof_layout', 'layout_hash',
                 'offres_tailles_config', 'marge_snapshot', 'overrides')
 
+#: QJR541 — cycle de vie : chacun a sa porte dédiée (envoi, accepter, refuser,
+#: reviser) ; le corps du devis ne les écrit jamais.
+CHAMPS_CYCLE_DE_VIE = ('statut', 'date_envoi', 'date_acceptation',
+                       'accepte_par_nom', 'date_refus', 'motif_refus',
+                       'option_acceptee', 'superseded_by', 'version_parent',
+                       'version')
+
 #: Jamais exposés à l'écriture (la référence est numérotée côté serveur, le PDF
 #: est un artefact de rendu).
 JAMAIS_EXPOSES = ('reference', 'fichier_pdf')
@@ -106,6 +113,15 @@ class SurfaceDeclaree(SimpleTestCase):
                 champs[nom].read_only,
                 '%s doit être en lecture seule : il a un endpoint dédié et '
                 'gardé, le corps du devis n\'en est pas un.' % nom)
+
+    def test_cycle_de_vie_en_lecture_seule_is_active_ecrivable(self):
+        """QJR541 — statut et champs de cycle de vie ignorés au PATCH/POST ;
+        ``is_active`` reste écrivable (désactivation seule)."""
+        champs = DevisWriteSerializer().fields
+        for nom in CHAMPS_CYCLE_DE_VIE:
+            self.assertTrue(champs[nom].read_only, nom)
+        self.assertFalse(champs['is_active'].read_only)
+        self.assertFalse(hasattr(DevisWriteSerializer, 'validate_statut'))
 
     def test_echeancier_reste_ecrivable_et_valide(self):
         """La contrepartie explicite : validé n'est pas brut (QJR21)."""

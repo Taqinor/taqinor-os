@@ -6,6 +6,10 @@
 // de l'exemple COMMITTÉ du contrat `devis_modifiabilite.json` (PACT10 —
 // jamais un mock écrit à la main).
 //
+// QJR541 — côté serveur `statut` est désormais en LECTURE SEULE : un PATCH qui
+// le porterait répondrait 200 SANS le changer (plus de 400). L'écran continue
+// de ne jamais l'envoyer, brouillon comme envoyé.
+//
 // Run : npx vitest run src/pages/ventes/DevisGeneratorEditSansStatut.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -142,10 +146,22 @@ describe("QJR515 — le PATCH d'édition ne porte jamais `statut`", () => {
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
     const bouton = await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     await userEvent.click(bouton)
-    await waitFor(() => expect(ventesApi.patchDevis).toHaveBeenCalled())
-    const [id, payload] = ventesApi.patchDevis.mock.calls.at(-1)
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [id, , { entete: payload }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
     expect(id).toBe(rouvert.data.id)
     expect(payload).not.toHaveProperty('statut')
     expect(ventesApi.createDevisAtomic).not.toHaveBeenCalled()
+  })
+
+  it('envoyé : le PATCH part sans statut (le serveur garde « envoyé »)', async () => {
+    const rouvert = devisRouvert('exemple_envoye')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    ventesApi.patchDevis.mockResolvedValue({ data: { id: rouvert.data.id, statut: 'envoye' } })
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, , { entete: payload }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(payload).not.toHaveProperty('statut')
   })
 })

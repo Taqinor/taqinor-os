@@ -1,11 +1,11 @@
-// QJR532 (Groupe QJR5, D-QJR5-1) — un devis ENVOYÉ s'ouvre et se corrige sur
-// place dans l'Édition complète (bandeau non bloquant, enregistrement sans
-// `statut`) ; un ACCEPTÉ affiche la raison serveur (`raison_non_modifiable`) et
-// quitte l'écran. L'écran RÉEL est rendu ; le devis rouvert porte l'identité et
-// les droits de l'exemple COMMITTÉ du contrat `devis_modifiabilite.json`
-// (PACT10 — jamais un mock écrit à la main).
+// QJR553 (D-QJR5-7, contrat QJR513 `devis_historique_configuration.json`) —
+// l'historique des versions dans l'Édition complète : diff lisible
+// (« Prix unitaire : 100 → 120 »), jamais de prix d'achat ni de marge, et
+// « Revenir à cette version » qui recharge l'écran puis passe par
+// l'enregistrement NORMAL (replace-lines avec les lignes de l'instantané).
+// Les instantanés partent de l'exemple COMMITTÉ du contrat (PACT10).
 //
-// Run : npx vitest run src/pages/ventes/DevisGeneratorEditEnvoye.test.jsx
+// Run : npx vitest run src/features/ventes/HistoriqueConfiguration.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -17,7 +17,6 @@ import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
-import { toast } from '../../ui/confirm'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -44,13 +43,15 @@ vi.mock('../../api/ventesApi', () => ({
     replaceLignesDevis: vi.fn(),
     createDevisAtomic: vi.fn(),
     patchEtudeParams: vi.fn(),
+    getHistoriqueConfigurationDevis: vi.fn(() => Promise.resolve({ data: { snapshots: [] } })),
   },
 }))
 
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
-import DevisGenerator from './DevisGenerator'
+import DevisGenerator from '../../pages/ventes/DevisGenerator'
+import HistoriqueConfiguration from './HistoriqueConfiguration'
 
 const PANNEAU = {
   id: 101, nom: 'Panneau Canadien Solar 715W', prix_vente: 1200, tva: 10,
@@ -64,6 +65,22 @@ const LEAD = {
   id: 77, nom: 'Khalid', prenom: 'SansStatut', societe: '',
   facture_hiver: '3000', ete_differente: false, facture_ete: null,
   ville: 'Mohammedia',
+}
+
+const SNAP = exempleContrat('ventes', 'devis_historique_configuration').snapshots[0]
+const V1 = {
+  ...SNAP, id: 90, date: '2026-09-29T08:00:00+00:00',
+  contenu: { ...SNAP.contenu, lignes: SNAP.contenu.lignes.map(l => ({ ...l, prix_unitaire: '100.00', lot: null })) },
+}
+const V2 = {
+  ...SNAP, id: 91,
+  contenu: { ...SNAP.contenu, lignes: SNAP.contenu.lignes.map(l => ({ ...l, prix_unitaire: '120.00' })) },
+}
+const DIFF = {
+  ...exempleContrat('ventes', 'devis_historique_configuration', 'exemple_avec_diff').diff,
+  modifiees: [{ cle: 'role:panneau', designation: 'Panneau Canadien Solar 710W',
+                champs: { prix_unitaire: ['100.00', '120.00'], prix_achat: ['50', '60'] } }],
+  parametres: { marge_pct: ['10', '12'] },
 }
 
 function devisRouvert(variante) {
@@ -134,42 +151,45 @@ beforeEach(() => {
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
-describe('QJR532 — un devis envoyé se corrige sur place', () => {
-  it('envoyé : formulaire chargé, bandeau non bloquant, enregistrement SANS statut', async () => {
-    const rouvert = devisRouvert('exemple_envoye')
-    ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
-    renderEdition(rouvert.data.id)
-    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    const bandeau = await screen.findByTestId('devis-envoye-banner')
-    expect(bandeau.textContent).toMatch(/Devis envoyé le .*28/)
-    expect(bandeau.textContent).toMatch(/visibles sur le lien de la proposition/)
-    expect(bandeau.textContent).toMatch(/Le statut reste Envoyé/)
-    expect(screen.queryByText(/nouvelle version/i)).toBeNull()
-    expect(erreur).not.toHaveBeenCalled()
-    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
-    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
-    const [id, , { entete: payload }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
-    expect(id).toBe(rouvert.data.id)
-    expect(payload).not.toHaveProperty('statut')
+describe('QJR553 — historique des versions', () => {
+  it('diff lisible « Prix unitaire : 100 → 120 », jamais prix d’achat ni marge', async () => {
+    ventesApi.getHistoriqueConfigurationDevis.mockImplementation((id, params) => Promise.resolve({
+      data: params ? { snapshots: [V1, V2], diff: DIFF } : { snapshots: [V1, V2] },
+    }))
+    render(<HistoriqueConfiguration devisId={12} peutRevenir onRevenir={vi.fn()} />)
+    await userEvent.click(await screen.findByRole('button', { name: /Voir les différences/ }))
+    expect(ventesApi.getHistoriqueConfigurationDevis).toHaveBeenLastCalledWith(12, { a: 90, b: 91 })
+    const diff = await screen.findByTestId('historique-diff')
+    expect(diff.textContent).toMatch(/Prix unitaire : 100 → 120/)
+    expect(diff.textContent).toMatch(/Ajoutée : Batterie Dyness 10 kWh/)
+    expect(document.body.textContent).not.toMatch(/prix_achat|Prix d.achat|marge/i)
   })
 
-  it('brouillon : pas de bandeau « envoyé »', async () => {
+  it('pas de « Revenir » quand le devis n’est pas modifiable', async () => {
+    ventesApi.getHistoriqueConfigurationDevis.mockResolvedValue({ data: { snapshots: [V1, V2] } })
+    render(<HistoriqueConfiguration devisId={12} peutRevenir={false} onRevenir={vi.fn()} />)
+    await screen.findByTestId('historique-configuration')
+    expect(screen.queryByRole('button', { name: /Revenir à cette version/ })).toBeNull()
+  })
+
+  it('« Revenir » recharge l’écran puis enregistre par replace-lines les lignes de l’instantané', async () => {
     const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
+    ventesApi.getHistoriqueConfigurationDevis.mockResolvedValue({ data: { snapshots: [V1, V2] } })
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
-    expect(screen.queryByTestId('devis-envoye-banner')).toBeNull()
-  })
-
-  it('accepté : toast de la raison serveur, retour, aucun formulaire d\'édition', async () => {
-    const rouvert = devisRouvert('exemple_accepte')
-    ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
-    renderEdition(rouvert.data.id)
-    await waitFor(() => expect(erreur).toHaveBeenCalledWith('Devis accepté : révisez-le'))
-    await screen.findByText('APRES-ENREGISTREMENT')
+    const appelsChargeur = ventesApi.getDevisById.mock.calls.length
+    // Sans fournisseur de dialogue, la confirmation retombe sur window.confirm.
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await userEvent.click(await screen.findByRole('button', { name: /Revenir à cette version/ }))
+    await waitFor(() => expect(confirmer).toHaveBeenCalled())
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [id, lignes, extra] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    expect(id).toBe(rouvert.data.id)
+    expect(lignes).toEqual(V1.contenu.lignes.map(({ lot, ...l }) => (void lot, l)))
+    expect(extra.entete.echeancier).toEqual(V1.contenu.echeancier)
+    expect(extra.etude_params).toEqual(V1.contenu.etude)
     expect(ventesApi.patchDevis).not.toHaveBeenCalled()
+    await waitFor(() => expect(ventesApi.getDevisById.mock.calls.length).toBeGreaterThan(appelsChargeur))
   })
 })

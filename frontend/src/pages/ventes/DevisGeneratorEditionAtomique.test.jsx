@@ -1,11 +1,10 @@
-// QJR532 (Groupe QJR5, D-QJR5-1) — un devis ENVOYÉ s'ouvre et se corrige sur
-// place dans l'Édition complète (bandeau non bloquant, enregistrement sans
-// `statut`) ; un ACCEPTÉ affiche la raison serveur (`raison_non_modifiable`) et
-// quitte l'écran. L'écran RÉEL est rendu ; le devis rouvert porte l'identité et
-// les droits de l'exemple COMMITTÉ du contrat `devis_modifiabilite.json`
-// (PACT10 — jamais un mock écrit à la main).
+// QJR544 (contrat QJR504, devis_replace_lines_entete.json) — enregistrer
+// l'Édition complète = UN seul appel replace-lines portant l'en-tête et les
+// choix d'écran : zéro PATCH d'en-tête, donc plus d'en-tête appliqué aux
+// anciennes lignes quand les lignes sont refusées. L'écran RÉEL est rendu ;
+// ce que l'enregistrement envoie est lu sur les API mockées (QJR239).
 //
-// Run : npx vitest run src/pages/ventes/DevisGeneratorEditEnvoye.test.jsx
+// Run : npx vitest run src/pages/ventes/DevisGeneratorEditionAtomique.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -17,7 +16,6 @@ import authReducer from '../../features/auth/store/authSlice'
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import { estimerMois } from '../../features/ventes/solar'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
-import { toast } from '../../ui/confirm'
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -134,42 +132,24 @@ beforeEach(() => {
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
-describe('QJR532 — un devis envoyé se corrige sur place', () => {
-  it('envoyé : formulaire chargé, bandeau non bloquant, enregistrement SANS statut', async () => {
+describe('QJR544 — une édition = un seul replace-lines', () => {
+  it('UN replaceLignesDevis avec entete (sans statut) et choix d\u2019écran, zéro patchDevis', async () => {
     const rouvert = devisRouvert('exemple_envoye')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    const bandeau = await screen.findByTestId('devis-envoye-banner')
-    expect(bandeau.textContent).toMatch(/Devis envoyé le .*28/)
-    expect(bandeau.textContent).toMatch(/visibles sur le lien de la proposition/)
-    expect(bandeau.textContent).toMatch(/Le statut reste Envoyé/)
-    expect(screen.queryByText(/nouvelle version/i)).toBeNull()
-    expect(erreur).not.toHaveBeenCalled()
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
-    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
-    const [id, , { entete: payload }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalledTimes(1))
+    const [id, lignes, extra] = ventesApi.replaceLignesDevis.mock.calls[0]
     expect(id).toBe(rouvert.data.id)
-    expect(payload).not.toHaveProperty('statut')
-  })
-
-  it('brouillon : pas de bandeau « envoyé »', async () => {
-    const rouvert = devisRouvert('exemple_brouillon')
-    ventesApi.getDevisById.mockResolvedValue(rouvert)
-    renderEdition(rouvert.data.id)
-    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
-    expect(screen.queryByTestId('devis-envoye-banner')).toBeNull()
-  })
-
-  it('accepté : toast de la raison serveur, retour, aucun formulaire d\'édition', async () => {
-    const rouvert = devisRouvert('exemple_accepte')
-    ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
-    renderEdition(rouvert.data.id)
-    await waitFor(() => expect(erreur).toHaveBeenCalledWith('Devis accepté : révisez-le'))
-    await screen.findByText('APRES-ENREGISTREMENT')
+    expect(Array.isArray(lignes)).toBe(true)
+    const attendu = exempleContrat('ventes', 'devis_replace_lines_entete', 'corps')
+    for (const cle of Object.keys(extra.entete)) {
+      expect(Object.keys(attendu.entete)).toContain(cle)
+    }
+    expect(extra.entete).not.toHaveProperty('statut')
+    expect(extra.entete.taux_tva).toBeDefined()
+    expect(extra.etude_params).toEqual(expect.objectContaining({ scenario: 'Sans batterie' }))
     expect(ventesApi.patchDevis).not.toHaveBeenCalled()
   })
 })

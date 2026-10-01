@@ -204,6 +204,34 @@ class TestConfigurationSnapshot(_Base):
         self.assertEqual(resp.data['diff']['modifiees'][0]['champs']
                          ['quantite'], ['1.00', '5.00'])
 
+    def test_reponse_conforme_au_contrat_qjr513(self):
+        """QJR553 — la réponse lue par l'écran d'historique a la forme du
+        contrat committé ``devis_historique_configuration.json``."""
+        import json
+        from pathlib import Path
+        contrat = json.loads(
+            (Path(__file__).resolve().parent.parent / 'contract_samples'
+             / 'devis_historique_configuration.json').read_text(encoding='utf-8'))
+        ligne = self._ajouter()
+        self._modifier(ligne, quantite='5')
+        snaps = list(self._snaps())
+        url = (f'/api/django/ventes/devis/{self.devis.id}/'
+               'historique-configuration/')
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        attendu = contrat['exemple']['snapshots'][0]
+        recu = resp.data['snapshots'][0]
+        self.assertEqual(set(recu), set(attendu))
+        self.assertLessEqual(set(attendu['contenu']), set(recu['contenu']))
+        self.assertLessEqual(set(attendu['contenu']['lignes'][0]),
+                             set(recu['contenu']['lignes'][0]))
+        resp = self.api.get(f'{url}?a={snaps[0].id}&b={snaps[1].id}')
+        self.assertEqual(set(resp.data['diff']),
+                         set(contrat['exemple_avec_diff']['diff']))
+        texte = json.dumps(resp.data, default=str)
+        self.assertNotIn('prix_achat', texte)
+        self.assertNotIn('marge', texte)
+
     def test_endpoint_isole_les_societes(self):
         autre = DevisFactory(company=CompanyFactory())
         resp = auth(self.user).get(

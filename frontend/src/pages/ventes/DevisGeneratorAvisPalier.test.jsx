@@ -109,11 +109,11 @@ beforeEach(() => {
   }
 })
 
-describe('QJR308 — l’avis du palier 5 kWc s’affiche AU MOMENT où runAutoQuote déclenche le snap', () => {
-  it('un lead dont la taille souhaitée franchit le palier : le texte de noticePalierKwc est VISIBLE pendant le snap', async () => {
-    // 6,5 kWc n'est pas un multiple de 5 : createAutoQuote va réellement
-    // arrondir cette cible avant de l'envoyer au serveur (même précédence que
-    // DevisTab.jsx/LeadDevisPanel.jsx, aucune cible explicite transmise ici).
+// QJR602 suivi (D-QJR5-13) — une taille EXPLICITE est respectée telle quelle :
+// plus d'arrondi au palier de 5 kWc, donc plus AUCUN avis « Palier appliqué »
+// dans le générateur, même pour une taille hors palier.
+describe('QJR602 suivi — plus d’avis de palier 5 kWc pendant le devis auto', () => {
+  it('un lead dont la taille souhaitée est hors palier : AUCUN avis « Palier appliqué »', async () => {
     const kwcSaisi = 6.5
     expect(arrondirAuPasKwc(kwcSaisi)).not.toBe(kwcSaisi)
 
@@ -132,8 +132,8 @@ describe('QJR308 — l’avis du palier 5 kWc s’affiche AU MOMENT où runAutoQ
       route: '/ventes/devis/nouveau?lead=42&auto=1',
     })
 
-    await waitFor(() => expect(screen.getByText(/Palier appliqué/)).toBeInTheDocument())
-    expect(screen.getByText(/Palier appliqué : 5 kWc \(saisie 6,5 kWc\)/)).toBeInTheDocument()
+    await waitFor(() => expect(ventesApi.creerDevisAuto).toHaveBeenCalled())
+    expect(screen.queryByText(/Palier appliqué/)).not.toBeInTheDocument()
 
     // Nettoyage : on laisse la création se terminer (panneau succès), pour
     // ne pas laisser une promesse orpheline derrière le test.

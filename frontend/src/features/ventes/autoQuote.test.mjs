@@ -103,25 +103,6 @@ test('UNE SEULE définition du texte « Palier appliqué » — les trois écran
     'LeadDevisPanel.jsx ne doit plus écrire le texte lui-même')
 })
 
-test('LeadDevisPanel.jsx (3ᵉ entrée de createAutoQuote) importe et affiche noticePalierKwc — plus jamais silencieux', () => {
-  assert.match(
-    LEAD_DEVIS_PANEL,
-    /import \{ createAutoQuote, noticePalierKwc \} from '\.\.\/\.\.\/\.\.\/features\/ventes\/autoQuote'/,
-    'AVANT QJR245 : LeadDevisPanel.jsx importait createAutoQuote SEUL — aucune notice',
-  )
-  assert.match(LEAD_DEVIS_PANEL, /const noticeKwc = noticePalierKwc\(kwcASaisir\)/)
-  assert.match(LEAD_DEVIS_PANEL, /data-testid="lw-devis-kwc-palier"/,
-    'même data-testid que DevisTab.jsx (contrat DOM partagé)')
-  assert.match(
-    LEAD_DEVIS_PANEL,
-    /<p className="gen-hint lw-devis-kwc-palier" data-testid="lw-devis-kwc-palier">\s*\n\s*\{noticeKwc\}\s*\n\s*<\/p>/,
-    'le JSX doit rendre {noticeKwc} tel quel — jamais un texte recopié',
-  )
-})
-
-test('LeadDevisPanel.jsx suit la MÊME précédence que createAutoQuote (targetKwc, sinon lead.taille_souhaitee_kwc)', () => {
-  assert.match(
-    LEAD_DEVIS_PANEL,
-    /const kwcASaisir = parseFloat\(targetKwc\) > 0 \? targetKwc : lead\?\.taille_souhaitee_kwc/,
-  )
-})
+// QJR602 suivi (D-QJR5-13) — LeadDevisPanel.jsx n'affiche plus d'avis de
+// palier (taille explicite respectée telle quelle) : ses deux tests sont
+// retirés ; il ne doit toujours pas recopier le texte (test ci-dessus).

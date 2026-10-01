@@ -515,7 +515,6 @@ planifier_devis_automatique_pour_lead = _creation.planifier_devis_automatique_po
 create_devis_pour_ticket = _creation.create_devis_pour_ticket
 create_devis_upsell_from_intervention = _creation.create_devis_upsell_from_intervention
 save_devis_as_preset = _creation.save_devis_as_preset
-apply_preset_to_devis = _creation.apply_preset_to_devis
 
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — NTMIG10/11 : création Devis/Facture depuis une MIGRATION
@@ -617,7 +616,6 @@ __all__ = [
     'ajouter_lignes_facture_import',
     'ajouter_lignes_frais_refactures',
     'anomalies_emission_facture',
-    'apply_preset_to_devis',
     'arbitrer_compte_calepinage',
     'auto_devis_tunnel_actif',
     'avertissement_aucun_onduleur_triphase',

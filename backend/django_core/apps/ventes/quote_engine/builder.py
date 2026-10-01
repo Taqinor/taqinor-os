@@ -2176,9 +2176,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             # porte sa ville ERP de RATTACHEMENT (choisie par la commerciale
             # sur la carte « Vérifier la ville ») : c'est ELLE qui pilote le
             # productible PVGIS, jamais un nom que la table ne connaît pas.
-            _client_city = (
-                (getattr(_lead, "ville_reference", "") or "").strip()
-                or (getattr(_lead, "ville", "") or "").strip())
+            # QJR586 — en UN point : crm.selectors.ville_effective.
+            from apps.crm.selectors import ville_effective
+            _client_city = ville_effective(_lead)
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
         _client_city = ""
 

@@ -68,12 +68,12 @@ def repricer_transport_devis(devis):
     """Reprice la (les) ligne(s) Transport d'un devis SAUVÉ au barème de la
     ville de son lead. Rend le nombre de lignes modifiées (0 si ville
     inconnue, pas de lead, ou pas de ligne Transport)."""
-    from apps.crm.selectors import lead_du_devis  # QJR585 — résolveur unique
+    from apps.crm.selectors import (  # QJR585 / QJR586
+        lead_du_devis, ville_effective)
     lead = lead_du_devis(devis)
-    # VREF — la ville ERP de rattachement (douar hors gazetier) prime : le
-    # barème est défini sur les villes du gazetier, jamais sur un nom libre.
-    ville = (getattr(lead, 'ville_reference', '') or ''
-             or getattr(lead, 'ville', '') or '')
+    # VREF / QJR586 — la ville de CALCUL (rattachement d'un douar hors
+    # gazetier prioritaire) : le barème est défini sur les villes du gazetier.
+    ville = ville_effective(lead)
     prix = prix_transport_ht(ville)
     if prix is None:
         return 0

@@ -412,10 +412,9 @@ def cible_depuis_lignes(devis, variante='sans'):
 #    SUPPRIME et RECRÉE. Le faire converger vers ``ecrire_lignes`` détruirait
 #    exactement ce qu'il protège (cf. la note QJR220 dans ``pipeline``).
 #
-# 9. ``domain/creation.apply_preset_to_devis`` (QJ16) — HORS PIPELINE. Un
-#    PRESET est un instantané de lignes que le commercial a délibérément
-#    enregistré : recomposer trahirait le geste. Il honore déjà le jeu de
-#    champs complet et saute les produits non tarifés en le DISANT.
+# 9. (QJR546) l'ancien ``apply_preset_to_devis`` (QJ16) est SUPPRIMÉ : un
+#    modèle s'applique À L'ÉCRAN (lignes remplacées, produits non tarifés
+#    sautés ET nommés) puis passe par ``replace-lines`` → ``ecrire_lignes``.
 #
 # 10. ``public_views`` (devis automatique depuis le tunnel public) — HORS
 #    PIPELINE pour la CRÉATION DE LIGNES : la composition lui est fournie

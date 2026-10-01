@@ -47,7 +47,7 @@ FIGEE = {
     'prefill_site': ANY, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': PORTAIL,
-    'ajouter_boq_electrique': RESP, 'apply_preset': RESP, 'atomic': RESP,
+    'ajouter_boq_electrique': RESP, 'atomic': RESP,
     'auto': RESP, 'composition': RESP, 'conception_electrique': RESP,
     'contacter_superieur': RESP, 'convertir_en_bc': RESP,
     'design_context': RESP, 'dupliquer': RESP, 'dupliquer_variante': RESP,

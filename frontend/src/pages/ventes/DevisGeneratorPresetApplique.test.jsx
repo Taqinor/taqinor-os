@@ -1,11 +1,10 @@
-// QJR532 (Groupe QJR5, D-QJR5-1) — un devis ENVOYÉ s'ouvre et se corrige sur
-// place dans l'Édition complète (bandeau non bloquant, enregistrement sans
-// `statut`) ; un ACCEPTÉ affiche la raison serveur (`raison_non_modifiable`) et
-// quitte l'écran. L'écran RÉEL est rendu ; le devis rouvert porte l'identité et
-// les droits de l'exemple COMMITTÉ du contrat `devis_modifiabilite.json`
-// (PACT10 — jamais un mock écrit à la main).
+// QJR546 — appliquer un modèle REMPLACE les lignes à l'écran (édition comme
+// création) : un modèle d'un autre marché pose ses lignes, sa remise, sa TVA et
+// son marché ; une ligne au produit sans prix est ABSENTE et NOMMÉE ; l'étude du
+// client source n'est jamais reprise. L'écran RÉEL est rendu ; ce que
+// l'Enregistrer suivant envoie est lu sur les API mockées (QJR239).
 //
-// Run : npx vitest run src/pages/ventes/DevisGeneratorEditEnvoye.test.jsx
+// Run : npx vitest run src/pages/ventes/DevisGeneratorPresetApplique.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -44,6 +43,9 @@ vi.mock('../../api/ventesApi', () => ({
     replaceLignesDevis: vi.fn(),
     createDevisAtomic: vi.fn(),
     patchEtudeParams: vi.fn(),
+    getPresets: vi.fn(() => Promise.resolve({ data: [] })),
+    savePreset: vi.fn(),
+    deletePreset: vi.fn(),
   },
 }))
 
@@ -59,6 +61,23 @@ const PANNEAU = {
 const ONDULEUR = {
   id: 102, nom: 'Onduleur réseau 5kW Monophasé', prix_vente: 9000, tva: 20,
   is_archived: false, prix_achat: 6000,
+}
+const PANNEAU_SANS_PRIX = {
+  id: 103, nom: 'Panneau archivé 400W', prix_vente: 0, tva: 20,
+  is_archived: false, prix_achat: 0,
+}
+const PRESET = {
+  id: 9, nom: 'Modèle usine', mode_installation: 'industriel',
+  taux_tva: '10.00', remise_globale: '3.00',
+  etude_params_snapshot: { factures_mensuelles_reelles: [99, 99, 99] },
+  lignes_snapshot: [
+    { produit_id: 101, designation: 'Panneau Canadien Solar 715W', quantite: '20',
+      prix_unitaire: '1000', remise: '0', taux_tva: '10' },
+    { produit_id: 102, designation: 'Onduleur réseau 5kW Monophasé', quantite: '2',
+      prix_unitaire: '8000', remise: '0', taux_tva: '20' },
+    { produit_id: 103, designation: 'Panneau archivé 400W', quantite: '4',
+      prix_unitaire: '500', remise: '0', taux_tva: '20' },
+  ],
 }
 const LEAD = {
   id: 77, nom: 'Khalid', prenom: 'SansStatut', societe: '',
@@ -127,49 +146,66 @@ beforeEach(() => {
   if (!globalThis.ResizeObserver) {
     globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   }
-  stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR] })
+  stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR, PANNEAU_SANS_PRIX] })
+  ventesApi.getPresets.mockResolvedValue({ data: [PRESET] })
   crmApi.getLead.mockResolvedValue({ data: LEAD })
   ventesApi.patchDevis.mockResolvedValue({ data: {} })
   ventesApi.replaceLignesDevis.mockResolvedValue({ data: {} })
   ventesApi.patchEtudeParams.mockResolvedValue({ data: {} })
 })
 
-describe('QJR532 — un devis envoyé se corrige sur place', () => {
-  it('envoyé : formulaire chargé, bandeau non bloquant, enregistrement SANS statut', async () => {
-    const rouvert = devisRouvert('exemple_envoye')
+describe('QJR546 — un modèle appliqué remplace les lignes à l’écran', () => {
+  it('modèle d’un autre marché : lignes, remise, TVA et marché posés ; produit sans prix absent et nommé', async () => {
+    const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
+    const avertir = vi.spyOn(toast, 'warning')
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    const bandeau = await screen.findByTestId('devis-envoye-banner')
-    expect(bandeau.textContent).toMatch(/Devis envoyé le .*28/)
-    expect(bandeau.textContent).toMatch(/visibles sur le lien de la proposition/)
-    expect(bandeau.textContent).toMatch(/Le statut reste Envoyé/)
-    expect(screen.queryByText(/nouvelle version/i)).toBeNull()
-    expect(erreur).not.toHaveBeenCalled()
+    await userEvent.click(await screen.findByRole('button', { name: /Modèles de devis/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Appliquer' }))
+    await waitFor(() => expect(avertir).toHaveBeenCalled())
+    expect(avertir.mock.calls.at(-1)[0]).toMatch(/Panneau archivé 400W/)
+
     await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
     await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
-    const [id, , { entete: payload }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
-    expect(id).toBe(rouvert.data.id)
-    expect(payload).not.toHaveProperty('statut')
+    const [, lignes, { entete }] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    const produits = lignes.map(l => Number(l.produit))
+    expect(produits).toContain(PANNEAU.id)
+    expect(produits).toContain(ONDULEUR.id)
+    expect(produits).not.toContain(PANNEAU_SANS_PRIX.id)
+    const panneaux = lignes.find(l => Number(l.produit) === PANNEAU.id)
+    expect(Number(panneaux.quantite)).toBe(20)
+    expect(String(entete.remise_globale)).toBe('3')
+    expect(parseFloat(entete.taux_tva)).toBe(10)
+    expect(entete.mode_installation).toBe('industriel')
+    expect(ventesApi.patchDevis).not.toHaveBeenCalled()
   })
+})
 
-  it('brouillon : pas de bandeau « envoyé »', async () => {
+describe('QJR547 — les lignes du modèle passent par le mappeur de réouverture', () => {
+  it('ligne variante « avec » + prix_manuel → verrou de prix et variante gardés', async () => {
+    ventesApi.getPresets.mockResolvedValue({ data: [{
+      ...PRESET, mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0.00',
+      lignes_snapshot: [
+        { produit_id: 101, designation: 'Panneau Canadien Solar 715W', quantite: '8',
+          prix_unitaire: '1000', remise: '0', taux_tva: '10', ordre: 0, variante: '',
+          type_ligne: 'produit', optionnelle: false, prix_manuel: false, quantite_manuelle: false },
+        { produit_id: 102, designation: 'Onduleur réseau 5kW Monophasé', quantite: '1',
+          prix_unitaire: '7500', remise: '0', taux_tva: '20', ordre: 1, variante: 'avec',
+          type_ligne: 'produit', optionnelle: false, prix_manuel: true, quantite_manuelle: false },
+      ],
+    }] })
     const rouvert = devisRouvert('exemple_brouillon')
     ventesApi.getDevisById.mockResolvedValue(rouvert)
     renderEdition(rouvert.data.id)
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
-    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
-    expect(screen.queryByTestId('devis-envoye-banner')).toBeNull()
-  })
-
-  it('accepté : toast de la raison serveur, retour, aucun formulaire d\'édition', async () => {
-    const rouvert = devisRouvert('exemple_accepte')
-    ventesApi.getDevisById.mockResolvedValue(rouvert)
-    const erreur = vi.spyOn(toast, 'error')
-    renderEdition(rouvert.data.id)
-    await waitFor(() => expect(erreur).toHaveBeenCalledWith('Devis accepté : révisez-le'))
-    await screen.findByText('APRES-ENREGISTREMENT')
-    expect(ventesApi.patchDevis).not.toHaveBeenCalled()
+    await userEvent.click(await screen.findByRole('button', { name: /Modèles de devis/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Appliquer' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, lignes] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    const onduleur = lignes.find(l => Number(l.produit) === ONDULEUR.id)
+    expect(onduleur.variante).toBe('avec')
+    expect(onduleur.prix_manuel).toBe(true)
   })
 })

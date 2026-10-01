@@ -184,12 +184,12 @@ describe('PV23bis — « Concevoir en 3D » travaille sur le devis, pas sur un l
     const bouton = await screen.findByRole('button', { name: 'Concevoir en 3D' })
     await userEvent.click(bouton)
 
-    // Édition ATOMIQUE (QX21, inchangée) — patch du devis PUIS remplacement
-    // des lignes, exactement le chemin qu'aurait pris « Enregistrer ».
-    await waitFor(() => expect(ventesApi.patchDevis)
-      .toHaveBeenCalledWith(5, expect.any(Object)))
-    expect(ventesApi.replaceLignesDevis)
-      .toHaveBeenCalledWith(5, expect.any(Array))
+    // Édition ATOMIQUE (QJR544) — en-tête + lignes en UN replace-lines,
+    // exactement le chemin qu'aurait pris « Enregistrer » ; zéro PATCH.
+    await waitFor(() => expect(ventesApi.replaceLignesDevis)
+      .toHaveBeenCalledWith(5, expect.any(Array),
+        expect.objectContaining({ entete: expect.any(Object) })))
+    expect(ventesApi.patchDevis).not.toHaveBeenCalled()
     // Un devis en édition n'est jamais RECRÉÉ.
     expect(ventesApi.createDevisAtomic).not.toHaveBeenCalled()
     expect(await screen.findByText('PROBE-DEVIS-MODE')).toBeInTheDocument()

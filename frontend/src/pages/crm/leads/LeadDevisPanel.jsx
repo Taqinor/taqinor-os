@@ -12,13 +12,15 @@ import {
 } from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import { createAutoQuote, noticePalierKwc } from '../../../features/ventes/autoQuote'
+import { createAutoQuote } from '../../../features/ventes/autoQuote'
 import {
   proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
+// QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
+import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -89,11 +91,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     onApres: () => onDevisChanged?.(),
   })
 
-  // QJR245 — même précédence et même formulation que DevisTab.jsx : la cible
-  // reçue pour CE devis prime, sinon `lead.taille_souhaitee_kwc` — la MÊME
-  // valeur que `createAutoQuote` (ci-dessous) arrondira réellement.
-  const kwcASaisir = parseFloat(targetKwc) > 0 ? targetKwc : lead?.taille_souhaitee_kwc
-  const noticeKwc = noticePalierKwc(kwcASaisir)
+  // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
+  // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
 
   // Format d'aperçu PDF
   const [pdfMode, setPdfMode] = useState(mode === 'onepage' ? 'onepage' : 'full')
@@ -330,15 +329,6 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'creating' && (
             <div className="ldp-center">
               <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
-              {/* QJR245 — MÊME notice, MÊME texte (une seule définition,
-                  `autoQuote.js::noticePalierKwc`) que DevisTab.jsx : ce
-                  troisième point d'entrée de `createAutoQuote` restait
-                  silencieux sur l'arrondi au palier de 5 kWc. */}
-              {noticeKwc && (
-                <p className="gen-hint lw-devis-kwc-palier" data-testid="lw-devis-kwc-palier">
-                  {noticeKwc}
-                </p>
-              )}
             </div>
           )}
 
@@ -375,6 +365,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'preview' && (
             <div className="ldp-preview">
+              {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
+                  (envoyé : le client verra la version corrigée) ; figé →
+                  « Réviser ». Le détail est déjà lu (getDevisById). */}
+              {devisRecord && (
+                <BandeauDeriveLead
+                  devisId={devisId}
+                  statut={devisRecord.statut}
+                  champs={devisRecord.lead_valeurs_modifiees}
+                  onResolu={(data) => {
+                    if (data?.devis) setDevisRecord(data.devis)
+                    onDevisChanged?.()
+                  }}
+                  onReviser={revisable ? reviser : undefined}
+                />
+              )}
               <div className="ldp-toolbar">
                 <div className="ldp-format">
                   <Segmented
