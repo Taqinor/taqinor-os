@@ -1472,6 +1472,26 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
 
     tableau = _construire_tableau(evaluer, debut, fin, plafond_atteint)
     if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
+            and not plafond_atteint
+            and not any(ligne.get('balayage_stockage') for ligne in tableau)):
+        # QJR612 — « add more panels so battery is always charged » : la
+        # borne haute (parité + 1, falaise) ignore le plancher VE nocturne, si
+        # bien qu'aucune taille balayée ne remplissait la banque relevée. Le
+        # CHAMP MONTE donc, panneau par panneau au-delà de ``fin``, jusqu'à la
+        # première taille où une banque ≥ plancher se remplit chaque jour
+        # (+ un panneau de marge, comme la parité) ; garde-fou
+        # :data:`MAX_PANNEAUX_BALAYAGE`. Jamais pour un lead sans recharge
+        # nocturne (``etude_kwargs_sans_ve`` vaut alors ``None``).
+        taille = fin
+        while taille < MAX_PANNEAUX_BALAYAGE:
+            taille += 1
+            ligne = evaluer(taille)
+            if ligne is not None and ligne.get('balayage_stockage'):
+                tableau = _construire_tableau(
+                    evaluer, debut, min(taille + 1, MAX_PANNEAUX_BALAYAGE),
+                    plafond_atteint)
+                break
+    if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
             and not any(ligne.get('balayage_stockage') for ligne in tableau)):
         # QJR612 — REPLI : le plancher VE nocturne n'est rempli à AUCUNE taille
         # balayée. Plutôt que de perdre toute option batterie, chaque taille
