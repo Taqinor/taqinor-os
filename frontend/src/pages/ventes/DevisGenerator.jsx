@@ -255,6 +255,19 @@ const LIBELLE_CHAMP_LEAD = {
   inclinaison_deg: 'inclinaison',
   gps_lat: 'latitude GPS',
   gps_lng: 'longitude GPS',
+  // QJR587 — les valeurs du lead qui PILOTENT le devis, désormais estampillées.
+  conso_mensuelle_kwh: 'consommation mensuelle (kWh)',
+  taille_souhaitee_kwc: 'taille souhaitée (kWc)',
+  batterie_souhaitee: 'batterie souhaitée',
+  raccordement: 'raccordement',
+  structure_pref: 'structure souhaitée',
+  structure_produit: 'produit de structure',
+  pompe_cv: 'puissance de la pompe (CV)',
+  pompe_hmt_m: 'hauteur manométrique (HMT)',
+  pompe_debit_m3h: 'débit souhaité (m³/h)',
+  type_installation: 'type d’installation',
+  ville: 'ville',
+  ville_reference: 'ville de rattachement',
 }
 
 /** DC11 — la phrase de la bannière, ou `null` quand rien n'a bougé. NON
