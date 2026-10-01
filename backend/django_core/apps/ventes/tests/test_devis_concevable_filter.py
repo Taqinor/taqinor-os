@@ -71,7 +71,10 @@ class DevisConcevableFilterTest(TestCase):
         concevables = set(devis_concevables(
             Devis.objects.filter(company=self.company)).values_list(
                 'id', flat=True))
-        for devis in Devis.objects.filter(company=self.company):
+        un_accepte = Devis.objects.filter(
+            company=self.company, statut=Devis.Statut.ACCEPTE).first()
+        for devis in (self.brouillon, self.envoye, self.agricole, self.multi,
+                      un_accepte):
             contexte = contexte_conception_devis(devis, self.company)
             self.assertEqual(devis.id in concevables, contexte['modifiable'],
                              devis.reference)
