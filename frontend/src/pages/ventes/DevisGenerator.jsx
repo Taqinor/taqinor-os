@@ -69,7 +69,7 @@ import {
   // QJR540 — compteurs factures / BC / chantier du devis rouvert (ex-DevisForm).
   RelationCounters,
 } from '../../ui'
-// QJR540 — blocs repris du modal DevisForm (supprimé) : le calepinage qui
+// QJR540 — blocs issus de l'ancien modal DevisForm (supprimé) : le calepinage qui
 // pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
 // du devis (seule UI de pièces jointes devis).
 import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'

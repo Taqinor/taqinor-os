@@ -198,6 +198,9 @@ const SURFACES_SAISIE = [
   '../../pages/ventes/generator/PanneauCommercial.jsx',
   '../../pages/ventes/generator/PanneauAgricole.jsx',
   '../../pages/ventes/generator/CarteFacturesElectriques.jsx',
+  // QJR5 (lot 4) — conso annuelle + grille MT des panneaux Industriel et
+  // Commercial, désormais UN composant partagé.
+  '../../pages/ventes/generator/BlocEtudeReseau.jsx',
 ]
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {
@@ -225,8 +228,12 @@ test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => 
   // partagé » (compté 1 fois, 4 occurrences) : 34 − 12 + 4 = 26. Un champ qui
   // migrerait vers un fichier absent de la liste ci-dessus ferait tomber ce
   // compte au lieu de sortir de la garde en silence.
-  assert.ok(champsNombre >= 26,
-    `seulement ${champsNombre} champs nombres sous garde (26 attendus)`)
+  // Recalé à 25 par le lot 4 QJR5 : conso annuelle + grille MT, recopiées
+  // dans Industriel ET Commercial (4 occurrences), passent dans le composant
+  // partagé `BlocEtudeReseau.jsx` (ajouté à la liste) — 2 champs + 1 mention
+  // `type="number"` de son commentaire d'en-tête = 3 : 26 − 4 + 3 = 25.
+  assert.ok(champsNombre >= 25,
+    `seulement ${champsNombre} champs nombres sous garde (25 attendus)`)
 })
 
 // QJR109 — CETTE GARDE A CESSÉ DE LIRE LE SOURCE. Elle cherchait la chaîne

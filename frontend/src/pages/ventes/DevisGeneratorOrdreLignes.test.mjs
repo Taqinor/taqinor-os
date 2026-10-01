@@ -51,7 +51,11 @@ const AQ = read('../../features/ventes/autoQuote.js')
 const LT = read('generator/LigneTable.jsx')
 
 test('DevisGenerator : importe deriveRoleOrderFromLines de solar.js', () => {
-  assert.match(DG, /deriveRoleOrderFromLines,?\s*\n\s*\}\s*from\s*'\.\.\/\.\.\/features\/ventes\/solar'/)
+  // QJR546 a ajouté `_hasPrix` APRÈS lui dans le même import : la garde lit
+  // le bloc d'import de solar.js entier au lieu d'exiger la dernière place.
+  const bloc = /import\s*\{([^}]*)\}\s*from\s*'\.\.\/\.\.\/features\/ventes\/solar'/.exec(DG)
+  assert.ok(bloc, 'import depuis features/ventes/solar introuvable')
+  assert.match(bloc[1], /\bderiveRoleOrderFromLines,/)
 })
 
 test('DevisGenerator : handleSaveOrdreLignes dérive lines puis PATCH ordre_lignes', () => {

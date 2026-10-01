@@ -33,7 +33,10 @@ test('l’écart entre options est affiché en MAD ET en %', () => {
 })
 
 test('les modèles sont visibles DÈS LA CRÉATION (plus de garde editDevis)', () => {
-  assert.match(gen, /<DevisPresetPanel devisId=\{editDevis\?\.id\} onApplied=\{handlePresetApplied\} \/>/)
+  // QJR5 (lot 4) — le panneau reçoit en plus `avantEnregistrement` (créer le
+  // devis avant « Enregistrer comme modèle ») : la garde tolère des props
+  // supplémentaires, l'essentiel reste un montage SANS condition editDevis.
+  assert.match(gen, /<DevisPresetPanel devisId=\{editDevis\?\.id\} onApplied=\{handlePresetApplied\}\s/)
   assert.doesNotMatch(gen, /\{editDevis && \(\s*\r?\n?\s*<DevisPresetPanel/)
   // Le panneau ne s'auto-annule plus quand l'id est absent.
   assert.doesNotMatch(panel, /if \(!devisId\) return null/)
