@@ -3224,8 +3224,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # Format via query params, e.g. ?pdf_mode=onepage&devis_final=1
             raw = {
                 'pdf_mode': request.query_params.get('pdf_mode'),
-                'payment_mode': request.query_params.get('payment_mode'),
-                'custom_acompte': request.query_params.get('custom_acompte'),
             }
             if 'show_monthly' in request.query_params:
                 raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')

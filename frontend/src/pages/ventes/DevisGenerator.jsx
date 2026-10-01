@@ -187,6 +187,11 @@ import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
 // d'argent (totaux, remise, TVA, prix cible, marge interne).
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
+// QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
+import CarteEcheancier from './generator/CarteEcheancier'
+import {
+  echeancierVersSaisie, saisieVersEcheancier,
+} from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
@@ -630,6 +635,15 @@ export default function DevisGenerator({
   const [instType, setInstType] = useState('Résidentielle')
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [note, setNote] = useState('')
+  // QJR624 — échéancier du devis rouvert (`null` = celui de la société). Il
+  // n'est renvoyé que s'il était déjà propre au devis ou si le commercial l'a
+  // touché : un devis qui suit la société n'en reçoit pas un figé en silence.
+  const [echeancierSaisie, setEcheancierSaisieBrut] = useState(null)
+  const echeancierAEnvoyer = useRef(false)
+  const setEcheancierSaisie = useCallback((valeur) => {
+    echeancierAEnvoyer.current = true
+    setEcheancierSaisieBrut(valeur)
+  }, [])
 
   // ── Factures électriques (valeurs initiales du simulateur) ──
   const [fHiver, setFHiver] = useState('')
@@ -2048,6 +2062,10 @@ export default function DevisGenerator({
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
       if (d.note) setNote(d.note)
+      // QJR624 — l'échéancier DU DEVIS, relu tel quel.
+      const echeancierLu = echeancierVersSaisie(d.echeancier)
+      echeancierAEnvoyer.current = echeancierLu != null
+      setEcheancierSaisieBrut(echeancierLu)
       // QJR527 — le prix cible DU DEVIS gagne, vide compris (sinon chaque
       // enregistrement en édition l'effaçait : le payload envoie `null`).
       setPrixCible(d.prix_cible_kwc != null ? String(parseFloat(d.prix_cible_kwc)) : '')
@@ -3570,6 +3588,10 @@ export default function DevisGenerator({
         // QJR544 — ÉDITION ATOMIQUE : en-tête + lignes + choix d'écran en UN
         // appel, UNE transaction serveur (replace-lines). Un échec ne change
         // RIEN (ni en-tête, ni lignes) ; plus de PATCH d'en-tête séparé.
+        // QJR624 — l'échéancier part dans `entete` (contrat QJR504).
+        if (echeancierAEnvoyer.current) {
+          payload.echeancier = saisieVersEcheancier(echeancierSaisie)
+        }
         const extra = {
           entete: surcharge?.entete ? { ...payload, ...surcharge.entete } : payload,
           etude_params: surcharge?.etude_params ?? choixEcran(),
@@ -5431,6 +5453,12 @@ export default function DevisGenerator({
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* ── QJR624 — Échéancier (Édition complète seulement) ── */}
+        {editDevis && (
+          <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
+                           mode={modeInstallation} />
         )}
 
         {/* ── Notes ── */}

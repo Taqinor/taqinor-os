@@ -509,11 +509,7 @@ class TestPdfFormats1(TestPdfFormats):
         self.assertIn('Panneau mono 550W', html)
 
     def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
-        html, doc = self._render({
-            'devis_final': True,
-            'payment_mode': 'custom',
-            'custom_acompte': 12000,
-        })
+        html, doc = self._render({'devis_final': True})
         self.assertEqual(len(doc.pages), 3)
         self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
 
@@ -1574,8 +1570,9 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertEqual(opts['pdf_mode'], 'full')
         self.assertTrue(opts['show_monthly'])
         self.assertTrue(opts['devis_final'])
-        self.assertEqual(opts['payment_mode'], 'standard')
-        self.assertIsNone(opts['custom_acompte'])
+        # QJR624 — l'acompte personnalisé n'est plus une option de rendu.
+        self.assertNotIn('payment_mode', opts)
+        self.assertNotIn('custom_acompte', opts)
         self.assertNotIn('junk', opts)
 
 

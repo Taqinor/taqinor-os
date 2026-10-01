@@ -201,6 +201,8 @@ const SURFACES_SAISIE = [
   // QJR5 (lot 4) — conso annuelle + grille MT des panneaux Industriel et
   // Commercial, désormais UN composant partagé.
   '../../pages/ventes/generator/BlocEtudeReseau.jsx',
+  // QJR624 — l'échéancier éditable de l'Édition complète.
+  '../../pages/ventes/generator/CarteEcheancier.jsx',
 ]
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {

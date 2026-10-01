@@ -367,8 +367,10 @@ class TestPdfEndpoints(TestCase):
         called_options = mock_task.delay.call_args[0][1]
         self.assertEqual(called_options['pdf_mode'], 'onepage')
         self.assertTrue(called_options['devis_final'])
-        self.assertEqual(called_options['payment_mode'], 'custom')
-        self.assertEqual(called_options['custom_acompte'], 15000.0)
+        # QJR624 — l'acompte personnalisé est écrit dans Devis.echeancier
+        # (PATCH), plus jamais une option de rendu.
+        self.assertNotIn('payment_mode', called_options)
+        self.assertNotIn('custom_acompte', called_options)
         self.assertNotIn('not_a_real_option', called_options)
 
     @patch('apps.ventes.tasks.task_generate_facture_pdf')

@@ -47,6 +47,8 @@ import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloa
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { clientProposalUrl } from '../../features/ventes/clientProposalLink'
+// QJR624 — l'acompte personnalisé du dialogue PDF s'écrit dans l'échéancier.
+import { echeancierAvecAcompte } from '../../features/ventes/echeancierEdition'
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
 // aucune option ne contient d'onduleur — génération du PDF à options refusée
@@ -380,11 +382,11 @@ function DevisPdfDialog({
               <RadioGroup value={paymentMode} onValueChange={setPaymentMode} className="flex flex-col gap-2">
                 <label className="flex items-center gap-2 text-sm">
                   <RadioGroupItem value="standard" />
-                  <span>Standard (30/60/10)</span>
+                  <span>Échéancier du devis</span>
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <RadioGroupItem value="custom" />
-                  <span>Acompte personnalisé</span>
+                  <span>Acompte personnalisé <span className="text-muted-foreground">(enregistré dans l'échéancier du devis)</span></span>
                 </label>
               </RadioGroup>
               {paymentMode === 'custom' && (
@@ -2302,9 +2304,6 @@ export default function DevisList() {
     pdf_mode: pdfMode,
     show_monthly: showMonthly,
     devis_final: devisFinal,
-    payment_mode: paymentMode,
-    custom_acompte: (devisFinal && paymentMode === 'custom' && customAcompte !== '')
-      ? parseFloat(customAcompte) : null,
     // T12/T13 — étude uniquement si premium ET données d'étude présentes.
     include_etude: pdfMode === 'full' && includeEtude
       && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
@@ -2325,6 +2324,17 @@ export default function DevisList() {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
     setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
+      // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
+      // de rendu : il est ÉCRIT dans l'échéancier du devis AVANT le rendu
+      // (facture d'acompte et PDF lisent la même valeur ; sur un envoyé, la
+      // correction est tracée par le serveur). Un refus (devis figé) arrête
+      // la génération avec le message du serveur.
+      if (devisFinal && paymentMode === 'custom' && customAcompte !== '') {
+        await ventesApi.patchDevis(d.id, {
+          echeancier: echeancierAvecAcompte(
+            d.echeancier, customAcompte, d.total_ttc, d.mode_installation),
+        })
+      }
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
       // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une

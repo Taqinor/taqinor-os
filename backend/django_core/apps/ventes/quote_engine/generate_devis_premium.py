@@ -282,8 +282,6 @@ SCENARIO    = "Les deux (Sans + Avec)"
 RECOMMENDED = "Avec batterie"
 
 DEVIS_FINAL    = False
-PAYMENT_MODE   = "standard"   # "standard" or "custom"
-CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
 # data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
 # Q8 (fondateur, 20/08/2026) — les documents sont en MAD, point. La variable
@@ -4326,7 +4324,7 @@ def apply_quote_data(data: dict) -> None:
     global SANS_ITEMS, AVEC_ITEMS, ECO_S_M, ECO_A_M, CUMUL_S, CUMUL_A
     global FACTURES_M
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
-    global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
+    global DEVIS_FINAL
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
     # PV46 — annexe technique (schéma unifilaire + nomenclature). Même patron
     # de global que INCLUDE_ETUDE, mêmes défauts inertes : sans les clés du
@@ -4406,8 +4404,6 @@ def apply_quote_data(data: dict) -> None:
     RECOMMENDED  = data.get("recommended", "Avec batterie")
     SHOW_MONTHLY = data.get("show_monthly", True)
     DEVIS_FINAL    = data.get("devis_final", False)
-    PAYMENT_MODE   = data.get("payment_mode", "standard")
-    CUSTOM_ACOMPTE = data.get("custom_acompte", None)
     TVA_PCT        = float(data.get("taux_tva", 20) or 20)
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}

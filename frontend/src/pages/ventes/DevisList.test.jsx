@@ -66,6 +66,9 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
       // toucher le réseau réel dans le test du toast.warning associé.
       reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
+      // QJR624 — l'acompte personnalisé du dialogue PDF est PATCHé dans
+      // l'échéancier du devis avant le rendu.
+      patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
     },
   }
 })
@@ -1242,5 +1245,35 @@ describe("DevisList — QJR532 : « Éditer » d'un envoyé (liste + Kanban)", (
     expect(screen.getByTestId('sonde').textContent).toBe('/ventes/devis')
     await user.click(screen.getByText('DEV-202609-0012').closest('button'))
     expect(screen.getByTestId('sonde').textContent).toBe('/ventes/devis/nouveau?edit=413')
+  })
+})
+
+// QJR624 (D-QJR5-10) — l'« acompte personnalisé » du dialogue PDF n'est plus
+// une option de rendu : il est écrit dans Devis.echeancier (PATCH) AVANT le
+// rendu, pour que facture d'acompte et PDF lisent la même valeur.
+describe('DevisList — QJR624 : acompte personnalisé → échéancier du devis', () => {
+  it('acompte 20000 → PATCH {echeancier} avant le rendu', async () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 98, reference: 'DEV-ACPT-624', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 100000, nb_options: 1, version: 1,
+        mode_installation: 'residentiel', echeancier: [],
+      }],
+    })
+    const row = screen.getByText('DEV-ACPT-624').closest('tr')
+    fireEvent.click(within(row).getByTitle('Générer le PDF (choix du format)'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Devis Final/ }))
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Acompte personnalisé/ }))
+    fireEvent.change(within(dialog).getByLabelText('Montant acompte (MAD)'),
+      { target: { value: '20000' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: /Générer/ }))
+    await waitFor(() => expect(ventesApi.patchDevis).toHaveBeenCalled())
+    const [id, corps] = ventesApi.patchDevis.mock.calls.at(-1)
+    expect(id).toBe(98)
+    expect(corps.echeancier[0]).toMatchObject(
+      { type: 'acompte', unite: 'montant', pct_or_montant: 20000 })
+    expect(corps.echeancier.map(t => t.pct_or_montant)).toEqual([20000, 70, 10])
   })
 })
