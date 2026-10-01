@@ -47,7 +47,6 @@ from __future__ import annotations
 
 import logging
 import math
-from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -621,14 +620,9 @@ def _echelle_paliers_batterie(devis):
         # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
         puissances_batterie_des_lignes,
     )
-    from apps.ventes.domain.catalogue import (
-        carte_marques_composition,
-        catalogue_de_la_societe,
-        ordre_lignes_societe,
-    )
-    from apps.ventes.domain.composition import composition_residentielle
     from apps.ventes.domain.etudes import entrees_dimensionnement_du_devis
-    from apps.ventes.domain.taille import _AUTO_PANEL_WATT
+    from apps.ventes.domain.pipeline import (
+        composer_sonde, contexte_sonde_du_devis, sonder_wattage)
 
     entrees = entrees_dimensionnement_du_devis(devis)
     conso = (entrees or {}).get('conso_kwh_mensuelles')
@@ -647,56 +641,39 @@ def _echelle_paliers_batterie(devis):
     if productible_annuel <= 0:
         return []
 
-    company = entrees['company']
-    catalogue = catalogue_de_la_societe(company)
-    marques = carte_marques_composition(company, None)
-    ordre = ordre_lignes_societe(company)
-    # MÊMES réglages par défaut que ``rafraichir_dimensionnement_devis`` : la
-    # TVA du devis n'entre pas ici, chaque produit portant DÉJÀ son taux
-    # (``_lire_composition``) et ce taux-ci n'étant que le repli.
-    taux_tva = Decimal('20')
+    # QJR605 — L'INTENTION DU DEVIS (gamme, phase, MPPT, TVA du devis,
+    # hors-réseau, structure vendue) : chaque palier se compose par
+    # ``pipeline.composer_sonde``, le même constructeur que le devis. Avant,
+    # l'échelle composait en direct, TVA 20 figée, sans phase ni gamme.
+    sonde_devis = contexte_sonde_du_devis(devis)
     # BATHOMO (fondateur 26/08/2026) — DÉNOMINATION PAR LE DEVIS. Un devis
     # qui vend déjà des batteries impose ce calibre à TOUTE l'échelle
-    # sondée ci-dessous (``composition_residentielle(batterie_module_kwh=
-    # …)``) : jamais un re-choix catalogue qui ferait basculer un rang de
-    # l'échelle vers un autre calibre que celui réellement vendu. ``None``
-    # (devis sans ligne batterie — le cas du tableau de dimensionnement
-    # AVANT toute vente) ⇒ le choix ÉCONOMIQUE normal décide, inchangé.
+    # sondée ci-dessous : jamais un re-choix catalogue qui ferait basculer un
+    # rang de l'échelle vers un autre calibre que celui réellement vendu.
+    # ``None`` (devis sans ligne batterie) ⇒ le choix ÉCONOMIQUE normal.
     module_devis = module_batterie_du_devis(devis)
-    # STKCAT8 (échelle par devis) — la structure RÉELLEMENT vendue par ce devis
-    # (pergola, aluminium…) traverse chaque palier ; sans produit identifiable,
-    # le repli 'acier' d'hier reste inchangé.
-    from apps.ventes.domain.composition import structure_produit_id_du_devis
-    structure_id_devis = structure_produit_id_du_devis(devis)
+
+    # Le wattage du panneau RÉELLEMENT retenu par le catalogue — LA sonde
+    # partagée avec ``balayer_tailles`` et les cartes de taille.
+    panel_watt = _num(sonder_wattage(sonde_devis))
+    if panel_watt <= 0:
+        return []
+    import dataclasses
+    sonde_devis = dataclasses.replace(sonde_devis, panel_watt=panel_watt)
+    # La TVA DU DEVIS (repli de lecture des lignes composées).
+    taux_tva = sonde_devis.taux_tva
 
     def composer(panneaux, kwc, cible, journal):
         """Une composition catalogue AVEC batterie, ou ``None`` — jamais une
         exception : un palier impossible ne fait pas tomber l'échelle."""
         try:
-            return composition_residentielle(
-                catalogue, kwc=kwc, panel_watt=panel_watt,
-                nb_panneaux=panneaux, avec_batterie=True,
-                structure_type='acier', structure_produit_id=structure_id_devis,
-                taux_tva=taux_tva,
-                avertissements=journal, deux_options=False, marques=marques,
-                ordre_lignes=ordre, batterie_cible_kwh=cible,
-                batterie_module_kwh=module_devis)
+            return composer_sonde(
+                sonde_devis, panneaux, avec_batterie=True, cible_kwh=cible,
+                module_kwh=module_devis, avertissements=journal)
         except Exception:  # noqa: BLE001
             logger.warning('composition impossible à %s panneaux / %s kWh',
                            panneaux, cible, exc_info=True)
             return None
-
-    # Le wattage du panneau RÉELLEMENT retenu par le catalogue — lu, pas
-    # supposé (même sonde que ``balayer_tailles``).
-    sonde_avert = []
-    sonde = composition_residentielle(
-        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
-        nb_panneaux=1, avec_batterie=False, structure_type='acier',
-        taux_tva=taux_tva, avertissements=sonde_avert, deux_options=False,
-        marques=marques, ordre_lignes=ordre)
-    panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
-    if panel_watt <= 0:
-        return []
 
     # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
     panneaux_parite = max(1, int(math.ceil(

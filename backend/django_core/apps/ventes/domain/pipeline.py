@@ -30,6 +30,7 @@ qui porte le corps — jamais la façade ``services.py``.
 
 NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
 """
+import dataclasses
 from dataclasses import dataclass
 from decimal import Decimal
 import logging
@@ -139,6 +140,31 @@ class IntentionComposition:
     variante: str = ''
     hors_reseau: bool = False
     ville: str = ''
+    #: QJR605 — BATHOMO : le calibre de module batterie DÉJÀ vendu par le
+    #: devis (les sondes de taille). ``None`` (LE DÉFAUT) ⇒ choix économique.
+    batterie_module_kwh: object = None
+    #: QJR605 — ``ReglagesComposition`` DÉJÀ lus par ``reglages_de_composition``
+    #: pour un appelant qui compose N fois (balayages). ``None`` (LE DÉFAUT)
+    #: ⇒ lus ici, à chaque composition.
+    reglages: object = None
+
+
+@dataclass(frozen=True)
+class ReglagesComposition:
+    """QJR605 — le catalogue et les règles de gamme d'une société, LUS UNE
+    FOIS par :func:`reglages_de_composition` pour un balayage de N tailles."""
+
+    catalogue: object
+    marques: object
+    ordre_lignes: object
+
+
+def reglages_de_composition(company, gamme_nom_devis=None):
+    """Les réglages que :func:`composer` lit — la MÊME lecture, factorisée."""
+    return ReglagesComposition(
+        catalogue=catalogue_de_la_societe(company),
+        marques=carte_marques_composition(company, gamme_nom_devis),
+        ordre_lignes=ordre_lignes_societe(company))
 
 
 def composer(intention):
@@ -175,6 +201,8 @@ def composer(intention):
             if isinstance(intention.dimensionnement_avec, dict) else None)
 
     company = intention.company
+    reglages = (getattr(intention, 'reglages', None)
+                or reglages_de_composition(company, intention.gamme_nom_devis))
     commun = dict(
         panel_watt=intention.panel_watt,
         structure_type=intention.structure_type,
@@ -186,12 +214,12 @@ def composer(intention):
         avertissements=intention.avertissements,
         # U3 — les règles de gamme vivent CÔTÉ SERVEUR et sont résolues ICI :
         # marques épinglées (PVMRQ) et ordre par défaut (PVORD).
-        marques=carte_marques_composition(company, intention.gamme_nom_devis),
-        ordre_lignes=ordre_lignes_societe(company),
+        marques=reglages.marques,
+        ordre_lignes=reglages.ordre_lignes,
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,
     )
-    catalogue = catalogue_de_la_societe(company)
+    catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
     nb_panneaux = int(intention.nb_panneaux or 0)
 
@@ -217,6 +245,7 @@ def composer(intention):
             batterie_cible_kwh=(avec.get('batterie_kwh')
                                 if (avec_batterie and avec) else None),
             hors_reseau=hors_reseau,
+            batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
             **commun)
     # QJR604 — LE BARÈME TRANSPORT est appliqué ICI, pour toutes les origines,
     # avant l'écriture des lignes (donc avant le cliché de marge et le gel du
@@ -265,6 +294,119 @@ def estampiller_variante(lignes, variante):
     # exactement ce cas).
     estampillees.__dict__.update(getattr(lignes, '__dict__', None) or {})
     return estampillees
+
+
+# ── QJR605 — LES SONDES DE TAILLE composent par le MÊME constructeur ─────────
+# Les cartes Éco / Recommandé / Max (``offres_tailles``), l'échelle de paliers
+# batterie (``domain/dimensionnement_devis``) et le balayage de tailles
+# (``dimensionnement.balayer_tailles``) appelaient ``composition_residentielle``
+# en direct : sans la gamme du devis, sans la phase, sans les paires MPPT,
+# sans le hors-réseau — un autre kit que celui du devis. Ils construisent
+# désormais leur intention ICI, et délèguent à :func:`composer`.
+
+
+@dataclass(frozen=True)
+class ContexteSonde:
+    """Ce qu'une sonde de taille sait du devis (ou des entrées) qu'elle
+    balaye. GELÉ ; ``reglages`` est lu UNE fois pour tout le balayage."""
+
+    company: object
+    reglages: object = None
+    panel_watt: object = None
+    gamme_nom_devis: object = None
+    structure_type: str = 'acier'
+    structure_produit_id: object = None
+    phase: object = None
+    mppt_paires: int = 1
+    taux_tva: Decimal = Decimal('20')
+    hors_reseau: bool = False
+    ville: str = ''
+
+
+def _mppt_paires_du_devis(devis):
+    """Les paires MPPT que le devis chiffre : son câble DC AU MÈTRE ÷ 60 m
+    (``metre_cable_dc_par_paires``, la règle de la composition). Sans ligne
+    lisible : le repli fondateur d'une paire."""
+    from apps.ventes.domain.catalogue import (
+        CABLE_DC_M_PAR_PALIER, _est_au_metre, _is_cable_dc)
+    metres = 0.0
+    for ligne in devis.lignes.all():
+        nom = ligne.designation or ''
+        if _is_cable_dc(nom) and _est_au_metre(nom):
+            metres += float(ligne.quantite or 0)
+    if metres <= 0:
+        return 1
+    return max(1, int(round(metres / CABLE_DC_M_PAR_PALIER)))
+
+
+def contexte_sonde_du_devis(devis, *, reglages=None):
+    """Le ``ContexteSonde`` d'un devis : gamme, structure, phase, MPPT, TVA,
+    hors-réseau et ville du barème — lus UNE fois, sur le devis et son lead."""
+    from apps.crm.selectors import lead_du_devis
+    from apps.ventes.compatibilites import est_site_isole, normaliser_phase
+    from apps.ventes.domain.composition import structure_produit_id_du_devis
+    from apps.ventes.domain.gammes import gamme_nom
+    lead = lead_du_devis(devis)
+    raccordement = getattr(lead, 'raccordement', None)
+    gamme = gamme_nom(devis) or None
+    hors_reseau = est_site_isole(raccordement) or any(
+        _is_offgrid_inverter(ligne.designation or '')
+        and float(ligne.quantite or 0) > 0
+        for ligne in devis.lignes.all())
+    taux = getattr(devis, 'taux_tva', None)
+    return ContexteSonde(
+        company=devis.company,
+        reglages=reglages or reglages_de_composition(devis.company, gamme),
+        gamme_nom_devis=gamme,
+        structure_produit_id=structure_produit_id_du_devis(devis),
+        phase=normaliser_phase(raccordement),
+        mppt_paires=_mppt_paires_du_devis(devis),
+        taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
+        hors_reseau=bool(hors_reseau),
+        ville=ville_du_lead(lead))
+
+
+def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
+                   module_kwh=None, avertissements=None):
+    """QJR605 — LA composition d'une taille sondée : l'intention du devis
+    (``contexte``) à ``nb_panneaux``, mono-option, déléguée à :func:`composer`.
+    """
+    watt = float(contexte.panel_watt or _AUTO_PANEL_WATT)
+    nb = int(nb_panneaux or 0)
+    return composer(IntentionComposition(
+        company=contexte.company,
+        kwc=nb * watt / 1000.0,
+        nb_panneaux=nb,
+        panel_watt=watt,
+        scenario=COMPOSITION_AVEC if avec_batterie else COMPOSITION_SANS,
+        structure_type=contexte.structure_type,
+        structure_produit_id=contexte.structure_produit_id,
+        taux_tva=contexte.taux_tva,
+        mppt_paires=contexte.mppt_paires,
+        phase=contexte.phase,
+        gamme_nom_devis=contexte.gamme_nom_devis,
+        dimensionnement_avec=({'batterie_kwh': cible_kwh}
+                              if (avec_batterie and cible_kwh) else None),
+        avertissements=avertissements if avertissements is not None else [],
+        hors_reseau=contexte.hors_reseau,
+        ville=contexte.ville,
+        batterie_module_kwh=module_kwh,
+        reglages=contexte.reglages))
+
+
+def sonder_wattage(contexte):
+    """LA sonde de wattage : le Wc du panneau RÉELLEMENT retenu par le
+    catalogue pour ce contexte (un panneau composé au wattage de référence),
+    ou ``0``. Le hors-réseau n'y entre pas : le panneau retenu n'en dépend
+    pas, et un catalogue sans onduleur autonome ne doit pas masquer le Wc."""
+    sonde = composer_sonde(
+        dataclasses.replace(contexte, panel_watt=_AUTO_PANEL_WATT,
+                            hors_reseau=False), 1,
+        avec_batterie=False)
+    try:
+        return float(getattr(sonde, 'panel_watt_reel', 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 # ── Étape 4 — VERIFIER ───────────────────────────────────────────────────────
