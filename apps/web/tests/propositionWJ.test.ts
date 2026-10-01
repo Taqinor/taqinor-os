@@ -10,8 +10,6 @@ import {
   formatFrenchDate,
   savingsHeadline,
   environmentalImpact,
-  financingComparison,
-  loanMonthlyPayment,
   whatsappLink,
   whatsappLinkForIntent,
   buildAcceptBodyRich,
@@ -171,38 +169,6 @@ describe('WJ14 — CO₂ évité (calculé depuis la production, jamais inventé
     expect(environmentalImpact(0)).toBeNull();
     expect(environmentalImpact(-5)).toBeNull();
     expect(environmentalImpact(NaN)).toBeNull();
-  });
-});
-
-// ── WJ10 · Financement ───────────────────────────────────────────────────────
-
-describe('WJ10 — comparatif financement (cash backend + mensualité indicative)', () => {
-  it('loanMonthlyPayment — formule amortissable, taux 0 = division', () => {
-    expect(loanMonthlyPayment(84000, 0, 84)).toBe(1000);
-    // 86400 @ 9 % sur 84 mois > paiement linéaire
-    const m = loanMonthlyPayment(86400, 0.09, 84);
-    expect(m).toBeGreaterThan(Math.round(86400 / 84));
-  });
-
-  it('cash vient du backend (TTC option) ; mensualités basse < haute', () => {
-    const f = financingComparison(makeProposal(), 'avec_batterie');
-    expect(f).not.toBeNull();
-    expect(f!.cash).toBe(86400);
-    expect(f!.monthlyLow).toBeLessThan(f!.monthlyHigh);
-    expect(f!.months).toBe(84);
-  });
-
-  it('compare à la facture actuelle quand factures_mensuelles présent', () => {
-    const p = makeProposal({ quote: { factures_mensuelles: Array(12).fill(2000) } });
-    const f = financingComparison(p, 'sans_batterie');
-    expect(f!.currentBillMonthly).toBe(2000);
-    expect(typeof f!.beatsBill).toBe('boolean');
-  });
-
-  it('sans factures backend → accroche comparative masquée (null)', () => {
-    const f = financingComparison(makeProposal(), 'avec_batterie');
-    expect(f!.currentBillMonthly).toBeNull();
-    expect(f!.beatsBill).toBe(false);
   });
 });
 

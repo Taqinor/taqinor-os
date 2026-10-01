@@ -324,15 +324,6 @@ export interface ProposalResponse {
    */
   niveau_masque?: string[] | null;
   /**
-   * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
-   * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
-   * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
-   * ONEE déjà rédigée côté serveur. Absent quand `display_total` est
-   * indisponible — le bloc financement se masque alors (jamais un calcul de
-   * repli qui divergerait du backend).
-   */
-  financing?: ProposalFinancingBlock | null;
-  /**
    * WJ32 — résumés « autres tailles » des variantes actives du même devis
    * (QJ15, `_variant_summaries`). Tableau vide quand le devis est isolé
    * (aucun frère/sœur actif) — la strip « autres tailles » se masque alors.
@@ -686,26 +677,6 @@ export function productionSeriesForOption(
     if (bySeason[season]) return bySeason[season] as ServedProduction;
   }
   return null;
-}
-
-/** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
-export interface ProposalFinancingBlock {
-  indicatif: true;
-  cash: { montant_ttc: number; label: string };
-  credit: {
-    mensualite: number;
-    duree_mois: number;
-    taux_annuel_pct: number;
-    programme_nom: string;
-    programme_label: string | null;
-  };
-  onee_comparison: {
-    show: boolean;
-    message: string;
-    eco_mensuelle_sans: number;
-    eco_mensuelle_avec: number;
-  };
-  guidance_text: string | null;
 }
 
 /** WJ32 — un résumé de variante (QJ15 `_variant_summaries`), pour la strip « autres tailles ». */
@@ -1834,17 +1805,6 @@ export const CO2_KG_PER_KWH = 0.81;
  * Ne pas ré-introduire sans cette source.
  */
 
-/**
- * WJ10 — Taux annuel INDICATIF d'un éco-prêt vert au Maroc (TAEG approximatif).
- * Aucune offre n'est contractuelle ici : la mensualité affichée est une simple
- * illustration « à confirmer » auprès de la banque. Fourchette ~7–9 %.
- */
-export const GREEN_LOAN_RATE_LOW = 0.07;
-export const GREEN_LOAN_RATE_HIGH = 0.09;
-
-/** WJ10 — Durée INDICATIVE d'un éco-prêt vert (mois). 7 ans. */
-export const GREEN_LOAN_MONTHS = 84;
-
 // ── WJ15 · Fenêtre de validité honnête ───────────────────────────────────────
 
 export interface ValidityWindow {
@@ -2435,73 +2395,6 @@ export function environmentalImpact(
     co2KgPerYear: Math.round(co2KgPerYear),
     co2TonnesPerYear: Math.round((co2KgPerYear / 1000) * 10) / 10,
     kgPerKwh,
-  };
-}
-
-// ── WJ10 · Comparatif de financement (cash vs éco-prêt indicatif) ────────────
-
-export interface FinancingComparison {
-  /** Prix comptant TTC (backend). */
-  cash: number;
-  /** Mensualité indicative basse (taux bas), MAD/mois. */
-  monthlyLow: number;
-  /** Mensualité indicative haute (taux haut), MAD/mois. */
-  monthlyHigh: number;
-  /** Durée indicative (mois). */
-  months: number;
-  /**
-   * Facture mensuelle actuelle estimée (backend `factures_mensuelles` moyenne),
-   * pour l'accroche « mensualité < votre facture ». null si indisponible.
-   */
-  currentBillMonthly: number | null;
-  /** Vrai si la mensualité basse est strictement < facture actuelle. */
-  beatsBill: boolean;
-}
-
-/**
- * Mensualité d'un prêt amortissable (formule standard). `rate` est ANNUEL.
- * Renvoie un entier MAD. Taux 0 → simple division.
- */
-export function loanMonthlyPayment(principal: number, annualRate: number, months: number): number {
-  if (principal <= 0 || months <= 0) return 0;
-  const r = annualRate / 12;
-  if (r === 0) return Math.round(principal / months);
-  const factor = (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
-  return Math.round(principal * factor);
-}
-
-/**
- * WJ10 — Comparatif cash vs éco-prêt INDICATIF. Le prix comptant vient du
- * backend (TTC de l'option). Les mensualités sont une fourchette CLAIREMENT
- * indicative (taux/durée non contractuels) — la page les libelle « à confirmer ».
- * `currentBillMonthly` se déduit de `factures_mensuelles` backend (moyenne) si
- * présent, sinon null (la page masque alors l'accroche comparative).
- */
-export function financingComparison(
-  p: ProposalResponse,
-  opt: OptionKey,
-): FinancingComparison | null {
-  const cash = optionTtc(p, opt);
-  if (!Number.isFinite(cash) || cash <= 0) return null;
-  const monthlyHigh = loanMonthlyPayment(cash, GREEN_LOAN_RATE_HIGH, GREEN_LOAN_MONTHS);
-  const monthlyLow = loanMonthlyPayment(cash, GREEN_LOAN_RATE_LOW, GREEN_LOAN_MONTHS);
-
-  const bills = p.quote?.factures_mensuelles;
-  let currentBillMonthly: number | null = null;
-  if (Array.isArray(bills) && bills.length > 0) {
-    const valid = bills.filter((v) => typeof v === 'number' && Number.isFinite(v) && v > 0);
-    if (valid.length > 0) {
-      currentBillMonthly = Math.round(valid.reduce((a, b) => a + b, 0) / valid.length);
-    }
-  }
-
-  return {
-    cash,
-    monthlyLow,
-    monthlyHigh,
-    months: GREEN_LOAN_MONTHS,
-    currentBillMonthly,
-    beatsBill: currentBillMonthly !== null && monthlyLow < currentBillMonthly,
   };
 }
 
@@ -3611,27 +3504,13 @@ export function walkthroughSteps(p: ProposalResponse): WalkStep[] {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// WJ32 — Complétude du contenu de la proposition : financement backend réel,
+// WJ32 — Complétude du contenu de la proposition : contenu enrichi,
 // fiche produit enrichie (marque/garantie/fiche technique), « Et après ? »,
 // « Nos hypothèses », accompagnement post-installation, FAQ objections,
 // variantes côte-à-côte. Même discipline « zéro chiffre inventé » : chaque
 // fonction ne lit QUE des champs backend présents, et dégrade proprement
 // (tableau vide / null) quand une donnée manque — jamais un repli fabriqué.
 // ════════════════════════════════════════════════════════════════════════════
-
-/**
- * WJ32 — Lecture défensive du bloc `financing` BACKEND (QJ12). Différent de
- * `financingComparison` (calcul générique ci-dessus, gardé pour compat) : ce
- * bloc porte le VRAI programme (Tatwir/ISTIDAMA) choisi par le backend selon
- * `inst_type`. Renvoie `null` quand absent/malformé — la page masque alors
- * le bloc financement (jamais de mélange entre les deux sources).
- */
-export function backendFinancing(p: Pick<ProposalResponse, 'financing'>): ProposalFinancingBlock | null {
-  const f = p.financing;
-  if (!f || typeof f !== 'object') return null;
-  if (!f.cash || !f.credit || typeof f.cash.montant_ttc !== 'number') return null;
-  return f;
-}
 
 /** WJ32 — Variantes actives « autres tailles » (tableau vide si le devis est isolé). */
 export function proposalVariants(p: Pick<ProposalResponse, 'variants'>): ProposalVariantSummary[] {
@@ -3750,7 +3629,6 @@ export interface AssumptionItem {
  *  - horizon : SAVINGS_HORIZON_YEARS (25 ans, durée de vie économique retenue —
  *    la garantie de performance panneau va au-delà : 30 ans, cf. warranty.ts) ;
  *  - type d'installation : `quote.inst_type` (résidentiel/industriel/agricole) ;
- *  - financement : programme backend s'il est présent (Tatwir/ISTIDAMA…).
  * Toujours au moins 2 lignes (tarif + horizon sont des constantes du module,
  * jamais absentes) — le bloc n'est donc jamais vide.
  */
@@ -3794,19 +3672,6 @@ export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
           ? 'Industrial/commercial self-consumption (coverage-rate study)'
           : 'Residential (simulator)';
     items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', labelEn: 'Installation type', value: label, valueAr: labelAr, valueEn: labelEn });
-  }
-  const fin = backendFinancing(p);
-  if (fin?.credit?.programme_label) {
-    const rate = formatNumber(fin.credit.taux_annuel_pct, 2);
-    const years = Math.round(fin.credit.duree_mois / 12);
-    items.push({
-      label: 'Programme de financement indicatif',
-      labelAr: 'برنامج التمويل الإرشادي',
-      labelEn: 'Indicative financing programme',
-      value: `${fin.credit.programme_label} — taux ${rate} %/an, ${years} ans (à confirmer avec votre banque).`,
-      valueAr: `${fin.credit.programme_label} — معدل ${rate} %/سنة، ${years} سنة (يُؤكَّد مع بنككم).`,
-      valueEn: `${fin.credit.programme_label} — rate ${rate} %/year, ${years} years (to confirm with your bank).`,
-    });
   }
   return items;
 }

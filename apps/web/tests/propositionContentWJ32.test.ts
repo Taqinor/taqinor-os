@@ -3,7 +3,6 @@
 // quand sa donnée backend est absente — jamais un chiffre inventé.
 import { describe, expect, it } from 'vitest';
 import {
-  backendFinancing,
   proposalVariants,
   proposalGammes,
   gammeEcartLabel,
@@ -14,7 +13,6 @@ import {
   objectionFaq,
   SAVINGS_HORIZON_YEARS,
   type ProposalResponse,
-  type ProposalFinancingBlock,
   type ProposalGammes,
 } from '../src/lib/proposition';
 
@@ -47,7 +45,9 @@ function makeProposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
   return { ...base, ...over, quote: { ...base.quote, ...(over.quote ?? {}) } };
 }
 
-const VALID_FINANCING: ProposalFinancingBlock = {
+// QJR634 — un ancien payload publié peut encore porter `financing` : la page
+// ne doit JAMAIS en tirer de ligne de crédit ni de taux.
+const LEGACY_FINANCING = {
   indicatif: true,
   cash: { montant_ttc: 96000, label: 'Paiement comptant (TTC)' },
   credit: {
@@ -57,27 +57,7 @@ const VALID_FINANCING: ProposalFinancingBlock = {
     programme_nom: 'tatwir',
     programme_label: 'Tatwir Croissance Verte',
   },
-  onee_comparison: { show: true, message: 'La mensualité...', eco_mensuelle_sans: 1000, eco_mensuelle_avec: 1250 },
-  guidance_text: 'Contactez votre banque.',
 };
-
-describe('WJ32 — backendFinancing (lecture défensive du bloc backend QJ12)', () => {
-  it('bloc valide → renvoyé tel quel', () => {
-    expect(backendFinancing({ financing: VALID_FINANCING })).toEqual(VALID_FINANCING);
-  });
-
-  it('absent → null (le bloc financement se masque)', () => {
-    expect(backendFinancing({ financing: undefined })).toBeNull();
-    expect(backendFinancing({ financing: null })).toBeNull();
-  });
-
-  it('malformé (cash/credit manquants) → null, jamais de throw', () => {
-    // @ts-expect-error — entrée volontairement hors-contrat
-    expect(backendFinancing({ financing: {} })).toBeNull();
-    // @ts-expect-error
-    expect(backendFinancing({ financing: { cash: {} } })).toBeNull();
-  });
-});
 
 describe('WJ32 — proposalVariants (strip « autres tailles »)', () => {
   it('tableau backend présent → renvoyé tel quel', () => {
@@ -195,16 +175,16 @@ describe('WJ32 — proposalAssumptions (« Nos hypothèses », jamais de valeur 
     expect(items.some((i) => i.label === 'Type d\'installation')).toBe(true);
   });
 
-  it('financement backend présent → hypothèse de programme ajoutée (sourcée, pas inventée)', () => {
-    const p = makeProposal({ financing: VALID_FINANCING });
+  it('QJR634 — un `financing` hérité du payload ne produit aucune ligne de crédit ni de taux', () => {
+    const p = makeProposal({ financing: LEGACY_FINANCING } as unknown as Partial<ProposalResponse>);
     const items = proposalAssumptions(p);
-    const finItem = items.find((i) => i.label.includes('financement'));
-    expect(finItem).toBeDefined();
-    expect(finItem!.value).toContain('Tatwir Croissance Verte');
+    expect(items.some((i) => i.label.includes('financement'))).toBe(false);
+    expect(JSON.stringify(items)).not.toContain('Tatwir');
+    expect(JSON.stringify(items)).not.toMatch(/taux|rate|معدل/);
   });
 
   it('financement absent → pas d’hypothèse de programme fabriquée', () => {
-    const p = makeProposal({ financing: undefined });
+    const p = makeProposal();
     const items = proposalAssumptions(p);
     expect(items.some((i) => i.label.includes('financement'))).toBe(false);
   });
