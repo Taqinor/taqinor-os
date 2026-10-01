@@ -1699,6 +1699,23 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
     return preset
 
 
+# ── QJR563 — devise par défaut d'un devis créé ───────────────────────────────
+
+def devise_par_defaut(company):
+    """QJR563 — LA devise d'un devis créé sans devise explicite : celle de la
+    société (``CompanyProfile.devise_defaut``, FG52), repli ``'MAD'``. Un seul
+    helper pour ``POST /devis/`` ET ``/devis/atomic/`` (chemin réel du
+    générateur), qui ne l'appliquait pas."""
+    if company is None:
+        return 'MAD'
+    from apps.parametres.models import CompanyProfile
+    try:
+        profil = CompanyProfile.get(company=company)
+    except Exception:  # noqa: BLE001 — jamais bloquant : repli MAD
+        return 'MAD'
+    return getattr(profil, 'devise_defaut', '') or 'MAD'
+
+
 # ── XSAV3 — Devis de réparation hors garantie depuis un ticket SAV ───────────
 
 def create_devis_pour_ticket(*, company, user, client_id, lignes, note=None):

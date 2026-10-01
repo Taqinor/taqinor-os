@@ -444,10 +444,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             company=company,
         )
         if 'devise' not in serializer.validated_data:
-            from apps.parametres.models import CompanyProfile
-            save_kwargs['devise'] = (
-                getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
-                or 'MAD')
+            # QJR563 — UN helper, partagé avec /devis/atomic/.
+            from ..domain.creation import devise_par_defaut
+            save_kwargs['devise'] = devise_par_defaut(company)
 
         # QJR541 — ``statut`` n'est plus écrivable : un devis créé par POST
         # est toujours un brouillon, le funnel n'avance que par les
@@ -988,12 +987,19 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     {'client': 'Un client ou un lead est requis.'})
             client = resolve_client_for_lead(lead)
 
+        # QJR563 — même devise par défaut de la société que POST /devis/ ;
+        # une devise fournie dans le corps est respectée.
+        devise_kwargs = {}
+        if 'devise' not in serializer.validated_data:
+            from ..domain.creation import devise_par_defaut
+            devise_kwargs['devise'] = devise_par_defaut(company)
         try:
             with transaction.atomic():
                 def _save(ref):
                     devis = serializer.save(
                         reference=ref, client=client,
-                        created_by=request.user, company=company)
+                        created_by=request.user, company=company,
+                        **devise_kwargs)
                     if etude_in:
                         ecrire(devis, proprietaire=ECRAN, **etude_in)
                     # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction :
