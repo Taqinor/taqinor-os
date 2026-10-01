@@ -13,6 +13,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
    - `restore()` : renvoie le payload sauvegardé et masque le bandeau.
    - `discard()` : ignore le brouillon (le purge + masque le bandeau).
    - `clear()`  : purge sans toucher au bandeau (à appeler après un submit réussi).
+   - QJR581 — option `version` (ex. `devis.updated_at`) : stockée avec le
+     brouillon (`restored.version`) pour que l'appelant ne propose « Reprendre »
+     que si l'objet serveur n'a pas bougé depuis (sinon il le purge).
 */
 
 const DEBOUNCE_MS = 800
@@ -44,7 +47,7 @@ function safeRemove(storageKey) {
   }
 }
 
-export function useDraftAutosave(key, snapshot, { enabled = true } = {}) {
+export function useDraftAutosave(key, snapshot, { enabled = true, version } = {}) {
   const storageKey = key ? PREFIX + key : null
 
   // Lecture UNE fois au montage (avant tout écrasement par l'autosave).
@@ -63,11 +66,13 @@ export function useDraftAutosave(key, snapshot, { enabled = true } = {}) {
     if (timerRef.current) clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
       const stamp = new Date().toISOString()
-      safeSet(storageKey, { savedAt: stamp, data: snapshot })
+      safeSet(storageKey, version === undefined
+        ? { savedAt: stamp, data: snapshot }
+        : { savedAt: stamp, version, data: snapshot })
       setSavedAt(stamp)
     }, DEBOUNCE_MS)
     return () => { if (timerRef.current) clearTimeout(timerRef.current) }
-  }, [storageKey, enabled, snapshot])
+  }, [storageKey, enabled, snapshot, version])
 
   const restore = useCallback(() => {
     const payload = restored?.data ?? null

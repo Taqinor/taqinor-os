@@ -330,6 +330,11 @@ const withKeys = (rows) => rows.map(r => ({
   compose: !!r.compose,
 }))
 
+// QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=` (et
+// ses relectures immédiates : lead, réouverture) forment la RÉFÉRENCE « rien
+// n'a changé » de l'Édition complète.
+const FENETRE_REFERENCE_MS = 1500
+
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
 const emptyLine = () => ({
   _key: newKey(),
@@ -498,6 +503,8 @@ export default function DevisGenerator({
   // côté serveur (taille d'offre appliquée) : `editLoaded` retient le numéro
   // de chargement déjà servi, `rechargeEdit` en demande un nouveau.
   const editLoaded = useRef(null)
+  // QJR581 — fenêtre de capture de la référence « rien n'a changé ».
+  const captureReferenceJusqua = useRef(0)
   const [rechargeEdit, setRechargeEdit] = useState(0)
 
   // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
@@ -896,15 +903,46 @@ export default function DevisGenerator({
   // `villaGroups` a des libellés PAR DÉFAUT : le signal utile est le mode
   // multi-propriétés lui-même (défaut 'none'), pas la présence de libellés.
   const villasSaisies = multiMode !== 'none'
-  const dirty = Boolean(
+  const formulaireNonVierge = Boolean(
     leadId || clientId || note || fHiver || fEte || nbPanneaux
     || consoMensuelle || prixCible || pompeHmt || pompeDebit || farmSurfaceHa
     || lignesSaisies || remiseSaisie || tvaModifiee || villasSaisies,
   )
+  // QJR581 — « dirty » veut dire « DIFFÉRENT de la référence » : l'état que le
+  // mappeur `?edit=` vient de poser (édition) ou le dernier enregistrement
+  // réussi. Sans référence : non-vacuité en création, jamais en édition (le
+  // devis n'est pas encore chargé). Avant, ouvrir un devis sans rien toucher
+  // écrivait un « brouillon non enregistré » et armait la garde de sortie,
+  // même après un enregistrement réussi.
+  const snapshotJson = useMemo(() => JSON.stringify(draftSnapshot), [draftSnapshot])
+  const [referenceEcran, setReferenceEcran] = useState(null)
+  useEffect(() => {
+    if (Date.now() < captureReferenceJusqua.current) {
+      setReferenceEcran(snapshotJson)
+    }
+  }, [snapshotJson])
+  const dirty = referenceEcran != null
+    ? snapshotJson !== referenceEcran
+    : (editId ? false : formulaireNonVierge)
   const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,
+    version: editId ? (editDevis?.updated_at ?? null) : undefined,
   })
   useDirtyGuard(dirty)
+  // QJR581 — un brouillon local d'édition n'est repris que s'il porte la
+  // version COURANTE du devis ; sinon (devis modifié depuis, ou brouillon
+  // d'avant QJR581 sans version) il est purgé, avec une notice.
+  const brouillonPerime = Boolean(editId && restored && editDevis
+    && restored.version !== editDevis.updated_at)
+  const brouillonProposable = Boolean(restored
+    && (!editId || (editDevis && restored.version === editDevis.updated_at)))
+  useEffect(() => {
+    if (!brouillonPerime) return
+    discard()
+    toast.info('Brouillon local ignoré : ce devis a été modifié depuis.')
+  }, [brouillonPerime, discard])
+  // Après un enregistrement réussi, l'état courant DEVIENT la référence.
+  const marquerEnregistre = () => setReferenceEcran(snapshotJson)
 
   // Restauration : réinjecte le snapshot sauvegardé dans tous les setters.
   const handleRestoreDraft = () => {
@@ -1943,6 +1981,9 @@ export default function DevisGenerator({
         cancel()
         return
       }
+      // QJR581 — la RÉFÉRENCE « rien n'a changé » se capture sur l'état que
+      // ce mappeur (et ses relectures immédiates : lead, réouverture) pose.
+      captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
       setEditDevis({ id: d.id, reference: d.reference,
                      statut: d.statut, date_envoi: d.date_envoi ?? null,
                      // QJR548 — verdict SERVI (QJR516), relu par les gestes
@@ -1952,6 +1993,9 @@ export default function DevisGenerator({
                      // QJR580 — le lead / client DU DEVIS, lus par leurs noms
                      // servis (jamais `leads.find` : lead hors page 1).
                      lead_nom: d.lead_nom || '', client_nom: d.client_nom || '',
+                     // QJR581 — version du devis : un brouillon local d'une
+                     // AUTRE version n'est jamais proposé.
+                     updated_at: d.updated_at ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -3567,7 +3611,7 @@ export default function DevisGenerator({
     e.preventDefault()
     if (!validate()) return
     const res = await persisterDevis()
-    if (res) { clear(); finish(res.devisId, res.devisCree) }
+    if (res) { clear(); marquerEnregistre(); finish(res.devisId, res.devisCree) }
   }
 
   // PV23bis (fondateur 20/08) — « Concevoir en 3D » depuis l'écran de devis :
@@ -3586,6 +3630,7 @@ export default function DevisGenerator({
     const res = await persisterDevis()
     if (!res) return
     clear()
+    marquerEnregistre()
     navigate(`/ventes/devis/${res.devisId}/design`)
   }
 
@@ -3840,7 +3885,7 @@ export default function DevisGenerator({
             par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
           </div>
         )}
-        {restored && (
+        {brouillonProposable && (
           <div
             data-testid="draft-restore-banner"
             className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between"
