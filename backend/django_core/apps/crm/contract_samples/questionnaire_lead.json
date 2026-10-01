@@ -117,7 +117,7 @@
     "energie": ["facture_hiver", "facture_ete", "ete_differente", "conso_mensuelle_kwh", "raccordement"],
     "toiture": ["type_toiture", "surface_toiture_m2", "roof_age", "ownership"],
     "occupation": ["occupation_jour"],
-    "equipements": ["equip_piscine", "equip_piscine_pompe_kw", "equip_piscine_heures_jour", "equip_piscine_creneau", "equip_voiture_electrique", "equip_ve_km_semaine", "equip_ve_chargeur_kw", "equip_ve_creneau", "equip_clim", "equip_clim_pieces", "equip_clim_kw", "equip_clim_creneau", "equip_chauffe_eau_electrique", "equip_chauffe_eau_kw", "equip_chauffe_eau_creneau"]
+    "equipements": ["equip_piscine", "equip_piscine_pompe_kw", "equip_voiture_electrique", "equip_ve_km_semaine", "equip_clim", "equip_clim_pieces", "equip_chauffe_eau_electrique"]
   },
   "colonnes_ecrites_note": "QJR512 — `colonnes_ecrites` {section: [colonnes]} : les colonnes que chaque section écrit réellement ; liste fixée par QJR596. `energie` porte conso_mensuelle_kwh et n’écrit plus tranche_onee.",
   "champs_par_section": {

@@ -32,7 +32,7 @@ test('clientProposalUrl : chemin absent -> juste l’origine (jamais une excepti
   assert.equal(clientProposalUrl(undefined, 'https://taqinor.ma'), 'https://taqinor.ma/')
 })
 
-test('proposalWhatsappText : MÊME format que ToitureDesign.jsx designWhatsappText', () => {
+test('proposalWhatsappText : format figé du message WhatsApp de la proposition', () => {
   assert.equal(
     proposalWhatsappText('Karim', 'https://taqinor.ma/proposition/karim/abc'),
     "Bonjour Karim, voici votre proposition d'installation solaire Taqinor : "

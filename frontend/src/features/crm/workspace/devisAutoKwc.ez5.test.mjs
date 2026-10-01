@@ -75,7 +75,9 @@ test('LeadWorkspace lit les DEUX formes, sans casser `devisPanel`', () => {
   assert.match(workspace, /setDevisPanel\(intent\.mode \|\| 'auto'\)/)
   // `devisPanel` reste une chaîne : la comparaison `=== 'view'` (qui décide
   // du devis existant à afficher) continue de fonctionner telle quelle.
-  assert.match(workspace, /devisPanel === 'view' \? panelDevisId : null/)
+  // QJR534 — « Modifier » d'une carte devis ouvre CE devis en mode 'edit' :
+  // la même comparaison de chaînes porte aussi l'id du devis choisi.
+  assert.match(workspace, /\(devisPanel === 'view' \|\| devisPanel === 'edit'\) \? panelDevisId : null/)
   // La cible ne survit pas à la fermeture du panneau (pas d'état fantôme).
   assert.match(workspace, /setDevisPanel\(null\); setPanelDevisId\(null\); setDevisKwc\(null\)/)
   assert.match(workspace, /targetKwc=\{devisKwc\}/)

@@ -237,3 +237,28 @@ test('RÉSIDENTIEL — aucune clé de marché, seulement les choix et les entré
   assert.match(bloc, /\{ \.\.\.choixEcran\(\), \.\.\.entreesReellesEcran\(null\) \}/)
   assert.match(bloc, /Object\.keys\(entrees\)\.length \? entrees : null/)
 })
+
+test('QJR528 — `part_diurne_pct` (industriel) est écrite, déclarée et relue', () => {
+  assert.ok(CLES_IC.has('part_diurne_pct'), 'l\'écran n\'écrit pas part_diurne_pct')
+  assert.ok(CLES_SCHEMA.has('part_diurne_pct'), 'le schéma ne déclare pas part_diurne_pct')
+  assert.ok(CLES_RELUES.has('part_diurne_pct'), 'le mappeur ne relit pas part_diurne_pct')
+})
+
+test('QJR526 — les 12 factures réelles du devis rouvert sont reposées à l\'écran (setMonthly), pas les défauts', () => {
+  const bloc = blocMappeur()
+  assert.ok(CLES_RELUES.has('factures_mensuelles_reelles'))
+  // Seulement une série COMPLÈTE de 12 valeurs ; sinon les défauts restent.
+  assert.match(bloc, /e\.factures_mensuelles_reelles\.length === 12/)
+  assert.match(bloc, /if \(factures\) setMonthly\(factures\.map\(/)
+})
+
+test('QJR524 — PROPRIÉTÉ INVERSE : chaque clé de CHOIX_ECRITS est relue par `?edit=`', () => {
+  // Rouvrir puis ré-enregistrer SANS retouche ne doit jamais changer un choix :
+  // une clé écrite mais jamais relue repart à son défaut (« Auto » → valeur
+  // effective recalculée) et bascule le document du client en silence.
+  assert.ok(CHOIX_ECRITS.size >= 3, [...CHOIX_ECRITS].join(','))
+  const nonRelues = [...CHOIX_ECRITS].filter(cle => !CLES_RELUES.has(cle))
+  assert.deepEqual(nonRelues, [],
+    'choix écrits à l\'enregistrement mais jamais relus à la réouverture : '
+    + nonRelues.join(', '))
+})

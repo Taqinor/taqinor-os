@@ -82,8 +82,8 @@ import {
   // rendent ; `tarifMtDisponible` et `commercialDayShare` restent ici, appelés
   // par l'avertissement de vente et par l'étude commerciale.
   CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
-  formatMoney, estimerMois, computeROI, ttcFromHt, htFromTtc,
-  tauxTvaOf, controlerFacturesSaisies, ttcExactFromHt,
+  formatMoney, estimerMois, computeROI, ttcFromHt,
+  tauxTvaOf, controlerFacturesSaisies,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
@@ -124,7 +124,8 @@ import {
   // ordre »), appliquée par autoFillLines via ordreLignes.
   deriveRoleOrderFromLines,
 } from '../../features/ventes/solar'
-import { formatNumber, formatMAD, formatDateTime } from '../../lib/format'
+import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
+import { peutEditerDevis } from '../../features/ventes/devisStatuts'
 // CJ2b — aperçu du moteur horaire résidentiel (PVGIS réel × consommation
 // réelle du client, mois par mois) : source UNIQUE des chiffres d'économie à
 // l'écran, à la place du miroir local `computeROI` dès que le serveur a
@@ -158,6 +159,10 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // SIGNÉE (`moteur`/`apercu`) au lieu d'un `value=` littéral : `CarteMetrique`
 // reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
 import { moteur, apercu } from '../../features/ventes/quote/valeur'
+// QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
+import { lignesServeurVersEcran, lignesEcranVersPayload } from '../../features/ventes/quote/lignesEcran'
+// QJR526 — wattage / structure / hors-réseau / composition libre relus des lignes.
+import { deriverReouverture } from '../../features/ventes/quote/reouverture'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -306,6 +311,13 @@ const withKeys = (rows) => rows.map(r => ({
   // deux optimiseurs résidentiels divergent, préservée au rechargement d'un
   // brouillon/devis (VX62, réouverture ?edit=).
   variante: r.variante ?? '',
+  // QJR523 — rôle STOCKÉ de la ligne (`role_devis`) : conservé comme
+  // `prixManuel`, sinon `remplacer_lignes` re-devine le rôle et écrase celui
+  // posé par la composition (ex. 'onduleur_offgrid').
+  role_devis: r.role_devis ?? '',
+  // QJR529 — remise PAR LIGNE stockée (%), conservée comme `prixManuel` :
+  // jamais remise à '0' en silence (le total client monterait).
+  remise: String(r.remise ?? '0'),
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -1896,14 +1908,19 @@ export default function DevisGenerator({
     if (!editId || editLoaded.current) return
     editLoaded.current = true
     ventesApi.getDevisById(editId).then(({ data: d }) => {
-      if (d.statut !== 'brouillon') {
+      // QJR532 (D-QJR5-1) — le refus vient du SERVEUR (`modifiable`, QJR516),
+      // plus d'une garde « statut !== brouillon » : un envoyé se corrige sur
+      // place ; un accepté / remplacé dit pourquoi (raison_non_modifiable).
+      if (!peutEditerDevis(d)) {
         // APX17 — plus de popup du système : un toast d'erreur français,
         // dans le seul Toaster de l'app.
-        toast.error('Ce devis n\'est plus un brouillon — il ne peut plus être modifié.')
+        toast.error(d.raison_non_modifiable
+          || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
         cancel()
         return
       }
       setEditDevis({ id: d.id, reference: d.reference,
+                     statut: d.statut, date_envoi: d.date_envoi ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -1943,45 +1960,13 @@ export default function DevisGenerator({
       setTauxTva(String(d.taux_tva ?? '20.00'))
       if (d.date_validite) setDateValidite(d.date_validite)
       if (d.note) setNote(d.note)
-      const rows = (d.lignes ?? [])
-        .slice()
-        // XSAL14 — respecte l'ordre serveur (ordre, id) pour intercaler les
-        // sections/notes au bon endroit à la réouverture d'un brouillon.
-        .sort((a, b) => (a.ordre ?? 0) - (b.ordre ?? 0) || (a.id ?? 0) - (b.id ?? 0))
-        .map(l => ({
-          produit: String(l.produit ?? ''),
-          designation: l.designation,
-          quantite: String(parseFloat(l.quantite) || 0),
-          // ERR-QAH-FIG-EDITION-PU-TTC-ARRONDI — prix PERSISTÉ : TTC au
-          // centime, jamais arrondi au dirham (sinon rouvrir change le total
-          // et ré-enregistrer modifie les prix en silence).
-          prix_unit_ttc: String(ttcExactFromHt(l.prix_unitaire || 0, l.taux_tva ?? d.taux_tva)),
-          taux_tva: String(parseFloat(l.taux_tva ?? d.taux_tva) || 20),
-          // XSAL5 — préserve le drapeau « option » au rechargement d'un brouillon.
-          optionnelle: !!l.optionnelle,
-          // XSAL14 — préserve le type de ligne (produit / section / note).
-          typeLigne: l.type_ligne ?? 'produit',
-          // L-2OPT — préserve le tag de variante posé par le serveur (champ
-          // pas encore accepté par TOUS les backends — `?? ''` en repli,
-          // comportement historique inchangé tant qu'il est absent).
-          variante: l.variante ?? '',
-          // QJR65 / décision fondateur D12 — LE PRIX TAPÉ À LA MAIN SURVIT À
-          // `?edit=`. Ce mappeur ne rendait PAS `prixManuel` : le drapeau
-          // revenait `undefined → false`, et l'effet listes-de-prix
-          // ([clientId, lines.length]) relançait `refreshTarif` sur CHAQUE
-          // ligne au montage — le tarif catalogue écrasait en silence le prix
-          // négocié que le vendeur avait tapé ET enregistré. `prix_manuel` est
-          // servi par la ligne (QJR59, `LigneDevisSerializer` `__all__`) ; la
-          // garde vit, elle, dans `refreshTarif` (`!l.prixManuel`). Champ
-          // absent d'un backend plus ancien ⇒ `false`, comportement historique
-          // strictement inchangé.
-          prixManuel: !!l.prix_manuel,
-          // QJR218 — même trou, même correctif : `quantite_manuelle` est déjà
-          // round-trippé par le backend (`domain/lignes`) mais ce mappeur ne
-          // le relisait pas, donc `?edit=` ne restaurait JAMAIS le verrou de
-          // quantité (revenait `undefined → false` via `withKeys`).
-          quantiteManuelle: !!l.quantite_manuelle,
-        }))
+      // QJR527 — le prix cible DU DEVIS gagne, vide compris (sinon chaque
+      // enregistrement en édition l'effaçait : le payload envoie `null`).
+      setPrixCible(d.prix_cible_kwc != null ? String(parseFloat(d.prix_cible_kwc)) : '')
+      // QJR523 — mappeur UNIQUE (lignesEcran.js) : ordre serveur, prix TTC au
+      // centime, option / type / variante / verrous manuels (QJR65, QJR218),
+      // groupes villa et rôle stocké — tous relus ici.
+      const rows = lignesServeurVersEcran(d.lignes ?? [], d.taux_tva)
       setLines(withKeys(rows))
       linesInitialized.current = true
       // L-2OPT — le nombre de panneaux affiché reste celui de la branche
@@ -1991,6 +1976,7 @@ export default function DevisGenerator({
         .filter(r => /panneau/i.test(r.designation) && r.variante !== 'avec')
         .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
       const e = d.etude_params || {}
+      const reouv = deriverReouverture(rows, { mode: d.mode_installation })
       // ORDRE FONDATEUR (24/08) — round-trip du MARCHÉ, du COMPTE DE PANNEAUX
       // et du SCÉNARIO déjà choisis sur ce devis (etude_params.scenario, posé
       // par `buildEtudeParamsChoice` à l'enregistrement). Sans lui, rouvrir un
@@ -2006,8 +1992,18 @@ export default function DevisGenerator({
           mode_installation: d.mode_installation,
           panneaux,
           scenario: e.scenario,
+          // QJR526 — wattage + structure re-dérivés des LIGNES du devis
+          // (sinon 710 W / acier par défaut : 10 × 550 W revenait à 7,1 kWc).
+          panel_watt: reouv.panelW,
+          structure: reouv.structure,
+          structureProduitId: reouv.structureProduitId,
         },
       })
+      // QJR526 — hors-réseau et « Composition libre » relus des lignes : un
+      // choix DÉJÀ fait (drapeau hors-réseau fermé, comme le brouillon local).
+      setHorsReseau(reouv.horsReseau)
+      setHorsReseauTouched(true)
+      setAccessoiresOnly(reouv.accessoiresOnly)
       // PVMRQ — round-trip de la gamme du devis (`etude_params.gamme.nom`,
       // posée par `services.creer_variante_gamme`/`gamme_nom`) : résout la
       // carte de marques Essentielle/Premium à réappliquer aux
@@ -2017,10 +2013,16 @@ export default function DevisGenerator({
       }
       // (le scénario du devis est repris par la transition `REOUVERTURE`
       // ci-dessus, avec son drapeau « déjà choisi ».)
-      if (['Auto', 'Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC]
-        .includes(e.recommended_choice)) {
-        setRecommendedChoice(e.recommended_choice)
-      }
+      // QJR524 — l'option recommandée ENREGISTRÉE revient telle quelle :
+      // `recommended_option` (seule clé du schéma, écrite par `choixEcran`,
+      // lue par le PDF) d'abord, repli sur la clé legacy `recommended_choice`.
+      // Un devis enregistré en « Auto » revient avec la valeur effective figée
+      // (ce que le client a vu) — un ré-enregistrement sans retouche ne la
+      // bascule plus. Le registre D12 n'est PAS lu ici (il gagne au rendu).
+      const recoStockee = [e.recommended_option, e.recommended_choice].find(v =>
+        ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC].includes(v))
+      if (recoStockee) setRecommendedChoice(recoStockee)
+      else if (e.recommended_choice === 'Auto') setRecommendedChoice('Auto')
       // QJ31 / QJR66 — round-trip du ×N villas identiques. Le mode multi-villa
       // ne se restaurait QUE depuis le brouillon local (localStorage) : rouvrir
       // un devis ×4 par `?edit=` le ramenait à 1 à l'écran. Devenu bloquant
@@ -2031,6 +2033,24 @@ export default function DevisGenerator({
         setMultiMode('multiplier')
         setNombreProprietes(String(nProprietes))
       }
+      // QJR530 — round-trip du mode « villas » : une ligne qui porte un
+      // `groupe_index` (persisté par remplacer_lignes, QJR517) rouvre le
+      // devis en mode villas avec ses groupes (paires distinctes index/label,
+      // triées ; index 0 = « Équipement commun », sans label stocké). Sans
+      // lui, ouvrir puis enregistrer SANS retouche envoyait groupe_index null
+      // et dégroupait tout.
+      if (rows.some(r => r.groupeIndex != null)) {
+        const groupes = new Map([[0, 'Équipement commun']])
+        for (const r of rows) {
+          const idx = Number(r.groupeIndex)
+          if (r.groupeIndex == null || !Number.isFinite(idx) || groupes.has(idx)) continue
+          groupes.set(idx, r.groupeLabel || `Villa ${idx}`)
+        }
+        setVillaGroups([...groupes.entries()]
+          .sort((a, b) => a[0] - b[0])
+          .map(([index, label]) => ({ index, label })))
+        setMultiMode('villas')
+      }
       // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
       if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
       // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
@@ -2038,6 +2058,12 @@ export default function DevisGenerator({
       // silencieux). Les clés absentes laissent le défaut 'bt' intact.
       if (e.tension_raccordement === 'mt') {
         dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
+      }
+      // QJR528 — la part diurne INDUSTRIELLE enregistrée, relue APRÈS
+      // `onInstTypeChange` (qui a reposé le défaut du marché plus haut).
+      if (d.mode_installation === 'industriel' && e.part_diurne_pct != null
+          && Number.isFinite(Number(e.part_diurne_pct))) {
+        setDayUsage(String(Number(e.part_diurne_pct)))
       }
       if (e.repartition_mt && typeof e.repartition_mt === 'object') {
         setRepartitionMt({
@@ -2126,15 +2152,18 @@ export default function DevisGenerator({
   // FEATURE 10 : en CRÉATION uniquement, la date de validité par défaut suit
   // « validité du devis » (jours) et les heures de pompage suivent « heures de
   // pompage/jour ». Les champs restent librement éditables (rien n'est imposé).
-  // En édition (?edit=ID), c'est le devis lui-même qui prime — on ne touche à
-  // rien ici.
+  // QJR527 — en édition (?edit=ID), le devis prime sur la date de validité,
+  // les heures de pompage et le prix cible (relu par le mappeur) ; mais la
+  // LOGIQUE société (tarif kWh, rendement, TVA, productible, remise max) est
+  // chargée dans les DEUX modes — sinon l'étude I/C était re-persistée au
+  // tarif par défaut du code et imprimée.
   const settingsLoaded = useRef(false)
   useEffect(() => {
-    if (editId || settingsLoaded.current) return
+    if (settingsLoaded.current) return
     settingsLoaded.current = true
     parametresApi.getProfile().then(({ data }) => {
       const jours = parseInt(data?.quote_validity_days, 10)
-      if (Number.isFinite(jours) && jours > 0) {
+      if (!editId && Number.isFinite(jours) && jours > 0) {
         const d = new Date()
         d.setDate(d.getDate() + jours)
         const iso = `${d.getFullYear()}-${String(d.getMonth() + 1)
@@ -2142,7 +2171,7 @@ export default function DevisGenerator({
         setDateValidite(prev => prev || iso)
       }
       const heures = parseFloat(data?.agricole_pump_hours)
-      if (Number.isFinite(heures) && heures > 0) {
+      if (!editId && Number.isFinite(heures) && heures > 0) {
         setPompeHeures(String(heures))
       }
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
@@ -2168,7 +2197,7 @@ export default function DevisGenerator({
         productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
-      if (Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
+      if (!editId && Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
       const rmax = parseFloat(data?.remise_max_pct)
       if (Number.isFinite(rmax) && rmax > 0) setRemiseMax(String(rmax))
     }).catch(() => { /* réglages indisponibles → on garde les défauts code */ })
@@ -2180,7 +2209,11 @@ export default function DevisGenerator({
     const leadParam = embedded
       ? (leadIdProp != null ? String(leadIdProp) : '')
       : searchParams.get('lead')
-    if (!leadParam || autoRan.current) return
+    // QJR525 — en ÉDITION (Édition complète embarquée depuis la fiche lead),
+    // le devis rouvert prime : le mappeur `?edit=` pose déjà le lead, et
+    // `applyLead` réécrirait les 12 factures réelles stockées par une
+    // estimation hiver/été sans aucun geste du vendeur.
+    if (!leadParam || autoRan.current || editId) return
     if (!leads.length || !produits.length) return
     autoRan.current = true
     const lead = leads.find(l => String(l.id) === leadParam)
@@ -2342,6 +2375,9 @@ export default function DevisGenerator({
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
             prixManuel: false,
+            // QJR523 — le rôle stocké était celui de l'ANCIEN produit : le
+            // serveur le re-déduit du nouveau.
+            role_devis: '',
           }
         : l
     ))
@@ -2541,17 +2577,9 @@ export default function DevisGenerator({
     const lignes = Array.isArray(data) ? data
       : (data?.lignes || data?.results || [])
     if (!Array.isArray(lignes) || !lignes.length) return
-    const rows = lignes.map(l => ({
-      produit: l.produit ?? l.produit_id ?? '',
-      designation: l.designation ?? '',
-      quantite: l.quantite ?? 1,
-      // le modèle stocke le HT ; l'écran travaille en TTC (au taux de la ligne).
-      prix_unit_ttc: ttcFromHt(l.prix_unitaire ?? l.prix_unit_ht ?? 0, l.taux_tva ?? 20),
-      taux_tva: l.taux_tva ?? 20,
-      groupeIndex: l.groupe_index ?? null,
-      groupeLabel: l.groupe_label ?? '',
-    }))
-    setLines(withKeys(rows))
+    // QJR523 — même mappeur que la réouverture `?edit=` (HT → TTC au taux de
+    // la ligne, tous les champs portés).
+    setLines(withKeys(lignesServeurVersEcran(lignes)))
   }
 
   // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.
@@ -3340,6 +3368,11 @@ export default function DevisGenerator({
         payback: nombre(etude.payback),
         injection_kwh_an: nombre(etude.injection_kwh_an),
         injection_dh_an: nombre(etude.injection_dh_an),
+        // QJR528 — la part diurne du curseur INDUSTRIEL (entrée de l'étude) :
+        // relue par `?edit=`, sinon la réouverture remettait le défaut et
+        // réécrivait taux / payback. Commercial : dérivée de la catégorie
+        // (`commercialDayShare`), rien à écrire.
+        part_diurne_pct: modeInstallation === 'industriel' ? nombre(dayUsage) : undefined,
         // QXMT — raccordement du site + répartition horaire : le mappeur
         // `?edit=` les relit, donc elles doivent être PERSISTÉES, sinon un
         // devis MT rouvert repartait silencieusement au barème BT. On stocke
@@ -3426,8 +3459,9 @@ export default function DevisGenerator({
   const persisterDevis = async () => {
     setSaving(true)
     try {
+      // QJR515 — `statut` n'est JAMAIS dans le PATCH d'édition (un envoyé ne
+      // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
       const payload = {
-        statut: 'brouillon',
         date_validite: dateValidite || null,
         taux_tva: tauxTva,
         remise_globale: discountPct || '0',
@@ -3441,52 +3475,11 @@ export default function DevisGenerator({
       // (intitulé non vide). L'ordre visuel est conservé (ordre = index) pour
       // intercaler les intertitres au bon endroit. Une ligne section/note ne
       // porte ni produit ni prix.
-      const isStructure = (l) => l.typeLigne === 'section' || l.typeLigne === 'note'
-      const keptLines = lines.filter(l => isStructure(l)
-        ? !!(l.designation || '').trim()
-        : (l.produit && parseFloat(l.quantite) > 0))
-      const lignesPayload = keptLines.map((l, idx) => {
-        if (isStructure(l)) {
-          return {
-            type_ligne: l.typeLigne,
-            ordre: idx,
-            designation: l.designation,
-          }
-        }
-        return {
-          produit: parseInt(l.produit),
-          designation: l.designation,
-          quantite: l.quantite,
-          prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
-          remise: '0',
-          taux_tva: String(l.taux_tva ?? 20),
-          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
-          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
-          // XSAL5 — ligne optionnelle (add-on hors total). Défaut False.
-          optionnelle: !!l.optionnelle,
-          // XSAL14 — type produit (défaut) + position d'affichage.
-          type_ligne: 'produit',
-          ordre: idx,
-          // L-2OPT (fondateur 24/08) — '' commun | 'sans' | 'avec', posée par
-          // `fusionnerVariantes` quand les deux optimiseurs résidentiels
-          // divergent. Envoyée systématiquement (le champ absent d'un ancien
-          // backend est simplement ignoré par le serializer — jamais bloquant).
-          variante: l.variante || '',
-          // QJR65 / décision fondateur D12 — le PRIX est une entrée commerciale
-          // PERSISTANTE : le marqueur part avec la ligne (`prix_manuel`, accepté
-          // par `_replace_lines_atomic`, QJR59/QJR60) pour que la réouverture en
-          // `?edit=` le repose et qu'aucun rafraîchissement tarifaire ne
-          // réécrive le prix négocié. Sans lui, le marqueur serait remis à
-          // `False` à CHAQUE enregistrement — le trou que D12 referme.
-          prix_manuel: !!l.prixManuel,
-          // QJR218 — même patron que `prix_manuel` juste au-dessus : sans ce
-          // marqueur, `replace-lignes` défaute `quantite_manuelle` à False à
-          // CHAQUE enregistrement — une ligne verrouillée en quantité (posée
-          // côté serveur, ex. une resynchronisation) perd son verrou au
-          // prochain enregistrement du vendeur.
-          quantite_manuelle: !!l.quantiteManuelle,
-        }
-      })
+      // QJR523 — payload construit par le mappeur UNIQUE (lignesEcran.js) :
+      // prix HT dérivé du TTC au taux DE LA LIGNE, groupe villa en mode
+      // « villas », option / type / ordre / variante / verrous manuels
+      // (QJR65 / D12, QJR218) et rôle stocké.
+      const lignesPayload = lignesEcranVersPayload(lines, { multiMode })
 
       let devisId
       let devisCree = null
@@ -3502,6 +3495,7 @@ export default function DevisGenerator({
         // QX21 — CRÉATION ATOMIQUE : devis + lignes en UN commit serveur → plus
         // de brouillon orphelin/partiel si la connexion est coupée en cours de
         // sauvegarde. Lead prioritaire : le client est résolu côté serveur.
+        payload.statut = 'brouillon'
         if (leadId) payload.lead = parseInt(leadId)
         else payload.client = parseInt(clientId)
         // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les CHOIX de l'écran
@@ -3829,6 +3823,17 @@ export default function DevisGenerator({
       {/* noValidate : aucune contrainte navigateur — toute valeur saisie est
           acceptée telle quelle (les steps ne servent qu'aux flèches). */}
       <form id="gen-form" onSubmit={handleSubmit} noValidate className="flex flex-col gap-4 lg:flex-1 lg:min-w-0">
+        {editDevis?.statut === 'envoye' && (
+          <div
+            data-testid="devis-envoye-banner"
+            role="status"
+            className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            Devis envoyé{editDevis.date_envoi ? ` le ${formatDate(editDevis.date_envoi)}` : ''} :
+            vos corrections seront visibles sur le lien de la proposition ; un PDF déjà envoyé
+            par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
+          </div>
+        )}
         {restored && (
           <div
             data-testid="draft-restore-banner"

@@ -357,6 +357,27 @@ class DevisSerializer(EcheancierValidationMixin, serializers.ModelSerializer):
     # qu'aux appels hors liste (une requête, sur un objet unique).
     a_variantes = serializers.SerializerMethodField()
 
+    # QJR516 (contrat QJR500 ``devis_modifiabilite.json``) — l'écran LIT la
+    # règle au lieu de la redériver : un seul prédicat
+    # (``domain/modifiabilite.verdict``), servi ici.
+    modifiable = serializers.SerializerMethodField()
+    raison_non_modifiable = serializers.SerializerMethodField()
+    revision_possible = serializers.SerializerMethodField()
+
+    @staticmethod
+    def _verdict_modifiabilite(obj):
+        from .domain.modifiabilite import verdict
+        return verdict(obj)
+
+    def get_modifiable(self, obj) -> bool:
+        return self._verdict_modifiabilite(obj)['modifiable']
+
+    def get_raison_non_modifiable(self, obj) -> str:
+        return self._verdict_modifiabilite(obj)['raison_non_modifiable']
+
+    def get_revision_possible(self, obj) -> bool:
+        return self._verdict_modifiabilite(obj)['revision_possible']
+
     def get_superseded_by_ref(self, obj):
         return obj.superseded_by.reference if obj.superseded_by_id else None
 
@@ -780,6 +801,17 @@ class DevisWriteSerializer(EcheancierValidationMixin,
             raise serializers.ValidationError(
                 'Statut réservé à une action dédiée (« accepter » / '
                 '« refuser ») — jamais un PATCH direct du corps.')
+        # QJR515 (D-QJR5-1) — un devis ENVOYÉ se corrige SUR PLACE : il ne
+        # repasse jamais en brouillon (aucune action « remettre en
+        # brouillon »). Seul le passage ENVOYE → BROUILLON est refusé ;
+        # BROUILLON → ENVOYE reste écrivable jusqu'à QJR541.
+        instance = getattr(self, 'instance', None)
+        if (instance is not None
+                and getattr(instance, 'statut', None) == Devis.Statut.ENVOYE
+                and value == Devis.Statut.BROUILLON):
+            raise serializers.ValidationError(
+                'Un devis envoyé se corrige sur place, il ne repasse jamais '
+                'en brouillon.')
         return value
 
 

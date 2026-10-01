@@ -1171,6 +1171,13 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     journal = []
     avertissements = []
     resynchro = None
+    # QJR518 — une correction après envoi est tracée à UN point : l'état vu
+    # par le client est capturé AVANT la première écriture (ENVOYÉ seulement,
+    # no-op sinon), la trace est posée après si un contenu visible a changé.
+    from apps.ventes.domain.modifiabilite import (
+        debut_de_geste_devis, fin_de_geste_devis)
+    avant_geste = (debut_de_geste_devis(devis, intention.user)
+                   if mode in (MODE_ECRIRE, MODE_RECONCILIER) else None)
     if mode == MODE_ECRIRE:
         ecrire_lignes(devis, intention.composition,
                       company=intention.company,
@@ -1207,6 +1214,10 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     else:  # MODE_RAFRAICHIR
         rafraichir_etudes(devis, force=intention.force_etudes)
         journal.append('rafraichir_etudes')
+    if avant_geste is not None:
+        fin_de_geste_devis(
+            devis, intention.user, avant=avant_geste,
+            objet='lignes' if mode == MODE_ECRIRE else 'calepinage')
 
     return {
         'devis': devis,

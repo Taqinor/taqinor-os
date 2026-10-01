@@ -110,6 +110,10 @@ class CheminVariante(_Base):
 class CheminReviser(_Base):
 
     def _reviser(self):
+        # QJR521 — un BROUILLON ne se révise plus (409) : la source part
+        # envoyée, comme dans le parcours réel.
+        Devis.objects.filter(pk=self.source.pk).update(
+            statut=Devis.Statut.ENVOYE)
         resp = self.api.post(
             '/api/django/ventes/devis/%s/reviser/' % self.source.id,
             {}, format='json')
@@ -156,6 +160,9 @@ class LeJeuDeChampsEstDERIVE(_Base):
                                      getattr(origine, champ))
 
     def _reviser_source(self):
+        # QJR521 — un BROUILLON ne se révise plus (409).
+        Devis.objects.filter(pk=self.source.pk).update(
+            statut=Devis.Statut.ENVOYE)
         resp = self.api.post(
             '/api/django/ventes/devis/%s/reviser/' % self.source.id,
             {}, format='json')

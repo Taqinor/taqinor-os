@@ -24,11 +24,13 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+// QJR523 — les mappeurs lignes serveur ⇄ écran vivent dans lignesEcran.js.
+const LE = readFileSync(join(HERE, '../../features/ventes/quote/lignesEcran.js'), 'utf8')
 
 test('QJR218 — round-trip ENREGISTREMENT : quantite_manuelle part avec la ligne, comme prix_manuel', () => {
-  const idx = DG.indexOf('prix_manuel: !!l.prixManuel,')
+  const idx = LE.indexOf('prix_manuel: !!l.prixManuel,')
   assert.ok(idx > -1, 'le champ prix_manuel du payload de sauvegarde est introuvable')
-  const bloc = DG.slice(idx, idx + 600)
+  const bloc = LE.slice(idx, idx + 600)
   assert.match(bloc, /quantite_manuelle: !!l\.quantiteManuelle,/,
     'AVANT QJR218 : quantite_manuelle n’était jamais envoyé au serveur — ' +
     'replace-lignes le défaute alors à False, le verrou de quantité posé ' +
@@ -37,9 +39,9 @@ test('QJR218 — round-trip ENREGISTREMENT : quantite_manuelle part avec la lign
 })
 
 test('QJR218 — round-trip ?edit= : quantite_manuelle est RELU depuis la colonne persistée, comme prix_manuel', () => {
-  const idx = DG.indexOf('prixManuel: !!l.prix_manuel,')
+  const idx = LE.indexOf('prixManuel: !!l.prix_manuel,')
   assert.ok(idx > -1, 'le mappeur de réouverture ?edit= (prixManuel) est introuvable')
-  const bloc = DG.slice(idx, idx + 400)
+  const bloc = LE.slice(idx, idx + 400)
   assert.match(bloc, /quantiteManuelle: !!l\.quantite_manuelle,/,
     'AVANT QJR218 : ?edit= ne relisait jamais quantite_manuelle — le verrou ' +
     'de quantité restait invisible à la réouverture, même si le serveur ' +
@@ -68,7 +70,10 @@ test('QJR218 — une ligne neuve (emptyLine) n’a AUCUN verrou de quantité par
 test('QJR218 — le marqueur suit la MÊME convention de nommage que prixManuel (camelCase écran / snake_case API)', () => {
   // Écran : quantiteManuelle (camelCase, comme prixManuel). API : quantite_manuelle
   // (snake_case, comme prix_manuel) — jamais un troisième nom inventé.
-  assert.doesNotMatch(DG, /quantiteManuel\b/, 'pas de troncature du nom du drapeau')
+  for (const src of [DG, LE]) {
+    assert.doesNotMatch(src, /quantiteManuel\b/, 'pas de troncature du nom du drapeau')
+  }
   assert.match(DG, /quantiteManuelle/)
-  assert.match(DG, /quantite_manuelle/)
+  assert.match(LE, /quantiteManuelle/)
+  assert.match(LE, /quantite_manuelle/)
 })

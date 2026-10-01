@@ -407,6 +407,9 @@ const NON_LU: Readonly<Record<string, string>> = {
   'mode_kpis': 'Bloc de KPI propre aux modes non résidentiels : rendu par le frontmatter selon `mode_installation`, jamais par le lecteur typé.',
   'niveau_masque[]': 'Liste de ce que le niveau `standard` a retiré : servie au rendu serveur pour l’expliquer au client, hors périmètre du lecteur typé.',
   'resync_apres_envoi': 'Drapeau de resynchronisation après envoi : lu par le frontmatter pour son bandeau, pas par `lireProposal`.',
+  // ── QJR536 (contrat QJR501) ──────────────────────────────────────────────
+  'remplace_par': 'Version qui remplace ce devis : lue par `resolveRemplacement` / `resolveOfferState` (état « retirée », plus de signature, lien vers la version en vigueur) dans le frontmatter — jamais par le lecteur typé du devis. Garde propre : `tests/propositionRemplacee.test.ts`.',
+  'note_client': 'Texte CLIENT du champ Notes du devis (D-QJR5-6) : servi par le backend depuis QJR536, son rendu sur la page relève d’une tâche dédiée — le lecteur typé ne le lit pas.',
 
   // ── Les sept blocs à CONTRAT DÉDIÉ (voir `CONTRAT_DEDIE`) ────────────────
   'conception_electrique': 'Conception électrique : sa forme complète est gardée par son propre contrat PACT10 `conception_electrique.json` ; ici elle n’est qu’illustrative.',
@@ -574,6 +577,13 @@ const NON_LU_DOCUMENTATION: Readonly<Record<string, string>> = {
   'notes.cle_detail': 'Note de contrat : pourquoi `detail` figure dans l’exemple à `null` (documentation).',
   // PREVIEW-V3 (16/09/2026)
   'notes.preview_v3_conditions_avant_signature': 'Note de contrat : pourquoi la page connaît désormais l’acompte, l’échéance, les conditions et les moyens de règlement AVANT la signature (documentation).',
+  // QJR536 (contrat QJR501)
+  'notes.remplace_par': 'Note de contrat : ce que veut dire `remplace_par` (null, ou la version en vigueur avec son lien si elle a été envoyée) — documentation.',
+  'notes.note_client': 'Note de contrat : `note_client` est le texte CLIENT du champ Notes (D-QJR5-6) — documentation.',
+  'exemple_remplace_par_envoye.remplace_par.reference': 'Fragment d’exemple (successeur ENVOYÉ) : la référence de la version en vigueur, illustrative — la charge utile réelle est dans les trois exemples.',
+  'exemple_remplace_par_envoye.remplace_par.url': 'Fragment d’exemple (successeur ENVOYÉ) : le chemin public de la version en vigueur, illustratif — lu par `resolveRemplacement`.',
+  'exemple_remplace_par_brouillon.remplace_par.reference': 'Fragment d’exemple (successeur encore BROUILLON) : la référence reste dite, illustrative.',
+  'exemple_remplace_par_brouillon.remplace_par.url': 'Fragment d’exemple (successeur encore BROUILLON) : `null`, un brouillon n’est jamais servi au client — illustratif.',
 };
 
 describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉE par écrit', () => {

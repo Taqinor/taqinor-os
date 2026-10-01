@@ -139,6 +139,32 @@ def _company_qs(qs, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+def _refus_modifiabilite(devis, geste):
+    """QJR516 — la garde d'édition UNIQUE des vues : ``True`` si le geste
+    est REFUSÉ sur ce devis (prédicat ``domain/modifiabilite``). L'appelant
+    répond alors ``_reponse_non_modifiable`` (409). Lit le statut, ne
+    l'écrit jamais (règle #4)."""
+    from ..domain.modifiabilite import est_modifiable
+    return not est_modifiable(devis, geste)
+
+
+def _reponse_non_modifiable(devis, geste, message_statut=None):
+    """QJR516 — la réponse 409 ``{detail, statut, revision_possible}`` d'un
+    geste refusé. ``message_statut`` (avec ``%s`` = statut affiché) conserve
+    le texte historique d'une garde existante pour un devis ACTIF ; un devis
+    remplacé ou archivé reçoit la raison du prédicat."""
+    from ..domain.modifiabilite import verdict
+    v = verdict(devis, geste)
+    if message_statut and devis.is_active:
+        detail = message_statut % devis.get_statut_display()
+    else:
+        detail = v['raison_non_modifiable']
+    return Response(
+        {'detail': detail, 'statut': devis.statut,
+         'revision_possible': v['revision_possible']},
+        status=status.HTTP_409_CONFLICT)
+
+
 class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
@@ -881,14 +907,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..services import ajouter_lignes_boq_electrique
 
         devis = self.get_object()  # borné société par get_queryset
-        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
-        if devis.statut not in _MODIFIABLES:
-            return Response(
-                {'detail': (
-                    'Devis « %s » : on ne peut plus y ajouter de lignes. '
-                    'Utilisez « Réviser » pour en créer une nouvelle version.'
-                    % devis.get_statut_display())},
-                status=status.HTTP_409_CONFLICT)
+        # QJR516 — le prédicat UNIQUE (domain/modifiabilite, geste BOQ) ;
+        # texte et code 409 {'detail'} CONSERVÉS.
+        if _refus_modifiabilite(devis, 'BOQ'):
+            return _reponse_non_modifiable(
+                devis, 'BOQ',
+                'Devis « %s » : on ne peut plus y ajouter de lignes. '
+                'Utilisez « Réviser » pour en créer une nouvelle version.')
         design = getattr(devis, 'electrical_design', None)
         if not isinstance(design, dict) or not design.get('bom'):
             return Response(
@@ -1038,14 +1063,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         jamais le statut — elle le LIT (règle #4)."""
         from django.db import transaction
         devis = self.get_object()  # borné société par get_queryset
-        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
-        if devis.statut not in _MODIFIABLES:
-            return Response(
-                {'detail': (
-                    'Devis « %s » : ses lignes ne peuvent plus être '
-                    'remplacées. Utilisez « Réviser » pour en créer une '
-                    'nouvelle version.' % devis.get_statut_display())},
-                status=status.HTTP_409_CONFLICT)
+        # QJR516 — le prédicat UNIQUE (geste LIGNES) ; texte et code 409
+        # {'detail'} CONSERVÉS.
+        if _refus_modifiabilite(devis, 'LIGNES'):
+            return _reponse_non_modifiable(
+                devis, 'LIGNES',
+                'Devis « %s » : ses lignes ne peuvent plus être '
+                'remplacées. Utilisez « Réviser » pour en créer une '
+                'nouvelle version.')
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -1065,9 +1090,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             with transaction.atomic():
                 # QJR93 — l'ÉTAPE 5 du pipeline, sous la MÊME transaction
                 # qu'hier : un échec préserve les lignes d'origine.
+                # QJR518 — ``user`` : l'auteur d'une correction après envoi
+                # (chatter + instantané), jamais lu du corps.
                 appliquer(devis, IntentionDevis(
                     origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
-                    company=devis.company, composition=lignes_in))
+                    company=devis.company, user=request.user,
+                    composition=lignes_in))
         except Exception as exc:  # noqa: BLE001 — rollback : lignes d'origine
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1570,6 +1598,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         etat = 'envoyé' if ok else "échec d'envoi"
         _chatter_note(devis, f"Email du devis {reference} — {etat} (à {dest}).", request.user)
 
+        # QJR519 — un email en ÉCHEC ne marque JAMAIS le devis envoyé (ni
+        # date_envoi, ni devis_sent → funnel, ni cadence) : 502 explicite,
+        # EmailLog ECHEC et note chatter ci-dessus conservés.
+        if not ok:
+            devis.refresh_from_db(fields=['statut'])
+            return Response({
+                'detail': f'Échec envoi email : {err}',
+                'log_id': log.id,
+                'email_statut': log.statut,
+                'devis_statut': devis.statut,
+            }, status=status.HTTP_502_BAD_GATEWAY)
+
         # Marque le devis « envoyé » via le seul chemin autorisé (règle #4).
         # Idempotent : un devis déjà envoyé/accepté/refusé n'est pas régressé.
         mark_devis_sent(devis=devis, user=request.user)
@@ -1941,27 +1981,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         clone les lignes et repart en brouillon ; l'ancienne devient inactive et
         pointe vers sa remplaçante (lecture seule côté UI). Les liens lead/client
         et le schéma de numérotation sont préservés. Additif, sans perte."""
+        # QJR521 — le corps inline (cloner_devis puis save HORS transaction :
+        # fourche au double clic, v1 active à côté d'un brouillon orphelin)
+        # est remplacé par LE service de domaine verrouillé. QJR407 (cloneur
+        # unique, sept champs, lignes QJR224/QJR84) vit dans ``cloner_devis``,
+        # appelé par ``reviser_devis``.
+        from ..domain.cycle_vie import RevisionError, reviser_devis
         old = self.get_object()
-        # ── QJR407 (S5-1 / S5-2 / S5-4) — LE CLONEUR DU DOMAINE ─────────────
-        # Cette vue réimplémentait ``Devis.objects.create(...)`` et OMETTAIT
-        # les sept champs que le cloneur porte depuis QJR146(a) : ``devise``,
-        # ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
-        # ``entite``, ``custom_data``. Une révision perdait donc l'échéancier
-        # NÉGOCIÉ et l'acompte du devis d'origine. Elle assignait en outre
-        # ``etude_params`` PAR RÉFÉRENCE (aliasing, S5-2) et créait le devis
-        # HORS transaction avant de cloner ses lignes (S5-4). La
-        # réimplémentation est SUPPRIMÉE (règle permanente 2) ; le clonage des
-        # LIGNES reste celui de QJR224 (``cloner_lignes``, appelé par le
-        # cloneur) — QJR84 compris : une RÉVISION repart du devis TEL QU'IL
-        # EST, marqueurs de saisie manuelle (D12) compris.
-        from ..domain.creation import cloner_devis
-        nd = cloner_devis(
-            old, user=request.user, note=old.note,
-            version=old.version + 1,
-            version_parent=old.version_parent or old)
-        old.is_active = False
-        old.superseded_by = nd
-        old.save(update_fields=['is_active', 'superseded_by'])
+        try:
+            nd = reviser_devis(old, user=request.user)
+        except RevisionError as exc:
+            return Response({'detail': exc.message},
+                            status=status.HTTP_409_CONFLICT)
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -2017,6 +2048,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..selectors import lots_totaux
         devis = self.get_object()
         if request.method == 'POST':
+            # QJR516 — rattacher des lignes à un lot est une édition de LIGNES.
+            if _refus_modifiabilite(devis, 'LIGNES'):
+                return _reponse_non_modifiable(devis, 'LIGNES')
             nom = (request.data.get('nom_lot') or '').strip()
             if not nom:
                 raise ValidationError({'nom_lot': 'Nom de lot requis.'})
@@ -2648,11 +2682,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         deux surcharges survivent.
         """
         from ..domain import overrides as registre_overrides
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
         from ..serializers import OverridesSerializer
 
         devis = self.get_object()
         if request.method == 'GET':
             return Response(self._overrides_reponse(devis))
+        # QJR516 — PATCH et DELETE gardés (geste ETUDE).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
 
         if request.method == 'DELETE':
             chemin = request.query_params.get('chemin') or ''
@@ -2664,10 +2703,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 return Response(
                     {'chemin': registre_overrides.MSG_CHEMIN_INCONNU},
                     status=status.HTTP_400_BAD_REQUEST)
+            avant_geste = debut_de_geste_devis(devis, request.user)
             with transaction.atomic():
                 devis = registre_overrides.relire_verrouille(devis)
                 registre_overrides.ecrire_colonne(
                     devis, registre_overrides.regenerer(devis, chemin))
+            fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                               objet='surcharges')
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
             # valeur du moteur (avant, il en disparaissait : « retour à
             # l'automatique » se soldait par un trou).
@@ -2676,6 +2718,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        avant_geste = debut_de_geste_devis(devis, request.user)
         try:
             with transaction.atomic():
                 devis = registre_overrides.relire_verrouille(devis)
@@ -2685,6 +2728,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='surcharges')
         return Response(self._overrides_reponse(devis))
 
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
@@ -2730,6 +2775,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'etude_params': devis.etude_params or {}})
+        # QJR516 — PATCH gardé (geste ETUDE).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
 
         corps = request.data
         if not isinstance(corps, dict) or not corps:
@@ -2737,6 +2785,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
                            'est attendu.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # QJR518 — l'option recommandée est IMPRIMÉE : sur un envoyé, sa
+        # correction est tracée (instantané avant, trace après).
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avant_geste = debut_de_geste_devis(devis, request.user)
         try:
             bloc = ecrire(devis, proprietaire=ECRAN, **corps)
         except ValueError as exc:
@@ -2756,6 +2809,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 rafraichir_etudes_du_devis(devis)
             except Exception:  # noqa: BLE001
                 pass
+        fin_de_geste_devis(devis, request.user, avant=avant_geste,
+                           objet='étude')
         # La réponse reste LE BLOC FUSIONNÉ — ce que l'appelant vient de poser,
         # plus ce qui était déjà là. Délibéré : c'est le contrat de cet endpoint
         # (`contract_samples`), et y injecter les blocs dérivés fraîchement
@@ -2783,6 +2838,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..serializers import OffreTailleEcritureSerializer
 
         devis = self.get_object()
+        # QJR516 — geste ETUDE (configuration d'exploration).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         serializer = OffreTailleEcritureSerializer(
             data=request.data, context={'company': devis.company})
         serializer.is_valid(raise_exception=True)
@@ -2805,6 +2863,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..serializers import OffreTailleRegenerationSerializer
 
         devis = self.get_object()
+        # QJR516 — geste ETUDE.
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         regenerer_taille(devis, serializer.validated_data['cle'])
@@ -2892,8 +2953,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # « superseded », is_active=False) — la voie de modification reste
         # `reviser` (clone en V+1 éditable), jamais un PATCH direct.
         instance = serializer.instance
-        FROZEN = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE, Devis.Statut.EXPIRE}
-        if instance.statut in FROZEN:
+        # QJR521 — ``is_active`` RESTE écrivable (désactivation seule,
+        # test_ydocf2) mais un devis remplacé ou archivé ne se RÉACTIVE
+        # jamais (False → True) : ce serait une seconde version active.
+        if (instance.is_active is False
+                and serializer.validated_data.get('is_active') is True):
+            raise ValidationError({
+                'is_active': 'Un devis remplacé ou archivé ne se réactive '
+                             'pas.'})
+        # QJR516 — le prédicat UNIQUE (geste ENTETE) ; 400 {'statut'} et
+        # l'exception « désactivation seule » CONSERVÉS.
+        from ..domain.modifiabilite import ENTETE, verdict
+        if not verdict(instance, ENTETE)['modifiable']:
             nouveau_is_active = serializer.validated_data.get(
                 'is_active', instance.is_active)
             only_deactivation = (
@@ -2924,6 +2995,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'remise_globale', serializer.instance.remise_globale)
         self._guard_discount_approval(
             serializer.instance, ancien_statut, nouveau_statut, remise)
+        # QJR518 — état vu par le client capturé AVANT l'écriture (ENVOYÉ
+        # seulement) ; trace posée en fin de geste si l'en-tête ou la note
+        # visibles ont changé.
+        from ..domain.modifiabilite import (
+            debut_de_geste_devis, fin_de_geste_devis)
+        avant_geste = debut_de_geste_devis(
+            serializer.instance, self.request.user)
         super().perform_update(serializer)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
@@ -2964,6 +3042,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         appliquer(serializer.instance, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
             company=company, force_etudes=True))
+        fin_de_geste_devis(serializer.instance, self.request.user,
+                           avant=avant_geste, objet='en-tête')
 
     @action(
         detail=True,
@@ -3141,6 +3221,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         if request.method == 'GET':
             return Response({'roof_layout': devis.roof_layout})
+        # QJR516 — POST gardé (geste ETUDE : le layout brut, pas la
+        # resynchronisation des lignes, qui reste CALEPINAGE).
+        if _refus_modifiabilite(devis, 'ETUDE'):
+            return _reponse_non_modifiable(devis, 'ETUDE')
         # POST — le corps entier est le layout (on accepte aussi un wrapper
         # {"roof_layout": …} pour rester souple côté front).
         payload = request.data
@@ -3172,6 +3256,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..utils.pdf import upload_roof_image, roof_image_signed_url
         from ..quote_engine.builder import _ensure_pdf_bucket
 
+        # QJR516 — garde (geste ETUDE) AVANT l'upload MinIO : un devis
+        # accepté ne reçoit plus de rendu, et aucun objet n'est écrit.
+        devis_garde = self.get_object()
+        if _refus_modifiabilite(devis_garde, 'ETUDE'):
+            return _reponse_non_modifiable(devis_garde, 'ETUDE')
         upload = request.FILES.get('image') or request.FILES.get('file')
         if upload is None:
             return Response(

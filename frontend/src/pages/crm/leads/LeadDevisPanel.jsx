@@ -6,6 +6,7 @@
    /proposal (CLAUDE.md règle #4). */
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
   Download, ExternalLink, Pencil, RotateCw, TriangleAlert, WifiOff, Zap,
 } from 'lucide-react'
@@ -16,6 +17,8 @@ import {
   proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
+import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devisStatuts'
+import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -61,10 +64,11 @@ function downloadBlob(blob, filename) {
 // RIEN sur le lead — c'est un paramètre de dimensionnement ponctuel.
 export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null, targetKwc = null }) {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
 
   // phase: 'remise-input' | 'creating' | 'edit' | 'preview' | 'error'
   const [phase, setPhase] = useState(
-    existingDevisId ? 'preview'
+    existingDevisId ? (mode === 'edit' ? 'edit' : 'preview')
       : mode === 'remise' ? 'remise-input'
         : mode === 'edit' ? 'edit'
           : 'creating')
@@ -72,6 +76,18 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const [errorMsg, setErrorMsg] = useState(null)
   const [devisId, setDevisId] = useState(existingDevisId || null)
   const [devisRef, setDevisRef] = useState('')
+  // QJR534 — le devis CHARGÉ (droits `modifiable` / `revision_possible` lus du
+  // serveur, QJR516) : « Édition complète » seulement si modifiable, sinon
+  // « Réviser ». Tant qu'il n'est pas chargé (ou sans devis), le geste
+  // historique reste offert (le générateur refuse lui-même avec la raison).
+  const [devisRecord, setDevisRecord] = useState(null)
+  const editable = !devisRecord || peutEditerDevis(devisRecord)
+  const revisable = !editable && peutReviserDevis(devisRecord)
+  const reviser = () => reviserEtOuvrir({
+    devis: { ...devisRecord, id: devisId },
+    navigate,
+    onApres: () => onDevisChanged?.(),
+  })
 
   // QJR245 — même précédence et même formulation que DevisTab.jsx : la cible
   // reçue pour CE devis prime, sinon `lead.taille_souhaitee_kwc` — la MÊME
@@ -218,7 +234,10 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   useEffect(() => {
     if (!devisId) return
     ventesApi.getDevisById(devisId)
-      .then(({ data }) => setDevisRef(data.reference || `Devis_${devisId}`))
+      .then(({ data }) => {
+        setDevisRef(data.reference || `Devis_${devisId}`)
+        setDevisRecord(data)
+      })
       .catch(() => setDevisRef(`Devis_${devisId}`))
   }, [devisId])
 
@@ -328,9 +347,16 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
               <div className="form-error-box" role="alert">{errorMsg}</div>
               <div className="ldp-actions">
                 <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
-                <Button type="button" onClick={() => setPhase('edit')}>
-                  Ouvrir l'édition complète
-                </Button>
+                {editable && (
+                  <Button type="button" onClick={() => setPhase('edit')}>
+                    Ouvrir l'édition complète
+                  </Button>
+                )}
+                {revisable && (
+                  <Button type="button" onClick={reviser}>
+                    Réviser (nouvelle version)
+                  </Button>
+                )}
               </div>
             </div>
           )}
@@ -371,10 +397,17 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   )}
                 </div>
                 <div className="ldp-toolbar-actions">
-                  <Button type="button" variant="outline" size="sm"
-                          onClick={() => setPhase('edit')}>
-                    <Pencil /> Édition complète
-                  </Button>
+                  {editable && (
+                    <Button type="button" variant="outline" size="sm"
+                            onClick={() => setPhase('edit')}>
+                      <Pencil /> Édition complète
+                    </Button>
+                  )}
+                  {revisable && (
+                    <Button type="button" variant="outline" size="sm" onClick={reviser}>
+                      <Pencil /> Réviser (nouvelle version)
+                    </Button>
+                  )}
                   <Button type="button" size="sm"
                           onClick={handleDownload} loading={downloading} disabled={downloading}>
                     {!downloading && <Download />}
@@ -404,9 +437,16 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                     description={serverError}
                     action={(
                       <div className="ldp-fallback-actions">
-                        <Button type="button" size="sm" onClick={() => setPhase('edit')}>
-                          Ouvrir l'édition complète
-                        </Button>
+                        {editable && (
+                          <Button type="button" size="sm" onClick={() => setPhase('edit')}>
+                            Ouvrir l'édition complète
+                          </Button>
+                        )}
+                        {revisable && (
+                          <Button type="button" size="sm" onClick={reviser}>
+                            Réviser (nouvelle version)
+                          </Button>
+                        )}
                         <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
                           <RotateCw /> Réessayer
                         </Button>

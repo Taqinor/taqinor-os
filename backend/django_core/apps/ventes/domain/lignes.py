@@ -775,6 +775,27 @@ MSG_REMPLACEMENT_VIDE = (
 )
 
 
+#: QJR517 — ``LigneDevis.groupe_label.max_length`` (models.py).
+_GROUPE_LABEL_MAX = 80
+
+#: QJR517 — champs de ``CHAMPS_LIGNE`` que ``remplacer_lignes`` n'accepte
+#: PAS du corps, chacun avec sa raison : ``produit_id`` (la ligne produit
+#: passe par ``produit``, borné société/catalogue global), ``lot`` / ``lot_id``
+#: (aucun écrivain UI — le lot NTCPQ18 se pose après coup, à l'écran).
+EXCLUSIONS_REMPLACEMENT = ('produit_id', 'lot', 'lot_id')
+
+
+def _groupe_index_emis(valeur):
+    """QJR517 — un ``groupe_index`` entier ≥ 0, sinon ``None``."""
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        n = int(valeur)
+    except (TypeError, ValueError):
+        return None
+    return n if n >= 0 else None
+
+
 def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
                      autoriser_vidage=False):
     """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
@@ -885,6 +906,12 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
         role_emis = str(li.get('role_devis') or '')
         extra_role = ({'role_devis': role_emis}
                       if role_emis in _VALID_ROLES else {})
+        # QJR517 — le mode « villas » (QJ29/QJ31) survit à l'écrivain unique :
+        # groupe_index entier ≥ 0 (sinon None, ligne mono-système), label
+        # tronqué au max_length du modèle. ``lot`` reste une exclusion
+        # NOMMÉE (aucun écrivain UI : il se pose après coup, à l'écran).
+        groupe_index = _groupe_index_emis(li.get('groupe_index'))
+        groupe_label = str(li.get('groupe_label') or '')[:_GROUPE_LABEL_MAX]
         creer_ligne(
             devis, produit=produit,
             designation=(li.get('designation') or produit.nom)[:255],
@@ -892,6 +919,7 @@ def remplacer_lignes(devis, lignes_in, company, *, avertissements=None,
             taux_tva=Decimal(str(taux)) if taux is not None else None,
             optionnelle=bool(li.get('optionnelle', False)),
             type_ligne='produit', ordre=ordre, variante=variante,
+            groupe_index=groupe_index, groupe_label=groupe_label,
             **extra_role,
             # QJR59 / D12 — les marqueurs de saisie MANUELLE font l'aller
             # retour. Sans eux ici, ce chemin (le SEUL chemin d'écriture de

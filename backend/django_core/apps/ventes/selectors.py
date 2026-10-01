@@ -1962,6 +1962,18 @@ def faits_temoignage_devis(company, devis_id):
 # Les fonctions exigent ``company`` ET ``client_id`` : un ``client_id`` absent
 # renvoie VIDE, jamais tous les documents de la société.
 
+def devis_modifiabilite(devis):
+    """QJR516 (contrat QJR500) — le verdict de modifiabilité d'un devis pour
+    un AUTRE app (la ligne devis de la fiche lead, ``crm/serializers``) :
+    ``{modifiable, raison_non_modifiable, revision_possible, is_active}``.
+    Même prédicat que ``DevisSerializer`` (``domain/modifiabilite``), jamais
+    une règle recopiée côté crm."""
+    from .domain.modifiabilite import verdict
+    resultat = dict(verdict(devis))
+    resultat['is_active'] = bool(devis.is_active)
+    return resultat
+
+
 def devis_du_client_portail(company, client_id, *, limit=200):
     """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
 
@@ -1972,8 +1984,10 @@ def devis_du_client_portail(company, client_id, *, limit=200):
 
     if company is None or not client_id:
         return []
+    # QJR520 — une version remplacée n'est plus listée à côté de sa
+    # remplaçante (is_active=True).
     qs = (Devis.objects
-          .filter(company=company, client_id=client_id)
+          .filter(company=company, client_id=client_id, is_active=True)
           .exclude(statut=Devis.Statut.BROUILLON)
           .order_by('-date_creation')[:limit])
     return [{
@@ -3091,8 +3105,11 @@ def contexte_conception_devis(devis, company):
 
     # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
     raison = ''
-    if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
-                        Devis.Statut.EXPIRE):
+    # QJR516 — le design-context suit le geste CALEPINAGE (le MÊME prédicat
+    # que sync-layout) : il ne déclare plus modifiable un calepinage que
+    # sync-layout refuse (un envoyé, jusqu'à QJR557).
+    from .domain.modifiabilite import CALEPINAGE, verdict as _verdict
+    if not _verdict(devis, CALEPINAGE)['modifiable']:
         raison = (
             'Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
             '« Réviser » pour en créer une nouvelle version.'

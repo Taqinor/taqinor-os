@@ -31,6 +31,7 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
+const LE = readFileSync(join(HERE, '../../features/ventes/quote/lignesEcran.js'), 'utf8')
 
 // Le mappeur `?edit=` : de `ventesApi.getDevisById(editId)` jusqu'à `setLines`.
 function mappeurEdit() {
@@ -38,16 +39,19 @@ function mappeurEdit() {
   assert.ok(start > -1, "le chargement ?edit= (getDevisById) est introuvable")
   const end = DG.indexOf('setLines(withKeys(rows))', start)
   assert.ok(end > start, "la pose des lignes (setLines(withKeys(rows))) est introuvable")
-  return DG.slice(start, end)
+  // QJR523 — le mappeur UNIQUE vit dans lignesEcran.js.
+  assert.match(DG.slice(start, end), /lignesServeurVersEcran\(/)
+  const debut = LE.indexOf('export function lignesServeurVersEcran(')
+  assert.ok(debut > -1, 'lignesServeurVersEcran introuvable')
+  return LE.slice(debut, LE.indexOf('export function lignesEcranVersPayload('))
 }
 
-// La construction de `lignesPayload` dans `persisterDevis`.
+// La construction de `lignesPayload` : `lignesEcranVersPayload` (QJR523).
 function lignesPayload() {
-  const start = DG.indexOf('const lignesPayload = keptLines.map((l, idx) => {')
-  assert.ok(start > -1, 'lignesPayload introuvable')
-  const end = DG.indexOf('let devisId', start)
-  assert.ok(end > start, 'la fin de lignesPayload est introuvable')
-  return DG.slice(start, end)
+  assert.match(DG, /const lignesPayload = lignesEcranVersPayload\(lines/)
+  const start = LE.indexOf('export function lignesEcranVersPayload(')
+  assert.ok(start > -1, 'lignesEcranVersPayload introuvable')
+  return LE.slice(start)
 }
 
 test('LECTURE — le mappeur ?edit= restaure prixManuel depuis le champ prix_manuel de la ligne', () => {
@@ -69,8 +73,8 @@ test('ÉCRITURE — lignesPayload renvoie prix_manuel au serveur', () => {
 
 test("ÉCRITURE — le marqueur ne part QUE sur les lignes produit (une section/note n'a ni prix ni marqueur)", () => {
   const bloc = lignesPayload()
-  const structure = bloc.slice(bloc.indexOf('if (isStructure(l)) {'),
-                               bloc.indexOf('return {', bloc.indexOf('if (isStructure(l)) {') + 20))
+  const structure = bloc.slice(bloc.indexOf('if (estStructure(l)) {'),
+                               bloc.indexOf('return {', bloc.indexOf('if (estStructure(l)) {') + 80))
   assert.ok(structure.length > 0, 'la branche section/note est introuvable')
   assert.ok(!/prix_manuel/.test(structure),
             'une ligne de section/note ne doit jamais porter prix_manuel')

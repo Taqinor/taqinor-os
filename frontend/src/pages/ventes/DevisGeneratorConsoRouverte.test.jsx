@@ -66,7 +66,7 @@ function devisRouvert(etudeParams) {
   return {
     data: {
       // Seul un brouillon se rouvre (DEV-202609-0113 l'était encore à 17:01).
-      id: 336, reference: 'DEV-202609-0113', statut: 'brouillon', lead: null, client: 9,
+      id: 336, reference: 'DEV-202609-0113', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, lead: null, client: 9,
       mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: etudeParams,
       lignes: [

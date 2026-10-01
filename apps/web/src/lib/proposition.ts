@@ -357,6 +357,20 @@ export interface ProposalResponse {
    */
   resync_apres_envoi?: { date?: string | null } | null;
   /**
+   * QJR536 (contrat QJR501, D-QJR5-1) — `null` tant que CE devis n'est pas
+   * remplacé ; sinon la version EN VIGUEUR : `reference` toujours, `url`
+   * (chemin public) seulement si elle a été envoyée avec un lien valide — un
+   * brouillon n'est jamais servi au client. Présente ⇒ l'offre est RETIRÉE
+   * (`resolveOfferState` → 'withdrawn') : plus de signature, un lien vers la
+   * version en vigueur (jamais une redirection).
+   */
+  remplace_par?: { reference?: string | null; url?: string | null } | null;
+  /**
+   * QJR536 (D-QJR5-6) — le champ Notes du devis, texte CLIENT ('' si vide).
+   * Servi par le backend ; son rendu sur la page viendra avec sa propre tâche.
+   */
+  note_client?: string;
+  /**
    * WJ114 — bloc vendeur OPTIONNEL (note personnelle + identité), pas encore
    * exposé par le backend aujourd'hui : lu défensivement (`sellerNote` ci-
    * dessous) pour qu'il s'allume dès que l'ERP le fournira, sans crash ni
@@ -999,9 +1013,14 @@ export type OfferState = 'live' | 'accepted' | 'refused' | 'expired' | 'withdraw
  * dans les temps) — seul état où le formulaire + le CTA collant restent actifs.
  */
 export function resolveOfferState(
-  p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>,
+  p: Pick<ProposalResponse, 'statut' | 'accepted' | 'date_validite' | 'quote'>
+    & Partial<Pick<ProposalResponse, 'remplace_par'>>,
   now: Date = new Date(),
 ): OfferState {
+  // QJR536 — une version REMPLACÉE n'est plus signable, quel que soit son
+  // statut : le backend refuse déjà sa signature (QJR520), la page ne la
+  // propose plus et renvoie vers la version en vigueur.
+  if (resolveRemplacement(p)) return 'withdrawn';
   if (isAccepted(p)) return 'accepted';
   const statut = (p.statut ?? '').trim().toLowerCase();
   if (statut === 'refuse' || statut === 'refusee' || statut === 'refusé') return 'refused';
@@ -1014,6 +1033,25 @@ export function resolveOfferState(
 /** Vrai quand l'offre ne peut plus être signée (tout sauf `live`). */
 export function isOfferDead(state: OfferState): boolean {
   return state !== 'live';
+}
+
+/**
+ * QJR536 — la version qui REMPLACE cette proposition, lue défensivement :
+ * `null` si la clé est absente, `null` ou sans référence lisible. `url` n'est
+ * gardée que si c'est un chemin RELATIF du site (`/proposition/…`) — jamais
+ * une URL externe servie par erreur.
+ */
+export function resolveRemplacement(
+  p: Partial<Pick<ProposalResponse, 'remplace_par'>> | null | undefined,
+): { reference: string; url: string | null } | null {
+  const brut = p?.remplace_par;
+  if (!brut || typeof brut !== 'object') return null;
+  const reference = typeof brut.reference === 'string' ? brut.reference.trim() : '';
+  if (!reference) return null;
+  const url = typeof brut.url === 'string' && brut.url.startsWith('/proposition/')
+    ? brut.url
+    : null;
+  return { reference, url };
 }
 
 // ── Formulaire de signature : validation + mise en forme de la requête ───────

@@ -381,7 +381,20 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       if (d.mode_installation) {
         s = appliquerMarche(s, d.mode_installation, { marquerTouche: true })
       }
+      // QJR526 — le wattage LU sur les lignes du devis est posé AVANT le
+      // compte : sinon kwcCible = n × 710 (défaut) et un 10 × 550 W revient
+      // à 7,1 kWc au lieu de 5,5. Pas de drapeau propre (comme `SAISI panelW`).
+      if (nombre(d.panel_watt) > 0) s = { ...s, panelW: String(nombre(d.panel_watt)) }
       if (nombre(d.panneaux) > 0) s = poserPanneaux(s, nombre(d.panneaux))
+      // QJR526 — la structure du devis est un choix DÉJÀ fait : drapeau fermé
+      // (une composition ultérieure ne la ramène pas au défaut acier).
+      if (d.structure) s = { ...avecTouche(s, 'structure'), structure: d.structure }
+      if (d.structureProduitId != null && d.structureProduitId !== '') {
+        s = {
+          ...avecTouche(s, 'structure'),
+          structureProduitId: String(d.structureProduitId),
+        }
+      }
       if (SCENARIOS_VALIDES.includes(d.scenario)) {
         s = { ...avecTouche(s, 'scenario'), scenario: d.scenario }
       }

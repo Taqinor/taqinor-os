@@ -155,7 +155,7 @@ describe('PV23bis — « Concevoir en 3D » travaille sur le devis, pas sur un l
       data: {
         id: 5,
         reference: 'DEV-T',
-        statut: 'brouillon',
+        statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true,
         lead: null,
         client: 9,
         taux_tva: '20.00',

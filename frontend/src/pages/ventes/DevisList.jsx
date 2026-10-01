@@ -47,6 +47,7 @@ import { useEquipeMembreIds } from '../../hooks/useEquipeMembreIds'
 import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloadBlob'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
+import { clientProposalUrl } from '../../features/ventes/clientProposalLink'
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
 // aucune option ne contient d'onduleur — génération du PDF à options refusée
@@ -94,6 +95,8 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+import { peutEditerDevis, chantierEnCours } from '../../features/ventes/devisStatuts'
+import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -140,20 +143,6 @@ const PDF_GENERATION_LABELS = [
   'Calcul du système…',
   'Finalisation du document…',
 ]
-
-// VX216(a) — un chantier « en cours » a sa nomenclature (bom) GELÉE : éditer
-// le devis lié APRÈS ce point crée un écart devis↔chantier invisible côté
-// vendeur (l'installateur seul le voyait, InstallationDetail.jsx `devisDivergent`).
-// Statuts avant réception/clôture/annulation = composition encore gelée et
-// potentiellement engagée sur le terrain (miroir Installation.Statut ordonné,
-// apps/installations/models_installation.py).
-const CHANTIER_EN_COURS_STATUTS = [
-  'signe', 'materiel_commande', 'planifie', 'en_cours', 'installe',
-  // Statuts hérités équivalents (LEGACY_STATUT_MAP backend).
-  'a_planifier', 'pose_en_cours', 'pose', 'raccordement_onee', 'mise_en_service',
-]
-const chantierEnCours = (chantier) =>
-  !!chantier && CHANTIER_EN_COURS_STATUTS.includes(chantier.statut)
 
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
@@ -906,7 +895,7 @@ function DevisRow({ d, ctx }) {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
               <DropdownMenuItem
-                disabled={d.statut !== 'brouillon'}
+                disabled={!peutEditerDevis(d)}
                 onSelect={() => openEdit(d)}
               >
                 Éditer
@@ -947,9 +936,8 @@ function DevisRow({ d, ctx }) {
                   Partager le PDF
                 </DropdownMenuItem>
               )}
-              {/* WR2 — Copier le lien de proposition (share_link) :
-                  surface la fonctionnalité serveur invisible, sans passer
-                  par un envoi email/WhatsApp. */}
+              {/* WR2/QJR531 — Copier le lien de proposition (share_link) :
+                  copier le lien CLIENT vaut envoi (D-QJR5-3). */}
               {(d.statut === 'brouillon' || d.statut === 'envoye') && (
                 <DropdownMenuItem
                   disabled={shareBusyId === d.id}
@@ -1092,18 +1080,12 @@ function DevisRow({ d, ctx }) {
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
                 <DropdownMenuItem onSelect={() => {
-                  // VX216(a) — « Réviser » est le chemin d'édition réel d'un
-                  // devis accepté : avertit AVANT si un chantier en cours
-                  // (nomenclature gelée) est lié, pour éviter un écart
-                  // devis↔chantier découvert seul par l'installateur.
-                  if (chantierEnCours(d.chantier)) {
-                    toast.warning(
-                      `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
-                    )
-                  }
-                  ventesApi.reviserDevis(d.id)
-                    .then(() => dispatch(fetchDevis()))
-                    .catch(() => {})
+                  // QJR533 — UN seul geste (features/ventes/reviserDevis) :
+                  // avertit si chantier en cours (VX216(a)), dit le résultat,
+                  // ouvre la V2 en Édition complète.
+                  reviserEtOuvrir({
+                    devis: d, navigate, onApres: () => dispatch(fetchDevis()),
+                  })
                 }}>
                   Réviser (nouvelle version)
                 </DropdownMenuItem>
@@ -1925,8 +1907,7 @@ export default function DevisList() {
       const res = await ventesApi.shareLinkDevis(d.id)
       const path = res?.data?.path_interne
       if (path) {
-        const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
-        const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+        const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
         try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
         toast.success('Aperçu interne copié — ne l’envoyez jamais au client (aucune notification).')
       } else {
@@ -1940,14 +1921,16 @@ export default function DevisList() {
   }
 
   // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
-  // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
-  // par l'envoi email/WhatsApp. Surface une fonctionnalité serveur jusqu'ici
-  // invisible côté ERP. Aucun statut ne bouge (le backend ne fait que produire
-  // le lien).
+  // devis (DevisViewSet.share_link) et le copie au presse-papier.
+  // QJR531 (D-QJR5-3) — copier le lien CLIENT = ENVOI, comme depuis la fiche
+  // lead (DevisTab.copierPageClient) : `envoi: true` → mark_devis_sent côté
+  // serveur (le devis passe « envoyé », le funnel avance), puis la liste est
+  // rechargée. « Copier l'aperçu interne » ci-dessus reste SANS envoi.
   const handleCopierLienProposition = async (d) => {
     setShareBusyId(d.id)
     try {
-      const res = await ventesApi.shareLinkDevis(d.id)
+      const res = await ventesApi.shareLinkDevis(d.id, { envoi: true })
+      dispatch(fetchDevis())
       // Le backend renvoie {token, path} (path = /proposition/<slug-client>/
       // <token>, PV84 — slug cosmétique, jamais vérifié côté serveur) — on
       // reconstruit l'URL publique complète (site public, cf. VITE_PUBLIC_SITE_URL).
@@ -1955,10 +1938,9 @@ export default function DevisList() {
       // exceptionnellement `path` : il reste une route valide côté site.
       const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
       if (path) {
-        const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
-        const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+        const url = clientProposalUrl(path, import.meta.env.VITE_PUBLIC_SITE_URL)
         try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
-        toast.success('Lien de la proposition copié.')
+        toast.success('Lien copié — devis marqué envoyé.')
       } else {
         toast.error('Lien de proposition indisponible.')
       }
@@ -1973,7 +1955,13 @@ export default function DevisList() {
   // modal DevisForm est conservé mais n'est plus le chemin d'édition).
   const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => {
-    if (d.statut !== 'brouillon') return
+    // QJR532 — un devis figé (accepté, remplacé) dit POURQUOI au lieu de
+    // sortir en silence ; un envoyé s'ouvre (D-QJR5-1).
+    if (!peutEditerDevis(d)) {
+      toast.error(d.raison_non_modifiable
+        || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
+      return
+    }
     // VX216(a) — garde défensive : un devis normalement brouillon ne porte
     // pas encore de chantier, mais si un lien existe malgré tout (ex. flux
     // hérité), le vendeur est prévenu avant d'éditer une composition gelée.
