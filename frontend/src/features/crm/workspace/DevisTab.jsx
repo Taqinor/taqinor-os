@@ -90,15 +90,12 @@ export function devisTrackCurrent(d) {
   return d?.chantier ? 'chantier' : 'accepte'
 }
 
-// LW21 — mapping libellés backend (apps/crm/devis_auto.py `champs_manquants`,
-// texte FR fixe — source unique règle serveur/UI) → id DOM du champ dans
-// SectionsPane (ids `lf-*`).
-// ROUND 5 — la carte a DÉMÉNAGÉ dans `missingFields.js` : le bandeau « À
-// compléter » du centre doit pointer EXACTEMENT les mêmes champs que cet
-// onglet, et deux cartes divergentes seraient pires que pas de carte. On la
-// réexporte ici pour que rien de ce qui l'importait de `./DevisTab` ne bouge.
+// ROUND 5 / QJR601 — la cible d'un champ manquant se résout dans
+// `missingFields.js` par le NOM DU CHAMP servi (`devis_auto.manquants_detail`)
+// via `fieldLabels` : le bandeau « À compléter » du centre et cet onglet
+// pointent EXACTEMENT les mêmes champs. Réexport conservé pour les tests.
 // eslint-disable-next-line react-refresh/only-export-components -- réexport de logique pure (testable), même motif que ChatterTimeline.OUTCOME_LABELS
-export { DEVIS_AUTO_FIELD_IDS, missingFieldTarget } from './missingFields'
+export { missingFieldTarget } from './missingFields'
 
 // ── L-SECT (fondateur 24/08/2026) — « le commercial choisit ce que le client
 // reçoit avant d'envoyer la page devis ». Les 7 sections cochables du dialogue
@@ -221,8 +218,8 @@ export function lectureClientLabel(lecture, corrigeLe = null) {
 // un champ dans une section repliée n'est pas dans le DOM, on retombait donc
 // sur l'en-tête de section et le même clic donnait deux résultats différents
 // selon l'état de repli. Un seul chemin, partagé avec le centre.
-function jumpToMissingField(label) {
-  const target = missingFieldTarget(label)
+function jumpToMissingField(champ) {
+  const target = missingFieldTarget(champ)
   if (!target) return
   jumpToField(target)
 }
@@ -662,12 +659,13 @@ export default function DevisTab({
         <div className="lw-context-devis-missing">
           <p className="gen-hint">Devis automatique — champs manquants :</p>
           <ul className="lw-context-missing-list">
-            {(devisAuto.manquants ?? []).map((label) => (
-              <li key={label}>
+            {/* QJR601 — la cible vient du NOM DU CHAMP servi, jamais du libellé. */}
+            {(devisAuto.manquants_detail ?? []).map(({ champ, label }) => (
+              <li key={champ}>
                 <button
                   type="button"
                   className="lw-context-missing-link"
-                  onClick={() => jumpToMissingField(label)}
+                  onClick={() => jumpToMissingField(champ)}
                 >
                   {label}
                 </button>

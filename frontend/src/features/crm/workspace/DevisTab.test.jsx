@@ -123,9 +123,9 @@ describe('LW21 — logique pure (co-localisée, testable sans DOM)', () => {
     expect(devisTrackCurrent({ chantier: { id: 1, reference: 'CHT-1' } })).toBe('chantier')
   })
 
-  it('missingFieldTarget mappe les libellés backend (devis_auto.py) vers les id lf-*', () => {
-    expect(missingFieldTarget('facture hiver')).toEqual({ field: 'lf-facture-hiver', section: 'energie' })
-    expect(missingFieldTarget('HMT')).toEqual({ field: 'lf-pompe-hmt', section: 'pompage' })
+  it('missingFieldTarget mappe le NOM DU CHAMP servi (manquants_detail) vers les id lf-* (QJR601)', () => {
+    expect(missingFieldTarget('facture_hiver')).toEqual({ field: 'lf-facture-hiver', section: 'energie' })
+    expect(missingFieldTarget('pompe_hmt_m')).toEqual({ field: 'lf-pompe-hmt', section: 'pompage' })
     expect(missingFieldTarget('inconnu')).toBeNull()
   })
 
@@ -180,7 +180,13 @@ describe('LW21 — CTA devis automatique', () => {
     const focusSpy = vi.spyOn(input, 'focus')
     try {
       renderTab({
-        state: leadState({ devis_auto: { pret: false, manquants: ['facture hiver'], message: 'Manque : facture hiver' } }),
+        state: leadState({
+          devis_auto: {
+            pret: false, manquants: ['facture hiver'], message: 'Manque : facture hiver',
+            manquants_detail: [{ champ: 'facture_hiver', label: 'facture hiver' }],
+            requis: [['facture_hiver']],
+          },
+        }),
       })
       expect(screen.queryByRole('button', { name: /Devis automatique/ })).toBeNull()
       await user.click(screen.getByText('facture hiver'))
