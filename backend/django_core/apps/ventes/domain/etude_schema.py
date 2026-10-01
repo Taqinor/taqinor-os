@@ -215,6 +215,14 @@ SCHEMA = {
     'payback': _cle((int, float), ECRAN, DERIVEE),
     'injection_kwh_an': _cle((int, float), ECRAN, DERIVEE),
     'injection_dh_an': _cle((int, float), ECRAN, DERIVEE),
+    # QJR578 (contrat QJR510) — le kWc des lignes pour lequel l'écran a
+    # calculé les dérivées ci-dessus : sans lui, le builder ne peut pas savoir
+    # qu'une modification de ligne ultérieure les a périmées (QJR625).
+    # Réservée à l'écran (exclusive) : seul celui qui calcule l'étude dit pour
+    # quelle puissance il l'a calculée.
+    'etude_kwc_base': _cle((int, float), ECRAN, ENTREE,
+                           'kWc des lignes pour lequel l\'étude écran a été '
+                           'calculée.', exclusif=True),
 
     # ── QJR66 (même arbitrage) — les ENTRÉES du marché industriel/commercial.
     #    `tension_raccordement` est déclaré plus haut (entrée générale) ; la
