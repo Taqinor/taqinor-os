@@ -132,7 +132,7 @@ class UpdatedAtEtPrixParKwcInchanges(_FixtureBase, TestCase):
             self.devis.prix_par_kwc,
             'prérequis du test : prix_par_kwc doit être GELÉ avant le PATCH')
 
-    def test_prix_par_kwc_et_updated_at_ne_bougent_pas(self):
+    def test_prix_par_kwc_inchange_et_updated_at_au_jeton(self):
         prix_avant = self.devis.prix_par_kwc
         maj_avant = self.devis.updated_at
 
@@ -145,10 +145,16 @@ class UpdatedAtEtPrixParKwcInchanges(_FixtureBase, TestCase):
             self.devis.prix_par_kwc, prix_avant,
             'le verrou QJR223 ne doit JAMAIS faire repartir Devis.save() '
             '(SCA47 : le gel de prix_par_kwc romprait le write-once)')
+        # QJR545 — ``updated_at`` est désormais le JETON du verrou optimiste :
+        # la pose d'une surcharge l'avance par ``verrou_devis.toucher`` (un
+        # UPDATE d'une seule colonne, pas un ``Devis.save()``), et la réponse
+        # porte exactement le jeton posé en base.
+        from django.utils.dateparse import parse_datetime
+        self.assertGreater(self.devis.updated_at, maj_avant)
         self.assertEqual(
-            self.devis.updated_at, maj_avant,
-            'le verrou QJR223 ne doit JAMAIS faire repartir Devis.save() '
-            '(VX98 : updated_at avancerait sur un devis dont rien n\'a bougé)')
+            self.devis.updated_at, parse_datetime(str(r.data['updated_at'])),
+            'updated_at ne doit avancer QUE par le jeton QJR545 renvoyé au '
+            'client, jamais par un Devis.save() relancé par le verrou QJR223')
 
 
 class DeuxPatchConcurrentsNePerdentPlusUnChemin(_FixtureBase, TransactionTestCase):

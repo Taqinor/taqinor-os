@@ -11,6 +11,12 @@ from .. import premium_base
 # QJR651 — contexte, enveloppe de page, assemblage HTML et rendu PDF
 # vivent dans ``quote_engine/premium_base.py`` ; ce module ne garde que
 # SA liste de pages.
+#
+# ``build_ctx`` reste exposé ici (API publique du module : tests MT/CFO,
+# QJR614 au centime) — c'est le contexte UNIQUE du harnais.
+build_ctx = premium_base.build_ctx
+
+
 def pages(ctx: dict) -> list:
     """Les 3 pages premium commerciales.
 
