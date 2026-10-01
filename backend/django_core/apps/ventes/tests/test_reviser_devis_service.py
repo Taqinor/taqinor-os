@@ -51,8 +51,11 @@ class ReviserDevisService(TestCase):
 
     def _devis(self, statut=Devis.Statut.ENVOYE, auteur=None):
         self.n += 1
+        # Références espacées de 10 : « Réviser » numérote la v2 au plus haut
+        # numéro utilisé + 1 (core.numbering) ; des références manuelles
+        # consécutives entreraient en collision avec elle.
         devis = Devis.objects.create(
-            company=self.company, reference=f'DEV-{MONTH}-521{self.n}',
+            company=self.company, reference=f'DEV-{MONTH}-521{self.n}0',
             client=self.client_obj, statut=statut, taux_tva=Decimal('20'),
             created_by=auteur or self.user)
         LigneDevis.objects.create(
