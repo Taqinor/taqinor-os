@@ -5,9 +5,9 @@
 // The premium PDF engine computes its own figures server-side — never fed here.
 
 import { formatMAD } from '../../lib/format.js'
-// QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient du
-// module unique aligné sur `selectors.ligne_compte_dans_totaux` (remise.js
-// n'importe rien : aucun cycle).
+// QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
+// `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
+// remise.js n'importe rien : aucun cycle).
 import { ligneCompteDansTotaux } from './remise.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
