@@ -525,6 +525,12 @@ export default function LeadWorkspace({
         run: () => window.dispatchEvent(new CustomEvent('lw:open-whatsapp-composer', { detail: { leadId } })),
       },
       { id: 'lw-devis-auto', label: 'Devis automatique', run: () => onAction('open-devis', 'auto') },
+      // QJR599 — un devis MANUEL, même sans devis automatique prêt.
+      {
+        id: 'lw-devis-edition',
+        label: 'Nouveau devis (édition complète)',
+        run: () => onAction('open-devis', 'edit'),
+      },
       {
         id: 'lw-archive',
         label: leadArchived ? 'Restaurer le lead' : 'Archiver le lead',

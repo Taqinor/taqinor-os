@@ -582,6 +582,23 @@ export default function DevisTab({
   return (
     <div className="lw-context-devis">
       <SalleVenteAnalyticsBadge leadId={state.leadId} />
+      {/* QJR599 — un devis MANUEL se démarre TOUJOURS depuis le cockpit, même
+          quand le devis automatique n'est pas prêt (facture inconnue…) : le
+          mode 'edit' sans devisId monte simplement le générateur. Ce bouton
+          crée un NOUVEAU devis — jamais le chemin de correction d'un envoyé
+          (« Modifier » de la carte, QJR534). Auto / remise / 1 page /
+          premium restent conditionnés à devis_auto.pret. */}
+      <div className="lw-context-devis-nouveau">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid="lw-devis-edition"
+          onClick={() => onAction?.('open-devis', 'edit')}
+        >
+          <FileText size={14} aria-hidden="true" /> Nouveau devis (édition complète)…
+        </Button>
+      </div>
       {devisAuto.pret ? (
         <div className="lw-context-devis-cta">
           <Button
@@ -601,7 +618,6 @@ export default function DevisTab({
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('remise', kwcCible))}>Remise %…</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('onepage', kwcCible))}>Devis 1 page</DropdownMenuItem>
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('premium', kwcCible))}>Devis premium</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', 'edit')}>Nouveau devis sur mesure…</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
