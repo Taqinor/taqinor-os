@@ -385,6 +385,11 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
     consommation exploitable…). Une valeur RÉELLEMENT vide, elle, arrive avec
     ``auto`` renseigné et sans marqueur — les deux états sont désormais
     distinguables.
+
+    QJR571 (D-QJR5-8) — ``non_lu: true`` sur un chemin hors de
+    :data:`CHEMINS_LUS` : accepté et stocké, mais aucun lecteur de production
+    ne le consulte (le document n'en tient pas compte). Le marqueur est ABSENT,
+    jamais ``false``, pour un chemin lu.
     """
     registre = _registre(devis)
     chemins = list(autos or {})
@@ -402,6 +407,8 @@ def vue_effective(devis, autos, chemins_supplementaires=()):
                'effectif': valeur, 'source': source}
         if auto is None:
             vue['non_derivable'] = True
+        if chemin not in CHEMINS_LUS:
+            vue['non_lu'] = True
         bloc[chemin] = vue
     return bloc
 
@@ -427,6 +434,20 @@ CHEMINS_AVEC_AUTO = (
     'tarif.charges_fixes_mad',
     'etude.jour_reference',
     'mode_installation',
+)
+
+#: QJR571 (D-QJR5-8) — LES CHEMINS QU'UN LECTEUR DE PRODUCTION CONSULTE.
+#: Tout autre chemin de la liste blanche est accepté et stocké sans effet sur
+#: le document : :func:`vue_effective` le marque ``non_lu: true``. Chaque
+#: entrée nomme son lecteur ; la table ``COUVERTURE`` de
+#: ``tests/test_contrat_override_parcours.py`` prouve le même ensemble.
+CHEMINS_LUS = (
+    'taille.nb_panneaux',      # cible_dimensionnement_du_devis → decider_taille
+    'taille.panel_watt',       # pipeline._cible_du_registre
+    'taille.kwc',              # scenario.puissance_kwc_du_devis, builder
+    'scenario',                # scenario.scenario_effectif, utils.options
+    'recommended_option',      # scenario, builder
+    'etude.jour_reference',    # entrees.jour_reference_du_devis
 )
 
 #: QJR305 — LES CHEMINS QUE LE MOTEUR NE DÉRIVE PAS, et la raison de chacun.

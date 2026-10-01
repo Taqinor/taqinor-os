@@ -39,6 +39,27 @@ export const CHEMINS_AUTORISES = Object.freeze([
   'mode_installation', 'structure', 'tension', 'pompe_alim',
 ])
 
+/**
+ * QJR571 (D-QJR5-8) — les chemins que le MOTEUR NE LIT PAS : acceptés et
+ * stockés, sans effet sur le document. RECOPIÉS À L'IDENTIQUE de
+ * `notes.chemins_non_lus` du contrat (le test l'épingle). Le serveur marque
+ * leur entrée `effectif` par `non_lu: true` ; l'écran le dit au vendeur.
+ */
+export const CHEMINS_NON_LUS = Object.freeze([
+  'taille.batterie_nb_modules', 'taille.batterie_module_kwh',
+  'profil.occupation', 'profil.factures_mensuelles_reelles', 'profil.conso_annuelle',
+  'profil.equipements.<clef>',
+  'tarif.distributeur', 'tarif.tranches', 'tarif.charges_fixes_mad',
+  'mode_installation', 'structure', 'tension', 'pompe_alim',
+])
+
+/** Le chemin (motif `profil.equipements.<clef>` compris) est-il non lu ? */
+export function cheminNonLu(chemin) {
+  if (typeof chemin !== 'string' || chemin === '') return false
+  if (CHEMINS_NON_LUS.includes(chemin)) return true
+  return CHEMINS_NON_LUS.includes('profil.equipements.<clef>') && MOTIF_EQUIPEMENT.test(chemin)
+}
+
 /** Les trois origines du contrat (`notes.origine_valeurs`) — jamais une 4e. */
 export const ORIGINES = Object.freeze(['manuel', 'import', 'api'])
 

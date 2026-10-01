@@ -167,7 +167,7 @@ import {
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
-import { CHEMINS_AUTORISES } from '../../features/ventes/quote/overrides'
+import { CHEMINS_AUTORISES, cheminNonLu } from '../../features/ventes/quote/overrides'
 import { deuxValeursDim as selecteurDeuxValeursDim }
   from '../../features/ventes/quote/paireDimensionnement'
 // QJR426 (DR5) — les 13 cartes de métrique du générateur (bloc Aperçu de la
@@ -5237,8 +5237,12 @@ export default function DevisGenerator({
                   value={ovChemin}
                   onChange={(e) => setOvChemin(e.target.value)}
                 >
+                  {/* QJR571 (D-QJR5-8) — un chemin que le moteur ne lit pas
+                      est DIT tel quel : sa pose ne change pas le document. */}
                   {CHEMINS_AUTORISES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {cheminNonLu(c) ? `${c} — sans effet sur le document` : c}
+                    </option>
                   ))}
                 </select>
                 <Input
@@ -5280,7 +5284,15 @@ export default function DevisGenerator({
                       {Object.entries(overridesReg.effectif).map(([chemin, v]) => (
                         <tr key={chemin} className="border-t border-border"
                             data-testid={`overrides-effectif-row-${chemin}`}>
-                          <td className="pr-3 py-1 font-mono">{chemin}</td>
+                          <td className="pr-3 py-1 font-mono">
+                            {chemin}
+                            {v.non_lu && (
+                              <span className="ml-1 font-sans text-muted-foreground"
+                                    data-testid={`overrides-non-lu-${chemin}`}>
+                                — sans effet sur le document
+                              </span>
+                            )}
+                          </td>
                           <td className="pr-3 py-1">{v.auto == null ? '—' : JSON.stringify(v.auto)}</td>
                           <td className="pr-3 py-1">{v.manuel == null ? '—' : JSON.stringify(v.manuel)}</td>
                           <td className="pr-3 py-1 font-medium">{v.effectif == null ? '—' : JSON.stringify(v.effectif)}</td>

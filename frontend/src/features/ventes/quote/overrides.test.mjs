@@ -5,8 +5,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  CHEMINS_AUTORISES, CHEMIN_PAR_DRAPEAU, ORIGINES,
-  cheminAutorise, cheminsRefuses, serialiser, hydrater, fusionner,
+  CHEMINS_AUTORISES, CHEMIN_PAR_DRAPEAU, ORIGINES, CHEMINS_NON_LUS,
+  cheminAutorise, cheminNonLu, cheminsRefuses, serialiser, hydrater, fusionner,
 } from './overrides.js'
 import {
   sizingReducer, ETAT_INITIAL, DRAPEAUX_TOUCHE, SCENARIO_AVEC,
@@ -20,6 +20,23 @@ const CONTRAT = JSON.parse(readFileSync(new URL(
 
 test('les chemins sont RECOPIÉS À L’IDENTIQUE du contrat QJR1 (ordre compris)', () => {
   assert.deepEqual([...CHEMINS_AUTORISES], CONTRAT.notes.chemins_autorises)
+})
+
+test('QJR571 — CHEMINS_NON_LUS est RECOPIÉ À L’IDENTIQUE du contrat', () => {
+  assert.deepEqual([...CHEMINS_NON_LUS], CONTRAT.notes.chemins_non_lus)
+  for (const c of CHEMINS_NON_LUS) assert.ok(CHEMINS_AUTORISES.includes(c), c)
+})
+
+test('QJR571 — cheminNonLu : les chemins lus ne sont jamais marqués', () => {
+  for (const c of CHEMINS_NON_LUS.filter((x) => !x.includes('<'))) {
+    assert.equal(cheminNonLu(c), true, c)
+  }
+  const lus = CHEMINS_AUTORISES.filter((c) => !CHEMINS_NON_LUS.includes(c))
+  for (const c of lus) assert.equal(cheminNonLu(c), false, c)
+  assert.equal(cheminNonLu('profil.equipements.piscine'),
+    CHEMINS_NON_LUS.includes('profil.equipements.<clef>'))
+  assert.equal(cheminNonLu(''), false)
+  assert.equal(cheminNonLu(null), false)
 })
 
 test('les origines sont celles du contrat, jamais une quatrième', () => {

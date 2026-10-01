@@ -124,6 +124,30 @@ class PatchFusionTests(_OverridesBase):
         self.assertEqual(bloc['source'], 'manuel')
 
 
+class CheminsNonLusTests(_OverridesBase):
+    """QJR571 (D-QJR5-8) — la réponse DIT quel chemin le moteur ne lit pas.
+
+    Un chemin accepté et stocké sans aucun lecteur de production porte
+    ``non_lu: true`` dans ``effectif`` ; un chemin LU n'a pas la clé (jamais
+    ``false``), même modèle que ``non_derivable``.
+    """
+
+    def test_un_chemin_sans_lecteur_porte_non_lu(self):
+        resp = self.api.patch(self.url,
+                              {'profil.conso_annuelle': {'valeur': 12000}},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIs(resp.data['effectif']['profil.conso_annuelle']['non_lu'],
+                      True)
+
+    def test_un_chemin_lu_n_a_pas_la_cle(self):
+        resp = self.api.patch(self.url,
+                              {'scenario': {'valeur': 'Sans batterie'}},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('non_lu', resp.data['effectif']['scenario'])
+
+
 class EcritureChirurgicaleTests(_OverridesBase):
     """UN UPDATE d'une seule colonne — pas un ``Devis.save``.
 

@@ -136,6 +136,29 @@ def _lire_kwc_du_devis(ctx):
     return puissance_kwc_du_devis(ctx.devis)
 
 
+class _DevisAvecCible:
+    """Le devis relu, vu avec une cible ``taille.nb_panneaux`` en plus de
+    son registre — rien n'est écrit en base."""
+
+    def __init__(self, devis):
+        self._devis = devis
+        self.overrides = dict(overrides.registre_du_devis(devis))
+        self.overrides['taille.nb_panneaux'] = {'valeur': 10,
+                                                'origine': 'manuel'}
+
+    def __getattr__(self, nom):
+        return getattr(self._devis, nom)
+
+
+def _lire_watt_de_la_cible(ctx):
+    """QJR571 — ``taille.panel_watt`` : le wattage de la CIBLE que
+    ``pipeline.decider_taille`` reçoit du registre (``_cible_du_registre``),
+    lu dès qu'une cible en nombre de panneaux est déclarée."""
+    from apps.ventes.domain.pipeline import _cible_du_registre
+    cible = _cible_du_registre(_DevisAvecCible(ctx.recharger()))
+    return cible.panel_watt if cible is not None else None
+
+
 class Couverture:
     """La ligne de table d'UN chemin du registre.
 
@@ -178,7 +201,9 @@ PAS_ENCORE_LU = ('déclaré D12, aucun lecteur aval branché à ce jour — la '
 COUVERTURE = {
     'taille.nb_panneaux': Couverture(21, lecteur=_lire_kwc_du_devis,
                                      attendu='kwc_21_panneaux'),
-    'taille.panel_watt': Couverture(545, sans_lecteur=PAS_ENCORE_LU),
+    # QJR571 — BRANCHÉ : le wattage de la cible du registre
+    # (``pipeline._cible_du_registre``, étape 2 ``decider_taille``).
+    'taille.panel_watt': Couverture(545, lecteur=_lire_watt_de_la_cible),
     'taille.kwc': Couverture(9.99, lecteur=_lire_kwc_quote),
     'taille.batterie_nb_modules': Couverture(3, sans_lecteur=PAS_ENCORE_LU),
     'taille.batterie_module_kwh': Couverture(5.12,
@@ -457,9 +482,16 @@ class TableDeCouvertureTests(TestCase):
         """
         branches = sorted(c for c, v in COUVERTURE.items()
                           if v.lecteur is not None)
-        self.assertEqual(branches, ['etude.jour_reference',
-                                    'recommended_option', 'scenario',
-                                    'taille.kwc', 'taille.nb_panneaux'])
+        self.assertEqual(branches, sorted(overrides.CHEMINS_LUS))
+
+    def test_chemins_lus_egale_les_lecteurs_de_la_table(self):
+        """QJR571 — ``overrides.CHEMINS_LUS`` (ce que la réponse déclare lu)
+        et les lecteurs de cette table sont le MÊME ensemble : un chemin
+        annoncé lu sans lecteur prouvé, ou un lecteur prouvé sur un chemin
+        annoncé ``non_lu``, fait rougir."""
+        lus_table = {c for c, v in COUVERTURE.items() if v.lecteur is not None}
+        self.assertEqual(lus_table, set(overrides.CHEMINS_LUS))
+        self.assertIn('taille.panel_watt', overrides.CHEMINS_LUS)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
