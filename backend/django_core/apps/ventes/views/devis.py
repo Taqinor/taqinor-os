@@ -1137,7 +1137,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         try:
             kwc = _nombre('kwc')
             nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
-            panel_watt = _nombre('panel_watt', Decimal('710'))
+            from ..domain.taille import _AUTO_PANEL_WATT
+            panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
             taux_tva = _nombre('taux_tva', Decimal('20'))
             mppt_paires = _nombre('mppt_paires', Decimal('1'))
             dimensionnement_avec = _dimensionnement_avec(

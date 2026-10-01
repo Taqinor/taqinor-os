@@ -517,7 +517,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     kwp = float(kwc or 0)
     if kwp <= 0:
         return []
-    watt = float(panel_watt or 0) or 550.0
+    from apps.ventes.domain.lignes import LAYOUT_WATT_REPLI
+    watt = float(panel_watt or 0) or float(LAYOUT_WATT_REPLI)
 
     # QJR-OFFGRID — un site ISOLÉ n'a qu'UNE composition possible : onduleur
     # autonome + stockage. La forme deux options (réseau / hybride) n'a alors

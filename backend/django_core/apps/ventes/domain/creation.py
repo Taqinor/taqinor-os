@@ -6,9 +6,11 @@ lead (dimensionnement, refus motivé, marque anti-doublon, planification), le
 brouillon issu d'un document OCR, la duplication, le devis SAV et l'upsell
 d'intervention, et les préréglages (enregistrer / appliquer).
 
-LES CHEMINS RESTENT CINQ, ET DIFFÉRENTS. Ce module les RASSEMBLE, il ne les
-unifie pas : leur convergence sur un pipeline unique est M4/M5 (QJR80-QJR85,
-puis les bascules). Ici, rien n'a changé de comportement.
+LES CHEMINS PASSENT PAR LE PIPELINE. Le calepinage (`build_devis_from_layout`)
+et le devis automatique (`build_devis_auto`) appellent `pipeline.appliquer` ;
+le dry-run appelle les mêmes étapes `verifier` / `composer` (QJR80-QJR85, puis
+les bascules M5). Les comportements ont donc changé depuis le déplacement
+QJR76 (QJR95/QJR96 notamment) : ce module n'est plus une simple copie.
 
 IMPORT AMONT DE `domain/taille` : `composer_devis_residentiel` porte
 `panel_watt=_AUTO_PANEL_WATT` comme VALEUR PAR DÉFAUT, évaluée à la
@@ -516,7 +518,9 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # tableau de protection, installation, transport…), plus le squelette
     # panneau + onduleur ± batterie d'hier : voir ``composition_residentielle``.
     # Un composant absent (ou non tarifé) du catalogue est simplement sauté.
-    kwc_composition = kwc or (nb_panneaux * float(watt or 550) / 1000.0)
+    from apps.ventes.domain.lignes import LAYOUT_WATT_REPLI
+    kwc_composition = kwc or (
+        nb_panneaux * float(watt or LAYOUT_WATT_REPLI) / 1000.0)
 
     # QJ21 / FG248 — le layout RANGÉ (avec sa géométrie par pan déjà processée)
     # et l'étude que ce chemin APPORTE, par LE MÊME lecteur que le devis

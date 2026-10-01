@@ -29,8 +29,9 @@ logger = logging.getLogger("apps.ventes.services")
 
 # ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
 # Le Copilote ne doit JAMAIS créer un devis vide : il passe toujours par ce
-# dimensionnement automatique, puis délègue à build_devis_from_layout
-# (catalogue, numérotation, brouillon).
+# dimensionnement automatique (``decider_taille`` du pipeline), puis
+# ``creation.build_devis_auto`` crée le devis par ``pipeline.appliquer`` —
+# le même pipeline que le calepinage (catalogue, numérotation, brouillon).
 #
 # ORDRE FONDATEUR (29/08/2026) — « ALL sizing should go through the new sizing
 # tool, and i said ALL sizing ». La règle historique « 8 panneaux par tranche de

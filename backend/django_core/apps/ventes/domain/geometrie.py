@@ -271,9 +271,9 @@ def scenario_du_layout(layout):
 #: DEUX WATTAGES, ET LA NUANCE EST LOAD-BEARING :
 #:
 #: * ``watt`` est le wattage à COMPOSER. Il n'est JAMAIS ``None`` : à défaut de
-#:   tout, c'est le forfait ``CIBLE_WATT_DEFAUT``, et la composition applique
-#:   de toute façon ce même forfait en aval (``composition_residentielle`` :
-#:   ``float(panel_watt or 0) or 550.0``) ;
+#:   tout, c'est le repli ``lignes.LAYOUT_WATT_REPLI``, et la composition
+#:   applique de toute façon ce même repli en aval
+#:   (``composition_residentielle``) ;
 #: * ``watt_declare`` est le wattage que le layout DÉCLARE, ou qu'il laisse
 #:   DÉDUIRE de son kWc — et il vaut ``None`` quand il n'y a rien à déduire.
 #:   La sélection catalogue a besoin de cette nuance : « aucun wattage cible »
@@ -407,7 +407,7 @@ def lire_layout(layout, *, toiture=None, compte=None, kwc=None):
 
     return LectureLayout(
         compte=compte,
-        watt=watt_declare if watt_declare is not None else CIBLE_WATT_DEFAUT,
+        watt=watt_declare if watt_declare is not None else LAYOUT_WATT_REPLI,
         watt_declare=watt_declare,
         kwc=kwc,
         scenario=scenario_du_layout(layout),
@@ -1046,6 +1046,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
 )
 from apps.ventes.domain.lignes import (  # noqa: E402,F401
     CIBLE_WATT_DEFAUT,
+    LAYOUT_WATT_REPLI,
     _classe_ligne,
     _lignes_produit,
 )

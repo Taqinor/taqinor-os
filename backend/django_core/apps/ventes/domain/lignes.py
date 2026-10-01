@@ -45,8 +45,14 @@ from decimal import Decimal
 # l'étude. Elle expose ses doutes plutôt que de les cacher — d'où la liste
 # ``avertissements`` en français, affichable telle quelle.
 
-#: Wattage retenu quand plus rien n'est lisible (panneau catalogue courant).
-CIBLE_WATT_DEFAUT = 550
+#: QJR608 — LE wattage de REPLI d'un layout (ou d'une composition) qui ne dit
+#: aucun wattage. Propriétaire unique : ``geometrie``, ``creation`` et
+#: ``composition`` l'importent d'ici. À NE PAS confondre avec
+#: ``taille._AUTO_PANEL_WATT`` (710, le panneau catalogue par défaut du devis
+#: automatique) : entrées différentes, valeurs volontairement distinctes.
+LAYOUT_WATT_REPLI = 550
+#: Nom historique (surface ``services``, tests PV16) du même repli.
+CIBLE_WATT_DEFAUT = LAYOUT_WATT_REPLI
 
 
 def _lignes_produit(devis):
@@ -396,7 +402,8 @@ def cible_depuis_lignes(devis, variante='sans'):
 #    recopié aurait protégé une valeur qui venait d'être réécrite).
 #
 # ── QJR243 (g) — LE RECENSEMENT N'ÉTAIT PAS EXHAUSTIF : QUATRE CHEMINS DE PLUS,
-#    ET DEUX CONTOURNEMENTS DE LA GARDE. Chacun reçoit ici son verdict ÉCRIT ;
+#    ET UN CONTOURNEMENT DE LA GARDE (QJR608 : le second, « cpq », n'existe
+#    pas). Chacun reçoit ici son verdict ÉCRIT ;
 #    AUCUN n'est recâblé par cette tâche (« constater, pas corriger »).
 #
 # 7. ``domain/composition._completer_kit_residentiel`` — ADAPTATEUR DE FAIT,
@@ -427,28 +434,22 @@ def cible_depuis_lignes(devis, variante='sans'):
 #    Commande de RÉPARATION d'historique, exécutée à la main par le fondateur :
 #    elle recrée la ligne manquante d'un devis déjà vendu, elle ne compose pas.
 #
-# ── LES DEUX CONTOURNEMENTS DE LA GARDE AST, NOMMÉS ─────────────────────────
+# ── LE CONTOURNEMENT DE LA GARDE AST, NOMMÉ ──────────────────────────────────
 #
-# A. ``LigneDevisViewSet`` → ``LigneDevisSerializer`` (``ModelSerializer``,
-#    ``fields = '__all__'``). Le sérialiseur DRF appelle ``Model.objects
-#    .create(**validated_data)`` DANS DRF, pas dans ce dépôt : la garde AST de
-#    ``test_qjr_ecrivain_lignes`` ne peut structurellement pas le voir.
-#    VERDICT : ADAPTATEUR LÉGITIME, et il est SÛR — précisément parce que
-#    ``fields = '__all__'`` : il porte le jeu de champs du MODÈLE, donc il ne
-#    peut pas en oublier un (c'est le risque que ``CHAMPS_LIGNE`` couvre pour
-#    les appelants Python). Le faire passer par ``creer_ligne`` reviendrait à
-#    réécrire un ``ModelSerializer`` à la main pour un gain nul.
+# ``LigneDevisViewSet`` → ``LigneDevisSerializer`` (``ModelSerializer``,
+# ``fields = '__all__'``). Le sérialiseur DRF appelle ``Model.objects
+# .create(**validated_data)`` DANS DRF, pas dans ce dépôt : la garde AST de
+# ``test_qjr_ecrivain_lignes`` ne peut structurellement pas le voir.
+# VERDICT : ADAPTATEUR LÉGITIME, et il est SÛR — précisément parce que
+# ``fields = '__all__'`` : il porte le jeu de champs du MODÈLE, donc il ne
+# peut pas en oublier un (c'est le risque que ``CHAMPS_LIGNE`` couvre pour
+# les appelants Python). Le faire passer par ``creer_ligne`` reviendrait à
+# réécrire un ``ModelSerializer`` à la main pour un gain nul.
 #
-# B. ``apps/cpq/services.py`` — cinq ``LigneDevis.objects.create`` (offre
-#    groupée NTCPQ3, avenant, règle CPQ résolue…). VERDICT : HORS PIPELINE et
-#    HORS GOULOT, écriture cross-app ASSUMÉE (le module le documente en tête).
-#    ``creer_ligne`` vit dans ``apps.ventes.domain`` : l'appeler depuis ``cpq``
-#    serait un import de domaine à domaine, que la règle de frontière interdit.
-#    RISQUE RÉEL, ÉCRIT plutôt que tu : ces cinq sites nomment leurs champs à
-#    la main et n'héritent donc PAS d'un champ ajouté demain à
-#    ``CHAMPS_LIGNE`` (``variante``, ``quantite_manuelle``…). La parade
-#    correcte est une fonction de ``ventes/services.py`` que ``cpq`` appellerait
-#    — c'est une TÂCHE À OUVRIR, pas un recâblage de ce lot.
+# QJR608 — l'ancienne entrée « B. apps/cpq/services.py » a été retirée :
+# ``apps/cpq`` n'a pas de ``services.py`` et ne crée aucune ``LigneDevis``
+# (vérifié le 01/10/2026). Un futur écrivain cross-app passera par une
+# fonction de ``ventes/services.py``, jamais par ``LigneDevis.objects.create``.
 
 #: QJR84 — le jeu de champs COMPLET d'une ligne de devis. ``produit`` et
 #: ``produit_id`` sont les DEUX façons de rattacher le catalogue (la seconde
@@ -476,13 +477,11 @@ def creer_ligne(devis, **champs):
     """QJR84 — crée UNE ``LigneDevis``. LE GOULOT PYTHON de ``apps/ventes``.
 
     QJR243 (g) — CETTE PHRASE DISAIT « le seul endroit où une ligne de devis
-    naît », ET C'ÉTAIT FAUX SUR DEUX POINTS, tous deux désormais recensés avec
-    leur verdict juste au-dessus (§ « LES DEUX CONTOURNEMENTS ») : le
-    sérialiseur DRF de ``LigneDevisViewSet`` crée ses lignes DANS DRF (sûr — il
-    porte le jeu de champs du MODÈLE), et ``apps/cpq/services`` en crée cinq
-    par une écriture cross-app assumée. Le goulot reste vrai pour tout ce qui
-    s'écrit EN PYTHON dans cette app — ce qui est déjà la garantie qui compte,
-    et ce que la garde AST vérifie.
+    naît », ET C'ÉTAIT FAUX : le sérialiseur DRF de ``LigneDevisViewSet`` crée
+    ses lignes DANS DRF (sûr — il porte le jeu de champs du MODÈLE), recensé
+    avec son verdict juste au-dessus (§ « LE CONTOURNEMENT »). Le goulot reste
+    vrai pour tout ce qui s'écrit EN PYTHON dans cette app — ce qui est déjà
+    la garantie qui compte, et ce que la garde AST vérifie.
 
     Les champs NON fournis gardent le défaut du MODÈLE : un appelant qui
     n'écrivait pas ``variante`` hier obtient exactement la ligne d'hier. Ce
