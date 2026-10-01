@@ -1,7 +1,7 @@
 {
   "endpoint": "POST /api/django/ventes/devis/<id>/replace-lines/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR504 (M0 QJR5 ; D-QJR5-10) — enregistrer une édition en UNE transaction : lignes + en-tête + échéancier + étude. `entete` optionnel {date_validite, taux_tva, remise_globale, note, mode_installation, prix_cible_kwc, echeancier} ; `echeancier` (D-QJR5-10) a la forme validée par serializers.validate_echeancier (liste de {libelle, type, pct_or_montant}, unité pct|montant QJR21) ; `etude_params` optionnel (clés ECRAN) ; `statut` dans entete est IGNORÉ. Réponses : 200 DevisSerializer (updated_at, modifiable…), 400 {detail}|{etude_params}, 409 {detail, statut, revision_possible}.",
+  "pourquoi": "QJR504 (M0 QJR5 ; D-QJR5-10) — enregistrer une édition en UNE transaction : lignes + en-tête + échéancier + étude. `entete` optionnel {date_validite, taux_tva, remise_globale, note, mode_installation, prix_cible_kwc, echeancier} ; `echeancier` (D-QJR5-10) a la forme validée par serializers.validate_echeancier (liste de {libelle, type, pct_or_montant}, unité pct|montant QJR21) ; `etude_params` optionnel (clés ECRAN) ; `statut` dans entete est IGNORÉ. ERR-QJR570 (D-QJR5-4) — chaque ligne produit porte `ligne_composee` (true = posée par le moteur, remplacée par une recomposition ; false = ajoutée à la main, jamais remplacée ; null/absent = inconnue, lignes antérieures). Réponses : 200 DevisSerializer (updated_at, modifiable…), 400 {detail}|{etude_params}, 409 {detail, statut, revision_possible}.",
   "corps": {
     "lignes": [
       {
@@ -17,6 +17,7 @@
         "optionnelle": false,
         "prix_manuel": false,
         "quantite_manuelle": false,
+        "ligne_composee": true,
         "lot": null
       },
       {
@@ -31,7 +32,8 @@
         "variante": "avec",
         "optionnelle": false,
         "prix_manuel": true,
-        "quantite_manuelle": true
+        "quantite_manuelle": true,
+        "ligne_composee": false
       }
     ],
     "entete": {
