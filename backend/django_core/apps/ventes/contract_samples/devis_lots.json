@@ -1,0 +1,68 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<id>/lots/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR667 (décision fondateur 01/10/2026 : construire l'écran) — PACT10 du bloc « Lots / multi-sites » de l'Édition complète, sur l'action existante `lots` de DevisViewSet (NTCPQ18, views/devis.py ; corps validé par QJR648). GET rend `selectors.lots_totaux` ; POST crée un lot et rend la MÊME forme, à jour, en 201. Les montants sont des NOMBRES (Decimal servi par l'encodeur JSON de DRF), arrêtés au centime par la chaîne canonique `_canonical_totaux` : la somme des lots + hors-lot recolle au total consolidé. Responsable ou admin uniquement. Jamais prix_achat ni marge.",
+  "requete_post": {
+    "corps": {
+      "nom_lot": "Bâtiment B — atelier",
+      "adresse_site": "Zone industrielle Sidi Bernoussi, Casablanca",
+      "ordre": 1,
+      "lignes": [412, 413]
+    },
+    "regles": {
+      "nom_lot": "requis, non vide, 150 caractères max ; unique sur le devis (sinon 400 {nom_lot: 'Ce lot existe déjà sur ce devis.'})",
+      "adresse_site": "facultatif",
+      "ordre": "entier ≥ 0 facultatif (texte → 400)",
+      "lignes": "ids de lignes de CE devis, facultatif (non numérique → 400, aucun lot créé) ; une ligne d'un autre devis est ignorée"
+    },
+    "refus_409": {
+      "detail": "Devis accepté : révisez-le",
+      "statut": "accepte",
+      "revision_possible": true
+    }
+  },
+  "exemple": {
+    "lots": [
+      {
+        "id": 31,
+        "nom_lot": "Bâtiment A — bureaux",
+        "adresse_site": "Zone industrielle Sidi Bernoussi, Casablanca",
+        "totaux": {
+          "ht_brut": 10000.0,
+          "remise": 0.0,
+          "ht_net": 10000.0,
+          "tva": 2000.0,
+          "tva_par_taux": [
+            {"taux": 20.0, "montant": 2000.0, "ht_net": 10000.0, "base_ht": 10000.0}
+          ],
+          "ttc": 12000.0
+        }
+      }
+    ],
+    "hors_lot": {
+      "ht_brut": 2500.0,
+      "remise": 0.0,
+      "ht_net": 2500.0,
+      "tva": 500.0,
+      "tva_par_taux": [
+        {"taux": 20.0, "montant": 500.0, "ht_net": 2500.0, "base_ht": 2500.0}
+      ],
+      "ttc": 3000.0
+    },
+    "total_consolide": {
+      "ht_brut": 12500.0,
+      "remise": 0.0,
+      "ht_net": 12500.0,
+      "tva": 2500.0,
+      "tva_par_taux": [
+        {"taux": 20.0, "montant": 2500.0, "ht_net": 12500.0, "base_ht": 12500.0}
+      ],
+      "ttc": 15000.0
+    }
+  },
+  "exemple_sans_lot": {
+    "lots": [],
+    "hors_lot": null,
+    "total_consolide": null
+  }
+}
