@@ -1092,17 +1092,17 @@ export default function DevisGenerator({
   // mais reçoit ici le TTC de ligne (même formule que `DevisLineRow.lineTtc`,
   // cet écran restant 100 % TTC — aucune conversion HT).
   //
-  // POPULATION — DIVERGENCE DOCUMENTÉE, PAS UN OUBLI : `repartirRemiseParLigne`
-  // retient les lignes non optionnelles de type produit (`ligneCompteDansTotaux`,
-  // via les champs `optionnelle`/`typeLigne` mappés ci-dessous). Le total du
-  // rail (`optionTotalsTTC` ci-dessus) ne teste JAMAIS `optionnelle` : il
-  // répartit les lignes en DEUX paniers Sans/Avec batterie au fil des
-  // mots-clés/`variante` (`appartientAuPanierSans`/`appartientAuPanierAvec`).
-  // Sur un devis mono-composition (l'immense majorité, aucune ligne
-  // `variante`), les deux paniers réunissent exactement les mêmes lignes non
-  // optionnelles que `ligneCompteDansTotaux` : la somme des montants par
-  // ligne ci-dessous recolle donc au centime avec `totals.totalSans`/
-  // `totalAvec`. Sur un devis « Les deux » (deux options DÉCLARÉES, lignes
+  // POPULATION — `repartirRemiseParLigne` retient les lignes non optionnelles
+  // de type produit (`ligneCompteDansTotaux`, via les champs
+  // `optionnelle`/`typeLigne` mappés ci-dessous). QJR567 — le total du rail
+  // (`optionTotalsTTC` ci-dessus) filtre désormais par LA MÊME fonction avant
+  // de répartir les lignes en DEUX paniers Sans/Avec batterie au fil des
+  // mots-clés/`variante` (`appartientAuPanierSans`/`appartientAuPanierAvec`) :
+  // avant, il comptait une ligne optionnelle que le document exclut. Sur un
+  // devis mono-composition (aucune ligne `variante`), les deux paniers
+  // réunissent donc les mêmes lignes que la répartition ci-dessous (aux
+  // arrondis de chaîne près : le rail suit la chaîne canonique HT → TVA du
+  // noyau, la répartition ventile un TTC de ligne). Sur un devis « Les deux » (deux options DÉCLARÉES, lignes
   // `variante: 'sans'|'avec'`), la répartition ci-dessous porte sur TOUTES
   // les lignes non optionnelles des deux paniers réunis — elle recolle au
   // total des deux paniers ADDITIONNÉS, pas au total d'une option affichée

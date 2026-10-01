@@ -1174,6 +1174,23 @@ test('marge : affichée seulement quand des prix d\'achat existent', () => {
   assert.equal(computeBuyCost(lines, produits), Math.round(10 * 1000 * 1.2))
 })
 
+// QJR567 — le coût d'achat (marge du générateur) suit la MÊME population que
+// les totaux : ni ligne optionnelle (add-on non activé), ni section/note.
+test('QJR567 computeBuyCost ignore une ligne optionnelle et les sections/notes', () => {
+  const produits = [
+    { id: 1, nom: 'Panneau X', prix_vente: '1000', prix_achat: '800' },
+    { id: 3, nom: 'Borne de recharge', prix_vente: '5000', prix_achat: '4000' },
+  ]
+  const normale = { produit: '1', designation: 'Panneau X', quantite: '10', prix_unit_ttc: '1100' }
+  const lines = [
+    normale,
+    { produit: '3', designation: 'Borne de recharge', quantite: '1', prix_unit_ttc: '6000', optionnelle: true },
+    { produit: '1', designation: 'Section toiture', quantite: '1', prix_unit_ttc: '0', typeLigne: 'section' },
+    { produit: '1', designation: 'Note', quantite: '1', prix_unit_ttc: '0', typeLigne: 'note' },
+  ]
+  assert.equal(computeBuyCost(lines, produits), computeBuyCost([normale], produits))
+})
+
 // ── DC4 — TVA panneaux société surcharge le défaut, sinon 10 %/20 % ───────────
 test('DC4 expectedTvaForDesignation : config société surcharge, défauts sinon', () => {
   // Défauts réforme : panneau 10, autre 20

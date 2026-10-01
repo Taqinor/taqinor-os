@@ -136,3 +136,21 @@ test('optionTotalsTTC : sans aucune ligne variantée, QF9 ne s’applique pas (c
   assert.equal(totalSansBrut, canon(lignes[0], lignes[3], lignes[4], lignes[5]))
   assert.equal(totalAvecBrut, canon(lignes[1], lignes[2], lignes[3], lignes[4], lignes[5]))
 })
+
+// QJR567 — le total du rail suit la MÊME population que le noyau
+// (`selectors.ligne_compte_dans_totaux`) : une ligne optionnelle (add-on non
+// activé) et les sections/notes n'entrent jamais dans totalSans / totalAvec.
+test('QJR567 — une ligne optionnelle ou de section/note ne compte pas dans les totaux', () => {
+  const normale = { produit: '1', designation: 'Panneau 550W', quantite: '10', prix_unit_ttc: '1100', taux_tva: 10 }
+  const seule = optionTotalsTTC([normale], 0)
+  assert.equal(seule.totalSans, 11000)
+  const avecOptionnelle = optionTotalsTTC([
+    normale,
+    { produit: '2', designation: 'Borne de recharge', quantite: '1', prix_unit_ttc: '1200', taux_tva: 20, optionnelle: true },
+    { designation: 'Toiture est', quantite: '1', prix_unit_ttc: '500', typeLigne: 'section' },
+    { designation: 'Pose en deux temps', quantite: '1', prix_unit_ttc: '300', typeLigne: 'note' },
+  ], 0)
+  assert.equal(avecOptionnelle.totalSans, seule.totalSans)
+  assert.equal(avecOptionnelle.totalAvec, seule.totalAvec)
+  assert.equal(avecOptionnelle.totalSansBrut, seule.totalSansBrut)
+})

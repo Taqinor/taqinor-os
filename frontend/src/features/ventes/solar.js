@@ -5,6 +5,10 @@
 // The premium PDF engine computes its own figures server-side — never fed here.
 
 import { formatMAD } from '../../lib/format.js'
+// QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient du
+// module unique aligné sur `selectors.ligne_compte_dans_totaux` (remise.js
+// n'importe rien : aucun cycle).
+import { ligneCompteDansTotaux } from './remise.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1698,6 +1702,11 @@ export function alternativeDeclareeServable(lines, scenario) {
 // `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
 // comportement historique inchangé (QF9 réservée aux lignes variantées).
 export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
+  // QJR567 — MÊME population que le noyau (`ligne_compte_dans_totaux`) : une
+  // ligne optionnelle (add-on non activé) et les sections / notes ne
+  // comptent JAMAIS — sans ce filtre le rail, le prix/kWc, la marge et
+  // l'étude C&I persistée comptaient un add-on que le document exclut.
+  lines = (lines || []).filter(ligneCompteDansTotaux)
   // F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, plus de
   // second filtre mot-clé sur elle (voir `appartientAuPanierSans/Avec` :
   // miroir exact de builder.py `_repartir_options` et de
@@ -3465,7 +3474,8 @@ export function computeBuyCost(lines, produits) {
   const byId = new Map(produits.map(p => [String(p.id), p]))
   let cost = 0
   let any = false
-  for (const l of lines) {
+  // QJR567 — même population que les totaux : ni optionnelle, ni section/note.
+  for (const l of (lines || []).filter(ligneCompteDansTotaux)) {
     const p = byId.get(String(l.produit))
     const achat = p ? (parseFloat(p.prix_achat) || 0) : 0
     if (achat > 0) {
