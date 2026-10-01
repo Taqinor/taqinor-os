@@ -32,7 +32,7 @@ export function deriverReouverture(lignes, { mode } = {}) {
   const des = (l) => l.designation || ''
 
   // Wattage : celui de la ligne panneau DOMINANTE (le plus grand compte),
-  // miroir de domain/scenario.py `ligne_panneau_dominante`.
+  // même règle que domain/scenario.py `ligne_panneau_dominante`.
   const panneaux = produits.filter(l => isPanel(des(l)))
   const dominante = panneaux.reduce(
     (best, l) => (!best || quantite(l) > quantite(best) ? l : best), null)

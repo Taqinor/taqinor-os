@@ -290,8 +290,11 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
     entree = activity.log_devis_correction_apres_envoi(frais, user, libelle)
     ecrire(frais, proprietaire=CALEPINAGE,
            resync_apres_envoi={'date': timezone.now().isoformat()})
-    # L'instance de l'appelant suit (sa réponse sérialise le marqueur).
-    devis.etude_params = frais.etude_params
+    # L'instance de l'appelant suit (sa réponse sérialise le marqueur) : on ne
+    # recopie QUE la clé du marqueur, jamais le bloc (QJR105).
+    if isinstance(devis.etude_params, dict):
+        devis.etude_params['resync_apres_envoi'] = (
+            frais.etude_params or {}).get('resync_apres_envoi')
     if frais.lead_id:
         try:
             from apps.crm.services import noter_devis_corrige
