@@ -350,14 +350,9 @@ _is_battery = _sd.is_battery
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 
 
-def _parse_kwh(text: str):
-    m = _KWH_RE.search(text or "")
-    if not m:
-        return None
-    try:
-        return float(m.group(1).replace(",", "."))
-    except ValueError:  # pragma: no cover — regex garantit le format
-        return None
+# QJR609 — UN lecteur de kWh : celui du catalogue (``domain.catalogue``), même
+# expression ; la copie locale a été supprimée.
+from apps.ventes.domain.catalogue import _parse_kwh  # noqa: E402
 
 
 def _battery_kwh_from_items(rows, blob=None) -> float:
@@ -2954,6 +2949,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # sur les lignes RÉELLES (une ligne « protection batterie » agrégée ne peut
     # donc pas déplacer d'un kWh la capacité publiée).
     _batterie_kwh_total = _battery_kwh_from_items(avec_items, _blob) or None
+    # QJR609 — la capacité UTILE vendue (fiche, puis nominal × DoD, puis nom),
+    # lue sur les lignes ORM de l'option AVEC par LA lecture de la garde web
+    # (``capacite_batterie_des_lignes``). Elle ne sert QU'À la garde « cet
+    # optimum décrit votre devis » ; le kWh IMPRIMÉ reste le nominal ci-dessus.
+    from apps.ventes.domain.dimensionnement_devis import (
+        capacite_batterie_des_lignes)
+    _batterie_kwh_utile_vendue = capacite_batterie_des_lignes(
+        devis, lignes=avec_lignes)
     if opts.get('kit_agrege'):
         sans_items = agreger_lignes_kit(sans_items)
         avec_items = agreger_lignes_kit(avec_items)
@@ -3479,6 +3482,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # calcul d'argent n'en dépend, elle sert au graphe journalier de la
         # proposition. None quand l'option « avec » ne porte aucun stockage.
         "batterie_kwh_total": _batterie_kwh_total,
+        # QJR609 — UTILE, pour la seule garde d'optimum du moteur PDF.
+        "batterie_kwh_utile_vendue": _batterie_kwh_utile_vendue,
         "all_items": all_items,
         "onepage_note_batterie": onepage_note_batterie,
         # M4 — branche ('sans' | 'avec') dont proviennent les lignes du format

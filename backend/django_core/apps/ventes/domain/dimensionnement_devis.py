@@ -410,8 +410,12 @@ def facteur_remise_du_devis(devis) -> float:
     return facteur
 
 
-def capacite_batterie_des_lignes(devis):
+def capacite_batterie_des_lignes(devis, lignes=None):
     """La capacité batterie des LIGNES RÉELLES de ce devis, ou ``None``.
+
+    QJR609 — ``lignes`` (facultatif) : les lignes ORM DÉJÀ découpées par
+    option (le builder passe celles de l'option AVEC) ; ``None`` ⇒ toutes les
+    lignes produit du devis, comportement inchangé.
 
     C'EST LA CAPACITÉ QUE LE CLIENT ACHÈTE, pas celle que le moteur aurait
     conseillée. Le générateur pose les lignes sur un champ arrondi
@@ -430,7 +434,11 @@ def capacite_batterie_des_lignes(devis):
         from apps.ventes.domain.catalogue import _is_battery
 
         total = 0.0
-        for ligne in _lignes_produit_du_devis(devis):
+        source = (_lignes_produit_du_devis(devis) if lignes is None
+                  else [li for li in lignes
+                        if getattr(li, 'est_ligne_produit', True)
+                        and getattr(li, 'quantite', None) is not None])
+        for ligne in source:
             designation = getattr(ligne, 'designation', '') or ''
             if not _is_battery(designation):
                 continue
