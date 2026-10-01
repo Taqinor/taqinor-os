@@ -1277,3 +1277,30 @@ describe('DevisList — QJR624 : acompte personnalisé → échéancier du devis
     expect(corps.echeancier.map(t => t.pct_or_montant)).toEqual([20000, 70, 10])
   })
 })
+
+// QJR639 (D-QJR5-2) — un devis ACCEPTÉ ne se supprime pas (le serveur répond
+// 409) : « Supprimer » n'est pas proposé, même à un admin ; un brouillon garde
+// l'action.
+describe('DevisList — QJR639 : pas de « Supprimer » sur un accepté', () => {
+  async function menuDe(reference) {
+    const user = userEvent.setup()
+    const row = screen.getByText(reference).closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+  }
+  const base = {
+    client_nom: 'ACME', date_creation: '2026-07-01', total_ttc: 1000,
+    nb_options: 1, version: 1, is_active: true,
+  }
+
+  it('accepté vu par un admin : aucune entrée « Supprimer »', async () => {
+    renderList({ role: 'admin', devis: [{ ...base, id: 71, reference: 'DEV-ACC-639', statut: 'accepte' }] })
+    await menuDe('DEV-ACC-639')
+    expect(screen.queryByRole('menuitem', { name: /Supprimer/ })).toBeNull()
+  })
+
+  it('brouillon vu par un admin : « Supprimer » reste proposé', async () => {
+    renderList({ role: 'admin', devis: [{ ...base, id: 72, reference: 'DEV-BRO-639', statut: 'brouillon' }] })
+    await menuDe('DEV-BRO-639')
+    expect(screen.getByRole('menuitem', { name: /Supprimer/ })).toBeInTheDocument()
+  })
+})

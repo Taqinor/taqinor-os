@@ -414,6 +414,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # destroy, et toute future action non déclarée : fermé par défaut.
         return [IsAdminRole()]
 
+    def destroy(self, request, *args, **kwargs):
+        """QJR639 (D-QJR5-2) — un devis ACCEPTÉ ne se supprime pas : le DELETE
+        effaçait en cascade sa signature électronique (DevisSignature), son
+        lien client (ShareLink), ses lignes et son chatter, et orphelinait son
+        BC. 409 sans rien effacer ; l'archivage (PATCH ``is_active=False``) ou
+        la révision restent ouverts. Les autres statuts sont inchangés. Le
+        statut est LU, jamais écrit (règle #4)."""
+        devis = self.get_object()
+        if devis.statut == Devis.Statut.ACCEPTE:
+            return Response(
+                {'detail': 'Devis accepté : il ne se supprime pas — '
+                           'archivez-le (désactivation) ou révisez-le.'},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         from apps.crm.services import resolve_client_for_lead

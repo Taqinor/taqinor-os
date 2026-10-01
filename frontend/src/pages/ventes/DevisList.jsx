@@ -1113,7 +1113,8 @@ function DevisRow({ d, ctx }) {
                   Envoyer par email
                 </DropdownMenuItem>
               )}
-              {canDelete && (
+              {/* QJR639 — un devis accepté ne se supprime pas (409 serveur). */}
+              {canDelete && d.statut !== 'accepte' && (
                 <DropdownMenuItem
                   destructive
                   disabled={deletingId === d.id}
