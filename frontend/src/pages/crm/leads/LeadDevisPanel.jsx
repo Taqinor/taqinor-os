@@ -19,6 +19,8 @@ import {
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
+// QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
+import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -375,6 +377,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'preview' && (
             <div className="ldp-preview">
+              {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
+                  (envoyé : le client verra la version corrigée) ; figé →
+                  « Réviser ». Le détail est déjà lu (getDevisById). */}
+              {devisRecord && (
+                <BandeauDeriveLead
+                  devisId={devisId}
+                  statut={devisRecord.statut}
+                  champs={devisRecord.lead_valeurs_modifiees}
+                  onResolu={(data) => {
+                    if (data?.devis) setDevisRecord(data.devis)
+                    onDevisChanged?.()
+                  }}
+                  onReviser={revisable ? reviser : undefined}
+                />
+              )}
               <div className="ldp-toolbar">
                 <div className="ldp-format">
                   <Segmented

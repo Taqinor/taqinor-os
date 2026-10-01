@@ -282,6 +282,10 @@ const ventesApi = {
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
   // QJR553 (contrat QJR513) — historique de CONFIGURATION (instantanés) ;
   // `params` optionnel `{ a, b }` → le diff entre deux instantanés.
+  // QJR589 (contrat QJR505) — résoudre la dérive lead → devis : « reprendre
+  // les valeurs du lead » ou « garder celles du devis ». Corps vide.
+  reappliquerLeadDevis: (id) => api.post(`/ventes/devis/${id}/reappliquer-lead/`, {}),
+  acquitterDeriveDevis: (id) => api.post(`/ventes/devis/${id}/acquitter-derive/`, {}),
   getHistoriqueConfigurationDevis: (id, params) =>
     api.get(`/ventes/devis/${id}/historique-configuration/`, params ? { params } : undefined),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),

@@ -52,3 +52,8 @@ test('DevisGenerator ne rappelle plus stockApi.getProduits() SANS paramètre (co
   assert.doesNotMatch(DG_CODE, /stockApi\.getProduits\(\)/)
   assert.match(DG_CODE, /fetchAllPages\(\(page\)\s*=>\s*stockApi\.getProduits\(\{\s*page\s*\}\)/)
 })
+
+test('QJR589 — LeadDevisPanel monte BandeauDeriveLead sur le détail déjà lu (code réel)', () => {
+  assert.match(LDP_CODE, /import BandeauDeriveLead from '\.\.\/\.\.\/\.\.\/features\/ventes\/quote\/BandeauDeriveLead'/)
+  assert.match(LDP_CODE, /<BandeauDeriveLead[\s\S]{0,200}champs=\{devisRecord\.lead_valeurs_modifiees\}/)
+})

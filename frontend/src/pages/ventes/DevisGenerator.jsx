@@ -78,6 +78,8 @@ import BadgePerime from '../../features/calepinage/BadgePerime'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 // QJR553 (D-QJR5-7) — historique des versions + « Revenir à cette version ».
 import HistoriqueConfiguration from '../../features/ventes/HistoriqueConfiguration'
+// QJR589 — bannière de dérive lead → devis à deux gestes (partagée cockpit).
+import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
 // STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
 // fondateur 16/09/2026) qui remplace le bouton acier/aluminium ; il rend
 // lui-même ce bouton en REPLI quand la société n'a aucune catégorie typée
@@ -239,46 +241,9 @@ const INST_TYPE_PAR_MODE = {
   agricole: 'Agricole',
 }
 
-// DC11 / QJR106 — libellés FRANÇAIS des champs du lead surveillés par
-// l'estampille de provenance (`crm.selectors.LEAD_PROVENANCE_FIELDS`). La
-// LISTE des champs reste au serveur : cette table ne fait que les NOMMER pour
-// le vendeur. Un champ inconnu d'ici s'affiche sous son nom technique plutôt
-// que de disparaître de la bannière.
-const LIBELLE_CHAMP_LEAD = {
-  facture_hiver: 'facture d’hiver',
-  facture_ete: 'facture d’été',
-  ete_differente: 'facture d’été différente',
-  bill_kwh: 'consommation facturée (kWh)',
-  type_toiture: 'type de toiture',
-  surface_toiture_m2: 'surface de toiture',
-  orientation: 'orientation',
-  inclinaison_deg: 'inclinaison',
-  gps_lat: 'latitude GPS',
-  gps_lng: 'longitude GPS',
-  // QJR587 — les valeurs du lead qui PILOTENT le devis, désormais estampillées.
-  conso_mensuelle_kwh: 'consommation mensuelle (kWh)',
-  taille_souhaitee_kwc: 'taille souhaitée (kWc)',
-  batterie_souhaitee: 'batterie souhaitée',
-  raccordement: 'raccordement',
-  structure_pref: 'structure souhaitée',
-  structure_produit: 'produit de structure',
-  pompe_cv: 'puissance de la pompe (CV)',
-  pompe_hmt_m: 'hauteur manométrique (HMT)',
-  pompe_debit_m3h: 'débit souhaité (m³/h)',
-  type_installation: 'type d’installation',
-  ville: 'ville',
-  ville_reference: 'ville de rattachement',
-}
-
-/** DC11 — la phrase de la bannière, ou `null` quand rien n'a bougé. NON
- *  exportée : ce fichier n'exporte que des composants (react-refresh). */
-const messageValeursLeadModifiees = (champs) => {
-  const noms = (Array.isArray(champs) ? champs : [])
-    .filter(c => typeof c === 'string' && c)
-    .map(c => LIBELLE_CHAMP_LEAD[c] || c)
-  if (noms.length === 0) return null
-  return `Valeurs du lead modifiées depuis la reprise dans ce devis : ${noms.join(', ')}.`
-}
+// DC11 / QJR106 / QJR589 — la bannière « valeurs du lead modifiées » (libellés
+// et gestes) vit dans `features/ventes/quote/BandeauDeriveLead.jsx`, partagée
+// avec la fenêtre devis du cockpit.
 
 // QJR108 — `RIEN_A_CHIFFRER` / `valeurMoteurDim` / `paireDimensionnement`
 // vivaient ICI, non exportés (ce fichier n'exporte que des composants —
@@ -4683,22 +4648,20 @@ export default function DevisGenerator({
                 </Button>
               </div>
             )}
-            {/* DC11 / QJR106 (décision fondateur D6) — même patron visuel que
-                les bandeaux d'avertissement ci-dessus. Le lead a bougé APRÈS que
-                ce devis en a repris les valeurs : on le DIT, en nommant les
-                champs, au lieu de laisser le vendeur chiffrer sur une facture
-                périmée. Verdict entièrement serveur (`lead_valeurs_modifiees`
-                du GET devis) — l'écran ne compare rien. */}
-            {messageValeursLeadModifiees(leadValeursModifiees) && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-                   data-testid="lead-valeurs-modifiees">
-                {messageValeursLeadModifiees(leadValeursModifiees)}
-                <div className="mt-1 text-xs">
-                  Vérifiez la fiche du lead avant d’envoyer : ce devis a été
-                  chiffré sur les valeurs d’origine.
-                </div>
-              </div>
-            )}
+            {/* QJR589 (contrat QJR505) — la dérive lead → devis, NOMMÉE et
+                RÉSOLUBLE : « Reprendre les valeurs du lead » / « Garder les
+                valeurs du devis ». Verdict serveur (`lead_valeurs_modifiees`)
+                — l'écran ne compare rien. Après succès, l'écran relit le devis. */}
+            <BandeauDeriveLead
+              devisId={editDevis?.id}
+              statut={editDevis?.statut}
+              champs={leadValeursModifiees}
+              onResolu={() => {
+                setLeadValeursModifiees([])
+                clear()
+                setRechargeEdit(n => n + 1)
+              }}
+            />
             {onduleursIncomplets.length > 0 && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
                 <strong>Onduleur(s) non chiffrable(s)</strong> — fiche technique
