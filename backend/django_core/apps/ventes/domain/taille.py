@@ -181,6 +181,8 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             occupation=entrees.occupation, equipements=entrees.equipements,
             phase=phase, source_conso=entrees.source_conso,
             jour_reference=entrees.jour_reference,
+            # QJR606 — la gamme portée par les entrées (``None`` sur un lead).
+            gamme_nom_devis=entrees.gamme_nom_devis,
             # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
             tranches=entrees.tranches,
             charges_fixes_mad=entrees.charges_fixes_mad)

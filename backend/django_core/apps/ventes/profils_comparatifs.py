@@ -184,46 +184,27 @@ def _dimensionnement_variante(devis, occupation):
     """``recommander_taille`` pour CETTE silhouette — mêmes entrées que
     ``services.rafraichir_dimensionnement_devis``, seule l'occupation change.
 
+    QJR606 — les entrées viennent de ``entrees_depuis_devis`` (l'adaptateur
+    unique : conso, localisation, barème, jour de référence, phase, gamme) ;
+    la relecture à la main de la fiche a été supprimée.
+
     Aucun écrit : le tableau d'une VARIANTE n'est jamais persisté comme le
     dimensionnement du devis (ce serait écraser le profil réel du client)."""
-    from apps.crm.selectors import lead_bills_for_devis, site_location_for_devis
-    from apps.ventes.courbes_journalieres import equipements_du_devis
     from apps.ventes.dimensionnement import recommander_taille
-    from apps.ventes.etude_horaire import profil_depuis_factures
+    from apps.ventes.domain.entrees import entrees_depuis_devis
 
-    company = getattr(devis, 'company', None)
-    if company is None:
+    entrees = entrees_depuis_devis(devis)
+    if entrees is None or not entrees.conso_kwh_mensuelles:
         return None
-    bills = lead_bills_for_devis(devis) or {}
-    etude_params = getattr(devis, 'etude_params', None) or {}
-    conso, source_conso, _detail = profil_depuis_factures(
-        facture_hiver_mad=bills.get('facture_hiver'),
-        facture_ete_mad=bills.get('facture_ete'),
-        ete_differente=bills.get('ete_differente'),
-        factures_mensuelles_mad=etude_params.get('factures_mensuelles_reelles'),
-        conso_kwh_mensuelles=etude_params.get('conso_kwh_mensuelles'))
-    if not conso:
-        return None
-    localisation = site_location_for_devis(devis) or {}
-    # QJR46 — le barème de la SOCIÉTÉ, la MÊME lecture que le moteur de devis :
-    # une variante d'occupation ne peut pas valoriser le kWh autrement que le
-    # tableau qu'elle sert à comparer.
-    from apps.ventes.etude_horaire import _reglages_tarifaires
-    tranches, charges_fixes = _reglages_tarifaires(company)
-    # QJR232 — LA MÊME HORLOGE QUE L'ÉTUDE PRINCIPALE. Ce site est le seul
-    # appelant de ``recommander_taille`` à relire la fiche à la main, et il
-    # OMETTAIT ``jour_reference`` : le bloc persisté sous une empreinte qui
-    # épingle la date du devis était en fait calculé sur une SECONDE lecture
-    # d'horloge — deux dates pour le même devis, dont une invisible.
-    from apps.ventes.domain.entrees import jour_reference_du_devis
     return recommander_taille(
-        company=company, conso_kwh_mensuelles=conso,
-        ville=localisation.get('site_ville'),
-        lat=localisation.get('gps_lat'), lon=localisation.get('gps_lng'),
-        occupation=occupation, equipements=equipements_du_devis(devis),
-        source_conso=source_conso,
-        jour_reference=jour_reference_du_devis(devis),
-        tranches=tranches, charges_fixes_mad=charges_fixes)
+        company=entrees.company,
+        conso_kwh_mensuelles=entrees.conso_kwh_mensuelles,
+        ville=entrees.ville, lat=entrees.lat, lon=entrees.lon,
+        occupation=occupation, equipements=entrees.equipements,
+        source_conso=entrees.source_conso,
+        jour_reference=entrees.jour_reference,
+        tranches=entrees.tranches, charges_fixes_mad=entrees.charges_fixes_mad,
+        phase=entrees.phase, gamme_nom_devis=entrees.gamme_nom_devis)
 
 
 def calculer_profils_comparatifs(devis):
