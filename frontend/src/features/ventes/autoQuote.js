@@ -35,8 +35,15 @@ import {
   // QJR575 — part diurne d'une catégorie commerciale (80 % pour une clé
   // inconnue ou absente : la sentinelle « Non précisée » de l'écran).
   commercialDayShare,
+  // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
+  kwcPourPanneaux, PANEL_W_DEFAUT,
   consoAnnuelleDepuisFactures,
 } from './solar'
+// QJR576 — le vocabulaire des scénarios et le mapping lead → scénario
+// viennent du reducer (jamais retapés ici).
+import {
+  SCENARIO_SANS, SCENARIO_LES_DEUX, BATTERIE_LEAD_VERS_SCENARIO,
+} from './quote/sizingReducer'
 
 // QJR575 — LES PARAMÈTRES DU BALAYAGE C&I, UNE SEULE CONSTRUCTION pour le
 // « Devis automatique » (ci-dessous) ET l'Édition complète (DevisGenerator,
@@ -252,7 +259,7 @@ export async function createAutoQuote({ lead, produits, discountStr,
     const tailleKwc = explicitKwc > 0 ? arrondirAuPasKwc(explicitKwc) : 0
     let panels = 0
     if (tailleKwc > 0) {
-      panels = panneauxPourKwc(tailleKwc, 710)
+      panels = panneauxPourKwc(tailleKwc, PANEL_W_DEFAUT)
     } else if (mode !== 'residentiel') {
       // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new
       // sizing tool ») — LE BALAYAGE LOCAL PAR PALIERS N'EST PLUS LA SOURCE DE
@@ -293,7 +300,7 @@ export async function createAutoQuote({ lead, produits, discountStr,
         })
         const opt = optimalKwcByPayback({
           produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
-          panelW: 710, structureType: structFromLead(lead),
+          panelW: PANEL_W_DEFAUT, structureType: structFromLead(lead),
           // STKCAT10 — le balayage chiffre chaque palier avec LA structure
           // réellement retenue (produit épinglé s'il existe), jamais une autre.
           structureProduitId: structProduitFromLead(lead),
@@ -322,7 +329,7 @@ export async function createAutoQuote({ lead, produits, discountStr,
     // plus bas) ; pour les autres marchés (aucun moteur serveur pour eux),
     // c'est un vrai refus explicite plus bas — jamais un devis vide créé en
     // silence.
-    const kwpAuto = panels > 0 ? panels * 710 / 1000 : 0
+    const kwpAuto = panels > 0 ? kwcPourPanneaux(panels, PANEL_W_DEFAUT) : 0
 
     // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
     // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -422,7 +429,7 @@ export async function createAutoQuote({ lead, produits, discountStr,
     }
 
     rows = autoFillLines(produits, {
-      kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
+      kwp: kwpAuto, panelW: PANEL_W_DEFAUT, nbPanneaux: panels,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
       // STKCAT10 — le PRODUIT épinglé prime dessus quand il existe.
@@ -462,9 +469,7 @@ export async function createAutoQuote({ lead, produits, discountStr,
     const _bat = lead.batterie_souhaitee
     extra.etude_params = {
       ...(extra.etude_params || {}),
-      scenario: _bat === 'sans' ? 'Sans batterie'
-        : _bat === 'avec' ? 'Avec batterie'
-          : 'Les deux (Sans + Avec)',
+      scenario: BATTERIE_LEAD_VERS_SCENARIO[_bat] ?? SCENARIO_LES_DEUX,
     }
     // U3 — le bloc PACT10/QF-REAL (12 factures RÉELLES du client semées dans
     // `etude_params`) vivait ICI ; il a MIGRÉ dans la branche résidentielle
@@ -502,7 +507,7 @@ export async function createAutoQuote({ lead, produits, discountStr,
       // totaliseraient la somme des deux paniers.
       extra.etude_params = projeterEtudeMarche(mode, {
         etude: _etudeInd,
-        choix: { scenario: lead.batterie_souhaitee ? _scenarioPrev : 'Sans batterie' },
+        choix: { scenario: lead.batterie_souhaitee ? _scenarioPrev : SCENARIO_SANS },
         entrees: (consoConnue) => (consoConnue != null ? { conso_annuelle: consoConnue } : {}),
         partDiurne: _dayUsage,
       })

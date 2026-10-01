@@ -1420,9 +1420,23 @@ export function plafondPanneaux(valeur) {
 
 // Nombre de panneaux pour une taille cible (kWc) à la puissance panneau donnée.
 // Utilisé pour préremplir depuis lead.taille_souhaitee_kwc. Au moins 1 panneau.
-export function panneauxPourKwc(kwc, panelW = 710) {
+// QJR576 — LE wattage panneau par défaut (référence du simulateur), une
+// seule constante au lieu de « 710 » recopié à chaque site.
+export const PANEL_W_DEFAUT = 710
+
+// QJR576 — inverse EXACT de `panneauxPourKwc` : kWc = n × W / 1000 (aucun
+// arrondi ici — l'affichage arrondit, jamais la conversion). Compte ou
+// wattage illisible → 0.
+export function kwcPourPanneaux(nbPanneaux, panelW = PANEL_W_DEFAUT) {
+  const n = parseFloat(nbPanneaux) || 0
+  const w = parseFloat(panelW) || 0
+  if (!(n > 0) || !(w > 0)) return 0
+  return n * w / 1000
+}
+
+export function panneauxPourKwc(kwc, panelW = PANEL_W_DEFAUT) {
   const k = parseFloat(kwc) || 0
-  const w = parseFloat(panelW) || 710
+  const w = parseFloat(panelW) || PANEL_W_DEFAUT
   if (!(k > 0) || !(w > 0)) return 0
   return Math.max(1, plafondPanneaux(k * 1000 / w))
 }

@@ -90,7 +90,7 @@ import {
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
-  kwcFactureDesLignes,
+  kwcFactureDesLignes, kwcPourPanneaux,
   // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
   fusionnerRecomposition, lignesQuantiteFigee,
   optionTotalsTTC, autoFillLines, defaultProductLines,
@@ -1025,7 +1025,8 @@ export default function DevisGenerator({
     setLines(withKeys(defaultProductLines(produits).map(r => ({ ...r, compose: true }))))
   }, [produits])
 
-  const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
+  // QJR576 — LA conversion partagée ; compte ENTIER (plancher explicite).
+  const kwp = kwcPourPanneaux(Math.floor(parseFloat(nbPanneaux) || 0), panelW)
   // QJR568 — `kwp` reste la CIBLE (envoyée au dry-run de composition) ; le kWc
   // réellement FACTURÉ par les lignes (celui que le PDF dérive) alimente
   // prix/kWc, prix cible, études C&I et l'aperçu horaire. Repli sur la cible
