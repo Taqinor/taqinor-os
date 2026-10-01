@@ -601,6 +601,11 @@ def echelle_paliers_batterie(devis):
     champ MAXIMAL ne remplit pas — il est montré (avec son prix et son champ)
     pour que la limite se LISE, puis l'échelle s'arrête.
 
+    LE PLANCHER VE NOCTURNE (QJR612, ERR-QJR612-ECHELLE-BATTERIE-SANS-PLANCHER-VE)
+    : un lead à recharge VE NOCTURNE ne se voit proposer AUCUN palier sous le
+    plancher que ``balayer_tailles`` applique au même champ (base sans la
+    couche VE nocturne + recharge). Sans recharge nocturne, rien ne change.
+
     LES ENTRÉES SONT CELLES DU TABLEAU DÉJÀ RANGÉ SUR LE DEVIS
     (``services.entrees_dimensionnement_du_devis``, et les mêmes réglages par
     défaut que ``rafraichir_dimensionnement_devis``) : sans cela l'échelle
@@ -623,10 +628,16 @@ def echelle_paliers_batterie(devis):
 def _echelle_paliers_batterie(devis):
     """Le calcul de :func:`echelle_paliers_batterie`, sans son filet."""
     from apps.parametres.pvgis_profils import productible_mensuel
+    from apps.ventes.dimensionnement import (
+        TOLERANCE_CAPACITE_KWH, _meilleur_palier)
     from apps.ventes.etude_horaire import (
         balayer_stockage_horaire,
+        calculer_etude_horaire,
+        equipements_sans_recharge_ve_nocturne,
+        plancher_batterie_recharge_ve,
         # L-DECH — SOURCE UNIQUE des bornes de puissance batterie.
         puissances_batterie_des_lignes,
+        recharge_ve_nocturne_kwh_jour,
     )
     from apps.ventes.domain.etudes import entrees_dimensionnement_du_devis
     from apps.ventes.domain.pipeline import (
@@ -793,8 +804,85 @@ def _echelle_paliers_batterie(devis):
                 continue
             par_cible[cible] = {'capacite_kwh': capacite,
                                 'vue': vues[cible], 'palier': palier}
-        sondes[panneaux] = {'panneaux': panneaux, 'par_cible': par_cible}
+        sondes[panneaux] = {'panneaux': panneaux, 'par_cible': par_cible,
+                            'reels': reels, 'vues': vues, 'bornes': bornes}
         return sondes[panneaux]
+
+    # ── QJR612 — LE PLANCHER VE NOCTURNE, LE MÊME QUE ``balayer_tailles`` ────
+    # ERR-QJR612-ECHELLE-BATTERIE-SANS-PLANCHER-VE : le balayage relevait le
+    # stockage d'un lead à recharge VE NOCTURNE (décision fondateur 30/09 :
+    # « add more panels so battery is always charged »), mais cette échelle —
+    # servie au CLIENT par ``public_views`` — proposait encore des paliers sous
+    # ce plancher. Même définition, champ par champ : base = l'optimum
+    # (meilleur payback, batteries toujours pleines, coupe à marginal nul) du
+    # même lead SANS la couche VE nocturne, sur les MÊMES compositions réelles
+    # de CE champ, + la recharge (``plancher_batterie_recharge_ve``). Le
+    # plancher ne fait que RETIRER des paliers. Sans recharge nocturne :
+    # ``None`` partout, l'échelle d'hier à l'octet près.
+    equipements = entrees['equipements']
+    etude_kwargs_sans_ve = None
+    if recharge_ve_nocturne_kwh_jour(equipements) > 0:
+        etude_kwargs_sans_ve = dict(
+            etude_kwargs,
+            equipements=equipements_sans_recharge_ve_nocturne(equipements))
+    planchers = {}
+
+    def seuil_plancher(panneaux):
+        """La capacité MINIMALE publiable à ce champ (kWh), ``0.0`` sans
+        recharge VE nocturne — mémoïsée."""
+        if etude_kwargs_sans_ve is None:
+            return 0.0
+        if panneaux in planchers:
+            return planchers[panneaux]
+        sonde = sonder(panneaux) or {}
+        reels = sonde.get('reels') or {}
+        capacites = sorted(set(reels.values()))
+        kwc = panneaux * panel_watt / 1000.0
+        base = 0.0
+        etude_nv = calculer_etude_horaire(
+            kwc=kwc, batterie_kwh_utile=0,
+            source_conso=entrees['source_conso'], **etude_kwargs_sans_ve)
+        energie_nv = (balayer_stockage_horaire(
+            kwc=kwc, capacites_kwh=capacites,
+            puissances_par_capacite=sonde.get('bornes') or {},
+            **etude_kwargs_sans_ve) if capacites else None)
+        if etude_nv is not None and energie_nv is not None:
+            cout_par_capacite = {
+                round(capacite, 2): _num(sonde['vues'][cible].get('cout_ttc'))
+                for cible, capacite in reels.items()}
+            par_capacite = {p['capacite_kwh']: p
+                            for p in energie_nv['paliers']}
+            precedente = etude_nv['annuel']['economie_sans_mad']
+            retenus = []
+            for capacite in capacites:
+                brut = par_capacite.get(round(capacite, 2))
+                if brut is None:
+                    continue
+                if not brut['se_remplit_tous_les_jours']:
+                    break
+                if len(retenus) >= MAX_PALIERS_STOCKAGE:
+                    break
+                economie = brut['economie_mad']
+                retenus.append({
+                    'capacite_kwh': round(capacite, 2),
+                    'payback_annees': _arrondi(_payback(
+                        cout_par_capacite.get(round(capacite, 2)), economie)),
+                    'residuel_kwh_mois': brut['residuel_kwh_mois'],
+                })
+                if round(economie - _num(precedente), 2) <= 0:
+                    break
+                precedente = economie
+            meilleur = _meilleur_palier(retenus)
+            if meilleur is not None:
+                base = _num(meilleur['capacite_kwh'])
+        plancher = plancher_batterie_recharge_ve(base, equipements, capacites)
+        planchers[panneaux] = _num((plancher or {}).get('taille_retenue_kwh'))
+        return planchers[panneaux]
+
+    def sous_le_plancher(palier, panneaux):
+        """Ce palier est-il SOUS le plancher VE nocturne de son champ ?"""
+        return (palier['capacite_kwh'] + TOLERANCE_CAPACITE_KWH
+                < seuil_plancher(panneaux))
 
     def remplit(panneaux, cible):
         """Ce champ charge-t-il CETTE banque tous les jours ? ``None`` = pas de
@@ -878,7 +966,8 @@ def _echelle_paliers_batterie(devis):
                       or {}).get(cible)
             if entree is not None:
                 palier = rendu(entree, max_champ, False)
-                if palier['capacite_kwh'] not in capacites_vues:
+                if (palier['capacite_kwh'] not in capacites_vues
+                        and not sous_le_plancher(palier, max_champ)):
                     capacites_vues.add(palier['capacite_kwh'])
                     echelle.append(palier)
             break
@@ -887,6 +976,10 @@ def _echelle_paliers_batterie(devis):
         if entree is None:
             break
         palier = rendu(entree, panneaux, True)
+        if sous_le_plancher(palier, panneaux):
+            # QJR612 — sous le plancher VE nocturne de son champ : jamais
+            # proposé au client (les paliers au-dessus restent examinés).
+            continue
         if palier['capacite_kwh'] in capacites_vues:
             # Deux cibles nominales servies par la MÊME banque réelle : un seul
             # palier à l'écran, jamais deux lignes identiques.
