@@ -38,12 +38,19 @@ class TestMarquageCorrection(TestCase):
 
     @staticmethod
     def _htmls(data):
-        """Couverture résidentielle premium + PDF premium legacy (full)."""
-        from apps.ventes.quote_engine import generate_devis_premium as G
-        from apps.ventes.quote_engine.builder import echapper_textes_client
-        from apps.ventes.quote_engine.residential.render import build_html
-        G.apply_quote_data(data)
-        return build_html(echapper_textes_client(data)), G.build_html()
+        """Couverture résidentielle premium + PDF premium legacy (full).
+
+        Les deux gabarits exigent une composition résidentielle COMPLÈTE (deux
+        options, factures, économies — ``residential.renderer._augment``) que
+        ce devis minimal n'a pas : on rend donc les gabarits sur l'échantillon
+        des fixtures moteur, en y portant les DEUX marques telles que le
+        builder les a décidées pour ce devis (``mis_a_jour_le`` /
+        ``remplace_reference``)."""
+        from apps.ventes.tests._moteur_fixtures import (
+            html_legacy, html_residentiel)
+        marques = {'mis_a_jour_le': data['mis_a_jour_le'],
+                   'remplace_reference': data['remplace_reference']}
+        return html_residentiel(**marques), html_legacy(**marques)
 
     def test_envoye_corrige_imprime_mis_a_jour_le(self):
         from apps.ventes.quote_engine.builder import build_quote_data

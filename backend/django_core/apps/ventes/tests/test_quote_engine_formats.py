@@ -1435,7 +1435,9 @@ class TestPdfFormats4(TestPdfFormats):
         self.devis.mode_installation = 'industriel'
         self.devis.etude_params = {
             **DEUX_OPTIONS,
-            'kwc': 9.94, 'production_annuelle': 156978, 'conso_annuelle': 120000,
+            # QJR625 — l'étude I/C décrit le kWc des LIGNES (7,7 kWc ici) :
+            # calculée pour un autre kWc, ses chiffres ne seraient plus imprimés.
+            'kwc': 7.7, 'production_annuelle': 156978, 'conso_annuelle': 120000,
             'taux_autoconso': 71.4, 'taux_couverture': 93.3,
             'economies_annuelles': 274711, 'payback': 2.1, 'prix_kwc': 4557,
             'prod_mensuelle': [13081] * 12, 'conso_mensuelle': [10000] * 12,

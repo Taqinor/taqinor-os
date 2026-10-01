@@ -102,13 +102,18 @@ class CorrectionApresEnvoi(TestCase):
         self.assertEqual(devis.reference, reference)
         self.assertEqual(self._corrections(devis).count(), 1)
         self.assertIn('lignes', self._corrections(devis).get().body)
-        # L'instantané = les lignes D'AVANT (l'état vu par le client).
-        snap = ConfigurationDevisSnapshot.objects.filter(
-            devis=devis).order_by('-date_creation', '-id').first()
-        self.assertIsNotNone(snap)
-        prix_snap = [li['prix_unitaire'] for li in snap.contenu['lignes']]
-        self.assertEqual([Decimal(p) for p in prix_snap],
-                         [Decimal('1000'), Decimal('3000')])
+        # L'instantané pris AVANT le geste = les lignes D'AVANT (l'état vu
+        # par le client) ; QJR552 — le geste est encadré : le dernier
+        # instantané est l'état CORRIGÉ.
+        snaps = list(ConfigurationDevisSnapshot.objects.filter(
+            devis=devis).order_by('date_creation', 'id'))
+        self.assertGreaterEqual(len(snaps), 2)
+
+        def _prix(snap):
+            return [Decimal(li['prix_unitaire'])
+                    for li in snap.contenu['lignes']]
+        self.assertEqual(_prix(snaps[-2]), [Decimal('1000'), Decimal('3000')])
+        self.assertEqual(_prix(snaps[-1]), [Decimal('900'), Decimal('3000')])
         # « Document mis à jour le … » exposé sur la proposition publique.
         marqueur = (devis.etude_params or {}).get('resync_apres_envoi')
         self.assertIsNotNone(marqueur)

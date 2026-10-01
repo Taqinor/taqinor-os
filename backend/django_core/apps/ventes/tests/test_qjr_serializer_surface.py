@@ -167,6 +167,22 @@ class PatchBrutIgnore(TestCase):
             # création. Montant volontairement sous 1000 MAD (R4-B3).
             marge_snapshot=Decimal('12.50'))
 
+    def _temoin(self):
+        """Fige la référence « serveur » des tests de fermeture.
+
+        QJR554 — ``perform_update`` passe désormais par le mode RAFRAICHIR du
+        pipeline, qui RECALCULE les caches du serveur (kWc depuis les lignes,
+        marge interne) : la référence n'est donc plus la valeur posée à la
+        main dans ``setUp`` mais ce que le SERVEUR calcule lui-même sur un
+        PATCH sans champ brut. Un champ brut du navigateur ne doit RIEN y
+        changer."""
+        temoin = self._patch({})
+        self.assertEqual(temoin.status_code, 200, temoin.data)
+        self.devis.refresh_from_db()
+        etude = self.devis.etude_params or {}
+        self.etude_serveur = {cle: etude.get(cle) for cle in self.ETUDE_SERVEUR}
+        self.marge_serveur = self.devis.marge_snapshot
+
     def _patch(self, corps):
         return self.api.patch(
             f'/api/django/ventes/devis/{self.devis.id}/', corps, format='json')
@@ -179,14 +195,17 @@ class PatchBrutIgnore(TestCase):
         d'AJOUTER leurs propres clés — ce n'est pas ce que ce test surveille.
         """
         etude = self.devis.etude_params or {}
-        for cle, valeur in self.ETUDE_SERVEUR.items():
+        for cle, valeur in self.etude_serveur.items():
             self.assertEqual(etude.get(cle), valeur, cle)
+        self.assertNotEqual(etude.get('puissance_kwc'), 99)
+        self.assertNotEqual(etude.get('production_annuelle'), 999999)
         self.assertNotIn('economies_annuelles', etude,
                          'un chiffre client-facing posté par le navigateur a '
                          'atterri dans les entrées du PDF')
 
     def test_etude_params_poste_en_corps_est_ignore(self):
         """Le cas qui motive la tâche : des chiffres client-facing inventés."""
+        self._temoin()
         reponse = self._patch({'etude_params': {
             'puissance_kwc': 99, 'production_annuelle': 999999,
             'economies_annuelles': 999999}})
@@ -195,6 +214,7 @@ class PatchBrutIgnore(TestCase):
         self._assert_etude_serveur_intacte()
 
     def test_les_quatre_autres_champs_bruts_sont_ignores(self):
+        self._temoin()
         reponse = self._patch({
             'roof_layout': {'pans': ['navigateur']},
             'layout_hash': 'hash-navigateur',
@@ -207,10 +227,12 @@ class PatchBrutIgnore(TestCase):
         self.assertEqual(self.devis.layout_hash, 'hash-serveur')
         self.assertEqual(self.devis.offres_tailles_config,
                          {'eco': {'nb_panneaux': 10}})
-        self.assertEqual(self.devis.marge_snapshot, Decimal('12.50'))
+        self.assertEqual(self.devis.marge_snapshot, self.marge_serveur)
+        self.assertNotEqual(self.devis.marge_snapshot, Decimal('999.90'))
 
     def test_le_reste_du_corps_passe_toujours(self):
         """La fermeture ne doit RIEN casser du chemin d'écriture normal."""
+        self._temoin()
         reponse = self._patch({'note': 'Note du vendeur',
                                'etude_params': {'puissance_kwc': 99}})
         self.assertEqual(reponse.status_code, 200, reponse.data)

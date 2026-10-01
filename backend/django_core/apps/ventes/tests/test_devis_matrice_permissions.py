@@ -42,6 +42,8 @@ FIGEE = {
     # @actions déclarées.
     'accepter': VALIDER, 'refuser': VALIDER,
     'action_requise': ANY, 'etat_pdf': ANY, 'historique': ANY,
+    # CALX288 (views/economie.py, rattachée au viewset pivot) : lecture.
+    'economie': ANY,
     'prefill_site': ANY, 'superior_contact_status': ANY,
     'approuver_remise': ADMIN,
     'proposal': PORTAIL,
