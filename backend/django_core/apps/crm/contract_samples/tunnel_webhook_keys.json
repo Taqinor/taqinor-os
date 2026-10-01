@@ -134,9 +134,9 @@
       "cle_registre": "typeToiture",
       "groupe": "G_FACTURE",
       "requis": true,
-      "destination": "colonne_lead",
-      "champ_lead": "roof_type",
-      "note": "tronque a 30"
+      "destination": "refus",
+      "champ_lead": null,
+      "note": "REFUS ASSUME (QJR657) : le tunnel emet roofType='autre' pour tout visiteur residentiel non pro (valeur fabriquee, jamais une reponse du client) ; le webhook ne la lit plus et aucune colonne ne la recoit. La seule source du type de toiture est Lead.type_toiture. Le Worker continue de l'envoyer (validateLead l'exige). La colonne Lead.roof_type reste en base : sa suppression est une migration destructive separee."
     },
     "consent": {
       "cle_registre": "consentement",

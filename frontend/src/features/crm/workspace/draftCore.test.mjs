@@ -17,6 +17,7 @@ import {
   buildCreateDefaults,
   TRACKED_KEYS,
   SECTION_FIELDS,
+  CHAMPS_SITE,
 } from './draftCore.js'
 
 // Un état d'édition minimal, avec de l'état satellite non trivial à purger.
@@ -197,6 +198,17 @@ test('CAD174 — les huit champs CAD149 sont dans TRACKED_KEYS et dans une SECTI
       .map(([id]) => id)
     assert.equal(sections.length, 1, `${champ} doit être dans EXACTEMENT une section (trouvé : ${sections})`)
   }
+})
+
+// QJR657 — le « Type de toiture (site) » fabriqué du tunnel n'est plus un champ
+// de la fiche : `type_toiture` est la seule source.
+test('QJR657 — roof_type absent de TRACKED_KEYS, des sections et de CHAMPS_SITE', () => {
+  assert.ok(!TRACKED_KEYS.includes('roof_type'))
+  for (const [id, champs] of Object.entries(SECTION_FIELDS)) {
+    assert.ok(!champs.includes('roof_type'), `roof_type dans la section ${id}`)
+  }
+  assert.ok(!CHAMPS_SITE.includes('roof_type'))
+  assert.ok(TRACKED_KEYS.includes('type_toiture'))
 })
 
 // ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — la réponse du PATCH (sérialiseur

@@ -993,6 +993,9 @@ class Lead(SoftDeleteModel):
         max_length=20, choices=BillRangeBucket.choices, blank=True, null=True)
     # Type de toiture TEL QU'ÉMIS par le site (villa/hangar/toit_plat/autre) —
     # volontairement distinct de type_toiture (taxonomie technique CRM).
+    # QJR657 — LEGACY : plus écrit (le « autre » du tunnel était fabriqué) ;
+    # `type_toiture` est la seule source. Colonne conservée : sa suppression
+    # est une migration destructive séparée.
     roof_type = models.CharField(max_length=30, blank=True, null=True)
     # ── Q2 — Toiture 3D : pin + contour BRUTS du client (additif, optionnels) ──
     # Le client POINTE simplement son bâtiment (il n'est PAS obligé de dessiner) :
@@ -1062,7 +1065,7 @@ class Lead(SoftDeleteModel):
     #: CAD150/CAD159 — les champs captés par le site que la fiche rend
     #: éditables avec leur provenance. Source unique (sélecteur, écran).
     CHAMPS_SITE = ('distributeur', 'roof_age', 'ownership', 'project_timeline',
-                   'financing_intent', 'facility_type', 'roof_type', 'bill_kwh')
+                   'financing_intent', 'facility_type', 'bill_kwh')
     # CAD167 — la colonne passe de 12 à 20 caractères pour porter les codes
     # SRM (`srm_beni_mellal` = 15) ; élargissement pur, aucune valeur
     # existante n'est touchée.

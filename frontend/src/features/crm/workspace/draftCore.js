@@ -77,7 +77,7 @@ export const TRACKED_KEYS = [
   // CAD150/CAD159 — les champs CAPTÉS PAR LE SITE deviennent éditables
   // (décision fondateur du 21/09/2026) : voir CHAMPS_SITE plus bas.
   'distributeur', 'bill_kwh', 'ownership', 'financing_intent',
-  'project_timeline', 'facility_type', 'roof_type', 'roof_age',
+  'project_timeline', 'facility_type', 'roof_age',
 ]
 
 // ── canonEq — égalité CANONIQUE (le cœur du « fini le phantom dirty ») ───────
@@ -213,7 +213,7 @@ export const SECTION_FIELDS = {
   // colonnes dédiées (vocabulaire déjà émis par le site, jamais inventé ici).
   pompage: ['pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
     'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois'],
-  // CAD149/CAD174 — `type_bien` REMPLACE l'idée de rendre `roof_type`
+  // CAD149/CAD174 — `type_bien` REMPLACE l'idée d'un type de toit posable (`roof_type` n'existe plus côté fiche, QJR657)
   // posable (chemin fermé par la décision du 18/08/2026, voir
   // WEB_QUESTIONNAIRE_STRUCTURED_FIELDS plus bas) : le type de BIEN (villa/
   // appartement/immeuble/riad/ferme), pas le type de TOIT.
@@ -225,7 +225,7 @@ export const SECTION_FIELDS = {
   // CAD150 — la qualification captée par le site (CHAMPS_SITE hors énergie)
   // est éditable ici, avec sa provenance.
   divers: ['note', 'custom_data', 'ownership', 'financing_intent',
-    'project_timeline', 'facility_type', 'roof_type', 'roof_age'],
+    'project_timeline', 'facility_type', 'roof_age'],
 }
 
 // La section de TRAVAIL : on n'y touche jamais automatiquement. C'est là qu'on
@@ -375,7 +375,7 @@ export function buildCreateDefaults({ currentUserId = null, lastVille = '' } = {
     contact_secondaire_nom: '', contact_secondaire_telephone: '',
     // CAD150 — champs captés par le site : vides à la création manuelle.
     distributeur: '', bill_kwh: '', ownership: '', financing_intent: '',
-    project_timeline: '', facility_type: '', roof_type: '', roof_age: '',
+    project_timeline: '', facility_type: '', roof_age: '',
   }
 }
 
@@ -587,7 +587,7 @@ export const WEB_QUESTIONNAIRE_STRUCTURED_FIELDS = [
   'futures_charges', 'facility_type', 'site_count', 'visit_window_part',
   'visit_window_week', 'client_ref', 'phone_is_foreign', 'page',
   'whatsapp_opt_in', 'consent_timestamp', 'utm_content', 'utm_term',
-  'roof_type', 'bill_kwh',
+  'bill_kwh',
 ]
 
 // ── CAD150/CAD159 — les champs CAPTÉS PAR LE SITE, toujours éditables ────────
@@ -601,7 +601,7 @@ export const WEB_QUESTIONNAIRE_STRUCTURED_FIELDS = [
 // source-choix: crm.Lead.CHAMPS_SITE
 export const CHAMPS_SITE = [
   'distributeur', 'roof_age', 'ownership', 'project_timeline',
-  'financing_intent', 'facility_type', 'roof_type', 'bill_kwh',
+  'financing_intent', 'facility_type', 'bill_kwh',
 ]
 
 /**

@@ -202,7 +202,6 @@ class TestMergePreservesFields(TestCase):
             visite_prevue_le=date(2026, 6, 30),
             visite_effectuee=True,
             visite_notes='RDV confirmé',
-            roof_type='villa',
             roi_band='5 à 9 kWc',
             utm_source='facebook',
             langue_preferee='darija',
@@ -230,7 +229,6 @@ class TestMergePreservesFields(TestCase):
         self.assertEqual(survivor.visite_prevue_le, date(2026, 6, 30))
         self.assertTrue(survivor.visite_effectuee)
         self.assertEqual(survivor.visite_notes, 'RDV confirmé')
-        self.assertEqual(survivor.roof_type, 'villa')
         self.assertEqual(survivor.roi_band, '5 à 9 kWc')
         self.assertEqual(survivor.utm_source, 'facebook')
         self.assertEqual(survivor.langue_preferee, 'darija')
@@ -294,13 +292,13 @@ class TestWebhookNullGuard(TestCase):
 
         first = _map_payload_to_fields({
             'fullName': 'Amina', 'phoneE164': '+212661850410',
-            'city': 'Casablanca', 'roofType': 'villa',
+            'city': 'Casablanca', 'billRange': '1500-3000',
         })
         lead = Lead.objects.create(company=self.company, **first)
         self.assertEqual(lead.ville, 'Casablanca')
-        self.assertEqual(lead.roof_type, 'villa')
+        self.assertEqual(lead.bill_range_bucket, '1500-3000')
 
-        # Second payload PLUS PAUVRE (sans city ni roofType) — mêmes champs
+        # Second payload PLUS PAUVRE (sans city ni billRange) — mêmes champs
         # mappés mais None. On rejoue la logique du re-POST idempotent.
         second = _map_payload_to_fields({
             'fullName': 'Amina', 'phoneE164': '+212661850410',
@@ -313,7 +311,7 @@ class TestWebhookNullGuard(TestCase):
         lead.refresh_from_db()
         # La donnée captée par le premier POST a survécu.
         self.assertEqual(lead.ville, 'Casablanca')
-        self.assertEqual(lead.roof_type, 'villa')
+        self.assertEqual(lead.bill_range_bucket, '1500-3000')
         self.assertEqual(lead.nom, 'Amina')
         # Garde-fou : la note de chatter n'est pas testée ici (logique de vue).
         self.assertEqual(LeadActivity.objects.filter(lead=lead).count(), 0)
