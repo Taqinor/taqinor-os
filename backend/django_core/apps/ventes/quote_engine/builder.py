@@ -506,6 +506,43 @@ def _taux_libelle(taux) -> str:
     return f"{t:g}".replace(".", ",")
 
 
+#: QJR625 — dérivées écran I/C qui décrivent UN kWc précis.
+_DERIVEES_ETUDE_IC = ("taux_autoconso", "taux_couverture", "payback",
+                      "injection_kwh_an", "injection_dh_an")
+#: … et, pour un ancien devis (base = ``etude['kwc']``), la base elle-même et
+#: les chiffres saisis à partir d'elle.
+_DERIVEES_ETUDE_IC_ANCIENNES = ("kwc", "production_annuelle",
+                                "economies_annuelles")
+
+
+def _etude_ic_fraiche(etude, puissance_kwc):
+    """QJR625 — ``(etude, perimee)`` : l'étude I/C sans ses dérivées quand
+    elles ont été calculées pour un autre kWc que celui des lignes.
+
+    Base = ``etude_kwc_base`` (QJR578), sinon ``etude['kwc']`` (anciens
+    devis). Écart relatif > ``pricing._HORAIRE_TOLERANCE_KWC`` ⇒ dérivées
+    retirées d'une COPIE (l'``etude_params`` stocké n'est jamais muté). Sans
+    base ou sans puissance des lignes : étude rendue telle quelle.
+    """
+    from .pricing import _HORAIRE_TOLERANCE_KWC
+
+    base = _nombre(etude.get("etude_kwc_base"))
+    ancien = False
+    if not base:
+        base = _nombre(etude.get("kwc"))
+        ancien = True
+    lignes_kwc = _nombre(puissance_kwc)
+    if not base or not lignes_kwc:
+        return etude, False
+    if abs(base - lignes_kwc) / lignes_kwc <= _HORAIRE_TOLERANCE_KWC:
+        return etude, False
+    sortie = dict(etude)
+    for cle in _DERIVEES_ETUDE_IC + (
+            _DERIVEES_ETUDE_IC_ANCIENNES if ancien else ()):
+        sortie.pop(cle, None)
+    return sortie, True
+
+
 def _pct_simple(valeur):
     """``Decimal('40.00')`` → ``40`` ; ``33.5`` → ``33.5`` (jamais un Decimal :
     le dict de rendu est sérialisé — empreinte PVFRESH, proposition JSON)."""
@@ -2064,6 +2101,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # production/savings are canonical; payback and prix/kWc are recomputed from
     # the canonical totals so edited lines can never desynchronize the document.
     etude = dict(devis_etude_override or {})
+    # ── QJR625 — UNE ÉTUDE I/C CALCULÉE POUR UN AUTRE KWC N'EST PAS IMPRIMÉE ─
+    # Les dérivées écran (autoconsommation, couverture, payback, injection)
+    # décrivent le kWc du moment où l'écran les a calculées
+    # (``etude_kwc_base``, QJR578 ; repli ``etude['kwc']`` des anciens devis).
+    # Une ligne corrigée depuis (D-QJR5-1 : republication sur le même lien)
+    # les rend fausses : au-delà de la tolérance du moteur horaire, elles sont
+    # OMISES (jamais recalculées ici — zéro chiffre inventé) et l'équipe en est
+    # avertie. Sans base connue : comportement inchangé. Rendu seul (règle #4).
+    if (mode or "").strip().lower() in ("industriel", "commercial"):
+        etude, _etude_perimee = _etude_ic_fraiche(etude, puissance_kwc)
+        if _etude_perimee:
+            avertissements_internes.append(
+                "étude industrielle périmée — relancer l'étude")
     # Agricole : le carburant de référence du comparatif peut être forcé par
     # l'option PDF (sinon l'étude / le défaut « butane » s'applique).
     if opts.get('current_fuel'):

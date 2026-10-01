@@ -96,8 +96,11 @@ def _augment(data: dict) -> dict:
     d.setdefault("valid_until", None)
 
     # KPIs de l'étude (None quand non calculés → la page dégrade proprement).
-    d["ind_kwc"] = _num(etude.get("kwc")) or _num(d.get("puissance_kwc"))
-    d["ind_prod"] = _num(etude.get("production_annuelle")) or _num(d.get("prod_kwh"))
+    # QJR625 — la puissance et la production DES LIGNES d'abord (le builder y
+    # a déjà réaligné une étude fraîche) ; les clés d'étude ne sont plus qu'un
+    # repli — une étude calculée pour un autre kWc ne passe plus devant.
+    d["ind_kwc"] = _num(d.get("puissance_kwc")) or _num(etude.get("kwc"))
+    d["ind_prod"] = _num(d.get("prod_kwh")) or _num(etude.get("production_annuelle"))
     d["ind_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))
     d["ind_autoconso"] = _num(etude.get("taux_autoconso"))
     d["ind_couverture"] = _num(etude.get("taux_couverture"))
