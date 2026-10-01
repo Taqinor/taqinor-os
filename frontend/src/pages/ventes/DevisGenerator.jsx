@@ -513,6 +513,16 @@ export default function DevisGenerator({
   // côté serveur (taille d'offre appliquée) : `editLoaded` retient le numéro
   // de chargement déjà servi, `rechargeEdit` en demande un nouveau.
   const editLoaded = useRef(null)
+  // QJR549 (contrat QJR503) — VERROU OPTIMISTE. `jetonRef` = `updated_at` du
+  // devis tel que l'écran le connaît : capturé au chargement `?edit=` (et à
+  // chaque rechargement), ré-armé depuis la réponse de CHAQUE écriture de cet
+  // écran (replace-lines, etude-params, tailles d'offre) — sans quoi l'écran
+  // se signalerait ses propres écritures. Envoyé en `expected_updated_at` ;
+  // un 409 `devis_modifie` affiche la bannière « Modifié par X ».
+  const jetonRef = useRef(null)
+  const forcerSansJeton = useRef(false)
+  const [conflitVerrou, setConflitVerrou] = useState(null)
+  const armerJeton = (updatedAt) => { if (updatedAt) jetonRef.current = updatedAt }
   // QJR581 — fenêtre de capture de la référence « rien n'a changé ».
   const captureReferenceJusqua = useRef(0)
   const [rechargeEdit, setRechargeEdit] = useState(0)
@@ -1994,6 +2004,8 @@ export default function DevisGenerator({
       // QJR581 — la RÉFÉRENCE « rien n'a changé » se capture sur l'état que
       // ce mappeur (et ses relectures immédiates : lead, réouverture) pose.
       captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
+      // QJR549 — le jeton de fraîcheur du devis CHARGÉ (et rechargé).
+      jetonRef.current = d.updated_at ?? null
       setEditDevis({ id: d.id, reference: d.reference,
                      statut: d.statut, date_envoi: d.date_envoi ?? null,
                      // QJR548 — verdict SERVI (QJR516), relu par les gestes
@@ -3571,9 +3583,16 @@ export default function DevisGenerator({
         // QJR544 — ÉDITION ATOMIQUE : en-tête + lignes + choix d'écran en UN
         // appel, UNE transaction serveur (replace-lines). Un échec ne change
         // RIEN (ni en-tête, ni lignes) ; plus de PATCH d'en-tête séparé.
-        await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload, {
-          entete: payload, etude_params: choixEcran(),
-        })
+        const extra = { entete: payload, etude_params: choixEcran() }
+        // QJR549 — le jeton part avec l'édition ; « Enregistrer quand même »
+        // (après un 409) renvoie UNE fois sans jeton.
+        if (jetonRef.current && !forcerSansJeton.current) {
+          extra.expected_updated_at = jetonRef.current
+        }
+        forcerSansJeton.current = false
+        const reponse = await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload, extra)
+        armerJeton(reponse?.data?.updated_at)
+        setConflitVerrou(null)
         devisId = editDevis.id
         devisCree = { reference: editDevis.reference }
       } else {
@@ -3605,7 +3624,9 @@ export default function DevisGenerator({
       const etudeMarche = blocEtudeMarche()
       if (etudeMarche) {
         try {
-          await ventesApi.patchEtudeParams(devisId, etudeMarche)
+          const reponseEtude = await ventesApi.patchEtudeParams(devisId, etudeMarche)
+          // QJR549 — cette écriture avance aussi le jeton : ré-armé.
+          armerJeton(reponseEtude?.data?.updated_at)
         } catch (errEtude) {
           // Le devis EST enregistré : une étude refusée ne doit jamais faire
           // croire à un échec d'enregistrement (ni pousser à un second POST
@@ -3619,6 +3640,12 @@ export default function DevisGenerator({
 
       return { devisId, devisCree }
     } catch (err) {
+      // QJR549 — 409 `devis_modifie` : quelqu'un (ou le catalogue) a écrit ce
+      // devis depuis l'ouverture. Bannière NON bloquante, rien d'autre écrit.
+      if (err?.response?.status === 409 && err?.response?.data?.code === 'devis_modifie') {
+        setConflitVerrou({ par: err.response.data.updated_by_nom || '' })
+        return null
+      }
       // Message HUMAIN, jamais de JSON brut — et le formulaire reste vivant.
       const raw = err?.response?.data ?? err
       let msg
@@ -3936,6 +3963,38 @@ export default function DevisGenerator({
             Devis envoyé{editDevis.date_envoi ? ` le ${formatDate(editDevis.date_envoi)}` : ''} :
             vos corrections seront visibles sur le lien de la proposition ; un PDF déjà envoyé
             par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
+          </div>
+        )}
+        {/* QJR549 (ex-DevisForm VX243c) — bannière NON bloquante : le devis a
+            été enregistré ailleurs pendant cette édition (409 devis_modifie). */}
+        {conflitVerrou && (
+          <div
+            data-testid="devis-verrou-banner"
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+          >
+            <span>
+              Modifié par {conflitVerrou.par || 'un autre utilisateur'}
+              {' '}pendant votre édition — vérifiez avant d'enregistrer.
+            </span>
+            <span className="flex gap-2">
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => { setConflitVerrou(null); clear(); setRechargeEdit(n => n + 1) }}
+              >
+                Revoir
+              </Button>
+              <Button
+                type="button" size="sm" variant="outline"
+                onClick={() => {
+                  forcerSansJeton.current = true
+                  setConflitVerrou(null)
+                  handleSubmit({ preventDefault: () => {} })
+                }}
+              >
+                Enregistrer quand même
+              </Button>
+            </span>
           </div>
         )}
         {/* QJR540 (ex-DevisForm VX250) — lecture PURE du statut chargé : ne
@@ -5159,7 +5218,8 @@ export default function DevisGenerator({
         <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits}
                             modifiable={editDevis?.modifiable}
                             raisonNonModifiable={editDevis?.raison_non_modifiable}
-                            onDevisRecompose={rechargerDevisRecompose} />
+                            onDevisRecompose={rechargerDevisRecompose}
+                            onDevisEcrit={armerJeton} />
 
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>
