@@ -28,16 +28,20 @@ test('QJR571 — CHEMINS_NON_LUS est RECOPIÉ À L’IDENTIQUE du contrat', () =
   for (const c of CHEMINS_NON_LUS) assert.ok(CHEMINS_AUTORISES.includes(c), c)
 })
 
-test('QJR571 — cheminNonLu : les chemins lus ne sont jamais marqués', () => {
-  for (const c of CHEMINS_NON_LUS.filter((x) => !x.includes('<'))) {
-    assert.equal(cheminNonLu(c), true, c)
-  }
-  const lus = CHEMINS_AUTORISES.filter((c) => !CHEMINS_NON_LUS.includes(c))
-  for (const c of lus) assert.equal(cheminNonLu(c), false, c)
-  assert.equal(cheminNonLu('profil.equipements.piscine'),
-    CHEMINS_NON_LUS.includes('profil.equipements.<clef>'))
+test('QJR573 — plus aucun chemin non lu : la liste blanche est celle des chemins lus', () => {
+  assert.deepEqual([...CHEMINS_NON_LUS], [])
+  for (const c of CHEMINS_AUTORISES) assert.equal(cheminNonLu(c), false, c)
   assert.equal(cheminNonLu(''), false)
   assert.equal(cheminNonLu(null), false)
+})
+
+test('QJR573 — les chemins retirés du contrat sont refusés côté écran', () => {
+  assert.ok(CONTRAT.notes.chemins_retires.includes('mode_installation'))
+  for (const c of CONTRAT.notes.chemins_retires) {
+    assert.equal(cheminAutorise(c.replace('<clef>', 'piscine')), false, c)
+  }
+  assert.deepEqual(cheminsRefuses({ mode_installation: { valeur: 'industriel' } }),
+    ['mode_installation'])
 })
 
 test('les origines sont celles du contrat, jamais une quatrième', () => {
@@ -46,20 +50,20 @@ test('les origines sont celles du contrat, jamais une quatrième', () => {
   assert.throws(() => serialiser(ETAT_INITIAL, { origine: 'devinette' }), TypeError)
 })
 
-test('tout chemin d’exemple du contrat est accepté par la liste blanche', () => {
+test('tout chemin d’exemple du contrat est accepté, sauf une surcharge RETIRÉE (lecture seule)', () => {
+  const retires = CONTRAT.notes.chemins_retires
   for (const chemin of Object.keys(CONTRAT.exemple.overrides)) {
-    assert.equal(cheminAutorise(chemin), true, chemin)
+    assert.equal(cheminAutorise(chemin), !retires.includes(chemin), chemin)
   }
-  for (const chemin of Object.keys(CONTRAT.exemple.effectif)) {
-    assert.equal(cheminAutorise(chemin), true, chemin)
+  for (const [chemin, entree] of Object.entries(CONTRAT.exemple.effectif)) {
+    assert.equal(cheminAutorise(chemin), !retires.includes(chemin), chemin)
+    assert.equal(entree.non_lu === true, retires.includes(chemin), chemin)
   }
 })
 
-test('`profil.equipements.<clef>` est le SEUL motif dynamique', () => {
-  assert.equal(cheminAutorise('profil.equipements.piscine'), true)
-  assert.equal(cheminAutorise('profil.equipements.vehicule_electrique'), true)
-  assert.equal(cheminAutorise('profil.equipements.<clef>'), false) // le motif lui-même
-  assert.equal(cheminAutorise('profil.equipements.piscine.puissance_kw'), false)
+test('QJR573 — aucun motif dynamique : `profil.equipements.*` est refusé', () => {
+  assert.equal(cheminAutorise('profil.equipements.piscine'), false)
+  assert.equal(cheminAutorise('profil.equipements.<clef>'), false)
   // Aucune clé de ligne indexée par POSITION (interdit explicite du contrat).
   assert.equal(cheminAutorise('lignes[3].prix_manuel'), false)
   assert.equal(cheminAutorise('total_ttc'), false)   // champ DÉRIVÉ → 400
@@ -69,11 +73,12 @@ test('`profil.equipements.<clef>` est le SEUL motif dynamique', () => {
 
 // ── EXHAUSTIVITÉ drapeaux ↔ registre ─────────────────────────────────────────
 
-test('EXHAUSTIVITÉ : chaque drapeau « touché » du reducer a SON chemin', () => {
+test('EXHAUSTIVITÉ : chaque drapeau « touché » du reducer est DÉCLARÉ (chemin ou null)', () => {
   for (const drapeau of Object.keys(ETAT_INITIAL.touche)) {
     const def = CHEMIN_PAR_DRAPEAU[drapeau]
     assert.ok(def, `drapeau « ${drapeau} » sans chemin dans le registre`)
-    assert.equal(cheminAutorise(def.chemin), true, def.chemin)
+    // QJR573 — `null` = porté hors du registre (refusé en 400 côté serveur).
+    if (def.chemin !== null) assert.equal(cheminAutorise(def.chemin), true, def.chemin)
     assert.ok(def.champ in ETAT_INITIAL, `champ « ${def.champ}» absent de l'état`)
   }
   assert.deepEqual(Object.keys(CHEMIN_PAR_DRAPEAU).sort(), [...DRAPEAUX_TOUCHE].sort())
@@ -125,8 +130,14 @@ test('serialiser n’émet QUE les chemins réellement touchés', () => {
 
 test('serialiser n’invente aucune clé d’audit absente', () => {
   const etat = sizingReducer(ETAT_INITIAL,
+    { type: 'SAISI', champ: 'scenario', valeur: SCENARIO_AVEC })
+  assert.deepEqual(serialiser(etat), { scenario: { valeur: SCENARIO_AVEC, origine: 'manuel' } })
+})
+
+test('QJR573 — serialiser n’émet jamais un choix porté hors du registre', () => {
+  const etat = sizingReducer(ETAT_INITIAL,
     { type: 'SAISI', champ: 'tension', valeur: 'mt' })
-  assert.deepEqual(serialiser(etat), { tension: { valeur: 'mt', origine: 'manuel' } })
+  assert.deepEqual(serialiser(etat), {})
 })
 
 test('serialiser ne produit JAMAIS un chemin hors liste blanche', () => {
@@ -134,18 +145,19 @@ test('serialiser ne produit JAMAIS un chemin hors liste blanche', () => {
     ...s, touche: { ...s.touche, [d]: true },
   }), ETAT_INITIAL)
   assert.deepEqual(cheminsRefuses(serialiser(etat)), [])
-  assert.equal(Object.keys(serialiser(etat)).length, DRAPEAUX_TOUCHE.length)
+  const avecChemin = DRAPEAUX_TOUCHE.filter((d) => CHEMIN_PAR_DRAPEAU[d].chemin)
+  assert.equal(Object.keys(serialiser(etat)).length, avecChemin.length)
 })
 
 test('hydrater est l’inverse : il repose la valeur ET son drapeau', () => {
   const etat = [
     { type: 'SAISI', champ: 'nbPanneaux', valeur: '14' },
-    { type: 'SAISI', champ: 'pompeAlim', valeur: 'mono' },
+    { type: 'SAISI', champ: 'scenario', valeur: SCENARIO_AVEC },
   ].reduce(sizingReducer, ETAT_INITIAL)
   const partiel = hydrater(serialiser(etat))
   assert.equal(partiel.nbPanneaux, '14')
-  assert.equal(partiel.pompeAlim, 'mono')
-  assert.deepEqual(partiel.touche, { nbPanneaux: true, pompeAlim: true })
+  assert.equal(partiel.scenario, SCENARIO_AVEC)
+  assert.deepEqual(partiel.touche, { nbPanneaux: true, scenario: true })
   // Un état RÉHYDRATÉ ne se fait plus écraser par un pré-remplissage.
   const rejoue = sizingReducer(
     { ...ETAT_INITIAL, ...partiel, touche: { ...ETAT_INITIAL.touche, ...partiel.touche } },

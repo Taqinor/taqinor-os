@@ -1,8 +1,9 @@
 """QJR103 — LE CONTRAT DE PARCOURS DU REGISTRE DE SURCHARGES.
 
 CE QUE CE MODULE TIENT, ET POURQUOI IL EST PILOTÉ PAR TABLE. Le registre
-``Devis.overrides`` (QJR57/QJR58, décision fondateur D12) déclare 19 chemins
-surchargeables. Un test écrit chemin par chemin aurait couvert ceux auxquels
+``Devis.overrides`` (QJR57/QJR58, décision fondateur D12) déclarait 19 chemins
+surchargeables ; D-QJR5-8 (QJR573) l'a réduit aux 6 chemins qu'un lecteur de
+production consulte. Un test écrit chemin par chemin aurait couvert ceux auxquels
 son auteur a pensé, et RIEN pour le vingtième ajouté six mois plus tard — le
 mode d'échec exact que l'audit L3 du 29/08/2026 a trouvé partout ailleurs dans
 ce parcours. La table :data:`COUVERTURE` ci-dessous est donc comparée à
@@ -185,52 +186,24 @@ class Couverture:
         self.sans_lecteur = sans_lecteur
 
 
-#: RAISON UNIQUE, vérifiée le 30/08/2026 par grep sur ``backend/django_core``
-#: (hors tests, hors le registre lui-même) : ces chemins sont DÉCLARÉS par la
-#: décision fondateur D12 et acceptés par l'endpoint, mais AUCUN consommateur
-#: ne les lit encore — les brancher est le travail des tâches qui les
-#: possèdent, pas de ce test. Le contrat de PARCOURS (l'override survit et se
-#: régénère) est prouvé pour eux comme pour les autres.
-PAS_ENCORE_LU = ('déclaré D12, aucun lecteur aval branché à ce jour — la '
-                 'survie dans le registre et le retour à l\'auto sont '
-                 'prouvés, il n\'existe pas encore de valeur rendue.')
-
 #: LA TABLE. Une ligne par chemin de ``overrides.CHAMPS_OVERRIDABLES`` —
 #: l'égalité des deux ensembles est elle-même un test (voir
-#: :class:`TableDeCouvertureTests`).
+#: :class:`TableDeCouvertureTests`). QJR573 (D-QJR5-8) : chaque chemin a un
+#: LECTEUR prouvé — les 13 chemins sans lecteur ont été retirés du registre.
 COUVERTURE = {
     'taille.nb_panneaux': Couverture(21, lecteur=_lire_kwc_du_devis,
                                      attendu='kwc_21_panneaux'),
-    # QJR571 — BRANCHÉ : le wattage de la cible du registre
+    # QJR571 — le wattage de la cible du registre
     # (``pipeline._cible_du_registre``, étape 2 ``decider_taille``).
     'taille.panel_watt': Couverture(545, lecteur=_lire_watt_de_la_cible),
     'taille.kwc': Couverture(9.99, lecteur=_lire_kwc_quote),
-    'taille.batterie_nb_modules': Couverture(3, sans_lecteur=PAS_ENCORE_LU),
-    'taille.batterie_module_kwh': Couverture(5.12,
-                                             sans_lecteur=PAS_ENCORE_LU),
     'scenario': Couverture('Sans batterie', lecteur=_lire_scenario_quote),
     'recommended_option': Couverture('Sans batterie',
                                      lecteur=_lire_reco_quote),
-    'profil.occupation': Couverture('jour', sans_lecteur=PAS_ENCORE_LU),
-    'profil.factures_mensuelles_reelles': Couverture(
-        [1200] * 12, sans_lecteur=PAS_ENCORE_LU),
-    'profil.conso_annuelle': Couverture(9600, sans_lecteur=PAS_ENCORE_LU),
-    overrides.PREFIXE_EQUIPEMENT + '<clef>': Couverture(
-        True, clef_patch=overrides.PREFIXE_EQUIPEMENT + 'piscine',
-        sans_lecteur=PAS_ENCORE_LU),
-    'tarif.distributeur': Couverture('ONEE', sans_lecteur=PAS_ENCORE_LU),
-    'tarif.tranches': Couverture([{'jusqu_a': 100, 'prix': 0.9}],
-                                 sans_lecteur=PAS_ENCORE_LU),
-    'tarif.charges_fixes_mad': Couverture(42.5, sans_lecteur=PAS_ENCORE_LU),
-    # QJR232 — BRANCHÉ : le moteur lit enfin cette date
-    # (``domain.entrees.jour_reference_du_devis``, qui alimente
-    # ``entrees_depuis_devis`` ET ``profils_comparatifs``).
+    # QJR232 — ``domain.entrees.jour_reference_du_devis``, qui alimente
+    # ``entrees_depuis_devis`` ET ``profils_comparatifs``.
     'etude.jour_reference': Couverture('2026-03-15',
                                        lecteur=_lire_jour_reference),
-    'mode_installation': Couverture('industriel', sans_lecteur=PAS_ENCORE_LU),
-    'structure': Couverture('beton', sans_lecteur=PAS_ENCORE_LU),
-    'tension': Couverture('triphase', sans_lecteur=PAS_ENCORE_LU),
-    'pompe_alim': Couverture('solaire', sans_lecteur=PAS_ENCORE_LU),
 }
 
 
@@ -443,9 +416,20 @@ class TableDeCouvertureTests(TestCase):
             'Chemin(s) de COUVERTURE absent(s) du registre : retirer la ligne '
             'de table dans le MÊME commit que le retrait du chemin.')
 
-    def test_le_registre_couvre_les_19_chemins_de_la_decision_D12(self):
-        self.assertEqual(len(overrides.CHAMPS_OVERRIDABLES), 19)
-        self.assertEqual(len(COUVERTURE), 19)
+    def test_le_registre_couvre_les_6_chemins_lus(self):
+        """QJR573 — D12 (19 chemins) réduite par D-QJR5-8 aux chemins lus."""
+        self.assertEqual(len(overrides.CHAMPS_OVERRIDABLES), 6)
+        self.assertEqual(len(COUVERTURE), 6)
+
+    def test_chemins_autorises_egale_chemins_lus(self):
+        """QJR573 (D-QJR5-8) — aucune saisie acceptée n'est ignorée."""
+        self.assertEqual(sorted(overrides.CHAMPS_OVERRIDABLES),
+                         sorted(overrides.CHEMINS_LUS))
+
+    def test_chaque_chemin_a_un_lecteur(self):
+        for chemin, couverture in COUVERTURE.items():
+            with self.subTest(chemin=chemin):
+                self.assertIsNotNone(couverture.lecteur, chemin)
 
     def test_un_chemin_ajoute_au_registre_sans_couverture_rougit(self):
         """LE TEST NÉGATIF — la garde sait vraiment rougir."""

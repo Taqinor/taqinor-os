@@ -75,18 +75,18 @@ class PatchFusionTests(_OverridesBase):
 
     def test_poser_un_chemin_ne_touche_pas_les_autres(self):
         r1 = self.api.patch(self.url,
-                            {'tarif.distributeur': {'valeur': 'ONEE',
-                                                    'origine': 'import'}},
+                            {'scenario': {'valeur': 'Sans batterie',
+                                          'origine': 'import'}},
                             format='json')
         self.assertEqual(r1.status_code, 200, r1.data)
-        avant = dict(r1.data['overrides']['tarif.distributeur'])
+        avant = dict(r1.data['overrides']['scenario'])
 
         r2 = self.api.patch(self.url, {'taille.nb_panneaux': 14},
                             format='json')
         self.assertEqual(r2.status_code, 200, r2.data)
         self.assertEqual(set(r2.data['overrides']),
-                         {'tarif.distributeur', 'taille.nb_panneaux'})
-        self.assertEqual(r2.data['overrides']['tarif.distributeur'], avant)
+                         {'scenario', 'taille.nb_panneaux'})
+        self.assertEqual(r2.data['overrides']['scenario'], avant)
 
     def test_la_provenance_est_ecrite(self):
         resp = self.api.patch(self.url, {'taille.nb_panneaux': 14},
@@ -127,15 +127,15 @@ class PatchFusionTests(_OverridesBase):
 class CheminsNonLusTests(_OverridesBase):
     """QJR571 (D-QJR5-8) — la réponse DIT quel chemin le moteur ne lit pas.
 
-    Un chemin accepté et stocké sans aucun lecteur de production porte
-    ``non_lu: true`` dans ``effectif`` ; un chemin LU n'a pas la clé (jamais
-    ``false``), même modèle que ``non_derivable``.
+    Depuis QJR573, aucun chemin de la liste blanche n'est non lu : le
+    marqueur ne subsiste que sur une surcharge RETIRÉE déjà posée en base,
+    rendue en lecture seule. Un chemin LU n'a pas la clé (jamais ``false``).
     """
 
     def test_un_chemin_sans_lecteur_porte_non_lu(self):
-        resp = self.api.patch(self.url,
-                              {'profil.conso_annuelle': {'valeur': 12000}},
-                              format='json')
+        Devis.objects.filter(pk=self.devis.pk).update(overrides={
+            'profil.conso_annuelle': {'valeur': 12000, 'origine': 'manuel'}})
+        resp = self.api.get(self.url)
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIs(resp.data['effectif']['profil.conso_annuelle']['non_lu'],
                       True)
@@ -146,6 +146,44 @@ class CheminsNonLusTests(_OverridesBase):
                               format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertNotIn('non_lu', resp.data['effectif']['scenario'])
+
+
+class CheminsRetiresTests(_OverridesBase):
+    """QJR573 (D-QJR5-8) — un chemin retiré est refusé en 400 ; une surcharge
+    retirée déjà en base reste rendue, jamais effacée en silence."""
+
+    def test_patch_mode_installation_est_refuse_en_400(self):
+        resp = self.api.patch(self.url,
+                              {'mode_installation': {'valeur': 'industriel'}},
+                              format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('mode_installation', resp.data)
+        self.assertIn('retiré', str(resp.data['mode_installation']))
+
+    def test_chaque_chemin_retire_est_refuse_en_400(self):
+        from apps.ventes.domain import overrides as R
+        for chemin in R.CHEMINS_RETIRES:
+            clef = chemin.replace('<clef>', 'piscine')
+            with self.subTest(chemin=clef):
+                resp = self.api.patch(self.url, {clef: {'valeur': 1}},
+                                      format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_une_surcharge_retiree_deja_posee_survit_a_une_pose(self):
+        legacy = {'valeur': 'ONEE', 'origine': 'import'}
+        Devis.objects.filter(pk=self.devis.pk).update(
+            overrides={'tarif.distributeur': legacy})
+        resp = self.api.patch(self.url, {'taille.nb_panneaux': 14},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['overrides']['tarif.distributeur'], legacy)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.overrides['tarif.distributeur'], legacy)
+
+    def test_get_ne_rend_plus_les_autos_des_chemins_retires(self):
+        resp = self.api.get(self.url)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertNotIn('mode_installation', resp.data['effectif'])
 
 
 class EcritureChirurgicaleTests(_OverridesBase):

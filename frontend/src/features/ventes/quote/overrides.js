@@ -32,39 +32,29 @@
 import { DRAPEAUX_TOUCHE, ETAT_INITIAL } from './sizingReducer.js'
 
 /**
- * Liste blanche du contrat QJR1, RECOPIÉE À L'IDENTIQUE (ordre compris).
- * Aucun chemin ajouté ni retiré : le test échoue si le contrat bouge.
+ * Liste blanche du contrat QJR1, RECOPIÉE À L'IDENTIQUE (ordre compris) — la
+ * D12 réduite par D-QJR5-8 (QJR573) aux chemins que le moteur LIT. Le test
+ * échoue si le contrat bouge.
  */
 export const CHEMINS_AUTORISES = Object.freeze([
   'taille.nb_panneaux', 'taille.panel_watt', 'taille.kwc',
-  'taille.batterie_nb_modules', 'taille.batterie_module_kwh',
   'scenario', 'recommended_option',
-  'profil.occupation', 'profil.factures_mensuelles_reelles', 'profil.conso_annuelle',
-  'profil.equipements.<clef>',
-  'tarif.distributeur', 'tarif.tranches', 'tarif.charges_fixes_mad',
   'etude.jour_reference',
-  'mode_installation', 'structure', 'tension', 'pompe_alim',
 ])
 
 /**
- * QJR571 (D-QJR5-8) — les chemins que le MOTEUR NE LIT PAS : acceptés et
- * stockés, sans effet sur le document. RECOPIÉS À L'IDENTIQUE de
- * `notes.chemins_non_lus` du contrat (le test l'épingle). Le serveur marque
- * leur entrée `effectif` par `non_lu: true` ; l'écran le dit au vendeur.
+ * QJR571 (D-QJR5-8) — les chemins de la liste blanche que le MOTEUR NE LIT
+ * PAS, RECOPIÉS À L'IDENTIQUE de `notes.chemins_non_lus` du contrat (le test
+ * l'épingle). QJR573 l'a ramenée à [] : chaque chemin non lu a été retiré de la
+ * liste blanche. Une surcharge retirée déjà posée en base arrive du serveur
+ * avec `non_lu: true` (lecture seule) ; l'écran le dit au vendeur.
  */
-export const CHEMINS_NON_LUS = Object.freeze([
-  'taille.batterie_nb_modules', 'taille.batterie_module_kwh',
-  'profil.occupation', 'profil.factures_mensuelles_reelles', 'profil.conso_annuelle',
-  'profil.equipements.<clef>',
-  'tarif.distributeur', 'tarif.tranches', 'tarif.charges_fixes_mad',
-  'mode_installation', 'structure', 'tension', 'pompe_alim',
-])
+export const CHEMINS_NON_LUS = Object.freeze([])
 
-/** Le chemin (motif `profil.equipements.<clef>` compris) est-il non lu ? */
+/** Le chemin est-il non lu par le moteur ? */
 export function cheminNonLu(chemin) {
   if (typeof chemin !== 'string' || chemin === '') return false
-  if (CHEMINS_NON_LUS.includes(chemin)) return true
-  return CHEMINS_NON_LUS.includes('profil.equipements.<clef>') && MOTIF_EQUIPEMENT.test(chemin)
+  return CHEMINS_NON_LUS.includes(chemin)
 }
 
 /** Les trois origines du contrat (`notes.origine_valeurs`) — jamais une 4e. */
@@ -85,27 +75,27 @@ export const ORIGINES = Object.freeze(['manuel', 'import', 'api'])
  * ENTRÉES — poser les deux créerait un second endroit où ce nombre pourrait
  * diverger (`notes.entrees_seules`).
  */
+//
+// QJR573 (D-QJR5-8) — `mode`, `structure`, `tension` et `pompeAlim` n'ont PLUS
+// de chemin (`chemin: null`) : ces choix sont portés par la colonne du devis
+// (marché) ou par les LIGNES composées, et le registre les refuse en 400. Le
+// drapeau reste DÉCLARÉ ici (l'exhaustivité tient), `serialiser` ne l'émet pas.
 export const CHEMIN_PAR_DRAPEAU = Object.freeze({
-  mode: { chemin: 'mode_installation', champ: 'modeInstallation' },
-  structure: { chemin: 'structure', champ: 'structure' },
-  tension: { chemin: 'tension', champ: 'tension' },
-  pompeAlim: { chemin: 'pompe_alim', champ: 'pompeAlim' },
+  mode: { chemin: null, champ: 'modeInstallation' },
+  structure: { chemin: null, champ: 'structure' },
+  tension: { chemin: null, champ: 'tension' },
+  pompeAlim: { chemin: null, champ: 'pompeAlim' },
   nbPanneaux: { chemin: 'taille.nb_panneaux', champ: 'nbPanneaux', nombre: true },
   scenario: { chemin: 'scenario', champ: 'scenario' },
 })
 
-const MOTIF_EQUIPEMENT = /^profil\.equipements\.[^.]+$/
-
 /**
- * Un chemin est-il dans la liste blanche ? `profil.equipements.<clef>` est le
- * SEUL motif dynamique du contrat (`<clef>` = un nom d'équipement réel, jamais
- * un index de position).
+ * Un chemin est-il dans la liste blanche ? QJR573 — liste FERMÉE, sans motif
+ * dynamique (`profil.equipements.<clef>` est retiré).
  */
 export function cheminAutorise(chemin) {
   if (typeof chemin !== 'string' || chemin === '') return false
-  if (chemin === 'profil.equipements.<clef>') return false // le motif, pas un chemin
-  if (CHEMINS_AUTORISES.includes(chemin)) return true
-  return MOTIF_EQUIPEMENT.test(chemin)
+  return CHEMINS_AUTORISES.includes(chemin)
 }
 
 /** Chemins d'un payload que le serveur refuserait en 400 (liste, vide = OK). */
@@ -141,6 +131,7 @@ export function serialiser(etat, meta = {}) {
       throw new Error(`overrides.js : le drapeau « ${drapeau} » n'a AUCUN chemin `
         + 'dans le registre — ajoutez-le à CHEMIN_PAR_DRAPEAU (contrat QJR1).')
     }
+    if (!def.chemin) continue // QJR573 — porté hors du registre
     const brut = source[def.champ]
     const valeur = def.nombre ? (Number.parseFloat(brut) || 0) : brut
     payload[def.chemin] = {
@@ -164,6 +155,7 @@ export function hydrater(payload) {
   const partiel = {}
   const touche = {}
   for (const [drapeau, def] of Object.entries(CHEMIN_PAR_DRAPEAU)) {
+    if (!def.chemin) continue
     const entree = (payload || {})[def.chemin]
     if (!entree || typeof entree !== 'object' || !('valeur' in entree)) continue
     if (entree.valeur === null || entree.valeur === undefined) continue

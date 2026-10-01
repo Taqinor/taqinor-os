@@ -1,7 +1,8 @@
 // QJR571 (D-QJR5-8) — le panneau « Surcharges (registre) » DIT quels chemins
-// le moteur ne lit pas : l'option du sélecteur porte « — sans effet sur le
-// document », et la ligne `effectif` marquée `non_lu: true` par le serveur
-// le répète. Un chemin lu (scenario, taille.nb_panneaux…) n'a pas la mention.
+// le moteur ne lit pas : la ligne `effectif` marquée `non_lu: true` par le
+// serveur porte « — sans effet sur le document ». Depuis QJR573, la liste
+// blanche ne contient plus que des chemins lus : la mention ne subsiste que
+// sur une surcharge RETIRÉE déjà posée en base (ici `tarif.distributeur`).
 //
 // Monte réellement DevisGenerator (`?edit=7` réouvre un brouillon) — aucun
 // test regex sur le source (garde QJR239).
@@ -112,17 +113,16 @@ const REGISTRE = {
 }
 
 describe('QJR571 — le registre dit les chemins sans effet sur le document', () => {
-  it('les options non lues portent la mention, les options lues non', async () => {
+  it('QJR573 — le sélecteur ne propose plus que des chemins lus, sans mention', async () => {
     ventesApi.lireOverrides.mockResolvedValue({ data: REGISTRE })
     renderGenerator()
     await waitFor(() => expect(screen.getByTestId('overrides-panel')).toBeInTheDocument())
     const options = [...screen.getByTestId('overrides-chemin').querySelectorAll('option')]
-    const texte = (valeur) => options.find((o) => o.value === valeur).textContent
-    expect(texte('profil.conso_annuelle')).toBe('profil.conso_annuelle — sans effet sur le document')
-    expect(texte('tarif.distributeur')).toContain('sans effet sur le document')
-    expect(texte('scenario')).toBe('scenario')
-    expect(texte('taille.nb_panneaux')).toBe('taille.nb_panneaux')
-    expect(texte('taille.panel_watt')).toBe('taille.panel_watt')
+    expect(options.map((o) => o.value)).toEqual([
+      'taille.nb_panneaux', 'taille.panel_watt', 'taille.kwc',
+      'scenario', 'recommended_option', 'etude.jour_reference',
+    ])
+    for (const o of options) expect(o.textContent).toBe(o.value)
   })
 
   it('la ligne `effectif` marquée non_lu le dit ; une ligne lue ne le dit pas', async () => {

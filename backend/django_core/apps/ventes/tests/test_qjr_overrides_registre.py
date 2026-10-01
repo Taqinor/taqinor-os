@@ -55,20 +55,29 @@ class ListeBlancheTests(SimpleTestCase):
 
     def test_un_chemin_de_la_liste_est_autorise(self):
         for chemin in R.CHAMPS_OVERRIDABLES:
-            if chemin.endswith('<clef>'):
-                continue
             with self.subTest(chemin=chemin):
                 self.assertTrue(R.chemin_autorise(chemin))
 
-    def test_le_motif_equipement_accepte_une_clef_reelle(self):
-        self.assertTrue(R.chemin_autorise('profil.equipements.piscine'))
-        self.assertTrue(
-            R.chemin_autorise('profil.equipements.vehicule_electrique'))
+    def test_la_liste_blanche_est_exactement_les_chemins_lus(self):
+        """QJR573 (D-QJR5-8) — aucune saisie acceptée n'est ignorée."""
+        self.assertEqual(sorted(R.CHAMPS_OVERRIDABLES), sorted(R.CHEMINS_LUS))
+        contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
+        self.assertEqual(contrat['notes']['chemins_non_lus'], [])
+        self.assertEqual(sorted(contrat['notes']['chemins_retires']),
+                         sorted(R.CHEMINS_RETIRES))
 
-    def test_le_motif_equipement_refuse_un_index_de_position(self):
+    def test_les_chemins_retires_sont_refuses_et_justifies(self):
+        for chemin, raison in R.CHEMINS_RETIRES.items():
+            with self.subTest(chemin=chemin):
+                self.assertFalse(
+                    R.chemin_autorise(chemin.replace('<clef>', 'piscine')))
+                self.assertTrue(raison and len(raison) > 20)
+        self.assertIn('mode_installation', R.CHEMINS_RETIRES)
+
+    def test_le_motif_equipement_est_retire(self):
+        self.assertFalse(R.chemin_autorise('profil.equipements.piscine'))
+        self.assertTrue(R.raison_retrait('profil.equipements.piscine'))
         self.assertFalse(R.chemin_autorise('profil.equipements.3'))
-        self.assertFalse(R.chemin_autorise('profil.equipements.'))
-        self.assertFalse(R.chemin_autorise('profil.equipements.a.b'))
 
     def test_un_chemin_inconnu_est_refuse(self):
         self.assertFalse(R.chemin_autorise('taille.inventee'))
@@ -162,13 +171,20 @@ class PoserEtFusionTests(SimpleTestCase):
         registre = R.fusionner(
             _Devis(dict(depart)),
             {'taille.nb_panneaux': {'valeur': 14},
-             'tarif.distributeur': {'valeur': 'ONEE', 'origine': 'import'}},
+             'etude.jour_reference': {'valeur': '2026-03-15',
+                                      'origine': 'import'}},
             horodatage=HORODATAGE)
         self.assertEqual(set(registre),
                          {'scenario', 'taille.nb_panneaux',
-                          'tarif.distributeur'})
+                          'etude.jour_reference'})
         self.assertEqual(registre['scenario'], depart['scenario'])
-        self.assertEqual(registre['tarif.distributeur']['origine'], 'import')
+        self.assertEqual(registre['etude.jour_reference']['origine'], 'import')
+
+    def test_poser_refuse_un_chemin_retire_en_nommant_la_raison(self):
+        with self.assertRaises(ValueError) as ctx:
+            R.poser(_Devis(), 'mode_installation', 'industriel',
+                    horodatage=HORODATAGE)
+        self.assertIn('retiré', str(ctx.exception))
 
     def test_poser_ne_persiste_rien(self):
         """QJR57 est PUR : la colonne n'existe qu'à partir de QJR58."""
@@ -230,10 +246,15 @@ class SerialiseurTests(SimpleTestCase):
     def test_un_corps_valide_est_normalise(self):
         propre = self._valider({
             'taille.nb_panneaux': 14,
-            'tarif.distributeur': {'valeur': 'ONEE', 'origine': 'import'}})
+            'scenario': {'valeur': 'Sans batterie', 'origine': 'import'}})
         self.assertEqual(propre, {
             'taille.nb_panneaux': {'valeur': 14, 'origine': 'manuel'},
-            'tarif.distributeur': {'valeur': 'ONEE', 'origine': 'import'}})
+            'scenario': {'valeur': 'Sans batterie', 'origine': 'import'}})
+
+    def test_un_chemin_retire_est_refuse_en_400(self):
+        with self.assertRaises(ValidationError) as ctx:
+            self._valider({'mode_installation': 'industriel'})
+        self.assertIn('mode_installation', ctx.exception.detail)
 
     def test_le_refus_nomme_TOUS_les_chemins_fautifs(self):
         with self.assertRaises(ValidationError) as ctx:
