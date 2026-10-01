@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import fieldLabels from './fieldLabels'
+import { SECTION_FIELDS, TRACKED_KEYS } from './draftCore'
 
 // RÈGLE FONDATEUR 08/09/2026 — garde-fou anti-dérive de fieldLabels.js : lu
 // en TEST contre la SOURCE des sections (même patron que
@@ -142,5 +143,37 @@ describe('QJR656 — un libellé court pour chaque champ de provenance du lead',
     const court = fieldLabels[champ]?.libelleCourt
     expect(typeof court).toBe('string')
     expect(court.trim().length).toBeGreaterThan(0)
+  })
+})
+
+// ERR-QJR593-GARDE-SECTION-FIELDS — chaque champ listé dans SECTION_FIELDS doit
+// (1) être suivi (TRACKED_KEYS) et (2) porter un libellé dans fieldLabels. Les
+// seules exceptions sont NOMMÉES et justifiées ci-dessous ; l'écran n'est pas
+// modifié. Décision fondateur à demander : ces 4 clés doivent-elles recevoir un
+// libellé ? Tant qu'elle n'est pas prise, toute NOUVELLE clé sans libellé échoue.
+const SANS_LIBELLE = {
+  owner: 'responsable du lead : sélecteur d’utilisateur, pas un champ libre ciblé par une erreur serveur.',
+  regularisation_8221: 'case Loi 82-21 tri-état : aucune erreur de champ ciblée côté serveur.',
+  visite_effectuee: 'booléen du flux « visite » (SectionVisite), pas un champ saisi librement.',
+  custom_data: 'sac JSON libre (champs personnalisés) : pas de libellé unique, chaque clé a le sien.',
+}
+
+describe('ERR-QJR593 — SECTION_FIELDS ⊆ TRACKED_KEYS ∩ fieldLabels', () => {
+  const toutes = Object.entries(SECTION_FIELDS).flatMap(([sec, ks]) => ks.map((k) => [sec, k]))
+
+  it.each(toutes)('%s.%s est suivi (TRACKED_KEYS)', (_sec, k) => {
+    expect(TRACKED_KEYS).toContain(k)
+  })
+
+  it.each(toutes.filter(([, k]) => !(k in SANS_LIBELLE)))(
+    '%s.%s porte un libellé dans fieldLabels', (_sec, k) => {
+      expect(fieldLabels[k]?.label, `fieldLabels.${k} manquant`).toBeTruthy()
+    })
+
+  it('la liste d’exceptions ne contient que des clés réellement sans libellé', () => {
+    for (const k of Object.keys(SANS_LIBELLE)) {
+      expect(fieldLabels[k]?.label, `${k} a un libellé : retirez-le des exceptions`).toBeFalsy()
+      expect(toutes.some(([, kk]) => kk === k)).toBe(true)
+    }
   })
 })
