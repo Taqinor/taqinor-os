@@ -570,7 +570,8 @@ export default function DevisTab({
   const envoyerWhatsApp = () => {
     if (!waArmed(leadPhone, wa.selected.length) || !state.leadId) return
     setWaBusy(true)
-    crmApi.whatsappDevis(state.leadId, { devis_ids: wa.selected, langue: wa.langue })
+    // QJR538 — l'aperçu n'écrit RIEN : « Annuler » laisse les devis tels quels.
+    crmApi.whatsappDevisApercu(state.leadId, { devis_ids: wa.selected, langue: wa.langue })
       .then((res) => {
         onWaPreview({
           message: res.data?.message ?? '',
@@ -584,6 +585,13 @@ export default function DevisTab({
 
   const ouvrirWhatsApp = () => {
     if (wa.preview?.wa_url) window.open(wa.preview.wa_url, '_blank', 'noopener')
+    // QJR538 — seul ce geste marque les devis envoyés (commit serveur).
+    const payload = { devis_ids: wa.selected, langue: wa.langue }
+    if (state.leadId && wa.selected.length) {
+      crmApi.whatsappDevis(state.leadId, payload)
+        .then(() => onAction?.('refresh'))
+        .catch((err) => toastError(errorMessageFrom(err, 'Envoi WhatsApp non enregistré.')))
+    }
     onWaReset()
   }
 
