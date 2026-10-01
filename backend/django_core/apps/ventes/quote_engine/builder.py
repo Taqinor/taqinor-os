@@ -1236,6 +1236,40 @@ def clean_pdf_options(raw) -> dict:
     return opts
 
 
+def _libelle_ville(ville, reference):
+    """QJR591 — « {ville}, près de {reference} » quand elles diffèrent."""
+    ville = (ville or '').strip()
+    reference = (reference or '').strip()
+    if ville and reference and ville.lower() != reference.lower():
+        return f"{ville}, près de {reference}"
+    return reference or ville
+
+
+def _ville_du_devis(devis, etude):
+    """QJR591 — ``(ville de calcul, libellé méta)`` du devis.
+
+    Lit d'abord ``etude_params['ville_calcul']`` (figée au chiffrage par
+    ``pipeline.rafraichir_etudes``) ; ne retombe sur le lead
+    (``crm.selectors.ville_effective``, QJR586) que pour un devis qui ne la
+    porte pas encore. Ne lève jamais : un PDF ne casse pas là-dessus.
+    """
+    figee = (etude or {}).get("ville_calcul") if isinstance(etude, dict) else None
+    if isinstance(figee, dict):
+        reference = (figee.get("reference") or "").strip()
+        return reference, _libelle_ville(figee.get("ville"), reference)
+    try:
+        _lead = getattr(devis, "lead", None)
+        if _lead is None:
+            return "", ""
+        # VREF (fondateur 07/09/2026) — la ville ERP de RATTACHEMENT d'un
+        # douar hors gazetier pilote le productible PVGIS (QJR586 : un point).
+        from apps.crm.selectors import ville_effective
+        reference = ville_effective(_lead)
+        return reference, _libelle_ville(getattr(_lead, "ville", ""), reference)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        return "", ""
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
@@ -2159,19 +2193,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # QX7c/QX38 — ville du client depuis le lead lié (lead.ville). Accès attribut
     # sur l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
     # Sert au productible PVGIS par ville (QX38) ET à la ligne meta du PDF (QX7c).
-    _client_city = ""
-    try:
-        _lead = getattr(devis, "lead", None)
-        if _lead is not None:
-            # VREF (fondateur 07/09/2026) — un lead d'un douar hors gazetier
-            # porte sa ville ERP de RATTACHEMENT (choisie par la commerciale
-            # sur la carte « Vérifier la ville ») : c'est ELLE qui pilote le
-            # productible PVGIS, jamais un nom que la table ne connaît pas.
-            # QJR586 — en UN point : crm.selectors.ville_effective.
-            from apps.crm.selectors import ville_effective
-            _client_city = ville_effective(_lead)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
-        _client_city = ""
+    # QJR591 — la ville FIGÉE au chiffrage (``etude_params['ville_calcul']``,
+    # consignée par ``pipeline.rafraichir_etudes``) : corriger la ville du
+    # lead ne change plus la production d'un devis déjà chiffré. Repli sur
+    # ``ville_effective`` (QJR586) pour un devis qui ne la porte pas encore.
+    _client_city, _client_city_libelle = _ville_du_devis(devis, etude)
 
     _tariff = {}
     try:
@@ -3276,11 +3302,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
-        # QX7c — ville du client : résolue depuis le lead lié (lead.ville) quand
-        # il existe, sinon vide (le champ était lu mais jamais alimenté). Accès
-        # attribut sur l'instance liée — aucun import de crm.models. Vide → la
-        # ligne meta ne montre pas de ville fantôme (join_meta l'omet).
+        # QX7c / QJR591 — ``client_city`` est la ville de CALCUL (figée au
+        # chiffrage ; lue par l'étude horaire et les courbes) ;
+        # ``client_ville_libelle`` est la ligne méta « X, près de Y » quand la
+        # ville tapée diffère. Vide → join_meta l'omet.
         "client_city": _client_city,
+        "client_ville_libelle": _client_city_libelle,
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
@@ -3870,7 +3897,8 @@ _CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
 #: leur HTML (``agricole/economics_page``, ``industriel/trust``,
 #: ``commercial/trust``) — ``theme.titlecase_name`` n'échappe rien.
 _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
-                        "client_city", "client_phone", "client_ice",
+                        "client_city", "client_ville_libelle",
+                        "client_phone", "client_ice",
                         "accepte_par_nom")
 
 

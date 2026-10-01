@@ -153,6 +153,16 @@ SCHEMA = {
                        'devis. Jamais une entrée du moteur : rien ne se '
                        'calcule à partir d’elle.', exclusif=True),
 
+    # QJR591 — LA VILLE SUR LAQUELLE LE DEVIS A ÉTÉ CHIFFRÉ, consignée par
+    # ``pipeline.rafraichir_etudes`` à chaque recalcul des études :
+    # ``{'ville': <ville tapée>, 'reference': <ville de calcul>}``. Le PDF la
+    # lit (productible + ligne méta « X, près de Y ») au lieu de relire le lead
+    # à chaque rendu : corriger la ville d'un lead ne change plus en silence
+    # la production d'un devis ENVOYÉ.
+    'ville_calcul': _cle((dict,), PIPELINE, DERIVEE,
+                         'QJR591 — ville de calcul figée au recalcul des '
+                         'études ; lue par `quote_engine/builder.py`.'),
+
     # ── Ce que le MOTEUR calcule (DÉRIVÉES) ──────────────────────────────────
     'etude_horaire': _cle((dict,), MOTEUR_HORAIRE, DERIVEE),
     'etude_horaire_sans': _cle((dict,), MOTEUR_HORAIRE, DERIVEE,

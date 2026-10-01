@@ -1264,7 +1264,34 @@ def rafraichir_etudes(verrou, *, force=False):
     """
     verrou.refresh_from_db()
     verrou._prefetched_objects_cache = {}
-    return rafraichir_etudes_du_devis(verrou, force=force)
+    resultat = rafraichir_etudes_du_devis(verrou, force=force)
+    consigner_ville_calcul(verrou)
+    return resultat
+
+
+def consigner_ville_calcul(devis):
+    """QJR591 — consigne dans ``etude_params['ville_calcul']`` la ville sur
+    laquelle les études viennent d'être chiffrées (``ville_effective`` du lead
+    du devis) et la ville tapée qui l'accompagne. N'écrit que si elle a
+    changé ; best-effort, jamais le statut (règle #4)."""
+    try:
+        from apps.crm.selectors import lead_du_devis, ville_effective
+        lead = lead_du_devis(devis)
+        if lead is None:
+            return None
+        valeur = {
+            'ville': (getattr(lead, 'ville', '') or '').strip(),
+            'reference': ville_effective(lead),
+        }
+        if (getattr(devis, 'etude_params', None) or {}).get(
+                'ville_calcul') == valeur:
+            return valeur
+        ecrire_etude(devis, proprietaire=PIPELINE, ville_calcul=valeur)
+        return valeur
+    except Exception:  # noqa: BLE001 — la consignation ne bloque rien
+        logger.warning('QJR591 : ville de calcul non consignée',
+                       exc_info=True)
+        return None
 
 
 def finaliser_caches(devis):

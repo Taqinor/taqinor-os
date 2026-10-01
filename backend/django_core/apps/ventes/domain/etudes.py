@@ -583,6 +583,9 @@ CLES_DERIVEES_NON_COPIEES = (
     CLE_ETUDE_HORAIRE_SANS,
     'dimensionnement',
     'profils_comparatifs',
+    # QJR591 — la ville de chiffrage figée : une copie se rechiffre sur la
+    # ville de SON lead, jamais sur celle de la source.
+    'ville_calcul',
 )
 
 #: QJR136 / ES13 — L'ATTRIBUTION PUBLICITAIRE NE SE RECOPIE PAS NON PLUS.

@@ -67,7 +67,7 @@ def build(ctx):
     client_full = theme.titlecase_name(d["client_full"])
     first_name = (client_full.split() or [client_full])[0]
     client_addr = d.get("client_addr", "")
-    client_city = d.get("client_city", "")
+    client_city = d.get("client_ville_libelle") or d.get("client_city", "")  # QJR591
     client_phone = d.get("client_phone", "")
     inst_type = d.get("inst_type", "")
     # One clean meta line — no dangling comma when address or city is empty.
