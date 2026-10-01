@@ -211,8 +211,15 @@ const crmApi = {
   mergeLeads: (id, others) => api.post(`/crm/leads/${id}/merge/`, { others }),
   // Envoyer par WhatsApp : construit un lien wa.me prêt à envoyer pour un ou
   // plusieurs devis du lead (le commercial appuie lui-même sur Envoyer).
+  // QJR538 — c'est le COMMIT (marque les devis envoyés) : appelé par
+  // « Ouvrir WhatsApp » seulement, jamais pour remplir l'aperçu.
   whatsappDevis: (id, payload) =>
     api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
+  // QJR590 (contrat lead_client_ecart.json) — « Mettre à jour la fiche client ».
+  synchroniserClient: (id) => api.post(`/crm/leads/${id}/synchroniser-client/`),
+  // QJR538 (contrat whatsapp_devis_apercu.json) — APERÇU sans aucun effet.
+  whatsappDevisApercu: (id, payload) =>
+    api.post(`/crm/leads/${id}/whatsapp-devis-apercu/`, payload),
   // FG30 — Interaction typée (appel/email) dans le chatter du lead.
   logInteraction: (id, payload) =>
     api.post(`/crm/leads/${id}/log-interaction/`, payload),

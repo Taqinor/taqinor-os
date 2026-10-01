@@ -771,6 +771,11 @@ class DevisWriteSerializer(EcheancierValidationMixin,
         # accepté du corps de requête.
         read_only_fields = ['created_by', 'date_creation', 'company',
                             'prix_par_kwc',
+                            # QJR539 — l'approbation T17 n'est jamais
+                            # auto-attribuable par PATCH : seuls l'action
+                            # admin `approuver-remise` et la garde de domaine
+                            # (admin implicite) l'écrivent.
+                            'remise_approuvee', 'remise_approuvee_par',
                             # Posés côté serveur uniquement.
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',

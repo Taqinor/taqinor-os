@@ -24,6 +24,8 @@ vi.mock('../../../api/crmApi', () => ({
     getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
     getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
     mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
+    // QJR590 — réponse fournie par le test depuis lead_client_ecart.json.
+    synchroniserClient: vi.fn(),
     // CAD152 — le panneau d'appel guidé (réponse = l'exemple COMMITTÉ).
     getPanneauAppel: vi.fn(),
     updateLead: vi.fn(),
@@ -487,5 +489,36 @@ describe('PUB53 — badge « Vient de la pub » (traçabilité retour lead Meta 
       users={[]}
     />)
     expect(screen.queryByRole('link', { name: /Vient de la pub/ })).toBeNull()
+  })
+})
+
+/* QJR590 — le client lié et l'écart lead ↔ fiche client (contrat
+   lead_client_ecart.json : GET lead {client, client_nom, client_ecart} ;
+   POST synchroniser-client -> {client_ecart, champs_mis_a_jour}). */
+describe('IdentityRail — QJR590 fiche client liée', () => {
+  const GET_LEAD = exempleContrat('crm', 'lead_client_ecart', 'exemple_get_lead')
+
+  it('affiche le client lié et, s’il y a un écart, l’avertissement + le bouton', async () => {
+    const onAction = vi.fn()
+    crmApi.synchroniserClient.mockResolvedValueOnce({ data: exempleContrat('crm', 'lead_client_ecart') })
+    render(<IdentityRail state={makeState(GET_LEAD)} onAction={onAction} users={[]} />)
+    const bandeau = screen.getByTestId('lw-client-lie')
+    expect(bandeau.textContent).toContain(`Client lié : ${GET_LEAD.client_nom}`)
+    expect(bandeau.textContent).toContain('La fiche client diffère du lead')
+    fireEvent.click(within(bandeau).getByRole('button', { name: 'Mettre à jour la fiche client' }))
+    await waitFor(() => expect(crmApi.synchroniserClient).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('aucun écart → client lié sans avertissement ni bouton', () => {
+    render(<IdentityRail state={makeState({ ...GET_LEAD, client_ecart: [] })} onAction={vi.fn()} users={[]} />)
+    const bandeau = screen.getByTestId('lw-client-lie')
+    expect(bandeau.textContent).not.toContain('diffère')
+    expect(within(bandeau).queryByRole('button')).toBeNull()
+  })
+
+  it('pas de client lié → pas de bandeau', () => {
+    render(<IdentityRail state={makeState()} onAction={vi.fn()} users={[]} />)
+    expect(screen.queryByTestId('lw-client-lie')).toBeNull()
   })
 })

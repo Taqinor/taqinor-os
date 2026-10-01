@@ -19,7 +19,7 @@ import DevisTab, {
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, createFromDevis, whatsappDevis, shareLinkDevis, getOffresTaillesDevis,
+  genererFacture, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -31,9 +31,10 @@ const {
   return {
     genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
-    whatsappDevis: vi.fn(() => Promise.resolve({
-      data: { message: 'Bonjour, voici votre devis', links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }], wa_url: 'https://wa.me/212600000000?text=x' },
-    })),
+    whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
+    // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
+    // l'exemple COMMITTÉ whatsapp_devis_apercu.json (jamais un mock inventé).
+    whatsappDevisApercu: vi.fn(),
     // L5/L-NIV-UI/L-INTPREV — mint/réutilisation du ShareLink pour « Page
     // client »/WhatsApp/aperçu interne (format identique à ce que renvoie POST
     // .../share-link/ : {token, path, token_interne, path_interne, niveau,
@@ -70,6 +71,7 @@ vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 vi.mock('../../../api/crmApi', () => ({
   default: {
     whatsappDevis,
+    whatsappDevisApercu,
     getLeadSalleVenteAnalytics: () => Promise.resolve({ data: null }),
   },
 }))
@@ -121,9 +123,9 @@ describe('LW21 — logique pure (co-localisée, testable sans DOM)', () => {
     expect(devisTrackCurrent({ chantier: { id: 1, reference: 'CHT-1' } })).toBe('chantier')
   })
 
-  it('missingFieldTarget mappe les libellés backend (devis_auto.py) vers les id lf-*', () => {
-    expect(missingFieldTarget('facture hiver')).toEqual({ field: 'lf-facture-hiver', section: 'energie' })
-    expect(missingFieldTarget('HMT')).toEqual({ field: 'lf-pompe-hmt', section: 'pompage' })
+  it('missingFieldTarget mappe le NOM DU CHAMP servi (manquants_detail) vers les id lf-* (QJR601)', () => {
+    expect(missingFieldTarget('facture_hiver')).toEqual({ field: 'lf-facture-hiver', section: 'energie' })
+    expect(missingFieldTarget('pompe_hmt_m')).toEqual({ field: 'lf-pompe-hmt', section: 'pompage' })
     expect(missingFieldTarget('inconnu')).toBeNull()
   })
 
@@ -178,7 +180,13 @@ describe('LW21 — CTA devis automatique', () => {
     const focusSpy = vi.spyOn(input, 'focus')
     try {
       renderTab({
-        state: leadState({ devis_auto: { pret: false, manquants: ['facture hiver'], message: 'Manque : facture hiver' } }),
+        state: leadState({
+          devis_auto: {
+            pret: false, manquants: ['facture hiver'], message: 'Manque : facture hiver',
+            manquants_detail: [{ champ: 'facture_hiver', label: 'facture hiver' }],
+            requis: [['facture_hiver']],
+          },
+        }),
       })
       expect(screen.queryByRole('button', { name: /Devis automatique/ })).toBeNull()
       await user.click(screen.getByText('facture hiver'))
@@ -277,27 +285,45 @@ describe('LW22 — WhatsApp multi-devis', () => {
       state: leadState({ telephone: '0612345678', devis: [devis1] }),
       wa: waState({ selected: [1] }),
     })
+    const apercu = exempleContrat('crm', 'whatsapp_devis_apercu')
+    whatsappDevisApercu.mockResolvedValue({ data: apercu })
     const btn = screen.getByRole('button', { name: /Envoyer par WhatsApp/ })
     expect(btn).toBeEnabled()
     await user.click(btn)
-    await waitFor(() => expect(whatsappDevis).toHaveBeenCalledWith(7, { devis_ids: [1], langue: 'fr' }))
+    // QJR538 — l'aperçu passe par l'action SANS EFFET ; le commit n'est pas appelé.
+    await waitFor(() => expect(whatsappDevisApercu).toHaveBeenCalledWith(7, { devis_ids: [1], langue: 'fr' }))
     await waitFor(() => expect(onWaPreview).toHaveBeenCalledWith({
-      message: 'Bonjour, voici votre devis',
-      links: [{ devis_id: 1, reference: 'DEV-1', url: 'https://x/1' }],
-      wa_url: 'https://wa.me/212600000000?text=x',
+      message: apercu.message,
+      links: apercu.links,
+      wa_url: apercu.wa_url,
     }))
+    expect(whatsappDevis).not.toHaveBeenCalled()
+  })
+
+  it('QJR538 — aperçu affiché → « Annuler » n’appelle jamais le commit', async () => {
+    const user = userEvent.setup()
+    const { onWaPreview } = renderTab({
+      state: leadState({ telephone: '0612345678', devis: [devis1] }),
+      wa: waState({ selected: [1], preview: { message: 'Bonjour', links: [], wa_url: 'https://wa.me/212600000000?text=x' } }),
+    })
+    await user.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(onWaPreview).toHaveBeenCalledWith(null)
+    expect(whatsappDevis).toHaveBeenCalledTimes(0)
   })
 
   it('aperçu affiché → « Ouvrir WhatsApp » ouvre wa.me puis réinitialise la sélection', async () => {
     const user = userEvent.setup()
     window.open = vi.fn(() => ({}))
-    const { onWaReset } = renderTab({
+    const { onWaReset, onAction } = renderTab({
       state: leadState({ telephone: '0612345678', devis: [devis1] }),
       wa: waState({ selected: [1], preview: { message: 'Bonjour', links: [], wa_url: 'https://wa.me/212600000000?text=x' } }),
     })
     expect(screen.getByText('Aperçu du message WhatsApp')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Ouvrir WhatsApp/ }))
     expect(window.open).toHaveBeenCalledWith('https://wa.me/212600000000?text=x', '_blank', 'noopener')
+    // QJR538 — seul « Ouvrir WhatsApp » marque les devis envoyés (commit).
+    expect(whatsappDevis).toHaveBeenCalledWith(7, { devis_ids: [1], langue: 'fr' })
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
     expect(onWaReset).toHaveBeenCalled()
   })
 
@@ -1153,6 +1179,18 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     await user.click(screen.getByRole('button', { name: /Réviser/ }))
     await waitFor(() => expect(ordre).toEqual(['warning', 'appel']))
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('CHT-5'))
+  })
+
+  it('QJR566 — lu AVANT la correction après envoi → « avant la correction du … »', () => {
+    const [corrigee] = exempleContrat('crm', 'lead_devis_ligne').devis
+    const avant = { nombre_vues: 2, derniere_consultation: '2026-09-28T09:00:00+00:00' }
+    renderTab({ state: leadState({ devis: [{ ...corrigee, lecture: avant }] }) })
+    expect(screen.getByText(/avant la correction du/)).toBeInTheDocument()
+    // Lu APRÈS la correction : aucune mention.
+    const apres = { nombre_vues: 2, derniere_consultation: '2026-09-30T09:00:00+00:00' }
+    expect(lectureClientLabel(apres, corrigee.corrige_le)).not.toMatch(/avant la correction/)
+    // Jamais corrigé (corrige_le null) : aucune mention.
+    expect(lectureClientLabel(avant, null)).not.toMatch(/avant la correction/)
   })
 
   it('QJR535 — carte remplacée : badge « Remplacé par … », plus d\'« Envoyer au client »', () => {

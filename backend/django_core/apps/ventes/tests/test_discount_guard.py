@@ -1,4 +1,9 @@
-"""T17 — garde d'approbation de remise avant envoi du devis."""
+"""T17 — garde d'approbation de remise avant envoi du devis.
+
+QJR539 — ``_guard_discount_approval`` (vue) est supprimée : le PATCH
+statut=envoye passe par la fonction de domaine
+``domain/tarification.exiger_approbation_remise`` (même 400 {'statut'}).
+Les autres envois sont couverts par ``test_t17_garde_envoi.py``."""
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -62,6 +67,16 @@ class TestDiscountGuard(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         d.refresh_from_db()
         self.assertTrue(d.remise_approuvee)
+
+    def test_over_threshold_error_key_statut_kept(self):
+        # QJR539 — la clé d'erreur historique {'statut'} est CONSERVÉE.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'discount_approval_threshold': Decimal('10')})
+        d = self._devis('26')
+        r = self._api(self.resp).patch(f'/api/django/ventes/devis/{d.id}/',
+                                       {'statut': 'envoye'}, format='json')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('statut', r.data)
 
     def test_approval_then_responsable_can_send(self):
         CompanyProfile.objects.update_or_create(

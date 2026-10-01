@@ -160,17 +160,64 @@ class LeCheminVivantDeLaProvenance(TestCase):
             orphelin.etude_params['provenance']['source_lead_id'],
             self.lead.pk)
 
-    def test_un_devis_sans_lead_n_est_jamais_estampille(self):
+    def test_un_devis_sans_lead_ni_lead_client_n_est_jamais_estampille(self):
+        """QJR585 — sans lead lié ET sans lead sur son client, rien à
+        estampiller (le résolveur ``lead_du_devis`` rend None)."""
+        from apps.crm.models import Client
         from apps.ventes.domain import pipeline
         from apps.ventes.models import Devis
 
+        client_seul = Client.objects.create(
+            company=self.company, nom='Client sans lead')
         sans_lead = Devis.objects.create(
             company=self.company, reference='DEV-DC11-3',
-            client=self.client_obj, statut='brouillon')
+            client=client_seul, statut='brouillon')
         self.assertIsNone(
             pipeline.estampiller_provenance(sans_lead, self._intention()))
         sans_lead.refresh_from_db()
         self.assertNotIn('provenance', sans_lead.etude_params or {})
+
+    def test_un_devis_sans_lead_se_rabat_sur_le_lead_de_son_client(self):
+        """QJR585 — repli PARTOUT : le devis client-sans-lead est estampillé
+        sur le lead le plus récent de son client."""
+        from apps.ventes.domain import pipeline
+        from apps.ventes.models import Devis
+
+        Lead.objects.filter(pk=self.lead.pk).update(client=self.client_obj)
+        sans_lead = Devis.objects.create(
+            company=self.company, reference='DEV-DC11-4',
+            client=self.client_obj, statut='brouillon')
+        pipeline.estampiller_provenance(sans_lead, self._intention())
+        sans_lead.refresh_from_db()
+        self.assertEqual(
+            sans_lead.etude_params['provenance']['source_lead_id'],
+            self.lead.pk)
+
+    def test_derive_sur_a_pas_reestampillee_par_un_lead_b_plus_recent(self):
+        """QJR585 — garde : devis SANS lead estampillé sur A, A dérive, un
+        lead B plus récent apparaît sur le même client : le réenregistrement
+        NE réestampille PAS sur B (la dérive de A reste visible)."""
+        from apps.ventes.domain import pipeline
+        from apps.ventes.models import Devis
+
+        Lead.objects.filter(pk=self.lead.pk).update(client=self.client_obj)
+        sans_lead = Devis.objects.create(
+            company=self.company, reference='DEV-DC11-5',
+            client=self.client_obj, statut='brouillon')
+        pipeline.estampiller_provenance(
+            sans_lead, self._intention(lead=self.lead))
+        self.lead.facture_hiver = Decimal('1500')
+        self.lead.save(update_fields=['facture_hiver'])
+        Lead.objects.create(
+            company=self.company, nom='Prospect B', client=self.client_obj,
+            facture_hiver=Decimal('300'))
+        sans_lead.refresh_from_db()
+        self.assertIsNone(
+            pipeline.estampiller_provenance(sans_lead, self._intention()))
+        sans_lead.refresh_from_db()
+        self.assertEqual(
+            sans_lead.etude_params['provenance']['source_lead_id'],
+            self.lead.pk)
 
     def test_l_estampille_ne_remplace_pas_le_reste_de_l_etude(self):
         """Écrivain unique (QJR62) : la fusion, jamais un remplacement."""

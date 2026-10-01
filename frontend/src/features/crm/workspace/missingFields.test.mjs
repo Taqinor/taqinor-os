@@ -10,6 +10,9 @@ import { sectionAutoRepliee, sectionCoeurKeys, sectionEstVide } from './draftCor
 import { QUOTE_SENT_STAGE, FOLLOW_UP_STAGE, PIPELINE_STAGES } from '../stages.js'
 
 const etat = (server = {}, draft = {}) => ({ server, draft, mode: 'edit' })
+// QJR601 — les manquants du devis sont servis STRUCTURÉS (`manquants_detail`
+// [{champ, label}], contrat devis_auto_pret.json) : la cible vient du champ.
+const detail = (...paires) => paires.map(([champ, label]) => ({ champ, label }))
 
 test('les noms scalaires d’étape sont DÉRIVÉS de la liste canonique (règle #2)', () => {
   assert.equal(QUOTE_SENT_STAGE, PIPELINE_STAGES[2])
@@ -28,7 +31,11 @@ test('rien ne manque → AUCUNE chip (donc aucun bandeau rendu)', () => {
 test('les manquants du devis deviennent des chips cliquables, libellés serveur intacts', () => {
   const s = etat({
     stage: PIPELINE_STAGES[0],
-    devis_auto: { pret: false, manquants: ['facture hiver', 'facture été'] },
+    devis_auto: {
+      pret: false,
+      manquants: ['facture hiver', 'facture été'],
+      manquants_detail: detail(['facture_hiver', 'facture hiver'], ['facture_ete', 'facture été']),
+    },
   })
   const chips = chipsAComplete(s)
   assert.deepEqual(chips.map((c) => c.label), ['facture hiver', 'facture été'])
@@ -37,7 +44,7 @@ test('les manquants du devis deviennent des chips cliquables, libellés serveur 
     chips.map((c) => [c.section, c.field]),
     [['energie', 'lf-facture-hiver'], ['energie', 'lf-facture-ete']],
   )
-  assert.deepEqual(missingFieldTarget('facture hiver'), chips[0] && { field: chips[0].field, section: chips[0].section })
+  assert.deepEqual(missingFieldTarget('facture_hiver'), chips[0] && { field: chips[0].field, section: chips[0].section })
 })
 
 test('chips exactes par type_installation — résidentiel vs agricole', () => {
@@ -46,13 +53,17 @@ test('chips exactes par type_installation — résidentiel vs agricole', () => {
   // agricole serait un bouton mort.
   const residentiel = chipsAComplete(etat({
     stage: PIPELINE_STAGES[0], type_installation: 'residentiel',
-    devis_auto: { pret: false, manquants: ['facture hiver'] },
+    devis_auto: { pret: false, manquants: ['facture hiver'], manquants_detail: detail(['facture_hiver', 'facture hiver']) },
   }))
   assert.deepEqual(residentiel.map((c) => c.section), ['energie'])
 
   const agricole = chipsAComplete(etat({
     stage: PIPELINE_STAGES[0], type_installation: 'agricole',
-    devis_auto: { pret: false, manquants: ['pompe (CV)', 'HMT', 'débit souhaité'] },
+    devis_auto: {
+      pret: false,
+      manquants: ['pompe (CV)', 'HMT', 'débit souhaité'],
+      manquants_detail: detail(['pompe_cv', 'pompe (CV)'], ['pompe_hmt_m', 'HMT'], ['pompe_debit_m3h', 'débit souhaité']),
+    },
   }))
   assert.deepEqual(agricole.map((c) => c.section), ['pompage', 'pompage', 'pompage'])
   assert.deepEqual(
@@ -89,22 +100,22 @@ test('la chip lit le DRAFT, pas seulement le serveur (une relance tapée compte 
 test('sectionsPointees rassemble les sections visées par le bandeau', () => {
   const chips = chipsAComplete(etat({
     stage: FOLLOW_UP_STAGE,
-    devis_auto: { pret: false, manquants: ['facture hiver'] },
+    devis_auto: { pret: false, manquants: ['facture hiver'], manquants_detail: detail(['facture_hiver', 'facture hiver']) },
   }))
   assert.deepEqual([...sectionsPointees(chips)].sort(), ['energie', 'pipeline'])
 })
 
 /* ── Repli automatique ─────────────────────────────────────────────────── */
 
-test('le cœur « énergie » suit le marché — miroir de devis_auto.champs_manquants', () => {
-  const coeur = (server) => sectionCoeurKeys(etat(server), 'energie')
-  assert.deepEqual(coeur({ type_installation: 'residentiel' }), ['facture_hiver'])
-  assert.deepEqual(coeur({}), ['facture_hiver']) // non renseigné = résidentiel
-  assert.deepEqual(coeur({ ete_differente: true }), ['facture_hiver', 'facture_ete'])
-  assert.deepEqual(coeur({ type_installation: 'commercial' }), ['conso_mensuelle_kwh'])
-  assert.deepEqual(coeur({ type_installation: 'industriel' }), ['conso_mensuelle_kwh'])
+test('le cœur « énergie » LIT la règle servie (devis_auto.requis) — QJR601', () => {
+  const coeur = (requis) => sectionCoeurKeys(etat({ devis_auto: { requis } }), 'energie')
+  assert.deepEqual(coeur([['facture_hiver']]), ['facture_hiver'])
+  assert.deepEqual(coeur([['facture_hiver'], ['facture_ete']]), ['facture_hiver', 'facture_ete'])
+  assert.deepEqual(coeur([['conso_mensuelle_kwh', 'bill_kwh']]), ['conso_mensuelle_kwh', 'bill_kwh'])
   // En agricole l'énergie ne se saisit pas ici : tout est dans « Pompage ».
-  assert.deepEqual(coeur({ type_installation: 'agricole' }), [])
+  assert.deepEqual(coeur([['pompe_cv'], ['pompe_hmt_m'], ['pompe_debit_m3h']]), [])
+  // Aucune règle servie (création) : aucun cœur, jugée sur le vide.
+  assert.deepEqual(sectionCoeurKeys(etat({}), 'energie'), [])
 })
 
 test('une section dont le CŒUR est complet s’ouvre repliée', () => {

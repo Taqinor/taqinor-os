@@ -4923,6 +4923,133 @@ def _resoudre_ou_creer_client(lead, _find_existing):
     return client
 
 
+# ── QJR590 : l'identité client SUIT le lead tant qu'elle n'a pas divergé ─────
+#: Champs d'identité recopiés du lead vers sa fiche Client (contrat
+#: ``lead_client_ecart.json``) — ordre stable, celui de l'écart servi.
+IDENTITE_CLIENT_CHAMPS = ('nom', 'prenom', 'email', 'telephone', 'adresse')
+
+
+def identite_client_depuis_lead(lead):
+    """Identité Client telle que :func:`_resoudre_ou_creer_client` la
+    recopie d'un lead (adresse = adresse + ', ' + ville ; téléphone ≤ 20)."""
+    adresse = getattr(lead, 'adresse', None) or ''
+    ville = getattr(lead, 'ville', None)
+    if ville:
+        adresse = ', '.join(p for p in (adresse, ville) if p)
+    return {
+        'nom': getattr(lead, 'nom', None),
+        'prenom': getattr(lead, 'prenom', None),
+        'email': getattr(lead, 'email', None),
+        'telephone': (getattr(lead, 'telephone', None) or '')[:20] or None,
+        'adresse': adresse or None,
+    }
+
+
+def _identite_egale(champ, a, b):
+    """Égalité « métier » : casse ignorée pour l'e-mail, numéro normalisé
+    pour le téléphone, espaces de bord ignorés partout ; vide == None."""
+    a = (a or '').strip()
+    b = (b or '').strip()
+    if champ == 'email':
+        return a.casefold() == b.casefold()
+    if champ == 'telephone':
+        return (normalize_phone(a) or a) == (normalize_phone(b) or b)
+    return a == b
+
+
+def _client_synchronisable(lead):
+    client = getattr(lead, 'client', None) if lead.client_id else None
+    if client is None or getattr(client, 'is_anonymized', False):
+        return None
+    if client.company_id != lead.company_id:
+        return None
+    return client
+
+
+def client_ecart(lead):
+    """QJR590 — champs d'identité où la fiche Client liée diffère du lead
+    (liste ordonnée, ``[]`` sans client ou client anonymisé). Lecture seule."""
+    client = _client_synchronisable(lead)
+    if client is None:
+        return []
+    cible = identite_client_depuis_lead(lead)
+    return [c for c in IDENTITE_CLIENT_CHAMPS
+            if not _identite_egale(c, getattr(client, c, None), cible[c])]
+
+
+def synchroniser_identite_client(lead, avant, user, *, force=False):
+    """QJR590 — propage une correction d'identité du lead à SA fiche Client.
+
+    Un champ n'est recopié que si la valeur actuelle du Client ÉGALE celle
+    qu'avait le lead AVANT (``avant`` = instantané pris avant l'écriture) :
+    un Client modifié à la main, divergé, n'est jamais écrasé. ``force=True``
+    (action « Mettre à jour la fiche client ») recopie tout l'écart. Jamais un
+    Client anonymisé, jamais un Client d'une autre société, jamais un Client
+    désigné par le corps de requête (``lead.client`` seulement).
+
+    E-mail déjà pris par un autre client (contrainte
+    ``crx24_client_email_unique_ci``) : les autres champs passent, l'e-mail
+    non, et un message le dit (chatter + valeur rendue). Chaque devis ENVOYÉ
+    du client reçoit la trace « corrigé après envoi » (objet « identité
+    client », QJR518) ; un accepté garde son exemplaire signé figé.
+
+    Rend ``(champs_mis_a_jour, message|None)``.
+    """
+    from django.db import IntegrityError, transaction
+
+    client = _client_synchronisable(lead)
+    if client is None:
+        return [], None
+    cible = identite_client_depuis_lead(lead)
+    ancienne = identite_client_depuis_lead(avant) if avant is not None else {}
+    champs = []
+    for c in IDENTITE_CLIENT_CHAMPS:
+        actuelle = getattr(client, c, None)
+        if _identite_egale(c, actuelle, cible[c]):
+            continue
+        if force or _identite_egale(c, actuelle, ancienne.get(c)):
+            champs.append(c)
+    if not champs:
+        return [], None
+    if 'nom' in champs and not (cible['nom'] or '').strip():
+        champs.remove('nom')  # Client.nom est requis : jamais vidé
+    message = None
+    anciennes = {c: getattr(client, c, None) for c in champs}
+    for c in champs:
+        setattr(client, c, cible[c])
+    try:
+        with transaction.atomic():
+            client.save(update_fields=champs)
+    except IntegrityError:
+        setattr(client, 'email', anciennes.get('email'))
+        champs = [c for c in champs if c != 'email']
+        message = ("La fiche client n'a pas repris l'e-mail : il est déjà "
+                   'utilisé par un autre client.')
+        if champs:
+            with transaction.atomic():
+                client.save(update_fields=champs)
+    acteur = getattr(user, 'username', None) or 'système'
+    if champs:
+        libelles = ', '.join(champs)
+        corps = (f'Fiche client {client.nom} mise à jour depuis le lead '
+                 f'({libelles}) par {acteur}.')
+        for lead_client in client.leads.all():
+            LeadActivity.objects.create(
+                company=lead_client.company, lead=lead_client, user=user,
+                kind=LeadActivity.Kind.NOTE, body=corps)
+        from apps.ventes.selectors import devis_envoyes_du_client
+        from apps.ventes.services import consigner_correction_apres_envoi
+        for devis in devis_envoyes_du_client(client.company_id, client.pk):
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='identité client',
+                resume=f'identité client ({libelles})')
+    if message:
+        LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=user,
+            kind=LeadActivity.Kind.NOTE, body=message)
+    return champs, message
+
+
 def convertir_lead_en_client(*, lead, user, mode, client_id=None):
     """ZSAL4 — assistant de conversion EXPLICITE lead → client (Odoo « Convert
     to Opportunity » : nouveau contact / lier un contact existant / ne pas

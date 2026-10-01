@@ -1111,6 +1111,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # base.
         new_lead.refresh_from_db()
         activity.log_changes(old, new_lead, self.request.user)
+        # QJR590 — une correction d'identité du lead suit sur SA fiche Client
+        # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
+        if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
+                     'ville'}:
+            from .services import synchroniser_identite_client
+            try:
+                synchroniser_identite_client(new_lead, old, self.request.user)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning(
+                    'QJR590: synchronisation client échouée (lead #%s)',
+                    new_lead.pk, exc_info=True)
         from .services import (
             _emit_stage_changed, maybe_set_first_contacted_at,
             recompute_lead_score, sync_relance_activity,
@@ -1270,7 +1281,9 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer',
-            'whatsapp_devis', 'bulk', 'log_interaction',
+            'whatsapp_devis', 'whatsapp_devis_apercu', 'synchroniser_client',
+            'bulk',
+            'log_interaction',
             'appliquer_plan', 'initialiser_relance',
             # MRY9 — arrêt manuel d'une cadence. get_permissions()
             # PRIME sur le permission_classes de l'@action (bug CI #25) :
@@ -1333,56 +1346,108 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             activity.log_restore(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
-    @action(detail=True, methods=['post'], url_path='whatsapp-devis',
-            permission_classes=[IsResponsableOrAdmin])
-    def whatsapp_devis(self, request, pk=None):
-        """Construit un lien wa.me prêt à envoyer pour un/plusieurs devis du lead.
+    def _whatsapp_devis_message(self, request, lead, *, enregistrer):
+        """Valide la sélection et construit le message multi-devis du lead.
 
-        N'envoie RIEN : ouvre WhatsApp avec le message pré-rempli (le commercial
-        appuie lui-même sur Envoyer). Chaque {lien} est un lien public tokenisé
-        (30 j) vers le PDF CLIENT — jamais de prix d'achat ni de marge.
+        QJR538 — partagé par l'APERÇU (`whatsapp-devis-apercu`, sans aucun
+        effet) et le COMMIT (`whatsapp-devis`). ``ShareLink.for_devis``
+        réutilise le jeton : aperçu et commit portent le MÊME lien. Renvoie
+        ``(Response d'erreur, None)`` ou ``(None, (devis_list, phone, message,
+        links))``.
         """
         from apps.ventes.selectors import devis_for_lead
         from apps.ventes.utils.phone import normalize_phone_e164
-        from apps.ventes.utils.whatsapp import (
-            build_devis_whatsapp, build_wa_url,
-        )
+        from apps.ventes.utils.whatsapp import build_devis_whatsapp
 
         from .services import coerce_id_list
 
-        lead = self.get_object()
         raw_ids = request.data.get('devis_ids') or []
         if not isinstance(raw_ids, list) or not raw_ids:
             return Response(
                 {'detail': 'Sélectionnez au moins un devis.'},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
+            ), None
         try:
             ids = coerce_id_list(raw_ids)
         except ValueError:
             return Response(
                 {'detail': 'Identifiant de devis invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
+            ), None
         # Devis du lead, dans la société courante uniquement.
         devis_list = devis_for_lead(lead, ids)
         if len(devis_list) != len(set(ids)):
             return Response(
                 {'detail': 'Un devis sélectionné est introuvable pour ce lead.'},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
+            ), None
         phone = lead.whatsapp or lead.telephone
         if not normalize_phone_e164(phone):
             return Response(
                 {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
-            )
+            ), None
+        # QJR539 — garde de remise T17 (ventes.services) AVANT tout effet,
+        # lien compris : un seul devis refusé refuse toute la sélection. Un
+        # aperçu (``enregistrer=False``) n'écrit pas l'approbation implicite.
+        from apps.ventes.services import (
+            RemiseNonApprouvee, exiger_approbation_remise)
+        for d in devis_list:
+            if d.statut not in ('brouillon', 'envoye'):
+                continue
+            try:
+                exiger_approbation_remise(
+                    d, request.user, enregistrer=enregistrer)
+            except RemiseNonApprouvee as erreur:
+                return Response({'detail': erreur.message},
+                                status=status.HTTP_400_BAD_REQUEST), None
         # Langue du message : la valeur explicite de la requête l'emporte ;
         # sinon on retombe sur la langue préférée du lead, puis sur le FR.
         langue = request.data.get('langue')
         if langue is None:
             langue = lead.langue_preferee or 'fr'
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
+        return None, (devis_list, phone, message, links)
+
+    @action(detail=True, methods=['post'], url_path='whatsapp-devis-apercu',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp_devis_apercu(self, request, pk=None):
+        """QJR538 (contrat ``whatsapp_devis_apercu.json``) — APERÇU du message
+        WhatsApp multi-devis, SANS AUCUN EFFET : ni ``mark_devis_sent``, ni
+        AuditLog, ni note. Remplir le dialogue d'aperçu puis « Annuler » ne
+        change donc ni le statut, ni la date d'envoi, ni le funnel."""
+        from apps.ventes.utils.whatsapp import build_wa_url
+
+        lead = self.get_object()
+        erreur, built = self._whatsapp_devis_message(
+            request, lead, enregistrer=False)
+        if erreur is not None:
+            return erreur
+        _devis_list, phone, message, links = built
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'links': links,
+        })
+
+    @action(detail=True, methods=['post'], url_path='whatsapp-devis',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp_devis(self, request, pk=None):
+        """COMMIT du partage WhatsApp d'un/plusieurs devis du lead.
+
+        Appelé par « Ouvrir WhatsApp » (QJR538) — jamais pour remplir
+        l'aperçu (voir `whatsapp_devis_apercu`). N'envoie RIEN lui-même : le
+        commercial appuie sur Envoyer dans WhatsApp. Chaque {lien} est un lien
+        public tokenisé (30 j) vers le PDF CLIENT — jamais de prix d'achat ni
+        de marge.
+        """
+        from apps.ventes.utils.whatsapp import build_wa_url
+
+        lead = self.get_object()
+        erreur, built = self._whatsapp_devis_message(
+            request, lead, enregistrer=True)
+        if erreur is not None:
+            return erreur
+        devis_list, phone, message, links = built
         # U4 — partager un devis au client le marque « envoyé » et fait avancer
         # le funnel (→ QUOTE_SENT). On passe par le service ventes (jamais une
         # écriture brute de statut) pour préserver la sémantique (règle #4) + le
@@ -1406,6 +1471,33 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,
+        })
+
+    @action(detail=True, methods=['post'], url_path='synchroniser-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def synchroniser_client(self, request, pk=None):
+        """QJR590 (contrat ``lead_client_ecart.json``) — « Mettre à jour la
+        fiche client » : recopie TOUT l'écart d'identité du lead vers SA fiche
+        Client (``lead.client`` seulement, jamais un id du corps). 200
+        ``{client_ecart, champs_mis_a_jour}`` | 400 ``{detail}``."""
+        from .services import client_ecart, synchroniser_identite_client
+
+        lead = self.get_object()
+        if not lead.client_id:
+            return Response(
+                {'detail': "Ce lead n'est lié à aucune fiche client."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if getattr(lead.client, 'is_anonymized', False):
+            return Response(
+                {'detail': 'La fiche client est anonymisée : elle ne se '
+                           'met plus à jour.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        champs, _message = synchroniser_identite_client(
+            lead, None, request.user, force=True)
+        lead.client.refresh_from_db()
+        return Response({
+            'client_ecart': client_ecart(lead),
+            'champs_mis_a_jour': champs,
         })
 
     def destroy(self, request, *args, **kwargs):

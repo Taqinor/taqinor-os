@@ -13,7 +13,9 @@ const SRC = readFileSync(join(HERE, 'MesActivitesPage.jsx'), 'utf8')
 
 test('QX25 : telHref/waHref dérivés depuis target_phone (serializer)', () => {
   assert.match(SRC, /const telHref = /)
-  assert.match(SRC, /const waHref = /)
+  // QJR635 — waHref vient du constructeur partagé (lib/contactLinks).
+  assert.match(SRC, /import \{ waHref \} from '\.\.\/\.\.\/lib\/contactLinks'/)
+  assert.doesNotMatch(SRC, /const waHref = /)
   assert.match(SRC, /telHref\(a\.target_phone\)/)
   assert.match(SRC, /waHref\(a\.target_phone\)/)
 })

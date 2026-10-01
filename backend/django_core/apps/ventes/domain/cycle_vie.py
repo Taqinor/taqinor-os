@@ -2228,6 +2228,12 @@ def mark_devis_sent(*, devis, user=None):
     if devis.statut != Devis.Statut.BROUILLON:
         return devis
 
+    # QJR539 — FILET T17 (brouillon seulement) : chaque vue d'envoi appelle
+    # déjà la garde AVANT ses effets ; ce filet couvre tout autre appelant.
+    # Lève ``RemiseNonApprouvee`` — le devis reste brouillon.
+    from apps.ventes.domain.tarification import exiger_approbation_remise
+    exiger_approbation_remise(devis, user)
+
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE
     devis.date_envoi = timezone.now()
