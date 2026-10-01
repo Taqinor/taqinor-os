@@ -18,7 +18,7 @@ conseiller de recharger le jour.
 """
 from pathlib import Path
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes import courbes_journalieres as CJ
 from apps.ventes import etude_horaire as EH
@@ -115,6 +115,74 @@ class LeBesoinDeStockageAUGMENTE(SimpleTestCase):
         sortie = EH.besoin_stockage_avec_recharge_ve(12.0, {}, TAILLES)
         self.assertEqual(sortie['recharge_ve_kwh'], 0.0)
         self.assertEqual(sortie['taille_retenue_kwh'], 15.0)
+
+
+class LEchelleServieAuClientRespecteLePlancher(TestCase):
+    """ERR-QJR612-ECHELLE-BATTERIE-SANS-PLANCHER-VE — l'échelle de paliers
+    batterie (``dimensionnement_devis.echelle_paliers_batterie``, servie au
+    client par ``public_views``) applique le MÊME plancher VE nocturne que
+    ``balayer_tailles`` : aucun palier public sous lui.
+
+    Oracle INDÉPENDANT (borne basse) : quel que soit le besoin de base, le
+    plancher couvre AU MOINS la recharge nocturne seule — un palier plus petit
+    que la recharge d'une nuit ne peut jamais être au-dessus du plancher.
+    """
+
+    KM = 300   # ~8,5 kWh/nuit : au-dessus du plus petit module (5 kWh)
+
+    @classmethod
+    def setUpTestData(cls):
+        from decimal import Decimal
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from apps.crm.models import Client, Lead
+        from apps.ventes.models import Devis
+        from authentication.models import Company
+        cls.company, _ = Company.objects.get_or_create(
+            slug='qjr612-echelle', defaults={'nom': 'QJR612 échelle'})
+        call_command('seed_catalogue', company_slug=cls.company.slug,
+                     stdout=StringIO())
+        client = Client.objects.create(company=cls.company, nom='QJR612')
+        lead = Lead.objects.create(
+            company=cls.company, nom='QJR612', ville='Casablanca',
+            raccordement='monophase', facture_hiver=Decimal('900'))
+        cls.devis = Devis.objects.create(
+            company=cls.company, reference='DEV-QJR612-ECH',
+            statut='brouillon', client=client, lead=lead,
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={})
+
+    def _echelle(self, couches):
+        from unittest import mock
+
+        from apps.ventes.domain.dimensionnement_devis import (
+            _echelle_paliers_batterie)
+        with mock.patch(
+                'apps.ventes.courbes_journalieres.equipements_du_devis',
+                return_value=couches):
+            # Sans le filet : une exception doit se VOIR, pas rendre ``[]``.
+            return _echelle_paliers_batterie(self.devis)
+
+    def test_temoin_sans_ve_l_echelle_montre_un_palier_sous_la_recharge(self):
+        """Témoin : sans VE, un palier plus petit que la recharge existe —
+        sinon le test ci-dessous ne prouverait rien."""
+        recharge = EH.recharge_ve_nocturne_kwh_jour(_couches_ve(km=self.KM))
+        echelle = self._echelle(CJ.composer_equipements({}))
+        self.assertTrue(echelle)
+        self.assertTrue(any(p['capacite_kwh'] + 0.05 < recharge
+                            for p in echelle), echelle)
+
+    def test_lead_ve_nuit_aucun_palier_public_sous_le_plancher(self):
+        couches = _couches_ve(km=self.KM)
+        recharge = EH.recharge_ve_nocturne_kwh_jour(couches)
+        self.assertGreater(recharge, 5.0)
+        echelle = self._echelle(couches)
+        self.assertTrue(echelle)
+        for palier in echelle:
+            self.assertGreaterEqual(palier['capacite_kwh'] + 0.05, recharge,
+                                    palier)
 
 
 class AucunTexteNeConseilleDeRechargerLeJour(SimpleTestCase):

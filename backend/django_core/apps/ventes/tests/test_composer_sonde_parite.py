@@ -16,7 +16,7 @@ import ast
 from decimal import Decimal
 from pathlib import Path
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
@@ -126,6 +126,92 @@ class SiteIsole(_Base):
         noms = ' '.join(li.designation for li in lignes).lower()
         self.assertNotIn('hybride', noms)
         self.assertIn('off-grid', noms)
+
+
+class SiteIsoleBalayage(_Base):
+    """ERR-QJR605-BALAYAGE-SITE-ISOLE-KIT-RESEAU — le BALAYAGE de tailles d'un
+    site isolé compose off-grid, comme les cartes et l'échelle : les entrées
+    du moteur portent ``hors_reseau`` (et ``mppt_paires``), et chaque appelant
+    de ``recommander_taille`` les transmet."""
+
+    RACCORDEMENT = 'aucun'
+
+    def setUp(self):
+        super().setUp()
+        Lead.objects.filter(pk=self.lead.pk).update(
+            facture_hiver=Decimal('900'))
+        self.devis.refresh_from_db()
+
+    def test_entrees_portent_hors_reseau(self):
+        from apps.ventes.domain.entrees import entrees_depuis_devis
+        entrees = entrees_depuis_devis(self.devis)
+        self.assertIsNotNone(entrees)
+        self.assertTrue(entrees.hors_reseau)
+        self.assertEqual(entrees.mppt_paires, 1)
+
+    def test_tableau_compose_off_grid_comme_la_sonde(self):
+        import dataclasses
+
+        from apps.ventes.domain.entrees import entrees_depuis_devis
+        from apps.ventes.profils_comparatifs import _dimensionnement_variante
+        entrees = entrees_depuis_devis(self.devis)
+        resultat = _dimensionnement_variante(self.devis, entrees.occupation)
+        self.assertIsNotNone(resultat)
+        tableau = [li for li in resultat['tableau'] if li['composable']]
+        self.assertTrue(tableau)
+        contexte = pipeline.contexte_sonde_du_devis(self.devis)
+        self.assertTrue(contexte.hors_reseau)
+        for ligne in tableau:
+            noms = [li['designation'] for li in ligne['lignes_sans']]
+            texte = ' '.join(noms).lower()
+            self.assertNotIn('réseau', texte, ligne['panneaux'])
+            self.assertNotIn('hybride', texte, ligne['panneaux'])
+            attendu = pipeline.composer_sonde(
+                dataclasses.replace(contexte, panel_watt=ligne['panel_watt']),
+                ligne['panneaux'], avec_batterie=False)
+            self.assertEqual(sorted(noms),
+                             sorted(li.designation for li in attendu),
+                             ligne['panneaux'])
+
+
+class EmpreinteHorsReseau(SimpleTestCase):
+    """Le hors-réseau et les paires MPPT changent le kit : ils entrent dans
+    l'empreinte, sinon un lead passé en « aucun » garderait un tableau
+    réseau rangé comme « frais »."""
+
+    def test_hors_reseau_et_mppt_perime_l_empreinte(self):
+        from apps.ventes.domain.entrees import EntreesMoteur, empreinte_entrees
+        base = EntreesMoteur(conso_kwh_mensuelles=[300.0] * 12)
+        isole = EntreesMoteur(conso_kwh_mensuelles=[300.0] * 12,
+                              hors_reseau=True)
+        deux = EntreesMoteur(conso_kwh_mensuelles=[300.0] * 12,
+                             mppt_paires=2)
+        self.assertNotEqual(empreinte_entrees(base), empreinte_entrees(isole))
+        self.assertNotEqual(empreinte_entrees(base), empreinte_entrees(deux))
+
+
+class AppelantsTransmettentHorsReseau(SimpleTestCase):
+    """Garde AST : les quatre appelants de ``recommander_taille`` passent
+    ``hors_reseau`` ET ``mppt_paires`` (le paramètre existait, personne ne le
+    passait)."""
+
+    MODULES = ('domain/etudes.py', 'domain/taille.py',
+               'etude_horaire_view.py', 'profils_comparatifs.py')
+
+    def test_garde_ast(self):
+        racine = Path(__file__).resolve().parent.parent
+        for relatif in self.MODULES:
+            arbre = ast.parse((racine / relatif).read_text(encoding='utf-8'))
+            appels = [
+                n for n in ast.walk(arbre)
+                if isinstance(n, ast.Call)
+                and getattr(n.func, 'id', getattr(n.func, 'attr', None))
+                == 'recommander_taille']
+            self.assertTrue(appels, relatif)
+            for appel in appels:
+                noms = {k.arg for k in appel.keywords}
+                self.assertIn('hors_reseau', noms, relatif)
+                self.assertIn('mppt_paires', noms, relatif)
 
 
 class AucunAppelDirect(TestCase):

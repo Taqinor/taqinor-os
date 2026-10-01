@@ -424,7 +424,8 @@ def etude_horaire_preview(request):
             company=company, conso=conso, ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements, corps=corps,
             source=source, avertissements=avertissements,
-            tranches=tranches, charges_fixes_mad=charges_fixes)
+            tranches=tranches, charges_fixes_mad=charges_fixes,
+            devis=devis, lead=lead)
 
     # T4/L-QA1 — même décomposition mensuelle que le devis enregistré
     # (``services.rafraichir_etude_horaire_devis`` ne l'expose nulle part sur
@@ -458,12 +459,17 @@ def _localisation(corps, devis, lead=None):
 
 
 def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
-                  corps, source, avertissements, tranches, charges_fixes_mad):
+                  corps, source, avertissements, tranches, charges_fixes_mad,
+                  devis=None, lead=None):
     """Tableau + recommandation, ou ``None`` avec un avertissement explicite.
 
     QJR46 — ``tranches`` / ``charges_fixes_mad`` sont EXIGÉS et viennent de
     l'appelant : cet aperçu valorisait le kWh sur la grille nationale pendant
     que l'étude horaire de la MÊME réponse appliquait la surcharge société.
+
+    ERR-QJR605 — site isolé (raccordement ``'aucun'`` du corps, du lead, ou
+    onduleur off-grid au devis) ⇒ le balayage compose OFF-GRID, avec les
+    paires MPPT du devis : la lecture de ``entrees.hors_reseau_et_mppt``.
     """
     if company is None:
         avertissements.append(
@@ -471,12 +477,17 @@ def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
             '(le catalogue est scopé société).')
         return None
     try:
-        from apps.ventes.compatibilites import normaliser_phase
+        from apps.ventes.compatibilites import est_site_isole, normaliser_phase
         from apps.ventes.dimensionnement import recommander_taille
+        from apps.ventes.domain.entrees import hors_reseau_et_mppt
+        hors_reseau, mppt_paires = hors_reseau_et_mppt(devis=devis, lead=lead)
         return recommander_taille(
             company=company, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
             lon=lon, occupation=occupation, equipements=equipements,
             phase=normaliser_phase(corps.get('raccordement')),
+            hors_reseau=bool(
+                hors_reseau or est_site_isole(corps.get('raccordement'))),
+            mppt_paires=mppt_paires,
             critere=corps.get('critere') or None,
             source_conso=source,
             tranches=tranches, charges_fixes_mad=charges_fixes_mad)
