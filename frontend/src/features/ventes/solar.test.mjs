@@ -203,6 +203,8 @@ const SURFACES_SAISIE = [
   '../../pages/ventes/generator/BlocEtudeReseau.jsx',
   // QJR624 — l'échéancier éditable de l'Édition complète.
   '../../pages/ventes/generator/CarteEcheancier.jsx',
+  // QJR667 — le formulaire « Lots / multi-sites » (champ ordre).
+  './LotsMultiSites.jsx',
 ]
 
 test('garde-fou : plus aucune contrainte step restrictive sur l\'écran', () => {

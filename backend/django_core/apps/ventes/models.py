@@ -312,11 +312,11 @@ class Devis(models.Model):
     )
 
     # ── Clauses/CGV FIGÉES à l'envoi (snapshot historique) ──
-    # Snapshot JSON des clauses applicables au devis, jamais recalculé. Le
-    # moteur de clauses dynamiques qui l'alimentait n'existe plus : le champ est
-    # conservé pour les devis qui en portent un. NULL / [] = comportement
-    # historique strictement inchangé. Lu en LECTURE SEULE par le quote_engine
-    # (aucun nouveau renderer — règle #4).
+    # Snapshot JSON des clauses applicables au devis. QJR668 (décision
+    # fondateur 01/10/2026) : gelé à l'envoi puis RE-gelé à chaque correction
+    # sur place par ``domain/cycle_vie.figer_clauses_devis`` (source : le
+    # catalogue ``cpq``, parqué — sans lui rien n'est écrit). NULL / [] = aucun
+    # bloc. Lu en LECTURE SEULE par le quote_engine, qui l'imprime.
     clauses_appliquees = models.JSONField(
         null=True, blank=True,
         verbose_name='Clauses/CGV appliquées (figées à l\'envoi)',

@@ -1,17 +1,14 @@
-"""CAD56 — un devis corrigé et RENVOYÉ propose de repartir du jour 1.
+"""CAD56 / QJR660 (décision fondateur 01/10/2026) — un devis corrigé sur
+place et RENVOYÉ garde la cadence après-devis d'ORIGINE.
 
-Constat de l'audit L3 du 21/09/2026 : la branche « déjà en cours » du
-récepteur ne touche pas à l'ancre — ``initialiser_plan_relance`` sort par
-``ouvertes_deja`` sans modifier ``cadence_depart``, et le compteur continue
-depuis le PREMIER envoi. Le client reçoit « je classe ? » deux jours après sa
-nouvelle proposition.
-
-Ce que ce module verrouille :
-  * le renvoi du MÊME devis ÉMET la proposition (une ligne de chatter) ;
-  * « oui » redate l'ancre ET les touches restantes, du MÊME écart ;
-  * « non » ne change RIEN — et le dit ;
-  * MRY7 intact : aucune seconde cadence après-devis n'est créée, aucune
-    touche supprimée ni recréée.
+Le fondateur a tranché « garder » : la paire « répondez oui / non »
+(``proposer_redatage_apres_devis`` / ``redater_cadence_apres_devis``) restée
+sans bouton est SUPPRIMÉE. Ce module verrouille :
+  * le renvoi du MÊME devis n'écrit AUCUNE proposition de redatage ;
+  * aucune date ne bouge (ancre et touches restantes inchangées) ;
+  * MRY7 intact : aucune seconde cadence après-devis, aucune touche
+    supprimée ni recréée ;
+  * la paire de fonctions n'existe plus dans ``apps.crm.services``.
 
 Le temps est GELÉ : « deux jours après » est exactement la question qu'une
 horloge vivante rend instable.
@@ -26,10 +23,8 @@ from authentication.models import Company
 from core.events import devis_sent
 
 from apps.crm import horaires
+from apps.crm import services as crm_services
 from apps.crm.models import Client, Lead, LeadActivity, RelanceEtape
-from apps.crm.services import (
-    PROPOSITION_REDATAGE_LIBELLE, redater_cadence_apres_devis,
-)
 from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis
 
@@ -80,109 +75,31 @@ class _Base(TestCase):
             .values_list('body', flat=True))
 
 
-class LaPropositionTests(_Base):
-    slug = 'cad56-proposition'
+class LaCadenceDOrigineEstGardeeTests(_Base):
+    slug = 'cad56-garde'
 
-    def test_le_premier_envoi_ne_propose_rien(self):
-        """Anti-faux-vert : c'est bien le RENVOI qui déclenche la question."""
+    def test_le_renvoi_n_ecrit_aucune_proposition(self):
+        self._renvoyer()
         self.assertFalse(
-            any(PROPOSITION_REDATAGE_LIBELLE in n for n in self._notes()))
+            any('repartir du jour 1' in n or 'répondez' in n
+                for n in self._notes()))
 
-    def test_le_renvoi_du_MEME_devis_emet_la_proposition(self):
-        self._renvoyer()
-        self.assertTrue(
-            any(PROPOSITION_REDATAGE_LIBELLE in n for n in self._notes()))
-
-    def test_le_renvoi_ne_cree_AUCUNE_seconde_serie(self):
-        """MRY7 intact."""
-        avant = self.lead.relance_etapes.filter(cadence='apres_devis').count()
-        self._renvoyer()
-        self.assertEqual(
-            self.lead.relance_etapes.filter(cadence='apres_devis').count(),
-            avant)
-
-    def test_la_proposition_seule_ne_decale_AUCUNE_date(self):
-        avant = {e.pk: e.due_at for e in self._ouvertes()}
-        self._renvoyer()
-        apres = {e.pk: e.due_at for e in self._ouvertes()}
-        self.assertEqual(avant, apres)
-
-
-class LeChoixOuiTests(_Base):
-    slug = 'cad56-oui'
-
-    def test_oui_redate_l_ancre_et_les_touches_restantes(self):
-        self._renvoyer()
+    def test_le_renvoi_ne_decale_AUCUNE_date(self):
         avant = {e.pk: (e.due_at, e.cadence_depart) for e in self._ouvertes()}
         self.assertTrue(avant, 'il faut au moins une touche ouverte')
-
-        decalees = redater_cadence_apres_devis(
-            self.lead, self.acteur, devis=self.devis, depart=RENVOI,
-            accepte=True)
-
-        self.assertEqual(decalees, len(avant))
-        ecart = RENVOI - ENVOI
-        for etape in self._ouvertes():
-            ancienne_due, ancienne_ancre = avant[etape.pk]
-            self.assertEqual(etape.due_at, ancienne_due + ecart)
-            if ancienne_ancre is not None:
-                self.assertEqual(
-                    etape.cadence_depart, ancienne_ancre + ecart)
-
-    def test_oui_ne_supprime_ni_ne_recree_aucune_touche(self):
         self._renvoyer()
-        avant = sorted(e.pk for e in self.lead.relance_etapes.all())
-        redater_cadence_apres_devis(
-            self.lead, self.acteur, devis=self.devis, depart=RENVOI)
-        self.assertEqual(
-            sorted(e.pk for e in self.lead.relance_etapes.all()), avant)
-
-    def test_oui_est_journalise(self):
-        self._renvoyer()
-        redater_cadence_apres_devis(
-            self.lead, self.acteur, devis=self.devis, depart=RENVOI)
-        self.assertTrue(any('redaté' in n for n in self._notes()))
-
-    def test_un_ecart_nul_ne_bouge_rien(self):
-        self._renvoyer()
-        avant = {e.pk: e.due_at for e in self._ouvertes()}
-        ancre = self._ouvertes()[0].cadence_depart
-        self.assertEqual(
-            redater_cadence_apres_devis(
-                self.lead, self.acteur, devis=self.devis, depart=ancre), 0)
-        self.assertEqual({e.pk: e.due_at for e in self._ouvertes()}, avant)
-
-
-class LeChoixNonTests(_Base):
-    slug = 'cad56-non'
-
-    def test_non_ne_change_RIEN(self):
-        """Le choix par défaut : les dates d'origine restent."""
-        self._renvoyer()
-        avant = {e.pk: (e.due_at, e.cadence_depart) for e in self._ouvertes()}
-
-        self.assertEqual(
-            redater_cadence_apres_devis(
-                self.lead, self.acteur, devis=self.devis, depart=RENVOI,
-                accepte=False), 0)
-
         apres = {e.pk: (e.due_at, e.cadence_depart) for e in self._ouvertes()}
         self.assertEqual(avant, apres)
 
-    def test_non_est_journalise_aussi(self):
+    def test_le_renvoi_ne_cree_AUCUNE_seconde_serie(self):
+        """MRY7 intact."""
+        avant = sorted(e.pk for e in self.lead.relance_etapes.all())
         self._renvoyer()
-        redater_cadence_apres_devis(
-            self.lead, self.acteur, devis=self.devis, accepte=False)
-        self.assertTrue(
-            any('GARDE ses dates' in n for n in self._notes()))
-
-
-class SansSuiviOuvertTests(_Base):
-    slug = 'cad56-vide'
-
-    def test_sans_touche_ouverte_il_n_y_a_rien_a_redater(self):
-        self.lead.relance_etapes.filter(cadence='apres_devis').update(
-            statut=RelanceEtape.Statut.FAIT)
         self.assertEqual(
-            redater_cadence_apres_devis(
-                self.lead, self.acteur, devis=self.devis, depart=RENVOI), 0)
+            sorted(e.pk for e in self.lead.relance_etapes.all()), avant)
+
+    def test_la_paire_oui_non_est_supprimee(self):
+        for nom in ('proposer_redatage_apres_devis',
+                    'redater_cadence_apres_devis',
+                    'PROPOSITION_REDATAGE_LIBELLE'):
+            self.assertFalse(hasattr(crm_services, nom), nom)

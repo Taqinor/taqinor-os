@@ -165,6 +165,11 @@ def build(ctx):
 </style>
 """
 
+    # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
+    from ..clauses_cgv import bloc_clauses_html
+    clauses_html = bloc_clauses_html(
+        d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
+
     html = f"""{css}
 <div class="i3-root">
   <div class="i3-kicker">Déploiement &amp; conditions</div>
@@ -184,7 +189,7 @@ def build(ctx):
     </div></div>
   </div>
 
-  {warranties_html}
+  {warranties_html}{clauses_html}
 
   <div class="i3-sign">
     <div class="i3-sign-c">

@@ -574,6 +574,15 @@ DOC_TEXTS = dict(DEFAULT_DOC_TEXTS)
 ACCEPTE_PAR_NOM = ""
 # QJR627 (D-QJR5-6) — texte CLIENT du champ « Notes » (échappé à l'ingestion).
 NOTE_CLIENT = ""
+# QJR668 — clauses/CGV de l'affaire gelées (échappées à l'ingestion).
+CLAUSES_CGV = []
+
+
+def _clauses_cgv_html(font_pt="7.5"):
+    """QJR668 — bloc « Clauses particulières », ou '' sans clause gelée."""
+    from .clauses_cgv import bloc_clauses_html
+    return bloc_clauses_html(CLAUSES_CGV, couleur_titre=CN,
+                             couleur_texte=CG7, taille_pt=font_pt)
 
 
 def _note_client_html(font_pt="8"):
@@ -2598,7 +2607,7 @@ def page3():
   <div style="padding:0 24px;">{_multi_proprietes_line_html()}{_multi_villa_html()}</div>
 
   <!-- QJR627 — NOTE CLIENT (champ « Notes » du devis ; vide → rien) -->
-  <div style="padding:0 24px;">{_note_client_html()}</div>
+  <div style="padding:0 24px;">{_note_client_html()}{_clauses_cgv_html()}</div>
 
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
@@ -4128,7 +4137,7 @@ def page_onepage(items, tronquees=0):
 
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
-    {_note_client_html("7.5")}
+    {_note_client_html("7.5")}{_clauses_cgv_html("7")}
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
@@ -4353,6 +4362,7 @@ def apply_quote_data(data: dict) -> None:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION, NOTE_CLIENT
+    global CLAUSES_CGV  # QJR668 — clauses/CGV gelées de l'affaire
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -4616,6 +4626,10 @@ def apply_quote_data(data: dict) -> None:
     # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
     ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
     NOTE_CLIENT = _esc((data.get("note_client") or "").strip())
+    CLAUSES_CGV = [
+        {"nom": _esc(str(c.get("nom") or "")),
+         "corps_texte": _esc(str(c.get("corps_texte") or ""))}
+        for c in (data.get("clauses_cgv") or []) if isinstance(c, dict)]
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues

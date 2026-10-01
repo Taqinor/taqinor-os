@@ -1,0 +1,45 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/<id>/ajouter-boq-electrique/",
+  "forme_serveur": "partielle",
+  "pourquoi": "QJR667 (décision fondateur 01/10/2026 : construire l'écran) — PACT10 du bouton « Ajouter le BOQ électrique » de l'Édition complète, sur l'action existante `ajouter-boq-electrique` de DevisViewSet (PV47, views/devis.py → domain/bordereau.ajouter_lignes_boq_electrique). Corps vide. Geste EXPLICITE : les lignes du bordereau de la conception électrique (PV41) deviennent des lignes de devis ; un produit du catalogue apparié part à SON prix (0 et « — à chiffrer » s'il n'en a pas), sinon une ligne de NOTE « — à chiffrer » sans prix, listée dans `manques`. Aucun prix inventé. Ré-appeler ne duplique rien (`deja_presentes`). Responsable ou admin uniquement.",
+  "requete": {
+    "corps": {}
+  },
+  "refus": {
+    "400_sans_conception": {
+      "detail": "Ce devis n'a pas encore de conception électrique : lancez d'abord « Conception électrique »."
+    },
+    "409_non_modifiable": {
+      "detail": "Devis « Accepté » : on ne peut plus y ajouter de lignes. Utilisez « Réviser » pour en créer une nouvelle version.",
+      "statut": "accepte",
+      "revision_possible": true
+    }
+  },
+  "exemple": {
+    "creees": 2,
+    "lignes": [
+      {
+        "designation": "Câble solaire 6 mm²",
+        "produit": 88,
+        "quantite": 60.0,
+        "type_ligne": "produit",
+        "a_chiffrer": false
+      },
+      {
+        "designation": "Parafoudre DC 1000 V — à chiffrer",
+        "produit": null,
+        "quantite": null,
+        "type_ligne": "note",
+        "a_chiffrer": true
+      }
+    ],
+    "manques": [
+      {
+        "designation": "Parafoudre DC 1000 V",
+        "quantite": 1.0,
+        "spec": "Type 2, 40 kA"
+      }
+    ],
+    "deja_presentes": ["Disjoncteur AC 32 A"]
+  }
+}

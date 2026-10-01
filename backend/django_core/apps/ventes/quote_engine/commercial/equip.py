@@ -185,6 +185,10 @@ def build(ctx):
     _note_client = (d.get("note_client") or "").strip()
     note_html = (f'<div class="c2-note"><b>Note</b>{_note_client}</div>'
                  if _note_client else "")
+    # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
+    from ..clauses_cgv import bloc_clauses_html
+    clauses_html = bloc_clauses_html(
+        d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
     html = f"""{css}
 <div class="c2-root">
   <div class="c2-kicker">Votre installation</div>
@@ -208,7 +212,7 @@ def build(ctx):
     </div>
   </div>
 
-  {note_html}
+  {note_html}{clauses_html}
   {options_html}{injection_html}
   {block}
 </div>

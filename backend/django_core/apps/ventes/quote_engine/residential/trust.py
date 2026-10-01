@@ -373,6 +373,11 @@ def build(ctx) -> str:
         '<span class="p3-method-k">Note</span>'
         f'<span class="p3-method-v">{_note_client}</span></div>'
         if _note_client else "")
+    # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
+    from ..clauses_cgv import bloc_clauses_html
+    clauses_html = bloc_clauses_html(
+        d.get("clauses_cgv"), couleur_titre=C.get("navy", "#0f2a44"),
+        couleur_texte=C.get("ink", "#1F2937"))
 
     # ── Next steps ──────────────────────────────────────────────────────────
     # Q5 — les délais sont des réglages société et portent « (indicatif) » ;
@@ -682,7 +687,7 @@ def build(ctx) -> str:
   {preuve_html}{paiement_html}
 
   {cols_html}
-  {note_html}
+  {note_html}{clauses_html}
   {method_html}
 
   <div class="qj" data-w="40"></div>

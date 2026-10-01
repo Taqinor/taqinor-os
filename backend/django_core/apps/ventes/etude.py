@@ -737,16 +737,17 @@ def _load_profile_key(devis):
 def _daily_load_kwh_from_devis(devis):
     """Charge journalière (kWh/j) dérivée de la conso mensuelle du lead.
 
-    Source UNIQUE : ``Lead.conso_mensuelle_kwh`` (kWh/mois → kWh/j, ×12÷365).
+    Source UNIQUE : ``crm.selectors.conso_mensuelle_kwh_pour_devis`` (kWh/mois
+    → kWh/j, ×12÷365) — la fiche, et QJR662 le kWh déclaré sur le site en
+    repli pour un lead industriel / commercial.
     Absent (pas de lead, ou lead sans conso saisie) → 0.0 : le bloc
     ``self_consumption`` reste structurellement complet (jamais d'exception)
     mais honnêtement à 0 plutôt qu'un chiffre inventé depuis un montant MAD
     (aucune inversion fiable du barème ONEE progressif/sélectif sans le
     modèle tarifaire complet — mieux vaut 0 documenté qu'un prix moyen faux).
     """
-    from apps.crm.selectors import lead_du_devis  # QJR585 — résolveur unique
-    lead = lead_du_devis(devis)
-    conso = getattr(lead, 'conso_mensuelle_kwh', None) if lead is not None else None
+    from apps.crm.selectors import conso_mensuelle_kwh_pour_devis
+    conso = conso_mensuelle_kwh_pour_devis(devis)
     if conso is None:
         return 0.0
     return _num(conso) * 12.0 / 365.0

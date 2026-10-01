@@ -233,14 +233,10 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
                 body=('Cadence après devis déjà en cours pour '
                       f'{reference} — aucune seconde série lancée.'))
             return
-        # CAD56 — le MÊME devis repart alors que son suivi est déjà en cours
-        # (devis corrigé et renvoyé) : le compteur continuerait depuis le
-        # PREMIER envoi et le client recevrait « je classe ? » deux jours
-        # après sa nouvelle proposition. On PROPOSE de repartir du jour 1 —
-        # on ne redate rien tout seul (choix par défaut : ne rien changer).
+        # QJR660 (décision fondateur 01/10/2026) — le MÊME devis déjà suivi
+        # (corrigé sur place, D-QJR5-1) garde la cadence d'ORIGINE, ancrée sur
+        # son premier envoi : rien n'est proposé, rien n'est redaté.
         if barreaux_ouverts.filter(devis_id=devis.pk).exists():
-            from .services import proposer_redatage_apres_devis
-            proposer_redatage_apres_devis(lead, user, devis)
             return
         etapes = initialiser_plan_relance(
             lead, user, cadence='apres_devis',
