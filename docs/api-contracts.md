@@ -526,8 +526,6 @@
     detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: getCashFlowForecast -> /api/django/ventes/insights/cash-flow
     buckets:inconnu, rows:inconnu, total_en_cours:inconnu
-- frontend/src/api/ventesApi.js :: getClientReleve -> /api/django/ventes/clients/<>/releve
-    avoirs:inconnu, client:objet, detail:texte, lignes:inconnu, paiements:inconnu, totaux:objet
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
 - frontend/src/api/ventesApi.js :: getHistoriqueConfigurationDevis -> /api/django/ventes/devis/<>/historique-configuration
@@ -1702,8 +1700,6 @@
     champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
     base ∈ {ca_devis_signe, marge_interne, par_kwc}
 - frontend/src/api/ventesApi.js :: patchListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
-- frontend/src/api/ventesApi.js :: updateListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
     champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
 - frontend/src/api/ventesApi.js :: updatePlanCommission -> /api/django/ventes/plans-commission/<>  [PlanCommissionSerializer]
     champs: actif, base, base_display, created_at, id, montant_par_kwc, owner, owner_nom, paliers, taux_pct
