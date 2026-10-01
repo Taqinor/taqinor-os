@@ -68,6 +68,13 @@ class TestIdentiteClientSuitLead(TestCase):
         devis = Devis.objects.create(
             company=self.company, reference='DEV-QJR590-1',
             client=self.client_obj, lead=self.lead, statut='brouillon')
+        # Le format à options exige un onduleur (règle de sécurité du builder).
+        from decimal import Decimal
+        from apps.ventes.models import LigneDevis
+        LigneDevis.objects.create(
+            devis=devis, designation='Onduleur réseau Huawei 5kW',
+            quantite=Decimal('1'), prix_unitaire=Decimal('3000'),
+            remise=Decimal('0'))
         from apps.ventes.quote_engine.builder import build_quote_data
         data = build_quote_data(devis, {'pdf_mode': 'full'})
         self.assertIn('Benhali', data['client_name'])

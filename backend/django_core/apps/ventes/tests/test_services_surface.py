@@ -56,6 +56,11 @@ from apps.ventes import services
 # préfixe ``_`` — exactement ce que calcule ``_definitions_niveau_module``
 # plus bas, que l'on peut exécuter sur le fichier avec un simple script AST.
 SURFACE_PUBLIQUE = (
+    # QJR539 / QJR590 — garde de remise et trace de correction exportées.
+    "RemiseNonApprouvee",
+    "consigner_correction_apres_envoi",
+    "exiger_approbation_remise",
+    "reverifier_remise_apres_correction",
     "AVERTISSEMENTS_KIT_ABSENT",
     "AcceptError",
     "AutoDevisError",
