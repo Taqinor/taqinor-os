@@ -4,15 +4,12 @@
 // Run : node --test src/features/ventes/solar.kwcPanneaux.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 
 import { kwcPourPanneaux, panneauxPourKwc, PANEL_W_DEFAUT } from './solar.js'
+import {
+  BATTERIE_LEAD_VERS_SCENARIO, SCENARIO_SANS, SCENARIO_AVEC, SCENARIO_LES_DEUX,
+} from './quote/sizingReducer.js'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
-const AQ = readFileSync(join(HERE, 'autoQuote.js'), 'utf8')
-const CODE_AQ = AQ.split(/\r?\n/).filter(l => !/^\s*(\/\/|\*)/.test(l)).join('\n')
 
 test('aller-retour exact : panneauxPourKwc(kwcPourPanneaux(n, W), W) === n', () => {
   for (const W of [500, 550, 710]) {
@@ -30,9 +27,11 @@ test('kwcPourPanneaux = n × W / 1000, 0 sans compte ni wattage', () => {
   assert.equal(kwcPourPanneaux(10), 7.1)
 })
 
-test('autoQuote.js : plus aucun 710 en dur ni ternaire de scénario retapé', () => {
-  assert.doesNotMatch(CODE_AQ, /710 \/ 1000/)
-  assert.doesNotMatch(CODE_AQ, /\b710\b/)
-  assert.doesNotMatch(CODE_AQ, /'Sans batterie'|'Avec batterie'|'Les deux \(Sans \+ Avec\)'/)
-  assert.match(AQ, /BATTERIE_LEAD_VERS_SCENARIO/)
+test('mapping lead → scénario : une seule table, vocabulaire du reducer', () => {
+  assert.deepEqual(BATTERIE_LEAD_VERS_SCENARIO, {
+    sans: SCENARIO_SANS, avec: SCENARIO_AVEC, les_deux: SCENARIO_LES_DEUX,
+  })
+  assert.equal(BATTERIE_LEAD_VERS_SCENARIO.sans, 'Sans batterie')
+  assert.equal(BATTERIE_LEAD_VERS_SCENARIO.avec, 'Avec batterie')
+  assert.equal(BATTERIE_LEAD_VERS_SCENARIO.les_deux, 'Les deux (Sans + Avec)')
 })

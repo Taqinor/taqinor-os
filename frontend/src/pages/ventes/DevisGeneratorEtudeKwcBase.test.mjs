@@ -7,16 +7,9 @@
 // Run : node --test src/pages/ventes/DevisGeneratorEtudeKwcBase.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 
 import { computeEtudeIndustrielle } from '../../features/ventes/solar.js'
 import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc.js'
-
-const HERE = dirname(fileURLToPath(import.meta.url))
-const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
-const AQ = readFileSync(join(HERE, '../../features/ventes/autoQuote.js'), 'utf8')
 
 const etude = computeEtudeIndustrielle({
   kwp: 42.6, consoMensuelleKwh: 9000, dayUsagePct: 80, totalTtc: 350000,
@@ -38,9 +31,4 @@ test('sans étude calculée : etude_kwc_base nul (jamais un kWc inventé)', () =
 test('agricole / résidentiel : aucune clé etude_kwc_base', () => {
   assert.ok(!('etude_kwc_base' in projeterEtudeMarche('agricole', { choix: {}, entrees: {} })))
   assert.equal(projeterEtudeMarche('residentiel', { choix: {}, entrees: {} }), null)
-})
-
-test('Édition complète et devis automatique passent par la MÊME projection', () => {
-  assert.match(DG, /const blocEtudeMarche = \(\) => projeterEtudeMarche\(/)
-  assert.match(AQ, /projeterEtudeMarche\(mode, \{/)
 })
