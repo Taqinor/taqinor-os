@@ -167,7 +167,9 @@ import {
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
-import { CHEMINS_AUTORISES, cheminNonLu } from '../../features/ventes/quote/overrides'
+import {
+  CHEMINS_AUTORISES, cheminNonLu, ecartsAuRegistre, valeursImposees,
+} from '../../features/ventes/quote/overrides'
 import { deuxValeursDim as selecteurDeuxValeursDim }
   from '../../features/ventes/quote/paireDimensionnement'
 // QJR426 (DR5) — les 13 cartes de métrique du générateur (bloc Aperçu de la
@@ -399,6 +401,21 @@ const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
  * @param {function} onDone      Appelé avec l'id du devis créé/enregistré
  * @param {function} onCancel    Appelé sur Annuler
  */
+// QJR572 — sous un choix que le registre IMPOSE : le dire, et offrir le
+// retour à l'automatique (DELETE ?chemin=, `regenererOverride`).
+function IndicationRegistre({ chemin, busy, onRegenerer }) {
+  return (
+    <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground"
+       data-testid={`registre-impose-${chemin}`}>
+      Imposé par le registre —
+      <button type="button" className="underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+              disabled={busy} onClick={() => onRegenerer(chemin)}>
+        revenir à l&apos;automatique
+      </button>
+    </p>
+  )
+}
+
 export default function DevisGenerator({
   embedded = false,
   leadId: leadIdProp = null,
@@ -544,6 +561,8 @@ export default function DevisGenerator({
   // l'automatique par DELETE ?chemin=. `overridesReg` porte la forme EXACTE du
   // contrat (`overrides`/`effectif`/`lignes`, apps/ventes/contract_samples/
   // devis_overrides.json) — jamais recalculée ici, seulement affichée.
+  // QJR572 — déclarée ici : `alignerSurRegistre` (ci-dessous) la pose.
+  const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [overridesReg, setOverridesReg] = useState(null)
   const [overridesBusy, setOverridesBusy] = useState(false)
   // Un refus 400 est affiché TEL QUEL (le message FR du serveur, jamais avalé
@@ -572,10 +591,27 @@ export default function DevisGenerator({
     return 'La surcharge a été refusée par le serveur.'
   }
 
+  // QJR572 — LE REGISTRE GAGNE AU PDF (scenario.py, utils/options.py,
+  // builder.py) : à l'arrivée du registre, Scénario, Option recommandée et
+  // nombre de panneaux affichent la valeur qu'il IMPOSE, jamais une valeur
+  // d'`etude_params` que le document ignore. Transition `REOUVERTURE` (le
+  // choix est déjà fait), sans toucher aux autres champs.
+  const alignerSurRegistre = (data) => {
+    const imp = valeursImposees(data)
+    const devis = {}
+    if (typeof imp.scenario === 'string') devis.scenario = imp.scenario
+    const n = Number.parseInt(imp['taille.nb_panneaux'], 10)
+    if (n > 0) devis.panneaux = n
+    if (Object.keys(devis).length) dispatchSizing({ type: 'REOUVERTURE', devis })
+    if (imp.recommended_option === 'Sans batterie' || imp.recommended_option === 'Avec batterie') {
+      setRecommendedChoice(imp.recommended_option)
+    }
+  }
+
   const chargerOverrides = (id) => {
     if (!id) return
     ventesApi.lireOverrides(id)
-      .then(({ data }) => setOverridesReg(data))
+      .then(({ data }) => { setOverridesReg(data); alignerSurRegistre(data) })
       .catch(() => {})
   }
 
@@ -630,7 +666,6 @@ export default function DevisGenerator({
   // QG3 — création rapide de client sans quitter le devis (chemin sans lead).
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   const [dateValidite, setDateValidite] = useState('')
-  const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [note, setNote] = useState('')
   // QJR624 — échéancier du devis rouvert (`null` = celui de la société). Il
   // n'est renvoyé que s'il était déjà propre au devis ou si le commercial l'a
@@ -1129,6 +1164,9 @@ export default function DevisGenerator({
      
     dispatchSizing({ type: 'SAISI', champ: 'panelW', valeur: panelW })
   }, [kwp, kwcCible, panelW])
+
+  // QJR572 — ce que le registre IMPOSE (indications sous les Select).
+  const imposees = useMemo(() => valeursImposees(overridesReg), [overridesReg])
 
   const showSans = scenario !== 'Avec batterie'
   const showAvec = scenario !== 'Sans batterie'
@@ -3510,6 +3548,35 @@ export default function DevisGenerator({
         }
       }
 
+      // QJR572 — le registre suit l'écran : APRÈS l'enregistrement réussi
+      // (lignes + choix d'écran), un chemin DÉJÀ surchargé dont la valeur
+      // affichée a changé est reposé (ou rendu à l'automatique sur « Auto »).
+      // Rien à la création, rien sans surcharge. `etude_params` reste écrit
+      // (repli du moteur). Une erreur est DITE, l'enregistrement reste fait.
+      if (editDevis && !surcharge) {
+        const { patch, regenerer } = ecartsAuRegistre({
+          scenario,
+          recommended_option: recommendedChoice,
+          'taille.nb_panneaux': nbPanneaux,
+        }, overridesReg)
+        try {
+          if (Object.keys(patch).length) {
+            const { data } = await ventesApi.poserOverrides(devisId, patch)
+            setOverridesReg(data)
+            armerJeton(data?.updated_at)
+          }
+          for (const chemin of regenerer) {
+            const { data } = await ventesApi.regenererOverride(devisId, chemin)
+            setOverridesReg(data)
+            armerJeton(data?.updated_at)
+          }
+        } catch (errOv) {
+          const msg = messageErreurOverrides(errOv)
+          setOverridesErreur(msg)
+          toast.error(`Devis enregistré, registre non mis à jour : ${msg}`)
+        }
+      }
+
       return { devisId, devisCree }
     } catch (err) {
       // QJR549 — 409 `devis_modifie` : quelqu'un (ou le catalogue) a écrit ce
@@ -4097,6 +4164,10 @@ export default function DevisGenerator({
                   Système hors réseau : option unique avec batterie.
                 </p>
               )}
+              {'scenario' in imposees && (
+                <IndicationRegistre chemin="scenario" busy={overridesBusy}
+                                    onRegenerer={regenererOverride} />
+              )}
             </div>
             {/* Incident fondateur 01/09 (round 2) — même échappatoire que la
                 case de LigneTable (même state `accessoiresOnly`, même clé de
@@ -4125,6 +4196,10 @@ export default function DevisGenerator({
                   <SelectItem value="Avec batterie">Avec batterie</SelectItem>
                 </SelectContent>
               </Select>
+              {'recommended_option' in imposees && (
+                <IndicationRegistre chemin="recommended_option" busy={overridesBusy}
+                                    onRegenerer={regenererOverride} />
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="gen-validite">Date de validité</Label>

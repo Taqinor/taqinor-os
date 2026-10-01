@@ -6,7 +6,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   CHEMINS_AUTORISES, CHEMIN_PAR_DRAPEAU, ORIGINES, CHEMINS_NON_LUS,
-  cheminAutorise, cheminNonLu, cheminsRefuses, serialiser, hydrater, fusionner,
+  cheminAutorise, cheminNonLu, cheminsRefuses, serialiser, hydrater,
+  valeursImposees, ecartsAuRegistre,
 } from './overrides.js'
 import {
   sizingReducer, ETAT_INITIAL, DRAPEAUX_TOUCHE, SCENARIO_AVEC,
@@ -160,23 +161,53 @@ test('hydrater ignore les chemins inconnus, vides ou nuls', () => {
   assert.deepEqual(hydrater({ scenario: 'Avec batterie' }), {})                 // pas signé
 })
 
-// ── PATCH = FUSION ───────────────────────────────────────────────────────────
+// ── QJR572 — valeursImposees / ecartsAuRegistre ─────────────────────────────
 
-test('PATCH est une FUSION : les autres chemins posés restent intacts', () => {
-  const registre = {
-    'tarif.distributeur': { valeur: 'ONEE', origine: 'import' },
-    'taille.nb_panneaux': { valeur: 12, origine: 'manuel' },
-  }
-  const fusionne = fusionner(registre, { 'taille.nb_panneaux': { valeur: 14, origine: 'manuel' } })
-  assert.deepEqual(fusionne['tarif.distributeur'], registre['tarif.distributeur'])
-  assert.equal(fusionne['taille.nb_panneaux'].valeur, 14)
-  assert.equal(Object.keys(fusionne).length, 2)
-  // Le registre d'origine n'est pas muté.
-  assert.equal(registre['taille.nb_panneaux'].valeur, 12)
+const REG = (entrees) => ({
+  overrides: {},
+  effectif: Object.fromEntries(Object.entries(entrees).map(([c, v]) => [c,
+    v === undefined
+      ? { auto: 'x', manuel: null, effectif: 'x', source: 'auto' }
+      : { auto: 'x', manuel: v, effectif: v, source: 'manuel' }])),
 })
 
-test('fusionner REFUSE un chemin hors liste blanche (miroir du 400 serveur)', () => {
-  assert.throws(() => fusionner({}, { total_ttc: { valeur: 42000 } }), TypeError)
-  assert.throws(() => fusionner({}, { 'lignes[3].prix_manuel': { valeur: true } }), TypeError)
-  assert.deepEqual(fusionner({}, {}), {})
+test('QJR572 — valeursImposees ne rend que les entrées surchargées', () => {
+  assert.deepEqual(valeursImposees(null), {})
+  assert.deepEqual(valeursImposees({}), {})
+  assert.deepEqual(valeursImposees(REG({ scenario: 'Sans batterie', 'taille.kwc': undefined })),
+    { scenario: 'Sans batterie' })
+})
+
+test('QJR572 — ecartsAuRegistre : registre vide → aucun écart', () => {
+  const ecran = { scenario: 'Les deux (Sans + Avec)', recommended_option: 'Auto', 'taille.nb_panneaux': '12' }
+  assert.deepEqual(ecartsAuRegistre(ecran, null), { patch: {}, regenerer: [] })
+  assert.deepEqual(ecartsAuRegistre(ecran, REG({ scenario: undefined })), { patch: {}, regenerer: [] })
+})
+
+test('QJR572 — ecartsAuRegistre : valeur identique → rien ; différente → patch', () => {
+  const reg = REG({ scenario: 'Sans batterie', 'taille.nb_panneaux': 14 })
+  assert.deepEqual(
+    ecartsAuRegistre({ scenario: 'Sans batterie', 'taille.nb_panneaux': '14' }, reg),
+    { patch: {}, regenerer: [] })
+  assert.deepEqual(
+    ecartsAuRegistre({ scenario: 'Les deux (Sans + Avec)', 'taille.nb_panneaux': '16' }, reg),
+    { patch: { scenario: { valeur: 'Les deux (Sans + Avec)' }, 'taille.nb_panneaux': { valeur: 16 } },
+      regenerer: [] })
+})
+
+test('QJR572 — ecartsAuRegistre : « Auto » sur une option imposée → retour à l’automatique', () => {
+  const reg = REG({ recommended_option: 'Sans batterie' })
+  assert.deepEqual(ecartsAuRegistre({ recommended_option: 'Auto' }, reg),
+    { patch: {}, regenerer: ['recommended_option'] })
+  assert.deepEqual(ecartsAuRegistre({ recommended_option: 'Avec batterie' }, reg),
+    { patch: { recommended_option: { valeur: 'Avec batterie' } }, regenerer: [] })
+  assert.deepEqual(ecartsAuRegistre({ recommended_option: 'Sans batterie' }, reg),
+    { patch: {}, regenerer: [] })
+})
+
+test('QJR572 — ecartsAuRegistre n’écrit jamais un chemin hors écran ni un nombre illisible', () => {
+  const reg = REG({ 'tarif.distributeur': 'ONEE', 'taille.nb_panneaux': 14 })
+  assert.deepEqual(
+    ecartsAuRegistre({ 'tarif.distributeur': 'LYDEC', 'taille.nb_panneaux': '' }, reg),
+    { patch: {}, regenerer: [] })
 })

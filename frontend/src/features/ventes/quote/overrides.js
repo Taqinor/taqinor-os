@@ -17,11 +17,18 @@
 // contrat) : envoyer `{"taille.nb_panneaux": …}` ne touche AUCUN autre chemin
 // déjà posé.
 //
-// QJR214 — `cheminsRefuses` est désormais IMPORTÉ par `frontend/src/api/
-// ventesApi.js` (client HTTP du registre, `poserOverrides`) pour refuser un
-// chemin hors liste blanche CÔTÉ ÉCRAN, avant tout appel réseau — la même
-// liste blanche, jamais une seconde copie. Le reste du module (sérialisation
-// depuis le reducer QJR87) reste AJOUTÉ TESTÉ, câblé à l'écran par QJR215.
+// QJR214 — `cheminsRefuses` est IMPORTÉ par `frontend/src/api/ventesApi.js`
+// (client HTTP du registre, `poserOverrides`) pour refuser un chemin hors
+// liste blanche CÔTÉ ÉCRAN, avant tout appel réseau — la même liste blanche,
+// jamais une seconde copie.
+//
+// QJR572 — CE QUI EST CÂBLÉ À L'ÉCRAN : `valeursImposees` (ce que le registre
+// impose, pour aligner Scénario / Option recommandée / nombre de panneaux à
+// l'arrivée du registre) et `ecartsAuRegistre` (le patch / les retours à
+// l'automatique envoyés à l'enregistrement d'une édition). `serialiser` /
+// `hydrater` (pont QJR88) restent testés mais NE SONT PAS branchés : ils
+// poseraient une surcharge pour tout champ touché, y compris les chemins
+// que le moteur ne lit pas. La fusion d'un PATCH est faite par le SERVEUR.
 import { DRAPEAUX_TOUCHE, ETAT_INITIAL } from './sizingReducer.js'
 
 /**
@@ -167,16 +174,63 @@ export function hydrater(payload) {
 }
 
 /**
- * PATCH = FUSION (`notes.fusion` du contrat). Le sous-ensemble reçu est fondu
- * dans le registre existant — jamais un remplacement intégral. Un chemin
- * refusé par la liste blanche lève : la surface est FERMÉE, pas de `**kwargs`
- * silencieux.
+ * QJR572 — les trois chemins LUS que l'écran porte lui-même : Scénario,
+ * Option recommandée, nombre de panneaux. Ce sont les SEULS que
+ * `ecartsAuRegistre` peut écrire.
  */
-export function fusionner(registre, patch) {
-  const refuses = cheminsRefuses(patch)
-  if (refuses.length) {
-    throw new TypeError('overrides.js : chemin(s) hors liste blanche du contrat '
-      + `QJR1 — ${refuses.join(', ')} (refusé en 400 côté serveur).`)
+export const CHEMINS_ECRAN = Object.freeze(['scenario', 'recommended_option', 'taille.nb_panneaux'])
+
+/** Les options que le moteur reconnaît pour `recommended_option`. */
+const RECOMMANDATIONS_LUES = Object.freeze(['Sans batterie', 'Avec batterie'])
+
+/**
+ * QJR572 — `{chemin: valeur}` des entrées que le registre IMPOSE (bloc
+ * `effectif`, source ≠ 'auto'). Registre absent ou vide → `{}`.
+ */
+export function valeursImposees(overridesReg) {
+  const effectif = overridesReg?.effectif
+  const imposees = {}
+  if (!effectif || typeof effectif !== 'object') return imposees
+  for (const [chemin, entree] of Object.entries(effectif)) {
+    if (!entree || typeof entree !== 'object') continue
+    if (!entree.source || entree.source === 'auto') continue
+    imposees[chemin] = entree.effectif
   }
-  return { ...(registre || {}), ...(patch || {}) }
+  return imposees
+}
+
+/**
+ * QJR572 — CE QUE L'ENREGISTREMENT D'UNE ÉDITION DOIT DIRE AU REGISTRE.
+ *
+ * `ecran` = `{scenario, recommended_option, 'taille.nb_panneaux'}` tels
+ * qu'affichés (Option recommandée en valeur BRUTE du Select, « Auto »
+ * compris). Seul un chemin DÉJÀ surchargé dont la valeur écran diffère
+ * produit un écart :
+ * - une valeur que le moteur lit → `patch[chemin] = {valeur}` ;
+ * - « Auto » (ou « Aucune recommandation », que le moteur ne lit pas) →
+ *   `regenerer` (DELETE `?chemin=`), `etude_params` reprend la main.
+ * Un chemin non surchargé n'est JAMAIS posé : rien à la création, rien
+ * sans surcharge. Un nombre de panneaux illisible n'écrit rien.
+ */
+export function ecartsAuRegistre(ecran, overridesReg) {
+  const imposees = valeursImposees(overridesReg)
+  const patch = {}
+  const regenerer = []
+  for (const chemin of CHEMINS_ECRAN) {
+    if (!(chemin in imposees) || !ecran || !(chemin in ecran)) continue
+    const valeur = ecran[chemin]
+    if (chemin === 'recommended_option' && !RECOMMANDATIONS_LUES.includes(valeur)) {
+      regenerer.push(chemin)
+      continue
+    }
+    if (chemin === 'taille.nb_panneaux') {
+      const n = Number.parseInt(valeur, 10)
+      if (!(n > 0)) continue
+      if (n !== Number(imposees[chemin])) patch[chemin] = { valeur: n }
+      continue
+    }
+    if (valeur == null || valeur === '') continue
+    if (valeur !== imposees[chemin]) patch[chemin] = { valeur }
+  }
+  return { patch, regenerer }
 }
