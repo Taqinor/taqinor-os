@@ -1949,6 +1949,9 @@ export default function DevisGenerator({
                      // de l'écran qui disent AVANT le clic s'ils sont permis.
                      modifiable: d.modifiable,
                      raison_non_modifiable: d.raison_non_modifiable || '',
+                     // QJR580 — le lead / client DU DEVIS, lus par leurs noms
+                     // servis (jamais `leads.find` : lead hors page 1).
+                     lead_nom: d.lead_nom || '', client_nom: d.client_nom || '',
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -3170,7 +3173,8 @@ export default function DevisGenerator({
 
   const validate = () => {
     const e = {}
-    if (!clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
+    // QJR580 — en édition, le devis a déjà son client (lecture seule).
+    if (!editId && !clientId && !leadId) e.client = 'Sélectionnez un lead ou un client'
     // L'étude industrielle exige la consommation réelle du client
     if (modeInstallation === 'industriel' && !(consoKwhDerivee > 0)) {
       e.conso = 'Mode industriel : renseignez la consommation mensuelle (kWh) '
@@ -4050,6 +4054,24 @@ export default function DevisGenerator({
           <CardContent className="pt-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
+                {editId ? (
+                  /* QJR580 — Édition complète : lead / client en LECTURE
+                     SEULE. L'enregistrement d'édition ne porte ni lead ni
+                     client : un sélecteur actif laissait croire à une
+                     réaffectation jetée, tout en ré-semant les factures du
+                     nouveau lead (applyLead) sur ce devis. Réaffecter n'est
+                     pas une correction (D-QJR5-1). */
+                  <>
+                    <Label>Lead / client du devis</Label>
+                    <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
+                         data-testid="gen-lead-lecture-seule">
+                      <strong>{editDevis?.lead_nom || editDevis?.client_nom || '…'}</strong>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Changer de client = créer un nouveau devis.
+                      </p>
+                    </div>
+                  </>
+                ) : (<>
                 <Label htmlFor="gen-lead" required>Lead (point de départ)</Label>
                 {/* CI #752 — aucune option n'a la valeur '' : un '' ne vient que
                     du <select> natif caché du Select quand la valeur posée
@@ -4071,6 +4093,7 @@ export default function DevisGenerator({
                     ))}
                   </SelectContent>
                 </Select>
+                </>)}
                 {errors.client && <p className="text-xs text-destructive">{errors.client}</p>}
               </div>
               <div className="grid gap-1.5">
@@ -4122,7 +4145,7 @@ export default function DevisGenerator({
               </div>
             )}
 
-            {!leadId && (
+            {!leadId && !editId && (
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
