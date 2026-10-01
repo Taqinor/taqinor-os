@@ -21,7 +21,8 @@ from .models import (
     PlaybookTache, PointContact, RelanceEtape, RevueCompte, SalleVente,
     SalleVenteItem, SavedView, SiteProfile, VisiteExterne, WebsiteLeadPayload,
 )
-from .devis_auto import champs_manquants, message_manquants
+from .devis_auto import (
+    champs_manquants_detail, champs_requis, message_manquants)
 from .scoring import compute_score, score_label, score_reasons
 
 
@@ -890,11 +891,18 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def get_devis_auto(self, obj):
         """Prêt pour le devis automatique ? Même règle que l'endpoint
         POST /leads/<id>/devis-auto/ (source unique : devis_auto.py)."""
-        manquants = champs_manquants(obj)
+        # QJR600 (contrat ``devis_auto_pret.json``) — la règle SERVIE
+        # structurée : ``manquants_detail`` [{champ, label}] (champ = nom du
+        # champ Lead, cible de la puce) et ``requis`` (groupes « l'un des »).
+        # ``manquants`` et ``message`` inchangés.
+        detail = champs_manquants_detail(obj)
+        manquants = [entree['label'] for entree in detail]
         return {
             'pret': not manquants,
             'manquants': manquants,
             'message': message_manquants(manquants) if manquants else None,
+            'manquants_detail': detail,
+            'requis': champs_requis(obj),
         }
 
     def get_next_activity(self, obj):
