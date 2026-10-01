@@ -65,6 +65,13 @@ class EntreesMoteur:
     ``recommander_taille`` les transmettent. Elles n'entrent PAS dans
     l'empreinte (aucun bloc existant n'est périmé par cet ajout).
 
+    ERR-QJR605-BALAYAGE-SITE-ISOLE-KIT-RESEAU — DEUX AUTRES, ``hors_reseau``
+    (site isolé : raccordement ``'aucun'``, ou un onduleur off-grid déjà au
+    devis) et ``mppt_paires`` (câble DC du devis ÷ 60 m ; 1 sur un lead), lues
+    par :func:`hors_reseau_et_mppt` — la MÊME lecture que
+    ``pipeline.contexte_sonde_du_devis``. Elles CHANGENT le kit composé : elles
+    entrent donc dans l'empreinte.
+
     ``tranches`` / ``charges_fixes_mad`` — L'IDENTITÉ TARIFAIRE (QJR46) : la
     surcharge de barème de la SOCIÉTÉ, lue par le MÊME
     ``etude_horaire._reglages_tarifaires`` que le moteur de devis. Elles ne
@@ -95,6 +102,8 @@ class EntreesMoteur:
     jour_reference: object = None
     phase: object = None
     gamme_nom_devis: object = None
+    hors_reseau: bool = False
+    mppt_paires: int = 1
 
     # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
 
@@ -133,6 +142,31 @@ def _reglages_tarifaires_de(company):
     """
     from apps.ventes.etude_horaire import _reglages_tarifaires
     return _reglages_tarifaires(company)
+
+
+def hors_reseau_et_mppt(*, devis=None, lead=None):
+    """ERR-QJR605 — ``(hors_reseau, mppt_paires)`` d'un devis ou d'un lead.
+
+    LA MÊME lecture que ``pipeline.contexte_sonde_du_devis`` (qui compose les
+    cartes et l'échelle de paliers) : site isolé = raccordement ``'aucun'`` du
+    lead (``compatibilites.est_site_isole``) OU un onduleur off-grid déjà
+    chiffré au devis ; paires MPPT = câble DC au mètre du devis ÷ 60 m
+    (``pipeline._mppt_paires_du_devis``). Sur un LEAD (aucune ligne) : le
+    raccordement seul, et le repli fondateur d'une paire. Lecture pure.
+    """
+    from apps.ventes.compatibilites import est_site_isole
+    if devis is None:
+        return est_site_isole(getattr(lead, 'raccordement', None)), 1
+    from apps.ventes.domain.catalogue import _is_offgrid_inverter
+    from apps.ventes.domain.pipeline import _mppt_paires_du_devis
+    if lead is None:
+        from apps.crm.selectors import lead_du_devis
+        lead = lead_du_devis(devis)
+    hors_reseau = est_site_isole(getattr(lead, 'raccordement', None)) or any(
+        _is_offgrid_inverter(ligne.designation or '')
+        and float(ligne.quantite or 0) > 0
+        for ligne in devis.lignes.all())
+    return bool(hors_reseau), _mppt_paires_du_devis(devis)
 
 
 def _kwh_declare(valeur):
@@ -324,6 +358,8 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
     from apps.crm.selectors import lead_du_devis
     from apps.ventes.compatibilites import normaliser_phase
     from apps.ventes.domain.gammes import gamme_nom
+    lead = lead_du_devis(devis)
+    hors_reseau, mppt_paires = hors_reseau_et_mppt(devis=devis, lead=lead)
     return EntreesMoteur(
         company=company, mode=mode, etude_params=etude_params,
         conso_kwh_mensuelles=conso, source_conso=source_conso,
@@ -334,9 +370,9 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         equipements=equipements_du_devis(devis),
         tranches=tranches, charges_fixes_mad=charges_fixes,
         jour_reference=jour,
-        phase=normaliser_phase(
-            getattr(lead_du_devis(devis), 'raccordement', None)),
-        gamme_nom_devis=gamme_nom(devis) or None)
+        phase=normaliser_phase(getattr(lead, 'raccordement', None)),
+        gamme_nom_devis=gamme_nom(devis) or None,
+        hors_reseau=hors_reseau, mppt_paires=mppt_paires)
 
 
 def _phase_du_lead(lead):
@@ -412,7 +448,9 @@ def entrees_depuis_lead(lead, company, *, contexte=True, jour_reference=None):
         equipements=composer_equipements(equipements_pour_lead(lead)),
         tranches=tranches, charges_fixes_mad=charges_fixes,
         # QJR606 — un lead n'a pas de gamme de devis : ``None``.
-        phase=_phase_du_lead(lead))
+        phase=_phase_du_lead(lead),
+        # ERR-QJR605 — site isolé lu sur le raccordement ; une paire MPPT.
+        hors_reseau=hors_reseau_et_mppt(lead=lead)[0])
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -488,8 +526,9 @@ def empreinte_entrees(e):
     CE QUI Y ENTRE, et rien d'autre : la consommation mensuelle, sa source, la
     localisation (ville normalisée, lat/lon arrondis à ``_DECIMALES_GPS``),
     l'occupation, les couches d'équipement, l'identité tarifaire
-    (``tranches`` + ``charges_fixes_mad``), le ``jour_reference`` et
-    :data:`VERSION_MOTEUR_ENTREES`.
+    (``tranches`` + ``charges_fixes_mad``), le ``jour_reference``, le
+    ``hors_reseau`` et les ``mppt_paires`` (ERR-QJR605 : ils changent le kit
+    composé) et :data:`VERSION_MOTEUR_ENTREES`.
 
     POURQUOI LES COUCHES D'ÉQUIPEMENT PLUTÔT QUE LES 15 CHAMPS BRUTS. Les 15
     champs du lead (``crm.selectors.equipements_pour_lead``) ne franchissent le
@@ -521,6 +560,10 @@ def empreinte_entrees(e):
         'charges_fixes_mad': _arrondi(
             getattr(e, 'charges_fixes_mad', None), 2),
         'jour_reference': _texte(getattr(e, 'jour_reference', None)),
+        # ERR-QJR605 — le hors-réseau et les paires MPPT changent le KIT composé
+        # à chaque taille : un lead passé en « aucun » périme le tableau.
+        'hors_reseau': bool(getattr(e, 'hors_reseau', False)),
+        'mppt_paires': int(getattr(e, 'mppt_paires', 1) or 1),
     }
     canonique = json.dumps(charge, sort_keys=True, separators=(',', ':'),
                            default=str, ensure_ascii=False)
