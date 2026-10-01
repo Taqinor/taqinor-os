@@ -46,6 +46,13 @@ def _rafraichir(devis):
         origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=devis.company))
 
 
+def _instantane(devis, user):
+    """QJR550 — UN instantané de configuration par geste de ligne, avec son
+    auteur (``request.user``) ; remplace le signal ``post_save`` par ligne."""
+    from ..domain.cycle_vie import instantane_de_geste
+    instantane_de_geste(devis, user=user)
+
+
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
@@ -156,6 +163,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # jamais (voir ``services.rafraichir_etudes_du_devis``).
         _retarifer_forfaits(serializer.instance.devis)
         _rafraichir(serializer.instance.devis)
+        _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
 
@@ -172,6 +180,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # MODIFIÉE peut changer la puissance kWc).
         _retarifer_forfaits(serializer.instance.devis)
         _rafraichir(serializer.instance.devis)
+        _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
 
@@ -186,5 +195,6 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
         _retarifer_forfaits(devis)
         _rafraichir(devis)
+        _instantane(devis, self.request.user)
         fin_de_geste_devis(devis, self.request.user, avant=avant_geste,
                            objet='ligne')

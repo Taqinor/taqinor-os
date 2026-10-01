@@ -187,7 +187,10 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # reflet lead passent par LE point unique de trace
         # (``consigner_correction_apres_envoi``, via ``fin_de_geste_devis``) :
         # plus d'écriture directe du marqueur ici.
+        from apps.ventes.domain.cycle_vie import instantane_de_geste
         for devis in touches.values():
+            # QJR550 — UN instantané par devis resynchronisé.
+            instantane_de_geste(devis, user=user)
             fin_de_geste_devis(devis, user, avant=avants.get(devis.pk),
                                objet='catalogue')
             log_devis_resynchronisation(

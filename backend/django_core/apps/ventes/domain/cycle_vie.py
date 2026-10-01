@@ -1640,7 +1640,13 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     appelé AVANT la première écriture d'une correction après envoi
     (``domain/modifiabilite.debut_de_geste_devis``), l'instantané conserve
     l'état que le client a vu. Le signal de ligne (post_save) ne le passe
-    jamais : un envoyé n'est pas historisé ligne par ligne."""
+    jamais : un envoyé n'est pas historisé ligne par ligne.
+
+    QJR550 — la création est enveloppée dans un POINT DE SAUVEGARDE : une
+    erreur SQL pendant la capture (appelée sous la transaction de
+    replace-lines / atomic) n'avorte plus l'enregistrement qui l'entoure."""
+    from django.db import transaction
+
     from apps.ventes.models import ConfigurationDevisSnapshot, Devis
 
     if devis is None or devis.pk is None:
@@ -1650,17 +1656,47 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     if devis.statut not in statuts:
         return None
     try:
-        contenu = configuration_devis_contenu(devis)
-        dernier = ConfigurationDevisSnapshot.objects.filter(
-            devis_id=devis.pk).order_by('-date_creation', '-id').first()
-        if dernier is not None and dernier.contenu == contenu:
-            return None
-        return ConfigurationDevisSnapshot.objects.create(
-            company=devis.company, devis=devis, contenu=contenu, auteur=user)
+        with transaction.atomic():
+            contenu = configuration_devis_contenu(devis)
+            dernier = ConfigurationDevisSnapshot.objects.filter(
+                devis_id=devis.pk).order_by('-date_creation', '-id').first()
+            if dernier is not None and dernier.contenu == contenu:
+                return None
+            return ConfigurationDevisSnapshot.objects.create(
+                company=devis.company, devis=devis, contenu=contenu,
+                auteur=user)
     except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
         logger.exception(
             'NTCPQ20 : instantané de configuration ignoré (devis %s)',
             devis.pk)
+        return None
+
+
+def instantane_de_geste(devis, *, user=None):
+    """QJR550 — UN instantané de configuration par GESTE d'enregistrement,
+    avec son auteur.
+
+    Remplace le signal ``post_save``/``post_delete`` de ``LigneDevis``
+    (NTCPQ20) : ``remplacer_lignes`` supprime puis recrée toutes les lignes,
+    et le signal produisait ~N+1 instantanés par enregistrement — dont des
+    états PARTIELS — sans jamais d'auteur. Appelé, après les écritures, par
+    le pipeline (``composer`` ; ``ecrire`` / ``reconcilier`` — jamais
+    ``rafraichir``), ``LigneDevisViewSet`` et la resynchronisation catalogue
+    (une fois par devis). Relit le devis (statut et lignes en base). Ne lève
+    jamais."""
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return None
+    try:
+        from apps.ventes.models import Devis
+        frais = Devis.objects.select_related('company').filter(
+            pk=devis.pk).first()
+        if frais is None:
+            return None
+        return capturer_configuration_devis(frais, user=user)
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+        logger.exception(
+            'QJR550 : instantané de geste ignoré (devis %s)',
+            getattr(devis, 'pk', '?'))
         return None
 
 

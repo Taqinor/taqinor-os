@@ -896,9 +896,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     # la composition est celle que l'écran a arrêtée, le
                     # pipeline ne la recompose pas (recomposer détruirait les
                     # prix et quantités tapés par le commercial).
+                    # QJR550 — ``user`` : l'auteur de l'instantané du
+                    # geste, jamais lu du corps.
                     appliquer(devis, IntentionDevis(
                         origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
-                        company=company, composition=lignes_in))
+                        company=company, user=request.user,
+                        composition=lignes_in))
                     return devis
                 create_numbered(Devis, company, 'devis', _save)
         except ValidationError:

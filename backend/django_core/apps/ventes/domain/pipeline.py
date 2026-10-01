@@ -1023,6 +1023,15 @@ def finaliser(devis, intention):
     return devis
 
 
+def _instantane(devis, intention):
+    """QJR550 — l'instantané de configuration du geste (best-effort)."""
+    from apps.ventes.domain.cycle_vie import instantane_de_geste
+    try:
+        instantane_de_geste(devis, user=intention.user)
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+        logger.warning('QJR550 : instantané ignoré', exc_info=True)
+
+
 def _verrouiller(devis):
     """Recharge le devis sous ``select_for_update`` — l'instance que le
     pipeline écrit, et la seule que l'étape 7 relit."""
@@ -1141,6 +1150,9 @@ def appliquer(devis, intention):
 
         ecrire_etude_params(verrou, intention, composition)
         journal.append('ecrire_etude_params')
+        # QJR550 — UN instantané de configuration pour le geste, sous la
+        # transaction (point de sauvegarde) ; aucune étape de journal.
+        _instantane(verrou, intention)
 
     # QJR227 — ``force_etudes`` EST TRANSMIS ICI AUSSI. Il ne l'était que par
     # la branche ``MODE_RAFRAICHIR`` : un appelant qui demandait des études
@@ -1226,12 +1238,15 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
         resynchro = reconcilier(devis, intention)
         avertissements.extend(resynchro.get('avertissements') or ())
         journal.append('reconcilier')
-    else:  # MODE_RAFRAICHIR
+    else:  # MODE_RAFRAICHIR — jamais d'instantané (rien n'est écrit)
         rafraichir_etudes(devis, force=intention.force_etudes)
         journal.append('rafraichir_etudes')
         # QJR554 — les caches suivent les lignes réellement écrites.
         finaliser_caches(devis)
         journal.append('finaliser_caches')
+    if mode in (MODE_ECRIRE, MODE_RECONCILIER):
+        # QJR550 — UN instantané par geste, après ecrire_lignes / reconcilier.
+        _instantane(devis, intention)
     if avant_geste is not None:
         fin_de_geste_devis(
             devis, intention.user, avant=avant_geste,
