@@ -9,6 +9,8 @@ import { formatMAD } from '../../lib/format.js'
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
 import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
+// ERR-QJR576 — les libellés de scénario : module feuille (aucun cycle).
+import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1647,12 +1649,12 @@ export function totauxCanoniquesTtc(lines, discountPct = 0) {
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
 // Option 1 SANS batterie : exclut Batterie + Onduleur hybride.
 // Option 2 AVEC batterie : exclut Onduleur réseau.
-// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — miroir de
-// `apps/ventes/utils/options.py` `SCENARIOS_ALTERNATIVE` : les trois libellés
-// qui DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
-// panier filtré ET règle QF9 appliquée).
-// source-choix: ventes.utils.options.SCENARIOS_ALTERNATIVE
-export const SCENARIOS_ALTERNATIVE = ['Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)']
+// ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — les trois libellés qui
+// DÉCLARENT une alternative commerciale (le noyau sert alors UNE option,
+// panier filtré ET règle QF9 appliquée ; `SCENARIOS_ALTERNATIVE` de
+// `apps/ventes/utils/options.py`). ERR-QJR576 : c'est LA liste du module
+// feuille `quote/scenarios.js` (déclarée au serveur là-bas), jamais retapée.
+export const SCENARIOS_ALTERNATIVE = SCENARIOS_VALIDES
 
 // Miroir de `familles_des_lignes` + `familles_servables` + la condition
 // « alternative déclarée » de `deux_options_depuis_paniers` (utils/options.py) :
@@ -1785,15 +1787,14 @@ function _roleVariante(l) {
 //     écran `compose`) ; une ligne composée HIER et absente aujourd'hui, un
 //     placeholder sans produit ou une ligne à quantité nulle ne survivent pas ;
 //   • une quantité FIGÉE (`quantiteManuelle`) qui diffère de la quantité
-//     recalculée est GARDÉE et remontée dans `conflits` (jamais en silence :
-//     l'appelant le dit au vendeur, qui a confirmé avant la recomposition).
+//     recalculée est remontée dans `conflits` (jamais en silence : l'appelant
+//     demande au vendeur « garder » ou « prendre N (recalculé) ») ; elle est
+//     GARDÉE par défaut, remplacée (verrou levé) avec `prendreRecalcule`.
+// Une ligne RELUE du serveur sans saisie humaine porte déjà `compose`
+// (`lignesServeurVersEcran`, ERR-QJR570) : elle est remplacée, jamais doublée.
 // Toute ligne générée porte `compose: true` (marqueur d'écran, jamais envoyé
 // au serveur). Fonction PURE.
 const _estLigneProduit = (l) => (l?.typeLigne ?? l?.type_ligne ?? 'produit') === 'produit'
-
-export function lignesQuantiteFigee(lignes) {
-  return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
-}
 
 function _ancienneLigneAGarder(l) {
   if (!_estLigneProduit(l)) return true            // section / note
@@ -1802,7 +1803,7 @@ function _ancienneLigneAGarder(l) {
   return Boolean(l.produit) && (parseFloat(l.quantite) || 0) > 0
 }
 
-export function fusionnerRecomposition(anciennes, generees) {
+export function fusionnerRecomposition(anciennes, generees, { prendreRecalcule = false } = {}) {
   const olds = Array.isArray(anciennes) ? anciennes : []
   const gens = Array.isArray(generees) ? generees : []
   // File d'anciennes lignes produit par id (appariement dans l'ordre).
@@ -1828,15 +1829,20 @@ export function fusionnerRecomposition(anciennes, generees) {
     }
     if (o.optionnelle) base.optionnelle = true
     if (o.quantiteManuelle) {
-      base.quantiteManuelle = true
-      if ((parseFloat(o.quantite) || 0) !== (parseFloat(g.quantite) || 0)) {
+      const enConflit = (parseFloat(o.quantite) || 0) !== (parseFloat(g.quantite) || 0)
+      if (enConflit) {
         conflits.push({
           designation: o.designation || g.designation || '',
           figee: String(o.quantite),
           recalculee: String(g.quantite),
         })
       }
-      base.quantite = o.quantite
+      // ERR-QJR570 — « prendre N (recalculé) » : sur conflit, la quantité
+      // recalculée est prise et le verrou levé (choix du vendeur).
+      if (!(enConflit && prendreRecalcule)) {
+        base.quantiteManuelle = true
+        base.quantite = o.quantite
+      }
     }
     return base
   })

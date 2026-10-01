@@ -343,6 +343,7 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'optionnelle': True,
             'quantite_manuelle': True,
             'prix_manuel': True,
+            'ligne_composee': False,
             'lot': lot.id,
         }
         attendus = set(CHAMPS_LIGNE) - set(EXCLUSIONS_REMPLACEMENT)
@@ -367,6 +368,7 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'optionnelle': ligne.optionnelle,
             'quantite_manuelle': ligne.quantite_manuelle,
             'prix_manuel': ligne.prix_manuel,
+            'ligne_composee': ligne.ligne_composee,
             'lot': ligne.lot_id,
         }
         self.assertEqual(set(valeurs), attendus)
@@ -386,5 +388,6 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'optionnelle': True,
             'quantite_manuelle': True,
             'prix_manuel': True,
+            'ligne_composee': False,
             'lot': lot.id,
         })

@@ -14,12 +14,21 @@
 // remise (QJR529 — la remise PAR LIGNE stockée, '0' par défaut : l'envoyer à
 // '0' en dur faisait monter le total client en silence au 1er enregistrement),
 // lot (QJR667 — rattachement à un lot multi-sites posé par « Lots /
-// multi-sites » ; sans lui, replace-lines recréait les lignes hors lot).
+// multi-sites » ; sans lui, replace-lines recréait les lignes hors lot),
+// ligne_composee ⇄ compose (ERR-QJR570 — provenance composée / manuelle).
 //
 // Module PUR (aucun React, aucun import.meta) : exécuté par `node --test`.
 import { ttcExactFromHt, htFromTtc } from '../solar.js'
 
 const TYPES_STRUCTURE = new Set(['section', 'note'])
+
+/** ERR-QJR570 — provenance d'une ligne serveur : composée par le moteur ? */
+function composeRelu(l) {
+  if ((l.type_ligne ?? 'produit') !== 'produit') return false
+  if (l.ligne_composee === true) return true
+  if (l.ligne_composee === false) return false
+  return !l.prix_manuel && !l.quantite_manuelle && !l.optionnelle
+}
 
 /**
  * Lignes servies par l'API (HT, snake_case) → lignes d'écran (TTC, forme
@@ -55,6 +64,15 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         groupeLabel: l.groupe_label ?? '',
         role_devis: l.role_devis ?? '',
         lot: l.lot ?? null,
+        // ERR-QJR570 (D-QJR5-4) — marqueur d'ÉCRAN `compose` : une ligne
+        // COMPOSÉE est REMPLACÉE par une recomposition, une ligne ajoutée à
+        // la main est GARDÉE. La provenance PERSISTÉE (`ligne_composee`) fait
+        // foi : true ⇒ composée, false ⇒ manuelle (jamais remplacée). Absente
+        // ou null (lignes antérieures) ⇒ repli : une ligne produit relue
+        // SANS saisie humaine (ni prix tapé, ni quantité figée, ni
+        // optionnelle) est composée — sans ce repli, `fusionnerRecomposition`
+        // gardait l'ancien onduleur / la batterie À CÔTÉ des nouveaux.
+        compose: composeRelu(l),
       }
     })
 }
@@ -75,8 +93,11 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
     : (l.produit && parseFloat(l.quantite) > 0)))
   return gardees.map((l, idx) => {
     if (estStructure(l)) {
-      // Une ligne section/note ne porte ni produit ni prix.
-      return { type_ligne: l.typeLigne, ordre: idx, designation: l.designation }
+      // Une ligne section/note ne porte ni produit ni prix (ni provenance).
+      return {
+        type_ligne: l.typeLigne, ordre: idx, designation: l.designation,
+        ligne_composee: null,
+      }
     }
     return {
       produit: parseInt(l.produit, 10),
@@ -98,6 +119,10 @@ export function lignesEcranVersPayload(lines, { multiMode } = {}) {
       role_devis: l.role_devis || '',
       // QJR667 — le lot de la ligne (id d'un lot de CE devis, sinon null).
       lot: l.lot ?? null,
+      // ERR-QJR570 (D-QJR5-4) — la provenance PERSISTÉE : true = posée par
+      // le moteur (une recomposition la remplace), false = ajoutée à la main
+      // (gardée, même après réouverture).
+      ligne_composee: !!l.compose,
     }
   })
 }

@@ -45,7 +45,7 @@ test('QJR577 — erreur visible + « Réessayer » qui rejoue le même dry-run',
   const bloc = DG.slice(Math.max(0, idx - 300), idx + 900)
   assert.match(bloc, /\{compositionErreur && \(/)
   assert.match(bloc, /data-testid="composition-reessayer"/)
-  assert.match(bloc, /onClick=\{\(\) => avecQuantitesFigees\(handleAutoFill\)\}/)
+  assert.match(bloc, /onClick=\{\(\) => handleAutoFill\(\)\}/)
   assert.match(bloc, /Réessayer/)
 })
 

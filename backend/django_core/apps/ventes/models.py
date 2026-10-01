@@ -675,6 +675,21 @@ class LigneDevis(models.Model):
                   "commercial : aucun rafraîchissement tarifaire ne l'écrase "
                   "(décision fondateur D12).")
 
+    # ── ERR-QJR570 / D-QJR5-4 — LA PROVENANCE DE LA LIGNE ────────────────────
+    # Une recomposition (Auto-remplir / Appliquer cette taille / Recalculer)
+    # REMPLACE les lignes posées par le moteur et GARDE celles que le vendeur a
+    # ajoutées à la main. Sans marqueur persistant, un produit ajouté à la
+    # main, enregistré puis rouvert, était pris pour une ligne composée et
+    # remplacé au recalcul suivant. True = posée par le moteur ; False =
+    # ajoutée à la main ; NULL = inconnue (lignes antérieures, aucun backfill :
+    # l'écran garde sa règle de repli).
+    ligne_composee = models.BooleanField(
+        null=True, blank=True, default=None,
+        verbose_name='Ligne composée par le moteur',
+        help_text="True = posée par la composition (une recomposition la "
+                  "remplace) ; False = ajoutée à la main (jamais remplacée) ; "
+                  "vide = inconnue (ligne antérieure).")
+
     # ── STKCAT23 — LE RÔLE DE LA LIGNE, ÉCRIT À SA CRÉATION ────────────────
     # Le rôle d'une ligne (« panneau », « batterie », « structure »…) était
     # RE-DEVINÉ par mots-clés à CHAQUE lecture — une fois par le répartiteur

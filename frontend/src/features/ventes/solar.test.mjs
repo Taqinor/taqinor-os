@@ -8,8 +8,9 @@ import { dirname, join } from 'node:path'
 // QJR109 — le garde-fou « le lead ne réinitialise pas le marché choisi » est
 // désormais EXÉCUTÉ sur le reducer pur, au lieu d'être cherché dans le source.
 import {
-  sizingReducer, ETAT_INITIAL,
+  sizingReducer, ETAT_INITIAL, SCENARIOS_VALIDES,
 } from './quote/sizingReducer.js'
+import { SCENARIOS_ALTERNATIVE } from './solar.js'
 import {
   DEFAULT_MONTHLY_BILLS, estimerMois, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
@@ -2168,4 +2169,14 @@ test('QJR529 — totauxCanoniquesTtc applique la remise de ligne', () => {
     { quantite: '2', prix_unit_ttc: '1100', taux_tva: 10, remise: '50' },
     { quantite: '1', prix_unit_ttc: '1200', taux_tva: 20 },
   ], 10), 2070)
+})
+
+// ERR-QJR576-602-RESIDUS-SUPERSEDE — les trois libellés de scénario ne sont
+// tapés qu'UNE fois (`quote/scenarios.js`, module feuille) : solar.js ne les
+// retape plus, il lit la MÊME liste que le reducer.
+test('ERR-QJR576 — SCENARIOS_ALTERNATIVE est LA liste du reducer, jamais une copie', () => {
+  assert.equal(SCENARIOS_ALTERNATIVE, SCENARIOS_VALIDES)
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'solar.js'), 'utf8')
+  assert.doesNotMatch(src, /'Les deux \(Sans \+ Avec\)'|'Sans batterie'|'Avec batterie'/,
+    'solar.js retape un libellé de scénario')
 })

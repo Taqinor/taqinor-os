@@ -164,3 +164,35 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     await waitFor(() => expect(quitterBloque()).toBe(false))
   }, 15000)
 })
+
+// ERR-QJR581-REFERENCE-FENETRE-TEMPORELLE — la référence « rien n'a changé »
+// était une fenêtre de 1,5 s : une hydratation serveur ASYNCHRONE (getLead,
+// registre d'overrides) résolue APRÈS elle réécrivait l'état → brouillon
+// écrit, garde de sortie armée, sans aucune saisie du vendeur.
+describe('ERR-QJR581 — hydratation tardive : la référence suit la fin des hydratations', () => {
+  it('getLead résolu à 2 s : facture posée, mais aucun brouillon ni garde de sortie', async () => {
+    crmApi.getLead.mockImplementation(() => new Promise(
+      (resolve) => setTimeout(() => resolve({ data: LEAD }), 2000)))
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    // L'hydratation tardive a bien ATTERRI (la facture hiver du lead est posée)…
+    await waitFor(() => expect(screen.getByLabelText(/Facture Hiver/).value).toBe('2000'),
+      { timeout: 5000 })
+    await new Promise(r => setTimeout(r, 2200))
+    // …et pourtant rien n'a changé pour le vendeur : dirty === false.
+    expect(window.localStorage.getItem(CLE)).toBeNull()
+    expect(quitterBloque()).toBe(false)
+  }, 20000)
+
+  it('une vraie saisie APRÈS l\'hydratation tardive arme toujours la garde', async () => {
+    crmApi.getLead.mockImplementation(() => new Promise(
+      (resolve) => setTimeout(() => resolve({ data: LEAD }), 2000)))
+    renderEdition()
+    await screen.findByRole('button', { name: /Enregistrer les modifications/ })
+    await waitFor(() => expect(screen.getByLabelText(/Facture Hiver/).value).toBe('2000'),
+      { timeout: 5000 })
+    await new Promise(r => setTimeout(r, 2200))
+    fireEvent.change(screen.getByPlaceholderText(/Conditions particulières/), { target: { value: 'Acompte 30 %' } })
+    await waitFor(() => expect(quitterBloque()).toBe(true))
+  }, 20000)
+})

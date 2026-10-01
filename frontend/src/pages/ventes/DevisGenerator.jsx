@@ -107,7 +107,7 @@ import {
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   kwcFactureDesLignes, kwcPourPanneaux,
   // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
-  fusionnerRecomposition, lignesQuantiteFigee,
+  fusionnerRecomposition,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -335,9 +335,13 @@ const withKeys = (rows) => rows.map(r => ({
   compose: !!r.compose,
 }))
 
-// QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=` (et
-// ses relectures immédiates : lead, réouverture) forment la RÉFÉRENCE « rien
-// n'a changé » de l'Édition complète.
+// QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=`
+// forment la RÉFERENCE « rien n'a changé » de l'Édition complète.
+// ERR-QJR581-REFERENCE-FENETRE-TEMPORELLE — la fenêtre n'est plus comptée
+// depuis l'ouverture seulement : chaque hydratation serveur ASYNCHRONE lancée
+// pendant la capture (lead, registre d'overrides — `suivreHydratation`) la
+// ROUVRE à sa résolution, pour que ses écritures (et leurs effets en
+// cascade) entrent dans la référence, même résolues après 1,5 s.
 const FENETRE_REFERENCE_MS = 1500
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -535,6 +539,19 @@ export default function DevisGenerator({
   const armerJeton = (updatedAt) => { if (updatedAt) jetonRef.current = updatedAt }
   // QJR581 — fenêtre de capture de la référence « rien n'a changé ».
   const captureReferenceJusqua = useRef(0)
+  // ERR-QJR581 — `dirty` du dernier rendu, lu par `suivreHydratation` : une
+  // hydratation qui atterrit APRÈS une vraie saisie ne rouvre jamais la
+  // capture (sinon la saisie du vendeur deviendrait la référence).
+  const dirtyRef = useRef(false)
+  // Une hydratation serveur lancée PENDANT la capture la rouvre quand elle se
+  // résout (après ses setters : `promesse` est la chaîne complète). Lancée
+  // hors capture (geste du vendeur), elle n'y touche pas.
+  const suivreHydratation = (promesse) => {
+    if (Date.now() >= captureReferenceJusqua.current) return promesse
+    return Promise.resolve(promesse).finally(() => {
+      if (!dirtyRef.current) captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
+    })
+  }
   const [rechargeEdit, setRechargeEdit] = useState(0)
 
   // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
@@ -620,9 +637,10 @@ export default function DevisGenerator({
 
   const chargerOverrides = (id) => {
     if (!id) return
-    ventesApi.lireOverrides(id)
+    // ERR-QJR581 — à l'ouverture, une hydratation suivie par la référence.
+    suivreHydratation(ventesApi.lireOverrides(id)
       .then(({ data }) => { setOverridesReg(data); alignerSurRegistre(data) })
-      .catch(() => {})
+      .catch(() => {}))
   }
 
   // Lecture du registre À L'OUVERTURE d'un devis existant.
@@ -987,6 +1005,7 @@ export default function DevisGenerator({
   const dirty = referenceEcran != null
     ? snapshotJson !== referenceEcran
     : (editId ? false : formulaireNonVierge)
+  useEffect(() => { dirtyRef.current = dirty }, [dirty])
   const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,
     version: editId ? (editDevis?.updated_at ?? null) : undefined,
@@ -2082,7 +2101,9 @@ export default function DevisGenerator({
         // ERR-QAH-VENTES-EDITION-PERD-LEAD — relit le lead par son id et repose
         // ses factures hiver/été SANS redimensionner ; une valeur déjà présente
         // n'est jamais écrasée ; une panne reste ISOLÉE.
-        Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
+        // ERR-QJR581 — hydratation suivie : ses écritures entrent dans la
+        // référence même si le lead répond après la fenêtre.
+        suivreHydratation(Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
           if (!lead || lead.id == null) return
           setLeadDuDevis(lead)
           if (parseFloat(lead.facture_hiver) > 0) {
@@ -2090,7 +2111,7 @@ export default function DevisGenerator({
             setFEte(prev => prev || (lead.ete_differente && lead.facture_ete
               ? String(lead.facture_ete) : ''))
           }
-        }).catch(() => {})
+        }).catch(() => {}))
       } else pose(etat.clientId, setClientId)
       // DC11 / QJR106 — verdict de dérive du serveur (liste vide = aucune bannière).
       setLeadValeursModifiees(etat.leadValeursModifiees)
@@ -2606,34 +2627,35 @@ export default function DevisGenerator({
   // QJR570 (D-QJR5-4) — LE point d'écriture des trois recompositions
   // (composition locale, dry-run serveur, pompage) : FUSION par id produit
   // (`fusionnerRecomposition`) — prix tapés, sections, notes, options et
-  // produits ajoutés à la main conservés d'office. Une quantité figée en
-  // conflit est GARDÉE (le vendeur l'a confirmé avant le geste) et NOMMÉE.
+  // produits ajoutés à la main conservés d'office.
+  // ERR-QJR570 — la SEULE question est posée APRÈS la composition et
+  // seulement sur CONFLIT RÉEL (quantité figée ≠ quantité recalculée, 5
+  // désignations au plus) : « Garder » (défaut, rien à refaire) ou « Prendre
+  // N (recalculé) » (la quantité recalculée remplace la figée, verrou levé).
+  // Aucune question sans conflit ; elle ne dispatche RIEN dans le reducer
+  // (invariant F2 QJR99) — seule l'écriture des lignes change.
   const recomposerLignes = (generated) => {
     const { conflits } = fusionnerRecomposition(lines, generated)
     setLines(ls => withKeys(fusionnerRecomposition(ls, generated).lignes))
-    if (conflits.length) {
-      toast.warning('Quantités figées gardées : ' + conflits.slice(0, 5)
-        .map(c => `${c.designation} ${c.figee} (recalculé : ${c.recalculee})`).join(', ')
-        + (conflits.length > 5 ? '…' : '') + '.')
-    }
-  }
-
-  // QJR570 — la seule question posée avant une recomposition : des quantités
-  // figées à la main existent (5 désignations au plus). Sans elles, AUCUNE
-  // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
-  // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
-  const avecQuantitesFigees = (geste) => {
-    const figees = lignesQuantiteFigee(lines)
-    if (!figees.length) { geste(); return }
-    const noms = figees.slice(0, 5)
-      .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
-      + (figees.length > 5 ? '…' : '')
+    if (!conflits.length) return
+    const noms = conflits.slice(0, 5)
+      .map(c => `${c.designation || 'ligne'} : ${c.figee} (recalculé : ${c.recalculee})`)
+      .join(', ') + (conflits.length > 5 ? '…' : '')
     confirm({
-      title: 'Garder les quantités figées ?',
-      description: `Quantités saisies à la main (${noms}) : la recomposition les GARDE. `
-        + 'Pour prendre la quantité recalculée, cliquez « Libérer » sur la ligne puis recomposez.',
-      confirmLabel: 'Recomposer en les gardant',
-    }).then(ok => { if (ok) geste() })
+      title: 'Quantités figées différentes du recalcul',
+      description: `Quantités saisies à la main (${noms}). Garder vos quantités, `
+        + 'ou prendre les quantités recalculées ?',
+      confirmLabel: conflits.length === 1
+        ? `Prendre ${conflits[0].recalculee} (recalculé)`
+        : 'Prendre les quantités recalculées',
+      cancelLabel: 'Garder les quantités figées',
+      destructive: false,
+    }).then((ok) => {
+      if (ok) {
+        setLines(ls => withKeys(
+          fusionnerRecomposition(ls, generated, { prendreRecalcule: true }).lignes))
+      }
+    })
   }
 
   // QJR546 — appliquer un modèle REMPLACE les lignes À L'ÉCRAN, en création
@@ -3050,8 +3072,9 @@ export default function DevisGenerator({
   // un compteur, lui, avance toujours.
   const appliquerTailleDimensionnement = (ligne) => {
     if (!ligne || !(ligne.panneaux > 0)) return
-    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
-    avecQuantitesFigees(() => dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne }))
+    // ERR-QJR570 — aucune question AVANT : un conflit réel de quantité figée
+    // est demandé après la composition (`recomposerLignes`).
+    dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne })
   }
 
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ». Causes RÉELLES
@@ -3147,8 +3170,9 @@ export default function DevisGenerator({
     // QUI SUIT et restauré dans le même mouvement, et `compositionSeq` avance —
     // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
     // relancer la composition (catalogue/marques/scénario ont pu changer).
-    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
-    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }))
+    // ERR-QJR570 — aucune question AVANT : un conflit réel de quantité figée
+    // est demandé après la composition (`recomposerLignes`).
+    dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu })
   }
   // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
   // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et
@@ -4586,7 +4610,7 @@ export default function DevisGenerator({
                 <RefreshCw /> Recalculer le dimensionnement
               </Button>
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
-                      loading={autoFillLoading} onClick={() => avecQuantitesFigees(handleAutoFill)}>
+                      loading={autoFillLoading} onClick={() => handleAutoFill()}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
@@ -4600,7 +4624,7 @@ export default function DevisGenerator({
                 <Button type="button" size="sm" variant="outline"
                         data-testid="composition-reessayer"
                         loading={autoFillLoading}
-                        onClick={() => avecQuantitesFigees(handleAutoFill)}>
+                        onClick={() => handleAutoFill()}>
                   Réessayer
                 </Button>
               </div>

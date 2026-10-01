@@ -46,8 +46,10 @@ test('aller-retour serveur → écran → payload : chaque champ porté est pré
     assert.equal(p.groupe_index, s.groupe_index)
     assert.equal(p.groupe_label, s.groupe_label)
     assert.equal(p.role_devis, s.role_devis)
+    assert.equal(p.ligne_composee, s.ligne_composee)
   }
-  assert.deepEqual(sec, { type_ligne: 'section', ordre: 1, designation: 'Stockage' })
+  assert.deepEqual(sec, { type_ligne: 'section', ordre: 1, designation: 'Stockage',
+    ligne_composee: null })
   assert.deepEqual(payload.map(p => p.ordre), [0, 1, 2])
 })
 
@@ -130,4 +132,35 @@ test('QJR667 — le lot multi-sites de la ligne fait l’aller-retour (défaut n
   const payload = lignesEcranVersPayload(ecran)
   assert.equal(payload[0].lot, 31)
   assert.equal(payload[1].lot, null)
+})
+
+test('ERR-QJR570 — la provenance (composée / ajoutée à la main) fait l’aller-retour écran → payload → écran', () => {
+  const serveur = [
+    { id: 1, ordre: 0, produit: 3, designation: 'Panneau 550W', quantite: '2',
+      prix_unitaire: '1000.00', taux_tva: '20.00', ligne_composee: true },
+    { id: 2, ordre: 1, produit: 4, designation: 'Onduleur réseau', quantite: '1',
+      prix_unitaire: '5000.00', taux_tva: '20.00', ligne_composee: false },
+    { id: 3, ordre: 2, type_ligne: 'section', designation: 'Options',
+      produit: null, quantite: '0', prix_unitaire: '0', ligne_composee: null },
+  ]
+  const ecran = lignesServeurVersEcran(serveur, 20)
+  assert.deepEqual(ecran.map(l => l.compose), [true, false, false])
+  const payload = lignesEcranVersPayload(ecran)
+  assert.deepEqual(payload.map(p => p.ligne_composee), [true, false, null])
+  // Le serveur rend ce qu'il a reçu : la réouverture retrouve la provenance.
+  const relu = lignesServeurVersEcran(payload.map((p, i) => ({ id: i + 1, ...p })), 20)
+  assert.deepEqual(relu.map(l => l.compose), [true, false, false])
+})
+
+test('ERR-QJR570 — une ligne « Ajouter une ligne » (compose falsy) part en ligne_composee:false', () => {
+  const [p] = lignesEcranVersPayload([
+    { produit: '4', designation: 'Onduleur réseau', quantite: '1',
+      prix_unit_ttc: '6000', taux_tva: '20', typeLigne: 'produit' },
+  ])
+  assert.equal(p.ligne_composee, false)
+})
+
+test('ERR-QJR570 — le contrat replace-lines porte ligne_composee sur ses lignes', () => {
+  const lignes = documentContrat('ventes', 'devis_replace_lines_entete').corps.lignes
+  assert.deepEqual(lignes.map(l => l.ligne_composee), [true, false])
 })
