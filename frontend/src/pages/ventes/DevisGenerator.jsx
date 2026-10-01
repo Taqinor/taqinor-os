@@ -77,6 +77,8 @@ import BadgePerime from '../../features/calepinage/BadgePerime'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 // QJR553 (D-QJR5-7) — historique des versions + « Revenir à cette version ».
 import HistoriqueConfiguration from '../../features/ventes/HistoriqueConfiguration'
+import LotsMultiSites from '../../features/ventes/LotsMultiSites'
+import AjouterBoqElectrique from '../../features/ventes/AjouterBoqElectrique'
 // QJR589 — bannière de dérive lead → devis à deux gestes (partagée cockpit).
 import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
 // STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
@@ -5215,6 +5217,8 @@ export default function DevisGenerator({
               <BadgePerime layoutStale={editDevis.layout_stale}
                 layoutNbPanneaux={editDevis.layout_nb_panneaux} />
               <BlocCalepinageDevis devisId={editDevis.id} />
+              <AjouterBoqElectrique devisId={editDevis.id} modifiable={peutEditerDevis(editDevis)} onAjoute={rechargerDevisRecompose} />
+              <LotsMultiSites devisId={editDevis.id} modifiable={peutEditerDevis(editDevis)} onChange={rechargerDevisRecompose} />
               <div>
                 <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
                 <AttachmentsPanel model="ventes.devis" id={editDevis.id} />
