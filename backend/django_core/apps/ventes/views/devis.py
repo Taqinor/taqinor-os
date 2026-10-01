@@ -292,148 +292,23 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return DevisSerializer
 
     def get_permissions(self):
-        # AUD403 — la garde DÉCLARÉE par l'@action PRIME. Sans cette première
-        # ligne, ce branchement sur ``self.action`` jetait EN SILENCE le
-        # ``permission_classes=`` du décorateur : une action déclarant une
-        # permission FINE mais groupée dans WRITE_ACTIONS retombait sur la
-        # branche inconditionnelle ``IsResponsableOrAdmin()``. Ainsi
-        # ``composition`` (dry-run de ``auto``) déclarait ``IsResponsableOrAdmin``
-        # mais tombait sur le repli ``IsAdminRole`` faute d'être listée :
-        # honorer sa déclaration la réaligne sur son jumeau ``auto``, qui CRÉE
-        # là où elle ne crée rien. Patron d'or du dépôt (``ventes/paiement.py``,
-        # ``core/permissions.declared_action_permissions``).
+        # AUD403 — la garde DÉCLARÉE par l'@action PRIME (``core.permissions.
+        # declared_action_permissions`` : les kwargs du décorateur font
+        # autorité). QJR649 — toutes les @action de ce viewset déclarent leur
+        # ``permission_classes`` sauf ``variante_config`` : l'ancienne chaîne
+        # elif d'une soixantaine de noms était inatteignable pour chacune et a
+        # été réduite à la vraie table ci-dessous (matrice action × rôle
+        # figée par ``tests/test_devis_matrice_permissions.py``).
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        if self.action in READ_ACTIONS + [
-            'historique', 'variante_config', 'superior_contact_status',
-            # WIR99 — LECTURE pure ouverte à tout rôle (le
-            # `permission_classes` de l'@action ne suffit PAS : get_permissions
-            # PRIME et son repli est IsAdminRole).
-            'prefill_site',
-            # WIR217 — état du rendu PDF : une LECTURE pure, ouverte au même
-            # périmètre que la lecture du devis (la garde doit être ICI, cette
-            # surcharge PRIMANT sur le `permission_classes` de l'@action, qui
-            # déclare donc la MÊME classe pour ne jamais mentir).
-            'etat_pdf',
-        ]:
-            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
-            # est re-vérifiée dans l'action (Directeur / Commercial responsable).
+        if self.action in ('list', 'retrieve', 'variante_config'):
+            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE
+            # (PUT) est re-vérifiée DANS l'action.
             return [IsAnyRole()]
-        elif self.action in ('accepter', 'refuser'):
-            # VX199 — validation/refus de devis : permission ERP FINE
-            # (ventes_valider), pas le grossier IsResponsableOrAdmin (qui passe
-            # pour tout rôle portant une écriture). get_permissions PRIME sur le
-            # permission_classes de l'@action, donc la garde fine doit être ICI.
-            return [HasPermissionOrLegacy('ventes_valider')()]
-        elif self.action == 'action_requise':
-            # PACT17/CAD115 — « Relances du jour » est une LECTURE agrégée,
-            # réservée au même périmètre que son entrée de menu
-            # (features/ventes/module.config.jsx). CAD115 (SIG9) a OUVERT ce
-            # tableau au rôle qui relance réellement les clients (le nav est
-            # passé à ``['normal','responsable','admin']``, même palier que
-            # `/crm/relances` — la file calendaire du CRM qu'il arbitre
-            # désormais via `prochaine_touche_crm`) : la garde suit ici, sinon
-            # un rôle normal verrait l'entrée de menu et tomberait sur un 403.
-            # La garde doit être ICI : get_permissions PRIME sur le
-            # `permission_classes` de l'@action (son repli est IsAdminRole,
-            # qui fermerait l'écran aux autres rôles) — l'@action déclare donc
-            # la MÊME classe pour ne jamais mentir sur la garde effective.
-            return [IsAnyRole()]
-        elif self.action == 'proposal':
-            # NTPRT10 — ``/proposal`` reste l'UNIQUE chemin PDF client (règle
-            # #4) : plutôt qu'un second rendu pour le portail, on OUVRE ce
-            # chemin au client PROPRIÉTAIRE. La garde reste
-            # ``IsResponsableOrAdmin`` à l'identique côté INTERNE ; côté
-            # portail elle exige la portée ``portail_client``, une méthode SÛRE
-            # et — au niveau OBJET — ``devis.client_id == portail_client_id``
-            # (le queryset ci-dessus borne déjà à ce même client).
-            # NB : cette surcharge de ``get_permissions`` PRIME volontairement
-            # sur le ``permission_classes`` de l'@action (cf. ``accepter``/
-            # ``refuser``, VX199) — les deux déclarent donc la MÊME classe pour
-            # ne jamais mentir sur la garde effective.
-            return [IsInternalWriterOrPortalClientOwner()]
-        elif self.action in WRITE_ACTIONS + [
-            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc',
-            'generer_facture', 'reviser', 'noter',
-            'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
-            'envoyer_email', 'dupliquer_variante', 'variantes', 'dupliquer',
-            # GAMMES — création de la SŒUR « gamme ». Déclare la MÊME classe
-            # que le permission_classes de l'@action (cette surcharge PRIME
-            # sur lui — cf. le commentaire VX199 ci-dessus).
-            'dupliquer_variante_gamme',
-            'save_preset', 'apply_preset', 'contacter_superieur',
-            'whatsapp', 'proforma_pdf',
-            # QX21be — atomic create + replace-lines (self.action is the
-            # Python method name, not url_path: 'replace-lines' → 'replace_lines').
-            'atomic', 'replace_lines',
-            # QX22be — WhatsApp preview (read-only, no status change).
-            'whatsapp_preview',
-            # NTCPQ13 — renouvellement d'un devis accepté/expiré. Déclare la
-            # MÊME classe que le permission_classes de l'@action (cette
-            # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
-            'renouveler',
-            # NTCPQ18 — lots multi-sites (lecture + création).
-            'lots',
-            # NTCPQ20 — historique fin de configuration (lecture seule).
-            'historique_configuration',
-            # PV17 — contexte de l'écran de conception 3D. LECTURE, mais
-            # réservée au même périmètre que le générateur de devis
-            # (responsable + admin), pas ouverte à tout rôle. La garde doit
-            # être ICI : get_permissions PRIME sur le ``permission_classes``
-            # de l'@action (son repli est IsAdminRole) — l'@action déclare
-            # donc la MÊME classe pour ne jamais mentir sur la garde
-            # effective.
-            'design_context',
-            # PV18 — resynchronisation des lignes sur un nouveau calepinage
-            # (écriture chirurgicale, jamais le statut).
-            'sync_layout',
-            # PV47 — report OPT-IN du bordereau électrique en lignes de devis.
-            'ajouter_boq_electrique',
-            # PV41 — étude électrique du devis (GET affiche, POST recalcule).
-            # Même périmètre que le générateur (responsable + admin) : la garde
-            # doit être ICI, get_permissions PRIME sur le
-            # ``permission_classes`` de l'@action — qui déclare donc la MÊME
-            # classe pour ne jamais mentir sur la garde effective.
-            'conception_electrique',
-            # PV74 — étude bankable asynchrone : lancement (202) et suivi du
-            # job. Même périmètre que le générateur (responsable + admin) ; la
-            # garde vit ICI car get_permissions PRIME sur le
-            # ``permission_classes`` de l'@action, qui déclare la MÊME classe.
-            'simuler', 'simulation_status',
-            # TAILLES (26/08/2026) — les trois tailles Éco/Recommandé/Max
-            # côté vendeur : lecture, écriture de la CONFIGURATION d'une
-            # taille, régénération d'une taille. Même périmètre que le
-            # générateur (responsable + admin). PIÈGE VX199 : sans ces trois
-            # noms ICI, les actions tomberaient sur le repli ``IsAdminRole``
-            # et leur ``permission_classes`` — qui déclare la MÊME classe —
-            # ne serait JAMAIS consulté. La lecture porte son propre nom
-            # d'action pour ne pas hériter du niveau de garde de l'écriture.
-            'offres_tailles', 'offres_tailles_config',
-            'offres_tailles_regenerer', 'offres_tailles_appliquer',
-            # QJR58 (décision fondateur D12, 29/08/2026) — le REGISTRE de
-            # surcharges du vendeur (GET/PATCH/DELETE). Même périmètre que le
-            # générateur (responsable + admin). PIÈGE VX199 : sans ce nom ICI,
-            # l'action tomberait sur le repli ``IsAdminRole`` et son
-            # ``permission_classes`` — qui déclare la MÊME classe — ne serait
-            # JAMAIS consulté.
-            'overrides',
-            # QJR62 — PATCH FUSIONNANT d'``etude_params`` (même périmètre que
-            # le générateur : responsable + admin). MÊME piège VX199.
-            'etude_params',
-            # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
-            # visites DISTINCTES par section de la proposition + alerte de
-            # friction (relecture répétée d'une même section). Analytics
-            # INTERNES (jamais montrées au client, jamais une revendication
-            # devant le commercial autre qu'un signal) → même périmètre que
-            # les autres LECTURES sensibles ci-dessus (responsable + admin).
-            # PIÈGE VX199 : sans ce nom ICI, l'action tomberait sur le repli
-            # ``IsAdminRole`` malgré son ``permission_classes`` identique.
-            'lecture_client',
-        ]:
+        if self.action in ('create', 'update', 'partial_update'):
             return [IsResponsableOrAdmin()]
-        elif self.action == 'destroy':
-            return [IsAdminRole()]
+        # destroy, et toute future action non déclarée : fermé par défaut.
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
