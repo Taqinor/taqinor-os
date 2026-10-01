@@ -756,20 +756,13 @@ class LigneDevis(models.Model):
     def total_ht(self):
         # XSAL14 — une ligne de section/note (ou une ligne sans prix/quantité)
         # ne porte aucun montant : total nul, jamais d'erreur sur None.
+        from decimal import Decimal  # QJR5 M2 : remise int 0 d'une ligne API
         if not self.est_ligne_produit \
                 or self.quantite is None or self.prix_unitaire is None:
-            from decimal import Decimal
             return Decimal('0')
-        from decimal import Decimal
-        # QJR5 M2 — une ligne créée par l'API SANS ``remise`` garde le défaut
-        # du champ (l'entier ``0``) sur l'instance tant qu'elle n'est pas
-        # relue : ``0 / 100`` donnait un float et ``Decimal * float`` levait
-        # (POST /devis-lignes/ → 500 en sérialisant ``total_ht``).
-        # ``Decimal(str(...))`` est l'identité pour une remise lue en base.
-        remise = Decimal(str(self.remise if self.remise is not None else 0))
         return (
-            self.quantite * self.prix_unitaire * (1 - remise / 100)
-        )
+            self.quantite * self.prix_unitaire
+            * (1 - Decimal(str(self.remise or 0)) / 100))
 
     @property
     def taux_tva_effectif(self):
