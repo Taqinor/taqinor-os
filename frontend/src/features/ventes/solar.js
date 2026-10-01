@@ -8,7 +8,7 @@ import { formatMAD } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
-import { ligneCompteDansTotaux } from './remise.js'
+import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1653,46 +1653,25 @@ function _retirerAccessoiresHuawei(rows) {
 // d'arrondis) : les montants internes sont en 1e-8 MAD (×10 000 pour porter
 // le facteur (10 000 − remise×100) sans perte). Remise absente/nulle ⇒
 // résultat strictement inchangé (mise à l'échelle entière exacte).
-function _arrondiDemiHaut(num, den) {
-  const neg = num < 0n
-  const a = neg ? -num : num
-  const r = (2n * a + den) / (2n * den)
-  return neg ? -r : r
-}
+// QJR642 — la chaîne de totaux vit dans `remise.totauxCanoniques` (UN noyau
+// pour le générateur et la répartition de remise) : ici ne reste que la
+// conversion TTC saisi → HT persisté, en nanos exacts (1e-8 MAD × 10).
 export function totauxCanoniquesTtc(lines, discountPct = 0) {
-  const dH = BigInt(Math.round((parseFloat(discountPct) || 0) * 100)) // % × 100
-  let htBrutU = 0n // unité : 1e-8 MAD (quantité ×100 · prix HT en centimes · (1 − remise) ×10 000)
-  const buckets = new Map() // taux ×100 → Σ HT (1e-8 MAD)
-  for (const l of lines || []) {
+  const lignes = (lines || []).map((l) => {
     const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
     const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
     const tauxLigne = Number.isFinite(taux) ? taux : TVA_STANDARD_DEFAUT
     const htC = BigInt(Math.round(parseFloat(htFromTtc(l?.prix_unit_ttc, l?.taux_tva ?? TVA_STANDARD_DEFAUT)) * 100))
     const remH = BigInt(Math.round((parseFloat(l?.remise) || 0) * 100)) // % × 100
-    const u = qH * htC * (10000n - remH)
-    htBrutU += u
-    const rH = Math.round(tauxLigne * 100)
-    buckets.set(rH, (buckets.get(rH) || 0n) + u)
-  }
-  const remiseC = dH > 0n ? _arrondiDemiHaut(htBrutU * dH, 10000000000n) : 0n
-  // ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — HT net borné à 0 (miroir de
-  // `_canonical_totaux`) : à remise 100 %, un HT brut à demi-centime donnait
-  // une remise arrondie au-dessus et un TTC de −0,01.
-  const htNetBrutC = _arrondiDemiHaut(htBrutU - remiseC * 1000000n, 1000000n)
-  const htNetC = htNetBrutC < 0n ? 0n : htNetBrutC
-  let tvaC
-  if (buckets.size <= 1) {
-    const rH = buckets.size ? [...buckets.keys()][0] : TVA_STANDARD_DEFAUT * 100
-    tvaC = _arrondiDemiHaut(htNetC * BigInt(rH), 10000n)
-  } else {
-    const rates = [...buckets.keys()].sort((a, b) => a - b)
-    const nets = new Map(rates.map(r => [r, _arrondiDemiHaut(buckets.get(r) * (10000n - dH), 10000000000n)]))
-    const somme = [...nets.values()].reduce((s, v) => s + v, 0n)
-    const dernier = rates[rates.length - 1]
-    nets.set(dernier, nets.get(dernier) + (htNetC - somme))
-    tvaC = rates.reduce((s, r) => s + _arrondiDemiHaut(nets.get(r) * BigInt(r), 10000n), 0n)
-  }
-  return Number(htNetC + tvaC) / 100
+    return {
+      // quantité ×100 · prix HT en centimes · (1 − remise) ×10 000 = 1e-8 MAD
+      htNano: qH * htC * (10000n - remH) * 10n,
+      taux: tauxLigne,
+      typeLigne: l?.typeLigne ?? l?.type_ligne,
+      optionnelle: l?.optionnelle,
+    }
+  })
+  return totauxCanoniques(lignes, discountPct).ttc
 }
 
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
