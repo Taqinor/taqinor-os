@@ -258,3 +258,80 @@ class TestIndustrielPremiumAuCentime(SimpleTestCase):
         from apps.ventes.quote_engine.industriel import render
         ctx = render.build_ctx({})
         self.assertIs(ctx["fmt_mad"], montants.fmt_centimes)
+
+
+# ── ERR-QJR614-CI-INVESTISSEMENT-DIRHAM-VS-CENTIME ───────────────────────────
+# Un même PDF C&I imprimait l'investissement ARRONDI AU DIRHAM en couverture
+# (``_invest_ttc = round(invest)``) et page finance, mais AU CENTIME dans la
+# chaîne de totaux ; les tranches de paiement (industriel) étaient arrondies
+# au dirham sur un pourcentage TRONQUÉ (``int(pct)``) : leur somme ≠ Total TTC.
+# Une seule chaîne de Total TTC par document ; tranches sommant au centime.
+
+_TTC_CI = 1200.80
+_TTC_CI_TXT = f"1{NNBSP}200,80"
+
+
+def _imprimes(html, motif):
+    return [m.strip() for m in re.findall(motif, html)]
+
+
+class TestCommercialUnSeulTotalTTC(SimpleTestCase):
+    """Commercial : la couverture imprime le MÊME Total TTC que la chaîne."""
+
+    def _html(self):
+        from apps.ventes.quote_engine.commercial import (
+            render, renderer, sample_data)
+        data = sample_data.build("hotel")
+        data["totaux_all"] = {k: v for k, v in _TOT_1200_80.items()
+                              if k != "tva_par_taux"}
+        data["display_total"] = _TTC_CI
+        return render.build_html(renderer._augment(data))
+
+    def test_la_couverture_imprime_l_investissement_au_centime(self):
+        couverture = _imprimes(
+            self._html(), r'<div class="c1c-inv-v">([^<]*)<span>')
+        self.assertEqual(couverture, [_TTC_CI_TXT])
+
+    def test_aucun_total_arrondi_au_dirham(self):
+        html = self._html()
+        self.assertIn(_TTC_CI_TXT, html)
+        self.assertNotIn(f"1{NNBSP}201<", html,
+                         "investissement arrondi au dirham imprimé")
+
+
+class TestIndustrielUnSeulTotalTTC(SimpleTestCase):
+    """Industriel : finance au centime, tranches sommant au Total TTC."""
+
+    def _html(self, **extra):
+        from apps.ventes.quote_engine.industriel import (
+            render, renderer, sample_data)
+        data = sample_data.build()
+        data["display_total"] = _TTC_CI
+        data["totaux_all"] = {"ttc": _TTC_CI}
+        data.update(extra)
+        return render.build_html(renderer._augment(data))
+
+    def test_la_page_finance_imprime_l_investissement_au_centime(self):
+        foot = _imprimes(
+            self._html(masquer_economies=True),
+            r'Investissement \(TTC, clé en main\) : <b>([^<]*) MAD</b>')
+        self.assertEqual(foot, [_TTC_CI_TXT])
+
+    def test_les_tranches_somment_au_total_ttc_au_centime(self):
+        html = self._html(payment_terms={"acompte": 33, "materiel": 33,
+                                         "solde": 34})
+        tranches = _imprimes(html, r'<div class="i3-tr-amt">([^<]*) MAD</div>')
+        self.assertEqual(len(tranches), 3, tranches)
+        for t in tranches:
+            self.assertRegex(t, r",\d{2}$", t)
+        self.assertEqual(sum(_dec(t) for t in tranches), Decimal("1200.80"))
+
+    def test_le_pourcentage_n_est_pas_tronque(self):
+        html = self._html(payment_terms={"acompte": 32.5, "materiel": 57.5,
+                                         "solde": 10})
+        pcts = _imprimes(html, r'<div class="i3-tr-pct">([^<]*)%</div>')
+        self.assertEqual(pcts, ["32,5", "57,5", "10"])
+        tranches = _imprimes(html, r'<div class="i3-tr-amt">([^<]*) MAD</div>')
+        # 1 200,80 × 32,5 % = 390,26 (ROUND_HALF_UP au centime).
+        self.assertEqual(tranches[0], "390,26")
+        self.assertEqual(sum(_dec(t) for t in tranches), Decimal("1200.80"))

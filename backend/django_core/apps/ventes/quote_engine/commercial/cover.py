@@ -68,6 +68,9 @@ def build(ctx):
     autoconso = d.get("com_autoconso")
     couverture = d.get("com_couverture")
     invest = d.get("_invest_ttc") or 0
+    # ERR-QJR614-CI — l'investissement TTC s'imprime au CENTIME, comme le
+    # Total TTC de la chaîne de totaux (page équipements) du même document.
+    fmt_mad = ctx.get("fmt_mad") or fmt
 
     # QJR651 — la cellule KPI est commune (premium_base.kpi) ; seul
     # le préfixe de classes CSS diffère d'un marché à l'autre.
@@ -194,7 +197,7 @@ def build(ctx):
     </div>
     <div class="c1c-inv">
       <div class="c1c-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="c1c-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt(invest))}
+      <div class="c1c-inv-v">{fmt_mad(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest))}
     </div>
   </div>
 </div>
