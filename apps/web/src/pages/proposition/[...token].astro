@@ -140,6 +140,7 @@ import {
   OTP_LECTURE_DETAIL,
   resolveAcompte,
   resolveConditions,
+  resolveNoteClient,
   promptConfirmationEmail,
 } from '../../lib/proposition';
 import {
@@ -505,6 +506,9 @@ const offerState = ok ? resolveOfferState(data!) : 'live';
 // version en vigueur quand elle a été envoyée (jamais une redirection, jamais
 // le contenu de la nouvelle version sous ce jeton).
 const remplacement = ok ? resolveRemplacement(data!) : null;
+// QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » du devis, le même que
+// le PDF imprime ; absent ou vide → aucun bloc.
+const noteClient = ok ? resolveNoteClient(data!) : null;
 
 const roofImg = data?.roof_image_url ?? null;
 const clientName = data?.client_name || q?.client_name || 'Client';
@@ -6247,6 +6251,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </a>
             </div>
           </div>
+
+          {noteClient && (
+            <div id="note-client" class="mb-4 rounded-lg border border-white/10 p-4">
+              <p class="text-xs uppercase tracking-wider text-lune-soft" data-i18n
+                data-fr="Note de votre conseiller" data-en="Note from your advisor"
+                data-ar="ملاحظة من مستشاركم">Note de votre conseiller</p>
+              <p class="v2-body mt-2 whitespace-pre-line">{noteClient}</p>
+            </div>
+          )}
 
           <!-- ── WJ82 · États explicites d'une offre morte (refusée/expirée/retirée) —
                masque le formulaire de signature et affiche un message localisé

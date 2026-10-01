@@ -377,6 +377,7 @@ const LUES_HORS_RENOMMAGE: Readonly<Record<string, string>> = {
   'accepted': 'Lue (`p.accepted === true`), mais l’échantillon vaut `false` : même angle mort de la garde de renommage que `apercu_interne`.',
   'accepte_par_nom': 'Lue, mais l’échantillon porte la chaîne VIDE — que le lecteur rend `null`, exactement comme une clé absente : indiscernable par renommage.',
   'date_acceptation': 'Lue, mais l’échantillon porte la chaîne VIDE : `null` avant comme après un renommage, donc indiscernable par renommage.',
+  'note_client': 'QJR627 — lue (`resolveNoteClient`, `noteClient` de `lireProposal`, bloc « Note de votre conseiller » de la page), mais l’échantillon porte la chaîne VIDE : indiscernable par renommage. Garde propre : `tests/propositionNoteClient.test.ts`.',
 };
 
 /**
@@ -409,7 +410,6 @@ const NON_LU: Readonly<Record<string, string>> = {
   'resync_apres_envoi': 'Drapeau de resynchronisation après envoi : lu par le frontmatter pour son bandeau, pas par `lireProposal`.',
   // ── QJR536 (contrat QJR501) ──────────────────────────────────────────────
   'remplace_par': 'Version qui remplace ce devis : lue par `resolveRemplacement` / `resolveOfferState` (état « retirée », plus de signature, lien vers la version en vigueur) dans le frontmatter — jamais par le lecteur typé du devis. Garde propre : `tests/propositionRemplacee.test.ts`.',
-  'note_client': 'Texte CLIENT du champ Notes du devis (D-QJR5-6) : servi par le backend depuis QJR536, son rendu sur la page relève d’une tâche dédiée — le lecteur typé ne le lit pas.',
 
   // ── Les sept blocs à CONTRAT DÉDIÉ (voir `CONTRAT_DEDIE`) ────────────────
   'conception_electrique': 'Conception électrique : sa forme complète est gardée par son propre contrat PACT10 `conception_electrique.json` ; ici elle n’est qu’illustrative.',

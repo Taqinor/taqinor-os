@@ -178,7 +178,7 @@ describe('VX188 — DevisLineRow mémoïsé : taper dans Note ne re-rend pas les
     await screen.findByDisplayValue('Smart Meter Huawei DTSU666')
     produitPickerRenderSpy.mockClear()
 
-    const note = screen.getByPlaceholderText('Conditions de paiement, remarques internes...')
+    const note = screen.getByPlaceholderText('Conditions particulières, précisions pour le client…')
     fireEvent.change(note, { target: { value: 'r' } })
     fireEvent.change(note, { target: { value: 'rd' } })
     fireEvent.change(note, { target: { value: 'rda' } })

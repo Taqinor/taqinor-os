@@ -5461,13 +5461,13 @@ export default function DevisGenerator({
                            mode={modeInstallation} />
         )}
 
-        {/* ── Notes ── */}
+        {/* ── QJR627 (D-QJR5-6) — Notes = texte CLIENT, imprimé (PDF + proposition) ── */}
         <Card>
-          <GenCardHeader icon={StickyNote} title="Notes" />
+          <GenCardHeader icon={StickyNote} title="Texte pour le client (imprimé sur le devis)" />
           <CardContent className="pt-4">
             <Textarea rows={3} value={note}
                       onChange={e => setNote(e.target.value)}
-                      placeholder="Conditions de paiement, remarques internes..." />
+                      placeholder="Conditions particulières, précisions pour le client…" />
           </CardContent>
         </Card>
 

@@ -3332,6 +3332,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # ``client_ville_libelle`` est la ligne méta « X, près de Y » quand la
         # ville tapée diffère. Vide → join_meta l'omet.
         "client_city": _client_city,
+        # QJR627 (D-QJR5-6) — le champ « Notes » du générateur est un texte
+        # CLIENT : imprimé dans le bloc conditions de chaque gabarit ; vide →
+        # aucun bloc. Jamais prix_achat ni marge (texte saisi seulement).
+        "note_client": (getattr(devis, "note", "") or "").strip(),
         "client_ville_libelle": _client_city_libelle,
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
@@ -3921,7 +3925,7 @@ _CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
 _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
                         "client_city", "client_ville_libelle",
                         "client_phone", "client_ice",
-                        "accepte_par_nom")
+                        "accepte_par_nom", "note_client")
 
 
 def echapper_textes_client(data: dict) -> dict:
