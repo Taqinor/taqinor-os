@@ -3701,7 +3701,12 @@ export default function DevisGenerator({
   // Consommation industrielle : saisie directe, sinon dérivée des factures
   // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
   const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+  // QJR582 — la facture réelle « recommandée » (QF4) passe AVANT la
+  // dérivation des factures quand le champ d'étude est vide : sinon validate()
+  // bloquait un devis industriel où seule elle était remplie. La souveraineté
+  // COUV-HOR (realBillSaisi, entreesReellesEcran) reste intacte.
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
+    || (realBillSaisi && consoAnnuelleReelle > 0 ? Math.round(consoAnnuelleReelle / 12) : 0)
     || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
 
   // QJR568 — les deux études C&I (persistées) au kWc FACTURÉ des lignes.
