@@ -1974,6 +1974,20 @@ def devis_modifiabilite(devis):
     return resultat
 
 
+def devis_envoyes_du_client(company_id, client_id):
+    """QJR590 — devis ACTIFS au statut « envoyé » d'un client (borné
+    société) : ceux dont le client a déjà reçu un exemplaire et qui reçoivent
+    une trace « corrigé après envoi » quand l'identité client est corrigée.
+    Un accepté garde son exemplaire signé figé (exclu)."""
+    from .models import Devis
+
+    if not company_id or not client_id:
+        return []
+    return list(Devis.objects.filter(
+        company_id=company_id, client_id=client_id, is_active=True,
+        statut=Devis.Statut.ENVOYE))
+
+
 def devis_du_client_portail(company, client_id, *, limit=200):
     """NTPRT10 — Devis visibles par le client ``client_id`` sur son portail.
 

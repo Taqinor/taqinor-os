@@ -464,6 +464,15 @@ entrees_dimensionnement_du_devis = _etudes.entrees_dimensionnement_du_devis
 log_supplier_email = _cycle_vie.log_supplier_email
 
 
+def consigner_correction_apres_envoi(devis, *, user=None, objet='',
+                                     resume=''):
+    """QJR590 — point d'entrée cross-app (``crm``) de la TRACE « corrigé après
+    envoi » (QJR518, ``domain/modifiabilite``). No-op hors ENVOYÉ."""
+    from apps.ventes.domain.modifiabilite import (
+        consigner_correction_apres_envoi as _consigner)
+    return _consigner(devis, user=user, objet=objet, resume=resume)
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORT — QJR76 : arithmétique de date → ``domain/facturation_ops.py``
 # ═════════════════════════════════════════════════════════════════════════

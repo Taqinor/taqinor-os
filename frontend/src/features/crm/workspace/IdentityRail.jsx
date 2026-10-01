@@ -45,6 +45,11 @@ function toIsoLocal(d) {
 // Vocabulaire de `kind` identique à `TimelineTab.matchesTimelineFilter`.
 const ECHANGE_KINDS = new Set(['note', 'appel', 'email'])
 
+// QJR590 — libellés des champs d'identité de `client_ecart`.
+const ECART_LABELS = {
+  nom: 'nom', prenom: 'prénom', email: 'e-mail', telephone: 'téléphone', adresse: 'adresse',
+}
+
 // Rail identité (zone gauche, 288px) : tout ce qu'on regarde AVANT d'appeler.
 // Bannières intelligentes (LW18) · identité + contact cliquable (LW14) · étape
 // (LW16 StageControl) · score expliqué (LW17) · triade responsable/prochaine
@@ -260,6 +265,20 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   const alreadyClient = !!server.client
+  // QJR590 — écart d'identité lead ↔ fiche client (servi par le GET lead).
+  const clientEcart = Array.isArray(server.client_ecart) ? server.client_ecart : []
+  const [syncBusy, setSyncBusy] = useState(false)
+  const synchroniserClient = () => {
+    if (!leadId) return
+    setSyncBusy(true)
+    crmApi.synchroniserClient(leadId)
+      .then(() => {
+        toast.success('Fiche client mise à jour.')
+        onAction?.('refresh')
+      })
+      .catch((err) => toast.error(err?.response?.data?.detail || 'Mise à jour de la fiche client impossible.'))
+      .finally(() => setSyncBusy(false))
+  }
   const openWhatsApp = () => {
     if (waPhone) window.open(`https://wa.me/${waPhone}`, '_blank', 'noopener')
   }
@@ -318,6 +337,31 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
           >
             Ouvrir la fiche
           </a>
+        </div>
+      )}
+      {/* QJR590 (contrat lead_client_ecart.json) — le client lié, et l'écart
+          entre la fiche client IMPRIMÉE sur les devis et le lead. */}
+      {alreadyClient && (
+        <div
+          className={`lw-banner-card ${clientEcart.length ? 'lw-banner-card--warning' : 'lw-banner-card--info'}`}
+          role="status"
+          data-testid="lw-client-lie"
+        >
+          <span>
+            Client lié : {server.client_nom || `#${server.client}`}
+            {clientEcart.length > 0 && (
+              <> — La fiche client diffère du lead ({clientEcart.map((c) => ECART_LABELS[c] || c).join(', ')})</>
+            )}
+          </span>
+          {clientEcart.length > 0 && (
+            <Button
+              type="button" size="sm" variant="outline"
+              disabled={syncBusy}
+              onClick={synchroniserClient}
+            >
+              Mettre à jour la fiche client
+            </Button>
+          )}
         </div>
       )}
       {/* CRX36 — la bannière « Carte de visite détectée » (VX237) a été

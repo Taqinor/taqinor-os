@@ -1111,6 +1111,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # base.
         new_lead.refresh_from_db()
         activity.log_changes(old, new_lead, self.request.user)
+        # QJR590 — une correction d'identité du lead suit sur SA fiche Client
+        # (imprimée sur le PDF) tant que celle-ci n'a pas divergé à la main.
+        if ecrits & {'nom', 'prenom', 'email', 'telephone', 'adresse',
+                     'ville'}:
+            from .services import synchroniser_identite_client
+            try:
+                synchroniser_identite_client(new_lead, old, self.request.user)
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+                logger.warning(
+                    'QJR590: synchronisation client échouée (lead #%s)',
+                    new_lead.pk, exc_info=True)
         from .services import (
             _emit_stage_changed, maybe_set_first_contacted_at,
             recompute_lead_score, sync_relance_activity,
@@ -1270,7 +1281,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer',
-            'whatsapp_devis', 'whatsapp_devis_apercu', 'bulk',
+            'whatsapp_devis', 'whatsapp_devis_apercu', 'synchroniser_client',
+            'bulk',
             'log_interaction',
             'appliquer_plan', 'initialiser_relance',
             # MRY9 — arrêt manuel d'une cadence. get_permissions()
@@ -1459,6 +1471,33 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         return Response({
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'links': links,
+        })
+
+    @action(detail=True, methods=['post'], url_path='synchroniser-client',
+            permission_classes=[IsResponsableOrAdmin])
+    def synchroniser_client(self, request, pk=None):
+        """QJR590 (contrat ``lead_client_ecart.json``) — « Mettre à jour la
+        fiche client » : recopie TOUT l'écart d'identité du lead vers SA fiche
+        Client (``lead.client`` seulement, jamais un id du corps). 200
+        ``{client_ecart, champs_mis_a_jour}`` | 400 ``{detail}``."""
+        from .services import client_ecart, synchroniser_identite_client
+
+        lead = self.get_object()
+        if not lead.client_id:
+            return Response(
+                {'detail': "Ce lead n'est lié à aucune fiche client."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if getattr(lead.client, 'is_anonymized', False):
+            return Response(
+                {'detail': 'La fiche client est anonymisée : elle ne se '
+                           'met plus à jour.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        champs, _message = synchroniser_identite_client(
+            lead, None, request.user, force=True)
+        lead.client.refresh_from_db()
+        return Response({
+            'client_ecart': client_ecart(lead),
+            'champs_mis_a_jour': champs,
         })
 
     def destroy(self, request, *args, **kwargs):

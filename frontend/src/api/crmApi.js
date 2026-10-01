@@ -215,6 +215,8 @@ const crmApi = {
   // « Ouvrir WhatsApp » seulement, jamais pour remplir l'aperçu.
   whatsappDevis: (id, payload) =>
     api.post(`/crm/leads/${id}/whatsapp-devis/`, payload),
+  // QJR590 (contrat lead_client_ecart.json) — « Mettre à jour la fiche client ».
+  synchroniserClient: (id) => api.post(`/crm/leads/${id}/synchroniser-client/`),
   // QJR538 (contrat whatsapp_devis_apercu.json) — APERÇU sans aucun effet.
   whatsappDevisApercu: (id, payload) =>
     api.post(`/crm/leads/${id}/whatsapp-devis-apercu/`, payload),

@@ -747,6 +747,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
+    # QJR590 (contrat ``lead_client_ecart.json``) — champs d'identité où la
+    # fiche Client liée diffère du lead ; lecture seule.
+    client_ecart = serializers.SerializerMethodField()
     devis = serializers.SerializerMethodField()
     owner_nom = serializers.SerializerMethodField()
     owner_poste = serializers.SerializerMethodField()
@@ -1303,6 +1306,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             return None
         c = obj.client
         return f"{c.nom} {c.prenom or ''}".strip()
+
+    def get_client_ecart(self, obj):
+        """QJR590 — ``[nom|prenom|email|telephone|adresse]`` divergents."""
+        from .services import client_ecart
+        return client_ecart(obj)
 
     def get_devis(self, obj):
         # Devis « empilés » sur le lead, du plus récent au plus ancien.
