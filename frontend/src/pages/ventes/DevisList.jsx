@@ -96,7 +96,9 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
-import { peutEditerDevis, chantierEnCours } from '../../features/ventes/devisStatuts'
+import {
+  peutEditerDevis, chantierEnCours, STATUT_DEVIS_LABELS, STATUT_DEVIS_FILTRES,
+} from '../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
@@ -160,13 +162,8 @@ const DEVIS_DT_COLUMNS = [
   { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
 ]
 
-const STATUT_DISPLAY = {
-  brouillon: 'Brouillon',
-  envoye:    'Envoyé',
-  accepte:   'Accepté',
-  refuse:    'Refusé',
-  expire:    'Expiré',
-}
+// QJR654 — libellés et filtres de statut : la table unique (devisStatuts.js).
+const STATUT_DISPLAY = STATUT_DEVIS_LABELS
 
 // VX141 — piste `<DocumentStageTrack>` : couche STATUTS DOCUMENT (règle #4)
 // uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
@@ -176,14 +173,7 @@ const STATUT_DISPLAY = {
 // bons de commande (`features/ventes/documentChain.js`) : UNE définition.
 
 // Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
-const STATUT_FILTERS = [
-  { value: 'tous',      label: 'Tous' },
-  { value: 'brouillon', label: 'Brouillon' },
-  { value: 'envoye',    label: 'Envoyé' },
-  { value: 'accepte',   label: 'Accepté' },
-  { value: 'refuse',    label: 'Refusé' },
-  { value: 'expire',    label: 'Expiré' },
-]
+const STATUT_FILTERS = STATUT_DEVIS_FILTRES
 
 // Extrait un message d'erreur lisible (français) d'une réponse DRF. Couvre
 // {detail}, les erreurs de champ ({statut: [...]} — ex. garde de remise T17),

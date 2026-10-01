@@ -6,13 +6,21 @@
    STAGES.py (règle #2) : aucune n'est importée ici, les deux couches ne se
    mélangent jamais. */
 
-export const DEVIS_BOARD_COLUMNS = [
-  { key: 'brouillon', label: 'Brouillon', accent: 'var(--muted-foreground)' },
-  { key: 'envoye', label: 'Envoyé', accent: 'var(--info)' },
-  { key: 'accepte', label: 'Accepté', accent: 'var(--success)' },
-  { key: 'refuse', label: 'Refusé', accent: 'var(--destructive)' },
-  { key: 'expire', label: 'Expiré', accent: 'var(--warning)' },
-]
+import { DEVIS_STATUTS, STATUT_DEVIS_LABELS } from './devisStatuts.js'
+
+// QJR654 — ordre et libellés : la table unique (devisStatuts.js) ; seule la
+// couleur d'accent est propre au board.
+const ACCENT = {
+  brouillon: 'var(--muted-foreground)',
+  envoye: 'var(--info)',
+  accepte: 'var(--success)',
+  refuse: 'var(--destructive)',
+  expire: 'var(--warning)',
+}
+
+export const DEVIS_BOARD_COLUMNS = DEVIS_STATUTS.map(key => ({
+  key, label: STATUT_DEVIS_LABELS[key], accent: ACCENT[key],
+}))
 
 /* Un devis en attente dont la validité est dépassée s'affiche « Expiré » SANS
    que son statut stocké change — exactement la règle T7 de la vue liste. */

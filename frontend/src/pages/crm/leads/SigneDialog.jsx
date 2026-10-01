@@ -18,6 +18,7 @@ import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 // CSS-only reste posé, mais DEPUIS <DealSignedCelebration> lui-même.
 import DealSignedCelebration from '../../../ui/DealSignedCelebration'
 import { formatMAD } from '../../../lib/format'
+import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
 
 // Rendu PDF.js (canvas) chargé à la demande — même composant inblocable que le
 // panneau devis de la fiche lead. Réutilisé tel quel, jamais dupliqué.
@@ -70,13 +71,8 @@ function optionsDetail(devis) {
   }
 }
 
-const STATUT_LABELS = {
-  brouillon: 'Brouillon',
-  envoye: 'Envoyé',
-  accepte: 'Accepté',
-  refuse: 'Refusé',
-  expire: 'Expiré',
-}
+// QJR654 — libellés de statut devis : la table unique (devisStatuts.js).
+const STATUT_LABELS = STATUT_DEVIS_LABELS
 
 // Devis « actionnables » : version courante (is_active) et non refusés.
 function selectableDevis(list) {
