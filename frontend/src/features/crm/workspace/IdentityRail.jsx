@@ -9,6 +9,7 @@ import {
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
 import { normalizePhoneE164, formatDate, formatNumber } from '../../../lib/format'
+import { buildWaUrl } from '../../../lib/contactLinks'
 import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
@@ -280,7 +281,8 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
       .finally(() => setSyncBusy(false))
   }
   const openWhatsApp = () => {
-    if (waPhone) window.open(`https://wa.me/${waPhone}`, '_blank', 'noopener')
+    const url = buildWaUrl(waPhone)  // QJR635 — constructeur unique
+    if (url) window.open(url, '_blank', 'noopener')
   }
   const composer = () => {
     if (callPhone) window.location.href = `tel:${callPhone}`

@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { waHref } from '../../lib/contactLinks.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'DevisActionBoardPage.jsx'), 'utf8')
@@ -30,9 +31,20 @@ test('QX29 : chaque ligne se lie en profondeur via ?devis=<pk> (QX12)', () => {
 
 test('QX29 : raccourcis tel:/wa.me directs par ligne', () => {
   assert.match(SRC, /const telHref = /)
-  assert.match(SRC, /const waHref = /)
+  // QJR635 — waHref vient du constructeur partagé, plus d'une copie locale.
+  assert.match(SRC, /import \{ waHref \} from '\.\.\/\.\.\/lib\/contactLinks'/)
+  assert.doesNotMatch(SRC, /const waHref = /)
   assert.match(SRC, /href=\{tel\}/)
   assert.match(SRC, /href=\{wa\}/)
+})
+
+test('QJR635 : client_whatsapp vide + téléphone local → wa.me normalisé (repli `||`)', () => {
+  // Le sélecteur rend '' (jamais null) sans WhatsApp : le repli doit être `||`.
+  assert.match(SRC, /waHref\(d\?\.client_whatsapp \|\| d\?\.client_telephone \|\| d\?\.telephone, draft\)/)
+  const d = { client_whatsapp: '', client_telephone: '0661234567' }
+  assert.equal(
+    waHref(d.client_whatsapp || d.client_telephone, undefined),
+    'https://wa.me/212661234567')
 })
 
 test('QX29 : ventesApi expose l\'action-board (contrat backend)', () => {

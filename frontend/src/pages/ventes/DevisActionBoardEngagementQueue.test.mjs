@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { waHref } from '../../lib/contactLinks.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'DevisActionBoardPage.jsx'), 'utf8')
@@ -18,21 +19,20 @@ test('QX30 : une 5e file "Relance engagement" est déclarée', () => {
   assert.match(SRC, /key: 'engagement_relance', label: 'Relance engagement'/)
 })
 
+// QJR635 — waHref n'est plus une copie locale : c'est LE constructeur
+// partagé (lib/contactLinks), testé ici sur son COMPORTEMENT (brouillon
+// pré-rempli, lien nu sans brouillon, numéro normalisé).
 test('QX30 : waHref accepte un brouillon et pré-remplit ?text= (encodé)', () => {
-  const start = SRC.indexOf('const waHref = (raw, draft)')
-  assert.ok(start > 0, 'waHref(raw, draft) introuvable — signature non mise à jour')
-  const body = SRC.slice(start, start + 400)
-  assert.match(body, /encodeURIComponent\(draft\)/)
-  assert.match(body, /draft \? `https:\/\/wa\.me\/\$\{digits\}\?text=/)
+  assert.match(SRC, /import \{ waHref \} from '\.\.\/\.\.\/lib\/contactLinks'/)
+  assert.equal(waHref('+212661000029', 'Bonjour & merci'),
+    `https://wa.me/212661000029?text=${encodeURIComponent('Bonjour & merci')}`)
 })
 
 test('QX30 : chaque ligne lit le brouillon depuis board.wa_drafts[id]', () => {
   assert.match(SRC, /const draft = board\.wa_drafts\?\.\[id\]/)
-  assert.match(SRC, /waHref\(d\?\.client_whatsapp \?\? d\?\.client_telephone \?\? d\?\.telephone, draft\)/)
+  assert.match(SRC, /waHref\(d\?\.client_whatsapp \|\| d\?\.client_telephone \|\| d\?\.telephone, draft\)/)
 })
 
 test('QX30 : sans brouillon, le lien wa.me reste nu (comportement QX29 inchangé)', () => {
-  const start = SRC.indexOf('const waHref = (raw, draft)')
-  const body = SRC.slice(start, start + 400)
-  assert.match(body, /: `https:\/\/wa\.me\/\$\{digits\}`/)
+  assert.equal(waHref('+212661000029', undefined), 'https://wa.me/212661000029')
 })

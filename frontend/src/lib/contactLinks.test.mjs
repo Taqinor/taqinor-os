@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { telHref, waHref } from './contactLinks.js'
+import { buildWaUrl, telHref, waHref } from './contactLinks.js'
 
 // VX108 — tap-to-call partagé (extrait de LeadCard.jsx).
 
@@ -31,4 +31,24 @@ test('waHref: null/undefined/vide → null', () => {
   assert.equal(waHref(null), null)
   assert.equal(waHref(undefined), null)
   assert.equal(waHref(''), null)
+})
+
+// QJR635 — LE constructeur wa.me unique, qui NORMALISE le numéro.
+test('waHref: un numéro local marocain prend son indicatif (06… → 2126…) et le texte', () => {
+  assert.equal(waHref('06 61 23 45 67', 'x'), 'https://wa.me/212661234567?text=x')
+})
+
+test('waHref: un numéro déjà international (sans +) est gardé tel quel', () => {
+  assert.equal(waHref('8613812345678'), 'https://wa.me/8613812345678')
+})
+
+test('waHref: trop court / inexploitable → null', () => {
+  assert.equal(waHref('12'), null)
+  assert.equal(waHref('abc'), null)
+})
+
+test('buildWaUrl: sans numéro → null ; sans texte → pas de ?text=', () => {
+  assert.equal(buildWaUrl(null, 'x'), null)
+  assert.equal(buildWaUrl('212661234567'), 'https://wa.me/212661234567')
+  assert.equal(buildWaUrl('212661234567', 'a b'), 'https://wa.me/212661234567?text=a%20b')
 })

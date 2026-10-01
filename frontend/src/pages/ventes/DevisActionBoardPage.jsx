@@ -30,6 +30,9 @@ import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
 import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
 import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
+// QJR635 — LE constructeur wa.me partagé (normalise « 06… » → 2126…) ;
+// `draft` (QX30) pré-remplit `?text=` quand le backend en fournit un.
+import { waHref } from '../../lib/contactLinks'
 
 // CAD115 (SIG9) — libellés FR du canal de la prochaine touche CRM
 // (`crm.RelanceEtape.Canal`, mêmes clés que le serveur) ; repli sur la clé
@@ -58,15 +61,6 @@ const telHref = (raw) => {
   if (!s) return null
   const cleaned = s.replace(/[^\d+]/g, '')
   return cleaned ? `tel:${cleaned}` : null
-}
-// QX30 — draft optionnel : pré-remplit le message wa.me (`?text=`) quand le
-// backend fournit un brouillon (board.wa_drafts[id]) ; lien nu sinon.
-const waHref = (raw, draft) => {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const digits = s.replace(/\D/g, '')
-  if (!digits) return null
-  return draft ? `https://wa.me/${digits}?text=${encodeURIComponent(draft)}` : `https://wa.me/${digits}`
 }
 
 export default function DevisActionBoardPage() {
@@ -162,7 +156,9 @@ export default function DevisActionBoardPage() {
                       // pour cette file (queue engagement) ; absent ailleurs.
                       const draft = board.wa_drafts?.[id]
                       const tel = telHref(d?.client_telephone)
-                      const wa = waHref(d?.client_whatsapp ?? d?.client_telephone ?? d?.telephone, draft)
+                      // QJR635 — `||` : le sélecteur renvoie '' (jamais null)
+                      // sans WhatsApp ; `??` ne repliait donc jamais.
+                      const wa = waHref(d?.client_whatsapp || d?.client_telephone || d?.telephone, draft)
                       // CAD115 (SIG9) — prochaine touche CRM déjà programmée
                       // pour le lead d'origine : évite qu'une relance parte
                       // ici alors que la cadence de Meryem s'en charge déjà
