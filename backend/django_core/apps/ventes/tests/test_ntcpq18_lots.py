@@ -109,6 +109,32 @@ class TestLotsDevis(TestCase):
             {'nom_lot': 'Site A'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_qjr648_ordre_non_numerique_400(self):
+        """QJR648 — ROUGE AVANT : ``int('abc')`` → 500."""
+        resp = auth(self.user).post(
+            f'/api/django/ventes/devis/{self.devis.id}/lots/',
+            {'nom_lot': 'A', 'ordre': 'abc'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('ordre', resp.data)
+        self.assertFalse(LotDevis.objects.filter(
+            devis=self.devis, nom_lot='A').exists())
+
+    def test_qjr648_lignes_non_numeriques_400_sans_lot_orphelin(self):
+        """QJR648 — ROUGE AVANT : 500 APRÈS la création du lot (orphelin)."""
+        resp = auth(self.user).post(
+            f'/api/django/ventes/devis/{self.devis.id}/lots/',
+            {'nom_lot': 'B', 'lignes': ['x']}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertFalse(LotDevis.objects.filter(
+            devis=self.devis, nom_lot='B').exists())
+
+    def test_qjr648_nom_lot_absent_400(self):
+        resp = auth(self.user).post(
+            f'/api/django/ventes/devis/{self.devis.id}/lots/',
+            {'adresse_site': 'Fès'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('nom_lot', resp.data)
+
     def test_endpoint_isole_les_societes(self):
         autre = DevisFactory(company=CompanyFactory())
         resp = auth(self.user).get(

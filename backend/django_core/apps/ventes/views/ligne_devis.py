@@ -1,37 +1,12 @@
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
-from rest_framework import viewsets, status, filters  # noqa: F401
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
-)
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-)
-from ..serializers import (  # noqa: F401
-    DevisSerializer,
-    DevisWriteSerializer,
-    BonCommandeSerializer,
-    LigneDevisSerializer,
-    FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    RelanceLogSerializer,
-    DevisActivitySerializer,
-)
-from authentication.permissions import (  # noqa: F401
+from rest_framework import viewsets
+from ..models import LigneDevis
+from ..serializers import LigneDevisSerializer
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -58,6 +33,24 @@ def _retarifer_forfaits(devis):
         retarifer_forfaits_par_panneau(devis)
     except Exception:  # noqa: BLE001 — best-effort, comme les études
         pass
+
+
+def _rafraichir(devis):
+    """QJR554 — le mode RAFRAICHIR du pipeline après une écriture de ligne :
+    les quatre études (best-effort) PUIS les caches du devis (kWc depuis les
+    lignes, marge interne) — sans lui, ``puissance_kwc`` et ``marge_snapshot``
+    restaient ceux d'avant la ligne ajoutée / modifiée / retirée."""
+    from ..domain.pipeline import (
+        MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer)
+    appliquer(devis, IntentionDevis(
+        origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=devis.company))
+
+
+def _instantane(devis, user):
+    """QJR550 — UN instantané de configuration par geste de ligne, avec son
+    auteur (``request.user``) ; remplace le signal ``post_save`` par ligne."""
+    from ..domain.cycle_vie import instantane_de_geste
+    instantane_de_geste(devis, user=user)
 
 
 from authentication.scoping import scope_queryset  # noqa: E402,F401
@@ -168,9 +161,9 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         # le graphe de la page client sans toucher au schéma unifilaire, qui
         # continuait de décrire la composition d'avant. Best-effort, ne lève
         # jamais (voir ``services.rafraichir_etudes_du_devis``).
-        from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(serializer.instance.devis)
-        rafraichir_etudes_du_devis(serializer.instance.devis)
+        _rafraichir(serializer.instance.devis)
+        _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
 
@@ -185,9 +178,9 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         serializer.save()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : la ligne
         # MODIFIÉE peut changer la puissance kWc).
-        from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(serializer.instance.devis)
-        rafraichir_etudes_du_devis(serializer.instance.devis)
+        _rafraichir(serializer.instance.devis)
+        _instantane(serializer.instance.devis, self.request.user)
         fin_de_geste_devis(serializer.instance.devis, self.request.user,
                            avant=avant_geste, objet='ligne')
 
@@ -200,8 +193,8 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         instance.delete()
         # CJ2b / L-1V — voir perform_create ci-dessus (même raison : une ligne
         # RETIRÉE peut changer, voire annuler, la puissance kWc).
-        from ..services import rafraichir_etudes_du_devis
         _retarifer_forfaits(devis)
-        rafraichir_etudes_du_devis(devis)
+        _rafraichir(devis)
+        _instantane(devis, self.request.user)
         fin_de_geste_devis(devis, self.request.user, avant=avant_geste,
                            objet='ligne')

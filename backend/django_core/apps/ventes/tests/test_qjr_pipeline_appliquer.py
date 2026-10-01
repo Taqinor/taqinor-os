@@ -72,7 +72,8 @@ class _Etapes:
             nom: getattr(pipeline, nom) for nom in (
                 'resoudre_entrees', 'decider_taille', 'composer', 'verifier',
                 'ecrire_lignes', 'ecrire_etude_params', 'rafraichir_etudes',
-                'finaliser', '_verrouiller', '_creer_brouillon')
+                'finaliser', 'finaliser_caches', '_verrouiller',
+                '_creer_brouillon')
         }
         pipeline.resoudre_entrees = _note('resoudre_entrees', 'entrees')
         pipeline.decider_taille = _note('decider_taille',
@@ -83,6 +84,7 @@ class _Etapes:
         pipeline.ecrire_etude_params = _note('ecrire_etude_params', {})
         pipeline.rafraichir_etudes = _note('rafraichir_etudes', {})
         pipeline.finaliser = _note('finaliser')
+        pipeline.finaliser_caches = _note('finaliser_caches')
         pipeline._verrouiller = _note('_verrouiller', self.verrou)
         pipeline._creer_brouillon = _note('_creer_brouillon', self.verrou)
 
@@ -205,7 +207,8 @@ class LesModesNExecutentQueLeursEtapes(SimpleTestCase):
         with _Etapes(journal) as etapes:
             resultat = pipeline.appliquer(
                 etapes.verrou, _intention(mode=pipeline.MODE_RAFRAICHIR))
-        self.assertEqual(journal, ['rafraichir_etudes'])
+        # QJR554 — le rafraîchissement pose aussi les caches (kWc, marge).
+        self.assertEqual(journal, ['rafraichir_etudes', 'finaliser_caches'])
         self.assertEqual(
             resultat['etapes'],
             list(pipeline.ETAPES_PAR_MODE[pipeline.MODE_RAFRAICHIR]))
@@ -354,6 +357,9 @@ CHEMINS_BASCULES = {
     # QJR97 — le chemin apply-taille demande le MÊME mode, directement : il ne
     # passe plus par la seconde porte qu'était ``sync_devis_from_layout``.
     'offres_tailles.py': 1,
+    # QJR554 — ``LigneDevisViewSet`` (ajout / modification / retrait d'une
+    # ligne) demande le mode « rafraîchir » : études + caches (kWc, marge).
+    'views/ligne_devis.py': 1,
 }
 
 

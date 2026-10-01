@@ -61,9 +61,8 @@ class VentesConfig(AppConfig):
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
         from . import receivers  # noqa: F401
-        # QX24 — connecte les signaux LigneDevis (post_save/post_delete) qui
-        # gardent le payback de l'étude cohérent avec le total courant.
-        receivers._register_qx24_signals()
+        # QJR550 — plus de signal LigneDevis : l'instantané de configuration
+        # (NTCPQ20) est pris une fois par geste (domain.cycle_vie).
         # QX36 — abonne le handler email entrant (réponse client → chatter +
         # notification sur le devis) au bus core.email_intake.
         from .inbound_email import register_ventes_inbound_handler

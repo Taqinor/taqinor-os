@@ -4,7 +4,6 @@ Abonne ``ventes`` aux événements du bus ``core.events`` exposés par d'autres
 apps/la fondation, pour réagir à un changement d'état sans import direct.
 Câblé au démarrage par ``VentesConfig.ready()``.
 """
-from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 from core.events import payment_captured, chantier_annule, effet_rejete
@@ -19,43 +18,13 @@ from core.events import payment_captured, chantier_annule, effet_rejete
 # ligne PLUS une recomputation complète d'``option_totaux``, pour rien.
 
 
-def _ntcpq20_snapshot_configuration(sender, instance, **kwargs):
-    """NTCPQ20 — instantané de configuration à chaque ajout/retrait/changement
-    de ligne, tant que le devis est BROUILLON.
-
-    Best-effort et dédupliqué (un contenu identique au dernier instantané n'en
-    crée pas un nouveau) ; ne bloque jamais l'écriture de la ligne. L'auteur
-    n'est pas connu dans un signal : il reste NULL (instantané système), la
-    capture explicite depuis une vue peut le renseigner."""
-    from django.core.exceptions import ObjectDoesNotExist
-    try:
-        devis = instance.devis
-    except ObjectDoesNotExist:
-        return  # devis déjà supprimé (cascade) — rien à historiser
-    if devis is None:
-        return
-    try:
-        from . import services as ventes_services
-        ventes_services.capturer_configuration_devis(devis)
-    except Exception:  # noqa: BLE001 — jamais bloquant
-        pass
-
-
-def _register_qx24_signals():
-    """Signaux ``LigneDevis`` de l'app ventes.
-
-    QJR48 — n'y subsiste que NTCPQ20 (historique fin de configuration) : les
-    deux branchements QX24 ont été retirés avec leurs récepteurs. Le nom est
-    conservé parce que ``VentesConfig.ready()`` l'appelle.
-    """
-    from .models import LigneDevis
-    # NTCPQ20 — historique fin de configuration (devis brouillon seulement).
-    post_save.connect(
-        _ntcpq20_snapshot_configuration, sender=LigneDevis,
-        dispatch_uid='ventes_ntcpq20_ligne_saved')
-    post_delete.connect(
-        _ntcpq20_snapshot_configuration, sender=LigneDevis,
-        dispatch_uid='ventes_ntcpq20_ligne_deleted')
+# QJR550 — ``_ntcpq20_snapshot_configuration`` et ``_register_qx24_signals``
+# ONT ÉTÉ SUPPRIMÉS : l'instantané NTCPQ20 était pris par un signal
+# ``post_save``/``post_delete`` de ``LigneDevis`` — ~N+1 instantanés (dont des
+# états partiels) par enregistrement, jamais d'auteur. Il est désormais pris
+# UNE fois par geste, avec son auteur (``domain.cycle_vie.instantane_de_geste``,
+# appelé par le pipeline, ``LigneDevisViewSet`` et la resynchronisation
+# catalogue).
 
 
 @receiver(chantier_annule, dispatch_uid="ventes_alert_on_chantier_annule")
