@@ -243,6 +243,32 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
             raise ValidationError({'statut': erreur.message})
 
 
+class _DevisModifie(APIException):
+    """QJR545 — 409 ``{code: 'devis_modifie', detail, updated_at,
+    updated_by_nom}`` : le devis a bougé depuis l'ouverture (verrou
+    optimiste, contrat ``devis_verrou_edition.json``)."""
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'devis_modifie'
+
+
+def _refus_verrou(devis, request):
+    """QJR545 — ``Response`` 409 si ``expected_updated_at`` est fourni et
+    diffère du jeton en base ; ``None`` sinon (champ absent ⇒ inchangé)."""
+    from ..domain.verrou_devis import verifier_jeton
+    charge = verifier_jeton(devis, request.data)
+    if charge is None:
+        return None
+    return Response(charge, status=status.HTTP_409_CONFLICT)
+
+
+def _jeton(devis):
+    """QJR545 — le jeton d'édition à renvoyer dans une réponse 2xx."""
+    valeur = getattr(devis, 'updated_at', None)
+    # Même représentation que le GET (DateTimeField de DRF) : le jeton
+    # renvoyé est comparable, à l'octet, à celui que sert la fiche.
+    return serializers.DateTimeField().to_representation(valeur) if valeur else None
+
+
 class _LotCreationSerializer(serializers.Serializer):
     """QJR648 — le corps de ``POST /devis/<id>/lots/`` : ``nom_lot`` requis,
     ``adresse_site`` facultative, ``ordre`` entier ≥ 0 facultatif, ``lignes``
@@ -1045,6 +1071,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 'Devis « %s » : ses lignes ne peuvent plus être '
                 'remplacées. Utilisez « Réviser » pour en créer une '
                 'nouvelle version.')
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -1156,6 +1186,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
             company=devis.company, force_etudes=geste_complet))
+        # QJR545 — le jeton d'édition avance (lignes sauvées hors Devis.save)
+        # et la réponse porte celui réellement en base.
+        from ..domain.verrou_devis import toucher
+        toucher(devis)
         return Response(DevisSerializer(
             devis, context={'request': request}).data)
 
@@ -2712,6 +2746,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # QJR516 — PATCH et DELETE gardés (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
+        from ..domain.verrou_devis import toucher
 
         if request.method == 'DELETE':
             chemin = request.query_params.get('chemin') or ''
@@ -2731,11 +2770,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             self._rafraichir_etudes_apres_surcharge(devis)
             fin_de_geste_devis(devis, request.user, avant=avant_geste,
                                objet='surcharges')
+            toucher(devis)
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
             # valeur du moteur (avant, il en disparaissait : « retour à
             # l'automatique » se soldait par un trou).
-            return Response(
-                self._overrides_reponse(devis, chemins_regeneres=(chemin,)))
+            reponse = self._overrides_reponse(
+                devis, chemins_regeneres=(chemin,))
+            reponse['updated_at'] = _jeton(devis)
+            return Response(reponse)
 
         serializer = OverridesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -2752,7 +2794,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         self._rafraichir_etudes_apres_surcharge(devis)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,
                            objet='surcharges')
-        return Response(self._overrides_reponse(devis))
+        toucher(devis)
+        reponse = self._overrides_reponse(devis)
+        reponse['updated_at'] = _jeton(devis)
+        return Response(reponse)
 
     @staticmethod
     def _rafraichir_etudes_apres_surcharge(devis):
@@ -2815,8 +2860,22 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # QJR516 — PATCH gardé (geste ETUDE).
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
+        # QJR545 — verrou optimiste (jeton optionnel, retiré du corps : ce
+        # n'est pas une clé d'étude). Réponse littérale : la forme du 409
+        # reste lisible par check_api_shapes.
+        from ..domain.verrou_devis import verifier_jeton
+        charge = verifier_jeton(devis, request.data)
+        if charge is not None:
+            return Response(
+                {'code': charge['code'], 'detail': charge['detail'],
+                 'updated_at': charge['updated_at'],
+                 'updated_by_nom': charge['updated_by_nom']},
+                status=status.HTTP_409_CONFLICT)
 
         corps = request.data
+        if isinstance(corps, dict) and 'expected_updated_at' in corps:
+            corps = {k: v for k, v in corps.items()
+                     if k != 'expected_updated_at'}
         if not isinstance(corps, dict) or not corps:
             return Response(
                 {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
@@ -2853,7 +2912,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # (`contract_samples`), et y injecter les blocs dérivés fraîchement
         # recalculés en changerait la forme sans que personne les lise. Ils sont
         # en base, à leur place, pour le moteur PDF.
-        return Response({'etude_params': bloc})
+        # QJR545 — le jeton d'édition (avancé par ``ecrire``) accompagne le
+        # bloc : clé ADDITIVE, la forme ``{etude_params}`` est inchangée.
+        return Response({'etude_params': bloc, 'updated_at': _jeton(devis)})
 
     @action(detail=True, methods=['get'], url_path='offres-tailles',
             permission_classes=[IsResponsableOrAdmin])
@@ -2903,10 +2964,18 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # QJR516 — geste ETUDE.
         if _refus_modifiabilite(devis, 'ETUDE'):
             return _reponse_non_modifiable(devis, 'ETUDE')
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         regenerer_taille(devis, serializer.validated_data['cle'])
-        return Response(self._offres_tailles_reponse(devis))
+        from ..domain.verrou_devis import toucher
+        toucher(devis)
+        reponse = self._offres_tailles_reponse(devis)
+        reponse['updated_at'] = _jeton(devis)
+        return Response(reponse)
 
     @action(detail=True, methods=['post'],
             url_path='offres-tailles/appliquer',
@@ -2930,6 +2999,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..serializers import OffreTailleRegenerationSerializer
 
         devis = self.get_object()
+        # QJR545 — verrou optimiste (jeton optionnel).
+        refus = _refus_verrou(devis, request)
+        if refus is not None:
+            return refus
         serializer = OffreTailleRegenerationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -2948,9 +3021,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': erreur.detail,
                  'revision_possible': bool(erreur.revision_possible)},
                 status=status.HTTP_400_BAD_REQUEST)
+        from ..domain.verrou_devis import toucher
+        toucher(devis)
         devis.refresh_from_db()
         reponse = self._offres_tailles_reponse(devis)
         reponse['applique'] = resume
+        reponse['updated_at'] = _jeton(devis)
         return Response(reponse)
 
     def perform_update(self, serializer):
@@ -2959,6 +3035,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # avec ``replace-lines`` (QJR544). QJR541 — ``statut`` est en lecture
         # seule : un PATCH ne fait plus passer un devis en « envoyé » ni
         # n'avance le funnel.
+        # QJR545 — verrou optimiste (jeton optionnel, autres clients).
+        from ..domain.verrou_devis import verifier_jeton
+        charge = verifier_jeton(serializer.instance, self.request.data)
+        if charge is not None:
+            raise _DevisModifie(charge)
         _gardes_mise_a_jour(serializer.instance, serializer.validated_data,
                             self.request.user)
         company = self.request.user.company
@@ -3010,6 +3091,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             company=company, force_etudes=True))
         fin_de_geste_devis(serializer.instance, self.request.user,
                            avant=avant_geste, objet='en-tête')
+        # QJR545 — les écritures de fin de geste passent en ``update_fields`` :
+        # le jeton servi par la réponse est réaligné sur la base.
+        from ..domain.verrou_devis import toucher
+        toucher(serializer.instance)
 
     @action(
         detail=True,
