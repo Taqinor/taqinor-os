@@ -55,6 +55,14 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         groupeLabel: l.groupe_label ?? '',
         role_devis: l.role_devis ?? '',
         lot: l.lot ?? null,
+        // ERR-QJR570 (D-QJR5-4) — marqueur d'ÉCRAN `compose` (jamais envoyé) :
+        // une ligne produit relue SANS saisie humaine (ni prix tapé, ni
+        // quantité figée, ni optionnelle) est une ligne COMPOSÉE — une
+        // recomposition la REMPLACE. Sans lui, `fusionnerRecomposition` la
+        // prenait pour un ajout manuel et gardait l'ancien onduleur / la
+        // batterie À CÔTÉ des nouveaux (5 lignes au lieu de 3).
+        compose: (l.type_ligne ?? 'produit') === 'produit'
+          && !l.prix_manuel && !l.quantite_manuelle && !l.optionnelle,
       }
     })
 }

@@ -107,7 +107,7 @@ import {
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   kwcFactureDesLignes, kwcPourPanneaux,
   // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
-  fusionnerRecomposition, lignesQuantiteFigee,
+  fusionnerRecomposition,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -2606,34 +2606,35 @@ export default function DevisGenerator({
   // QJR570 (D-QJR5-4) — LE point d'écriture des trois recompositions
   // (composition locale, dry-run serveur, pompage) : FUSION par id produit
   // (`fusionnerRecomposition`) — prix tapés, sections, notes, options et
-  // produits ajoutés à la main conservés d'office. Une quantité figée en
-  // conflit est GARDÉE (le vendeur l'a confirmé avant le geste) et NOMMÉE.
+  // produits ajoutés à la main conservés d'office.
+  // ERR-QJR570 — la SEULE question est posée APRÈS la composition et
+  // seulement sur CONFLIT RÉEL (quantité figée ≠ quantité recalculée, 5
+  // désignations au plus) : « Garder » (défaut, rien à refaire) ou « Prendre
+  // N (recalculé) » (la quantité recalculée remplace la figée, verrou levé).
+  // Aucune question sans conflit ; elle ne dispatche RIEN dans le reducer
+  // (invariant F2 QJR99) — seule l'écriture des lignes change.
   const recomposerLignes = (generated) => {
     const { conflits } = fusionnerRecomposition(lines, generated)
     setLines(ls => withKeys(fusionnerRecomposition(ls, generated).lignes))
-    if (conflits.length) {
-      toast.warning('Quantités figées gardées : ' + conflits.slice(0, 5)
-        .map(c => `${c.designation} ${c.figee} (recalculé : ${c.recalculee})`).join(', ')
-        + (conflits.length > 5 ? '…' : '') + '.')
-    }
-  }
-
-  // QJR570 — la seule question posée avant une recomposition : des quantités
-  // figées à la main existent (5 désignations au plus). Sans elles, AUCUNE
-  // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
-  // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
-  const avecQuantitesFigees = (geste) => {
-    const figees = lignesQuantiteFigee(lines)
-    if (!figees.length) { geste(); return }
-    const noms = figees.slice(0, 5)
-      .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
-      + (figees.length > 5 ? '…' : '')
+    if (!conflits.length) return
+    const noms = conflits.slice(0, 5)
+      .map(c => `${c.designation || 'ligne'} : ${c.figee} (recalculé : ${c.recalculee})`)
+      .join(', ') + (conflits.length > 5 ? '…' : '')
     confirm({
-      title: 'Garder les quantités figées ?',
-      description: `Quantités saisies à la main (${noms}) : la recomposition les GARDE. `
-        + 'Pour prendre la quantité recalculée, cliquez « Libérer » sur la ligne puis recomposez.',
-      confirmLabel: 'Recomposer en les gardant',
-    }).then(ok => { if (ok) geste() })
+      title: 'Quantités figées différentes du recalcul',
+      description: `Quantités saisies à la main (${noms}). Garder vos quantités, `
+        + 'ou prendre les quantités recalculées ?',
+      confirmLabel: conflits.length === 1
+        ? `Prendre ${conflits[0].recalculee} (recalculé)`
+        : 'Prendre les quantités recalculées',
+      cancelLabel: 'Garder les quantités figées',
+      destructive: false,
+    }).then((ok) => {
+      if (ok) {
+        setLines(ls => withKeys(
+          fusionnerRecomposition(ls, generated, { prendreRecalcule: true }).lignes))
+      }
+    })
   }
 
   // QJR546 — appliquer un modèle REMPLACE les lignes À L'ÉCRAN, en création
@@ -3050,8 +3051,9 @@ export default function DevisGenerator({
   // un compteur, lui, avance toujours.
   const appliquerTailleDimensionnement = (ligne) => {
     if (!ligne || !(ligne.panneaux > 0)) return
-    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
-    avecQuantitesFigees(() => dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne }))
+    // ERR-QJR570 — aucune question AVANT : un conflit réel de quantité figée
+    // est demandé après la composition (`recomposerLignes`).
+    dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne })
   }
 
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ». Causes RÉELLES
@@ -3147,8 +3149,9 @@ export default function DevisGenerator({
     // QUI SUIT et restauré dans le même mouvement, et `compositionSeq` avance —
     // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
     // relancer la composition (catalogue/marques/scénario ont pu changer).
-    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
-    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }))
+    // ERR-QJR570 — aucune question AVANT : un conflit réel de quantité figée
+    // est demandé après la composition (`recomposerLignes`).
+    dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu })
   }
   // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
   // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et
@@ -4586,7 +4589,7 @@ export default function DevisGenerator({
                 <RefreshCw /> Recalculer le dimensionnement
               </Button>
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
-                      loading={autoFillLoading} onClick={() => avecQuantitesFigees(handleAutoFill)}>
+                      loading={autoFillLoading} onClick={() => handleAutoFill()}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
@@ -4600,7 +4603,7 @@ export default function DevisGenerator({
                 <Button type="button" size="sm" variant="outline"
                         data-testid="composition-reessayer"
                         loading={autoFillLoading}
-                        onClick={() => avecQuantitesFigees(handleAutoFill)}>
+                        onClick={() => handleAutoFill()}>
                   Réessayer
                 </Button>
               </div>

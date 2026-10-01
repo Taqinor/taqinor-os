@@ -6,7 +6,8 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fusionnerRecomposition, lignesQuantiteFigee } from './solar.js'
+import { fusionnerRecomposition } from './solar.js'
+import { lignesServeurVersEcran } from './quote/lignesEcran.js'
 
 const L = (produit, designation, quantite, prix, extra = {}) => ({
   produit: String(produit), designation, quantite: String(quantite),
@@ -86,11 +87,60 @@ test('la variante vient de la ligne générée ; chaque ligne générée porte l
   assert.equal(lignes[0].compose, true)
 })
 
-test('lignesQuantiteFigee : seules les lignes produit verrouillées', () => {
-  const figees = lignesQuantiteFigee([
+test('ERR-QJR570 — « prendre N (recalculé) » : la quantité recalculée remplace la figée, verrou levé', () => {
+  const anciennes = [
     L(7, 'Socles', 24, 50, { quantiteManuelle: true }),
-    L(8, 'Panneau', 10, 1200),
-    { produit: '', designation: 'Note', typeLigne: 'note', quantiteManuelle: true },
-  ])
-  assert.deepEqual(figees.map(l => l.designation), ['Socles'])
+    L(8, 'Rails', 6, 80, { quantiteManuelle: true }),
+  ]
+  const generees = [L(7, 'Socles', 20, 55), L(8, 'Rails', 6, 80)]
+  const { lignes, conflits } = fusionnerRecomposition(anciennes, generees, { prendreRecalcule: true })
+  // Le conflit reste NOMMÉ (le vendeur a choisi en le voyant)…
+  assert.deepEqual(conflits, [{ designation: 'Socles', figee: '24', recalculee: '20' }])
+  // …mais c'est la quantité recalculée qui est prise, verrou levé.
+  assert.deepEqual(lignes.map(l => [l.produit, l.quantite, !!l.quantiteManuelle]),
+    [['7', '20', false], ['8', '6', true]])
+})
+
+// ERR-QJR570-EDITION-DOUBLONS-RECOMPOSITION — régression client : en Édition
+// complète les lignes RELUES du serveur n'avaient aucun marqueur `compose`
+// → `_ancienneLigneAGarder` les prenait pour des ajouts manuels et la
+// recomposition gardait l'ancien onduleur + l'ancienne batterie À CÔTÉ des
+// nouveaux (5 lignes au lieu de 3, TTC gonflé, enregistrable/envoyable).
+test('ERR-QJR570 — lignes relues sans marqueur + nouvelle composition → aucun onduleur/batterie en double', () => {
+  const serveur = [
+    { id: 1, ordre: 0, produit: 5, designation: 'Panneau 550W', quantite: '10.00',
+      prix_unitaire: '1000.00', taux_tva: '20.00', type_ligne: 'produit' },
+    { id: 2, ordre: 1, produit: 13, designation: 'Onduleur hybride Deye 5kW', quantite: '1.00',
+      prix_unitaire: '10000.00', taux_tva: '20.00', type_ligne: 'produit' },
+    { id: 3, ordre: 2, produit: 15, designation: 'Batterie Dyness 5 kWh', quantite: '1.00',
+      prix_unitaire: '15000.00', taux_tva: '20.00', type_ligne: 'produit' },
+  ]
+  const relues = lignesServeurVersEcran(serveur, '20.00')
+  const generees = [
+    L(5, 'Panneau 550W', 12, 1200),
+    L(23, 'Onduleur hybride Deye 6kW', 1, 14000),
+    L(25, 'Batterie Dyness 10 kWh', 1, 30000),
+  ]
+  const { lignes, conflits } = fusionnerRecomposition(relues, generees)
+  assert.deepEqual(conflits, [])
+  assert.equal(lignes.length, 3, `attendu 3 lignes, obtenu ${lignes.length} : `
+    + lignes.map(l => l.designation).join(' | '))
+  assert.deepEqual(lignes.map(l => l.produit), ['5', '23', '25'])
+  assert.equal(lignes.filter(l => /onduleur/i.test(l.designation)).length, 1)
+  assert.equal(lignes.filter(l => /batterie/i.test(l.designation)).length, 1)
+})
+
+test('ERR-QJR570 — relue avec saisie humaine (prix / quantité figés, optionnelle) : gardée, jamais composée', () => {
+  const serveur = [
+    { id: 1, ordre: 0, produit: 9, designation: 'Borne', quantite: '1.00',
+      prix_unitaire: '5000.00', taux_tva: '20.00', type_ligne: 'produit', prix_manuel: true },
+    { id: 2, ordre: 1, produit: 7, designation: 'Socles', quantite: '24.00',
+      prix_unitaire: '50.00', taux_tva: '20.00', type_ligne: 'produit', quantite_manuelle: true },
+    { id: 3, ordre: 2, produit: 30, designation: 'Option', quantite: '1.00',
+      prix_unitaire: '100.00', taux_tva: '20.00', type_ligne: 'produit', optionnelle: true },
+  ]
+  const relues = lignesServeurVersEcran(serveur, '20.00')
+  assert.deepEqual(relues.map(l => l.compose), [false, false, false])
+  const { lignes } = fusionnerRecomposition(relues, [L(5, 'Panneau 550W', 12, 1200)])
+  assert.deepEqual(lignes.map(l => l.produit), ['5', '9', '7', '30'])
 })

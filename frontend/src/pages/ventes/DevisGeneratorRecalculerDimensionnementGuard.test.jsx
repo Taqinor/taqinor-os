@@ -283,8 +283,12 @@ describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
     confirmSpy.mockRestore()
   })
 
-  it('quantité figée + Annuler : une confirmation, et les lignes restent identiques', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+  // ERR-QJR570 — la question ne part QUE sur conflit RÉEL (quantité figée ≠
+  // recalculée), APRÈS la composition, et propose « Garder » ou « Prendre N
+  // (recalculé) ». Socles n'est pas dans la composition du mock : figée mais
+  // sans conflit → aucune question, gardée.
+  it('quantité figée SANS conflit : aucune question, la quantité tapée est gardée', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     renderGenerator()
     await screen.findByDisplayValue('Installation')
     fireEvent.change(hiverField(), { target: { value: '1200' } })
@@ -292,16 +296,46 @@ describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
       { timeout: 5000 })
     fireEvent.change(qteDe('Socles'), { target: { value: '24' } })
     await waitFor(() => expect(qteDe('Socles').value).toBe('24'))
-    const avant = instantaneLignes()
 
-    await waitFor(() => {
-      fireEvent.click(recalcButton())
-      expect(confirmSpy).toHaveBeenCalled()
-    }, { timeout: 10000 })
-    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Socles : 24/)
-    // Annuler : rien n'est dispatché, aucune composition ne part.
-    expect(instantaneLignes()).toEqual(avant)
-    expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
+    await cliquerRecalculJusquaComposition()
+    expect(qteDe('Socles').value).toBe('24')
+    expect(confirmSpy).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('quantité figée EN CONFLIT + « Garder » : une question après composition, quantité tapée gardée', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(hiverField(), { target: { value: '1200' } })
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
+    fireEvent.change(qteDe('Installation'), { target: { value: '3' } })
+    await waitFor(() => expect(qteDe('Installation').value).toBe('3'))
+
+    // (`cliquerRecalculJusquaComposition` peut recliquer : chaque composition
+    // qui retrouve le conflit repose LA question — jamais en silence.)
+    await cliquerRecalculJusquaComposition()
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Installation : 3 \(recalculé : 1\)/)
+    expect(qteDe('Installation').value).toBe('3')
+    confirmSpy.mockRestore()
+  })
+
+  it('quantité figée EN CONFLIT + « Prendre N (recalculé) » : la quantité recalculée remplace la figée', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(hiverField(), { target: { value: '1200' } })
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
+    fireEvent.change(qteDe('Installation'), { target: { value: '3' } })
+    await waitFor(() => expect(qteDe('Installation').value).toBe('3'))
+
+    await cliquerRecalculJusquaComposition()
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Installation : 3 \(recalculé : 1\)/)
+    await waitFor(() => expect(qteDe('Installation').value).toBe('1'))
     confirmSpy.mockRestore()
   })
 })

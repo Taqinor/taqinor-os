@@ -187,3 +187,18 @@ test('toute clé écrite par l’écran est DÉCLARÉE au schéma serveur', () =
     }
   }
 })
+
+// ERR-QJR570-EDITION-DOUBLONS-RECOMPOSITION — une ligne produit relue SANS
+// saisie humaine est une ligne composée : une recomposition la REMPLACE
+// (sinon ancien onduleur + ancienne batterie restaient à côté des nouveaux).
+test('ERR-QJR570 — devisVersEtat marque `compose` les lignes produit non manuelles', () => {
+  const devis = FIXTURES['résidentiel « Les deux », reco « Sans batterie »']
+  const { lignes } = devisVersEtat(devis)
+  assert.deepEqual(lignes.map(l => [l.designation, l.compose]), [
+    ['Panneau Canadien Solar 550W', true],
+    ['Onduleur réseau Huawei 5kW', true],
+    ['Onduleur hybride Deye 5kW', true],
+    ['Batterie Dyness 5 kWh', false], // prix_manuel : saisie humaine
+    ['Accès toiture par l’échelle', false], // note : jamais composée
+  ])
+})
