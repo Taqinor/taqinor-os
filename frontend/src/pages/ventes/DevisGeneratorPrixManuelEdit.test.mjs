@@ -32,15 +32,20 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 const LE = readFileSync(join(HERE, '../../features/ventes/quote/lignesEcran.js'), 'utf8')
+// QJR658 — l'Édition complète passe par le module pur `etatDevis.js` (son
+// aller-retour, prix_manuel compris, est EXÉCUTÉ par etatDevis.test.mjs).
+const ED = readFileSync(join(HERE, '../../features/ventes/quote/etatDevis.js'), 'utf8')
 
 // Le mappeur `?edit=` : de `ventesApi.getDevisById(editId)` jusqu'à `setLines`.
 function mappeurEdit() {
   const start = DG.indexOf('ventesApi.getDevisById(editId).then(({ data: d }) => {')
   assert.ok(start > -1, "le chargement ?edit= (getDevisById) est introuvable")
-  const end = DG.indexOf('setLines(withKeys(rows))', start)
-  assert.ok(end > start, "la pose des lignes (setLines(withKeys(rows))) est introuvable")
-  // QJR523 — le mappeur UNIQUE vit dans lignesEcran.js.
-  assert.match(DG.slice(start, end), /lignesServeurVersEcran\(/)
+  const end = DG.indexOf('setLines(withKeys(etat.lignes))', start)
+  assert.ok(end > start, "la pose des lignes (setLines(withKeys(etat.lignes))) est introuvable")
+  // QJR658 — le devis passe par devisVersEtat, qui COMPOSE le mappeur UNIQUE
+  // de lignesEcran.js (QJR523).
+  assert.match(DG.slice(start, end), /devisVersEtat\(d\)/)
+  assert.match(ED, /lignesServeurVersEcran\(/)
   const debut = LE.indexOf('export function lignesServeurVersEcran(')
   assert.ok(debut > -1, 'lignesServeurVersEcran introuvable')
   return LE.slice(debut, LE.indexOf('export function lignesEcranVersPayload('))
@@ -48,7 +53,10 @@ function mappeurEdit() {
 
 // La construction de `lignesPayload` : `lignesEcranVersPayload` (QJR523).
 function lignesPayload() {
-  assert.match(DG, /const lignesPayload = lignesEcranVersPayload\(lines/)
+  // QJR658 — les lignes du payload viennent de etatVersEcritures, qui COMPOSE
+  // lignesEcranVersPayload (QJR523).
+  assert.match(DG, /const lignesPayload = ecritures\.lignes/)
+  assert.match(ED, /lignesEcranVersPayload\(/)
   const start = LE.indexOf('export function lignesEcranVersPayload(')
   assert.ok(start > -1, 'lignesEcranVersPayload introuvable')
   return LE.slice(start)

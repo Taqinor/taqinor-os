@@ -128,8 +128,6 @@ import {
   // sans elle le modèle d'économie ne sature pas et l'ascension marginale
   // sur-vend jusqu'au plafond du balayage.
   consoAnnuelleDepuisFactures,
-  // COUV-HOR — une conso stockée qui descend des factures n'est pas une saisie.
-  consoDescendDesFactures,
   // PVMRQ — libellé FR d'un rôle ROLES_AUTO_COMPOSITION, pour le bandeau
   // « marque épinglée introuvable ».
   roleLabel,
@@ -178,10 +176,9 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // reste le seul déballeur (`unwrap`), cet écran ne fait que signer.
 import { moteur, apercu } from '../../features/ventes/quote/valeur'
 // QJR523 — UN seul couple de mappeurs lignes serveur ⇄ écran.
-import { lignesServeurVersEcran, lignesEcranVersPayload } from '../../features/ventes/quote/lignesEcran'
-// QJR526 — wattage / structure / hors-réseau / composition libre relus des lignes.
-import { deriverReouverture } from '../../features/ventes/quote/reouverture'
-import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc'
+import { lignesServeurVersEcran } from '../../features/ventes/quote/lignesEcran'
+// QJR658 — devis ⇄ état d'écran : un module pur.
+import { devisVersEtat, etatVersEcritures } from '../../features/ventes/quote/etatDevis'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -189,9 +186,6 @@ import { projeterEtudeMarche } from '../../features/ventes/quote/etudeMarcheBloc
 import CarteMetrique, { GenCardHeader } from './generator/CarteMetrique'
 // QJR624 — l'échéancier éditable de l'Édition complète (D-QJR5-10).
 import CarteEcheancier from './generator/CarteEcheancier'
-import {
-  echeancierVersSaisie, saisieVersEcheancier,
-} from '../../features/ventes/echeancierEdition'
 import LigneTable from './generator/LigneTable'
 import RailArgent from './generator/RailArgent'
 // QJR101 — les quatre panneaux de marché. Chacun ne monte que les champs de
@@ -2026,24 +2020,18 @@ export default function DevisGenerator({
                      layout_stale: d.layout_stale ?? null,
                      layout_nb_panneaux: d.layout_nb_panneaux ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
-      // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
-      // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
-      // sont lus) : mode + compte de panneaux + scénario, dans cet ordre, avec
-      // les drapeaux « déjà choisi » que ce round-trip exige. Ne reste ici que
-      // le type d'installation, hors modèle du reducer.
-      if (d.mode_installation && d.mode_installation !== modeInstallation) {
-        appliquerPartDiurneDuMarche(d.mode_installation)
-      }
+      // QJR658 — LE MAPPEUR EST UN MODULE PUR (`quote/etatDevis.js`,
+      // aller-retour exécuté par `etatDevis.test.mjs`) : il lit le devis
+      // servi et rend l'état d'écran ; ici on ne fait que le POSER.
+      const etat = devisVersEtat(d)
+      const pose = (valeur, setter) => { if (valeur !== undefined) setter(valeur) }
+      // Défaut de part diurne du marché (QJR641), avant la valeur persistée.
+      if (etat.mode && etat.mode !== modeInstallation) appliquerPartDiurneDuMarche(etat.mode)
       if (d.lead) {
-        setLeadId(String(d.lead))
-        // ERR-QAH-VENTES-EDITION-PERD-LEAD — relit le lead par son id (il peut
-        // manquer de la première page de `leads`) et repose ses factures
-        // hiver/été à l'écran, SANS redimensionner (setters bruts : aucune
-        // frappe vendeur, aucun `syncBillEstimator`). Une valeur déjà présente
-        // (brouillon local restauré) n'est jamais écrasée.
-        // `Promise.resolve().then` : une panne de cette relecture (réseau,
-        // API absente) reste ISOLÉE — elle ne doit jamais faire échouer le
-        // chargement du devis lui-même.
+        setLeadId(etat.leadId)
+        // ERR-QAH-VENTES-EDITION-PERD-LEAD — relit le lead par son id et repose
+        // ses factures hiver/été SANS redimensionner ; une valeur déjà présente
+        // n'est jamais écrasée ; une panne reste ISOLÉE.
         Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
           if (!lead || lead.id == null) return
           setLeadDuDevis(lead)
@@ -2053,201 +2041,71 @@ export default function DevisGenerator({
               ? String(lead.facture_ete) : ''))
           }
         }).catch(() => {})
-      } else if (d.client) setClientId(String(d.client))
-      // DC11 / QJR106 — le verdict de dérive du serveur, posé À LA LECTURE du
-      // brouillon (`?edit=`). Backend plus ancien / devis sans estampille ⇒
-      // champ absent ou `null` ⇒ liste vide ⇒ aucune bannière : comportement
-      // historique strictement inchangé.
-      setLeadValeursModifiees(
-        Array.isArray(d.lead_valeurs_modifiees) ? d.lead_valeurs_modifiees : [])
-      setDiscountPct(String(parseFloat(d.remise_globale) || 0))
-      setTauxTva(String(d.taux_tva ?? '20.00'))
-      if (d.date_validite) setDateValidite(d.date_validite)
-      if (d.note) setNote(d.note)
-      // QJR624 — l'échéancier DU DEVIS, relu tel quel.
-      const echeancierLu = echeancierVersSaisie(d.echeancier)
-      echeancierAEnvoyer.current = echeancierLu != null
-      setEcheancierSaisieBrut(echeancierLu)
-      // QJR527 — le prix cible DU DEVIS gagne, vide compris (sinon chaque
-      // enregistrement en édition l'effaçait : le payload envoie `null`).
-      setPrixCible(d.prix_cible_kwc != null ? String(parseFloat(d.prix_cible_kwc)) : '')
-      // QJR523 — mappeur UNIQUE (lignesEcran.js) : ordre serveur, prix TTC au
-      // centime, option / type / variante / verrous manuels (QJR65, QJR218),
-      // groupes villa et rôle stocké — tous relus ici.
-      const rows = lignesServeurVersEcran(d.lignes ?? [], d.taux_tva)
-      setLines(withKeys(rows))
+      } else pose(etat.clientId, setClientId)
+      // DC11 / QJR106 — verdict de dérive du serveur (liste vide = aucune bannière).
+      setLeadValeursModifiees(etat.leadValeursModifiees)
+      setDiscountPct(etat.discountPct)
+      setTauxTva(etat.tauxTva)
+      pose(etat.dateValidite, setDateValidite)
+      pose(etat.note, setNote)
+      // QJR624 — l'échéancier DU DEVIS.
+      echeancierAEnvoyer.current = etat.echeancierAEnvoyer
+      setEcheancierSaisieBrut(etat.echeancier)
+      setPrixCible(etat.prixCible)
+      setLines(withKeys(etat.lignes))
       linesInitialized.current = true
-      // L-2OPT — le nombre de panneaux affiché reste celui de la branche
-      // SANS (commun + 'sans' ; une ligne 'avec' divergente ne compte pas
-      // ici, sinon les deux optima s'additionneraient).
-      const panneaux = rows
-        .filter(r => /panneau/i.test(r.designation) && r.variante !== 'avec')
-        .reduce((s, r) => s + (parseFloat(r.quantite) || 0), 0)
-      const e = d.etude_params || {}
-      const reouv = deriverReouverture(rows, { mode: d.mode_installation })
-      // ORDRE FONDATEUR (24/08) — round-trip du MARCHÉ, du COMPTE DE PANNEAUX
-      // et du SCÉNARIO déjà choisis sur ce devis (etude_params.scenario, posé
-      // par `buildEtudeParamsChoice` à l'enregistrement). Sans lui, rouvrir un
-      // brouillon reposait le défaut du MODE et l'enregistrement suivant
-      // ÉCRASAIT silencieusement le choix du client — un devis « Avec
-      // batterie » repartait « Les deux », un devis industriel « Les deux »
-      // repartait « Sans batterie ». Le défaut ne vaut que pour un devis
-      // VIERGE. Un scénario hors contrat du moteur PDF est IGNORÉ (le Select
-      // ne doit jamais l'afficher) — la garde vit dans le reducer.
+      // QJR99 / QJR526 — la RÉOUVERTURE est UNE transition du reducer : mode,
+      // compte de panneaux (branche SANS), scénario, wattage et structure.
       dispatchSizing({
         type: 'REOUVERTURE',
         devis: {
-          mode_installation: d.mode_installation,
-          panneaux,
-          scenario: e.scenario,
-          // QJR526 — wattage + structure re-dérivés des LIGNES du devis
-          // (sinon 710 W / acier par défaut : 10 × 550 W revenait à 7,1 kWc).
-          panel_watt: reouv.panelW,
-          structure: reouv.structure,
-          structureProduitId: reouv.structureProduitId,
+          mode_installation: etat.mode,
+          panneaux: etat.panneaux,
+          scenario: etat.scenario,
+          panel_watt: etat.reouverture.panelW,
+          structure: etat.reouverture.structure,
+          structureProduitId: etat.reouverture.structureProduitId,
         },
       })
-      // QJR526 — hors-réseau et « Composition libre » relus des lignes : un
-      // choix DÉJÀ fait (drapeau hors-réseau fermé, comme le brouillon local).
-      setHorsReseau(reouv.horsReseau)
+      setHorsReseau(etat.reouverture.horsReseau)
       setHorsReseauTouched(true)
-      setAccessoiresOnly(reouv.accessoiresOnly)
-      // PVMRQ — round-trip de la gamme du devis (`etude_params.gamme.nom`,
-      // posée par `services.creer_variante_gamme`/`gamme_nom`) : résout la
-      // carte de marques Essentielle/Premium à réappliquer aux
-      // auto-remplissages suivants de CE devis (voir `marquesActives`).
-      if (e.gamme && typeof e.gamme === 'object' && e.gamme.nom) {
-        setGammeNomDevis(String(e.gamme.nom))
-      }
-      // (le scénario du devis est repris par la transition `REOUVERTURE`
-      // ci-dessus, avec son drapeau « déjà choisi ».)
-      // QJR524 — l'option recommandée ENREGISTRÉE revient telle quelle :
-      // `recommended_option` (seule clé du schéma, écrite par `choixEcran`,
-      // lue par le PDF) d'abord, repli sur la clé legacy `recommended_choice`.
-      // Un devis enregistré en « Auto » revient avec la valeur effective figée
-      // (ce que le client a vu) — un ré-enregistrement sans retouche ne la
-      // bascule plus. Le registre D12 n'est PAS lu ici (il gagne au rendu).
-      const recoStockee = [e.recommended_option, e.recommended_choice].find(v =>
-        ['Aucune recommandation', SCENARIO_SANS, SCENARIO_AVEC].includes(v))
-      if (recoStockee) setRecommendedChoice(recoStockee)
-      else if (e.recommended_choice === 'Auto') setRecommendedChoice('Auto')
-      // QJ31 / QJR66 — round-trip du ×N villas identiques. Le mode multi-villa
-      // ne se restaurait QUE depuis le brouillon local (localStorage) : rouvrir
-      // un devis ×4 par `?edit=` le ramenait à 1 à l'écran. Devenu bloquant
-      // depuis que l'écran est l'écrivain de la clé (il aurait alors envoyé
-      // `null` et DÉTRUIT le ×4 en base au premier enregistrement).
-      const nProprietes = parseInt(e.nombre_proprietes, 10)
-      if (Number.isFinite(nProprietes) && nProprietes > 1) {
-        setMultiMode('multiplier')
-        setNombreProprietes(String(nProprietes))
-      }
-      // QJR530 — round-trip du mode « villas » : une ligne qui porte un
-      // `groupe_index` (persisté par remplacer_lignes, QJR517) rouvre le
-      // devis en mode villas avec ses groupes (paires distinctes index/label,
-      // triées ; index 0 = « Équipement commun », sans label stocké). Sans
-      // lui, ouvrir puis enregistrer SANS retouche envoyait groupe_index null
-      // et dégroupait tout.
-      if (rows.some(r => r.groupeIndex != null)) {
-        const groupes = new Map([[0, 'Équipement commun']])
-        for (const r of rows) {
-          const idx = Number(r.groupeIndex)
-          if (r.groupeIndex == null || !Number.isFinite(idx) || groupes.has(idx)) continue
-          groupes.set(idx, r.groupeLabel || `Villa ${idx}`)
-        }
-        setVillaGroups([...groupes.entries()]
-          .sort((a, b) => a[0] - b[0])
-          .map(([index, label]) => ({ index, label })))
-        setMultiMode('villas')
-      }
-      // QX50 — round-trip de l'injection 82-21 (flag activé si l'étude la porte).
-      if (e.injection_82_21 || e.injection_dh_an != null) setInjectionEnabled(true)
-      // QXMT — round-trip du raccordement MT + de la répartition horaire, pour
-      // qu'un devis MT rouvert recalcule au MÊME barème (jamais un retour BT
-      // silencieux). Les clés absentes laissent le défaut 'bt' intact.
-      if (e.tension_raccordement === 'mt') {
-        dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
-      }
-      // QJR528 — la part diurne INDUSTRIELLE enregistrée, relue APRÈS
-      // `appliquerPartDiurneDuMarche` (qui a reposé le défaut du marché).
-      if (d.mode_installation === 'industriel' && e.part_diurne_pct != null
-          && Number.isFinite(Number(e.part_diurne_pct))) {
-        setDayUsage(String(Number(e.part_diurne_pct)))
-      }
-      if (e.repartition_mt && typeof e.repartition_mt === 'object') {
-        setRepartitionMt({
-          pointe: e.repartition_mt.pointe != null ? String(e.repartition_mt.pointe) : '',
-          pleines: e.repartition_mt.pleines != null ? String(e.repartition_mt.pleines) : '',
-          creuses: e.repartition_mt.creuses != null ? String(e.repartition_mt.creuses) : '',
-        })
-      }
-      // QX44 — round-trip de l'étude commerciale : catégorie + réponses par
-      // catégorie (clés snake_case) réinjectées dans le formulaire.
-      if (e.categorie_commerciale) {
-        setCategorieCommerciale(String(e.categorie_commerciale))
-        const qs = COMMERCIAL_CATEGORY_QUESTIONS[String(e.categorie_commerciale)] || []
-        const ans = {}
-        for (const q of qs) {
-          if (e[q.key] !== undefined && e[q.key] !== null) ans[q.key] = e[q.key]
-        }
-        setCommercialAnswers(ans)
-      }
-      if (e.pompe_cv) setPompeCv(String(e.pompe_cv))
-      if (e.hmt_m) setPompeHmt(String(e.hmt_m))
-      if (e.debit_souhaite_m3h) setPompeDebit(String(e.debit_souhaite_m3h))
-      if (e.heures_pompage) setPompeHeures(String(e.heures_pompage))
-      if (e.conso_annuelle) setConsoMensuelle(String(Math.round(e.conso_annuelle / 12)))
-      // QF4 — round-trip du distributeur + de la consommation annuelle réelle
-      // (ré-affichée en kWh/mois : le mode « MAD » ne peut pas se reconstruire
-      // sans le tarif exact du moment, donc on revient toujours en kWh).
-      if (e.distributeur) {
-        setDistributeur(String(e.distributeur))
-        setDistributeurChoisi(true)   // déjà sur le devis : le réécrire est un no-op
-      }
-      // COUV-HOR — une conso qui DESCEND des factures stockées n'est pas une
-      // saisie : elle n'est plus réaffichée en kWh tapés (elle gagnait alors
-      // sur les factures à l'enregistrement) — l'écran la re-dérive.
-      const factures = Array.isArray(e.factures_mensuelles_reelles)
-        && e.factures_mensuelles_reelles.length === 12
-        ? e.factures_mensuelles_reelles : null
-      // ERR-QAH-VENTES-EDITION-PERD-LEAD — les 12 factures RÉELLES du devis
-      // remplacent la grille d'exemple (500/450/400…) : rouvrir ne doit plus
-      // montrer — ni renvoyer à l'enregistrement — d'autres factures.
-      if (factures) setMonthly(factures.map(v => Number(v) || 0))
-      consoStockee.current = e.conso_annuelle > 0 ? {
-        valeur: Number(e.conso_annuelle),
-        factures,
-        descendDesFactures: consoDescendDesFactures(
-          e.conso_annuelle, factures, e.distributeur),
-      } : null
-      if (consoStockee.current && !consoStockee.current.descendDesFactures) {
-        setRealBillMode('kwh')
-        setRealBillKwh(String(Math.round(e.conso_annuelle / 12)))
-      }
-      // Round-trip des données d'exploitation guidées (toutes optionnelles).
-      if (e.region) setFarmRegion(String(e.region))
-      if (e.crop) setFarmCrop(String(e.crop))
-      if (e.surface_ha != null && e.surface_ha !== '') setFarmSurfaceHa(String(e.surface_ha))
-      if (e.irrigation_method) setFarmIrrigation(String(e.irrigation_method))
-      if (e.current_fuel) setFarmFuel(String(e.current_fuel))
-      // fuel_spend_current est stocké en MAD/AN — on le réaffiche en annuel.
-      if (e.fuel_spend_current != null && e.fuel_spend_current !== '') {
-        setFarmFuelSpend(String(e.fuel_spend_current))
-        setFarmFuelPeriod('an')
-      }
-      if (e.hmt_static != null && e.hmt_static !== '') setFarmHmtStatic(String(e.hmt_static))
-      if (e.hmt_drawdown != null && e.hmt_drawdown !== '') setFarmHmtDrawdown(String(e.hmt_drawdown))
-      if (e.profondeur_m != null && e.profondeur_m !== '') setPompeProfondeur(String(e.profondeur_m))
-      // QJR66 — les trois dernières entrées pompage du formulaire. Elles
-      // partaient déjà dans `etude_params` (`buildEtudePompage`) mais n'étaient
-      // JAMAIS relues : rouvrir un brouillon agricole reposait les défauts
-      // (immergée / triphasé / 20 m) par-dessus le choix du vendeur, et
-      // l'enregistrement suivant les figeait. `alim` porte en plus le
-      // drapeau « touché » : une valeur restaurée est un choix humain, pas un
-      // défaut, et la déduction depuis le raccordement du lead ne doit plus
-      // l'écraser.
-      if (e.type_pompe) setPompeType(String(e.type_pompe))
-      if (e.alim) dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: String(e.alim) })
-      if (e.distance_m != null && e.distance_m !== '') setPompeDistance(String(e.distance_m))
+      setAccessoiresOnly(etat.reouverture.accessoiresOnly)
+      pose(etat.gammeNom, setGammeNomDevis)
+      pose(etat.recommendedChoice, setRecommendedChoice)
+      pose(etat.multiMode, setMultiMode)
+      pose(etat.nombreProprietes, setNombreProprietes)
+      pose(etat.villaGroups, setVillaGroups)
+      pose(etat.injectionEnabled, setInjectionEnabled)
+      if (etat.tension === 'mt') dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
+      pose(etat.partDiurne, setDayUsage)
+      pose(etat.repartitionMt, setRepartitionMt)
+      pose(etat.categorieCommerciale, setCategorieCommerciale)
+      pose(etat.commercialAnswers, setCommercialAnswers)
+      pose(etat.pompe.cv, setPompeCv)
+      pose(etat.pompe.hmt, setPompeHmt)
+      pose(etat.pompe.debit, setPompeDebit)
+      pose(etat.pompe.heures, setPompeHeures)
+      pose(etat.consoMensuelle, setConsoMensuelle)
+      pose(etat.distributeur, setDistributeur)
+      pose(etat.distributeurChoisi, setDistributeurChoisi)
+      pose(etat.monthly, setMonthly)
+      consoStockee.current = etat.consoStockee
+      pose(etat.realBillMode, setRealBillMode)
+      pose(etat.realBillKwh, setRealBillKwh)
+      pose(etat.farm.region, setFarmRegion)
+      pose(etat.farm.crop, setFarmCrop)
+      pose(etat.farm.surfaceHa, setFarmSurfaceHa)
+      pose(etat.farm.irrigation, setFarmIrrigation)
+      pose(etat.farm.fuel, setFarmFuel)
+      pose(etat.farm.fuelSpend, setFarmFuelSpend)
+      pose(etat.farm.fuelPeriod, setFarmFuelPeriod)
+      pose(etat.farm.hmtStatic, setFarmHmtStatic)
+      pose(etat.farm.hmtDrawdown, setFarmHmtDrawdown)
+      pose(etat.pompe.profondeur, setPompeProfondeur)
+      // QJR66 — `alim` restaurée est un choix humain (drapeau « touché »).
+      pose(etat.pompe.type, setPompeType)
+      if (etat.pompe.alim) dispatchSizing({ type: 'SAISI', champ: 'pompeAlim', valeur: etat.pompe.alim })
+      pose(etat.pompe.distance, setPompeDistance)
     }).catch(() => {
       setErrors(prev => ({
         ...prev,
@@ -3518,16 +3376,29 @@ export default function DevisGenerator({
   // (`features/ventes/quote/etudeMarcheBloc.js`) ; ici on ne fait que lui
   // passer l'état de l'écran. Résidentiel ⇒ `null` si rien à écrire (aucun
   // appel, voir `persisterDevis`).
-  const blocEtudeMarche = () => projeterEtudeMarche(modeInstallation, {
-    etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
-    choix: choixEcran(),
-    entrees: entreesReellesEcran,
-    partDiurne: dayUsage,
-    tensionRaccordement,
-    repartitionMt,
+  // QJR658 — l'état d'écran à enregistrer, dans la forme de `etatDevis.js`.
+  const etatEcran = () => ({
+    mode: modeInstallation, dateValidite, tauxTva, discountPct, note, prixCible,
+    echeancier: echeancierSaisie, echeancierAEnvoyer: echeancierAEnvoyer.current,
+    lignes: lines, multiMode, nombreProprietes, scenario, recommendedChoice,
+    partDiurne: dayUsage, tension: tensionRaccordement, repartitionMt,
     // QJR575 — la sentinelle « Non précisée » se persiste null.
-    categorie: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
-    reponses: commercialAnswers,
+    categorieCommerciale: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
+    commercialAnswers,
+    pompe: {
+      hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures, type: pompeType,
+      alim: pompeAlim, profondeur: pompeProfondeur, distance: pompeDistance,
+    },
+    farm: {
+      irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
+      surfaceHa: farmSurfaceHa, fuel: farmFuel, fuelSpend: farmFuelSpendAnnual,
+      hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
+    },
+  })
+  const blocEtudeMarche = () => etatVersEcritures(etatEcran(), {
+    etude: modeInstallation === 'industriel' ? etudeIndustrielle : etudeCommerciale,
+    recommended,
+    entrees: entreesReellesEcran,
     pompage: (modeInstallation === 'agricole' && pompageSel)
       ? buildEtudePompage(pompageSel, {
           typePompe: pompeType, alim: pompeAlim,
@@ -3535,17 +3406,7 @@ export default function DevisGenerator({
           profondeur: pompeProfondeur, distance: pompeDistance,
         })
       : {},
-    saisiePompage: {
-      hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
-      typePompe: pompeType, alim: pompeAlim,
-      profondeur: pompeProfondeur, distance: pompeDistance,
-    },
-    exploitation: {
-      irrigation: farmIrrigation, region: farmRegion, crop: farmCrop,
-      surfaceHa: farmSurfaceHa, fuel: farmFuel, fuelSpend: farmFuelSpendAnnual,
-      hmtStatic: farmHmtStatic, hmtDrawdown: farmHmtDrawdown,
-    },
-  })
+  }).etude
 
   // Cœur de persistance extrait de `handleSubmit` (aucun changement de
   // comportement) : construit le payload + les lignes, écrit le devis (édition
@@ -3564,14 +3425,10 @@ export default function DevisGenerator({
     try {
       // QJR515 — `statut` n'est JAMAIS dans l'en-tête d'édition (un envoyé ne
       // repasse jamais en brouillon) : posé seulement à la création ci-dessous.
-      const payload = {
-        date_validite: dateValidite || null,
-        taux_tva: tauxTva,
-        remise_globale: discountPct || '0',
-        note: note || null,
-        mode_installation: modeInstallation,
-        prix_cible_kwc: prixCible !== '' ? prixCible : null,
-      }
+      // QJR658 — en-tête et lignes construits par le module pur
+      // (`etatVersEcritures`), le même que l'aller-retour testé.
+      const ecritures = etatVersEcritures(etatEcran())
+      const payload = { ...ecritures.entete }
       // QX21 — lignes construites UNE fois (mêmes champs qu'avant : HT dérivé du
       // TTC saisi au taux DE LA LIGNE, groupe villa en mode « villas »).
       // XSAL14 — lignes retenues : produits utilisables + lignes de section/note
@@ -3582,7 +3439,7 @@ export default function DevisGenerator({
       // prix HT dérivé du TTC au taux DE LA LIGNE, groupe villa en mode
       // « villas », option / type / ordre / variante / verrous manuels
       // (QJR65 / D12, QJR218) et rôle stocké.
-      const lignesPayload = lignesEcranVersPayload(lines, { multiMode })
+      const lignesPayload = ecritures.lignes
 
       let devisId
       let devisCree = null
@@ -3590,10 +3447,8 @@ export default function DevisGenerator({
         // QJR544 — ÉDITION ATOMIQUE : en-tête + lignes + choix d'écran en UN
         // appel, UNE transaction serveur (replace-lines). Un échec ne change
         // RIEN (ni en-tête, ni lignes) ; plus de PATCH d'en-tête séparé.
-        // QJR624 — l'échéancier part dans `entete` (contrat QJR504).
-        if (echeancierAEnvoyer.current) {
-          payload.echeancier = saisieVersEcheancier(echeancierSaisie)
-        }
+        // QJR624 — l'échéancier part dans `entete` (contrat QJR504) : posé
+        // par `etatVersEcritures` quand il est propre au devis ou touché.
         const extra = {
           entete: surcharge?.entete ? { ...payload, ...surcharge.entete } : payload,
           etude_params: surcharge?.etude_params ?? choixEcran(),
