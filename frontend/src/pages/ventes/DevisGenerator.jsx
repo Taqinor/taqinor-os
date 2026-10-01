@@ -76,6 +76,8 @@ import {
 import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
 import BadgePerime from '../../features/calepinage/BadgePerime'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+// QJR553 (D-QJR5-7) — historique des versions + « Revenir à cette version ».
+import HistoriqueConfiguration from '../../features/ventes/HistoriqueConfiguration'
 // STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
 // fondateur 16/09/2026) qui remplace le bouton acier/aluminium ; il rend
 // lui-même ce bouton en REPLI quand la société n'a aucune catégorie typée
@@ -3552,7 +3554,10 @@ export default function DevisGenerator({
   // EXACTEMENT ce même chemin d'écriture pour le bouton « Concevoir en 3D » :
   // un seul endroit qui sait enregistrer un devis, jamais une seconde logique
   // dupliquée.
-  const persisterDevis = async () => {
+  // QJR553 — `surcharge` (optionnelle, « Revenir à cette version ») :
+  // `{ lignes, entete, etude_params }` d'un instantané rejoués par CE MÊME
+  // chemin d'écriture (replace-lines + jeton) — jamais un second chemin.
+  const persisterDevis = async (surcharge = null) => {
     setSaving(true)
     try {
       // QJR515 — `statut` n'est JAMAIS dans l'en-tête d'édition (un envoyé ne
@@ -3583,14 +3588,18 @@ export default function DevisGenerator({
         // QJR544 — ÉDITION ATOMIQUE : en-tête + lignes + choix d'écran en UN
         // appel, UNE transaction serveur (replace-lines). Un échec ne change
         // RIEN (ni en-tête, ni lignes) ; plus de PATCH d'en-tête séparé.
-        const extra = { entete: payload, etude_params: choixEcran() }
+        const extra = {
+          entete: surcharge?.entete ? { ...payload, ...surcharge.entete } : payload,
+          etude_params: surcharge?.etude_params ?? choixEcran(),
+        }
         // QJR549 — le jeton part avec l'édition ; « Enregistrer quand même »
         // (après un 409) renvoie UNE fois sans jeton.
         if (jetonRef.current && !forcerSansJeton.current) {
           extra.expected_updated_at = jetonRef.current
         }
         forcerSansJeton.current = false
-        const reponse = await ventesApi.replaceLignesDevis(editDevis.id, lignesPayload, extra)
+        const reponse = await ventesApi.replaceLignesDevis(
+          editDevis.id, surcharge?.lignes ?? lignesPayload, extra)
         armerJeton(reponse?.data?.updated_at)
         setConflitVerrou(null)
         devisId = editDevis.id
@@ -3621,7 +3630,9 @@ export default function DevisGenerator({
       // les lignes : le serveur vient d'y recalculer ses propres blocs
       // (`rafraichir_etudes_du_devis`), et cette fusion ne touche QUE les clés
       // qu'elle envoie. Résidentiel ⇒ aucun appel.
-      const etudeMarche = blocEtudeMarche()
+      // QJR553 — une version restaurée porte SA propre étude (déjà rejouée
+      // ci-dessus) : l'étude de l'écran courant ne la recouvre pas.
+      const etudeMarche = surcharge ? null : blocEtudeMarche()
       if (etudeMarche) {
         try {
           const reponseEtude = await ventesApi.patchEtudeParams(devisId, etudeMarche)
@@ -3680,6 +3691,45 @@ export default function DevisGenerator({
     if (!res) return false
     clear(); marquerEnregistre()
     return true
+  }
+
+  // QJR553 (D-QJR5-7) — « Revenir à cette version » : l'écran est rechargé
+  // depuis le contenu de l'instantané (lignes, remise) puis enregistré par le
+  // chemin NORMAL (replace-lines avec entete + etude_params + jeton) ; sur un
+  // envoyé, c'est une correction sur place tracée (QJR518). Puis l'écran
+  // relit le devis enregistré.
+  const [versionHistorique, setVersionHistorique] = useState(0)
+  const revenirAVersion = async (snap) => {
+    const contenu = snap?.contenu || {}
+    // Le lot (propre à UN devis) ne voyage pas : l'écran ne gère pas les lots.
+    const lignesSnap = (contenu.lignes || []).map((l) => {
+      const copie = { ...l }
+      delete copie.lot
+      return copie
+    })
+    if (!lignesSnap.length) return
+    const ok = await confirm({
+      title: 'Revenir à cette version ?',
+      description: 'Le devis reprend les lignes, la remise et l\'échéancier de cette '
+        + 'version, puis il est enregistré. La version actuelle reste dans l\'historique.',
+      confirmLabel: 'Revenir à cette version',
+    })
+    if (!ok) return
+    setLines(withKeys(lignesServeurVersEcran(lignesSnap, tauxTva)))
+    if (contenu.remise_globale != null) {
+      setDiscountPct(String(parseFloat(contenu.remise_globale) || 0))
+    }
+    const entete = {}
+    if (contenu.remise_globale != null) entete.remise_globale = contenu.remise_globale
+    if (Array.isArray(contenu.echeancier)) entete.echeancier = contenu.echeancier
+    const etude = contenu.etude && Object.keys(contenu.etude).length ? contenu.etude : undefined
+    const res = await persisterDevis({ lignes: lignesSnap, entete, etude_params: etude })
+    if (res) {
+      toast.success('Version restaurée et enregistrée.')
+      clear()
+      setVersionHistorique(n => n + 1)
+      setRechargeEdit(n => n + 1)
+    }
   }
 
   const handleSubmit = async (e) => {
@@ -5292,6 +5342,15 @@ export default function DevisGenerator({
             attend que le devis existe. */}
         <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied}
                           avantEnregistrement={enregistrerAvantModele} />
+
+        {/* QJR553 (D-QJR5-7) — historique des versions, avec « Revenir à
+            cette version » seulement si le devis est modifiable (QJR516). */}
+        {editDevis?.id && (
+          <HistoriqueConfiguration devisId={editDevis.id}
+                                   peutRevenir={peutEditerDevis(editDevis)}
+                                   onRevenir={revenirAVersion}
+                                   rafraichir={versionHistorique} />
+        )}
 
         {/* QJR540 — blocs repris du modal DevisForm (supprimé) : badge
             « calepinage périmé » (CAL188, lu de `layout_stale`), le calepinage

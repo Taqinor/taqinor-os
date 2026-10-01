@@ -530,6 +530,8 @@
     avoirs:inconnu, client:objet, detail:texte, lignes:inconnu, paiements:inconnu, totaux:objet
 - frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
+- frontend/src/api/ventesApi.js :: getHistoriqueConfigurationDevis -> /api/django/ventes/devis/<>/historique-configuration
+    detail:texte, diff:inconnu, snapshots:liste
 - frontend/src/api/ventesApi.js :: getLectureClientDevis -> /api/django/ventes/devis/<>/lecture-client
     friction:inconnu, sections:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site

@@ -280,6 +280,10 @@ const ventesApi = {
   // le front ne l'appelle QUE si le rôle courant le permet (voir DevisList).
   getLectureClientDevis: (id) => api.get(`/ventes/devis/${id}/lecture-client/`),
   historiqueDevis: (id) => api.get(`/ventes/devis/${id}/historique/`),
+  // QJR553 (contrat QJR513) — historique de CONFIGURATION (instantanés) ;
+  // `params` optionnel `{ a, b }` → le diff entre deux instantanés.
+  getHistoriqueConfigurationDevis: (id, params) =>
+    api.get(`/ventes/devis/${id}/historique-configuration/`, params ? { params } : undefined),
   noterDevis: (id, body) => api.post(`/ventes/devis/${id}/noter/`, { body }),
   // TAILLES (fondateur 26/08/2026) — écran vendeur des trois tailles
   // Éco/Recommandé/Max (DevisOffresTailles.jsx). Contrat :
