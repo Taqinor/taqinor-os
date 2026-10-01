@@ -385,13 +385,13 @@ class _ParcoursBase(TestCase):
         r = self.api.patch(parcours.url, {chemin: {'valeur': valeur}},
                            format='json')
         self.assertEqual(r.status_code, 200,
-                         f'pose de « {chemin} » refusée : {r.data}')
+                         f'pose de « {chemin} » refusée : {str(r.data)}')
         return r
 
     def regenerer(self, parcours, chemin):
         r = self.api.delete(f'{parcours.url}?chemin={chemin}')
         self.assertEqual(r.status_code, 200,
-                         f'régénération de « {chemin} » refusée : {r.data}')
+                         f'régénération de « {chemin} » refusée : {str(r.data)}')
         return r
 
 
@@ -611,12 +611,15 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
         'taille.nb_panneaux': 14,
         'taille.panel_watt': 710,
         'taille.kwc': 9.94,
-        'mode_installation': 'residentiel',
     }
+
+    #: QJR573 (D-QJR5-8) — ``mode_installation`` est RETIRÉ du registre
+    #: (c'est déjà une colonne du devis) : le bloc effectif ne le rend plus.
+    CHEMINS_RETIRES_ABSENTS = ('mode_installation',)
 
     def _bloc(self, reponse, chemin):
         self.assertIn(chemin, reponse.data['effectif'],
-                      f'« {chemin} » absent du bloc effectif : {reponse.data}')
+                      f'« {chemin} » absent du bloc effectif : {str(reponse.data)}')
         return reponse.data['effectif'][chemin]
 
     def test_get_porte_la_valeur_moteur_de_chaque_chemin_derivable(self):
@@ -630,6 +633,9 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
                 self.assertIsNone(bloc['manuel'])
                 self.assertEqual(bloc['source'], 'auto')
                 self.assertEqual(bloc['effectif'], attendu)
+        for chemin in self.CHEMINS_RETIRES_ABSENTS:
+            with self.subTest(chemin=chemin):
+                self.assertNotIn(chemin, reponse.data['effectif'])
 
     def test_une_surcharge_montre_les_deux_valeurs_cote_a_cote(self):
         parcours = Parcours(self)
@@ -653,14 +659,37 @@ class BlocEffectifPorteLesAutosTests(_ParcoursBase):
 
     def test_delete_dun_chemin_sans_derivation_le_rend_quand_meme(self):
         """Un chemin que le moteur ne sait pas dériver revient avec
-        ``auto: null`` — une omission HONNÊTE, jamais une disparition."""
+        ``auto: null`` — une omission HONNÊTE, jamais une disparition.
+
+        QJR573 — ``tarif.distributeur`` est retiré du registre ; le seul
+        chemin autorisé sans dérivateur est ``recommended_option``."""
         parcours = Parcours(self)
-        self.poser(parcours, 'tarif.distributeur', 'ONEE')
-        reponse = self.regenerer(parcours, 'tarif.distributeur')
-        bloc = self._bloc(reponse, 'tarif.distributeur')
+        self.poser(parcours, 'recommended_option', 'Sans batterie')
+        reponse = self.regenerer(parcours, 'recommended_option')
+        bloc = self._bloc(reponse, 'recommended_option')
         self.assertIsNone(bloc['auto'])
         self.assertIsNone(bloc['manuel'])
         self.assertEqual(bloc['source'], 'auto')
+
+    def test_un_chemin_retire_est_refuse_et_reste_en_lecture_seule(self):
+        """QJR573 (D-QJR5-8) — PATCH / DELETE d'un chemin retiré → 400 ; une
+        surcharge retirée déjà en base reste rendue, ``non_lu``, intacte."""
+        parcours = Parcours(self)
+        pose = self.api.patch(
+            parcours.url, {'tarif.distributeur': {'valeur': 'ONEE'}},
+            format='json')
+        self.assertEqual(pose.status_code, 400, str(pose.data))
+        self.assertIn('tarif.distributeur', pose.data)
+        legacy = {'valeur': 'ONEE', 'origine': 'manuel'}
+        Devis.objects.filter(pk=parcours.devis.pk).update(
+            overrides={'tarif.distributeur': legacy})
+        efface = self.api.delete(f'{parcours.url}?chemin=tarif.distributeur')
+        self.assertEqual(efface.status_code, 400, str(efface.data))
+        bloc = self._bloc(self.api.get(parcours.url), 'tarif.distributeur')
+        self.assertEqual(bloc['manuel'], 'ONEE')
+        self.assertIs(bloc.get('non_lu'), True)
+        self.assertEqual(parcours.recharger().overrides['tarif.distributeur'],
+                         legacy)
 
     def test_la_carte_auto_ignore_le_registre(self):
         """``auto`` est la valeur AUTOMATIQUE : une surcharge posée ne doit pas
@@ -686,11 +715,11 @@ class RegistreNonEcrasableParLEcranTests(_ParcoursBase):
 
     def test_un_patch_devis_portant_overrides_vide_ne_vide_rien(self):
         parcours = Parcours(self)
-        self.poser(parcours, 'tarif.distributeur', 'ONEE')
+        self.poser(parcours, 'recommended_option', 'Sans batterie')
         code, _admis = Parcours.etape_patch_devis(parcours)
         self.assertEqual(code, 200)
-        self.assertEqual(parcours.effectif('tarif.distributeur'),
-                         ('ONEE', 'manuel'))
+        self.assertEqual(parcours.effectif('recommended_option'),
+                         ('Sans batterie', 'manuel'))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
