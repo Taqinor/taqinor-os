@@ -1328,6 +1328,12 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
          "note de terrain en TEXTE LIBRE : aucun chiffre d'étude n'en "
          "dérive, il n'y a rien à comparer."),
         ('tranche_onee', _RAISON_TRANCHE),
+        ('roof_type',
+         "colonne MORTE depuis QJR657 : le webhook du tunnel ne l'écrit plus "
+         "(valeur fabriquée « autre ») et aucun écran ne l'affiche ; la seule "
+         "source du type de toiture est `type_toiture`. Elle reste en base "
+         "jusqu'à sa migration destructive séparée — à retirer d'ici ce "
+         "jour-là."),
     ]
 )
 
