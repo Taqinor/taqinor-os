@@ -27,6 +27,13 @@ def _norm(texte):
     return re.sub(r'\s+', ' ', texte).strip().lower()
 
 
+def _sans_espaces(texte):
+    """Les titres premium sont espacés lettre à lettre (CSS ``letter-spacing``)
+    — l'extraction PDF rend « o p t i o n s p r o p o s é e s ». On compare
+    donc les intitulés sur le texte SANS espaces (même mot, même ordre)."""
+    return re.sub(r'\s+', '', texte)
+
+
 @tag('pdf')
 class TestPdfResidentielSectionsOptions(TestCase):
 
@@ -85,7 +92,7 @@ class TestPdfResidentielSectionsOptions(TestCase):
         self.assertIn('le détail de votre projet', texte)
         self.assertIn('section toiture qjr618', texte)
         self.assertIn('note visible pose sous quinze jours', texte)
-        self.assertIn('options proposées', texte)
+        self.assertIn('optionsproposées', _sans_espaces(texte))
         self.assertIn('garantie étendue qjr618', texte)
         self.assertIn(_norm(fmt_centimes(opt['total_ttc'])), texte)
         self.assertEqual(pages, 3)
@@ -94,7 +101,7 @@ class TestPdfResidentielSectionsOptions(TestCase):
         devis = self._devis('DEV-QJR618-B', avec_structure=False)
         texte, pages = self._texte_pdf(devis)
         self.assertIn('le détail de votre projet', texte)
-        self.assertNotIn('options proposées', texte)
+        self.assertNotIn('optionsproposées', _sans_espaces(texte))
         self.assertEqual(pages, 3)
 
 

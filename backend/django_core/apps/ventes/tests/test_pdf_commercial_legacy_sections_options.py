@@ -33,6 +33,13 @@ def _norm(texte):
     return re.sub(r'\s+', ' ', texte).strip().lower()
 
 
+def _sans_espaces(texte):
+    """Les titres premium sont espacés lettre à lettre (CSS ``letter-spacing``)
+    — l'extraction PDF rend « o p t i o n s p r o p o s é e s ». On compare
+    donc les intitulés sur le texte SANS espaces (même mot, même ordre)."""
+    return re.sub(r'\s+', '', texte)
+
+
 @tag('pdf')
 class TestSectionsOptionsCommercialEtLegacy(TestCase):
 
@@ -79,7 +86,7 @@ class TestSectionsOptionsCommercialEtLegacy(TestCase):
     def _assert_imprime(self, texte):
         self.assertIn('section toiture qjr619', texte)
         self.assertIn('note visible qjr619', texte)
-        self.assertIn('options proposées', texte)
+        self.assertIn('optionsproposées', _sans_espaces(texte))
         self.assertIn('monitoring qjr619', texte)
 
     def test_commercial_premium_full(self):
