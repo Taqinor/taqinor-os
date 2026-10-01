@@ -8,11 +8,9 @@
 // Exécute le VRAI createAutoQuote ; seul `optimalKwcByPayback` est espionné.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-vi.mock('./store/ventesSlice', () => ({
-  createDevis: vi.fn(() => ({ type: 'test/createDevis' })),
-  addLigneDevis: vi.fn(() => ({ type: 'test/addLigneDevis' })),
-}))
-vi.mock('../../api/ventesApi', () => ({ default: {} }))
+// QJR543 — la création passe par ventesApi.createDevisAtomic (jamais atteinte
+// ici : le balayage ne retient aucun palier et le devis s'arrête sur son refus).
+vi.mock('../../api/ventesApi', () => ({ default: { createDevisAtomic: vi.fn() } }))
 vi.mock('./solar', async (importOriginal) => {
   const original = await importOriginal()
   return {

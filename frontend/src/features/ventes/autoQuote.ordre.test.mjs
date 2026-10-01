@@ -10,6 +10,10 @@
 // tableau `rows` FILTRÉ (composition order), calculé de façon synchrone
 // avant tout dispatch — déterministe malgré la concurrence des requêtes.
 //
+// QJR543 — les lignes ne partent plus une par une : elles voyagent dans le
+// corps de l'UNIQUE appel `ventesApi.createDevisAtomic` (devis + lignes en un
+// commit). L'`ordre: idx` reste porté par chaque ligne de ce corps.
+//
 // autoQuote.js ne peut pas être importé tel quel par `node --test` (import
 // relatif vers ./store/ventesSlice, dépendance à un `dispatch` Redux réel —
 // voir autoQuote.paliers.test.mjs) : ce test lit donc le SOURCE, même
@@ -33,22 +37,23 @@ const CODE = SRC
   .join('\n')
 
 test('createAutoQuote : le mapping de création de lignes reçoit idx (r, idx)', () => {
-  assert.match(CODE, /\.map\(\(r,\s*idx\)\s*=>\s*dispatch\(addLigneDevis\(/)
+  assert.match(CODE, /\.map\(\(r,\s*idx\)\s*=>\s*\(\{/)
 })
 
 test('createAutoQuote : le payload addLigneDevis porte "ordre: idx"', () => {
   assert.match(CODE, /ordre:\s*idx,?/)
 })
 
-test('createAutoQuote : ordre est DANS le même objet addLigneDevis que produit/quantite (même bloc de lignes)', () => {
-  const m = CODE.match(/dispatch\(addLigneDevis\(\{[\s\S]*?\}\)\)\.unwrap\(\)\)\)/)
-  assert.ok(m, 'bloc addLigneDevis introuvable')
+test('createAutoQuote : ordre est DANS le même objet de ligne que produit/quantite (même bloc de lignes)', () => {
+  const m = CODE.match(/\.map\(\(r, idx\) => \(\{[\s\S]*?\}\)\)/)
+  assert.ok(m, 'bloc de lignes introuvable')
   const bloc = m[0]
   assert.match(bloc, /produit:\s*parseInt\(r\.produit\)/)
   assert.match(bloc, /quantite:\s*String\(r\.quantite\)/)
   assert.match(bloc, /ordre:\s*idx/)
 })
 
-test('createAutoQuote : la concurrence Promise.all est conservée (pas de sérialisation régressive)', () => {
-  assert.match(CODE, /await Promise\.all\(rows/)
+test('QJR543 — les lignes partent dans UN appel atomique, jamais une par une', () => {
+  assert.doesNotMatch(CODE, /addLigneDevis|createDevis\(/)
+  assert.match(CODE, /ventesApi\.createDevisAtomic\(\{[\s\S]*?\blignes,?\s*\}\)/)
 })

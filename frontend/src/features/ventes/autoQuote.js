@@ -5,7 +5,10 @@
    Sensible au marché du lead : résidentiel (historique), agricole (pompage,
    mêmes appels que le flux manuel) ou industriel (dimensionnement factures +
    étude d'autoconsommation). Lit le lead directement (pas d'état React). */
-import { createDevis, addLigneDevis } from './store/ventesSlice'
+// QJR543 — plus de createDevis + N addLigneDevis : les marchés non
+// résidentiels se créent en UN appel atomique (POST /ventes/devis/atomic/).
+// QJR542 — l'étude part par LA projection partagée avec le générateur.
+import { projeterEtudeMarche } from './quote/etudeMarcheBloc'
 // U3 — le devis résidentiel auto est COMPOSÉ ET CRÉÉ par le serveur
 // (POST /ventes/devis/auto/) : cet écran ne compose plus de lignes
 // résidentielles. Voir la branche `mode === 'residentiel'` plus bas.
@@ -127,7 +130,7 @@ export function noticePalierKwc(kwcSaisi) {
  * @param {object}   lead         Lead complet (facture_hiver, pompe_*, etc.)
  * @param {object[]} produits     Catalogue stock
  * @param {string}   discountStr  Remise globale en %
- * @param {function} dispatch     Redux dispatch
+ * @param {function} dispatch     (ignoré depuis QJR543 — création atomique via ventesApi)
  * @param {number}   pumpHours    Heures de pompage/jour (réglage entreprise
  *                                agricole_pump_hours) ; défaut historique sinon
  * @param {function} onEtude      Rappel facultatif recevant les chiffres clés de
@@ -149,7 +152,7 @@ export function noticePalierKwc(kwcSaisi) {
  *                                canonique du simulateur (comportement
  *                                historique).
  */
-export async function createAutoQuote({ lead, produits, discountStr, dispatch,
+export async function createAutoQuote({ lead, produits, discountStr,
                                         quoteLogic, pumpHours, onEtude,
                                         targetKwc, marques, ordreLignes }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
@@ -185,8 +188,20 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       }
     }
     extra.mode_installation = 'agricole'
-    extra.etude_params = buildEtudePompage(
-      pompageSelection(produits, opts), { ...opts, profondeur: '' })
+    // QJR543 — l'objet BRUT de `buildEtudePompage` porte des clés hors
+    // schéma (pompe_nom) : il passe par LA projection du générateur (QJR542),
+    // qui ne laisse sortir que des clés ECRAN typées.
+    extra.etude_params = projeterEtudeMarche('agricole', {
+      choix: {},
+      entrees: {},
+      pompage: buildEtudePompage(
+        pompageSelection(produits, opts), { ...opts, profondeur: '' }),
+      saisiePompage: {
+        hmt: opts.hmt, debit: opts.debit, heures: opts.heures,
+        typePompe: opts.typePompe, alim: opts.alim,
+        profondeur: '', distance: opts.distance,
+      },
+    })
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
     // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est
@@ -452,41 +467,39 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         : null
       // QX19 — préserve le scénario batterie semé du lead (défaut industriel :
       // sans batterie, réseau) même quand l'étude industrielle est calculée.
-      extra.etude_params = {
-        ...(_etudeInd || {}),
-        scenario: lead.batterie_souhaitee ? _scenarioPrev : 'Sans batterie',
-      }
+      // QJR543 — l'étude BRUTE (kwc, prix_kwc, economies_annuelles… hors
+      // schéma) passe par LA projection du générateur (QJR542) ; le scénario
+      // part AVEC la création : sans lui, réseau + hybride + batterie
+      // totaliseraient la somme des deux paniers.
+      extra.etude_params = projeterEtudeMarche(mode, {
+        etude: _etudeInd,
+        choix: { scenario: lead.batterie_souhaitee ? _scenarioPrev : 'Sans batterie' },
+        entrees: (consoConnue) => (consoConnue != null ? { conso_annuelle: consoConnue } : {}),
+        partDiurne: _dayUsage,
+      })
       // Surface les chiffres clés (taux d'autoconsommation, économies, payback)
       // AVANT enregistrement, pour que l'appelant puisse les afficher.
-      if (extra.etude_params && typeof onEtude === 'function') {
+      if (typeof onEtude === 'function') {
         onEtude({
-          taux_autoconso: extra.etude_params.taux_autoconso,
-          economies_annuelles: extra.etude_params.economies_annuelles,
-          payback: extra.etude_params.payback,
+          taux_autoconso: _etudeInd?.taux_autoconso,
+          economies_annuelles: _etudeInd?.economies_annuelles,
+          payback: _etudeInd?.payback,
         })
       }
     }
   }
-  const devis = await dispatch(createDevis({
-    lead: lead.id,
-    statut: 'brouillon',
-    taux_tva: '20.00',
-    remise_globale: discountStr || '0',
-    note: null,
-    ...extra,
-  })).unwrap()
+  // QJR543 — UN appel atomique : devis + lignes + étude + scénario en un
+  // seul commit serveur. Un échec ne laisse RIEN (plus de brouillon partiel
+  // que « Ouvrir l'édition complète » doublait d'un second devis), et
+  // `etude_params` est écrit par la transaction de /atomic (en POST /devis/
+  // il était en lecture seule et ignoré : m3_jour, taux_autoconso, payback
+  // et le scénario n'atteignaient jamais le devis).
   // PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes = l'ordre
   // canonique du simulateur (celui produit par `rows`, éventuellement déjà
-  // réordonné selon `ParametresGammes.ordre_lignes` — voir `autoFillLines`).
-  // Les créations restent concurrentes (`Promise.all`) : sans `ordre`
-  // explicite, le tri en base retombait sur `id` = ordre d'ARRIVÉE réseau
-  // (une course), pas l'ordre voulu. `idx` est calculé de façon SYNCHRONE sur
-  // le tableau filtré avant tout dispatch, donc déterministe malgré la
-  // concurrence des requêtes.
-  await Promise.all(rows
+  // réordonné selon `ParametresGammes.ordre_lignes`) : `ordre: idx` explicite.
+  const lignes = rows
     .filter(r => r.produit && parseFloat(r.quantite) > 0)
-    .map((r, idx) => dispatch(addLigneDevis({
-      devis: devis.id,
+    .map((r, idx) => ({
       produit: parseInt(r.produit),
       designation: r.designation,
       quantite: String(r.quantite),
@@ -494,6 +507,15 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       remise: '0',
       taux_tva: String(r.taux_tva ?? 20),
       ordre: idx,
-    })).unwrap()))
-  return devis.id
+    }))
+  const { data } = await ventesApi.createDevisAtomic({
+    lead: lead.id,
+    statut: 'brouillon',
+    taux_tva: '20.00',
+    remise_globale: discountStr || '0',
+    note: null,
+    ...extra,
+    lignes,
+  })
+  return data.id
 }
