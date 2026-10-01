@@ -347,7 +347,6 @@ ventes.Regularisation8221
 ventes.RegulatoryDossier
 ventes.RemiseEncaissement
 ventes.RetenueSubie
-ventes.RoofLayout
 ventes.ShareLink
 ventes.SubventionDossier
 ventes.TentativeDebitMandat
