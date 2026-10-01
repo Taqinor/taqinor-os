@@ -5709,18 +5709,8 @@ def trier_file_du_jour(qs):
 # Point d'entrée cross-app LECTURE SEULE, DISTINCT de
 # ``lead_bills_for_devis`` : celui-ci n'existe que si une facture d'hiver
 # existe, alors que le cas visé est justement le dossier qui n'a QUE des kWh.
-def conso_mensuelle_kwh_pour_devis(devis):
-    """Consommation mensuelle déclarée (kWh) du lead d'un devis, ou ``None``.
-
-    ``crm.Lead.conso_mensuelle_kwh`` est LE champ éditable (saisi par la
-    commerciale, écrit par l'OCR de facture) ; ``bill_kwh`` reste l'archive du
-    tunnel web, en lecture seule — les deux ne fusionnent pas, et c'est le
-    champ éditable qui parle au moteur. Même résolution de lead que le reste
-    du module (le lead du devis, sinon le plus récent du client), même bornage
-    société. Aucune donnée fabriquée : absente ⇒ ``None``.
-    QJR585 — :func:`lead_du_devis`."""
-    lead = lead_du_devis(devis)
-    valeur = getattr(lead, 'conso_mensuelle_kwh', None) if lead else None
+def _kwh_positif(valeur):
+    """``valeur`` en ``float`` > 0, sinon ``None`` (vide, illisible, ≤ 0)."""
     if valeur in (None, ''):
         return None
     try:
@@ -5728,6 +5718,36 @@ def conso_mensuelle_kwh_pour_devis(devis):
     except (TypeError, ValueError):
         return None
     return valeur if valeur > 0 else None
+
+
+#: QJR662 — segments du lead pour lesquels le kWh mensuel DÉCLARÉ sur le site
+#: (``bill_kwh``) sert de repli au moteur. Jamais le résidentiel.
+SEGMENTS_REPLI_KWH_SITE = ('industriel', 'commercial')
+
+
+def conso_mensuelle_kwh_pour_devis(devis):
+    """Consommation mensuelle (kWh) du lead d'un devis, ou ``None``.
+
+    ``crm.Lead.conso_mensuelle_kwh`` est LE champ éditable (saisi par la
+    commerciale, écrit par l'OCR de facture) et il PRIME toujours.
+    QJR662 (décision fondateur 01/10/2026, amende CAD166) : pour un lead
+    INDUSTRIEL ou COMMERCIAL dont ce champ est vide, le moteur se replie sur
+    ``bill_kwh`` — le kWh mensuel déclaré sur le site, lu en LECTURE SEULE
+    (sa provenance « saisi sur le site le … » reste celle de
+    :func:`provenance_site`). Jamais pour le résidentiel ni l'agricole ; les
+    deux colonnes ne fusionnent pas (aucune migration, aucune écriture).
+    Même résolution de lead que le reste du module (le lead du devis, sinon le
+    plus récent du client), même bornage société. Aucune donnée fabriquée :
+    absente ⇒ ``None``. QJR585 — :func:`lead_du_devis`."""
+    lead = lead_du_devis(devis)
+    if lead is None:
+        return None
+    valeur = _kwh_positif(getattr(lead, 'conso_mensuelle_kwh', None))
+    if valeur is not None:
+        return valeur
+    if getattr(lead, 'type_installation', None) in SEGMENTS_REPLI_KWH_SITE:
+        return _kwh_positif(getattr(lead, 'bill_kwh', None))
+    return None
 
 
 # ── QA-COHERENCE — « signé fantôme », en LECTURE SEULE pour l'auditeur ──────
