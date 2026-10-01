@@ -1825,6 +1825,22 @@ class AppliquerAuDevisTests(_Base):
         self.assertIn('date', (devis.etude_params or {})
                       .get('resync_apres_envoi') or {})
 
+    def test_un_devis_ENVOYE_ne_porte_QU_UNE_trace_de_correction(self):
+        """QJR557 suivi — le geste taille est UN geste : la trace interne du
+        pipeline (« calepinage (lignes) ») ne double pas la trace externe
+        « taille d'offre ». Exactement une entrée « Corrigé après envoi »."""
+        from apps.ventes.models import DevisActivity
+        devis = self._prepare('app-envoye-une', {'nb_panneaux': 20},
+                              statut='envoye')
+        user = self._user(devis.company)
+        with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
+            ot.appliquer_au_devis(devis, 'recommande', utilisateur=user)
+        corrections = list(DevisActivity.objects.filter(
+            devis=devis, field='correction_apres_envoi'))
+        self.assertEqual(len(corrections), 1,
+                         [a.body for a in corrections])
+        self.assertIn("taille d'offre", corrections[0].body or '')
+
     def test_un_devis_REMPLACE_est_refuse_sans_revision(self):
         """QJR557 — la garde TAILLE (prédicat unique) : un devis remplacé
         ne se corrige ni ne se révise (on révise sa remplaçante)."""

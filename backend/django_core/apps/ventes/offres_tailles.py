@@ -1777,7 +1777,10 @@ def appliquer_au_devis(devis, cle, *, utilisateur=None):
                 # hausse comme à la baisse. La contenance réelle du toit, elle,
                 # a déjà refusé au-dessus.
                 exact=True,
-                mode=MODE_RECONCILIER))['resynchro']
+                mode=MODE_RECONCILIER,
+                # QJR557 suivi — la trace « taille d'offre » posée plus bas
+                # couvre le geste entier : pas de seconde trace interne.
+                tracer_correction=False))['resynchro']
         except SyncLayoutError as erreur:
             raise ApplicationImpossible(
                 erreur.detail,

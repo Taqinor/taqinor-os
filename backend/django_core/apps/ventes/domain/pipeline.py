@@ -575,6 +575,13 @@ class IntentionDevis:
     #: explicite) : onduleur autonome + batterie, mono-option. ``False`` (LE
     #: DÉFAUT) ⇒ pipeline strictement inchangé.
     hors_reseau: bool = False
+    #: QJR557 suivi — ``True`` (LE DÉFAUT) : sur un ENVOYÉ, ``appliquer``
+    #: encadre ``ecrire_lignes`` / ``reconcilier`` de sa propre trace
+    #: « corrigé après envoi » (QJR518). ``False`` : l'appelant ENGLOBE déjà
+    #: le geste dans sa propre trace (la taille d'offre : resynchro + modules
+    #: + matériel = UN geste) — le pipeline s'abstient, sans quoi le chatter
+    #: portait deux entrées pour une seule correction.
+    tracer_correction: bool = True
 
 
 def _scenario_de(intention):
@@ -1208,7 +1215,8 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     from apps.ventes.domain.modifiabilite import (
         debut_de_geste_devis, fin_de_geste_devis)
     avant_geste = (debut_de_geste_devis(devis, intention.user)
-                   if mode in (MODE_ECRIRE, MODE_RECONCILIER) else None)
+                   if mode in (MODE_ECRIRE, MODE_RECONCILIER)
+                   and intention.tracer_correction else None)
     if mode == MODE_ECRIRE:
         ecrire_lignes(devis, intention.composition,
                       company=intention.company,
