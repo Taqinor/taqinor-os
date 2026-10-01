@@ -64,12 +64,9 @@ export function downloadBlob(blobData, filename) {
   downloadBlobInGesture().deliver(new Blob([blobData]), filename)
 }
 
-// Récupère le nom de fichier proposé par le serveur (Content-Disposition).
-export function filenameFromResponse(res, fallback) {
-  const cd = res?.headers?.['content-disposition'] || ''
-  const m = /filename="?([^"]+)"?/.exec(cd)
-  return m ? m[1] : fallback
-}
+// Nom de fichier proposé par le serveur (Content-Disposition) : l'unique
+// implémentation (filename* RFC 5987 compris) vit dans utils/downloadBlob.
+export { filenameFromResponse } from '../utils/downloadBlob'
 
 // Télécharge un blob .xlsx renvoyé par l'API. VX172 — même traitement que
 // downloadBlob() ci-dessus (helper générique partagé par les 2 noms).

@@ -1298,7 +1298,7 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
     )]
     + [(champ, _RAISON_QUALIFICATION) for champ in (
-        'bill_range_bucket', 'roof_type', 'roof_age', 'distributeur',
+        'bill_range_bucket', 'roof_age', 'distributeur',
         'nb_etages', 'regularisation_8221',
     )]
     # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé : deux des huit

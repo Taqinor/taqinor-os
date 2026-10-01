@@ -13,6 +13,15 @@ import { dirname, join } from 'node:path'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'AppointmentBooker.jsx'), 'utf8')
 
+test('QJR652 : le .ics passe par downloadBlobInGesture ouvert avant le premier await', () => {
+  const bloc = SRC.slice(SRC.indexOf('async function handleDownloadIcs'),
+    SRC.indexOf('async function handleConfirmWhatsapp'))
+  assert.ok(bloc.indexOf('downloadBlobInGesture()') > 0)
+  assert.ok(bloc.indexOf('downloadBlobInGesture()') < bloc.indexOf('await crmApi'))
+  assert.match(bloc, /pending\.deliver\(/)
+  assert.doesNotMatch(SRC, /function downloadBlob\(/)
+})
+
 // P2#10 — <form> imbriqué dans le <form> de LeadForm (HTML invalide, Enter
 // fragile). Le fix retire TOUTE balise <form> du fichier : la soumission
 // (clic + Entrée) est gérée localement sur un div role="group".

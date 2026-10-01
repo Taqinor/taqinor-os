@@ -13,14 +13,12 @@
    un `fetchBlob()`. Les devis passent le moteur vendorisé `/proposal` (le
    SEUL chemin PDF devis client), les factures leur PDF legacy propre. Aucun
    chemin nouveau n'est créé ici, et rien n'y change un statut. */
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
-import { Download, ExternalLink, RotateCcw } from 'lucide-react'
+import { Download, ExternalLink } from 'lucide-react'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
-import { Button, Spinner, EmptyState } from '../../ui'
+import { Button } from '../../ui'
 import { openPdfBlob, ouvrirPdfBlob } from '../../utils/pdfBlob'
-
-// pdfjs est lourd : il ne doit jamais entrer dans le chunk de la liste.
-const PdfCanvas = lazy(() => import('./PdfCanvas'))
+import { usePdfPreview } from './usePdfPreview'
+import PdfPreviewBody from './PdfPreviewBody'
 
 export default function PdfPreviewSheet({
   open,
@@ -30,52 +28,10 @@ export default function PdfPreviewSheet({
   filename,
   fetchBlob,
 }) {
-  const [blob, setBlob] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  // Le rendu canvas peut échouer (PDF corrompu, mémoire) : on bascule alors
-  // sur le repli d'actions plutôt que de laisser un cadre vide.
-  const [renderFailed, setRenderFailed] = useState(false)
-  const [reloadKey, setReloadKey] = useState(0)
-  // Un aperçu rouvert pendant qu'un précédent chargement est en vol ne doit
-  // jamais afficher le PDF du document précédent.
-  const runIdRef = useRef(0)
-
-  const load = useCallback(async () => {
-    if (!fetchBlob) return
-    const runId = runIdRef.current + 1
-    runIdRef.current = runId
-    setLoading(true)
-    setError(null)
-    setRenderFailed(false)
-    try {
-      const b = await fetchBlob()
-      if (runIdRef.current !== runId) return
-      setBlob(b)
-    } catch (err) {
-      if (runIdRef.current !== runId) return
-      setBlob(null)
-      setError(err?.message || 'Aperçu indisponible.')
-    } finally {
-      if (runIdRef.current === runId) setLoading(false)
-    }
-  }, [fetchBlob])
-
-  useEffect(() => {
-    if (!open) {
-      // Fermeture : on relâche les octets du PDF (un blob multi-Mo n'a rien à
-      // faire en mémoire une fois le panneau fermé) et on repart d'un état
-      // propre — la réouverture recharge.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- purge à la fermeture, aucune cascade
-      setBlob(null)
-      setError(null)
-      setRenderFailed(false)
-      return
-    }
-    load()
-  }, [open, load, reloadKey])
-
-  const showFallback = !loading && (!!error || renderFailed || !blob)
+  // QJR653 — la machine d'états (chargement, abandon de la requête précédente,
+  // repli) vit dans usePdfPreview ; le corps d'aperçu dans PdfPreviewBody.
+  const preview = usePdfPreview(fetchBlob, { enabled: open })
+  const { blob } = preview
 
   return (
     <ResponsiveDialog
@@ -102,28 +58,16 @@ export default function PdfPreviewSheet({
       )}
     >
       <div className="apx-pdf-preview" data-testid="apx-pdf-preview">
-        {loading && (
-          <p className="ldp-pdf-loading">
-            <Spinner /> Préparation de l'aperçu…
-          </p>
-        )}
-        {showFallback && (
-          <EmptyState
-            className="p-6"
-            title="Aperçu indisponible"
-            description={error || 'Le rendu de l’aperçu n’a pas abouti — le document reste téléchargeable.'}
-            action={(
-              <Button variant="outline" size="sm" onClick={() => setReloadKey(k => k + 1)}>
-                <RotateCcw /> Réessayer
-              </Button>
-            )}
-          />
-        )}
-        {!loading && !showFallback && (
-          <Suspense fallback={<p className="ldp-pdf-loading"><Spinner /> Chargement de l'aperçu…</p>}>
-            <PdfCanvas blob={blob} onError={() => setRenderFailed(true)} />
-          </Suspense>
-        )}
+        <PdfPreviewBody
+          blob={preview.blob}
+          loading={preview.loading}
+          errorKind={preview.errorKind}
+          errorMessage={preview.errorMessage}
+          renderFailed={preview.renderFailed}
+          onRenderError={preview.onRenderError}
+          onReload={preview.reload}
+          reloadKey={preview.reloadKey}
+        />
       </div>
     </ResponsiveDialog>
   )

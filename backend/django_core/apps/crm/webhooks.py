@@ -795,7 +795,6 @@ def _map_payload_to_fields(data: dict) -> dict:
         # nom canonique ; ambigu/inconnu → texte conservé tel quel.
         'ville': (_ville_corrigee(data.get('city'))
                   if data.get('city') else None),
-        'roof_type': (str(data.get('roofType')).strip()[:30] if data.get('roofType') else None),
         'bill_range_bucket': data.get('billRange') if data.get('billRange') in Lead.BillRangeBucket.values else None,
         'roi_band': roi_band,
         # CAD121 (21/09/2026) — TROIS états, jamais deux. `True` = le client a

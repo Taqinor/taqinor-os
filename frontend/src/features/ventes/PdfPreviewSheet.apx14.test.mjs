@@ -12,12 +12,15 @@ import path from 'node:path'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const sheet = readFileSync(path.join(__dirname, 'PdfPreviewSheet.jsx'), 'utf8')
+// QJR653 — le rendu canvas vit dans le corps partagé monté par le panneau.
+const body = readFileSync(path.join(__dirname, 'PdfPreviewBody.jsx'), 'utf8')
 const page = (f) => readFileSync(path.join(__dirname, '..', '..', 'pages', 'ventes', f), 'utf8')
 const css = readFileSync(path.join(__dirname, '..', '..', 'index.css'), 'utf8')
 
 test('le panneau rend le PDF INLINE (PdfCanvas), jamais un onglet', () => {
-  assert.match(sheet, /const PdfCanvas = lazy\(\(\) => import\('\.\/PdfCanvas'\)\)/)
-  assert.match(sheet, /<PdfCanvas\b/)
+  assert.match(body, /const PdfCanvas = lazy\(\(\) => import\('\.\/PdfCanvas'\)\)/)
+  assert.match(body, /<PdfCanvas\b/)
+  assert.match(sheet, /<PdfPreviewBody\b/)
   // Le rendu passe par ResponsiveDialog : panneau au bureau, tiroir bas en
   // mobile — zéro dépendance nouvelle.
   assert.match(sheet, /import \{ ResponsiveDialog \} from '\.\.\/\.\.\/ui\/ResponsiveDialog'/)

@@ -148,7 +148,6 @@ const fieldLabels = {
   financing_intent: { label: 'Financement envisagé', section: 'divers', inputId: 'lf-financing-intent' },
   project_timeline: { label: 'Horizon du projet', section: 'divers', inputId: 'lf-project-timeline' },
   facility_type: { label: 'Type de site (pro)', section: 'divers', inputId: 'lf-facility-type' },
-  roof_type: { label: 'Type de toiture (site)', section: 'divers', inputId: 'lf-roof-type' },
   roof_age: { label: 'Âge de la toiture (ans)', section: 'divers', inputId: 'lf-roof-age' },
 
   // ── Vague 1 du script d'appel guidé (CAD149/CAD174) ───────────────────
