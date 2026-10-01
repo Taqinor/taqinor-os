@@ -249,6 +249,34 @@ def pourcentages_echeancier(devis, lignes=None) -> list:
     return out
 
 
+def montants_tranches(total_ttc, pourcentages) -> dict:
+    """QJR623 — les MONTANTS d'un échéancier imprimé, au centime, qui SOMMENT
+    au total.
+
+    ``pourcentages`` : paires ``(clé, pct)`` ordonnées (ou un dict ordonné).
+    Chaque tranche non finale vaut ``total × pct / 100`` quantifié au centime
+    (``ROUND_HALF_UP``, la règle de la chaîne canonique) ; la DERNIÈRE reçoit
+    le reliquat exact, de sorte que la somme égale ``total_ttc`` au centime.
+
+    Fonction PURE (Decimal, aucune requête). Elle ne lit JAMAIS ``next_tranche``,
+    dont la dernière tranche est le reste APRÈS factures émises : un document
+    de devis imprime la répartition déclarée, pas l'état de la facturation.
+    """
+    paires = list(pourcentages.items() if hasattr(pourcentages, 'items')
+                  else pourcentages)
+    total = _q(Decimal(str(total_ttc or 0)))
+    out = {}
+    cumul = Decimal('0')
+    for i, (cle, pct) in enumerate(paires):
+        if i == len(paires) - 1:
+            out[cle] = total - cumul
+        else:
+            montant = _q(total * Decimal(str(pct or 0)) / 100)
+            out[cle] = montant
+            cumul += montant
+    return out
+
+
 def termes_paiement_devis(devis, termes_defaut, lignes=None) -> dict:
     """QJR622 — L'échéancier DU DEVIS rabattu sur les trois créneaux
     ``{acompte, materiel, solde}`` que les conditions imprimées nomment.

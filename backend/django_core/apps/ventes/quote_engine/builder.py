@@ -506,6 +506,72 @@ def _taux_libelle(taux) -> str:
     return f"{t:g}".replace(".", ",")
 
 
+def _pct_simple(valeur):
+    """``Decimal('40.00')`` → ``40`` ; ``33.5`` → ``33.5`` (jamais un Decimal :
+    le dict de rendu est sérialisé — empreinte PVFRESH, proposition JSON)."""
+    try:
+        f = float(valeur)
+    except (TypeError, ValueError):
+        return valeur
+    return int(f) if f == int(f) else round(f, 2)
+
+
+def repartition_paiement(total, termes, custom_acompte=None) -> dict:
+    """QJR623 — les cases « Modalités de paiement » du Devis final, au CENTIME.
+
+    Remplace l'ancienne répartition du moteur legacy (``_repartir_paiement`` :
+    cases arrondies au MILLIER, reliquat sur un total arrondi au dirham —
+    ERR120). Les montants viennent de ``utils.echeancier.montants_tranches``
+    (reliquat sur la dernière tranche) : acompte + matériel + solde ==
+    ``total`` au centime.
+
+    * ``termes`` : ``{acompte, materiel, solde}`` en pourcentages (échéancier
+      RÉEL du devis, QJR622) ; la part matériel imprimée est ``100 − a − s``
+      (un échéancier à deux tranches n'a pas de case matériel) ;
+    * ``custom_acompte`` (MAD, mode « personnalisé » du dialogue PDF) garde son
+      comportement jusqu'à QJR624 : borné à ``[0, total − solde]`` (ERR76),
+      matériel = reste ; matériel ≤ 0 ⇒ DEUX cases (acompte + solde2).
+
+    Pure : aucun statut, aucune écriture (règle #4). Montants en ``float``.
+    """
+    from decimal import Decimal as _D
+
+    from apps.ventes.utils.echeancier import montants_tranches
+
+    tot = _D(str(total or 0)).quantize(_D("0.01"))
+    pa = _D(str(termes.get("acompte", 30) or 0))
+    ps = _D(str(termes.get("solde", 10) or 0))
+    pm = _D(100) - pa - ps
+    m = montants_tranches(tot, [("acompte", pa), ("materiel", max(pm, _D(0))),
+                                ("solde", ps)])
+    acompte, materiel, solde = m["acompte"], m["materiel"], m["solde"]
+    pct_a, pct_m, pct_s = pa, pm, ps
+    if pm <= 0:
+        # Échéancier sans tranche matériel : le reliquat va au solde.
+        solde = tot - acompte
+        materiel = _D(0)
+    if custom_acompte is not None:
+        solde = montants_tranches(tot, [("solde", ps), ("reste", 0)])["solde"]
+        acompte = _D(str(custom_acompte)).quantize(_D("0.01"))
+        acompte = max(_D(0), min(acompte, tot - solde))
+        materiel = tot - acompte - solde
+        pct_a = (acompte / tot * 100).quantize(_D("1")) if tot else _D(0)
+        pct_s = ps
+        pct_m = 100 - pct_a - pct_s
+    deux_cases = materiel <= 0
+    solde2 = tot - acompte
+    pct_s2 = 100 - pct_a
+    return {
+        "total": float(tot),
+        "acompte": float(acompte), "materiel": float(max(materiel, _D(0))),
+        "solde": float(solde),
+        "pct_a": _pct_simple(pct_a), "pct_m": _pct_simple(pct_m),
+        "pct_s": _pct_simple(pct_s),
+        "deux_cases": bool(deux_cases),
+        "solde2": float(solde2), "pct_s2": _pct_simple(pct_s2),
+    }
+
+
 def date_correction_apres_envoi(devis) -> str:
     """QJR628 — « JJ/MM/AAAA » de la dernière correction après envoi, sinon ''.
 
@@ -3180,7 +3246,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Conditions de paiement par mode — réglage éditable de la société, repli
     # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
     from apps.ventes.utils.company_settings import payment_terms_for
-    payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
+    from apps.ventes.utils.echeancier import termes_paiement_devis
+    # QJR623 — l'échéancier RÉEL du devis (``Devis.echeancier``, FG46) prime,
+    # par la MÊME correspondance que la page publique (QJR622) ; le réglage
+    # société n'est plus que le repli. Les pourcentages sont rendus en nombres
+    # simples (int si entiers) : le dict de rendu reste sérialisable JSON.
+    payment_terms = {
+        cle: _pct_simple(val)
+        for cle, val in termes_paiement_devis(
+            devis, payment_terms_for(getattr(devis, "company", None), mode),
+            lignes).items()}
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -3802,6 +3877,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
         logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
                          getattr(devis, "reference", "?"))
+
+    # ── QJR623 — montants des cases « Modalités de paiement » (Devis final) ──
+    # Calculés ICI, au centime, par option (le total ×N villas compris) ; le
+    # moteur legacy choisit la branche qu'il imprime et n'arrondit plus rien.
+    _n_villas = data.get("nombre_proprietes") or 1
+    data["montants_tranches"] = {
+        branche: repartition_paiement(
+            round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
+            payment_terms,
+            opts['custom_acompte'] if opts['payment_mode'] == "custom"
+            else None)
+        for branche in ("sans", "avec")}
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
     # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
