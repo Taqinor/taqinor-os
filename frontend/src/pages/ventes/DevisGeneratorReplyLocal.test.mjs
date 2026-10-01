@@ -37,7 +37,8 @@ test('QJR211 — succès agricole (pompage) : efface une bannière de repli rés
   const bloc = DG.slice(idx, finBranche)
   assert.match(
     bloc,
-    /setLines\(withKeys\(generated\)\)[\s\S]*?setCompositionSourceLocale\(null\)/,
+    // QJR570 — les lignes passent par la FUSION `recomposerLignes`.
+    /recomposerLignes\(generated\)[\s\S]*?setCompositionSourceLocale\(null\)/,
     'AVANT QJR211 : un succès agricole ne remettait jamais compositionSourceLocale à null — ' +
     'la bannière résidentielle antérieure survivait au changement de marché',
   )

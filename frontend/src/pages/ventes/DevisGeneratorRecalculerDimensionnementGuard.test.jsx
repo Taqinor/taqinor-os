@@ -233,3 +233,54 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
     expect(nbPanneauxField().value).toBe(apresClic)
   })
 })
+
+// QJR570 (D-QJR5-4) — recomposer FUSIONNE : un prix tapé survit à
+// « Recalculer » sans aucune question ; une quantité FIGÉE déclenche UNE
+// confirmation, et « Annuler » ne touche à rien.
+const ligneDe = (designation) => screen.getByDisplayValue(designation).closest('tr')
+const prixDe = (designation) => ligneDe(designation).querySelector('td[data-label="Prix unit. TTC"] input')
+const qteDe = (designation) => ligneDe(designation).querySelector('td[data-label="Qté"] input')
+const instantaneLignes = () => [...document.querySelectorAll('tr[data-line-key]')].map(tr => [
+  tr.querySelector('td[data-label="Qté"] input')?.value,
+  tr.querySelector('td[data-label="Prix unit. TTC"] input')?.value,
+])
+
+describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
+  it('sans quantité figée : aucune confirmation, le prix tapé à la main est gardé', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(hiverField(), { target: { value: '1200' } })
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
+    fireEvent.change(prixDe('Installation'), { target: { value: '5555' } })
+    await waitFor(() => expect(prixDe('Installation').value).toBe('5555'))
+
+    await cliquerRecalculJusquaComposition()
+    expect(prixDe('Installation').value).toBe('5555')
+    expect(confirmSpy).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('quantité figée + Annuler : une confirmation, et les lignes restent identiques', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(hiverField(), { target: { value: '1200' } })
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
+    fireEvent.change(qteDe('Socles'), { target: { value: '24' } })
+    await waitFor(() => expect(qteDe('Socles').value).toBe('24'))
+    const avant = instantaneLignes()
+
+    await waitFor(() => {
+      fireEvent.click(recalcButton())
+      expect(confirmSpy).toHaveBeenCalled()
+    }, { timeout: 10000 })
+    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Socles : 24/)
+    // Annuler : rien n'est dispatché, aucune composition ne part.
+    expect(instantaneLignes()).toEqual(avant)
+    expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
+    confirmSpy.mockRestore()
+  })
+})

@@ -88,6 +88,8 @@ import {
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   kwcFactureDesLignes,
+  // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
+  fusionnerRecomposition, lignesQuantiteFigee,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -320,6 +322,10 @@ const withKeys = (rows) => rows.map(r => ({
   // QJR529 — remise PAR LIGNE stockée (%), conservée comme `prixManuel` :
   // jamais remise à '0' en silence (le total client monterait).
   remise: String(r.remise ?? '0'),
+  // QJR570 — marqueur d'ÉCRAN « ligne issue d'une composition » (jamais
+  // envoyé au serveur) : une recomposition retire une ligne composée hier et
+  // absente aujourd'hui, mais garde une ligne ajoutée à la main.
+  compose: !!r.compose,
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -1012,7 +1018,8 @@ export default function DevisGenerator({
   useEffect(() => {
     if (linesInitialized.current || !produits.length) return
     linesInitialized.current = true
-    setLines(withKeys(defaultProductLines(produits)))
+    // QJR570 — les lignes par défaut sont une composition (pas une saisie).
+    setLines(withKeys(defaultProductLines(produits).map(r => ({ ...r, compose: true }))))
   }, [produits])
 
   const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
@@ -2412,6 +2419,8 @@ export default function DevisGenerator({
             prixManuel: false,
             // QJR569 — …et le verrou de quantité (nouveau produit, nouvelle main).
             quantiteManuelle: false,
+            // QJR570 — un produit choisi à la main n'est plus une ligne composée.
+            compose: false,
             // QJR523 — le rôle stocké était celui de l'ANCIEN produit : le
             // serveur le re-déduit du nouveau.
             role_devis: '',
@@ -2606,6 +2615,39 @@ export default function DevisGenerator({
       l.groupeIndex === idx ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
   }
 
+  // QJR570 (D-QJR5-4) — LE point d'écriture des trois recompositions
+  // (composition locale, dry-run serveur, pompage) : FUSION par id produit
+  // (`fusionnerRecomposition`) — prix tapés, sections, notes, options et
+  // produits ajoutés à la main conservés d'office. Une quantité figée en
+  // conflit est GARDÉE (le vendeur l'a confirmé avant le geste) et NOMMÉE.
+  const recomposerLignes = (generated) => {
+    const { conflits } = fusionnerRecomposition(lines, generated)
+    setLines(ls => withKeys(fusionnerRecomposition(ls, generated).lignes))
+    if (conflits.length) {
+      toast.warning('Quantités figées gardées : ' + conflits.slice(0, 5)
+        .map(c => `${c.designation} ${c.figee} (recalculé : ${c.recalculee})`).join(', ')
+        + (conflits.length > 5 ? '…' : '') + '.')
+    }
+  }
+
+  // QJR570 — la seule question posée avant une recomposition : des quantités
+  // figées à la main existent (5 désignations au plus). Sans elles, AUCUNE
+  // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
+  // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
+  const avecQuantitesFigees = (geste) => {
+    const figees = lignesQuantiteFigee(lines)
+    if (!figees.length) { geste(); return }
+    const noms = figees.slice(0, 5)
+      .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
+      + (figees.length > 5 ? '…' : '')
+    confirm({
+      title: 'Garder les quantités figées ?',
+      description: `Quantités saisies à la main (${noms}) : la recomposition les GARDE. `
+        + 'Pour prendre la quantité recalculée, cliquez « Libérer » sur la ligne puis recomposez.',
+      confirmLabel: 'Recomposer en les gardant',
+    }).then(ok => { if (ok) geste() })
+  }
+
   // VX18 — un modèle appliqué remplace les lignes du formulaire. La réponse
   // apply-preset porte les lignes du devis (modèle HT) ; on les reconvertit en
   // lignes d'écran (TTC) et on remplace via setLines(withKeys(...)). Repli sûr
@@ -2775,7 +2817,7 @@ export default function DevisGenerator({
     // (même patron que « prix à renseigner ») : on les nomme avec leur motif
     // plutôt que de les laisser disparaître sans explication.
     setOnduleursIncomplets(metaOnduleursIncomplets)
-    setLines(withKeys(generated))
+    recomposerLignes(generated)
     // QJR99 — rend les lignes composées : `resoudreComposition` (moitié pure de
     // `useComposition`) en a besoin pour NOMMER la source du repli.
     return generated
@@ -2867,7 +2909,7 @@ export default function DevisGenerator({
       autofillKwc: mismatch,
       marquesManquantes: marquesMsg,
     }))
-    setLines(withKeys(generated))
+    recomposerLignes(generated)
   }
 
   const handleAutoFill = async () => {
@@ -2889,7 +2931,7 @@ export default function DevisGenerator({
         return
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
-      setLines(withKeys(generated))
+      recomposerLignes(generated)
       // QJR211 — succès sur le marché agricole : la bannière « composition
       // locale (serveur indisponible) » d'un repli résidentiel antérieur ne
       // décrit plus rien après ce changement de marché.
@@ -3007,7 +3049,8 @@ export default function DevisGenerator({
   // un compteur, lui, avance toujours.
   const appliquerTailleDimensionnement = (ligne) => {
     if (!ligne || !(ligne.panneaux > 0)) return
-    dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne })
+    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
+    avecQuantitesFigees(() => dispatchSizing({ type: 'TAILLE_APPLIQUEE', ligne }))
   }
 
   // FOUNDER 26/08 — bouton « Recalculer le dimensionnement ». Causes RÉELLES
@@ -3037,10 +3080,10 @@ export default function DevisGenerator({
   // L-2OPT), puis relance la composition par le chemin EXACT du bouton
   // « Auto-remplir » (`handleAutoFill` — dry-run serveur résidentiel, repli
   // local `composeLocalement` inchangé pour les autres marchés/pannes
-  // réseau) : aucune deuxième règle de composition, et donc le même
-  // remplacement intégral des lignes que l'Auto-remplir existant produit déjà
-  // aujourd'hui (il ne préserve pas plus les lignes ajoutées à la main que
-  // lui — comportement historique inchangé, pas régressé par ce bouton).
+  // réseau) : aucune deuxième règle de composition, et donc la même FUSION
+  // que l'Auto-remplir (QJR570, D-QJR5-4 : prix tapés, sections, notes,
+  // options et produits ajoutés à la main conservés ; quantités figées
+  // confirmées AVANT la transition, jamais dans handleAutoFill).
   //
   // QJR99 — F1/F2 (revue adversariale 26/08) exigeaient de DÉVERROUILLER le
   // garde-fou « touché » le temps du calcul synchrone, puis de restaurer
@@ -3103,7 +3146,8 @@ export default function DevisGenerator({
     // QUI SUIT et restauré dans le même mouvement, et `compositionSeq` avance —
     // un recalcul qui retombe sur le MÊME compte de panneaux doit quand même
     // relancer la composition (catalogue/marques/scénario ont pu changer).
-    dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu })
+    // QJR570 — confirmation (quantités figées seulement) AVANT la transition.
+    avecQuantitesFigees(() => dispatchSizing({ type: 'RECALCUL_DEMANDE', retenu }))
   }
   // QJR99 — L'UNIQUE effet de composition : « Appliquer cette taille » et
   // « Recalculer le dimensionnement » avancent tous deux `compositionSeq`, et
@@ -4343,7 +4387,7 @@ export default function DevisGenerator({
                 <RefreshCw /> Recalculer le dimensionnement
               </Button>
               <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
-                      loading={autoFillLoading} onClick={handleAutoFill}>
+                      loading={autoFillLoading} onClick={() => avecQuantitesFigees(handleAutoFill)}>
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>

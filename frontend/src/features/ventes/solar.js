@@ -1807,6 +1807,96 @@ function _roleVariante(l) {
   return ''
 }
 
+// ── QJR570 (D-QJR5-4) — RECOMPOSER FUSIONNE, ne remplace plus ───────────────
+// Auto-remplir, « Appliquer cette taille » et « Recalculer » remplaçaient les
+// lignes d'un bloc : un prix tapé, une section, une note, une option ou un
+// produit ajouté à la main disparaissaient. `fusionnerRecomposition` apparie
+// les anciennes lignes aux lignes générées PAR ID PRODUIT et :
+//   • reporte prix_unit_ttc + prixManuel quand le prix avait été tapé ;
+//   • prend la `variante` de la ligne générée (le découpage d'options est
+//     celui de la nouvelle composition) ;
+//   • réinsère à leur position relative les anciennes lignes absentes de la
+//     composition qui portent une saisie humaine : sections, notes,
+//     optionnelles, prix ou quantité figés, produits ajoutés à la main
+//     (quantité > 0, pas issus d'une composition précédente — marqueur
+//     écran `compose`) ; une ligne composée HIER et absente aujourd'hui, un
+//     placeholder sans produit ou une ligne à quantité nulle ne survivent pas ;
+//   • une quantité FIGÉE (`quantiteManuelle`) qui diffère de la quantité
+//     recalculée est GARDÉE et remontée dans `conflits` (jamais en silence :
+//     l'appelant le dit au vendeur, qui a confirmé avant la recomposition).
+// Toute ligne générée porte `compose: true` (marqueur d'écran, jamais envoyé
+// au serveur). Fonction PURE.
+const _estLigneProduit = (l) => (l?.typeLigne ?? l?.type_ligne ?? 'produit') === 'produit'
+
+export function lignesQuantiteFigee(lignes) {
+  return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
+}
+
+function _ancienneLigneAGarder(l) {
+  if (!_estLigneProduit(l)) return true            // section / note
+  if (l.optionnelle || l.prixManuel || l.quantiteManuelle) return true
+  if (l.compose) return false                      // composition précédente
+  return Boolean(l.produit) && (parseFloat(l.quantite) || 0) > 0
+}
+
+export function fusionnerRecomposition(anciennes, generees) {
+  const olds = Array.isArray(anciennes) ? anciennes : []
+  const gens = Array.isArray(generees) ? generees : []
+  // File d'anciennes lignes produit par id (appariement dans l'ordre).
+  const files = new Map()
+  olds.forEach((l, i) => {
+    if (!_estLigneProduit(l) || !l.produit) return
+    const k = String(l.produit)
+    if (!files.has(k)) files.set(k, [])
+    files.get(k).push(i)
+  })
+  const appariee = new Map() // index ancienne → index générée
+  const conflits = []
+  const fusionnees = gens.map((g, gi) => {
+    const file = g?.produit ? files.get(String(g.produit)) : null
+    const oi = file && file.length ? file.shift() : null
+    const base = { ...g, compose: true }
+    if (oi == null) return base
+    appariee.set(oi, gi)
+    const o = olds[oi]
+    if (o.prixManuel) {
+      base.prix_unit_ttc = o.prix_unit_ttc
+      base.prixManuel = true
+    }
+    if (o.optionnelle) base.optionnelle = true
+    if (o.quantiteManuelle) {
+      base.quantiteManuelle = true
+      if ((parseFloat(o.quantite) || 0) !== (parseFloat(g.quantite) || 0)) {
+        conflits.push({
+          designation: o.designation || g.designation || '',
+          figee: String(o.quantite),
+          recalculee: String(g.quantite),
+        })
+      }
+      base.quantite = o.quantite
+    }
+    return base
+  })
+  // Réinsertion des anciennes lignes gardées à leur position RELATIVE.
+  const apres = gens.map(() => [])
+  const avant = gens.map(() => [])
+  const fin = []
+  olds.forEach((l, i) => {
+    if (appariee.has(i) || !_ancienneLigneAGarder(l)) return
+    for (let j = i - 1; j >= 0; j--) {
+      if (appariee.has(j)) { apres[appariee.get(j)].push(l); return }
+    }
+    for (let j = i + 1; j < olds.length; j++) {
+      if (appariee.has(j)) { avant[appariee.get(j)].push(l); return }
+    }
+    fin.push(l)
+  })
+  const lignes = []
+  fusionnees.forEach((l, gi) => { lignes.push(...avant[gi], l, ...apres[gi]) })
+  lignes.push(...fin)
+  return { lignes, conflits }
+}
+
 export function fusionnerVariantes(lignesSans, lignesAvec) {
   const sans = Array.isArray(lignesSans) ? lignesSans : []
   const avec = Array.isArray(lignesAvec) ? lignesAvec : []
