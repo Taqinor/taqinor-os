@@ -19,6 +19,8 @@
 	// ferait échouer le déploiement. À ajouter par le fondateur APRÈS création
 	// de l'espace de noms au tableau de bord :
 	//   "kv_namespaces": [{ "binding": "LEADS_DLQ", "id": "<ID_DE_L_ESPACE>" }]
+	// QJR663 — espace KV créé par le fondateur le 01/10/2026 (nom de liaison imposé par le code : LEADS_DLQ).
+	"kv_namespaces": [{ "binding": "LEADS_DLQ", "id": "7fe63f806963407dbedf4ff525fda5e4" }],
 	"triggers": {
 		"crons": ["*/30 * * * *"]
 	},
