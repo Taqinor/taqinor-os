@@ -406,3 +406,45 @@ describe('QJW6 — invariants du registre', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
+
+// QJR664 — « Une journée type » : montré dans les TROIS langues (décision
+// fondateur 01/10/2026). Avant : FR 2 occurrences, EN 0, AR 0.
+describe('QJR664 — graphe « Une journée type » : parité FR / EN / AR', () => {
+  const compte = (src: string) => (src.match(/mt-jourtype/g) ?? []).length;
+
+  it("même nombre d'occurrences de « mt-jourtype » dans les trois pages (et non nul)", () => {
+    const n = SOURCES.map(([, src]) => compte(src));
+    expect(n[0]).toBeGreaterThan(0);
+    expect(n).toEqual([n[0], n[0], n[0]]);
+  });
+
+  it('chaque page porte le bloc masqué par défaut et appelle le rendu partagé dans SA langue', () => {
+    for (const [loc, src] of SOURCES) {
+      expect(src, loc).toContain('<div id="mt-jourtype-wrap" hidden class="mt-doc-section">');
+      expect(src, loc).toContain('<div id="mt-jourtype-grid"');
+      expect(src, loc).toContain(`renderJourType('${loc}')`);
+      expect(src, loc).toContain("scripts/tunnel/jourType'");
+    }
+  });
+
+  it('plus aucune copie inline du rendu dans les pages', () => {
+    for (const [loc, src] of SOURCES) {
+      expect(src, loc).not.toContain('function jourTypeChartSvg');
+      expect(src, loc).not.toContain('function renderJourType');
+    }
+  });
+
+  it('le rendu partagé produit les 4 mois, dans les libellés de chaque langue', async () => {
+    const { renderJourType } = await import('../src/scripts/tunnel/jourType');
+    const { JOUR_TYPE_MONTH_LABELS } = await import('../src/lib/jourTypeData');
+    for (const lang of ['fr', 'en', 'ar'] as const) {
+      document.body.innerHTML = '<div id="mt-jourtype-wrap" hidden><div id="mt-jourtype-grid"></div></div>';
+      renderJourType(lang);
+      const wrap = document.getElementById('mt-jourtype-wrap') as HTMLElement;
+      expect(wrap.hidden, lang).toBe(false);
+      const html = document.getElementById('mt-jourtype-grid')!.innerHTML;
+      expect((html.match(/<svg/g) ?? []).length, lang).toBe(4);
+      expect(html, lang).toContain(JOUR_TYPE_MONTH_LABELS[1][lang]);
+    }
+  });
+});

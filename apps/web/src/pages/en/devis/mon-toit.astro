@@ -987,6 +987,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 aria-label="Indicative monthly breakdown of the annual solar production"></div>
               <p class="mt-doc-note">Indicative breakdown of your annual production based on Morocco's average monthly sunshine.</p>
             </div>
+            <!-- (4ter) QJR664 — "A typical day" (production vs consumption, 4 months),
+                 rendered by scripts/tunnel/jourType.ts. Hidden by default; shows
+                 itself only when the engine data is valid. A representative
+                 household's day, not the visitor's own consumption. -->
+            <div id="mt-jourtype-wrap" hidden class="mt-doc-section">
+              <p class="mt-doc-section-title">A typical day</p>
+              <div id="mt-jourtype-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+              <p class="mt-doc-note">A representative household's day (not your own consumption): production (gold) vs consumption (dashed blue) over 24&nbsp;h, for four months.</p>
+            </div>
             <!-- (4bis) pumping flow band (agricultural): sun → pump → water -->
             <div id="mt-doc-flow" hidden class="mt-doc-section">
               <p class="mt-doc-section-title">Your pumping system at a glance</p>
@@ -2027,6 +2036,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   // SILHOUETTES_OCCUPATION VERBATIM (cross-checked backend<->TS by a test).
   // No weight is invented here.
   import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, type OccupancyId } from '../../../lib/dayProfiles';
+  import { renderJourType } from '../../../scripts/tunnel/jourType';
   // QX/Lane C — TYPE only (erased at build: Three.js/viewerOnly NEVER joins
   // the initial bundle — WJ18; the real module stays a lazy import()).
   import type { RoofImageSpec } from '../../../scripts/roofPro11/viewerOnly';
@@ -2099,6 +2109,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
+  renderJourType('en'); // QJR664 — « A typical day »
   const fallback = $('mt-fallback');
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;

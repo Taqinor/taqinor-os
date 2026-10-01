@@ -12,6 +12,16 @@
 		"directory": "./dist",
 		"binding": "ASSETS"
 	},
+	// QJR663 — lettre morte des leads non livrés : cron toutes les 30 min qui
+	// renvoie le contenu de la liaison KV `LEADS_DLQ` à LEAD_WEBHOOK_URL
+	// (worker/deadLetter.mjs). Sans liaison, le déclencheur est un no-op.
+	// La liaison `kv_namespaces` n'est VOLONTAIREMENT PAS ici : un id factice
+	// ferait échouer le déploiement. À ajouter par le fondateur APRÈS création
+	// de l'espace de noms au tableau de bord :
+	//   "kv_namespaces": [{ "binding": "LEADS_DLQ", "id": "<ID_DE_L_ESPACE>" }]
+	"triggers": {
+		"crons": ["*/30 * * * *"]
+	},
 	"observability": {
 		"enabled": true
 	}
