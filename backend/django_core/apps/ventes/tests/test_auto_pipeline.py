@@ -300,11 +300,16 @@ class ZoneDepuisContourTest(TestCase):
         self.assertEqual(annexe_vue['type_toit'], 'flat')
 
     def test_pin_depuis_le_repere_du_client_sinon_centroide(self):
+        # QJR598 — l'épingle tombe DANS le contour (hors du contour, celui-ci
+        # n'est plus qu'un calque et rien n'est auto-calepiné).
         pose = self._lead(roof_outline=CONTOUR_LATLNG,
-                          roof_point={'lat': 33.6, 'lng': -7.6})
+                          roof_point={'lat': 33.57319, 'lng': -7.5897})
         self.assertEqual(
             zone_toit_depuis_contour(pose, panneaux=1)['pin'],
-            {'lat': 33.6, 'lng': -7.6})
+            {'lat': 33.57319, 'lng': -7.5897})
+        dehors = self._lead(roof_outline=CONTOUR_LATLNG,
+                            roof_point={'lat': 33.6, 'lng': -7.6})
+        self.assertEqual(zone_toit_depuis_contour(dehors, panneaux=1), {})
         sans = self._lead(roof_outline=CONTOUR_LATLNG)
         pin = zone_toit_depuis_contour(sans, panneaux=1)['pin']
         # Centroïde DÉRIVÉ du tracé réel — jamais une position inventée.

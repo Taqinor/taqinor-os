@@ -429,16 +429,21 @@ def contexte_geographique(calepinage):
     Un chiffre montré doit être réel ou absent ; il n'y a pas de troisième
     possibilité.
 
-    L'ordre de repli reprend celui de l'atelier existant : l'épingle POSÉE par
-    le client (``Lead.roof_point``) prime sur les coordonnées GPS saisies sur
-    le lead. Le client (fiche structurée) n'apporte qu'une adresse — il ne
+    Le pin est LE repère toit du lead (``crm.selectors.repere_toit``, QJR598) :
+    un GPS renseigné et différent de l'épingle (``Lead.roof_point``) vient
+    d'une correction et prime ; sinon l'épingle, sinon le GPS. Le client (fiche structurée) n'apporte qu'une adresse — il ne
     porte aucune géométrie.
 
     Les lectures crm passent par ``apps.crm.selectors`` uniquement (jamais un
     import de ``apps.crm.models``), et tout est borné à la société du
     calepinage.
     """
-    from apps.crm.selectors import get_company_client, get_company_lead
+    from apps.crm.selectors import (
+        REPERE_SOURCE_GPS,
+        get_company_client,
+        get_company_lead,
+        repere_toit,
+    )
 
     vide = {cle: None for cle in CLES_CONTEXTE_GEO}
     if calepinage is None:
@@ -454,16 +459,13 @@ def contexte_geographique(calepinage):
         contexte['adresse'] = _texte(getattr(lead, 'adresse', None))
         contexte['ville'] = _texte(getattr(lead, 'ville', None))
         contexte['outline'] = _contour(getattr(lead, 'roof_outline', None))
-        pin = _pin_depuis_point(getattr(lead, 'roof_point', None))
+        # QJR598 — LE repère toit du lead, lu chez crm (jamais recopié ici).
+        pin, source, _contour_utilisable = repere_toit(lead)
         if pin is not None:
             contexte['pin'] = pin
-            contexte['source'] = SOURCE_ROOF_POINT
-        else:
-            pin = _pin_depuis_gps(getattr(lead, 'gps_lat', None),
-                                  getattr(lead, 'gps_lng', None))
-            if pin is not None:
-                contexte['pin'] = pin
-                contexte['source'] = SOURCE_GPS_LEAD
+            contexte['source'] = (SOURCE_GPS_LEAD
+                                  if source == REPERE_SOURCE_GPS
+                                  else SOURCE_ROOF_POINT)
 
     if contexte['adresse'] is None:
         client = get_company_client(
@@ -478,35 +480,6 @@ def _texte(valeur):
     """Une chaîne non vide, ou ``None`` — jamais une chaîne vide trompeuse."""
     texte = (valeur or '').strip() if isinstance(valeur, str) else ''
     return texte or None
-
-
-def _nombre(valeur):
-    """``float`` lisible, ou ``None`` si la valeur n'en est pas un."""
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    try:
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
-
-
-def _pin_depuis_point(point):
-    """``{'lat', 'lng'}`` depuis ``Lead.roof_point``, ou ``None``."""
-    if not isinstance(point, dict):
-        return None
-    lat = _nombre(point.get('lat'))
-    lng = _nombre(point.get('lng'))
-    if lat is None or lng is None:
-        return None
-    return {'lat': lat, 'lng': lng}
-
-
-def _pin_depuis_gps(lat, lng):
-    """``{'lat', 'lng'}`` depuis les coordonnées du lead, ou ``None``."""
-    lat, lng = _nombre(lat), _nombre(lng)
-    if lat is None or lng is None:
-        return None
-    return {'lat': lat, 'lng': lng}
 
 
 def _contour(outline):

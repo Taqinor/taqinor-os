@@ -6,8 +6,8 @@ Ce qui est prouvé ici :
   sont TOUJOURS présentes — nulles quand la donnée est inconnue ;
 * un calepinage sur un lead SANS aucune coordonnée rend ``pin: None`` et
   ``source: None`` — pas un centre du Maroc inventé ;
-* l'épingle POSÉE par le client (``Lead.roof_point``) prime sur les
-  coordonnées GPS saisies, et ``source`` dit LAQUELLE a servi ;
+* le GPS corrigé (différent de ``Lead.roof_point``) prime sur l'épingle
+  (QJR598), et ``source`` dit LAQUELLE a servi ;
 * un lead avec contour rend son contour TEL QUEL (aucune reprojection) ;
 * un calepinage sur un client seul rend son adresse, sans géométrie ;
 * un lead d'une autre société n'est pas lu (le sélecteur crm le borne).
@@ -88,11 +88,21 @@ class AucuneCoordonneeInventeeTest(BaseGeo):
 
 
 class SourcesTest(BaseGeo):
-    def test_roof_point_prime_sur_le_gps(self):
+    def test_gps_corrige_prime_sur_l_epingle(self):
+        # QJR598 — un GPS différent de l'épingle vient d'une correction.
         lead = Lead.objects.create(
             company=self.company, nom='Pointé',
             roof_point={'lat': 33.5731, 'lng': -7.5898},
             gps_lat=Decimal('33.5000000'), gps_lng=Decimal('-7.6000000'))
+        contexte = contexte_geographique(
+            Calepinage.objects.create(company=self.company, lead_id=lead.pk))
+        self.assertEqual(contexte['source'], SOURCE_GPS_LEAD)
+        self.assertEqual(contexte['pin'], {'lat': 33.5, 'lng': -7.6})
+
+    def test_epingle_sans_gps(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Pointé seul',
+            roof_point={'lat': 33.5731, 'lng': -7.5898})
         contexte = contexte_geographique(
             Calepinage.objects.create(company=self.company, lead_id=lead.pk))
         self.assertEqual(contexte['source'], SOURCE_ROOF_POINT)

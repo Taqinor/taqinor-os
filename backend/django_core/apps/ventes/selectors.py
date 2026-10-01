@@ -3076,6 +3076,10 @@ def contexte_conception_devis(devis, company):
                   if option_avec_servable(devis) else None)
 
     # ── Géométrie : le layout du devis PRIME sur le repère du lead ──
+    # QJR598 — LE repère toit du lead (crm.selectors.repere_toit) : le GPS
+    # corrigé prime sur l'épingle du tunnel, sinon l'épingle, sinon le GPS.
+    from apps.crm.selectors import repere_toit
+    pin_lead = repere_toit(lead)[0] if lead is not None else None
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
     if layout:
         source = 'devis'
@@ -3103,32 +3107,17 @@ def contexte_conception_devis(devis, company):
         # `Lead.roof_outline` tel quel), jamais une géométrie inventée.
         if not outline and not (layout.get('zones') or layout.get('areas')):
             outline = contour_client
-            if pin is None:
-                point_lead = getattr(lead, 'roof_point', None) if lead else None
-                pin = point_lead if isinstance(point_lead, dict) else None
     else:
         roof_layout = None
-        point_lead = getattr(lead, 'roof_point', None) if lead else None
-        pin = point_lead if isinstance(point_lead, dict) else None
+        pin = pin_lead
         outline = contour_client
         source = 'lead' if (pin or outline) else 'none'
-
-    # Correction fondateur 24/08 — sans épingle posée (ni sur le layout ni sur
-    # `lead.roof_point`, tous deux alimentés par le pointeur PUBLIC du site),
-    # la carte démarrait systématiquement au niveau Maroc alors que la FICHE
-    # du lead porte souvent déjà des coordonnées GPS réelles (`Lead.gps_lat`/
-    # `gps_lng`, saisies côté « Toiture & site » du CRM — bornées ±90/±180 en
-    # base). Repli RÉEL, jamais une valeur inventée : n'écrit rien nulle part,
-    # centre seulement la carte. `source` reste 'lead' (le repère vient bien
-    # du lead, juste par un autre champ) ; un devis SANS lead ou dont le lead
-    # ne porte aucune des deux coordonnées garde `pin = None` (vue Maroc).
-    if pin is None and lead is not None:
-        lat = getattr(lead, 'gps_lat', None)
-        lng = getattr(lead, 'gps_lng', None)
-        if lat is not None and lng is not None:
-            pin = {'lat': float(lat), 'lng': float(lng)}
-            if source == 'none':
-                source = 'lead'
+    # Un layout sans épingle centre quand même la carte sur le repère du lead
+    # (n'écrit rien nulle part ; jamais une valeur inventée).
+    if pin is None and pin_lead is not None:
+        pin = pin_lead
+        if source == 'none':
+            source = 'lead'
 
     # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
     raison = ''

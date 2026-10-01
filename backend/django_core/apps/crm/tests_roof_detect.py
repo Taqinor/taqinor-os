@@ -8,7 +8,7 @@ Test coverage:
   (c) No building found (empty elements) → returns [].
   (d) Company scoping: another company's lead returns 404.
   (e) Lead with no GPS pin returns 400.
-  (f) roof_point preferred over gps_lat/gps_lng.
+  (f) a corrected gps_lat/gps_lng (different from roof_point) wins (QJR598).
   (g) gps_lat/gps_lng used when roof_point is absent.
 """
 
@@ -293,13 +293,13 @@ class LeadRoofFootprintViewTests(TestCase):
         self.assertIsNone(data["batiment"]["height_m"])
         self.assertIn("height_m", data["batiment"]["non_renseignes"])
 
-    def test_roof_point_preferred_over_gps_fields(self):
-        """(f) roof_point takes priority over gps_lat/gps_lng."""
+    def test_corrected_gps_preferred_over_roof_point(self):
+        """(f) QJR598 — a GPS different from roof_point is a correction: it wins."""
         user = self._company_user()
 
         lead = MagicMock()
         lead.roof_point = {"lat": 33.9999, "lng": -7.9999}
-        lead.gps_lat = 33.0000  # should NOT be used
+        lead.gps_lat = 33.0000  # the corrected position
         lead.gps_lng = -7.0000
 
         captured = []
@@ -316,8 +316,8 @@ class LeadRoofFootprintViewTests(TestCase):
             with patch.object(rv, "fetch_building_footprint", side_effect=mock_fetch):
                 rv.lead_roof_footprint(request, lead_id=3)
 
-        self.assertAlmostEqual(captured[0][0], 33.9999)
-        self.assertAlmostEqual(captured[0][1], -7.9999)
+        self.assertAlmostEqual(captured[0][0], 33.0)
+        self.assertAlmostEqual(captured[0][1], -7.0)
 
     def test_gps_fields_used_when_no_roof_point(self):
         """(g) When roof_point is absent, gps_lat/gps_lng are used."""
