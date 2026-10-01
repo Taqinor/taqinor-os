@@ -36,6 +36,7 @@ from apps.ventes.services import (
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
 )
+from apps.ventes.domain import taille as domaine_taille
 
 User = get_user_model()
 
@@ -300,11 +301,16 @@ class ZoneDepuisContourTest(TestCase):
         self.assertEqual(annexe_vue['type_toit'], 'flat')
 
     def test_pin_depuis_le_repere_du_client_sinon_centroide(self):
+        # QJR598 — l'épingle tombe DANS le contour (hors du contour, celui-ci
+        # n'est plus qu'un calque et rien n'est auto-calepiné).
         pose = self._lead(roof_outline=CONTOUR_LATLNG,
-                          roof_point={'lat': 33.6, 'lng': -7.6})
+                          roof_point={'lat': 33.57319, 'lng': -7.5897})
         self.assertEqual(
             zone_toit_depuis_contour(pose, panneaux=1)['pin'],
-            {'lat': 33.6, 'lng': -7.6})
+            {'lat': 33.57319, 'lng': -7.5897})
+        dehors = self._lead(roof_outline=CONTOUR_LATLNG,
+                            roof_point={'lat': 33.6, 'lng': -7.6})
+        self.assertEqual(zone_toit_depuis_contour(dehors, panneaux=1), {})
         sans = self._lead(roof_outline=CONTOUR_LATLNG)
         pin = zone_toit_depuis_contour(sans, panneaux=1)['pin']
         # Centroïde DÉRIVÉ du tracé réel — jamais une position inventée.
@@ -339,7 +345,7 @@ class BuildDevisAutoAvecContourTest(TestCase):
         """Le nombre de panneaux que le MOTEUR recommande pour ce lead — ce
         module n'épingle plus les 16 panneaux de la règle des 900 DH/mois."""
         from apps.ventes import services
-        nb, _watt, source, _avec = services._panneaux_dimensionnement_horaire(
+        nb, _watt, source, _avec = domaine_taille._panneaux_dimensionnement_horaire(
             lead=lead, company=self.company,
             phase=services.phase_client_pour_dimensionnement(lead))
         self.assertEqual(source, 'moteur_horaire')

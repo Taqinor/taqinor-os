@@ -17,10 +17,8 @@ from django.test import TestCase
 
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.ventes.models import Devis
-from apps.ventes.services import (
-    _advance_lead_on_expiry,
-    expire_stale_devis,
-)
+from apps.ventes.services import expire_stale_devis
+from apps.ventes.domain.recouvrement import _advance_lead_on_expiry
 from authentication.models import Company
 
 

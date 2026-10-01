@@ -31,9 +31,12 @@ from django.test import TestCase, override_settings
 from apps.crm.models import Client
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.services import (
-    OTP_MAX_ATTEMPTS, _otp_lecture_attempts_key, _otp_lecture_cache_key,
-    request_esign_otp, request_otp_lecture, validate_otp_lecture,
+    OTP_MAX_ATTEMPTS,
+    request_esign_otp,
+    request_otp_lecture,
+    validate_otp_lecture,
 )
+from apps.ventes.domain.cycle_vie import _otp_lecture_attempts_key, _otp_lecture_cache_key
 from apps.ventes.domain.cycle_vie import (
     OTP_DEMANDES_MAX_PAR_JOUR, OTP_PLAFOND_MESSAGE,
 )

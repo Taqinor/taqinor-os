@@ -117,7 +117,7 @@ class TestSignedPdfKeyIdempotency(TestCase):
         devis.statut = Devis.Statut.ACCEPTE
         devis.save(update_fields=['statut'])
         # Call _store_signed_pdf directly to test idempotency.
-        from apps.ventes.services import _store_signed_pdf
+        from apps.ventes.domain.cycle_vie import _store_signed_pdf
         _store_signed_pdf(devis=devis)
         mock_gen.assert_not_called()
         sig = DevisSignature.objects.get(devis=devis)

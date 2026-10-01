@@ -517,7 +517,7 @@ class EcrivainsRoutesTests(TestCase):
             etude_params={'factures_mensuelles_reelles': [640, 610]})
 
     def test_set_gamme_fusionne_au_lieu_de_remplacer(self):
-        from apps.ventes.services import _set_gamme
+        from apps.ventes.domain.gammes import _set_gamme
 
         _set_gamme(self.devis, nom='Premium')
         relu = Devis.objects.get(pk=self.devis.pk)

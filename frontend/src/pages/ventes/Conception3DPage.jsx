@@ -5,10 +5,10 @@
  * ligne de la liste des devis ou un geste lancé depuis une fiche lead.
  *
  * Ouverte depuis le nav, l'écran n'a AUCUN contexte de devis/lead — il ne
- * peut donc jamais deviner lequel calepiner. Mêmes règles que PV22 (le geste
- * lancé depuis une fiche lead) : on ne propose que les devis BROUILLON (les
- * seuls calepinables — un devis envoyé/accepté est lecture seule côté
- * ToitureDesign), et on réutilise le MÊME chooser (`ChoisirDevisPourDesign`,
+ * peut donc jamais deviner lequel calepiner. QJR636 — la liste vient du
+ * SERVEUR (`?concevable=1`, toutes les pages) : brouillons ET envoyés, lus
+ * dans la table de modifiabilité ; aucun filtre de statut ici. On réutilise
+ * le MÊME chooser (`ChoisirDevisPourDesign`,
  * jamais dupliqué) pour que le commercial désigne lequel. Le choix navigue
  * vers le MÊME écran que le flux lead (`/ventes/devis/:id/design`) — aucune
  * seconde implémentation du builder 3D.
@@ -21,20 +21,24 @@ import { PageHeader } from '../../ui/PageHeader'
 import { Button, EmptyState, Spinner } from '../../ui'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import ChoisirDevisPourDesign from '../../features/ventes/ChoisirDevisPourDesign'
+import { fetchAllPages } from '../../utils/fetchAllPages'
 
 export default function Conception3DPage() {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
-  const [brouillons, setBrouillons] = useState([])
+  const [concevables, setConcevables] = useState([])
   const [erreur, setErreur] = useState(null)
 
   useEffect(() => {
     let annule = false
-    ventesApi.getDevis({})
-      .then((res) => {
+    // Borne basse : la liste devis coûte cher par page côté serveur.
+    fetchAllPages(
+      (page) => ventesApi.getDevis({ concevable: 1, page }).then((r) => r.data),
+      { concurrency: 3 },
+    )
+      .then((rows) => {
         if (annule) return
-        const rows = Array.isArray(res?.data) ? res.data : (res?.data?.results ?? [])
-        setBrouillons(rows.filter((d) => d && d.statut === 'brouillon'))
+        setConcevables(Array.isArray(rows) ? rows.filter(Boolean) : [])
       })
       .catch(() => { if (!annule) setErreur('Impossible de charger les devis.') })
       .finally(() => { if (!annule) setLoading(false) })
@@ -52,7 +56,7 @@ export default function Conception3DPage() {
         className="app-accent-rail"
         icon={Box}
         title="Conception 3D"
-        subtitle="Calepinez la toiture d'un devis brouillon en 3D."
+        subtitle="Calepinez la toiture d'un devis en 3D."
       />
       <div className="mt-4">
         {loading && (
@@ -69,10 +73,10 @@ export default function Conception3DPage() {
             className="mt-8"
           />
         )}
-        {!loading && !erreur && brouillons.length === 0 && (
+        {!loading && !erreur && concevables.length === 0 && (
           <EmptyState
             icon={Box}
-            title="Aucun devis brouillon"
+            title="Aucun devis à calepiner"
             description="Créez d'abord un devis pour pouvoir en calepiner la toiture en 3D."
             action={(
               <Button onClick={() => navigate('/ventes/devis/nouveau')}>
@@ -82,10 +86,11 @@ export default function Conception3DPage() {
             className="mt-8"
           />
         )}
-        {!loading && !erreur && brouillons.length > 0 && (
+        {!loading && !erreur && concevables.length > 0 && (
           <ChoisirDevisPourDesign
             open
-            devis={brouillons}
+            devis={concevables}
+            description="Choisissez le devis dont la toiture doit être calepinée."
             onChoisir={choisir}
             onClose={() => navigate('/ventes/devis')}
           />

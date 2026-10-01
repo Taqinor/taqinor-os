@@ -28,6 +28,7 @@ from apps.crm.models import Lead
 from apps.stock.models import Produit
 from apps.ventes.models import Devis
 from apps.ventes.services import build_devis_auto, AutoDevisError
+from apps.ventes.domain import taille as domaine_taille
 
 User = get_user_model()
 
@@ -72,7 +73,7 @@ def panneaux_du_moteur(lead, company):
     catalogue ou le barème bougent. Ce qui est épinglé, c'est que le devis n'a
     pas d'AUTRE source de dimensionnement."""
     from apps.ventes import services
-    nb, watt, source, _avec = services._panneaux_dimensionnement_horaire(
+    nb, watt, source, _avec = domaine_taille._panneaux_dimensionnement_horaire(
         lead=lead, company=company,
         phase=services.phase_client_pour_dimensionnement(lead))
     assert source == 'moteur_horaire', (
@@ -162,7 +163,7 @@ class BuildDevisAutoServiceTest(TestCase):
         jamais inférieure à la taille demandée, et jamais gonflée d'un panneau
         entier de trop.
         """
-        from apps.ventes.services import _residential_panel_count
+        from apps.ventes.domain.taille import _residential_panel_count
         for kwc_x10 in range(10, 205, 5):           # 1,0 → 20,0 kWc
             kwc = Decimal(kwc_x10) / 10
             nb = _residential_panel_count(taille_kwc=kwc)
@@ -179,7 +180,7 @@ class BuildDevisAutoServiceTest(TestCase):
         """U1 — miroir Python de la garde anti-dérive flottante de solar.js :
         un compte de panneaux repassé par son kWc doit se retrouver À
         L'IDENTIQUE, sans quoi chaque aller-retour ajouterait un panneau."""
-        from apps.ventes.services import _residential_panel_count
+        from apps.ventes.domain.taille import _residential_panel_count
         for nb in range(1, 61):
             kwc = Decimal(str(nb * 710 / 1000))
             self.assertEqual(
@@ -264,7 +265,7 @@ class BuildDevisAutoServiceTest(TestCase):
         verdict — jamais l'arithmétique des tranches."""
         lead = self._lead(facture_hiver=Decimal('500'))
         from apps.ventes import services
-        nb, watt, source, _avec = services._panneaux_dimensionnement_horaire(
+        nb, watt, source, _avec = domaine_taille._panneaux_dimensionnement_horaire(
             lead=lead, company=self.company,
             phase=services.phase_client_pour_dimensionnement(lead))
         if nb > 0:
@@ -348,7 +349,7 @@ class BuildDevisAutoServiceTest(TestCase):
         self.assertFalse(hasattr(services, '_AUTO_PANELS_PER_TRANCHE'))
         import inspect
         params = inspect.signature(
-            services._residential_panel_count).parameters
+            domaine_taille._residential_panel_count).parameters
         self.assertNotIn('facture_hiver', params)
 
     def test_non_residential_raises(self):

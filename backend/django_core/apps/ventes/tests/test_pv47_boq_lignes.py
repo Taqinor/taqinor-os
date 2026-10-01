@@ -22,7 +22,7 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client
 from apps.stock.models import Categorie, Produit
-from apps.ventes import services
+from apps.ventes.domain import bordereau as domaine_bordereau
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
 
@@ -67,7 +67,7 @@ class AppariementPurTest(SimpleTestCase):
     ]
 
     def _apparier(self, designation, spec=''):
-        return services._boq_apparier(designation, spec, self.CATALOGUE)
+        return domaine_bordereau._boq_apparier(designation, spec, self.CATALOGUE)
 
     def test_cable_apparie_par_section(self):
         produit = self._apparier(BOM[0]['designation'], BOM[0]['spec'])
@@ -99,12 +99,12 @@ class AppariementPurTest(SimpleTestCase):
         for designation in ('Rail de fixation aluminium',
                             'Pince de fixation (milieu + extrémité)',
                             'Crochet / patte de fixation toiture'):
-            self.assertIsNone(services._boq_famille(designation), designation)
+            self.assertIsNone(domaine_bordereau._boq_famille(designation), designation)
 
     def test_porte_fusible_nest_pas_un_fusible(self):
-        self.assertEqual(services._boq_famille('Porte-fusible 1000 VDC'),
+        self.assertEqual(domaine_bordereau._boq_famille('Porte-fusible 1000 VDC'),
                          'porte_fusible')
-        self.assertEqual(services._boq_famille('Fusible gPV 1000 VDC 15 A'),
+        self.assertEqual(domaine_bordereau._boq_famille('Fusible gPV 1000 VDC 15 A'),
                          'fusible')
 
 

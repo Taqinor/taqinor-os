@@ -18,6 +18,7 @@ from django.test import SimpleTestCase
 
 from apps.parametres import pvgis_profils as pp
 from apps.ventes import courbes_journalieres as cj
+from apps.ventes.domain import taille as domaine_taille
 
 CASA_CONSO = [900, 880, 860, 840, 900, 1100,
               1300, 1350, 1100, 900, 870, 910]
@@ -393,8 +394,6 @@ class OccupationPipelineAutoTests(SimpleTestCase):
     a résolu — c'est CE branchement qui manquait (dict ``drapeaux`` local)."""
 
     def _occupation_remise_au_moteur(self, lead):
-        from apps.ventes import services
-
         vu = {}
 
         def _espion(**kwargs):
@@ -404,7 +403,7 @@ class OccupationPipelineAutoTests(SimpleTestCase):
         with mock.patch('apps.ventes.dimensionnement.recommander_taille',
                         _espion):
             nb, _watt, source, _avec = (
-                services._panneaux_dimensionnement_horaire(
+                domaine_taille._panneaux_dimensionnement_horaire(
                     lead=lead, company=object(), phase=None))
         self.assertEqual(source, 'moteur_horaire')
         self.assertEqual(nb, 12)

@@ -16,7 +16,6 @@ from .email import email_config
 from .credit_warning import client_credit_warning
 from .releve_import import releve_dry_run, releve_commit
 from .roof_config import roof_config
-from .roof_layout import RoofLayoutViewSet  # FG245
 from .preset import DevisPresetViewSet  # QJ16-wiring
 from .regulatory import (  # FG268-FG271
     RegulatoryDossierViewSet,
@@ -53,7 +52,6 @@ __all__ = [
     'releve_dry_run',
     'releve_commit',
     'roof_config',
-    'RoofLayoutViewSet',
     'DevisPresetViewSet',
     'RegulatoryDossierViewSet',
     'DossierChecklistItemViewSet',

@@ -61,7 +61,7 @@ class _BaseActivationOption(TestCase):
                        args=[self.link.token])
 
     def _deverrouiller(self):
-        from apps.ventes.services import _otp_lecture_verified_key
+        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
         cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
 
 

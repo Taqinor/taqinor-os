@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4722, operations: 7512, components: 2140}
+counts: {paths: 4716, operations: 7498, components: 2135}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3467,13 +3467,6 @@ operations:
 - post /api/django/ventes/bons-commande/{id}/marquer-livre/ -> django_ventes_bons_commande_marquer_livre_create
 - get /api/django/ventes/bons-commande/{id}/pdf/ -> django_ventes_bons_commande_pdf_retrieve
 - get /api/django/ventes/calendrier-reglementaire/ -> django_ventes_calendrier_reglementaire_retrieve
-- get /api/django/ventes/calepinages/ -> django_ventes_calepinages_list
-- post /api/django/ventes/calepinages/ -> django_ventes_calepinages_create
-- delete /api/django/ventes/calepinages/{id}/ -> django_ventes_calepinages_destroy
-- get /api/django/ventes/calepinages/{id}/ -> django_ventes_calepinages_retrieve
-- patch /api/django/ventes/calepinages/{id}/ -> django_ventes_calepinages_partial_update
-- put /api/django/ventes/calepinages/{id}/ -> django_ventes_calepinages_update
-- post /api/django/ventes/calepinages/{id}/recompute/ -> django_ventes_calepinages_recompute_create
 - get /api/django/ventes/chantiers/{chantier_id}/fiche-remise-premium/ -> django_ventes_chantiers_fiche_remise_premium_retrieve
 - get /api/django/ventes/clients/{client_id}/credit-warning/ -> django_ventes_clients_credit_warning_retrieve
 - get /api/django/ventes/clients/{client_id}/releve-pdf/ -> django_ventes_clients_releve_pdf_retrieve
@@ -7227,13 +7220,6 @@ operations:
 - post /api/v1/ventes/bons-commande/{id}/marquer-livre/ -> v1_ventes_bons_commande_marquer_livre_create
 - get /api/v1/ventes/bons-commande/{id}/pdf/ -> v1_ventes_bons_commande_pdf_retrieve
 - get /api/v1/ventes/calendrier-reglementaire/ -> v1_ventes_calendrier_reglementaire_retrieve
-- get /api/v1/ventes/calepinages/ -> v1_ventes_calepinages_list
-- post /api/v1/ventes/calepinages/ -> v1_ventes_calepinages_create
-- delete /api/v1/ventes/calepinages/{id}/ -> v1_ventes_calepinages_destroy
-- get /api/v1/ventes/calepinages/{id}/ -> v1_ventes_calepinages_retrieve
-- patch /api/v1/ventes/calepinages/{id}/ -> v1_ventes_calepinages_partial_update
-- put /api/v1/ventes/calepinages/{id}/ -> v1_ventes_calepinages_update
-- post /api/v1/ventes/calepinages/{id}/recompute/ -> v1_ventes_calepinages_recompute_create
 - get /api/v1/ventes/chantiers/{chantier_id}/fiche-remise-premium/ -> v1_ventes_chantiers_fiche_remise_premium_retrieve
 - get /api/v1/ventes/clients/{client_id}/credit-warning/ -> v1_ventes_clients_credit_warning_retrieve
 - get /api/v1/ventes/clients/{client_id}/releve-pdf/ -> v1_ventes_clients_releve_pdf_retrieve
@@ -8377,8 +8363,7 @@ components:
 - OrdreDemontageLigneRequest
 - OrdreDemontageRequest
 - OrdreDemontageStatutEnum
-- Orientation4c8Enum
-- OrientationPanneauEnum
+- OrientationEnum
 - OrigineEnum
 - OutboxEvent
 - OutboxEventStatutEnum
@@ -8696,7 +8681,6 @@ components:
 - PaginatedRevueCompteList
 - PaginatedRoleList
 - PaginatedRoleSignataireList
-- PaginatedRoofLayoutList
 - PaginatedRoutageDocumentaireList
 - PaginatedRulePolicyList
 - PaginatedSafetyChecklistSlotList
@@ -9038,7 +9022,6 @@ components:
 - PatchedRevueCompteRequest
 - PatchedRoleRequest
 - PatchedRoleSignataireRequest
-- PatchedRoofLayoutRequest
 - PatchedRoutageDocumentaireRequest
 - PatchedRulePolicyRequest
 - PatchedSafetyChecklistSlotRequest
@@ -9357,8 +9340,6 @@ components:
 - RoleRequest
 - RoleSignataire
 - RoleSignataireRequest
-- RoofLayout
-- RoofLayoutRequest
 - RoutageDocumentaire
 - RoutageDocumentaireRequest
 - RoutageEnum

@@ -2978,6 +2978,26 @@ def _reglages_atelier(company):
             for section in SECTIONS_ATELIER_3D}
 
 
+def devis_concevables(qs):
+    """QJR636 — les devis de ``qs`` dont la toiture se calepine encore.
+
+    La règle de statut est LUE dans la table de ``domain/modifiabilite``
+    (geste CALEPINAGE, devis actif) — jamais recopiée ici ; s'y ajoutent les
+    deux exclusions propres à l'écran 3D : un devis agricole (pompage) et un
+    devis multi-villa (une ligne ``groupe_index >= 1``). Ne borne pas la
+    société : l'appelant passe un queryset déjà scopé. Présence ici ⇔
+    ``contexte_conception_devis(...)['modifiable']``.
+    """
+    from django.db.models import Exists, OuterRef
+
+    from .domain.modifiabilite import CALEPINAGE, GESTES
+    from .models import Devis, LigneDevis
+    return (qs.filter(is_active=True, statut__in=GESTES[CALEPINAGE])
+            .exclude(mode_installation=Devis.ModeInstallation.AGRICOLE)
+            .exclude(Exists(LigneDevis.objects.filter(
+                devis=OuterRef('pk'), groupe_index__gte=1))))
+
+
 def contexte_conception_devis(devis, company):
     """PV17 — tout ce que l'écran de conception toiture doit savoir d'un devis.
 
@@ -3076,6 +3096,10 @@ def contexte_conception_devis(devis, company):
                   if option_avec_servable(devis) else None)
 
     # ── Géométrie : le layout du devis PRIME sur le repère du lead ──
+    # QJR598 — LE repère toit du lead (crm.selectors.repere_toit) : le GPS
+    # corrigé prime sur l'épingle du tunnel, sinon l'épingle, sinon le GPS.
+    from apps.crm.selectors import repere_toit
+    pin_lead = repere_toit(lead)[0] if lead is not None else None
     layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
     if layout:
         source = 'devis'
@@ -3103,40 +3127,28 @@ def contexte_conception_devis(devis, company):
         # `Lead.roof_outline` tel quel), jamais une géométrie inventée.
         if not outline and not (layout.get('zones') or layout.get('areas')):
             outline = contour_client
-            if pin is None:
-                point_lead = getattr(lead, 'roof_point', None) if lead else None
-                pin = point_lead if isinstance(point_lead, dict) else None
     else:
         roof_layout = None
-        point_lead = getattr(lead, 'roof_point', None) if lead else None
-        pin = point_lead if isinstance(point_lead, dict) else None
+        pin = pin_lead
         outline = contour_client
         source = 'lead' if (pin or outline) else 'none'
-
-    # Correction fondateur 24/08 — sans épingle posée (ni sur le layout ni sur
-    # `lead.roof_point`, tous deux alimentés par le pointeur PUBLIC du site),
-    # la carte démarrait systématiquement au niveau Maroc alors que la FICHE
-    # du lead porte souvent déjà des coordonnées GPS réelles (`Lead.gps_lat`/
-    # `gps_lng`, saisies côté « Toiture & site » du CRM — bornées ±90/±180 en
-    # base). Repli RÉEL, jamais une valeur inventée : n'écrit rien nulle part,
-    # centre seulement la carte. `source` reste 'lead' (le repère vient bien
-    # du lead, juste par un autre champ) ; un devis SANS lead ou dont le lead
-    # ne porte aucune des deux coordonnées garde `pin = None` (vue Maroc).
-    if pin is None and lead is not None:
-        lat = getattr(lead, 'gps_lat', None)
-        lng = getattr(lead, 'gps_lng', None)
-        if lat is not None and lng is not None:
-            pin = {'lat': float(lat), 'lng': float(lng)}
-            if source == 'none':
-                source = 'lead'
+    # Un layout sans épingle centre quand même la carte sur le repère du lead
+    # (n'écrit rien nulle part ; jamais une valeur inventée).
+    if pin is None and pin_lead is not None:
+        pin = pin_lead
+        if source == 'none':
+            source = 'lead'
 
     # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
-    raison = ''
-    # QJR516 — le design-context suit le geste CALEPINAGE (le MÊME prédicat
-    # que sync-layout) : il ne déclare plus modifiable un calepinage que
-    # sync-layout refuse (un envoyé, jusqu'à QJR557).
+    # QJR636 — UNE règle (devis_concevables, qui lit le geste CALEPINAGE de
+    # la table de modifiabilité) ; les branches ci-dessous ne font que NOMMER
+    # la raison d'un refus.
     from .domain.modifiabilite import CALEPINAGE, verdict as _verdict
-    if not _verdict(devis, CALEPINAGE)['modifiable']:
+    concevable = devis_concevables(
+        Devis.objects.filter(pk=devis.pk)).exists()
+    if concevable:
+        raison = ''
+    elif not _verdict(devis, CALEPINAGE)['modifiable']:
         raison = (
             'Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
             '« Réviser » pour en créer une nouvelle version.'
@@ -3144,7 +3156,7 @@ def contexte_conception_devis(devis, company):
     elif devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
         raison = ('Devis agricole (pompage) — le calepinage de toiture ne '
                   's\'applique pas.')
-    elif devis.lignes.filter(groupe_index__gte=1).exists():
+    else:
         raison = ('Devis multi-villa : chaque villa porte son propre '
                   'calepinage — cet écran ne peut pas en modifier une seule.')
 
@@ -3532,7 +3544,7 @@ def devis_utilisant_produit(user, produit_id, limit=20):
     ``DevisViewSet.get_queryset`` (``apps/ventes/views/devis.py``) et RÉUTILISE
     ses helpers, sans en réécrire un seul :
 
-      1. ``_company_qs``                — société (superuser sans société :
+      1. ``company_qs`` (core.mixins)   — société (superuser sans société :
          tout ; compte sans société : rien) ;
       2. portail NTPRT10                — un compte externe ne voit QUE les
          devis de SON client, BROUILLON exclu (AUD143) ; une portée autre que
@@ -3554,9 +3566,9 @@ def devis_utilisant_produit(user, produit_id, limit=20):
     from core.scoping import scope_queryset
 
     from .models import Devis
-    # Le helper de scoping société de la vue : l'importer (fonction-local, même
-    # app) est ce qui garantit qu'il n'existe pas DEUX règles société.
-    from .views.devis import _company_qs
+    # QJR655 — LA règle de portée société (core.mixins), celle de
+    # TenantMixin : il n'existe pas DEUX règles société.
+    from core.mixins import company_qs
 
     if user is None or not getattr(user, 'is_authenticated', False):
         return []
@@ -3569,7 +3581,7 @@ def devis_utilisant_produit(user, produit_id, limit=20):
     if limite <= 0:
         return []
 
-    qs = _company_qs(Devis.objects.all(), user)
+    qs = company_qs(Devis.objects.all(), user)
     if is_portal_user(user):
         scope = portal_scope_id(user)
         if getattr(user, 'portee', None) != 'portail_client' or scope is None:

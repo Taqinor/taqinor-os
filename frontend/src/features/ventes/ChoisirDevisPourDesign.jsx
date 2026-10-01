@@ -1,7 +1,7 @@
 /* PV22 — « Concevoir la toiture (3D) » depuis la fiche lead : les deux seuls
    moments où le geste ne peut pas aboutir tout seul.
 
-   1. `ChoisirDevisPourDesign` — le lead a PLUSIEURS brouillons. On ne devine
+   1. `ChoisirDevisPourDesign` — PLUSIEURS devis concevables. On ne devine
       pas lequel calepiner : on les montre (référence · kWc · date) et le
       commercial choisit. Aucun devis n'est créé, aucun n'est modifié.
    2. `DevisAutoImpossibleDialog` — aucun brouillon et le serveur refuse d'en
@@ -25,14 +25,19 @@ function kwcDeDevis(devis) {
   return Number.isFinite(valeur) && valeur > 0 ? valeur : null
 }
 
-export default function ChoisirDevisPourDesign({ open, devis, onChoisir, onClose }) {
+// QJR636 — la description vient de l'appelant : la page autonome n'a pas de
+// lead, seul le cockpit lead peut dire « Ce lead a plusieurs devis ».
+export default function ChoisirDevisPourDesign({
+  open, devis, onChoisir, onClose,
+  description = 'Choisissez le devis dont la toiture doit être calepinée.',
+}) {
   const lignes = Array.isArray(devis) ? devis : []
   return (
     <ResponsiveDialog
       open={!!open}
       onOpenChange={(o) => { if (!o) onClose?.() }}
       title="Quel devis voulez-vous concevoir ?"
-      description="Ce lead a plusieurs brouillons. Choisissez celui dont la toiture doit être calepinée."
+      description={description}
     >
       <ul className="cdd-liste" data-testid="pv22-choix-devis">
         {lignes.map((d) => {

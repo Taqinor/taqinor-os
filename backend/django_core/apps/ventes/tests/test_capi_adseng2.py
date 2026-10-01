@@ -52,7 +52,7 @@ class Adseng2CapiEmitterTests(TestCase):
             remise=Decimal('0'))
 
     def _fire(self, **kwargs):
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         with override_settings(META_CAPI_ACCESS_TOKEN='T',
                                META_CAPI_PIXEL_ID='999'):
             with mock.patch('urllib.request.urlopen',

@@ -102,7 +102,7 @@ class _QJR9Base(TestCase):
 
     def _panneaux_chemin_auto(self, lead, espion):
         """(nb_panneaux, equipements remis au moteur) du chemin AUTO-DEVIS."""
-        from apps.ventes.services import _panneaux_dimensionnement_horaire
+        from apps.ventes.domain.taille import _panneaux_dimensionnement_horaire
 
         with mock.patch('apps.ventes.dimensionnement.recommander_taille',
                         espion):
