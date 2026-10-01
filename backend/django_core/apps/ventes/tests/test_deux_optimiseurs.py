@@ -58,6 +58,7 @@ from apps.ventes.utils.options import (
     AVEC_BATTERIE, SANS_BATTERIE, filter_lines_for_option, option_lines,
 )
 from authentication.models import Company
+from apps.ventes.domain import taille as domaine_taille
 
 User = get_user_model()
 
@@ -373,17 +374,17 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
     def test_lecture_de_la_recommandation_avec_du_moteur(self):
         """``_recommandation_avec_rendue`` ne retient que du CHIFFRÉ, et
         répond ``None`` — donc « repli » — à tout le reste."""
-        lu = services._recommandation_avec_rendue(
+        lu = domaine_taille._recommandation_avec_rendue(
             {'panneaux': 12, 'kwc': 6.6, 'panel_watt': 550,
              'batterie_kwh': 15.0, 'payback_avec_annees': 6.2})
         self.assertEqual(lu, {'nb_panneaux': 12, 'kwc': 6.6,
                               'panel_watt': 550, 'batterie_kwh': 15.0})
         for muet in (None, {}, {'panneaux': 0}, {'panneaux': 'douze'},
                      'pas un dict'):
-            self.assertIsNone(services._recommandation_avec_rendue(muet), muet)
+            self.assertIsNone(domaine_taille._recommandation_avec_rendue(muet), muet)
         # Une capacité nulle n'est pas une capacité : on ne la transmet pas.
         self.assertIsNone(
-            services._recommandation_avec_rendue(
+            domaine_taille._recommandation_avec_rendue(
                 {'panneaux': 8, 'batterie_kwh': 0})['batterie_kwh'])
 
 

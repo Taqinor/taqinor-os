@@ -26,6 +26,7 @@ from django.test import TestCase, TransactionTestCase
 
 from apps.stock.models import Produit
 from core.test_utils import WideTeardownTimeoutMixin
+from apps.ventes.domain import facturation_ops as domaine_facturation_ops
 
 MIGRATION_DEDOUBLONNAGE = 'apps.stock.migrations.0134_dedoublonnage_produit_nom_sans_sku'
 CONTRAINTE = 'stock_produit_company_nom_sans_sku_uniq'
@@ -271,15 +272,15 @@ class TestSiteAppelFraisRefactures(TestCase):
         self.services = services
 
     def test_deux_appels_renvoient_la_meme_fiche(self):
-        a = self.services._produit_frais_refactures(self.company)
-        b = self.services._produit_frais_refactures(self.company)
+        a = domaine_facturation_ops._produit_frais_refactures(self.company)
+        b = domaine_facturation_ops._produit_frais_refactures(self.company)
         self.assertEqual(a.pk, b.pk)
         self.assertEqual(Produit.objects.filter(
             company=self.company, nom='Frais refacturés').count(), 1)
 
     def test_une_fiche_archivee_ne_bloque_pas(self):
         archive = creer(self.company, 'Frais refacturés', is_archived=True)
-        produit = self.services._produit_frais_refactures(self.company)
+        produit = domaine_facturation_ops._produit_frais_refactures(self.company)
         self.assertNotEqual(produit.pk, archive.pk)
         self.assertFalse(produit.is_archived)
 
@@ -304,7 +305,7 @@ class TestSiteAppelFraisRefactures(TestCase):
                 mock.patch.object(
                     Produit.objects, 'create',
                     side_effect=IntegrityError('duplicate key')):
-            produit = self.services._produit_frais_refactures(self.company)
+            produit = domaine_facturation_ops._produit_frais_refactures(self.company)
 
         self.assertEqual(produit.pk, gagnante.pk)
         self.assertEqual(Produit.objects.filter(
@@ -317,4 +318,4 @@ class TestSiteAppelFraisRefactures(TestCase):
                 Produit.objects, 'create',
                 side_effect=IntegrityError('autre contrainte')):
             with self.assertRaises(IntegrityError):
-                self.services._produit_frais_refactures(self.company)
+                domaine_facturation_ops._produit_frais_refactures(self.company)

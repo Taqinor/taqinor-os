@@ -27,9 +27,8 @@ from apps.ventes.services import (
     accept_devis,
     request_esign_otp,
     validate_esign_otp,
-    _esign_otp_enabled,
-    _otp_cache_key,
 )
+from apps.ventes.domain.cycle_vie import _esign_otp_enabled, _otp_cache_key
 
 User = get_user_model()
 

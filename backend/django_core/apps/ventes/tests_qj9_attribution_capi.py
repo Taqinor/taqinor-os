@@ -65,7 +65,7 @@ class PersistAttributionTests(TestCase):
 
     def test_attribution_copied_on_accept(self):
         """Les UTM/fbclid du lead sont copiés dans etude_params à l'acceptation."""
-        from apps.ventes.services import _persist_attribution
+        from apps.ventes.domain.cycle_vie import _persist_attribution
         devis = self._make_devis(lead=self.lead)
         _persist_attribution(devis=devis)
         devis.refresh_from_db()
@@ -79,7 +79,7 @@ class PersistAttributionTests(TestCase):
 
     def test_idempotent_does_not_overwrite_existing_attribution(self):
         """Un appel redondant ne ré-écrit pas une attribution déjà présente."""
-        from apps.ventes.services import _persist_attribution
+        from apps.ventes.domain.cycle_vie import _persist_attribution
         devis = self._make_devis(
             lead=self.lead,
             etude_params={'attribution': {'fbclid': 'ORIGINAL', 'utm_source': 'google'}},
@@ -93,7 +93,7 @@ class PersistAttributionTests(TestCase):
 
     def test_no_lead_is_noop(self):
         """Un devis sans lead ne lève pas d'exception et ne modifie rien."""
-        from apps.ventes.services import _persist_attribution
+        from apps.ventes.domain.cycle_vie import _persist_attribution
         devis = self._make_devis(lead=None)
         _persist_attribution(devis=devis)
         devis.refresh_from_db()
@@ -103,7 +103,7 @@ class PersistAttributionTests(TestCase):
     def test_empty_attribution_fields_skipped(self):
         """Un lead sans UTM/fbclid ne crée pas de bloc attribution vide."""
         from apps.crm.models import Lead
-        from apps.ventes.services import _persist_attribution
+        from apps.ventes.domain.cycle_vie import _persist_attribution
         lead_empty = Lead.objects.create(
             company=self.company, nom='Lead sans UTM')
         devis = self._make_devis(lead=lead_empty)
@@ -114,7 +114,7 @@ class PersistAttributionTests(TestCase):
 
     def test_existing_etude_params_preserved(self):
         """Les autres clés d'etude_params ne sont pas écrasées."""
-        from apps.ventes.services import _persist_attribution
+        from apps.ventes.domain.cycle_vie import _persist_attribution
         devis = self._make_devis(
             lead=self.lead,
             etude_params={'kw_crete': 5.4, 'production_kwh': 7800},
@@ -127,7 +127,7 @@ class PersistAttributionTests(TestCase):
 
     def test_company_scoped_via_fk(self):
         """La copie est naturellement scopée : lead et devis partagent la même société."""
-        from apps.ventes.services import _persist_attribution
+        from apps.ventes.domain.cycle_vie import _persist_attribution
         devis = self._make_devis(lead=self.lead)
         _persist_attribution(devis=devis)
         devis.refresh_from_db()
@@ -181,7 +181,7 @@ class FireCapiSignedQuoteTests(TestCase):
     @override_settings(META_CAPI_ACCESS_TOKEN='')
     def test_no_token_is_noop(self):
         """Sans META_CAPI_ACCESS_TOKEN aucun appel HTTP n'est émis."""
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         devis_stub = self._make_devis_stub()
         with mock.patch('urllib.request.urlopen') as mock_open:
             _fire_capi_signed_quote(devis=devis_stub)
@@ -190,7 +190,7 @@ class FireCapiSignedQuoteTests(TestCase):
     @override_settings(META_CAPI_ACCESS_TOKEN='')
     def test_no_token_never_raises(self):
         """Sans token le call ne lève jamais d'exception."""
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         devis_stub = self._make_devis_stub()
         try:
             _fire_capi_signed_quote(devis=devis_stub)
@@ -201,7 +201,7 @@ class FireCapiSignedQuoteTests(TestCase):
                        META_CAPI_PIXEL_ID='')
     def test_no_pixel_logs_only(self):
         """Avec token mais sans pixel ID, on loggue sans faire de HTTP."""
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         devis_stub = self._make_devis_stub()
         with mock.patch('urllib.request.urlopen') as mock_open:
             _fire_capi_signed_quote(devis=devis_stub)
@@ -211,7 +211,7 @@ class FireCapiSignedQuoteTests(TestCase):
                        META_CAPI_PIXEL_ID='123456789')
     def test_with_token_and_pixel_calls_http(self):
         """Avec token + pixel, un POST HTTP est tenté vers l'API Meta."""
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         devis_stub = self._make_devis_stub()
         mock_resp = mock.MagicMock()
         mock_resp.__enter__ = lambda s: s
@@ -237,7 +237,7 @@ class FireCapiSignedQuoteTests(TestCase):
                        META_CAPI_PIXEL_ID='123456789')
     def test_attribution_included_in_payload(self):
         """Les champs fbclid/utm_source sont inclus dans le payload CAPI."""
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         lead_stub = mock.Mock()
         lead_stub.fbclid = 'fb.1.ABC.XYZ'
         lead_stub.utm_source = 'facebook'
@@ -278,7 +278,7 @@ class FireCapiSignedQuoteTests(TestCase):
                        META_CAPI_PIXEL_ID='123456789')
     def test_http_failure_never_propagates(self):
         """Une erreur HTTP vers Meta ne doit jamais remonter à accept_devis."""
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
         devis_stub = self._make_devis_stub()
         with mock.patch('urllib.request.urlopen',
                         side_effect=OSError('connection refused')):

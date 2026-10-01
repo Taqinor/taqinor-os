@@ -36,6 +36,7 @@ from apps.ventes.services import (
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
 )
+from apps.ventes.domain import taille as domaine_taille
 
 User = get_user_model()
 
@@ -344,7 +345,7 @@ class BuildDevisAutoAvecContourTest(TestCase):
         """Le nombre de panneaux que le MOTEUR recommande pour ce lead — ce
         module n'épingle plus les 16 panneaux de la règle des 900 DH/mois."""
         from apps.ventes import services
-        nb, _watt, source, _avec = services._panneaux_dimensionnement_horaire(
+        nb, _watt, source, _avec = domaine_taille._panneaux_dimensionnement_horaire(
             lead=lead, company=self.company,
             phase=services.phase_client_pour_dimensionnement(lead))
         self.assertEqual(source, 'moteur_horaire')

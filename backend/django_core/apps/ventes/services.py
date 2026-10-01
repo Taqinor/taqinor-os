@@ -67,21 +67,7 @@ logger = logging.getLogger(__name__)
 # dorée du pin reste donc EXACTE sans être retouchée.
 from apps.ventes.domain import bordereau as _bordereau  # noqa: E402
 BOQ_CATEGORIES = _bordereau.BOQ_CATEGORIES
-_BOQ_FAMILLES = _bordereau._BOQ_FAMILLES
-_BOQ_FAMILLES_CABLE = _bordereau._BOQ_FAMILLES_CABLE
-_BOQ_FAMILLES_CALIBREES = _bordereau._BOQ_FAMILLES_CALIBREES
 BOQ_SUFFIXE_A_CHIFFRER = _bordereau.BOQ_SUFFIXE_A_CHIFFRER
-_BOQ_NOMBRE_RE = _bordereau._BOQ_NOMBRE_RE
-_boq_normaliser = _bordereau._boq_normaliser
-_boq_famille = _bordereau._boq_famille
-_boq_polarite = _bordereau._boq_polarite
-_boq_nombres = _bordereau._boq_nombres
-_boq_courant = _bordereau._boq_courant
-_boq_section = _bordereau._boq_section
-_boq_courant_alternatif = _bordereau._boq_courant_alternatif
-_boq_candidats = _bordereau._boq_candidats
-_boq_apparier = _bordereau._boq_apparier
-_boq_prix = _bordereau._boq_prix
 ajouter_lignes_boq_electrique = _bordereau.ajouter_lignes_boq_electrique
 
 
@@ -100,16 +86,9 @@ CreditHoldError = _recouvrement.CreditHoldError
 verifier_credit_hold = _recouvrement.verifier_credit_hold
 SaleWarningError = _recouvrement.SaleWarningError
 verifier_sale_warnings = _recouvrement.verifier_sale_warnings
-_NUDGE_MSG_FR = _recouvrement._NUDGE_MSG_FR
-_NUDGE_MSG_AR = _recouvrement._NUDGE_MSG_AR
 _build_wa_draft_url = _recouvrement._build_wa_draft_url
-_get_nudge_days = _recouvrement._get_nudge_days
-_nudge_suppressed = _recouvrement._nudge_suppressed
 send_devis_followup_nudges = _recouvrement.send_devis_followup_nudges
-_send_nudge_email = _recouvrement._send_nudge_email
 expire_stale_devis = _recouvrement.expire_stale_devis
-_COLD_AFTER_FOLLOWUP_DAYS = _recouvrement._COLD_AFTER_FOLLOWUP_DAYS
-_advance_lead_on_expiry = _recouvrement._advance_lead_on_expiry
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -120,14 +99,12 @@ marquer_facture_soldee = _encaissements.marquer_facture_soldee
 enregistrer_paiement = _encaissements.enregistrer_paiement
 facture_montant_du = _encaissements.facture_montant_du
 affecter_encaissement_groupe = _encaissements.affecter_encaissement_groupe
-_creer_paiement_groupe = _encaissements._creer_paiement_groupe
 create_payment_link = _encaissements.create_payment_link
 # AUD136 — cycle de vie du lien de paiement (création bornée, expiration,
 # révocation) : réexportés sur la façade `services` comme leurs voisins.
 LinkError = _encaissements.LinkError
 expirer_liens_paiement_perimes = _encaissements.expirer_liens_paiement_perimes
 revoquer_lien_paiement = _encaissements.revoquer_lien_paiement
-_public_url = _encaissements._public_url
 qr_svg_for_facture_pdf = _encaissements.qr_svg_for_facture_pdf
 record_payment_from_link = _encaissements.record_payment_from_link
 enregistrer_avance = _encaissements.enregistrer_avance
@@ -151,14 +128,10 @@ creer_facture_contrat = _facturation_ops.creer_facture_contrat
 creer_facture_regie = _facturation_ops.creer_facture_regie
 creer_facture_acompte_situation = _facturation_ops.creer_facture_acompte_situation
 creer_facture_classique = _facturation_ops.creer_facture_classique
-_PRODUIT_FRAIS_REFACTURES_NOM = _facturation_ops._PRODUIT_FRAIS_REFACTURES_NOM
-_produit_frais_refactures = _facturation_ops._produit_frais_refactures
 ajouter_lignes_frais_refactures = _facturation_ops.ajouter_lignes_frais_refactures
-_recalculer_totaux_facture = _facturation_ops._recalculer_totaux_facture
 calculer_date_echeance = _facturation_ops.calculer_date_echeance
 get_facture_or_none = _facturation_ops.get_facture_or_none
 facturables_pour_devis = _facturation_ops.facturables_pour_devis
-_main_oeuvre_produit = _facturation_ops._main_oeuvre_produit
 # AUD184 — porte d'entrée de `contrats` pour poser la ligne d'une facture
 # d'échéance (les factures header-only étaient invisibles des exports).
 generer_facture_ticket_sav = _facturation_ops.generer_facture_ticket_sav
@@ -176,35 +149,17 @@ date_validite_credit = _cycle_vie.date_validite_credit
 AcceptError = _cycle_vie.AcceptError
 activate_optional_line = _cycle_vie.activate_optional_line
 OTP_CACHE_TTL = _cycle_vie.OTP_CACHE_TTL
-_esign_otp_enabled = _cycle_vie._esign_otp_enabled
-_otp_cache_key = _cycle_vie._otp_cache_key
-_generate_otp = _cycle_vie._generate_otp
 request_esign_otp = _cycle_vie.request_esign_otp
 OTP_MAX_ATTEMPTS = _cycle_vie.OTP_MAX_ATTEMPTS
-_otp_attempts_key = _cycle_vie._otp_attempts_key
 validate_esign_otp = _cycle_vie.validate_esign_otp
 OTP_LECTURE_VERIFIED_TTL = _cycle_vie.OTP_LECTURE_VERIFIED_TTL
-_otp_lecture_cache_key = _cycle_vie._otp_lecture_cache_key
-_otp_lecture_attempts_key = _cycle_vie._otp_lecture_attempts_key
-_otp_lecture_verified_key = _cycle_vie._otp_lecture_verified_key
 request_otp_lecture = _cycle_vie.request_otp_lecture
 validate_otp_lecture = _cycle_vie.validate_otp_lecture
 otp_lecture_verified = _cycle_vie.otp_lecture_verified
-_send_otp_whatsapp = _cycle_vie._send_otp_whatsapp
-_send_otp_email = _cycle_vie._send_otp_email
-_create_esign_record = _cycle_vie._create_esign_record
 # QJR144 — le VÉRIFICATEUR du sceau d'un devis signé (le hash existait, rien ne
 # savait le recomparer). Nom PUBLIC : il est déclaré dans `__all__` et dans le
 # pin `tests/test_services_surface.py`, mis à jour dans le même commit.
 verifier_empreinte_signature = _cycle_vie.verifier_empreinte_signature
-_store_signed_pdf = _cycle_vie._store_signed_pdf
-_acceptance_deposit_block = _cycle_vie._acceptance_deposit_block
-_send_acceptance_emails = _cycle_vie._send_acceptance_emails
-_notify_seller_accepted = _cycle_vie._notify_seller_accepted
-_build_acceptance_wa_url = _cycle_vie._build_acceptance_wa_url
-_ATTRIBUTION_FIELDS = _cycle_vie._ATTRIBUTION_FIELDS
-_persist_attribution = _cycle_vie._persist_attribution
-_fire_capi_signed_quote = _cycle_vie._fire_capi_signed_quote
 accept_devis = _cycle_vie.accept_devis
 share_link_for_bcf = _cycle_vie.share_link_for_bcf
 INSTALLATION_SHARE_UTM_CAMPAIGN = _cycle_vie.INSTALLATION_SHARE_UTM_CAMPAIGN
@@ -224,10 +179,8 @@ mark_devis_sent = _cycle_vie.mark_devis_sent
 from apps.ventes.domain import catalogue as _catalogue  # noqa: E402
 marque_preferee = _catalogue.marque_preferee
 LIBELLES_ROLES = _catalogue.LIBELLES_ROLES
-_libelle_role = _catalogue._libelle_role
 carte_marques_composition = _catalogue.carte_marques_composition
 ordre_lignes_societe = _catalogue.ordre_lignes_societe
-_WATT_RE = _catalogue._WATT_RE
 _is_panel = _catalogue._is_panel
 _is_battery = _catalogue._is_battery
 CABLE_DC_M_PAR_PALIER = _catalogue.CABLE_DC_M_PAR_PALIER
@@ -236,36 +189,15 @@ CABLE_TERRE_M_PAR_PALIER = _catalogue.CABLE_TERRE_M_PAR_PALIER
 metre_cable_dc = _catalogue.metre_cable_dc
 metre_cable_dc_par_paires = _catalogue.metre_cable_dc_par_paires
 metre_cable_terre = _catalogue.metre_cable_terre
-_is_cable_terre = _catalogue._is_cable_terre
-_is_cable_dc = _catalogue._is_cable_dc
-_est_au_metre = _catalogue._est_au_metre
 STRUCTURES_PAR_PANNEAU = _catalogue.STRUCTURES_PAR_PANNEAU
 SOCLES_PAR_PANNEAU = _catalogue.SOCLES_PAR_PANNEAU
-_is_structure = _catalogue._is_structure
-_is_socle = _catalogue._is_socle
-_is_battery_basse_tension = _catalogue._is_battery_basse_tension
 _plage_batterie_de_l_onduleur = _catalogue._plage_batterie_de_l_onduleur
 _tension_nominale_batterie = _catalogue._tension_nominale_batterie
-_max_modules_par_banc = _catalogue._max_modules_par_banc
-_prix_ttc_batterie = _catalogue._prix_ttc_batterie
 _batterie_compatible = _catalogue._batterie_compatible
-_pick_batterie = _catalogue._pick_batterie
-_onduleur_complet = _catalogue._onduleur_complet
-_filtrer_onduleurs_complets = _catalogue._filtrer_onduleurs_complets
 _is_hybrid_inverter = _catalogue._is_hybrid_inverter
 _is_reseau_inverter = _catalogue._is_reseau_inverter
-_has_price = _catalogue._has_price
-_batterie_en_stock = _catalogue._batterie_en_stock
-_marque_correspond = _catalogue._marque_correspond
 _pick_product = _catalogue._pick_product
-_parse_watt = _catalogue._parse_watt
-_au_centime = _catalogue._au_centime
 prix_forfait_ht = _catalogue.prix_forfait_ht
-_KW_RE = _catalogue._KW_RE
-_KWH_RE = _catalogue._KWH_RE
-_TRI_RE = _catalogue._TRI_RE
-_sans_accents = _catalogue._sans_accents
-_arrondi_js = _catalogue._arrondi_js
 PANNEAUX_CEIL_EPS = _catalogue.PANNEAUX_CEIL_EPS
 plafond_panneaux = _catalogue.plafond_panneaux
 _parse_kw = _catalogue._parse_kw
@@ -279,9 +211,7 @@ catalogue_de_la_societe = _catalogue.catalogue_de_la_societe
 # RÉ-EXPORTS — QJR72 : géométrie → ``domain/geometrie.py``
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import geometrie as _geometrie  # noqa: E402
-_aspect_to_orientation = _geometrie._aspect_to_orientation
 _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
-_aspect_vers_azimut_boussole = _geometrie._aspect_vers_azimut_boussole
 extract_roof_config = _geometrie.extract_roof_config
 layout_hash = _geometrie.layout_hash
 poser_layout_hash = _geometrie.poser_layout_hash
@@ -289,16 +219,9 @@ validate_composition_for_layout = _geometrie.validate_composition_for_layout
 DRAPEAU_MOTEUR_CALEPINAGE = _geometrie.DRAPEAU_MOTEUR_CALEPINAGE
 TOLERANCE_ARBITRAGE_MODULES = _geometrie.TOLERANCE_ARBITRAGE_MODULES
 TOLERANCE_ARBITRAGE_PCT = _geometrie.TOLERANCE_ARBITRAGE_PCT
-_ecart_dans_la_tolerance = _geometrie._ecart_dans_la_tolerance
 moteur_calepinage_actif = _geometrie.moteur_calepinage_actif
-_zone_villa_depuis_pan = _geometrie._zone_villa_depuis_pan
-_produit_panneau_du_devis = _geometrie._produit_panneau_du_devis
-_panneau_pour_calepinage = _geometrie._panneau_pour_calepinage
 compte_moteur_du_layout = _geometrie.compte_moteur_du_layout
 arbitrer_compte_calepinage = _geometrie.arbitrer_compte_calepinage
-_cible_panneaux_du_layout = _geometrie._cible_panneaux_du_layout
-_watt_du_layout = _geometrie._watt_du_layout
-_AUTO_ZONE_ID = _geometrie._AUTO_ZONE_ID
 contour_client_lnglat = _geometrie.contour_client_lnglat
 aire_contour_m2 = _geometrie.aire_contour_m2
 plafond_physique_du_contour = _geometrie.plafond_physique_du_contour
@@ -312,7 +235,6 @@ from apps.ventes.domain import lignes as _lignes  # noqa: E402
 CIBLE_WATT_DEFAUT = _lignes.CIBLE_WATT_DEFAUT
 _lignes_produit = _lignes._lignes_produit
 _classe_ligne = _lignes._classe_ligne
-_pmax_wc_du_produit = _lignes._pmax_wc_du_produit
 lignes_de_variante = _lignes.lignes_de_variante
 option_avec_servable = _lignes.option_avec_servable
 cible_depuis_lignes = _lignes.cible_depuis_lignes
@@ -332,39 +254,25 @@ avertissement_vivier_batterie_vide = _composition.avertissement_vivier_batterie_
 avertissement_batterie_rupture_stock = _composition.avertissement_batterie_rupture_stock
 avertissement_batterie_plafond_banc = _composition.avertissement_batterie_plafond_banc
 avertissement_batterie_pin_sans_correspondance = _composition.avertissement_batterie_pin_sans_correspondance
-_v_txt = _composition._v_txt
 avertissement_aucun_onduleur_triphase = _composition.avertissement_aucun_onduleur_triphase
-_vivier_onduleurs_par_phase = _composition._vivier_onduleurs_par_phase
-_statut_couple_panneau = _composition._statut_couple_panneau
 composition_residentielle = _composition.composition_residentielle
-_memes_lignes_kit = _composition._memes_lignes_kit
-_cle_produit = _composition._cle_produit
 fusionner_kits = _composition.fusionner_kits
 composition_deux_optimiseurs = _composition.composition_deux_optimiseurs
 CLASSES_KIT_COMPLETABLES = _composition.CLASSES_KIT_COMPLETABLES
 AVERTISSEMENTS_KIT_ABSENT = _composition.AVERTISSEMENTS_KIT_ABSENT
-_classe_kit_de_ligne = _composition._classe_kit_de_ligne
 _est_au_prix_catalogue = _composition._est_au_prix_catalogue
-_completer_kit_residentiel = _composition._completer_kit_residentiel
-_refuser_couple_panneau_onduleur_impossible = _composition._refuser_couple_panneau_onduleur_impossible
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR75 (1/2) : taille → ``domain/taille.py``
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import taille as _taille  # noqa: E402
-_AUTO_PANEL_WATT = _taille._AUTO_PANEL_WATT
 AutoDevisError = _taille.AutoDevisError
 phase_client_pour_dimensionnement = _taille.phase_client_pour_dimensionnement
 MOTIF_FACTURE_ABSENTE = _taille.MOTIF_FACTURE_ABSENTE
 MOTIF_LOCALISATION = _taille.MOTIF_LOCALISATION
 MOTIF_CATALOGUE = _taille.MOTIF_CATALOGUE
 MOTIF_MOTEUR_INDISPONIBLE = _taille.MOTIF_MOTEUR_INDISPONIBLE
-_REFUS_DIMENSIONNEMENT = _taille._REFUS_DIMENSIONNEMENT
-_refus_dimensionnement = _taille._refus_dimensionnement
-_panneaux_dimensionnement_horaire = _taille._panneaux_dimensionnement_horaire
-_recommandation_avec_rendue = _taille._recommandation_avec_rendue
-_residential_panel_count = _taille._residential_panel_count
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -372,7 +280,6 @@ _residential_panel_count = _taille._residential_panel_count
 # ═══════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import etudes as _etudes  # noqa: E402
 rafraichir_etude_horaire = _etudes.rafraichir_etude_horaire
-_bloc_horaire_deja_a_jour = _etudes._bloc_horaire_deja_a_jour
 rafraichir_etude_horaire_devis = _etudes.rafraichir_etude_horaire_devis
 rafraichir_dimensionnement_devis = _etudes.rafraichir_dimensionnement_devis
 rafraichir_etudes_du_devis = _etudes.rafraichir_etudes_du_devis
@@ -392,7 +299,6 @@ GAMME_NOMS_DEFAUT = _gammes.GAMME_NOMS_DEFAUT
 gamme_info = _gammes.gamme_info
 gamme_nom = _gammes.gamme_nom
 gamme_envoi = _gammes.gamme_envoi
-_set_gamme = _gammes._set_gamme
 gamme_soeur = _gammes.gamme_soeur
 creer_variante_gamme = _gammes.creer_variante_gamme
 regler_envoi_gamme = _gammes.regler_envoi_gamme
@@ -406,8 +312,6 @@ lead_from_source_devis = _gammes.lead_from_source_devis
 # ═════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import catalogue_events as _catalogue_events  # noqa: E402
 LIBELLES_CHAMPS_PRODUIT = _catalogue_events.LIBELLES_CHAMPS_PRODUIT
-_valeurs_champ = _catalogue_events._valeurs_champ
-_decimal_ou_none = _catalogue_events._decimal_ou_none
 resynchroniser_devis_pour_produit = _catalogue_events.resynchroniser_devis_pour_produit
 on_produit_modifie = _catalogue_events.on_produit_modifie
 planifier_resynchronisation_produit = _catalogue_events.planifier_resynchronisation_produit
@@ -430,10 +334,6 @@ poser_puissance_kwc = _scenario.poser_puissance_kwc
 # RÉ-EXPORTS — QJR76 : tarification → ``domain/tarification.py``
 # ═════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import tarification as _tarification  # noqa: E402
-_round2 = _tarification._round2
-_regle_applicable = _tarification._regle_applicable
-_appliquer_regle = _tarification._appliquer_regle
-_resolve_liste_prix = _tarification._resolve_liste_prix
 prix_applicable = _tarification.prix_applicable
 # QJR539 — la garde de remise T17 unique, appelée AVANT tout envoi.
 RemiseNonApprouvee = _tarification.RemiseNonApprouvee
@@ -475,7 +375,6 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORT — QJR76 : arithmétique de date → ``domain/facturation_ops.py``
 # ═════════════════════════════════════════════════════════════════════════
-_add_months = _facturation_ops._add_months
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -483,9 +382,6 @@ _add_months = _facturation_ops._add_months
 # ═════════════════════════════════════════════════════════════════════════
 from apps.ventes.domain import resynchronisation as _resynchronisation  # noqa: E402
 SyncLayoutError = _resynchronisation.SyncLayoutError
-_resynchroniser_instance_appelante = _resynchronisation._resynchroniser_instance_appelante
-_quantite_verrouillee = _resynchronisation._quantite_verrouillee
-_avertir_verrouillee = _resynchronisation._avertir_verrouillee
 sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 
 
@@ -505,10 +401,7 @@ SCENARIOS_DEMANDABLES = _creation.SCENARIOS_DEMANDABLES
 composer_devis_residentiel = _creation.composer_devis_residentiel
 build_devis_auto = _creation.build_devis_auto
 auto_devis_tunnel_actif = _creation.auto_devis_tunnel_actif
-_MARQUE_AUTO_DEVIS = _creation._MARQUE_AUTO_DEVIS
-_liberer_marque_auto_devis = _creation._liberer_marque_auto_devis
 corps_note_refus_auto_devis = _creation.corps_note_refus_auto_devis
-_noter_refus_auto_devis = _creation._noter_refus_auto_devis
 creer_devis_automatique_depuis_lead = _creation.creer_devis_automatique_depuis_lead
 planifier_devis_automatique_pour_lead = _creation.planifier_devis_automatique_pour_lead
 create_devis_pour_ticket = _creation.create_devis_pour_ticket

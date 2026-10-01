@@ -17,6 +17,7 @@ from apps.crm.models import Lead
 from apps.crm.stages import CONTACTED, NEW, QUOTE_SENT, SIGNED
 
 from apps.adsengine import capi_crm
+from apps.ventes.domain import cycle_vie as domaine_cycle_vie
 
 _ENV_ON = {
     'META_CRM_STAGE_CAPI_ENABLED': '1',
@@ -216,8 +217,7 @@ class Qj9NonRegressionTests(TestCase):
     """QJ9 (émetteur signature ventes) reste INTACT et SÉPARÉ d'ADSENG32."""
 
     def test_qj9_signed_quote_emitter_untouched(self):
-        from apps.ventes import services as ventes_services
-        src = inspect.getsource(ventes_services._fire_capi_signed_quote)
+        src = inspect.getsource(domaine_cycle_vie._fire_capi_signed_quote)
         # QJ9 émet toujours « SignedQuote » (couche document, action website).
         self.assertIn('SignedQuote', src)
         self.assertIn("'signedquote:", src.replace('"', "'"))

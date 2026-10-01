@@ -34,9 +34,10 @@ from apps.ventes.profils_comparatifs import (
     _empreinte_profils, rafraichir_profils_comparatifs_devis,
 )
 from apps.ventes.services import (
-    _bloc_horaire_deja_a_jour, rafraichir_etude_horaire_devis,
+    rafraichir_etude_horaire_devis,
     rafraichir_etudes_du_devis,
 )
+from apps.ventes.domain.etudes import _bloc_horaire_deja_a_jour
 
 User = get_user_model()
 

@@ -17,16 +17,17 @@ CE QUE LE PIN COUVRE — l'ensemble EXACT des noms exportés :
   (fonctions, classes, constantes). La liste est vérifiée EXACTE : un nom
   retiré est rouge, un nom ajouté aussi (il faut le déclarer ici, ce qui rend
   tout élargissement de surface visible en revue).
-* ``PRIVES_IMPORTES_AILLEURS`` — les noms PRIVÉS (préfixe ``_``) qu'un
-  AUTRE module importe réellement, avec le ou les modules importateurs. Le
-  message d'échec nomme le nom manquant ET son importateur.
+* QJR645 — les alias PRIVÉS (préfixe ``_``) ne sont plus épinglés par une
+  liste figée (elle rendait chaque alias mort permanent) : un INVARIANT exige
+  que tout alias privé ait au moins un importateur de PRODUCTION par la
+  façade. Un test importe un privé depuis ``apps.ventes.domain.<module>``.
 
-COMMENT LA LISTE A ÉTÉ DÉRIVÉE (jamais de mémoire, jamais à la main). Lecture
-statique du fichier réel : définitions au niveau module de ``services.py`` par
-AST, puis balayage AST de tout ``backend/django_core`` pour les deux façons
-d'atteindre un privé — ``from apps.ventes.services import _x`` (ou son import
-relatif) et ``services._x`` après une liaison de module PROUVÉE par un import
-(un simple grep textuel donnait neuf faux positifs, tous des commentaires).
+COMMENT L'INVARIANT EST CALCULÉ. Lecture statique : définitions au niveau
+module de ``services.py`` par AST, puis balayage AST des modules de
+production de ``backend/django_core`` pour les deux façons d'atteindre un
+privé — ``from apps.ventes.services import _x`` (ou son import relatif) et
+``services._x`` après une liaison de module PROUVÉE par un import (un simple
+grep textuel donnait des faux positifs, tous des commentaires).
 
 NOTE DE VÉRIFICATION (29/08/2026). Le texte de QJR5 cite cinq privés —
 ``_lire_composition``, ``_compter_modules_batterie``, ``_lignes_produit_du_devis``,
@@ -272,108 +273,76 @@ SURFACE_PUBLIQUE = (
     "zone_toit_depuis_contour",
 )
 
-PRIVES_IMPORTES_AILLEURS = {
-    "_AUTO_PANEL_WATT": (
-        "apps/ventes/dimensionnement.py",
-        "apps/ventes/offres_tailles.py",
-    ),
-    "_advance_lead_on_expiry": ("apps/ventes/tests/test_qj5_expiry_funnel.py",),
-    "_azimut_boussole_vers_aspect": ("apps/ventes/tasks.py",),
-    "_batterie_compatible": ("apps/ventes/compatibilites.py",),
-    # QJR44 — le prédicat de fraîcheur du bloc horaire est exercé
-    # directement par son test (tolérance moteur + estampille des entrées).
-    "_bloc_horaire_deja_a_jour": (
-        "apps/ventes/tests/test_qjr_empreintes_etudes.py",
-    ),
-    "_boq_apparier": ("apps/ventes/tests/test_pv47_boq_lignes.py",),
-    "_boq_famille": ("apps/ventes/tests/test_pv47_boq_lignes.py",),
-    "_build_acceptance_wa_url": ("apps/crm/tests_qj2_seller_notifications.py",),
-    "_build_wa_draft_url": ("apps/sav/notifications_client.py",),
-    "_cible_panneaux_du_layout": ("apps/ventes/dimensionnement.py",),
-    "_classe_ligne": ("apps/ventes/management/commands/reparer_devis_deux_options.py",),
-    "_ecart_dans_la_tolerance": ("apps/ventes/tests/test_calepinage_bascule.py",),
-    "_esign_otp_enabled": ("apps/ventes/tests/test_qj11_otp.py",),
-    "_est_au_prix_catalogue": (
-        "apps/ventes/offres_tailles.py",
-        # QJR59 — le repli RESTE pour les lignes antérieures aux marqueurs
-        # ``prix_manuel``/``quantite_manuelle`` : son test l'exerce directement.
-        "apps/ventes/tests/test_qjr_ligne_manuelle.py",
-    ),
-    "_est_triphase": (
-        "apps/ventes/compatibilites.py",
-        "apps/ventes/dimensionnement.py",
-    ),
-    "_fire_capi_signed_quote": (
-        "apps/adsengine/tests/test_capi_crm.py",
-        "apps/ventes/tests/test_capi_adseng2.py",
-        "apps/ventes/tests/test_qx2_discount_consumers.py",
-        "apps/ventes/tests_qj9_attribution_capi.py",
-    ),
-    "_has_price": ("apps/stock/tests.py",),
-    "_is_battery": (
-        "apps/ventes/dimensionnement.py",
-        "apps/ventes/management/commands/reparer_devis_deux_options.py",
-        "apps/ventes/offres_tailles.py",
-        "apps/ventes/tests/test_calepinage_bascule.py",
-        "apps/ventes/tests/test_pvfullrange_5_50.py",
-    ),
-    "_is_battery_basse_tension": ("apps/stock/tests.py",),
-    "_is_hybrid_inverter": (
-        "apps/ventes/management/commands/reparer_devis_deux_options.py",
-        "apps/ventes/offres_tailles.py",
-        "apps/ventes/tests/test_calepinage_bascule.py",
-        "apps/ventes/tests/test_pvfullrange_5_50.py",
-        "apps/ventes/tests/test_pvond_contrat_onduleur.py",
-    ),
-    "_is_panel": (
-        "apps/ventes/offres_tailles.py",
-        "apps/ventes/selectors.py",
-        "apps/ventes/tests/test_calepinage_bascule.py",
-        "apps/ventes/tests/test_gammes_marques.py",
-    ),
-    "_is_reseau_inverter": (
-        "apps/ventes/management/commands/reparer_devis_deux_options.py",
-        "apps/ventes/offres_tailles.py",
-        "apps/ventes/tests/test_calepinage_bascule.py",
-        "apps/ventes/tests/test_gammes_marques.py",
-        "apps/ventes/tests/test_pvfullrange_5_50.py",
-    ),
-    "_lignes_produit": ("apps/ventes/management/commands/reparer_devis_deux_options.py",),
-    "_notify_seller_accepted": ("apps/crm/tests_qj2_seller_notifications.py",),
-    "_onduleur_complet": ("apps/ventes/tests/test_pvond_contrat_onduleur.py",),
-    "_otp_attempts_key": ("apps/ventes/tests/test_qx10_otp_hardening.py",),
-    "_otp_cache_key": (
-        "apps/ventes/tests/test_qj11_otp.py",
-        "apps/ventes/tests/test_qx10_otp_hardening.py",
-    ),
-    "_otp_lecture_cache_key": ("apps/ventes/tests/test_l_niv_otp_lecture.py",),
-    "_panneau_pour_calepinage": ("apps/ventes/dimensionnement.py",),
-    "_panneaux_dimensionnement_horaire": (
-        "apps/ventes/tests/test_auto_pipeline.py",
-        "apps/ventes/tests/test_devis_auto.py",
-    ),
-    "_parse_kw": ("apps/ventes/dimensionnement.py",),
-    "_parse_kwh": (
-        "apps/ventes/dimensionnement.py",
-        "apps/ventes/offres_tailles.py",
-    ),
-    "_persist_attribution": ("apps/ventes/tests_qj9_attribution_capi.py",),
-    "_pick_batterie": ("apps/ventes/tests/test_pvond_contrat_onduleur.py",),
-    "_pick_product": (
-        "apps/stock/tests.py",
-        "apps/ventes/management/commands/reparer_devis_deux_options.py",
-        "apps/ventes/tests/test_gammes_marques.py",
-        "apps/ventes/tests/test_pvond_contrat_onduleur.py",
-    ),
-    "_plage_batterie_de_l_onduleur": ("apps/ventes/compatibilites.py",),
-    "_recommandation_avec_rendue": ("apps/ventes/tests/test_deux_optimiseurs.py",),
-    "_residential_panel_count": ("apps/ventes/tests/test_devis_auto.py",),
-    "_sans_accents": ("apps/ventes/tests/test_tri_jamais_mono.py",),
-    "_send_otp_whatsapp": ("apps/ventes/tests/test_qx10_otp_hardening.py",),
-    "_store_signed_pdf": ("apps/ventes/tests/test_qj22_signed_artifact.py",),
-    "_tension_nominale_batterie": ("apps/ventes/compatibilites.py",),
-    "_zone_villa_depuis_pan": ("apps/ventes/tests/test_calepinage_bascule.py",),
-}
+RACINE_BACKEND = Path(__file__).resolve().parents[3]
+FACADE = "apps.ventes.services"
+
+
+def _est_production(chemin):
+    """Un module de PRODUCTION : ni sous ``tests/``, ni ``test*.py``."""
+    rel = chemin.relative_to(RACINE_BACKEND).as_posix()
+    return not ("/tests/" in "/" + rel or chemin.name.startswith("test")
+                or chemin.name == "conftest.py")
+
+
+def _paquet_de(chemin):
+    parts = list(chemin.relative_to(RACINE_BACKEND).with_suffix("").parts)
+    if parts[-1] == "__init__":
+        return ".".join(parts[:-1])
+    return ".".join(parts[:-1])
+
+
+def _resoudre(paquet, niveau, module):
+    if niveau == 0:
+        return module or ""
+    base = paquet.split(".") if paquet else []
+    if niveau > 1:
+        base = base[:len(base) - (niveau - 1)]
+    return ".".join(base + ([module] if module else []))
+
+
+def _prives_atteints_par_la_facade(chemin):
+    """Noms privés de ``apps.ventes.services`` qu'atteint ce fichier :
+    ``from apps.ventes.services import _x`` (ou relatif), ou ``services._x``
+    après une liaison PROUVÉE du module par un import."""
+    try:
+        arbre = ast.parse(chemin.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return set()
+    paquet = _paquet_de(chemin)
+    trouves, liaisons = set(), set()
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, ast.ImportFrom):
+            cible = _resoudre(paquet, noeud.level, noeud.module)
+            for alias in noeud.names:
+                if cible == FACADE and alias.name.startswith("_"):
+                    trouves.add(alias.name)
+                elif f"{cible}.{alias.name}" == FACADE:
+                    liaisons.add(alias.asname or alias.name)
+        elif isinstance(noeud, ast.Import):
+            for alias in noeud.names:
+                if alias.name == FACADE and alias.asname:
+                    liaisons.add(alias.asname)
+    for noeud in ast.walk(arbre):
+        if (isinstance(noeud, ast.Attribute) and noeud.attr.startswith("_")
+                and not noeud.attr.startswith("__")):
+            valeur = noeud.value
+            if ((isinstance(valeur, ast.Name) and valeur.id in liaisons)
+                    or ast.unparse(valeur) == FACADE):
+                trouves.add(noeud.attr)
+    return trouves
+
+
+def _importateurs_de_production():
+    """``{nom privé: [modules de production qui l'atteignent par la façade]}``."""
+    facade = Path(services.__file__).resolve()
+    importateurs = {}
+    for chemin in RACINE_BACKEND.rglob("*.py"):
+        if chemin.resolve() == facade or not _est_production(chemin):
+            continue
+        for nom in _prives_atteints_par_la_facade(chemin):
+            importateurs.setdefault(nom, []).append(
+                chemin.relative_to(RACINE_BACKEND).as_posix())
+    return importateurs
 
 
 def _definitions_niveau_module(chemin):
@@ -421,16 +390,23 @@ class SurfaceServicesVentesTests(SimpleTestCase):
               "apps/ventes/services.py (ou retirer le nom de SURFACE_PUBLIQUE "
               "dans le MÊME commit, ce qui rend le retrait visible en revue).")
 
-    def test_chaque_prive_importe_ailleurs_est_toujours_exporte(self):
-        for nom, importateurs in sorted(PRIVES_IMPORTES_AILLEURS.items()):
-            with self.subTest(nom=nom):
-                self.assertTrue(
-                    hasattr(services, nom),
-                    "apps.ventes.services n'exporte plus le nom PRIVÉ %s, "
-                    "importé par : %s. flake8 ne signale PAS cette "
-                    "disparition — d'où ce pin. Laisser un ré-export dans "
-                    "apps/ventes/services.py, ou mettre l'importateur à jour "
-                    "dans le même commit." % (nom, ", ".join(importateurs)))
+    # ── QJR645 — l'invariant des alias PRIVÉS (plus de liste figée) ────────
+
+    def test_tout_alias_prive_a_un_importateur_de_production(self):
+        """Un alias privé ``_x = _module._x`` n'a sa place dans la façade que
+        si au moins un module de PRODUCTION l'atteint par elle ; un test
+        importe depuis ``apps.ventes.domain.<module>``. Sinon l'alias est
+        mort : le retirer (jamais l'épingler)."""
+        importateurs = _importateurs_de_production()
+        prives = sorted(nom for nom in self.definitions
+                        if nom.startswith("_") and not nom.startswith("__"))
+        orphelins = [nom for nom in prives if nom not in importateurs]
+        self.assertEqual(
+            orphelins, [],
+            "Alias PRIVÉ(S) de apps/ventes/services.py sans aucun importateur "
+            "de production par la façade : %s. Retirer l'alias et faire "
+            "importer les tests depuis apps.ventes.domain.<module>."
+            % ", ".join(orphelins))
 
     # ── la liste dorée doit rester EXACTE (le cas « surface élargie ») ──────
 
@@ -449,22 +425,11 @@ class SurfaceServicesVentesTests(SimpleTestCase):
             "changement de surface." % (disparus or "aucun",
                                         non_declares or "aucun"))
 
-    def test_les_prives_pinnes_sont_definis_dans_le_module(self):
-        absents = sorted(nom for nom in PRIVES_IMPORTES_AILLEURS
-                         if nom not in self.definitions)
-        self.assertEqual(
-            absents, [],
-            "PRIVES_IMPORTES_AILLEURS épingle un nom qui n'est plus défini au "
-            "niveau module de apps/ventes/services.py : %s. Soit il a été "
-            "déplacé (laisser un ré-export), soit il n'a jamais appartenu à "
-            "ce module (le retirer de la liste)." % ", ".join(absents))
-
     def test_aucun_nom_prive_dans_la_surface_publique(self):
         intrus = sorted(nom for nom in SURFACE_PUBLIQUE
                         if nom.startswith("_"))
         self.assertEqual(intrus, [],
-                         "SURFACE_PUBLIQUE ne contient que des noms publics ; "
-                         "les privés vont dans PRIVES_IMPORTES_AILLEURS.")
+                         "SURFACE_PUBLIQUE ne contient que des noms publics.")
 
     def test_la_liste_doree_est_triee_et_sans_doublon(self):
         """Une liste triée se relit en diff ; un doublon masque un retrait."""
@@ -472,11 +437,3 @@ class SurfaceServicesVentesTests(SimpleTestCase):
                          "SURFACE_PUBLIQUE doit rester triée.")
         self.assertEqual(len(set(SURFACE_PUBLIQUE)), len(SURFACE_PUBLIQUE),
                          "SURFACE_PUBLIQUE contient un doublon.")
-        chevauchement = sorted(set(SURFACE_PUBLIQUE)
-                               & set(PRIVES_IMPORTES_AILLEURS))
-        self.assertEqual(chevauchement, [],
-                         "Un nom ne peut pas être dans les deux listes.")
-        for nom, importateurs in PRIVES_IMPORTES_AILLEURS.items():
-            with self.subTest(nom=nom):
-                self.assertTrue(importateurs,
-                                "%s doit nommer au moins un importateur." % nom)

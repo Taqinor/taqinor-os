@@ -21,9 +21,11 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.ventes.models import Devis, ShareLink
 from apps.ventes.services import (
-    OTP_MAX_ATTEMPTS, request_esign_otp, validate_esign_otp,
-    _send_otp_whatsapp, _otp_cache_key, _otp_attempts_key,
+    OTP_MAX_ATTEMPTS,
+    request_esign_otp,
+    validate_esign_otp,
 )
+from apps.ventes.domain.cycle_vie import _send_otp_whatsapp, _otp_cache_key, _otp_attempts_key
 
 
 @override_settings(CACHES={'default': {
