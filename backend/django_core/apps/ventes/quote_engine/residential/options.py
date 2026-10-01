@@ -261,13 +261,31 @@ def _entry_row(entry, fmt, produits_base="taqinor.ma/produits"):
     kind, payload = entry
     if kind == "paire":
         return _row_pair(payload, fmt, produits_base)
+    if kind == "struct":
+        return _struct_row(payload)
     return _row(payload, fmt, produits_base)
+
+
+def _struct_row(s):
+    """QJR618 — une ligne de STRUCTURE du devis, pleine largeur, sans prix :
+    section = intertitre, note = texte en italique (texte déjà échappé par
+    ``builder.echapper_textes_client``)."""
+    txt = s.get("texte", "") or ""
+    if s.get("type") == "note":
+        return (f'<tr class="p2-tr-note"><td class="p2-d" colspan="5" '
+                f'style="font-style:italic;">{txt}</td></tr>')
+    return (f'<tr class="p2-tr-sec"><td class="p2-d" colspan="5" '
+            f'style="font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:.06em;">{txt}</td></tr>')
 
 
 def _entry_item(entry):
     """L'item représentatif d'une entrée (côté SANS pour une paire) — sert au
-    modèle de hauteur, qui ne mesure que la longueur de la désignation."""
+    modèle de hauteur, qui ne mesure que la longueur de la désignation.
+    QJR618 — une ligne de structure mesure par son texte."""
     kind, payload = entry
+    if kind == "struct":
+        return {"designation": payload.get("texte", "") or ""}
     return payload[0] if kind == "paire" else payload
 
 
@@ -410,6 +428,20 @@ def build_pages(ctx) -> list:
     else:
         entries = [("solo", it) for it in shared]
 
+    # QJR618 (D-QJR5-6) — les sections et notes tapées s'intercalent dans le
+    # tableau PARTAGÉ (jamais dans une carte d'option), à leur ``ordre``, par
+    # la MÊME fonction pure que le une-page (``sequence_affichage``, QJR617) ;
+    # elles entrent donc dans le modèle de hauteur QRES17 comme une ligne.
+    # Aucune ligne de structure ⇒ ``entries`` intact (octet-identique).
+    _structure = d.get("lignes_structure") or []
+    if _structure:
+        from ..sequence import sequence_affichage
+        _par_item = {id(_entry_item(e)): e for e in entries}
+        entries = [
+            (_par_item[id(obj)] if kind == "item" else ("struct", obj))
+            for kind, obj in sequence_affichage(
+                [_entry_item(e) for e in entries], _structure)]
+
     # ── Top spec list ────────────────────────────────────────────────────────
     # L-2OPT — quand les deux options n'ont PAS le même nombre de panneaux, un
     # scalaire unique ne décrit qu'une des deux : la bande porte alors les DEUX
@@ -514,6 +546,31 @@ def build_pages(ctx) -> list:
             '</div>')
     else:
         deltas_html = ""
+
+    # QJR618 (D-QJR5-6) — « Options proposées (non incluses dans le total) » :
+    # chaque add-on optionnel avec le SEUL ``total_ttc`` calculé par le
+    # builder (supplément canonique, remise globale comprise — QJR616), au
+    # centime (``fmt_mad``, QJR614) ; aucun recalcul ici. Sans option ⇒ ''.
+    _opts = d.get("options_proposees") or []
+    options_html = ""
+    if _opts:
+        _opt_rows = ""
+        for _o in _opts:
+            _oq = _o.get("quantite") or 0
+            _oq_txt = f"{float(_oq):g}× " if _oq and float(_oq) != 1 else ""
+            _opt_rows += (
+                '<tr>'
+                f'<td class="p2-d">{_oq_txt}{_o.get("designation", "")}</td>'
+                f'<td class="p2-r p2-tot">{fmt_mad(_o.get("total_ttc", 0))}'
+                ' MAD TTC</td></tr>')
+        options_html = (
+            '<div class="p2-opts" style="margin-top:2mm;">'
+            '<div class="p2-lbl">Options propos&eacute;es (non incluses dans '
+            'le total)</div>'
+            f'<table class="p2-tbl"><tbody>{_opt_rows}</tbody></table>'
+            '<div class="p2-tva-note" style="margin-top:.5mm;">Activez une '
+            'option avant signature pour l&rsquo;inclure &agrave; votre '
+            'devis.</div></div>')
 
     if deux_options:
         totals_html = (
@@ -805,7 +862,16 @@ def build_pages(ctx) -> list:
     # cartes badges → bande fine sur la page signature ; la ligne « fiches
     # techniques » → fusionnée à la légende TVA). Seuls les très gros devis
     # (~12 lignes communes et plus) passent en 4 pages.
-    fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()) <= 68.0
+    def _options_mm():
+        """QJR618 — hauteur du bloc « Options proposées », IMPUTÉE au même
+        budget (intitulé + note + une ligne par option). Sans option ⇒ 0,0 :
+        décision de pagination identique à l'historique."""
+        if not _opts:
+            return 0.0
+        return 11.0 + len(_opts) * 4.5
+
+    fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()
+                + _options_mm()) <= 68.0
 
     # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
     # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le
@@ -835,7 +901,7 @@ def build_pages(ctx) -> list:
     visuels_html = ""
     if (_prod_chart or _plan_a_part) and fits_one:
         _reste = 68.0 - 4.0 - (_table_mm(entries) + _deltas_mm()
-                               + _comparatif_mm())
+                               + _comparatif_mm() + _options_mm())
         if _reste >= _VISUELS_MM:
             _cells = ""
             if _plan_a_part:
@@ -1229,6 +1295,7 @@ def build_pages(ctx) -> list:
         # L-2OPT — le comparatif se lit JUSTE SOUS les deux cartes de totaux,
         # à l'endroit où le client compare. Vide ⇒ page inchangée.
         f'{comparatif_html}'
+        f'{options_html}'
         f'<div class="p2-tva-note">{tva_note}{note_remise}{fiche_inline}</div>'
         f'{multi_html}')
 

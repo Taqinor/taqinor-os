@@ -4,7 +4,6 @@ Couvre :
   - Le choix ModeInstallation.COMMERCIAL existe et le label INDUSTRIEL redevient
     « Industriel » (plus « Industriel / Commercial »).
   - PAYMENT_TERMS_BY_MODE['commercial'] = 50/40/10 (comme industriel).
-  - _FINANCING_PROGRAMS route commercial → Tatwir (réutilise l'industriel).
   - build_quote_data d'un devis commercial : inst_type = « Commerciale »
     (jamais un repli résidentiel silencieux) + payment_terms 50/40/10.
   - Non-régression : residentiel/industriel/agricole inchangés.
@@ -20,9 +19,7 @@ from django.test import TestCase
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
-from apps.ventes.quote_engine.builder import (
-    PAYMENT_TERMS_BY_MODE, _FINANCING_PROGRAMS, compute_financing_block,
-)
+from apps.ventes.quote_engine.builder import PAYMENT_TERMS_BY_MODE
 from apps.ventes.utils.company_settings import payment_terms_for
 
 
@@ -95,15 +92,6 @@ class TestCommercialMaps(TestCase):
         self.assertEqual(
             PAYMENT_TERMS_BY_MODE['industriel'],
             {'acompte': 50, 'materiel': 40, 'solde': 10})
-
-    def test_financing_commercial_routes_to_tatwir(self):
-        self.assertIn('commercial', _FINANCING_PROGRAMS)
-        self.assertEqual(
-            _FINANCING_PROGRAMS['commercial']['programme_label'], 'Tatwir')
-
-    def test_compute_financing_commercial_tatwir(self):
-        result = compute_financing_block(300_000, 30_000, 40_000, 'commercial')
-        self.assertEqual(result['credit']['programme_label'], 'Tatwir')
 
     def test_payment_terms_for_commercial(self):
         company = make_company('qx43-pt')

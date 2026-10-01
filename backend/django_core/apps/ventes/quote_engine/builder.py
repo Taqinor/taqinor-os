@@ -498,6 +498,194 @@ def _item_marque(it) -> str:
                         it.get("_produit_nom", ""))
 
 
+def _taux_libelle(taux) -> str:
+    """``20`` → ``'20'`` ; ``5.5`` → ``'5,5'`` (virgule française)."""
+    t = float(taux)
+    if t == int(t):
+        return str(int(t))
+    return f"{t:g}".replace(".", ",")
+
+
+#: QJR625 — dérivées écran I/C qui décrivent UN kWc précis.
+_DERIVEES_ETUDE_IC = ("taux_autoconso", "taux_couverture", "payback",
+                      "injection_kwh_an", "injection_dh_an")
+#: … et, pour un ancien devis (base = ``etude['kwc']``), la base elle-même et
+#: les chiffres saisis à partir d'elle.
+_DERIVEES_ETUDE_IC_ANCIENNES = ("kwc", "production_annuelle",
+                                "economies_annuelles")
+
+
+def _etude_ic_fraiche(etude, puissance_kwc):
+    """QJR625 — ``(etude, perimee)`` : l'étude I/C sans ses dérivées quand
+    elles ont été calculées pour un autre kWc que celui des lignes.
+
+    Base = ``etude_kwc_base`` (QJR578), sinon ``etude['kwc']`` (anciens
+    devis). Écart relatif > ``pricing._HORAIRE_TOLERANCE_KWC`` ⇒ dérivées
+    retirées d'une COPIE (l'``etude_params`` stocké n'est jamais muté). Sans
+    base ou sans puissance des lignes : étude rendue telle quelle.
+    """
+    from .pricing import _HORAIRE_TOLERANCE_KWC
+
+    base = _nombre(etude.get("etude_kwc_base"))
+    ancien = False
+    if not base:
+        base = _nombre(etude.get("kwc"))
+        ancien = True
+    lignes_kwc = _nombre(puissance_kwc)
+    if not base or not lignes_kwc:
+        return etude, False
+    if abs(base - lignes_kwc) / lignes_kwc <= _HORAIRE_TOLERANCE_KWC:
+        return etude, False
+    sortie = dict(etude)
+    for cle in _DERIVEES_ETUDE_IC + (
+            _DERIVEES_ETUDE_IC_ANCIENNES if ancien else ()):
+        sortie.pop(cle, None)
+    return sortie, True
+
+
+def _pct_simple(valeur):
+    """``Decimal('40.00')`` → ``40`` ; ``33.5`` → ``33.5`` (jamais un Decimal :
+    le dict de rendu est sérialisé — empreinte PVFRESH, proposition JSON)."""
+    try:
+        f = float(valeur)
+    except (TypeError, ValueError):
+        return valeur
+    return int(f) if f == int(f) else round(f, 2)
+
+
+def repartition_paiement(total, termes, custom_acompte=None) -> dict:
+    """QJR623 — les cases « Modalités de paiement » du Devis final, au CENTIME.
+
+    Remplace l'ancienne répartition du moteur legacy (``_repartir_paiement`` :
+    cases arrondies au MILLIER, reliquat sur un total arrondi au dirham —
+    ERR120). Les montants viennent de ``utils.echeancier.montants_tranches``
+    (reliquat sur la dernière tranche) : acompte + matériel + solde ==
+    ``total`` au centime.
+
+    * ``termes`` : ``{acompte, materiel, solde}`` en pourcentages (échéancier
+      RÉEL du devis, QJR622) ; la part matériel imprimée est ``100 − a − s``
+      (un échéancier à deux tranches n'a pas de case matériel) ;
+    * ``custom_acompte`` (MAD, mode « personnalisé » du dialogue PDF) garde son
+      comportement jusqu'à QJR624 : borné à ``[0, total − solde]`` (ERR76),
+      matériel = reste ; matériel ≤ 0 ⇒ DEUX cases (acompte + solde2).
+
+    Pure : aucun statut, aucune écriture (règle #4). Montants en ``float``.
+    """
+    from decimal import Decimal as _D
+
+    from apps.ventes.utils.echeancier import montants_tranches
+
+    tot = _D(str(total or 0)).quantize(_D("0.01"))
+    pa = _D(str(termes.get("acompte", 30) or 0))
+    ps = _D(str(termes.get("solde", 10) or 0))
+    pm = _D(100) - pa - ps
+    m = montants_tranches(tot, [("acompte", pa), ("materiel", max(pm, _D(0))),
+                                ("solde", ps)])
+    acompte, materiel, solde = m["acompte"], m["materiel"], m["solde"]
+    pct_a, pct_m, pct_s = pa, pm, ps
+    if pm <= 0:
+        # Échéancier sans tranche matériel : le reliquat va au solde.
+        solde = tot - acompte
+        materiel = _D(0)
+    if custom_acompte is not None:
+        solde = montants_tranches(tot, [("solde", ps), ("reste", 0)])["solde"]
+        acompte = _D(str(custom_acompte)).quantize(_D("0.01"))
+        acompte = max(_D(0), min(acompte, tot - solde))
+        materiel = tot - acompte - solde
+        pct_a = (acompte / tot * 100).quantize(_D("1")) if tot else _D(0)
+        pct_s = ps
+        pct_m = 100 - pct_a - pct_s
+    deux_cases = materiel <= 0
+    solde2 = tot - acompte
+    pct_s2 = 100 - pct_a
+    return {
+        "total": float(tot),
+        "acompte": float(acompte), "materiel": float(max(materiel, _D(0))),
+        "solde": float(solde),
+        "pct_a": _pct_simple(pct_a), "pct_m": _pct_simple(pct_m),
+        "pct_s": _pct_simple(pct_s),
+        "deux_cases": bool(deux_cases),
+        "solde2": float(solde2), "pct_s2": _pct_simple(pct_s2),
+    }
+
+
+def date_correction_apres_envoi(devis) -> str:
+    """QJR628 — « JJ/MM/AAAA » de la dernière correction après envoi, sinon ''.
+
+    SEULE source : ``etude_params['resync_apres_envoi']['date']`` (posée par
+    ``domain.modifiabilite.consigner_correction_apres_envoi``, QJR518). Deux
+    sources INTERDITES : ``Devis.version`` (partagé avec variantes et gammes)
+    et ``updated_at`` (auto_now — bouge à chaque sauvegarde)."""
+    import datetime as _dt
+
+    marque = (getattr(devis, "etude_params", None) or {}).get(
+        "resync_apres_envoi")
+    if not isinstance(marque, dict):
+        return ""
+    brut = marque.get("date")
+    if not brut:
+        return ""
+    try:
+        quand = _dt.datetime.fromisoformat(str(brut))
+    except (TypeError, ValueError):
+        return ""
+    if quand.tzinfo is not None:
+        from django.utils import timezone as _tz
+        quand = _tz.localtime(quand)
+    return quand.strftime("%d/%m/%Y")
+
+
+def reference_remplacee(devis) -> str:
+    """QJR628 — la référence du devis que CELUI-CI remplace (révision), sinon ''.
+
+    Relation inverse ``remplace`` de ``Devis.superseded_by`` : le prédécesseur
+    dont ``superseded_by`` pointe ce devis. Une variante de taille (même
+    ``version`` > 1, aucun prédécesseur remplacé) n'imprime rien."""
+    if getattr(devis, "pk", None) is None:
+        return ""
+    try:
+        ref = (devis.remplace.order_by("-id")
+               .values_list("reference", flat=True).first())
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        return ""
+    return ref or ""
+
+
+def tva_note_des_lignes(lignes, taux_defaut) -> str:
+    """QJR626 — la mention TVA du PDF, dérivée des taux RÉELS des lignes.
+
+    * un seul taux ``r`` (ou aucune ligne : taux du devis) →
+      « TVA r % appliquée sur l'ensemble des équipements et travaux. » ;
+    * {10, 20} avec TOUTES les lignes à 10 % classées panneau (même
+      classifieur que le builder) et tout le reste à 20 % → le texte 10 / 20 ;
+    * sinon → « TVA appliquée ligne par ligne : a % / b % — taux indiqué dans
+      le tableau », avec les SEULS taux présents sur les lignes.
+
+    Une ligne sans taux propre (devis historique) porte le taux du devis.
+    Lecture pure : aucun statut écrit (règle #4).
+    """
+    par_taux = {}
+    for li in lignes:
+        taux = getattr(li, "taux_tva", None)
+        if taux is None:
+            taux = taux_defaut
+        taux = float(taux)
+        produit_nom = getattr(getattr(li, "produit", None), "nom", "") or ""
+        par_taux.setdefault(taux, []).append(
+            _is_panel(getattr(li, "designation", "") or "", produit_nom))
+    if len(par_taux) <= 1:
+        taux = next(iter(par_taux)) if par_taux else float(taux_defaut)
+        return (f"TVA {_taux_libelle(taux)} % appliquée sur l'ensemble des "
+                f"équipements et travaux.")
+    if (set(par_taux) == {10.0, 20.0}
+            and all(par_taux[10.0]) and not any(par_taux[20.0])):
+        return ("TVA : 10% panneaux photovoltaïques · "
+                "20% autres équipements et prestations")
+    taux_txt = " / ".join(f"{_taux_libelle(t)} %" for t in sorted(par_taux))
+    return (f"TVA appliquée ligne par ligne : {taux_txt} — taux indiqué "
+            f"dans le tableau")
+
+
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     """Convert an OS LigneDevis (HT prices) into a premium item dict.
 
@@ -1051,174 +1239,6 @@ def clean_pdf_options(raw) -> dict:
     except (TypeError, ValueError):
         opts['custom_acompte'] = None
     return opts
-
-
-# ── QJ12 — Financing comparison block ──────────────────────────────────────
-# Indicative figures only (no live bank API).  All amounts are MAD TTC.
-#
-# Green loan parameters (APPROXIMATIF — marché marocain 2026, à confirmer
-# avec les banques partenaires). NEVER presented as confirmed prices.
-#
-# Tatwir Croissance Verte (CIH/BMCE/Attijariwafa — PME):
-#   Taux: ~4–5 % an (HT), durée max 7 ans.
-# CAM « Saquii Solaire » (Crédit Agricole du Maroc — pompage agricole):
-#   QK3 correction — le pompage solaire est financé par l'offre CAM dédiée
-#   « Saquii Solaire » (~5–6 % an, 10 ans, 1 an de différé), cumulable avec la
-#   subvention FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA — d'où la
-#   correction ci-dessous (ISTIDAMA retiré du bloc agricole).
-#
-# Residential / uncategorised fall back to a generic green-mortgage proxy
-# (MCMA-style): ~6 % an, 10 ans.
-_FINANCING_PROGRAMS = {
-    "residentiel": {
-        "nom": "Crédit vert résidentiel",
-        "taux_annuel": 0.06,          # indicatif
-        "duree_mois": 120,
-        "programme_label": None,      # no specific named programme
-    },
-    "industriel": {
-        "nom": "Tatwir Croissance Verte (PME)",
-        "taux_annuel": 0.045,         # milieu fourchette 4–5 %
-        "duree_mois": 84,             # 7 ans
-        "programme_label": "Tatwir",
-    },
-    # QX43 — commercial : réutilise le programme PME industriel « Tatwir
-    # Croissance Verte » (mêmes bénéficiaires PME/TPE) — aucun programme inventé,
-    # sauf veto du fondateur.
-    "commercial": {
-        "nom": "Tatwir Croissance Verte (PME)",
-        "taux_annuel": 0.045,         # milieu fourchette 4–5 %
-        "duree_mois": 84,             # 7 ans
-        "programme_label": "Tatwir",
-    },
-    "agricole": {
-        "nom": "CAM « Saquii Solaire » (Crédit Agricole du Maroc)",
-        "taux_annuel": 0.055,         # milieu fourchette 5–6 %
-        "duree_mois": 120,            # 10 ans (1 an de différé)
-        "programme_label": "Saquii Solaire",
-    },
-}
-_DEFAULT_FINANCING_KEY = "residentiel"
-
-
-def _monthly_loan_payment(principal: float, annual_rate: float, n_months: int) -> float:
-    """Standard annuity formula.  annual_rate = 0.06 means 6 % per year.
-    Returns 0 if inputs are degenerate.
-    """
-    if principal <= 0 or n_months <= 0:
-        return 0.0
-    if annual_rate <= 0:
-        return round(principal / n_months, 2)
-    r = annual_rate / 12
-    factor = r * (1 + r) ** n_months / ((1 + r) ** n_months - 1)
-    return round(principal * factor, 2)
-
-
-def compute_financing_block(
-    display_total: float,
-    eco_s_ann: float,
-    eco_a_ann: float,
-    mode_installation: str = "residentiel",
-) -> dict | None:
-    """QJ12 — Build the indicative financing comparison block.
-
-    Returns a dict to be embedded in build_quote_data output under the key
-    ``financing``, or ``None`` when the total is zero / unknown (degrades cleanly
-    — callers must handle None and omit the block).
-
-    The block is PURELY INDICATIVE.  Every figure carries the flag
-    ``indicatif=True``.  Never show buy prices or margins — the returned dict
-    contains only TTC client-facing numbers.
-
-    Structure:
-        {
-            indicatif: True,
-            cash: {montant_ttc: float, label: str},
-            credit: {
-                mensualite: float,
-                duree_mois: int,
-                taux_annuel_pct: float,
-                programme_nom: str,
-                programme_label: str | None,
-            },
-            onee_comparison: {
-                show: bool,           # mensualité < économie mensuelle ONEE
-                message: str,         # French message if show=True
-                eco_mensuelle_sans: float,
-                eco_mensuelle_avec: float,
-            },
-            guidance_text: str | None,  # Tatwir / Saquii Solaire text or None
-        }
-    """
-    if not display_total or display_total <= 0:
-        return None
-
-    key = mode_installation if mode_installation in _FINANCING_PROGRAMS else _DEFAULT_FINANCING_KEY
-    prog = _FINANCING_PROGRAMS[key]
-
-    mensualite = _monthly_loan_payment(
-        display_total,
-        prog["taux_annuel"],
-        prog["duree_mois"],
-    )
-
-    # Monthly savings (use option-1 / sans-batterie as the reference for comparison)
-    eco_mensuelle_sans = round(eco_s_ann / 12, 2) if eco_s_ann else 0.0
-    eco_mensuelle_avec = round(eco_a_ann / 12, 2) if eco_a_ann else 0.0
-
-    # "mensualité < économie ONEE mensuelle" — when the monthly payment is below
-    # even the option-1 monthly savings, the system "pays for itself each month".
-    onee_ref = eco_mensuelle_sans  # conservative reference (sans batterie)
-    shows_comparison = mensualite > 0 and onee_ref > 0 and mensualite < onee_ref
-    if shows_comparison:
-        comparison_msg = (
-            f"La mensualité indicative ({int(mensualite):,} MAD) est inférieure "
-            f"à votre économie mensuelle estimée ({int(onee_ref):,} MAD) — "
-            "l'installation se rembourse chaque mois."
-        ).replace(',', ' ')
-    else:
-        comparison_msg = ""
-
-    # Programme guidance text
-    guidance = None
-    if key == "industriel":
-        guidance = (
-            "Les PME et professionnels peuvent financer cette installation via "
-            "Tatwir Croissance Verte (CIH, BMCE, Attijariwafa) — taux préférentiel "
-            "réservé aux projets d'efficacité énergétique. Demandez à votre banque."
-        )
-    elif key == "agricole":
-        # QK3 — le pompage solaire relève de l'offre CAM « Saquii Solaire »
-        # (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable avec la subvention
-        # FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA.
-        guidance = (
-            "L'offre « Saquii Solaire » du Crédit Agricole du Maroc finance le "
-            "pompage solaire (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable "
-            "avec la subvention FDA 30 %. Contactez votre agence CAM pour les "
-            "conditions exactes."
-        )
-
-    return {
-        "indicatif": True,
-        "cash": {
-            "montant_ttc": display_total,
-            "label": "Paiement comptant (TTC)",
-        },
-        "credit": {
-            "mensualite": mensualite,
-            "duree_mois": prog["duree_mois"],
-            "taux_annuel_pct": round(prog["taux_annuel"] * 100, 2),
-            "programme_nom": prog["nom"],
-            "programme_label": prog["programme_label"],
-        },
-        "onee_comparison": {
-            "show": shows_comparison,
-            "message": comparison_msg,
-            "eco_mensuelle_sans": eco_mensuelle_sans,
-            "eco_mensuelle_avec": eco_mensuelle_avec,
-        },
-        "guidance_text": guidance,
-    }
 
 
 def build_quote_data(devis, pdf_options=None) -> dict:
@@ -2081,6 +2101,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # production/savings are canonical; payback and prix/kWc are recomputed from
     # the canonical totals so edited lines can never desynchronize the document.
     etude = dict(devis_etude_override or {})
+    # ── QJR625 — UNE ÉTUDE I/C CALCULÉE POUR UN AUTRE KWC N'EST PAS IMPRIMÉE ─
+    # Les dérivées écran (autoconsommation, couverture, payback, injection)
+    # décrivent le kWc du moment où l'écran les a calculées
+    # (``etude_kwc_base``, QJR578 ; repli ``etude['kwc']`` des anciens devis).
+    # Une ligne corrigée depuis (D-QJR5-1 : republication sur le même lien)
+    # les rend fausses : au-delà de la tolérance du moteur horaire, elles sont
+    # OMISES (jamais recalculées ici — zéro chiffre inventé) et l'équipe en est
+    # avertie. Sans base connue : comportement inchangé. Rendu seul (règle #4).
+    if (mode or "").strip().lower() in ("industriel", "commercial"):
+        etude, _etude_perimee = _etude_ic_fraiche(etude, puissance_kwc)
+        if _etude_perimee:
+            avertissements_internes.append(
+                "étude industrielle périmée — relancer l'étude")
     # Agricole : le carburant de référence du comparatif peut être forcé par
     # l'option PDF (sinon l'étude / le défaut « butane » s'applique).
     if opts.get('current_fuel'):
@@ -3095,7 +3128,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Conditions de paiement par mode — réglage éditable de la société, repli
     # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
     from apps.ventes.utils.company_settings import payment_terms_for
-    payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
+    from apps.ventes.utils.echeancier import termes_paiement_devis
+    # QJR623 — l'échéancier RÉEL du devis (``Devis.echeancier``, FG46) prime,
+    # par la MÊME correspondance que la page publique (QJR622) ; le réglage
+    # société n'est plus que le repli. Les pourcentages sont rendus en nombres
+    # simples (int si entiers) : le dict de rendu reste sérialisable JSON.
+    payment_terms = {
+        cle: _pct_simple(val)
+        for cle, val in termes_paiement_devis(
+            devis, payment_terms_for(getattr(devis, "company", None), mode),
+            lignes).items()}
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -3215,18 +3257,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         seller = {"nom": "", "telephone": ""}
 
-    tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
-    # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
-    # historiques : l'ancien texte au taux global, rendu inchangé.
-    if per_line_tva:
-        tva_note = ("TVA : 10% panneaux photovoltaïques · "
-                    "20% autres équipements et prestations")
-    else:
-        tva_note = f"TVA {tva_label} % appliquée sur l'ensemble des équipements et travaux."
+    # QJR626 — il décrit les taux RÉELLEMENT portés par les lignes comptées
+    # (le builder décide, les gabarits impriment) : plus de texte 10/20 figé
+    # qui contredisait un tableau à 20 % partout.
+    tva_note = tva_note_des_lignes(lignes, tva_pct)
     data = {
         "ref": devis.reference,
         "date": devis.date_creation.strftime("%d/%m/%Y"),
+        # QJR628 — marquage de correction : « Document mis à jour le … »
+        # (correction après envoi, D-QJR5-1) et « Remplace le devis … »
+        # (révision). '' = rien à imprimer (octet-identique).
+        "mis_a_jour_le": date_correction_apres_envoi(devis),
+        "remplace_reference": reference_remplacee(devis),
         "client_name": client_name or "Client",
         # QRES39 — vraie toiture du client (pièce jointe image du devis dont
         # le nom évoque la toiture) ; '' → schéma illustratif.
@@ -3523,8 +3566,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # republié sur le lien public) sans qu'aucun chiffre ne l'utilise —
         # une promesse de multi-devise que rien ne tenait. Il ne sort plus
         # d'ici. Le champ modèle est CONSERVÉ tel quel (aucune migration
-        # destructive) ; seule sa republication s'arrête, exactement comme
-        # `financing` (F6).
+        # destructive) ; seule sa republication s'arrête.
         "devise": "MAD",
     }
     # COUV-HOR (fondateur, 29/09/2026) — la donut de couverture lit la
@@ -3614,17 +3656,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["include_calepinage"] = True
             data["calepinage_svg"] = _planche_svg
             data["calepinage_empreinte"] = _planche_empreinte
-    # QJ12 — financing block (indicatif / à confirmer). Added additively after
-    # all other keys so omitting it never changes any existing key's value.
-    # Degrades to None when display_total is unavailable — callers omit the block.
-    financing = compute_financing_block(
-        display_total=display_total,
-        eco_s_ann=roi.get("eco_s_ann", 0),
-        eco_a_ann=roi.get("eco_a_ann", 0),
-        mode_installation=mode,
-    )
-    if financing is not None:
-        data["financing"] = financing
+    # QJR630 — le bloc « financement » (QJ12 : taux bancaires « milieu de
+    # fourchette » codés en dur) n'est plus produit : aucun rendu ne le lisait
+    # et la proposition publique le retirait déjà (F6).
 
     # ── SCA27 (complément) — site du tenant : ligne site + base fiches ────────
     # Posé UNIQUEMENT quand le profil porte un site : le renderer résidentiel lit
@@ -3717,6 +3751,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
                          getattr(devis, "reference", "?"))
 
+    # ── QJR623 — montants des cases « Modalités de paiement » (Devis final) ──
+    # Calculés ICI, au centime, par option (le total ×N villas compris) ; le
+    # moteur legacy choisit la branche qu'il imprime et n'arrondit plus rien.
+    _n_villas = data.get("nombre_proprietes") or 1
+    data["montants_tranches"] = {
+        branche: repartition_paiement(
+            round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
+            payment_terms,
+            opts['custom_acompte'] if opts['payment_mode'] == "custom"
+            else None)
+        for branche in ("sans", "avec")}
+
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
     # Rendu SEUL, additif : la clé n'est posée QUE lorsqu'il existe au moins une
     # ligne optionnelle → un devis sans option reste octet-identique. Chaque
@@ -3725,11 +3771,31 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # service ``activate_optional_line`` (self-service proposition) : la ligne
     # devient alors normale et entre dans les totaux/documents avals.
     if option_lignes:
+        # QJR616 — le prix imprimé d'une option est le SUPPLÉMENT CANONIQUE
+        # qu'elle ajoute au devis : argent.totaux(comptées + [option]) −
+        # argent.totaux(comptées), remise globale comprise, dans la vue de
+        # l'option effective (filter_lines_for_option). Avant, on imprimait
+        # P.U. TTC × qté SANS la remise globale : une fois activée
+        # (activate_optional_line), l'option coûtait moins que le prix annoncé.
+        from apps.ventes.domain.argent import Vue as _VueOpt
+        from apps.ventes.domain.argent import totaux as _totaux_opt
+        from apps.ventes.utils.options import (
+            filter_lines_for_option as _filtrer_opt,
+        )
+        from apps.ventes.utils.options import option_effective as _option_eff
+        _opt_eff = _option_eff(devis)
+        _comptees = (_filtrer_opt(lignes, _opt_eff) if _opt_eff
+                     else list(lignes))
+        _base_opt = _totaux_opt(devis, vue=_VueOpt.AFFICHAGE,
+                                lignes=_comptees)
         _opts = []
         for li in option_lignes:
             it = _line_to_item(li, taux_tva)
             it.pop("_produit_nom", None)
             qte = float(li.quantite or 0)
+            _avec_opt = _totaux_opt(
+                devis, vue=_VueOpt.AFFICHAGE,
+                lignes=_comptees + [_LigneArgentPdf(it, taux_tva)])
             _opts.append({
                 "id": li.id,
                 "designation": it["designation"],
@@ -3738,8 +3804,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 "taux_tva": it["taux_tva"],
                 "prix_unit_ht": it["prix_unit_ht"],
                 "prix_unit_ttc": it["prix_unit_ttc"],
-                "total_ht": round(it["prix_unit_ht"] * qte, 2),
-                "total_ttc": round(it["prix_unit_ttc"] * qte, 2),
+                "total_ht": float(round(
+                    _avec_opt.ht_net - _base_opt.ht_net, 2)),
+                "total_ttc": float(round(
+                    _avec_opt.ttc - _base_opt.ttc, 2)),
             })
         data["options_proposees"] = _opts
 
@@ -3864,6 +3932,16 @@ def echapper_textes_client(data: dict) -> dict:
                  if isinstance(it, dict) else it)
                 for it in _rows
             ]
+    # QJR618 — les lignes de STRUCTURE (sections / notes tapées par le
+    # vendeur) sont désormais imprimées par les gabarits premium : leur texte
+    # est échappé ici comme une désignation.
+    _struct = sortie.get("lignes_structure")
+    if isinstance(_struct, list):
+        sortie["lignes_structure"] = [
+            ({**s, "texte": _e(s.get("texte"))}
+             if isinstance(s, dict) and s.get("texte") is not None else s)
+            for s in _struct
+        ]
     # Les puces d'option sont BÂTIES ici depuis des désignations de lignes :
     # elles n'étaient échappées par aucun des deux moteurs.
     for _cle in ("sans_bullets", "avec_bullets"):

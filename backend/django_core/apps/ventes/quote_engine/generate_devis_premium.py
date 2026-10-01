@@ -209,6 +209,9 @@ CLIENT_ICE   = ""
 WATERMARK_STANDARD = None
 REF          = ""
 DATE_STR     = ""
+# QJR628 — « Document mis à jour le … » / « Remplace le devis … » ('' = rien).
+MIS_A_JOUR_LE = ""
+REMPLACE_REF  = ""
 KWC          = 0.0
 NB_PAN       = 0
 WP           = 0
@@ -315,6 +318,9 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
+# QJR623 — cases « Modalités de paiement » calculées par le builder (par
+# branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
+MONTANTS_TRANCHES = {}
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 # M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
@@ -660,9 +666,6 @@ def _hypotheses_html():
         f'<ul style="list-style:none;padding:0;margin:0;">{lis}</ul></div>')
 
 
-# QK3 — bloc financement (indicatif, QJ12), posé depuis data["financing"].
-# Vide → aucun bloc rendu (byte-identique).
-
 # QJ30 — multi-propriétés (rendu). NB_PROPRIETES = ×N villas identiques (défaut
 # 1 → aucun rendu). MULTI_VILLA = sections par-villa (sous-totaux + total
 # général). Vides → mise en page à plat d'aujourd'hui (byte-identique).
@@ -873,39 +876,10 @@ def fmt(v):
     except Exception:
         return str(v)
 
-def _repartir_paiement(pay_total, pay_a, pay_s, custom_acompte=None):
-    """ERR120 — Acompte / Matériel / Solde d'un Devis Final, qui SOMMENT au
-    Total TTC AFFICHÉ.
-
-    Le total affiché passe par ``fmt`` (``int(round(...))``, arrondi bancaire
-    Python compris) : le reliquat part donc de ``total_mad = int(round(
-    pay_total))``, jamais d'une troncature ``int(pay_total)`` qui perdait 1 MAD
-    dès que les centimes valaient ≥ 0,50. Le reliquat va à « Matériel » (chemin
-    à trois cases) ou au « Solde » (chemin à deux cases, ``solde2``).
-
-    ``custom_acompte`` (``None`` = acompte au pourcentage ``pay_a``) est borné
-    dans ``[0, total - solde]`` (ERR76). Les trois pourcentages somment à 100
-    (QJR145 c). Fonction PURE : aucun statut, aucune écriture (règle #4).
-    """
-    total_mad = int(round(float(pay_total)))
-    if custom_acompte is not None:
-        acompte = int(custom_acompte)
-    else:
-        acompte = round(pay_total * pay_a / 100 / 1000) * 1000
-    solde = round(pay_total * pay_s / 100 / 1000) * 1000
-    acompte = max(0, min(acompte, total_mad - solde))
-    materiel = total_mad - acompte - solde
-    pct_a = round(acompte / pay_total * 100) if pay_total else 0
-    pct_s = round(solde / pay_total * 100) if pay_total else 0
-    pct_m = (100 - pct_a - pct_s) if pay_total else 0
-    solde2 = total_mad - acompte
-    pct_s2 = round(solde2 / pay_total * 100) if pay_total else 0
-    return {
-        'total_mad': total_mad, 'acompte': int(acompte),
-        'materiel': int(materiel), 'solde': int(solde),
-        'pct_a': pct_a, 'pct_m': pct_m, 'pct_s': pct_s,
-        'solde2': int(solde2), 'pct_s2': pct_s2,
-    }
+# QJR623 — ``_repartir_paiement`` (cases arrondies au millier, reliquat sur un
+# total arrondi au dirham — ERR120) est SUPPRIMÉE : les montants des cases
+# « Modalités de paiement » sont calculés au centime par le builder
+# (``builder.repartition_paiement``) et servis dans ``montants_tranches``.
 
 
 def fnum(v):
@@ -1076,6 +1050,20 @@ def _filigrane_suffixe():
     if not WATERMARK_STANDARD:
         return ""
     return f" &nbsp;|&nbsp; {WATERMARK_STANDARD}"
+
+
+def _marques_correction_html(style):
+    """QJR628 — « Document mis à jour le … » / « Remplace le devis … » sous la
+    date d'en-tête ; '' quand le devis n'a été ni corrigé après envoi ni
+    révisé (octet-identique)."""
+    out = ""
+    if MIS_A_JOUR_LE:
+        out += (f'<div style="{style}">Document mis &#224; jour le '
+                f'{MIS_A_JOUR_LE}</div>')
+    if REMPLACE_REF:
+        out += f'<div style="{style}">Remplace le devis {REMPLACE_REF}</div>'
+    return out
+
 
 def footer_p1():
     """Page 1 footer — white background."""
@@ -1568,9 +1556,33 @@ def _monitoring_vendu():
     return False
 
 
+def _struct_row_legacy(s, colspan):
+    """QJR619 — ligne de STRUCTURE (section = intertitre pleine largeur, note =
+    ligne en italique), sans prix — même rendu que le une-page (XSAL14)."""
+    txt = s.get("texte", "") or ""
+    if s.get("type") == "note":
+        return (f'<tr><td colspan="{colspan}" style="font-style:italic;'
+                f'color:{CG4};padding:3px 6px;">{txt}</td></tr>')
+    return (f'<tr><td colspan="{colspan}" style="background:{CG1};'
+            f'font-weight:800;color:{CN};text-transform:uppercase;'
+            f'letter-spacing:.5px;padding:3px 6px;border-top:1px solid {CA};">'
+            f'{txt}</td></tr>')
+
+
 def equip_rows(items, totaux, hi_bat=False, ancres=None):
     rows = ""
-    for i, it in enumerate(items):
+    # QJR619 — sections / notes intercalées à leur ``ordre`` (QJR617) ; sans
+    # structure, la boucle d'hier à l'identique.
+    if LIGNES_STRUCTURE:
+        _seq = sequence_affichage(items, LIGNES_STRUCTURE)
+    else:
+        _seq = [("item", it) for it in items]
+    i = -1
+    for _kind, it in _seq:
+        if _kind == "struct":
+            rows += _struct_row_legacy(it, 7)
+            continue
+        i += 1
         des = it["designation"]; qty = it["quantite"]
         pu_ht = _item_pu_ht(it)
         mar = (it.get("marque") or "").strip()
@@ -2005,6 +2017,7 @@ def page1():
         <div style="font-size:7pt;color:{CG4};margin-bottom:1px;">R&#233;f&#233;rence devis</div>
         <div class="serif" style="font-size:17.5pt;font-weight:400;color:{CA};line-height:0.90;letter-spacing:-1px;">N&#176;&nbsp;{REF}</div>
         <div style="font-size:8.5pt;color:rgba(255,255,255,0.82);margin-top:5px;">{DATE_STR}</div>
+        {_marques_correction_html("font-size:7pt;color:rgba(255,255,255,0.82);margin-top:2px;")}
         <div style="margin-top:5px;display:inline-block;background:{CA};color:{CN};border-radius:5px;padding:3px 10px;font-size:6.5pt;font-weight:700;">{_doc_text("validite_badge_p1")}</div>
       </div>
 
@@ -2132,6 +2145,11 @@ def page2(sans_items, img_roi, img_mon):
         max_rows = len(sans_items)
     else:
         max_rows = max(len(sans_items), len(AVEC_ITEMS))
+    # QJR619 — les lignes de structure et le bloc d'options occupent aussi
+    # des rangées : elles entrent dans la mise à l'échelle (0 sans elles).
+    max_rows += len(LIGNES_STRUCTURE or [])
+    if OPTIONS_PROPOSEES:
+        max_rows += 1 + len(OPTIONS_PROPOSEES)
     scale = 1.0 if max_rows <= 11 else max(0.62, 11.0 / max_rows)
     if scale < 1.0:
         tbl_font = f"{6.5 * scale:.2f}pt"
@@ -2190,6 +2208,26 @@ def page2(sans_items, img_roi, img_mon):
     _nr = _note_remise_par_ligne()
     _note_remise_p2 = f" &#183; {_nr}" if _nr else ""
 
+    # QJR619 — « Options proposées (non incluses dans le total) » : le SEUL
+    # ``total_ttc`` du builder (supplément canonique, QJR616). Sans option ⇒
+    # '' collé au bloc suivant (octet-identique).
+    _options_p2 = ""
+    if OPTIONS_PROPOSEES:
+        _orows = ""
+        for _o in OPTIONS_PROPOSEES:
+            _oq = float(_o.get("quantite", 0) or 0)
+            _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
+            _orows += (
+                f'<tr><td class="tl">{_o.get("designation", "")}</td>'
+                f'<td class="tc">{_oq_s}</td>'
+                f'<td class="tr">{_fmt2(float(_o.get("total_ttc", 0) or 0))}'
+                f'&#160;MAD TTC</td></tr>')
+        _options_p2 = (
+            f'<div style="margin-top:5px;font-size:6.5pt;font-weight:800;'
+            f'color:{CA};text-transform:uppercase;letter-spacing:.6px;">'
+            f'Options propos&#233;es (non incluses dans le total)</div>'
+            f'<table class="eq" style="border:1px dashed {CA};">{_orows}</table>')
+
     return f"""
 <div class="page">
   {tbl_css}
@@ -2227,7 +2265,7 @@ def page2(sans_items, img_roi, img_mon):
         </table>
       </div>
 
-    </div>
+    </div>{_options_p2}
     <div style="margin-top:4px;font-size:6pt;color:{CG4};font-style:italic;">
       * {TVA_NOTE}{_note_remise_p2}
     </div>
@@ -2399,39 +2437,36 @@ def page3():
     # ── Payment section (Devis Final only) ──
     _payment_html = ""
     if DEVIS_FINAL:
-        # Pick the relevant total based on scenario / recommendation
+        # Pick the relevant branch based on scenario / recommendation
         if SCENARIO == "Sans batterie":
-            _pay_total = TOTAL_SANS
+            _branche = "sans"
         elif SCENARIO == "Avec batterie":
-            _pay_total = TOTAL_AVEC
+            _branche = "avec"
         elif RECOMMENDED == "Sans batterie":
-            _pay_total = TOTAL_SANS
+            _branche = "sans"
         else:
-            _pay_total = TOTAL_AVEC
-        # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'échéancier
-        # facturé part du total ×N (décision fondateur 30/09/2026) ; les cases
-        # de paiement imprimées le suivent, au centime comme ``_scale_tot``.
-        if NB_PROPRIETES and NB_PROPRIETES > 1:
-            _pay_total = round(_pay_total * NB_PROPRIETES, 2)
+            _branche = "avec"
 
-        # ERR120 — la répartition vit dans une aide PURE (testée seule) : le
-        # reliquat part de ``int(round(total))``, la MÊME règle que ``fmt`` qui
-        # affiche le Total TTC — sinon 51 232,80 s'affichait 51 233 et les
-        # cases sommaient 51 232. Rendu seul : aucun statut touché (règle #4).
-        _rep = _repartir_paiement(
-            _pay_total, PAY_A, PAY_S,
-            CUSTOM_ACOMPTE if PAYMENT_MODE == "custom" else None)
-        _acompte, _materiel, _solde = (
-            _rep['acompte'], _rep['materiel'], _rep['solde'])
-        _pct_a, _pct_m, _pct_s = _rep['pct_a'], _rep['pct_m'], _rep['pct_s']
+        # QJR623 / ERR120 — le moteur ne fait plus qu'IMPRIMER : les montants
+        # (au centime, ×N villas compris, reliquat sur la dernière tranche,
+        # acompte personnalisé borné) sont calculés par le builder
+        # (``builder.repartition_paiement``). Plus d'arrondi au millier ni de
+        # reliquat tronqué ici. Rendu seul : aucun statut touché (règle #4).
+        _rep = (MONTANTS_TRANCHES or {}).get(_branche) or {}
+        _acompte = _rep.get('acompte', 0)
+        _materiel = _rep.get('materiel', 0)
+        _solde = _rep.get('solde', 0)
+        _pct_a, _pct_m, _pct_s = (
+            _rep.get('pct_a', PAY_A), _rep.get('pct_m', PAY_M),
+            _rep.get('pct_s', PAY_S))
 
         def _pay_box(pct, montant, label):
-            # QJR145 (b) — ``fmt`` suffixe DÉJÀ « MAD » : les trois cases
-            # imprimaient « 16 000 MAD MAD » (atteignable via ?devis_final).
+            # QJR145 (b) — le formateur suffixe DÉJÀ « MAD ».
+            # QJR623 — montant au CENTIME (les cases somment au Total TTC).
             return (
                 f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
                 f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
-                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)}</div>'
+                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_fmt2_mad(montant)}</div>'
                 f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
                 f'</div>')
 
@@ -2443,7 +2478,10 @@ def page3():
         _ac_l = 'Acompte · À la signature'
         _mt_l = 'Matériel · Avant installation'
         _sd_l = 'Solde · Après installation'
-        if _materiel > 0:
+        if not _rep:
+            # Charge utile sans montants du builder : aucune case inventée.
+            _boxes = ""
+        elif _materiel > 0:
             _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
                       + _pay_box(_pct_m, _materiel, _mt_l)
                       + _pay_box(_pct_s, _solde, _sd_l))
@@ -3640,7 +3678,10 @@ def _onepage_header_html():
         f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
         f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
         f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
-        f'margin-top:2px;">{DATE_STR}</div></div>')
+        f'margin-top:2px;">{DATE_STR}</div>'
+        + _marques_correction_html(
+            'color:rgba(255,255,255,0.6);font-size:6.5pt;margin-top:1px;')
+        + '</div>')
     if not qr:
         return (
             f'<div style="background:{CN};padding:14px 24px;display:table;'
@@ -3950,7 +3991,6 @@ def page_onepage(items, tronquees=0):
         _opt_rows = ""
         for _o in OPTIONS_PROPOSEES:
             _oq = float(_o.get("quantite", 0) or 0)
-            _ottc = float(_o.get("prix_unit_ttc", 0) or 0) * _oq
             _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
             _obadge = badge(_o.get("marque", "")) if _o.get("marque") else ""
             _opt_rows += (
@@ -3959,7 +3999,9 @@ def page_onepage(items, tronquees=0):
                 f'{_o.get("designation", "")} {_obadge}</td>'
                 f'<td style="padding:4px 10px;text-align:center;color:{CG7};">{_oq_s}</td>'
                 f'<td style="padding:4px 10px;text-align:right;color:{CN};font-weight:600;">'
-                f'{fmt(round(_ottc))}</td>'
+                # QJR616 — le supplément canonique du builder (remise globale
+                # comprise), plus un P.U. × qté recalculé ici.
+                f'{fmt(round(float(_o.get("total_ttc", 0) or 0)))}</td>'
                 f'</tr>')
         options_html = (
             f'<div style="padding:8px 24px 0;">'
@@ -4254,6 +4296,7 @@ def apply_quote_data(data: dict) -> None:
     les données de deux devis dans un même document.
     """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
+    global MIS_A_JOUR_LE, REMPLACE_REF
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
     global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
@@ -4316,6 +4359,8 @@ def apply_quote_data(data: dict) -> None:
     CLIENT_ICE   = _esc(data.get("client_ice", ""))
     REF          = str(data["ref"])
     DATE_STR     = data["date"]
+    MIS_A_JOUR_LE = _esc(data.get("mis_a_jour_le") or "")
+    REMPLACE_REF  = _esc(data.get("remplace_reference") or "")
     # M2/M3 — puissance, compte de panneaux et watt unitaire peuvent être
     # INCONNUS (None) : ils ne sont plus jamais déduits du prix. 0 = « rien à
     # imprimer », et chaque vignette qui en dépend est omise.
@@ -4428,9 +4473,21 @@ def apply_quote_data(data: dict) -> None:
                 "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
                 "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
     _terms = data.get("payment_terms") or {}
-    PAY_A = int(_terms.get("acompte", 30))
-    PAY_M = int(_terms.get("materiel", 60))
-    PAY_S = int(_terms.get("solde", 10))
+
+    def _pct(v, defaut):
+        # QJR623 — l'échéancier RÉEL du devis peut porter 33,5 % : on n'en
+        # tronque plus la décimale (``int``) ; un entier reste un entier.
+        try:
+            f = float(v if v is not None else defaut)
+        except (TypeError, ValueError):
+            f = float(defaut)
+        return int(f) if f == int(f) else round(f, 2)
+
+    PAY_A = _pct(_terms.get("acompte"), 30)
+    PAY_M = _pct(_terms.get("materiel"), 60)
+    PAY_S = _pct(_terms.get("solde"), 10)
+    global MONTANTS_TRANCHES
+    MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})

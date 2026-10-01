@@ -172,6 +172,39 @@ class TestBuilderOptionsBlock(TestCase):
         # RULE #4 — jamais de prix d'achat/marge dans la donnée client.
         self.assertNotIn('prix_achat', _flatten_keys(data))
 
+    def test_qjr616_prix_option_remise_globale_comprise(self):
+        """QJR616 — le prix imprimé d'une option est le supplément CANONIQUE
+        qu'elle ajoute (remise globale comprise) : égal au Devis.total_ttc
+        après activation moins avant ; le one-page imprime ce montant."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.services import activate_optional_line
+        devis = self._devis('D-QJR616-1')
+        devis.remise_globale = Decimal('5')
+        devis.save(update_fields=['remise_globale'])
+        opt = LigneDevis.objects.create(
+            devis=devis, produit=_produit(
+                self.company, 'Garantie étendue', 'D-QJR616-1-G', '1000'),
+            designation='Garantie étendue', quantite=Decimal('1'),
+            prix_unitaire=Decimal('1000'), remise=Decimal('0'),
+            taux_tva=Decimal('20.00'), optionnelle=True)
+        data = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        o = data['options_proposees'][0]
+        self.assertEqual(o['total_ttc'], 1140.0)
+        self.assertEqual(o['total_ht'], 950.0)
+        avant = Decimal(Devis.objects.get(pk=devis.pk).total_ttc)
+        html = G.render_html_for(data)
+        # Le bloc « Options proposées » seul (tableau entre l'intitulé et la
+        # note d'activation).
+        bloc = html.split('Options propos&#233;es (non incluses', 1)[1]
+        bloc = bloc.split('Activez une option', 1)[0]
+        self.assertIn('Garantie', bloc)
+        self.assertIn('1 140 MAD', bloc)
+        self.assertNotIn('1 200 MAD', bloc)
+        activate_optional_line(devis=devis, ligne_id=opt.id, user=self.user)
+        apres = Decimal(Devis.objects.get(pk=devis.pk).total_ttc)
+        self.assertEqual(apres - avant, Decimal('1140.00'))
+
     def test_options_block_absent_without_options(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         devis = self._devis('D-XSAL5-B2')

@@ -89,7 +89,9 @@ def _augment(data: dict) -> dict:
     d.setdefault("valid_until", None)
 
     d["com_category"] = (etude.get("categorie_commerciale") or "").strip().lower() or None
-    d["com_kwc"] = _num(etude.get("kwc")) or _num(d.get("puissance_kwc"))
+    # QJR625 — la puissance DES LIGNES d'abord ; ``etude['kwc']`` n'est plus
+    # qu'un repli (il décrit le kWc d'une étude peut-être périmée).
+    d["com_kwc"] = _num(d.get("puissance_kwc")) or _num(etude.get("kwc"))
     # QJR145 (g) — ``com_prod`` SUPPRIMÉ : calculé et lu par aucun gabarit
     # commercial (la production s'affiche depuis ``com_kwc``/l'étude).
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))

@@ -84,8 +84,9 @@ class TestIndustrielSansDonnees(SimpleTestCase):
         self.assertIn("Rentabilité non chiffrée sur ce dossier", self.txt)
         self.assertNotIn("MOYENNE TENSION", self.txt)
 
-    def test_le_document_reste_a_trois_pages(self):
-        self.assertEqual(self.html.count('class="page"'), 3)
+    def test_le_document_reste_a_quatre_pages(self):
+        # QJR620 (D-QJR5-12) — l'industriel premium porte 4 pages.
+        self.assertEqual(self.html.count('class="page"'), 4)
 
 
 class TestCommercialSansDonnees(SimpleTestCase):
