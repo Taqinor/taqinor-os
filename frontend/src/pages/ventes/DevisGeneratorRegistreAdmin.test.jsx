@@ -1,13 +1,12 @@
-// QJR571 (D-QJR5-8) — le panneau « Surcharges (registre) » DIT quels chemins
-// le moteur ne lit pas : la ligne `effectif` marquée `non_lu: true` par le
-// serveur porte « — sans effet sur le document ». Depuis QJR573, la liste
-// blanche ne contient plus que des chemins lus : la mention ne subsiste que
-// sur une surcharge RETIRÉE déjà posée en base (ici `tarif.distributeur`).
+// QJR574 (D-QJR5-8) — le panneau brut « Surcharges (registre) » (sélecteur de
+// chemin + valeur JSON libre) est réservé aux ADMINISTRATEURS : il doublait
+// Scénario, Option recommandée, nombre de panneaux et Structure, qui portent
+// désormais la surcharge et le retour à l'automatique (QJR572). L'endpoint
+// reste IsResponsableOrAdmin ; seule l'affordance de l'écran change.
 //
-// Monte réellement DevisGenerator (`?edit=7` réouvre un brouillon) — aucun
-// test regex sur le source (garde QJR239).
+// Monte réellement DevisGenerator (`?edit=7`) — garde QJR239 respectée.
 //
-// Run : npx vitest run src/pages/ventes/DevisGeneratorOverridesNonLus.test.jsx
+// Run : npx vitest run src/pages/ventes/DevisGeneratorRegistreAdmin.test.jsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
@@ -45,13 +44,12 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import DevisGenerator from './DevisGenerator'
 
-function makeStore() {
+function makeStore(role) {
   return configureStore({
     reducer: { auth: authReducer, ventes: ventesReducer },
     preloadedState: {
       auth: {
-        // QJR574 — le panneau brut est réservé aux administrateurs.
-        user: { id: 1 }, role: 'admin', role_nom: 'Directeur', permissions: [],
+        user: { id: 1 }, role, role_nom: role === 'admin' ? 'Directeur' : 'Commercial responsable', permissions: [],
         isAuthenticated: true, loading: false,
       },
     },
@@ -66,13 +64,13 @@ const DEVIS_ROUVERT = {
   lignes: [],
 }
 
-function renderGenerator() {
+function renderGenerator(role) {
   crmApi.getClients.mockResolvedValue({ data: [] })
   crmApi.getLeads.mockResolvedValue({ data: [] })
   stockApi.getProduits.mockResolvedValue({ data: [] })
   ventesApi.getDevisById.mockResolvedValue({ data: DEVIS_ROUVERT })
   return render(
-    <Provider store={makeStore()}>
+    <Provider store={makeStore(role)}>
       <MemoryRouter initialEntries={['/ventes/devis/nouveau?edit=7']}>
         <DevisGenerator />
       </MemoryRouter>
@@ -95,42 +93,16 @@ beforeEach(() => {
   }
 })
 
-const REGISTRE = {
-  overrides: {
-    'tarif.distributeur': { valeur: 'ONEE', origine: 'manuel' },
-    scenario: { valeur: 'Sans batterie', origine: 'manuel' },
-  },
-  effectif: {
-    'tarif.distributeur': {
-      auto: null, manuel: 'ONEE', effectif: 'ONEE', source: 'manuel',
-      non_derivable: true, non_lu: true,
-    },
-    scenario: {
-      auto: 'Les deux (Sans + Avec)', manuel: 'Sans batterie',
-      effectif: 'Sans batterie', source: 'manuel',
-    },
-  },
-  lignes: {},
-}
-
-describe('QJR571 — le registre dit les chemins sans effet sur le document', () => {
-  it('QJR573 — le sélecteur ne propose plus que des chemins lus, sans mention', async () => {
-    ventesApi.lireOverrides.mockResolvedValue({ data: REGISTRE })
-    renderGenerator()
-    await waitFor(() => expect(screen.getByTestId('overrides-panel')).toBeInTheDocument())
-    const options = [...screen.getByTestId('overrides-chemin').querySelectorAll('option')]
-    expect(options.map((o) => o.value)).toEqual([
-      'taille.nb_panneaux', 'taille.panel_watt', 'taille.kwc',
-      'scenario', 'recommended_option', 'etude.jour_reference',
-    ])
-    for (const o of options) expect(o.textContent).toBe(o.value)
+describe('QJR574 — le panneau brut du registre est réservé aux administrateurs', () => {
+  it('absent pour un responsable (le registre est quand même lu)', async () => {
+    renderGenerator('responsable')
+    await waitFor(() => expect(ventesApi.lireOverrides).toHaveBeenCalledWith(7))
+    await waitFor(() => expect(document.getElementById('gen-scenario')).toBeTruthy())
+    expect(screen.queryByTestId('overrides-panel')).toBeNull()
   })
 
-  it('la ligne `effectif` marquée non_lu le dit ; une ligne lue ne le dit pas', async () => {
-    ventesApi.lireOverrides.mockResolvedValue({ data: REGISTRE })
-    renderGenerator()
-    await waitFor(() => expect(
-      screen.getByTestId('overrides-non-lu-tarif.distributeur')).toBeInTheDocument())
-    expect(screen.queryByTestId('overrides-non-lu-scenario')).toBeNull()
+  it('présent pour un administrateur', async () => {
+    renderGenerator('admin')
+    await waitFor(() => expect(screen.getByTestId('overrides-panel')).toBeInTheDocument())
   })
 })

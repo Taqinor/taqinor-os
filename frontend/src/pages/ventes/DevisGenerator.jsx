@@ -85,7 +85,7 @@ import BandeauDeriveLead from '../../features/ventes/quote/BandeauDeriveLead'
 // « structure ». Partagé tel quel avec la fiche lead (SectionSite).
 import StructureSelector from '../../features/stock/StructureSelector'
 import { structuresEligibles } from '../../features/stock/structures'
-import { useCanCreateProduit } from '../../hooks/useHasPermission'
+import { useCanCreateProduit, useIsAdmin } from '../../hooks/useHasPermission'
 import useKeyboardAwareScroll from '../../hooks/useKeyboardAwareScroll'
 import { useDirtyGuard } from '../../ui/useDirtyGuard'
 import { useDraftAutosave } from '../../ui/useDraftAutosave'
@@ -388,19 +388,6 @@ const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
 // extraits (LigneTable, RailArgent). `MetricCard` s'appelle désormais
 // `CarteMetrique` et sait, EN PLUS, déballer une valeur signée (QJR86).
 
-/**
- * Générateur de devis. Utilisable en PLEINE PAGE (route /ventes/devis/nouveau,
- * lit le contexte depuis l'URL) ou EMBARQUÉ dans la fiche lead (props), auquel
- * cas il ne navigue jamais : il rappelle onDone(devisId) / onCancel à la place.
- *
- * @param {boolean}  embedded    Rendu inline (fiche lead) — pas de navigation
- * @param {number}   leadId      Lead de départ (embarqué)
- * @param {boolean}  auto        Lancer le devis auto au montage (embarqué)
- * @param {string}   discount    Remise initiale (embarqué)
- * @param {number}   editId      Éditer un brouillon existant (embarqué)
- * @param {function} onDone      Appelé avec l'id du devis créé/enregistré
- * @param {function} onCancel    Appelé sur Annuler
- */
 // QJR572 — sous un choix que le registre IMPOSE : le dire, et offrir le
 // retour à l'automatique (DELETE ?chemin=, `regenererOverride`).
 function IndicationRegistre({ chemin, busy, onRegenerer }) {
@@ -416,6 +403,19 @@ function IndicationRegistre({ chemin, busy, onRegenerer }) {
   )
 }
 
+/**
+ * Générateur de devis. Utilisable en PLEINE PAGE (route /ventes/devis/nouveau,
+ * lit le contexte depuis l'URL) ou EMBARQUÉ dans la fiche lead (props), auquel
+ * cas il ne navigue jamais : il rappelle onDone(devisId) / onCancel à la place.
+ *
+ * @param {boolean}  embedded    Rendu inline (fiche lead) — pas de navigation
+ * @param {number}   leadId      Lead de départ (embarqué)
+ * @param {boolean}  auto        Lancer le devis auto au montage (embarqué)
+ * @param {string}   discount    Remise initiale (embarqué)
+ * @param {number}   editId      Éditer un brouillon existant (embarqué)
+ * @param {function} onDone      Appelé avec l'id du devis créé/enregistré
+ * @param {function} onCancel    Appelé sur Annuler
+ */
 export default function DevisGenerator({
   embedded = false,
   leadId: leadIdProp = null,
@@ -564,6 +564,11 @@ export default function DevisGenerator({
   // QJR572 — déclarée ici : `alignerSurRegistre` (ci-dessous) la pose.
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [overridesReg, setOverridesReg] = useState(null)
+  // QJR574 (D-QJR5-8) — le panneau BRUT « Surcharges (registre) » (chemin +
+  // valeur JSON libre) est réservé aux administrateurs : Scénario, Option
+  // recommandée et nombre de panneaux portent déjà la surcharge (QJR572).
+  // L'endpoint reste IsResponsableOrAdmin ; le registre est lu pour tous.
+  const estAdmin = useIsAdmin()
   const [overridesBusy, setOverridesBusy] = useState(false)
   // Un refus 400 est affiché TEL QUEL (le message FR du serveur, jamais avalé
   // ni remplacé par une phrase générique) — les formes varient selon le refus
@@ -616,8 +621,10 @@ export default function DevisGenerator({
   }
 
   // Lecture du registre À L'OUVERTURE d'un devis existant.
+  // QJR572 — relu à CHAQUE ouverture d'un devis, jamais à chaque rendu.
   useEffect(() => {
     if (editDevis?.id) chargerOverrides(editDevis.id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editDevis?.id])
 
   const poserOverride = async () => {
@@ -5300,8 +5307,9 @@ export default function DevisGenerator({
         {/* QJR215 — registre de surcharges (QJR214/QJR216) : lecture à
             l'ouverture (au montage de ce panneau), pose EXPLICITE d'un
             chemin, retour à l'automatique par chemin. N'existe que sur un
-            devis DÉJÀ enregistré (le registre vit sur `Devis.overrides`). */}
-        {editDevis?.id && (
+            devis DÉJÀ enregistré (le registre vit sur `Devis.overrides`).
+            QJR574 — administrateurs seulement. */}
+        {editDevis?.id && estAdmin && (
           <Card data-testid="overrides-panel">
             <GenCardHeader icon={FileText} title="Surcharges (registre)" />
             <CardContent className="pt-4 space-y-3">
