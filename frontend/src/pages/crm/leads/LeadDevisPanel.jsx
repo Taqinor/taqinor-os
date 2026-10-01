@@ -4,18 +4,18 @@
    existant (DevisGenerator embarqué) et le calcul auto partagé (autoQuote.js) —
    aucune logique de prix ni de PDF dupliquée. Le PDF vient du chemin canonique
    /proposal (CLAUDE.md règle #4). */
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Download, ExternalLink, Pencil, RotateCw, TriangleAlert, WifiOff, Zap,
+  Download, ExternalLink, Pencil, Zap,
 } from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote } from '../../../features/ventes/autoQuote'
-import {
-  proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
-} from '../../../features/ventes/previewPdf'
+import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
+import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
+import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
 import DevisGenerator from '../../ventes/DevisGenerator'
 import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
@@ -25,20 +25,13 @@ import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/down
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import {
-  Button, Input, Spinner, Segmented, Checkbox, EmptyState, Sheet, SheetContent,
+  Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent,
 } from '../../../ui'
 
-// Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
-// sur le bundle que quand on ouvre réellement un aperçu.
-const PdfCanvas = lazy(() => import('../../../features/ventes/PdfCanvas'))
-
-// L'aperçu PDF est récupéré en BLOB via axios (MÊME chemin que le bouton
-// « Télécharger » qui marche), puis DESSINÉ avec PDF.js sur des canvas.
-// On NE pointe PLUS un cadre embarqué (iframe/embed) vers le PDF : un bloqueur
-// de pub ou la politique PDF de Chrome peut le bloquer (cadre « contenu
-// bloqué »). PDF.js rend depuis les octets authentifiés -> rien ne peut le
-// bloquer, et le refresh silencieux du token (axios) reste rejoué + message
-// d'erreur FR lisible.
+// L'aperçu PDF vient de usePdfPreview + PdfPreviewBody (le même moteur que
+// PdfPreviewSheet) : octets en BLOB via axios — MÊME chemin que « Télécharger »
+// —, dessinés par PDF.js sur canvas (jamais un cadre embarqué bloquable), refresh
+// silencieux du token rejoué, annulation réelle des rendus longs.
 
 const TITLES = {
   auto: 'Devis automatique',
@@ -91,75 +84,24 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const marquesRef = useRef(undefined) // PVMRQ — cache du réglage marques
   const startedRef = useRef(false)
 
-  // Octets du PDF (Blob) récupérés via axios — voir l'en-tête. PDF.js les
-  // dessine sur canvas, et c'est la MÊME source que le téléchargement.
-  const [previewBlob, setPreviewBlob] = useState(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-  // serverError : vrai échec de génération (4xx/5xx) -> message clair distinct.
-  const [serverError, setServerError] = useState(null)
-  // networkFailed : le fetch des octets a échoué (réseau/timeout, pas de réponse).
-  const [networkFailed, setNetworkFailed] = useState(false)
-  // renderFailed : PDF.js n'a pas pu dessiner les octets (cas rare).
-  const [renderFailed, setRenderFailed] = useState(false)
-  // Compteur de « Réessayer » : relance le fetch + le rendu.
-  const [previewReloadKey, setPreviewReloadKey] = useState(0)
-
-  // Récupération des octets du PDF. Distingue un VRAI échec serveur d'un échec
-  // réseau : le 1er garde un message d'erreur, le 2nd bascule sur le repli.
-  useEffect(() => {
-    if (phase !== 'preview' || !devisId) return undefined
-    let cancelled = false
-    // APXTMO — annulation RÉELLE du rendu en vol : changer de format ou fermer
-    // le panneau avorte la requête (sinon les rendus à froid ~26 s s'empilent
-    // sur les workers gunicorn et ralentissent tous les suivants).
-    const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPreviewLoading(true)
-    setServerError(null)
-    setNetworkFailed(false)
-    setRenderFailed(false)
-    setPreviewBlob(null)
-    ventesApi.getProposalPdf(
-      devisId, proposalParams(pdfMode, includeEtude),
-      { signal: controller.signal })
-      .then((res) => {
-        if (cancelled) return
-        setPreviewBlob(pdfBlob(res.data))
-      })
-      .catch((err) => {
-        if (cancelled) return
-        if (classifyFetchError(err) === 'server') {
-          setServerError(
-            "Le serveur n'a pas pu générer ce PDF. Ouvrez l'édition complète "
-            + 'pour vérifier le devis, puis réessayez.')
-        } else {
-          // réseau / timeout : repli gracieux, le PDF reste téléchargeable.
-          setNetworkFailed(true)
-        }
-      })
-      .finally(() => { if (!cancelled) setPreviewLoading(false) })
-    return () => { cancelled = true; controller.abort() }
-  }, [phase, devisId, pdfMode, includeEtude, previewReloadKey])
+  // Octets du PDF : récupérés par usePdfPreview (MÊME source que le
+  // téléchargement) ; changer de format ou fermer le panneau avorte le rendu
+  // en vol (APXTMO : les rendus à froid ~26 s ne s'empilent pas sur gunicorn).
+  const fetchPreviewBlob = useCallback(
+    (signal) => ventesApi.getProposalPdf(
+      devisId, proposalParams(pdfMode, includeEtude), { signal })
+      .then((res) => pdfBlob(res.data)),
+    [devisId, pdfMode, includeEtude])
+  const preview = usePdfPreview(fetchPreviewBlob, {
+    enabled: phase === 'preview' && !!devisId,
+  })
+  const previewBlob = preview.blob
 
   // « Réessayer l'aperçu » : on relance fetch + rendu depuis zéro.
   const reloadPreview = () => {
-    setPreviewBlob(null)
-    setNetworkFailed(false)
-    setRenderFailed(false)
-    setServerError(null)
     setErrorMsg(null)
-    setPreviewReloadKey((k) => k + 1)
+    preview.reload()
   }
-
-  // blocked (dérivé) : échec réseau du fetch OU échec de rendu PDF.js -> repli
-  // gracieux téléchargeable dans les deux cas.
-  const blocked = networkFailed || renderFailed
-  const previewState = previewView({
-    loading: previewLoading,
-    serverError: !!serverError,
-    blocked,
-    hasUrl: !!previewBlob,
-  })
 
   // ── Création auto (auto / onepage / premium : pas de saisie préalable) ──
   const doCreateAuto = async (discountStr) => {
@@ -417,85 +359,46 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                   <div className="form-error-box ldp-pdf-loading" role="alert">{errorMsg}</div>
                 )}
 
-                {previewState === PREVIEW_VIEW.LOADING && (
-                  <p className="ldp-pdf-loading">
-                    <Spinner /> Chargement de l'aperçu… La première génération
-                    d'un devis peut prendre ~30 secondes.
-                  </p>
-                )}
-
-                {/* Vrai échec serveur (4xx/5xx) : message clair, distinct du repli. */}
-                {previewState === PREVIEW_VIEW.ERROR && (
-                  <EmptyState
-                    role="alert"
-                    className="ldp-fallback"
-                    icon={TriangleAlert}
-                    title="Aperçu indisponible"
-                    description={serverError}
-                    action={(
-                      <div className="ldp-fallback-actions">
-                        {editable && (
-                          <Button type="button" size="sm" onClick={() => setPhase('edit')}>
-                            Ouvrir l'édition complète
-                          </Button>
-                        )}
-                        {revisable && (
-                          <Button type="button" size="sm" onClick={reviser}>
-                            Réviser (nouvelle version)
-                          </Button>
-                        )}
-                        <Button type="button" variant="outline" size="sm" onClick={reloadPreview}>
-                          <RotateCw /> Réessayer
+                <PdfPreviewBody
+                  blob={preview.blob}
+                  loading={preview.loading}
+                  errorKind={preview.errorKind}
+                  errorMessage={preview.errorMessage}
+                  renderFailed={preview.renderFailed}
+                  onRenderError={preview.onRenderError}
+                  onReload={reloadPreview}
+                  reloadKey={preview.reloadKey}
+                  loadingText="Chargement de l'aperçu… La première génération d'un devis peut prendre ~30 secondes."
+                  serverMessage={"Le serveur n'a pas pu générer ce PDF. Ouvrez l'édition complète "
+                    + 'pour vérifier le devis, puis réessayez.'}
+                  serverActions={(
+                    <>
+                      {editable && (
+                        <Button type="button" size="sm" onClick={() => setPhase('edit')}>
+                          Ouvrir l'édition complète
                         </Button>
-                      </div>
-                    )}
-                  />
-                )}
-
-                {/* Repli : la récupération des octets a échoué (réseau/timeout).
-                    Le rendu PDF.js lui-même n'est pas blocable. */}
-                {previewState === PREVIEW_VIEW.FALLBACK && (
-                  <EmptyState
-                    className="ldp-fallback"
-                    icon={WifiOff}
-                    title="Aperçu indisponible"
-                    description="Vérifiez votre connexion. Vous pouvez réessayer ou télécharger le devis directement."
-                    action={(
-                      <div className="ldp-fallback-stack">
-                        <div className="ldp-fallback-actions">
-                          <Button type="button" size="sm"
-                                  onClick={handleDownload} loading={downloading} disabled={downloading}>
-                            {!downloading && <Download />}
-                            {downloading ? '…' : 'Télécharger le PDF'}
-                          </Button>
-                          <Button type="button" variant="outline" size="sm" onClick={handleOpenNewTab}>
-                            <ExternalLink /> Ouvrir dans un nouvel onglet
-                          </Button>
-                        </div>
-                        <Button type="button" variant="link" size="sm"
-                                className="ldp-fallback-retry" onClick={reloadPreview}>
-                          Réessayer l'aperçu
+                      )}
+                      {revisable && (
+                        <Button type="button" size="sm" onClick={reviser}>
+                          Réviser (nouvelle version)
                         </Button>
-                      </div>
-                    )}
-                  />
-                )}
-
-                {previewState === PREVIEW_VIEW.PDF && (
-                  <Suspense
-                    fallback={(
-                      <p className="ldp-pdf-loading">
-                        <Spinner /> Chargement de l'aperçu…
-                      </p>
-                    )}
-                  >
-                    <PdfCanvas
-                      key={previewReloadKey}
-                      blob={previewBlob}
-                      onError={() => setRenderFailed(true)}
-                    />
-                  </Suspense>
-                )}
+                      )}
+                    </>
+                  )}
+                  fallbackDescription="Vérifiez votre connexion. Vous pouvez réessayer ou télécharger le devis directement."
+                  fallbackActions={(
+                    <>
+                      <Button type="button" size="sm"
+                              onClick={handleDownload} loading={downloading} disabled={downloading}>
+                        {!downloading && <Download />}
+                        {downloading ? '…' : 'Télécharger le PDF'}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={handleOpenNewTab}>
+                        <ExternalLink /> Ouvrir dans un nouvel onglet
+                      </Button>
+                    </>
+                  )}
+                />
               </div>
             </div>
           )}

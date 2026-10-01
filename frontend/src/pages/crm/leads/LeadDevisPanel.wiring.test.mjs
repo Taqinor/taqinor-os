@@ -63,6 +63,14 @@ test('QJR652 — handleDownload ouvre downloadBlobInGesture avant getProposalPdf
   assert.doesNotMatch(LDP_CODE, /function downloadBlob\(/)
 })
 
+test('QJR653 — l\'aperçu passe par usePdfPreview + PdfPreviewBody, plus d\'état local', () => {
+  assert.match(LDP_CODE, /import \{ usePdfPreview \} from '\.\.\/\.\.\/\.\.\/features\/ventes\/usePdfPreview'/)
+  assert.match(LDP_CODE, /import PdfPreviewBody from '\.\.\/\.\.\/\.\.\/features\/ventes\/PdfPreviewBody'/)
+  assert.match(LDP_CODE, /<PdfPreviewBody\b/)
+  assert.doesNotMatch(LDP_CODE, /previewReloadKey/)
+  assert.doesNotMatch(LDP_CODE, /new AbortController/)
+})
+
 test('QJR589 — LeadDevisPanel monte BandeauDeriveLead sur le détail déjà lu (code réel)', () => {
   assert.match(LDP_CODE, /import BandeauDeriveLead from '\.\.\/\.\.\/\.\.\/features\/ventes\/quote\/BandeauDeriveLead'/)
   assert.match(LDP_CODE, /<BandeauDeriveLead[\s\S]{0,200}champs=\{devisRecord\.lead_valeurs_modifiees\}/)

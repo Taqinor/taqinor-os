@@ -3,9 +3,9 @@
 //   1. proposalParams() construit les query params /proposal selon le format
 //      choisi (Premium « full » / « onepage », +Inclure l'étude) ;
 //   2. pdfBlob() emballe les octets reçus en Blob application/pdf — c'est ce
-//      Blob qui, via URL.createObjectURL, alimente l'iframe d'aperçu ET le
+//      Blob qui, via URL.createObjectURL, alimente le rendu canvas d'aperçu (PdfCanvas) ET le
 //      téléchargement (même source, donc aperçu et PDF téléchargé concordent).
-// Pointer l'iframe directement sur l'URL /proposal (ancien code) ne rejouait
+// Pointer un cadre embarqué directement sur l'URL /proposal (ancien code) ne rejouait
 // pas le refresh silencieux du token -> 401 -> icône « fichier cassé ».
 
 export const PDF_MIME = 'application/pdf'
@@ -22,7 +22,7 @@ export function proposalParams(pdfMode, includeEtude) {
 
 // Emballe les octets bruts (ArrayBuffer / Blob / typed array renvoyé par axios
 // en responseType:'blob') en Blob typé application/pdf, prêt pour
-// URL.createObjectURL — l'iframe l'affiche alors comme un vrai PDF.
+// URL.createObjectURL — PDF.js le dessine alors comme un vrai PDF.
 export function pdfBlob(data) {
   return new Blob([data], { type: PDF_MIME })
 }
@@ -32,7 +32,7 @@ export function pdfBlob(data) {
 // logique utilisée par le composant (pas une copie).
 export const PREVIEW_VIEW = {
   LOADING: 'loading', // récupération en cours
-  PDF: 'pdf', // l'iframe affiche le PDF
+  PDF: 'pdf', // le canvas PdfCanvas affiche le PDF
   FALLBACK: 'fallback', // aperçu bloqué/indisponible -> repli avec actions
   ERROR: 'error', // le serveur n'a PAS pu générer le PDF (4xx/5xx)
 }
