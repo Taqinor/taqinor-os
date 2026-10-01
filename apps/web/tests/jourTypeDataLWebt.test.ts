@@ -17,6 +17,11 @@ const PAGE = readFileSync(
   fileURLToPath(new URL('../src/pages/devis/mon-toit.astro', import.meta.url)),
   'utf-8',
 ).replace(/\r\n/g, '\n');
+// QJR664 — le rendu vit désormais dans scripts/tunnel/jourType.ts (3 langues).
+const SCRIPT = readFileSync(
+  fileURLToPath(new URL('../src/scripts/tunnel/jourType.ts', import.meta.url)),
+  'utf-8',
+).replace(/\r\n/g, '\n');
 
 function fakeMonth(): JourTypeMonth {
   return {
@@ -76,13 +81,13 @@ describe('hasJourTypeData — zero-invented-number guarantee', () => {
 
 describe('mon-toit.astro — the graph section hides itself when data is absent (source pin)', () => {
   it('renderJourType() hides #mt-jourtype-wrap whenever hasJourTypeData() is false', () => {
-    expect(PAGE).toContain("if (!hasJourTypeData()) {\n      wrap.hidden = true;\n      return;\n    }");
+    expect(SCRIPT).toContain("if (!hasJourTypeData()) {\n    wrap.hidden = true;\n    return;\n  }");
   });
 
   it('the validated colors (production gold, consumption blue dashed) are exactly as specified', () => {
-    expect(PAGE).toContain("fill=\"rgba(237,161,0,0.18)\"");
-    expect(PAGE).toContain('stroke="#eda100"');
-    expect(PAGE).toContain('stroke="#2a78d6" stroke-width="2" stroke-dasharray="6,3"');
+    expect(SCRIPT).toContain("fill=\"rgba(237,161,0,0.18)\"");
+    expect(SCRIPT).toContain('stroke="#eda100"');
+    expect(SCRIPT).toContain('stroke="#2a78d6" stroke-width="2" stroke-dasharray="6,3"');
   });
 
   it('the section is hidden by default in markup (never a flash of an empty chart)', () => {
