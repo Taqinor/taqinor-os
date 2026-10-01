@@ -1629,9 +1629,10 @@ def planifier_devis_automatique_pour_lead(lead_id, company_id):
 def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
     """QJ16 — snapshot a Devis into a company-scoped DevisPreset.
 
-    The preset captures the line configuration (designation, quantite,
-    prix_unitaire, remise, taux_tva per line, plus taux_tva and remise_globale
-    at devis level) as a JSON snapshot.  The company is ALWAYS forced from
+    The preset captures the line configuration (QJR547 — every field of
+    ``lignes.CHAMPS_CLONES`` per line, ordered like the devis, plus taux_tva
+    and remise_globale at devis level) as a JSON snapshot. The source client's
+    study (``etude_params``) is NEVER captured.  The company is ALWAYS forced from
     ``devis.company`` — never from user input.
 
     Price-less lines are excluded at save time (same guard as auto-fill): if a
@@ -1655,17 +1656,29 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
         s = str(value)
         return s.rstrip('0').rstrip('.') if '.' in s else s
 
+    # QJR547 (contrat QJR508, devis_preset.json) — chaque entrée reprend le
+    # jeu de champs du CLONEUR (``lignes.CHAMPS_CLONES``, jamais retapé ici) :
+    # variante, option, type, ordre, verrous manuels, rôle, groupe — sans quoi
+    # un modèle « Les deux » ramenait ses deux onduleurs dans la partie commune
+    # et un prix négocié n'était plus verrouillé. Triées comme le devis
+    # (ordre, id). Le produit est porté par ``produit_id`` ; le lot (propre à
+    # UN devis) n'est jamais capturé. Jamais ``prix_achat``.
+    from decimal import Decimal as _Decimal
+    from apps.ventes.domain.lignes import CHAMPS_CLONES
+
+    def _valeur(v):
+        if isinstance(v, _Decimal):
+            return _ds(v)
+        return v
+
     lignes_snapshot = []
-    for ligne in devis.lignes.select_related('produit').order_by('id'):
-        produit = ligne.produit
-        lignes_snapshot.append({
-            'produit_id': produit.pk if produit else None,
-            'designation': ligne.designation,
-            'quantite': _ds(ligne.quantite),
-            'prix_unitaire': _ds(ligne.prix_unitaire),
-            'remise': _ds(ligne.remise),
-            'taux_tva': _ds(ligne.taux_tva),
-        })
+    for ligne in devis.lignes.order_by('ordre', 'id'):
+        entree = {'produit_id': ligne.produit_id}
+        for champ in CHAMPS_CLONES:
+            if champ in ('produit', 'lot'):
+                continue
+            entree[champ] = _valeur(getattr(ligne, champ))
+        lignes_snapshot.append(entree)
 
     preset = DevisPreset.objects.create(
         company=company,
@@ -1675,7 +1688,9 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
         taux_tva=devis.taux_tva,
         remise_globale=devis.remise_globale,
         lignes_snapshot=lignes_snapshot,
-        etude_params_snapshot=dict(devis.etude_params) if devis.etude_params else None,
+        # QJR547 — l'étude du client SOURCE (factures, attribution) n'est plus
+        # jamais capturée : le champ reste (sans migration), toujours vide.
+        etude_params_snapshot=None,
         created_by=user,
     )
     logger.info(

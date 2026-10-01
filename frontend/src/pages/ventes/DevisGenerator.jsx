@@ -3644,6 +3644,17 @@ export default function DevisGenerator({
     }
   }
 
+  // QJR547 — « Enregistrer comme modèle » photographie l'ÉCRAN : le devis
+  // est d'abord enregistré par le chemin unique (`persisterDevis`), sans
+  // quitter l'écran ; un échec (validation ou serveur) → aucun modèle.
+  const enregistrerAvantModele = async () => {
+    if (!validate()) return false
+    const res = await persisterDevis()
+    if (!res) return false
+    clear(); marquerEnregistre()
+    return true
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!validate()) return
@@ -5219,7 +5230,8 @@ export default function DevisGenerator({
             l'instantané de lignes du modèle (aucun endpoint nouveau) et la
             section « Enregistrer comme modèle » dit honnêtement qu'elle
             attend que le devis existe. */}
-        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied} />
+        <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied}
+                          avantEnregistrement={enregistrerAvantModele} />
 
         {/* QJR540 — blocs repris du modal DevisForm (supprimé) : badge
             « calepinage périmé » (CAL188, lu de `layout_stale`), le calepinage

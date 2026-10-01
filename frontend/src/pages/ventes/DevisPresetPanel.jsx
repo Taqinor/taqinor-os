@@ -41,7 +41,7 @@ function StatusBadge({ text, variant }) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SaveSection({ devisId, onSaved }) {
+function SaveSection({ devisId, onSaved, avantEnregistrement }) {
   const [nom, setNom] = useState('')
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState(null) // {ok, msg}
@@ -55,6 +55,15 @@ function SaveSection({ devisId, onSaved }) {
     setSaving(true)
     setStatus(null)
     try {
+      // QJR547 — le modèle reprend le devis À L'ÉCRAN : l'écran est d'abord
+      // enregistré (l'enregistrement du générateur) ; un échec → aucun modèle.
+      if (avantEnregistrement) {
+        const ok = await avantEnregistrement()
+        if (!ok) {
+          setStatus({ ok: false, msg: 'Enregistrez d\'abord le devis : le modèle n\'a pas été créé.' })
+          return
+        }
+      }
       await ventesApi.savePreset(devisId, { nom: trimmed })
       setStatus({ ok: true, msg: `Modèle "${trimmed}" enregistré.` })
       setNom('')
@@ -232,8 +241,11 @@ function ApplySection({ onApplied }) {
  *                               `lignes_snapshot`) but not saved yet.
  * @param {function} onApplied - Called with the WHOLE preset (QJR546) so the
  *                               parent replaces its on-screen lines
+ * @param {function} [avantEnregistrement] - QJR547: async, called BEFORE
+ *                               savePreset (saves the on-screen quote); a falsy
+ *                               result or a throw creates NO preset
  */
-export default function DevisPresetPanel({ devisId, onApplied }) {
+export default function DevisPresetPanel({ devisId, onApplied, avantEnregistrement }) {
   const [open, setOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -270,7 +282,8 @@ export default function DevisPresetPanel({ devisId, onApplied }) {
               Enregistrer comme modèle
             </h3>
             {devisId ? (
-              <SaveSection devisId={devisId} onSaved={handleSaved} />
+              <SaveSection devisId={devisId} onSaved={handleSaved}
+                           avantEnregistrement={avantEnregistrement} />
             ) : (
               <p className="text-sm italic text-muted-foreground">
                 Disponible une fois le devis créé.

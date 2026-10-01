@@ -62,3 +62,30 @@ describe('QJR546 — le modèle s’applique à l’écran', () => {
     expect(onApplied).not.toHaveBeenCalled()
   })
 })
+
+describe('QJR547 — « Enregistrer comme modèle » photographie l’écran', () => {
+  async function enregistrer(avantEnregistrement) {
+    render(<DevisPresetPanel devisId={42} onApplied={vi.fn()}
+                             avantEnregistrement={avantEnregistrement} />)
+    await userEvent.click(screen.getByRole('button', { name: /Modèles de devis/ }))
+    await userEvent.type(screen.getByLabelText('Nom du modèle'), 'Mon modèle')
+    await userEvent.click(screen.getByRole('button', { name: /^Enregistrer$/ }))
+  }
+
+  it('avantEnregistrement est appelé AVANT savePreset', async () => {
+    const ordre = []
+    ventesApi.savePreset.mockImplementation(() => { ordre.push('savePreset'); return Promise.resolve({ data: {} }) })
+    const avant = vi.fn(async () => { ordre.push('avant'); return true })
+    await enregistrer(avant)
+    await waitFor(() => expect(ventesApi.savePreset).toHaveBeenCalledWith(42, { nom: 'Mon modèle' }))
+    expect(ordre).toEqual(['avant', 'savePreset'])
+  })
+
+  it('échec de l’enregistrement de l’écran → aucun modèle', async () => {
+    const avant = vi.fn(async () => false)
+    await enregistrer(avant)
+    await waitFor(() => expect(avant).toHaveBeenCalled())
+    expect(await screen.findByText(/le modèle n'a pas été créé/)).toBeTruthy()
+    expect(ventesApi.savePreset).not.toHaveBeenCalled()
+  })
+})

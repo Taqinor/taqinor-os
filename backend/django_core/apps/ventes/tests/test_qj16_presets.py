@@ -4,7 +4,7 @@ Tests for QJ16 — Reusable quote presets (DevisPreset model + services).
 Covers:
   - save_devis_as_preset: creates a DevisPreset with correct company scoping
   - save_devis_as_preset: lines snapshot is correct (designation, qty, pu, remise, taux_tva)
-  - save_devis_as_preset: etude_params are snapshotted when present
+  - save_devis_as_preset: QJR547 — CHAMPS_CLONES per line, study NEVER captured
   - QJR546 — POST apply-preset is GONE (404, lines untouched): a preset is
     applied ON SCREEN by the generator, then persisted by replace-lines
   - DevisPreset.company always forced (never from request body in service layer)
@@ -175,7 +175,8 @@ class TestSaveDevisAsPreset(TestCase):
         snap = preset.lignes_snapshot[0]
         self.assertEqual(snap['taux_tva'], '10')
 
-    def test_etude_params_snapshotted_when_present(self):
+    def test_etude_non_capturee(self):
+        """QJR547 — l'étude du client source n'entre jamais dans un modèle."""
         etude = {'production_annuelle': 8000, 'economies_annuelles': 9600}
         devis = make_devis(
             self.company, self.user, self.client_obj, 'DEV-QJ16-S4',
@@ -184,7 +185,33 @@ class TestSaveDevisAsPreset(TestCase):
         add_ligne(devis, p1, 'Panneau 550W')
 
         preset = save_devis_as_preset(devis, 'Avec étude')
-        self.assertEqual(preset.etude_params_snapshot['production_annuelle'], 8000)
+        self.assertIsNone(preset.etude_params_snapshot)
+
+    def test_snapshot_porte_champs_clones(self):
+        """QJR547 — le jeu de champs du cloneur, trié (ordre, id)."""
+        from apps.ventes.domain.lignes import CHAMPS_CLONES
+        devis = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-S6')
+        p1 = make_produit(self.company, 'Onduleur hybride 5kW', 'INV-H5', '9000')
+        p2 = make_produit(self.company, 'Panneau 710W', 'PANEL-710F', '1400')
+        second = add_ligne(devis, p1, 'Onduleur hybride 5kW', pu='9000')
+        second.ordre = 1
+        second.variante = 'avec'
+        second.prix_manuel = True
+        second.save()
+        premier = add_ligne(devis, p2, 'Panneau 710W', pu='1400')
+        premier.ordre = 0
+        premier.save()
+
+        preset = save_devis_as_preset(devis, 'Champs clonés')
+        snap = preset.lignes_snapshot
+        self.assertEqual([s['designation'] for s in snap],
+                         ['Panneau 710W', 'Onduleur hybride 5kW'])
+        attendus = {'produit_id'} | (set(CHAMPS_CLONES) - {'produit', 'lot'})
+        self.assertEqual(set(snap[1]), attendus)
+        self.assertEqual(snap[1]['variante'], 'avec')
+        self.assertTrue(snap[1]['prix_manuel'])
+        self.assertEqual(snap[1]['produit_id'], p1.pk)
+        self.assertNotIn('prix_achat', snap[1])
 
     def test_no_company_raises(self):
         devis = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-S5')

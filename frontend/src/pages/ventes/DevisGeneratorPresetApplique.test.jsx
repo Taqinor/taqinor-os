@@ -181,3 +181,31 @@ describe('QJR546 — un modèle appliqué remplace les lignes à l’écran', ()
     expect(ventesApi.patchDevis).not.toHaveBeenCalled()
   })
 })
+
+describe('QJR547 — les lignes du modèle passent par le mappeur de réouverture', () => {
+  it('ligne variante « avec » + prix_manuel → verrou de prix et variante gardés', async () => {
+    ventesApi.getPresets.mockResolvedValue({ data: [{
+      ...PRESET, mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0.00',
+      lignes_snapshot: [
+        { produit_id: 101, designation: 'Panneau Canadien Solar 715W', quantite: '8',
+          prix_unitaire: '1000', remise: '0', taux_tva: '10', ordre: 0, variante: '',
+          type_ligne: 'produit', optionnelle: false, prix_manuel: false, quantite_manuelle: false },
+        { produit_id: 102, designation: 'Onduleur réseau 5kW Monophasé', quantite: '1',
+          prix_unitaire: '7500', remise: '0', taux_tva: '20', ordre: 1, variante: 'avec',
+          type_ligne: 'produit', optionnelle: false, prix_manuel: true, quantite_manuelle: false },
+      ],
+    }] })
+    const rouvert = devisRouvert('exemple_brouillon')
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    await userEvent.click(await screen.findByRole('button', { name: /Modèles de devis/ }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Appliquer' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())
+    const [, lignes] = ventesApi.replaceLignesDevis.mock.calls.at(-1)
+    const onduleur = lignes.find(l => Number(l.produit) === ONDULEUR.id)
+    expect(onduleur.variante).toBe('avec')
+    expect(onduleur.prix_manuel).toBe(true)
+  })
+})
