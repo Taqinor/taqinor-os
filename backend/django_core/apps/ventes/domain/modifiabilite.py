@@ -21,9 +21,11 @@ est révisable (D-QJR5-2).
   écritures d'étude et de rendu qui ne recomposent pas les lignes
   (etude-params, overrides, offres-tailles config/regenerer, layout brut,
   roof-image).
-* ``CALEPINAGE`` / ``TAILLE`` — brouillon SEUL jusqu'à QJR557 (la
-  resynchronisation des lignes depuis un calepinage, l'application d'une
-  taille d'offre).
+* ``CALEPINAGE`` / ``TAILLE`` — brouillon + envoyé depuis QJR557
+  (D-QJR5-5, même règle que l'Édition complète : la resynchronisation des
+  lignes depuis un calepinage et l'application d'une taille d'offre
+  corrigent un envoyé SUR PLACE, tracées par ``fin_de_geste_devis`` —
+  chatter « corrigé après envoi : calepinage » / « : taille d'offre »).
 
 Ce module LIT le statut, il ne l'écrit jamais (règle #4). Les tuples de CYCLE
 DE VIE (acceptation, expiration, gammes…) n'en font PAS partie : ce prédicat ne
@@ -48,8 +50,10 @@ GESTES = {
     BOQ: frozenset({_BROUILLON, _ENVOYE}),
     OPTIONS: frozenset({_BROUILLON, _ENVOYE}),
     ETUDE: frozenset({_BROUILLON, _ENVOYE}),
-    CALEPINAGE: frozenset({_BROUILLON}),
-    TAILLE: frozenset({_BROUILLON}),
+    # QJR557 (D-QJR5-5) — un envoyé se corrige aussi par le calepinage 3D et
+    # par « appliquer une taille d'offre » (accepté/refusé/expiré → Réviser).
+    CALEPINAGE: frozenset({_BROUILLON, _ENVOYE}),
+    TAILLE: frozenset({_BROUILLON, _ENVOYE}),
 }
 
 #: Les statuts CLOS (document engagé ou abandonné) : révisables, jamais
@@ -119,8 +123,8 @@ def verdict(devis, geste=ENTETE):
     elif statut in STATUTS_CLOS:
         raison = 'Révisez-le (nouvelle version)'
     else:
-        # Statut ouvert mais geste plus étroit (CALEPINAGE/TAILLE sur un
-        # envoyé) : le client a déjà cette version sous les yeux.
+        # Statut ouvert mais geste plus étroit (aucun depuis QJR557 ; garde
+        # défensive si la table se resserre un jour).
         raison = (f'Devis « {_libelle_statut(devis)} » : révisez-le pour '
                   'faire ce changement')
     return {'modifiable': False, 'raison_non_modifiable': raison,
@@ -182,6 +186,12 @@ _LIBELLES = {
     'entete': 'en-tête',
     'note': 'note',
     'option': 'option recommandée',
+}
+#: QJR557 — les gestes NOMMÉS dans le chatter (« corrigé après envoi :
+#: calepinage (lignes) »). Les autres objets gardent le résumé seul.
+_OBJETS_NOMMES = {
+    'calepinage': 'calepinage',
+    'taille': "taille d'offre",
 }
 
 
@@ -256,6 +266,8 @@ def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
         if not changes:
             return None
         resume = ', '.join(_LIBELLES[c] for c in changes)
+        if objet in _OBJETS_NOMMES:
+            resume = '%s (%s)' % (_OBJETS_NOMMES[objet], resume)
         return consigner_correction_apres_envoi(
             devis, user=user, objet=objet, resume=resume)
     except Exception:  # noqa: BLE001 — jamais bloquant

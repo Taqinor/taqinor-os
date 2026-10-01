@@ -277,6 +277,22 @@ class LignesNegocieesPreserveesTests(PvSyncBase):
 
         self.assertEqual(self._ligne(devis).prix_unitaire, ANCIEN_PRIX)
 
+    def test_un_prix_manuel_egal_a_l_ancien_catalogue_est_conserve(self):
+        """QJR555 — ``prix_manuel`` protège la ligne même quand le prix tapé
+        coïncide avec l'ancien prix catalogue (sans remise) : une seule
+        définition du « prix négocié » (``lignes.prix_negocie``)."""
+        devis = self._devis(Devis.Statut.BROUILLON)
+        ligne = self._ligne(devis)
+        ligne.prix_manuel = True
+        ligne.save(update_fields=['prix_manuel'])
+
+        resultat = self._resync()
+
+        self.assertEqual(self._ligne(devis).prix_unitaire, ANCIEN_PRIX)
+        self.assertEqual(resultat['lignes_modifiees'], 0)
+        self.assertEqual(resultat['lignes_conservees'], 1)
+        self.assertEqual(self._notes(devis).count(), 0)
+
     def test_une_designation_retouchee_est_conservee(self):
         devis = self._devis(Devis.Statut.BROUILLON,
                             designation='Panneau (remisé chantier Bouskoura)')

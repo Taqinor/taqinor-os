@@ -117,13 +117,23 @@ class TableContreContrat(_Base):
             for cle in CLES:
                 self.assertIn(cle, ligne)
 
-    def test_gestes_calepinage_et_taille_brouillon_seul(self):
+    def test_gestes_calepinage_et_taille_brouillon_et_envoye(self):
+        """QJR557 (D-QJR5-5) — réécrit : CALEPINAGE / TAILLE acceptent
+        désormais un ENVOYÉ (corrigé sur place, tracé) ; accepté / refusé /
+        expiré → Réviser (revision_possible True) ; remplacé → rien."""
         envoye = self._devis('envoye')
         for geste in (mod.CALEPINAGE, mod.TAILLE):
             with self.subTest(geste=geste):
-                self.assertFalse(mod.verdict(envoye, geste)['modifiable'])
+                self.assertTrue(mod.verdict(envoye, geste)['modifiable'])
                 self.assertTrue(
                     mod.verdict(self._devis('brouillon'), geste)['modifiable'])
+                for clos in ('accepte', 'refuse', 'expire'):
+                    v = mod.verdict(self._devis(clos), geste)
+                    self.assertFalse(v['modifiable'])
+                    self.assertTrue(v['revision_possible'])
+                v = mod.verdict(self._devis('envoye', is_active=False), geste)
+                self.assertFalse(v['modifiable'])
+                self.assertFalse(v['revision_possible'])
         for geste in (mod.LIGNES, mod.ENTETE, mod.BOQ, mod.OPTIONS, mod.ETUDE):
             with self.subTest(geste=geste):
                 self.assertTrue(mod.verdict(envoye, geste)['modifiable'])
@@ -205,6 +215,59 @@ class LesHuitEcrituresGardees(_Base):
                         else:
                             self.assertNotEqual(r.status_code, 409,
                                                 r.content)
+
+
+class CalepinageSurUnEnvoye(_Base):
+    """QJR557 (D-QJR5-5) — sync-layout sur un ENVOYÉ : corrigé SUR PLACE
+    (2xx, instantané, chatter « corrigé après envoi : calepinage »,
+    marqueur ``resync_apres_envoi``, statut « envoyé ») ; accepté → 409
+    ``revision_possible`` True, rien n'a bougé."""
+
+    @staticmethod
+    def _layout(panels):
+        return {'scenario': 'reseau', 'panelWatt': 710,
+                'result': {'panels': panels, 'kwc': panels * 0.71,
+                           'annualKwh': 14000, 'savings': 12000}}
+
+    def _sync(self, devis, panels):
+        return self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/sync-layout/',
+            self._layout(panels), format='json')
+
+    def test_envoye_se_resynchronise_sur_place_et_trace(self):
+        from apps.ventes.models import DevisActivity
+        devis = self._devis('envoye')
+        reference = devis.reference
+        r = self._sync(devis, 14)
+        self.assertEqual(r.status_code, 200, r.content)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'envoye')
+        self.assertEqual(devis.reference, reference)
+        self.assertEqual(int(devis.lignes.get(produit=self.produit).quantite),
+                         14)
+        correction = DevisActivity.objects.filter(
+            devis=devis, field='correction_apres_envoi')
+        self.assertEqual(correction.count(), 1)
+        self.assertIn('calepinage', correction.get().body)
+        self.assertIn('date', (devis.etude_params or {})
+                      .get('resync_apres_envoi') or {})
+
+    def test_design_context_modifiable_pour_un_envoye(self):
+        devis = self._devis('envoye')
+        r = self.api.get(
+            f'/api/django/ventes/devis/{devis.id}/design-context/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertNotIn('plus modifiable', r.data['raison_lecture_seule'])
+
+    def test_accepte_409_revision_possible_rien_ne_bouge(self):
+        devis = self._devis('accepte')
+        r = self._sync(devis, 14)
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertTrue(r.data['revision_possible'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, 'accepte')
+        self.assertEqual(int(devis.lignes.get(produit=self.produit).quantite),
+                         10)
 
 
 class UneLigneNeChangePasDeDevis(_Base):
