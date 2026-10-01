@@ -1204,174 +1204,6 @@ def clean_pdf_options(raw) -> dict:
     return opts
 
 
-# ── QJ12 — Financing comparison block ──────────────────────────────────────
-# Indicative figures only (no live bank API).  All amounts are MAD TTC.
-#
-# Green loan parameters (APPROXIMATIF — marché marocain 2026, à confirmer
-# avec les banques partenaires). NEVER presented as confirmed prices.
-#
-# Tatwir Croissance Verte (CIH/BMCE/Attijariwafa — PME):
-#   Taux: ~4–5 % an (HT), durée max 7 ans.
-# CAM « Saquii Solaire » (Crédit Agricole du Maroc — pompage agricole):
-#   QK3 correction — le pompage solaire est financé par l'offre CAM dédiée
-#   « Saquii Solaire » (~5–6 % an, 10 ans, 1 an de différé), cumulable avec la
-#   subvention FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA — d'où la
-#   correction ci-dessous (ISTIDAMA retiré du bloc agricole).
-#
-# Residential / uncategorised fall back to a generic green-mortgage proxy
-# (MCMA-style): ~6 % an, 10 ans.
-_FINANCING_PROGRAMS = {
-    "residentiel": {
-        "nom": "Crédit vert résidentiel",
-        "taux_annuel": 0.06,          # indicatif
-        "duree_mois": 120,
-        "programme_label": None,      # no specific named programme
-    },
-    "industriel": {
-        "nom": "Tatwir Croissance Verte (PME)",
-        "taux_annuel": 0.045,         # milieu fourchette 4–5 %
-        "duree_mois": 84,             # 7 ans
-        "programme_label": "Tatwir",
-    },
-    # QX43 — commercial : réutilise le programme PME industriel « Tatwir
-    # Croissance Verte » (mêmes bénéficiaires PME/TPE) — aucun programme inventé,
-    # sauf veto du fondateur.
-    "commercial": {
-        "nom": "Tatwir Croissance Verte (PME)",
-        "taux_annuel": 0.045,         # milieu fourchette 4–5 %
-        "duree_mois": 84,             # 7 ans
-        "programme_label": "Tatwir",
-    },
-    "agricole": {
-        "nom": "CAM « Saquii Solaire » (Crédit Agricole du Maroc)",
-        "taux_annuel": 0.055,         # milieu fourchette 5–6 %
-        "duree_mois": 120,            # 10 ans (1 an de différé)
-        "programme_label": "Saquii Solaire",
-    },
-}
-_DEFAULT_FINANCING_KEY = "residentiel"
-
-
-def _monthly_loan_payment(principal: float, annual_rate: float, n_months: int) -> float:
-    """Standard annuity formula.  annual_rate = 0.06 means 6 % per year.
-    Returns 0 if inputs are degenerate.
-    """
-    if principal <= 0 or n_months <= 0:
-        return 0.0
-    if annual_rate <= 0:
-        return round(principal / n_months, 2)
-    r = annual_rate / 12
-    factor = r * (1 + r) ** n_months / ((1 + r) ** n_months - 1)
-    return round(principal * factor, 2)
-
-
-def compute_financing_block(
-    display_total: float,
-    eco_s_ann: float,
-    eco_a_ann: float,
-    mode_installation: str = "residentiel",
-) -> dict | None:
-    """QJ12 — Build the indicative financing comparison block.
-
-    Returns a dict to be embedded in build_quote_data output under the key
-    ``financing``, or ``None`` when the total is zero / unknown (degrades cleanly
-    — callers must handle None and omit the block).
-
-    The block is PURELY INDICATIVE.  Every figure carries the flag
-    ``indicatif=True``.  Never show buy prices or margins — the returned dict
-    contains only TTC client-facing numbers.
-
-    Structure:
-        {
-            indicatif: True,
-            cash: {montant_ttc: float, label: str},
-            credit: {
-                mensualite: float,
-                duree_mois: int,
-                taux_annuel_pct: float,
-                programme_nom: str,
-                programme_label: str | None,
-            },
-            onee_comparison: {
-                show: bool,           # mensualité < économie mensuelle ONEE
-                message: str,         # French message if show=True
-                eco_mensuelle_sans: float,
-                eco_mensuelle_avec: float,
-            },
-            guidance_text: str | None,  # Tatwir / Saquii Solaire text or None
-        }
-    """
-    if not display_total or display_total <= 0:
-        return None
-
-    key = mode_installation if mode_installation in _FINANCING_PROGRAMS else _DEFAULT_FINANCING_KEY
-    prog = _FINANCING_PROGRAMS[key]
-
-    mensualite = _monthly_loan_payment(
-        display_total,
-        prog["taux_annuel"],
-        prog["duree_mois"],
-    )
-
-    # Monthly savings (use option-1 / sans-batterie as the reference for comparison)
-    eco_mensuelle_sans = round(eco_s_ann / 12, 2) if eco_s_ann else 0.0
-    eco_mensuelle_avec = round(eco_a_ann / 12, 2) if eco_a_ann else 0.0
-
-    # "mensualité < économie ONEE mensuelle" — when the monthly payment is below
-    # even the option-1 monthly savings, the system "pays for itself each month".
-    onee_ref = eco_mensuelle_sans  # conservative reference (sans batterie)
-    shows_comparison = mensualite > 0 and onee_ref > 0 and mensualite < onee_ref
-    if shows_comparison:
-        comparison_msg = (
-            f"La mensualité indicative ({int(mensualite):,} MAD) est inférieure "
-            f"à votre économie mensuelle estimée ({int(onee_ref):,} MAD) — "
-            "l'installation se rembourse chaque mois."
-        ).replace(',', ' ')
-    else:
-        comparison_msg = ""
-
-    # Programme guidance text
-    guidance = None
-    if key == "industriel":
-        guidance = (
-            "Les PME et professionnels peuvent financer cette installation via "
-            "Tatwir Croissance Verte (CIH, BMCE, Attijariwafa) — taux préférentiel "
-            "réservé aux projets d'efficacité énergétique. Demandez à votre banque."
-        )
-    elif key == "agricole":
-        # QK3 — le pompage solaire relève de l'offre CAM « Saquii Solaire »
-        # (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable avec la subvention
-        # FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA.
-        guidance = (
-            "L'offre « Saquii Solaire » du Crédit Agricole du Maroc finance le "
-            "pompage solaire (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable "
-            "avec la subvention FDA 30 %. Contactez votre agence CAM pour les "
-            "conditions exactes."
-        )
-
-    return {
-        "indicatif": True,
-        "cash": {
-            "montant_ttc": display_total,
-            "label": "Paiement comptant (TTC)",
-        },
-        "credit": {
-            "mensualite": mensualite,
-            "duree_mois": prog["duree_mois"],
-            "taux_annuel_pct": round(prog["taux_annuel"] * 100, 2),
-            "programme_nom": prog["nom"],
-            "programme_label": prog["programme_label"],
-        },
-        "onee_comparison": {
-            "show": shows_comparison,
-            "message": comparison_msg,
-            "eco_mensuelle_sans": eco_mensuelle_sans,
-            "eco_mensuelle_avec": eco_mensuelle_avec,
-        },
-        "guidance_text": guidance,
-    }
-
-
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
@@ -3684,8 +3516,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # republié sur le lien public) sans qu'aucun chiffre ne l'utilise —
         # une promesse de multi-devise que rien ne tenait. Il ne sort plus
         # d'ici. Le champ modèle est CONSERVÉ tel quel (aucune migration
-        # destructive) ; seule sa republication s'arrête, exactement comme
-        # `financing` (F6).
+        # destructive) ; seule sa republication s'arrête.
         "devise": "MAD",
     }
     # COUV-HOR (fondateur, 29/09/2026) — la donut de couverture lit la
@@ -3775,17 +3606,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["include_calepinage"] = True
             data["calepinage_svg"] = _planche_svg
             data["calepinage_empreinte"] = _planche_empreinte
-    # QJ12 — financing block (indicatif / à confirmer). Added additively after
-    # all other keys so omitting it never changes any existing key's value.
-    # Degrades to None when display_total is unavailable — callers omit the block.
-    financing = compute_financing_block(
-        display_total=display_total,
-        eco_s_ann=roi.get("eco_s_ann", 0),
-        eco_a_ann=roi.get("eco_a_ann", 0),
-        mode_installation=mode,
-    )
-    if financing is not None:
-        data["financing"] = financing
+    # QJR630 — le bloc « financement » (QJ12 : taux bancaires « milieu de
+    # fourchette » codés en dur) n'est plus produit : aucun rendu ne le lisait
+    # et la proposition publique le retirait déjà (F6).
 
     # ── SCA27 (complément) — site du tenant : ligne site + base fiches ────────
     # Posé UNIQUEMENT quand le profil porte un site : le renderer résidentiel lit

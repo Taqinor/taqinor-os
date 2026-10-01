@@ -3247,19 +3247,6 @@ def proposal_data(request, token):
             for _k in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
                        'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
                 data[_k] = None
-        # F6 (revue Fable, pré-merge 18/08/2026) — QJ12 calcule un bloc
-        # `financing` INTERNE (indicatif) ; le fondateur a retiré le crédit de
-        # toute surface client à QUATRE reprises (PV80 : plus aucune mensualité
-        # ni banque sur la page /proposition, `financingComparison`/
-        # `backendFinancing` gardées mais plus IMPORTÉES par la page). Rien ne
-        # le rend plus nulle part — mais il restait SERVI, en clair, sur le lien
-        # public tokenisé : un JSON récupérable contredisait la décision même
-        # sans qu'aucun écran ne l'affiche. On le retire ici, sur `data` lui-même
-        # (jamais sur une copie) : `'quote': data` plus bas republie ce même
-        # dict, donc le laisser dedans aurait fui la MÊME donnée sous un second
-        # nom. Le calcul interne du builder (`compute_financing_block`) n'est
-        # pas touché — seule la republication publique s'arrête.
-        data.pop('financing', None)
         # M1 (audit du 19/08/2026) — la série « facture avant PV » ne franchit
         # la frontière publique que si elle est RÉELLE. Le builder ne fabrique
         # plus de proxy (facture ≈ économie / taux d'autoconsommation) : quand
@@ -3275,7 +3262,8 @@ def proposal_data(request, token):
             if not data.get('sans_ok'):
                 data['totaux_sans'] = None
                 data['sans_items'] = []
-        # CJ2b (21/08/2026) — même règle que `financing` ci-dessus : quand
+        # CJ2b (21/08/2026) — rien ne franchit la frontière publique qui ne
+        # soit vendable : quand
         # l'option batterie n'est pas RÉELLEMENT vendable (`avec_ok` faux),
         # AUCUN chiffre « avec batterie » ne franchit la frontière publique.
         # `economies_mensuelles.avec` était déjà nul, mais `'quote': data`
@@ -3442,13 +3430,6 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _conso_mensuelle,
-            # F6 (revue Fable, 18/08/2026) — 'financing' n'est PLUS servi ici :
-            # le fondateur a retiré le crédit de toute surface client (PV80),
-            # rien ne le rend, et `data.pop('financing', None)` ci-dessus a déjà
-            # retiré la copie imbriquée sous 'quote'. Voir le commentaire à cet
-            # endroit pour le détail — le calcul interne du builder (QJ12,
-            # `compute_financing_block`) reste intact, seule la publication
-            # s'arrête.
             # QF3 — bloc « Comment nous calculons vos économies » (méthode +
             # exemple chiffré). Présent quand le builder l'a produit ; jamais de
             # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].

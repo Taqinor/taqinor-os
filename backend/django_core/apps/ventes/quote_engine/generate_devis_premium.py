@@ -666,9 +666,6 @@ def _hypotheses_html():
         f'<ul style="list-style:none;padding:0;margin:0;">{lis}</ul></div>')
 
 
-# QK3 — bloc financement (indicatif, QJ12), posé depuis data["financing"].
-# Vide → aucun bloc rendu (byte-identique).
-
 # QJ30 — multi-propriétés (rendu). NB_PROPRIETES = ×N villas identiques (défaut
 # 1 → aucun rendu). MULTI_VILLA = sections par-villa (sous-totaux + total
 # général). Vides → mise en page à plat d'aujourd'hui (byte-identique).
