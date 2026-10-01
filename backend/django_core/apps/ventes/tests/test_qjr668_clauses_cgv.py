@@ -6,18 +6,25 @@ propres à chaque affaire (NTCPQ11, ``Devis.clauses_appliquees``) sont :
   * IMPRIMÉES par tous les gabarits (résidentiel, industriel, commercial,
     une page) — et un devis sans clause reste sans bloc.
 
-Le catalogue (app ``cpq``) est PARQUÉ : sans lui, le gel n'écrit rien et
-n'efface jamais un snapshot déjà posé. Les tests fournissent la source en
+Le catalogue (app ``cpq``) est PARQUÉ et le périmètre MVP n'a AUCUNE autre
+source de clauses par affaire (ERR-QJR668-CLAUSES-CGV-SOURCE-PARQUEE : l'import
+dynamique inerte de ``apps.cpq.selectors`` est retiré, ``SourceTests`` le
+prouve SANS patch). Sans source, le gel n'écrit rien et n'efface jamais un
+snapshot déjà posé. Les tests de gel/impression fournissent une source en
 patchant ``clauses_applicables_devis``.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
         -Modules "apps.ventes.tests.test_qjr668_clauses_cgv"
 """
+import ast
 import re
-from unittest.mock import patch
+import sys
+import types
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -70,6 +77,42 @@ class _Base(TestCase):
         return devis
 
 
+CYCLE_VIE = (Path(__file__).resolve().parents[1] / 'domain' / 'cycle_vie.py')
+
+
+class SourceTests(SimpleTestCase):
+    """ERR-QJR668-CLAUSES-CGV-SOURCE-PARQUEE — SANS patch de la source.
+
+    L'ancienne source cherchait ``apps.cpq.selectors`` par import dynamique :
+    module absent → ``None`` en silence, d'où un gel qui semblait branché sans
+    jamais rien écrire. Plus aucune référence à ``cpq`` ni ``importlib``."""
+
+    def test_aucune_reference_a_cpq_dans_la_source(self):
+        arbre = ast.parse(CYCLE_VIE.read_text(encoding='utf-8'))
+        fonction = next(
+            n for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef)
+            and n.name == 'clauses_applicables_devis')
+        chaines = [n.value for n in ast.walk(fonction)
+                   if isinstance(n, ast.Constant) and isinstance(n.value, str)
+                   and n is not fonction.body[0].value]
+        noms = {n.id for n in ast.walk(fonction) if isinstance(n, ast.Name)}
+        self.assertFalse([c for c in chaines if 'cpq' in c], chaines)
+        self.assertNotIn('importlib', noms)
+
+    def test_un_module_cpq_present_n_est_pas_lu(self):
+        """Même si un ``apps.cpq.selectors`` devenait importable, la
+        fonction ne s'en sert pas : aucune source n'a été désignée."""
+        from apps.ventes.domain.cycle_vie import clauses_applicables_devis
+        faux = types.ModuleType('apps.cpq.selectors')
+        faux.clauses_applicables = MagicMock(return_value=[CLAUSE])
+        contexte = 'apps.ventes.domain.cycle_vie.contexte_clauses_devis'
+        with patch.dict(sys.modules, {'apps.cpq.selectors': faux}), \
+                patch(contexte, return_value={}):
+            self.assertIsNone(clauses_applicables_devis(MagicMock()))
+        faux.clauses_applicables.assert_not_called()
+
+
 class GelTests(_Base):
 
     def test_envoi_gele_les_clauses(self):
@@ -82,7 +125,7 @@ class GelTests(_Base):
         self.assertEqual(devis.clauses_appliquees, [CLAUSE])
 
     def test_sans_catalogue_rien_n_est_ecrit_ni_efface(self):
-        """cpq parqué : la source réelle rend None, le snapshot reste."""
+        """Aucune source MVP : la source réelle rend None, le snapshot reste."""
         from apps.ventes.domain.cycle_vie import (
             clauses_applicables_devis, figer_clauses_devis)
         devis = self._devis()

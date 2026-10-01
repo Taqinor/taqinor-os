@@ -1641,26 +1641,24 @@ def contexte_clauses_devis(devis):
 
 
 def clauses_applicables_devis(devis):
-    """QJR668 — les clauses/CGV du catalogue société qui s'appliquent à ce
+    """QJR668 — les clauses/CGV PROPRES À L'AFFAIRE qui s'appliquent à ce
     devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
-    quand AUCUN catalogue n'est disponible.
+    quand AUCUN catalogue de clauses n'est disponible.
 
-    Le catalogue NTCPQ11 vit dans l'app ``cpq`` (``selectors.clauses_applicables``
-    évalue chaque clause contre :func:`contexte_clauses_devis`). Tant que
-    ``cpq`` est PARQUÉE (MVP solaire, SOLMVP), le module n'existe pas : la
-    fonction rend ``None`` et le gel n'écrit rien — un snapshot déjà posé
-    n'est jamais effacé faute de source. Import dynamique : aucune arête
-    statique ventes → cpq."""
-    import importlib
-
-    try:
-        source = importlib.import_module('apps.cpq.selectors')
-        clauses_applicables = source.clauses_applicables
-    except (ImportError, AttributeError):
-        return None
-    clauses = clauses_applicables(
-        company=devis.company, context=contexte_clauses_devis(devis))
-    return [dict(c) for c in (clauses or []) if isinstance(c, dict)]
+    ERR-QJR668-CLAUSES-CGV-SOURCE-PARQUEE (01/10/2026) — le périmètre MVP ne
+    porte AUCUN catalogue de clauses par affaire : la seule source prévue
+    (catalogue NTCPQ11, app ``cpq``) est PARQUÉE et son ``selectors`` n'existe
+    pas ; l'import dynamique qui la cherchait échouait donc toujours en
+    silence. Il est retiré : rien ne fait plus croire qu'une source est
+    branchée. Les CGV GÉNÉRALES société (``parametres.DocumentTemplates`` :
+    ``cgv_titre`` + ``cgv_bullets``) ne sont PAS une telle source — ce sont des
+    gabarits à marqueurs (``{acompte}``, ``{solde}``, ``{tva_note}``…) que le
+    moteur remplit AU RENDU, déjà imprimés par le gabarit plein format :
+    les figer ici imprimerait les marqueurs bruts et la même CGV deux fois.
+    Tant que le fondateur n'a pas désigné de source, la fonction rend ``None``
+    et :func:`figer_clauses_devis` n'écrit rien (un snapshot déjà posé n'est
+    jamais effacé)."""
+    return None
 
 
 def figer_clauses_devis(devis):
