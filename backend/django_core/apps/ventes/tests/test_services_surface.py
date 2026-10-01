@@ -56,11 +56,6 @@ from apps.ventes import services
 # préfixe ``_`` — exactement ce que calcule ``_definitions_niveau_module``
 # plus bas, que l'on peut exécuter sur le fichier avec un simple script AST.
 SURFACE_PUBLIQUE = (
-    # QJR539 / QJR590 — garde de remise et trace de correction exportées.
-    "RemiseNonApprouvee",
-    "consigner_correction_apres_envoi",
-    "exiger_approbation_remise",
-    "reverifier_remise_apres_correction",
     "AVERTISSEMENTS_KIT_ABSENT",
     "AcceptError",
     "AutoDevisError",
@@ -97,6 +92,7 @@ SURFACE_PUBLIQUE = (
     "PaiementRejectError",
     "RELANCE_AUTO_NOTE",
     "RELANCE_AUTO_NOTE_RESOLUE",
+    "RemiseNonApprouvee",
     "SCENARIOS_DEMANDABLES",
     "SCENARIO_AVEC_BATTERIE",
     "SCENARIO_LES_DEUX",
@@ -147,6 +143,7 @@ SURFACE_PUBLIQUE = (
     "compute_marge_snapshot",
     "concevoir_electrique_du_devis",
     "configuration_devis_contenu",
+    "consigner_correction_apres_envoi",
     "consolider_factures",
     "contexte_clauses_devis",
     "contour_client_lnglat",
@@ -176,6 +173,7 @@ SURFACE_PUBLIQUE = (
     "enregistrer_paiement",
     "enregistrer_paiement_avec_retenue",
     "entrees_dimensionnement_du_devis",
+    "exiger_approbation_remise",
     "expire_stale_devis",
     "expirer_liens_paiement_perimes",
     "extract_roof_config",
@@ -251,6 +249,7 @@ SURFACE_PUBLIQUE = (
     "reserver_stock_devis_facture",
     "reset_relance_escalation",
     "resynchroniser_devis_pour_produit",
+    "reverifier_remise_apres_correction",
     "revoquer_lien_paiement",
     "save_devis_as_preset",
     "scenario_effectif",
