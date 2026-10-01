@@ -485,7 +485,11 @@ export default function DevisGenerator({
   // EN PLACE (mêmes référence et statut) au lieu d'une création.
   const editId = embedded ? editIdProp : searchParams.get('edit')
   const [editDevis, setEditDevis] = useState(null)
-  const editLoaded = useRef(false)
+  // QJR548 — le chargeur `?edit=` se relance quand le devis a été recomposé
+  // côté serveur (taille d'offre appliquée) : `editLoaded` retient le numéro
+  // de chargement déjà servi, `rechargeEdit` en demande un nouveau.
+  const editLoaded = useRef(null)
+  const [rechargeEdit, setRechargeEdit] = useState(0)
 
   // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
   // supérieur du vendeur avec un lien vers le devis. Manuel (un bouton), et
@@ -1906,8 +1910,8 @@ export default function DevisGenerator({
 
   // ── Édition d'un brouillon (?edit=ID) : préremplissage complet ──
   useEffect(() => {
-    if (!editId || editLoaded.current) return
-    editLoaded.current = true
+    if (!editId || editLoaded.current === rechargeEdit) return
+    editLoaded.current = rechargeEdit
     ventesApi.getDevisById(editId).then(({ data: d }) => {
       // QJR532 (D-QJR5-1) — le refus vient du SERVEUR (`modifiable`, QJR516),
       // plus d'une garde « statut !== brouillon » : un envoyé se corrige sur
@@ -1922,6 +1926,10 @@ export default function DevisGenerator({
       }
       setEditDevis({ id: d.id, reference: d.reference,
                      statut: d.statut, date_envoi: d.date_envoi ?? null,
+                     // QJR548 — verdict SERVI (QJR516), relu par les gestes
+                     // de l'écran qui disent AVANT le clic s'ils sont permis.
+                     modifiable: d.modifiable,
+                     raison_non_modifiable: d.raison_non_modifiable || '',
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -2147,7 +2155,17 @@ export default function DevisGenerator({
         submit: 'Impossible de charger ce devis — il a peut-être été supprimé.',
       }))
     })
-  }, [editId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, rechargeEdit]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // QJR548 — une taille d'offre appliquée RECOMPOSE le devis côté serveur
+  // (lignes, totaux, études) : l'écran relit ce devis par LE chargeur
+  // `?edit=` ci-dessus et efface son brouillon local — sinon le prochain
+  // « Enregistrer » renverrait les anciennes lignes et annulerait la taille
+  // appliquée en silence. La confirmation est posée par DevisOffresTailles.
+  const rechargerDevisRecompose = () => {
+    clear()
+    setRechargeEdit(n => n + 1)
+  }
 
   // ── Réglages entreprise (Paramètres) → valeurs par défaut du générateur ──
   // FEATURE 10 : en CRÉATION uniquement, la date de validité par défaut suit
@@ -4916,10 +4934,16 @@ export default function DevisGenerator({
         {/* ── Tailles Éco / Recommandé / Max (fondateur 26/08/2026) ──
             Composant autonome : se masque lui-même hors résidentiel ou sur un
             devis pas encore enregistré (editId absent — l'API a besoin d'un
-            pk réel). Ne lit/n'écrit AUCUNE ligne du devis (rule #4, couche
-            d'exploration séparée) ; `produits` réutilise le catalogue déjà
-            chargé pour « Auto-remplir » (pas de second aller-retour réseau). */}
-        <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits} />
+            pk réel). Éco / Max ne configurent que la carte d'exploration ;
+            « Recommandé » RECOMPOSE le devis côté serveur (lignes, totaux,
+            études — pipeline RECONCILIER) : `onDevisRecompose` relance alors
+            le chargeur `?edit=` (QJR548). « Appliquer » lit le verdict de
+            modifiabilité servi (QJR516). `produits` réutilise le catalogue
+            déjà chargé pour « Auto-remplir » (pas de second aller-retour). */}
+        <DevisOffresTailles devisId={editId} modeInstallation={modeInstallation} produits={produits}
+                            modifiable={editDevis?.modifiable}
+                            raisonNonModifiable={editDevis?.raison_non_modifiable}
+                            onDevisRecompose={rechargerDevisRecompose} />
 
         {/* ── Lignes de produits (QJR100 : <LigneTable/> possède la table,
             l'ajout, la suppression et le réordonnancement ; <RailArgent/>

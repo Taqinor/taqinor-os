@@ -122,7 +122,7 @@ function Stepper({ label, value, onChange, min, disabled, testId }) {
 function TierCard({
   offre, varianteAffichee, avecServable, roleOptions, pending,
   onNbPanneaux, onBatterieModules, onEquipement, onAppliquer, onRegenerer,
-  saving, erreurs,
+  saving, erreurs, refusAppliquer,
 }) {
   const donneesVariante = varianteAffichee === 'avec' ? offre.avec : offre.sans
   // Aucune donnée pour la variante affichée (ex. « avec » indisponible sur
@@ -284,7 +284,8 @@ function TierCard({
             : 'Cette taille est une exploration : l\'appliquer ne change que la carte montrée au client.'}
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <Button type="button" size="sm" disabled={!aDesModifications} loading={saving}
+          <Button type="button" size="sm" disabled={!aDesModifications || Boolean(refusAppliquer)}
+                  loading={saving}
                   data-testid={`offre-taille-${offre.cle}-appliquer`}
                   onClick={onAppliquer}>
             {offre.recommande ? 'Appliquer au devis' : 'Appliquer à la carte client'}
@@ -295,6 +296,15 @@ function TierCard({
             <RefreshCw className="size-3.5" /> Régénérer depuis le moteur
           </Button>
         </div>
+        {/* QJR548 — le bouton dit AVANT le clic si le geste est permis : le
+            verdict de modifiabilité vient du SERVEUR (QJR516), jamais d'une
+            règle de statut recopiée ici. */}
+        {refusAppliquer && (
+          <p className="text-xs text-muted-foreground"
+             data-testid={`offre-taille-${offre.cle}-refus`}>
+            {refusAppliquer}
+          </p>
+        )}
       </CardContent>
     </Card>
   )
@@ -314,8 +324,20 @@ function TierCard({
  * @param {Array}         produits         Catalogue déjà chargé par
  *                                          DevisGenerator (évite un second
  *                                          aller-retour réseau).
+ * @param {boolean}       [modifiable]     QJR548 — verdict SERVI par le
+ *                                          serveur (QJR516). `false` ⇒
+ *                                          « Appliquer » désactivé, avec
+ *                                          `raisonNonModifiable` affichée.
+ * @param {string}        [raisonNonModifiable]
+ * @param {function}      [onDevisRecompose] QJR548 — appelé après une
+ *                                          recomposition RÉUSSIE du devis
+ *                                          (« Recommandé ») : l'écran recharge
+ *                                          alors ses lignes depuis le serveur.
  */
-export default function DevisOffresTailles({ devisId, modeInstallation, produits }) {
+export default function DevisOffresTailles({
+  devisId, modeInstallation, produits,
+  modifiable, raisonNonModifiable, onDevisRecompose,
+}) {
   const { confirm } = useConfirmDialog()
   const actif = Boolean(devisId) && modeInstallation === 'residentiel'
 
@@ -393,6 +415,19 @@ export default function DevisOffresTailles({ devisId, modeInstallation, produits
     if (batterieNbModules != null) config.batterie_nb_modules = batterieNbModules
     if (edits.equipements && Object.keys(edits.equipements).length) config.equipements = edits.equipements
     if (Object.keys(config).length === 0) return
+    // QJR548 — « Recommandé » RECOMPOSE le devis côté serveur, puis l'écran
+    // recharge ses lignes depuis ce devis recomposé : ce que l'écran porte et
+    // qui n'est pas encore enregistré sera remplacé. On le DIT avant.
+    if (offre.recommande) {
+      const ok = await confirm({
+        title: 'Appliquer la taille « Recommandé » au devis ?',
+        description: 'Le devis sera recomposé sur cette taille et l\'écran rechargé '
+          + 'depuis le devis enregistré : les modifications non enregistrées de '
+          + 'l\'écran seront remplacées.',
+        confirmLabel: 'Appliquer au devis',
+      })
+      if (!ok) return
+    }
     setTailleEnCours(cle)
     setErreursParTaille(e => ({ ...e, [cle]: [] }))
     try {
@@ -410,6 +445,10 @@ export default function DevisOffresTailles({ devisId, modeInstallation, produits
       toast.success(offre.recommande
         ? 'Devis recomposé sur la taille « Recommandé ».'
         : `Taille « ${offre.titre} » mise à jour.`)
+      // QJR548 — le devis a changé côté serveur (lignes, totaux, études) :
+      // l'écran doit le relire, sinon son prochain « Enregistrer » renverrait
+      // ses anciennes lignes et annulerait la taille appliquée en silence.
+      if (offre.recommande && typeof onDevisRecompose === 'function') onDevisRecompose()
     } catch (err) {
       const raw = err?.response?.data
       // `revision_possible` est un DRAPEAU, pas un message : le laisser passer
@@ -513,6 +552,9 @@ export default function DevisOffresTailles({ devisId, modeInstallation, produits
                 onRegenerer={() => regenerer(offre)}
                 saving={tailleEnCours === offre.cle}
                 erreurs={erreursParTaille[offre.cle] || []}
+                refusAppliquer={modifiable === false
+                  ? (raisonNonModifiable || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
+                  : null}
               />
             ))}
           </div>
