@@ -67,7 +67,15 @@ import {
   // QJR101 — `HelpTip` est parti avec la carte des factures : les trois
   // panneaux réseau l'importent chacun pour leur aide « distributeur ».
   ScrollProgress,
+  // QJR540 — compteurs factures / BC / chantier du devis rouvert (ex-DevisForm).
+  RelationCounters,
 } from '../../ui'
+// QJR540 — blocs repris du modal DevisForm (supprimé) : le calepinage qui
+// pilote ce devis (CAL40), son badge « périmé » (CAL188) et les pièces jointes
+// du devis (seule UI de pièces jointes devis).
+import BlocCalepinageDevis from '../../features/ventes/BlocCalepinageDevis'
+import BadgePerime from '../../features/calepinage/BadgePerime'
+import AttachmentsPanel from '../../components/AttachmentsPanel'
 // STKCAT10 — le sélecteur de structures PILOTÉ PAR LE CATALOGUE (décision
 // fondateur 16/09/2026) qui remplace le bouton acier/aluminium ; il rend
 // lui-même ce bouton en REPLI quand la société n'a aucune catégorie typée
@@ -1996,6 +2004,13 @@ export default function DevisGenerator({
                      // QJR581 — version du devis : un brouillon local d'une
                      // AUTRE version n'est jamais proposé.
                      updated_at: d.updated_at ?? null,
+                     // QJR540 — relations et état du calepinage, déjà servis
+                     // par DevisSerializer : lus tels quels (zéro appel réseau).
+                     factures_liees: d.factures_liees ?? [],
+                     bon_commande_etat: d.bon_commande_etat ?? null,
+                     chantier: d.chantier ?? null,
+                     layout_stale: d.layout_stale ?? null,
+                     layout_nb_panneaux: d.layout_nb_panneaux ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR99 — la RÉOUVERTURE d'un brouillon est UNE transition
       // (`REOUVERTURE`, dispatchée plus bas quand `panneaux` et `etude_params`
@@ -3890,6 +3905,36 @@ export default function DevisGenerator({
             par email ou WhatsApp n'est pas mis à jour — renvoyez-le si besoin. Le statut reste Envoyé.
           </div>
         )}
+        {/* QJR540 (ex-DevisForm VX250) — lecture PURE du statut chargé : ne
+            change jamais un statut (règle #4). */}
+        {editDevis?.statut === 'envoye' && (
+          <p
+            data-testid="devis-attente-signature"
+            role="status"
+            className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+          >
+            En attente de signature client
+          </p>
+        )}
+        {/* QJR540 (ex-DevisForm VX159/VX250) — compteurs dérivés du devis
+            déjà chargé : zéro appel réseau nouveau. */}
+        {editDevis?.id && (
+          <RelationCounters
+            counters={[
+              {
+                label: 'factures liées',
+                count: editDevis.factures_liees?.length ?? 0,
+                to: `/ventes/factures?q=${encodeURIComponent(editDevis.client_nom ?? '')}`,
+              },
+              { label: 'bon de commande', count: editDevis.bon_commande_etat ? 1 : 0 },
+              {
+                label: 'chantier',
+                count: editDevis.chantier ? 1 : 0,
+                to: editDevis.chantier ? `/chantiers?id=${editDevis.chantier.id}` : undefined,
+              },
+            ]}
+          />
+        )}
         {brouillonProposable && (
           <div
             data-testid="draft-restore-banner"
@@ -5153,6 +5198,24 @@ export default function DevisGenerator({
             section « Enregistrer comme modèle » dit honnêtement qu'elle
             attend que le devis existe. */}
         <DevisPresetPanel devisId={editDevis?.id} onApplied={handlePresetApplied} />
+
+        {/* QJR540 — blocs repris du modal DevisForm (supprimé) : badge
+            « calepinage périmé » (CAL188, lu de `layout_stale`), le calepinage
+            qui pilote ce devis (CAL40, silencieux sans calepinage) et les
+            pièces jointes du devis. N'existent que sur un devis enregistré. */}
+        {editDevis?.id && (
+          <Card data-testid="devis-edition-blocs">
+            <CardContent className="pt-4 space-y-3">
+              <BadgePerime layoutStale={editDevis.layout_stale}
+                layoutNbPanneaux={editDevis.layout_nb_panneaux} />
+              <BlocCalepinageDevis devisId={editDevis.id} />
+              <div>
+                <p className="mb-2 text-sm font-semibold text-foreground">Pièces jointes</p>
+                <AttachmentsPanel model="ventes.devis" id={editDevis.id} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* QJR215 — registre de surcharges (QJR214/QJR216) : lecture à
             l'ouverture (au montage de ce panneau), pose EXPLICITE d'un

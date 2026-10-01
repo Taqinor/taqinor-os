@@ -63,7 +63,6 @@ const ventesApi = {
   // échec préserve les lignes existantes (jamais un devis à zéro ligne).
   replaceLignesDevis: (id, lignes) =>
     api.post(`/ventes/devis/${id}/replace-lines/`, { lignes }),
-  updateDevis: (id, data) => api.put(`/ventes/devis/${id}/`, data),
   patchDevis: (id, data) => api.patch(`/ventes/devis/${id}/`, data),
   // QJR62/QJR66 — PATCH **FUSIONNANT** d'`etude_params` : seules les clés
   // ENVOYÉES bougent, les autres restent intouchées bit à bit (une valeur
@@ -313,8 +312,6 @@ const ventesApi = {
   // Lignes de devis
   getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),
   createLigneDevis: (data) => api.post('/ventes/devis-lignes/', data),
-  updateLigneDevis: (id, data) => api.put(`/ventes/devis-lignes/${id}/`, data),
-  deleteLigneDevis: (id) => api.delete(`/ventes/devis-lignes/${id}/`),
 
   // Bons de commande
   getBonsCommande: (params) => api.get('/ventes/bons-commande/', { params }),
