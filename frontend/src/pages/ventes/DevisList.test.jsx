@@ -63,6 +63,8 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
       shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
       whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
       whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
+      // QJR659 — partager le PDF (feuille native résolue) vaut envoi.
+      partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
       // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
       // toucher le réseau réel dans le test du toast.warning associé.
       reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
@@ -1315,4 +1317,67 @@ describe('DevisList — QJR639 : pas de « Supprimer » sur un accepté', () => 
       expect(screen.queryByRole('menuitem', { name: /Supprimer/ })).toBeNull()
     })
   }
+})
+
+// QJR659 (décision fondateur 01/10) — partager le PDF depuis la liste vaut
+// ENVOI quand la feuille de partage native se RÉSOUT ; ni sur AbortError
+// (annulation), ni sur le repli téléchargement. Le marquage passe par
+// l'action serveur pdf-partage (garde T17 + mark_devis_sent).
+describe('DevisList — QJR659 : partager le PDF vaut envoi', () => {
+  const base = {
+    client_nom: 'ACME', date_creation: '2026-07-01', total_ttc: 1000,
+    nb_options: 1, version: 1, is_active: true, statut: 'brouillon',
+    fichier_pdf: '/media/devis/x.pdf',
+  }
+  let canShareAvant, shareAvant
+  beforeEach(() => {
+    canShareAvant = navigator.canShare
+    shareAvant = navigator.share
+    URL.createObjectURL = vi.fn(() => 'blob:mock-url')
+    URL.revokeObjectURL = vi.fn()
+    ventesApi.partagePdfDevis.mockClear()
+  })
+  afterEach(() => {
+    navigator.canShare = canShareAvant
+    navigator.share = shareAvant
+  })
+
+  async function partager(reference) {
+    const user = userEvent.setup()
+    const row = screen.getByText(reference).closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Partager le PDF/ }))
+  }
+
+  it('feuille de partage résolue : le devis est marqué envoyé (pdf-partage)', async () => {
+    navigator.canShare = vi.fn(() => true)
+    navigator.share = vi.fn(() => Promise.resolve())
+    renderList({ role: 'admin', devis: [{ ...base, id: 81, reference: 'DEV-PART-1' }] })
+    await partager('DEV-PART-1')
+    await waitFor(() => { expect(navigator.share).toHaveBeenCalled() })
+    await waitFor(() => { expect(ventesApi.partagePdfDevis).toHaveBeenCalledWith(81) })
+  })
+
+  it('AbortError (annulation) : aucun marquage', async () => {
+    navigator.canShare = vi.fn(() => true)
+    const abort = Object.assign(new Error('annulé'), { name: 'AbortError' })
+    navigator.share = vi.fn(() => Promise.reject(abort))
+    renderList({ role: 'admin', devis: [{ ...base, id: 82, reference: 'DEV-PART-2' }] })
+    await partager('DEV-PART-2')
+    await waitFor(() => { expect(navigator.share).toHaveBeenCalled() })
+    await new Promise(r => setTimeout(r, 50))
+    expect(ventesApi.partagePdfDevis).not.toHaveBeenCalled()
+  })
+
+  it('repli téléchargement (pas de partage natif) : aucun marquage', async () => {
+    navigator.canShare = undefined
+    navigator.share = undefined
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    renderList({ role: 'admin', devis: [{ ...base, id: 83, reference: 'DEV-PART-3' }] })
+    await partager('DEV-PART-3')
+    await waitFor(() => { expect(ventesApi.telechargerPdfDevis).toHaveBeenCalledWith(83) })
+    await new Promise(r => setTimeout(r, 50))
+    expect(ventesApi.partagePdfDevis).not.toHaveBeenCalled()
+    clickSpy.mockRestore()
+  })
 })
