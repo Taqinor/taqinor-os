@@ -1334,7 +1334,7 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             activity.log_restore(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
-    def _whatsapp_devis_message(self, request, lead):
+    def _whatsapp_devis_message(self, request, lead, *, enregistrer):
         """Valide la sélection et construit le message multi-devis du lead.
 
         QJR538 — partagé par l'APERÇU (`whatsapp-devis-apercu`, sans aucun
@@ -1375,6 +1375,20 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Numéro de téléphone invalide.'},
                 status=status.HTTP_400_BAD_REQUEST,
             ), None
+        # QJR539 — garde de remise T17 (ventes.services) AVANT tout effet,
+        # lien compris : un seul devis refusé refuse toute la sélection. Un
+        # aperçu (``enregistrer=False``) n'écrit pas l'approbation implicite.
+        from apps.ventes.services import (
+            RemiseNonApprouvee, exiger_approbation_remise)
+        for d in devis_list:
+            if d.statut not in ('brouillon', 'envoye'):
+                continue
+            try:
+                exiger_approbation_remise(
+                    d, request.user, enregistrer=enregistrer)
+            except RemiseNonApprouvee as erreur:
+                return Response({'detail': erreur.message},
+                                status=status.HTTP_400_BAD_REQUEST), None
         # Langue du message : la valeur explicite de la requête l'emporte ;
         # sinon on retombe sur la langue préférée du lead, puis sur le FR.
         langue = request.data.get('langue')
@@ -1393,7 +1407,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.ventes.utils.whatsapp import build_wa_url
 
         lead = self.get_object()
-        erreur, built = self._whatsapp_devis_message(request, lead)
+        erreur, built = self._whatsapp_devis_message(
+            request, lead, enregistrer=False)
         if erreur is not None:
             return erreur
         _devis_list, phone, message, links = built
@@ -1416,7 +1431,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from apps.ventes.utils.whatsapp import build_wa_url
 
         lead = self.get_object()
-        erreur, built = self._whatsapp_devis_message(request, lead)
+        erreur, built = self._whatsapp_devis_message(
+            request, lead, enregistrer=True)
         if erreur is not None:
             return erreur
         devis_list, phone, message, links = built

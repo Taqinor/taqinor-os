@@ -436,6 +436,11 @@ _regle_applicable = _tarification._regle_applicable
 _appliquer_regle = _tarification._appliquer_regle
 _resolve_liste_prix = _tarification._resolve_liste_prix
 prix_applicable = _tarification.prix_applicable
+# QJR539 — la garde de remise T17 unique, appelée AVANT tout envoi.
+RemiseNonApprouvee = _tarification.RemiseNonApprouvee
+exiger_approbation_remise = _tarification.exiger_approbation_remise
+reverifier_remise_apres_correction = (
+    _tarification.reverifier_remise_apres_correction)
 
 
 # ═════════════════════════════════════════════════════════════════════════

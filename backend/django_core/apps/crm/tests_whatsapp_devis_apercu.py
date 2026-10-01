@@ -94,6 +94,23 @@ class TestWhatsAppDevisApercu(TestCase):
         self.assertEqual(self.devis.statut, 'envoye')
         self.assertIsNotNone(self.devis.date_envoi)
 
+    def test_apercu_refuse_par_la_garde_de_remise_t17(self):
+        """QJR539 — remise 30 % > seuil 10 %, commercial non admin : 400
+        {detail} (exemple_400 du contrat), aucun lien frappé, rien d'écrit."""
+        from decimal import Decimal
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(
+            company=self.company,
+            defaults={'discount_approval_threshold': Decimal('10')})
+        self.devis.remise_globale = Decimal('30')
+        self.devis.save(update_fields=['remise_globale'])
+        r = self._apercu()
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(set(r.json()), set(CONTRAT['exemple_400']))
+        self.assertFalse(ShareLink.objects.filter(devis=self.devis).exists())
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'brouillon')
+
     def test_apercu_selection_vide_400(self):
         r = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis-apercu/',
