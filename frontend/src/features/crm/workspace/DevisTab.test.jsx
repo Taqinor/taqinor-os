@@ -1175,6 +1175,18 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('CHT-5'))
   })
 
+  it('QJR566 — lu AVANT la correction après envoi → « avant la correction du … »', () => {
+    const [corrigee] = exempleContrat('crm', 'lead_devis_ligne').devis
+    const avant = { nombre_vues: 2, derniere_consultation: '2026-09-28T09:00:00+00:00' }
+    renderTab({ state: leadState({ devis: [{ ...corrigee, lecture: avant }] }) })
+    expect(screen.getByText(/avant la correction du/)).toBeInTheDocument()
+    // Lu APRÈS la correction : aucune mention.
+    const apres = { nombre_vues: 2, derniere_consultation: '2026-09-30T09:00:00+00:00' }
+    expect(lectureClientLabel(apres, corrigee.corrige_le)).not.toMatch(/avant la correction/)
+    // Jamais corrigé (corrige_le null) : aucune mention.
+    expect(lectureClientLabel(avant, null)).not.toMatch(/avant la correction/)
+  })
+
   it('QJR535 — carte remplacée : badge « Remplacé par … », plus d\'« Envoyer au client »', () => {
     const lignes = exempleContrat('crm', 'lead_devis_ligne').devis
     const [courante, remplacee] = lignes

@@ -200,14 +200,20 @@ export function devisIntent(mode, kwcCible) {
 //   · 0 vue → lien envoyé mais jamais ouvert ;
 //   · N vues → N lectures humaines + horodatage de la dernière.
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable)
-export function lectureClientLabel(lecture) {
+export function lectureClientLabel(lecture, corrigeLe = null) {
   if (!lecture) return 'Pas encore envoyé au client'
   const vues = Number(lecture.nombre_vues ?? 0)
   if (!vues) return 'Jamais ouvert par le client'
   const quand = lecture.derniere_consultation
     ? ` · dernière lecture ${formatDateTime(lecture.derniere_consultation)}`
     : ''
-  return `Ouvert ${vues} fois par le client${quand}`
+  // QJR566 — une lecture ANTÉRIEURE à la correction après envoi n'a pas vu la
+  // version corrigée : on le dit au lieu d'un « lu le » trompeur.
+  const avantCorrection = corrigeLe && lecture.derniere_consultation
+    && new Date(lecture.derniere_consultation) < new Date(corrigeLe)
+    ? ` — avant la correction du ${formatDateTime(corrigeLe)}`
+    : ''
+  return `Ouvert ${vues} fois par le client${quand}${avantCorrection}`
 }
 
 // ROUND 5 — plus de saut maison : `jumpToField` DÉPLIE toujours la section
@@ -719,7 +725,7 @@ export default function DevisTab({
                 className={`lw-context-devis-lectures${(Number(d.lecture?.nombre_vues ?? 0) > 0) ? ' is-lu' : ''}`}
               >
                 <Eye size={13} aria-hidden="true" />
-                <span>{lectureClientLabel(d.lecture)}</span>
+                <span>{lectureClientLabel(d.lecture, d.corrige_le)}</span>
               </div>
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour

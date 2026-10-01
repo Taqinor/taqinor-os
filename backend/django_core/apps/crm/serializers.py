@@ -1388,9 +1388,25 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 # cockpit au lieu de rester vivante et renvoyable.
                 'version': d.version,
                 'superseded_by': d.superseded_by_id,
+                # QJR566 (contrat ``lead_devis_ligne.json``) — date de la
+                # dernière correction après envoi (marqueur
+                # ``etude_params.resync_apres_envoi``), lue sur l'instance
+                # déjà chargée ; null si jamais corrigé. Le cockpit dit alors
+                # « lu le X — avant la correction du Y ».
+                'corrige_le': _corrige_le(d),
             }
             for d in rows
         ]
+
+
+def _corrige_le(devis):
+    """QJR566 — ISO de ``etude_params.resync_apres_envoi.date`` ou ``None``
+    (marqueur absent, booléen hérité ou sans date)."""
+    params = getattr(devis, 'etude_params', None)
+    marqueur = params.get('resync_apres_envoi') if isinstance(params, dict) else None
+    if isinstance(marqueur, dict):
+        return marqueur.get('date') or None
+    return None
 
 
 def _tag_en_usage(company, nom):
