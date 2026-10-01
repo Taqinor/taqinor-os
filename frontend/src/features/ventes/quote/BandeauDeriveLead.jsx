@@ -10,36 +10,13 @@
 import { useState } from 'react'
 import ventesApi from '../../../api/ventesApi'
 import { Button } from '../../../ui'
+import fieldLabels from '../../crm/workspace/fieldLabels'
 
-// DC11 / QJR106 / QJR587 — libellés FRANÇAIS des champs du lead surveillés par
-// l'estampille de provenance (`crm.selectors.LEAD_PROVENANCE_FIELDS`). La
-// LISTE reste au serveur : cette table ne fait que les NOMMER. Un champ inconnu
-// s'affiche sous son nom technique plutôt que de disparaître.
-const LIBELLE_CHAMP_LEAD = {
-  facture_hiver: 'facture d’hiver',
-  facture_ete: 'facture d’été',
-  ete_differente: 'facture d’été différente',
-  bill_kwh: 'consommation facturée (kWh)',
-  type_toiture: 'type de toiture',
-  surface_toiture_m2: 'surface de toiture',
-  orientation: 'orientation',
-  inclinaison_deg: 'inclinaison',
-  gps_lat: 'latitude GPS',
-  gps_lng: 'longitude GPS',
-  conso_mensuelle_kwh: 'consommation mensuelle (kWh)',
-  taille_souhaitee_kwc: 'taille souhaitée (kWc)',
-  batterie_souhaitee: 'batterie souhaitée',
-  raccordement: 'raccordement',
-  structure_pref: 'structure souhaitée',
-  structure_produit: 'produit de structure',
-  pompe_cv: 'puissance de la pompe (CV)',
-  pompe_hmt_m: 'hauteur manométrique (HMT)',
-  pompe_debit_m3h: 'débit souhaité (m³/h)',
-  type_installation: 'type d’installation',
-  ville: 'ville',
-  ville_reference: 'ville de rattachement',
-}
-
+// DC11 / QJR106 / QJR587 / QJR656 — les champs du lead surveillés par
+// l'estampille de provenance (`crm.selectors.LEAD_PROVENANCE_FIELDS`) sont
+// NOMMÉS par leur `libelleCourt` de `fieldLabels.js` (une seule table, garde
+// de contrat dans `fieldLabels.test.jsx`). Un champ inconnu s'affiche sous son
+// nom technique plutôt que de disparaître.
 const MODIFIABLES = new Set(['brouillon', 'envoye'])
 
 /**
@@ -57,7 +34,7 @@ export default function BandeauDeriveLead({ devisId, statut, champs, onResolu, o
   const liste = (Array.isArray(champs) ? champs : [])
     .filter(c => typeof c === 'string' && c)
   if (resolu || !devisId || !liste.length) return null
-  const noms = liste.map(c => LIBELLE_CHAMP_LEAD[c] || c)
+  const noms = liste.map(c => fieldLabels[c]?.libelleCourt || c)
   const modifiable = MODIFIABLES.has(statut)
 
   const agir = async (geste) => {
