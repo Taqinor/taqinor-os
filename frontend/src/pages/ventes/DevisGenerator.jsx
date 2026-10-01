@@ -154,7 +154,6 @@ import {
   toucheNbPanneauxPourComposition,
 } from '../../features/ventes/quote/sizingReducer'
 import { useSizingMoteur } from '../../features/ventes/quote/hooks/useSizingMoteur'
-import { raisonRepli } from '../../features/ventes/quote/hooks/useComposition'
 // QJR215 — la liste blanche du registre d'overrides (contrat QJR1), DÉRIVÉE
 // du même module que le client API (QJR214) : jamais une liste recopiée ici.
 import { CHEMINS_AUTORISES } from '../../features/ventes/quote/overrides'
@@ -693,21 +692,17 @@ export default function DevisGenerator({
   // chargement dédié pendant l'aller-retour réseau (le bouton porte
   // `loading={autoFillLoading}`).
   const [autoFillLoading, setAutoFillLoading] = useState(false)
-  // QJR36 — même patron que `sizingServeurMessage` : quand le dry-run serveur
-  // (`ventesApi.composerDevis`) échoue et que l'écran retombe sur
-  // `composeLocalement()`, le vendeur reçoit une composition JS que le dépôt
-  // documente lui-même comme divergente du serveur (câbles, marques épinglées,
-  // ordre des lignes, arrondi des panneaux) — SANS aucun signal jusqu'ici.
-  // Posé dans le `catch` avec la raison. QJR211 — effacé à CHAQUE succès de
-  // `handleAutoFill`, quel que soit le marché (dry-run résidentiel, pompage
-  // agricole, ou composition locale indus/commercial) et à chaque changement
-  // d'entrées qui relance le moteur avec succès : avant QJR211, seul le
-  // chemin de succès résidentiel l'effaçait, et la bannière survivait à un
-  // repli sur un autre marché en décrivant un calcul qui ne s'applique plus.
-  // Ne change PAS le comportement du repli, seulement le rend visible.
-  const [compositionSourceLocale, setCompositionSourceLocale] = useState(null)
+  // QJR577 (D-QJR5-9) — UN SEUL COMPOSEUR en résidentiel : quand le dry-run
+  // serveur (`ventesApi.composerDevis`) échoue, l'écran ne recompose PLUS en
+  // JavaScript (`composeLocalement`, moteur que le dépôt documente divergent
+  // du serveur : câbles, marques épinglées, ordre, arrondi) — les lignes ne
+  // bougent pas, l'erreur est DITE et « Réessayer » rejoue le dry-run.
+  // Effacé à chaque succès de `handleAutoFill`, quel que soit le marché.
+  // (Remplace `compositionSourceLocale` + sa bannière QJR36/QJR211, dont il
+  // ne restait plus aucun écrivain.)
+  const [compositionErreur, setCompositionErreur] = useState(null)
   // DC11 / QJR106 — même patron que `sizingServeurMessage` et
-  // `compositionSourceLocale` ci-dessus : un VERDICT DU SERVEUR, rendu tel
+  // `compositionErreur` ci-dessus : un VERDICT DU SERVEUR, rendu tel
   // quel, jamais recalculé ici. Le devis porte l'estampille des valeurs
   // énergie/toiture qu'il a REPRISES du lead ; le serveur (`apps.crm`) compare
   // avec le lead COURANT et rend la liste des champs qui ont bougé DEPUIS
@@ -2937,10 +2932,9 @@ export default function DevisGenerator({
       }
       setErrors(e => ({ ...e, autofill: null, marquesManquantes: null }))
       recomposerLignes(generated)
-      // QJR211 — succès sur le marché agricole : la bannière « composition
-      // locale (serveur indisponible) » d'un repli résidentiel antérieur ne
-      // décrit plus rien après ce changement de marché.
-      setCompositionSourceLocale(null)
+      // Succès sur le marché agricole : une erreur de composition
+      // résidentielle antérieure ne décrit plus rien (QJR577).
+      setCompositionErreur(null)
       // QJR99 — le dimensionnement pompage POSE une taille calculée : la même
       // transition que la réouverture d'un devis (`REOUVERTURE`) la pose SANS
       // marquer le champ « touché » (ce n'est pas une frappe) et tient la
@@ -3012,31 +3006,26 @@ export default function DevisGenerator({
           }
         }
         const { data } = await ventesApi.composerDevis(body)
-        setCompositionSourceLocale(null)
+        setCompositionErreur(null)
         appliquerCompositionServeur(data)
       } catch (err) {
-        // REPLI — jamais un écran sans Auto-remplir pour une panne réseau.
-        console.error('composerDevis (dry-run) indisponible, repli local :', err)
-        // QJR36 — la raison est posée dans l'état (comme `sizingServeurMessage`
-        // pour le refus serveur) ; le vendeur reçoit désormais la bannière
-        // visible ci-dessous au lieu d'un simple console.error silencieux.
-        // QJR99 — cette raison n'est plus rédigée ici : `raisonRepli` (moitié
-        // pure de `useComposition`) la produit, ce qui la rend STRUCTURELLE —
-        // une composition locale ne peut plus s'afficher sans dire d'où elle
-        // vient ni pourquoi. Le repli lui-même est INCHANGÉ.
-        setCompositionSourceLocale(raisonRepli(err?.message || 'panne réseau/serveur'))
-        composeLocalement()
+        // QJR577 (D-QJR5-9) — PLUS de repli JavaScript : les lignes restent
+        // celles de l'écran, l'erreur du serveur est rendue telle quelle (ou
+        // une cause française générique) avec « Réessayer ».
+        const detail = err?.response?.data?.detail
+        setCompositionErreur(typeof detail === 'string' && detail
+          ? detail
+          : "Le serveur n'a pas pu composer ce devis (réseau ou serveur "
+            + 'indisponible) — les lignes n\'ont pas changé.')
       } finally {
         setAutoFillLoading(false)
       }
       return
     }
-    // QJR211 — marchés indus/commercial (aucun dry-run serveur pour eux) :
-    // un succès efface une bannière de repli résidentiel antérieure, qui ne
-    // décrirait plus qu'un calcul périmé sur ce marché. `composeLocalement()`
-    // renvoie les lignes générées en cas de succès, `undefined` sur un échec
-    // (garde-fous ci-dessus) — la bannière ne s'efface que sur un VRAI succès.
-    if (composeLocalement()) setCompositionSourceLocale(null)
+    // Marchés indus/commercial (aucun dry-run serveur pour eux, QJR113 GATED
+    // D10) : `composeLocalement()` reste LEUR composeur. Un succès efface une
+    // erreur de composition résidentielle antérieure (QJR577).
+    if (composeLocalement()) setCompositionErreur(null)
   }
 
   // CJ2b — bouton « Appliquer cette taille » d'une ligne du tableau de
@@ -4397,26 +4386,23 @@ export default function DevisGenerator({
                 <Zap /> Auto-remplir depuis le stock
               </Button>
             </div>
-            {/* QJR36 — même patron que le refus serveur `sizingServeurMessage`
-                ci-dessus : le dry-run serveur a échoué et l'écran a composé
-                localement (composeLocalement) — comportement de repli
-                INCHANGÉ, seule sa visibilité change (avant : console.error
-                silencieux uniquement). */}
-            {compositionSourceLocale && (
-              <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
-                   data-testid="composition-source-locale">
-                Composition établie localement (serveur indisponible) — les
-                quantités peuvent différer du devis serveur.
-                {/* QJR99 — la CAUSE, NOMMÉE (`raisonRepli`, moitié pure de
-                    `useComposition`) : une composition de secours ne s'affiche
-                    plus sans dire pourquoi elle a remplacé celle du serveur. */}
-                <div className="mt-1 text-xs" data-testid="composition-source-locale-raison">
-                  {compositionSourceLocale}
-                </div>
+            {/* QJR577 (D-QJR5-9) — le dry-run serveur a échoué : AUCUNE
+                composition de secours, l'erreur est dite et « Réessayer »
+                rejoue le même dry-run. */}
+            {compositionErreur && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+                   data-testid="composition-erreur" role="alert">
+                <span>{compositionErreur}</span>
+                <Button type="button" size="sm" variant="outline"
+                        data-testid="composition-reessayer"
+                        loading={autoFillLoading}
+                        onClick={() => avecQuantitesFigees(handleAutoFill)}>
+                  Réessayer
+                </Button>
               </div>
             )}
             {/* DC11 / QJR106 (décision fondateur D6) — même patron visuel que
-                `composition-source-locale` ci-dessus. Le lead a bougé APRÈS que
+                les bandeaux d'avertissement ci-dessus. Le lead a bougé APRÈS que
                 ce devis en a repris les valeurs : on le DIT, en nommant les
                 champs, au lieu de laisser le vendeur chiffrer sur une facture
                 périmée. Verdict entièrement serveur (`lead_valeurs_modifiees`
