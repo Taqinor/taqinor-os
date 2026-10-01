@@ -1,3 +1,6 @@
+// QJR602 (D-QJR5-13, 30/09/2026) — plus aucun palier n'est appliqué à une
+// taille explicite : l'avis ci-dessous ne s'affiche plus jamais.
+//
 // QJR308 — L'avis du palier 5 kWc de `noticePalierKwc` (autoQuote.js) était
 // bien branché aux DEUX points de PRÉ-navigation (DevisTab.jsx,
 // LeadDevisPanel.jsx) mais PAS au troisième point d'entrée de
@@ -109,20 +112,14 @@ beforeEach(() => {
   }
 })
 
-// QJR602 suivi (D-QJR5-13) — une taille EXPLICITE est respectée telle quelle :
-// plus d'arrondi au palier de 5 kWc, donc plus AUCUN avis « Palier appliqué »
-// dans le générateur, même pour une taille hors palier.
-describe('QJR602 suivi — plus d’avis de palier 5 kWc pendant le devis auto', () => {
-  it('un lead dont la taille souhaitée est hors palier : AUCUN avis « Palier appliqué »', async () => {
+describe('QJR308 → QJR602 — runAutoQuote : plus aucun avis de palier, la taille explicite est souveraine', () => {
+  it('QJR602 — un lead à 6,5 kWc : AUCUN avis, la taille part TELLE QUELLE (10 panneaux de 710 W)', async () => {
+    // D-QJR5-13 (fondateur 30/09/2026) : une taille explicite n'est plus
+    // ramenée au palier de 5 kWc — il n'y a donc plus de snap à annoncer.
     const kwcSaisi = 6.5
     expect(arrondirAuPasKwc(kwcSaisi)).not.toBe(kwcSaisi)
-
-    // `creerDevisAuto` reste EN ATTENTE — on observe l'écran au moment RÉEL
-    // du snap, avant que la réponse réseau ne bascule sur le panneau succès
-    // (qui remplace toute la page, avis compris).
-    let resolveCreation
     ventesApi.creerDevisAuto.mockImplementation(
-      () => new Promise((resolve) => { resolveCreation = resolve }))
+      () => Promise.resolve({ data: { id: 501, reference: 'DEV-2026-09-0501' } }))
 
     renderGenerator({
       leads: [{
@@ -132,13 +129,10 @@ describe('QJR602 suivi — plus d’avis de palier 5 kWc pendant le devis auto',
       route: '/ventes/devis/nouveau?lead=42&auto=1',
     })
 
-    await waitFor(() => expect(ventesApi.creerDevisAuto).toHaveBeenCalled())
-    expect(screen.queryByText(/Palier appliqué/)).not.toBeInTheDocument()
-
-    // Nettoyage : on laisse la création se terminer (panneau succès), pour
-    // ne pas laisser une promesse orpheline derrière le test.
-    resolveCreation({ data: { id: 501, reference: 'DEV-2026-09-0501' } })
     await waitFor(() => expect(screen.getByTestId('devis-succes')).toBeInTheDocument())
+    expect(screen.queryByText(/Palier appliqué/)).not.toBeInTheDocument()
+    expect(ventesApi.creerDevisAuto).toHaveBeenCalledTimes(1)
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0].target_kwc).toBeCloseTo(7.1, 9)
   })
 
   it('un kWc déjà aligné sur le palier : AUCUN avis ne s’affiche', async () => {

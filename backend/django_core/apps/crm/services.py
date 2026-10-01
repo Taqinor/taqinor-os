@@ -8176,21 +8176,6 @@ def find_lead_by_email(company, email):
     )
 
 
-def log_whatsapp_message_on_lead(lead, *, texte, expediteur, nom_profil=''):
-    """Ajoute un message WhatsApp entrant au chatter d'un lead (XKB33).
-
-    Note SYSTÈME (user=None) — un message reçu n'est pas une action manuelle
-    d'un utilisateur de l'ERP. Best-effort : jamais d'exception remontée (le
-    webhook qui appelle cette fonction ne doit jamais planter)."""
-    if lead is None:
-        return None
-    try:
-        body = f"WhatsApp de {nom_profil or expediteur} : {texte}".strip()
-        return activity.log_note(lead, None, body)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
-        return None
-
-
 # ── ZSAV8 — Convertir un ticket SAV en opportunité CRM ──────────────────────
 # apps.sav ne peut PAS importer apps.crm.models directement (règle de
 # modularité CLAUDE.md) : cette fonction est son unique porte d'entrée pour
