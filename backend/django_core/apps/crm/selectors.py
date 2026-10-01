@@ -549,6 +549,27 @@ def get_latest_lead_for_client(company, client_id):
             .first())
 
 
+def lead_du_devis(devis):
+    """QJR585 — LE résolveur unique « quel lead lit ce devis ».
+
+    Le lead lié au devis, sinon le lead le plus récent de son client (borné
+    société, :func:`get_latest_lead_for_client`), sinon ``None``. Tous les
+    lecteurs « lead d'un devis » (factures, conso, ville/GPS, profil
+    d'activité, occupation, équipements, provenance, phase, transport)
+    passent par lui : un devis client-sans-lead n'est plus dimensionné sur les
+    factures d'un lead mais sans sa ville, son GPS ni ses équipements.
+    ``attribution_comparaison_devis`` reste volontairement strict (devis.lead).
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is not None:
+        return lead
+    company_id = getattr(devis, 'company_id', None)
+    if not company_id:
+        return None
+    return get_latest_lead_for_client(
+        company_id, getattr(devis, 'client_id', None))
+
+
 def _srm_deduite(ville):
     """CAD167 — la SRM régionale de cette ville, ou ``None``. Ne lève jamais."""
     try:
@@ -566,19 +587,10 @@ def lead_bills_for_devis(devis):
     en priorité, sinon le premier lead rattaché au client du devis. Renvoie un
     dict ``{'facture_hiver', 'facture_ete', 'ete_differente'}`` (floats/None +
     bool) quand une facture d'hiver existe, sinon None (la page masque alors le
-    graphe de consommation). Aucune donnée fabriquée."""
-    lead = getattr(devis, 'lead', None)
-    if lead is None:
-        client_id = getattr(devis, 'client_id', None)
-        if client_id:
-            from .models import Lead
-            lead = (
-                Lead.objects
-                .filter(client_id=client_id,
-                        company_id=getattr(devis, 'company_id', None))
-                .order_by('-date_creation')
-                .first()
-            )
+    graphe de consommation). Aucune donnée fabriquée.
+
+    QJR585 — résolution par :func:`lead_du_devis` (plus de requête inline)."""
+    lead = lead_du_devis(devis)
     if lead is None or lead.facture_hiver in (None, ''):
         return None
     return {
@@ -2624,8 +2636,11 @@ def site_location_for_devis(devis):
     Point d'entrée cross-app LECTURE SEULE pour que ``installations`` n'importe
     pas ``apps.crm.models`` ; ``create_installation_from_devis`` consomme ce
     seul accesseur. Aucune donnée fabriquée.
+
+    QJR585 — le lead vient de :func:`lead_du_devis` (repli sur le lead le plus
+    récent du client) : sa ville et son GPS suivent ses factures.
     """
-    lead = getattr(devis, 'lead', None)
+    lead = lead_du_devis(devis)
     if lead is not None:
         return {
             'site_adresse': lead.adresse,
@@ -2658,8 +2673,9 @@ def profil_activite_pour_devis(devis):
     PRO — quand elle fait partie de :data:`PROFILS_ACTIVITE`. Aucun lead, pas
     de questionnaire, valeur inconnue ⇒ ``None`` : l'appelant applique alors
     son propre défaut, jamais une valeur inventée ici.
+    QJR585 — lead résolu par :func:`lead_du_devis`.
     """
-    lead = getattr(devis, 'lead', None)
+    lead = lead_du_devis(devis)
     if lead is None:
         return None
     questionnaire = getattr(lead, 'web_questionnaire', None)
@@ -2678,8 +2694,9 @@ def occupation_jour_pour_devis(devis):
     commercial a posé la question, la réponse RÉELLE du lead prime. ``None``
     (lead absent, ou question pas encore posée) laisse l'appelant retomber
     sur son comportement actuel, inchangé.
+    QJR585 — lead résolu par :func:`lead_du_devis`.
     """
-    lead = getattr(devis, 'lead', None)
+    lead = lead_du_devis(devis)
     if lead is None:
         return None
     valeur = getattr(lead, 'occupation_jour', None)
@@ -2747,7 +2764,7 @@ def equipements_pour_devis(devis):
     persisté » et le chemin « lead seul » (devis automatique / tunnel) lisent
     exactement les mêmes champs.
     """
-    return equipements_pour_lead(getattr(devis, 'lead', None))
+    return equipements_pour_lead(lead_du_devis(devis))
 
 
 # Champs Lead autorisés dans les règles JSON d'un segment marketing (XMKT6,
@@ -5690,11 +5707,9 @@ def conso_mensuelle_kwh_pour_devis(devis):
     tunnel web, en lecture seule — les deux ne fusionnent pas, et c'est le
     champ éditable qui parle au moteur. Même résolution de lead que le reste
     du module (le lead du devis, sinon le plus récent du client), même bornage
-    société. Aucune donnée fabriquée : absente ⇒ ``None``."""
-    lead = getattr(devis, 'lead', None)
-    if lead is None:
-        lead = get_latest_lead_for_client(
-            getattr(devis, 'company', None), getattr(devis, 'client_id', None))
+    société. Aucune donnée fabriquée : absente ⇒ ``None``.
+    QJR585 — :func:`lead_du_devis`."""
+    lead = lead_du_devis(devis)
     valeur = getattr(lead, 'conso_mensuelle_kwh', None) if lead else None
     if valeur in (None, ''):
         return None

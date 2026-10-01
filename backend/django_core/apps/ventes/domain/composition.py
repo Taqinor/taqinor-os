@@ -1651,8 +1651,9 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # doit pas se voir compléter un kit autour d'un onduleur triphasé.
     # « inconnu »/absent ⇒ ``None`` ⇒ aucun filtre, composition inchangée.
     from apps.ventes.compatibilites import normaliser_phase
+    from apps.crm.selectors import lead_du_devis  # QJR585 — résolveur unique
     phase = normaliser_phase(
-        getattr(getattr(devis, 'lead', None), 'raccordement', None))
+        getattr(lead_du_devis(devis), 'raccordement', None))
 
     catalogue = catalogue_de_la_societe(devis.company)
     taux_tva = (devis.taux_tva if devis.taux_tva is not None

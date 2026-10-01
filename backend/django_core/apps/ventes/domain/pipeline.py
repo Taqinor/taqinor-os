@@ -951,22 +951,27 @@ def estampiller_provenance(devis, intention):
     Rend le bloc ``etude_params`` écrit, ou ``None`` quand il n'y avait rien à
     estampiller (pas de lead, ou dérive en cours à préserver).
     """
+    from apps.crm.selectors import (lead_du_devis, lead_provenance_stamp,
+                                    lead_values_changed_since)
+
     lead = intention.lead
+    # QJR585 — devis SANS lead : le lead est RÉSOLU (le plus récent du
+    # client), il n'est pas lié — l'estampille d'une dérive en cours sur un
+    # AUTRE lead ne doit pas être écrasée par lui.
+    resolu = lead is None and getattr(devis, 'lead', None) is None
     if lead is None:
-        lead = getattr(devis, 'lead', None)
+        lead = lead_du_devis(devis)
     if lead is None:
         return None
-
-    from apps.crm.selectors import (lead_provenance_stamp,
-                                    lead_values_changed_since)
 
     stamp = lead_provenance_stamp(lead)
     if stamp is None:
         return None
 
     ancienne = (getattr(devis, 'etude_params', None) or {}).get('provenance')
-    if isinstance(ancienne, dict) and ancienne.get('source_lead_id') == getattr(
-            lead, 'pk', None):
+    if isinstance(ancienne, dict) and (
+            resolu or ancienne.get('source_lead_id') == getattr(
+                lead, 'pk', None)):
         if lead_values_changed_since(ancienne, company=intention.company):
             return None
     return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
