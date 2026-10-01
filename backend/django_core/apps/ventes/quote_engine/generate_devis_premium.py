@@ -282,8 +282,6 @@ SCENARIO    = "Les deux (Sans + Avec)"
 RECOMMENDED = "Avec batterie"
 
 DEVIS_FINAL    = False
-PAYMENT_MODE   = "standard"   # "standard" or "custom"
-CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
 # data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
 # Q8 (fondateur, 20/08/2026) — les documents sont en MAD, point. La variable
@@ -574,6 +572,17 @@ DEFAULT_DOC_TEXTS = {
 DOC_TEXTS = dict(DEFAULT_DOC_TEXTS)
 # N26 — métadonnées d'acceptation (posées côté serveur, jamais du corps client).
 ACCEPTE_PAR_NOM = ""
+# QJR627 (D-QJR5-6) — texte CLIENT du champ « Notes » (échappé à l'ingestion).
+NOTE_CLIENT = ""
+
+
+def _note_client_html(font_pt="8"):
+    """QJR627 — le bloc « Note » du devis, ou '' quand le champ est vide."""
+    if not NOTE_CLIENT:
+        return ""
+    return (f'<div style="font-size:{font_pt}pt;color:{CN};white-space:pre-line;'
+            f'margin-bottom:4px;"><b style="text-transform:uppercase;'
+            f'letter-spacing:.8px;margin-right:6px;">Note</b>{NOTE_CLIENT}</div>')
 DATE_ACCEPTATION = ""
 # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple), posé
 # depuis data["savings_method"]. Vide → aucun bloc rendu (byte-identique).
@@ -2588,6 +2597,9 @@ def page3():
   <!-- QJ30 — MULTI-PROPRIÉTÉS (×N identiques / sections par-villa) -->
   <div style="padding:0 24px;">{_multi_proprietes_line_html()}{_multi_villa_html()}</div>
 
+  <!-- QJR627 — NOTE CLIENT (champ « Notes » du devis ; vide → rien) -->
+  <div style="padding:0 24px;">{_note_client_html()}</div>
+
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
@@ -4116,6 +4128,7 @@ def page_onepage(items, tronquees=0):
 
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
+    {_note_client_html("7.5")}
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option ' + _onepage_note_ceci + '. Une option ' + _onepage_note_autre + ' est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
     <div style="font-size:7pt;color:{CG4};">
       <span style="margin-right:20px;">{_doc_text("validite_onepage")}</span>
@@ -4326,7 +4339,7 @@ def apply_quote_data(data: dict) -> None:
     global SANS_ITEMS, AVEC_ITEMS, ECO_S_M, ECO_A_M, CUMUL_S, CUMUL_A
     global FACTURES_M
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
-    global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
+    global DEVIS_FINAL
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
     # PV46 — annexe technique (schéma unifilaire + nomenclature). Même patron
     # de global que INCLUDE_ETUDE, mêmes défauts inertes : sans les clés du
@@ -4339,7 +4352,7 @@ def apply_quote_data(data: dict) -> None:
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE, LIBELLE_AVEC
     global LINKS  # QRP1 — liens client (proposition tokenisée)
-    global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
+    global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION, NOTE_CLIENT
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global LANGUE_SORTIE, LIBELLES_DOC  # NTI18N5 — langue + libellés du gabarit
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
@@ -4406,8 +4419,6 @@ def apply_quote_data(data: dict) -> None:
     RECOMMENDED  = data.get("recommended", "Avec batterie")
     SHOW_MONTHLY = data.get("show_monthly", True)
     DEVIS_FINAL    = data.get("devis_final", False)
-    PAYMENT_MODE   = data.get("payment_mode", "standard")
-    CUSTOM_ACOMPTE = data.get("custom_acompte", None)
     TVA_PCT        = float(data.get("taux_tva", 20) or 20)
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}
@@ -4604,6 +4615,7 @@ def apply_quote_data(data: dict) -> None:
     # AUTHENTIFIÉE (le « nom » posté sur le portail public, repris par
     # ``services.accept_devis``) : ``_acceptance_stamp_html`` l'injectait brut.
     ACCEPTE_PAR_NOM = _esc(data.get("accepte_par_nom") or "")
+    NOTE_CLIENT = _esc((data.get("note_client") or "").strip())
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues

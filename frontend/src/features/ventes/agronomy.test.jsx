@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   waterDemandFromFarm,
-  requiredFlow,
-  hectaresIrrigable,
   annualWater,
   IRRIGATION_EFFICIENCY,
   monthlyWaterDemand,
@@ -66,26 +64,6 @@ describe('waterDemandFromFarm — parité 3 cultures (QJR166)', () => {
   })
 })
 
-describe('requiredFlow', () => {
-  it('108 m³/jour sur 7 h ≈ 15.4 m³/h', () => {
-    expect(requiredFlow(108, 7)).toBeCloseTo(15.4, 1)
-  })
-  it('heures nulles ou négatives → null', () => {
-    expect(requiredFlow(108, 0)).toBeNull()
-    expect(requiredFlow(108, -3)).toBeNull()
-  })
-})
-
-describe('hectaresIrrigable', () => {
-  it('renvoie un nombre positif sensé', () => {
-    expect(hectaresIrrigable(20000, 'agrumes')).toBeCloseTo(2, 1)
-    expect(hectaresIrrigable(20000, 'agrumes')).toBeGreaterThan(0)
-  })
-  it('culture inconnue → consommation par défaut', () => {
-    expect(hectaresIrrigable(8000, 'xxx')).toBeCloseTo(1, 1)
-  })
-})
-
 describe('annualWater', () => {
   it('ramène le jour de pointe à un volume annuel', () => {
     expect(annualWater(108)).toBe(Math.round(108 * 0.62 * 300))
@@ -106,8 +84,6 @@ describe('entrées invalides (défensif, ne lève jamais)', () => {
     expect(waterDemandFromFarm()).toBeNull()
   })
   it('valeurs absurdes ne lèvent pas', () => {
-    expect(() => requiredFlow('abc', 'def')).not.toThrow()
-    expect(() => hectaresIrrigable(null, null)).not.toThrow()
     expect(() => annualWater(undefined)).not.toThrow()
     expect(annualWater(undefined)).toBe(0)
   })

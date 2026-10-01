@@ -47,6 +47,8 @@ import { filenameFromResponse, downloadBlobInGesture } from '../../utils/downloa
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { clientProposalUrl } from '../../features/ventes/clientProposalLink'
+// QJR624 — l'acompte personnalisé du dialogue PDF s'écrit dans l'échéancier.
+import { echeancierAvecAcompte } from '../../features/ventes/echeancierEdition'
 // Incident fondateur 01/09 (round 2) — le moteur premium REFUSE 'full' quand
 // AUCUNE ligne du devis ne porte un onduleur classifié (« Devis {ref} :
 // aucune option ne contient d'onduleur — génération du PDF à options refusée
@@ -94,7 +96,9 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
-import { peutEditerDevis, chantierEnCours } from '../../features/ventes/devisStatuts'
+import {
+  peutEditerDevis, chantierEnCours, STATUT_DEVIS_LABELS, STATUT_DEVIS_FILTRES,
+} from '../../features/ventes/devisStatuts'
 import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
@@ -158,13 +162,8 @@ const DEVIS_DT_COLUMNS = [
   { id: 'actions', header: 'Actions', sortable: false, hideable: false, reorderable: false },
 ]
 
-const STATUT_DISPLAY = {
-  brouillon: 'Brouillon',
-  envoye:    'Envoyé',
-  accepte:   'Accepté',
-  refuse:    'Refusé',
-  expire:    'Expiré',
-}
+// QJR654 — libellés et filtres de statut : la table unique (devisStatuts.js).
+const STATUT_DISPLAY = STATUT_DEVIS_LABELS
 
 // VX141 — piste `<DocumentStageTrack>` : couche STATUTS DOCUMENT (règle #4)
 // uniquement — brouillon/envoyé/accepté puis BC/facturé/chantier. Jamais les
@@ -174,14 +173,7 @@ const STATUT_DISPLAY = {
 // bons de commande (`features/ventes/documentChain.js`) : UNE définition.
 
 // Filtres segmentés (statut) : « Tous » + les 5 statuts visibles.
-const STATUT_FILTERS = [
-  { value: 'tous',      label: 'Tous' },
-  { value: 'brouillon', label: 'Brouillon' },
-  { value: 'envoye',    label: 'Envoyé' },
-  { value: 'accepte',   label: 'Accepté' },
-  { value: 'refuse',    label: 'Refusé' },
-  { value: 'expire',    label: 'Expiré' },
-]
+const STATUT_FILTERS = STATUT_DEVIS_FILTRES
 
 // Extrait un message d'erreur lisible (français) d'une réponse DRF. Couvre
 // {detail}, les erreurs de champ ({statut: [...]} — ex. garde de remise T17),
@@ -380,11 +372,11 @@ function DevisPdfDialog({
               <RadioGroup value={paymentMode} onValueChange={setPaymentMode} className="flex flex-col gap-2">
                 <label className="flex items-center gap-2 text-sm">
                   <RadioGroupItem value="standard" />
-                  <span>Standard (30/60/10)</span>
+                  <span>Échéancier du devis</span>
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <RadioGroupItem value="custom" />
-                  <span>Acompte personnalisé</span>
+                  <span>Acompte personnalisé <span className="text-muted-foreground">(enregistré dans l'échéancier du devis)</span></span>
                 </label>
               </RadioGroup>
               {paymentMode === 'custom' && (
@@ -1111,7 +1103,8 @@ function DevisRow({ d, ctx }) {
                   Envoyer par email
                 </DropdownMenuItem>
               )}
-              {canDelete && (
+              {/* QJR639 — un devis accepté ne se supprime pas (409 serveur). */}
+              {canDelete && d.statut !== 'accepte' && (
                 <DropdownMenuItem
                   destructive
                   disabled={deletingId === d.id}
@@ -2302,9 +2295,6 @@ export default function DevisList() {
     pdf_mode: pdfMode,
     show_monthly: showMonthly,
     devis_final: devisFinal,
-    payment_mode: paymentMode,
-    custom_acompte: (devisFinal && paymentMode === 'custom' && customAcompte !== '')
-      ? parseFloat(customAcompte) : null,
     // T12/T13 — étude uniquement si premium ET données d'étude présentes.
     include_etude: pdfMode === 'full' && includeEtude
       && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
@@ -2325,6 +2315,17 @@ export default function DevisList() {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
     setPdfSlowPoll(prev => ({ ...prev, [d.id]: false }))
     try {
+      // QJR624 (D-QJR5-10) — l'« acompte personnalisé » n'est plus une option
+      // de rendu : il est ÉCRIT dans l'échéancier du devis AVANT le rendu
+      // (facture d'acompte et PDF lisent la même valeur ; sur un envoyé, la
+      // correction est tracée par le serveur). Un refus (devis figé) arrête
+      // la génération avec le message du serveur.
+      if (devisFinal && paymentMode === 'custom' && customAcompte !== '') {
+        await ventesApi.patchDevis(d.id, {
+          echeancier: echeancierAvecAcompte(
+            d.echeancier, customAcompte, d.total_ttc, d.mode_installation),
+        })
+      }
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
       // WIR217 — le drapeau « lent » était lu dans `pdfSlowPoll[d.id]`, une

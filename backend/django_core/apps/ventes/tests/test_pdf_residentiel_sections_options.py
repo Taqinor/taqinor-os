@@ -96,3 +96,73 @@ class TestPdfResidentielSectionsOptions(TestCase):
         self.assertIn('le détail de votre projet', texte)
         self.assertNotIn('options proposées', texte)
         self.assertEqual(pages, 3)
+
+
+#: QJR627 — l'étude minimale du marché industriel (même forme que QJR619).
+ETUDE_INDUSTRIEL = {
+    'kwc': 49.7, 'production_annuelle': 79520, 'conso_annuelle': 120000,
+    'taux_autoconso': 92, 'taux_couverture': 61,
+    'economies_annuelles': 98000, 'payback': 3.4, 'prix_kwc': 6100,
+    'prod_mensuelle': [6627] * 12, 'conso_mensuelle': [10000] * 12,
+}
+NOTE = 'QA-AUDIT-3009 notes générales'
+
+
+@tag('pdf')
+class TestPdfNoteClient(TestCase):
+    """QJR627 (D-QJR5-6) — le champ « Notes » du générateur est un texte
+    CLIENT : imprimé dans le PDF (résidentiel, industriel, une page) ; vide →
+    aucun bloc."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, ref, note, mode='residentiel', etude=None):
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '10', '1500', '10'),
+            ('Onduleur réseau 5kW', '1', '9000', '20'),
+        ], reference=ref, etude_params=etude)
+        devis.note = note
+        devis.mode_installation = mode
+        devis.save(update_fields=['note', 'mode_installation'])
+        return devis
+
+    def _texte(self, devis, options=None):
+        import fitz
+        from apps.ventes.quote_engine import (
+            clean_pdf_options, generate_premium_devis_pdf,
+        )
+        with patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket'), \
+                patch('apps.ventes.utils.pdf._upload_pdf') as upload:
+            generate_premium_devis_pdf(devis.id, clean_pdf_options(options or {}),
+                                       persist=False)
+        doc = fitz.open(stream=upload.call_args[0][0], filetype='pdf')
+        return _norm('\n'.join(p.get_text() for p in doc))
+
+    def test_builder_expose_note_client(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._devis('DEV-QJR627-D', f'  {NOTE}  ')
+        self.assertEqual(build_quote_data(devis)['note_client'], NOTE)
+
+    def test_residentiel_imprime_la_note(self):
+        texte = self._texte(self._devis('DEV-QJR627-R', NOTE))
+        self.assertIn('le détail de votre projet', texte)
+        self.assertIn(_norm(NOTE), texte)
+
+    def test_industriel_imprime_la_note(self):
+        devis = self._devis('DEV-QJR627-I', NOTE, mode='industriel',
+                            etude=dict(ETUDE_INDUSTRIEL))
+        self.assertIn(_norm(NOTE), self._texte(devis))
+
+    def test_une_page_imprime_la_note(self):
+        devis = self._devis('DEV-QJR627-O', NOTE)
+        self.assertIn(_norm(NOTE), self._texte(devis, {'pdf_mode': 'onepage'}))
+
+    def test_note_vide_aucun_bloc(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        devis = self._devis('DEV-QJR627-V', '')
+        self.assertEqual(build_quote_data(devis)['note_client'], '')
+        texte = self._texte(devis)
+        self.assertNotIn('qa-audit-3009', texte)

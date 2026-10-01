@@ -29,6 +29,7 @@ import { groupeFicheAffichage } from './pvondFicheTechnique.js'
 // LEUR source canonique, jamais d'une seconde liste écrite ici (règle #2 de
 // CLAUDE.md pour les étapes du pipeline ; liste fermée des chantiers N14).
 import { STAGE_LABELS } from '../../features/crm/stages.js'
+import { STATUT_DEVIS_LABELS } from '../../features/ventes/devisStatuts.js'
 import { STATUS_LABELS as CHANTIER_STATUT_LABELS } from '../../features/installations/statuses.js'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
@@ -600,13 +601,8 @@ function OngletCompatibilites({ produit }) {
 
 // Libellés des statuts de DEVIS. Vocabulaire fermé du domaine ventes, repli
 // sur la valeur brute pour tout statut futur (jamais un tiret muet).
-const DEVIS_STATUT_LABELS = {
-  brouillon: 'Brouillon',
-  envoye: 'Envoyé',
-  accepte: 'Accepté',
-  refuse: 'Refusé',
-  expire: 'Expiré',
-}
+// QJR654 — la table unique (devisStatuts.js).
+const DEVIS_STATUT_LABELS = STATUT_DEVIS_LABELS
 
 function SectionUtiliseDans({ titre, vide, lignes, testid, children }) {
   return (

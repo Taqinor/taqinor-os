@@ -121,3 +121,26 @@ describe('fieldLabels — la carte ne dérive pas des sections réelles (règle 
     }
   })
 })
+
+// QJR656 (contrat QJR506 `lead_provenance_fields.json`) — chaque champ de
+// provenance du lead (la bannière « valeurs du lead modifiées ») porte un
+// `libelleCourt` non vide : un champ ajouté côté serveur ne s'affiche plus
+// sous son nom technique. L'échantillon est égal à
+// `crm.selectors.LEAD_PROVENANCE_FIELDS` (garde backend
+// `apps/crm/tests_lead_provenance_fields_contract.py`).
+describe('QJR656 — un libellé court pour chaque champ de provenance du lead', () => {
+  const contrat = JSON.parse(readFileSync(join(HERE, '..', '..', '..', '..', '..',
+    'backend', 'django_core', 'apps', 'crm', 'contract_samples',
+    'lead_provenance_fields.json'), 'utf8'))
+  const champs = contrat.exemple.champs
+
+  it('l’échantillon n’est pas vide', () => {
+    expect(champs.length).toBeGreaterThan(10)
+  })
+
+  it.each(champs)('%s porte un libelleCourt non vide', (champ) => {
+    const court = fieldLabels[champ]?.libelleCourt
+    expect(typeof court).toBe('string')
+    expect(court.trim().length).toBeGreaterThan(0)
+  })
+})

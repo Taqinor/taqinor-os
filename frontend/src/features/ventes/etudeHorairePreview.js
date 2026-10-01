@@ -50,6 +50,12 @@ export function useEtudeHorairePreview(corps) {
   // DevisGeneratorRecalculerDimensionnementGuard : facture 1200 → 3000
   // laissait 9 panneaux). L'appelant compare, et attend sa propre réponse.
   const [corpsServi, setCorpsServi] = useState(null)
+  // QJR644 — LA SEULE temporisation (500 ms) vit ici : la clé RÉELLEMENT
+  // envoyée (`corpsEnVol`) et celle dont la requête a ÉCHOUÉ (`corpsEchoue`)
+  // sont exposées, pour qu'aucun appelant ne rejoue un second debounce
+  // synchronisé par convention.
+  const [corpsEnVol, setCorpsEnVol] = useState(null)
+  const [corpsEchoue, setCorpsEchoue] = useState(null)
 
   useEffect(() => {
     if (!debouncedKey) {
@@ -58,6 +64,8 @@ export function useEtudeHorairePreview(corps) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence d'ancrage
       setDonnees(null)
       setCorpsServi(null)
+      setCorpsEnVol(null)
+      setCorpsEchoue(null)
       setChargement(false)
       setErreur(null)
       return undefined
@@ -79,6 +87,8 @@ export function useEtudeHorairePreview(corps) {
     setErreur(null)
     setDonnees(null)
     setCorpsServi(null)
+    setCorpsEnVol(debouncedKey)
+    setCorpsEchoue(null)
     ventesApi.postEtudeHorairePreview(body, { signal: controller.signal })
       .then((res) => {
         if (cancelled) return
@@ -89,10 +99,11 @@ export function useEtudeHorairePreview(corps) {
         if (cancelled) return
         if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return
         setErreur("Aperçu du moteur horaire indisponible pour le moment.")
+        setCorpsEchoue(debouncedKey)
       })
       .finally(() => { if (!cancelled) setChargement(false) })
     return () => { cancelled = true; controller.abort() }
   }, [debouncedKey])
 
-  return { donnees, chargement, erreur, corpsServi }
+  return { donnees, chargement, erreur, corpsServi, corpsEnVol, corpsEchoue }
 }

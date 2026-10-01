@@ -1150,13 +1150,17 @@ class TestQuoteNumbersHonestyPack(TestCase):
 
     # ── (b) échéancier custom sans case morte ───────────────────────────────
     def test_custom_acompte_full_collapses_to_two_boxes(self):
-        """Un acompte custom qui absorbe la tranche matériel → échéancier à
+        """Un échéancier à DEUX tranches dont l'acompte est en dirhams
+        (QJR624 : l'acompte personnalisé vit dans ``Devis.echeancier``) →
         DEUX cases (Acompte + Solde), jamais une case « Matériel » à 0 %."""
+        from apps.ventes.models import Devis
         devis = self._devis(ref='DEV-QX7-ACPT')
-        # acompte custom énorme → materiel clampé à 0
-        html = self._render_legacy(
-            {'devis_final': True, 'payment_mode': 'custom',
-             'custom_acompte': 999999}, devis=devis)
+        Devis.objects.filter(pk=devis.pk).update(echeancier=[
+            {'libelle': 'Acompte', 'type': 'acompte', 'unite': 'montant',
+             'pct_or_montant': 1000},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10}])
+        devis.refresh_from_db()
+        html = self._render_legacy({'devis_final': True}, devis=devis)
         self.assertIn('Modalit', html)                    # bloc présent
         # aucune case « Matériel » morte
         self.assertNotIn('Avant installation', html)

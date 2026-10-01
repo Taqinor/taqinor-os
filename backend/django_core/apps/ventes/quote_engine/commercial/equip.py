@@ -148,6 +148,8 @@ def build(ctx):
 .c2-q,.c2-p,.c2-v,.c2-t{{text-align:right;white-space:nowrap;}}
 .c2-t{{font-weight:700;color:{navy};}}
 .c2-tot{{margin-top:10px;display:table;width:100%;}}
+.c2-note{{margin-top:8px;font-size:8pt;line-height:1.35;white-space:pre-line;}}
+.c2-note b{{text-transform:uppercase;letter-spacing:.08em;font-size:7pt;margin-right:6px;}}
 .c2-tot-sp{{display:table-cell;width:55%;}}
 .c2-tot-box{{display:table-cell;width:45%;}}
 .c2-tot-tbl{{width:100%;font-size:8.5pt;border-collapse:collapse;}}
@@ -178,6 +180,11 @@ def build(ctx):
 </style>
 """
 
+    # QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » (déjà échappé
+    # par ``builder.echapper_textes_client``) ; vide → aucun bloc.
+    _note_client = (d.get("note_client") or "").strip()
+    note_html = (f'<div class="c2-note"><b>Note</b>{_note_client}</div>'
+                 if _note_client else "")
     html = f"""{css}
 <div class="c2-root">
   <div class="c2-kicker">Votre installation</div>
@@ -201,6 +208,7 @@ def build(ctx):
     </div>
   </div>
 
+  {note_html}
   {options_html}{injection_html}
   {block}
 </div>

@@ -12,8 +12,9 @@ import assert from 'node:assert/strict'
 
 import {
   arrondiCentime, ligneCompteDansTotaux, montantHtLigne, puRemise,
-  repartirRemiseParLigne,
+  repartirRemiseParLigne, totauxCanoniques,
 } from './remise.js'
+import { htFromTtc, totauxCanoniquesTtc } from './solar.js'
 
 // nom, lignes [montant HT, type de ligne, optionnelle], remise globale en %,
 // puis ce que la chaîne canonique arrête (remise, ht_net) et la répartition.
@@ -196,3 +197,52 @@ test('arrondiCentime : MOITIÉ VERS LE HAUT sur la valeur décimale', () => {
   assert.equal(arrondiCentime('33.334'), 33.33)
   assert.equal(arrondiCentime(null), 0)
 })
+
+// ── QJR642 — UN noyau, deux points d'entrée ─────────────────────────────────
+// La même table passe par le GÉNÉRATEUR (`solar.totauxCanoniquesTtc` : TTC
+// saisi → HT persisté → chaîne) et par la RÉPARTITION (`repartirRemiseParLigne`
+// + `totauxCanoniques`), sur TROIS taux de TVA, remise 100 % comprise : HT net
+// et TTC identiques au centime.
+const TAUX = [10, 20, 14]
+const FIXTURES_NOYAU = [
+  ...FIXTURES,
+  {
+    nom: 'remise 100 % — HT net borné à 0',
+    lignes: [['0.05', 'produit', false], ['1234.57', 'produit', false],
+      ['10', 'produit', false]],
+    pct: '100', htNet: '0.00',
+  },
+]
+
+const avecTaux = (fixture) => enLignes(fixture).map((l, i) => ({
+  ...l, taux: TAUX[i % TAUX.length],
+}))
+const enLignesGenerateur = (fixture) => fixture.lignes.map(
+  ([montant, type, optionnelle], i) => {
+    const taux = TAUX[i % TAUX.length]
+    return {
+      quantite: '1', taux_tva: taux, typeLigne: type, optionnelle,
+      prix_unit_ttc: parseFloat(montant) * (1 + taux / 100),
+    }
+  })
+
+for (const fixture of FIXTURES_NOYAU) {
+  test(`QJR642 noyau unique (générateur ≡ répartition) : ${fixture.nom}`, () => {
+    const generateur = enLignesGenerateur(fixture)
+    // Précondition : le générateur persiste EXACTEMENT ces montants HT.
+    generateur.forEach((l, i) => assert.equal(
+      htFromTtc(l.prix_unit_ttc, l.taux_tva),
+      parseFloat(fixture.lignes[i][0]).toFixed(2)))
+    const noyau = totauxCanoniques(avecTaux(fixture), fixture.pct)
+    assert.equal(noyau.htNet.toFixed(2), fixture.htNet)
+    assert.ok(noyau.ttc >= 0, 'jamais un TTC négatif')
+    assert.equal(totauxCanoniquesTtc(generateur, fixture.pct), noyau.ttc,
+      'le générateur et la répartition rendent le MÊME TTC')
+    const parts = repartirRemiseParLigne(enLignes(fixture), fixture.pct)
+    const somme = parts.reduce((acc, p) => acc + (p === null ? 0 : Math.round(p * 100)), 0)
+    assert.equal(somme, Math.round(noyau.htNet * 100),
+      'la répartition somme au HT net du noyau')
+    const tvaSomme = noyau.tvaParTaux.reduce((acc, t) => acc + Math.round(t.tva * 100), 0)
+    assert.equal(Math.round(noyau.ttc * 100), Math.round(noyau.htNet * 100) + tvaSomme)
+  })
+}

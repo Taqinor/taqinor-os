@@ -19,7 +19,8 @@ import calepinageApi from '../../../api/calepinageApi'
 import AssigneePicker from '../../../components/AssigneePicker'
 import ScoreBadge from '../ScoreBadge'
 import StageControl from './StageControl'
-import { STATUT_DEVIS } from './DevisTab'
+// QJR654 — libellés de statut devis : la table unique de devisStatuts.js.
+import { STATUT_DEVIS_LABELS as STATUT_DEVIS } from '../../ventes/devisStatuts'
 import { CANAL_LABELS, latestDevisTotal, formatMAD } from '../stages'
 import { getField } from './draftCore'
 // CAD152 — le panneau d'appel guidé : « Appeler » l'ouvre AVANT de composer.

@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   monthlyWaterDemand,
   cropKcMonthly,
-  annualWaterFromMonthly,
-  datePalmCitedPerTree,
   CROP_CITED,
   CROP_STAGES,
   ET0_MONTHLY,
@@ -62,7 +60,7 @@ describe('QX48 — 3 valeurs Maroc CITÉES (calage recherche 2026-07-16)', () =>
   })
 
   it('dattier : 51 m³/arbre/an est une valeur citée stockée + sourcée', () => {
-    expect(datePalmCitedPerTree()).toBe(51)
+    expect(CROP_CITED.dattier.m3_per_tree_year).toBe(51)
     expect(CROP_CITED.dattier.source).toMatch(/2026-07-16/)
     expect(CROP_CITED.dattier.trees_per_ha).toBe(100)
   })
@@ -82,16 +80,6 @@ describe('cropKcMonthly — stades FAO-56 → série mensuelle (vecteurs canoniq
   })
 })
 
-describe('annualWaterFromMonthly — intégrale (remplace 0.62×300)', () => {
-  it('somme des besoins journaliers × jours du mois', () => {
-    const r = monthlyWaterDemand({ crop: 'avocatier', region: 'gharb-loukkos', surfaceHa: 1, method: 'goutte' })
-    expect(annualWaterFromMonthly(r)).toBe(10082)
-  })
-  it('entrée invalide → 0 (jamais d’exception)', () => {
-    expect(annualWaterFromMonthly(null)).toBe(0)
-    expect(annualWaterFromMonthly({})).toBe(0)
-  })
-})
 
 describe('sources : chaque constante estimée est flaggée', () => {
   it('régions/pluie présentes pour gharb-loukkos + haouz (nouvelles)', () => {

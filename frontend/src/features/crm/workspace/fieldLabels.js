@@ -16,6 +16,11 @@
 //   - fieldLabels.test.jsx (garde-fou anti-dérive : chaque htmlFor rencontré
 //                            dans les sections a une entrée ici, et vice versa).
 //
+// QJR656 — `libelleCourt` (optionnel) : la forme COURTE du libellé, utilisée
+// dans une phrase (bannière « valeurs du lead modifiées », BandeauDeriveLead).
+// Chaque champ de provenance du lead (contrat `lead_provenance_fields.json`)
+// en porte un ; `label` reste le libellé du formulaire (parfois une question).
+//
 // NE PAS laisser dériver : un champ ajouté à une section (nouveau
 // `<FormField htmlFor="lf-...">`) doit gagner son entrée ici, sinon
 // `fieldLabels.test.jsx` échoue.
@@ -25,16 +30,19 @@ const fieldLabels = {
   prenom: { label: 'Prénom', section: 'contact', inputId: 'lf-prenom' },
   telephone: { label: 'Téléphone', section: 'contact', inputId: 'lf-telephone' },
   whatsapp: { label: 'WhatsApp', section: 'contact', inputId: 'lf-whatsapp' },
-  ville: { label: 'Ville / quartier', section: 'contact', inputId: 'lf-ville' },
+  // QJR656 — la ville de RATTACHEMENT (VREF) se choisit sur la carte
+  // « Vérifier la ville », à côté du champ ville : même contrôle focalisé.
+  ville_reference: { libelleCourt: 'ville de rattachement', label: 'Ville de rattachement', section: 'contact', inputId: 'lf-ville' },
+  ville: { libelleCourt: 'ville', label: 'Ville / quartier', section: 'contact', inputId: 'lf-ville' },
   email: { label: 'Email', section: 'contact', inputId: 'lf-email' },
   societe: { label: 'Société', section: 'contact', inputId: 'lf-societe' },
   adresse: { label: 'Adresse', section: 'contact', inputId: 'lf-adresse' },
-  gps_lat: { label: 'GPS lat.', section: 'contact', inputId: 'lf-gps-lat' },
-  gps_lng: { label: 'GPS long.', section: 'contact', inputId: 'lf-gps-lng' },
+  gps_lat: { libelleCourt: 'latitude GPS', label: 'GPS lat.', section: 'contact', inputId: 'lf-gps-lat' },
+  gps_lng: { libelleCourt: 'longitude GPS', label: 'GPS long.', section: 'contact', inputId: 'lf-gps-lng' },
   lien_maps: { label: 'Lien Google Maps (envoyé par le client)', section: 'contact', inputId: 'lf-lien-maps' },
 
   // ── Suivi commercial (pipeline) ───────────────────────────────────────
-  type_installation: { label: "Type d'installation", section: 'pipeline', inputId: 'lf-type-installation' },
+  type_installation: { libelleCourt: 'type d’installation', label: "Type d'installation", section: 'pipeline', inputId: 'lf-type-installation' },
   relance_date: { label: 'Relance le', section: 'pipeline', inputId: 'lf-relance-date' },
   montant_estime: { label: 'Montant estimé (MAD)', section: 'pipeline', inputId: 'lf-montant-estime' },
   date_cloture_prevue: { label: 'Clôture prévue le', section: 'pipeline', inputId: 'lf-date-cloture' },
@@ -58,18 +66,18 @@ const fieldLabels = {
   },
 
   // ── Profil énergétique (energie) ──────────────────────────────────────
-  facture_hiver: { label: 'Facture mensuelle (MAD/mois)', section: 'energie', inputId: 'lf-facture-hiver' },
-  facture_ete: { label: 'Facture Été (MAD/mois)', section: 'energie', inputId: 'lf-facture-ete' },
+  facture_hiver: { libelleCourt: 'facture d’hiver', label: 'Facture mensuelle (MAD/mois)', section: 'energie', inputId: 'lf-facture-hiver' },
+  facture_ete: { libelleCourt: 'facture d’été', label: 'Facture Été (MAD/mois)', section: 'energie', inputId: 'lf-facture-ete' },
   // CAD158 — la période de la facture (jamais stockée : le montant est
   // ramené au mois) ; clé = celle du refus serveur, contrat
   // `lead_facture_periodicite`.
   facture_periodicite: { label: 'La facture couvre', section: 'energie', inputId: 'lf-facture-periode' },
-  conso_mensuelle_kwh: { label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
+  conso_mensuelle_kwh: { libelleCourt: 'consommation mensuelle (kWh)', label: 'Conso mensuelle (kWh)', section: 'energie', inputId: 'lf-conso-mensuelle' },
   tranche_onee: { label: 'Tarif / tranche ONEE', section: 'energie', inputId: 'lf-tranche-onee' },
-  raccordement: { label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },
+  raccordement: { libelleCourt: 'raccordement', label: 'Raccordement', section: 'energie', inputId: 'lf-raccordement' },
   // CAD150 — captés par le site, désormais éditables (CHAMPS_SITE).
   distributeur: { label: "Distributeur d'électricité", section: 'energie', inputId: 'lf-distributeur' },
-  bill_kwh: { label: 'Consommation déclarée sur le site (kWh)', section: 'energie', inputId: 'lf-bill-kwh' },
+  bill_kwh: { libelleCourt: 'consommation facturée (kWh)', label: 'Consommation déclarée sur le site (kWh)', section: 'energie', inputId: 'lf-bill-kwh' },
 
   // ── Questionnaire d'appel (equipements) ───────────────────────────────
   occupation_jour: {
@@ -120,21 +128,21 @@ const fieldLabels = {
   },
 
   // ── Pompage (agricole) ────────────────────────────────────────────────
-  pompe_cv: { label: 'Pompe (CV)', section: 'pompage', inputId: 'lf-pompe-cv' },
-  pompe_hmt_m: { label: 'HMT (m)', section: 'pompage', inputId: 'lf-pompe-hmt' },
-  pompe_debit_m3h: { label: 'Débit souhaité (m³/h)', section: 'pompage', inputId: 'lf-pompe-debit' },
+  pompe_cv: { libelleCourt: 'puissance de la pompe (CV)', label: 'Pompe (CV)', section: 'pompage', inputId: 'lf-pompe-cv' },
+  pompe_hmt_m: { libelleCourt: 'hauteur manométrique (HMT)', label: 'HMT (m)', section: 'pompage', inputId: 'lf-pompe-hmt' },
+  pompe_debit_m3h: { libelleCourt: 'débit souhaité (m³/h)', label: 'Débit souhaité (m³/h)', section: 'pompage', inputId: 'lf-pompe-debit' },
 
   // ── Toiture & site ─────────────────────────────────────────────────────
-  type_toiture: { label: 'Type de toiture', section: 'toiture', inputId: 'lf-type-toiture' },
-  surface_toiture_m2: { label: 'Surface (m²)', section: 'toiture', inputId: 'lf-surface-toiture' },
-  taille_souhaitee_kwc: { label: 'Taille souhaitée (kWc)', section: 'toiture', inputId: 'lf-taille-souhaitee' },
-  batterie_souhaitee: { label: 'Batterie', section: 'toiture', inputId: 'lf-batterie' },
-  orientation: { label: 'Orientation', section: 'toiture', inputId: 'lf-orientation' },
-  inclinaison_deg: { label: 'Inclinaison / pente (°)', section: 'toiture', inputId: 'lf-inclinaison' },
+  type_toiture: { libelleCourt: 'type de toiture', label: 'Type de toiture', section: 'toiture', inputId: 'lf-type-toiture' },
+  surface_toiture_m2: { libelleCourt: 'surface de toiture', label: 'Surface (m²)', section: 'toiture', inputId: 'lf-surface-toiture' },
+  taille_souhaitee_kwc: { libelleCourt: 'taille souhaitée (kWc)', label: 'Taille souhaitée (kWc)', section: 'toiture', inputId: 'lf-taille-souhaitee' },
+  batterie_souhaitee: { libelleCourt: 'batterie souhaitée', label: 'Batterie', section: 'toiture', inputId: 'lf-batterie' },
+  orientation: { libelleCourt: 'orientation', label: 'Orientation', section: 'toiture', inputId: 'lf-orientation' },
+  inclinaison_deg: { libelleCourt: 'inclinaison', label: 'Inclinaison / pente (°)', section: 'toiture', inputId: 'lf-inclinaison' },
   ombrage: { label: 'Ombrage', section: 'toiture', inputId: 'lf-ombrage' },
   ombrage_notes: { label: 'Notes ombrage', section: 'toiture', inputId: 'lf-ombrage-notes' },
-  structure_pref: { label: 'Structure', section: 'toiture', inputId: 'lf-structure' },
-  structure_produit: { label: 'Structure', section: 'toiture', inputId: 'lf-structure-produit' },
+  structure_pref: { libelleCourt: 'structure souhaitée', label: 'Structure', section: 'toiture', inputId: 'lf-structure' },
+  structure_produit: { libelleCourt: 'produit de structure', label: 'Structure', section: 'toiture', inputId: 'lf-structure-produit' },
   nb_etages: { label: 'Étages / hauteur', section: 'toiture', inputId: 'lf-nb-etages' },
 
   // ── Visite technique ───────────────────────────────────────────────────
@@ -204,7 +212,7 @@ const fieldLabels = {
   //     appel) ») — son entrée vit plus haut, section `divers` ;
   //   · la VAGUE 2 (CAD154) : six colonnes posées au serveur dont la moitié
   //     écran n'avait jamais été déclarée (le même geste que CAD174).
-  ete_differente: {
+  ete_differente: { libelleCourt: 'facture d’été différente',
     label: 'L’été est différent de l’hiver ?', section: 'energie',
     inputId: 'lf-ete-differente', pending: 'PanneauScriptAppel (CAD152/153)',
   },
