@@ -235,15 +235,19 @@ const villeEffectiveLead = (lead) => (lead?.ville_effective ?? lead?.ville) || '
 // ne sont plus RE-DÉCLARÉES ici : elles viennent du reducer (source unique,
 // `features/ventes/quote/sizingReducer.js`), qui les possède depuis QJR87.
 
-// Type d'installation (libellé du simulateur) par marché — la seule chose que
-// `onModeChange` faisait EN PLUS de poser le mode/scénario, et que le reducer
-// (pur, sans notion d'autoconsommation par défaut) ne modélise pas.
+// QJR641 — le Marché est la SEULE source : le sélecteur « Type d'installation »
+// (qui doublonnait le marché sans jamais le changer) est supprimé ; le défaut
+// de la part diurne se DÉRIVE du marché (libellés du simulateur →
+// `DAY_USAGE_DEFAULTS`). La valeur persistée `part_diurne_pct` (QJR528) prime
+// à la réouverture.
 const INST_TYPE_PAR_MODE = {
   residentiel: 'Résidentielle',
   industriel: 'Industrielle',
   commercial: 'Commerciale',
   agricole: 'Agricole',
 }
+const partDiurneParDefaut = (mode) =>
+  DAY_USAGE_DEFAULTS[INST_TYPE_PAR_MODE[mode] ?? 'Résidentielle'] ?? 50
 
 // DC11 / QJR106 / QJR589 — la bannière « valeurs du lead modifiées » (libellés
 // et gestes) vit dans `features/ventes/quote/BandeauDeriveLead.jsx`, partagée
@@ -632,7 +636,6 @@ export default function DevisGenerator({
   // QG3 — création rapide de client sans quitter le devis (chemin sans lead).
   const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   const [dateValidite, setDateValidite] = useState('')
-  const [instType, setInstType] = useState('Résidentielle')
   const [recommendedChoice, setRecommendedChoice] = useState('Auto')
   const [note, setNote] = useState('')
   // QJR624 — échéancier du devis rouvert (`null` = celui de la société). Il
@@ -878,7 +881,7 @@ export default function DevisGenerator({
   // Snapshot des champs éditables saillants (les référentiels leads/clients/
   // produits ne sont jamais persistés — seulement la saisie de l'utilisateur).
   const draftSnapshot = useMemo(() => ({
-    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    leadId, clientId, dateValidite, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
     realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
@@ -892,7 +895,7 @@ export default function DevisGenerator({
     farmHmtDrawdown,
 
   }), [
-    leadId, clientId, dateValidite, instType, scenario, recommendedChoice, note,
+    leadId, clientId, dateValidite, scenario, recommendedChoice, note,
     fHiver, fEte, monthly, distributeur, realBillMode, realBillMad, realBillKwh,
     realBillSaisi, distributeurChoisi,
     nbPanneaux, panelW, structureType, structureProduitId, dayUsage, lines, tauxTva, discountPct,
@@ -970,7 +973,7 @@ export default function DevisGenerator({
     if (d.leadId != null) setLeadId(d.leadId)
     if (d.clientId != null) setClientId(d.clientId)
     if (d.dateValidite != null) setDateValidite(d.dateValidite)
-    if (d.instType != null) setInstType(d.instType)
+    // QJR641 — un vieux brouillon qui porte encore `instType` : clé ignorée.
     // Le scénario du brouillon local est lui aussi un choix déjà posé : un lead
     // sélectionné après restauration ne le réécrit pas. QJR99 — même effet
     // qu'avant (`scenarioTouched.current = true` + `setScenario`), en UNE
@@ -1541,10 +1544,9 @@ export default function DevisGenerator({
     }))
   }, [roi, roiAvec])
 
-  // ── Type d'installation → autoconsommation par défaut (simulateur) ──
-  const onInstTypeChange = (type) => {
-    setInstType(type)
-    setDayUsage(DAY_USAGE_DEFAULTS[type] ?? 50)
+  // ── QJR641 — Marché → autoconsommation diurne par défaut (simulateur) ──
+  const appliquerPartDiurneDuMarche = (mode) => {
+    setDayUsage(partDiurneParDefaut(mode))
   }
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -1564,7 +1566,7 @@ export default function DevisGenerator({
   const appliquerMarcheEcran = (m, origine) => {
     if (m === modeInstallation) return
     dispatchSizing({ type: 'MARCHE_CHANGE', mode: m, origine })
-    onInstTypeChange(INST_TYPE_PAR_MODE[m] ?? 'Résidentielle')
+    appliquerPartDiurneDuMarche(m)
   }
   // Chemins PROGRAMMATIQUES (pré-remplissage lead/payload, rechargement d'un
   // brouillon) : ils appellent `appliquerMarcheEcran(m, 'programme')`
@@ -1828,7 +1830,7 @@ export default function DevisGenerator({
     // fait le reducer) : il décide du type d'installation et du dimensionneur.
     const modeCible = modeLead || modeInstallation
     if (modeLead && modeLead !== modeInstallation) {
-      onInstTypeChange(INST_TYPE_PAR_MODE[modeLead] ?? 'Résidentielle')
+      appliquerPartDiurneDuMarche(modeLead)
     }
     // Lead agricole : recopie pompe CV / HMT / débit (l'alimentation, elle,
     // suit le raccordement DANS la transition ci-dessous).
@@ -1894,7 +1896,7 @@ export default function DevisGenerator({
       ? LEAD_TYPE_TO_MODE[p.type_installation] : null
     const modeCible = modeLead || modeInstallation
     if (modeLead && modeLead !== modeInstallation) {
-      onInstTypeChange(INST_TYPE_PAR_MODE[modeLead] ?? 'Résidentielle')
+      appliquerPartDiurneDuMarche(modeLead)
     }
     if (LEAD_TYPE_TO_MODE[p.type_installation] === 'agricole') {
       if (p.pompe_cv != null && p.pompe_cv !== '') setPompeCv(String(p.pompe_cv))
@@ -2030,7 +2032,7 @@ export default function DevisGenerator({
       // les drapeaux « déjà choisi » que ce round-trip exige. Ne reste ici que
       // le type d'installation, hors modèle du reducer.
       if (d.mode_installation && d.mode_installation !== modeInstallation) {
-        onInstTypeChange(INST_TYPE_PAR_MODE[d.mode_installation] ?? 'Résidentielle')
+        appliquerPartDiurneDuMarche(d.mode_installation)
       }
       if (d.lead) {
         setLeadId(String(d.lead))
@@ -2166,7 +2168,7 @@ export default function DevisGenerator({
         dispatchSizing({ type: 'SAISI', champ: 'tension', valeur: 'mt' })
       }
       // QJR528 — la part diurne INDUSTRIELLE enregistrée, relue APRÈS
-      // `onInstTypeChange` (qui a reposé le défaut du marché plus haut).
+      // `appliquerPartDiurneDuMarche` (qui a reposé le défaut du marché).
       if (d.mode_installation === 'industriel' && e.part_diurne_pct != null
           && Number.isFinite(Number(e.part_diurne_pct))) {
         setDayUsage(String(Number(e.part_diurne_pct)))
@@ -4201,18 +4203,6 @@ export default function DevisGenerator({
               <Input id="gen-num" value="Généré automatiquement" disabled />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="gen-insttype">Type d'Installation</Label>
-              <Select value={instType} onValueChange={onInstTypeChange}>
-                <SelectTrigger id="gen-insttype"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Résidentielle">Résidentielle</SelectItem>
-                  <SelectItem value="Commerciale">Commerciale</SelectItem>
-                  <SelectItem value="Industrielle">Industrielle</SelectItem>
-                  <SelectItem value="Agricole">Agricole</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-1.5">
               {/* OFFGRID — « Raccordement » du devis : défaut « Raccordé au
                   réseau » (comportement historique byte-identique), dérivé du
                   lead (raccordement === 'aucun') tant que le vendeur ne
@@ -4619,12 +4609,17 @@ export default function DevisGenerator({
                 {sizingServeurMessage}
               </div>
             )}
-            <div className="gen-slider-row">
-              <span className="gen-slider-label">Consommation diurne (%)</span>
-              <input type="range" min="10" max="100" step="5" value={dayUsage}
-                     onChange={e => setDayUsage(e.target.value)} />
-              <span className="gen-slider-value">{dayUsage}%</span>
-            </div>
+            {/* QJR641 — curseur masqué en commercial (sans effet : la part
+                diurne vient de la catégorie, `commercialDayShare`) et en
+                agricole. */}
+            {(modeInstallation === 'residentiel' || modeInstallation === 'industriel') && (
+              <div className="gen-slider-row" data-testid="curseur-part-diurne">
+                <span className="gen-slider-label">Consommation diurne (%)</span>
+                <input type="range" min="10" max="100" step="5" value={dayUsage}
+                       onChange={e => setDayUsage(e.target.value)} />
+                <span className="gen-slider-value">{dayUsage}%</span>
+              </div>
+            )}
             <div className="mt-3 flex flex-wrap items-center justify-end gap-3">
               {errors.recalcDim && <span className="text-xs text-destructive">{errors.recalcDim}</span>}
               {errors.autofill && <span className="text-xs text-destructive">{errors.autofill}</span>}
