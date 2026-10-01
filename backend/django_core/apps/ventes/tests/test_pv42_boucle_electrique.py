@@ -347,6 +347,14 @@ class UnLayoutSansGeometrieNeBougePas(_Base):
             "QJR106 — un devis né d'un lead doit porter son estampille de "
             "provenance ; son absence est une régression, pas un progrès.")
         self.assertEqual(provenance['source_lead_id'], devis.lead_id)
+        # QJR591 — un devis né d'un lead consigne aussi la ville sur laquelle
+        # ses études ont été chiffrées (``pipeline.consigner_ville_calcul``).
+        # Même traitement que la provenance : mise de côté ICI seulement, et
+        # vérifiée plutôt qu'ignorée (le lead de ce test n'a pas de ville).
+        ville_calcul = etude.pop('ville_calcul', None)
+        self.assertEqual(ville_calcul, {'ville': '', 'reference': ''},
+                         "QJR591 — la ville de chiffrage doit être consignée "
+                         "au recalcul des études d'un devis né d'un lead.")
         self.assertEqual(etude, {
             # PVSCE — le scénario est désormais STOCKÉ dès la création : sans
             # lui, le moteur PDF (QF6) déduit l'option depuis les lignes, et se
