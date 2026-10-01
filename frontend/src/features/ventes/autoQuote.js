@@ -18,9 +18,10 @@ import {
   autoFillLines, computeEtudeIndustrielle, panneauxPourKwc,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
-  // Règle fondateur du 18/08 — dimensionnement par PALIERS de 5 kWc, retenus
-  // au payback le plus court (jamais un panneau/900 MAD nu).
-  estimerKwcDepuisFacture, arrondirAuPasKwc, optimalKwcByPayback,
+  // Règle fondateur du 18/08 — dimensionnement AUTOMATIQUE (sans cible) par
+  // PALIERS de 5 kWc, retenus au payback le plus court. QJR602 : une taille
+  // explicite n'est plus jamais ramenée au palier (D-QJR5-13).
+  estimerKwcDepuisFacture, optimalKwcByPayback,
   // PVMRQ — libellé FR d'un rôle, pour dire QUELLE marque épinglée manque.
   roleLabel,
   // PACT10/QF-REAL — consommation annuelle RÉELLE du lead, dérivée de ses
@@ -132,31 +133,14 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 })
 
 /**
- * QJR245 — NOTICE PALIER, PORTÉE PAR LA FONCTION QUI ARRONDIT : UNE SEULE
- * FORMULATION (le texte FR complet, pas seulement le calcul), réutilisée par
- * les écrans qui déclenchent `createAutoQuote` — `DevisTab.jsx` et
- * `LeadDevisPanel.jsx` — au lieu que chacun recopie sa propre phrase. Rend le
- * texte lui-même (pas des morceaux à assembler) pour qu'un grep sur ce
- * fichier retrouve l'UNIQUE définition — chaque écran se contente de
- * `{noticeKwc}`, jamais une seconde phrase qui pourrait diverger en mot.
- *
- * Applique EXACTEMENT la même précédence et le même arrondi que la branche
- * `mode !== 'agricole'` de `createAutoQuote` ci-dessous (cible explicite du
- * devis, sinon `lead.taille_souhaitee_kwc`, `arrondirAuPasKwc`) : le kWc que
- * cette fonction dit « arrondi » est TOUJOURS celui que `createAutoQuote`
- * appliquera réellement.
- *
- * Rend `null` quand rien ne diverge (aucune notice à montrer) — jamais un
- * palier deviné sur une valeur illisible ou nulle.
+ * QJR602 (D-QJR5-13) — PLUS AUCUN PALIER N'EST APPLIQUÉ À UNE TAILLE
+ * EXPLICITE : il n'y a donc plus rien à annoncer, la fonction rend toujours
+ * `null`. Elle ne subsiste que pour ses deux derniers appelants, hors de ce
+ * lot : le générateur (`DevisGenerator.jsx`, `runAutoQuote`) et
+ * `LeadDevisPanel.jsx` — à supprimer avec leurs imports.
  */
-export function noticePalierKwc(kwcSaisi) {
-  const num = parseFloat(kwcSaisi)
-  if (!(num > 0)) return null
-  const palier = arrondirAuPasKwc(num)
-  if (palier === num) return null
-  const saisieAffichee = String(kwcSaisi).trim().replace('.', ',')
-  return `Palier appliqué : ${palier} kWc (saisie ${saisieAffichee} kWc) — le devis `
-    + 'automatique ne sort jamais hors palier de 5 kWc.'
+export function noticePalierKwc() {
+  return null
 }
 
 /**
@@ -247,16 +231,16 @@ export async function createAutoQuote({ lead, produits, discountStr,
     // devant les deux : c'est un choix ponctuel du commercial, il ne réécrit
     // jamais `taille_souhaitee_kwc` sur le lead. Même conversion partagée
     // `panneauxPourKwc` — aucune formule recopiée.
-    // Règle fondateur du 18/08 — une taille EXPLICITE (cible du devis ou
-    // taille souhaitée du lead) est ramenée au palier de 5 kWc le plus proche
-    // (`arrondirAuPasKwc`) : aucun devis auto ne peut sortir une taille hors
-    // palier. Sans taille explicite, le besoin se lit sur la facture d'hiver
-    // (`estimerKwcDepuisFacture`) et la taille retenue est le palier au
-    // payback le plus court (`optimalKwcByPayback`) — jamais le plus gros qui
-    // rentre sur le toit.
+    // QJR602 (D-QJR5-13, fondateur 30/09/2026) — une taille EXPLICITE (cible
+    // du devis ou taille souhaitée du lead) est SOUVERAINE, telle quelle : plus
+    // d'arrondi au palier de 5 kWc (6,5 kWc → 10 panneaux de 710 W, le même
+    // compte que le serveur — `taille.py::_residential_panel_count`). Les
+    // paliers ne servent qu'au dimensionnement AUTOMATIQUE sans cible : le
+    // besoin se lit alors sur la facture d'hiver (`estimerKwcDepuisFacture`)
+    // et la taille retenue est le palier au payback le plus court
+    // (`optimalKwcByPayback`).
     const cibleKwc = parseFloat(targetKwc) || 0
-    const explicitKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
-    const tailleKwc = explicitKwc > 0 ? arrondirAuPasKwc(explicitKwc) : 0
+    const tailleKwc = cibleKwc > 0 ? cibleKwc : (parseFloat(lead.taille_souhaitee_kwc) || 0)
     let panels = 0
     if (tailleKwc > 0) {
       panels = panneauxPourKwc(tailleKwc, PANEL_W_DEFAUT)

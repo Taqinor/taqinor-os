@@ -1,7 +1,7 @@
 // Verrouille la règle fondateur du 18/08 telle qu'appliquée par
 // autoQuote.js::createAutoQuote (branche facture, mode non-agricole) :
-//   1. une taille EXPLICITE (cible du devis ou taille souhaitée du lead) est
-//      ramenée au palier de 5 kWc le plus proche (arrondirAuPasKwc) ;
+//   1. QJR602 (D-QJR5-13) — une taille EXPLICITE (cible du devis ou taille
+//      souhaitée du lead) est respectée TELLE QUELLE, plus d'arrondi au palier ;
 //   2. sans taille explicite, le besoin se lit sur la facture d'hiver
 //      (estimerKwcDepuisFacture) et la taille retenue minimise le payback
 //      parmi les paliers testés (optimalKwcByPayback) — jamais la plus
@@ -107,18 +107,19 @@ test('devis auto sous le seuil de 900 MAD : aucun palier chiffrable localement (
   assert.equal(res, null, 'sous le seuil, aucun palier local — plus de repli estimerPanneaux (U3-900)')
 })
 
-test('devis auto AVEC taille explicite (cible ou lead) : toujours ramenée au palier de 5 kWc le plus proche', () => {
-  // Une cible de 7 kWc (par ex. saisie ponctuelle du commercial) n'est jamais
-  // envoyée telle quelle au catalogue — elle est d'abord arrondie au palier.
-  const cibleBrute = 7
-  const tailleRetenue = arrondirAuPasKwc(cibleBrute)
-  assert.equal(tailleRetenue, 5)
-  const panels = panneauxPourKwc(tailleRetenue, 710)
-  assert.ok(panels > 0)
-  // La puissance PV qui en résulte reste proche du palier (± 1 panneau, un
-  // nombre entier de panneaux de 710 W ne tombe jamais pile sur 5,000 kWc).
+test('QJR602 — devis auto AVEC taille explicite (cible ou lead) : respectée TELLE QUELLE, jamais ramenée au palier', () => {
+  // D-QJR5-13 (fondateur 30/09/2026) : 6,5 kWc → 10 panneaux de 710 W, le
+  // MÊME compte que le serveur (plafond de 6500 / 710) — plus le palier de
+  // 5 kWc (8 panneaux). Le chemin réel de createAutoQuote est exécuté dans
+  // autoQuote.tailleExplicite.test.jsx.
+  const cibleBrute = 6.5
+  assert.notEqual(arrondirAuPasKwc(cibleBrute), cibleBrute)
+  const panels = panneauxPourKwc(cibleBrute, 710)
+  assert.equal(panels, Math.ceil(6500 / 710))
+  assert.equal(panels, 10)
+  // Jamais sous la puissance demandée, à moins d'un panneau près.
   const kwpReel = panels * 710 / 1000
-  assert.ok(Math.abs(kwpReel - tailleRetenue) < 0.71)
+  assert.ok(kwpReel >= cibleBrute && kwpReel - cibleBrute < 0.71)
 })
 
 // ── PVMRQ — GARDE « devis auto sans panneaux » (correctif 18/08) ─────────────
