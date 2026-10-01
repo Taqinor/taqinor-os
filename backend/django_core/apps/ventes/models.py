@@ -434,13 +434,33 @@ class Devis(models.Model):
         ancien libellé (le changer créerait une migration sans effet).
         """
         super().save(*args, **kwargs)
-        # QJR669 (décision fondateur 01/10) — LE GEL EST RETIRÉ : la mesure
-        # suit le devis. Le calcul (TTC net ÷ kWc du PROJET, multivilla ×N)
-        # et l'écriture ciblée de la colonne appartiennent au propriétaire du
-        # kWc (``domain.scenario.poser_prix_par_kwc``), aussi appelé par
-        # ``poser_puissance_kwc`` quand les lignes changent sans save.
-        from .domain.scenario import poser_prix_par_kwc
-        poser_prix_par_kwc(self)
+        self.rafraichir_prix_par_kwc()
+
+    def rafraichir_prix_par_kwc(self):
+        """QJR669 (décision fondateur 01/10) — LE GEL EST RETIRÉ : la mesure
+        suit le devis. Total TTC NET ÷ kWc du PROJET (multivilla : kWc d'une
+        villa × N, le multiplicateur de ``total_ttc`` —
+        ERR-QAC-MULTIVILLA-TOTAL-XN), arrondi au centime ROUND_HALF_UP ;
+        ``None`` sans kWc ou sans total. Écriture CIBLÉE de cette seule
+        colonne (jamais ``updated_at``, jamais le statut — règle #4). Appelée
+        par ``save`` et par le propriétaire du kWc
+        (``domain.scenario.poser_prix_par_kwc`` via ``poser_puissance_kwc``)
+        quand les lignes changent sans save. Rend la valeur posée."""
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        from .multivilla import puissance_kwc_projet
+        try:
+            kwc_val = puissance_kwc_projet(self) or Decimal('0')
+        except (InvalidOperation, TypeError, ValueError):
+            kwc_val = Decimal('0')
+        prix = None
+        if kwc_val > 0:
+            total = self.total_ttc
+            if total and total > 0:
+                prix = (Decimal(str(total)) / kwc_val).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP)
+        type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
+        self.prix_par_kwc = prix
+        return prix
 
     def _totaux_argent(self):
         """QJR50/QJR51 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE.

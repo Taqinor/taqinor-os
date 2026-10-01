@@ -265,50 +265,26 @@ def poser_puissance_kwc(devis):
     return (devis.etude_params or {}).get('puissance_kwc')
 
 
-def calculer_prix_par_kwc(devis):
-    """QJR669 — Total TTC ÷ kWc du PROJET, arrondi au centime (ROUND_HALF_UP).
-
-    ``None`` quand rien n'est divisible : pas de kWc (pompage, devis sans
-    étude) ou pas encore de total. Le kWc est celui du projet
-    (``multivilla.puissance_kwc_projet`` : kWc d'une villa × N, le même
-    multiplicateur que ``total_ttc`` — ERR-QAC-MULTIVILLA-TOTAL-XN), et le
-    total est le NET (QJR52 / D2). Lecture pure."""
-    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
-    from apps.ventes.multivilla import puissance_kwc_projet
-    try:
-        kwc_val = puissance_kwc_projet(devis) or Decimal('0')
-    except (InvalidOperation, TypeError, ValueError):
-        kwc_val = Decimal('0')
-    if kwc_val <= 0:
-        return None
-    total = devis.total_ttc
-    if not total or total <= 0:
-        return None
-    return (Decimal(str(total)) / kwc_val).quantize(
-        Decimal('0.01'), rounding=ROUND_HALF_UP)
-
-
 def poser_prix_par_kwc(devis):
     """QJR669 (décision fondateur 01/10) — ``prix_par_kwc`` SUIT LE DEVIS.
 
-    La mesure BI n'est plus gelée au premier enregistrement : elle est
-    recalculée chaque fois que le kWc ou le total change (création, Édition
-    complète, replace-lines, correction sur place d'un envoyé — D-QJR5-1).
+    La mesure BI n'est plus gelée au premier enregistrement : le propriétaire
+    du kWc la repose chaque fois qu'il repose le kWc (création, Édition
+    complète, replace-lines, correction sur place d'un envoyé — D-QJR5-1),
+    même quand ``etude_params`` n'a pas bougé (un total modifié seul).
 
-    Écriture CIBLÉE de cette seule colonne (toujours émise : l'instance en
-    mémoire peut être plus ancienne que la base) : ni ``updated_at`` (jeton
-    du verrou optimiste QJR545) ni aucun autre champ ne bouge, jamais le
-    statut (règle #4). La pose d'une surcharge
+    Le calcul et l'écriture CIBLÉE de la colonne sont
+    ``Devis.rafraichir_prix_par_kwc`` (aussi appelé par ``Devis.save`` ; le
+    modèle ne peut pas importer ce module — contrat import-linter M1) : ni
+    ``updated_at`` (jeton du verrou optimiste QJR545) ni le statut ne
+    bougent (règle #4). La pose d'une surcharge
     (``domain.overrides.ecrire_colonne``) ne passe toujours pas ici. Donnée
     interne : jamais sur un PDF. Ne lève jamais."""
     if devis is None or getattr(devis, 'pk', None) is None:
         return None
     try:
-        prix = calculer_prix_par_kwc(devis)
+        return devis.rafraichir_prix_par_kwc()
     except Exception:  # noqa: BLE001 — une mesure BI ne casse jamais un devis
         logger.warning('prix_par_kwc non recalculé sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return getattr(devis, 'prix_par_kwc', None)
-    type(devis).objects.filter(pk=devis.pk).update(prix_par_kwc=prix)
-    devis.prix_par_kwc = prix
-    return prix
