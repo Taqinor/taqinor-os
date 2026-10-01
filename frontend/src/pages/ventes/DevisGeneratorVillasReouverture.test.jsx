@@ -90,7 +90,7 @@ beforeEach(() => {
   stockApi.getProduits.mockResolvedValue({ data: [PANNEAU, ONDULEUR, CABLE] })
   ventesApi.getDevisById.mockResolvedValue({
     data: {
-      id: 530, reference: 'DEV-202609-0530', statut: 'brouillon', client: 9,
+      id: 530, reference: 'DEV-202609-0530', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, client: 9,
       mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: { scenario: 'Sans batterie' },
       lignes: [

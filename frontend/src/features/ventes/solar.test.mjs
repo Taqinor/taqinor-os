@@ -1469,7 +1469,7 @@ test('QX39 — computeCashflowPayback : dégénéré → payback null', () => {
   assert.equal(computeCashflowPayback(50000, 0).paybackYears, null)
 })
 
-test('ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — drapeau jamaisRembourse (miroir de pricing)', () => {
+test('ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — drapeau jamaisRembourse (même règle que pricing)', () => {
   const jamais = computeCashflowPayback(269065, 3000)
   assert.equal(jamais.jamaisRembourse, true)
   assert.ok(jamais.cumulative[jamais.cumulative.length - 1] < 0)
@@ -2180,7 +2180,7 @@ test('STKCAT10 — un produit choisi ne déclenche AUCUNE « marque introuvable 
 })
 
 // QJR529 — la remise PAR LIGNE stockée (LigneDevis.remise) compte dans le
-// miroir des totaux canoniques, comme `total_ht` = q × pu × (1 − remise/100)
+// même calcul que les totaux canoniques, comme `total_ht` = q × pu × (1 − remise/100)
 // côté serveur : sinon l'écran ≠ le PDF.
 test('QJR529 — totauxCanoniquesTtc applique la remise de ligne', () => {
   assert.equal(totauxCanoniquesTtc(

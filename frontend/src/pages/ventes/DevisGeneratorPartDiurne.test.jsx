@@ -83,7 +83,7 @@ beforeEach(() => {
   parametresApi.getProfile.mockResolvedValue({ data: {} })
   ventesApi.getDevisById.mockResolvedValue({
     data: {
-      id: 528, reference: 'DEV-202609-0528', statut: 'brouillon', client: 9,
+      id: 528, reference: 'DEV-202609-0528', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, client: 9,
       mode_installation: 'industriel', taux_tva: '20.00', remise_globale: '0',
       etude_params: { scenario: 'Sans batterie', conso_annuelle: 60000, part_diurne_pct: 65 },
       lignes: [

@@ -95,6 +95,8 @@ import { useConfirmDialog } from '../../ui/confirm'
 import { PageHeader } from '../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+import { peutEditerDevis, chantierEnCours } from '../../features/ventes/devisStatuts'
+import { reviserEtOuvrir } from '../../features/ventes/reviserDevis'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -141,20 +143,6 @@ const PDF_GENERATION_LABELS = [
   'Calcul du système…',
   'Finalisation du document…',
 ]
-
-// VX216(a) — un chantier « en cours » a sa nomenclature (bom) GELÉE : éditer
-// le devis lié APRÈS ce point crée un écart devis↔chantier invisible côté
-// vendeur (l'installateur seul le voyait, InstallationDetail.jsx `devisDivergent`).
-// Statuts avant réception/clôture/annulation = composition encore gelée et
-// potentiellement engagée sur le terrain (miroir Installation.Statut ordonné,
-// apps/installations/models_installation.py).
-const CHANTIER_EN_COURS_STATUTS = [
-  'signe', 'materiel_commande', 'planifie', 'en_cours', 'installe',
-  // Statuts hérités équivalents (LEGACY_STATUT_MAP backend).
-  'a_planifier', 'pose_en_cours', 'pose', 'raccordement_onee', 'mise_en_service',
-]
-const chantierEnCours = (chantier) =>
-  !!chantier && CHANTIER_EN_COURS_STATUTS.includes(chantier.statut)
 
 // ── ARC49 — Colonnes du frame `ui/datatable` en mode « ligne custom ».
 // L'écran rend chaque ligne via `renderRow` (<DevisRow>), donc ces définitions
@@ -907,7 +895,7 @@ function DevisRow({ d, ctx }) {
             <DropdownMenuContent align="end">
               <DropdownMenuLabel>Plus d'actions</DropdownMenuLabel>
               <DropdownMenuItem
-                disabled={d.statut !== 'brouillon'}
+                disabled={!peutEditerDevis(d)}
                 onSelect={() => openEdit(d)}
               >
                 Éditer
@@ -1092,18 +1080,12 @@ function DevisRow({ d, ctx }) {
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
                 <DropdownMenuItem onSelect={() => {
-                  // VX216(a) — « Réviser » est le chemin d'édition réel d'un
-                  // devis accepté : avertit AVANT si un chantier en cours
-                  // (nomenclature gelée) est lié, pour éviter un écart
-                  // devis↔chantier découvert seul par l'installateur.
-                  if (chantierEnCours(d.chantier)) {
-                    toast.warning(
-                      `Le chantier ${d.chantier.reference} lié à ${d.reference} est en cours — sa nomenclature est gelée.`,
-                    )
-                  }
-                  ventesApi.reviserDevis(d.id)
-                    .then(() => dispatch(fetchDevis()))
-                    .catch(() => {})
+                  // QJR533 — UN seul geste (features/ventes/reviserDevis) :
+                  // avertit si chantier en cours (VX216(a)), dit le résultat,
+                  // ouvre la V2 en Édition complète.
+                  reviserEtOuvrir({
+                    devis: d, navigate, onApres: () => dispatch(fetchDevis()),
+                  })
                 }}>
                   Réviser (nouvelle version)
                 </DropdownMenuItem>
@@ -1973,7 +1955,13 @@ export default function DevisList() {
   // modal DevisForm est conservé mais n'est plus le chemin d'édition).
   const openNew  = () => navigate('/ventes/devis/nouveau')
   const openEdit = (d) => {
-    if (d.statut !== 'brouillon') return
+    // QJR532 — un devis figé (accepté, remplacé) dit POURQUOI au lieu de
+    // sortir en silence ; un envoyé s'ouvre (D-QJR5-1).
+    if (!peutEditerDevis(d)) {
+      toast.error(d.raison_non_modifiable
+        || 'Ce devis ne peut plus être modifié — révisez-le pour créer une nouvelle version.')
+      return
+    }
     // VX216(a) — garde défensive : un devis normalement brouillon ne porte
     // pas encore de chantier, mais si un lien existe malgré tout (ex. flux
     // hérité), le vendeur est prévenu avant d'éditer une composition gelée.

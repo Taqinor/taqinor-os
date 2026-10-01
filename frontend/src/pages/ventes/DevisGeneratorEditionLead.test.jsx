@@ -76,7 +76,7 @@ const LEAD = {
 function devisRouvert({ lead = LEAD.id, etudeParams = {}, lignes } = {}) {
   return {
     data: {
-      id: 336, reference: 'DEV-202609-0200', statut: 'brouillon', lead, client: 9,
+      id: 336, reference: 'DEV-202609-0200', statut: 'brouillon', modifiable: true, raison_non_modifiable: '', revision_possible: false, is_active: true, lead, client: 9,
       mode_installation: 'residentiel', taux_tva: '20.00', remise_globale: '0',
       etude_params: { scenario: 'Sans batterie', ...etudeParams },
       lignes: lignes || [
