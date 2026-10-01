@@ -1673,7 +1673,8 @@ def configuration_devis_contenu(devis):
     }
 
 
-def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
+def capturer_configuration_devis(devis, *, user=None, avant_correction=False,
+                                 envoye=False):
     """NTCPQ20 — Enregistre un instantané de configuration si le devis est
     BROUILLON et que la configuration a RÉELLEMENT changé.
 
@@ -1684,8 +1685,13 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     QJR518 — ``avant_correction=True`` capture AUSSI un devis ENVOYÉ :
     appelé AVANT la première écriture d'une correction après envoi
     (``domain/modifiabilite.debut_de_geste_devis``), l'instantané conserve
-    l'état que le client a vu. Le signal de ligne (post_save) ne le passe
-    jamais : un envoyé n'est pas historisé ligne par ligne.
+    l'état que le client a vu.
+
+    QJR552 — ``envoye=True`` (l'instantané APRÈS geste, :func:`instantane_de_geste`)
+    historise aussi un ENVOYÉ : la correction après envoi (D-QJR5-1) laisse
+    l'état vu par le client (premier instantané, pris AVANT le geste par
+    ``debut_de_geste_devis``) ET l'état corrigé (dernier instantané). Jamais
+    un accepté / refusé / expiré : leurs gestes sont refusés en amont.
 
     QJR550 — la création est enveloppée dans un POINT DE SAUVEGARDE : une
     erreur SQL pendant la capture (appelée sous la transaction de
@@ -1697,7 +1703,7 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     if devis is None or devis.pk is None:
         return None
     statuts = ((Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
-               if avant_correction else (Devis.Statut.BROUILLON,))
+               if (avant_correction or envoye) else (Devis.Statut.BROUILLON,))
     if devis.statut not in statuts:
         return None
     try:
@@ -1728,7 +1734,13 @@ def instantane_de_geste(devis, *, user=None):
     le pipeline (``composer`` ; ``ecrire`` / ``reconcilier`` — jamais
     ``rafraichir``), ``LigneDevisViewSet`` et la resynchronisation catalogue
     (une fois par devis). Relit le devis (statut et lignes en base). Ne lève
-    jamais."""
+    jamais.
+
+    QJR552 — capture un BROUILLON comme un ENVOYÉ (l'état CORRIGÉ d'une
+    correction après envoi) ; l'état AVANT, vu par le client, reste capturé
+    par ``debut_de_geste_devis`` avant la première écriture du même geste —
+    les deux passent par :func:`capturer_configuration_devis`, l'unique
+    implémentation. Le statut n'est jamais écrit."""
     if devis is None or getattr(devis, 'pk', None) is None:
         return None
     try:
@@ -1737,7 +1749,7 @@ def instantane_de_geste(devis, *, user=None):
             pk=devis.pk).first()
         if frais is None:
             return None
-        return capturer_configuration_devis(frais, user=user)
+        return capturer_configuration_devis(frais, user=user, envoye=True)
     except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
         logger.exception(
             'QJR550 : instantané de geste ignoré (devis %s)',

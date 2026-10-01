@@ -1201,6 +1201,10 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     # QJR518 — une correction après envoi est tracée à UN point : l'état vu
     # par le client est capturé AVANT la première écriture (ENVOYÉ seulement,
     # no-op sinon), la trace est posée après si un contenu visible a changé.
+    # QJR552 — l'instantané « avant » (``debut_de_geste_devis``) et
+    # l'instantané « après » (``_instantane``, envoyé compris) encadrent ici
+    # ``ecrire_lignes`` / ``reconcilier`` ; une seule implémentation de
+    # capture (``cycle_vie.capturer_configuration_devis``).
     from apps.ventes.domain.modifiabilite import (
         debut_de_geste_devis, fin_de_geste_devis)
     avant_geste = (debut_de_geste_devis(devis, intention.user)

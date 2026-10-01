@@ -1897,7 +1897,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             url_path='historique-configuration',
             permission_classes=[IsResponsableOrAdmin])
     def historique_configuration(self, request, pk=None):
-        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon.
+        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon
+        ou ENVOYÉ (QJR552 : l'état vu par le client avant une correction après
+        envoi, puis l'état corrigé — D-QJR5-1 / D-QJR5-7). Un instantané par
+        geste d'enregistrement (QJR550), apparié par identité stable (QJR551).
 
         GET : la liste des instantanés (id, horodatage, auteur, nombre de
         lignes, contenu). ``?a=<id>&b=<id>`` renvoie EN PLUS le diff des lignes
@@ -2893,6 +2896,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         avant_geste = debut_de_geste_devis(
             serializer.instance, self.request.user)
         super().perform_update(serializer)
+        # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
+        # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
+        from ..domain.cycle_vie import instantane_de_geste
+        instantane_de_geste(serializer.instance, user=self.request.user)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
         serializer.instance.updated_by = self.request.user

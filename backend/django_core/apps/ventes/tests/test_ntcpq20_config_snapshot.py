@@ -86,12 +86,49 @@ class TestConfigurationSnapshot(_Base):
         self.assertEqual(quantites[:3], ['1.00', '2.00', '3.00'])
         self.assertTrue(all(s.auteur_id == self.user.id for s in snaps))
 
-    def test_pas_dinstantane_hors_brouillon(self):
-        self.devis.statut = Devis.Statut.ENVOYE
-        self.devis.save(update_fields=['statut'])
-        self.devis.refresh_from_db()
-        self._ligne()
+    def test_capture_en_envoye_jamais_en_accepte(self):
+        """QJR552 — remplace ``test_pas_dinstantane_hors_brouillon``, qui
+        figeait le comportement fautif : un devis ENVOYÉ corrigé garde l'état
+        vu par le client (PREMIER instantané) et l'état corrigé (DERNIER) ; un
+        ACCEPTÉ refuse le geste (409) et ne prend aucun instantané. Le statut
+        n'est jamais écrit."""
+        ligne = self._ligne(qte='2', prix='100.00')
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ENVOYE)
         self.assertEqual(self._snaps().count(), 0)
+
+        resp = self.api.patch(f'/api/django/ventes/devis/{self.devis.id}/',
+                              {'remise_globale': '5'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/replace-lines/',
+            {'lignes': [{'produit': self.produit.id,
+                         'designation': ligne.designation, 'quantite': '2',
+                         'prix_unitaire': '120.00'}]}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+        snaps = list(self._snaps())
+        self.assertGreaterEqual(len(snaps), 2)
+        premier, dernier = snaps[0].contenu, snaps[-1].contenu
+        self.assertEqual(premier['remise_globale'], '0.00')
+        self.assertEqual(premier['lignes'][0]['prix_unitaire'], '100.00')
+        self.assertEqual(dernier['remise_globale'], '5.00')
+        self.assertEqual(dernier['lignes'][0]['prix_unitaire'], '120.00')
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+
+        accepte = DevisFactory(company=self.company)
+        LigneDevis.objects.create(
+            devis=accepte, produit=self.produit, designation='X',
+            quantite=Decimal('1'), prix_unitaire=Decimal('100.00'))
+        Devis.objects.filter(pk=accepte.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{accepte.id}/replace-lines/',
+            {'lignes': self._lignes_corps(1)}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(ConfigurationDevisSnapshot.objects.filter(
+            devis=accepte).count(), 0)
 
     def test_une_ecriture_directe_de_ligne_ne_prend_plus_d_instantane(self):
         """QJR550 — ROUGE AVANT : le signal post_save en prenait un."""
