@@ -2348,6 +2348,10 @@ export default function DevisGenerator({
           // produit de CETTE ligne n'est pas resélectionné (onProduitChange
           // lève le verrou).
           ...(k === 'prix_unit_ttc' ? { prixManuel: true } : {}),
+          // QJR569 — même règle pour la QUANTITÉ tapée d'une ligne produit :
+          // le verrou `quantiteManuelle` (gardes D12 du serveur) est posé ICI
+          // seulement — une composition ne le pose jamais.
+          ...(k === 'quantite' && l.produit ? { quantiteManuelle: true } : {}),
         }
       : l)))
   }, [setLines])
@@ -2406,6 +2410,8 @@ export default function DevisGenerator({
             // N2 — resélectionner un produit reprend la main sur son prix
             // catalogue : lève le verrou manuel posé par une frappe précédente.
             prixManuel: false,
+            // QJR569 — …et le verrou de quantité (nouveau produit, nouvelle main).
+            quantiteManuelle: false,
             // QJR523 — le rôle stocké était celui de l'ANCIEN produit : le
             // serveur le re-déduit du nouveau.
             role_devis: '',
