@@ -36,7 +36,8 @@ test('la conversion est RÉUTILISÉE, jamais réécrite', () => {
   const REDUCER = readFileSync(
     path.join(__dirname, '../../features/ventes/quote/sizingReducer.js'), 'utf8')
   assert.match(REDUCER, /const n = panneauxPourKwc\(valeur, base\.panelW\)/)
-  assert.match(REDUCER, /import \{ panneauxPourKwc \} from '\.\.\/solar\.js'/)
+  // QJR576 — le reducer importe aussi l'inverse partagé (kwcPourPanneaux).
+  assert.match(REDUCER, /import \{ panneauxPourKwc, kwcPourPanneaux \} from '\.\.\/solar\.js'/)
   // Aucune formule kWc→panneaux recopiée à la main dans l'écran.
   const handlers = gen.slice(gen.indexOf('const onKwcCibleChange'), gen.indexOf('const showSans'))
   assert.doesNotMatch(handlers, /Math\.round\(\s*\w+\s*\*\s*1000\s*\//)

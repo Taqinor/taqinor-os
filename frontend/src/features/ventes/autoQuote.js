@@ -5,7 +5,10 @@
    Sensible au marché du lead : résidentiel (historique), agricole (pompage,
    mêmes appels que le flux manuel) ou industriel (dimensionnement factures +
    étude d'autoconsommation). Lit le lead directement (pas d'état React). */
-import { createDevis, addLigneDevis } from './store/ventesSlice'
+// QJR543 — plus de createDevis + N addLigneDevis : les marchés non
+// résidentiels se créent en UN appel atomique (POST /ventes/devis/atomic/).
+// QJR542 — l'étude part par LA projection partagée avec le générateur.
+import { projeterEtudeMarche } from './quote/etudeMarcheBloc'
 // U3 — le devis résidentiel auto est COMPOSÉ ET CRÉÉ par le serveur
 // (POST /ventes/devis/auto/) : cet écran ne compose plus de lignes
 // résidentielles. Voir la branche `mode === 'residentiel'` plus bas.
@@ -29,8 +32,45 @@ import {
   // au productible de la VILLE (comme l'aperçu et le PDF), jamais au repli
   // historique GHI × 0,8 de `computeROI` (≈ −18 % contre le document).
   productibleForCity,
+  // QJR575 — part diurne d'une catégorie commerciale (80 % pour une clé
+  // inconnue ou absente : la sentinelle « Non précisée » de l'écran).
+  commercialDayShare,
+  // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
+  kwcPourPanneaux, PANEL_W_DEFAUT,
   consoAnnuelleDepuisFactures,
 } from './solar'
+// QJR576 — le vocabulaire des scénarios et le mapping lead → scénario
+// viennent du reducer (jamais retapés ici).
+import {
+  SCENARIO_SANS, SCENARIO_LES_DEUX, BATTERIE_LEAD_VERS_SCENARIO,
+} from './quote/sizingReducer'
+
+// QJR575 — LES PARAMÈTRES DU BALAYAGE C&I, UNE SEULE CONSTRUCTION pour le
+// « Devis automatique » (ci-dessous) ET l'Édition complète (DevisGenerator,
+// `computeAutoSizing`) : sans elle, les deux boutons dimensionnaient le même
+// lead à deux kWc (modèle 'factures' via le défaut d'écran 'onee' contre
+// modèle 'estimation' ici ; hôtel 55 % contre 80 %).
+//   • part diurne : commercial → `commercialDayShare(categorie)` (80 % sans
+//     catégorie) ; industriel / résidentiel → DAY_USAGE_DEFAULTS ;
+//   • `utility` (modèle d'économie) : le distributeur DÉCLARÉ (choisi par le
+//     vendeur, sinon celui du lead) s'il est l'un des trois barèmes connus,
+//     sinon `undefined` — jamais un défaut d'écran (mémoire
+//     ci-autoquote-conso-only : le modèle d'économie reste celui d'avant) ;
+//   • conso : la consommation RÉELLE saisie si elle existe, sinon les
+//     factures au barème (national par défaut, COUV-HOR — jamais ÷ 1,20).
+export function parametresBalayageCI({
+  factures, mode, categorie, distributeurDeclare, consoAnnuelleReelle,
+} = {}) {
+  const dayUsagePct = mode === 'commercial' ? commercialDayShare(categorie)
+    : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
+      : DAY_USAGE_DEFAULTS['Résidentielle']
+  const utility = ['onee', 'lydec', 'redal'].includes(distributeurDeclare)
+    ? distributeurDeclare : undefined
+  const consoAnnuelleKwh = Number(consoAnnuelleReelle) > 0
+    ? Number(consoAnnuelleReelle)
+    : consoAnnuelleDepuisFactures(factures, utility || 'onee')
+  return { factures, dayUsagePct, consoAnnuelleKwh, utility }
+}
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
 // d'autoFillLines/autoFillPompage. Défaut historique 'acier' quand non renseigné.
@@ -127,7 +167,7 @@ export function noticePalierKwc(kwcSaisi) {
  * @param {object}   lead         Lead complet (facture_hiver, pompe_*, etc.)
  * @param {object[]} produits     Catalogue stock
  * @param {string}   discountStr  Remise globale en %
- * @param {function} dispatch     Redux dispatch
+ * @param {function} dispatch     (ignoré depuis QJR543 — création atomique via ventesApi)
  * @param {number}   pumpHours    Heures de pompage/jour (réglage entreprise
  *                                agricole_pump_hours) ; défaut historique sinon
  * @param {function} onEtude      Rappel facultatif recevant les chiffres clés de
@@ -149,7 +189,7 @@ export function noticePalierKwc(kwcSaisi) {
  *                                canonique du simulateur (comportement
  *                                historique).
  */
-export async function createAutoQuote({ lead, produits, discountStr, dispatch,
+export async function createAutoQuote({ lead, produits, discountStr,
                                         quoteLogic, pumpHours, onEtude,
                                         targetKwc, marques, ordreLignes }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
@@ -185,8 +225,20 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       }
     }
     extra.mode_installation = 'agricole'
-    extra.etude_params = buildEtudePompage(
-      pompageSelection(produits, opts), { ...opts, profondeur: '' })
+    // QJR543 — l'objet BRUT de `buildEtudePompage` porte des clés hors
+    // schéma (pompe_nom) : il passe par LA projection du générateur (QJR542),
+    // qui ne laisse sortir que des clés ECRAN typées.
+    extra.etude_params = projeterEtudeMarche('agricole', {
+      choix: {},
+      entrees: {},
+      pompage: buildEtudePompage(
+        pompageSelection(produits, opts), { ...opts, profondeur: '' }),
+      saisiePompage: {
+        hmt: opts.hmt, debit: opts.debit, heures: opts.heures,
+        typePompe: opts.typePompe, alim: opts.alim,
+        profondeur: '', distance: opts.distance,
+      },
+    })
   } else {
     const hiver = parseFloat(lead.facture_hiver) || 0
     // QX19 — priorité à la taille souhaitée par le lead (kWc) quand elle est
@@ -207,7 +259,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     const tailleKwc = explicitKwc > 0 ? arrondirAuPasKwc(explicitKwc) : 0
     let panels = 0
     if (tailleKwc > 0) {
-      panels = panneauxPourKwc(tailleKwc, 710)
+      panels = panneauxPourKwc(tailleKwc, PANEL_W_DEFAUT)
     } else if (mode !== 'residentiel') {
       // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new
       // sizing tool ») — LE BALAYAGE LOCAL PAR PALIERS N'EST PLUS LA SOURCE DE
@@ -232,9 +284,6 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       if (besoinKwc > 0) {
         const eteVal = (lead.ete_differente && lead.facture_ete)
           ? parseFloat(lead.facture_ete) : hiver
-        const dayUsagePct = mode === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
-          : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
-            : DAY_USAGE_DEFAULTS['Résidentielle']
         // FINDING 25/08 — la CONSOMMATION RÉELLE entre dans le balayage. Sans
         // elle, `computeROI` ne plafonne pas l'économie à ce que le client
         // peut consommer : elle reste linéaire en kWc, chaque pas marginal se
@@ -243,12 +292,15 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         // MÊME dérivation que `etude_params.conso_annuelle` posée plus bas —
         // désormais partagée (`consoAnnuelleDepuisFactures`), donc impossible
         // à faire diverger entre le dimensionnement et l'étude envoyée.
-        const facturesBalayage = estimerMois(hiver, eteVal)
-        const distributeurBalayage = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
-          ? lead.distributeur : undefined
+        // QJR575 — MÊMES paramètres que l'Édition complète. Aucune catégorie
+        // commerciale n'est lue du lead (NE PAS FAIRE) : 80 % par défaut.
+        const balayage = parametresBalayageCI({
+          factures: estimerMois(hiver, eteVal), mode,
+          distributeurDeclare: lead.distributeur,
+        })
         const opt = optimalKwcByPayback({
-          produits, factures: facturesBalayage, dayUsagePct,
-          panelW: 710, structureType: structFromLead(lead),
+          produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
+          panelW: PANEL_W_DEFAUT, structureType: structFromLead(lead),
           // STKCAT10 — le balayage chiffre chaque palier avec LA structure
           // réellement retenue (produit épinglé s'il existe), jamais une autre.
           structureProduitId: structProduitFromLead(lead),
@@ -258,9 +310,8 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
           // barème national (Q7), jamais factures ÷ 1,20 MAD/kWh ; le MODÈLE
           // d'économie (`utility`) reste celui d'avant — décision fondateur :
           // 0 devis C&I sur 61 ne bouge (mesuré sur la prod le 29/09).
-          consoAnnuelleKwh: consoAnnuelleDepuisFactures(
-            facturesBalayage, distributeurBalayage || 'onee'),
-          utility: distributeurBalayage,
+          consoAnnuelleKwh: balayage.consoAnnuelleKwh,
+          utility: balayage.utility,
           productible: productibleForCity(lead.ville || '', quoteLogic?.productible),
         })
         // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux`
@@ -278,7 +329,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     // plus bas) ; pour les autres marchés (aucun moteur serveur pour eux),
     // c'est un vrai refus explicite plus bas — jamais un devis vide créé en
     // silence.
-    const kwpAuto = panels > 0 ? panels * 710 / 1000 : 0
+    const kwpAuto = panels > 0 ? kwcPourPanneaux(panels, PANEL_W_DEFAUT) : 0
 
     // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
     // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -378,7 +429,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     }
 
     rows = autoFillLines(produits, {
-      kwp: kwpAuto, panelW: 710, nbPanneaux: panels,
+      kwp: kwpAuto, panelW: PANEL_W_DEFAUT, nbPanneaux: panels,
       // QX19 — respecte la préférence de structure du lead (défaut acier).
       structureType: structFromLead(lead),
       // STKCAT10 — le PRODUIT épinglé prime dessus quand il existe.
@@ -418,9 +469,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
     const _bat = lead.batterie_souhaitee
     extra.etude_params = {
       ...(extra.etude_params || {}),
-      scenario: _bat === 'sans' ? 'Sans batterie'
-        : _bat === 'avec' ? 'Avec batterie'
-          : 'Les deux (Sans + Avec)',
+      scenario: BATTERIE_LEAD_VERS_SCENARIO[_bat] ?? SCENARIO_LES_DEUX,
     }
     // U3 — le bloc PACT10/QF-REAL (12 factures RÉELLES du client semées dans
     // `etude_params`) vivait ICI ; il a MIGRÉ dans la branche résidentielle
@@ -452,41 +501,39 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
         : null
       // QX19 — préserve le scénario batterie semé du lead (défaut industriel :
       // sans batterie, réseau) même quand l'étude industrielle est calculée.
-      extra.etude_params = {
-        ...(_etudeInd || {}),
-        scenario: lead.batterie_souhaitee ? _scenarioPrev : 'Sans batterie',
-      }
+      // QJR543 — l'étude BRUTE (kwc, prix_kwc, economies_annuelles… hors
+      // schéma) passe par LA projection du générateur (QJR542) ; le scénario
+      // part AVEC la création : sans lui, réseau + hybride + batterie
+      // totaliseraient la somme des deux paniers.
+      extra.etude_params = projeterEtudeMarche(mode, {
+        etude: _etudeInd,
+        choix: { scenario: lead.batterie_souhaitee ? _scenarioPrev : SCENARIO_SANS },
+        entrees: (consoConnue) => (consoConnue != null ? { conso_annuelle: consoConnue } : {}),
+        partDiurne: _dayUsage,
+      })
       // Surface les chiffres clés (taux d'autoconsommation, économies, payback)
       // AVANT enregistrement, pour que l'appelant puisse les afficher.
-      if (extra.etude_params && typeof onEtude === 'function') {
+      if (typeof onEtude === 'function') {
         onEtude({
-          taux_autoconso: extra.etude_params.taux_autoconso,
-          economies_annuelles: extra.etude_params.economies_annuelles,
-          payback: extra.etude_params.payback,
+          taux_autoconso: _etudeInd?.taux_autoconso,
+          economies_annuelles: _etudeInd?.economies_annuelles,
+          payback: _etudeInd?.payback,
         })
       }
     }
   }
-  const devis = await dispatch(createDevis({
-    lead: lead.id,
-    statut: 'brouillon',
-    taux_tva: '20.00',
-    remise_globale: discountStr || '0',
-    note: null,
-    ...extra,
-  })).unwrap()
+  // QJR543 — UN appel atomique : devis + lignes + étude + scénario en un
+  // seul commit serveur. Un échec ne laisse RIEN (plus de brouillon partiel
+  // que « Ouvrir l'édition complète » doublait d'un second devis), et
+  // `etude_params` est écrit par la transaction de /atomic (en POST /devis/
+  // il était en lecture seule et ignoré : m3_jour, taux_autoconso, payback
+  // et le scénario n'atteignaient jamais le devis).
   // PVORD (fondateur 19/08/2026) — ordre PAR DÉFAUT des lignes = l'ordre
   // canonique du simulateur (celui produit par `rows`, éventuellement déjà
-  // réordonné selon `ParametresGammes.ordre_lignes` — voir `autoFillLines`).
-  // Les créations restent concurrentes (`Promise.all`) : sans `ordre`
-  // explicite, le tri en base retombait sur `id` = ordre d'ARRIVÉE réseau
-  // (une course), pas l'ordre voulu. `idx` est calculé de façon SYNCHRONE sur
-  // le tableau filtré avant tout dispatch, donc déterministe malgré la
-  // concurrence des requêtes.
-  await Promise.all(rows
+  // réordonné selon `ParametresGammes.ordre_lignes`) : `ordre: idx` explicite.
+  const lignes = rows
     .filter(r => r.produit && parseFloat(r.quantite) > 0)
-    .map((r, idx) => dispatch(addLigneDevis({
-      devis: devis.id,
+    .map((r, idx) => ({
       produit: parseInt(r.produit),
       designation: r.designation,
       quantite: String(r.quantite),
@@ -494,6 +541,15 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
       remise: '0',
       taux_tva: String(r.taux_tva ?? 20),
       ordre: idx,
-    })).unwrap()))
-  return devis.id
+    }))
+  const { data } = await ventesApi.createDevisAtomic({
+    lead: lead.id,
+    statut: 'brouillon',
+    taux_tva: '20.00',
+    remise_globale: discountStr || '0',
+    note: null,
+    ...extra,
+    lignes,
+  })
+  return data.id
 }

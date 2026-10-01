@@ -443,3 +443,76 @@ describe('DevisOffresTailles — « Appliquer » dit ce qu\'il fait', () => {
     })
   })
 })
+
+// QJR548 — appliquer « Recommandé » RECOMPOSE le devis côté serveur : l'écran
+// doit le relire (onDevisRecompose), après une confirmation qui dit que ses
+// modifications non enregistrées seront remplacées ; et le bouton dit AVANT le
+// clic si le geste est permis (verdict servi par le serveur, QJR516).
+describe('QJR548 — « Appliquer au devis » recharge l\'écran, et dit avant le clic s\'il est permis', () => {
+  async function plusUnPanneau(user) {
+    const carte = screen.getByTestId('offre-taille-recommande')
+    await user.click(within(within(carte).getByTestId('offre-taille-recommande-stepper-panneaux'))
+      .getByRole('button', { name: 'Panneaux : plus' }))
+    return carte
+  }
+
+  it('confirmation puis Appliquer → onDevisRecompose appelé une fois', async () => {
+    const user = userEvent.setup()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.patchOffreTailleConfig.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.appliquerOffreTailleAuDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    const onDevisRecompose = vi.fn()
+    renderSection({ onDevisRecompose, modifiable: true })
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+    const carte = await plusUnPanneau(user)
+    await user.click(within(carte).getByTestId('offre-taille-recommande-appliquer'))
+    await waitFor(() => expect(onDevisRecompose).toHaveBeenCalledTimes(1))
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/modifications non enregistrées/)
+  })
+
+  it('confirmation refusée → aucun appel, aucun rechargement', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    const onDevisRecompose = vi.fn()
+    renderSection({ onDevisRecompose })
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+    const carte = await plusUnPanneau(user)
+    await user.click(within(carte).getByTestId('offre-taille-recommande-appliquer'))
+    expect(ventesApi.patchOffreTailleConfig).not.toHaveBeenCalled()
+    expect(ventesApi.appliquerOffreTailleAuDevis).not.toHaveBeenCalled()
+    expect(onDevisRecompose).not.toHaveBeenCalled()
+  })
+
+  it('400 à la recomposition → onDevisRecompose jamais appelé', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.patchOffreTailleConfig.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.regenererOffreTaille.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    ventesApi.appliquerOffreTailleAuDevis.mockRejectedValue({
+      response: { status: 400, data: { detail: ['Recomposition impossible.'] } },
+    })
+    const onDevisRecompose = vi.fn()
+    renderSection({ onDevisRecompose })
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+    const carte = await plusUnPanneau(user)
+    await user.click(within(carte).getByTestId('offre-taille-recommande-appliquer'))
+    await waitFor(() => expect(within(carte).getByText(/Recomposition impossible/)).toBeTruthy())
+    expect(onDevisRecompose).not.toHaveBeenCalled()
+  })
+
+  it('verdict serveur non modifiable → bouton désactivé + message serveur, même après une retouche', async () => {
+    const user = userEvent.setup()
+    ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
+    renderSection({ modifiable: false, raisonNonModifiable: 'Devis accepté : révisez-le' })
+    await waitFor(() => screen.getByTestId('offres-tailles-cartes'))
+    const carte = await plusUnPanneau(user)
+    const bouton = within(carte).getByTestId('offre-taille-recommande-appliquer')
+    expect(bouton.disabled).toBe(true)
+    expect(within(carte).getByTestId('offre-taille-recommande-refus').textContent)
+      .toMatch(/Devis accepté : révisez-le/)
+  })
+})

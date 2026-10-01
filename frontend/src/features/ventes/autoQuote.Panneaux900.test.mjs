@@ -51,7 +51,7 @@ test('autoQuote.js : le balayage local par paliers est RÉSERVÉ aux marchés sa
   const bloc = SRC.slice(idx, idx + 4800)
   // La branche « taille EXPLICITE » (cible tapée / taille souhaitée du lead)
   // reste la PREMIÈRE et vaut pour TOUS les marchés : elle est souveraine.
-  assert.match(bloc, /if \(tailleKwc > 0\) \{\s*\n\s*panels = panneauxPourKwc\(tailleKwc, 710\)/,
+  assert.match(bloc, /if \(tailleKwc > 0\) \{\s*\n\s*panels = panneauxPourKwc\(tailleKwc, PANEL_W_DEFAUT\)/,
     'une taille explicite doit rester souveraine, avant toute autre branche')
   // Le balayage local ne s'exécute plus qu'en dehors du résidentiel.
   assert.match(bloc, /\} else if \(mode !== 'residentiel'\) \{/,
@@ -66,7 +66,8 @@ test('autoQuote.js : le balayage local par paliers est RÉSERVÉ aux marchés sa
 test("autoQuote.js : le devis auto RÉSIDENTIEL sans taille explicite n'envoie AUCUN target_kwc calculé à l'écran", () => {
   // Preuve structurelle : `kwpAuto` ne peut venir que de `panels`, et `panels`
   // n'est alimenté en résidentiel que par la branche « taille explicite ».
-  assert.match(SRC, /const kwpAuto = panels > 0 \? panels \* 710 \/ 1000 : 0/,
+  // QJR576 — LA conversion partagée (kwcPourPanneaux = n × W / 1000).
+  assert.match(SRC, /const kwpAuto = panels > 0 \? kwcPourPanneaux\(panels, PANEL_W_DEFAUT\) : 0/,
     'kwpAuto doit rester dérivé de panels uniquement')
   const idx = SRC.indexOf('reponse = await ventesApi.creerDevisAuto({')
   assert.ok(idx > -1, "l'appel creerDevisAuto est introuvable")

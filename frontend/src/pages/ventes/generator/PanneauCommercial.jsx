@@ -40,6 +40,12 @@ import CarteFacturesElectriques from './CarteFacturesElectriques'
 // commercial.js, module supprimé faute de consommateur de production).
 const CLE = 'commercial'
 
+// QJR575 — catégorie « Non précisée » : la valeur par défaut de l'écran (Radix
+// refuse value=''), part diurne 80 % — la MÊME que le « Devis automatique »,
+// qui ne connaît aucune catégorie — et persistée `null` (jamais « hôtel » par
+// défaut : rouvrir puis enregistrer réécrivait taux / économies / payback).
+export const CATEGORIE_NON_PRECISEE = 'non_precisee'
+
 export default function PanneauCommercial({
   marche,
   // ── Factures mensuelles ──
@@ -165,6 +171,7 @@ export default function PanneauCommercial({
             <Select value={categorieCommerciale} onValueChange={setCategorieCommerciale}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
+                <SelectItem value={CATEGORIE_NON_PRECISEE}>Non précisée</SelectItem>
                 {COMMERCIAL_CATEGORIES.map(c => (
                   <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
                 ))}

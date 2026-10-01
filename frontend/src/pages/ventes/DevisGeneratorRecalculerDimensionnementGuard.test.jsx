@@ -39,13 +39,11 @@ vi.mock('../../api/stockApi', () => ({
 vi.mock('../../api/parametresApi', () => ({
   default: { getProfile: vi.fn(() => Promise.resolve({ data: {} })) },
 }))
-// `composerDevis` DÉLIBÉRÉMENT absent de ce mock (même patron que
-// DevisGeneratorMarquesPinning.test.jsx) : la branche résidentielle de
-// `handleAutoFill` l'appelle sans le trouver (TypeError), retombe SANS
-// EXCEPTION sur `composeLocalement()` (repli local, synchrone) — comme un
-// vrai réseau indisponible. Ce choix rend le test déterministe (aucune
-// promesse réseau à attendre) tout en exerçant EXACTEMENT le chemin de code
-// que F1/F2 concernent (la fenêtre de déverrouillage autour de cet appel).
+// QJR577 (D-QJR5-9) — `composerDevis` est désormais MOCKÉ (plus de repli
+// local en résidentiel : un dry-run absent rendrait une erreur, sans
+// composition). Le mock compose sur le catalogue du test, ce qui exerce le
+// même chemin que F1/F2 concernent (la fenêtre de déverrouillage autour de
+// cet appel).
 // U3-MOTEUR (fondateur 29/08/2026, « ALL sizing goes through the new sizing
 // tool ») — EN RÉSIDENTIEL, L'ÉCRAN NE DIMENSIONNE PLUS LUI-MÊME : le nombre
 // de panneaux vient de la recommandation du moteur horaire SERVEUR (dry-run
@@ -60,6 +58,29 @@ vi.mock('../../api/ventesApi', () => ({
     getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     getPrixApplicable: vi.fn(() => Promise.resolve({ data: { source: 'standard' } })),
     getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
+    // QJR577 (D-QJR5-9) — le résidentiel n'a PLUS de repli local : la
+    // composition vient du dry-run serveur, simulé ici sur le catalogue
+    // ci-dessous (mêmes produits, prix HT = prix catalogue).
+    composerDevis: vi.fn((body) => {
+      const n = Math.max(1, Math.round((Number(body?.kwc) || 0) * 1000 / 710))
+      const l = (produit, designation, quantite, ht) => ({
+        produit, designation, quantite, prix_unitaire_ht: ht, variante: '',
+      })
+      return Promise.resolve({
+        data: {
+          panel_watt: 710,
+          lignes: [
+            l(1, 'Onduleur réseau Huawei 10kW Triphasé', 1, 16666.67),
+            l(2, 'Panneau Canadien Solar 710W', n, 1166.67),
+            l(3, 'Structures acier', n, 416.67),
+            l(5, 'Accessoires', 1, 1666.67),
+            l(6, 'Tableau De Protection AC/DC', 1, 1666.67),
+            l(7, 'Installation', 1, 4000),
+            l(8, 'Transport', 1, 833.33),
+          ],
+        },
+      })
+    }),
     postEtudeHorairePreview: vi.fn((body) => {
       const n = Number(body?.facture_hiver) >= 2500 ? 21 : 9
       return Promise.resolve({
@@ -231,5 +252,81 @@ describe('F1 — le garde-fou nbPanneauxTouched est restauré à sa valeur EXACT
       expect(appels.some(([corps]) => Number(corps?.facture_hiver) === 3000)).toBe(true)
     }, { timeout: 5000 })
     expect(nbPanneauxField().value).toBe(apresClic)
+  })
+})
+
+// QJR570 (D-QJR5-4) — recomposer FUSIONNE : un prix tapé survit à
+// « Recalculer » sans aucune question ; une quantité FIGÉE déclenche UNE
+// confirmation, et « Annuler » ne touche à rien.
+const ligneDe = (designation) => screen.getByDisplayValue(designation).closest('tr')
+const prixDe = (designation) => ligneDe(designation).querySelector('td[data-label="Prix unit. TTC"] input')
+const qteDe = (designation) => ligneDe(designation).querySelector('td[data-label="Qté"] input')
+const instantaneLignes = () => [...document.querySelectorAll('tr[data-line-key]')].map(tr => [
+  tr.querySelector('td[data-label="Qté"] input')?.value,
+  tr.querySelector('td[data-label="Prix unit. TTC"] input')?.value,
+])
+
+describe('QJR570 — Recalculer fusionne au lieu de remplacer', () => {
+  it('sans quantité figée : aucune confirmation, le prix tapé à la main est gardé', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(hiverField(), { target: { value: '1200' } })
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
+    fireEvent.change(prixDe('Installation'), { target: { value: '5555' } })
+    await waitFor(() => expect(prixDe('Installation').value).toBe('5555'))
+
+    await cliquerRecalculJusquaComposition()
+    expect(prixDe('Installation').value).toBe('5555')
+    expect(confirmSpy).not.toHaveBeenCalled()
+    confirmSpy.mockRestore()
+  })
+
+  it('quantité figée + Annuler : une confirmation, et les lignes restent identiques', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(hiverField(), { target: { value: '1200' } })
+    await waitFor(() => expect(parseFloat(nbPanneauxField().value) || 0).toBeGreaterThan(0),
+      { timeout: 5000 })
+    fireEvent.change(qteDe('Socles'), { target: { value: '24' } })
+    await waitFor(() => expect(qteDe('Socles').value).toBe('24'))
+    const avant = instantaneLignes()
+
+    await waitFor(() => {
+      fireEvent.click(recalcButton())
+      expect(confirmSpy).toHaveBeenCalled()
+    }, { timeout: 10000 })
+    expect(String(confirmSpy.mock.calls[0][0])).toMatch(/Socles : 24/)
+    // Annuler : rien n'est dispatché, aucune composition ne part.
+    expect(instantaneLignes()).toEqual(avant)
+    expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
+    confirmSpy.mockRestore()
+  })
+})
+
+// QJR577 (D-QJR5-9) — serveur injoignable : AUCUNE composition de secours,
+// lignes inchangées, erreur dite et « Réessayer » qui rejoue le dry-run.
+describe('QJR577 — dry-run résidentiel en échec : erreur + Réessayer, lignes inchangées', () => {
+  it('composerDevis rejette → lignes identiques, bandeau d\'erreur, Réessayer rappelle le serveur', async () => {
+    ventesApi.composerDevis.mockRejectedValueOnce(new Error('Network Error'))
+    renderGenerator()
+    await screen.findByDisplayValue('Installation')
+    fireEvent.change(nbPanneauxField(), { target: { value: '10' } })
+    await waitFor(() => expect(nbPanneauxField().value).toBe('10'))
+    const avant = instantaneLignes()
+
+    fireEvent.click(screen.getByRole('button', { name: /Auto-remplir depuis le stock/i }))
+    const bandeau = await screen.findByTestId('composition-erreur')
+    expect(bandeau.textContent).toMatch(/n'a pas pu composer ce devis/)
+    expect(instantaneLignes()).toEqual(avant)
+    expect(screen.queryByDisplayValue(/Onduleur réseau Huawei/)).toBeNull()
+    expect(ventesApi.composerDevis).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByTestId('composition-reessayer'))
+    await waitFor(() => expect(ventesApi.composerDevis).toHaveBeenCalledTimes(2))
+    expect(await screen.findByDisplayValue(/Onduleur réseau Huawei/)).toBeTruthy()
+    await waitFor(() => expect(screen.queryByTestId('composition-erreur')).toBeNull())
   })
 })

@@ -5,6 +5,10 @@
 // The premium PDF engine computes its own figures server-side — never fed here.
 
 import { formatMAD } from '../../lib/format.js'
+// QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
+// `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
+// remise.js n'importe rien : aucun cycle).
+import { ligneCompteDansTotaux } from './remise.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -1416,9 +1420,23 @@ export function plafondPanneaux(valeur) {
 
 // Nombre de panneaux pour une taille cible (kWc) à la puissance panneau donnée.
 // Utilisé pour préremplir depuis lead.taille_souhaitee_kwc. Au moins 1 panneau.
-export function panneauxPourKwc(kwc, panelW = 710) {
+// QJR576 — LE wattage panneau par défaut (référence du simulateur), une
+// seule constante au lieu de « 710 » recopié à chaque site.
+export const PANEL_W_DEFAUT = 710
+
+// QJR576 — inverse EXACT de `panneauxPourKwc` : kWc = n × W / 1000 (aucun
+// arrondi ici — l'affichage arrondit, jamais la conversion). Compte ou
+// wattage illisible → 0.
+export function kwcPourPanneaux(nbPanneaux, panelW = PANEL_W_DEFAUT) {
+  const n = parseFloat(nbPanneaux) || 0
+  const w = parseFloat(panelW) || 0
+  if (!(n > 0) || !(w > 0)) return 0
+  return n * w / 1000
+}
+
+export function panneauxPourKwc(kwc, panelW = PANEL_W_DEFAUT) {
   const k = parseFloat(kwc) || 0
-  const w = parseFloat(panelW) || 710
+  const w = parseFloat(panelW) || PANEL_W_DEFAUT
   if (!(k > 0) || !(w > 0)) return 0
   return Math.max(1, plafondPanneaux(k * 1000 / w))
 }
@@ -1567,6 +1585,18 @@ export function comptePanneauxOption(lines, option) {
   }, 0)
 }
 
+// QJR568 — le kWc réellement FACTURÉ par les lignes (branche SANS : commun +
+// 'sans'), celui que le PDF dérive des lignes (builder.py). Le champ « nb
+// panneaux » reste la CIBLE du dimensionnement (dry-run) ; ce kWc-ci alimente
+// prix/kWc, prix cible, études C&I et l'aperçu horaire. `repli` (la cible)
+// quand aucune ligne panneau ou aucun wattage lisible — jamais un 0 inventé.
+export function kwcFactureDesLignes(lines, panelW, repli) {
+  const n = comptePanneauxOption(lines, 'sans')
+  const w = parseFloat(panelW) || 0
+  if (!(n > 0) || !(w > 0)) return repli
+  return n * w / 1000
+}
+
 // ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────
 // Miroir exact de `apps/ventes/utils/options.py` `_panier_sert_huawei` /
 // `retirer_accessoires_huawei` (QJR200/QF9), déclarée backend-only jusqu'ici :
@@ -1698,6 +1728,11 @@ export function alternativeDeclareeServable(lines, scenario) {
 // `options.scenario` (facultatif) — le scénario DÉCLARÉ par l'écran. Absent :
 // comportement historique inchangé (QF9 réservée aux lignes variantées).
 export function optionTotalsTTC(lines, discountPct, { scenario } = {}) {
+  // QJR567 — MÊME population que le noyau (`ligne_compte_dans_totaux`) : une
+  // ligne optionnelle (add-on non activé) et les sections / notes ne
+  // comptent JAMAIS — sans ce filtre le rail, le prix/kWc, la marge et
+  // l'étude C&I persistée comptaient un add-on que le document exclut.
+  lines = (lines || []).filter(ligneCompteDansTotaux)
   // F14 (26/08) — une ligne DÉCLARÉE ('sans'/'avec') tranche SEULE, plus de
   // second filtre mot-clé sur elle (voir `appartientAuPanierSans/Avec` :
   // miroir exact de builder.py `_repartir_options` et de
@@ -1784,6 +1819,96 @@ function _roleVariante(l) {
   if (isBattery(d) || isHybridInverter(d) || isOffgridInverter(d)) return 'avec'
   if (isReseauInverter(d)) return 'sans'
   return ''
+}
+
+// ── QJR570 (D-QJR5-4) — RECOMPOSER FUSIONNE, ne remplace plus ───────────────
+// Auto-remplir, « Appliquer cette taille » et « Recalculer » remplaçaient les
+// lignes d'un bloc : un prix tapé, une section, une note, une option ou un
+// produit ajouté à la main disparaissaient. `fusionnerRecomposition` apparie
+// les anciennes lignes aux lignes générées PAR ID PRODUIT et :
+//   • reporte prix_unit_ttc + prixManuel quand le prix avait été tapé ;
+//   • prend la `variante` de la ligne générée (le découpage d'options est
+//     celui de la nouvelle composition) ;
+//   • réinsère à leur position relative les anciennes lignes absentes de la
+//     composition qui portent une saisie humaine : sections, notes,
+//     optionnelles, prix ou quantité figés, produits ajoutés à la main
+//     (quantité > 0, pas issus d'une composition précédente — marqueur
+//     écran `compose`) ; une ligne composée HIER et absente aujourd'hui, un
+//     placeholder sans produit ou une ligne à quantité nulle ne survivent pas ;
+//   • une quantité FIGÉE (`quantiteManuelle`) qui diffère de la quantité
+//     recalculée est GARDÉE et remontée dans `conflits` (jamais en silence :
+//     l'appelant le dit au vendeur, qui a confirmé avant la recomposition).
+// Toute ligne générée porte `compose: true` (marqueur d'écran, jamais envoyé
+// au serveur). Fonction PURE.
+const _estLigneProduit = (l) => (l?.typeLigne ?? l?.type_ligne ?? 'produit') === 'produit'
+
+export function lignesQuantiteFigee(lignes) {
+  return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
+}
+
+function _ancienneLigneAGarder(l) {
+  if (!_estLigneProduit(l)) return true            // section / note
+  if (l.optionnelle || l.prixManuel || l.quantiteManuelle) return true
+  if (l.compose) return false                      // composition précédente
+  return Boolean(l.produit) && (parseFloat(l.quantite) || 0) > 0
+}
+
+export function fusionnerRecomposition(anciennes, generees) {
+  const olds = Array.isArray(anciennes) ? anciennes : []
+  const gens = Array.isArray(generees) ? generees : []
+  // File d'anciennes lignes produit par id (appariement dans l'ordre).
+  const files = new Map()
+  olds.forEach((l, i) => {
+    if (!_estLigneProduit(l) || !l.produit) return
+    const k = String(l.produit)
+    if (!files.has(k)) files.set(k, [])
+    files.get(k).push(i)
+  })
+  const appariee = new Map() // index ancienne → index générée
+  const conflits = []
+  const fusionnees = gens.map((g, gi) => {
+    const file = g?.produit ? files.get(String(g.produit)) : null
+    const oi = file && file.length ? file.shift() : null
+    const base = { ...g, compose: true }
+    if (oi == null) return base
+    appariee.set(oi, gi)
+    const o = olds[oi]
+    if (o.prixManuel) {
+      base.prix_unit_ttc = o.prix_unit_ttc
+      base.prixManuel = true
+    }
+    if (o.optionnelle) base.optionnelle = true
+    if (o.quantiteManuelle) {
+      base.quantiteManuelle = true
+      if ((parseFloat(o.quantite) || 0) !== (parseFloat(g.quantite) || 0)) {
+        conflits.push({
+          designation: o.designation || g.designation || '',
+          figee: String(o.quantite),
+          recalculee: String(g.quantite),
+        })
+      }
+      base.quantite = o.quantite
+    }
+    return base
+  })
+  // Réinsertion des anciennes lignes gardées à leur position RELATIVE.
+  const apres = gens.map(() => [])
+  const avant = gens.map(() => [])
+  const fin = []
+  olds.forEach((l, i) => {
+    if (appariee.has(i) || !_ancienneLigneAGarder(l)) return
+    for (let j = i - 1; j >= 0; j--) {
+      if (appariee.has(j)) { apres[appariee.get(j)].push(l); return }
+    }
+    for (let j = i + 1; j < olds.length; j++) {
+      if (appariee.has(j)) { avant[appariee.get(j)].push(l); return }
+    }
+    fin.push(l)
+  })
+  const lignes = []
+  fusionnees.forEach((l, gi) => { lignes.push(...avant[gi], l, ...apres[gi]) })
+  lignes.push(...fin)
+  return { lignes, conflits }
 }
 
 export function fusionnerVariantes(lignesSans, lignesAvec) {
@@ -3465,7 +3590,8 @@ export function computeBuyCost(lines, produits) {
   const byId = new Map(produits.map(p => [String(p.id), p]))
   let cost = 0
   let any = false
-  for (const l of lines) {
+  // QJR567 — même population que les totaux : ni optionnelle, ni section/note.
+  for (const l of (lines || []).filter(ligneCompteDansTotaux)) {
     const p = byId.get(String(l.produit))
     const achat = p ? (parseFloat(p.prix_achat) || 0) : 0
     if (achat > 0) {

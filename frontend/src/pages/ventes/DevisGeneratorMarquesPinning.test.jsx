@@ -41,6 +41,20 @@ vi.mock('../../api/ventesApi', () => ({
     getPrixApplicable: vi.fn(() => Promise.resolve({
       data: { source: 'standard' },
     })),
+    // QJR577 (D-QJR5-9) — en résidentiel la composition (marques épinglées
+    // comprises) est celle du dry-run SERVEUR : plus de repli local. Le mock
+    // rend le verdict que le serveur rend pour ce réglage (Jinko épinglé,
+    // introuvable) ; le test 2 le surcharge (réglage indisponible).
+    composerDevis: vi.fn(() => Promise.resolve({
+      data: {
+        panel_watt: 710,
+        marques_manquantes: [{ marque: 'Jinko', role: 'panneau' }],
+        lignes: [
+          { produit: 1, designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: 1, prix_unitaire_ht: 16666.67 },
+          { produit: 7, designation: 'Installation', quantite: 1, prix_unitaire_ht: 4000 },
+        ],
+      },
+    })),
     // PVMRQ — réglage « Gammes & marques » : Jinko épinglé pour les panneaux,
     // absent du catalogue de test ci-dessous (voir PRODUITS).
     getParametresGammes: vi.fn(() => Promise.resolve({
@@ -148,6 +162,16 @@ describe('PVMRQ — marque de panneau épinglée introuvable au stock', () => {
 
   it('sans réglage « Gammes & marques » accessible (403/erreur) : comportement historique, aucun bandeau', async () => {
     ventesApi.getParametresGammes.mockRejectedValueOnce({ response: { status: 403 } })
+    ventesApi.composerDevis.mockResolvedValueOnce({
+      data: {
+        panel_watt: 710,
+        marques_manquantes: [],
+        lignes: [
+          { produit: 1, designation: 'Onduleur réseau Huawei 10kW Triphasé', quantite: 1, prix_unitaire_ht: 16666.67 },
+          { produit: 2, designation: 'Panneau Canadien Solar 710W', quantite: 14, prix_unitaire_ht: 1166.67 },
+        ],
+      },
+    })
     renderGenerator()
     await screen.findByDisplayValue('Installation')
     await waitFor(() => expect(ventesApi.getParametresGammes).toHaveBeenCalled())
