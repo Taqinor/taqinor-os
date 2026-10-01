@@ -23,29 +23,33 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { DEFAULT_MONTHLY_BILLS } from '../../features/ventes/solar.js'
+import { DEFAULT_MONTHLY_BILLS, consoAnnuelleDepuisFactures } from '../../features/ventes/solar.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DG = readFileSync(join(HERE, 'DevisGenerator.jsx'), 'utf8')
 
-test('QJR34 — consoKwhDerivee ne retombe sur avgBill que si facturesSaisies est vrai', () => {
+test('QJR34/QJR665 — consoKwhDerivee ne retombe sur les factures que si facturesSaisies est vrai', () => {
   const idx = DG.indexOf('const consoKwhDerivee =')
   assert.ok(idx > -1, 'consoKwhDerivee introuvable')
-  const bloc = DG.slice(idx, idx + 320)
+  const bloc = DG.slice(idx, idx + 420)
   // QJR582 — la facture réelle saisie (realBillSaisi) s'intercale AVANT la
   // dérivation des factures ; celle-ci exige toujours facturesSaisies.
+  // QJR665 — la dérivation des factures est celle du balayage (barème
+  // national, consoMensuelleEtudeCI), plus jamais moyenne ÷ prix kWh.
   assert.match(bloc,
-    /const consoKwhDerivee = \(parseFloat\(consoMensuelle\) \|\| 0\)\s*\n\s*\|\| \(realBillSaisi && consoAnnuelleReelle > 0 \? Math\.round\(consoAnnuelleReelle \/ 12\) : 0\)\s*\n\s*\|\| \(facturesSaisies && avgBill > 0 \? Math\.round\(avgBill \/ quoteLogic\.kwhPrice\) : 0\)/,
-    'consoKwhDerivee doit exiger facturesSaisies avant de retomber sur avgBill')
+    /const consoKwhDerivee = \(parseFloat\(consoMensuelle\) \|\| 0\)\s*\n\s*\|\| \(realBillSaisi && consoAnnuelleReelle > 0 \? Math\.round\(consoAnnuelleReelle \/ 12\) : 0\)\s*\n\s*\|\| \(facturesSaisies \? consoMensuelleEtudeCI\(\{\s*\n\s*factures: monthly,/,
+    'consoKwhDerivee doit exiger facturesSaisies avant de retomber sur les factures')
+  assert.doesNotMatch(DG, /avgBill \/ quoteLogic\.kwhPrice/)
 })
 
-test('QJR34 — rejoué avec les VRAIES constantes solar.js : 0 sur les factures d\'exemple, dérivé seulement quand une vraie facture/consommation existe', () => {
-  // Reproduit EXACTEMENT la formule verrouillée par le test précédent.
-  const kwhPrice = 1.4
+test('QJR34 — rejoué avec les VRAIES fonctions solar.js : 0 sur les factures d\'exemple, dérivé seulement quand une vraie facture/consommation existe', () => {
+  // Reproduit la formule verrouillée par le test précédent ; la dérivation
+  // des factures est le barème national (consoAnnuelleDepuisFactures, celle
+  // de parametresBalayageCI sans distributeur déclaré) ÷ 12.
   const consoKwhDerivee = (consoMensuelle, monthly, facturesSaisies) => {
-    const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+    const an = consoAnnuelleDepuisFactures(monthly, 'onee')
     return (parseFloat(consoMensuelle) || 0)
-      || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / kwhPrice) : 0)
+      || (facturesSaisies && an > 0 ? an / 12 : 0)
   }
   const facturesSaisiesDe = (monthly) => monthly.some((v, i) => Number(v) !== DEFAULT_MONTHLY_BILLS[i])
 
@@ -58,11 +62,12 @@ test('QJR34 — rejoué avec les VRAIES constantes solar.js : 0 sur les factures
   // Une vraie facture saisie (un seul mois retouché suffit à lever le drapeau).
   const facturesReelles = DEFAULT_MONTHLY_BILLS.slice()
   facturesReelles[3] = '2400'
-  const avgReel = facturesReelles.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+  const attendu = consoAnnuelleDepuisFactures(facturesReelles, 'onee') / 12
+  assert.ok(attendu > 0)
   assert.equal(
     consoKwhDerivee('', facturesReelles, facturesSaisiesDe(facturesReelles)),
-    Math.round(avgReel / kwhPrice),
-    'facturesSaisies vrai → dérivé de la vraie moyenne')
+    attendu,
+    'facturesSaisies vrai → dérivé des vraies factures au barème national')
 
   // Consommation mensuelle tapée directement : toujours prioritaire, même
   // sans factures saisies.

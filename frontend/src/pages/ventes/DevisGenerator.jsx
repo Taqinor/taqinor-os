@@ -28,6 +28,8 @@ import {
   // QJR575 — les paramètres du balayage C&I, construits UNE fois (partagés
   // avec le « Devis automatique »).
   parametresBalayageCI,
+  // QJR665 — conso de l'étude C&I = celle du balayage (barème national).
+  consoMensuelleEtudeCI,
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
@@ -3685,15 +3687,18 @@ export default function DevisGenerator({
     : null
 
   // Consommation industrielle : saisie directe, sinon dérivée des factures
-  // (MAD / prix kWh ONEE). L'étude EXIGE une consommation réelle.
-  const avgBill = monthly.reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+  // au barème national, la MÊME que le balayage (QJR665, décision fondateur
+  // 01/10 — jamais moyenne ÷ prix kWh). L'étude EXIGE une consommation réelle.
   // QJR582 — la facture réelle « recommandée » (QF4) passe AVANT la
   // dérivation des factures quand le champ d'étude est vide : sinon validate()
   // bloquait un devis industriel où seule elle était remplie. La souveraineté
   // COUV-HOR (realBillSaisi, entreesReellesEcran) reste intacte.
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
     || (realBillSaisi && consoAnnuelleReelle > 0 ? Math.round(consoAnnuelleReelle / 12) : 0)
-    || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
+    || (facturesSaisies ? consoMensuelleEtudeCI({
+      factures: monthly, mode: modeInstallation,
+      distributeurDeclare: distributeurChoisi ? distributeur : selectedLead?.distributeur,
+    }) : 0)
 
   // QJR568 — les deux études C&I (persistées) au kWc FACTURÉ des lignes.
   const etudeIndustrielle = (modeInstallation === 'industriel' && kwpLignes > 0

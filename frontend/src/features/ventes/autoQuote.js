@@ -76,6 +76,20 @@ export function parametresBalayageCI({
   return { factures, dayUsagePct, consoAnnuelleKwh, utility }
 }
 
+// QJR665 (décision fondateur 01/10 — barème national pour les deux) — la
+// consommation MENSUELLE de l'étude C&I (taux d'autoconsommation, économies,
+// payback) tirée des factures : celle du balayage qui choisit le kWc
+// (`parametresBalayageCI`, barème national COUV-HOR) ÷ 12, non arrondie (la
+// conso annuelle imprimée redonne celle du balayage). Jamais moyenne des
+// factures ÷ kwhPrice. 0 sans facture exploitable. Partagée par le devis
+// automatique et l'Édition complète ; une conso saisie reste prioritaire chez
+// l'appelant.
+export function consoMensuelleEtudeCI({ factures, mode, distributeurDeclare } = {}) {
+  if (!Array.isArray(factures) || !factures.length) return 0
+  const { consoAnnuelleKwh } = parametresBalayageCI({ factures, mode, distributeurDeclare })
+  return consoAnnuelleKwh > 0 ? consoAnnuelleKwh / 12 : 0
+}
+
 // QJR603 (D-QJR5-14) — kWh MENSUELS d'un lead pro : `conso_mensuelle_kwh`
 // (champ éditable), sinon `bill_kwh` (tunnel du site) — la MÊME porte que le
 // serveur (`apps/crm/devis_auto.py`, groupe « l'un des » de CAD166). 0 sans
@@ -490,12 +504,16 @@ export async function createAutoQuote({ lead, produits, discountStr,
       const ete = (lead.ete_differente && lead.facture_ete)
         ? parseFloat(lead.facture_ete) : hiver
       const moisAuto = hiver > 0 ? estimerMois(hiver, ete) : []
-      const avgAuto = moisAuto
-        .reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12
+      // QJR665 (décision fondateur 01/10) — sans kWh saisis, l'étude prend la
+      // consommation du BALAYAGE qui a choisi le kWc (`parametresBalayageCI`,
+      // barème national COUV-HOR), jamais moyenne des factures ÷ kwhPrice :
+      // taux, économies et payback décrivent le client dimensionné.
       // QJR603 — un lead « kWh seulement » porte peut-être `bill_kwh` seul :
       // il alimente l'étude en dernier recours (jamais devant la facture).
       const conso = (parseFloat(lead.conso_mensuelle_kwh) || 0)
-        || (avgAuto > 0 ? Math.round(avgAuto / kwhPrice) : 0)
+        || consoMensuelleEtudeCI({
+          factures: moisAuto, mode, distributeurDeclare: lead.distributeur,
+        })
         || kwhMensuelsLeadPro(lead)
       extra.mode_installation = mode
       const _dayUsage = mode === 'commercial'
