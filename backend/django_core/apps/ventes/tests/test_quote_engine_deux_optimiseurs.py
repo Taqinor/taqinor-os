@@ -526,8 +526,10 @@ class TestDeuxOptimiseursFormats(_DevisVariantesMixin, TestCase):
         self.assertEqual(
             len(doc.pages), 1,
             f'le format une page doit rendre 1 page, {len(doc.pages)} rendues')
-        self.assertIn('18.46 kWc', html)     # kWc de la branche facturée
-        self.assertNotIn('15.62 kWc', html)  # jamais ceux de l'autre option
+        # QJR145 (a) : puissance imprimée à la française (``kwc_fr``).
+        self.assertIn('18,46 kWc', html)     # kWc de la branche facturée
+        self.assertNotIn('15,62', html)      # jamais ceux de l'autre option
+        self.assertNotIn('15.62', html)
 
     def test_l_etude_ajoute_exactement_une_page(self):
         # Même recette que la garde d'étude existante (mode industriel + ces
