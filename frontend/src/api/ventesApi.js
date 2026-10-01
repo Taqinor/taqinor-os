@@ -504,7 +504,6 @@ const ventesApi = {
   // QJ16 — Modèles de devis (presets)
   getPresets: (params) => api.get('/ventes/presets/', { params }),
   savePreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/save-preset/`, data),
-  applyPreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/apply-preset/`, data),
   deletePreset: (id) => api.delete(`/ventes/presets/${id}/`),
 
   // CALX289 — le bloc ÉCONOMIE en LECTURE SEULE d'un devis (`apps/ventes/economie.py`,

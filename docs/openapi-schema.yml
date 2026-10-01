@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4716, operations: 7506, components: 2140}
+counts: {paths: 4714, operations: 7504, components: 2140}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -3506,7 +3506,6 @@ operations:
 - put /api/django/ventes/devis/{id}/ -> django_ventes_devis_update
 - post /api/django/ventes/devis/{id}/accepter/ -> django_ventes_devis_accepter_create
 - post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
-- post /api/django/ventes/devis/{id}/apply-preset/ -> django_ventes_devis_apply_preset_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
 - get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
 - post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
@@ -7263,7 +7262,6 @@ operations:
 - put /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_update
 - post /api/v1/ventes/devis/{id}/accepter/ -> v1_ventes_devis_accepter_create
 - post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
-- post /api/v1/ventes/devis/{id}/apply-preset/ -> v1_ventes_devis_apply_preset_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
 - get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
 - post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create

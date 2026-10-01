@@ -5,11 +5,8 @@ Covers:
   - save_devis_as_preset: creates a DevisPreset with correct company scoping
   - save_devis_as_preset: lines snapshot is correct (designation, qty, pu, remise, taux_tva)
   - save_devis_as_preset: etude_params are snapshotted when present
-  - apply_preset_to_devis: creates LigneDevis rows on the target devis
-  - apply_preset_to_devis: refuses cross-company apply (ValueError)
-  - apply_preset_to_devis: skips priceless products (same guard as auto-fill)
-  - apply_preset_to_devis: updates taux_tva / remise_globale / mode_installation
-  - apply_preset_to_devis: RULE #4 — never changes Devis.statut
+  - QJR546 — POST apply-preset is GONE (404, lines untouched): a preset is
+    applied ON SCREEN by the generator, then persisted by replace-lines
   - DevisPreset.company always forced (never from request body in service layer)
   - Migration 0033 is additive: model can be created in a test with no errors
 
@@ -25,7 +22,7 @@ from django.contrib.auth import get_user_model
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, DevisPreset
-from apps.ventes.services import save_devis_as_preset, apply_preset_to_devis
+from apps.ventes.services import save_devis_as_preset
 
 User = get_user_model()
 
@@ -210,153 +207,43 @@ class TestSaveDevisAsPreset(TestCase):
         self.assertNotEqual(preset.company, company2)
 
 
-# ─── apply_preset_to_devis ───────────────────────────────────────────────────
+# ─── QJR546 — apply-preset supprimé ─────────────────────────────────────────
 
-class TestApplyPresetToDevis(TestCase):
+class TestApplyPresetSupprime(TestCase):
+    """QJR546 — l'ancien POST apply-preset AJOUTAIT des lignes en base, sans
+    garde de statut, et l'écran n'en recevait aucune : il est supprimé. Un
+    modèle s'applique à l'ÉCRAN, persisté par replace-lines."""
 
     def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
         self.company = make_company('qj16-apply')
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
-    def _make_preset(self, lines_data, nom='Preset apply', mode='residentiel',
-                     taux_tva='20.00', remise='0.00', etude_params=None):
-        return DevisPreset.objects.create(
-            company=self.company,
-            nom=nom,
-            mode_installation=mode,
-            taux_tva=Decimal(taux_tva),
-            remise_globale=Decimal(remise),
-            lignes_snapshot=lines_data,
-            etude_params_snapshot=etude_params,
-        )
-
-    def test_apply_creates_lignes_on_devis(self):
+    def test_route_apply_preset_supprimee(self):
         p1 = make_produit(self.company, 'Panneau 550W', 'PANEL-550G', '2000')
-        p2 = make_produit(self.company, 'Onduleur réseau 6kW', 'INV-6K-B', '12000')
-        preset = self._make_preset([
-            {'produit_id': p1.pk, 'designation': 'Panneau 550W',
-             'quantite': '8', 'prix_unitaire': '2000', 'remise': '0',
-             'taux_tva': None},
-            {'produit_id': p2.pk, 'designation': 'Onduleur réseau 6kW',
-             'quantite': '1', 'prix_unitaire': '12000', 'remise': '0',
-             'taux_tva': None},
-        ])
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A1')
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-QJ16-A01')
+        add_ligne(devis, p1, 'Panneau 550W', quantite='2', pu='2000')
+        preset = DevisPreset.objects.create(
+            company=self.company, nom='Preset', mode_installation='residentiel',
+            taux_tva=Decimal('20.00'), remise_globale=Decimal('0.00'),
+            lignes_snapshot=[{'produit_id': p1.pk, 'designation': 'X',
+                              'quantite': '9', 'prix_unitaire': '2000',
+                              'remise': '0', 'taux_tva': '20'}])
+        r = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/apply-preset/',
+            {'preset_id': preset.id}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(devis.lignes.count(), 1)
 
-        created = apply_preset_to_devis(preset, target)
-
-        self.assertEqual(len(created), 2)
-        self.assertEqual(target.lignes.count(), 2)
-
-    def test_apply_sets_devis_taux_tva_and_remise(self):
-        p1 = make_produit(self.company, 'Panneau 550W', 'PANEL-550H', '2000')
-        preset = self._make_preset(
-            [{'produit_id': p1.pk, 'designation': 'Panneau',
-              'quantite': '6', 'prix_unitaire': '2000', 'remise': '10',
-              'taux_tva': '10'}],
-            taux_tva='10.00', remise='5.00',
-        )
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A2')
-
-        apply_preset_to_devis(preset, target)
-
-        target.refresh_from_db()
-        self.assertEqual(target.taux_tva, Decimal('10'))
-        self.assertEqual(target.remise_globale, Decimal('5'))
-
-    def test_apply_sets_mode_installation(self):
-        p1 = make_produit(self.company, 'Pompe solaire', 'PUMP-01', '8000')
-        preset = self._make_preset(
-            [{'produit_id': p1.pk, 'designation': 'Pompe',
-              'quantite': '1', 'prix_unitaire': '8000', 'remise': '0',
-              'taux_tva': None}],
-            mode='agricole',
-        )
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A3')
-
-        apply_preset_to_devis(preset, target)
-
-        target.refresh_from_db()
-        self.assertEqual(target.mode_installation, 'agricole')
-
-    def test_apply_never_changes_statut(self):
-        """RULE #4: apply_preset_to_devis must NEVER change Devis.statut."""
-        p1 = make_produit(self.company, 'Panneau 550W', 'PANEL-550I', '2000')
-        preset = self._make_preset(
-            [{'produit_id': p1.pk, 'designation': 'Panneau',
-              'quantite': '4', 'prix_unitaire': '2000', 'remise': '0',
-              'taux_tva': None}],
-        )
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A4')
-        initial_statut = target.statut
-
-        apply_preset_to_devis(preset, target)
-
-        target.refresh_from_db()
-        self.assertEqual(target.statut, initial_statut,
-                         "apply_preset_to_devis must not change Devis.statut (rule #4)")
-
-    def test_cross_company_apply_refused(self):
-        """A preset from company A cannot be applied to a devis from company B."""
-        company2 = make_company('qj16-co3')
-        user2 = make_user(company2)
-        client2 = make_client(company2)
-
-        preset = self._make_preset(
-            [{'produit_id': None, 'designation': 'Panneau',
-              'quantite': '4', 'prix_unitaire': '2000', 'remise': '0',
-              'taux_tva': None}],
-        )
-        target_other = make_devis(company2, user2, client2, 'DEV-QJ16-CROSS')
-
-        with self.assertRaises(ValueError):
-            apply_preset_to_devis(preset, target_other)
-
-    def test_priceless_product_is_skipped(self):
-        """A product with prix_vente=0 must be skipped (same guard as auto-fill)."""
-        priceless = make_produit(
-            self.company, 'Pompe OSP prix à renseigner', 'OSP-PRICELESS', '0')
-        priced = make_produit(self.company, 'Panneau 550W', 'PANEL-550J', '2000')
-
-        preset = self._make_preset([
-            {'produit_id': priceless.pk, 'designation': 'Pompe OSP',
-             'quantite': '1', 'prix_unitaire': '0', 'remise': '0',
-             'taux_tva': None},
-            {'produit_id': priced.pk, 'designation': 'Panneau 550W',
-             'quantite': '6', 'prix_unitaire': '2000', 'remise': '0',
-             'taux_tva': None},
-        ])
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A5')
-
-        created = apply_preset_to_devis(preset, target, skip_priceless=True)
-
-        # Only the priced line should be created
-        self.assertEqual(len(created), 1)
-        self.assertEqual(created[0].designation, 'Panneau 550W')
-
-    def test_etude_params_carried_over(self):
-        """Preset's etude_params_snapshot is applied to the devis when devis has none."""
-        p1 = make_produit(self.company, 'Panneau 550W', 'PANEL-550K', '2000')
-        preset = self._make_preset(
-            [{'produit_id': p1.pk, 'designation': 'Panneau',
-              'quantite': '6', 'prix_unitaire': '2000', 'remise': '0',
-              'taux_tva': None}],
-            etude_params={'production_annuelle': 7500, 'economies_annuelles': 9000},
-        )
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A6')
-
-        apply_preset_to_devis(preset, target)
-
-        target.refresh_from_db()
-        self.assertEqual(target.etude_params['production_annuelle'], 7500)
-
-    def test_apply_empty_snapshot_returns_empty_list(self):
-        preset = self._make_preset([])
-        target = make_devis(self.company, self.user, self.client_obj, 'DEV-QJ16-A7')
-
-        created = apply_preset_to_devis(preset, target)
-        self.assertEqual(created, [])
+    def test_service_supprime(self):
+        from apps.ventes import services
+        self.assertFalse(hasattr(services, 'apply_preset_to_devis'))
 
 
 # ─── Company isolation ────────────────────────────────────────────────────────

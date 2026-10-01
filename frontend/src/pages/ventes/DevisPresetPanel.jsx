@@ -9,18 +9,19 @@
  * Usage (inside DevisGenerator or DevisForm):
  *   <DevisPresetPanel
  *     devisId={devis.id}
- *     onApplied={(lignes) => handleLignesFromPreset(lignes)}
+ *     onApplied={(preset) => handlePresetApplied(preset)}
  *   />
  *
  * The backend endpoints used:
  *   GET  /ventes/presets/               — list company presets
  *   POST /ventes/devis/{id}/save-preset/ — snapshot current devis as preset
- *   POST /ventes/devis/{id}/apply-preset/ — apply preset lines to devis
+ *   (QJR546 — plus d'apply-preset : le modèle s'applique À L'ÉCRAN du
+ *    générateur, qui le persiste par replace-lines au prochain Enregistrer)
  *   DEL  /ventes/presets/{id}/           — delete a preset
  *
  * Multi-tenancy: company scoping is 100 % server-side; this component never
  * sends a company field.  The server forces devis.company on save and
- * validates preset.company == devis.company on apply.
+ * scopes the preset list to the user's company.
  *
  * RULE #4: this panel is CREATION-ONLY (lines are set up, status stays brouillon).
  * It never changes Devis.statut.
@@ -76,11 +77,12 @@ function SaveSection({ devisId, onSaved }) {
           placeholder="Ex. Standard 6 kWc résidentiel"
           value={nom}
           onChange={e => setNom(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleSave()}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSave() } }}
           className="flex-1 text-sm"
           disabled={saving}
         />
         <Button
+          type="button"
           size="sm"
           onClick={handleSave}
           disabled={saving || !nom.trim()}
@@ -101,11 +103,11 @@ function SaveSection({ devisId, onSaved }) {
 }
 
 
-function ApplySection({ devisId, onApplied }) {
-  // APX16 — sur un devis VIERGE (création), il n'y a pas encore d'id serveur :
-  // l'endpoint `apply-preset` est inapplicable. Le modèle est alors appliqué
-  // LOCALEMENT depuis `lignes_snapshot`, que la liste des modèles sérialise
-  // déjà (`DevisPresetSerializer`) — zéro endpoint nouveau, zéro écriture.
+function ApplySection({ onApplied }) {
+  // QJR546 — dans les DEUX modes (création comme édition), le modèle est
+  // appliqué LOCALEMENT : le parent reçoit le preset ENTIER (lignes_snapshot,
+  // remise, TVA, marché) et remplace les lignes à l'écran ; aucune écriture
+  // serveur ici (l'Enregistrer du générateur persiste par replace-lines).
   const [presets, setPresets] = useState([])
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(null)  // preset id being applied
@@ -126,20 +128,13 @@ function ApplySection({ devisId, onApplied }) {
     setApplying(preset.id)
     setStatus(null)
     try {
-      if (!devisId) {
-        // Devis VIERGE : application locale depuis l'instantané de lignes.
-        const lignes = preset.lignes_snapshot ?? []
-        if (!Array.isArray(lignes) || lignes.length === 0) {
-          setStatus({ ok: false, msg: 'Ce modèle ne contient aucune ligne.' })
-          return
-        }
-        setStatus({ ok: true, msg: `Modèle "${preset.nom}" appliqué.` })
-        if (onApplied) onApplied(lignes)
+      const lignes = preset.lignes_snapshot ?? []
+      if (!Array.isArray(lignes) || lignes.length === 0) {
+        setStatus({ ok: false, msg: 'Ce modèle ne contient aucune ligne.' })
         return
       }
-      const res = await ventesApi.applyPreset(devisId, { preset_id: preset.id })
       setStatus({ ok: true, msg: `Modèle "${preset.nom}" appliqué.` })
-      if (onApplied) onApplied(res.data)
+      if (onApplied) onApplied(preset)
     } catch {
       setStatus({ ok: false, msg: 'Impossible d\'appliquer le modèle.' })
     } finally {
@@ -192,7 +187,10 @@ function ApplySection({ devisId, onApplied }) {
                 </span>
               )}
             </div>
+            {/* QJR546 — type="button" : le panneau vit DANS le formulaire du
+                générateur ; sans lui, « Appliquer » soumettait le devis. */}
             <Button
+              type="button"
               size="xs"
               variant="outline"
               onClick={() => handleApply(preset)}
@@ -232,8 +230,8 @@ function ApplySection({ devisId, onApplied }) {
  *                               absent = the quote is still being CREATED, so
  *                               presets can be applied locally (from
  *                               `lignes_snapshot`) but not saved yet.
- * @param {function} onApplied - Called with the apply-response data after a
- *                               preset is applied so the parent can refresh lines
+ * @param {function} onApplied - Called with the WHOLE preset (QJR546) so the
+ *                               parent replaces its on-screen lines
  */
 export default function DevisPresetPanel({ devisId, onApplied }) {
   const [open, setOpen] = useState(false)
@@ -288,7 +286,6 @@ export default function DevisPresetPanel({ devisId, onApplied }) {
             {/* key forces remount/reload when a preset is saved */}
             <ApplySection
               key={refreshKey}
-              devisId={devisId}
               onApplied={onApplied}
             />
           </div>

@@ -137,6 +137,8 @@ import {
   // dérive la séquence de rôles depuis l'écran (bouton « Enregistrer cet
   // ordre »), appliquée par autoFillLines via ordreLignes.
   deriveRoleOrderFromLines,
+  // QJR546 — garde « produit tarifé » des lignes d'un modèle appliqué.
+  _hasPrix,
 } from '../../features/ventes/solar'
 import { formatNumber, formatMAD, formatDateTime, formatDate } from '../../lib/format'
 import { peutEditerDevis } from '../../features/ventes/devisStatuts'
@@ -2710,17 +2712,36 @@ export default function DevisGenerator({
     }).then(ok => { if (ok) geste() })
   }
 
-  // VX18 — un modèle appliqué remplace les lignes du formulaire. La réponse
-  // apply-preset porte les lignes du devis (modèle HT) ; on les reconvertit en
-  // lignes d'écran (TTC) et on remplace via setLines(withKeys(...)). Repli sûr
-  // si la forme diffère (aucun crash, on ignore).
-  const handlePresetApplied = (data) => {
-    const lignes = Array.isArray(data) ? data
-      : (data?.lignes || data?.results || [])
-    if (!Array.isArray(lignes) || !lignes.length) return
+  // QJR546 — appliquer un modèle REMPLACE les lignes À L'ÉCRAN, en création
+  // comme en édition (plus d'apply-preset serveur qui ajoutait des lignes en
+  // base sans que l'écran les voie) : remise, TVA et marché du modèle posés,
+  // lignes au produit sans prix SAUTÉES et NOMMÉES. L'étude du client source
+  // (etude_params_snapshot) n'est JAMAIS réappliquée. L'Enregistrer suivant
+  // persiste le tout par replace-lines.
+  const handlePresetApplied = (preset) => {
+    const snapshot = Array.isArray(preset?.lignes_snapshot) ? preset.lignes_snapshot : []
+    if (!snapshot.length) return
+    const parId = new Map(produits.map(p => [String(p.id), p]))
+    const sansPrix = []
+    const retenues = snapshot.filter((l) => {
+      const id = l.produit ?? l.produit_id
+      if (id == null || id === '') return true
+      const produit = parId.get(String(id))
+      if (produit && !_hasPrix(produit)) {
+        sansPrix.push(l.designation || produit.nom || `#${id}`)
+        return false
+      }
+      return true
+    })
+    if (preset.mode_installation) appliquerMarcheEcran(preset.mode_installation, 'programme')
+    if (preset.taux_tva != null) setTauxTva(String(preset.taux_tva))
+    if (preset.remise_globale != null) setDiscountPct(String(parseFloat(preset.remise_globale) || 0))
     // QJR523 — même mappeur que la réouverture `?edit=` (HT → TTC au taux de
     // la ligne, tous les champs portés).
-    setLines(withKeys(lignesServeurVersEcran(lignes)))
+    setLines(withKeys(lignesServeurVersEcran(retenues, preset.taux_tva)))
+    if (sansPrix.length) {
+      toast.warning('Produit(s) sans prix non repris du modèle : ' + sansPrix.join(', '))
+    }
   }
 
   // Dimensionnement pompage : SOURCE UNIQUE écran / devis / PDF.

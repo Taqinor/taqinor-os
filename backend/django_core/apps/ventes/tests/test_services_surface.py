@@ -117,7 +117,6 @@ SURFACE_PUBLIQUE = (
     "ajouter_lignes_facture_import",
     "ajouter_lignes_frais_refactures",
     "anomalies_emission_facture",
-    "apply_preset_to_devis",
     "arbitrer_compte_calepinage",
     "auto_devis_tunnel_actif",
     "avertissement_aucun_onduleur_triphase",

@@ -502,8 +502,6 @@
     importes:inconnu, non_resolues:inconnu
 - frontend/src/api/uxviewsApi.js :: importSavedViews -> /api/django/uxviews/saved-views/importer
     created:inconnu, erreurs:inconnu
-- frontend/src/api/ventesApi.js :: applyPreset -> /api/django/ventes/devis/<>/apply-preset
-    detail:texte, lignes_created:nombre, skipped_priceless:nombre
 - frontend/src/api/ventesApi.js :: arrondiCaisseFacture -> /api/django/ventes/factures/<>/arrondi-caisse
     applicable:inconnu, ecart:texte, montant_arrondi:texte, montant_du:texte, pas:texte
 - frontend/src/api/ventesApi.js :: contacterSuperieur -> /api/django/ventes/devis/<>/contacter-superieur
