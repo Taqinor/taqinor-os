@@ -68,7 +68,7 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(lead.utm_medium, 'cpc')
         self.assertEqual(lead.utm_campaign, 'lancement')
         self.assertTrue(lead.whatsapp_opt_in)
-        self.assertEqual(lead.whatsapp, '+212661850410')
+        self.assertEqual(lead.whatsapp, '212661850410')
         self.assertIsNotNone(lead.consent_timestamp)
         self.assertEqual(lead.source, Lead.Source.SITE_WEB)
         self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
