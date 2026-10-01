@@ -113,6 +113,13 @@ export default function PortailClientDevis() {
                       ? ` — valable jusqu’au ${formatDate(d.date_validite)}`
                       : ''}
                   </p>
+                  {/* QJR565 (contrat mes_devis_liste.json) — un devis corrigé
+                      après envoi le dit, comme la page proposition. */}
+                  {d.mis_a_jour_le && (
+                    <p className="text-xs text-muted-foreground" data-testid={`devis-mis-a-jour-${d.id}`}>
+                      Document mis à jour le {formatDate(d.mis_a_jour_le)}
+                    </p>
+                  )}
                 </div>
                 <Badge tone={d.accepte ? 'success' : 'neutral'}>
                   {d.statut_display}
