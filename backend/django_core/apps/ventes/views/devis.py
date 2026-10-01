@@ -1,35 +1,23 @@
 import logging
 
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
-from rest_framework import viewsets, status, filters  # noqa: F401
+from django.db import transaction
+from django.http import HttpResponse
+from django.utils import timezone
+from rest_framework import status
 from rest_framework import serializers
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
-from drf_spectacular.utils import extend_schema  # noqa: F401
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
-)
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-)
-from ..serializers import (  # noqa: F401
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
+from ..models import Devis, BonCommande
+from ..serializers import (
     DevisSerializer,
     DevisWriteSerializer,
     BonCommandeSerializer,
-    LigneDevisSerializer,
     FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    RelanceLogSerializer,
     DevisActivitySerializer,
     DevisActionRequiseSerializer,  # PACT17 — forme déclarée de l'agrégat
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
@@ -37,20 +25,20 @@ from authentication.permissions import (  # noqa: F401
 )
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
-from apps.roles.permissions import (  # noqa: F401
+from apps.roles.permissions import (
     IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
 )
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
 # ne jette pas en silence la garde qu'une ``@action`` déclare elle-même.
 from core.permissions import declared_action_permissions
 # PV84 — builder UNIQUE du chemin proposition (nom-client inclus dans l'URL) ;
 # jamais de f'/proposition/{token}' en dur ailleurs dans ce fichier.
-from ..utils.client_links import chemin_proposition  # noqa: F401
-from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
-from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from ..utils.client_links import chemin_proposition
+from core.entite_scoping import EntiteScopeMixin  # NTADM2
+from core.idempotency import IdempotentCreateMixin  # YAPIC9
+from ..utils.references import create_with_reference
+from ..utils.company_settings import create_numbered
 # QJR73 — L'ÉCRIVAIN UNIQUE DES LIGNES N'EST PLUS UNE MÉTHODE DE CE VIEWSET.
 # `_replace_lines_atomic` vivait ici, donc hors d'atteinte de tout autre
 # appelant, alors que les tests le décrivent comme « le SEUL chemin d'écriture »
@@ -65,8 +53,7 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 # écrivain et LE MÊME ordonnancement que les quatre autres origines de devis.
 # Les frontières de transaction n'ont pas bougé d'une ligne : les réponses des
 # endpoints sont inchangées à l'octet.
-from ..domain.lignes import cloner_lignes, creer_ligne  # noqa: F401
-from ..domain.pipeline import (  # noqa: F401
+from ..domain.pipeline import (
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
 
@@ -2081,37 +2068,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                         else status.HTTP_400_BAD_REQUEST))
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
-
-    @staticmethod
-    def _resolve_accepted_option(devis, data):
-        """A1 — détermine l'option retenue à l'acceptation.
-
-        Renvoie ``(option, None)`` en cas de succès ou ``('', message)`` en cas
-        d'erreur. Un devis à deux options exige un choix explicite et valide ;
-        un devis à option unique déduit l'option de son scénario (jamais
-        d'échec : une liste libre / un pompage retombe sur « sans_batterie »).
-        """
-        valid = {c.value for c in Devis.OptionAcceptee}
-        option = (data.get('option') or '').strip()
-        if option and option not in valid:
-            return '', ("Option invalide (attendu « sans_batterie » ou "
-                        "« avec_batterie »).")
-        try:
-            from ..quote_engine.builder import build_quote_data
-            qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
-            nb_options = qd.get('nb_options', 1)
-            scenario = qd.get('scenario', '')
-        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
-            nb_options, scenario = 1, ''
-        if nb_options == 2 and not option:
-            return '', ("Ce devis comporte deux options — précisez celle "
-                        "choisie par le client (« sans_batterie » ou "
-                        "« avec_batterie »).")
-        if not option:
-            option = (Devis.OptionAcceptee.AVEC_BATTERIE
-                      if scenario == 'Avec batterie'
-                      else Devis.OptionAcceptee.SANS_BATTERIE)
-        return option, None
 
     @action(detail=True, methods=['post'], url_path='refuser',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
