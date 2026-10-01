@@ -416,12 +416,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         effaçait en cascade sa signature électronique (DevisSignature), son
         lien client (ShareLink), ses lignes et son chatter, et orphelinait son
         BC. 409 sans rien effacer ; l'archivage (PATCH ``is_active=False``) ou
-        la révision restent ouverts. Les autres statuts sont inchangés. Le
-        statut est LU, jamais écrit (règle #4)."""
+        la révision restent ouverts. Le statut est LU, jamais écrit (règle #4).
+
+        QJR661 (décision fondateur 01/10 — archivage seul) : SEUL un brouillon
+        se supprime. Un envoyé / refusé / expiré a un lien client (ShareLink)
+        et un historique qui partiraient en cascade : même 409 « archivez-le »."""
         devis = self.get_object()
         if devis.statut == Devis.Statut.ACCEPTE:
             return Response(
                 {'detail': 'Devis accepté : il ne se supprime pas — '
+                           'archivez-le (désactivation) ou révisez-le.'},
+                status=status.HTTP_409_CONFLICT)
+        if devis.statut != Devis.Statut.BROUILLON:
+            return Response(
+                {'detail': 'Seul un brouillon se supprime : '
                            'archivez-le (désactivation) ou révisez-le.'},
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
@@ -2555,6 +2563,33 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'phone': phone, 'message': message, 'url': link['url'],
             'devis_statut': devis.statut,
         })
+
+    @action(detail=True, methods=['post'], url_path='pdf-partage',
+            permission_classes=[IsResponsableOrAdmin])
+    def pdf_partage(self, request, pk=None):
+        """QJR659 (décision fondateur 01/10) — le PDF du devis a été partagé
+        par la feuille de partage native (``navigator.share`` résolu) : cela
+        vaut ENVOI, comme copier le lien client (D-QJR5-3).
+
+        Ce n'est PAS un « marquer envoyé » nu : la garde de remise T17
+        (QJR539) passe AVANT tout effet (400 ``{detail}``, le devis reste
+        brouillon), puis ``mark_devis_sent`` — le seul chemin brouillon →
+        envoyé (idempotent, ne régresse jamais un accepté/refusé/expiré,
+        funnel via ``devis_sent``). Aucun lien client n'est minté. Le
+        frontend ne l'appelle ni sur AbortError ni sur le repli
+        téléchargement."""
+        from ..services import mark_devis_sent
+        from .. import activity
+
+        devis = self.get_object()
+        _exiger_remise_envoi(devis, request.user)
+        etait_brouillon = devis.statut == Devis.Statut.BROUILLON
+        mark_devis_sent(devis=devis, user=request.user)
+        if etait_brouillon:
+            activity.log_devis_note(
+                devis, request.user,
+                f'PDF du devis {devis.reference} partagé (feuille de partage).')
+        return Response({'devis_statut': devis.statut})
 
     @action(detail=True, methods=['post'], url_path='contacter-superieur',
             permission_classes=[IsResponsableOrAdmin])

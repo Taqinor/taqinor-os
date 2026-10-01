@@ -1103,8 +1103,9 @@ function DevisRow({ d, ctx }) {
                   Envoyer par email
                 </DropdownMenuItem>
               )}
-              {/* QJR639 — un devis accepté ne se supprime pas (409 serveur). */}
-              {canDelete && d.statut !== 'accepte' && (
+              {/* QJR639/QJR661 — seul un brouillon se supprime ; tout autre
+                  statut s'archive (409 serveur « archivez-le »). */}
+              {canDelete && d.statut === 'brouillon' && (
                 <DropdownMenuItem
                   destructive
                   disabled={deletingId === d.id}
@@ -2485,12 +2486,27 @@ export default function DevisList() {
       const file = new File([res.data], filename, { type: 'application/pdf' })
       const shareData = { files: [file], title: `Devis ${d.reference}` }
       if (navigator.canShare?.(shareData) && navigator.share) {
+        let partage = false
         try {
           await navigator.share(shareData)
+          partage = true
         } catch (err) {
           // L'utilisateur a annulé la feuille de partage : ne rien signaler.
           if (err?.name !== 'AbortError') {
             openPdfBlob(res.data, filename)
+          }
+        }
+        // QJR659 (décision fondateur 01/10) — partage RÉSOLU = envoi (comme
+        // copier le lien, D-QJR5-3) ; jamais sur AbortError ni sur le repli
+        // téléchargement. Le serveur passe la garde de remise T17 puis
+        // mark_devis_sent (idempotent, ne régresse jamais un devis avancé).
+        if (partage && d.statut === 'brouillon') {
+          try {
+            await ventesApi.partagePdfDevis(d.id)
+            dispatch(fetchDevis())
+            toast.success('PDF partagé — devis marqué envoyé.')
+          } catch (err) {
+            toast.error(frenchError(err, 'PDF partagé, mais le devis n\'a pas pu être marqué envoyé.'))
           }
         }
       } else {

@@ -66,10 +66,62 @@ def _apply_elastic(inner: str, slack_mm: float) -> str:
 def _wrap(inner: str, n: int, data: dict, ident: dict, total: int = 3,
           slack_mm: float = 0.0) -> str:
     # QX6 — le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
-    foot = (theme.page_footer(data, ident, total_pages=total)
+    foot = (theme.page_footer(data, ident, total_pages=total, traduire=True)
             .replace("{page}", str(n)))
     inner = _apply_elastic(inner, slack_mm)
     return f'<div class="page">{inner}{foot}</div>'
+
+
+def calepinage_demande(data: dict) -> bool:
+    """QJR666 (décision fondateur 01/10) — la planche de calepinage n'entre
+    dans le document résidentiel que si le commercial l'a EXPLICITEMENT
+    demandée (``include_calepinage = True`` au dialogue PDF : le builder pose
+    alors ``include_calepinage_demande``) ET que la planche existe. L'AUTO
+    (``None``) n'ajoute aucune page à un devis résidentiel. Une planche
+    PÉRIMÉE (QJR522, ``layout_stale``) n'est jamais composée par le builder :
+    pas de SVG, pas de page."""
+    return bool(data.get("include_calepinage_demande")
+                and data.get("calepinage_svg"))
+
+
+def page_calepinage(ctx) -> str:
+    """QJR666 — page « Calepinage » du gabarit résidentiel : elle MET EN PAGE
+    la planche cotée composée par le serveur (CAL171), sans rien dessiner ni
+    mesurer. AUCUN montant (ni prix, ni marge) n'y figure."""
+    d, C = ctx["d"], ctx["C"]
+    serif = ctx["fonts"]["serif"]
+    empreinte = (d.get("calepinage_empreinte") or "").strip()
+    empreinte_html = (
+        f'<div class="pc-emp">{theme._esc(empreinte)}</div>'
+        if empreinte else "")
+    return f"""
+<style>
+.pc-wrap {{ padding:11mm 14mm 0 14mm; }}
+.pc-kicker {{ font-size:8.5pt; letter-spacing:.24em; text-transform:uppercase;
+  color:{C['gold']}; font-weight:700; }}
+.pc-title {{ font-family:{serif}; font-weight:700; font-size:23pt;
+  color:{C['navy']}; line-height:1.04; margin:3px 0 8px; }}
+.pc-intro {{ font-size:8.4pt; color:{C['muted']}; margin-bottom:9px; }}
+.pc-planche {{ background:#fff; border:1px solid {C['line']};
+  border-radius:11px; padding:6px; text-align:center; }}
+.pc-planche svg {{ max-width:100%; height:auto; }}
+.pc-note {{ margin-top:9px; font-size:7.2pt; color:{C['muted']};
+  font-style:italic; }}
+.pc-emp {{ margin-top:6px; font-size:6.6pt; color:{C['muted_2']}; }}
+</style>
+<div class="pc-wrap">
+  <div class="pc-kicker">Pièce technique</div>
+  <div class="pc-title">Calepinage</div>
+  <div class="pc-intro">Implantation des modules relevée sur la toiture, à
+    l'échelle portée par la planche. Les cotes sont mesurées sur la géométrie
+    de la conception.</div>
+  <div class="pc-planche">{d.get("calepinage_svg") or ""}</div>
+  <div class="pc-note">Pièce technique jointe à la proposition. L'implantation
+    définitive est confirmée à la visite technique ; seule la liste
+    d'équipements du devis fait foi commercialement.</div>
+  {empreinte_html}
+</div>
+"""
 
 
 def build_html(data: dict, elastic: dict | None = None,
@@ -84,15 +136,25 @@ def build_html(data: dict, elastic: dict | None = None,
     # QRES17 — pagination variable : un devis chargé rend 2+ pages
     # « installation » (tableau découpé + page rentabilité dédiée) ; le pied
     # « Page n / N » lit le nombre RÉEL de pages (QX6).
-    pages = [cover.build(ctx)] + options.build_pages(ctx) + [trust.build(ctx)]
+    # QJR666 — la planche de calepinage DEMANDÉE s'intercale avant la page
+    # d'engagement (du commercial au technique, puis à la signature), comme
+    # dans le moteur legacy : une page de plus, seulement sur demande.
+    planche = [page_calepinage(ctx)] if calepinage_demande(data) else []
+    pages = ([cover.build(ctx)] + options.build_pages(ctx) + planche
+             + [trust.build(ctx)])
     total = len(pages)
     elastic = elastic or {}
     body = "".join(
         _wrap(inner, n, data, ident, total,
               slack_mm=float(elastic.get(n, 0.0)))
         for n, inner in enumerate(pages, start=1))
-    return (f"<!doctype html><html><head><meta charset='utf-8'>"
-            f"<style>{theme.base_css()}</style></head>"
+    # QJR666 — langue du document : un document français garde la racine
+    # ``<html>`` d'origine (octet pour octet) ; en / ar portent ``lang``, et
+    # l'arabe la police de ses libellés traduits.
+    langue = theme.langue_doc(data)
+    racine = "<html>" if langue == "fr" else f'<html lang="{langue}">'
+    return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
+            f"<style>{theme.base_css()}{theme.css_langue(data)}</style></head>"
             f"<body>{body}</body></html>")
 
 

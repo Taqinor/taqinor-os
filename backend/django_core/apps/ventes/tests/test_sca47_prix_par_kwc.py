@@ -92,19 +92,19 @@ class Sca47PrixParKwcTests(TestCase):
         d.refresh_from_db()
         self.assertIsNone(d.prix_par_kwc)
 
-    def test_write_once_not_recomputed_on_update(self):
-        """Une fois gelé, prix_par_kwc n'est PAS recalculé quand le total
-        change ensuite (write-once)."""
+    def test_suit_le_devis_quand_le_total_change(self):
+        """QJR669 (décision fondateur 01/10) — plus de gel write-once :
+        quand le total change, prix_par_kwc suit le devis."""
         d = self._devis('DEV-SCA47-WO', {'puissance_kwc': 10})
         self._ligne(d, prix='100000')
         d.save()
         d.refresh_from_db()
         self.assertEqual(d.prix_par_kwc, Decimal('12000.00'))
-        # On DOUBLE le total : ajout d'une ligne + save → doit rester figé.
+        # On DOUBLE le total : ajout d'une ligne + save → la mesure suit.
         self._ligne(d, prix='100000')
         d.save()
         d.refresh_from_db()
-        self.assertEqual(d.prix_par_kwc, Decimal('12000.00'))
+        self.assertEqual(d.prix_par_kwc, Decimal('24000.00'))
 
     def test_frozen_before_lines_stays_null_then_freezes(self):
         """À la création pure (aucune ligne), le total est 0 → reste null ;

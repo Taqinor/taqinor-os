@@ -3716,6 +3716,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             data["include_calepinage"] = True
             data["calepinage_svg"] = _planche_svg
             data["calepinage_empreinte"] = _planche_empreinte
+            # QJR666 (décision fondateur 01/10) — le gabarit résidentiel
+            # n'ajoute la planche que sur une demande EXPLICITE (jamais sous
+            # l'AUTO) : la clé n'existe que dans ce cas.
+            if opts['include_calepinage'] is True:
+                data["include_calepinage_demande"] = True
     # QJR630 — le bloc « financement » (QJ12 : taux bancaires « milieu de
     # fourchette » codés en dur) n'est plus produit : aucun rendu ne le lisait
     # et la proposition publique le retirait déjà (F6).

@@ -540,6 +540,8 @@
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: lienPaiementFacture -> /api/django/ventes/factures/<>/lien-paiement
     detail:inconnu, expires_at:texte, montant:texte, montant_a_payer:texte, pay_url:inconnu, provider:inconnu, statut:inconnu, token:inconnu
+- frontend/src/api/ventesApi.js :: partagePdfDevis -> /api/django/ventes/devis/<>/pdf-partage
+    devis_statut:inconnu
 - frontend/src/api/ventesApi.js :: patchEtudeParams -> /api/django/ventes/devis/<>/etude-params
     code:inconnu, detail:inconnu, etude_params:inconnu, revision_possible:inconnu, statut:inconnu, updated_at:inconnu, updated_by_nom:inconnu
 - frontend/src/api/ventesApi.js :: postEtudeHorairePreview -> /api/django/ventes/etude-horaire/preview
