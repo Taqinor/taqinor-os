@@ -1640,6 +1640,51 @@ def contexte_clauses_devis(devis):
     }
 
 
+def clauses_applicables_devis(devis):
+    """QJR668 — les clauses/CGV du catalogue société qui s'appliquent à ce
+    devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
+    quand AUCUN catalogue n'est disponible.
+
+    Le catalogue NTCPQ11 vit dans l'app ``cpq`` (``selectors.clauses_applicables``
+    évalue chaque clause contre :func:`contexte_clauses_devis`). Tant que
+    ``cpq`` est PARQUÉE (MVP solaire, SOLMVP), le module n'existe pas : la
+    fonction rend ``None`` et le gel n'écrit rien — un snapshot déjà posé
+    n'est jamais effacé faute de source. Import dynamique : aucune arête
+    statique ventes → cpq."""
+    import importlib
+
+    try:
+        source = importlib.import_module('apps.cpq.selectors')
+        clauses_applicables = source.clauses_applicables
+    except (ImportError, AttributeError):
+        return None
+    clauses = clauses_applicables(
+        company=devis.company, context=contexte_clauses_devis(devis))
+    return [dict(c) for c in (clauses or []) if isinstance(c, dict)]
+
+
+def figer_clauses_devis(devis):
+    """QJR668 (décision fondateur 01/10/2026) — GÈLE les clauses/CGV du devis
+    sur ``Devis.clauses_appliquees``, lues ensuite telles quelles par le PDF
+    (``builder`` → ``data['clauses_cgv']``) : le moteur ne fait que rendre.
+
+    Appelé sur le chemin d'envoi (:func:`mark_devis_sent`) puis RE-appelé à
+    chaque correction sur place d'un envoyé
+    (``modifiabilite.consigner_correction_apres_envoi``, QJR518) — sinon le
+    PDF imprimerait des clauses choisies pour un contenu qui n'existe plus.
+    Sans catalogue (``None``), rien n'est écrit. N'écrit que si le jeu change.
+    Rend ``True`` quand le snapshot a été (ré)écrit. Ne touche jamais au
+    statut (règle #4)."""
+    clauses = clauses_applicables_devis(devis)
+    if clauses is None or clauses == (devis.clauses_appliquees or None):
+        return False
+    if not clauses and not devis.clauses_appliquees:
+        return False
+    devis.clauses_appliquees = clauses
+    devis.save(update_fields=['clauses_appliquees'])
+    return True
+
+
 def _valeur_json(valeur):
     """Une valeur de ligne JSON-safe (Decimal → str, le reste tel quel)."""
     from decimal import Decimal as _D
@@ -2240,6 +2285,8 @@ def mark_devis_sent(*, devis, user=None):
     devis.save(update_fields=['statut', 'date_envoi'])
     # QX23be — fige la marge interne au moment de l'envoi (manager-only).
     refresh_marge_snapshot(devis)
+    # QJR668 — fige les clauses/CGV de l'affaire au moment de l'envoi.
+    figer_clauses_devis(devis)
     activity.log_devis_sent(devis, user)
     devis_sent.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)

@@ -307,6 +307,11 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
     if isinstance(devis.etude_params, dict):
         devis.etude_params['resync_apres_envoi'] = (
             frais.etude_params or {}).get('resync_apres_envoi')
+    # QJR668 — les clauses/CGV gelées à l'envoi sont RE-gelées sur le contenu
+    # corrigé (le PDF les imprime telles quelles) ; l'instance suit.
+    from apps.ventes.domain.cycle_vie import figer_clauses_devis
+    figer_clauses_devis(frais)
+    devis.clauses_appliquees = frais.clauses_appliquees
     if frais.lead_id:
         try:
             from apps.crm.services import noter_devis_corrige

@@ -1601,6 +1601,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # UN PDF = UNE GAMME : la pièce jointe reste le PDF de CE devis, jamais
         # un PDF fusionné des deux gammes (chaque gamme a le sien).
         _appliquer_gamme_envoi(devis, request.data.get('gamme_envoi'))
+        # QJR668 — la pièce jointe est rendue AVANT ``mark_devis_sent`` : les
+        # clauses/CGV de l'affaire sont gelées dès maintenant pour y figurer.
+        if devis.statut == devis.Statut.BROUILLON:
+            from ..domain.cycle_vie import figer_clauses_devis
+            figer_clauses_devis(devis)
 
         # Génère le PDF premium (persist=False — rendu à la volée, pas de
         # remplacement du fichier stocké : le moteur rend seulement).
