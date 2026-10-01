@@ -779,6 +779,56 @@ def _esc(v) -> str:
     return escape(str(v or ""), quote=True)
 
 
+# ── QJR666 (décision fondateur 01/10) — LANGUE DU DOCUMENT ───────────────────
+# Le dialogue PDF peut demander une langue autre que le français
+# (``langue_sortie`` + la table ``libelles_document`` routée par le builder,
+# NTI18N5) ; ce gabarit l'ignorait. Seuls les libellés STRUCTURELS du
+# catalogue ``quote_engine.i18n_labels`` changent (en-têtes du tableau, chaîne
+# des totaux, échéancier, « Réf. ») — jamais une donnée ni un chiffre. Un
+# document français (langue absente, ``None`` ou ``'fr'``) garde les
+# littéraux de CE gabarit, octet pour octet.
+def langue_doc(data) -> str:
+    """Langue normalisée du document ('fr' par défaut)."""
+    from .. import i18n_labels
+    return i18n_labels.normaliser((data or {}).get("langue_sortie"))
+
+
+def libelle_doc(data, cle: str, fr: str) -> str:
+    """Libellé structurel ``cle`` dans la langue du document ; ``fr`` (le
+    littéral historique du gabarit) pour un document français. L'arabe est
+    isolé dans un ``<span dir="rtl">`` à police arabe (voir ``css_langue``)."""
+    from .. import i18n_labels
+    langue = langue_doc(data)
+    if langue == "fr":
+        return fr
+    table = (data or {}).get("libelles_document") or {}
+    valeur = table.get(cle) or i18n_labels.libelle(cle, langue)
+    if i18n_labels.est_rtl(langue):
+        return f'<span class="i18n-rtl" dir="rtl">{valeur}</span>'
+    return valeur
+
+
+def css_langue(data) -> str:
+    """CSS propre à la langue : vide pour fr/en ; pour l'arabe, la police
+    Noto Sans Arabic vendorisée (``assets/fonts``) appliquée aux seuls
+    libellés traduits — les chiffres et le reste du gabarit gardent leurs
+    polices. Police absente ⇒ police système (jamais un PDF cassé)."""
+    from .. import i18n_labels
+    if not i18n_labels.est_rtl(langue_doc(data)):
+        return ""
+    faces = []
+    for wt in (400, 700):
+        b64 = _font_b64(f"NotoSansArabic-{wt}.woff2")
+        if b64:
+            faces.append(
+                f"@font-face{{font-family:'Noto Sans Arabic';font-weight:{wt};"
+                f"font-style:normal;src:url('data:font/woff2;base64,{b64}') "
+                "format('woff2');}")
+    return ("".join(faces)
+            + ".i18n-rtl{font-family:'Noto Sans Arabic','DM Sans',sans-serif;"
+              "unicode-bidi:isolate;}")
+
+
 def company_identity(data: dict) -> dict:
     """Résout l'identité société AFFICHÉE (marque/contact/site) depuis
     ``data['entreprise']`` — QX7 (chips/marque) + SCA27 (tenant-safe).
@@ -819,7 +869,8 @@ def company_identity(data: dict) -> dict:
     }
 
 
-def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> str:
+def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3,
+                traduire: bool = False) -> str:
     # QX6 — le pied lit le NOMBRE RÉEL de pages rendues (jamais « / 3 » codé).
     ident = ident or company_identity(data)
     site = ident.get("site") or _DEFAULT_SITE
@@ -832,9 +883,12 @@ def page_footer(data: dict, ident: dict | None = None, total_pages: int = 3) -> 
     # ligne byte-identique à avant L-NIV.
     filigrane = _esc(data.get('_watermark_standard') or '')
     suffixe = f" &nbsp;·&nbsp; {filigrane}" if filigrane else ""
+    # QJR666 — le gabarit résidentiel (``traduire=True``) suit la langue du
+    # document ; le harnais industriel/commercial reste tel quel.
+    _ref_lbl = libelle_doc(data, 'reference', 'Réf.') if traduire else 'Réf.'
     return f"""
 <div class="foot">
   <div><b>{ident['brand_name']}</b> &nbsp;·&nbsp; {ident['email']} &nbsp;·&nbsp; {ident['phone']}</div>
-  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a>{suffixe}</div>
+  <div>Page {{page}} / {total_pages} &nbsp;·&nbsp; {_ref_lbl} {data['ref']} &nbsp;·&nbsp; <a>{site}</a>{suffixe}</div>
 </div>
 """

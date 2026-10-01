@@ -92,6 +92,10 @@ def build(ctx):
     # un ``d`` sans passer par ``renderer._augment`` ne puisse pas imprimer un
     # chiffre BT sur un dossier MT.
     masquer_eco = bool(d.get("masquer_synthese") or d.get("masquer_economies"))
+    # QJR666 (décision fondateur 01/10) — « graphe mensuel » DÉCOCHÉ au
+    # dialogue PDF (``show_monthly = False``) : la carte « Votre facture mois
+    # par mois » n'est pas imprimée. Défaut ``True`` : page inchangée.
+    masquer_mensuel = d.get("show_monthly") is False
     # QA-FIGURES — l'option que décrit la synthèse −N % / donut (``eco_option``).
     _eco_opt = option_economique(d)
     annual_before = d.get("annual_before") or 0
@@ -792,7 +796,13 @@ def build(ctx):
     # QRP1 — la vignette QR vit DANS la carte « facture » quand celle-ci
     # existe (rangée à hauteur de graphe, coût zéro) ; la bande autonome ne
     # sort QUE sur un document sans couche économique, où la place existe.
-    qr_strip_html = qr_solo_html if (masquer_eco and qr_solo_html) else ""
+    # QJR666 — sans graphe mensuel, la vignette QR (qui vivait dans sa carte)
+    # reprend la bande autonome.
+    if masquer_mensuel and not masquer_eco:
+        bill_html = ""
+    qr_strip_html = (qr_solo_html
+                     if ((masquer_eco or masquer_mensuel) and qr_solo_html)
+                     else "")
 
     # ── HTML ────────────────────────────────────────────────────────────────
     html = f"""{css}
