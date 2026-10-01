@@ -420,7 +420,6 @@ from apps.ventes.domain import scenario as _scenario  # noqa: E402
 SCENARIO_SANS_BATTERIE = _scenario.SCENARIO_SANS_BATTERIE
 SCENARIO_AVEC_BATTERIE = _scenario.SCENARIO_AVEC_BATTERIE
 SCENARIO_LES_DEUX = _scenario.SCENARIO_LES_DEUX
-_scenario_stocke = _scenario._scenario_stocke
 scenario_effectif = _scenario.scenario_effectif
 recommended_option_effective = _scenario.recommended_option_effective
 puissance_kwc_du_devis = _scenario.puissance_kwc_du_devis

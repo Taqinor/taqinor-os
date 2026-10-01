@@ -1040,11 +1040,16 @@ def reconcilier(devis, intention):
         # deux formulations des mêmes conditions. Les deux appellent désormais
         # ``domain.scenario`` : la règle qui décide de ce que le client voit sur
         # sa proposition n'a plus qu'un seul endroit où diverger — aucun.
+        # QJR607 — le classifieur d'onduleur AUTONOME entre aussi : un site
+        # isolé (autonome + batterie) sert l'option « avec ».
+        from apps.ventes.domain.catalogue import _is_offgrid_inverter
         _faits = dict(a_reseau=bool(lignes_reseau),
                       a_hybride=bool(lignes_hybride),
-                      a_batterie=bool(a_batterie))
-        deux_options_servies = sert_les_deux(devis_deux_options, **_faits)
+                      a_batterie=bool(a_batterie),
+                      a_offgrid=any(_classe_ligne(li, _is_offgrid_inverter)
+                                    for li in _lignes_produit(verrou)))
         _scenario_auto = scenario_servable(devis_deux_options, **_faits)
+        deux_options_servies = _scenario_auto == SCENARIO_LES_DEUX
         # QJR64 / décision fondateur D12 — UN SCÉNARIO DÉCLARÉ SURVIT À TOUT
         # RECALCUL. Ce site RE-DÉRIVAIT le scénario sans condition : un
         # « Les deux (Sans + Avec) » posé par un humain pouvait redevenir
@@ -1212,9 +1217,7 @@ from apps.ventes.domain.pipeline import (  # noqa: E402,F401
 )
 from apps.ventes.domain.scenario import (  # noqa: E402,F401
     SCENARIO_LES_DEUX,
-    _scenario_stocke,
     puissance_kwc_du_devis,
     scenario_effectif,
     scenario_servable,
-    sert_les_deux,
 )

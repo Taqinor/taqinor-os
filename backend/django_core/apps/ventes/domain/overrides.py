@@ -515,7 +515,8 @@ def _auto_scenario(devis):
     justement ce que le bloc ``effectif`` met en regard de cette valeur.
     """
     from apps.ventes.domain.catalogue import (
-        _is_battery, _is_hybrid_inverter, _is_reseau_inverter,
+        _is_battery, _is_hybrid_inverter, _is_offgrid_inverter,
+        _is_reseau_inverter,
     )
     from apps.ventes.domain.scenario import scenario_servable
 
@@ -530,7 +531,8 @@ def _auto_scenario(devis):
         True,
         a_reseau=any(_is_reseau_inverter(b) for b in blobs),
         a_hybride=any(_is_hybrid_inverter(b) for b in blobs),
-        a_batterie=any(_is_battery(b) for b in blobs))
+        a_batterie=any(_is_battery(b) for b in blobs),
+        a_offgrid=any(_is_offgrid_inverter(b) for b in blobs))
 
 
 class _DevisSansRegistre:

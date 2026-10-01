@@ -336,6 +336,12 @@ LIBELLE_AVEC = "Avec batterie"
 # qui annonce du stockage ne peut alors PAS être prouvé conforme au devis, donc
 # il n'est pas publié (voir ``_optimum_decrit_ce_devis``).
 BATTERIE_KWH_TOTAL = 0.0
+# QJR609 — capacité UTILE vendue (``data['batterie_kwh_utile_vendue']``, lue
+# par le builder via ``capacite_batterie_des_lignes`` : fiche, puis nominal ×
+# DoD, puis nom), couplée au nominal qu'elle accompagne. Sert UNIQUEMENT la
+# garde ``_optimum_decrit_ce_devis`` (un optimum est mesuré en kWh UTILES) ;
+# ``BATTERIE_KWH_TOTAL`` reste le chiffre nominal. ``None`` ⇒ repli nominal.
+BATTERIE_KWH_UTILE_VENDUE = None
 # QRP1 — liens client-facing posés par le builder (``data['links']``). Le seul
 # consommé ici est ``signer`` : l'URL TOKENISÉE de la proposition en ligne
 # (ShareLink, ``utils.client_links.chemin_proposition``). Aucune URL n'est
@@ -2924,6 +2930,22 @@ def _capacite_batterie_vendue():
     return float(BATTERIE_KWH_TOTAL or 0.0)
 
 
+def _capacite_batterie_utile_vendue():
+    """QJR609 — la même configuration que :func:`_capacite_batterie_vendue`,
+    mesurée en kWh UTILES (la grandeur des optimums du moteur et de la garde
+    web). La valeur utile n'est retenue que pour le nominal qu'elle
+    accompagne ; sinon (donnée absente ou d'un autre document), le nominal."""
+    nominal = _capacite_batterie_vendue()
+    if nominal <= 0:
+        return nominal
+    couple = BATTERIE_KWH_UTILE_VENDUE
+    if (isinstance(couple, tuple) and len(couple) == 2
+            and abs(couple[0] - float(BATTERIE_KWH_TOTAL or 0.0)) < 1e-9
+            and couple[1] > 0):
+        return couple[1]
+    return nominal
+
+
 #: QJR104 — tolérance de comparaison des capacités batterie, en kWh. MÊME
 #: nombre que ``apps.ventes.dimensionnement.TOLERANCE_CAPACITE_KWH`` : un
 #: arrondi d'affichage n'est pas un écart de palier.
@@ -3013,7 +3035,7 @@ def _optimum_decrit_ce_devis(combinaison):
     return _decrit(
         _config_identifiante(combinaison.get("panneaux"),
                              combinaison.get("batterie_kwh")),
-        _config_identifiante(NB_PAN, _capacite_batterie_vendue()))
+        _config_identifiante(NB_PAN, _capacite_batterie_utile_vendue()))
 
 
 def _falaise_context():
@@ -4501,6 +4523,13 @@ def apply_quote_data(data: dict) -> None:
         BATTERIE_KWH_TOTAL = float(data.get("batterie_kwh_total") or 0)
     except (TypeError, ValueError):
         BATTERIE_KWH_TOTAL = 0.0
+    global BATTERIE_KWH_UTILE_VENDUE
+    try:
+        _utile = float(data.get("batterie_kwh_utile_vendue") or 0)
+    except (TypeError, ValueError):
+        _utile = 0.0
+    BATTERIE_KWH_UTILE_VENDUE = ((BATTERIE_KWH_TOTAL, _utile)
+                                 if _utile > 0 else None)
     # ── L-2OPT (chantier « deux optimiseurs », 24/08/2026) — LA PUISSANCE SUIT
     # LA BRANCHE FACTURÉE ────────────────────────────────────────────────────
     # Même doctrine que M4 pour l'économie annuelle : la page UNE chiffre UNE

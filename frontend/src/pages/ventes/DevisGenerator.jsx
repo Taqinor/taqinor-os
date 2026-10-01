@@ -3052,10 +3052,10 @@ export default function DevisGenerator({
             ? { structure_produit_id: Number(structureProduitId) }
             : {}),
         }
-        // BARÈME TRANSPORT (fondateur 07/09/2026) — la ville du lead reprice
-        // la ligne Transport côté serveur (barème Nouaceur) ; sans ville
-        // reconnue, le serveur garde le prix catalogue, réponse inchangée.
-        if (villeCalculLead) body.ville = villeCalculLead
+        // BARÈME TRANSPORT — QJR604 : l'écran envoie l'ID du lead ; le serveur
+        // en résout la ville (lead de la société) et reprice la ligne
+        // Transport dans l'étape composer. Sans lead : prix catalogue.
+        if (selectedLead?.id) body.lead = selectedLead.id
         // OFFGRID — champ additif optionnel (contrat backend) : absent quand
         // `horsReseau` est faux, le serveur dérive alors de
         // `lead.raccordement == 'aucun'` lui-même. Envoyé explicitement ici

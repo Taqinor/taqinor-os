@@ -2369,9 +2369,8 @@ def _dimensionnement_option_depuis_items(items):
     valeur (contrat ``dimensionnement_options.json``, note ``derivation``)
     au lieu de lire un nombre inventé. ``nb_batteries`` reste le compte RÉEL —
     c'est ainsi que l'inconnu remonte plutôt que d'être tu."""
-    from .quote_engine.builder import (
-        _is_battery, _is_panel, _parse_kwh, _parse_watt,
-    )
+    from .domain.catalogue import _parse_kwh
+    from .quote_engine.builder import _is_battery, _is_panel, _parse_watt
     nb_panneaux = 0
     watt = None
     nb_batteries = 0.0

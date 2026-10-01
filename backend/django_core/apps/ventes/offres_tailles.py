@@ -527,7 +527,8 @@ class _Contexte:
     lectures du même devis pourraient diverger.
     """
 
-    def __init__(self, devis, entrees, panel_watt, catalogue, marques, ordre):
+    def __init__(self, devis, entrees, panel_watt, catalogue, marques, ordre,
+                 sonde=None):
         self.devis = devis
         self.entrees = entrees
         self.panel_watt = panel_watt
@@ -549,6 +550,13 @@ class _Contexte:
         from apps.ventes.domain.composition import (
             structure_produit_id_du_devis)
         self.structure_produit_id = structure_produit_id_du_devis(devis)
+        #: QJR605 — L'INTENTION DU DEVIS (gamme, phase, MPPT, TVA, hors-réseau,
+        #: structure) : les cartes composent par ``pipeline.composer_sonde``,
+        #: le même constructeur que le devis lui-même.
+        from apps.ventes.domain.pipeline import contexte_sonde_du_devis
+        import dataclasses
+        self.sonde = dataclasses.replace(
+            sonde or contexte_sonde_du_devis(devis), panel_watt=panel_watt)
         self.facteur_remise = facteur_remise_du_devis(devis)
         #: Ce que le commercial a DESSINÉ (``layout.result.panels``) — la cible
         #: de resynchronisation, PAS la contenance du toit.
@@ -607,27 +615,16 @@ class _Contexte:
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.
 
-        Le pin ``batterie_module_kwh`` porte la règle fondateur : la banque
-        grandit en N modules du calibre DÉJÀ vendu par ce devis, homogène,
-        jamais un re-choix catalogue.
+        QJR605 — composée par ``pipeline.composer_sonde`` avec l'intention DU
+        DEVIS. Le pin ``batterie_module_kwh`` porte la règle fondateur : la
+        banque grandit en N modules du calibre DÉJÀ vendu par ce devis,
+        homogène, jamais un re-choix catalogue.
         """
-        from apps.ventes.services import composition_residentielle
-        kwc = nb_panneaux * self.panel_watt / 1000.0
+        from apps.ventes.domain.pipeline import composer_sonde
         try:
-            return composition_residentielle(
-                self.catalogue, kwc=kwc, panel_watt=self.panel_watt,
-                nb_panneaux=nb_panneaux, avec_batterie=avec_batterie,
-                # STKCAT8 — la structure DU DEVIS, jamais l'acier par défaut.
-                # ``getattr`` : les fixtures de test qui simulent un contexte
-                # (``SimpleNamespace``) ne portent pas l'attribut, et un
-                # contexte sans structure doit composer comme hier.
-                structure_produit_id=getattr(
-                    self, 'structure_produit_id', None),
-                structure_type='acier', taux_tva=_TVA_REPLI,
-                avertissements=[], deux_options=False, marques=self.marques,
-                ordre_lignes=self.ordre,
-                batterie_cible_kwh=cible_kwh,
-                batterie_module_kwh=self.module_batterie_kwh)
+            return composer_sonde(
+                self.sonde, nb_panneaux, avec_batterie=avec_batterie,
+                cible_kwh=cible_kwh, module_kwh=self.module_batterie_kwh)
         except Exception:  # noqa: BLE001 — une taille impossible ne fait pas
             # tomber les deux autres.
             logger.warning('composition de taille impossible à %s panneaux',
@@ -644,29 +641,22 @@ def _contexte(devis):
     panneau. Aucune n'est franchie par défaut — sans profil réel, la section
     disparaît au lieu d'afficher une estimation.
     """
-    from apps.ventes.services import (
-        _AUTO_PANEL_WATT, carte_marques_composition, catalogue_de_la_societe,
-        composition_residentielle, entrees_dimensionnement_du_devis,
-        ordre_lignes_societe)
+    from apps.ventes.domain.pipeline import (
+        contexte_sonde_du_devis, sonder_wattage)
+    from apps.ventes.services import entrees_dimensionnement_du_devis
 
     entrees = entrees_dimensionnement_du_devis(devis)
     if not entrees or not entrees.get('conso_kwh_mensuelles'):
         return None
-    company = entrees['company']
-    catalogue = catalogue_de_la_societe(company)
-    marques = carte_marques_composition(company, None)
-    ordre = ordre_lignes_societe(company)
-    # Le wattage RÉELLEMENT retenu par le catalogue — lu, jamais supposé
-    # (même sonde que ``balayer_tailles`` et que l'échelle de paliers).
-    sonde = composition_residentielle(
-        catalogue, kwc=_AUTO_PANEL_WATT / 1000.0, panel_watt=_AUTO_PANEL_WATT,
-        nb_panneaux=1, avec_batterie=False, structure_type='acier',
-        taux_tva=_TVA_REPLI, avertissements=[], deux_options=False,
-        marques=marques, ordre_lignes=ordre)
-    panel_watt = _num(getattr(sonde, 'panel_watt_reel', 0))
+    # QJR605 — l'intention du devis, lue UNE fois (catalogue et règles de
+    # gamme compris) ; LA sonde de wattage partagée par les trois modules.
+    sonde = contexte_sonde_du_devis(devis)
+    panel_watt = _num(sonder_wattage(sonde))
     if panel_watt <= 0:
         return None
-    return _Contexte(devis, entrees, panel_watt, catalogue, marques, ordre)
+    reglages = sonde.reglages
+    return _Contexte(devis, entrees, panel_watt, reglages.catalogue,
+                     reglages.marques, reglages.ordre_lignes, sonde=sonde)
 
 
 # ════════════════════════════════════════════════════════════════════════════

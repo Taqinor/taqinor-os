@@ -470,7 +470,10 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             jour_reference=entrees['jour_reference'],
             # QJR46 — le barème de la SOCIÉTÉ, celui que le devis appliquera.
             tranches=entrees['tranches'],
-            charges_fixes_mad=entrees['charges_fixes_mad'])
+            charges_fixes_mad=entrees['charges_fixes_mad'],
+            # QJR606 — la phase et la gamme du devis, lues par l'adaptateur.
+            phase=entrees['phase'],
+            gamme_nom_devis=entrees['gamme_nom_devis'])
         resultat['_empreinte'] = empreinte
         ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
                dimensionnement=resultat)
