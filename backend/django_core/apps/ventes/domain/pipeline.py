@@ -984,6 +984,108 @@ def estampiller_provenance(devis, intention):
     return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
 
 
+def restamper_provenance(devis):
+    """QJR588 (contrat QJR505) — le SEUL écrivain autorisé à ÉCRASER une
+    estampille de provenance en dérive : il pose l'estampille des valeurs
+    COURANTES du lead (:func:`crm.selectors.lead_du_devis`). Appelé
+    uniquement par les deux gestes qui RÉSOLVENT la dérive — « reprendre les
+    valeurs du lead » et « garder celles du devis » —, jamais par un
+    enregistrement (:func:`estampiller_provenance` préserve, elle, une dérive
+    en cours). Rend le bloc écrit, ou ``None`` sans lead."""
+    from apps.crm.selectors import lead_du_devis, lead_provenance_stamp
+
+    stamp = lead_provenance_stamp(lead_du_devis(devis))
+    if stamp is None:
+        return None
+    return ecrire_etude(devis, proprietaire=PIPELINE, provenance=stamp)
+
+
+def reappliquer_lead(devis, *, user=None, company=None):
+    """QJR588 (contrat QJR505) — « Reprendre les valeurs du lead ».
+
+    Sous UNE transaction, sur le devis VIVANT (jamais une recomposition) :
+
+    1. les études sont recalculées depuis le lead COURANT (mode RAFRAICHIR,
+       ``force_etudes``) ;
+    2. en résidentiel, le compte de panneaux est RÉCONCILIÉ (mode
+       RÉCONCILIER, ``exact``) sur la recommandation du moteur pour le lead
+       courant — la même machinerie que « appliquer une taille » : prix
+       négociés, remises, sections, notes et lignes manuelles intacts, seules
+       des quantités bougent ;
+    3. l'estampille est reposée (:func:`restamper_provenance`) ;
+    4. sur un ENVOYÉ, l'état vu par le client est capturé avant et la
+       correction est tracée en un point (« valeurs du lead reprises »).
+
+    La garde de statut est celle de l'appelant (``exiger_modifiable``) ; le
+    statut est LU, jamais écrit (règle #4). Rend ``{champs_repris,
+    corrige_apres_envoi, avertissements}``.
+    """
+    from apps.crm.selectors import lead_du_devis, lead_values_changed_since
+    from apps.ventes.domain.modifiabilite import (
+        consigner_correction_apres_envoi, debut_de_geste_devis,
+        empreinte_visible)
+
+    company = company or getattr(devis, 'company', None)
+    ancienne = (getattr(devis, 'etude_params', None) or {}).get('provenance')
+    champs = (lead_values_changed_since(ancienne, company=company)
+              if isinstance(ancienne, dict) else [])
+    lead = lead_du_devis(devis)
+    avertissements = []
+    corrige = False
+    with transaction.atomic():
+        avant = debut_de_geste_devis(devis, user)
+        appliquer(devis, IntentionDevis(
+            origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR, company=company,
+            force_etudes=True))
+        if lead is not None and (getattr(devis, 'mode_installation', '')
+                                 or 'residentiel') == 'residentiel':
+            avertissements.extend(
+                _reconcilier_sur_le_lead(devis, lead, company, user))
+        devis.refresh_from_db()
+        restamper_provenance(devis)
+        if avant is not None and empreinte_visible(devis) != avant:
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='lead',
+                resume='valeurs du lead reprises')
+            corrige = True
+    return {'champs_repris': list(champs), 'corrige_apres_envoi': corrige,
+            'avertissements': avertissements}
+
+
+def _reconcilier_sur_le_lead(devis, lead, company, user):
+    """QJR588 — porte le compte de panneaux du devis à la recommandation du
+    moteur pour le lead COURANT, par le mode RÉCONCILIER (``exact``). Rend
+    les avertissements (jamais une exception pour une recommandation
+    impossible : on le DIT et le reste du geste continue)."""
+    from apps.ventes import offres_tailles
+    from apps.ventes.services import SyncLayoutError, extract_roof_config
+
+    try:
+        nb, _watt, _source, _avec = _panneaux_dimensionnement_horaire(
+            lead=lead, company=company,
+            phase=phase_client_pour_dimensionnement(lead))
+    except AutoDevisError as erreur:
+        return ['Taille non recalculée : %s' % erreur]
+    if not nb:
+        return ['Taille non recalculée : le moteur ne recommande aucun '
+                'compte de panneaux pour ce lead.']
+    if offres_tailles._compter_panneaux_du_devis(devis) == int(nb):
+        return []
+    contexte = offres_tailles._contexte(devis)
+    if contexte is None:
+        return ['Taille non recalculée : ce devis ne se dimensionne pas '
+                '(profil de consommation ou catalogue).']
+    try:
+        resultat = appliquer(devis, IntentionDevis(
+            origine=ORIGINE_RESYNCHRONISATION, company=company, user=user,
+            layout=offres_tailles._layout_de_la_taille(
+                devis, contexte, int(nb), 0, extract_roof_config),
+            exact=True, mode=MODE_RECONCILIER, tracer_correction=False))
+    except SyncLayoutError as erreur:
+        return [str(getattr(erreur, 'detail', erreur))]
+    return list((resultat.get('resynchro') or {}).get('avertissements') or ())
+
+
 def rafraichir_etudes(verrou, *, force=False):
     """Étape 7 — LES QUATRE études, sur l'instance VERROUILLÉE **ET RELUE**.
 

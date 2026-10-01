@@ -1737,6 +1737,66 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             DevisPresetSerializer(preset).data,
             status=status.HTTP_201_CREATED)
 
+    def _reponse_derive(self, request, devis, resultat):
+        """QJR588 — la réponse 200 du contrat QJR505."""
+        from ..domain.verrou_devis import toucher
+        devis.refresh_from_db()
+        toucher(devis)
+        return Response({
+            'devis': DevisSerializer(devis, context={'request': request}).data,
+            'champs_repris': resultat.get('champs_repris', []),
+            'corrige_apres_envoi': bool(resultat.get('corrige_apres_envoi')),
+            'avertissements': resultat.get('avertissements', []),
+        })
+
+    @staticmethod
+    def _refus_derive_fige(devis):
+        """QJR588 — accepté / refusé / expiré / remplacé : 400
+        ``{detail, code: 'devis_fige'}`` (garde QJR516, statut LU)."""
+        from ..domain.modifiabilite import (
+            LIGNES, DevisNonModifiable, exiger_modifiable)
+        try:
+            exiger_modifiable(devis, LIGNES)
+        except DevisNonModifiable:
+            return Response(
+                {'detail': 'Devis figé — révisez-le (reviser) pour le '
+                           'modifier.', 'code': 'devis_fige'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return None
+
+    @action(detail=True, methods=['post'], url_path='reappliquer-lead',
+            permission_classes=[IsResponsableOrAdmin])
+    def reappliquer_lead(self, request, pk=None):
+        """QJR588 (contrat ``devis_reappliquer_lead.json``) — « Reprendre
+        les valeurs du lead » : études recalculées depuis le lead courant,
+        compte de panneaux réconcilié (prix négociés, lignes manuelles,
+        sections et notes intacts), estampille reposée. Brouillon et envoyé
+        sur place (envoyé : correction tracée) ; figé → 400 ``devis_fige``."""
+        from ..domain.pipeline import reappliquer_lead
+        devis = self.get_object()  # borné société
+        refus = self._refus_derive_fige(devis)
+        if refus is not None:
+            return refus
+        resultat = reappliquer_lead(devis, user=request.user,
+                                    company=request.user.company)
+        return self._reponse_derive(request, devis, resultat)
+
+    @action(detail=True, methods=['post'], url_path='acquitter-derive',
+            permission_classes=[IsResponsableOrAdmin])
+    def acquitter_derive(self, request, pk=None):
+        """QJR588 — « Garder les valeurs du devis » : l'estampille est
+        reposée sur les valeurs COURANTES du lead, rien d'autre (lignes et
+        études octet-identiques). Figé → 400 ``devis_fige``."""
+        from ..domain.pipeline import restamper_provenance
+        devis = self.get_object()
+        refus = self._refus_derive_fige(devis)
+        if refus is not None:
+            return refus
+        restamper_provenance(devis)
+        return self._reponse_derive(request, devis, {
+            'champs_repris': [], 'corrige_apres_envoi': False,
+            'avertissements': []})
+
     @action(detail=True, methods=['post'], url_path='dupliquer-variante',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer_variante(self, request, pk=None):
