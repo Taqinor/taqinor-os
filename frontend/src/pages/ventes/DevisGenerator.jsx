@@ -319,6 +319,7 @@ const withKeys = (rows) => rows.map(r => ({
   // `prixManuel`, sinon `remplacer_lignes` re-devine le rôle et écrase celui
   // posé par la composition (ex. 'onduleur_offgrid').
   role_devis: r.role_devis ?? '',
+  lot: r.lot ?? null, // QJR667 — lot multi-sites conservé à l'enregistrement
   // QJR529 — remise PAR LIGNE stockée (%), conservée comme `prixManuel` :
   // jamais remise à '0' en silence (le total client monterait).
   remise: String(r.remise ?? '0'),

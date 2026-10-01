@@ -322,8 +322,11 @@ class Qjr517PariteChampsLigne(_BaseSites):
     def test_chaque_champ_survit_au_remplacement(self):
         from apps.ventes.domain.lignes import (
             EXCLUSIONS_REMPLACEMENT, remplacer_lignes)
+        from apps.ventes.models import LotDevis
         self.assertEqual(set(EXCLUSIONS_REMPLACEMENT),
-                         {'produit_id', 'lot', 'lot_id'})
+                         {'produit_id', 'lot_id'})
+        lot = LotDevis.objects.create(
+            company=self.company, devis=self.devis, nom_lot='Site parité')
         corps = {
             'produit': self.produit.id,
             'designation': 'Panneau parité',
@@ -340,6 +343,7 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'optionnelle': True,
             'quantite_manuelle': True,
             'prix_manuel': True,
+            'lot': lot.id,
         }
         attendus = set(CHAMPS_LIGNE) - set(EXCLUSIONS_REMPLACEMENT)
         self.assertEqual(
@@ -363,6 +367,7 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'optionnelle': ligne.optionnelle,
             'quantite_manuelle': ligne.quantite_manuelle,
             'prix_manuel': ligne.prix_manuel,
+            'lot': ligne.lot_id,
         }
         self.assertEqual(set(valeurs), attendus)
         self.assertEqual(valeurs, {
@@ -381,4 +386,5 @@ class Qjr517PariteChampsLigne(_BaseSites):
             'optionnelle': True,
             'quantite_manuelle': True,
             'prix_manuel': True,
+            'lot': lot.id,
         })

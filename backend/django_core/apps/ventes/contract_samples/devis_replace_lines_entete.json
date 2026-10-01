@@ -16,7 +16,8 @@
         "variante": "",
         "optionnelle": false,
         "prix_manuel": false,
-        "quantite_manuelle": false
+        "quantite_manuelle": false,
+        "lot": null
       },
       {
         "produit": 62,
