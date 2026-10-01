@@ -16,3 +16,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Cockpit : contrôle du suivi](cockpit-controle-suivi.md) — 30/09/2026 : règles de mesure dans le contrat `controle_suivi.json` (retard en jours ouvrés, reports comptés, pas de note unique, même page pour tous) ; garde scénario + oracle indépendant
 - [Typed kWh vs bills](kwh-declare-vs-factures.md) — founder rule 30/09: typed kWh contradicting the bills (>2×) blocks saving the quote until the lead is corrected
 - [Devis : parcours modifiable (QJR5)](devis-parcours-modifiable-qjr5.md) — 30/09/2026 : envoyé corrigé sur place, accepté → Réviser V2 tout rôle, fusion au recalcul, notes client, historique + restauration ; groupe QJR500-670 de PLAN2
+- [Décisions QJR5](qjr5-decisions-fondateur.md) — 30/09–01/10 : réponses du fondateur aux 11 questions QJR659-669, QJR612 (panneaux ajoutés pour batterie pleine), changements visibles client confirmés
