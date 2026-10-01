@@ -21,7 +21,7 @@ vi.mock('./solar', async (importOriginal) => {
   }
 })
 
-import { createAutoQuote } from './autoQuote'
+import { createAutoQuote, parametresBalayageCI } from './autoQuote'
 import {
   optimalKwcByPayback, consoAnnuelleDepuisFactures, estimerMois, productibleForCity,
 } from './solar'
@@ -78,6 +78,29 @@ describe('ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — balayage du devis auto', () =>
       distributeur: 'onee', ville: 'Agadir',
     })
     expect(args.productible).toBe(productibleForCity('Agadir'))
+  })
+
+  it('QJR575 — lead industriel sans distributeur : MÊMES paramètres de balayage que le générateur (parametresBalayageCI)', async () => {
+    const args = await argumentsDuBalayage({
+      id: 47, type_installation: 'industriel', facture_hiver: '4000', distributeur: null,
+    })
+    // Le générateur appelle la MÊME fonction avec ce qu'il sait (aucun
+    // distributeur choisi, aucun sur le lead) : mêmes paramètres ⇒ même
+    // nombre de panneaux retenu.
+    const ecran = parametresBalayageCI({ factures: FACTURES, mode: 'industriel' })
+    expect(args.dayUsagePct).toBe(ecran.dayUsagePct)
+    expect(args.consoAnnuelleKwh).toBe(ecran.consoAnnuelleKwh)
+    expect(args.utility).toBe(ecran.utility)
+    expect(args.utility).toBeUndefined()
+    expect(args.factures).toEqual(ecran.factures)
+  })
+
+  it('QJR575 — commercial sans catégorie : part diurne 80 % des deux côtés', () => {
+    expect(parametresBalayageCI({ factures: FACTURES, mode: 'commercial' }).dayUsagePct).toBe(80)
+    expect(parametresBalayageCI({ factures: FACTURES, mode: 'commercial', categorie: 'hotel' }).dayUsagePct).toBe(55)
+    expect(parametresBalayageCI({
+      factures: FACTURES, mode: 'commercial', distributeurDeclare: 'onee',
+    }).utility).toBe('onee')
   })
 
   it('lead sans ville : le productible par défaut, jamais absent', async () => {

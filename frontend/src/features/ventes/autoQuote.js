@@ -32,8 +32,38 @@ import {
   // au productible de la VILLE (comme l'aperçu et le PDF), jamais au repli
   // historique GHI × 0,8 de `computeROI` (≈ −18 % contre le document).
   productibleForCity,
+  // QJR575 — part diurne d'une catégorie commerciale (80 % pour une clé
+  // inconnue ou absente : la sentinelle « Non précisée » de l'écran).
+  commercialDayShare,
   consoAnnuelleDepuisFactures,
 } from './solar'
+
+// QJR575 — LES PARAMÈTRES DU BALAYAGE C&I, UNE SEULE CONSTRUCTION pour le
+// « Devis automatique » (ci-dessous) ET l'Édition complète (DevisGenerator,
+// `computeAutoSizing`) : sans elle, les deux boutons dimensionnaient le même
+// lead à deux kWc (modèle 'factures' via le défaut d'écran 'onee' contre
+// modèle 'estimation' ici ; hôtel 55 % contre 80 %).
+//   • part diurne : commercial → `commercialDayShare(categorie)` (80 % sans
+//     catégorie) ; industriel / résidentiel → DAY_USAGE_DEFAULTS ;
+//   • `utility` (modèle d'économie) : le distributeur DÉCLARÉ (choisi par le
+//     vendeur, sinon celui du lead) s'il est l'un des trois barèmes connus,
+//     sinon `undefined` — jamais un défaut d'écran (mémoire
+//     ci-autoquote-conso-only : le modèle d'économie reste celui d'avant) ;
+//   • conso : la consommation RÉELLE saisie si elle existe, sinon les
+//     factures au barème (national par défaut, COUV-HOR — jamais ÷ 1,20).
+export function parametresBalayageCI({
+  factures, mode, categorie, distributeurDeclare, consoAnnuelleReelle,
+} = {}) {
+  const dayUsagePct = mode === 'commercial' ? commercialDayShare(categorie)
+    : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
+      : DAY_USAGE_DEFAULTS['Résidentielle']
+  const utility = ['onee', 'lydec', 'redal'].includes(distributeurDeclare)
+    ? distributeurDeclare : undefined
+  const consoAnnuelleKwh = Number(consoAnnuelleReelle) > 0
+    ? Number(consoAnnuelleReelle)
+    : consoAnnuelleDepuisFactures(factures, utility || 'onee')
+  return { factures, dayUsagePct, consoAnnuelleKwh, utility }
+}
 
 // QX19 — préférence de structure du lead (acier/aluminium) → structureType
 // d'autoFillLines/autoFillPompage. Défaut historique 'acier' quand non renseigné.
@@ -247,9 +277,6 @@ export async function createAutoQuote({ lead, produits, discountStr,
       if (besoinKwc > 0) {
         const eteVal = (lead.ete_differente && lead.facture_ete)
           ? parseFloat(lead.facture_ete) : hiver
-        const dayUsagePct = mode === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
-          : mode === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
-            : DAY_USAGE_DEFAULTS['Résidentielle']
         // FINDING 25/08 — la CONSOMMATION RÉELLE entre dans le balayage. Sans
         // elle, `computeROI` ne plafonne pas l'économie à ce que le client
         // peut consommer : elle reste linéaire en kWc, chaque pas marginal se
@@ -258,11 +285,14 @@ export async function createAutoQuote({ lead, produits, discountStr,
         // MÊME dérivation que `etude_params.conso_annuelle` posée plus bas —
         // désormais partagée (`consoAnnuelleDepuisFactures`), donc impossible
         // à faire diverger entre le dimensionnement et l'étude envoyée.
-        const facturesBalayage = estimerMois(hiver, eteVal)
-        const distributeurBalayage = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
-          ? lead.distributeur : undefined
+        // QJR575 — MÊMES paramètres que l'Édition complète. Aucune catégorie
+        // commerciale n'est lue du lead (NE PAS FAIRE) : 80 % par défaut.
+        const balayage = parametresBalayageCI({
+          factures: estimerMois(hiver, eteVal), mode,
+          distributeurDeclare: lead.distributeur,
+        })
         const opt = optimalKwcByPayback({
-          produits, factures: facturesBalayage, dayUsagePct,
+          produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
           panelW: 710, structureType: structFromLead(lead),
           // STKCAT10 — le balayage chiffre chaque palier avec LA structure
           // réellement retenue (produit épinglé s'il existe), jamais une autre.
@@ -273,9 +303,8 @@ export async function createAutoQuote({ lead, produits, discountStr,
           // barème national (Q7), jamais factures ÷ 1,20 MAD/kWh ; le MODÈLE
           // d'économie (`utility`) reste celui d'avant — décision fondateur :
           // 0 devis C&I sur 61 ne bouge (mesuré sur la prod le 29/09).
-          consoAnnuelleKwh: consoAnnuelleDepuisFactures(
-            facturesBalayage, distributeurBalayage || 'onee'),
-          utility: distributeurBalayage,
+          consoAnnuelleKwh: balayage.consoAnnuelleKwh,
+          utility: balayage.utility,
           productible: productibleForCity(lead.ville || '', quoteLogic?.productible),
         })
         // U3-900 (fondateur 29/08/2026) — plus de repli `estimerPanneaux`

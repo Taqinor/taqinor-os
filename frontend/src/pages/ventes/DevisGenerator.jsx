@@ -25,6 +25,9 @@ import {
 // round-trips non gardés) ne sont plus utilisés ici.
 import {
   createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE,
+  // QJR575 — les paramètres du balayage C&I, construits UNE fois (partagés
+  // avec le « Devis automatique »).
+  parametresBalayageCI,
   // QJR308 — même formule que DevisTab.jsx / LeadDevisPanel.jsx : l'avis du
   // palier de 5 kWc, mais affiché ICI au moment RÉEL où `runAutoQuote` déclenche
   // le snap (les deux autres points ne l'affichent qu'avant de naviguer vers
@@ -181,7 +184,7 @@ import RailArgent from './generator/RailArgent'
 // transverse (chaîne d'étude horaire, roi, études par marché, validate).
 import PanneauResidentiel from './generator/PanneauResidentiel'
 import PanneauIndustriel from './generator/PanneauIndustriel'
-import PanneauCommercial from './generator/PanneauCommercial'
+import PanneauCommercial, { CATEGORIE_NON_PRECISEE } from './generator/PanneauCommercial'
 import PanneauAgricole from './generator/PanneauAgricole'
 // QJRREM (fondateur 07/09/2026) — miroir EXACT du noyau de répartition de la
 // remise globale par ligne (même module que DevisForm.jsx, l'écran d'édition
@@ -759,7 +762,7 @@ export default function DevisGenerator({
   const [consoMensuelle, setConsoMensuelle] = useState('')
   // QX44 — étude commerciale par catégorie (mode commercial). categorie +
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
-  const [categorieCommerciale, setCategorieCommerciale] = useState('hotel')
+  const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
   const [commercialAnswers, setCommercialAnswers] = useState({})
   const setCommercialAnswer = (key, val) =>
     setCommercialAnswers(prev => ({ ...prev, [key]: val }))
@@ -1624,13 +1627,13 @@ export default function DevisGenerator({
     if (besoinKwc <= 0) return null
     const eteVale = parseFloat(eteVal) || 0
     const eteEff = eteVale > 0 ? eteVale : hiver
-    const dayUsagePct = modeInstallation === 'commercial' ? DAY_USAGE_DEFAULTS['Commerciale']
-      : modeInstallation === 'industriel' ? DAY_USAGE_DEFAULTS['Industrielle']
-        : DAY_USAGE_DEFAULTS['Résidentielle']
-    // Distributeur du devis : c'est SON barème qui convertit les factures en
-    // kWh (et qui valorise l'économie par tranche). Il entre donc dans la clé
-    // de cache au même titre que la marque épinglée.
-    const distributeurBalayage = distributeur
+    // QJR575 — distributeur DÉCLARÉ : celui que le vendeur a choisi, sinon
+    // celui du lead, jamais le défaut d'écran 'onee' (sinon l'écran passait
+    // au modèle « factures » quand le devis automatique restait en
+    // « estimation » : deux kWc selon le bouton). Il entre dans la clé.
+    const distributeurDeclare = distributeurChoisi ? distributeur : selectedLead?.distributeur
+    const categorieBalayage = categorieCommerciale === CATEGORIE_NON_PRECISEE
+      ? null : categorieCommerciale
     // ERR-QAH-DIFF-ROI-PRODUCTIBLE-DEFAUT — même productible que l'aperçu
     // (`roi`) et que le PDF : sans lui, `computeROI` retombait sur GHI × 0,8
     // (≈ 1 256 kWh/kWc contre ≈ 1 536 au document). Il entre dans la clé.
@@ -1641,12 +1644,11 @@ export default function DevisGenerator({
     // STKCAT10 — le PRODUIT de structure entre dans la clé au même titre que
     // le bouton acier/alu : changer de structure change le prix de chaque
     // palier, donc le palier retenu.
-    const key = [hiver, eteEff, besoinKwc, dayUsagePct, panelW, structureType,
-      structureProduitId ?? '',
+    const key = [hiver, eteEff, besoinKwc, modeInstallation, categorieBalayage ?? '', panelW,
+      structureType, structureProduitId ?? '',
       discountPct, produits.length, JSON.stringify(marquesActives),
-      distributeurBalayage, consoAnnuelleReelle ?? '', productibleBalayage].join('|')
+      distributeurDeclare ?? '', consoAnnuelleReelle ?? '', productibleBalayage].join('|')
     if (sizingCacheRef.current.key === key) return sizingCacheRef.current.result
-    const factures = estimerMois(hiver, eteEff)
     // FINDING 25/08 — la CONSOMMATION RÉELLE du client entre dans le balayage.
     // Sans elle, `computeROI` ne plafonne rien : l'économie reste linéaire en
     // kWc, chaque pas marginal se « rembourse » et l'ascension ne s'arrête
@@ -1658,15 +1660,17 @@ export default function DevisGenerator({
     // QF4) prime sur la dérivation : c'est celle que l'aperçu `roi` utilise
     // déjà, et le dimensionnement doit dimensionner le MÊME client que
     // l'aperçu. Sinon, dérivation depuis les factures du balayage.
-    const consoBalayage = (Number(consoAnnuelleReelle) > 0)
-      ? Number(consoAnnuelleReelle)
-      : consoAnnuelleDepuisFactures(factures, distributeurBalayage)
+    // QJR575 — MÊME construction que le « Devis automatique ».
+    const balayage = parametresBalayageCI({
+      factures: estimerMois(hiver, eteEff), mode: modeInstallation,
+      categorie: categorieBalayage, distributeurDeclare, consoAnnuelleReelle,
+    })
     const opt = optimalKwcByPayback({
-      produits, factures, dayUsagePct,
+      produits, factures: balayage.factures, dayUsagePct: balayage.dayUsagePct,
       panelW, structureType, structureProduitId, discountPct,
       kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       besoinKwc, marques: marquesActives,
-      consoAnnuelleKwh: consoBalayage, utility: distributeurBalayage,
+      consoAnnuelleKwh: balayage.consoAnnuelleKwh, utility: balayage.utility,
       productible: productibleBalayage,
     })
     // QJR102 — LE SECOND BALAYAGE (celui de l'axe stockage, exposé jadis sous
@@ -1688,8 +1692,8 @@ export default function DevisGenerator({
     sizingCacheRef.current = { key, result }
     return result
   }, [modeInstallation, panelW, structureType, structureProduitId, discountPct,
-    produits, quoteLogic, marquesActives, distributeur, consoAnnuelleReelle,
-    selectedLead?.ville])
+    produits, quoteLogic, marquesActives, distributeur, distributeurChoisi,
+    categorieCommerciale, consoAnnuelleReelle, selectedLead?.ville, selectedLead?.distributeur])
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -3431,7 +3435,8 @@ export default function DevisGenerator({
     partDiurne: dayUsage,
     tensionRaccordement,
     repartitionMt,
-    categorie: categorieCommerciale,
+    // QJR575 — la sentinelle « Non précisée » se persiste null.
+    categorie: categorieCommerciale === CATEGORIE_NON_PRECISEE ? null : categorieCommerciale,
     reponses: commercialAnswers,
     pompage: (modeInstallation === 'agricole' && pompageSel)
       ? buildEtudePompage(pompageSel, {
