@@ -4,12 +4,14 @@
 ``build(ctx) -> str`` returns the INNER HTML of one A4 page (no wrapper/footer).
 CSS tables only. Classes prefixed ``i3-``.
 """
+from decimal import Decimal, InvalidOperation
 
 
 def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
     theme = ctx["theme"]
     ident = ctx.get("ident") or {}
@@ -43,29 +45,44 @@ def build(ctx):
     pt = d.get("payment_terms") or {}
     _pcts = {}
     for _cle in ("acompte", "materiel", "solde"):
+        # ERR-QJR614-CI — le pourcentage n'est plus TRONQUÉ (``int(32.5)``
+        # imprimait « 32% ») : il est lu tel que la société l'a réglé.
         try:
-            _pcts[_cle] = int(pt[_cle])
-        except (KeyError, TypeError, ValueError):
+            _p = Decimal(str(pt[_cle]))
+        except (KeyError, TypeError, ValueError, InvalidOperation):
             _pcts = {}
             break
-    a_pct = _pcts.get("acompte")
-    m_pct = _pcts.get("materiel")
-    s_pct = _pcts.get("solde")
+        if not _p.is_finite():
+            _pcts = {}
+            break
+        _pcts[_cle] = _p
 
-    def tranche(label, pct, sub):
-        montant = round(invest * pct / 100)
+    # ERR-QJR614-CI — les MONTANTS viennent de la source unique
+    # ``utils.echeancier.montants_tranches`` : au centime (ROUND_HALF_UP), le
+    # reliquat sur la dernière tranche, de sorte qu'acompte + matériel + solde
+    # == Total TTC au centime (l'ancien ``round(invest × pct / 100)`` arrondi
+    # au dirham ne sommait pas au total imprimé en couverture).
+    _montants = {}
+    if _pcts:
+        from apps.ventes.utils.echeancier import montants_tranches
+        _montants = montants_tranches(invest, list(_pcts.items()))
+
+    def _pct_txt(p):
+        return f"{p.normalize():f}".replace(".", ",")
+
+    def tranche(cle, label, sub):
         return (
-            f'<td class="i3-tr"><div class="i3-tr-pct">{pct}%</div>'
+            f'<td class="i3-tr"><div class="i3-tr-pct">{_pct_txt(_pcts[cle])}%</div>'
             f'<div class="i3-tr-lab">{label}</div>'
-            f'<div class="i3-tr-amt">{fmt(montant)} MAD</div>'
+            f'<div class="i3-tr-amt">{fmt_mad(_montants[cle])} MAD</div>'
             f'<div class="i3-tr-sub">{sub}</div></td>')
 
     tranches = (
-        tranche("Acompte", a_pct, "à la commande — lancement des études & appro")
+        tranche("acompte", "Acompte", "à la commande — lancement des études & appro")
         + '<td class="i3-tgap"></td>'
-        + tranche("Matériel", m_pct, "à la livraison des équipements sur site")
+        + tranche("materiel", "Matériel", "à la livraison des équipements sur site")
         + '<td class="i3-tgap"></td>'
-        + tranche("Solde", s_pct, "à la mise en service & réception")
+        + tranche("solde", "Solde", "à la mise en service & réception")
     ) if _pcts else ""
     # QJR146 (f) — le titre suit le bloc : pas de section « Tranches de
     # paiement phasées » vide au-dessus d'un trou.

@@ -119,6 +119,9 @@ def build(ctx):
     f_sans = fonts["sans"]
 
     invest = d.get("_invest_ttc") or 0
+    # ERR-QJR614-CI — l'investissement TTC s'imprime au CENTIME, comme le
+    # Total TTC de la couverture (jamais ``fmt(round(invest))`` au dirham).
+    fmt_mad = ctx.get("fmt_mad") or fmt
     om = d.get("ind_om_annuel")
     injection = d.get("ind_injection_dh")
 
@@ -303,7 +306,7 @@ def build(ctx):
     </div>
   </div>
   <div class="i2-foot">
-    {om_txt}. Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
+    {om_txt}. Investissement (TTC, clé en main) : <b>{fmt_mad(invest)} MAD</b>.
     Chiffres indicatifs, hors financement.
   </div>"""
     elif not chiffrable:
@@ -325,7 +328,7 @@ def build(ctx):
     </div>
   </div>
   <div class="i2-foot">
-    Investissement (TTC, clé en main) : <b>{fmt(round(invest))} MAD</b>.
+    Investissement (TTC, clé en main) : <b>{fmt_mad(invest)} MAD</b>.
     Chiffres indicatifs, hors financement.
   </div>"""
     else:

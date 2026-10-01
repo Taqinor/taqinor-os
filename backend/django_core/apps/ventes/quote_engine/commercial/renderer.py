@@ -9,6 +9,7 @@ back to the legacy renderer (the off-switch / one-page path).
 Renders only — never changes a devis status (CLAUDE.md rule #4).
 """
 from __future__ import annotations
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 
@@ -79,7 +80,11 @@ def _augment(data: dict) -> dict:
 
     etude = data.get("etude") or {}
     d = dict(data)
-    d["_invest_ttc"] = round(invest)
+    # ERR-QJR614-CI — au CENTIME (ROUND_HALF_UP, la règle de la chaîne
+    # canonique) : arrondi au dirham, la couverture imprimait un autre Total
+    # TTC que la chaîne de totaux du MÊME document.
+    d["_invest_ttc"] = float(Decimal(str(invest)).quantize(
+        Decimal("0.01"), rounding=ROUND_HALF_UP))
     d.setdefault("client_full", d.get("client_name") or "Client")
     # M7 (audit du 19/08/2026) — la validité vient du DEVIS
     # (``date_validite``, sinon création + réglage société
