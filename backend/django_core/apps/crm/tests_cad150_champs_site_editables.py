@@ -36,7 +36,7 @@ class ChampsSitePurTests(SimpleTestCase):
     def test_la_liste_des_champs_du_site(self):
         self.assertEqual(set(Lead.CHAMPS_SITE), {
             'distributeur', 'roof_age', 'ownership', 'project_timeline',
-            'financing_intent', 'facility_type', 'roof_type', 'bill_kwh'})
+            'financing_intent', 'facility_type', 'bill_kwh'})
 
     def test_chaque_ecrasement_laisse_une_trace(self):
         """Sans ligne de modification, la provenance d'un champ écrasé se

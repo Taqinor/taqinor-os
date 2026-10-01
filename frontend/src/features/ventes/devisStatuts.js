@@ -22,3 +22,27 @@ export const peutEditerDevis = (d) =>
 /** « Réviser » (nouvelle version) ssi le serveur le dit révisable. */
 export const peutReviserDevis = (d) =>
   !!d && d.revision_possible === true && d.is_active !== false
+
+// ── QJR654 — LA table des statuts DOCUMENT d'un devis (couche règle #4) ─────
+// Ordre, libellés et options de filtre, importés par tous les écrans qui les
+// recopiaient (liste, board, cockpit lead, signature, tableau de bord, fiche
+// produit, visite). Jamais une clé de STAGES.py (règle #2) : le funnel CRM et
+// les statuts de document ne se mélangent pas.
+export const DEVIS_STATUTS = ['brouillon', 'envoye', 'accepte', 'refuse', 'expire']
+
+export const STATUT_DEVIS_LABELS = Object.freeze({
+  brouillon: 'Brouillon',
+  envoye: 'Envoyé',
+  accepte: 'Accepté',
+  refuse: 'Refusé',
+  expire: 'Expiré',
+})
+
+/** Libellé d'un statut de devis ; repli sur la valeur brute (jamais un vide). */
+export const libelleStatutDevis = (statut) => STATUT_DEVIS_LABELS[statut] ?? statut
+
+/** Filtres segmentés : « Tous » + les cinq statuts, dans l'ordre. */
+export const STATUT_DEVIS_FILTRES = [
+  { value: 'tous', label: 'Tous' },
+  ...DEVIS_STATUTS.map(value => ({ value, label: STATUT_DEVIS_LABELS[value] })),
+]

@@ -14,7 +14,6 @@ from .views import (
     releve_dry_run,
     releve_commit,
     roof_config,
-    RoofLayoutViewSet,  # FG245
     DevisPresetViewSet,  # QJ16-wiring
     RegulatoryDossierViewSet,  # FG268
     DossierChecklistItemViewSet,  # FG268
@@ -76,8 +75,6 @@ router.register(r'factures-lignes', LigneFactureViewSet)
 router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
 router.register(r'notes-debit', NoteDebitViewSet, basename='note-debit')
-# FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
-router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
 # WIR104 — la surface « fiche technique » de ventes (FG254/DC35) est RETIRÉE :
 # elle doublait `/stock/fiches-techniques/`, seule version réellement consommée
 # (le frontend n'appelait que `stockApi`). Le modèle `ventes.FicheTechnique`

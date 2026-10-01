@@ -6,11 +6,10 @@
 import { Card, Badge } from '../../ui'
 import { formatMAD } from '../../lib/format'
 import { whatsappUrl, mapsUrl } from './visiteHelpers'
+import { STATUT_DEVIS_LABELS } from '../../features/ventes/devisStatuts'
 
-const STATUT_DEVIS_LABEL = {
-  brouillon: 'Brouillon', envoye: 'Envoyé', accepte: 'Accepté',
-  refuse: 'Refusé', expire: 'Expiré',
-}
+// QJR654 — la table unique (devisStatuts.js).
+const STATUT_DEVIS_LABEL = STATUT_DEVIS_LABELS
 
 export default function VisiteClientDevisPanel({ clientPanel, devis }) {
   if (!clientPanel) return null

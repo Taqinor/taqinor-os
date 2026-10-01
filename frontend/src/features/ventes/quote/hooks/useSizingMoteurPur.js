@@ -10,7 +10,7 @@
 // Ici les deux branches exigent que la réponse (succès OU échec) décrive le
 // corps qu'on a SOUS LES YEUX.
 //
-// Module AJOUTÉ TESTÉ, IMPORTÉ PAR PERSONNE (vague M4).
+// Module testé (`hooks.test.mjs`) ; importé par `useSizingMoteur.js`.
 
 /** Refus générique — n'est utilisé que si le serveur n'a nommé aucune cause. */
 export const REFUS_GENERIQUE =

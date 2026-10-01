@@ -31,9 +31,8 @@ from rest_framework.test import APIClient
 
 from apps.crm.models import Client
 from apps.ventes.models import Devis, ShareLink
-from apps.ventes.services import (
-    _otp_lecture_cache_key, validate_otp_lecture,
-)
+from apps.ventes.services import validate_otp_lecture
+from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
 from authentication.models import Company
 
 

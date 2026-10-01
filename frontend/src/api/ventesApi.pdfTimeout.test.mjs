@@ -36,15 +36,15 @@ test('APXTMO : getProposalPdf accepte un config (signal d\'annulation) transmis 
   assert.match(block, /\.\.\.config/)
 })
 
-test('APXTMO : l\'effet d\'aperçu du panneau lead ANNULE le rendu en vol au cleanup', () => {
-  // Un AbortController est créé dans l'effet et transmis à l'appel…
-  const ctrlIdx = LDP_SRC.indexOf('new AbortController()')
-  assert.notEqual(ctrlIdx, -1, 'aucun AbortController dans LeadDevisPanel')
-  const effectBlock = LDP_SRC.slice(ctrlIdx, ctrlIdx + 1600)
-  assert.match(effectBlock,
-    /getProposalPdf\([\s\S]{0,160}?\{ signal: controller\.signal \}/,
+test('APXTMO : le panneau lead transmet le signal et le hook partagé ANNULE le rendu en vol', () => {
+  // QJR653 — le signal d'annulation est transmis à l'appel d'aperçu…
+  assert.match(LDP_SRC,
+    /getProposalPdf\([\s\S]{0,160}?\{ signal \}/,
     'le fetch d\'aperçu ne transmet pas le signal d\'annulation')
-  // …et le cleanup de l'effet l'avorte réellement.
-  assert.match(effectBlock, /controller\.abort\(\)/,
-    'le cleanup de l\'effet n\'avorte pas le rendu en vol')
+  // …et le hook partagé crée l'AbortController et l'avorte réellement.
+  const hook = readFileSync(
+    join(HERE, '../features/ventes/usePdfPreview.js'), 'utf8')
+  assert.match(hook, /new AbortController\(\)/)
+  assert.match(hook, /controllerRef\.current\?\.abort\(\)/)
+  assert.match(hook, /fetchBlob\(controller\.signal\)/)
 })

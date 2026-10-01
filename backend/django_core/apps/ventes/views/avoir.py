@@ -39,15 +39,8 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 from authentication.scoping import scope_queryset  # noqa: E402,F401
+from core.mixins import company_qs  # noqa: E402
 
-
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
@@ -67,7 +60,7 @@ class AvoirViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-date_emission']
 
     def get_queryset(self):
-        qs = _company_qs(super().get_queryset(), self.request.user)
+        qs = company_qs(super().get_queryset(), self.request.user)
         # Portée de visibilité (Feature F) — avoirs créés par soi / l'équipe.
         qs = scope_queryset(qs, self.request.user, ['created_by'])
         facture_id = self.request.query_params.get('facture')
@@ -204,7 +197,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-date_emission']
 
     def get_queryset(self):
-        qs = _company_qs(super().get_queryset(), self.request.user)
+        qs = company_qs(super().get_queryset(), self.request.user)
         qs = scope_queryset(qs, self.request.user, ['created_by'])
         facture_id = self.request.query_params.get('facture')
         if facture_id:

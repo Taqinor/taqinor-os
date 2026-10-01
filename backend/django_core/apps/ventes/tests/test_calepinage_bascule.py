@@ -38,6 +38,7 @@ from apps.ventes import selectors, services
 from apps.ventes.domain import geometrie
 from apps.ventes.models import Devis
 from apps.ventes.services import build_devis_from_layout
+from apps.ventes.domain import geometrie as domaine_geometrie
 
 User = get_user_model()
 
@@ -454,9 +455,9 @@ class LaGardeDeToleranceProtegeLeDevis(_Base):
 
     def test_un_compte_historique_nul_n_a_que_la_tolerance_en_modules(self):
         """Aucune division par zéro : 0 → 2 est toléré, 0 → 3 ne l'est pas."""
-        self.assertTrue(services._ecart_dans_la_tolerance(0, 2))
-        self.assertFalse(services._ecart_dans_la_tolerance(0, 3))
-        self.assertTrue(services._ecart_dans_la_tolerance(-5, -1))
+        self.assertTrue(domaine_geometrie._ecart_dans_la_tolerance(0, 2))
+        self.assertFalse(domaine_geometrie._ecart_dans_la_tolerance(0, 3))
+        self.assertTrue(domaine_geometrie._ecart_dans_la_tolerance(-5, -1))
 
 
 class LeContratDeClassificationEstIntact(SimpleTestCase):
@@ -504,5 +505,5 @@ class LeContratDeClassificationEstIntact(SimpleTestCase):
 
         source = inspect.getsource(services.compte_moteur_du_layout)
         source += inspect.getsource(services.arbitrer_compte_calepinage)
-        source += inspect.getsource(services._zone_villa_depuis_pan)
+        source += inspect.getsource(domaine_geometrie._zone_villa_depuis_pan)
         self.assertNotIn('quote_engine', source)

@@ -120,9 +120,6 @@ ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/ventes/DevisGeneratorProductibleSociete.test.mjs":
         "DevisGenerator.jsx non importable pur sous node --test - verifie "
         "le productible par societe par lecture de SOURCE.",
-    "frontend/src/pages/ventes/DevisGeneratorRoundTripEtude.test.mjs":
-        "DevisGenerator.jsx non importable pur sous node --test - verifie "
-        "le round-trip etude_params par lecture de SOURCE.",
     "frontend/src/pages/ventes/DevisGeneratorProvenanceDV3.test.mjs":
         "QJR213/DV3 - DevisGenerator.jsx non importable pur sous node --test "
         "- verifie que les 4 cartes du miroir local (et SEULEMENT elles) "

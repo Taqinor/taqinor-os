@@ -185,7 +185,7 @@ class NotifySellerAcceptedTests(TestCase):
 
     def test_wa_url_built_from_lead_phone(self):
         """_build_acceptance_wa_url retourne un lien wa.me si le lead a un tel."""
-        from apps.ventes.services import _build_acceptance_wa_url
+        from apps.ventes.domain.cycle_vie import _build_acceptance_wa_url
 
         # Build minimal stub objects without hitting the DB.
         lead_stub = mock.Mock()
@@ -205,7 +205,7 @@ class NotifySellerAcceptedTests(TestCase):
 
     def test_wa_url_none_when_no_phone(self):
         """Sans numéro, _build_acceptance_wa_url renvoie None."""
-        from apps.ventes.services import _build_acceptance_wa_url
+        from apps.ventes.domain.cycle_vie import _build_acceptance_wa_url
 
         lead_stub = mock.Mock()
         lead_stub.whatsapp = ''
@@ -222,7 +222,7 @@ class NotifySellerAcceptedTests(TestCase):
 
     def test_notify_seller_accepted_creates_notification(self):
         """_notify_seller_accepted crée une notification in-app pour le vendeur."""
-        from apps.ventes.services import _notify_seller_accepted
+        from apps.ventes.domain.cycle_vie import _notify_seller_accepted
 
         devis_stub = mock.Mock()
         devis_stub.reference = 'DEV-99'
@@ -243,7 +243,7 @@ class NotifySellerAcceptedTests(TestCase):
 
     def test_notify_seller_accepted_uses_correct_event_type(self):
         """La notification utilise le type 'devis_accepted' (EventType valide)."""
-        from apps.ventes.services import _notify_seller_accepted
+        from apps.ventes.domain.cycle_vie import _notify_seller_accepted
 
         devis_stub = mock.Mock()
         devis_stub.reference = 'DEV-EV'
@@ -262,7 +262,7 @@ class NotifySellerAcceptedTests(TestCase):
 
     def test_self_notify_skipped(self):
         """Le créateur du devis n'est pas notifié quand il est l'acteur."""
-        from apps.ventes.services import _notify_seller_accepted
+        from apps.ventes.domain.cycle_vie import _notify_seller_accepted
 
         devis_stub = mock.Mock()
         devis_stub.reference = 'DEV-SELF'
@@ -279,7 +279,7 @@ class NotifySellerAcceptedTests(TestCase):
 
     def test_no_created_by_is_noop(self):
         """Pas de créateur = aucune notification, aucune exception."""
-        from apps.ventes.services import _notify_seller_accepted
+        from apps.ventes.domain.cycle_vie import _notify_seller_accepted
 
         devis_stub = mock.Mock()
         devis_stub.reference = 'DEV-NONE'

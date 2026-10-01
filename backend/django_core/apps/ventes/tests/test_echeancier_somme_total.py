@@ -23,6 +23,10 @@ from django.test import SimpleTestCase, TestCase
 TOTAUX = (152990.60, 51232.80, 63186.99, 99999.50, 100000.49, 48000.00,
           12345.50, 0.0)
 TERMES = {'acompte': 30, 'materiel': 60, 'solde': 10}
+#: QJR624 — un acompte en dirhams démesuré (borné au total, ERR76).
+TRANCHES_ENORMES = [{'unite': 'montant', 'valeur': 10 ** 9},
+                    {'unite': 'pct', 'valeur': 60},
+                    {'unite': 'pct', 'valeur': 10}]
 
 
 def _somme(*vals):
@@ -67,12 +71,11 @@ class RepartitionPaiementTest(SimpleTestCase):
         self.assertEqual(rep['acompte'], 19156.31)   # 30 % au centime
 
     def test_chemin_deux_cases_somme_au_total(self):
-        """Acompte custom qui absorbe le matériel : Acompte + Solde."""
+        """Acompte en dirhams qui absorbe le matériel : Acompte + Solde."""
         from apps.ventes.quote_engine.builder import repartition_paiement
         for total in TOTAUX[:-1]:
             with self.subTest(total=total):
-                rep = repartition_paiement(total, TERMES,
-                                           custom_acompte=10 ** 9)
+                rep = repartition_paiement(total, TERMES, TRANCHES_ENORMES)
                 self.assertTrue(rep['deux_cases'])
                 self.assertEqual(_somme(rep['acompte'], rep['solde2']),
                                  Decimal(str(total)).quantize(Decimal('0.01')))
@@ -85,12 +88,26 @@ class RepartitionPaiementTest(SimpleTestCase):
                 self.assertEqual(rep['pct_a'] + rep['pct_m'] + rep['pct_s'],
                                  100)
 
-    def test_acompte_custom_borne_err76(self):
+    def test_acompte_montant_borne_err76(self):
         from apps.ventes.quote_engine.builder import repartition_paiement
-        rep = repartition_paiement(50000.0, TERMES, custom_acompte=-5)
+        rep = repartition_paiement(50000.0, TERMES, [
+            {'unite': 'montant', 'valeur': -5}, {'unite': 'pct', 'valeur': 60},
+            {'unite': 'pct', 'valeur': 10}])
         self.assertEqual(rep['acompte'], 0)
-        rep = repartition_paiement(50000.0, TERMES, custom_acompte=10 ** 9)
-        self.assertEqual(rep['acompte'], 50000 - rep['solde'])
+        rep = repartition_paiement(50000.0, TERMES, TRANCHES_ENORMES)
+        self.assertEqual(rep['acompte'], 50000)
+        self.assertEqual(rep['materiel'], 0)
+
+    def test_acompte_montant_exact_et_reliquat(self):
+        from apps.ventes.quote_engine.builder import repartition_paiement
+        rep = repartition_paiement(87654.32, TERMES, [
+            {'unite': 'montant', 'valeur': 20000},
+            {'unite': 'pct', 'valeur': 67.18},
+            {'unite': 'pct', 'valeur': 10}])
+        self.assertEqual(rep['acompte'], 20000.0)
+        self.assertEqual(rep['materiel'], 58886.17)
+        self.assertEqual(_somme(rep['acompte'], rep['materiel'], rep['solde']),
+                         Decimal('87654.32'))
 
     def test_le_moteur_legacy_n_arrondit_plus_rien(self):
         from apps.ventes.quote_engine import generate_devis_premium as G
@@ -140,3 +157,55 @@ class EcheancierReelDuDevisTest(TestCase):
         html = cap['html']
         self.assertIn('>40%</div>', html)
         self.assertIn(G._fmt2_mad(rep['acompte']), html)
+
+
+class AcompteImprimeEgalFactureTest(TestCase):
+    """QJR624 (D-QJR5-10) — l'acompte imprimé du Devis final est EXACTEMENT
+    celui que la facture d'acompte portera (``next_tranche``) pour un devis
+    sans facture émise : en pourcentage comme en dirhams (l'acompte
+    personnalisé du dialogue PDF est écrit dans ``Devis.echeancier``)."""
+
+    def setUp(self):
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _verifier(self, reference, echeancier):
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.tests._quote_engine_common import make_devis
+        from apps.ventes.utils.echeancier import next_tranche
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '9', '1487.37'),
+            ('Onduleur réseau 5kW', '1', '9013.41'),
+        ], reference=reference)
+        Devis.objects.filter(pk=devis.pk).update(echeancier=echeancier)
+        devis.refresh_from_db()
+        data = build_quote_data(devis, {'devis_final': True})
+        rep = data['montants_tranches']['sans']
+        attendu = next_tranche(devis)['ttc']
+        self.assertEqual(Decimal(str(rep['acompte'])), attendu)
+        return rep
+
+    def test_acompte_en_pourcentage(self):
+        self._verifier('DEV-QJR624-PCT', [
+            {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 30},
+            {'libelle': 'Matériel', 'type': 'materiel', 'pct_or_montant': 60},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10}])
+
+    def test_acompte_en_dirhams(self):
+        rep = self._verifier('DEV-QJR624-MAD', [
+            {'libelle': 'Acompte', 'type': 'acompte', 'unite': 'montant',
+             'pct_or_montant': 7000},
+            {'libelle': 'Matériel', 'type': 'materiel', 'pct_or_montant': 60},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10}])
+        self.assertEqual(rep['acompte'], 7000.0)
+
+    def test_les_options_de_rendu_ne_portent_plus_d_acompte(self):
+        from apps.ventes.quote_engine import clean_pdf_options
+        opts = clean_pdf_options({'payment_mode': 'custom',
+                                  'custom_acompte': 12000})
+        self.assertNotIn('payment_mode', opts)
+        self.assertNotIn('custom_acompte', opts)

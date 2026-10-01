@@ -318,36 +318,36 @@ export default function LeadWorkspace({
      La conception 3D travaille désormais SUR un devis (PV20/PV21) : le geste
      résout donc d'abord quel devis calepiner.
 
-     * exactement 1 brouillon  → on l'ouvre, sans rien demander ;
-     * plusieurs brouillons    → on les montre et le commercial choisit (on ne
-                                 devine JAMAIS lequel est le bon) ;
-     * aucun brouillon         → le Copilote en dimensionne un depuis la fiche
-                                 (jamais un brouillon vide) ; s'il refuse (422),
-                                 son message FR est affiché tel quel et la seule
-                                 sortie est le générateur complet.
+     * exactement 1 devis concevable → on l'ouvre, sans rien demander ;
+     * plusieurs                     → on les montre et le commercial choisit
+                                       (on ne devine JAMAIS lequel est le bon) ;
+     * aucun                         → le Copilote en dimensionne un depuis la
+                                       fiche (jamais un brouillon vide) ; s'il
+                                       refuse (422), son message FR est affiché
+                                       tel quel et la seule sortie est le
+                                       générateur complet.
 
-     NOTE — `?statut=` n'est PAS un filtre du serveur (`DevisViewSet.
-     get_queryset` ne connaît que `?lead=`) : le tri par statut se fait donc ICI,
-     en clair, plutôt qu'en envoyant un paramètre silencieusement ignoré (qui
-     ferait ouvrir un devis accepté). */
+     QJR636 — « concevable » est décidé par le SERVEUR (`?concevable=1`, la
+     table de modifiabilité : brouillon + envoyé, hors agricole et
+     multi-villa) ; aucun filtre de statut ici. */
   const ouvrirConceptionToiture = useCallback(async () => {
     if (!leadId) return
     setChoixDesign(null)
     setDesignBloque(null)
 
-    let brouillons = []
+    let concevables = []
     try {
-      const res = await ventesApi.getDevis({ lead: leadId })
+      const res = await ventesApi.getDevis({ lead: leadId, concevable: 1 })
       const rows = Array.isArray(res?.data) ? res.data : (res?.data?.results ?? [])
-      brouillons = rows.filter((d) => d && d.statut === 'brouillon')
-    } catch { brouillons = [] }
+      concevables = rows.filter(Boolean)
+    } catch { concevables = [] }
 
-    if (brouillons.length === 1) {
-      navigate(`/ventes/devis/${brouillons[0].id}/design`)
+    if (concevables.length === 1) {
+      navigate(`/ventes/devis/${concevables[0].id}/design`)
       return
     }
-    if (brouillons.length > 1) {
-      setChoixDesign(brouillons)
+    if (concevables.length > 1) {
+      setChoixDesign(concevables)
       return
     }
 
@@ -958,11 +958,12 @@ export default function LeadWorkspace({
           onClose={() => setQuestionnaireOpen(false)}
         />
       )}
-      {/* PV22 — plusieurs brouillons : le commercial départage. */}
+      {/* PV22 — plusieurs devis concevables : le commercial départage. */}
       {choixDesign && (
         <ChoisirDevisPourDesign
           open
           devis={choixDesign}
+          description="Ce lead a plusieurs devis à calepiner. Choisissez celui dont la toiture doit être calepinée."
           onChoisir={(d) => {
             setChoixDesign(null)
             navigate(`/ventes/devis/${d.id}/design`)

@@ -1025,6 +1025,19 @@ export function resolveRemplacement(
   return { reference, url };
 }
 
+/**
+ * QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » du devis (`note_client`),
+ * nettoyé ; `null` quand il est absent ou vide (aucun bloc n'est rendu).
+ */
+export function resolveNoteClient(
+  p: Partial<Pick<ProposalResponse, 'note_client'>> | null | undefined,
+): string | null {
+  const brut = p?.note_client;
+  if (typeof brut !== 'string') return null;
+  const texte = brut.trim();
+  return texte ? texte : null;
+}
+
 // ── Formulaire de signature : validation + mise en forme de la requête ───────
 
 export interface SignFormState {
@@ -4828,6 +4841,8 @@ export interface Proposal {
   accepted: boolean;
   acceptedParNom: string | null;
   dateAcceptation: string | null;
+  /** QJR627 — texte CLIENT du champ « Notes » (`null` si vide). */
+  noteClient: string | null;
   /** DOUZE OU RIEN : une série de onze mois se lirait comme une année. */
   productionMensuelle: number[] | null;
   consommationMensuelle: number[] | null;
@@ -4941,6 +4956,7 @@ export function lireProposal(payload: unknown): Proposal | null {
     accepted: p.accepted === true,
     acceptedParNom: nonEmptyStringOrNull(p.accepte_par_nom),
     dateAcceptation: nonEmptyStringOrNull(p.date_acceptation),
+    noteClient: resolveNoteClient(p as Partial<Pick<ProposalResponse, 'note_client'>>),
     productionMensuelle: douzeMoisOuNull(p.monthly_production),
     consommationMensuelle: douzeMoisOuNull(p.monthly_consumption),
     savingsModel: nonEmptyStringOrNull(p.savings_model),

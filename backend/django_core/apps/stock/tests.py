@@ -223,7 +223,7 @@ class TestSeedCatalogue(TestCase):
         from apps.stock.selectors import (
             onduleur_specs_manquantes, plage_batterie_onduleur,
         )
-        from apps.ventes.services import _has_price
+        from apps.ventes.domain.catalogue import _has_price
         seed(self.company)
         p = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
         self.assertEqual(p.nom, 'Onduleur hybride Deye 20kW Triphasé')
@@ -666,7 +666,7 @@ class TestSeedCatalogue(TestCase):
     def test_pvg3_priceless_products_excluded_like_osp_guard(self):
         """Même garde que les pompes OSP (apps.ventes.services._has_price) :
         un produit à prix_vente=0 n'est jamais auto-chiffré."""
-        from apps.ventes.services import _has_price
+        from apps.ventes.domain.catalogue import _has_price
         seed(self.company)
         osp = Produit.objects.get(company=self.company, sku='PMP-OSP-30-8')
         cable = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-6-M')
@@ -724,7 +724,7 @@ class TestSeedCatalogue(TestCase):
         HISTORIQUE OND-H-DEY-15T : SG05LP3 basse tension, prix d'origine,
         fiche complète sur la datasheet 14-20K."""
         from apps.stock.models import FicheTechnique
-        from apps.ventes.services import _has_price
+        from apps.ventes.domain.catalogue import _has_price
         seed(self.company)
         # Le doublon du 18/08 n'existe plus sur une base neuve.
         self.assertFalse(Produit.objects.filter(
@@ -760,7 +760,7 @@ class TestSeedCatalogue(TestCase):
         inchangé, prix d'achat réel, fiche sourcée SANS tension nominale
         (51,2 V = tension MODULE, jamais celle que voit l'onduleur)."""
         from apps.stock.models import FicheTechnique
-        from apps.ventes.services import _has_price
+        from apps.ventes.domain.catalogue import _has_price
         seed(self.company)
         p = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
         self.assertEqual(p.nom, 'Batterie Deye BOS-B Pro haute tension — 16 kWh')
@@ -804,8 +804,11 @@ class TestSeedCatalogue(TestCase):
         JAMAIS être choisie par l'auto-composition résidentielle basse
         tension, même si elle devenait la moins chère du catalogue."""
         from apps.ventes.services import (
-            _is_battery_basse_tension, _pick_product, composition_residentielle,
-            catalogue_de_la_societe)
+            _pick_product,
+            composition_residentielle,
+            catalogue_de_la_societe,
+        )
+        from apps.ventes.domain.catalogue import _is_battery_basse_tension
         seed(self.company)
         hv = Produit.objects.get(company=self.company, sku='BAT-DYN-HV-16')
         self.assertFalse(_is_battery_basse_tension(hv.nom))

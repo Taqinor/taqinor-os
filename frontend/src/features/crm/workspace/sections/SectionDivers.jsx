@@ -73,7 +73,6 @@ const LIBELLES_QUALIFICATION = {
   financing_intent: 'Financement envisagé',
   project_timeline: 'Horizon du projet',
   facility_type: 'Type de site (pro)',
-  roof_type: 'Type de toiture (site)',
   roof_age: 'Âge de la toiture (ans)',
 }
 
@@ -123,16 +122,6 @@ function QualificationSite({ state, setField, errors }) {
           state={state} champ="facility_type" label="Type de site (pro)" htmlFor="lf-facility-type"
           error={errors.facility_type}
           renderControl={select('facility_type', 'lf-facility-type', FACILITY_TYPE)}
-        />
-        <ChampSite
-          state={state} champ="roof_type" label="Type de toiture (site)" htmlFor="lf-roof-type"
-          error={errors.roof_type}
-          renderControl={() => (
-            <Input
-              id="lf-roof-type" invalid={!!errors.roof_type} value={v('roof_type')}
-              onChange={(e) => setField('roof_type', e.target.value)}
-            />
-          )}
         />
         <ChampSite
           state={state} champ="roof_age" label="Âge de la toiture (ans)" htmlFor="lf-roof-age"
@@ -211,7 +200,6 @@ const STRUCTURED_LABELS = {
   consent_timestamp: 'Consentement (horodatage)',
   utm_content: 'UTM content',
   utm_term: 'UTM terme',
-  roof_type: 'Type de toiture (site)',
   bill_kwh: 'Consommation (site, kWh)',
 }
 

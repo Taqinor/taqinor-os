@@ -115,14 +115,6 @@ def _emettre_layout_finalise(devis, user):
             'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
 
 
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
-
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -312,7 +304,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     # création — le mixin ne touche jamais à la sémantique devis/statuts.
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
-    # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
+    # company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
     # la base : scoping société et matrice 401/403/404 INCHANGÉS.
     #   Règle #4 : ce sweep ne touche NI le statut NI la sérialisation Devis. Le
     #   moteur ne change jamais les statuts. L'@action `proposal` (chemin canonique
@@ -346,7 +338,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     ).all()
 
     def get_queryset(self):
-        qs = _company_qs(super().get_queryset(), self.request.user)
+        qs = super().get_queryset()
         # WIR225 — indicateur « ce devis EST la racine d'un groupe de
         # variantes ». La liste ne savait le dire que du CÔTÉ ENFANT
         # (`version`, `version_parent_ref`, `superseded_by_ref`) : sur la
@@ -383,10 +375,15 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # devis qu'il a créés / son équipe. 'all' → inchangé.
         qs = scope_queryset(qs, self.request.user, ['created_by'])
         # Filtre optionnel ?lead=<id> — utilisé par le dialogue « Signé » (A2)
-        # pour lister les devis d'un lead. Borné à la société par _company_qs.
+        # pour lister les devis d'un lead. Borné à la société par company_qs.
         lead_id = self.request.query_params.get('lead')
         if lead_id:
             qs = qs.filter(lead_id=lead_id)
+        # QJR636 — ?concevable=1 : les devis dont la toiture se calepine
+        # encore (choix « Conception 3D »), APRÈS les portées ci-dessus.
+        if self.request.query_params.get('concevable') in ('1', 'true'):
+            from ..selectors import devis_concevables
+            qs = devis_concevables(qs)
         return qs
 
     def get_serializer_class(self):
@@ -413,6 +410,21 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             return [IsResponsableOrAdmin()]
         # destroy, et toute future action non déclarée : fermé par défaut.
         return [IsAdminRole()]
+
+    def destroy(self, request, *args, **kwargs):
+        """QJR639 (D-QJR5-2) — un devis ACCEPTÉ ne se supprime pas : le DELETE
+        effaçait en cascade sa signature électronique (DevisSignature), son
+        lien client (ShareLink), ses lignes et son chatter, et orphelinait son
+        BC. 409 sans rien effacer ; l'archivage (PATCH ``is_active=False``) ou
+        la révision restent ouverts. Les autres statuts sont inchangés. Le
+        statut est LU, jamais écrit (règle #4)."""
+        devis = self.get_object()
+        if devis.statut == Devis.Statut.ACCEPTE:
+            return Response(
+                {'detail': 'Devis accepté : il ne se supprime pas — '
+                           'archivez-le (désactivation) ou révisez-le.'},
+                status=status.HTTP_409_CONFLICT)
+        return super().destroy(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
@@ -3224,8 +3236,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # Format via query params, e.g. ?pdf_mode=onepage&devis_final=1
             raw = {
                 'pdf_mode': request.query_params.get('pdf_mode'),
-                'payment_mode': request.query_params.get('payment_mode'),
-                'custom_acompte': request.query_params.get('custom_acompte'),
             }
             if 'show_monthly' in request.query_params:
                 raw['show_monthly'] = request.query_params['show_monthly'] not in ('0', 'false')

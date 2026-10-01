@@ -57,31 +57,17 @@ def lead_roof_footprint(request, lead_id):
             status=404,
         )
 
-    # Resolve the pinned GPS point.  Prefer roof_point (the explicit pin set
-    # via the toiture tool) and fall back to gps_lat/gps_lng if available.
-    lat = lng = None
+    # QJR598 — LE repère toit du lead (le GPS corrigé prime sur l'épingle).
+    from .selectors import repere_toit  # noqa: PLC0415
 
-    if lead.roof_point and isinstance(lead.roof_point, dict):
-        try:
-            lat = float(lead.roof_point["lat"])
-            lng = float(lead.roof_point["lng"])
-        except (KeyError, TypeError, ValueError):
-            lat = lng = None
-
-    if lat is None and lead.gps_lat is not None and lead.gps_lng is not None:
-        try:
-            lat = float(lead.gps_lat)
-            lng = float(lead.gps_lng)
-        except (TypeError, ValueError):
-            lat = lng = None
-
-    if lat is None:
+    pin, _source, _contour_utilisable = repere_toit(lead)
+    if pin is None:
         return JsonResponse(
             {"detail": _MSG_NO_PIN},
             status=400,
         )
 
-    empreinte = fetch_building_footprint(lat, lng)
+    empreinte = fetch_building_footprint(pin["lat"], pin["lng"])
 
     # fetch_building_footprint returns None on network errors, and an empty
     # polygon on "no building". Both cases degrade gracefully — the client

@@ -70,6 +70,7 @@ import {
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
 import { formatMAD, formatNumber, formatPercent, formatDate } from '../lib/format'
+import { STATUT_DEVIS_LABELS } from '../features/ventes/devisStatuts'
 // ODY27 — le Dashboard est une surface TRANSVERSE : ses cartes, KPI et
 // segments pointent vers plusieurs apps. Ils sont filtrés par la source
 // UNIQUE des apps visibles (ODY1) — zéro liste locale — pour qu'un compteur
@@ -96,12 +97,14 @@ const TOKEN = {
 }
 
 // Devis : libellé + ton de statut (couleurs via tokens, jamais en dur).
+// QJR654 — libellés : la table unique (devisStatuts.js) ; les jetons de
+// graphique restent propres au tableau de bord.
 const STATUT_DEVIS = [
-  { key: 'brouillon', label: 'Brouillon', token: TOKEN.muted },
-  { key: 'envoye', label: 'Envoyé', token: TOKEN.info },
-  { key: 'accepte', label: 'Accepté', token: TOKEN.success },
-  { key: 'refuse', label: 'Refusé', token: TOKEN.danger },
-  { key: 'expire', label: 'Expiré', token: TOKEN.warning },
+  { key: 'brouillon', label: STATUT_DEVIS_LABELS.brouillon, token: TOKEN.muted },
+  { key: 'envoye', label: STATUT_DEVIS_LABELS.envoye, token: TOKEN.info },
+  { key: 'accepte', label: STATUT_DEVIS_LABELS.accepte, token: TOKEN.success },
+  { key: 'refuse', label: STATUT_DEVIS_LABELS.refuse, token: TOKEN.danger },
+  { key: 'expire', label: STATUT_DEVIS_LABELS.expire, token: TOKEN.warning },
 ]
 
 // Factures : libellé + ton de statut.

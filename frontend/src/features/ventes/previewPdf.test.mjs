@@ -15,6 +15,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PANEL = readFileSync(
   join(HERE, '..', '..', 'pages', 'crm', 'leads', 'LeadDevisPanel.jsx'), 'utf8')
 const PDFCANVAS = readFileSync(join(HERE, 'PdfCanvas.jsx'), 'utf8')
+// QJR653 — le rendu canvas vit dans le corps d'aperçu partagé.
+const BODY = readFileSync(join(HERE, 'PdfPreviewBody.jsx'), 'utf8')
 
 test('proposalParams : Premium = full, étude respectée', () => {
   assert.deepEqual(proposalParams('full', false), {
@@ -111,8 +113,10 @@ test('le panneau ne contient AUCUN embed PDF blocable (iframe/embed/object)', ()
 })
 
 test('le panneau rend l’aperçu via PDF.js (PdfCanvas)', () => {
-  assert.match(PANEL, /PdfCanvas/, 'le panneau monte le composant PdfCanvas')
-  assert.match(PANEL, /blob=\{previewBlob\}/, 'il passe les octets (blob) à PDF.js')
+  assert.match(PANEL, /<PdfPreviewBody/, 'le panneau monte le corps d’aperçu partagé')
+  assert.match(PANEL, /blob=\{preview\.blob\}/, 'il passe les octets (blob) au corps')
+  assert.match(BODY, /<PdfCanvas/, 'le corps monte le composant PdfCanvas')
+  assert.match(BODY, /blob=\{blob\}/, 'il passe les octets (blob) à PDF.js')
 })
 
 test('PdfCanvas dessine les octets via pdf.js sur des canvas (worker local)', () => {
@@ -132,7 +136,8 @@ test('échec du fetch des octets -> repli FR avec bouton « Télécharger »', (
     PREVIEW_VIEW.FALLBACK,
   )
   // 2) le bloc repli du panneau offre le téléchargement qui marche
-  assert.match(PANEL, /PREVIEW_VIEW\.FALLBACK/)
+  assert.match(BODY, /PREVIEW_VIEW\.FALLBACK/)
+  assert.match(PANEL, /fallbackActions=/)
   assert.match(PANEL, /Télécharger le PDF/)
   assert.match(PANEL, /onClick=\{handleDownload\}/)
 })

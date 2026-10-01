@@ -107,6 +107,79 @@ export function montantHtLigne(ligne) {
   return quantite * prix * (1 - remiseLigne / 100)
 }
 
+// ── QJR642 — LE noyau des totaux de l'écran ───────────────────────────────
+// UNE chaîne « HT brut → remise globale → HT net (≥ 0) → TVA par taux → TTC »,
+// partagée par le générateur (`solar.totauxCanoniquesTtc`) et la répartition
+// de la remise par ligne (`repartirRemiseParLigne`). Même règle que
+// `apps/ventes/selectors.py::_canonical_totaux` : arithmétique entière, arrondi
+// moitié vers le haut, remise en NANOS de pourcent.
+
+// Le HT d'une ligne en nanos : un BigInt déjà exact est pris tel quel.
+function htNanoDe(ligne) {
+  if (typeof ligne?.htNano === 'bigint') return ligne.htNano
+  return nanos(montantHtLigne(ligne))
+}
+
+/**
+ * Totaux canoniques d'un ensemble de lignes, au centime.
+ *
+ * @param {Array} lignes `{ htNano?: bigint, taux?, typeLigne?, optionnelle? }`
+ *   (sinon le HT est `montantHtLigne`) ; seules les lignes qui
+ *   `ligneCompteDansTotaux` entrent.
+ * @param {number|string} remisePct remise GLOBALE, en pourcent.
+ * @returns {{htBrut:number, remise:number, htNet:number,
+ *   tvaParTaux:Array<{taux:number, htNet:number, tva:number}>, tva:number,
+ *   ttc:number, htNetCentimes:bigint, remiseCentimes:bigint}}
+ */
+export function totauxCanoniques(lignes, remisePct = 0) {
+  const pctNano = nanos(parseFloat(remisePct) || 0)
+  let htBrutNano = 0n
+  const buckets = new Map() // taux ×100 → Σ HT (nanos)
+  for (const ligne of (lignes || []).filter(ligneCompteDansTotaux)) {
+    const n = htNanoDe(ligne)
+    htBrutNano += n
+    const taux = parseFloat(ligne?.taux ?? ligne?.taux_tva)
+    const rH = Math.round((Number.isFinite(taux) ? taux : 20) * 100)
+    buckets.set(rH, (buckets.get(rH) || 0n) + n)
+  }
+  const remiseC = pctNano === 0n
+    ? 0n
+    : diviserMoitieHaut(htBrutNano * pctNano, NANO * NANO).valeur
+  // ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — la borne HT net ≥ 0 vit ICI, une
+  // seule fois (à remise 100 %, un HT brut à demi-centime rendait −0,01).
+  const htNetBrutC = diviserMoitieHaut(
+    htBrutNano - remiseC * CENTIME_EN_NANO, CENTIME_EN_NANO).valeur
+  const htNetC = htNetBrutC < 0n ? 0n : htNetBrutC
+  const rates = [...buckets.keys()].sort((a, b) => a - b)
+  const nets = new Map()
+  if (rates.length <= 1) {
+    nets.set(rates.length ? rates[0] : 2000, htNetC)
+  } else {
+    const facteur = 100n * NANO - pctNano
+    rates.forEach(r => nets.set(
+      r, diviserMoitieHaut(buckets.get(r) * facteur, NANO * NANO).valeur))
+    const somme = [...nets.values()].reduce((s, v) => s + v, 0n)
+    const dernier = rates[rates.length - 1]
+    nets.set(dernier, nets.get(dernier) + (htNetC - somme))
+  }
+  const tvaParTaux = [...nets.entries()].map(([r, net]) => ({
+    taux: r / 100, htNetC: net,
+    tvaC: diviserMoitieHaut(net * BigInt(r), 10000n).valeur,
+  }))
+  const tvaC = tvaParTaux.reduce((s, t) => s + t.tvaC, 0n)
+  const enDh = (c) => Number(c) / 100
+  return {
+    htBrut: enDh(diviserMoitieHaut(htBrutNano, CENTIME_EN_NANO).valeur),
+    remise: enDh(remiseC),
+    htNet: enDh(htNetC),
+    tvaParTaux: tvaParTaux.map(t => ({ taux: t.taux, htNet: enDh(t.htNetC), tva: enDh(t.tvaC) })),
+    tva: enDh(tvaC),
+    ttc: enDh(htNetC + tvaC),
+    htNetCentimes: htNetC,
+    remiseCentimes: remiseC,
+  }
+}
+
 /**
  * Le montant APRÈS remise globale de chaque ligne — somme EXACTE.
  *
@@ -134,14 +207,11 @@ export function repartirRemiseParLigne(lignes, remisePct) {
     htBrutNano += n
   })
 
-  // `remise = arrondi(ht_brut × pct / 100)`, au CENTIME — la seule chaîne, la
-  // même qu'au backend : le pourcentage n'est jamais ré-appliqué ligne à ligne.
-  const pctNano = nanos(parseFloat(remisePct) || 0)
-  const remiseC = pctNano === 0n
-    ? 0n
-    : diviserMoitieHaut(htBrutNano * pctNano, NANO * NANO).valeur
-  const htNetC = diviserMoitieHaut(
-    htBrutNano - remiseC * CENTIME_EN_NANO, CENTIME_EN_NANO).valeur
+  // QJR642 — remise et HT net viennent du NOYAU (`totauxCanoniques`) : le
+  // pourcentage n'est jamais ré-appliqué ligne à ligne, et la borne ≥ 0 n'existe
+  // qu'à un endroit.
+  const { htNetCentimes: htNetC } = totauxCanoniques(
+    comptees.map(i => ({ htNano: montants.get(i) })), remisePct)
 
   const parts = new Map()
   const restes = new Map()

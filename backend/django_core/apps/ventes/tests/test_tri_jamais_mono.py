@@ -45,6 +45,7 @@ from apps.crm.models import Lead
 from apps.ventes import services
 from apps.ventes.compatibilites import est_triphase_produit
 from authentication.models import Company
+from apps.ventes.domain import catalogue as domaine_catalogue
 
 User = get_user_model()
 
@@ -63,16 +64,16 @@ PLUS_PETIT_TRI_HYBRIDE = 'Onduleur hybride Deye 10kW Triphasé'
 
 
 def _est_ligne_onduleur(designation):
-    return 'onduleur' in services._sans_accents(designation)
+    return 'onduleur' in domaine_catalogue._sans_accents(designation)
 
 
 def _dit_monophase(designation):
     """« Monophasé », quelle que soit la casse ou l'accentuation saisie."""
-    return 'monophas' in services._sans_accents(designation)
+    return 'monophas' in domaine_catalogue._sans_accents(designation)
 
 
 def _dit_triphase(designation):
-    return 'triphas' in services._sans_accents(designation)
+    return 'triphas' in domaine_catalogue._sans_accents(designation)
 
 
 class TriJamaisMonoTest(TestCase):

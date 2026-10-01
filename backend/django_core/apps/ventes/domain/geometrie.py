@@ -975,13 +975,13 @@ def zone_toit_depuis_contour(lead, *, panneaux, kwc=None):
     contour = contour_client_lnglat(lead)
     if not contour:
         return {}
-    point = getattr(lead, 'roof_point', None)
-    pin = None
-    if isinstance(point, dict):
-        try:
-            pin = {'lat': float(point['lat']), 'lng': float(point['lng'])}
-        except (KeyError, TypeError, ValueError):
-            pin = None
+    # QJR598 — LE repère toit du lead (le GPS corrigé prime sur l'épingle) ;
+    # un repère hors du contour fait du contour un simple calque : on
+    # n'auto-calepine pas un toit que l'équipe a déplacé ailleurs.
+    from apps.crm.selectors import repere_toit
+    pin, _source, contour_utilisable = repere_toit(lead)
+    if not contour_utilisable:
+        return {}
     if pin is None:
         # Centroïde du contour — MÊME repli que ``centroidOf`` côté écran
         # (moyenne des sommets), une valeur DÉRIVÉE du tracé réel, jamais une

@@ -91,7 +91,7 @@ class Qx2CapiValueTests(TestCase):
     def test_capi_value_uses_discounted_ttc(self):
         from unittest import mock
         from django.test import override_settings
-        from apps.ventes.services import _fire_capi_signed_quote
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
 
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-QX2C01',

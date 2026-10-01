@@ -34,6 +34,7 @@ import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
 import { missingFieldTarget } from './missingFields'
+import { libelleStatutDevis } from '../../ventes/devisStatuts'
 // NTCRM19 — badge de consultation de la salle de vente digitale (NTCRM17/18).
 import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyticsBadge'
 
@@ -61,11 +62,6 @@ import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyti
 // L5 — site public (page client), même résolution que ToitureDesign.jsx.
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
 
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DEVIS_MINI_TRACK
-export const STATUT_DEVIS = {
-  brouillon: 'Brouillon', envoye: 'Envoyé', accepte: 'Accepté',
-  refuse: 'Refusé', expire: 'Expiré',
-}
 
 // Mini-piste DOCUMENT (règle #4) devis→facture→chantier — JAMAIS les stages
 // STAGES.py du funnel lead (règle #2). N'est rendue QUE sur une carte devis
@@ -669,7 +665,7 @@ export default function DevisTab({
                 >
                   {d.reference}
                 </button>
-                <StatusPill status={d.statut} label={STATUT_DEVIS[d.statut] ?? d.statut} />
+                <StatusPill status={d.statut} label={libelleStatutDevis(d.statut)} />
                 {/* QJR535 — une version remplacée n'est plus vivante : badge
                     « Remplacé par <référence> » (résolue dans la même liste),
                     plus d'« Envoyer au client » (la V1 obsolète ne se renvoie

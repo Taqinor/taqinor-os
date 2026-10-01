@@ -73,10 +73,18 @@ class TestPremiumEngineSecurity(WideTeardownTimeoutMixin, TransactionTestCase):
 
     # ── ERR76 ───────────────────────────────────────────────────────────────
     def test_err76_custom_acompte_clamped(self):
+        from apps.ventes.quote_engine.builder import repartition_paiement
         data = self._data()
         data['devis_final'] = True
-        data['payment_mode'] = 'custom'
-        data['custom_acompte'] = 10 ** 9  # absurdly large
+        # QJR624 — un acompte absurde déclaré en dirhams dans l'échéancier.
+        data['montants_tranches'] = {
+            b: repartition_paiement(
+                data.get(f'total_{b}') or 50000,
+                {'acompte': 30, 'materiel': 60, 'solde': 10},
+                [{'unite': 'montant', 'valeur': 10 ** 9},
+                 {'unite': 'pct', 'valeur': 60},
+                 {'unite': 'pct', 'valeur': 10}])
+            for b in ('sans', 'avec')}
         html = self._capture_html(data)
         idx = html.find('Modalit')  # "Modalités de paiement"
         self.assertGreater(idx, -1, 'payment section must be present')

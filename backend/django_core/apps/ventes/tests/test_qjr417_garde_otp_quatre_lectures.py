@@ -58,7 +58,7 @@ class _BaseLienProtege(TestCase):
     def _deverrouiller(self):
         """Pose le drapeau que ``validate_otp_lecture`` pose après un code
         correct — on exerce la GARDE, pas l'envoi du code."""
-        from apps.ventes.services import _otp_lecture_verified_key
+        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
         cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
 
 

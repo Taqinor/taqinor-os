@@ -8,7 +8,7 @@ import { formatMAD } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
-import { ligneCompteDansTotaux } from './remise.js'
+import { ligneCompteDansTotaux, totauxCanoniques } from './remise.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -249,17 +249,6 @@ export const MAD_PAR_PALIER = 900
 export const CABLE_DC_M_PAR_PALIER = 60
 export const CABLE_TERRE_M_BASE = 25
 export const CABLE_TERRE_M_PAR_PALIER = 15
-
-/** Longueur de câble solaire DC (m) pour `paliers` blocs de 5 kWc.
- *
- * CONSERVÉE pour compat/tests mais N'EST PLUS APPELÉE par `autoFillLines`
- * (voir `metreCableDcParPaires`, la règle du 19/08) : un palier de 5 kWc et
- * une paire de MPPT ne coïncident pas forcément (dépend de l'onduleur
- * retenu), donc ce calcul au palier peut sur/sous-estimer le métrage réel. */
-export function metreCableDc(paliers) {
-  const n = Math.max(1, Math.round(Number(paliers) || 0))
-  return n * CABLE_DC_M_PAR_PALIER
-}
 
 // ── PVCBL (fondateur 19/08/2026) — métrage câble DC PAR PAIRE de MPPT ───────
 // Bug constaté : un devis auto avait chiffré un ROULEAU de 100 m (produit au
@@ -805,7 +794,6 @@ export const ONEE_TRANCHES = trancheTable([
 export const UTILITY_TABLES = {
   onee: ONEE_TRANCHES, lydec: ONEE_TRANCHES, redal: ONEE_TRANCHES,
 }
-export const APPROX_UTILITIES = new Set()
 
 function resolveTranches(utility, tranchesOverride) {
   if (tranchesOverride && tranchesOverride.length) return { table: tranchesOverride, approx: false }
@@ -1363,9 +1351,6 @@ export function onduleurSpecsManquantes(produit) {
   return Array.isArray(manquantes) ? manquantes : []
 }
 
-export const onduleurComplet = (produit) =>
-  onduleurSpecsManquantes(produit).length === 0
-
 // Défauts TVA (réforme : 10 % panneaux PV, 20 % le reste).
 export const TVA_PANNEAUX_DEFAUT = 10
 export const TVA_STANDARD_DEFAUT = 20
@@ -1381,21 +1366,6 @@ export function expectedTvaForDesignation(designation, tvaConfig) {
   const standard = Number(tvaConfig?.tvaStandard) > 0
     ? Number(tvaConfig.tvaStandard) : TVA_STANDARD_DEFAUT
   return isPanel(designation) ? panneaux : standard
-}
-
-// La désignation tapée correspond-elle encore au produit choisi du stock ?
-// (la frappe libre peut diverger du nom produit ; on le signale sans bloquer).
-export function designationMatchesProduct(designation, produit) {
-  if (!produit) return true
-  const d = _norm(designation)
-  const n = _norm(produit.nom)
-  if (!d || !n) return true
-  if (d === n) return true
-  // Tolérance : l'une contient l'autre, ou la classification est identique.
-  if (n.includes(d) || d.includes(n)) return true
-  const cd = classifyProduct(designation)
-  const cn = classifyProduct(produit.nom)
-  return cd != null && cd === cn
 }
 
 // ── U1 (fondateur 20/08/2026) — LE COMPTE DE PANNEAUX EST UN PLAFOND ────────
@@ -1653,46 +1623,25 @@ function _retirerAccessoiresHuawei(rows) {
 // d'arrondis) : les montants internes sont en 1e-8 MAD (×10 000 pour porter
 // le facteur (10 000 − remise×100) sans perte). Remise absente/nulle ⇒
 // résultat strictement inchangé (mise à l'échelle entière exacte).
-function _arrondiDemiHaut(num, den) {
-  const neg = num < 0n
-  const a = neg ? -num : num
-  const r = (2n * a + den) / (2n * den)
-  return neg ? -r : r
-}
+// QJR642 — la chaîne de totaux vit dans `remise.totauxCanoniques` (UN noyau
+// pour le générateur et la répartition de remise) : ici ne reste que la
+// conversion TTC saisi → HT persisté, en nanos exacts (1e-8 MAD × 10).
 export function totauxCanoniquesTtc(lines, discountPct = 0) {
-  const dH = BigInt(Math.round((parseFloat(discountPct) || 0) * 100)) // % × 100
-  let htBrutU = 0n // unité : 1e-8 MAD (quantité ×100 · prix HT en centimes · (1 − remise) ×10 000)
-  const buckets = new Map() // taux ×100 → Σ HT (1e-8 MAD)
-  for (const l of lines || []) {
+  const lignes = (lines || []).map((l) => {
     const qH = BigInt(Math.round((parseFloat(l?.quantite) || 0) * 100))
     const taux = parseFloat(l?.taux_tva ?? TVA_STANDARD_DEFAUT)
     const tauxLigne = Number.isFinite(taux) ? taux : TVA_STANDARD_DEFAUT
     const htC = BigInt(Math.round(parseFloat(htFromTtc(l?.prix_unit_ttc, l?.taux_tva ?? TVA_STANDARD_DEFAUT)) * 100))
     const remH = BigInt(Math.round((parseFloat(l?.remise) || 0) * 100)) // % × 100
-    const u = qH * htC * (10000n - remH)
-    htBrutU += u
-    const rH = Math.round(tauxLigne * 100)
-    buckets.set(rH, (buckets.get(rH) || 0n) + u)
-  }
-  const remiseC = dH > 0n ? _arrondiDemiHaut(htBrutU * dH, 10000000000n) : 0n
-  // ERR-QAH-PROP-TOTAUX-REMISE-100-NEGATIF — HT net borné à 0 (miroir de
-  // `_canonical_totaux`) : à remise 100 %, un HT brut à demi-centime donnait
-  // une remise arrondie au-dessus et un TTC de −0,01.
-  const htNetBrutC = _arrondiDemiHaut(htBrutU - remiseC * 1000000n, 1000000n)
-  const htNetC = htNetBrutC < 0n ? 0n : htNetBrutC
-  let tvaC
-  if (buckets.size <= 1) {
-    const rH = buckets.size ? [...buckets.keys()][0] : TVA_STANDARD_DEFAUT * 100
-    tvaC = _arrondiDemiHaut(htNetC * BigInt(rH), 10000n)
-  } else {
-    const rates = [...buckets.keys()].sort((a, b) => a - b)
-    const nets = new Map(rates.map(r => [r, _arrondiDemiHaut(buckets.get(r) * (10000n - dH), 10000000000n)]))
-    const somme = [...nets.values()].reduce((s, v) => s + v, 0n)
-    const dernier = rates[rates.length - 1]
-    nets.set(dernier, nets.get(dernier) + (htNetC - somme))
-    tvaC = rates.reduce((s, r) => s + _arrondiDemiHaut(nets.get(r) * BigInt(r), 10000n), 0n)
-  }
-  return Number(htNetC + tvaC) / 100
+    return {
+      // quantité ×100 · prix HT en centimes · (1 − remise) ×10 000 = 1e-8 MAD
+      htNano: qH * htC * (10000n - remH) * 10n,
+      taux: tauxLigne,
+      typeLigne: l?.typeLigne ?? l?.type_ligne,
+      optionnelle: l?.optionnelle,
+    }
+  })
+  return totauxCanoniques(lignes, discountPct).ttc
 }
 
 // ── Totaux par option, TTC (port exact de updateTotals de app.js) ────────────
@@ -3143,28 +3092,6 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     out.injection_82_21 = true
   }
   return out
-}
-
-// ── QF7 — fusion des paramètres d'étude + choix scénario/option, TOUS modes ──
-// Fonction pure isolée pour rendre testable la garantie : `scenario` /
-// `recommended_option` sont TOUJOURS persistés dans etude_params, quel que
-// soit le mode (résidentiel/industriel/agricole) et même quand aucune étude
-// dégénérée ne peut être construite (ex. industriel kwp=0 avec des lignes
-// manuelles). `baseEtudeParams` peut être null/undefined — le résultat est
-// TOUJOURS un objet non-null qui porte au moins le choix scénario/option.
-export function buildEtudeParamsChoice(baseEtudeParams, {
-  scenario, recommendedChoice, recommendedOption, distributeur, consoAnnuelleReelle,
-}) {
-  const realBillParams = consoAnnuelleReelle > 0
-    ? { distributeur, conso_annuelle: consoAnnuelleReelle }
-    : (distributeur && distributeur !== 'onee' ? { distributeur } : {})
-  return {
-    ...(baseEtudeParams || {}),
-    ...(baseEtudeParams?.conso_annuelle ? { distributeur } : realBillParams),
-    scenario,
-    recommended_choice: recommendedChoice,
-    recommended_option: recommendedOption,
-  }
 }
 
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────

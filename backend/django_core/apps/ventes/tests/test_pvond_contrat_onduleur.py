@@ -30,6 +30,7 @@ from apps.stock.selectors import (
 )
 from apps.ventes import services
 from authentication.models import Company
+from apps.ventes.domain import catalogue as domaine_catalogue
 
 #: Fiche ONDULEUR complète au sens du contrat (hors plage batterie/garantie,
 #: qui vivent sur le produit).
@@ -144,7 +145,7 @@ class ContratConditionnelParFamilleTests(PvOndBase):
         self.assertEqual(specs_solaire_produit(onduleur)['plage_batterie_v'],
                          [0.0, 0.0])
         # …donc il redevient chiffrable par l'auto-composition backend.
-        self.assertTrue(services._onduleur_complet(onduleur))
+        self.assertTrue(domaine_catalogue._onduleur_complet(onduleur))
 
     def test_un_reseau_sans_plage_n_accepte_TOUJOURS_aucune_batterie(self):
         """L'exemption ne rouvre PAS la porte au repli mot-clé : sans elle, un
@@ -154,7 +155,7 @@ class ContratConditionnelParFamilleTests(PvOndBase):
                                   'PVOND-RES-NU2', plage=None)
         self._batterie('Batterie Dyness 5 kWh', 'PVOND-RES-B1', v_nominal=None)
         self.assertIsNone(
-            services._pick_batterie(self.company, onduleur=onduleur))
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur))
 
     def test_un_HYBRIDE_sans_plage_reste_ecarte_ET_nomme(self):
         """La moitié qui NE CHANGE PAS : sur un hybride, la plage décide quelle
@@ -167,7 +168,7 @@ class ContratConditionnelParFamilleTests(PvOndBase):
 
         self.assertEqual(onduleur_specs_manquantes(incomplet),
                          ['plage de tension batterie (V)'])
-        self.assertFalse(services._onduleur_complet(incomplet))
+        self.assertFalse(domaine_catalogue._onduleur_complet(incomplet))
         # Le moins cher est l'INCOMPLET : c'est le complet qui doit sortir.
         self.assertEqual(
             services._pick_product(self.company,
@@ -233,7 +234,7 @@ class GardeBatterieDataDrivenTests(PvOndBase):
         batterie = self._batterie('Batterie Dyness 5 kWh', 'PVOND-B1',
                                   v_nominal=Decimal('51.2'))
         self.assertEqual(
-            services._pick_batterie(self.company, onduleur=onduleur), batterie)
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur), batterie)
 
     def test_une_batterie_hors_fenetre_est_refusee_meme_bien_nommee(self):
         """LE point du garde data-driven : une batterie 204,8 V dont le nom ne
@@ -244,7 +245,7 @@ class GardeBatterieDataDrivenTests(PvOndBase):
         self._batterie('Batterie LFP 16 kWh rack', 'PVOND-B2',
                        v_nominal=Decimal('204.8'), prix='100')
         self.assertIsNone(
-            services._pick_batterie(self.company, onduleur=onduleur))
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur))
 
     def test_une_batterie_haute_tension_EST_retenue_sur_un_onduleur_HV(self):
         """L'autre moitié du gain : le mot-clé interdisait l'appairage
@@ -254,14 +255,14 @@ class GardeBatterieDataDrivenTests(PvOndBase):
         batterie = self._batterie('Batterie Dyness haute tension — 16 kWh',
                                   'PVOND-BHV', v_nominal=Decimal('204.8'))
         self.assertEqual(
-            services._pick_batterie(self.company, onduleur=onduleur), batterie)
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur), batterie)
 
     def test_un_onduleur_reseau_n_accepte_aucune_batterie(self):
         onduleur = self._onduleur('Onduleur réseau Huawei 10kW Triphasé',
                                   'PVOND-RES2', plage='aucune (onduleur réseau)')
         self._batterie('Batterie Dyness 5 kWh', 'PVOND-B3')
         self.assertIsNone(
-            services._pick_batterie(self.company, onduleur=onduleur))
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur))
 
 
 class RepliMotCleTests(PvOndBase):
@@ -275,14 +276,14 @@ class RepliMotCleTests(PvOndBase):
         basse = self._batterie('Batterie Dyness 5 kWh', 'PVOND-B4',
                                v_nominal=None)
         self.assertEqual(
-            services._pick_batterie(self.company, onduleur=onduleur), basse)
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur), basse)
 
     def test_sans_onduleur_du_tout_le_mot_cle_reprend_la_main(self):
         self._batterie('Batterie Dyness haute tension — 16 kWh',
                        'PVOND-BHV3', v_nominal=None, prix='100')
         basse = self._batterie('Batterie Dyness 5 kWh', 'PVOND-B5',
                                v_nominal=None)
-        self.assertEqual(services._pick_batterie(self.company), basse)
+        self.assertEqual(domaine_catalogue._pick_batterie(self.company), basse)
 
     def test_une_batterie_sans_fiche_est_EXCLUE_sous_un_onduleur_a_plage(self):
         """RÈGLE CORRIGÉE (fondateur 2026-08-18) : le repli mot-clé ne
@@ -300,7 +301,7 @@ class RepliMotCleTests(PvOndBase):
         self._batterie('Batterie Dyness haute tension — 16 kWh',
                        'PVOND-BHV4', v_nominal=None, prix='100')
         self.assertIsNone(
-            services._pick_batterie(self.company, onduleur=onduleur))
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur))
 
     def test_une_tension_nulle_est_une_donnee_INVALIDE_pas_un_repli(self):
         """``bat_v_nominal = 0`` n'est pas « pas de donnée » : c'est une donnée
@@ -311,7 +312,7 @@ class RepliMotCleTests(PvOndBase):
         self._batterie('Batterie Dyness 5 kWh', 'PVOND-B7',
                        v_nominal=Decimal('0'))
         self.assertIsNone(
-            services._pick_batterie(self.company, onduleur=onduleur))
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur))
 
     def test_une_batterie_generique_du_catalogue_reel_ne_passe_plus(self):
         """Les deux références RÉELLES qui passaient : BAT-GEL-22 (plomb-gel
@@ -323,7 +324,7 @@ class RepliMotCleTests(PvOndBase):
         self._batterie('Batterie Lithium 5 kWh', 'BAT-LIT-5', v_nominal=None,
                        prix='15500')
         self.assertIsNone(
-            services._pick_batterie(self.company, onduleur=onduleur))
+            domaine_catalogue._pick_batterie(self.company, onduleur=onduleur))
 
 
 class CompositionResidentielleTests(PvOndBase):

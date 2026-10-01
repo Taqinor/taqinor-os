@@ -18,7 +18,6 @@ const ventesApi = {
   getListesPrix: (params) => api.get('/ventes/listes-prix/', { params }),
   getListePrix: (id) => api.get(`/ventes/listes-prix/${id}/`),
   createListePrix: (data) => api.post('/ventes/listes-prix/', data),
-  updateListePrix: (id, data) => api.put(`/ventes/listes-prix/${id}/`, data),
   patchListePrix: (id, data) => api.patch(`/ventes/listes-prix/${id}/`, data),
   deleteListePrix: (id) => api.delete(`/ventes/listes-prix/${id}/`),
   // Upsert (crée ou met à jour) le prix d'un produit dans une liste.
@@ -321,12 +320,10 @@ const ventesApi = {
   getDevisActionBoard: () => api.get('/ventes/devis/action-requise/'),
 
   // Lignes de devis
-  getLignesDevis: (params) => api.get('/ventes/devis-lignes/', { params }),
   createLigneDevis: (data) => api.post('/ventes/devis-lignes/', data),
 
   // Bons de commande
   getBonsCommande: (params) => api.get('/ventes/bons-commande/', { params }),
-  getBonCommande: (id) => api.get(`/ventes/bons-commande/${id}/`),
   createBonCommande: (data) => api.post('/ventes/bons-commande/', data),
   updateBonCommande: (id, data) => api.put(`/ventes/bons-commande/${id}/`, data),
   patchBonCommande: (id, data) => api.patch(`/ventes/bons-commande/${id}/`, data),
@@ -383,7 +380,6 @@ const ventesApi = {
   annulerFacture: (id) => api.post(`/ventes/factures/${id}/annuler/`),
   // Paiements : enregistrement manuel + liste par facture.
   enregistrerPaiement: (id, data) => api.post(`/ventes/factures/${id}/enregistrer-paiement/`, data),
-  getPaiementsFacture: (id) => api.get(`/ventes/factures/${id}/paiements/`),
   // ZFAC11 — reste à payer arrondi au pas de caisse société pour un règlement
   // espèces (applicable=false + montant_du inchangé si arrondi désactivé).
   arrondiCaisseFacture: (id, mode = 'especes') =>
@@ -470,8 +466,7 @@ const ventesApi = {
   relancerFacture: (id, data) => api.post(`/ventes/factures/${id}/relancer/`, data),
   exclureRelance: (id, exclu) => api.post(`/ventes/factures/${id}/exclure-relance/`, { exclu }),
   getRelancesFacture: (id) => api.get(`/ventes/factures/${id}/relances/`),
-  // N87 — fil des emails (envoyés/reçus) d'une facture + état du compte d'envoi.
-  getEmailsFacture: (id) => api.get(`/ventes/factures/${id}/emails/`),
+  // N87 — état du compte d'envoi des emails de facture.
   getEmailConfig: () => api.get('/ventes/email-config/'),
   getBalanceAgee: () => api.get('/ventes/balance-agee/'),
   // WIR84 — agrégateurs Quote-to-Cash de ventes (FG45 / FG47 / ZFAC10),
@@ -482,7 +477,6 @@ const ventesApi = {
   getCashFlowForecast: (params) => api.get('/ventes/insights/cash-flow/', { params }),
   getAnalyseFacturation: (params) =>
     api.get('/ventes/etats/analyse-facturation/', { params }),
-  getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
   getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),
   // Lettre de relance PREMIUM (langage visuel du devis) — niveau 1/2/3.
@@ -504,7 +498,6 @@ const ventesApi = {
   numerotationPreview: () => api.get('/ventes/numerotation-preview/'),
 
   // Lignes de facture
-  getLignesFacture: (params) => api.get('/ventes/factures-lignes/', { params }),
   createLigneFacture: (data) => api.post('/ventes/factures-lignes/', data),
   updateLigneFacture: (id, data) => api.put(`/ventes/factures-lignes/${id}/`, data),
   deleteLigneFacture: (id) => api.delete(`/ventes/factures-lignes/${id}/`),

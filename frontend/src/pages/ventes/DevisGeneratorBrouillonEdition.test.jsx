@@ -157,7 +157,7 @@ describe('QJR581 — brouillon local en Édition complète', () => {
     await screen.findByRole('button', { name: /Enregistrer les modifications/ })
     await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(7))
     await new Promise(r => setTimeout(r, 1700))
-    fireEvent.change(screen.getByPlaceholderText(/Conditions de paiement/), { target: { value: 'Acompte 30 %' } })
+    fireEvent.change(screen.getByPlaceholderText(/Conditions particulières/), { target: { value: 'Acompte 30 %' } })
     await waitFor(() => expect(quitterBloque()).toBe(true))
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer les modifications/ }))
     await waitFor(() => expect(ventesApi.replaceLignesDevis).toHaveBeenCalled())

@@ -548,7 +548,7 @@ def _pct_simple(valeur):
     return int(f) if f == int(f) else round(f, 2)
 
 
-def repartition_paiement(total, termes, custom_acompte=None) -> dict:
+def repartition_paiement(total, termes, tranches_montant=None) -> dict:
     """QJR623 — les cases « Modalités de paiement » du Devis final, au CENTIME.
 
     Remplace l'ancienne répartition du moteur legacy (``_repartir_paiement`` :
@@ -560,12 +560,16 @@ def repartition_paiement(total, termes, custom_acompte=None) -> dict:
     * ``termes`` : ``{acompte, materiel, solde}`` en pourcentages (échéancier
       RÉEL du devis, QJR622) ; la part matériel imprimée est ``100 − a − s``
       (un échéancier à deux tranches n'a pas de case matériel) ;
-    * ``custom_acompte`` (MAD, mode « personnalisé » du dialogue PDF) garde son
-      comportement jusqu'à QJR624 : borné à ``[0, total − solde]`` (ERR76),
-      matériel = reste ; matériel ≤ 0 ⇒ DEUX cases (acompte + solde2).
+    * ``tranches_montant`` (QJR624, D-QJR5-10) — les tranches normalisées
+      de ``Devis.echeancier`` quand l'une d'elles est déclarée en DIRHAMS
+      (l'« acompte personnalisé » du dialogue PDF y écrit l'acompte) : chaque
+      case vaut alors EXACTEMENT ce que ``next_tranche`` facturera sur un devis
+      sans facture émise (montant déclaré, ou ``total × pct`` au centime, la
+      dernière = reliquat) ; deux tranches ⇒ DEUX cases (acompte + solde2).
 
     Pure : aucun statut, aucune écriture (règle #4). Montants en ``float``.
     """
+    from decimal import ROUND_HALF_UP
     from decimal import Decimal as _D
 
     from apps.ventes.utils.echeancier import montants_tranches
@@ -582,14 +586,29 @@ def repartition_paiement(total, termes, custom_acompte=None) -> dict:
         # Échéancier sans tranche matériel : le reliquat va au solde.
         solde = tot - acompte
         materiel = _D(0)
-    if custom_acompte is not None:
-        solde = montants_tranches(tot, [("solde", ps), ("reste", 0)])["solde"]
-        acompte = _D(str(custom_acompte)).quantize(_D("0.01"))
-        acompte = max(_D(0), min(acompte, tot - solde))
-        materiel = tot - acompte - solde
-        pct_a = (acompte / tot * 100).quantize(_D("1")) if tot else _D(0)
-        pct_s = ps
-        pct_m = 100 - pct_a - pct_s
+    if tranches_montant:
+        montants = []
+        for i, tr in enumerate(tranches_montant):
+            if i == len(tranches_montant) - 1:
+                montants.append(tot - sum(montants, _D(0)))
+            else:
+                # ROUND_HALF_UP : la règle de ``next_tranche`` (facture).
+                if tr.get("unite") == "montant":
+                    m = _D(str(tr.get("valeur") or 0)).quantize(
+                        _D("0.01"), rounding=ROUND_HALF_UP)
+                else:
+                    m = (tot * _D(str(tr.get("valeur") or 0)) / 100).quantize(
+                        _D("0.01"), rounding=ROUND_HALF_UP)
+                # Borné au reste (ERR76) : aucune case négative.
+                montants.append(max(_D(0), min(m, tot - sum(montants, _D(0)))))
+        acompte = montants[0]
+        materiel = montants[1] if len(montants) == 3 else _D(0)
+        solde = montants[-1]
+        pct_a = ((acompte / tot * 100).quantize(_D("1"), rounding=ROUND_HALF_UP)
+                 if tot else _D(0))
+        pct_m = ((materiel / tot * 100).quantize(_D("1"), rounding=ROUND_HALF_UP)
+                 if tot else _D(0))
+        pct_s = 100 - pct_a - pct_m
     deux_cases = materiel <= 0
     solde2 = tot - acompte
     pct_s2 = 100 - pct_a
@@ -602,6 +621,25 @@ def repartition_paiement(total, termes, custom_acompte=None) -> dict:
         "deux_cases": bool(deux_cases),
         "solde2": float(solde2), "pct_s2": _pct_simple(pct_s2),
     }
+
+
+def tranches_echeancier_en_montant(devis):
+    """QJR624 — les tranches normalisées de l'échéancier du devis quand il
+    compte 2 ou 3 tranches dont au moins une déclarée en DIRHAMS, sinon
+    ``None`` (le chemin en pourcentages reste celui de QJR623). Lecture
+    tolérante (``tranches_normalisees``) ; jamais une exception."""
+    if devis is None:
+        return None
+    try:
+        from apps.ventes.utils.echeancier import (UNITE_MONTANT,
+                                                  tranches_normalisees)
+        tranches = tranches_normalisees(devis)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        return None
+    if len(tranches) in (2, 3) and any(
+            t.get("unite") == UNITE_MONTANT for t in tranches):
+        return tranches
+    return None
 
 
 def date_correction_apres_envoi(devis) -> str:
@@ -1081,8 +1119,6 @@ DEFAULT_PDF_OPTIONS = {
     'pdf_mode': 'full',        # 'full' (3 pages) | 'onepage' (1 page)
     'show_monthly': True,      # monthly-savings chart on page 2
     'devis_final': False,      # payment terms + RIB block on page 3
-    'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
-    'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
     'include_etude': False,    # page Étude (industriel) — 4th premium page
     # PV46/PVSLD — page « Annexe technique » (schéma unifilaire + nomenclature
     # de la conception électrique PV41). DÉFAUT ``None`` = AUTO : la page est
@@ -1200,8 +1236,6 @@ def clean_pdf_options(raw) -> dict:
     if 'include_calepinage' in raw:
         _cal = raw['include_calepinage']
         opts['include_calepinage'] = None if _cal is None else bool(_cal)
-    if raw.get('payment_mode') in ('standard', 'custom'):
-        opts['payment_mode'] = raw['payment_mode']
     # NTI18N4 — langue de sortie déjà résolue par l'appelant (whitelist
     # stricte, jamais une valeur arbitraire transmise plus loin).
     if raw.get('langue_sortie') in LANGUES_SORTIE_PDF:
@@ -1226,14 +1260,44 @@ def clean_pdf_options(raw) -> dict:
     _tok = raw.get('share_token')
     if isinstance(_tok, str) and _SHARE_TOKEN_RE.fullmatch(_tok):
         opts['share_token'] = _tok
-    try:
-        acompte = raw.get('custom_acompte')
-        # ERR76 — never forward a negative acompte; the engine additionally
-        # clamps it to the order total.
-        opts['custom_acompte'] = max(0.0, float(acompte)) if acompte not in (None, '') else None
-    except (TypeError, ValueError):
-        opts['custom_acompte'] = None
+    # QJR624 — ``payment_mode`` / ``custom_acompte`` ne sont PLUS des options
+    # de rendu : l'acompte personnalisé est écrit dans ``Devis.echeancier``
+    # (dialogue PDF → PATCH) et le PDF lit l'échéancier, comme la facture.
     return opts
+
+
+def _libelle_ville(ville, reference):
+    """QJR591 — « {ville}, près de {reference} » quand elles diffèrent."""
+    ville = (ville or '').strip()
+    reference = (reference or '').strip()
+    if ville and reference and ville.lower() != reference.lower():
+        return f"{ville}, près de {reference}"
+    return reference or ville
+
+
+def _ville_du_devis(devis, etude):
+    """QJR591 — ``(ville de calcul, libellé méta)`` du devis.
+
+    Lit d'abord ``etude_params['ville_calcul']`` (figée au chiffrage par
+    ``pipeline.rafraichir_etudes``) ; ne retombe sur le lead
+    (``crm.selectors.ville_effective``, QJR586) que pour un devis qui ne la
+    porte pas encore. Ne lève jamais : un PDF ne casse pas là-dessus.
+    """
+    figee = (etude or {}).get("ville_calcul") if isinstance(etude, dict) else None
+    if isinstance(figee, dict):
+        reference = (figee.get("reference") or "").strip()
+        return reference, _libelle_ville(figee.get("ville"), reference)
+    try:
+        _lead = getattr(devis, "lead", None)
+        if _lead is None:
+            return "", ""
+        # VREF (fondateur 07/09/2026) — la ville ERP de RATTACHEMENT d'un
+        # douar hors gazetier pilote le productible PVGIS (QJR586 : un point).
+        from apps.crm.selectors import ville_effective
+        reference = ville_effective(_lead)
+        return reference, _libelle_ville(getattr(_lead, "ville", ""), reference)
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        return "", ""
 
 
 def build_quote_data(devis, pdf_options=None) -> dict:
@@ -2159,19 +2223,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # QX7c/QX38 — ville du client depuis le lead lié (lead.ville). Accès attribut
     # sur l'instance liée (aucun import crm.models) ; vide si pas de lead/ville.
     # Sert au productible PVGIS par ville (QX38) ET à la ligne meta du PDF (QX7c).
-    _client_city = ""
-    try:
-        _lead = getattr(devis, "lead", None)
-        if _lead is not None:
-            # VREF (fondateur 07/09/2026) — un lead d'un douar hors gazetier
-            # porte sa ville ERP de RATTACHEMENT (choisie par la commerciale
-            # sur la carte « Vérifier la ville ») : c'est ELLE qui pilote le
-            # productible PVGIS, jamais un nom que la table ne connaît pas.
-            # QJR586 — en UN point : crm.selectors.ville_effective.
-            from apps.crm.selectors import ville_effective
-            _client_city = ville_effective(_lead)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
-        _client_city = ""
+    # QJR591 — la ville FIGÉE au chiffrage (``etude_params['ville_calcul']``,
+    # consignée par ``pipeline.rafraichir_etudes``) : corriger la ville du
+    # lead ne change plus la production d'un devis déjà chiffré. Repli sur
+    # ``ville_effective`` (QJR586) pour un devis qui ne la porte pas encore.
+    _client_city, _client_city_libelle = _ville_du_devis(devis, etude)
 
     _tariff = {}
     try:
@@ -3276,11 +3332,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "client_addr": client.adresse or "",
         "client_phone": client.telephone or "",
         "client_ice": (getattr(client, "ice", "") or ""),
-        # QX7c — ville du client : résolue depuis le lead lié (lead.ville) quand
-        # il existe, sinon vide (le champ était lu mais jamais alimenté). Accès
-        # attribut sur l'instance liée — aucun import de crm.models. Vide → la
-        # ligne meta ne montre pas de ville fantôme (join_meta l'omet).
+        # QX7c / QJR591 — ``client_city`` est la ville de CALCUL (figée au
+        # chiffrage ; lue par l'étude horaire et les courbes) ;
+        # ``client_ville_libelle`` est la ligne méta « X, près de Y » quand la
+        # ville tapée diffère. Vide → join_meta l'omet.
         "client_city": _client_city,
+        # QJR627 (D-QJR5-6) — le champ « Notes » du générateur est un texte
+        # CLIENT : imprimé dans le bloc conditions de chaque gabarit ; vide →
+        # aucun bloc. Jamais prix_achat ni marge (texte saisi seulement).
+        "note_client": (getattr(devis, "note", "") or "").strip(),
+        "client_ville_libelle": _client_city_libelle,
         "inst_type": inst_type,
         "puissance_kwc": puissance_kwc,
         "nb_panneaux": nb_panneaux,
@@ -3491,8 +3552,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "pdf_mode": pdf_mode,
         "show_monthly": opts['show_monthly'],
         "devis_final": opts['devis_final'],
-        "payment_mode": opts['payment_mode'],
-        "custom_acompte": opts['custom_acompte'],
         "include_etude": include_etude,
         # CAD122 — marqueur « signé au domicile », lu SUR LE BON DE COMMANDE
         # (jamais une option du corps client : c'est un fait juridique, pas
@@ -3756,12 +3815,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # Calculés ICI, au centime, par option (le total ×N villas compris) ; le
     # moteur legacy choisit la branche qu'il imprime et n'arrondit plus rien.
     _n_villas = data.get("nombre_proprietes") or 1
+    _tranches_montant = tranches_echeancier_en_montant(devis)
     data["montants_tranches"] = {
         branche: repartition_paiement(
             round(float(data.get(f"total_{branche}") or 0) * _n_villas, 2),
-            payment_terms,
-            opts['custom_acompte'] if opts['payment_mode'] == "custom"
-            else None)
+            payment_terms, _tranches_montant)
         for branche in ("sans", "avec")}
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS totaux) ─────────────
@@ -3870,8 +3928,9 @@ _CHAMPS_TEXTE_LIGNE = ("designation", "marque", "description", "garantie")
 #: leur HTML (``agricole/economics_page``, ``industriel/trust``,
 #: ``commercial/trust``) — ``theme.titlecase_name`` n'échappe rien.
 _CHAMPS_TEXTE_CLIENT = ("client_name", "client_full", "client_addr",
-                        "client_city", "client_phone", "client_ice",
-                        "accepte_par_nom")
+                        "client_city", "client_ville_libelle",
+                        "client_phone", "client_ice",
+                        "accepte_par_nom", "note_client")
 
 
 def echapper_textes_client(data: dict) -> dict:

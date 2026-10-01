@@ -59,6 +59,15 @@ class WebQuestionnaireWebhookTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.type_installation, 'industriel')
 
+    def test_roof_type_fabrique_du_tunnel_n_est_plus_enregistre(self):
+        """QJR657 — le tunnel émet roofType='autre' pour tout visiteur non pro :
+        une valeur inventée ne devient plus un « Type de toiture (site) »."""
+        res = self.post(payload_site(roofType='autre'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertFalse(lead.roof_type)
+        self.assertNotIn('roof_type', Lead.CHAMPS_SITE)
+
     def test_payload_professionnel_complet_reemploi_des_colonnes(self):
         res = self.post(payload_site(
             mode='professionnel',

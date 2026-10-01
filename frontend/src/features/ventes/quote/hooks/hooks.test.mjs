@@ -1,13 +1,10 @@
-// QJR90 — tests des trois hooks, par leur moitié PURE (patron maison
+// QJR90 — tests du hook de dimensionnement, par sa moitié PURE (patron maison
 // `etudeHorairePreview.js` / `etudeHorairePreviewPur.js`). `node --test`
 // uniquement : les fichiers `use*.js` importent React et l'API, ils ne sont
 // pas exécutables ici — toute la logique testable vit dans les `*Pur.js`.
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { decisionSizing, motifRefus, REFUS_GENERIQUE } from './useSizingMoteurPur.js'
-import {
-  resoudreComposition, raisonRepli, RAISON_SERVEUR, RAISON_RIEN,
-} from './useCompositionPur.js'
 
 // ── useSizingMoteur : la garde de péremption sur les DEUX branches ───────────
 
@@ -82,54 +79,4 @@ test('ordre du motif : avertissement, puis motivation, puis erreur, puis génér
 
 test('aucune réponse encore arrivée : on attend', () => {
   assert.equal(decisionSizing({ attente: true, cleCourante: CLE }).action, 'attendre')
-})
-
-// ── useComposition : `raison` est TOUJOURS rendue ────────────────────────────
-
-const L = [{ designation: 'Panneau 710 W', quantite: 12 }]
-
-test('STRUCTUREL : toute composition porte une source ET une raison non vide', () => {
-  const cas = [
-    { serveur: { lignes: L } },
-    { local: { lignes: L, raison: 'aucun dry-run serveur pour le marché agricole' } },
-    { local: { lignes: L }, erreur: 'timeout' },
-    { local: { lignes: [] }, marche: 'industriel' },
-    { erreur: 'HTTP 500' },
-    {},
-  ]
-  for (const c of cas) {
-    const r = resoudreComposition(c)
-    assert.ok(['serveur', 'local'].includes(r.source), JSON.stringify(c))
-    assert.equal(typeof r.raison, 'string')
-    assert.ok(r.raison.length > 0, `raison vide pour ${JSON.stringify(c)}`)
-    assert.ok(Array.isArray(r.lignes))
-  }
-})
-
-test('le serveur gagne quand il a composé', () => {
-  const r = resoudreComposition({ serveur: { lignes: L }, local: { lignes: [] } })
-  assert.equal(r.source, 'serveur')
-  assert.equal(r.raison, RAISON_SERVEUR)
-  assert.deepEqual(r.lignes, L)
-})
-
-test('le repli local NOMME la cause de l’échec serveur (jamais silencieux)', () => {
-  const r = resoudreComposition({ local: { lignes: L }, erreur: 'HTTP 500' })
-  assert.equal(r.source, 'local')
-  assert.equal(r.raison, raisonRepli('HTTP 500'))
-  assert.match(r.raison, /HTTP 500/)
-  assert.match(r.raison, /secours/)
-})
-
-test('un marché SANS dry-run garde la raison de son module de marché', () => {
-  const raison = 'aucun dry-run serveur pour le marché agricole — composition pompage locale'
-  const r = resoudreComposition({ local: { lignes: L, raison }, marche: 'agricole' })
-  assert.equal(r.source, 'local')
-  assert.equal(r.raison, raison)
-})
-
-test('rien à composer : lignes vides ET une raison qui le dit', () => {
-  assert.equal(resoudreComposition({}).raison, RAISON_RIEN)
-  assert.equal(resoudreComposition({ local: { lignes: [], motif: 'renseignez les CV' } }).raison,
-    'renseignez les CV')
 })

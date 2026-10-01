@@ -107,3 +107,7 @@ backend/django_core/apps/stock/migrations/0115_ntdst14_stock_vehicule.py
 # solaire : une seule enveloppe par société et par période désormais) ;
 # migration figée, même motif que ci-dessus.
 backend/django_core/apps/stock/migrations/0117_ntp2p4_budget_departement.py
+# 2026-10-01 (QJR647) : ventes/0037 nommait l index ventes_roof_co_dev_idx de
+# ventes.RoofLayout, modele retire par 0120_qjr647_retrait_rooflayout (DeleteModel) :
+# plus aucun Meta ne peut le declarer. Migration historique, revue.
+backend/django_core/apps/ventes/migrations/0037_fg245_rooflayout.py

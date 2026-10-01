@@ -133,7 +133,7 @@ class TestExemplaireSigneCleDediee(TestCase):
         return rendre
 
     def test_re_rendu_persistant_laisse_les_octets_signes_intacts(self):
-        from apps.ventes.services import _store_signed_pdf
+        from apps.ventes.domain.cycle_vie import _store_signed_pdf
         devis = make_devis(self.company, self.user, self.client_obj,
                            'DEV-QJR670-D')
         Devis.objects.filter(pk=devis.pk).update(statut='accepte')

@@ -40,18 +40,6 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-from authentication.scoping import scope_queryset  # noqa: E402,F401
-
-
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
-
-
 def _reserver_stock_bc_actif(company):
     """YDOCF7 — état du toggle société `reserver_stock_bc` (défaut OFF).
 
@@ -133,9 +121,6 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         'date_creation', 'date_livraison_prevue', 'statut'
     ]
     ordering = ['-date_creation']
-
-    def get_queryset(self):
-        return _company_qs(super().get_queryset(), self.request.user)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['pdf']:
@@ -486,7 +471,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
         # La règle maison est « company forcée côté serveur, jamais issue de la
         # requête » : elle venait bien du serveur, mais du MAUVAIS objet
-        # serveur. Un superutilisateur sans société (`_company_qs` laisse
+        # serveur. Un superutilisateur sans société (`company_qs` laisse
         # passer TOUS les BC dans ce cas) facturait le BC de la société A et la
         # facture naissait dans SA société — ou sans société : invisible pour
         # son propriétaire légitime, et comptée dans le CA d'un autre tenant.

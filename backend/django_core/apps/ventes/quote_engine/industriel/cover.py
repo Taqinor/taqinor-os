@@ -49,7 +49,7 @@ def build(ctx):
         f'<div class="i1-hd">{m}</div>'
         for m in theme.marques_correction(d))
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
-    client_meta = theme.join_meta(d.get("client_addr", ""), d.get("client_city", ""),
+    client_meta = theme.join_meta(d.get("client_addr", ""), (d.get("client_ville_libelle") or d.get("client_city", "")),
                                   d.get("client_phone", ""))
     # M7 (audit du 19/08/2026) — pastille de validité : la VRAIE date
     # d'échéance du devis (``valid_until``, posée par le builder depuis

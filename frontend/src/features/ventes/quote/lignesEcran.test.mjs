@@ -97,7 +97,11 @@ test('garde de source : plus de mappeur inline dans DevisGenerator.jsx', () => {
     'conversion HT → TTC inline d’une ligne serveur : passer par lignesServeurVersEcran')
   assert.ok(!/prix_unitaire:\s*htFromTtc\(/.test(src),
     'payload de lignes inline : passer par lignesEcranVersPayload')
-  assert.ok(src.includes('lignesServeurVersEcran(') && src.includes('lignesEcranVersPayload('))
+  // QJR658 — l'Édition complète passe par le module pur `etatDevis.js`, qui
+  // COMPOSE ces deux mappeurs (lecture `?edit=` et écriture replace-lines).
+  const etat = readFileSync(join(ICI, 'etatDevis.js'), 'utf8')
+  assert.ok(src.includes('lignesServeurVersEcran(') && src.includes('etatVersEcritures('))
+  assert.ok(etat.includes('lignesServeurVersEcran(') && etat.includes('lignesEcranVersPayload('))
 })
 
 test('QJR529 — la remise de ligne stockée survit à l’aller-retour (défaut « 0 »)', () => {

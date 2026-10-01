@@ -29,8 +29,8 @@ from apps.ventes.services import (
     request_otp_lecture,
     validate_otp_lecture,
     otp_lecture_verified,
-    _otp_lecture_cache_key,
 )
+from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
 
 User = get_user_model()
 

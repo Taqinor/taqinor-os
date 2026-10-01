@@ -1298,7 +1298,7 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'equip_chauffe_eau_kw', 'equip_chauffe_eau_creneau',
     )]
     + [(champ, _RAISON_QUALIFICATION) for champ in (
-        'bill_range_bucket', 'roof_type', 'roof_age', 'distributeur',
+        'bill_range_bucket', 'roof_age', 'distributeur',
         'nb_etages', 'regularisation_8221',
     )]
     # ── CAD-L ── CAD149 — vague 1 du script d'appel guidé : deux des huit
@@ -1328,6 +1328,12 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
          "note de terrain en TEXTE LIBRE : aucun chiffre d'étude n'en "
          "dérive, il n'y a rien à comparer."),
         ('tranche_onee', _RAISON_TRANCHE),
+        ('roof_type',
+         "colonne MORTE depuis QJR657 : le webhook du tunnel ne l'écrit plus "
+         "(valeur fabriquée « autre ») et aucun écran ne l'affiche ; la seule "
+         "source du type de toiture est `type_toiture`. Elle reste en base "
+         "jusqu'à sa migration destructive séparée — à retirer d'ici ce "
+         "jour-là."),
     ]
 )
 
@@ -5758,3 +5764,106 @@ def leads_signes_sans_devis_accepte(company):
         .exclude(devis__statut=_DEVIS_STATUT_ACCEPTE)
         .order_by('pk')
         .values('id', 'stage', 'source'))
+
+
+# ── QJR598 — UN seul repère toit du lead (D-QJR5-15) ────────────────────────
+REPERE_SOURCE_ROOF_POINT = 'roof_point'   # l'épingle posée sur le tunnel public
+REPERE_SOURCE_GPS = 'gps'                 # le GPS corrigé (équipe ou questionnaire)
+
+# Le GPS est stocké à 7 décimales : en deçà, deux coordonnées sont la même.
+_REPERE_TOLERANCE_DEG = 1e-6
+
+
+def _repere_nombre(valeur):
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    return nombre if nombre == nombre else None  # écarte NaN
+
+
+def _repere_pin(lat, lng):
+    lat, lng = _repere_nombre(lat), _repere_nombre(lng)
+    if lat is None or lng is None:
+        return None
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        return None
+    return {'lat': lat, 'lng': lng}
+
+
+def _repere_anneau(outline):
+    """Les sommets ``(lat, lng)`` lisibles du contour client — ``[lat, lng]``
+    (webhook) ou ``{lat, lng}`` (import) ; liste vide sous 3 sommets."""
+    if not isinstance(outline, (list, tuple)):
+        return []
+    anneau = []
+    for point in outline:
+        if isinstance(point, dict):
+            pin = _repere_pin(point.get('lat'), point.get('lng'))
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            pin = _repere_pin(point[0], point[1])
+        else:
+            pin = None
+        if pin is not None:
+            anneau.append((pin['lat'], pin['lng']))
+    return anneau if len(anneau) >= 3 else []
+
+
+def _repere_dans_anneau(pin, anneau):
+    """Lancer de rayon dans le plan (lat, lng) — un toit fait quelques
+    dizaines de mètres, la projection plane suffit."""
+    y, x = pin['lat'], pin['lng']
+    dedans = False
+    j = len(anneau) - 1
+    for i in range(len(anneau)):
+        yi, xi = anneau[i]
+        yj, xj = anneau[j]
+        if (yi > y) != (yj > y):
+            x_croise = xi + (y - yi) * (xj - xi) / (yj - yi)
+            if x < x_croise:
+                dedans = not dedans
+        j = i
+    return dedans
+
+
+def repere_toit(lead):
+    """QJR598 — ``(pin, source, contour_utilisable)`` : LE repère toit du lead.
+
+    * ``pin`` : le GPS du lead quand il est renseigné ET différent de
+      ``roof_point`` (à l'entrée, le tunnel public écrit GPS = roof_point :
+      un GPS différent vient donc toujours d'une correction), sinon
+      ``roof_point``, sinon le GPS seul ; ``None`` sans aucune coordonnée —
+      jamais une position devinée.
+    * ``source`` : ``REPERE_SOURCE_GPS`` ou ``REPERE_SOURCE_ROOF_POINT``
+      (``None`` sans pin).
+    * ``contour_utilisable`` : ``roof_outline`` est un polygone lisible et le
+      pin tombe dedans (sans pin, le contour reste le seul repère). Faux →
+      le contour n'est plus qu'un calque affiché, jamais un toit à calepiner.
+
+    Lecture pure ; ``roof_point`` / ``roof_outline`` ne sont jamais réécrits.
+    """
+    if lead is None:
+        return None, None, False
+    point = getattr(lead, 'roof_point', None)
+    epingle = (_repere_pin(point.get('lat'), point.get('lng'))
+               if isinstance(point, dict) else None)
+    gps = _repere_pin(getattr(lead, 'gps_lat', None),
+                      getattr(lead, 'gps_lng', None))
+
+    if gps is not None and (
+            epingle is None
+            or abs(gps['lat'] - epingle['lat']) > _REPERE_TOLERANCE_DEG
+            or abs(gps['lng'] - epingle['lng']) > _REPERE_TOLERANCE_DEG):
+        pin, source = gps, REPERE_SOURCE_GPS
+    elif epingle is not None:
+        pin, source = epingle, REPERE_SOURCE_ROOF_POINT
+    else:
+        pin, source = None, None
+
+    anneau = _repere_anneau(getattr(lead, 'roof_outline', None))
+    if not anneau:
+        return pin, source, False
+    utilisable = True if pin is None else _repere_dans_anneau(pin, anneau)
+    return pin, source, utilisable

@@ -509,11 +509,7 @@ class TestPdfFormats1(TestPdfFormats):
         self.assertIn('Panneau mono 550W', html)
 
     def test_devis_final_keeps_three_pages_with_rib_and_payment(self):
-        html, doc = self._render({
-            'devis_final': True,
-            'payment_mode': 'custom',
-            'custom_acompte': 12000,
-        })
+        html, doc = self._render({'devis_final': True})
         self.assertEqual(len(doc.pages), 3)
         self.assertIn('SGMBMAMCXXX', html)  # RIB / BIC block present
 
@@ -1574,8 +1570,9 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertEqual(opts['pdf_mode'], 'full')
         self.assertTrue(opts['show_monthly'])
         self.assertTrue(opts['devis_final'])
-        self.assertEqual(opts['payment_mode'], 'standard')
-        self.assertIsNone(opts['custom_acompte'])
+        # QJR624 — l'acompte personnalisé n'est plus une option de rendu.
+        self.assertNotIn('payment_mode', opts)
+        self.assertNotIn('custom_acompte', opts)
         self.assertNotIn('junk', opts)
 
 
@@ -1767,7 +1764,11 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
-        # Ré-épinglée le 2026-09-30 (PR #743, run 36656394445, shard 1) :
+        # Ré-épinglée le 2026-10-01 (PR #764, lot 5 QJR5, shard 1) : QJR627
+        # insère dans ``page_onepage`` l'emplacement du bloc « Note » client
+        # (``_note_client_html``) — vide ici (devis sans note), donc seule une
+        # ligne d'indentation s'ajoute au HTML : aucun changement visible.
+        # Avant : 2026-09-30 (PR #743, run 36656394445, shard 1) :
         # seuls des marqueurs cachés `data-figure` (parité des chiffres, QA #2)
         # ont été ajoutés au HTML — aucun changement visible.
         # Avant : épinglée depuis l'exécution CI du 2026-09-07 (run
@@ -1778,7 +1779,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
         EMPREINTE_EPINGLEE = (
-            'ac456b7c7dd58e83fa5dd61adc685c625267357773d087556eadaff6dd6b5e91')
+            '02d25cd79845b737762ae909eeedd6206d8a2dd11e1d02b340267ceb23cb8513')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,

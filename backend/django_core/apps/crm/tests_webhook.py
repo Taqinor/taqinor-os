@@ -60,7 +60,8 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(lead.nom, 'Amina Benali')
         self.assertEqual(lead.telephone, '212661850410')
         self.assertEqual(lead.ville, 'Casablanca')
-        self.assertEqual(lead.roof_type, 'villa')
+        # QJR657 — le « roofType » du tunnel (fabriqué) n'est plus enregistré.
+        self.assertFalse(lead.roof_type)
         self.assertEqual(lead.bill_range_bucket, '1500-3000')
         self.assertEqual(lead.roi_band, '5 à 9 kWc · 4 à 6 ans')
         self.assertEqual(lead.fbclid, 'fb.1.123.ABC')

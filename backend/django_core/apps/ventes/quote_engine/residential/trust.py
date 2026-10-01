@@ -263,6 +263,16 @@ def build(ctx) -> str:
         for k, v in conditions
     )
 
+    # QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » (déjà échappé
+    # par ``builder.echapper_textes_client``), à plat sous la rangée ; vide →
+    # aucun bloc.
+    _note_client = (d.get("note_client") or "").strip()
+    note_html = (
+        '<div class="p3-method p3-note-client">'
+        '<span class="p3-method-k">Note</span>'
+        f'<span class="p3-method-v">{_note_client}</span></div>'
+        if _note_client else "")
+
     # ── Next steps ──────────────────────────────────────────────────────────
     # Q5 — les délais sont des réglages société et portent « (indicatif) » ;
     # un réglage vidé laisse l'étape sans sous-titre plutôt qu'avec un délai
@@ -536,6 +546,7 @@ def build(ctx) -> str:
 .p3-method-k {{ font-size:6.8pt; letter-spacing:.1em; text-transform:uppercase;
   color:{C['muted_2']}; font-weight:700; margin-right:7px; }}
 .p3-method-v b {{ color:{C['navy']}; font-weight:700; }}
+.p3-note-client .p3-method-v {{ white-space:pre-line; color:{C['navy']}; }}
 
 /* Legal identifier band — refined fine print, intentional margin above footer */
 .p3-legal {{ margin-top:8px; margin-bottom:3mm; padding-top:6px;
@@ -557,6 +568,7 @@ def build(ctx) -> str:
   </div>
 
   {cols_html}
+  {note_html}
   {method_html}
 
   <div class="qj" data-w="40"></div>
