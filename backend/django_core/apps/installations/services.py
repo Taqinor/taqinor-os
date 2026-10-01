@@ -255,6 +255,31 @@ def _freeze_bom(devis):
     return bom
 
 
+def _rattacher_chantier_de_revision(devis, user, company):
+    """QJR559 — si une version que ``devis`` REMPLACE (révision, lue par
+    ``ventes.selectors.devis_predecesseurs_revision_ids``) a déjà un chantier,
+    il passe sur ``devis`` (``installation.devis = v2``) avec une note de
+    trace. Renvoie le chantier rattaché, ou ``None``."""
+    from apps.ventes.selectors import devis_predecesseurs_revision_ids
+
+    for pred_id in devis_predecesseurs_revision_ids(devis):
+        chantier = (Installation.objects
+                    .filter(devis_id=pred_id, company=company)
+                    .order_by('pk').first())
+        if chantier is None:
+            continue
+        ancienne_ref = getattr(chantier.devis, 'reference', None) or pred_id
+        chantier.devis = devis
+        chantier.save(update_fields=['devis'])
+        from . import activity
+        activity.log_note(
+            chantier, user,
+            f'Chantier rattaché à la révision {devis.reference} '
+            f'(remplace {ancienne_ref}) — nomenclature gelée inchangée.')
+        return chantier
+    return None
+
+
 def create_installation_from_devis(devis, user, company):
     """Retourne (installation, created).
 
@@ -276,6 +301,12 @@ def create_installation_from_devis(devis, user, company):
         devis=devis, company=company).first()
     if existing is not None:
         return existing, False
+    # QJR559 — V2 d'un devis signé (D-QJR5-2) : le chantier de la version
+    # remplacée est RATTACHÉ à la révision acceptée, jamais dupliqué. La
+    # nomenclature gelée (``bom``) reste intacte ; une note trace le geste.
+    rattache = _rattacher_chantier_de_revision(devis, user, company)
+    if rattache is not None:
+        return rattache, False
 
     lead = devis.lead
     type_install = devis.mode_installation or (

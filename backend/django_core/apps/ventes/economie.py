@@ -304,11 +304,28 @@ def _tri(flux, omissions):
 # PVsyst documente aussi le remboursement IN FINE
 # (https://www.pvsyst.com/help/project-design/economic-evaluation/financial-parameters.html).
 #
-# UNE SEULE FORMULE D'ANNUITÉ : la mensualité RELIT ``_monthly_loan_payment``
-# (``quote_engine/builder.py``), la seule du dépôt — elle n'est ni dupliquée
-# ni modifiée ici. Sa table ``_FINANCING_PROGRAMS`` (taux « APPROXIMATIF … à
-# confirmer avec les banques partenaires »), elle, n'est JAMAIS relue : tous
-# les paramètres d'un prêt sont SAISIS, aucun taux de repli.
+# UNE SEULE FORMULE D'ANNUITÉ : ``_monthly_loan_payment`` ci-dessous, la seule
+# du dépôt (QJR630 : déplacée ici depuis ``quote_engine/builder.py`` avec la
+# suppression du bloc « financement » à taux inventés — son seul appelant
+# restant est ``tableau_pret``). Tous les paramètres d'un prêt sont SAISIS,
+# aucun taux de repli.
+
+
+def _monthly_loan_payment(principal: float, annual_rate: float,
+                          n_months: int) -> float:
+    """Annuité constante. ``annual_rate = 0.06`` = 6 % par an.
+
+    Renvoie 0 sur une entrée dégénérée (capital ≤ 0 ou durée ≤ 0) ; taux nul ⇒
+    capital ÷ durée.
+    """
+    if principal <= 0 or n_months <= 0:
+        return 0.0
+    if annual_rate <= 0:
+        return round(principal / n_months, 2)
+    r = annual_rate / 12
+    factor = r * (1 + r) ** n_months / ((1 + r) ** n_months - 1)
+    return round(principal * factor, 2)
+
 
 def _exiger(champ, brute, **bornes):
     """Une grandeur OBLIGATOIRE : absente ⇒ refus qui nomme ``champ``."""
@@ -389,7 +406,6 @@ def tableau_pret(*, principal_mad=None, taux_annuel_pct=None, duree_mois=None,
 
     mensualite = None
     if type_pret == 'annuite':
-        from .quote_engine.builder import _monthly_loan_payment
         mensualite = _monthly_loan_payment(principal, taux / 100.0,
                                            amortissement)
     part_constante = round(principal / amortissement, 2)

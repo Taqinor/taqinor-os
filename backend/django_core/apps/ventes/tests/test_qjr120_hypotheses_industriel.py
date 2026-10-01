@@ -21,7 +21,7 @@ Run (sans base de données) :
 """
 import re
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.quote_engine import pricing
 from apps.ventes.quote_engine.industriel import (
@@ -190,3 +190,68 @@ class TestIrrSeries(SimpleTestCase):
         self.assertAlmostEqual(finance.irr_series(1000.0, plat),
                                finance.irr_flat(1000.0, 400.0, years=15),
                                delta=0.2)
+
+
+class TestEtudePerimeeQjr625(TestCase):
+    """QJR625 — une étude I/C calculée pour 100 kWc n'est plus imprimée
+    quand les lignes, corrigées, n'en font plus que 80."""
+
+    def setUp(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.ventes.models import LigneDevis
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.devis = make_devis(
+            self.company, self.user, make_client(self.company), [
+                ('Panneau Canadien Solar 710W', '141', '1150'),
+                ('Onduleur réseau Huawei 100kW', '1', '90000'),
+            ], reference='DEV-QJR625-IND',
+            etude_params={'etude_kwc_base': 100.11, 'taux_autoconso': 62,
+                          'taux_couverture': 47, 'payback': 3.3,
+                          'conso_annuelle': 300000})
+        self.devis.mode_installation = 'industriel'
+        self.devis.save(update_fields=['mode_installation'])
+        self.ligne_pv = LigneDevis.objects.get(
+            devis=self.devis, designation__startswith='Panneau')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def _rendu(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.quote_engine.builder import (
+            build_quote_data, echapper_textes_client)
+        data = build_quote_data(Devis.objects.get(pk=self.devis.pk),
+                                {'pdf_mode': 'full'})
+        html = render.build_html(
+            renderer._augment(echapper_textes_client(data)))
+        return data, _visible(html)
+
+    def test_etude_fraiche_imprimee(self):
+        """Témoin : à 100,11 kWc, l'étude décrit les lignes — elle passe."""
+        data, txt = self._rendu()
+        self.assertEqual(data['etude'].get('taux_autoconso'), 62)
+        self.assertIn('62 %', txt)
+        self.assertNotIn("étude industrielle périmée — relancer l'étude",
+                         data.get('avertissements_internes') or [])
+
+    def test_ligne_ramenee_a_80_kwc_etude_omise(self):
+        r = self.api.patch(
+            f'/api/django/ventes/devis-lignes/{self.ligne_pv.id}/',
+            {'quantite': '113'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        data, txt = self._rendu()
+        self.assertAlmostEqual(data['puissance_kwc'], 80.23, places=2)
+        for cle in ('taux_autoconso', 'taux_couverture', 'payback'):
+            self.assertNotIn(cle, data['etude'])
+        self.assertNotIn('62 %', txt)
+        self.assertIn("étude industrielle périmée — relancer l'étude",
+                      data.get('avertissements_internes') or [])
+        # L'étude STOCKÉE n'est jamais mutée par le rendu (règle #4).
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.etude_params.get('taux_autoconso'), 62)

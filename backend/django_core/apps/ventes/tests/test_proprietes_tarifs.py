@@ -36,7 +36,6 @@ from apps.ventes.quote_engine.pricing import (
     ONEE_TRANCHES,
     PRODUCTION_DERATE,
     _monthly_bill_from_kwh,
-    annual_bill_from_kwh,
     calculate_savings_roi,
     kwh_from_bill,
     two_bills_savings,
@@ -198,14 +197,18 @@ class TarifsParTrancheProprietes(SimpleTestCase):
         self.assertGreaterEqual(b + 0.1001, a)
 
     @PUR
-    @given(kwh=_log_floats(0.1, 5000), dk=st.floats(0, 300), utility=UTILITIES)
-    def test_facture_annuelle_douze_fois_le_mois_et_monotone(self, kwh, dk, utility):
-        a = annual_bill_from_kwh(kwh, utility)
-        b = annual_bill_from_kwh(kwh + dk, utility)
-        self.assertTrue(_finis(a) and _finis(b))
-        self.assertAlmostEqual(a['bill_annuel'], a['bill_mensuel'] * 12, delta=0.07)
-        self.assertGreaterEqual(b['bill_mensuel'] + 0.01, a['bill_mensuel'])
-        self.assertEqual(a['estimation'], not _nomme(utility))
+    @given(kwh=_log_floats(0.1, 5000), dk=st.floats(0, 300), table=grille_vendeur())
+    def test_facture_mensuelle_finie_positive_et_monotone(self, kwh, dk, table):
+        """QJR629 — ``annual_bill_from_kwh`` (mort : seuls des tests
+        l'appelaient) est supprimé ; sa propriété est portée par la SOURCE
+        UNIQUE du prix d'un volume mensuel, ``_monthly_bill_from_kwh``."""
+        for grille in (ONEE_TRANCHES, table):
+            a = _monthly_bill_from_kwh(kwh, grille)
+            b = _monthly_bill_from_kwh(kwh + dk, grille)
+            self.assertTrue(math.isfinite(a) and math.isfinite(b))
+            self.assertGreater(a, 0)
+            self.assertGreaterEqual(b + 0.01, a)
+        self.assertEqual(_monthly_bill_from_kwh(0, ONEE_TRANCHES), 0.0)
 
 
 class FactureCompleteProprietes(SimpleTestCase):

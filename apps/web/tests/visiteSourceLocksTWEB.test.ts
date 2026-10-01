@@ -100,7 +100,7 @@ describe('questionnaire/[token].astro — appareil_id joint au POST', () => {
 
   it("importe appareilId et le joint à buildQuestionnairePostBody", () => {
     expect(src).toContain("import { appareilId } from '../../lib/visite';");
-    expect(src).toContain('buildQuestionnairePostBody(section, raw, photo, appareilId());');
+    expect(src).toContain('buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);');
   });
 
   it('transmet skipVisitBeacon={interne} au Layout — aucune balise sous aperçu interne questionnaire', () => {

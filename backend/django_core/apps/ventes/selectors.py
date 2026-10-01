@@ -3775,3 +3775,35 @@ def annotations_engagement_proposition():
                 valeur=Max('deep_engagement_logged_at')).values('valeur')[:1],
             output_field=DateTimeField()),
     }
+
+
+def devis_predecesseurs_revision_ids(devis):
+    """QJR559 — les ids des versions que ``devis`` REMPLACE, par révision
+    (relation inverse ``remplace`` = ``superseded_by``), toute la chaîne
+    (v3 → v2 → v1, du plus proche au plus ancien), même société. Jamais
+    ``version_parent`` : il est partagé avec les variantes et les gammes, qui
+    ne remplacent rien.
+
+    Lu par ``installations`` (chantier unique), ``sav`` (contrat unique),
+    ``crm`` (cadence de suivi) et le cycle de vie ventes (aval financier) —
+    aucun import de ``ventes.models`` hors de cette app. Liste vide pour un
+    objet non persisté."""
+    from .models import Devis
+
+    pk = getattr(devis, 'pk', None)
+    company_id = getattr(devis, 'company_id', None)
+    if pk is None or company_id is None:
+        return []
+    vus = {pk}
+    ordre = []
+    frontiere = [pk]
+    while frontiere:
+        suivants = [
+            i for i in Devis.objects.filter(
+                company_id=company_id, superseded_by_id__in=frontiere)
+            .values_list('pk', flat=True)
+            if i not in vus]
+        vus.update(suivants)
+        ordre.extend(suivants)
+        frontiere = suivants
+    return ordre

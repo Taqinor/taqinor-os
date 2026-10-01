@@ -152,7 +152,7 @@ def create_draft_devis_from_ocr(*, company, user, lead, fields, origine=None):
 
 
 def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
-                 remplacements=None):
+                 remplacements=None, revision=False):
     """QJR407 — LE CLONEUR DU DOMAINE : le SEUL endroit où la liste des champs
     qu'une copie de devis porte est écrite.
 
@@ -174,7 +174,17 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
     * ``version`` / ``version_parent`` — le duplicata est SANS lien de version
       (1 / ``None``), la révision et la variante sont GROUPÉES sur la racine ;
     * ``remplacements`` — la mise à l'échelle des quantités, propre à la
-      duplication en variantes (passée telle quelle à ``cloner_lignes``).
+      duplication en variantes (passée telle quelle à ``cloner_lignes``) ;
+    * ``revision`` — QJR558 : UN booléen (jamais un tuple de noms de champs,
+      que QJR407 a supprimé), que SEUL ``reviser_devis`` passe à ``True``. Une
+      révision repart du devis TEL QU'IL EST, travail manuel compris : la
+      conception toiture 3D (``roof_layout`` + ``layout_hash``), son rendu
+      (``roof_image``, clé MinIO — par référence), le registre D12
+      (``overrides``) et les tailles explorées (``offres_tailles_config``),
+      en ``copy.deepcopy`` (aliasing S5-2). Porter ``roof_layout`` est sûr :
+      les dérivées sont purgées par ``etude_params_pour_copie`` et recalculées
+      (``force=True``) ci-dessous. ``date_validite`` n'est JAMAIS copiée
+      (re-dérivée, ``utils/expiry``). Duplicata, variante et gamme : inchangés.
 
     ATOMICITÉ (S5-4) : la création du devis ET le clonage de ses lignes se font
     dans UNE transaction. Les deux vues créaient le devis PUIS clonaient ses
@@ -226,6 +236,7 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
                          else devis.custom_data),
             created_by=user,
             version=version, version_parent=version_parent, is_active=True,
+            **_champs_de_revision(devis, revision),
         )
         holder['obj'] = obj
         return obj
@@ -245,6 +256,20 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
     # HORS transaction : un rafraîchissement raté n'annule jamais une copie.
     rafraichir_etudes_du_devis(copie, force=True)
     return copie
+
+
+def _champs_de_revision(devis, revision):
+    """QJR558 — le travail MANUEL qu'une révision (et elle seule) porte."""
+    if not revision:
+        return {}
+    import copy
+    return {
+        'roof_layout': copy.deepcopy(devis.roof_layout),
+        'layout_hash': devis.layout_hash,
+        'roof_image': devis.roof_image,
+        'overrides': copy.deepcopy(devis.overrides),
+        'offres_tailles_config': copy.deepcopy(devis.offres_tailles_config),
+    }
 
 
 def dupliquer_devis(devis, *, user):

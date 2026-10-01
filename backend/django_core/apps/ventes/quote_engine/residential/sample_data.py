@@ -175,10 +175,6 @@ def build(variant: str = "deux") -> dict:
                 "Estimations non contractuelles.",
             ],
         },
-        "financing": {"indicatif": True,
-                      "credit": {"mensualite": round(totaux_avec["ttc"] * 0.0111),
-                                 "duree_mois": 120,
-                                 "programme_nom": "Crédit vert résidentiel"}},
         # QRES39 — démo : vraie photo d'installation en guise de plan de
         # toiture (le variant « sans » garde le repli schéma).
         "roof_photo": _demo_roof_b64(),
@@ -237,10 +233,6 @@ def build(variant: str = "deux") -> dict:
             "roof_photo": "",          # pas de photo → schéma illustratif
             "tva_note": ("TVA : 10% panneaux photovoltaïques · 20% autres "
                          "équipements et prestations"),
-            "financing": {"indicatif": True,
-                          "credit": {"mensualite": round(tot["ttc"] * 0.0111),
-                                     "duree_mois": 120,
-                                     "programme_nom": "Crédit vert résidentiel"}},
         })
 
     elif variant in ("plus5", "plus10"):
@@ -282,13 +274,6 @@ def build(variant: str = "deux") -> dict:
         d["roi_a"] = round(d["totaux_avec"]["ttc"] / eco_a_ann, 1)
         d["cashflow_sans"] = _cumulative(d["totaux_sans"]["ttc"], eco_s_ann)
         d["cashflow_avec"] = _cumulative(d["totaux_avec"]["ttc"], eco_a_ann)
-        # QRES47 — mensualité recalculée du VRAI total (plus de 620 MAD
-        # figés face à trois totaux différents).
-        d["financing"] = {
-            "indicatif": True,
-            "credit": {"mensualite": round(d["totaux_avec"]["ttc"] * 0.0111),
-                       "duree_mois": 120,
-                       "programme_nom": "Crédit vert résidentiel"}}
 
     elif variant == "long":
         # Page-3 density torture: factures model with exemple + seller +

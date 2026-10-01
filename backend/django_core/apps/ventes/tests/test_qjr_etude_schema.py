@@ -376,6 +376,16 @@ class FusionnerPureTests(SimpleTestCase):
         self.assertEqual(depart, {'gamme': 'premium'})
         self.assertEqual(set(resultat), {'gamme', 'scenario'})
 
+    def test_qjr578_etude_kwc_base_reservee_a_l_ecran(self):
+        """QJR578 — l'écran déclare le kWc pour lequel il a calculé l'étude
+        I/C ; aucune autre étape ne peut l'écrire."""
+        resultat = S.fusionner({}, proprietaire=S.ECRAN, etude_kwc_base=80.0)
+        self.assertEqual(resultat, {'etude_kwc_base': 80.0})
+        for autre in (S.AUTO_DEVIS, S.CALEPINAGE):
+            with self.subTest(proprietaire=autre):
+                with self.assertRaises(ValueError):
+                    S.fusionner({}, proprietaire=autre, etude_kwc_base=80.0)
+
     def test_fusionner_applique_les_memes_refus(self):
         with self.assertRaises(ValueError):
             S.fusionner({}, proprietaire=S.ECRAN,

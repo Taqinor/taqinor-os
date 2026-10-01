@@ -261,13 +261,31 @@ def _entry_row(entry, fmt, produits_base="taqinor.ma/produits"):
     kind, payload = entry
     if kind == "paire":
         return _row_pair(payload, fmt, produits_base)
+    if kind == "struct":
+        return _struct_row(payload)
     return _row(payload, fmt, produits_base)
+
+
+def _struct_row(s):
+    """QJR618 — une ligne de STRUCTURE du devis, pleine largeur, sans prix :
+    section = intertitre, note = texte en italique (texte déjà échappé par
+    ``builder.echapper_textes_client``)."""
+    txt = s.get("texte", "") or ""
+    if s.get("type") == "note":
+        return (f'<tr class="p2-tr-note"><td class="p2-d" colspan="5" '
+                f'style="font-style:italic;">{txt}</td></tr>')
+    return (f'<tr class="p2-tr-sec"><td class="p2-d" colspan="5" '
+            f'style="font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:.06em;">{txt}</td></tr>')
 
 
 def _entry_item(entry):
     """L'item représentatif d'une entrée (côté SANS pour une paire) — sert au
-    modèle de hauteur, qui ne mesure que la longueur de la désignation."""
+    modèle de hauteur, qui ne mesure que la longueur de la désignation.
+    QJR618 — une ligne de structure mesure par son texte."""
     kind, payload = entry
+    if kind == "struct":
+        return {"designation": payload.get("texte", "") or ""}
     return payload[0] if kind == "paire" else payload
 
 
@@ -352,6 +370,9 @@ def build_pages(ctx) -> list:
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # QJR614 — tout montant dérivé du prix s'imprime au centime (la chaîne
+    # Sous-total HT → Remise → Total HT → TVA → Total TTC s'additionne).
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
     charts = ctx["charts"]
     links = d.get("links", {})
@@ -406,6 +427,20 @@ def build_pages(ctx) -> list:
                                if x["designation"] == nom)
     else:
         entries = [("solo", it) for it in shared]
+
+    # QJR618 (D-QJR5-6) — les sections et notes tapées s'intercalent dans le
+    # tableau PARTAGÉ (jamais dans une carte d'option), à leur ``ordre``, par
+    # la MÊME fonction pure que le une-page (``sequence_affichage``, QJR617) ;
+    # elles entrent donc dans le modèle de hauteur QRES17 comme une ligne.
+    # Aucune ligne de structure ⇒ ``entries`` intact (octet-identique).
+    _structure = d.get("lignes_structure") or []
+    if _structure:
+        from ..sequence import sequence_affichage
+        _par_item = {id(_entry_item(e)): e for e in entries}
+        entries = [
+            (_par_item[id(obj)] if kind == "item" else ("struct", obj))
+            for kind, obj in sequence_affichage(
+                [_entry_item(e) for e in entries], _structure)]
 
     # ── Top spec list ────────────────────────────────────────────────────────
     # L-2OPT — quand les deux options n'ont PAS le même nombre de panneaux, un
@@ -477,9 +512,9 @@ def build_pages(ctx) -> list:
 
     produits_link = links.get("produits", d.get("site_url", "taqinor.ma"))
 
-    rows_html = "".join(_row(it, fmt, produits_link) for it in shared)
-    delta_sans_html = _delta_lines(delta_sans, fmt, produits_link)
-    delta_avec_html = _delta_lines(delta_avec, fmt, produits_link)
+    rows_html = "".join(_row(it, fmt_mad, produits_link) for it in shared)
+    delta_sans_html = _delta_lines(delta_sans, fmt_mad, produits_link)
+    delta_avec_html = _delta_lines(delta_avec, fmt_mad, produits_link)
 
     # QX5 — le bloc « ce que chaque option ajoute » n'existe QUE pour un vrai
     # devis à deux options ; mono-option → aucun découpage delta.
@@ -512,12 +547,37 @@ def build_pages(ctx) -> list:
     else:
         deltas_html = ""
 
+    # QJR618 (D-QJR5-6) — « Options proposées (non incluses dans le total) » :
+    # chaque add-on optionnel avec le SEUL ``total_ttc`` calculé par le
+    # builder (supplément canonique, remise globale comprise — QJR616), au
+    # centime (``fmt_mad``, QJR614) ; aucun recalcul ici. Sans option ⇒ ''.
+    _opts = d.get("options_proposees") or []
+    options_html = ""
+    if _opts:
+        _opt_rows = ""
+        for _o in _opts:
+            _oq = _o.get("quantite") or 0
+            _oq_txt = f"{float(_oq):g}× " if _oq and float(_oq) != 1 else ""
+            _opt_rows += (
+                '<tr>'
+                f'<td class="p2-d">{_oq_txt}{_o.get("designation", "")}</td>'
+                f'<td class="p2-r p2-tot">{fmt_mad(_o.get("total_ttc", 0))}'
+                ' MAD TTC</td></tr>')
+        options_html = (
+            '<div class="p2-opts" style="margin-top:2mm;">'
+            '<div class="p2-lbl">Options propos&eacute;es (non incluses dans '
+            'le total)</div>'
+            f'<table class="p2-tbl"><tbody>{_opt_rows}</tbody></table>'
+            '<div class="p2-tva-note" style="margin-top:.5mm;">Activez une '
+            'option avant signature pour l&rsquo;inclure &agrave; votre '
+            'devis.</div></div>')
+
     if deux_options:
         totals_html = (
             _totals_chain("Option 1 — Sans batterie", C["navy"],
-                          d["totaux_sans"], fmt, C, option="sans")
+                          d["totaux_sans"], fmt_mad, C, option="sans")
             + _totals_chain(f"Option 2 — {libelle_avec}", C["gold"],
-                            d["totaux_avec"], fmt, C, recommended=True,
+                            d["totaux_avec"], fmt_mad, C, recommended=True,
                             option="avec"))
         # L-2OPTPDF — dès qu'une ligne appariée entre dans le tableau, celui-ci
         # n'est plus « commun » aux deux options : il les COMPARE. Sans paire
@@ -531,7 +591,7 @@ def build_pages(ctx) -> list:
         _lbl = (f"Total — {libelle_avec}" if avec_ok
                 else "Total — Sans batterie")
         _acc = C["gold"] if avec_ok else C["navy"]
-        totals_html = _totals_chain(_lbl, _acc, _tot, fmt, C,
+        totals_html = _totals_chain(_lbl, _acc, _tot, fmt_mad, C,
                                     option="avec" if avec_ok else "sans")
         equipement_lbl = "Votre équipement"
 
@@ -558,7 +618,7 @@ def build_pages(ctx) -> list:
     _nprop = d.get("nombre_proprietes")
     if _nprop and _nprop > 1:
         _dtm = d.get("display_total_multi")
-        _tot_txt = (f' — total pour {_nprop} propriétés : {fmt(_dtm)} MAD'
+        _tot_txt = (f' — total pour {_nprop} propriétés : {fmt_mad(_dtm)} MAD'
                     if _dtm else "")
         multi_html += (
             f'<div class="p2-multi-n">&times;&nbsp;{_nprop} propriétés '
@@ -570,13 +630,13 @@ def build_pages(ctx) -> list:
             t = g.get("totaux") or {}
             _vrows += (
                 f'<tr><td>{g.get("label", "")}</td>'
-                f'<td class="p2-r">{fmt(t.get("ht_net", 0))}</td>'
-                f'<td class="p2-r p2-tot">{fmt(t.get("ttc", 0))} MAD</td></tr>')
+                f'<td class="p2-r">{fmt_mad(t.get("ht_net", 0))}</td>'
+                f'<td class="p2-r p2-tot">{fmt_mad(t.get("ttc", 0))} MAD</td></tr>')
         _gt = _mv.get("grand_total") or {}
         _vrows += (
             f'<tr class="p2-multi-gt"><td>Total général</td>'
-            f'<td class="p2-r">{fmt(_gt.get("ht_net", 0))}</td>'
-            f'<td class="p2-r">{fmt(_gt.get("ttc", 0))} MAD</td></tr>')
+            f'<td class="p2-r">{fmt_mad(_gt.get("ht_net", 0))}</td>'
+            f'<td class="p2-r">{fmt_mad(_gt.get("ttc", 0))} MAD</td></tr>')
         multi_html += (
             '<div class="p2-multi-lbl">Détail par propriété</div>'
             '<table class="p2-multi"><thead><tr>'
@@ -683,8 +743,8 @@ def build_pages(ctx) -> list:
             cmp_rows.append(("Batteries", "—", f'{_num(_bat_kwh)} kWh'))
         _ts, _ta = d.get("totaux_sans") or {}, d.get("totaux_avec") or {}
         if _ts.get("ttc") and _ta.get("ttc"):
-            cmp_rows.append(("Prix TTC", f'{fmt(_ts["ttc"])} MAD',
-                             f'{fmt(_ta["ttc"])} MAD'))
+            cmp_rows.append(("Prix TTC", f'{fmt_mad(_ts["ttc"])} MAD',
+                             f'{fmt_mad(_ta["ttc"])} MAD'))
         _eco_s, _eco_a = d.get("eco_s_ann"), d.get("eco_a_ann")
         if not masquer_eco and _eco_s and _eco_a:
             # QJR210 — CE TABLEAU N'EXISTE QUE SUR UN DEVIS DIVERGENT, celui-là
@@ -802,7 +862,16 @@ def build_pages(ctx) -> list:
     # cartes badges → bande fine sur la page signature ; la ligne « fiches
     # techniques » → fusionnée à la légende TVA). Seuls les très gros devis
     # (~12 lignes communes et plus) passent en 4 pages.
-    fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()) <= 68.0
+    def _options_mm():
+        """QJR618 — hauteur du bloc « Options proposées », IMPUTÉE au même
+        budget (intitulé + note + une ligne par option). Sans option ⇒ 0,0 :
+        décision de pagination identique à l'historique."""
+        if not _opts:
+            return 0.0
+        return 11.0 + len(_opts) * 4.5
+
+    fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()
+                + _options_mm()) <= 68.0
 
     # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
     # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le
@@ -832,7 +901,7 @@ def build_pages(ctx) -> list:
     visuels_html = ""
     if (_prod_chart or _plan_a_part) and fits_one:
         _reste = 68.0 - 4.0 - (_table_mm(entries) + _deltas_mm()
-                               + _comparatif_mm())
+                               + _comparatif_mm() + _options_mm())
         if _reste >= _VISUELS_MM:
             _cells = ""
             if _plan_a_part:
@@ -1192,7 +1261,7 @@ def build_pages(ctx) -> list:
         f'<div class="p2-specs">{spec_html}</div></div>')
 
     def _table_html(items, label):
-        rows = "".join(_entry_row(e, fmt, produits_link) for e in items)
+        rows = "".join(_entry_row(e, fmt_mad, produits_link) for e in items)
         # L-2OPTPDF — la légende n'apparaît QUE sur une page qui porte
         # réellement une ligne à deux valeurs, et TIENT SUR LA LIGNE du
         # libellé : elle ne coûte pas un millimètre de hauteur.
@@ -1226,6 +1295,7 @@ def build_pages(ctx) -> list:
         # L-2OPT — le comparatif se lit JUSTE SOUS les deux cartes de totaux,
         # à l'endroit où le client compare. Vide ⇒ page inchangée.
         f'{comparatif_html}'
+        f'{options_html}'
         f'<div class="p2-tva-note">{tva_note}{note_remise}{fiche_inline}</div>'
         f'{multi_html}')
 

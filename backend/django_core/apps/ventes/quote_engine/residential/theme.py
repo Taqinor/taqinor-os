@@ -462,6 +462,20 @@ def valid_until(date_str, days) -> str:
         return ""
 
 
+def marques_correction(d) -> list:
+    """QJR628 — les lignes de marquage d'en-tête, dans l'ordre, sinon [].
+
+    « Document mis à jour le JJ/MM/AAAA » (correction après envoi, D-QJR5-1)
+    puis « Remplace le devis <réf> » (révision). Le builder décide
+    (``mis_a_jour_le`` / ``remplace_reference``), les couvertures impriment."""
+    out = []
+    if d.get("mis_a_jour_le"):
+        out.append(f"Document mis à jour le {d['mis_a_jour_le']}")
+    if d.get("remplace_reference"):
+        out.append(f"Remplace le devis {d['remplace_reference']}")
+    return out
+
+
 def join_meta(*parts, sep=" · ") -> str:
     """Join non-empty, stripped meta fragments with `sep` (no dangling commas/dots
     when a field like the address or city is missing).

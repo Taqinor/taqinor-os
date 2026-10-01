@@ -274,7 +274,7 @@ def _occupation(devis, data):
     return OCCUPATION_ABSENCE, SOURCE_DEFAUT_NON_RESIDENTIEL
 
 
-def _production(kwc, mensuel, ville, lat, lon):
+def production_par_saison(kwc, mensuel, ville, lat, lon):
     """Bloc production par saison, ou ``{}`` si rien n'est servable.
 
     Chaque saison porte ``forme`` (24 parts, HEURE CIVILE MAROCAINE — le
@@ -282,6 +282,10 @@ def _production(kwc, mensuel, ville, lat, lon):
     ``kwh_jour`` (énergie réelle du jour moyen de la saison) et ``pic_kw``
     (PUISSANCE moyenne de l'heure de pointe = ``kwh_jour × max(forme)``, jamais
     des kWh) + ``source``.
+
+    QJR611 — UNIQUE boucle « production par saison » du dépôt :
+    ``etude_horaire.production_journaliere_par_saison`` (page client,
+    production par option) y DÉLÈGUE au lieu d'en tenir une copie.
     """
     if kwc is None or not mensuel:
         # Sans puissance kWc connue (M2) ou sans productible, on ne peut donner
@@ -1306,7 +1310,7 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         ville = data.get('client_city') or ville_lead
         mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
 
-        production = _production(kwc, mensuel, ville, lat, lon)
+        production = production_par_saison(kwc, mensuel, ville, lat, lon)
         equipements = _equipements(_equipements_lead(devis))
         consommation = _consommation(monthly_consumption, equipements)
         if not production and not consommation:

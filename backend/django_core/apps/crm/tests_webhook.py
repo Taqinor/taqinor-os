@@ -58,7 +58,7 @@ class WebsiteLeadWebhookTests(TestCase):
         lead = Lead.objects.get(pk=res.json()['lead_id'])
         self.assertEqual(lead.company, self.company)
         self.assertEqual(lead.nom, 'Amina Benali')
-        self.assertEqual(lead.telephone, '+212661850410')
+        self.assertEqual(lead.telephone, '212661850410')
         self.assertEqual(lead.ville, 'Casablanca')
         self.assertEqual(lead.roof_type, 'villa')
         self.assertEqual(lead.bill_range_bucket, '1500-3000')
@@ -68,7 +68,7 @@ class WebsiteLeadWebhookTests(TestCase):
         self.assertEqual(lead.utm_medium, 'cpc')
         self.assertEqual(lead.utm_campaign, 'lancement')
         self.assertTrue(lead.whatsapp_opt_in)
-        self.assertEqual(lead.whatsapp, '+212661850410')
+        self.assertEqual(lead.whatsapp, '212661850410')
         self.assertIsNotNone(lead.consent_timestamp)
         self.assertEqual(lead.source, Lead.Source.SITE_WEB)
         self.assertEqual(lead.canal, Lead.Canal.SITE_WEB)
@@ -850,7 +850,7 @@ class QW10IndexedDedupAndConcurrencyTests(
         t2.join()
 
         self.assertEqual(
-            Lead.objects.filter(telephone='+212677112233').count(), 1)
+            Lead.objects.filter(telephone='212677112233').count(), 1)
 
     def test_idempotency_key_absent_behaviour_unchanged(self):
         res = self.post(payload_site())
@@ -976,7 +976,7 @@ class YDATA12DedupWebhookEventTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertIn('déjà traité', second.json()['detail'])
         self.assertEqual(
-            Lead.objects.filter(telephone='+212600111222').count(), 1)
+            Lead.objects.filter(telephone='212600111222').count(), 1)
         # Le brut du 2e POST est quand même conservé (jamais perdre une trace).
         self.assertEqual(WebsiteLeadPayload.objects.count(), 2)
 
@@ -988,7 +988,7 @@ class YDATA12DedupWebhookEventTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertIn('déjà traité', second.json()['detail'])
         self.assertEqual(
-            Lead.objects.filter(telephone='+212600111333').count(), 1)
+            Lead.objects.filter(telephone='212600111333').count(), 1)
 
     def test_different_payload_same_phone_is_not_content_deduped(self):
         """Layer 1/2 dedup (existing, tested elsewhere) still owns the
@@ -1000,7 +1000,7 @@ class YDATA12DedupWebhookEventTests(TestCase):
             phoneE164='+212600111444', city='Marrakech'))
         self.assertEqual(second.status_code, 200)
         self.assertNotIn('déjà traité', second.json()['detail'])
-        lead = Lead.objects.get(telephone='+212600111444')
+        lead = Lead.objects.get(telephone='212600111444')
         self.assertEqual(lead.ville, 'Marrakech')
 
     def test_cross_company_isolation_on_dedup(self):

@@ -295,7 +295,8 @@ class TestE_FactureHorsPlage(SimpleTestCase):
     def test_les_docstrings_ne_promettent_plus_toujours_false(self):
         """(e) — « approximatif : TOUJOURS False » était démenti par la branche
         de repli sans table, qui renvoie True."""
-        for fonction in (pricing.kwh_from_bill, pricing.annual_bill_from_kwh):
+        # QJR629 — ``annual_bill_from_kwh`` (mort) a été supprimé.
+        for fonction in (pricing.kwh_from_bill,):
             with self.subTest(fonction=fonction.__name__):
                 doc = fonction.__doc__ or ""
                 self.assertNotIn("TOUJOURS False", doc)

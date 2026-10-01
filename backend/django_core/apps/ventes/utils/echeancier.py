@@ -249,6 +249,76 @@ def pourcentages_echeancier(devis, lignes=None) -> list:
     return out
 
 
+def montants_tranches(total_ttc, pourcentages) -> dict:
+    """QJR623 — les MONTANTS d'un échéancier imprimé, au centime, qui SOMMENT
+    au total.
+
+    ``pourcentages`` : paires ``(clé, pct)`` ordonnées (ou un dict ordonné).
+    Chaque tranche non finale vaut ``total × pct / 100`` quantifié au centime
+    (``ROUND_HALF_UP``, la règle de la chaîne canonique) ; la DERNIÈRE reçoit
+    le reliquat exact, de sorte que la somme égale ``total_ttc`` au centime.
+
+    Fonction PURE (Decimal, aucune requête). Elle ne lit JAMAIS ``next_tranche``,
+    dont la dernière tranche est le reste APRÈS factures émises : un document
+    de devis imprime la répartition déclarée, pas l'état de la facturation.
+    """
+    paires = list(pourcentages.items() if hasattr(pourcentages, 'items')
+                  else pourcentages)
+    total = _q(Decimal(str(total_ttc or 0)))
+    out = {}
+    cumul = Decimal('0')
+    for i, (cle, pct) in enumerate(paires):
+        if i == len(paires) - 1:
+            out[cle] = total - cumul
+        else:
+            montant = _q(total * Decimal(str(pct or 0)) / 100)
+            out[cle] = montant
+            cumul += montant
+    return out
+
+
+def termes_paiement_devis(devis, termes_defaut, lignes=None) -> dict:
+    """QJR622 — L'échéancier DU DEVIS rabattu sur les trois créneaux
+    ``{acompte, materiel, solde}`` que les conditions imprimées nomment.
+
+    DÉPLACÉ tel quel de ``public_views._conditions_publiques`` (sortie
+    octet-identique) pour que la page publique et le PDF (QJR623) lisent UNE
+    correspondance :
+
+    * défauts = ``termes_defaut`` (les ``payment_terms`` de la SOCIÉTÉ,
+      30 / 60 / 10 quand une clé manque) ;
+    * 3 tranches → positionnelles (acompte, matériel, solde), nommées ou non ;
+    * sinon → par clé, et la PREMIÈRE tranche EST l'acompte (celle que
+      ``next_tranche`` sert au client) ;
+    * ``devis`` absent, échéancier vide ou en erreur → la société seule.
+    """
+    termes = termes_defaut or {}
+    slots = {'acompte': termes.get('acompte', 30),
+             'materiel': termes.get('materiel', 60),
+             'solde': termes.get('solde', 10)}
+    if devis is None:
+        return slots
+    try:
+        tranches = pourcentages_echeancier(devis, lignes=lignes)
+    except Exception:  # noqa: BLE001 — best-effort, société en repli
+        tranches = []
+    if not tranches:
+        return slots
+    if len(tranches) == 3:
+        # Forme canonique (acompte / matériel / solde), nommée ou simplement
+        # positionnelle : les trois créneaux suivent.
+        for cle, tr in zip(('acompte', 'materiel', 'solde'), tranches):
+            slots[cle] = tr['pct']
+    else:
+        par_cle = {t['key']: t['pct'] for t in tranches}
+        for cle in ('acompte', 'materiel', 'solde'):
+            if cle in par_cle:
+                slots[cle] = par_cle[cle]
+        # La PREMIÈRE tranche EST l'acompte, quel que soit son nom.
+        slots['acompte'] = tranches[0]['pct']
+    return slots
+
+
 def schedule_for_devis(devis):
     """Vue historique ``[(clé, pct_or_montant)]`` de ``tranches_normalisees``.
 

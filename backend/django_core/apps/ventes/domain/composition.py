@@ -1539,17 +1539,14 @@ def _est_au_prix_catalogue(ligne):
     Un « non » vaut prix NÉGOCIÉ : une telle ligne n'est jamais supprimée en
     silence (le chemin appelant avertit à la place). Sans produit rattaché on
     ne peut RIEN prouver — donc on répond non, le doute profitant à la ligne.
+
+    QJR555 — enveloppe mince de ``lignes.prix_negocie`` (la définition
+    unique) : ``prix_manuel`` compte désormais, même au prix catalogue.
     """
     produit = getattr(ligne, 'produit', None)
     if produit is None or not _has_price(produit):
         return False
-    try:
-        if Decimal(str(ligne.remise or 0)) != Decimal('0'):
-            return False
-        return (Decimal(str(ligne.prix_unitaire or 0))
-                == Decimal(produit.prix_vente))
-    except (TypeError, ValueError, ArithmeticError):
-        return False
+    return not prix_negocie(ligne, prix_reference=produit.prix_vente)
 
 
 def _options_a_reparer(devis, lignes, *, kwc, watt, nb_panneaux,
@@ -1892,6 +1889,7 @@ from apps.ventes.domain.lignes import (  # noqa: E402,F401
     cible_depuis_lignes,
     creer_ligne,
     lignes_de_variante,
+    prix_negocie,
 )
 from apps.ventes.domain.pipeline import (  # noqa: E402,F401
     COMPOSITION_AVEC,

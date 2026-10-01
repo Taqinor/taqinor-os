@@ -36,6 +36,17 @@ def donnees_legacy(variante="deux", **surcharges):
     # ``all_items`` ci-dessus (l'option « sans », par défaut).
     d.setdefault("totaux_all", d["totaux_sans"])
     d.update(surcharges)
+    # QJR623 — ``build_quote_data`` sert TOUJOURS les montants des cases
+    # « Modalités de paiement » (au centime, par option) ; le moteur ne fait
+    # plus que les imprimer. La fixture les sert donc aussi, calculés par la
+    # MÊME fonction du builder, après les surcharges (totaux / termes).
+    if "montants_tranches" not in d:
+        from apps.ventes.quote_engine.builder import repartition_paiement
+        termes = d.get("payment_terms") or {}
+        d["montants_tranches"] = {
+            branche: repartition_paiement(
+                float(d.get(f"total_{branche}") or 0), termes)
+            for branche in ("sans", "avec")}
     return d
 
 

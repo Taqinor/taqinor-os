@@ -472,7 +472,11 @@ MODES = (MODE_COMPOSER, MODE_ECRIRE, MODE_RAFRAICHIR, MODE_RECONCILIER)
 ETAPES_PAR_MODE = {
     MODE_COMPOSER: ETAPES,
     MODE_ECRIRE: ('ecrire_lignes',),
-    MODE_RAFRAICHIR: ('rafraichir_etudes',),
+    # QJR554 — le rafraîchissement remet aussi à jour les CACHES du devis
+    # (kWc depuis les lignes, marge interne) : l'Édition complète ne laisse
+    # plus ``puissance_kwc`` ni ``marge_snapshot`` périmés. PAS de second
+    # ``concevoir_electrique`` : ``rafraichir_etudes`` le couvre déjà.
+    MODE_RAFRAICHIR: ('rafraichir_etudes', 'finaliser_caches'),
     MODE_RECONCILIER: ('reconcilier',),
 }
 
@@ -571,6 +575,13 @@ class IntentionDevis:
     #: explicite) : onduleur autonome + batterie, mono-option. ``False`` (LE
     #: DÉFAUT) ⇒ pipeline strictement inchangé.
     hors_reseau: bool = False
+    #: QJR557 suivi — ``True`` (LE DÉFAUT) : sur un ENVOYÉ, ``appliquer``
+    #: encadre ``ecrire_lignes`` / ``reconcilier`` de sa propre trace
+    #: « corrigé après envoi » (QJR518). ``False`` : l'appelant ENGLOBE déjà
+    #: le geste dans sa propre trace (la taille d'offre : resynchro + modules
+    #: + matériel = UN geste) — le pipeline s'abstient, sans quoi le chatter
+    #: portait deux entrées pour une seule correction.
+    tracer_correction: bool = True
 
 
 def _scenario_de(intention):
@@ -994,18 +1005,38 @@ def rafraichir_etudes(verrou, *, force=False):
     return rafraichir_etudes_du_devis(verrou, force=force)
 
 
+def finaliser_caches(devis):
+    """QJR554 — les deux CACHES du devis : le kWc (QJR63, depuis les LIGNES)
+    et la marge interne (QX23be, manager-only — jamais au PDF).
+
+    Partagés par ``finaliser`` (mode ``composer``) et le mode ``rafraichir``
+    (Édition complète, ``perform_update``, ``LigneDevisViewSet``). Best-effort,
+    ne touche jamais au statut (règle #4).
+    """
+    poser_puissance_kwc(devis)
+    refresh_marge_snapshot(devis)
+    return devis
+
+
 def finaliser(devis, intention):
     """Étape 8 — le kWc par son propriétaire, la marge interne, le schéma.
 
     Les trois sont BEST-EFFORT et n'annulent jamais un devis écrit :
-    ``poser_puissance_kwc`` (QJR63 — le kWc vient des LIGNES, pas du layout),
-    ``refresh_marge_snapshot`` (QX23be, manager-only) et
+    ``finaliser_caches`` (kWc QJR63 + marge QX23be) puis
     ``concevoir_electrique_du_devis`` (PV42).
     """
-    poser_puissance_kwc(devis)
-    refresh_marge_snapshot(devis)
+    finaliser_caches(devis)
     concevoir_electrique_du_devis(devis, origine=intention.origine)
     return devis
+
+
+def _instantane(devis, intention):
+    """QJR550 — l'instantané de configuration du geste (best-effort)."""
+    from apps.ventes.domain.cycle_vie import instantane_de_geste
+    try:
+        instantane_de_geste(devis, user=intention.user)
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+        logger.warning('QJR550 : instantané ignoré', exc_info=True)
 
 
 def _verrouiller(devis):
@@ -1126,6 +1157,9 @@ def appliquer(devis, intention):
 
         ecrire_etude_params(verrou, intention, composition)
         journal.append('ecrire_etude_params')
+        # QJR550 — UN instantané de configuration pour le geste, sous la
+        # transaction (point de sauvegarde) ; aucune étape de journal.
+        _instantane(verrou, intention)
 
     # QJR227 — ``force_etudes`` EST TRANSMIS ICI AUSSI. Il ne l'était que par
     # la branche ``MODE_RAFRAICHIR`` : un appelant qui demandait des études
@@ -1174,10 +1208,15 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
     # QJR518 — une correction après envoi est tracée à UN point : l'état vu
     # par le client est capturé AVANT la première écriture (ENVOYÉ seulement,
     # no-op sinon), la trace est posée après si un contenu visible a changé.
+    # QJR552 — l'instantané « avant » (``debut_de_geste_devis``) et
+    # l'instantané « après » (``_instantane``, envoyé compris) encadrent ici
+    # ``ecrire_lignes`` / ``reconcilier`` ; une seule implémentation de
+    # capture (``cycle_vie.capturer_configuration_devis``).
     from apps.ventes.domain.modifiabilite import (
         debut_de_geste_devis, fin_de_geste_devis)
     avant_geste = (debut_de_geste_devis(devis, intention.user)
-                   if mode in (MODE_ECRIRE, MODE_RECONCILIER) else None)
+                   if mode in (MODE_ECRIRE, MODE_RECONCILIER)
+                   and intention.tracer_correction else None)
     if mode == MODE_ECRIRE:
         ecrire_lignes(devis, intention.composition,
                       company=intention.company,
@@ -1211,9 +1250,15 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
         resynchro = reconcilier(devis, intention)
         avertissements.extend(resynchro.get('avertissements') or ())
         journal.append('reconcilier')
-    else:  # MODE_RAFRAICHIR
+    else:  # MODE_RAFRAICHIR — jamais d'instantané (rien n'est écrit)
         rafraichir_etudes(devis, force=intention.force_etudes)
         journal.append('rafraichir_etudes')
+        # QJR554 — les caches suivent les lignes réellement écrites.
+        finaliser_caches(devis)
+        journal.append('finaliser_caches')
+    if mode in (MODE_ECRIRE, MODE_RECONCILIER):
+        # QJR550 — UN instantané par geste, après ecrire_lignes / reconcilier.
+        _instantane(devis, intention)
     if avant_geste is not None:
         fin_de_geste_devis(
             devis, intention.user, avant=avant_geste,
@@ -1322,6 +1367,7 @@ __all__ = [
     'estampiller_provenance',
     'estampiller_variante',
     'finaliser',
+    'finaliser_caches',
     'intention_de_composition',
     'message_batterie_incompatible',
     'rafraichir_etudes',

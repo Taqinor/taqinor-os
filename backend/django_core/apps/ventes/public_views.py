@@ -800,9 +800,12 @@ def public_document(request, token):
             # nomenclature à l'écran et la livrait intégralement en PDF, par le
             # même jeton. Il applique désormais EXACTEMENT le même gating que
             # ``proposal_pdf`` (même fonction, aucune seconde décision).
-            key = generate_premium_devis_pdf(
-                link.devis_id, _opts_pdf_public(link), persist=False)
-            pdf_bytes = download_pdf(key)
+            # QJR670 — un devis ACCEPTÉ sert son exemplaire SIGNÉ figé.
+            pdf_bytes = _octets_pdf_signe(link.devis)
+            if pdf_bytes is None:
+                key = generate_premium_devis_pdf(
+                    link.devis_id, _opts_pdf_public(link), persist=False)
+                pdf_bytes = download_pdf(key)
             # QD2 — nom cohérent (société _ type _ client _ référence).
             devis = link.devis
             filename = document_filename(
@@ -3004,31 +3007,11 @@ def _conditions_publiques(data, devis=None):
              if isinstance(_surcharges, dict) else None)
             or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
         terms = (data or {}).get('payment_terms') or {}
-        # Défauts : la société (comportement d'hier, à l'octet).
-        slots = {'acompte': terms.get('acompte', 30),
-                 'materiel': terms.get('materiel', 60),
-                 'solde': terms.get('solde', 10)}
-        if devis is not None:
-            try:
-                from .utils.echeancier import pourcentages_echeancier
-                tranches = pourcentages_echeancier(devis)
-            except Exception:  # noqa: BLE001 — best-effort, société en repli
-                tranches = []
-            if tranches:
-                if len(tranches) == 3:
-                    # Forme canonique (acompte / matériel / solde), nommée ou
-                    # simplement positionnelle : les trois puces suivent.
-                    for cle, tr in zip(('acompte', 'materiel', 'solde'),
-                                       tranches):
-                        slots[cle] = tr['pct']
-                else:
-                    par_cle = {t['key']: t['pct'] for t in tranches}
-                    for cle in ('acompte', 'materiel', 'solde'):
-                        if cle in par_cle:
-                            slots[cle] = par_cle[cle]
-                    # La PREMIÈRE tranche EST l'acompte, quel que soit son
-                    # nom : c'est celle que `next_tranche` sert au client.
-                    slots['acompte'] = tranches[0]['pct']
+        # QJR622 — la correspondance « échéancier du devis → acompte /
+        # matériel / solde » vit dans ``utils.echeancier`` (UNE fois, le PDF
+        # la lit aussi) ; ``devis`` absent ⇒ la société seule, à l'octet.
+        from .utils.echeancier import termes_paiement_devis
+        slots = termes_paiement_devis(devis, terms)
         acompte = _pct_lisible(slots['acompte'])
         materiel = _pct_lisible(slots['materiel'])
         solde = _pct_lisible(slots['solde'])
@@ -3264,19 +3247,6 @@ def proposal_data(request, token):
             for _k in ('eco_s_ann', 'eco_a_ann', 'eco_a_cumul',
                        'roi_s', 'roi_a', 'savings_method', 'hypotheses'):
                 data[_k] = None
-        # F6 (revue Fable, pré-merge 18/08/2026) — QJ12 calcule un bloc
-        # `financing` INTERNE (indicatif) ; le fondateur a retiré le crédit de
-        # toute surface client à QUATRE reprises (PV80 : plus aucune mensualité
-        # ni banque sur la page /proposition, `financingComparison`/
-        # `backendFinancing` gardées mais plus IMPORTÉES par la page). Rien ne
-        # le rend plus nulle part — mais il restait SERVI, en clair, sur le lien
-        # public tokenisé : un JSON récupérable contredisait la décision même
-        # sans qu'aucun écran ne l'affiche. On le retire ici, sur `data` lui-même
-        # (jamais sur une copie) : `'quote': data` plus bas republie ce même
-        # dict, donc le laisser dedans aurait fui la MÊME donnée sous un second
-        # nom. Le calcul interne du builder (`compute_financing_block`) n'est
-        # pas touché — seule la republication publique s'arrête.
-        data.pop('financing', None)
         # M1 (audit du 19/08/2026) — la série « facture avant PV » ne franchit
         # la frontière publique que si elle est RÉELLE. Le builder ne fabrique
         # plus de proxy (facture ≈ économie / taux d'autoconsommation) : quand
@@ -3292,7 +3262,8 @@ def proposal_data(request, token):
             if not data.get('sans_ok'):
                 data['totaux_sans'] = None
                 data['sans_items'] = []
-        # CJ2b (21/08/2026) — même règle que `financing` ci-dessus : quand
+        # CJ2b (21/08/2026) — rien ne franchit la frontière publique qui ne
+        # soit vendable : quand
         # l'option batterie n'est pas RÉELLEMENT vendable (`avec_ok` faux),
         # AUCUN chiffre « avec batterie » ne franchit la frontière publique.
         # `economies_mensuelles.avec` était déjà nul, mais `'quote': data`
@@ -3459,13 +3430,6 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _conso_mensuelle,
-            # F6 (revue Fable, 18/08/2026) — 'financing' n'est PLUS servi ici :
-            # le fondateur a retiré le crédit de toute surface client (PV80),
-            # rien ne le rend, et `data.pop('financing', None)` ci-dessus a déjà
-            # retiré la copie imbriquée sous 'quote'. Voir le commentaire à cet
-            # endroit pour le détail — le calcul interne du builder (QJ12,
-            # `compute_financing_block`) reste intact, seule la publication
-            # s'arrête.
             # QF3 — bloc « Comment nous calculons vos économies » (méthode +
             # exemple chiffré). Présent quand le builder l'a produit ; jamais de
             # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].
@@ -3919,6 +3883,34 @@ def proposal_taille_detail(request, token, cle):
     return _noindex(Response(detail))
 
 
+def _octets_pdf_signe(devis):
+    """QJR670 — l'exemplaire SIGNÉ figé d'un devis ACCEPTÉ, sinon ``None``.
+
+    D-QJR5-2 : un accepté est verrouillé ; le client qui re-télécharge son
+    devis doit récupérer le document qu'il a SIGNÉ (``DevisSignature
+    .signed_pdf_key``, écrit à l'acceptation), pas un re-rendu du jour qui
+    suivrait une évolution du moteur, d'une fiche produit ou de la société.
+    ``None`` (envoyé, accepté sans clé, stockage indisponible) ⇒ l'appelant
+    re-rend comme avant. Lecture seule : aucun statut écrit (règle #4).
+    """
+    if devis is None or getattr(devis, 'statut', None) != 'accepte':
+        return None
+    try:
+        sig = devis.signature
+    except Exception:  # noqa: BLE001 — pas de signature liée
+        return None
+    cle = getattr(sig, 'signed_pdf_key', None) or None
+    if not cle:
+        return None
+    try:
+        return download_pdf(cle)
+    except Exception:  # noqa: BLE001 — stockage indisponible → re-rendu
+        logger.warning(
+            'QJR670: exemplaire signé illisible (devis %s, clé %s) — re-rendu',
+            getattr(devis, 'reference', '?'), cle)
+        return None
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -3968,11 +3960,17 @@ def proposal_pdf(request, token):
         # requête whitelisté côté moteur. Ce qu'il a coché pour SIGNER ne
         # restreint plus son téléchargement : il peut toujours récupérer le
         # devis COMPLET. Aucun statut n'est touché.
-        key = generate_premium_devis_pdf(
-            link.devis_id,
-            _opts_pdf_public(link, (request.GET.get('variante') or '').strip()),
-            persist=False)
-        pdf_bytes = download_pdf(key)
+        #
+        # QJR670 — un devis ACCEPTÉ sert son exemplaire SIGNÉ figé ; la
+        # variante demandée ne s'applique qu'au re-rendu.
+        pdf_bytes = _octets_pdf_signe(link.devis)
+        if pdf_bytes is None:
+            key = generate_premium_devis_pdf(
+                link.devis_id,
+                _opts_pdf_public(
+                    link, (request.GET.get('variante') or '').strip()),
+                persist=False)
+            pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
     except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
         return _noindex(Response(

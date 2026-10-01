@@ -21,11 +21,23 @@ def is_commercial(devis, options=None) -> bool:
 
     Commercial market mode + the full/premium format. The one-page format stays
     on the legacy engine, exactly like the residential/agricole/industriel split.
+    The ``include_etude`` format ALSO stays on the legacy engine (see the guard
+    below), exactly like ``industriel.is_industrial`` / ``residential.is_residential``.
     """
     mode = (getattr(devis, "mode_installation", None) or "").strip().lower()
     if mode != "commercial":
         return False
     opts = options or {}
+    # QJR621 — même garde que ``industriel.is_industrial`` (régression produit
+    # corrigée le 2026-08-14 côté industriel, recopiée ici) : un devis demandé
+    # avec ``include_etude`` est destiné au moteur legacy (« the legacy renderer
+    # serves every other market mode / format (…, étude) »). Sans ce garde, le
+    # renderer commercial interceptait la demande et la page d'étude
+    # d'autoconsommation DISPARAISSAIT (3 pages cover / equip / trust au lieu
+    # des 4 exigées par CLAUDE.md — « +include_etude = 4 »). Le renderer
+    # commercial garde tout son périmètre : commercial full/premium SANS étude.
+    if opts.get("include_etude"):
+        return False
     if (opts.get("pdf_mode") or "full") not in ("full", "premium"):
         return False
     return True
@@ -77,7 +89,9 @@ def _augment(data: dict) -> dict:
     d.setdefault("valid_until", None)
 
     d["com_category"] = (etude.get("categorie_commerciale") or "").strip().lower() or None
-    d["com_kwc"] = _num(etude.get("kwc")) or _num(d.get("puissance_kwc"))
+    # QJR625 — la puissance DES LIGNES d'abord ; ``etude['kwc']`` n'est plus
+    # qu'un repli (il décrit le kWc d'une étude peut-être périmée).
+    d["com_kwc"] = _num(d.get("puissance_kwc")) or _num(etude.get("kwc"))
     # QJR145 (g) — ``com_prod`` SUPPRIMÉ : calculé et lu par aucun gabarit
     # commercial (la production s'affiche depuis ``com_kwc``/l'étude).
     d["com_conso"] = _num(etude.get("conso_annuelle")) or _num(d.get("conso_annuelle_kwh"))

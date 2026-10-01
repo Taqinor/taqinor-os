@@ -346,11 +346,6 @@ class Mismatch:
                 f"{self.tolerance})")
 
 
-def tolerance_de(ident: str) -> Decimal:
-    cle = FIGURE_KEYS.get(cle_de(ident))
-    return cle.tolerance if cle else Decimal(0)
-
-
 def compare_surfaces(surfaces: dict[str, dict[str, list[Mesure]]]
                      ) -> list[Mismatch]:
     """Toutes les incohérences entre surfaces ``{nom: extract_figures(...)}``.

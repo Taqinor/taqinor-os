@@ -49,6 +49,10 @@ def build(ctx):
 
     ref = d["ref"]
     date = d["date"]
+    # QJR628 — correction après envoi / révision : le builder décide.
+    marques_correction = "".join(
+        f'<div class="i1-hd">{m}</div>'
+        for m in theme.marques_correction(d))
     client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
     client_meta = theme.join_meta(d.get("client_addr", ""), d.get("client_city", ""),
                                   d.get("client_phone", ""))
@@ -69,6 +73,20 @@ def build(ctx):
     couverture = d.get("ind_couverture")
     economies = d.get("ind_economies")
     invest = d.get("_invest_ttc") or 0
+    # QJR614 — l'investissement TTC s'imprime au centime : on relit le
+    # montant NON arrondi (même source que ``renderer._augment`` :
+    # display_total, sinon totaux_all.ttc), ``_invest_ttc`` en repli.
+    fmt_mad = ctx.get("fmt_mad") or fmt
+    invest_centimes = invest
+    for _src in (d.get("display_total"),
+                 (d.get("totaux_all") or {}).get("ttc")):
+        try:
+            _v = float(_src)
+        except (TypeError, ValueError):
+            continue
+        if _v > 0:
+            invest_centimes = _v
+            break
 
     # QJR119 — les factures manquantes ne se REMBOURRENT PLUS de zéros.
     # ``builder`` pose ``factures_mensuelles = None`` sur tout dossier chiffré
@@ -216,6 +234,7 @@ def build(ctx):
         <div class="i1-rl">Réf. devis</div>
         <div class="i1-rv">{ref}</div>
         <div class="i1-hd">{date}</div>
+        {marques_correction}
         {validity_pill}
       </div>
     </div>
@@ -255,7 +274,7 @@ def build(ctx):
 
     <div class="i1-inv">
       <div class="i1-inv-l">Investissement (TTC, clé en main)</div>
-      <div class="i1-inv-v">{fmt(invest)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt(invest))}
+      <div class="i1-inv-v">{fmt_mad(invest_centimes)}<span>&nbsp;MAD</span></div>{ancre("total_affiche", fmt_mad(invest_centimes))}
     </div>
   </div>
 </div>

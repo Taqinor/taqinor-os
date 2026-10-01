@@ -635,6 +635,35 @@ def verifier_empreinte_signature(devis, *, lignes=None):
     }
 
 
+SUFFIXE_EXEMPLAIRE_SIGNE = '__signe'
+
+
+def _copier_exemplaire_signe(cle_rendu, *, devis):
+    """QJR670 suivi — fige l'exemplaire signé sous SA PROPRE clé MinIO.
+
+    ``generate_premium_devis_pdf`` écrit sur une clé déterministe
+    (``devis/<co>/<ref>.pdf``) que tout re-rendu interne réécrit : stocker
+    cette clé comme ``signed_pdf_key`` laissait le document signé être écrasé
+    par le rendu suivant. On copie donc les octets sous ``…__signe.pdf`` —
+    suffixe qu'aucune clé de rendu (``builder._pdf_key``) ne produit.
+    Échec de copie (stockage indisponible) ⇒ on garde la clé de rendu,
+    comportement d'avant ce correctif, plutôt que de ne rien lier.
+    """
+    if not cle_rendu:
+        return cle_rendu
+    base = cle_rendu[:-4] if cle_rendu.lower().endswith('.pdf') else cle_rendu
+    cle_signee = f'{base}{SUFFIXE_EXEMPLAIRE_SIGNE}.pdf'
+    try:
+        from apps.ventes.utils.pdf import _upload_pdf, download_pdf
+        _upload_pdf(download_pdf(cle_rendu), cle_signee)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'QJR670: copie de l\'exemplaire signé impossible (devis %s) : %s',
+            getattr(devis, 'reference', '?'), exc)
+        return cle_rendu
+    return cle_signee
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 
@@ -656,6 +685,7 @@ def _store_signed_pdf(*, devis):
         from apps.ventes.quote_engine import clean_pdf_options, generate_premium_devis_pdf
         key = generate_premium_devis_pdf(
             devis.id, clean_pdf_options({}), persist=True)
+        key = _copier_exemplaire_signe(key, devis=devis)
         DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
         logger.info(
             'QJ22: PDF signé stocké pour devis %s → %s',
@@ -1455,6 +1485,17 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'QJ9: _persist_attribution échoué pour devis %s : %s',
                 getattr(devis, 'reference', '?'), exc)
 
+        # QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
+        # passent à la V2, seul l'écart est régularisé. Point de sauvegarde :
+        # un incident ici n'annule jamais la signature du client (journalisé).
+        try:
+            with transaction.atomic():
+                rattacher_aval_financier_revision(devis, user=user)
+        except Exception:  # noqa: BLE001 — best-effort, journalisé
+            logger.exception(
+                'QJR560 : aval financier de révision non rattaché (devis %s)',
+                getattr(devis, 'reference', '?'))
+
         # YDOCF3 + M6 — l'effondrement des sœurs ET la publication de
         # l'événement, sous le verrou du groupe pris plus haut.
         _effondrer_soeurs_et_publier(
@@ -1599,25 +1640,71 @@ def contexte_clauses_devis(devis):
     }
 
 
+def _valeur_json(valeur):
+    """Une valeur de ligne JSON-safe (Decimal → str, le reste tel quel)."""
+    from decimal import Decimal as _D
+    if isinstance(valeur, _D):
+        return str(valeur)
+    return valeur
+
+
+def _ligne_contenu(ligne):
+    """QJR551 — UNE ligne, sur le jeu ``domain/lignes.CHAMPS_CLONES`` (jamais
+    une liste retapée) : c'est ce qui rend « Revenir à cette version »
+    possible (D-QJR5-7). Les clés étrangères voyagent par leur id
+    (``produit``, ``lot``) ; aucun id de LIGNE (replace-lines les recrée)."""
+    from apps.ventes.domain.lignes import CHAMPS_CLONES
+    contenu = {}
+    for champ in CHAMPS_CLONES:
+        if champ in ('produit', 'lot'):
+            contenu[champ] = getattr(ligne, f'{champ}_id', None)
+        else:
+            contenu[champ] = _valeur_json(getattr(ligne, champ, None))
+    return contenu
+
+
+def _etude_contenu(devis):
+    """QJR551 — les clés d'ENTRÉE de l'étude que l'ÉCRAN possède (schéma
+    ``etude_schema.SCHEMA``, aucune liste codée en dur) : ce que
+    « Revenir à cette version » rejoue par ``etude_params`` (contrat QJR504)."""
+    from apps.ventes.domain.etude_schema import ECRAN, ENTREE, SCHEMA
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    return {cle: etude[cle] for cle, regle in SCHEMA.items()
+            if regle.get('nature') == ENTREE
+            and regle.get('proprietaire') == ECRAN and cle in etude}
+
+
+def _totaux_contenu(devis):
+    """QJR551 — totaux HT net / TTC par la façade ``argent`` (vue NET)."""
+    from apps.ventes.domain.argent import Vue, totaux as totaux_argent
+    try:
+        vue = totaux_argent(devis, vue=Vue.NET)
+        return {'ht_net': str(vue.ht_net), 'ttc': str(vue.ttc)}
+    except Exception:  # noqa: BLE001 — un total illisible ne bloque rien
+        return {'ht_net': None, 'ttc': None}
+
+
 def configuration_devis_contenu(devis):
     """NTCPQ20 — Représentation JSON-safe de la configuration d'un devis.
 
-    Uniquement des données de configuration (ligne, désignation, quantité,
-    P.U., remise) — JAMAIS de prix d'achat ni de marge."""
+    QJR551 — instantané COMPLET et RESTAURABLE : chaque ligne porte les champs
+    de ``domain/lignes.CHAMPS_CLONES`` (sans id de ligne), plus
+    ``remise_globale``, ``echeancier`` (D-QJR5-10), les clés d'entrée ÉCRAN de
+    l'étude et les totaux HT net / TTC. JAMAIS de prix d'achat ni de marge."""
+    echeancier = devis.echeancier
     return {
-        'lignes': [{
-            'ligne_id': li.id,
-            'produit_id': li.produit_id,
-            'designation': li.designation,
-            'quantite': str(li.quantite) if li.quantite is not None else None,
-            'prix_unitaire': (str(li.prix_unitaire)
-                              if li.prix_unitaire is not None else None),
-            'remise': str(li.remise) if li.remise is not None else None,
-        } for li in devis.lignes.all().order_by('ordre', 'id')],
+        'lignes': [_ligne_contenu(li)
+                   for li in devis.lignes.all().order_by('ordre', 'id')],
+        'remise_globale': _valeur_json(devis.remise_globale),
+        'echeancier': (list(echeancier) if isinstance(echeancier, list)
+                       else echeancier),
+        'etude': _etude_contenu(devis),
+        'totaux': _totaux_contenu(devis),
     }
 
 
-def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
+def capturer_configuration_devis(devis, *, user=None, avant_correction=False,
+                                 envoye=False):
     """NTCPQ20 — Enregistre un instantané de configuration si le devis est
     BROUILLON et que la configuration a RÉELLEMENT changé.
 
@@ -1628,24 +1715,37 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
     QJR518 — ``avant_correction=True`` capture AUSSI un devis ENVOYÉ :
     appelé AVANT la première écriture d'une correction après envoi
     (``domain/modifiabilite.debut_de_geste_devis``), l'instantané conserve
-    l'état que le client a vu. Le signal de ligne (post_save) ne le passe
-    jamais : un envoyé n'est pas historisé ligne par ligne."""
+    l'état que le client a vu.
+
+    QJR552 — ``envoye=True`` (l'instantané APRÈS geste, :func:`instantane_de_geste`)
+    historise aussi un ENVOYÉ : la correction après envoi (D-QJR5-1) laisse
+    l'état vu par le client (premier instantané, pris AVANT le geste par
+    ``debut_de_geste_devis``) ET l'état corrigé (dernier instantané). Jamais
+    un accepté / refusé / expiré : leurs gestes sont refusés en amont.
+
+    QJR550 — la création est enveloppée dans un POINT DE SAUVEGARDE : une
+    erreur SQL pendant la capture (appelée sous la transaction de
+    replace-lines / atomic) n'avorte plus l'enregistrement qui l'entoure."""
+    from django.db import transaction
+
     from apps.ventes.models import ConfigurationDevisSnapshot, Devis
 
     if devis is None or devis.pk is None:
         return None
     statuts = ((Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
-               if avant_correction else (Devis.Statut.BROUILLON,))
+               if (avant_correction or envoye) else (Devis.Statut.BROUILLON,))
     if devis.statut not in statuts:
         return None
     try:
-        contenu = configuration_devis_contenu(devis)
-        dernier = ConfigurationDevisSnapshot.objects.filter(
-            devis_id=devis.pk).order_by('-date_creation', '-id').first()
-        if dernier is not None and dernier.contenu == contenu:
-            return None
-        return ConfigurationDevisSnapshot.objects.create(
-            company=devis.company, devis=devis, contenu=contenu, auteur=user)
+        with transaction.atomic():
+            contenu = configuration_devis_contenu(devis)
+            dernier = ConfigurationDevisSnapshot.objects.filter(
+                devis_id=devis.pk).order_by('-date_creation', '-id').first()
+            if dernier is not None and dernier.contenu == contenu:
+                return None
+            return ConfigurationDevisSnapshot.objects.create(
+                company=devis.company, devis=devis, contenu=contenu,
+                auteur=user)
     except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
         logger.exception(
             'NTCPQ20 : instantané de configuration ignoré (devis %s)',
@@ -1653,33 +1753,108 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False):
         return None
 
 
+def instantane_de_geste(devis, *, user=None):
+    """QJR550 — UN instantané de configuration par GESTE d'enregistrement,
+    avec son auteur.
+
+    Remplace le signal ``post_save``/``post_delete`` de ``LigneDevis``
+    (NTCPQ20) : ``remplacer_lignes`` supprime puis recrée toutes les lignes,
+    et le signal produisait ~N+1 instantanés par enregistrement — dont des
+    états PARTIELS — sans jamais d'auteur. Appelé, après les écritures, par
+    le pipeline (``composer`` ; ``ecrire`` / ``reconcilier`` — jamais
+    ``rafraichir``), ``LigneDevisViewSet`` et la resynchronisation catalogue
+    (une fois par devis). Relit le devis (statut et lignes en base). Ne lève
+    jamais.
+
+    QJR552 — capture un BROUILLON comme un ENVOYÉ (l'état CORRIGÉ d'une
+    correction après envoi) ; l'état AVANT, vu par le client, reste capturé
+    par ``debut_de_geste_devis`` avant la première écriture du même geste —
+    les deux passent par :func:`capturer_configuration_devis`, l'unique
+    implémentation. Le statut n'est jamais écrit."""
+    if devis is None or getattr(devis, 'pk', None) is None:
+        return None
+    try:
+        from apps.ventes.models import Devis
+        frais = Devis.objects.select_related('company').filter(
+            pk=devis.pk).first()
+        if frais is None:
+            return None
+        return capturer_configuration_devis(frais, user=user, envoye=True)
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+        logger.exception(
+            'QJR550 : instantané de geste ignoré (devis %s)',
+            getattr(devis, 'pk', '?'))
+        return None
+
+
+#: QJR551 — champs d'une ligne qui ne disent pas une MODIFICATION : la
+#: position (``ordre`` se décale à la première insertion).
+_CHAMPS_POSITIONNELS = ('ordre',)
+
+
+def _cles_appariement(lignes):
+    """QJR551 — l'IDENTITÉ STABLE d'une ligne d'instantané : (type_ligne,
+    produit — ou la désignation pour une section / une note —, variante),
+    départagée par le RANG d'occurrence. Jamais l'id de ligne (replace-lines
+    les recrée) ni ``ordre`` seul (il se décale). Anciens instantanés
+    acceptés (``produit_id`` au lieu de ``produit``, clés absentes = None)."""
+    rangs = {}
+    indexees = {}
+    for ligne in lignes or []:
+        type_ligne = ligne.get('type_ligne') or 'produit'
+        produit = ligne.get('produit', ligne.get('produit_id'))
+        ident = (ligne.get('designation') or ''
+                 if type_ligne in ('section', 'note') or produit is None
+                 else produit)
+        base = f"{type_ligne}:{ident}:{ligne.get('variante') or ''}"
+        rang = rangs.get(base, 0)
+        rangs[base] = rang + 1
+        indexees[f'{base}#{rang}'] = ligne
+    return indexees
+
+
 def diff_configurations_devis(snapshot_a, snapshot_b):
-    """NTCPQ20 — Diff des LIGNES entre deux instantanés de configuration.
+    """NTCPQ20 — Diff entre deux instantanés de configuration.
 
-    Renvoie ``{ajoutees, retirees, modifiees}`` : ``modifiees`` porte, pour
-    chaque ligne présente des deux côtés, les champs qui ont changé
-    (``{champ: [avant, apres]}``)."""
-    def _index(snap):
-        contenu = (snap or {}).get('lignes') or []
-        return {li.get('ligne_id'): li for li in contenu}
-
-    avant = _index(getattr(snapshot_a, 'contenu', snapshot_a))
-    apres = _index(getattr(snapshot_b, 'contenu', snapshot_b))
+    QJR551 — les lignes sont appariées par une IDENTITÉ STABLE
+    (:func:`_cles_appariement`), plus par ``ligne_id`` : un replace-lines qui
+    ne change qu'un prix rend UNE ligne modifiée, plus « tout retiré / tout
+    ajouté ». Renvoie ``{ajoutees, retirees, modifiees, parametres}`` :
+    ``modifiees`` porte ``{cle, champs: {champ: [avant, apres]}}`` ;
+    ``parametres`` porte ``{cle: [avant, apres]}`` pour ``remise_globale``,
+    ``echeancier`` et chaque clé ``etude.<cle>`` qui a changé."""
+    contenu_a = getattr(snapshot_a, 'contenu', snapshot_a) or {}
+    contenu_b = getattr(snapshot_b, 'contenu', snapshot_b) or {}
+    avant = _cles_appariement(contenu_a.get('lignes'))
+    apres = _cles_appariement(contenu_b.get('lignes'))
     modifiees = []
-    for ligne_id, ligne in apres.items():
-        precedente = avant.get(ligne_id)
+    for cle, ligne in apres.items():
+        precedente = avant.get(cle)
         if precedente is None:
             continue
         champs = {
             champ: [precedente.get(champ), ligne.get(champ)]
-            for champ in ('designation', 'quantite', 'prix_unitaire', 'remise')
-            if precedente.get(champ) != ligne.get(champ)}
+            for champ in sorted(set(precedente) | set(ligne))
+            if champ not in _CHAMPS_POSITIONNELS + ('ligne_id',)
+            and precedente.get(champ) != ligne.get(champ)}
         if champs:
-            modifiees.append({'ligne_id': ligne_id, 'champs': champs})
+            modifiees.append({'cle': cle, 'champs': champs})
+    parametres = {}
+    for cle in ('remise_globale', 'echeancier'):
+        if contenu_a.get(cle) != contenu_b.get(cle):
+            parametres[cle] = [contenu_a.get(cle), contenu_b.get(cle)]
+    etude_a = contenu_a.get('etude') or {}
+    etude_b = contenu_b.get('etude') or {}
+    for cle in sorted(set(etude_a) | set(etude_b)):
+        if etude_a.get(cle) != etude_b.get(cle):
+            parametres[f'etude.{cle}'] = [etude_a.get(cle), etude_b.get(cle)]
     return {
-        'ajoutees': [li for lid, li in apres.items() if lid not in avant],
-        'retirees': [li for lid, li in avant.items() if lid not in apres],
+        'ajoutees': [{'cle': cle, **li} for cle, li in apres.items()
+                     if cle not in avant],
+        'retirees': [{'cle': cle, **li} for cle, li in avant.items()
+                     if cle not in apres],
         'modifiees': modifiees,
+        'parametres': parametres,
     }
 
 
@@ -1691,8 +1866,10 @@ def renouveler_devis(devis, *, user=None):
     copie figée), lié au devis source par ``devis_origine`` (racine de chaîne)
     et portant ``numero_renouvellement`` = source + 1.
 
-    DISTINCT de ``reviser`` (T10) : celui-ci corrige un devis non encore
-    accepté et supersède l'original ; ``renouveler`` laisse le devis source
+    DISTINCT de ``reviser`` (T10) : celui-ci crée la V+1 d'un devis envoyé,
+    accepté, refusé ou expiré (D-QJR5-2 — un accepté se révise, son chantier
+    et son contrat passent à la V2, QJR559) et supersède l'original ;
+    ``renouveler`` laisse le devis source
     strictement intact (statut, chaîne BC/Facture, historique).
 
     Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.
@@ -1843,10 +2020,12 @@ def reviser_devis(devis, *, user=None):
         if old.statut == Devis.Statut.BROUILLON:
             raise RevisionError(
                 'Un brouillon se modifie directement (pas de révision).')
+        # QJR558 — ``revision=True`` : la V+1 garde le travail manuel
+        # (toiture 3D, registre D12, tailles explorées, rendu toiture).
         nd = cloner_devis(
             old, user=user, note=old.note,
             version=old.version + 1,
-            version_parent=old.version_parent or old)
+            version_parent=old.version_parent or old, revision=True)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])
@@ -1855,6 +2034,164 @@ def reviser_devis(devis, *, user=None):
         activity.log_devis_note(
             nd, user, f'Révision de {old.reference}.')
     return nd
+
+
+def rattacher_aval_financier_revision(devis, *, user=None):
+    """QJR560 / D-QJR5-11 — V2 d'un devis signé acceptée : l'aval FINANCIER
+    de la version remplacée passe à la V2, seul l'écart est régularisé.
+
+    Appelée à l'acceptation de ``devis`` (sous la transaction d'``accept_devis``)
+    quand un prédécesseur de révision (``selectors.
+    devis_predecesseurs_revision_ids``) est ACCEPTÉ. Aucun statut inventé, la
+    chaîne BC / Facture reste 1:1 (règle #4) :
+
+    1. le BC non annulé de la V1 est RATTACHÉ à la V2 (``BonCommande.devis`` est
+       OneToOne : un BC « complémentaire » est impossible sans migration — le BC
+       garde ses lignes d'origine ; question fondateur consignée au DONE LOG),
+       et les factures (``Facture.devis``) et ``FactureSource`` de la V1 aussi :
+       les documents émis restent valables ;
+    2. l'écart TTC est régularisé AU CENTIME, jamais un montant inventé :
+       tant qu'il reste une tranche d'échéancier à facturer sur la V2 (et
+       qu'aucune facture de BC ne solde la vente), la tranche finale le porte
+       déjà (solde = total V2 − déjà facturé) — une note le dit ; si la vente
+       est entièrement facturée, reste > 0 → facture COMPLÉMENTAIRE brouillon
+       (rattachée à la V2), reste < 0 → AVOIR sur la dernière facture.
+
+    La commission apporteur encore À_PAYER est recalculée par ``crm`` sur
+    l'option acceptée de la V2 (``crm/receivers.py``, même événement).
+
+    Rend un dict ``{bc, factures, sources, ecart_ttc, document}`` ou ``None``
+    quand aucun prédécesseur accepté n'existe."""
+    from decimal import Decimal
+
+    from apps.ventes import activity
+    from apps.ventes.models import (
+        Avoir, BonCommande, Devis, Facture, FactureSource)
+    from apps.ventes.selectors import devis_predecesseurs_revision_ids
+    from apps.ventes.utils.company_settings import create_numbered
+    from apps.ventes.utils.echeancier import (
+        blended_tva_pct, factures_actives, next_tranche)
+    from apps.ventes.utils.options import option_totaux
+
+    preds = devis_predecesseurs_revision_ids(devis)
+    if not preds:
+        return None
+    acceptes = list(Devis.objects.filter(
+        pk__in=preds, company_id=devis.company_id,
+        statut=Devis.Statut.ACCEPTE))
+    if not acceptes:
+        return None
+    acceptes.sort(key=lambda d: preds.index(d.pk))  # le plus proche d'abord
+    precedent = acceptes[0]
+    ids = [d.pk for d in acceptes]
+
+    # (1) BC — un seul non annulé, rattaché à la V2 si elle n'en a pas.
+    bc = None
+    if not BonCommande.objects.filter(devis=devis).exists():
+        bc = (BonCommande.objects.filter(devis_id__in=ids)
+              .exclude(statut=BonCommande.Statut.ANNULE)
+              .order_by('-pk').first())
+        if bc is not None:
+            ancien = bc.devis.reference if bc.devis_id else '?'
+            bc.devis = devis
+            bc.save(update_fields=['devis'])
+            activity.log_devis_note(
+                devis, user,
+                f'Bon de commande {bc.reference} repris de {ancien} '
+                f'(révision acceptée) — document émis inchangé.')
+    # (1) Factures d'échéancier et sources de facture consolidée.
+    factures = list(Facture.objects.filter(devis_id__in=ids)
+                    .values_list('reference', flat=True))
+    Facture.objects.filter(devis_id__in=ids).update(devis=devis)
+    sources = 0
+    for src in FactureSource.objects.filter(devis_id__in=ids):
+        if FactureSource.objects.filter(
+                facture_id=src.facture_id, devis=devis).exists():
+            continue
+        src.devis = devis
+        src.save(update_fields=['devis'])
+        sources += 1
+    if factures:
+        activity.log_devis_note(
+            devis, user,
+            'Factures reprises de la version remplacée (révision) : '
+            + ', '.join(factures) + '.')
+
+    # (2) L'écart, au centime.
+    ecart = (Decimal(str(option_totaux(devis)['ttc']))
+             - Decimal(str(option_totaux(precedent)['ttc'])))
+    # Relecture sur une instance FRAÎCHE (celle de l'appelant garde ses caches).
+    devis = Devis.objects.select_related('client', 'lead', 'company').get(
+        pk=devis.pk)
+    actives = {f.pk: f for f in factures_actives(devis)}
+    from apps.ventes.selectors import factures_via_bon_commande
+    via_bc = {f.pk: f for f in factures_via_bon_commande(devis)}
+    actives.update(via_bc)
+    document = None
+    if not actives:
+        # Rien de facturé : l'échéancier de la V2 facturera la V2.
+        return {'bc': bc, 'factures': factures, 'sources': sources,
+                'ecart_ttc': ecart, 'document': None}
+    facture_ttc = sum((Decimal(str(f.total_ttc)) for f in actives.values()),
+                      Decimal('0'))
+    avoirs_ttc = sum((Decimal(str(f.avoirs_total)) for f in actives.values()),
+                     Decimal('0'))
+    from core.money import quantize_mad
+    reste = quantize_mad(Decimal(str(option_totaux(devis)['ttc']))
+                         - facture_ttc + avoirs_ttc)
+    encore_une_tranche = (not via_bc) and next_tranche(devis) is not None
+    if reste == 0 or (encore_une_tranche and reste > 0):
+        activity.log_devis_note(
+            devis, user,
+            f'Écart de révision {ecart:.2f} MAD TTC porté par la suite de '
+            f"l'échéancier (reste à facturer {reste:.2f} MAD).")
+        return {'bc': bc, 'factures': factures, 'sources': sources,
+                'ecart_ttc': ecart, 'document': None}
+
+    taux = blended_tva_pct(devis)
+    montant_ttc = abs(reste)
+    montant_ht = quantize_mad(montant_ttc / (1 + Decimal(str(taux)) / 100))
+    montant_tva = montant_ttc - montant_ht
+    company = devis.company
+    if reste > 0:
+        def _facture(ref):
+            return Facture.objects.create(
+                company=company, reference=ref, devis=devis,
+                client=devis.client, lead=devis.lead,
+                statut=Facture.Statut.BROUILLON,
+                type_facture=Facture.TypeFacture.COMPLETE,
+                libelle=(f'Complément révision {devis.reference} '
+                         f'(remplace {precedent.reference})')[:255],
+                montant_ht=montant_ht, montant_tva=montant_tva,
+                montant_ttc=montant_ttc, taux_tva=taux, created_by=user)
+        document = create_numbered(Facture, company, 'facture', _facture)
+        activity.log_devis_note(
+            devis, user,
+            f'Facture complémentaire {document.reference} (brouillon) : '
+            f'{montant_ttc:.2f} MAD TTC — écart de révision.')
+    else:
+        # La facture qui peut le plus porter l'avoir (plafond AUD126 : jamais
+        # au-delà du reste créditable) ; à reste égal, la plus récente.
+        cible = max(actives.values(), key=lambda f: (
+            Decimal(str(f.total_ttc)) - Decimal(str(f.avoirs_total)), f.pk))
+
+        def _avoir(ref):
+            return Avoir.objects.create(
+                company=company, reference=ref, facture=cible,
+                client=cible.client, statut=Avoir.Statut.EMISE,
+                motif=(f'Révision {devis.reference} (remplace '
+                       f'{precedent.reference}) — écart de révision.'),
+                taux_tva=taux, montant_ht=montant_ht,
+                montant_tva=montant_tva, montant_ttc=montant_ttc,
+                created_by=user)
+        document = create_numbered(Avoir, company, 'avoir', _avoir)
+        activity.log_facture_avoir(cible, user, document)
+        activity.log_devis_note(
+            devis, user,
+            f'Avoir {document.reference} : {montant_ttc:.2f} MAD TTC sur '
+            f'{cible.reference} — écart de révision.')
+    return {'bc': bc, 'factures': factures, 'sources': sources,
+            'ecart_ttc': ecart, 'document': document}
 
 
 def mark_devis_sent(*, devis, user=None):

@@ -3,8 +3,8 @@
 Ce qui est prouvé (le « Done » de CALX283) :
 
 * 100 000 MAD à 6 %/an sur 120 mois en ``annuite`` ⇒ mensualité
-  1 110,21 MAD ± 0,01 (formule d'annuité de ``quote_engine/builder.py``,
-  RELUE et non dupliquée) ;
+  1 110,21 MAD ± 0,01 (formule d'annuité ``economie._monthly_loan_payment``,
+  la seule du dépôt — QJR630) ;
 * ``echeances_constantes`` ⇒ première échéance STRICTEMENT supérieure à la
   dernière (test de propriété, sur une grille) ;
 * ``differe_mois = 12`` ⇒ les douze premières lignes ne portent que des
@@ -23,9 +23,8 @@ Run :
 import itertools
 import unittest
 
-from apps.ventes.economie import (EconomieInvalide, flux_de_tresorerie,
-                                  tableau_pret)
-from apps.ventes.quote_engine.builder import _monthly_loan_payment
+from apps.ventes.economie import (EconomieInvalide, _monthly_loan_payment,
+                                  flux_de_tresorerie, tableau_pret)
 
 PRET = dict(principal_mad=100000, taux_annuel_pct=6, duree_mois=120,
             type_pret='annuite')

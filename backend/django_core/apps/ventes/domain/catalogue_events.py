@@ -102,6 +102,7 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
     from apps.ventes.models import Devis, LigneDevis
 
     from ..activity import log_devis_resynchronisation
+    from .lignes import prix_negocie
 
     ancien_nom, nouveau_nom = _valeurs_champ(champs, 'nom')
     ancien_prix_txt, nouveau_prix_txt = _valeurs_champ(champs, 'prix_vente')
@@ -149,16 +150,17 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
                     conservee = True
 
             # ── Prix : il ne suit que si la ligne était AU PRIX CATALOGUE
-            # d'avant, sans remise de ligne. Une remise ou un prix retouché
-            # valent prix NÉGOCIÉ : intouchables, et on le dit.
+            # d'avant, sans remise de ligne ni ``prix_manuel``. QJR555 — LA
+            # définition unique du prix NÉGOCIÉ (``lignes.prix_negocie``) :
+            # intouchable, et on le dit (une ligne ``prix_manuel`` compte
+            # toujours comme conservée).
             if nouveau_prix is not None and ancien_prix is not None:
-                remise = _decimal_ou_none(ligne.remise) or Decimal('0')
-                actuel = _decimal_ou_none(ligne.prix_unitaire)
-                if actuel is not None and actuel == ancien_prix \
-                        and remise == Decimal('0'):
+                if not prix_negocie(ligne, prix_reference=ancien_prix):
                     ligne.prix_unitaire = nouveau_prix
                     champs_ecrits.append('prix_unitaire')
-                elif actuel is None or actuel != nouveau_prix:
+                elif (getattr(ligne, 'prix_manuel', False)
+                      or _decimal_ou_none(ligne.prix_unitaire)
+                      != nouveau_prix):
                     conservee = True
 
             if champs_ecrits:
@@ -187,7 +189,10 @@ def resynchroniser_devis_pour_produit(*, produit, company, champs, user=None):
         # reflet lead passent par LE point unique de trace
         # (``consigner_correction_apres_envoi``, via ``fin_de_geste_devis``) :
         # plus d'écriture directe du marqueur ici.
+        from apps.ventes.domain.cycle_vie import instantane_de_geste
         for devis in touches.values():
+            # QJR550 — UN instantané par devis resynchronisé.
+            instantane_de_geste(devis, user=user)
             fin_de_geste_devis(devis, user, avant=avants.get(devis.pk),
                                objet='catalogue')
             log_devis_resynchronisation(

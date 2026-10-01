@@ -877,7 +877,9 @@ class TestLignesDivergentesDeuxValeurs(SimpleTestCase):
         self.assertIn('<span class="p2-vs">15</span>', panneau)
         self.assertIn('<span class="p2-va">14</span>', panneau)
         # … P.U. unique (le prix ne change pas d'une option à l'autre) …
-        from apps.ventes.quote_engine.residential.theme import fmt
+        # QJR614 — P.U. et totaux de ligne s'impriment au CENTIME
+        # (``montants.fmt_centimes``, le formateur monétaire unique).
+        from apps.ventes.quote_engine.montants import fmt_centimes as fmt
         self.assertIn(f'<td class="p2-r">{fmt(1273.0)}</td>', panneau)
         # … et les DEUX totaux HT (15 × 1 273 et 14 × 1 273).
         self.assertIn(f'<span class="p2-vs">{fmt(15 * 1273.0)}</span>',

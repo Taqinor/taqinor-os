@@ -1552,10 +1552,9 @@ const enviro = ok ? environmentalImpact(prodKwh) : null;
 // RETIRÉS : cette page vend une installation, pas un crédit — et un tableau de
 // mensualités indicatives « à confirmer avec votre banque » au milieu d'une
 // proposition affaiblit le seul chiffre qui compte (le prix TTC clé en main).
-// Les fonctions correspondantes de lib/proposition.ts (financingComparison,
-// backendFinancing, installmentSplit) restent INTACTES — d'autres surfaces
-// peuvent les utiliser ; seul leur USAGE ici disparaît. Rien n'est retiré du
-// payload backend : on choisit ce qu'on REND, pas ce qu'on reçoit.
+// QJR634 : financingComparison, loanMonthlyPayment et backendFinancing sont
+// SUPPRIMÉS de lib/proposition.ts (aucun taux bancaire inventé ne doit pouvoir
+// être rendu) ; installmentSplit (échelonnement sans intérêt) reste intact.
 
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
 // « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
@@ -1821,8 +1820,8 @@ function anneesAr(n: number): string {
 
 // ── WJ32 — Complétude du contenu : variantes, « Et après ? », « Nos
 // hypothèses », accompagnement, FAQ objections. Chaque bloc dégrade proprement
-// (masqué) quand sa donnée backend manque. PV80 — le bloc financement backend
-// (backendFinancing) n'est plus rendu : aucune mention de crédit sur la page.
+// (masqué) quand sa donnée backend manque. PV80 / QJR634 — plus aucun bloc de
+// financement : aucune mention de crédit sur la page.
 const variants = ok ? proposalVariants(data!) : [];
 // ── GAMMES (fondateur 2026-08-18) — choix de gamme AVANT/AVEC la signature.
 // `null` en mode d'envoi « seule » (le backend n'envoie alors RIEN de l'autre

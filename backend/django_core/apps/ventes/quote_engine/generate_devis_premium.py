@@ -7,15 +7,15 @@
 generate_devis_premium.py  FINAL
 Page 1 : white-background v1 layout
 Pages 2-3 : v4 premium dark design
-Usage : python generate_devis_premium.py
+Rendu seul : ``generate_premium_pdf(data, out_path)`` / ``render_html_for(data)``
+(QJR629 — plus de devis démo embarqué ni d'exécution en script).
 """
 import base64, html, io, re, subprocess, sys, tempfile, threading
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 # NTI18N5 — catalogue des libellés structurels du document (fr/en/ar). Données
 # pures : ni Django, ni ``apps``, ni I/O — ce moteur vendoré reste donc
-# démarrable hors Django, et exécutable directement comme ``__main__`` (d'où le
+# démarrable hors Django, et importable directement depuis son dossier (d'où le
 # double chemin d'import : paquet d'abord, module voisin ensuite).
 try:
     from . import i18n_labels
@@ -30,6 +30,20 @@ try:
     from .figures import ancre as _ancre_figure
 except ImportError:  # exécution directe du moteur depuis son dossier
     from figures import ancre as _ancre_figure
+
+# QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
+# paquets premium ; même double chemin d'import.
+try:
+    from .montants import fmt_centimes, fmt_centimes_mad
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from montants import fmt_centimes, fmt_centimes_mad
+
+# QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
+# fonction pure partagée ; même double chemin d'import.
+try:
+    from .sequence import sequence_affichage
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from sequence import sequence_affichage
 
 
 def _render_pdf_weasyprint(html_string, out_path):
@@ -179,142 +193,44 @@ CGR = "#16A34A"
 _CA_DEFAULT = CA
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# QUOTE_INPUT — seule section à modifier pour changer un devis
+# QJR629 — DÉFAUTS INERTES des globales du rendu. Le devis démo embarqué
+# (QUOTE_INPUT : coordonnées réelles du fondateur) et sa seconde formule de
+# prix par blocs (calculate_quote, exécutée à l'import) sont SUPPRIMÉS : chaque
+# rendu passe par ``apply_quote_data``, qui réécrit toutes ces globales.
 # ═══════════════════════════════════════════════════════════════════════════════
-QUOTE_INPUT = {
-    "ref":              "412",
-    "date":             "28/02/2026",
-    "client_name":      "Reda Kasri",
-    "client_addr":      "5 Rue Ennoussour RDC",
-    "client_phone":     "0661850410",
-    "inst_type":        "R\u00e9sidentielle",
-    "puissance_kwc":    10.65,
-    "nb_panneaux":      15,
-    "watt_par_panneau": 710,
-    "city":             "Casablanca",
-    "prod_kwh":         13190,
-    "eco_s_ann":        15828,   # \u00e9conomies/an affich\u00e9es \u2014 Option 1
-    "eco_a_ann":        25232,   # \u00e9conomies/an affich\u00e9es \u2014 Option 2 (KPI)
-    "eco_a_cumul":      19478,   # taux r\u00e9el pour courbe ROI cumulatif
-    "roi_s":            3.3,
-    "roi_a":            5.5,
-    "eco_s_monthly":    [850, 980,1320,1560,1820,1850,1840,1610,1390,1120, 830, 760],
-    "eco_a_monthly":    [1380,1590,2140,2220,2470,2640,2650,2510,2280,1890,1380,1230],
-    # Batteries incluses dans l'Option 2
-    "battery_option": [
-        {"designation": "Batterie 5\u202fkWh",  "marque": "Deye", "quantite": 1, "prix_unit_ttc": 16000},
-        {"designation": "Batterie 10\u202fkWh", "marque": "Deye", "quantite": 1, "prix_unit_ttc": 27000},
-    ],
-    # Overrides — None = formule bloc automatique
-    "overrides": {
-        "onduleur_reseau":   15000,
-        "smart_meter":       1800,
-        "wifi_dongle":       1200,
-        "prix_panneau":      1100,
-        "onduleur_hybride":  29000,
-        "structures_unit":   450,
-        "installation":      4000,   # override formule: (blocks+1)\u00d72400
-        "tableau":           2000,   # override formule: blocks\u00d71500
-        "accessoires":       None,   # None \u2192 blocks\u00d71000 = 2000
-        "transport":         1000,
-    },
-}
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# PRICING ENGINE
-# ═══════════════════════════════════════════════════════════════════════════════
-def calculate_quote(q):
-    """Block-based pricing engine. blocks = max(1, round(kwc/5))."""
-    kwc    = q["puissance_kwc"]
-    nb_pan = q["nb_panneaux"]
-    ovr    = q.get("overrides", {})
-
-    blocks = max(1, round(kwc / 5))
-
-    def ov(key, default):
-        v = ovr.get(key)
-        return v if v is not None else default
-
-    installation     = ov("installation",     (blocks + 1) * 2400)
-    accessoires      = ov("accessoires",      blocks * 1000)
-    tableau          = ov("tableau",          blocks * 1500)
-    transport        = ov("transport",        1000)
-    structures_unit  = ov("structures_unit",  450)
-    onduleur_reseau  = ov("onduleur_reseau",  14000)
-    smart_meter      = ov("smart_meter",      1500)
-    wifi_dongle      = ov("wifi_dongle",      0)
-    prix_panneau     = ov("prix_panneau",     1100)
-    onduleur_hybride = ov("onduleur_hybride", 29000)
-
-    sans_items = [
-        {"designation": "Onduleur r\u00e9seau",              "marque": "Huawei",         "quantite": 1,      "prix_unit_ttc": onduleur_reseau},
-        {"designation": "Smart Meter",                       "marque": "Huawei",         "quantite": 1,      "prix_unit_ttc": smart_meter},
-        {"designation": "Wifi Dongle",                       "marque": "Huawei",         "quantite": 1,      "prix_unit_ttc": wifi_dongle},
-        {"designation": "Panneaux",                          "marque": "Canadian Solar", "quantite": nb_pan, "prix_unit_ttc": prix_panneau},
-        {"designation": "Structures acier",                  "marque": "",               "quantite": nb_pan, "prix_unit_ttc": structures_unit},
-        {"designation": "Socles",                            "marque": "",               "quantite": 30,     "prix_unit_ttc": 80},
-        {"designation": "Accessoires",                       "marque": "",               "quantite": 1,      "prix_unit_ttc": accessoires},
-        {"designation": "Tableau De Protection AC/DC",       "marque": "",               "quantite": 1,      "prix_unit_ttc": tableau},
-        {"designation": "Installation",                      "marque": "",               "quantite": 1,      "prix_unit_ttc": installation},
-        {"designation": "Transport",                         "marque": "",               "quantite": 1,      "prix_unit_ttc": transport},
-    ]
-
-    avec_base = [
-        {"designation": "Onduleur hybride",                  "marque": "Deye",           "quantite": 1,      "prix_unit_ttc": onduleur_hybride},
-        {"designation": "Panneaux",                          "marque": "Canadian Solar", "quantite": nb_pan, "prix_unit_ttc": prix_panneau},
-    ]
-    batteries = list(q.get("battery_option", []))
-    avec_tail = [
-        {"designation": "Structures acier",                  "marque": "",               "quantite": nb_pan, "prix_unit_ttc": structures_unit},
-        {"designation": "Socles",                            "marque": "",               "quantite": 30,     "prix_unit_ttc": 80},
-        {"designation": "Accessoires",                       "marque": "",               "quantite": 1,      "prix_unit_ttc": accessoires},
-        {"designation": "Tableau De Protection AC/DC",       "marque": "",               "quantite": 1,      "prix_unit_ttc": tableau},
-        {"designation": "Installation",                      "marque": "",               "quantite": 1,      "prix_unit_ttc": installation},
-        {"designation": "Transport",                         "marque": "",               "quantite": 1,      "prix_unit_ttc": transport},
-    ]
-    avec_items = avec_base + batteries + avec_tail
-
-    total_sans = sum(it["quantite"] * it["prix_unit_ttc"] for it in sans_items)
-    total_avec = sum(it["quantite"] * it["prix_unit_ttc"] for it in avec_items)
-
-    return {
-        "sans_items": sans_items, "avec_items": avec_items,
-        "total_sans": total_sans, "total_avec": total_avec,
-        "blocks": blocks,
-    }
-
-# ── Run pricing engine ────────────────────────────────────────────────────────
-_Q = calculate_quote(QUOTE_INPUT)
-
-CLIENT_NAME  = QUOTE_INPUT["client_name"]
-CLIENT_ADDR  = QUOTE_INPUT["client_addr"]
-CLIENT_PHONE = QUOTE_INPUT["client_phone"]
-CLIENT_ICE   = QUOTE_INPUT.get("client_ice", "")
+CLIENT_NAME  = ""
+CLIENT_ADDR  = ""
+CLIENT_PHONE = ""
+CLIENT_ICE   = ""
 # L-NIV (24/08/2026) — filigrane PDF DISCRET, posé UNIQUEMENT sur le PDF
 # public niveau standard (jamais le PDF interne). None par défaut → les
 # footers restent byte-identiques à avant L-NIV (mêmes tests de page-count).
 WATERMARK_STANDARD = None
-REF          = QUOTE_INPUT["ref"]
-DATE_STR     = QUOTE_INPUT["date"]
-KWC          = QUOTE_INPUT["puissance_kwc"]
-NB_PAN       = QUOTE_INPUT["nb_panneaux"]
-WP           = QUOTE_INPUT["watt_par_panneau"]
-PROD_KWH     = QUOTE_INPUT["prod_kwh"]
-TOTAL_SANS        = _Q["total_sans"]
-TOTAL_AVEC        = _Q["total_avec"]
+REF          = ""
+DATE_STR     = ""
+# QJR628 — « Document mis à jour le … » / « Remplace le devis … » ('' = rien).
+MIS_A_JOUR_LE = ""
+REMPLACE_REF  = ""
+KWC          = 0.0
+NB_PAN       = 0
+WP           = 0
+PROD_KWH     = 0
+TOTAL_SANS        = 0.0
+TOTAL_AVEC        = 0.0
 DISCOUNT_PCT      = 0.0
-TOTAL_SANS_BEFORE = _Q["total_sans"]
-TOTAL_AVEC_BEFORE = _Q["total_avec"]
-ECO_S_ANN    = QUOTE_INPUT["eco_s_ann"]
-ECO_A_ANN    = QUOTE_INPUT["eco_a_ann"]
-ROI_S        = QUOTE_INPUT["roi_s"]
-ROI_A        = QUOTE_INPUT["roi_a"]
+TOTAL_SANS_BEFORE = 0.0
+TOTAL_AVEC_BEFORE = 0.0
+ECO_S_ANN    = 0
+ECO_A_ANN    = 0
+ROI_S        = 0.0
+ROI_A        = 0.0
 # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — cumul 25 ans jamais positif.
 ROI_S_JAMAIS = False
 ROI_A_JAMAIS = False
-INST_TYPE    = QUOTE_INPUT["inst_type"]
-SANS_ITEMS   = _Q["sans_items"]
-AVEC_ITEMS   = _Q["avec_items"]
+INST_TYPE    = ""
+SANS_ITEMS   = []
+AVEC_ITEMS   = []
 # XSAL14/XSAL5 \u2014 lignes de structure (sections/notes) + options propos\u00e9es.
 # D\u00e9faut vide \u2192 un devis sans structure/option est rendu strictement comme avant.
 LIGNES_STRUCTURE = []
@@ -344,17 +260,17 @@ PROD_KWH_AVEC = 0
 
 MONTHS  = ["Jan","F\u00e9v","Mar","Avr","Mai","Jun",
            "Jul","Ao\u00fb","Sep","Oct","Nov","D\u00e9c"]
-ECO_S_M    = QUOTE_INPUT["eco_s_monthly"]
-ECO_A_M    = QUOTE_INPUT["eco_a_monthly"]
+ECO_S_M    = [0] * 12
+ECO_A_M    = [0] * 12
 # M1 (audit 19/08/2026) — factures mensuelles RÉELLES, ou RIEN. L'ancien défaut
 # reconstruisait une facture depuis les économies (÷ 0,65) : une mine, parce
 # qu'il reprenait la main dès que le builder cessait d'en fournir une. Liste
 # vide ⇒ `make_chart_monthly` n'imprime aucune barre et aucune légende ONEE.
-FACTURES_M = list(QUOTE_INPUT.get("factures_mensuelles") or [])
+FACTURES_M = []
 
 YEARS   = list(range(26))
 CUMUL_S = [-TOTAL_SANS + ECO_S_ANN * y for y in YEARS]
-CUMUL_A = [-TOTAL_AVEC + QUOTE_INPUT["eco_a_cumul"] * y for y in YEARS]
+CUMUL_A = [-TOTAL_AVEC + ECO_A_ANN * y for y in YEARS]
 # QJR125 — la série tracée est-elle le cashflow RÉEL du devis (dégradation,
 # rendement batterie, provision onduleur) ou le repli « économie plate » ? Le
 # repli est faux de +14,5 % / +36,6 % sur le gain final (M5) : on ne le TRACE
@@ -402,6 +318,9 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
+# QJR623 — cases « Modalités de paiement » calculées par le builder (par
+# branche « sans » / « avec », au centime) ; le moteur ne fait qu'imprimer.
+MONTANTS_TRANCHES = {}
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
 # M4 — branche ('sans' | 'avec' | None) dont proviennent les lignes du format
@@ -747,9 +666,6 @@ def _hypotheses_html():
         f'<ul style="list-style:none;padding:0;margin:0;">{lis}</ul></div>')
 
 
-# QK3 — bloc financement (indicatif, QJ12), posé depuis data["financing"].
-# Vide → aucun bloc rendu (byte-identique).
-
 # QJ30 — multi-propriétés (rendu). NB_PROPRIETES = ×N villas identiques (défaut
 # 1 → aucun rendu). MULTI_VILLA = sections par-villa (sous-totaux + total
 # général). Vides → mise en page à plat d'aujourd'hui (byte-identique).
@@ -960,39 +876,10 @@ def fmt(v):
     except Exception:
         return str(v)
 
-def _repartir_paiement(pay_total, pay_a, pay_s, custom_acompte=None):
-    """ERR120 — Acompte / Matériel / Solde d'un Devis Final, qui SOMMENT au
-    Total TTC AFFICHÉ.
-
-    Le total affiché passe par ``fmt`` (``int(round(...))``, arrondi bancaire
-    Python compris) : le reliquat part donc de ``total_mad = int(round(
-    pay_total))``, jamais d'une troncature ``int(pay_total)`` qui perdait 1 MAD
-    dès que les centimes valaient ≥ 0,50. Le reliquat va à « Matériel » (chemin
-    à trois cases) ou au « Solde » (chemin à deux cases, ``solde2``).
-
-    ``custom_acompte`` (``None`` = acompte au pourcentage ``pay_a``) est borné
-    dans ``[0, total - solde]`` (ERR76). Les trois pourcentages somment à 100
-    (QJR145 c). Fonction PURE : aucun statut, aucune écriture (règle #4).
-    """
-    total_mad = int(round(float(pay_total)))
-    if custom_acompte is not None:
-        acompte = int(custom_acompte)
-    else:
-        acompte = round(pay_total * pay_a / 100 / 1000) * 1000
-    solde = round(pay_total * pay_s / 100 / 1000) * 1000
-    acompte = max(0, min(acompte, total_mad - solde))
-    materiel = total_mad - acompte - solde
-    pct_a = round(acompte / pay_total * 100) if pay_total else 0
-    pct_s = round(solde / pay_total * 100) if pay_total else 0
-    pct_m = (100 - pct_a - pct_s) if pay_total else 0
-    solde2 = total_mad - acompte
-    pct_s2 = round(solde2 / pay_total * 100) if pay_total else 0
-    return {
-        'total_mad': total_mad, 'acompte': int(acompte),
-        'materiel': int(materiel), 'solde': int(solde),
-        'pct_a': pct_a, 'pct_m': pct_m, 'pct_s': pct_s,
-        'solde2': int(solde2), 'pct_s2': pct_s2,
-    }
+# QJR623 — ``_repartir_paiement`` (cases arrondies au millier, reliquat sur un
+# total arrondi au dirham — ERR120) est SUPPRIMÉE : les montants des cases
+# « Modalités de paiement » sont calculés au centime par le builder
+# (``builder.repartition_paiement``) et servis dans ``montants_tranches``.
 
 
 def fnum(v):
@@ -1117,16 +1004,6 @@ def logo_html(h="36px"):
     return (f'<span style="font-size:15pt;font-weight:900;letter-spacing:1px;color:white;">'
             f'TAQIN<span style="color:{CA};">&#9728;</span>R</span>')
 
-def logo_badge_p1():
-    """Navy badge for page 1 white header."""
-    p = ASSET_DIR / "logo.png"
-    if p.exists():
-        return f'<img src="{b64(p)}" alt="TAQINOR" style="height:44px;object-fit:contain;">'
-    return f'''<div style="background:{CN};border-radius:8px;padding:7px 14px;display:inline-flex;flex-direction:column;align-items:flex-start;">
-      <div style="font-size:14pt;font-weight:900;color:white;letter-spacing:1px;line-height:1.1;">TAQIN<span style="color:{CA};">&#9728;</span>R</div>
-      <div style="font-size:5pt;letter-spacing:2.5px;color:{CA};font-weight:700;text-transform:uppercase;margin-top:1px;">TAQA&#183;INNOVATION&#183;NOR</div>
-    </div>'''
-
 def _logo_dark_b64():
     """Return base64 PNG of logo.png with white bg removed and dark pixels → white."""
     from PIL import Image
@@ -1173,6 +1050,20 @@ def _filigrane_suffixe():
     if not WATERMARK_STANDARD:
         return ""
     return f" &nbsp;|&nbsp; {WATERMARK_STANDARD}"
+
+
+def _marques_correction_html(style):
+    """QJR628 — « Document mis à jour le … » / « Remplace le devis … » sous la
+    date d'en-tête ; '' quand le devis n'a été ni corrigé après envoi ni
+    révisé (octet-identique)."""
+    out = ""
+    if MIS_A_JOUR_LE:
+        out += (f'<div style="{style}">Document mis &#224; jour le '
+                f'{MIS_A_JOUR_LE}</div>')
+    if REMPLACE_REF:
+        out += f'<div style="{style}">Remplace le devis {REMPLACE_REF}</div>'
+    return out
+
 
 def footer_p1():
     """Page 1 footer — white background."""
@@ -1376,27 +1267,9 @@ def make_chart_monthly():
     return b64(buf)
 
 # ── Equipment rows ────────────────────────────────────────────────────────────
-def _fmt2(v):
-    """Montant au CENTIME \u00e0 la fran\u00e7aise : 1\u202f166,67.
-
-    QJR122 \u2014 l'arrondi est align\u00e9 sur la cha\u00eene canonique
-    (``selectors._canonical_totaux`` quantifie en ``ROUND_HALF_UP`` au
-    centime) : le formatage flottant de Python arrondit en mode BANQUIER,
-    de sorte que le M\u00caME devis pouvait afficher deux nombres diff\u00e9rents
-    entre le PDF et l'\u00e9ch\u00e9ancier / ``option_totaux``. On repasse par
-    ``Decimal(str(v))`` \u2014 la repr\u00e9sentation d\u00e9cimale courte, celle que la
-    cha\u00eene canonique aurait produite \u2014 avant de quantifier.
-    """
-    try:
-        d = Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ValueError, TypeError):
-        return str(v)
-    return f"{d:,.2f}".replace(",", "\u202f").replace(".", ",")
-
-
-def _fmt2_mad(v):
-    """``_fmt2`` suffix\u00e9 \u00ab MAD \u00bb \u2014 le format des lignes de total."""
-    return _fmt2(v) + "\u00a0MAD"
+# QJR613 — formateur au centime partagé (``quote_engine/montants.py``).
+_fmt2 = fmt_centimes
+_fmt2_mad = fmt_centimes_mad
 
 
 def _item_pu_ht(it):
@@ -1683,9 +1556,33 @@ def _monitoring_vendu():
     return False
 
 
+def _struct_row_legacy(s, colspan):
+    """QJR619 — ligne de STRUCTURE (section = intertitre pleine largeur, note =
+    ligne en italique), sans prix — même rendu que le une-page (XSAL14)."""
+    txt = s.get("texte", "") or ""
+    if s.get("type") == "note":
+        return (f'<tr><td colspan="{colspan}" style="font-style:italic;'
+                f'color:{CG4};padding:3px 6px;">{txt}</td></tr>')
+    return (f'<tr><td colspan="{colspan}" style="background:{CG1};'
+            f'font-weight:800;color:{CN};text-transform:uppercase;'
+            f'letter-spacing:.5px;padding:3px 6px;border-top:1px solid {CA};">'
+            f'{txt}</td></tr>')
+
+
 def equip_rows(items, totaux, hi_bat=False, ancres=None):
     rows = ""
-    for i, it in enumerate(items):
+    # QJR619 — sections / notes intercalées à leur ``ordre`` (QJR617) ; sans
+    # structure, la boucle d'hier à l'identique.
+    if LIGNES_STRUCTURE:
+        _seq = sequence_affichage(items, LIGNES_STRUCTURE)
+    else:
+        _seq = [("item", it) for it in items]
+    i = -1
+    for _kind, it in _seq:
+        if _kind == "struct":
+            rows += _struct_row_legacy(it, 7)
+            continue
+        i += 1
         des = it["designation"]; qty = it["quantite"]
         pu_ht = _item_pu_ht(it)
         mar = (it.get("marque") or "").strip()
@@ -2120,6 +2017,7 @@ def page1():
         <div style="font-size:7pt;color:{CG4};margin-bottom:1px;">R&#233;f&#233;rence devis</div>
         <div class="serif" style="font-size:17.5pt;font-weight:400;color:{CA};line-height:0.90;letter-spacing:-1px;">N&#176;&nbsp;{REF}</div>
         <div style="font-size:8.5pt;color:rgba(255,255,255,0.82);margin-top:5px;">{DATE_STR}</div>
+        {_marques_correction_html("font-size:7pt;color:rgba(255,255,255,0.82);margin-top:2px;")}
         <div style="margin-top:5px;display:inline-block;background:{CA};color:{CN};border-radius:5px;padding:3px 10px;font-size:6.5pt;font-weight:700;">{_doc_text("validite_badge_p1")}</div>
       </div>
 
@@ -2247,6 +2145,11 @@ def page2(sans_items, img_roi, img_mon):
         max_rows = len(sans_items)
     else:
         max_rows = max(len(sans_items), len(AVEC_ITEMS))
+    # QJR619 — les lignes de structure et le bloc d'options occupent aussi
+    # des rangées : elles entrent dans la mise à l'échelle (0 sans elles).
+    max_rows += len(LIGNES_STRUCTURE or [])
+    if OPTIONS_PROPOSEES:
+        max_rows += 1 + len(OPTIONS_PROPOSEES)
     scale = 1.0 if max_rows <= 11 else max(0.62, 11.0 / max_rows)
     if scale < 1.0:
         tbl_font = f"{6.5 * scale:.2f}pt"
@@ -2305,6 +2208,26 @@ def page2(sans_items, img_roi, img_mon):
     _nr = _note_remise_par_ligne()
     _note_remise_p2 = f" &#183; {_nr}" if _nr else ""
 
+    # QJR619 — « Options proposées (non incluses dans le total) » : le SEUL
+    # ``total_ttc`` du builder (supplément canonique, QJR616). Sans option ⇒
+    # '' collé au bloc suivant (octet-identique).
+    _options_p2 = ""
+    if OPTIONS_PROPOSEES:
+        _orows = ""
+        for _o in OPTIONS_PROPOSEES:
+            _oq = float(_o.get("quantite", 0) or 0)
+            _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
+            _orows += (
+                f'<tr><td class="tl">{_o.get("designation", "")}</td>'
+                f'<td class="tc">{_oq_s}</td>'
+                f'<td class="tr">{_fmt2(float(_o.get("total_ttc", 0) or 0))}'
+                f'&#160;MAD TTC</td></tr>')
+        _options_p2 = (
+            f'<div style="margin-top:5px;font-size:6.5pt;font-weight:800;'
+            f'color:{CA};text-transform:uppercase;letter-spacing:.6px;">'
+            f'Options propos&#233;es (non incluses dans le total)</div>'
+            f'<table class="eq" style="border:1px dashed {CA};">{_orows}</table>')
+
     return f"""
 <div class="page">
   {tbl_css}
@@ -2342,7 +2265,7 @@ def page2(sans_items, img_roi, img_mon):
         </table>
       </div>
 
-    </div>
+    </div>{_options_p2}
     <div style="margin-top:4px;font-size:6pt;color:{CG4};font-style:italic;">
       * {TVA_NOTE}{_note_remise_p2}
     </div>
@@ -2514,39 +2437,36 @@ def page3():
     # ── Payment section (Devis Final only) ──
     _payment_html = ""
     if DEVIS_FINAL:
-        # Pick the relevant total based on scenario / recommendation
+        # Pick the relevant branch based on scenario / recommendation
         if SCENARIO == "Sans batterie":
-            _pay_total = TOTAL_SANS
+            _branche = "sans"
         elif SCENARIO == "Avec batterie":
-            _pay_total = TOTAL_AVEC
+            _branche = "avec"
         elif RECOMMENDED == "Sans batterie":
-            _pay_total = TOTAL_SANS
+            _branche = "sans"
         else:
-            _pay_total = TOTAL_AVEC
-        # ERR-QAC-MULTIVILLA-TOTAL-XN — ×N villas identiques : l'échéancier
-        # facturé part du total ×N (décision fondateur 30/09/2026) ; les cases
-        # de paiement imprimées le suivent, au centime comme ``_scale_tot``.
-        if NB_PROPRIETES and NB_PROPRIETES > 1:
-            _pay_total = round(_pay_total * NB_PROPRIETES, 2)
+            _branche = "avec"
 
-        # ERR120 — la répartition vit dans une aide PURE (testée seule) : le
-        # reliquat part de ``int(round(total))``, la MÊME règle que ``fmt`` qui
-        # affiche le Total TTC — sinon 51 232,80 s'affichait 51 233 et les
-        # cases sommaient 51 232. Rendu seul : aucun statut touché (règle #4).
-        _rep = _repartir_paiement(
-            _pay_total, PAY_A, PAY_S,
-            CUSTOM_ACOMPTE if PAYMENT_MODE == "custom" else None)
-        _acompte, _materiel, _solde = (
-            _rep['acompte'], _rep['materiel'], _rep['solde'])
-        _pct_a, _pct_m, _pct_s = _rep['pct_a'], _rep['pct_m'], _rep['pct_s']
+        # QJR623 / ERR120 — le moteur ne fait plus qu'IMPRIMER : les montants
+        # (au centime, ×N villas compris, reliquat sur la dernière tranche,
+        # acompte personnalisé borné) sont calculés par le builder
+        # (``builder.repartition_paiement``). Plus d'arrondi au millier ni de
+        # reliquat tronqué ici. Rendu seul : aucun statut touché (règle #4).
+        _rep = (MONTANTS_TRANCHES or {}).get(_branche) or {}
+        _acompte = _rep.get('acompte', 0)
+        _materiel = _rep.get('materiel', 0)
+        _solde = _rep.get('solde', 0)
+        _pct_a, _pct_m, _pct_s = (
+            _rep.get('pct_a', PAY_A), _rep.get('pct_m', PAY_M),
+            _rep.get('pct_s', PAY_S))
 
         def _pay_box(pct, montant, label):
-            # QJR145 (b) — ``fmt`` suffixe DÉJÀ « MAD » : les trois cases
-            # imprimaient « 16 000 MAD MAD » (atteignable via ?devis_final).
+            # QJR145 (b) — le formateur suffixe DÉJÀ « MAD ».
+            # QJR623 — montant au CENTIME (les cases somment au Total TTC).
             return (
                 f'<div style="flex:1;text-align:center;padding:6px 5px;background:white;border-radius:8px;border:1px solid {CG2};">'
                 f'<div class="serif" style="font-size:22px;font-weight:800;color:{CA};line-height:1.0;">{pct}%</div>'
-                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{fmt(montant)}</div>'
+                f'<div style="font-size:12px;color:{CN};font-weight:700;margin-top:2px;">{_fmt2_mad(montant)}</div>'
                 f'<div style="font-size:9px;color:{CG4};margin-top:2px;">{label}</div>'
                 f'</div>')
 
@@ -2558,7 +2478,10 @@ def page3():
         _ac_l = 'Acompte · À la signature'
         _mt_l = 'Matériel · Avant installation'
         _sd_l = 'Solde · Après installation'
-        if _materiel > 0:
+        if not _rep:
+            # Charge utile sans montants du builder : aucune case inventée.
+            _boxes = ""
+        elif _materiel > 0:
             _boxes = (_pay_box(_pct_a, _acompte, _ac_l)
                       + _pay_box(_pct_m, _materiel, _mt_l)
                       + _pay_box(_pct_s, _solde, _sd_l))
@@ -3054,7 +2977,7 @@ def _decrit(config_optimum, config_vendue):
 
     POURQUOI UN JUMEAU, ET PAS UN IMPORT. Ce module est le moteur VENDORÉ : il
     n'importe RIEN de ``apps`` (voir ses imports — ``base64``, ``matplotlib``,
-    et c'est tout) et il s'exécute aussi comme ``__main__``. Lui faire importer
+    et c'est tout) et il reste importable hors paquet. Lui faire importer
     ``apps.ventes.dimensionnement`` — qui cite ``apps.ventes.services`` — le
     rendrait indémarrable hors Django. Le jumeau est donc assumé, et il est
     ÉPINGLÉ : ``apps/ventes/tests/test_qjr_optimum_publie.py`` fait passer la
@@ -3755,7 +3678,10 @@ def _onepage_header_html():
         f'<div style="color:white;font-size:11pt;font-weight:700;">DEVIS&nbsp;'
         f'<span style="color:{CA};">N&#176;&#160;{REF}</span></div>'
         f'<div style="color:rgba(255,255,255,0.6);font-size:8pt;'
-        f'margin-top:2px;">{DATE_STR}</div></div>')
+        f'margin-top:2px;">{DATE_STR}</div>'
+        + _marques_correction_html(
+            'color:rgba(255,255,255,0.6);font-size:6.5pt;margin-top:1px;')
+        + '</div>')
     if not qr:
         return (
             f'<div style="background:{CN};padding:14px 24px;display:table;'
@@ -3934,10 +3860,8 @@ def page_onepage(items, tronquees=0):
     # XSAL14 — intercale les lignes de section/note (rendu seul, hors totaux)
     # dans la liste, ordonnées par ``ordre`` (stable) puis par l'ordre d'origine.
     # Absentes → séquence STRICTEMENT identique à avant (byte-identique).
-    _seq = [("item", it, it.get("ordre", 0) or 0) for it in visible]
-    for _s in (LIGNES_STRUCTURE or []):
-        _seq.append(("struct", _s, _s.get("ordre", 0) or 0))
-    _seq.sort(key=lambda t: t[2])  # tri STABLE : conserve l'ordre d'origine
+    # QJR617 — UNE fonction pure partagée (``quote_engine/sequence.py``).
+    _seq = sequence_affichage(visible, LIGNES_STRUCTURE)
     n_items = len(visible) + len(LIGNES_STRUCTURE or [])
     if n_items <= 8:
         max_desc, desc_pt, pad_px, show_gar = 4, 6.5, 6, True
@@ -3948,7 +3872,7 @@ def page_onepage(items, tronquees=0):
 
     rows_html = ""
     row_idx = 0
-    for _kind, _obj, _ in _seq:
+    for _kind, _obj in _seq:
         if _kind == "struct":
             # XSAL14 — ligne de SECTION (intertitre) ou de NOTE (texte), sur
             # toute la largeur, sans prix (jamais comptée dans les totaux).
@@ -4067,7 +3991,6 @@ def page_onepage(items, tronquees=0):
         _opt_rows = ""
         for _o in OPTIONS_PROPOSEES:
             _oq = float(_o.get("quantite", 0) or 0)
-            _ottc = float(_o.get("prix_unit_ttc", 0) or 0) * _oq
             _oq_s = str(int(_oq)) if _oq == int(_oq) else fnum(_oq)
             _obadge = badge(_o.get("marque", "")) if _o.get("marque") else ""
             _opt_rows += (
@@ -4076,7 +3999,9 @@ def page_onepage(items, tronquees=0):
                 f'{_o.get("designation", "")} {_obadge}</td>'
                 f'<td style="padding:4px 10px;text-align:center;color:{CG7};">{_oq_s}</td>'
                 f'<td style="padding:4px 10px;text-align:right;color:{CN};font-weight:600;">'
-                f'{fmt(round(_ottc))}</td>'
+                # QJR616 — le supplément canonique du builder (remise globale
+                # comprise), plus un P.U. × qté recalculé ici.
+                f'{fmt(round(float(_o.get("total_ttc", 0) or 0)))}</td>'
                 f'</tr>')
         options_html = (
             f'<div style="padding:8px 24px 0;">'
@@ -4334,47 +4259,6 @@ def _boites_texte_onepage(page):
     return out
 
 
-# ── Generate PDF ──────────────────────────────────────────────────────────────
-def generate():
-    ref = QUOTE_INPUT["ref"]
-    print(f"[1/3] Building HTML for devis {ref}...")
-    sys.stdout.buffer.write(
-        f"  blocks={_Q['blocks']} | TOTAL_SANS={fmt(TOTAL_SANS)} | TOTAL_AVEC={fmt(TOTAL_AVEC)}\n"
-        .encode("utf-8", errors="replace"))
-    sys.stdout.buffer.flush()
-    html = build_html()
-
-    out_dir = BASE_DIR / "devis_client"
-    out_dir.mkdir(exist_ok=True)
-    import re as _re
-    _safe_c = _re.sub(r"[^A-Za-z0-9]", "_", QUOTE_INPUT.get("client_name", "Client"))
-    _kwc_str = f"{QUOTE_INPUT['puissance_kwc']:g}kWc"
-    if SCENARIO == "Les deux (Sans + Avec)":
-        _scen_str = "Hybride+Injection"
-    elif SCENARIO == "Avec batterie":
-        _scen_str = "Hybride"
-    else:
-        _scen_str = "Injection"
-    out = out_dir / f"TAQINOR_Devis_{ref}_{_safe_c}_{_kwc_str}_{_scen_str}.pdf"
-
-    print("[2/3] Writing temp HTML...")
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False,
-                                     mode="w", encoding="utf-8") as tf:
-        tf.write(html)
-        tmp = tf.name
-
-    print("[3/3] Rendering with WeasyPrint...")
-    _render_pdf_weasyprint(html, str(out))
-    Path(tmp).unlink(missing_ok=True)
-
-    kb = out.stat().st_size // 1024
-    # QJR163 (c) \u2014 le VRAI nombre de pages, pas un \u00ab 3 \u00bb cod\u00e9 : ``PAGES_TOTAL``
-    # est d\u00e9j\u00e0 calcul\u00e9 par ``apply_quote_data`` (3 + \u00e9tude + annexe).
-    msg = (f"\n\u2705 Saved: {out.name} | Pages: {PAGES_TOTAL} | {kb} KB\n")
-    sys.stdout.buffer.write(msg.encode("utf-8", errors="replace"))
-    sys.stdout.buffer.flush()
-    return str(out)
-
 # ── Public API for web app ────────────────────────────────────────────────────
 def generate_premium_pdf(data: dict, out_path) -> str:
     """Generate premium PDF from a dynamic data dict; returns str(out_path).
@@ -4412,6 +4296,7 @@ def apply_quote_data(data: dict) -> None:
     les données de deux devis dans un même document.
     """
     global CLIENT_NAME, CLIENT_ADDR, CLIENT_PHONE, CLIENT_ICE, REF, DATE_STR
+    global MIS_A_JOUR_LE, REMPLACE_REF
     global KWC, NB_PAN, WP, PROD_KWH, TOTAL_SANS, TOTAL_AVEC
     global DISCOUNT_PCT, TOTAL_SANS_BEFORE, TOTAL_AVEC_BEFORE
     global ECO_S_ANN, ECO_A_ANN, ROI_S, ROI_A, INST_TYPE
@@ -4474,6 +4359,8 @@ def apply_quote_data(data: dict) -> None:
     CLIENT_ICE   = _esc(data.get("client_ice", ""))
     REF          = str(data["ref"])
     DATE_STR     = data["date"]
+    MIS_A_JOUR_LE = _esc(data.get("mis_a_jour_le") or "")
+    REMPLACE_REF  = _esc(data.get("remplace_reference") or "")
     # M2/M3 — puissance, compte de panneaux et watt unitaire peuvent être
     # INCONNUS (None) : ils ne sont plus jamais déduits du prix. 0 = « rien à
     # imprimer », et chaque vignette qui en dépend est omise.
@@ -4586,9 +4473,21 @@ def apply_quote_data(data: dict) -> None:
                 "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
                 "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
     _terms = data.get("payment_terms") or {}
-    PAY_A = int(_terms.get("acompte", 30))
-    PAY_M = int(_terms.get("materiel", 60))
-    PAY_S = int(_terms.get("solde", 10))
+
+    def _pct(v, defaut):
+        # QJR623 — l'échéancier RÉEL du devis peut porter 33,5 % : on n'en
+        # tronque plus la décimale (``int``) ; un entier reste un entier.
+        try:
+            f = float(v if v is not None else defaut)
+        except (TypeError, ValueError):
+            f = float(defaut)
+        return int(f) if f == int(f) else round(f, 2)
+
+    PAY_A = _pct(_terms.get("acompte"), 30)
+    PAY_M = _pct(_terms.get("materiel"), 60)
+    PAY_S = _pct(_terms.get("solde"), 10)
+    global MONTANTS_TRANCHES
+    MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
     LIBELLE_AVEC = str(data.get("libelle_avec") or "Avec batterie")
     LINKS = dict(data.get("links") or {})
@@ -4816,9 +4715,3 @@ def _render_premium_pdf(data: dict, out_path) -> str:
 
     return str(out_path)
 
-
-if __name__ == "__main__":
-    try:
-        generate()
-    except Exception:
-        import traceback; traceback.print_exc(); sys.exit(1)

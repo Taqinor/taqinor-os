@@ -16,6 +16,9 @@ const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 // LW37 — le collage intelligent lead a migré de LeadForm.jsx vers SectionContact
 // du cockpit ; les autres surfaces sont inchangées.
 const SECTION_CONTACT = read('../features/crm/workspace/sections/SectionContact.jsx')
+// QJR638 — le collage de carte de visite a UNE seule définition, le hook
+// partagé `useCardPaste` (qui seul importe `parsePasteCard`).
+const USE_CARD_PASTE = read('../features/crm/workspace/useCardPaste.js')
 const LEAD_EXPRESS = read('../pages/crm/leads/LeadExpressModal.jsx')
 const CLIENT_FORM = read('../pages/crm/ClientForm.jsx')
 const CLIENT_QUICK = read('../pages/ventes/ClientQuickCreateModal.jsx')
@@ -37,7 +40,12 @@ const PANNEAUX_RESEAU = [
 const CARTE_FACTURES = read('../pages/ventes/generator/CarteFacturesElectriques.jsx')
 
 test('VX237 : SectionContact — Nom (carte), Téléphone, WhatsApp posent onPaste', () => {
-  assert.match(SECTION_CONTACT, /import \{ usePasteClean, parsePastedPhone, parsePasteCard \} from '\.\.\/\.\.\/\.\.\/\.\.\/hooks\/usePasteClean'/)
+  assert.match(SECTION_CONTACT, /import \{ usePasteClean, parsePastedPhone \} from '\.\.\/\.\.\/\.\.\/\.\.\/hooks\/usePasteClean'/)
+  // Le Nom (carte) passe par le hook partagé, qui lit la carte via parsePasteCard.
+  assert.match(SECTION_CONTACT, /import useCardPaste from '\.\.\/useCardPaste'/)
+  assert.match(SECTION_CONTACT, /\{ cardPaste, onNomPaste, applyCardPaste[^}]*\} = useCardPaste\(/)
+  assert.match(USE_CARD_PASTE, /import \{ parsePasteCard \} from '\.\.\/\.\.\/\.\.\/hooks\/usePasteClean'/)
+  assert.match(USE_CARD_PASTE, /const onNomPaste = \(e\) => \{\s*const card = parsePasteCard\(/)
   assert.match(SECTION_CONTACT, /onPaste=\{onNomPaste\}/)
   assert.match(SECTION_CONTACT, /onPaste=\{onTelephonePaste\}/)
   assert.match(SECTION_CONTACT, /onPaste=\{onWhatsappPaste\}/)

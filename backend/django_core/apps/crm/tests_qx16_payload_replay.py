@@ -66,7 +66,7 @@ class ReplayWebsiteLeadPayloadTests(TestCase):
         raw.refresh_from_db()
         self.assertTrue(raw.processed)
         self.assertEqual(raw.lead, lead)
-        self.assertEqual(Lead.objects.get(pk=lead.pk).telephone, '+212600555555')
+        self.assertEqual(Lead.objects.get(pk=lead.pk).telephone, '212600555555')
 
     def test_replay_still_failing_leaves_payload_replayable(self):
         # Force un échec DÉTERMINISTE (patch) plutôt que de dépendre d'un
@@ -106,7 +106,7 @@ class ReplayWebsiteLeadPayloadTests(TestCase):
         # doublon (un rejeu n'est pas une nouvelle soumission du visiteur).
         self.assertEqual(lead1.pk, lead2.pk)
         self.assertEqual(
-            Lead.objects.filter(telephone='+212600666666').count(), 1)
+            Lead.objects.filter(telephone='212600666666').count(), 1)
 
 
 class WebsiteLeadPayloadViewSetTests(TestCase):

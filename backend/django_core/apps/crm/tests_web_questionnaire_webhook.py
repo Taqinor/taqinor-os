@@ -84,10 +84,11 @@ class WebQuestionnaireWebhookTests(TestCase):
         # Réemploi des colonnes énergie existantes.
         self.assertEqual(str(lead.bill_kwh), '12000.00')
         self.assertEqual(str(lead.facture_hiver), '15000.00')
+        # QJR595 — la puissance souscrite est promue vers sa colonne.
+        self.assertEqual(str(lead.compteur_puissance_kva), '250.00')
         # Le reste (sans colonne) atterrit dans web_questionnaire.
         self.assertEqual(lead.web_questionnaire, {
             'tension_raccordement': 'mt',
-            'puissance_kva': 250.0,
             'activity_profile': 'day',
             'surface_type': 'bac_acier',
             'surface_m2': 800.0,
@@ -308,9 +309,12 @@ class TrousDeMappingCombles(TestCase):
             'has_generator': True,
             'groupe_kva': 400.0,
             'diesel_dh_mois': 18000.0,
-            'surface_toiture_m2': 2600.0,
             'surface_m2': 3100.0,
         })
+        # QJR595 — la surface de toiture du client pro est promue vers la
+        # colonne du lead (elle ne quitte la bag que promue) ; surface_m2
+        # (peut être au sol) reste dans la bag.
+        self.assertEqual(float(lead.surface_toiture_m2), 2600.0)
         # CAD149 — `heures_pompage` a désormais sa colonne dédiée.
         self.assertEqual(str(lead.pompage_heures_jour), '7.0')
 
@@ -506,3 +510,36 @@ class LWebt2TunnelEquipementsDetailWebhookTests(TestCase):
         lead = Lead.objects.get(pk=second.json()['lead_id'])
         self.assertEqual(str(lead.equip_clim_kw), '3.50')
         self.assertEqual(lead.equip_clim_creneau, 'matin')
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class Qjr595PromotionProCoupleTests(TestCase):
+    """QJR595 — kVA et surface de toiture du client pro → colonnes du lead."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='QJ595 Co', slug='qj595-co')
+        self.url = reverse('website-lead-webhook')
+
+    def post(self, data):
+        return self.client.post(
+            self.url, data=json.dumps(data),
+            content_type='application/json',
+            HTTP_X_WEBHOOK_SECRET=SECRET)
+
+    def test_puissance_kva_promue_et_absente_des_questions_a_poser(self):
+        res = self.post(payload_site(
+            mode='professionnel', puissanceKva=250, surfaceToitureM2=900))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(str(lead.compteur_puissance_kva), '250.00')
+        self.assertEqual(str(lead.surface_toiture_m2), '900.00')
+        self.assertNotIn('puissance_kva', lead.web_questionnaire or {})
+        self.assertNotIn('surface_toiture_m2', lead.web_questionnaire or {})
+
+    def test_puissance_hors_borne_reste_dans_la_bag(self):
+        res = self.post(payload_site(
+            mode='professionnel', puissanceKva=100000))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.compteur_puissance_kva)
+        self.assertEqual(lead.web_questionnaire['puissance_kva'], 100000.0)

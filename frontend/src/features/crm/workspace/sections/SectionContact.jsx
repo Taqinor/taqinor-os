@@ -5,8 +5,9 @@ import crmApi from '../../../../api/crmApi'
 import VilleCheckDialog from './VilleCheckDialog'
 import { getField, isSuggested } from '../draftCore'
 import { useDuplicateCheck } from '../../../../hooks/useDuplicateCheck'
-import { usePasteClean, parsePastedPhone, parsePasteCard } from '../../../../hooks/usePasteClean'
+import { usePasteClean, parsePastedPhone } from '../../../../hooks/usePasteClean'
 import PhoneHint from '../../../../components/PhoneHint'
+import useCardPaste from '../useCardPaste'
 
 // LW11 — Contact & site : port 1:1 des champs (recon 01 §2). Présentation pure ;
 // tout l'état de données vit dans le moteur (`state`/`setField`). La détection
@@ -28,22 +29,15 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
   // détectés, JAMAIS répartis en silence — un bandeau propose « Répartir ».
   // Remise à zéro au changement de lead via le motif « ajuster l'état au rendu »
   // (React officiel) plutôt qu'un effet — jamais de fuite inter-leads.
-  const [cardPaste, setCardPaste] = useState(null)
+  const { cardPaste, onNomPaste, applyCardPaste, annuler: annulerCardPaste } = useCardPaste(
+    ({ nom, telephone }) => {
+      setField('nom', nom)
+      setField('telephone', telephone)
+    })
   const [prevLeadId, setPrevLeadId] = useState(state.leadId)
   if (state.leadId !== prevLeadId) {
     setPrevLeadId(state.leadId)
-    setCardPaste(null)
-  }
-  const onNomPaste = (e) => {
-    const text = e.clipboardData?.getData('text')
-    const card = parsePasteCard(text)
-    if (card) setCardPaste(card)
-  }
-  const applyCardPaste = () => {
-    if (!cardPaste) return
-    setField('nom', cardPaste.nom)
-    setField('telephone', cardPaste.telephone)
-    setCardPaste(null)
+    annulerCardPaste()
   }
   // VX237 — collage téléphone/WhatsApp nettoyé (espaces/points/tirets tolérés).
   const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => setField('telephone', clean))
@@ -141,7 +135,7 @@ export default function SectionContact({ state, setField, errors = {}, mode, ref
             >
               <span>Carte de visite détectée — {cardPaste.nom} · {cardPaste.telephone}</span>
               <Button type="button" variant="outline" size="sm" onClick={applyCardPaste}>Répartir</Button>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setCardPaste(null)}>Ignorer</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={annulerCardPaste}>Ignorer</Button>
             </div>
           )}
         </div>

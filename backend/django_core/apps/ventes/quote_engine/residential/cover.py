@@ -27,6 +27,8 @@ def build(ctx):
     d = ctx["d"]
     C = ctx["C"]
     fmt = ctx["fmt"]
+    # QJR614 — le prix TTC des cartes d'option s'imprime au centime.
+    fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
     logo_dark = ctx["logo_dark"]
     charts = ctx["charts"]
@@ -58,6 +60,10 @@ def build(ctx):
     # ── data ────────────────────────────────────────────────────────────────
     ref = d["ref"]
     date = d["date"]
+    # QJR628 — correction après envoi / révision : le builder décide.
+    marques_correction = "".join(
+        f'<div class="c1-date">{m}</div>'
+        for m in theme.marques_correction(d))
     client_full = theme.titlecase_name(d["client_full"])
     first_name = (client_full.split() or [client_full])[0]
     client_addr = d.get("client_addr", "")
@@ -632,8 +638,8 @@ def build(ctx):
             f'<div class="c1-opt-head"><div>'
             f'<div class="c1-opt-k">{kicker}</div>'
             f'<div class="c1-opt-name">{name}</div></div>{pill}</div>'
-            f'<div class="c1-opt-price">{fmt(price)}<span class="c1-u">&nbsp;MAD</span></div>'
-            f'{ancre("total_ttc", fmt(price), opt)}'
+            f'<div class="c1-opt-price">{fmt_mad(price)}<span class="c1-u">&nbsp;MAD</span></div>'
+            f'{ancre("total_ttc", fmt_mad(price), opt)}'
             f'<div class="c1-opt-kwc">soit {pkwc} MAD/kWc · TTC</div>'
             f'{ancre("prix_kwc", pkwc, opt) if pkwc != "—" else ""}'
             f'{roi_html}'
@@ -801,6 +807,7 @@ def build(ctx):
         <div class="c1-ref-l">Réf. devis</div>
         <div class="c1-ref-v">{ref}</div>
         <div class="c1-date">{date}</div>
+        {marques_correction}
         {'<div class="c1-pill-gold">' + validity_pill + '</div>' if validity_pill else ''}
       </div>
     </div>

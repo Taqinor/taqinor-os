@@ -1163,6 +1163,15 @@ def creer_contrat_depuis_devis_accepte(*, devis, user=None):
     if ContratMaintenance.objects.filter(
             company=devis.company, notes__contains=marqueur).exists():
         return None
+    # QJR559 — V2 d'un devis signé : un contrat qui porte le marqueur d'une
+    # version REMPLACÉE (révision, lue par ``ventes.selectors``) couvre déjà
+    # cette vente — jamais un second ContratMaintenance.
+    from apps.ventes.selectors import devis_predecesseurs_revision_ids
+    for pred_id in devis_predecesseurs_revision_ids(devis):
+        if ContratMaintenance.objects.filter(
+                company=devis.company,
+                notes__contains=f'[devis:{pred_id}]').exists():
+            return None
 
     lignes_recurrentes = [
         ligne for ligne in devis.lignes.select_related('produit').all()

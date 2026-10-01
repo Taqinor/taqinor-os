@@ -1,22 +1,16 @@
-"""F6 (revue Fable, pré-merge 18/08/2026) — le bloc ``financing`` (QJ12,
-``compute_financing_block``) reste un calcul INTERNE du builder ; il ne doit
-plus être RE-PUBLIÉ sur le lien public tokenisé (``proposal_data``).
+"""F6 (revue Fable, 18/08/2026) puis QJR630 — aucun bloc ``financing`` : ni
+calculé par le builder, ni servi sur le lien public tokenisé.
 
 Contexte : le fondateur a retiré le crédit de toute surface client à quatre
 reprises (PV80 — plus aucune mention de mensualité/banque sur la page
-``/proposition`` ; ``financingComparison``/``backendFinancing`` gardées dans
-``apps/web/src/lib/proposition.ts`` mais plus IMPORTÉES par la page). Rien ne
-le RENDAIT plus nulle part, mais il restait SERVI en clair — à la racine de la
-charge utile (``payload['financing']``) ET imbriqué sous ``payload['quote']``
-(``'quote': data`` republie tel quel le dict issu de ``build_quote_data``,
-qui porte lui aussi une clé ``financing``) — un JSON récupérable au bout du
-jeton contredisait donc la décision fondateur même sans qu'aucun écran ne
-l'affiche.
+``/proposition``). F6 avait arrêté la REPUBLICATION du bloc ; QJR630 supprime
+son PRODUCTEUR (``builder.compute_financing_block`` et sa table de taux
+bancaires « milieu de fourchette » codés en dur), qu'aucun rendu ne lisait.
 
-Ce test prouve que :
-  1. le builder CONTINUE de calculer ``financing`` en interne (data-level,
-     inchangé — cf. ``test_qj12_financing.py``) ;
-  2. la vue publique ne le republie plus, ni à la racine, ni sous ``quote``.
+Ce test reste comme GARDE :
+  1. le builder n'expose plus ``compute_financing_block`` et ne pose plus
+     ``data['financing']`` ;
+  2. la vue publique ne sert ``financing`` ni à la racine, ni sous ``quote``.
 """
 from decimal import Decimal
 
@@ -24,9 +18,9 @@ from django.test import TestCase
 
 
 class FinancingNotServedPubliclyTests(TestCase):
-    """Étage API — ``proposal_data`` ne porte plus AUCUNE clé ``financing``."""
+    """Le builder ne produit plus ``financing`` ; ``proposal_data`` non plus."""
 
-    def _make_devis_avec_financement(self, slug):
+    def _make_devis(self, slug):
         from django.contrib.auth import get_user_model
         from authentication.models import Company
         from apps.crm.models import Client
@@ -57,34 +51,25 @@ class FinancingNotServedPubliclyTests(TestCase):
         link = ShareLink.objects.create(company=company, devis=devis)
         return devis, link
 
-    def test_builder_calcule_toujours_financing_en_interne(self):
-        """Le calcul interne (QJ12) n'est PAS touché par ce correctif : un
-        devis normal continue de produire ``data['financing']`` — seule la
-        republication publique s'arrête (assertion suivante)."""
+    def test_le_producteur_a_disparu(self):
+        """QJR630 — plus de chaîne de financement à taux inventés."""
+        from apps.ventes.quote_engine import builder
         from apps.ventes.quote_engine.builder import build_quote_data
 
-        devis, _link = self._make_devis_avec_financement('f6-builder')
+        self.assertFalse(hasattr(builder, 'compute_financing_block'))
+        self.assertFalse(hasattr(builder, '_FINANCING_PROGRAMS'))
+        devis, _link = self._make_devis('f6-builder')
         data = build_quote_data(devis, {'pdf_mode': 'full'})
-        self.assertIn('financing', data)
-        self.assertIsNotNone(data['financing'])
-        self.assertTrue(data['financing'].get('indicatif'))
+        self.assertNotIn('financing', data)
+        # Le total reste calculé : l'absence n'est pas un devis vide.
+        self.assertGreater(data['display_total'], 0)
 
     def test_proposal_data_ne_sert_aucune_cle_financing(self):
-        """La charge utile publique ne porte plus ``financing`` — ni à la
-        racine, ni imbriquée sous ``quote`` (la copie que ``'quote': data``
-        aurait sinon republiée telle quelle)."""
+        """La charge utile publique ne porte pas ``financing`` — ni à la
+        racine, ni imbriquée sous ``quote``."""
         from rest_framework.test import APIClient
 
-        devis, link = self._make_devis_avec_financement('f6-endpoint')
-
-        # Preuve que la fixture porte bien un financement calculable — sinon
-        # l'absence de la clé ne prouverait rien (elle serait absente de
-        # toute façon, faute de total).
-        from apps.ventes.quote_engine.builder import build_quote_data
-        brut = build_quote_data(devis, {'pdf_mode': 'full'})
-        self.assertIn('financing', brut)
-        self.assertIsNotNone(brut['financing'])
-
+        _devis, link = self._make_devis('f6-endpoint')
         resp = APIClient().get(
             f'/api/django/public/proposal/{link.token}/data/')
         self.assertEqual(resp.status_code, 200)
@@ -92,3 +77,10 @@ class FinancingNotServedPubliclyTests(TestCase):
         self.assertNotIn('financing', payload)
         self.assertIn('quote', payload)
         self.assertNotIn('financing', payload['quote'])
+
+    def test_la_formule_d_annuite_vit_dans_economie(self):
+        """Son seul appelant restant (``tableau_pret``) la trouve à côté."""
+        from apps.ventes import economie
+        self.assertEqual(economie._monthly_loan_payment(12_000, 0.0, 12),
+                         1000.0)
+        self.assertEqual(economie._monthly_loan_payment(0, 0.06, 120), 0.0)

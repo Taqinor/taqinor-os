@@ -1081,12 +1081,14 @@ class TestQjr31TauxTvaParColonne(SimpleTestCase):
                 "taux_tva": float(taux)}
 
     def _ligne(self, taux_sans, taux_avec):
-        from apps.ventes.quote_engine.residential import options, theme
+        from apps.ventes.quote_engine import montants
+        from apps.ventes.quote_engine.residential import options
         paire = (self._item('Panneau Canadien Solar 710W', 16, 1272.73,
                             taux_sans),
                  self._item('Panneau Canadien Solar 710W', 20, 1272.73,
                             taux_avec))
-        return options._row_pair(paire, theme.fmt)
+        # QJR614 — le PDF injecte ``fmt_mad`` (au centime) dans les lignes.
+        return options._row_pair(paire, montants.fmt_centimes)
 
     @staticmethod
     def _cellule_tva(html):
@@ -1105,10 +1107,12 @@ class TestQjr31TauxTvaParColonne(SimpleTestCase):
 
     def test_les_totaux_de_la_ligne_ne_bougent_pas(self):
         """La chaîne P.U. → Total HT par colonne est intacte au centime."""
-        from apps.ventes.quote_engine.residential import theme
+        from apps.ventes.quote_engine import montants
         html = self._ligne(10, 20)
-        self.assertIn(theme.fmt(1272.73 * 16), html)
-        self.assertIn(theme.fmt(1272.73 * 20), html)
+        self.assertIn(montants.fmt_centimes(1272.73 * 16), html)
+        self.assertIn(montants.fmt_centimes(1272.73 * 20), html)
+        # QJR614 — au centime : 1 272,73 × 16 = 20 363,68 (jamais « 20 364 »).
+        self.assertIn('20\u202f363,68', html)
 
 
 class TestQjr30EchappementTextesClient(SimpleTestCase):

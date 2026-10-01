@@ -751,6 +751,27 @@ def _ville_corrigee(brut):
     return corriger_ville(texte)
 
 
+def _clean_email(value):
+    """QJR594 — e-mail d'entrée : invalide → None (jamais d'erreur)."""
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+    texte = str(value or '').strip()[:254]
+    if not texte:
+        return None
+    try:
+        validate_email(texte)
+    except ValidationError:
+        return None
+    return texte
+
+
+def _telephone_canonique(value):
+    """QJR594 — téléphone d'entrée au format canonique de l'équipe
+    ('212XXXXXXXXX') ; un numéro étranger reste intact."""
+    from .serializers import LeadSerializer
+    return LeadSerializer._canonical_phone(value) or value
+
+
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
     band = data.get('band')
@@ -766,8 +787,9 @@ def _map_payload_to_fields(data: dict) -> dict:
     utm = data.get('utm') or {}
     fields = {
         'nom': str(data.get('fullName') or '').strip()[:255] or 'Lead site web',
-        'telephone': str(data.get('phoneE164') or data.get('phone') or '').strip()[:50],
-        'email': str(data.get('email') or '').strip()[:254] or None,
+        'telephone': _telephone_canonique(
+            str(data.get('phoneE164') or data.get('phone') or '').strip()[:50]),
+        'email': _clean_email(data.get('email')),
         # VREF — auto-correction à l'entrée (même résolveur que le formulaire
         # et la sync Odoo) : graphie connue/raccourci unique/faute sûre →
         # nom canonique ; ambigu/inconnu → texte conservé tel quel.
@@ -1156,6 +1178,21 @@ def _map_payload_to_fields(data: dict) -> dict:
         pompe_alim = questionnaire.pop('pompe_actuelle', None)
         if pompe_alim is not None:
             fields['pompe_alim_actuelle'] = pompe_alim
+        # QJR595 — client pro : puissance souscrite et surface de toiture
+        # promues vers leurs colonnes (remplissage seulement, jamais
+        # d'écrasement). 99999.99 = max de compteur_puissance_kva
+        # (max_digits=7) ; au-delà la valeur reste dans la bag. Jamais
+        # surface_m2 (peut être au sol).
+        puissance_kva = questionnaire.get('puissance_kva')
+        if (puissance_kva is not None
+                and 'compteur_puissance_kva' not in fields
+                and 0 <= puissance_kva <= 99999.99):
+            fields['compteur_puissance_kva'] = questionnaire.pop('puissance_kva')
+        surface_toit = questionnaire.get('surface_toiture_m2')
+        if (surface_toit is not None
+                and fields.get('surface_toiture_m2') is None):
+            fields['surface_toiture_m2'] = questionnaire.pop(
+                'surface_toiture_m2')
         if questionnaire:
             fields['web_questionnaire'] = questionnaire
     estimate = _clean_estimate_shown(

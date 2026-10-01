@@ -165,6 +165,14 @@ test('création — défauts VX93 + suggestion dérivée de l\'état', () => {
   assert.deepEqual(payload.custom_data, {})
 })
 
+test('QJR593 — la structure choisie à la création part dans le payload', () => {
+  let s = initState({ mode: 'create', currentUserId: 5 })
+  s = reducer(s, { type: 'SET_FIELD', key: 'structure_produit', value: 7 })
+  assert.equal(toPayload(currentFields(s)).structure_produit, 7)
+  assert.ok(TRACKED_KEYS.includes('structure_produit'))
+  assert.ok(SECTION_FIELDS.toiture.includes('structure_produit'))
+})
+
 test('currentFields / buildCreateDefaults — inventaire de champs cohérent', () => {
   const d = buildCreateDefaults({ currentUserId: 1 })
   assert.equal(d.owner, '1')

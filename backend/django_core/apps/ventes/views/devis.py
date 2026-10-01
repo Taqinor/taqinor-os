@@ -1,34 +1,23 @@
 import logging
 
-from django.db import transaction  # noqa: F401
-from django.http import HttpResponse  # noqa: F401
-from django.utils import timezone  # noqa: F401
-from rest_framework import viewsets, status, filters  # noqa: F401
-from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
-from rest_framework.response import Response  # noqa: F401
-from drf_spectacular.utils import extend_schema  # noqa: F401
-from apps.stock.services import (  # noqa: F401
-    mouvement_type_sortie, record_stock_movement,
-)
-from ..models import (  # noqa: F401
-    Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, FollowupLevel, RelanceLog, EmailLog,
-)
-from ..serializers import (  # noqa: F401
+from django.db import transaction
+from django.http import HttpResponse
+from django.utils import timezone
+from rest_framework import status
+from rest_framework import serializers
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from drf_spectacular.utils import extend_schema
+from ..models import Devis, BonCommande
+from ..serializers import (
     DevisSerializer,
     DevisWriteSerializer,
     BonCommandeSerializer,
-    LigneDevisSerializer,
     FactureSerializer,
-    FactureWriteSerializer,
-    LigneFactureSerializer,
-    PaiementSerializer,
-    AvoirSerializer,
-    RelanceLogSerializer,
     DevisActivitySerializer,
     DevisActionRequiseSerializer,  # PACT17 — forme déclarée de l'agrégat
 )
-from authentication.permissions import (  # noqa: F401
+from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
     IsAdminRole,
@@ -36,20 +25,20 @@ from authentication.permissions import (  # noqa: F401
 )
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
-from apps.roles.permissions import (  # noqa: F401
+from apps.roles.permissions import (
     IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
 )
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.viewsets import CompanyScopedModelViewSet  # ARC5
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
 # ne jette pas en silence la garde qu'une ``@action`` déclare elle-même.
 from core.permissions import declared_action_permissions
 # PV84 — builder UNIQUE du chemin proposition (nom-client inclus dans l'URL) ;
 # jamais de f'/proposition/{token}' en dur ailleurs dans ce fichier.
-from ..utils.client_links import chemin_proposition  # noqa: F401
-from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
-from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
-from ..utils.references import create_with_reference  # noqa: F401
-from ..utils.company_settings import create_numbered  # noqa: F401
+from ..utils.client_links import chemin_proposition
+from core.entite_scoping import EntiteScopeMixin  # NTADM2
+from core.idempotency import IdempotentCreateMixin  # YAPIC9
+from ..utils.references import create_with_reference
+from ..utils.company_settings import create_numbered
 # QJR73 — L'ÉCRIVAIN UNIQUE DES LIGNES N'EST PLUS UNE MÉTHODE DE CE VIEWSET.
 # `_replace_lines_atomic` vivait ici, donc hors d'atteinte de tout autre
 # appelant, alors que les tests le décrivent comme « le SEUL chemin d'écriture »
@@ -64,8 +53,7 @@ from ..utils.company_settings import create_numbered  # noqa: F401
 # écrivain et LE MÊME ordonnancement que les quatre autres origines de devis.
 # Les frontières de transaction n'ont pas bougé d'une ligne : les réponses des
 # endpoints sont inchangées à l'octet.
-from ..domain.lignes import cloner_lignes, creer_ligne  # noqa: F401
-from ..domain.pipeline import (  # noqa: F401
+from ..domain.pipeline import (
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
 
@@ -165,6 +153,39 @@ def _reponse_non_modifiable(devis, geste, message_statut=None):
         status=status.HTTP_409_CONFLICT)
 
 
+class _LotCreationSerializer(serializers.Serializer):
+    """QJR648 — le corps de ``POST /devis/<id>/lots/`` : ``nom_lot`` requis,
+    ``adresse_site`` facultative, ``ordre`` entier ≥ 0 facultatif, ``lignes``
+    liste d'entiers facultative. Une entrée invalide répond 400, jamais 500."""
+
+    nom_lot = serializers.CharField(
+        max_length=150, required=False, allow_blank=True, allow_null=True,
+        error_messages={'max_length': 'Nom de lot trop long (150 max).'})
+    adresse_site = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, allow_null=True)
+    ordre = serializers.IntegerField(
+        min_value=0, required=False, allow_null=True,
+        error_messages={'invalid': 'Ordre : entier positif attendu.',
+                        'min_value': 'Ordre : entier positif attendu.'})
+    lignes = serializers.ListField(
+        child=serializers.IntegerField(
+            error_messages={'invalid': 'Lignes : identifiants entiers '
+                                       'attendus.'}),
+        required=False, allow_null=True)
+
+    def validate_nom_lot(self, valeur):
+        nom = (valeur or '').strip()
+        if not nom:
+            raise serializers.ValidationError('Nom de lot requis.')
+        return nom
+
+    def validate(self, attrs):
+        if not (attrs.get('nom_lot') or '').strip():
+            raise serializers.ValidationError(
+                {'nom_lot': 'Nom de lot requis.'})
+        return attrs
+
+
 class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
@@ -258,148 +279,23 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return DevisSerializer
 
     def get_permissions(self):
-        # AUD403 — la garde DÉCLARÉE par l'@action PRIME. Sans cette première
-        # ligne, ce branchement sur ``self.action`` jetait EN SILENCE le
-        # ``permission_classes=`` du décorateur : une action déclarant une
-        # permission FINE mais groupée dans WRITE_ACTIONS retombait sur la
-        # branche inconditionnelle ``IsResponsableOrAdmin()``. Ainsi
-        # ``composition`` (dry-run de ``auto``) déclarait ``IsResponsableOrAdmin``
-        # mais tombait sur le repli ``IsAdminRole`` faute d'être listée :
-        # honorer sa déclaration la réaligne sur son jumeau ``auto``, qui CRÉE
-        # là où elle ne crée rien. Patron d'or du dépôt (``ventes/paiement.py``,
-        # ``core/permissions.declared_action_permissions``).
+        # AUD403 — la garde DÉCLARÉE par l'@action PRIME (``core.permissions.
+        # declared_action_permissions`` : les kwargs du décorateur font
+        # autorité). QJR649 — toutes les @action de ce viewset déclarent leur
+        # ``permission_classes`` sauf ``variante_config`` : l'ancienne chaîne
+        # elif d'une soixantaine de noms était inatteignable pour chacune et a
+        # été réduite à la vraie table ci-dessous (matrice action × rôle
+        # figée par ``tests/test_devis_matrice_permissions.py``).
         declared = declared_action_permissions(self)
         if declared is not None:
             return declared
-        if self.action in READ_ACTIONS + [
-            'historique', 'variante_config', 'superior_contact_status',
-            # WIR99 — LECTURE pure ouverte à tout rôle (le
-            # `permission_classes` de l'@action ne suffit PAS : get_permissions
-            # PRIME et son repli est IsAdminRole).
-            'prefill_site',
-            # WIR217 — état du rendu PDF : une LECTURE pure, ouverte au même
-            # périmètre que la lecture du devis (la garde doit être ICI, cette
-            # surcharge PRIMANT sur le `permission_classes` de l'@action, qui
-            # déclare donc la MÊME classe pour ne jamais mentir).
-            'etat_pdf',
-        ]:
-            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
-            # est re-vérifiée dans l'action (Directeur / Commercial responsable).
+        if self.action in ('list', 'retrieve', 'variante_config'):
+            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE
+            # (PUT) est re-vérifiée DANS l'action.
             return [IsAnyRole()]
-        elif self.action in ('accepter', 'refuser'):
-            # VX199 — validation/refus de devis : permission ERP FINE
-            # (ventes_valider), pas le grossier IsResponsableOrAdmin (qui passe
-            # pour tout rôle portant une écriture). get_permissions PRIME sur le
-            # permission_classes de l'@action, donc la garde fine doit être ICI.
-            return [HasPermissionOrLegacy('ventes_valider')()]
-        elif self.action == 'action_requise':
-            # PACT17/CAD115 — « Relances du jour » est une LECTURE agrégée,
-            # réservée au même périmètre que son entrée de menu
-            # (features/ventes/module.config.jsx). CAD115 (SIG9) a OUVERT ce
-            # tableau au rôle qui relance réellement les clients (le nav est
-            # passé à ``['normal','responsable','admin']``, même palier que
-            # `/crm/relances` — la file calendaire du CRM qu'il arbitre
-            # désormais via `prochaine_touche_crm`) : la garde suit ici, sinon
-            # un rôle normal verrait l'entrée de menu et tomberait sur un 403.
-            # La garde doit être ICI : get_permissions PRIME sur le
-            # `permission_classes` de l'@action (son repli est IsAdminRole,
-            # qui fermerait l'écran aux autres rôles) — l'@action déclare donc
-            # la MÊME classe pour ne jamais mentir sur la garde effective.
-            return [IsAnyRole()]
-        elif self.action == 'proposal':
-            # NTPRT10 — ``/proposal`` reste l'UNIQUE chemin PDF client (règle
-            # #4) : plutôt qu'un second rendu pour le portail, on OUVRE ce
-            # chemin au client PROPRIÉTAIRE. La garde reste
-            # ``IsResponsableOrAdmin`` à l'identique côté INTERNE ; côté
-            # portail elle exige la portée ``portail_client``, une méthode SÛRE
-            # et — au niveau OBJET — ``devis.client_id == portail_client_id``
-            # (le queryset ci-dessus borne déjà à ce même client).
-            # NB : cette surcharge de ``get_permissions`` PRIME volontairement
-            # sur le ``permission_classes`` de l'@action (cf. ``accepter``/
-            # ``refuser``, VX199) — les deux déclarent donc la MÊME classe pour
-            # ne jamais mentir sur la garde effective.
-            return [IsInternalWriterOrPortalClientOwner()]
-        elif self.action in WRITE_ACTIONS + [
-            'generer_pdf', 'telecharger_pdf', 'convertir_en_bc',
-            'generer_facture', 'reviser', 'noter',
-            'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
-            'envoyer_email', 'dupliquer_variante', 'variantes', 'dupliquer',
-            # GAMMES — création de la SŒUR « gamme ». Déclare la MÊME classe
-            # que le permission_classes de l'@action (cette surcharge PRIME
-            # sur lui — cf. le commentaire VX199 ci-dessus).
-            'dupliquer_variante_gamme',
-            'save_preset', 'apply_preset', 'contacter_superieur',
-            'whatsapp', 'proforma_pdf',
-            # QX21be — atomic create + replace-lines (self.action is the
-            # Python method name, not url_path: 'replace-lines' → 'replace_lines').
-            'atomic', 'replace_lines',
-            # QX22be — WhatsApp preview (read-only, no status change).
-            'whatsapp_preview',
-            # NTCPQ13 — renouvellement d'un devis accepté/expiré. Déclare la
-            # MÊME classe que le permission_classes de l'@action (cette
-            # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
-            'renouveler',
-            # NTCPQ18 — lots multi-sites (lecture + création).
-            'lots',
-            # NTCPQ20 — historique fin de configuration (lecture seule).
-            'historique_configuration',
-            # PV17 — contexte de l'écran de conception 3D. LECTURE, mais
-            # réservée au même périmètre que le générateur de devis
-            # (responsable + admin), pas ouverte à tout rôle. La garde doit
-            # être ICI : get_permissions PRIME sur le ``permission_classes``
-            # de l'@action (son repli est IsAdminRole) — l'@action déclare
-            # donc la MÊME classe pour ne jamais mentir sur la garde
-            # effective.
-            'design_context',
-            # PV18 — resynchronisation des lignes sur un nouveau calepinage
-            # (écriture chirurgicale, jamais le statut).
-            'sync_layout',
-            # PV47 — report OPT-IN du bordereau électrique en lignes de devis.
-            'ajouter_boq_electrique',
-            # PV41 — étude électrique du devis (GET affiche, POST recalcule).
-            # Même périmètre que le générateur (responsable + admin) : la garde
-            # doit être ICI, get_permissions PRIME sur le
-            # ``permission_classes`` de l'@action — qui déclare donc la MÊME
-            # classe pour ne jamais mentir sur la garde effective.
-            'conception_electrique',
-            # PV74 — étude bankable asynchrone : lancement (202) et suivi du
-            # job. Même périmètre que le générateur (responsable + admin) ; la
-            # garde vit ICI car get_permissions PRIME sur le
-            # ``permission_classes`` de l'@action, qui déclare la MÊME classe.
-            'simuler', 'simulation_status',
-            # TAILLES (26/08/2026) — les trois tailles Éco/Recommandé/Max
-            # côté vendeur : lecture, écriture de la CONFIGURATION d'une
-            # taille, régénération d'une taille. Même périmètre que le
-            # générateur (responsable + admin). PIÈGE VX199 : sans ces trois
-            # noms ICI, les actions tomberaient sur le repli ``IsAdminRole``
-            # et leur ``permission_classes`` — qui déclare la MÊME classe —
-            # ne serait JAMAIS consulté. La lecture porte son propre nom
-            # d'action pour ne pas hériter du niveau de garde de l'écriture.
-            'offres_tailles', 'offres_tailles_config',
-            'offres_tailles_regenerer', 'offres_tailles_appliquer',
-            # QJR58 (décision fondateur D12, 29/08/2026) — le REGISTRE de
-            # surcharges du vendeur (GET/PATCH/DELETE). Même périmètre que le
-            # générateur (responsable + admin). PIÈGE VX199 : sans ce nom ICI,
-            # l'action tomberait sur le repli ``IsAdminRole`` et son
-            # ``permission_classes`` — qui déclare la MÊME classe — ne serait
-            # JAMAIS consulté.
-            'overrides',
-            # QJR62 — PATCH FUSIONNANT d'``etude_params`` (même périmètre que
-            # le générateur : responsable + admin). MÊME piège VX199.
-            'etude_params',
-            # ANALYT1 (audit item 64, 26/08/2026) — « Lecture par le client » :
-            # visites DISTINCTES par section de la proposition + alerte de
-            # friction (relecture répétée d'une même section). Analytics
-            # INTERNES (jamais montrées au client, jamais une revendication
-            # devant le commercial autre qu'un signal) → même périmètre que
-            # les autres LECTURES sensibles ci-dessus (responsable + admin).
-            # PIÈGE VX199 : sans ce nom ICI, l'action tomberait sur le repli
-            # ``IsAdminRole`` malgré son ``permission_classes`` identique.
-            'lecture_client',
-        ]:
+        if self.action in ('create', 'update', 'partial_update'):
             return [IsResponsableOrAdmin()]
-        elif self.action == 'destroy':
-            return [IsAdminRole()]
+        # destroy, et toute future action non déclarée : fermé par défaut.
         return [IsAdminRole()]
 
     def perform_create(self, serializer):
@@ -1000,9 +896,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     # la composition est celle que l'écran a arrêtée, le
                     # pipeline ne la recompose pas (recomposer détruirait les
                     # prix et quantités tapés par le commercial).
+                    # QJR550 — ``user`` : l'auteur de l'instantané du
+                    # geste, jamais lu du corps.
                     appliquer(devis, IntentionDevis(
                         origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
-                        company=company, composition=lignes_in))
+                        company=company, user=request.user,
+                        composition=lignes_in))
                     return devis
                 create_numbered(Devis, company, 'devis', _save)
         except ValidationError:
@@ -1012,12 +911,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
 
         devis = serializer.instance
-        # QX23be — fige la marge interne à la création (manager-only).
-        try:
-            from ..services import refresh_marge_snapshot
-            refresh_marge_snapshot(devis)
-        except Exception:  # noqa: BLE001
-            pass
+        # QJR554 — la marge interne (QX23be) et le kWc sont posés par le mode
+        # RAFRAICHIR du pipeline ci-dessous (``finaliser_caches``) : plus de
+        # rattrapage manuel ici.
         # L-QA1 (24/08/2026) — MÊME rafraîchissement que ``replace_lines``
         # ci-dessous : ``atomic`` EST le chemin de création du générateur
         # (devis + lignes en un seul commit) et, avant ce correctif, ne posait
@@ -2001,7 +1897,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             url_path='historique-configuration',
             permission_classes=[IsResponsableOrAdmin])
     def historique_configuration(self, request, pk=None):
-        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon.
+        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon
+        ou ENVOYÉ (QJR552 : l'état vu par le client avant une correction après
+        envoi, puis l'état corrigé — D-QJR5-1 / D-QJR5-7). Un instantané par
+        geste d'enregistrement (QJR550), apparié par identité stable (QJR551).
 
         GET : la liste des instantanés (id, horodatage, auteur, nombre de
         lignes, contenu). ``?a=<id>&b=<id>`` renvoie EN PLUS le diff des lignes
@@ -2051,20 +1950,27 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # QJR516 — rattacher des lignes à un lot est une édition de LIGNES.
             if _refus_modifiabilite(devis, 'LIGNES'):
                 return _reponse_non_modifiable(devis, 'LIGNES')
-            nom = (request.data.get('nom_lot') or '').strip()
-            if not nom:
-                raise ValidationError({'nom_lot': 'Nom de lot requis.'})
+            # QJR648 — l'entrée est VALIDÉE avant toute écriture (un « ordre »
+            # ou des « lignes » non numériques répondaient 500) et la création
+            # + le rattachement tiennent dans UNE transaction : jamais de lot
+            # orphelin qu'un nouvel essai refuserait comme « déjà existant ».
+            entree = _LotCreationSerializer(data=request.data)
+            entree.is_valid(raise_exception=True)
+            donnees = entree.validated_data
+            nom = donnees['nom_lot']
             if devis.lots.filter(nom_lot=nom).exists():
                 raise ValidationError(
                     {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
-            lot = LotDevis.objects.create(
-                company=devis.company, devis=devis, nom_lot=nom,
-                adresse_site=(request.data.get('adresse_site') or '').strip(),
-                ordre=int(request.data.get('ordre') or 0))
-            ids = request.data.get('lignes') or []
-            if ids:
-                # Jamais une ligne d'un autre devis (donc d'une autre société).
-                devis.lignes.filter(id__in=ids).update(lot=lot)
+            with transaction.atomic():
+                lot = LotDevis.objects.create(
+                    company=devis.company, devis=devis, nom_lot=nom,
+                    adresse_site=(donnees.get('adresse_site') or '').strip(),
+                    ordre=donnees.get('ordre') or 0)
+                ids = donnees.get('lignes') or []
+                if ids:
+                    # Jamais une ligne d'un autre devis (donc d'une autre
+                    # société).
+                    devis.lignes.filter(id__in=ids).update(lot=lot)
         resultat = lots_totaux(devis)
         if resultat is None:
             resultat = {'lots': [], 'hors_lot': None,
@@ -2081,7 +1987,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         reprenant les lignes actuelles aux PRIX CATALOGUE COURANTS, lié à son
         devis d'origine (``devis_origine``) et numéroté
         (``numero_renouvellement``). Le devis source reste intact — distinct de
-        ``reviser`` (qui corrige un devis non encore accepté)."""
+        ``reviser`` (qui crée la V+1 d'un devis envoyé, accepté, refusé ou
+        expiré — D-QJR5-2 ; un accepté révisé garde son chantier, QJR559)."""
         from ..services import renouveler_devis
         nouveau = renouveler_devis(self.get_object(), user=request.user)
         return Response(
@@ -2167,37 +2074,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                         else status.HTTP_400_BAD_REQUEST))
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
-
-    @staticmethod
-    def _resolve_accepted_option(devis, data):
-        """A1 — détermine l'option retenue à l'acceptation.
-
-        Renvoie ``(option, None)`` en cas de succès ou ``('', message)`` en cas
-        d'erreur. Un devis à deux options exige un choix explicite et valide ;
-        un devis à option unique déduit l'option de son scénario (jamais
-        d'échec : une liste libre / un pompage retombe sur « sans_batterie »).
-        """
-        valid = {c.value for c in Devis.OptionAcceptee}
-        option = (data.get('option') or '').strip()
-        if option and option not in valid:
-            return '', ("Option invalide (attendu « sans_batterie » ou "
-                        "« avec_batterie »).")
-        try:
-            from ..quote_engine.builder import build_quote_data
-            qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
-            nb_options = qd.get('nb_options', 1)
-            scenario = qd.get('scenario', '')
-        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
-            nb_options, scenario = 1, ''
-        if nb_options == 2 and not option:
-            return '', ("Ce devis comporte deux options — précisez celle "
-                        "choisie par le client (« sans_batterie » ou "
-                        "« avec_batterie »).")
-        if not option:
-            option = (Devis.OptionAcceptee.AVEC_BATTERIE
-                      if scenario == 'Avec batterie'
-                      else Devis.OptionAcceptee.SANS_BATTERIE)
-        return option, None
 
     @action(detail=True, methods=['post'], url_path='refuser',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
@@ -2708,6 +2584,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 devis = registre_overrides.relire_verrouille(devis)
                 registre_overrides.ecrire_colonne(
                     devis, registre_overrides.regenerer(devis, chemin))
+            self._rafraichir_etudes_apres_surcharge(devis)
             fin_de_geste_devis(devis, request.user, avant=avant_geste,
                                objet='surcharges')
             # QJR216 — le chemin régénéré REVIENT dans la réponse avec la
@@ -2728,9 +2605,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
+        self._rafraichir_etudes_apres_surcharge(devis)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,
                            objet='surcharges')
         return Response(self._overrides_reponse(devis))
+
+    @staticmethod
+    def _rafraichir_etudes_apres_surcharge(devis):
+        """QJR564 — une surcharge posée ou régénérée (``etude.jour_reference``,
+        ``taille.nb_panneaux``, ``taille.panel_watt``…) nourrit le moteur ; les
+        études STOCKÉES (lues telles quelles par ``/proposal``) sont donc
+        relancées APRÈS la transaction. Inconditionnel : les empreintes
+        QJR43/QJR44 court-circuitent une étude dont les entrées n'ont pas
+        bougé — aucune liste de chemins tenue à la main ici. Best-effort : une
+        étude en échec n'annule jamais une surcharge enregistrée."""
+        from ..services import rafraichir_etudes_du_devis
+        try:
+            rafraichir_etudes_du_devis(devis)
+        except Exception:  # noqa: BLE001
+            pass
 
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
             permission_classes=[IsResponsableOrAdmin])
@@ -3003,6 +2896,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         avant_geste = debut_de_geste_devis(
             serializer.instance, self.request.user)
         super().perform_update(serializer)
+        # QJR552 — l'instantané APRÈS le geste (brouillon ou envoyé : l'en-tête
+        # corrigé, remise / échéancier, entre dans l'historique) ; dédoublonné.
+        from ..domain.cycle_vie import instantane_de_geste
+        instantane_de_geste(serializer.instance, user=self.request.user)
         # VX98 — dernier auteur de modification (server-side, jamais du corps) :
         # alimente la puce de fraîcheur. Pattern archived_by.
         serializer.instance.updated_by = self.request.user

@@ -180,3 +180,8 @@ backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_reparti
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::ef3d91e1582a | ERR120 — pourcentage affiché du solde, affichage
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::_repartir_paiement::0ebbb3916cfe | ERR120 — pourcentage affiché du solde (chemin deux cases), affichage
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page3::4607e45338ff | ERR-QAC-MULTIVILLA-TOTAL-XN (30/09/2026) — total ×N des cases de paiement (Devis Final), affichage ; même arrondi que le total imprimé
+backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::7799b0034dd5 | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
+backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::092a819e6272 | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
+backend/django_core/apps/ventes/quote_engine/builder.py::repartition_paiement::a7ad3de2928f | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
+backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::f4b512886cc4 | QJR616 — total d'option ×N villas affiché par le PDF (moteur en float), jamais persisté
+backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté

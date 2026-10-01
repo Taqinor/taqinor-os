@@ -8,6 +8,7 @@ import TraceToitClient from './TraceToitClient'
 // acier/aluminium d'hier en REPLI quand la société n'a aucune catégorie typée
 // « structure » : cette section ne perd jamais son contrôle.
 import StructureSelector from '../../../stock/StructureSelector'
+import { enumOptions } from './enumOptions'
 
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
@@ -20,11 +21,6 @@ const ORIENTATIONS = {
 const OMBRAGES = { aucun: 'Aucun', partiel: 'Partiel', important: 'Important' }
 const STRUCTURES = { acier: 'Acier', aluminium: 'Aluminium' }
 const BATTERIES = { sans: 'Sans batterie', avec: 'Avec batterie', les_deux: 'Les deux options' }
-
-const enumOptions = (labels) => [
-  <option key="" value="">—</option>,
-  ...Object.entries(labels).map(([k, l]) => <option key={k} value={k}>{l}</option>),
-]
 
 // LW11 — Toiture & site : port 1:1 des champs (recon 01 §2).
 // L-DESSIN (fondateur 25/08/2026) — en TÊTE de section, le tracé que le client

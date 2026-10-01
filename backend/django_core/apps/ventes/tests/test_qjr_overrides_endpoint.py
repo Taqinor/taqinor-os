@@ -125,7 +125,21 @@ class PatchFusionTests(_OverridesBase):
 
 
 class EcritureChirurgicaleTests(_OverridesBase):
-    """UN UPDATE d'une seule colonne — pas un ``Devis.save``."""
+    """UN UPDATE d'une seule colonne — pas un ``Devis.save``.
+
+    QJR564 — la pose relance ENSUITE les études (best-effort, hors de
+    l'écriture du registre) ; ces tests tiennent l'ÉCRITURE du registre
+    elle-même : le rafraîchissement des études y est neutralisé (il est
+    couvert par ``EtudesRelanceesTests`` ci-dessous).
+    """
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+        patcher = mock.patch(
+            'apps.ventes.services.rafraichir_etudes_du_devis')
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def test_updated_at_ne_bouge_pas(self):
         self.devis.refresh_from_db()
@@ -191,3 +205,57 @@ class RegenererTests(_OverridesBase):
         resp = self.api.delete(self.url + '?chemin=scenario')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['overrides'], {})
+
+
+class EtudesRelanceesTests(_OverridesBase):
+    """QJR564 — poser ou régénérer une surcharge relance les études STOCKÉES.
+
+    Avant : PATCH / DELETE écrivaient la colonne puis répondaient sans
+    ``rafraichir_etudes_du_devis`` ; ``etude.jour_reference`` alimente
+    ``entrees_depuis_devis`` : le PDF imprimait les économies d'avant la pose.
+    """
+
+    def _espion(self):
+        from unittest import mock
+        from apps.ventes.domain.entrees import jour_reference_du_devis
+        vus = []
+
+        def _rafraichir(devis, **kwargs):
+            vus.append(str(jour_reference_du_devis(devis)))
+            return {}
+
+        patcher = mock.patch(
+            'apps.ventes.services.rafraichir_etudes_du_devis',
+            side_effect=_rafraichir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return vus
+
+    def test_patch_relance_les_etudes_avec_la_nouvelle_date(self):
+        vus = self._espion()
+        resp = self.api.patch(
+            self.url, {'etude.jour_reference': {'valeur': '2026-03-15'}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(vus, ['2026-03-15'])
+
+    def test_delete_relance_les_etudes_sur_la_date_du_devis(self):
+        self.api.patch(
+            self.url, {'etude.jour_reference': {'valeur': '2026-03-15'}},
+            format='json')
+        vus = self._espion()
+        resp = self.api.delete(self.url + '?chemin=etude.jour_reference')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(vus), 1)
+        self.assertNotEqual(vus[0], '2026-03-15')
+
+    def test_une_etude_en_echec_n_annule_pas_la_pose(self):
+        from unittest import mock
+        with mock.patch('apps.ventes.services.rafraichir_etudes_du_devis',
+                        side_effect=RuntimeError('boum')):
+            resp = self.api.patch(
+                self.url, {'taille.nb_panneaux': 14}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            Devis.objects.get(pk=self.devis.pk)
+            .overrides['taille.nb_panneaux']['valeur'], 14)

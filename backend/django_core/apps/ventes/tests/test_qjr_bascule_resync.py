@@ -188,9 +188,10 @@ class GoldenDevisMono(_BaseResync):
 
     def test_golden_la_garde_de_statut_refuse_avant_toute_ecriture(self):
         # QJR516 (D-QJR5-2) — accepté / refusé / expiré : clos mais
-        # RÉVISABLES (le prédicat unique domain/modifiabilite).
-        for statut, revision in ((Devis.Statut.ENVOYE, True),
-                                 (Devis.Statut.ACCEPTE, True),
+        # RÉVISABLES (le prédicat unique domain/modifiabilite). QJR557
+        # (D-QJR5-5) — l'ENVOYÉ sort de cette liste : il se resynchronise
+        # sur place (test_golden_un_envoye_se_resynchronise_sur_place).
+        for statut, revision in ((Devis.Statut.ACCEPTE, True),
                                  (Devis.Statut.REFUSE, True),
                                  (Devis.Statut.EXPIRE, True)):
             with self.subTest(statut=statut):
@@ -204,6 +205,19 @@ class GoldenDevisMono(_BaseResync):
                 devis.refresh_from_db()
                 self.assertEqual(devis.statut, statut)
                 self.assertIsNone(devis.roof_layout)
+
+    def test_golden_un_envoye_se_resynchronise_sur_place(self):
+        # QJR557 (D-QJR5-5) — un ENVOYÉ se corrige sur place par le
+        # calepinage : compte porté, statut « envoyé » LU jamais écrit.
+        devis = self._devis(statut=Devis.Statut.ENVOYE)
+        self._ligne(devis, PANNEAU, 12, prix='980', remise='5', ordre=1)
+        self._ligne(devis, RESEAU, 1, prix='13500', ordre=2)
+        resultat = sync_devis_from_layout(
+            devis, layout(panels=16, kwc=8.8), user=self.user)
+        self.assertEqual(resultat['panneaux'], 16)
+        self.assertEqual(self._qte(devis, PANNEAU), 16)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
 
 class GoldenBatterieEtPermutationOnduleur(_BaseResync):

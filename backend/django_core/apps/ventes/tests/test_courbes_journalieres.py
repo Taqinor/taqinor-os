@@ -978,3 +978,45 @@ class SansChauffeEauRienNeChangeTests(SimpleTestCase):
             [round(part * 20.0, 12)
              for part in cj.silhouette_jour(cj.OCCUPATION_PRESENCE,
                                             saison='ete')])
+
+
+class ProductionParSaisonUniqueTests(SimpleTestCase):
+    """QJR611 — une seule boucle « production par saison » :
+    ``etude_horaire.production_journaliere_par_saison`` DÉLÈGUE à
+    ``courbes_journalieres.production_par_saison`` au lieu d'en recopier le
+    corps (identiques aujourd'hui, divergents au premier changement)."""
+
+    def setUp(self):
+        django_cache.clear()
+
+    def test_garde_ast_la_copie_delegue(self):
+        import ast
+        import inspect
+        import textwrap
+
+        from apps.ventes import etude_horaire as eh
+
+        self.assertTrue(callable(getattr(cj, 'production_par_saison', None)))
+        self.assertFalse(hasattr(cj, '_production'))
+        arbre = ast.parse(textwrap.dedent(
+            inspect.getsource(eh.production_journaliere_par_saison)))
+        appels = {
+            (n.func.attr if isinstance(n.func, ast.Attribute)
+             else getattr(n.func, 'id', None))
+            for n in ast.walk(arbre) if isinstance(n, ast.Call)}
+        self.assertIn('production_par_saison', appels)
+        self.assertNotIn('profil_production_journalier', appels)
+        self.assertNotIn('moyenne_journaliere_saison', appels)
+        self.assertFalse(any(isinstance(n, ast.For) for n in ast.walk(arbre)))
+
+    def test_egalite_des_dicts_trois_villes(self):
+        from apps.ventes import etude_horaire as eh
+
+        for ville in ('Casablanca', 'Marrakech', 'Agadir'):
+            mensuel = pp.productible_mensuel(ville=ville)
+            self.assertTrue(mensuel, ville)
+            attendu = cj.production_par_saison(5, mensuel, ville, None, None)
+            self.assertTrue(attendu, ville)
+            self.assertEqual(
+                eh.production_journaliere_par_saison(5, ville=ville),
+                attendu, ville)

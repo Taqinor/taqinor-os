@@ -30,6 +30,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ventes.models import LigneDevis
+from apps.ventes.domain.lignes import prix_negocie
 from apps.ventes.services import _est_au_prix_catalogue
 from authentication.models import CustomUser
 from testkit.factories import (
@@ -78,11 +79,22 @@ class DefautsInchangesTests(_LigneManuelleBase):
         self.assertFalse(negociee.prix_manuel)
         self.assertFalse(_est_au_prix_catalogue(negociee))
 
-    def test_le_marqueur_ne_change_pas_le_verdict_du_repli(self):
-        """Les deux mécanismes COEXISTENT : le marqueur est la vérité NEUVE,
-        le repli reste celle des lignes d'hier — l'un ne réécrit pas l'autre."""
+    def test_le_marqueur_prix_manuel_vaut_prix_negocie(self):
+        """QJR555 — UNE seule définition du « prix négocié » : ``prix_manuel``
+        protège la ligne même quand le prix tapé est égal au prix catalogue
+        (sinon la suppression d'onduleur intrus et le recalage catalogue
+        l'ignoraient, pendant que la permutation et le re-tarif le lisaient).
+        Le repli (prix ≠ catalogue ou remise) reste le juge des lignes
+        d'hier, sans marqueur."""
         ligne = self._ligne(prix_manuel=True)
-        self.assertTrue(_est_au_prix_catalogue(ligne))
+        self.assertFalse(_est_au_prix_catalogue(ligne))
+        self.assertTrue(prix_negocie(
+            ligne, prix_reference=self.produit.prix_vente))
+        catalogue = self._ligne()
+        self.assertFalse(prix_negocie(
+            catalogue, prix_reference=self.produit.prix_vente))
+        # Pas de prix de référence ⇒ rien ne se prouve ⇒ négocié.
+        self.assertTrue(prix_negocie(catalogue, prix_reference=None))
 
 
 class AllerRetourApiTests(_LigneManuelleBase):
