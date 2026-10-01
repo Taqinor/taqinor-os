@@ -2978,6 +2978,26 @@ def _reglages_atelier(company):
             for section in SECTIONS_ATELIER_3D}
 
 
+def devis_concevables(qs):
+    """QJR636 — les devis de ``qs`` dont la toiture se calepine encore.
+
+    La règle de statut est LUE dans la table de ``domain/modifiabilite``
+    (geste CALEPINAGE, devis actif) — jamais recopiée ici ; s'y ajoutent les
+    deux exclusions propres à l'écran 3D : un devis agricole (pompage) et un
+    devis multi-villa (une ligne ``groupe_index >= 1``). Ne borne pas la
+    société : l'appelant passe un queryset déjà scopé. Présence ici ⇔
+    ``contexte_conception_devis(...)['modifiable']``.
+    """
+    from django.db.models import Exists, OuterRef
+
+    from .domain.modifiabilite import CALEPINAGE, GESTES
+    from .models import Devis, LigneDevis
+    return (qs.filter(is_active=True, statut__in=GESTES[CALEPINAGE])
+            .exclude(mode_installation=Devis.ModeInstallation.AGRICOLE)
+            .exclude(Exists(LigneDevis.objects.filter(
+                devis=OuterRef('pk'), groupe_index__gte=1))))
+
+
 def contexte_conception_devis(devis, company):
     """PV17 — tout ce que l'écran de conception toiture doit savoir d'un devis.
 
@@ -3120,12 +3140,15 @@ def contexte_conception_devis(devis, company):
             source = 'lead'
 
     # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
-    raison = ''
-    # QJR516 — le design-context suit le geste CALEPINAGE (le MÊME prédicat
-    # que sync-layout) : il ne déclare plus modifiable un calepinage que
-    # sync-layout refuse (un envoyé, jusqu'à QJR557).
+    # QJR636 — UNE règle (devis_concevables, qui lit le geste CALEPINAGE de
+    # la table de modifiabilité) ; les branches ci-dessous ne font que NOMMER
+    # la raison d'un refus.
     from .domain.modifiabilite import CALEPINAGE, verdict as _verdict
-    if not _verdict(devis, CALEPINAGE)['modifiable']:
+    concevable = devis_concevables(
+        Devis.objects.filter(pk=devis.pk)).exists()
+    if concevable:
+        raison = ''
+    elif not _verdict(devis, CALEPINAGE)['modifiable']:
         raison = (
             'Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
             '« Réviser » pour en créer une nouvelle version.'
@@ -3133,7 +3156,7 @@ def contexte_conception_devis(devis, company):
     elif devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
         raison = ('Devis agricole (pompage) — le calepinage de toiture ne '
                   's\'applique pas.')
-    elif devis.lignes.filter(groupe_index__gte=1).exists():
+    else:
         raison = ('Devis multi-villa : chaque villa porte son propre '
                   'calepinage — cet écran ne peut pas en modifier une seule.')
 

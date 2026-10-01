@@ -88,18 +88,16 @@ function rendre() {
 const cliquer = () => fireEvent.click(screen.getByText('toiture-3d'))
 
 describe('PV22 — résolution du devis à concevoir', () => {
-  it('UN seul brouillon : on l’ouvre directement, sans rien demander', async () => {
+  it('UN seul devis concevable : on l’ouvre directement, sans rien demander', async () => {
+    // QJR636 — le SERVEUR filtre (`?concevable=1`) : un accepté n'arrive
+    // jamais ici, aucun tri de statut côté écran.
     ventesApi.getDevis.mockResolvedValue({
-      data: [
-        { id: 412, reference: 'DEV-2026-412', statut: 'brouillon' },
-        // Un devis ACCEPTÉ du même lead ne doit jamais être choisi : `?statut=`
-        // n'existe pas côté serveur, le tri se fait ici.
-        { id: 300, reference: 'DEV-2026-300', statut: 'accepte' },
-      ],
+      data: [{ id: 412, reference: 'DEV-2026-412', statut: 'brouillon' }],
     })
     rendre()
     cliquer()
-    await waitFor(() => expect(ventesApi.getDevis).toHaveBeenCalledWith({ lead: 88 }))
+    await waitFor(() => expect(ventesApi.getDevis)
+      .toHaveBeenCalledWith({ lead: 88, concevable: 1 }))
     await waitFor(() => expect(navigateMock)
       .toHaveBeenCalledWith('/ventes/devis/412/design'))
     expect(ventesApi.creerDevisAuto).not.toHaveBeenCalled()
@@ -113,7 +111,7 @@ describe('PV22 — résolution du devis à concevoir', () => {
           etude_params: { puissance_kwc: 17.04 }, date_creation: '2026-08-01T10:00:00Z',
         },
         {
-          id: 413, reference: 'DEV-2026-413', statut: 'brouillon',
+          id: 413, reference: 'DEV-2026-413', statut: 'envoye',
           etude_params: { puissance_kwc: 9.9 }, date_creation: '2026-08-02T10:00:00Z',
         },
       ],
@@ -122,6 +120,7 @@ describe('PV22 — résolution du devis à concevoir', () => {
     cliquer()
 
     const liste = await screen.findByTestId('pv22-choix-devis')
+    expect(screen.getByText(/Ce lead a plusieurs devis/)).toBeTruthy()
     expect(liste).toHaveTextContent('DEV-2026-412')
     expect(liste).toHaveTextContent('17,04 kWc')
     expect(liste).toHaveTextContent('DEV-2026-413')

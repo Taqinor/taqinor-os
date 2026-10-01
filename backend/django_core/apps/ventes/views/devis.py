@@ -387,6 +387,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         lead_id = self.request.query_params.get('lead')
         if lead_id:
             qs = qs.filter(lead_id=lead_id)
+        # QJR636 — ?concevable=1 : les devis dont la toiture se calepine
+        # encore (choix « Conception 3D »), APRÈS les portées ci-dessus.
+        if self.request.query_params.get('concevable') in ('1', 'true'):
+            from ..selectors import devis_concevables
+            qs = devis_concevables(qs)
         return qs
 
     def get_serializer_class(self):
