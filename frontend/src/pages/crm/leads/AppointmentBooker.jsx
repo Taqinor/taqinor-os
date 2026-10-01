@@ -18,6 +18,7 @@ import { Badge, Button, Input, Label } from '../../../ui'
 // même dossier — ce fichier est un composant JSX, jamais exécuté sous
 // `node --test`, donc aucune contrainte d'import paresseux ici).
 import { toast } from '../../../ui/confirm'
+import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 
 const STATUS_LABELS = {
   planifie: 'Planifié',
@@ -26,18 +27,8 @@ const STATUS_LABELS = {
   annule: 'Annulé',
 }
 
-// VX245(a)/(b) — helper de téléchargement blob (jamais un `<a href>` brut :
-// l'endpoint est authentifié JWT, il faut passer par axios).
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
+// VX245(a)/(b) — l'endpoint .ics est authentifié JWT : jamais un `<a href>`
+// brut, le fichier passe par axios puis par le helper partagé de téléchargement.
 
 export default function AppointmentBooker({ leadId }) {
   const [open, setOpen] = useState(false)
@@ -112,10 +103,13 @@ export default function AppointmentBooker({ leadId }) {
   // d'événement UNIQUE pour ce rendez-vous (jamais le flux d'abonnement
   // complet — distinct, réservé à Mes préférences).
   async function handleDownloadIcs(apptId) {
+    // QJR652 — fenêtre ouverte dans le geste, avant le premier await (iOS / PWA).
+    const pending = downloadBlobInGesture()
     try {
       const res = await crmApi.getAppointmentIcs(apptId)
-      downloadBlob(res.data, `rdv-${apptId}.ics`)
+      pending.deliver(res.data, filenameFromResponse(res, `rdv-${apptId}.ics`))
     } catch {
+      try { pending.win?.close() } catch { /* fenêtre déjà fermée */ }
       setError("Téléchargement de l'agenda impossible.")
     }
   }

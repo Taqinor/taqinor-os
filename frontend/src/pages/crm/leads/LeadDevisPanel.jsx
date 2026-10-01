@@ -21,7 +21,7 @@ import { peutEditerDevis, peutReviserDevis } from '../../../features/ventes/devi
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 // QJR589 — la bannière de dérive lead → devis (mêmes gestes que l'Édition complète).
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
-import { filenameFromResponse } from '../../../utils/downloadBlob'
+import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import {
@@ -47,17 +47,6 @@ const TITLES = {
   premium: 'Devis premium',
   edit: 'Édition complète du devis',
   view: 'Devis',
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 // EZ5 — `targetKwc` : puissance cible (kWc) demandée pour CE devis depuis la
@@ -251,12 +240,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const handleDownload = async () => {
     if (!devisId) return
     setDownloading(true)
+    // QJR652 — fenêtre ouverte dans le geste, avant le premier await (iOS / PWA).
+    const pending = downloadBlobInGesture()
     try {
       const res = await ventesApi.getProposalPdf(
         devisId, proposalParams(pdfMode, includeEtude))
       // QD2 — nom cohérent posé par le serveur (repli sur la référence).
-      downloadBlob(res.data, filenameFromResponse(res, `${devisRef || 'Devis'}.pdf`))
+      pending.deliver(res.data, filenameFromResponse(res, `${devisRef || 'Devis'}.pdf`))
     } catch {
+      try { pending.win?.close() } catch { /* fenêtre déjà fermée */ }
       setErrorMsg('Téléchargement du PDF indisponible. Réessayez.')
     } finally {
       setDownloading(false)
