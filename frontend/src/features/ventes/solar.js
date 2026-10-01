@@ -1571,6 +1571,18 @@ export function comptePanneauxOption(lines, option) {
   }, 0)
 }
 
+// QJR568 — le kWc réellement FACTURÉ par les lignes (branche SANS : commun +
+// 'sans'), celui que le PDF dérive des lignes (builder.py). Le champ « nb
+// panneaux » reste la CIBLE du dimensionnement (dry-run) ; ce kWc-ci alimente
+// prix/kWc, prix cible, études C&I et l'aperçu horaire. `repli` (la cible)
+// quand aucune ligne panneau ou aucun wattage lisible — jamais un 0 inventé.
+export function kwcFactureDesLignes(lines, panelW, repli) {
+  const n = comptePanneauxOption(lines, 'sans')
+  const w = parseFloat(panelW) || 0
+  if (!(n > 0) || !(w > 0)) return repli
+  return n * w / 1000
+}
+
 // ── QJR402 — QF9 (Smart Meter / clé Wi-Fi Huawei-only) MIROIR DU NOYAU ──────
 // Miroir exact de `apps/ventes/utils/options.py` `_panier_sert_huawei` /
 // `retirer_accessoires_huawei` (QJR200/QF9), déclarée backend-only jusqu'ici :

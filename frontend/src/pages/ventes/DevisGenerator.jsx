@@ -87,6 +87,7 @@ import {
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
   appartientAuPanierAvec,
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
+  kwcFactureDesLignes,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -1015,6 +1016,12 @@ export default function DevisGenerator({
   }, [produits])
 
   const kwp = (parseInt(nbPanneaux) || 0) * (parseFloat(panelW) || 0) / 1000
+  // QJR568 — `kwp` reste la CIBLE (envoyée au dry-run de composition) ; le kWc
+  // réellement FACTURÉ par les lignes (celui que le PDF dérive) alimente
+  // prix/kWc, prix cible, études C&I et l'aperçu horaire. Repli sur la cible
+  // sans ligne panneau.
+  const kwpLignes = kwcFactureDesLignes(lines, panelW, kwp)
+  const panneauxLignes = comptePanneauxOption(lines, 'sans')
 
   // L-2OPT — kWc PROPRE à l'option « Avec batterie ». `kwp` ci-dessus est le
   // compte de la branche SANS (le rechargement d'un brouillon exclut
@@ -1030,7 +1037,8 @@ export default function DevisGenerator({
   const kwpAvec = (() => {
     const nSans = comptePanneauxOption(lines, 'sans')
     const nAvec = comptePanneauxOption(lines, 'avec')
-    if (nSans <= 0 || nAvec === nSans) return kwp
+    // QJR568 — non divergent : le kWc FACTURÉ des lignes (repli : la cible).
+    if (nSans <= 0 || nAvec === nSans) return kwpLignes
     return nAvec * (parseFloat(panelW) || 0) / 1000
   })()
 
@@ -1141,6 +1149,7 @@ export default function DevisGenerator({
   const dLines = useDeferredValue(lines)
   const dTotals = useDeferredValue(totals)
   const dKwp = useDeferredValue(kwp)
+  const dKwpLignes = useDeferredValue(kwpLignes)
   const dKwpAvec = useDeferredValue(kwpAvec)
   const dDayUsage = useDeferredValue(dayUsage)
 
@@ -1216,7 +1225,9 @@ export default function DevisGenerator({
   // deux optimiseurs ont réellement rendu deux tailles, seuls les champs
   // « avec » de CE résultat sont lus (l'option sans garde `roi`).
   const roiAvec = useMemo(() => {
-    if (dKwpAvec === dKwp) return null
+    // QJR568 — « non divergent » se juge contre le kWc FACTURÉ des lignes
+    // (`kwpAvec` y retombe quand les options ne divergent pas).
+    if (dKwpAvec === dKwp || dKwpAvec === dKwpLignes) return null
     if (dKwpAvec <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
       kwp: dKwpAvec,
@@ -1233,7 +1244,7 @@ export default function DevisGenerator({
       productible: productibleForCity(
         selectedLead?.ville || '', quoteLogic.productible),
     })
-  }, [dKwpAvec, dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
+  }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
     consoAnnuelleReelle, distributeur, selectedLead])
 
   // Source des chiffres « avec batterie » du miroir local : `roiAvec` quand
@@ -1258,7 +1269,8 @@ export default function DevisGenerator({
         eteDifferente: !!fEte && Number(fEte) > 0,
         ville: selectedLead?.ville || '',
         raccordement: selectedLead?.raccordement || '',
-        kwp,
+        // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
+        kwp: kwpLignes,
         batterieKwh: batteryKwhFromLines(lines),
       })
     : null
@@ -1268,7 +1280,7 @@ export default function DevisGenerator({
   // `null` tant que rien ne diverge ⇒ AUCUN second appel réseau et l'écran lit
   // le corps unique comme hier.
   const etudeHoraireCorpsAvec = (modeInstallation === 'residentiel'
-      && kwpAvec !== kwp)
+      && kwpAvec !== kwpLignes)
     ? construireCorpsPreview({
         modeInstallation,
         editId,
@@ -3598,10 +3610,11 @@ export default function DevisGenerator({
   const consoKwhDerivee = (parseFloat(consoMensuelle) || 0)
     || (facturesSaisies && avgBill > 0 ? Math.round(avgBill / quoteLogic.kwhPrice) : 0)
 
-  const etudeIndustrielle = (modeInstallation === 'industriel' && kwp > 0
+  // QJR568 — les deux études C&I (persistées) au kWc FACTURÉ des lignes.
+  const etudeIndustrielle = (modeInstallation === 'industriel' && kwpLignes > 0
       && consoKwhDerivee > 0)
     ? computeEtudeIndustrielle({
-        kwp, consoMensuelleKwh: consoKwhDerivee,
+        kwp: kwpLignes, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
         injectionEnabled, ...etudeTension,
@@ -3611,10 +3624,10 @@ export default function DevisGenerator({
   // QX44 — étude COMMERCIALE : même moteur d'autoconsommation que l'industriel,
   // mais le day-share vient de l'ARCHÉTYPE de la catégorie (hôtel 55 ≠ bureau 80)
   // → à facture égale, une étude hôtel diffère d'une étude bureau.
-  const etudeCommerciale = (modeInstallation === 'commercial' && kwp > 0
+  const etudeCommerciale = (modeInstallation === 'commercial' && kwpLignes > 0
       && consoKwhDerivee > 0)
     ? computeEtudeIndustrielle({
-        kwp, consoMensuelleKwh: consoKwhDerivee,
+        kwp: kwpLignes, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: commercialDayShare(categorieCommerciale), totalTtc: kpiTotal,
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
         injectionEnabled, ...etudeTension,
@@ -3651,12 +3664,13 @@ export default function DevisGenerator({
   // Volume jour livré par la pompe choisie (m³/jour) — comparé au besoin.
   const pumpM3Day = pompageSel?.m3Jour ?? null
 
-  const pkwc = prixParKwc(kpiTotal, kwp)
+  // QJR568 — prix/kWc et prix cible au kWc FACTURÉ des lignes.
+  const pkwc = prixParKwc(kpiTotal, kwpLignes)
   const buyCost = useMemo(() => computeBuyCost(lines, produits), [lines, produits])
   const marge = buyCost != null ? Math.round(kpiTotal - buyCost) : null
 
   const applyPrixCible = () => {
-    const pct = discountForTarget(prixCible, kwp, kpiTotalBrut)
+    const pct = discountForTarget(prixCible, kwpLignes, kpiTotalBrut)
     if (pct == null) return
     setDiscountPct(String(Math.max(0, pct)))
   }
@@ -4175,6 +4189,15 @@ export default function DevisGenerator({
                 <Label>Puissance PV (kWp) — calculée</Label>
                 <div className="gen-kwp">{kwp > 0 ? formatNumber(kwp, { decimals: 2 }) + ' kWp' : '—'}</div>
               </div>
+              {/* QJR568 — les lignes et la cible divergent (quantité panneau
+                  corrigée à la main) : on le DIT, sans recomposer d'office. */}
+              {panneauxLignes > 0 && (parseInt(nbPanneaux) || 0) > 0
+                && panneauxLignes !== (parseInt(nbPanneaux) || 0) && (
+                <p className="text-xs text-warning sm:col-span-2" data-testid="gen-divergence-panneaux">
+                  Les lignes portent {formatNumber(panneauxLignes)} panneaux, la cible en
+                  vise {formatNumber(parseInt(nbPanneaux) || 0)} — recomposer ? (Auto-remplir)
+                </p>
+              )}
               {/* STKCAT10 (décision fondateur 16/09/2026) — le bouton
                   acier/aluminium est remplacé par un sélecteur ouvert sur
                   TOUTES les structures typées du catalogue (pergola, carport,
