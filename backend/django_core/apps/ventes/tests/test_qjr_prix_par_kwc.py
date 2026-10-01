@@ -80,18 +80,24 @@ class GelSurLeNetTests(_PrixParKwcBase):
         devis.refresh_from_db()
         self.assertEqual(devis.prix_par_kwc, Decimal('2000.00'))
 
-    def test_le_champ_reste_write_once(self):
+    def test_le_champ_suit_le_devis(self):
+        """QJR669 (décision fondateur 01/10) — plus de write-once : la valeur
+        suit le total NET du devis."""
         devis = self._devis('qjr52-once', remise=Decimal('10'), kwc=6.0)
         self._ligne(devis, 'Panneau 550 W', 10, 1000)
         devis = Devis.objects.get(pk=devis.pk)
         devis.save()
         devis.refresh_from_db()
-        gele = devis.prix_par_kwc
-        self._ligne(devis, 'Batterie 10 kWh', 1, 25000)
+        avant = devis.prix_par_kwc
+        self._ligne(devis, 'Pose', 1, 5000)
         devis = Devis.objects.get(pk=devis.pk)
         devis.save()
         devis.refresh_from_db()
-        self.assertEqual(devis.prix_par_kwc, gele)
+        self.assertNotEqual(devis.prix_par_kwc, avant)
+        self.assertEqual(
+            devis.prix_par_kwc,
+            (Decimal(str(devis.total_ttc)) / Decimal('6')).quantize(
+                Decimal('0.01')))
 
     def test_sans_kwc_le_champ_reste_null(self):
         devis = self._devis('qjr52-pompage', kwc=0)

@@ -147,9 +147,9 @@ class Devis(models.Model):
     # Price Insights) ──
     # Signal comparable = Total TTC ÷ puissance kWc (le kWc vit déjà dans
     # etude_params). Recomputable aujourd'hui mais le backfiller dans 2 ans
-    # coûterait bien plus que le dériver à l'écriture. Écrit UNE SEULE FOIS,
-    # quand le kWc est présent ET qu'un total existe (donc null pour le pompage
-    # sans kWc — jamais forcé) ; jamais recalculé ensuite (write-once).
+    # coûterait bien plus que le dériver à l'écriture. Écrit quand le kWc est
+    # présent ET qu'un total existe (donc null pour le pompage sans kWc —
+    # jamais forcé) ; QJR669 : recalculé quand le devis change (suit le devis).
     #
     # DONNÉE INTERNE générateur/BI — MÊME RÉGIME que prix_achat : n'apparaît sur
     # AUCUN PDF ni aucune sortie client (alimente NTDATA46/47 + la couche
@@ -420,43 +420,27 @@ class Devis(models.Model):
         return self.reference
 
     def save(self, *args, **kwargs):
-        """SCA47 — dérive et GÈLE ``prix_par_kwc`` (Total TTC ÷ kWc) une seule
-        fois, dès qu'un kWc (etude_params) et un total existent. Write-once :
-        une fois posée, la valeur n'est JAMAIS recalculée (un ``update_fields``
-        qui ne la cite pas la laisse intacte). Null pour un devis sans kWc
+        """SCA47 — dérive ``prix_par_kwc`` (Total TTC ÷ kWc) dès qu'un kWc
+        (etude_params) et un total existent. Null pour un devis sans kWc
         (pompage) — jamais forcé. Donnée interne (jamais sur un PDF).
 
-        QJR52 / décision fondateur D2 — LE GEL LIT DÉSORMAIS LE NET. Il lit
-        ``self.total_ttc``, qui honore ``remise_globale`` depuis QJR51 : un
-        devis remisé n'est plus figé à jamais sur un prix par kWc gonflé.
-        Comme le champ est write-once, les devis DÉJÀ gelés au brut sont
-        corrigés par la data-migration ``0106_qjr52_prix_par_kwc_net``
-        (réversible), qui re-dérive la valeur des lignes et de la remise —
-        correction d'un nombre stocké faux, jamais invention d'un nombre.
+        QJR52 / décision fondateur D2 — la valeur lit le NET
+        (``self.total_ttc`` honore ``remise_globale`` depuis QJR51).
+
+        QJR669 (décision fondateur 01/10) — plus de gel « write-once » : la
+        valeur SUIT le devis (recalculée à chaque save et quand le
+        propriétaire du kWc repose son cache), y compris pour un envoyé
+        corrigé sur place (D-QJR5-1). Le ``help_text`` du champ garde son
+        ancien libellé (le changer créerait une migration sans effet).
         """
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
         super().save(*args, **kwargs)
-        if self.prix_par_kwc is not None:
-            return  # déjà gelée — jamais recalculée.
-        # ERR-QAC-MULTIVILLA-TOTAL-XN — ``total_ttc`` est le total ×N d'un
-        # devis « N villas identiques » (décision fondateur 30/09/2026) : le
-        # kWc qui s'y apparie est celui du PROJET (kWc d'une villa × N), sinon
-        # le prix au kWc serait gonflé ×N.
-        from .multivilla import puissance_kwc_projet
-        try:
-            kwc_val = puissance_kwc_projet(self) or Decimal('0')
-        except (InvalidOperation, TypeError, ValueError):
-            kwc_val = Decimal('0')
-        if kwc_val <= 0:
-            return  # pas de kWc → reste null (pompage / devis sans étude).
-        total = self.total_ttc
-        if not total or total <= 0:
-            return  # pas encore de lignes → on gèlera au prochain save utile.
-        prix = (Decimal(str(total)) / kwc_val).quantize(
-            Decimal('0.01'), rounding=ROUND_HALF_UP)
-        # Écriture ciblée (ne touche que cette colonne) — la valeur est gelée.
-        type(self).objects.filter(pk=self.pk).update(prix_par_kwc=prix)
-        self.prix_par_kwc = prix
+        # QJR669 (décision fondateur 01/10) — LE GEL EST RETIRÉ : la mesure
+        # suit le devis. Le calcul (TTC net ÷ kWc du PROJET, multivilla ×N)
+        # et l'écriture ciblée de la colonne appartiennent au propriétaire du
+        # kWc (``domain.scenario.poser_prix_par_kwc``), aussi appelé par
+        # ``poser_puissance_kwc`` quand les lignes changent sans save.
+        from .domain.scenario import poser_prix_par_kwc
+        poser_prix_par_kwc(self)
 
     def _totaux_argent(self):
         """QJR50/QJR51 — L'ARGENT DE CE DEVIS PASSE PAR LA FAÇADE.
