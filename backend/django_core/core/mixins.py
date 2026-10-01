@@ -81,6 +81,21 @@ class SameCompanyFKSerializerMixin:
         return attrs
 
 
+def company_qs(qs, user):
+    """QJR655 — LA règle de portée société d'un queryset (une seule copie).
+
+    Un utilisateur rattaché voit sa société ; un superuser SANS société voit
+    tout (acteur plateforme) ; tout autre utilisateur sans société ne voit
+    rien. ``TenantMixin.get_queryset`` l'applique ; une vue qui n'en hérite pas
+    (lecture seule, lecture ad hoc) l'appelle directement.
+    """
+    if user.company_id:
+        return qs.filter(company=user.company)
+    if user.is_superuser:
+        return qs
+    return qs.none()
+
+
 class TenantMixin:
     """
     Filters querysets to the current user's company.
@@ -88,13 +103,7 @@ class TenantMixin:
     Superusers WITHOUT a company see all data (platform-level admin).
     """
     def get_queryset(self):
-        qs = super().get_queryset()
-        user = self.request.user
-        if user.company_id:
-            return qs.filter(company=user.company)
-        if user.is_superuser:
-            return qs
-        return qs.none()
+        return company_qs(super().get_queryset(), self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

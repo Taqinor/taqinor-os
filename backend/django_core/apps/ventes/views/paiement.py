@@ -5,6 +5,7 @@ from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.exceptions import ValidationError  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from core.mixins import company_qs
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, record_stock_movement,
 )
@@ -38,18 +39,6 @@ from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
-
-
-from authentication.scoping import scope_queryset  # noqa: E402,F401
-
-
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
 
 
 def _refus_si_rejete(paiement):
@@ -89,7 +78,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ['-date_paiement']
 
     def get_queryset(self):
-        return _company_qs(super().get_queryset(), self.request.user)
+        return company_qs(super().get_queryset(), self.request.user)
 
     def get_permissions(self):
         # La garde déclarée par l'@action elle-même PRIME sur le tiering
@@ -164,9 +153,9 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
 
         company = request.user.company
         client_id = request.data.get('client')
-        # Scoping EXPLICITE par la société (superuser sans société : `_company_qs`
+        # Scoping EXPLICITE par la société (superuser sans société : `company_qs`
         # garde son comportement historique de portée globale).
-        client = _company_qs(
+        client = company_qs(
             client_base_qs(company), request.user).filter(pk=client_id).first()
         if client is None:
             return Response({'detail': 'Client introuvable.'},
@@ -194,7 +183,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import ventiler_avance as _ventiler_avance
 
         paiement = self.get_object()
-        facture = _company_qs(Facture.objects.all(), request.user).filter(
+        facture = company_qs(Facture.objects.all(), request.user).filter(
             pk=request.data.get('facture')).first()
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
@@ -221,7 +210,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import (
             enregistrer_paiement_avec_retenue as _enregistrer_avec_retenue,
         )
-        facture = _company_qs(Facture.objects.all(), request.user).filter(
+        facture = company_qs(Facture.objects.all(), request.user).filter(
             pk=facture_id).first()
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
@@ -252,7 +241,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         """XFAC4 — état des attestations RAS à recevoir (non reçues)."""
         qs = RetenueSubie.objects.select_related('facture').filter(
             attestation_recue=False)
-        qs = _company_qs(qs, request.user)
+        qs = company_qs(qs, request.user)
         return Response(RetenueSubieSerializer(qs, many=True).data)
 
     @action(detail=False, methods=['post'],
@@ -260,7 +249,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def attestation_recue(self, request, retenue_id=None):
         """XFAC4 — coche la réception de l'attestation RAS (+ justificatif)."""
-        retenue = _company_qs(
+        retenue = company_qs(
             RetenueSubie.objects.all(), request.user).filter(
             pk=retenue_id).first()
         if retenue is None:

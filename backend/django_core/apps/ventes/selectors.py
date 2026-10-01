@@ -3544,7 +3544,7 @@ def devis_utilisant_produit(user, produit_id, limit=20):
     ``DevisViewSet.get_queryset`` (``apps/ventes/views/devis.py``) et RÉUTILISE
     ses helpers, sans en réécrire un seul :
 
-      1. ``_company_qs``                — société (superuser sans société :
+      1. ``company_qs`` (core.mixins)   — société (superuser sans société :
          tout ; compte sans société : rien) ;
       2. portail NTPRT10                — un compte externe ne voit QUE les
          devis de SON client, BROUILLON exclu (AUD143) ; une portée autre que
@@ -3566,9 +3566,9 @@ def devis_utilisant_produit(user, produit_id, limit=20):
     from core.scoping import scope_queryset
 
     from .models import Devis
-    # Le helper de scoping société de la vue : l'importer (fonction-local, même
-    # app) est ce qui garantit qu'il n'existe pas DEUX règles société.
-    from .views.devis import _company_qs
+    # QJR655 — LA règle de portée société (core.mixins), celle de
+    # TenantMixin : il n'existe pas DEUX règles société.
+    from core.mixins import company_qs
 
     if user is None or not getattr(user, 'is_authenticated', False):
         return []
@@ -3581,7 +3581,7 @@ def devis_utilisant_produit(user, produit_id, limit=20):
     if limite <= 0:
         return []
 
-    qs = _company_qs(Devis.objects.all(), user)
+    qs = company_qs(Devis.objects.all(), user)
     if is_portal_user(user):
         scope = portal_scope_id(user)
         if getattr(user, 'portee', None) != 'portail_client' or scope is None:

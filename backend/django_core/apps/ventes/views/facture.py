@@ -113,15 +113,7 @@ def proposer_arrondi_caisse(facture, mode, reste=None):
 
 
 from authentication.scoping import scope_queryset  # noqa: E402,F401
-
-
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
+from core.mixins import company_qs  # noqa: E402
 
 
 class IsSuperuserOnly(BasePermission):
@@ -189,7 +181,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     ordering = ['-date_emission']
 
     def get_queryset(self):
-        qs = _company_qs(super().get_queryset(), self.request.user)
+        qs = super().get_queryset()
         # Portée de visibilité (Feature F) — factures créées par soi / l'équipe.
         return scope_queryset(qs, self.request.user, ['created_by'])
 
@@ -2041,7 +2033,7 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         # Borner aux factures de la société (scoping multi-tenant).
-        factures_qs = _company_qs(
+        factures_qs = company_qs(
             Facture.objects.select_related('client').all(), request.user
         ).filter(id__in=ids)
         factures_by_id = {f.id: f for f in factures_qs}

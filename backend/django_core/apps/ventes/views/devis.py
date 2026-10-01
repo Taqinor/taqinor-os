@@ -115,14 +115,6 @@ def _emettre_layout_finalise(devis, user):
             'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
 
 
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
-
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -312,7 +304,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     # création — le mixin ne touche jamais à la sémantique devis/statuts.
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset (portée de visibilité +
-    # _company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
+    # company_qs) / perform_create / perform_update / get_permissions SURCHARGENT
     # la base : scoping société et matrice 401/403/404 INCHANGÉS.
     #   Règle #4 : ce sweep ne touche NI le statut NI la sérialisation Devis. Le
     #   moteur ne change jamais les statuts. L'@action `proposal` (chemin canonique
@@ -346,7 +338,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
     ).all()
 
     def get_queryset(self):
-        qs = _company_qs(super().get_queryset(), self.request.user)
+        qs = super().get_queryset()
         # WIR225 — indicateur « ce devis EST la racine d'un groupe de
         # variantes ». La liste ne savait le dire que du CÔTÉ ENFANT
         # (`version`, `version_parent_ref`, `superseded_by_ref`) : sur la
@@ -383,7 +375,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # devis qu'il a créés / son équipe. 'all' → inchangé.
         qs = scope_queryset(qs, self.request.user, ['created_by'])
         # Filtre optionnel ?lead=<id> — utilisé par le dialogue « Signé » (A2)
-        # pour lister les devis d'un lead. Borné à la société par _company_qs.
+        # pour lister les devis d'un lead. Borné à la société par company_qs.
         lead_id = self.request.query_params.get('lead')
         if lead_id:
             qs = qs.filter(lead_id=lead_id)

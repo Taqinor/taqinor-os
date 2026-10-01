@@ -53,17 +53,6 @@ def _instantane(devis, user):
     instantane_de_geste(devis, user=user)
 
 
-from authentication.scoping import scope_queryset  # noqa: E402,F401
-
-
-def _company_qs(qs, user):
-    """Filter queryset to user's company. Superusers without company see all."""
-    if user.company_id:
-        return qs.filter(company=user.company)
-    if user.is_superuser:
-        return qs
-    return qs.none()
-
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
