@@ -3,13 +3,16 @@
 Couvre la sélection (full/premium seulement, jamais one-page ; jamais un autre
 mode), le contenu CFO (baseline, cashflow, payback, TRI, ISO 50001/CBAM,
 garanties, signature), le TRI (vrai calcul actuariel), la garde rule #4
-(prix_achat/marge jamais rendus) et le rendu 3 pages (WeasyPrint, CI/Docker).
+(prix_achat/marge jamais rendus) et le rendu 4 pages — couverture, équipements +
+chaîne de totaux, cashflow, confiance (QJR620 / D-QJR5-12 ; WeasyPrint, CI/Docker).
 
 Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qx45_industriel_quote -v 2
 """
-from django.test import SimpleTestCase, tag
+from unittest.mock import patch
+
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.ventes.quote_engine.industriel import (
     render, renderer, sample_data)
@@ -41,8 +44,12 @@ class TestIndustrielContent(SimpleTestCase):
         self.data = renderer._augment(sample_data.build())
         self.html = render.build_html(self.data)
 
-    def test_three_page_content_present(self):
-        self.assertEqual(self.html.count('class="page"'), 3)
+    def test_four_page_content_present(self):
+        """QJR620 (D-QJR5-12) — couverture, équipements + chaîne de totaux,
+        cashflow, confiance."""
+        self.assertEqual(self.html.count('class="page"'), 4)
+        self.assertIn("Sous-total HT", self.html)
+        self.assertIn("Total TTC", self.html)
 
     def test_cfo_blocks_present(self):
         self.assertIn("Baseline énergétique", self.html)   # P1
@@ -117,8 +124,8 @@ class TestIrrFlat(SimpleTestCase):
 
 @tag("weasyprint")
 class TestIndustrielPageCount(SimpleTestCase):
-    """Rendu PDF réel — exactement 3 pages A4 (WeasyPrint, CI/Docker)."""
-    def test_three_pages(self):
+    """Rendu PDF réel — exactement 4 pages A4 (QJR620 ; WeasyPrint, CI/Docker)."""
+    def test_four_pages(self):
         try:
             import weasyprint  # noqa: F401
         except Exception:  # pragma: no cover - skip where native libs absent
@@ -128,4 +135,50 @@ class TestIndustrielPageCount(SimpleTestCase):
         self.assertTrue(pdf[:4] == b"%PDF")
         from weasyprint import HTML
         doc = HTML(string=render.build_html(data)).render()
-        self.assertEqual(len(doc.pages), 3)
+        self.assertEqual(len(doc.pages), 4)
+
+
+@tag("pdf")
+class TestIndustrielDispatchEquipements(TestCase):
+    """QJR620 — par le dispatch RÉEL ``generate_premium_devis_pdf`` (upload
+    mocké) : chaque désignation, 'Sous-total HT' et 'Total TTC' sont dans le
+    document industriel premium, qui fait 4 pages."""
+
+    LIGNES = [
+        ('Onduleur réseau Huawei 100kW', '1', '90000'),
+        ('Panneau mono 710W', '140', '1150'),
+        ('Structures acier', '140', '400'),
+    ]
+
+    def test_trois_lignes_quatre_pages_chaine_de_totaux(self):
+        import fitz
+        from apps.ventes.quote_engine import builder
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_devis, make_user)
+        company = make_company()
+        devis = make_devis(company, make_user(company), make_client(company),
+                           self.LIGNES, reference='DEV-QJR620-IND')
+        devis.mode_installation = 'industriel'
+        devis.save(update_fields=['mode_installation'])
+        self.assertTrue(renderer.is_industrial(devis, {'pdf_mode': 'full'}))
+        captures = []
+        _vrai_build_html = render.build_html
+
+        def _capture(data):
+            html = _vrai_build_html(data)
+            captures.append(html)
+            return html
+
+        with patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket'), \
+                patch('apps.ventes.utils.pdf._upload_pdf') as up, \
+                patch.object(render, 'build_html', side_effect=_capture):
+            builder.generate_premium_devis_pdf(
+                devis.id, pdf_options={'pdf_mode': 'full'})
+        self.assertEqual(len(captures), 1, "renderer industriel non servi")
+        html = captures[0]
+        for desig, _q, _pu in self.LIGNES:
+            self.assertIn(desig, html)
+        self.assertIn('Sous-total HT', html)
+        self.assertIn('Total TTC', html)
+        doc = fitz.open(stream=up.call_args[0][0], filetype='pdf')
+        self.assertEqual(len(doc), 4)

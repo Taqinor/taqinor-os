@@ -1,5 +1,6 @@
 # flake8: noqa
-"""Industriel render harness — assembles the 3 CFO page modules into one A4 PDF.
+"""Industriel render harness — assembles the 4 CFO page modules into one A4 PDF
+(QJR620 : + la page équipements/totaux partagée avec le commercial).
 Driven by ``industriel.renderer`` from the single quote engine. Reuses
 ``residential.theme`` (fonts, logo, footer, company identity, base CSS)."""
 from __future__ import annotations
@@ -37,15 +38,21 @@ def _wrap(inner: str, n: int, data: dict, ident: dict, total: int = 3) -> str:
 
 
 def build_html(data: dict) -> str:
-    """Assemble the 3-page premium industriel proposal.
+    """Assemble the 4-page premium industriel proposal (D-QJR5-12, QJR620).
 
-    p1 baseline énergétique + KPIs (CFO cover) · p2 cashflow 15 ans + payback +
-    TRI (+ injection 82-21 si calculée) · p3 tranches phasées + normes ISO
+    p1 baseline énergétique + KPIs (CFO cover) · p2 équipements + chaîne de
+    totaux Sous-total HT → Remise → Total HT → TVA → Total TTC (la page
+    ``commercial.equip`` RÉUTILISÉE telle quelle : lignes en HT, sections,
+    notes et options proposées) · p3 cashflow 15 ans + payback + TRI (+
+    injection 82-21 si calculée) · p4 tranches phasées + normes ISO
     50001/CBAM + garanties + signature.
     """
+    from ..commercial import equip
+
     ctx = build_ctx(data)
     ident = ctx["ident"]
-    pages = [cover.build(ctx), finance.build(ctx), trust.build(ctx)]
+    pages = [cover.build(ctx), equip.build(ctx), finance.build(ctx),
+             trust.build(ctx)]
     total = len(pages)
     body = "".join(
         _wrap(inner, n, data, ident, total)

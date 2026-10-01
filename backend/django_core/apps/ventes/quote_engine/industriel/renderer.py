@@ -66,17 +66,27 @@ def _augment(data: dict) -> dict:
     items = data.get("all_items") or []
     if not any((it.get("quantite") or 0) > 0 for it in items):
         raise Unsupported("industriel quote has no priced lines")
+    # QJR620 — la page équipements (``commercial.equip``) imprime la chaîne
+    # de totaux depuis ``totaux_all`` : même doctrine que le commercial
+    # (QJR146 g) — sans totaux canoniques, repli legacy DIT, jamais des zéros.
+    _totaux = data.get("totaux_all")
+    if not isinstance(_totaux, dict) or not _totaux:
+        raise Unsupported("industriel quote has no canonical totals "
+                          "(totaux_all)")
 
     invest = _num(data.get("display_total")) or 0.0
     if invest <= 0:
         # repli sûr : total canonique TTC si display_total absent
-        invest = _num((data.get("totaux_all") or {}).get("ttc")) or 0.0
+        invest = _num(_totaux.get("ttc")) or 0.0
     if invest <= 0:
         raise Unsupported("industriel quote has no investment total")
 
     etude = data.get("etude") or {}
     d = dict(data)
     d["_invest_ttc"] = round(invest)
+    # QJR620 — la page équipements partagée lit ``com_category`` : un devis
+    # industriel n'a pas de catégorie commerciale (bloc générique honnête).
+    d["com_category"] = None
     d.setdefault("client_full", d.get("client_name") or "Client")
     # M7 (audit du 19/08/2026) — la validité vient du DEVIS
     # (``date_validite``, sinon création + réglage société
