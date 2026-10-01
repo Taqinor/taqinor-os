@@ -1677,16 +1677,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         else:
             scenario = 'Sans batterie'
         # Option recommandée stockée si valide, sinon dérivée du scénario.
-        # QJR64 — même règle que le scénario : le REGISTRE passe devant.
-        _stored_reco = (devis.etude_params or {}).get('recommended_option')
-        try:
-            from apps.ventes.domain.overrides import effectif as _effectif
-            _reco_imposee, _source_reco = _effectif(
-                devis, 'recommended_option', _stored_reco)
-            if _source_reco != 'auto' and _reco_imposee:
-                _stored_reco = _reco_imposee
-        except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
-            pass
+        # QJR64 / QJR610 — le REGISTRE passe devant, par LA règle du domaine
+        # (``scenario.recommended_option_effective`` : une valeur inconnue au
+        # registre est ignorée, la valeur stockée reste).
+        from apps.ventes.domain.scenario import recommended_option_effective
+        _stored_reco = recommended_option_effective(
+            devis, (devis.etude_params or {}).get('recommended_option'))
         if _stored_reco in ('Sans batterie', 'Avec batterie'):
             recommended = _stored_reco
         elif scenario == 'Sans batterie':
