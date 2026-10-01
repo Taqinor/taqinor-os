@@ -569,6 +569,7 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
 
     Pure : aucun statut, aucune écriture (règle #4). Montants en ``float``.
     """
+    from decimal import ROUND_HALF_UP
     from decimal import Decimal as _D
 
     from apps.ventes.utils.echeancier import montants_tranches
@@ -591,18 +592,22 @@ def repartition_paiement(total, termes, tranches_montant=None) -> dict:
             if i == len(tranches_montant) - 1:
                 montants.append(tot - sum(montants, _D(0)))
             else:
+                # ROUND_HALF_UP : la règle de ``next_tranche`` (facture).
                 if tr.get("unite") == "montant":
-                    m = _D(str(tr.get("valeur") or 0)).quantize(_D("0.01"))
+                    m = _D(str(tr.get("valeur") or 0)).quantize(
+                        _D("0.01"), rounding=ROUND_HALF_UP)
                 else:
                     m = (tot * _D(str(tr.get("valeur") or 0)) / 100).quantize(
-                        _D("0.01"))
+                        _D("0.01"), rounding=ROUND_HALF_UP)
                 # Borné au reste (ERR76) : aucune case négative.
                 montants.append(max(_D(0), min(m, tot - sum(montants, _D(0)))))
         acompte = montants[0]
         materiel = montants[1] if len(montants) == 3 else _D(0)
         solde = montants[-1]
-        pct_a = (acompte / tot * 100).quantize(_D("1")) if tot else _D(0)
-        pct_m = (materiel / tot * 100).quantize(_D("1")) if tot else _D(0)
+        pct_a = ((acompte / tot * 100).quantize(_D("1"), rounding=ROUND_HALF_UP)
+                 if tot else _D(0))
+        pct_m = ((materiel / tot * 100).quantize(_D("1"), rounding=ROUND_HALF_UP)
+                 if tot else _D(0))
         pct_s = 100 - pct_a - pct_m
     deux_cases = materiel <= 0
     solde2 = tot - acompte
