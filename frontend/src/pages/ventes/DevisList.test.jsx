@@ -1303,4 +1303,16 @@ describe('DevisList — QJR639 : pas de « Supprimer » sur un accepté', () => 
     await menuDe('DEV-BRO-639')
     expect(screen.getByRole('menuitem', { name: /Supprimer/ })).toBeInTheDocument()
   })
+
+  // QJR661 (décision fondateur 01/10 — archivage seul) : seul un brouillon se
+  // supprime ; envoyé / refusé / expiré → le serveur répond 409, l'entrée
+  // n'est donc pas proposée.
+  for (const [statut, id] of [['envoye', 73], ['refuse', 74], ['expire', 75]]) {
+    it(`${statut} vu par un admin : aucune entrée « Supprimer »`, async () => {
+      const reference = `DEV-${statut.toUpperCase()}-661`
+      renderList({ role: 'admin', devis: [{ ...base, id, reference, statut }] })
+      await menuDe(reference)
+      expect(screen.queryByRole('menuitem', { name: /Supprimer/ })).toBeNull()
+    })
+  }
 })

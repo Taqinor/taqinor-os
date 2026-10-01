@@ -1103,8 +1103,9 @@ function DevisRow({ d, ctx }) {
                   Envoyer par email
                 </DropdownMenuItem>
               )}
-              {/* QJR639 — un devis accepté ne se supprime pas (409 serveur). */}
-              {canDelete && d.statut !== 'accepte' && (
+              {/* QJR639/QJR661 — seul un brouillon se supprime ; tout autre
+                  statut s'archive (409 serveur « archivez-le »). */}
+              {canDelete && d.statut === 'brouillon' && (
                 <DropdownMenuItem
                   destructive
                   disabled={deletingId === d.id}

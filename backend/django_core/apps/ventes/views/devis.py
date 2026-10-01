@@ -416,12 +416,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         effaçait en cascade sa signature électronique (DevisSignature), son
         lien client (ShareLink), ses lignes et son chatter, et orphelinait son
         BC. 409 sans rien effacer ; l'archivage (PATCH ``is_active=False``) ou
-        la révision restent ouverts. Les autres statuts sont inchangés. Le
-        statut est LU, jamais écrit (règle #4)."""
+        la révision restent ouverts. Le statut est LU, jamais écrit (règle #4).
+
+        QJR661 (décision fondateur 01/10 — archivage seul) : SEUL un brouillon
+        se supprime. Un envoyé / refusé / expiré a un lien client (ShareLink)
+        et un historique qui partiraient en cascade : même 409 « archivez-le »."""
         devis = self.get_object()
         if devis.statut == Devis.Statut.ACCEPTE:
             return Response(
                 {'detail': 'Devis accepté : il ne se supprime pas — '
+                           'archivez-le (désactivation) ou révisez-le.'},
+                status=status.HTTP_409_CONFLICT)
+        if devis.statut != Devis.Statut.BROUILLON:
+            return Response(
+                {'detail': 'Seul un brouillon se supprime : '
                            'archivez-le (désactivation) ou révisez-le.'},
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)

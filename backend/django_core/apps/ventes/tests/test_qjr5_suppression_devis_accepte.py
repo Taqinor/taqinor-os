@@ -66,3 +66,26 @@ class SuppressionDevisAccepte(TestCase):
         r = self.api.delete(f'/api/django/ventes/devis/{devis.id}/')
         self.assertEqual(r.status_code, 204, r.content)
         self.assertFalse(Devis.objects.filter(pk=devis.pk).exists())
+
+    # QJR661 (décision fondateur 01/10) — archivage SEUL : seul un brouillon
+    # se supprime ; envoyé / refusé / expiré → 409 « archivez-le », le devis
+    # et son lien client (ShareLink) restent intacts.
+    def _assert_409_intact(self, statut, reference):
+        devis = self._devis(reference, statut)
+        lien = ShareLink.for_devis(devis)
+        r = self.api.delete(f'/api/django/ventes/devis/{devis.id}/')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('archivez-le', r.data['detail'])
+        self.assertTrue(Devis.objects.filter(pk=devis.pk).exists())
+        self.assertTrue(ShareLink.objects.filter(pk=lien.pk).exists())
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, statut)
+
+    def test_qjr661_envoye_409(self):
+        self._assert_409_intact(Devis.Statut.ENVOYE, 'DEV-QJR661-ENV')
+
+    def test_qjr661_refuse_409(self):
+        self._assert_409_intact(Devis.Statut.REFUSE, 'DEV-QJR661-REF')
+
+    def test_qjr661_expire_409(self):
+        self._assert_409_intact(Devis.Statut.EXPIRE, 'DEV-QJR661-EXP')
