@@ -355,17 +355,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
                 or 'MAD')
 
+        # QJR541 — ``statut`` n'est plus écrivable : un devis créé par POST
+        # est toujours un brouillon, le funnel n'avance que par les
+        # événements devis_sent / devis_accepted (crm/receivers.py).
         create_numbered(
             Devis, company, 'devis',
             lambda ref: serializer.save(reference=ref, **save_kwargs),
-        )
-
-        # Mouvement automatique du funnel CRM : un devis créé directement en
-        # « envoyé »/« accepté » avance le lead (ancien statut ≡ brouillon).
-        from apps.crm.services import avancer_stage_pour_devis
-        avancer_stage_pour_devis(
-            serializer.instance, Devis.Statut.BROUILLON,
-            serializer.instance.statut, self.request.user,
         )
 
     @action(detail=False, methods=['post'], url_path='from-layout',
@@ -2896,28 +2891,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 raise ValidationError({'lead': 'Lead inconnu.'})
             if client is not None and client.company_id != company.id:
                 raise ValidationError({'client': 'Client inconnu.'})
-        # Snapshot du statut AVANT écriture, puis mouvement automatique du
-        # funnel CRM (envoye → QUOTE_SENT, accepte → SIGNED). Import local
-        # pour éviter les cycles, comme dans perform_create.
+        # QJR541 — ``statut`` est en lecture seule : un PATCH ne fait plus
+        # passer un devis en « envoyé » (ni n'avance le funnel) ; les portes
+        # d'envoi appliquent la garde T17 avant tout effet de bord (QJR539).
         ancien_statut = serializer.instance.statut
-        nouveau_statut = serializer.validated_data.get('statut', ancien_statut)
         remise = serializer.validated_data.get(
             'remise_globale', serializer.instance.remise_globale)
-        # QJR539 — la garde T17 de DOMAINE (``_guard_discount_approval``
-        # supprimée), 400 {'statut'} CONSERVÉ. Passage en « envoyé » : remise
-        # ENTRANTE jugée (AUD611, profondeur effective lignes + globale).
-        # Correction d'un ENVOYÉ : une remise plus profonde au-dessus du seuil
-        # n'est plus couverte par l'approbation d'avant.
+        # QJR539 — correction d'un ENVOYÉ : une remise plus profonde au-dessus
+        # du seuil n'est plus couverte par l'approbation d'avant ; 400
+        # {'statut'} CONSERVÉ.
         from ..services import (
-            RemiseNonApprouvee, exiger_approbation_remise,
-            reverifier_remise_apres_correction)
+            RemiseNonApprouvee, reverifier_remise_apres_correction)
         from ..domain.tarification import profondeur_remise_effective
         try:
-            if nouveau_statut == 'envoye' and ancien_statut != 'envoye':
-                exiger_approbation_remise(
-                    serializer.instance, self.request.user,
-                    remise_globale=remise)
-            elif ancien_statut == 'envoye':
+            if ancien_statut == 'envoye':
                 reverifier_remise_apres_correction(
                     serializer.instance, self.request.user,
                     avant=profondeur_remise_effective(serializer.instance),
@@ -2940,11 +2927,6 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         # alimente la puce de fraîcheur. Pattern archived_by.
         serializer.instance.updated_by = self.request.user
         serializer.instance.save(update_fields=['updated_by'])
-        from apps.crm.services import avancer_stage_pour_devis
-        avancer_stage_pour_devis(
-            serializer.instance, ancien_statut,
-            serializer.instance.statut, self.request.user,
-        )
         # CJ2b — le bloc horaire canonique doit refléter le devis TEL QU'IL EST
         # APRÈS cette écriture (puissance, factures, profil ont pu changer) :
         # sans ce rafraîchissement, un devis résidentiel édité hors auto-devis

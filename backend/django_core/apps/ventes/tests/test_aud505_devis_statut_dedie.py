@@ -13,8 +13,10 @@ INCONDITIONNELLEMENT avancer le funnel CRM du lead lié via
 (voir ``apps/crm/tests_devis_auto.py::TestAvancerStagePourDevis`` pour la
 preuve côté lead). Ce module prouve la garde côté devis seul, sans lead.
 
-BROUILLON/ENVOYE restent écrivables (matrice d'approbation NTCPQ7/8, funnel
-QUOTE_SENT) — la garde ne bloque QUE ACCEPTE/REFUSE/EXPIRE.
+QJR541 — le champ ``statut`` est désormais en LECTURE SEULE (DRF l'ignore) :
+un PATCH vers ACCEPTE/REFUSE/EXPIRE — et aussi vers ENVOYE — répond 200 et ne
+change RIEN (plus un 400). L'envoi a ses portes dédiées (lien, courriel,
+WhatsApp → ``mark_devis_sent``).
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -76,32 +78,31 @@ class PatchStatutDedie(TestCase):
     def test_patch_vers_accepte_refuse(self):
         devis = self._devis(1, Devis.Statut.ENVOYE)
         resp = self._patch(devis.id, 'accepte')
-        self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertIn('statut', resp.data)
+        self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
     def test_patch_vers_refuse_refuse(self):
         devis = self._devis(2, Devis.Statut.ENVOYE)
         resp = self._patch(devis.id, 'refuse')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
     def test_patch_vers_expire_refuse(self):
         devis = self._devis(3, Devis.Statut.ENVOYE)
         resp = self._patch(devis.id, 'expire')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
 
-    def test_patch_vers_envoye_toujours_permis(self):
-        """Non-régression — seules ACCEPTE/REFUSE/EXPIRE sont bloquées."""
+    def test_patch_vers_envoye_ignore(self):
+        """QJR541 — ENVOYE n'est plus écrivable non plus : reste brouillon."""
         devis = self._devis(4, Devis.Statut.BROUILLON)
         resp = self._patch(devis.id, 'envoye')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
-        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
 
     def test_seul_accepter_fait_reussir_la_transition(self):
         """La porte dédiée reste ouverte : /accepter/ fonctionne toujours."""

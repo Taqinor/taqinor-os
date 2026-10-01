@@ -786,38 +786,19 @@ class DevisWriteSerializer(EcheancierValidationMixin,
                             # validé, pas brut.
                             'etude_params', 'roof_layout', 'layout_hash',
                             'offres_tailles_config', 'marge_snapshot',
-                            'overrides']
+                            'overrides',
+                            # QJR541 — statut et champs de CYCLE DE VIE :
+                            # ignorés au PATCH/POST (DRF, jamais un 400).
+                            # Chacun a sa porte dédiée et gardée : envoi
+                            # (lien / courriel / WhatsApp → mark_devis_sent),
+                            # ``/accepter/``, ``/refuser/``, ``reviser``.
+                            # ``is_active`` RESTE écrivable (désactivation
+                            # seule, test_ydocf2).
+                            'statut', 'date_envoi', 'date_acceptation',
+                            'accepte_par_nom', 'date_refus', 'motif_refus',
+                            'option_acceptee', 'superseded_by',
+                            'version_parent', 'version']
         extra_kwargs = {'client': {'required': False}}
-
-    def validate_statut(self, value):
-        """AUD505 — ACCEPTE/REFUSE/EXPIRE ont chacun leur porte dédiée et
-        gardée : ``/accepter/`` (``accept_devis`` — contrôle crédit XFAC28,
-        avertissement vente ZSAL9, événement ``devis_accepted`` → création
-        Chantier), ``/refuser/`` (garde de statut + ``devis_refused``), et
-        EXPIRE posé par le seul système (domain/recouvrement.py). Un PATCH
-        brut du corps ne passait par AUCUNE de ces gardes tout en faisant
-        avancer le lead CRM en SIGNED via ``perform_update`` →
-        ``avancer_stage_pour_devis`` — c'est ce trou que cette validation
-        ferme. BROUILLON/ENVOYE restent écrivables ici (matrice
-        d'approbation NTCPQ7/8, funnel QUOTE_SENT inchangés)."""
-        bloques = {Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
-                   Devis.Statut.EXPIRE}
-        if value in bloques:
-            raise serializers.ValidationError(
-                'Statut réservé à une action dédiée (« accepter » / '
-                '« refuser ») — jamais un PATCH direct du corps.')
-        # QJR515 (D-QJR5-1) — un devis ENVOYÉ se corrige SUR PLACE : il ne
-        # repasse jamais en brouillon (aucune action « remettre en
-        # brouillon »). Seul le passage ENVOYE → BROUILLON est refusé ;
-        # BROUILLON → ENVOYE reste écrivable jusqu'à QJR541.
-        instance = getattr(self, 'instance', None)
-        if (instance is not None
-                and getattr(instance, 'statut', None) == Devis.Statut.ENVOYE
-                and value == Devis.Statut.BROUILLON):
-            raise serializers.ValidationError(
-                'Un devis envoyé se corrige sur place, il ne repasse jamais '
-                'en brouillon.')
-        return value
 
 
 class BonCommandeSerializer(serializers.ModelSerializer):
