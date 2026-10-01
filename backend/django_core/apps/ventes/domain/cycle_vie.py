@@ -635,6 +635,35 @@ def verifier_empreinte_signature(devis, *, lignes=None):
     }
 
 
+SUFFIXE_EXEMPLAIRE_SIGNE = '__signe'
+
+
+def _copier_exemplaire_signe(cle_rendu, *, devis):
+    """QJR670 suivi — fige l'exemplaire signé sous SA PROPRE clé MinIO.
+
+    ``generate_premium_devis_pdf`` écrit sur une clé déterministe
+    (``devis/<co>/<ref>.pdf``) que tout re-rendu interne réécrit : stocker
+    cette clé comme ``signed_pdf_key`` laissait le document signé être écrasé
+    par le rendu suivant. On copie donc les octets sous ``…__signe.pdf`` —
+    suffixe qu'aucune clé de rendu (``builder._pdf_key``) ne produit.
+    Échec de copie (stockage indisponible) ⇒ on garde la clé de rendu,
+    comportement d'avant ce correctif, plutôt que de ne rien lier.
+    """
+    if not cle_rendu:
+        return cle_rendu
+    base = cle_rendu[:-4] if cle_rendu.lower().endswith('.pdf') else cle_rendu
+    cle_signee = f'{base}{SUFFIXE_EXEMPLAIRE_SIGNE}.pdf'
+    try:
+        from apps.ventes.utils.pdf import _upload_pdf, download_pdf
+        _upload_pdf(download_pdf(cle_rendu), cle_signee)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            'QJR670: copie de l\'exemplaire signé impossible (devis %s) : %s',
+            getattr(devis, 'reference', '?'), exc)
+        return cle_rendu
+    return cle_signee
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 
@@ -656,6 +685,7 @@ def _store_signed_pdf(*, devis):
         from apps.ventes.quote_engine import clean_pdf_options, generate_premium_devis_pdf
         key = generate_premium_devis_pdf(
             devis.id, clean_pdf_options({}), persist=True)
+        key = _copier_exemplaire_signe(key, devis=devis)
         DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
         logger.info(
             'QJ22: PDF signé stocké pour devis %s → %s',
