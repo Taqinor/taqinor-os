@@ -335,9 +335,13 @@ const withKeys = (rows) => rows.map(r => ({
   compose: !!r.compose,
 }))
 
-// QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=` (et
-// ses relectures immédiates : lead, réouverture) forment la RÉFÉRENCE « rien
-// n'a changé » de l'Édition complète.
+// QJR581 — durée pendant laquelle les états posés par le mappeur `?edit=`
+// forment la RÉFERENCE « rien n'a changé » de l'Édition complète.
+// ERR-QJR581-REFERENCE-FENETRE-TEMPORELLE — la fenêtre n'est plus comptée
+// depuis l'ouverture seulement : chaque hydratation serveur ASYNCHRONE lancée
+// pendant la capture (lead, registre d'overrides — `suivreHydratation`) la
+// ROUVRE à sa résolution, pour que ses écritures (et leurs effets en
+// cascade) entrent dans la référence, même résolues après 1,5 s.
 const FENETRE_REFERENCE_MS = 1500
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -535,6 +539,19 @@ export default function DevisGenerator({
   const armerJeton = (updatedAt) => { if (updatedAt) jetonRef.current = updatedAt }
   // QJR581 — fenêtre de capture de la référence « rien n'a changé ».
   const captureReferenceJusqua = useRef(0)
+  // ERR-QJR581 — `dirty` du dernier rendu, lu par `suivreHydratation` : une
+  // hydratation qui atterrit APRÈS une vraie saisie ne rouvre jamais la
+  // capture (sinon la saisie du vendeur deviendrait la référence).
+  const dirtyRef = useRef(false)
+  // Une hydratation serveur lancée PENDANT la capture la rouvre quand elle se
+  // résout (après ses setters : `promesse` est la chaîne complète). Lancée
+  // hors capture (geste du vendeur), elle n'y touche pas.
+  const suivreHydratation = (promesse) => {
+    if (Date.now() >= captureReferenceJusqua.current) return promesse
+    return Promise.resolve(promesse).finally(() => {
+      if (!dirtyRef.current) captureReferenceJusqua.current = Date.now() + FENETRE_REFERENCE_MS
+    })
+  }
   const [rechargeEdit, setRechargeEdit] = useState(0)
 
   // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
@@ -620,9 +637,10 @@ export default function DevisGenerator({
 
   const chargerOverrides = (id) => {
     if (!id) return
-    ventesApi.lireOverrides(id)
+    // ERR-QJR581 — à l'ouverture, une hydratation suivie par la référence.
+    suivreHydratation(ventesApi.lireOverrides(id)
       .then(({ data }) => { setOverridesReg(data); alignerSurRegistre(data) })
-      .catch(() => {})
+      .catch(() => {}))
   }
 
   // Lecture du registre À L'OUVERTURE d'un devis existant.
@@ -987,6 +1005,7 @@ export default function DevisGenerator({
   const dirty = referenceEcran != null
     ? snapshotJson !== referenceEcran
     : (editId ? false : formulaireNonVierge)
+  useEffect(() => { dirtyRef.current = dirty }, [dirty])
   const { restored, restore, discard, clear, savedAt } = useDraftAutosave(draftKey, draftSnapshot, {
     enabled: dirty,
     version: editId ? (editDevis?.updated_at ?? null) : undefined,
@@ -2082,7 +2101,9 @@ export default function DevisGenerator({
         // ERR-QAH-VENTES-EDITION-PERD-LEAD — relit le lead par son id et repose
         // ses factures hiver/été SANS redimensionner ; une valeur déjà présente
         // n'est jamais écrasée ; une panne reste ISOLÉE.
-        Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
+        // ERR-QJR581 — hydratation suivie : ses écritures entrent dans la
+        // référence même si le lead répond après la fenêtre.
+        suivreHydratation(Promise.resolve().then(() => crmApi.getLead(d.lead)).then(({ data: lead }) => {
           if (!lead || lead.id == null) return
           setLeadDuDevis(lead)
           if (parseFloat(lead.facture_hiver) > 0) {
@@ -2090,7 +2111,7 @@ export default function DevisGenerator({
             setFEte(prev => prev || (lead.ete_differente && lead.facture_ete
               ? String(lead.facture_ete) : ''))
           }
-        }).catch(() => {})
+        }).catch(() => {}))
       } else pose(etat.clientId, setClientId)
       // DC11 / QJR106 — verdict de dérive du serveur (liste vide = aucune bannière).
       setLeadValeursModifiees(etat.leadValeursModifiees)
