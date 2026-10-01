@@ -105,8 +105,16 @@ class TestConfigurationSnapshot(_Base):
         self.assertEqual(ConfigurationDevisSnapshot.objects.count(), avant)
 
     def test_aucune_donnee_de_marge_dans_le_contenu(self):
+        # QJR551 — étendu au contenu ENRICHI (paramètres, étude, totaux).
+        Devis.objects.filter(pk=self.devis.pk).update(
+            etude_params={'scenario': 'Sans batterie'},
+            echeancier=[{'libelle': 'Acompte', 'type': 'acompte',
+                         'pct_or_montant': 40}])
         self._ajouter()
         snap = ConfigurationDevisSnapshot.objects.get(devis=self.devis)
+        for cle in ('lignes', 'remise_globale', 'echeancier', 'etude',
+                    'totaux'):
+            self.assertIn(cle, snap.contenu)
         blob = str(snap.contenu)
         self.assertNotIn('prix_achat', blob)
         self.assertNotIn('marge', blob)
@@ -131,12 +139,18 @@ class TestConfigurationSnapshot(_Base):
         ajoutee = self._ajouter(qte='2', prix='50.00')
         dernier = self._snaps().last()
         diff = diff_configurations_devis(premier, dernier)
-        self.assertEqual([li['ligne_id'] for li in diff['ajoutees']],
-                         [ajoutee.id])
+        # QJR551 — appariement par identité stable (type, produit, variante)
+        # + rang d'occurrence, plus par ``ligne_id``.
+        self.assertEqual([li['cle'] for li in diff['ajoutees']],
+                         [f'produit:{self.produit.id}:#1'])
+        self.assertEqual(diff['ajoutees'][0]['prix_unitaire'],
+                         str(ajoutee.prix_unitaire))
         self.assertEqual(diff['retirees'], [])
-        self.assertEqual(diff['modifiees'][0]['ligne_id'], ligne.id)
+        self.assertEqual(diff['modifiees'][0]['cle'],
+                         f'produit:{self.produit.id}:#0')
         self.assertEqual(diff['modifiees'][0]['champs']['quantite'],
                          ['1.00', '7.00'])
+        self.assertEqual(ligne.produit_id, self.produit.id)
 
     def test_endpoint_historique_et_diff(self):
         ligne = self._ajouter()
@@ -204,3 +218,62 @@ class UnInstantaneParGeste(_Base):
                 {'lignes': self._lignes_corps(3)}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(self.devis.lignes.count(), 3)
+
+
+class InstantaneCompletEtApparie(_Base):
+    """QJR551 — lignes appariées par une identité stable, instantané complet
+    (lignes restaurables, paramètres, échéancier, totaux)."""
+
+    def _remplacer(self, lignes):
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/replace-lines/',
+            {'lignes': lignes}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_un_seul_prix_change_une_seule_ligne_modifiee(self):
+        lignes = self._lignes_corps(4)
+        self._remplacer(lignes)
+        lignes[2] = dict(lignes[2], prix_unitaire='130.00')
+        self._remplacer(lignes)
+        a, b = list(self._snaps())[-2:]
+        diff = diff_configurations_devis(a, b)
+        self.assertEqual(diff['ajoutees'], [])
+        self.assertEqual(diff['retirees'], [])
+        self.assertEqual(len(diff['modifiees']), 1)
+        self.assertEqual(diff['modifiees'][0]['champs']['prix_unitaire'],
+                         ['100.00', '130.00'])
+        # Troisième enregistrement identique : aucun nouvel instantané.
+        avant = self._snaps().count()
+        self._remplacer(lignes)
+        self.assertEqual(self._snaps().count(), avant)
+
+    def test_la_remise_apparait_dans_les_parametres(self):
+        lignes = self._lignes_corps(2)
+        self._remplacer(lignes)
+        resp = self.api.patch(f'/api/django/ventes/devis/{self.devis.id}/',
+                              {'remise_globale': '5'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self._remplacer(lignes)
+        a, b = list(self._snaps())[-2:]
+        diff = diff_configurations_devis(a, b)
+        self.assertEqual(diff['parametres']['remise_globale'],
+                         ['0.00', '5.00'])
+        self.assertEqual(diff['modifiees'], [])
+
+    def test_les_lignes_portent_le_jeu_clone_sans_id_de_ligne(self):
+        from apps.ventes.domain.lignes import CHAMPS_CLONES
+        self._remplacer(self._lignes_corps(1))
+        ligne = self._snaps().last().contenu['lignes'][0]
+        self.assertEqual(set(ligne), set(CHAMPS_CLONES))
+        self.assertNotIn('ligne_id', ligne)
+        self.assertEqual(ligne['produit'], self.produit.id)
+
+    def test_un_ancien_instantane_reste_lisible(self):
+        ancien = {'lignes': [{'ligne_id': 1, 'produit_id': self.produit.id,
+                              'designation': 'X', 'quantite': '1.00',
+                              'prix_unitaire': '100.00', 'remise': '0.00'}]}
+        self._remplacer(self._lignes_corps(1))
+        diff = diff_configurations_devis(ancien, self._snaps().last())
+        self.assertEqual(diff['ajoutees'], [])
+        self.assertEqual(diff['retirees'], [])
+        self.assertIn('remise_globale', diff['parametres'])
