@@ -107,7 +107,7 @@ import {
   batteryKwhFromLines, batteryCapaciteInconnue, comptePanneauxOption,
   kwcFactureDesLignes, kwcPourPanneaux,
   // QJR570 (D-QJR5-4) — recomposer FUSIONNE (jamais un remplacement intégral).
-  fusionnerRecomposition, lignesQuantiteFigee,
+  appliquerRecomposition, lignesManuellesEnConflitPossible,
   optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
@@ -2615,9 +2615,12 @@ export default function DevisGenerator({
   // (`fusionnerRecomposition`) — prix tapés, sections, notes, options et
   // produits ajoutés à la main conservés d'office. Une quantité figée en
   // conflit est GARDÉE (le vendeur l'a confirmé avant le geste) et NOMMÉE.
+  const modeRecomposition = useRef('garder')
   const recomposerLignes = (generated) => {
-    const { conflits } = fusionnerRecomposition(lines, generated)
-    setLines(ls => withKeys(fusionnerRecomposition(ls, generated).lignes))
+    const mode = modeRecomposition.current
+    modeRecomposition.current = 'garder'
+    const { conflits } = appliquerRecomposition(lines, generated, mode)
+    setLines(ls => withKeys(appliquerRecomposition(ls, generated, mode).lignes))
     if (conflits.length) {
       toast.warning('Quantités figées gardées : ' + conflits.slice(0, 5)
         .map(c => `${c.designation} ${c.figee} (recalculé : ${c.recalculee})`).join(', ')
@@ -2630,17 +2633,24 @@ export default function DevisGenerator({
   // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
   // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
   const avecQuantitesFigees = (geste) => {
-    const figees = lignesQuantiteFigee(lines)
-    if (!figees.length) { geste(); return }
-    const noms = figees.slice(0, 5)
+    // Conflit POSSIBLE seulement s'il existe une ligne saisie à la main
+    // (prix / quantité figés, option) ; sinon aucun dialogue.
+    const manuelles = lignesManuellesEnConflitPossible(lines)
+    if (!manuelles.length) { modeRecomposition.current = 'garder'; geste(); return }
+    const noms = manuelles.slice(0, 5)
       .map(l => `${l.designation || 'ligne'} : ${l.quantite}`).join(', ')
-      + (figees.length > 5 ? '…' : '')
+      + (manuelles.length > 5 ? '…' : '')
     confirm({
-      title: 'Garder les quantités figées ?',
-      description: `Quantités saisies à la main (${noms}) : la recomposition les GARDE. `
-        + 'Pour prendre la quantité recalculée, cliquez « Libérer » sur la ligne puis recomposez.',
+      title: 'Garder vos saisies ?',
+      description: `Lignes saisies à la main (${noms}) : la recomposition peut les GARDER `
+        + 'ou prendre uniquement les valeurs recalculées.',
       confirmLabel: 'Recomposer en les gardant',
-    }).then(ok => { if (ok) geste() })
+      alternativeLabel: 'Prendre N (recalculé)',
+      destructive: false,
+    }).then((choix) => {
+      if (choix === 'alternative') { modeRecomposition.current = 'recalcule'; geste() }
+      else if (choix) { modeRecomposition.current = 'garder'; geste() }
+    })
   }
 
   // QJR546 — appliquer un modèle REMPLACE les lignes À L'ÉCRAN, en création

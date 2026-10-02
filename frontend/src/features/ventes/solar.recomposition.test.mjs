@@ -6,7 +6,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fusionnerRecomposition, lignesQuantiteFigee } from './solar.js'
+import {
+  fusionnerRecomposition, lignesQuantiteFigee,
+  appliquerRecomposition, lignesManuellesEnConflitPossible,
+} from './solar.js'
 
 const L = (produit, designation, quantite, prix, extra = {}) => ({
   produit: String(produit), designation, quantite: String(quantite),
@@ -93,6 +96,36 @@ test('lignesQuantiteFigee : seules les lignes produit verrouillées', () => {
     { produit: '', designation: 'Note', typeLigne: 'note', quantiteManuelle: true },
   ])
   assert.deepEqual(figees.map(l => l.designation), ['Socles'])
+})
+
+test('aucun dialogue quand toutes les lignes sont issues d’une composition', () => {
+  const lignes = [L(5, 'Panneau', 10, 1200, { compose: true }), L(6, 'Onduleur', 1, 9000, { compose: true })]
+  assert.deepEqual(lignesManuellesEnConflitPossible(lignes), [])
+})
+
+test('conflit réel : prix figé, quantité figée ou option déclenchent le dialogue', () => {
+  const lignes = [
+    L(5, 'Panneau', 10, 999, { prixManuel: true }),
+    L(6, 'Socles', 24, 50, { quantiteManuelle: true }),
+    L(7, 'Borne', 1, 5000, { optionnelle: true }),
+    L(8, 'Câble', 1, 100, { compose: true }),
+  ]
+  assert.deepEqual(lignesManuellesEnConflitPossible(lignes).map(l => l.produit), ['5', '6', '7'])
+})
+
+test('« prendre N (recalculé) » ne garde exactement que les lignes recalculées ; « garder » fusionne', () => {
+  const anciennes = [
+    L(5, 'Panneau', 10, 999, { prixManuel: true }),
+    L(9, 'Borne ajoutée', 1, 6000),
+  ]
+  const generees = [L(5, 'Panneau', 12, 1200), L(6, 'Onduleur', 1, 9000)]
+  const pris = appliquerRecomposition(anciennes, generees, 'recalcule')
+  assert.deepEqual(pris.lignes.map(l => [l.produit, l.quantite, l.prix_unit_ttc]),
+    [['5', '12', '1200'], ['6', '1', '9000']])
+  assert.ok(pris.lignes.every(l => l.compose === true && !l.prixManuel))
+  const gardees = appliquerRecomposition(anciennes, generees, 'garder')
+  assert.deepEqual(gardees.lignes.map(l => l.produit), ['5', '9', '6'])
+  assert.equal(gardees.lignes[0].prix_unit_ttc, '999')
 })
 
 test('lignes relues d’un devis enregistré + nouvelle composition : aucun doublon onduleur/batterie', async () => {

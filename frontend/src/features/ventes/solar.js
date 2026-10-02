@@ -1794,6 +1794,26 @@ export function lignesQuantiteFigee(lignes) {
   return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
 }
 
+// Lignes produit portant une saisie humaine (prix, quantité figés ou option) :
+// seules susceptibles d'être en CONFLIT avec une nouvelle composition. Une
+// ligne seulement issue d'une composition (`compose`) n'en est jamais une.
+export function lignesManuellesEnConflitPossible(lignes) {
+  return (lignes || []).filter(l => _estLigneProduit(l) && l.produit
+    && (l.prixManuel || l.quantiteManuelle || l.optionnelle))
+}
+
+// Applique une composition générée : 'garder' fusionne (saisies conservées),
+// 'recalcule' ne garde EXACTEMENT que les lignes recalculées.
+export function appliquerRecomposition(anciennes, generees, mode = 'garder') {
+  if (mode === 'recalcule') {
+    return {
+      lignes: (Array.isArray(generees) ? generees : []).map(g => ({ ...g, compose: true })),
+      conflits: [],
+    }
+  }
+  return fusionnerRecomposition(anciennes, generees)
+}
+
 function _ancienneLigneAGarder(l) {
   if (!_estLigneProduit(l)) return true            // section / note
   if (l.optionnelle || l.prixManuel || l.quantiteManuelle) return true
