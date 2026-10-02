@@ -1641,18 +1641,26 @@ def contexte_clauses_devis(devis):
 
 
 def clauses_applicables_devis(devis):
-    """QJR668 — les clauses/CGV du catalogue société qui s'appliquent à ce
-    devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
-    quand AUCUN catalogue n'est disponible.
+    """QJR668 — les clauses/CGV qui s'appliquent à ce devis
+    (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
+    quand AUCUNE source n'est disponible.
 
-    Le catalogue NTCPQ11 vit dans l'app ``cpq`` (``selectors.clauses_applicables``
-    évalue chaque clause contre :func:`contexte_clauses_devis`). Tant que
-    ``cpq`` est PARQUÉE (MVP solaire, SOLMVP), le module n'existe pas : la
-    fonction rend ``None`` et le gel n'écrit rien — un snapshot déjà posé
-    n'est jamais effacé faute de source. Import dynamique : aucune arête
-    statique ventes → cpq."""
+    ERR-QJR668 (décision fondateur 01/10/2026, « brancher ») — SOURCE RÉELLE :
+    les CGV renseignées par la société dans Paramètres
+    (``parametres.selectors.clauses_cgv_societe``). REPLI optionnel : le
+    catalogue NTCPQ11 de l'app ``cpq`` (``selectors.clauses_applicables``,
+    évalué contre :func:`contexte_clauses_devis`) quand cette app est
+    installée — elle est PARQUÉE (MVP solaire, SOLMVP) et son module peut ne
+    pas exister. Sans aucune source, ``None`` : le gel n'écrit rien et un
+    snapshot déjà posé n'est jamais effacé. Import dynamique pour cpq :
+    aucune arête statique ventes → cpq."""
     import importlib
 
+    from apps.parametres.selectors import clauses_cgv_societe
+
+    clauses = clauses_cgv_societe(devis.company)
+    if clauses:
+        return clauses
     try:
         source = importlib.import_module('apps.cpq.selectors')
         clauses_applicables = source.clauses_applicables

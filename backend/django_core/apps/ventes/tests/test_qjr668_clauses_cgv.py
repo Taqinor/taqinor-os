@@ -6,7 +6,8 @@ propres à chaque affaire (NTCPQ11, ``Devis.clauses_appliquees``) sont :
   * IMPRIMÉES par tous les gabarits (résidentiel, industriel, commercial,
     une page) — et un devis sans clause reste sans bloc.
 
-Le catalogue (app ``cpq``) est PARQUÉ : sans lui, le gel n'écrit rien et
+ERR-QJR668 : la source réelle est DocumentTemplates.cgv_bullets (Paramètres) ;
+le catalogue (app ``cpq``) est PARQUÉ : sans source, le gel n'écrit rien et
 n'efface jamais un snapshot déjà posé. Les tests fournissent la source en
 patchant ``clauses_applicables_devis``.
 
@@ -93,6 +94,25 @@ class GelTests(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.clauses_appliquees, [CLAUSE])
 
+    def test_envoi_gele_les_cgv_de_la_societe_sans_patch(self):
+        """ERR-QJR668 — SANS patch de ``clauses_applicables_devis`` : les CGV
+        renseignées dans Paramètres sont la source réelle du gel."""
+        from apps.parametres.models_documents import DocumentTemplates
+        from apps.ventes.services import mark_devis_sent
+        DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': [
+                'QJR668 livraison sous trente jours ouvrés',
+                'Acompte {acompte} % à la commande']})
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        # La puce à marqueur {acompte} reste au bloc CGV du moteur.
+        self.assertEqual(
+            [c['corps_texte'] for c in devis.clauses_appliquees],
+            ['QJR668 livraison sous trente jours ouvrés'])
+
     def test_correction_apres_envoi_regele(self):
         devis = self._devis(statut=Devis.Statut.ENVOYE)
         devis.clauses_appliquees = [CLAUSE]
@@ -171,6 +191,21 @@ class ImpressionTests(_Base):
         texte, pages = self._texte(devis, {'pdf_mode': 'onepage'})
         self.assertIn(_norm(CLAUSE['corps_texte']), texte)
         self.assertEqual(pages, 1)
+
+    def test_proposal_imprime_les_cgv_societe_sans_patch(self):
+        """ERR-QJR668 — société avec CGV → envoi → le PDF imprime le bloc."""
+        from apps.parametres.models_documents import DocumentTemplates
+        from apps.ventes.services import mark_devis_sent
+        DocumentTemplates.objects.update_or_create(
+            company=self.company,
+            defaults={'cgv_bullets': [
+                'QJR668 livraison sous trente jours ouvres']})
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        texte, _ = self._texte(devis)
+        self.assertIn('clauses particulières', texte)
+        self.assertIn('qjr668 livraison sous trente jours ouvres', texte)
 
     def test_clause_echappee(self):
         clause = dict(CLAUSE, corps_texte='QJR668 <b>a & b</b> < c')
