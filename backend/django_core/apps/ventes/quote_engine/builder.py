@@ -3218,6 +3218,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ("ventes.devis_doc_texts", getattr(_company, "id", None)),
         _load_doc_texts)
 
+    # ERR-QJR668 — les puces CGV de la société GELÉES à l'envoi (entrée
+    # ``cgv_gelees`` de ``Devis.clauses_appliquees``) remplacent les puces
+    # vives dans le bloc CGV STANDARD : un texte édité après l'envoi ne change
+    # pas ce que le client a reçu. Copie : le dict mémoïsé est partagé.
+    # Brouillon / jamais envoyé → pas d'entrée → textes vifs, inchangé.
+    for _c in (getattr(devis, "clauses_appliquees", None) or []):
+        if (isinstance(_c, dict) and _c.get("type") == "cgv_gelees"
+                and isinstance(_c.get("bullets"), list) and _c["bullets"]):
+            doc_texts = dict(doc_texts, cgv_bullets=[
+                str(b) for b in _c["bullets"]])
+            break
+
     # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
     # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur
     # premium retombe sur ses littéraux historiques (Taqinor) pour toute valeur
@@ -3901,15 +3913,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # posée que lorsqu'au moins une clause a été figée → un devis sans clause
     # reste octet-identique. Imprimées par tous les gabarits
     # (``clauses_cgv.bloc_clauses_html``).
-    _clauses = getattr(devis, "clauses_appliquees", None)
-    if isinstance(_clauses, list) and _clauses:
+    _clauses = [
+        c for c in (getattr(devis, "clauses_appliquees", None) or [])
+        if isinstance(c, dict) and c.get("type") != "cgv_gelees"]
+    if _clauses:
         data["clauses_cgv"] = [
             {
                 "nom": (c.get("nom") or ""),
                 "corps_texte": (c.get("corps_texte") or ""),
                 "type_deal": (c.get("type_deal") or ""),
             }
-            for c in _clauses if isinstance(c, dict)
+            for c in _clauses
         ]
 
     # ── PV86 — Avertissements INTERNES sur l'état des données du devis ───────

@@ -416,17 +416,13 @@ def realisation_pour_lead(lead):
     return _repli(lignes, _puissance_du_dernier_devis(lead))
 
 
-def clauses_cgv_societe(company):
-    """ERR-QJR668 — les CGV que la société a RENSEIGNÉES, au format des
-    clauses gelées d'un devis (``[{clause_id, nom, corps_texte, type_deal,
-    ordre}]``), ou ``None`` quand elle n'en a saisi aucune.
-
-    Source : ``DocumentTemplates.cgv_bullets`` (le singleton société déjà
-    éditable dans Paramètres). Une puce par clause ; les puces à marqueurs
-    ``{acompte}`` / ``{materiel}`` / ``{solde}`` / ``{tva_note}`` sont
-    substituées par le moteur dans son propre bloc CGV — elles ne sont pas
-    reprises ici (elles s'imprimeraient brutes). Lecture seule : aucun
-    enregistrement n'est créé (``DocumentTemplates.get`` en crée un)."""
+def cgv_bullets_societe(company):
+    """ERR-QJR668 — les puces CGV que la société a RENSEIGNÉES
+    (``DocumentTemplates.cgv_bullets``), TELLES QUELLES (marqueurs
+    ``{acompte}`` / ``{materiel}`` / ``{solde}`` / ``{tva_note}`` conservés :
+    le moteur les substitue au rendu), ou ``None`` quand elle n'en a saisi
+    aucune. Lecture seule : aucun enregistrement n'est créé
+    (``DocumentTemplates.get`` en crée un)."""
     if company is None:
         return None
     from apps.parametres.models_documents import DocumentTemplates
@@ -434,12 +430,5 @@ def clauses_cgv_societe(company):
     puces = getattr(modele, 'cgv_bullets', None)
     if not isinstance(puces, list):
         return None
-    clauses = []
-    for puce in puces:
-        texte = str(puce or '').strip()
-        if not texte or '{' in texte:
-            continue
-        clauses.append({
-            'clause_id': None, 'nom': '', 'corps_texte': texte,
-            'type_deal': '', 'ordre': len(clauses)})
-    return clauses or None
+    puces = [str(p) for p in puces if str(p or '').strip()]
+    return puces or None
