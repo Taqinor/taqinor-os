@@ -103,14 +103,14 @@ test('aucun dialogue quand toutes les lignes sont issues d’une composition', (
   assert.deepEqual(lignesManuellesEnConflitPossible(lignes), [])
 })
 
-test('conflit réel : prix figé, quantité figée ou option déclenchent le dialogue', () => {
+test('conflit réel : seule une quantité figée déclenche le dialogue (prix tapé et option gardés)', () => {
   const lignes = [
     L(5, 'Panneau', 10, 999, { prixManuel: true }),
     L(6, 'Socles', 24, 50, { quantiteManuelle: true }),
     L(7, 'Borne', 1, 5000, { optionnelle: true }),
     L(8, 'Câble', 1, 100, { compose: true }),
   ]
-  assert.deepEqual(lignesManuellesEnConflitPossible(lignes).map(l => l.produit), ['5', '6', '7'])
+  assert.deepEqual(lignesManuellesEnConflitPossible(lignes).map(l => l.produit), ['6'])
 })
 
 test('« prendre N (recalculé) » ne garde exactement que les lignes recalculées ; « garder » fusionne', () => {

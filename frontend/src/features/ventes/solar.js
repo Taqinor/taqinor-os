@@ -1820,12 +1820,11 @@ export function lignesQuantiteFigee(lignes) {
   return (lignes || []).filter(l => _estLigneProduit(l) && l.quantiteManuelle && l.produit)
 }
 
-// Lignes produit portant une saisie humaine (prix, quantité figés ou option) :
-// seules susceptibles d'être en CONFLIT avec une nouvelle composition. Une
-// ligne seulement issue d'une composition (`compose`) n'en est jamais une.
+// Lignes en CONFLIT possible avec une nouvelle composition : seules les
+// quantités figées à la main. Un prix tapé ou une option ajoutée sont gardés
+// d'office par la fusion, sans question ; une ligne `compose` n'en est jamais une.
 export function lignesManuellesEnConflitPossible(lignes) {
-  return (lignes || []).filter(l => _estLigneProduit(l) && l.produit
-    && (l.prixManuel || l.quantiteManuelle || l.optionnelle))
+  return lignesQuantiteFigee(lignes)
 }
 
 // Applique une composition générée : 'garder' fusionne (saisies conservées),

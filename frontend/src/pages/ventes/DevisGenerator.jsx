@@ -2635,8 +2635,8 @@ export default function DevisGenerator({
   // confirmation et le geste part de façon synchrone (invariant F2 QJR99 :
   // jamais de `confirm` DANS handleAutoFill). Annuler ne dispatche rien.
   const avecQuantitesFigees = (geste) => {
-    // Conflit POSSIBLE seulement s'il existe une ligne saisie à la main
-    // (prix / quantité figés, option) ; sinon aucun dialogue.
+    // Conflit POSSIBLE seulement s'il existe une quantité figée à la main ;
+    // prix tapés et options sont gardés d'office (aucun dialogue).
     const manuelles = lignesManuellesEnConflitPossible(lines)
     if (!manuelles.length) { modeRecomposition.current = 'garder'; geste(); return }
     const noms = manuelles.slice(0, 5)

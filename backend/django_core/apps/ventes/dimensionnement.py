@@ -2155,6 +2155,7 @@ from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402,F401
     MAX_PALIERS_ECHELLE,
     MAX_SONDES_ECHELLE,
     _MEMO_PLAFOND_PHYSIQUE,
+    _cibles_au_dessus_du_plancher_ve,
     _compter_modules_batterie,
     _compter_modules_batterie_generique,
     _echelle_paliers_batterie,
