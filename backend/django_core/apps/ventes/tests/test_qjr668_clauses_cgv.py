@@ -78,6 +78,68 @@ class _Base(TestCase):
 
 
 CYCLE_VIE = (Path(__file__).resolve().parents[1] / 'domain' / 'cycle_vie.py')
+MOTEUR = (Path(__file__).resolve().parents[1] / 'quote_engine'
+          / 'generate_devis_premium.py')
+
+
+class RemplirCgvTests(SimpleTestCase):
+    """(a) LA fonction pure qui remplit les cases du texte CGV."""
+
+    def setUp(self):
+        from apps.ventes.quote_engine.clauses_cgv import valeurs_cgv
+        self.valeurs = valeurs_cgv(
+            acompte=40, materiel=50, solde=10,
+            tva_note='TVA 20 % appliquée', valid_until='31/10/2026')
+
+    def test_toutes_les_cases_sont_remplies(self):
+        from apps.ventes.quote_engine.clauses_cgv import remplir_cgv
+        puces = remplir_cgv([
+            '{validite_offre}', 'Acompte&#160;: {acompte}&#37;',
+            '{materiel}&#37; à la réception', '{solde}&#37; à la fin',
+            '{tva_note}'], self.valeurs)
+        self.assertEqual(puces, [
+            'Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au 31/10/2026',
+            'Acompte&#160;: 40&#37;', '50&#37; à la réception',
+            '10&#37; à la fin', 'TVA 20 % appliquée'])
+        self.assertFalse([p for p in puces if '{' in p or '}' in p])
+
+    def test_case_inconnue_jamais_imprimee_brute(self):
+        from apps.ventes.quote_engine.clauses_cgv import remplir_cgv
+        puces = remplir_cgv(['Garantie {garantie_ans} ans', '{}'],
+                            self.valeurs)
+        self.assertEqual(puces, ['Garantie  ans'])
+
+    def test_puce_vide_omise_echeance_inconnue(self):
+        from apps.ventes.quote_engine.clauses_cgv import (
+            remplir_cgv, valeurs_cgv)
+        valeurs = valeurs_cgv(acompte=30, materiel=60, solde=10,
+                              tva_note='', valid_until='')
+        self.assertEqual(
+            remplir_cgv(['{validite_offre}', '{tva_note}', 'Fixe'], valeurs),
+            ['Fixe'])
+
+    def test_termes_affiches_gardent_la_decimale(self):
+        from apps.ventes.quote_engine.clauses_cgv import (
+            termes_paiement_affiches)
+        self.assertEqual(termes_paiement_affiches(
+            {'payment_terms': {'acompte': 33.5, 'materiel': '56.50',
+                               'solde': None}}), (33.5, 56.5, 10))
+        self.assertEqual(termes_paiement_affiches({}), (30, 60, 10))
+
+    def test_le_moteur_appelle_la_fonction_partagee(self):
+        """Une seule copie : ``_cgv_bullets_html`` ne formate plus lui-même."""
+        arbre = ast.parse(MOTEUR.read_text(encoding='utf-8'))
+        fonction = next(
+            n for n in ast.walk(arbre)
+            if isinstance(n, ast.FunctionDef)
+            and n.name == '_cgv_bullets_html')
+        appels = {n.func.id for n in ast.walk(fonction)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+        attributs = {n.func.attr for n in ast.walk(fonction)
+                     if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Attribute)}
+        self.assertIn('remplir_cgv', appels)
+        self.assertNotIn('format', attributs)
 
 
 class SourceTests(SimpleTestCase):

@@ -45,6 +45,17 @@ try:
 except ImportError:  # exécution directe du moteur depuis son dossier
     from sequence import sequence_affichage
 
+# QJR668 — LA fonction pure qui remplit les cases du texte CGV (partagée avec
+# le gel ``domain/cycle_vie``) ; même double chemin d'import.
+try:
+    from .clauses_cgv import (
+        CGV_TITRE_DEFAUT, bloc_clauses_html, remplir_cgv,
+        termes_paiement_affiches, valeurs_cgv)
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from clauses_cgv import (
+        CGV_TITRE_DEFAUT, bloc_clauses_html, remplir_cgv,
+        termes_paiement_affiches, valeurs_cgv)
+
 
 def _render_pdf_weasyprint(html_string, out_path):
     """Render HTML to PDF using WeasyPrint (no browser needed)."""
@@ -533,7 +544,7 @@ DEFAULT_DOC_TEXTS = {
     "validite_badge_p1": "{validite}",
     "validite_onepage": "&#183; {validite}",
     # D2/N60 — conditions générales (titre + 7 puces ; placeholders substitués).
-    "cgv_titre": "Conditions générales du devis",
+    "cgv_titre": CGV_TITRE_DEFAUT,
     "cgv_bullets": [
         "{validite_offre}",
         "Acompte à la commande&#160;: {acompte}&#37;",
@@ -580,7 +591,6 @@ CLAUSES_CGV = []
 
 def _clauses_cgv_html(font_pt="7.5"):
     """QJR668 — bloc « Clauses particulières », ou '' sans clause gelée."""
-    from .clauses_cgv import bloc_clauses_html
     return bloc_clauses_html(CLAUSES_CGV, couleur_titre=CN,
                              couleur_texte=CG7, taille_pt=font_pt)
 
@@ -799,25 +809,18 @@ def _doc_text(key):
 def _cgv_bullets_html():
     """Puces CGV éditables rendues avec le MÊME enrobage <li> qu'avant.
 
-    Les marqueurs {acompte}/{materiel}/{solde}/{tva_note} sont substitués par
-    les valeurs dynamiques (PAY_A/PAY_M/PAY_S/TVA_NOTE). Défaut → puces
-    identiques au caractère près.
+    QJR668 — les cases {acompte}/{materiel}/{solde}/{tva_note}/{validite_offre}
+    sont remplies par LA fonction pure ``clauses_cgv.remplir_cgv`` (la même que
+    le gel à l'envoi) avec les valeurs dynamiques (PAY_A/PAY_M/PAY_S/TVA_NOTE/
+    VALID_UNTIL). Défaut → puces identiques au caractère près. Une case
+    inconnue n'est plus imprimée brute (elle devient une chaîne vide).
     """
     bullets = _doc_text("cgv_bullets") or DEFAULT_DOC_TEXTS["cgv_bullets"]
     out = ""
-    for raw in bullets:
-        try:
-            txt = raw.format(
-                acompte=PAY_A, materiel=PAY_M, solde=PAY_S,
-                tva_note=TVA_NOTE,
-                # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
-                validite_offre=(
-                    "Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
-                    f"{VALID_UNTIL}" if VALID_UNTIL else ""))
-        except (KeyError, IndexError, ValueError):
-            txt = raw
-        if not str(txt).strip():
-            continue
+    for txt in remplir_cgv(bullets, valeurs_cgv(
+            acompte=PAY_A, materiel=PAY_M, solde=PAY_S, tva_note=TVA_NOTE,
+            # M7 — échéance RÉELLE ; inconnue ⇒ chaîne vide ⇒ puce omise.
+            valid_until=VALID_UNTIL)):
         # Enrobage <li> + indentation/retours IDENTIQUES au bloc historique
         # (newline + 8 espaces avant chaque puce) → HTML byte-identique au défaut.
         out += (f'\n        <li style="font-size:12px;color:{CG7};'
@@ -4515,20 +4518,10 @@ def apply_quote_data(data: dict) -> None:
                 "generate_devis_premium: %s (%.2f) ne correspond pas au TTC "
                 "de sa chaîne de totaux (%.2f) — deux totaux pour une seule "
                 "option (QJR146)." % (_cle_scalaire, float(_valeur), _ttc))
-    _terms = data.get("payment_terms") or {}
-
-    def _pct(v, defaut):
-        # QJR623 — l'échéancier RÉEL du devis peut porter 33,5 % : on n'en
-        # tronque plus la décimale (``int``) ; un entier reste un entier.
-        try:
-            f = float(v if v is not None else defaut)
-        except (TypeError, ValueError):
-            f = float(defaut)
-        return int(f) if f == int(f) else round(f, 2)
-
-    PAY_A = _pct(_terms.get("acompte"), 30)
-    PAY_M = _pct(_terms.get("materiel"), 60)
-    PAY_S = _pct(_terms.get("solde"), 10)
+    # QJR623 — l'échéancier RÉEL du devis peut porter 33,5 % : on n'en
+    # tronque plus la décimale ; un entier reste un entier. QJR668 — la
+    # normalisation vit dans ``clauses_cgv`` (partagée avec le gel CGV).
+    PAY_A, PAY_M, PAY_S = termes_paiement_affiches(data)
     global MONTANTS_TRANCHES
     MONTANTS_TRANCHES = dict(data.get("montants_tranches") or {})
     ONEPAGE_NOTE_BATTERIE = bool(data.get("onepage_note_batterie", False))
