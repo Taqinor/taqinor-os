@@ -331,3 +331,36 @@ class EtudesRelanceesTests(_OverridesBase):
         self.assertEqual(
             Devis.objects.get(pk=self.devis.pk)
             .overrides['taille.nb_panneaux']['valeur'], 14)
+
+
+class EtudesRelanceesSansEspionTests(TestCase):
+    """ERR-QJR564 — SANS mock : le PATCH d'``etude.jour_reference`` recalcule
+    réellement le bloc horaire STOCKÉ (celui que ``/proposal`` lit), qui porte
+    alors l'empreinte d'entrées de la NOUVELLE date."""
+
+    def setUp(self):
+        from apps.ventes.tests.test_etude_horaire_par_option import (
+            LIGNES_COMMUNES, _Base)
+        base = _Base()
+        self.devis = base._devis('qjr564-reel', lignes=LIGNES_COMMUNES)
+        self.devis = base._rafraichir(self.devis, force=True)
+        self.user = UserFactory(
+            company=self.devis.company,
+            role_legacy=CustomUser.ROLE_RESPONSABLE)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.url = f'/api/django/ventes/devis/{self.devis.id}/overrides/'
+
+    def test_patch_jour_reference_recalcule_le_bloc_stocke(self):
+        from apps.ventes.domain.entrees import empreinte_entrees_du_devis
+        avant = self.devis.etude_params['etude_horaire']['_empreinte_entrees']
+        self.assertTrue(avant, 'étude horaire non calculée')
+        resp = self.api.patch(
+            self.url, {'etude.jour_reference': {'valeur': '2026-03-15'}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        devis = Devis.objects.get(pk=self.devis.pk)
+        apres = devis.etude_params['etude_horaire']['_empreinte_entrees']
+        self.assertNotEqual(apres, avant)
+        self.assertEqual(apres, empreinte_entrees_du_devis(devis))
