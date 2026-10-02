@@ -220,6 +220,13 @@
       <span>−{{ "%.2f"|format(totaux.remise) }} MAD</span>
     </div>
     {% endif %}
+    {# ARRONDI-100 — palier hérité du devis signé (facture de BC). #}
+    {% if totaux.arrondi and totaux.arrondi > 0 %}
+    <div class="totaux-row remise">
+      <span>Arrondi commercial</span>
+      <span>−{{ "%.2f"|format(totaux.arrondi) }} MAD</span>
+    </div>
+    {% endif %}
     {# TVA ventilée par taux (10 %/20 %). Mono-taux (factures historiques) →
        une seule ligne, identique à avant. #}
     {% for b in totaux.tva_par_taux %}

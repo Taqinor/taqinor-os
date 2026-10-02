@@ -1764,7 +1764,12 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
 
         empreinte = hashlib.sha256(html.encode('utf-8')).hexdigest()
 
-        # Ré-épinglée le 2026-10-01 (PR #764, lot 5 QJR5, shard 1) : QJR627
+        # Ré-épinglée le 2026-10-02 (ARRONDI-100, CI de la branche
+        # claude/quote-rounding-100dh) : le total du devis gelé (44 700 HT,
+        # soit 53 640 TTC à 20 %) est ramené au palier de 100 MAD (53 600 TTC),
+        # donc le rendu change — changement VOULU. Valeur recopiée du message
+        # d'échec du run CI (jamais calculée à la main).
+        # Avant : ré-épinglée le 2026-10-01 (PR #764, lot 5 QJR5, shard 1) : QJR627
         # insère dans ``page_onepage`` l'emplacement du bloc « Note » client
         # (``_note_client_html``) — vide ici (devis sans note), donc seule une
         # ligne d'indentation s'ajoute au HTML : aucun changement visible.
@@ -1779,7 +1784,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # modification du rendu agricole la fait dériver : si le changement
         # est VOULU, coller la nouvelle valeur imprimée par le message d'échec.
         EMPREINTE_EPINGLEE = (
-            '02d25cd79845b737762ae909eeedd6206d8a2dd11e1d02b340267ceb23cb8513')
+            'f569f6acb6454b55d44cdd4f4e280f4e743adb947b1bcde443a5945e1a8019e4')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
@@ -1834,9 +1839,14 @@ class TestQjr53TotauxAuCentime(TestCase):
 
         devis = self._devis('DEV-QJR53-SOMME', remise='12.5')
         totaux = build_quote_data(devis, {'pdf_mode': 'onepage'})['totaux_all']
-        self.assertAlmostEqual(totaux['ht_net'],
-                               round(totaux['ht_brut'] - totaux['remise'], 2),
-                               places=2)
+        # ARRONDI-100 : la chaîne imprimée porte un étage de plus, négatif
+        # comme la remise — HT net = HT brut − remise − arrondi commercial
+        # (34 916,75 − 4 364,59 − 52,16 = 30 500,00).
+        self.assertAlmostEqual(totaux['arrondi'], 52.16, places=2)
+        self.assertAlmostEqual(
+            totaux['ht_net'],
+            round(totaux['ht_brut'] - totaux['remise'] - totaux['arrondi'], 2),
+            places=2)
         self.assertAlmostEqual(
             totaux['tva'],
             round(sum(b['montant'] for b in totaux['tva_par_taux']), 2),

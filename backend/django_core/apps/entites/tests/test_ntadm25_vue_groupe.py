@@ -76,14 +76,17 @@ class Ntadm25ConsolidationTests(TestCase):
     def test_le_ca_est_ventile_par_filiale(self):
         resp = self.api.get(URL)
         par_code = {c['code']: c for c in resp.data['entites']}
-        self.assertEqual(par_code['FA']['ca_devis'], '73951.00')
-        self.assertEqual(par_code['FB']['ca_devis'], '21048.00')
+        # ARRONDI-100 : chaque devis au palier de 100 MAD inférieur —
+        # FA 73951.00 → 73900.00, FB 21048.00 → 21000.00.
+        self.assertEqual(par_code['FA']['ca_devis'], '73900.00')
+        self.assertEqual(par_code['FB']['ca_devis'], '21000.00')
         self.assertEqual(par_code['FA']['nb_devis'], 1)
         self.assertEqual(par_code['FB']['nb_devis'], 1)
 
     def test_le_total_est_la_somme_des_colonnes(self):
         resp = self.api.get(URL)
-        self.assertEqual(resp.data['total']['ca_devis'], '94999.00')
+        # ARRONDI-100 : 94999.00 → 94900.00 (73900 + 21000).
+        self.assertEqual(resp.data['total']['ca_devis'], '94900.00')
         self.assertEqual(resp.data['total']['nb_devis'], 2)
 
     def test_les_lignes_non_affectees_ne_gonflent_aucune_colonne(self):
@@ -99,7 +102,8 @@ class Ntadm25ConsolidationTests(TestCase):
             prix_unitaire=Decimal('50000'), remise=Decimal('0'),
             taux_tva=Decimal('0'))
         resp = self.api.get(URL)
-        self.assertEqual(resp.data['total']['ca_devis'], '94999.00')
+        # ARRONDI-100 : 94999.00 → 94900.00 (73900 + 21000).
+        self.assertEqual(resp.data['total']['ca_devis'], '94900.00')
         self.assertEqual(resp.data['total']['nb_devis'], 2)
 
     def test_isolation_multi_tenant(self):
@@ -121,7 +125,8 @@ class Ntadm25ConsolidationTests(TestCase):
 
         resp = self.api.get(URL)
         self.assertEqual(len(resp.data['entites']), 2)
-        self.assertEqual(resp.data['total']['ca_devis'], '94999.00')
+        # ARRONDI-100 : 94999.00 → 94900.00 (73900 + 21000).
+        self.assertEqual(resp.data['total']['ca_devis'], '94900.00')
 
     def test_effectif_donne_au_total_jamais_invente_par_entite(self):
         resp = self.api.get(URL)

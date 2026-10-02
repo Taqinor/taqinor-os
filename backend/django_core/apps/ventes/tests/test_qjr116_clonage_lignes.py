@@ -157,8 +157,14 @@ class _DevisADeuxOptimumsDivergents(TestCase):
     #: voyait donc mono-option et servait la somme des deux paniers (53 700).
     #: Les 20 000 du panier « avec » sont simplement redécoupés en
     #: 11 000 (onduleur hybride) + 9 000 (batterie).
-    HT_SANS = Decimal('18300.00')
-    HT_AVEC = Decimal('35900.00')
+    #:
+    #: ARRONDI-100 (02/10/2026) — chaque total est ramené au palier de 100 MAD
+    #: TTC inférieur, par une baisse de HT : « sans » 18 300 HT = 21 960 TTC →
+    #: 21 900 TTC = 18 250,00 HT ; « avec » 35 900 HT = 43 080 TTC → 43 000 TTC
+    #: = 35 833,33 HT (anciennement 18 300,00 / 35 900,00). Les lignes ne
+    #: bougent pas ; l'add-on activé pèse toujours exactement 7 000,00 HT.
+    HT_SANS = Decimal('18250.00')
+    HT_AVEC = Decimal('35833.33')
 
     def setUp(self):
         from authentication.models import Company

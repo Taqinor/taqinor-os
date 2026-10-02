@@ -20,7 +20,9 @@ chiffres), plus une **remise globale de 10 %** :
     installation 4 000, TVA 20 %, remise globale 10 %
 
     → option AVEC (celle du total affiché, D9) = 57 400 HT brut
-      → −5 740 de remise → 51 660 HT net → 10 332 TVA → **61 992,00 TTC**
+      → −5 740 de remise → 51 660 HT net → 10 332 TVA → 61 992,00 TTC exact
+      → ARRONDI-100 : baisse de HT de 76,67 (51 583,33 HT net, 10 316,67 TVA)
+        → **61 900,00 TTC**
     → l'ancien calcul du tableau de bord : (11 700 + 24 000 + 15 400 + 14 000
       + 4 000) × 1,20 = **82 920,00** — la somme des DEUX options, remise
       globale perdue, un montant qui n'existe dans aucun document.
@@ -51,7 +53,8 @@ URL = '/api/django/ventes/dashboard/'
 MONTH = timezone.now().strftime('%Y%m')
 
 #: Le TTC de l'option mise en avant (AVEC), remise globale honorée.
-TTC_AVEC_REMISE = Decimal('61992.00')
+#: ARRONDI-100 : 61992.00 → 61900.00 (palier de 100 MAD inférieur).
+TTC_AVEC_REMISE = Decimal('61900.00')
 #: Ce que le tableau de bord affichait AVANT QJR203 : la somme des DEUX
 #: options, remise globale ignorée, TVA 20 % en dur.
 TTC_ANCIEN_CALCUL_FAUX = Decimal('82920.00')

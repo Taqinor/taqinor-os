@@ -520,22 +520,44 @@ class TestDevisTvaQuantize(TestCase):
 
         def q(x):
             return Decimal(x).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        base10 = Decimal('999.99')  # 3 × 333.33
-        base20 = Decimal('999.99')
+        # ARRONDI-100 : le total du devis est ramené au palier de 100 MAD
+        # (TTC 2 299,98 → 2 200,00 par une baisse de HT de 83,32 : panier 10 %
+        # 999,99 → 999,98, panier 20 % 999,99 → 916,68). La TVA du devis reste
+        # la somme quantizée PAR PANIER, mais sur les bases après arrondi :
+        # 300.00 → 283.34.
+        base10 = Decimal('999.98')  # 3 × 333.33 = 999.99, moins 0.01
+        base20 = Decimal('916.68')  # 3 × 333.33 = 999.99, moins 83.31
         expected = q(base10 * Decimal('10') / Decimal('100')) + \
             q(base20 * Decimal('20') / Decimal('100'))
+        self.assertEqual(q(expected), Decimal('283.34'))
         self.assertEqual(q(devis.total_tva), q(expected))
-        # Cohérence devis ↔ facture : une facture aux mêmes lignes a la même TVA.
-        facture = Facture.objects.create(
-            company=self.company, reference=f'FAC-{MONTH}-7101',
-            client=self.client_obj, statut=Facture.Statut.EMISE,
-            taux_tva=Decimal('20.00'))
-        for li in devis.lignes.all():
-            LigneFacture.objects.create(
-                facture=facture, produit=li.produit,
-                designation=li.designation, quantite=li.quantite,
-                prix_unitaire=li.prix_unitaire, taux_tva=li.taux_tva)
+        self.assertEqual(q(devis.total_ttc), Decimal('2200.00'))
+
+        def facturer(reference, **extra):
+            facture = Facture.objects.create(
+                company=self.company, reference=reference,
+                client=self.client_obj, statut=Facture.Statut.EMISE,
+                taux_tva=Decimal('20.00'), **extra)
+            for li in devis.lignes.all():
+                LigneFacture.objects.create(
+                    facture=facture, produit=li.produit,
+                    designation=li.designation, quantite=li.quantite,
+                    prix_unitaire=li.prix_unitaire, taux_tva=li.taux_tva)
+            return facture
+
+        # Cohérence devis ↔ facture : la facture de BC de ce devis hérite du
+        # palier (``arrondi_pas`` = 100) — mêmes lignes, même TVA au centime.
+        facture = facturer(f'FAC-{MONTH}-7101', arrondi_pas=100)
         self.assertEqual(q(devis.total_tva), q(facture.total_tva))
+        self.assertEqual(q(devis.total_ttc), q(facture.total_ttc))
+        # Une facture saisie à la main (sans palier) garde la quantisation par
+        # panier d'avant ARRONDI-100 : bases 999,99 → 100,00 + 200,00.
+        saisie = facturer(f'FAC-{MONTH}-7102')
+        self.assertEqual(
+            q(saisie.total_tva),
+            q(q(Decimal('999.99') * Decimal('10') / Decimal('100'))
+              + q(Decimal('999.99') * Decimal('20') / Decimal('100'))))
+        self.assertEqual(q(saisie.total_tva), Decimal('300.00'))
 
 
 class TestPaiementRowLock(TestCase):

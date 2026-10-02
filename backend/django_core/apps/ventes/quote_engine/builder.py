@@ -1944,25 +1944,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         ht_brut = float(vue.ht_brut)
 
         # ``ttc_avant`` — LE PRIX BARRÉ (le TTC qu'on paierait SANS la remise
-        # globale). Ce n'est pas un étage de la chaîne canonique : c'est un
-        # artefact d'AFFICHAGE, arrondi au dirham comme le formateur du
-        # document, et il reste donc calculé ici.
-        buckets_brut = {}
-        for r in rows:
-            rate = float(r.get("taux_tva", tva_pct))
-            buckets_brut[rate] = (
-                buckets_brut.get(rate, 0.0) + r["quantite"] * r["prix_unit_ht"])
-        if len(buckets_brut) <= 1:
-            _rate0 = next(iter(buckets_brut), tva_pct)
-            ttc_avant = round(ht_brut * (1 + _rate0 / 100))
-        else:
-            ttc_avant = round(sum(
-                buckets_brut[rate] * (1 + rate / 100) for rate in buckets_brut))
+        # globale). ARRONDI-100 : la MÊME chaîne que l'écran
+        # (``solar.optionTotalsTTC`` → ``totalSansBrut``/``totalAvecBrut``) —
+        # le noyau sur ces lignes, remise 0, au palier de 100 MAD — pour que le
+        # prix barré du PDF soit, au dirham, celui que le vendeur a vu.
+        from apps.ventes.domain.argent import PAS_ARRONDI_DEVIS as _PAS
+        from apps.ventes.selectors import _canonical_totaux as _noyau_brut
+        # Déjà au palier (ou au centime sous 100 MAD) : aucun arrondi de plus.
+        ttc_avant = float(_noyau_brut(
+            [_LigneArgentPdf(r, tva_pct) for r in rows],
+            remise_globale_pct=0, fallback_taux=devis.taux_tva,
+            arrondi_pas=_PAS)["ttc"])
         # ``ttc`` et ``ttc_exact`` sont désormais LA MÊME valeur, au centime :
         # la clé historique est conservée pour ses lecteurs, plus jamais pour
         # dire « et voici la version non arrondie ».
         ttc = float(vue.ttc)
+        # ARRONDI-100 — ``arrondi`` : la baisse de HT qui ramène le TTC au
+        # palier de 100 MAD inférieur (0.0 quand le TTC y est déjà).
         return {"ht_brut": ht_brut, "remise": float(vue.remise),
+                "arrondi": float(vue.arrondi),
                 "ht_net": float(vue.ht_net),
                 "tva": float(vue.tva), "tva_par_taux": tva_par_taux,
                 "ttc": ttc, "ttc_exact": ttc, "ttc_avant": ttc_avant}
@@ -3770,8 +3770,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 if not isinstance(t, dict):
                     return t
                 out = dict(t)
-                for k in ("ht_brut", "remise", "ht_net", "tva", "ttc",
-                          "ttc_exact", "ttc_avant"):
+                for k in ("ht_brut", "remise", "arrondi", "ht_net", "tva",
+                          "ttc", "ttc_exact", "ttc_avant"):
                     if isinstance(out.get(k), (int, float)):
                         # QJR53 — ``ttc`` est au CENTIME comme les autres
                         # étages ; seul ``ttc_avant`` (le prix BARRÉ, artefact

@@ -367,6 +367,14 @@ class GoldenDevisRemise(_BaseEcran):
         ht_net  = 11 500,00 − 1 150,00           = 10 350,00
         tva     = 10 350,00 × 20 / 100           =  2 070,00
         ttc     = 10 350,00 + 2 070,00           = 12 420,00
+
+    ARRONDI-100 : le TTC est ramené au palier de 100 MAD inférieur par une
+    baisse de HT de 16,67 (les prix des lignes ne bougent pas) :
+
+        arrondi = 16,67
+        ht_net  = 11 500,00 − 1 150,00 − 16,67   = 10 333,33
+        tva     = 10 333,33 × 20 / 100           =  2 066,67
+        ttc     = 10 333,33 + 2 066,67           = 12 400,00
     """
 
     def _devis_existant(self):
@@ -410,12 +418,14 @@ class GoldenDevisRemise(_BaseEcran):
              'optionnelle': False, 'type_ligne': 'produit',
              'quantite_manuelle': False, 'prix_manuel': False},
         ])
-        self.assertEqual(devis.total_ht, Decimal('10350.00'))
-        self.assertEqual(devis.total_tva, Decimal('2070.00'))
-        self.assertEqual(devis.total_ttc, Decimal('12420.00'))
-        # La réponse porte le MÊME argent que la base (inchangée à l'octet).
+        # ARRONDI-100 : 10350.00 → 10333.33 ; 2070.00 → 2066.67 ;
+        # 12420.00 → 12400.00
+        self.assertEqual(devis.total_ht, Decimal('10333.33'))
+        self.assertEqual(devis.total_tva, Decimal('2066.67'))
+        self.assertEqual(devis.total_ttc, Decimal('12400.00'))
+        # La réponse porte le MÊME argent que la base.
         self.assertEqual(Decimal(str(reponse.data['total_ttc'])),
-                         Decimal('12420.00'))
+                         Decimal('12400.00'))
 
     def test_la_saisie_manuelle_du_commercial_fait_l_aller_retour(self):
         """D12 / QJR59 — le prix tapé et la quantité forcée sont SOUVERAINS.

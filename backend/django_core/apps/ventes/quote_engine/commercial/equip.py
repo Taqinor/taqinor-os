@@ -94,6 +94,13 @@ def build(ctx):
         f'<tr><td>Remise{ancre("remise", _f_remise)}</td>'
         f'<td class="c2-tr">- {_f_remise} MAD</td></tr>'
         if remise > 0 else "")
+    # ARRONDI-100 — la baisse au palier de 100 MAD inférieur, ligne visible.
+    arrondi = _num(tot.get("arrondi"))
+    _f_arrondi = fmt_mad(arrondi)
+    arrondi_row = (
+        f'<tr><td>Arrondi commercial{ancre("arrondi", _f_arrondi)}</td>'
+        f'<td class="c2-tr">- {_f_arrondi} MAD</td></tr>'
+        if arrondi > 0 else "")
     _f_ht_brut = fmt_mad(ht_brut)
     _f_ht_net = fmt_mad(ht_net)
     _f_tva = fmt_mad(tva)
@@ -204,7 +211,7 @@ def build(ctx):
     <div class="c2-tot-box">
       <table class="c2-tot-tbl">
         <tr><td>Sous-total HT{ancre("sous_total_ht", _f_ht_brut)}</td><td>{_f_ht_brut} MAD</td></tr>
-        {remise_row}
+        {remise_row}{arrondi_row}
         <tr><td>Total HT{ancre("total_ht", _f_ht_net)}</td><td>{_f_ht_net} MAD</td></tr>
         <tr><td>TVA{ancre("tva", _f_tva)}</td><td>{_f_tva} MAD</td></tr>
         <tr class="c2-tot-ttc"><td>Total TTC{ancre("total_ttc", _f_ttc)}</td><td>{_f_ttc} MAD</td></tr>
