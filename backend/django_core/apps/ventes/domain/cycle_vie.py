@@ -1641,38 +1641,81 @@ def contexte_clauses_devis(devis):
 
 
 def clauses_applicables_devis(devis):
-    """QJR668 — les clauses/CGV PROPRES À L'AFFAIRE qui s'appliquent à ce
-    devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
-    quand AUCUN catalogue de clauses n'est disponible.
+    """QJR668 — le texte CGV de la SOCIÉTÉ du devis, cases REMPLIES avec les
+    valeurs de CE devis, prêt à être figé ; ``None`` quand la société n'a pas
+    saisi de CGV (rien n'est figé — jamais un texte inventé, et les puces
+    historiques du moteur ne sont pas des CGV société).
 
-    ERR-QJR668-CLAUSES-CGV-SOURCE-PARQUEE (01/10/2026) — le périmètre MVP ne
-    porte AUCUN catalogue de clauses par affaire : la seule source prévue
-    (catalogue NTCPQ11, app ``cpq``) est PARQUÉE et son ``selectors`` n'existe
-    pas ; l'import dynamique qui la cherchait échouait donc toujours en
-    silence. Il est retiré : rien ne fait plus croire qu'une source est
-    branchée. Les CGV GÉNÉRALES société (``parametres.DocumentTemplates`` :
-    ``cgv_titre`` + ``cgv_bullets``) ne sont PAS une telle source — ce sont des
-    gabarits à marqueurs (``{acompte}``, ``{solde}``, ``{tva_note}``…) que le
-    moteur remplit AU RENDU, déjà imprimés par le gabarit plein format :
-    les figer ici imprimerait les marqueurs bruts et la même CGV deux fois.
-    Tant que le fondateur n'a pas désigné de source, la fonction rend ``None``
-    et :func:`figer_clauses_devis` n'écrit rien (un snapshot déjà posé n'est
-    jamais effacé)."""
-    return None
+    Décision fondateur (Reda, 01/10/2026) : « Figer le texte CGV à l'envoi.
+    À l'envoi (et à chaque correction après envoi), on fige le texte CGV de la
+    société, cases remplies avec les valeurs du devis. Le PDF de ce devis
+    imprime ensuite cette version figée : modifier les CGV plus tard ne change
+    plus un devis déjà envoyé ou signé. »
+
+    * Source : ``apps.parametres.selectors.cgv_societe`` (app fondation),
+      strictement par ``devis.company`` (multi-tenant).
+    * Les cases sont remplies par LA fonction pure du moteur
+      (``quote_engine.clauses_cgv.remplir_cgv``) avec les valeurs que le PDF
+      imprimerait (``build_quote_data`` : échéancier réel, mention TVA des
+      lignes, échéance réelle) — jamais une seconde copie du calcul.
+    * Rend une liste d'UNE entrée marquée ``source='cgv_societe'``
+      (``{clause_id, source, nom, corps_texte, puces, type_deal, ordre,
+      version}``) : le builder la sert au bloc « Conditions générales » et la
+      retire des « Clauses particulières » (la CGV n'est imprimée qu'une fois).
+    """
+    from apps.parametres.selectors import cgv_societe
+
+    cgv = cgv_societe(getattr(devis, 'company', None))
+    if not cgv:
+        return None
+    from apps.ventes.quote_engine.builder import build_quote_data
+    from apps.ventes.quote_engine.clauses_cgv import (
+        CGV_TITRE_DEFAUT, SOURCE_CGV_SOCIETE, remplir_cgv,
+        termes_paiement_affiches, valeurs_cgv)
+
+    data = build_quote_data(devis)
+    acompte, materiel, solde = termes_paiement_affiches(data)
+    puces = remplir_cgv(cgv['puces'], valeurs_cgv(
+        acompte=acompte, materiel=materiel, solde=solde,
+        tva_note=data.get('tva_note') or '',
+        valid_until=data.get('valid_until') or ''))
+    return [{
+        'clause_id': None,
+        'source': SOURCE_CGV_SOCIETE,
+        'nom': cgv['titre'] or CGV_TITRE_DEFAUT,
+        'corps_texte': '',
+        'puces': puces,
+        'type_deal': '',
+        'ordre': 0,
+        'version': cgv['version'],
+    }]
 
 
 def figer_clauses_devis(devis):
-    """QJR668 (décision fondateur 01/10/2026) — GÈLE les clauses/CGV du devis
-    sur ``Devis.clauses_appliquees``, lues ensuite telles quelles par le PDF
-    (``builder`` → ``data['clauses_cgv']``) : le moteur ne fait que rendre.
+    """QJR668 (décision fondateur 01/10/2026) — GÈLE le texte CGV de la
+    société, cases remplies, sur ``Devis.clauses_appliquees`` ; le PDF
+    l'imprime ensuite tel quel (``builder`` → ``data['cgv_figees']``) : le
+    moteur ne fait que rendre.
 
-    Appelé sur le chemin d'envoi (:func:`mark_devis_sent`) puis RE-appelé à
+    Appelé sur le chemin d'envoi (:func:`mark_devis_sent`, et la vue
+    d'envoi par e-mail juste avant de rendre la pièce jointe) puis RE-appelé à
     chaque correction sur place d'un envoyé
     (``modifiabilite.consigner_correction_apres_envoi``, QJR518) — sinon le
-    PDF imprimerait des clauses choisies pour un contenu qui n'existe plus.
-    Sans catalogue (``None``), rien n'est écrit. N'écrit que si le jeu change.
-    Rend ``True`` quand le snapshot a été (ré)écrit. Ne touche jamais au
-    statut (règle #4)."""
+    PDF imprimerait des cases (échéancier, TVA, échéance) d'un contenu qui
+    n'existe plus.
+
+    * Seul un devis BROUILLON (en cours d'envoi) ou ENVOYÉ est (re)gelé : un
+      devis ACCEPTÉ — ou refusé/expiré — n'est JAMAIS regelé (ce que le client
+      a signé ne bouge plus).
+    * Société sans CGV (``None``) : rien n'est écrit, un snapshot déjà posé
+      n'est jamais effacé.
+    * N'écrit que si le texte figé change. Rend ``True`` quand le snapshot a
+      été (ré)écrit. Ne touche jamais au statut (règle #4).
+    """
+    from apps.ventes.models import Devis
+
+    if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+        return False
     clauses = clauses_applicables_devis(devis)
     if clauses is None or clauses == (devis.clauses_appliquees or None):
         return False

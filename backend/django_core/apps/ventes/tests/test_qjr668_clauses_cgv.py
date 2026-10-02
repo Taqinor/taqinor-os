@@ -1,17 +1,20 @@
-"""QJR668 (décision fondateur 01/10/2026 : « les brancher ») — les clauses/CGV
-propres à chaque affaire (NTCPQ11, ``Devis.clauses_appliquees``) sont :
+"""QJR668 — décision fondateur (Reda, 01/10/2026) : « Figer le texte CGV à
+l'envoi. À l'envoi (et à chaque correction après envoi), on fige le texte CGV
+de la société, cases remplies avec les valeurs du devis. Le PDF de ce devis
+imprime ensuite cette version figée : modifier les CGV plus tard ne change
+plus un devis déjà envoyé ou signé. »
 
-  * GELÉES sur le chemin d'envoi (``mark_devis_sent``) ;
-  * RE-GELÉES à chaque correction sur place d'un envoyé (QJR518) ;
-  * IMPRIMÉES par tous les gabarits (résidentiel, industriel, commercial,
-    une page) — et un devis sans clause reste sans bloc.
+  * (a) LA fonction pure ``quote_engine.clauses_cgv.remplir_cgv`` remplit les
+    cases — moteur et gel l'appellent tous les deux ;
+  * (b) ``clauses_applicables_devis`` lit le texte CGV SOCIÉTÉ
+    (``parametres.selectors.cgv_societe``) SANS patch : gel à l'envoi
+    (``mark_devis_sent``), regel à chaque correction après envoi (QJR518),
+    jamais de regel d'un accepté, rien pour une société sans CGV ;
+  * (c) le PDF imprime la version figée dans le bloc « Conditions
+    générales », UNE seule fois, au lieu du texte vivant.
 
-Le catalogue (app ``cpq``) est PARQUÉ et le périmètre MVP n'a AUCUNE autre
-source de clauses par affaire (ERR-QJR668-CLAUSES-CGV-SOURCE-PARQUEE : l'import
-dynamique inerte de ``apps.cpq.selectors`` est retiré, ``SourceTests`` le
-prouve SANS patch). Sans source, le gel n'écrit rien et n'efface jamais un
-snapshot déjà posé. Les tests de gel/impression fournissent une source en
-patchant ``clauses_applicables_devis``.
+Les tests « Clauses particulières » historiques (NTCPQ11) fournissent une
+clause par affaire en patchant ``clauses_applicables_devis``.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -146,15 +149,18 @@ class SourceTests(SimpleTestCase):
     """ERR-QJR668-CLAUSES-CGV-SOURCE-PARQUEE — SANS patch de la source.
 
     L'ancienne source cherchait ``apps.cpq.selectors`` par import dynamique :
-    module absent → ``None`` en silence, d'où un gel qui semblait branché sans
-    jamais rien écrire. Plus aucune référence à ``cpq`` ni ``importlib``."""
+    module absent → ``None`` en silence. La source est désormais le texte CGV
+    société, lu par le selector de ``apps.parametres`` (app fondation)."""
 
-    def test_aucune_reference_a_cpq_dans_la_source(self):
+    def _fonction(self):
         arbre = ast.parse(CYCLE_VIE.read_text(encoding='utf-8'))
-        fonction = next(
+        return next(
             n for n in ast.walk(arbre)
             if isinstance(n, ast.FunctionDef)
             and n.name == 'clauses_applicables_devis')
+
+    def test_aucune_reference_a_cpq_dans_la_source(self):
+        fonction = self._fonction()
         chaines = [n.value for n in ast.walk(fonction)
                    if isinstance(n, ast.Constant) and isinstance(n.value, str)
                    and n is not fonction.body[0].value]
@@ -162,15 +168,21 @@ class SourceTests(SimpleTestCase):
         self.assertFalse([c for c in chaines if 'cpq' in c], chaines)
         self.assertNotIn('importlib', noms)
 
+    def test_la_source_est_le_selector_cgv_de_parametres(self):
+        modules = {n.module for n in ast.walk(self._fonction())
+                   if isinstance(n, ast.ImportFrom)}
+        self.assertIn('apps.parametres.selectors', modules)
+        self.assertIn('apps.ventes.quote_engine.clauses_cgv', modules)
+
     def test_un_module_cpq_present_n_est_pas_lu(self):
         """Même si un ``apps.cpq.selectors`` devenait importable, la
-        fonction ne s'en sert pas : aucune source n'a été désignée."""
+        fonction ne s'en sert pas : société sans CGV → ``None``."""
         from apps.ventes.domain.cycle_vie import clauses_applicables_devis
         faux = types.ModuleType('apps.cpq.selectors')
         faux.clauses_applicables = MagicMock(return_value=[CLAUSE])
-        contexte = 'apps.ventes.domain.cycle_vie.contexte_clauses_devis'
         with patch.dict(sys.modules, {'apps.cpq.selectors': faux}), \
-                patch(contexte, return_value={}):
+                patch('apps.parametres.selectors.cgv_societe',
+                      return_value=None):
             self.assertIsNone(clauses_applicables_devis(MagicMock()))
         faux.clauses_applicables.assert_not_called()
 
@@ -187,7 +199,7 @@ class GelTests(_Base):
         self.assertEqual(devis.clauses_appliquees, [CLAUSE])
 
     def test_sans_catalogue_rien_n_est_ecrit_ni_efface(self):
-        """Aucune source MVP : la source réelle rend None, le snapshot reste."""
+        """Société sans CGV : la source réelle rend None, le snapshot reste."""
         from apps.ventes.domain.cycle_vie import (
             clauses_applicables_devis, figer_clauses_devis)
         devis = self._devis()
@@ -224,6 +236,107 @@ class GelTests(_Base):
         self.assertEqual(r.status_code, 200, r.content)
         devis.refresh_from_db()
         self.assertFalse(devis.clauses_appliquees)
+
+
+class GelCgvSocieteTests(_Base):
+    """(b) SANS patch de ``clauses_applicables_devis`` : le texte CGV de la
+    SOCIÉTÉ est figé, cases remplies, à l'envoi et à chaque correction."""
+
+    def _cgv(self, puces, titre='CGV QJR668', company=None):
+        from apps.parametres.models_documents import DocumentTemplates
+        tpl = DocumentTemplates.get(company=company or self.company)
+        tpl.cgv_titre = titre
+        tpl.cgv_bullets = puces
+        tpl.save()
+        return tpl
+
+    def _attendu(self, devis):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.clauses_cgv import (
+            termes_paiement_affiches)
+        data = build_quote_data(devis)
+        return termes_paiement_affiches(data), data['tva_note']
+
+    def _api(self):
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def test_envoi_fige_le_texte_cgv_cases_remplies(self):
+        from apps.ventes.services import mark_devis_sent
+        self._cgv(['Acompte QJR668 {acompte}&#37; puis {materiel}&#37;',
+                   'Solde QJR668 {solde}&#37;', '{tva_note}',
+                   'Puce fixe QJR668'])
+        devis = self._devis()
+        (acompte, materiel, solde), tva_note = self._attendu(devis)
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(len(devis.clauses_appliquees), 1)
+        fige = devis.clauses_appliquees[0]
+        self.assertEqual(fige['source'], 'cgv_societe')
+        self.assertEqual(fige['nom'], 'CGV QJR668')
+        self.assertEqual(fige['puces'], [
+            f'Acompte QJR668 {acompte}&#37; puis {materiel}&#37;',
+            f'Solde QJR668 {solde}&#37;', tva_note, 'Puce fixe QJR668'])
+        self.assertFalse(
+            [p for p in fige['puces'] if '{' in p or '}' in p], fige)
+
+    def test_titre_vide_fige_le_titre_par_defaut(self):
+        from apps.ventes.quote_engine.clauses_cgv import CGV_TITRE_DEFAUT
+        from apps.ventes.services import mark_devis_sent
+        self._cgv(['Puce QJR668'], titre='')
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.clauses_appliquees[0]['nom'],
+                         CGV_TITRE_DEFAUT)
+
+    def test_correction_apres_envoi_regele_le_texte_courant(self):
+        from apps.ventes.services import mark_devis_sent
+        tpl = self._cgv(['Ancienne puce QJR668'])
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        tpl.cgv_bullets = ['Nouvelle puce QJR668 {acompte}&#37;']
+        tpl.save()
+        r = self._api().patch(f'/api/django/ventes/devis/{devis.id}/',
+                              {'remise_globale': '3'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        devis.refresh_from_db()
+        (acompte, _, _), _ = self._attendu(devis)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(devis.clauses_appliquees[0]['puces'],
+                         [f'Nouvelle puce QJR668 {acompte}&#37;'])
+
+    def test_devis_accepte_jamais_regele(self):
+        from apps.ventes.domain.cycle_vie import figer_clauses_devis
+        self._cgv(['Puce courante QJR668'])
+        devis = self._devis(statut=Devis.Statut.ACCEPTE)
+        signe = [{'clause_id': None, 'source': 'cgv_societe',
+                  'nom': 'CGV signée', 'corps_texte': '',
+                  'puces': ['Puce signée QJR668'], 'type_deal': '',
+                  'ordre': 0, 'version': 1}]
+        devis.clauses_appliquees = signe
+        devis.save(update_fields=['clauses_appliquees'])
+        self.assertFalse(figer_clauses_devis(devis))
+        devis.refresh_from_db()
+        self.assertEqual(devis.clauses_appliquees, signe)
+
+    def test_societe_sans_cgv_rien_n_est_fige(self):
+        """Ni gabarit, ni titre seul, ni CGV d'une AUTRE société."""
+        from apps.ventes.services import mark_devis_sent
+        autre = make_company()
+        self._cgv(['CGV autre société QJR668'], company=autre)
+        devis = self._devis()
+        mark_devis_sent(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertFalse(devis.clauses_appliquees)
+        self._cgv(None, titre='Titre seul QJR668')
+        devis2 = self._devis()
+        mark_devis_sent(devis=devis2, user=self.user)
+        devis2.refresh_from_db()
+        self.assertFalse(devis2.clauses_appliquees)
 
 
 @tag('pdf')

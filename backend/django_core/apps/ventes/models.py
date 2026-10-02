@@ -315,8 +315,9 @@ class Devis(models.Model):
     # Snapshot JSON des clauses applicables au devis. QJR668 (décision
     # fondateur 01/10/2026) : gelé à l'envoi puis RE-gelé à chaque correction
     # sur place par ``domain/cycle_vie.figer_clauses_devis`` (source : le
-    # catalogue ``cpq``, parqué — sans lui rien n'est écrit). NULL / [] = aucun
-    # bloc. Lu en LECTURE SEULE par le quote_engine, qui l'imprime.
+    # texte CGV de la société, ``parametres.DocumentTemplates``, cases
+    # remplies ; société sans CGV → rien n'est écrit). NULL / [] = rien de
+    # figé. Lu en LECTURE SEULE par le quote_engine, qui l'imprime.
     clauses_appliquees = models.JSONField(
         null=True, blank=True,
         verbose_name='Clauses/CGV appliquées (figées à l\'envoi)',
