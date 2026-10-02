@@ -335,11 +335,13 @@ export default function SectionDivers({ state, setField, errors = {} }) {
         />
         {errors.note && <p role="alert" className="text-xs text-destructive">{errors.note}</p>}
       </div>
-      <CustomFieldsInput
-        module="lead"
-        value={customData}
-        onChange={(obj) => setField('custom_data', obj)}
-      />
+      <div id="lf-custom-data" tabIndex={-1} data-field-anchor="lf-custom-data">
+        <CustomFieldsInput
+          module="lead"
+          value={customData}
+          onChange={(obj) => setField('custom_data', obj)}
+        />
+      </div>
       <QualificationSite state={state} setField={setField} errors={errors} />
     </>
   )

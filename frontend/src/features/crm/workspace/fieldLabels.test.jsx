@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import fieldLabels from './fieldLabels'
+import { SECTION_FIELDS, TRACKED_KEYS } from './draftCore'
 
 // RÈGLE FONDATEUR 08/09/2026 — garde-fou anti-dérive de fieldLabels.js : lu
 // en TEST contre la SOURCE des sections (même patron que
@@ -38,10 +39,12 @@ const REGISTRY_SECTIONS = [
 function htmlForIdsIn(source) {
   const ids = new Set()
   // QJR593 — StructureSelector porte son id en prop (pas de htmlFor externe).
-  const re = /htmlFor="([\w-]+)"|<StructureSelector\s+id="([\w-]+)"/g
+  // QJR593 — `data-field-anchor` : ancre d'un contrôle sans htmlFor (case
+  // imbriquée dans son <label>, AssigneePicker, CustomFieldsInput).
+  const re = /htmlFor="([\w-]+)"|<StructureSelector\s+id="([\w-]+)"|data-field-anchor="([\w-]+)"/g
   let m = re.exec(source)
   while (m) {
-    ids.add(m[1] || m[2])
+    ids.add(m[1] || m[2] || m[3])
     m = re.exec(source)
   }
   return ids
@@ -142,5 +145,22 @@ describe('QJR656 — un libellé court pour chaque champ de provenance du lead',
     const court = fieldLabels[champ]?.libelleCourt
     expect(typeof court).toBe('string')
     expect(court.trim().length).toBeGreaterThan(0)
+  })
+})
+
+// QJR593 — garde : chaque champ d'une section du centre est SUIVI (TRACKED_KEYS,
+// donc dans le brouillon/diff) ET nommé (fieldLabels) — sinon une erreur ou un
+// changement s'affiche sous sa clé technique. Aucune exception : owner,
+// regularisation_8221, visite_effectuee et custom_data ont reçu leur libellé
+// (décision fondateur 02/10/2026).
+describe('QJR593 — SECTION_FIELDS ⊆ TRACKED_KEYS ∩ fieldLabels', () => {
+  const champs = Object.values(SECTION_FIELDS).flat()
+
+  it('chaque champ de section est dans TRACKED_KEYS', () => {
+    expect(champs.filter((k) => !TRACKED_KEYS.includes(k))).toEqual([])
+  })
+
+  it('chaque champ de section a un libellé dans fieldLabels', () => {
+    expect(champs.filter((k) => !fieldLabels[k])).toEqual([])
   })
 })

@@ -2074,6 +2074,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
              for v in results],
         )
 
+    # api-only: TEMPORAIRE (QJR667) — aucun bouton « Dupliquer » du devis n'appelle
+    # encore cette action ; retirer ce marqueur dès que l'écran la câble.
     @action(detail=True, methods=['post'], url_path='dupliquer',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer(self, request, pk=None):
@@ -2213,6 +2215,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             status=(status.HTTP_201_CREATED if request.method == 'POST'
                     else status.HTTP_200_OK))
 
+    # api-only: TEMPORAIRE (QJR667) — aucun bouton « Renouveler » du devis n'appelle
+    # encore cette action ; retirer ce marqueur dès que l'écran la câble.
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])
     def renouveler(self, request, pk=None):
