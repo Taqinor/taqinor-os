@@ -38,7 +38,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-from authentication.scoping import scope_queryset  # noqa: E402,F401
+from authentication.scoping import scope_queryset  # noqa: E402
 from core.mixins import company_qs  # noqa: E402
 
 

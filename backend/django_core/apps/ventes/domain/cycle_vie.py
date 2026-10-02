@@ -2100,7 +2100,8 @@ def rattacher_aval_financier_revision(devis, *, user=None):
 
     1. le BC non annulé de la V1 est RATTACHÉ à la V2 (``BonCommande.devis`` est
        OneToOne : un BC « complémentaire » est impossible sans migration — le BC
-       garde ses lignes d'origine ; question fondateur consignée au DONE LOG),
+       rendu après rattachement lit donc les lignes de la V2, ``utils/pdf.py``
+       relisant ``bc.devis`` ; question fondateur consignée au DONE LOG),
        et les factures (``Facture.devis``) et ``FactureSource`` de la V1 aussi :
        les documents émis restent valables ;
     2. l'écart TTC est régularisé AU CENTIME, jamais un montant inventé :
