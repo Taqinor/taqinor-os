@@ -102,11 +102,14 @@ class TestFG71CoutService(TestCase):
             self.company, self.user,
             [(self.panneau, 10, 100), (self.onduleur, 1, 600)])
         res = compute_chantier_cout(inst)
-        # Devis HT = 10×100 + 1×600 = 1600 ; matériel prévu = 1100
-        self.assertEqual(res['devis_total_ht'], 1600.0)
-        self.assertEqual(res['marge'], 500.0)
-        # Taux = 500/1600 ≈ 31.2 %
-        self.assertAlmostEqual(res['marge_taux'], 31.2, places=1)
+        # Devis HT brut = 10×100 + 1×600 = 1600 (TTC 1920) ; matériel prévu = 1100
+        # ARRONDI-100 : le TTC est ramené au palier de 100 MAD (1900.00) par une
+        # baisse de HT de 16.67 → total HT du devis 1600.0 → 1583.33.
+        self.assertEqual(res['devis_total_ht'], 1583.33)
+        # ARRONDI-100 : marge 500.0 → 483.33 (1583.33 − 1100).
+        self.assertEqual(res['marge'], 483.33)
+        # ARRONDI-100 : taux 31.2 % → 30.5 % (483.33/1583.33).
+        self.assertAlmostEqual(res['marge_taux'], 30.5, places=1)
 
     def test_labour_monetised_with_tarif(self):
         """Le coût main-d'œuvre n'entre dans la marge que si `tarif_jour` est donné."""

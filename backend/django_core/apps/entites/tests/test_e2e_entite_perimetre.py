@@ -176,14 +176,19 @@ class E2eEntitePerimetreTests(TestCase):
         par_code = {c['code']: c for c in resp.data['entites']}
         # 3 entités ACTIVES : la holding (sans document) et ses 2 filiales.
         self.assertEqual(sorted(par_code), ['FA', 'FB', 'H'])
-        self.assertEqual(par_code['FA']['ca_devis'], '73951.00')
-        self.assertEqual(par_code['FB']['ca_devis'], '21048.00')
+        # ARRONDI-100 : chaque devis est ramené au palier de 100 MAD inférieur
+        # (Devis.total_ttc, TVA 0 %) — FA 73951.00 → 73900.00, FB 21048.00 →
+        # 21000.00 ; la consolidation somme ces totaux tels qu'ils sont facturés.
+        self.assertEqual(par_code['FA']['ca_devis'], '73900.00')
+        self.assertEqual(par_code['FB']['ca_devis'], '21000.00')
         self.assertEqual(par_code['H']['ca_devis'], '0.00')
 
     def test_9_le_total_ignore_les_lignes_non_affectees(self):
         resp = self.api_admin.get(URL_GROUPE)
         total = resp.data['total']
-        self.assertEqual(total['ca_devis'], '94999.00')
+        # ARRONDI-100 : 94999.00 → 94900.00 (73900 + 21000, totaux de devis
+        # arrondis ; la somme brute 73951 + 21048 n'est plus facturée).
+        self.assertEqual(total['ca_devis'], '94900.00')
         self.assertEqual(total['nb_devis'], 2)
 
     def test_10_aucune_fuite_de_la_societe_voisine(self):
@@ -192,4 +197,5 @@ class E2eEntitePerimetreTests(TestCase):
         # La voisine a une entité de MÊME code « FA » : elle ne doit pas
         # apparaître deux fois, ni gonfler le total.
         self.assertEqual(codes.count('FA'), 1)
-        self.assertEqual(resp.data['total']['ca_devis'], '94999.00')
+        # ARRONDI-100 : 94999.00 → 94900.00 (73900 + 21000).
+        self.assertEqual(resp.data['total']['ca_devis'], '94900.00')

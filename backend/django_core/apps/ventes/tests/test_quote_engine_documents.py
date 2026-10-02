@@ -404,8 +404,11 @@ class TestGeneratorQuoteFlow(TestCase):
         # lignes re-tarife désormais ces forfaits comme le faisaient déjà l'écran
         # et la composition, donc un prix « au bloc » posté ici ne survivait plus
         # à l'enregistrement.
-        self.assertAlmostEqual(data['total_sans'], 63727.71, delta=1)
-        self.assertAlmostEqual(data['total_avec'], 98727.72, delta=1)
+        # ARRONDI-100 (02/10/2026) : chaque total d'option est ramené au
+        # palier de 100 MAD inférieur — 63 727,71 → 63 700,00 et
+        # 98 727,72 → 98 700,00 (les prix des lignes ne bougent pas).
+        self.assertAlmostEqual(data['total_sans'], 63700.0, delta=1)
+        self.assertAlmostEqual(data['total_avec'], 98700.0, delta=1)
 
         cap = {}
         orig = G._render_pdf_weasyprint

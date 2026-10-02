@@ -87,8 +87,11 @@ class CommissionOptionAccepteeTests(TestCase):
         self.deal.refresh_from_db()
 
         # HT brut option AVEC = 10000 (commun) + 12000 + 6000 = 28000 ;
-        # net après 10 % de remise globale = 25200.00 ; commission 5 % = 1260.00.
-        self.assertEqual(self.deal.montant_commission_du, Decimal('1260.00'))
+        # net après 10 % de remise globale = 25200.00 (TTC 30240.00).
+        # ARRONDI-100 : 1260.00 → 1258.33 — le TTC est ramené au palier de
+        # 100 MAD (30200.00) par une baisse de HT de 33.33 ; HT net 25166.67,
+        # commission 5 % = 1258.3335 → 1258.33 (colonne à 2 décimales).
+        self.assertEqual(self.deal.montant_commission_du, Decimal('1258.33'))
         self.assertEqual(self.deal.statut, DealEnregistre.Statut.A_PAYER)
         # AVANT le correctif, le calcul portait sur devis.total_ht (brut,
         # TOUTES les lignes des deux options confondues = 36000.00, aucune
@@ -107,8 +110,10 @@ class CommissionOptionAccepteeTests(TestCase):
         self.deal.refresh_from_db()
 
         # HT brut option SANS = 10000 (commun) + 8000 = 18000 ;
-        # net après 10 % de remise = 16200.00 ; commission 5 % = 810.00.
-        self.assertEqual(self.deal.montant_commission_du, Decimal('810.00'))
+        # net après 10 % de remise = 16200.00 (TTC 19440.00).
+        # ARRONDI-100 : 810.00 → 808.33 — TTC ramené à 19400.00 (HT -33.33),
+        # HT net 16166.67, commission 5 % = 808.3335 → 808.33.
+        self.assertEqual(self.deal.montant_commission_du, Decimal('808.33'))
 
 
 class CommissionMonoOptionUnchangedTests(TestCase):

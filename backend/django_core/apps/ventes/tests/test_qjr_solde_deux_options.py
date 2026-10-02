@@ -15,9 +15,13 @@ Le devis de référence (mêmes chiffres que ``test_options``) :
     réseau 11 700 · hybride 24 000 · panneaux 14 × 1 100 · batterie 14 000 ·
     installation 4 000, TVA 20 %
 
-    → option SANS  = 31 100 HT → 37 320 TTC
-    → option AVEC  = 57 400 HT → 68 880 TTC
-    → somme des deux (le bug) = 69 100 HT → 82 920 TTC
+    → option SANS  = 31 100 HT → 37 320 TTC exact → 37 300 TTC (ARRONDI-100)
+    → option AVEC  = 57 400 HT → 68 880 TTC exact → 68 800 TTC (ARRONDI-100)
+    → somme des deux (le bug) = 69 100 HT → 82 920 TTC exact → 82 900 TTC
+
+ARRONDI-100 (02/10/2026) : chaque total de devis finit au palier de 100 MAD
+inférieur (baisse de HT « arrondi », prix des lignes inchangés) ; l'acompte de
+30 % se calcule sur ce total rond.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -43,10 +47,10 @@ from apps.ventes.utils.options import (
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
 
-TTC_SANS = Decimal('37320.00')
-TTC_AVEC = Decimal('68880.00')
+TTC_SANS = Decimal('37300.00')    # ARRONDI-100 : 37320 → 37300
+TTC_AVEC = Decimal('68800.00')    # ARRONDI-100 : 68880 → 68800
 #: Le montant que le solde affichait AVANT QJR24 : la somme des deux paniers.
-TTC_SOMME_DES_DEUX = Decimal('82920.00')
+TTC_SOMME_DES_DEUX = Decimal('82900.00')    # ARRONDI-100 : 82920 → 82900
 
 
 class _Base(TestCase):
@@ -139,7 +143,8 @@ class SoldeAvantAcceptation(_Base):
         devis = self._devis_deux_options()
         tranche = next_tranche(devis)
         self.assertEqual(tranche['key'], 'acompte')
-        self.assertEqual(tranche['ttc'], Decimal('20664.00'))  # 30 % de 68 880
+        # ARRONDI-100 : 20664 → 20640 (30 % de 68 800)
+        self.assertEqual(tranche['ttc'], Decimal('20640.00'))
 
     def test_les_lignes_suivent_la_meme_option_que_largent(self):
         """Les lignes et l'argent décrivent la MÊME vente."""
@@ -171,13 +176,15 @@ class SoldeApresAcceptation(_Base):
             statut=Devis.Statut.ACCEPTE, option=SANS_BATTERIE)
         tranche = next_tranche(devis)
         self.assertEqual(tranche['key'], 'acompte')
-        self.assertEqual(tranche['ttc'], Decimal('11196.00'))  # 30 % de 37 320
+        # ARRONDI-100 : 11196 → 11190 (30 % de 37 300)
+        self.assertEqual(tranche['ttc'], Decimal('11190.00'))
 
     def test_acceptation_de_avec_le_solde_suit_avec(self):
         devis = self._devis_deux_options(
             statut=Devis.Statut.ACCEPTE, option=AVEC_BATTERIE)
         self.assertEqual(solde_devis(devis)['total_ttc'], TTC_AVEC)
-        self.assertEqual(next_tranche(devis)['ttc'], Decimal('20664.00'))
+        # ARRONDI-100 : 20664 → 20640 (30 % de 68 800)
+        self.assertEqual(next_tranche(devis)['ttc'], Decimal('20640.00'))
 
 
 class InvariantTroisChiffresHuawei(_Base):

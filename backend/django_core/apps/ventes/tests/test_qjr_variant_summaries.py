@@ -173,7 +173,9 @@ class TestVariantSummariesChaineCanonique(TestCase):
             optionnelle=False)
         apres = _variant_summaries(source)[0]['total_ttc']
         # + 3 000 HT brut → + 2 700 HT net → + 540 de TVA → + 3 240 TTC.
-        self.assertAlmostEqual(apres, 55440.00, places=2)
+        # ARRONDI-100 : 55 440,00 → 55 400,00 (53 000 HT brut − 10 % − arrondi
+        # 33,33 = 47 666,67 HT net ; le total est ramené au palier de 100 MAD).
+        self.assertAlmostEqual(apres, 55400.00, places=2)
 
     def test_taux_de_tva_par_ligne_et_non_taux_du_devis(self):
         """Le panier 10 % reste à 10 % : appliquer le taux du devis (20 %) à

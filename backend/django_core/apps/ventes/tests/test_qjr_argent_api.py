@@ -326,11 +326,18 @@ class BasculeNetTests(_ArgentBase):
         canonique RÉCONCILIE la TVA au centime (c'est ce que la FACTURE fait
         déjà), là où ``tva_buckets`` laissait passer des millièmes en
         mono-taux. Le devis et sa facture s'accordent donc au centime — c'est
-        exactement l'objet de D2, et l'API rendait déjà 2 décimales."""
+        exactement l'objet de D2, et l'API rendait déjà 2 décimales.
+
+        ARRONDI-100 : 9 × 1 166,67 = 10 500,03 HT → 12 600,04 TTC exact, ramené
+        à 12 600,00 par une baisse de HT de 0,03 (« arrondi ») ; la TVA du
+        total rond est donc 2 100,00 (et non plus 2 100,01)."""
         devis = self._devis('qjr51-centime')
         self._ligne(devis, 'Panneau 550 W', 9, 1166.67)
         devis = Devis.objects.get(pk=devis.pk)
-        self.assertEqual(devis.total_tva, Decimal('2100.01'))
+        # ARRONDI-100 : 2100.01 → 2100.00
+        self.assertEqual(devis.total_tva, Decimal('2100.00'))
+        self.assertEqual(devis.total_ttc, Decimal('12600.00'))
+        self.assertEqual(devis.total_ht + devis.total_tva, devis.total_ttc)
         self.assertEqual(devis.total_tva, option_totaux(devis)['tva'])
         self.assertEqual(devis.total_tva.as_tuple().exponent, -2)
 
