@@ -968,6 +968,16 @@ def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
             "de devis.",
             field='type_installation')
 
+    # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026) —
+    # un kWh déclaré que les factures de la fiche contredisent n'est jamais
+    # chiffré en silence : aucun devis tant que la fiche n'est pas corrigée.
+    from apps.ventes.etude_horaire import (
+        MESSAGE_KWH_INCOHERENT, controle_kwh_declare_du_lead)
+    controle_kwh = controle_kwh_declare_du_lead(lead, company)
+    if controle_kwh is not None and not controle_kwh['coherent']:
+        raise AutoDevisError(MESSAGE_KWH_INCOHERENT,
+                             field='conso_mensuelle_kwh')
+
     taille_kwc = getattr(lead, 'taille_souhaitee_kwc', None)
     # U3/EZ5 — une cible demandée pour CE devis passe devant les deux données
     # du lead, sans les réécrire.

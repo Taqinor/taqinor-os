@@ -3051,6 +3051,107 @@ def profil_conso_du_devis(devis, *, bills=None, tranches=None,
         tranches=tranches, charges_fixes_mad=charges_fixes_mad)
 
 
+# ── ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures ─────────
+#
+# DÉCISION FONDATEUR du 30/09/2026 : la priorité « 1 bis » (CAD166, Q14) du kWh
+# mensuel DÉCLARÉ ne vaut que s'il est vraisemblable face aux factures
+# déclarées du MÊME dossier. Si facture_barème(kWh déclaré) ÷ facture déclarée
+# sort de [0,5 ; 2], l'enregistrement du devis est REFUSÉ (jamais un chiffrage
+# silencieux : DEV-202609-0082/-0085 chiffrés sur 46/32 kWh/mois face à
+# 10 000–20 000 MAD/mois de factures).
+RATIO_KWH_FACTURE_MIN = 0.5
+RATIO_KWH_FACTURE_MAX = 2.0
+MESSAGE_KWH_INCOHERENT = ('kWh déclarés incohérents avec les factures — '
+                          'corriger la fiche du lead')
+CODE_KWH_INCOHERENT = 'kwh_incoherent_factures'
+
+
+def coherence_kwh_declare_factures(kwh_mensuel, factures_mad, *,
+                                   tranches=None, charges_fixes_mad=None):
+    """Confronte UN kWh mensuel déclaré aux factures mensuelles déclarées.
+
+    ``factures_mad`` : les montants réels du dossier (hiver, et été quand il
+    est distinct). Le kWh déclaré est TARIFÉ au barème (:func:`bareme.facture_mad`,
+    mêmes tranches / charges fixes que l'étude) puis divisé par chaque facture.
+    Il est cohérent dès qu'UNE facture déclarée tombe dans la bande (l'été et
+    l'hiver d'un même client diffèrent légitimement).
+
+    Rend ``None`` quand la confrontation est impossible (kWh ou facture
+    absents) — rien n'est alors bloqué —, sinon
+    ``{kwh_mensuel, facture_bareme_mad, ratios, coherent}``.
+    """
+    kwh = _num(kwh_mensuel)
+    factures = [f for f in (_num(v) for v in (factures_mad or ())) if f > 0]
+    if kwh <= 0 or not factures:
+        return None
+    facture_bareme = bareme.facture_mad(
+        kwh, tranches=tranches,
+        charges_fixes_mad=charges_fixes_mad)['total_mad']
+    ratios = [facture_bareme / f for f in factures]
+    return {
+        'kwh_mensuel': kwh,
+        'facture_bareme_mad': facture_bareme,
+        'ratios': ratios,
+        'coherent': any(RATIO_KWH_FACTURE_MIN <= r <= RATIO_KWH_FACTURE_MAX
+                        for r in ratios),
+    }
+
+
+def controle_kwh_declare_du_lead(lead, company=None):
+    """Même garde AVANT qu'un devis n'existe (devis automatique résidentiel,
+    ``domain.creation.build_devis_auto``) : le kWh déclaré et les factures
+    lus sur la fiche passée par l'appelant (aucune requête cross-app)."""
+    if lead is None:
+        return None
+    factures = [getattr(lead, 'facture_hiver', None)]
+    if getattr(lead, 'ete_differente', False):
+        factures.append(getattr(lead, 'facture_ete', None))
+    tranches, charges_fixes = _reglages_tarifaires(
+        company if company is not None else getattr(lead, 'company', None))
+    try:
+        return coherence_kwh_declare_factures(
+            getattr(lead, 'conso_mensuelle_kwh', None), factures,
+            tranches=tranches, charges_fixes_mad=charges_fixes)
+    except ValueError:
+        logger.warning('garde kWh déclaré : barème illisible', exc_info=True)
+        return None
+
+
+def controle_kwh_declare_du_devis(devis):
+    """La garde serveur d'ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES pour un devis.
+
+    Lit le kWh déclaré EXACTEMENT comme :func:`profil_conso_du_devis` (même
+    sélecteur ``conso_mensuelle_kwh_pour_devis``) et les factures du lead
+    (``lead_bills_for_devis``). Quand 12 kWh mesurés sont posés sur le devis
+    (priorité 1), le kWh déclaré ne chiffre rien : aucune garde. Rend le
+    résultat de :func:`coherence_kwh_declare_factures` (``None`` si rien à
+    confronter). Lecture pure.
+    """
+    from apps.crm.selectors import (
+        conso_mensuelle_kwh_pour_devis, lead_bills_for_devis)
+    etude_params = getattr(devis, 'etude_params', None) or {}
+    mesures = etude_params.get('conso_kwh_mensuelles')
+    if (isinstance(mesures, (list, tuple)) and len(mesures) == 12
+            and any(_num(v) > 0 for v in mesures)):
+        return None
+    kwh = conso_mensuelle_kwh_pour_devis(devis)
+    if _num(kwh) <= 0:
+        return None
+    bills = lead_bills_for_devis(devis) or {}
+    factures = [bills.get('facture_hiver')]
+    if bills.get('ete_differente'):
+        factures.append(bills.get('facture_ete'))
+    tranches, charges_fixes = _reglages_tarifaires(
+        getattr(devis, 'company', None))
+    try:
+        return coherence_kwh_declare_factures(
+            kwh, factures, tranches=tranches, charges_fixes_mad=charges_fixes)
+    except ValueError:
+        # Réglage société illisible : la garde ne fabrique pas de refus.
+        logger.warning('garde kWh déclaré : barème illisible', exc_info=True)
+        return None
+
+
 def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
                               occupation=None, jour_reference=None):
     """Cœur de :func:`etude_horaire_pour_devis` (exceptions gérées au-dessus)."""

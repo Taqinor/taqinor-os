@@ -82,7 +82,7 @@ export default function PanneauCommercial({
         injectionEnabled={injectionEnabled} setInjectionEnabled={setInjectionEnabled}
         tensionRaccordement={tensionRaccordement} dispatchSizing={dispatchSizing}
         estMt={estMt} repartitionMt={repartitionMt} setPartMt={setPartMt}
-        tarifMtApplique={tarifMtApplique}
+        tarifMtApplique={tarifMtApplique} erreurConso={errors?.conso}
       />
 
       {/* QX44 — étude commerciale par catégorie */}
