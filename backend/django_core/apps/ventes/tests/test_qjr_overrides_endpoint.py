@@ -285,41 +285,91 @@ class EtudesRelanceesTests(_OverridesBase):
     Avant : PATCH / DELETE écrivaient la colonne puis répondaient sans
     ``rafraichir_etudes_du_devis`` ; ``etude.jour_reference`` alimente
     ``entrees_depuis_devis`` : le PDF imprimait les économies d'avant la pose.
+
+    ERR-QJR564-RECALCUL-DATE-REFERENCE-MOCKE — AUCUN espion du service : on
+    lit le bloc RANGÉ ``etude_params['etude_horaire']`` (celui que
+    ``/proposal`` sert tel quel via ``builder.bloc_horaire_pour_kwc``). Son
+    estampille ``_empreinte_entrees`` (QJR43) fait entrer ``jour_reference`` :
+    elle doit être celle des entrées calculées SUR LA NOUVELLE DATE. Fixture
+    calquée sur ``test_qjr_empreintes_etudes._EmpreintesBase`` (Casablanca,
+    facture réelle, 14 × 710 W — calculable sans réseau).
     """
 
-    def _espion(self):
-        from unittest import mock
-        from apps.ventes.domain.entrees import jour_reference_du_devis
-        vus = []
+    DATE_POSEE = '2026-03-15'
 
-        def _rafraichir(devis, **kwargs):
-            vus.append(str(jour_reference_du_devis(devis)))
-            return {}
+    def setUp(self):
+        super().setUp()
+        from apps.crm.models import Client, Lead
+        from apps.stock.models import Produit
+        client_obj = Client.objects.create(company=self.company,
+                                           nom='Client QJR564')
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='QJR564',
+            telephone='+212600000000', ville='Casablanca',
+            facture_hiver=1800, ete_differente=False)
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-QJR564-01',
+            client=client_obj, lead=lead, statut='brouillon',
+            taux_tva=Decimal('20'), mode_installation='residentiel',
+            etude_params={})
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau Canadien Solar 710W',
+            prix_vente='1166.67', quantite_stock=50)
+        LigneDevis.objects.create(
+            devis=self.devis, produit=produit,
+            designation='Panneau Canadien Solar 710W',
+            quantite=Decimal('14'), prix_unitaire=Decimal('1166.67'),
+            remise=Decimal('0'))
+        self.url = f'/api/django/ventes/devis/{self.devis.id}/overrides/'
 
-        patcher = mock.patch(
-            'apps.ventes.services.rafraichir_etudes_du_devis',
-            side_effect=_rafraichir)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        return vus
+    def _empreinte_servie(self):
+        """L'estampille du bloc horaire que ``/proposal`` lit sur le devis."""
+        from apps.ventes.quote_engine.builder import bloc_horaire_pour_kwc
+        devis = Devis.objects.get(pk=self.devis.pk)
+        etude = devis.etude_params or {}
+        bloc = bloc_horaire_pour_kwc(
+            etude, (etude.get('etude_horaire') or {}).get('kwc'))
+        self.assertIsInstance(bloc, dict, 'aucun bloc horaire rangé')
+        return devis, bloc.get('_empreinte_entrees')
+
+    def _empreinte_attendue(self, devis):
+        from apps.ventes.domain.entrees import (
+            empreinte_entrees, entrees_depuis_devis)
+        entrees = entrees_depuis_devis(devis)
+        return entrees, empreinte_entrees(entrees)
+
+    def _bloc_initial(self):
+        from apps.ventes.services import rafraichir_etude_horaire_devis
+        self.assertIsNotNone(
+            rafraichir_etude_horaire_devis(self.devis, force=True),
+            'étude horaire non calculable sur la fixture')
+        return self._empreinte_servie()[1]
 
     def test_patch_relance_les_etudes_avec_la_nouvelle_date(self):
-        vus = self._espion()
+        avant = self._bloc_initial()
         resp = self.api.patch(
-            self.url, {'etude.jour_reference': {'valeur': '2026-03-15'}},
+            self.url, {'etude.jour_reference': {'valeur': self.DATE_POSEE}},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(vus, ['2026-03-15'])
+        devis, servie = self._empreinte_servie()
+        entrees, attendue = self._empreinte_attendue(devis)
+        self.assertEqual(str(entrees.jour_reference), self.DATE_POSEE)
+        self.assertEqual(servie, attendue)
+        self.assertNotEqual(servie, avant)
 
     def test_delete_relance_les_etudes_sur_la_date_du_devis(self):
+        self._bloc_initial()
         self.api.patch(
-            self.url, {'etude.jour_reference': {'valeur': '2026-03-15'}},
+            self.url, {'etude.jour_reference': {'valeur': self.DATE_POSEE}},
             format='json')
-        vus = self._espion()
+        _, posee = self._empreinte_servie()
         resp = self.api.delete(self.url + '?chemin=etude.jour_reference')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(len(vus), 1)
-        self.assertNotEqual(vus[0], '2026-03-15')
+        devis, servie = self._empreinte_servie()
+        entrees, attendue = self._empreinte_attendue(devis)
+        self.assertNotEqual(str(entrees.jour_reference), self.DATE_POSEE)
+        self.assertEqual(servie, attendue)
+        self.assertNotEqual(servie, posee)
 
     def test_une_etude_en_echec_n_annule_pas_la_pose(self):
         from unittest import mock

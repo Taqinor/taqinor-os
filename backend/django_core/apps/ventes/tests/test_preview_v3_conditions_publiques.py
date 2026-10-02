@@ -276,13 +276,35 @@ class PreviewV3ConditionsPubliquesTests(TestCase):
         self.assertNotIn('30%', joint.replace(' ', ''))
 
     def test_les_pourcentages_sont_ecrits_comme_on_les_lit(self):
-        """« 40 », jamais « 40.00 » : les puces sont du texte client."""
-        from apps.ventes.public_views import _pct_lisible
+        """« 40 », jamais « 40.00 » : les puces sont du texte client.
+
+        QJR668 — la page n'a plus son propre formateur (ancien
+        ``_pct_lisible``) : elle sert les pourcentages EXACTEMENT comme le PDF
+        les imprime (``clauses_cgv.pourcentage_affiche``, QJR623 — la décimale
+        n'est pas tronquée), sinon le client accepterait un texte qui n'est
+        pas celui du document."""
         from decimal import Decimal as D
-        self.assertEqual(_pct_lisible(D('40.00')), '40')
-        self.assertEqual(_pct_lisible(D('33.50')), '33,5')
-        self.assertEqual(_pct_lisible(30), '30')
-        self.assertEqual(_pct_lisible(30.0), '30')
+
+        from apps.ventes.quote_engine.clauses_cgv import pourcentage_affiche
+        self.assertEqual(str(pourcentage_affiche(D('40.00'), 30)), '40')
+        self.assertEqual(str(pourcentage_affiche(D('33.50'), 30)), '33.5')
+        self.assertEqual(str(pourcentage_affiche(30, 30)), '30')
+        self.assertEqual(str(pourcentage_affiche(30.0, 30)), '30')
+        # Bout en bout : un échéancier à décimale est servi tel que le PDF
+        # l'imprime, jamais « 33.50 » ni une seconde écriture « 33,5 ».
+        self.devis.echeancier = [
+            {'libelle': 'Acompte', 'type': 'acompte',
+             'pct_or_montant': 33.5},
+            {'libelle': 'Livraison du matériel', 'type': 'materiel',
+             'pct_or_montant': 56.5},
+            {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 10},
+        ]
+        self.devis.save(update_fields=['echeancier'])
+        joint = ' | '.join(self._payload()['conditions'])
+        self.assertIn('33.5%', joint)
+        self.assertIn('56.5%', joint)
+        self.assertNotIn('33.50', joint)
+        self.assertNotIn('33,5', joint)
 
     # ── moyens de paiement ──────────────────────────────────────────────
     def test_paiement_moyens_ne_propose_jamais_les_especes(self):

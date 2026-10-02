@@ -57,12 +57,10 @@ from ..utils.company_settings import create_numbered
 from ..domain.pipeline import (
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
+from authentication.scoping import scope_queryset
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
-
-
-from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
 def _gamme_envoi_payload(devis):
@@ -721,10 +719,13 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         AJOUTÉ quand il manque, jamais re-tarifé quand il est là ; un
         composant introuvable ou non tarifé est sauté et DIT dans
         ``avertissements``, et ``lignes_ajoutees`` compte les ajouts. Le
-        STATUT n'est jamais écrit (règle #4) : un devis « envoyé » répond 409
-        avec ``revision_possible: true`` (le bon geste est « Réviser ») ; un
-        devis accepté/refusé/expiré répond 409 avec ``revision_possible:
-        false``. Renvoyer le MÊME layout ne fait aucune écriture
+        STATUT n'est jamais écrit (règle #4) : la garde est le prédicat
+        unique ``domain/modifiabilite`` (geste CALEPINAGE). QJR557 — un
+        devis « envoyé » se resynchronise SUR PLACE (200, correction après
+        envoi tracée « corrigé après envoi : calepinage ») ; un devis
+        accepté/refusé/expiré répond 409, ``revision_possible`` venant du
+        prédicat (vrai pour un document révisable, faux pour un devis
+        remplacé/archivé). Renvoyer le MÊME layout ne fait aucune écriture
         (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
         from ..services import sync_devis_from_layout, SyncLayoutError
 
@@ -2074,6 +2075,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
              for v in results],
         )
 
+    # api-only: NTUX13 sans bouton écran — marqueur TEMPORAIRE (QJR667), à
+    # retirer dès qu'un écran l'appelle (test_actions_devis_ont_appelant).
     @action(detail=True, methods=['post'], url_path='dupliquer',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer(self, request, pk=None):
@@ -2213,6 +2216,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             status=(status.HTTP_201_CREATED if request.method == 'POST'
                     else status.HTTP_200_OK))
 
+    # api-only: NTCPQ13 re-tarification sans bouton écran — marqueur
+    # TEMPORAIRE (QJR667), à retirer dès qu'un écran l'appelle.
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])
     def renouveler(self, request, pk=None):

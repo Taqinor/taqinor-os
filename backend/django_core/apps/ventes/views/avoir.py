@@ -33,13 +33,11 @@ from authentication.permissions import (  # noqa: F401
 )
 from ..utils.references import create_with_reference  # noqa: F401
 from ..utils.company_settings import create_numbered  # noqa: F401
+from authentication.scoping import scope_queryset
+from core.mixins import company_qs
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
-
-
-from authentication.scoping import scope_queryset  # noqa: E402,F401
-from core.mixins import company_qs  # noqa: E402
 
 
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe

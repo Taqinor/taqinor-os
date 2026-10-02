@@ -3897,20 +3897,40 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ── NTCPQ11 / QJR668 — Clauses/CGV de l'affaire FIGÉES à l'envoi ───────
     # LECTURE SEULE du snapshot ``Devis.clauses_appliquees`` (gelé à l'envoi
     # puis re-gelé à chaque correction par ``domain/cycle_vie``, jamais
-    # recalculé ici : le moteur ne fait que RENDRE). Additif : la clé n'est
-    # posée que lorsqu'au moins une clause a été figée → un devis sans clause
-    # reste octet-identique. Imprimées par tous les gabarits
-    # (``clauses_cgv.bloc_clauses_html``).
+    # recalculé ici : le moteur ne fait que RENDRE). Additif : les clés ne
+    # sont posées que lorsque quelque chose a été figé → un devis sans
+    # snapshot reste octet-identique.
+    #
+    # QJR668 (décision fondateur 01/10/2026, « figer le texte CGV à
+    # l'envoi ») — l'entrée ``source='cgv_societe'`` porte le texte CGV de la
+    # société, cases remplies : elle part dans ``cgv_figees`` (titre + puces),
+    # que le bloc « Conditions générales » imprime AU LIEU du texte vivant, et
+    # elle est RETIRÉE de ``clauses_cgv`` : la CGV n'est jamais imprimée deux
+    # fois. Les autres entrées (clauses par affaire) restent dans
+    # ``clauses_cgv`` (« Clauses particulières »,
+    # ``clauses_cgv.bloc_clauses_html``).
+    from .clauses_cgv import SOURCE_CGV_SOCIETE
     _clauses = getattr(devis, "clauses_appliquees", None)
     if isinstance(_clauses, list) and _clauses:
-        data["clauses_cgv"] = [
+        _cgv = next(
+            (c for c in _clauses if isinstance(c, dict)
+             and c.get("source") == SOURCE_CGV_SOCIETE), None)
+        if _cgv is not None:
+            data["cgv_figees"] = {
+                "titre": str(_cgv.get("nom") or ""),
+                "puces": [str(p) for p in (_cgv.get("puces") or [])],
+            }
+        _particulieres = [
             {
                 "nom": (c.get("nom") or ""),
                 "corps_texte": (c.get("corps_texte") or ""),
                 "type_deal": (c.get("type_deal") or ""),
             }
             for c in _clauses if isinstance(c, dict)
+            and c.get("source") != SOURCE_CGV_SOCIETE
         ]
+        if _particulieres:
+            data["clauses_cgv"] = _particulieres
 
     # ── PV86 — Avertissements INTERNES sur l'état des données du devis ───────
     # Additif : la clé n'est posée QUE lorsqu'il y a quelque chose à signaler →

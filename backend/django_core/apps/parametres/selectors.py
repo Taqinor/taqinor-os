@@ -75,6 +75,34 @@ def company_identity(company) -> dict:
     }
 
 
+def cgv_societe(company) -> dict | None:
+    """QJR668 — le texte CGV SAISI par la société (``DocumentTemplates``) :
+    ``{'titre': str, 'puces': [str], 'version': int}``, ou ``None`` quand la
+    société n'a pas de puces CGV (le moteur imprime alors ses puces
+    historiques — ce ne sont pas des CGV société, rien n'est à figer).
+
+    Lecture seule : aucun enregistrement n'est créé (``.filter().first()``,
+    jamais ``DocumentTemplates.get``). Strictement par société : sans société,
+    ``None`` — jamais le gabarit d'une autre (pk=1). ``titre`` vide = la
+    société n'a pas saisi de titre. Les puces sont rendues BRUTES (cases
+    ``{acompte}``… non remplies : c'est le travail de
+    ``quote_engine.clauses_cgv.remplir_cgv``)."""
+    if company is None:
+        return None
+    from apps.parametres.models_documents import DocumentTemplates
+    tpl = DocumentTemplates.objects.filter(company=company).first()
+    if tpl is None:
+        return None
+    puces = tpl.cgv_bullets
+    if not isinstance(puces, list) or not puces:
+        return None
+    return {
+        'titre': tpl.cgv_titre or '',
+        'puces': [str(p) for p in puces],
+        'version': tpl.version,
+    }
+
+
 def adresse_affichage(company) -> str:
     """NTI18N22 — adresse « effective » d'une société pour un document (PDF).
 

@@ -1641,40 +1641,81 @@ def contexte_clauses_devis(devis):
 
 
 def clauses_applicables_devis(devis):
-    """QJR668 — les clauses/CGV du catalogue société qui s'appliquent à ce
-    devis (``[{clause_id, nom, corps_texte, type_deal, ordre}]``), ou ``None``
-    quand AUCUN catalogue n'est disponible.
+    """QJR668 — le texte CGV de la SOCIÉTÉ du devis, cases REMPLIES avec les
+    valeurs de CE devis, prêt à être figé ; ``None`` quand la société n'a pas
+    saisi de CGV (rien n'est figé — jamais un texte inventé, et les puces
+    historiques du moteur ne sont pas des CGV société).
 
-    Le catalogue NTCPQ11 vit dans l'app ``cpq`` (``selectors.clauses_applicables``
-    évalue chaque clause contre :func:`contexte_clauses_devis`). Tant que
-    ``cpq`` est PARQUÉE (MVP solaire, SOLMVP), le module n'existe pas : la
-    fonction rend ``None`` et le gel n'écrit rien — un snapshot déjà posé
-    n'est jamais effacé faute de source. Import dynamique : aucune arête
-    statique ventes → cpq."""
-    import importlib
+    Décision fondateur (Reda, 01/10/2026) : « Figer le texte CGV à l'envoi.
+    À l'envoi (et à chaque correction après envoi), on fige le texte CGV de la
+    société, cases remplies avec les valeurs du devis. Le PDF de ce devis
+    imprime ensuite cette version figée : modifier les CGV plus tard ne change
+    plus un devis déjà envoyé ou signé. »
 
-    try:
-        source = importlib.import_module('apps.cpq.selectors')
-        clauses_applicables = source.clauses_applicables
-    except (ImportError, AttributeError):
+    * Source : ``apps.parametres.selectors.cgv_societe`` (app fondation),
+      strictement par ``devis.company`` (multi-tenant).
+    * Les cases sont remplies par LA fonction pure du moteur
+      (``quote_engine.clauses_cgv.remplir_cgv``) avec les valeurs que le PDF
+      imprimerait (``build_quote_data`` : échéancier réel, mention TVA des
+      lignes, échéance réelle) — jamais une seconde copie du calcul.
+    * Rend une liste d'UNE entrée marquée ``source='cgv_societe'``
+      (``{clause_id, source, nom, corps_texte, puces, type_deal, ordre,
+      version}``) : le builder la sert au bloc « Conditions générales » et la
+      retire des « Clauses particulières » (la CGV n'est imprimée qu'une fois).
+    """
+    from apps.parametres.selectors import cgv_societe
+
+    cgv = cgv_societe(getattr(devis, 'company', None))
+    if not cgv:
         return None
-    clauses = clauses_applicables(
-        company=devis.company, context=contexte_clauses_devis(devis))
-    return [dict(c) for c in (clauses or []) if isinstance(c, dict)]
+    from apps.ventes.quote_engine.builder import build_quote_data
+    from apps.ventes.quote_engine.clauses_cgv import (
+        CGV_TITRE_DEFAUT, SOURCE_CGV_SOCIETE, remplir_cgv,
+        termes_paiement_affiches, valeurs_cgv)
+
+    data = build_quote_data(devis)
+    acompte, materiel, solde = termes_paiement_affiches(data)
+    puces = remplir_cgv(cgv['puces'], valeurs_cgv(
+        acompte=acompte, materiel=materiel, solde=solde,
+        tva_note=data.get('tva_note') or '',
+        valid_until=data.get('valid_until') or ''))
+    return [{
+        'clause_id': None,
+        'source': SOURCE_CGV_SOCIETE,
+        'nom': cgv['titre'] or CGV_TITRE_DEFAUT,
+        'corps_texte': '',
+        'puces': puces,
+        'type_deal': '',
+        'ordre': 0,
+        'version': cgv['version'],
+    }]
 
 
 def figer_clauses_devis(devis):
-    """QJR668 (décision fondateur 01/10/2026) — GÈLE les clauses/CGV du devis
-    sur ``Devis.clauses_appliquees``, lues ensuite telles quelles par le PDF
-    (``builder`` → ``data['clauses_cgv']``) : le moteur ne fait que rendre.
+    """QJR668 (décision fondateur 01/10/2026) — GÈLE le texte CGV de la
+    société, cases remplies, sur ``Devis.clauses_appliquees`` ; le PDF
+    l'imprime ensuite tel quel (``builder`` → ``data['cgv_figees']``) : le
+    moteur ne fait que rendre.
 
-    Appelé sur le chemin d'envoi (:func:`mark_devis_sent`) puis RE-appelé à
+    Appelé sur le chemin d'envoi (:func:`mark_devis_sent`, et la vue
+    d'envoi par e-mail juste avant de rendre la pièce jointe) puis RE-appelé à
     chaque correction sur place d'un envoyé
     (``modifiabilite.consigner_correction_apres_envoi``, QJR518) — sinon le
-    PDF imprimerait des clauses choisies pour un contenu qui n'existe plus.
-    Sans catalogue (``None``), rien n'est écrit. N'écrit que si le jeu change.
-    Rend ``True`` quand le snapshot a été (ré)écrit. Ne touche jamais au
-    statut (règle #4)."""
+    PDF imprimerait des cases (échéancier, TVA, échéance) d'un contenu qui
+    n'existe plus.
+
+    * Seul un devis BROUILLON (en cours d'envoi) ou ENVOYÉ est (re)gelé : un
+      devis ACCEPTÉ — ou refusé/expiré — n'est JAMAIS regelé (ce que le client
+      a signé ne bouge plus).
+    * Société sans CGV (``None``) : rien n'est écrit, un snapshot déjà posé
+      n'est jamais effacé.
+    * N'écrit que si le texte figé change. Rend ``True`` quand le snapshot a
+      été (ré)écrit. Ne touche jamais au statut (règle #4).
+    """
+    from apps.ventes.models import Devis
+
+    if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+        return False
     clauses = clauses_applicables_devis(devis)
     if clauses is None or clauses == (devis.clauses_appliquees or None):
         return False
@@ -2091,8 +2132,10 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     chaîne BC / Facture reste 1:1 (règle #4) :
 
     1. le BC non annulé de la V1 est RATTACHÉ à la V2 (``BonCommande.devis`` est
-       OneToOne : un BC « complémentaire » est impossible sans migration — le BC
-       garde ses lignes d'origine ; question fondateur consignée au DONE LOG),
+       OneToOne : un BC « complémentaire » est impossible sans migration ; le
+       BC n'a pas de lignes propres — son PDF les lit sur ``bc.devis``
+       (``utils/pdf.py``, ``option_lines``), donc il rend désormais les
+       lignes et totaux de la V2 ; question fondateur consignée au DONE LOG),
        et les factures (``Facture.devis``) et ``FactureSource`` de la V1 aussi :
        les documents émis restent valables ;
     2. l'écart TTC est régularisé AU CENTIME, jamais un montant inventé :

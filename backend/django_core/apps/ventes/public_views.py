@@ -2944,21 +2944,6 @@ def _acompte_publique(devis, lignes=None):
         return None
 
 
-def _pct_lisible(valeur):
-    """PREVIEW-V3-FIX — un pourcentage d'échéancier écrit comme on le lit :
-    « 40 » et non « 40.00 », « 33,5 » et non « 33.50 » (virgule FR, comme
-    ``resolveAcompte`` côté page). Jamais de notation exponentielle (le piège
-    de ``Decimal.normalize()``)."""
-    from decimal import Decimal, InvalidOperation
-    try:
-        d = Decimal(str(valeur))
-    except (InvalidOperation, TypeError, ValueError):
-        return str(valeur)
-    if d == d.to_integral_value():
-        return str(int(d))
-    return format(d, 'f').rstrip('0').rstrip('.').replace('.', ',')
-
-
 def _conditions_publiques(data, devis=None):
     """PREVIEW-V3 — les puces « Conditions générales du devis » du PDF, en texte.
 
@@ -2985,51 +2970,58 @@ def _conditions_publiques(data, devis=None):
     (``utils.echeancier.pourcentages_echeancier``, celle dont
     ``next_tranche`` sert la première tranche).
 
-    ``devis`` absent ⇒ comportement d'hier, à l'octet (société seule).
+    QJR623 a refermé l'écart côté PDF : le builder rabat lui-même l'échéancier
+    du devis dans ``data['payment_terms']`` (``termes_paiement_devis``), et
+    page comme PDF lisent ces MÊMES pourcentages (``termes_paiement_affiches``).
 
-    HORS PÉRIMÈTRE, ET DIT : le PDF garde son propre chemin
-    (``_cgv_bullets_html`` lit les globals ``PAY_A``/``PAY_M``/``PAY_S``
-    posés depuis le même ``payment_terms``). Il hérite donc encore de
-    l'écart sur un devis à échéancier négocié. Le corriger demanderait de
-    changer ce que le moteur IMPRIME ; ce commit ne touche que ce que la page
-    AFFICHE (consigne : ne pas changer le comportement du PDF tant que la
-    même fonction ne sert pas les deux).
+    QJR668 (décision fondateur 01/10/2026, « figer le texte CGV à l'envoi ») —
+    la page de signature (« J'accepte … les conditions générales de vente »)
+    sert EXACTEMENT ce que le PDF de CE devis imprime :
+
+    * devis portant une CGV FIGÉE (``Devis.clauses_appliquees``, entrée
+      ``source='cgv_societe'`` posée à l'envoi puis regelée à chaque
+      correction par ``domain/cycle_vie.figer_clauses_devis``) → CES puces,
+      lues dans ``data['cgv_figees']`` (le builder les tire du snapshot : même
+      source que le bloc « Conditions générales » du PDF). Modifier ensuite
+      les CGV société ne change plus ce que le client accepte. Le titre figé
+      voyage déjà dans ``quote.cgv_figees.titre`` : la forme de ``conditions``
+      (liste de textes) est inchangée ;
+    * sinon (brouillon, aperçu, société sans CGV) → le texte VIVANT rempli par
+      LA fonction pure ``quote_engine.clauses_cgv.remplir_cgv`` avec
+      ``valeurs_cgv`` — celle que le moteur et le gel appellent. Plus aucune
+      copie locale du remplissage : une case inconnue n'est jamais servie
+      brute, une puce vide (échéance inconnue) est omise, comme dans le PDF.
+
+    Lecture seule (règle #4) ; rien n'est lu hors du ``data`` de CE devis
+    (multi-tenant). ``devis`` reste accepté pour la signature d'appel : la
+    correspondance échéancier → créneaux est déjà faite dans ``data``.
     """
     import html as _html
     try:
-        from .quote_engine.generate_devis_premium import DEFAULT_DOC_TEXTS
-        # Surcharge par société : MÊME source que le rendu, qui lit
-        # ``data['doc_texts']`` par-dessus les défauts (jamais un global).
-        _surcharges = (data or {}).get('doc_texts') or {}
-        gabarits = (
-            (_surcharges.get('cgv_bullets')
-             if isinstance(_surcharges, dict) else None)
-            or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
-        terms = (data or {}).get('payment_terms') or {}
-        # QJR622 — la correspondance « échéancier du devis → acompte /
-        # matériel / solde » vit dans ``utils.echeancier`` (UNE fois, le PDF
-        # la lit aussi) ; ``devis`` absent ⇒ la société seule, à l'octet.
-        from .utils.echeancier import termes_paiement_devis
-        slots = termes_paiement_devis(devis, terms)
-        acompte = _pct_lisible(slots['acompte'])
-        materiel = _pct_lisible(slots['materiel'])
-        solde = _pct_lisible(slots['solde'])
-        tva_note = (data or {}).get('tva_note') or ''
-        valid_until = ((data or {}).get('valid_until') or '').strip()
-        validite_offre = (
-            f"Validit&#233; de l&#8217;offre&#160;: jusqu&#8217;au "
-            f"{valid_until}" if valid_until else '')
-        out = []
-        for brut in gabarits:
-            try:
-                txt = str(brut).format(
-                    acompte=acompte, materiel=materiel, solde=solde,
-                    tva_note=tva_note, validite_offre=validite_offre)
-            except (KeyError, IndexError, ValueError):
-                txt = str(brut)
-            txt = _html.unescape(txt).strip()
-            if txt:
-                out.append(txt)
+        from .quote_engine.clauses_cgv import (
+            remplir_cgv, termes_paiement_affiches, valeurs_cgv)
+        data = data or {}
+        figees = data.get('cgv_figees')
+        if isinstance(figees, dict):
+            # Version FIGÉE : cases déjà remplies ; le repassage sans valeur
+            # garantit seulement qu'aucune case brute ne sort (même geste que
+            # ``_cgv_bullets_html`` du moteur).
+            puces = remplir_cgv(figees.get('puces') or [], {})
+        else:
+            from .quote_engine.generate_devis_premium import DEFAULT_DOC_TEXTS
+            # Surcharge par société : MÊME source que le rendu, qui lit
+            # ``data['doc_texts']`` par-dessus les défauts (jamais un global).
+            _surcharges = data.get('doc_texts') or {}
+            gabarits = (
+                (_surcharges.get('cgv_bullets')
+                 if isinstance(_surcharges, dict) else None)
+                or DEFAULT_DOC_TEXTS.get('cgv_bullets') or [])
+            acompte, materiel, solde = termes_paiement_affiches(data)
+            puces = remplir_cgv(gabarits, valeurs_cgv(
+                acompte=acompte, materiel=materiel, solde=solde,
+                tva_note=data.get('tva_note') or '',
+                valid_until=data.get('valid_until') or ''))
+        out = [t for t in (_html.unescape(str(p)).strip() for p in puces) if t]
         return out or None
     except Exception:  # noqa: BLE001 — best-effort
         return None
